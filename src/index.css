@@ -1,0 +1,6 @@
+/* Tailwind layers — used for responsive utilities and the mobile layout layer.
+   Preflight is disabled (see tailwind.config.js) so it never overrides the
+   ported design system in styles/design.css. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
