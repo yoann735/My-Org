@@ -3,11 +3,11 @@
    Full week calendar + weekend lever + congélation datée
    (freeze/use days for meats) + consommé/reste status badges.
    ============================================================ */
-import { Icon } from '../components/Icon.jsx';
+import { Icon } from '../../shared/Icon.jsx';
 import { Card, WeekNav } from '../components/primitives.jsx';
 import { WeekCalendar } from '../components/WeekCalendar.jsx';
-import { TopActions, WeekendToggle } from './_shared.jsx';
-import { weekPlan, WEEKS, recipeById } from '../data/dataLayer.js';
+import { TopActions, WeekendToggle, ResetSlotsButton } from './_shared.jsx';
+import { weekPlan, WEEKS } from '../data/dataLayer.js';
 
 function verdictVariant(verdict) {
   if (!verdict) return '';
@@ -17,7 +17,7 @@ function verdictVariant(verdict) {
 }
 
 export function Planning({ ctx }) {
-  const { weekKey, includeWeekend } = ctx;
+  const { weekKey, slotsOff } = ctx;
   const plan = weekPlan(weekKey);
   const wk = WEEKS[weekKey];
   const congelation = wk.congelation || [];
@@ -42,8 +42,12 @@ export function Planning({ ctx }) {
 
       <div className="row wrap" style={{ marginBottom: 16, gap: 10 }}>
         <WeekendToggle ctx={ctx} />
+        <ResetSlotsButton ctx={ctx} />
         <span className="pill"><Icon name="refresh" size={12} /> Restes = déjeuner du lendemain</span>
         <span className="pill amber"><Icon name="pizza" size={12} /> Pizzas : Sam &amp; Dim</span>
+      </div>
+      <div className="row" style={{ marginBottom: 16 }}>
+        <span className="hint"><Icon name="ban" size={12} /> Survolez un repas et cliquez sur le bouton pour le désactiver : la liste de courses, le budget et le récap nutritionnel se recalculent aussitôt.</span>
       </div>
 
       {/* full-width calendar */}
@@ -53,7 +57,7 @@ export function Planning({ ctx }) {
           <h3>Repas de la semaine</h3>
         </div>
         <div className="card-body">
-          <WeekCalendar weekKey={weekKey} onOpenRecipe={ctx.openRecipe} includeWeekend={includeWeekend} />
+          <WeekCalendar weekKey={weekKey} onOpenRecipe={ctx.openRecipe} slotsOff={slotsOff} onToggleSlot={ctx.toggleSlot} />
         </div>
       </div>
 

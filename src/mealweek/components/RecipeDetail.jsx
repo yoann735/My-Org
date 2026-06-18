@@ -9,9 +9,9 @@
    Step checkboxes are persisted (per recipe) via ctx.
    ============================================================ */
 import { useState, useEffect } from 'react';
-import { Icon } from './Icon.jsx';
+import { Icon } from '../../shared/Icon.jsx';
 import { Stepper, ComplexityPill, ProteinBadge, Meta } from './primitives.jsx';
-import { useIsMobile } from '../hooks/useMediaQuery.js';
+import { useIsMobile } from '../../shared/hooks/useMediaQuery.js';
 import {
   scaleQty, scaledNutrition, NUTRITION_FIELDS, recipeProtein, money,
 } from '../data/dataLayer.js';

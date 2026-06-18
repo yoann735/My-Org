@@ -6,26 +6,23 @@
    pre-filled (skyr ×2 + bananes). Live total vs 60€, weekend lever.
    ============================================================ */
 import { useState } from 'react';
-import { Icon } from '../components/Icon.jsx';
-import { Check, WeekNav } from '../components/primitives.jsx';
-import { TopActions, WeekendToggle } from './_shared.jsx';
+import { Icon } from '../../shared/Icon.jsx';
+import { Check, WeekNav, Stepper } from '../components/primitives.jsx';
+import { TopActions, WeekendToggle, ResetSlotsButton } from './_shared.jsx';
 import {
-  weekShopping, groupShoppingByCategory, weekPlan, chronodriveLink,
-  BUDGET_TARGET, money,
+  weekShopping, groupShoppingByCategory, weekBudget, chronodriveLink, money,
 } from '../data/dataLayer.js';
 
 export function Shopping({ ctx }) {
-  const { weekKey, includeWeekend, weeklyBudget } = ctx;
-  const plan = weekPlan(weekKey);
-  const rows = weekShopping(weekKey, includeWeekend);
+  const { weekKey, slotsOff, weeklyBudget } = ctx;
+  const rows = weekShopping(weekKey, slotsOff);
   const groups = groupShoppingByCategory(rows);
 
   const isChecked = (name) => !!ctx.shoppingChecked[`${weekKey}::${name}`];
   const toggle = (name) => ctx.toggleShopItem(`${weekKey}::${name}`);
 
-  const recipeTotal = rows.filter((r) => !isChecked(r.name)).reduce((a, r) => a + r.price, 0);
-  const persoTotal = ctx.perso.filter((p) => !p.checked).reduce((a, p) => a + (p.total || 0), 0);
-  const grand = recipeTotal + persoTotal;
+  // same single source of truth as the Dashboard (net budget)
+  const { recipesTotal: recipeTotal, persoTotal, total: grand } = weekBudget(weekKey, slotsOff, ctx.shoppingChecked, ctx.perso);
   const over = grand > weeklyBudget;
   const toBuy = rows.filter((r) => !isChecked(r.name)).length;
 
@@ -33,9 +30,14 @@ export function Shopping({ ctx }) {
   const [newPrice, setNewPrice] = useState('');
   const addPerso = () => {
     if (!newName.trim()) return;
-    ctx.addPerso({ nom: newName.trim(), total: parseFloat(newPrice.replace(',', '.')) || 0, qty: 1 });
+    const unitPrice = parseFloat(newPrice.replace(',', '.')) || 0;
+    ctx.addPerso({ nom: newName.trim(), unitPrice, mult: 1, total: unitPrice });
     setNewName(''); setNewPrice('');
   };
+
+  // legacy-safe accessors for a perso article's multiplier / unit price
+  const persoMult = (p) => p.mult ?? p.qty ?? 1;
+  const persoUnit = (p) => (p.unitPrice != null ? p.unitPrice : (persoMult(p) ? (p.total || 0) / persoMult(p) : (p.total || 0)));
 
   return (
     <div className="screen scroll fadein">
@@ -47,7 +49,7 @@ export function Shopping({ ctx }) {
           </h1>
           <div className="sub">
             {toBuy} ingrédient(s) à acheter · retrait chez <strong style={{ color: 'var(--text)' }}>{ctx.store || 'Chronodrive'}</strong>
-            {!includeWeekend && <strong style={{ color: 'var(--accent-2)' }}> · week-end masqué</strong>}
+            {ctx.disabledCount > 0 && <strong style={{ color: 'var(--accent-2)' }}> · {ctx.disabledCount} repas désactivé{ctx.disabledCount > 1 ? 's' : ''}</strong>}
           </div>
         </div>
         <div className="topbar-actions">
@@ -61,7 +63,8 @@ export function Shopping({ ctx }) {
 
       <div className="row wrap" style={{ marginBottom: 16, gap: 10 }}>
         <WeekendToggle ctx={ctx} />
-        <span className="hint">Masquer le week-end retire les recettes de Sam &amp; Dim et recalcule le budget.</span>
+        <ResetSlotsButton ctx={ctx} />
+        <span className="hint">Désactivez des repas dans le <button type="button" className="linklike" onClick={() => ctx.go('planning')}>Planning</button> : seuls les ingrédients encore nécessaires restent ici.</span>
       </div>
 
       <div className="shop-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.7fr) minmax(290px,1fr)', gap: 24, alignItems: 'start' }}>
@@ -130,23 +133,31 @@ export function Shopping({ ctx }) {
         <div>
           <h2 className="serif" style={{ fontSize: 20, margin: '0 0 12px' }}>Vos articles perso</h2>
           <div className="card" style={{ overflow: 'hidden' }}>
-            {ctx.perso.map((p) => (
-              <div className={'sl-row perso' + (p.checked ? ' have' : '')} key={p.id}>
-                <Check on={p.checked} onChange={() => ctx.togglePerso(p.id)} />
-                <div className="sl-name">
-                  <div className="nm">{p.nom}{p.fixe && <span className="pill" style={{ height: 18, fontSize: 9.5 }}>Fixe</span>}</div>
-                  {p.qty ? <div className="rc">× {p.qty}</div> : null}
+            {ctx.perso.map((p) => {
+              const mult = persoMult(p);
+              const unit = persoUnit(p);
+              return (
+                <div className={'perso-row' + (p.checked ? ' have' : '')} key={p.id}>
+                  <Check on={p.checked} onChange={() => ctx.togglePerso(p.id)} />
+                  <div className="pr-name">{p.nom}</div>
+                  <Stepper value={mult} min={1} max={99} suffix="×" onChange={(v) => ctx.updatePerso(p.id, { mult: v })} />
+                  <div className="pr-unit">
+                    <input
+                      className="qty-input" type="text" inputMode="decimal" aria-label={'Prix unitaire de ' + p.nom}
+                      defaultValue={unit ? String(Math.round(unit * 100) / 100).replace('.', ',') : ''}
+                      key={p.id + ':' + unit}
+                      onBlur={(e) => ctx.updatePerso(p.id, { unitPrice: parseFloat(e.target.value.replace(',', '.')) || 0 })}
+                      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                    />
+                    <span className="pr-unit-suffix">€/u</span>
+                  </div>
+                  <div className="pr-total tnum">{money(mult * unit)}</div>
+                  <button type="button" className="cd-ic pr-del" onClick={() => ctx.delPerso(p.id)} title="Supprimer cet article">
+                    <Icon name="trash" size={15} />
+                  </button>
                 </div>
-                <div className="sl-price">{money(p.total || 0)}</div>
-                <div className="sl-act">
-                  {!p.fixe && (
-                    <button type="button" className="cd-ic" style={{ border: 'none', background: 'transparent', color: 'var(--text-3)' }} onClick={() => ctx.delPerso(p.id)} title="Supprimer">
-                      <Icon name="trash" size={15} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {/* quick add */}
             <div className="sl-row perso" style={{ gap: 10 }}>
               <span className="kpi-ic" style={{ width: 22, height: 22, background: 'var(--accent-soft)', color: 'var(--accent)' }}><Icon name="plus" size={14} /></span>

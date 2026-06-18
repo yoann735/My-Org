@@ -3,7 +3,7 @@
    Both drive the same `screen` state. The sidebar is hidden under
    760px (CSS), the bottom nav shown only under 760px (CSS).
    ============================================================ */
-import { Icon } from './Icon.jsx';
+import { Icon } from '../../shared/Icon.jsx';
 
 export const NAV = [
   { id: 'dashboard', label: 'Accueil', icon: 'home' },
@@ -13,7 +13,7 @@ export const NAV = [
 ];
 
 /* ---------- Desktop sidebar ---------- */
-export function Sidebar({ current, onNav, expanded, onToggle, shoppingBadge }) {
+export function Sidebar({ current, onNav, expanded, onToggle, shoppingBadge, onHub }) {
   return (
     <nav className={'sidebar' + (expanded ? ' expanded' : '')}>
       <div className="sb-brand">
@@ -44,6 +44,12 @@ export function Sidebar({ current, onNav, expanded, onToggle, shoppingBadge }) {
           <span className="sb-icon"><Icon name="settings" size={20} /></span>
           <span className="sb-label">Réglages</span>
         </div>
+        {onHub && (
+          <div className="sb-item" onClick={onHub} title="Accueil — changer d'app">
+            <span className="sb-icon"><Icon name="grid" size={20} /></span>
+            <span className="sb-label">Changer d'app</span>
+          </div>
+        )}
         <button className="sb-toggle" onClick={onToggle} title={expanded ? 'Réduire' : 'Étendre'} type="button">
           <span className="sb-icon"><Icon name="panel" size={19} /></span>
           <span className="sb-label">Réduire</span>

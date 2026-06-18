@@ -4,7 +4,7 @@
    Favorites & banned recipes persisted via ctx.
    ============================================================ */
 import { useState } from 'react';
-import { Icon } from '../components/Icon.jsx';
+import { Icon } from '../../shared/Icon.jsx';
 import { ProteinBadge, ComplexityPill, Meta } from '../components/primitives.jsx';
 import { TopActions } from './_shared.jsx';
 import { RECIPES, PROT, proteinClass, recipeProtein } from '../data/dataLayer.js';

@@ -2,7 +2,7 @@
    Shared UI primitives (ported from the design's components.jsx,
    converted to ESM React modules and wired to the real data layer).
    ============================================================ */
-import { Icon } from './Icon.jsx';
+import { Icon } from '../../shared/Icon.jsx';
 import { PROT, COMPLEXITY_VARIANT, recipeProtein } from '../data/dataLayer.js';
 
 /* ---- Card ---- */

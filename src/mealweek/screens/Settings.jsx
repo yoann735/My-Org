@@ -3,11 +3,37 @@
    Theme (dark/light), accent color, weekly budget, default
    portions, retrieval store. All persisted via ctx (localStorage).
    ============================================================ */
-import { Icon } from '../components/Icon.jsx';
-import { Card, Stepper, Switch } from '../components/primitives.jsx';
+import { Icon } from '../../shared/Icon.jsx';
+import { Card, Stepper } from '../components/primitives.jsx';
 import { TopActions } from './_shared.jsx';
-import { ACCENTS } from '../lib/constants.js';
+import { ACCENTS } from '../../shared/constants.js';
 import { useState } from 'react';
+
+const THEME_MODES = [
+  { v: 'system', label: 'Système', icon: 'panel' },
+  { v: 'light', label: 'Clair', icon: 'sun' },
+  { v: 'dark', label: 'Sombre', icon: 'moon' },
+];
+
+function ThemeSegmented({ value, onChange }) {
+  return (
+    <div className="seg" role="radiogroup" aria-label="Thème">
+      {THEME_MODES.map((m) => (
+        <button
+          key={m.v}
+          type="button"
+          role="radio"
+          aria-checked={value === m.v}
+          className={'seg-btn' + (value === m.v ? ' active' : '')}
+          onClick={() => onChange(m.v)}
+        >
+          <Icon name={m.icon} size={15} />
+          <span>{m.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function StepperRow({ label, sub, value, suffix, min, max, step, onChange, big }) {
   return (
@@ -41,8 +67,8 @@ export function Settings({ ctx }) {
         <Card title="Apparence" icon="sun">
           <div className="set-list">
             <div className="set-row">
-              <div><div className="set-label">Mode sombre</div><div className="hint" style={{ marginTop: 2 }}>Thème clair / sombre</div></div>
-              <div style={{ marginLeft: 'auto' }}><Switch on={ctx.theme === 'dark'} onChange={ctx.toggleTheme} /></div>
+              <div><div className="set-label">Thème</div><div className="hint" style={{ marginTop: 2 }}>« Système » suit le réglage de votre appareil.</div></div>
+              <div style={{ marginLeft: 'auto' }}><ThemeSegmented value={ctx.themeMode} onChange={ctx.setThemeMode} /></div>
             </div>
             <div className="set-div" />
             <div className="set-row">

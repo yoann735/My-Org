@@ -39,6 +39,18 @@ export const DAY_FULL = {
 };
 export const WEEKEND_DAYS = ['Sam', 'Dim'];
 
+/* ---------- meal slots ----------
+   Each day has two slots: midi (leftover lunch) + soir (dinner).
+   A slot is identified globally by "<dayKey>-<meal>" (e.g. "Sam-soir"),
+   so activation is a recurring weekly pattern shared across S1..S6.
+   `slotsOff` is a map { slotKey: true } — absent/false means active.
+   This generalizes (and replaces) the old "hide the weekend" lever:
+   the weekend is just the four slots below. */
+export const MEALS = ['midi', 'soir'];
+export const slotKey = (dayKey, meal) => `${dayKey}-${meal}`;
+export const WEEKEND_SLOTS = ['Sam-midi', 'Sam-soir', 'Dim-midi', 'Dim-soir'];
+export const isSlotOff = (slotsOff, dayKey, meal) => !!(slotsOff && slotsOff[slotKey(dayKey, meal)]);
+
 /* ============================================================
    PROTEINS — map the 9 messy raw labels onto 5 color classes.
    Order matters (first match wins).
@@ -200,13 +212,36 @@ export function weekPlan(weekKey) {
   return { key: weekKey, theme: wk.theme, raw: wk, days };
 }
 
-/* days actually cooked (dinners), honoring the weekend toggle */
-export function cookedDays(weekKey, includeWeekend = true) {
+/* Dinners actually cooked (and therefore bought), honoring per-slot
+   activation. By the cuisson_x2 rule a dinner feeds two slots: its own
+   `soir` slot and the NEXT day's `midi` (the leftover). So the dinner is
+   needed as long as at least one of those two slots is still active —
+   disabling a leftover lunch alone never drops it while the dinner is
+   still eaten, and vice-versa. (Sunday's leftover feeds next week's
+   Monday lunch, i.e. the same global "Lun-midi" slot.) */
+export function cookedDays(weekKey, slotsOff = {}) {
   const wk = WEEKS[weekKey];
+  if (!wk) return [];
   return DAY_KEYS
-    .filter((dk) => includeWeekend || !wk.days[dk].weekend)
+    .filter((dk, i) => {
+      const nextDay = DAY_KEYS[(i + 1) % DAY_KEYS.length];
+      return !isSlotOff(slotsOff, dk, 'soir') || !isSlotOff(slotsOff, nextDay, 'midi');
+    })
     .map((dk) => ({ dk, recipe: recipeById(wk.days[dk].diner), weekend: wk.days[dk].weekend }))
     .filter((d) => d.recipe);
+}
+
+/* All meal slots currently active (midi + soir per day), with their
+   recipe — drives meal counts and the nutrition recap. */
+export function activeSlots(weekKey, slotsOff = {}) {
+  const plan = weekPlan(weekKey);
+  if (!plan) return [];
+  const out = [];
+  plan.days.forEach((d) => {
+    if (d.midi && !isSlotOff(slotsOff, d.key, 'midi')) out.push({ dayKey: d.key, meal: 'midi', recipeId: d.midi });
+    if (d.soir && !isSlotOff(slotsOff, d.key, 'soir')) out.push({ dayKey: d.key, meal: 'soir', recipeId: d.soir });
+  });
+  return out;
 }
 
 /* ============================================================
@@ -220,12 +255,12 @@ export function cookedDays(weekKey, includeWeekend = true) {
    verdicts (Consommé / Reste); those are surfaced as info, but the
    live total is computed here so the weekend lever actually moves it.
    ============================================================ */
-export function weekShopping(weekKey, includeWeekend = true) {
+export function weekShopping(weekKey, slotsOff = {}) {
   const wk = WEEKS[weekKey];
   const status = wk.ingredients_status || {};
   const map = new Map();
 
-  cookedDays(weekKey, includeWeekend).forEach(({ recipe }) => {
+  cookedDays(weekKey, slotsOff).forEach(({ recipe }) => {
     (recipe.ingredients_livres || []).forEach((ing) => {
       if (ing.stock_perm) return; // home stock, not bought
       const name = ing.nom;
@@ -277,6 +312,20 @@ export function persoTotal(persoItems) {
   return persoItems.filter((p) => !p.checked).reduce((a, p) => a + (p.total ?? p.prix_unitaire * p.qty ?? 0), 0);
 }
 
+/** Single source of truth for the weekly budget (NET — after deducting
+   what the user already has in stock: unchecked shopping rows + unchecked
+   perso). Used by BOTH the Dashboard and Shopping so they always agree. */
+export function weekBudget(weekKey, slotsOff = {}, shoppingChecked = {}, perso = []) {
+  const rows = weekShopping(weekKey, slotsOff);
+  const recipesTotal = rows
+    .filter((r) => !shoppingChecked[`${weekKey}::${r.name}`])
+    .reduce((a, r) => a + r.price, 0);
+  const persoNet = perso
+    .filter((p) => !p.checked)
+    .reduce((a, p) => a + (p.total || 0), 0);
+  return { recipesTotal, persoTotal: persoNet, total: recipesTotal + persoNet };
+}
+
 /** default perso list seeded from meta.courses_perso_fixes */
 export function defaultPerso() {
   return PERSO_FIXES.map((p, i) => ({
@@ -292,19 +341,19 @@ export function defaultPerso() {
 /* ============================================================
    WEEK KPIs — for the dashboard.
    ============================================================ */
-export function weekKpis(weekKey, includeWeekend = true) {
-  const cooked = cookedDays(weekKey, includeWeekend);
-  const plan = weekPlan(weekKey);
-  const slotDays = plan.days.filter((d) => includeWeekend || !d.weekend);
+export function weekKpis(weekKey, slotsOff = {}) {
+  const cooked = cookedDays(weekKey, slotsOff);
+  const slots = activeSlots(weekKey, slotsOff);
 
-  // calories: average per day over midi + soir
-  let totalKcal = 0;
-  slotDays.forEach((d) => {
-    const m = recipeById(d.midi), s = recipeById(d.soir);
-    if (m) totalKcal += m.nutrition_1portion?.kcal || 0;
-    if (s) totalKcal += s.nutrition_1portion?.kcal || 0;
+  // calories: average per active day, summing that day's active meals
+  const kcalByDay = {};
+  slots.forEach((s) => {
+    const r = recipeById(s.recipeId);
+    kcalByDay[s.dayKey] = (kcalByDay[s.dayKey] || 0) + (r?.nutrition_1portion?.kcal || 0);
   });
-  const avgKcalDay = slotDays.length ? Math.round(totalKcal / slotDays.length) : 0;
+  const activeDays = Object.keys(kcalByDay).length;
+  const totalKcal = Object.values(kcalByDay).reduce((a, b) => a + b, 0);
+  const avgKcalDay = activeDays ? Math.round(totalKcal / activeDays) : 0;
 
   // time: average over cooked dinners
   const avgTime = cooked.length
@@ -312,28 +361,25 @@ export function weekKpis(weekKey, includeWeekend = true) {
     : 0;
 
   const ovenCount = cooked.filter((c) => c.recipe.four).length;
-  const mealsPlanned = slotDays.length * 2; // midi + soir
+  const mealsPlanned = slots.length; // active midi/soir slots, out of 14
 
   return { avgKcalDay, avgTime, ovenCount, mealsPlanned, cookedCount: cooked.length };
 }
 
-/** average nutrition per planned meal (midi+soir) for the week */
-export function weekNutrition(weekKey, includeWeekend = true) {
-  const plan = weekPlan(weekKey);
-  const slotDays = plan.days.filter((d) => includeWeekend || !d.weekend);
+/** average nutrition per active meal slot for the week */
+export function weekNutrition(weekKey, slotsOff = {}) {
+  const slots = activeSlots(weekKey, slotsOff);
   const acc = { kcal: 0, proteines_g: 0, glucides_g: 0, lipides_g: 0 };
   let count = 0;
-  slotDays.forEach((d) => {
-    [d.midi, d.soir].forEach((id) => {
-      const r = recipeById(id);
-      if (!r) return;
-      const n = r.nutrition_1portion || {};
-      acc.kcal += n.kcal || 0;
-      acc.proteines_g += n.proteines_g || 0;
-      acc.glucides_g += n.glucides_g || 0;
-      acc.lipides_g += n.lipides_g || 0;
-      count++;
-    });
+  slots.forEach((s) => {
+    const r = recipeById(s.recipeId);
+    if (!r) return;
+    const n = r.nutrition_1portion || {};
+    acc.kcal += n.kcal || 0;
+    acc.proteines_g += n.proteines_g || 0;
+    acc.glucides_g += n.glucides_g || 0;
+    acc.lipides_g += n.lipides_g || 0;
+    count++;
   });
   if (!count) return { kcal: 0, proteines_g: 0, glucides_g: 0, lipides_g: 0, count: 0 };
   return {

@@ -3,31 +3,36 @@
    KPIs (budget / calories / temps / four) + weekly calendar +
    "prochaine recette" hero + budget breakdown + nutrition recap.
    ============================================================ */
-import { Icon } from '../components/Icon.jsx';
+import { Icon } from '../../shared/Icon.jsx';
 import { Card, Bar, HBar, WeekNav } from '../components/primitives.jsx';
 import { WeekCalendar } from '../components/WeekCalendar.jsx';
 import { TopActions } from './_shared.jsx';
 import {
-  weekPlan, weekKpis, weekNutrition, weekShopping, recipeById, recipeProtein,
-  PERSO_FIXES, BUDGET_TARGET, money, money0,
+  weekPlan, weekKpis, weekNutrition, weekBudget, recipeById, recipeProtein,
+  money, money0, DAY_KEYS,
 } from '../data/dataLayer.js';
 
 export function Dashboard({ ctx }) {
-  const { weekKey, weeklyBudget, includeWeekend } = ctx;
+  const { weekKey, weeklyBudget, slotsOff } = ctx;
   const plan = weekPlan(weekKey);
-  const kpi = weekKpis(weekKey, includeWeekend);
-  const nut = weekNutrition(weekKey, includeWeekend);
+  const kpi = weekKpis(weekKey, slotsOff);
+  const nut = weekNutrition(weekKey, slotsOff);
 
-  const shopping = weekShopping(weekKey, includeWeekend);
-  const recipesTotal = shopping.reduce((a, i) => a + i.price, 0);
-  const persoT = PERSO_FIXES.reduce((a, p) => a + p.total, 0);
-  const budgetTotal = recipesTotal + persoT;
-  const budgetPct = Math.round((budgetTotal / weeklyBudget) * 100);
+  // NET budget (after deducting "j'ai déjà") — same source of truth as Shopping
+  const { recipesTotal, persoTotal: persoT, total: budgetTotal } = weekBudget(weekKey, slotsOff, ctx.shoppingChecked, ctx.perso);
   const over = budgetTotal > weeklyBudget;
 
-  // next recipe = Monday dinner (first cooked meal of the cycle)
-  const firstDay = plan.days[0];
-  const next = recipeById(firstDay.soir);
+  // "prochaine recette" = the dinner cooked TONIGHT (each evening a new recipe;
+  // lunch = previous night's leftovers). Start from the real current weekday and
+  // walk forward to the next active dinner.
+  const todayIdx = (new Date().getDay() + 6) % 7; // Lun=0 … Dim=6
+  let nextDay = null, nextLabel = 'Ce soir';
+  for (let i = 0; i < 7; i++) {
+    const dk = DAY_KEYS[(todayIdx + i) % 7];
+    const d = plan.days.find((x) => x.key === dk);
+    if (d && d.soir && !slotsOff[`${dk}-soir`]) { nextDay = d; nextLabel = i === 0 ? 'Ce soir' : d.full; break; }
+  }
+  const next = nextDay ? recipeById(nextDay.soir) : null;
 
   const kpis = [
     { icon: 'euro', tint: 'var(--accent)', label: 'Budget semaine', val: <>{money0(budgetTotal)} <small>/ {weeklyBudget}€</small></>, bar: { value: budgetTotal, max: weeklyBudget, variant: over ? 'crit' : '' } },
@@ -45,13 +50,37 @@ export function Dashboard({ ctx }) {
             <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>—</span>{' '}
             <span style={{ fontSize: 24, color: 'var(--text-2)' }}>{plan.theme}</span>
           </h1>
-          <div className="sub">Votre planning de la semaine en un coup d'œil. {!includeWeekend && <strong style={{ color: 'var(--accent-2)' }}>· Week-end masqué</strong>}</div>
+          <div className="sub">Votre planning de la semaine en un coup d'œil. {ctx.disabledCount > 0 && <strong style={{ color: 'var(--accent-2)' }}>· {ctx.disabledCount} repas désactivé{ctx.disabledCount > 1 ? 's' : ''}</strong>}</div>
         </div>
         <div className="topbar-actions">
           <WeekNav weekKey={weekKey} onPrev={ctx.prevWeek} onNext={ctx.nextWeek} />
           <TopActions ctx={ctx} />
         </div>
       </div>
+
+      {/* next recipe hero — top of the dashboard */}
+      {next && (
+        <div className="card next-recipe" onClick={() => ctx.openRecipe(next.id)} style={{ marginBottom: 22 }}>
+          <div className="nr-glow" />
+          <div className="nr-body">
+            <div className="nr-main">
+              <span className="nr-eyebrow"><Icon name="clock" size={13} /> Prochaine recette · {nextLabel === 'Ce soir' ? 'Ce soir' : nextLabel + ' soir'}</span>
+              <div className="nr-title serif">{next.nom}</div>
+              {next.tagline && next.tagline !== next.nom && (
+                <div className="nr-tag ital">{next.tagline}</div>
+              )}
+              <div className="row wrap nr-metas">
+                <span className="nr-meta"><span className="dot" style={{ background: `var(--p-${recipeProtein(next).cls})`, width: 9, height: 9 }} /> {recipeProtein(next).label}</span>
+                <span className="nr-meta"><Icon name="clock" size={14} /> {next.temps_min} min</span>
+                <span className="nr-meta"><Icon name="flame" size={14} /> {next.nutrition_1portion?.kcal} kcal</span>
+              </div>
+            </div>
+            <button className="nr-cta" type="button" onClick={(e) => { e.stopPropagation(); ctx.openRecipe(next.id); }}>
+              Voir la recette <Icon name="arrowR" size={17} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* KPI bar */}
       <div className="kpis">
@@ -70,50 +99,22 @@ export function Dashboard({ ctx }) {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {/* calendar + next recipe */}
-        <div className="dash-top" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2.1fr) minmax(300px,1fr)', gap: 20, alignItems: 'stretch' }}>
-          <div className="card" style={{ overflow: 'hidden' }}>
-            <div className="card-head">
-              <Icon name="calendar" size={17} className="ic" />
-              <h3>Calendrier hebdomadaire</h3>
-              <div className="right">
-                <span className="pill"><Icon name="refresh" size={12} /> Restes réutilisés</span>
-                <span className="pill accent">{kpi.mealsPlanned}/14 repas</span>
-                <button className="btn ghost" style={{ padding: '6px 11px' }} onClick={() => ctx.go('planning')}>
-                  <Icon name="grid" size={15} /> Planning
-                </button>
-              </div>
-            </div>
-            <div className="card-body" style={{ padding: 18 }}>
-              <WeekCalendar weekKey={weekKey} onOpenRecipe={ctx.openRecipe} includeWeekend={includeWeekend} />
+        {/* calendar (full width) */}
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <div className="card-head">
+            <Icon name="calendar" size={17} className="ic" />
+            <h3>Calendrier hebdomadaire</h3>
+            <div className="right">
+              <span className="pill"><Icon name="refresh" size={12} /> Restes réutilisés</span>
+              <span className="pill accent">{kpi.mealsPlanned}/14 repas</span>
+              <button className="btn ghost" style={{ padding: '6px 11px' }} onClick={() => ctx.go('planning')}>
+                <Icon name="grid" size={15} /> Planning
+              </button>
             </div>
           </div>
-
-          {next && (
-            <div className="card next-recipe" onClick={() => ctx.openRecipe(next.id)}>
-              <div className="nr-glow" />
-              <div className="nr-body">
-                <div className="row spread" style={{ alignItems: 'center' }}>
-                  <span className="nr-eyebrow"><Icon name="clock" size={13} /> Prochaine recette</span>
-                  <span className="pill amber" style={{ background: 'rgba(255,255,255,.18)', color: '#fff', borderColor: 'rgba(255,255,255,.28)' }}>Lundi · Soir</span>
-                </div>
-                <div style={{ marginTop: 'auto' }}>
-                  <div className="serif" style={{ fontSize: 30, lineHeight: 1.05, color: '#fff' }}>{next.nom}</div>
-                  {next.tagline && next.tagline !== next.nom && (
-                    <div className="ital" style={{ fontSize: 14.5, marginTop: 6, color: 'rgba(255,255,255,.8)' }}>{next.tagline}</div>
-                  )}
-                </div>
-                <div className="row wrap" style={{ gap: 14, marginTop: 16 }}>
-                  <span className="nr-meta"><span className="dot" style={{ background: `var(--p-${recipeProtein(next).cls})`, width: 9, height: 9 }} /> {recipeProtein(next).label}</span>
-                  <span className="nr-meta"><Icon name="clock" size={14} /> {next.temps_min} min</span>
-                  <span className="nr-meta"><Icon name="flame" size={14} /> {next.nutrition_1portion?.kcal} kcal</span>
-                </div>
-                <button className="nr-cta" type="button" onClick={(e) => { e.stopPropagation(); ctx.openRecipe(next.id); }}>
-                  Voir la recette <Icon name="arrowR" size={17} />
-                </button>
-              </div>
-            </div>
-          )}
+          <div className="card-body" style={{ padding: 18 }}>
+            <WeekCalendar weekKey={weekKey} onOpenRecipe={ctx.openRecipe} slotsOff={slotsOff} onToggleSlot={ctx.toggleSlot} />
+          </div>
         </div>
 
         {/* budget + nutrition */}
