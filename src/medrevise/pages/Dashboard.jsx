@@ -166,6 +166,9 @@ function ImportPanel({ ctx }) {
   const [over, setOver] = useState(false);
   const [contenu, setContenu] = useState('');
   const [pdfBlob, setPdfBlob] = useState(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extractInfo, setExtractInfo] = useState(null); // { chars } | { error }
+  const [showText, setShowText] = useState(false);
   const sources = db.sources.filter((s) => !s.archive);
   const [srcId, setSrcId] = useState(() => (sources[0] || {}).id);
   const matieresFor = (sid) => db.matieres.filter((m) => m.sourceId === sid && !m.archive);
@@ -177,12 +180,28 @@ function ImportPanel({ ctx }) {
   const onFile = async (file) => {
     if (!file) return;
     setState('dest');
-    if (file.type === 'text/plain' || /\.(txt|md)$/i.test(file.name)) {
-      setContenu(await file.text());
-    } else if (file.type === 'application/pdf') {
-      setPdfBlob(file); // stored as blob; texte à coller (pas d'OCR en v1)
-    }
+    setExtractInfo(null);
     if (!title) setTitle(file.name.replace(/\.[^.]+$/, ''));
+    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+      setPdfBlob(file);
+      setExtracting(true); setShowText(false);
+      try {
+        const { extractPdfText } = await import('../lib/pdf.js');
+        const text = await extractPdfText(file);
+        setContenu(text);
+        setExtractInfo(text.trim().length > 20 ? { chars: text.trim().length } : { error: 'empty' });
+      } catch (e) {
+        setExtractInfo({ error: 'fail' });
+      }
+      setExtracting(false);
+    } else if (file.type === 'text/plain' || /\.(txt|md)$/i.test(file.name)) {
+      setContenu(await file.text());
+      setShowText(true);
+    } else if (file.type && file.type.startsWith('image/')) {
+      // image scannée : pas d'OCR en v1 → on garde le visuel mais il faut coller le texte
+      setExtractInfo({ error: 'image' });
+      setShowText(true);
+    }
   };
 
   const canGen = !!(matId && contenu.trim().length > 20);
@@ -196,7 +215,7 @@ function ImportPanel({ ctx }) {
     await ctx.reload();
     setResult(res); setState('done'); setBusy(false);
   };
-  const reset = () => { setState('empty'); setContenu(''); setPdfBlob(null); setTitle(''); setResult(null); };
+  const reset = () => { setState('empty'); setContenu(''); setPdfBlob(null); setTitle(''); setResult(null); setExtractInfo(null); setExtracting(false); setShowText(false); };
 
   return (
     <Card title="Importer une fiche" icon="upload"
@@ -215,8 +234,8 @@ function ImportPanel({ ctx }) {
             onDrop={(e) => { e.preventDefault(); setOver(false); onFile(e.dataTransfer.files[0]); }}>
             <input type="file" accept=".txt,.md,.pdf,image/*" style={{ display: 'none' }} onChange={(e) => onFile(e.target.files[0])} />
             <div className="dz-ic"><Icon name="upload" size={26} /></div>
-            <div style={{ fontWeight: 600, fontSize: 16 }}>Glisse ta fiche ici</div>
-            <div className="hint" style={{ marginTop: 5 }}>PDF, image ou texte — tu choisis ensuite sa destination</div>
+            <div style={{ fontWeight: 600, fontSize: 16 }}>Glisse ton PDF ici</div>
+            <div className="hint" style={{ marginTop: 5 }}>Le texte du PDF est lu automatiquement — tu choisis ensuite sa destination</div>
           </label>
           <button className="btn ghost sm" style={{ marginTop: 10 }} onClick={() => setState('dest')}><Icon name="edit" size={13} /> Ou coller du texte</button>
         </div>
@@ -234,17 +253,36 @@ function ImportPanel({ ctx }) {
           </div>
 
           <div className="imp-field">
-            <label>Contenu de la fiche {pdfBlob && <span className="imp-opt">(PDF conservé · colle le texte ci-dessous)</span>}</label>
-            <textarea className="imp-title" style={{ minHeight: 120, resize: 'vertical', fontFamily: 'inherit' }}
-              placeholder="Colle ici le texte de ton cours (l'IA génère QCM, flashcards et Feynman à partir de CE texte uniquement)…"
-              value={contenu} onChange={(e) => setContenu(e.target.value)} />
+            <label>Contenu de la fiche</label>
+            {extracting && (
+              <div className="row" style={{ gap: 10, alignItems: 'center', padding: '10px 0' }}>
+                <div className="gen-spinner" style={{ width: 20, height: 20 }} />
+                <span className="hint">Lecture du PDF en cours…</span>
+              </div>
+            )}
+            {!extracting && extractInfo && extractInfo.chars && (
+              <div className="err-mini ok" style={{ marginBottom: 8 }}>
+                <div className="em-ic"><Icon name="check" size={16} stroke={2.5} /></div>
+                <div className="em-body"><div className="em-title">PDF lu : {extractInfo.chars.toLocaleString('fr-FR')} caractères extraits</div><div className="hint">Tu peux générer directement. <button type="button" className="linklike" onClick={() => setShowText((v) => !v)}>{showText ? 'Masquer' : 'Voir / modifier le texte'}</button></div></div>
+              </div>
+            )}
+            {!extracting && extractInfo && extractInfo.error && (
+              <div className="hint" style={{ marginBottom: 8, color: 'var(--accent-2)' }}>
+                <Icon name="alert" size={13} /> {extractInfo.error === 'image' ? 'Image : lecture auto non disponible (OCR). Colle le texte ci-dessous.' : 'Ce PDF ne contient pas de texte (scanné ?). Colle le texte ci-dessous.'}
+              </div>
+            )}
+            {(showText || (!pdfBlob && !extracting)) && (
+              <textarea className="imp-title" style={{ minHeight: 120, resize: 'vertical', fontFamily: 'inherit' }}
+                placeholder="Colle ici le texte de ton cours (l'IA génère QCM, flashcards et Feynman à partir de CE texte uniquement)…"
+                value={contenu} onChange={(e) => setContenu(e.target.value)} />
+            )}
           </div>
 
           <div className="imp-actions">
             <button className="btn ghost" onClick={reset}>Annuler</button>
-            <button className="btn primary" onClick={generate} disabled={!canGen || busy}><Icon name="sparkle" size={15} /> Générer les questions</button>
+            <button className="btn primary" onClick={generate} disabled={!canGen || busy || extracting}><Icon name="sparkle" size={15} /> Générer les questions</button>
           </div>
-          {!canGen && <div className="hint" style={{ marginTop: 8 }}>Choisis une matière et colle au moins quelques lignes de cours.</div>}
+          {!canGen && !extracting && <div className="hint" style={{ marginTop: 8 }}>Choisis une matière, puis dépose un PDF (lu automatiquement) ou colle du texte.</div>}
         </div>
       )}
 
