@@ -6,7 +6,7 @@
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, Bar, HBar, WeekNav } from '../components/primitives.jsx';
 import { WeekCalendar } from '../components/WeekCalendar.jsx';
-import { TopActions } from './_shared.jsx';
+import { TopActions, EcoToggle } from './_shared.jsx';
 import {
   weekPlan, weekKpis, weekNutrition, weekBudget, recipeById, recipeProtein,
   money, money0, DAY_KEYS,
@@ -19,7 +19,7 @@ export function Dashboard({ ctx }) {
   const nut = weekNutrition(weekKey, slotsOff);
 
   // NET budget (after deducting "j'ai déjà") — same source of truth as Shopping
-  const { recipesTotal, persoTotal: persoT, total: budgetTotal } = weekBudget(weekKey, slotsOff, ctx.shoppingChecked, ctx.perso);
+  const { recipesTotal, persoTotal: persoT, total: budgetTotal } = weekBudget(weekKey, slotsOff, ctx.shoppingChecked, ctx.perso, ctx.portions);
   const over = budgetTotal > weeklyBudget;
 
   // "prochaine recette" = the dinner cooked TONIGHT (each evening a new recipe;
@@ -46,13 +46,15 @@ export function Dashboard({ ctx }) {
       <div className="topbar">
         <div style={{ minWidth: 0 }}>
           <h1 className="serif">
-            Semaine {weekKey.replace('S', '')}{' '}
+            {ctx.ecoMode ? 'Semaine éco ' : 'Semaine '}{weekKey.replace(/\D/g, '')}{' '}
             <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>—</span>{' '}
             <span style={{ fontSize: 24, color: 'var(--text-2)' }}>{plan.theme}</span>
+            {ctx.ecoMode && <span className="pill ok" style={{ marginLeft: 10, verticalAlign: 'middle', height: 24, fontSize: 12 }}><Icon name="euro" size={12} /> Mode éco</span>}
           </h1>
           <div className="sub">Votre planning de la semaine en un coup d'œil. {ctx.disabledCount > 0 && <strong style={{ color: 'var(--accent-2)' }}>· {ctx.disabledCount} repas désactivé{ctx.disabledCount > 1 ? 's' : ''}</strong>}</div>
         </div>
         <div className="topbar-actions">
+          <EcoToggle ctx={ctx} />
           <WeekNav weekKey={weekKey} onPrev={ctx.prevWeek} onNext={ctx.nextWeek} />
           <TopActions ctx={ctx} />
         </div>

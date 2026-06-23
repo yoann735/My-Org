@@ -13,7 +13,7 @@ import { Library } from './screens/Library.jsx';
 import { Settings } from './screens/Settings.jsx';
 import { usePersistentState } from '../shared/hooks/usePersistentState.js';
 import {
-  WEEK_KEYS, BUDGET_TARGET, nextWeekKey, prevWeekKey,
+  WEEK_KEYS, WEEK_KEYS_ECO, isEcoKey, BUDGET_TARGET, nextWeekKey, prevWeekKey,
   recipeById, defaultPerso, weekShopping, WEEKEND_SLOTS,
 } from './data/dataLayer.js';
 
@@ -28,6 +28,8 @@ export default function MealWeekApp({ themeApi, goHub }) {
   const [openId, setOpenId] = useState(null);
 
   /* ---- persistent state (localStorage) ---- */
+  // Mode éco : bascule les semaines affichées vers le jeu éco (E1, E2).
+  const [ecoMode, setEcoMode] = usePersistentState('mw.eco', false);
   const [weekKey, setWeekKey] = usePersistentState('mw.week', WEEK_KEYS[0]);
   const [weeklyBudget, setWeeklyBudget] = usePersistentState('mw.budget', BUDGET_TARGET);
   const [portions, setPortions] = usePersistentState('mw.portions', 2);
@@ -53,15 +55,22 @@ export default function MealWeekApp({ themeApi, goHub }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // keep the current weekKey consistent with the eco mode (S* vs E*)
+  useEffect(() => {
+    if (ecoMode && !isEcoKey(weekKey)) setWeekKey(WEEK_KEYS_ECO[0]);
+    if (!ecoMode && isEcoKey(weekKey)) setWeekKey(WEEK_KEYS[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ecoMode]);
+
   /* ---- derived ---- */
-  const shoppingBadge = weekShopping(weekKey, slotsOff)
+  const shoppingBadge = weekShopping(weekKey, slotsOff, portions)
     .filter((r) => !shoppingChecked[`${weekKey}::${r.name}`]).length;
 
   /* ---- actions ---- */
   const resetAll = () => {
     if (!window.confirm('Réinitialiser toutes vos données locales (coches, favoris, réglages) ?')) return;
     try { localStorage.clear(); } catch (e) { /* ignore */ }
-    resetTheme(); setWeekKey(WEEK_KEYS[0]);
+    resetTheme(); setEcoMode(false); setWeekKey(WEEK_KEYS[0]);
     setWeeklyBudget(BUDGET_TARGET); setPortions(2); setStore('Chronodrive');
     setSlotsOff({}); setShoppingChecked({}); setPerso(defaultPerso());
     setFavorites({}); setBanned({}); setCookSteps({});
@@ -79,10 +88,13 @@ export default function MealWeekApp({ themeApi, goHub }) {
     accent, setAccent,
     // back to the app selector
     goHub,
-    // week cycle (S1..S6 with rotation)
+    // week cycle (S1..S6, or E1..E2 in eco mode — rotation within the set)
     weekKey,
     prevWeek: () => setWeekKey((w) => prevWeekKey(w)),
     nextWeek: () => setWeekKey((w) => nextWeekKey(w)),
+    // mode éco (semaines moins chères E1/E2)
+    ecoMode,
+    toggleEco: () => { const next = !ecoMode; setEcoMode(next); setWeekKey(next ? WEEK_KEYS_ECO[0] : WEEK_KEYS[0]); },
     // settings
     weeklyBudget, setWeeklyBudget,
     portions, setPortions,

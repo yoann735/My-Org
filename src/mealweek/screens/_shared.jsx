@@ -40,6 +40,21 @@ export function WeekendToggle({ ctx }) {
   );
 }
 
+/** Mode éco toggle — bascule vers les semaines éco (E1/E2) moins chères */
+export function EcoToggle({ ctx }) {
+  return (
+    <button
+      type="button"
+      className={'btn' + (ctx.ecoMode ? ' primary' : '')}
+      onClick={ctx.toggleEco}
+      title="Basculer entre les semaines standard et les semaines éco (moins chères)"
+    >
+      <Icon name={ctx.ecoMode ? 'check' : 'euro'} size={15} />
+      {ctx.ecoMode ? 'Mode éco activé' : 'Mode éco'}
+    </button>
+  );
+}
+
 /** "re-enable everything" — shown only when some meals are disabled */
 export function ResetSlotsButton({ ctx }) {
   if (!ctx.disabledCount) return null;

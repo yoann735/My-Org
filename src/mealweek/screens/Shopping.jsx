@@ -15,14 +15,14 @@ import {
 
 export function Shopping({ ctx }) {
   const { weekKey, slotsOff, weeklyBudget } = ctx;
-  const rows = weekShopping(weekKey, slotsOff);
+  const rows = weekShopping(weekKey, slotsOff, ctx.portions);
   const groups = groupShoppingByCategory(rows);
 
   const isChecked = (name) => !!ctx.shoppingChecked[`${weekKey}::${name}`];
   const toggle = (name) => ctx.toggleShopItem(`${weekKey}::${name}`);
 
   // same single source of truth as the Dashboard (net budget)
-  const { recipesTotal: recipeTotal, persoTotal, total: grand } = weekBudget(weekKey, slotsOff, ctx.shoppingChecked, ctx.perso);
+  const { recipesTotal: recipeTotal, persoTotal, total: grand } = weekBudget(weekKey, slotsOff, ctx.shoppingChecked, ctx.perso, ctx.portions);
   const over = grand > weeklyBudget;
   const toBuy = rows.filter((r) => !isChecked(r.name)).length;
 
@@ -106,6 +106,11 @@ export function Shopping({ ctx }) {
                             )}
                           </div>
                           <div className="rc">{r.recipes.slice(0, 2).join(' · ')}{r.recipes.length > 2 ? ` +${r.recipes.length - 2}` : ''}</div>
+                          {r.multiFormat && r.demandG > 0 && (
+                            <div className="rc" style={{ color: 'var(--accent)' }}>
+                              <Icon name="cart" size={10} /> besoin ~{Math.round(r.demandG)} g → format {r.format}
+                            </div>
+                          )}
                         </div>
                         <div className="sl-qty">{r.format || '—'}</div>
                         <div className="sl-price">{money(r.price)}</div>

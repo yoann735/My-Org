@@ -7,7 +7,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Card, WeekNav } from '../components/primitives.jsx';
 import { WeekCalendar } from '../components/WeekCalendar.jsx';
 import { TopActions, WeekendToggle, ResetSlotsButton } from './_shared.jsx';
-import { weekPlan, WEEKS } from '../data/dataLayer.js';
+import { weekPlan, weekRaw } from '../data/dataLayer.js';
 
 function verdictVariant(verdict) {
   if (!verdict) return '';
@@ -19,7 +19,7 @@ function verdictVariant(verdict) {
 export function Planning({ ctx }) {
   const { weekKey, slotsOff } = ctx;
   const plan = weekPlan(weekKey);
-  const wk = WEEKS[weekKey];
+  const wk = weekRaw(weekKey) || {};
   const congelation = wk.congelation || [];
   const status = wk.ingredients_status || {};
   const statusEntries = Object.entries(status);

@@ -4,7 +4,7 @@
    portions, retrieval store. All persisted via ctx (localStorage).
    ============================================================ */
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, Stepper } from '../components/primitives.jsx';
+import { Card, Stepper, Switch } from '../components/primitives.jsx';
 import { TopActions } from './_shared.jsx';
 import { ACCENTS } from '../../shared/constants.js';
 import { useState } from 'react';
@@ -81,6 +81,18 @@ export function Settings({ ctx }) {
               </div>
             </div>
           </div>
+        </Card>
+
+        {/* Mode éco */}
+        <Card title="Mode éco" icon="euro">
+          <div className="set-row">
+            <div style={{ minWidth: 0 }}>
+              <div className="set-label">Semaines éco</div>
+              <div className="hint" style={{ marginTop: 2 }}>Remplace les semaines standard par des semaines moins chères (E1, E2).</div>
+            </div>
+            <div style={{ marginLeft: 'auto' }}><Switch on={ctx.ecoMode} onChange={ctx.toggleEco} /></div>
+          </div>
+          {ctx.ecoMode && <div className="hint" style={{ marginTop: 10 }}><span className="pill ok" style={{ height: 22, fontSize: 11 }}><Icon name="check" size={12} /> Mode éco actif</span></div>}
         </Card>
 
         {/* Magasin */}
