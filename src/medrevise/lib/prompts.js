@@ -4,10 +4,14 @@
    Sortie JSON strict (sauf évaluations Feynman = texte).
    ============================================================ */
 
-/** 6.1a — génération QCM (un appel dédié) — {course_text} et {N} substitués */
-export function promptQcm(courseText, n = 15) {
+/** 6.1a — génération QCM (un appel dédié) — {course_text} et {N} substitués.
+ * `min`/`n` bornent le nombre de questions ; réduits automatiquement quand le
+ * cours est découpé en plusieurs appels (cours long → risque de timeout serverless). */
+export function promptQcm(courseText, n = 15, min = 10) {
   return `Tu es un expert en pédagogie scientifique et médicale. Tu vas créer un QCM de révision
-exhaustif à partir du cours ci-dessous.
+exhaustif à partir du texte de cours ci-dessous. Ce texte peut être le cours complet ou un extrait
+d'un cours plus long — dans les deux cas, ne t'appuie que sur ce texte : ne fais jamais référence à
+un contenu que tu ne vois pas, même si tu devines qu'il existe ailleurs dans le cours.
 
 ÉTAPE 1 — CARTOGRAPHIE (interne, ne génère pas encore de questions)
 Lis le cours en entier. Dresse une liste interne et exhaustive de TOUTES les notions
@@ -25,7 +29,7 @@ de phrase coupés par la mise en page. Une notion n'est testable que si elle a u
 complet et autonome, compréhensible sans regarder le cours.
 
 ÉTAPE 2 — GÉNÉRATION
-Génère entre 10 et ${n} questions selon la densité du cours. Chaque notion identifiée à
+Génère entre ${min} et ${n} questions selon la densité du texte. Chaque notion identifiée à
 l'étape 1 doit être couverte par au moins une question. Ne baisse jamais la qualité pour
 atteindre un quota : génère moins de questions plutôt que d'inclure une question floue,
 tronquée, ou recopiant un titre.
@@ -61,10 +65,12 @@ COURS :
 ${courseText}`;
 }
 
-/** 6.1b — génération FLASHCARDS (un appel dédié) */
-export function promptFlashcards(courseText, n = 15) {
+/** 6.1b — génération FLASHCARDS (un appel dédié). `min`/`n` réduits automatiquement
+ * quand le cours est découpé en plusieurs appels (cours long → risque de timeout serverless). */
+export function promptFlashcards(courseText, n = 15, min = 10) {
   return `Tu es un expert en mémorisation à long terme (méthode de répétition espacée). Tu vas
-créer un jeu de flashcards exhaustif à partir du cours ci-dessous.
+créer un jeu de flashcards exhaustif à partir du texte de cours ci-dessous. Ce texte peut être le
+cours complet ou un extrait d'un cours plus long — dans les deux cas, ne t'appuie que sur ce texte.
 
 ÉTAPE 1 — EXTRACTION EXHAUSTIVE (interne)
 Lis le cours en entier. Identifie TOUTES les informations mémorisables :
@@ -81,7 +87,7 @@ IGNORE les titres de section et fragments non autonomes — une flashcard doit a
 sens complet, lisible isolément du cours.
 
 ÉTAPE 2 — CRÉATION
-Transforme chaque information en flashcard, entre 10 et ${n} selon la densité du cours.
+Transforme chaque information en flashcard, entre ${min} et ${n} selon la densité du texte.
 
 RÈGLE D'ATOMICITÉ : une seule idée par carte. Si une information contient 2 faits
 distincts → 2 cartes séparées.
@@ -115,10 +121,13 @@ COURS :
 ${courseText}`;
 }
 
-/** 6.1c — génération FEYNMAN (un appel dédié) — l'objet sert de RÉFÉRENCE d'évaluation */
-export function promptFeynman(courseText) {
-  return `Tu es un pédagogue expert qui maîtrise la technique Feynman. À partir du cours
-ci-dessous, tu vas préparer des explications qui forcent la vraie compréhension — pas
+/** 6.1c — génération FEYNMAN (un appel dédié) — l'objet sert de RÉFÉRENCE d'évaluation.
+ * `minConcepts`/`maxConcepts` réduits automatiquement quand le cours est découpé en
+ * plusieurs appels (cours long → risque de timeout serverless). */
+export function promptFeynman(courseText, minConcepts = 3, maxConcepts = 5) {
+  return `Tu es un pédagogue expert qui maîtrise la technique Feynman. À partir du texte de cours
+ci-dessous (le cours complet ou un extrait d'un cours plus long — dans les deux cas, ne t'appuie
+que sur ce texte), tu vas préparer des explications qui forcent la vraie compréhension — pas
 la mémorisation superficielle.
 
 PRINCIPE : expliquer un concept comme à quelqu'un d'intelligent mais sans connaissance
@@ -126,8 +135,9 @@ préalable. Là où l'explication devient floue ou nécessite du jargon non déf
 une zone de compréhension réelle à travailler.
 
 ÉTAPE 1 — ANALYSE (interne)
-Identifie les 3 à 5 concepts fondamentaux du cours (ceux sans lesquels le reste ne tient
-pas), leurs liens logiques, et les points contre-intuitifs ou erreurs fréquentes.
+Identifie entre ${minConcepts} et ${maxConcepts} concepts fondamentaux de ce texte (ceux sans
+lesquels le reste ne tient pas), leurs liens logiques, et les points contre-intuitifs ou erreurs
+fréquentes.
 
 ÉTAPE 2 — GÉNÉRATION
 Pour chaque concept fondamental, prépare le contenu Feynman correspondant.

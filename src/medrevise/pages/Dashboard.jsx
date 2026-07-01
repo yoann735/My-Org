@@ -304,7 +304,7 @@ function ImportPanel({ ctx }) {
           <div className="row" style={{ gap: 10, justifyContent: 'center', marginTop: 18, flexWrap: 'wrap' }}>
             <button className="btn" onClick={reset}><Icon name="refresh" size={14} /> Autre fiche</button>
             <button className="btn" onClick={() => ctx.go('library')}><Icon name="book" size={14} /> Bibliothèque</button>
-            <button className="btn primary" onClick={() => ctx.go('revise')}><Icon name="cards" size={14} /> Réviser</button>
+            <button className="btn primary" onClick={() => { ctx.setFocusFiche(result.fiche.id); ctx.go('revise'); }}><Icon name="cards" size={14} /> Réviser</button>
           </div>
         </div>
       )}
