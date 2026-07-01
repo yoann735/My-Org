@@ -13,7 +13,7 @@ import { putBlob } from '../lib/storage.js';
 const SOUS_CATS = ['Muscles', 'Os', 'Nerfs', 'Ligaments', 'Vaisseaux'];
 const emptyStruct = () => ({ key: Math.random().toString(36).slice(2), nom: '', file: null, preview: null, orig: null, origPreview: null, infos: { origine: '', insertion: '', action: '', innervation: '', vascularisation: '' } });
 
-export function ImportAnatomie({ ctx, onDone }) {
+export function ImportAnatomie({ ctx, onDone, onDebug }) {
   const { db } = ctx;
   const sources = db.sources.filter((s) => !s.archive);
   const [srcId, setSrcId] = useState(() => (sources[0] || {}).id);
@@ -56,6 +56,7 @@ export function ImportAnatomie({ ctx, onDone }) {
     }
     const res = await importAnatomie({ matiereId: matId, titre: titre || ('Anatomie · ' + sousCat), sousCategorie: sousCat, structures: prepared });
     await ctx.reload();
+    if (onDebug) onDebug(res.debug || null);
     setResult(res); setState('done');
   };
 

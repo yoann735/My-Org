@@ -34,9 +34,15 @@ export function Feynman({ ctx }) {
   const item = items[idx];
   const fiche = ix.fById[item.ficheId];
   const meta = matiereMeta(fiche && ix.mById[fiche.matiereId]);
-  const reference = ctx.db.questions
-    .filter((q) => q.ficheId === item.ficheId && q.concept === item.concept && q.explication)
-    .map((q) => q.explication).join(' ') || item.concept;
+  // référence d'évaluation : l'explication générée pour ce concept Feynman
+  // (+ pièges fréquents), sinon repli sur les explications des QCM du même concept.
+  const reference = [
+    item.explication_simple,
+    item.lien_avec_le_cours,
+    (item.pieges_frequents || []).join(' '),
+  ].filter(Boolean).join(' ')
+    || ctx.db.questions.filter((q) => q.ficheId === item.ficheId && q.concept === item.concept && q.explication).map((q) => q.explication).join(' ')
+    || item.concept;
 
   const run = async () => {
     if (!text.trim()) return;

@@ -95,6 +95,9 @@ export function Shopping({ ctx }) {
                         <div className="sl-name">
                           <div className="nm">
                             {r.nomChronodrive}
+                            {r.count > 1 && (
+                              <span className="pill accent" style={{ height: 18, fontSize: 9.5, marginLeft: 4 }} title={`Utilisé dans ${r.count} recette(s) cette semaine`}>×{r.count}</span>
+                            )}
                             {r.substitut && !checked && (
                               <span className="tip subst-ic">
                                 <Icon name="refresh" size={11} />
@@ -105,7 +108,10 @@ export function Shopping({ ctx }) {
                               <span className="pill amber" style={{ height: 18, fontSize: 9.5 }}>♻️ Reste</span>
                             )}
                           </div>
-                          <div className="rc">{r.recipes.slice(0, 2).join(' · ')}{r.recipes.length > 2 ? ` +${r.recipes.length - 2}` : ''}</div>
+                          <div className="rc" title={(r.uses || []).map((u) => `${u.nom} (${u.qty})`).join(' · ')}>
+                            {(r.uses || []).slice(0, 2).map((u) => `${u.nom} (${u.qty})`).join(' · ')}
+                            {(r.uses || []).length > 2 ? ` +${r.uses.length - 2}` : ''}
+                          </div>
                           {r.multiFormat && r.demandG > 0 && (
                             <div className="rc" style={{ color: 'var(--accent)' }}>
                               <Icon name="cart" size={10} /> besoin ~{Math.round(r.demandG)} g → format {r.format}

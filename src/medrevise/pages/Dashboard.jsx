@@ -176,6 +176,8 @@ function ImportPanel({ ctx }) {
   const [title, setTitle] = useState('');
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [debug, setDebug] = useState(null); // [{label,prompt,response,ok,ms,parseOk,error}]
+  const [showDev, setShowDev] = useState(false);
 
   const onFile = async (file) => {
     if (!file) return;
@@ -213,7 +215,7 @@ function ImportPanel({ ctx }) {
     if (pdfBlob) { try { pdfId = await putBlob(pdfBlob); } catch (e) { /* ignore */ } }
     const res = await importStandard({ matiereId: matId, titre: title, contenu, pdfId });
     await ctx.reload();
-    setResult(res); setState('done'); setBusy(false);
+    setResult(res); setDebug(res.debug || null); setState('done'); setBusy(false);
   };
   const reset = () => { setState('empty'); setContenu(''); setPdfBlob(null); setTitle(''); setResult(null); setExtractInfo(null); setExtracting(false); setShowText(false); };
 
@@ -225,7 +227,7 @@ function ImportPanel({ ctx }) {
           <button type="button" className={'seg-btn' + (mode === 'anat' ? ' active' : '')} onClick={() => setMode('anat')}><Icon name="bone" size={13} /> Anatomie</button>
         </div>
       )}>
-      {mode === 'anat' && <ImportAnatomie ctx={ctx} onDone={() => ctx.go('library')} />}
+      {mode === 'anat' && <ImportAnatomie ctx={ctx} onDone={() => ctx.go('library')} onDebug={setDebug} />}
       {mode === 'standard' && state === 'empty' && (
         <div className="fadein">
           <label className={'dz-compact dz-tall' + (over ? ' over' : '')}
@@ -306,7 +308,52 @@ function ImportPanel({ ctx }) {
           </div>
         </div>
       )}
+
+      <DevPanel debug={debug} show={showDev} onToggle={() => setShowDev((v) => !v)} />
     </Card>
+  );
+}
+
+/* ---------- Mode développeur : inspecter les échanges API ---------- */
+function DevBlock({ title, text }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => { try { navigator.clipboard.writeText(text || ''); setCopied(true); setTimeout(() => setCopied(false), 1200); } catch (e) { /* ignore */ } };
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div className="row spread" style={{ marginBottom: 4 }}>
+        <span className="hint" style={{ fontSize: 11, fontWeight: 700 }}>{title}</span>
+        <button type="button" className="btn ghost sm" onClick={copy}><Icon name={copied ? 'check' : 'copy'} size={12} /> {copied ? 'Copié' : 'Copier'}</button>
+      </div>
+      <pre style={{ margin: 0, maxHeight: 220, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 11.5, lineHeight: 1.45, background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', color: 'var(--text-2)' }}>{text || '(vide)'}</pre>
+    </div>
+  );
+}
+
+function DevPanel({ debug, show, onToggle }) {
+  return (
+    <div style={{ marginTop: 14, borderTop: '1px solid var(--border-2)', paddingTop: 10 }}>
+      <button type="button" className="btn ghost sm" onClick={onToggle}>
+        <Icon name={show ? 'chevD' : 'chevR'} size={13} /> Mode développeur{debug ? ` · ${debug.length} appel${debug.length > 1 ? 's' : ''}` : ''}
+      </button>
+      {show && (
+        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {!debug && <div className="hint">Lance une génération pour inspecter les prompts envoyés et les réponses brutes de l'API.</div>}
+          {(debug || []).map((d, i) => (
+            <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: 'var(--card-2)' }}>
+              <div className="row spread" style={{ marginBottom: 4 }}>
+                <strong style={{ fontSize: 13 }}>{d.label}</strong>
+                <span className="hint" style={{ fontSize: 11 }}>
+                  {d.ok ? '✓ appel OK' : '✗ échec'} · {d.ms} ms · {d.parseOk ? 'JSON parsé ✓' : 'parse ✗'}
+                </span>
+              </div>
+              {d.error && <div className="hint" style={{ fontSize: 11, color: 'var(--accent-2)', marginBottom: 4 }}><Icon name="alert" size={11} /> {d.error}</div>}
+              <DevBlock title="Prompt envoyé (variables substituées)" text={d.prompt} />
+              <DevBlock title="Réponse brute de l'API" text={d.response} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

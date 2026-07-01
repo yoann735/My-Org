@@ -51,6 +51,10 @@ export const setStats = (s) => set('stats', s, S.stats);
 export function newQuestion(ficheId, q, dueOffset = 0) {
   const d = new Date(); d.setDate(d.getDate() + dueOffset);
   return {
+    // conserve les champs supplémentaires (categorie_question, difficulte,
+    // categorie_carte, explication_simple, lien_avec_le_cours, pieges_frequents,
+    // question_verification…) utiles pour filtrer/afficher et évaluer Feynman
+    ...q,
     id: genId('q'), ficheId, type: q.type, concept: q.concept || '',
     question: q.question || '', choix: q.choix || [], bonneReponse: q.bonneReponse ?? 0, explication: q.explication || '',
     recto: q.recto || '', verso: q.verso || '',

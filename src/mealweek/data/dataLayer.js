@@ -306,16 +306,23 @@ export function weekShopping(weekKey, slotsOff = {}, portions = 2) {
           formats: ing.formats || null,
           demandG: 0,
           recipes: [],
+          // usage de la semaine (recalculé en direct → respecte les jours actifs)
+          uses: [],
         });
       }
       const row = map.get(name);
       if (!row.recipes.includes(recipe.nom)) row.recipes.push(recipe.nom);
+      // une entrée par dîner cuisiné qui utilise l'ingrédient (avec sa quantité 1 portion)
+      row.uses.push({ id: recipe.id, nom: recipe.nom, qty: ing.qty_1portion });
       if (row.multiFormat) {
         const g = parseQty(ing.qty_1portion).value;
         if (typeof g === 'number') row.demandG += g * 2 * portions;
       }
     });
   });
+
+  // compteur d'utilisation par ingrédient
+  map.forEach((row) => { row.count = row.uses.length; });
 
   // résoudre le format acheté + son prix pour les ingrédients multi-format
   map.forEach((row) => {

@@ -62,7 +62,7 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
             onClick={() => setGot((g) => ({ ...g, ['d' + k]: !g['d' + k] }))}
           >
             <span className="ing-box"><Icon name="check" size={12} stroke={3} /></span>
-            <span className="ing-nm">{i.nom}</span>
+            <span className="ing-nm">{i.nom}{i.note ? <span className="ing-note">· {i.note}</span> : null}</span>
             <span className="ing-q tnum">{scaleQty(i.qty_1portion, portions)}</span>
           </button>
         ))}
@@ -85,6 +85,7 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
                   <span className="pill ok" style={{ height: 18, fontSize: 9.5, marginLeft: 4 }}>
                     <Icon name="home" size={9} /> Maison
                   </span>
+                  {i.note ? <span className="ing-note">· {i.note}</span> : null}
                 </span>
                 <span className="ing-q tnum">{scaleQty(i.qty, portions)}</span>
               </button>

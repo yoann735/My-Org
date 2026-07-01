@@ -4,73 +4,156 @@
    Sortie JSON strict (sauf évaluations Feynman = texte).
    ============================================================ */
 
-/** 6.1 — génération standard (QCM + flashcards + Feynman) depuis une fiche texte */
-export function promptStandard(contenu) {
-  return `Tu es un professeur agrégé de médecine, expert en pédagogie et en évaluation, avec
-25 ans d'expérience dans la préparation aux concours médicaux. Tu reçois la fiche de
-cours d'un étudiant. Ta mission : créer un jeu de questions de révision de haute
-qualité, basé UNIQUEMENT sur le contenu réel et compris de cette fiche.
+/** 6.1a — génération QCM (un appel dédié) — {course_text} et {N} substitués */
+export function promptQcm(courseText, n = 15) {
+  return `Tu es un expert en pédagogie scientifique et médicale. Tu vas créer un QCM de révision
+exhaustif à partir du cours ci-dessous.
 
-ÉTAPE 1 — COMPRENDRE AVANT DE GÉNÉRER
-Lis et comprends l'intégralité de la fiche avant de produire la moindre question.
-Identifie les concepts, mécanismes, définitions et valeurs qui ont un sens complet et
-testable. IGNORE : les titres de section, les en-têtes, les listes de mots-clés sans
-explication, les fragments de phrase coupés par une mise en page (tirets, retours à la
-ligne, puces isolées), et tout texte qui n'est pas une information complète et autonome.
+ÉTAPE 1 — CARTOGRAPHIE (interne, ne génère pas encore de questions)
+Lis le cours en entier. Dresse une liste interne et exhaustive de TOUTES les notions
+testables :
+- Définitions et concepts clés
+- Mécanismes (cause → effet, étape par étape)
+- Données chiffrées, valeurs de référence, pourcentages
+- Comparaisons et distinctions importantes entre deux notions
+- Cascades moléculaires ou physiologiques (chaque maillon)
+- Exemples concrets et leurs conclusions
+- Applications pratiques et implications cliniques
 
-INTERDICTIONS ABSOLUES (raison du rejet en exemple) :
-- INTERDIT : citer un titre de section comme s'il s'agissait d'un fait à tester.
-  Mauvais exemple : "Vrai ou faux : « PRINCIPES FONDAMENTAUX DE LA SCIENCE DE
-  L'EXERCICE Homéostasie • Surcharge • Spécificité • Réversibilité » ?"
-  → Ceci n'est PAS une question, c'est un titre recopié. REJETÉ.
-- INTERDIT : terminer une question sur une phrase tronquée ou incomplète.
-  Mauvais exemple : "Explique « Toute perturbation déclenche des »"
-  → Phrase coupée, sens absent. REJETÉ.
-- INTERDIT : générer une question si tu ne peux pas formuler toi-même, dans tes
-  propres mots, ce qu'elle teste exactement et pourquoi la réponse est correcte.
-- INTERDIT : inventer une information non présente dans la fiche.
-
-CRITÈRE DE VALIDATION (applique-le mentalement à CHAQUE question avant de l'inclure) :
-"Si je cache la fiche et que je lis uniquement cette question, est-ce qu'elle a un
-sens complet, autonome, et teste un savoir réel ?" Si la réponse est non → ne génère
-pas cette question, passe au concept suivant.
-
-BON EXEMPLE (à titre de calibrage) :
-- QCM : "Quel principe de l'entraînement stipule que l'organisme doit être soumis à
-  une charge supérieure à son niveau d'adaptation actuel pour progresser ?"
-  Choix : Spécificité / Surcharge / Réversibilité / Homéostasie → bonne réponse :
-  Surcharge. Explication : "Le principe de surcharge impose un stimulus supérieur à
-  la charge habituelle pour provoquer une adaptation physiologique."
-- Flashcard : recto "Principe de réversibilité (entraînement)" / verso "Les
-  adaptations obtenues à l'entraînement régressent si le stimulus cesse ou diminue."
+IGNORE : titres de section, en-têtes, listes de mots-clés sans explication, fragments
+de phrase coupés par la mise en page. Une notion n'est testable que si elle a un sens
+complet et autonome, compréhensible sans regarder le cours.
 
 ÉTAPE 2 — GÉNÉRATION
-RÈGLES :
-1. Aucune question dont la réponse n'est pas explicitement et clairement dans la fiche.
-2. Une question = un concept clé compris, jamais un fragment ou un titre.
-3. Couvre les concepts importants de la fiche, sans répétition inutile.
-4. QCM : 4 choix, distracteurs crédibles et plausibles (jamais absurdes, jamais des
-   bouts de phrase non reformulés).
-5. Flashcards : recto = question ou terme clair ; verso = réponse complète et autonome
-   (≤30 mots).
-6. Feynman : uniquement sur un concept assez riche pour être expliqué en plusieurs
-   phrases (pas sur un titre ou une liste).
-7. Réponds UNIQUEMENT en JSON valide. Aucun texte, aucune balise Markdown avant/après.
+Génère entre 10 et ${n} questions selon la densité du cours. Chaque notion identifiée à
+l'étape 1 doit être couverte par au moins une question. Ne baisse jamais la qualité pour
+atteindre un quota : génère moins de questions plutôt que d'inclure une question floue,
+tronquée, ou recopiant un titre.
 
-NOMBRE : 10-15 QCM ; 10-15 flashcards ; 2-3 Feynman. Si la fiche est trop courte ou trop
-peu structurée pour atteindre ces nombres avec des questions valides selon le critère
-ci-dessus, génère MOINS de questions plutôt que de baisser la qualité.
+RÈGLES ABSOLUES :
+- 4 propositions par question (A à D), une seule correcte.
+- Les mauvaises réponses doivent être plausibles — jamais absurdes, jamais des bouts de
+  phrase non reformulés.
+- Aucune question ambiguë, tronquée, ou basée sur un titre de section.
+- Aucune information hors du cours fourni.
+- Répartis les questions sur ces types : DÉFINITION, MÉCANISME, APPLICATION,
+  COMPARAISON, DONNÉES, CAUSE_EFFET.
+- Varie la difficulté : ~30% facile, ~50% intermédiaire, ~20% difficile.
+- Réponds UNIQUEMENT en JSON valide. Aucun texte, aucune balise Markdown avant/après.
 
-FORMAT :
-{ "titre":"...", "categorie":"...",
-  "questions":[
-    {"type":"qcm","concept":"...","question":"...","choix":["","","",""],"bonneReponse":0,"explication":"..."},
-    {"type":"flashcard","concept":"...","recto":"...","verso":"<=30 mots"},
-    {"type":"feynman","concept":"..."}
-  ] }
+FORMAT DE SORTIE (JSON strict) :
+{
+  "questions": [
+    {
+      "type": "qcm",
+      "concept": "<nom court de la notion testée>",
+      "categorie_question": "definition" | "mecanisme" | "application" | "comparaison" | "donnees" | "cause_effet",
+      "difficulte": "facile" | "intermediaire" | "difficile",
+      "question": "<énoncé complet et autonome>",
+      "choix": ["<A>", "<B>", "<C>", "<D>"],
+      "bonneReponse": <index 0 à 3>,
+      "explication": "<pourquoi c'est correct + pourquoi le distracteur le plus proche est faux, 2-3 phrases>"
+    }
+  ]
+}
 
-Fiche :
-<<< ${contenu} >>>`;
+COURS :
+${courseText}`;
+}
+
+/** 6.1b — génération FLASHCARDS (un appel dédié) */
+export function promptFlashcards(courseText, n = 15) {
+  return `Tu es un expert en mémorisation à long terme (méthode de répétition espacée). Tu vas
+créer un jeu de flashcards exhaustif à partir du cours ci-dessous.
+
+ÉTAPE 1 — EXTRACTION EXHAUSTIVE (interne)
+Lis le cours en entier. Identifie TOUTES les informations mémorisables :
+- Définitions précises (terme → sens exact)
+- Relations causales (X provoque Y parce que Z)
+- Mécanismes étape par étape
+- Valeurs numériques, seuils, durées
+- Classifications et catégories (avec leurs caractéristiques)
+- Comparaisons binaires (A vs B : en quoi ils diffèrent)
+- Cascades (signal → intermédiaire → effet final)
+- Exemples canoniques et ce qu'ils illustrent
+
+IGNORE les titres de section et fragments non autonomes — une flashcard doit avoir un
+sens complet, lisible isolément du cours.
+
+ÉTAPE 2 — CRÉATION
+Transforme chaque information en flashcard, entre 10 et ${n} selon la densité du cours.
+
+RÈGLE D'ATOMICITÉ : une seule idée par carte. Si une information contient 2 faits
+distincts → 2 cartes séparées.
+
+RÈGLE DU RECTO ACTIF : le recto doit être une vraie question, jamais une phrase à trou.
+  BON : "Quel est le rôle de PGC-1α dans l'adaptation à l'endurance ?"
+  MAUVAIS : "PGC-1α est responsable de..."
+
+RÈGLE DU VERSO COMPLET : le verso contient la réponse + le contexte minimal pour être
+compréhensible sans relire le cours. Maximum 30 mots.
+
+TYPES À COUVRIR : définitions du glossaire, mécanismes (une carte par étape si la
+cascade est longue), comparaisons A vs B, valeurs chiffrées, exemples d'application.
+
+Réponds UNIQUEMENT en JSON valide. Aucun texte, aucune balise Markdown avant/après.
+
+FORMAT DE SORTIE (JSON strict) :
+{
+  "questions": [
+    {
+      "type": "flashcard",
+      "concept": "<nom court de la notion>",
+      "categorie_carte": "definition" | "mecanisme" | "comparaison" | "donnees" | "application",
+      "recto": "<question active>",
+      "verso": "<réponse + contexte minimal, <=30 mots>"
+    }
+  ]
+}
+
+COURS :
+${courseText}`;
+}
+
+/** 6.1c — génération FEYNMAN (un appel dédié) — l'objet sert de RÉFÉRENCE d'évaluation */
+export function promptFeynman(courseText) {
+  return `Tu es un pédagogue expert qui maîtrise la technique Feynman. À partir du cours
+ci-dessous, tu vas préparer des explications qui forcent la vraie compréhension — pas
+la mémorisation superficielle.
+
+PRINCIPE : expliquer un concept comme à quelqu'un d'intelligent mais sans connaissance
+préalable. Là où l'explication devient floue ou nécessite du jargon non défini → c'est
+une zone de compréhension réelle à travailler.
+
+ÉTAPE 1 — ANALYSE (interne)
+Identifie les 3 à 5 concepts fondamentaux du cours (ceux sans lesquels le reste ne tient
+pas), leurs liens logiques, et les points contre-intuitifs ou erreurs fréquentes.
+
+ÉTAPE 2 — GÉNÉRATION
+Pour chaque concept fondamental, prépare le contenu Feynman correspondant.
+Note : la zone de SAISIE de l'étudiant n'est pas générée ici (il écrira sa propre
+explication dans l'app). Tu fournis uniquement la matière de référence et d'évaluation
+qui servira ensuite à juger sa réponse.
+
+Réponds UNIQUEMENT en JSON valide. Aucun texte, aucune balise Markdown avant/après.
+
+FORMAT DE SORTIE (JSON strict) :
+{
+  "questions": [
+    {
+      "type": "feynman",
+      "concept": "<nom du concept fondamental>",
+      "explication_simple": "<100-200 mots, sans jargon non défini, analogie si possible — sert de référence pour évaluer l'étudiant>",
+      "lien_avec_le_cours": "<2-3 phrases : pourquoi ce concept est clé, ce qu'on ne comprendrait pas sans lui>",
+      "pieges_frequents": ["<erreur fréquente formulée \\"on croit que X, mais en réalité Y parce que Z\\">"],
+      "question_verification": "<question ouverte, non récitable, qui nécessite une vraie compréhension>"
+    }
+  ],
+  "synthese": "<100-150 mots : comment les concepts s'enchaînent, exemple fil conducteur>"
+}
+
+COURS :
+${courseText}`;
 }
 
 /** 6.2 — génération ANATOMIE : QCM de raisonnement depuis le TEXTE des structures (jamais l'image) */

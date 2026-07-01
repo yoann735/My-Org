@@ -25,9 +25,12 @@ export async function importStandard({ matiereId, titre, contenu, pdfId }) {
     type: 'standard', coef: null, pdfId: pdfId || null, dateImport: todayISO(),
   };
   await put('fiches', fiche);
-  const qs = (gen.questions || []).map((q) => newQuestion(ficheId, normalizeQ(q), 0));
+  // les nouveaux prompts produisent déjà les bons champs + des extras
+  // (categorie_question, difficulte, categorie_carte, explication_simple…)
+  // → on les conserve tels quels (newQuestion préserve les champs supplémentaires).
+  const qs = (gen.questions || []).map((q) => newQuestion(ficheId, q, 0));
   await putMany('questions', qs);
-  return { fiche, count: qs.length, mock: !!gen._mock };
+  return { fiche, count: qs.length, mock: !!gen._mock, debug: gen.debug, synthese: gen.synthese };
 }
 
 /**
@@ -61,5 +64,5 @@ export async function importAnatomie({ matiereId, titre, sousCategorie, structur
   const qcms = (gen.questions || []).map((q) => newQuestion(ficheId, normalizeQ(q), 0));
 
   await putMany('questions', [...flashes, ...qcms]);
-  return { fiche, count: flashes.length + qcms.length, structures: structRecs.length, mock: !!gen._mock };
+  return { fiche, count: flashes.length + qcms.length, structures: structRecs.length, mock: !!gen._mock, debug: gen.debug };
 }
