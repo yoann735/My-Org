@@ -42,7 +42,7 @@ SPA Vite + React 18 + Tailwind, déployée sur **Vercel** (auto-deploy au push s
 - **UI et réponses en français.**
 - **Ne modifier QUE l'app nommée** par la demande — ne jamais toucher l'autre app ni le
   design system partagé sans raison explicite.
-- **Ne jamais commit/push automatiquement** — toujours demander avant.
+- **Commit/push autonome autorisé** sur ce projet — voir la section « ## Git » ci-dessous.
 - Ne jamais exposer/committer la clé API. Garder le design system intact.
 - Données MealWeek : autorité = le JSON fourni par l'utilisateur (`mealweek_data.json`),
   il écrase toute valeur antérieure ; le remplacer tel quel, ne rien recopier à la main.
@@ -50,6 +50,17 @@ SPA Vite + React 18 + Tailwind, déployée sur **Vercel** (auto-deploy au push s
 ## Déploiement
 GitHub `yoann735/My-Org` (branche `main`) → Vercel auto-deploy (projet `my-org`).
 Après modif des variables d'env sur Vercel : **Redeploy** nécessaire.
+
+## Git
+- Après **chaque unité de travail cohérente** (une fonctionnalité, un fix, une étape
+  terminée), faire `git add`, `git commit` avec un message clair, et `git push`
+  **automatiquement, sans demander confirmation**.
+- Messages de commit **conventionnels** : `feat:`, `fix:`, `refactor:`, `docs:`,
+  `chore:`, `style:`, `test:`, etc.
+- **Ne jamais** push en force (`--force`) sans demande explicite de l'utilisateur.
+
+> Remplace la règle générale « ne jamais commit/push automatiquement » : sur CE projet,
+> le commit + push autonome est explicitement autorisé (voir `.claude/settings.json`).
 
 ## Continuité de contexte entre machines
 Ce projet se travaille sur plusieurs machines. Workflow :
