@@ -2,6 +2,10 @@
    MealWeek — app shell
    Router (no URL routing needed for a single-window personal app),
    theme, and all persistent state live here and flow down via `ctx`.
+
+   Tout l'état utilisateur est centralisé dans un unique objet `userState`
+   (voir data/useUserState.js) : persistance localStorage immédiate +
+   synchronisation multi-appareils via Supabase (LOT 5).
    ============================================================ */
 import { useEffect, useState } from 'react';
 import { Sidebar, BottomNav } from './components/Navigation.jsx';
@@ -11,10 +15,10 @@ import { Planning } from './screens/Planning.jsx';
 import { Shopping } from './screens/Shopping.jsx';
 import { Library } from './screens/Library.jsx';
 import { Settings } from './screens/Settings.jsx';
-import { usePersistentState } from '../shared/hooks/usePersistentState.js';
+import { useUserState } from './data/useUserState.js';
 import {
-  WEEK_KEYS, WEEK_KEYS_ECO, isEcoKey, BUDGET_TARGET, nextWeekKey, prevWeekKey,
-  recipeById, defaultPerso, weekShopping, WEEKEND_SLOTS,
+  WEEK_KEYS, WEEK_KEYS_ECO, isEcoKey, nextWeekKey, prevWeekKey,
+  recipeById, weekShopping, WEEKEND_SLOTS,
 } from './data/dataLayer.js';
 
 const SCREENS = { dashboard: Dashboard, planning: Planning, shopping: Shopping, library: Library, settings: Settings };
@@ -27,38 +31,18 @@ export default function MealWeekApp({ themeApi, goHub }) {
   const [screen, setScreen] = useState('dashboard');
   const [openId, setOpenId] = useState(null);
 
-  /* ---- persistent state (localStorage) ---- */
-  // Mode éco : bascule les semaines affichées vers le jeu éco (E1, E2).
-  const [ecoMode, setEcoMode] = usePersistentState('mw.eco', false);
-  const [weekKey, setWeekKey] = usePersistentState('mw.week', WEEK_KEYS[0]);
-  const [weeklyBudget, setWeeklyBudget] = usePersistentState('mw.budget', BUDGET_TARGET);
-  const [portions, setPortions] = usePersistentState('mw.portions', 2);
-  const [store, setStore] = usePersistentState('mw.store', 'Chronodrive');
-  // per-meal-slot activation (generalizes the old weekend toggle).
-  // map { "Sam-soir": true, ... } — absent means the slot is active.
-  const [slotsOff, setSlotsOff] = usePersistentState('mw.slotsOff', {});
-  const [sidebarOpen, setSidebarOpen] = usePersistentState('mw.sidebar', false);
-  const [shoppingChecked, setShoppingChecked] = usePersistentState('mw.shopChecked', {});
-  const [perso, setPerso] = usePersistentState('mw.perso', defaultPerso);
-  const [favorites, setFavorites] = usePersistentState('mw.fav', {});
-  const [banned, setBanned] = usePersistentState('mw.banned', {});
-  const [cookSteps, setCookSteps] = usePersistentState('mw.cookSteps', {});
-
-  // migrate the old "hide weekend" boolean to the new per-slot model
-  useEffect(() => {
-    try {
-      if (localStorage.getItem('mw.slotsOff') == null && localStorage.getItem('mw.weekend') === 'false') {
-        setSlotsOff(Object.fromEntries(WEEKEND_SLOTS.map((k) => [k, true])));
-      }
-      localStorage.removeItem('mw.weekend');
-    } catch (e) { /* ignore */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  /* ---- persistent state : un seul objet, synchronisé (localStorage + Supabase) ---- */
+  const [state, setField, resetState] = useUserState();
+  const {
+    eco: ecoMode, week: weekKey, budget: weeklyBudget, portions, store,
+    slotsOff, sidebar: sidebarOpen, shopChecked: shoppingChecked, cart,
+    perso, favorites, banned, cookSteps,
+  } = state;
 
   // keep the current weekKey consistent with the eco mode (S* vs E*)
   useEffect(() => {
-    if (ecoMode && !isEcoKey(weekKey)) setWeekKey(WEEK_KEYS_ECO[0]);
-    if (!ecoMode && isEcoKey(weekKey)) setWeekKey(WEEK_KEYS[0]);
+    if (ecoMode && !isEcoKey(weekKey)) setField('week', WEEK_KEYS_ECO[0]);
+    if (!ecoMode && isEcoKey(weekKey)) setField('week', WEEK_KEYS[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ecoMode]);
 
@@ -69,11 +53,12 @@ export default function MealWeekApp({ themeApi, goHub }) {
   /* ---- actions ---- */
   const resetAll = () => {
     if (!window.confirm('Réinitialiser toutes vos données locales (coches, favoris, réglages) ?')) return;
-    try { localStorage.clear(); } catch (e) { /* ignore */ }
-    resetTheme(); setEcoMode(false); setWeekKey(WEEK_KEYS[0]);
-    setWeeklyBudget(BUDGET_TARGET); setPortions(2); setStore('Chronodrive');
-    setSlotsOff({}); setShoppingChecked({}); setPerso(defaultPerso());
-    setFavorites({}); setBanned({}); setCookSteps({});
+    // ne touche QUE les clés MealWeek (préfixe mw.) — l'autre app reste intacte
+    try {
+      Object.keys(localStorage).filter((k) => k.startsWith('mw.')).forEach((k) => localStorage.removeItem(k));
+    } catch (e) { /* ignore */ }
+    resetTheme();
+    resetState();
     setScreen('dashboard');
   };
 
@@ -90,42 +75,49 @@ export default function MealWeekApp({ themeApi, goHub }) {
     goHub,
     // week cycle (S1..S6, or E1..E2 in eco mode — rotation within the set)
     weekKey,
-    prevWeek: () => setWeekKey((w) => prevWeekKey(w)),
-    nextWeek: () => setWeekKey((w) => nextWeekKey(w)),
+    prevWeek: () => setField('week', (w) => prevWeekKey(w)),
+    nextWeek: () => setField('week', (w) => nextWeekKey(w)),
     // mode éco (semaines moins chères E1/E2)
     ecoMode,
-    toggleEco: () => { const next = !ecoMode; setEcoMode(next); setWeekKey(next ? WEEK_KEYS_ECO[0] : WEEK_KEYS[0]); },
+    toggleEco: () => {
+      const next = !ecoMode;
+      setField('eco', next);
+      setField('week', next ? WEEK_KEYS_ECO[0] : WEEK_KEYS[0]);
+    },
     // settings
-    weeklyBudget, setWeeklyBudget,
-    portions, setPortions,
-    store, setStore,
+    weeklyBudget, setWeeklyBudget: (v) => setField('budget', v),
+    portions, setPortions: (v) => setField('portions', v),
+    store, setStore: (v) => setField('store', v),
     // meal-slot activation (generalizes the weekend toggle)
     slotsOff,
-    toggleSlot: (dayKey, meal) => setSlotsOff((m) => {
+    toggleSlot: (dayKey, meal) => setField('slotsOff', (m) => {
       const k = `${dayKey}-${meal}`;
       const next = { ...m };
       if (next[k]) delete next[k]; else next[k] = true;
       return next;
     }),
     disabledCount: Object.values(slotsOff).filter(Boolean).length,
-    resetSlots: () => setSlotsOff({}),
+    resetSlots: () => setField('slotsOff', {}),
     weekendOff: WEEKEND_SLOTS.every((k) => slotsOff[k]),
-    toggleWeekend: () => setSlotsOff((m) => {
+    toggleWeekend: () => setField('slotsOff', (m) => {
       const allOff = WEEKEND_SLOTS.every((k) => m[k]);
       const next = { ...m };
       WEEKEND_SLOTS.forEach((k) => { if (allOff) delete next[k]; else next[k] = true; });
       return next;
     }),
-    // shopping
+    // shopping — "déjà en stock"
     shoppingChecked,
-    toggleShopItem: (key) => setShoppingChecked((m) => ({ ...m, [key]: !m[key] })),
+    toggleShopItem: (key) => setField('shopChecked', (m) => ({ ...m, [key]: !m[key] })),
+    // shopping — "ajouté au panier" (LOT 4, indépendant de "déjà en stock")
+    cart,
+    toggleCartItem: (key) => setField('cart', (m) => ({ ...(m || {}), [key]: !(m && m[key]) })),
     perso,
-    togglePerso: (id) => setPerso((arr) => arr.map((p) => (p.id === id ? { ...p, checked: !p.checked } : p))),
-    addPerso: (item) => setPerso((arr) => [...arr, { id: 'perso-' + Date.now(), checked: false, fixe: false, mult: 1, ...item }]),
-    delPerso: (id) => setPerso((arr) => arr.filter((p) => p.id !== id)),
+    togglePerso: (id) => setField('perso', (arr) => arr.map((p) => (p.id === id ? { ...p, checked: !p.checked } : p))),
+    addPerso: (item) => setField('perso', (arr) => [...arr, { id: 'perso-' + Date.now(), checked: false, fixe: false, mult: 1, ...item }]),
+    delPerso: (id) => setField('perso', (arr) => arr.filter((p) => p.id !== id)),
     // edit a perso article (quantity multiplier / unit price). Normalises
     // legacy items {qty,total} into {mult,unitPrice,total} on first edit.
-    updatePerso: (id, patch) => setPerso((arr) => arr.map((p) => {
+    updatePerso: (id, patch) => setField('perso', (arr) => arr.map((p) => {
       if (p.id !== id) return p;
       const curMult = p.mult ?? p.qty ?? 1;
       const curUnit = p.unitPrice != null ? p.unitPrice : (curMult ? (p.total ?? 0) / curMult : (p.total ?? 0));
@@ -137,12 +129,12 @@ export default function MealWeekApp({ themeApi, goHub }) {
     })),
     // library
     favorites,
-    toggleFavorite: (id) => setFavorites((m) => ({ ...m, [id]: !m[id] })),
+    toggleFavorite: (id) => setField('favorites', (m) => ({ ...m, [id]: !m[id] })),
     banned,
-    toggleBanned: (id) => setBanned((m) => ({ ...m, [id]: !m[id] })),
+    toggleBanned: (id) => setField('banned', (m) => ({ ...m, [id]: !m[id] })),
     // cook steps
     cookSteps,
-    toggleStep: (rid, idx) => setCookSteps((m) => ({ ...m, [rid]: { ...(m[rid] || {}), [idx]: !(m[rid] && m[rid][idx]) } })),
+    toggleStep: (rid, idx) => setField('cookSteps', (m) => ({ ...m, [rid]: { ...(m[rid] || {}), [idx]: !(m[rid] && m[rid][idx]) } })),
     // data
     resetAll,
   };
@@ -156,7 +148,7 @@ export default function MealWeekApp({ themeApi, goHub }) {
         current={screen}
         onNav={setScreen}
         expanded={sidebarOpen}
-        onToggle={() => setSidebarOpen((v) => !v)}
+        onToggle={() => setField('sidebar', (v) => !v)}
         shoppingBadge={shoppingBadge}
         onHub={goHub}
       />

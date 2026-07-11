@@ -18,7 +18,10 @@ import {
 
 export function RecipeDetail({ recipe, onClose, ctx }) {
   const mobile = useIsMobile();
-  const [portions, setPortions] = useState((ctx && ctx.portions) || 2);
+  // LOT 2 : un SEUL slider "Portions" — celui-ci pilote le même état global
+  // (ctx.portions) que les Réglages et l'onglet Courses. Pas d'état local.
+  const portions = (ctx && ctx.portions) || 2;
+  const setPortions = (ctx && ctx.setPortions) || (() => {});
   const [got, setGot] = useState({});           // transient "j'ai pris" ticks
   const [tab, setTab] = useState('ing');         // mobile tab
   const [showNut, setShowNut] = useState(false); // desktop collapsible nutrition
@@ -27,7 +30,6 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
 
   useEffect(() => {
     setGot({});
-    setPortions((ctx && ctx.portions) || 2);
     setShowNut(false);
     setTab('ing');
   }, [recipe.id]);

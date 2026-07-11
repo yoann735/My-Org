@@ -677,8 +677,9 @@ body {
    ============================================================ */
 .sl-row {
   display: grid;
-  grid-template-columns: minmax(0,1fr) 104px 66px 218px;
-  align-items: center; gap: 16px;
+  /* name | utilisation | format | price | action */
+  grid-template-columns: minmax(0,1fr) 92px 84px 58px 210px;
+  align-items: center; gap: 14px;
   padding: 11px 18px; border-bottom: 1px solid var(--border-2);
   transition: background .15s;
 }
@@ -693,6 +694,45 @@ body {
 .sl-row .sl-price { text-align: right; font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 700; }
 .sl-row .sl-act { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
 .sl-row.have .nm, .sl-row.have .sl-qty, .sl-row.have .sl-price { text-decoration: line-through; opacity: .5; }
+
+/* ---- LOT 3 : colonne "Utilisation" + popover ---- */
+.sl-use { position: relative; display: flex; justify-content: flex-start; }
+.use-chip {
+  display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px;
+  border-radius: 8px; border: 1px solid var(--border); background: var(--card);
+  font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--text-2);
+  cursor: pointer; white-space: nowrap; transition: all .15s;
+}
+.use-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.use-chip .n { font-variant-numeric: tabular-nums; }
+.use-pop {
+  position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; min-width: 244px; max-width: 300px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: var(--shadow-lg, 0 12px 30px rgba(0,0,0,.18)); padding: 10px; text-align: left;
+  animation: pop-in .12s ease;
+}
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.use-pop-head { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); margin-bottom: 8px; }
+.use-pop-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.use-pop-list li { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12.5px; }
+.use-pop-list .up-r { color: var(--text-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.use-pop-list .up-q { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); flex: 0 0 auto; }
+.use-pop-total { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border-2); }
+.use-pop-total span { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.use-pop-total strong { font-size: 15px; font-variant-numeric: tabular-nums; color: var(--accent); }
+.use-pop-detail { margin-top: 4px; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+/* ---- LOT 4 : toggle "Ajouté au panier" (distinct de "Déjà en stock") ---- */
+.cart-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px;
+  width: 30px; padding: 0; border-radius: 9px; border: 1px solid var(--border); background: var(--card);
+  color: var(--text-2); cursor: pointer; transition: all .15s; flex: 0 0 auto;
+}
+.cart-btn:hover { color: var(--accent-2); border-color: var(--accent-2); background: var(--accent-2-soft); }
+.cart-btn.on { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: color-mix(in srgb, var(--accent-2) 82%, var(--text)); border-color: color-mix(in srgb, var(--accent-2) 48%, transparent); }
+.sl-row.carted { background: color-mix(in srgb, var(--accent-2) 7%, transparent); }
+.sl-row.carted .nm { opacity: .62; }
+.cart-badge { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: 6px; font-size: 9.5px; font-weight: 700; background: var(--accent-2-soft); color: color-mix(in srgb, var(--accent-2) 78%, var(--text)); }
 
 /* perso list rows use a lighter template */
 .sl-row.perso { grid-template-columns: 26px minmax(0,1fr) 66px 34px; }
@@ -774,7 +814,7 @@ body {
 @media (max-width: 1100px) {
   .dash-grid, .dash-bottom, .dash-top { grid-template-columns: 1fr !important; }
   .shop-grid { grid-template-columns: 1fr !important; }
-  .sl-row { grid-template-columns: minmax(0,1fr) 84px 60px 150px; gap: 12px; }
+  .sl-row { grid-template-columns: minmax(0,1fr) 84px 76px 54px 178px; gap: 11px; }
 }
 
 /* ============================================================
@@ -854,10 +894,14 @@ body {
 
   /* ---- Shopping list rows: drop the qty column, stack action under ---- */
   .sl-row { grid-template-columns: minmax(0,1fr) auto; gap: 6px 10px; padding: 12px 14px; }
-  .sl-row .sl-qty { grid-column: 1; text-align: left; order: 3; }
+  .sl-row .sl-name { order: 0; }
+  .sl-row .sl-use { grid-column: 1 / -1; order: 1; justify-content: flex-start; }
   .sl-row .sl-price { order: 2; }
+  .sl-row .sl-qty { grid-column: 1; text-align: left; order: 3; }
   .sl-row .sl-act { grid-column: 1 / -1; order: 4; justify-content: flex-start; }
   .sl-row.head { display: none; }
+  /* popover : ancré à gauche, large mais borné à l'écran */
+  .use-pop { min-width: 220px; max-width: min(300px, 82vw); }
   .sl-row.perso { grid-template-columns: 26px minmax(0,1fr) auto auto; }
   .sl-row.perso .sl-act { grid-column: auto; }
   .sl-cat { padding: 12px 14px 8px; }

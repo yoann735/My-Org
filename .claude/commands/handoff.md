@@ -1,0 +1,1 @@
+Écris un fichier HANDOFF.md à la racine du projet qui résume : l'état actuel du projet, les décisions techniques prises et pourquoi, les fichiers modifiés, les prochaines étapes précises, et les points de vigilance. Reste sous 300 mots. N'inclus rien de déductible en relisant le code.

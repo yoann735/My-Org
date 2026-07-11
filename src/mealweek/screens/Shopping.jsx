@@ -5,12 +5,12 @@
    substitute, and a "j'ai déjà" toggle (persisted). Personal items
    pre-filled (skyr ×2 + bananes). Live total vs 60€, weekend lever.
    ============================================================ */
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Check, WeekNav, Stepper } from '../components/primitives.jsx';
 import { TopActions, WeekendToggle, ResetSlotsButton } from './_shared.jsx';
 import {
-  weekShopping, groupShoppingByCategory, weekBudget, chronodriveLink, money,
+  weekShopping, groupShoppingByCategory, weekBudget, chronodriveLink, money, fmtNum,
 } from '../data/dataLayer.js';
 
 export function Shopping({ ctx }) {
@@ -20,6 +20,9 @@ export function Shopping({ ctx }) {
 
   const isChecked = (name) => !!ctx.shoppingChecked[`${weekKey}::${name}`];
   const toggle = (name) => ctx.toggleShopItem(`${weekKey}::${name}`);
+  // LOT 4 — "Ajouté au panier" (indépendant de "Déjà en stock")
+  const isCarted = (name) => !!(ctx.cart && ctx.cart[`${weekKey}::${name}`]);
+  const toggleCart = (name) => ctx.toggleCartItem(`${weekKey}::${name}`);
 
   // same single source of truth as the Dashboard (net budget)
   const { recipesTotal: recipeTotal, persoTotal, total: grand } = weekBudget(weekKey, slotsOff, ctx.shoppingChecked, ctx.perso, ctx.portions);
@@ -74,7 +77,8 @@ export function Shopping({ ctx }) {
           <div className="card" style={{ overflow: 'hidden' }}>
             <div className="sl-row head">
               <span>Ingrédient (nom Chronodrive)</span>
-              <span style={{ textAlign: 'right' }}>Format</span>
+              <span>Utilisation</span>
+              <span style={{ textAlign: 'right' }}>Paquets</span>
               <span style={{ textAlign: 'right' }}>Prix</span>
               <span style={{ textAlign: 'right' }}>Action</span>
             </div>
@@ -90,14 +94,12 @@ export function Shopping({ ctx }) {
                   </div>
                   {sorted.map((r) => {
                     const checked = isChecked(r.name);
+                    const carted = isCarted(r.name);
                     return (
-                      <div className={'sl-row' + (checked ? ' have' : '')} key={r.name}>
+                      <div className={'sl-row' + (checked ? ' have' : '') + (carted ? ' carted' : '')} key={r.name}>
                         <div className="sl-name">
                           <div className="nm">
                             {r.nomChronodrive}
-                            {r.count > 1 && (
-                              <span className="pill accent" style={{ height: 18, fontSize: 9.5, marginLeft: 4 }} title={`Utilisé dans ${r.count} recette(s) cette semaine`}>×{r.count}</span>
-                            )}
                             {r.substitut && !checked && (
                               <span className="tip subst-ic">
                                 <Icon name="refresh" size={11} />
@@ -107,18 +109,14 @@ export function Shopping({ ctx }) {
                             {r.verdict && r.verdict.includes('Reste') && !checked && (
                               <span className="pill amber" style={{ height: 18, fontSize: 9.5 }}>♻️ Reste</span>
                             )}
+                            {carted && <span className="cart-badge"><Icon name="cart" size={9} /> Panier</span>}
                           </div>
-                          <div className="rc" title={(r.uses || []).map((u) => `${u.nom} (${u.qty})`).join(' · ')}>
-                            {(r.uses || []).slice(0, 2).map((u) => `${u.nom} (${u.qty})`).join(' · ')}
-                            {(r.uses || []).length > 2 ? ` +${r.uses.length - 2}` : ''}
-                          </div>
-                          {r.multiFormat && r.demandG > 0 && (
-                            <div className="rc" style={{ color: 'var(--accent)' }}>
-                              <Icon name="cart" size={10} /> besoin ~{Math.round(r.demandG)} g → format {r.format}
-                            </div>
+                          {r.besoinValue != null && (
+                            <div className="rc">Besoin {fmtNum(r.besoinValue)} {r.besoinUnit}</div>
                           )}
                         </div>
-                        <div className="sl-qty">{r.format || '—'}</div>
+                        <UsageCell row={r} portions={ctx.portions} />
+                        <div className="sl-qty">{r.packDisplay || r.formatLabel || '—'}</div>
                         <div className="sl-price">{money(r.price)}</div>
                         <div className="sl-act">
                           {!checked && (
@@ -126,6 +124,9 @@ export function Shopping({ ctx }) {
                               <Icon name="ext" size={14} />
                             </a>
                           )}
+                          <button type="button" className={'cart-btn' + (carted ? ' on' : '')} onClick={() => toggleCart(r.name)} title={carted ? 'Retirer du panier' : 'Ajouté au panier'} aria-pressed={carted}>
+                            <Icon name="cart" size={15} />
+                          </button>
                           <button type="button" className={'stock-btn' + (checked ? ' on' : '')} onClick={() => toggle(r.name)}>
                             <Icon name={checked ? 'check' : 'home'} size={14} /> {checked ? 'Déjà en stock' : "J'ai déjà"}
                           </button>
@@ -201,6 +202,86 @@ export function Shopping({ ctx }) {
           </span>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   LOT 3 — cellule "Utilisation" + popover (survol desktop / tap mobile).
+   Le nombre de recettes et les quantités par recette sont calculés EN
+   DIRECT (row.uses / row.besoinValue) — le JSON n'a pas de champ
+   ingredients_usage figé, ce qui garantit que ça respecte les repas
+   désactivés et la valeur du slider Portions. Le total en bas = la
+   formule UNIQUE besoinIngredient (qty_1portion × portions).
+   ============================================================ */
+/* détail du besoin, ex. "125 g × 4 recettes × 2 portions = 1000 g → 4 × 250g" */
+function usageDetail(row, portions) {
+  const per = (row.perRecipe || []).filter((p) => p.val != null);
+  if (!per.length || row.besoinValue == null) return '';
+  const unit = row.besoinUnit || '';
+  const vals = per.map((p) => p.val);
+  const allEqual = vals.every((v) => Math.abs(v - vals[0]) < 1e-9);
+  const left = allEqual
+    ? `${fmtNum(vals[0])} ${unit} × ${per.length} recette${per.length > 1 ? 's' : ''} × ${portions} portion${portions > 1 ? 's' : ''}`
+    : `${fmtNum(row.besoinPerPortion)} ${unit} (1 portion) × ${portions} portion${portions > 1 ? 's' : ''}`;
+  const pack = row.formatLabel ? ` → ${row.nbPaquets} × ${row.formatLabel}` : '';
+  return `${left} = ${fmtNum(row.besoinValue)} ${unit}${pack}`.replace(/\s+/g, ' ').trim();
+}
+
+function UsageCell({ row, portions }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const uses = row.uses || [];
+  const count = row.count != null ? row.count : uses.length;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('touchstart', onDoc);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('touchstart', onDoc); };
+  }, [open]);
+
+  if (!count) return <div className="sl-use" />;
+
+  return (
+    <div
+      className="sl-use"
+      ref={ref}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button type="button" className="use-chip" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <Icon name="list" size={11} /> <span className="n">{count}</span> recette{count > 1 ? 's' : ''}
+      </button>
+      {open && (
+        <div className="use-pop" onClick={(e) => e.stopPropagation()}>
+          <div className="use-pop-head">Utilisé dans {count} recette{count > 1 ? 's' : ''} · par portion</div>
+          <ul className="use-pop-list">
+            {uses.map((u, i) => (
+              <li key={u.id + '-' + i}>
+                <span className="up-r">{u.id} – {u.nom}</span>
+                <span className="up-q">{u.qty}</span>
+              </li>
+            ))}
+          </ul>
+          {row.besoinValue != null && (
+            <>
+              <div className="use-pop-total">
+                <span>Besoin (× {portions} pers.)</span>
+                <strong>{fmtNum(row.besoinValue)} {row.besoinUnit}</strong>
+              </div>
+              {row.formatLabel && (
+                <div className="use-pop-total" style={{ borderTop: 'none', marginTop: 2, paddingTop: 0 }}>
+                  <span>À acheter</span>
+                  <strong style={{ color: 'var(--text)' }}>{row.nbPaquets} × {row.formatLabel} · {money(row.price)}</strong>
+                </div>
+              )}
+              <div className="use-pop-detail">{usageDetail(row, portions)}</div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

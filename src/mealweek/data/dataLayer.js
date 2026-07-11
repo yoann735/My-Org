@@ -144,13 +144,32 @@ function fmtNum(v) {
   if (Number.isInteger(r)) return String(r);
   return String(r).replace('.', ',');
 }
+export { fmtNum };
 
-/** scale a "1 portion" quantity string by `portions` */
+/* ============================================================
+   FORMULE UNIQUE DE QUANTITÉ (LOT 2)
+   besoin = qty_1portion × portions. AUCUN facteur ×2 caché : le
+   doublement "dîner du soir + déjeuner du lendemain" est représenté
+   UNIQUEMENT par le fait que le slider Portions vaut 2 par défaut.
+   Cette fonction est la SEULE source de vérité pour les quantités —
+   l'affichage recette (scaleQty), la demande de l'onglet Courses, le
+   choix du format multi-format et le total du popover d'usage l'appellent.
+   Accepte soit une chaîne "65 g" / "½ pièce(s)", soit une valeur numérique
+   déjà parsée (utile pour sommer plusieurs recettes). Renvoie un NOMBRE
+   (dans l'unité de la quantité), ou null si non chiffrable ("selon le goût").
+   ============================================================ */
+export function besoinIngredient(qty1portion, portions = 1) {
+  const value = typeof qty1portion === 'number' ? qty1portion : parseQty(qty1portion).value;
+  if (value == null) return null;
+  return value * portions;
+}
+
+/** scale a "1 portion" quantity string by `portions` (affichage recette) —
+    passe par besoinIngredient pour garantir une formule unique. */
 export function scaleQty(raw, portions = 1) {
   const { value, unit } = parseQty(raw);
   if (value == null) return String(raw ?? ''); // e.g. "selon le goût"
-  const v = value * portions;
-  return fmtNum(v) + (unit ? ' ' + unit : '');
+  return fmtNum(besoinIngredient(value, portions)) + (unit ? ' ' + unit : '');
 }
 
 /* ============================================================
@@ -265,73 +284,199 @@ export function activeSlots(weekKey, slotsOff = {}) {
    verdicts (Consommé / Reste); those are surfaced as info, but the
    live total is computed here so the weekend lever actually moves it.
    ============================================================ */
-/* multi-format : choisit le plus petit conditionnement dont (grammes + 100g de
-   tolérance) couvre la demande de la semaine ; sinon le plus grand. */
-export const FORMAT_TOLERANCE_G = 100;
-export function pickFormat(formats, demandG) {
-  const sorted = [...formats].sort((a, b) => a.grammes - b.grammes);
-  for (const f of sorted) { if (f.grammes + FORMAT_TOLERANCE_G >= demandG) return f; }
-  return sorted[sorted.length - 1];
+/* ============================================================
+   FORMATS D'ACHAT & QUANTITÉS (LOT 2 — v6)
+   Le besoin d'une semaine peut dépasser un paquet → on achète autant de
+   paquets que nécessaire. Pour un ingrédient multi-format, on choisit le
+   format qui MINIMISE le coût total (à égalité de coût : le moins de
+   gaspillage). Les formats viennent de `ingredients_ref`.
+   ============================================================ */
+
+/** extrait les grammes d'un libellé de format : "250g"→250, "1kg"→1000,
+    "2 x 125g"→250 ; null si l'unité n'est pas en poids (ex. "1 pièce"). */
+export function formatGrammes(str) {
+  if (str == null) return null;
+  const s = String(str).toLowerCase();
+  let m = s.match(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(kg|g)\b/);
+  if (m) {
+    const c = parseFloat(m[1].replace(',', '.'));
+    const q = parseFloat(m[2].replace(',', '.'));
+    return c * q * (m[3] === 'kg' ? 1000 : 1);
+  }
+  m = s.match(/(\d+(?:[.,]\d+)?)\s*(kg|g)\b/);
+  if (m) return parseFloat(m[1].replace(',', '.')) * (m[2] === 'kg' ? 1000 : 1);
+  return null;
+}
+
+/** volume d'un libellé de format, en cl : "20cl"→20, "3x20cl"→60, "1l"→100. null sinon. */
+function formatVolumeCl(str) {
+  const s = String(str || '').toLowerCase();
+  const toCl = (v, u) => (u === 'cl' ? v : u === 'ml' ? v / 10 : v * 100); // l → 100 cl, ml → 0.1 cl
+  let m = s.match(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(cl|ml|l)\b/);
+  if (m) return parseFloat(m[1].replace(',', '.')) * toCl(parseFloat(m[2].replace(',', '.')), m[3]);
+  m = s.match(/(\d+(?:[.,]\d+)?)\s*(cl|ml|l)\b/);
+  if (m) return toCl(parseFloat(m[1].replace(',', '.')), m[2]);
+  return null;
+}
+
+/** nombre d'unités de comptage d'un format, pour les mots donnés :
+    "1 pièce"→1, "6 pièces"→6, "2 x 4 sachets"→8. null si le mot ne matche pas
+    (ex. "1 tête" avec unité "pièce" → null → on achètera 1 paquet). */
+function formatCount(str, words) {
+  const s = String(str || '').toLowerCase();
+  const w = '(?:' + words.join('|') + ')';
+  let m = s.match(new RegExp('(\\d+(?:[.,]\\d+)?)\\s*[x×]\\s*(\\d+(?:[.,]\\d+)?)\\s*' + w));
+  if (m) return parseFloat(m[1].replace(',', '.')) * parseFloat(m[2].replace(',', '.'));
+  m = s.match(new RegExp('(\\d+(?:[.,]\\d+)?)\\s*' + w));
+  if (m) return parseFloat(m[1].replace(',', '.'));
+  return null;
+}
+
+/** magnitude d'un format DANS l'unité du besoin (g, cl, pièce, sachet…). */
+function formatMagnitude(formatStr, grammes, unite) {
+  const u = (unite || '').toLowerCase();
+  if (isWeightUnit(unite)) return grammes != null ? grammes : formatGrammes(formatStr);
+  if (u === 'cl' || u === 'ml' || u === 'l' || u.startsWith('litre')) return formatVolumeCl(formatStr);
+  if (u.startsWith('pièce') || u.startsWith('piece')) return formatCount(formatStr, ['pièce', 'piece', 'pcs', 'pc']);
+  if (u.startsWith('sachet')) return formatCount(formatStr, ['sachet']);
+  return formatCount(formatStr, [u].filter(Boolean));
+}
+
+/** enlève le préfixe "R02: " d'une quantité d'usage → valeur numérique (1 portion). */
+function parseUsageQty(qStr) {
+  if (qStr == null) return null;
+  return parseQty(String(qStr).replace(/^[^:]*:\s*/, '')).value;
+}
+
+/** formats candidats d'un ingrédient (depuis ingredients_ref) : tableau
+    `formats` si multi_format, sinon format unique {format_achat, prix}.
+    `fallback` = {format, prix} issu de la recette si l'ingrédient est absent du ref. */
+export function candidateFormats(name, fallback = null) {
+  const ref = ingRef(name);
+  if (ref && ref.multi_format && Array.isArray(ref.formats) && ref.formats.length) {
+    return ref.formats.map((f) => ({
+      format: f.format,
+      grammes: f.grammes != null ? f.grammes : formatGrammes(f.format),
+      prix: f.prix,
+    }));
+  }
+  if (ref && (ref.format_achat || ref.prix != null)) {
+    return [{
+      format: ref.format_achat || (fallback && fallback.format) || '',
+      grammes: formatGrammes(ref.format_achat),
+      prix: ref.prix != null ? ref.prix : (fallback && fallback.prix) || 0,
+    }];
+  }
+  if (fallback) return [{ format: fallback.format || '', grammes: formatGrammes(fallback.format), prix: fallback.prix || 0 }];
+  return [{ format: '', grammes: null, prix: 0 }];
+}
+
+/** true si l'unité est un poids (g / kg) — sinon on compte en pièces/cl/sachet. */
+function isWeightUnit(unite) {
+  const u = (unite || '').toLowerCase();
+  return u === 'g' || u === 'kg' || u.startsWith('gramme');
+}
+
+/** nombre de paquets d'un format (de magnitude `mag` dans l'unité du besoin). */
+function packsFor(besoin, mag) {
+  if (besoin == null) return 1;
+  if (mag && mag > 0) return Math.max(1, Math.ceil(besoin / mag));
+  return 1; // magnitude du format inconnue dans cette unité → 1 paquet couvre
+}
+
+/** choisit le format qui minimise le COÛT total (égalité → moins de gaspillage). */
+export function chooseFormat(besoin, unite, formats) {
+  let best = null;
+  for (const f of formats) {
+    const mag = formatMagnitude(f.format, f.grammes, unite);
+    const nb = packsFor(besoin, mag);
+    const cost = Math.round(nb * (f.prix || 0) * 100) / 100;
+    const waste = mag ? nb * mag - (besoin || 0) : 0;
+    const cand = { format: f.format, grammes: f.grammes, magnitude: mag, prix: f.prix || 0, nb, cost, waste };
+    if (!best || cand.cost < best.cost - 1e-9 || (Math.abs(cand.cost - best.cost) < 1e-9 && cand.waste < best.waste)) best = cand;
+  }
+  return best || { format: '', grammes: null, prix: 0, nb: 1, cost: 0, waste: 0 };
 }
 
 export function weekShopping(weekKey, slotsOff = {}, portions = 2) {
   const wk = weekRaw(weekKey);
   const status = (wk && wk.ingredients_status) || {};
+  const usageAll = (wk && wk.ingredients_usage) || {};
+  const cooked = cookedDays(weekKey, slotsOff);
+  const activeIds = new Set(cooked.map((d) => d.recipe.id)); // respecte les repas désactivés
   const map = new Map();
 
-  // Plus de "stock permanent" : TOUS les ingrédients livrés sont achetés et
-  // apparaissent dans la liste. Le prix/format/dlc viennent désormais de
-  // l'ingrédient lui-même (prix_chronodrive…), avec repli sur ingredients_ref.
-  cookedDays(weekKey, slotsOff).forEach(({ recipe }) => {
+  cooked.forEach(({ recipe }) => {
     (recipe.ingredients_livres || []).forEach((ing) => {
       const name = ing.nom;
       if (!map.has(name)) {
         const ref = ingRef(name);
-        const price = typeof ing.prix_chronodrive === 'number' ? ing.prix_chronodrive
-          : (ref && typeof ref.prix === 'number' ? ref.prix : 0);
         map.set(name, {
           name,
           categorie: ing.categorie || (ref && ref.categorie) || '🥫 Conserves & bocaux',
           nomChronodrive: (ref && ref.nom_chronodrive) || ing.nom,
           lien: ing.lien_chronodrive || (ref && ref.lien_chronodrive) || '',
-          format: ing.format_achat || (ref && ref.format_achat) || '',
-          price,
           substitut: (ref && ref.substitut) || '',
           dlc: ing.dlc_jours != null ? ing.dlc_jours : (ref && ref.dlc_jours),
           dispo: ref && ref.dispo_chronodrive,
           verdict: status[name] ? status[name].verdict : null,
           verdictDetail: status[name] ? status[name].detail : null,
-          // multi-format : demande cumulée en grammes (× 2 cuisson × portions)
-          multiFormat: !!ing.multi_format,
-          formats: ing.formats || null,
-          demandG: 0,
-          recipes: [],
-          // usage de la semaine (recalculé en direct → respecte les jours actifs)
+          multiFormat: !!(ref && ref.multi_format),
+          _fallback: { format: ing.format_achat, prix: ing.prix_chronodrive },
           uses: [],
         });
       }
-      const row = map.get(name);
-      if (!row.recipes.includes(recipe.nom)) row.recipes.push(recipe.nom);
-      // une entrée par dîner cuisiné qui utilise l'ingrédient (avec sa quantité 1 portion)
-      row.uses.push({ id: recipe.id, nom: recipe.nom, qty: ing.qty_1portion });
-      if (row.multiFormat) {
-        const g = parseQty(ing.qty_1portion).value;
-        if (typeof g === 'number') row.demandG += g * 2 * portions;
-      }
+      map.get(name).uses.push({ id: recipe.id, nom: recipe.nom, qty: ing.qty_1portion });
     });
   });
 
-  // compteur d'utilisation par ingrédient
-  map.forEach((row) => { row.count = row.uses.length; });
-
-  // résoudre le format acheté + son prix pour les ingrédients multi-format
   map.forEach((row) => {
-    if (row.multiFormat && row.formats && row.formats.length) {
-      const chosen = pickFormat(row.formats, row.demandG);
-      row.price = chosen.prix;
-      row.format = chosen.format;
-      row.chosenFormat = chosen;
+    const usage = usageAll[row.name];
+    let base1p = null;   // besoin cumulé pour 1 portion (recettes ACTIVES)
+    let unite = '';
+    let perRecipe = [];
+
+    // 1) source enrichie : ingredients_usage (total_base_1p par recette), restreinte
+    //    aux recettes réellement cuisinées → respecte les slots désactivés.
+    if (usage && usage.sommable !== false && Array.isArray(usage.recettes)) {
+      unite = usage.unite || '';
+      let sum = 0;
+      let any = false;
+      usage.recettes.forEach((rid, i) => {
+        if (!activeIds.has(rid)) return;
+        const val = parseUsageQty(usage.quantites ? usage.quantites[i] : null);
+        perRecipe.push({ id: rid, nom: (recipeById(rid) || {}).nom || rid, val });
+        if (val != null) { sum += val; any = true; }
+      });
+      if (any) base1p = sum; // = usage.total_base_1p quand toutes les recettes sont actives
+      else if (perRecipe.length) base1p = 0;
     }
+
+    // 2) repli : somme "live" des quantités des recettes cuisinées
+    if (base1p == null) {
+      const parsed = row.uses.map((u) => parseQty(u.qty));
+      const s = parsed.reduce((a, p) => a + (p.value || 0), 0);
+      base1p = parsed.some((p) => p.value != null) ? s : null;
+      unite = unite || (parsed.find((p) => p.value != null) || {}).unit || '';
+      perRecipe = row.uses.map((u) => ({ id: u.id, nom: u.nom, val: parseQty(u.qty).value }));
+    }
+
+    const besoin = base1p == null ? null : besoinIngredient(base1p, portions);
+    row.besoinPerPortion = base1p;
+    row.besoinUnit = unite;
+    row.besoinValue = besoin;
+    row.count = perRecipe.length;
+    row.perRecipe = perRecipe;
+    // quantité PAR PORTION par recette (pour le popover d'usage)
+    row.uses = perRecipe.map((p) => ({ id: p.id, nom: p.nom, qty: p.val == null ? '—' : fmtNum(p.val) + (unite ? ' ' + unite : '') }));
+
+    // format & nombre de paquets (multi-paquets, coût minimisé)
+    const chosen = chooseFormat(besoin, unite, candidateFormats(row.name, row._fallback));
+    row.nbPaquets = chosen.nb;
+    row.formatLabel = chosen.format;
+    row.formatPrix = chosen.prix;
+    row.price = chosen.cost; // coût total de la ligne (nb paquets × prix)
+    row.packDisplay = chosen.format ? `${chosen.nb} × ${chosen.format}` : String(chosen.nb);
   });
 
   return [...map.values()].sort((a, b) => {

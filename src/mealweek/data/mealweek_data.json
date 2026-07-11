@@ -1,6 +1,6 @@
 {
   "meta": {
-    "version": "3.2",
+    "version": "3.4",
     "description": "MealWeek - base de données complète planning repas HelloFresh/Chronodrive",
     "portions_base": 1,
     "regles": {
@@ -14,7 +14,8 @@
       "mode_eco": "Switch on/off. Active → remplace les semaines standard par les semaines éco (E1, E2) qui coûtent le moins cher. Les recettes éco peuvent être les mêmes que les standard.",
       "formats_multiples": "Certains ingrédients ont plusieurs formats d'achat Chronodrive (champ 'formats' = liste de {format, grammes, prix}). Pour choisir le format : calculer la demande totale de l'ingrédient sur la semaine (somme des qty de toutes les recettes qui l'utilisent, × nombre de personnes). Puis prendre le PLUS PETIT format dont (grammes + 100) >= demande_totale. Tolérance de 100g : on reste sur le petit format tant que le dépassement ne dépasse pas 100g. Afficher dans la liste de courses : la quantité nécessaire ET le format acheté avec son prix.",
       "donnees_source": "Données ingrédients/prix/quantités révisées manuellement par l'utilisateur (autorité absolue, écrasent toute valeur antérieure).",
-      "epinards": "Tous les épinards (frais ou en remplacement du pak choï) = Épinards hachés surgelés (Auchan) 1kg, 1.89€. Référence unique."
+      "epinards": "Tous les épinards (frais ou en remplacement du pak choï) = Épinards hachés surgelés (Auchan) 1kg, 1.89€. Référence unique.",
+      "courses_quantite": "Besoin total semaine par ingrédient = total_base_1p × portions. Nombre de paquets = arrondi supérieur(besoin / grammes du format). Choisir le format qui minimise le coût total. Afficher besoin + nb paquets + coût."
     },
     "courses_perso_fixes": [
       {
@@ -30,7 +31,11 @@
         "total": 2.45
       }
     ],
-    "stock_permanent": []
+    "stock_permanent": [],
+    "changelog": [
+      "v3.3: correction étapes R04 (Gnocchi crémeux au prosciutto) — étaient celles d'un curry-coco-riz. Aucune autre recette touchée (audit 40/40).",
+      "v3.4: prix/formats ingrédients mis à jour (édition utilisateur, autorité). Ajout semaines éco E3/E4/E5. ingredients_usage enrichi (unite + total_base_1p) pour calcul courses par besoin total. Règle courses: nb_paquets=ceil(demande/grammes), format au coût mini."
+    ]
   },
   "recipes": {
     "R01": {
@@ -714,33 +719,23 @@
       "etapes": [
         {
           "numero": 1,
-          "titre": "À vos planches !",
-          "texte": "Veillez à bien respecter les quantités indiquées à gauche pour préparer votre recette !\nPréparez le bouillon avec de l'eau chaude.\nCiselez finement l’oignon et l’ail.\nCoupez les tomates en petits dés.\nÉpépinez le piment et ciselez-le (ça pique ! Dosez-le selon votre goût).\nCasserole en action"
+          "titre": "Coupe, tranche, cisèle !",
+          "texte": "Veillez à bien respecter les quantités indiquées à gauche pour préparer votre recette !\nNettoyez les champignons avec un essuie-tout humide, puis coupez-les en 4 ou en 8 s'ils sont gros.\nCiselez finement l'oignon et l'ail. Coupez le prosciutto en fines lanières."
         },
         {
           "numero": 2,
-          "titre": "Casserole en action",
-          "texte": "Faites chauffer un filet d’huile d’olive dans une casserole à feu moyen et faites-y revenir la moitié de l’oignon 2 min.\nAjoutez le curcuma et poursuivez la cuisson 1 min.\nIncorporez le riz et le bouillon, puis faites cuire 12-15 min à couvert. Versez éventuellement un peu d’eau si le riz s'assèche trop vite. Réservez-le sans couvercle.\nSession bronzage"
+          "titre": "Champis à la poêle",
+          "texte": "Dans une poêle, ajoutez du beurre et un filet d'huile d'olive. Faites-y cuire les champignons et l'oignon 5-7 min à feu moyen-vif.\nPendant ce temps, faites chauffer un filet d'huile d'olive dans une autre poêle à feu moyen. Ajoutez-y les gnocchi, 2 cs d'eau par personne ainsi que du sel et du poivre. Couvrez et faites-les revenir 2-3 min. Ôtez le couvercle et faites cuire 1-2 min de plus sans couvercle. Remuez souvent."
         },
         {
           "numero": 3,
-          "titre": "Session bronzage",
-          "texte": "Pendant ce temps, faites chauffer un wok ou une sauteuse à feu moyen-vif et faites-y dorer les noix de cajou à sec 1 min.\nAjoutez la noix de coco râpée et poursuivez la cuisson 1 min.\nRéservez-les hors du wok.\nMélange des saveurs"
+          "titre": "Tout s'emmêle",
+          "texte": "Dans la poêle des champignons, ajoutez l'ail, ⅓ sachet d'épices à l'italienne par personne (ça pique ! Dosez-les selon votre goût) et quelques gouttes de vinaigre balsamique noir. Prolongez la cuisson de 1-2 min. Salez légèrement et poivrez.\nAjoutez la crème et le prosciutto, émiettez ¼ cube de bouillon par-dessus, puis laissez réduire 2-3 min, ou jusqu'à ce que la sauce soit légèrement épaisse.\nIncorporez-y les gnocchi."
         },
         {
           "numero": 4,
-          "titre": "Mélange des saveurs",
-          "texte": "Laissez refroidir le wok 2 min (pour éviter que l’huile ne brûle), puis faites-y chauffer un filet d'huile de tournesol à feu moyen. Faites-y revenir l’ail, le reste de l'oignon, ½ sachet de curry par personne et le piment (ça pique ! Dosez-les selon votre goût).\nAjoutez les tomates et faites cuire 4 min en remuant régulièrement.\nVersez le lait de coco, salez et poivrez, puis portez le curry à ébullition.\nL'ASTUCE DU CHEF : Secouez bien le lait de coco avant de l'utiliser afin de dissoudre les grumeaux.\n\nAu tour des œufs"
-        },
-        {
-          "numero": 5,
-          "titre": "Au tour des œufs",
-          "texte": "Pendant ce temps, faites chauffer un filet d'huile d'olive dans une poêle et faites-y cuire un œuf au plat par personne.\nLavez les épinards, puis déchirez-les au-dessus du wok, laissez-les réduire en remuant, puis faites mijoter 1-2 min.\nClap de fin"
-        },
-        {
-          "numero": 6,
-          "titre": "Clap de fin",
-          "texte": "Servez le riz et les épinards dans les assiettes et disposez l’œuf au plat par-dessus.\nGarnissez de noix de cajou et de noix de coco râpée.\nLE SAVIEZ-VOUS ? La noix de cajou a été découverte au XVIe siècle sur les côtes du Brésil par les explorateurs portugais. Ils ont exporté les noix dans d'autres régions tropicales comme l'Afrique et l'Inde, où elles sont maintenant également cultivées."
+          "titre": "Service al dente !",
+          "texte": "Disposez la salade dans des assiettes creuses (voir L'ASTUCE).\nServez les gnocchi par-dessus et arrosez-les du reste de sauce.\nL'ASTUCE DU CHEF : Si vous avez des enfants, servez la salade à côté."
         }
       ],
       "cout_estime_x2": 9.82
@@ -6838,19 +6833,37 @@
       "dlc_jours": 1095.0,
       "categorie": "🌿 Épices & aromates",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Viande hachée au bœuf": {
       "nom": "Viande hachée au bœuf",
       "nom_chronodrive": "Bœuf haché pur 5% MG (Auchan)",
-      "format_achat": "500g",
+      "format_achat": "500g / 2 x 125g / 600g",
       "note": "",
-      "multi_format": false,
+      "multi_format": true,
       "prix": 9.65,
       "dlc_jours": 3.0,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": [
+        {
+          "format": "500g",
+          "grammes": 500.0,
+          "prix": 9.65
+        },
+        {
+          "format": "2 x 125g",
+          "grammes": 250.0,
+          "prix": 5.39
+        },
+        {
+          "format": "600g",
+          "grammes": 600.0,
+          "prix": 10.99
+        }
+      ]
     },
     "Ail": {
       "nom": "Ail",
@@ -6862,7 +6875,8 @@
       "dlc_jours": 30.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Chair de tomates": {
       "nom": "Chair de tomates",
@@ -6874,7 +6888,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Sucrine": {
       "nom": "Sucrine",
@@ -6886,7 +6901,8 @@
       "dlc_jours": 5.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Maïs en conserve": {
       "nom": "Maïs en conserve",
@@ -6898,7 +6914,8 @@
       "dlc_jours": 1825.0,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Cheddar râpé": {
       "nom": "Cheddar râpé",
@@ -6910,7 +6927,8 @@
       "dlc_jours": 21.0,
       "categorie": "🧀 Produits laitiers",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Tortillas": {
       "nom": "Tortillas",
@@ -6922,7 +6940,8 @@
       "dlc_jours": 30.0,
       "categorie": "🍞 Pains & boulangerie",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Huile d'olive": {
       "nom": "Huile d'olive",
@@ -6934,7 +6953,8 @@
       "dlc_jours": 730.0,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Moutarde": {
       "nom": "Moutarde",
@@ -6946,7 +6966,8 @@
       "dlc_jours": 365.0,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Vinaigre de vin rouge ou de cidre": {
       "nom": "Vinaigre de vin rouge ou de cidre",
@@ -6958,7 +6979,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Poivre et sel": {
       "nom": "Poivre et sel",
@@ -6970,7 +6992,8 @@
       "dlc_jours": 1825,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "?",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Fusilli complets": {
       "nom": "Fusilli complets",
@@ -6982,7 +7005,8 @@
       "dlc_jours": 730.0,
       "categorie": "🍚 Féculents & céréales",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Oignon": {
       "nom": "Oignon",
@@ -6994,7 +7018,8 @@
       "dlc_jours": 21.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Basilic": {
       "nom": "Basilic",
@@ -7006,7 +7031,8 @@
       "dlc_jours": 7.0,
       "categorie": "🌱 Herbes fraîches",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Thon au naturel": {
       "nom": "Thon au naturel",
@@ -7018,7 +7044,8 @@
       "dlc_jours": 1825.0,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Conchiglie": {
       "nom": "Conchiglie",
@@ -7030,7 +7057,8 @@
       "dlc_jours": 730.0,
       "categorie": "🍚 Féculents & céréales",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Tomates semi-séchées": {
       "nom": "Tomates semi-séchées",
@@ -7042,7 +7070,8 @@
       "dlc_jours": 365.0,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "⚠️ Parfois",
-      "substitut": "Tomates cerises rôties 1h au four"
+      "substitut": "Tomates cerises rôties 1h au four",
+      "formats": null
     },
     "Tomates cerises rouges": {
       "nom": "Tomates cerises rouges",
@@ -7054,7 +7083,8 @@
       "dlc_jours": 7.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Pesto vert alla genovese": {
       "nom": "Pesto vert alla genovese",
@@ -7066,7 +7096,8 @@
       "dlc_jours": 365.0,
       "categorie": "🫙 Sauces & condiments",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Tomate": {
       "nom": "Tomate",
@@ -7078,7 +7109,8 @@
       "dlc_jours": 7.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Piment": {
       "nom": "Piment",
@@ -7090,7 +7122,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": "Piment poudre ⅛cc par pièce"
+      "substitut": "Piment poudre ⅛cc par pièce",
+      "formats": null
     },
     "Curcuma en poudre": {
       "nom": "Curcuma en poudre",
@@ -7102,7 +7135,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🌿 Épices & aromates",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Riz": {
       "nom": "Riz",
@@ -7114,7 +7148,8 @@
       "dlc_jours": 730.0,
       "categorie": "🍚 Féculents & céréales",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Noix de cajou concassées": {
       "nom": "Noix de cajou concassées",
@@ -7126,7 +7161,8 @@
       "dlc_jours": 180.0,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Noix de coco râpée": {
       "nom": "Noix de coco râpée",
@@ -7138,7 +7174,8 @@
       "dlc_jours": 365.0,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Curry en poudre": {
       "nom": "Curry en poudre",
@@ -7150,7 +7187,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🌿 Épices & aromates",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Lait de coco": {
       "nom": "Lait de coco",
@@ -7162,7 +7200,8 @@
       "dlc_jours": 730.0,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Épinards": {
       "nom": "Épinards",
@@ -7174,7 +7213,8 @@
       "dlc_jours": 365,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Bouillon de légumes": {
       "nom": "Bouillon de légumes",
@@ -7186,7 +7226,8 @@
       "dlc_jours": 730,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Huile de tournesol": {
       "nom": "Huile de tournesol",
@@ -7198,7 +7239,8 @@
       "dlc_jours": 730.0,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Œuf": {
       "nom": "Œuf",
@@ -7210,7 +7252,8 @@
       "dlc_jours": 21,
       "categorie": "🥚 Frais",
       "dispo_chronodrive": "?",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Champignons de Paris": {
       "nom": "Champignons de Paris",
@@ -7221,12 +7264,12 @@
       "formats": [
         {
           "format": "200g",
-          "grammes": 200,
+          "grammes": 200.0,
           "prix": 2.49
         },
         {
           "format": "500g",
-          "grammes": 500,
+          "grammes": 500.0,
           "prix": 3.19
         }
       ],
@@ -7246,7 +7289,8 @@
       "dlc_jours": 14.0,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Gnocchi": {
       "nom": "Gnocchi",
@@ -7257,17 +7301,17 @@
       "formats": [
         {
           "format": "325g",
-          "grammes": 325,
+          "grammes": 325.0,
           "prix": 1.79
         },
         {
           "format": "520g",
-          "grammes": 520,
+          "grammes": 520.0,
           "prix": 2.59
         },
         {
           "format": "720g",
-          "grammes": 720,
+          "grammes": 720.0,
           "prix": 3.09
         }
       ],
@@ -7287,7 +7331,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🌿 Épices & aromates",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Crème liquide": {
       "nom": "Crème liquide",
@@ -7299,7 +7344,8 @@
       "dlc_jours": 180.0,
       "categorie": "🧀 Produits laitiers",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Salade": {
       "nom": "Salade",
@@ -7311,7 +7357,8 @@
       "dlc_jours": 5.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Beurre": {
       "nom": "Beurre",
@@ -7323,7 +7370,8 @@
       "dlc_jours": 30.0,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Vinaigre balsamique noir": {
       "nom": "Vinaigre balsamique noir",
@@ -7335,7 +7383,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Cube de bouillon de volaille": {
       "nom": "Cube de bouillon de volaille",
@@ -7347,7 +7396,8 @@
       "dlc_jours": 730.0,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Tagliatelle fraîches": {
       "nom": "Tagliatelle fraîches",
@@ -7359,7 +7409,8 @@
       "dlc_jours": 5.0,
       "categorie": "🍚 Féculents & céréales",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Pesto rosso": {
       "nom": "Pesto rosso",
@@ -7371,7 +7422,8 @@
       "dlc_jours": 365.0,
       "categorie": "🫙 Sauces & condiments",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Origan séché": {
       "nom": "Origan séché",
@@ -7383,7 +7435,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🌿 Épices & aromates",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Mozzarella": {
       "nom": "Mozzarella",
@@ -7395,7 +7448,8 @@
       "dlc_jours": 7.0,
       "categorie": "🧀 Produits laitiers",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Sucre": {
       "nom": "Sucre",
@@ -7407,19 +7461,32 @@
       "dlc_jours": 1825.0,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Saucisse de Toulouse": {
       "nom": "Saucisse de Toulouse",
       "nom_chronodrive": "Saucisse de Toulouse",
-      "format_achat": "4 pièces 400g",
+      "format_achat": "4 pièces 400g / 1 pièces pour 700g",
       "note": "",
-      "multi_format": false,
+      "multi_format": true,
       "prix": 3.95,
       "dlc_jours": 5.0,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": [
+        {
+          "format": "4 pièces 400g",
+          "grammes": 400.0,
+          "prix": 3.95
+        },
+        {
+          "format": "1 pièces pour 700g",
+          "grammes": 700.0,
+          "prix": 6.75
+        }
+      ]
     },
     "Courgette": {
       "nom": "Courgette",
@@ -7431,7 +7498,8 @@
       "dlc_jours": 10.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Carotte": {
       "nom": "Carotte",
@@ -7443,7 +7511,8 @@
       "dlc_jours": 21.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Poivron": {
       "nom": "Poivron",
@@ -7455,7 +7524,8 @@
       "dlc_jours": 10.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Gingembre frais": {
       "nom": "Gingembre frais",
@@ -7467,7 +7537,8 @@
       "dlc_jours": 21.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": "Gingembre poudre ½cc par cm"
+      "substitut": "Gingembre poudre ½cc par cm",
+      "formats": null
     },
     "Ciboulette": {
       "nom": "Ciboulette",
@@ -7479,7 +7550,8 @@
       "dlc_jours": 180.0,
       "categorie": "🌱 Herbes fraîches",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Sauce umami à l'huître": {
       "nom": "Sauce umami à l'huître",
@@ -7491,7 +7563,8 @@
       "dlc_jours": 365.0,
       "categorie": "🫙 Sauces & condiments",
       "dispo_chronodrive": "❌ Non",
-      "substitut": "1cs sauce soja + 1cc Worcestershire"
+      "substitut": "1cs sauce soja + 1cc Worcestershire",
+      "formats": null
     },
     "Sauce sriracha": {
       "nom": "Sauce sriracha",
@@ -7503,7 +7576,8 @@
       "dlc_jours": 365.0,
       "categorie": "🫙 Sauces & condiments",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Cacahuètes non salées": {
       "nom": "Cacahuètes non salées",
@@ -7515,7 +7589,8 @@
       "dlc_jours": 180.0,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Vinaigre balsamique blanc ou de riz": {
       "nom": "Vinaigre balsamique blanc ou de riz",
@@ -7527,7 +7602,8 @@
       "dlc_jours": 1095,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "?",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Dés de chorizo": {
       "nom": "Dés de chorizo",
@@ -7539,7 +7615,8 @@
       "dlc_jours": 14.0,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Concentré de tomates": {
       "nom": "Concentré de tomates",
@@ -7551,7 +7628,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Girasoli tomate & mozzarella": {
       "nom": "Girasoli tomate & mozzarella",
@@ -7563,7 +7641,8 @@
       "dlc_jours": 5.0,
       "categorie": "🍚 Féculents & céréales",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": "Ravioli fraîches traiteur"
+      "substitut": "Ravioli fraîches traiteur",
+      "formats": null
     },
     "Mascarpone": {
       "nom": "Mascarpone",
@@ -7575,7 +7654,8 @@
       "dlc_jours": 10.0,
       "categorie": "🧀 Produits laitiers",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Cube de bouillon de légumes": {
       "nom": "Cube de bouillon de légumes",
@@ -7587,7 +7667,8 @@
       "dlc_jours": 730.0,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Pain naan": {
       "nom": "Pain naan",
@@ -7599,7 +7680,8 @@
       "dlc_jours": 7.0,
       "categorie": "🍞 Pains & boulangerie",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Lardons fumés": {
       "nom": "Lardons fumés",
@@ -7611,7 +7693,8 @@
       "dlc_jours": 10,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "?",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Petit pain": {
       "nom": "Petit pain",
@@ -7623,7 +7706,8 @@
       "dlc_jours": 7,
       "categorie": "🍞 Pains & boulangerie",
       "dispo_chronodrive": "?",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Avocat": {
       "nom": "Avocat",
@@ -7635,7 +7719,8 @@
       "dlc_jours": 5.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Persil": {
       "nom": "Persil",
@@ -7647,7 +7732,8 @@
       "dlc_jours": 7.0,
       "categorie": "🌱 Herbes fraîches",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Échalote": {
       "nom": "Échalote",
@@ -7659,7 +7745,8 @@
       "dlc_jours": 21.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Thym séché": {
       "nom": "Thym séché",
@@ -7671,7 +7758,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🌿 Épices & aromates",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Olives Kalamata dénoyautées": {
       "nom": "Olives Kalamata dénoyautées",
@@ -7683,7 +7771,8 @@
       "dlc_jours": 365.0,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Poireau": {
       "nom": "Poireau",
@@ -7695,7 +7784,8 @@
       "dlc_jours": 365.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Sauce soja": {
       "nom": "Sauce soja",
@@ -7707,7 +7797,8 @@
       "dlc_jours": 730.0,
       "categorie": "🫙 Sauces & condiments",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Huile de sésame": {
       "nom": "Huile de sésame",
@@ -7719,19 +7810,32 @@
       "dlc_jours": 365.0,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": "Huile d'olive"
+      "substitut": "Huile d'olive",
+      "formats": null
     },
     "Filet de poulet": {
       "nom": "Filet de poulet",
       "nom_chronodrive": "Filets de poulet Label Rouge",
-      "format_achat": "260g",
+      "format_achat": "260g / 720g",
       "note": "",
-      "multi_format": false,
+      "multi_format": true,
       "prix": 4.35,
       "dlc_jours": 4.0,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": [
+        {
+          "format": "260g",
+          "grammes": 260.0,
+          "prix": 4.35
+        },
+        {
+          "format": "720g",
+          "grammes": 720.0,
+          "prix": 10.49
+        }
+      ]
     },
     "Graines de sésame": {
       "nom": "Graines de sésame",
@@ -7743,7 +7847,8 @@
       "dlc_jours": 365,
       "categorie": "🌿 Épices & aromates",
       "dispo_chronodrive": "?",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Mélange d'épices du Moyen-Orient": {
       "nom": "Mélange d'épices du Moyen-Orient",
@@ -7755,7 +7860,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🌿 Épices & aromates",
       "dispo_chronodrive": "❌ Non",
-      "substitut": "Ras el hanout"
+      "substitut": "Ras el hanout",
+      "formats": null
     },
     "Poivrons grillés": {
       "nom": "Poivrons grillés",
@@ -7767,7 +7873,8 @@
       "dlc_jours": 365.0,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Semoule / Couscous": {
       "nom": "Semoule / Couscous",
@@ -7779,7 +7886,8 @@
       "dlc_jours": 365.0,
       "categorie": "🍚 Féculents & céréales",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Raisins secs": {
       "nom": "Raisins secs",
@@ -7791,7 +7899,8 @@
       "dlc_jours": 180,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "?",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Merguez": {
       "nom": "Merguez",
@@ -7803,7 +7912,8 @@
       "dlc_jours": 5.0,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Mini concombre / Concombre": {
       "nom": "Mini concombre / Concombre",
@@ -7815,7 +7925,8 @@
       "dlc_jours": 10.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Menthe": {
       "nom": "Menthe",
@@ -7827,7 +7938,8 @@
       "dlc_jours": 7.0,
       "categorie": "🌱 Herbes fraîches",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Yaourt à la grecque": {
       "nom": "Yaourt à la grecque",
@@ -7839,7 +7951,8 @@
       "dlc_jours": 14.0,
       "categorie": "🧀 Produits laitiers",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Chair à saucisse": {
       "nom": "Chair à saucisse",
@@ -7851,7 +7964,8 @@
       "dlc_jours": 3.0,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Paprika fumé en poudre": {
       "nom": "Paprika fumé en poudre",
@@ -7863,7 +7977,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🌿 Épices & aromates",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Sauce Chipotle au piment": {
       "nom": "Sauce Chipotle au piment",
@@ -7875,7 +7990,8 @@
       "dlc_jours": 365.0,
       "categorie": "🫙 Sauces & condiments",
       "dispo_chronodrive": "❌ Non",
-      "substitut": "Tabasco Chipotle ou harissa + 1cc miel"
+      "substitut": "Tabasco Chipotle ou harissa + 1cc miel",
+      "formats": null
     },
     "Guacamole": {
       "nom": "Guacamole",
@@ -7887,7 +8003,8 @@
       "dlc_jours": 5.0,
       "categorie": "🫙 Sauces & condiments",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Bouillon de volaille": {
       "nom": "Bouillon de volaille",
@@ -7899,7 +8016,8 @@
       "dlc_jours": 730,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Spaghetti": {
       "nom": "Spaghetti",
@@ -7911,7 +8029,8 @@
       "dlc_jours": 730,
       "categorie": "🍚 Féculents & céréales",
       "dispo_chronodrive": "?",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Chapelure panko": {
       "nom": "Chapelure panko",
@@ -7923,7 +8042,8 @@
       "dlc_jours": 365.0,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "❌ Non",
-      "substitut": "Chapelure classique"
+      "substitut": "Chapelure classique",
+      "formats": null
     },
     "Noix concassées": {
       "nom": "Noix concassées",
@@ -7935,7 +8055,8 @@
       "dlc_jours": 90.0,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "❌ Non",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Parmesan râpé": {
       "nom": "Parmesan râpé",
@@ -7947,7 +8068,8 @@
       "dlc_jours": 21.0,
       "categorie": "🧀 Produits laitiers",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Dés de filet de dinde": {
       "nom": "Dés de filet de dinde",
@@ -7959,7 +8081,8 @@
       "dlc_jours": 4.0,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Mayonnaise": {
       "nom": "Mayonnaise",
@@ -7971,7 +8094,8 @@
       "dlc_jours": 60.0,
       "categorie": "🧀 Produits laitiers",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Linguine": {
       "nom": "Linguine",
@@ -7983,7 +8107,8 @@
       "dlc_jours": 730.0,
       "categorie": "🍚 Féculents & céréales",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Fenouil": {
       "nom": "Fenouil",
@@ -7995,7 +8120,8 @@
       "dlc_jours": 10.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": "Céleri + ½cc graines de fenouil"
+      "substitut": "Céleri + ½cc graines de fenouil",
+      "formats": null
     },
     "Crème de basilic": {
       "nom": "Crème de basilic",
@@ -8007,7 +8133,8 @@
       "dlc_jours": 365.0,
       "categorie": "🫙 Sauces & condiments",
       "dispo_chronodrive": "❌ Non",
-      "substitut": "Pesto vert + 2cs crème fraîche épaisse"
+      "substitut": "Pesto vert + 2cs crème fraîche épaisse",
+      "formats": null
     },
     "Cerfeuil": {
       "nom": "Cerfeuil",
@@ -8019,7 +8146,8 @@
       "dlc_jours": 7.0,
       "categorie": "🌱 Herbes fraîches",
       "dispo_chronodrive": "❌ Non",
-      "substitut": "Persil plat même quantité"
+      "substitut": "Persil plat même quantité",
+      "formats": null
     },
     "Tranches de carré de porc": {
       "nom": "Tranches de carré de porc",
@@ -8031,19 +8159,32 @@
       "dlc_jours": 4.0,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "❌ Non",
-      "substitut": "Echine de porc"
+      "substitut": "Echine de porc",
+      "formats": null
     },
     "Fricassée de champignons émincés": {
       "nom": "Fricassée de champignons émincés",
       "nom_chronodrive": "Champignons de Paris émincés bio (Bonduelle)",
-      "format_achat": "230g",
+      "format_achat": "230g / 500g",
       "note": "",
-      "multi_format": false,
+      "multi_format": true,
       "prix": 2.53,
       "dlc_jours": 7.0,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": [
+        {
+          "format": "230g",
+          "grammes": 230.0,
+          "prix": 2.53
+        },
+        {
+          "format": "500g",
+          "grammes": 500.0,
+          "prix": 3.19
+        }
+      ]
     },
     "Penne complet": {
       "nom": "Penne complet",
@@ -8055,7 +8196,8 @@
       "dlc_jours": 730.0,
       "categorie": "🍚 Féculents & céréales",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Gouda râpé": {
       "nom": "Gouda râpé",
@@ -8067,7 +8209,8 @@
       "dlc_jours": 21.0,
       "categorie": "🧀 Produits laitiers",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Citron": {
       "nom": "Citron",
@@ -8079,7 +8222,8 @@
       "dlc_jours": 21.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Mélange d'épices africaines": {
       "nom": "Mélange d'épices africaines",
@@ -8091,7 +8235,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🌿 Épices & aromates",
       "dispo_chronodrive": "❌ Non",
-      "substitut": "Cumin + paprika + coriandre + piment en doses égales"
+      "substitut": "Cumin + paprika + coriandre + piment en doses égales",
+      "formats": null
     },
     "Crème épaisse": {
       "nom": "Crème épaisse",
@@ -8103,7 +8248,8 @@
       "dlc_jours": 21.0,
       "categorie": "🧀 Produits laitiers",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Pak choï": {
       "nom": "Pak choï",
@@ -8115,7 +8261,8 @@
       "dlc_jours": 5.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "❌ Non",
-      "substitut": "Épinards surgelés (remplace pak choï frais)"
+      "substitut": "Épinards surgelés (remplace pak choï frais)",
+      "formats": null
     },
     "Sauce au chili sucrée et épicée": {
       "nom": "Sauce au chili sucrée et épicée",
@@ -8127,7 +8274,8 @@
       "dlc_jours": 365.0,
       "categorie": "🫙 Sauces & condiments",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Farine": {
       "nom": "Farine",
@@ -8139,7 +8287,8 @@
       "dlc_jours": 365.0,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Cumin en poudre": {
       "nom": "Cumin en poudre",
@@ -8151,7 +8300,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🌿 Épices & aromates",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Harissa": {
       "nom": "Harissa",
@@ -8163,7 +8313,8 @@
       "dlc_jours": 365.0,
       "categorie": "🫙 Sauces & condiments",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Labneh": {
       "nom": "Labneh",
@@ -8175,7 +8326,8 @@
       "dlc_jours": 10.0,
       "categorie": "🧀 Produits laitiers",
       "dispo_chronodrive": "❌ Non",
-      "substitut": "Fromage blanc épais égoutté 2h"
+      "substitut": "Fromage blanc épais égoutté 2h",
+      "formats": null
     },
     "Cube de bouillon de bœuf": {
       "nom": "Cube de bouillon de bœuf",
@@ -8187,7 +8339,8 @@
       "dlc_jours": 730.0,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Pain à hot-dog": {
       "nom": "Pain à hot-dog",
@@ -8199,7 +8352,8 @@
       "dlc_jours": 7.0,
       "categorie": "🍞 Pains & boulangerie",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Ketchup": {
       "nom": "Ketchup",
@@ -8211,7 +8365,8 @@
       "dlc_jours": 365.0,
       "categorie": "🫙 Sauces & condiments",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Feuille de laurier": {
       "nom": "Feuille de laurier",
@@ -8223,19 +8378,32 @@
       "dlc_jours": 1095.0,
       "categorie": "🌿 Épices & aromates",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Effiloché de porc": {
       "nom": "Effiloché de porc",
       "nom_chronodrive": "Pulled Pork effiloché (Festein)",
-      "format_achat": "660g",
+      "format_achat": "660g / 300",
       "note": "",
-      "multi_format": false,
+      "multi_format": true,
       "prix": 8.89,
       "dlc_jours": 7.0,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": [
+        {
+          "format": "660g",
+          "grammes": 660.0,
+          "prix": 8.89
+        },
+        {
+          "format": "300",
+          "grammes": 300.0,
+          "prix": 5.89
+        }
+      ]
     },
     "Oignons frits": {
       "nom": "Oignons frits",
@@ -8247,7 +8415,8 @@
       "dlc_jours": 365.0,
       "categorie": "🫙 Sauces & condiments",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": "Oignons poêlés 15min"
+      "substitut": "Oignons poêlés 15min",
+      "formats": null
     },
     "Petits pois en conserve": {
       "nom": "Petits pois en conserve",
@@ -8259,7 +8428,8 @@
       "dlc_jours": 1825.0,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Curry rouge": {
       "nom": "Curry rouge",
@@ -8271,7 +8441,8 @@
       "dlc_jours": 365.0,
       "categorie": "🌿 Épices & aromates",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": "1cs curry poudre + ½cc piment cayenne"
+      "substitut": "1cs curry poudre + ½cc piment cayenne",
+      "formats": null
     },
     "Fromage frais aux herbes": {
       "nom": "Fromage frais aux herbes",
@@ -8283,19 +8454,32 @@
       "dlc_jours": 10.0,
       "categorie": "🧀 Produits laitiers",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Tranches de poulet cuit": {
       "nom": "Tranches de poulet cuit",
       "nom_chronodrive": "Jambon",
-      "format_achat": "120g 4 tranches",
+      "format_achat": "120g 4 tranches / 720g",
       "note": "",
-      "multi_format": false,
+      "multi_format": true,
       "prix": 2.95,
       "dlc_jours": 7,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "?",
-      "substitut": ""
+      "substitut": "",
+      "formats": [
+        {
+          "format": "120g 4 tranches",
+          "grammes": 120.0,
+          "prix": 2.95
+        },
+        {
+          "format": "720g",
+          "grammes": 720.0,
+          "prix": 10.49
+        }
+      ]
     },
     "Fromage à la grecque": {
       "nom": "Fromage à la grecque",
@@ -8307,7 +8491,8 @@
       "dlc_jours": 14.0,
       "categorie": "🧀 Produits laitiers",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Pain burger": {
       "nom": "Pain burger",
@@ -8319,7 +8504,8 @@
       "dlc_jours": 7.0,
       "categorie": "🍞 Pains & boulangerie",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Fromage bleu": {
       "nom": "Fromage bleu",
@@ -8331,7 +8517,8 @@
       "dlc_jours": 21.0,
       "categorie": "🧀 Produits laitiers",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Rigatoni": {
       "nom": "Rigatoni",
@@ -8343,7 +8530,8 @@
       "dlc_jours": 730.0,
       "categorie": "🍚 Féculents & céréales",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Abricot": {
       "nom": "Abricot",
@@ -8355,7 +8543,8 @@
       "dlc_jours": 5.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui (saison)",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Filet de canard": {
       "nom": "Filet de canard",
@@ -8367,7 +8556,8 @@
       "dlc_jours": 4.0,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Miel": {
       "nom": "Miel",
@@ -8379,7 +8569,8 @@
       "dlc_jours": 1825.0,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Tranches de poitrine fumée": {
       "nom": "Tranches de poitrine fumée",
@@ -8391,7 +8582,8 @@
       "dlc_jours": 10.0,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Penne": {
       "nom": "Penne",
@@ -8403,7 +8595,8 @@
       "dlc_jours": 730.0,
       "categorie": "🍚 Féculents & céréales",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Burrata": {
       "nom": "Burrata",
@@ -8415,7 +8608,8 @@
       "dlc_jours": 5.0,
       "categorie": "🧀 Produits laitiers",
       "dispo_chronodrive": "⚠️ Parfois",
-      "substitut": "Mozzarella + 1cs crème"
+      "substitut": "Mozzarella + 1cs crème",
+      "formats": null
     },
     "Nouilles aux oeufs": {
       "nom": "Nouilles aux oeufs",
@@ -8427,7 +8621,8 @@
       "dlc_jours": 365.0,
       "categorie": "🍚 Féculents & céréales",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Sauce poisson": {
       "nom": "Sauce poisson",
@@ -8439,7 +8634,8 @@
       "dlc_jours": 730.0,
       "categorie": "🫙 Sauces & condiments",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Cassonade": {
       "nom": "Cassonade",
@@ -8451,7 +8647,8 @@
       "dlc_jours": 1825,
       "categorie": "🏠 Ingrédients maison",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Orzo": {
       "nom": "Orzo",
@@ -8463,19 +8660,32 @@
       "dlc_jours": 730.0,
       "categorie": "🍚 Féculents & céréales",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Escalope de dinde": {
       "nom": "Escalope de dinde",
       "nom_chronodrive": "Escalopes de dinde (Le Gaulois)",
-      "format_achat": "250g",
+      "format_achat": "250g / 720g",
       "note": "",
-      "multi_format": false,
+      "multi_format": true,
       "prix": 4.65,
       "dlc_jours": 4.0,
       "categorie": "🥩 Viandes & protéines",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": [
+        {
+          "format": "250g",
+          "grammes": 250.0,
+          "prix": 4.65
+        },
+        {
+          "format": "720g",
+          "grammes": 720.0,
+          "prix": 11.49
+        }
+      ]
     },
     "Beurre de cacahuètes": {
       "nom": "Beurre de cacahuètes",
@@ -8487,7 +8697,8 @@
       "dlc_jours": 180.0,
       "categorie": "🥫 Conserves & bocaux",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     },
     "Coriandre moulue": {
       "nom": "Coriandre moulue",
@@ -8499,7 +8710,8 @@
       "dlc_jours": 1095.0,
       "categorie": "🌿 Épices & aromates",
       "dispo_chronodrive": "✅ Oui",
-      "substitut": ""
+      "substitut": "",
+      "formats": null
     }
   },
   "weeks": {
@@ -8569,7 +8781,10 @@
           ],
           "quantites": [
             "R01: ½ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Viande hachée au bœuf": {
           "count": 2,
@@ -8580,7 +8795,10 @@
           "quantites": [
             "R01: 100g",
             "R40: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Ail": {
           "count": 6,
@@ -8599,7 +8817,10 @@
             "R03: 1 pièce(s)",
             "R15: ½ pièce(s)",
             "R05: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 4.5,
+          "sommable": true
         },
         "Chair de tomates": {
           "count": 1,
@@ -8608,7 +8829,10 @@
           ],
           "quantites": [
             "R01: 200g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Sucrine": {
           "count": 1,
@@ -8617,7 +8841,10 @@
           ],
           "quantites": [
             "R01: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Maïs en conserve": {
           "count": 1,
@@ -8626,7 +8853,10 @@
           ],
           "quantites": [
             "R01: 70g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 70.0,
+          "sommable": true
         },
         "Cheddar râpé": {
           "count": 1,
@@ -8635,7 +8865,10 @@
           ],
           "quantites": [
             "R01: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Tortillas": {
           "count": 1,
@@ -8644,7 +8877,10 @@
           ],
           "quantites": [
             "R01: 3 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.0,
+          "sommable": true
         },
         "Nouilles aux oeufs": {
           "count": 1,
@@ -8653,7 +8889,10 @@
           ],
           "quantites": [
             "R40: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Oignon": {
           "count": 4,
@@ -8668,7 +8907,10 @@
             "R19: ½ pièce(s)",
             "R03: ½ pièce(s)",
             "R15: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
         },
         "Gingembre frais": {
           "count": 1,
@@ -8677,7 +8919,10 @@
           ],
           "quantites": [
             "R40: 1/4 sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Piment": {
           "count": 2,
@@ -8688,7 +8933,10 @@
           "quantites": [
             "R40: Une pincé",
             "R03: Une pincé"
-          ]
+          ],
+          "unite": "libre",
+          "total_base_1p": 0.0,
+          "sommable": false
         },
         "Cacahuètes non salées": {
           "count": 1,
@@ -8697,7 +8945,10 @@
           ],
           "quantites": [
             "R40: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Pak choï": {
           "count": 1,
@@ -8706,7 +8957,10 @@
           ],
           "quantites": [
             "R40: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Beurre de cacahuètes": {
           "count": 1,
@@ -8715,7 +8969,10 @@
           ],
           "quantites": [
             "R40: 30g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 30.0,
+          "sommable": true
         },
         "Sauce soja": {
           "count": 1,
@@ -8724,7 +8981,10 @@
           ],
           "quantites": [
             "R40: 4cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 4.0,
+          "sommable": true
         },
         "Coriandre moulue": {
           "count": 1,
@@ -8733,7 +8993,10 @@
           ],
           "quantites": [
             "R40: 1g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Tomate": {
           "count": 3,
@@ -8746,7 +9009,10 @@
             "R19: 1 pièce(s)",
             "R03: 1 pièce(s)",
             "R09: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.5,
+          "sommable": true
         },
         "Filet de poulet": {
           "count": 1,
@@ -8755,7 +9021,10 @@
           ],
           "quantites": [
             "R19: 130g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 130.0,
+          "sommable": true
         },
         "Penne complet": {
           "count": 1,
@@ -8764,7 +9033,10 @@
           ],
           "quantites": [
             "R19: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Origan séché": {
           "count": 3,
@@ -8777,7 +9049,10 @@
             "R19: ⅓ sachet(s)",
             "R05: ¼ sachet(s)",
             "R09: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.9166,
+          "sommable": true
         },
         "Crème liquide": {
           "count": 2,
@@ -8788,7 +9063,10 @@
           "quantites": [
             "R19: 10cl",
             "R15: 50 ml"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 60.0,
+          "sommable": false
         },
         "Gouda râpé": {
           "count": 1,
@@ -8797,7 +9075,10 @@
           ],
           "quantites": [
             "R19: 60g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 60.0,
+          "sommable": true
         },
         "Épinards": {
           "count": 2,
@@ -8808,7 +9089,10 @@
           "quantites": [
             "R19: 125g",
             "R03: 125g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 250.0,
+          "sommable": true
         },
         "Curcuma en poudre": {
           "count": 1,
@@ -8817,7 +9101,10 @@
           ],
           "quantites": [
             "R03: ¼ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.25,
+          "sommable": true
         },
         "Riz": {
           "count": 1,
@@ -8826,7 +9113,10 @@
           ],
           "quantites": [
             "R03: 90g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
         },
         "Noix de cajou concassées": {
           "count": 1,
@@ -8835,7 +9125,10 @@
           ],
           "quantites": [
             "R03: 40g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 40.0,
+          "sommable": true
         },
         "Noix de coco râpée": {
           "count": 1,
@@ -8844,7 +9137,10 @@
           ],
           "quantites": [
             "R03: 10g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 10.0,
+          "sommable": true
         },
         "Curry en poudre": {
           "count": 1,
@@ -8853,7 +9149,10 @@
           ],
           "quantites": [
             "R03: ½ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Lait de coco": {
           "count": 1,
@@ -8862,7 +9161,10 @@
           ],
           "quantites": [
             "R03: 10cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 10.0,
+          "sommable": true
         },
         "Spaghetti": {
           "count": 1,
@@ -8871,7 +9173,10 @@
           ],
           "quantites": [
             "R15: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Persil": {
           "count": 1,
@@ -8880,7 +9185,10 @@
           ],
           "quantites": [
             "R15: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Chapelure panko": {
           "count": 1,
@@ -8889,7 +9197,10 @@
           ],
           "quantites": [
             "R15: 10 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 10.0,
+          "sommable": true
         },
         "Noix concassées": {
           "count": 1,
@@ -8898,7 +9209,10 @@
           ],
           "quantites": [
             "R15: 15g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 15.0,
+          "sommable": true
         },
         "Lardons fumés": {
           "count": 1,
@@ -8907,7 +9221,10 @@
           ],
           "quantites": [
             "R15: 150g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 150.0,
+          "sommable": true
         },
         "Parmesan râpé": {
           "count": 1,
@@ -8916,7 +9233,10 @@
           ],
           "quantites": [
             "R15: 20 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Tomates cerises rouges": {
           "count": 1,
@@ -8925,7 +9245,10 @@
           ],
           "quantites": [
             "R05: 125g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 125.0,
+          "sommable": true
         },
         "Tagliatelle fraîches": {
           "count": 1,
@@ -8934,7 +9257,10 @@
           ],
           "quantites": [
             "R05: 125 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 125.0,
+          "sommable": true
         },
         "Pesto rosso": {
           "count": 2,
@@ -8945,7 +9271,10 @@
           "quantites": [
             "R05: 100g",
             "R09: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Mozzarella": {
           "count": 2,
@@ -8956,7 +9285,10 @@
           "quantites": [
             "R05: ½ pièce(s)",
             "R09: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Basilic": {
           "count": 1,
@@ -8965,7 +9297,10 @@
           ],
           "quantites": [
             "R05: 8g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 8.0,
+          "sommable": true
         },
         "Prosciutto crudo": {
           "count": 1,
@@ -8974,7 +9309,10 @@
           ],
           "quantites": [
             "R09: 25 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 25.0,
+          "sommable": true
         },
         "Pain naan": {
           "count": 1,
@@ -8983,7 +9321,10 @@
           ],
           "quantites": [
             "R09: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Salade": {
           "count": 1,
@@ -8992,7 +9333,10 @@
           ],
           "quantites": [
             "R09: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         }
       }
     },
@@ -9062,7 +9406,10 @@
           ],
           "quantites": [
             "R14: 5g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 5.0,
+          "sommable": true
         },
         "Maïs en conserve": {
           "count": 1,
@@ -9071,7 +9418,10 @@
           ],
           "quantites": [
             "R14: 70g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 70.0,
+          "sommable": true
         },
         "Ail": {
           "count": 7,
@@ -9092,7 +9442,10 @@
             "R36: ½ pièce(s)",
             "R35: ½ pièce(s)",
             "R26: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 4.0,
+          "sommable": true
         },
         "Épinards": {
           "count": 2,
@@ -9103,7 +9456,10 @@
           "quantites": [
             "R14: 125g",
             "R36: 125g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 250.0,
+          "sommable": true
         },
         "Chair à saucisse": {
           "count": 2,
@@ -9114,7 +9470,10 @@
           "quantites": [
             "R14: 100g",
             "R20: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Paprika fumé en poudre": {
           "count": 1,
@@ -9123,7 +9482,10 @@
           ],
           "quantites": [
             "R14: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
         },
         "Chair de tomates": {
           "count": 3,
@@ -9136,7 +9498,10 @@
             "R14: ½ paquet(s)",
             "R20: 200g",
             "R26: 200g"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 400.5,
+          "sommable": false
         },
         "Sauce Chipotle au piment": {
           "count": 1,
@@ -9145,7 +9510,10 @@
           ],
           "quantites": [
             "R14: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
         },
         "Semoule / Couscous": {
           "count": 1,
@@ -9154,7 +9522,10 @@
           ],
           "quantites": [
             "R14: 90g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
         },
         "Guacamole": {
           "count": 2,
@@ -9165,7 +9536,10 @@
           "quantites": [
             "R14: 40 g",
             "R20: 40 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 80.0,
+          "sommable": true
         },
         "Oignon": {
           "count": 3,
@@ -9178,7 +9552,10 @@
             "R20: ½ pièce(s)",
             "R16: ½ pièce(s)",
             "R27: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
         },
         "Poivron": {
           "count": 1,
@@ -9187,7 +9564,10 @@
           ],
           "quantites": [
             "R20: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Épices mexicaines": {
           "count": 1,
@@ -9196,7 +9576,10 @@
           ],
           "quantites": [
             "R20: ½ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Tortillas": {
           "count": 2,
@@ -9207,7 +9590,10 @@
           "quantites": [
             "R20: 2 pièce(s)",
             "R16: 2 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 4.0,
+          "sommable": true
         },
         "Cheddar râpé": {
           "count": 1,
@@ -9216,7 +9602,10 @@
           ],
           "quantites": [
             "R20: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Salade": {
           "count": 2,
@@ -9227,7 +9616,10 @@
           "quantites": [
             "R20: 100g",
             "R35: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Tomate": {
           "count": 2,
@@ -9238,7 +9630,10 @@
           "quantites": [
             "R20: ½ pièce(s)",
             "R16: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
         },
         "Sucrine": {
           "count": 2,
@@ -9249,7 +9644,10 @@
           "quantites": [
             "R16: 1 pièce(s)",
             "R26: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
         },
         "Dés de filet de dinde": {
           "count": 2,
@@ -9260,7 +9658,10 @@
           "quantites": [
             "R16: 100g",
             "R27: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Origan séché": {
           "count": 2,
@@ -9271,7 +9672,10 @@
           "quantites": [
             "R16: ½ sachet(s)",
             "R26: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.8333,
+          "sommable": true
         },
         "Mayonnaise": {
           "count": 1,
@@ -9280,7 +9684,10 @@
           ],
           "quantites": [
             "R16: 10g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 10.0,
+          "sommable": true
         },
         "Yaourt à la grecque": {
           "count": 1,
@@ -9289,7 +9696,10 @@
           ],
           "quantites": [
             "R16: 75g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 75.0,
+          "sommable": true
         },
         "Parmesan râpé": {
           "count": 3,
@@ -9302,7 +9712,10 @@
             "R16: 30g",
             "R36: 30g",
             "R26: 30g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
         },
         "Riz": {
           "count": 1,
@@ -9311,7 +9724,10 @@
           ],
           "quantites": [
             "R27: 90g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
         },
         "Petits pois en conserve": {
           "count": 1,
@@ -9320,7 +9736,10 @@
           ],
           "quantites": [
             "R27: 80g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 80.0,
+          "sommable": true
         },
         "Basilic": {
           "count": 3,
@@ -9333,7 +9752,10 @@
             "R27: 8g",
             "R36: ¼ sachet(s)",
             "R35: 8g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 16.25,
+          "sommable": false
         },
         "Citron": {
           "count": 2,
@@ -9344,7 +9766,10 @@
           "quantites": [
             "R27: ¼ pièce(s)",
             "R36: ¼ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Curry rouge": {
           "count": 1,
@@ -9353,7 +9778,10 @@
           ],
           "quantites": [
             "R27: ½ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Lait de coco": {
           "count": 1,
@@ -9362,7 +9790,10 @@
           ],
           "quantites": [
             "R27: 10cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 10.0,
+          "sommable": true
         },
         "Noix de cajou concassées": {
           "count": 2,
@@ -9373,7 +9804,10 @@
           "quantites": [
             "R27: 15g",
             "R36: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 35.0,
+          "sommable": true
         },
         "Linguine": {
           "count": 1,
@@ -9382,7 +9816,10 @@
           ],
           "quantites": [
             "R36: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Tomates cerises rouges": {
           "count": 2,
@@ -9393,7 +9830,10 @@
           "quantites": [
             "R36: 125g",
             "R35: 125g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 250.0,
+          "sommable": true
         },
         "Penne": {
           "count": 1,
@@ -9402,7 +9842,10 @@
           ],
           "quantites": [
             "R35: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Burrata": {
           "count": 1,
@@ -9411,7 +9854,10 @@
           ],
           "quantites": [
             "R35: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Crème de basilic": {
           "count": 1,
@@ -9420,7 +9866,10 @@
           ],
           "quantites": [
             "R35: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Échalote": {
           "count": 1,
@@ -9429,7 +9878,10 @@
           ],
           "quantites": [
             "R26: ¼ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.25,
+          "sommable": true
         },
         "Olives Kalamata dénoyautées": {
           "count": 1,
@@ -9438,7 +9890,10 @@
           ],
           "quantites": [
             "R26: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Thon au naturel": {
           "count": 1,
@@ -9447,7 +9902,10 @@
           ],
           "quantites": [
             "R26: 70g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 70.0,
+          "sommable": true
         },
         "Pain naan": {
           "count": 1,
@@ -9456,7 +9914,10 @@
           ],
           "quantites": [
             "R26: 2 pièces"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
         }
       }
     },
@@ -9532,7 +9993,10 @@
             "R24: ½ pièce(s)",
             "R11: ½ pièce(s)",
             "R10: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
         },
         "Mélange d'épices du Moyen-Orient": {
           "count": 1,
@@ -9541,7 +10005,10 @@
           ],
           "quantites": [
             "R13: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
         },
         "Poivrons grillés": {
           "count": 1,
@@ -9550,7 +10017,10 @@
           ],
           "quantites": [
             "R13: ½ paquet(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Semoule / Couscous": {
           "count": 2,
@@ -9561,7 +10031,10 @@
           "quantites": [
             "R13: 90g",
             "R23: 90g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 180.0,
+          "sommable": true
         },
         "Raisins secs": {
           "count": 1,
@@ -9570,7 +10043,10 @@
           ],
           "quantites": [
             "R13: 15g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 15.0,
+          "sommable": true
         },
         "Merguez": {
           "count": 3,
@@ -9583,7 +10059,10 @@
             "R13: 2 pièce(s)",
             "R23: 2 pièce(s)",
             "R24: 2 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 6.0,
+          "sommable": true
         },
         "Mini concombre / Concombre": {
           "count": 1,
@@ -9592,7 +10071,10 @@
           ],
           "quantites": [
             "R13: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Menthe": {
           "count": 1,
@@ -9601,7 +10083,10 @@
           ],
           "quantites": [
             "R13: 4g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 4.0,
+          "sommable": true
         },
         "Yaourt à la grecque": {
           "count": 1,
@@ -9610,7 +10095,10 @@
           ],
           "quantites": [
             "R13: 75g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 75.0,
+          "sommable": true
         },
         "Oignon": {
           "count": 4,
@@ -9625,7 +10113,10 @@
             "R02: ½ pièce(s)",
             "R24: ½ pièce(s)",
             "R33: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
         },
         "Courgette": {
           "count": 1,
@@ -9634,7 +10125,10 @@
           ],
           "quantites": [
             "R23: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Tomate": {
           "count": 3,
@@ -9647,7 +10141,10 @@
             "R23: 1 pièce(s)",
             "R24: ½ pièce(s)",
             "R11: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.5,
+          "sommable": true
         },
         "Persil": {
           "count": 2,
@@ -9658,7 +10155,10 @@
           "quantites": [
             "R23: 20g",
             "R10: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 40.0,
+          "sommable": true
         },
         "Citron": {
           "count": 1,
@@ -9667,7 +10167,10 @@
           ],
           "quantites": [
             "R23: ¼ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.25,
+          "sommable": true
         },
         "Cumin en poudre": {
           "count": 1,
@@ -9676,7 +10179,10 @@
           ],
           "quantites": [
             "R23: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
         },
         "Harissa": {
           "count": 1,
@@ -9685,7 +10191,10 @@
           ],
           "quantites": [
             "R23: 3g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 3.0,
+          "sommable": true
         },
         "Labneh": {
           "count": 1,
@@ -9694,7 +10203,10 @@
           ],
           "quantites": [
             "R23: 50g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 50.0,
+          "sommable": true
         },
         "Fusilli complets": {
           "count": 2,
@@ -9705,7 +10217,10 @@
           "quantites": [
             "R02: 90 g",
             "R33: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 190.0,
+          "sommable": true
         },
         "Basilic": {
           "count": 2,
@@ -9716,7 +10231,10 @@
           "quantites": [
             "R02: 15g",
             "R11: 8g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 23.0,
+          "sommable": true
         },
         "Thon au naturel": {
           "count": 2,
@@ -9727,7 +10245,10 @@
           "quantites": [
             "R02: 70g",
             "R11: 70g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 140.0,
+          "sommable": true
         },
         "Conchiglie": {
           "count": 1,
@@ -9736,7 +10257,10 @@
           ],
           "quantites": [
             "R02: 100 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Tomates semi-séchées": {
           "count": 1,
@@ -9745,7 +10269,10 @@
           ],
           "quantites": [
             "R02: ½ paquet(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Tomates cerises rouges": {
           "count": 2,
@@ -9756,7 +10283,10 @@
           "quantites": [
             "R02: 125g",
             "R10: 125g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 250.0,
+          "sommable": true
         },
         "Pesto vert alla genovese": {
           "count": 1,
@@ -9765,7 +10295,10 @@
           ],
           "quantites": [
             "R02: 80g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 80.0,
+          "sommable": true
         },
         "Poivron": {
           "count": 2,
@@ -9776,7 +10309,10 @@
           "quantites": [
             "R24: 1 pièce(s)",
             "R11: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
         },
         "Origan séché": {
           "count": 2,
@@ -9787,7 +10323,10 @@
           "quantites": [
             "R24: ⅓ sachet(s)",
             "R10: ¼ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.5833,
+          "sommable": true
         },
         "Sucrine": {
           "count": 2,
@@ -9798,7 +10337,10 @@
           "quantites": [
             "R24: ½ pièce(s)",
             "R10: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
         },
         "Pain à hot-dog": {
           "count": 1,
@@ -9807,7 +10349,10 @@
           ],
           "quantites": [
             "R24: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Ketchup": {
           "count": 1,
@@ -9816,7 +10361,10 @@
           ],
           "quantites": [
             "R24: 4cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 4.0,
+          "sommable": true
         },
         "Échalote": {
           "count": 1,
@@ -9825,7 +10373,10 @@
           ],
           "quantites": [
             "R11: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Riz": {
           "count": 1,
@@ -9834,7 +10385,10 @@
           ],
           "quantites": [
             "R11: 90g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
         },
         "Thym séché": {
           "count": 1,
@@ -9843,7 +10397,10 @@
           ],
           "quantites": [
             "R11: 2g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 2.0,
+          "sommable": true
         },
         "Olives Kalamata dénoyautées": {
           "count": 1,
@@ -9852,7 +10409,10 @@
           ],
           "quantites": [
             "R11: 10 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 10.0,
+          "sommable": true
         },
         "Salade": {
           "count": 1,
@@ -9861,7 +10421,10 @@
           ],
           "quantites": [
             "R11: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Lardons fumés": {
           "count": 1,
@@ -9870,7 +10433,10 @@
           ],
           "quantites": [
             "R10: 150g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 150.0,
+          "sommable": true
         },
         "Petit pain": {
           "count": 1,
@@ -9879,7 +10445,10 @@
           ],
           "quantites": [
             "R10: 90g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
         },
         "Avocat": {
           "count": 1,
@@ -9888,7 +10457,10 @@
           ],
           "quantites": [
             "R10: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Ciboulette": {
           "count": 1,
@@ -9897,7 +10469,10 @@
           ],
           "quantites": [
             "R33: 3g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 3.0,
+          "sommable": true
         },
         "Fromage bleu": {
           "count": 1,
@@ -9906,7 +10481,10 @@
           ],
           "quantites": [
             "R33: 62.5"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 62.5,
+          "sommable": true
         },
         "Tranches de poitrine fumée": {
           "count": 1,
@@ -9915,7 +10493,10 @@
           ],
           "quantites": [
             "R33: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Crème liquide": {
           "count": 1,
@@ -9924,7 +10505,10 @@
           ],
           "quantites": [
             "R33: 20cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Noix concassées": {
           "count": 1,
@@ -9933,7 +10517,10 @@
           ],
           "quantites": [
             "R33: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
         }
       }
     },
@@ -10005,7 +10592,10 @@
           "quantites": [
             "R22: 90g",
             "R25: 90g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 180.0,
+          "sommable": true
         },
         "Oignon": {
           "count": 4,
@@ -10020,7 +10610,10 @@
             "R31: ½ pièce(s)",
             "R08: ½ pièce(s)",
             "R04: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
         },
         "Ail": {
           "count": 5,
@@ -10037,7 +10630,10 @@
             "R38: ½ pièce(s)",
             "R08: ½ pièce(s)",
             "R04: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.5,
+          "sommable": true
         },
         "Pak choï": {
           "count": 1,
@@ -10046,7 +10642,10 @@
           ],
           "quantites": [
             "R22: 125g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 125.0,
+          "sommable": true
         },
         "Filet de poulet": {
           "count": 4,
@@ -10061,7 +10660,10 @@
             "R37: 130g",
             "R31: 130g",
             "R38: 130g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 520.0,
+          "sommable": true
         },
         "Sauce au chili sucrée et épicée": {
           "count": 1,
@@ -10070,7 +10672,10 @@
           ],
           "quantites": [
             "R22: 3cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 3.0,
+          "sommable": true
         },
         "Sauce soja": {
           "count": 1,
@@ -10079,7 +10684,10 @@
           ],
           "quantites": [
             "R22: 3cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 3.0,
+          "sommable": true
         },
         "Mayonnaise": {
           "count": 2,
@@ -10090,7 +10698,10 @@
           "quantites": [
             "R22: 20g",
             "R31: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 40.0,
+          "sommable": true
         },
         "Cacahuètes non salées": {
           "count": 1,
@@ -10099,7 +10710,10 @@
           ],
           "quantites": [
             "R22: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Ciboulette": {
           "count": 1,
@@ -10108,7 +10722,10 @@
           ],
           "quantites": [
             "R37: 3g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 3.0,
+          "sommable": true
         },
         "Piment": {
           "count": 1,
@@ -10117,7 +10734,10 @@
           ],
           "quantites": [
             "R37: Une pincé"
-          ]
+          ],
+          "unite": "libre",
+          "total_base_1p": 0.0,
+          "sommable": false
         },
         "Gingembre frais": {
           "count": 1,
@@ -10126,7 +10746,10 @@
           ],
           "quantites": [
             "R37: 1/4 sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Nouilles aux oeufs": {
           "count": 1,
@@ -10135,7 +10758,10 @@
           ],
           "quantites": [
             "R37: 100 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Sauce poisson": {
           "count": 1,
@@ -10144,7 +10770,10 @@
           ],
           "quantites": [
             "R37: 3cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 3.0,
+          "sommable": true
         },
         "Curry en poudre": {
           "count": 1,
@@ -10153,7 +10782,10 @@
           ],
           "quantites": [
             "R37: ¼ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.25,
+          "sommable": true
         },
         "Lait de coco": {
           "count": 1,
@@ -10162,7 +10794,10 @@
           ],
           "quantites": [
             "R37: 10cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 10.0,
+          "sommable": true
         },
         "Carotte": {
           "count": 1,
@@ -10171,7 +10806,10 @@
           ],
           "quantites": [
             "R37: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Pain burger": {
           "count": 1,
@@ -10180,7 +10818,10 @@
           ],
           "quantites": [
             "R31: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Thym séché": {
           "count": 1,
@@ -10189,7 +10830,10 @@
           ],
           "quantites": [
             "R31: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
         },
         "Fromage bleu": {
           "count": 1,
@@ -10198,7 +10842,10 @@
           ],
           "quantites": [
             "R31: 30 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 30.0,
+          "sommable": true
         },
         "Tomate": {
           "count": 2,
@@ -10209,7 +10856,10 @@
           "quantites": [
             "R31: ½ pièce(s)",
             "R25: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Sucrine": {
           "count": 1,
@@ -10218,7 +10868,10 @@
           ],
           "quantites": [
             "R31: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Poivron": {
           "count": 3,
@@ -10231,7 +10884,10 @@
             "R38: ½ pièce(s)",
             "R25: ½ pièce(s)",
             "R08: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
         },
         "Courgette": {
           "count": 2,
@@ -10242,7 +10898,10 @@
           "quantites": [
             "R38: ½ pièce(s)",
             "R08: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Orzo": {
           "count": 1,
@@ -10251,7 +10910,10 @@
           ],
           "quantites": [
             "R38: 90g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
         },
         "Paprika fumé en poudre": {
           "count": 1,
@@ -10260,7 +10922,10 @@
           ],
           "quantites": [
             "R38: ½ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Dés de chorizo": {
           "count": 2,
@@ -10271,7 +10936,10 @@
           "quantites": [
             "R38: 30g",
             "R08: 60g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
         },
         "Crème épaisse": {
           "count": 1,
@@ -10280,7 +10948,10 @@
           ],
           "quantites": [
             "R38: 10cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 10.0,
+          "sommable": true
         },
         "Feuille de laurier": {
           "count": 1,
@@ -10289,7 +10960,10 @@
           ],
           "quantites": [
             "R25: 1 feuille"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Épices mexicaines": {
           "count": 1,
@@ -10298,7 +10972,10 @@
           ],
           "quantites": [
             "R25: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
         },
         "Concentré de tomates": {
           "count": 2,
@@ -10309,7 +10986,10 @@
           "quantites": [
             "R25: 20g",
             "R08: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 40.0,
+          "sommable": true
         },
         "Avocat": {
           "count": 1,
@@ -10318,7 +10998,10 @@
           ],
           "quantites": [
             "R25: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Effiloché de porc": {
           "count": 1,
@@ -10327,7 +11010,10 @@
           ],
           "quantites": [
             "R25: 120g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 120.0,
+          "sommable": true
         },
         "Oignons frits": {
           "count": 1,
@@ -10336,7 +11022,10 @@
           ],
           "quantites": [
             "R25: 10g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 10.0,
+          "sommable": true
         },
         "Origan séché": {
           "count": 1,
@@ -10345,7 +11034,10 @@
           ],
           "quantites": [
             "R08: ¼ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.25,
+          "sommable": true
         },
         "Girasoli tomate & mozzarella": {
           "count": 1,
@@ -10354,7 +11046,10 @@
           ],
           "quantites": [
             "R08: 150 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 150.0,
+          "sommable": true
         },
         "Mascarpone": {
           "count": 1,
@@ -10363,7 +11058,10 @@
           ],
           "quantites": [
             "R08: 50g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 50.0,
+          "sommable": true
         },
         "Champignons de Paris": {
           "count": 1,
@@ -10372,7 +11070,10 @@
           ],
           "quantites": [
             "R04: 65g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 65.0,
+          "sommable": true
         },
         "Prosciutto crudo": {
           "count": 1,
@@ -10381,7 +11082,10 @@
           ],
           "quantites": [
             "R04: 35 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 35.0,
+          "sommable": true
         },
         "Gnocchi": {
           "count": 1,
@@ -10390,7 +11094,10 @@
           ],
           "quantites": [
             "R04: 90 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
         },
         "Herbes de Provence": {
           "count": 1,
@@ -10399,7 +11106,10 @@
           ],
           "quantites": [
             "R04: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
         },
         "Crème liquide": {
           "count": 1,
@@ -10408,7 +11118,10 @@
           ],
           "quantites": [
             "R04: 10cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 10.0,
+          "sommable": true
         },
         "Salade": {
           "count": 1,
@@ -10417,7 +11130,10 @@
           ],
           "quantites": [
             "R04: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         }
       }
     },
@@ -10489,7 +11205,10 @@
           "quantites": [
             "R06: 90g",
             "R21: 90g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 180.0,
+          "sommable": true
         },
         "Herbes de Provence": {
           "count": 2,
@@ -10500,7 +11219,10 @@
           "quantites": [
             "R06: ¼ sachet(s)",
             "R18: ¼ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Saucisse de Toulouse": {
           "count": 2,
@@ -10511,7 +11233,10 @@
           "quantites": [
             "R06: 1 pièce(s)",
             "R21: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
         },
         "Courgette": {
           "count": 2,
@@ -10522,7 +11247,10 @@
           "quantites": [
             "R06: ½ pièce(s)",
             "R28: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
         },
         "Tomate": {
           "count": 3,
@@ -10535,7 +11263,10 @@
             "R06: 1 pièce(s)",
             "R32: 1 pièce(s)",
             "R29: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.0,
+          "sommable": true
         },
         "Ail": {
           "count": 5,
@@ -10552,7 +11283,10 @@
             "R18: ½ pièce(s)",
             "R39: ½ pièce(s)",
             "R28: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.0,
+          "sommable": true
         },
         "Oignon": {
           "count": 4,
@@ -10567,7 +11301,10 @@
             "R21: 1 pièce(s)",
             "R18: ½ pièce(s)",
             "R39: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.5,
+          "sommable": true
         },
         "Basilic": {
           "count": 3,
@@ -10580,7 +11317,10 @@
             "R06: 8g",
             "R29: 8g",
             "R28: 8g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 24.0,
+          "sommable": true
         },
         "Pesto rosso": {
           "count": 2,
@@ -10591,7 +11331,10 @@
           "quantites": [
             "R06: 100g",
             "R29: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Poivron": {
           "count": 2,
@@ -10602,7 +11345,10 @@
           "quantites": [
             "R21: ½ pièce(s)",
             "R29: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Citron": {
           "count": 1,
@@ -10611,7 +11357,10 @@
           ],
           "quantites": [
             "R21: ¼ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.25,
+          "sommable": true
         },
         "Concentré de tomates": {
           "count": 1,
@@ -10620,7 +11369,10 @@
           ],
           "quantites": [
             "R21: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Mélange d'épices africaines": {
           "count": 1,
@@ -10629,7 +11381,10 @@
           ],
           "quantites": [
             "R21: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
         },
         "Chair de tomates": {
           "count": 1,
@@ -10638,7 +11393,10 @@
           ],
           "quantites": [
             "R21: 200g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Crème épaisse": {
           "count": 1,
@@ -10647,7 +11405,10 @@
           ],
           "quantites": [
             "R21: 10cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 10.0,
+          "sommable": true
         },
         "Cerfeuil": {
           "count": 1,
@@ -10656,7 +11417,10 @@
           ],
           "quantites": [
             "R18: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Tranches de carré de porc": {
           "count": 1,
@@ -10665,7 +11429,10 @@
           ],
           "quantites": [
             "R18: 150g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 150.0,
+          "sommable": true
         },
         "Fricassée de champignons émincés": {
           "count": 1,
@@ -10674,7 +11441,10 @@
           ],
           "quantites": [
             "R18: 65g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 65.0,
+          "sommable": true
         },
         "Crème liquide": {
           "count": 1,
@@ -10683,7 +11453,10 @@
           ],
           "quantites": [
             "R18: 10cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 10.0,
+          "sommable": true
         },
         "Spaghetti": {
           "count": 1,
@@ -10692,7 +11465,10 @@
           ],
           "quantites": [
             "R18: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Noix concassées": {
           "count": 1,
@@ -10701,7 +11477,10 @@
           ],
           "quantites": [
             "R18: 15g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 15.0,
+          "sommable": true
         },
         "Rigatoni": {
           "count": 1,
@@ -10710,7 +11489,10 @@
           ],
           "quantites": [
             "R32: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Abricot": {
           "count": 1,
@@ -10719,7 +11501,10 @@
           ],
           "quantites": [
             "R32: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Filet de canard": {
           "count": 1,
@@ -10728,7 +11513,10 @@
           ],
           "quantites": [
             "R32: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Thym séché": {
           "count": 1,
@@ -10737,7 +11525,10 @@
           ],
           "quantites": [
             "R32: 2g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 2.0,
+          "sommable": true
         },
         "Crème de basilic": {
           "count": 2,
@@ -10748,7 +11539,10 @@
           "quantites": [
             "R32: 100g",
             "R28: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Salade": {
           "count": 2,
@@ -10759,7 +11553,10 @@
           "quantites": [
             "R32: 100g",
             "R29: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Carotte": {
           "count": 1,
@@ -10768,7 +11565,10 @@
           ],
           "quantites": [
             "R39: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Ciboulette": {
           "count": 1,
@@ -10777,7 +11577,10 @@
           ],
           "quantites": [
             "R39: 5g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 5.0,
+          "sommable": true
         },
         "Gingembre frais": {
           "count": 1,
@@ -10786,7 +11589,10 @@
           ],
           "quantites": [
             "R39: 1/4 sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Escalope de dinde": {
           "count": 1,
@@ -10795,7 +11601,10 @@
           ],
           "quantites": [
             "R39: 120 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 120.0,
+          "sommable": true
         },
         "Lait de coco": {
           "count": 1,
@@ -10804,7 +11613,10 @@
           ],
           "quantites": [
             "R39: 10cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 10.0,
+          "sommable": true
         },
         "Curry en poudre": {
           "count": 1,
@@ -10813,7 +11625,10 @@
           ],
           "quantites": [
             "R39: ½ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Nouilles aux oeufs": {
           "count": 1,
@@ -10822,7 +11637,10 @@
           ],
           "quantites": [
             "R39: 100 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Conchiglie": {
           "count": 2,
@@ -10833,7 +11651,10 @@
           "quantites": [
             "R29: 100g",
             "R28: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Échalote": {
           "count": 1,
@@ -10842,7 +11663,10 @@
           ],
           "quantites": [
             "R29: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Fromage frais aux herbes": {
           "count": 1,
@@ -10851,7 +11675,10 @@
           ],
           "quantites": [
             "R29: 32g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 32.0,
+          "sommable": true
         },
         "Parmesan râpé": {
           "count": 2,
@@ -10862,7 +11689,10 @@
           "quantites": [
             "R29: 30g",
             "R28: 30g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 60.0,
+          "sommable": true
         },
         "Chair à saucisse": {
           "count": 1,
@@ -10871,7 +11701,10 @@
           ],
           "quantites": [
             "R28: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         }
       }
     },
@@ -10943,7 +11776,10 @@
           "quantites": [
             "R07: 90g",
             "R12: 90g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 180.0,
+          "sommable": true
         },
         "Carotte": {
           "count": 3,
@@ -10956,7 +11792,10 @@
             "R07: ½ pièce(s)",
             "R34: ½ pièce(s)",
             "R12: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
         },
         "Poivron": {
           "count": 1,
@@ -10965,7 +11804,10 @@
           ],
           "quantites": [
             "R07: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Ail": {
           "count": 5,
@@ -10982,7 +11824,10 @@
             "R12: 1 pièce(s)",
             "R17: 1 pièce(s)",
             "R26: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 4.0,
+          "sommable": true
         },
         "Gingembre frais": {
           "count": 2,
@@ -10993,7 +11838,10 @@
           "quantites": [
             "R07: 1/4 sachet(s)",
             "R12: 1/4 sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 2.0,
+          "sommable": true
         },
         "Ciboulette": {
           "count": 2,
@@ -11004,7 +11852,10 @@
           "quantites": [
             "R07: 15 g",
             "R12: 4g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 19.0,
+          "sommable": true
         },
         "Viande hachée au bœuf": {
           "count": 2,
@@ -11015,7 +11866,10 @@
           "quantites": [
             "R07: 100g",
             "R34: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Sauce umami à l'huître": {
           "count": 1,
@@ -11024,7 +11878,10 @@
           ],
           "quantites": [
             "R07: 3cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 3.0,
+          "sommable": true
         },
         "Sauce sriracha": {
           "count": 1,
@@ -11033,7 +11890,10 @@
           ],
           "quantites": [
             "R07: 1cl"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Cacahuètes non salées": {
           "count": 1,
@@ -11042,7 +11902,10 @@
           ],
           "quantites": [
             "R07: ½ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Oignon": {
           "count": 3,
@@ -11055,7 +11918,10 @@
             "R34: 1 pièce(s)",
             "R12: ½ pièce(s)",
             "R17: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
         },
         "Menthe": {
           "count": 1,
@@ -11064,7 +11930,10 @@
           ],
           "quantites": [
             "R34: 4g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 4.0,
+          "sommable": true
         },
         "Fusilli complets": {
           "count": 1,
@@ -11073,7 +11942,10 @@
           ],
           "quantites": [
             "R34: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Yaourt à la grecque": {
           "count": 2,
@@ -11084,7 +11956,10 @@
           "quantites": [
             "R34: 75g",
             "R30: 75g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 150.0,
+          "sommable": true
         },
         "Mélange d'épices du Moyen-Orient": {
           "count": 1,
@@ -11093,7 +11968,10 @@
           ],
           "quantites": [
             "R34: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
         },
         "Paprika fumé en poudre": {
           "count": 1,
@@ -11102,7 +11980,10 @@
           ],
           "quantites": [
             "R34: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
         },
         "Concentré de tomates": {
           "count": 1,
@@ -11111,7 +11992,10 @@
           ],
           "quantites": [
             "R34: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Poireau": {
           "count": 1,
@@ -11120,7 +12004,10 @@
           ],
           "quantites": [
             "R12: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Sauce soja": {
           "count": 1,
@@ -11129,7 +12016,10 @@
           ],
           "quantites": [
             "R12: 20 ml"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Huile de sésame": {
           "count": 1,
@@ -11138,7 +12028,10 @@
           ],
           "quantites": [
             "R12: 5 ml"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 5.0,
+          "sommable": true
         },
         "Filet de poulet": {
           "count": 1,
@@ -11147,7 +12040,10 @@
           ],
           "quantites": [
             "R12: 130g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 130.0,
+          "sommable": true
         },
         "Graines de sésame": {
           "count": 1,
@@ -11156,7 +12052,10 @@
           ],
           "quantites": [
             "R12: 3 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 3.0,
+          "sommable": true
         },
         "Linguine": {
           "count": 1,
@@ -11165,7 +12064,10 @@
           ],
           "quantites": [
             "R17: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Fenouil": {
           "count": 1,
@@ -11174,7 +12076,10 @@
           ],
           "quantites": [
             "R17: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Chair à saucisse": {
           "count": 1,
@@ -11183,7 +12088,10 @@
           ],
           "quantites": [
             "R17: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Basilic": {
           "count": 1,
@@ -11192,7 +12100,10 @@
           ],
           "quantites": [
             "R17: 8g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 8.0,
+          "sommable": true
         },
         "Parmesan râpé": {
           "count": 2,
@@ -11203,7 +12114,10 @@
           "quantites": [
             "R17: 30g",
             "R26: 30g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 60.0,
+          "sommable": true
         },
         "Mascarpone": {
           "count": 1,
@@ -11212,7 +12126,10 @@
           ],
           "quantites": [
             "R17: 50g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 50.0,
+          "sommable": true
         },
         "Crème de basilic": {
           "count": 1,
@@ -11221,7 +12138,10 @@
           ],
           "quantites": [
             "R17: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Tomate": {
           "count": 2,
@@ -11232,7 +12152,10 @@
           "quantites": [
             "R30: 1 pièce(s)",
             "R09: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
         },
         "Avocat": {
           "count": 1,
@@ -11241,7 +12164,10 @@
           ],
           "quantites": [
             "R30: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Sucrine": {
           "count": 2,
@@ -11252,7 +12178,10 @@
           "quantites": [
             "R30: 1 pièce(s)",
             "R26: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
         },
         "Persil": {
           "count": 1,
@@ -11261,7 +12190,10 @@
           ],
           "quantites": [
             "R30: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Mayonnaise": {
           "count": 1,
@@ -11270,7 +12202,10 @@
           ],
           "quantites": [
             "R30: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Tortillas": {
           "count": 1,
@@ -11279,7 +12214,10 @@
           ],
           "quantites": [
             "R30: 2 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
         },
         "Origan séché": {
           "count": 3,
@@ -11292,7 +12230,10 @@
             "R30: ⅓ sachet(s)",
             "R09: ⅓ sachet(s)",
             "R26: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.9999,
+          "sommable": true
         },
         "Tranches de poulet cuit": {
           "count": 1,
@@ -11301,7 +12242,10 @@
           ],
           "quantites": [
             "R30: 2 tranche(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
         },
         "Fromage à la grecque": {
           "count": 1,
@@ -11310,7 +12254,10 @@
           ],
           "quantites": [
             "R30: 75g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 75.0,
+          "sommable": true
         },
         "Mozzarella": {
           "count": 1,
@@ -11319,7 +12266,10 @@
           ],
           "quantites": [
             "R09: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Prosciutto crudo": {
           "count": 1,
@@ -11328,7 +12278,10 @@
           ],
           "quantites": [
             "R09: 25 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 25.0,
+          "sommable": true
         },
         "Pain naan": {
           "count": 2,
@@ -11339,7 +12292,10 @@
           "quantites": [
             "R09: 1 pièce(s)",
             "R26: 2 pièces"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.0,
+          "sommable": true
         },
         "Pesto rosso": {
           "count": 1,
@@ -11348,7 +12304,10 @@
           ],
           "quantites": [
             "R09: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Salade": {
           "count": 1,
@@ -11357,7 +12316,10 @@
           ],
           "quantites": [
             "R09: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Échalote": {
           "count": 1,
@@ -11366,7 +12328,10 @@
           ],
           "quantites": [
             "R26: ¼ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.25,
+          "sommable": true
         },
         "Olives Kalamata dénoyautées": {
           "count": 1,
@@ -11375,7 +12340,10 @@
           ],
           "quantites": [
             "R26: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Thon au naturel": {
           "count": 1,
@@ -11384,7 +12352,10 @@
           ],
           "quantites": [
             "R26: 70g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 70.0,
+          "sommable": true
         },
         "Chair de tomates": {
           "count": 1,
@@ -11393,7 +12364,10 @@
           ],
           "quantites": [
             "R26: 200g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         }
       }
     }
@@ -11609,7 +12583,10 @@
           ],
           "quantites": [
             "R04: 65g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 65.0,
+          "sommable": true
         },
         "Oignon": {
           "count": 2,
@@ -11620,7 +12597,10 @@
           "quantites": [
             "R04: ½ pièce(s)",
             "R15: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Ail": {
           "count": 6,
@@ -11639,7 +12619,10 @@
             "R10: ½ pièce(s)",
             "R15: ½ pièce(s)",
             "R36: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.0,
+          "sommable": true
         },
         "Prosciutto crudo": {
           "count": 2,
@@ -11650,7 +12633,10 @@
           "quantites": [
             "R04: 35 g",
             "R09: 25 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 60.0,
+          "sommable": true
         },
         "Gnocchi": {
           "count": 1,
@@ -11659,7 +12645,10 @@
           ],
           "quantites": [
             "R04: 90 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
         },
         "Herbes de Provence": {
           "count": 1,
@@ -11668,7 +12657,10 @@
           ],
           "quantites": [
             "R04: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
         },
         "Crème liquide": {
           "count": 2,
@@ -11679,7 +12671,10 @@
           "quantites": [
             "R04: 10cl",
             "R15: 50 ml"
-          ]
+          ],
+          "unite": "cl",
+          "total_base_1p": 60.0,
+          "sommable": false
         },
         "Salade": {
           "count": 3,
@@ -11692,7 +12687,10 @@
             "R04: 100g",
             "R35: 100g",
             "R09: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 300.0,
+          "sommable": true
         },
         "Tomates cerises rouges": {
           "count": 4,
@@ -11707,7 +12705,10 @@
             "R35: 125g",
             "R10: 125g",
             "R36: 125g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 500.0,
+          "sommable": true
         },
         "Tagliatelle fraîches": {
           "count": 1,
@@ -11716,7 +12717,10 @@
           ],
           "quantites": [
             "R05: 125 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 125.0,
+          "sommable": true
         },
         "Pesto rosso": {
           "count": 2,
@@ -11727,7 +12731,10 @@
           "quantites": [
             "R05: 100g",
             "R09: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Origan séché": {
           "count": 3,
@@ -11740,7 +12747,10 @@
             "R05: ¼ sachet(s)",
             "R10: ¼ sachet(s)",
             "R09: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.8333,
+          "sommable": true
         },
         "Mozzarella": {
           "count": 2,
@@ -11751,7 +12761,10 @@
           "quantites": [
             "R05: ½ pièce(s)",
             "R09: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Basilic": {
           "count": 3,
@@ -11764,7 +12777,10 @@
             "R05: 8g",
             "R35: 8g",
             "R36: ¼ sachet(s)"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 16.25,
+          "sommable": false
         },
         "Penne": {
           "count": 1,
@@ -11773,7 +12789,10 @@
           ],
           "quantites": [
             "R35: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Burrata": {
           "count": 1,
@@ -11782,7 +12801,10 @@
           ],
           "quantites": [
             "R35: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Crème de basilic": {
           "count": 1,
@@ -11791,7 +12813,10 @@
           ],
           "quantites": [
             "R35: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Lardons fumés": {
           "count": 2,
@@ -11802,7 +12827,10 @@
           "quantites": [
             "R10: 150g",
             "R15: 150g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 300.0,
+          "sommable": true
         },
         "Petit pain": {
           "count": 1,
@@ -11811,7 +12839,10 @@
           ],
           "quantites": [
             "R10: 90g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
         },
         "Sucrine": {
           "count": 1,
@@ -11820,7 +12851,10 @@
           ],
           "quantites": [
             "R10: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Avocat": {
           "count": 1,
@@ -11829,7 +12863,10 @@
           ],
           "quantites": [
             "R10: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Persil": {
           "count": 2,
@@ -11840,7 +12877,10 @@
           "quantites": [
             "R10: 20g",
             "R15: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 40.0,
+          "sommable": true
         },
         "Spaghetti": {
           "count": 1,
@@ -11849,7 +12889,10 @@
           ],
           "quantites": [
             "R15: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Chapelure panko": {
           "count": 1,
@@ -11858,7 +12901,10 @@
           ],
           "quantites": [
             "R15: 10 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 10.0,
+          "sommable": true
         },
         "Noix concassées": {
           "count": 1,
@@ -11867,7 +12913,10 @@
           ],
           "quantites": [
             "R15: 15g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 15.0,
+          "sommable": true
         },
         "Parmesan râpé": {
           "count": 2,
@@ -11878,7 +12927,10 @@
           "quantites": [
             "R15: 20 g",
             "R36: 30g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 50.0,
+          "sommable": true
         },
         "Linguine": {
           "count": 1,
@@ -11887,7 +12939,10 @@
           ],
           "quantites": [
             "R36: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Citron": {
           "count": 1,
@@ -11896,7 +12951,10 @@
           ],
           "quantites": [
             "R36: ¼ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.25,
+          "sommable": true
         },
         "Noix de cajou concassées": {
           "count": 1,
@@ -11905,7 +12963,10 @@
           ],
           "quantites": [
             "R36: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Épinards": {
           "count": 1,
@@ -11914,7 +12975,10 @@
           ],
           "quantites": [
             "R36: 125g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 125.0,
+          "sommable": true
         },
         "Tomate": {
           "count": 1,
@@ -11923,7 +12987,10 @@
           ],
           "quantites": [
             "R09: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Pain naan": {
           "count": 1,
@@ -11932,7 +12999,10 @@
           ],
           "quantites": [
             "R09: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         }
       }
     },
@@ -12002,7 +13072,10 @@
           ],
           "quantites": [
             "R02: 90 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
         },
         "Oignon": {
           "count": 3,
@@ -12015,7 +13088,10 @@
             "R02: ½ pièce(s)",
             "R06: ½ pièce(s)",
             "R31: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
         },
         "Basilic": {
           "count": 5,
@@ -12032,7 +13108,10 @@
             "R11: 8g",
             "R06: 8g",
             "R28: 8g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 47.0,
+          "sommable": true
         },
         "Thon au naturel": {
           "count": 3,
@@ -12045,7 +13124,10 @@
             "R02: 70g",
             "R11: 70g",
             "R26: 70g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 210.0,
+          "sommable": true
         },
         "Conchiglie": {
           "count": 3,
@@ -12058,7 +13140,10 @@
             "R02: 100 g",
             "R29: 100g",
             "R28: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 300.0,
+          "sommable": true
         },
         "Tomates semi-séchées": {
           "count": 1,
@@ -12067,7 +13152,10 @@
           ],
           "quantites": [
             "R02: ½ paquet(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
         },
         "Tomates cerises rouges": {
           "count": 1,
@@ -12076,7 +13164,10 @@
           ],
           "quantites": [
             "R02: 125g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 125.0,
+          "sommable": true
         },
         "Pesto vert alla genovese": {
           "count": 1,
@@ -12085,7 +13176,10 @@
           ],
           "quantites": [
             "R02: 80g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 80.0,
+          "sommable": true
         },
         "Échalote": {
           "count": 3,
@@ -12098,7 +13192,10 @@
             "R29: ½ pièce(s)",
             "R11: ½ pièce(s)",
             "R26: ¼ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.25,
+          "sommable": true
         },
         "Poivron": {
           "count": 2,
@@ -12109,7 +13206,10 @@
           "quantites": [
             "R29: ½ pièce(s)",
             "R11: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Tomate": {
           "count": 4,
@@ -12124,7 +13224,10 @@
             "R11: 1 pièce(s)",
             "R06: 1 pièce(s)",
             "R31: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.5,
+          "sommable": true
         },
         "Pesto rosso": {
           "count": 2,
@@ -12135,7 +13238,10 @@
           "quantites": [
             "R29: 100g",
             "R06: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Fromage frais aux herbes": {
           "count": 1,
@@ -12144,7 +13250,10 @@
           ],
           "quantites": [
             "R29: 32g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 32.0,
+          "sommable": true
         },
         "Salade": {
           "count": 2,
@@ -12155,7 +13264,10 @@
           "quantites": [
             "R29: 100g",
             "R11: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Parmesan râpé": {
           "count": 3,
@@ -12168,7 +13280,10 @@
             "R29: 30g",
             "R28: 30g",
             "R26: 30g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
         },
         "Ail": {
           "count": 4,
@@ -12183,7 +13298,10 @@
             "R06: ½ pièce(s)",
             "R28: ½ pièce(s)",
             "R26: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.5,
+          "sommable": true
         },
         "Riz": {
           "count": 2,
@@ -12194,7 +13312,10 @@
           "quantites": [
             "R11: 90g",
             "R06: 90g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 180.0,
+          "sommable": true
         },
         "Thym séché": {
           "count": 2,
@@ -12205,7 +13326,10 @@
           "quantites": [
             "R11: 2g",
             "R31: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 2.3333,
+          "sommable": false
         },
         "Olives Kalamata dénoyautées": {
           "count": 2,
@@ -12216,7 +13340,10 @@
           "quantites": [
             "R11: 10 g",
             "R26: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 30.0,
+          "sommable": true
         },
         "Herbes de Provence": {
           "count": 1,
@@ -12225,7 +13352,10 @@
           ],
           "quantites": [
             "R06: ¼ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.25,
+          "sommable": true
         },
         "Saucisse de Toulouse": {
           "count": 1,
@@ -12234,7 +13364,10 @@
           ],
           "quantites": [
             "R06: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Courgette": {
           "count": 2,
@@ -12245,7 +13378,10 @@
           "quantites": [
             "R06: ½ pièce(s)",
             "R28: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
         },
         "Chair à saucisse": {
           "count": 1,
@@ -12254,7 +13390,10 @@
           ],
           "quantites": [
             "R28: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Crème de basilic": {
           "count": 1,
@@ -12263,7 +13402,10 @@
           ],
           "quantites": [
             "R28: 100g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
         },
         "Pain burger": {
           "count": 1,
@@ -12272,7 +13414,10 @@
           ],
           "quantites": [
             "R31: 1 pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Filet de poulet": {
           "count": 1,
@@ -12281,7 +13426,10 @@
           ],
           "quantites": [
             "R31: 130g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 130.0,
+          "sommable": true
         },
         "Fromage bleu": {
           "count": 1,
@@ -12290,7 +13438,10 @@
           ],
           "quantites": [
             "R31: 30 g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 30.0,
+          "sommable": true
         },
         "Sucrine": {
           "count": 2,
@@ -12301,7 +13452,10 @@
           "quantites": [
             "R31: ½ pièce(s)",
             "R26: ½ pièce(s)"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
         },
         "Mayonnaise": {
           "count": 1,
@@ -12310,7 +13464,10 @@
           ],
           "quantites": [
             "R31: 20g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
         },
         "Chair de tomates": {
           "count": 1,
@@ -12319,7 +13476,10 @@
           ],
           "quantites": [
             "R26: 200g"
-          ]
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
         },
         "Origan séché": {
           "count": 1,
@@ -12328,7 +13488,10 @@
           ],
           "quantites": [
             "R26: ⅓ sachet(s)"
-          ]
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
         },
         "Pain naan": {
           "count": 1,
@@ -12337,7 +13500,1543 @@
           ],
           "quantites": [
             "R26: 2 pièces"
-          ]
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
+        }
+      }
+    },
+    "E3": {
+      "id": "E3",
+      "mode": "eco",
+      "theme": "Grillades & pesto",
+      "days": {
+        "Lun": {
+          "recette_id": "R06",
+          "diner": "R06",
+          "midi_lendemain": "Reste de R06 (Lun) → déjeuner Mar",
+          "weekend": false,
+          "pizza": false
+        },
+        "Mar": {
+          "recette_id": "R21",
+          "diner": "R21",
+          "midi_lendemain": "Reste de R21 (Mar) → déjeuner Mer",
+          "weekend": false,
+          "pizza": false
+        },
+        "Mer": {
+          "recette_id": "R23",
+          "diner": "R23",
+          "midi_lendemain": "Reste de R23 (Mer) → déjeuner Jeu",
+          "weekend": false,
+          "pizza": false
+        },
+        "Jeu": {
+          "recette_id": "R24",
+          "diner": "R24",
+          "midi_lendemain": "Reste de R24 (Jeu) → déjeuner Ven",
+          "weekend": false,
+          "pizza": false
+        },
+        "Ven": {
+          "recette_id": "R05",
+          "diner": "R05",
+          "midi_lendemain": "Reste de R05 (Ven) → déjeuner Sam",
+          "weekend": false,
+          "pizza": false
+        },
+        "Sam": {
+          "recette_id": "R36",
+          "diner": "R36",
+          "midi_lendemain": "Reste de R36 (Sam) → déjeuner Dim",
+          "weekend": true,
+          "pizza": false
+        },
+        "Dim": {
+          "recette_id": "R09",
+          "diner": "R09",
+          "midi_lendemain": "Reste de R09 (Dim) → déjeuner (semaine suivante)",
+          "weekend": true,
+          "pizza": true
+        }
+      },
+      "budget_frais_estime": 74.12,
+      "budget_perso": 8.13,
+      "budget_total_estime": 82.25,
+      "ingredients_usage": {
+        "Riz": {
+          "count": 2,
+          "recettes": [
+            "R06",
+            "R21"
+          ],
+          "quantites": [
+            "R06: 90g",
+            "R21: 90g"
+          ],
+          "unite": "g",
+          "total_base_1p": 180.0,
+          "sommable": true
+        },
+        "Herbes de Provence": {
+          "count": 1,
+          "recettes": [
+            "R06"
+          ],
+          "quantites": [
+            "R06: ¼ sachet(s)"
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.25,
+          "sommable": true
+        },
+        "Saucisse de Toulouse": {
+          "count": 2,
+          "recettes": [
+            "R06",
+            "R21"
+          ],
+          "quantites": [
+            "R06: 1 pièce(s)",
+            "R21: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
+        },
+        "Courgette": {
+          "count": 2,
+          "recettes": [
+            "R06",
+            "R23"
+          ],
+          "quantites": [
+            "R06: ½ pièce(s)",
+            "R23: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
+        "Tomate": {
+          "count": 4,
+          "recettes": [
+            "R06",
+            "R23",
+            "R24",
+            "R09"
+          ],
+          "quantites": [
+            "R06: 1 pièce(s)",
+            "R23: 1 pièce(s)",
+            "R24: ½ pièce(s)",
+            "R09: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.0,
+          "sommable": true
+        },
+        "Ail": {
+          "count": 5,
+          "recettes": [
+            "R06",
+            "R21",
+            "R24",
+            "R05",
+            "R36"
+          ],
+          "quantites": [
+            "R06: ½ pièce(s)",
+            "R21: 1 pièce(s)",
+            "R24: ½ pièce(s)",
+            "R05: ½ pièce(s)",
+            "R36: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.0,
+          "sommable": true
+        },
+        "Oignon": {
+          "count": 4,
+          "recettes": [
+            "R06",
+            "R21",
+            "R23",
+            "R24"
+          ],
+          "quantites": [
+            "R06: ½ pièce(s)",
+            "R21: 1 pièce(s)",
+            "R23: ½ pièce(s)",
+            "R24: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.5,
+          "sommable": true
+        },
+        "Basilic": {
+          "count": 3,
+          "recettes": [
+            "R06",
+            "R05",
+            "R36"
+          ],
+          "quantites": [
+            "R06: 8g",
+            "R05: 8g",
+            "R36: ¼ sachet(s)"
+          ],
+          "unite": "g",
+          "total_base_1p": 16.25,
+          "sommable": false
+        },
+        "Pesto rosso": {
+          "count": 3,
+          "recettes": [
+            "R06",
+            "R05",
+            "R09"
+          ],
+          "quantites": [
+            "R06: 100g",
+            "R05: 100g",
+            "R09: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 300.0,
+          "sommable": true
+        },
+        "Poivron": {
+          "count": 2,
+          "recettes": [
+            "R21",
+            "R24"
+          ],
+          "quantites": [
+            "R21: ½ pièce(s)",
+            "R24: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
+        },
+        "Citron": {
+          "count": 3,
+          "recettes": [
+            "R21",
+            "R23",
+            "R36"
+          ],
+          "quantites": [
+            "R21: ¼ pièce(s)",
+            "R23: ¼ pièce(s)",
+            "R36: ¼ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.75,
+          "sommable": true
+        },
+        "Concentré de tomates": {
+          "count": 1,
+          "recettes": [
+            "R21"
+          ],
+          "quantites": [
+            "R21: 20g"
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
+        },
+        "Mélange d'épices africaines": {
+          "count": 1,
+          "recettes": [
+            "R21"
+          ],
+          "quantites": [
+            "R21: ⅓ sachet(s)"
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
+        },
+        "Chair de tomates": {
+          "count": 1,
+          "recettes": [
+            "R21"
+          ],
+          "quantites": [
+            "R21: 200g"
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
+        },
+        "Crème épaisse": {
+          "count": 1,
+          "recettes": [
+            "R21"
+          ],
+          "quantites": [
+            "R21: 10cl"
+          ],
+          "unite": "cl",
+          "total_base_1p": 10.0,
+          "sommable": true
+        },
+        "Semoule / Couscous": {
+          "count": 1,
+          "recettes": [
+            "R23"
+          ],
+          "quantites": [
+            "R23: 90g"
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
+        },
+        "Merguez": {
+          "count": 2,
+          "recettes": [
+            "R23",
+            "R24"
+          ],
+          "quantites": [
+            "R23: 2 pièce(s)",
+            "R24: 2 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 4.0,
+          "sommable": true
+        },
+        "Persil": {
+          "count": 1,
+          "recettes": [
+            "R23"
+          ],
+          "quantites": [
+            "R23: 20g"
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
+        },
+        "Cumin en poudre": {
+          "count": 1,
+          "recettes": [
+            "R23"
+          ],
+          "quantites": [
+            "R23: ⅓ sachet(s)"
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
+        },
+        "Harissa": {
+          "count": 1,
+          "recettes": [
+            "R23"
+          ],
+          "quantites": [
+            "R23: 3g"
+          ],
+          "unite": "g",
+          "total_base_1p": 3.0,
+          "sommable": true
+        },
+        "Labneh": {
+          "count": 1,
+          "recettes": [
+            "R23"
+          ],
+          "quantites": [
+            "R23: 50g"
+          ],
+          "unite": "g",
+          "total_base_1p": 50.0,
+          "sommable": true
+        },
+        "Origan séché": {
+          "count": 3,
+          "recettes": [
+            "R24",
+            "R05",
+            "R09"
+          ],
+          "quantites": [
+            "R24: ⅓ sachet(s)",
+            "R05: ¼ sachet(s)",
+            "R09: ⅓ sachet(s)"
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.9166,
+          "sommable": true
+        },
+        "Sucrine": {
+          "count": 1,
+          "recettes": [
+            "R24"
+          ],
+          "quantites": [
+            "R24: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
+        },
+        "Pain à hot-dog": {
+          "count": 1,
+          "recettes": [
+            "R24"
+          ],
+          "quantites": [
+            "R24: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
+        "Ketchup": {
+          "count": 1,
+          "recettes": [
+            "R24"
+          ],
+          "quantites": [
+            "R24: 4cl"
+          ],
+          "unite": "cl",
+          "total_base_1p": 4.0,
+          "sommable": true
+        },
+        "Tomates cerises rouges": {
+          "count": 2,
+          "recettes": [
+            "R05",
+            "R36"
+          ],
+          "quantites": [
+            "R05: 125g",
+            "R36: 125g"
+          ],
+          "unite": "g",
+          "total_base_1p": 250.0,
+          "sommable": true
+        },
+        "Tagliatelle fraîches": {
+          "count": 1,
+          "recettes": [
+            "R05"
+          ],
+          "quantites": [
+            "R05: 125 g"
+          ],
+          "unite": "g",
+          "total_base_1p": 125.0,
+          "sommable": true
+        },
+        "Mozzarella": {
+          "count": 2,
+          "recettes": [
+            "R05",
+            "R09"
+          ],
+          "quantites": [
+            "R05: ½ pièce(s)",
+            "R09: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
+        "Linguine": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
+        },
+        "Noix de cajou concassées": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36: 20g"
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
+        },
+        "Épinards": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36: 125g"
+          ],
+          "unite": "g",
+          "total_base_1p": 125.0,
+          "sommable": true
+        },
+        "Parmesan râpé": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36: 30g"
+          ],
+          "unite": "g",
+          "total_base_1p": 30.0,
+          "sommable": true
+        },
+        "Prosciutto crudo": {
+          "count": 1,
+          "recettes": [
+            "R09"
+          ],
+          "quantites": [
+            "R09: 25 g"
+          ],
+          "unite": "g",
+          "total_base_1p": 25.0,
+          "sommable": true
+        },
+        "Pain naan": {
+          "count": 1,
+          "recettes": [
+            "R09"
+          ],
+          "quantites": [
+            "R09: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
+        "Salade": {
+          "count": 1,
+          "recettes": [
+            "R09"
+          ],
+          "quantites": [
+            "R09: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
+        }
+      }
+    },
+    "E4": {
+      "id": "E4",
+      "mode": "eco",
+      "theme": "Pâtes & poulet",
+      "days": {
+        "Lun": {
+          "recette_id": "R02",
+          "diner": "R02",
+          "midi_lendemain": "Reste de R02 (Lun) → déjeuner Mar",
+          "weekend": false,
+          "pizza": false
+        },
+        "Mar": {
+          "recette_id": "R19",
+          "diner": "R19",
+          "midi_lendemain": "Reste de R19 (Mar) → déjeuner Mer",
+          "weekend": false,
+          "pizza": false
+        },
+        "Mer": {
+          "recette_id": "R28",
+          "diner": "R28",
+          "midi_lendemain": "Reste de R28 (Mer) → déjeuner Jeu",
+          "weekend": false,
+          "pizza": false
+        },
+        "Jeu": {
+          "recette_id": "R35",
+          "diner": "R35",
+          "midi_lendemain": "Reste de R35 (Jeu) → déjeuner Ven",
+          "weekend": false,
+          "pizza": false
+        },
+        "Ven": {
+          "recette_id": "R05",
+          "diner": "R05",
+          "midi_lendemain": "Reste de R05 (Ven) → déjeuner Sam",
+          "weekend": false,
+          "pizza": false
+        },
+        "Sam": {
+          "recette_id": "R36",
+          "diner": "R36",
+          "midi_lendemain": "Reste de R36 (Sam) → déjeuner Dim",
+          "weekend": true,
+          "pizza": false
+        },
+        "Dim": {
+          "recette_id": "R09",
+          "diner": "R09",
+          "midi_lendemain": "Reste de R09 (Dim) → déjeuner (semaine suivante)",
+          "weekend": true,
+          "pizza": true
+        }
+      },
+      "budget_frais_estime": 75.76,
+      "budget_perso": 8.13,
+      "budget_total_estime": 83.89,
+      "ingredients_usage": {
+        "Fusilli complets": {
+          "count": 1,
+          "recettes": [
+            "R02"
+          ],
+          "quantites": [
+            "R02: 90 g"
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
+        },
+        "Oignon": {
+          "count": 2,
+          "recettes": [
+            "R02",
+            "R19"
+          ],
+          "quantites": [
+            "R02: ½ pièce(s)",
+            "R19: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
+        "Basilic": {
+          "count": 5,
+          "recettes": [
+            "R02",
+            "R28",
+            "R35",
+            "R05",
+            "R36"
+          ],
+          "quantites": [
+            "R02: 15g",
+            "R28: 8g",
+            "R35: 8g",
+            "R05: 8g",
+            "R36: ¼ sachet(s)"
+          ],
+          "unite": "g",
+          "total_base_1p": 39.25,
+          "sommable": false
+        },
+        "Thon au naturel": {
+          "count": 1,
+          "recettes": [
+            "R02"
+          ],
+          "quantites": [
+            "R02: 70g"
+          ],
+          "unite": "g",
+          "total_base_1p": 70.0,
+          "sommable": true
+        },
+        "Conchiglie": {
+          "count": 2,
+          "recettes": [
+            "R02",
+            "R28"
+          ],
+          "quantites": [
+            "R02: 100 g",
+            "R28: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
+        },
+        "Tomates semi-séchées": {
+          "count": 1,
+          "recettes": [
+            "R02"
+          ],
+          "quantites": [
+            "R02: ½ paquet(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
+        },
+        "Tomates cerises rouges": {
+          "count": 4,
+          "recettes": [
+            "R02",
+            "R35",
+            "R05",
+            "R36"
+          ],
+          "quantites": [
+            "R02: 125g",
+            "R35: 125g",
+            "R05: 125g",
+            "R36: 125g"
+          ],
+          "unite": "g",
+          "total_base_1p": 500.0,
+          "sommable": true
+        },
+        "Pesto vert alla genovese": {
+          "count": 1,
+          "recettes": [
+            "R02"
+          ],
+          "quantites": [
+            "R02: 80g"
+          ],
+          "unite": "g",
+          "total_base_1p": 80.0,
+          "sommable": true
+        },
+        "Ail": {
+          "count": 5,
+          "recettes": [
+            "R19",
+            "R28",
+            "R35",
+            "R05",
+            "R36"
+          ],
+          "quantites": [
+            "R19: 1 pièce(s)",
+            "R28: ½ pièce(s)",
+            "R35: ½ pièce(s)",
+            "R05: ½ pièce(s)",
+            "R36: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.0,
+          "sommable": true
+        },
+        "Tomate": {
+          "count": 2,
+          "recettes": [
+            "R19",
+            "R09"
+          ],
+          "quantites": [
+            "R19: 1 pièce(s)",
+            "R09: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
+        },
+        "Filet de poulet": {
+          "count": 1,
+          "recettes": [
+            "R19"
+          ],
+          "quantites": [
+            "R19: 130g"
+          ],
+          "unite": "g",
+          "total_base_1p": 130.0,
+          "sommable": true
+        },
+        "Penne complet": {
+          "count": 1,
+          "recettes": [
+            "R19"
+          ],
+          "quantites": [
+            "R19: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
+        },
+        "Origan séché": {
+          "count": 3,
+          "recettes": [
+            "R19",
+            "R05",
+            "R09"
+          ],
+          "quantites": [
+            "R19: ⅓ sachet(s)",
+            "R05: ¼ sachet(s)",
+            "R09: ⅓ sachet(s)"
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.9166,
+          "sommable": true
+        },
+        "Crème liquide": {
+          "count": 1,
+          "recettes": [
+            "R19"
+          ],
+          "quantites": [
+            "R19: 10cl"
+          ],
+          "unite": "cl",
+          "total_base_1p": 10.0,
+          "sommable": true
+        },
+        "Gouda râpé": {
+          "count": 1,
+          "recettes": [
+            "R19"
+          ],
+          "quantites": [
+            "R19: 60g"
+          ],
+          "unite": "g",
+          "total_base_1p": 60.0,
+          "sommable": true
+        },
+        "Épinards": {
+          "count": 2,
+          "recettes": [
+            "R19",
+            "R36"
+          ],
+          "quantites": [
+            "R19: 125g",
+            "R36: 125g"
+          ],
+          "unite": "g",
+          "total_base_1p": 250.0,
+          "sommable": true
+        },
+        "Courgette": {
+          "count": 1,
+          "recettes": [
+            "R28"
+          ],
+          "quantites": [
+            "R28: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
+        "Chair à saucisse": {
+          "count": 1,
+          "recettes": [
+            "R28"
+          ],
+          "quantites": [
+            "R28: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
+        },
+        "Parmesan râpé": {
+          "count": 2,
+          "recettes": [
+            "R28",
+            "R36"
+          ],
+          "quantites": [
+            "R28: 30g",
+            "R36: 30g"
+          ],
+          "unite": "g",
+          "total_base_1p": 60.0,
+          "sommable": true
+        },
+        "Crème de basilic": {
+          "count": 2,
+          "recettes": [
+            "R28",
+            "R35"
+          ],
+          "quantites": [
+            "R28: 100g",
+            "R35: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
+        },
+        "Penne": {
+          "count": 1,
+          "recettes": [
+            "R35"
+          ],
+          "quantites": [
+            "R35: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
+        },
+        "Burrata": {
+          "count": 1,
+          "recettes": [
+            "R35"
+          ],
+          "quantites": [
+            "R35: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
+        },
+        "Salade": {
+          "count": 2,
+          "recettes": [
+            "R35",
+            "R09"
+          ],
+          "quantites": [
+            "R35: 100g",
+            "R09: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
+        },
+        "Tagliatelle fraîches": {
+          "count": 1,
+          "recettes": [
+            "R05"
+          ],
+          "quantites": [
+            "R05: 125 g"
+          ],
+          "unite": "g",
+          "total_base_1p": 125.0,
+          "sommable": true
+        },
+        "Pesto rosso": {
+          "count": 2,
+          "recettes": [
+            "R05",
+            "R09"
+          ],
+          "quantites": [
+            "R05: 100g",
+            "R09: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
+        },
+        "Mozzarella": {
+          "count": 2,
+          "recettes": [
+            "R05",
+            "R09"
+          ],
+          "quantites": [
+            "R05: ½ pièce(s)",
+            "R09: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
+        "Linguine": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
+        },
+        "Citron": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36: ¼ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.25,
+          "sommable": true
+        },
+        "Noix de cajou concassées": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36: 20g"
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
+        },
+        "Prosciutto crudo": {
+          "count": 1,
+          "recettes": [
+            "R09"
+          ],
+          "quantites": [
+            "R09: 25 g"
+          ],
+          "unite": "g",
+          "total_base_1p": 25.0,
+          "sommable": true
+        },
+        "Pain naan": {
+          "count": 1,
+          "recettes": [
+            "R09"
+          ],
+          "quantites": [
+            "R09: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        }
+      }
+    },
+    "E5": {
+      "id": "E5",
+      "mode": "eco",
+      "theme": "Poisson & poulet",
+      "days": {
+        "Lun": {
+          "recette_id": "R11",
+          "diner": "R11",
+          "midi_lendemain": "Reste de R11 (Lun) → déjeuner Mar",
+          "weekend": false,
+          "pizza": false
+        },
+        "Mar": {
+          "recette_id": "R19",
+          "diner": "R19",
+          "midi_lendemain": "Reste de R19 (Mar) → déjeuner Mer",
+          "weekend": false,
+          "pizza": false
+        },
+        "Mer": {
+          "recette_id": "R06",
+          "diner": "R06",
+          "midi_lendemain": "Reste de R06 (Mer) → déjeuner Jeu",
+          "weekend": false,
+          "pizza": false
+        },
+        "Jeu": {
+          "recette_id": "R21",
+          "diner": "R21",
+          "midi_lendemain": "Reste de R21 (Jeu) → déjeuner Ven",
+          "weekend": false,
+          "pizza": false
+        },
+        "Ven": {
+          "recette_id": "R05",
+          "diner": "R05",
+          "midi_lendemain": "Reste de R05 (Ven) → déjeuner Sam",
+          "weekend": false,
+          "pizza": false
+        },
+        "Sam": {
+          "recette_id": "R36",
+          "diner": "R36",
+          "midi_lendemain": "Reste de R36 (Sam) → déjeuner Dim",
+          "weekend": true,
+          "pizza": false
+        },
+        "Dim": {
+          "recette_id": "R26",
+          "diner": "R26",
+          "midi_lendemain": "Reste de R26 (Dim) → déjeuner (semaine suivante)",
+          "weekend": true,
+          "pizza": true
+        }
+      },
+      "budget_frais_estime": 76.81,
+      "budget_perso": 8.13,
+      "budget_total_estime": 84.94,
+      "ingredients_usage": {
+        "Poivron": {
+          "count": 2,
+          "recettes": [
+            "R11",
+            "R21"
+          ],
+          "quantites": [
+            "R11: ½ pièce(s)",
+            "R21: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
+        "Ail": {
+          "count": 7,
+          "recettes": [
+            "R11",
+            "R19",
+            "R06",
+            "R21",
+            "R05",
+            "R36",
+            "R26"
+          ],
+          "quantites": [
+            "R11: ½ pièce(s)",
+            "R19: 1 pièce(s)",
+            "R06: ½ pièce(s)",
+            "R21: 1 pièce(s)",
+            "R05: ½ pièce(s)",
+            "R36: ½ pièce(s)",
+            "R26: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 5.0,
+          "sommable": true
+        },
+        "Échalote": {
+          "count": 2,
+          "recettes": [
+            "R11",
+            "R26"
+          ],
+          "quantites": [
+            "R11: ½ pièce(s)",
+            "R26: ¼ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.75,
+          "sommable": true
+        },
+        "Riz": {
+          "count": 3,
+          "recettes": [
+            "R11",
+            "R06",
+            "R21"
+          ],
+          "quantites": [
+            "R11: 90g",
+            "R06: 90g",
+            "R21: 90g"
+          ],
+          "unite": "g",
+          "total_base_1p": 270.0,
+          "sommable": true
+        },
+        "Thym séché": {
+          "count": 1,
+          "recettes": [
+            "R11"
+          ],
+          "quantites": [
+            "R11: 2g"
+          ],
+          "unite": "g",
+          "total_base_1p": 2.0,
+          "sommable": true
+        },
+        "Basilic": {
+          "count": 4,
+          "recettes": [
+            "R11",
+            "R06",
+            "R05",
+            "R36"
+          ],
+          "quantites": [
+            "R11: 8g",
+            "R06: 8g",
+            "R05: 8g",
+            "R36: ¼ sachet(s)"
+          ],
+          "unite": "g",
+          "total_base_1p": 24.25,
+          "sommable": false
+        },
+        "Olives Kalamata dénoyautées": {
+          "count": 2,
+          "recettes": [
+            "R11",
+            "R26"
+          ],
+          "quantites": [
+            "R11: 10 g",
+            "R26: 20g"
+          ],
+          "unite": "g",
+          "total_base_1p": 30.0,
+          "sommable": true
+        },
+        "Salade": {
+          "count": 1,
+          "recettes": [
+            "R11"
+          ],
+          "quantites": [
+            "R11: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
+        },
+        "Tomate": {
+          "count": 3,
+          "recettes": [
+            "R11",
+            "R19",
+            "R06"
+          ],
+          "quantites": [
+            "R11: 1 pièce(s)",
+            "R19: 1 pièce(s)",
+            "R06: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.0,
+          "sommable": true
+        },
+        "Thon au naturel": {
+          "count": 2,
+          "recettes": [
+            "R11",
+            "R26"
+          ],
+          "quantites": [
+            "R11: 70g",
+            "R26: 70g"
+          ],
+          "unite": "g",
+          "total_base_1p": 140.0,
+          "sommable": true
+        },
+        "Oignon": {
+          "count": 3,
+          "recettes": [
+            "R19",
+            "R06",
+            "R21"
+          ],
+          "quantites": [
+            "R19: ½ pièce(s)",
+            "R06: ½ pièce(s)",
+            "R21: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
+        },
+        "Filet de poulet": {
+          "count": 1,
+          "recettes": [
+            "R19"
+          ],
+          "quantites": [
+            "R19: 130g"
+          ],
+          "unite": "g",
+          "total_base_1p": 130.0,
+          "sommable": true
+        },
+        "Penne complet": {
+          "count": 1,
+          "recettes": [
+            "R19"
+          ],
+          "quantites": [
+            "R19: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
+        },
+        "Origan séché": {
+          "count": 3,
+          "recettes": [
+            "R19",
+            "R05",
+            "R26"
+          ],
+          "quantites": [
+            "R19: ⅓ sachet(s)",
+            "R05: ¼ sachet(s)",
+            "R26: ⅓ sachet(s)"
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.9166,
+          "sommable": true
+        },
+        "Crème liquide": {
+          "count": 1,
+          "recettes": [
+            "R19"
+          ],
+          "quantites": [
+            "R19: 10cl"
+          ],
+          "unite": "cl",
+          "total_base_1p": 10.0,
+          "sommable": true
+        },
+        "Gouda râpé": {
+          "count": 1,
+          "recettes": [
+            "R19"
+          ],
+          "quantites": [
+            "R19: 60g"
+          ],
+          "unite": "g",
+          "total_base_1p": 60.0,
+          "sommable": true
+        },
+        "Épinards": {
+          "count": 2,
+          "recettes": [
+            "R19",
+            "R36"
+          ],
+          "quantites": [
+            "R19: 125g",
+            "R36: 125g"
+          ],
+          "unite": "g",
+          "total_base_1p": 250.0,
+          "sommable": true
+        },
+        "Herbes de Provence": {
+          "count": 1,
+          "recettes": [
+            "R06"
+          ],
+          "quantites": [
+            "R06: ¼ sachet(s)"
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.25,
+          "sommable": true
+        },
+        "Saucisse de Toulouse": {
+          "count": 2,
+          "recettes": [
+            "R06",
+            "R21"
+          ],
+          "quantites": [
+            "R06: 1 pièce(s)",
+            "R21: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
+        },
+        "Courgette": {
+          "count": 1,
+          "recettes": [
+            "R06"
+          ],
+          "quantites": [
+            "R06: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
+        },
+        "Pesto rosso": {
+          "count": 2,
+          "recettes": [
+            "R06",
+            "R05"
+          ],
+          "quantites": [
+            "R06: 100g",
+            "R05: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
+        },
+        "Citron": {
+          "count": 2,
+          "recettes": [
+            "R21",
+            "R36"
+          ],
+          "quantites": [
+            "R21: ¼ pièce(s)",
+            "R36: ¼ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
+        },
+        "Concentré de tomates": {
+          "count": 1,
+          "recettes": [
+            "R21"
+          ],
+          "quantites": [
+            "R21: 20g"
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
+        },
+        "Mélange d'épices africaines": {
+          "count": 1,
+          "recettes": [
+            "R21"
+          ],
+          "quantites": [
+            "R21: ⅓ sachet(s)"
+          ],
+          "unite": "sachet",
+          "total_base_1p": 0.3333,
+          "sommable": true
+        },
+        "Chair de tomates": {
+          "count": 2,
+          "recettes": [
+            "R21",
+            "R26"
+          ],
+          "quantites": [
+            "R21: 200g",
+            "R26: 200g"
+          ],
+          "unite": "g",
+          "total_base_1p": 400.0,
+          "sommable": true
+        },
+        "Crème épaisse": {
+          "count": 1,
+          "recettes": [
+            "R21"
+          ],
+          "quantites": [
+            "R21: 10cl"
+          ],
+          "unite": "cl",
+          "total_base_1p": 10.0,
+          "sommable": true
+        },
+        "Tomates cerises rouges": {
+          "count": 2,
+          "recettes": [
+            "R05",
+            "R36"
+          ],
+          "quantites": [
+            "R05: 125g",
+            "R36: 125g"
+          ],
+          "unite": "g",
+          "total_base_1p": 250.0,
+          "sommable": true
+        },
+        "Tagliatelle fraîches": {
+          "count": 1,
+          "recettes": [
+            "R05"
+          ],
+          "quantites": [
+            "R05: 125 g"
+          ],
+          "unite": "g",
+          "total_base_1p": 125.0,
+          "sommable": true
+        },
+        "Mozzarella": {
+          "count": 1,
+          "recettes": [
+            "R05"
+          ],
+          "quantites": [
+            "R05: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
+        },
+        "Linguine": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
+        },
+        "Noix de cajou concassées": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36: 20g"
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
+        },
+        "Parmesan râpé": {
+          "count": 2,
+          "recettes": [
+            "R36",
+            "R26"
+          ],
+          "quantites": [
+            "R36: 30g",
+            "R26: 30g"
+          ],
+          "unite": "g",
+          "total_base_1p": 60.0,
+          "sommable": true
+        },
+        "Sucrine": {
+          "count": 1,
+          "recettes": [
+            "R26"
+          ],
+          "quantites": [
+            "R26: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
+        },
+        "Pain naan": {
+          "count": 1,
+          "recettes": [
+            "R26"
+          ],
+          "quantites": [
+            "R26: 2 pièces"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
         }
       }
     }

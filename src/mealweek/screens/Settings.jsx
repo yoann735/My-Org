@@ -127,7 +127,7 @@ export function Settings({ ctx }) {
             <StepperRow label="Budget hebdomadaire" sub="Objectif de dépenses pour la semaine (cible recommandée : 60€)"
               value={ctx.weeklyBudget} suffix="€" min={40} max={300} step={5} onChange={ctx.setWeeklyBudget} big />
             <div className="set-div" />
-            <StepperRow label="Portions par défaut" sub="Cuisson ×2 conseillée : 1 dîner + 1 déjeuner du lendemain"
+            <StepperRow label="Portions" sub="Pilote toutes les quantités (recettes, nutrition, courses). Réglé sur 2 = 1 dîner + 1 déjeuner du lendemain."
               value={ctx.portions} suffix=" pers." min={1} max={6} step={1} onChange={ctx.setPortions} />
           </div>
         </Card>
