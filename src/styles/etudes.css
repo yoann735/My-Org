@@ -844,11 +844,19 @@
 .tree-card .tree-cat-row .coefctl { opacity: .72; }
 .tree-card .tree-cat-row .coefctl:hover, .tree-card .tree-cat-row .coefctl:focus-within { opacity: 1; }
 
+/* ---------- B1 : sélecteur de fiche PDF (onglet "PDF") ---------- */
+.pdfpick-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; margin-bottom: 6px; border: 1px solid var(--border-2); border-radius: 10px; background: var(--card); cursor: pointer; font-family: inherit; font-size: 13.5px; color: var(--text); transition: border-color .12s, background .12s; }
+.pdfpick-row:hover { border-color: var(--accent); background: var(--accent-soft); }
+.pdfpick-name { flex: 1 1 auto; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pdfpick-go { color: var(--text-3); flex: 0 0 auto; }
+
 /* ---------- lecteur PDF + surlignage (Partie B) ---------- */
 .pdfr-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--border-2); margin-bottom: 16px; }
 .pdfr-body { display: flex; gap: 18px; align-items: flex-start; }
-.pdfr-canvas-wrap { flex: 1 1 auto; min-width: 0; overflow: auto; max-height: calc(100vh - 230px); background: var(--bg-2); border-radius: 14px; padding: 22px; display: flex; justify-content: center; }
-.pdfr-page { position: relative; background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,.2); height: max-content; }
+.pdfr-scroll { flex: 1 1 auto; min-width: 0; overflow: auto; max-height: calc(100vh - 230px); background: var(--bg-2); border-radius: 14px; padding: 22px 0; overscroll-behavior: contain; }
+.pdfr-pages { position: relative; width: 100%; }
+.pdfr-page, .pdfr-placeholder { background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,.2); }
+.pdfr-placeholder { background: color-mix(in srgb, #fff 70%, var(--bg-2)); box-shadow: none; }
 .pdfr-page canvas { display: block; }
 .pdfr-textlayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; cursor: text; user-select: text; }
 .pdfr-textlayer span { color: transparent; }
@@ -856,6 +864,8 @@
 .pdfr-hlayer { position: absolute; inset: 0; pointer-events: none; }
 .pdfr-hl-rect { position: absolute; mix-blend-mode: multiply; border-radius: 2px; }
 .pdfr-hl-rect.clickable { pointer-events: auto; cursor: pointer; }
+.pdfr-match-rect { position: absolute; background: color-mix(in srgb, #FFB020 55%, transparent); border-radius: 2px; pointer-events: none; }
+.pdfr-match-rect.active { background: color-mix(in srgb, #FF3B30 62%, transparent); outline: 2px solid #FF3B30; outline-offset: 1px; }
 .pdfr-panel { width: 280px; flex: 0 0 auto; max-height: calc(100vh - 230px); overflow-y: auto; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
 .hl-entry { display: flex; gap: 9px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--border-2); cursor: pointer; }
 .hl-entry:last-child { border-bottom: none; }
@@ -866,7 +876,21 @@
 .hl-picker { position: fixed; z-index: 400; display: flex; gap: 7px; align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 13px; padding: 8px; box-shadow: var(--shadow-lg); animation: fade .12s ease; }
 .hl-swatch { width: 26px; height: 26px; border-radius: 8px; border: 2px solid rgba(0,0,0,.08); cursor: pointer; transition: transform .1s; }
 .hl-swatch:hover { transform: scale(1.12); }
+.hl-swatch.selected { border-color: var(--text); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--text); }
+.hl-picker-sep { width: 1px; align-self: stretch; background: var(--border-2); margin: 0 2px; }
+.hl-delete { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 8px; border: none; background: color-mix(in srgb, var(--crit) 12%, transparent); color: var(--crit); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.hl-delete:hover { background: color-mix(in srgb, var(--crit) 20%, transparent); }
 .hl-cancel { width: 26px; height: 26px; border-radius: 8px; border: none; background: var(--bg-2); color: var(--text-3); display: grid; place-items: center; cursor: pointer; }
+
+/* ---------- B6 : couche d'annotations ---------- */
+.ann-box { position: absolute; box-sizing: border-box; }
+.ann-box.editable { cursor: move; }
+.ann-text { width: 100%; height: 100%; resize: none; border: 1.5px solid var(--accent); border-radius: 4px; background: color-mix(in srgb, var(--accent) 10%, #fff); font-family: inherit; font-size: 12px; line-height: 1.35; padding: 5px 7px; box-sizing: border-box; color: #16162a; outline: none; }
+.ann-note .ann-text { background: color-mix(in srgb, #FFD84D 60%, #fff); border-color: #E8B923; }
+.ann-redact { background: #fff; }
+.ann-redact.editable { border: 1.5px dashed rgba(0,0,0,.28); }
+.ann-resize { position: absolute; right: -5px; bottom: -5px; width: 13px; height: 13px; border-radius: 4px; background: var(--accent); cursor: nwse-resize; box-shadow: 0 0 0 2px var(--card); }
+.ann-del { position: absolute; top: -11px; right: -11px; width: 21px; height: 21px; border-radius: 50%; border: none; background: var(--crit); color: #fff; display: grid; place-items: center; cursor: pointer; box-shadow: 0 0 0 2px var(--card); }
 
 /* ---------- "coming soon" placeholder (kept from stage 1) ---------- */
 .soon { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 40px 24px; text-align: center; }

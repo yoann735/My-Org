@@ -13,19 +13,21 @@ import { Reglages } from './pages/Reglages.jsx';
 import { Session } from './session/Session.jsx';
 import { Feynman } from './session/Feynman.jsx';
 import { PdfReader } from './pdf/PdfReader.jsx';
+import { PdfPicker } from './pdf/PdfPicker.jsx';
 import {
   seedIfEmpty, getAll, put, putMany, remove, getStats, setStats as saveStats, genId,
 } from './lib/storage.js';
 
-const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, pdf: PdfReader };
+const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, pdf: PdfReader, pdflist: PdfPicker };
 
 function MedBottomNav({ current, onNav }) {
   const items = [
     { id: 'dashboard', label: 'Accueil', icon: 'home' },
     { id: 'revise', label: 'Réviser', icon: 'cards' },
     { id: 'library', label: 'Biblio', icon: 'book' },
+    { id: 'pdflist', label: 'PDF', icon: 'filePdf' },
   ];
-  const active = (id) => current === id || (id === 'revise' && ['session', 'feynman'].includes(current));
+  const active = (id) => current === id || (id === 'revise' && ['session', 'feynman'].includes(current)) || (id === 'pdflist' && current === 'pdf');
   return (
     <nav className="bottom-nav">
       {items.map((n) => (

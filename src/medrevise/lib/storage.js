@@ -15,6 +15,7 @@ const S = {
   questions: store('questions'),
   structures: store('structures'),
   highlights: store('highlights'),
+  annotations: store('annotations'),
   blobs: store('blobs'),
   stats: store('stats'),
 };
@@ -46,6 +47,13 @@ export async function blobURL(id) {
 /* ---- surlignages PDF (Partie B) ---- */
 export function newHighlight({ ficheId, page, texte, couleur, rects }) {
   return { id: genId('h'), ficheId, page, texte, couleur: couleur || 'jaune', rects: rects || [], createdAt: new Date().toISOString() };
+}
+
+/* ---- annotations PDF (B6) : zone de texte libre / note / masquage.
+   x,y,width,height normalisés [0,1] par rapport à la page. Le PDF
+   d'origine n'est jamais modifié — couche superposée uniquement. ---- */
+export function newAnnotation({ ficheId, page, type, x, y, width, height, text }) {
+  return { id: genId('an'), ficheId, page, type, x, y, width, height, text: text || '', createdAt: new Date().toISOString() };
 }
 
 /* ---- stats (carte unique) ---- */
