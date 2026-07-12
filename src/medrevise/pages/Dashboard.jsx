@@ -233,6 +233,8 @@ function ImportPanel({ ctx }) {
   const srcLabel = (db.sources.find((s) => s.id === srcId) || {}).nom || '—';
   const matLabel = (db.matieres.find((m) => m.id === matId) || {}).nom || '—';
   const destLabel = `${srcLabel} / ${matLabel} / ${title.trim() || 'Fiche importée'}`;
+  const pasteMissing = [!srcId && 'un cours', !matId && 'une matière', !title.trim() && 'un titre'].filter(Boolean);
+  const pasteReady = pasteMissing.length === 0 && !!jsonText.trim();
 
   const parseJson = () => {
     const res = parsePastedJson(jsonText);
@@ -329,7 +331,7 @@ function ImportPanel({ ctx }) {
           <DestPicker ctx={ctx} srcId={srcId} setSrcId={setSrcId} matId={matId} setMatId={setMatId} />
 
           <div className="imp-field">
-            <label>Titre de la fiche <span className="imp-opt">(optionnel)</span></label>
+            <label>Titre de la fiche</label>
             <input className="imp-title" placeholder="ex : Système respiratoire — chapitre 3" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
 
@@ -348,9 +350,9 @@ function ImportPanel({ ctx }) {
 
           <div className="imp-actions">
             <button className="btn ghost" onClick={reset}>Annuler</button>
-            <button className="btn primary" onClick={parseJson} disabled={!matId || !jsonText.trim()}><Icon name="check" size={15} /> Importer les questions</button>
+            <button className="btn primary" onClick={parseJson} disabled={!pasteReady}><Icon name="check" size={15} /> Importer les questions</button>
           </div>
-          {!matId && <div className="hint" style={{ marginTop: 8 }}>Choisis une matière, puis colle la réponse JSON de Claude.</div>}
+          {pasteMissing.length > 0 && <div className="hint" style={{ marginTop: 8 }}>Il manque : {pasteMissing.join(', ')}.</div>}
         </div>
       )}
 
