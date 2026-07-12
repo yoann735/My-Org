@@ -19,6 +19,7 @@ export function Reglages({ ctx }) {
   const active = db.sources.filter((s) => !s.archive);
   const archived = db.sources.filter((s) => s.archive);
   const matsOf = (sid) => db.matieres.filter((m) => m.sourceId === sid && !m.archive);
+  const archivedMatieres = db.matieres.filter((m) => m.archive);
 
   const commitRename = () => { if (renaming) ctx.renameSource(renaming, draft); setRenaming(null); };
   const commitCat = () => { if (catDraft.trim() && addCatFor) ctx.addMatiere(addCatFor, catDraft); setAddCatFor(null); setCatDraft(''); };
@@ -90,6 +91,22 @@ export function Reglages({ ctx }) {
           </div>
         )}
       </Card>
+
+      {/* Corbeille : matières supprimées depuis Réviser (clic droit), restaurables */}
+      {archivedMatieres.length > 0 && (
+        <Card title="Corbeille — matières supprimées" icon="trash" style={{ maxWidth: 820, marginBottom: 16 }}>
+          <div className="hint" style={{ marginBottom: 12 }}>Matières supprimées depuis l'onglet Réviser (clic droit). Leurs fiches ont été déplacées dans « À classer » dans le même cours ; restaure la matière ici si besoin.</div>
+          {archivedMatieres.map((m) => {
+            const src = db.sources.find((s) => s.id === m.sourceId);
+            return (
+              <div className="srcmgr-archrow" key={m.id}>
+                <span className="srcmgr-archname">{m.nom}{src && <span className="hint"> — {src.nom}</span>}</span>
+                <button className="btn ghost sm" onClick={() => ctx.setMatiereArchived(m.id, false)}><Icon name="refresh" size={13} /> Restaurer</button>
+              </div>
+            );
+          })}
+        </Card>
+      )}
 
       <div className="settings-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 820 }}>
         <Card title="Profil" icon="settings">

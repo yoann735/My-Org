@@ -92,6 +92,11 @@
 .tc-types { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 600; opacity: .95; }
 .tc-next { font-size: 13px; opacity: .88; margin-top: 11px; }
 .tc-next span { font-weight: 700; opacity: 1; }
+.tc-collapse-btn { position: absolute; top: 14px; right: 16px; z-index: 2; width: 30px; height: 30px; border-radius: 9px; border: none; background: rgba(255,255,255,.16); color: #fff; display: grid; place-items: center; cursor: pointer; transition: background .13s; }
+.tc-collapse-btn:hover { background: rgba(255,255,255,.28); }
+.today-cta.tc-collapsed { padding: 14px 46px 14px 22px; margin-bottom: 20px; }
+.today-cta.tc-collapsed .tc-eyebrow { font-size: 13px; text-transform: none; letter-spacing: 0; font-weight: 600; opacity: 1; }
+.today-cta.tc-collapsed .tc-jbadge { margin-left: 4px; }
 .tc-aside { position: relative; z-index: 1; flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 13px; }
 .tc-count { text-align: right; }
 .tc-count .tc-n { font-family: 'DM Serif Display', serif; font-size: 42px; line-height: 1; display: block; }
@@ -612,10 +617,12 @@
 .tree-rename { flex: 1 1 auto; min-width: 0; font-family: inherit; font-size: 12.8px; font-weight: 600; color: var(--text); background: var(--card); border: 1.5px solid var(--accent); border-radius: 7px; padding: 5px 8px; outline: none; margin: 1px 0; }
 
 /* ---- toggle source discret (cloche) ---- */
-.src-mute { width: 26px; height: 26px; border-radius: 8px; border: none; background: transparent; color: var(--text-3); display: grid; place-items: center; cursor: pointer; flex: 0 0 auto; opacity: .5; transition: opacity .14s, background .12s, color .12s; }
+.src-mute { position: relative; width: 26px; height: 26px; border-radius: 8px; border: none; background: transparent; color: var(--text-3); display: grid; place-items: center; cursor: pointer; flex: 0 0 auto; opacity: .5; transition: opacity .14s, background .12s, color .12s; }
 .src-mute:hover { opacity: 1; background: var(--card); color: var(--text-2); }
 .src-mute.off { color: var(--warn); opacity: .9; }
 .src-mute.off:hover { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.bell-tt { position: absolute; bottom: calc(100% + 8px); right: -4px; width: 230px; max-width: 60vw; background: var(--text); color: var(--bg); font-size: 11.5px; font-weight: 500; line-height: 1.4; padding: 8px 10px; border-radius: 9px; box-shadow: var(--shadow-lg); z-index: 40; text-align: left; pointer-events: none; opacity: 0; visibility: hidden; transform: translateY(4px); transition: opacity .15s ease, transform .15s ease; }
+.src-mute:hover .bell-tt, .src-mute:focus-visible .bell-tt, .bell-tt.show { opacity: 1; visibility: visible; transform: translateY(0); }
 
 /* ---- arbo SOURCE dans Réviser ---- */
 .tree-src { margin-bottom: 7px; }

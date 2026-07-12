@@ -39,6 +39,17 @@ export function Bibliotheque({ ctx }) {
 
   const openPdf = async (pdfId) => { const u = await blobURL(pdfId); if (u) window.open(u, '_blank'); };
 
+  // A8 : drag & drop des fiches — réordonner et/ou changer de matière.
+  // overKey = ficheId ciblé (insertion avant) OU 'mat:<id>' (dépôt sur le conteneur = fin de liste).
+  const [dragId, setDragId] = useState(null);
+  const [overKey, setOverKey] = useState(null);
+  const onFicheDragStart = (e, f) => { setDragId(f.id); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', f.id); } catch (err) { /* ignore */ } };
+  const onFicheDragEnd = () => { setDragId(null); setOverKey(null); };
+  const onFicheDragOver = (e, f) => { if (!dragId) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (overKey !== f.id) setOverKey(f.id); };
+  const onFicheDrop = (e, f, mat) => { e.preventDefault(); if (dragId && dragId !== f.id) ctx.moveFicheTo(dragId, mat.id, f.id); setDragId(null); setOverKey(null); };
+  const onMatDragOver = (e, mat) => { if (!dragId) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; const k = 'mat:' + mat.id; if (overKey !== k) setOverKey(k); };
+  const onMatDrop = (e, mat) => { e.preventDefault(); if (dragId) ctx.moveFicheTo(dragId, mat.id, null); setDragId(null); setOverKey(null); };
+
   const search = q.trim().toLowerCase();
   const matches = search
     ? db.questions.filter((x) => (x.concept + ' ' + (x.question || '') + ' ' + (x.recto || '') + ' ' + (x.explication || '') + ' ' + (x.verso || '')).toLowerCase().includes(search))
@@ -98,17 +109,26 @@ export function Bibliotheque({ ctx }) {
                   <div className="card-body" style={{ paddingTop: 0 }}>
                     {mats.map((mat) => {
                       const mm = matiereMeta(mat);
-                      const fiches = db.fiches.filter((f) => f.matiereId === mat.id && !f.archive);
+                      const fiches = db.fiches.filter((f) => f.matiereId === mat.id && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+                      const matDropOver = overKey === 'mat:' + mat.id;
                       return (
-                        <div key={mat.id} style={{ marginTop: 14 }}>
+                        <div key={mat.id} className={'mat-dropzone' + (matDropOver ? ' drop-over' : '')} style={{ marginTop: 14 }}
+                          onDragOver={(e) => onMatDragOver(e, mat)} onDrop={(e) => onMatDrop(e, mat)}>
                           {isRen('matiere', mat.id)
                             ? <div style={{ marginBottom: 8 }}><RenameInput /></div>
                             : <div className="cat-badge" style={{ background: `color-mix(in srgb, ${mm.tint} 14%, transparent)`, color: mm.tint, borderColor: `color-mix(in srgb, ${mm.tint} 30%, transparent)`, marginBottom: 8, cursor: 'pointer' }} onDoubleClick={() => startRename('matiere', mat.id, mm.label)} title="Double-clic pour renommer"><Icon name={mm.icon} size={12} /> {mm.label}</div>}
                           {fiches.map((f) => {
                             const fo = !!openFiche[f.id];
                             const isAnat = f.type === 'anatomie';
+                            const dragging = dragId === f.id;
+                            const dropOver = overKey === f.id;
                             return (
-                              <div key={f.id} className="lib-fiche" style={{ border: '1px solid var(--border-2)', borderRadius: 12, padding: '11px 13px', marginBottom: 8 }}>
+                              <div key={f.id} className={'lib-fiche' + (dragging ? ' dragging' : '') + (dropOver ? ' drop-over' : '')}
+                                style={{ border: '1px solid var(--border-2)', borderRadius: 12, padding: '11px 13px', marginBottom: 8 }}
+                                draggable={!isRen('fiche', f.id)}
+                                onDragStart={(e) => onFicheDragStart(e, f)} onDragEnd={onFicheDragEnd}
+                                onDragOver={(e) => onFicheDragOver(e, f)} onDrop={(e) => onFicheDrop(e, f, mat)}
+                                title="Glisser pour réordonner / déplacer vers une autre matière">
                                 <div className="row spread">
                                   {isRen('fiche', f.id) ? (
                                     <div style={{ flex: 1, minWidth: 0 }}><RenameInput /></div>

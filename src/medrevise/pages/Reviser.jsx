@@ -5,22 +5,25 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta } from '../components/ui.jsx';
+import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal } from '../components/ui.jsx';
 import {
   index, effectiveCoef, ficheJ, dueToday, isFicheScheduled, missedQuestions, topConcepts, todayPlan,
 } from '../lib/planning.js';
 import { CarnetBody } from './Carnet.jsx';
+import { blobURL } from '../lib/storage.js';
 
 export function Reviser({ ctx }) {
   const { db } = ctx;
   const ix = useMemo(() => index(db), [db]);
   const [selIds, setSelIds] = useState(() => (ctx.focusFiche ? [ctx.focusFiche] : (db.fiches[0] ? [db.fiches[0].id] : [])));
   const [openSrc, setOpenSrc] = useState(() => Object.fromEntries(db.sources.map((s) => [s.id, true])));
-  const [renaming, setRenaming] = useState(null);
+  const [renaming, setRenaming] = useState(null); // { type: 'source'|'matiere'|'fiche', id }
   const [draft, setDraft] = useState('');
+  const [ctxMenu, setCtxMenu] = useState(null); // { type: 'source'|'matiere', id, x, y }
+  const [confirmDel, setConfirmDel] = useState(null); // { type, id, nom, fichesCount }
 
   const dueIdsToday = useMemo(() => new Set(dueToday(db, ix).map((q) => q.id)), [db, ix]);
-  const fichesOf = (matId) => db.fiches.filter((f) => f.matiereId === matId && !f.archive);
+  const fichesOf = (matId) => db.fiches.filter((f) => f.matiereId === matId && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
   const matieresOf = (srcId) => db.matieres.filter((m) => m.sourceId === srcId && !m.archive);
   const qOfFiche = (fId) => db.questions.filter((q) => q.ficheId === fId);
   const dueCountFiche = (fId) => qOfFiche(fId).filter((q) => dueIdsToday.has(q.id)).length;
@@ -46,12 +49,35 @@ export function Reviser({ ctx }) {
   const title = multi ? `${selFiches.length} fiches sélectionnées` : (primary ? primary.titre : '');
   const mins = (n) => Math.max(1, Math.round(n * 0.8));
 
+  const viewCours = async () => { if (!primary || !primary.pdfId) return; const u = await blobURL(primary.pdfId); if (u) window.open(u, '_blank'); };
   const launch = (mode) => {
     const items = mode === 'qcm' ? qcmItems : mode === 'flash' ? flashItems : [...qcmItems, ...flashItems];
     if (items.length) ctx.startSession(items, title);
   };
   const launchToday = () => dueSel.length && ctx.startSession(dueSel, title + " — Aujourd'hui");
-  const commitRename = () => { if (renaming) ctx.renameFiche(renaming, draft); setRenaming(null); };
+  const isRen = (type, id) => renaming && renaming.type === type && renaming.id === id;
+  const startRename = (type, id, current) => { setDraft(current); setRenaming({ type, id }); };
+  const commitRename = () => {
+    if (!renaming) return;
+    if (renaming.type === 'fiche') ctx.renameFiche(renaming.id, draft);
+    else if (renaming.type === 'matiere') ctx.renameMatiere(renaming.id, draft);
+    else if (renaming.type === 'source') ctx.renameSource(renaming.id, draft);
+    setRenaming(null);
+  };
+
+  // clic droit (desktop) / appui long (mobile, déclenche aussi contextmenu) sur un cours ou une matière
+  const openCtxMenu = (e, type, id) => {
+    e.preventDefault();
+    setCtxMenu({ type, id, x: Math.min(e.clientX, window.innerWidth - 190), y: Math.min(e.clientY, window.innerHeight - 110) });
+  };
+  const askDeleteSource = (id) => { const s = db.sources.find((x) => x.id === id); if (s) setConfirmDel({ type: 'source', id, nom: s.nom }); };
+  const askDeleteMatiere = (id) => { const m = db.matieres.find((x) => x.id === id); if (m) setConfirmDel({ type: 'matiere', id, nom: matiereMeta(m).label, fichesCount: fichesOf(id).length }); };
+  const confirmDelete = async () => {
+    if (!confirmDel) return;
+    if (confirmDel.type === 'source') await ctx.setSourceArchived(confirmDel.id, true);
+    else if (confirmDel.type === 'matiere') await ctx.deleteMatiere(confirmDel.id);
+    setConfirmDel(null);
+  };
 
   return (
     <div className="screen scroll fadein">
@@ -80,30 +106,45 @@ export function Reviser({ ctx }) {
               const on = src.rappelsJ !== false;
               return (
                 <div className={'tree-src' + (on ? '' : ' off')} key={src.id}>
-                  <div className="tree-src-row">
-                    <button className="tree-src-main" onClick={() => setOpenSrc((o) => ({ ...o, [src.id]: !openS }))}>
-                      <Icon name={openS ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)' }} />
-                      <span className="tsrc-ic" style={{ background: `color-mix(in srgb, ${src.tint || '#7C6FE0'} 16%, transparent)`, color: src.tint || '#7C6FE0' }}><Icon name={src.icon || 'folder'} size={13} /></span>
-                      <span className="tsrc-name">{src.nom}</span>
-                    </button>
-                    <button className={'src-mute' + (on ? '' : ' off')} title={on ? 'Rappels J actifs — cliquer pour mettre en pause' : 'En pause — réactiver'} onClick={() => ctx.setSourceRappels(src.id, !on)}>
-                      <Icon name={on ? 'bell' : 'bellOff'} size={15} />
-                    </button>
+                  <div className="tree-src-row" onContextMenu={(e) => openCtxMenu(e, 'source', src.id)} title="Clic droit (ou appui long) : renommer / supprimer">
+                    {isRen('source', src.id) ? (
+                      <div className="tree-src-main" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <Icon name={openS ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)' }} />
+                        <input className="tree-rename" autoFocus defaultValue={src.nom} onFocus={(e) => e.target.select()}
+                          onChange={(e) => setDraft(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
+                          onBlur={commitRename} />
+                      </div>
+                    ) : (
+                      <button className="tree-src-main" onClick={() => setOpenSrc((o) => ({ ...o, [src.id]: !openS }))}>
+                        <Icon name={openS ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)' }} />
+                        <span className="tsrc-ic" style={{ background: `color-mix(in srgb, ${src.tint || '#7C6FE0'} 16%, transparent)`, color: src.tint || '#7C6FE0' }}><Icon name={src.icon || 'folder'} size={13} /></span>
+                        <span className="tsrc-name">{src.nom}</span>
+                      </button>
+                    )}
+                    <BellButton on={on} onToggle={() => ctx.setSourceRappels(src.id, !on)} />
                   </div>
                   {openS && mats.map((mat) => {
                     const fiches = fichesOf(mat.id);
                     const mm = matiereMeta(mat);
                     return (
                       <div className="tree-group" key={mat.id}>
-                        <div className="tree-cat-row">
+                        <div className="tree-cat-row" onContextMenu={(e) => openCtxMenu(e, 'matiere', mat.id)} title="Clic droit (ou appui long) : renommer / supprimer">
                           <span className="tcat-dot" style={{ background: mm.tint, marginLeft: 4 }} />
-                          <span className="tcat-label" style={{ flex: 1 }}>{mm.label}</span>
+                          {isRen('matiere', mat.id) ? (
+                            <input className="tree-rename" style={{ flex: 1 }} autoFocus defaultValue={mm.label} onFocus={(e) => e.target.select()}
+                              onChange={(e) => setDraft(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
+                              onBlur={commitRename} />
+                          ) : (
+                            <span className="tcat-label" style={{ flex: 1 }}>{mm.label}</span>
+                          )}
                           <CoefControl value={mat.coef ?? 3} inherited={false} onSet={(v) => ctx.setMatiereCoef(mat.id, v)} />
                         </div>
                         {fiches.map((f) => {
                           const sel = selIds.includes(f.id);
                           const cdt = dueCountFiche(f.id);
-                          if (renaming === f.id) {
+                          if (isRen('fiche', f.id)) {
                             return (
                               <div key={f.id} className="tree-course on">
                                 <span className="tree-check" style={{ visibility: 'hidden' }} />
@@ -117,7 +158,7 @@ export function Reviser({ ctx }) {
                           return (
                             <div key={f.id} className={'tree-course' + (sel ? ' on' : '')}>
                               <button className={'tree-check' + (sel ? ' on' : '')} onClick={() => toggle(f.id)} title="Cocher / décocher">{sel ? <Icon name="check" size={11} stroke={3} /> : null}</button>
-                              <button className="tree-course-main" onClick={() => selectOnly(f.id)} onDoubleClick={(e) => { e.stopPropagation(); setDraft(f.titre); setRenaming(f.id); }} title="Clic = sélectionner · double-clic = renommer">
+                              <button className="tree-course-main" onClick={() => selectOnly(f.id)} onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }} title="Clic = sélectionner · double-clic = renommer">
                                 <span className="tc-name">{f.titre}</span>
                                 {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
                               </button>
@@ -158,6 +199,11 @@ export function Reviser({ ctx }) {
                       : <div className="jc-title">Rien dû aujourd'hui pour cette sélection.</div>}
                   {!multi && jp && jp.jIndex >= 0 && <JLadder jIndex={jp.jIndex} />}
                 </div>
+                {!multi && primary && primary.pdfId && (
+                  <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={viewCours} title="Ouvrir le PDF source en lecture seule">
+                    <Icon name="filePdf" size={14} /> Voir le cours
+                  </button>
+                )}
                 {dueSel.length > 0 && <button className="btn primary" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={launchToday}><Icon name="play" size={14} fill /> Lancer aujourd'hui</button>}
               </div>
 
@@ -196,6 +242,37 @@ export function Reviser({ ctx }) {
         <h2 className="serif" style={{ fontSize: 20, margin: '4px 0 12px' }}>Carnet d'erreurs</h2>
         <CarnetBody ctx={ctx} />
       </div>
+
+      {ctxMenu && (
+        <ContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} items={[
+          {
+            label: 'Renommer', icon: 'edit', onClick: () => {
+              if (ctxMenu.type === 'source') { const s = db.sources.find((x) => x.id === ctxMenu.id); if (s) startRename('source', ctxMenu.id, s.nom); }
+              else { const m = db.matieres.find((x) => x.id === ctxMenu.id); if (m) startRename('matiere', ctxMenu.id, m.nom); }
+            },
+          },
+          {
+            label: 'Supprimer', icon: 'trash', danger: true, onClick: () => {
+              if (ctxMenu.type === 'source') askDeleteSource(ctxMenu.id); else askDeleteMatiere(ctxMenu.id);
+            },
+          },
+        ]} />
+      )}
+
+      {confirmDel && (
+        <ConfirmModal
+          title={confirmDel.type === 'source' ? 'Supprimer ce cours ?' : 'Supprimer cette matière ?'}
+          body={confirmDel.type === 'source'
+            ? `« ${confirmDel.nom} » sera déplacé dans la corbeille — restaurable depuis Réglages.`
+            : (confirmDel.fichesCount > 0
+              ? `Cette matière contient ${confirmDel.fichesCount} fiche${confirmDel.fichesCount > 1 ? 's' : ''}. Elles seront déplacées dans « À classer ». « ${confirmDel.nom} » sera ensuite envoyée dans la corbeille — restaurable depuis Réglages.`
+              : `« ${confirmDel.nom} » sera déplacée dans la corbeille — restaurable depuis Réglages.`)}
+          confirmLabel="Supprimer"
+          danger
+          onConfirm={confirmDelete}
+          onCancel={() => setConfirmDel(null)}
+        />
+      )}
     </div>
   );
 }

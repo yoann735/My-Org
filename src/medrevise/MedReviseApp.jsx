@@ -13,7 +13,7 @@ import { Reglages } from './pages/Reglages.jsx';
 import { Session } from './session/Session.jsx';
 import { Feynman } from './session/Feynman.jsx';
 import {
-  seedIfEmpty, getAll, put, remove, getStats, setStats as saveStats, genId,
+  seedIfEmpty, getAll, put, putMany, remove, getStats, setStats as saveStats, genId,
 } from './lib/storage.js';
 
 const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman };
@@ -111,6 +111,41 @@ export default function MedReviseApp({ themeApi, goHub }) {
     renameMatiere: async (matiereId, nom) => {
       const m = db.matieres.find((x) => x.id === matiereId); if (!m || !nom.trim()) return;
       await put('matieres', { ...m, nom: nom.trim() }); await reload();
+    },
+    setMatiereArchived: async (matiereId, on) => {
+      const m = db.matieres.find((x) => x.id === matiereId); if (!m) return;
+      await put('matieres', { ...m, archive: on }); await reload();
+    },
+    // corbeille (A5/A6) : supprime la matière (archive, restaurable depuis Réglages).
+    // Si elle contient encore des fiches actives, elles sont déplacées vers
+    // "À classer" (créée à la volée dans le même cours) plutôt que supprimées.
+    deleteMatiere: async (matiereId) => {
+      const m = db.matieres.find((x) => x.id === matiereId); if (!m) return;
+      const fiches = db.fiches.filter((f) => f.matiereId === matiereId && !f.archive);
+      if (fiches.length) {
+        let uncat = db.matieres.find((x) => x.sourceId === m.sourceId && x.uncategorized && !x.archive);
+        let uncatId = uncat && uncat.id;
+        if (!uncatId) {
+          uncatId = genId('m');
+          await put('matieres', { id: uncatId, sourceId: m.sourceId, nom: 'À classer', couleur: '#9AA0AE', icon: 'box', coef: 3, uncategorized: true, archive: false });
+        }
+        await putMany('fiches', fiches.map((f) => ({ ...f, matiereId: uncatId })));
+      }
+      await put('matieres', { ...m, archive: true });
+      await reload();
+    },
+    // A8 : réordonne / déplace une fiche (drag & drop dans la Bibliothèque).
+    // beforeFicheId=null → ajoutée en fin de la matière cible.
+    moveFicheTo: async (ficheId, matiereId, beforeFicheId) => {
+      const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
+      const siblings = db.fiches
+        .filter((x) => x.matiereId === matiereId && x.id !== ficheId && !x.archive)
+        .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+      let at = siblings.length;
+      if (beforeFicheId) { const i = siblings.findIndex((x) => x.id === beforeFicheId); if (i >= 0) at = i; }
+      const ordered = [...siblings.slice(0, at), f, ...siblings.slice(at)];
+      await putMany('fiches', ordered.map((x, i) => ({ ...x, matiereId, ordre: i })));
+      await reload();
     },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },
     clearQuestionError: async (id) => {

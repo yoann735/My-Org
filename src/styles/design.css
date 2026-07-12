@@ -214,6 +214,21 @@ body {
 .btn.lg { padding: 13px 22px; font-size: 15px; border-radius: 13px; }
 .btn.ghost { background: transparent; box-shadow: none; }
 .btn.ghost:hover { background: var(--bg-2); }
+.btn.danger { background: var(--crit); border-color: var(--crit); color: #fff; box-shadow: 0 6px 18px color-mix(in srgb, var(--crit) 30%, transparent); }
+.btn.danger:hover { background: color-mix(in srgb, var(--crit) 88%, #000); }
+
+/* ---- menu contextuel (clic droit / appui long) ---- */
+.ctx-menu { position: fixed; z-index: 200; min-width: 168px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 6px; display: flex; flex-direction: column; gap: 2px; animation: fade .12s ease; }
+.ctx-menu-item { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: none; background: none; border-radius: 8px; font-family: inherit; font-size: 13px; font-weight: 500; color: var(--text); cursor: pointer; text-align: left; }
+.ctx-menu-item:hover { background: var(--bg-2); }
+.ctx-menu-item.danger { color: var(--crit); }
+.ctx-menu-item.danger:hover { background: color-mix(in srgb, var(--crit) 10%, transparent); }
+
+/* ---- drag & drop des fiches (Bibliothèque, A8) ---- */
+.lib-fiche[draggable="true"] { cursor: grab; transition: opacity .12s, box-shadow .12s, border-color .12s; }
+.lib-fiche.dragging { opacity: .4; cursor: grabbing; }
+.lib-fiche.drop-over { border-color: var(--accent) !important; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+.mat-dropzone.drop-over { background: color-mix(in srgb, var(--accent) 6%, transparent); border-radius: 12px; outline: 2px dashed color-mix(in srgb, var(--accent) 35%, transparent); outline-offset: -2px; }
 
 /* ============================================================
    PRIMITIVES

@@ -43,7 +43,7 @@ export async function blobURL(id) {
 }
 
 /* ---- stats (carte unique) ---- */
-const DEFAULT_STATS = { streak: 0, dernierJourRevise: null, jokerUtilise: false, objectifQuotidien: 20, best: 0, activityDays: [] };
+const DEFAULT_STATS = { streak: 0, dernierJourRevise: null, jokerUtilise: false, objectifQuotidien: 20, best: 0, activityDays: [], serieCollapsed: false };
 export async function getStats() { return (await get('stats', S.stats)) || { ...DEFAULT_STATS }; }
 export const setStats = (s) => set('stats', s, S.stats);
 

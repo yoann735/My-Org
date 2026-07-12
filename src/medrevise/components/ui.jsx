@@ -3,7 +3,7 @@
    etudes.css classes for visual fidelity, but is wired to our real
    data model (matiere = {id,nom,couleur,icon}, fiche, questions).
    ============================================================ */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { J_INTERVALS } from '../lib/sm2.js';
 
@@ -145,20 +145,28 @@ export function Breadcrumb({ parts }) {
   );
 }
 
-/* ---- "série du jour" CTA (méthode des J), shared dashboard + réviser ---- */
-export function TodaySeriesCard({ plan, onStart, compact }) {
+/* ---- "série du jour" CTA (méthode des J), shared dashboard + réviser ----
+   `collapsed`/`onToggleCollapse` : réservé à la variante Dashboard (non-compact) ;
+   l'état repliée/dépliée est persistée par l'appelant (stats.serieCollapsed). */
+export function TodaySeriesCard({ plan, onStart, compact, collapsed, onToggleCollapse }) {
   const total = plan.reduce((s, c) => s + c.items.length, 0);
   const allItems = plan.flatMap((c) => c.items);
+  const collapsible = !compact && onToggleCollapse;
 
   if (total === 0) {
     return (
-      <div className={'today-cta done' + (compact ? ' tc-compact' : '')}>
+      <div className={'today-cta done' + (compact ? ' tc-compact' : '') + (collapsed ? ' tc-collapsed' : '')}>
         <div className="tc-glow" />
-        <div className="tc-main">
-          <div className="tc-eyebrow"><Icon name="check" size={14} stroke={3} /> Méthode des J</div>
-          <div className="tc-title">Tout est à jour pour aujourd'hui 🎉</div>
-          <div className="tc-sub">Aucune fiche due. Repose-toi ou prends de l'avance via la Bibliothèque.</div>
-        </div>
+        {collapsible && <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />}
+        {collapsed ? (
+          <div className="tc-main"><div className="tc-eyebrow"><Icon name="check" size={14} stroke={3} /> Méthode des J — tout est à jour 🎉</div></div>
+        ) : (
+          <div className="tc-main">
+            <div className="tc-eyebrow"><Icon name="check" size={14} stroke={3} /> Méthode des J</div>
+            <div className="tc-title">Tout est à jour pour aujourd'hui 🎉</div>
+            <div className="tc-sub">Aucune fiche due. Repose-toi ou prends de l'avance via la Bibliothèque.</div>
+          </div>
+        )}
       </div>
     );
   }
@@ -169,9 +177,22 @@ export function TodaySeriesCard({ plan, onStart, compact }) {
   const typeTxt = next.qcm && next.flash ? `${next.qcm} QCM + ${next.flash} flashcards`
     : next.qcm ? `${next.qcm} QCM` : `${next.flash} flashcards`;
 
+  if (collapsed) {
+    return (
+      <div className={'today-cta tc-collapsed' + (compact ? ' tc-compact' : '')}>
+        <div className="tc-glow" />
+        {collapsible && <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />}
+        <div className="tc-main">
+          <div className="tc-eyebrow"><Icon name="calendar" size={14} /> Série du jour · {total} carte{total > 1 ? 's' : ''} · Prochain : {next.fiche.titre} <span className="tc-jbadge">{next.jLabel}</span></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={'today-cta' + (compact ? ' tc-compact' : '')}>
       <div className="tc-glow" />
+      {collapsible && <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />}
       <div className="tc-main">
         <div className="tc-eyebrow"><Icon name="calendar" size={14} /> Série du jour · méthode des J</div>
         <div className="tc-title">Prochain&nbsp;: {next.fiche.titre} <span className="tc-jbadge">{next.jLabel}</span></div>
@@ -190,6 +211,77 @@ export function TodaySeriesCard({ plan, onStart, compact }) {
         <button className="sh-cta" type="button" onClick={() => onStart(allItems, 'Série du jour')}>
           <Icon name="play" size={17} fill /> Commencer la série d'aujourd'hui
         </button>
+      </div>
+    </div>
+  );
+}
+
+function CollapseToggle({ collapsed, onToggle }) {
+  return (
+    <button type="button" className="tc-collapse-btn" title={collapsed ? 'Déplier' : 'Replier'} onClick={onToggle}>
+      <Icon name={collapsed ? 'chevD' : 'chevU'} size={16} />
+    </button>
+  );
+}
+
+/* ---- bouton cloche (rappels J d'un cours) avec tooltip hover + tap mobile.
+   Texte fidèle à isFicheScheduled (planning.js) : la pause désactive la
+   sortie des fiches du cours dans la série du jour, sans les archiver
+   (toujours consultables/révisables manuellement). ---- */
+export function BellButton({ on, onToggle }) {
+  const [show, setShow] = useState(false);
+  const timer = useRef(null);
+  const text = on
+    ? "Rappels J actifs — ce cours entre dans la planification de la méthode des J."
+    : "Cours en pause — ses fiches ne sortent plus dans la série du jour de la méthode des J, mais restent consultables et révisables manuellement.";
+  const pulse = () => { setShow(true); clearTimeout(timer.current); timer.current = setTimeout(() => setShow(false), 2400); };
+  return (
+    <button type="button" className={'src-mute' + (on ? '' : ' off')} onClick={onToggle} onTouchStart={pulse}
+      aria-label={on ? 'Rappels J actifs — mettre en pause' : 'En pause — réactiver'}>
+      <Icon name={on ? 'bell' : 'bellOff'} size={15} />
+      <span className={'bell-tt' + (show ? ' show' : '')} role="tooltip">{text}</span>
+    </button>
+  );
+}
+
+/* ---- menu contextuel générique (clic droit desktop / appui long mobile,
+   les deux déclenchent l'évènement natif "contextmenu"). Se ferme au clic
+   ailleurs, au scroll ou à Échap. ---- */
+export function ContextMenu({ x, y, items, onClose }) {
+  useEffect(() => {
+    const close = () => onClose();
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+  return (
+    <div className="ctx-menu" style={{ left: x, top: y }} onPointerDown={(e) => e.stopPropagation()}>
+      {items.map((it, i) => (
+        <button key={i} type="button" className={'ctx-menu-item' + (it.danger ? ' danger' : '')} onClick={() => { onClose(); it.onClick(); }}>
+          {it.icon && <Icon name={it.icon} size={13} />} {it.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ---- modale de confirmation générique (suppression → corbeille, etc.) ---- */
+export function ConfirmModal({ title, body, confirmLabel = 'Confirmer', danger, onConfirm, onCancel }) {
+  return (
+    <div className="day-pop-scrim" onClick={onCancel}>
+      <div className="day-pop" style={{ width: 'min(420px, 92vw)' }} onClick={(e) => e.stopPropagation()}>
+        <div className="day-pop-head"><div className="serif" style={{ fontSize: 19 }}>{title}</div></div>
+        <div className="day-pop-body"><div className="hint" style={{ fontSize: 13.5 }}>{body}</div></div>
+        <div className="day-pop-foot">
+          <button className="btn" style={{ flex: 1 }} onClick={onCancel}>Annuler</button>
+          <button className={'btn' + (danger ? ' danger' : ' primary')} style={{ flex: 1 }} onClick={onConfirm}>{confirmLabel}</button>
+        </div>
       </div>
     </div>
   );

@@ -31,7 +31,9 @@ export function Dashboard({ ctx }) {
         <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
       </div>
 
-      <TodaySeriesCard plan={plan} onStart={ctx.startSession} />
+      <TodaySeriesCard plan={plan} onStart={ctx.startSession}
+        collapsed={!!(ctx.stats && ctx.stats.serieCollapsed)}
+        onToggleCollapse={() => ctx.saveStats({ ...ctx.stats, serieCollapsed: !(ctx.stats && ctx.stats.serieCollapsed) })} />
 
       <Card title="Calendrier de la semaine — méthode des J" icon="calendar"
         action={<span className="pill accent"><Icon name="cards" size={13} /> {due.length} cartes aujourd'hui</span>}>
