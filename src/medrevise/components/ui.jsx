@@ -4,6 +4,8 @@
    data model (matiere = {id,nom,couleur,icon}, fiche, questions).
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { DndContext, DragOverlay, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Icon } from '../../shared/Icon.jsx';
 import { J_INTERVALS } from '../lib/sm2.js';
 
@@ -146,27 +148,32 @@ export function Breadcrumb({ parts }) {
 }
 
 /* ---- "série du jour" CTA (méthode des J), shared dashboard + réviser ----
-   `collapsed`/`onToggleCollapse` : réservé à la variante Dashboard (non-compact) ;
-   l'état repliée/dépliée est persistée par l'appelant (stats.serieCollapsed). */
+   `collapsed`/`onToggleCollapse` : repli optionnel (seul l'appelant décide où
+   l'activer — actuellement l'onglet Réviser ; état persisté par l'appelant
+   dans stats.serieCollapsed). Le chevron vit DANS tc-main (tc-headrow), en
+   flex normal — jamais en position absolute — pour ne jamais chevaucher
+   tc-aside (le compteur de cartes du jour), quelle que soit la largeur. */
 export function TodaySeriesCard({ plan, onStart, compact, collapsed, onToggleCollapse }) {
   const total = plan.reduce((s, c) => s + c.items.length, 0);
   const allItems = plan.flatMap((c) => c.items);
-  const collapsible = !compact && onToggleCollapse;
+  const collapsible = !!onToggleCollapse;
 
   if (total === 0) {
     return (
       <div className={'today-cta done' + (compact ? ' tc-compact' : '') + (collapsed ? ' tc-collapsed' : '')}>
         <div className="tc-glow" />
-        {collapsible && <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />}
-        {collapsed ? (
-          <div className="tc-main"><div className="tc-eyebrow"><Icon name="check" size={14} stroke={3} /> Méthode des J — tout est à jour 🎉</div></div>
-        ) : (
-          <div className="tc-main">
-            <div className="tc-eyebrow"><Icon name="check" size={14} stroke={3} /> Méthode des J</div>
-            <div className="tc-title">Tout est à jour pour aujourd'hui 🎉</div>
-            <div className="tc-sub">Aucune fiche due. Repose-toi ou prends de l'avance via la Bibliothèque.</div>
+        <div className="tc-main">
+          <div className="tc-headrow">
+            <div className="tc-eyebrow"><Icon name="check" size={14} stroke={3} /> {collapsed ? "Méthode des J — tout est à jour 🎉" : 'Méthode des J'}</div>
+            {collapsible && <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />}
           </div>
-        )}
+          {!collapsed && (
+            <>
+              <div className="tc-title">Tout est à jour pour aujourd'hui 🎉</div>
+              <div className="tc-sub">Aucune fiche due. Repose-toi ou prends de l'avance via la Bibliothèque.</div>
+            </>
+          )}
+        </div>
       </div>
     );
   }
@@ -181,9 +188,11 @@ export function TodaySeriesCard({ plan, onStart, compact, collapsed, onToggleCol
     return (
       <div className={'today-cta tc-collapsed' + (compact ? ' tc-compact' : '')}>
         <div className="tc-glow" />
-        {collapsible && <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />}
         <div className="tc-main">
-          <div className="tc-eyebrow"><Icon name="calendar" size={14} /> Série du jour · {total} carte{total > 1 ? 's' : ''} · Prochain : {next.fiche.titre} <span className="tc-jbadge">{next.jLabel}</span></div>
+          <div className="tc-headrow">
+            <div className="tc-eyebrow"><Icon name="calendar" size={14} /> Série du jour · {total} carte{total > 1 ? 's' : ''} · Prochain : {next.fiche.titre} <span className="tc-jbadge">{next.jLabel}</span></div>
+            {collapsible && <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />}
+          </div>
         </div>
       </div>
     );
@@ -192,9 +201,11 @@ export function TodaySeriesCard({ plan, onStart, compact, collapsed, onToggleCol
   return (
     <div className={'today-cta' + (compact ? ' tc-compact' : '')}>
       <div className="tc-glow" />
-      {collapsible && <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />}
       <div className="tc-main">
-        <div className="tc-eyebrow"><Icon name="calendar" size={14} /> Série du jour · méthode des J</div>
+        <div className="tc-headrow">
+          <div className="tc-eyebrow"><Icon name="calendar" size={14} /> Série du jour · méthode des J</div>
+          {collapsible && <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />}
+        </div>
         <div className="tc-title">Prochain&nbsp;: {next.fiche.titre} <span className="tc-jbadge">{next.jLabel}</span></div>
         <div className="tc-meta-row">
           <span className="tc-chip"><Icon name={meta.icon} size={13} /> {meta.label}</span>
@@ -227,47 +238,74 @@ function CollapseToggle({ collapsed, onToggle }) {
 /* ---- bouton cloche (rappels J d'un cours) avec tooltip hover + tap mobile.
    Texte fidèle à isFicheScheduled (planning.js) : la pause désactive la
    sortie des fiches du cours dans la série du jour, sans les archiver
-   (toujours consultables/révisables manuellement). ---- */
+   (toujours consultables/révisables manuellement).
+   Le tooltip est rendu via un portal vers document.body (position: fixed,
+   calculée depuis getBoundingClientRect) : il échappe à tout conteneur
+   `overflow` ancêtre (ex. la sidebar scrollable "Cours & matières") et à
+   son stacking context, contrairement à un simple `position: absolute`. ---- */
 export function BellButton({ on, onToggle }) {
   const [show, setShow] = useState(false);
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
   const timer = useRef(null);
   const text = on
     ? "Rappels J actifs — ce cours entre dans la planification de la méthode des J."
     : "Cours en pause — ses fiches ne sortent plus dans la série du jour de la méthode des J, mais restent consultables et révisables manuellement.";
-  const pulse = () => { setShow(true); clearTimeout(timer.current); timer.current = setTimeout(() => setShow(false), 2400); };
+  const openTip = () => {
+    const r = btnRef.current && btnRef.current.getBoundingClientRect();
+    if (!r) return;
+    setPos({ right: window.innerWidth - r.right, bottom: window.innerHeight - r.top + 8 });
+    setShow(true);
+  };
+  const closeTip = () => setShow(false);
+  const pulse = () => { openTip(); clearTimeout(timer.current); timer.current = setTimeout(closeTip, 2400); };
   return (
-    <button type="button" className={'src-mute' + (on ? '' : ' off')} onClick={onToggle} onTouchStart={pulse}
+    <button ref={btnRef} type="button" className={'src-mute' + (on ? '' : ' off')} onClick={onToggle}
+      onMouseEnter={openTip} onMouseLeave={closeTip} onTouchStart={pulse}
       aria-label={on ? 'Rappels J actifs — mettre en pause' : 'En pause — réactiver'}>
       <Icon name={on ? 'bell' : 'bellOff'} size={15} />
-      <span className={'bell-tt' + (show ? ' show' : '')} role="tooltip">{text}</span>
+      {show && pos && createPortal(
+        <div className="bell-tt-portal" style={{ right: pos.right, bottom: pos.bottom }} role="tooltip">{text}</div>,
+        document.body,
+      )}
     </button>
   );
 }
 
-/* ---- menu contextuel générique (clic droit desktop / appui long mobile,
-   les deux déclenchent l'évènement natif "contextmenu"). Se ferme au clic
-   ailleurs, au scroll ou à Échap. ---- */
+/* ---- menu contextuel générique (clic droit desktop natif + appui long
+   tactile explicite géré par l'appelant — voir Reviser.jsx). Rendu via un
+   portal vers document.body (position: fixed, z-index élevé) pour ne
+   jamais être clippé/masqué par un conteneur scrollable ancêtre (ex. la
+   sidebar). Se ferme au clic ailleurs, au scroll ou à Échap. ---- */
 export function ContextMenu({ x, y, items, onClose }) {
   useEffect(() => {
     const close = () => onClose();
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('pointerdown', close);
+    // écoute posée un tick après le montage : évite que le pointerdown /
+    // contextmenu qui a OUVERT ce menu ne le referme aussitôt.
+    const raf = requestAnimationFrame(() => {
+      window.addEventListener('pointerdown', close);
+      window.addEventListener('contextmenu', close);
+    });
     window.addEventListener('scroll', close, true);
     window.addEventListener('keydown', onKey);
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener('pointerdown', close);
+      window.removeEventListener('contextmenu', close);
       window.removeEventListener('scroll', close, true);
       window.removeEventListener('keydown', onKey);
     };
   }, [onClose]);
-  return (
-    <div className="ctx-menu" style={{ left: x, top: y }} onPointerDown={(e) => e.stopPropagation()}>
+  return createPortal(
+    <div className="ctx-menu" style={{ left: x, top: y }} onPointerDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
       {items.map((it, i) => (
         <button key={i} type="button" className={'ctx-menu-item' + (it.danger ? ' danger' : '')} onClick={() => { onClose(); it.onClick(); }}>
           {it.icon && <Icon name={it.icon} size={13} />} {it.label}
         </button>
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -285,6 +323,68 @@ export function ConfirmModal({ title, body, confirmLabel = 'Confirmer', danger, 
       </div>
     </div>
   );
+}
+
+/* ============================================================
+   Drag & drop des fiches (BUG4/BUG5), sur @dnd-kit/core.
+   Choix délibéré : PAS de @dnd-kit/sortable — sa réanimation automatique
+   des voisins ("push") est explicitement exclue du besoin ("pas
+   d'animation de poussée"). À la place : des créneaux de dépôt (`DropSlot`)
+   discrets et immobiles entre chaque fiche (et un en fin de chaque
+   matière), qui s'allument en barre d'insertion (ou zone) uniquement quand
+   survolés. Les fiches voisines ne bougent jamais — seule celle en cours
+   de glissement change d'opacité, et un DragOverlay (portal interne à
+   dnd-kit) suit le curseur. Id draggable : "fiche:<id>". Id créneau :
+   "slot:<matiereId>:<beforeFicheId|END>".
+   ============================================================ */
+export function FicheDndProvider({ onDropAt, renderOverlay, children }) {
+  const [activeId, setActiveId] = useState(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+  );
+  const stripPrefix = (id) => String(id).slice('fiche:'.length);
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter}
+      onDragStart={(e) => setActiveId(e.active.id)}
+      onDragCancel={() => setActiveId(null)}
+      onDragEnd={(e) => {
+        setActiveId(null);
+        const { active, over } = e;
+        if (!over) return;
+        const ficheId = stripPrefix(active.id);
+        const [, matiereId, beforeRaw] = String(over.id).split(':');
+        onDropAt({ ficheId, matiereId, beforeFicheId: beforeRaw === 'END' ? null : beforeRaw });
+      }}>
+      {children}
+      <DragOverlay dropAnimation={null}>
+        {activeId ? renderOverlay(stripPrefix(activeId)) : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+/** Toute la boîte est la zone de préhension (listeners sur le wrapper entier). */
+export function DraggableFiche({ id, disabled, className = '', style, children }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: 'fiche:' + id, disabled });
+  return (
+    <div ref={setNodeRef} {...listeners} {...attributes}
+      className={className + (isDragging ? ' dnd-dragging' : '')}
+      style={{ ...style, opacity: isDragging ? 0.35 : 1, cursor: disabled ? 'default' : 'grab', touchAction: 'none' }}>
+      {children}
+    </div>
+  );
+}
+
+/** Créneau de dépôt immobile : "line" = fine barre d'insertion entre 2 fiches,
+    "zone" = zone plus large ("déposer ici") en fin de matière / matière vide. */
+export function DropSlot({ matiereId, beforeId, variant = 'line', label = 'Déposer ici' }) {
+  const id = `slot:${matiereId}:${beforeId || 'END'}`;
+  const { setNodeRef, isOver } = useDroppable({ id });
+  if (variant === 'zone') {
+    return <div ref={setNodeRef} className={'dnd-zone' + (isOver ? ' over' : '')}>{label}</div>;
+  }
+  return <div ref={setNodeRef} className={'dnd-slot' + (isOver ? ' over' : '')} />;
 }
 
 /* ---- destination picker (Cours + Matière) with inline creation ----

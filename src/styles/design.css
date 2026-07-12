@@ -218,17 +218,19 @@ body {
 .btn.danger:hover { background: color-mix(in srgb, var(--crit) 88%, #000); }
 
 /* ---- menu contextuel (clic droit / appui long) ---- */
-.ctx-menu { position: fixed; z-index: 200; min-width: 168px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 6px; display: flex; flex-direction: column; gap: 2px; animation: fade .12s ease; }
+.ctx-menu { position: fixed; z-index: 400; min-width: 168px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 6px; display: flex; flex-direction: column; gap: 2px; animation: fade .12s ease; }
 .ctx-menu-item { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: none; background: none; border-radius: 8px; font-family: inherit; font-size: 13px; font-weight: 500; color: var(--text); cursor: pointer; text-align: left; }
 .ctx-menu-item:hover { background: var(--bg-2); }
 .ctx-menu-item.danger { color: var(--crit); }
 .ctx-menu-item.danger:hover { background: color-mix(in srgb, var(--crit) 10%, transparent); }
 
-/* ---- drag & drop des fiches (Bibliothèque, A8) ---- */
-.lib-fiche[draggable="true"] { cursor: grab; transition: opacity .12s, box-shadow .12s, border-color .12s; }
-.lib-fiche.dragging { opacity: .4; cursor: grabbing; }
-.lib-fiche.drop-over { border-color: var(--accent) !important; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
-.mat-dropzone.drop-over { background: color-mix(in srgb, var(--accent) 6%, transparent); border-radius: 12px; outline: 2px dashed color-mix(in srgb, var(--accent) 35%, transparent); outline-offset: -2px; }
+/* ---- drag & drop des fiches (@dnd-kit, BUG4/BUG5) ---- */
+.dnd-dragging { box-shadow: none !important; }
+.dnd-slot { height: 8px; margin: -1px 0; position: relative; z-index: 1; }
+.dnd-slot.over::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 3px; border-radius: 2px; background: var(--accent); transform: translateY(-50%); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.dnd-zone { margin: 6px 0; padding: 10px; border: 2px dashed var(--border); border-radius: 10px; text-align: center; font-size: 12px; font-weight: 600; color: var(--text-3); transition: all .12s; }
+.dnd-zone.over { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.dnd-overlay-card { box-shadow: var(--shadow-lg); border-radius: 12px; cursor: grabbing; }
 
 /* ============================================================
    PRIMITIVES

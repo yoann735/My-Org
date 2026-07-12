@@ -72,7 +72,6 @@ export function Reglages({ ctx }) {
                 </div>
                 <div className="srcmgr-actions">
                   <div className="src-set-toggle"><span className={'src-set-state' + (on ? ' on' : '')}>{on ? 'Rappels J' : 'En pause'}</span><Switch on={on} onChange={(v) => ctx.setSourceRappels(s.id, v)} /></div>
-                  <button className="srcmgr-arch" title="Archiver ce cours" onClick={() => ctx.setSourceArchived(s.id, true)}><Icon name="archive" size={16} /></button>
                 </div>
               </div>
             );

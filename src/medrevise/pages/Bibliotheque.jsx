@@ -5,7 +5,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta } from '../components/ui.jsx';
+import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
 import { blobURL } from '../lib/storage.js';
 
@@ -39,16 +39,20 @@ export function Bibliotheque({ ctx }) {
 
   const openPdf = async (pdfId) => { const u = await blobURL(pdfId); if (u) window.open(u, '_blank'); };
 
-  // A8 : drag & drop des fiches — réordonner et/ou changer de matière.
-  // overKey = ficheId ciblé (insertion avant) OU 'mat:<id>' (dépôt sur le conteneur = fin de liste).
-  const [dragId, setDragId] = useState(null);
-  const [overKey, setOverKey] = useState(null);
-  const onFicheDragStart = (e, f) => { setDragId(f.id); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', f.id); } catch (err) { /* ignore */ } };
-  const onFicheDragEnd = () => { setDragId(null); setOverKey(null); };
-  const onFicheDragOver = (e, f) => { if (!dragId) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (overKey !== f.id) setOverKey(f.id); };
-  const onFicheDrop = (e, f, mat) => { e.preventDefault(); if (dragId && dragId !== f.id) ctx.moveFicheTo(dragId, mat.id, f.id); setDragId(null); setOverKey(null); };
-  const onMatDragOver = (e, mat) => { if (!dragId) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; const k = 'mat:' + mat.id; if (overKey !== k) setOverKey(k); };
-  const onMatDrop = (e, mat) => { e.preventDefault(); if (dragId) ctx.moveFicheTo(dragId, mat.id, null); setDragId(null); setOverKey(null); };
+  // BUG5 : drag & drop des fiches via @dnd-kit (voir FicheDndProvider/ui.jsx).
+  const onDropAt = ({ ficheId, matiereId, beforeFicheId }) => {
+    if (beforeFicheId === ficheId) return;
+    ctx.moveFicheTo(ficheId, matiereId, beforeFicheId);
+  };
+  const renderFicheOverlay = (ficheId) => {
+    const f = db.fiches.find((x) => x.id === ficheId);
+    if (!f) return null;
+    return (
+      <div className="dnd-overlay-card" style={{ border: '1px solid var(--border-2)', background: 'var(--card)', padding: '11px 13px', width: 280 }}>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>{f.titre}</span>
+      </div>
+    );
+  };
 
   const search = q.trim().toLowerCase();
   const matches = search
@@ -91,6 +95,7 @@ export function Bibliotheque({ ctx }) {
           {!matches.length && <div className="hint">Aucune question ne correspond.</div>}
         </div></div>
       ) : (
+        <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
         <div className="lib-tree" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {db.sources.filter((s) => !s.archive).map((src) => {
             const mats = db.matieres.filter((m) => m.sourceId === src.id && !m.archive);
@@ -110,57 +115,53 @@ export function Bibliotheque({ ctx }) {
                     {mats.map((mat) => {
                       const mm = matiereMeta(mat);
                       const fiches = db.fiches.filter((f) => f.matiereId === mat.id && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
-                      const matDropOver = overKey === 'mat:' + mat.id;
                       return (
-                        <div key={mat.id} className={'mat-dropzone' + (matDropOver ? ' drop-over' : '')} style={{ marginTop: 14 }}
-                          onDragOver={(e) => onMatDragOver(e, mat)} onDrop={(e) => onMatDrop(e, mat)}>
+                        <div key={mat.id} style={{ marginTop: 14 }}>
                           {isRen('matiere', mat.id)
                             ? <div style={{ marginBottom: 8 }}><RenameInput /></div>
                             : <div className="cat-badge" style={{ background: `color-mix(in srgb, ${mm.tint} 14%, transparent)`, color: mm.tint, borderColor: `color-mix(in srgb, ${mm.tint} 30%, transparent)`, marginBottom: 8, cursor: 'pointer' }} onDoubleClick={() => startRename('matiere', mat.id, mm.label)} title="Double-clic pour renommer"><Icon name={mm.icon} size={12} /> {mm.label}</div>}
                           {fiches.map((f) => {
                             const fo = !!openFiche[f.id];
                             const isAnat = f.type === 'anatomie';
-                            const dragging = dragId === f.id;
-                            const dropOver = overKey === f.id;
                             return (
-                              <div key={f.id} className={'lib-fiche' + (dragging ? ' dragging' : '') + (dropOver ? ' drop-over' : '')}
-                                style={{ border: '1px solid var(--border-2)', borderRadius: 12, padding: '11px 13px', marginBottom: 8 }}
-                                draggable={!isRen('fiche', f.id)}
-                                onDragStart={(e) => onFicheDragStart(e, f)} onDragEnd={onFicheDragEnd}
-                                onDragOver={(e) => onFicheDragOver(e, f)} onDrop={(e) => onFicheDrop(e, f, mat)}
-                                title="Glisser pour réordonner / déplacer vers une autre matière">
-                                <div className="row spread">
-                                  {isRen('fiche', f.id) ? (
-                                    <div style={{ flex: 1, minWidth: 0 }}><RenameInput /></div>
-                                  ) : (
-                                    <div role="button" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text)', flex: 1, minWidth: 0 }}
-                                      onClick={() => setOpenFiche((o) => ({ ...o, [f.id]: !fo }))}
-                                      onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }} title="Clic = ouvrir · double-clic = renommer">
-                                      <Icon name={fo ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)' }} />
-                                      <span style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.titre}</span>
+                              <div key={f.id}>
+                                <DropSlot matiereId={mat.id} beforeId={f.id} />
+                                <DraggableFiche id={f.id} disabled={isRen('fiche', f.id)} className="lib-fiche"
+                                  style={{ border: '1px solid var(--border-2)', borderRadius: 12, padding: '11px 13px' }}>
+                                  <div className="row spread">
+                                    {isRen('fiche', f.id) ? (
+                                      <div style={{ flex: 1, minWidth: 0 }}><RenameInput /></div>
+                                    ) : (
+                                      <div role="button" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text)', flex: 1, minWidth: 0 }}
+                                        onClick={() => setOpenFiche((o) => ({ ...o, [f.id]: !fo }))}
+                                        onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }} title="Clic = ouvrir · double-clic = renommer">
+                                        <Icon name={fo ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)' }} />
+                                        <span style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.titre}</span>
+                                      </div>
+                                    )}
+                                    <div className="row" style={{ gap: 6 }}>
+                                      <span className="pill accent" style={{ height: 22, fontSize: 10.5 }}>{count(f.id, 'qcm')} QCM</span>
+                                      <span className="pill amber" style={{ height: 22, fontSize: 10.5 }}>{count(f.id, 'flashcard')} flash</span>
+                                      {isAnat && <span className="pill" style={{ height: 22, fontSize: 10.5 }}><Icon name="image" size={11} /> IMAGES</span>}
+                                      {f.pdfId && <button className="cd-ic" title="Ouvrir le PDF source" onClick={() => openPdf(f.pdfId)}><Icon name="filePdf" size={14} /></button>}
+                                      <button className="cd-ic" title="Réviser" onClick={() => { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); }}><Icon name="play" size={14} /></button>
+                                    </div>
+                                  </div>
+                                  {fo && (
+                                    <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                      {qById(f.id).map((x) => (
+                                        <div className="row spread" key={x.id} style={{ padding: '6px 0', borderTop: '1px solid var(--border-2)' }}>
+                                          <span style={{ fontSize: 12.5, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><Icon name={x.type === 'flashcard' ? 'cards' : x.type === 'feynman' ? 'lightbulb' : 'list'} size={12} /> {x.concept}</span>
+                                          <button className="cd-ic" title="Supprimer" onClick={() => ctx.deleteQuestion(x.id)}><Icon name="trash" size={13} /></button>
+                                        </div>
+                                      ))}
                                     </div>
                                   )}
-                                  <div className="row" style={{ gap: 6 }}>
-                                    <span className="pill accent" style={{ height: 22, fontSize: 10.5 }}>{count(f.id, 'qcm')} QCM</span>
-                                    <span className="pill amber" style={{ height: 22, fontSize: 10.5 }}>{count(f.id, 'flashcard')} flash</span>
-                                    {isAnat && <span className="pill" style={{ height: 22, fontSize: 10.5 }}><Icon name="image" size={11} /> IMAGES</span>}
-                                    {f.pdfId && <button className="cd-ic" title="Ouvrir le PDF source" onClick={() => openPdf(f.pdfId)}><Icon name="filePdf" size={14} /></button>}
-                                    <button className="cd-ic" title="Réviser" onClick={() => { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); }}><Icon name="play" size={14} /></button>
-                                  </div>
-                                </div>
-                                {fo && (
-                                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                    {qById(f.id).map((x) => (
-                                      <div className="row spread" key={x.id} style={{ padding: '6px 0', borderTop: '1px solid var(--border-2)' }}>
-                                        <span style={{ fontSize: 12.5, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><Icon name={x.type === 'flashcard' ? 'cards' : x.type === 'feynman' ? 'lightbulb' : 'list'} size={12} /> {x.concept}</span>
-                                        <button className="cd-ic" title="Supprimer" onClick={() => ctx.deleteQuestion(x.id)}><Icon name="trash" size={13} /></button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
+                                </DraggableFiche>
                               </div>
                             );
                           })}
+                          <DropSlot matiereId={mat.id} beforeId={null} variant={fiches.length ? 'line' : 'zone'} />
                           {fiches.length === 0 && <div className="hint">Aucune fiche.</div>}
                         </div>
                       );
@@ -171,6 +172,7 @@ export function Bibliotheque({ ctx }) {
             );
           })}
         </div>
+        </FicheDndProvider>
       )}
     </div>
   );

@@ -3,9 +3,9 @@
    (cases à cocher, sélection simple/multiple, coef, rappels J).
    Droite : méthode des J (frise) + cards QCM/Flash/Feynman + erreurs.
    ============================================================ */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal } from '../components/ui.jsx';
+import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, FicheDndProvider, DraggableFiche, DropSlot } from '../components/ui.jsx';
 import {
   index, effectiveCoef, ficheJ, dueToday, isFicheScheduled, missedQuestions, topConcepts, todayPlan,
 } from '../lib/planning.js';
@@ -65,11 +65,24 @@ export function Reviser({ ctx }) {
     setRenaming(null);
   };
 
-  // clic droit (desktop) / appui long (mobile, déclenche aussi contextmenu) sur un cours ou une matière
+  // clic droit desktop sur un cours ou une matière (empêche le menu natif du navigateur)
   const openCtxMenu = (e, type, id) => {
     e.preventDefault();
     setCtxMenu({ type, id, x: Math.min(e.clientX, window.innerWidth - 190), y: Math.min(e.clientY, window.innerHeight - 110) });
   };
+  // appui long tactile explicite (le "contextmenu" natif sur long-press n'est pas fiable
+  // sur tous les navigateurs mobiles, notamment iOS Safari) : timer démarré au toucher,
+  // annulé si le doigt bouge (scroll) ou est relâché avant le délai.
+  const pressTimer = useRef(null);
+  const startPress = (e, type, id) => {
+    const t = e.touches && e.touches[0]; if (!t) return;
+    const x = t.clientX, y = t.clientY;
+    clearTimeout(pressTimer.current);
+    pressTimer.current = setTimeout(() => {
+      setCtxMenu({ type, id, x: Math.min(x, window.innerWidth - 190), y: Math.min(y, window.innerHeight - 110) });
+    }, 500);
+  };
+  const cancelPress = () => clearTimeout(pressTimer.current);
   const askDeleteSource = (id) => { const s = db.sources.find((x) => x.id === id); if (s) setConfirmDel({ type: 'source', id, nom: s.nom }); };
   const askDeleteMatiere = (id) => { const m = db.matieres.find((x) => x.id === id); if (m) setConfirmDel({ type: 'matiere', id, nom: matiereMeta(m).label, fichesCount: fichesOf(id).length }); };
   const confirmDelete = async () => {
@@ -77,6 +90,17 @@ export function Reviser({ ctx }) {
     if (confirmDel.type === 'source') await ctx.setSourceArchived(confirmDel.id, true);
     else if (confirmDel.type === 'matiere') await ctx.deleteMatiere(confirmDel.id);
     setConfirmDel(null);
+  };
+
+  // BUG4 : drag & drop des fiches vers une autre matière/cours, ici aussi via @dnd-kit.
+  const onDropAt = ({ ficheId, matiereId, beforeFicheId }) => {
+    if (beforeFicheId === ficheId) return;
+    ctx.moveFicheTo(ficheId, matiereId, beforeFicheId);
+  };
+  const renderFicheOverlay = (ficheId) => {
+    const f = db.fiches.find((x) => x.id === ficheId);
+    if (!f) return null;
+    return <div className="dnd-overlay-card tree-course on" style={{ padding: '9px 14px' }}><span className="tc-name">{f.titre}</span></div>;
   };
 
   return (
@@ -89,7 +113,9 @@ export function Reviser({ ctx }) {
         <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
       </div>
 
-      <TodaySeriesCard plan={todayPlan(db, ix)} onStart={ctx.startSession} compact />
+      <TodaySeriesCard plan={todayPlan(db, ix)} onStart={ctx.startSession} compact
+        collapsed={!!(ctx.stats && ctx.stats.serieCollapsed)}
+        onToggleCollapse={() => ctx.saveStats({ ...ctx.stats, serieCollapsed: !(ctx.stats && ctx.stats.serieCollapsed) })} />
 
       <div className="revise-grid" style={{ display: 'grid', gridTemplateColumns: '320px minmax(0,1fr)', gap: 20, alignItems: 'start', marginTop: 20 }}>
         {/* tree */}
@@ -99,6 +125,7 @@ export function Reviser({ ctx }) {
             <button className="tree-clear" onClick={() => setSelIds([])} disabled={empty}>Tout décocher</button>
           </div>
           <div className="tree-scroll scroll">
+            <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
             {db.sources.filter((s) => !s.archive).map((src) => {
               const mats = matieresOf(src.id).filter((m) => fichesOf(m.id).length);
               if (!mats.length) return null;
@@ -106,7 +133,9 @@ export function Reviser({ ctx }) {
               const on = src.rappelsJ !== false;
               return (
                 <div className={'tree-src' + (on ? '' : ' off')} key={src.id}>
-                  <div className="tree-src-row" onContextMenu={(e) => openCtxMenu(e, 'source', src.id)} title="Clic droit (ou appui long) : renommer / supprimer">
+                  <div className="tree-src-row" onContextMenu={(e) => openCtxMenu(e, 'source', src.id)}
+                    onTouchStart={(e) => startPress(e, 'source', src.id)} onTouchEnd={cancelPress} onTouchMove={cancelPress} onTouchCancel={cancelPress}
+                    title="Clic droit (ou appui long) : renommer / supprimer">
                     {isRen('source', src.id) ? (
                       <div className="tree-src-main" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                         <Icon name={openS ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)' }} />
@@ -129,7 +158,9 @@ export function Reviser({ ctx }) {
                     const mm = matiereMeta(mat);
                     return (
                       <div className="tree-group" key={mat.id}>
-                        <div className="tree-cat-row" onContextMenu={(e) => openCtxMenu(e, 'matiere', mat.id)} title="Clic droit (ou appui long) : renommer / supprimer">
+                        <div className="tree-cat-row" onContextMenu={(e) => openCtxMenu(e, 'matiere', mat.id)}
+                          onTouchStart={(e) => startPress(e, 'matiere', mat.id)} onTouchEnd={cancelPress} onTouchMove={cancelPress} onTouchCancel={cancelPress}
+                          title="Clic droit (ou appui long) : renommer / supprimer">
                           <span className="tcat-dot" style={{ background: mm.tint, marginLeft: 4 }} />
                           {isRen('matiere', mat.id) ? (
                             <input className="tree-rename" style={{ flex: 1 }} autoFocus defaultValue={mm.label} onFocus={(e) => e.target.select()}
@@ -144,34 +175,41 @@ export function Reviser({ ctx }) {
                         {fiches.map((f) => {
                           const sel = selIds.includes(f.id);
                           const cdt = dueCountFiche(f.id);
-                          if (isRen('fiche', f.id)) {
-                            return (
-                              <div key={f.id} className="tree-course on">
-                                <span className="tree-check" style={{ visibility: 'hidden' }} />
-                                <input className="tree-rename" autoFocus defaultValue={f.titre} onFocus={(e) => e.target.select()}
-                                  onChange={(e) => setDraft(e.target.value)}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
-                                  onBlur={commitRename} />
-                              </div>
-                            );
-                          }
+                          const ren = isRen('fiche', f.id);
                           return (
-                            <div key={f.id} className={'tree-course' + (sel ? ' on' : '')}>
-                              <button className={'tree-check' + (sel ? ' on' : '')} onClick={() => toggle(f.id)} title="Cocher / décocher">{sel ? <Icon name="check" size={11} stroke={3} /> : null}</button>
-                              <button className="tree-course-main" onClick={() => selectOnly(f.id)} onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }} title="Clic = sélectionner · double-clic = renommer">
-                                <span className="tc-name">{f.titre}</span>
-                                {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
-                              </button>
-                              <CoefControl value={effectiveCoef(db, f, ix)} inherited={f.coef == null} onSet={(v) => ctx.setFicheCoef(f.id, v)} onReset={() => ctx.setFicheCoef(f.id, null)} />
+                            <div key={f.id}>
+                              <DropSlot matiereId={mat.id} beforeId={f.id} />
+                              <DraggableFiche id={f.id} disabled={ren}>
+                                {ren ? (
+                                  <div className="tree-course on">
+                                    <span className="tree-check" style={{ visibility: 'hidden' }} />
+                                    <input className="tree-rename" autoFocus defaultValue={f.titre} onFocus={(e) => e.target.select()}
+                                      onChange={(e) => setDraft(e.target.value)}
+                                      onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
+                                      onBlur={commitRename} />
+                                  </div>
+                                ) : (
+                                  <div className={'tree-course' + (sel ? ' on' : '')}>
+                                    <button className={'tree-check' + (sel ? ' on' : '')} onClick={() => toggle(f.id)} title="Cocher / décocher">{sel ? <Icon name="check" size={11} stroke={3} /> : null}</button>
+                                    <button className="tree-course-main" onClick={() => selectOnly(f.id)} onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }} title="Clic = sélectionner · double-clic = renommer">
+                                      <span className="tc-name">{f.titre}</span>
+                                      {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
+                                    </button>
+                                    <CoefControl value={effectiveCoef(db, f, ix)} inherited={f.coef == null} onSet={(v) => ctx.setFicheCoef(f.id, v)} onReset={() => ctx.setFicheCoef(f.id, null)} />
+                                  </div>
+                                )}
+                              </DraggableFiche>
                             </div>
                           );
                         })}
+                        <DropSlot matiereId={mat.id} beforeId={null} variant={fiches.length ? 'line' : 'zone'} />
                       </div>
                     );
                   })}
                 </div>
               );
             })}
+            </FicheDndProvider>
           </div>
           <div className="tree-foot">
             <span className="tf-item"><span className="tf-badge tnum">N</span> à réviser aujourd'hui</span>
