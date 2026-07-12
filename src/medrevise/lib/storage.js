@@ -49,11 +49,18 @@ export function newHighlight({ ficheId, page, texte, couleur, rects }) {
   return { id: genId('h'), ficheId, page, texte, couleur: couleur || 'jaune', rects: rects || [], createdAt: new Date().toISOString() };
 }
 
-/* ---- annotations PDF (B6) : zone de texte libre / note / masquage.
-   x,y,width,height normalisés [0,1] par rapport à la page. Le PDF
-   d'origine n'est jamais modifié — couche superposée uniquement. ---- */
-export function newAnnotation({ ficheId, page, type, x, y, width, height, text }) {
-  return { id: genId('an'), ficheId, page, type, x, y, width, height, text: text || '', createdAt: new Date().toISOString() };
+/* ---- édition de texte PDF (Chantier 1) : couche superposée qui masque un bloc de
+   texte d'origine (rectangle opaque) et affiche à la place un contenu riche
+   (TipTap) éditable, pré-rempli avec le texte réel extrait de ce bloc.
+   x,y,width,height normalisés [0,1] par rapport à la page. Le PDF d'origine
+   n'est jamais modifié — couche superposée uniquement, réinitialisable. ---- */
+export function newTextEdit({ ficheId, page, x, y, width, height, originalText, fontSize, fontFamily, content }) {
+  return {
+    id: genId('an'), ficheId, page, x, y, width, height,
+    originalText, fontSize: fontSize || null, fontFamily: fontFamily || null,
+    content: content || { type: 'doc', content: [{ type: 'paragraph', content: originalText ? [{ type: 'text', text: originalText }] : [] }] },
+    createdAt: new Date().toISOString(),
+  };
 }
 
 /* ---- stats (carte unique) ---- */

@@ -882,15 +882,20 @@
 .hl-delete:hover { background: color-mix(in srgb, var(--crit) 20%, transparent); }
 .hl-cancel { width: 26px; height: 26px; border-radius: 8px; border: none; background: var(--bg-2); color: var(--text-3); display: grid; place-items: center; cursor: pointer; }
 
-/* ---------- B6 : couche d'annotations ---------- */
-.ann-box { position: absolute; box-sizing: border-box; }
-.ann-box.editable { cursor: move; }
-.ann-text { width: 100%; height: 100%; resize: none; border: 1.5px solid var(--accent); border-radius: 4px; background: color-mix(in srgb, var(--accent) 10%, #fff); font-family: inherit; font-size: 12px; line-height: 1.35; padding: 5px 7px; box-sizing: border-box; color: #16162a; outline: none; }
-.ann-note .ann-text { background: color-mix(in srgb, #FFD84D 60%, #fff); border-color: #E8B923; }
-.ann-redact { background: #fff; }
-.ann-redact.editable { border: 1.5px dashed rgba(0,0,0,.28); }
-.ann-resize { position: absolute; right: -5px; bottom: -5px; width: 13px; height: 13px; border-radius: 4px; background: var(--accent); cursor: nwse-resize; box-shadow: 0 0 0 2px var(--card); }
-.ann-del { position: absolute; top: -11px; right: -11px; width: 21px; height: 21px; border-radius: 50%; border: none; background: var(--crit); color: #fff; display: grid; place-items: center; cursor: pointer; box-shadow: 0 0 0 2px var(--card); }
+/* ---------- Chantier 1 : édition de texte existant (couche superposée) ---------- */
+.edit-block-static, .edit-block-active { position: absolute; box-sizing: border-box; background: #fff; overflow-y: auto; line-height: 1.25; color: #16162a; }
+.edit-block-static.editable { cursor: text; outline: 1px dashed transparent; transition: outline-color .12s; }
+.edit-block-static.editable:hover { outline-color: var(--accent); }
+.edit-block-active { outline: 2px solid var(--accent); box-shadow: 0 2px 10px rgba(0,0,0,.15); }
+.edit-block-content, .edit-block-content .ProseMirror { height: 100%; outline: none; }
+.edit-block-content p { margin: 0 0 4px; }
+.pdfr-edit-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: var(--shadow); }
+.et-btn { min-width: 30px; height: 30px; padding: 0 8px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--text-2); font-family: inherit; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.et-btn:hover { background: var(--bg-2); }
+.et-btn.active { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.et-select { height: 30px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-family: inherit; font-size: 12px; }
+.et-color { width: 30px; height: 30px; padding: 2px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); cursor: pointer; }
+.et-sep { width: 1px; align-self: stretch; background: var(--border-2); margin: 2px 2px; }
 
 /* ---------- "coming soon" placeholder (kept from stage 1) ---------- */
 .soon { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 40px 24px; text-align: center; }

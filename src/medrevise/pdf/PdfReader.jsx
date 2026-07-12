@@ -1,6 +1,7 @@
 /* ============================================================
-   MedRevise — Partie B (v2) : lecteur PDF continu et virtualisé,
-   surlignage sécurisé, recherche temps réel, couche d'annotations.
+   MedRevise — Partie B (v3) : lecteur PDF continu et virtualisé,
+   surlignage sécurisé + recherche géométriquement exacte (Range API),
+   édition de texte existant via couche superposée (TipTap).
 
    Architecture de rendu : toutes les pages sont "positionnées" (empilées
    verticalement, offsets cumulés précalculés depuis la taille réelle de
@@ -17,18 +18,29 @@
    item.transform × viewport.transform (pdfjsLib.Util.transform),
    indépendant de la classe TextLayer interne de pdfjs-dist (dont le
    contrat CSS varie trop entre versions). Une seconde fonction pure,
-   getPageTextMap, réutilise le même calcul en coordonnées normalisées
-   [0,1] (scale=1) pour permettre une recherche plein-texte à travers
-   TOUTES les pages sans devoir les monter dans le DOM.
+   computePageTextMap, réutilise le même calcul en coordonnées normalisées
+   [0,1] (scale=1) pour : (a) trouver les occurrences de recherche à
+   travers TOUTES les pages sans devoir les monter dans le DOM, (b)
+   identifier le bloc de texte cliqué en mode édition, (c) approximer la
+   position à laquelle défiler. La géométrie VISUELLE du surlignage de
+   recherche, elle, est calculée séparément via l'API Range du DOM sur la
+   page réellement montée (voir computeMatchRectsFromDom) — fiable même
+   pour du texte justifié/en tableau, contrairement à une interpolation
+   par fraction de caractères.
    ============================================================ */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { PDFDocument, rgb, BlendMode } from 'pdf-lib';
+import { useEditor, EditorContent } from '@tiptap/react';
+import { StarterKit } from '@tiptap/starter-kit';
+import { TextStyleKit } from '@tiptap/extension-text-style';
+import { TextAlign } from '@tiptap/extension-text-align';
+import { generateHTML } from '@tiptap/core';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop } from '../components/ui.jsx';
-import { getBlob, putBlob, getAll, put, remove, newHighlight, newAnnotation } from '../lib/storage.js';
+import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit } from '../lib/storage.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -40,13 +52,17 @@ const COLORS = [
 ];
 const COLOR_HEX = Object.fromEntries(COLORS.map((c) => [c.id, c.hex]));
 const COLOR_RGB = { jaune: rgb(1, 0.85, 0.3), vert: rgb(0.55, 0.89, 0.55), bleu: rgb(0.5, 0.78, 1), rose: rgb(1, 0.62, 0.82) };
-// B4 : couleur réservée à la recherche, distincte des 4 couleurs de surlignage ci-dessus.
-const SEARCH_COLOR = '#FFB020';
-const SEARCH_ACTIVE_COLOR = '#FF3B30';
+
+const EDIT_EXTENSIONS = [StarterKit, TextStyleKit, TextAlign.configure({ types: ['paragraph'] })];
+const FONT_SIZES = ['10px', '11px', '12px', '13px', '14px', '16px', '18px', '20px', '24px', '28px', '32px'];
+const FONT_FAMILIES = ['inherit', 'serif', 'sans-serif', 'monospace', 'Georgia', 'Arial', 'Times New Roman'];
 
 const GAP = 18; // px à scale=1 — scale avec `scale` pour garder un contenu strictement linéaire
 
-/** couche de texte invisible mais sélectionnable, positionnée depuis item.transform. */
+/** couche de texte invisible mais sélectionnable, positionnée depuis item.transform.
+    Un seul <span> (= un seul nœud texte) par item de contenu texte — c'est cet
+    alignement d'index avec computePageTextMap qui permet à computeMatchRectsFromDom
+    et au clic d'édition de retrouver le bon nœud texte réel dans le DOM. */
 async function buildTextLayer(page, viewport, container) {
   const textContent = await page.getTextContent();
   container.replaceChildren();
@@ -72,7 +88,10 @@ async function buildTextLayer(page, viewport, container) {
   container.appendChild(frag);
 }
 
-/** carte de position du texte d'une page, normalisée [0,1] (indépendante du zoom et du DOM) — pour la recherche. */
+/** carte de position du texte d'une page, normalisée [0,1] (indépendante du zoom et
+    du DOM) — pour la recherche (matching textuel) et la détection du bloc cliqué en
+    mode édition. L'ORDRE et le FILTRE (!item.str) doivent rester identiques à
+    buildTextLayer : itemIdx ici == index du <span> réel dans la textLayer. */
 async function computePageTextMap(pdfDoc, n) {
   const page = await pdfDoc.getPage(n);
   const vp = page.getViewport({ scale: 1 });
@@ -85,9 +104,45 @@ async function computePageTextMap(pdfDoc, n) {
     const fontHeight = Math.hypot(tx[2], tx[3]) || 1;
     const x0 = tx[4], y1 = tx[5], y0 = tx[5] - fontHeight;
     const x1 = x0 + (item.width || 0) * scaleX;
-    items.push({ str: item.str, x0: x0 / vp.width, y0: y0 / vp.height, x1: x1 / vp.width, y1: y1 / vp.height });
+    const style = tc.styles && tc.styles[item.fontName];
+    items.push({
+      str: item.str, x0: x0 / vp.width, y0: y0 / vp.height, x1: x1 / vp.width, y1: y1 / vp.height,
+      fontSize: fontHeight / vp.height, fontFamily: (style && style.fontFamily) || 'sans-serif',
+    });
   }
   return items;
+}
+
+/** Chantier 2 : géométrie EXACTE d'une liste de matches (page courante, réellement
+    montée), via l'API Range du DOM sur le vrai nœud texte du <span> concerné — pas
+    une interpolation par fraction de caractères (qui déborde sur du texte justifié/
+    en tableau). Le scale courant n'intervient jamais explicitement : on lit les
+    rects RÉELLEMENT rendus (getBoundingClientRect/getClientRects), donc aucun risque
+    de double application ou d'oubli du facteur de zoom. */
+function computeMatchRectsFromDom(container, matches) {
+  if (!container || !matches.length) return [];
+  const spans = container.querySelectorAll('span');
+  const cr = container.getBoundingClientRect();
+  if (!cr.width || !cr.height) return [];
+  const out = [];
+  matches.forEach((m) => {
+    const span = spans[m.itemIdx];
+    const textNode = span && span.firstChild;
+    if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
+    const len = textNode.textContent.length;
+    const start = Math.max(0, Math.min(m.charStart, len));
+    const end = Math.max(start, Math.min(m.charEnd, len));
+    if (start === end) return;
+    try {
+      const range = document.createRange();
+      range.setStart(textNode, start);
+      range.setEnd(textNode, end);
+      Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0).forEach((r, ri) => {
+        out.push({ idx: m.idx, ri, rect: { x: (r.left - cr.left) / cr.width, y: (r.top - cr.top) / cr.height, width: r.width / cr.width, height: r.height / cr.height } });
+      });
+    } catch (e) { /* offset invalide (page changée entre-temps) — ignore */ }
+  });
+  return out;
 }
 
 export function PdfReader({ ctx }) {
@@ -104,13 +159,14 @@ export function PdfReader({ ctx }) {
 
   const [highlights, setHighlights] = useState([]);
   const [pending, setPending] = useState(null); // nouveau surlignage en attente { page, texte, rects, x, y }
-  const [editingHl, setEditingHl] = useState(null); // B5 : popover changer couleur / supprimer { id, couleur, x, y }
+  const [editingHl, setEditingHl] = useState(null); // popover changer couleur / supprimer { id, couleur, x, y }
 
-  const [annotations, setAnnotations] = useState([]);
+  const [edits, setEdits] = useState([]); // Chantier 1 : blocs de texte édités
+  const [activeEditId, setActiveEditId] = useState(null);
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [matches, setMatches] = useState([]); // [{page, rect, idx}] normalisés
+  const [matches, setMatches] = useState([]); // [{page, itemIdx, charStart, charEnd, approxY, idx}]
   const [activeMatch, setActiveMatch] = useState(0);
   const [searching, setSearching] = useState(false);
 
@@ -154,11 +210,11 @@ export function PdfReader({ ctx }) {
     const all = await getAll('highlights');
     setHighlights(all.filter((h) => h.ficheId === pdfView.ficheId).sort((a, b) => (a.page - b.page) || a.createdAt.localeCompare(b.createdAt)));
   };
-  const reloadAnnotations = async () => {
+  const reloadEdits = async () => {
     const all = await getAll('annotations');
-    setAnnotations(all.filter((a) => a.ficheId === pdfView.ficheId));
+    setEdits(all.filter((a) => a.ficheId === pdfView.ficheId));
   };
-  useEffect(() => { reloadHighlights(); reloadAnnotations(); }, [pdfView.ficheId]);
+  useEffect(() => { reloadHighlights(); reloadEdits(); setActiveEditId(null); }, [pdfView.ficheId]);
 
   // B2 : offsets cumulés (px, à l'échelle courante) — le contenu scale strictement
   // linéairement (le gap scale aussi), ce qui rend le zoom centré sur le curseur trivial.
@@ -246,7 +302,7 @@ export function PdfReader({ ctx }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scale]);
 
-  // B3/B5 : ferme les popovers flottants au clic extérieur / Échap
+  // ferme les popovers flottants au clic extérieur / Échap
   useEffect(() => {
     if (!pending && !editingHl) return;
     const onDown = (e) => { if (!(e.target.closest && e.target.closest('.hl-picker'))) { setPending(null); setEditingHl(null); } };
@@ -280,7 +336,9 @@ export function PdfReader({ ctx }) {
     await reloadHighlights();
   };
 
-  // B4 : recherche temps réel (debounce léger) sur une carte de position indépendante du DOM
+  // recherche temps réel (debounce léger) : matching textuel sur une carte de position
+  // indépendante du DOM (toutes pages) — la géométrie exacte est calculée séparément,
+  // par page montée, via computeMatchRectsFromDom (Chantier 2).
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 250);
     return () => clearTimeout(t);
@@ -297,18 +355,14 @@ export function PdfReader({ ctx }) {
         if (cancelled) return;
         if (!textMapCache.current[n]) textMapCache.current[n] = await computePageTextMap(pdfDoc, n);
         const items = textMapCache.current[n];
-        for (const it of items) {
+        items.forEach((it, itemIdx) => {
           const s = it.str.toLowerCase();
           let idx = s.indexOf(q);
           while (idx !== -1) {
-            const startFrac = idx / it.str.length;
-            const endFrac = (idx + q.length) / it.str.length;
-            const x0 = it.x0 + startFrac * (it.x1 - it.x0);
-            const x1 = it.x0 + endFrac * (it.x1 - it.x0);
-            found.push({ page: n, rect: { x: x0, y: it.y0, width: Math.max(0.002, x1 - x0), height: Math.max(it.y1 - it.y0, 0.008) } });
+            found.push({ page: n, itemIdx, charStart: idx, charEnd: idx + q.length, approxY: it.y0 });
             idx = s.indexOf(q, idx + 1);
           }
-        }
+        });
       }
       if (cancelled) return;
       found.forEach((m, i) => { m.idx = i; });
@@ -322,7 +376,7 @@ export function PdfReader({ ctx }) {
   useEffect(() => {
     if (!matches.length) return;
     const m = matches[Math.max(0, Math.min(activeMatch, matches.length - 1))];
-    if (m) scrollToPageFraction(m.page, m.rect.y);
+    if (m) scrollToPageFraction(m.page, m.approxY);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMatch, matches]);
 
@@ -330,7 +384,7 @@ export function PdfReader({ ctx }) {
   const gotoPrevMatch = () => { if (matches.length) setActiveMatch((i) => (i - 1 + matches.length) % matches.length); };
   const closeSearch = () => { setSearch(''); setDebouncedSearch(''); setMatches([]); };
 
-  // B5 : livrable — texte prêt à coller dans le chat Claude
+  // livrable — texte prêt à coller dans le chat Claude (texte en clair du surlignage utilisateur)
   const copyPriority = async () => {
     if (!highlights.length) return;
     const lines = highlights.map((h, i) => `${i + 1}. "${h.texte}" (p.${h.page})`).join('\n');
@@ -338,7 +392,7 @@ export function PdfReader({ ctx }) {
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch (e) { /* ignore */ }
   };
 
-  // B6 : export secondaire — PDF avec les surlignages incrustés (confort de lecture hors app ;
+  // export secondaire — PDF avec les surlignages incrustés (confort de lecture hors app ;
   // suppose des pages non pivotées — limite acceptée, cas rare pour un cours scanné/exporté normal)
   const exportAnnotated = async () => {
     if (!fiche || !fiche.pdfId || !highlights.length || exporting) return;
@@ -371,18 +425,68 @@ export function PdfReader({ ctx }) {
     }
   };
 
-  // B6 : couche d'annotations — création, déplacement/redimensionnement (état local pendant le
-  // drag, persistance IndexedDB au relâchement seulement), édition de texte, suppression.
-  const addAnnotation = async (type) => {
-    const page = visibleRange.start + 1;
-    const dims = type === 'note' ? { width: 0.14, height: 0.09 } : type === 'redact' ? { width: 0.3, height: 0.06 } : { width: 0.3, height: 0.12 };
-    const rec = newAnnotation({ ficheId: pdfView.ficheId, page, type, x: 0.32, y: 0.4, ...dims, text: '' });
-    await put('annotations', rec);
-    await reloadAnnotations();
+  // Chantier 1 : clic sur un bloc de texte du PDF (mode édition) → ouvre l'éditeur riche
+  // pré-rempli avec le texte réel de ce bloc (un item pdf.js = en général une ligne).
+  const findTextItemAt = async (n, fx, fy) => {
+    if (!textMapCache.current[n]) textMapCache.current[n] = await computePageTextMap(pdfDoc, n);
+    const items = textMapCache.current[n];
+    let best = null, bestIdx = -1;
+    items.forEach((it, i) => {
+      if (fx >= it.x0 && fx <= it.x1 && fy >= it.y0 && fy <= it.y1) {
+        const area = (it.x1 - it.x0) * (it.y1 - it.y0);
+        if (!best || area < (best.x1 - best.x0) * (best.y1 - best.y0)) { best = it; bestIdx = i; }
+      }
+    });
+    return best ? { ...best, itemIdx: bestIdx } : null;
   };
-  const updateAnnotationLocal = (next) => setAnnotations((arr) => arr.map((a) => (a.id === next.id ? next : a)));
-  const commitAnnotationSave = async (ann) => { await put('annotations', ann); };
-  const deleteAnnotation = async (id) => { await remove('annotations', id); await reloadAnnotations(); };
+
+  const requestEdit = async (page, item) => {
+    const existing = edits.find((a) => a.page === page && Math.abs(a.x - item.x0) < 0.004 && Math.abs(a.y - item.y0) < 0.004);
+    if (existing) { setActiveEditId(existing.id); return; }
+    const rec = newTextEdit({
+      ficheId: pdfView.ficheId, page, x: item.x0, y: item.y0, width: item.x1 - item.x0, height: item.y1 - item.y0,
+      originalText: item.str, fontSize: item.fontSize, fontFamily: item.fontFamily,
+    });
+    await put('annotations', rec);
+    await reloadEdits();
+    setActiveEditId(rec.id);
+  };
+  const saveEditContent = async (edit, json) => {
+    const updated = { ...edit, content: json };
+    await put('annotations', updated);
+    setEdits((arr) => arr.map((a) => (a.id === edit.id ? updated : a)));
+  };
+  const resetEdit = async (id) => {
+    await remove('annotations', id);
+    setEdits((arr) => arr.filter((a) => a.id !== id));
+    if (activeEditId === id) setActiveEditId(null);
+  };
+
+  // Chantier 1 : UNE SEULE instance TipTap, possédée ici et partagée par le bloc affiché
+  // (positionné sur sa page) ET la barre d'outils fixe — sinon les deux se désynchronisent
+  // (historique d'annulation séparé, boutons qui ne reflètent pas ce qui s'affiche).
+  const activeEdit = edits.find((a) => a.id === activeEditId) || null;
+  const editSaveTimer = useRef(null);
+  const editLastJson = useRef(null);
+  const editor = useEditor({
+    extensions: EDIT_EXTENSIONS,
+    content: (activeEdit && activeEdit.content) || undefined,
+    onUpdate: ({ editor: ed }) => {
+      if (!activeEdit) return;
+      const json = ed.getJSON();
+      editLastJson.current = json;
+      clearTimeout(editSaveTimer.current);
+      editSaveTimer.current = setTimeout(() => { saveEditContent(activeEdit, json); editLastJson.current = null; }, 400);
+    },
+  }, [activeEditId]);
+  // au changement de bloc actif (ou fermeture) : flush immédiat d'une sauvegarde en attente
+  useEffect(() => () => {
+    if (editSaveTimer.current && editLastJson.current && activeEdit) {
+      clearTimeout(editSaveTimer.current);
+      saveEditContent(activeEdit, editLastJson.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeEditId]);
 
   const attach = async (file) => {
     if (!file) return;
@@ -434,7 +538,7 @@ export function PdfReader({ ctx }) {
         <button className="btn ghost sm" onClick={ctx.closePdfReader}><Icon name="chevL" size={14} /> Retour</button>
 
         <div className="seg" style={{ marginLeft: 4 }}>
-          <button type="button" className={'seg-btn' + (mode === 'read' ? ' active' : '')} onClick={() => setMode('read')}><Icon name="book" size={13} /> Lecture</button>
+          <button type="button" className={'seg-btn' + (mode === 'read' ? ' active' : '')} onClick={() => { setMode('read'); setActiveEditId(null); }}><Icon name="book" size={13} /> Lecture</button>
           <button type="button" className={'seg-btn' + (mode === 'edit' ? ' active' : '')} onClick={() => setMode('edit')}><Icon name="edit" size={13} /> Édition</button>
         </div>
 
@@ -460,14 +564,6 @@ export function PdfReader({ ctx }) {
           </div>
         )}
 
-        {mode === 'edit' && (
-          <div className="row" style={{ gap: 4 }}>
-            <button className="btn ghost sm" onClick={() => addAnnotation('text')} title="Ajouter une zone de texte libre"><Icon name="edit" size={13} /> Texte</button>
-            <button className="btn ghost sm" onClick={() => addAnnotation('note')} title="Ajouter une note"><Icon name="lightbulb" size={13} /> Note</button>
-            <button className="btn ghost sm" onClick={() => addAnnotation('redact')} title="Masquer un passage"><Icon name="box" size={13} /> Masquer</button>
-          </div>
-        )}
-
         <div style={{ flex: 1 }} />
 
         <button className="btn ghost sm" onClick={() => setPanelOpen((v) => !v)} title="Notions surlignées">
@@ -476,6 +572,10 @@ export function PdfReader({ ctx }) {
         <button className="btn sm" onClick={copyPriority} disabled={!highlights.length}><Icon name={copied ? 'check' : 'copy'} size={13} /> {copied ? 'Copié' : 'Copier les notions prioritaires'}</button>
         <button className="btn ghost sm" onClick={exportAnnotated} disabled={!highlights.length || exporting}><Icon name="filePdf" size={13} /> {exporting ? 'Export…' : 'Exporter PDF annoté'}</button>
       </div>
+
+      {mode === 'edit' && activeEdit && editor && (
+        <EditToolbar editor={editor} onReset={() => resetEdit(activeEdit.id)} onClose={() => setActiveEditId(null)} />
+      )}
 
       {loadError && <div className="err-mini" style={{ marginBottom: 12 }}><div className="em-ic crit"><Icon name="alert" size={16} /></div><div className="em-body"><div className="em-title">{loadError}</div></div></div>}
 
@@ -496,14 +596,16 @@ export function PdfReader({ ctx }) {
                     <PdfPageContent
                       pdfDoc={pdfDoc} pageNum={n} scale={scale} mode={mode}
                       highlights={highlights.filter((h) => h.page === n)}
-                      annotations={annotations.filter((a) => a.page === n)}
+                      edits={edits.filter((a) => a.page === n)}
+                      activeEditId={activeEditId}
                       matches={matches.filter((m) => m.page === n)}
                       activeMatchIdx={activeMatch}
                       onCreateHighlight={handleCreateHighlightRequest}
                       onHighlightClick={handleHighlightClick}
-                      onAnnotationChange={updateAnnotationLocal}
-                      onAnnotationCommit={commitAnnotationSave}
-                      onAnnotationDelete={deleteAnnotation}
+                      onFindTextItem={findTextItemAt}
+                      onRequestEdit={requestEdit}
+                      onActivateEdit={setActiveEditId}
+                      activeEditor={editor}
                     />
                   </div>
                 );
@@ -530,7 +632,7 @@ export function PdfReader({ ctx }) {
       </div>
 
       {mode === 'edit' && (
-        <div className="hint" style={{ marginTop: 10 }}><Icon name="info" size={13} /> Sélectionne du texte pour le surligner. Clique un surlignage pour changer sa couleur ou le supprimer.</div>
+        <div className="hint" style={{ marginTop: 10 }}><Icon name="info" size={13} /> Sélectionne du texte pour le surligner. Clique un bloc de texte pour l'éditer. Clique un surlignage pour changer sa couleur ou le supprimer.</div>
       )}
 
       {pending && createPortal(
@@ -558,13 +660,15 @@ export function PdfReader({ ctx }) {
 }
 
 /** rendu d'une seule page (montée uniquement si proche du viewport) : canvas + couche de
-    texte + surlignages + surlignage de recherche (temporaire) + annotations. */
+    texte + surlignages + surlignage de recherche (géométrie exacte, Chantier 2) + blocs
+    de texte édités (Chantier 1). */
 function PdfPageContent({
-  pdfDoc, pageNum, scale, mode, highlights, annotations, matches, activeMatchIdx,
-  onCreateHighlight, onHighlightClick, onAnnotationChange, onAnnotationCommit, onAnnotationDelete,
+  pdfDoc, pageNum, scale, mode, highlights, edits, activeEditId, matches, activeMatchIdx,
+  onCreateHighlight, onHighlightClick, onFindTextItem, onRequestEdit, onActivateEdit, activeEditor,
 }) {
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
+  const [matchRects, setMatchRects] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -578,25 +682,41 @@ function PdfPageContent({
       await page.render({ canvasContext: c2d, viewport }).promise;
       if (cancelled) return;
       await buildTextLayer(page, viewport, textLayerRef.current);
+      if (cancelled) return;
+      // Chantier 2 : la textLayer réelle vient d'être (re)construite pour ce scale —
+      // c'est le bon moment pour mesurer les rects exacts des occurrences via Range.
+      setMatchRects(computeMatchRectsFromDom(textLayerRef.current, matches));
     })();
     return () => { cancelled = true; };
-  }, [pdfDoc, pageNum, scale]);
+  }, [pdfDoc, pageNum, scale, matches]);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (e) => {
     if (mode !== 'edit') return;
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed) return;
     const container = textLayerRef.current;
-    if (!container || !container.contains(sel.anchorNode)) return;
-    const texte = sel.toString().trim();
-    if (!texte) return;
-    const range = sel.getRangeAt(0);
-    const clientRects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
-    const cr = container.getBoundingClientRect();
-    if (!clientRects.length || !cr.width || !cr.height) return;
-    const rects = clientRects.map((r) => ({ x: (r.left - cr.left) / cr.width, y: (r.top - cr.top) / cr.height, width: r.width / cr.width, height: r.height / cr.height }));
-    const anchor = clientRects[clientRects.length - 1];
-    onCreateHighlight({ page: pageNum, texte, rects, x: anchor.right, y: anchor.bottom });
+    if (!container) return;
+    if (sel && !sel.isCollapsed && container.contains(sel.anchorNode)) {
+      // glisser-sélectionner du texte → surlignage (inchangé)
+      const texte = sel.toString().trim();
+      if (!texte) return;
+      const range = sel.getRangeAt(0);
+      const clientRects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
+      const cr = container.getBoundingClientRect();
+      if (!clientRects.length || !cr.width || !cr.height) return;
+      const rects = clientRects.map((r) => ({ x: (r.left - cr.left) / cr.width, y: (r.top - cr.top) / cr.height, width: r.width / cr.width, height: r.height / cr.height }));
+      const anchor = clientRects[clientRects.length - 1];
+      onCreateHighlight({ page: pageNum, texte, rects, x: anchor.right, y: anchor.bottom });
+      return;
+    }
+    // Chantier 1 : simple clic (pas de glisser-sélection) → éditer le bloc de texte cliqué
+    (async () => {
+      const cr = container.getBoundingClientRect();
+      if (!cr.width || !cr.height) return;
+      const fx = (e.clientX - cr.left) / cr.width;
+      const fy = (e.clientY - cr.top) / cr.height;
+      const item = await onFindTextItem(pageNum, fx, fy);
+      if (item) onRequestEdit(pageNum, item);
+    })();
   };
 
   return (
@@ -610,73 +730,88 @@ function PdfPageContent({
             title={mode === 'edit' ? 'Cliquer pour modifier' : h.texte}
             onClick={mode === 'edit' ? (e) => onHighlightClick(h, e) : undefined} />
         )))}
-        {matches.map((m) => (
-          <div key={'m' + m.idx} className={'pdfr-match-rect' + (m.idx === activeMatchIdx ? ' active' : '')}
+        {matchRects.map((m) => (
+          <div key={'m' + m.idx + ':' + m.ri} className={'pdfr-match-rect' + (m.idx === activeMatchIdx ? ' active' : '')}
             style={{ left: m.rect.x * 100 + '%', top: m.rect.y * 100 + '%', width: m.rect.width * 100 + '%', height: m.rect.height * 100 + '%' }} />
         ))}
       </div>
-      {annotations.map((a) => (
-        <AnnotationBox key={a.id} ann={a} editable={mode === 'edit'}
-          onChange={onAnnotationChange} onCommit={onAnnotationCommit} onDelete={() => onAnnotationDelete(a.id)} />
+      {edits.map((a) => (
+        <TextEditBlock key={a.id} edit={a} active={a.id === activeEditId} editable={mode === 'edit'} onActivate={onActivateEdit} editor={a.id === activeEditId ? activeEditor : null} />
       ))}
     </>
   );
 }
 
-/** B6 : boîte d'annotation déplaçable/redimensionnable/éditable/supprimable (zone de texte
-    libre, note, ou masquage opaque). Drag/resize en état local ; persistance IndexedDB
-    uniquement au relâchement (onCommit), pas à chaque frame. */
-function AnnotationBox({ ann, editable, onChange, onCommit, onDelete }) {
-  const boxRef = useRef(null);
-  const drag = useRef(null);
-  const clamp01 = (v) => Math.max(0, Math.min(1, v));
+/** Chantier 1 : rendu d'un bloc de texte édité. Masque le rendu original (fond opaque
+    calé sur la boîte englobante d'origine) et affiche le contenu riche par-dessus —
+    statique (HTML généré) tant qu'il n'est pas actif, live (une SEULE instance TipTap,
+    possédée par PdfReader et partagée avec EditToolbar — voir plus haut) une fois activé.
+    Read-only strict en mode lecture (aucun onClick, aucune interaction). */
+function TextEditBlock({ edit, active, editable, onActivate, editor }) {
+  const html = useMemo(() => { try { return generateHTML(edit.content, EDIT_EXTENSIONS); } catch (e) { return ''; } }, [edit.content]);
+  const style = {
+    left: edit.x * 100 + '%', top: edit.y * 100 + '%', width: edit.width * 100 + '%',
+    minHeight: edit.height * 100 + '%', maxHeight: `calc(100% - ${edit.y * 100}%)`,
+    fontFamily: edit.fontFamily || 'sans-serif',
+  };
 
-  const onMove = (e) => {
-    const d = drag.current; if (!d) return;
-    const dx = (e.clientX - d.startX) / d.pw;
-    const dy = (e.clientY - d.startY) / d.ph;
-    const next = d.mode === 'move'
-      ? { ...ann, x: clamp01(d.origX + dx), y: clamp01(d.origY + dy) }
-      : { ...ann, width: Math.max(0.03, d.origW + dx), height: Math.max(0.03, d.origH + dy) };
-    d.last = next;
-    onChange(next);
-  };
-  const onUp = () => {
-    window.removeEventListener('pointermove', onMove);
-    window.removeEventListener('pointerup', onUp);
-    const d = drag.current; drag.current = null;
-    if (d && d.last) onCommit(d.last);
-  };
-  const startMove = (e) => {
-    if (!editable) return;
-    e.stopPropagation(); e.preventDefault();
-    const pr = boxRef.current.parentElement.getBoundingClientRect();
-    drag.current = { mode: 'move', startX: e.clientX, startY: e.clientY, origX: ann.x, origY: ann.y, pw: pr.width, ph: pr.height };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  };
-  const startResize = (e) => {
-    if (!editable) return;
-    e.stopPropagation(); e.preventDefault();
-    const pr = boxRef.current.parentElement.getBoundingClientRect();
-    drag.current = { mode: 'resize', startX: e.clientX, startY: e.clientY, origW: ann.width, origH: ann.height, pw: pr.width, ph: pr.height };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  };
+  if (active && editable && editor) {
+    return <div className="edit-block-active" style={style}><EditorContent editor={editor} className="edit-block-content" /></div>;
+  }
+  return (
+    <div className={'edit-block-static' + (editable ? ' editable' : '')} style={style}
+      onClick={editable ? () => onActivate(edit.id) : undefined}
+      dangerouslySetInnerHTML={{ __html: html }} />
+  );
+}
+
+/** barre d'outils riche, fixe sous la barre principale tant qu'un bloc est en édition —
+    plutôt qu'une popover flottante ancrée sur le bloc, pour rester fiable pendant le
+    scroll/zoom (un bloc édité peut sortir du viewport pendant qu'on le rédige). Pilote
+    la MÊME instance `editor` que celle rendue dans le bloc (passée par PdfReader). */
+function EditToolbar({ editor, onReset, onClose }) {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const rerender = () => force((v) => v + 1);
+    editor.on('transaction', rerender);
+    return () => editor.off('transaction', rerender);
+  }, [editor]);
+
+  const active = (name, attrs) => editor.isActive(name, attrs);
+  const run = (fn) => fn(editor.chain().focus()).run();
 
   return (
-    <div ref={boxRef} className={'ann-box ann-' + ann.type + (editable ? ' editable' : '')}
-      style={{ left: ann.x * 100 + '%', top: ann.y * 100 + '%', width: ann.width * 100 + '%', height: ann.height * 100 + '%' }}
-      onPointerDown={startMove}>
-      {ann.type !== 'redact' && (
-        <textarea className="ann-text" value={ann.text} readOnly={!editable}
-          placeholder={editable ? (ann.type === 'note' ? 'Note…' : 'Texte…') : ''}
-          onPointerDown={(e) => e.stopPropagation()}
-          onChange={(e) => onChange({ ...ann, text: e.target.value })}
-          onBlur={() => onCommit(ann)} />
-      )}
-      {editable && <div className="ann-resize" onPointerDown={startResize} />}
-      {editable && <button className="ann-del" onPointerDown={(e) => e.stopPropagation()} onClick={onDelete}><Icon name="x" size={11} /></button>}
+    <div className="pdfr-edit-toolbar">
+      <button type="button" className={'et-btn' + (active('bold') ? ' active' : '')} title="Gras" onClick={() => run((c) => c.toggleBold())}><b>G</b></button>
+      <button type="button" className={'et-btn' + (active('italic') ? ' active' : '')} title="Italique" onClick={() => run((c) => c.toggleItalic())}><i>I</i></button>
+      <button type="button" className={'et-btn' + (active('underline') ? ' active' : '')} title="Souligné" onClick={() => run((c) => c.toggleUnderline())}><u>U</u></button>
+      <button type="button" className={'et-btn' + (active('strike') ? ' active' : '')} title="Barré" onClick={() => run((c) => c.toggleStrike())}><s>S</s></button>
+      <span className="et-sep" />
+      <select className="et-select" defaultValue="" onChange={(e) => { if (e.target.value) run((c) => c.setFontSize(e.target.value)); e.target.value = ''; }}>
+        <option value="" disabled>Taille</option>
+        {FONT_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+      </select>
+      <select className="et-select" defaultValue="" onChange={(e) => { if (e.target.value) run((c) => c.setFontFamily(e.target.value)); e.target.value = ''; }}>
+        <option value="" disabled>Police</option>
+        {FONT_FAMILIES.map((f) => <option key={f} value={f}>{f}</option>)}
+      </select>
+      <input type="color" className="et-color" title="Couleur du texte" onChange={(e) => run((c) => c.setColor(e.target.value))} />
+      <input type="color" className="et-color" title="Surligneur de fond" defaultValue="#fff59d" onChange={(e) => run((c) => c.setBackgroundColor(e.target.value))} />
+      <span className="et-sep" />
+      <button type="button" className={'et-btn' + (active('bulletList') ? ' active' : '')} title="Liste à puces" onClick={() => run((c) => c.toggleBulletList())}><Icon name="list" size={13} /></button>
+      <button type="button" className={'et-btn' + (active('orderedList') ? ' active' : '')} title="Liste numérotée" onClick={() => run((c) => c.toggleOrderedList())}>1.</button>
+      <select className="et-select" defaultValue="" onChange={(e) => { if (e.target.value) run((c) => c.setTextAlign(e.target.value)); e.target.value = ''; }}>
+        <option value="" disabled>Alignement</option>
+        <option value="left">Gauche</option>
+        <option value="center">Centre</option>
+        <option value="right">Droite</option>
+      </select>
+      <span className="et-sep" />
+      <button type="button" className="et-btn" title="Annuler" onClick={() => editor.chain().focus().undo().run()}><Icon name="refresh" size={13} style={{ transform: 'scaleX(-1)' }} /></button>
+      <button type="button" className="et-btn" title="Rétablir" onClick={() => editor.chain().focus().redo().run()}><Icon name="refresh" size={13} /></button>
+      <span style={{ flex: 1 }} />
+      <button type="button" className="btn ghost sm" onClick={onReset}><Icon name="refresh" size={13} /> Réinitialiser (texte d'origine)</button>
+      <button type="button" className="btn sm" onClick={onClose}><Icon name="check" size={13} /> Terminé</button>
     </div>
   );
 }
