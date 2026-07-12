@@ -1,5 +1,6 @@
 {
   "permissions": {
+    "defaultMode": "acceptEdits",
     "allow": [
       "Bash(git add:*)",
       "Bash(git commit:*)",
@@ -11,6 +12,18 @@
     "deny": [
       "Bash(git push --force:*)",
       "Bash(git reset --hard:*)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && git add -A && (git diff-index --quiet HEAD || (git commit -m \"sync auto\" && git push)) 2>/dev/null; true"
+          }
+        ]
+      }
     ]
   }
 }
