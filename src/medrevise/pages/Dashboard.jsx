@@ -7,8 +7,9 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, matiereMeta } from '../components/ui.jsx';
 import { weekData, dueToday, todayPlan } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
-import { importStandard } from '../lib/import.js';
+import { importStandard, createFicheFromQuestions } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
+import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { ImportAnatomie } from './ImportAnatomie.jsx';
 
 const TYPE_LABEL = { qcm: 'QCM', flashcard: 'flashcards', feynman: 'Feynman' };
@@ -162,7 +163,8 @@ function DayPopup({ day, ctx, onClose }) {
 function ImportPanel({ ctx }) {
   const { db } = ctx;
   const [mode, setMode] = useState('standard'); // standard | anat
-  const [state, setState] = useState('empty'); // empty | dest | loading | done
+  const [state, setState] = useState('empty'); // empty | dest | loading | preview | done
+  const [entry, setEntry] = useState('pdf');    // 'pdf' (drop → API) | 'paste' (JSON collé, sans réseau)
   const [over, setOver] = useState(false);
   const [contenu, setContenu] = useState('');
   const [pdfBlob, setPdfBlob] = useState(null);
@@ -178,10 +180,14 @@ function ImportPanel({ ctx }) {
   const [busy, setBusy] = useState(false);
   const [debug, setDebug] = useState(null); // [{label,prompt,response,ok,ms,parseOk,error}]
   const [showDev, setShowDev] = useState(false);
+  // flux « coller le JSON » (aucun appel réseau)
+  const [jsonText, setJsonText] = useState('');
+  const [parseError, setParseError] = useState(null);
+  const [parsed, setParsed] = useState(null); // { questions, synthese, counts }
 
   const onFile = async (file) => {
     if (!file) return;
-    setState('dest');
+    setEntry('pdf'); setState('dest');
     setExtractInfo(null);
     if (!title) setTitle(file.name.replace(/\.[^.]+$/, ''));
     if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
@@ -217,7 +223,35 @@ function ImportPanel({ ctx }) {
     await ctx.reload();
     setResult(res); setDebug(res.debug || null); setState('done'); setBusy(false);
   };
-  const reset = () => { setState('empty'); setContenu(''); setPdfBlob(null); setTitle(''); setResult(null); setExtractInfo(null); setExtracting(false); setShowText(false); };
+  const reset = () => {
+    setState('empty'); setEntry('pdf'); setContenu(''); setPdfBlob(null); setTitle('');
+    setResult(null); setExtractInfo(null); setExtracting(false); setShowText(false);
+    setJsonText(''); setParseError(null); setParsed(null);
+  };
+
+  // --- flux « coller le JSON » : parse local, aucun appel réseau ---
+  const srcLabel = (db.sources.find((s) => s.id === srcId) || {}).nom || '—';
+  const matLabel = (db.matieres.find((m) => m.id === matId) || {}).nom || '—';
+  const destLabel = `${srcLabel} / ${matLabel} / ${title.trim() || 'Fiche importée'}`;
+
+  const parseJson = () => {
+    const res = parsePastedJson(jsonText);
+    if (!res.ok) { setParseError(res.error); return; }
+    if (res.questions.length === 0) {
+      setParseError('Aucune question valide trouvée — vérifie que tu as bien collé toute la réponse de Claude.');
+      return;
+    }
+    setParseError(null); setParsed(res); setState('preview');
+  };
+  const confirmImport = async () => {
+    if (!parsed || !matId) return;
+    setBusy(true);
+    const res = await createFicheFromQuestions({
+      matiereId: matId, titre: title, questions: parsed.questions, synthese: parsed.synthese,
+    });
+    await ctx.reload();
+    setResult(res); setState('done'); setBusy(false);
+  };
 
   return (
     <Card title="Importer une fiche" icon="upload"
@@ -239,11 +273,11 @@ function ImportPanel({ ctx }) {
             <div style={{ fontWeight: 600, fontSize: 16 }}>Glisse ton PDF ici</div>
             <div className="hint" style={{ marginTop: 5 }}>Le texte du PDF est lu automatiquement — tu choisis ensuite sa destination</div>
           </label>
-          <button className="btn ghost sm" style={{ marginTop: 10 }} onClick={() => setState('dest')}><Icon name="edit" size={13} /> Ou coller du texte</button>
+          <button className="btn ghost sm" style={{ marginTop: 10 }} onClick={() => { setEntry('paste'); setState('dest'); }}><Icon name="edit" size={13} /> Ou coller le JSON de Claude</button>
         </div>
       )}
 
-      {mode === 'standard' && state === 'dest' && (
+      {mode === 'standard' && state === 'dest' && entry === 'pdf' && (
         <div className="fadein imp-dest">
           <div className="imp-dest-head"><Icon name="folder" size={15} /> Où ranger cette fiche&nbsp;?</div>
 
@@ -285,6 +319,61 @@ function ImportPanel({ ctx }) {
             <button className="btn primary" onClick={generate} disabled={!canGen || busy || extracting}><Icon name="sparkle" size={15} /> Générer les questions</button>
           </div>
           {!canGen && !extracting && <div className="hint" style={{ marginTop: 8 }}>Choisis une matière, puis dépose un PDF (lu automatiquement) ou colle du texte.</div>}
+        </div>
+      )}
+
+      {mode === 'standard' && state === 'dest' && entry === 'paste' && (
+        <div className="fadein imp-dest">
+          <div className="imp-dest-head"><Icon name="folder" size={15} /> Où ranger cette fiche&nbsp;?</div>
+
+          <DestPicker ctx={ctx} srcId={srcId} setSrcId={setSrcId} matId={matId} setMatId={setMatId} />
+
+          <div className="imp-field">
+            <label>Titre de la fiche <span className="imp-opt">(optionnel)</span></label>
+            <input className="imp-title" placeholder="ex : Système respiratoire — chapitre 3" value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+
+          <div className="imp-field">
+            <label>RÉPONSE DE CLAUDE (JSON)</label>
+            <textarea className="imp-title" style={{ minHeight: 160, resize: 'vertical', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12.5 }}
+              placeholder="Colle ici la réponse JSON que Claude t'a donnée dans le chat."
+              value={jsonText} onChange={(e) => { setJsonText(e.target.value); setParseError(null); }} />
+            {parseError && (
+              <div className="err-mini" style={{ marginTop: 8 }}>
+                <div className="em-ic crit"><Icon name="alert" size={16} /></div>
+                <div className="em-body"><div className="em-title">{parseError}</div></div>
+              </div>
+            )}
+          </div>
+
+          <div className="imp-actions">
+            <button className="btn ghost" onClick={reset}>Annuler</button>
+            <button className="btn primary" onClick={parseJson} disabled={!matId || !jsonText.trim()}><Icon name="check" size={15} /> Importer les questions</button>
+          </div>
+          {!matId && <div className="hint" style={{ marginTop: 8 }}>Choisis une matière, puis colle la réponse JSON de Claude.</div>}
+        </div>
+      )}
+
+      {mode === 'standard' && state === 'preview' && parsed && (
+        <div className="fadein imp-dest">
+          <div className="imp-dest-head"><Icon name="check" size={15} /> Aperçu avant import</div>
+          <div className="err-mini ok" style={{ marginBottom: 14 }}>
+            <div className="em-ic"><Icon name="check" size={16} stroke={2.5} /></div>
+            <div className="em-body">
+              <div className="em-title">{parsed.counts.qcm} QCM · {parsed.counts.flashcard} flashcards · {parsed.counts.feynman} Feynman détectés</div>
+              <div className="hint" style={{ marginTop: 4 }}>Destination : {destLabel}</div>
+              {parsed.counts.ignored > 0 && (
+                <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}>
+                  <Icon name="alert" size={12} /> {parsed.counts.ignored} item{parsed.counts.ignored > 1 ? 's' : ''} ignoré{parsed.counts.ignored > 1 ? 's' : ''} (format invalide)
+                </div>
+              )}
+              {parsed.synthese && <div className="hint" style={{ marginTop: 4 }}>Synthèse incluse ✓</div>}
+            </div>
+          </div>
+          <div className="imp-actions">
+            <button className="btn ghost" onClick={() => setState('dest')}>Annuler</button>
+            <button className="btn primary" onClick={confirmImport} disabled={busy}><Icon name="check" size={15} /> Confirmer l'import</button>
+          </div>
         </div>
       )}
 

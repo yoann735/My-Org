@@ -17,20 +17,35 @@ function normalizeQ(q) {
 
 export async function importStandard({ matiereId, titre, contenu, pdfId }) {
   const gen = await generateStandard(contenu, titre);
+  const res = await createFicheFromQuestions({
+    matiereId, titre: titre || gen.titre, questions: gen.questions,
+    synthese: gen.synthese, pdfId, mock: gen._mock,
+  });
+  return { ...res, debug: gen.debug };
+}
+
+/**
+ * Crée une fiche standard + ses questions dans IndexedDB à partir d'un tableau
+ * de questions DÉJÀ parsé. Point d'entrée commun aux deux flux :
+ *   - flux API (importStandard) : questions issues de generateStandard()
+ *   - flux « coller le JSON » (Dashboard) : JSON collé puis parsé localement
+ * La synthèse est stockée sur la fiche (affichée sur l'onglet Feynman).
+ * Les prompts produisent déjà les bons champs + des extras (categorie_question,
+ * difficulte, categorie_carte, explication_simple…) → newQuestion les préserve.
+ */
+export async function createFicheFromQuestions({ matiereId, titre, questions, synthese, pdfId, mock }) {
   const ficheId = genId('f');
   const fiche = {
     id: ficheId, matiereId,
-    titre: (titre || gen.titre || 'Fiche importée').trim(),
-    sousTitre: gen._mock ? 'Importée · démo hors-ligne (à valider)' : 'Importée',
+    titre: (titre || 'Fiche importée').trim(),
+    sousTitre: mock ? 'Importée · démo hors-ligne (à valider)' : 'Importée',
     type: 'standard', coef: null, pdfId: pdfId || null, dateImport: todayISO(),
+    synthese: (synthese && synthese.trim()) || null,
   };
   await put('fiches', fiche);
-  // les nouveaux prompts produisent déjà les bons champs + des extras
-  // (categorie_question, difficulte, categorie_carte, explication_simple…)
-  // → on les conserve tels quels (newQuestion préserve les champs supplémentaires).
-  const qs = (gen.questions || []).map((q) => newQuestion(ficheId, q, 0));
+  const qs = (questions || []).map((q) => newQuestion(ficheId, q, 0));
   await putMany('questions', qs);
-  return { fiche, count: qs.length, mock: !!gen._mock, debug: gen.debug, synthese: gen.synthese };
+  return { fiche, count: qs.length, mock: !!mock, synthese: fiche.synthese };
 }
 
 /**

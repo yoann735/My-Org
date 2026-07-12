@@ -73,6 +73,15 @@ export function Feynman({ ctx }) {
           <div className="rev-concept"><span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.tint, display: 'inline-block' }} /> {meta.label} · {item.concept}</div>
           <div className="serif" style={{ fontSize: 22, margin: '8px 0 4px' }}>Explique « {item.concept} »</div>
 
+          {fiche && fiche.synthese && (
+            <details className="rev-synthese" style={{ margin: '10px 0 2px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px' }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="lightbulb" size={14} /> Synthèse du cours
+              </summary>
+              <div className="hint" style={{ marginTop: 8, whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{fiche.synthese}</div>
+            </details>
+          )}
+
           <div className="row" style={{ gap: 8, margin: '14px 0' }}>
             <button className={'btn' + (level === 'intuition' ? ' primary' : '')} onClick={() => setLevel('intuition')}><Icon name="lightbulb" size={15} /> Intuition</button>
             <button className={'btn' + (level === 'expert' ? ' primary' : '')} onClick={() => setLevel('expert')}><Icon name="grad" size={15} /> Expert</button>
