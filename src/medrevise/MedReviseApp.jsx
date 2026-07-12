@@ -12,11 +12,12 @@ import { Bibliotheque } from './pages/Bibliotheque.jsx';
 import { Reglages } from './pages/Reglages.jsx';
 import { Session } from './session/Session.jsx';
 import { Feynman } from './session/Feynman.jsx';
+import { PdfReader } from './pdf/PdfReader.jsx';
 import {
   seedIfEmpty, getAll, put, putMany, remove, getStats, setStats as saveStats, genId,
 } from './lib/storage.js';
 
-const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman };
+const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, pdf: PdfReader };
 
 function MedBottomNav({ current, onNav }) {
   const items = [
@@ -46,6 +47,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [session, setSession] = useState(null);
   const [feynman, setFeynman] = useState(null);
   const [focusFiche, setFocusFiche] = useState(null);
+  const [pdfView, setPdfView] = useState(null); // { ficheId, mode: 'read'|'edit', returnScreen }
 
   const reload = useCallback(async () => {
     const [sources, matieres, fiches, questions, st] = await Promise.all([
@@ -62,7 +64,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     go: setScreen,
     db, stats, reload,
     focusFiche, setFocusFiche,
-    session, feynman,
+    session, feynman, pdfView,
 
     // ---- session lifecycle ----
     startSession: (items, title, meta = {}) => {
@@ -71,6 +73,14 @@ export default function MedReviseApp({ themeApi, goHub }) {
     },
     startFeynman: (payload) => { setFeynman(payload); setScreen('feynman'); },
     endSession: () => { setSession(null); setScreen('dashboard'); },
+
+    // ---- lecteur PDF (Partie B) : ouvert en overlay plein écran (nouvel
+    // écran 'pdf'), revient à l'écran d'où il a été ouvert à la fermeture.
+    openPdfReader: (ficheId, mode, returnScreen) => {
+      setPdfView({ ficheId, mode: mode || 'read', returnScreen: returnScreen || screen });
+      setScreen('pdf');
+    },
+    closePdfReader: () => { const back = pdfView && pdfView.returnScreen; setScreen(back || 'library'); setPdfView(null); },
 
     // ---- mutations (persist + reload) ----
     saveQuestion: async (q) => { await put('questions', q); await reload(); },
@@ -146,6 +156,11 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const ordered = [...siblings.slice(0, at), f, ...siblings.slice(at)];
       await putMany('fiches', ordered.map((x, i) => ({ ...x, matiereId, ordre: i })));
       await reload();
+    },
+    // B1 : rattache (ou détache, pdfId=null) un PDF à une fiche existante.
+    setFichePdf: async (ficheId, pdfId) => {
+      const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
+      await put('fiches', { ...f, pdfId: pdfId || null }); await reload();
     },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },
     clearQuestionError: async (id) => {

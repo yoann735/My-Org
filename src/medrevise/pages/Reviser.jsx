@@ -10,7 +10,6 @@ import {
   index, effectiveCoef, ficheJ, dueToday, isFicheScheduled, missedQuestions, topConcepts, todayPlan,
 } from '../lib/planning.js';
 import { CarnetBody } from './Carnet.jsx';
-import { blobURL } from '../lib/storage.js';
 
 export function Reviser({ ctx }) {
   const { db } = ctx;
@@ -49,7 +48,7 @@ export function Reviser({ ctx }) {
   const title = multi ? `${selFiches.length} fiches sélectionnées` : (primary ? primary.titre : '');
   const mins = (n) => Math.max(1, Math.round(n * 0.8));
 
-  const viewCours = async () => { if (!primary || !primary.pdfId) return; const u = await blobURL(primary.pdfId); if (u) window.open(u, '_blank'); };
+  const viewCours = () => { if (primary && primary.pdfId) ctx.openPdfReader(primary.id, 'read', 'revise'); };
   const launch = (mode) => {
     const items = mode === 'qcm' ? qcmItems : mode === 'flash' ? flashItems : [...qcmItems, ...flashItems];
     if (items.length) ctx.startSession(items, title);

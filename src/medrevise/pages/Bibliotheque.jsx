@@ -7,7 +7,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
-import { blobURL } from '../lib/storage.js';
+import { putBlob } from '../lib/storage.js';
 
 export function Bibliotheque({ ctx }) {
   const { db } = ctx;
@@ -37,7 +37,15 @@ export function Bibliotheque({ ctx }) {
   const qById = (fId) => db.questions.filter((x) => x.ficheId === fId);
   const count = (fId, t) => qById(fId).filter((x) => x.type === t).length;
 
-  const openPdf = async (pdfId) => { const u = await blobURL(pdfId); if (u) window.open(u, '_blank'); };
+  // B1/B2 : ouvre le lecteur PDF interne (mode édition, pour surligner) ; attache
+  // un PDF pour une fiche qui n'en a pas encore (upload → Blob IndexedDB).
+  const openPdf = (ficheId) => ctx.openPdfReader(ficheId, 'edit', 'library');
+  const attachPdf = async (ficheId, file) => {
+    if (!file) return;
+    const pdfId = await putBlob(file);
+    await ctx.setFichePdf(ficheId, pdfId);
+    ctx.openPdfReader(ficheId, 'edit', 'library');
+  };
 
   // BUG5 : drag & drop des fiches via @dnd-kit (voir FicheDndProvider/ui.jsx).
   const onDropAt = ({ ficheId, matiereId, beforeFicheId }) => {
@@ -143,7 +151,14 @@ export function Bibliotheque({ ctx }) {
                                       <span className="pill accent" style={{ height: 22, fontSize: 10.5 }}>{count(f.id, 'qcm')} QCM</span>
                                       <span className="pill amber" style={{ height: 22, fontSize: 10.5 }}>{count(f.id, 'flashcard')} flash</span>
                                       {isAnat && <span className="pill" style={{ height: 22, fontSize: 10.5 }}><Icon name="image" size={11} /> IMAGES</span>}
-                                      {f.pdfId && <button className="cd-ic" title="Ouvrir le PDF source" onClick={() => openPdf(f.pdfId)}><Icon name="filePdf" size={14} /></button>}
+                                      {f.pdfId ? (
+                                        <button className="cd-ic" title="Ouvrir le PDF (lecture / surlignage)" onClick={() => openPdf(f.id)}><Icon name="filePdf" size={14} /></button>
+                                      ) : (
+                                        <label className="cd-ic" title="Attacher un PDF" style={{ cursor: 'pointer' }} onClick={(e) => e.stopPropagation()}>
+                                          <Icon name="upload" size={14} />
+                                          <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => attachPdf(f.id, e.target.files[0])} />
+                                        </label>
+                                      )}
                                       <button className="cd-ic" title="Réviser" onClick={() => { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); }}><Icon name="play" size={14} /></button>
                                     </div>
                                   </div>

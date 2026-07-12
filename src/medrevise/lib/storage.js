@@ -14,6 +14,7 @@ const S = {
   fiches: store('fiches'),
   questions: store('questions'),
   structures: store('structures'),
+  highlights: store('highlights'),
   blobs: store('blobs'),
   stats: store('stats'),
 };
@@ -40,6 +41,11 @@ export async function blobURL(id) {
   if (!id) return null;
   const b = await getBlob(id);
   return b ? URL.createObjectURL(b) : null;
+}
+
+/* ---- surlignages PDF (Partie B) ---- */
+export function newHighlight({ ficheId, page, texte, couleur, rects }) {
+  return { id: genId('h'), ficheId, page, texte, couleur: couleur || 'jaune', rects: rects || [], createdAt: new Date().toISOString() };
 }
 
 /* ---- stats (carte unique) ---- */
