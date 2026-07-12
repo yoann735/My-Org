@@ -9,7 +9,7 @@ import { J_INTERVALS } from '../lib/sm2.js';
 import { wipeAll, seedIfEmpty } from '../lib/storage.js';
 
 export function Reglages({ ctx }) {
-  const { db, stats } = ctx;
+  const { db } = ctx;
   const [renaming, setRenaming] = useState(null);
   const [draft, setDraft] = useState('');
   const [addCatFor, setAddCatFor] = useState(null);
@@ -20,6 +20,7 @@ export function Reglages({ ctx }) {
   const archived = db.sources.filter((s) => s.archive);
   const matsOf = (sid) => db.matieres.filter((m) => m.sourceId === sid && !m.archive);
   const archivedMatieres = db.matieres.filter((m) => m.archive);
+  const archivedFiches = db.fiches.filter((f) => f.archive);
 
   const commitRename = () => { if (renaming) ctx.renameSource(renaming, draft); setRenaming(null); };
   const commitCat = () => { if (catDraft.trim() && addCatFor) ctx.addMatiere(addCatFor, catDraft); setAddCatFor(null); setCatDraft(''); };
@@ -27,7 +28,6 @@ export function Reglages({ ctx }) {
     if (!window.confirm('Réinitialiser MedRevise (toutes les fiches, questions et statistiques) ?')) return;
     await wipeAll(); await seedIfEmpty(); await ctx.reload();
   };
-  const setObjectif = (v) => ctx.saveStats({ ...(stats || {}), objectifQuotidien: Math.max(5, v) });
 
   return (
     <div className="screen scroll fadein">
@@ -107,6 +107,22 @@ export function Reglages({ ctx }) {
         </Card>
       )}
 
+      {/* Corbeille : fiches supprimées depuis Réviser (clic droit), restaurables */}
+      {archivedFiches.length > 0 && (
+        <Card title="Corbeille — fiches supprimées" icon="trash" style={{ maxWidth: 820, marginBottom: 16 }}>
+          <div className="hint" style={{ marginBottom: 12 }}>Fiches supprimées depuis l'onglet Réviser (clic droit).</div>
+          {archivedFiches.map((f) => {
+            const mat = db.matieres.find((m) => m.id === f.matiereId);
+            return (
+              <div className="srcmgr-archrow" key={f.id}>
+                <span className="srcmgr-archname">{f.titre}{mat && <span className="hint"> — {matiereMeta(mat).label}</span>}</span>
+                <button className="btn ghost sm" onClick={() => ctx.setFicheArchived(f.id, false)}><Icon name="refresh" size={13} /> Restaurer</button>
+              </div>
+            );
+          })}
+        </Card>
+      )}
+
       <div className="settings-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 820 }}>
         <Card title="Profil" icon="settings">
           <div className="row" style={{ gap: 14 }}>
@@ -117,14 +133,6 @@ export function Reglages({ ctx }) {
         <Card title="Méthode des J" icon="calendar">
           <div className="row wrap" style={{ gap: 7 }}>{J_INTERVALS.map((j) => <span className="j-tag" key={j}>J+{j}</span>)}</div>
           <div className="hint" style={{ marginTop: 10 }}>Intervalles de répétition espacée (plafonnés à 90 j).</div>
-        </Card>
-        <Card title="Objectif quotidien" icon="target">
-          <div className="stepper">
-            <button type="button" onClick={() => setObjectif(((stats && stats.objectifQuotidien) || 20) - 5)}><Icon name="minus" size={16} /></button>
-            <span className="val" style={{ minWidth: 90 }}>{(stats && stats.objectifQuotidien) || 20} / jour</span>
-            <button type="button" onClick={() => setObjectif(((stats && stats.objectifQuotidien) || 20) + 5)}><Icon name="plus" size={16} /></button>
-          </div>
-          <div className="hint" style={{ marginTop: 8 }}>Volume cible de cartes par jour.</div>
         </Card>
         <Card title="Données & confidentialité" icon="box">
           <div className="hint" style={{ marginBottom: 12 }}>100 % local : fiches, images et PDF sont stockés sur cet appareil (IndexedDB).</div>

@@ -826,6 +826,24 @@
 .srcmgr-archrow { display: flex; align-items: center; gap: 10px; padding: 9px 4px; }
 .srcmgr-archname { flex: 1 1 auto; font-size: 13.5px; color: var(--text-2); }
 
+/* ---------- A3 : aération + hiérarchie visuelle de la sidebar "Cours & matières" ----------
+   Sélecteurs scopés .tree-card (plus spécifiques que les .tree-* déclarés plus haut dans
+   ce fichier, hérités d'itérations successives) : priment dans la cascade sans qu'il soit
+   nécessaire de démêler ce legacy dupliqué. */
+.tree-card .tree-scroll { padding: 10px; }
+.tree-card .tree-src { margin-bottom: 20px; }
+.tree-card .tree-src:last-child { margin-bottom: 0; }
+.tree-card .tree-src-row { padding: 9px 9px 9px 7px; }
+.tree-card .tree-group { margin: 16px 0 6px; }
+.tree-card .tree-src > .tree-group:first-of-type { margin-top: 12px; }
+.tree-card .tree-cat-row { padding: 5px 7px; margin-bottom: 3px; }
+.tree-card .tree-course { margin: 4px 0 4px 10px; }
+.tree-card .tree-course-main { padding: 10px 12px; gap: 10px; }
+.tree-card .tree-course .coefctl { margin-left: 8px; opacity: .55; transform: scale(.9); transform-origin: right center; }
+.tree-card .tree-course:hover .coefctl, .tree-card .tree-course .coefctl:focus-within { opacity: .95; }
+.tree-card .tree-cat-row .coefctl { opacity: .72; }
+.tree-card .tree-cat-row .coefctl:hover, .tree-card .tree-cat-row .coefctl:focus-within { opacity: 1; }
+
 /* ---------- lecteur PDF + surlignage (Partie B) ---------- */
 .pdfr-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--border-2); margin-bottom: 16px; }
 .pdfr-body { display: flex; gap: 18px; align-items: flex-start; }

@@ -126,6 +126,11 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const m = db.matieres.find((x) => x.id === matiereId); if (!m) return;
       await put('matieres', { ...m, archive: on }); await reload();
     },
+    // A2 : corbeille pour une fiche supprimée depuis le clic droit de Réviser.
+    setFicheArchived: async (ficheId, on) => {
+      const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
+      await put('fiches', { ...f, archive: on }); await reload();
+    },
     // corbeille (A5/A6) : supprime la matière (archive, restaurable depuis Réglages).
     // Si elle contient encore des fiches actives, elles sont déplacées vers
     // "À classer" (créée à la volée dans le même cours) plutôt que supprimées.

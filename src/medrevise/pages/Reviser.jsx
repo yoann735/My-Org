@@ -84,10 +84,12 @@ export function Reviser({ ctx }) {
   const cancelPress = () => clearTimeout(pressTimer.current);
   const askDeleteSource = (id) => { const s = db.sources.find((x) => x.id === id); if (s) setConfirmDel({ type: 'source', id, nom: s.nom }); };
   const askDeleteMatiere = (id) => { const m = db.matieres.find((x) => x.id === id); if (m) setConfirmDel({ type: 'matiere', id, nom: matiereMeta(m).label, fichesCount: fichesOf(id).length }); };
+  const askDeleteFiche = (id) => { const f = db.fiches.find((x) => x.id === id); if (f) setConfirmDel({ type: 'fiche', id, nom: f.titre }); };
   const confirmDelete = async () => {
     if (!confirmDel) return;
     if (confirmDel.type === 'source') await ctx.setSourceArchived(confirmDel.id, true);
     else if (confirmDel.type === 'matiere') await ctx.deleteMatiere(confirmDel.id);
+    else if (confirmDel.type === 'fiche') await ctx.setFicheArchived(confirmDel.id, true);
     setConfirmDel(null);
   };
 
@@ -188,7 +190,9 @@ export function Reviser({ ctx }) {
                                       onBlur={commitRename} />
                                   </div>
                                 ) : (
-                                  <div className={'tree-course' + (sel ? ' on' : '')}>
+                                  <div className={'tree-course' + (sel ? ' on' : '')}
+                                    onContextMenu={(e) => openCtxMenu(e, 'fiche', f.id)}
+                                    onTouchStart={(e) => startPress(e, 'fiche', f.id)} onTouchEnd={cancelPress} onTouchMove={cancelPress} onTouchCancel={cancelPress}>
                                     <button className={'tree-check' + (sel ? ' on' : '')} onClick={() => toggle(f.id)} title="Cocher / décocher">{sel ? <Icon name="check" size={11} stroke={3} /> : null}</button>
                                     <button className="tree-course-main" onClick={() => selectOnly(f.id)} onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }} title="Clic = sélectionner · double-clic = renommer">
                                       <span className="tc-name">{f.titre}</span>
@@ -285,12 +289,15 @@ export function Reviser({ ctx }) {
           {
             label: 'Renommer', icon: 'edit', onClick: () => {
               if (ctxMenu.type === 'source') { const s = db.sources.find((x) => x.id === ctxMenu.id); if (s) startRename('source', ctxMenu.id, s.nom); }
-              else { const m = db.matieres.find((x) => x.id === ctxMenu.id); if (m) startRename('matiere', ctxMenu.id, m.nom); }
+              else if (ctxMenu.type === 'matiere') { const m = db.matieres.find((x) => x.id === ctxMenu.id); if (m) startRename('matiere', ctxMenu.id, m.nom); }
+              else { const f = db.fiches.find((x) => x.id === ctxMenu.id); if (f) startRename('fiche', ctxMenu.id, f.titre); }
             },
           },
           {
             label: 'Supprimer', icon: 'trash', danger: true, onClick: () => {
-              if (ctxMenu.type === 'source') askDeleteSource(ctxMenu.id); else askDeleteMatiere(ctxMenu.id);
+              if (ctxMenu.type === 'source') askDeleteSource(ctxMenu.id);
+              else if (ctxMenu.type === 'matiere') askDeleteMatiere(ctxMenu.id);
+              else askDeleteFiche(ctxMenu.id);
             },
           },
         ]} />
@@ -298,12 +305,14 @@ export function Reviser({ ctx }) {
 
       {confirmDel && (
         <ConfirmModal
-          title={confirmDel.type === 'source' ? 'Supprimer ce cours ?' : 'Supprimer cette matière ?'}
+          title={confirmDel.type === 'source' ? 'Supprimer ce cours ?' : confirmDel.type === 'matiere' ? 'Supprimer cette matière ?' : 'Supprimer cette fiche ?'}
           body={confirmDel.type === 'source'
             ? `« ${confirmDel.nom} » sera déplacé dans la corbeille — restaurable depuis Réglages.`
-            : (confirmDel.fichesCount > 0
-              ? `Cette matière contient ${confirmDel.fichesCount} fiche${confirmDel.fichesCount > 1 ? 's' : ''}. Elles seront déplacées dans « À classer ». « ${confirmDel.nom} » sera ensuite envoyée dans la corbeille — restaurable depuis Réglages.`
-              : `« ${confirmDel.nom} » sera déplacée dans la corbeille — restaurable depuis Réglages.`)}
+            : confirmDel.type === 'matiere'
+              ? (confirmDel.fichesCount > 0
+                ? `Cette matière contient ${confirmDel.fichesCount} fiche${confirmDel.fichesCount > 1 ? 's' : ''}. Elles seront déplacées dans « À classer ». « ${confirmDel.nom} » sera ensuite envoyée dans la corbeille — restaurable depuis Réglages.`
+                : `« ${confirmDel.nom} » sera déplacée dans la corbeille — restaurable depuis Réglages.`)
+              : `« ${confirmDel.nom} » sera déplacée dans la corbeille — restaurable depuis Réglages.`}
           confirmLabel="Supprimer"
           danger
           onConfirm={confirmDelete}

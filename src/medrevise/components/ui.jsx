@@ -202,10 +202,7 @@ export function TodaySeriesCard({ plan, onStart, compact, collapsed, onToggleCol
     <div className={'today-cta' + (compact ? ' tc-compact' : '')}>
       <div className="tc-glow" />
       <div className="tc-main">
-        <div className="tc-headrow">
-          <div className="tc-eyebrow"><Icon name="calendar" size={14} /> Série du jour · méthode des J</div>
-          {collapsible && <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />}
-        </div>
+        <div className="tc-eyebrow"><Icon name="calendar" size={14} /> Série du jour · méthode des J</div>
         <div className="tc-title">Prochain&nbsp;: {next.fiche.titre} <span className="tc-jbadge">{next.jLabel}</span></div>
         <div className="tc-meta-row">
           <span className="tc-chip"><Icon name={meta.icon} size={13} /> {meta.label}</span>
@@ -218,6 +215,7 @@ export function TodaySeriesCard({ plan, onStart, compact, collapsed, onToggleCol
         )}
       </div>
       <div className="tc-aside">
+        {collapsible && <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />}
         <div className="tc-count"><span className="tc-n tnum">{total}</span><span className="tc-l">carte{total > 1 ? 's' : ''} aujourd'hui</span></div>
         <button className="sh-cta" type="button" onClick={() => onStart(allItems, 'Série du jour')}>
           <Icon name="play" size={17} fill /> Commencer la série d'aujourd'hui
