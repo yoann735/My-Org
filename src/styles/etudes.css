@@ -880,6 +880,8 @@
 .hl-picker-sep { width: 1px; align-self: stretch; background: var(--border-2); margin: 0 2px; }
 .hl-delete { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 8px; border: none; background: color-mix(in srgb, var(--crit) 12%, transparent); color: var(--crit); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .hl-delete:hover { background: color-mix(in srgb, var(--crit) 20%, transparent); }
+.hl-edit-btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 8px; border: none; background: var(--accent-soft); color: var(--accent); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.hl-edit-btn:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
 .hl-cancel { width: 26px; height: 26px; border-radius: 8px; border: none; background: var(--bg-2); color: var(--text-3); display: grid; place-items: center; cursor: pointer; }
 
 /* ---------- Chantier 1 : édition de texte existant (couche superposée) ---------- */

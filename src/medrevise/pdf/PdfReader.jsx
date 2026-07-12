@@ -19,14 +19,21 @@
    indépendant de la classe TextLayer interne de pdfjs-dist (dont le
    contrat CSS varie trop entre versions). Une seconde fonction pure,
    computePageTextMap, réutilise le même calcul en coordonnées normalisées
-   [0,1] (scale=1) pour : (a) trouver les occurrences de recherche à
-   travers TOUTES les pages sans devoir les monter dans le DOM, (b)
-   identifier le bloc de texte cliqué en mode édition, (c) approximer la
+   [0,1] (scale=1) pour trouver les occurrences de recherche à travers
+   TOUTES les pages sans devoir les monter dans le DOM, et approximer la
    position à laquelle défiler. La géométrie VISUELLE du surlignage de
    recherche, elle, est calculée séparément via l'API Range du DOM sur la
    page réellement montée (voir computeMatchRectsFromDom) — fiable même
    pour du texte justifié/en tableau, contrairement à une interpolation
    par fraction de caractères.
+
+   Surlignage ET édition de texte partagent la MÊME unité d'action : une
+   sélection réelle de l'utilisateur (jamais un span pdf.js entier, qui
+   correspond souvent à toute une ligne). La géométrie vient toujours de
+   `range.getClientRects()` sur la sélection DOM — un clic seul (sélection
+   vide) ne déclenche donc jamais rien. Après la sélection, une popover
+   propose de surligner (4 couleurs) OU d'éditer ce texte précis ; la
+   boîte d'édition est l'union des rects de la sélection, pas un span.
    ============================================================ */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -58,6 +65,7 @@ const FONT_SIZES = ['10px', '11px', '12px', '13px', '14px', '16px', '18px', '20p
 const FONT_FAMILIES = ['inherit', 'serif', 'sans-serif', 'monospace', 'Georgia', 'Arial', 'Times New Roman'];
 
 const GAP = 18; // px à scale=1 — scale avec `scale` pour garder un contenu strictement linéaire
+const EMPTY_ARRAY = []; // référence stable pour les pages sans highlights/edits/matches (BUG 1)
 
 /** couche de texte invisible mais sélectionnable, positionnée depuis item.transform.
     Un seul <span> (= un seul nœud texte) par item de contenu texte — c'est cet
@@ -425,31 +433,30 @@ export function PdfReader({ ctx }) {
     }
   };
 
-  // Chantier 1 : clic sur un bloc de texte du PDF (mode édition) → ouvre l'éditeur riche
-  // pré-rempli avec le texte réel de ce bloc (un item pdf.js = en général une ligne).
-  const findTextItemAt = async (n, fx, fy) => {
-    if (!textMapCache.current[n]) textMapCache.current[n] = await computePageTextMap(pdfDoc, n);
-    const items = textMapCache.current[n];
-    let best = null, bestIdx = -1;
-    items.forEach((it, i) => {
-      if (fx >= it.x0 && fx <= it.x1 && fy >= it.y0 && fy <= it.y1) {
-        const area = (it.x1 - it.x0) * (it.y1 - it.y0);
-        if (!best || area < (best.x1 - best.x0) * (best.y1 - best.y0)) { best = it; bestIdx = i; }
-      }
-    });
-    return best ? { ...best, itemIdx: bestIdx } : null;
-  };
-
-  const requestEdit = async (page, item) => {
-    const existing = edits.find((a) => a.page === page && Math.abs(a.x - item.x0) < 0.004 && Math.abs(a.y - item.y0) < 0.004);
-    if (existing) { setActiveEditId(existing.id); return; }
+  // BUG 2 : l'unité d'édition est la SÉLECTION de l'utilisateur (rects réels d'un
+  // Range DOM, cf. `pending` déjà rempli par la sélection dans PdfPageContent — même
+  // mécanisme que la création de surlignage), JAMAIS le span pdf.js entier sous le
+  // curseur (qui correspond souvent à une ligne complète). La boîte de masquage/édition
+  // est l'union des rects normalisés de la sélection — un simple clic ne produit aucun
+  // rect (sélection vide) et ne déclenche donc jamais rien.
+  const startEditFromSelection = async () => {
+    if (!pending) return;
+    const rects = pending.rects;
+    const x0 = Math.min(...rects.map((r) => r.x));
+    const y0 = Math.min(...rects.map((r) => r.y));
+    const x1 = Math.max(...rects.map((r) => r.x + r.width));
+    const y1 = Math.max(...rects.map((r) => r.y + r.height));
+    const existing = edits.find((a) => a.page === pending.page && Math.abs(a.x - x0) < 0.01 && Math.abs(a.y - y0) < 0.01);
+    if (existing) { setActiveEditId(existing.id); setPending(null); return; }
     const rec = newTextEdit({
-      ficheId: pdfView.ficheId, page, x: item.x0, y: item.y0, width: item.x1 - item.x0, height: item.y1 - item.y0,
-      originalText: item.str, fontSize: item.fontSize, fontFamily: item.fontFamily,
+      ficheId: pdfView.ficheId, page: pending.page, x: x0, y: y0, width: x1 - x0, height: y1 - y0,
+      originalText: pending.texte,
     });
     await put('annotations', rec);
     await reloadEdits();
     setActiveEditId(rec.id);
+    setPending(null);
+    window.getSelection && window.getSelection().removeAllRanges();
   };
   const saveEditContent = async (edit, json) => {
     const updated = { ...edit, content: json };
@@ -487,6 +494,19 @@ export function PdfReader({ ctx }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeEditId]);
+
+  // BUG 1 : `highlights.filter(...)`/`edits.filter(...)`/`matches.filter(...)` en JSX créaient
+  // un NOUVEAU tableau à CHAQUE rendu de PdfReader (même quand seul un highlight non-lié à
+  // cette page changeait), donc une nouvelle référence de prop `matches` à chaque fois — qui
+  // était dans les dépendances de l'effet de rendu canvas (voir PdfPageContent), le refaisant
+  // partir pour rien. Deux rendus canvas qui se chevauchent sur le MÊME <canvas> pouvaient
+  // laisser sa matrice de transform dans un état incohérent (page "à l'envers" jusqu'au
+  // prochain scroll, qui déclenche un rendu propre). Regrouper une fois par page, mémoïsé sur
+  // le tableau source réel, rend ces props stables sauf changement effectif de leur contenu.
+  const groupByPage = (arr) => { const map = {}; arr.forEach((x) => { (map[x.page] || (map[x.page] = [])).push(x); }); return map; };
+  const highlightsByPage = useMemo(() => groupByPage(highlights), [highlights]);
+  const editsByPage = useMemo(() => groupByPage(edits), [edits]);
+  const matchesByPage = useMemo(() => groupByPage(matches), [matches]);
 
   const attach = async (file) => {
     if (!file) return;
@@ -595,15 +615,13 @@ export function PdfReader({ ctx }) {
                   <div key={n} className="pdfr-page" style={style}>
                     <PdfPageContent
                       pdfDoc={pdfDoc} pageNum={n} scale={scale} mode={mode}
-                      highlights={highlights.filter((h) => h.page === n)}
-                      edits={edits.filter((a) => a.page === n)}
+                      highlights={highlightsByPage[n] || EMPTY_ARRAY}
+                      edits={editsByPage[n] || EMPTY_ARRAY}
                       activeEditId={activeEditId}
-                      matches={matches.filter((m) => m.page === n)}
+                      matches={matchesByPage[n] || EMPTY_ARRAY}
                       activeMatchIdx={activeMatch}
                       onCreateHighlight={handleCreateHighlightRequest}
                       onHighlightClick={handleHighlightClick}
-                      onFindTextItem={findTextItemAt}
-                      onRequestEdit={requestEdit}
                       onActivateEdit={setActiveEditId}
                       activeEditor={editor}
                     />
@@ -632,14 +650,16 @@ export function PdfReader({ ctx }) {
       </div>
 
       {mode === 'edit' && (
-        <div className="hint" style={{ marginTop: 10 }}><Icon name="info" size={13} /> Sélectionne du texte pour le surligner. Clique un bloc de texte pour l'éditer. Clique un surlignage pour changer sa couleur ou le supprimer.</div>
+        <div className="hint" style={{ marginTop: 10 }}><Icon name="info" size={13} /> Sélectionne du texte pour le surligner ou l'éditer (choix proposé après la sélection). Clique un surlignage pour changer sa couleur ou le supprimer.</div>
       )}
 
       {pending && createPortal(
-        <div className="hl-picker" style={{ left: Math.min(pending.x, window.innerWidth - 190), top: Math.min(pending.y + 8, window.innerHeight - 60) }}>
+        <div className="hl-picker" style={{ left: Math.min(pending.x, window.innerWidth - 260), top: Math.min(pending.y + 8, window.innerHeight - 60) }}>
           {COLORS.map((c) => (
             <button key={c.id} className="hl-swatch" style={{ background: c.hex }} title={'Surligner en ' + c.id} onClick={() => commitHighlight(c.id)} />
           ))}
+          <span className="hl-picker-sep" />
+          <button className="hl-edit-btn" title="Éditer ce texte" onClick={startEditFromSelection}><Icon name="edit" size={13} /> Éditer</button>
           <button className="hl-cancel" title="Annuler" onClick={() => setPending(null)}><Icon name="x" size={13} /></button>
         </div>,
         document.body,
@@ -664,22 +684,40 @@ export function PdfReader({ ctx }) {
     de texte édités (Chantier 1). */
 function PdfPageContent({
   pdfDoc, pageNum, scale, mode, highlights, edits, activeEditId, matches, activeMatchIdx,
-  onCreateHighlight, onHighlightClick, onFindTextItem, onRequestEdit, onActivateEdit, activeEditor,
+  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor,
 }) {
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
+  const renderTaskRef = useRef(null);
   const [matchRects, setMatchRects] = useState([]);
 
+  // BUG 1 : annule tout rendu pdf.js encore en vol avant d'en démarrer un nouveau sur le
+  // MÊME <canvas> — deux RenderTask concurrents sur un même contexte 2D peuvent laisser sa
+  // matrice de transformation dans un état incohérent (page rendue "à l'envers" jusqu'au
+  // scroll suivant, qui force un rendu propre). On repart aussi d'une matrice identité
+  // (setTransform) avant chaque rendu, en garde défensive — pdf.js gère lui-même son
+  // save()/restore() interne, mais on ne laisse rien d'hypothétiquement résiduel s'accumuler.
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (e) { /* ignore */ } }
       const page = await pdfDoc.getPage(pageNum);
       if (cancelled) return;
       const viewport = page.getViewport({ scale });
       const canvas = canvasRef.current;
       canvas.width = viewport.width; canvas.height = viewport.height;
       const c2d = canvas.getContext('2d');
-      await page.render({ canvasContext: c2d, viewport }).promise;
+      c2d.setTransform(1, 0, 0, 1, 0, 0);
+      const task = page.render({ canvasContext: c2d, viewport });
+      renderTaskRef.current = task;
+      try {
+        await task.promise;
+      } catch (e) {
+        if (e && e.name === 'RenderingCancelledException') return; // annulation normale (voir ci-dessus)
+        throw e;
+      } finally {
+        if (renderTaskRef.current === task) renderTaskRef.current = null;
+      }
       if (cancelled) return;
       await buildTextLayer(page, viewport, textLayerRef.current);
       if (cancelled) return;
@@ -687,36 +725,32 @@ function PdfPageContent({
       // c'est le bon moment pour mesurer les rects exacts des occurrences via Range.
       setMatchRects(computeMatchRectsFromDom(textLayerRef.current, matches));
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (e) { /* ignore */ } }
+    };
   }, [pdfDoc, pageNum, scale, matches]);
 
-  const handleMouseUp = (e) => {
+  // BUG 2 : un clic seul (sélection vide) ne doit RIEN déclencher — ni surlignage, ni
+  // édition. L'unité d'action est toujours une sélection réelle de texte, mesurée via
+  // l'API Range du DOM (gère nativement les sélections à cheval sur plusieurs spans/
+  // lignes). Le choix entre "surligner" et "éditer ce texte" se fait ensuite dans la
+  // popover (voir `pending` / commitHighlight / startEditFromSelection dans PdfReader) —
+  // les deux actions partagent donc exactement la même géométrie de sélection.
+  const handleMouseUp = () => {
     if (mode !== 'edit') return;
     const sel = window.getSelection();
     const container = textLayerRef.current;
-    if (!container) return;
-    if (sel && !sel.isCollapsed && container.contains(sel.anchorNode)) {
-      // glisser-sélectionner du texte → surlignage (inchangé)
-      const texte = sel.toString().trim();
-      if (!texte) return;
-      const range = sel.getRangeAt(0);
-      const clientRects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
-      const cr = container.getBoundingClientRect();
-      if (!clientRects.length || !cr.width || !cr.height) return;
-      const rects = clientRects.map((r) => ({ x: (r.left - cr.left) / cr.width, y: (r.top - cr.top) / cr.height, width: r.width / cr.width, height: r.height / cr.height }));
-      const anchor = clientRects[clientRects.length - 1];
-      onCreateHighlight({ page: pageNum, texte, rects, x: anchor.right, y: anchor.bottom });
-      return;
-    }
-    // Chantier 1 : simple clic (pas de glisser-sélection) → éditer le bloc de texte cliqué
-    (async () => {
-      const cr = container.getBoundingClientRect();
-      if (!cr.width || !cr.height) return;
-      const fx = (e.clientX - cr.left) / cr.width;
-      const fy = (e.clientY - cr.top) / cr.height;
-      const item = await onFindTextItem(pageNum, fx, fy);
-      if (item) onRequestEdit(pageNum, item);
-    })();
+    if (!container || !sel || sel.isCollapsed || !container.contains(sel.anchorNode)) return;
+    const texte = sel.toString().trim();
+    if (!texte) return;
+    const range = sel.getRangeAt(0);
+    const clientRects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
+    const cr = container.getBoundingClientRect();
+    if (!clientRects.length || !cr.width || !cr.height) return;
+    const rects = clientRects.map((r) => ({ x: (r.left - cr.left) / cr.width, y: (r.top - cr.top) / cr.height, width: r.width / cr.width, height: r.height / cr.height }));
+    const anchor = clientRects[clientRects.length - 1];
+    onCreateHighlight({ page: pageNum, texte, rects, x: anchor.right, y: anchor.bottom });
   };
 
   return (
