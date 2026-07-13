@@ -12,13 +12,14 @@ import { Bibliotheque } from './pages/Bibliotheque.jsx';
 import { Reglages } from './pages/Reglages.jsx';
 import { Session } from './session/Session.jsx';
 import { Feynman } from './session/Feynman.jsx';
+import { AnatQuiz } from './session/AnatQuiz.jsx';
 import { PdfReader } from './pdf/PdfReader.jsx';
 import { PdfPicker } from './pdf/PdfPicker.jsx';
 import {
   seedIfEmpty, getAll, put, putMany, remove, getStats, setStats as saveStats, genId,
 } from './lib/storage.js';
 
-const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, pdf: PdfReader, pdflist: PdfPicker };
+const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, anatquiz: AnatQuiz, pdf: PdfReader, pdflist: PdfPicker };
 
 function MedBottomNav({ current, onNav }) {
   const items = [
@@ -48,6 +49,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [stats, setStats] = useState(null);
   const [session, setSession] = useState(null);
   const [feynman, setFeynman] = useState(null);
+  const [anatQuiz, setAnatQuiz] = useState(null); // { fiche, mode:'total'|'random', proportion }
   const [focusFiche, setFocusFiche] = useState(null);
   const [pdfView, setPdfView] = useState(null); // { ficheId, mode: 'read'|'edit', returnScreen }
 
@@ -66,7 +68,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     go: setScreen,
     db, stats, reload,
     focusFiche, setFocusFiche,
-    session, feynman, pdfView,
+    session, feynman, anatQuiz, pdfView,
 
     // ---- session lifecycle ----
     startSession: (items, title, meta = {}) => {
@@ -74,6 +76,11 @@ export default function MedReviseApp({ themeApi, goHub }) {
       setScreen('session');
     },
     startFeynman: (payload) => { setFeynman(payload); setScreen('feynman'); },
+    // quiz d'anatomie visuelle (fiche anat_schema) : écran dédié.
+    startAnatQuiz: (fiche, opts = {}) => {
+      setAnatQuiz({ fiche, mode: opts.mode || 'total', proportion: opts.proportion ?? 0.5 });
+      setScreen('anatquiz');
+    },
     endSession: () => { setSession(null); setScreen('dashboard'); },
 
     // ---- lecteur PDF (Partie B) : ouvert en overlay plein écran (nouvel
@@ -86,6 +93,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
 
     // ---- mutations (persist + reload) ----
     saveQuestion: async (q) => { await put('questions', q); await reload(); },
+    saveFiche: async (f) => { await put('fiches', f); await reload(); },
     setFicheCoef: async (ficheId, v) => {
       const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
       await put('fiches', { ...f, coef: v }); await reload();

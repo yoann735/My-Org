@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, matiereMeta } from '../components/ui.jsx';
-import { weekData, dueToday, todayPlan } from '../lib/planning.js';
+import { weekData, dueToday, dueSchemasToday, todayPlan } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
 import { importStandard, createFicheFromQuestions } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
@@ -20,6 +20,7 @@ export function Dashboard({ ctx }) {
   const { db } = ctx;
   const [selDay, setSelDay] = useState(null);
   const due = dueToday(db);
+  const dueSchemas = dueSchemasToday(db);
   const plan = todayPlan(db);
 
   return (
@@ -35,7 +36,7 @@ export function Dashboard({ ctx }) {
       <TodaySeriesCard plan={plan} onStart={ctx.startSession} />
 
       <Card title="Calendrier de la semaine — méthode des J" icon="calendar"
-        action={<span className="pill accent"><Icon name="cards" size={13} /> {due.length} cartes aujourd'hui</span>}>
+        action={<span className="pill accent"><Icon name="cards" size={13} /> {due.length} carte{due.length > 1 ? 's' : ''}{dueSchemas.length > 0 ? ` + ${dueSchemas.length} schéma${dueSchemas.length > 1 ? 's' : ''}` : ''} aujourd'hui</span>}>
         <WeekCalendar ctx={ctx} onPick={setSelDay} />
         <div className="jcal-legend" style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border-2)' }}>
           {db.matieres.map((m) => { const mm = matiereMeta(m); return <span key={m.id}><i style={{ background: mm.tint }} /> {mm.label}</span>; })}
@@ -82,7 +83,7 @@ function WeekCalendar({ ctx, onPick }) {
                 {day.isToday && <span className="wcal-today-dot">Auj.</span>}
               </div>
               <div className="wcal-courses">
-                {day.byFiche.length === 0 && <div className="wcal-empty">{day.isPast ? '' : '—'}</div>}
+                {day.byFiche.length === 0 && (day.schemas || []).length === 0 && <div className="wcal-empty">{day.isPast ? '' : '—'}</div>}
                 {day.byFiche.map((c) => {
                   const meta = matiereMeta(c.matiere);
                   return (
@@ -95,8 +96,20 @@ function WeekCalendar({ ctx, onPick }) {
                     </div>
                   );
                 })}
+                {(day.schemas || []).map((s) => {
+                  const meta = matiereMeta(s.matiere);
+                  return (
+                    <div className="wcal-course" key={s.fiche.id}>
+                      <span className="wcc-bar" style={{ background: meta.tint }} />
+                      <div className="wcc-text">
+                        <div className="wcc-cat" style={{ color: meta.tint }}><Icon name="image" size={10} /> {meta.label}</div>
+                        <div className="wcc-title">{s.fiche.titre} <span className="wcc-j">{s.jLabel} · schéma</span></div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              {day.total > 0 && <div className="wcal-foot">{day.total} carte{day.total > 1 ? 's' : ''}</div>}
+              {day.total > 0 && <div className="wcal-foot">{day.cardsTotal > 0 && `${day.cardsTotal} carte${day.cardsTotal > 1 ? 's' : ''}`}{day.cardsTotal > 0 && (day.schemas || []).length > 0 ? ' · ' : ''}{(day.schemas || []).length > 0 && `${day.schemas.length} schéma${day.schemas.length > 1 ? 's' : ''}`}</div>}
             </button>
           );
         })}
@@ -146,12 +159,25 @@ function DayPopup({ day, ctx, onClose }) {
               </div>
             );
           })}
+          {(day.schemas || []).map((s) => {
+            const meta = matiereMeta(s.matiere);
+            return (
+              <div className="day-line" key={s.fiche.id}>
+                <div className="dl-ic" style={{ background: `color-mix(in srgb, ${meta.tint} 15%, transparent)`, color: meta.tint }}><Icon name="image" size={17} /></div>
+                <div className="dl-main">
+                  <div className="dl-title">Schéma · {meta.label}</div>
+                  <div className="dl-sub"><span>{s.fiche.titre}</span></div>
+                </div>
+                {day.isToday && <button className="btn ghost sm" onClick={() => { onClose(); ctx.startAnatQuiz(s.fiche, { mode: 'total' }); }}><Icon name="play" size={13} /> Réviser</button>}
+              </div>
+            );
+          })}
         </div>
         <div className="day-pop-foot">
           <button className="btn" style={{ flex: 1 }} onClick={onClose}>Fermer</button>
-          {day.isToday && day.total > 0 && (
+          {day.isToday && day.items.length > 0 && (
             <button className="btn primary" style={{ flex: 1 }} onClick={() => { onClose(); ctx.startSession(day.items, 'Révision du jour'); }}>
-              <Icon name="play" size={15} fill /> Réviser maintenant
+              <Icon name="play" size={15} fill /> Réviser les cartes
             </button>
           )}
         </div>

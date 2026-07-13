@@ -7,7 +7,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, FicheDndProvider, DraggableFiche, DropSlot } from '../components/ui.jsx';
 import {
-  index, effectiveCoef, ficheJ, dueToday, isFicheScheduled, missedQuestions, topConcepts, todayPlan,
+  index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, isFicheScheduled, missedQuestions, topConcepts, todayPlan,
 } from '../lib/planning.js';
 import { CarnetBody } from './Carnet.jsx';
 
@@ -22,10 +22,16 @@ export function Reviser({ ctx }) {
   const [confirmDel, setConfirmDel] = useState(null); // { type, id, nom, fichesCount }
 
   const dueIdsToday = useMemo(() => new Set(dueToday(db, ix).map((q) => q.id)), [db, ix]);
+  const dueSchemaIds = useMemo(() => new Set(dueSchemasToday(db, ix).map((f) => f.id)), [db, ix]);
   const fichesOf = (matId) => db.fiches.filter((f) => f.matiereId === matId && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
   const matieresOf = (srcId) => db.matieres.filter((m) => m.sourceId === srcId && !m.archive);
   const qOfFiche = (fId) => db.questions.filter((q) => q.ficheId === fId);
-  const dueCountFiche = (fId) => qOfFiche(fId).filter((q) => dueIdsToday.has(q.id)).length;
+  // schéma d'anatomie = 1 item planifiable (la fiche elle-même) ; sinon on compte les questions dues
+  const dueCountFiche = (fId) => {
+    const f = ix.fById[fId];
+    if (f && f.type === 'anat_schema') return dueSchemaIds.has(fId) ? 1 : 0;
+    return qOfFiche(fId).filter((q) => dueIdsToday.has(q.id)).length;
+  };
 
   const selectOnly = (id) => setSelIds([id]);
   const toggle = (id) => setSelIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -36,6 +42,7 @@ export function Reviser({ ctx }) {
   const primary = selFiches[0];
   const primMat = primary && ix.mById[primary.matiereId];
   const meta = matiereMeta(primMat);
+  const isSchemaSel = !multi && primary && primary.type === 'anat_schema';
 
   const selItems = db.questions.filter((q) => selIds.includes(q.ficheId));
   const qcmItems = selItems.filter((q) => q.type === 'qcm');
@@ -227,6 +234,8 @@ export function Reviser({ ctx }) {
               <div className="re-title">Sélectionne une fiche</div>
               <div className="hint">Coche une ou plusieurs fiches à gauche pour voir QCM, flashcards et erreurs.</div>
             </div>
+          ) : isSchemaSel ? (
+            <AnatSchemaLauncher fiche={primary} ctx={ctx} ix={ix} meta={meta} due={dueSchemaIds.has(primary.id)} scheduled={scheduled} jp={jp} />
           ) : (
             <>
               <div className="jcard">
@@ -352,5 +361,65 @@ function ErrorSummary({ ctx, ix, selIds, title }) {
         <Icon name="refresh" size={14} /> Mode erreur ({reviewable.length})
       </button>
     </div>
+  );
+}
+
+/* ---- lanceur de quiz pour une fiche anat_schema (choix du mode → quiz) ---- */
+function AnatSchemaLauncher({ fiche, ctx, meta, due, scheduled, jp }) {
+  const [mode, setMode] = useState('total'); // total | random
+  const [prop, setProp] = useState(0.5);
+  const coches = fiche.coches || [];
+  const nb = coches.length;
+
+  return (
+    <>
+      <div className="jcard">
+        <div className="jc-ic" style={{ background: `color-mix(in srgb, ${meta.tint} 15%, transparent)`, color: meta.tint }}><Icon name="image" size={20} /></div>
+        <div className="jc-main">
+          <div className="jc-label">Méthode des J · {fiche.titre}</div>
+          {!scheduled
+            ? <div className="jc-title"><span className="jc-paused">Cours en pause</span> — hors planning J (révisable manuellement)</div>
+            : due
+              ? <div className="jc-title"><span className="jc-today-badge">Aujourd'hui</span> schéma à réviser ({nb} coche{nb > 1 ? 's' : ''})</div>
+              : <div className="jc-title">Schéma de {nb} coche{nb > 1 ? 's' : ''} — rien dû aujourd'hui.</div>}
+          {jp && jp.jIndex >= 0 && <JLadder jIndex={jp.jIndex} />}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 14 }}>
+        <div className="card-body">
+          <div className="imp-field">
+            <label>Mode de révision</label>
+            <div className="seg">
+              <button type="button" className={'seg-btn' + (mode === 'total' ? ' active' : '')} onClick={() => setMode('total')}><Icon name="layers" size={13} /> Total</button>
+              <button type="button" className={'seg-btn' + (mode === 'random' ? ' active' : '')} onClick={() => setMode('random')}><Icon name="target" size={13} /> Aléatoire</button>
+            </div>
+            <div className="hint" style={{ marginTop: 6 }}>
+              {mode === 'total'
+                ? 'Toutes les coches sont masquées : tu remplis chaque nom.'
+                : 'Une partie des coches est masquée (tirage aléatoire), le reste sert de repère.'}
+            </div>
+          </div>
+
+          {mode === 'random' && (
+            <div className="imp-field">
+              <label>Proportion masquée</label>
+              <div className="imp-chips">
+                {[0.3, 0.5, 0.7].map((p) => (
+                  <button key={p} className={'imp-chip' + (prop === p ? ' on' : '')} onClick={() => setProp(p)}>{Math.round(p * 100)} %</button>
+                ))}
+              </div>
+              <div className="hint" style={{ marginTop: 6 }}>≈ {Math.max(1, Math.round(prop * nb))} coche{Math.max(1, Math.round(prop * nb)) > 1 ? 's' : ''} masquée{Math.max(1, Math.round(prop * nb)) > 1 ? 's' : ''} sur {nb}.</div>
+            </div>
+          )}
+
+          <button className="btn primary lg" style={{ width: '100%', justifyContent: 'center', marginTop: 6 }} disabled={nb === 0}
+            onClick={() => ctx.startAnatQuiz(fiche, { mode, proportion: prop })}>
+            <Icon name="play" size={16} fill /> Lancer le quiz visuel
+          </button>
+          {nb === 0 && <div className="hint" style={{ marginTop: 8 }}>Ce schéma n'a aucune coche à réviser.</div>}
+        </div>
+      </div>
+    </>
   );
 }

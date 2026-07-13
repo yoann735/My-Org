@@ -72,9 +72,31 @@ export function dueOn(db, dateISO, idx) {
 }
 export function dueToday(db, idx) { return dueOn(db, todayISO(), idx); }
 
-/** J affiché d'une fiche : dérivé de sa question la plus proche d'échéance */
+/* ---- schémas d'anatomie visuelle (anat_schema) : la FICHE elle-même est
+   l'item planifiable SM-2 (elle porte interval/repetition/efactor/nextReview),
+   pas des questions. On les gère en parallèle des questions. ---- */
+export function scheduledSchemas(db, idx) {
+  const ix = idx || index(db);
+  return (db.fiches || []).filter((f) => f.type === 'anat_schema' && isFicheScheduled(db, f, ix));
+}
+export function dueSchemasOn(db, dateISO, idx) {
+  const ix = idx || index(db);
+  const today = todayISO();
+  return scheduledSchemas(db, ix).filter((f) => {
+    const nr = f.nextReview || today;
+    if (dateISO === today) return nr <= dateISO;   // aujourd'hui = dû + en retard
+    if (dateISO < today) return false;
+    return nr === dateISO;                          // jour futur précis
+  });
+}
+export function dueSchemasToday(db, idx) { return dueSchemasOn(db, todayISO(), idx); }
+
+/** J affiché d'une fiche : anat_schema → dérivé de la fiche elle-même ;
+   sinon → dérivé de sa question la plus proche d'échéance */
 export function ficheJ(db, ficheId, idx) {
   const ix = idx || index(db);
+  const f = ix.fById[ficheId];
+  if (f && f.type === 'anat_schema') return jStepForInterval(f.interval || 0);
   const qs = (db.questions || []).filter((q) => q.ficheId === ficheId && SCHEDULED_TYPES.has(q.type));
   if (!qs.length) return { jIndex: -1, jLabel: '—' };
   const soonest = qs.reduce((a, b) => (a.nextReview <= b.nextReview ? a : b));
@@ -116,10 +138,13 @@ export function weekData(db, weekOffset = 0, idx) {
   for (let i = 0; i < 7; i++) {
     const date = addDays(monday, i);
     const items = dueOn(db, date, ix);
+    const schemas = dueSchemasOn(db, date, ix).map((f) => ({ fiche: f, matiere: ix.mById[f.matiereId], ...ficheJ(db, f.id, ix) }));
     days.push({
       date, dow: DOW[i], dayNum: new Date(date + 'T00:00:00').getDate(),
       isToday: date === today, isPast: date < today,
-      total: items.length, items, byFiche: groupByFiche(db, items, ix),
+      // total affiché = cartes (questions) + schémas dus
+      total: items.length + schemas.length, cardsTotal: items.length,
+      items, schemas, byFiche: groupByFiche(db, items, ix),
     });
   }
   return { monday, days };

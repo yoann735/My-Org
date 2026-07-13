@@ -11,6 +11,27 @@ export const J_INTERVALS = [1, 3, 7, 14, 30]; // cycle initial affiché (frise)
 // notation 3 boutons → qualité SM-2
 export const QUALITY = { facile: 5, difficile: 3, rate: 1 };
 
+/**
+ * Quiz d'anatomie visuelle → qualité SM-2 dérivée du % de coches correctes.
+ * Réutilise les 3 niveaux du moteur actuel (5 / 3 / 1). Seuils (ajustables) :
+ *   ≥ 85 % → Facile (5) · 60–84 % → Difficile (3) · < 60 % → Raté (1).
+ */
+export function qualityFromRatio(ratio) {
+  if (ratio >= 0.85) return QUALITY.facile;   // 5
+  if (ratio >= 0.6) return QUALITY.difficile;  // 3
+  return QUALITY.rate;                          // 1
+}
+
+/** normalisation tolérante pour comparer une saisie à la réponse stockée
+   (minuscules, sans accents, trim, espaces multiples réduits). */
+export function normalizeAnswer(s) {
+  return (s || '')
+    .normalize('NFD').replace(/\p{Diacritic}/gu, '') // enlève les accents
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** LOCAL calendar date YYYY-MM-DD (avoids UTC off-by-one for non-UTC users) */
 export function isoDate(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

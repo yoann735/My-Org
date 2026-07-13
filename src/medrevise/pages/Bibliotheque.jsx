@@ -166,7 +166,7 @@ export function Bibliotheque({ ctx }) {
                                           <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => attachPdf(f.id, e.target.files[0])} />
                                         </label>
                                       )}
-                                      <button className="cd-ic" title="Réviser" onClick={() => { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); }}><Icon name="play" size={14} /></button>
+                                      <button className="cd-ic" title="Réviser" onClick={() => { if (isSchema) { ctx.startAnatQuiz(f, { mode: 'total' }); } else { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); } }}><Icon name="play" size={14} /></button>
                                     </div>
                                   </div>
                                   {fo && (
