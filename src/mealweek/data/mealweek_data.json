@@ -1,6 +1,6 @@
 {
   "meta": {
-    "version": "3.4",
+    "version": "4.3",
     "description": "MealWeek - base de données complète planning repas HelloFresh/Chronodrive",
     "portions_base": 1,
     "regles": {
@@ -15,7 +15,13 @@
       "formats_multiples": "Certains ingrédients ont plusieurs formats d'achat Chronodrive (champ 'formats' = liste de {format, grammes, prix}). Pour choisir le format : calculer la demande totale de l'ingrédient sur la semaine (somme des qty de toutes les recettes qui l'utilisent, × nombre de personnes). Puis prendre le PLUS PETIT format dont (grammes + 100) >= demande_totale. Tolérance de 100g : on reste sur le petit format tant que le dépassement ne dépasse pas 100g. Afficher dans la liste de courses : la quantité nécessaire ET le format acheté avec son prix.",
       "donnees_source": "Données ingrédients/prix/quantités révisées manuellement par l'utilisateur (autorité absolue, écrasent toute valeur antérieure).",
       "epinards": "Tous les épinards (frais ou en remplacement du pak choï) = Épinards hachés surgelés (Auchan) 1kg, 1.89€. Référence unique.",
-      "courses_quantite": "Besoin total semaine par ingrédient = total_base_1p × portions. Nombre de paquets = arrondi supérieur(besoin / grammes du format). Choisir le format qui minimise le coût total. Afficher besoin + nb paquets + coût."
+      "courses_quantite": "Besoin total semaine par ingrédient = total_base_1p × portions. Nombre de paquets = arrondi supérieur(besoin / grammes du format). Choisir le format qui minimise le coût total. Afficher besoin + nb paquets + coût.",
+      "ail": "'1 pièce' d'ail dans une recette = 1 GOUSSE. 1 tête ≈ 11 gousses. nb_têtes = ceil(gousses_totales / 11).",
+      "epices": "Les ingrédients en 'sachet' (épices, herbes séchées) : acheter 1 POT ENTIER, jamais plusieurs. L'utilisateur gère le dosage et coche 'j'ai déjà' si le pot est en stock.",
+      "oeufs": "Œufs déplacés de non_inclus vers les courses. Boîte de 6. nb_boîtes = ceil(œufs / 6).",
+      "repetitions": "Une semaine peut répéter une recette (champ 'repetitions' = {recette_id: nb_fois}). Le besoin en courses multiplie par ce nombre. Économie majeure : un dîner répété coûte ~2x moins qu'une recette nouvelle.",
+      "lardons": "1 portion = 75g de lardons (et non 150g).",
+      "espacement": "Dans une semaine avec répétitions, une même recette ne doit jamais tomber 2 jours de suite (sinon dîner + déjeuner du lendemain = 4 repas identiques d'affilée). Les jours sont alternés."
     },
     "courses_perso_fixes": [
       {
@@ -34,7 +40,11 @@
     "stock_permanent": [],
     "changelog": [
       "v3.3: correction étapes R04 (Gnocchi crémeux au prosciutto) — étaient celles d'un curry-coco-riz. Aucune autre recette touchée (audit 40/40).",
-      "v3.4: prix/formats ingrédients mis à jour (édition utilisateur, autorité). Ajout semaines éco E3/E4/E5. ingredients_usage enrichi (unite + total_base_1p) pour calcul courses par besoin total. Règle courses: nb_paquets=ceil(demande/grammes), format au coût mini."
+      "v3.4: prix/formats ingrédients mis à jour (édition utilisateur, autorité). Ajout semaines éco E3/E4/E5. ingredients_usage enrichi (unite + total_base_1p) pour calcul courses par besoin total. Règle courses: nb_paquets=ceil(demande/grammes), format au coût mini.",
+      "v4.0: FIX ail (gousses, pas têtes) — corrige surcoût ~10€/semaine. FIX épices = 1 pot entier max. Œufs ajoutés aux courses (R03,R07,R11,R35). Ajout 3 semaines SUPER-ÉCO (X1 58€, X2 62€, X3 70€) avec répétition de recettes.",
+      "v4.1: lardons ramenés à 75g/portion (R10, R15). Budgets et ingredients_usage recalculés.",
+      "v4.2: espacement des recettes répétées dans X1/X2/X3 — plus aucun doublon sur 2 jours consécutifs.",
+      "v4.3: X2/X3 rééquilibrées (max 3x une même recette) — aucun doublon 2 jours de suite dans X1/X2/X3."
     ]
   },
   "recipes": {
@@ -485,6 +495,11 @@
           "dlc_jours": 365,
           "multi_format": false,
           "note": "Surgelé (remplace frais)"
+        },
+        {
+          "nom": "Œuf",
+          "qty_1portion": "1 pièce(s)",
+          "categorie": "🥚 Frais"
         }
       ],
       "non_inclus": [
@@ -501,11 +516,6 @@
         {
           "nom": "Huile de tournesol",
           "qty": "½ cs",
-          "note": ""
-        },
-        {
-          "nom": "Œuf",
-          "qty": "1 pièce(s)",
           "note": ""
         },
         {
@@ -1179,6 +1189,11 @@
           "dlc_jours": 180.0,
           "multi_format": false,
           "note": ""
+        },
+        {
+          "nom": "Œuf",
+          "qty_1portion": "1 pièce(s)",
+          "categorie": "🥚 Frais"
         }
       ],
       "non_inclus": [
@@ -1195,11 +1210,6 @@
         {
           "nom": "Huile d'olive",
           "qty": "½ cs",
-          "note": ""
-        },
-        {
-          "nom": "Œuf",
-          "qty": "1 pièce(s)",
           "note": ""
         }
       ],
@@ -1569,7 +1579,7 @@
       "ingredients_livres": [
         {
           "nom": "Lardons fumés",
-          "qty_1portion": "150g",
+          "qty_1portion": "75g",
           "categorie": "🥩 Viandes & protéines",
           "prix_chronodrive": 2.85,
           "format_achat": "2x 150g",
@@ -1821,6 +1831,11 @@
           "dlc_jours": 1825.0,
           "multi_format": false,
           "note": ""
+        },
+        {
+          "nom": "Œuf",
+          "qty_1portion": "1 pièce(s)",
+          "categorie": "🥚 Frais"
         }
       ],
       "non_inclus": [
@@ -1832,11 +1847,6 @@
         {
           "nom": "Moutarde",
           "qty": "½ cc",
-          "note": ""
-        },
-        {
-          "nom": "Œuf",
-          "qty": "1 pièce(s)",
           "note": ""
         },
         {
@@ -2513,7 +2523,7 @@
         },
         {
           "nom": "Lardons fumés",
-          "qty_1portion": "150g",
+          "qty_1portion": "75g",
           "categorie": "🥩 Viandes & protéines",
           "prix_chronodrive": 2.85,
           "format_achat": "2x 150g",
@@ -5905,14 +5915,14 @@
           "dlc_jours": 5.0,
           "multi_format": false,
           "note": ""
+        },
+        {
+          "nom": "Œuf",
+          "qty_1portion": "1 pièce(s)",
+          "categorie": "🥚 Frais"
         }
       ],
       "non_inclus": [
-        {
-          "nom": "Œuf",
-          "qty": "1 pièces",
-          "note": ""
-        },
         {
           "nom": "Huile d'olive",
           "qty": "1 cs",
@@ -6868,15 +6878,17 @@
     "Ail": {
       "nom": "Ail",
       "nom_chronodrive": "Ail blanc (tête)",
-      "format_achat": "1 tête",
-      "note": "",
+      "format_achat": "1 tête (≈11 gousses)",
+      "note": "Les recettes comptent en GOUSSES. nb_têtes = ceil(gousses / 11).",
       "multi_format": false,
       "prix": 2.49,
       "dlc_jours": 30.0,
       "categorie": "🥦 Légumes frais",
       "dispo_chronodrive": "✅ Oui",
       "substitut": "",
-      "formats": null
+      "formats": null,
+      "gousses_par_tete": 11,
+      "unite_recette": "gousse"
     },
     "Chair de tomates": {
       "nom": "Chair de tomates",
@@ -7245,15 +7257,16 @@
     "Œuf": {
       "nom": "Œuf",
       "nom_chronodrive": "Œufs moyens x6",
-      "format_achat": "6oeufs",
-      "note": "",
+      "format_achat": "Boîte de 6",
+      "note": "Boîte de 6. nb_boîtes = ceil(œufs / 6).",
       "multi_format": false,
       "prix": 1.69,
       "dlc_jours": 21,
       "categorie": "🥚 Frais",
-      "dispo_chronodrive": "?",
+      "dispo_chronodrive": "✅ Oui",
       "substitut": "",
-      "formats": null
+      "formats": null,
+      "oeufs_par_boite": 6
     },
     "Champignons de Paris": {
       "nom": "Champignons de Paris",
@@ -8770,9 +8783,9 @@
           "pizza": true
         }
       },
-      "budget_frais_estime": 100.71,
+      "budget_frais_estime": 113.58,
       "budget_perso": 8.13,
-      "budget_total_estime": 108.84,
+      "budget_total_estime": 121.71,
       "ingredients_usage": {
         "Épices mexicaines": {
           "count": 1,
@@ -9066,7 +9079,7 @@
           ],
           "unite": "cl",
           "total_base_1p": 60.0,
-          "sommable": false
+          "sommable": true
         },
         "Gouda râpé": {
           "count": 1,
@@ -9166,6 +9179,18 @@
           "total_base_1p": 10.0,
           "sommable": true
         },
+        "Œuf": {
+          "count": 1,
+          "recettes": [
+            "R03"
+          ],
+          "quantites": [
+            "R03: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
         "Spaghetti": {
           "count": 1,
           "recettes": [
@@ -9220,10 +9245,10 @@
             "R15"
           ],
           "quantites": [
-            "R15: 150g"
+            "R15: 75g"
           ],
           "unite": "g",
-          "total_base_1p": 150.0,
+          "total_base_1p": 75.0,
           "sommable": true
         },
         "Parmesan râpé": {
@@ -9395,9 +9420,9 @@
           "pizza": true
         }
       },
-      "budget_frais_estime": 86.77,
+      "budget_frais_estime": 106.45,
       "budget_perso": 8.13,
-      "budget_total_estime": 94.9,
+      "budget_total_estime": 114.58,
       "ingredients_usage": {
         "Ciboulette": {
           "count": 1,
@@ -9501,7 +9526,7 @@
           ],
           "unite": "pièce",
           "total_base_1p": 400.5,
-          "sommable": false
+          "sommable": true
         },
         "Sauce Chipotle au piment": {
           "count": 1,
@@ -9755,7 +9780,7 @@
           ],
           "unite": "g",
           "total_base_1p": 16.25,
-          "sommable": false
+          "sommable": true
         },
         "Citron": {
           "count": 2,
@@ -9871,6 +9896,18 @@
           "total_base_1p": 100.0,
           "sommable": true
         },
+        "Œuf": {
+          "count": 1,
+          "recettes": [
+            "R35"
+          ],
+          "quantites": [
+            "R35: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
         "Échalote": {
           "count": 1,
           "recettes": [
@@ -9976,9 +10013,9 @@
           "pizza": false
         }
       },
-      "budget_frais_estime": 85.77,
+      "budget_frais_estime": 101.34,
       "budget_perso": 8.13,
-      "budget_total_estime": 93.9,
+      "budget_total_estime": 109.47,
       "ingredients_usage": {
         "Ail": {
           "count": 4,
@@ -10426,16 +10463,28 @@
           "total_base_1p": 100.0,
           "sommable": true
         },
+        "Œuf": {
+          "count": 1,
+          "recettes": [
+            "R11"
+          ],
+          "quantites": [
+            "R11: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
         "Lardons fumés": {
           "count": 1,
           "recettes": [
             "R10"
           ],
           "quantites": [
-            "R10: 150g"
+            "R10: 75g"
           ],
           "unite": "g",
-          "total_base_1p": 150.0,
+          "total_base_1p": 75.0,
           "sommable": true
         },
         "Petit pain": {
@@ -10579,9 +10628,9 @@
           "pizza": false
         }
       },
-      "budget_frais_estime": 93.28,
+      "budget_frais_estime": 118.39,
       "budget_perso": 8.13,
-      "budget_total_estime": 101.41,
+      "budget_total_estime": 126.52,
       "ingredients_usage": {
         "Riz": {
           "count": 2,
@@ -11192,9 +11241,9 @@
           "pizza": false
         }
       },
-      "budget_frais_estime": 95.83,
+      "budget_frais_estime": 115.43,
       "budget_perso": 8.13,
-      "budget_total_estime": 103.96,
+      "budget_total_estime": 123.56,
       "ingredients_usage": {
         "Riz": {
           "count": 2,
@@ -11763,9 +11812,9 @@
           "pizza": true
         }
       },
-      "budget_frais_estime": 118.66,
+      "budget_frais_estime": 127.11,
       "budget_perso": 8.13,
-      "budget_total_estime": 126.79,
+      "budget_total_estime": 135.24,
       "ingredients_usage": {
         "Riz": {
           "count": 2,
@@ -11905,6 +11954,18 @@
           ],
           "unite": "sachet",
           "total_base_1p": 0.5,
+          "sommable": true
+        },
+        "Œuf": {
+          "count": 1,
+          "recettes": [
+            "R07"
+          ],
+          "quantites": [
+            "R07: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
           "sommable": true
         },
         "Oignon": {
@@ -12572,9 +12633,9 @@
           "pizza": true
         }
       },
-      "budget_frais_estime": 56.84,
+      "budget_frais_estime": 80.64,
       "budget_perso": 8.13,
-      "budget_total_estime": 64.97,
+      "budget_total_estime": 88.77,
       "ingredients_usage": {
         "Champignons de Paris": {
           "count": 1,
@@ -12674,7 +12735,7 @@
           ],
           "unite": "cl",
           "total_base_1p": 60.0,
-          "sommable": false
+          "sommable": true
         },
         "Salade": {
           "count": 3,
@@ -12780,7 +12841,7 @@
           ],
           "unite": "g",
           "total_base_1p": 16.25,
-          "sommable": false
+          "sommable": true
         },
         "Penne": {
           "count": 1,
@@ -12818,6 +12879,18 @@
           "total_base_1p": 100.0,
           "sommable": true
         },
+        "Œuf": {
+          "count": 1,
+          "recettes": [
+            "R35"
+          ],
+          "quantites": [
+            "R35: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
         "Lardons fumés": {
           "count": 2,
           "recettes": [
@@ -12825,11 +12898,11 @@
             "R15"
           ],
           "quantites": [
-            "R10: 150g",
-            "R15: 150g"
+            "R10: 75g",
+            "R15: 75g"
           ],
           "unite": "g",
-          "total_base_1p": 300.0,
+          "total_base_1p": 150.0,
           "sommable": true
         },
         "Petit pain": {
@@ -13061,9 +13134,9 @@
           "pizza": true
         }
       },
-      "budget_frais_estime": 70.49,
+      "budget_frais_estime": 102.01,
       "budget_perso": 8.13,
-      "budget_total_estime": 78.62,
+      "budget_total_estime": 110.14,
       "ingredients_usage": {
         "Fusilli complets": {
           "count": 1,
@@ -13329,7 +13402,7 @@
           ],
           "unite": "g",
           "total_base_1p": 2.3333,
-          "sommable": false
+          "sommable": true
         },
         "Olives Kalamata dénoyautées": {
           "count": 2,
@@ -13343,6 +13416,18 @@
           ],
           "unite": "g",
           "total_base_1p": 30.0,
+          "sommable": true
+        },
+        "Œuf": {
+          "count": 1,
+          "recettes": [
+            "R11"
+          ],
+          "quantites": [
+            "R11: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
           "sommable": true
         },
         "Herbes de Provence": {
@@ -13562,9 +13647,9 @@
           "pizza": true
         }
       },
-      "budget_frais_estime": 74.12,
+      "budget_frais_estime": 87.29,
       "budget_perso": 8.13,
-      "budget_total_estime": 82.25,
+      "budget_total_estime": 95.42,
       "ingredients_usage": {
         "Riz": {
           "count": 2,
@@ -13690,7 +13775,7 @@
           ],
           "unite": "g",
           "total_base_1p": 16.25,
-          "sommable": false
+          "sommable": true
         },
         "Pesto rosso": {
           "count": 3,
@@ -14093,9 +14178,9 @@
           "pizza": true
         }
       },
-      "budget_frais_estime": 75.76,
+      "budget_frais_estime": 81.73,
       "budget_perso": 8.13,
-      "budget_total_estime": 83.89,
+      "budget_total_estime": 89.86,
       "ingredients_usage": {
         "Fusilli complets": {
           "count": 1,
@@ -14141,7 +14226,7 @@
           ],
           "unite": "g",
           "total_base_1p": 39.25,
-          "sommable": false
+          "sommable": true
         },
         "Thon au naturel": {
           "count": 1,
@@ -14413,6 +14498,18 @@
           "total_base_1p": 200.0,
           "sommable": true
         },
+        "Œuf": {
+          "count": 1,
+          "recettes": [
+            "R35"
+          ],
+          "quantites": [
+            "R35: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
         "Tagliatelle fraîches": {
           "count": 1,
           "recettes": [
@@ -14570,9 +14667,9 @@
           "pizza": true
         }
       },
-      "budget_frais_estime": 76.81,
+      "budget_frais_estime": 88.11,
       "budget_perso": 8.13,
-      "budget_total_estime": 84.94,
+      "budget_total_estime": 96.24,
       "ingredients_usage": {
         "Poivron": {
           "count": 2,
@@ -14670,7 +14767,7 @@
           ],
           "unite": "g",
           "total_base_1p": 24.25,
-          "sommable": false
+          "sommable": true
         },
         "Olives Kalamata dénoyautées": {
           "count": 2,
@@ -14726,6 +14823,18 @@
           ],
           "unite": "g",
           "total_base_1p": 140.0,
+          "sommable": true
+        },
+        "Œuf": {
+          "count": 1,
+          "recettes": [
+            "R11"
+          ],
+          "quantites": [
+            "R11: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
           "sommable": true
         },
         "Oignon": {
@@ -15036,6 +15145,986 @@
           ],
           "unite": "pièce",
           "total_base_1p": 2.0,
+          "sommable": true
+        }
+      }
+    },
+    "X1": {
+      "id": "X1",
+      "mode": "super_eco",
+      "theme": "Ultra-éco : pesto duo",
+      "repetitions": {
+        "R05": 3,
+        "R36": 3,
+        "R09": 1
+      },
+      "days": {
+        "Lun": {
+          "recette_id": "R05",
+          "diner": "R05",
+          "midi_lendemain": "Reste de R05 (Lun) → déjeuner Mar",
+          "weekend": false,
+          "pizza": false
+        },
+        "Mar": {
+          "recette_id": "R36",
+          "diner": "R36",
+          "midi_lendemain": "Reste de R36 (Mar) → déjeuner Mer",
+          "weekend": false,
+          "pizza": false
+        },
+        "Mer": {
+          "recette_id": "R05",
+          "diner": "R05",
+          "midi_lendemain": "Reste de R05 (Mer) → déjeuner Jeu",
+          "weekend": false,
+          "pizza": false
+        },
+        "Jeu": {
+          "recette_id": "R36",
+          "diner": "R36",
+          "midi_lendemain": "Reste de R36 (Jeu) → déjeuner Ven",
+          "weekend": false,
+          "pizza": false
+        },
+        "Ven": {
+          "recette_id": "R05",
+          "diner": "R05",
+          "midi_lendemain": "Reste de R05 (Ven) → déjeuner Sam",
+          "weekend": false,
+          "pizza": false
+        },
+        "Sam": {
+          "recette_id": "R36",
+          "diner": "R36",
+          "midi_lendemain": "Reste de R36 (Sam) → déjeuner Dim",
+          "weekend": true,
+          "pizza": false
+        },
+        "Dim": {
+          "recette_id": "R09",
+          "diner": "R09",
+          "midi_lendemain": "Reste de R09 (Dim) → déjeuner (semaine suivante)",
+          "weekend": true,
+          "pizza": true
+        }
+      },
+      "budget_frais_estime": 50.41,
+      "budget_perso": 8.13,
+      "budget_total_estime": 58.54,
+      "ingredients_usage": {
+        "Tomates cerises rouges": {
+          "count": 2,
+          "recettes": [
+            "R05",
+            "R36"
+          ],
+          "quantites": [
+            "R05 (x3): 125g",
+            "R36 (x3): 125g"
+          ],
+          "unite": "g",
+          "total_base_1p": 750.0,
+          "sommable": true
+        },
+        "Ail": {
+          "count": 2,
+          "recettes": [
+            "R05",
+            "R36"
+          ],
+          "quantites": [
+            "R05 (x3): ½ pièce(s)",
+            "R36 (x3): ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.0,
+          "sommable": true
+        },
+        "Tagliatelle fraîches": {
+          "count": 1,
+          "recettes": [
+            "R05"
+          ],
+          "quantites": [
+            "R05 (x3): 125 g"
+          ],
+          "unite": "g",
+          "total_base_1p": 375.0,
+          "sommable": true
+        },
+        "Pesto rosso": {
+          "count": 2,
+          "recettes": [
+            "R05",
+            "R09"
+          ],
+          "quantites": [
+            "R05 (x3): 100g",
+            "R09: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 400.0,
+          "sommable": true
+        },
+        "Origan séché": {
+          "count": 2,
+          "recettes": [
+            "R05",
+            "R09"
+          ],
+          "quantites": [
+            "R05 (x3): ¼ sachet(s)",
+            "R09: ⅓ sachet(s)"
+          ],
+          "unite": "sachet",
+          "total_base_1p": 1.0833,
+          "sommable": true
+        },
+        "Mozzarella": {
+          "count": 2,
+          "recettes": [
+            "R05",
+            "R09"
+          ],
+          "quantites": [
+            "R05 (x3): ½ pièce(s)",
+            "R09: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
+        },
+        "Basilic": {
+          "count": 2,
+          "recettes": [
+            "R05",
+            "R36"
+          ],
+          "quantites": [
+            "R05 (x3): 8g",
+            "R36 (x3): ¼ sachet(s)"
+          ],
+          "unite": "g",
+          "total_base_1p": 24.75,
+          "sommable": true
+        },
+        "Linguine": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36 (x3): 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 300.0,
+          "sommable": true
+        },
+        "Citron": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36 (x3): ¼ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.75,
+          "sommable": true
+        },
+        "Noix de cajou concassées": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36 (x3): 20g"
+          ],
+          "unite": "g",
+          "total_base_1p": 60.0,
+          "sommable": true
+        },
+        "Épinards": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36 (x3): 125g"
+          ],
+          "unite": "g",
+          "total_base_1p": 375.0,
+          "sommable": true
+        },
+        "Parmesan râpé": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36 (x3): 30g"
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
+        },
+        "Tomate": {
+          "count": 1,
+          "recettes": [
+            "R09"
+          ],
+          "quantites": [
+            "R09: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
+        },
+        "Prosciutto crudo": {
+          "count": 1,
+          "recettes": [
+            "R09"
+          ],
+          "quantites": [
+            "R09: 25 g"
+          ],
+          "unite": "g",
+          "total_base_1p": 25.0,
+          "sommable": true
+        },
+        "Pain naan": {
+          "count": 1,
+          "recettes": [
+            "R09"
+          ],
+          "quantites": [
+            "R09: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
+        "Salade": {
+          "count": 1,
+          "recettes": [
+            "R09"
+          ],
+          "quantites": [
+            "R09: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
+        }
+      }
+    },
+    "X2": {
+      "id": "X2",
+      "mode": "super_eco",
+      "theme": "Ultra-éco : pâtes & BLT",
+      "repetitions": {
+        "R36": 3,
+        "R05": 2,
+        "R10": 1,
+        "R09": 1
+      },
+      "days": {
+        "Lun": {
+          "recette_id": "R36",
+          "diner": "R36",
+          "midi_lendemain": "Reste de R36 (Lun) → déjeuner Mar",
+          "weekend": false,
+          "pizza": false
+        },
+        "Mar": {
+          "recette_id": "R05",
+          "diner": "R05",
+          "midi_lendemain": "Reste de R05 (Mar) → déjeuner Mer",
+          "weekend": false,
+          "pizza": false
+        },
+        "Mer": {
+          "recette_id": "R36",
+          "diner": "R36",
+          "midi_lendemain": "Reste de R36 (Mer) → déjeuner Jeu",
+          "weekend": false,
+          "pizza": false
+        },
+        "Jeu": {
+          "recette_id": "R05",
+          "diner": "R05",
+          "midi_lendemain": "Reste de R05 (Jeu) → déjeuner Ven",
+          "weekend": false,
+          "pizza": false
+        },
+        "Ven": {
+          "recette_id": "R10",
+          "diner": "R10",
+          "midi_lendemain": "Reste de R10 (Ven) → déjeuner Sam",
+          "weekend": false,
+          "pizza": false
+        },
+        "Sam": {
+          "recette_id": "R36",
+          "diner": "R36",
+          "midi_lendemain": "Reste de R36 (Sam) → déjeuner Dim",
+          "weekend": true,
+          "pizza": false
+        },
+        "Dim": {
+          "recette_id": "R09",
+          "diner": "R09",
+          "midi_lendemain": "Reste de R09 (Dim) → déjeuner (semaine suivante)",
+          "weekend": true,
+          "pizza": true
+        }
+      },
+      "budget_frais_estime": 53.95,
+      "budget_perso": 8.13,
+      "budget_total_estime": 62.08,
+      "ingredients_usage": {
+        "Linguine": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36 (x3): 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 300.0,
+          "sommable": true
+        },
+        "Tomates cerises rouges": {
+          "count": 3,
+          "recettes": [
+            "R36",
+            "R05",
+            "R10"
+          ],
+          "quantites": [
+            "R36 (x3): 125g",
+            "R05 (x2): 125g",
+            "R10: 125g"
+          ],
+          "unite": "g",
+          "total_base_1p": 750.0,
+          "sommable": true
+        },
+        "Ail": {
+          "count": 3,
+          "recettes": [
+            "R36",
+            "R05",
+            "R10"
+          ],
+          "quantites": [
+            "R36 (x3): ½ pièce(s)",
+            "R05 (x2): ½ pièce(s)",
+            "R10: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.0,
+          "sommable": true
+        },
+        "Basilic": {
+          "count": 2,
+          "recettes": [
+            "R36",
+            "R05"
+          ],
+          "quantites": [
+            "R36 (x3): ¼ sachet(s)",
+            "R05 (x2): 8g"
+          ],
+          "unite": "sachet",
+          "total_base_1p": 16.75,
+          "sommable": true
+        },
+        "Citron": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36 (x3): ¼ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.75,
+          "sommable": true
+        },
+        "Noix de cajou concassées": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36 (x3): 20g"
+          ],
+          "unite": "g",
+          "total_base_1p": 60.0,
+          "sommable": true
+        },
+        "Épinards": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36 (x3): 125g"
+          ],
+          "unite": "g",
+          "total_base_1p": 375.0,
+          "sommable": true
+        },
+        "Parmesan râpé": {
+          "count": 1,
+          "recettes": [
+            "R36"
+          ],
+          "quantites": [
+            "R36 (x3): 30g"
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
+        },
+        "Tagliatelle fraîches": {
+          "count": 1,
+          "recettes": [
+            "R05"
+          ],
+          "quantites": [
+            "R05 (x2): 125 g"
+          ],
+          "unite": "g",
+          "total_base_1p": 250.0,
+          "sommable": true
+        },
+        "Pesto rosso": {
+          "count": 2,
+          "recettes": [
+            "R05",
+            "R09"
+          ],
+          "quantites": [
+            "R05 (x2): 100g",
+            "R09: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 300.0,
+          "sommable": true
+        },
+        "Origan séché": {
+          "count": 3,
+          "recettes": [
+            "R05",
+            "R10",
+            "R09"
+          ],
+          "quantites": [
+            "R05 (x2): ¼ sachet(s)",
+            "R10: ¼ sachet(s)",
+            "R09: ⅓ sachet(s)"
+          ],
+          "unite": "sachet",
+          "total_base_1p": 1.0833,
+          "sommable": true
+        },
+        "Mozzarella": {
+          "count": 2,
+          "recettes": [
+            "R05",
+            "R09"
+          ],
+          "quantites": [
+            "R05 (x2): ½ pièce(s)",
+            "R09: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
+        },
+        "Lardons fumés": {
+          "count": 1,
+          "recettes": [
+            "R10"
+          ],
+          "quantites": [
+            "R10: 75g"
+          ],
+          "unite": "g",
+          "total_base_1p": 75.0,
+          "sommable": true
+        },
+        "Petit pain": {
+          "count": 1,
+          "recettes": [
+            "R10"
+          ],
+          "quantites": [
+            "R10: 90g"
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
+        },
+        "Sucrine": {
+          "count": 1,
+          "recettes": [
+            "R10"
+          ],
+          "quantites": [
+            "R10: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
+        "Avocat": {
+          "count": 1,
+          "recettes": [
+            "R10"
+          ],
+          "quantites": [
+            "R10: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
+        },
+        "Persil": {
+          "count": 1,
+          "recettes": [
+            "R10"
+          ],
+          "quantites": [
+            "R10: 20g"
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
+        },
+        "Tomate": {
+          "count": 1,
+          "recettes": [
+            "R09"
+          ],
+          "quantites": [
+            "R09: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
+        },
+        "Prosciutto crudo": {
+          "count": 1,
+          "recettes": [
+            "R09"
+          ],
+          "quantites": [
+            "R09: 25 g"
+          ],
+          "unite": "g",
+          "total_base_1p": 25.0,
+          "sommable": true
+        },
+        "Pain naan": {
+          "count": 1,
+          "recettes": [
+            "R09"
+          ],
+          "quantites": [
+            "R09: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
+        "Salade": {
+          "count": 1,
+          "recettes": [
+            "R09"
+          ],
+          "quantites": [
+            "R09: 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 100.0,
+          "sommable": true
+        }
+      }
+    },
+    "X3": {
+      "id": "X3",
+      "mode": "super_eco",
+      "theme": "Ultra-éco : merguez & mer",
+      "repetitions": {
+        "R24": 3,
+        "R05": 2,
+        "R10": 1,
+        "R26": 1
+      },
+      "days": {
+        "Lun": {
+          "recette_id": "R24",
+          "diner": "R24",
+          "midi_lendemain": "Reste de R24 (Lun) → déjeuner Mar",
+          "weekend": false,
+          "pizza": false
+        },
+        "Mar": {
+          "recette_id": "R05",
+          "diner": "R05",
+          "midi_lendemain": "Reste de R05 (Mar) → déjeuner Mer",
+          "weekend": false,
+          "pizza": false
+        },
+        "Mer": {
+          "recette_id": "R24",
+          "diner": "R24",
+          "midi_lendemain": "Reste de R24 (Mer) → déjeuner Jeu",
+          "weekend": false,
+          "pizza": false
+        },
+        "Jeu": {
+          "recette_id": "R05",
+          "diner": "R05",
+          "midi_lendemain": "Reste de R05 (Jeu) → déjeuner Ven",
+          "weekend": false,
+          "pizza": false
+        },
+        "Ven": {
+          "recette_id": "R10",
+          "diner": "R10",
+          "midi_lendemain": "Reste de R10 (Ven) → déjeuner Sam",
+          "weekend": false,
+          "pizza": false
+        },
+        "Sam": {
+          "recette_id": "R24",
+          "diner": "R24",
+          "midi_lendemain": "Reste de R24 (Sam) → déjeuner Dim",
+          "weekend": true,
+          "pizza": false
+        },
+        "Dim": {
+          "recette_id": "R26",
+          "diner": "R26",
+          "midi_lendemain": "Reste de R26 (Dim) → déjeuner (semaine suivante)",
+          "weekend": true,
+          "pizza": true
+        }
+      },
+      "budget_frais_estime": 62.65,
+      "budget_perso": 8.13,
+      "budget_total_estime": 70.78,
+      "ingredients_usage": {
+        "Oignon": {
+          "count": 1,
+          "recettes": [
+            "R24"
+          ],
+          "quantites": [
+            "R24 (x3): ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
+        },
+        "Poivron": {
+          "count": 1,
+          "recettes": [
+            "R24"
+          ],
+          "quantites": [
+            "R24 (x3): 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.0,
+          "sommable": true
+        },
+        "Ail": {
+          "count": 4,
+          "recettes": [
+            "R24",
+            "R05",
+            "R10",
+            "R26"
+          ],
+          "quantites": [
+            "R24 (x3): ½ pièce(s)",
+            "R05 (x2): ½ pièce(s)",
+            "R10: ½ pièce(s)",
+            "R26: 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 4.0,
+          "sommable": true
+        },
+        "Origan séché": {
+          "count": 4,
+          "recettes": [
+            "R24",
+            "R05",
+            "R10",
+            "R26"
+          ],
+          "quantites": [
+            "R24 (x3): ⅓ sachet(s)",
+            "R05 (x2): ¼ sachet(s)",
+            "R10: ¼ sachet(s)",
+            "R26: ⅓ sachet(s)"
+          ],
+          "unite": "sachet",
+          "total_base_1p": 2.0833,
+          "sommable": true
+        },
+        "Merguez": {
+          "count": 1,
+          "recettes": [
+            "R24"
+          ],
+          "quantites": [
+            "R24 (x3): 2 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 6.0,
+          "sommable": true
+        },
+        "Sucrine": {
+          "count": 3,
+          "recettes": [
+            "R24",
+            "R10",
+            "R26"
+          ],
+          "quantites": [
+            "R24 (x3): ½ pièce(s)",
+            "R10: 1 pièce(s)",
+            "R26: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.0,
+          "sommable": true
+        },
+        "Pain à hot-dog": {
+          "count": 1,
+          "recettes": [
+            "R24"
+          ],
+          "quantites": [
+            "R24 (x3): 1 pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 3.0,
+          "sommable": true
+        },
+        "Ketchup": {
+          "count": 1,
+          "recettes": [
+            "R24"
+          ],
+          "quantites": [
+            "R24 (x3): 4cl"
+          ],
+          "unite": "cl",
+          "total_base_1p": 12.0,
+          "sommable": true
+        },
+        "Tomate": {
+          "count": 1,
+          "recettes": [
+            "R24"
+          ],
+          "quantites": [
+            "R24 (x3): ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.5,
+          "sommable": true
+        },
+        "Tomates cerises rouges": {
+          "count": 2,
+          "recettes": [
+            "R05",
+            "R10"
+          ],
+          "quantites": [
+            "R05 (x2): 125g",
+            "R10: 125g"
+          ],
+          "unite": "g",
+          "total_base_1p": 375.0,
+          "sommable": true
+        },
+        "Tagliatelle fraîches": {
+          "count": 1,
+          "recettes": [
+            "R05"
+          ],
+          "quantites": [
+            "R05 (x2): 125 g"
+          ],
+          "unite": "g",
+          "total_base_1p": 250.0,
+          "sommable": true
+        },
+        "Pesto rosso": {
+          "count": 1,
+          "recettes": [
+            "R05"
+          ],
+          "quantites": [
+            "R05 (x2): 100g"
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
+        },
+        "Mozzarella": {
+          "count": 1,
+          "recettes": [
+            "R05"
+          ],
+          "quantites": [
+            "R05 (x2): ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 1.0,
+          "sommable": true
+        },
+        "Basilic": {
+          "count": 1,
+          "recettes": [
+            "R05"
+          ],
+          "quantites": [
+            "R05 (x2): 8g"
+          ],
+          "unite": "g",
+          "total_base_1p": 16.0,
+          "sommable": true
+        },
+        "Lardons fumés": {
+          "count": 1,
+          "recettes": [
+            "R10"
+          ],
+          "quantites": [
+            "R10: 75g"
+          ],
+          "unite": "g",
+          "total_base_1p": 75.0,
+          "sommable": true
+        },
+        "Petit pain": {
+          "count": 1,
+          "recettes": [
+            "R10"
+          ],
+          "quantites": [
+            "R10: 90g"
+          ],
+          "unite": "g",
+          "total_base_1p": 90.0,
+          "sommable": true
+        },
+        "Avocat": {
+          "count": 1,
+          "recettes": [
+            "R10"
+          ],
+          "quantites": [
+            "R10: ½ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.5,
+          "sommable": true
+        },
+        "Persil": {
+          "count": 1,
+          "recettes": [
+            "R10"
+          ],
+          "quantites": [
+            "R10: 20g"
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
+        },
+        "Échalote": {
+          "count": 1,
+          "recettes": [
+            "R26"
+          ],
+          "quantites": [
+            "R26: ¼ pièce(s)"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 0.25,
+          "sommable": true
+        },
+        "Olives Kalamata dénoyautées": {
+          "count": 1,
+          "recettes": [
+            "R26"
+          ],
+          "quantites": [
+            "R26: 20g"
+          ],
+          "unite": "g",
+          "total_base_1p": 20.0,
+          "sommable": true
+        },
+        "Thon au naturel": {
+          "count": 1,
+          "recettes": [
+            "R26"
+          ],
+          "quantites": [
+            "R26: 70g"
+          ],
+          "unite": "g",
+          "total_base_1p": 70.0,
+          "sommable": true
+        },
+        "Chair de tomates": {
+          "count": 1,
+          "recettes": [
+            "R26"
+          ],
+          "quantites": [
+            "R26: 200g"
+          ],
+          "unite": "g",
+          "total_base_1p": 200.0,
+          "sommable": true
+        },
+        "Pain naan": {
+          "count": 1,
+          "recettes": [
+            "R26"
+          ],
+          "quantites": [
+            "R26: 2 pièces"
+          ],
+          "unite": "pièce",
+          "total_base_1p": 2.0,
+          "sommable": true
+        },
+        "Parmesan râpé": {
+          "count": 1,
+          "recettes": [
+            "R26"
+          ],
+          "quantites": [
+            "R26: 30g"
+          ],
+          "unite": "g",
+          "total_base_1p": 30.0,
           "sommable": true
         }
       }

@@ -100,6 +100,7 @@ export const CATEGORIES_ORDER = [
   '🥩 Viandes & protéines',
   '🍚 Féculents & céréales',
   '🧀 Produits laitiers',
+  '🥚 Frais',
   '🥫 Conserves & bocaux',
   '🫙 Sauces & condiments',
   '🌿 Épices & aromates',
@@ -398,10 +399,55 @@ export function chooseFormat(besoin, unite, formats) {
   return best || { format: '', grammes: null, prix: 0, nb: 1, cost: 0, waste: 0 };
 }
 
+/* ============================================================
+   NB PAQUETS — règles d'achat par ingrédient (LOT 2). Ordre :
+   a) AIL : les recettes comptent en GOUSSES → 1 tête ≈ gousses_par_tete.
+      nb_têtes = ceil(gousses / gousses_par_tete). (6 gousses → 1 tête, pas 6.)
+   b) ŒUFS : vendus par boîte → nb_boîtes = ceil(œufs / oeufs_par_boite).
+   c) ÉPICES / HERBES SÉCHÉES (unite == "sachet") : 1 POT ENTIER, JAMAIS plus
+      d'un, quel que soit le nombre de recettes (l'utilisateur gère le dosage).
+   d) TOUT LE RESTE : chooseFormat (multi-format, coût minimisé, multipacks).
+   Renvoie toujours { nb, format, prix, cost }. cost = total de la ligne.
+   ============================================================ */
+export function computePurchase(name, besoin, unite, fallback = null) {
+  const ref = ingRef(name);
+  const round2 = (x) => Math.round(x * 100) / 100;
+
+  // a) AIL (gousses → têtes)
+  if (ref && ref.gousses_par_tete) {
+    const per = ref.gousses_par_tete;
+    const prix = ref.prix != null ? ref.prix : 0;
+    const nb = besoin == null ? 1 : Math.max(1, Math.ceil(besoin / per));
+    return { nb, format: ref.format_achat || `1 tête (≈${per} gousses)`, prix, cost: round2(nb * prix) };
+  }
+  // b) ŒUFS (boîte de N)
+  if (ref && ref.oeufs_par_boite) {
+    const per = ref.oeufs_par_boite;
+    const prix = ref.prix != null ? ref.prix : 0;
+    const nb = besoin == null ? 1 : Math.max(1, Math.ceil(besoin / per));
+    return { nb, format: ref.format_achat || `Boîte de ${per}`, prix, cost: round2(nb * prix) };
+  }
+  // c) ÉPICES / HERBES SÉCHÉES (sachet) → 1 pot, jamais plus
+  if ((unite || '').toLowerCase().startsWith('sachet')) {
+    const prix = ref && ref.prix != null ? ref.prix : (fallback && fallback.prix) || 0;
+    return { nb: 1, format: (ref && ref.format_achat) || (fallback && fallback.format) || '1 pot', prix, cost: round2(prix) };
+  }
+  // d) tout le reste
+  const chosen = chooseFormat(besoin, unite, candidateFormats(name, fallback));
+  return { nb: chosen.nb, format: chosen.format, prix: chosen.prix, cost: chosen.cost };
+}
+
 export function weekShopping(weekKey, slotsOff = {}, portions = 2) {
   const wk = weekRaw(weekKey);
   const status = (wk && wk.ingredients_status) || {};
   const usageAll = (wk && wk.ingredients_usage) || {};
+  // LOT 3 — semaines "super_eco" : une recette peut être cuisinée plusieurs fois.
+  // total_base_1p TIENT DÉJÀ compte des répétitions ; on reconstitue donc le besoin
+  // en multipliant la contribution PAR RECETTE par son nombre de répétitions
+  // (rep = 1 par défaut → semaines normales inchangées). On ne multiplie JAMAIS
+  // une seconde fois ensuite.
+  const reps = (wk && wk.repetitions) || {};
+  const repOf = (rid) => reps[rid] || 1;
   const cooked = cookedDays(weekKey, slotsOff);
   const activeIds = new Set(cooked.map((d) => d.recipe.id)); // respecte les repas désactivés
   const map = new Map();
@@ -445,20 +491,21 @@ export function weekShopping(weekKey, slotsOff = {}, portions = 2) {
       usage.recettes.forEach((rid, i) => {
         if (!activeIds.has(rid)) return;
         const val = parseUsageQty(usage.quantites ? usage.quantites[i] : null);
-        perRecipe.push({ id: rid, nom: (recipeById(rid) || {}).nom || rid, val });
-        if (val != null) { sum += val; any = true; }
+        const rep = repOf(rid);
+        perRecipe.push({ id: rid, nom: (recipeById(rid) || {}).nom || rid, val, rep });
+        if (val != null) { sum += val * rep; any = true; } // rep=1 hors semaines super_eco
       });
       if (any) base1p = sum; // = usage.total_base_1p quand toutes les recettes sont actives
       else if (perRecipe.length) base1p = 0;
     }
 
-    // 2) repli : somme "live" des quantités des recettes cuisinées
+    // 2) repli : somme "live" des quantités des recettes cuisinées (× répétitions)
     if (base1p == null) {
-      const parsed = row.uses.map((u) => parseQty(u.qty));
-      const s = parsed.reduce((a, p) => a + (p.value || 0), 0);
+      const parsed = row.uses.map((u) => ({ ...parseQty(u.qty), id: u.id, rep: repOf(u.id) }));
+      const s = parsed.reduce((a, p) => a + ((p.value || 0) * p.rep), 0);
       base1p = parsed.some((p) => p.value != null) ? s : null;
       unite = unite || (parsed.find((p) => p.value != null) || {}).unit || '';
-      perRecipe = row.uses.map((u) => ({ id: u.id, nom: u.nom, val: parseQty(u.qty).value }));
+      perRecipe = row.uses.map((u) => ({ id: u.id, nom: u.nom, val: parseQty(u.qty).value, rep: repOf(u.id) }));
     }
 
     const besoin = base1p == null ? null : besoinIngredient(base1p, portions);
@@ -467,11 +514,12 @@ export function weekShopping(weekKey, slotsOff = {}, portions = 2) {
     row.besoinValue = besoin;
     row.count = perRecipe.length;
     row.perRecipe = perRecipe;
-    // quantité PAR PORTION par recette (pour le popover d'usage)
-    row.uses = perRecipe.map((p) => ({ id: p.id, nom: p.nom, qty: p.val == null ? '—' : fmtNum(p.val) + (unite ? ' ' + unite : '') }));
+    // quantité PAR PORTION par recette (pour le popover d'usage) — avec le
+    // nombre de répétitions dans la semaine (rep>1 en mode super_eco).
+    row.uses = perRecipe.map((p) => ({ id: p.id, nom: p.nom, rep: p.rep || 1, qty: p.val == null ? '—' : fmtNum(p.val) + (unite ? ' ' + unite : '') }));
 
-    // format & nombre de paquets (multi-paquets, coût minimisé)
-    const chosen = chooseFormat(besoin, unite, candidateFormats(row.name, row._fallback));
+    // format & nombre de paquets (règles AIL / ŒUFS / sachet, sinon coût minimisé)
+    const chosen = computePurchase(row.name, besoin, unite, row._fallback);
     row.nbPaquets = chosen.nb;
     row.formatLabel = chosen.format;
     row.formatPrix = chosen.prix;

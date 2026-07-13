@@ -260,7 +260,7 @@ function UsageCell({ row, portions }) {
           <ul className="use-pop-list">
             {uses.map((u, i) => (
               <li key={u.id + '-' + i}>
-                <span className="up-r">{u.id} – {u.nom}</span>
+                <span className="up-r">{u.id} – {u.nom}{u.rep > 1 && <span className="pill accent" style={{ height: 15, fontSize: 9, marginLeft: 5, padding: '0 5px' }}>×{u.rep}</span>}</span>
                 <span className="up-q">{u.qty}</span>
               </li>
             ))}

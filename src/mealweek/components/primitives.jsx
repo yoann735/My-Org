@@ -3,7 +3,7 @@
    converted to ESM React modules and wired to the real data layer).
    ============================================================ */
 import { Icon } from '../../shared/Icon.jsx';
-import { PROT, COMPLEXITY_VARIANT, recipeProtein } from '../data/dataLayer.js';
+import { PROT, COMPLEXITY_VARIANT, recipeProtein, weekRaw, money0 } from '../data/dataLayer.js';
 
 /* ---- Card ---- */
 export function Card({ title, icon, action, children, style, className = '', bodyStyle }) {
@@ -107,12 +107,19 @@ export function Stepper({ value, min = 1, max = 6, step = 1, onChange, suffix, s
   );
 }
 
-/* ---- week navigator (S1..S6 cycle) ---- */
+/* ---- week navigator (S1..S6 / E1..E5 / X1..X3 cycle) ----
+   LOT 4 : affiche le budget estimé de la semaine (budget_total_estime)
+   directement dans le sélecteur de semaines. */
 export function WeekNav({ weekKey, theme, onPrev, onNext }) {
+  const wk = weekRaw(weekKey);
+  const est = wk && wk.budget_total_estime;
   return (
     <div className="weeknav">
       <button onClick={onPrev} title="Semaine précédente" type="button"><Icon name="chevL" size={18} /></button>
-      <span className="wk">{weekKey}{theme ? ` · ${theme}` : ''}</span>
+      <span className="wk">
+        {weekKey}{theme ? ` · ${theme}` : ''}
+        {est != null && <span className="wk-budget" style={{ marginLeft: 6, color: 'var(--text-3)', fontWeight: 600 }}>· ~{money0(est)}</span>}
+      </span>
       <button onClick={onNext} title="Semaine suivante" type="button"><Icon name="chevR" size={18} /></button>
     </div>
   );
