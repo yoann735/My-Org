@@ -8,12 +8,12 @@
    Delivered ingredients and "non inclus" are two distinct lists.
    Step checkboxes are persisted (per recipe) via ctx.
    ============================================================ */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Stepper, ComplexityPill, ProteinBadge, Meta } from './primitives.jsx';
 import { useIsMobile } from '../../shared/hooks/useMediaQuery.js';
 import {
-  scaleQty, scaledNutrition, NUTRITION_FIELDS, recipeProtein, money,
+  scaleQty, scaledNutrition, NUTRITION_FIELDS, recipeProtein, money, weekRaw,
 } from '../data/dataLayer.js';
 
 export function RecipeDetail({ recipe, onClose, ctx }) {
@@ -42,6 +42,14 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
 
   const delivered = recipe.ingredients_livres || [];
   const nonInclus = recipe.non_inclus || [];
+  // Ingrédient partagé : utilisé par >1 recette de la SEMAINE EN COURS
+  // (ingredients_usage[nom].count > 1). On repère ainsi, dans la section
+  // "Ingrédients livrés", ce qui sert aussi ailleurs cette semaine-là.
+  const weekUsage = (weekRaw(ctx && ctx.weekKey) || {}).ingredients_usage || {};
+  const sharedCount = (name) => {
+    const u = weekUsage[name];
+    return u && u.count > 1 ? u.count : 0;
+  };
   const steps = recipe.etapes || [];
   const doneCount = steps.filter((s, k) => stepsDone[k]).length;
   const progress = steps.length ? Math.round((doneCount / steps.length) * 100) : 0;
@@ -64,7 +72,7 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
             onClick={() => setGot((g) => ({ ...g, ['d' + k]: !g['d' + k] }))}
           >
             <span className="ing-box"><Icon name="check" size={12} stroke={3} /></span>
-            <span className="ing-nm">{i.nom}{i.note ? <span className="ing-note">· {i.note}</span> : null}</span>
+            <span className="ing-nm">{i.nom}{sharedCount(i.nom) > 0 && <SharedBadge count={sharedCount(i.nom)} />}{i.note ? <span className="ing-note">· {i.note}</span> : null}</span>
             <span className="ing-q tnum">{scaleQty(i.qty_1portion, portions)}</span>
           </button>
         ))}
@@ -240,6 +248,53 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
         )}
       </div>
     </div>
+  );
+}
+
+/* ---- badge "ingrédient partagé cette semaine" (survol desktop + tap mobile) ----
+   Rendu dans un <button> parent (ing-check) → le déclencheur est un <span>
+   role="button" (jamais un <button> imbriqué) et stoppe la propagation du clic
+   pour ne pas cocher l'ingrédient. Tooltip piloté par état (open) : visible au
+   survol ET au tap, fermé au clic extérieur. ---- */
+function SharedBadge({ count }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('touchstart', onDoc);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('touchstart', onDoc); };
+  }, [open]);
+
+  return (
+    <span
+      ref={ref}
+      style={{ position: 'relative', display: 'inline-flex', verticalAlign: 'middle' }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <span
+        role="button"
+        tabIndex={0}
+        className="pill amber"
+        style={{ height: 18, fontSize: 9.5, marginLeft: 4, cursor: 'help' }}
+        aria-label={`Ingrédient aussi utilisé dans ${count} recettes cette semaine`}
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setOpen((o) => !o); } }}
+      >
+        <Icon name="alert" size={9} /> ×{count}
+      </span>
+      {open && (
+        <span
+          className="tip-body"
+          style={{ opacity: 1, pointerEvents: 'none', bottom: 'calc(100% + 8px)', left: 0, transform: 'none', whiteSpace: 'normal', width: 230, maxWidth: '72vw', lineHeight: 1.35, textAlign: 'left' }}
+        >
+          Cet ingrédient est aussi utilisé dans d'autres recettes cette semaine — respecte bien la quantité indiquée pour ne pas en manquer.
+        </span>
+      )}
+    </span>
   );
 }
 
