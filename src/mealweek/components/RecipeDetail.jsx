@@ -9,6 +9,7 @@
    Step checkboxes are persisted (per recipe) via ctx.
    ============================================================ */
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { Stepper, ComplexityPill, ProteinBadge, Meta } from './primitives.jsx';
 import { useIsMobile } from '../../shared/hooks/useMediaQuery.js';
@@ -66,7 +67,7 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
       <div className="ing-list">
         {delivered.map((i, k) => (
           <button
-            key={'d' + k}
+            key={'d-' + i.nom}
             type="button"
             className={'ing-check' + (got['d' + k] ? ' on' : '')}
             onClick={() => setGot((g) => ({ ...g, ['d' + k]: !g['d' + k] }))}
@@ -84,7 +85,7 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
           <div className="ing-list">
             {nonInclus.map((i, k) => (
               <button
-                key={'n' + k}
+                key={'n-' + i.nom}
                 type="button"
                 className={'ing-check' + (got['n' + k] ? ' on' : '')}
                 onClick={() => setGot((g) => ({ ...g, ['n' + k]: !g['n' + k] }))}
@@ -252,47 +253,83 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
 }
 
 /* ---- badge "ingrédient partagé cette semaine" (survol desktop + tap mobile) ----
-   Rendu dans un <button> parent (ing-check) → le déclencheur est un <span>
-   role="button" (jamais un <button> imbriqué) et stoppe la propagation du clic
-   pour ne pas cocher l'ingrédient. Tooltip piloté par état (open) : visible au
-   survol ET au tap, fermé au clic extérieur. ---- */
+   Le déclencheur est un <span> role="button" (jamais un <button> imbriqué dans
+   le <button> de la ligne) et stoppe la propagation pour ne pas cocher l'ingrédient.
+
+   Le TOOLTIP est rendu via un PORTAL vers document.body, en position: fixed
+   calculée depuis getBoundingClientRect() du badge. Il est ainsi TOTALEMENT hors
+   flux : il ne pousse plus le contenu de la liste et ne peut ni chevaucher les
+   lignes voisines ni être rogné par le conteneur scrollable. L'état de survol est
+   LOCAL à chaque badge (une instance = un état) → un seul tooltip visible à la
+   fois, jamais de fantôme. Fermé au départ souris, au scroll/resize (la position
+   fixed deviendrait obsolète) et au clic/tap extérieur. ---- */
 function SharedBadge({ count }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const badgeRef = useRef(null);
+  const [coords, setCoords] = useState(null); // null = caché ; {x,y} = position fixed du tooltip
+
+  const show = () => {
+    const el = badgeRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setCoords({ x: r.left + r.width / 2, y: r.top }); // ancré au centre-haut du badge
+  };
+  const hide = () => setCoords(null);
+  // pointer/tap = AFFICHER (jamais toggle) : sur mobile, un tap synthétise
+  // mouseenter PUIS click ; un toggle refermerait aussitôt le tooltip. On ferme
+  // donc via départ souris / scroll / tap extérieur / Échap.
+  const openOn = (e) => { e.stopPropagation(); show(); };
 
   useEffect(() => {
-    if (!open) return undefined;
-    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', onDoc);
-    document.addEventListener('touchstart', onDoc);
-    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('touchstart', onDoc); };
-  }, [open]);
+    if (!coords) return undefined;
+    const onScrollResize = () => hide();
+    const onOutside = (e) => { if (badgeRef.current && !badgeRef.current.contains(e.target)) hide(); };
+    window.addEventListener('scroll', onScrollResize, true);
+    window.addEventListener('resize', onScrollResize);
+    document.addEventListener('mousedown', onOutside);
+    document.addEventListener('touchstart', onOutside);
+    return () => {
+      window.removeEventListener('scroll', onScrollResize, true);
+      window.removeEventListener('resize', onScrollResize);
+      document.removeEventListener('mousedown', onOutside);
+      document.removeEventListener('touchstart', onOutside);
+    };
+  }, [coords]);
 
   return (
     <span
-      ref={ref}
-      style={{ position: 'relative', display: 'inline-flex', verticalAlign: 'middle' }}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      ref={badgeRef}
+      role="button"
+      tabIndex={0}
+      className="pill amber"
+      style={{ height: 18, fontSize: 9.5, marginLeft: 4, cursor: 'help' }}
+      aria-label={`Ingrédient aussi utilisé dans ${count} recettes cette semaine`}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      onClick={openOn}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openOn(e); }
+        else if (e.key === 'Escape') hide();
+      }}
     >
-      <span
-        role="button"
-        tabIndex={0}
-        className="pill amber"
-        style={{ height: 18, fontSize: 9.5, marginLeft: 4, cursor: 'help' }}
-        aria-label={`Ingrédient aussi utilisé dans ${count} recettes cette semaine`}
-        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setOpen((o) => !o); } }}
-      >
-        <Icon name="alert" size={9} /> ×{count}
-      </span>
-      {open && (
+      <Icon name="alert" size={9} /> ×{count}
+      {coords && createPortal(
         <span
-          className="tip-body"
-          style={{ opacity: 1, pointerEvents: 'none', bottom: 'calc(100% + 8px)', left: 0, transform: 'none', whiteSpace: 'normal', width: 230, maxWidth: '72vw', lineHeight: 1.35, textAlign: 'left' }}
+          role="tooltip"
+          style={{
+            position: 'fixed', left: coords.x, top: coords.y,
+            transform: 'translate(-50%, calc(-100% - 8px))',
+            zIndex: 9999, pointerEvents: 'none',
+            background: 'var(--text)', color: 'var(--bg)',
+            fontSize: 11.5, fontWeight: 500, padding: '7px 11px', borderRadius: 8,
+            width: 230, maxWidth: '72vw', lineHeight: 1.35, textAlign: 'left',
+            boxShadow: 'var(--shadow-lg)', whiteSpace: 'normal',
+          }}
         >
           Cet ingrédient est aussi utilisé dans d'autres recettes cette semaine — respecte bien la quantité indiquée pour ne pas en manquer.
-        </span>
+        </span>,
+        document.body,
       )}
     </span>
   );
