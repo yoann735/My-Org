@@ -11,6 +11,7 @@ import { importStandard, createFicheFromQuestions } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { ImportAnatomie } from './ImportAnatomie.jsx';
+import { ImportAnatomieVisuel } from './ImportAnatomieVisuel.jsx';
 
 const TYPE_LABEL = { qcm: 'QCM', flashcard: 'flashcards', feynman: 'Feynman' };
 const fmtShort = (iso) => { const d = new Date(iso + 'T00:00:00'); return `${d.getDate()} ${d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '')}`; };
@@ -163,6 +164,7 @@ function DayPopup({ day, ctx, onClose }) {
 function ImportPanel({ ctx }) {
   const { db } = ctx;
   const [mode, setMode] = useState('standard'); // standard | anat
+  const [anatSub, setAnatSub] = useState('theorie'); // theorie (existant, inchangé) | visuel (schéma annoté → anat_schema)
   const [state, setState] = useState('empty'); // empty | dest | loading | preview | done
   const [entry, setEntry] = useState('pdf');    // 'pdf' (drop → API) | 'paste' (JSON collé, sans réseau)
   const [over, setOver] = useState(false);
@@ -263,7 +265,25 @@ function ImportPanel({ ctx }) {
           <button type="button" className={'seg-btn' + (mode === 'anat' ? ' active' : '')} onClick={() => setMode('anat')}><Icon name="bone" size={13} /> Anatomie</button>
         </div>
       )}>
-      {mode === 'anat' && <ImportAnatomie ctx={ctx} onDone={() => ctx.go('library')} onDebug={setDebug} />}
+      {mode === 'anat' && (
+        <div className="fadein">
+          <div className="imp-field">
+            <label>Type de fiche anatomie</label>
+            <div className="seg" style={{ transform: 'scale(.96)', transformOrigin: 'left center' }}>
+              <button type="button" className={'seg-btn' + (anatSub === 'theorie' ? ' active' : '')} onClick={() => setAnatSub('theorie')}><Icon name="list" size={13} /> Théorie</button>
+              <button type="button" className={'seg-btn' + (anatSub === 'visuel' ? ' active' : '')} onClick={() => setAnatSub('visuel')}><Icon name="image" size={13} /> Visuel</button>
+            </div>
+            <div className="hint" style={{ marginTop: 6 }}>
+              {anatSub === 'theorie'
+                ? 'Structures (image + texte) → flashcards reconnaissance + QCM de raisonnement.'
+                : 'Schéma annoté (coches + flèches) → quiz d\'anatomie visuelle.'}
+            </div>
+          </div>
+          {anatSub === 'theorie'
+            ? <ImportAnatomie ctx={ctx} onDone={() => ctx.go('library')} onDebug={setDebug} />
+            : <ImportAnatomieVisuel ctx={ctx} />}
+        </div>
+      )}
       {mode === 'standard' && state === 'empty' && (
         <div className="fadein">
           <label className={'dz-compact dz-tall' + (over ? ' over' : '')}
