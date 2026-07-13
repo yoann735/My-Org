@@ -5,7 +5,7 @@
    Anatomie : structures (image + texte) → flashcards reconnaissance
    MÉCANIQUES (sans IA) + QCM raisonnement depuis le texte (IA).
    ============================================================ */
-import { genId, put, putMany, newQuestion } from './storage.js';
+import { genId, put, putMany, getOne, newQuestion } from './storage.js';
 import { generateStandard, generateAnatomie } from './api.js';
 import { todayISO } from './sm2.js';
 
@@ -80,4 +80,52 @@ export async function importAnatomie({ matiereId, titre, sousCategorie, structur
 
   await putMany('questions', [...flashes, ...qcms]);
   return { fiche, count: flashes.length + qcms.length, structures: structRecs.length, mock: !!gen._mock, debug: gen.debug };
+}
+
+/**
+ * Anatomie VISUELLE (Étape B) : enregistre (crée ou met à jour) une fiche de type
+ * "anat_schema" = une image + un tableau de COCHES (annotations structurées).
+ *
+ * Chaque coche : { id, ancre:{x,y}, boite:{x,y}, texte, couleur, numero } — toutes
+ * les positions en coordonnées RELATIVES (0..1) pour survivre au zoom/redimension.
+ * Les annotations ne sont JAMAIS aplaties dans l'image : c'est ce qui rend le quiz
+ * possible (masquer le texte d'une coche = cacher un champ de données).
+ *
+ * La fiche est aussi UN item planifiable SM-2 (comme les autres fiches) : elle porte
+ * directement interval/repetition/efactor/nextReview (utilisés à l'étape C — le quiz).
+ * "maj" : si `ficheId` est fourni, on met à jour la fiche existante en conservant
+ * son état SM-2 ; sinon on en crée une neuve initialisée à nextReview = aujourd'hui.
+ */
+export async function saveAnatSchema({ ficheId, matiereId, titre, sousCategorie, imageId, imageW, imageH, coches }) {
+  const sousTitre = sousCategorie ? `Schéma annoté · ${sousCategorie}` : 'Schéma annoté';
+  const cleanCoches = (coches || []).map((c, i) => ({
+    id: c.id || genId('c'),
+    ancre: { x: c.ancre.x, y: c.ancre.y },
+    boite: { x: c.boite.x, y: c.boite.y },
+    texte: (c.texte || '').trim(),
+    couleur: c.couleur || null,
+    numero: c.numero ?? i + 1,
+  }));
+
+  const existing = ficheId ? await getOne('fiches', ficheId) : null;
+  let fiche;
+  if (existing) {
+    fiche = {
+      ...existing, matiereId, titre: (titre || existing.titre || 'Schéma anatomique').trim(),
+      sousTitre, type: 'anat_schema', sousCategorie: sousCategorie || null,
+      imageId: imageId || existing.imageId || null, imageW: imageW || existing.imageW || null,
+      imageH: imageH || existing.imageH || null, coches: cleanCoches,
+    };
+  } else {
+    fiche = {
+      id: genId('f'), matiereId, titre: (titre || 'Schéma anatomique').trim(),
+      sousTitre, type: 'anat_schema', sousCategorie: sousCategorie || null, coef: null,
+      dateImport: todayISO(), imageId: imageId || null, imageW: imageW || null, imageH: imageH || null,
+      coches: cleanCoches,
+      // item planifiable SM-2 (étape C)
+      interval: 0, repetition: 0, efactor: 2.5, nextReview: todayISO(), historique: [], missed: 0,
+    };
+  }
+  await put('fiches', fiche);
+  return { fiche, count: cleanCoches.length };
 }

@@ -131,6 +131,7 @@ export function Bibliotheque({ ctx }) {
                           {fiches.map((f) => {
                             const fo = !!openFiche[f.id];
                             const isAnat = f.type === 'anatomie';
+                            const isSchema = f.type === 'anat_schema';
                             return (
                               <div key={f.id}>
                                 <DropSlot matiereId={mat.id} beforeId={f.id} />
@@ -148,9 +149,15 @@ export function Bibliotheque({ ctx }) {
                                       </div>
                                     )}
                                     <div className="row" style={{ gap: 6 }}>
-                                      <span className="pill accent" style={{ height: 22, fontSize: 10.5 }}>{count(f.id, 'qcm')} QCM</span>
-                                      <span className="pill amber" style={{ height: 22, fontSize: 10.5 }}>{count(f.id, 'flashcard')} flash</span>
-                                      {isAnat && <span className="pill" style={{ height: 22, fontSize: 10.5 }}><Icon name="image" size={11} /> IMAGES</span>}
+                                      {isSchema ? (
+                                        <span className="pill" style={{ height: 22, fontSize: 10.5 }}><Icon name="image" size={11} /> SCHÉMA · {(f.coches || []).length} coche{(f.coches || []).length > 1 ? 's' : ''}</span>
+                                      ) : (
+                                        <>
+                                          <span className="pill accent" style={{ height: 22, fontSize: 10.5 }}>{count(f.id, 'qcm')} QCM</span>
+                                          <span className="pill amber" style={{ height: 22, fontSize: 10.5 }}>{count(f.id, 'flashcard')} flash</span>
+                                          {isAnat && <span className="pill" style={{ height: 22, fontSize: 10.5 }}><Icon name="image" size={11} /> IMAGES</span>}
+                                        </>
+                                      )}
                                       {f.pdfId ? (
                                         <button className="cd-ic" title="Ouvrir le PDF (lecture / surlignage)" onClick={() => openPdf(f.id)}><Icon name="filePdf" size={14} /></button>
                                       ) : (
