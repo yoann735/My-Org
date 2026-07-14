@@ -41,13 +41,10 @@ import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { PDFDocument, rgb, BlendMode } from 'pdf-lib';
 import { useEditor, EditorContent } from '@tiptap/react';
-import { StarterKit } from '@tiptap/starter-kit';
-import { TextStyleKit } from '@tiptap/extension-text-style';
-import { TextAlign } from '@tiptap/extension-text-align';
-import { generateHTML } from '@tiptap/core';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop } from '../components/ui.jsx';
 import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit } from '../lib/storage.js';
+import { RICH_EXTENSIONS, richToHTML } from '../documents/lib/richtext.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -60,7 +57,6 @@ const COLORS = [
 const COLOR_HEX = Object.fromEntries(COLORS.map((c) => [c.id, c.hex]));
 const COLOR_RGB = { jaune: rgb(1, 0.85, 0.3), vert: rgb(0.55, 0.89, 0.55), bleu: rgb(0.5, 0.78, 1), rose: rgb(1, 0.62, 0.82) };
 
-const EDIT_EXTENSIONS = [StarterKit, TextStyleKit, TextAlign.configure({ types: ['paragraph'] })];
 const FONT_SIZES = ['10px', '11px', '12px', '13px', '14px', '16px', '18px', '20px', '24px', '28px', '32px'];
 const FONT_FAMILIES = ['inherit', 'serif', 'sans-serif', 'monospace', 'Georgia', 'Arial', 'Times New Roman'];
 
@@ -493,7 +489,7 @@ export function PdfReader({ ctx }) {
   const editSaveTimer = useRef(null);
   const editLastJson = useRef(null);
   const editor = useEditor({
-    extensions: EDIT_EXTENSIONS,
+    extensions: RICH_EXTENSIONS,
     content: (activeEdit && activeEdit.content) || undefined,
     onUpdate: ({ editor: ed }) => {
       if (!activeEdit) return;
@@ -806,7 +802,7 @@ function PdfPageContent({
     possédée par PdfReader et partagée avec EditToolbar — voir plus haut) une fois activé.
     Read-only strict en mode lecture (aucun onClick, aucune interaction). */
 function TextEditBlock({ edit, active, editable, onActivate, editor }) {
-  const html = useMemo(() => { try { return generateHTML(edit.content, EDIT_EXTENSIONS); } catch (e) { return ''; } }, [edit.content]);
+  const html = useMemo(() => richToHTML(edit.content), [edit.content]);
   const style = {
     left: edit.x * 100 + '%', top: edit.y * 100 + '%', width: edit.width * 100 + '%',
     minHeight: edit.height * 100 + '%', maxHeight: `calc(100% - ${edit.y * 100}%)`,

@@ -15,22 +15,23 @@ import { Feynman } from './session/Feynman.jsx';
 import { Exercice } from './session/Exercice.jsx';
 import { AnatQuiz } from './session/AnatQuiz.jsx';
 import { PdfReader } from './pdf/PdfReader.jsx';
-import { PdfPicker } from './pdf/PdfPicker.jsx';
+import { DocumentsHome } from './documents/DocumentsHome.jsx';
+import { TranscriptEditor } from './documents/TranscriptEditor.jsx';
 import {
   seedIfEmpty, getAll, put, putMany, remove, getStats, setStats as saveStats, genId,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 
-const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, pdflist: PdfPicker };
+const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, documents: DocumentsHome, pdflist: DocumentsHome, transcript: TranscriptEditor };
 
 function MedBottomNav({ current, onNav }) {
   const items = [
     { id: 'dashboard', label: 'Accueil', icon: 'home' },
     { id: 'revise', label: 'Réviser', icon: 'cards' },
     { id: 'library', label: 'Biblio', icon: 'book' },
-    { id: 'pdflist', label: 'PDF', icon: 'filePdf' },
+    { id: 'documents', label: 'Docs', icon: 'filePdf' },
   ];
-  const active = (id) => current === id || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz'].includes(current)) || (id === 'pdflist' && current === 'pdf');
+  const active = (id) => current === id || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz'].includes(current)) || (id === 'documents' && ['pdf', 'transcript', 'pdflist'].includes(current));
   return (
     <nav className="bottom-nav">
       {items.map((n) => (
@@ -55,6 +56,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [anatQuiz, setAnatQuiz] = useState(null); // { fiche, mode:'total'|'random', proportion }
   const [focusFiche, setFocusFiche] = useState(null);
   const [pdfView, setPdfView] = useState(null); // { ficheId, mode: 'read'|'edit', returnScreen }
+  const [transcriptView, setTranscriptView] = useState(null); // { ficheId, returnScreen }
 
   const reload = useCallback(async () => {
     const [sources, matieres, fiches, questions, st] = await Promise.all([
@@ -71,7 +73,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     go: setScreen,
     db, stats, reload,
     focusFiche, setFocusFiche,
-    session, feynman, exercice, anatQuiz, pdfView,
+    session, feynman, exercice, anatQuiz, pdfView, transcriptView,
 
     // ---- session lifecycle ----
     startSession: (items, title, meta = {}) => {
@@ -95,6 +97,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
       setScreen('pdf');
     },
     closePdfReader: () => { const back = pdfView && pdfView.returnScreen; setScreen(back || 'library'); setPdfView(null); },
+
+    // ---- éditeur de transcript (mode Transcript de l'onglet Documents) ----
+    openTranscript: (ficheId) => { setTranscriptView({ ficheId, returnScreen: 'documents' }); setScreen('transcript'); },
+    closeTranscript: () => { const back = transcriptView && transcriptView.returnScreen; setScreen(back || 'documents'); setTranscriptView(null); },
 
     // ---- mutations (persist + reload) ----
     saveQuestion: async (q) => { await put('questions', q); await reload(); },

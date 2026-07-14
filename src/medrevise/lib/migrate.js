@@ -11,6 +11,7 @@ import { toInternalItem, isLegacyItem } from './adapter.js';
 
 const MIGRATIONS_KEY = 'migrations';
 const MIG_V1 = 'items-v1.0';
+const MIG_DOCS = 'documents-v2';
 
 /** liste des migrations déjà appliquées */
 async function appliedList() {
@@ -44,8 +45,29 @@ export async function migrateItemsToV1() {
   return { ran: true, migrated, total: out.length };
 }
 
+/**
+ * Refonte « Documents » (onglet unifié Fiche/Schéma/Transcript).
+ * NON DESTRUCTIVE : aucun champ n'est déplacé ni supprimé — les PDF, surlignages,
+ * blocs de texte édités et schémas d'anatomie existants restent lus tels quels par
+ * la nouvelle architecture. On se contente de SAUVEGARDER l'état avant bascule
+ * (filet de sécurité restaurable) et de poser un marqueur. Idempotente.
+ */
+export async function migrateDocumentsV2() {
+  const applied = await appliedList();
+  if (applied.includes(MIG_DOCS)) return { ran: false };
+
+  const [fiches, highlights, annotations, structures] = await Promise.all([
+    getAll('fiches'), getAll('highlights'), getAll('annotations'), getAll('structures'),
+  ]);
+  await putBackup('pre-' + MIG_DOCS, { fiches, highlights, annotations, structures });
+
+  await setMeta(MIGRATIONS_KEY, [...applied, MIG_DOCS]);
+  return { ran: true, fiches: (fiches || []).length, highlights: (highlights || []).length };
+}
+
 /** point d'entrée bootstrap : applique toutes les migrations en attente */
 export async function runMigrations() {
-  const res = await migrateItemsToV1();
-  return { items: res };
+  const items = await migrateItemsToV1();
+  const documents = await migrateDocumentsV2();
+  return { items, documents };
 }
