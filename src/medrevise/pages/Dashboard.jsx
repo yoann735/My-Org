@@ -12,6 +12,7 @@ import { putBlob } from '../lib/storage.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { ImportAnatomie } from './ImportAnatomie.jsx';
 import { ImportAnatomieVisuel } from './ImportAnatomieVisuel.jsx';
+import { ImportRattrapage } from './ImportRattrapage.jsx';
 
 const TYPE_LABEL = { qcm: 'QCM', flashcard: 'flashcards', feynman: 'Feynman' };
 const fmtShort = (iso) => { const d = new Date(iso + 'T00:00:00'); return `${d.getDate()} ${d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '')}`; };
@@ -303,8 +304,10 @@ function ImportPanel({ ctx }) {
         <div className="seg" style={{ transform: 'scale(.92)' }}>
           <button type="button" className={'seg-btn' + (mode === 'standard' ? ' active' : '')} onClick={() => setMode('standard')}><Icon name="filePdf" size={13} /> Standard</button>
           <button type="button" className={'seg-btn' + (mode === 'anat' ? ' active' : '')} onClick={() => setMode('anat')}><Icon name="bone" size={13} /> Anatomie</button>
+          <button type="button" className={'seg-btn' + (mode === 'rattrapage' ? ' active' : '')} onClick={() => setMode('rattrapage')}><Icon name="grad" size={13} /> Rattrapage</button>
         </div>
       )}>
+      {mode === 'rattrapage' && <ImportRattrapage ctx={ctx} />}
       {mode === 'anat' && (
         <div className="fadein">
           <div className="imp-field">
@@ -460,7 +463,7 @@ function ImportPanel({ ctx }) {
         </div>
       )}
 
-      <DevPanel debug={debug} show={showDev} onToggle={() => setShowDev((v) => !v)} />
+      {mode !== 'rattrapage' && <DevPanel debug={debug} show={showDev} onToggle={() => setShowDev((v) => !v)} />}
     </Card>
   );
 }

@@ -5,7 +5,7 @@
    Anatomie : structures (image + texte) → flashcards reconnaissance
    MÉCANIQUES (sans IA) + QCM raisonnement depuis le texte (IA).
    ============================================================ */
-import { genId, put, putMany, getOne, newQuestion, newItem } from './storage.js';
+import { genId, put, putMany, getOne, getAll, newQuestion, newItem } from './storage.js';
 import { generateStandard, generateAnatomie } from './api.js';
 import { toInternalItem } from './adapter.js';
 import { todayISO } from './sm2.js';
@@ -54,6 +54,33 @@ export async function createFicheFromQuestions({ matiereId, titre, items, questi
     .filter(Boolean);
   await putMany('questions', qs);
   return { fiche, count: qs.length, mock: !!mock, synthese: fiche.synthese };
+}
+
+/**
+ * AJOUTE des items v1.0 à une fiche EXISTANTE (mode Rattrapage : coller la
+ * Pratique dans la même fiche que la Théorie). Append pur (jamais d'écrasement).
+ * Dédoublonnage sur item.id : un item dont l'id v1.0 figure déjà (via srcId)
+ * parmi les items de la fiche est ignoré et compté.
+ * @returns {{fiche, count, duplicates}} | {ok:false}
+ */
+export async function appendItemsToFiche({ ficheId, items }) {
+  const fiche = await getOne('fiches', ficheId);
+  if (!fiche) return { ok: false };
+  const all = await getAll('questions');
+  const existingSrc = new Set(all.filter((q) => q.ficheId === ficheId).map((q) => q.srcId).filter(Boolean));
+
+  let duplicates = 0;
+  const fresh = [];
+  for (const raw of (items || [])) {
+    const srcId = raw && raw.id;
+    if (srcId && existingSrc.has(srcId)) { duplicates++; continue; }
+    const rec = toInternalItem(raw, (it) => newItem(ficheId, it, 0));
+    if (!rec) continue;
+    fresh.push(rec);
+    if (srcId) existingSrc.add(srcId); // évite les doublons intra-collage
+  }
+  if (fresh.length) await putMany('questions', fresh);
+  return { fiche, count: fresh.length, duplicates };
 }
 
 /**

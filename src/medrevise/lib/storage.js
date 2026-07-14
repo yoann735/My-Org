@@ -107,7 +107,10 @@ export function newItem(ficheId, item, dueOffset = 0) {
   const d = new Date(); d.setDate(d.getDate() + dueOffset);
   return {
     ...item,
-    id: genId('q'), ficheId, type: item.type,
+    // clé primaire neuve (évite les collisions entre fiches) ; srcId conserve
+    // l'id v1.0 d'origine du JSON → sert au dédoublonnage lors d'un ajout à une
+    // fiche existante (mode Rattrapage).
+    id: genId('q'), srcId: item.id || null, ficheId, type: item.type,
     interval: dueOffset, repetition: 0, efactor: 2.5,
     nextReview: isoDate(d), historique: [], missed: 0,
   };
