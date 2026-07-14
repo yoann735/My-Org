@@ -18,6 +18,7 @@ import { PdfPicker } from './pdf/PdfPicker.jsx';
 import {
   seedIfEmpty, getAll, put, putMany, remove, getStats, setStats as saveStats, genId,
 } from './lib/storage.js';
+import { runMigrations } from './lib/migrate.js';
 
 const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, anatquiz: AnatQuiz, pdf: PdfReader, pdflist: PdfPicker };
 
@@ -61,7 +62,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     setStats(st);
   }, []);
 
-  useEffect(() => { (async () => { await seedIfEmpty(); await reload(); })(); }, [reload]);
+  useEffect(() => { (async () => { await seedIfEmpty(); await runMigrations(); await reload(); })(); }, [reload]);
 
   const ctx = {
     theme, toggleTheme, goHub,

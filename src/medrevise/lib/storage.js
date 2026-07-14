@@ -18,6 +18,8 @@ const S = {
   annotations: store('annotations'),
   blobs: store('blobs'),
   stats: store('stats'),
+  meta: store('meta'),       // marqueurs de migration (schéma v1.0)
+  backups: store('backups'), // sauvegardes non destructives avant migration
 };
 
 export function genId(prefix = 'x') {
@@ -63,6 +65,12 @@ export function newTextEdit({ ficheId, page, x, y, width, height, originalText, 
   };
 }
 
+/* ---- meta (migrations) + backups (sauvegardes pré-migration) ---- */
+export const getMeta = (key) => get(key, S.meta);
+export const setMeta = (key, val) => set(key, val, S.meta);
+export const putBackup = (key, val) => set(key, { key, when: new Date().toISOString(), data: val }, S.backups);
+export const getBackup = (key) => get(key, S.backups);
+
 /* ---- stats (carte unique) ---- */
 const DEFAULT_STATS = { streak: 0, dernierJourRevise: null, jokerUtilise: false, best: 0, activityDays: [], serieCollapsed: false };
 export async function getStats() { return (await get('stats', S.stats)) || { ...DEFAULT_STATS }; }
@@ -80,6 +88,21 @@ export function newQuestion(ficheId, q, dueOffset = 0) {
     question: q.question || '', choix: q.choix || [], bonneReponse: q.bonneReponse ?? 0, explication: q.explication || '',
     recto: q.recto || '', verso: q.verso || '',
     niveau: q.niveau || null,
+    interval: dueOffset, repetition: 0, efactor: 2.5,
+    nextReview: isoDate(d), historique: [], missed: 0,
+  };
+}
+
+/* Item v1.0 (schéma unifié) → enregistrement planifiable en base.
+   `item` est déjà un item "superset" (v1.0 + champs legacy) produit par
+   toInternalItem(). On lui donne une clé primaire neuve + l'état SM-2 initial.
+   (Ne remplace pas newQuestion : les flux legacy passent par toInternalItem
+   en amont, ce helper reçoit toujours un item déjà normalisé.) */
+export function newItem(ficheId, item, dueOffset = 0) {
+  const d = new Date(); d.setDate(d.getDate() + dueOffset);
+  return {
+    ...item,
+    id: genId('q'), ficheId, type: item.type,
     interval: dueOffset, repetition: 0, efactor: 2.5,
     nextReview: isoDate(d), historique: [], missed: 0,
   };

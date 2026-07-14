@@ -267,8 +267,8 @@ function ImportPanel({ ctx }) {
   const parseJson = () => {
     const res = parsePastedJson(jsonText);
     if (!res.ok) { setParseError(res.error); return; }
-    if (res.questions.length === 0) {
-      setParseError('Aucune question valide trouvée — vérifie que tu as bien collé toute la réponse de Claude.');
+    if (res.items.length === 0) {
+      setParseError('Aucun item valide trouvé — vérifie que tu as bien collé toute la réponse de Claude.');
       return;
     }
     setParseError(null); setParsed(res); setState('preview');
@@ -277,7 +277,7 @@ function ImportPanel({ ctx }) {
     if (!parsed || !matId) return;
     setBusy(true);
     const res = await createFicheFromQuestions({
-      matiereId: matId, titre: title, questions: parsed.questions, synthese: parsed.synthese,
+      matiereId: matId, titre: title, items: parsed.items, synthese: parsed.synthese, meta: parsed.meta,
     });
     await ctx.reload();
     setResult(res); setState('done'); setBusy(false);
@@ -408,7 +408,7 @@ function ImportPanel({ ctx }) {
           <div className="err-mini ok" style={{ marginBottom: 14 }}>
             <div className="em-ic"><Icon name="check" size={16} stroke={2.5} /></div>
             <div className="em-body">
-              <div className="em-title">{parsed.counts.qcm} QCM · {parsed.counts.flashcard} flashcards · {parsed.counts.feynman} Feynman détectés</div>
+              <div className="em-title">{parsed.counts.qcm} QCM · {parsed.counts.flashcard} flashcards · {parsed.counts.feynman} Feynman · {parsed.counts.exercice} exercice{parsed.counts.exercice > 1 ? 's' : ''} détecté{parsed.counts.qcm + parsed.counts.flashcard + parsed.counts.feynman + parsed.counts.exercice > 1 ? 's' : ''}</div>
               <div className="hint" style={{ marginTop: 4 }}>Destination : {destLabel}</div>
               {parsed.counts.ignored > 0 && (
                 <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}>

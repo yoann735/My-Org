@@ -1,8 +1,11 @@
 /* ============================================================
-   MedRevise — parsing LOCAL d'une réponse JSON de Claude
-   (mode « coller le JSON »). Aucun appel réseau : on lit le JSON
-   déjà généré dans le chat et on valide sa structure avant import.
+   MedRevise — validateur d'import « coller le JSON » (aucun réseau).
+   Accepte le schéma unifié v1.0 ({schema_version, meta, items}) ET
+   l'ancien format ({questions, synthese}) via l'adaptateur rétrocompatible.
+   Items invalides : IGNORÉS et COMPTÉS. Sortie = items v1.0 canoniques.
    ============================================================ */
+import { normalizeV1Item, emptyCounts } from './schema.js';
+import { isLegacyDoc, legacyDocToV1 } from './adapter.js';
 
 const ERR = 'JSON invalide — recopie toute la réponse de Claude, sans texte autour.';
 
@@ -14,26 +17,11 @@ export function cleanPastedJson(raw) {
   return s.trim();
 }
 
-const isStr = (v) => typeof v === 'string' && v.trim().length > 0;
-
-function validQcm(q) {
-  return isStr(q.concept) && isStr(q.categorie_question) && isStr(q.difficulte)
-    && isStr(q.question) && Array.isArray(q.choix) && q.choix.length === 4
-    && Number.isInteger(q.bonneReponse) && q.bonneReponse >= 0 && q.bonneReponse <= 3
-    && isStr(q.explication);
-}
-function validFlashcard(q) {
-  return isStr(q.concept) && isStr(q.categorie_carte) && isStr(q.recto) && isStr(q.verso);
-}
-function validFeynman(q) {
-  return isStr(q.concept) && isStr(q.explication_simple) && isStr(q.lien_avec_le_cours)
-    && Array.isArray(q.pieges_frequents) && isStr(q.question_verification);
-}
-const VALIDATORS = { qcm: validQcm, flashcard: validFlashcard, feynman: validFeynman };
+const str = (v) => (v == null ? '' : String(v));
 
 /**
  * @returns {{ok:false, error:string}
- *   | {ok:true, questions:Array, synthese:string, counts:{qcm,flashcard,feynman,ignored}}}
+ *   | {ok:true, items:Array, meta:object, counts:{qcm,flashcard,feynman,exercice,ignored}, synthese:string}}
  */
 export function parsePastedJson(raw) {
   const cleaned = cleanPastedJson(raw);
@@ -42,20 +30,35 @@ export function parsePastedJson(raw) {
   let data;
   try { data = JSON.parse(cleaned); }
   catch (e) { return { ok: false, error: ERR }; }
+  if (!data || typeof data !== 'object') return { ok: false, error: ERR };
 
-  if (!data || typeof data !== 'object' || !Array.isArray(data.questions)) {
+  const legacy = isLegacyDoc(data);
+  let meta = {};
+  let synthese = '';
+  let rawItems;
+  if (legacy) {
+    // Ancien format → converti en v1.0 par l'adaptateur (seul lecteur du legacy).
+    const v1 = legacyDocToV1(data);
+    meta = v1.meta; synthese = v1._legacySynthese;
+    rawItems = data.questions; // re-validé item par item pour compter les ignorés
+  } else if (Array.isArray(data.items)) {
+    meta = data.meta && typeof data.meta === 'object' ? data.meta : {};
+    synthese = str(meta.resume);
+    rawItems = data.items;
+  } else {
     return { ok: false, error: ERR };
   }
 
-  const counts = { qcm: 0, flashcard: 0, feynman: 0, ignored: 0 };
-  const questions = [];
-  for (const q of data.questions) {
-    const validate = q && VALIDATORS[q.type];
-    if (!validate || !validate(q)) { counts.ignored++; continue; }
-    counts[q.type]++;
-    questions.push(q);
+  const counts = emptyCounts();
+  const items = [];
+  for (const it of rawItems) {
+    // legacy : repasse par l'adaptateur ; v1.0 : normalisation directe.
+    const src = legacy ? legacyDocToV1({ questions: [it] }).items[0] : it;
+    const res = src && normalizeV1Item(src);
+    if (!res || !res.ok) { counts.ignored++; continue; }
+    counts[res.item.type]++;
+    items.push(res.item);
   }
 
-  const synthese = isStr(data.synthese) ? data.synthese.trim() : '';
-  return { ok: true, questions, synthese, counts };
+  return { ok: true, items, meta, counts, synthese: str(synthese) };
 }

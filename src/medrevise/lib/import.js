@@ -5,8 +5,9 @@
    Anatomie : structures (image + texte) → flashcards reconnaissance
    MÉCANIQUES (sans IA) + QCM raisonnement depuis le texte (IA).
    ============================================================ */
-import { genId, put, putMany, getOne, newQuestion } from './storage.js';
+import { genId, put, putMany, getOne, newQuestion, newItem } from './storage.js';
 import { generateStandard, generateAnatomie } from './api.js';
+import { toInternalItem } from './adapter.js';
 import { todayISO } from './sm2.js';
 
 function normalizeQ(q) {
@@ -33,7 +34,7 @@ export async function importStandard({ matiereId, titre, contenu, pdfId }) {
  * Les prompts produisent déjà les bons champs + des extras (categorie_question,
  * difficulte, categorie_carte, explication_simple…) → newQuestion les préserve.
  */
-export async function createFicheFromQuestions({ matiereId, titre, questions, synthese, pdfId, mock }) {
+export async function createFicheFromQuestions({ matiereId, titre, items, questions, synthese, meta, pdfId, mock }) {
   const ficheId = genId('f');
   const fiche = {
     id: ficheId, matiereId,
@@ -41,9 +42,16 @@ export async function createFicheFromQuestions({ matiereId, titre, questions, sy
     sousTitre: mock ? 'Importée · démo hors-ligne (à valider)' : 'Importée',
     type: 'standard', coef: null, pdfId: pdfId || null, dateImport: todayISO(),
     synthese: (synthese && synthese.trim()) || null,
+    // méta v1.0 (informatif : notions_cles, prerequis, matiere annoncée…)
+    meta: meta && typeof meta === 'object' ? meta : null,
   };
   await put('fiches', fiche);
-  const qs = (questions || []).map((q) => newQuestion(ficheId, q, 0));
+  // Source unifiée : items v1.0 (flux « coller le JSON ») ou questions legacy
+  // (flux API/mock). Dans les deux cas, toInternalItem → item "superset" v1.0.
+  const source = items && items.length ? items : (questions || []);
+  const qs = source
+    .map((raw) => toInternalItem(raw, (it) => newItem(ficheId, it, 0)))
+    .filter(Boolean);
   await putMany('questions', qs);
   return { fiche, count: qs.length, mock: !!mock, synthese: fiche.synthese };
 }
@@ -78,7 +86,9 @@ export async function importAnatomie({ matiereId, titre, sousCategorie, structur
   const gen = await generateAnatomie(structures);
   const qcms = (gen.questions || []).map((q) => newQuestion(ficheId, normalizeQ(q), 0));
 
-  await putMany('questions', [...flashes, ...qcms]);
+  // superset v1.0 (préserve imageId/kind via le spread de toInternalItem)
+  const recs = [...flashes, ...qcms].map((q) => toInternalItem(q) || q);
+  await putMany('questions', recs);
   return { fiche, count: flashes.length + qcms.length, structures: structRecs.length, mock: !!gen._mock, debug: gen.debug };
 }
 
