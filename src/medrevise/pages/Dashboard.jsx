@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, matiereMeta } from '../components/ui.jsx';
-import { weekData, dueToday, dueSchemasToday, todayPlan } from '../lib/planning.js';
+import { weekData, dueToday, dueSchemasToday, dueExercicesToday, todayPlan } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
 import { importStandard, createFicheFromQuestions } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
@@ -21,6 +21,7 @@ export function Dashboard({ ctx }) {
   const [selDay, setSelDay] = useState(null);
   const due = dueToday(db);
   const dueSchemas = dueSchemasToday(db);
+  const dueExos = dueExercicesToday(db);
   const plan = todayPlan(db);
 
   return (
@@ -34,6 +35,19 @@ export function Dashboard({ ctx }) {
       </div>
 
       <TodaySeriesCard plan={plan} onStart={ctx.startSession} />
+
+      {dueExos.length > 0 && (
+        <div className="jcard" style={{ marginTop: 14 }}>
+          <div className="jc-ic" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}><Icon name="target" size={20} /></div>
+          <div className="jc-main">
+            <div className="jc-label">Pratique du jour</div>
+            <div className="jc-title"><span className="jc-today-badge">Aujourd'hui</span> {dueExos.length} exercice{dueExos.length > 1 ? 's' : ''} à faire</div>
+          </div>
+          <button className="btn primary" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={() => ctx.startExercice(dueExos, 'Exercices du jour')}>
+            <Icon name="play" size={14} fill /> Commencer
+          </button>
+        </div>
+      )}
 
       <Card title="Calendrier de la semaine — méthode des J" icon="calendar"
         action={<span className="pill accent"><Icon name="cards" size={13} /> {due.length} carte{due.length > 1 ? 's' : ''}{dueSchemas.length > 0 ? ` + ${dueSchemas.length} schéma${dueSchemas.length > 1 ? 's' : ''}` : ''} aujourd'hui</span>}>

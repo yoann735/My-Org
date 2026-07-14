@@ -12,6 +12,7 @@ import { Bibliotheque } from './pages/Bibliotheque.jsx';
 import { Reglages } from './pages/Reglages.jsx';
 import { Session } from './session/Session.jsx';
 import { Feynman } from './session/Feynman.jsx';
+import { Exercice } from './session/Exercice.jsx';
 import { AnatQuiz } from './session/AnatQuiz.jsx';
 import { PdfReader } from './pdf/PdfReader.jsx';
 import { PdfPicker } from './pdf/PdfPicker.jsx';
@@ -20,7 +21,7 @@ import {
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 
-const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, anatquiz: AnatQuiz, pdf: PdfReader, pdflist: PdfPicker };
+const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, pdflist: PdfPicker };
 
 function MedBottomNav({ current, onNav }) {
   const items = [
@@ -29,7 +30,7 @@ function MedBottomNav({ current, onNav }) {
     { id: 'library', label: 'Biblio', icon: 'book' },
     { id: 'pdflist', label: 'PDF', icon: 'filePdf' },
   ];
-  const active = (id) => current === id || (id === 'revise' && ['session', 'feynman'].includes(current)) || (id === 'pdflist' && current === 'pdf');
+  const active = (id) => current === id || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz'].includes(current)) || (id === 'pdflist' && current === 'pdf');
   return (
     <nav className="bottom-nav">
       {items.map((n) => (
@@ -50,6 +51,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [stats, setStats] = useState(null);
   const [session, setSession] = useState(null);
   const [feynman, setFeynman] = useState(null);
+  const [exercice, setExercice] = useState(null); // { items:[exercice], title }
   const [anatQuiz, setAnatQuiz] = useState(null); // { fiche, mode:'total'|'random', proportion }
   const [focusFiche, setFocusFiche] = useState(null);
   const [pdfView, setPdfView] = useState(null); // { ficheId, mode: 'read'|'edit', returnScreen }
@@ -69,7 +71,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     go: setScreen,
     db, stats, reload,
     focusFiche, setFocusFiche,
-    session, feynman, anatQuiz, pdfView,
+    session, feynman, exercice, anatQuiz, pdfView,
 
     // ---- session lifecycle ----
     startSession: (items, title, meta = {}) => {
@@ -77,6 +79,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
       setScreen('session');
     },
     startFeynman: (payload) => { setFeynman(payload); setScreen('feynman'); },
+    // page Exercice (poste de travail) : une liste d'exercices parcourue un par un.
+    startExercice: (items, title) => { setExercice({ items: items || [], title: title || 'Exercices' }); setScreen('exercice'); },
     // quiz d'anatomie visuelle (fiche anat_schema) : écran dédié.
     startAnatQuiz: (fiche, opts = {}) => {
       setAnatQuiz({ fiche, mode: opts.mode || 'total', proportion: opts.proportion ?? 0.5 });

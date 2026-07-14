@@ -6,6 +6,11 @@
 import { jStepForInterval, todayISO, isoDate } from './sm2.js';
 
 const SCHEDULED_TYPES = new Set(['qcm', 'flashcard']);
+// exercices : items planifiables mais à part (page dédiée, jamais dans une
+// session de cartes → on les tient hors de SCHEDULED_TYPES, comme les schémas).
+const EXERCICE_TYPE = 'exercice';
+// types comptant pour le J AFFICHÉ d'une fiche (théorie + pratique)
+const J_TYPES = new Set(['qcm', 'flashcard', 'exercice']);
 
 /* ---- index helpers ---- */
 export function index(db) {
@@ -72,6 +77,24 @@ export function dueOn(db, dateISO, idx) {
 }
 export function dueToday(db, idx) { return dueOn(db, todayISO(), idx); }
 
+/* ---- exercices (type "exercice") : items planifiables SM-2, révisés dans la
+   PAGE Exercice (pas dans une session de cartes). Gérés en parallèle, comme
+   les schémas d'anatomie. ---- */
+export function scheduledExercices(db, idx) {
+  const ix = idx || index(db);
+  return (db.questions || []).filter((q) => q.type === EXERCICE_TYPE && isFicheScheduled(db, ix.fById[q.ficheId], ix));
+}
+export function dueExercicesOn(db, dateISO, idx) {
+  const ix = idx || index(db);
+  const today = todayISO();
+  return scheduledExercices(db, ix).filter((q) => {
+    if (dateISO === today) return q.nextReview <= dateISO;
+    if (dateISO < today) return false;
+    return q.nextReview === dateISO;
+  });
+}
+export function dueExercicesToday(db, idx) { return dueExercicesOn(db, todayISO(), idx); }
+
 /* ---- schémas d'anatomie visuelle (anat_schema) : la FICHE elle-même est
    l'item planifiable SM-2 (elle porte interval/repetition/efactor/nextReview),
    pas des questions. On les gère en parallèle des questions. ---- */
@@ -97,7 +120,7 @@ export function ficheJ(db, ficheId, idx) {
   const ix = idx || index(db);
   const f = ix.fById[ficheId];
   if (f && f.type === 'anat_schema') return jStepForInterval(f.interval || 0);
-  const qs = (db.questions || []).filter((q) => q.ficheId === ficheId && SCHEDULED_TYPES.has(q.type));
+  const qs = (db.questions || []).filter((q) => q.ficheId === ficheId && J_TYPES.has(q.type));
   if (!qs.length) return { jIndex: -1, jLabel: '—' };
   const soonest = qs.reduce((a, b) => (a.nextReview <= b.nextReview ? a : b));
   return jStepForInterval(soonest.interval);

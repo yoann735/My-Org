@@ -7,7 +7,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, FicheDndProvider, DraggableFiche, DropSlot } from '../components/ui.jsx';
 import {
-  index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, isFicheScheduled, missedQuestions, topConcepts, todayPlan,
+  index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, dueExercicesToday, isFicheScheduled, missedQuestions, topConcepts, todayPlan,
 } from '../lib/planning.js';
 import { CarnetBody } from './Carnet.jsx';
 
@@ -23,14 +23,16 @@ export function Reviser({ ctx }) {
 
   const dueIdsToday = useMemo(() => new Set(dueToday(db, ix).map((q) => q.id)), [db, ix]);
   const dueSchemaIds = useMemo(() => new Set(dueSchemasToday(db, ix).map((f) => f.id)), [db, ix]);
+  const dueExoIds = useMemo(() => new Set(dueExercicesToday(db, ix).map((q) => q.id)), [db, ix]);
   const fichesOf = (matId) => db.fiches.filter((f) => f.matiereId === matId && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
   const matieresOf = (srcId) => db.matieres.filter((m) => m.sourceId === srcId && !m.archive);
   const qOfFiche = (fId) => db.questions.filter((q) => q.ficheId === fId);
-  // schéma d'anatomie = 1 item planifiable (la fiche elle-même) ; sinon on compte les questions dues
+  // schéma d'anatomie = 1 item planifiable (la fiche elle-même) ; sinon on compte
+  // les cartes (qcm/flash) ET les exercices dus.
   const dueCountFiche = (fId) => {
     const f = ix.fById[fId];
     if (f && f.type === 'anat_schema') return dueSchemaIds.has(fId) ? 1 : 0;
-    return qOfFiche(fId).filter((q) => dueIdsToday.has(q.id)).length;
+    return qOfFiche(fId).filter((q) => dueIdsToday.has(q.id) || dueExoIds.has(q.id)).length;
   };
 
   const selectOnly = (id) => setSelIds([id]);
@@ -48,7 +50,9 @@ export function Reviser({ ctx }) {
   const qcmItems = selItems.filter((q) => q.type === 'qcm');
   const flashItems = selItems.filter((q) => q.type === 'flashcard');
   const feynItems = selItems.filter((q) => q.type === 'feynman');
-  const dueSel = selItems.filter((q) => dueIdsToday.has(q.id));
+  const exoItems = selItems.filter((q) => q.type === 'exercice');
+  const dueSel = selItems.filter((q) => dueIdsToday.has(q.id)); // cartes dues (théorie) uniquement
+  const dueExoSel = exoItems.filter((q) => dueExoIds.has(q.id));
 
   const jp = primary ? ficheJ(db, primary.id, ix) : null;
   const scheduled = primary ? isFicheScheduled(db, primary, ix) : false;
@@ -61,6 +65,8 @@ export function Reviser({ ctx }) {
     if (items.length) ctx.startSession(items, title);
   };
   const launchToday = () => dueSel.length && ctx.startSession(dueSel, title + " — Aujourd'hui");
+  // pratique : ouvre la page Exercice (poste de travail), tous les exercices ou seulement les dus.
+  const launchExos = (list) => list.length && ctx.startExercice(list, title);
   const isRen = (type, id) => renaming && renaming.type === type && renaming.id === id;
   const startRename = (type, id, current) => { setDraft(current); setRenaming({ type, id }); };
   const commitRename = () => {
@@ -257,6 +263,10 @@ export function Reviser({ ctx }) {
                 {dueSel.length > 0 && <button className="btn primary" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={launchToday}><Icon name="play" size={14} fill /> Lancer aujourd'hui</button>}
               </div>
 
+              <div className="row" style={{ alignItems: 'center', gap: 8, margin: '16px 2px 8px' }}>
+                <Icon name="lightbulb" size={14} style={{ color: 'var(--text-3)' }} />
+                <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--text-3)' }}>Théorie</span>
+              </div>
               <div className="rev-modes">
                 <button className="rev-mode" onClick={() => launch('qcm')} disabled={!qcmItems.length}>
                   <div className="rm-ic" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}><Icon name="list" size={20} /></div>
@@ -278,6 +288,33 @@ export function Reviser({ ctx }) {
               <button className="btn lg" style={{ width: '100%', marginTop: 14, justifyContent: 'center' }} onClick={() => launch('all')} disabled={!qcmItems.length && !flashItems.length}>
                 <Icon name="layers" size={17} /> {multi ? 'Réviser toutes les fiches' : 'Réviser toute cette fiche'} ({qcmItems.length + flashItems.length} cartes · ~{mins(qcmItems.length + flashItems.length)} min)
               </button>
+
+              {/* PRATIQUE : exercices (page dédiée) */}
+              {exoItems.length > 0 && (
+                <div style={{ marginTop: 22 }}>
+                  <div className="row" style={{ alignItems: 'center', gap: 8, margin: '0 2px 8px' }}>
+                    <Icon name="target" size={14} style={{ color: 'var(--text-3)' }} />
+                    <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--text-3)' }}>Pratique</span>
+                  </div>
+                  <div className="jcard">
+                    <div className="jc-ic" style={{ background: `color-mix(in srgb, ${meta.tint} 15%, transparent)`, color: meta.tint }}><Icon name="target" size={20} /></div>
+                    <div className="jc-main">
+                      <div className="jc-label">Exercices · {title}</div>
+                      {dueExoSel.length > 0
+                        ? <div className="jc-title"><span className="jc-today-badge">Aujourd'hui</span> {dueExoSel.length} exercice{dueExoSel.length > 1 ? 's' : ''} à faire</div>
+                        : <div className="jc-title">{exoItems.length} exercice{exoItems.length > 1 ? 's' : ''} — rien dû aujourd'hui.</div>}
+                    </div>
+                    {dueExoSel.length > 0 && (
+                      <button className="btn primary" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={() => launchExos(dueExoSel)}>
+                        <Icon name="play" size={14} fill /> Lancer aujourd'hui
+                      </button>
+                    )}
+                  </div>
+                  <button className="btn lg" style={{ width: '100%', marginTop: 12, justifyContent: 'center' }} onClick={() => launchExos(exoItems)}>
+                    <Icon name="play" size={16} fill /> Lancer un exercice ({exoItems.length})
+                  </button>
+                </div>
+              )}
 
               <div style={{ marginTop: 14 }}>
                 <ErrorSummary ctx={ctx} ix={ix} selIds={selIds} title={title} />

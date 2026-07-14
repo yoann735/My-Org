@@ -20,6 +20,7 @@ const S = {
   stats: store('stats'),
   meta: store('meta'),       // marqueurs de migration (schéma v1.0)
   backups: store('backups'), // sauvegardes non destructives avant migration
+  exos: store('exos'),       // bloc-notes (brouillon) persisté par exercice
 };
 
 export function genId(prefix = 'x') {
@@ -70,6 +71,10 @@ export const getMeta = (key) => get(key, S.meta);
 export const setMeta = (key, val) => set(key, val, S.meta);
 export const putBackup = (key, val) => set(key, { key, when: new Date().toISOString(), data: val }, S.backups);
 export const getBackup = (key) => get(key, S.backups);
+
+/* ---- bloc-notes d'exercice (brouillon persisté par item) ---- */
+export const getExoNote = (id) => get(id, S.exos);
+export const setExoNote = (id, note) => set(id, { id, note, when: new Date().toISOString() }, S.exos);
 
 /* ---- stats (carte unique) ---- */
 const DEFAULT_STATS = { streak: 0, dernierJourRevise: null, jokerUtilise: false, best: 0, activityDays: [], serieCollapsed: false };

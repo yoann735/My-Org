@@ -22,6 +22,19 @@ export function qualityFromRatio(ratio) {
   return QUALITY.rate;                          // 1
 }
 
+/**
+ * Qualité SM-2 d'un EXERCICE (étape 4), réutilise le moteur existant.
+ * Réussi → 5, modulé À LA BAISSE par le nombre d'indices révélés :
+ *   0 indice → 5 · 1 → 4 · 2 → 3 · 3+ → 3 (plancher : reste une réussite).
+ * Échec → 2 (< 3 : réinitialise le cycle des J).
+ * S'applique aux deux sous-types : "numerique" (juste/faux) et "ouvert"
+ * (verdict de la grille d'auto-évaluation).
+ */
+export function qualityForExercice(success, indicesUsed = 0) {
+  if (!success) return 2; // échec → 2 (< 3 : réinitialise le cycle des J)
+  return Math.max(3, 5 - (indicesUsed || 0));
+}
+
 /** normalisation tolérante pour comparer une saisie à la réponse stockée
    (minuscules, sans accents, trim, espaces multiples réduits). */
 export function normalizeAnswer(s) {
