@@ -179,7 +179,7 @@ export function PdfReader({ ctx }) {
   const [searching, setSearching] = useState(false);
 
   const [panelOpen, setPanelOpen] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [copiedCount, setCopiedCount] = useState(0); // >0 → confirmation « N notions copiées »
   const [exporting, setExporting] = useState(false);
 
   const scrollRef = useRef(null);
@@ -392,13 +392,30 @@ export function PdfReader({ ctx }) {
   const gotoPrevMatch = () => { if (matches.length) setActiveMatch((i) => (i - 1 + matches.length) % matches.length); };
   const closeSearch = () => { setSearch(''); setDebouncedSearch(''); setMatches([]); };
 
-  // livrable — texte prêt à coller dans le chat Claude (texte en clair du surlignage utilisateur)
+  // livrable (chantier A) — bloc texte prêt à coller dans un chat, à partir du TEXTE EN
+  // CLAIR stocké de chaque surlignage (jamais une détection de couleur). Notions dans
+  // l'ordre des pages (highlights est déjà trié par page puis createdAt). La référence de
+  // page est omise quand la source n'a pas de pagination (page == null : futur transcript).
+  const buildPriorityText = () => {
+    const lines = highlights
+      .map((h, i) => `${i + 1}. "${h.texte}"${h.page != null ? ` (p.${h.page})` : ''}`)
+      .join('\n');
+    return `NOTIONS SOULIGNÉES / PRIORITAIRES :\n${lines}`;
+  };
   const copyPriority = async () => {
     if (!highlights.length) return;
-    const lines = highlights.map((h, i) => `${i + 1}. "${h.texte}" (p.${h.page})`).join('\n');
-    const text = `NOTIONS PRIORITAIRES SURLIGNÉES PAR L'ÉTUDIANT :\n${lines}\n\nGénère EN PRIORITÉ des questions portant sur ces notions, avant de couvrir le reste du cours.`;
-    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch (e) { /* ignore */ }
+    try {
+      await navigator.clipboard.writeText(buildPriorityText());
+      setCopiedCount(highlights.length);
+      setTimeout(() => setCopiedCount(0), 2200);
+    } catch (e) { /* ignore */ }
   };
+  const copyLabel = copiedCount
+    ? `${copiedCount} notion${copiedCount > 1 ? 's' : ''} copiée${copiedCount > 1 ? 's' : ''}`
+    : 'Copier les notions prioritaires';
+  const copyTitle = highlights.length
+    ? 'Copie le texte des passages surlignés, prêt à coller dans un chat'
+    : 'Aucune notion surlignée — surligne du texte pour activer ce bouton';
 
   // export secondaire — PDF avec les surlignages incrustés (confort de lecture hors app ;
   // suppose des pages non pivotées — limite acceptée, cas rare pour un cours scanné/exporté normal)
@@ -589,7 +606,9 @@ export function PdfReader({ ctx }) {
         <button className="btn ghost sm" onClick={() => setPanelOpen((v) => !v)} title="Notions surlignées">
           <Icon name={panelOpen ? 'chevR' : 'chevL'} size={13} /> Notions ({highlights.length})
         </button>
-        <button className="btn sm" onClick={copyPriority} disabled={!highlights.length}><Icon name={copied ? 'check' : 'copy'} size={13} /> {copied ? 'Copié' : 'Copier les notions prioritaires'}</button>
+        <span title={copyTitle} style={{ display: 'inline-flex' }}>
+          <button className="btn sm" onClick={copyPriority} disabled={!highlights.length}><Icon name={copiedCount ? 'check' : 'copy'} size={13} /> {copyLabel}</button>
+        </span>
         <button className="btn ghost sm" onClick={exportAnnotated} disabled={!highlights.length || exporting}><Icon name="filePdf" size={13} /> {exporting ? 'Export…' : 'Exporter PDF annoté'}</button>
       </div>
 
@@ -635,6 +654,11 @@ export function PdfReader({ ctx }) {
         {panelOpen && (
           <div className="pdfr-panel">
             <h3 className="serif">Notions surlignées</h3>
+            <span title={copyTitle} style={{ display: 'block' }}>
+              <button className="btn sm" onClick={copyPriority} disabled={!highlights.length} style={{ width: '100%', justifyContent: 'center', marginBottom: 12 }}>
+                <Icon name={copiedCount ? 'check' : 'copy'} size={13} /> {copyLabel}
+              </button>
+            </span>
             {highlights.length === 0 && <div className="hint">Surligne du texte en mode Édition pour le retrouver ici.</div>}
             {highlights.map((h) => (
               <div className="hl-entry" key={h.id} onClick={() => scrollToPageFraction(h.page, (h.rects[0] && h.rects[0].y) || 0)}>
