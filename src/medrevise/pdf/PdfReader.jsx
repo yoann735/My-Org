@@ -511,7 +511,7 @@ export function PdfReader({ ctx }) {
   const attach = async (file) => {
     if (!file) return;
     const pdfId = await putBlob(file);
-    await ctx.setFichePdf(pdfView.ficheId, pdfId);
+    await ctx.setFichePdf(pdfView.ficheId, pdfId, file.name);
   };
 
   if (!fiche) {

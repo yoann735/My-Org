@@ -178,9 +178,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await reload();
     },
     // B1 : rattache (ou détache, pdfId=null) un PDF à une fiche existante.
-    setFichePdf: async (ficheId, pdfId) => {
+    // pdfName (optionnel) : nom de fichier d'origine, pour l'afficher (détacher l'efface).
+    setFichePdf: async (ficheId, pdfId, pdfName) => {
       const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
-      await put('fiches', { ...f, pdfId: pdfId || null }); await reload();
+      await put('fiches', { ...f, pdfId: pdfId || null, pdfName: pdfId ? (pdfName || f.pdfName || null) : null }); await reload();
     },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },
     clearQuestionError: async (id) => {

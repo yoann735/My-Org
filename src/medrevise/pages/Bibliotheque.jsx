@@ -43,7 +43,7 @@ export function Bibliotheque({ ctx }) {
   const attachPdf = async (ficheId, file) => {
     if (!file) return;
     const pdfId = await putBlob(file);
-    await ctx.setFichePdf(ficheId, pdfId);
+    await ctx.setFichePdf(ficheId, pdfId, file.name);
     ctx.openPdfReader(ficheId, 'edit', 'library');
   };
 

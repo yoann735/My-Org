@@ -16,11 +16,11 @@ function normalizeQ(q) {
   return { type: 'qcm', concept: q.concept, question: q.question || q.q, choix: q.choix || q.choices || [], bonneReponse: q.bonneReponse ?? q.correct ?? 0, explication: q.explication || q.expl || '' };
 }
 
-export async function importStandard({ matiereId, titre, contenu, pdfId }) {
+export async function importStandard({ matiereId, titre, contenu, pdfId, pdfName }) {
   const gen = await generateStandard(contenu, titre);
   const res = await createFicheFromQuestions({
     matiereId, titre: titre || gen.titre, questions: gen.questions,
-    synthese: gen.synthese, pdfId, mock: gen._mock,
+    synthese: gen.synthese, pdfId, pdfName, mock: gen._mock,
   });
   return { ...res, debug: gen.debug };
 }
@@ -34,13 +34,13 @@ export async function importStandard({ matiereId, titre, contenu, pdfId }) {
  * Les prompts produisent déjà les bons champs + des extras (categorie_question,
  * difficulte, categorie_carte, explication_simple…) → newQuestion les préserve.
  */
-export async function createFicheFromQuestions({ matiereId, titre, items, questions, synthese, meta, pdfId, mock }) {
+export async function createFicheFromQuestions({ matiereId, titre, items, questions, synthese, meta, pdfId, pdfName, mock }) {
   const ficheId = genId('f');
   const fiche = {
     id: ficheId, matiereId,
     titre: (titre || 'Fiche importée').trim(),
     sousTitre: mock ? 'Importée · démo hors-ligne (à valider)' : 'Importée',
-    type: 'standard', coef: null, pdfId: pdfId || null, dateImport: todayISO(),
+    type: 'standard', coef: null, pdfId: pdfId || null, pdfName: (pdfId && pdfName) || null, dateImport: todayISO(),
     synthese: (synthese && synthese.trim()) || null,
     // méta v1.0 (informatif : notions_cles, prerequis, matiere annoncée…)
     meta: meta && typeof meta === 'object' ? meta : null,

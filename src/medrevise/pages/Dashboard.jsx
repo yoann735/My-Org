@@ -4,7 +4,7 @@
    ============================================================ */
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, EdTop, TodaySeriesCard, DestPicker, matiereMeta } from '../components/ui.jsx';
+import { Card, EdTop, TodaySeriesCard, DestPicker, CoursePdfField, matiereMeta } from '../components/ui.jsx';
 import { weekData, dueToday, dueSchemasToday, dueExercicesToday, todayPlan } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
 import { importStandard, createFicheFromQuestions } from '../lib/import.js';
@@ -227,6 +227,7 @@ function ImportPanel({ ctx }) {
   const [jsonText, setJsonText] = useState('');
   const [parseError, setParseError] = useState(null);
   const [parsed, setParsed] = useState(null); // { questions, synthese, counts }
+  const [pastePdf, setPastePdf] = useState(null); // PDF du cours (optionnel) rattaché à la fiche créée
 
   const onFile = async (file) => {
     if (!file) return;
@@ -262,14 +263,14 @@ function ImportPanel({ ctx }) {
     setState('loading'); setBusy(true);
     let pdfId = null;
     if (pdfBlob) { try { pdfId = await putBlob(pdfBlob); } catch (e) { /* ignore */ } }
-    const res = await importStandard({ matiereId: matId, titre: title, contenu, pdfId });
+    const res = await importStandard({ matiereId: matId, titre: title, contenu, pdfId, pdfName: pdfBlob ? pdfBlob.name : null });
     await ctx.reload();
     setResult(res); setDebug(res.debug || null); setState('done'); setBusy(false);
   };
   const reset = () => {
     setState('empty'); setEntry('pdf'); setContenu(''); setPdfBlob(null); setTitle('');
     setResult(null); setExtractInfo(null); setExtracting(false); setShowText(false);
-    setJsonText(''); setParseError(null); setParsed(null);
+    setJsonText(''); setParseError(null); setParsed(null); setPastePdf(null);
   };
 
   // --- flux « coller le JSON » : parse local, aucun appel réseau ---
@@ -291,8 +292,11 @@ function ImportPanel({ ctx }) {
   const confirmImport = async () => {
     if (!parsed || !matId) return;
     setBusy(true);
+    let pdfId = null;
+    if (pastePdf) { try { pdfId = await putBlob(pastePdf); } catch (e) { /* ignore */ } }
     const res = await createFicheFromQuestions({
       matiereId: matId, titre: title, items: parsed.items, synthese: parsed.synthese, meta: parsed.meta,
+      pdfId, pdfName: pastePdf ? pastePdf.name : null,
     });
     await ctx.reload();
     setResult(res); setState('done'); setBusy(false);
@@ -398,6 +402,9 @@ function ImportPanel({ ctx }) {
             <input className="imp-title" placeholder="ex : Système respiratoire — chapitre 3" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
 
+          <CoursePdfField file={pastePdf} onFile={setPastePdf}
+            hint="Rattaché à la fiche pour « Voir le cours » et le surlignage. Facultatif." />
+
           <div className="imp-field">
             <label>RÉPONSE DE CLAUDE (JSON)</label>
             <textarea className="imp-title" style={{ minHeight: 160, resize: 'vertical', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12.5 }}
@@ -433,6 +440,9 @@ function ImportPanel({ ctx }) {
                 </div>
               )}
               {parsed.synthese && <div className="hint" style={{ marginTop: 4 }}>Synthèse incluse ✓</div>}
+              <div className="hint" style={{ marginTop: 4 }}>
+                {pastePdf ? <>PDF du cours joint : {pastePdf.name} ✓</> : 'Aucun PDF du cours joint.'}
+              </div>
             </div>
           </div>
           <div className="imp-actions">
