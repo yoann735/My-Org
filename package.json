@@ -19,6 +19,7 @@
     "@tiptap/react": "^3.27.3",
     "@tiptap/starter-kit": "^3.27.3",
     "idb-keyval": "^6.2.5",
+    "katex": "^0.17.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.0.227",
     "react": "^18.3.1",

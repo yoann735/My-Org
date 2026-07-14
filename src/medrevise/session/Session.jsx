@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta } from '../components/ui.jsx';
+import { Tex } from '../components/Tex.jsx';
 import { applyReview, QUALITY, jStepForInterval, todayISO, computeStreak } from '../lib/sm2.js';
 import { effectiveCoef, index } from '../lib/planning.js';
 import { blobURL } from '../lib/storage.js';
@@ -41,13 +42,13 @@ export function Session({ ctx }) {
   const [anim, setAnim] = useState('in');
   const [results, setResults] = useState([]);
   const [finished, setFinished] = useState(false);
-  const [selected, setSelected] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]); // ids d'options cochées (QCM v1.0, simple ou multiple)
   const [validated, setValidated] = useState(false);
   const [flipped, setFlipped] = useState(false);
   const [pulse, setPulse] = useState('');
 
   const item = items[idx];
-  const resetCard = () => { setSelected(null); setValidated(false); setFlipped(false); setPulse(''); };
+  const resetCard = () => { setSelectedIds([]); setValidated(false); setFlipped(false); setPulse(''); };
 
   const advance = async (rating) => {
     // persist SM-2
@@ -67,9 +68,11 @@ export function Session({ ctx }) {
   const jumpTo = (t) => { if (t >= idx) return; setAnim('outR'); setTimeout(() => { setIdx(t); resetCard(); setAnim('inL'); }, 220); };
 
   const validate = () => {
-    if (selected == null) return;
+    if (!selectedIds.length) return;
     setValidated(true);
-    const ok = selected === item.bonneReponse;
+    // correction v1.0 : égalité d'ensemble entre coches et reponses_correctes[]
+    const correct = new Set(item.reponses_correctes || []);
+    const ok = selectedIds.length === correct.size && selectedIds.every((id) => correct.has(id));
     setPulse(ok ? 'pulse-ok' : 'pulse-bad');
     if (navigator.vibrate) navigator.vibrate(ok ? 18 : [12, 40, 12]);
     setTimeout(() => setPulse(''), 500);
@@ -125,7 +128,7 @@ export function Session({ ctx }) {
       <div className="rev-stage scroll" style={{ flex: '1 1 auto', overflowY: 'auto', minHeight: 0, paddingTop: 4, paddingBottom: 10, justifyContent: 'flex-start' }}>
         <div className={'rev-anim-' + anim} key={idx}>
           {item.type === 'qcm'
-            ? <QcmCard item={item} meta={meta} selected={selected} setSelected={setSelected} validated={validated} validate={validate} pulse={pulse} onRate={advance} canPrev={idx > 0} onPrev={goPrev} />
+            ? <QcmCard item={item} meta={meta} selectedIds={selectedIds} setSelectedIds={setSelectedIds} validated={validated} validate={validate} pulse={pulse} onRate={advance} canPrev={idx > 0} onPrev={goPrev} />
             : <FlashCardView item={item} meta={meta} flipped={flipped} setFlipped={setFlipped} onRate={advance} canPrev={idx > 0} onPrev={goPrev} />}
         </div>
       </div>
@@ -150,21 +153,45 @@ function AnatImage({ imageId, compact }) {
   );
 }
 
-function QcmCard({ item, meta, selected, setSelected, validated, validate, pulse, onRate, canPrev, onPrev }) {
+function QcmCard({ item, meta, selectedIds, setSelectedIds, validated, validate, pulse, onRate, canPrev, onPrev }) {
+  const multiple = !!item.multiple;
+  const options = item.options || [];
+  const correct = new Set(item.reponses_correctes || []);
+  const isOk = validated && selectedIds.length === correct.size && selectedIds.every((id) => correct.has(id));
+  const optLabel = (id) => { const o = options.find((x) => x.id === id); return o ? o.texte : id; };
+  const toggle = (id) => {
+    if (validated) return;
+    setSelectedIds((cur) => (multiple
+      ? (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id])
+      : [id]));
+  };
+  // explications de distracteurs : on met en avant celles réellement cochées à tort
+  const distract = (item.explication_distracteurs || []).filter((d) => d && d.pourquoi_faux);
+
   return (
     <div className={'rev-card ' + pulse}>
-      <div className="rev-concept"><span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.tint, display: 'inline-block' }} /> {meta.label} · {item.concept}</div>
-      <div className="rev-q">{item.question}</div>
+      <div className="rev-concept"><span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.tint, display: 'inline-block' }} /> {meta.label} · {item.theme}</div>
+      <div className="rev-q"><Tex>{item.enonce}</Tex></div>
       {item.imageId && <AnatImage imageId={item.imageId} />}
+      {multiple && !validated && (
+        <div className="hint" style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '2px 0 10px' }}>
+          <Icon name="check" size={13} /> Plusieurs réponses possibles
+        </div>
+      )}
       <div className="rev-choices">
-        {(item.choix || []).map((c, i) => {
+        {options.map((o, i) => {
+          const sel = selectedIds.includes(o.id);
           let cls = 'rev-choice';
-          if (!validated && selected === i) cls += ' sel';
-          if (validated) { cls += ' locked'; if (i === item.bonneReponse) cls += ' correct'; else if (i === selected) cls += ' wrong'; }
+          if (!validated && sel) cls += ' sel';
+          if (validated) { cls += ' locked'; if (correct.has(o.id)) cls += ' correct'; else if (sel) cls += ' wrong'; }
           return (
-            <button className={cls} key={i} onClick={() => !validated && setSelected(i)}>
-              <span className="rc-key">{validated && i === item.bonneReponse ? <Icon name="check" size={15} stroke={3} /> : (validated && i === selected ? <Icon name="x" size={15} stroke={3} /> : KEYS[i])}</span>
-              <span>{c}</span>
+            <button className={cls} key={o.id} onClick={() => toggle(o.id)}>
+              <span className="rc-key" style={multiple ? { borderRadius: 6 } : undefined}>
+                {validated
+                  ? (correct.has(o.id) ? <Icon name="check" size={15} stroke={3} /> : (sel ? <Icon name="x" size={15} stroke={3} /> : KEYS[i]))
+                  : (multiple ? (sel ? <Icon name="check" size={13} stroke={3} /> : '') : KEYS[i])}
+              </span>
+              <span><Tex>{o.texte}</Tex></span>
             </button>
           );
         })}
@@ -172,11 +199,24 @@ function QcmCard({ item, meta, selected, setSelected, validated, validate, pulse
       {!validated && (
         <div style={{ marginTop: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button className="btn ghost" disabled={!canPrev} style={{ opacity: canPrev ? 1 : 0.4 }} onClick={onPrev}><Icon name="chevL" size={15} /> Précédent</button>
-          <button className="btn primary lg" disabled={selected == null} style={{ opacity: selected == null ? 0.5 : 1 }} onClick={validate}>Valider</button>
+          <button className="btn primary lg" disabled={!selectedIds.length} style={{ opacity: selectedIds.length ? 1 : 0.5 }} onClick={validate}>Valider</button>
         </div>
       )}
       {validated && <>
-        <div className="rev-expl"><strong>{selected === item.bonneReponse ? '✓ Bonne réponse. ' : '✗ '}</strong>{item.explication}</div>
+        {item.explication && <div className="rev-expl"><strong>{isOk ? '✓ Bonne réponse. ' : '✗ '}</strong><Tex>{item.explication}</Tex></div>}
+        {distract.length > 0 && (
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {distract.map((d, i) => {
+              const picked = selectedIds.includes(d.option_id);
+              return (
+                <div key={i} className="hint" style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '6px 10px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--border)', opacity: picked ? 1 : 0.75 }}>
+                  <Icon name="x" size={12} style={{ color: 'var(--accent-2)', flex: '0 0 auto', marginTop: 3 }} />
+                  <span><strong style={{ color: picked ? 'var(--accent-2)' : 'var(--text-2)' }}>{optLabel(d.option_id)}</strong> — <Tex>{d.pourquoi_faux}</Tex></span>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <RatingButtons onRate={onRate} canPrev={canPrev} onPrev={onPrev} />
       </>}
     </div>
@@ -184,20 +224,32 @@ function QcmCard({ item, meta, selected, setSelected, validated, validate, pulse
 }
 
 function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPrev }) {
+  const [showIndice, setShowIndice] = useState(false); // réinitialisé au changement de carte (remount via key={idx})
+  const revealIndice = (e) => { e.stopPropagation(); setShowIndice(true); };
   return (
     <div>
       <div className="flash-scene">
         <div className={'flash-card' + (flipped ? ' flipped' : '')} onClick={() => setFlipped((f) => !f)}>
           <div className="flash-face front">
-            <span className="ff-tag" style={{ color: meta.tint }}>{meta.label} · {item.concept}</span>
+            <span className="ff-tag" style={{ color: meta.tint }}>{meta.label} · {item.theme}</span>
             {item.imageId
-              ? <div className="ff-imgwrap"><AnatImage imageId={item.imageId} compact /><div className="ff-imgq">{item.recto}</div></div>
-              : <div className="ff-text">{item.recto}</div>}
+              ? <div className="ff-imgwrap"><AnatImage imageId={item.imageId} compact /><div className="ff-imgq"><Tex>{item.recto}</Tex></div></div>
+              : <div className="ff-text"><Tex>{item.recto}</Tex></div>}
+            {item.indice && (showIndice
+              ? <div className="ff-indice" onClick={(e) => e.stopPropagation()} style={{ marginTop: 10, padding: '8px 12px', borderRadius: 10, background: 'var(--accent-soft)', color: 'var(--text)', fontSize: 13.5, display: 'flex', gap: 7, alignItems: 'baseline' }}>
+                  <Icon name="lightbulb" size={13} style={{ color: 'var(--accent)', flex: '0 0 auto' }} /> <span><Tex>{item.indice}</Tex></span>
+                </div>
+              : <button className="btn ghost sm" style={{ marginTop: 10 }} onClick={revealIndice}><Icon name="lightbulb" size={13} /> Indice</button>)}
             <span className="ff-hint"><Icon name="refresh" size={13} /> Clique pour révéler</span>
           </div>
           <div className="flash-face back">
             <span className="ff-tag">Réponse</span>
-            <div className="ff-text">{item.verso}</div>
+            <div className="ff-text"><Tex>{item.verso}</Tex></div>
+            {item.a_retenir && (
+              <div className="ff-aretenir" style={{ marginTop: 10, padding: '8px 12px', borderRadius: 10, background: 'var(--accent-soft)', border: '1px solid var(--accent)', fontSize: 13.5, display: 'flex', gap: 7, alignItems: 'baseline' }}>
+                <Icon name="star" size={13} style={{ color: 'var(--accent)', flex: '0 0 auto' }} /> <span><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></span>
+              </div>
+            )}
             <span className="ff-hint"><Icon name="check" size={13} /> Comment t'en es-tu sorti ?</span>
           </div>
         </div>
@@ -242,7 +294,7 @@ function Roadmap({ items, idx, onJump }) {
   return (
     <div className="session-road">
       <div className="road-now">
-        <span className="rn-now"><Icon name="play" size={12} fill /> Maintenant&nbsp;:<strong>&nbsp;{typeLabel(cur.type)} {posInGroup}/{sameTypeGroup.length}</strong><span className="rn-dot" style={{ background: meta.tint }} /> {meta.label} · {cur.concept}</span>
+        <span className="rn-now"><Icon name="play" size={12} fill /> Maintenant&nbsp;:<strong>&nbsp;{typeLabel(cur.type)} {posInGroup}/{sameTypeGroup.length}</strong><span className="rn-dot" style={{ background: meta.tint }} /> {meta.label} · {cur.theme || cur.concept}</span>
         {nextItem
           ? <span className="rn-next"><Icon name="arrowR" size={12} /> Ensuite&nbsp;: {matiereMeta(nextItem._matiere).label} · {typeLabel(nextItem.type)}</span>
           : <span className="rn-next"><Icon name="check" size={12} stroke={3} /> Dernière étape</span>}
@@ -263,7 +315,7 @@ function Roadmap({ items, idx, onJump }) {
                     <div className="rsec-dots">
                       {tp.nodes.map((n) => {
                         const st = n.i < idx ? 'done' : n.i === idx ? 'active' : 'future';
-                        return <button key={n.i} className={'rnode ' + st} title={n.it.concept} disabled={n.i > idx} onClick={() => onJump(n.i)}>{st === 'done' ? <Icon name="check" size={10} stroke={3} /> : (n.i - tp.nodes[0].i + 1)}</button>;
+                        return <button key={n.i} className={'rnode ' + st} title={n.it.theme || n.it.concept} disabled={n.i > idx} onClick={() => onJump(n.i)}>{st === 'done' ? <Icon name="check" size={10} stroke={3} /> : (n.i - tp.nodes[0].i + 1)}</button>;
                       })}
                     </div>
                   </div>
