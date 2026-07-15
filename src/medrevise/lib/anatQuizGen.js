@@ -2,10 +2,12 @@
    MedRevise — génération LOCALE des cartes de THÉORIE d'un schéma
    (mode « Théorie seule »). 100 % local, AUCUNE IA.
 
-   À partir des coches qui portent des champs (théorie intrinsèque, cf. refonte) :
-   - une carte par (coche × champ non vide) ;
-   - QCM si l'on dispose d'assez de DISTRACTEURS = valeurs du MÊME champ chez
-     d'AUTRES coches du MÊME type (jamais inventés) ; sinon FLASHCARD.
+   À partir des coches qui portent des champs (théorie intrinsèque, cf. refonte),
+   pour CHAQUE (coche × champ non vide) :
+   - une FLASHCARD est TOUJOURS générée (recto question / verso valeur) ;
+   - un QCM est ajouté EN PLUS si l'on dispose d'assez de DISTRACTEURS = valeurs du
+     MÊME champ chez d'AUTRES coches du MÊME type (jamais inventés). Les flashcards
+     ne sont donc jamais remplacées par des QCM : on révise les deux formats.
    Items ÉPHÉMÈRES (ephemeral:true) : joués dans la session existante mais JAMAIS
    persistés / planifiés SM-2 (aucun impact sur la méthode des J).
    Pas de Feynman en anatomie.
@@ -63,23 +65,25 @@ export function genTheoryItems(fiche, coches) {
         if (distractors.length >= 3) break;
       }
 
+      // FLASHCARD — TOUJOURS générée (recto = question, verso = valeur du champ).
+      items.push({
+        id: 'th-f-' + n, ephemeral: true, ficheId: fiche.id, type: 'flashcard',
+        theme: c.texte || label, recto: enonce, verso: v, interval: 0,
+      });
+
+      // QCM — EN PLUS de la flashcard, seulement si assez de distracteurs RÉELS
+      // (valeurs du même champ chez d'autres structures du même type). Jamais inventés.
       if (distractors.length >= 2) {
-        // QCM à 3–4 choix (bonne réponse + 2–3 distracteurs réels)
         const built = shuffle([{ t: v, ok: true }, ...distractors.map((t) => ({ t, ok: false }))]);
         const options = built.map((o, i) => ({ id: 'o' + i, texte: o.t }));
         const reponses_correctes = built.map((o, i) => (o.ok ? 'o' + i : null)).filter(Boolean);
         items.push({
-          id: 'th-q-' + (n++), ephemeral: true, ficheId: fiche.id, type: 'qcm',
+          id: 'th-q-' + n, ephemeral: true, ficheId: fiche.id, type: 'qcm',
           theme: c.texte || label, enonce, options, reponses_correctes, multiple: false,
           explication: `${label} : ${v}.`, interval: 0,
         });
-      } else {
-        // flashcard (pas assez de distracteurs pour un QCM)
-        items.push({
-          id: 'th-f-' + (n++), ephemeral: true, ficheId: fiche.id, type: 'flashcard',
-          theme: c.texte || label, recto: enonce, verso: v, interval: 0,
-        });
       }
+      n++;
     });
   });
   return items;
