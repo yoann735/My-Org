@@ -9,6 +9,7 @@ import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, 
 import {
   index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, missedQuestions, topConcepts, todayPlan,
 } from '../lib/planning.js';
+import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
 import { CarnetBody } from './Carnet.jsx';
 
 export function Reviser({ ctx }) {
@@ -458,12 +459,25 @@ function ErrorSummary({ ctx, ix, selIds, title }) {
 
 /* ---- lanceur de quiz pour une fiche anat_schema (choix du mode → quiz) ---- */
 function AnatSchemaLauncher({ fiche, ctx, meta, due, scheduled, jp }) {
-  const [mode, setMode] = useState('total'); // total | random
+  const [mode, setMode] = useState('total'); // total | random (masquage visuel)
   const [prop, setProp] = useState(0.5);
-  const [theory, setTheory] = useState(false); // visuel seul | visuel + théorie
   const coches = fiche.coches || [];
   const nb = coches.length;
-  const nbTheory = coches.filter((c) => c.structureId).length;
+  const nbTheory = theoryCount(coches);
+  // mode principal : « Visuel + Théorie » mis en avant dès qu'il y a de la théorie.
+  const [revMode, setRevMode] = useState(() => (nbTheory > 0 ? 'both' : 'visuel')); // visuel | theorie | both
+
+  const launch = () => {
+    if (revMode === 'theorie') {
+      const items = genTheoryItems(fiche, coches);
+      if (items.length) ctx.startSession(items, `${fiche.titre} — Théorie`, { ephemeral: true });
+      return;
+    }
+    ctx.startAnatQuiz(fiche, { mode, proportion: prop, theory: revMode === 'both' && nbTheory > 0 });
+  };
+  const launchDisabled = revMode === 'theorie'
+    ? genTheoryItems(fiche, coches).length === 0
+    : nb === 0;
 
   return (
     <>
@@ -485,51 +499,51 @@ function AnatSchemaLauncher({ fiche, ctx, meta, due, scheduled, jp }) {
           <div className="imp-field">
             <label>Mode de révision</label>
             <div className="seg">
-              <button type="button" className={'seg-btn' + (mode === 'total' ? ' active' : '')} onClick={() => setMode('total')}><Icon name="layers" size={13} /> Total</button>
-              <button type="button" className={'seg-btn' + (mode === 'random' ? ' active' : '')} onClick={() => setMode('random')}><Icon name="target" size={13} /> Aléatoire</button>
-            </div>
-            <div className="hint" style={{ marginTop: 6 }}>
-              {mode === 'total'
-                ? 'Toutes les coches sont masquées : tu remplis chaque nom.'
-                : 'Une partie des coches est masquée (tirage aléatoire), le reste sert de repère.'}
-            </div>
-          </div>
-
-          {mode === 'random' && (
-            <div className="imp-field">
-              <label>Proportion masquée</label>
-              <div className="imp-chips">
-                {[0.3, 0.5, 0.7].map((p) => (
-                  <button key={p} className={'imp-chip' + (prop === p ? ' on' : '')} onClick={() => setProp(p)}>{Math.round(p * 100)} %</button>
-                ))}
-              </div>
-              <div className="hint" style={{ marginTop: 6 }}>≈ {Math.max(1, Math.round(prop * nb))} coche{Math.max(1, Math.round(prop * nb)) > 1 ? 's' : ''} masquée{Math.max(1, Math.round(prop * nb)) > 1 ? 's' : ''} sur {nb}.</div>
-            </div>
-          )}
-
-          <div className="imp-field">
-            <label>Niveau de révision</label>
-            <div className="seg">
-              <button type="button" className={'seg-btn' + (!theory ? ' active' : '')} onClick={() => setTheory(false)}><Icon name="image" size={13} /> Visuel seul</button>
-              <button type="button" className={'seg-btn' + (theory ? ' active' : '')} onClick={() => setTheory(true)} disabled={nbTheory === 0} title={nbTheory === 0 ? 'Aucune coche reliée à une fiche de structure' : ''}><Icon name="list" size={13} /> Visuel + Théorie</button>
+              <button type="button" className={'seg-btn' + (revMode === 'visuel' ? ' active' : '')} onClick={() => setRevMode('visuel')}><Icon name="image" size={13} /> Visuel seul</button>
+              <button type="button" className={'seg-btn' + (revMode === 'theorie' ? ' active' : '')} onClick={() => setRevMode('theorie')} disabled={nbTheory === 0} title={nbTheory === 0 ? 'Aucune coche ne porte de théorie' : ''}><Icon name="list" size={13} /> Théorie seule</button>
+              <button type="button" className={'seg-btn' + (revMode === 'both' ? ' active' : '')} onClick={() => setRevMode('both')} disabled={nbTheory === 0} title={nbTheory === 0 ? 'Aucune coche ne porte de théorie' : ''}><Icon name="layers" size={13} /> Visuel + Théorie</button>
             </div>
             <div className="hint" style={{ marginTop: 6 }}>
               {nbTheory === 0
-                ? 'Relie des coches à des fiches de structure (Éditer le schéma) pour activer la théorie.'
-                : theory
-                  ? `Tu nommes la coche PUIS tu réponds sur ses champs théoriques (${nbTheory} coche${nbTheory > 1 ? 's' : ''} reliée${nbTheory > 1 ? 's' : ''}).`
-                  : 'Tu nommes seulement les coches.'}
+                ? 'Ajoute de la théorie aux coches (Éditer le schéma) pour débloquer les modes Théorie.'
+                : revMode === 'visuel' ? 'Tu nommes seulement les coches sur l\'image.'
+                  : revMode === 'theorie' ? `Sans l'image : tu révises les champs (${nbTheory} structure${nbTheory > 1 ? 's' : ''}) — flashcards + QCM générés localement.`
+                    : `Tu nommes la coche PUIS tu réponds sur ses champs (${nbTheory} coche${nbTheory > 1 ? 's' : ''} avec théorie).`}
             </div>
           </div>
 
+          {/* options de masquage — uniquement quand l'image est en jeu */}
+          {revMode !== 'theorie' && (
+            <>
+              <div className="imp-field">
+                <label>Coches masquées</label>
+                <div className="seg">
+                  <button type="button" className={'seg-btn' + (mode === 'total' ? ' active' : '')} onClick={() => setMode('total')}><Icon name="layers" size={13} /> Toutes</button>
+                  <button type="button" className={'seg-btn' + (mode === 'random' ? ' active' : '')} onClick={() => setMode('random')}><Icon name="target" size={13} /> Aléatoire</button>
+                </div>
+              </div>
+              {mode === 'random' && (
+                <div className="imp-field">
+                  <label>Proportion masquée</label>
+                  <div className="imp-chips">
+                    {[0.3, 0.5, 0.7].map((p) => (
+                      <button key={p} className={'imp-chip' + (prop === p ? ' on' : '')} onClick={() => setProp(p)}>{Math.round(p * 100)} %</button>
+                    ))}
+                  </div>
+                  <div className="hint" style={{ marginTop: 6 }}>≈ {Math.max(1, Math.round(prop * nb))} coche{Math.max(1, Math.round(prop * nb)) > 1 ? 's' : ''} masquée{Math.max(1, Math.round(prop * nb)) > 1 ? 's' : ''} sur {nb}.</div>
+                </div>
+              )}
+            </>
+          )}
+
           <div className="row" style={{ gap: 10, marginTop: 6 }}>
             <button className="btn lg" style={{ flex: '0 0 auto', justifyContent: 'center' }}
-              onClick={() => ctx.openSchemaEditor(fiche.id, 'revise')} title="Ouvrir en mode Lecture / Édition (coches)">
+              onClick={() => ctx.openSchemaEditor(fiche.id, 'revise')} title="Ouvrir en mode Lecture / Édition (coches + théorie)">
               <Icon name="edit" size={16} /> Éditer le schéma
             </button>
-            <button className="btn primary lg" style={{ flex: 1, justifyContent: 'center' }} disabled={nb === 0}
-              onClick={() => ctx.startAnatQuiz(fiche, { mode, proportion: prop, theory: theory && nbTheory > 0 })}>
-              <Icon name="play" size={16} fill /> Lancer le quiz{theory && nbTheory > 0 ? ' (+ théorie)' : ' visuel'}
+            <button className="btn primary lg" style={{ flex: 1, justifyContent: 'center' }} disabled={launchDisabled}
+              onClick={launch}>
+              <Icon name="play" size={16} fill /> Lancer{revMode === 'theorie' ? ' la théorie' : revMode === 'both' ? ' (visuel + théorie)' : ' le visuel'}
             </button>
           </div>
           {nb === 0 && <div className="hint" style={{ marginTop: 8 }}>Ce schéma n'a aucune coche — passe en Édition pour en ajouter.</div>}

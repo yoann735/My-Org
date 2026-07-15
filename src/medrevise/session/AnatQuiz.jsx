@@ -61,10 +61,9 @@ export function AnatQuiz({ ctx }) {
   const [overrides, setOverrides] = useState(() => new Set()); // "compter comme juste" (visuel)
   const [finalScore, setFinalScore] = useState(null);
 
-  // ---- THÉORIE (étape 3) : mini-questions générées LOCALEMENT à partir des champs
-  // des fiches de structure reliées aux coches masquées. Aucune IA. ----
+  // ---- THÉORIE (refonte) : mini-questions générées LOCALEMENT à partir des CHAMPS
+  // INTRINSÈQUES de chaque coche masquée (c.type + c.champs). Aucune IA. ----
   const theoryOn = !!q.theory;
-  const structById = useMemo(() => Object.fromEntries((db.anatstruct || []).map((s) => [s.id, s])), [db.anatstruct]);
   const [theoryAnswers, setTheoryAnswers] = useState({});
   const [theoryOverrides, setTheoryOverrides] = useState(() => new Set());
   const [theoryChecked, setTheoryChecked] = useState(false);
@@ -91,18 +90,17 @@ export function AnatQuiz({ ctx }) {
     if (!theoryOn) return [];
     const out = [];
     coches.forEach((c) => {
-      if (!maskedSet.has(c.id) || !c.structureId) return;
-      const st = structById[c.structureId];
-      if (!st) return;
-      champsFor(st.type).forEach((d) => {
-        const val = ((st.champs && st.champs[d.key]) || '').trim();
+      if (!maskedSet.has(c.id) || !c.type || !c.champs) return;
+      champsFor(c.type).forEach((d) => {
+        const val = ((c.champs && c.champs[d.key]) || '').trim();
         if (!val) return;
-        out.push({ key: c.id + ':' + d.key, cocheId: c.id, coche: c, struct: st, label: d.label, expected: val });
+        // struct « virtuel » (pour la StructureTable de révélation)
+        out.push({ key: c.id + ':' + d.key, cocheId: c.id, coche: c, struct: { type: c.type, champs: c.champs, nom: c.texte }, label: d.label, expected: val });
       });
     });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [theoryOn, coches, maskedSet, structById]);
+  }, [theoryOn, coches, maskedSet]);
 
   const evalTheory = (tq) => {
     if (theoryOverrides.has(tq.key)) return { ok: true, near: false };

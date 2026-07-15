@@ -51,8 +51,9 @@ export function Session({ ctx }) {
   const resetCard = () => { setSelectedIds([]); setValidated(false); setFlipped(false); setPulse(''); };
 
   const advance = async (rating) => {
-    // persist SM-2
-    if (item) {
+    // persist SM-2 — SAUF pour les items ÉPHÉMÈRES (théorie de schéma générée à la
+    // volée) : ils ne sont jamais planifiés ni écrits en base (aucun impact méthode des J).
+    if (item && !item.ephemeral) {
       const quality = RATING_QUALITY[rating];
       const updated = applyReview(item, quality, item._coef || 3);
       delete updated._fiche; delete updated._matiere; delete updated._coef; delete updated._j;
