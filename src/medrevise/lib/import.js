@@ -140,6 +140,9 @@ export async function saveAnatSchema({ ficheId, matiereId, titre, sousCategorie,
     ancre: { x: c.ancre.x, y: c.ancre.y },
     boite: { x: c.boite.x, y: c.boite.y },
     texte: (c.texte || '').trim(),
+    // réponses acceptées supplémentaires (synonymes) — normalisées à la correction,
+    // conservées ici telles que saisies. Nettoyées (trim + non vides + dédoublonnées).
+    reponses_acceptees: [...new Set((c.reponses_acceptees || []).map((r) => (r || '').trim()).filter(Boolean))],
     couleur: c.couleur || null,
     numero: c.numero ?? i + 1,
   }));

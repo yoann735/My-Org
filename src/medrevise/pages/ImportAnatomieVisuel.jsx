@@ -292,15 +292,24 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
                   <span style={{ fontSize: 13, fontWeight: 600, color: c.texte ? 'var(--text)' : 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.texte || '(sans nom)'}</span>
                 )}
                 {sel && (
-                  <div onPointerDown={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px', borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border)', boxShadow: '0 6px 20px rgba(0,0,0,.25)', zIndex: 10 }}>
-                    <div className="row" style={{ gap: 5 }}>
-                      {COLORS.map((sc) => (
-                        <button key={sc} type="button" title="Changer la couleur" onClick={() => updateCoche(c.id, { couleur: sc })}
-                          style={{ width: 18, height: 18, borderRadius: '50%', background: sc, border: sc === col ? '2px solid var(--text)' : '2px solid transparent', cursor: 'pointer', flex: '0 0 auto' }} />
-                      ))}
+                  <div onPointerDown={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', gap: 8, padding: '9px 10px', borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border)', boxShadow: '0 6px 20px rgba(0,0,0,.25)', zIndex: 10, width: 250 }}>
+                    <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                      <div className="row" style={{ gap: 5, flex: 1 }}>
+                        {COLORS.map((sc) => (
+                          <button key={sc} type="button" title="Changer la couleur" onClick={() => updateCoche(c.id, { couleur: sc })}
+                            style={{ width: 18, height: 18, borderRadius: '50%', background: sc, border: sc === col ? '2px solid var(--text)' : '2px solid transparent', cursor: 'pointer', flex: '0 0 auto' }} />
+                        ))}
+                      </div>
+                      <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
+                      <button type="button" className="cd-ic" title="Supprimer cette coche" onClick={() => delCoche(c.id)} style={{ color: 'var(--accent-2)' }}><Icon name="trash" size={14} /></button>
                     </div>
-                    <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
-                    <button type="button" className="cd-ic" title="Supprimer cette coche" onClick={() => delCoche(c.id)} style={{ color: 'var(--accent-2)' }}><Icon name="trash" size={14} /></button>
+                    <div>
+                      <label className="hint" style={{ display: 'block', fontSize: 11, marginBottom: 3 }}>Autres réponses acceptées <span style={{ opacity: .7 }}>(virgules)</span></label>
+                      <input value={(c.reponses_acceptees || []).join(', ')}
+                        placeholder="ex : nerf cubital, N. ulnaire"
+                        onChange={(e) => updateCoche(c.id, { reponses_acceptees: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+                        style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', background: 'var(--bg-2)', color: 'var(--text)', font: 'inherit', fontSize: 12, fontWeight: 500, padding: '5px 7px' }} />
+                    </div>
                   </div>
                 )}
               </div>

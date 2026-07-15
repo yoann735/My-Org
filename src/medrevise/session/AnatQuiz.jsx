@@ -15,7 +15,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta } from '../components/ui.jsx';
 import { index, effectiveCoef } from '../lib/planning.js';
-import { applyReview, qualityFromRatio, normalizeAnswer, todayISO, computeStreak, jStepForInterval } from '../lib/sm2.js';
+import { applyReview, qualityFromRatio, todayISO, computeStreak, jStepForInterval } from '../lib/sm2.js';
+import { matchAnat } from '../lib/anatMatch.js';
 import { blobURL } from '../lib/storage.js';
 
 const DEFAULT_COLOR = '#7C6FE0';
@@ -64,10 +65,13 @@ export function AnatQuiz({ ctx }) {
     return () => { on = false; if (url) URL.revokeObjectURL(url); };
   }, [fiche.imageId]);
 
-  const isCorrect = (c) => {
-    if (overrides.has(c.id)) return true;
-    return normalizeAnswer(answers[c.id]) !== '' && normalizeAnswer(answers[c.id]) === normalizeAnswer(c.texte);
+  // correction tolérante (normalisation + réponses acceptées + « presque »),
+  // 100 % locale. « Compter comme juste » (override) reste le dernier mot.
+  const evalCoche = (c) => {
+    if (overrides.has(c.id)) return { ok: true, near: false };
+    return matchAnat(answers[c.id], c);
   };
+  const isCorrect = (c) => evalCoche(c).ok;
   const correctCount = coches.filter((c) => maskedSet.has(c.id) && isCorrect(c)).length;
   const ratio = maskedIds.length ? correctCount / maskedIds.length : 1;
 
@@ -109,7 +113,7 @@ export function AnatQuiz({ ctx }) {
     );
   }
 
-  const answeredCount = coches.filter((c) => maskedSet.has(c.id) && normalizeAnswer(answers[c.id]) !== '').length;
+  const answeredCount = coches.filter((c) => maskedSet.has(c.id) && (answers[c.id] || '').trim() !== '').length;
 
   return (
     <div className="screen noscroll fadein" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -132,7 +136,7 @@ export function AnatQuiz({ ctx }) {
           <SchemaQuizCanvas
             imgUrl={imgUrl} coches={coches} maskedSet={maskedSet}
             answers={answers} setAnswers={setAnswers} phase={phase}
-            isCorrect={isCorrect} overrides={overrides} toggleOverride={toggleOverride}
+            evalCoche={evalCoche} overrides={overrides} toggleOverride={toggleOverride}
             onEnter={validate}
           />
         </div>
@@ -155,7 +159,7 @@ export function AnatQuiz({ ctx }) {
 }
 
 /* ---- rendu : image + overlay (flèches SVG + ancres + boîtes) en % ---- */
-function SchemaQuizCanvas({ imgUrl, coches, maskedSet, answers, setAnswers, phase, isCorrect, overrides, toggleOverride, onEnter }) {
+function SchemaQuizCanvas({ imgUrl, coches, maskedSet, answers, setAnswers, phase, evalCoche, overrides, toggleOverride, onEnter }) {
   const usedColors = [...new Set(coches.map((c) => c.couleur || DEFAULT_COLOR))];
   return (
     <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)' }}>
@@ -186,9 +190,11 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, answers, setAnswers, phas
         {coches.map((c) => {
           const col = c.couleur || DEFAULT_COLOR;
           const masked = maskedSet.has(c.id);
-          const correct = phase === 'result' && isCorrect(c);
-          const wrong = phase === 'result' && masked && !isCorrect(c);
-          const borderCol = phase === 'result' && masked ? (correct ? '#4FB87A' : '#E0556B') : col;
+          const ev = phase === 'result' && masked ? evalCoche(c) : null;
+          const correct = !!(ev && ev.ok);
+          const near = !!(ev && !ev.ok && ev.near); // faute de frappe : « presque »
+          const wrong = phase === 'result' && masked && !correct;
+          const borderCol = phase === 'result' && masked ? (correct ? '#4FB87A' : near ? '#E0A34F' : '#E0556B') : col;
 
           return (
             <div key={'b' + c.id} style={{ position: 'absolute', left: c.boite.x * 100 + '%', top: c.boite.y * 100 + '%', transform: 'translate(-50%,-50%)', display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 4, maxWidth: '46%', padding: '4px 8px', borderRadius: 8, background: 'var(--card)', border: `2px solid ${borderCol}`, boxShadow: '0 2px 8px rgba(0,0,0,.18)', lineHeight: 1.2, zIndex: 2, opacity: !masked && phase === 'answer' ? 0.85 : 1 }}>
@@ -204,7 +210,7 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, answers, setAnswers, phas
                       onKeyDown={(e) => { if (e.key === 'Enter') onEnter(); }}
                       style={{ border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', font: 'inherit', fontSize: 13, fontWeight: 600, width: 130, maxWidth: 200 }} />
                   ) : (
-                    <span style={{ fontSize: 13, fontWeight: 600, color: correct ? 'var(--text)' : 'var(--accent-2)', textDecoration: wrong ? 'line-through' : 'none', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: correct ? 'var(--text)' : near ? '#E0A34F' : 'var(--accent-2)', textDecoration: wrong && !near ? 'line-through' : 'none', whiteSpace: 'nowrap' }}>
                       {answers[c.id] ? answers[c.id] : '(vide)'}
                     </span>
                   )
@@ -214,6 +220,7 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, answers, setAnswers, phas
               </div>
               {wrong && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3, borderTop: '1px dashed var(--border)', paddingTop: 3 }}>
+                  {near && <span style={{ fontSize: 11, fontWeight: 700, color: '#E0A34F', whiteSpace: 'nowrap' }}><Icon name="alert" size={11} /> Presque — orthographe très proche</span>}
                   <span style={{ fontSize: 12, fontWeight: 700, color: '#4FB87A', whiteSpace: 'nowrap' }}><Icon name="check" size={11} /> {c.texte || '(sans nom)'}</span>
                   <button type="button" className="btn ghost sm" style={{ padding: '2px 6px', fontSize: 11 }} onClick={() => toggleOverride(c.id)}>
                     <Icon name={overrides.has(c.id) ? 'x' : 'check'} size={11} /> {overrides.has(c.id) ? 'Annuler' : 'Compter comme juste'}
