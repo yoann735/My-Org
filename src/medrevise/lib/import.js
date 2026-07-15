@@ -133,12 +133,23 @@ export async function importAnatomie({ matiereId, titre, sousCategorie, structur
  * "maj" : si `ficheId` est fourni, on met à jour la fiche existante en conservant
  * son état SM-2 ; sinon on en crée une neuve initialisée à nextReview = aujourd'hui.
  */
-export async function saveAnatSchema({ ficheId, matiereId, titre, sousCategorie, imageId, imageW, imageH, coches }) {
-  const sousTitre = sousCategorie ? `Schéma annoté · ${sousCategorie}` : 'Schéma annoté';
-  const cleanCoches = (coches || []).map((c, i) => ({
+/* ---- normalisation d'UNE annotation (coche « point » OU zone). Coords 0..1.
+   kind absent = 'point' (rétro-compat total). Une ZONE porte en plus sa géométrie
+   de région { shape:'rect'|'poly', … , opacity }. Tous les autres champs (texte,
+   réponses acceptées, type, champs de théorie) sont IDENTIQUES à une coche → le
+   quiz, la correction et la génération de théorie traitent zones et points
+   uniformément. ---- */
+const clamp01 = (v) => Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0));
+const clampPt = (p) => ({ x: clamp01(p && p.x), y: clamp01(p && p.y) });
+const clampOpacity = (o) => Math.max(0.05, Math.min(0.6, Number.isFinite(o) ? o : 0.25));
+
+export function cleanCoche(c, i = 0) {
+  const kind = c.kind === 'zone' ? 'zone' : 'point';
+  const base = {
     id: c.id || genId('c'),
-    ancre: { x: c.ancre.x, y: c.ancre.y },
-    boite: { x: c.boite.x, y: c.boite.y },
+    kind,
+    ancre: clampPt(c.ancre),
+    boite: clampPt(c.boite),
     texte: (c.texte || '').trim(),
     // réponses acceptées supplémentaires (synonymes) — normalisées à la correction,
     // conservées ici telles que saisies. Nettoyées (trim + non vides + dédoublonnées).
@@ -149,7 +160,23 @@ export async function saveAnatSchema({ ficheId, matiereId, titre, sousCategorie,
     champs: (c.champs && typeof c.champs === 'object') ? c.champs : {},
     couleur: c.couleur || null,
     numero: c.numero ?? i + 1,
-  }));
+  };
+  if (kind === 'zone') {
+    const z = c.zone || {};
+    base.zone = z.shape === 'poly'
+      ? { shape: 'poly', points: (z.points || []).map(clampPt), opacity: clampOpacity(z.opacity) }
+      : { shape: 'rect', rect: cleanRect(z.rect), opacity: clampOpacity(z.opacity) };
+  }
+  return base;
+}
+function cleanRect(r) {
+  const x = clamp01(r && r.x), y = clamp01(r && r.y);
+  return { x, y, w: clamp01((r && r.w) || 0), h: clamp01((r && r.h) || 0) };
+}
+
+export async function saveAnatSchema({ ficheId, matiereId, titre, sousCategorie, imageId, imageW, imageH, coches }) {
+  const sousTitre = sousCategorie ? `Schéma annoté · ${sousCategorie}` : 'Schéma annoté';
+  const cleanCoches = (coches || []).map((c, i) => cleanCoche(c, i));
 
   const existing = ficheId ? await getOne('fiches', ficheId) : null;
   let fiche;

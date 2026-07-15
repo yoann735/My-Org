@@ -19,6 +19,7 @@ import { applyReview, qualityFromRatio, todayISO, computeStreak, jStepForInterva
 import { matchAnat } from '../lib/anatMatch.js';
 import { champsFor } from '../lib/anatParse.js';
 import { StructureTable } from '../pages/ImportAnatomieTheorie.jsx';
+import { ZonesLayer } from '../pages/ImportAnatomieVisuel.jsx';
 import { blobURL } from '../lib/storage.js';
 
 const DEFAULT_COLOR = '#7C6FE0';
@@ -216,12 +217,19 @@ export function AnatQuiz({ ctx }) {
 /* ---- rendu : image + overlay (flèches SVG + ancres + boîtes) en % ---- */
 function SchemaQuizCanvas({ imgUrl, coches, maskedSet, answers, setAnswers, phase, evalCoche, overrides, toggleOverride, onEnter }) {
   const usedColors = [...new Set(coches.map((c) => c.couleur || DEFAULT_COLOR))];
+  // couleur de bord/remplissage selon l'état de correction (identique aux libellés).
+  const stateColor = (c) => {
+    if (phase === 'result' && maskedSet.has(c.id)) { const ev = evalCoche(c); return ev.ok ? '#4FB87A' : ev.near ? '#E0A34F' : '#E0556B'; }
+    return c.couleur || DEFAULT_COLOR;
+  };
   return (
     <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)' }}>
       <div style={{ position: 'relative', width: '100%', lineHeight: 0 }}>
         {imgUrl
           ? <img src={imgUrl} alt="schéma" draggable={false} style={{ display: 'block', width: '100%', height: 'auto', userSelect: 'none' }} />
           : <div style={{ width: '100%', height: 320, display: 'grid', placeItems: 'center', color: 'var(--text-3)' }}><Icon name="image" size={32} /></div>}
+
+        <ZonesLayer coches={coches} selectedId={null} mode="quiz" borderFor={stateColor} />
 
         <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
           <defs>
@@ -231,13 +239,13 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, answers, setAnswers, phas
               </marker>
             ))}
           </defs>
-          {coches.map((c) => {
+          {coches.filter((c) => c.kind !== 'zone').map((c) => {
             const col = c.couleur || DEFAULT_COLOR;
             return <line key={c.id} x1={c.boite.x * 100 + '%'} y1={c.boite.y * 100 + '%'} x2={c.ancre.x * 100 + '%'} y2={c.ancre.y * 100 + '%'} stroke={col} strokeWidth={2.2} markerEnd={`url(#${markerId(col)})`} />;
           })}
         </svg>
 
-        {coches.map((c) => {
+        {coches.filter((c) => c.kind !== 'zone').map((c) => {
           const col = c.couleur || DEFAULT_COLOR;
           return <span key={'a' + c.id} style={{ position: 'absolute', left: c.ancre.x * 100 + '%', top: c.ancre.y * 100 + '%', width: 12, height: 12, marginLeft: -6, marginTop: -6, borderRadius: '50%', background: col, border: '2px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.35)' }} />;
         })}

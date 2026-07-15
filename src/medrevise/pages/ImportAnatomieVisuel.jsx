@@ -26,6 +26,52 @@ const COLORS = ['#7C6FE0', '#E0556B', '#4FB87A', '#4FA6D9', '#E0A34F', '#B45FD9'
 const DEFAULT_COLOR = COLORS[0];
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const markerId = (col) => 'anat-ah-' + (col || DEFAULT_COLOR).replace('#', '');
+const DEFAULT_ZONE_OPACITY = 0.25;
+
+/* centroïde d'une annotation (zone → centre géométrique ; point → son ancre). Sert
+   à positionner libellé/flèche par défaut et à garder un `ancre` cohérent sur les
+   zones pour les consommateurs qui le lisent encore. */
+export function centroidOf(c) {
+  if (c && c.kind === 'zone' && c.zone) {
+    if (c.zone.shape === 'rect' && c.zone.rect) {
+      const r = c.zone.rect; return { x: clamp01(r.x + r.w / 2), y: clamp01(r.y + r.h / 2) };
+    }
+    const pts = (c.zone.points || []);
+    if (pts.length) { const s = pts.reduce((a, p) => ({ x: a.x + p.x, y: a.y + p.y }), { x: 0, y: 0 }); return { x: s.x / pts.length, y: s.y / pts.length }; }
+  }
+  return (c && c.ancre) || { x: 0.5, y: 0.5 };
+}
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+/* rendu SVG partagé des zones (fill semi-transparent). viewBox 0..100 +
+   preserveAspectRatio=none → coordonnées relatives directes ; vectorEffect garde
+   un trait d'épaisseur constante malgré l'étirement. Utilisé par l'éditeur,
+   l'aperçu (lecture) et le quiz. `borderFor` permet au quiz de recolorer. */
+export function ZonesLayer({ coches, selectedId, mode, onZonePointerDown, borderFor }) {
+  const zones = (coches || []).filter((c) => c.kind === 'zone' && c.zone);
+  if (!zones.length) return null;
+  return (
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
+      {zones.map((c) => {
+        const col = (borderFor && borderFor(c)) || c.couleur || DEFAULT_COLOR;
+        const op = c.zone.opacity ?? DEFAULT_ZONE_OPACITY;
+        const interactive = mode === 'select' && !!onZonePointerDown;
+        const common = {
+          fill: col, fillOpacity: op, stroke: col, strokeOpacity: 0.95,
+          strokeWidth: c.id === selectedId ? 2.4 : 1.6, vectorEffect: 'non-scaling-stroke',
+          style: { pointerEvents: interactive ? 'auto' : 'none', cursor: 'grab' },
+          onPointerDown: interactive ? (e) => onZonePointerDown(e, c) : undefined,
+        };
+        if (c.zone.shape === 'rect') {
+          const r = c.zone.rect;
+          return <rect key={'z' + c.id} x={r.x * 100} y={r.y * 100} width={r.w * 100} height={r.h * 100} rx="1.2" {...common} />;
+        }
+        const pts = (c.zone.points || []).map((p) => `${p.x * 100},${p.y * 100}`).join(' ');
+        return <polygon key={'z' + c.id} points={pts} {...common} />;
+      })}
+    </svg>
+  );
+}
 
 export function ImportAnatomieVisuel({ ctx }) {
   const { db } = ctx;
@@ -138,10 +184,12 @@ export function ImportAnatomieVisuel({ ctx }) {
    ============================================================ */
 export function SchemaEditor({ image, setImage, coches, setCoches }) {
   const frameRef = useRef(null);
-  const [mode, setMode] = useState('select'); // select | add
+  const [mode, setMode] = useState('select'); // select | point | zrect | zpoly
   const [selectedId, setSelectedId] = useState(null);
   const [exporting, setExporting] = useState(false);
   const [theorieFor, setTheorieFor] = useState(null); // id de la coche dont on édite la théorie
+  const [draftRect, setDraftRect] = useState(null);   // zone rectangle en cours de tracé
+  const [draftPoly, setDraftPoly] = useState(null);   // sommets d'une zone polygone en cours
 
   const updateCoche = (id, patch) => setCoches((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   const delCoche = (id) => { setCoches((cs) => cs.filter((c) => c.id !== id)); setSelectedId(null); };
@@ -154,7 +202,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
   const addCocheAt = (p) => {
     const numero = coches.length + 1;
     const c = {
-      id: genId('c'), ancre: { x: p.x, y: p.y },
+      id: genId('c'), kind: 'point', ancre: { x: p.x, y: p.y },
       boite: { x: clamp01(p.x + 0.11), y: clamp01(p.y - 0.06) },
       texte: '', couleur: COLORS[coches.length % COLORS.length], numero,
     };
@@ -162,12 +210,114 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
     setSelectedId(c.id);
   };
 
-  // clic sur le fond : add-mode → place une coche ; sinon → désélectionne
+  // crée une ZONE (rect ou poly) : mêmes champs qu'une coche + géométrie de région.
+  const addZone = (zone) => {
+    const numero = coches.length + 1;
+    const ctr = centroidOf({ kind: 'zone', zone });
+    const c = {
+      id: genId('c'), kind: 'zone', zone,
+      // le libellé se pose à côté du centroïde ; ancre = centroïde (cohérence).
+      boite: { x: clamp01(ctr.x), y: clamp01(ctr.y - 0.02) }, ancre: { x: ctr.x, y: ctr.y },
+      texte: '', couleur: COLORS[coches.length % COLORS.length], numero,
+    };
+    setCoches((cs) => [...cs, c]);
+    setSelectedId(c.id);
+  };
+
+  // tracé RECTANGLE : glisser d'un coin à l'autre.
+  const startRectDraw = (e) => {
+    const p0 = relFromEvent(e.clientX, e.clientY);
+    setDraftRect({ x: p0.x, y: p0.y, w: 0, h: 0 });
+    const rectOf = (p) => ({ x: Math.min(p0.x, p.x), y: Math.min(p0.y, p.y), w: Math.abs(p.x - p0.x), h: Math.abs(p.y - p0.y) });
+    const move = (ev) => setDraftRect(rectOf(relFromEvent(ev.clientX, ev.clientY)));
+    const up = (ev) => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      const rect = rectOf(relFromEvent(ev.clientX, ev.clientY));
+      setDraftRect(null);
+      if (rect.w > 0.02 && rect.h > 0.02) { addZone({ shape: 'rect', rect, opacity: DEFAULT_ZONE_OPACITY }); setMode('select'); }
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+
+  // tracé POLYGONE : un clic = un sommet ; clic près du 1er sommet (ou double-clic) = fermer.
+  const polyClick = (p) => {
+    setDraftPoly((pts) => {
+      const cur = pts || [];
+      if (cur.length >= 3 && dist(cur[0], p) < 0.03) { finishPoly(cur); return null; }
+      return [...cur, p];
+    });
+  };
+  const finishPoly = (pts) => { if (pts && pts.length >= 3) { addZone({ shape: 'poly', points: pts, opacity: DEFAULT_ZONE_OPACITY }); setMode('select'); } setDraftPoly(null); };
+
+  // déplacement d'une zone entière (translation géométrie + libellé + ancre).
+  const startZoneDrag = (e, coche) => {
+    e.stopPropagation();
+    const startX = e.clientX, startY = e.clientY; let moved = false;
+    const z0 = coche.zone, b0 = coche.boite, a0 = coche.ancre;
+    const move = (ev) => {
+      if (!moved && Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 4) moved = true;
+      if (!moved) return;
+      const r = frameRef.current.getBoundingClientRect();
+      const dx = (ev.clientX - startX) / r.width, dy = (ev.clientY - startY) / r.height;
+      const nz = z0.shape === 'rect'
+        ? { ...z0, rect: { ...z0.rect, x: clamp01(z0.rect.x + dx), y: clamp01(z0.rect.y + dy) } }
+        : { ...z0, points: z0.points.map((p) => ({ x: clamp01(p.x + dx), y: clamp01(p.y + dy) })) };
+      updateCoche(coche.id, { zone: nz, boite: { x: clamp01(b0.x + dx), y: clamp01(b0.y + dy) }, ancre: { x: clamp01(a0.x + dx), y: clamp01(a0.y + dy) } });
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); if (!moved) setSelectedId(coche.id); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+
+  // poignée de coin d'un rectangle (redimensionnement).
+  const startRectCorner = (e, coche, corner) => {
+    e.stopPropagation();
+    const r0 = coche.zone.rect;
+    const x0 = r0.x, y0 = r0.y, x1 = r0.x + r0.w, y1 = r0.y + r0.h;
+    const move = (ev) => {
+      const p = relFromEvent(ev.clientX, ev.clientY);
+      const nx0 = corner.includes('w') ? p.x : x0, nx1 = corner.includes('e') ? p.x : x1;
+      const ny0 = corner.includes('n') ? p.y : y0, ny1 = corner.includes('s') ? p.y : y1;
+      const rect = { x: Math.min(nx0, nx1), y: Math.min(ny0, ny1), w: Math.abs(nx1 - nx0), h: Math.abs(ny1 - ny0) };
+      updateCoche(coche.id, { zone: { ...coche.zone, rect } });
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+
+  // poignée d'un sommet de polygone.
+  const startVertexDrag = (e, coche, idx) => {
+    e.stopPropagation();
+    const move = (ev) => {
+      const p = relFromEvent(ev.clientX, ev.clientY);
+      updateCoche(coche.id, { zone: { ...coche.zone, points: coche.zone.points.map((q, i) => (i === idx ? { x: p.x, y: p.y } : q)) } });
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+
+  // clic sur le fond : selon le mode → place une coche, trace une zone, ou désélectionne.
   const onFrameDown = (e) => {
     if (e.button !== 0) return;
-    if (mode === 'add') addCocheAt(relFromEvent(e.clientX, e.clientY));
+    const p = relFromEvent(e.clientX, e.clientY);
+    if (mode === 'point') addCocheAt(p);
+    else if (mode === 'zrect') startRectDraw(e);
+    else if (mode === 'zpoly') polyClick(p);
     else setSelectedId(null);
   };
+
+  // Échap / Entrée pendant un tracé polygone : annuler / fermer.
+  useEffect(() => {
+    if (mode !== 'zpoly') return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') { setDraftPoly(null); setMode('select'); }
+      else if (e.key === 'Enter') setDraftPoly((pts) => { finishPoly(pts); return null; });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+  // sortir du mode polygone en cours de tracé → nettoie le brouillon.
+  useEffect(() => { if (mode !== 'zpoly' && draftPoly) setDraftPoly(null); /* eslint-disable-next-line */ }, [mode]);
 
   // drag générique d'un point relatif (boîte ou ancre) avec seuil clic/déplacement
   const startDrag = (e, coche, field) => {
@@ -232,9 +382,12 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
     <div>
       {/* barre d'outils */}
       <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button type="button" className={'btn' + (mode === 'add' ? ' primary' : '')} onClick={() => setMode((m) => (m === 'add' ? 'select' : 'add'))}>
-          <Icon name="plus" size={14} /> {mode === 'add' ? 'Mode ajout actif' : 'Ajouter une coche'}
-        </button>
+        <div className="seg">
+          <button type="button" className={'seg-btn' + (mode === 'select' ? ' active' : '')} onClick={() => setMode('select')}><Icon name="grip" size={13} /> Sélection</button>
+          <button type="button" className={'seg-btn' + (mode === 'point' ? ' active' : '')} onClick={() => setMode('point')}><Icon name="target" size={13} /> Coche</button>
+          <button type="button" className={'seg-btn' + (mode === 'zrect' ? ' active' : '')} onClick={() => setMode('zrect')}><Icon name="maximize" size={13} /> Zone rect.</button>
+          <button type="button" className={'seg-btn' + (mode === 'zpoly' ? ' active' : '')} onClick={() => setMode('zpoly')}><Icon name="sparkle" size={13} /> Zone libre</button>
+        </div>
         <label className="btn ghost" style={{ cursor: 'pointer' }}>
           <Icon name="image" size={14} /> Changer l'image
           <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => setImage(e.target.files[0])} />
@@ -243,14 +396,32 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
         <button type="button" className="btn ghost sm" disabled={exporting} onClick={() => doExport('png')}><Icon name="upload" size={13} /> Export image</button>
         <button type="button" className="btn ghost sm" disabled={exporting} onClick={() => doExport('pdf')}><Icon name="filePdf" size={13} /> Export PDF</button>
       </div>
-      {mode === 'add' && <div className="hint" style={{ marginBottom: 8, color: 'var(--accent)' }}><Icon name="target" size={13} /> Clique un point de l'image pour y placer une coche. Clique une coche existante pour la modifier. Reclique « Mode ajout » pour terminer.</div>}
+      {mode === 'point' && <div className="hint" style={{ marginBottom: 8, color: 'var(--accent)' }}><Icon name="target" size={13} /> Clique un point de l'image pour y placer une coche. Repasse en « Sélection » pour la modifier.</div>}
+      {mode === 'zrect' && <div className="hint" style={{ marginBottom: 8, color: 'var(--accent)' }}><Icon name="maximize" size={13} /> Glisse d'un coin à l'autre pour tracer une zone rectangulaire (région à faible opacité).</div>}
+      {mode === 'zpoly' && <div className="hint" style={{ marginBottom: 8, color: 'var(--accent)' }}><Icon name="sparkle" size={13} /> Clique chaque sommet de la région. Clique près du 1er point (ou double-clic / Entrée) pour fermer. Échap pour annuler.</div>}
 
       {/* zone image + overlay */}
       <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)' }}>
-        <div ref={frameRef} style={{ position: 'relative', width: '100%', lineHeight: 0, cursor: mode === 'add' ? 'crosshair' : 'default', touchAction: 'none' }} onPointerDown={onFrameDown}>
+        <div ref={frameRef} style={{ position: 'relative', width: '100%', lineHeight: 0, cursor: (mode === 'point' || mode === 'zrect' || mode === 'zpoly') ? 'crosshair' : 'default', touchAction: 'none' }} onPointerDown={onFrameDown} onDoubleClick={() => { if (mode === 'zpoly') setDraftPoly((pts) => { finishPoly(pts); return null; }); }}>
           <img src={image.url} alt="schéma" draggable={false} style={{ display: 'block', width: '100%', height: 'auto', userSelect: 'none' }} />
 
-          {/* flèches (px space : pas de viewBox → orient auto non déformé) */}
+          {/* ZONES (régions à faible opacité) — sous les flèches/libellés */}
+          <ZonesLayer coches={coches} selectedId={selectedId} mode={mode} onZonePointerDown={startZoneDrag} />
+
+          {/* brouillon de tracé (rect en cours / polygone en cours) */}
+          {(draftRect || (draftPoly && draftPoly.length)) && (
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
+              {draftRect && <rect x={draftRect.x * 100} y={draftRect.y * 100} width={draftRect.w * 100} height={draftRect.h * 100} rx="1.2" fill="var(--accent)" fillOpacity="0.18" stroke="var(--accent)" strokeWidth="1.6" strokeDasharray="3 2" vectorEffect="non-scaling-stroke" />}
+              {draftPoly && draftPoly.length > 0 && (
+                <>
+                  <polyline points={draftPoly.map((p) => `${p.x * 100},${p.y * 100}`).join(' ')} fill="none" stroke="var(--accent)" strokeWidth="1.6" strokeDasharray="3 2" vectorEffect="non-scaling-stroke" />
+                  {draftPoly.map((p, i) => <circle key={i} cx={p.x * 100} cy={p.y * 100} r="1" fill="var(--accent)" vectorEffect="non-scaling-stroke" />)}
+                </>
+              )}
+            </svg>
+          )}
+
+          {/* flèches (px space : pas de viewBox → orient auto non déformé) — POINTS seuls */}
           <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
             <defs>
               {usedColors.map((col) => (
@@ -259,14 +430,14 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
                 </marker>
               ))}
             </defs>
-            {coches.map((c) => {
+            {coches.filter((c) => c.kind !== 'zone').map((c) => {
               const col = c.couleur || DEFAULT_COLOR;
               return <line key={c.id} x1={c.boite.x * 100 + '%'} y1={c.boite.y * 100 + '%'} x2={c.ancre.x * 100 + '%'} y2={c.ancre.y * 100 + '%'} stroke={col} strokeWidth={2.2} markerEnd={`url(#${markerId(col)})`} />;
             })}
           </svg>
 
-          {/* ancres (points désignés) — déplaçables indépendamment */}
-          {coches.map((c) => {
+          {/* ancres (points désignés) — déplaçables indépendamment (POINTS seuls) */}
+          {coches.filter((c) => c.kind !== 'zone').map((c) => {
             const col = c.couleur || DEFAULT_COLOR;
             const sel = c.id === selectedId;
             return (
@@ -275,6 +446,27 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
                 style={{ position: 'absolute', left: c.ancre.x * 100 + '%', top: c.ancre.y * 100 + '%', width: sel ? 15 : 12, height: sel ? 15 : 12, marginLeft: sel ? -7.5 : -6, marginTop: sel ? -7.5 : -6, borderRadius: '50%', background: col, border: '2px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.35)', cursor: 'grab', touchAction: 'none' }} />
             );
           })}
+
+          {/* poignées d'édition de la zone sélectionnée (coins de rect / sommets de poly) */}
+          {(() => {
+            const c = coches.find((x) => x.id === selectedId && x.kind === 'zone');
+            if (!c || mode !== 'select') return null;
+            const col = c.couleur || DEFAULT_COLOR;
+            const handle = (x, y, onDown, key) => (
+              <span key={key} onPointerDown={onDown}
+                style={{ position: 'absolute', left: x * 100 + '%', top: y * 100 + '%', width: 12, height: 12, marginLeft: -6, marginTop: -6, borderRadius: '50%', background: '#fff', border: `2px solid ${col}`, boxShadow: '0 1px 3px rgba(0,0,0,.35)', cursor: 'grab', touchAction: 'none', zIndex: 6 }} />
+            );
+            if (c.zone.shape === 'rect') {
+              const r = c.zone.rect;
+              return [
+                handle(r.x, r.y, (e) => startRectCorner(e, c, 'nw'), 'nw'),
+                handle(r.x + r.w, r.y, (e) => startRectCorner(e, c, 'ne'), 'ne'),
+                handle(r.x, r.y + r.h, (e) => startRectCorner(e, c, 'sw'), 'sw'),
+                handle(r.x + r.w, r.y + r.h, (e) => startRectCorner(e, c, 'se'), 'se'),
+              ];
+            }
+            return (c.zone.points || []).map((p, i) => handle(p.x, p.y, (e) => startVertexDrag(e, c, i), 'v' + i));
+          })()}
 
           {/* boîtes de libellé — déplaçables + édition inline + popover */}
           {coches.map((c) => {
@@ -303,8 +495,17 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
                         ))}
                       </div>
                       <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
-                      <button type="button" className="cd-ic" title="Supprimer cette coche" onClick={() => delCoche(c.id)} style={{ color: 'var(--accent-2)' }}><Icon name="trash" size={14} /></button>
+                      <button type="button" className="cd-ic" title={c.kind === 'zone' ? 'Supprimer cette zone' : 'Supprimer cette coche'} onClick={() => delCoche(c.id)} style={{ color: 'var(--accent-2)' }}><Icon name="trash" size={14} /></button>
                     </div>
+                    {c.kind === 'zone' && (
+                      <div className="row" style={{ gap: 8, alignItems: 'center' }} title="Opacité du remplissage">
+                        <Icon name="drop" size={13} />
+                        <input type="range" min="5" max="60" value={Math.round((c.zone.opacity ?? DEFAULT_ZONE_OPACITY) * 100)}
+                          onChange={(e) => updateCoche(c.id, { zone: { ...c.zone, opacity: Number(e.target.value) / 100 } })}
+                          style={{ flex: 1 }} />
+                        <span className="hint" style={{ fontSize: 11, width: 34, textAlign: 'right' }}>{Math.round((c.zone.opacity ?? DEFAULT_ZONE_OPACITY) * 100)}%</span>
+                      </div>
+                    )}
                     <div>
                       <label className="hint" style={{ display: 'block', fontSize: 11, marginBottom: 3 }}>Autres réponses acceptées <span style={{ opacity: .7 }}>(virgules)</span></label>
                       <input value={(c.reponses_acceptees || []).join(', ')}
