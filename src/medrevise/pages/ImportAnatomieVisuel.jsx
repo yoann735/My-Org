@@ -123,7 +123,7 @@ export function ImportAnatomieVisuel({ ctx }) {
       <div className="fadein" style={{ textAlign: 'center', padding: '6px 0' }}>
         <div className="gd-badge" style={{ width: 60, height: 60, borderRadius: 18, margin: '0 auto 14px' }}><Icon name="check" size={30} stroke={3} /></div>
         <div className="serif" style={{ fontSize: 21 }}>Schéma enregistré !</div>
-        <div className="hint" style={{ marginTop: 8 }}>✓ {result.count} coche{result.count > 1 ? 's' : ''} · révisable en quiz d'anatomie visuelle.</div>
+        <div className="hint" style={{ marginTop: 8 }}>✓ {result.count} coche{result.count > 1 ? 's' : ''} · révisable en quiz de schéma.</div>
         <div className="row" style={{ gap: 10, justifyContent: 'center', marginTop: 18, flexWrap: 'wrap' }}>
           <button className="btn" onClick={resetForm}><Icon name="refresh" size={14} /> Autre schéma</button>
           <button className="btn primary" onClick={() => ctx.go('library')}><Icon name="book" size={14} /> Bibliothèque</button>

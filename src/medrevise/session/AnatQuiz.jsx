@@ -167,7 +167,7 @@ export function AnatQuiz({ ctx }) {
           <h1 className="serif">Schéma terminé !</h1>
           <div className="cel-score">« {fiche.titre} » — {finalScore.correct}/{finalScore.total} {finalScore.theoryTotal ? 'bonnes réponses' : 'coches'} ({pct}%)</div>
           {finalScore.theoryTotal > 0 && (
-            <div className="hint" style={{ marginTop: 4 }}>Visuel {finalScore.visual}/{finalScore.visualTotal} · Théorie {finalScore.theory}/{finalScore.theoryTotal}</div>
+            <div className="hint" style={{ marginTop: 4 }}>Schéma {finalScore.visual}/{finalScore.visualTotal} · Théorie {finalScore.theory}/{finalScore.theoryTotal}</div>
           )}
           <div className="cel-streak"><Icon name="calendar" size={15} /> Prochaine révision : {finalScore.jLabel}</div>
           <div className="row" style={{ gap: 12, justifyContent: 'center', marginTop: 26 }}>
@@ -224,7 +224,7 @@ export function AnatQuiz({ ctx }) {
                 ? 'Ouvre chaque coche masquée : nom + champs de théorie, directement sur l\'image. Puis valide.'
                 : 'Remplis le nom de chaque coche masquée, puis valide.')
               : theoryOn && theoryQuestions.length > 0
-                ? <>Visuel <strong className="tnum">{correctCount}/{maskedIds.length}</strong> · Théorie <strong className="tnum">{theoryCorrect}/{theoryQuestions.length}</strong> — corrections dans chaque coche.</>
+                ? <>Schéma <strong className="tnum">{correctCount}/{maskedIds.length}</strong> · Théorie <strong className="tnum">{theoryCorrect}/{theoryQuestions.length}</strong> — corrections dans chaque coche.</>
                 : <>Score : <strong className="tnum">{correctCount}/{maskedIds.length}</strong> · les erreurs révèlent la bonne réponse — « Compter comme juste » si ta variante est correcte.</>}
           </span>
           {phase === 'answer'

@@ -505,9 +505,9 @@ function AnatSchemaLauncher({ fiche, ctx, meta, due, scheduled, jp }) {
           <div className="imp-field">
             <label>Mode de révision</label>
             <div className="seg">
-              <button type="button" className={'seg-btn' + (revMode === 'visuel' ? ' active' : '')} onClick={() => setRevMode('visuel')}><Icon name="image" size={13} /> Visuel seul</button>
+              <button type="button" className={'seg-btn' + (revMode === 'visuel' ? ' active' : '')} onClick={() => setRevMode('visuel')}><Icon name="image" size={13} /> Schéma seul</button>
               <button type="button" className={'seg-btn' + (revMode === 'theorie' ? ' active' : '')} onClick={() => setRevMode('theorie')} disabled={nbTheory === 0} title={nbTheory === 0 ? 'Aucune coche ne porte de théorie' : ''}><Icon name="list" size={13} /> Théorie seule</button>
-              <button type="button" className={'seg-btn' + (revMode === 'both' ? ' active' : '')} onClick={() => setRevMode('both')} disabled={nbTheory === 0} title={nbTheory === 0 ? 'Aucune coche ne porte de théorie' : ''}><Icon name="layers" size={13} /> Visuel + Théorie</button>
+              <button type="button" className={'seg-btn' + (revMode === 'both' ? ' active' : '')} onClick={() => setRevMode('both')} disabled={nbTheory === 0} title={nbTheory === 0 ? 'Aucune coche ne porte de théorie' : ''}><Icon name="layers" size={13} /> Schéma + Théorie</button>
             </div>
             <div className="hint" style={{ marginTop: 6 }}>
               {nbTheory === 0
@@ -549,7 +549,7 @@ function AnatSchemaLauncher({ fiche, ctx, meta, due, scheduled, jp }) {
             </button>
             <button className="btn primary lg" style={{ flex: 1, justifyContent: 'center' }} disabled={launchDisabled}
               onClick={launch}>
-              <Icon name="play" size={16} fill /> Lancer{revMode === 'theorie' ? ' la théorie' : revMode === 'both' ? ' (visuel + théorie)' : ' le visuel'}
+              <Icon name="play" size={16} fill /> Lancer{revMode === 'theorie' ? ' la théorie' : revMode === 'both' ? ' (schéma + théorie)' : ' le schéma'}
             </button>
           </div>
           {nb === 0 && <div className="hint" style={{ marginTop: 8 }}>Ce schéma n'a aucune coche — passe en Édition pour en ajouter.</div>}

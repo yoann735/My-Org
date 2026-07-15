@@ -304,12 +304,12 @@ function ImportPanel({ ctx }) {
             <label>Type de fiche anatomie</label>
             <div className="seg" style={{ transform: 'scale(.96)', transformOrigin: 'left center' }}>
               <button type="button" className={'seg-btn' + (anatSub === 'theorie' ? ' active' : '')} onClick={() => setAnatSub('theorie')}><Icon name="list" size={13} /> Théorie</button>
-              <button type="button" className={'seg-btn' + (anatSub === 'visuel' ? ' active' : '')} onClick={() => setAnatSub('visuel')}><Icon name="image" size={13} /> Visuel</button>
+              <button type="button" className={'seg-btn' + (anatSub === 'visuel' ? ' active' : '')} onClick={() => setAnatSub('visuel')}><Icon name="image" size={13} /> Schéma</button>
             </div>
             <div className="hint" style={{ marginTop: 6 }}>
               {anatSub === 'theorie'
                 ? 'Colle un texte descriptif typé → extraction locale des champs (origine, insertion…), sans IA.'
-                : 'Schéma annoté (coches + flèches) → quiz d\'anatomie visuelle.'}
+                : 'Schéma annoté (coches + zones) → quiz de schéma (plusieurs vues possibles).'}
             </div>
           </div>
           {anatSub === 'theorie'
