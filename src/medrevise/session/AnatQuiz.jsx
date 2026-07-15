@@ -18,7 +18,6 @@ import { index, effectiveCoef } from '../lib/planning.js';
 import { applyReview, qualityFromRatio, todayISO, computeStreak, jStepForInterval } from '../lib/sm2.js';
 import { matchAnat } from '../lib/anatMatch.js';
 import { champsFor } from '../lib/anatParse.js';
-import { StructureTable } from '../pages/ImportAnatomieTheorie.jsx';
 import { ZonesLayer } from '../pages/ImportAnatomieVisuel.jsx';
 import { ficheImages, vueLabel } from '../lib/anatSchema.js';
 import { blobURL } from '../lib/storage.js';
@@ -70,7 +69,6 @@ export function AnatQuiz({ ctx }) {
   const theoryOn = !!q.theory;
   const [theoryAnswers, setTheoryAnswers] = useState({});
   const [theoryOverrides, setTheoryOverrides] = useState(() => new Set());
-  const [theoryChecked, setTheoryChecked] = useState(false);
 
   useEffect(() => {
     let on = true; const created = [];
@@ -106,8 +104,8 @@ export function AnatQuiz({ ctx }) {
       champsFor(c.type).forEach((d) => {
         const val = ((c.champs && c.champs[d.key]) || '').trim();
         if (!val) return;
-        // struct « virtuel » (pour la StructureTable de révélation)
-        out.push({ key: c.id + ':' + d.key, cocheId: c.id, coche: c, struct: { type: c.type, champs: c.champs, nom: c.texte }, label: d.label, expected: val });
+        // 1 question par (coche × champ non vide) : sert au score combiné (nom + champs).
+        out.push({ key: c.id + ':' + d.key, cocheId: c.id, label: d.label, expected: val });
       });
     });
     return out;
@@ -119,6 +117,16 @@ export function AnatQuiz({ ctx }) {
     return matchAnat(theoryAnswers[tq.key], { texte: tq.expected });
   };
   const theoryCorrect = theoryQuestions.filter((tq) => evalTheory(tq).ok).length;
+
+  // ---- SAISIE DANS LA COCHE (refonte B) : coches MASQUÉES qui portent de la théorie.
+  // Leur carte s'ouvre à même l'image (nom + un champ par ligne), une active à la fois. ----
+  const fieldCoches = useMemo(
+    () => coches.filter((c) => maskedSet.has(c.id) && theoryOn && c.type && c.champs && champsFor(c.type).some((d) => (c.champs[d.key] || '').trim())),
+    [coches, maskedSet, theoryOn],
+  );
+  const activeOrder = useMemo(() => fieldCoches.map((c) => c.id), [fieldCoches]);
+  const [activeId, setActiveId] = useState(null);
+  useEffect(() => { setActiveId((fieldCoches[0] && fieldCoches[0].id) || null); }, [fiche.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // score (b) : le ratio combine visuel + champs théoriques.
   const totalCount = maskedIds.length + theoryQuestions.length;
@@ -199,16 +207,12 @@ export function AnatQuiz({ ctx }) {
                 answers={answers} setAnswers={setAnswers} phase={phase}
                 evalCoche={evalCoche} overrides={overrides} toggleOverride={toggleOverride}
                 onEnter={validate}
+                theoryOn={theoryOn} theoryAnswers={theoryAnswers} setTheoryAnswers={setTheoryAnswers}
+                evalTheory={evalTheory} theoryOverrides={theoryOverrides} toggleTheoryOverride={toggleTheoryOverride}
+                activeId={activeId} setActiveId={setActiveId} activeOrder={activeOrder}
               />
             </div>
           ))}
-          {theoryOn && phase === 'result' && theoryQuestions.length > 0 && (
-            <TheoryPanel
-              questions={theoryQuestions} answers={theoryAnswers} setAnswers={setTheoryAnswers}
-              checked={theoryChecked} onCheck={() => setTheoryChecked(true)}
-              evalTheory={evalTheory} overrides={theoryOverrides} toggleOverride={toggleTheoryOverride}
-            />
-          )}
         </div>
       </div>
 
@@ -216,9 +220,11 @@ export function AnatQuiz({ ctx }) {
         <div className="row spread" style={{ maxWidth: 900, margin: '0 auto', width: '100%' }}>
           <span className="hint">
             {phase === 'answer'
-              ? 'Remplis le nom de chaque coche masquée, puis valide.'
+              ? (theoryOn && theoryQuestions.length > 0
+                ? 'Ouvre chaque coche masquée : nom + champs de théorie, directement sur l\'image. Puis valide.'
+                : 'Remplis le nom de chaque coche masquée, puis valide.')
               : theoryOn && theoryQuestions.length > 0
-                ? <>Visuel <strong className="tnum">{correctCount}/{maskedIds.length}</strong> · Théorie <strong className="tnum">{theoryCorrect}/{theoryQuestions.length}</strong> — réponds aussi aux champs ci-dessous.</>
+                ? <>Visuel <strong className="tnum">{correctCount}/{maskedIds.length}</strong> · Théorie <strong className="tnum">{theoryCorrect}/{theoryQuestions.length}</strong> — corrections dans chaque coche.</>
                 : <>Score : <strong className="tnum">{correctCount}/{maskedIds.length}</strong> · les erreurs révèlent la bonne réponse — « Compter comme juste » si ta variante est correcte.</>}
           </span>
           {phase === 'answer'
@@ -231,8 +237,13 @@ export function AnatQuiz({ ctx }) {
 }
 
 /* ---- rendu : image + overlay (flèches SVG + ancres + boîtes) en % ---- */
-function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, setAnswers, phase, evalCoche, overrides, toggleOverride, onEnter }) {
+function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, setAnswers, phase, evalCoche, overrides, toggleOverride, onEnter,
+  theoryOn, theoryAnswers, setTheoryAnswers, evalTheory, theoryOverrides, toggleTheoryOverride, activeId, setActiveId, activeOrder }) {
   const usedColors = [...new Set(coches.map((c) => c.couleur || DEFAULT_COLOR))];
+  // champs de théorie (non vides) d'une coche masquée — mêmes clés que theoryQuestions.
+  const fieldsOf = (c) => (theoryOn && c.type && c.champs)
+    ? champsFor(c.type).map((d) => ({ key: c.id + ':' + d.key, label: d.label, expected: (c.champs[d.key] || '').trim() })).filter((f) => f.expected)
+    : [];
   // couleur de bord/remplissage selon l'état de correction (identique aux libellés).
   const stateColor = (c) => {
     if (phase === 'result' && maskedSet.has(c.id)) { const ev = evalCoche(c); return ev.ok ? '#4FB87A' : ev.near ? '#E0A34F' : '#E0556B'; }
@@ -269,9 +280,90 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, s
         {coches.map((c) => {
           const col = c.couleur || DEFAULT_COLOR;
           const masked = maskedSet.has(c.id);
+          const fields = masked ? fieldsOf(c) : [];
+
+          // ===== coche masquée AVEC théorie : carte enrichie ancrée (nom + champs) =====
+          if (masked && fields.length > 0) {
+            const active = c.id === activeId;
+            const nameEv = phase === 'result' ? evalCoche(c) : null;
+            const nameOk = !!(nameEv && nameEv.ok);
+            const nameNear = !!(nameEv && !nameEv.ok && nameEv.near);
+            const badgeCol = phase === 'result' ? (nameOk ? '#4FB87A' : nameNear ? '#E0A34F' : '#E0556B') : col;
+
+            if (!active) {
+              const filled = (answers[c.id] || '').trim() !== '' || fields.some((f) => (theoryAnswers[f.key] || '').trim() !== '');
+              return (
+                <button key={'b' + c.id} type="button" onClick={() => setActiveId(c.id)}
+                  style={{ position: 'absolute', left: c.boite.x * 100 + '%', top: c.boite.y * 100 + '%', transform: 'translate(-50%,-50%)', display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 8, background: 'var(--card)', border: `2px solid ${badgeCol}`, boxShadow: '0 2px 8px rgba(0,0,0,.18)', cursor: 'pointer', zIndex: 3 }}>
+                  <span style={{ flex: '0 0 auto', width: 18, height: 18, borderRadius: '50%', background: badgeCol, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>
+                    {phase === 'result' ? <Icon name={nameOk ? 'check' : 'x'} size={11} stroke={3} /> : c.numero}
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)' }}>{phase === 'answer' ? (filled ? 'modifier' : 'à remplir') : 'revoir'}</span>
+                  <span className="pill" style={{ height: 16, fontSize: 10, padding: '0 5px' }}>{fields.length} ch.</span>
+                </button>
+              );
+            }
+
+            const flipX = c.boite.x > 0.5, flipY = c.boite.y > 0.5;
+            return (
+              <div key={'b' + c.id}
+                style={{ position: 'absolute', left: c.boite.x * 100 + '%', top: c.boite.y * 100 + '%', transform: `translate(${flipX ? '-100%' : '0'}, ${flipY ? '-100%' : '0'})`, width: 'min(260px, 72vw)', maxHeight: '84%', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 11px', borderRadius: 10, background: 'var(--card)', border: `2px solid ${badgeCol}`, boxShadow: '0 8px 24px rgba(0,0,0,.28)', zIndex: 20 }}>
+                <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                  <span style={{ flex: '0 0 auto', width: 20, height: 20, borderRadius: '50%', background: badgeCol, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>
+                    {phase === 'result' ? <Icon name={nameOk ? 'check' : 'x'} size={12} stroke={3} /> : c.numero}
+                  </span>
+                  <span className="pill" style={{ height: 18, fontSize: 10.5 }}>{c.type}</span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <label className="hint" style={{ fontWeight: 700, fontSize: 11 }}>Nom de la structure ?</label>
+                  {phase === 'answer' ? (
+                    <input autoFocus value={answers[c.id] || ''} placeholder="nom ?" className="srcmgr-input" style={{ width: '100%', fontSize: 12.5 }}
+                      onChange={(e) => setAnswers((a) => ({ ...a, [c.id]: e.target.value }))} />
+                  ) : (
+                    <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: nameOk ? '#4FB87A' : nameNear ? '#E0A34F' : 'var(--accent-2)', textDecoration: (!nameOk && !nameNear) ? 'line-through' : 'none' }}>{answers[c.id] || '(vide)'}</span>
+                      {!nameOk && <span style={{ fontSize: 12, fontWeight: 700, color: '#4FB87A' }}><Icon name="check" size={11} /> {c.texte || '(sans nom)'}</span>}
+                      {!nameOk && <button type="button" className="btn ghost sm" style={{ padding: '1px 6px', fontSize: 10.5 }} onClick={() => toggleOverride(c.id)}><Icon name={overrides.has(c.id) ? 'x' : 'check'} size={10} /> {overrides.has(c.id) ? 'Annuler' : 'Juste'}</button>}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7, borderTop: '1px dashed var(--border)', paddingTop: 7 }}>
+                  {fields.map((f) => {
+                    const ev = phase === 'result' ? evalTheory({ key: f.key, expected: f.expected }) : null;
+                    const ok = !!(ev && ev.ok), near = !!(ev && !ev.ok && ev.near);
+                    const bc = phase !== 'result' ? 'var(--border)' : ok ? '#4FB87A' : near ? '#E0A34F' : '#E0556B';
+                    return (
+                      <div key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <label className="hint" style={{ fontWeight: 700, fontSize: 11 }}>{f.label} ?</label>
+                        {phase === 'answer' ? (
+                          <input value={theoryAnswers[f.key] || ''} placeholder="ta réponse…" className="srcmgr-input" style={{ width: '100%', fontSize: 12, borderColor: bc }}
+                            onChange={(e) => setTheoryAnswers((a) => ({ ...a, [f.key]: e.target.value }))} />
+                        ) : (
+                          <div className="row" style={{ gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: ok ? '#4FB87A' : near ? '#E0A34F' : 'var(--accent-2)', textDecoration: (!ok && !near) ? 'line-through' : 'none' }}>{theoryAnswers[f.key] || '(vide)'}</span>
+                            {!ok && <span style={{ fontSize: 12, fontWeight: 700, color: '#4FB87A' }}>→ {f.expected}</span>}
+                            {!ok && <button type="button" className="btn ghost sm" style={{ padding: '1px 6px', fontSize: 10.5 }} onClick={() => toggleTheoryOverride(f.key)}><Icon name={theoryOverrides.has(f.key) ? 'x' : 'check'} size={10} /> {theoryOverrides.has(f.key) ? 'Annuler' : 'Juste'}</button>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="row spread" style={{ gap: 8 }}>
+                  <button type="button" className="btn ghost sm" onClick={() => setActiveId(null)} style={{ fontSize: 11 }}><Icon name="minus" size={11} /> Réduire</button>
+                  {(() => { const i = activeOrder.indexOf(c.id); const nxt = activeOrder[i + 1]; return nxt ? <button type="button" className="btn sm" onClick={() => setActiveId(nxt)} style={{ fontSize: 11 }}>Suivant <Icon name="arrowR" size={11} /></button> : null; })()}
+                </div>
+              </div>
+            );
+          }
+
+          // ===== coche/zone sans théorie (ou non masquée) : boîte nom simple (existant) =====
           const ev = phase === 'result' && masked ? evalCoche(c) : null;
           const correct = !!(ev && ev.ok);
-          const near = !!(ev && !ev.ok && ev.near); // faute de frappe : « presque »
+          const near = !!(ev && !ev.ok && ev.near);
           const wrong = phase === 'result' && masked && !correct;
           const borderCol = phase === 'result' && masked ? (correct ? '#4FB87A' : near ? '#E0A34F' : '#E0556B') : col;
 
@@ -314,71 +406,5 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, s
   );
 }
 
-/* ---- panneau THÉORIE : mini-questions par coche reliée (champs de sa fiche de
-   structure). Corrigé localement (matcher tolérant), révèle ensuite la fiche. ---- */
-function TheoryPanel({ questions, answers, setAnswers, checked, onCheck, evalTheory, overrides, toggleOverride }) {
-  const groups = [];
-  const byId = {};
-  questions.forEach((tq) => {
-    if (!byId[tq.cocheId]) { byId[tq.cocheId] = { coche: tq.coche, struct: tq.struct, items: [] }; groups.push(byId[tq.cocheId]); }
-    byId[tq.cocheId].items.push(tq);
-  });
-  const allAnswered = questions.every((tq) => (answers[tq.key] || '').trim() !== '');
-
-  return (
-    <div className="card fadein" style={{ marginTop: 16 }}>
-      <div className="card-body">
-        <div className="imp-dest-head" style={{ marginBottom: 4 }}><Icon name="list" size={15} /> Théorie — réponds sur les champs de chaque structure</div>
-        <div className="hint" style={{ marginBottom: 12 }}>Généré à partir des fiches reliées, correction locale (tolérante). {checked ? 'La fiche complète est révélée sous chaque structure.' : 'Remplis puis « Corriger la théorie ».'}</div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {groups.map((g) => (
-            <div key={g.coche.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
-              <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 10 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: g.coche.couleur || DEFAULT_COLOR, flex: '0 0 auto' }} />
-                <strong>{g.coche.texte || '(coche)'}</strong>
-                <span className="pill" style={{ height: 20, fontSize: 11 }}>{g.struct.type}</span>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {g.items.map((tq) => {
-                  const ev = checked ? evalTheory(tq) : null;
-                  const ok = !!(ev && ev.ok);
-                  const near = !!(ev && !ev.ok && ev.near);
-                  const border = !checked ? 'var(--border)' : ok ? '#4FB87A' : near ? '#E0A34F' : '#E0556B';
-                  return (
-                    <div key={tq.key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      <label className="hint" style={{ fontWeight: 700, fontSize: 12 }}>{tq.label} ?</label>
-                      <input className="srcmgr-input" value={answers[tq.key] || ''} disabled={checked}
-                        placeholder="ta réponse…" style={{ width: '100%', fontSize: 12.5, borderColor: border }}
-                        onChange={(e) => setAnswers((a) => ({ ...a, [tq.key]: e.target.value }))} />
-                      {checked && !ok && (
-                        <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                          {near && <span style={{ fontSize: 11, fontWeight: 700, color: '#E0A34F' }}><Icon name="alert" size={11} /> Presque</span>}
-                          <span style={{ fontSize: 12, fontWeight: 700, color: '#4FB87A' }}><Icon name="check" size={11} /> {tq.expected}</span>
-                          <button type="button" className="btn ghost sm" style={{ padding: '2px 6px', fontSize: 11 }} onClick={() => toggleOverride(tq.key)}>
-                            <Icon name={overrides.has(tq.key) ? 'x' : 'check'} size={11} /> {overrides.has(tq.key) ? 'Annuler' : 'Compter comme juste'}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {checked && <div style={{ marginTop: 12 }}><StructureTable struct={g.struct} /></div>}
-            </div>
-          ))}
-        </div>
-
-        {!checked && (
-          <div className="imp-actions" style={{ marginTop: 14 }}>
-            <button className="btn primary" onClick={onCheck} disabled={!allAnswered} title={allAnswered ? '' : 'Réponds à tous les champs'}>
-              <Icon name="check" size={15} /> Corriger la théorie
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+/* NB : la théorie s'affiche désormais DANS la carte de chaque coche masquée
+   (refonte B, cf. SchemaQuizCanvas) — plus de panneau séparé sous l'image. */
