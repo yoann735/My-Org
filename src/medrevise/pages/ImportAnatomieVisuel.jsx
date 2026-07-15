@@ -19,6 +19,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { DestPicker } from '../components/ui.jsx';
 import { genId, putBlob } from '../lib/storage.js';
 import { saveAnatSchema } from '../lib/import.js';
+import { normalizeAnat } from '../lib/anatMatch.js';
 
 const SOUS_CATS = ['Muscles', 'Os', 'Nerfs', 'Ligaments', 'Vaisseaux'];
 const COLORS = ['#7C6FE0', '#E0556B', '#4FB87A', '#4FA6D9', '#E0A34F', '#B45FD9'];
@@ -118,7 +119,7 @@ export function ImportAnatomieVisuel({ ctx }) {
 
       <div className="imp-field">
         <label>Schéma annoté {coches.length > 0 && <span className="imp-opt">({coches.length} coche{coches.length > 1 ? 's' : ''}{named < coches.length ? ` · ${coches.length - named} sans nom` : ''})</span>}</label>
-        <SchemaEditor image={image} setImage={loadImageFile} coches={coches} setCoches={setCoches} />
+        <SchemaEditor image={image} setImage={loadImageFile} coches={coches} setCoches={setCoches} structures={db.anatstruct ? db.anatstruct.filter((s) => s.matiereId === matId) : []} />
       </div>
 
       <div className="imp-actions">
@@ -135,7 +136,7 @@ export function ImportAnatomieVisuel({ ctx }) {
    Tout est positionné en % (coords relatives × taille affichée) → le
    zoom / redimensionnement ne désaligne jamais les coches.
    ============================================================ */
-export function SchemaEditor({ image, setImage, coches, setCoches }) {
+export function SchemaEditor({ image, setImage, coches, setCoches, structures = [] }) {
   const frameRef = useRef(null);
   const [mode, setMode] = useState('select'); // select | add
   const [selectedId, setSelectedId] = useState(null);
@@ -310,6 +311,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
                         onChange={(e) => updateCoche(c.id, { reponses_acceptees: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
                         style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', background: 'var(--bg-2)', color: 'var(--text)', font: 'inherit', fontSize: 12, fontWeight: 500, padding: '5px 7px' }} />
                     </div>
+                    <TheorieLink coche={c} structures={structures} onSet={(sid) => updateCoche(c.id, { structureId: sid })} />
                   </div>
                 )}
               </div>
@@ -321,6 +323,45 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
       <div className="hint" style={{ marginTop: 10 }}>
         <Icon name="info" size={13} /> Positions en coordonnées relatives — le zoom ne désaligne rien. L'export image/PDF aplatit tout (archivage/impression seulement) et <strong>n'est pas réimportable en quiz</strong>.
       </div>
+    </div>
+  );
+}
+
+/* ---- lien coche ↔ fiche de structure anatomique (théorie, étape 3).
+   Auto-suggestion par nom normalisé (jamais lié en silence : l'utilisateur
+   confirme), sinon sélection manuelle, ou aucune théorie. ---- */
+function TheorieLink({ coche, structures, onSet }) {
+  const linked = coche.structureId ? structures.find((s) => s.id === coche.structureId) : null;
+  const nomN = normalizeAnat(coche.texte);
+  const suggestion = (!coche.structureId && nomN)
+    ? structures.find((s) => normalizeAnat(s.nom) === nomN)
+    : null;
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+      <label className="hint" style={{ display: 'block', fontSize: 11, marginBottom: 4 }}><Icon name="list" size={11} /> Théorie reliée</label>
+      {linked ? (
+        <div className="row spread" style={{ gap: 6 }}>
+          <span className="pill accent" style={{ height: 22, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{linked.nom}</span>
+          <button type="button" className="btn ghost sm" onClick={() => onSet(null)}><Icon name="x" size={12} /> Délier</button>
+        </div>
+      ) : (
+        <>
+          {suggestion && (
+            <button type="button" className="btn sm" style={{ width: '100%', justifyContent: 'center', marginBottom: 6 }} onClick={() => onSet(suggestion.id)}>
+              <Icon name="check" size={12} /> Relier à « {suggestion.nom} » ?
+            </button>
+          )}
+          {structures.length > 0 ? (
+            <select className="et-select" style={{ width: '100%' }} value="" onChange={(e) => { if (e.target.value) onSet(e.target.value); }}>
+              <option value="">{suggestion ? 'ou choisir une autre…' : 'Relier à une structure…'}</option>
+              {structures.map((s) => <option key={s.id} value={s.id}>{s.nom} ({s.type})</option>)}
+            </select>
+          ) : (
+            <div className="hint" style={{ fontSize: 11 }}>Aucune fiche de structure dans cette matière (crée-en via Anatomie → Théorie).</div>
+          )}
+        </>
+      )}
     </div>
   );
 }

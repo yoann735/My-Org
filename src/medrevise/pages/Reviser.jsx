@@ -460,8 +460,10 @@ function ErrorSummary({ ctx, ix, selIds, title }) {
 function AnatSchemaLauncher({ fiche, ctx, meta, due, scheduled, jp }) {
   const [mode, setMode] = useState('total'); // total | random
   const [prop, setProp] = useState(0.5);
+  const [theory, setTheory] = useState(false); // visuel seul | visuel + théorie
   const coches = fiche.coches || [];
   const nb = coches.length;
+  const nbTheory = coches.filter((c) => c.structureId).length;
 
   return (
     <>
@@ -505,14 +507,29 @@ function AnatSchemaLauncher({ fiche, ctx, meta, due, scheduled, jp }) {
             </div>
           )}
 
+          <div className="imp-field">
+            <label>Niveau de révision</label>
+            <div className="seg">
+              <button type="button" className={'seg-btn' + (!theory ? ' active' : '')} onClick={() => setTheory(false)}><Icon name="image" size={13} /> Visuel seul</button>
+              <button type="button" className={'seg-btn' + (theory ? ' active' : '')} onClick={() => setTheory(true)} disabled={nbTheory === 0} title={nbTheory === 0 ? 'Aucune coche reliée à une fiche de structure' : ''}><Icon name="list" size={13} /> Visuel + Théorie</button>
+            </div>
+            <div className="hint" style={{ marginTop: 6 }}>
+              {nbTheory === 0
+                ? 'Relie des coches à des fiches de structure (Éditer le schéma) pour activer la théorie.'
+                : theory
+                  ? `Tu nommes la coche PUIS tu réponds sur ses champs théoriques (${nbTheory} coche${nbTheory > 1 ? 's' : ''} reliée${nbTheory > 1 ? 's' : ''}).`
+                  : 'Tu nommes seulement les coches.'}
+            </div>
+          </div>
+
           <div className="row" style={{ gap: 10, marginTop: 6 }}>
             <button className="btn lg" style={{ flex: '0 0 auto', justifyContent: 'center' }}
               onClick={() => ctx.openSchemaEditor(fiche.id, 'revise')} title="Ouvrir en mode Lecture / Édition (coches)">
               <Icon name="edit" size={16} /> Éditer le schéma
             </button>
             <button className="btn primary lg" style={{ flex: 1, justifyContent: 'center' }} disabled={nb === 0}
-              onClick={() => ctx.startAnatQuiz(fiche, { mode, proportion: prop })}>
-              <Icon name="play" size={16} fill /> Lancer le quiz visuel
+              onClick={() => ctx.startAnatQuiz(fiche, { mode, proportion: prop, theory: theory && nbTheory > 0 })}>
+              <Icon name="play" size={16} fill /> Lancer le quiz{theory && nbTheory > 0 ? ' (+ théorie)' : ' visuel'}
             </button>
           </div>
           {nb === 0 && <div className="hint" style={{ marginTop: 8 }}>Ce schéma n'a aucune coche — passe en Édition pour en ajouter.</div>}

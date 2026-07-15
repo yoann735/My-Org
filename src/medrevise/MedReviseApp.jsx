@@ -87,7 +87,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     startExercice: (items, title) => { setExercice({ items: items || [], title: title || 'Exercices' }); setScreen('exercice'); },
     // quiz d'anatomie visuelle (fiche anat_schema) : écran dédié.
     startAnatQuiz: (fiche, opts = {}) => {
-      setAnatQuiz({ fiche, mode: opts.mode || 'total', proportion: opts.proportion ?? 0.5 });
+      setAnatQuiz({ fiche, mode: opts.mode || 'total', proportion: opts.proportion ?? 0.5, theory: !!opts.theory });
       setScreen('anatquiz');
     },
     endSession: () => { setSession(null); setScreen('dashboard'); },

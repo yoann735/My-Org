@@ -17,6 +17,8 @@ import { Breadcrumb, matiereMeta } from '../components/ui.jsx';
 import { index, effectiveCoef } from '../lib/planning.js';
 import { applyReview, qualityFromRatio, todayISO, computeStreak, jStepForInterval } from '../lib/sm2.js';
 import { matchAnat } from '../lib/anatMatch.js';
+import { champsFor } from '../lib/anatParse.js';
+import { StructureTable } from '../pages/ImportAnatomieTheorie.jsx';
 import { blobURL } from '../lib/storage.js';
 
 const DEFAULT_COLOR = '#7C6FE0';
@@ -56,8 +58,16 @@ export function AnatQuiz({ ctx }) {
   const [imgUrl, setImgUrl] = useState(null);
   const [answers, setAnswers] = useState({});
   const [phase, setPhase] = useState('answer'); // answer | result | done
-  const [overrides, setOverrides] = useState(() => new Set()); // "compter comme juste"
+  const [overrides, setOverrides] = useState(() => new Set()); // "compter comme juste" (visuel)
   const [finalScore, setFinalScore] = useState(null);
+
+  // ---- THÉORIE (étape 3) : mini-questions générées LOCALEMENT à partir des champs
+  // des fiches de structure reliées aux coches masquées. Aucune IA. ----
+  const theoryOn = !!q.theory;
+  const structById = useMemo(() => Object.fromEntries((db.anatstruct || []).map((s) => [s.id, s])), [db.anatstruct]);
+  const [theoryAnswers, setTheoryAnswers] = useState({});
+  const [theoryOverrides, setTheoryOverrides] = useState(() => new Set());
+  const [theoryChecked, setTheoryChecked] = useState(false);
 
   useEffect(() => {
     let on = true, url = null;
@@ -73,7 +83,38 @@ export function AnatQuiz({ ctx }) {
   };
   const isCorrect = (c) => evalCoche(c).ok;
   const correctCount = coches.filter((c) => maskedSet.has(c.id) && isCorrect(c)).length;
-  const ratio = maskedIds.length ? correctCount / maskedIds.length : 1;
+
+  // mini-questions de théorie : une par champ (non vide) des structures reliées aux
+  // coches MASQUÉES. La valeur du champ = réponse attendue (masquée), corrigée avec le
+  // même matcher tolérant. Générées localement (champs déjà stockés), aucune IA.
+  const theoryQuestions = useMemo(() => {
+    if (!theoryOn) return [];
+    const out = [];
+    coches.forEach((c) => {
+      if (!maskedSet.has(c.id) || !c.structureId) return;
+      const st = structById[c.structureId];
+      if (!st) return;
+      champsFor(st.type).forEach((d) => {
+        const val = ((st.champs && st.champs[d.key]) || '').trim();
+        if (!val) return;
+        out.push({ key: c.id + ':' + d.key, cocheId: c.id, coche: c, struct: st, label: d.label, expected: val });
+      });
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [theoryOn, coches, maskedSet, structById]);
+
+  const evalTheory = (tq) => {
+    if (theoryOverrides.has(tq.key)) return { ok: true, near: false };
+    return matchAnat(theoryAnswers[tq.key], { texte: tq.expected });
+  };
+  const theoryCorrect = theoryQuestions.filter((tq) => evalTheory(tq).ok).length;
+
+  // score (b) : le ratio combine visuel + champs théoriques.
+  const totalCount = maskedIds.length + theoryQuestions.length;
+  const combinedCorrect = correctCount + theoryCorrect;
+  const ratio = totalCount ? combinedCorrect / totalCount : 1;
+  const toggleTheoryOverride = (key) => setTheoryOverrides((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 
   const validate = () => setPhase('result');
   const toggleOverride = (id) => setOverrides((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -91,7 +132,11 @@ export function AnatQuiz({ ctx }) {
       const streak = computeStreak(activityDays);
       await ctx.saveStats({ ...s, activityDays, streak, best: Math.max(s.best || 0, streak), dernierJourRevise: today });
     }
-    setFinalScore({ correct: correctCount, total: maskedIds.length, jLabel: jStepForInterval(updated.interval).jLabel });
+    setFinalScore({
+      correct: combinedCorrect, total: totalCount, jLabel: jStepForInterval(updated.interval).jLabel,
+      visual: correctCount, visualTotal: maskedIds.length,
+      theory: theoryCorrect, theoryTotal: theoryQuestions.length,
+    });
     setPhase('done');
   };
 
@@ -102,7 +147,10 @@ export function AnatQuiz({ ctx }) {
         <div className="celebrate">
           <div className="cel-badge"><Icon name="trophy" size={48} /></div>
           <h1 className="serif">Schéma terminé !</h1>
-          <div className="cel-score">« {fiche.titre} » — {finalScore.correct}/{finalScore.total} coches ({pct}%)</div>
+          <div className="cel-score">« {fiche.titre} » — {finalScore.correct}/{finalScore.total} {finalScore.theoryTotal ? 'bonnes réponses' : 'coches'} ({pct}%)</div>
+          {finalScore.theoryTotal > 0 && (
+            <div className="hint" style={{ marginTop: 4 }}>Visuel {finalScore.visual}/{finalScore.visualTotal} · Théorie {finalScore.theory}/{finalScore.theoryTotal}</div>
+          )}
           <div className="cel-streak"><Icon name="calendar" size={15} /> Prochaine révision : {finalScore.jLabel}</div>
           <div className="row" style={{ gap: 12, justifyContent: 'center', marginTop: 26 }}>
             <button className="btn lg" onClick={() => ctx.go('revise')}><Icon name="cards" size={16} /> Revenir à Réviser</button>
@@ -139,6 +187,13 @@ export function AnatQuiz({ ctx }) {
             evalCoche={evalCoche} overrides={overrides} toggleOverride={toggleOverride}
             onEnter={validate}
           />
+          {theoryOn && phase === 'result' && theoryQuestions.length > 0 && (
+            <TheoryPanel
+              questions={theoryQuestions} answers={theoryAnswers} setAnswers={setTheoryAnswers}
+              checked={theoryChecked} onCheck={() => setTheoryChecked(true)}
+              evalTheory={evalTheory} overrides={theoryOverrides} toggleOverride={toggleTheoryOverride}
+            />
+          )}
         </div>
       </div>
 
@@ -147,7 +202,9 @@ export function AnatQuiz({ ctx }) {
           <span className="hint">
             {phase === 'answer'
               ? 'Remplis le nom de chaque coche masquée, puis valide.'
-              : <>Score : <strong className="tnum">{correctCount}/{maskedIds.length}</strong> · les erreurs révèlent la bonne réponse — « Compter comme juste » si ta variante est correcte.</>}
+              : theoryOn && theoryQuestions.length > 0
+                ? <>Visuel <strong className="tnum">{correctCount}/{maskedIds.length}</strong> · Théorie <strong className="tnum">{theoryCorrect}/{theoryQuestions.length}</strong> — réponds aussi aux champs ci-dessous.</>
+                : <>Score : <strong className="tnum">{correctCount}/{maskedIds.length}</strong> · les erreurs révèlent la bonne réponse — « Compter comme juste » si ta variante est correcte.</>}
           </span>
           {phase === 'answer'
             ? <button className="btn primary lg" onClick={validate}><Icon name="check" size={16} /> Valider</button>
@@ -230,6 +287,75 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, answers, setAnswers, phas
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/* ---- panneau THÉORIE : mini-questions par coche reliée (champs de sa fiche de
+   structure). Corrigé localement (matcher tolérant), révèle ensuite la fiche. ---- */
+function TheoryPanel({ questions, answers, setAnswers, checked, onCheck, evalTheory, overrides, toggleOverride }) {
+  const groups = [];
+  const byId = {};
+  questions.forEach((tq) => {
+    if (!byId[tq.cocheId]) { byId[tq.cocheId] = { coche: tq.coche, struct: tq.struct, items: [] }; groups.push(byId[tq.cocheId]); }
+    byId[tq.cocheId].items.push(tq);
+  });
+  const allAnswered = questions.every((tq) => (answers[tq.key] || '').trim() !== '');
+
+  return (
+    <div className="card fadein" style={{ marginTop: 16 }}>
+      <div className="card-body">
+        <div className="imp-dest-head" style={{ marginBottom: 4 }}><Icon name="list" size={15} /> Théorie — réponds sur les champs de chaque structure</div>
+        <div className="hint" style={{ marginBottom: 12 }}>Généré à partir des fiches reliées, correction locale (tolérante). {checked ? 'La fiche complète est révélée sous chaque structure.' : 'Remplis puis « Corriger la théorie ».'}</div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {groups.map((g) => (
+            <div key={g.coche.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
+              <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: g.coche.couleur || DEFAULT_COLOR, flex: '0 0 auto' }} />
+                <strong>{g.coche.texte || '(coche)'}</strong>
+                <span className="pill" style={{ height: 20, fontSize: 11 }}>{g.struct.type}</span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {g.items.map((tq) => {
+                  const ev = checked ? evalTheory(tq) : null;
+                  const ok = !!(ev && ev.ok);
+                  const near = !!(ev && !ev.ok && ev.near);
+                  const border = !checked ? 'var(--border)' : ok ? '#4FB87A' : near ? '#E0A34F' : '#E0556B';
+                  return (
+                    <div key={tq.key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      <label className="hint" style={{ fontWeight: 700, fontSize: 12 }}>{tq.label} ?</label>
+                      <input className="srcmgr-input" value={answers[tq.key] || ''} disabled={checked}
+                        placeholder="ta réponse…" style={{ width: '100%', fontSize: 12.5, borderColor: border }}
+                        onChange={(e) => setAnswers((a) => ({ ...a, [tq.key]: e.target.value }))} />
+                      {checked && !ok && (
+                        <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          {near && <span style={{ fontSize: 11, fontWeight: 700, color: '#E0A34F' }}><Icon name="alert" size={11} /> Presque</span>}
+                          <span style={{ fontSize: 12, fontWeight: 700, color: '#4FB87A' }}><Icon name="check" size={11} /> {tq.expected}</span>
+                          <button type="button" className="btn ghost sm" style={{ padding: '2px 6px', fontSize: 11 }} onClick={() => toggleOverride(tq.key)}>
+                            <Icon name={overrides.has(tq.key) ? 'x' : 'check'} size={11} /> {overrides.has(tq.key) ? 'Annuler' : 'Compter comme juste'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {checked && <div style={{ marginTop: 12 }}><StructureTable struct={g.struct} /></div>}
+            </div>
+          ))}
+        </div>
+
+        {!checked && (
+          <div className="imp-actions" style={{ marginTop: 14 }}>
+            <button className="btn primary" onClick={onCheck} disabled={!allAnswered} title={allAnswered ? '' : 'Réponds à tous les champs'}>
+              <Icon name="check" size={15} /> Corriger la théorie
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

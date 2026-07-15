@@ -126,7 +126,8 @@ export function SchemaEditorScreen({ ctx }) {
             </div>
             <div className="imp-field">
               <label>Schéma annoté <span className="imp-opt">— clique « Ajouter une coche » puis un point de l'image ; déplace la boîte et l'ancre indépendamment ; clique une coche pour la renommer, changer sa couleur ou la supprimer.</span></label>
-              <SchemaEditor image={image} setImage={changeImage} coches={coches} setCoches={setCoches} />
+              <SchemaEditor image={image} setImage={changeImage} coches={coches} setCoches={setCoches}
+                structures={db.anatstruct ? db.anatstruct.filter((s) => s.matiereId === fiche.matiereId) : []} />
             </div>
             <div className="imp-actions">
               <button className="btn primary" onClick={save} disabled={saving}><Icon name="check" size={15} /> {saving ? 'Enregistrement…' : 'Enregistrer le schéma'}</button>
