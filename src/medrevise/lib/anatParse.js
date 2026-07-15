@@ -105,6 +105,27 @@ function fold(s) {
 
 function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
+/** vrai si le texte replié contient une étiquette « alias : » pour l'un des alias. */
+function foldedHasLabel(folded, aliases) {
+  return aliases.some((a) => new RegExp('(?:^|[\\s.;,])' + escapeRe(fold(a)) + '\\s*:', 'i').test(folded));
+}
+
+/**
+ * Détecte le TYPE probable d'après les ÉTIQUETTES présentes dans le texte collé
+ * (marqueurs discriminants). Résultat PRÉ-SÉLECTIONNÉ, à confirmer par l'utilisateur.
+ * Ordre = du plus spécifique au plus générique.
+ */
+export function detectType(text) {
+  const f = fold(text || '');
+  const has = (al) => foldedHasLabel(f, al);
+  if (has(['structures vascularisees', 'structures irriguees'])) return 'artere';
+  if (has(['vaisseaux tributaires', 'tributaires', 'affluents']) || has(['drainage', 'se draine dans'])) return 'veine';
+  if (has(["s'articule avec", 's articule avec', 'articule avec', 'articulations']) || has(["type d'os", 'type d os', 'type os'])) return 'os';
+  if (has(['insertion', 'insertions'])) return 'muscle';
+  if (has(['rameaux', 'branches', 'collaterales']) || has(['innervation']) || has(['trajectoire', 'trajet'])) return 'nerf';
+  return 'tissu_conjonctif';
+}
+
 /**
  * Parse un texte collé pour un TYPE donné.
  * @returns {{ champs: Record<string,string>, missing: string[], found: string[] }}

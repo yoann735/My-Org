@@ -19,7 +19,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { DestPicker } from '../components/ui.jsx';
 import { genId, putBlob } from '../lib/storage.js';
 import { saveAnatSchema } from '../lib/import.js';
-import { normalizeAnat } from '../lib/anatMatch.js';
+import { ANAT_TYPES, champsFor, parseStructure, detectType } from '../lib/anatParse.js';
 
 const SOUS_CATS = ['Muscles', 'Os', 'Nerfs', 'Ligaments', 'Vaisseaux'];
 const COLORS = ['#7C6FE0', '#E0556B', '#4FB87A', '#4FA6D9', '#E0A34F', '#B45FD9'];
@@ -119,7 +119,7 @@ export function ImportAnatomieVisuel({ ctx }) {
 
       <div className="imp-field">
         <label>Schéma annoté {coches.length > 0 && <span className="imp-opt">({coches.length} coche{coches.length > 1 ? 's' : ''}{named < coches.length ? ` · ${coches.length - named} sans nom` : ''})</span>}</label>
-        <SchemaEditor image={image} setImage={loadImageFile} coches={coches} setCoches={setCoches} structures={db.anatstruct ? db.anatstruct.filter((s) => s.matiereId === matId) : []} />
+        <SchemaEditor image={image} setImage={loadImageFile} coches={coches} setCoches={setCoches} />
       </div>
 
       <div className="imp-actions">
@@ -136,11 +136,12 @@ export function ImportAnatomieVisuel({ ctx }) {
    Tout est positionné en % (coords relatives × taille affichée) → le
    zoom / redimensionnement ne désaligne jamais les coches.
    ============================================================ */
-export function SchemaEditor({ image, setImage, coches, setCoches, structures = [] }) {
+export function SchemaEditor({ image, setImage, coches, setCoches }) {
   const frameRef = useRef(null);
   const [mode, setMode] = useState('select'); // select | add
   const [selectedId, setSelectedId] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [theorieFor, setTheorieFor] = useState(null); // id de la coche dont on édite la théorie
 
   const updateCoche = (id, patch) => setCoches((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   const delCoche = (id) => { setCoches((cs) => cs.filter((c) => c.id !== id)); setSelectedId(null); };
@@ -311,7 +312,16 @@ export function SchemaEditor({ image, setImage, coches, setCoches, structures = 
                         onChange={(e) => updateCoche(c.id, { reponses_acceptees: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
                         style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', background: 'var(--bg-2)', color: 'var(--text)', font: 'inherit', fontSize: 12, fontWeight: 500, padding: '5px 7px' }} />
                     </div>
-                    <TheorieLink coche={c} structures={structures} onSet={(sid) => updateCoche(c.id, { structureId: sid })} />
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                      {(() => {
+                        const nb = c.champs ? Object.values(c.champs).filter((v) => (v || '').trim()).length : 0;
+                        return (
+                          <button type="button" className={'btn sm' + (nb ? '' : ' ghost')} style={{ width: '100%', justifyContent: 'center' }} onClick={() => setTheorieFor(c.id)}>
+                            <Icon name="list" size={12} /> Théorie {nb > 0 ? `· ${ANAT_TYPES[c.type] ? ANAT_TYPES[c.type].label : c.type} (${nb})` : '— coller le texte'}
+                          </button>
+                        );
+                      })()}
+                    </div>
                   </div>
                 )}
               </div>
@@ -323,45 +333,99 @@ export function SchemaEditor({ image, setImage, coches, setCoches, structures = 
       <div className="hint" style={{ marginTop: 10 }}>
         <Icon name="info" size={13} /> Positions en coordonnées relatives — le zoom ne désaligne rien. L'export image/PDF aplatit tout (archivage/impression seulement) et <strong>n'est pas réimportable en quiz</strong>.
       </div>
+
+      {theorieFor && (() => {
+        const c = coches.find((x) => x.id === theorieFor);
+        if (!c) return null;
+        return (
+          <TheorieCocheModal coche={c}
+            onSave={(patch) => { updateCoche(c.id, patch); setTheorieFor(null); }}
+            onClose={() => setTheorieFor(null)} />
+        );
+      })()}
     </div>
   );
 }
 
-/* ---- lien coche ↔ fiche de structure anatomique (théorie, étape 3).
-   Auto-suggestion par nom normalisé (jamais lié en silence : l'utilisateur
-   confirme), sinon sélection manuelle, ou aucune théorie. ---- */
-function TheorieLink({ coche, structures, onSet }) {
-  const linked = coche.structureId ? structures.find((s) => s.id === coche.structureId) : null;
-  const nomN = normalizeAnat(coche.texte);
-  const suggestion = (!coche.structureId && nomN)
-    ? structures.find((s) => normalizeAnat(s.nom) === nomN)
-    : null;
+/* ---- THÉORIE INTRINSÈQUE À LA COCHE (étape 1 refonte) : coller un texte →
+   détection auto du type (confirmée) → extraction locale des champs → aperçu
+   ÉDITABLE → enregistrement dans la coche (c.type + c.champs). Aucune IA. ---- */
+const TYPE_ORDER = ['os', 'muscle', 'nerf', 'artere', 'veine', 'tissu_conjonctif'];
+
+function TheorieCocheModal({ coche, onSave, onClose }) {
+  const [type, setType] = useState(coche.type || 'muscle');
+  const [champs, setChamps] = useState(coche.champs && Object.keys(coche.champs).length ? coche.champs : null);
+  const [raw, setRaw] = useState('');
+  const [missing, setMissing] = useState([]);
+  const [detected, setDetected] = useState(false);
+
+  const defs = champsFor(type);
+
+  // « Analyser » : détecte le type PUIS extrait les champs de ce type.
+  const analyse = () => {
+    if (!raw.trim()) return;
+    const t = detectType(raw);
+    setType(t); setDetected(true);
+    const r = parseStructure(raw, t);
+    setChamps(r.champs); setMissing(r.missing);
+  };
+  // changement manuel du type : re-parse le texte collé avec le nouveau type
+  const changeType = (t) => {
+    setType(t);
+    if (raw.trim()) { const r = parseStructure(raw, t); setChamps(r.champs); setMissing(r.missing); }
+    else { const next = {}; champsFor(t).forEach((d) => { next[d.key] = (champs && champs[d.key]) || ''; }); setChamps(next); }
+  };
+  const setChamp = (k, v) => setChamps((c) => ({ ...(c || {}), [k]: v }));
+  const longField = (k) => champs && (champs[k] || '').length > 60;
+
+  const save = () => onSave({ type, champs: champs || {} });
+  const clear = () => onSave({ type: null, champs: {} });
 
   return (
-    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-      <label className="hint" style={{ display: 'block', fontSize: 11, marginBottom: 4 }}><Icon name="list" size={11} /> Théorie reliée</label>
-      {linked ? (
-        <div className="row spread" style={{ gap: 6 }}>
-          <span className="pill accent" style={{ height: 22, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{linked.nom}</span>
-          <button type="button" className="btn ghost sm" onClick={() => onSet(null)}><Icon name="x" size={12} /> Délier</button>
+    <div className="day-pop-scrim" onClick={onClose}>
+      <div className="day-pop" style={{ width: 'min(560px, 94vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+        <div className="day-pop-head"><div className="row spread"><div className="serif" style={{ fontSize: 18 }}>Théorie · {coche.texte || 'coche'}</div><button className="icon-btn sm" onClick={onClose}><Icon name="x" size={16} /></button></div></div>
+        <div className="day-pop-body" style={{ overflowY: 'auto' }}>
+          <div className="imp-field">
+            <label>Coller la théorie</label>
+            <textarea className="imp-title" style={{ minHeight: 110, resize: 'vertical', fontFamily: 'inherit', fontSize: 13 }}
+              placeholder={'Colle le texte (ex : « Origine : … Insertion : … »). Le type et les champs sont détectés automatiquement, sans IA.'}
+              value={raw} onChange={(e) => setRaw(e.target.value)} />
+            <div className="imp-actions" style={{ marginTop: 8 }}>
+              <button className="btn primary" onClick={analyse} disabled={!raw.trim()}><Icon name="sparkle" size={15} /> Analyser</button>
+            </div>
+          </div>
+
+          <div className="imp-field">
+            <label>Type de structure {detected && <span className="imp-opt">(détecté — confirme ou corrige)</span>}</label>
+            <div className="imp-chips">
+              {TYPE_ORDER.map((t) => <button key={t} className={'imp-chip' + (type === t ? ' on' : '')} onClick={() => changeType(t)}>{ANAT_TYPES[t].label}</button>)}
+            </div>
+          </div>
+
+          {champs && (
+            <div className="imp-field">
+              <label>Champs extraits — corrige au besoin</label>
+              {missing.length > 0 && <div className="hint" style={{ color: 'var(--accent-2)', margin: '2px 0 8px' }}><Icon name="alert" size={13} /> Non détecté(s) : {missing.join(', ')}.</div>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                {defs.map((d) => (
+                  <div key={d.key}>
+                    <label className="hint" style={{ display: 'block', fontWeight: 700, marginBottom: 3 }}>{d.label}{!(champs[d.key] || '').trim() && <span style={{ color: 'var(--accent-2)', marginLeft: 6, fontWeight: 500 }}>(vide)</span>}</label>
+                    {longField(d.key)
+                      ? <textarea className="srcmgr-input" style={{ width: '100%', minHeight: 54, resize: 'vertical', fontSize: 12.5 }} value={champs[d.key] || ''} onChange={(e) => setChamp(d.key, e.target.value)} />
+                      : <input className="srcmgr-input" style={{ width: '100%', fontSize: 12.5 }} value={champs[d.key] || ''} onChange={(e) => setChamp(d.key, e.target.value)} placeholder="—" />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-      ) : (
-        <>
-          {suggestion && (
-            <button type="button" className="btn sm" style={{ width: '100%', justifyContent: 'center', marginBottom: 6 }} onClick={() => onSet(suggestion.id)}>
-              <Icon name="check" size={12} /> Relier à « {suggestion.nom} » ?
-            </button>
-          )}
-          {structures.length > 0 ? (
-            <select className="et-select" style={{ width: '100%' }} value="" onChange={(e) => { if (e.target.value) onSet(e.target.value); }}>
-              <option value="">{suggestion ? 'ou choisir une autre…' : 'Relier à une structure…'}</option>
-              {structures.map((s) => <option key={s.id} value={s.id}>{s.nom} ({s.type})</option>)}
-            </select>
-          ) : (
-            <div className="hint" style={{ fontSize: 11 }}>Aucune fiche de structure dans cette matière (crée-en via Anatomie → Théorie).</div>
-          )}
-        </>
-      )}
+        <div className="day-pop-foot">
+          {coche.champs && Object.keys(coche.champs).length > 0 && <button className="btn ghost" onClick={clear} title="Retirer la théorie de cette coche"><Icon name="trash" size={14} /> Retirer</button>}
+          <button className="btn" onClick={onClose}>Annuler</button>
+          <button className="btn primary" style={{ flex: 1 }} onClick={save} disabled={!champs}><Icon name="check" size={15} /> Enregistrer la théorie</button>
+        </div>
+      </div>
     </div>
   );
 }

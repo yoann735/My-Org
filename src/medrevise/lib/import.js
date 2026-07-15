@@ -143,9 +143,10 @@ export async function saveAnatSchema({ ficheId, matiereId, titre, sousCategorie,
     // réponses acceptées supplémentaires (synonymes) — normalisées à la correction,
     // conservées ici telles que saisies. Nettoyées (trim + non vides + dédoublonnées).
     reponses_acceptees: [...new Set((c.reponses_acceptees || []).map((r) => (r || '').trim()).filter(Boolean))],
-    // lien optionnel vers une fiche de structure anatomique (théorie, étape 3).
-    // Absent = coche sans théorie reliée (rétro-compatible).
-    structureId: c.structureId || null,
+    // THÉORIE INTRINSÈQUE : la coche porte son type + ses champs extraits (refonte).
+    // Absents = coche sans volet théorie (rétro-compatible).
+    type: c.type || null,
+    champs: (c.champs && typeof c.champs === 'object') ? c.champs : {},
     couleur: c.couleur || null,
     numero: c.numero ?? i + 1,
   }));
