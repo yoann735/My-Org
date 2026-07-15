@@ -8,6 +8,10 @@ import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
 import { putBlob } from '../lib/storage.js';
+import { ficheImages, totalCoches } from '../lib/anatSchema.js';
+
+const schemaViews = (f) => ficheImages(f).length;
+const schemaCoches = (f) => totalCoches(f);
 
 export function Bibliotheque({ ctx }) {
   const { db } = ctx;
@@ -150,7 +154,7 @@ export function Bibliotheque({ ctx }) {
                                     )}
                                     <div className="row" style={{ gap: 6 }}>
                                       {isSchema ? (
-                                        <span className="pill" style={{ height: 22, fontSize: 10.5 }}><Icon name="image" size={11} /> SCHÉMA · {(f.coches || []).length} coche{(f.coches || []).length > 1 ? 's' : ''}</span>
+                                        <span className="pill" style={{ height: 22, fontSize: 10.5 }}><Icon name="image" size={11} /> SCHÉMA · {schemaViews(f) > 1 ? `${schemaViews(f)} vues · ` : ''}{schemaCoches(f)} coche{schemaCoches(f) > 1 ? 's' : ''}</span>
                                       ) : (
                                         <>
                                           <span className="pill accent" style={{ height: 22, fontSize: 10.5 }}>{count(f.id, 'qcm')} QCM</span>

@@ -174,9 +174,29 @@ function cleanRect(r) {
   return { x, y, w: clamp01((r && r.w) || 0), h: clamp01((r && r.h) || 0) };
 }
 
-export async function saveAnatSchema({ ficheId, matiereId, titre, sousCategorie, imageId, imageW, imageH, coches }) {
+/**
+ * MULTI-VUES : `images` = [{ id?, imageId, imageW, imageH, vue, coches[] }].
+ * Rétro-compat : si `images` est absent, on reconstruit une vue unique depuis les
+ * champs simples (imageId/imageW/imageH/coches). En sortie, la fiche porte TOUJOURS
+ * `images[]` ET un miroir legacy = 1re vue (imageId/imageW/imageH/coches) pour les
+ * consommateurs non migrés (badges, etc.).
+ */
+export async function saveAnatSchema({ ficheId, matiereId, titre, sousCategorie, images, imageId, imageW, imageH, coches }) {
   const sousTitre = sousCategorie ? `Schéma annoté · ${sousCategorie}` : 'Schéma annoté';
-  const cleanCoches = (coches || []).map((c, i) => cleanCoche(c, i));
+
+  const rawImages = (Array.isArray(images) && images.length)
+    ? images
+    : [{ imageId: imageId || null, imageW: imageW || null, imageH: imageH || null, vue: 'non_precisee', coches: coches || [] }];
+  const cleanImages = rawImages.map((im) => ({
+    id: im.id || genId('img'),
+    imageId: im.imageId || null,
+    imageW: im.imageW || null,
+    imageH: im.imageH || null,
+    vue: im.vue || 'non_precisee',
+    coches: (im.coches || []).map((c, i) => cleanCoche(c, i)),
+  }));
+  const first = cleanImages[0] || { imageId: null, imageW: null, imageH: null, coches: [] };
+  const count = cleanImages.reduce((n, im) => n + im.coches.length, 0);
 
   const existing = ficheId ? await getOne('fiches', ficheId) : null;
   let fiche;
@@ -184,19 +204,21 @@ export async function saveAnatSchema({ ficheId, matiereId, titre, sousCategorie,
     fiche = {
       ...existing, matiereId, titre: (titre || existing.titre || 'Schéma anatomique').trim(),
       sousTitre, type: 'anat_schema', sousCategorie: sousCategorie || null,
-      imageId: imageId || existing.imageId || null, imageW: imageW || existing.imageW || null,
-      imageH: imageH || existing.imageH || null, coches: cleanCoches,
+      images: cleanImages,
+      // miroir legacy (1re vue) — jamais la source de vérité
+      imageId: first.imageId, imageW: first.imageW, imageH: first.imageH, coches: first.coches,
     };
   } else {
     fiche = {
       id: genId('f'), matiereId, titre: (titre || 'Schéma anatomique').trim(),
       sousTitre, type: 'anat_schema', sousCategorie: sousCategorie || null, coef: null,
-      dateImport: todayISO(), imageId: imageId || null, imageW: imageW || null, imageH: imageH || null,
-      coches: cleanCoches,
+      dateImport: todayISO(),
+      images: cleanImages,
+      imageId: first.imageId, imageW: first.imageW, imageH: first.imageH, coches: first.coches,
       // item planifiable SM-2 (étape C)
       interval: 0, repetition: 0, efactor: 2.5, nextReview: todayISO(), historique: [], missed: 0,
     };
   }
   await put('fiches', fiche);
-  return { fiche, count: cleanCoches.length };
+  return { fiche, count };
 }

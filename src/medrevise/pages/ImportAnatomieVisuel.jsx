@@ -20,6 +20,7 @@ import { DestPicker } from '../components/ui.jsx';
 import { genId, putBlob } from '../lib/storage.js';
 import { saveAnatSchema } from '../lib/import.js';
 import { ANAT_TYPES, champsFor, parseStructure, detectType } from '../lib/anatParse.js';
+import { SCHEMA_VUES, vueLabel } from '../lib/anatSchema.js';
 
 const SOUS_CATS = ['Muscles', 'Os', 'Nerfs', 'Ligaments', 'Vaisseaux'];
 const COLORS = ['#7C6FE0', '#E0556B', '#4FB87A', '#4FA6D9', '#E0A34F', '#B45FD9'];
@@ -82,48 +83,32 @@ export function ImportAnatomieVisuel({ ctx }) {
   const [titre, setTitre] = useState('');
   const [sousCat, setSousCat] = useState('Muscles');
 
-  const [image, setImage] = useState(null); // { blob, url, w, h }
-  const [coches, setCoches] = useState([]);
+  // MULTI-VUES : chaque vue = { id, vue, coches[], img:{ url, w, h, blobId, newFile } }.
+  // MultiSchemaEditor gère le collage, les onglets et les object-URL.
+  const [views, setViews] = useState([]);
   const [state, setState] = useState('edit'); // edit | saving | done
   const [result, setResult] = useState(null);
 
-  // charge une image (coller ou upload) → URL objet + dimensions naturelles
-  const loadImageFile = (file) => {
-    if (!file || !file.type || !file.type.startsWith('image/')) return;
-    const url = URL.createObjectURL(file);
-    const probe = new Image();
-    probe.onload = () => setImage((prev) => { if (prev && prev.url) URL.revokeObjectURL(prev.url); return { blob: file, url, w: probe.naturalWidth, h: probe.naturalHeight }; });
-    probe.src = url;
-    setCoches([]);
-  };
-
-  // COLLER (Ctrl/Cmd+V) — cas principal : capture du logiciel 3D. Écoute globale
-  // tant que ce sous-mode est monté (pas besoin de focus précis).
-  useEffect(() => {
-    const onPaste = (e) => {
-      const items = (e.clipboardData && e.clipboardData.items) || [];
-      for (const it of items) {
-        if (it.type && it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) { e.preventDefault(); loadImageFile(f); return; } }
-      }
-    };
-    window.addEventListener('paste', onPaste);
-    return () => window.removeEventListener('paste', onPaste);
-  }, []);
-  useEffect(() => () => { if (image && image.url) URL.revokeObjectURL(image.url); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const named = coches.filter((c) => (c.texte || '').trim()).length;
-  const valid = !!(matId && image && coches.length >= 1);
+  const totalCoches = views.reduce((n, v) => n + (v.coches || []).length, 0);
+  const named = views.reduce((n, v) => n + (v.coches || []).filter((c) => (c.texte || '').trim()).length, 0);
+  const hasImage = views.some((v) => v.img && (v.img.newFile || v.img.blobId));
+  const valid = !!(matId && hasImage && totalCoches >= 1);
 
   const save = async () => {
     if (!valid) return;
     setState('saving');
-    let imageId = null;
-    try { imageId = await putBlob(image.blob); } catch (e) { /* ignore */ }
-    const res = await saveAnatSchema({ matiereId: matId, titre: titre || ('Schéma · ' + sousCat), sousCategorie: sousCat, imageId, imageW: image.w, imageH: image.h, coches });
+    const images = [];
+    for (const v of views) {
+      if (!v.img) continue;
+      let imageId = v.img.blobId || null;
+      if (v.img.newFile) { try { imageId = await putBlob(v.img.newFile); } catch (e) { /* ignore */ } }
+      images.push({ imageId, imageW: v.img.w, imageH: v.img.h, vue: v.vue, coches: v.coches });
+    }
+    const res = await saveAnatSchema({ matiereId: matId, titre: titre || ('Schéma · ' + sousCat), sousCategorie: sousCat, images });
     await ctx.reload();
     setResult(res); setState('done');
   };
-  const resetForm = () => { if (image && image.url) URL.revokeObjectURL(image.url); setImage(null); setCoches([]); setTitre(''); setResult(null); setState('edit'); };
+  const resetForm = () => { setViews([]); setTitre(''); setResult(null); setState('edit'); };
 
   if (state === 'saving') {
     return (
@@ -164,15 +149,15 @@ export function ImportAnatomieVisuel({ ctx }) {
       </div>
 
       <div className="imp-field">
-        <label>Schéma annoté {coches.length > 0 && <span className="imp-opt">({coches.length} coche{coches.length > 1 ? 's' : ''}{named < coches.length ? ` · ${coches.length - named} sans nom` : ''})</span>}</label>
-        <SchemaEditor image={image} setImage={loadImageFile} coches={coches} setCoches={setCoches} />
+        <label>Schéma annoté {totalCoches > 0 && <span className="imp-opt">({views.length} vue{views.length > 1 ? 's' : ''} · {totalCoches} coche{totalCoches > 1 ? 's' : ''}{named < totalCoches ? ` · ${totalCoches - named} sans nom` : ''})</span>}</label>
+        <MultiSchemaEditor views={views} setViews={setViews} />
       </div>
 
       <div className="imp-actions">
         <button className="btn primary" onClick={save} disabled={!valid}><Icon name="check" size={15} /> Enregistrer le schéma</button>
       </div>
-      {!valid && <div className="hint" style={{ marginTop: 8 }}>Choisis une matière, colle/importe une image, puis place au moins une coche.</div>}
-      {valid && named < coches.length && <div className="hint" style={{ marginTop: 8, color: 'var(--accent-2)' }}><Icon name="alert" size={13} /> {coches.length - named} coche(s) sans nom seront enregistrées vides (réponse impossible en quiz).</div>}
+      {!valid && <div className="hint" style={{ marginTop: 8 }}>Choisis une matière, colle/importe une image (choisis sa vue), puis place au moins une coche.</div>}
+      {valid && named < totalCoches && <div className="hint" style={{ marginTop: 8, color: 'var(--accent-2)' }}><Icon name="alert" size={13} /> {totalCoches - named} coche(s) sans nom seront enregistrées vides (réponse impossible en quiz).</div>}
     </div>
   );
 }
@@ -544,6 +529,126 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
             onClose={() => setTheorieFor(null)} />
         );
       })()}
+    </div>
+  );
+}
+
+/* ============================================================
+   ÉDITEUR MULTI-VUES — enveloppe le SchemaEditor mono-image d'un système
+   d'onglets « vues » (Face / Dos / Profil…). Chaque vue = { id, vue, coches[],
+   img:{ url, w, h, blobId|null, newFile|null } }. Le parent gère le chargement
+   (blobId→URL) et l'enregistrement ; ce composant gère uniquement la navigation
+   entre vues, l'ajout (avec choix de la vue) et l'édition de la vue active.
+   ============================================================ */
+export function MultiSchemaEditor({ views, setViews }) {
+  const [activeId, setActiveId] = useState(() => (views[0] && views[0].id) || null);
+  const [pendingFile, setPendingFile] = useState(null); // image en attente de choix de vue
+  const createdUrls = useRef(new Set());
+
+  useEffect(() => { if (!views.find((v) => v.id === activeId)) setActiveId((views[0] && views[0].id) || null); }, [views, activeId]);
+  useEffect(() => () => { createdUrls.current.forEach((u) => { try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ } }); }, []);
+
+  // coller (Ctrl/Cmd+V) → nouvelle vue (on demande d'abord la vue)
+  useEffect(() => {
+    const onPaste = (e) => {
+      const items = (e.clipboardData && e.clipboardData.items) || [];
+      for (const it of items) {
+        if (it.type && it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) { e.preventDefault(); setPendingFile(f); return; } }
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
+
+  const active = views.find((v) => v.id === activeId) || null;
+
+  const addViewFromFile = (file, vue) => {
+    if (!file || !file.type || !file.type.startsWith('image/')) return;
+    const url = URL.createObjectURL(file);
+    createdUrls.current.add(url);
+    const probe = new Image();
+    probe.onload = () => {
+      const id = genId('img');
+      setViews((vs) => [...vs, { id, vue, coches: [], img: { url, w: probe.naturalWidth, h: probe.naturalHeight, blobId: null, newFile: file } }]);
+      setActiveId(id);
+    };
+    probe.src = url;
+  };
+
+  // « Changer l'image » de la vue active (remplace le fichier, garde les coches)
+  const setActiveImage = (file) => {
+    if (!active || !file || !file.type || !file.type.startsWith('image/')) return;
+    const url = URL.createObjectURL(file);
+    createdUrls.current.add(url);
+    const probe = new Image();
+    probe.onload = () => setViews((vs) => vs.map((v) => (v.id === active.id ? { ...v, img: { ...(v.img || {}), url, w: probe.naturalWidth, h: probe.naturalHeight, blobId: null, newFile: file } } : v)));
+    probe.src = url;
+  };
+
+  const setActiveCoches = (updater) => setViews((vs) => vs.map((v) => (v.id === (active && active.id) ? { ...v, coches: typeof updater === 'function' ? updater(v.coches) : updater } : v)));
+  const setVue = (vue) => setViews((vs) => vs.map((v) => (v.id === (active && active.id) ? { ...v, vue } : v)));
+  const delView = (id) => setViews((vs) => vs.filter((v) => v.id !== id));
+
+  return (
+    <div>
+      {views.length > 0 && (
+        <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          {views.map((v, i) => {
+            const on = v.id === activeId;
+            return (
+              <div key={v.id} className={'row' + (on ? '' : '')} style={{ gap: 6, alignItems: 'center', padding: '4px 6px 4px 10px', borderRadius: 9, cursor: 'pointer', background: on ? 'var(--accent)' : 'var(--card-2)', color: on ? '#fff' : 'var(--text)', border: '1px solid ' + (on ? 'var(--accent)' : 'var(--border)') }} onClick={() => setActiveId(v.id)}>
+                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{i + 1}. {vueLabel(v.vue)}</span>
+                <span style={{ fontSize: 11, opacity: .8 }}>({(v.coches || []).length})</span>
+                <button type="button" title="Supprimer cette vue" onClick={(e) => { e.stopPropagation(); delView(v.id); }} style={{ display: 'grid', placeItems: 'center', width: 18, height: 18, borderRadius: '50%', border: 'none', background: on ? 'rgba(255,255,255,.25)' : 'transparent', color: on ? '#fff' : 'var(--text-3)', cursor: 'pointer' }}><Icon name="x" size={12} /></button>
+              </div>
+            );
+          })}
+          <label className="btn ghost sm" style={{ cursor: 'pointer' }}>
+            <Icon name="plus" size={13} /> Ajouter une vue
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { if (e.target.files[0]) setPendingFile(e.target.files[0]); e.target.value = ''; }} />
+          </label>
+        </div>
+      )}
+
+      {active && (
+        <div className="imp-field" style={{ marginBottom: 10 }}>
+          <label style={{ marginBottom: 4 }}>Vue de cette image</label>
+          <div className="imp-chips">
+            {SCHEMA_VUES.filter((s) => s.key !== 'non_precisee').map((s) => (
+              <button key={s.key} type="button" className={'imp-chip' + (active.vue === s.key ? ' on' : '')} onClick={() => setVue(s.key)}>{s.label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {active
+        ? <SchemaEditor key={active.id} image={active.img} setImage={setActiveImage} coches={active.coches} setCoches={setActiveCoches} />
+        : <SchemaEditor image={null} setImage={(f) => setPendingFile(f)} coches={[]} setCoches={() => {}} />}
+
+      {pendingFile && (
+        <VuePicker
+          onPick={(vue) => { addViewFromFile(pendingFile, vue); setPendingFile(null); }}
+          onClose={() => setPendingFile(null)} />
+      )}
+    </div>
+  );
+}
+
+/* petit sélecteur de VUE affiché à chaque ajout d'image (« demande la vue »). */
+function VuePicker({ onPick, onClose }) {
+  return (
+    <div className="day-pop-scrim" onClick={onClose}>
+      <div className="day-pop" style={{ width: 'min(420px, 94vw)' }} onClick={(e) => e.stopPropagation()}>
+        <div className="day-pop-head"><div className="row spread"><div className="serif" style={{ fontSize: 17 }}>Quelle vue est-ce ?</div><button className="icon-btn sm" onClick={onClose}><Icon name="x" size={16} /></button></div></div>
+        <div className="day-pop-body">
+          <div className="hint" style={{ marginBottom: 10 }}>Chaque image porte ses propres coches. Choisis l'angle de cette vue.</div>
+          <div className="imp-chips">
+            {SCHEMA_VUES.filter((s) => s.key !== 'non_precisee').map((s) => (
+              <button key={s.key} type="button" className="imp-chip" onClick={() => onPick(s.key)}>{s.label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import {
   index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, missedQuestions, topConcepts, todayPlan,
 } from '../lib/planning.js';
 import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
+import { allCoches } from '../lib/anatSchema.js';
 import { CarnetBody } from './Carnet.jsx';
 
 export function Reviser({ ctx }) {
@@ -461,7 +462,7 @@ function ErrorSummary({ ctx, ix, selIds, title }) {
 function AnatSchemaLauncher({ fiche, ctx, meta, due, scheduled, jp }) {
   const [mode, setMode] = useState('total'); // total | random (masquage visuel)
   const [prop, setProp] = useState(0.5);
-  const coches = fiche.coches || [];
+  const coches = allCoches(fiche); // toutes les vues à plat
   const nb = coches.length;
   const nbTheory = theoryCount(coches);
   // mode principal : « Visuel + Théorie » mis en avant dès qu'il y a de la théorie.

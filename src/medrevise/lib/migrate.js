@@ -12,6 +12,7 @@ import { toInternalItem, isLegacyItem } from './adapter.js';
 const MIGRATIONS_KEY = 'migrations';
 const MIG_V1 = 'items-v1.0';
 const MIG_DOCS = 'documents-v2';
+const MIG_ANAT_IMG = 'anat-images-v1';
 
 /** liste des migrations déjà appliquées */
 async function appliedList() {
@@ -65,9 +66,38 @@ export async function migrateDocumentsV2() {
   return { ran: true, fiches: (fiches || []).length, highlights: (highlights || []).length };
 }
 
+/**
+ * Schémas d'anatomie MULTI-VUES (anat-images-v1). NON DESTRUCTIVE : chaque fiche
+ * `anat_schema` sans `images[]` reçoit une vue unique « Non précisée » construite à
+ * partir de ses champs simples (imageId/imageW/imageH/coches), qui RESTENT en place
+ * (miroir de la 1re vue). Sauvegarde préalable + marqueur idempotent.
+ */
+export async function migrateAnatImagesV1() {
+  const applied = await appliedList();
+  if (applied.includes(MIG_ANAT_IMG)) return { ran: false };
+
+  const fiches = await getAll('fiches');
+  const schemas = (fiches || []).filter((f) => f && f.type === 'anat_schema' && !Array.isArray(f.images));
+  await putBackup('pre-' + MIG_ANAT_IMG, schemas);
+
+  const out = schemas.map((f) => ({
+    ...f,
+    images: [{
+      id: 'img-' + f.id, imageId: f.imageId || null,
+      imageW: f.imageW || null, imageH: f.imageH || null,
+      vue: 'non_precisee', coches: f.coches || [],
+    }],
+  }));
+  if (out.length) await putMany('fiches', out);
+
+  await setMeta(MIGRATIONS_KEY, [...applied, MIG_ANAT_IMG]);
+  return { ran: true, migrated: out.length };
+}
+
 /** point d'entrée bootstrap : applique toutes les migrations en attente */
 export async function runMigrations() {
   const items = await migrateItemsToV1();
   const documents = await migrateDocumentsV2();
-  return { items, documents };
+  const anatImages = await migrateAnatImagesV1();
+  return { items, documents, anatImages };
 }

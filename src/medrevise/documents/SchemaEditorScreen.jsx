@@ -11,9 +11,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, matiereMeta } from '../components/ui.jsx';
-import { SchemaEditor, ZonesLayer } from '../pages/ImportAnatomieVisuel.jsx';
+import { MultiSchemaEditor, ZonesLayer } from '../pages/ImportAnatomieVisuel.jsx';
 import { saveAnatSchema } from '../lib/import.js';
-import { getBlob, putBlob } from '../lib/storage.js';
+import { getBlob, putBlob, genId } from '../lib/storage.js';
+import { ficheImages, vueLabel } from '../lib/anatSchema.js';
 
 const DEFAULT_COLOR = '#7C6FE0';
 const markerId = (col) => 'schr-ah-' + (col || DEFAULT_COLOR).replace('#', '');
@@ -25,58 +26,67 @@ export function SchemaEditorScreen({ ctx }) {
   const meta = matiereMeta(matiere);
 
   const [mode, setMode] = useState('read'); // read | edit
-  const [image, setImage] = useState(null); // { url, w, h, blobId }
-  const [coches, setCoches] = useState([]);
+  // MULTI-VUES : chaque vue = { id, vue, coches[], img:{ url, w, h, blobId, newFile } }.
+  const [views, setViews] = useState([]);
+  const [readIdx, setReadIdx] = useState(0);
   const [titre, setTitre] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const objectUrl = useRef(null);
+  const urlsRef = useRef([]);
 
-  // charge l'image (blob → object-URL) + les coches existantes de la fiche
+  // charge toutes les vues (blob → object-URL) + leurs coches. Rétro-compat mono-image
+  // gérée par ficheImages().
   useEffect(() => {
     let on = true;
     if (!fiche) return;
     setTitre(fiche.titre || '');
-    setCoches((fiche.coches || []).map((c) => ({ ...c, ancre: { ...c.ancre }, boite: { ...c.boite } })));
+    setReadIdx(0);
+    urlsRef.current.forEach((u) => { try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ } });
+    urlsRef.current = [];
     (async () => {
-      if (!fiche.imageId) { setImage(null); return; }
-      const b = await getBlob(fiche.imageId);
-      if (!on || !b) return;
-      const url = URL.createObjectURL(b);
-      objectUrl.current = url;
-      const probe = new Image();
-      probe.onload = () => { if (on) setImage({ url, w: probe.naturalWidth || fiche.imageW || 0, h: probe.naturalHeight || fiche.imageH || 0, blobId: fiche.imageId }); };
-      probe.src = url;
+      const imgs = ficheImages(fiche);
+      const built = [];
+      for (const im of imgs) {
+        const view = { id: im.id || genId('img'), vue: im.vue || 'non_precisee', coches: (im.coches || []).map((c) => ({ ...c })), img: null };
+        if (im.imageId) {
+          // on garde le blobId même si le blob ne charge pas → aucune vue n'est perdue à la sauvegarde
+          view.img = { url: null, w: im.imageW || 0, h: im.imageH || 0, blobId: im.imageId, newFile: null };
+          const b = await getBlob(im.imageId);
+          if (b) {
+            const url = URL.createObjectURL(b);
+            urlsRef.current.push(url);
+            const dims = await new Promise((res) => { const p = new Image(); p.onload = () => res({ w: p.naturalWidth, h: p.naturalHeight }); p.onerror = () => res({ w: im.imageW || 0, h: im.imageH || 0 }); p.src = url; });
+            view.img = { url, w: dims.w || im.imageW || 0, h: dims.h || im.imageH || 0, blobId: im.imageId, newFile: null };
+          }
+        }
+        built.push(view);
+      }
+      if (on) setViews(built);
     })();
     return () => { on = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fiche && fiche.id]);
 
-  useEffect(() => () => { if (objectUrl.current) { try { URL.revokeObjectURL(objectUrl.current); } catch (e) { /* ignore */ } } }, []);
-
-  // « Changer l'image » depuis SchemaEditor → nouveau fichier : object-URL + dims + blob neuf
-  const changeImage = (file) => {
-    if (!file || !file.type || !file.type.startsWith('image/')) return;
-    const url = URL.createObjectURL(file);
-    const probe = new Image();
-    probe.onload = () => setImage((prev) => {
-      if (prev && prev.url && prev.url !== url) { try { URL.revokeObjectURL(prev.url); } catch (e) { /* ignore */ } }
-      return { url, w: probe.naturalWidth, h: probe.naturalHeight, blobId: null, newFile: file };
-    });
-    probe.src = url;
-  };
+  useEffect(() => () => { urlsRef.current.forEach((u) => { try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ } }); urlsRef.current = []; }, []);
 
   const back = () => ctx.closeSchemaEditor();
+
+  const totalCoches = views.reduce((n, v) => n + (v.coches || []).length, 0);
+  const named = views.reduce((n, v) => n + (v.coches || []).filter((c) => (c.texte || '').trim()).length, 0);
 
   const save = async () => {
     if (!fiche || saving) return;
     setSaving(true);
-    let imageId = image && image.blobId;
-    if (image && image.newFile) { try { imageId = await putBlob(image.newFile); } catch (e) { /* ignore */ } }
+    const images = [];
+    for (const v of views) {
+      if (!v.img) continue;
+      let imageId = v.img.blobId || null;
+      if (v.img.newFile) { try { imageId = await putBlob(v.img.newFile); } catch (e) { /* ignore */ } }
+      images.push({ id: v.id, imageId, imageW: v.img.w, imageH: v.img.h, vue: v.vue, coches: v.coches });
+    }
     await saveAnatSchema({
       ficheId: fiche.id, matiereId: fiche.matiereId, titre: titre || fiche.titre,
-      sousCategorie: fiche.sousCategorie || null, imageId,
-      imageW: image && image.w, imageH: image && image.h, coches,
+      sousCategorie: fiche.sousCategorie || null, images,
     });
     await ctx.reload();
     setSaving(false);
@@ -93,14 +103,14 @@ export function SchemaEditorScreen({ ctx }) {
     );
   }
 
-  const named = coches.filter((c) => (c.texte || '').trim()).length;
+  const readView = views[readIdx] || views[0] || null;
 
   return (
     <div className="screen scroll fadein">
       <div className="topbar">
         <div>
           <h1 className="serif">{fiche.titre}</h1>
-          <div className="sub">Schéma d'anatomie · {coches.length} coche{coches.length > 1 ? 's' : ''}{named < coches.length ? ` · ${coches.length - named} sans nom` : ''}</div>
+          <div className="sub">Schéma d'anatomie · {views.length} vue{views.length > 1 ? 's' : ''} · {totalCoches} coche{totalCoches > 1 ? 's' : ''}{named < totalCoches ? ` · ${totalCoches - named} sans nom` : ''}</div>
         </div>
         <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
       </div>
@@ -113,8 +123,8 @@ export function SchemaEditorScreen({ ctx }) {
         </div>
         <div style={{ flex: 1 }} />
         {mode === 'edit'
-          ? <button className="btn primary sm" onClick={save} disabled={saving}><Icon name={saved ? 'check' : 'check'} size={13} /> {saving ? 'Enregistrement…' : saved ? 'Enregistré ✓' : 'Enregistrer'}</button>
-          : <button className="btn primary sm" disabled={!coches.length} onClick={() => ctx.startAnatQuiz(fiche, { mode: 'total' })}><Icon name="play" size={13} fill /> Lancer le quiz</button>}
+          ? <button className="btn primary sm" onClick={save} disabled={saving}><Icon name="check" size={13} /> {saving ? 'Enregistrement…' : saved ? 'Enregistré ✓' : 'Enregistrer'}</button>
+          : <button className="btn primary sm" disabled={!totalCoches} onClick={() => ctx.startAnatQuiz(fiche, { mode: 'total' })}><Icon name="play" size={13} fill /> Lancer le quiz</button>}
       </div>
 
       {mode === 'edit' ? (
@@ -125,8 +135,8 @@ export function SchemaEditorScreen({ ctx }) {
               <input className="imp-title" value={titre} onChange={(e) => setTitre(e.target.value)} placeholder="Titre du schéma" />
             </div>
             <div className="imp-field">
-              <label>Schéma annoté <span className="imp-opt">— clique « Ajouter une coche » puis un point de l'image ; déplace la boîte et l'ancre indépendamment ; clique une coche pour la renommer, changer sa couleur ou la supprimer.</span></label>
-              <SchemaEditor image={image} setImage={changeImage} coches={coches} setCoches={setCoches} />
+              <label>Schéma annoté <span className="imp-opt">— une ou plusieurs vues ; sur chaque image, outils Coche / Zone. Clique une annotation pour la renommer, changer sa couleur/opacité ou la supprimer.</span></label>
+              <MultiSchemaEditor views={views} setViews={setViews} />
             </div>
             <div className="imp-actions">
               <button className="btn primary" onClick={save} disabled={saving}><Icon name="check" size={15} /> {saving ? 'Enregistrement…' : 'Enregistrer le schéma'}</button>
@@ -135,9 +145,16 @@ export function SchemaEditorScreen({ ctx }) {
         </div>
       ) : (
         <div style={{ maxWidth: 900, margin: '10px auto 0' }}>
-          <SchemaPreview image={image} coches={coches} />
+          {views.length > 1 && (
+            <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+              {views.map((v, i) => (
+                <button key={v.id} type="button" className={'imp-chip' + (i === readIdx ? ' on' : '')} onClick={() => setReadIdx(i)}>{vueLabel(v.vue)} <span style={{ opacity: .7 }}>({(v.coches || []).length})</span></button>
+              ))}
+            </div>
+          )}
+          <SchemaPreview image={readView && readView.img} coches={(readView && readView.coches) || []} />
           <div className="hint" style={{ marginTop: 12, textAlign: 'center' }}>
-            <Icon name="info" size={13} /> Aperçu (toutes les coches révélées). Passe en <strong>Édition</strong> pour modifier, ou lance le quiz pour réviser.
+            <Icon name="info" size={13} /> Aperçu (toutes les coches révélées){views.length > 1 ? ' — change de vue ci-dessus' : ''}. Passe en <strong>Édition</strong> pour modifier, ou lance le quiz pour réviser.
           </div>
         </div>
       )}

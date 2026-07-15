@@ -20,6 +20,7 @@ import { matchAnat } from '../lib/anatMatch.js';
 import { champsFor } from '../lib/anatParse.js';
 import { StructureTable } from '../pages/ImportAnatomieTheorie.jsx';
 import { ZonesLayer } from '../pages/ImportAnatomieVisuel.jsx';
+import { ficheImages, vueLabel } from '../lib/anatSchema.js';
 import { blobURL } from '../lib/storage.js';
 
 const DEFAULT_COLOR = '#7C6FE0';
@@ -44,7 +45,9 @@ export function AnatQuiz({ ctx }) {
   const fiche = q.fiche;
   const matiere = ix.mById[fiche.matiereId];
   const meta = matiereMeta(matiere);
-  const coches = fiche.coches || [];
+  // MULTI-VUES : toutes les images du schéma + toutes leurs coches à plat.
+  const views = useMemo(() => ficheImages(fiche), [fiche.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const coches = useMemo(() => views.flatMap((v) => v.coches || []), [views]);
 
   // tirage des coches masquées (stable pour la session)
   const maskedIds = useMemo(() => {
@@ -56,7 +59,7 @@ export function AnatQuiz({ ctx }) {
   }, [fiche.id, q.mode, q.proportion]);
   const maskedSet = useMemo(() => new Set(maskedIds), [maskedIds]);
 
-  const [imgUrl, setImgUrl] = useState(null);
+  const [imgUrls, setImgUrls] = useState({}); // { [viewId]: objectURL }
   const [answers, setAnswers] = useState({});
   const [phase, setPhase] = useState('answer'); // answer | result | done
   const [overrides, setOverrides] = useState(() => new Set()); // "compter comme juste" (visuel)
@@ -70,10 +73,18 @@ export function AnatQuiz({ ctx }) {
   const [theoryChecked, setTheoryChecked] = useState(false);
 
   useEffect(() => {
-    let on = true, url = null;
-    blobURL(fiche.imageId).then((u) => { if (on) { url = u; setImgUrl(u); } });
-    return () => { on = false; if (url) URL.revokeObjectURL(url); };
-  }, [fiche.imageId]);
+    let on = true; const created = [];
+    (async () => {
+      const map = {};
+      for (const v of views) {
+        if (!v.imageId) continue;
+        const u = await blobURL(v.imageId);
+        if (u) { map[v.id] = u; created.push(u); }
+      }
+      if (on) setImgUrls(map); else created.forEach((u) => { try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ } });
+    })();
+    return () => { on = false; created.forEach((u) => { try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ } }); };
+  }, [views]);
 
   // correction tolérante (normalisation + réponses acceptées + « presque »),
   // 100 % locale. « Compter comme juste » (override) reste le dernier mot.
@@ -180,12 +191,17 @@ export function AnatQuiz({ ctx }) {
 
       <div className="rev-stage scroll" style={{ flex: '1 1 auto', overflowY: 'auto', minHeight: 0, paddingTop: 4, paddingBottom: 10, justifyContent: 'flex-start' }}>
         <div style={{ width: '100%', maxWidth: 900, margin: '0 auto' }}>
-          <SchemaQuizCanvas
-            imgUrl={imgUrl} coches={coches} maskedSet={maskedSet}
-            answers={answers} setAnswers={setAnswers} phase={phase}
-            evalCoche={evalCoche} overrides={overrides} toggleOverride={toggleOverride}
-            onEnter={validate}
-          />
+          {views.map((v) => (
+            <div key={v.id} style={{ marginBottom: 14 }}>
+              {views.length > 1 && <div className="hint" style={{ marginBottom: 6, fontWeight: 700, color: 'var(--text-2)' }}><Icon name="image" size={12} /> {vueLabel(v.vue)}</div>}
+              <SchemaQuizCanvas
+                imgUrl={imgUrls[v.id]} coches={v.coches || []} maskedSet={maskedSet} firstMaskedId={maskedIds[0]}
+                answers={answers} setAnswers={setAnswers} phase={phase}
+                evalCoche={evalCoche} overrides={overrides} toggleOverride={toggleOverride}
+                onEnter={validate}
+              />
+            </div>
+          ))}
           {theoryOn && phase === 'result' && theoryQuestions.length > 0 && (
             <TheoryPanel
               questions={theoryQuestions} answers={theoryAnswers} setAnswers={setTheoryAnswers}
@@ -215,7 +231,7 @@ export function AnatQuiz({ ctx }) {
 }
 
 /* ---- rendu : image + overlay (flèches SVG + ancres + boîtes) en % ---- */
-function SchemaQuizCanvas({ imgUrl, coches, maskedSet, answers, setAnswers, phase, evalCoche, overrides, toggleOverride, onEnter }) {
+function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, setAnswers, phase, evalCoche, overrides, toggleOverride, onEnter }) {
   const usedColors = [...new Set(coches.map((c) => c.couleur || DEFAULT_COLOR))];
   // couleur de bord/remplissage selon l'état de correction (identique aux libellés).
   const stateColor = (c) => {
@@ -267,7 +283,7 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, answers, setAnswers, phas
                 </span>
                 {masked ? (
                   phase === 'answer' ? (
-                    <input autoFocus={c.id === coches.find((x) => maskedSet.has(x.id))?.id}
+                    <input autoFocus={c.id === firstMaskedId}
                       value={answers[c.id] || ''} placeholder="nom ?"
                       onChange={(e) => setAnswers((a) => ({ ...a, [c.id]: e.target.value }))}
                       onKeyDown={(e) => { if (e.key === 'Enter') onEnter(); }}
