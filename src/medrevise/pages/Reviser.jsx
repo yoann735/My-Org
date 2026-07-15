@@ -27,6 +27,9 @@ export function Reviser({ ctx }) {
   const dueSchemaIds = useMemo(() => new Set(dueSchemasToday(db, ix).map((f) => f.id)), [db, ix]);
   const fichesOf = (matId) => db.fiches.filter((f) => f.matiereId === matId && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
   const matieresOf = (srcId) => db.matieres.filter((m) => m.sourceId === srcId && !m.archive);
+  // repérage « d'un coup d'œil » des schémas d'anatomie dans l'arbre (point E).
+  const matHasSchema = (matId) => fichesOf(matId).some((f) => f.type === 'anat_schema');
+  const srcHasSchema = (srcId) => matieresOf(srcId).some((m) => matHasSchema(m.id));
   const qOfFiche = (fId) => db.questions.filter((q) => q.ficheId === fId);
   // schéma d'anatomie = 1 item planifiable (la fiche elle-même) ; sinon on compte
   // les cartes dues (qcm/flash). Les exercices sont HORS méthode des J → jamais comptés.
@@ -163,6 +166,7 @@ export function Reviser({ ctx }) {
                         <Icon name={openS ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)' }} />
                         <span className="tsrc-ic" style={{ background: `color-mix(in srgb, ${src.tint || '#7C6FE0'} 16%, transparent)`, color: src.tint || '#7C6FE0' }}><Icon name={src.icon || 'folder'} size={13} /></span>
                         <span className="tsrc-name">{src.nom}</span>
+                        {srcHasSchema(src.id) && <span title="Contient un schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex', marginLeft: 4 }}><Icon name="image" size={12} /></span>}
                       </button>
                     )}
                     <BellButton on={on} onToggle={() => ctx.setSourceRappels(src.id, !on)} />
@@ -182,7 +186,7 @@ export function Reviser({ ctx }) {
                               onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
                               onBlur={commitRename} />
                           ) : (
-                            <span className="tcat-label" style={{ flex: 1 }}>{mm.label}</span>
+                            <span className="tcat-label" style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 5 }}>{mm.label}{matHasSchema(mat.id) && <span title="Contient un schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex' }}><Icon name="image" size={11} /></span>}</span>
                           )}
                           <CoefControl value={mat.coef ?? 3} inherited={false} onSet={(v) => ctx.setMatiereCoef(mat.id, v)} />
                         </div>
@@ -209,6 +213,7 @@ export function Reviser({ ctx }) {
                                     <button className={'tree-check' + (sel ? ' on' : '')} onClick={() => toggle(f.id)} title="Cocher / décocher">{sel ? <Icon name="check" size={11} stroke={3} /> : null}</button>
                                     <button className="tree-course-main" onClick={() => selectOnly(f.id)} onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }} title="Clic = sélectionner · double-clic = renommer">
                                       <span className="tc-name">{f.titre}</span>
+                                      {f.type === 'anat_schema' && <span title="Schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex', marginLeft: 4 }}><Icon name="image" size={12} /></span>}
                                       {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
                                     </button>
                                     <CoefControl value={effectiveCoef(db, f, ix)} inherited={f.coef == null} onSet={(v) => ctx.setFicheCoef(f.id, v)} onReset={() => ctx.setFicheCoef(f.id, null)} />
