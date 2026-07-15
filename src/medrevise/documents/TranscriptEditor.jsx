@@ -49,13 +49,27 @@ export function TranscriptEditor({ ctx }) {
   const objectUrls = useRef([]);
   const saveTimer = useRef(null);
   const insertRef = useRef(null);
+  const pendingSave = useRef(null); // { ficheId, content } en attente de flush
+  const loadedRef = useRef(false);  // ne jamais persister avant le chargement initial
 
   const doSave = (ed) => {
-    if (!fiche) return;
+    if (!fiche || !loadedRef.current) return; // garde : pas de save tant que non chargé
     const json = ed.getJSON();
     setSnapshot(json);
+    const content = dehydrateDoc(json);
+    pendingSave.current = { ficheId: fiche.id, content };
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => setDoc(fiche.id, dehydrateDoc(json)), 400);
+    saveTimer.current = setTimeout(() => {
+      if (pendingSave.current) { setDoc(pendingSave.current.ficheId, pendingSave.current.content); pendingSave.current = null; }
+    }, 400);
+  };
+
+  // écrit immédiatement une sauvegarde en attente (sortie d'écran / démontage) — la
+  // spec exige un save À LA SORTIE en plus du debounce, sinon les dernières frappes
+  // (dans la fenêtre de debounce) sont perdues au « Retour ».
+  const flushSave = () => {
+    clearTimeout(saveTimer.current);
+    if (pendingSave.current) { setDoc(pendingSave.current.ficheId, pendingSave.current.content); pendingSave.current = null; }
   };
 
   const editor = useEditor({
@@ -94,7 +108,7 @@ export function TranscriptEditor({ ctx }) {
   // chargement initial : hydrate le doc (src des images depuis les blobs) puis l'injecte
   useEffect(() => {
     let cancelled = false;
-    setLoaded(false);
+    setLoaded(false); loadedRef.current = false;
     if (!editor || !fiche) return;
     (async () => {
       const rec = await getDoc(fiche.id);
@@ -105,10 +119,14 @@ export function TranscriptEditor({ ctx }) {
       editor.commands.setContent(doc, { emitUpdate: false }); // chargement : ne pas déclencher d'autosave
       setSnapshot(doc);
       setLoaded(true);
+      loadedRef.current = true; // à partir d'ici seulement, les frappes sont persistées
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, fiche && fiche.id]);
+
+  // sauvegarde garantie à la sortie de l'écran (démontage) : flush du save en attente.
+  useEffect(() => () => flushSave(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (editor) editor.setEditable(mode === 'edit'); }, [mode, editor]);
 
@@ -190,7 +208,7 @@ export function TranscriptEditor({ ctx }) {
     input.click();
   };
 
-  const back = () => ctx.closeTranscript();
+  const back = () => { flushSave(); ctx.closeTranscript(); };
 
   if (!fiche) {
     return (
@@ -238,6 +256,11 @@ export function TranscriptEditor({ ctx }) {
         <button className="btn ghost sm" onClick={copyFullText}><Icon name={copiedText ? 'check' : 'copy'} size={13} /> {copiedText ? 'Texte copié' : 'Copier le texte'}</button>
         <button className="btn ghost sm" onClick={exportPdf} disabled={exporting}><Icon name="filePdf" size={13} /> {exporting ? 'Export…' : 'Exporter PDF'}</button>
       </div>
+
+      {/* barre de mise en forme FIXE (édition) : surligner + souligner + le reste,
+          visibles en permanence — même mécanique que le mode Fiche (barre non
+          flottante), en plus de la barre flottante Notion sur la sélection. */}
+      {mode === 'edit' && editor && <TranscriptFormatBar editor={editor} />}
 
       <div className="pdfr-body">
         <div className="pdfr-scroll" style={{ padding: '20px 0' }}>
@@ -296,6 +319,68 @@ export function TranscriptEditor({ ctx }) {
         <FloatingToolbar editor={editor} pos={float} hlOpen={hlOpen} setHlOpen={setHlOpen} />,
         document.body,
       )}
+    </div>
+  );
+}
+
+/* barre de mise en forme FIXE (mode édition) : rend le surlignage et le soulignement
+   toujours accessibles (le mode Fiche a une barre fixe équivalente). Pilote la MÊME
+   instance TipTap que l'éditeur et la barre flottante — aucun second éditeur. */
+function TranscriptFormatBar({ editor }) {
+  const [, force] = useState(0);
+  const [hlOpen, setHlOpen] = useState(false);
+  useEffect(() => {
+    const rerender = () => force((v) => v + 1);
+    editor.on('transaction', rerender);
+    return () => editor.off('transaction', rerender);
+  }, [editor]);
+
+  const active = (n, a) => editor.isActive(n, a);
+  const run = (fn) => fn(editor.chain().focus()).run();
+  const keep = (e) => e.preventDefault(); // ne pas blurer/collapser la sélection
+
+  return (
+    <div className="pdfr-edit-toolbar">
+      <button type="button" className={'et-btn' + (active('bold') ? ' active' : '')} title="Gras" onMouseDown={keep} onClick={() => run((c) => c.toggleBold())}><b>G</b></button>
+      <button type="button" className={'et-btn' + (active('italic') ? ' active' : '')} title="Italique" onMouseDown={keep} onClick={() => run((c) => c.toggleItalic())}><i>I</i></button>
+      <button type="button" className={'et-btn' + (active('underline') ? ' active' : '')} title="Souligné" onMouseDown={keep} onClick={() => run((c) => c.toggleUnderline())}><u>U</u></button>
+      <button type="button" className={'et-btn' + (active('strike') ? ' active' : '')} title="Barré" onMouseDown={keep} onClick={() => run((c) => c.toggleStrike())}><s>S</s></button>
+      <span className="et-sep" />
+      <div style={{ position: 'relative', display: 'inline-flex' }}>
+        <button type="button" className={'et-btn' + (active('highlight') ? ' active' : '')} title="Surligner" onMouseDown={keep} onClick={() => setHlOpen((v) => !v)}><Icon name="edit" size={13} /></button>
+        {hlOpen && (
+          <div className="rt-hlmenu" style={{ top: '110%' }}>
+            {HL_COLORS.map((c) => (
+              <button key={c.id} type="button" className="hl-swatch" style={{ background: c.hex }} title={c.id}
+                onMouseDown={keep} onClick={() => { run((ch) => ch.setHighlight({ color: c.hex })); setHlOpen(false); }} />
+            ))}
+            <button type="button" className="et-btn" title="Retirer le surlignage" onMouseDown={keep} onClick={() => { run((ch) => ch.unsetHighlight()); setHlOpen(false); }}><Icon name="x" size={12} /></button>
+          </div>
+        )}
+      </div>
+      <label className="et-btn" title="Couleur du texte" style={{ position: 'relative', overflow: 'hidden' }} onMouseDown={keep}>
+        <span style={{ color: 'var(--accent)', fontWeight: 800 }}>A</span>
+        <input type="color" style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} onChange={(e) => run((c) => c.setColor(e.target.value))} />
+      </label>
+      <span className="et-sep" />
+      <select className="et-select" defaultValue="" onMouseDown={keep} onChange={(e) => { if (e.target.value) run((c) => c.setFontSize(e.target.value)); e.target.value = ''; }} title="Taille">
+        <option value="" disabled>Taille</option>
+        {FONT_SIZES.map((s) => <option key={s} value={s}>{s.replace('px', '')}</option>)}
+      </select>
+      <select className="et-select" defaultValue="" onMouseDown={keep} onChange={(e) => { if (e.target.value) run((c) => c.setFontFamily(e.target.value)); e.target.value = ''; }} title="Police">
+        <option value="" disabled>Police</option>
+        {FONT_FAMILIES.map((f) => <option key={f} value={f}>{f}</option>)}
+      </select>
+      <span className="et-sep" />
+      <button type="button" className={'et-btn' + (active('bulletList') ? ' active' : '')} title="Liste à puces" onMouseDown={keep} onClick={() => run((c) => c.toggleBulletList())}><Icon name="list" size={13} /></button>
+      <select className="et-select" defaultValue="" onMouseDown={keep} onChange={(e) => { if (e.target.value) run((c) => c.setTextAlign(e.target.value)); e.target.value = ''; }} title="Alignement">
+        <option value="" disabled>Alignement</option>
+        <option value="left">Gauche</option>
+        <option value="center">Centre</option>
+        <option value="right">Droite</option>
+      </select>
+      <span className="et-sep" />
+      <button type="button" className={'et-btn' + (active('studentQuestion') ? ' active' : '')} title="Marquer comme MA question" onMouseDown={keep} onClick={() => run((c) => c.toggleStudentQuestion())} style={{ fontWeight: 800 }}>?</button>
     </div>
   );
 }

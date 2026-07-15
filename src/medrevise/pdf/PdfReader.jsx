@@ -463,7 +463,7 @@ export function PdfReader({ ctx }) {
     if (existing) { setActiveEditId(existing.id); setPending(null); return; }
     const rec = newTextEdit({
       ficheId: pdfView.ficheId, page: pending.page, x: x0, y: y0, width: x1 - x0, height: y1 - y0,
-      originalText: pending.texte,
+      originalText: pending.texte, fontSize: pending.fontSizeRel || null, fontFamily: pending.fontFamily || null,
     });
     await put('annotations', rec);
     await reloadEdits();
@@ -629,7 +629,7 @@ export function PdfReader({ ctx }) {
                 return (
                   <div key={n} className="pdfr-page" style={style}>
                     <PdfPageContent
-                      pdfDoc={pdfDoc} pageNum={n} scale={scale} mode={mode}
+                      pdfDoc={pdfDoc} pageNum={n} scale={scale} mode={mode} pageHeight={h}
                       highlights={highlightsByPage[n] || EMPTY_ARRAY}
                       edits={editsByPage[n] || EMPTY_ARRAY}
                       activeEditId={activeEditId}
@@ -703,7 +703,7 @@ export function PdfReader({ ctx }) {
     texte + surlignages + surlignage de recherche (géométrie exacte, Chantier 2) + blocs
     de texte édités (Chantier 1). */
 function PdfPageContent({
-  pdfDoc, pageNum, scale, mode, highlights, edits, activeEditId, matches, activeMatchIdx,
+  pdfDoc, pageNum, scale, mode, pageHeight, highlights, edits, activeEditId, matches, activeMatchIdx,
   onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor,
 }) {
   const canvasRef = useRef(null);
@@ -769,8 +769,16 @@ function PdfPageContent({
     const cr = container.getBoundingClientRect();
     if (!clientRects.length || !cr.width || !cr.height) return;
     const rects = clientRects.map((r) => ({ x: (r.left - cr.left) / cr.width, y: (r.top - cr.top) / cr.height, width: r.width / cr.width, height: r.height / cr.height }));
+    // BUG C : typographie EXACTE du texte d'origine (celle du <span> pdf.js réellement
+    // rendu), normalisée à la hauteur de page pour survivre au zoom. Reprise à
+    // l'identique par la boîte d'édition ET le rendu final → même box model, donc
+    // aucun retour à la ligne parasite ni décalage au « Terminé ».
+    const startEl = sel.anchorNode && (sel.anchorNode.nodeType === Node.TEXT_NODE ? sel.anchorNode.parentElement : sel.anchorNode);
+    const cs = startEl ? window.getComputedStyle(startEl) : null;
+    const fontSizeRel = cs ? (parseFloat(cs.fontSize) / cr.height) : null;
+    const fontFamily = cs ? cs.fontFamily : null;
     const anchor = clientRects[clientRects.length - 1];
-    onCreateHighlight({ page: pageNum, texte, rects, x: anchor.right, y: anchor.bottom });
+    onCreateHighlight({ page: pageNum, texte, rects, x: anchor.right, y: anchor.bottom, fontSizeRel, fontFamily });
   };
 
   return (
@@ -790,7 +798,7 @@ function PdfPageContent({
         ))}
       </div>
       {edits.map((a) => (
-        <TextEditBlock key={a.id} edit={a} active={a.id === activeEditId} editable={mode === 'edit'} onActivate={onActivateEdit} editor={a.id === activeEditId ? activeEditor : null} />
+        <TextEditBlock key={a.id} edit={a} active={a.id === activeEditId} editable={mode === 'edit'} onActivate={onActivateEdit} editor={a.id === activeEditId ? activeEditor : null} pageHeight={pageHeight} />
       ))}
     </>
   );
@@ -801,12 +809,20 @@ function PdfPageContent({
     statique (HTML généré) tant qu'il n'est pas actif, live (une SEULE instance TipTap,
     possédée par PdfReader et partagée avec EditToolbar — voir plus haut) une fois activé.
     Read-only strict en mode lecture (aucun onClick, aucune interaction). */
-function TextEditBlock({ edit, active, editable, onActivate, editor }) {
+function TextEditBlock({ edit, active, editable, onActivate, editor, pageHeight }) {
   const html = useMemo(() => richToHTML(edit.content), [edit.content]);
+  // BUG C : la boîte hérite EXACTEMENT de la typographie du texte d'origine — même
+  // font-size (dérivé de la hauteur de page courante → suit le zoom), même
+  // font-family, line-height 1 et letter-spacing normal, padding 0. Les DEUX états
+  // (édition live TipTap ET rendu statique) partagent ce style : aucune différence de
+  // box model, donc pas de retour à la ligne parasite (C1) ni de décalage au
+  // « Terminé » (C2). La largeur = celle des rects de la sélection (edit.width).
+  const fontSize = (edit.fontSize && pageHeight) ? `${edit.fontSize * pageHeight}px` : undefined;
   const style = {
     left: edit.x * 100 + '%', top: edit.y * 100 + '%', width: edit.width * 100 + '%',
     minHeight: edit.height * 100 + '%', maxHeight: `calc(100% - ${edit.y * 100}%)`,
     fontFamily: edit.fontFamily || 'sans-serif',
+    fontSize, lineHeight: 1, letterSpacing: 'normal', padding: 0,
   };
 
   if (active && editable && editor) {

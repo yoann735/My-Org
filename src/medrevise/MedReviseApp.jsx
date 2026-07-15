@@ -17,12 +17,13 @@ import { AnatQuiz } from './session/AnatQuiz.jsx';
 import { PdfReader } from './pdf/PdfReader.jsx';
 import { DocumentsHome } from './documents/DocumentsHome.jsx';
 import { TranscriptEditor } from './documents/TranscriptEditor.jsx';
+import { SchemaEditorScreen } from './documents/SchemaEditorScreen.jsx';
 import {
   seedIfEmpty, getAll, put, putMany, remove, getStats, setStats as saveStats, genId,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 
-const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, documents: DocumentsHome, pdflist: DocumentsHome, transcript: TranscriptEditor };
+const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, documents: DocumentsHome, pdflist: DocumentsHome, transcript: TranscriptEditor, schemaedit: SchemaEditorScreen };
 
 function MedBottomNav({ current, onNav }) {
   const items = [
@@ -31,7 +32,7 @@ function MedBottomNav({ current, onNav }) {
     { id: 'library', label: 'Biblio', icon: 'book' },
     { id: 'documents', label: 'Docs', icon: 'filePdf' },
   ];
-  const active = (id) => current === id || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz'].includes(current)) || (id === 'documents' && ['pdf', 'transcript', 'pdflist'].includes(current));
+  const active = (id) => current === id || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz'].includes(current)) || (id === 'documents' && ['pdf', 'transcript', 'pdflist', 'schemaedit'].includes(current));
   return (
     <nav className="bottom-nav">
       {items.map((n) => (
@@ -57,6 +58,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [focusFiche, setFocusFiche] = useState(null);
   const [pdfView, setPdfView] = useState(null); // { ficheId, mode: 'read'|'edit', returnScreen }
   const [transcriptView, setTranscriptView] = useState(null); // { ficheId, returnScreen }
+  const [schemaView, setSchemaView] = useState(null); // { ficheId, returnScreen }
 
   const reload = useCallback(async () => {
     const [sources, matieres, fiches, questions, st] = await Promise.all([
@@ -73,7 +75,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     go: setScreen,
     db, stats, reload,
     focusFiche, setFocusFiche,
-    session, feynman, exercice, anatQuiz, pdfView, transcriptView,
+    session, feynman, exercice, anatQuiz, pdfView, transcriptView, schemaView,
 
     // ---- session lifecycle ----
     startSession: (items, title, meta = {}) => {
@@ -101,6 +103,11 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // ---- éditeur de transcript (mode Transcript de l'onglet Documents) ----
     openTranscript: (ficheId) => { setTranscriptView({ ficheId, returnScreen: 'documents' }); setScreen('transcript'); },
     closeTranscript: () => { const back = transcriptView && transcriptView.returnScreen; setScreen(back || 'documents'); setTranscriptView(null); },
+
+    // ---- éditeur de schéma d'anatomie (mode Schéma de l'onglet Documents) : ouvre
+    // l'écran avec bascule Lecture / Édition ; revient à l'écran d'origine ----
+    openSchemaEditor: (ficheId, returnScreen) => { setSchemaView({ ficheId, returnScreen: returnScreen || screen }); setScreen('schemaedit'); },
+    closeSchemaEditor: () => { const back = schemaView && schemaView.returnScreen; setScreen(back || 'documents'); setSchemaView(null); },
 
     // ---- mutations (persist + reload) ----
     saveQuestion: async (q) => { await put('questions', q); await reload(); },

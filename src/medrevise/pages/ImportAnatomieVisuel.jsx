@@ -135,7 +135,7 @@ export function ImportAnatomieVisuel({ ctx }) {
    Tout est positionné en % (coords relatives × taille affichée) → le
    zoom / redimensionnement ne désaligne jamais les coches.
    ============================================================ */
-function SchemaEditor({ image, setImage, coches, setCoches }) {
+export function SchemaEditor({ image, setImage, coches, setCoches }) {
   const frameRef = useRef(null);
   const [mode, setMode] = useState('select'); // select | add
   const [selectedId, setSelectedId] = useState(null);

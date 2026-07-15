@@ -35,7 +35,7 @@ export function DocumentsHome({ ctx }) {
     const kind = docKind(f);
     if (kind === 'fiche') ctx.openPdfReader(f.id, 'read', 'documents');
     else if (kind === 'transcript') ctx.openTranscript(f.id);
-    else if (kind === 'schema') ctx.startAnatQuiz(f, { mode: 'total' });
+    else if (kind === 'schema') ctx.openSchemaEditor(f.id, 'documents');
   };
 
   const removeTranscript = async (f) => {
@@ -102,7 +102,7 @@ export function DocumentsHome({ ctx }) {
                               <span className="pdfpick-name" style={{ flex: 1 }}>{f.titre}</span>
                               <span className="pill" style={{ height: 22, fontSize: 11 }}>{meta.label}</span>
                               <button className="btn ghost sm" onClick={() => openDoc(f)}>
-                                {kind === 'schema' ? <><Icon name="play" size={13} /> Réviser</> : <><Icon name="chevR" size={13} /> Ouvrir</>}
+                                <Icon name="chevR" size={13} /> Ouvrir
                               </button>
                               {kind === 'transcript' && (
                                 <button className="icon-btn sm" title="Supprimer ce transcript" onClick={() => removeTranscript(f)}><Icon name="trash" size={13} /></button>

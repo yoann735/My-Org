@@ -6,11 +6,13 @@
 import { jStepForInterval, todayISO, isoDate } from './sm2.js';
 
 const SCHEDULED_TYPES = new Set(['qcm', 'flashcard']);
-// exercices : items planifiables mais à part (page dédiée, jamais dans une
-// session de cartes → on les tient hors de SCHEDULED_TYPES, comme les schémas).
+// exercices : HORS méthode des J (comme le Feynman). Ils ne sont plus programmés,
+// ne comptent pas dans la série du jour ni dans les compteurs de cartes dues. On
+// les choisit librement dans une liste dédiée (page Exercice). Le code SM-2 reste
+// intact pour qcm/flashcard/schéma — on décidera plus tard d'une réintégration.
 const EXERCICE_TYPE = 'exercice';
-// types comptant pour le J AFFICHÉ d'une fiche (théorie + pratique)
-const J_TYPES = new Set(['qcm', 'flashcard', 'exercice']);
+// types comptant pour le J AFFICHÉ d'une fiche (théorie uniquement désormais)
+const J_TYPES = new Set(['qcm', 'flashcard']);
 
 /* ---- index helpers ---- */
 export function index(db) {
@@ -77,23 +79,23 @@ export function dueOn(db, dateISO, idx) {
 }
 export function dueToday(db, idx) { return dueOn(db, todayISO(), idx); }
 
-/* ---- exercices (type "exercice") : items planifiables SM-2, révisés dans la
-   PAGE Exercice (pas dans une session de cartes). Gérés en parallèle, comme
-   les schémas d'anatomie. ---- */
-export function scheduledExercices(db, idx) {
+/* ---- exercices (type "exercice") : HORS méthode des J. Aucune planification :
+   on les liste simplement (choix libre dans la page Exercice). Le statut d'un
+   exercice se lit sur son historique (jamais fait / réussi / à revoir), pas sur
+   une échéance. ---- */
+export function allExercices(db, idx) {
   const ix = idx || index(db);
-  return (db.questions || []).filter((q) => q.type === EXERCICE_TYPE && isFicheScheduled(db, ix.fById[q.ficheId], ix));
+  return (db.questions || []).filter((q) => q.type === EXERCICE_TYPE && ix.fById[q.ficheId] && !ix.fById[q.ficheId].archive);
 }
-export function dueExercicesOn(db, dateISO, idx) {
-  const ix = idx || index(db);
-  const today = todayISO();
-  return scheduledExercices(db, ix).filter((q) => {
-    if (dateISO === today) return q.nextReview <= dateISO;
-    if (dateISO < today) return false;
-    return q.nextReview === dateISO;
-  });
+/** statut d'un exercice d'après son historique SM-2 (sans planification) :
+    - 'todo'   : jamais tenté
+    - 'ok'     : dernière tentative réussie (qualité ≥ 3)
+    - 'review' : dernière tentative ratée (à revoir) */
+export function exerciceStatus(q) {
+  const h = q && q.historique;
+  if (!h || !h.length) return 'todo';
+  return (h[h.length - 1].qualite >= 3) ? 'ok' : 'review';
 }
-export function dueExercicesToday(db, idx) { return dueExercicesOn(db, todayISO(), idx); }
 
 /* ---- schémas d'anatomie visuelle (anat_schema) : la FICHE elle-même est
    l'item planifiable SM-2 (elle porte interval/repetition/efactor/nextReview),

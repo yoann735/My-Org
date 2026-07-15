@@ -145,14 +145,25 @@
 .jcard .jc-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 
 /* ---------- REVISE hub : 3 cards type (gros chiffres) ---------- */
-.rev-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
-.rev-mode { border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 22px 20px; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; box-shadow: var(--shadow); transition: transform .12s, box-shadow .15s, border-color .15s; text-align: left; font-family: inherit; color: var(--text); }
-.rev-mode:hover:not(:disabled) { transform: translateY(-3px); box-shadow: var(--shadow-lg); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+/* cards compactes (E) : elles n'affichent qu'un chiffre + un libellé → inutile
+   de les surdimensionner (on rend la place à la sidebar Cours & matières). */
+.rev-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
+.rev-mode { border: 1px solid var(--border); border-radius: 13px; background: var(--card); padding: 13px 15px; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; box-shadow: var(--shadow); transition: transform .12s, box-shadow .15s, border-color .15s; text-align: left; font-family: inherit; color: var(--text); }
+.rev-mode:hover:not(:disabled) { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
 .rev-mode:disabled { opacity: .4; cursor: not-allowed; }
-.rev-mode .rm-ic { width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center; margin-bottom: 8px; }
-.rev-mode .rm-n { font-family: 'DM Serif Display', serif; font-size: 46px; line-height: .95; }
-.rev-mode .rm-l { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); }
-.rev-mode .rm-go { margin-top: 9px; font-size: 13px; font-weight: 700; color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
+.rev-mode .rm-ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; margin-bottom: 3px; }
+.rev-mode .rm-ic svg { width: 17px; height: 17px; }
+.rev-mode .rm-n { font-family: 'DM Serif Display', serif; font-size: 30px; line-height: 1; }
+.rev-mode .rm-l { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); }
+.rev-mode .rm-go { margin-top: 6px; font-size: 12.5px; font-weight: 700; color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
+.rev-mode:hover:not(:disabled) .rm-go { gap: 9px; }
+
+/* cards Pratique (D2) : une par exercice, cliquables */
+.exo-card { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; text-align: left; font-family: inherit; color: var(--text); border: 1px solid var(--border); border-radius: 13px; background: var(--card); padding: 13px 14px; cursor: pointer; box-shadow: var(--shadow); transition: transform .12s, box-shadow .15s, border-color .15s; }
+.exo-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+.exo-status { font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.exo-open { margin-top: 2px; font-size: 12.5px; font-weight: 700; color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
+.exo-card:hover .exo-open { gap: 9px; }
 .rev-mode:hover:not(:disabled) .rm-go { gap: 9px; }
 
 /* ---------- REVISE : hint + lignes de cours (clic vs case) ---------- */
@@ -885,12 +896,14 @@
 .hl-cancel { width: 26px; height: 26px; border-radius: 8px; border: none; background: var(--bg-2); color: var(--text-3); display: grid; place-items: center; cursor: pointer; }
 
 /* ---------- Chantier 1 : édition de texte existant (couche superposée) ---------- */
-.edit-block-static, .edit-block-active { position: absolute; box-sizing: border-box; background: #fff; overflow-y: auto; line-height: 1.25; color: #16162a; }
+.edit-block-static, .edit-block-active { position: absolute; box-sizing: border-box; background: #fff; overflow-y: auto; color: #16162a; }
 .edit-block-static.editable { cursor: text; outline: 1px dashed transparent; transition: outline-color .12s; }
 .edit-block-static.editable:hover { outline-color: var(--accent); }
 .edit-block-active { outline: 2px solid var(--accent); box-shadow: 0 2px 10px rgba(0,0,0,.15); }
-.edit-block-content, .edit-block-content .ProseMirror { height: 100%; outline: none; }
-.edit-block-content p { margin: 0 0 4px; }
+.edit-block-content, .edit-block-content .ProseMirror { height: 100%; outline: none; padding: 0; }
+/* BUG C : marges/interligne des paragraphes IDENTIQUES dans les deux états (le rendu
+   statique <p> aurait sinon les marges 1em par défaut → texte décalé au « Terminé »). */
+.edit-block-static p, .edit-block-content p, .edit-block-content .ProseMirror p { margin: 0; line-height: inherit; }
 .pdfr-edit-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: var(--shadow); }
 .et-btn { min-width: 30px; height: 30px; padding: 0 8px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--text-2); font-family: inherit; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .et-btn:hover { background: var(--bg-2); }
@@ -904,3 +917,21 @@
 .soon .soon-logo { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg, var(--accent), #4FA6D9); box-shadow: 0 12px 34px var(--accent-soft); }
 .soon h1 { font-family: 'DM Serif Display', serif; font-size: 34px; margin: 0; }
 .soon p { color: var(--text-2); max-width: 420px; margin: 0; }
+
+/* ---------- E : sidebar « Cours & matières » élargie + noms lisibles en entier ----------
+   La colonne de l'arbre est nettement plus large (voir --tree-col dans Reviser) et les
+   titres de fiche/matière/cours ne sont plus tronqués : ils passent à la ligne au lieu
+   de finir en « … ». L'aération de la hiérarchie (cours / matière / fiche) est conservée. */
+.tree-card .tree-course-main { align-items: flex-start; }
+.tree-card .tc-name,
+.tree-card .tsrc-name,
+.tree-card .tcat-label,
+.tree-card .tree-cat-row .tree-cat .tcat-label { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.32; word-break: break-word; }
+/* le badge « à réviser » et le contrôle de coef restent alignés en haut de la ligne */
+.tree-card .tree-course-main .due-badge { margin-top: 1px; }
+
+/* responsive : sous 900px, l'arbre repasse au-dessus de la zone de droite (1 colonne) */
+@media (max-width: 900px) {
+  .revise-grid { grid-template-columns: 1fr !important; }
+  .tree-card { position: static; max-height: 340px; }
+}
