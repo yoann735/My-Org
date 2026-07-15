@@ -22,6 +22,7 @@ const S = {
   backups: store('backups'), // sauvegardes non destructives avant migration
   exos: store('exos'),       // bloc-notes (brouillon) persisté par exercice
   docs: store('docs'),       // contenu TipTap des transcripts (clé = ficheId)
+  anatstruct: store('anatstruct'), // fiches de structure anatomique (théorie, champs typés)
 };
 
 export function genId(prefix = 'x') {

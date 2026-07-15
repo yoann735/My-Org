@@ -61,10 +61,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [schemaView, setSchemaView] = useState(null); // { ficheId, returnScreen }
 
   const reload = useCallback(async () => {
-    const [sources, matieres, fiches, questions, st] = await Promise.all([
-      getAll('sources'), getAll('matieres'), getAll('fiches'), getAll('questions'), getStats(),
+    const [sources, matieres, fiches, questions, anatstruct, st] = await Promise.all([
+      getAll('sources'), getAll('matieres'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getStats(),
     ]);
-    setDb({ sources, matieres, fiches, questions });
+    setDb({ sources, matieres, fiches, questions, anatstruct });
     setStats(st);
   }, []);
 

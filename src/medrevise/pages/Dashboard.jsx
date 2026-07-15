@@ -10,7 +10,7 @@ import { isoDate } from '../lib/sm2.js';
 import { importStandard, createFicheFromQuestions } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
-import { ImportAnatomie } from './ImportAnatomie.jsx';
+import { ImportAnatomieTheorie } from './ImportAnatomieTheorie.jsx';
 import { ImportAnatomieVisuel } from './ImportAnatomieVisuel.jsx';
 import { ImportRattrapage } from './ImportRattrapage.jsx';
 
@@ -308,12 +308,12 @@ function ImportPanel({ ctx }) {
             </div>
             <div className="hint" style={{ marginTop: 6 }}>
               {anatSub === 'theorie'
-                ? 'Structures (image + texte) → flashcards reconnaissance + QCM de raisonnement.'
+                ? 'Colle un texte descriptif typé → extraction locale des champs (origine, insertion…), sans IA.'
                 : 'Schéma annoté (coches + flèches) → quiz d\'anatomie visuelle.'}
             </div>
           </div>
           {anatSub === 'theorie'
-            ? <ImportAnatomie ctx={ctx} onDone={() => ctx.go('library')} onDebug={setDebug} />
+            ? <ImportAnatomieTheorie ctx={ctx} />
             : <ImportAnatomieVisuel ctx={ctx} />}
         </div>
       )}
