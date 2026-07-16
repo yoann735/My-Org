@@ -470,19 +470,28 @@ function AnatSchemaLauncher({ fiche, ctx, meta, due, scheduled, jp }) {
   const coches = allCoches(fiche); // toutes les vues à plat
   const nb = coches.length;
   const nbTheory = theoryCount(coches);
+  // E — items de théorie générés LOCALEMENT : flashcards (toujours) + QCM (si distracteurs réels).
+  const theoryItems = genTheoryItems(fiche, coches);
+  const nbFlash = theoryItems.filter((i) => i.type === 'flashcard').length;
+  const nbQcm = theoryItems.filter((i) => i.type === 'qcm').length;
+  const [theoryFormat, setTheoryFormat] = useState('both'); // both | flashcards | qcm
   // mode principal : « Visuel + Théorie » mis en avant dès qu'il y a de la théorie.
   const [revMode, setRevMode] = useState(() => (nbTheory > 0 ? 'both' : 'visuel')); // visuel | theorie | both
 
   const launch = () => {
     if (revMode === 'theorie') {
-      const items = genTheoryItems(fiche, coches);
-      if (items.length) ctx.startSession(items, `${fiche.titre} — Théorie`, { ephemeral: true });
+      // regénère pour un tirage frais, puis filtre selon le format choisi (flashcards / QCM / les deux).
+      let items = genTheoryItems(fiche, coches);
+      if (theoryFormat === 'flashcards') items = items.filter((i) => i.type === 'flashcard');
+      else if (theoryFormat === 'qcm') items = items.filter((i) => i.type === 'qcm');
+      const fmtLabel = theoryFormat === 'flashcards' ? 'Flashcards' : theoryFormat === 'qcm' ? 'QCM' : 'Théorie';
+      if (items.length) ctx.startSession(items, `${fiche.titre} — ${fmtLabel}`, { ephemeral: true });
       return;
     }
     ctx.startAnatQuiz(fiche, { mode, proportion: prop, theory: revMode === 'both' && nbTheory > 0 });
   };
   const launchDisabled = revMode === 'theorie'
-    ? genTheoryItems(fiche, coches).length === 0
+    ? (theoryFormat === 'qcm' ? nbQcm === 0 : theoryFormat === 'flashcards' ? nbFlash === 0 : theoryItems.length === 0)
     : nb === 0;
 
   return (
@@ -517,6 +526,23 @@ function AnatSchemaLauncher({ fiche, ctx, meta, due, scheduled, jp }) {
                     : `Tu nommes la coche PUIS tu réponds sur ses champs (${nbTheory} coche${nbTheory > 1 ? 's' : ''} avec théorie).`}
             </div>
           </div>
+
+          {/* E — format des cartes de théorie : flashcards / QCM / les deux, clairement proposés */}
+          {revMode === 'theorie' && (
+            <div className="imp-field">
+              <label>Format des cartes</label>
+              <div className="seg">
+                <button type="button" className={'seg-btn' + (theoryFormat === 'both' ? ' active' : '')} onClick={() => setTheoryFormat('both')}><Icon name="layers" size={13} /> Les deux ({theoryItems.length})</button>
+                <button type="button" className={'seg-btn' + (theoryFormat === 'flashcards' ? ' active' : '')} onClick={() => setTheoryFormat('flashcards')} disabled={nbFlash === 0}><Icon name="cards" size={13} /> Flashcards ({nbFlash})</button>
+                <button type="button" className={'seg-btn' + (theoryFormat === 'qcm' ? ' active' : '')} onClick={() => setTheoryFormat('qcm')} disabled={nbQcm === 0} title={nbQcm === 0 ? 'Pas assez de structures du même type pour des distracteurs réels' : ''}><Icon name="list" size={13} /> QCM ({nbQcm})</button>
+              </div>
+              <div className="hint" style={{ marginTop: 6 }}>
+                {nbQcm === 0
+                  ? 'QCM indisponibles : il faut au moins 2 autres structures du même type portant le même champ (distracteurs = valeurs réelles, jamais inventées).'
+                  : 'Flashcards (recto/verso) + QCM (distracteurs = valeurs réelles du même champ chez d\'autres structures du même type), générés localement sans IA.'}
+              </div>
+            </div>
+          )}
 
           {/* options de masquage — uniquement quand l'image est en jeu */}
           {revMode !== 'theorie' && (
