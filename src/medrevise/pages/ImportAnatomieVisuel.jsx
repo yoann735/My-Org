@@ -28,13 +28,48 @@ const DEFAULT_COLOR = COLORS[0];
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const markerId = (col) => 'anat-ah-' + (col || DEFAULT_COLOR).replace('#', '');
 const DEFAULT_ZONE_OPACITY = 0.25;
+const DEFAULT_STROKE_WIDTH = 2;
+const BRUSH_MIN_DIST = 0.004; // décimation du pinceau libre (distance relative mini entre 2 points)
+
+/* outils de dessin de zones (barre d'outils). rect/ellipse = boîte englobante ;
+   poly = sommets ; brush = tracé libre (liste de points) ; line = segment. */
+const DRAW_TOOLS = [
+  { key: 'brush', label: 'Pinceau', icon: 'edit' },
+  { key: 'line', label: 'Trait', icon: 'minus' },
+  { key: 'rect', label: 'Rectangle', icon: 'maximize' },
+  { key: 'ellipse', label: 'Ellipse', icon: 'target' },
+  { key: 'poly', label: 'Polygone', icon: 'sparkle' },
+];
+const SHAPE_LABEL = { rect: 'Rectangle', ellipse: 'Ellipse', poly: 'Polygone', path: 'Tracé libre', line: 'Trait' };
+const TOOL_HINT = {
+  brush: 'Dessine à main levée (souris/doigt/stylet). Contour ouvert par défaut ; active « remplir » pour une région.',
+  line: 'Glisse d\'un point à l\'autre pour un segment droit (utile pour un trajet). Extrémités éditables ensuite.',
+  rect: 'Glisse d\'un coin à l\'autre pour un rectangle.',
+  ellipse: 'Glisse d\'un coin à l\'autre pour une ellipse.',
+  poly: 'Clique chaque sommet ; clique près du 1er point (ou double-clic / Entrée) pour fermer. Échap = annuler.',
+};
+
+/* style EFFECTIF d'une zone. Rétro-compat : les anciennes zones n'ont que `opacity`
+   (+ couleur) → on en dérive fill/stroke/strokeWidth ; `fill`/`stroke` valant `null`
+   signifient explicitement « sans remplissage » / « sans contour ». */
+export function zoneStyle(c) {
+  const z = (c && c.zone) || {};
+  const col = (c && c.couleur) || DEFAULT_COLOR;
+  return {
+    fill: z.fill !== undefined ? z.fill : col,
+    fillOpacity: Number.isFinite(z.fillOpacity) ? z.fillOpacity : (Number.isFinite(z.opacity) ? z.opacity : DEFAULT_ZONE_OPACITY),
+    stroke: z.stroke !== undefined ? z.stroke : col,
+    strokeWidth: Number.isFinite(z.strokeWidth) ? z.strokeWidth : DEFAULT_STROKE_WIDTH,
+    closed: z.shape === 'line' ? false : (z.closed !== undefined ? !!z.closed : true),
+  };
+}
 
 /* centroïde d'une annotation (zone → centre géométrique ; point → son ancre). Sert
    à positionner libellé/flèche par défaut et à garder un `ancre` cohérent sur les
    zones pour les consommateurs qui le lisent encore. */
 export function centroidOf(c) {
   if (c && c.kind === 'zone' && c.zone) {
-    if (c.zone.shape === 'rect' && c.zone.rect) {
+    if ((c.zone.shape === 'rect' || c.zone.shape === 'ellipse') && c.zone.rect) {
       const r = c.zone.rect; return { x: clamp01(r.x + r.w / 2), y: clamp01(r.y + r.h / 2) };
     }
     const pts = (c.zone.points || []);
@@ -44,7 +79,7 @@ export function centroidOf(c) {
 }
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
-/* rendu SVG partagé des zones (fill semi-transparent). viewBox 0..100 +
+/* rendu SVG partagé des zones (toutes formes). viewBox 0..100 +
    preserveAspectRatio=none → coordonnées relatives directes ; vectorEffect garde
    un trait d'épaisseur constante malgré l'étirement. Utilisé par l'éditeur,
    l'aperçu (lecture) et le quiz. `borderFor` permet au quiz de recolorer. */
@@ -54,21 +89,27 @@ export function ZonesLayer({ coches, selectedId, mode, onZonePointerDown, border
   return (
     <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
       {zones.map((c) => {
-        const col = (borderFor && borderFor(c)) || c.couleur || DEFAULT_COLOR;
-        const op = c.zone.opacity ?? DEFAULT_ZONE_OPACITY;
+        const st = zoneStyle(c);
+        const recolor = borderFor && borderFor(c); // quiz : recolore remplissage + contour
+        const hasFill = st.fill !== null;
+        const hasStroke = st.stroke !== null || !!recolor; // en quiz, garantir un contour visible
         const interactive = mode === 'select' && !!onZonePointerDown;
         const common = {
-          fill: col, fillOpacity: op, stroke: col, strokeOpacity: 0.95,
-          strokeWidth: c.id === selectedId ? 2.4 : 1.6, vectorEffect: 'non-scaling-stroke',
+          fill: hasFill ? (recolor || st.fill) : 'none',
+          fillOpacity: hasFill ? st.fillOpacity : 0,
+          stroke: hasStroke ? (recolor || st.stroke || DEFAULT_COLOR) : 'none',
+          strokeOpacity: 0.95,
+          strokeWidth: (c.id === selectedId ? st.strokeWidth + 0.8 : st.strokeWidth) || 1.6,
+          vectorEffect: 'non-scaling-stroke', strokeLinejoin: 'round', strokeLinecap: 'round',
           style: { pointerEvents: interactive ? 'auto' : 'none', cursor: 'grab' },
           onPointerDown: interactive ? (e) => onZonePointerDown(e, c) : undefined,
         };
-        if (c.zone.shape === 'rect') {
-          const r = c.zone.rect;
-          return <rect key={'z' + c.id} x={r.x * 100} y={r.y * 100} width={r.w * 100} height={r.h * 100} rx="1.2" {...common} />;
-        }
-        const pts = (c.zone.points || []).map((p) => `${p.x * 100},${p.y * 100}`).join(' ');
-        return <polygon key={'z' + c.id} points={pts} {...common} />;
+        const z = c.zone;
+        if (z.shape === 'rect') { const r = z.rect; return <rect key={'z' + c.id} x={r.x * 100} y={r.y * 100} width={r.w * 100} height={r.h * 100} rx="1.2" {...common} />; }
+        if (z.shape === 'ellipse') { const r = z.rect; return <ellipse key={'z' + c.id} cx={(r.x + r.w / 2) * 100} cy={(r.y + r.h / 2) * 100} rx={(r.w / 2) * 100} ry={(r.h / 2) * 100} {...common} />; }
+        const pts = (z.points || []).map((p) => `${p.x * 100},${p.y * 100}`).join(' ');
+        if (st.closed) return <polygon key={'z' + c.id} points={pts} {...common} />;
+        return <polyline key={'z' + c.id} points={pts} {...common} fill="none" />;
       })}
     </svg>
   );
@@ -169,15 +210,30 @@ export function ImportAnatomieVisuel({ ctx }) {
    ============================================================ */
 export function SchemaEditor({ image, setImage, coches, setCoches }) {
   const frameRef = useRef(null);
-  const [mode, setMode] = useState('select'); // select | point | zrect | zpoly
+  const [mode, setMode] = useState('select'); // select | point | brush | line | rect | ellipse | poly
   const [selectedId, setSelectedId] = useState(null);
   const [exporting, setExporting] = useState(false);
   const [theorieFor, setTheorieFor] = useState(null); // id de la coche dont on édite la théorie
-  const [draftRect, setDraftRect] = useState(null);   // zone rectangle en cours de tracé
+  const [draftBox, setDraftBox] = useState(null);     // rect/ellipse en cours de tracé { shape, x, y, w, h }
   const [draftPoly, setDraftPoly] = useState(null);   // sommets d'une zone polygone en cours
+  const [draftPath, setDraftPath] = useState(null);   // points d'un tracé pinceau en cours
+  const [draftLine, setDraftLine] = useState(null);   // { a, b } d'un trait en cours
+  // style courant (appliqué aux formes À VENIR ; la barre de style l'édite hors sélection)
+  const [style, setStyle] = useState({ fill: DEFAULT_COLOR, fillOpacity: DEFAULT_ZONE_OPACITY, stroke: DEFAULT_COLOR, strokeWidth: DEFAULT_STROKE_WIDTH });
 
   const updateCoche = (id, patch) => setCoches((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   const delCoche = (id) => { setCoches((cs) => cs.filter((c) => c.id !== id)); setSelectedId(null); };
+
+  // applique un changement de style à une zone (+ synchronise la couleur du badge ;
+  // pour le pinceau, activer/désactiver le remplissage ferme/ouvre le tracé).
+  const applyZoneStyle = (c, patch) => {
+    const zp = { ...c.zone, ...patch };
+    if (patch.fill !== undefined && c.zone.shape === 'path') zp.closed = patch.fill != null;
+    const up = { zone: zp };
+    if (patch.stroke !== undefined && patch.stroke) up.couleur = patch.stroke;
+    else if (patch.fill !== undefined && patch.fill && c.zone.stroke == null) up.couleur = patch.fill;
+    updateCoche(c.id, up);
+  };
 
   const relFromEvent = (clientX, clientY) => {
     const r = frameRef.current.getBoundingClientRect();
@@ -195,36 +251,78 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
     setSelectedId(c.id);
   };
 
-  // crée une ZONE (rect ou poly) : mêmes champs qu'une coche + géométrie de région.
+  const styleZone = () => ({ fill: style.fill, fillOpacity: style.fillOpacity, stroke: style.stroke, strokeWidth: style.strokeWidth });
+
+  // crée une ZONE (toute forme) : mêmes champs qu'une coche + géométrie + style.
   const addZone = (zone) => {
     const numero = coches.length + 1;
     const ctr = centroidOf({ kind: 'zone', zone });
+    const couleur = zone.stroke || zone.fill || COLORS[coches.length % COLORS.length];
     const c = {
       id: genId('c'), kind: 'zone', zone,
       // le libellé se pose à côté du centroïde ; ancre = centroïde (cohérence).
       boite: { x: clamp01(ctr.x), y: clamp01(ctr.y - 0.02) }, ancre: { x: ctr.x, y: ctr.y },
-      texte: '', couleur: COLORS[coches.length % COLORS.length], numero,
+      texte: '', couleur, numero,
     };
     setCoches((cs) => [...cs, c]);
     setSelectedId(c.id);
   };
 
-  // tracé RECTANGLE : glisser d'un coin à l'autre.
-  const startRectDraw = (e) => {
+  // choisit un outil ; nudge le style courant (pinceau/trait = sans remplissage par défaut).
+  const selectTool = (t) => {
+    setMode(t);
+    if (t === 'brush' || t === 'line') setStyle((s) => ({ ...s, fill: null }));
+    else if (t === 'rect' || t === 'ellipse' || t === 'poly') setStyle((s) => ({ ...s, fill: s.fill || DEFAULT_COLOR }));
+  };
+
+  // tracé RECTANGLE / ELLIPSE : glisser d'un coin à l'autre (même boîte englobante).
+  const startBoxDraw = (e, shape) => {
     const p0 = relFromEvent(e.clientX, e.clientY);
-    setDraftRect({ x: p0.x, y: p0.y, w: 0, h: 0 });
-    const rectOf = (p) => ({ x: Math.min(p0.x, p.x), y: Math.min(p0.y, p.y), w: Math.abs(p.x - p0.x), h: Math.abs(p.y - p0.y) });
-    const move = (ev) => setDraftRect(rectOf(relFromEvent(ev.clientX, ev.clientY)));
+    const boxOf = (p) => ({ shape, x: Math.min(p0.x, p.x), y: Math.min(p0.y, p.y), w: Math.abs(p.x - p0.x), h: Math.abs(p.y - p0.y) });
+    setDraftBox(boxOf(p0));
+    const move = (ev) => setDraftBox(boxOf(relFromEvent(ev.clientX, ev.clientY)));
     const up = (ev) => {
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
-      const rect = rectOf(relFromEvent(ev.clientX, ev.clientY));
-      setDraftRect(null);
-      if (rect.w > 0.02 && rect.h > 0.02) { addZone({ shape: 'rect', rect, opacity: DEFAULT_ZONE_OPACITY }); setMode('select'); }
+      const b = boxOf(relFromEvent(ev.clientX, ev.clientY));
+      setDraftBox(null);
+      if (b.w > 0.02 && b.h > 0.02) { addZone({ shape, rect: { x: b.x, y: b.y, w: b.w, h: b.h }, closed: true, ...styleZone() }); setMode('select'); }
     };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
 
-  // tracé POLYGONE : un clic = un sommet ; clic près du 1er sommet (ou double-clic) = fermer.
+  // PINCEAU libre : capture le tracé du curseur (points décimés). Fermé/rempli si un
+  // remplissage est actif, sinon tracé ouvert (contour/trajet). Souris + tactile/stylet.
+  const startBrush = (e) => {
+    const p0 = relFromEvent(e.clientX, e.clientY);
+    const pts = [p0];
+    setDraftPath([p0]);
+    const move = (ev) => {
+      const p = relFromEvent(ev.clientX, ev.clientY);
+      if (dist(p, pts[pts.length - 1]) > BRUSH_MIN_DIST) { pts.push(p); setDraftPath(pts.slice()); }
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      setDraftPath(null);
+      if (pts.length >= 2) { addZone({ shape: 'path', points: pts, closed: style.fill != null, ...styleZone() }); setMode('select'); }
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+
+  // TRAIT : segment droit (glisser d'un point à l'autre). Extrémités éditables ensuite.
+  const startLineDraw = (e) => {
+    const a = relFromEvent(e.clientX, e.clientY);
+    setDraftLine({ a, b: a });
+    const move = (ev) => setDraftLine({ a, b: relFromEvent(ev.clientX, ev.clientY) });
+    const up = (ev) => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      const b = relFromEvent(ev.clientX, ev.clientY);
+      setDraftLine(null);
+      if (dist(a, b) > 0.02) { addZone({ shape: 'line', points: [a, b], closed: false, ...styleZone(), fill: null }); setMode('select'); }
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+
+  // POLYGONE : un clic = un sommet ; clic près du 1er sommet (ou double-clic / Entrée) = fermer.
   const polyClick = (p) => {
     setDraftPoly((pts) => {
       const cur = pts || [];
@@ -232,7 +330,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
       return [...cur, p];
     });
   };
-  const finishPoly = (pts) => { if (pts && pts.length >= 3) { addZone({ shape: 'poly', points: pts, opacity: DEFAULT_ZONE_OPACITY }); setMode('select'); } setDraftPoly(null); };
+  const finishPoly = (pts) => { if (pts && pts.length >= 3) { addZone({ shape: 'poly', points: pts, closed: true, ...styleZone() }); setMode('select'); } setDraftPoly(null); };
 
   // déplacement d'une zone entière (translation géométrie + libellé + ancre).
   const startZoneDrag = (e, coche) => {
@@ -244,7 +342,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
       if (!moved) return;
       const r = frameRef.current.getBoundingClientRect();
       const dx = (ev.clientX - startX) / r.width, dy = (ev.clientY - startY) / r.height;
-      const nz = z0.shape === 'rect'
+      const nz = (z0.shape === 'rect' || z0.shape === 'ellipse')
         ? { ...z0, rect: { ...z0.rect, x: clamp01(z0.rect.x + dx), y: clamp01(z0.rect.y + dy) } }
         : { ...z0, points: z0.points.map((p) => ({ x: clamp01(p.x + dx), y: clamp01(p.y + dy) })) };
       updateCoche(coche.id, { zone: nz, boite: { x: clamp01(b0.x + dx), y: clamp01(b0.y + dy) }, ancre: { x: clamp01(a0.x + dx), y: clamp01(a0.y + dy) } });
@@ -285,14 +383,16 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
     if (e.button !== 0) return;
     const p = relFromEvent(e.clientX, e.clientY);
     if (mode === 'point') addCocheAt(p);
-    else if (mode === 'zrect') startRectDraw(e);
-    else if (mode === 'zpoly') polyClick(p);
+    else if (mode === 'rect' || mode === 'ellipse') startBoxDraw(e, mode);
+    else if (mode === 'poly') polyClick(p);
+    else if (mode === 'brush') startBrush(e);
+    else if (mode === 'line') startLineDraw(e);
     else setSelectedId(null);
   };
 
   // Échap / Entrée pendant un tracé polygone : annuler / fermer.
   useEffect(() => {
-    if (mode !== 'zpoly') return;
+    if (mode !== 'poly') return;
     const onKey = (e) => {
       if (e.key === 'Escape') { setDraftPoly(null); setMode('select'); }
       else if (e.key === 'Enter') setDraftPoly((pts) => { finishPoly(pts); return null; });
@@ -302,7 +402,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
   // sortir du mode polygone en cours de tracé → nettoie le brouillon.
-  useEffect(() => { if (mode !== 'zpoly' && draftPoly) setDraftPoly(null); /* eslint-disable-next-line */ }, [mode]);
+  useEffect(() => { if (mode !== 'poly' && draftPoly) setDraftPoly(null); /* eslint-disable-next-line */ }, [mode]);
 
   // drag générique d'un point relatif (boîte ou ancre) avec seuil clic/déplacement
   const startDrag = (e, coche, field) => {
@@ -370,10 +470,13 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
         <div className="seg">
           <button type="button" className={'seg-btn' + (mode === 'select' ? ' active' : '')} onClick={() => setMode('select')}><Icon name="grip" size={13} /> Sélection</button>
           <button type="button" className={'seg-btn' + (mode === 'point' ? ' active' : '')} onClick={() => setMode('point')}><Icon name="target" size={13} /> Coche</button>
-          <button type="button" className={'seg-btn' + (mode === 'zrect' ? ' active' : '')} onClick={() => setMode('zrect')}><Icon name="maximize" size={13} /> Zone rect.</button>
-          <button type="button" className={'seg-btn' + (mode === 'zpoly' ? ' active' : '')} onClick={() => setMode('zpoly')}><Icon name="sparkle" size={13} /> Zone libre</button>
         </div>
-        <label className="btn ghost" style={{ cursor: 'pointer' }}>
+        <div className="seg">
+          {DRAW_TOOLS.map((t) => (
+            <button key={t.key} type="button" className={'seg-btn' + (mode === t.key ? ' active' : '')} onClick={() => selectTool(t.key)}><Icon name={t.icon} size={13} /> {t.label}</button>
+          ))}
+        </div>
+        <label className="btn ghost sm" style={{ cursor: 'pointer' }}>
           <Icon name="image" size={14} /> Changer l'image
           <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => setImage(e.target.files[0])} />
         </label>
@@ -382,21 +485,33 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
         <button type="button" className="btn ghost sm" disabled={exporting} onClick={() => doExport('pdf')}><Icon name="filePdf" size={13} /> Export PDF</button>
       </div>
       {mode === 'point' && <div className="hint" style={{ marginBottom: 8, color: 'var(--accent)' }}><Icon name="target" size={13} /> Clique un point de l'image pour y placer une coche. Repasse en « Sélection » pour la modifier.</div>}
-      {mode === 'zrect' && <div className="hint" style={{ marginBottom: 8, color: 'var(--accent)' }}><Icon name="maximize" size={13} /> Glisse d'un coin à l'autre pour tracer une zone rectangulaire (région à faible opacité).</div>}
-      {mode === 'zpoly' && <div className="hint" style={{ marginBottom: 8, color: 'var(--accent)' }}><Icon name="sparkle" size={13} /> Clique chaque sommet de la région. Clique près du 1er point (ou double-clic / Entrée) pour fermer. Échap pour annuler.</div>}
+
+      {/* barre de style — style des formes À VENIR (l'outil de dessin actif) */}
+      {DRAW_TOOLS.some((t) => t.key === mode) && (
+        <div className="card" style={{ marginBottom: 10, padding: '9px 11px' }}>
+          <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+            <span className="pill accent" style={{ height: 20 }}><Icon name={(DRAW_TOOLS.find((t) => t.key === mode) || {}).icon} size={11} /> {(DRAW_TOOLS.find((t) => t.key === mode) || {}).label}</span>
+            <span className="hint" style={{ fontSize: 11 }}>{TOOL_HINT[mode]}</span>
+          </div>
+          <StyleControls value={style} onChange={(patch) => setStyle((s) => ({ ...s, ...patch }))} allowFill={mode !== 'line'} />
+        </div>
+      )}
 
       {/* zone image + overlay */}
       <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)' }}>
-        <div ref={frameRef} style={{ position: 'relative', width: '100%', lineHeight: 0, cursor: (mode === 'point' || mode === 'zrect' || mode === 'zpoly') ? 'crosshair' : 'default', touchAction: 'none' }} onPointerDown={onFrameDown} onDoubleClick={() => { if (mode === 'zpoly') setDraftPoly((pts) => { finishPoly(pts); return null; }); }}>
+        <div ref={frameRef} style={{ position: 'relative', width: '100%', lineHeight: 0, cursor: (mode === 'point' || DRAW_TOOLS.some((t) => t.key === mode)) ? 'crosshair' : 'default', touchAction: 'none' }} onPointerDown={onFrameDown} onDoubleClick={() => { if (mode === 'poly') setDraftPoly((pts) => { finishPoly(pts); return null; }); }}>
           <img src={image.url} alt="schéma" draggable={false} style={{ display: 'block', width: '100%', height: 'auto', userSelect: 'none' }} />
 
-          {/* ZONES (régions à faible opacité) — sous les flèches/libellés */}
+          {/* ZONES — sous les flèches/libellés */}
           <ZonesLayer coches={coches} selectedId={selectedId} mode={mode} onZonePointerDown={startZoneDrag} />
 
-          {/* brouillon de tracé (rect en cours / polygone en cours) */}
-          {(draftRect || (draftPoly && draftPoly.length)) && (
+          {/* brouillon de tracé en cours (rect/ellipse/trait/pinceau/polygone) */}
+          {(draftBox || draftLine || (draftPoly && draftPoly.length) || (draftPath && draftPath.length)) && (
             <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
-              {draftRect && <rect x={draftRect.x * 100} y={draftRect.y * 100} width={draftRect.w * 100} height={draftRect.h * 100} rx="1.2" fill="var(--accent)" fillOpacity="0.18" stroke="var(--accent)" strokeWidth="1.6" strokeDasharray="3 2" vectorEffect="non-scaling-stroke" />}
+              {draftBox && draftBox.shape === 'rect' && <rect x={draftBox.x * 100} y={draftBox.y * 100} width={draftBox.w * 100} height={draftBox.h * 100} rx="1.2" fill="var(--accent)" fillOpacity="0.18" stroke="var(--accent)" strokeWidth="1.6" strokeDasharray="3 2" vectorEffect="non-scaling-stroke" />}
+              {draftBox && draftBox.shape === 'ellipse' && <ellipse cx={(draftBox.x + draftBox.w / 2) * 100} cy={(draftBox.y + draftBox.h / 2) * 100} rx={(draftBox.w / 2) * 100} ry={(draftBox.h / 2) * 100} fill="var(--accent)" fillOpacity="0.18" stroke="var(--accent)" strokeWidth="1.6" strokeDasharray="3 2" vectorEffect="non-scaling-stroke" />}
+              {draftLine && <line x1={draftLine.a.x * 100} y1={draftLine.a.y * 100} x2={draftLine.b.x * 100} y2={draftLine.b.y * 100} stroke="var(--accent)" strokeWidth={style.strokeWidth || 2} strokeDasharray="3 2" vectorEffect="non-scaling-stroke" strokeLinecap="round" />}
+              {draftPath && draftPath.length > 0 && <polyline points={draftPath.map((p) => `${p.x * 100},${p.y * 100}`).join(' ')} fill="none" stroke="var(--accent)" strokeWidth={style.strokeWidth || 2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />}
               {draftPoly && draftPoly.length > 0 && (
                 <>
                   <polyline points={draftPoly.map((p) => `${p.x * 100},${p.y * 100}`).join(' ')} fill="none" stroke="var(--accent)" strokeWidth="1.6" strokeDasharray="3 2" vectorEffect="non-scaling-stroke" />
@@ -441,7 +556,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
               <span key={key} onPointerDown={onDown}
                 style={{ position: 'absolute', left: x * 100 + '%', top: y * 100 + '%', width: 12, height: 12, marginLeft: -6, marginTop: -6, borderRadius: '50%', background: '#fff', border: `2px solid ${col}`, boxShadow: '0 1px 3px rgba(0,0,0,.35)', cursor: 'grab', touchAction: 'none', zIndex: 6 }} />
             );
-            if (c.zone.shape === 'rect') {
+            if (c.zone.shape === 'rect' || c.zone.shape === 'ellipse') {
               const r = c.zone.rect;
               return [
                 handle(r.x, r.y, (e) => startRectCorner(e, c, 'nw'), 'nw'),
@@ -450,7 +565,10 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
                 handle(r.x + r.w, r.y + r.h, (e) => startRectCorner(e, c, 'se'), 'se'),
               ];
             }
-            return (c.zone.points || []).map((p, i) => handle(p.x, p.y, (e) => startVertexDrag(e, c, i), 'v' + i));
+            if (c.zone.shape === 'poly' || c.zone.shape === 'line') {
+              return (c.zone.points || []).map((p, i) => handle(p.x, p.y, (e) => startVertexDrag(e, c, i), 'v' + i));
+            }
+            return null; // pinceau (path) : repositionnement global (translation) uniquement
           })()}
 
           {/* boîtes de libellé — déplaçables + édition inline + popover */}
@@ -473,23 +591,21 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
                 {sel && (
                   <div onPointerDown={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', gap: 8, padding: '9px 10px', borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border)', boxShadow: '0 6px 20px rgba(0,0,0,.25)', zIndex: 10, width: 250 }}>
                     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-                      <div className="row" style={{ gap: 5, flex: 1 }}>
-                        {COLORS.map((sc) => (
-                          <button key={sc} type="button" title="Changer la couleur" onClick={() => updateCoche(c.id, { couleur: sc })}
-                            style={{ width: 18, height: 18, borderRadius: '50%', background: sc, border: sc === col ? '2px solid var(--text)' : '2px solid transparent', cursor: 'pointer', flex: '0 0 auto' }} />
-                        ))}
-                      </div>
+                      {c.kind === 'zone' ? (
+                        <span className="hint" style={{ flex: 1, fontSize: 11, fontWeight: 700 }}>{SHAPE_LABEL[c.zone.shape] || 'Forme'}</span>
+                      ) : (
+                        <div className="row" style={{ gap: 5, flex: 1 }}>
+                          {COLORS.map((sc) => (
+                            <button key={sc} type="button" title="Changer la couleur" onClick={() => updateCoche(c.id, { couleur: sc })}
+                              style={{ width: 18, height: 18, borderRadius: '50%', background: sc, border: sc === col ? '2px solid var(--text)' : '2px solid transparent', cursor: 'pointer', flex: '0 0 auto' }} />
+                          ))}
+                        </div>
+                      )}
                       <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
                       <button type="button" className="cd-ic" title={c.kind === 'zone' ? 'Supprimer cette zone' : 'Supprimer cette coche'} onClick={() => delCoche(c.id)} style={{ color: 'var(--accent-2)' }}><Icon name="trash" size={14} /></button>
                     </div>
                     {c.kind === 'zone' && (
-                      <div className="row" style={{ gap: 8, alignItems: 'center' }} title="Opacité du remplissage">
-                        <Icon name="drop" size={13} />
-                        <input type="range" min="5" max="60" value={Math.round((c.zone.opacity ?? DEFAULT_ZONE_OPACITY) * 100)}
-                          onChange={(e) => updateCoche(c.id, { zone: { ...c.zone, opacity: Number(e.target.value) / 100 } })}
-                          style={{ flex: 1 }} />
-                        <span className="hint" style={{ fontSize: 11, width: 34, textAlign: 'right' }}>{Math.round((c.zone.opacity ?? DEFAULT_ZONE_OPACITY) * 100)}%</span>
-                      </div>
+                      <StyleControls value={zoneStyle(c)} allowFill={c.zone.shape !== 'line'} onChange={(patch) => applyZoneStyle(c, patch)} />
                     )}
                     <div>
                       <label className="hint" style={{ display: 'block', fontSize: 11, marginBottom: 3 }}>Autres réponses acceptées <span style={{ opacity: .7 }}>(virgules)</span></label>
@@ -529,6 +645,49 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
             onClose={() => setTheorieFor(null)} />
         );
       })()}
+    </div>
+  );
+}
+
+/* ---- réglages de style d'une zone (remplissage + opacité + contour + épaisseur).
+   Réutilisé par la barre de style (formes à venir) et le popover (forme sélectionnée).
+   `fill`/`stroke` valant null = « sans ». `allowFill=false` pour le trait. ---- */
+function StyleControls({ value, onChange, allowFill = true }) {
+  const v = value || {};
+  const fillOn = allowFill && v.fill != null;
+  const strokeOn = v.stroke != null;
+  const swatch = (sc, active) => ({ width: 16, height: 16, borderRadius: '50%', background: sc, border: active ? '2px solid var(--text)' : '2px solid transparent', cursor: 'pointer', flex: '0 0 auto' });
+  const miniBtn = (on) => ({ fontSize: 10.5, padding: '1px 7px', borderRadius: 6, border: '1px solid var(--border)', background: on ? 'var(--accent)' : 'transparent', color: on ? '#fff' : 'var(--text-3)', cursor: 'pointer' });
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {allowFill && (
+        <div>
+          <div className="row" style={{ gap: 5, alignItems: 'center', marginBottom: 5, flexWrap: 'wrap' }}>
+            <span className="hint" style={{ fontSize: 10.5, fontWeight: 700, width: 52 }}>Remplir</span>
+            {COLORS.map((sc) => <button key={sc} type="button" title="Couleur de remplissage" onClick={() => onChange({ fill: sc })} style={swatch(sc, v.fill === sc)} />)}
+            <button type="button" style={miniBtn(fillOn)} onClick={() => onChange({ fill: fillOn ? null : DEFAULT_COLOR })}>{fillOn ? 'oui' : 'sans'}</button>
+          </div>
+          {fillOn && (
+            <div className="row" style={{ gap: 6, alignItems: 'center' }} title="Opacité du remplissage">
+              <Icon name="drop" size={12} />
+              <input type="range" min="5" max="60" value={Math.round((v.fillOpacity ?? DEFAULT_ZONE_OPACITY) * 100)} onChange={(e) => onChange({ fillOpacity: Number(e.target.value) / 100 })} style={{ flex: 1 }} />
+              <span className="hint" style={{ fontSize: 10, width: 30, textAlign: 'right' }}>{Math.round((v.fillOpacity ?? DEFAULT_ZONE_OPACITY) * 100)}%</span>
+            </div>
+          )}
+        </div>
+      )}
+      <div>
+        <div className="row" style={{ gap: 5, alignItems: 'center', marginBottom: 5, flexWrap: 'wrap' }}>
+          <span className="hint" style={{ fontSize: 10.5, fontWeight: 700, width: 52 }}>Contour</span>
+          {COLORS.map((sc) => <button key={sc} type="button" title="Couleur du contour" onClick={() => onChange({ stroke: sc })} style={swatch(sc, v.stroke === sc)} />)}
+          <button type="button" style={miniBtn(strokeOn)} onClick={() => onChange({ stroke: strokeOn ? null : DEFAULT_COLOR })}>{strokeOn ? 'oui' : 'sans'}</button>
+        </div>
+        <div className="row" style={{ gap: 6, alignItems: 'center' }} title="Épaisseur du contour / pinceau">
+          <span className="hint" style={{ fontSize: 10 }}>épaisseur</span>
+          <input type="range" min="1" max="10" step="0.5" value={v.strokeWidth ?? DEFAULT_STROKE_WIDTH} onChange={(e) => onChange({ strokeWidth: Number(e.target.value) })} style={{ flex: 1 }} />
+          <span className="hint" style={{ fontSize: 10, width: 22, textAlign: 'right' }}>{v.strokeWidth ?? DEFAULT_STROKE_WIDTH}</span>
+        </div>
+      </div>
     </div>
   );
 }

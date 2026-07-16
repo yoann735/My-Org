@@ -161,17 +161,33 @@ export function cleanCoche(c, i = 0) {
     couleur: c.couleur || null,
     numero: c.numero ?? i + 1,
   };
-  if (kind === 'zone') {
-    const z = c.zone || {};
-    base.zone = z.shape === 'poly'
-      ? { shape: 'poly', points: (z.points || []).map(clampPt), opacity: clampOpacity(z.opacity) }
-      : { shape: 'rect', rect: cleanRect(z.rect), opacity: clampOpacity(z.opacity) };
-  }
+  if (kind === 'zone') base.zone = cleanZone(c.zone, base.couleur);
   return base;
 }
 function cleanRect(r) {
   const x = clamp01(r && r.x), y = clamp01(r && r.y);
   return { x, y, w: clamp01((r && r.w) || 0), h: clamp01((r && r.h) || 0) };
+}
+const DEFAULT_ZONE_COLOR = '#7C6FE0';
+const clampWidth = (w) => Math.max(0.5, Math.min(10, Number.isFinite(w) ? w : 2));
+
+/* normalise la géométrie + le style d'une zone dessinée. Toute forme :
+   rect/ellipse (boîte englobante) · poly/path/line (liste de points, 0..1).
+   `fill`/`stroke` = null signifie explicitement « sans remplissage / sans contour ».
+   Rétro-compat : les anciennes zones (opacity + couleur, sans fill/stroke) sont
+   converties en fill=couleur / stroke=couleur / fillOpacity=opacity. */
+function cleanZone(z, couleur) {
+  z = z || {};
+  const shape = ['rect', 'ellipse', 'poly', 'path', 'line'].includes(z.shape) ? z.shape : 'rect';
+  const out = { shape };
+  if (shape === 'rect' || shape === 'ellipse') out.rect = cleanRect(z.rect);
+  else out.points = (z.points || []).map(clampPt);
+  out.closed = shape === 'line' ? false : (z.closed !== undefined ? !!z.closed : true);
+  out.fill = z.fill !== undefined ? z.fill : (couleur || DEFAULT_ZONE_COLOR);
+  out.fillOpacity = clampOpacity(z.fillOpacity !== undefined ? z.fillOpacity : z.opacity);
+  out.stroke = z.stroke !== undefined ? z.stroke : (couleur || DEFAULT_ZONE_COLOR);
+  out.strokeWidth = clampWidth(z.strokeWidth);
+  return out;
 }
 
 /**
