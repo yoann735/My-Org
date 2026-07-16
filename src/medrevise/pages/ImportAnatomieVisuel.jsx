@@ -14,7 +14,7 @@
 
    Une coche = { id, ancre{x,y}, boite{x,y}, texte, couleur, numero }.
    ============================================================ */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { DestPicker } from '../components/ui.jsx';
 import { genId, putBlob } from '../lib/storage.js';
@@ -30,7 +30,7 @@ const markerId = (col) => 'anat-ah-' + (col || DEFAULT_COLOR).replace('#', '');
 const DEFAULT_ZONE_OPACITY = 0.25;
 const DEFAULT_STROKE_WIDTH = 2;
 const BRUSH_MIN_DIST = 0.004; // décimation du pinceau libre (distance relative mini entre 2 points)
-const ZOOM_MIN = 1, ZOOM_MAX = 6, ZOOM_STEP = 1.25; // zoom éditeur de schéma (B) — 1 = cadrage entier (défaut)
+const ZOOM_MIN = 0.5, ZOOM_MAX = 6, ZOOM_STEP = 1.25; // zoom éditeur de schéma (B) — 1 = cadrage entier (défaut, "Ajuster")
 const PAN_MIN_VISIBLE = 80; // px — le pan est borné pour garder au moins ça de l'image visible
 
 /* outils de dessin de zones (barre d'outils). rect/ellipse = boîte englobante ;
@@ -258,6 +258,33 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
   // dépendre du re-render React sous peine de rattacher l'écouteur à chaque frame.
   const scaleRef = useRef(scale); scaleRef.current = scale;
   const panRef = useRef(pan); panRef.current = pan;
+
+  // A (v2) — COUCHE SÉPARÉE, NON transformée, pour les coches ponctuelles (ancres,
+  // flèches, libellés, poignées) : plus robuste qu'un contre-scale composé sur chaque
+  // élément (ambigu à combiner avec les autres transform déjà en place, notamment sur
+  // la boîte de libellé). `frameBox` = position/taille de LAYOUT du cadre (offsetLeft/
+  // offsetTop/offsetWidth/offsetHeight — jamais affectées par le transform CSS lui-même),
+  // relative à outerRef (son offsetParent, position:relative). Se recalcule au montage,
+  // au changement d'image et au redimensionnement — jamais au zoom/pan (par design).
+  const [frameBox, setFrameBox] = useState({ left: 0, top: 0, width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const update = () => setFrameBox({ left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight });
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [image && image.url]);
+
+  // point relatif (0..1, repère image) → pixel écran relatif à outerRef, selon le
+  // zoom/pan courants. Utilisé UNIQUEMENT par la couche séparée des coches ponctuelles ;
+  // les zones/tracés restent dans le cadre transformé (ils doivent suivre le zoom).
+  const toScreen = (relX, relY) => ({
+    x: frameBox.left + pan.x + relX * scale * frameBox.width,
+    y: frameBox.top + pan.y + relY * scale * frameBox.height,
+  });
 
   const updateCoche = (id, patch) => setCoches((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   const delCoche = (id) => { setCoches((cs) => cs.filter((c) => c.id !== id)); setSelectedId(null); };
@@ -630,7 +657,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
           <span className="seg-btn" style={{ cursor: 'default', minWidth: 46, justifyContent: 'center' }}>{Math.round(scale * 100)}%</span>
           <button type="button" className="seg-btn" disabled={scale >= ZOOM_MAX - 0.001} onClick={() => zoomAtCenter(scale * ZOOM_STEP)}><Icon name="plus" size={13} /></button>
         </div>
-        {scale > 1 && <button type="button" className="btn ghost sm" onClick={resetZoom}><Icon name="maximize" size={13} /> Ajuster</button>}
+        {scale !== 1 && <button type="button" className="btn ghost sm" onClick={resetZoom}><Icon name="maximize" size={13} /> Ajuster</button>}
         <div style={{ flex: 1 }} />
         <button type="button" className="btn ghost sm" disabled={exporting} onClick={() => doExport('png')}><Icon name="upload" size={13} /> Export image</button>
         <button type="button" className="btn ghost sm" disabled={exporting} onClick={() => doExport('pdf')}><Icon name="filePdf" size={13} /> Export PDF</button>
@@ -674,50 +701,56 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
             </svg>
           )}
 
-          {/* flèches (px space : pas de viewBox → orient auto non déformé) — POINTS seuls.
-              B — épaisseur de trait ET taille de flèche constantes à l'écran quel que
-              soit le zoom : vector-effect gère le trait, markerUnits=userSpaceOnUse +
-              taille divisée par `scale` gère la pointe (compensées par le scale(scale)
-              du cadre ancêtre au rendu). Seule la POSITION des extrémités suit le zoom. */}
-          <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
+        </div>
+
+        {/* A (v2) — COUCHE SÉPARÉE pour les coches ponctuelles (flèches, ancres,
+            libellés, poignées) : PAS d'ancêtre transformé → taille écran FIXE "pour
+            rien" (pas de contre-scale à composer). Seule leur POSITION (via toScreen,
+            qui applique le zoom/pan courants aux coordonnées relatives) suit la vue.
+            `pointerEvents:none` sur le conteneur (laisse passer les clics de fond vers
+            le cadre pour pan/dessin) ; `auto` explicite sur chaque élément interactif. */}
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+          <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}>
             <defs>
               {usedColors.map((col) => (
-                <marker key={col} id={markerId(col)} markerWidth={8 / scale} markerHeight={8 / scale} refX="5.5" refY="3" orient="auto" markerUnits="userSpaceOnUse" viewBox="0 0 8 8">
+                <marker key={col} id={markerId(col)} markerWidth="8" markerHeight="8" refX="5.5" refY="3" orient="auto" markerUnits="strokeWidth">
                   <path d="M0,0 L6,3 L0,6 Z" fill={col} />
                 </marker>
               ))}
             </defs>
             {coches.filter((c) => c.kind !== 'zone').map((c) => {
               const col = c.couleur || DEFAULT_COLOR;
-              return <line key={c.id} x1={c.boite.x * 100 + '%'} y1={c.boite.y * 100 + '%'} x2={c.ancre.x * 100 + '%'} y2={c.ancre.y * 100 + '%'} stroke={col} strokeWidth={2.2} vectorEffect="non-scaling-stroke" markerEnd={`url(#${markerId(col)})`} />;
+              const a = toScreen(c.boite.x, c.boite.y), b = toScreen(c.ancre.x, c.ancre.y);
+              return <line key={c.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={col} strokeWidth={2.2} markerEnd={`url(#${markerId(col)})`} />;
             })}
           </svg>
 
-          {/* ancres (points désignés) — déplaçables indépendamment (POINTS seuls).
-              B — scale(1/scale) compose avec le transform du cadre ancêtre pour annuler
-              visuellement le zoom (taille écran constante) sans toucher à la POSITION,
-              qui reste pilotée par left/top (%) + le transform du cadre. */}
+          {/* ancres (points désignés) — déplaçables indépendamment (POINTS seuls) */}
           {coches.filter((c) => c.kind !== 'zone').map((c) => {
             const col = c.couleur || DEFAULT_COLOR;
             const sel = c.id === selectedId;
+            const p = toScreen(c.ancre.x, c.ancre.y);
             return (
               <span key={'a' + c.id} title="Déplace la pointe de flèche"
                 onPointerDown={(e) => startDrag(e, c, 'ancre')}
-                style={{ position: 'absolute', left: c.ancre.x * 100 + '%', top: c.ancre.y * 100 + '%', width: sel ? 15 : 12, height: sel ? 15 : 12, marginLeft: sel ? -7.5 : -6, marginTop: sel ? -7.5 : -6, borderRadius: '50%', background: col, border: '2px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.35)', cursor: 'grab', touchAction: 'none', transform: `scale(${1 / scale})` }} />
+                style={{ position: 'absolute', left: p.x, top: p.y, width: sel ? 15 : 12, height: sel ? 15 : 12, marginLeft: sel ? -7.5 : -6, marginTop: sel ? -7.5 : -6, borderRadius: '50%', background: col, border: '2px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.35)', cursor: 'grab', touchAction: 'none', pointerEvents: 'auto' }} />
             );
           })}
 
-          {/* poignées d'édition de la zone sélectionnée (coins de rect / sommets de poly) */}
+          {/* poignées d'édition de la zone sélectionnée (coins de rect / sommets de poly) —
+              taille écran fixe comme les coches ; leur POSITION suit la géométrie de la
+              zone (donc le zoom), via toScreen sur les coordonnées de cette géométrie. */}
           {(() => {
             const c = coches.find((x) => x.id === selectedId && x.kind === 'zone');
             if (!c || mode !== 'select') return null;
             const col = c.couleur || DEFAULT_COLOR;
-            // B — poignées à taille écran constante (comme les coches) ; leur position
-            // (left/top en %) suit elle la géométrie de la zone, donc le zoom.
-            const handle = (x, y, onDown, key) => (
-              <span key={key} onPointerDown={onDown}
-                style={{ position: 'absolute', left: x * 100 + '%', top: y * 100 + '%', width: 12, height: 12, marginLeft: -6, marginTop: -6, borderRadius: '50%', background: '#fff', border: `2px solid ${col}`, boxShadow: '0 1px 3px rgba(0,0,0,.35)', cursor: 'grab', touchAction: 'none', zIndex: 6, transform: `scale(${1 / scale})` }} />
-            );
+            const handle = (x, y, onDown, key) => {
+              const p = toScreen(x, y);
+              return (
+                <span key={key} onPointerDown={onDown}
+                  style={{ position: 'absolute', left: p.x, top: p.y, width: 12, height: 12, marginLeft: -6, marginTop: -6, borderRadius: '50%', background: '#fff', border: `2px solid ${col}`, boxShadow: '0 1px 3px rgba(0,0,0,.35)', cursor: 'grab', touchAction: 'none', zIndex: 6, pointerEvents: 'auto' }} />
+              );
+            };
             if (c.zone.shape === 'rect' || c.zone.shape === 'ellipse') {
               const r = c.zone.rect;
               return [
@@ -733,16 +766,17 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
             return null; // pinceau (path) : repositionnement global (translation) uniquement
           })()}
 
-          {/* boîtes de libellé — déplaçables + édition inline + popover.
-              B — taille écran constante (scale(1/scale) composé au translate de
-              centrage) ; le popover imbriqué en hérite automatiquement (même chaîne de
-              transform), donc lui aussi reste à taille constante sans traitement à part. */}
+          {/* boîtes de libellé — déplaçables + édition inline + popover. maxWidth était
+              "46%" (du cadre transformé) ; hors du cadre, on le convertit en px à partir
+              de frameBox.width pour garder le même sens ("46% de la largeur affichée
+              de l'image"), indépendant de la largeur de la carte/overlay. */}
           {coches.map((c) => {
             const col = c.couleur || DEFAULT_COLOR;
             const sel = c.id === selectedId;
+            const p = toScreen(c.boite.x, c.boite.y);
             return (
               <div key={'b' + c.id} onPointerDown={(e) => startDrag(e, c, 'boite')}
-                style={{ position: 'absolute', left: c.boite.x * 100 + '%', top: c.boite.y * 100 + '%', transform: `translate(-50%,-50%) scale(${1 / scale})`, display: 'flex', alignItems: 'center', gap: 6, maxWidth: '46%', padding: '4px 8px', borderRadius: 8, background: 'var(--card)', border: `2px solid ${col}`, boxShadow: sel ? `0 0 0 3px color-mix(in srgb, ${col} 30%, transparent), 0 4px 12px rgba(0,0,0,.2)` : '0 2px 8px rgba(0,0,0,.18)', cursor: 'grab', touchAction: 'none', lineHeight: 1.2, zIndex: sel ? 5 : 2 }}>
+                style={{ position: 'absolute', left: p.x, top: p.y, transform: 'translate(-50%,-50%)', display: 'flex', alignItems: 'center', gap: 6, maxWidth: Math.round(frameBox.width * 0.46), padding: '4px 8px', borderRadius: 8, background: 'var(--card)', border: `2px solid ${col}`, boxShadow: sel ? `0 0 0 3px color-mix(in srgb, ${col} 30%, transparent), 0 4px 12px rgba(0,0,0,.2)` : '0 2px 8px rgba(0,0,0,.18)', cursor: 'grab', touchAction: 'none', lineHeight: 1.2, zIndex: sel ? 5 : 2, pointerEvents: 'auto' }}>
                 <span style={{ flex: '0 0 auto', width: 18, height: 18, borderRadius: '50%', background: col, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>{c.numero}</span>
                 {sel ? (
                   <input autoFocus value={c.texte} placeholder="nom de la structure"
@@ -796,7 +830,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
       </div>
 
       <div className="hint" style={{ marginTop: 10 }}>
-        <Icon name="info" size={13} /> Positions en coordonnées relatives — le zoom ne désaligne rien. Molette ou Ctrl/Cmd+molette pour zoomer, <strong>Espace+glisser</strong> (ou clic molette) pour déplacer la vue. L'export image/PDF aplatit tout (archivage/impression seulement) et <strong>n'est pas réimportable en quiz</strong>.
+        <Icon name="info" size={13} /> Positions en coordonnées relatives — le zoom ne désaligne rien. Molette ou Ctrl/Cmd+molette pour zoomer, boutons +/-, ou <strong>clic-glissé sur le fond</strong> pour déplacer la vue (Espace+glisser ou clic molette marchent aussi, y compris avec un outil de dessin actif). L'export image/PDF aplatit tout (archivage/impression seulement) et <strong>n'est pas réimportable en quiz</strong>.
       </div>
 
       {theorieFor && (() => {
