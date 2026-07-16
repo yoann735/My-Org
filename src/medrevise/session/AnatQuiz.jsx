@@ -252,10 +252,10 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, s
     return c.couleur || DEFAULT_COLOR;
   };
   return (
-    <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)' }}>
-      <div style={{ position: 'relative', width: '100%', lineHeight: 0 }}>
+    <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)', display: 'flex', justifyContent: 'center' }}>
+      <div style={{ position: 'relative', maxWidth: '100%', minWidth: 0, width: imgUrl ? 'auto' : '100%', lineHeight: 0 }}>
         {imgUrl
-          ? <img src={imgUrl} alt="schéma" draggable={false} style={{ display: 'block', width: '100%', height: 'auto', userSelect: 'none' }} />
+          ? <img src={imgUrl} alt="schéma" draggable={false} style={{ display: 'block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: 'min(64vh, 600px)', userSelect: 'none' }} />
           : <div style={{ width: '100%', height: 320, display: 'grid', placeItems: 'center', color: 'var(--text-3)' }}><Icon name="image" size={32} /></div>}
 
         <ZonesLayer coches={coches} selectedId={null} mode="quiz" borderFor={stateColor} />
@@ -309,7 +309,9 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, s
             const flipX = c.boite.x > 0.5, flipY = c.boite.y > 0.5;
             return (
               <div key={'b' + c.id}
-                style={{ position: 'absolute', left: c.boite.x * 100 + '%', top: c.boite.y * 100 + '%', transform: `translate(${flipX ? '-100%' : '0'}, ${flipY ? '-100%' : '0'})`, width: 'min(260px, 72vw)', maxHeight: '84%', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 11px', borderRadius: 10, background: 'var(--card)', border: `2px solid ${badgeCol}`, boxShadow: '0 8px 24px rgba(0,0,0,.28)', zIndex: 20 }}>
+                style={{ position: 'absolute', left: c.boite.x * 100 + '%', top: c.boite.y * 100 + '%', transform: `translate(${flipX ? '-100%' : '0'}, ${flipY ? '-100%' : '0'})`, width: 'min(260px, 72vw)', maxHeight: '84%', display: 'flex', flexDirection: 'column', padding: '10px 11px', borderRadius: 10, background: 'var(--card)', border: `2px solid ${badgeCol}`, boxShadow: '0 8px 24px rgba(0,0,0,.28)', zIndex: 20 }}>
+                {/* D — zone défilable (header + nom + champs) ; la barre d'action reste épinglée en bas */}
+                <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingRight: 2 }}>
                 <div className="row" style={{ gap: 8, alignItems: 'center' }}>
                   <span style={{ flex: '0 0 auto', width: 20, height: 20, borderRadius: '50%', background: badgeCol, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>
                     {phase === 'result' ? <Icon name={nameOk ? 'check' : 'x'} size={12} stroke={3} /> : c.numero}
@@ -354,7 +356,9 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, s
                   })}
                 </div>
 
-                <div className="row spread" style={{ gap: 8 }}>
+                </div>
+                {/* barre d'action TOUJOURS visible en bas (D) */}
+                <div className="row spread" style={{ gap: 8, borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 8, flex: '0 0 auto' }}>
                   <button type="button" className="btn ghost sm" onClick={() => setActiveId(null)} style={{ fontSize: 11 }}><Icon name="minus" size={11} /> Réduire</button>
                   {(() => { const i = activeOrder.indexOf(c.id); const nxt = activeOrder[i + 1]; return nxt ? <button type="button" className="btn sm" onClick={() => setActiveId(nxt)} style={{ fontSize: 11 }}>Suivant <Icon name="arrowR" size={11} /></button> : null; })()}
                 </div>
