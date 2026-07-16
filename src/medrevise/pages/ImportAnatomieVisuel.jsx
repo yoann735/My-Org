@@ -497,10 +497,12 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
         </div>
       )}
 
-      {/* zone image + overlay */}
-      <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)' }}>
-        <div ref={frameRef} style={{ position: 'relative', width: '100%', lineHeight: 0, cursor: (mode === 'point' || DRAW_TOOLS.some((t) => t.key === mode)) ? 'crosshair' : 'default', touchAction: 'none' }} onPointerDown={onFrameDown} onDoubleClick={() => { if (mode === 'poly') setDraftPoly((pts) => { finishPoly(pts); return null; }); }}>
-          <img src={image.url} alt="schéma" draggable={false} style={{ display: 'block', width: '100%', height: 'auto', userSelect: 'none' }} />
+      {/* zone image + overlay — B : image CADRÉE pour tenir entièrement (fit-to-container),
+          sans scroll obligatoire. Le cadre (frameRef) épouse exactement l'image affichée,
+          donc les coordonnées relatives (% de frameRef) restent alignées. */}
+      <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)', display: 'flex', justifyContent: 'center' }}>
+        <div ref={frameRef} style={{ position: 'relative', maxWidth: '100%', minWidth: 0, lineHeight: 0, cursor: (mode === 'point' || DRAW_TOOLS.some((t) => t.key === mode)) ? 'crosshair' : 'default', touchAction: 'none' }} onPointerDown={onFrameDown} onDoubleClick={() => { if (mode === 'poly') setDraftPoly((pts) => { finishPoly(pts); return null; }); }}>
+          <img src={image.url} alt="schéma" draggable={false} style={{ display: 'block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: 'min(64vh, 600px)', userSelect: 'none' }} />
 
           {/* ZONES — sous les flèches/libellés */}
           <ZonesLayer coches={coches} selectedId={selectedId} mode={mode} onZonePointerDown={startZoneDrag} />
@@ -614,16 +616,14 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
                         onChange={(e) => updateCoche(c.id, { reponses_acceptees: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
                         style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', background: 'var(--bg-2)', color: 'var(--text)', font: 'inherit', fontSize: 12, fontWeight: 500, padding: '5px 7px' }} />
                     </div>
+                    {/* A — coller la théorie DIRECTEMENT dans la carte (analyse locale, sans IA) */}
                     <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                      {(() => {
-                        const nb = c.champs ? Object.values(c.champs).filter((v) => (v || '').trim()).length : 0;
-                        return (
-                          <button type="button" className={'btn sm' + (nb ? '' : ' ghost')} style={{ width: '100%', justifyContent: 'center' }} onClick={() => setTheorieFor(c.id)}>
-                            <Icon name="list" size={12} /> Théorie {nb > 0 ? `· ${ANAT_TYPES[c.type] ? ANAT_TYPES[c.type].label : c.type} (${nb})` : '— coller le texte'}
-                          </button>
-                        );
-                      })()}
+                      <CocheTheorieInline coche={c} updateCoche={updateCoche} onOpenFull={setTheorieFor} />
                     </div>
+                    {/* C — Valider : les modifs sont déjà enregistrées en direct ; on ferme la carte proprement */}
+                    <button type="button" className="btn primary sm" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setSelectedId(null)}>
+                      <Icon name="check" size={13} /> Valider
+                    </button>
                   </div>
                 )}
               </div>
@@ -687,6 +687,48 @@ function StyleControls({ value, onChange, allowFill = true }) {
           <input type="range" min="1" max="10" step="0.5" value={v.strokeWidth ?? DEFAULT_STROKE_WIDTH} onChange={(e) => onChange({ strokeWidth: Number(e.target.value) })} style={{ flex: 1 }} />
           <span className="hint" style={{ fontSize: 10, width: 22, textAlign: 'right' }}>{v.strokeWidth ?? DEFAULT_STROKE_WIDTH}</span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---- A : THÉORIE INLINE dans la carte de la coche — coller un texte + « Analyser »
+   (détection du type + extraction des champs, 100 % local, sans IA) directement dans
+   le popover, en plus du nom. « Détailler » ouvre la modale complète pour corriger
+   finement. La théorie enregistrée se comporte ensuite comme d'habitude (quiz/QCM). ---- */
+function CocheTheorieInline({ coche, updateCoche, onOpenFull }) {
+  const [raw, setRaw] = useState('');
+  const nb = coche.champs ? Object.values(coche.champs).filter((v) => (v || '').trim()).length : 0;
+  const typeLabel = coche.type && ANAT_TYPES[coche.type] ? ANAT_TYPES[coche.type].label : coche.type;
+
+  const analyse = () => {
+    if (!raw.trim()) return;
+    const t = detectType(raw);
+    const r = parseStructure(raw, t);
+    updateCoche(coche.id, { type: t, champs: r.champs });
+    setRaw('');
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <label className="hint" style={{ display: 'block', fontSize: 11, fontWeight: 700 }}>
+        Théorie <span style={{ opacity: .7, fontWeight: 500 }}>(optionnel — colle le texte)</span>
+      </label>
+      {nb > 0 && (
+        <div className="hint" style={{ fontSize: 11, color: 'var(--accent)', margin: 0 }}>
+          <Icon name="check" size={11} /> {typeLabel} · {nb} champ{nb > 1 ? 's' : ''} enregistré{nb > 1 ? 's' : ''}
+        </div>
+      )}
+      <textarea value={raw} onChange={(e) => setRaw(e.target.value)} onPointerDown={(e) => e.stopPropagation()}
+        placeholder={'Colle la théorie (ex : « Origine : … Insertion : … »). Type et champs détectés automatiquement, sans IA.'}
+        style={{ width: '100%', minHeight: 54, resize: 'vertical', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', background: 'var(--bg-2)', color: 'var(--text)', font: 'inherit', fontSize: 12, padding: '6px 7px' }} />
+      <div className="row" style={{ gap: 6 }}>
+        <button type="button" className="btn primary sm" style={{ flex: 1, justifyContent: 'center' }} onClick={analyse} disabled={!raw.trim()}>
+          <Icon name="sparkle" size={12} /> Analyser
+        </button>
+        <button type="button" className={'btn sm' + (nb ? '' : ' ghost')} style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenFull(coche.id)}>
+          <Icon name="list" size={12} /> {nb > 0 ? 'Détailler / corriger' : 'Éditer en détail'}
+        </button>
       </div>
     </div>
   );

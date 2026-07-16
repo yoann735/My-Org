@@ -169,10 +169,10 @@ export function SchemaEditorScreen({ ctx }) {
 function SchemaPreview({ image, coches }) {
   const usedColors = [...new Set((coches || []).map((c) => c.couleur || DEFAULT_COLOR))];
   return (
-    <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)' }}>
-      <div style={{ position: 'relative', width: '100%', lineHeight: 0 }}>
+    <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)', display: 'flex', justifyContent: 'center' }}>
+      <div style={{ position: 'relative', maxWidth: '100%', minWidth: 0, width: (image && image.url) ? 'auto' : '100%', lineHeight: 0 }}>
         {image && image.url
-          ? <img src={image.url} alt="schéma" draggable={false} style={{ display: 'block', width: '100%', height: 'auto', userSelect: 'none' }} />
+          ? <img src={image.url} alt="schéma" draggable={false} style={{ display: 'block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: 'min(70vh, 640px)', userSelect: 'none' }} />
           : <div style={{ width: '100%', height: 320, display: 'grid', placeItems: 'center', color: 'var(--text-3)' }}><Icon name="image" size={32} /></div>}
 
         <ZonesLayer coches={coches} selectedId={null} mode="read" />
