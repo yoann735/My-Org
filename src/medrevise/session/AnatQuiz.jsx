@@ -309,9 +309,10 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, s
             const flipX = c.boite.x > 0.5, flipY = c.boite.y > 0.5;
             return (
               <div key={'b' + c.id}
-                style={{ position: 'absolute', left: c.boite.x * 100 + '%', top: c.boite.y * 100 + '%', transform: `translate(${flipX ? '-100%' : '0'}, ${flipY ? '-100%' : '0'})`, width: 'min(260px, 72vw)', maxHeight: '84%', display: 'flex', flexDirection: 'column', padding: '10px 11px', borderRadius: 10, background: 'var(--card)', border: `2px solid ${badgeCol}`, boxShadow: '0 8px 24px rgba(0,0,0,.28)', zIndex: 20 }}>
-                {/* D — zone défilable (header + nom + champs) ; la barre d'action reste épinglée en bas */}
-                <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingRight: 2 }}>
+                style={{ position: 'absolute', left: c.boite.x * 100 + '%', top: c.boite.y * 100 + '%', transform: `translate(${flipX ? '-100%' : '0'}, ${flipY ? '-100%' : '0'})`, width: 'min(300px, 84vw)', maxHeight: '84%', display: 'flex', flexDirection: 'column', padding: '12px 13px', borderRadius: 10, background: 'var(--card)', border: `2px solid ${badgeCol}`, boxShadow: '0 8px 24px rgba(0,0,0,.28)', zIndex: 20 }}>
+                {/* D — zone défilable (header + nom + champs), espacement respirant entre
+                    chaque paire label/input ; la barre d'action reste épinglée en bas */}
+                <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingRight: 2 }}>
                 <div className="row" style={{ gap: 8, alignItems: 'center' }}>
                   <span style={{ flex: '0 0 auto', width: 20, height: 20, borderRadius: '50%', background: badgeCol, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>
                     {phase === 'result' ? <Icon name={nameOk ? 'check' : 'x'} size={12} stroke={3} /> : c.numero}
@@ -319,8 +320,8 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, s
                   <span className="pill" style={{ height: 18, fontSize: 10.5 }}>{c.type}</span>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <label className="hint" style={{ fontWeight: 700, fontSize: 11 }}>Nom de la structure ?</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label className="hint" style={{ display: 'block', fontWeight: 700, fontSize: 11, lineHeight: 1.3 }}>Nom de la structure ?</label>
                   {phase === 'answer' ? (
                     <input autoFocus value={answers[c.id] || ''} placeholder="nom ?" className="srcmgr-input" style={{ width: '100%', fontSize: 12.5 }}
                       onChange={(e) => setAnswers((a) => ({ ...a, [c.id]: e.target.value }))} />
@@ -333,14 +334,14 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, s
                   )}
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 7, borderTop: '1px dashed var(--border)', paddingTop: 7 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, borderTop: '1px dashed var(--border)', paddingTop: 12 }}>
                   {fields.map((f) => {
                     const ev = phase === 'result' ? evalTheory({ key: f.key, expected: f.expected }) : null;
                     const ok = !!(ev && ev.ok), near = !!(ev && !ev.ok && ev.near);
                     const bc = phase !== 'result' ? 'var(--border)' : ok ? '#4FB87A' : near ? '#E0A34F' : '#E0556B';
                     return (
-                      <div key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <label className="hint" style={{ fontWeight: 700, fontSize: 11 }}>{f.label} ?</label>
+                      <div key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <label className="hint" style={{ display: 'block', fontWeight: 700, fontSize: 11, lineHeight: 1.3 }}>{f.label} ?</label>
                         {phase === 'answer' ? (
                           <input value={theoryAnswers[f.key] || ''} placeholder="ta réponse…" className="srcmgr-input" style={{ width: '100%', fontSize: 12, borderColor: bc }}
                             onChange={(e) => setTheoryAnswers((a) => ({ ...a, [f.key]: e.target.value }))} />
