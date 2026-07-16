@@ -31,6 +31,7 @@ const DEFAULT_ZONE_OPACITY = 0.25;
 const DEFAULT_STROKE_WIDTH = 2;
 const BRUSH_MIN_DIST = 0.004; // décimation du pinceau libre (distance relative mini entre 2 points)
 const ZOOM_MIN = 1, ZOOM_MAX = 6, ZOOM_STEP = 1.25; // zoom éditeur de schéma (B) — 1 = cadrage entier (défaut)
+const PAN_MIN_VISIBLE = 80; // px — le pan est borné pour garder au moins ça de l'image visible
 
 /* outils de dessin de zones (barre d'outils). rect/ellipse = boîte englobante ;
    poly = sommets ; brush = tracé libre (liste de points) ; line = segment. */
@@ -252,6 +253,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [spaceDown, setSpaceDown] = useState(false);
+  const [panning, setPanning] = useState(false); // A — retour visuel (curseur grabbing) pendant un pan actif
   // valeurs toujours à jour pour le listener natif (voir plus bas) qui ne peut pas
   // dépendre du re-render React sous peine de rattacher l'écouteur à chaque frame.
   const scaleRef = useRef(scale); scaleRef.current = scale;
@@ -281,6 +283,24 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
   // le changement d'échelle (transform-origin en 0,0 → translate() en px "après" scale()).
   // lit scaleRef/panRef (pas scale/pan) pour rester correcte même appelée depuis le
   // listener natif ci-dessous, dont la closure n'est pas re-créée à chaque render.
+  // A — borne le pan : le cadre (à l'échelle `s`) doit toujours garder au moins
+  // PAN_MIN_VISIBLE px dans le cadre visible (outerRef), sur chaque axe. Utilise les
+  // positions/tailles de LAYOUT (offsetLeft/offsetWidth — jamais affectées par le
+  // transform CSS lui-même) : stables quel que soit le zoom/pan courant.
+  const clampPanValue = (nextPan, s) => {
+    const outer = outerRef.current, frame = frameRef.current;
+    if (!outer || !frame) return nextPan;
+    const outerW = outer.clientWidth, outerH = outer.clientHeight;
+    const frameW = s * frame.offsetWidth, frameH = s * frame.offsetHeight;
+    const staticLeft = frame.offsetLeft, staticTop = frame.offsetTop;
+    const ax = PAN_MIN_VISIBLE - frameW - staticLeft, bx = outerW - PAN_MIN_VISIBLE - staticLeft;
+    const ay = PAN_MIN_VISIBLE - frameH - staticTop, by = outerH - PAN_MIN_VISIBLE - staticTop;
+    return {
+      x: Math.min(Math.max(nextPan.x, Math.min(ax, bx)), Math.max(ax, bx)),
+      y: Math.min(Math.max(nextPan.y, Math.min(ay, by)), Math.max(ay, by)),
+    };
+  };
+
   const zoomAt = (nextScale, clientX, clientY) => {
     const el = frameRef.current;
     if (!el) return;
@@ -292,7 +312,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
     const w0 = rect.width / scaleRef.current, h0 = rect.height / scaleRef.current;
     const l0 = rect.left - panRef.current.x, t0 = rect.top - panRef.current.y;
     setScale(clamped);
-    setPan({ x: clientX - fx * clamped * w0 - l0, y: clientY - fy * clamped * h0 - t0 });
+    setPan(clampPanValue({ x: clientX - fx * clamped * w0 - l0, y: clientY - fy * clamped * h0 - t0 }, clamped));
   };
   const zoomAtCenter = (nextScale) => {
     const el = frameRef.current;
@@ -317,13 +337,35 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // pan : Espace+glisser (tout mode) ou clic molette — ne déclenche aucun outil.
+  // A — pan (style Photoshop) : Espace+glisser ou clic molette, quel que soit l'outil
+  // actif — démarre le déplacement immédiatement (l'utilisateur a explicitement demandé
+  // le pan, pas d'ambiguïté avec un clic simple à gérer ici).
   const startPan = (e) => {
     e.preventDefault();
+    setPanning(true);
     const startX = e.clientX, startY = e.clientY;
-    const origin = pan;
-    const move = (ev) => setPan({ x: origin.x + (ev.clientX - startX), y: origin.y + (ev.clientY - startY) });
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    const origin = panRef.current;
+    const move = (ev) => setPan(clampPanValue({ x: origin.x + (ev.clientX - startX), y: origin.y + (ev.clientY - startY) }, scaleRef.current));
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); setPanning(false); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+
+  // A — mode Sélection : le clic-glissé sur le fond fait le pan PAR DÉFAUT (sans Espace),
+  // comme Photoshop. Un simple clic (sans déplacement) désélectionne, comme avant — seuil
+  // identique aux autres drags de ce fichier pour distinguer clic vs glissé.
+  const startPanOrDeselect = (e) => {
+    const startX = e.clientX, startY = e.clientY;
+    const origin = panRef.current;
+    let moved = false;
+    const move = (ev) => {
+      if (!moved && Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 4) { moved = true; setPanning(true); }
+      if (moved) setPan(clampPanValue({ x: origin.x + (ev.clientX - startX), y: origin.y + (ev.clientY - startY) }, scaleRef.current));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      setPanning(false);
+      if (!moved) setSelectedId(null);
+    };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
 
@@ -465,19 +507,21 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
 
-  // clic sur le fond : selon le mode → place une coche, trace une zone, ou désélectionne.
-  // Espace+glisser ou clic molette = déplacer (pan), quel que soit l'outil actif.
+  // clic sur le fond : selon le mode → place une coche, trace une zone, ou pan/désélectionne.
+  // Espace+glisser ou clic molette = pan quel que soit l'outil actif (ne déclenche jamais
+  // un outil de dessin, même en mode Coche/Pinceau/Zone) ; en mode Sélection, le
+  // clic-glissé pan par défaut (voir startPanOrDeselect).
   const onFrameDown = (e) => {
     if (e.button === 1) { startPan(e); return; }
     if (e.button !== 0) return;
     if (spaceDown) { startPan(e); return; }
+    if (mode === 'select') { startPanOrDeselect(e); return; }
     const p = relFromEvent(e.clientX, e.clientY);
     if (mode === 'point') addCocheAt(p);
     else if (mode === 'rect' || mode === 'ellipse') startBoxDraw(e, mode);
     else if (mode === 'poly') polyClick(p);
     else if (mode === 'brush') startBrush(e);
     else if (mode === 'line') startLineDraw(e);
-    else setSelectedId(null);
   };
 
   // Échap / Entrée pendant un tracé polygone : annuler / fermer.
@@ -608,7 +652,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
           sans scroll obligatoire. Le cadre (frameRef) épouse exactement l'image affichée,
           donc les coordonnées relatives (% de frameRef) restent alignées. */}
       <div ref={outerRef} style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)', display: 'flex', justifyContent: 'center' }}>
-        <div ref={frameRef} style={{ position: 'relative', maxWidth: '100%', minWidth: 0, lineHeight: 0, transform: (scale !== 1 || pan.x || pan.y) ? `translate(${pan.x}px, ${pan.y}px) scale(${scale})` : undefined, transformOrigin: '0 0', cursor: spaceDown ? 'grab' : (mode === 'point' || DRAW_TOOLS.some((t) => t.key === mode)) ? 'crosshair' : 'default', touchAction: 'none' }} onPointerDown={onFrameDown} onDoubleClick={() => { if (mode === 'poly') setDraftPoly((pts) => { finishPoly(pts); return null; }); }}>
+        <div ref={frameRef} style={{ position: 'relative', maxWidth: '100%', minWidth: 0, lineHeight: 0, transform: (scale !== 1 || pan.x || pan.y) ? `translate(${pan.x}px, ${pan.y}px) scale(${scale})` : undefined, transformOrigin: '0 0', cursor: panning ? 'grabbing' : (spaceDown || mode === 'select') ? 'grab' : (mode === 'point' || DRAW_TOOLS.some((t) => t.key === mode)) ? 'crosshair' : 'default', touchAction: 'none' }} onPointerDown={onFrameDown} onDoubleClick={() => { if (mode === 'poly') setDraftPoly((pts) => { finishPoly(pts); return null; }); }}>
           <img src={image.url} alt="schéma" draggable={false} style={{ display: 'block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: 'min(64vh, 600px)', userSelect: 'none' }} />
 
           {/* ZONES — sous les flèches/libellés */}
@@ -630,29 +674,36 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
             </svg>
           )}
 
-          {/* flèches (px space : pas de viewBox → orient auto non déformé) — POINTS seuls */}
+          {/* flèches (px space : pas de viewBox → orient auto non déformé) — POINTS seuls.
+              B — épaisseur de trait ET taille de flèche constantes à l'écran quel que
+              soit le zoom : vector-effect gère le trait, markerUnits=userSpaceOnUse +
+              taille divisée par `scale` gère la pointe (compensées par le scale(scale)
+              du cadre ancêtre au rendu). Seule la POSITION des extrémités suit le zoom. */}
           <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
             <defs>
               {usedColors.map((col) => (
-                <marker key={col} id={markerId(col)} markerWidth="8" markerHeight="8" refX="5.5" refY="3" orient="auto" markerUnits="strokeWidth">
+                <marker key={col} id={markerId(col)} markerWidth={8 / scale} markerHeight={8 / scale} refX="5.5" refY="3" orient="auto" markerUnits="userSpaceOnUse" viewBox="0 0 8 8">
                   <path d="M0,0 L6,3 L0,6 Z" fill={col} />
                 </marker>
               ))}
             </defs>
             {coches.filter((c) => c.kind !== 'zone').map((c) => {
               const col = c.couleur || DEFAULT_COLOR;
-              return <line key={c.id} x1={c.boite.x * 100 + '%'} y1={c.boite.y * 100 + '%'} x2={c.ancre.x * 100 + '%'} y2={c.ancre.y * 100 + '%'} stroke={col} strokeWidth={2.2} markerEnd={`url(#${markerId(col)})`} />;
+              return <line key={c.id} x1={c.boite.x * 100 + '%'} y1={c.boite.y * 100 + '%'} x2={c.ancre.x * 100 + '%'} y2={c.ancre.y * 100 + '%'} stroke={col} strokeWidth={2.2} vectorEffect="non-scaling-stroke" markerEnd={`url(#${markerId(col)})`} />;
             })}
           </svg>
 
-          {/* ancres (points désignés) — déplaçables indépendamment (POINTS seuls) */}
+          {/* ancres (points désignés) — déplaçables indépendamment (POINTS seuls).
+              B — scale(1/scale) compose avec le transform du cadre ancêtre pour annuler
+              visuellement le zoom (taille écran constante) sans toucher à la POSITION,
+              qui reste pilotée par left/top (%) + le transform du cadre. */}
           {coches.filter((c) => c.kind !== 'zone').map((c) => {
             const col = c.couleur || DEFAULT_COLOR;
             const sel = c.id === selectedId;
             return (
               <span key={'a' + c.id} title="Déplace la pointe de flèche"
                 onPointerDown={(e) => startDrag(e, c, 'ancre')}
-                style={{ position: 'absolute', left: c.ancre.x * 100 + '%', top: c.ancre.y * 100 + '%', width: sel ? 15 : 12, height: sel ? 15 : 12, marginLeft: sel ? -7.5 : -6, marginTop: sel ? -7.5 : -6, borderRadius: '50%', background: col, border: '2px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.35)', cursor: 'grab', touchAction: 'none' }} />
+                style={{ position: 'absolute', left: c.ancre.x * 100 + '%', top: c.ancre.y * 100 + '%', width: sel ? 15 : 12, height: sel ? 15 : 12, marginLeft: sel ? -7.5 : -6, marginTop: sel ? -7.5 : -6, borderRadius: '50%', background: col, border: '2px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.35)', cursor: 'grab', touchAction: 'none', transform: `scale(${1 / scale})` }} />
             );
           })}
 
@@ -661,9 +712,11 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
             const c = coches.find((x) => x.id === selectedId && x.kind === 'zone');
             if (!c || mode !== 'select') return null;
             const col = c.couleur || DEFAULT_COLOR;
+            // B — poignées à taille écran constante (comme les coches) ; leur position
+            // (left/top en %) suit elle la géométrie de la zone, donc le zoom.
             const handle = (x, y, onDown, key) => (
               <span key={key} onPointerDown={onDown}
-                style={{ position: 'absolute', left: x * 100 + '%', top: y * 100 + '%', width: 12, height: 12, marginLeft: -6, marginTop: -6, borderRadius: '50%', background: '#fff', border: `2px solid ${col}`, boxShadow: '0 1px 3px rgba(0,0,0,.35)', cursor: 'grab', touchAction: 'none', zIndex: 6 }} />
+                style={{ position: 'absolute', left: x * 100 + '%', top: y * 100 + '%', width: 12, height: 12, marginLeft: -6, marginTop: -6, borderRadius: '50%', background: '#fff', border: `2px solid ${col}`, boxShadow: '0 1px 3px rgba(0,0,0,.35)', cursor: 'grab', touchAction: 'none', zIndex: 6, transform: `scale(${1 / scale})` }} />
             );
             if (c.zone.shape === 'rect' || c.zone.shape === 'ellipse') {
               const r = c.zone.rect;
@@ -680,13 +733,16 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
             return null; // pinceau (path) : repositionnement global (translation) uniquement
           })()}
 
-          {/* boîtes de libellé — déplaçables + édition inline + popover */}
+          {/* boîtes de libellé — déplaçables + édition inline + popover.
+              B — taille écran constante (scale(1/scale) composé au translate de
+              centrage) ; le popover imbriqué en hérite automatiquement (même chaîne de
+              transform), donc lui aussi reste à taille constante sans traitement à part. */}
           {coches.map((c) => {
             const col = c.couleur || DEFAULT_COLOR;
             const sel = c.id === selectedId;
             return (
               <div key={'b' + c.id} onPointerDown={(e) => startDrag(e, c, 'boite')}
-                style={{ position: 'absolute', left: c.boite.x * 100 + '%', top: c.boite.y * 100 + '%', transform: 'translate(-50%,-50%)', display: 'flex', alignItems: 'center', gap: 6, maxWidth: '46%', padding: '4px 8px', borderRadius: 8, background: 'var(--card)', border: `2px solid ${col}`, boxShadow: sel ? `0 0 0 3px color-mix(in srgb, ${col} 30%, transparent), 0 4px 12px rgba(0,0,0,.2)` : '0 2px 8px rgba(0,0,0,.18)', cursor: 'grab', touchAction: 'none', lineHeight: 1.2, zIndex: sel ? 5 : 2 }}>
+                style={{ position: 'absolute', left: c.boite.x * 100 + '%', top: c.boite.y * 100 + '%', transform: `translate(-50%,-50%) scale(${1 / scale})`, display: 'flex', alignItems: 'center', gap: 6, maxWidth: '46%', padding: '4px 8px', borderRadius: 8, background: 'var(--card)', border: `2px solid ${col}`, boxShadow: sel ? `0 0 0 3px color-mix(in srgb, ${col} 30%, transparent), 0 4px 12px rgba(0,0,0,.2)` : '0 2px 8px rgba(0,0,0,.18)', cursor: 'grab', touchAction: 'none', lineHeight: 1.2, zIndex: sel ? 5 : 2 }}>
                 <span style={{ flex: '0 0 auto', width: 18, height: 18, borderRadius: '50%', background: col, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>{c.numero}</span>
                 {sel ? (
                   <input autoFocus value={c.texte} placeholder="nom de la structure"
