@@ -30,6 +30,7 @@ const markerId = (col) => 'anat-ah-' + (col || DEFAULT_COLOR).replace('#', '');
 const DEFAULT_ZONE_OPACITY = 0.25;
 const DEFAULT_STROKE_WIDTH = 2;
 const BRUSH_MIN_DIST = 0.004; // décimation du pinceau libre (distance relative mini entre 2 points)
+const ZOOM_MIN = 1, ZOOM_MAX = 6, ZOOM_STEP = 1.25; // zoom éditeur de schéma (B) — 1 = cadrage entier (défaut)
 
 /* outils de dessin de zones (barre d'outils). rect/ellipse = boîte englobante ;
    poly = sommets ; brush = tracé libre (liste de points) ; line = segment. */
@@ -78,6 +79,30 @@ export function centroidOf(c) {
   return (c && c.ancre) || { x: 0.5, y: 0.5 };
 }
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+/* C — lissage LÉGER du pinceau libre : moyenne mobile pondérée (fenêtre 5, poids
+   1-2-4-2-1) sur les points intérieurs, extrémités (départ/fin du geste) préservées
+   telles quelles. Comme les points bruts sont déjà très rapprochés (décimation
+   BRUSH_MIN_DIST), la fenêtre ne couvre qu'un tout petit arc du tracé : ça absorbe
+   le micro-tremblement souris/trackpad sans arrondir la forme dessinée. Points
+   relatifs (0..1) en entrée/sortie. */
+const SMOOTH_WEIGHTS = [1, 2, 4, 2, 1];
+function smoothPath(points) {
+  const n = points.length;
+  if (n < 5) return points;
+  const wsum = SMOOTH_WEIGHTS.reduce((a, b) => a + b, 0);
+  const out = [points[0]];
+  for (let i = 1; i < n - 1; i++) {
+    let sx = 0, sy = 0;
+    for (let k = -2; k <= 2; k++) {
+      const p = points[Math.max(0, Math.min(n - 1, i + k))];
+      sx += p.x * SMOOTH_WEIGHTS[k + 2]; sy += p.y * SMOOTH_WEIGHTS[k + 2];
+    }
+    out.push({ x: sx / wsum, y: sy / wsum });
+  }
+  out.push(points[n - 1]);
+  return out;
+}
 
 /* rendu SVG partagé des zones (toutes formes). viewBox 0..100 +
    preserveAspectRatio=none → coordonnées relatives directes ; vectorEffect garde
@@ -210,6 +235,7 @@ export function ImportAnatomieVisuel({ ctx }) {
    ============================================================ */
 export function SchemaEditor({ image, setImage, coches, setCoches }) {
   const frameRef = useRef(null);
+  const outerRef = useRef(null); // B — cadre visible (overflow:hidden) : reçoit le listener wheel natif
   const [mode, setMode] = useState('select'); // select | point | brush | line | rect | ellipse | poly
   const [selectedId, setSelectedId] = useState(null);
   const [exporting, setExporting] = useState(false);
@@ -220,6 +246,16 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
   const [draftLine, setDraftLine] = useState(null);   // { a, b } d'un trait en cours
   // style courant (appliqué aux formes À VENIR ; la barre de style l'édite hors sélection)
   const [style, setStyle] = useState({ fill: DEFAULT_COLOR, fillOpacity: DEFAULT_ZONE_OPACITY, stroke: DEFAULT_COLOR, strokeWidth: DEFAULT_STROKE_WIDTH });
+  // B — zoom/pan : transform CSS sur le cadre (frameRef). Le transform ne change pas
+  // la boîte de layout → relFromEvent (getBoundingClientRect, déjà post-transform)
+  // reste juste sans aucune adaptation : les coches restent alignées à tout zoom.
+  const [scale, setScale] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [spaceDown, setSpaceDown] = useState(false);
+  // valeurs toujours à jour pour le listener natif (voir plus bas) qui ne peut pas
+  // dépendre du re-render React sous peine de rattacher l'écouteur à chaque frame.
+  const scaleRef = useRef(scale); scaleRef.current = scale;
+  const panRef = useRef(pan); panRef.current = pan;
 
   const updateCoche = (id, patch) => setCoches((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   const delCoche = (id) => { setCoches((cs) => cs.filter((c) => c.id !== id)); setSelectedId(null); };
@@ -238,6 +274,57 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
   const relFromEvent = (clientX, clientY) => {
     const r = frameRef.current.getBoundingClientRect();
     return { x: clamp01((clientX - r.left) / r.width), y: clamp01((clientY - r.top) / r.height) };
+  };
+
+  // B — zoom centré sur un point écran (curseur molette, ou centre du cadre pour les
+  // boutons +/-) : on garde le point sous (clientX,clientY) fixe à l'écran pendant
+  // le changement d'échelle (transform-origin en 0,0 → translate() en px "après" scale()).
+  // lit scaleRef/panRef (pas scale/pan) pour rester correcte même appelée depuis le
+  // listener natif ci-dessous, dont la closure n'est pas re-créée à chaque render.
+  const zoomAt = (nextScale, clientX, clientY) => {
+    const el = frameRef.current;
+    if (!el) return;
+    const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, nextScale));
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) { setScale(clamped); return; }
+    const fx = (clientX - rect.left) / rect.width;
+    const fy = (clientY - rect.top) / rect.height;
+    const w0 = rect.width / scaleRef.current, h0 = rect.height / scaleRef.current;
+    const l0 = rect.left - panRef.current.x, t0 = rect.top - panRef.current.y;
+    setScale(clamped);
+    setPan({ x: clientX - fx * clamped * w0 - l0, y: clientY - fy * clamped * h0 - t0 });
+  };
+  const zoomAtCenter = (nextScale) => {
+    const el = frameRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    zoomAt(nextScale, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  };
+  const resetZoom = () => { setScale(1); setPan({ x: 0, y: 0 }); };
+
+  // React 18 attache les listeners "wheel" en passive par défaut (perf du scroll) : un
+  // onWheel JSX ne peut PAS y faire preventDefault (échoue silencieusement + erreur
+  // console) → écouteur natif { passive:false } posé une seule fois sur le cadre visible.
+  useEffect(() => {
+    const el = outerRef.current;
+    if (!el) return;
+    const onWheelNative = (e) => {
+      e.preventDefault();
+      zoomAt(scaleRef.current * (e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP), e.clientX, e.clientY);
+    };
+    el.addEventListener('wheel', onWheelNative, { passive: false });
+    return () => el.removeEventListener('wheel', onWheelNative);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // pan : Espace+glisser (tout mode) ou clic molette — ne déclenche aucun outil.
+  const startPan = (e) => {
+    e.preventDefault();
+    const startX = e.clientX, startY = e.clientY;
+    const origin = pan;
+    const move = (ev) => setPan({ x: origin.x + (ev.clientX - startX), y: origin.y + (ev.clientY - startY) });
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
 
   const addCocheAt = (p) => {
@@ -303,7 +390,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
     const up = () => {
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
       setDraftPath(null);
-      if (pts.length >= 2) { addZone({ shape: 'path', points: pts, closed: style.fill != null, ...styleZone() }); setMode('select'); }
+      if (pts.length >= 2) { addZone({ shape: 'path', points: smoothPath(pts), closed: style.fill != null, ...styleZone() }); setMode('select'); }
     };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
@@ -379,8 +466,11 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
   };
 
   // clic sur le fond : selon le mode → place une coche, trace une zone, ou désélectionne.
+  // Espace+glisser ou clic molette = déplacer (pan), quel que soit l'outil actif.
   const onFrameDown = (e) => {
+    if (e.button === 1) { startPan(e); return; }
     if (e.button !== 0) return;
+    if (spaceDown) { startPan(e); return; }
     const p = relFromEvent(e.clientX, e.clientY);
     if (mode === 'point') addCocheAt(p);
     else if (mode === 'rect' || mode === 'ellipse') startBoxDraw(e, mode);
@@ -403,6 +493,17 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
   }, [mode]);
   // sortir du mode polygone en cours de tracé → nettoie le brouillon.
   useEffect(() => { if (mode !== 'poly' && draftPoly) setDraftPoly(null); /* eslint-disable-next-line */ }, [mode]);
+
+  // B — Espace maintenu = mode pan (curseur "grab"). Ignoré si on tape dans un champ
+  // (renommer une coche, coller la théorie…) pour ne pas voler la touche Espace.
+  useEffect(() => {
+    const isEditable = (el) => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    const onKeyDown = (e) => { if (e.code === 'Space' && !isEditable(document.activeElement)) { e.preventDefault(); setSpaceDown(true); } };
+    const onKeyUp = (e) => { if (e.code === 'Space') setSpaceDown(false); };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); };
+  }, []);
 
   // drag générique d'un point relatif (boîte ou ancre) avec seuil clic/déplacement
   const startDrag = (e, coche, field) => {
@@ -480,6 +581,12 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
           <Icon name="image" size={14} /> Changer l'image
           <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => setImage(e.target.files[0])} />
         </label>
+        <div className="seg" title="Zoom (molette, Ctrl/Cmd+molette, ou boutons)">
+          <button type="button" className="seg-btn" disabled={scale <= ZOOM_MIN + 0.001} onClick={() => zoomAtCenter(scale / ZOOM_STEP)}><Icon name="minus" size={13} /></button>
+          <span className="seg-btn" style={{ cursor: 'default', minWidth: 46, justifyContent: 'center' }}>{Math.round(scale * 100)}%</span>
+          <button type="button" className="seg-btn" disabled={scale >= ZOOM_MAX - 0.001} onClick={() => zoomAtCenter(scale * ZOOM_STEP)}><Icon name="plus" size={13} /></button>
+        </div>
+        {scale > 1 && <button type="button" className="btn ghost sm" onClick={resetZoom}><Icon name="maximize" size={13} /> Ajuster</button>}
         <div style={{ flex: 1 }} />
         <button type="button" className="btn ghost sm" disabled={exporting} onClick={() => doExport('png')}><Icon name="upload" size={13} /> Export image</button>
         <button type="button" className="btn ghost sm" disabled={exporting} onClick={() => doExport('pdf')}><Icon name="filePdf" size={13} /> Export PDF</button>
@@ -500,8 +607,8 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
       {/* zone image + overlay — B : image CADRÉE pour tenir entièrement (fit-to-container),
           sans scroll obligatoire. Le cadre (frameRef) épouse exactement l'image affichée,
           donc les coordonnées relatives (% de frameRef) restent alignées. */}
-      <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)', display: 'flex', justifyContent: 'center' }}>
-        <div ref={frameRef} style={{ position: 'relative', maxWidth: '100%', minWidth: 0, lineHeight: 0, cursor: (mode === 'point' || DRAW_TOOLS.some((t) => t.key === mode)) ? 'crosshair' : 'default', touchAction: 'none' }} onPointerDown={onFrameDown} onDoubleClick={() => { if (mode === 'poly') setDraftPoly((pts) => { finishPoly(pts); return null; }); }}>
+      <div ref={outerRef} style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)', display: 'flex', justifyContent: 'center' }}>
+        <div ref={frameRef} style={{ position: 'relative', maxWidth: '100%', minWidth: 0, lineHeight: 0, transform: (scale !== 1 || pan.x || pan.y) ? `translate(${pan.x}px, ${pan.y}px) scale(${scale})` : undefined, transformOrigin: '0 0', cursor: spaceDown ? 'grab' : (mode === 'point' || DRAW_TOOLS.some((t) => t.key === mode)) ? 'crosshair' : 'default', touchAction: 'none' }} onPointerDown={onFrameDown} onDoubleClick={() => { if (mode === 'poly') setDraftPoly((pts) => { finishPoly(pts); return null; }); }}>
           <img src={image.url} alt="schéma" draggable={false} style={{ display: 'block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: 'min(64vh, 600px)', userSelect: 'none' }} />
 
           {/* ZONES — sous les flèches/libellés */}
@@ -633,7 +740,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
       </div>
 
       <div className="hint" style={{ marginTop: 10 }}>
-        <Icon name="info" size={13} /> Positions en coordonnées relatives — le zoom ne désaligne rien. L'export image/PDF aplatit tout (archivage/impression seulement) et <strong>n'est pas réimportable en quiz</strong>.
+        <Icon name="info" size={13} /> Positions en coordonnées relatives — le zoom ne désaligne rien. Molette ou Ctrl/Cmd+molette pour zoomer, <strong>Espace+glisser</strong> (ou clic molette) pour déplacer la vue. L'export image/PDF aplatit tout (archivage/impression seulement) et <strong>n'est pas réimportable en quiz</strong>.
       </div>
 
       {theorieFor && (() => {
