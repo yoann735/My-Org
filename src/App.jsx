@@ -6,6 +6,7 @@
 import { Selecteur } from './Selecteur.jsx';
 import MealWeekApp from './mealweek/MealWeekApp.jsx';
 import MedReviseApp from './medrevise/MedReviseApp.jsx';
+import MyOrgApp from './myorg/MyOrgApp.jsx';
 import { useSharedTheme } from './shared/useSharedTheme.js';
 import { usePersistentState } from './shared/hooks/usePersistentState.js';
 
@@ -20,5 +21,6 @@ export default function App() {
 
   if (app === 'mealweek') return <MealWeekApp themeApi={themeApi} goHub={goHub} />;
   if (app === 'medrevise') return <MedReviseApp themeApi={themeApi} goHub={goHub} />;
+  if (app === 'myorg') return <MyOrgApp themeApi={themeApi} goHub={goHub} />;
   return <Selecteur themeApi={themeApi} onOpen={setApp} medReady={MED_READY} />;
 }

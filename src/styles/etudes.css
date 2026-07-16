@@ -935,3 +935,13 @@
   .revise-grid { grid-template-columns: 1fr !important; }
   .tree-card { position: static; max-height: 340px; }
 }
+
+/* ============================================================
+   AJOUT — 3ᵉ app My Org : le hub passe à 3 cards.
+   Règles additives uniquement (la grille 2 colonnes d'origine
+   reste intacte pour tout .hub-cards sans le modificateur).
+   ============================================================ */
+.hub-cards.three { grid-template-columns: repeat(3, 1fr); width: min(1160px, 100%); }
+@media (max-width: 1000px) {
+  .hub-cards.three { grid-template-columns: 1fr; }
+}

@@ -1,0 +1,60 @@
+/* ============================================================
+   My Org — styles propres à la 3ᵉ app (préfixe .mo-).
+   Complète le design system (design.css) sans rien y modifier :
+   variables CSS partagées → thème clair/sombre automatique.
+   ============================================================ */
+
+/* ---- dashboard : grille de cards résumé ---- */
+.mo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; max-width: 980px; }
+.mo-card { cursor: pointer; transition: transform .15s, box-shadow .15s, border-color .15s; }
+.mo-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+/* nb : ne pas utiliser la classe globale `.soon` (écran de chargement, min-height 100vh) */
+.mo-card-soon .card-head h3, .mo-card-soon .card-head .ic { color: var(--text-3); }
+.mo-stat { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-2); padding: 4px 0; }
+.mo-stat b { color: var(--text); font-size: 16px; font-variant-numeric: tabular-nums; }
+.mo-stat-ic { display: grid; place-items: center; color: var(--text-3); }
+
+/* ---- listes (To-do / Objectifs) ---- */
+.mo-list { display: flex; flex-direction: column; gap: 10px; }
+.mo-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 13px; background: var(--bg-2); }
+.mo-row.late { border-color: color-mix(in srgb, var(--crit) 35%, var(--border)); }
+.mo-row.done { opacity: .62; }
+.mo-row.done .mo-row-title { text-decoration: line-through; }
+.mo-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.mo-row-title { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
+.mo-row-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mo-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+/* case à cocher (statut fait / à faire) */
+.mo-check { width: 22px; height: 22px; margin-top: 2px; flex-shrink: 0; border-radius: 7px; border: 1.5px solid var(--border-2); background: var(--bg); color: var(--on-accent); display: grid; place-items: center; cursor: pointer; transition: background .15s, border-color .15s; }
+.mo-check:hover { border-color: var(--accent); }
+.mo-check.on { background: var(--ok); border-color: var(--ok); }
+
+/* ---- barre de progression d'un objectif ---- */
+.mo-goal-prog { display: flex; align-items: center; gap: 10px; }
+.mo-goal-pct { font-size: 12.5px; font-weight: 700; color: var(--text-2); font-variant-numeric: tabular-nums; min-width: 38px; text-align: right; }
+
+/* ---- formulaires (création / édition) ---- */
+.mo-form { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: 13px; background: var(--bg-2); margin-bottom: 12px; }
+.mo-form-row { display: flex; gap: 10px; }
+.mo-field { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mo-form-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.mo-input { border: 1px solid var(--border); background: var(--bg); border-radius: 10px; padding: 9px 12px; font-family: inherit; font-size: 13.5px; color: var(--text); width: 100%; outline: none; resize: vertical; }
+.mo-input:focus { border-color: var(--accent); }
+.mo-input::placeholder { color: var(--text-3); }
+/* le date-picker natif hérite du thème */
+.mo-input[type="date"] { color-scheme: light; }
+[data-theme="dark"] .mo-input[type="date"] { color-scheme: dark; }
+.mo-form input[type="range"] { accent-color: var(--accent); width: 100%; }
+
+/* ---- état vide / placeholder « Bientôt » ---- */
+.mo-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 26px 12px; text-align: center; color: var(--text-2); }
+.mo-empty-ic { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; background: var(--accent-soft); color: var(--accent); margin-bottom: 4px; }
+.mo-soon { max-width: 480px; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 42px 26px; }
+.mo-soon-ic { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 17px; background: var(--accent-soft); color: var(--accent); }
+
+/* ---- responsive mobile ---- */
+@media (max-width: 760px) {
+  .mo-grid { grid-template-columns: 1fr; }
+  .mo-form-row { flex-direction: column; }
+}

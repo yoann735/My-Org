@@ -34,7 +34,7 @@ export function Selecteur({ themeApi, onOpen, medReady = false }) {
         <p>Choisis ton espace pour aujourd'hui.</p>
       </div>
 
-      <div className="hub-cards">
+      <div className="hub-cards three">
         {/* MealWeek */}
         <div className="hub-card" onClick={() => onOpen('mealweek')}>
           <div className="hc-glow" style={{ background: 'radial-gradient(circle, color-mix(in srgb, var(--accent) 40%, transparent), transparent 65%)' }} />
@@ -60,9 +60,20 @@ export function Selecteur({ themeApi, onOpen, medReady = false }) {
             <span className="hc-enter">Ouvrir <Icon name="arrowR" size={16} /></span>
           </div>
         </div>
+        {/* My Org */}
+        <div className="hub-card" onClick={() => onOpen('myorg')}>
+          <div className="hc-glow" style={{ background: 'radial-gradient(circle, color-mix(in srgb, #4CAF8E 45%, transparent), transparent 65%)' }} />
+          <div className="hc-icon" style={{ background: 'linear-gradient(145deg, var(--accent), #4CAF8E)' }}><Icon name="target" size={28} /></div>
+          <div className="hc-title">My Org</div>
+          <div className="hc-desc">Organise ta vie perso : to-do, objectifs annuels, et bientôt calendrier, finance et santé.</div>
+          <div className="hc-foot">
+            <span className="hc-stat" style={{ color: '#4CAF8E' }}><Icon name="check" size={15} /> To-do & objectifs</span>
+            <span className="hc-enter">Ouvrir <Icon name="arrowR" size={16} /></span>
+          </div>
+        </div>
       </div>
 
-      <div className="hub-foot">Deux apps, un même univers · thème {theme === 'dark' ? 'sombre' : 'clair'}</div>
+      <div className="hub-foot">Trois apps, un même univers · thème {theme === 'dark' ? 'sombre' : 'clair'}</div>
     </div>
   );
 }
