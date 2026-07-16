@@ -18,8 +18,8 @@ import { index, effectiveCoef } from '../lib/planning.js';
 import { applyReview, qualityFromRatio, todayISO, computeStreak, jStepForInterval } from '../lib/sm2.js';
 import { matchAnat } from '../lib/anatMatch.js';
 import { champsFor } from '../lib/anatParse.js';
-import { ZonesLayer } from '../pages/ImportAnatomieVisuel.jsx';
-import { ficheImages, vueLabel } from '../lib/anatSchema.js';
+import { ZonesLayer, VueAideToggle } from '../pages/ImportAnatomieVisuel.jsx';
+import { ficheImages, vueLabel, useVueAide } from '../lib/anatSchema.js';
 import { blobURL } from '../lib/storage.js';
 
 const DEFAULT_COLOR = '#7C6FE0';
@@ -47,6 +47,7 @@ export function AnatQuiz({ ctx }) {
   // MULTI-VUES : toutes les images du schéma + toutes leurs coches à plat.
   const views = useMemo(() => ficheImages(fiche), [fiche.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const coches = useMemo(() => views.flatMap((v) => v.coches || []), [views]);
+  const [aide] = useVueAide();
 
   // tirage des coches masquées (stable pour la session)
   const maskedIds = useMemo(() => {
@@ -192,6 +193,7 @@ export function AnatQuiz({ ctx }) {
           </div>
         </div>
         <div className="topbar-actions">
+          {views.length > 1 && <VueAideToggle />}
           <button className="btn ghost" onClick={() => ctx.go('revise')}><Icon name="x" size={16} /> Quitter</button>
           <button className="icon-btn" onClick={ctx.toggleTheme}><Icon name={ctx.theme === 'dark' ? 'sun' : 'moon'} size={19} /></button>
         </div>
@@ -201,7 +203,7 @@ export function AnatQuiz({ ctx }) {
         <div style={{ width: '100%', maxWidth: 900, margin: '0 auto' }}>
           {views.map((v) => (
             <div key={v.id} style={{ marginBottom: 14 }}>
-              {views.length > 1 && <div className="hint" style={{ marginBottom: 6, fontWeight: 700, color: 'var(--text-2)' }}><Icon name="image" size={12} /> {vueLabel(v.vue)}</div>}
+              {views.length > 1 && <div className="hint" style={{ marginBottom: 6, fontWeight: 700, color: 'var(--text-2)' }}><Icon name="image" size={12} /> {vueLabel(v.vue, aide)}</div>}
               <SchemaQuizCanvas
                 imgUrl={imgUrls[v.id]} coches={v.coches || []} maskedSet={maskedSet} firstMaskedId={maskedIds[0]}
                 answers={answers} setAnswers={setAnswers} phase={phase}

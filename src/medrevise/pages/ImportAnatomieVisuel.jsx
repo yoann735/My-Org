@@ -20,7 +20,7 @@ import { DestPicker } from '../components/ui.jsx';
 import { genId, putBlob } from '../lib/storage.js';
 import { saveAnatSchema } from '../lib/import.js';
 import { ANAT_TYPES, champsFor, parseStructure, detectType } from '../lib/anatParse.js';
-import { SCHEMA_VUES, vueLabel } from '../lib/anatSchema.js';
+import { SCHEMA_VUES, vueLabel, useVueAide } from '../lib/anatSchema.js';
 
 const SOUS_CATS = ['Muscles', 'Os', 'Nerfs', 'Ligaments', 'Vaisseaux'];
 const COLORS = ['#7C6FE0', '#E0556B', '#4FB87A', '#4FA6D9', '#E0A34F', '#B45FD9'];
@@ -703,6 +703,7 @@ export function MultiSchemaEditor({ views, setViews }) {
   const [activeId, setActiveId] = useState(() => (views[0] && views[0].id) || null);
   const [pendingFile, setPendingFile] = useState(null); // image en attente de choix de vue
   const createdUrls = useRef(new Set());
+  const [aide] = useVueAide();
 
   useEffect(() => { if (!views.find((v) => v.id === activeId)) setActiveId((views[0] && views[0].id) || null); }, [views, activeId]);
   useEffect(() => () => { createdUrls.current.forEach((u) => { try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ } }); }, []);
@@ -756,7 +757,7 @@ export function MultiSchemaEditor({ views, setViews }) {
             const on = v.id === activeId;
             return (
               <div key={v.id} className={'row' + (on ? '' : '')} style={{ gap: 6, alignItems: 'center', padding: '4px 6px 4px 10px', borderRadius: 9, cursor: 'pointer', background: on ? 'var(--accent)' : 'var(--card-2)', color: on ? '#fff' : 'var(--text)', border: '1px solid ' + (on ? 'var(--accent)' : 'var(--border)') }} onClick={() => setActiveId(v.id)}>
-                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{i + 1}. {vueLabel(v.vue)}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{i + 1}. {vueLabel(v.vue, false)}</span>
                 <span style={{ fontSize: 11, opacity: .8 }}>({(v.coches || []).length})</span>
                 <button type="button" title="Supprimer cette vue" onClick={(e) => { e.stopPropagation(); delView(v.id); }} style={{ display: 'grid', placeItems: 'center', width: 18, height: 18, borderRadius: '50%', border: 'none', background: on ? 'rgba(255,255,255,.25)' : 'transparent', color: on ? '#fff' : 'var(--text-3)', cursor: 'pointer' }}><Icon name="x" size={12} /></button>
               </div>
@@ -771,10 +772,13 @@ export function MultiSchemaEditor({ views, setViews }) {
 
       {active && (
         <div className="imp-field" style={{ marginBottom: 10 }}>
-          <label style={{ marginBottom: 4 }}>Vue de cette image</label>
+          <div className="row spread" style={{ marginBottom: 4, alignItems: 'center' }}>
+            <label style={{ margin: 0 }}>Vue de cette image</label>
+            <VueAideToggle />
+          </div>
           <div className="imp-chips">
             {SCHEMA_VUES.filter((s) => s.key !== 'non_precisee').map((s) => (
-              <button key={s.key} type="button" className={'imp-chip' + (active.vue === s.key ? ' on' : '')} onClick={() => setVue(s.key)}>{s.label}</button>
+              <button key={s.key} type="button" className={'imp-chip' + (active.vue === s.key ? ' on' : '')} onClick={() => setVue(s.key)}>{aide ? vueLabel(s.key, true) : s.med}</button>
             ))}
           </div>
         </div>
@@ -795,20 +799,39 @@ export function MultiSchemaEditor({ views, setViews }) {
 
 /* petit sélecteur de VUE affiché à chaque ajout d'image (« demande la vue »). */
 function VuePicker({ onPick, onClose }) {
+  const [aide] = useVueAide();
   return (
     <div className="day-pop-scrim" onClick={onClose}>
-      <div className="day-pop" style={{ width: 'min(420px, 94vw)' }} onClick={(e) => e.stopPropagation()}>
+      <div className="day-pop" style={{ width: 'min(460px, 94vw)' }} onClick={(e) => e.stopPropagation()}>
         <div className="day-pop-head"><div className="row spread"><div className="serif" style={{ fontSize: 17 }}>Quelle vue est-ce ?</div><button className="icon-btn sm" onClick={onClose}><Icon name="x" size={16} /></button></div></div>
         <div className="day-pop-body">
-          <div className="hint" style={{ marginBottom: 10 }}>Chaque image porte ses propres coches. Choisis l'angle de cette vue.</div>
+          <div className="row spread" style={{ marginBottom: 10, alignItems: 'center', gap: 10 }}>
+            <div className="hint" style={{ margin: 0 }}>Choisis l'angle de cette vue (terme médical).</div>
+            <VueAideToggle />
+          </div>
           <div className="imp-chips">
             {SCHEMA_VUES.filter((s) => s.key !== 'non_precisee').map((s) => (
-              <button key={s.key} type="button" className="imp-chip" onClick={() => onPick(s.key)}>{s.label}</button>
+              <button key={s.key} type="button" className="imp-chip" onClick={() => onPick(s.key)}>{aide ? vueLabel(s.key, true) : s.med}</button>
             ))}
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/* switch « Aide » global : bascule l'affichage terme médical seul ↔ + terme
+   courant/définition. Utilisé à l'import ET en révision (état partagé mémorisé). */
+export function VueAideToggle({ compact = false }) {
+  const [aide, setAide] = useVueAide();
+  return (
+    <button type="button" onClick={() => setAide(!aide)} title="Aide au vocabulaire des vues (terme courant + définition)"
+      className="row" style={{ gap: 6, alignItems: 'center', padding: '3px 8px', borderRadius: 999, cursor: 'pointer', border: '1px solid var(--border)', background: aide ? 'color-mix(in srgb, var(--accent) 16%, transparent)' : 'transparent', color: aide ? 'var(--accent)' : 'var(--text-3)', fontSize: 11.5, fontWeight: 700 }}>
+      <span style={{ width: 26, height: 15, borderRadius: 999, background: aide ? 'var(--accent)' : 'var(--border)', position: 'relative', flex: '0 0 auto', transition: 'background .15s' }}>
+        <span style={{ position: 'absolute', top: 2, left: aide ? 13 : 2, width: 11, height: 11, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
+      </span>
+      {!compact && <span>Aide</span>}
+    </button>
   );
 }
 

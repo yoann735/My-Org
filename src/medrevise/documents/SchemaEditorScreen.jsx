@@ -11,10 +11,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, matiereMeta } from '../components/ui.jsx';
-import { MultiSchemaEditor, ZonesLayer } from '../pages/ImportAnatomieVisuel.jsx';
+import { MultiSchemaEditor, ZonesLayer, VueAideToggle } from '../pages/ImportAnatomieVisuel.jsx';
 import { saveAnatSchema } from '../lib/import.js';
 import { getBlob, putBlob, genId } from '../lib/storage.js';
-import { ficheImages, vueLabel } from '../lib/anatSchema.js';
+import { ficheImages, vueLabel, useVueAide } from '../lib/anatSchema.js';
 
 const DEFAULT_COLOR = '#7C6FE0';
 const markerId = (col) => 'schr-ah-' + (col || DEFAULT_COLOR).replace('#', '');
@@ -70,6 +70,7 @@ export function SchemaEditorScreen({ ctx }) {
   useEffect(() => () => { urlsRef.current.forEach((u) => { try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ } }); urlsRef.current = []; }, []);
 
   const back = () => ctx.closeSchemaEditor();
+  const [aide] = useVueAide();
 
   const totalCoches = views.reduce((n, v) => n + (v.coches || []).length, 0);
   const named = views.reduce((n, v) => n + (v.coches || []).filter((c) => (c.texte || '').trim()).length, 0);
@@ -146,10 +147,11 @@ export function SchemaEditorScreen({ ctx }) {
       ) : (
         <div style={{ maxWidth: 900, margin: '10px auto 0' }}>
           {views.length > 1 && (
-            <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' }}>
               {views.map((v, i) => (
-                <button key={v.id} type="button" className={'imp-chip' + (i === readIdx ? ' on' : '')} onClick={() => setReadIdx(i)}>{vueLabel(v.vue)} <span style={{ opacity: .7 }}>({(v.coches || []).length})</span></button>
+                <button key={v.id} type="button" className={'imp-chip' + (i === readIdx ? ' on' : '')} onClick={() => setReadIdx(i)}>{vueLabel(v.vue, aide)} <span style={{ opacity: .7 }}>({(v.coches || []).length})</span></button>
               ))}
+              <VueAideToggle />
             </div>
           )}
           <SchemaPreview image={readView && readView.img} coches={(readView && readView.coches) || []} />
