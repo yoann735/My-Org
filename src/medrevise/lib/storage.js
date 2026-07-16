@@ -6,6 +6,7 @@
    ============================================================ */
 import { get, set, del, values, setMany, createStore } from 'idb-keyval';
 import { todayISO, isoDate } from './sm2.js';
+import { queuePush, pullAllRecords, pushBlob, pullBlob } from '../data/sync.js';
 
 const store = (name) => createStore('medrevise-' + name, 'v1');
 const S = {
@@ -25,24 +26,55 @@ const S = {
   anatstruct: store('anatstruct'), // fiches de structure anatomique (théorie, champs typés)
 };
 
+// A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
+// appareil à l'autre (voir data/sync.js). `meta`/`backups` restent locaux (détails
+// d'implémentation d'un appareil donné) ; `blobs` a son propre canal (Storage, pas la
+// table `medrevise_records` — trop gros pour du JSONB), voir putBlob/getBlob plus bas.
+const SYNCABLE = ['sources', 'matieres', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct'];
+
 export function genId(prefix = 'x') {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
-/* ---- generic CRUD ---- */
+/* ---- generic CRUD (horodate + met en file la synchro cloud pour les stores
+   SYNCABLE ; IndexedDB reste écrit en premier et fait foi en local même hors-ligne) ---- */
 export const getAll = (name) => values(S[name]);
 export const getOne = (name, id) => get(id, S[name]);
-export const put = (name, rec) => set(rec.id, rec, S[name]).then(() => rec);
-export const putMany = (name, recs) => setMany(recs.map((r) => [r.id, r]), S[name]);
-export const remove = (name, id) => del(id, S[name]);
+export async function put(name, rec) {
+  const stamped = SYNCABLE.includes(name) ? { ...rec, updatedAt: new Date().toISOString() } : rec;
+  await set(stamped.id, stamped, S[name]);
+  if (SYNCABLE.includes(name)) queuePush(name, stamped.id, stamped, stamped.updatedAt);
+  return stamped;
+}
+export async function putMany(name, recs) {
+  const syncable = SYNCABLE.includes(name);
+  const stamped = syncable ? recs.map((r) => ({ ...r, updatedAt: new Date().toISOString() })) : recs;
+  await setMany(stamped.map((r) => [r.id, r]), S[name]);
+  if (syncable) stamped.forEach((r) => queuePush(name, r.id, r, r.updatedAt));
+  return stamped;
+}
+export async function remove(name, id) {
+  await del(id, S[name]);
+  if (SYNCABLE.includes(name)) queuePush(name, id, {}, new Date().toISOString(), true); // tombstone (data vide, deleted=true)
+}
 
-/* ---- blobs (images recadrées, PDF) ---- */
+/* ---- blobs (images recadrées, PDF) — Storage cloud (pas la table de records :
+   trop gros pour du JSONB). Upload best-effort en tâche de fond (n'attend pas le
+   réseau) ; téléchargement paresseux à la première lecture manquante localement
+   (évite de re-télécharger toutes les images à chaque réconciliation). ---- */
 export async function putBlob(blob) {
   const id = genId('b');
   await set(id, blob, S.blobs);
+  pushBlob(id, blob); // fire-and-forget
   return id;
 }
-export const getBlob = (id) => get(id, S.blobs);
+export async function getBlob(id) {
+  const local = await get(id, S.blobs);
+  if (local) return local;
+  const remote = await pullBlob(id);
+  if (remote) await set(id, remote, S.blobs);
+  return remote || undefined;
+}
 export async function blobURL(id) {
   if (!id) return null;
   const b = await getBlob(id);
@@ -76,17 +108,36 @@ export const getBackup = (key) => get(key, S.backups);
 
 /* ---- bloc-notes d'exercice (brouillon persisté par item) ---- */
 export const getExoNote = (id) => get(id, S.exos);
-export const setExoNote = (id, note) => set(id, { id, note, when: new Date().toISOString() }, S.exos);
+export async function setExoNote(id, note) {
+  const when = new Date().toISOString();
+  const rec = { id, note, when, updatedAt: when };
+  await set(id, rec, S.exos);
+  queuePush('exos', id, rec, when);
+}
 
 /* ---- contenu riche d'un transcript (document TipTap, clé = ficheId) ---- */
 export const getDoc = (ficheId) => get(ficheId, S.docs);
-export const setDoc = (ficheId, content) => set(ficheId, { id: ficheId, content, updatedAt: new Date().toISOString() }, S.docs);
-export const removeDoc = (ficheId) => del(ficheId, S.docs);
+export async function setDoc(ficheId, content) {
+  const updatedAt = new Date().toISOString();
+  const rec = { id: ficheId, content, updatedAt };
+  await set(ficheId, rec, S.docs);
+  queuePush('docs', ficheId, rec, updatedAt);
+}
+export async function removeDoc(ficheId) {
+  await del(ficheId, S.docs);
+  queuePush('docs', ficheId, {}, new Date().toISOString(), true);
+}
 
 /* ---- stats (carte unique) ---- */
 const DEFAULT_STATS = { streak: 0, dernierJourRevise: null, jokerUtilise: false, best: 0, activityDays: [], serieCollapsed: false };
 export async function getStats() { return (await get('stats', S.stats)) || { ...DEFAULT_STATS }; }
-export const setStats = (s) => set('stats', s, S.stats);
+export async function setStats(s) {
+  const updatedAt = new Date().toISOString();
+  const rec = { ...s, id: 'stats', updatedAt };
+  await set('stats', rec, S.stats);
+  queuePush('stats', 'stats', rec, updatedAt);
+  return rec;
+}
 
 /* ---- helpers de création (avec init méthode des J) ---- */
 export function newQuestion(ficheId, q, dueOffset = 0) {
@@ -173,11 +224,73 @@ async function _seedIfEmpty() {
   return true;
 }
 
-/* tout effacer (réglages → reset) */
+/* tout effacer (réglages → reset) — pousse aussi les suppressions en tombstones
+   cloud (SYNCABLE) pour qu'un reset local ne se fasse pas silencieusement
+   "annuler" par la réconciliation suivante (qui rapatrierait sinon les données
+   encore présentes côté cloud). */
 export async function wipeAll() {
   for (const name of Object.keys(S)) {
     const all = await getAll(name);
-    await Promise.all((all || []).map((r) => (r && r.id ? del(r.id, S[name]) : null)));
+    const syncable = SYNCABLE.includes(name);
+    await Promise.all((all || []).map((r) => {
+      if (!r || !r.id) return null;
+      if (syncable) queuePush(name, r.id, {}, new Date().toISOString(), true);
+      return del(r.id, S[name]);
+    }));
   }
   await del('stats', S.stats);
+  queuePush('stats', 'stats', {}, new Date().toISOString(), true);
+}
+
+/* ============================================================
+   A — RÉCONCILIATION CLOUD (LWW par enregistrement). Appelée au démarrage,
+   à la reconnexion réseau et quand l'onglet redevient visible (voir
+   MedReviseApp.jsx). Dataset personnel ≈ petit → un fetch complet de la
+   table à chaque passage suffit (comme MealWeek), pas de curseur incrémental.
+   Sans réseau / non configuré (pullAllRecords → null) : no-op, IndexedDB
+   reste seul juge — jamais de plantage, jamais de perte locale.
+   ============================================================ */
+export async function reconcileAll() {
+  const cloudRows = await pullAllRecords();
+  if (cloudRows === null) return false;
+
+  const byStore = new Map();
+  for (const row of cloudRows) {
+    if (!byStore.has(row.store)) byStore.set(row.store, new Map());
+    byStore.get(row.store).set(row.record_id, row);
+  }
+
+  for (const name of SYNCABLE) {
+    const cloudMap = byStore.get(name) || new Map();
+    const localRecs = (await values(S[name])) || [];
+    const localIds = new Set();
+
+    for (const rec of localRecs) {
+      if (!rec || !rec.id) continue;
+      localIds.add(rec.id);
+      const localTs = rec.updatedAt ? Date.parse(rec.updatedAt) : 0;
+      const cloud = cloudMap.get(rec.id);
+      if (!cloud) {
+        // absent du cloud (première synchro de cet appareil, ou nouveau) → pousser.
+        queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString());
+        continue;
+      }
+      const cloudTs = cloud.updated_at ? Date.parse(cloud.updated_at) : 0;
+      if (cloud.deleted) {
+        if (cloudTs >= localTs) await del(rec.id, S[name]); // tombstone plus récent → supprimer localement
+        else queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → réhabiliter
+      } else if (cloudTs > localTs) {
+        await set(rec.id, cloud.data, S[name]); // cloud plus récent → adopter
+      } else if (localTs > cloudTs) {
+        queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → pousser
+      }
+    }
+
+    // enregistrements présents côté cloud mais absents localement (nouveaux sur cet appareil).
+    for (const [id, cloud] of cloudMap) {
+      if (localIds.has(id) || cloud.deleted) continue;
+      await set(id, cloud.data, S[name]);
+    }
+  }
+  return true;
 }

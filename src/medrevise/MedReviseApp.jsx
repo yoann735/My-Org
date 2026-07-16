@@ -19,7 +19,7 @@ import { DocumentsHome } from './documents/DocumentsHome.jsx';
 import { TranscriptEditor } from './documents/TranscriptEditor.jsx';
 import { SchemaEditorScreen } from './documents/SchemaEditorScreen.jsx';
 import {
-  seedIfEmpty, getAll, put, putMany, remove, getStats, setStats as saveStats, genId,
+  seedIfEmpty, getAll, put, putMany, remove, getStats, setStats as saveStats, genId, reconcileAll,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 
@@ -68,7 +68,20 @@ export default function MedReviseApp({ themeApi, goHub }) {
     setStats(st);
   }, []);
 
-  useEffect(() => { (async () => { await seedIfEmpty(); await runMigrations(); await reload(); })(); }, [reload]);
+  // A — synchro cloud (no-op silencieux si non configurée/hors-ligne, voir sync.js) :
+  // réconcilier AVANT le seed, sinon un appareil vierge sèmerait des données de démo
+  // localement avant même d'avoir eu la chance de rapatrier le vrai compte cloud.
+  useEffect(() => { (async () => { await reconcileAll(); await seedIfEmpty(); await runMigrations(); await reload(); })(); }, [reload]);
+
+  // reconcile à la reconnexion réseau et quand l'onglet redevient visible (retour d'un
+  // autre appareil) — capte les changements faits ailleurs sans polling permanent.
+  useEffect(() => {
+    const onSync = () => { reconcileAll().then((changed) => { if (changed) reload(); }); };
+    const onVisible = () => { if (document.visibilityState === 'visible') onSync(); };
+    window.addEventListener('online', onSync);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { window.removeEventListener('online', onSync); document.removeEventListener('visibilitychange', onVisible); };
+  }, [reload]);
 
   const ctx = {
     theme, toggleTheme, goHub,

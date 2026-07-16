@@ -30,12 +30,21 @@ SPA Vite + React 18 + Tailwind, déployée sur **Vercel** (auto-deploy au push s
 - **MealWeek** : `localStorage` centralisé dans un `userState` unique
   (`src/mealweek/data/useUserState.js`, clé `mw.state.v1`) + **sync Supabase optionnelle**
   (table `mealweek_state`, last-write-wins, debounce 800 ms). Voir `MEALWEEK_SUPABASE_SYNC.md`.
-- **MedRevise** : **IndexedDB** (idb-keyval), pas localStorage (blobs images/PDF trop gros).
+- **MedRevise** : **IndexedDB** (idb-keyval), pas localStorage (blobs images/PDF trop gros)
+  + **sync Supabase optionnelle** (table `medrevise_records` — un enregistrement par
+  store/id, LWW par `updated_at` — + bucket Storage `medrevise-blobs` pour les images/PDF ;
+  espace séparé de `mealweek_state` mais **même projet Supabase**, mêmes variables d'env,
+  pas de compte séparé). Voir `MEDREVISE_SUPABASE_SYNC.md`. Client dédié
+  `src/medrevise/data/supabaseClient.js` (ne touche pas au client MealWeek). Écritures/
+  suppressions instrumentées dans `src/medrevise/lib/storage.js` (`put`/`putMany`/`remove`
+  + les setters spécifiques stats/exos/docs) ; réconciliation (`reconcileAll`) au démarrage,
+  à la reconnexion réseau et quand l'onglet redevient visible (`MedReviseApp.jsx`).
 
 ## Variables d'environnement
 - `ANTHROPIC_API_KEY` — **Vercel uniquement** (jamais en dur, jamais dans le repo). Requise
   pour la génération réelle MedRevise ; en local sans elle → fallback mock.
-- `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` — optionnelles (sync MealWeek). Absentes →
+- `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` — optionnelles (sync MealWeek **et**
+  MedRevise, même projet). Absentes →
   app 100 % locale. Fichier `.env` local (gitignored), `.env.example` fourni.
 
 ## Conventions (importantes)
