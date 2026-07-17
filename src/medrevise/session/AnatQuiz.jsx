@@ -11,7 +11,8 @@
    - ALÉATOIRE : un sous-ensemble masqué (proportion réglable), le reste
      reste affiché comme repères ; tirage aléatoire à chaque session.
    ============================================================ */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta } from '../components/ui.jsx';
 import { index, effectiveCoef } from '../lib/planning.js';
@@ -24,6 +25,50 @@ import { blobURL } from '../lib/storage.js';
 
 const DEFAULT_COLOR = '#7C6FE0';
 const markerId = (col) => 'quiz-ah-' + (col || DEFAULT_COLOR).replace('#', '');
+
+/* C — carte de réponse d'une coche masquée, rendue en PORTAL (document.body) pour
+   échapper à l'overflow:hidden du cadre image (et à tout empilement local) : sans ça,
+   la carte pouvait être tronquée par le bord de l'image ou passer sous d'autres
+   éléments. Position en px viewport (fixed), recalculée au scroll/resize ; bascule
+   au-dessus/en-dessous de l'ancre selon la place dispo, et se limite en hauteur
+   (le contenu gère son propre scroll interne, cf. SchemaQuizCanvas) — jamais coupée. */
+function AnchoredCard({ anchorRef, relX, relY, width = 300, style, children }) {
+  const [pos, setPos] = useState(null);
+  useLayoutEffect(() => {
+    const compute = () => {
+      const anchorEl = anchorRef.current;
+      if (!anchorEl) return;
+      const ar = anchorEl.getBoundingClientRect();
+      const ax = ar.left + relX * ar.width;
+      const ay = ar.top + relY * ar.height;
+      const margin = 10;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const cw = Math.min(width, vw - margin * 2);
+      const left = Math.min(Math.max(ax - cw / 2, margin), vw - cw - margin);
+      const spaceBelow = vh - ay - margin, spaceAbove = ay - margin;
+      let top, maxHeight;
+      if (spaceBelow >= 220 || spaceBelow >= spaceAbove) {
+        top = ay + 10;
+        maxHeight = Math.max(140, vh - top - margin);
+      } else {
+        maxHeight = Math.max(140, spaceAbove - 10);
+        top = Math.max(margin, ay - 10 - maxHeight);
+      }
+      setPos({ left, top, width: cw, maxHeight });
+    };
+    compute();
+    window.addEventListener('scroll', compute, true);
+    window.addEventListener('resize', compute);
+    return () => { window.removeEventListener('scroll', compute, true); window.removeEventListener('resize', compute); };
+  }, [anchorRef, relX, relY, width]);
+
+  return createPortal(
+    <div style={{ position: 'fixed', left: pos ? pos.left : -9999, top: pos ? pos.top : -9999, width: pos ? pos.width : width, maxHeight: pos ? pos.maxHeight : undefined, overflow: 'hidden', visibility: pos ? 'visible' : 'hidden', zIndex: 1000, ...style }}>
+      {children}
+    </div>,
+    document.body,
+  );
+}
 
 export function AnatQuiz({ ctx }) {
   const q = ctx.anatQuiz;
@@ -241,6 +286,7 @@ export function AnatQuiz({ ctx }) {
 /* ---- rendu : image + overlay (flèches SVG + ancres + boîtes) en % ---- */
 function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, setAnswers, phase, evalCoche, overrides, toggleOverride, onEnter,
   theoryOn, theoryAnswers, setTheoryAnswers, evalTheory, theoryOverrides, toggleTheoryOverride, activeId, setActiveId, activeOrder }) {
+  const wrapperRef = useRef(null); // C — ancre de la carte de réponse portalée (voir AnchoredCard)
   const usedColors = [...new Set(coches.map((c) => c.couleur || DEFAULT_COLOR))];
   // champs de théorie (non vides) d'une coche masquée — mêmes clés que theoryQuestions.
   const fieldsOf = (c) => (theoryOn && c.type && c.champs)
@@ -253,7 +299,7 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, s
   };
   return (
     <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)', display: 'flex', justifyContent: 'center' }}>
-      <div style={{ position: 'relative', maxWidth: '100%', minWidth: 0, width: imgUrl ? 'auto' : '100%', lineHeight: 0 }}>
+      <div ref={wrapperRef} style={{ position: 'relative', maxWidth: '100%', minWidth: 0, width: imgUrl ? 'auto' : '100%', lineHeight: 0 }}>
         {imgUrl
           ? <img src={imgUrl} alt="schéma" draggable={false} style={{ display: 'block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: 'min(64vh, 600px)', userSelect: 'none' }} />
           : <div style={{ width: '100%', height: 320, display: 'grid', placeItems: 'center', color: 'var(--text-3)' }}><Icon name="image" size={32} /></div>}
@@ -306,10 +352,9 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, s
               );
             }
 
-            const flipX = c.boite.x > 0.5, flipY = c.boite.y > 0.5;
             return (
-              <div key={'b' + c.id}
-                style={{ position: 'absolute', left: c.boite.x * 100 + '%', top: c.boite.y * 100 + '%', transform: `translate(${flipX ? '-100%' : '0'}, ${flipY ? '-100%' : '0'})`, width: 'min(300px, 84vw)', maxHeight: '84%', display: 'flex', flexDirection: 'column', padding: '12px 13px', borderRadius: 10, background: 'var(--card)', border: `2px solid ${badgeCol}`, boxShadow: '0 8px 24px rgba(0,0,0,.28)', zIndex: 20 }}>
+              <AnchoredCard key={'b' + c.id} anchorRef={wrapperRef} relX={c.boite.x} relY={c.boite.y} width={300}
+                style={{ display: 'flex', flexDirection: 'column', padding: '12px 13px', borderRadius: 10, background: 'var(--card)', border: `2px solid ${badgeCol}`, boxShadow: '0 8px 24px rgba(0,0,0,.28)' }}>
                 {/* D — zone défilable (header + nom + champs), espacement respirant entre
                     chaque paire label/input ; la barre d'action reste épinglée en bas */}
                 <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, paddingRight: 2 }}>
@@ -363,7 +408,7 @@ function SchemaQuizCanvas({ imgUrl, coches, maskedSet, firstMaskedId, answers, s
                   <button type="button" className="btn ghost sm" onClick={() => setActiveId(null)} style={{ fontSize: 11 }}><Icon name="minus" size={11} /> Réduire</button>
                   {(() => { const i = activeOrder.indexOf(c.id); const nxt = activeOrder[i + 1]; return nxt ? <button type="button" className="btn sm" onClick={() => setActiveId(nxt)} style={{ fontSize: 11 }}>Suivant <Icon name="arrowR" size={11} /></button> : null; })()}
                 </div>
-              </div>
+              </AnchoredCard>
             );
           }
 

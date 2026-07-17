@@ -23,14 +23,21 @@ import { ANAT_TYPES, champsFor, parseStructure, detectType } from '../lib/anatPa
 import { SCHEMA_VUES, vueLabel, useVueAide } from '../lib/anatSchema.js';
 
 const SOUS_CATS = ['Muscles', 'Os', 'Nerfs', 'Ligaments', 'Vaisseaux'];
-const COLORS = ['#7C6FE0', '#E0556B', '#4FB87A', '#4FA6D9', '#E0A34F', '#B45FD9'];
+const COLORS = [
+  '#7C6FE0', '#E0556B', '#4FB87A', '#4FA6D9', '#E0A34F', '#B45FD9',
+  '#E0C93F', '#3FC7B8', '#D97B4F', '#5F7FE0', '#8FCB4F', '#E05F9E',
+  '#4F63A6', '#9A7A4F',
+]; // A — palette élargie (14 teintes distinctes) + color picker libre (voir StyleControls)
 const DEFAULT_COLOR = COLORS[0];
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const markerId = (col) => 'anat-ah-' + (col || DEFAULT_COLOR).replace('#', '');
 const DEFAULT_ZONE_OPACITY = 0.25;
 const DEFAULT_STROKE_WIDTH = 2;
+const DEFAULT_STROKE_OPACITY = 0.95;
 const BRUSH_MIN_DIST = 0.004; // décimation du pinceau libre (distance relative mini entre 2 points)
-const ZOOM_MIN = 0.5, ZOOM_MAX = 6, ZOOM_STEP = 1.25; // zoom éditeur de schéma (B) — 1 = cadrage entier (défaut, "Ajuster")
+const ZOOM_MIN = 0.5, ZOOM_MAX = 6; // zoom éditeur de schéma (B) — 1 = cadrage entier (défaut, "Ajuster")
+const ZOOM_STEP = 1.25; // pas des boutons +/- (clic = geste discret, un pas plus marqué reste confortable)
+const ZOOM_STEP_WHEEL = 1.05; // pas MOLETTE, nettement plus fin — la molette envoie beaucoup de crans, un pas façon bouton donnerait des bonds énormes
 const PAN_MIN_VISIBLE = 80; // px — le pan est borné pour garder au moins ça de l'image visible
 
 /* outils de dessin de zones (barre d'outils). rect/ellipse = boîte englobante ;
@@ -61,6 +68,7 @@ export function zoneStyle(c) {
     fill: z.fill !== undefined ? z.fill : col,
     fillOpacity: Number.isFinite(z.fillOpacity) ? z.fillOpacity : (Number.isFinite(z.opacity) ? z.opacity : DEFAULT_ZONE_OPACITY),
     stroke: z.stroke !== undefined ? z.stroke : col,
+    strokeOpacity: Number.isFinite(z.strokeOpacity) ? z.strokeOpacity : DEFAULT_STROKE_OPACITY,
     strokeWidth: Number.isFinite(z.strokeWidth) ? z.strokeWidth : DEFAULT_STROKE_WIDTH,
     closed: z.shape === 'line' ? false : (z.closed !== undefined ? !!z.closed : true),
   };
@@ -124,7 +132,7 @@ export function ZonesLayer({ coches, selectedId, mode, onZonePointerDown, border
           fill: hasFill ? (recolor || st.fill) : 'none',
           fillOpacity: hasFill ? st.fillOpacity : 0,
           stroke: hasStroke ? (recolor || st.stroke || DEFAULT_COLOR) : 'none',
-          strokeOpacity: 0.95,
+          strokeOpacity: recolor ? DEFAULT_STROKE_OPACITY : st.strokeOpacity,
           strokeWidth: (c.id === selectedId ? st.strokeWidth + 0.8 : st.strokeWidth) || 1.6,
           vectorEffect: 'non-scaling-stroke', strokeLinejoin: 'round', strokeLinecap: 'round',
           style: { pointerEvents: interactive ? 'auto' : 'none', cursor: 'grab' },
@@ -246,7 +254,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
   const [draftPath, setDraftPath] = useState(null);   // points d'un tracé pinceau en cours
   const [draftLine, setDraftLine] = useState(null);   // { a, b } d'un trait en cours
   // style courant (appliqué aux formes À VENIR ; la barre de style l'édite hors sélection)
-  const [style, setStyle] = useState({ fill: DEFAULT_COLOR, fillOpacity: DEFAULT_ZONE_OPACITY, stroke: DEFAULT_COLOR, strokeWidth: DEFAULT_STROKE_WIDTH });
+  const [style, setStyle] = useState({ fill: DEFAULT_COLOR, fillOpacity: DEFAULT_ZONE_OPACITY, stroke: DEFAULT_COLOR, strokeOpacity: DEFAULT_STROKE_OPACITY, strokeWidth: DEFAULT_STROKE_WIDTH });
   // B — zoom/pan : transform CSS sur le cadre (frameRef). Le transform ne change pas
   // la boîte de layout → relFromEvent (getBoundingClientRect, déjà post-transform)
   // reste juste sans aucune adaptation : les coches restent alignées à tout zoom.
@@ -357,7 +365,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
     if (!el) return;
     const onWheelNative = (e) => {
       e.preventDefault();
-      zoomAt(scaleRef.current * (e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP), e.clientX, e.clientY);
+      zoomAt(scaleRef.current * (e.deltaY < 0 ? ZOOM_STEP_WHEEL : 1 / ZOOM_STEP_WHEEL), e.clientX, e.clientY);
     };
     el.addEventListener('wheel', onWheelNative, { passive: false });
     return () => el.removeEventListener('wheel', onWheelNative);
@@ -407,7 +415,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
     setSelectedId(c.id);
   };
 
-  const styleZone = () => ({ fill: style.fill, fillOpacity: style.fillOpacity, stroke: style.stroke, strokeWidth: style.strokeWidth });
+  const styleZone = () => ({ fill: style.fill, fillOpacity: style.fillOpacity, stroke: style.stroke, strokeOpacity: style.strokeOpacity, strokeWidth: style.strokeWidth });
 
   // crée une ZONE (toute forme) : mêmes champs qu'une coche + géométrie + style.
   const addZone = (zone) => {
@@ -788,16 +796,18 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
                   <span style={{ fontSize: 13, fontWeight: 600, color: c.texte ? 'var(--text)' : 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.texte || '(sans nom)'}</span>
                 )}
                 {sel && (
-                  <div onPointerDown={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', gap: 8, padding: '9px 10px', borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border)', boxShadow: '0 6px 20px rgba(0,0,0,.25)', zIndex: 10, width: 250 }}>
+                  <div onPointerDown={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', gap: 8, padding: '9px 10px', borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border)', boxShadow: '0 6px 20px rgba(0,0,0,.25)', zIndex: 10, width: 270 }}>
                     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
                       {c.kind === 'zone' ? (
                         <span className="hint" style={{ flex: 1, fontSize: 11, fontWeight: 700 }}>{SHAPE_LABEL[c.zone.shape] || 'Forme'}</span>
                       ) : (
-                        <div className="row" style={{ gap: 5, flex: 1 }}>
+                        <div className="row" style={{ gap: 5, flex: 1, flexWrap: 'wrap' }}>
                           {COLORS.map((sc) => (
                             <button key={sc} type="button" title="Changer la couleur" onClick={() => updateCoche(c.id, { couleur: sc })}
                               style={{ width: 18, height: 18, borderRadius: '50%', background: sc, border: sc === col ? '2px solid var(--text)' : '2px solid transparent', cursor: 'pointer', flex: '0 0 auto' }} />
                           ))}
+                          <input type="color" title="Couleur libre" value={col} onChange={(e) => updateCoche(c.id, { couleur: e.target.value })}
+                            style={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid var(--border)', padding: 0, cursor: 'pointer', flex: '0 0 auto', background: 'conic-gradient(red,yellow,lime,cyan,blue,magenta,red)', WebkitAppearance: 'none', appearance: 'none' }} />
                         </div>
                       )}
                       <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
@@ -855,6 +865,9 @@ function StyleControls({ value, onChange, allowFill = true }) {
   const strokeOn = v.stroke != null;
   const swatch = (sc, active) => ({ width: 16, height: 16, borderRadius: '50%', background: sc, border: active ? '2px solid var(--text)' : '2px solid transparent', cursor: 'pointer', flex: '0 0 auto' });
   const miniBtn = (on) => ({ fontSize: 10.5, padding: '1px 7px', borderRadius: 6, border: '1px solid var(--border)', background: on ? 'var(--accent)' : 'transparent', color: on ? '#fff' : 'var(--text-3)', cursor: 'pointer' });
+  // A — sélecteur de couleur libre (au-delà de la palette) : input natif stylé en
+  // rond, superposé à un dégradé arc-en-ciel pour signaler « autre couleur ».
+  const pickerStyle = { width: 16, height: 16, borderRadius: '50%', border: '2px solid var(--border)', padding: 0, cursor: 'pointer', flex: '0 0 auto', background: 'conic-gradient(red,yellow,lime,cyan,blue,magenta,red)', WebkitAppearance: 'none', appearance: 'none' };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {allowFill && (
@@ -862,6 +875,7 @@ function StyleControls({ value, onChange, allowFill = true }) {
           <div className="row" style={{ gap: 5, alignItems: 'center', marginBottom: 5, flexWrap: 'wrap' }}>
             <span className="hint" style={{ fontSize: 10.5, fontWeight: 700, width: 52 }}>Remplir</span>
             {COLORS.map((sc) => <button key={sc} type="button" title="Couleur de remplissage" onClick={() => onChange({ fill: sc })} style={swatch(sc, v.fill === sc)} />)}
+            <input type="color" title="Couleur libre" value={v.fill || DEFAULT_COLOR} onChange={(e) => onChange({ fill: e.target.value })} style={pickerStyle} />
             <button type="button" style={miniBtn(fillOn)} onClick={() => onChange({ fill: fillOn ? null : DEFAULT_COLOR })}>{fillOn ? 'oui' : 'sans'}</button>
           </div>
           {fillOn && (
@@ -877,8 +891,16 @@ function StyleControls({ value, onChange, allowFill = true }) {
         <div className="row" style={{ gap: 5, alignItems: 'center', marginBottom: 5, flexWrap: 'wrap' }}>
           <span className="hint" style={{ fontSize: 10.5, fontWeight: 700, width: 52 }}>Contour</span>
           {COLORS.map((sc) => <button key={sc} type="button" title="Couleur du contour" onClick={() => onChange({ stroke: sc })} style={swatch(sc, v.stroke === sc)} />)}
+          <input type="color" title="Couleur libre" value={v.stroke || DEFAULT_COLOR} onChange={(e) => onChange({ stroke: e.target.value })} style={pickerStyle} />
           <button type="button" style={miniBtn(strokeOn)} onClick={() => onChange({ stroke: strokeOn ? null : DEFAULT_COLOR })}>{strokeOn ? 'oui' : 'sans'}</button>
         </div>
+        {strokeOn && (
+          <div className="row" style={{ gap: 6, alignItems: 'center', marginBottom: 5 }} title="Opacité du contour">
+            <Icon name="drop" size={12} />
+            <input type="range" min="10" max="100" value={Math.round((v.strokeOpacity ?? DEFAULT_STROKE_OPACITY) * 100)} onChange={(e) => onChange({ strokeOpacity: Number(e.target.value) / 100 })} style={{ flex: 1 }} />
+            <span className="hint" style={{ fontSize: 10, width: 30, textAlign: 'right' }}>{Math.round((v.strokeOpacity ?? DEFAULT_STROKE_OPACITY) * 100)}%</span>
+          </div>
+        )}
         <div className="row" style={{ gap: 6, alignItems: 'center' }} title="Épaisseur du contour / pinceau">
           <span className="hint" style={{ fontSize: 10 }}>épaisseur</span>
           <input type="range" min="1" max="10" step="0.5" value={v.strokeWidth ?? DEFAULT_STROKE_WIDTH} onChange={(e) => onChange({ strokeWidth: Number(e.target.value) })} style={{ flex: 1 }} />
