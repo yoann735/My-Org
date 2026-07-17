@@ -7,7 +7,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CoursePdfField, matiereMeta } from '../components/ui.jsx';
 import { weekData, dueToday, dueSchemasToday, todayPlan } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
-import { importStandard, createFicheFromQuestions } from '../lib/import.js';
+import { createFicheFromQuestions } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { ImportAnatomieTheorie } from './ImportAnatomieTheorie.jsx';
@@ -187,19 +187,13 @@ function DayPopup({ day, ctx, onClose }) {
   );
 }
 
-/* ---------- import : drop / paste → destination → génération ---------- */
+/* ---------- import : destination → coller le JSON → aperçu → confirmer ----------
+   Full JSON local (aucun appel réseau) : même flux que Rattrapage. */
 function ImportPanel({ ctx }) {
   const { db } = ctx;
-  const [mode, setMode] = useState('standard'); // standard | anat
+  const [mode, setMode] = useState('standard'); // standard | anat | rattrapage
   const [anatSub, setAnatSub] = useState('theorie'); // theorie (existant, inchangé) | visuel (schéma annoté → anat_schema)
-  const [state, setState] = useState('empty'); // empty | dest | loading | preview | done
-  const [entry, setEntry] = useState('pdf');    // 'pdf' (drop → API) | 'paste' (JSON collé, sans réseau)
-  const [over, setOver] = useState(false);
-  const [contenu, setContenu] = useState('');
-  const [pdfBlob, setPdfBlob] = useState(null);
-  const [extracting, setExtracting] = useState(false);
-  const [extractInfo, setExtractInfo] = useState(null); // { chars } | { error }
-  const [showText, setShowText] = useState(false);
+  const [state, setState] = useState('form'); // form | preview | done
   const sources = db.sources.filter((s) => !s.archive);
   const [srcId, setSrcId] = useState(() => (sources[0] || {}).id);
   const matieresFor = (sid) => db.matieres.filter((m) => m.sourceId === sid && !m.archive);
@@ -207,64 +201,21 @@ function ImportPanel({ ctx }) {
   const [title, setTitle] = useState('');
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [debug, setDebug] = useState(null); // [{label,prompt,response,ok,ms,parseOk,error}]
-  const [showDev, setShowDev] = useState(false);
-  // flux « coller le JSON » (aucun appel réseau)
   const [jsonText, setJsonText] = useState('');
   const [parseError, setParseError] = useState(null);
   const [parsed, setParsed] = useState(null); // { questions, synthese, counts }
   const [pastePdf, setPastePdf] = useState(null); // PDF du cours (optionnel) rattaché à la fiche créée
 
-  const onFile = async (file) => {
-    if (!file) return;
-    setEntry('pdf'); setState('dest');
-    setExtractInfo(null);
-    if (!title) setTitle(file.name.replace(/\.[^.]+$/, ''));
-    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
-      setPdfBlob(file);
-      setExtracting(true); setShowText(false);
-      try {
-        const { extractPdfText } = await import('../lib/pdf.js');
-        const text = await extractPdfText(file);
-        setContenu(text);
-        setExtractInfo(text.trim().length > 20 ? { chars: text.trim().length } : { error: 'empty' });
-      } catch (e) {
-        setExtractInfo({ error: 'fail' });
-      }
-      setExtracting(false);
-    } else if (file.type === 'text/plain' || /\.(txt|md)$/i.test(file.name)) {
-      setContenu(await file.text());
-      setShowText(true);
-    } else if (file.type && file.type.startsWith('image/')) {
-      // image scannée : pas d'OCR en v1 → on garde le visuel mais il faut coller le texte
-      setExtractInfo({ error: 'image' });
-      setShowText(true);
-    }
-  };
-
-  const canGen = !!(matId && contenu.trim().length > 20);
-
-  const generate = async () => {
-    if (!canGen) return;
-    setState('loading'); setBusy(true);
-    let pdfId = null;
-    if (pdfBlob) { try { pdfId = await putBlob(pdfBlob); } catch (e) { /* ignore */ } }
-    const res = await importStandard({ matiereId: matId, titre: title, contenu, pdfId, pdfName: pdfBlob ? pdfBlob.name : null });
-    await ctx.reload();
-    setResult(res); setDebug(res.debug || null); setState('done'); setBusy(false);
-  };
   const reset = () => {
-    setState('empty'); setEntry('pdf'); setContenu(''); setPdfBlob(null); setTitle('');
-    setResult(null); setExtractInfo(null); setExtracting(false); setShowText(false);
+    setState('form'); setTitle(''); setResult(null);
     setJsonText(''); setParseError(null); setParsed(null); setPastePdf(null);
   };
 
-  // --- flux « coller le JSON » : parse local, aucun appel réseau ---
   const srcLabel = (db.sources.find((s) => s.id === srcId) || {}).nom || '—';
   const matLabel = (db.matieres.find((m) => m.id === matId) || {}).nom || '—';
   const destLabel = `${srcLabel} / ${matLabel} / ${title.trim() || 'Fiche importée'}`;
-  const pasteMissing = [!srcId && 'un cours', !matId && 'une matière', !title.trim() && 'un titre'].filter(Boolean);
-  const pasteReady = pasteMissing.length === 0 && !!jsonText.trim();
+  const missing = [!srcId && 'un cours', !matId && 'une matière', !title.trim() && 'un titre'].filter(Boolean);
+  const ready = missing.length === 0 && !!jsonText.trim();
 
   const parseJson = () => {
     const res = parsePastedJson(jsonText);
@@ -317,67 +268,8 @@ function ImportPanel({ ctx }) {
             : <ImportAnatomieVisuel ctx={ctx} />}
         </div>
       )}
-      {mode === 'standard' && state === 'empty' && (
-        <div className="fadein">
-          <label className={'dz-compact dz-tall' + (over ? ' over' : '')}
-            onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-            onDragLeave={() => setOver(false)}
-            onDrop={(e) => { e.preventDefault(); setOver(false); onFile(e.dataTransfer.files[0]); }}>
-            <input type="file" accept=".txt,.md,.pdf,image/*" style={{ display: 'none' }} onChange={(e) => onFile(e.target.files[0])} />
-            <div className="dz-ic"><Icon name="upload" size={26} /></div>
-            <div style={{ fontWeight: 600, fontSize: 16 }}>Glisse ton PDF ici</div>
-            <div className="hint" style={{ marginTop: 5 }}>Le texte du PDF est lu automatiquement — tu choisis ensuite sa destination</div>
-          </label>
-          <button className="btn ghost sm" style={{ marginTop: 10 }} onClick={() => { setEntry('paste'); setState('dest'); }}><Icon name="edit" size={13} /> Ou coller le JSON de Claude</button>
-        </div>
-      )}
 
-      {mode === 'standard' && state === 'dest' && entry === 'pdf' && (
-        <div className="fadein imp-dest">
-          <div className="imp-dest-head"><Icon name="folder" size={15} /> Où ranger cette fiche&nbsp;?</div>
-
-          <DestPicker ctx={ctx} srcId={srcId} setSrcId={setSrcId} matId={matId} setMatId={setMatId} />
-
-          <div className="imp-field">
-            <label>Titre de la fiche <span className="imp-opt">(optionnel)</span></label>
-            <input className="imp-title" placeholder="ex : Système respiratoire — chapitre 3" value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-
-          <div className="imp-field">
-            <label>Contenu de la fiche</label>
-            {extracting && (
-              <div className="row" style={{ gap: 10, alignItems: 'center', padding: '10px 0' }}>
-                <div className="gen-spinner" style={{ width: 20, height: 20 }} />
-                <span className="hint">Lecture du PDF en cours…</span>
-              </div>
-            )}
-            {!extracting && extractInfo && extractInfo.chars && (
-              <div className="err-mini ok" style={{ marginBottom: 8 }}>
-                <div className="em-ic"><Icon name="check" size={16} stroke={2.5} /></div>
-                <div className="em-body"><div className="em-title">PDF lu : {extractInfo.chars.toLocaleString('fr-FR')} caractères extraits</div><div className="hint">Tu peux générer directement. <button type="button" className="linklike" onClick={() => setShowText((v) => !v)}>{showText ? 'Masquer' : 'Voir / modifier le texte'}</button></div></div>
-              </div>
-            )}
-            {!extracting && extractInfo && extractInfo.error && (
-              <div className="hint" style={{ marginBottom: 8, color: 'var(--accent-2)' }}>
-                <Icon name="alert" size={13} /> {extractInfo.error === 'image' ? 'Image : lecture auto non disponible (OCR). Colle le texte ci-dessous.' : 'Ce PDF ne contient pas de texte (scanné ?). Colle le texte ci-dessous.'}
-              </div>
-            )}
-            {(showText || (!pdfBlob && !extracting)) && (
-              <textarea className="imp-title" style={{ minHeight: 120, resize: 'vertical', fontFamily: 'inherit' }}
-                placeholder="Colle ici le texte de ton cours (l'IA génère QCM, flashcards et Feynman à partir de CE texte uniquement)…"
-                value={contenu} onChange={(e) => setContenu(e.target.value)} />
-            )}
-          </div>
-
-          <div className="imp-actions">
-            <button className="btn ghost" onClick={reset}>Annuler</button>
-            <button className="btn primary" onClick={generate} disabled={!canGen || busy || extracting}><Icon name="sparkle" size={15} /> Générer les questions</button>
-          </div>
-          {!canGen && !extracting && <div className="hint" style={{ marginTop: 8 }}>Choisis une matière, puis dépose un PDF (lu automatiquement) ou colle du texte.</div>}
-        </div>
-      )}
-
-      {mode === 'standard' && state === 'dest' && entry === 'paste' && (
+      {mode === 'standard' && state === 'form' && (
         <div className="fadein imp-dest">
           <div className="imp-dest-head"><Icon name="folder" size={15} /> Où ranger cette fiche&nbsp;?</div>
 
@@ -406,9 +298,9 @@ function ImportPanel({ ctx }) {
 
           <div className="imp-actions">
             <button className="btn ghost" onClick={reset}>Annuler</button>
-            <button className="btn primary" onClick={parseJson} disabled={!pasteReady}><Icon name="check" size={15} /> Importer les questions</button>
+            <button className="btn primary" onClick={parseJson} disabled={!ready}><Icon name="check" size={15} /> Importer les questions</button>
           </div>
-          {pasteMissing.length > 0 && <div className="hint" style={{ marginTop: 8 }}>Il manque : {pasteMissing.join(', ')}.</div>}
+          {missing.length > 0 && <div className="hint" style={{ marginTop: 8 }}>Il manque : {missing.join(', ')}.</div>}
         </div>
       )}
 
@@ -432,17 +324,9 @@ function ImportPanel({ ctx }) {
             </div>
           </div>
           <div className="imp-actions">
-            <button className="btn ghost" onClick={() => setState('dest')}>Annuler</button>
+            <button className="btn ghost" onClick={() => setState('form')}>Annuler</button>
             <button className="btn primary" onClick={confirmImport} disabled={busy}><Icon name="check" size={15} /> Confirmer l'import</button>
           </div>
-        </div>
-      )}
-
-      {mode === 'standard' && state === 'loading' && (
-        <div className="fadein" style={{ textAlign: 'center', padding: '24px 0' }}>
-          <div className="gen-spinner" style={{ width: 48, height: 48, margin: '0 auto 16px' }} />
-          <div style={{ fontWeight: 600, fontSize: 16 }}>Génération de tes questions…</div>
-          <div className="hint" style={{ marginTop: 6 }}>{title ? `« ${title} »` : 'Nouvelle fiche'}</div>
         </div>
       )}
 
@@ -450,7 +334,7 @@ function ImportPanel({ ctx }) {
         <div className="fadein" style={{ textAlign: 'center', padding: '6px 0' }}>
           <div className="gd-badge" style={{ width: 60, height: 60, borderRadius: 18, margin: '0 auto 14px' }}><Icon name="check" size={30} stroke={3} /></div>
           <div className="serif" style={{ fontSize: 21 }}>Fiche prête !</div>
-          <div className="hint" style={{ marginTop: 8 }}>✓ {result.count} questions générées{result.mock ? ' (démo hors-ligne — IA réelle sur Vercel)' : ''}.</div>
+          <div className="hint" style={{ marginTop: 8 }}>✓ {result.count} questions importées.</div>
           <div className="row" style={{ gap: 10, justifyContent: 'center', marginTop: 18, flexWrap: 'wrap' }}>
             <button className="btn" onClick={reset}><Icon name="refresh" size={14} /> Autre fiche</button>
             <button className="btn" onClick={() => ctx.go('library')}><Icon name="book" size={14} /> Bibliothèque</button>
@@ -458,52 +342,7 @@ function ImportPanel({ ctx }) {
           </div>
         </div>
       )}
-
-      {mode !== 'rattrapage' && <DevPanel debug={debug} show={showDev} onToggle={() => setShowDev((v) => !v)} />}
     </Card>
-  );
-}
-
-/* ---------- Mode développeur : inspecter les échanges API ---------- */
-function DevBlock({ title, text }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => { try { navigator.clipboard.writeText(text || ''); setCopied(true); setTimeout(() => setCopied(false), 1200); } catch (e) { /* ignore */ } };
-  return (
-    <div style={{ marginTop: 8 }}>
-      <div className="row spread" style={{ marginBottom: 4 }}>
-        <span className="hint" style={{ fontSize: 11, fontWeight: 700 }}>{title}</span>
-        <button type="button" className="btn ghost sm" onClick={copy}><Icon name={copied ? 'check' : 'copy'} size={12} /> {copied ? 'Copié' : 'Copier'}</button>
-      </div>
-      <pre style={{ margin: 0, maxHeight: 220, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 11.5, lineHeight: 1.45, background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', color: 'var(--text-2)' }}>{text || '(vide)'}</pre>
-    </div>
-  );
-}
-
-function DevPanel({ debug, show, onToggle }) {
-  return (
-    <div style={{ marginTop: 14, borderTop: '1px solid var(--border-2)', paddingTop: 10 }}>
-      <button type="button" className="btn ghost sm" onClick={onToggle}>
-        <Icon name={show ? 'chevD' : 'chevR'} size={13} /> Mode développeur{debug ? ` · ${debug.length} appel${debug.length > 1 ? 's' : ''}` : ''}
-      </button>
-      {show && (
-        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {!debug && <div className="hint">Lance une génération pour inspecter les prompts envoyés et les réponses brutes de l'API.</div>}
-          {(debug || []).map((d, i) => (
-            <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: 'var(--card-2)' }}>
-              <div className="row spread" style={{ marginBottom: 4 }}>
-                <strong style={{ fontSize: 13 }}>{d.label}</strong>
-                <span className="hint" style={{ fontSize: 11 }}>
-                  {d.ok ? '✓ appel OK' : '✗ échec'} · {d.ms} ms · {d.parseOk ? 'JSON parsé ✓' : 'parse ✗'}
-                </span>
-              </div>
-              {d.error && <div className="hint" style={{ fontSize: 11, color: 'var(--accent-2)', marginBottom: 4 }}><Icon name="alert" size={11} /> {d.error}</div>}
-              <DevBlock title="Prompt envoyé (variables substituées)" text={d.prompt} />
-              <DevBlock title="Réponse brute de l'API" text={d.response} />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 

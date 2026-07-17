@@ -3,7 +3,9 @@
 Univers perso : un **hub** (sélecteur d'apps) qui héberge **deux applications
 indépendantes** derrière un même thème partagé :
 - **MealWeek** — planificateur de repas (données figées + sync Supabase optionnelle).
-- **MedRevise** — révision médicale (QCM / flashcards / Feynman générés par IA).
+- **MedRevise** — révision médicale (QCM / flashcards / Feynman). Import 100 % local :
+  aucun appel IA dans l'app, tout passe par du JSON v1.0 collé (généré ailleurs, ex. un
+  chat Claude externe), comme pour Rattrapage.
 
 SPA Vite + React 18 + Tailwind, déployée sur **Vercel** (auto-deploy au push sur `main`).
 
@@ -22,9 +24,6 @@ SPA Vite + React 18 + Tailwind, déployée sur **Vercel** (auto-deploy au push s
 - `src/Selecteur.jsx` = le hub. `src/shared/` = Icon, hooks, constantes, **thème partagé
   univers** (`useSharedTheme`) — commun aux deux apps, donc **hors** de l'état propre à
   chaque app (ne pas le synchroniser dans un state d'app).
-- `api/generate.js` = fonction serverless Vercel qui proxifie l'API Claude (la clé n'atteint
-  jamais le navigateur). `vercel.json` fixe `maxDuration: 60` (limite plan Hobby → source de
-  timeouts 504 sur les grosses générations ; MedRevise découpe le cours pour rester sous 60 s).
 
 ## Persistance
 - **MealWeek** : `localStorage` centralisé dans un `userState` unique
@@ -41,8 +40,6 @@ SPA Vite + React 18 + Tailwind, déployée sur **Vercel** (auto-deploy au push s
   à la reconnexion réseau et quand l'onglet redevient visible (`MedReviseApp.jsx`).
 
 ## Variables d'environnement
-- `ANTHROPIC_API_KEY` — **Vercel uniquement** (jamais en dur, jamais dans le repo). Requise
-  pour la génération réelle MedRevise ; en local sans elle → fallback mock.
 - `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` — optionnelles (sync MealWeek **et**
   MedRevise, même projet). Absentes →
   app 100 % locale. Fichier `.env` local (gitignored), `.env.example` fourni.
@@ -52,7 +49,7 @@ SPA Vite + React 18 + Tailwind, déployée sur **Vercel** (auto-deploy au push s
 - **Ne modifier QUE l'app nommée** par la demande — ne jamais toucher l'autre app ni le
   design system partagé sans raison explicite.
 - **Commit/push autonome autorisé** sur ce projet — voir la section « ## Git » ci-dessous.
-- Ne jamais exposer/committer la clé API. Garder le design system intact.
+- Ne jamais exposer/committer de clé (Supabase incluse). Garder le design system intact.
 - Données MealWeek : autorité = le JSON fourni par l'utilisateur (`mealweek_data.json`),
   il écrase toute valeur antérieure ; le remplacer tel quel, ne rien recopier à la main.
 
