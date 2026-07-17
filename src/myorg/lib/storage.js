@@ -11,6 +11,8 @@ const store = (name) => createStore('myorg_' + name, 'v1');
 const S = {
   todos: store('todos'), // tâches (To-do)
   goals: store('goals'), // objectifs annuels
+  newsCache: store('news_cache'), // dernier payload /api/news + timestamp
+  newsRead: store('news_read'),   // urls d'articles déjà lus
   meta: store('meta'),   // marqueurs de schéma / migrations additives futures
 };
 

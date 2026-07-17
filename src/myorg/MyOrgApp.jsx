@@ -7,13 +7,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../shared/Icon.jsx';
 import { Dashboard } from './pages/Dashboard.jsx';
+import { News } from './pages/News.jsx';
 import { Todos } from './pages/Todos.jsx';
 import { Goals } from './pages/Goals.jsx';
 import { Placeholder } from './pages/Placeholder.jsx';
-import { ensureSchema, getAll, put, remove } from './lib/storage.js';
+import { NewsReader } from './components/NewsReader.jsx';
+import { ensureSchema, getAll, getOne, put, remove } from './lib/storage.js';
+
+const NEWS_CACHE_TTL_MS = 3 * 60 * 60 * 1000; // 3h
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: 'home' },
+  { id: 'news', label: 'News', icon: 'newspaper' },
   { id: 'calendrier', label: 'Calendrier', icon: 'calendar' },
   { id: 'todos', label: 'To-do', icon: 'check' },
   { id: 'finance', label: 'Finance', icon: 'euro' },
@@ -23,6 +28,7 @@ const NAV = [
 
 const SCREENS = {
   dashboard: Dashboard,
+  news: News,
   todos: Todos,
   goals: Goals,
   calendrier: (p) => <Placeholder {...p} icon="calendar" title="Calendrier" />,
@@ -64,6 +70,7 @@ function OrgBottomNav({ current, onNav }) {
   // libellés courts (6 entrées sur mobile)
   const items = [
     { id: 'dashboard', label: 'Accueil', icon: 'home' },
+    { id: 'news', label: 'News', icon: 'newspaper' },
     { id: 'calendrier', label: 'Agenda', icon: 'calendar' },
     { id: 'todos', label: 'To-do', icon: 'check' },
     { id: 'finance', label: 'Finance', icon: 'euro' },
@@ -87,13 +94,59 @@ export default function MyOrgApp({ themeApi, goHub }) {
   const [screen, setScreen] = useState('dashboard');
   const [expanded, setExpanded] = useState(false);
   const [db, setDb] = useState(null);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsReaderItem, setNewsReaderItem] = useState(null);
 
   const reload = useCallback(async () => {
-    const [todos, goals] = await Promise.all([getAll('todos'), getAll('goals')]);
-    setDb({ todos: todos || [], goals: goals || [] });
+    const [todos, goals, newsCacheRec, newsReadRecs] = await Promise.all([
+      getAll('todos'), getAll('goals'), getOne('newsCache', 'latest'), getAll('newsRead'),
+    ]);
+    setDb({
+      todos: todos || [],
+      goals: goals || [],
+      newsCache: newsCacheRec || null,
+      newsReadUrls: new Set((newsReadRecs || []).map((r) => r.id)),
+    });
   }, []);
 
-  useEffect(() => { (async () => { await ensureSchema(); await reload(); })(); }, [reload]);
+  // fetch /api/news si le cache est absent/périmé (>3h) ou si `force` (bouton Rafraîchir)
+  const refreshNews = useCallback(async (force = false) => {
+    const rec = await getOne('newsCache', 'latest');
+    const stale = !rec || (Date.now() - (rec.ts || 0) > NEWS_CACHE_TTL_MS);
+    if (!force && !stale) return;
+    setNewsLoading(true);
+    try {
+      const res = await fetch('/api/news');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const payload = await res.json();
+      await put('newsCache', { id: 'latest', payload, ts: Date.now() });
+      await reload();
+    } catch (err) {
+      console.error('Rafraîchissement des actus impossible', err);
+    } finally {
+      setNewsLoading(false);
+    }
+  }, [reload]);
+
+  useEffect(() => { (async () => { await ensureSchema(); await reload(); refreshNews(false); })(); }, [reload, refreshNews]);
+
+  const markNewsRead = useCallback(async (url) => {
+    if (!url) return;
+    await put('newsRead', { id: url, readAt: new Date().toISOString() });
+    await reload();
+  }, [reload]);
+
+  const forgetNewsRead = useCallback(async (url) => {
+    await remove('newsRead', url);
+    await reload();
+  }, [reload]);
+
+  const openNewsReader = useCallback((item) => {
+    setNewsReaderItem(item);
+    if (item?.url) markNewsRead(item.url);
+  }, [markNewsRead]);
+
+  const closeNewsReader = useCallback(() => setNewsReaderItem(null), []);
 
   const ctx = {
     theme, toggleTheme, goHub,
@@ -104,6 +157,12 @@ export default function MyOrgApp({ themeApi, goHub }) {
     deleteTodo: async (id) => { await remove('todos', id); await reload(); },
     saveGoal: async (g) => { await put('goals', g); await reload(); },
     deleteGoal: async (id) => { await remove('goals', id); await reload(); },
+    // ---- news ----
+    newsLoading,
+    refreshNews,
+    markNewsRead,
+    forgetNewsRead,
+    openNewsReader,
   };
 
   if (!db) {
@@ -118,6 +177,7 @@ export default function MyOrgApp({ themeApi, goHub }) {
         <Current ctx={ctx} key={screen} />
       </div>
       <OrgBottomNav current={screen} onNav={setScreen} />
+      {newsReaderItem && <NewsReader item={newsReaderItem} onClose={closeNewsReader} />}
     </div>
   );
 }

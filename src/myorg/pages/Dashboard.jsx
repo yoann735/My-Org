@@ -5,6 +5,7 @@
    ============================================================ */
 import { Icon } from '../../shared/Icon.jsx';
 import { isLate } from '../lib/storage.js';
+import { CATEGORY_PILL_CLASS } from '../components/ui.jsx';
 
 /* début de la semaine en cours (lundi 00:00, convention FR) */
 function startOfWeek() {
@@ -27,6 +28,11 @@ function StatRow({ icon, value, label, tone }) {
 export function Dashboard({ ctx }) {
   const { db } = ctx;
   const year = new Date().getFullYear();
+
+  // ---- News ----
+  const newsItems = db.newsCache?.payload?.items || [];
+  const newsHero = newsItems[0] || null;
+  const newsRest = newsHero ? newsItems.slice(1, 6) : [];
 
   // ---- KPIs To-do ----
   const nbTodo = db.todos.filter((t) => t.statut !== 'done').length;
@@ -58,6 +64,46 @@ export function Dashboard({ ctx }) {
       </div>
 
       <div className="mo-grid">
+        {/* News */}
+        <div className="card mo-card">
+          <div className="card-head" role="button" tabIndex={0} onClick={() => ctx.go('news')}
+            onKeyDown={(e) => { if (e.key === 'Enter') ctx.go('news'); }} style={{ cursor: 'pointer' }}>
+            <Icon name="newspaper" size={17} className="ic" /><h3>News</h3>
+            <div className="right"><Icon name="arrowR" size={16} className="ic" /></div>
+          </div>
+          <div className="card-body">
+            {newsHero ? (
+              <>
+                <div
+                  role="button" tabIndex={0}
+                  onClick={() => ctx.openNewsReader(newsHero)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') ctx.openNewsReader(newsHero); }}
+                  style={{ cursor: 'pointer', marginBottom: 8 }}
+                >
+                  <div className="mo-row-title" style={{ marginBottom: 4 }}>{newsHero.title}</div>
+                  <div className="hint" style={{ fontSize: 12.5 }}>{newsHero.source}</div>
+                </div>
+                <div className="news-dash-list">
+                  {newsRest.map((it) => (
+                    <div
+                      key={it.url}
+                      className="news-dash-item"
+                      role="button" tabIndex={0}
+                      onClick={() => ctx.openNewsReader(it)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') ctx.openNewsReader(it); }}
+                    >
+                      <span className={'pill' + (CATEGORY_PILL_CLASS[it.category] ? ' ' + CATEGORY_PILL_CLASS[it.category] : '')} style={{ height: 20, fontSize: 10 }}>{it.category}</span>
+                      <span className="news-dash-item-title">{it.title}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <span className="hint" style={{ fontSize: 13 }}>Pas encore d’actus — ouvre l’onglet News.</span>
+            )}
+          </div>
+        </div>
+
         {/* To-do */}
         <div className="card mo-card" role="button" tabIndex={0} onClick={() => ctx.go('todos')}
           onKeyDown={(e) => { if (e.key === 'Enter') ctx.go('todos'); }}>

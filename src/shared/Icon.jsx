@@ -73,6 +73,7 @@ export const ICONS = {
   bellOff: 'M8.7 5.2A6 6 0 0 1 18 9c0 2 .2 3.4.7 4.6M5.3 6.2C5.1 7 5 8 5 9c0 5-2 7-2 7h13M9 20a3 3 0 0 0 6 0M3 3l18 18',
   folder: 'M4 6a1 1 0 0 1 1-1h4l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6Z',
   archive: 'M3 8h18M5 8l1 11a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-11M4 8l1.4-3a1 1 0 0 1 .9-.6h11.4a1 1 0 0 1 .9.6L20 8M9.5 12h5',
+  newspaper: 'M4 5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v13a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2V5Zm14 15a2 2 0 0 0 2-2V8h-2M7 7h5M7 10.5h5M7 14h3',
 };
 
 export function Icon({ name, size = 20, stroke = 2, className = '', style = {}, fill = false }) {

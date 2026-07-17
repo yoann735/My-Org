@@ -33,6 +33,16 @@ export function PrioPill({ priorite }) {
   return <span className={'pill ' + p.cls} style={{ height: 24, fontSize: 11.5 }}>{p.label}</span>;
 }
 
+/* ---- News : catégories (ordre d'affichage) + couleur de badge ---- */
+export const NEWS_CATEGORIES = ['Monde', 'Aviation', 'Business', 'Médecine', 'Culture & Savoir'];
+export const CATEGORY_PILL_CLASS = {
+  Monde: 'accent',
+  Aviation: 'amber',
+  Business: 'ok',
+  'Médecine': '',
+  'Culture & Savoir': 'solid',
+};
+
 /* ---- état vide générique ---- */
 export function EmptyState({ icon = 'box', title, hint }) {
   return (
