@@ -33,15 +33,31 @@ export function PrioPill({ priorite }) {
   return <span className={'pill ' + p.cls} style={{ height: 24, fontSize: 11.5 }}>{p.label}</span>;
 }
 
-/* ---- News : catégories (ordre d'affichage) + couleur de badge ---- */
-export const NEWS_CATEGORIES = ['Monde', 'Aviation', 'Business', 'Médecine', 'Culture & Savoir'];
-export const CATEGORY_PILL_CLASS = {
-  Monde: 'accent',
-  Aviation: 'amber',
-  Business: 'ok',
-  'Médecine': '',
-  'Culture & Savoir': 'solid',
+/* ---- News : catégories (ordre d'affichage, par langue) + couleur de badge ---- */
+export const NEWS_CATEGORIES_BY_LANG = {
+  fr: ['Monde', 'Business', 'Aviation', 'Médecine', 'Sport', 'Sciences & Espace', 'Tech & IA', 'Culture & Savoir'],
+  en: ['World', 'Business', 'Aviation', 'Health & Medicine', 'Sport', 'Science & Space', 'Tech & AI', 'Culture & Knowledge'],
 };
+export const CATEGORY_PILL_CLASS = {
+  Monde: 'accent', World: 'accent',
+  Business: 'ok',
+  Aviation: 'amber',
+  'Médecine': 'warn', 'Health & Medicine': 'warn',
+  Sport: 'solid',
+  'Sciences & Espace': 'accent', 'Science & Space': 'accent',
+  'Tech & IA': 'ok', 'Tech & AI': 'ok',
+  'Culture & Savoir': 'solid', 'Culture & Knowledge': 'solid',
+};
+
+/* bucket stable (a-f) pour la couleur du placeholder image d'une card
+   sans image — indépendant de la langue/catégorie exacte */
+export function catSlug(category) {
+  const str = category || '';
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  const buckets = ['a', 'b', 'c', 'd', 'e', 'f'];
+  return buckets[hash % buckets.length];
+}
 
 /* ---- état vide générique ---- */
 export function EmptyState({ icon = 'box', title, hint }) {

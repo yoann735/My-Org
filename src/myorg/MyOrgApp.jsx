@@ -2,36 +2,35 @@
    My Org — app shell : charge le snapshot IndexedDB (stores
    myorg_*), route les écrans et expose tout aux pages via `ctx`.
    Thème = thème partagé "univers" (passé par App.jsx).
-   100 % local : aucune IA, aucun réseau, aucun localStorage.
+   100 % local (hors /api/news, /api/article) : aucune clé API
+   côté client, aucun localStorage.
+   Nav actuelle : Dashboard + News fonctionnels ; Objectifs, Finance,
+   Santé en placeholder « Bientôt » (Calendrier et To-do retirés de
+   la nav — code et données existants conservés, juste débranchés).
    ============================================================ */
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../shared/Icon.jsx';
 import { Dashboard } from './pages/Dashboard.jsx';
 import { News } from './pages/News.jsx';
-import { Todos } from './pages/Todos.jsx';
-import { Goals } from './pages/Goals.jsx';
 import { Placeholder } from './pages/Placeholder.jsx';
 import { NewsReader } from './components/NewsReader.jsx';
-import { ensureSchema, getAll, getOne, put, remove } from './lib/storage.js';
+import { ensureSchema, getAll, getOne, getMeta, setMeta, put, remove } from './lib/storage.js';
 
 const NEWS_CACHE_TTL_MS = 3 * 60 * 60 * 1000; // 3h
+const DEFAULT_NEWS_LANG = 'fr';
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: 'home' },
   { id: 'news', label: 'News', icon: 'newspaper' },
-  { id: 'calendrier', label: 'Calendrier', icon: 'calendar' },
-  { id: 'todos', label: 'To-do', icon: 'check' },
+  { id: 'goals', label: 'Objectifs', icon: 'target' },
   { id: 'finance', label: 'Finance', icon: 'euro' },
   { id: 'sante', label: 'Santé', icon: 'heart' },
-  { id: 'goals', label: 'Objectifs', icon: 'target' },
 ];
 
 const SCREENS = {
   dashboard: Dashboard,
   news: News,
-  todos: Todos,
-  goals: Goals,
-  calendrier: (p) => <Placeholder {...p} icon="calendar" title="Calendrier" />,
+  goals: (p) => <Placeholder {...p} icon="target" title="Objectifs" />,
   finance: (p) => <Placeholder {...p} icon="euro" title="Finance" />,
   sante: (p) => <Placeholder {...p} icon="heart" title="Santé" />,
 };
@@ -67,15 +66,12 @@ function OrgSidebar({ current, onNav, expanded, onToggle, onHub }) {
 }
 
 function OrgBottomNav({ current, onNav }) {
-  // libellés courts (6 entrées sur mobile)
   const items = [
     { id: 'dashboard', label: 'Accueil', icon: 'home' },
     { id: 'news', label: 'News', icon: 'newspaper' },
-    { id: 'calendrier', label: 'Agenda', icon: 'calendar' },
-    { id: 'todos', label: 'To-do', icon: 'check' },
+    { id: 'goals', label: 'Objectifs', icon: 'target' },
     { id: 'finance', label: 'Finance', icon: 'euro' },
     { id: 'sante', label: 'Santé', icon: 'heart' },
-    { id: 'goals', label: 'Objectifs', icon: 'target' },
   ];
   return (
     <nav className="bottom-nav">
@@ -94,41 +90,66 @@ export default function MyOrgApp({ themeApi, goHub }) {
   const [screen, setScreen] = useState('dashboard');
   const [expanded, setExpanded] = useState(false);
   const [db, setDb] = useState(null);
+  const [newsLang, setNewsLangState] = useState(DEFAULT_NEWS_LANG);
+  const [newsCache, setNewsCache] = useState(null);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsReaderItem, setNewsReaderItem] = useState(null);
 
+  // todos/goals conservés (stores existants) même si non routés pour l'instant
   const reload = useCallback(async () => {
-    const [todos, goals, newsCacheRec, newsReadRecs] = await Promise.all([
-      getAll('todos'), getAll('goals'), getOne('newsCache', 'latest'), getAll('newsRead'),
+    const [todos, goals, newsReadRecs] = await Promise.all([
+      getAll('todos'), getAll('goals'), getAll('newsRead'),
     ]);
     setDb({
       todos: todos || [],
       goals: goals || [],
-      newsCache: newsCacheRec || null,
       newsReadUrls: new Set((newsReadRecs || []).map((r) => r.id)),
     });
   }, []);
 
-  // fetch /api/news si le cache est absent/périmé (>3h) ou si `force` (bouton Rafraîchir)
-  const refreshNews = useCallback(async (force = false) => {
-    const rec = await getOne('newsCache', 'latest');
+  const loadNewsCache = useCallback(async (lang) => {
+    const rec = await getOne('newsCache', 'latest_' + lang);
+    setNewsCache(rec || null);
+  }, []);
+
+  // fetch /api/news?lang=… si le cache (de cette langue) est absent/périmé (>3h) ou si `force`
+  const refreshNews = useCallback(async (lang, force = false) => {
+    const rec = await getOne('newsCache', 'latest_' + lang);
     const stale = !rec || (Date.now() - (rec.ts || 0) > NEWS_CACHE_TTL_MS);
-    if (!force && !stale) return;
+    if (!force && !stale) { setNewsCache(rec); return; }
     setNewsLoading(true);
     try {
-      const res = await fetch('/api/news');
+      const res = await fetch('/api/news?lang=' + lang);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const payload = await res.json();
-      await put('newsCache', { id: 'latest', payload, ts: Date.now() });
-      await reload();
+      const newRec = { id: 'latest_' + lang, payload, ts: Date.now() };
+      await put('newsCache', newRec);
+      setNewsCache(newRec);
     } catch (err) {
       console.error('Rafraîchissement des actus impossible', err);
     } finally {
       setNewsLoading(false);
     }
-  }, [reload]);
+  }, []);
 
-  useEffect(() => { (async () => { await ensureSchema(); await reload(); refreshNews(false); })(); }, [reload, refreshNews]);
+  const setNewsLang = useCallback(async (lang) => {
+    if (lang === newsLang) return;
+    setNewsLangState(lang);
+    await setMeta('newsLang', lang);
+    await loadNewsCache(lang);
+    refreshNews(lang, false);
+  }, [newsLang, loadNewsCache, refreshNews]);
+
+  useEffect(() => {
+    (async () => {
+      await ensureSchema();
+      await reload();
+      const lang = (await getMeta('newsLang')) || DEFAULT_NEWS_LANG;
+      setNewsLangState(lang);
+      await loadNewsCache(lang);
+      refreshNews(lang, false);
+    })();
+  }, [reload, loadNewsCache, refreshNews]);
 
   const markNewsRead = useCallback(async (url) => {
     if (!url) return;
@@ -152,14 +173,17 @@ export default function MyOrgApp({ themeApi, goHub }) {
     theme, toggleTheme, goHub,
     go: setScreen,
     db, reload,
-    // ---- mutations (persist + reload) ----
+    // ---- mutations (persist + reload) — Todos/Goals gardés en réserve ----
     saveTodo: async (t) => { await put('todos', t); await reload(); },
     deleteTodo: async (id) => { await remove('todos', id); await reload(); },
     saveGoal: async (g) => { await put('goals', g); await reload(); },
     deleteGoal: async (id) => { await remove('goals', id); await reload(); },
     // ---- news ----
+    newsLang,
+    setNewsLang,
+    newsCache,
     newsLoading,
-    refreshNews,
+    refreshNews: (force) => refreshNews(newsLang, force),
     markNewsRead,
     forgetNewsRead,
     openNewsReader,

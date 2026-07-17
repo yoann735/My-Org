@@ -1,52 +1,18 @@
 /* ============================================================
-   My Org — Dashboard : grille de cards résumé, chacune cliquable
-   vers la feature correspondante. Placeholders « Bientôt » pour
-   Calendrier / Finance / Santé (prompts à venir).
+   My Org — Dashboard : carte News (fonctionnelle) + placeholders
+   « Bientôt » pour Objectifs / Finance / Santé (prompts à venir).
    ============================================================ */
 import { Icon } from '../../shared/Icon.jsx';
-import { isLate } from '../lib/storage.js';
-import { CATEGORY_PILL_CLASS } from '../components/ui.jsx';
-
-/* début de la semaine en cours (lundi 00:00, convention FR) */
-function startOfWeek() {
-  const d = new Date();
-  const day = (d.getDay() + 6) % 7; // lundi = 0
-  d.setDate(d.getDate() - day);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function StatRow({ icon, value, label, tone }) {
-  return (
-    <div className="mo-stat">
-      <span className="mo-stat-ic" style={tone ? { color: `var(--${tone})` } : null}><Icon name={icon} size={15} /></span>
-      <b>{value}</b> {label}
-    </div>
-  );
-}
+import { CATEGORY_PILL_CLASS, catSlug } from '../components/ui.jsx';
 
 export function Dashboard({ ctx }) {
-  const { db } = ctx;
-  const year = new Date().getFullYear();
-
   // ---- News ----
-  const newsItems = db.newsCache?.payload?.items || [];
+  const newsItems = ctx.newsCache?.payload?.items || [];
   const newsHero = newsItems[0] || null;
   const newsRest = newsHero ? newsItems.slice(1, 6) : [];
 
-  // ---- KPIs To-do ----
-  const nbTodo = db.todos.filter((t) => t.statut !== 'done').length;
-  const nbLate = db.todos.filter(isLate).length;
-  const week = startOfWeek();
-  const nbDoneWeek = db.todos.filter((t) => t.statut === 'done' && t.doneAt && new Date(t.doneAt) >= week).length;
-
-  // ---- KPIs Objectifs (année en cours) ----
-  const goalsYear = db.goals.filter((g) => g.annee === year);
-  const avgProg = goalsYear.length ? Math.round(goalsYear.reduce((s, g) => s + (g.progression || 0), 0) / goalsYear.length) : 0;
-  const nbAtteints = goalsYear.filter((g) => g.statut === 'atteint').length;
-
   const soonCards = [
-    { id: 'calendrier', label: 'Calendrier', icon: 'calendar' },
+    { id: 'goals', label: 'Objectifs', icon: 'target' },
     { id: 'finance', label: 'Finance', icon: 'euro' },
     { id: 'sante', label: 'Santé', icon: 'heart' },
   ];
@@ -65,7 +31,7 @@ export function Dashboard({ ctx }) {
 
       <div className="mo-grid">
         {/* News */}
-        <div className="card mo-card">
+        <div className="card mo-card news-dash-card">
           <div className="card-head" role="button" tabIndex={0} onClick={() => ctx.go('news')}
             onKeyDown={(e) => { if (e.key === 'Enter') ctx.go('news'); }} style={{ cursor: 'pointer' }}>
             <Icon name="newspaper" size={17} className="ic" /><h3>News</h3>
@@ -75,18 +41,23 @@ export function Dashboard({ ctx }) {
             {newsHero ? (
               <>
                 <div
+                  className="news-dash-hero"
                   role="button" tabIndex={0}
                   onClick={() => ctx.openNewsReader(newsHero)}
                   onKeyDown={(e) => { if (e.key === 'Enter') ctx.openNewsReader(newsHero); }}
-                  style={{ cursor: 'pointer', marginBottom: 8 }}
                 >
-                  <div className="mo-row-title" style={{ marginBottom: 4 }}>{newsHero.title}</div>
-                  <div className="hint" style={{ fontSize: 12.5 }}>{newsHero.source}</div>
+                  {newsHero.image
+                    ? <img className="news-dash-hero-img" src={newsHero.image} alt="" loading="lazy" />
+                    : <div className={'news-dash-hero-img news-card-ph cat-' + catSlug(newsHero.category)} />}
+                  <div className="news-dash-hero-body">
+                    <div className="mo-row-title" style={{ marginBottom: 4 }}>{newsHero.title}</div>
+                    <div className="hint" style={{ fontSize: 12.5 }}>{newsHero.source}</div>
+                  </div>
                 </div>
                 <div className="news-dash-list">
                   {newsRest.map((it) => (
                     <div
-                      key={it.url}
+                      key={it.id || it.url}
                       className="news-dash-item"
                       role="button" tabIndex={0}
                       onClick={() => ctx.openNewsReader(it)}
@@ -101,32 +72,6 @@ export function Dashboard({ ctx }) {
             ) : (
               <span className="hint" style={{ fontSize: 13 }}>Pas encore d’actus — ouvre l’onglet News.</span>
             )}
-          </div>
-        </div>
-
-        {/* To-do */}
-        <div className="card mo-card" role="button" tabIndex={0} onClick={() => ctx.go('todos')}
-          onKeyDown={(e) => { if (e.key === 'Enter') ctx.go('todos'); }}>
-          <div className="card-head"><Icon name="check" size={17} className="ic" /><h3>To-do</h3>
-            <div className="right"><Icon name="arrowR" size={16} className="ic" /></div></div>
-          <div className="card-body">
-            <StatRow icon="list" value={nbTodo} label="à faire" />
-            <StatRow icon="alert" value={nbLate} label="en retard" tone={nbLate ? 'crit' : undefined} />
-            <StatRow icon="check" value={nbDoneWeek} label="faites cette semaine" tone="ok" />
-          </div>
-        </div>
-
-        {/* Objectifs */}
-        <div className="card mo-card" role="button" tabIndex={0} onClick={() => ctx.go('goals')}
-          onKeyDown={(e) => { if (e.key === 'Enter') ctx.go('goals'); }}>
-          <div className="card-head"><Icon name="target" size={17} className="ic" /><h3>Objectifs {year}</h3>
-            <div className="right"><Icon name="arrowR" size={16} className="ic" /></div></div>
-          <div className="card-body">
-            <div className="mo-goal-prog" style={{ marginBottom: 10 }}>
-              <div className="bar" style={{ flex: 1 }}><span style={{ width: `${avgProg}%` }} /></div>
-              <span className="mo-goal-pct">{avgProg} %</span>
-            </div>
-            <StatRow icon="trophy" value={nbAtteints} label={`objectif(s) atteint(s) sur ${goalsYear.length}`} tone="ok" />
           </div>
         </div>
 
