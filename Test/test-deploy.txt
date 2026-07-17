@@ -1,2 +1,0 @@
-Fichier de test pour vérifier la connexion Vercel <-> GitHub.
-Créé le 2026-07-17.
