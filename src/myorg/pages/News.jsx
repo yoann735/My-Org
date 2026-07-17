@@ -1,14 +1,24 @@
 /* ============================================================
-   My Org — News : lecture 100 % IndexedDB-first (cache par langue
-   affiché instantanément), puis fetch /api/news?lang=… en arrière-
-   plan. Toggle FR/EN (persisté dans myorg_meta). Design en cards :
-   « Une » en grand (image) en haut, puis une section par catégorie
-   avec une grille de cards (image ou placeholder coloré, badge,
-   titre, résumé). Clic → lecteur (article complet).
+   My Org — News : lecture 100 % IndexedDB-first (cache combiné
+   fr+en affiché instantanément), puis fetch /api/news en arrière-
+   plan. Filtre Tous/FR/EN purement client-side (myorg_meta, ne
+   redéclenche pas de fetch). Design firehose en cards, sectorisé :
+   « Pour toi » (affinité apprise des clics) → « Une » (importance/
+   récence max) → une section par catégorie → « Docs & longs
+   formats » en dernier. Clic → lecteur (article complet).
    ============================================================ */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { ConfirmModal, EmptyState, NEWS_CATEGORIES_BY_LANG, CATEGORY_PILL_CLASS, catSlug } from '../components/ui.jsx';
+import {
+  ConfirmModal, EmptyState, NEWS_CATEGORIES, DOCS_CATEGORY,
+  CATEGORY_PILL_CLASS, LangBadge, catSlug, pickHero,
+} from '../components/ui.jsx';
+
+const LANG_FILTERS = [
+  { id: 'all', label: 'Tous' },
+  { id: 'fr', label: 'FR' },
+  { id: 'en', label: 'EN' },
+];
 
 function fmtGeneratedAt(iso) {
   if (!iso) return null;
@@ -29,7 +39,10 @@ function NewsCard({ item, read, onOpen, onForget }) {
         ? <img className="news-card-img" src={item.image} alt="" loading="lazy" />
         : <div className={'news-card-img news-card-ph cat-' + catSlug(item.category)}><Icon name="newspaper" size={26} /></div>}
       <div className="news-card-body">
-        <CategoryBadge category={item.category} />
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <CategoryBadge category={item.category} />
+          <LangBadge lang={item.lang} />
+        </div>
         <div className="news-card-title">{item.title}</div>
         {item.summary && <div className="news-card-summary">{item.summary}</div>}
         <div className="news-card-source">{item.source}</div>
@@ -49,16 +62,32 @@ function NewsCard({ item, read, onOpen, onForget }) {
 }
 
 export function News({ ctx }) {
-  const { newsLoading, newsLang, newsCache } = ctx;
+  const { newsLoading, newsLangFilter, newsItems, forYouItems, newsCache } = ctx;
   const [forgetting, setForgetting] = useState(null);
+  const [resettingProfile, setResettingProfile] = useState(false);
 
   const payload = newsCache?.payload || null;
-  const items = payload?.items || [];
   const readUrls = ctx.db?.newsReadUrls || new Set();
-  const categories = NEWS_CATEGORIES_BY_LANG[newsLang] || NEWS_CATEGORIES_BY_LANG.fr;
 
-  const hero = items[0] || null;
-  const rest = hero ? items.slice(1) : [];
+  const { hero, byCategory, docs } = useMemo(() => {
+    const nonDocs = newsItems.filter((it) => it.category !== DOCS_CATEGORY);
+    const docItems = newsItems.filter((it) => it.category === DOCS_CATEGORY)
+      .sort((a, b) => new Date(b.pubDate || 0) - new Date(a.pubDate || 0));
+
+    const heroItem = pickHero(nonDocs);
+
+    const grouped = {};
+    for (const cat of NEWS_CATEGORIES) grouped[cat] = [];
+    for (const it of nonDocs) {
+      if (heroItem && it.id === heroItem.id) continue;
+      if (grouped[it.category]) grouped[it.category].push(it);
+    }
+    for (const cat of NEWS_CATEGORIES) {
+      grouped[cat].sort((a, b) => new Date(b.pubDate || 0) - new Date(a.pubDate || 0));
+    }
+
+    return { hero: heroItem, byCategory: grouped, docs: docItems };
+  }, [newsItems]);
 
   return (
     <div className="screen scroll fadein">
@@ -66,14 +95,15 @@ export function News({ ctx }) {
         <div>
           <h1 className="serif">News</h1>
           <div className="sub">
-            {items.length} actu{items.length > 1 ? 's' : ''}
+            {newsItems.length} actu{newsItems.length > 1 ? 's' : ''}
             {payload?.generatedAt ? ` · maj ${fmtGeneratedAt(payload.generatedAt)}` : ''}
           </div>
         </div>
         <div className="topbar-actions">
           <div className="seg">
-            <button type="button" className={'seg-btn' + (newsLang === 'fr' ? ' active' : '')} onClick={() => ctx.setNewsLang('fr')}>FR</button>
-            <button type="button" className={'seg-btn' + (newsLang === 'en' ? ' active' : '')} onClick={() => ctx.setNewsLang('en')}>EN</button>
+            {LANG_FILTERS.map((f) => (
+              <button key={f.id} type="button" className={'seg-btn' + (newsLangFilter === f.id ? ' active' : '')} onClick={() => ctx.setNewsLangFilter(f.id)}>{f.label}</button>
+            ))}
           </div>
           <button className="icon-btn" type="button" title="Rafraîchir" disabled={newsLoading} onClick={() => ctx.refreshNews(true)}>
             <Icon name="refresh" size={19} className={newsLoading ? 'spin' : ''} />
@@ -85,7 +115,7 @@ export function News({ ctx }) {
         </div>
       </div>
 
-      {!items.length && (
+      {!newsItems.length && (
         <div className="card" style={{ maxWidth: 820 }}>
           <div className="card-body">
             <EmptyState
@@ -93,6 +123,26 @@ export function News({ ctx }) {
               title={newsLoading ? 'Récupération des actus…' : 'Aucune actu pour l’instant'}
               hint={newsLoading ? null : 'Clique sur « Rafraîchir » pour lancer une première récupération.'}
             />
+          </div>
+        </div>
+      )}
+
+      {!!forYouItems.length && (
+        <div className="news-section">
+          <div className="news-group-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>Pour toi</span>
+            <button type="button" className="news-forget-link" onClick={() => setResettingProfile(true)}>Oublier mes préférences</button>
+          </div>
+          <div className="news-card-grid">
+            {forYouItems.map((it) => (
+              <NewsCard
+                key={it.id || it.url}
+                item={it}
+                read={readUrls.has(it.url)}
+                onOpen={ctx.openNewsReader}
+                onForget={(item) => setForgetting(item)}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -105,6 +155,7 @@ export function News({ ctx }) {
           <div className="news-hero-body">
             <div className="news-hero-meta">
               <CategoryBadge category={hero.category} />
+              <LangBadge lang={hero.lang} />
               <span className="hint" style={{ fontSize: 12.5 }}>{hero.source}</span>
             </div>
             <div className="news-hero-title">{hero.title}</div>
@@ -113,8 +164,8 @@ export function News({ ctx }) {
         </div>
       )}
 
-      {categories.map((cat) => {
-        const catItems = rest.filter((it) => it.category === cat);
+      {NEWS_CATEGORIES.map((cat) => {
+        const catItems = byCategory[cat] || [];
         if (!catItems.length) return null;
         return (
           <div className="news-section" key={cat}>
@@ -134,6 +185,23 @@ export function News({ ctx }) {
         );
       })}
 
+      {!!docs.length && (
+        <div className="news-section">
+          <div className="news-group-title">{DOCS_CATEGORY}</div>
+          <div className="news-card-grid">
+            {docs.map((it) => (
+              <NewsCard
+                key={it.id || it.url}
+                item={it}
+                read={readUrls.has(it.url)}
+                onOpen={ctx.openNewsReader}
+                onForget={(item) => setForgetting(item)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {forgetting && (
         <ConfirmModal
           title="Oublier cette lecture ?"
@@ -141,6 +209,17 @@ export function News({ ctx }) {
           confirmLabel="Oublier"
           onConfirm={async () => { await ctx.forgetNewsRead(forgetting.url); setForgetting(null); }}
           onCancel={() => setForgetting(null)}
+        />
+      )}
+
+      {resettingProfile && (
+        <ConfirmModal
+          title="Oublier tes préférences ?"
+          body="Le profil appris de tes clics (catégories, sources, mots-clés) sera réinitialisé. « Pour toi » repartira d'un mix varié."
+          confirmLabel="Oublier"
+          danger
+          onConfirm={async () => { await ctx.resetNewsProfile(); setResettingProfile(false); }}
+          onCancel={() => setResettingProfile(false)}
         />
       )}
     </div>

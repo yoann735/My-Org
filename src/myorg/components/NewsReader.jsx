@@ -7,7 +7,7 @@
    ============================================================ */
 import { useEffect, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { CATEGORY_PILL_CLASS } from './ui.jsx';
+import { CATEGORY_PILL_CLASS, LangBadge } from './ui.jsx';
 
 function fmtDate(iso) {
   if (!iso) return null;
@@ -40,6 +40,7 @@ export function NewsReader({ item, onClose }) {
         <div className="news-reader-topbar">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className={'pill' + (pillClass ? ' ' + pillClass : '')} style={{ height: 22, fontSize: 11 }}>{item.category}</span>
+            <LangBadge lang={item.lang} />
             <span className="hint" style={{ fontSize: 12.5 }}>{full?.source || item.source}</span>
             {full?.published && <span className="hint" style={{ fontSize: 12.5 }}>· {fmtDate(full.published)}</span>}
           </div>

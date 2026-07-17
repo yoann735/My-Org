@@ -33,21 +33,40 @@ export function PrioPill({ priorite }) {
   return <span className={'pill ' + p.cls} style={{ height: 24, fontSize: 11.5 }}>{p.label}</span>;
 }
 
-/* ---- News : catégories (ordre d'affichage, par langue) + couleur de badge ---- */
-export const NEWS_CATEGORIES_BY_LANG = {
-  fr: ['Monde', 'Business', 'Aviation', 'Médecine', 'Sport', 'Sciences & Espace', 'Tech & IA', 'Culture & Savoir'],
-  en: ['World', 'Business', 'Aviation', 'Health & Medicine', 'Sport', 'Science & Space', 'Tech & AI', 'Culture & Knowledge'],
-};
+/* ---- News : catégories canoniques (ordre d'affichage) + couleur de
+   badge. Un item est tagué `lang` (fr/en) indépendamment de sa
+   catégorie — le filtre Tous/FR/EN se fait côté client sur ce champ. */
+export const NEWS_CATEGORIES = ['Monde', 'Business', 'Aviation', 'Médecine', 'Sciences & Espace', 'Tech & IA', 'Sport', 'Histoire & Culture'];
+export const DOCS_CATEGORY = 'Docs & longs formats';
 export const CATEGORY_PILL_CLASS = {
-  Monde: 'accent', World: 'accent',
+  Monde: 'accent',
   Business: 'ok',
   Aviation: 'amber',
-  'Médecine': 'warn', 'Health & Medicine': 'warn',
+  'Médecine': 'warn',
+  'Sciences & Espace': 'accent',
+  'Tech & IA': 'ok',
   Sport: 'solid',
-  'Sciences & Espace': 'accent', 'Science & Space': 'accent',
-  'Tech & IA': 'ok', 'Tech & AI': 'ok',
-  'Culture & Savoir': 'solid', 'Culture & Knowledge': 'solid',
+  'Histoire & Culture': 'solid',
+  'Docs & longs formats': 'solid',
 };
+
+/* badge langue (FR/EN) affiché sur les cards */
+export function LangBadge({ lang }) {
+  if (!lang) return null;
+  return <span className="pill lang-pill" style={{ height: 20, fontSize: 10 }}>{lang.toUpperCase()}</span>;
+}
+
+/* « Une » : item importance/récence max, hors Docs & longs formats.
+   Partagé entre l'onglet News et la carte Dashboard pour rester cohérent. */
+export function pickHero(items) {
+  const candidates = (items || []).filter((it) => it.category !== DOCS_CATEGORY);
+  if (!candidates.length) return null;
+  return [...candidates].sort((a, b) => {
+    const impDiff = (b.importance || 0) - (a.importance || 0);
+    if (impDiff !== 0) return impDiff;
+    return new Date(b.pubDate || 0) - new Date(a.pubDate || 0);
+  })[0];
+}
 
 /* bucket stable (a-f) pour la couleur du placeholder image d'une card
    sans image — indépendant de la langue/catégorie exacte */

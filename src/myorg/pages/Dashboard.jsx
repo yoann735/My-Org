@@ -1,15 +1,19 @@
 /* ============================================================
    My Org — Dashboard : carte News (fonctionnelle) + placeholders
    « Bientôt » pour Objectifs / Finance / Santé (prompts à venir).
+   Carte News : « Pour toi » en avant (2-3 items avec image), puis
+   « Une », puis une liste courte. Clic item → lecteur. Clic
+   en-tête → onglet News.
    ============================================================ */
 import { Icon } from '../../shared/Icon.jsx';
-import { CATEGORY_PILL_CLASS, catSlug } from '../components/ui.jsx';
+import { CATEGORY_PILL_CLASS, catSlug, pickHero } from '../components/ui.jsx';
 
 export function Dashboard({ ctx }) {
   // ---- News ----
-  const newsItems = ctx.newsCache?.payload?.items || [];
-  const newsHero = newsItems[0] || null;
-  const newsRest = newsHero ? newsItems.slice(1, 6) : [];
+  const forYouTop = (ctx.forYouItems || []).slice(0, 3);
+  const hero = pickHero(ctx.newsItems || []);
+  const excludeIds = new Set([...forYouTop.map((it) => it.id), hero?.id].filter(Boolean));
+  const shortList = (ctx.newsItems || []).filter((it) => !excludeIds.has(it.id)).slice(0, 4);
 
   const soonCards = [
     { id: 'goals', label: 'Objectifs', icon: 'target' },
@@ -38,24 +42,47 @@ export function Dashboard({ ctx }) {
             <div className="right"><Icon name="arrowR" size={16} className="ic" /></div>
           </div>
           <div className="card-body">
-            {newsHero ? (
+            {hero || forYouTop.length ? (
               <>
-                <div
-                  className="news-dash-hero"
-                  role="button" tabIndex={0}
-                  onClick={() => ctx.openNewsReader(newsHero)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') ctx.openNewsReader(newsHero); }}
-                >
-                  {newsHero.image
-                    ? <img className="news-dash-hero-img" src={newsHero.image} alt="" loading="lazy" />
-                    : <div className={'news-dash-hero-img news-card-ph cat-' + catSlug(newsHero.category)} />}
-                  <div className="news-dash-hero-body">
-                    <div className="mo-row-title" style={{ marginBottom: 4 }}>{newsHero.title}</div>
-                    <div className="hint" style={{ fontSize: 12.5 }}>{newsHero.source}</div>
+                {!!forYouTop.length && (
+                  <>
+                    <div className="hint" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>Pour toi</div>
+                    <div className="news-dash-foryou">
+                      {forYouTop.map((it) => (
+                        <div
+                          key={it.id || it.url}
+                          className="news-dash-foryou-item"
+                          role="button" tabIndex={0}
+                          onClick={() => ctx.openNewsReader(it)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') ctx.openNewsReader(it); }}
+                        >
+                          {it.image
+                            ? <img className="news-dash-foryou-img" src={it.image} alt="" loading="lazy" />
+                            : <div className={'news-dash-foryou-img news-card-ph cat-' + catSlug(it.category)} />}
+                          <div className="news-dash-foryou-title">{it.title}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {hero && (
+                  <div
+                    className="news-dash-hero"
+                    role="button" tabIndex={0}
+                    onClick={() => ctx.openNewsReader(hero)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') ctx.openNewsReader(hero); }}
+                  >
+                    {hero.image
+                      ? <img className="news-dash-hero-img" src={hero.image} alt="" loading="lazy" />
+                      : <div className={'news-dash-hero-img news-card-ph cat-' + catSlug(hero.category)} />}
+                    <div className="news-dash-hero-body">
+                      <div className="mo-row-title" style={{ marginBottom: 4 }}>{hero.title}</div>
+                      <div className="hint" style={{ fontSize: 12.5 }}>{hero.source}</div>
+                    </div>
                   </div>
-                </div>
+                )}
                 <div className="news-dash-list">
-                  {newsRest.map((it) => (
+                  {shortList.map((it) => (
                     <div
                       key={it.id || it.url}
                       className="news-dash-item"

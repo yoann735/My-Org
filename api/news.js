@@ -1,94 +1,79 @@
 /* ============================================================
-   My Org — /api/news?lang=fr|en : agrège des flux RSS côté serveur
-   (contourne le CORS), déduplique, filtre les dernières 48h, capture
-   l'image de chaque item, puis fait curer par Claude (garde l'important
-   /fiable/neutre, résumé dans la langue demandée). Le modèle ne gère
-   PAS les images : le code refusionne image/url/source par id après
-   coup. Sans ANTHROPIC_API_KEY : fallback local (tri par date + filtre
-   mots-clés négatifs, bilingue). Cache mémoire (scope module), PAR
-   LANGUE, 3h.
+   My Org — /api/news : agrège en firehose un maximum de flux RSS
+   côté serveur (contourne le CORS), déduplique, filtre les 72
+   dernières heures, capture l'image de chaque item. Filtre NÉGATIF
+   LÉGER uniquement (titres clairement dramatiques/graphiques) — on
+   n'exclut rien d'autre, la pertinence se fait par le TRI (récence +
+   affinité apprise côté client), pas par la suppression.
+   ENRICHISSEMENT OPTIONNEL (si ANTHROPIC_API_KEY) : les ~40 items les
+   plus récents sont envoyés à Claude Haiku pour {importance, summary}
+   — jamais pour exclure. Les autres items gardent leur résumé natif
+   (contentSnippet du flux) + une importance neutre par défaut.
+   Chaque item est tagué `lang` (fr/en) selon son flux d'origine ; le
+   filtre Tous/FR/EN se fait côté front sur ce champ. Cache mémoire
+   (scope module), un seul payload combiné, refetch au-delà de 3h.
+   Un flux mort ne casse jamais la réponse.
    ============================================================ */
 import Parser from 'rss-parser';
 import Anthropic from '@anthropic-ai/sdk';
 import { createHash } from 'crypto';
 
-const FEEDS_BY_LANG = {
-  fr: {
-    Monde: [
-      'https://www.france24.com/fr/rss',
-      'https://news.google.com/rss/search?q=when:24h+allinurl:reuters.com&hl=fr&gl=FR&ceid=FR:fr',
-    ],
-    Business: [
-      'https://news.google.com/rss/search?q=%C3%A9conomie+entreprise+business&hl=fr&gl=FR&ceid=FR:fr',
-    ],
-    Aviation: [
-      'https://news.google.com/rss/search?q=aviation+a%C3%A9ronautique&hl=fr&gl=FR&ceid=FR:fr',
-    ],
-    'Médecine': [
-      'https://news.google.com/rss/search?q=m%C3%A9decine+recherche+m%C3%A9dicale&hl=fr&gl=FR&ceid=FR:fr',
-    ],
-    Sport: [
-      'https://news.google.com/rss/search?q=sport+actualit%C3%A9&hl=fr&gl=FR&ceid=FR:fr',
-    ],
-    'Sciences & Espace': [
-      'https://news.google.com/rss/search?q=science+espace+d%C3%A9couverte&hl=fr&gl=FR&ceid=FR:fr',
-    ],
-    'Tech & IA': [
-      'https://news.google.com/rss/search?q=technologie+intelligence+artificielle&hl=fr&gl=FR&ceid=FR:fr',
-    ],
-    'Culture & Savoir': [
-      'https://news.google.com/rss/search?q=histoire+culture+g%C3%A9ographie&hl=fr&gl=FR&ceid=FR:fr',
-    ],
-  },
-  en: {
-    World: [
-      'https://feeds.bbci.co.uk/news/world/rss.xml',
-      'https://www.aljazeera.com/xml/rss/all.xml',
-    ],
-    Business: [
-      'https://feeds.bbci.co.uk/news/business/rss.xml',
-    ],
-    Aviation: [
-      'https://news.google.com/rss/search?q=aviation+aerospace&hl=en&gl=US&ceid=US:en',
-    ],
-    'Health & Medicine': [
-      'https://www.news-medical.net/syndication.axd?format=rss',
-      'https://feeds.bbci.co.uk/news/health/rss.xml',
-    ],
-    Sport: [
-      'https://feeds.bbci.co.uk/sport/rss.xml',
-    ],
-    'Science & Space': [
-      'https://feeds.bbci.co.uk/news/science_and_environment/rss.xml',
-    ],
-    'Tech & AI': [
-      'https://feeds.bbci.co.uk/news/technology/rss.xml',
-    ],
-    'Culture & Knowledge': [
-      'https://news.google.com/rss/search?q=history+culture+geography&hl=en&gl=US&ceid=US:en',
-    ],
-  },
-};
+/* pool de flux — à plat, catégorie canonique (fr) + langue de l'item.
+   Facile à éditer : ajouter/retirer une ligne suffit. */
+const FEEDS = [
+  // Monde
+  { category: 'Monde', lang: 'fr', url: 'https://www.france24.com/fr/rss' },
+  { category: 'Monde', lang: 'en', url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
+  { category: 'Monde', lang: 'en', url: 'https://www.aljazeera.com/xml/rss/all.xml' },
+  { category: 'Monde', lang: 'fr', url: 'https://news.google.com/rss/search?q=when:24h+allinurl:reuters.com&hl=fr&gl=FR&ceid=FR:fr' },
+  // Business
+  { category: 'Business', lang: 'en', url: 'https://feeds.bbci.co.uk/news/business/rss.xml' },
+  { category: 'Business', lang: 'fr', url: 'https://news.google.com/rss/search?q=%C3%A9conomie+entreprise+startup&hl=fr&gl=FR&ceid=FR:fr' },
+  { category: 'Business', lang: 'en', url: 'https://news.google.com/rss/search?q=business+economy+markets&hl=en&gl=US&ceid=US:en' },
+  // Aviation
+  { category: 'Aviation', lang: 'fr', url: 'https://news.google.com/rss/search?q=aviation+a%C3%A9ronautique+avion&hl=fr&gl=FR&ceid=FR:fr' },
+  { category: 'Aviation', lang: 'en', url: 'https://news.google.com/rss/search?q=aviation+aerospace+airline&hl=en&gl=US&ceid=US:en' },
+  // Médecine
+  { category: 'Médecine', lang: 'en', url: 'https://www.news-medical.net/syndication.axd?format=rss' },
+  { category: 'Médecine', lang: 'en', url: 'https://feeds.bbci.co.uk/news/health/rss.xml' },
+  { category: 'Médecine', lang: 'fr', url: 'https://news.google.com/rss/search?q=m%C3%A9decine+recherche+m%C3%A9dicale+sant%C3%A9&hl=fr&gl=FR&ceid=FR:fr' },
+  // Sciences & Espace (newscientist.com/feed/home retiré : renvoie 406 en permanence)
+  { category: 'Sciences & Espace', lang: 'en', url: 'https://feeds.bbci.co.uk/news/science_and_environment/rss.xml' },
+  { category: 'Sciences & Espace', lang: 'en', url: 'https://www.livescience.com/feeds.xml' },
+  { category: 'Sciences & Espace', lang: 'en', url: 'https://phys.org/rss-feed/physics-news/' },
+  { category: 'Sciences & Espace', lang: 'fr', url: 'https://news.google.com/rss/search?q=science+espace+d%C3%A9couverte&hl=fr&gl=FR&ceid=FR:fr' },
+  // Tech & IA
+  { category: 'Tech & IA', lang: 'en', url: 'https://feeds.bbci.co.uk/news/technology/rss.xml' },
+  { category: 'Tech & IA', lang: 'fr', url: 'https://news.google.com/rss/search?q=technologie+intelligence+artificielle&hl=fr&gl=FR&ceid=FR:fr' },
+  // Sport
+  { category: 'Sport', lang: 'en', url: 'https://feeds.bbci.co.uk/sport/rss.xml' },
+  { category: 'Sport', lang: 'fr', url: 'https://news.google.com/rss/search?q=sport+actualit%C3%A9&hl=fr&gl=FR&ceid=FR:fr' },
+  // Histoire & Culture
+  { category: 'Histoire & Culture', lang: 'en', url: 'https://www.smithsonianmag.com/rss/latest_articles/' },
+  { category: 'Histoire & Culture', lang: 'fr', url: 'https://news.google.com/rss/search?q=histoire+culture+g%C3%A9ographie&hl=fr&gl=FR&ceid=FR:fr' },
+  // Docs & longs formats
+  { category: 'Docs & longs formats', lang: 'en', url: 'https://www.quantamagazine.org/feed/' },
+  { category: 'Docs & longs formats', lang: 'en', url: 'https://aeon.co/feed.rss' },
+  { category: 'Docs & longs formats', lang: 'en', url: 'https://longreads.com/feed/' },
+  { category: 'Docs & longs formats', lang: 'en', url: 'https://nautil.us/feed/' },
+];
 
 const LANG_NAME = { fr: 'français', en: 'anglais' };
-const MAX_AGE_MS = 48 * 60 * 60 * 1000;
-const MAX_ITEMS_TO_MODEL = 60;
+const MAX_AGE_MS = 72 * 60 * 60 * 1000; // fenêtre firehose : 72h
+const MAX_ITEMS_TO_ENRICH = 40; // seuls les + récents passent par Claude
 const CACHE_TTL_MS = 3 * 60 * 60 * 1000;
 const MODEL = 'claude-haiku-4-5-20251001';
 
+/* filtre négatif LÉGER : écarte seulement les titres clairement
+   dramatiques/graphiques. Éditable — on ne sur-filtre pas. */
 const NEGATIVE_KEYWORDS = [
-  // français
-  'guerre', 'mort', 'morte', 'morts', 'tue', 'tuee', 'tues', 'crash', 'attentat',
-  'massacre', 'catastrophe', 'meurtre', 'tuerie', 'deces', 'explosion',
-  'fusillade', 'viol', 'seisme', 'incendie meurtrier', 'assassinat', 'carnage',
-  // anglais (plusieurs flux — BBC, Al Jazeera — sont en anglais)
-  'war', 'dead', 'death', 'killed', 'kills', 'attack', 'attacks',
-  'shooting', 'bombing', 'explosion', 'hijack', 'hijacked',
-  'earthquake', 'disaster', 'murder', 'assassination',
+  'guerre', 'attentat', 'crash', 'meurtre', 'tuerie', 'massacre', 'fusillade', 'carnage', 'assassinat', 'attaque terroriste',
+  'war', 'terror attack', 'plane crash', 'mass shooting', 'massacre', 'murder', 'bombing', 'gunman',
 ];
 
-/* cache module-scope, par langue (survit tant que la fonction reste "chaude") */
-const cache = { fr: { payload: null, ts: 0 }, en: { payload: null, ts: 0 } };
+/* cache module-scope : un seul payload combiné (fr+en), survit tant
+   que la fonction serverless reste "chaude" */
+const cache = { payload: null, ts: 0 };
 
 function stripAccents(s) {
   return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -119,6 +104,11 @@ function dedupeItems(items) {
     if (!isDup) kept.push({ ...item, _norm: norm });
   }
   return kept.map(({ _norm, ...rest }) => rest);
+}
+
+function isDramatic(title) {
+  const norm = normalizeTitle(title);
+  return NEGATIVE_KEYWORDS.some((kw) => norm.includes(normalizeTitle(kw)));
 }
 
 function hostnameOf(url) {
@@ -170,8 +160,7 @@ function extractImage(entry) {
   return null;
 }
 
-async function fetchAllFeeds(lang) {
-  const feeds = FEEDS_BY_LANG[lang];
+async function fetchAllFeeds() {
   const parser = new Parser({
     timeout: 8000,
     customFields: {
@@ -182,28 +171,25 @@ async function fetchAllFeeds(lang) {
     },
   });
   const cutoff = Date.now() - MAX_AGE_MS;
-  const tasks = [];
-  for (const [category, urls] of Object.entries(feeds)) {
-    for (const url of urls) {
-      tasks.push(
-        withHardTimeout(parser.parseURL(url), FEED_HARD_TIMEOUT_MS, url)
-          .then((feed) => ({ category, feed }))
-          .catch((err) => {
-            console.error(`[api/news] flux en échec (${category}/${lang}): ${url} — ${err.message}`);
-            return null;
-          }),
-      );
-    }
-  }
+
+  const tasks = FEEDS.map(({ category, lang, url }) =>
+    withHardTimeout(parser.parseURL(url), FEED_HARD_TIMEOUT_MS, url)
+      .then((feed) => ({ category, lang, feed }))
+      .catch((err) => {
+        console.error(`[api/news] flux en échec (${category}/${lang}): ${url} — ${err.message}`);
+        return null;
+      }),
+  );
 
   const results = await Promise.all(tasks);
   const items = [];
   for (const result of results) {
     if (!result) continue;
-    const { category, feed } = result;
+    const { category, lang, feed } = result;
     const feedTitle = feed.title || '';
     for (const entry of feed.items || []) {
       if (!entry.link || !entry.title) continue;
+      if (isDramatic(entry.title)) continue;
       const dateStr = entry.isoDate || entry.pubDate;
       const date = dateStr ? new Date(dateStr) : null;
       const validDate = date && !Number.isNaN(date.getTime());
@@ -216,25 +202,22 @@ async function fetchAllFeeds(lang) {
         image: extractImage(entry),
         pubDate: validDate ? date.toISOString() : null,
         contentSnippet: (entry.contentSnippet || entry.content || '').trim(),
-        categoryHint: category,
+        category,
+        lang,
+        importance: 3, // neutre par défaut, affiné par Claude pour les + récents
+        summary: '',
       });
     }
   }
   return items;
 }
 
-async function curateWithClaude(items, lang, apiKey) {
+async function enrichWithClaude(items, apiKey) {
   const client = new Anthropic({ apiKey });
-  const categories = Object.keys(FEEDS_BY_LANG[lang]);
-
-  const systemPrompt = `Tu es un éditeur d'actu rationnel et non partisan. Garde UNIQUEMENT l'important, fiable, neutre ou positif. EXCLUS l'anxiogène/dramatique/graphique/politiquement orienté. Pour le Monde : seulement ce qui est réellement important à l'échelle mondiale, factuel. Réponds STRICTEMENT en JSON (aucun texte autour) : un tableau d'objets {id, category, importance (1-5), summary (2-3 phrases neutres, en ${LANG_NAME[lang]}, la langue demandée)}. Le champ "category" doit être recopié TEL QUEL depuis le "categoryHint" fourni pour l'item (ne l'invente pas, ne le traduis pas). Catégories valides : ${categories.join(' | ')}. Classe le tableau par importance décroissante.`;
+  const systemPrompt = `Tu enrichis un flux d'actualité, tu ne le censures pas. Pour CHAQUE item fourni (id, title, source, category, lang, pubDate), réponds STRICTEMENT en JSON (aucun texte autour) : un tableau d'objets {id, importance (1-5, importance factuelle objective de la nouvelle), summary (2-3 phrases neutres et factuelles, écrites dans la langue indiquée par "lang" : "fr" → français, "en" → anglais)}. N'exclus AUCUN item de ta réponse — un item par entrée fournie.`;
 
   const input = items.map((it) => ({
-    id: it.id,
-    title: it.title,
-    source: it.source,
-    categoryHint: it.categoryHint,
-    pubDate: it.pubDate,
+    id: it.id, title: it.title, source: it.source, category: it.category, lang: it.lang, pubDate: it.pubDate,
   }));
 
   const message = await client.messages.create({
@@ -244,96 +227,72 @@ async function curateWithClaude(items, lang, apiKey) {
     messages: [{ role: 'user', content: JSON.stringify(input) }],
   });
 
-  const text = message.content
-    .map((block) => (block.type === 'text' ? block.text : ''))
-    .join('')
-    .trim();
+  const text = message.content.map((b) => (b.type === 'text' ? b.text : '')).join('').trim();
   const cleaned = text.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
-
   const parsed = JSON.parse(cleaned);
   if (!Array.isArray(parsed)) throw new Error('Réponse Claude non conforme (pas un tableau)');
 
-  const byId = new Map(items.map((it) => [it.id, it]));
-  const merged = [];
-  for (const curated of parsed) {
-    const original = curated && byId.get(curated.id);
-    if (!original) continue;
-    merged.push({
-      id: original.id,
-      title: original.title,
-      source: original.source,
-      url: original.url,
-      image: original.image,
-      category: categories.includes(curated.category) ? curated.category : original.categoryHint,
-      importance: Number.isFinite(curated.importance) ? Math.min(5, Math.max(1, curated.importance)) : 3,
-      summary: String(curated.summary || ''),
-    });
-  }
-  return merged.sort((a, b) => b.importance - a.importance);
+  const byId = new Map(parsed.map((p) => [p?.id, p]));
+  return items.map((it) => {
+    const curated = byId.get(it.id);
+    if (!curated) return it;
+    return {
+      ...it,
+      importance: Number.isFinite(curated.importance) ? Math.min(5, Math.max(1, curated.importance)) : it.importance,
+      summary: String(curated.summary || '') || it.summary,
+    };
+  });
 }
 
-function fallbackCurate(items) {
-  return items
-    .filter((it) => {
-      const norm = normalizeTitle(it.title);
-      return !NEGATIVE_KEYWORDS.some((kw) => norm.includes(kw));
-    })
-    .sort((a, b) => new Date(b.pubDate || 0) - new Date(a.pubDate || 0))
-    .map((it, idx) => ({
-      id: it.id,
-      title: it.title,
-      source: it.source,
-      url: it.url,
-      image: it.image,
-      category: it.categoryHint,
-      importance: Math.max(1, 5 - Math.floor(idx / 6)),
-      summary: it.contentSnippet ? it.contentSnippet.slice(0, 220) : it.title,
-    }));
+function withNativeSummary(it) {
+  if (it.summary) return it;
+  return { ...it, summary: it.contentSnippet ? it.contentSnippet.slice(0, 220) : it.title };
 }
 
 export default async function handler(req, res) {
   const now = Date.now();
-  const rawLang = (req.query?.lang || 'fr').toString().toLowerCase();
-  const lang = FEEDS_BY_LANG[rawLang] ? rawLang : 'fr';
 
-  if (cache[lang].payload && now - cache[lang].ts < CACHE_TTL_MS) {
+  if (cache.payload && now - cache.ts < CACHE_TTL_MS) {
     res.setHeader('Cache-Control', 'public, max-age=600, s-maxage=10800, stale-while-revalidate=600');
-    return res.status(200).json(cache[lang].payload);
+    return res.status(200).json(cache.payload);
   }
 
   try {
-    const rawItems = await fetchAllFeeds(lang);
-    const deduped = dedupeItems(rawItems);
-    const recent = deduped
-      .sort((a, b) => new Date(b.pubDate || 0) - new Date(a.pubDate || 0))
-      .slice(0, MAX_ITEMS_TO_MODEL);
+    const rawItems = await fetchAllFeeds();
+    const deduped = dedupeItems(rawItems).sort((a, b) => new Date(b.pubDate || 0) - new Date(a.pubDate || 0));
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    let items;
-    let source;
+    let items = deduped;
+    let source = 'native';
 
-    if (apiKey) {
+    if (apiKey && deduped.length) {
+      const toEnrich = deduped.slice(0, MAX_ITEMS_TO_ENRICH);
+      const rest = deduped.slice(MAX_ITEMS_TO_ENRICH);
       try {
-        items = await curateWithClaude(recent, lang, apiKey);
-        source = 'claude';
+        const enriched = await enrichWithClaude(toEnrich, apiKey);
+        items = [...enriched, ...rest];
+        source = 'claude+native';
       } catch (err) {
-        console.error('[api/news] curation Claude échouée, fallback local', err);
-        items = fallbackCurate(recent);
-        source = 'fallback';
+        console.error('[api/news] enrichissement Claude échoué, résumés natifs uniquement', err);
       }
-    } else {
-      items = fallbackCurate(recent);
-      source = 'fallback';
     }
 
-    const payload = { items, generatedAt: new Date().toISOString(), source, lang };
-    cache[lang] = { payload, ts: now };
+    items = items.map(withNativeSummary);
+
+    const payload = {
+      items,
+      generatedAt: new Date().toISOString(),
+      source,
+      count: items.length,
+    };
+    cache.payload = payload;
+    cache.ts = now;
 
     res.setHeader('Cache-Control', 'public, max-age=600, s-maxage=10800, stale-while-revalidate=600');
     return res.status(200).json(payload);
   } catch (err) {
     console.error('[api/news] erreur', err);
-    if (cache[lang].payload) return res.status(200).json(cache[lang].payload);
+    if (cache.payload) return res.status(200).json(cache.payload);
     return res.status(500).json({ error: "Impossible de récupérer les actualités pour l'instant." });
   }
 }
