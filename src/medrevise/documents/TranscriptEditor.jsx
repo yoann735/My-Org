@@ -13,7 +13,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop } from '../components/ui.jsx';
 import { getDoc, setDoc, putBlob } from '../lib/storage.js';
 import {
   RICH_EXTENSIONS, EMPTY_DOC, hydrateDoc, dehydrateDoc,
@@ -31,9 +30,12 @@ const HL_COLORS = [
 const FONT_SIZES = ['12px', '14px', '16px', '18px', '20px', '24px', '28px'];
 const FONT_FAMILIES = ['inherit', 'serif', 'sans-serif', 'monospace', 'Georgia', 'Arial'];
 
-export function TranscriptEditor({ ctx }) {
-  const { transcriptView, db } = ctx;
-  const fiche = db.fiches.find((f) => f.id === (transcriptView && transcriptView.ficheId));
+/* C — TOUJOURS embarqué dans l'écran Bibliothèque fusionné (aucune route
+   plein-écran : contrairement à PdfReader/SchemaEditorScreen, un transcript
+   n'est jamais ouvert depuis Réviser). ficheId/onClose en props directes. */
+export function TranscriptEditor({ ctx, ficheId, onClose }) {
+  const { db } = ctx;
+  const fiche = db.fiches.find((f) => f.id === ficheId);
 
   const [mode, setMode] = useState('edit'); // read | edit
   const [panelOpen, setPanelOpen] = useState(true);
@@ -208,11 +210,11 @@ export function TranscriptEditor({ ctx }) {
     input.click();
   };
 
-  const back = () => { flushSave(); ctx.closeTranscript(); };
+  const back = () => { flushSave(); onClose(); };
 
   if (!fiche) {
     return (
-      <div className="screen scroll fadein">
+      <div className="fadein">
         <div className="hint">Document introuvable.</div>
         <button className="btn" style={{ marginTop: 12 }} onClick={back}><Icon name="chevL" size={14} /> Retour</button>
       </div>
@@ -220,15 +222,7 @@ export function TranscriptEditor({ ctx }) {
   }
 
   return (
-    <div className="screen scroll fadein">
-      <div className="topbar">
-        <div>
-          <h1 className="serif">{fiche.titre}</h1>
-          <div className="sub">Transcript · document texte riche</div>
-        </div>
-        <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
-      </div>
-
+    <div className="fadein">
       {/* barre d'outils CONTEXTUELLE (mode transcript uniquement) */}
       <div className="pdfr-toolbar">
         <button className="btn ghost sm" onClick={back}><Icon name="chevL" size={14} /> Retour</button>

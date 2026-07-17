@@ -895,6 +895,22 @@
 .hl-edit-btn:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
 .hl-cancel { width: 26px; height: 26px; border-radius: 8px; border: none; background: var(--bg-2); color: var(--text-3); display: grid; place-items: center; cursor: pointer; }
 
+/* ---------- C : Bibliothèque master-detail (liste + lecteur/éditeur embarqué) ----------
+   Liste à gauche (largeur fixe raisonnable), panneau de droite qui prend le reste et
+   reste ancré (sticky) pendant que la liste scrolle — PdfReader/SchemaEditorScreen/
+   TranscriptEditor s'y rendent EMBARQUÉS (props embedded, voir ces fichiers). Repli en
+   1 colonne sous 960px (même seuil d'esprit que les autres breakpoints de ce fichier). */
+.lib-split { display: grid; grid-template-columns: minmax(300px, 360px) 1fr; gap: 20px; align-items: start; }
+.lib-master { min-width: 0; }
+.lib-detail { min-width: 0; position: sticky; top: 0; }
+.lib-detail-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 320px; padding: 40px 20px; border: 1px dashed var(--border); border-radius: 14px; color: var(--text-3); background: var(--card-2); }
+.lib-fiche.selected { background: var(--accent-soft); }
+
+@media (max-width: 960px) {
+  .lib-split { grid-template-columns: 1fr; }
+  .lib-detail { position: static; }
+}
+
 /* ---------- Chantier 1 : édition de texte existant (couche superposée) ---------- */
 .edit-block-static, .edit-block-active { position: absolute; box-sizing: border-box; background: #fff; overflow-y: auto; color: #16162a; }
 .edit-block-static.editable { cursor: text; outline: 1px dashed transparent; transition: outline-color .12s; }

@@ -58,11 +58,10 @@ const ED_NAV = [
   { id: 'dashboard', label: 'Accueil', icon: 'home' },
   { id: 'revise', label: 'Réviser', icon: 'cards' },
   { id: 'library', label: 'Bibliothèque', icon: 'book' },
-  { id: 'documents', label: 'Documents', icon: 'filePdf' },
 ];
 
 export function StudySidebar({ current, onNav, expanded, onToggle, onHub }) {
-  const isActive = (id) => current === id || (id === 'revise' && ['session', 'feynman'].includes(current)) || (id === 'documents' && ['pdf', 'transcript', 'pdflist'].includes(current));
+  const isActive = (id) => current === id || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz', 'pdf', 'schemaedit'].includes(current));
   return (
     <nav className={'sidebar' + (expanded ? ' expanded' : '')}>
       <div className="sb-brand">

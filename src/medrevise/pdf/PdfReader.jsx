@@ -149,16 +149,23 @@ function computeMatchRectsFromDom(container, matches) {
   return out;
 }
 
-export function PdfReader({ ctx }) {
+/* C — bi-mode : route plein-écran (déclenchée par Réviser, via ctx.pdfView /
+   ctx.closePdfReader) OU panneau EMBARQUÉ dans l'écran Bibliothèque fusionné
+   (ficheId/mode passés en props directes, onClose local — pas de navigation
+   d'écran). `embedded` masque le wrapper .screen + le .topbar interne (le
+   parent affiche déjà SON topbar unique). */
+export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, embedded, onClose }) {
   const { pdfView, db } = ctx;
-  const fiche = db.fiches.find((f) => f.id === pdfView.ficheId);
+  const ficheId = ficheIdProp ?? (pdfView && pdfView.ficheId);
+  const close = onClose || ctx.closePdfReader;
+  const fiche = db.fiches.find((f) => f.id === ficheId);
 
   const [pdfDoc, setPdfDoc] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [numPages, setNumPages] = useState(0);
   const [pageSizes, setPageSizes] = useState([]); // [{width,height}] à scale=1
   const [scale, setScale] = useState(1.6); // B3 : 160% par défaut
-  const [mode, setMode] = useState(pdfView.mode || 'read');
+  const [mode, setMode] = useState(modeProp ?? (pdfView && pdfView.mode) ?? 'read');
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 0 });
 
   const [highlights, setHighlights] = useState([]);
@@ -212,13 +219,13 @@ export function PdfReader({ ctx }) {
 
   const reloadHighlights = async () => {
     const all = await getAll('highlights');
-    setHighlights(all.filter((h) => h.ficheId === pdfView.ficheId).sort((a, b) => (a.page - b.page) || a.createdAt.localeCompare(b.createdAt)));
+    setHighlights(all.filter((h) => h.ficheId === ficheId).sort((a, b) => (a.page - b.page) || a.createdAt.localeCompare(b.createdAt)));
   };
   const reloadEdits = async () => {
     const all = await getAll('annotations');
-    setEdits(all.filter((a) => a.ficheId === pdfView.ficheId));
+    setEdits(all.filter((a) => a.ficheId === ficheId));
   };
-  useEffect(() => { reloadHighlights(); reloadEdits(); setActiveEditId(null); }, [pdfView.ficheId]);
+  useEffect(() => { reloadHighlights(); reloadEdits(); setActiveEditId(null); }, [ficheId]);
 
   // B2 : offsets cumulés (px, à l'échelle courante) — le contenu scale strictement
   // linéairement (le gap scale aussi), ce qui rend le zoom centré sur le curseur trivial.
@@ -319,7 +326,7 @@ export function PdfReader({ ctx }) {
   const handleCreateHighlightRequest = (payload) => setPending(payload);
   const commitHighlight = async (couleur) => {
     if (!pending) return;
-    const rec = newHighlight({ ficheId: pdfView.ficheId, page: pending.page, texte: pending.texte, couleur, rects: pending.rects });
+    const rec = newHighlight({ ficheId, page: pending.page, texte: pending.texte, couleur, rects: pending.rects });
     await put('highlights', rec);
     setPending(null);
     window.getSelection && window.getSelection().removeAllRanges();
@@ -462,7 +469,7 @@ export function PdfReader({ ctx }) {
     const existing = edits.find((a) => a.page === pending.page && Math.abs(a.x - x0) < 0.01 && Math.abs(a.y - y0) < 0.01);
     if (existing) { setActiveEditId(existing.id); setPending(null); return; }
     const rec = newTextEdit({
-      ficheId: pdfView.ficheId, page: pending.page, x: x0, y: y0, width: x1 - x0, height: y1 - y0,
+      ficheId, page: pending.page, x: x0, y: y0, width: x1 - x0, height: y1 - y0,
       originalText: pending.texte, fontSize: pending.fontSizeRel || null, fontFamily: pending.fontFamily || null,
     });
     await put('annotations', rec);
@@ -524,25 +531,27 @@ export function PdfReader({ ctx }) {
   const attach = async (file) => {
     if (!file) return;
     const pdfId = await putBlob(file);
-    await ctx.setFichePdf(pdfView.ficheId, pdfId, file.name);
+    await ctx.setFichePdf(ficheId, pdfId, file.name);
   };
 
   if (!fiche) {
     return (
-      <div className="screen scroll fadein">
+      <div className={embedded ? 'fadein' : 'screen scroll fadein'}>
         <div className="hint">Fiche introuvable.</div>
-        <button className="btn" style={{ marginTop: 12 }} onClick={ctx.closePdfReader}><Icon name="chevL" size={14} /> Retour</button>
+        <button className="btn" style={{ marginTop: 12 }} onClick={close}><Icon name="chevL" size={14} /> Retour</button>
       </div>
     );
   }
 
   if (!fiche.pdfId) {
     return (
-      <div className="screen scroll fadein">
-        <div className="topbar">
-          <div><h1 className="serif">{fiche.titre}</h1><div className="sub">Aucun PDF rattaché à cette fiche.</div></div>
-          <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
-        </div>
+      <div className={embedded ? 'fadein' : 'screen scroll fadein'}>
+        {!embedded && (
+          <div className="topbar">
+            <div><h1 className="serif">{fiche.titre}</h1><div className="sub">Aucun PDF rattaché à cette fiche.</div></div>
+            <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
+          </div>
+        )}
         <div className="card" style={{ maxWidth: 440, margin: '30px auto', textAlign: 'center', padding: '30px 20px' }}>
           <Icon name="filePdf" size={30} />
           <div style={{ marginTop: 10, fontWeight: 600 }}>Importer le PDF du cours</div>
@@ -551,24 +560,26 @@ export function PdfReader({ ctx }) {
             <Icon name="upload" size={14} /> Attacher un PDF
             <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => attach(e.target.files[0])} />
           </label>
-          <div style={{ marginTop: 14 }}><button className="btn ghost sm" onClick={ctx.closePdfReader}>Annuler</button></div>
+          <div style={{ marginTop: 14 }}><button className="btn ghost sm" onClick={close}>Annuler</button></div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="screen scroll fadein">
-      <div className="topbar">
-        <div>
-          <h1 className="serif">{fiche.titre}</h1>
-          <div className="sub">Lecteur PDF{numPages ? ` · ${numPages} page${numPages > 1 ? 's' : ''}` : ''}</div>
+    <div className={embedded ? 'fadein' : 'screen scroll fadein'}>
+      {!embedded && (
+        <div className="topbar">
+          <div>
+            <h1 className="serif">{fiche.titre}</h1>
+            <div className="sub">Lecteur PDF{numPages ? ` · ${numPages} page${numPages > 1 ? 's' : ''}` : ''}</div>
+          </div>
+          <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
         </div>
-        <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
-      </div>
+      )}
 
       <div className="pdfr-toolbar">
-        <button className="btn ghost sm" onClick={ctx.closePdfReader}><Icon name="chevL" size={14} /> Retour</button>
+        <button className="btn ghost sm" onClick={close}><Icon name="chevL" size={14} /> Retour</button>
 
         <div className="seg" style={{ marginLeft: 4 }}>
           <button type="button" className={'seg-btn' + (mode === 'read' ? ' active' : '')} onClick={() => { setMode('read'); setActiveEditId(null); }}><Icon name="book" size={13} /> Lecture</button>

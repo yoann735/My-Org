@@ -19,9 +19,14 @@ import { ficheImages, vueLabel, useVueAide } from '../lib/anatSchema.js';
 const DEFAULT_COLOR = '#7C6FE0';
 const markerId = (col) => 'schr-ah-' + (col || DEFAULT_COLOR).replace('#', '');
 
-export function SchemaEditorScreen({ ctx }) {
+/* C — bi-mode : route plein-écran (déclenchée par Réviser, via ctx.schemaView /
+   ctx.closeSchemaEditor) OU panneau EMBARQUÉ dans l'écran Bibliothèque fusionné
+   (ficheId passé en prop directe, onClose local — pas de navigation d'écran).
+   `embedded` masque le wrapper .screen + le .topbar interne. */
+export function SchemaEditorScreen({ ctx, ficheId: ficheIdProp, embedded, onClose }) {
   const { db } = ctx;
-  const fiche = db.fiches.find((f) => f.id === (ctx.schemaView && ctx.schemaView.ficheId));
+  const ficheId = ficheIdProp ?? (ctx.schemaView && ctx.schemaView.ficheId);
+  const fiche = db.fiches.find((f) => f.id === ficheId);
   const matiere = fiche && db.matieres.find((m) => m.id === fiche.matiereId);
   const meta = matiereMeta(matiere);
 
@@ -69,7 +74,7 @@ export function SchemaEditorScreen({ ctx }) {
 
   useEffect(() => () => { urlsRef.current.forEach((u) => { try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ } }); urlsRef.current = []; }, []);
 
-  const back = () => ctx.closeSchemaEditor();
+  const back = onClose || ctx.closeSchemaEditor;
   const [aide] = useVueAide();
 
   const totalCoches = views.reduce((n, v) => n + (v.coches || []).length, 0);
@@ -97,7 +102,7 @@ export function SchemaEditorScreen({ ctx }) {
 
   if (!fiche) {
     return (
-      <div className="screen scroll fadein">
+      <div className={embedded ? 'fadein' : 'screen scroll fadein'}>
         <div className="hint">Schéma introuvable.</div>
         <button className="btn" style={{ marginTop: 12 }} onClick={back}><Icon name="chevL" size={14} /> Retour</button>
       </div>
@@ -107,14 +112,16 @@ export function SchemaEditorScreen({ ctx }) {
   const readView = views[readIdx] || views[0] || null;
 
   return (
-    <div className="screen scroll fadein">
-      <div className="topbar">
-        <div>
-          <h1 className="serif">{fiche.titre}</h1>
-          <div className="sub">Schéma d'anatomie · {views.length} vue{views.length > 1 ? 's' : ''} · {totalCoches} coche{totalCoches > 1 ? 's' : ''}{named < totalCoches ? ` · ${totalCoches - named} sans nom` : ''}</div>
+    <div className={embedded ? 'fadein' : 'screen scroll fadein'}>
+      {!embedded && (
+        <div className="topbar">
+          <div>
+            <h1 className="serif">{fiche.titre}</h1>
+            <div className="sub">Schéma d'anatomie · {views.length} vue{views.length > 1 ? 's' : ''} · {totalCoches} coche{totalCoches > 1 ? 's' : ''}{named < totalCoches ? ` · ${totalCoches - named} sans nom` : ''}</div>
+          </div>
+          <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
         </div>
-        <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
-      </div>
+      )}
 
       <div className="pdfr-toolbar">
         <button className="btn ghost sm" onClick={back}><Icon name="chevL" size={14} /> Retour</button>
