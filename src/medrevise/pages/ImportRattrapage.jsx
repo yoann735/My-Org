@@ -10,6 +10,7 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { DestPicker, CoursePdfField } from '../components/ui.jsx';
+import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { createFicheFromQuestions, appendItemsToFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
@@ -162,19 +163,13 @@ export function ImportRattrapage({ ctx }) {
   /* ---------- 4. écran final ---------- */
   if (state === 'done' && result) {
     return (
-      <div className="fadein" style={{ textAlign: 'center', padding: '6px 0' }}>
-        <div className="gd-badge" style={{ width: 60, height: 60, borderRadius: 18, margin: '0 auto 14px' }}><Icon name="check" size={30} stroke={3} /></div>
-        <div className="serif" style={{ fontSize: 21 }}>{destMode === 'new' ? 'Fiche prête !' : 'Items ajoutés !'}</div>
-        <div className="hint" style={{ marginTop: 8 }}>
+      <ImportDoneScreen
+        title={destMode === 'new' ? 'Fiche prête !' : 'Items ajoutés !'}
+        message={<>
           ✓ {result.count} item{result.count > 1 ? 's' : ''} {destMode === 'new' ? 'importé' + (result.count > 1 ? 's' : '') : 'ajouté' + (result.count > 1 ? 's' : '')}
           {result.duplicates > 0 && ` · ${result.duplicates} doublon${result.duplicates > 1 ? 's' : ''} ignoré${result.duplicates > 1 ? 's' : ''}`}.
-        </div>
-        <div className="row" style={{ gap: 10, justifyContent: 'center', marginTop: 18, flexWrap: 'wrap' }}>
-          <button className="btn" onClick={reset}><Icon name="refresh" size={14} /> Coller un autre JSON</button>
-          <button className="btn" onClick={() => ctx.go('library')}><Icon name="book" size={14} /> Bibliothèque</button>
-          <button className="btn primary" onClick={() => { ctx.setFocusFiche(result.fiche.id); ctx.go('revise'); }}><Icon name="cards" size={14} /> Réviser</button>
-        </div>
-      </div>
+        </>}
+        resetLabel="Coller un autre JSON" onReset={reset} ctx={ctx} ficheId={result.fiche.id} />
     );
   }
 
@@ -182,42 +177,24 @@ export function ImportRattrapage({ ctx }) {
   if (state === 'preview' && preview) {
     const c = preview.res.counts;
     return (
-      <div className="fadein imp-dest">
-        <div className="imp-dest-head"><Icon name="check" size={15} /> Aperçu avant import</div>
-        <div className="err-mini ok" style={{ marginBottom: 14 }}>
-          <div className="em-ic"><Icon name="check" size={16} stroke={2.5} /></div>
-          <div className="em-body">
-            <div className="em-title">{c.qcm} QCM · {c.flashcard} flashcards · {c.feynman} Feynman · {c.exercice} exercice{c.exercice > 1 ? 's' : ''} détecté{(c.qcm + c.flashcard + c.feynman + c.exercice) > 1 ? 's' : ''}</div>
-            {preview.exos > 0 && (
-              <div className="hint" style={{ marginTop: 4 }}>{preview.exos} exercice{preview.exos > 1 ? 's' : ''} (dont {preview.numeriques} numérique{preview.numeriques > 1 ? 's' : ''}, {preview.ouverts} ouvert{preview.ouverts > 1 ? 's' : ''}).</div>
-            )}
-            <div className="hint" style={{ marginTop: 4 }}>Destination : {destMode === 'new' ? 'nouvelle fiche — ' : 'ajout à — '}{destLabel}</div>
-            <div className="hint" style={{ marginTop: 4 }}>
-              {willAttachPdf
-                ? (targetHasPdf ? <>PDF du cours : remplacé par {pdf.name} ✓</> : <>PDF du cours joint : {pdf.name} ✓</>)
-                : (pdf && targetHasPdf && replaceMode === 'replace')
-                  ? <span style={{ color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> Remplacement non confirmé — le PDF actuel sera conservé.</span>
-                  : targetHasPdf
-                    ? <>PDF du cours conservé : {targetFiche.pdfName || 'PDF déjà rattaché'}.</>
-                    : 'Aucun PDF du cours joint.'}
-            </div>
-            {c.ignored > 0 && <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {c.ignored} item{c.ignored > 1 ? 's' : ''} ignoré{c.ignored > 1 ? 's' : ''} (format invalide)</div>}
-            {preview.duplicates > 0 && <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {preview.duplicates} doublon{preview.duplicates > 1 ? 's' : ''} ignoré{preview.duplicates > 1 ? 's' : ''} (déjà dans la fiche)</div>}
-          </div>
-        </div>
-
-        {preview.warnings.map((w, i) => (
-          <div className="err-mini" key={i} style={{ marginBottom: 10 }}>
-            <div className="em-ic crit"><Icon name="alert" size={16} /></div>
-            <div className="em-body"><div className="em-title" style={{ fontWeight: 500 }}>{w}</div><div className="hint">Avertissement — n'empêche pas l'import.</div></div>
-          </div>
-        ))}
-
-        <div className="imp-actions">
-          <button className="btn ghost" onClick={() => setState('edit')}>Annuler</button>
-          <button className="btn primary" onClick={confirmImport} disabled={busy}><Icon name="check" size={15} /> Confirmer l'import</button>
-        </div>
-      </div>
+      <ImportPreviewCard counts={c} destLabel={(destMode === 'new' ? 'nouvelle fiche — ' : 'ajout à — ') + destLabel}
+        infoLines={[
+          preview.exos > 0 && { text: <>{preview.exos} exercice{preview.exos > 1 ? 's' : ''} (dont {preview.numeriques} numérique{preview.numeriques > 1 ? 's' : ''}, {preview.ouverts} ouvert{preview.ouverts > 1 ? 's' : ''}).</> },
+          {
+            text: willAttachPdf
+              ? (targetHasPdf ? <>PDF du cours : remplacé par {pdf.name} ✓</> : <>PDF du cours joint : {pdf.name} ✓</>)
+              : (pdf && targetHasPdf && replaceMode === 'replace')
+                ? <>Remplacement non confirmé — le PDF actuel sera conservé.</>
+                : targetHasPdf
+                  ? <>PDF du cours conservé : {targetFiche.pdfName || 'PDF déjà rattaché'}.</>
+                  : 'Aucun PDF du cours joint.',
+            icon: (pdf && targetHasPdf && replaceMode === 'replace') ? 'alert' : undefined,
+            accent: (pdf && targetHasPdf && replaceMode === 'replace'),
+          },
+          preview.duplicates > 0 && { text: `${preview.duplicates} doublon${preview.duplicates > 1 ? 's' : ''} ignoré${preview.duplicates > 1 ? 's' : ''} (déjà dans la fiche)`, icon: 'alert', accent: true },
+        ]}
+        warnings={preview.warnings}
+        onBack={() => setState('edit')} onConfirm={confirmImport} busy={busy} />
     );
   }
 
@@ -304,18 +281,8 @@ export function ImportRattrapage({ ctx }) {
         )
       )}
 
-      <div className="imp-field">
-        <label>RÉPONSE (JSON v1.0)</label>
-        <textarea className="imp-title" style={{ minHeight: 160, resize: 'vertical', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12.5 }}
-          placeholder="Colle ici le JSON généré (Théorie ou Pratique)."
-          value={jsonText} onChange={(e) => { setJsonText(e.target.value); setParseError(null); }} />
-        {parseError && (
-          <div className="err-mini" style={{ marginTop: 8 }}>
-            <div className="em-ic crit"><Icon name="alert" size={16} /></div>
-            <div className="em-body"><div className="em-title">{parseError}</div></div>
-          </div>
-        )}
-      </div>
+      <ImportJsonField label="RÉPONSE (JSON v1.0)" placeholder="Colle ici le JSON généré (Théorie ou Pratique)."
+        value={jsonText} onChange={(v) => { setJsonText(v); setParseError(null); }} error={parseError} />
 
       <div className="imp-actions">
         <button className="btn primary" onClick={doPreview} disabled={!canPreview}><Icon name="check" size={15} /> Prévisualiser l'import</button>

@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CoursePdfField, matiereMeta } from '../components/ui.jsx';
+import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { weekData, dueToday, dueSchemasToday, todayPlan } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
 import { createFicheFromQuestions } from '../lib/import.js';
@@ -283,18 +284,8 @@ function ImportPanel({ ctx }) {
           <CoursePdfField file={pastePdf} onFile={setPastePdf}
             hint="Rattaché à la fiche pour « Voir le cours » et le surlignage. Facultatif." />
 
-          <div className="imp-field">
-            <label>RÉPONSE DE CLAUDE (JSON)</label>
-            <textarea className="imp-title" style={{ minHeight: 160, resize: 'vertical', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12.5 }}
-              placeholder="Colle ici la réponse JSON que Claude t'a donnée dans le chat."
-              value={jsonText} onChange={(e) => { setJsonText(e.target.value); setParseError(null); }} />
-            {parseError && (
-              <div className="err-mini" style={{ marginTop: 8 }}>
-                <div className="em-ic crit"><Icon name="alert" size={16} /></div>
-                <div className="em-body"><div className="em-title">{parseError}</div></div>
-              </div>
-            )}
-          </div>
+          <ImportJsonField label="RÉPONSE DE CLAUDE (JSON)" placeholder="Colle ici la réponse JSON que Claude t'a donnée dans le chat."
+            value={jsonText} onChange={(v) => { setJsonText(v); setParseError(null); }} error={parseError} />
 
           <div className="imp-actions">
             <button className="btn ghost" onClick={reset}>Annuler</button>
@@ -305,42 +296,17 @@ function ImportPanel({ ctx }) {
       )}
 
       {mode === 'standard' && state === 'preview' && parsed && (
-        <div className="fadein imp-dest">
-          <div className="imp-dest-head"><Icon name="check" size={15} /> Aperçu avant import</div>
-          <div className="err-mini ok" style={{ marginBottom: 14 }}>
-            <div className="em-ic"><Icon name="check" size={16} stroke={2.5} /></div>
-            <div className="em-body">
-              <div className="em-title">{parsed.counts.qcm} QCM · {parsed.counts.flashcard} flashcards · {parsed.counts.feynman} Feynman · {parsed.counts.exercice} exercice{parsed.counts.exercice > 1 ? 's' : ''} détecté{parsed.counts.qcm + parsed.counts.flashcard + parsed.counts.feynman + parsed.counts.exercice > 1 ? 's' : ''}</div>
-              <div className="hint" style={{ marginTop: 4 }}>Destination : {destLabel}</div>
-              {parsed.counts.ignored > 0 && (
-                <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}>
-                  <Icon name="alert" size={12} /> {parsed.counts.ignored} item{parsed.counts.ignored > 1 ? 's' : ''} ignoré{parsed.counts.ignored > 1 ? 's' : ''} (format invalide)
-                </div>
-              )}
-              {parsed.synthese && <div className="hint" style={{ marginTop: 4 }}>Synthèse incluse ✓</div>}
-              <div className="hint" style={{ marginTop: 4 }}>
-                {pastePdf ? <>PDF du cours joint : {pastePdf.name} ✓</> : 'Aucun PDF du cours joint.'}
-              </div>
-            </div>
-          </div>
-          <div className="imp-actions">
-            <button className="btn ghost" onClick={() => setState('form')}>Annuler</button>
-            <button className="btn primary" onClick={confirmImport} disabled={busy}><Icon name="check" size={15} /> Confirmer l'import</button>
-          </div>
-        </div>
+        <ImportPreviewCard counts={parsed.counts} destLabel={destLabel}
+          infoLines={[
+            parsed.synthese && { text: 'Synthèse incluse ✓' },
+            { text: pastePdf ? <>PDF du cours joint : {pastePdf.name} ✓</> : 'Aucun PDF du cours joint.' },
+          ]}
+          onBack={() => setState('form')} onConfirm={confirmImport} busy={busy} />
       )}
 
       {mode === 'standard' && state === 'done' && result && (
-        <div className="fadein" style={{ textAlign: 'center', padding: '6px 0' }}>
-          <div className="gd-badge" style={{ width: 60, height: 60, borderRadius: 18, margin: '0 auto 14px' }}><Icon name="check" size={30} stroke={3} /></div>
-          <div className="serif" style={{ fontSize: 21 }}>Fiche prête !</div>
-          <div className="hint" style={{ marginTop: 8 }}>✓ {result.count} questions importées.</div>
-          <div className="row" style={{ gap: 10, justifyContent: 'center', marginTop: 18, flexWrap: 'wrap' }}>
-            <button className="btn" onClick={reset}><Icon name="refresh" size={14} /> Autre fiche</button>
-            <button className="btn" onClick={() => ctx.go('library')}><Icon name="book" size={14} /> Bibliothèque</button>
-            <button className="btn primary" onClick={() => { ctx.setFocusFiche(result.fiche.id); ctx.go('revise'); }}><Icon name="cards" size={14} /> Réviser</button>
-          </div>
-        </div>
+        <ImportDoneScreen message={<>✓ {result.count} questions importées.</>}
+          onReset={reset} ctx={ctx} ficheId={result.fiche.id} />
       )}
     </Card>
   );

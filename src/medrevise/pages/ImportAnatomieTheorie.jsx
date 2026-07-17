@@ -74,6 +74,8 @@ export function ImportAnatomieTheorie({ ctx }) {
 
   return (
     <div className="fadein imp-dest">
+      <div className="imp-dest-head"><Icon name="folder" size={15} /> Où ranger cette structure&nbsp;?</div>
+
       <DestPicker ctx={ctx} srcId={srcId} setSrcId={setSrcId} matId={matId} setMatId={setMatId} />
 
       <div className="imp-field">
