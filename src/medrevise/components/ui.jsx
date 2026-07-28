@@ -29,17 +29,35 @@ export function EtiquetteDot({ value, style }) {
   return <span className="etq-dot" style={{ background: e.color, ...style }} title={e.label} />;
 }
 
-/** sélecteur compact (Bibliothèque) : la couleur de fond suit la valeur choisie. */
-export function EtiquetteSelect({ value, onChange }) {
+/** icône seule, cliquable (Bibliothèque) : pastille pleine si étiquette posée,
+   contour discret sinon — ne pousse jamais le titre du cours hors du cadre.
+   Le clic est géré par l'appelant (ouvre un ContextMenu avec les 3 valeurs +
+   « aucune »), pas par ce composant — reste un simple bouton d'affichage. */
+export function EtiquetteIconButton({ value, onClick }) {
+  const e = etiquetteMeta(value);
   return (
-    <select className={'etq-select' + (value ? ' etq-set' : '')}
-      style={{ '--etq-color': (etiquetteMeta(value) || {}).color || 'var(--text-3)' }}
-      value={value || ''} onClick={(e) => e.stopPropagation()}
-      onChange={(e) => onChange(e.target.value || null)} title="Étiquette de ce cours">
-      <option value="">Étiquette…</option>
-      {ETIQUETTES.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
-    </select>
+    <button type="button" className="cd-ic" onClick={onClick}
+      title={e ? `Étiquette : ${e.label} (cliquer pour changer)` : 'Aucune étiquette (cliquer pour en poser une)'}>
+      <Icon name="tag" size={14} fill={!!e} style={{ color: e ? e.color : 'var(--text-3)' }} />
+    </button>
   );
+}
+/** items ContextMenu prêts à l'emploi pour changer l'étiquette d'une fiche. */
+export function etiquetteMenuItems(value, onChange) {
+  return [
+    {
+      label: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontWeight: !value ? 700 : 500 }}>Aucune étiquette{!value ? ' ✓' : ''}</span>,
+      onClick: () => onChange(null),
+    },
+    ...ETIQUETTES.map((e) => ({
+      label: (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontWeight: value === e.id ? 700 : 500 }}>
+          <span className="etq-dot" style={{ background: e.color }} />{e.label}{value === e.id ? ' ✓' : ''}
+        </span>
+      ),
+      onClick: () => onChange(e.id),
+    })),
+  ];
 }
 
 /** proposition (non bloquante) en fin de session : chips cliquables, une seule fiche. */
@@ -398,6 +416,29 @@ export function ContextMenu({ x, y, items, onClose }) {
 }
 
 /* ---- modale de confirmation générique (suppression → corbeille, etc.) ---- */
+/* ---- overlay générique (fond scrim + carte centrée), même pattern visuel que
+   DayPopup/ConfirmModal — croix, clic sur le fond, Échap ferment tous les trois. ---- */
+export function Modal({ title, onClose, width = 'min(560px, 94vw)', children }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="day-pop-scrim" onClick={onClose}>
+      <div className="day-pop" style={{ width, maxHeight: '86vh', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+        <div className="day-pop-head">
+          <div className="row spread">
+            <div className="serif" style={{ fontSize: 19 }}>{title}</div>
+            <button className="icon-btn sm" onClick={onClose} title="Fermer (Échap)"><Icon name="x" size={16} /></button>
+          </div>
+        </div>
+        <div className="day-pop-body scroll">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export function ConfirmModal({ title, body, confirmLabel = 'Confirmer', danger, onConfirm, onCancel }) {
   return (
     <div className="day-pop-scrim" onClick={onCancel}>

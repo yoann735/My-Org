@@ -4,7 +4,7 @@
    ============================================================ */
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, EdTop, TodaySeriesCard, DestPicker, CoursePdfField, CourseHtmlField, matiereMeta, OverdueBox } from '../components/ui.jsx';
+import { Card, EdTop, TodaySeriesCard, DestPicker, CoursePdfField, CourseHtmlField, matiereMeta, OverdueBox, Modal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
@@ -22,6 +22,7 @@ const fmtShort = (iso) => { const d = new Date(iso + 'T00:00:00'); return `${d.g
 export function Dashboard({ ctx }) {
   const { db } = ctx;
   const [selDay, setSelDay] = useState(null);
+  const [showCleaner, setShowCleaner] = useState(false);
   const due = dueToday(db);
   const dueSchemas = dueSchemasToday(db);
   const plan = todayPlan(db);
@@ -35,8 +36,17 @@ export function Dashboard({ ctx }) {
           <h1 className="serif">Bonjour 👋</h1>
           <div className="sub">Ton planning de révision selon la méthode des J.</div>
         </div>
-        <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
+        <div className="row" style={{ gap: 10 }}>
+          <button className="btn ghost" onClick={() => setShowCleaner(true)}><Icon name="sparkle" size={14} /> Nettoyer un transcript</button>
+          <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
+        </div>
       </div>
+
+      {showCleaner && (
+        <Modal title="Nettoyer un transcript" onClose={() => setShowCleaner(false)}>
+          <TranscriptCleanerBody />
+        </Modal>
+      )}
 
       <TodaySeriesCard plan={plan} onStart={ctx.startSession} />
 
@@ -58,8 +68,6 @@ export function Dashboard({ ctx }) {
         <ImportPanel ctx={ctx} />
         <StreakWidget stats={ctx.stats} />
       </div>
-
-      <TranscriptCleanerWidget />
 
       {selDay && <DayPopup day={selDay} ctx={ctx} onClose={() => setSelDay(null)} />}
     </div>
@@ -331,11 +339,11 @@ function ImportPanel({ ctx }) {
   );
 }
 
-/* ---------- nettoyeur de transcript (presse-papier) ----------
+/* ---------- nettoyeur de transcript (presse-papier), ouvert en overlay ----------
    RÉUTILISE cleanTranscript (documents/lib/transcript.js), la même fonction
    que le mode "nouveau transcript" de la Bibliothèque — aucune duplication.
    Ici, aucun enregistrement : coller → nettoyer → copier, rien de plus. */
-function TranscriptCleanerWidget() {
+function TranscriptCleanerBody() {
   const [raw, setRaw] = useState('');
   const [cleaned, setCleaned] = useState(null); // null = pas encore nettoyé
   const [copied, setCopied] = useState(false);
@@ -351,7 +359,7 @@ function TranscriptCleanerWidget() {
   };
 
   return (
-    <Card title="Nettoyer un transcript" icon="sparkle" style={{ marginTop: 20 }}>
+    <>
       <div className="hint" style={{ marginBottom: 10 }}>
         Colle un transcript brut (horodatages, hésitations…) pour obtenir une version lisible — rien n'est enregistré, purement presse-papier.
       </div>
@@ -372,7 +380,7 @@ function TranscriptCleanerWidget() {
           </div>
         </div>
       )}
-    </Card>
+    </>
   );
 }
 

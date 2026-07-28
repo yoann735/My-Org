@@ -10,7 +10,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker, EtiquetteSelect } from '../components/ui.jsx';
+import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker, EtiquetteIconButton, etiquetteMenuItems, ContextMenu } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
@@ -35,6 +35,7 @@ export function Bibliotheque({ ctx }) {
   // navigation d'écran — on reste sur 'library' tout du long).
   const [selected, setSelected] = useState(null); // { ficheId, kind: 'fiche'|'schema'|'transcript', mode? }
   const [creatingTranscript, setCreatingTranscript] = useState(false);
+  const [etqMenu, setEtqMenu] = useState(null); // { x, y, ficheId } — menu compact de l'étiquette
 
   const startRename = (type, id, current) => { setDraft(current); setRenaming({ type, id }); };
   const isRen = (type, id) => renaming && renaming.type === type && renaming.id === id;
@@ -76,6 +77,10 @@ export function Bibliotheque({ ctx }) {
     const htmlId = await putBlob(file);
     await ctx.setFicheHtml(ficheId, htmlId, file.name);
     setSelected({ ficheId, kind: 'fiche', mode: 'edit', srcTab: 'html' });
+  };
+  const openEtqMenu = (e, ficheId) => {
+    e.stopPropagation();
+    setEtqMenu({ x: Math.min(e.clientX, window.innerWidth - 200), y: Math.min(e.clientY, window.innerHeight - 170), ficheId });
   };
   const removeTranscript = async (ficheId) => {
     await deleteTranscript(ficheId);
@@ -192,7 +197,7 @@ export function Bibliotheque({ ctx }) {
                                         {isRen('fiche', f.id) ? (
                                           <div style={{ flex: 1, minWidth: 0 }}><RenameInput /></div>
                                         ) : (
-                                          <div role="button" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text)', flex: 1, minWidth: 0 }}
+                                          <div role="button" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text)', flex: '1 1 auto', minWidth: 0 }}
                                             onClick={() => { if (kind) openDoc(f); else setOpenFiche((o) => ({ ...o, [f.id]: !fo })); }}
                                             onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }}
                                             title={kind ? 'Clic = ouvrir le document · double-clic = renommer' : 'Clic = ouvrir · double-clic = renommer'}>
@@ -203,7 +208,7 @@ export function Bibliotheque({ ctx }) {
                                           </div>
                                         )}
                                         <div className="row" style={{ gap: 6 }}>
-                                          <EtiquetteSelect value={f.etiquette} onChange={(v) => ctx.setFicheEtiquette(f.id, v)} />
+                                          <EtiquetteIconButton value={f.etiquette} onClick={(e) => openEtqMenu(e, f.id)} />
                                           {isTranscript ? (
                                             <span className="pill" style={{ height: 22, fontSize: 10.5 }}><Icon name="edit" size={11} /> TRANSCRIPT</span>
                                           ) : isSchema ? (
@@ -291,6 +296,11 @@ export function Bibliotheque({ ctx }) {
           ) : null}
         </div>
       </div>
+
+      {etqMenu && (
+        <ContextMenu x={etqMenu.x} y={etqMenu.y} onClose={() => setEtqMenu(null)}
+          items={etiquetteMenuItems((db.fiches.find((x) => x.id === etqMenu.ficheId) || {}).etiquette, (v) => ctx.setFicheEtiquette(etqMenu.ficheId, v))} />
+      )}
     </div>
   );
 }
