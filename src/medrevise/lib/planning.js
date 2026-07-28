@@ -281,13 +281,28 @@ export function weekData(db, weekOffset = 0, idx) {
 }
 
 /* ---- carnet d'erreurs ---- */
+/** une fiche existe encore ET n'est pas archivée (elle, sa matière, son cours) —
+   défensif : couvre le cas où un cours/une fiche a été supprimé (archivé via la
+   corbeille, ou orphelin si la fiche a été retirée sans passer par l'archivage).
+   Ne regarde PAS rappelsJ (pause) : un cours en pause ou retiré de la méthode
+   des J garde ses erreurs visibles dans le carnet — seule la suppression compte. */
+function ficheStillExists(fiche, idx) {
+  if (!fiche || fiche.archive) return false;
+  const m = idx.mById[fiche.matiereId];
+  if (!m || m.archive) return false;
+  const s = idx.sById[m.sourceId];
+  return !!s && !s.archive;
+}
+
 export function missedQuestions(db, idx) {
   const ix = idx || index(db);
-  return (db.questions || []).filter((q) => q.missed > 0).map((q) => {
-    const f = ix.fById[q.ficheId];
-    const m = f && ix.mById[f.matiereId];
-    return { ...q, fiche: f, matiere: m };
-  }).sort((a, b) => b.missed - a.missed);
+  return (db.questions || [])
+    .filter((q) => q.missed > 0 && ficheStillExists(ix.fById[q.ficheId], ix))
+    .map((q) => {
+      const f = ix.fById[q.ficheId];
+      const m = f && ix.mById[f.matiereId];
+      return { ...q, fiche: f, matiere: m };
+    }).sort((a, b) => b.missed - a.missed);
 }
 
 /** points faibles pondérés par coefficient (handoff §5.5) */

@@ -10,7 +10,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker, EtiquetteIconButton, etiquetteMenuItems, ContextMenu, detectDocKind } from '../components/ui.jsx';
+import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker, EtiquetteIconButton, etiquetteMenuItems, ContextMenu, detectDocKind, BellButton } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
@@ -167,7 +167,10 @@ export function Bibliotheque({ ctx }) {
                       {isRen('source', src.id)
                         ? <RenameInput />
                         : <h3 style={{ color: 'var(--text)' }} onDoubleClick={(e) => { e.stopPropagation(); startRename('source', src.id, src.nom); }} title="Double-clic pour renommer">{src.nom}</h3>}
-                      <div className="right"><span className="hint">{mats.length} matière{mats.length > 1 ? 's' : ''}</span></div>
+                      <div className="right" style={{ display: 'flex', alignItems: 'center', gap: 8 }} onClick={(e) => e.stopPropagation()}>
+                        <span className="hint">{mats.length} matière{mats.length > 1 ? 's' : ''}</span>
+                        <BellButton on={src.rappelsJ !== false} onToggle={() => ctx.setSourceRappels(src.id, src.rappelsJ === false)} />
+                      </div>
                     </div>
                     {openS && (
                       <div className="card-body" style={{ paddingTop: 0 }}>

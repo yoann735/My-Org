@@ -628,7 +628,12 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
         <div className="pdfr-html-wrap">
           {!htmlUrl && !htmlLoadError && <div className="gen-spinner" style={{ width: 40, height: 40, margin: '60px auto' }} />}
           {htmlUrl && (
-            <iframe src={htmlUrl} title={fiche.titre} sandbox="allow-same-origin" className="pdfr-html-frame" />
+            // allow-scripts : les fiches contiennent leur propre bouton lecture/édition
+            // (JS interne) — sans ce token, sandbox="allow-same-origin" seul désactive
+            // TOUT script (y compris les onclick inline), rendant ce bouton inerte au
+            // clic. Le contenu est intégralement local et auto-généré par l'utilisateur
+            // (aucune requête réseau, aucun contenu tiers) : risque borné et accepté.
+            <iframe src={htmlUrl} title={fiche.titre} sandbox="allow-same-origin allow-scripts" className="pdfr-html-frame" />
           )}
         </div>
       </div>

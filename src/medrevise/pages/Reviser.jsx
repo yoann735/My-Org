@@ -12,6 +12,7 @@ import {
 import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
 import { allCoches } from '../lib/anatSchema.js';
 import { CarnetBody } from './Carnet.jsx';
+import { AddItemModal } from '../components/AddItemForm.jsx';
 
 export function Reviser({ ctx }) {
   const { db } = ctx;
@@ -22,6 +23,7 @@ export function Reviser({ ctx }) {
   const [draft, setDraft] = useState('');
   const [ctxMenu, setCtxMenu] = useState(null); // { type: 'source'|'matiere', id, x, y }
   const [confirmDel, setConfirmDel] = useState(null); // { type, id, nom, fichesCount }
+  const [showAddItem, setShowAddItem] = useState(false);
 
   const dueIdsToday = useMemo(() => new Set(dueToday(db, ix).map((q) => q.id)), [db, ix]);
   const dueSchemaIds = useMemo(() => new Set(dueSchemasToday(db, ix).map((f) => f.id)), [db, ix]);
@@ -30,7 +32,8 @@ export function Reviser({ ctx }) {
   const startOverdueFiche = (g) => (g.isSchema ? ctx.startAnatQuiz(g.fiche, { mode: 'total' }) : ctx.startSession(g.items, g.fiche.titre + ' — Rattrapage'));
   // redite du Dashboard : repliée PAR DÉFAUT ici (état persisté, undefined = replié).
   const rattraperCollapsed = (ctx.stats && ctx.stats.rattraperCollapsedReviser) !== false;
-  const carnetCollapsed = !!(ctx.stats && ctx.stats.carnetCollapsed);
+  // replié PAR DÉFAUT (état persisté, undefined = replié) — même logique que rattraperCollapsed.
+  const carnetCollapsed = (ctx.stats && ctx.stats.carnetCollapsed) !== false;
   const fichesOf = (matId) => db.fiches.filter((f) => f.matiereId === matId && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
   const matieresOf = (srcId) => db.matieres.filter((m) => m.sourceId === srcId && !m.archive);
   // repérage « d'un coup d'œil » des schémas d'anatomie dans l'arbre (point E).
@@ -289,9 +292,14 @@ export function Reviser({ ctx }) {
                 {dueSel.length > 0 && <button className="btn primary" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={launchToday}><Icon name="play" size={14} fill /> Lancer aujourd'hui</button>}
               </div>
 
-              <div className="row" style={{ alignItems: 'center', gap: 8, margin: '16px 2px 8px' }}>
-                <Icon name="lightbulb" size={14} style={{ color: 'var(--text-3)' }} />
-                <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--text-3)' }}>Théorie</span>
+              <div className="row spread" style={{ alignItems: 'center', gap: 8, margin: '16px 2px 8px' }}>
+                <div className="row" style={{ alignItems: 'center', gap: 8 }}>
+                  <Icon name="lightbulb" size={14} style={{ color: 'var(--text-3)' }} />
+                  <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--text-3)' }}>Théorie</span>
+                </div>
+                {!multi && primary && (
+                  <button className="btn ghost sm" onClick={() => setShowAddItem(true)}><Icon name="plus" size={13} /> Ajouter un item</button>
+                )}
               </div>
               <div className="rev-modes">
                 <button className="rev-mode" onClick={() => launch('qcm')} disabled={!qcmItems.length}>
@@ -324,21 +332,34 @@ export function Reviser({ ctx }) {
               </div>
             </>
           )}
-        </div>
-      </div>
 
-      {/* carnet d'erreurs complet — intégré ici (pas d'onglet séparé). Repliable
-         (état persisté) + largeur alignée sur la colonne de contenu du dessus
-         (pas pleine page) : même grille que .revise-grid, cellule de gauche vide. */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'var(--tree-col, 380px) minmax(0,1fr)', gap: 20, marginTop: 22 }}>
-        <div />
-        <div>
-          <button type="button" onClick={() => ctx.saveStats({ ...ctx.stats, carnetCollapsed: !carnetCollapsed })}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: carnetCollapsed ? 0 : 12, color: 'inherit', font: 'inherit' }}>
-            <Icon name={carnetCollapsed ? 'chevR' : 'chevD'} size={16} style={{ color: 'var(--text-3)' }} />
-            <h2 className="serif" style={{ fontSize: 20, margin: 0 }}>Carnet d'erreurs</h2>
-          </button>
-          {!carnetCollapsed && <CarnetBody ctx={ctx} />}
+          {/* carnet d'erreurs — intégré DANS la colonne de droite (pas une grille à
+             part sous .revise-grid) : reste aligné avec le contenu de révision et
+             juste en dessous, quelle que soit la hauteur de l'arbre à gauche (sinon,
+             quand l'arbre est plus haut que le panneau de droite, le carnet se
+             retrouvait poussé loin en dessous, avec un grand vide au-dessus). Replié
+             par défaut, contenu dans une card comme le reste (jamais en apesanteur). */}
+          <div style={{ marginTop: 22 }}>
+            {carnetCollapsed ? (
+              <div className="card">
+                <button type="button" className="card-head" onClick={() => ctx.saveStats({ ...ctx.stats, carnetCollapsed: false })}
+                  style={{ width: '100%', cursor: 'pointer', background: 'none', border: 'none', font: 'inherit', color: 'inherit' }}>
+                  <Icon name="target" size={17} className="ic" />
+                  <h3>Carnet d'erreurs</h3>
+                  <div className="right"><Icon name="chevD" size={15} /></div>
+                </button>
+              </div>
+            ) : (
+              <>
+                <button type="button" onClick={() => ctx.saveStats({ ...ctx.stats, carnetCollapsed: true })}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 12, color: 'inherit', font: 'inherit' }}>
+                  <Icon name="chevU" size={16} style={{ color: 'var(--text-3)' }} />
+                  <h2 className="serif" style={{ fontSize: 20, margin: 0 }}>Carnet d'erreurs</h2>
+                </button>
+                <CarnetBody ctx={ctx} />
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -351,6 +372,18 @@ export function Reviser({ ctx }) {
               else { const f = db.fiches.find((x) => x.id === ctxMenu.id); if (f) startRename('fiche', ctxMenu.id, f.titre); }
             },
           },
+          // retire/remet un COURS (source) de la méthode des J — réutilise le flag
+          // rappelsJ existant (BellButton) : n'affecte que la planification SM-2
+          // (série du jour, calendrier, à rattraper), le contenu reste intact.
+          ...(ctxMenu.type === 'source' ? (() => {
+            const s = db.sources.find((x) => x.id === ctxMenu.id);
+            const on = !s || s.rappelsJ !== false;
+            return [{
+              label: on ? 'Retirer de la méthode des J' : 'Remettre dans la méthode des J',
+              icon: on ? 'bellOff' : 'bell',
+              onClick: () => s && ctx.setSourceRappels(s.id, !on),
+            }];
+          })() : []),
           {
             label: 'Supprimer', icon: 'trash', danger: true, onClick: () => {
               if (ctxMenu.type === 'source') askDeleteSource(ctxMenu.id);
@@ -359,6 +392,10 @@ export function Reviser({ ctx }) {
             },
           },
         ]} />
+      )}
+
+      {showAddItem && primary && (
+        <AddItemModal ctx={ctx} ficheId={primary.id} ficheTitre={primary.titre} onClose={() => setShowAddItem(false)} />
       )}
 
       {confirmDel && (
