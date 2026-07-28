@@ -614,22 +614,31 @@ export function DestPicker({ ctx, srcId, setSrcId, matId, setMatId }) {
   );
 }
 
-/* ---- champ optionnel « Document du cours (PDF) » : drag & drop ou clic ----
-   Contrôlé (file / onFile). Ne fait QUE choisir un fichier PDF ; le stockage
-   (putBlob → fiche.pdfId) et le lecteur restent le chemin existant. */
-/* ---- champ générique « fichier du cours » (drag & drop + clique), partagé par
-   CoursePdfField (PDF) et CourseHtmlField (fiche HTML) — même look, même
-   comportement, seul le filtre de fichier et les libellés changent. ---- */
-function CourseFileField({ file, onFile, label, icon, accept, isValid, dropLabel, hint }) {
+/** détecte PDF vs HTML par MIME puis extension — seule bascule de branchement
+   (stockage/lecteur) qui subsiste ; l'entrée utilisateur, elle, est unique. */
+export function detectDocKind(file) {
+  if (!file) return null;
+  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) return 'pdf';
+  if (file.type === 'text/html' || /\.html?$/i.test(file.name)) return 'html';
+  return null;
+}
+
+/* ---- champ UNIQUE « Document du cours » (PDF OU HTML) : drag & drop ou clic,
+   un seul contrôle partout où l'on rattache un document (import, Bibliothèque,
+   PdfReader) — plus de deux champs séparés. Contrôlé (file / onFile) ; le type
+   est détecté à la volée (detectDocKind), le stockage (putBlob → fiche.pdfId
+   OU fiche.htmlId selon le type) et le lecteur restent le chemin existant. ---- */
+export function CourseDocField({ file, onFile, label = 'Document du cours (PDF ou HTML)', hint }) {
   const [over, setOver] = useState(false);
-  const pick = (f) => { if (f && isValid(f)) onFile(f); };
+  const kind = detectDocKind(file);
+  const pick = (f) => { if (f && detectDocKind(f)) onFile(f); };
   return (
     <div className="imp-field">
       <label>{label} <span className="imp-opt">(optionnel)</span></label>
       {file ? (
         <div className="row spread" style={{ gap: 10, padding: '10px 12px', border: '1px solid var(--border-2)', borderRadius: 10, background: 'var(--bg-2)' }}>
           <div className="row" style={{ gap: 8, minWidth: 0, alignItems: 'center' }}>
-            <Icon name={icon} size={16} />
+            <Icon name={kind === 'html' ? 'fileHtml' : 'filePdf'} size={16} />
             <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
           </div>
           <button type="button" className="btn ghost sm" onClick={() => onFile(null)} style={{ flex: '0 0 auto' }}><Icon name="x" size={12} /> Retirer</button>
@@ -639,30 +648,14 @@ function CourseFileField({ file, onFile, label, icon, accept, isValid, dropLabel
           onDragOver={(e) => { e.preventDefault(); setOver(true); }}
           onDragLeave={() => setOver(false)}
           onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files[0]); }}>
-          <input type="file" accept={accept} style={{ display: 'none' }} onChange={(e) => pick(e.target.files[0])} />
+          <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={(e) => pick(e.target.files[0])} />
           <div className="row" style={{ gap: 8, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name={icon} size={16} /> <span style={{ fontWeight: 600 }}>{dropLabel}</span>
+            <Icon name="filePdf" size={16} /> <span style={{ fontWeight: 600 }}>Glisse le PDF ou la fiche HTML du cours, ou clique</span>
           </div>
         </label>
       )}
       {hint && <div className="hint" style={{ marginTop: 6 }}>{hint}</div>}
     </div>
-  );
-}
-
-export function CoursePdfField({ file, onFile, label = 'Document du cours (PDF)', hint }) {
-  return (
-    <CourseFileField file={file} onFile={onFile} label={label} hint={hint}
-      icon="filePdf" accept="application/pdf" dropLabel="Glisse le PDF du cours ou clique"
-      isValid={(f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name)} />
-  );
-}
-
-export function CourseHtmlField({ file, onFile, label = 'Fiche du cours (HTML)', hint }) {
-  return (
-    <CourseFileField file={file} onFile={onFile} label={label} hint={hint}
-      icon="fileHtml" accept="text/html,.html" dropLabel="Glisse la fiche HTML du cours ou clique"
-      isValid={(f) => f.type === 'text/html' || /\.html?$/i.test(f.name)} />
   );
 }
 

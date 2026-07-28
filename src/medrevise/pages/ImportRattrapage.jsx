@@ -9,7 +9,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { DestPicker, CoursePdfField, CourseHtmlField } from '../components/ui.jsx';
+import { DestPicker, CourseDocField, detectDocKind } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { createFicheFromQuestions, appendItemsToFiche } from '../lib/import.js';
@@ -41,12 +41,7 @@ export function ImportRattrapage({ ctx }) {
   const [state, setState] = useState('edit');            // edit | preview | done
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [pdf, setPdf] = useState(null);                  // PDF du cours (optionnel) à rattacher
-  const [replaceMode, setReplaceMode] = useState('keep'); // keep | replace (fiche existante ayant déjà un PDF)
-  const [replaceConfirmed, setReplaceConfirmed] = useState(false);
-  const [html, setHtml] = useState(null);                     // fiche HTML (optionnelle) — indépendante du PDF
-  const [replaceModeHtml, setReplaceModeHtml] = useState('keep');
-  const [replaceConfirmedHtml, setReplaceConfirmedHtml] = useState(false);
+  const [doc, setDoc] = useState(null); // document du cours (optionnel, PDF OU HTML) à rattacher
 
   // fiches candidates pour l'ajout (fiches v1.0 "standard", non archivées)
   const srcById = useMemo(() => Object.fromEntries(db.sources.map((s) => [s.id, s])), [db.sources]);
@@ -71,26 +66,17 @@ export function ImportRattrapage({ ctx }) {
     : [!ficheId && 'une fiche existante'].filter(Boolean);
   const canPreview = !!matiere && missing.length === 0 && !!jsonText.trim();
 
-  // fiche ciblée en mode ajout + son état PDF (pour ne jamais écraser silencieusement)
+  // fiche ciblée en mode ajout + ses documents déjà rattachés (pour ne jamais
+  // écraser silencieusement — affichés en info, remplacés seulement si on
+  // attache un nouveau document du MÊME type via le champ unique ci-dessous).
   const targetFiche = destMode === 'existing' ? existingFiches.find((f) => f.id === ficheId) : null;
   const targetHasPdf = !!(targetFiche && targetFiche.pdfId);
-  // le PDF choisi sera-t-il effectivement rattaché ?
-  const willAttachPdf = !!pdf && (
-    destMode === 'new'
-    || (destMode === 'existing' && !targetHasPdf)
-    || (destMode === 'existing' && targetHasPdf && replaceMode === 'replace' && replaceConfirmed)
-  );
   const targetHasHtml = !!(targetFiche && targetFiche.htmlId);
-  const willAttachHtml = !!html && (
-    destMode === 'new'
-    || (destMode === 'existing' && !targetHasHtml)
-    || (destMode === 'existing' && targetHasHtml && replaceModeHtml === 'replace' && replaceConfirmedHtml)
-  );
+  const docKind = detectDocKind(doc);
 
   const reset = () => {
     setJsonText(''); setParseError(null); setPreview(null); setState('edit'); setResult(null);
-    setPdf(null); setReplaceMode('keep'); setReplaceConfirmed(false);
-    setHtml(null); setReplaceModeHtml('keep'); setReplaceConfirmedHtml(false);
+    setDoc(null);
   };
 
   const doPreview = () => {
@@ -130,26 +116,28 @@ export function ImportRattrapage({ ctx }) {
   const confirmImport = async () => {
     if (!preview) return;
     setBusy(true);
-    // PDF/HTML du cours (optionnels, indépendants) — stockés une seule fois,
-    // réutilise putBlob → fiche.pdfId / fiche.htmlId.
-    let pdfId = null;
-    if (willAttachPdf) { try { pdfId = await putBlob(pdf); } catch (e) { /* ignore */ } }
-    let htmlId = null;
-    if (willAttachHtml) { try { htmlId = await putBlob(html); } catch (e) { /* ignore */ } }
+    // document du cours (optionnel, PDF OU HTML) — stocké une seule fois, le
+    // type détecté route vers fiche.pdfId ou fiche.htmlId ; l'autre type déjà
+    // rattaché à une fiche existante n'est jamais touché.
+    let pdfId = null, pdfName = null, htmlId = null, htmlName = null;
+    if (doc) {
+      try {
+        const blobId = await putBlob(doc);
+        if (docKind === 'html') { htmlId = blobId; htmlName = doc.name; } else { pdfId = blobId; pdfName = doc.name; }
+      } catch (e) { /* ignore */ }
+    }
     let res;
     if (destMode === 'new') {
       res = await createFicheFromQuestions({
         matiereId: matId, titre: title, items: preview.res.items,
         synthese: preview.res.synthese, meta: { ...preview.res.meta, matiere },
-        pdfId, pdfName: pdfId ? pdf.name : null,
-        htmlId, htmlName: htmlId ? html.name : null,
+        pdfId, pdfName, htmlId, htmlName,
       });
       res = { fiche: res.fiche, count: res.count, duplicates: 0 };
     } else {
       res = await appendItemsToFiche({ ficheId, items: preview.res.items });
-      // rattache PDF/HTML si demandé — jamais d'écrasement silencieux (voir willAttachPdf/willAttachHtml).
-      if (pdfId) await ctx.setFichePdf(ficheId, pdfId, pdf.name);
-      if (htmlId) await ctx.setFicheHtml(ficheId, htmlId, html.name);
+      if (pdfId) await ctx.setFichePdf(ficheId, pdfId, pdfName);
+      if (htmlId) await ctx.setFicheHtml(ficheId, htmlId, htmlName);
     }
     await ctx.reload();
     setResult(res); setState('done'); setBusy(false);
@@ -196,26 +184,11 @@ export function ImportRattrapage({ ctx }) {
         infoLines={[
           preview.exos > 0 && { text: <>{preview.exos} exercice{preview.exos > 1 ? 's' : ''} (dont {preview.numeriques} numérique{preview.numeriques > 1 ? 's' : ''}, {preview.ouverts} ouvert{preview.ouverts > 1 ? 's' : ''}).</> },
           {
-            text: willAttachPdf
-              ? (targetHasPdf ? <>PDF du cours : remplacé par {pdf.name} ✓</> : <>PDF du cours joint : {pdf.name} ✓</>)
-              : (pdf && targetHasPdf && replaceMode === 'replace')
-                ? <>Remplacement non confirmé — le PDF actuel sera conservé.</>
-                : targetHasPdf
-                  ? <>PDF du cours conservé : {targetFiche.pdfName || 'PDF déjà rattaché'}.</>
-                  : 'Aucun PDF du cours joint.',
-            icon: (pdf && targetHasPdf && replaceMode === 'replace') ? 'alert' : undefined,
-            accent: (pdf && targetHasPdf && replaceMode === 'replace'),
-          },
-          {
-            text: willAttachHtml
-              ? (targetHasHtml ? <>Fiche HTML : remplacée par {html.name} ✓</> : <>Fiche HTML jointe : {html.name} ✓</>)
-              : (html && targetHasHtml && replaceModeHtml === 'replace')
-                ? <>Remplacement non confirmé — la fiche HTML actuelle sera conservée.</>
-                : targetHasHtml
-                  ? <>Fiche HTML conservée : {targetFiche.htmlName || 'HTML déjà rattaché'}.</>
-                  : 'Aucune fiche HTML jointe.',
-            icon: (html && targetHasHtml && replaceModeHtml === 'replace') ? 'alert' : undefined,
-            accent: (html && targetHasHtml && replaceModeHtml === 'replace'),
+            text: doc
+              ? <>{docKind === 'html' ? 'Fiche HTML' : 'PDF du cours'} {(docKind === 'html' ? targetHasHtml : targetHasPdf) ? 'remplacé(e) par' : 'joint(e)'} : {doc.name} ✓</>
+              : (targetHasPdf || targetHasHtml)
+                ? <>Document(s) du cours conservé(s) : {[targetHasPdf && (targetFiche.pdfName || 'PDF'), targetHasHtml && (targetFiche.htmlName || 'HTML')].filter(Boolean).join(' + ')}.</>
+                : 'Aucun document du cours joint.',
           },
           preview.duplicates > 0 && { text: `${preview.duplicates} doublon${preview.duplicates > 1 ? 's' : ''} ignoré${preview.duplicates > 1 ? 's' : ''} (déjà dans la fiche)`, icon: 'alert', accent: true },
         ]}
@@ -273,72 +246,26 @@ export function ImportRattrapage({ ctx }) {
         </div>
       )}
 
-      {/* PDF du cours (optionnel) — alimente « Voir le cours » + surlignage */}
+      {/* document du cours (optionnel, PDF OU HTML) — un seul champ, partout.
+         Le type est détecté à la volée ; s'il correspond à un document déjà
+         rattaché à la fiche ciblée, il le remplace, sinon il s'ajoute. */}
       {(destMode === 'new' || (destMode === 'existing' && ficheId)) && (
-        !targetHasPdf ? (
-          <CoursePdfField file={pdf} onFile={setPdf}
-            hint="Rattaché à la fiche pour « Voir le cours » et le surlignage. Facultatif." />
-        ) : (
-          <div className="imp-field">
-            <label>Document du cours (PDF)</label>
+        <div className="imp-field">
+          <label>Document du cours</label>
+          {(targetHasPdf || targetHasHtml) && (
             <div className="err-mini ok" style={{ marginBottom: 8 }}>
-              <div className="em-ic"><Icon name="filePdf" size={16} /></div>
+              <div className="em-ic"><Icon name={targetHasPdf ? 'filePdf' : 'fileHtml'} size={16} /></div>
               <div className="em-body" style={{ minWidth: 0 }}>
-                <div className="em-title" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{targetFiche.pdfName || 'PDF déjà rattaché'}</div>
-                <div className="hint">Cette fiche a déjà un PDF. Il est conservé par défaut.</div>
+                <div className="em-title" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {[targetHasPdf && (targetFiche.pdfName || 'PDF'), targetHasHtml && (targetFiche.htmlName || 'Fiche HTML')].filter(Boolean).join(' · ')}
+                </div>
+                <div className="hint">Déjà rattaché à cette fiche — conservé, sauf si tu attaches un nouveau document du même type ci-dessous.</div>
               </div>
             </div>
-            <div className="seg" style={{ transform: 'scale(.96)', transformOrigin: 'left center' }}>
-              <button type="button" className={'seg-btn' + (replaceMode === 'keep' ? ' active' : '')} onClick={() => { setReplaceMode('keep'); setPdf(null); setReplaceConfirmed(false); }}><Icon name="check" size={13} /> Conserver</button>
-              <button type="button" className={'seg-btn' + (replaceMode === 'replace' ? ' active' : '')} onClick={() => setReplaceMode('replace')}><Icon name="refresh" size={13} /> Remplacer</button>
-            </div>
-            {replaceMode === 'replace' && (
-              <div style={{ marginTop: 10 }}>
-                <CoursePdfField file={pdf} onFile={setPdf} label="Nouveau PDF" />
-                {pdf && (
-                  <label className="row" style={{ gap: 8, alignItems: 'flex-start', marginTop: 8, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={replaceConfirmed} onChange={(e) => setReplaceConfirmed(e.target.checked)} style={{ marginTop: 3 }} />
-                    <span className="hint">Je confirme le remplacement du PDF actuel de cette fiche.</span>
-                  </label>
-                )}
-              </div>
-            )}
-          </div>
-        )
-      )}
-
-      {/* fiche HTML (optionnelle) — indépendante du PDF, même logique garder/remplacer */}
-      {(destMode === 'new' || (destMode === 'existing' && ficheId)) && (
-        !targetHasHtml ? (
-          <CourseHtmlField file={html} onFile={setHtml}
-            hint="Rattachée à la fiche pour « Voir le cours ». Facultatif, indépendant du PDF." />
-        ) : (
-          <div className="imp-field">
-            <label>Fiche du cours (HTML)</label>
-            <div className="err-mini ok" style={{ marginBottom: 8 }}>
-              <div className="em-ic"><Icon name="fileHtml" size={16} /></div>
-              <div className="em-body" style={{ minWidth: 0 }}>
-                <div className="em-title" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{targetFiche.htmlName || 'HTML déjà rattaché'}</div>
-                <div className="hint">Cette fiche a déjà une fiche HTML. Elle est conservée par défaut.</div>
-              </div>
-            </div>
-            <div className="seg" style={{ transform: 'scale(.96)', transformOrigin: 'left center' }}>
-              <button type="button" className={'seg-btn' + (replaceModeHtml === 'keep' ? ' active' : '')} onClick={() => { setReplaceModeHtml('keep'); setHtml(null); setReplaceConfirmedHtml(false); }}><Icon name="check" size={13} /> Conserver</button>
-              <button type="button" className={'seg-btn' + (replaceModeHtml === 'replace' ? ' active' : '')} onClick={() => setReplaceModeHtml('replace')}><Icon name="refresh" size={13} /> Remplacer</button>
-            </div>
-            {replaceModeHtml === 'replace' && (
-              <div style={{ marginTop: 10 }}>
-                <CourseHtmlField file={html} onFile={setHtml} label="Nouvelle fiche HTML" />
-                {html && (
-                  <label className="row" style={{ gap: 8, alignItems: 'flex-start', marginTop: 8, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={replaceConfirmedHtml} onChange={(e) => setReplaceConfirmedHtml(e.target.checked)} style={{ marginTop: 3 }} />
-                    <span className="hint">Je confirme le remplacement de la fiche HTML actuelle de cette fiche.</span>
-                  </label>
-                )}
-              </div>
-            )}
-          </div>
-        )
+          )}
+          <CourseDocField file={doc} onFile={setDoc} label="Nouveau document (optionnel)"
+            hint="PDF ou fiche HTML. Rattaché à la fiche pour « Voir le cours » et le surlignage (PDF)." />
+        </div>
       )}
 
       <ImportJsonField label="RÉPONSE (JSON v1.0)" placeholder="Colle ici le JSON généré (Théorie ou Pratique)."

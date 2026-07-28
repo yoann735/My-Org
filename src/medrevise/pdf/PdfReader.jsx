@@ -42,7 +42,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { PDFDocument, rgb, BlendMode } from 'pdf-lib';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop } from '../components/ui.jsx';
+import { EdTop, detectDocKind } from '../components/ui.jsx';
 import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit } from '../lib/storage.js';
 import { RICH_EXTENSIONS, richToHTML } from '../documents/lib/richtext.js';
 
@@ -555,16 +555,19 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   const editsByPage = useMemo(() => groupByPage(edits), [edits]);
   const matchesByPage = useMemo(() => groupByPage(matches), [matches]);
 
-  const attach = async (file) => {
-    if (!file) return;
-    const pdfId = await putBlob(file);
-    if (onSetPdf) await onSetPdf(pdfId, file.name); else await ctx.setFichePdf(ficheId, pdfId, file.name);
-  };
-  const attachHtml = async (file) => {
-    if (!file) return;
-    const htmlId = await putBlob(file);
-    if (onSetHtml) await onSetHtml(htmlId, file.name); else await ctx.setFicheHtml(ficheId, htmlId, file.name);
-    setSrcTab('html');
+  // input UNIQUE (PDF ou HTML) : le type est détecté à la volée, le stockage
+  // bascule sur pdfId/onSetPdf ou htmlId/onSetHtml en conséquence.
+  const attachDoc = async (file) => {
+    const kind = detectDocKind(file);
+    if (!kind) return;
+    const blobId = await putBlob(file);
+    if (kind === 'html') {
+      if (onSetHtml) await onSetHtml(blobId, file.name); else await ctx.setFicheHtml(ficheId, blobId, file.name);
+      setSrcTab('html');
+    } else {
+      if (onSetPdf) await onSetPdf(blobId, file.name); else await ctx.setFichePdf(ficheId, blobId, file.name);
+      setSrcTab('pdf');
+    }
   };
 
   if (!fiche) {
@@ -588,15 +591,11 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
         <div className="card" style={{ maxWidth: 480, margin: '30px auto', textAlign: 'center', padding: '30px 20px' }}>
           <Icon name="filePdf" size={30} />
           <div style={{ marginTop: 10, fontWeight: 600 }}>Attacher le cours</div>
-          <div className="hint" style={{ marginTop: 6 }}>PDF et/ou fiche HTML — stocké localement (IndexedDB), pour lecture (et surlignage pour le PDF) dans l'app.</div>
+          <div className="hint" style={{ marginTop: 6 }}>PDF ou fiche HTML — stocké localement (IndexedDB), pour lecture (et surlignage pour le PDF) dans l'app.</div>
           <div className="row" style={{ gap: 10, justifyContent: 'center', marginTop: 16, flexWrap: 'wrap' }}>
             <label className="btn primary" style={{ cursor: 'pointer', display: 'inline-flex' }}>
-              <Icon name="upload" size={14} /> Attacher un PDF
-              <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => attach(e.target.files[0])} />
-            </label>
-            <label className="btn" style={{ cursor: 'pointer', display: 'inline-flex' }}>
-              <Icon name="upload" size={14} /> Attacher une fiche HTML
-              <input type="file" accept="text/html,.html" style={{ display: 'none' }} onChange={(e) => attachHtml(e.target.files[0])} />
+              <Icon name="upload" size={14} /> Attacher un document
+              <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={(e) => attachDoc(e.target.files[0])} />
             </label>
           </div>
           <div style={{ marginTop: 14 }}><button className="btn ghost sm" onClick={close}>Annuler</button></div>
@@ -620,9 +619,9 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
             <button className="btn ghost sm" onClick={() => setSrcTab('pdf')}><Icon name="filePdf" size={13} /> Voir le PDF</button>
           )}
           <div style={{ flex: 1 }} />
-          <label className="btn ghost sm" style={{ cursor: 'pointer' }} title={fiche.htmlId ? 'Remplacer la fiche HTML' : 'Attacher une fiche HTML'}>
-            <Icon name="upload" size={13} /> {fiche.htmlId ? 'Remplacer' : 'Attacher'}
-            <input type="file" accept="text/html,.html" style={{ display: 'none' }} onChange={(e) => attachHtml(e.target.files[0])} />
+          <label className="btn ghost sm" style={{ cursor: 'pointer' }} title="Attacher un document (PDF ou HTML) — remplace le document du même type">
+            <Icon name="upload" size={13} /> Attacher un document
+            <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={(e) => attachDoc(e.target.files[0])} />
           </label>
         </div>
         {htmlLoadError && <div className="err-mini" style={{ marginBottom: 12 }}><div className="em-ic crit"><Icon name="alert" size={16} /></div><div className="em-body"><div className="em-title">{htmlLoadError}</div></div></div>}

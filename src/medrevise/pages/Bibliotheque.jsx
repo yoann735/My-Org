@@ -10,7 +10,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker, EtiquetteIconButton, etiquetteMenuItems, ContextMenu } from '../components/ui.jsx';
+import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker, EtiquetteIconButton, etiquetteMenuItems, ContextMenu, detectDocKind } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
@@ -66,17 +66,15 @@ export function Bibliotheque({ ctx }) {
     else if (kind === 'schema') setSelected({ ficheId: f.id, kind: 'schema' });
     else if (kind === 'transcript') setSelected({ ficheId: f.id, kind: 'transcript' });
   };
-  const attachPdf = async (ficheId, file) => {
-    if (!file) return;
-    const pdfId = await putBlob(file);
-    await ctx.setFichePdf(ficheId, pdfId, file.name);
-    setSelected({ ficheId, kind: 'fiche', mode: 'edit', srcTab: 'pdf' });
-  };
-  const attachHtml = async (ficheId, file) => {
-    if (!file) return;
-    const htmlId = await putBlob(file);
-    await ctx.setFicheHtml(ficheId, htmlId, file.name);
-    setSelected({ ficheId, kind: 'fiche', mode: 'edit', srcTab: 'html' });
+  // input UNIQUE (PDF ou HTML) pour rattacher un document — le type est détecté
+  // à la volée, le stockage bascule sur fiche.pdfId ou fiche.htmlId en conséquence.
+  const attachDoc = async (ficheId, file) => {
+    const kind = detectDocKind(file);
+    if (!kind) return;
+    const blobId = await putBlob(file);
+    if (kind === 'html') await ctx.setFicheHtml(ficheId, blobId, file.name);
+    else await ctx.setFichePdf(ficheId, blobId, file.name);
+    setSelected({ ficheId, kind: 'fiche', mode: 'edit', srcTab: kind });
   };
   const openEtqMenu = (e, ficheId) => {
     e.stopPropagation();
@@ -223,25 +221,17 @@ export function Bibliotheque({ ctx }) {
                                           {isSchema && (
                                             <button className="cd-ic" title="Éditer le schéma" onClick={() => openDoc(f)}><Icon name="edit" size={14} /></button>
                                           )}
-                                          {!isSchema && !isTranscript && (
-                                            f.pdfId ? (
-                                              <button className="cd-ic" title="Ouvrir le PDF (lecture / surlignage)" onClick={() => openDoc(f, 'edit', 'pdf')}><Icon name="filePdf" size={14} /></button>
-                                            ) : (
-                                              <label className="cd-ic" title="Attacher un PDF" style={{ cursor: 'pointer' }} onClick={(e) => e.stopPropagation()}>
-                                                <Icon name="upload" size={14} />
-                                                <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => attachPdf(f.id, e.target.files[0])} />
-                                              </label>
-                                            )
+                                          {!isSchema && !isTranscript && f.pdfId && (
+                                            <button className="cd-ic" title="Ouvrir le PDF (lecture / surlignage)" onClick={() => openDoc(f, 'edit', 'pdf')}><Icon name="filePdf" size={14} /></button>
                                           )}
-                                          {!isSchema && !isTranscript && (
-                                            f.htmlId ? (
-                                              <button className="cd-ic" title="Ouvrir la fiche HTML" onClick={() => openDoc(f, 'edit', 'html')}><Icon name="fileHtml" size={14} /></button>
-                                            ) : (
-                                              <label className="cd-ic" title="Attacher une fiche HTML" style={{ cursor: 'pointer' }} onClick={(e) => e.stopPropagation()}>
-                                                <Icon name="upload" size={14} />
-                                                <input type="file" accept="text/html,.html" style={{ display: 'none' }} onChange={(e) => attachHtml(f.id, e.target.files[0])} />
-                                              </label>
-                                            )
+                                          {!isSchema && !isTranscript && f.htmlId && (
+                                            <button className="cd-ic" title="Ouvrir la fiche HTML" onClick={() => openDoc(f, 'edit', 'html')}><Icon name="fileHtml" size={14} /></button>
+                                          )}
+                                          {!isSchema && !isTranscript && (!f.pdfId || !f.htmlId) && (
+                                            <label className="cd-ic" title="Attacher un document (PDF ou HTML)" style={{ cursor: 'pointer' }} onClick={(e) => e.stopPropagation()}>
+                                              <Icon name="upload" size={14} />
+                                              <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={(e) => attachDoc(f.id, e.target.files[0])} />
+                                            </label>
                                           )}
                                           {isTranscript && (
                                             <button className="cd-ic" title="Supprimer ce transcript" onClick={() => removeTranscript(f.id)} style={{ color: 'var(--accent-2)' }}><Icon name="trash" size={14} /></button>

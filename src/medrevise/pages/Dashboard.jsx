@@ -4,7 +4,7 @@
    ============================================================ */
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, EdTop, TodaySeriesCard, DestPicker, CoursePdfField, CourseHtmlField, matiereMeta, OverdueBox, Modal } from '../components/ui.jsx';
+import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
@@ -256,12 +256,11 @@ function ImportPanel({ ctx }) {
   const [jsonText, setJsonText] = useState('');
   const [parseError, setParseError] = useState(null);
   const [parsed, setParsed] = useState(null); // { questions, synthese, counts }
-  const [pastePdf, setPastePdf] = useState(null); // PDF du cours (optionnel) rattaché à la fiche créée
-  const [pasteHtml, setPasteHtml] = useState(null); // fiche HTML (optionnelle) — indépendante du PDF
+  const [pasteDoc, setPasteDoc] = useState(null); // document du cours (optionnel, PDF OU HTML) rattaché à la fiche créée
 
   const reset = () => {
     setState('form'); setTitle(''); setResult(null);
-    setJsonText(''); setParseError(null); setParsed(null); setPastePdf(null); setPasteHtml(null);
+    setJsonText(''); setParseError(null); setParsed(null); setPasteDoc(null);
   };
 
   const srcLabel = (db.sources.find((s) => s.id === srcId) || {}).nom || '—';
@@ -282,14 +281,17 @@ function ImportPanel({ ctx }) {
   const confirmImport = async () => {
     if (!parsed || !matId) return;
     setBusy(true);
-    let pdfId = null;
-    if (pastePdf) { try { pdfId = await putBlob(pastePdf); } catch (e) { /* ignore */ } }
-    let htmlId = null;
-    if (pasteHtml) { try { htmlId = await putBlob(pasteHtml); } catch (e) { /* ignore */ } }
+    let pdfId = null, pdfName = null, htmlId = null, htmlName = null;
+    if (pasteDoc) {
+      try {
+        const blobId = await putBlob(pasteDoc);
+        if (detectDocKind(pasteDoc) === 'html') { htmlId = blobId; htmlName = pasteDoc.name; }
+        else { pdfId = blobId; pdfName = pasteDoc.name; }
+      } catch (e) { /* ignore */ }
+    }
     const res = await createFicheFromQuestions({
       matiereId: matId, titre: title, items: parsed.items, synthese: parsed.synthese, meta: parsed.meta,
-      pdfId, pdfName: pastePdf ? pastePdf.name : null,
-      htmlId, htmlName: pasteHtml ? pasteHtml.name : null,
+      pdfId, pdfName, htmlId, htmlName,
     });
     await ctx.reload();
     setResult(res); setState('done'); setBusy(false);
@@ -336,11 +338,8 @@ function ImportPanel({ ctx }) {
             <input className="imp-title" placeholder="ex : Système respiratoire — chapitre 3" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
 
-          <CoursePdfField file={pastePdf} onFile={setPastePdf}
-            hint="Rattaché à la fiche pour « Voir le cours » et le surlignage. Facultatif." />
-
-          <CourseHtmlField file={pasteHtml} onFile={setPasteHtml}
-            hint="Fiche de cours HTML autonome (mise en page + images incluses). Rattachée en plus du PDF si les deux sont fournis." />
+          <CourseDocField file={pasteDoc} onFile={setPasteDoc}
+            hint="PDF (lecture + surlignage) ou fiche HTML autonome. Rattaché à la fiche pour « Voir le cours ». Facultatif." />
 
           <ImportJsonField label="RÉPONSE DE CLAUDE (JSON)" placeholder="Colle ici la réponse JSON que Claude t'a donnée dans le chat."
             value={jsonText} onChange={(v) => { setJsonText(v); setParseError(null); }} error={parseError} />
@@ -357,8 +356,7 @@ function ImportPanel({ ctx }) {
         <ImportPreviewCard counts={parsed.counts} destLabel={destLabel}
           infoLines={[
             parsed.synthese && { text: 'Synthèse incluse ✓' },
-            { text: pastePdf ? <>PDF du cours joint : {pastePdf.name} ✓</> : 'Aucun PDF du cours joint.' },
-            { text: pasteHtml ? <>Fiche HTML jointe : {pasteHtml.name} ✓</> : 'Aucune fiche HTML jointe.' },
+            { text: pasteDoc ? <>{detectDocKind(pasteDoc) === 'html' ? 'Fiche HTML jointe' : 'PDF du cours joint'} : {pasteDoc.name} ✓</> : 'Aucun document du cours joint.' },
           ]}
           onBack={() => setState('form')} onConfirm={confirmImport} busy={busy} />
       )}

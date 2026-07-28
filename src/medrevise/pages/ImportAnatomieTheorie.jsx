@@ -8,7 +8,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { DestPicker, CoursePdfField, CourseHtmlField } from '../components/ui.jsx';
+import { DestPicker, CourseDocField, detectDocKind } from '../components/ui.jsx';
 import { ANAT_TYPES, champsFor, parseStructure } from '../lib/anatParse.js';
 import { genId, put, remove, putBlob } from '../lib/storage.js';
 import { PdfReader } from '../pdf/PdfReader.jsx';
@@ -47,8 +47,7 @@ export function ImportAnatomieTheorie({ ctx }) {
   const [champs, setChamps] = useState(null); // aperçu extrait (null = pas encore analysé)
   const [missing, setMissing] = useState([]);
   const [justSaved, setJustSaved] = useState(null); // nom enregistré (confirmation)
-  const [pdf, setPdf] = useState(null);   // PDF du cours (optionnel), rattaché à CETTE structure
-  const [html, setHtml] = useState(null); // fiche HTML (optionnelle), indépendante du PDF
+  const [doc, setDoc] = useState(null); // document du cours (optionnel, PDF OU HTML), rattaché à CETTE structure
   const [openedDoc, setOpenedDoc] = useState(null); // { id, srcTab } — structure + onglet (pdf|html) ouverts
 
   const defs = champsFor(type);
@@ -61,25 +60,28 @@ export function ImportAnatomieTheorie({ ctx }) {
 
   const save = async () => {
     if (!ready) return;
-    let pdfId = null;
-    if (pdf) { try { pdfId = await putBlob(pdf); } catch (e) { /* ignore */ } }
-    let htmlId = null;
-    if (html) { try { htmlId = await putBlob(html); } catch (e) { /* ignore */ } }
+    let pdfId = null, pdfName = null, htmlId = null, htmlName = null;
+    if (doc) {
+      try {
+        const blobId = await putBlob(doc);
+        if (detectDocKind(doc) === 'html') { htmlId = blobId; htmlName = doc.name; }
+        else { pdfId = blobId; pdfName = doc.name; }
+      } catch (e) { /* ignore */ }
+    }
     const rec = {
       id: genId('as'), nom: nom.trim(), type, sousCategorie: ANAT_TYPES[type].label,
       matiereId: matId, champs, createdAt: new Date().toISOString(),
-      pdfId: pdfId || null, pdfName: pdfId ? pdf.name : null,
-      htmlId: htmlId || null, htmlName: htmlId ? html.name : null,
+      pdfId, pdfName, htmlId, htmlName,
     };
     await put('anatstruct', rec);
     await ctx.reload();
     setJustSaved(rec.nom);
-    setNom(''); setRaw(''); setChamps(null); setMissing([]); setPdf(null); setHtml(null);
+    setNom(''); setRaw(''); setChamps(null); setMissing([]); setDoc(null);
   };
 
   const del = async (id) => { await remove('anatstruct', id); await ctx.reload(); if (openedDoc && openedDoc.id === id) setOpenedDoc(null); };
 
-  // rattache (ou remplace) le PDF/HTML d'une structure DÉJÀ enregistrée — même
+  // rattache (ou remplace) le document d'une structure DÉJÀ enregistrée — même
   // logique que ctx.setFichePdf/setFicheHtml, mais sur le store `anatstruct`.
   const setStructPdf = async (structId, pdfId, pdfName) => {
     const s = (db.anatstruct || []).find((x) => x.id === structId); if (!s) return;
@@ -91,17 +93,14 @@ export function ImportAnatomieTheorie({ ctx }) {
     await put('anatstruct', { ...s, htmlId: htmlId || null, htmlName: htmlId ? (htmlName || s.htmlName || null) : null });
     await ctx.reload();
   };
-  const attachStructPdfFile = async (structId, file) => {
+  const attachStructDocFile = async (structId, file) => {
     if (!file) return;
-    const pdfId = await putBlob(file);
-    await setStructPdf(structId, pdfId, file.name);
-    setOpenedDoc({ id: structId, srcTab: 'pdf' });
-  };
-  const attachStructHtmlFile = async (structId, file) => {
-    if (!file) return;
-    const htmlId = await putBlob(file);
-    await setStructHtml(structId, htmlId, file.name);
-    setOpenedDoc({ id: structId, srcTab: 'html' });
+    const kind = detectDocKind(file);
+    if (!kind) return;
+    const blobId = await putBlob(file);
+    if (kind === 'html') await setStructHtml(structId, blobId, file.name);
+    else await setStructPdf(structId, blobId, file.name);
+    setOpenedDoc({ id: structId, srcTab: kind });
   };
 
   const existing = useMemo(() => (db.anatstruct || []).filter((s) => s.matiereId === matId), [db.anatstruct, matId]);
@@ -130,10 +129,8 @@ export function ImportAnatomieTheorie({ ctx }) {
         <input className="imp-title" placeholder="ex : Humérus" value={nom} onChange={(e) => setNom(e.target.value)} />
       </div>
 
-      <CoursePdfField file={pdf} onFile={setPdf} label="Document du cours (PDF)"
-        hint="Rattaché à cette structure pour référence. Facultatif." />
-      <CourseHtmlField file={html} onFile={setHtml}
-        hint="Fiche de cours HTML pour cette structure. Facultatif, indépendant du PDF." />
+      <CourseDocField file={doc} onFile={setDoc}
+        hint="PDF ou fiche HTML, rattaché à cette structure pour référence. Facultatif." />
 
       <div className="imp-field">
         <label>Texte descriptif collé</label>
@@ -194,20 +191,16 @@ export function ImportAnatomieTheorie({ ctx }) {
                     <strong>{s.nom}</strong>
                   </div>
                   <div className="row" style={{ gap: 6 }}>
-                    {s.pdfId ? (
+                    {s.pdfId && (
                       <button className="cd-ic" title="Ouvrir le PDF" onClick={() => setOpenedDoc(openedDoc && openedDoc.id === s.id ? null : { id: s.id, srcTab: 'pdf' })}><Icon name="filePdf" size={14} /></button>
-                    ) : (
-                      <label className="cd-ic" title="Attacher un PDF" style={{ cursor: 'pointer' }}>
-                        <Icon name="upload" size={14} />
-                        <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => attachStructPdfFile(s.id, e.target.files[0])} />
-                      </label>
                     )}
-                    {s.htmlId ? (
+                    {s.htmlId && (
                       <button className="cd-ic" title="Ouvrir la fiche HTML" onClick={() => setOpenedDoc(openedDoc && openedDoc.id === s.id ? null : { id: s.id, srcTab: 'html' })}><Icon name="fileHtml" size={14} /></button>
-                    ) : (
-                      <label className="cd-ic" title="Attacher une fiche HTML" style={{ cursor: 'pointer' }}>
+                    )}
+                    {(!s.pdfId || !s.htmlId) && (
+                      <label className="cd-ic" title="Attacher un document (PDF ou HTML)" style={{ cursor: 'pointer' }}>
                         <Icon name="upload" size={14} />
-                        <input type="file" accept="text/html,.html" style={{ display: 'none' }} onChange={(e) => attachStructHtmlFile(s.id, e.target.files[0])} />
+                        <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={(e) => attachStructDocFile(s.id, e.target.files[0])} />
                       </label>
                     )}
                     <button className="cd-ic" title="Supprimer cette structure" onClick={() => del(s.id)} style={{ color: 'var(--accent-2)' }}><Icon name="trash" size={14} /></button>
