@@ -108,8 +108,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
 
     // ---- lecteur PDF (Partie B) : ouvert en overlay plein écran (nouvel
     // écran 'pdf'), revient à l'écran d'où il a été ouvert à la fermeture.
-    openPdfReader: (ficheId, mode, returnScreen) => {
-      setPdfView({ ficheId, mode: mode || 'read', returnScreen: returnScreen || screen });
+    openPdfReader: (ficheId, mode, returnScreen, srcTab) => {
+      setPdfView({ ficheId, mode: mode || 'read', returnScreen: returnScreen || screen, srcTab });
       setScreen('pdf');
     },
     closePdfReader: () => { const back = pdfView && pdfView.returnScreen; setScreen(back || 'library'); setPdfView(null); },
@@ -206,6 +206,12 @@ export default function MedReviseApp({ themeApi, goHub }) {
     setFichePdf: async (ficheId, pdfId, pdfName) => {
       const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
       await put('fiches', { ...f, pdfId: pdfId || null, pdfName: pdfId ? (pdfName || f.pdfName || null) : null }); await reload();
+    },
+    // rattache (ou détache, htmlId=null) une fiche HTML à une fiche existante —
+    // même logique que setFichePdf, indépendante (une fiche peut porter les deux).
+    setFicheHtml: async (ficheId, htmlId, htmlName) => {
+      const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
+      await put('fiches', { ...f, htmlId: htmlId || null, htmlName: htmlId ? (htmlName || f.htmlName || null) : null }); await reload();
     },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },
     clearQuestionError: async (id) => {

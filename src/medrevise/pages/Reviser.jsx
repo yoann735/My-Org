@@ -62,7 +62,8 @@ export function Reviser({ ctx }) {
   const title = multi ? `${selFiches.length} fiches sélectionnées` : (primary ? primary.titre : '');
   const mins = (n) => Math.max(1, Math.round(n * 0.8));
 
-  const viewCours = () => { if (primary && primary.pdfId) ctx.openPdfReader(primary.id, 'read', 'revise'); };
+  const viewCoursPdf = () => { if (primary && primary.pdfId) ctx.openPdfReader(primary.id, 'read', 'revise', 'pdf'); };
+  const viewCoursHtml = () => { if (primary && primary.htmlId) ctx.openPdfReader(primary.id, 'read', 'revise', 'html'); };
   const launch = (mode) => {
     const items = mode === 'qcm' ? qcmItems : mode === 'flash' ? flashItems : [...qcmItems, ...flashItems];
     if (items.length) ctx.startSession(items, title);
@@ -261,8 +262,13 @@ export function Reviser({ ctx }) {
                   {!multi && jp && jp.jIndex >= 0 && <JLadder jIndex={jp.jIndex} />}
                 </div>
                 {!multi && primary && primary.pdfId && (
-                  <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={viewCours} title="Ouvrir le PDF source en lecture seule">
-                    <Icon name="filePdf" size={14} /> Voir le cours
+                  <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={viewCoursPdf} title="Ouvrir le PDF source en lecture seule">
+                    <Icon name="filePdf" size={14} /> Voir le cours{primary.htmlId ? ' (PDF)' : ''}
+                  </button>
+                )}
+                {!multi && primary && primary.htmlId && (
+                  <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={viewCoursHtml} title="Ouvrir la fiche HTML du cours">
+                    <Icon name="fileHtml" size={14} /> Voir le cours{primary.pdfId ? ' (HTML)' : ''}
                   </button>
                 )}
                 {dueSel.length > 0 && <button className="btn primary" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={launchToday}><Icon name="play" size={14} fill /> Lancer aujourd'hui</button>}

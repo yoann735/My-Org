@@ -59,9 +59,9 @@ export function Bibliotheque({ ctx }) {
   // ouvre le document d'une fiche dans le panneau de droite (jamais de navigation
   // d'écran) ; kind dérivé de docKind() — pdfId → 'fiche', anat_schema → 'schema',
   // transcript → 'transcript'.
-  const openDoc = (f, mode) => {
+  const openDoc = (f, mode, srcTab) => {
     const kind = docKind(f);
-    if (kind === 'fiche') setSelected({ ficheId: f.id, kind: 'fiche', mode: mode || 'read' });
+    if (kind === 'fiche') setSelected({ ficheId: f.id, kind: 'fiche', mode: mode || 'read', srcTab });
     else if (kind === 'schema') setSelected({ ficheId: f.id, kind: 'schema' });
     else if (kind === 'transcript') setSelected({ ficheId: f.id, kind: 'transcript' });
   };
@@ -69,7 +69,13 @@ export function Bibliotheque({ ctx }) {
     if (!file) return;
     const pdfId = await putBlob(file);
     await ctx.setFichePdf(ficheId, pdfId, file.name);
-    setSelected({ ficheId, kind: 'fiche', mode: 'edit' });
+    setSelected({ ficheId, kind: 'fiche', mode: 'edit', srcTab: 'pdf' });
+  };
+  const attachHtml = async (ficheId, file) => {
+    if (!file) return;
+    const htmlId = await putBlob(file);
+    await ctx.setFicheHtml(ficheId, htmlId, file.name);
+    setSelected({ ficheId, kind: 'fiche', mode: 'edit', srcTab: 'html' });
   };
   const removeTranscript = async (ficheId) => {
     await deleteTranscript(ficheId);
@@ -213,11 +219,21 @@ export function Bibliotheque({ ctx }) {
                                           )}
                                           {!isSchema && !isTranscript && (
                                             f.pdfId ? (
-                                              <button className="cd-ic" title="Ouvrir le PDF (lecture / surlignage)" onClick={() => openDoc(f, 'edit')}><Icon name="filePdf" size={14} /></button>
+                                              <button className="cd-ic" title="Ouvrir le PDF (lecture / surlignage)" onClick={() => openDoc(f, 'edit', 'pdf')}><Icon name="filePdf" size={14} /></button>
                                             ) : (
                                               <label className="cd-ic" title="Attacher un PDF" style={{ cursor: 'pointer' }} onClick={(e) => e.stopPropagation()}>
                                                 <Icon name="upload" size={14} />
                                                 <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => attachPdf(f.id, e.target.files[0])} />
+                                              </label>
+                                            )
+                                          )}
+                                          {!isSchema && !isTranscript && (
+                                            f.htmlId ? (
+                                              <button className="cd-ic" title="Ouvrir la fiche HTML" onClick={() => openDoc(f, 'edit', 'html')}><Icon name="fileHtml" size={14} /></button>
+                                            ) : (
+                                              <label className="cd-ic" title="Attacher une fiche HTML" style={{ cursor: 'pointer' }} onClick={(e) => e.stopPropagation()}>
+                                                <Icon name="upload" size={14} />
+                                                <input type="file" accept="text/html,.html" style={{ display: 'none' }} onChange={(e) => attachHtml(f.id, e.target.files[0])} />
                                               </label>
                                             )
                                           )}
@@ -266,7 +282,7 @@ export function Bibliotheque({ ctx }) {
               <div className="hint" style={{ marginTop: 6 }}>Clique une fiche avec PDF, schéma ou transcript pour l'ouvrir ici.</div>
             </div>
           ) : selected.kind === 'fiche' ? (
-            <PdfReader key={selected.ficheId + ':' + (selected.mode || '')} ctx={ctx} ficheId={selected.ficheId} mode={selected.mode} embedded onClose={() => setSelected(null)} />
+            <PdfReader key={selected.ficheId + ':' + (selected.mode || '') + ':' + (selected.srcTab || '')} ctx={ctx} ficheId={selected.ficheId} mode={selected.mode} initialSrcTab={selected.srcTab} embedded onClose={() => setSelected(null)} />
           ) : selected.kind === 'schema' ? (
             <SchemaEditorScreen key={selected.ficheId} ctx={ctx} ficheId={selected.ficheId} embedded onClose={() => setSelected(null)} />
           ) : selected.kind === 'transcript' ? (

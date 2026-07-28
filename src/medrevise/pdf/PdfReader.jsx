@@ -154,11 +154,34 @@ function computeMatchRectsFromDom(container, matches) {
    (ficheId/mode passés en props directes, onClose local — pas de navigation
    d'écran). `embedded` masque le wrapper .screen + le .topbar interne (le
    parent affiche déjà SON topbar unique). */
-export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, embedded, onClose }) {
+export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSrcTab: srcTabProp, embedded, onClose }) {
   const { pdfView, db } = ctx;
   const ficheId = ficheIdProp ?? (pdfView && pdfView.ficheId);
+  const initialSrcTab = srcTabProp ?? (pdfView && pdfView.srcTab);
   const close = onClose || ctx.closePdfReader;
   const fiche = db.fiches.find((f) => f.id === ficheId);
+
+  // source affichée quand la fiche porte À LA FOIS un PDF et une fiche HTML —
+  // indépendant du mode Lecture/Édition (qui ne s'applique qu'au PDF).
+  const [srcTab, setSrcTab] = useState(() => initialSrcTab || (fiche && fiche.pdfId ? 'pdf' : 'html'));
+  useEffect(() => { setSrcTab(initialSrcTab || (fiche && fiche.pdfId ? 'pdf' : 'html')); }, [ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [htmlUrl, setHtmlUrl] = useState(null);
+  const [htmlLoadError, setHtmlLoadError] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    let objUrl = null;
+    setHtmlUrl(null); setHtmlLoadError(null);
+    if (!fiche || !fiche.htmlId) return;
+    (async () => {
+      const blob = await getBlob(fiche.htmlId);
+      if (cancelled) return;
+      if (!blob) { setHtmlLoadError('Fichier HTML introuvable.'); return; }
+      objUrl = URL.createObjectURL(blob);
+      setHtmlUrl(objUrl);
+    })();
+    return () => { cancelled = true; if (objUrl) URL.revokeObjectURL(objUrl); };
+  }, [fiche && fiche.htmlId]);
 
   const [pdfDoc, setPdfDoc] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -533,6 +556,12 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, embedded,
     const pdfId = await putBlob(file);
     await ctx.setFichePdf(ficheId, pdfId, file.name);
   };
+  const attachHtml = async (file) => {
+    if (!file) return;
+    const htmlId = await putBlob(file);
+    await ctx.setFicheHtml(ficheId, htmlId, file.name);
+    setSrcTab('html');
+  };
 
   if (!fiche) {
     return (
@@ -543,24 +572,61 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, embedded,
     );
   }
 
-  if (!fiche.pdfId) {
+  if (!fiche.pdfId && !fiche.htmlId) {
     return (
       <div className={embedded ? 'fadein' : 'screen scroll fadein'}>
         {!embedded && (
           <div className="topbar">
-            <div><h1 className="serif">{fiche.titre}</h1><div className="sub">Aucun PDF rattaché à cette fiche.</div></div>
+            <div><h1 className="serif">{fiche.titre}</h1><div className="sub">Aucun document rattaché à cette fiche.</div></div>
             <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
           </div>
         )}
-        <div className="card" style={{ maxWidth: 440, margin: '30px auto', textAlign: 'center', padding: '30px 20px' }}>
+        <div className="card" style={{ maxWidth: 480, margin: '30px auto', textAlign: 'center', padding: '30px 20px' }}>
           <Icon name="filePdf" size={30} />
-          <div style={{ marginTop: 10, fontWeight: 600 }}>Importer le PDF du cours</div>
-          <div className="hint" style={{ marginTop: 6 }}>Stocké localement (IndexedDB), pour lecture et surlignage dans l'app.</div>
-          <label className="btn primary" style={{ marginTop: 16, cursor: 'pointer', display: 'inline-flex' }}>
-            <Icon name="upload" size={14} /> Attacher un PDF
-            <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => attach(e.target.files[0])} />
-          </label>
+          <div style={{ marginTop: 10, fontWeight: 600 }}>Attacher le cours</div>
+          <div className="hint" style={{ marginTop: 6 }}>PDF et/ou fiche HTML — stocké localement (IndexedDB), pour lecture (et surlignage pour le PDF) dans l'app.</div>
+          <div className="row" style={{ gap: 10, justifyContent: 'center', marginTop: 16, flexWrap: 'wrap' }}>
+            <label className="btn primary" style={{ cursor: 'pointer', display: 'inline-flex' }}>
+              <Icon name="upload" size={14} /> Attacher un PDF
+              <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => attach(e.target.files[0])} />
+            </label>
+            <label className="btn" style={{ cursor: 'pointer', display: 'inline-flex' }}>
+              <Icon name="upload" size={14} /> Attacher une fiche HTML
+              <input type="file" accept="text/html,.html" style={{ display: 'none' }} onChange={(e) => attachHtml(e.target.files[0])} />
+            </label>
+          </div>
           <div style={{ marginTop: 14 }}><button className="btn ghost sm" onClick={close}>Annuler</button></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (srcTab === 'html') {
+    return (
+      <div className={embedded ? 'fadein' : 'screen scroll fadein'}>
+        {!embedded && (
+          <div className="topbar">
+            <div><h1 className="serif">{fiche.titre}</h1><div className="sub">Fiche HTML</div></div>
+            <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
+          </div>
+        )}
+        <div className="pdfr-toolbar">
+          <button className="btn ghost sm" onClick={close}><Icon name="chevL" size={14} /> Retour</button>
+          {!!fiche.pdfId && (
+            <button className="btn ghost sm" onClick={() => setSrcTab('pdf')}><Icon name="filePdf" size={13} /> Voir le PDF</button>
+          )}
+          <div style={{ flex: 1 }} />
+          <label className="btn ghost sm" style={{ cursor: 'pointer' }} title={fiche.htmlId ? 'Remplacer la fiche HTML' : 'Attacher une fiche HTML'}>
+            <Icon name="upload" size={13} /> {fiche.htmlId ? 'Remplacer' : 'Attacher'}
+            <input type="file" accept="text/html,.html" style={{ display: 'none' }} onChange={(e) => attachHtml(e.target.files[0])} />
+          </label>
+        </div>
+        {htmlLoadError && <div className="err-mini" style={{ marginBottom: 12 }}><div className="em-ic crit"><Icon name="alert" size={16} /></div><div className="em-body"><div className="em-title">{htmlLoadError}</div></div></div>}
+        <div className="pdfr-html-wrap">
+          {!htmlUrl && !htmlLoadError && <div className="gen-spinner" style={{ width: 40, height: 40, margin: '60px auto' }} />}
+          {htmlUrl && (
+            <iframe src={htmlUrl} title={fiche.titre} sandbox="allow-same-origin" className="pdfr-html-frame" />
+          )}
         </div>
       </div>
     );
@@ -580,6 +646,9 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, embedded,
 
       <div className="pdfr-toolbar">
         <button className="btn ghost sm" onClick={close}><Icon name="chevL" size={14} /> Retour</button>
+        {!!fiche.htmlId && (
+          <button className="btn ghost sm" onClick={() => setSrcTab('html')}><Icon name="fileHtml" size={13} /> Voir le HTML</button>
+        )}
 
         <div className="seg" style={{ marginLeft: 4 }}>
           <button type="button" className={'seg-btn' + (mode === 'read' ? ' active' : '')} onClick={() => { setMode('read'); setActiveEditId(null); }}><Icon name="book" size={13} /> Lecture</button>

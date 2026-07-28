@@ -4,7 +4,7 @@
    ============================================================ */
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, EdTop, TodaySeriesCard, DestPicker, CoursePdfField, matiereMeta } from '../components/ui.jsx';
+import { Card, EdTop, TodaySeriesCard, DestPicker, CoursePdfField, CourseHtmlField, matiereMeta } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { weekData, dueToday, dueSchemasToday, todayPlan } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
@@ -206,10 +206,11 @@ function ImportPanel({ ctx }) {
   const [parseError, setParseError] = useState(null);
   const [parsed, setParsed] = useState(null); // { questions, synthese, counts }
   const [pastePdf, setPastePdf] = useState(null); // PDF du cours (optionnel) rattaché à la fiche créée
+  const [pasteHtml, setPasteHtml] = useState(null); // fiche HTML (optionnelle) — indépendante du PDF
 
   const reset = () => {
     setState('form'); setTitle(''); setResult(null);
-    setJsonText(''); setParseError(null); setParsed(null); setPastePdf(null);
+    setJsonText(''); setParseError(null); setParsed(null); setPastePdf(null); setPasteHtml(null);
   };
 
   const srcLabel = (db.sources.find((s) => s.id === srcId) || {}).nom || '—';
@@ -232,9 +233,12 @@ function ImportPanel({ ctx }) {
     setBusy(true);
     let pdfId = null;
     if (pastePdf) { try { pdfId = await putBlob(pastePdf); } catch (e) { /* ignore */ } }
+    let htmlId = null;
+    if (pasteHtml) { try { htmlId = await putBlob(pasteHtml); } catch (e) { /* ignore */ } }
     const res = await createFicheFromQuestions({
       matiereId: matId, titre: title, items: parsed.items, synthese: parsed.synthese, meta: parsed.meta,
       pdfId, pdfName: pastePdf ? pastePdf.name : null,
+      htmlId, htmlName: pasteHtml ? pasteHtml.name : null,
     });
     await ctx.reload();
     setResult(res); setState('done'); setBusy(false);
@@ -284,6 +288,9 @@ function ImportPanel({ ctx }) {
           <CoursePdfField file={pastePdf} onFile={setPastePdf}
             hint="Rattaché à la fiche pour « Voir le cours » et le surlignage. Facultatif." />
 
+          <CourseHtmlField file={pasteHtml} onFile={setPasteHtml}
+            hint="Fiche de cours HTML autonome (mise en page + images incluses). Rattachée en plus du PDF si les deux sont fournis." />
+
           <ImportJsonField label="RÉPONSE DE CLAUDE (JSON)" placeholder="Colle ici la réponse JSON que Claude t'a donnée dans le chat."
             value={jsonText} onChange={(v) => { setJsonText(v); setParseError(null); }} error={parseError} />
 
@@ -300,6 +307,7 @@ function ImportPanel({ ctx }) {
           infoLines={[
             parsed.synthese && { text: 'Synthèse incluse ✓' },
             { text: pastePdf ? <>PDF du cours joint : {pastePdf.name} ✓</> : 'Aucun PDF du cours joint.' },
+            { text: pasteHtml ? <>Fiche HTML jointe : {pasteHtml.name} ✓</> : 'Aucune fiche HTML jointe.' },
           ]}
           onBack={() => setState('form')} onConfirm={confirmImport} busy={busy} />
       )}

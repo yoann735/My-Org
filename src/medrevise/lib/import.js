@@ -14,13 +14,16 @@ import { todayISO } from './sm2.js';
  * d'items v1.0 DÉJÀ parsé (flux « coller le JSON », Standard ou Rattrapage).
  * La synthèse est stockée sur la fiche (affichée sur l'onglet Feynman).
  */
-export async function createFicheFromQuestions({ matiereId, titre, items, synthese, meta, pdfId, pdfName }) {
+export async function createFicheFromQuestions({ matiereId, titre, items, synthese, meta, pdfId, pdfName, htmlId, htmlName }) {
   const ficheId = genId('f');
   const fiche = {
     id: ficheId, matiereId,
     titre: (titre || 'Fiche importée').trim(),
     sousTitre: 'Importée',
-    type: 'standard', coef: null, pdfId: pdfId || null, pdfName: (pdfId && pdfName) || null, dateImport: todayISO(),
+    type: 'standard', coef: null,
+    pdfId: pdfId || null, pdfName: (pdfId && pdfName) || null,
+    htmlId: htmlId || null, htmlName: (htmlId && htmlName) || null,
+    dateImport: todayISO(),
     synthese: (synthese && synthese.trim()) || null,
     // méta v1.0 (informatif : notions_cles, prerequis, matiere annoncée…)
     meta: meta && typeof meta === 'object' ? meta : null,

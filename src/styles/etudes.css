@@ -878,6 +878,8 @@
 .pdfr-match-rect { position: absolute; background: color-mix(in srgb, #FFB020 55%, transparent); border-radius: 2px; pointer-events: none; }
 .pdfr-match-rect.active { background: color-mix(in srgb, #FF3B30 62%, transparent); outline: 2px solid #FF3B30; outline-offset: 1px; }
 .pdfr-panel { width: 280px; flex: 0 0 auto; max-height: calc(100vh - 230px); overflow-y: auto; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+.pdfr-html-wrap { border: 1px solid var(--border-2); border-radius: 14px; overflow: hidden; background: #fff; }
+.pdfr-html-frame { display: block; width: 100%; height: calc(100vh - 230px); border: 0; background: #fff; }
 .hl-entry { display: flex; gap: 9px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--border-2); cursor: pointer; }
 .hl-entry:last-child { border-bottom: none; }
 .hl-entry:hover .hl-entry-txt { color: var(--text); }

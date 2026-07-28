@@ -10,12 +10,13 @@
 import { genId, put, remove, removeDoc, setDoc } from '../../lib/storage.js';
 import { todayISO } from '../../lib/sm2.js';
 
-/** derive le MODE d'affichage d'une fiche (null = pas un document ouvrable). */
+/** derive le MODE d'affichage d'une fiche (null = pas un document ouvrable).
+    'fiche' couvre PDF ET/OU HTML — PdfReader choisit la bonne vue en interne. */
 export function docKind(fiche) {
   if (!fiche) return null;
   if (fiche.type === 'anat_schema') return 'schema';
   if (fiche.type === 'transcript') return 'transcript';
-  if (fiche.pdfId) return 'fiche';
+  if (fiche.pdfId || fiche.htmlId) return 'fiche';
   return null;
 }
 
