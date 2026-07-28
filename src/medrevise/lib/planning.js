@@ -3,7 +3,7 @@
    échéances par question (nextReview), pas un hash. Fonctions PURES
    sur un snapshot { sources, matieres, fiches, questions }.
    ============================================================ */
-import { jStepForInterval, todayISO, isoDate } from './sm2.js';
+import { jStepForInterval, todayISO, isoDate, J_INTERVALS } from './sm2.js';
 
 const SCHEDULED_TYPES = new Set(['qcm', 'flashcard']);
 // exercices : HORS méthode des J (comme le Feynman). Ils ne sont plus programmés,
@@ -113,6 +113,51 @@ export function overdueByFiche(db, idx) {
   return [...qGroups, ...schemaGroups].sort((a, b) => (a.oldest < b.oldest ? -1 : a.oldest > b.oldest ? 1 : 0));
 }
 
+/* ============================================================
+   PROJECTION des J futurs (calendrier — lecture seule). Pour une fiche,
+   calcule ses prochaines occurrences sur l'échelle J (J_INTERVALS =
+   [1,3,7,14,30]) à partir de son échéance EFFECTIVE actuelle :
+   - point de départ = nextReview si pas en retard, sinon aujourd'hui +
+     interval (même recalage que dismissOverdue — jamais la date manquée) ;
+   - puis les rangs suivants de l'échelle, en jours ajoutés à ce point de
+     départ (delta entre rangs, pas un enchaînement de vraies révisions).
+   RECALCULÉ à chaque appel depuis l'état réel (repetition/interval/
+   nextReview) — ne stocke ni ne modifie RIEN, ne touche pas sm2()/
+   applyReview. Si la fiche est révisée entre-temps, la projection suivante
+   reflète naturellement le nouvel état. ============================== */
+export function ficheProjection(db, fiche, idx) {
+  const ix = idx || index(db);
+  const today = todayISO();
+  let interval, nextReview;
+  if (fiche.type === 'anat_schema') {
+    interval = fiche.interval || 0;
+    nextReview = fiche.nextReview || today;
+  } else {
+    const qs = (db.questions || []).filter((q) => q.ficheId === fiche.id && J_TYPES.has(q.type));
+    if (!qs.length) return [];
+    const soonest = qs.reduce((a, b) => (a.nextReview <= b.nextReview ? a : b));
+    interval = soonest.interval || 0;
+    nextReview = soonest.nextReview;
+  }
+  const anchorDate = nextReview < today ? addDays(today, interval || 1) : nextReview;
+  const startIdx = Math.max(jStepForInterval(interval).jIndex, 0);
+  const out = [];
+  for (let k = startIdx; k < J_INTERVALS.length; k++) {
+    const days = k === startIdx ? 0 : (J_INTERVALS[k] - J_INTERVALS[startIdx]);
+    out.push({ date: addDays(anchorDate, days), jIndex: k, jLabel: 'J+' + J_INTERVALS[k] });
+  }
+  return out;
+}
+
+/** projection pour toutes les fiches planifiées (rappels J actifs, non archivées). */
+export function allFicheProjections(db, idx) {
+  const ix = idx || index(db);
+  return (db.fiches || [])
+    .filter((f) => isFicheScheduled(db, f, ix))
+    .map((f) => ({ fiche: f, matiere: ix.mById[f.matiereId], occurrences: ficheProjection(db, f, ix) }))
+    .filter((e) => e.occurrences.length);
+}
+
 /* ---- exercices (type "exercice") : HORS méthode des J. Aucune planification :
    on les liste simplement (choix libre dans la page Exercice). Le statut d'un
    exercice se lit sur son historique (jamais fait / réussi / à revoir), pas sur
@@ -193,17 +238,43 @@ export function weekData(db, weekOffset = 0, idx) {
   const ix = idx || index(db);
   const today = todayISO();
   const monday = addDays(startOfWeekISO(today), weekOffset * 7);
+  // calculée une fois pour toute la semaine — chaque jour futur y pioche ses
+  // occurrences (voir ficheProjection : lecture seule, rien n'est stocké).
+  const projections = allFicheProjections(db, ix);
   const days = [];
   for (let i = 0; i < 7; i++) {
     const date = addDays(monday, i);
-    const items = dueOn(db, date, ix);
-    const schemas = dueSchemasOn(db, date, ix).map((f) => ({ fiche: f, matiere: ix.mById[f.matiereId], ...ficheJ(db, f.id, ix) }));
+    const isToday = date === today;
+    const isPast = date < today;
+    let items = [], schemas = [], byFiche = [];
+
+    if (isToday) {
+      // aujourd'hui : données RÉELLES et actionnables (inchangé — "Lancer la série").
+      items = dueOn(db, date, ix);
+      schemas = dueSchemasOn(db, date, ix).map((f) => ({ fiche: f, matiere: ix.mById[f.matiereId], ...ficheJ(db, f.id, ix) }));
+      byFiche = groupByFiche(db, items, ix);
+    } else if (!isPast) {
+      // futur : PROJECTION — toutes les fiches dont une échéance (réelle ou
+      // projetée) tombe ce jour-là, tous J confondus. Même forme {fiche,
+      // matiere, jLabel} que byFiche/schemas ci-dessus → aucun changement
+      // requis côté rendu (WeekCalendar/DayPopup lisent déjà ces champs).
+      projections.forEach((p) => {
+        p.occurrences.forEach((o) => {
+          if (o.date !== date) return;
+          const entry = { fiche: p.fiche, matiere: p.matiere, jLabel: o.jLabel };
+          if (p.fiche.type === 'anat_schema') schemas.push(entry); else byFiche.push(entry);
+        });
+      });
+    }
+    // passé (isPast) : reste vide, comportement inchangé (rien à projeter en arrière).
+
     days.push({
       date, dow: DOW[i], dayNum: new Date(date + 'T00:00:00').getDate(),
-      isToday: date === today, isPast: date < today,
-      // total affiché = cartes (questions) + schémas dus
-      total: items.length + schemas.length, cardsTotal: items.length,
-      items, schemas, byFiche: groupByFiche(db, items, ix),
+      isToday, isPast, isProjected: !isToday && !isPast,
+      // total affiché = cartes réelles (aujourd'hui) OU cours projetés (futur) + schémas
+      total: (isToday ? items.length : byFiche.length) + schemas.length,
+      cardsTotal: isToday ? items.length : byFiche.length,
+      items, schemas, byFiche,
     });
   }
   return { monday, days };
