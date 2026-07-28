@@ -79,6 +79,40 @@ export function dueOn(db, dateISO, idx) {
 }
 export function dueToday(db, idx) { return dueOn(db, todayISO(), idx); }
 
+/* ---- « boîte des J non faits » : items dont l'échéance est STRICTEMENT passée
+   (nextReview < aujourd'hui), séparés du "dû aujourd'hui" (dueToday inclut déjà
+   le retard, volontairement inchangé — voir dueOn). Ne recale RIEN : réviser
+   l'item applique applyReview/sm2 normalement, qui base déjà le prochain
+   intervalle sur la date de révision EFFECTIVE (new Date() dans sm2()), jamais
+   sur l'échéance manquée — aucune nouvelle logique de planification ici. ---- */
+export function overdueQuestions(db, idx) {
+  const ix = idx || index(db);
+  const today = todayISO();
+  return scheduledQuestions(db, ix).filter((q) => q.nextReview < today);
+}
+export function overdueSchemas(db, idx) {
+  const ix = idx || index(db);
+  const today = todayISO();
+  return scheduledSchemas(db, ix).filter((f) => (f.nextReview || today) < today);
+}
+/** regroupe questions ET schémas en retard, une entrée par fiche, triée par
+   ancienneté (la plus en retard d'abord — priorité). */
+export function overdueByFiche(db, idx) {
+  const ix = idx || index(db);
+  const qGroups = groupByFiche(db, overdueQuestions(db, ix), ix).map((g) => ({
+    ...g, isSchema: false,
+    oldest: g.items.reduce((min, q) => (q.nextReview < min ? q.nextReview : min), g.items[0].nextReview),
+  }));
+  const schemaGroups = overdueSchemas(db, ix).map((f) => {
+    const m = ix.mById[f.matiereId];
+    return {
+      fiche: f, matiere: m, source: m && ix.sById[m.sourceId], items: [], qcm: 0, flash: 0, isSchema: true,
+      ...ficheJ(db, f.id, ix), coef: effectiveCoef(db, f, ix), oldest: f.nextReview || todayISO(),
+    };
+  });
+  return [...qGroups, ...schemaGroups].sort((a, b) => (a.oldest < b.oldest ? -1 : a.oldest > b.oldest ? 1 : 0));
+}
+
 /* ---- exercices (type "exercice") : HORS méthode des J. Aucune planification :
    on les liste simplement (choix libre dans la page Exercice). Le statut d'un
    exercice se lit sur son historique (jamais fait / réussi / à revoir), pas sur

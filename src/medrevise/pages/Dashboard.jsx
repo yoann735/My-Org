@@ -4,9 +4,9 @@
    ============================================================ */
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, EdTop, TodaySeriesCard, DestPicker, CoursePdfField, CourseHtmlField, matiereMeta } from '../components/ui.jsx';
+import { Card, EdTop, TodaySeriesCard, DestPicker, CoursePdfField, CourseHtmlField, matiereMeta, OverdueBox } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
-import { weekData, dueToday, dueSchemasToday, todayPlan } from '../lib/planning.js';
+import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
 import { createFicheFromQuestions } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
@@ -25,6 +25,8 @@ export function Dashboard({ ctx }) {
   const due = dueToday(db);
   const dueSchemas = dueSchemasToday(db);
   const plan = todayPlan(db);
+  const overdue = overdueByFiche(db);
+  const startOverdueFiche = (g) => (g.isSchema ? ctx.startAnatQuiz(g.fiche, { mode: 'total' }) : ctx.startSession(g.items, g.fiche.titre + ' — Rattrapage'));
 
   return (
     <div className="screen scroll fadein">
@@ -37,6 +39,12 @@ export function Dashboard({ ctx }) {
       </div>
 
       <TodaySeriesCard plan={plan} onStart={ctx.startSession} />
+
+      {overdue.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <OverdueBox groups={overdue} onStartFiche={startOverdueFiche} onStartAll={(items) => ctx.startSession(items, 'Rattrapage')} />
+        </div>
+      )}
 
       <Card title="Calendrier de la semaine — méthode des J" icon="calendar"
         action={<span className="pill accent"><Icon name="cards" size={13} /> {due.length} carte{due.length > 1 ? 's' : ''}{dueSchemas.length > 0 ? ` + ${dueSchemas.length} schéma${dueSchemas.length > 1 ? 's' : ''}` : ''} aujourd'hui</span>}>

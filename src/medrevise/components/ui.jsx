@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Icon } from '../../shared/Icon.jsx';
 import { J_INTERVALS } from '../lib/sm2.js';
+import { fmtDay } from '../lib/planning.js';
 
 const FALLBACK_TINT = '#7C6FE0';
 
@@ -265,6 +266,50 @@ export function TodaySeriesCard({ plan, onStart, compact, collapsed, onToggleCol
         <button className="sh-cta" type="button" onClick={() => onStart(allItems, 'Série du jour')}>
           <Icon name="play" size={17} fill /> Commencer la série d'aujourd'hui
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---- boîte « À rattraper » (J non faits) : fiches dont l'échéance est passée,
+   groups = overdueByFiche(db) (planning.js). onStartFiche(group) lance la
+   révision : l'appelant choisit ctx.startSession (qcm/flash) ou ctx.startAnatQuiz
+   (schéma) selon group.isSchema. Réviser recale le prochain intervalle depuis
+   AUJOURD'HUI via le moteur SM-2 existant — rien de spécifique ici. ---- */
+export function OverdueBox({ groups, onStartFiche, onStartAll }) {
+  if (!groups || !groups.length) return null;
+  const questionGroups = groups.filter((g) => !g.isSchema && g.items.length);
+  const totalItems = questionGroups.reduce((s, g) => s + g.items.length, 0);
+  return (
+    <div className="card" style={{ borderColor: 'color-mix(in srgb, var(--crit) 45%, var(--border))' }}>
+      <div className="card-head">
+        <Icon name="alert" size={17} className="ic" style={{ color: 'var(--crit)' }} />
+        <h3>À rattraper</h3>
+        <div className="right"><span className="pill crit">{groups.length} fiche{groups.length > 1 ? 's' : ''} à rattraper</span></div>
+      </div>
+      <div className="card-body">
+        <div className="row spread" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
+          <div className="hint">Échéance dépassée. Réviser une fiche recale sa prochaine échéance à partir d'aujourd'hui.</div>
+          {questionGroups.length > 1 && totalItems > 0 && (
+            <button className="btn primary sm" onClick={() => onStartAll(questionGroups.flatMap((g) => g.items))}>
+              <Icon name="play" size={13} fill /> Tout rattraper ({totalItems})
+            </button>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {groups.map((g) => (
+            <div className="day-line" key={g.fiche.id}>
+              <div className="dl-ic" style={{ background: 'color-mix(in srgb, var(--crit) 15%, transparent)', color: 'var(--crit)' }}>
+                <Icon name={g.isSchema ? 'image' : 'cards'} size={16} />
+              </div>
+              <div className="dl-main">
+                <div className="dl-title">{g.fiche.titre}</div>
+                <div className="dl-sub"><span>{matiereMeta(g.matiere).label} · {g.isSchema ? 'schéma' : `${g.items.length} carte${g.items.length > 1 ? 's' : ''}`} · en retard depuis le {fmtDay(g.oldest)}</span></div>
+              </div>
+              <button className="btn sm" onClick={() => onStartFiche(g)}><Icon name="play" size={13} /> Rattraper</button>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

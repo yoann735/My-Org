@@ -5,9 +5,9 @@
    ============================================================ */
 import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot } from '../components/ui.jsx';
+import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox } from '../components/ui.jsx';
 import {
-  index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, missedQuestions, topConcepts, todayPlan,
+  index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, missedQuestions, topConcepts, todayPlan, overdueByFiche,
 } from '../lib/planning.js';
 import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
 import { allCoches } from '../lib/anatSchema.js';
@@ -25,6 +25,9 @@ export function Reviser({ ctx }) {
 
   const dueIdsToday = useMemo(() => new Set(dueToday(db, ix).map((q) => q.id)), [db, ix]);
   const dueSchemaIds = useMemo(() => new Set(dueSchemasToday(db, ix).map((f) => f.id)), [db, ix]);
+  const overdue = useMemo(() => overdueByFiche(db, ix), [db, ix]);
+  const overdueFicheIds = useMemo(() => new Set(overdue.map((g) => g.fiche.id)), [overdue]);
+  const startOverdueFiche = (g) => (g.isSchema ? ctx.startAnatQuiz(g.fiche, { mode: 'total' }) : ctx.startSession(g.items, g.fiche.titre + ' — Rattrapage'));
   const fichesOf = (matId) => db.fiches.filter((f) => f.matiereId === matId && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
   const matieresOf = (srcId) => db.matieres.filter((m) => m.sourceId === srcId && !m.archive);
   // repérage « d'un coup d'œil » des schémas d'anatomie dans l'arbre (point E).
@@ -135,6 +138,12 @@ export function Reviser({ ctx }) {
         collapsed={!!(ctx.stats && ctx.stats.serieCollapsed)}
         onToggleCollapse={() => ctx.saveStats({ ...ctx.stats, serieCollapsed: !(ctx.stats && ctx.stats.serieCollapsed) })} />
 
+      {overdue.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <OverdueBox groups={overdue} onStartFiche={startOverdueFiche} onStartAll={(items) => ctx.startSession(items, 'Rattrapage')} />
+        </div>
+      )}
+
       <div className="revise-grid" style={{ display: 'grid', gridTemplateColumns: 'var(--tree-col, 380px) minmax(0,1fr)', gap: 20, alignItems: 'start', marginTop: 20 }}>
         {/* tree */}
         <div className="tree-card">
@@ -216,6 +225,7 @@ export function Reviser({ ctx }) {
                                       <span className="tc-name">{f.titre}</span>
                                       {f.type === 'anat_schema' && <span title="Schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex', marginLeft: 4 }}><Icon name="image" size={12} /></span>}
                                       <EtiquetteDot value={f.etiquette} style={{ marginLeft: 4 }} />
+                                      {overdueFicheIds.has(f.id) && <span title="En retard — à rattraper" style={{ color: 'var(--crit)', display: 'inline-flex', marginLeft: 4 }}><Icon name="alert" size={12} /></span>}
                                       {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
                                     </button>
                                     <CoefControl value={effectiveCoef(db, f, ix)} inherited={f.coef == null} onSet={(v) => ctx.setFicheCoef(f.id, v)} onReset={() => ctx.setFicheCoef(f.id, null)} />
