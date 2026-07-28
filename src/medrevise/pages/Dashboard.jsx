@@ -11,6 +11,7 @@ import { isoDate } from '../lib/sm2.js';
 import { createFicheFromQuestions } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
+import { cleanTranscript } from '../documents/lib/transcript.js';
 import { ImportAnatomieTheorie } from './ImportAnatomieTheorie.jsx';
 import { ImportAnatomieVisuel } from './ImportAnatomieVisuel.jsx';
 import { ImportRattrapage } from './ImportRattrapage.jsx';
@@ -49,6 +50,8 @@ export function Dashboard({ ctx }) {
         <ImportPanel ctx={ctx} />
         <StreakWidget stats={ctx.stats} />
       </div>
+
+      <TranscriptCleanerWidget />
 
       {selDay && <DayPopup day={selDay} ctx={ctx} onClose={() => setSelDay(null)} />}
     </div>
@@ -315,6 +318,51 @@ function ImportPanel({ ctx }) {
       {mode === 'standard' && state === 'done' && result && (
         <ImportDoneScreen message={<>✓ {result.count} questions importées.</>}
           onReset={reset} ctx={ctx} ficheId={result.fiche.id} />
+      )}
+    </Card>
+  );
+}
+
+/* ---------- nettoyeur de transcript (presse-papier) ----------
+   RÉUTILISE cleanTranscript (documents/lib/transcript.js), la même fonction
+   que le mode "nouveau transcript" de la Bibliothèque — aucune duplication.
+   Ici, aucun enregistrement : coller → nettoyer → copier, rien de plus. */
+function TranscriptCleanerWidget() {
+  const [raw, setRaw] = useState('');
+  const [cleaned, setCleaned] = useState(null); // null = pas encore nettoyé
+  const [copied, setCopied] = useState(false);
+
+  const clean = () => { setCleaned(cleanTranscript(raw).cleaned); setCopied(false); };
+  const copy = async () => {
+    if (!cleaned) return;
+    try {
+      await navigator.clipboard.writeText(cleaned);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2200);
+    } catch (e) { /* ignore */ }
+  };
+
+  return (
+    <Card title="Nettoyer un transcript" icon="sparkle" style={{ marginTop: 20 }}>
+      <div className="hint" style={{ marginBottom: 10 }}>
+        Colle un transcript brut (horodatages, hésitations…) pour obtenir une version lisible — rien n'est enregistré, purement presse-papier.
+      </div>
+      <div className="imp-field">
+        <label>Transcript brut (collé)</label>
+        <textarea className="imp-title" style={{ minHeight: 140, resize: 'vertical', fontFamily: 'inherit', fontSize: 13 }}
+          placeholder="Colle ici ton transcript brut…" value={raw} onChange={(e) => { setRaw(e.target.value); setCleaned(null); }} />
+      </div>
+      <div className="imp-actions" style={{ justifyContent: 'flex-start' }}>
+        <button className="btn primary" disabled={!raw.trim()} onClick={clean}><Icon name="sparkle" size={14} /> Nettoyer</button>
+      </div>
+      {cleaned !== null && (
+        <div className="fadein" style={{ marginTop: 14 }}>
+          <div className="hint" style={{ fontWeight: 700, marginBottom: 4 }}>Résultat nettoyé</div>
+          <pre className="rt-diff">{cleaned || "(le nettoyage n'a rien laissé — vérifie le texte collé)"}</pre>
+          <div className="imp-actions" style={{ marginTop: 10, justifyContent: 'flex-start' }}>
+            <button className="btn" onClick={copy} disabled={!cleaned}><Icon name={copied ? 'check' : 'copy'} size={14} /> {copied ? 'Copié !' : 'Copier le texte nettoyé'}</button>
+          </div>
+        </div>
       )}
     </Card>
   );
