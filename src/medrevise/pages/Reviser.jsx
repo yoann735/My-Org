@@ -5,7 +5,7 @@
    ============================================================ */
 import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, FicheDndProvider, DraggableFiche, DropSlot } from '../components/ui.jsx';
+import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot } from '../components/ui.jsx';
 import {
   index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, missedQuestions, topConcepts, todayPlan,
 } from '../lib/planning.js';
@@ -215,6 +215,7 @@ export function Reviser({ ctx }) {
                                     <button className="tree-course-main" onClick={() => selectOnly(f.id)} onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }} title="Clic = sélectionner · double-clic = renommer">
                                       <span className="tc-name">{f.titre}</span>
                                       {f.type === 'anat_schema' && <span title="Schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex', marginLeft: 4 }}><Icon name="image" size={12} /></span>}
+                                      <EtiquetteDot value={f.etiquette} style={{ marginLeft: 4 }} />
                                       {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
                                     </button>
                                     <CoefControl value={effectiveCoef(db, f, ix)} inherited={f.coef == null} onSet={(v) => ctx.setFicheCoef(f.id, v)} onReset={() => ctx.setFicheCoef(f.id, null)} />

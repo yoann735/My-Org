@@ -8,7 +8,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Breadcrumb, EdTop, matiereMeta } from '../components/ui.jsx';
+import { Breadcrumb, EdTop, matiereMeta, EtiquetteQuickSet } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { index } from '../lib/planning.js';
 
@@ -154,6 +154,13 @@ export function Feynman({ ctx }) {
                       <div className="hint">{essentiels.filter((c) => checked[c.id]).length}/{essentiels.length} critère(s) essentiel(s) validé(s).</div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* proposition (non bloquante) en fin de série, sur la fiche du dernier concept */}
+              {verdict && idx >= items.length - 1 && fiche && (
+                <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 14, background: 'var(--card-2)' }}>
+                  <EtiquetteQuickSet value={fiche.etiquette} onChange={(v) => ctx.setFicheEtiquette(fiche.id, v)} />
                 </div>
               )}
 

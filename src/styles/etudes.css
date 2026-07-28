@@ -805,6 +805,17 @@
 .imp-new:hover:not(:disabled) { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
 .imp-new:disabled { opacity: .4; cursor: default; }
 .imp-create { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* ---------- étiquette de cours (manuelle, purement informative) ---------- */
+.etq-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.etq-select {
+  font-family: inherit; font-size: 10.5px; font-weight: 700; height: 22px; padding: 0 8px 0 18px;
+  border-radius: 999px; border: 1px solid var(--border-2); background: var(--bg-2) no-repeat 8px center;
+  background-size: 8px 8px; background-image: radial-gradient(circle, var(--etq-color) 0 100%, transparent 100%);
+  color: var(--text-3); cursor: pointer; appearance: none; -webkit-appearance: none;
+}
+.etq-select.etq-set { color: var(--etq-color); border-color: color-mix(in srgb, var(--etq-color) 40%, transparent); background-color: color-mix(in srgb, var(--etq-color) 12%, transparent); }
+.etq-quickset { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .imp-create input { flex: 1 1 180px; min-width: 150px; border: 1px solid var(--accent); border-radius: 10px; padding: 8px 11px; font-family: inherit; font-size: 13.5px; background: var(--card); color: var(--text); outline: none; }
 .imp-title { border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; font-family: inherit; font-size: 13.5px; background: var(--card); color: var(--text); outline: none; }
 .imp-title:focus { border-color: var(--accent); }

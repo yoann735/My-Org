@@ -6,7 +6,7 @@
    ============================================================ */
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Breadcrumb, matiereMeta } from '../components/ui.jsx';
+import { Breadcrumb, matiereMeta, EtiquetteQuickSet } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { applyReview, QUALITY, jStepForInterval, todayISO, computeStreak } from '../lib/sm2.js';
 import { effectiveCoef, index } from '../lib/planning.js';
@@ -353,6 +353,11 @@ function Celebration({ items, results, session, ctx }) {
 
   const failedItems = items.filter((it, i) => results[i] && results[i].rating === 'fail');
 
+  // proposition (non bloquante) de mettre à jour l'étiquette — seulement si la
+  // session portait sur UNE SEULE fiche (sinon ambigu, on ne propose rien).
+  const ficheIds = [...new Set(items.map((it) => it.ficheId).filter(Boolean))];
+  const singleFiche = ficheIds.length === 1 ? ctx.db.fiches.find((f) => f.id === ficheIds[0]) : null;
+
   return (
     <div className="screen scroll fadein">
       <div className="confetti">{confetti.map((c, i) => <i key={i} style={{ left: c.left + '%', background: c.bg, animationDelay: c.delay + 's', animationDuration: c.dur + 's', transform: `rotate(${c.rot}deg)` }} />)}</div>
@@ -365,6 +370,11 @@ function Celebration({ items, results, session, ctx }) {
           {flashTotal > 0 && <div className="cel-stat"><Icon name="cards" size={16} /> <strong className="tnum">{flashGood}/{flashTotal}</strong> flashcards ✓</div>}
         </div>
         <div className="cel-streak"><Icon name="fire" size={15} fill /> Série : {(ctx.stats && ctx.stats.streak) || 1} jour{((ctx.stats && ctx.stats.streak) || 1) > 1 ? 's' : ''} !</div>
+        {singleFiche && (
+          <div style={{ marginTop: 18, display: 'flex', justifyContent: 'center' }}>
+            <EtiquetteQuickSet value={singleFiche.etiquette} onChange={(v) => ctx.setFicheEtiquette(singleFiche.id, v)} />
+          </div>
+        )}
         <div className="row" style={{ gap: 12, justifyContent: 'center', marginTop: 26 }}>
           <button className="btn lg" onClick={() => ctx.go('revise')}><Icon name="cards" size={16} /> Revenir à Réviser</button>
           {failedItems.length

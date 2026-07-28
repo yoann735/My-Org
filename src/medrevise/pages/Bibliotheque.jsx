@@ -10,7 +10,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker } from '../components/ui.jsx';
+import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker, EtiquetteSelect } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
@@ -188,7 +188,7 @@ export function Bibliotheque({ ctx }) {
                                     <DropSlot matiereId={mat.id} beforeId={f.id} />
                                     <DraggableFiche id={f.id} disabled={isRen('fiche', f.id)} className={'lib-fiche' + (isSel ? ' selected' : '')}
                                       style={{ border: '1px solid ' + (isSel ? 'var(--accent)' : 'var(--border-2)'), borderRadius: 12, padding: '11px 13px' }}>
-                                      <div className="row spread">
+                                      <div className="row spread" style={{ flexWrap: 'wrap', rowGap: 6 }}>
                                         {isRen('fiche', f.id) ? (
                                           <div style={{ flex: 1, minWidth: 0 }}><RenameInput /></div>
                                         ) : (
@@ -203,6 +203,7 @@ export function Bibliotheque({ ctx }) {
                                           </div>
                                         )}
                                         <div className="row" style={{ gap: 6 }}>
+                                          <EtiquetteSelect value={f.etiquette} onChange={(v) => ctx.setFicheEtiquette(f.id, v)} />
                                           {isTranscript ? (
                                             <span className="pill" style={{ height: 22, fontSize: 10.5 }}><Icon name="edit" size={11} /> TRANSCRIPT</span>
                                           ) : isSchema ? (

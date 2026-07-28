@@ -213,6 +213,12 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
       await put('fiches', { ...f, htmlId: htmlId || null, htmlName: htmlId ? (htmlName || f.htmlName || null) : null }); await reload();
     },
+    // étiquette de cours (100 % manuelle, purement informative — voir CLAUDE.md/prompt) :
+    // aucun effet sur SM-2/méthode des J, juste un marqueur visuel sur la fiche.
+    setFicheEtiquette: async (ficheId, etiquette) => {
+      const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
+      await put('fiches', { ...f, etiquette: etiquette || null }); await reload();
+    },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },
     clearQuestionError: async (id) => {
       const q = db.questions.find((x) => x.id === id); if (!q) return;

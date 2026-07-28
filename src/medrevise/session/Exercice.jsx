@@ -13,7 +13,7 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Breadcrumb, EdTop, matiereMeta } from '../components/ui.jsx';
+import { Breadcrumb, EdTop, matiereMeta, EtiquetteQuickSet } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { index, effectiveCoef } from '../lib/planning.js';
 import { applyReview, qualityForExercice, todayISO, computeStreak } from '../lib/sm2.js';
@@ -76,6 +76,7 @@ function Workstation({ item, fiche, meta, ctx, ix, isFirst, isLast, onNext, onPr
   const indices = item.indices || [];
   const [revealed, setRevealed] = useState(0);          // indices révélés (0..n)
   const [validated, setValidated] = useState(false);    // réponse soumise
+  const [done, setDone] = useState(false);              // exercice noté (SM-2 appliqué)
   const appliedRef = useRef(false);
 
   // ---- SM-2 : appliqué une seule fois, à la validation ----
@@ -86,6 +87,7 @@ function Workstation({ item, fiche, meta, ctx, ix, isFirst, isLast, onNext, onPr
     const coef = effectiveCoef(ctx.db, fiche, ix);
     const updated = applyReview(item, quality, coef);
     await ctx.saveQuestion(updated);
+    setDone(true);
     const s = ctx.stats || {};
     const today = todayISO();
     if (!(s.activityDays || []).includes(today)) {
@@ -140,6 +142,13 @@ function Workstation({ item, fiche, meta, ctx, ix, isFirst, isLast, onNext, onPr
 
         {/* correction numérique : après validation */}
         {numeric && validated && <NumericCorrection item={item} />}
+
+        {/* proposition (non bloquante) en fin de série, sur la fiche du dernier exercice fait */}
+        {isLast && done && fiche && (
+          <div className="card fadein"><div className="card-body">
+            <EtiquetteQuickSet value={fiche.etiquette} onChange={(v) => ctx.setFicheEtiquette(fiche.id, v)} />
+          </div></div>
+        )}
 
         <div className="row spread" style={{ marginTop: 2 }}>
           <button className="btn ghost" onClick={onPrev} disabled={isFirst}><Icon name="chevL" size={15} /> Précédent</button>

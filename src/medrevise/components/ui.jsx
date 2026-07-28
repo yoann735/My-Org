@@ -11,6 +11,51 @@ import { J_INTERVALS } from '../lib/sm2.js';
 
 const FALLBACK_TINT = '#7C6FE0';
 
+/* ---- étiquette de cours (Bibliothèque + sidebar Réviser + fin de session) ----
+   100 % manuelle, purement informative : AUCUN effet sur SM-2 / méthode des J
+   (voir CLAUDE.md / le prompt qui l'a demandée). Stockée sur fiche.etiquette. */
+export const ETIQUETTES = [
+  { id: 'a_apprendre', label: 'À apprendre', color: 'var(--accent)' },
+  { id: 'a_reapprendre', label: 'À réapprendre', color: 'var(--crit)' },
+  { id: 'revision_j', label: 'Révision des J', color: 'var(--ok)' },
+];
+export const etiquetteMeta = (id) => ETIQUETTES.find((e) => e.id === id) || null;
+
+/** petit point de couleur, purement décoratif (affichage seul — sidebar Réviser). */
+export function EtiquetteDot({ value, style }) {
+  const e = etiquetteMeta(value);
+  if (!e) return null;
+  return <span className="etq-dot" style={{ background: e.color, ...style }} title={e.label} />;
+}
+
+/** sélecteur compact (Bibliothèque) : la couleur de fond suit la valeur choisie. */
+export function EtiquetteSelect({ value, onChange }) {
+  return (
+    <select className={'etq-select' + (value ? ' etq-set' : '')}
+      style={{ '--etq-color': (etiquetteMeta(value) || {}).color || 'var(--text-3)' }}
+      value={value || ''} onClick={(e) => e.stopPropagation()}
+      onChange={(e) => onChange(e.target.value || null)} title="Étiquette de ce cours">
+      <option value="">Étiquette…</option>
+      {ETIQUETTES.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
+    </select>
+  );
+}
+
+/** proposition (non bloquante) en fin de session : chips cliquables, une seule fiche. */
+export function EtiquetteQuickSet({ value, onChange }) {
+  return (
+    <div className="etq-quickset">
+      <span className="hint" style={{ marginRight: 2 }}><Icon name="tag" size={13} /> Étiquette de cette fiche :</span>
+      <button type="button" className={'imp-chip' + (!value ? ' on' : '')} onClick={() => onChange(null)}>Aucune</button>
+      {ETIQUETTES.map((e) => (
+        <button type="button" key={e.id} className={'imp-chip' + (value === e.id ? ' on' : '')} onClick={() => onChange(e.id)}>
+          <span className="imp-dot" style={{ background: e.color }} />{e.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** display meta for a matière (label / tint / icon), tolerant of missing fields */
 export function matiereMeta(m) {
   if (!m) return { label: '—', tint: FALLBACK_TINT, icon: 'book' };

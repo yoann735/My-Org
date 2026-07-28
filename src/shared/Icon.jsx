@@ -75,6 +75,7 @@ export const ICONS = {
   folder: 'M4 6a1 1 0 0 1 1-1h4l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6Z',
   archive: 'M3 8h18M5 8l1 11a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-11M4 8l1.4-3a1 1 0 0 1 .9-.6h11.4a1 1 0 0 1 .9.6L20 8M9.5 12h5',
   newspaper: 'M4 5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v13a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2V5Zm14 15a2 2 0 0 0 2-2V8h-2M7 7h5M7 10.5h5M7 14h3',
+  tag: 'M12.5 3H5a2 2 0 0 0-2 2v7.5a2 2 0 0 0 .6 1.4l8.5 8.5a2 2 0 0 0 2.8 0l6.1-6.1a2 2 0 0 0 0-2.8l-8.5-8.5a2 2 0 0 0-1.4-.6ZM8 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z',
 };
 
 export function Icon({ name, size = 20, stroke = 2, className = '', style = {}, fill = false }) {
