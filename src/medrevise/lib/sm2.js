@@ -35,6 +35,22 @@ export function qualityForExercice(success, indicesUsed = 0) {
   return Math.max(3, 5 - (indicesUsed || 0));
 }
 
+/**
+ * Verdict Feynman (réussi/à revoir) — tous les critères ESSENTIELS de la
+ * grille cochés (ou tous, si aucun n'est marqué essentiel), sinon repli sur
+ * l'auto-note simple pour les fiches Feynman héritées sans grille. Partagé
+ * par le Feynman desktop ET mobile (session/Feynman.jsx, mobile/MobileFeynman.jsx)
+ * — ne pas dupliquer ce calcul ailleurs.
+ */
+export function feynmanVerdict({ revealed, grille, checked, selfNote }) {
+  if (!revealed) return null;
+  const list = grille || [];
+  if (!list.length) return selfNote || null;
+  const essentiels = list.filter((c) => c.essentiel);
+  const base = essentiels.length ? essentiels : list;
+  return base.every((c) => checked[c.id]) ? 'ok' : 'ko';
+}
+
 /** normalisation tolérante pour comparer une saisie à la réponse stockée
    (minuscules, sans accents, trim, espaces multiples réduits). */
 export function normalizeAnswer(s) {

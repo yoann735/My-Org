@@ -11,6 +11,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, EdTop, matiereMeta, EtiquetteQuickSet } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { index } from '../lib/planning.js';
+import { feynmanVerdict } from '../lib/sm2.js';
 
 export function Feynman({ ctx }) {
   const payload = ctx.feynman || { items: [], title: 'Feynman' };
@@ -44,13 +45,9 @@ export function Feynman({ ctx }) {
   const toggle = (id) => setChecked((c) => ({ ...c, [id]: !c[id] }));
 
   // verdict : "tous_essentiels" → tous les critères essentiels cochés.
-  // Sans grille (Feynman hérité) → auto-note manuelle.
-  const verdict = (() => {
-    if (!revealed) return null;
-    if (!grille.length) return selfNote; // 'ok' | 'ko' | null
-    const base = essentiels.length ? essentiels : grille;
-    return base.every((c) => checked[c.id]) ? 'ok' : 'ko';
-  })();
+  // Sans grille (Feynman hérité) → auto-note manuelle. Partagé avec le
+  // Feynman mobile (mobile/MobileFeynman.jsx) via lib/sm2.js.
+  const verdict = feynmanVerdict({ revealed, grille, checked, selfNote });
 
   return (
     <div className="screen scroll fadein">

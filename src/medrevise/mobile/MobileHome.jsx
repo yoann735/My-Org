@@ -1,0 +1,153 @@
+/* ============================================================
+   MedRevise mobile — accueil (cul-de-sac). Trois blocs seulement :
+   Série du jour, À rattraper, fiches dues aujourd'hui. Réutilise
+   todayPlan/dueToday/overdueByFiche (planning.js) et ctx.dismissOverdue —
+   même logique que le Dashboard/Réviser desktop, présentation neuve.
+   Les fiches "schéma anatomique" (quiz visuel canvas) sont exclues : hors
+   périmètre mobile (voir le plan validé).
+   ============================================================ */
+import { useMemo, useState } from 'react';
+import { Icon } from '../../shared/Icon.jsx';
+import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled } from '../lib/planning.js';
+import { matiereMeta } from '../components/ui.jsx';
+
+export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman }) {
+  const { db } = ctx;
+  const ix = useMemo(() => index(db), [db]);
+  const due = useMemo(() => dueToday(db, ix), [db, ix]);
+  const plan = useMemo(() => todayPlan(db, ix), [db, ix]);
+  const overdue = useMemo(() => overdueByFiche(db, ix).filter((g) => !g.isSchema), [db, ix]);
+  const [confirmDismiss, setConfirmDismiss] = useState(null);
+
+  const startAll = () => due.length && onStartSession(due, "Série du jour");
+  const startFiche = (group) => onStartSession(group.items, group.fiche.titre);
+
+  // exercices/Feynman : HORS méthode des J (pas de date d'échéance), donc
+  // jamais dans todayPlan — regroupés à part pour rester joignables. NE
+  // DÉPENDENT PAS de "due aujourd'hui" : contrairement aux cartes QCM/flash,
+  // finir la série du jour ne doit pas les faire disparaître de l'accueil.
+  const extrasByFiche = useMemo(() => {
+    const m = {};
+    (db.questions || []).forEach((q) => {
+      if (q.type !== 'exercice' && q.type !== 'feynman') return;
+      (m[q.ficheId] || (m[q.ficheId] = { exercice: [], feynman: [] }))[q.type].push(q);
+    });
+    return m;
+  }, [db.questions]);
+
+  // liste affichée = fiches avec cartes dues aujourd'hui (todayPlan) UNION
+  // fiches ayant des exercices/Feynman disponibles (respecte la pause/retrait
+  // de la méthode des J pour ces dernières, comme le reste de l'accueil).
+  const ficheRows = useMemo(() => {
+    const byId = {};
+    plan.forEach((g) => { byId[g.fiche.id] = { fiche: g.fiche, matiere: g.matiere, items: g.items, jLabel: g.jLabel }; });
+    Object.keys(extrasByFiche).forEach((ficheId) => {
+      if (byId[ficheId]) return;
+      const f = ix.fById[ficheId];
+      if (!f || f.archive || !isFicheScheduled(db, f, ix)) return;
+      byId[ficheId] = { fiche: f, matiere: ix.mById[f.matiereId], items: [], jLabel: null };
+    });
+    return Object.values(byId);
+  }, [plan, extrasByFiche, ix, db]);
+
+  return (
+    <div className="mrm-app">
+      <div className="mrm-header">
+        <span className="mrm-brand"><Icon name="grad" size={18} /> MedRevise</span>
+        <button type="button" className="mrm-icon-btn" onClick={ctx.toggleTheme} aria-label="Thème">
+          <Icon name={ctx.theme === 'dark' ? 'sun' : 'moon'} size={18} />
+        </button>
+      </div>
+
+      <div className="mrm-scroll">
+        <div className="mrm-card mrm-hero">
+          <div className="mrm-hero-n">{due.length}</div>
+          <div className="mrm-hero-label">carte{due.length > 1 ? 's' : ''} due{due.length > 1 ? 's' : ''} aujourd'hui</div>
+          {(ctx.stats && ctx.stats.streak > 0) && (
+            <div className="mrm-streak"><Icon name="fire" size={14} fill /> {ctx.stats.streak} jour{ctx.stats.streak > 1 ? 's' : ''} d'affilée</div>
+          )}
+          <button type="button" className="mrm-cta" onClick={startAll} disabled={!due.length}>
+            <Icon name="play" size={20} fill /> Commencer la série
+          </button>
+        </div>
+
+        {overdue.length > 0 && (
+          <div className="mrm-section">
+            <div className="mrm-section-head">
+              <Icon name="clock" size={15} />
+              <span>À rattraper</span>
+              <span className="mrm-count">{overdue.length}</span>
+            </div>
+            <div className="mrm-list">
+              {overdue.map((g) => (
+                <div className="mrm-row" key={g.fiche.id}>
+                  <div className="mrm-row-main">
+                    <div className="mrm-row-title">{g.fiche.titre}</div>
+                    <div className="mrm-row-sub">{matiereMeta(g.matiere).label} · {g.items.length} carte{g.items.length > 1 ? 's' : ''}</div>
+                  </div>
+                  <div className="mrm-row-actions">
+                    <button type="button" className="mrm-chip-btn" onClick={() => startFiche(g)}>Rattraper</button>
+                    <button type="button" className="mrm-icon-btn sm" title="Retirer du retard" onClick={() => setConfirmDismiss(g)}><Icon name="x" size={15} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {ficheRows.length > 0 && (
+          <div className="mrm-section">
+            <div className="mrm-section-head"><Icon name="cards" size={15} /> <span>Fiches</span></div>
+            <div className="mrm-list">
+              {ficheRows.map((g) => {
+                const extras = extrasByFiche[g.fiche.id];
+                return (
+                  <div className="mrm-row" key={g.fiche.id}>
+                    <div className="mrm-row-main">
+                      <div className="mrm-row-title">{g.fiche.titre}</div>
+                      <div className="mrm-row-sub">
+                        {matiereMeta(g.matiere).label}
+                        {g.items.length > 0 ? ` · ${g.items.length} carte${g.items.length > 1 ? 's' : ''} · ${g.jLabel}` : ' · exercices/Feynman'}
+                      </div>
+                    </div>
+                    <div className="mrm-row-actions">
+                      {g.items.length > 0 && (
+                        <button type="button" className="mrm-chip-btn" onClick={() => startFiche(g)}>Réviser</button>
+                      )}
+                      {extras && extras.exercice.length > 0 && (
+                        <button type="button" className="mrm-chip-btn ghost" onClick={() => onStartExercice(extras.exercice, g.fiche.titre)}>Exercices ({extras.exercice.length})</button>
+                      )}
+                      {extras && extras.feynman.length > 0 && (
+                        <button type="button" className="mrm-chip-btn ghost" onClick={() => onStartFeynman({ items: extras.feynman, title: g.fiche.titre })}>Feynman ({extras.feynman.length})</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {!due.length && !overdue.length && (
+          <div className="mrm-empty">
+            <Icon name="check" size={30} />
+            <div>Tout est à jour pour aujourd'hui 🎉</div>
+          </div>
+        )}
+      </div>
+
+      {confirmDismiss && (
+        <div className="mrm-scrim" onClick={() => setConfirmDismiss(null)}>
+          <div className="mrm-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="mrm-sheet-title">Retirer « {confirmDismiss.fiche.titre} » du retard ?</div>
+            <div className="mrm-sheet-body">Elle ne sera pas révisée. Sa prochaine échéance est recalée à partir d'aujourd'hui.</div>
+            <div className="mrm-sheet-actions">
+              <button type="button" className="mrm-btn" onClick={() => setConfirmDismiss(null)}>Annuler</button>
+              <button type="button" className="mrm-btn primary" onClick={() => { ctx.dismissOverdue(confirmDismiss); setConfirmDismiss(null); }}>Retirer</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

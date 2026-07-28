@@ -22,6 +22,8 @@ import {
 import { runMigrations } from './lib/migrate.js';
 import { todayISO } from './lib/sm2.js';
 import { addDays } from './lib/planning.js';
+import { useIsMobile } from '../shared/hooks/useMediaQuery.js';
+import { MobileApp } from './mobile/MobileApp.jsx';
 
 // C — 'documents'/'pdflist'/'transcript' ont disparu : Bibliothèque absorbe la liste
 // de documents ET rend PdfReader/SchemaEditorScreen/TranscriptEditor EMBARQUÉS dans
@@ -51,6 +53,7 @@ function MedBottomNav({ current, onNav }) {
 
 export default function MedReviseApp({ themeApi, goHub }) {
   const { theme, toggleTheme } = themeApi;
+  const isMobile = useIsMobile(); // petit écran → shell mobile dédié (voir mobile/MobileApp.jsx)
   const [screen, setScreen] = useState('dashboard');
   const [expanded, setExpanded] = useState(false);
   const [db, setDb] = useState(null);
@@ -249,6 +252,11 @@ export default function MedReviseApp({ themeApi, goHub }) {
   if (!db) {
     return <div className="soon"><div className="soon-logo"><Icon name="grad" size={30} /></div><p>Chargement de MedRevise…</p></div>;
   }
+
+  // petit écran : shell mobile dédié (révision uniquement) — même ctx, mêmes
+  // données, aucune logique dupliquée. Le shell desktop ci-dessous n'est ni
+  // monté ni modifié pendant qu'on est en mode mobile.
+  if (isMobile) return <MobileApp ctx={ctx} />;
 
   const Current = SCREENS[screen] || Dashboard;
   return (
