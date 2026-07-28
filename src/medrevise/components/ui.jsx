@@ -8,7 +8,6 @@ import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Icon } from '../../shared/Icon.jsx';
 import { J_INTERVALS } from '../lib/sm2.js';
-import { fmtDay } from '../lib/planning.js';
 
 const FALLBACK_TINT = '#7C6FE0';
 
@@ -293,43 +292,47 @@ export function TodaySeriesCard({ plan, onStart, compact, collapsed, onToggleCol
    groups = overdueByFiche(db) (planning.js). onStartFiche(group) lance la
    révision : l'appelant choisit ctx.startSession (qcm/flash) ou ctx.startAnatQuiz
    (schéma) selon group.isSchema. Réviser recale le prochain intervalle depuis
-   AUJOURD'HUI via le moteur SM-2 existant — rien de spécifique ici. ---- */
-export function OverdueBox({ groups, onStartFiche, onStartAll }) {
+   AUJOURD'HUI via le moteur SM-2 existant — rien de spécifique ici.
+   Volontairement SOBRE et COMPACTE (pas une bannière d'alerte) : une simple
+   card dense, ton neutre, pensée pour tenir à côté du calendrier de la semaine.
+   onDismissFiche(group) (optionnel) : « Retirer » — sort la fiche du retard
+   SANS la réviser (voir Dashboard/Reviser pour l'implémentation du recalage). */
+export function OverdueBox({ groups, onStartFiche, onStartAll, onDismissFiche }) {
+  const [confirmDismiss, setConfirmDismiss] = useState(null); // group en attente de confirmation
   if (!groups || !groups.length) return null;
   const questionGroups = groups.filter((g) => !g.isSchema && g.items.length);
   const totalItems = questionGroups.reduce((s, g) => s + g.items.length, 0);
   return (
-    <div className="card" style={{ borderColor: 'color-mix(in srgb, var(--crit) 45%, var(--border))' }}>
-      <div className="card-head">
-        <Icon name="alert" size={17} className="ic" style={{ color: 'var(--crit)' }} />
-        <h3>À rattraper</h3>
-        <div className="right"><span className="pill crit">{groups.length} fiche{groups.length > 1 ? 's' : ''} à rattraper</span></div>
-      </div>
-      <div className="card-body">
-        <div className="row spread" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
-          <div className="hint">Échéance dépassée. Réviser une fiche recale sa prochaine échéance à partir d'aujourd'hui.</div>
-          {questionGroups.length > 1 && totalItems > 0 && (
-            <button className="btn primary sm" onClick={() => onStartAll(questionGroups.flatMap((g) => g.items))}>
-              <Icon name="play" size={13} fill /> Tout rattraper ({totalItems})
-            </button>
-          )}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {groups.map((g) => (
-            <div className="day-line" key={g.fiche.id}>
-              <div className="dl-ic" style={{ background: 'color-mix(in srgb, var(--crit) 15%, transparent)', color: 'var(--crit)' }}>
-                <Icon name={g.isSchema ? 'image' : 'cards'} size={16} />
-              </div>
-              <div className="dl-main">
-                <div className="dl-title">{g.fiche.titre}</div>
-                <div className="dl-sub"><span>{matiereMeta(g.matiere).label} · {g.isSchema ? 'schéma' : `${g.items.length} carte${g.items.length > 1 ? 's' : ''}`} · en retard depuis le {fmtDay(g.oldest)}</span></div>
-              </div>
-              <button className="btn sm" onClick={() => onStartFiche(g)}><Icon name="play" size={13} /> Rattraper</button>
+    <Card title="À rattraper" icon="clock" action={<span className="pill">{groups.length} fiche{groups.length > 1 ? 's' : ''}</span>}>
+      <div className="hint" style={{ marginBottom: 10, fontSize: 12 }}>Échéance dépassée — se recale à partir d'aujourd'hui une fois révisée.</div>
+      <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 216, overflowY: 'auto' }}>
+        {groups.map((g, i) => (
+          <div className="row spread" key={g.fiche.id} style={{ gap: 8, padding: '7px 0', borderTop: i ? '1px solid var(--border-2)' : 'none' }}>
+            <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.fiche.titre}</div>
+              <div className="hint" style={{ fontSize: 11 }}>{matiereMeta(g.matiere).label} · {g.isSchema ? 'schéma' : `${g.items.length} carte${g.items.length > 1 ? 's' : ''}`}</div>
             </div>
-          ))}
-        </div>
+            <div className="row" style={{ gap: 3, flex: '0 0 auto' }}>
+              <button className="btn ghost sm" onClick={() => onStartFiche(g)}>Rattraper</button>
+              {onDismissFiche && (
+                <button className="icon-btn sm" title="Retirer du retard (sans réviser)" onClick={() => setConfirmDismiss(g)}><Icon name="x" size={13} /></button>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
-    </div>
+      {questionGroups.length > 1 && totalItems > 0 && (
+        <button className="btn ghost sm" style={{ marginTop: 10, width: '100%', justifyContent: 'center' }} onClick={() => onStartAll(questionGroups.flatMap((g) => g.items))}>
+          Tout rattraper ({totalItems})
+        </button>
+      )}
+      {confirmDismiss && (
+        <ConfirmModal title="Retirer cette fiche du retard ?"
+          body={<>« {confirmDismiss.fiche.titre} » ne sera pas révisée. Sa prochaine échéance est simplement recalée à partir d'aujourd'hui (le niveau de la fiche ne change pas).</>}
+          confirmLabel="Retirer" onCancel={() => setConfirmDismiss(null)}
+          onConfirm={() => { onDismissFiche(confirmDismiss); setConfirmDismiss(null); }} />
+      )}
+    </Card>
   );
 }
 

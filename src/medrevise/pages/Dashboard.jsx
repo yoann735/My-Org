@@ -50,19 +50,21 @@ export function Dashboard({ ctx }) {
 
       <TodaySeriesCard plan={plan} onStart={ctx.startSession} />
 
-      {overdue.length > 0 && (
-        <div style={{ marginTop: 20 }}>
-          <OverdueBox groups={overdue} onStartFiche={startOverdueFiche} onStartAll={(items) => ctx.startSession(items, 'Rattrapage')} />
-        </div>
-      )}
+      <div className="dash-cal-grid" style={{ display: 'grid', gridTemplateColumns: overdue.length ? 'minmax(0,1.6fr) minmax(260px,1fr)' : '1fr', gap: 20, marginTop: 20, alignItems: 'start' }}>
+        <Card title="Calendrier de la semaine — méthode des J" icon="calendar"
+          action={<span className="pill accent"><Icon name="cards" size={13} /> {due.length} carte{due.length > 1 ? 's' : ''}{dueSchemas.length > 0 ? ` + ${dueSchemas.length} schéma${dueSchemas.length > 1 ? 's' : ''}` : ''} aujourd'hui</span>}>
+          <WeekCalendar ctx={ctx} onPick={setSelDay} />
+          <div className="jcal-legend" style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border-2)' }}>
+            {db.matieres.map((m) => { const mm = matiereMeta(m); return <span key={m.id}><i style={{ background: mm.tint }} /> {mm.label}</span>; })}
+          </div>
+        </Card>
 
-      <Card title="Calendrier de la semaine — méthode des J" icon="calendar"
-        action={<span className="pill accent"><Icon name="cards" size={13} /> {due.length} carte{due.length > 1 ? 's' : ''}{dueSchemas.length > 0 ? ` + ${dueSchemas.length} schéma${dueSchemas.length > 1 ? 's' : ''}` : ''} aujourd'hui</span>}>
-        <WeekCalendar ctx={ctx} onPick={setSelDay} />
-        <div className="jcal-legend" style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border-2)' }}>
-          {db.matieres.map((m) => { const mm = matiereMeta(m); return <span key={m.id}><i style={{ background: mm.tint }} /> {mm.label}</span>; })}
-        </div>
-      </Card>
+        {overdue.length > 0 && (
+          <OverdueBox groups={overdue} onStartFiche={startOverdueFiche}
+            onStartAll={(items) => ctx.startSession(items, 'Rattrapage')}
+            onDismissFiche={ctx.dismissOverdue} />
+        )}
+      </div>
 
       <div className="dash-imp-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.6fr) minmax(280px,1fr)', gap: 20, marginTop: 20, alignItems: 'start' }}>
         <ImportPanel ctx={ctx} />

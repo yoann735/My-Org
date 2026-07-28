@@ -20,6 +20,8 @@ import {
   seedIfEmpty, getAll, put, putMany, remove, getStats, setStats as saveStats, genId, reconcileAll,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
+import { todayISO } from './lib/sm2.js';
+import { addDays } from './lib/planning.js';
 
 // C — 'documents'/'pdflist'/'transcript' ont disparu : Bibliothèque absorbe la liste
 // de documents ET rend PdfReader/SchemaEditorScreen/TranscriptEditor EMBARQUÉS dans
@@ -218,6 +220,23 @@ export default function MedReviseApp({ themeApi, goHub }) {
     setFicheEtiquette: async (ficheId, etiquette) => {
       const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
       await put('fiches', { ...f, etiquette: etiquette || null }); await reload();
+    },
+    // « Retirer du retard » (boîte À rattraper, Dashboard/Réviser) : NE révise
+    // PAS — recale juste la prochaine échéance à partir d'aujourd'hui, SANS
+    // toucher interval/repetition/efactor (le niveau de la fiche ne change
+    // pas). Pas le moteur SM-2 : un simple report d'échéance choisi par
+    // l'utilisateur, sur les items effectivement en retard de `group`.
+    dismissOverdue: async (group) => {
+      const today = todayISO();
+      if (group.isSchema) {
+        const f = db.fiches.find((x) => x.id === group.fiche.id); if (!f) return;
+        await put('fiches', { ...f, nextReview: addDays(today, f.interval || 1) });
+      } else {
+        const ids = new Set(group.items.map((i) => i.id));
+        const targets = db.questions.filter((q) => ids.has(q.id));
+        await putMany('questions', targets.map((q) => ({ ...q, nextReview: addDays(today, q.interval || 1) })));
+      }
+      await reload();
     },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },
     clearQuestionError: async (id) => {

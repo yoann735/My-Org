@@ -140,7 +140,7 @@ export function Reviser({ ctx }) {
 
       {overdue.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <OverdueBox groups={overdue} onStartFiche={startOverdueFiche} onStartAll={(items) => ctx.startSession(items, 'Rattrapage')} />
+          <OverdueBox groups={overdue} onStartFiche={startOverdueFiche} onStartAll={(items) => ctx.startSession(items, 'Rattrapage')} onDismissFiche={ctx.dismissOverdue} />
         </div>
       )}
 
