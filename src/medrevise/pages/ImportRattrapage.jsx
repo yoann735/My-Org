@@ -9,7 +9,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { DestPicker, CoursePdfField } from '../components/ui.jsx';
+import { DestPicker, CoursePdfField, CourseHtmlField } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { createFicheFromQuestions, appendItemsToFiche } from '../lib/import.js';
@@ -44,6 +44,9 @@ export function ImportRattrapage({ ctx }) {
   const [pdf, setPdf] = useState(null);                  // PDF du cours (optionnel) à rattacher
   const [replaceMode, setReplaceMode] = useState('keep'); // keep | replace (fiche existante ayant déjà un PDF)
   const [replaceConfirmed, setReplaceConfirmed] = useState(false);
+  const [html, setHtml] = useState(null);                     // fiche HTML (optionnelle) — indépendante du PDF
+  const [replaceModeHtml, setReplaceModeHtml] = useState('keep');
+  const [replaceConfirmedHtml, setReplaceConfirmedHtml] = useState(false);
 
   // fiches candidates pour l'ajout (fiches v1.0 "standard", non archivées)
   const srcById = useMemo(() => Object.fromEntries(db.sources.map((s) => [s.id, s])), [db.sources]);
@@ -77,10 +80,17 @@ export function ImportRattrapage({ ctx }) {
     || (destMode === 'existing' && !targetHasPdf)
     || (destMode === 'existing' && targetHasPdf && replaceMode === 'replace' && replaceConfirmed)
   );
+  const targetHasHtml = !!(targetFiche && targetFiche.htmlId);
+  const willAttachHtml = !!html && (
+    destMode === 'new'
+    || (destMode === 'existing' && !targetHasHtml)
+    || (destMode === 'existing' && targetHasHtml && replaceModeHtml === 'replace' && replaceConfirmedHtml)
+  );
 
   const reset = () => {
     setJsonText(''); setParseError(null); setPreview(null); setState('edit'); setResult(null);
     setPdf(null); setReplaceMode('keep'); setReplaceConfirmed(false);
+    setHtml(null); setReplaceModeHtml('keep'); setReplaceConfirmedHtml(false);
   };
 
   const doPreview = () => {
@@ -120,21 +130,26 @@ export function ImportRattrapage({ ctx }) {
   const confirmImport = async () => {
     if (!preview) return;
     setBusy(true);
-    // PDF du cours (optionnel) — stocké une seule fois, réutilise putBlob → fiche.pdfId.
+    // PDF/HTML du cours (optionnels, indépendants) — stockés une seule fois,
+    // réutilise putBlob → fiche.pdfId / fiche.htmlId.
     let pdfId = null;
     if (willAttachPdf) { try { pdfId = await putBlob(pdf); } catch (e) { /* ignore */ } }
+    let htmlId = null;
+    if (willAttachHtml) { try { htmlId = await putBlob(html); } catch (e) { /* ignore */ } }
     let res;
     if (destMode === 'new') {
       res = await createFicheFromQuestions({
         matiereId: matId, titre: title, items: preview.res.items,
         synthese: preview.res.synthese, meta: { ...preview.res.meta, matiere },
         pdfId, pdfName: pdfId ? pdf.name : null,
+        htmlId, htmlName: htmlId ? html.name : null,
       });
       res = { fiche: res.fiche, count: res.count, duplicates: 0 };
     } else {
       res = await appendItemsToFiche({ ficheId, items: preview.res.items });
-      // rattache le PDF si demandé — jamais d'écrasement silencieux (voir willAttachPdf).
+      // rattache PDF/HTML si demandé — jamais d'écrasement silencieux (voir willAttachPdf/willAttachHtml).
       if (pdfId) await ctx.setFichePdf(ficheId, pdfId, pdf.name);
+      if (htmlId) await ctx.setFicheHtml(ficheId, htmlId, html.name);
     }
     await ctx.reload();
     setResult(res); setState('done'); setBusy(false);
@@ -190,6 +205,17 @@ export function ImportRattrapage({ ctx }) {
                   : 'Aucun PDF du cours joint.',
             icon: (pdf && targetHasPdf && replaceMode === 'replace') ? 'alert' : undefined,
             accent: (pdf && targetHasPdf && replaceMode === 'replace'),
+          },
+          {
+            text: willAttachHtml
+              ? (targetHasHtml ? <>Fiche HTML : remplacée par {html.name} ✓</> : <>Fiche HTML jointe : {html.name} ✓</>)
+              : (html && targetHasHtml && replaceModeHtml === 'replace')
+                ? <>Remplacement non confirmé — la fiche HTML actuelle sera conservée.</>
+                : targetHasHtml
+                  ? <>Fiche HTML conservée : {targetFiche.htmlName || 'HTML déjà rattaché'}.</>
+                  : 'Aucune fiche HTML jointe.',
+            icon: (html && targetHasHtml && replaceModeHtml === 'replace') ? 'alert' : undefined,
+            accent: (html && targetHasHtml && replaceModeHtml === 'replace'),
           },
           preview.duplicates > 0 && { text: `${preview.duplicates} doublon${preview.duplicates > 1 ? 's' : ''} ignoré${preview.duplicates > 1 ? 's' : ''} (déjà dans la fiche)`, icon: 'alert', accent: true },
         ]}
@@ -273,6 +299,40 @@ export function ImportRattrapage({ ctx }) {
                   <label className="row" style={{ gap: 8, alignItems: 'flex-start', marginTop: 8, cursor: 'pointer' }}>
                     <input type="checkbox" checked={replaceConfirmed} onChange={(e) => setReplaceConfirmed(e.target.checked)} style={{ marginTop: 3 }} />
                     <span className="hint">Je confirme le remplacement du PDF actuel de cette fiche.</span>
+                  </label>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      )}
+
+      {/* fiche HTML (optionnelle) — indépendante du PDF, même logique garder/remplacer */}
+      {(destMode === 'new' || (destMode === 'existing' && ficheId)) && (
+        !targetHasHtml ? (
+          <CourseHtmlField file={html} onFile={setHtml}
+            hint="Rattachée à la fiche pour « Voir le cours ». Facultatif, indépendant du PDF." />
+        ) : (
+          <div className="imp-field">
+            <label>Fiche du cours (HTML)</label>
+            <div className="err-mini ok" style={{ marginBottom: 8 }}>
+              <div className="em-ic"><Icon name="fileHtml" size={16} /></div>
+              <div className="em-body" style={{ minWidth: 0 }}>
+                <div className="em-title" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{targetFiche.htmlName || 'HTML déjà rattaché'}</div>
+                <div className="hint">Cette fiche a déjà une fiche HTML. Elle est conservée par défaut.</div>
+              </div>
+            </div>
+            <div className="seg" style={{ transform: 'scale(.96)', transformOrigin: 'left center' }}>
+              <button type="button" className={'seg-btn' + (replaceModeHtml === 'keep' ? ' active' : '')} onClick={() => { setReplaceModeHtml('keep'); setHtml(null); setReplaceConfirmedHtml(false); }}><Icon name="check" size={13} /> Conserver</button>
+              <button type="button" className={'seg-btn' + (replaceModeHtml === 'replace' ? ' active' : '')} onClick={() => setReplaceModeHtml('replace')}><Icon name="refresh" size={13} /> Remplacer</button>
+            </div>
+            {replaceModeHtml === 'replace' && (
+              <div style={{ marginTop: 10 }}>
+                <CourseHtmlField file={html} onFile={setHtml} label="Nouvelle fiche HTML" />
+                {html && (
+                  <label className="row" style={{ gap: 8, alignItems: 'flex-start', marginTop: 8, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={replaceConfirmedHtml} onChange={(e) => setReplaceConfirmedHtml(e.target.checked)} style={{ marginTop: 3 }} />
+                    <span className="hint">Je confirme le remplacement de la fiche HTML actuelle de cette fiche.</span>
                   </label>
                 )}
               </div>

@@ -154,12 +154,16 @@ function computeMatchRectsFromDom(container, matches) {
    (ficheId/mode passés en props directes, onClose local — pas de navigation
    d'écran). `embedded` masque le wrapper .screen + le .topbar interne (le
    parent affiche déjà SON topbar unique). */
-export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSrcTab: srcTabProp, embedded, onClose }) {
+// `doc`/`onSetPdf`/`onSetHtml` : chemin GÉNÉRIQUE pour afficher/attacher un PDF+HTML
+// sur un enregistrement qui n'est PAS une fiche `db.fiches` (ex : une structure
+// anatomique de l'écran Anatomie Théorie). Sans ces props, comportement inchangé
+// (fiche résolue via ficheId + ctx.db.fiches, mutée via ctx.setFichePdf/setFicheHtml).
+export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSrcTab: srcTabProp, doc: docProp, onSetPdf, onSetHtml, embedded, onClose }) {
   const { pdfView, db } = ctx;
   const ficheId = ficheIdProp ?? (pdfView && pdfView.ficheId);
   const initialSrcTab = srcTabProp ?? (pdfView && pdfView.srcTab);
   const close = onClose || ctx.closePdfReader;
-  const fiche = db.fiches.find((f) => f.id === ficheId);
+  const fiche = docProp || db.fiches.find((f) => f.id === ficheId);
 
   // source affichée quand la fiche porte À LA FOIS un PDF et une fiche HTML —
   // indépendant du mode Lecture/Édition (qui ne s'applique qu'au PDF).
@@ -554,12 +558,12 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   const attach = async (file) => {
     if (!file) return;
     const pdfId = await putBlob(file);
-    await ctx.setFichePdf(ficheId, pdfId, file.name);
+    if (onSetPdf) await onSetPdf(pdfId, file.name); else await ctx.setFichePdf(ficheId, pdfId, file.name);
   };
   const attachHtml = async (file) => {
     if (!file) return;
     const htmlId = await putBlob(file);
-    await ctx.setFicheHtml(ficheId, htmlId, file.name);
+    if (onSetHtml) await onSetHtml(htmlId, file.name); else await ctx.setFicheHtml(ficheId, htmlId, file.name);
     setSrcTab('html');
   };
 
