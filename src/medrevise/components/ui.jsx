@@ -297,13 +297,37 @@ export function TodaySeriesCard({ plan, onStart, compact, collapsed, onToggleCol
    card dense, ton neutre, pensée pour tenir à côté du calendrier de la semaine.
    onDismissFiche(group) (optionnel) : « Retirer » — sort la fiche du retard
    SANS la réviser (voir Dashboard/Reviser pour l'implémentation du recalage). */
-export function OverdueBox({ groups, onStartFiche, onStartAll, onDismissFiche }) {
+export function OverdueBox({ groups, onStartFiche, onStartAll, onDismissFiche, collapsible, collapsed, onToggleCollapse }) {
   const [confirmDismiss, setConfirmDismiss] = useState(null); // group en attente de confirmation
   if (!groups || !groups.length) return null;
   const questionGroups = groups.filter((g) => !g.isSchema && g.items.length);
   const totalItems = questionGroups.reduce((s, g) => s + g.items.length, 0);
+
+  // repliée (Réviser — redite du Dashboard) : une seule ligne, dépliable au clic.
+  if (collapsible && collapsed) {
+    return (
+      <div className="card">
+        <button type="button" className="card-head" onClick={onToggleCollapse}
+          style={{ width: '100%', cursor: 'pointer', background: 'none', border: 'none', font: 'inherit', color: 'inherit' }}>
+          <Icon name="clock" size={17} className="ic" />
+          <h3>À rattraper</h3>
+          <div className="right" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="pill">{groups.length} fiche{groups.length > 1 ? 's' : ''}</span>
+            <Icon name="chevD" size={15} />
+          </div>
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <Card title="À rattraper" icon="clock" action={<span className="pill">{groups.length} fiche{groups.length > 1 ? 's' : ''}</span>}>
+    <Card title="À rattraper" icon="clock"
+      action={(
+        <div className="row" style={{ gap: 8 }}>
+          <span className="pill">{groups.length} fiche{groups.length > 1 ? 's' : ''}</span>
+          {collapsible && <button type="button" className="icon-btn sm" title="Replier" onClick={onToggleCollapse}><Icon name="chevU" size={15} /></button>}
+        </div>
+      )}>
       <div className="hint" style={{ marginBottom: 10, fontSize: 12 }}>Échéance dépassée — se recale à partir d'aujourd'hui une fois révisée.</div>
       <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 216, overflowY: 'auto' }}>
         {groups.map((g, i) => (

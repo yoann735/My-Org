@@ -288,7 +288,7 @@
 .rev-empty .re-title { font-weight: 700; font-size: 17px; color: var(--text); }
 
 /* ---- résumé d'erreurs du cours (mode erreur) ---- */
-.err-mini { display: flex; align-items: center; gap: 13px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 13px 15px; box-shadow: var(--shadow); }
+.err-mini { display: flex; align-items: center; gap: 13px; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 13px 15px; box-shadow: var(--shadow); }
 .err-mini.ok { background: var(--bg-2); }
 .err-mini .em-ic { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; flex: 0 0 auto; background: var(--bg-2); color: var(--text-2); }
 .err-mini .em-ic.crit { background: color-mix(in srgb, var(--crit) 13%, transparent); color: var(--crit); }

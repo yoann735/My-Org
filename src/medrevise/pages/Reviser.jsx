@@ -28,6 +28,9 @@ export function Reviser({ ctx }) {
   const overdue = useMemo(() => overdueByFiche(db, ix), [db, ix]);
   const overdueFicheIds = useMemo(() => new Set(overdue.map((g) => g.fiche.id)), [overdue]);
   const startOverdueFiche = (g) => (g.isSchema ? ctx.startAnatQuiz(g.fiche, { mode: 'total' }) : ctx.startSession(g.items, g.fiche.titre + ' — Rattrapage'));
+  // redite du Dashboard : repliée PAR DÉFAUT ici (état persisté, undefined = replié).
+  const rattraperCollapsed = (ctx.stats && ctx.stats.rattraperCollapsedReviser) !== false;
+  const carnetCollapsed = !!(ctx.stats && ctx.stats.carnetCollapsed);
   const fichesOf = (matId) => db.fiches.filter((f) => f.matiereId === matId && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
   const matieresOf = (srcId) => db.matieres.filter((m) => m.sourceId === srcId && !m.archive);
   // repérage « d'un coup d'œil » des schémas d'anatomie dans l'arbre (point E).
@@ -140,7 +143,8 @@ export function Reviser({ ctx }) {
 
       {overdue.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <OverdueBox groups={overdue} onStartFiche={startOverdueFiche} onStartAll={(items) => ctx.startSession(items, 'Rattrapage')} onDismissFiche={ctx.dismissOverdue} />
+          <OverdueBox groups={overdue} onStartFiche={startOverdueFiche} onStartAll={(items) => ctx.startSession(items, 'Rattrapage')} onDismissFiche={ctx.dismissOverdue}
+            collapsible collapsed={rattraperCollapsed} onToggleCollapse={() => ctx.saveStats({ ...ctx.stats, rattraperCollapsedReviser: !rattraperCollapsed })} />
         </div>
       )}
 
@@ -323,10 +327,19 @@ export function Reviser({ ctx }) {
         </div>
       </div>
 
-      {/* carnet d'erreurs complet — intégré ici (pas d'onglet séparé) */}
-      <div style={{ marginTop: 22 }}>
-        <h2 className="serif" style={{ fontSize: 20, margin: '4px 0 12px' }}>Carnet d'erreurs</h2>
-        <CarnetBody ctx={ctx} />
+      {/* carnet d'erreurs complet — intégré ici (pas d'onglet séparé). Repliable
+         (état persisté) + largeur alignée sur la colonne de contenu du dessus
+         (pas pleine page) : même grille que .revise-grid, cellule de gauche vide. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'var(--tree-col, 380px) minmax(0,1fr)', gap: 20, marginTop: 22 }}>
+        <div />
+        <div>
+          <button type="button" onClick={() => ctx.saveStats({ ...ctx.stats, carnetCollapsed: !carnetCollapsed })}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: carnetCollapsed ? 0 : 12, color: 'inherit', font: 'inherit' }}>
+            <Icon name={carnetCollapsed ? 'chevR' : 'chevD'} size={16} style={{ color: 'var(--text-3)' }} />
+            <h2 className="serif" style={{ fontSize: 20, margin: 0 }}>Carnet d'erreurs</h2>
+          </button>
+          {!carnetCollapsed && <CarnetBody ctx={ctx} />}
+        </div>
       </div>
 
       {ctxMenu && (
