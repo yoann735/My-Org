@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, Switch, matiereMeta } from '../components/ui.jsx';
 import { J_INTERVALS } from '../lib/sm2.js';
-import { wipeAll, seedIfEmpty } from '../lib/storage.js';
+import { wipeAll } from '../lib/storage.js';
 
 export function Reglages({ ctx }) {
   const { db } = ctx;
@@ -26,7 +26,7 @@ export function Reglages({ ctx }) {
   const commitCat = () => { if (catDraft.trim() && addCatFor) ctx.addMatiere(addCatFor, catDraft); setAddCatFor(null); setCatDraft(''); };
   const resetData = async () => {
     if (!window.confirm('Réinitialiser MedRevise (toutes les fiches, questions et statistiques) ?')) return;
-    await wipeAll(); await seedIfEmpty(); await ctx.reload();
+    await wipeAll(); await ctx.reload();
   };
 
   const deleteSource = (s) => {

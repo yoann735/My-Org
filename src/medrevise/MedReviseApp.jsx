@@ -17,7 +17,7 @@ import { AnatQuiz } from './session/AnatQuiz.jsx';
 import { PdfReader } from './pdf/PdfReader.jsx';
 import { SchemaEditorScreen } from './documents/SchemaEditorScreen.jsx';
 import {
-  seedIfEmpty, getAll, put, putMany, remove, getStats, setStats as saveStats, genId, reconcileAll, canSeed,
+  getAll, put, putMany, remove, getStats, setStats as saveStats, genId, reconcileAll,
   purgeSource, purgeMatiere, purgeFiche,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
@@ -75,15 +75,11 @@ export default function MedReviseApp({ themeApi, goHub }) {
     setStats(st);
   }, []);
 
-  // A — synchro cloud (no-op silencieux si non configurée/hors-ligne, voir sync.js) :
-  // réconcilier AVANT le seed. Semer n'est plus déclenché par la seule absence de
-  // données locales : canSeed() exige soit la sync désactivée, soit un cloud
-  // CONFIRMÉ vide par reconcileAll — sinon un pull raté sur un appareil vierge
-  // sèmerait des ID fixes (fac/physio/f-resp…) qui pourraient ressusciter de
-  // vraies données ailleurs à la prochaine réconciliation (voir storage.js).
+  // A — synchro cloud (no-op silencieux si non configurée/hors-ligne, voir sync.js).
+  // Plus de seed de démo (retiré — voir docs/diag-reseed-mobile.md) : un appareil
+  // vierge démarre simplement vide, réconcilié avec le cloud s'il y en a un.
   useEffect(() => { (async () => {
-    const rec = await reconcileAll();
-    if (canSeed(rec)) await seedIfEmpty();
+    await reconcileAll();
     await runMigrations(); await reload();
   })(); }, [reload]);
 

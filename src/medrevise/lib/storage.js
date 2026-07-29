@@ -5,9 +5,8 @@
    Hiérarchie : SOURCE(cours) → MATIÈRE → FICHE → QUESTIONS / STRUCTURES.
    ============================================================ */
 import { get, set, del, values, setMany, createStore } from 'idb-keyval';
-import { todayISO, isoDate } from './sm2.js';
+import { isoDate } from './sm2.js';
 import { queuePush, pullAllRecords, pushBlob, pullBlob } from '../data/sync.js';
-import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
 const store = (name) => createStore('medrevise-' + name, 'v1');
 const S = {
@@ -175,56 +174,6 @@ export function newItem(ficheId, item, dueOffset = 0) {
   };
 }
 
-/* ============================================================
-   SEED — petit jeu réel au premier lancement (sinon écran vide).
-   Idempotent : ne seed que si aucune source n'existe.
-   ============================================================ */
-let _seedPromise = null;
-export function seedIfEmpty() {
-  // guard against StrictMode's double-invoked mount effect racing the async
-  // seed (both reading "empty" before either writes → duplicate data).
-  if (!_seedPromise) _seedPromise = _seedIfEmpty();
-  return _seedPromise;
-}
-
-async function _seedIfEmpty() {
-  const existing = await getAll('sources');
-  if (existing && existing.length) return false;
-
-  const src = { id: 'fac', nom: 'Faculté de médecine', rappelsJ: true, archive: false, coef: 3, icon: 'grad', tint: '#7C6FE0' };
-  const physio = { id: 'physio', sourceId: 'fac', nom: 'Physiologie', couleur: '#7C6FE0', coef: 3, icon: 'lungs' };
-  const anat = { id: 'anat', sourceId: 'fac', nom: 'Anatomie', couleur: '#4FA6D9', coef: 3, icon: 'bone' };
-  await putMany('sources', [src]);
-  await putMany('matieres', [physio, anat]);
-
-  const fiches = [
-    { id: 'f-resp', matiereId: 'physio', titre: 'Système respiratoire', sousTitre: 'Échanges gazeux, transport O₂/CO₂', type: 'standard', coef: 3, dateImport: todayISO() },
-    { id: 'f-ab', matiereId: 'physio', titre: 'Équilibre acido-basique', sousTitre: 'pH, lactate, compensation rénale', type: 'standard', coef: 3, dateImport: todayISO() },
-    { id: 'f-ms', matiereId: 'anat', titre: 'Membre supérieur', sousTitre: 'Plexus brachial, innervation', type: 'standard', coef: 3, dateImport: todayISO() },
-  ];
-  await putMany('fiches', fiches);
-
-  const Q = [];
-  const add = (ficheId, q, off) => Q.push(newQuestion(ficheId, q, off));
-  // Système respiratoire — dû aujourd'hui
-  add('f-resp', { type: 'qcm', concept: 'Effet Bohr', question: 'Une baisse du pH sanguin sur l\'affinité de l\'hémoglobine pour l\'O₂ ?', choix: ['Elle augmente', 'Elle diminue', 'Inchangée', 'S\'annule'], bonneReponse: 1, explication: 'Effet Bohr : l\'acidose diminue l\'affinité de l\'Hb pour l\'O₂, favorisant sa libération aux tissus.' }, 0);
-  add('f-resp', { type: 'qcm', concept: 'Transport du CO₂', question: 'Forme majoritaire de transport du CO₂ dans le sang ?', choix: ['Dissous', 'Lié à l\'Hb', 'Bicarbonate (HCO₃⁻)', 'Carbonate de Ca'], bonneReponse: 2, explication: '≈70 % du CO₂ est transporté en bicarbonate via l\'anhydrase carbonique.' }, 0);
-  add('f-resp', { type: 'flashcard', concept: 'Surfactant', recto: 'Rôle du surfactant pulmonaire ?', verso: 'Réduit la tension superficielle alvéolaire, empêche le collapsus.' }, 0);
-  add('f-resp', { type: 'flashcard', concept: 'Espace mort', recto: 'Espace mort anatomique ?', verso: '≈150 mL de voies de conduction sans échange gazeux.' }, 0);
-  add('f-resp', { type: 'feynman', concept: 'Effet Bohr' }, 0);
-  // Équilibre acido-basique — dû dans 3 j
-  add('f-ab', { type: 'qcm', concept: 'Lactate', question: 'En effort anaérobie, quelle molécule abaisse le pH ?', choix: ['Glucose', 'Lactate', 'Glycogène', 'Créatinine'], bonneReponse: 1, explication: 'La glycolyse anaérobie produit du lactate (+ H⁺), abaissant le pH.' }, 3);
-  add('f-ab', { type: 'flashcard', concept: 'Acidose', recto: 'Acidose respiratoire vs métabolique ?', verso: 'Respiratoire : excès de CO₂. Métabolique : perte de HCO₃⁻ ou acides fixes.' }, 3);
-  // Membre supérieur — dû dans 1 j
-  add('f-ms', { type: 'qcm', concept: 'Nerf radial', question: 'Conséquence d\'une atteinte du nerf radial au bras ?', choix: ['Main en griffe', 'Main tombante', 'Perte opposition pouce', 'Paralysie deltoïde'], bonneReponse: 1, explication: 'Le nerf radial innerve les extenseurs : sa lésion donne une main tombante.' }, 1);
-  add('f-ms', { type: 'flashcard', concept: 'Plexus brachial', recto: 'Racines du plexus brachial ?', verso: 'C5 à T1 (parfois C4/T2).' }, 1);
-  add('f-ms', { type: 'feynman', concept: 'Plexus brachial' }, 1);
-  await putMany('questions', Q);
-
-  await setStats({ ...DEFAULT_STATS });
-  return true;
-}
-
 /* tout effacer (réglages → reset) — pousse aussi les suppressions en tombstones
    cloud (SYNCABLE) pour qu'un reset local ne se fasse pas silencieusement
    "annuler" par la réconciliation suivante (qui rapatrierait sinon les données
@@ -285,14 +234,6 @@ export async function purgeSource(sourceId) {
    table à chaque passage suffit (comme MealWeek), pas de curseur incrémental.
    Sans réseau / non configuré (pullAllRecords → null) : no-op, IndexedDB
    reste seul juge — jamais de plantage, jamais de perte locale.
-
-   Retourne { ok, cloudEmpty } plutôt qu'un simple booléen : l'appelant
-   (MedReviseApp.jsx) en a besoin pour décider s'il est SÛR de semer les
-   données de démo (seedIfEmpty) — semer alors que le pull a simplement
-   échoué (ok=false) créerait des ID fixes (fac/physio/f-resp…) qui, une
-   fois poussés avec un timestamp neuf, peuvent gagner la comparaison LWW
-   face à de vraies données plus anciennes (ou déjà supprimées) partageant
-   ces mêmes ID sur un autre appareil → résurrection. Voir l'audit de sync.
    ============================================================ */
 export async function reconcileAll() {
   const cloudRows = await pullAllRecords();
@@ -337,13 +278,4 @@ export async function reconcileAll() {
     }
   }
   return { ok: true, cloudEmpty: cloudRows.length === 0 };
-}
-
-/* seedIfEmpty() ne doit tourner que quand on est SÛR qu'aucune donnée n'existe
-   nulle part (ni localement ni côté cloud) — jamais simplement parce que le
-   pull a échoué. Sync désactivée (app 100 % locale, pas de multi-appareil) :
-   toujours permis. Sync activée : seulement si reconcileAll a confirmé un
-   cloud vide (premier lancement réel) — voir reconcileAll ci-dessus. */
-export function canSeed(reconcileResult) {
-  return !SYNC_ENABLED || (!!reconcileResult && reconcileResult.ok && reconcileResult.cloudEmpty);
 }
