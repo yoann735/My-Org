@@ -9,28 +9,82 @@
    enregistrement (comparaison des `updated_at`), à la charge de l'appelant
    (storage.js) qui connaît l'état local. Hors-ligne / non configuré →
    toutes les fonctions échouent silencieusement (retournent null/no-op).
+
+   OUTBOX (Phase B, audit-sync-mobile.md §3.2/§6 Risque 2) : la file d'envoi
+   n'est plus une Map en mémoire mais un store IndexedDB dédié
+   (`medrevise-outbox`, même convention de nommage que lib/storage.js, mais
+   géré ICI pour ne pas créer de dépendance vers storage.js — voir ci-dessus).
+   queuePush() y écrit avant de programmer le debounce ; flushPending() ne
+   retire une entrée qu'une fois son upsert confirmé. Fermer l'onglet /
+   verrouiller l'écran avant que le debounce parte ne perd donc plus rien :
+   l'entrée survit au rechargement et est rejouée au prochain boot
+   (flushOutbox(), appelé par MedReviseApp.jsx AVANT reconcileAll() — un
+   tombstone jamais poussé n'est plus visible localement, donc reconcileAll
+   ne peut pas le redécouvrir tout seul et réimporterait la version encore
+   vivante côté cloud sans ce rejeu préalable).
    ============================================================ */
+import { set, entries, delMany, createStore } from 'idb-keyval';
 import { supabase, SYNC_ENABLED, RECORDS_TABLE, BLOBS_BUCKET } from './supabaseClient.js';
+
+const outboxStore = createStore('medrevise-outbox', 'v1');
 
 const PUSH_DEBOUNCE_MS = 800;
 let pushTimer = null;
-const pending = new Map(); // `${store}:${id}` -> { store, record_id, data, updated_at, deleted }
+let flushing = null; // Promise en vol — évite deux flush concurrents lisant le même snapshot
 
-/** Met en file un enregistrement à pousser (débounce ~800 ms, comme MealWeek). */
+/** Met en file un enregistrement à pousser (débounce ~800 ms, comme MealWeek) —
+ *  persisté immédiatement dans l'outbox IndexedDB (clé `${store}:${id}`, donc une
+ *  même entrée réécrite avant le flush remplace la précédente, jamais de doublon),
+ *  donc survit à un onglet fermé/tué avant que le debounce n'ait eu le temps de partir. */
 export function queuePush(store, id, data, updatedAt, deleted = false) {
   if (!SYNC_ENABLED) return;
-  pending.set(store + ':' + id, { store, record_id: id, data, updated_at: updatedAt, deleted });
+  const key = store + ':' + id;
+  set(key, { store, record_id: id, data, updated_at: updatedAt, deleted }, outboxStore)
+    .catch(() => { /* écriture outbox best-effort ; en pire cas, pas pire qu'avant l'outbox */ });
   clearTimeout(pushTimer);
   pushTimer = setTimeout(flushPending, PUSH_DEBOUNCE_MS);
 }
 
+/** Vide l'outbox vers Supabase : ne retire QUE les entrées confirmées par l'upsert —
+ *  un échec (hors-ligne, etc.) laisse tout en place pour le prochain déclencheur
+ *  (debounce, pagehide/visibilitychange, reconnexion réseau, ou prochain boot). */
 async function flushPending() {
-  if (!SYNC_ENABLED || pending.size === 0) return;
-  const batch = [...pending.values()];
-  pending.clear();
-  try {
-    await supabase.from(RECORDS_TABLE).upsert(batch, { onConflict: 'store,record_id' });
-  } catch (e) { /* hors-ligne : reste en IndexedDB, repoussé au prochain changement/reconcile */ }
+  if (!SYNC_ENABLED) return;
+  if (flushing) return flushing; // un flush déjà en vol suffit — l'outbox reste la source de vérité
+  flushing = (async () => {
+    try {
+      const snapshot = await entries(outboxStore); // [[clé, valeur], ...] — pris AVANT l'appel réseau
+      if (!snapshot.length) return;
+      const batch = snapshot.map(([, v]) => v);
+      // supabase-js NE REJETTE PAS sur un échec réseau (DNS, offline, 5xx) — l'appel
+      // se résout normalement avec `{ error }` renseigné. Un simple try/catch ne
+      // suffit donc pas : il faut vérifier `error` explicitement, sinon un échec est
+      // pris pour un succès et l'entrée est retirée de l'outbox pour rien.
+      const { error } = await supabase.from(RECORDS_TABLE).upsert(batch, { onConflict: 'store,record_id' });
+      if (error) throw error;
+      await delMany(snapshot.map(([k]) => k), outboxStore); // retire SEULEMENT ce qui a été envoyé
+    } catch (e) { /* hors-ligne : tout reste dans l'outbox, repoussé au prochain déclencheur */ }
+    finally { flushing = null; }
+  })();
+  return flushing;
+}
+
+/** Rejoue l'outbox laissée par une session précédente (app tuée avant tout flush, pas
+ *  juste mise en arrière-plan). À appeler au boot, AVANT reconcileAll() — voir le
+ *  commentaire d'en-tête sur l'ordre. */
+export function flushOutbox() {
+  return flushPending();
+}
+
+// Flush best-effort à la mise en arrière-plan (pagehide) et quand l'onglet devient
+// invisible (verrouillage écran, changement d'app mobile) — en plus du debounce et du
+// rejeu au boot. Fire-and-forget : ne bloque jamais la fermeture, l'outbox persistée
+// garantit le rattrapage plus tard si l'appel n'aboutit pas à temps.
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => { flushPending(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushPending();
+  });
 }
 
 /** Récupère TOUS les enregistrements cloud (dataset personnel ≈ petit — un fetch
@@ -45,12 +99,11 @@ export async function pullAllRecords() {
 }
 
 /**
- * Pousse un lot d'enregistrements IMMÉDIATEMENT (awaited), en dehors du debounce
- * habituel de queuePush/flushPending — réservé aux migrations de nettoyage ponctuelles
- * et critiques (lib/migrate.js) où il faut savoir si le push a RÉELLEMENT abouti avant
- * de marquer l'opération comme terminée. Ne remplace pas queuePush pour l'usage
- * courant (la file durable/le retry systématique restent un chantier séparé — voir
- * docs/audit-sync-mobile.md, Risque 2).
+ * Pousse un lot d'enregistrements IMMÉDIATEMENT (awaited), en dehors de l'outbox/
+ * debounce habituel — réservé aux migrations de nettoyage ponctuelles et critiques
+ * (lib/migrate.js) où il faut savoir si le push a RÉELLEMENT abouti avant de marquer
+ * l'opération comme terminée (elles gèrent leur propre retry via le marqueur de
+ * migration, pas besoin de transiter par l'outbox).
  * @returns {boolean} true si le lot est parti (ou si la sync est désactivée — rien à
  *   pousser), false si le push a échoué (à réessayer par l'appelant).
  */
@@ -58,7 +111,11 @@ export async function pushTombstonesNow(records) {
   if (!SYNC_ENABLED) return true;
   if (!records || !records.length) return true;
   try {
-    await supabase.from(RECORDS_TABLE).upsert(records, { onConflict: 'store,record_id' });
+    // même piège que flushPending (voir plus haut) : supabase-js résout avec
+    // `{ error }` plutôt que de rejeter sur un échec réseau — vérifié explicitement,
+    // sinon migrate.js marquerait la migration "appliquée" malgré un push raté.
+    const { error } = await supabase.from(RECORDS_TABLE).upsert(records, { onConflict: 'store,record_id' });
+    if (error) return false;
     return true;
   } catch (e) {
     return false;

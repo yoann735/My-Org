@@ -20,6 +20,7 @@ import {
   getAll, put, putMany, remove, getStats, setStats as saveStats, genId, reconcileAll,
   purgeSource, purgeMatiere, purgeFiche,
 } from './lib/storage.js';
+import { flushOutbox } from './data/sync.js';
 import { runMigrations } from './lib/migrate.js';
 import { todayISO } from './lib/sm2.js';
 import { addDays } from './lib/planning.js';
@@ -78,15 +79,23 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // A — synchro cloud (no-op silencieux si non configurée/hors-ligne, voir sync.js).
   // Plus de seed de démo (retiré — voir docs/diag-reseed-mobile.md) : un appareil
   // vierge démarre simplement vide, réconcilié avec le cloud s'il y en a un.
+  // flushOutbox() AVANT reconcileAll() : rejoue toute écriture (notamment un
+  // tombstone) restée dans l'outbox d'une session précédente tuée avant le flush —
+  // sinon reconcileAll ne peut pas la redécouvrir (l'enregistrement supprimé n'est
+  // déjà plus visible localement) et réimporterait la version encore vivante côté
+  // cloud (voir data/sync.js, docs/audit-sync-mobile.md §3.2/§6 Risque 2).
   useEffect(() => { (async () => {
+    await flushOutbox();
     await reconcileAll();
     await runMigrations(); await reload();
   })(); }, [reload]);
 
   // reconcile à la reconnexion réseau et quand l'onglet redevient visible (retour d'un
   // autre appareil) — capte les changements faits ailleurs sans polling permanent.
+  // flushOutbox() d'abord, même raison qu'au boot : ne pas laisser reconcileAll tirer
+  // une version cloud périmée par-dessus un envoi encore en attente sur cet appareil.
   useEffect(() => {
-    const onSync = () => { reconcileAll().then((r) => { if (r.ok) reload(); }); };
+    const onSync = () => { flushOutbox().then(() => reconcileAll()).then((r) => { if (r.ok) reload(); }); };
     const onVisible = () => { if (document.visibilityState === 'visible') onSync(); };
     window.addEventListener('online', onSync);
     document.addEventListener('visibilitychange', onVisible);
