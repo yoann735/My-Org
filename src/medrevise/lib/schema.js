@@ -8,6 +8,13 @@
    - "type"               = SEUL champ de tri/filtrage.
    - "sous_type"          = SEUL discriminant du mode de correction (exercices).
    - "reponses_correctes" et "indices" sont TOUJOURS des tableaux.
+
+   v1.1 (AJOUTS purement additifs, aucun champ v1.0 renommé/retiré) :
+   - flashcard.cloze (array de strings, optionnel) — carte à trou, voir lib/cloze.js.
+   - feynman.synthese_globale (bool, défaut false) — Feynman "tout le cours".
+   - fiche.meta.qcm_conseille (entier|null) — passe déjà tel quel via
+     parsePastedJson (meta = objet libre stocké sur la fiche), pas de champ
+     d'item à valider ici ; lu par lib/planning.js (qcmConseilleFor).
    ============================================================ */
 
 export const SCHEMA_VERSION = '1.0';
@@ -107,11 +114,16 @@ function normQcm(raw, c) {
 
 function normFlashcard(raw, c) {
   if (!isStr(raw.recto) || !isStr(raw.verso)) return null;
+  // v1.1 : "cloze" (optionnel) = mots/expressions masqués dans le recto (voir
+  // lib/cloze.js pour le parsing "{{mot}}" + rendu). Absent/vide → flashcard
+  // recto/verso classique inchangée (rétro-compatible).
+  const cloze = asArray(raw.cloze).map(str).map((s) => s.trim()).filter(Boolean);
   return {
     ...c, type: 'flashcard',
     recto: raw.recto.trim(), verso: raw.verso.trim(),
     indice: isStr(raw.indice) ? raw.indice.trim() : null,
     a_retenir: str(raw.a_retenir).trim(),
+    ...(cloze.length ? { cloze } : {}),
   };
 }
 
@@ -127,6 +139,9 @@ function normFeynman(raw, c) {
     erreurs_frequentes: asArray(raw.erreurs_frequentes).map(str).filter(Boolean),
     grille_autoevaluation: normGrille(raw.grille_autoevaluation),
     regle_reussite: str(raw.regle_reussite).trim() || 'tous_essentiels',
+    // v1.1 : true = Feynman de SYNTHÈSE GLOBALE (explique tout le cours), les
+    // points_cles_attendus font office de checklist. Défaut false (Feynman ponctuel).
+    synthese_globale: !!raw.synthese_globale,
   };
 }
 

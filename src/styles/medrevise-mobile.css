@@ -88,6 +88,18 @@
 .mrm-flash-hint { font-size: 12.5px; color: var(--text-3); }
 .mrm-flash-back { color: var(--text-2); font-size: 14px; line-height: 1.5; }
 
+/* flashcards à trou (cloze, v1.1) */
+.mrm-cloze-blank { display: inline-block; min-width: 52px; height: .85em; margin: 0 3px; border-bottom: 3px dashed var(--accent); vertical-align: -3px; }
+.mrm-cloze-mark { background: var(--accent-soft); color: var(--accent); border-radius: 4px; padding: 0 4px; font-weight: 700; }
+.mrm-cloze-toggle { display: flex; justify-content: center; margin-bottom: 14px; }
+.mrm-cloze-inputs { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; width: 100%; }
+.mrm-cloze-row { display: flex; align-items: center; gap: 8px; }
+.mrm-cloze-n { width: 24px; height: 24px; border-radius: 8px; background: var(--bg-2); display: grid; place-items: center; font-size: 11.5px; font-weight: 700; color: var(--text-2); flex: 0 0 auto; }
+.mrm-cloze-input { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--bg-2); color: var(--text); font-family: inherit; font-size: 14.5px; }
+.mrm-cloze-input.ok { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.mrm-cloze-input.wrong { border-color: var(--crit); background: color-mix(in srgb, var(--crit) 10%, transparent); }
+.mrm-cloze-expected { font-size: 12px; color: var(--crit); font-weight: 600; white-space: nowrap; }
+
 .mrm-rate { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
 .mrm-rate-btn { min-height: 56px; border-radius: 14px; border: none; font-size: 16px; font-weight: 700; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
 .mrm-rate-btn .sub { font-size: 11.5px; font-weight: 500; opacity: .85; }

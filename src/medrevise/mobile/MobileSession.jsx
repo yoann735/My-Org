@@ -8,12 +8,14 @@
    ============================================================ */
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { applyReview, QUALITY, todayISO, computeStreak } from '../lib/sm2.js';
+import { applyReview, QUALITY, QUALITY_TO_RATING, qualityFromRatio, todayISO, computeStreak } from '../lib/sm2.js';
 import { effectiveCoef, index } from '../lib/planning.js';
 import { Tex } from '../components/Tex.jsx';
+import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
 
 const isFlash = (t) => t === 'flashcard' || t === 'flash';
 const RATING_QUALITY = { fail: QUALITY.rate, hard: QUALITY.difficile, easy: QUALITY.facile };
+const resolveRating = (r) => (typeof r === 'number' ? (QUALITY_TO_RATING[r] || 'hard') : r);
 
 /** mélange stable (Fisher-Yates) — nouvelle permutation à chaque appel. */
 function shuffle(arr) {
@@ -38,8 +40,12 @@ export function MobileSession({ ctx, onQuit }) {
   const [results, setResults] = useState([]);
   const [finished, setFinished] = useState(false);
   const item = items[idx];
+  // mode cloze (saisie/retourner) : bascule simple, mémorisée entre sessions (stats).
+  const clozeMode = (ctx.stats && ctx.stats.clozeMode) || 'actif';
+  const setClozeMode = (m) => ctx.saveStats({ ...ctx.stats, clozeMode: m });
 
-  const advance = async (rating) => {
+  const advance = async (ratingIn) => {
+    const rating = resolveRating(ratingIn);
     if (item && !item.ephemeral) {
       const quality = RATING_QUALITY[rating];
       const updated = applyReview(item, quality, item._coef || 3);
@@ -75,7 +81,7 @@ export function MobileSession({ ctx, onQuit }) {
       <div className="mrm-body">
         {item.type === 'qcm'
           ? <MobileQcmCard key={item.id} item={item} onRate={advance} />
-          : <MobileFlashCard key={item.id} item={item} onRate={advance} />}
+          : <MobileFlashCard key={item.id} item={item} onRate={advance} clozeMode={clozeMode} setClozeMode={setClozeMode} />}
       </div>
     </div>
   );
@@ -133,17 +139,44 @@ function MobileQcmCard({ item, onRate }) {
   );
 }
 
-function MobileFlashCard({ item, onRate }) {
-  const [flipped, setFlipped] = useState(false);
-  const [showIndice, setShowIndice] = useState(false);
+function MobileFlashCard({ item, onRate, clozeMode, setClozeMode }) {
+  const cloze = isCloze(item);
   return (
     <div>
       <div className="mrm-concept">{item.theme || item.concept}</div>
+      {cloze && (
+        <div className="mrm-cloze-toggle">
+          <button type="button" className={'mrm-chip-btn' + (clozeMode === 'actif' ? '' : ' ghost')} onClick={() => setClozeMode('actif')} style={{ marginRight: 8 }}><Icon name="edit" size={13} /> Saisie</button>
+          <button type="button" className={'mrm-chip-btn' + (clozeMode === 'flemme' ? '' : ' ghost')} onClick={() => setClozeMode('flemme')}><Icon name="refresh" size={13} /> Retourner</button>
+        </div>
+      )}
+      {cloze && clozeMode === 'actif'
+        ? <MobileClozeActiveCard item={item} onRate={onRate} />
+        : <MobileClassicFlashCard item={item} cloze={cloze} onRate={onRate} />}
+    </div>
+  );
+}
+
+/** recto avec blancs visuels — jamais la longueur réelle du mot masqué. */
+function MobileClozeRecto({ segments }) {
+  return segments.map((s, i) => (s.type === 'text' ? <Tex key={i}>{s.value}</Tex> : <span key={i} className="mrm-cloze-blank" aria-hidden="true" />));
+}
+function MobileClozeVerso({ parts }) {
+  return parts.map((p, i) => (p.hl ? <mark key={i} className="mrm-cloze-mark">{p.text}</mark> : <span key={i}>{p.text}</span>));
+}
+
+function MobileClassicFlashCard({ item, cloze, onRate }) {
+  const [flipped, setFlipped] = useState(false);
+  const [showIndice, setShowIndice] = useState(false);
+  const rectoSegments = useMemo(() => (cloze ? parseCloze(item.recto, item.cloze) : null), [item.id, cloze]);
+  const versoParts = useMemo(() => (cloze ? highlightClozeWords(item.verso, item.cloze) : null), [item.id, cloze]);
+  return (
+    <div>
       <div className="mrm-flash-scene">
         <button type="button" className="mrm-flash-card" onClick={() => setFlipped((f) => !f)}>
           {!flipped ? (
             <>
-              <div className="mrm-flash-text"><Tex>{item.recto}</Tex></div>
+              <div className="mrm-flash-text">{cloze ? <MobileClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div>
               {item.indice && (showIndice
                 ? <div className="mrm-indice" onClick={(e) => e.stopPropagation()}><Tex>{item.indice}</Tex></div>
                 : <span className="mrm-flash-hint" onClick={(e) => { e.stopPropagation(); setShowIndice(true); }}><Icon name="lightbulb" size={13} /> Voir l'indice</span>)}
@@ -151,13 +184,72 @@ function MobileFlashCard({ item, onRate }) {
             </>
           ) : (
             <>
-              <div className="mrm-flash-back"><Tex>{item.verso}</Tex></div>
+              <div className="mrm-flash-back">{cloze ? <MobileClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>
               {item.a_retenir && <div className="mrm-indice"><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></div>}
             </>
           )}
         </button>
       </div>
       {flipped && <MobileRateButtons onRate={onRate} />}
+    </div>
+  );
+}
+
+/* cloze, MODE ACTIF : un champ de saisie par trou, correction tolérante (RÉUTILISE
+   matchClozeBlank → matchAnat, quiz d'anatomie). Qualité SM-2 dérivée du ratio
+   de trous justes (qualityFromRatio) — pas de notation 3 boutons ici. */
+function MobileClozeActiveCard({ item, onRate }) {
+  const blanks = useMemo(() => clozeBlanks(item.recto, item.cloze), [item.id]);
+  const segments = useMemo(() => parseCloze(item.recto, item.cloze), [item.id]);
+  const [values, setValues] = useState(() => blanks.map(() => ''));
+  const [validated, setValidated] = useState(false);
+  const [overrides, setOverrides] = useState(() => new Set());
+
+  const setValue = (i, v) => setValues((arr) => arr.map((x, j) => (i === j ? v : x)));
+  const evalBlank = (i) => (overrides.has(i) ? { ok: true, typo: false } : matchClozeBlank(values[i], blanks[i].expected));
+  const correctCount = blanks.reduce((n, _b, i) => n + (evalBlank(i).ok ? 1 : 0), 0);
+  const toggleOverride = (i) => setOverrides((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+
+  const finish = () => {
+    const ratio = blanks.length ? correctCount / blanks.length : 1;
+    onRate(qualityFromRatio(ratio));
+  };
+
+  return (
+    <div>
+      <div className="mrm-question"><MobileClozeRecto segments={segments} /></div>
+      <div className="mrm-cloze-inputs">
+        {blanks.map((b, i) => {
+          const ev = validated ? evalBlank(i) : null;
+          return (
+            <div key={i} className="mrm-cloze-row">
+              <span className="mrm-cloze-n">{i + 1}</span>
+              <input
+                className={'mrm-cloze-input' + (validated ? (ev.ok ? ' ok' : ' wrong') : '')}
+                value={values[i]} disabled={validated}
+                onChange={(e) => setValue(i, e.target.value)}
+                placeholder={`Trou ${i + 1}`}
+              />
+              {validated && (ev.ok
+                ? <Icon name="check" size={15} title={ev.typo ? 'Juste (orthographe tolérée)' : undefined} style={{ color: 'var(--ok)', flex: '0 0 auto' }} />
+                : <span className="mrm-cloze-expected">{b.expected}</span>)}
+            </div>
+          );
+        })}
+      </div>
+      {validated && blanks.map((b, i) => (!evalBlank(i).ok ? (
+        <button key={i} type="button" className="mrm-chip-btn ghost" style={{ marginTop: 6, marginRight: 6 }} onClick={() => toggleOverride(i)}>
+          {overrides.has(i) ? `Annuler (trou ${i + 1})` : `Compter le trou ${i + 1} comme juste`}
+        </button>
+      ) : null))}
+      {!validated ? (
+        <button type="button" className="mrm-primary-btn" onClick={() => setValidated(true)}>Valider</button>
+      ) : (
+        <>
+          <div className="mrm-explication" style={{ marginTop: 10 }}><strong className="tnum">{correctCount}/{blanks.length}</strong> trou{blanks.length > 1 ? 's' : ''} juste{blanks.length > 1 ? 's' : ''}</div>
+          <button type="button" className="mrm-primary-btn" onClick={finish}><Icon name="check" size={16} /> Continuer</button>
+        </>
+      )}
     </div>
   );
 }

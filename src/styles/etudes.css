@@ -540,6 +540,18 @@
 .flash-face .ff-text { font-family: 'DM Serif Display', serif; font-size: 26px; line-height: 1.3; }
 .flash-face.back .ff-text { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 500; line-height: 1.5; }
 
+/* flashcards à trou (cloze, v1.1) */
+.cloze-blank { display: inline-block; min-width: 60px; height: .9em; margin: 0 3px; border-bottom: 3px dashed var(--accent); vertical-align: -3px; }
+.cloze-mark { background: var(--accent-soft); color: var(--accent); border-radius: 4px; padding: 0 4px; font-weight: 700; }
+.cloze-inputs { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; width: 100%; }
+.cloze-input-row { display: flex; align-items: center; gap: 10px; }
+.cloze-input-n { width: 26px; height: 26px; border-radius: 8px; background: var(--bg-2); display: grid; place-items: center; font-size: 12px; font-weight: 700; color: var(--text-2); flex: 0 0 auto; }
+.cloze-input { flex: 1 1 auto; min-width: 0; padding: 11px 13px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--card); color: var(--text); font-family: inherit; font-size: 14.5px; }
+.cloze-input:focus { outline: none; border-color: var(--accent); }
+.cloze-input.ok { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.cloze-input.wrong { border-color: var(--crit); background: color-mix(in srgb, var(--crit) 10%, transparent); }
+.cloze-expected { font-size: 12.5px; color: var(--crit); font-weight: 600; white-space: nowrap; }
+
 /* celebration */
 .celebrate { max-width: 520px; margin: 30px auto; text-align: center; animation: fadeup .4s ease; }
 .celebrate .cel-badge { width: 100px; height: 100px; border-radius: 32px; margin: 0 auto 24px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg, var(--accent), var(--accent-2)); box-shadow: 0 14px 40px var(--accent-soft); animation: pop .5s cubic-bezier(.2,1.4,.5,1); }

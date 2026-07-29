@@ -8,13 +8,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta, EtiquetteQuickSet } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
-import { applyReview, QUALITY, jStepForInterval, todayISO, computeStreak } from '../lib/sm2.js';
+import { applyReview, QUALITY, QUALITY_TO_RATING, qualityFromRatio, jStepForInterval, todayISO, computeStreak } from '../lib/sm2.js';
 import { effectiveCoef, index } from '../lib/planning.js';
 import { blobURL } from '../lib/storage.js';
+import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
 
 const KEYS = ['A', 'B', 'C', 'D', 'E'];
 const isFlash = (t) => t === 'flashcard' || t === 'flash';
 const RATING_QUALITY = { fail: QUALITY.rate, hard: QUALITY.difficile, easy: QUALITY.facile };
+// une notation peut arriver soit comme étiquette ('fail'|'hard'|'easy', 3 boutons),
+// soit comme qualité SM-2 numérique déjà résolue (cloze actif, dérivée du ratio de
+// trous justes) — on la ramène systématiquement à une étiquette pour ne garder
+// qu'UN SEUL chemin de calcul de qualité (RATING_QUALITY ci-dessus).
+const resolveRating = (r) => (typeof r === 'number' ? (QUALITY_TO_RATING[r] || 'hard') : r);
 
 export function Session({ ctx }) {
   const session = ctx.session || { items: [], title: 'Révision' };
@@ -49,8 +55,12 @@ export function Session({ ctx }) {
 
   const item = items[idx];
   const resetCard = () => { setSelectedIds([]); setValidated(false); setFlipped(false); setPulse(''); };
+  // mode cloze (saisie/retourner) : bascule simple, mémorisée entre sessions (stats).
+  const clozeMode = (ctx.stats && ctx.stats.clozeMode) || 'actif';
+  const setClozeMode = (m) => ctx.saveStats({ ...ctx.stats, clozeMode: m });
 
-  const advance = async (rating) => {
+  const advance = async (ratingIn) => {
+    const rating = resolveRating(ratingIn);
     // persist SM-2 — SAUF pour les items ÉPHÉMÈRES (théorie de schéma générée à la
     // volée) : ils ne sont jamais planifiés ni écrits en base (aucun impact méthode des J).
     if (item && !item.ephemeral) {
@@ -130,7 +140,7 @@ export function Session({ ctx }) {
         <div className={'rev-anim-' + anim} key={idx}>
           {item.type === 'qcm'
             ? <QcmCard item={item} meta={meta} selectedIds={selectedIds} setSelectedIds={setSelectedIds} validated={validated} validate={validate} pulse={pulse} onRate={advance} canPrev={idx > 0} onPrev={goPrev} />
-            : <FlashCardView item={item} meta={meta} flipped={flipped} setFlipped={setFlipped} onRate={advance} canPrev={idx > 0} onPrev={goPrev} />}
+            : <FlashCardView item={item} meta={meta} flipped={flipped} setFlipped={setFlipped} onRate={advance} canPrev={idx > 0} onPrev={goPrev} clozeMode={clozeMode} setClozeMode={setClozeMode} />}
         </div>
       </div>
 
@@ -224,9 +234,33 @@ function QcmCard({ item, meta, selectedIds, setSelectedIds, validated, validate,
   );
 }
 
-function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPrev }) {
+function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPrev, clozeMode, setClozeMode }) {
+  const cloze = isCloze(item);
+  return (
+    <div>
+      {cloze && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
+          <div className="seg">
+            <button type="button" className={'seg-btn' + (clozeMode === 'actif' ? ' active' : '')} onClick={() => setClozeMode('actif')}><Icon name="edit" size={13} /> Saisie</button>
+            <button type="button" className={'seg-btn' + (clozeMode === 'flemme' ? ' active' : '')} onClick={() => setClozeMode('flemme')}><Icon name="refresh" size={13} /> Retourner</button>
+          </div>
+        </div>
+      )}
+      {cloze && clozeMode === 'actif'
+        ? <ClozeActiveCard item={item} meta={meta} onRate={onRate} canPrev={canPrev} onPrev={onPrev} />
+        : <ClassicFlashCard item={item} meta={meta} cloze={cloze} flipped={flipped} setFlipped={setFlipped} onRate={onRate} canPrev={canPrev} onPrev={onPrev} />}
+    </div>
+  );
+}
+
+/* ---- flashcard classique (flip recto/verso) — aussi utilisée par le cloze en
+   mode « Retourner » : recto avec blancs visuels, verso avec les mots
+   masqués mis en évidence (pas de saisie, juste une auto-évaluation SM-2). ---- */
+function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canPrev, onPrev }) {
   const [showIndice, setShowIndice] = useState(false); // réinitialisé au changement de carte (remount via key={idx})
   const revealIndice = (e) => { e.stopPropagation(); setShowIndice(true); };
+  const rectoSegments = useMemo(() => (cloze ? parseCloze(item.recto, item.cloze) : null), [item.id, cloze]);
+  const versoParts = useMemo(() => (cloze ? highlightClozeWords(item.verso, item.cloze) : null), [item.id, cloze]);
   return (
     <div>
       <div className="flash-scene">
@@ -234,8 +268,8 @@ function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPre
           <div className="flash-face front">
             <span className="ff-tag" style={{ color: meta.tint }}>{meta.label} · {item.theme}</span>
             {item.imageId
-              ? <div className="ff-imgwrap"><AnatImage imageId={item.imageId} compact /><div className="ff-imgq"><Tex>{item.recto}</Tex></div></div>
-              : <div className="ff-text"><Tex>{item.recto}</Tex></div>}
+              ? <div className="ff-imgwrap"><AnatImage imageId={item.imageId} compact /><div className="ff-imgq">{cloze ? <ClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div></div>
+              : <div className="ff-text">{cloze ? <ClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div>}
             {item.indice && (showIndice
               ? <div className="ff-indice" onClick={(e) => e.stopPropagation()} style={{ marginTop: 10, padding: '8px 12px', borderRadius: 10, background: 'var(--accent-soft)', color: 'var(--text)', fontSize: 13.5, display: 'flex', gap: 7, alignItems: 'baseline' }}>
                   <Icon name="lightbulb" size={13} style={{ color: 'var(--accent)', flex: '0 0 auto' }} /> <span><Tex>{item.indice}</Tex></span>
@@ -245,7 +279,7 @@ function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPre
           </div>
           <div className="flash-face back">
             <span className="ff-tag">Réponse</span>
-            <div className="ff-text"><Tex>{item.verso}</Tex></div>
+            <div className="ff-text">{cloze ? <ClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>
             {item.a_retenir && (
               <div className="ff-aretenir" style={{ marginTop: 10, padding: '8px 12px', borderRadius: 10, background: 'var(--accent-soft)', border: '1px solid var(--accent)', fontSize: 13.5, display: 'flex', gap: 7, alignItems: 'baseline' }}>
                 <Icon name="star" size={13} style={{ color: 'var(--accent)', flex: '0 0 auto' }} /> <span><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></span>
@@ -258,6 +292,84 @@ function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPre
       {flipped
         ? <RatingButtons onRate={onRate} canPrev={canPrev} onPrev={onPrev} />
         : canPrev && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}><button className="btn ghost" onClick={onPrev}><Icon name="chevL" size={15} /> Carte précédente</button></div>}
+    </div>
+  );
+}
+
+/** recto avec blancs visuels ("[ ..... ]") à la place de chaque {{mot}} — jamais la longueur réelle du mot (pas d'indice de taille). */
+function ClozeRecto({ segments }) {
+  return segments.map((s, i) => (s.type === 'text' ? <Tex key={i}>{s.value}</Tex> : <span key={i} className="cloze-blank" aria-hidden="true" />));
+}
+
+/** verso complet, mots précédemment masqués mis en évidence (couleur d'accent). */
+function ClozeVerso({ parts }) {
+  return parts.map((p, i) => (p.hl ? <mark key={i} className="cloze-mark">{p.text}</mark> : <span key={i}>{p.text}</span>));
+}
+
+/* ---- cloze, MODE ACTIF : un champ de saisie par trou, correction tolérante
+   (RÉUTILISE matchClozeBlank → matchAnat, le matcher du quiz d'anatomie).
+   Qualité SM-2 dérivée du ratio de trous justes (qualityFromRatio, comme le
+   quiz d'anatomie) — pas de notation 3 boutons ici. ---- */
+function ClozeActiveCard({ item, meta, onRate, canPrev, onPrev }) {
+  const blanks = useMemo(() => clozeBlanks(item.recto, item.cloze), [item.id]);
+  const segments = useMemo(() => parseCloze(item.recto, item.cloze), [item.id]);
+  const [values, setValues] = useState(() => blanks.map(() => ''));
+  const [validated, setValidated] = useState(false);
+  const [overrides, setOverrides] = useState(() => new Set());
+
+  const setValue = (i, v) => setValues((arr) => arr.map((x, j) => (i === j ? v : x)));
+  const evalBlank = (i) => (overrides.has(i) ? { ok: true, typo: false } : matchClozeBlank(values[i], blanks[i].expected));
+  const correctCount = blanks.reduce((n, _b, i) => n + (evalBlank(i).ok ? 1 : 0), 0);
+  const toggleOverride = (i) => setOverrides((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+
+  const finish = () => {
+    const ratio = blanks.length ? correctCount / blanks.length : 1;
+    onRate(qualityFromRatio(ratio));
+  };
+
+  return (
+    <div className="rev-card">
+      <div className="rev-concept"><span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.tint, display: 'inline-block' }} /> {meta.label} · {item.theme}</div>
+      <div className="rev-q"><ClozeRecto segments={segments} /></div>
+      <div className="cloze-inputs">
+        {blanks.map((b, i) => {
+          const ev = validated ? evalBlank(i) : null;
+          return (
+            <div key={i} className="cloze-input-row">
+              <span className="cloze-input-n">{i + 1}</span>
+              <input
+                className={'cloze-input' + (validated ? (ev.ok ? ' ok' : ' wrong') : '')}
+                value={values[i]} disabled={validated}
+                onChange={(e) => setValue(i, e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !validated) setValidated(true); }}
+                placeholder={`Trou ${i + 1}`}
+              />
+              {validated && (ev.ok
+                ? <Icon name="check" size={16} title={ev.typo ? 'Juste (orthographe tolérée)' : undefined} style={{ color: 'var(--ok)', flex: '0 0 auto' }} />
+                : <>
+                    <span className="cloze-expected">{b.expected}</span>
+                    <button type="button" className="btn ghost sm" onClick={() => toggleOverride(i)}>
+                      {overrides.has(i) ? 'Annuler' : 'Compter comme juste'}
+                    </button>
+                  </>)}
+            </div>
+          );
+        })}
+      </div>
+      {!validated ? (
+        <div style={{ marginTop: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button className="btn ghost" disabled={!canPrev} style={{ opacity: canPrev ? 1 : 0.4 }} onClick={onPrev}><Icon name="chevL" size={15} /> Précédent</button>
+          <button className="btn primary lg" onClick={() => setValidated(true)}>Valider</button>
+        </div>
+      ) : (
+        <div style={{ marginTop: 18 }}>
+          <div className="hint"><strong className="tnum">{correctCount}/{blanks.length}</strong> trou{blanks.length > 1 ? 's' : ''} juste{blanks.length > 1 ? 's' : ''}</div>
+          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button className="btn ghost" disabled={!canPrev} style={{ opacity: canPrev ? 1 : 0.4 }} onClick={onPrev}><Icon name="chevL" size={15} /> Précédent</button>
+            <button className="btn primary lg" onClick={finish}><Icon name="check" size={15} /> Continuer</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

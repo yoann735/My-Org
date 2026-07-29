@@ -10,6 +10,10 @@ export const J_INTERVALS = [1, 3, 7, 14, 30]; // cycle initial affiché (frise)
 
 // notation 3 boutons → qualité SM-2
 export const QUALITY = { facile: 5, difficile: 3, rate: 1 };
+// sens inverse : qualité dérivée d'un ratio (qualityFromRatio, toujours 5|3|1)
+// → étiquette de notation, pour réutiliser RATING_QUALITY côté appelant sans
+// dupliquer la résolution de qualité (ex. cloze en mode actif, session/Session.jsx).
+export const QUALITY_TO_RATING = { 5: 'easy', 3: 'hard', 1: 'fail' };
 
 /**
  * Quiz d'anatomie visuelle → qualité SM-2 dérivée du % de coches correctes.
