@@ -5,7 +5,7 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox } from '../components/ui.jsx';
+import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
 import {
   index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, missedQuestions, topConcepts, todayPlan, overdueByFiche,
   qcmConseilleFor, pickQcmSubset,
@@ -13,6 +13,7 @@ import {
 import { shuffle } from '../lib/sm2.js';
 import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
 import { allCoches } from '../lib/anatSchema.js';
+import { putBlob } from '../lib/storage.js';
 import { CarnetBody } from './Carnet.jsx';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 
@@ -86,6 +87,17 @@ export function Reviser({ ctx }) {
 
   const viewCoursPdf = () => { if (primary && primary.pdfId) ctx.openPdfReader(primary.id, 'read', 'revise', 'pdf'); };
   const viewCoursHtml = () => { if (primary && primary.htmlId) ctx.openPdfReader(primary.id, 'read', 'revise', 'html'); };
+  // input UNIQUE (PDF ou HTML, même chemin que Bibliothèque/import) pour rattacher
+  // un document directement depuis Réviser, sans passer par un écran d'import —
+  // "Voir le cours" apparaît ensuite de lui-même (primary.pdfId/htmlId à jour).
+  const attachCoursDoc = async (file) => {
+    if (!primary || !file) return;
+    const kind = detectDocKind(file);
+    if (!kind) return;
+    const blobId = await putBlob(file);
+    if (kind === 'html') await ctx.setFicheHtml(primary.id, blobId, file.name);
+    else await ctx.setFichePdf(primary.id, blobId, file.name);
+  };
   const launch = (mode) => {
     if (mode === 'qcm') {
       const n = Math.min(qcmCount || qcmItems.length, qcmItems.length);
@@ -309,6 +321,16 @@ export function Reviser({ ctx }) {
                   <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={viewCoursHtml} title="Ouvrir la fiche HTML du cours">
                     <Icon name="fileHtml" size={14} /> Voir le cours{primary.pdfId ? ' (HTML)' : ''}
                   </button>
+                )}
+                {/* aucun document rattaché : à la même place, propose de le rattacher
+                   directement (input unique PDF/HTML — mêmes stockage/lecteur que
+                   partout ailleurs) ; redevient "Voir le cours" dès que c'est fait. */}
+                {!multi && primary && !primary.pdfId && !primary.htmlId && (
+                  <label className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center', cursor: 'pointer' }} title="Rattacher le PDF ou la fiche HTML du cours">
+                    <Icon name="upload" size={14} /> Importer une fiche
+                    <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }}
+                      onChange={(e) => { attachCoursDoc(e.target.files[0]); e.target.value = ''; }} />
+                  </label>
                 )}
                 {dueSel.length > 0 && <button className="btn primary" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={launchToday}><Icon name="play" size={14} fill /> Lancer aujourd'hui</button>}
               </div>
