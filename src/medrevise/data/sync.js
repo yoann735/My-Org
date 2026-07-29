@@ -44,6 +44,27 @@ export async function pullAllRecords() {
   } catch (e) { return null; }
 }
 
+/**
+ * Pousse un lot d'enregistrements IMMÉDIATEMENT (awaited), en dehors du debounce
+ * habituel de queuePush/flushPending — réservé aux migrations de nettoyage ponctuelles
+ * et critiques (lib/migrate.js) où il faut savoir si le push a RÉELLEMENT abouti avant
+ * de marquer l'opération comme terminée. Ne remplace pas queuePush pour l'usage
+ * courant (la file durable/le retry systématique restent un chantier séparé — voir
+ * docs/audit-sync-mobile.md, Risque 2).
+ * @returns {boolean} true si le lot est parti (ou si la sync est désactivée — rien à
+ *   pousser), false si le push a échoué (à réessayer par l'appelant).
+ */
+export async function pushTombstonesNow(records) {
+  if (!SYNC_ENABLED) return true;
+  if (!records || !records.length) return true;
+  try {
+    await supabase.from(RECORDS_TABLE).upsert(records, { onConflict: 'store,record_id' });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 export async function pushBlob(id, blob) {
   if (!SYNC_ENABLED || !blob) return;
   try { await supabase.storage.from(BLOBS_BUCKET).upload(id, blob, { upsert: true, contentType: blob.type || undefined }); }

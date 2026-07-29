@@ -8,12 +8,22 @@
    ============================================================ */
 import { getAll, putMany, getMeta, setMeta, putBackup, remove } from './storage.js';
 import { toInternalItem } from './adapter.js';
+import { pullAllRecords, pushTombstonesNow } from '../data/sync.js';
 
 const MIGRATIONS_KEY = 'migrations';
 const MIG_V1 = 'items-v1.0';
 const MIG_DOCS = 'documents-v2';
 const MIG_ANAT_IMG = 'anat-images-v1';
 const MIG_ORPHANS = 'orphan-cleanup-v1';
+const MIG_DEMO_ZOMBIES = 'demo-zombies-cleanup-v1';
+
+// IDs fixes du seed de démo (lib/storage.js:194-203) — voir docs/audit-sync-mobile.md §3.1 :
+// une course de réensemencement historique (déjà corrigée via canSeed) a pu faire gagner
+// ces enregistrements en LWW contre une suppression antérieure, corrompant durablement le
+// cloud. En dur, jamais dynamique : garantit qu'on ne touche QUE ces ID précis.
+const DEMO_SOURCE_ID = 'fac';
+const DEMO_MATIERE_IDS = ['physio', 'anat'];
+const DEMO_FICHE_IDS = ['f-resp', 'f-ab', 'f-ms'];
 
 /** liste des migrations déjà appliquées */
 async function appliedList() {
@@ -142,11 +152,108 @@ export async function migrateOrphanCleanupV1() {
   return { ran: true, purged };
 }
 
+/**
+ * Nettoyage PONCTUEL des fiches de démo à ID fixe (fac/physio/anat/f-resp/f-ab/f-ms,
+ * voir docs/audit-sync-mobile.md §3.1/Risque 1). Pose de VRAIS tombstones
+ * (deleted=true, remove() — storage.js:57-60), jamais un simple archive:true qui peut
+ * se faire réécraser par LWW. Fonctionne que ces ID soient présents ou non EN LOCAL sur
+ * cet appareil : remove() gère l'absence (no-op + tombstone quand même) ; les questions
+ * liées, potentiellement connues UNIQUEMENT du cloud sur cet appareil (cas rapporté :
+ * fiche déjà absente du local desktop), sont retrouvées via pullAllRecords, pas via un
+ * simple scan local. NON DESTRUCTIF : sauvegarde intégrale avant purge (locale + ce
+ * qu'on a vu côté cloud). Garde-fou : ne supprime le cours/les matières de démo QUE si
+ * rien d'AUTRE ne s'y rattache (sinon on orphelinerait du vrai contenu dans l'arbre) —
+ * les fiches de démo elles-mêmes sont nettoyées dans tous les cas.
+ * Marque la migration appliquée SEULEMENT si le tombstone a RÉELLEMENT été poussé
+ * (pushTombstonesNow, awaited) — sinon nouvel essai complet au prochain lancement
+ * (idempotent : rejouer remove()/re-pousser un tombstone déjà posé ne casse rien).
+ */
+export async function migrateDemoZombiesCleanup() {
+  const applied = await appliedList();
+  if (applied.includes(MIG_DEMO_ZOMBIES)) return { ran: false };
+
+  const [fiches, matieres, sources, questions, cloudRows] = await Promise.all([
+    getAll('fiches'), getAll('matieres'), getAll('sources'), getAll('questions'), pullAllRecords(),
+  ]);
+  const cloud = cloudRows || []; // pullAllRecords() → null si hors-ligne/non configuré
+
+  const otherMatieresUnderFac = (matieres || []).filter((m) => m.sourceId === DEMO_SOURCE_ID && !DEMO_MATIERE_IDS.includes(m.id));
+  const otherFichesUnderDemoMat = (fiches || []).filter((f) => DEMO_MATIERE_IDS.includes(f.matiereId) && !DEMO_FICHE_IDS.includes(f.id));
+  const safeToRemoveContainers = otherMatieresUnderFac.length === 0 && otherFichesUnderDemoMat.length === 0;
+
+  const existsLocallyOrCloud = (store, id) => (
+    (store === 'sources' ? (sources || []) : store === 'matieres' ? (matieres || []) : (fiches || [])).some((r) => r.id === id)
+    || cloud.some((r) => r.store === store && r.record_id === id && !r.deleted)
+  );
+  const targetFicheIds = DEMO_FICHE_IDS.filter((id) => existsLocallyOrCloud('fiches', id));
+  const targetContainerIds = safeToRemoveContainers
+    ? [
+      ...(existsLocallyOrCloud('sources', DEMO_SOURCE_ID) ? [DEMO_SOURCE_ID] : []),
+      ...DEMO_MATIERE_IDS.filter((id) => existsLocallyOrCloud('matieres', id)),
+    ]
+    : [];
+
+  // questions liées : union LOCAL + CLOUD (l'ID peut n'exister QUE côté cloud ici).
+  const localDemoQuestions = (questions || []).filter((q) => DEMO_FICHE_IDS.includes(q.ficheId));
+  const cloudDemoQuestionRows = cloud.filter((r) => r.store === 'questions' && !r.deleted && r.data && DEMO_FICHE_IDS.includes(r.data.ficheId));
+  const questionIds = [...new Set([...localDemoQuestions.map((q) => q.id), ...cloudDemoQuestionRows.map((r) => r.record_id)])];
+
+  if (!targetFicheIds.length && !targetContainerIds.length && !questionIds.length) {
+    // rien à faire nulle part (déjà propre, ou jamais corrompu sur ce compte) — marque
+    // quand même appliqué pour ne pas rescanner à chaque lancement.
+    await setMeta(MIGRATIONS_KEY, [...applied, MIG_DEMO_ZOMBIES]);
+    return { ran: true, applied: true, purgedFiches: 0, purgedQuestions: 0, purgedContainers: 0 };
+  }
+
+  await putBackup('pre-' + MIG_DEMO_ZOMBIES, {
+    sources: (sources || []).filter((s) => s.id === DEMO_SOURCE_ID),
+    matieres: (matieres || []).filter((m) => DEMO_MATIERE_IDS.includes(m.id)),
+    fiches: (fiches || []).filter((f) => DEMO_FICHE_IDS.includes(f.id)),
+    cloudOnlyFicheData: DEMO_FICHE_IDS
+      .filter((id) => !(fiches || []).some((f) => f.id === id))
+      .map((id) => cloud.find((r) => r.store === 'fiches' && r.record_id === id))
+      .filter(Boolean),
+    questions: [...localDemoQuestions, ...cloudDemoQuestionRows.map((r) => r.data)],
+    safeToRemoveContainers,
+  });
+
+  // 1) suppression locale (no-op si absent) + mise en file du push habituel — chemin
+  //    identique à toute autre suppression de l'app (remove(), storage.js:57-60).
+  await Promise.all([
+    ...(targetContainerIds.includes(DEMO_SOURCE_ID) ? [remove('sources', DEMO_SOURCE_ID)] : []),
+    ...targetContainerIds.filter((id) => DEMO_MATIERE_IDS.includes(id)).map((id) => remove('matieres', id)),
+    ...targetFicheIds.map((id) => remove('fiches', id)),
+    ...questionIds.map((id) => remove('questions', id)),
+  ]);
+
+  // 2) filet de fiabilité : mêmes tombstones repoussés en un lot IMMÉDIAT et AWAITÉ, en
+  //    plus du debounce habituel — on ne marque la migration appliquée que si ce push
+  //    a réellement abouti (voir pushTombstonesNow, data/sync.js).
+  const now = new Date().toISOString();
+  const tombstoneRow = (store, id) => ({ store, record_id: id, data: {}, updated_at: now, deleted: true });
+  const rows = [
+    ...(targetContainerIds.includes(DEMO_SOURCE_ID) ? [tombstoneRow('sources', DEMO_SOURCE_ID)] : []),
+    ...targetContainerIds.filter((id) => DEMO_MATIERE_IDS.includes(id)).map((id) => tombstoneRow('matieres', id)),
+    ...targetFicheIds.map((id) => tombstoneRow('fiches', id)),
+    ...questionIds.map((id) => tombstoneRow('questions', id)),
+  ];
+  const pushed = await pushTombstonesNow(rows);
+  if (!pushed) return { ran: true, applied: false, retry: true };
+
+  await setMeta(MIGRATIONS_KEY, [...applied, MIG_DEMO_ZOMBIES]);
+  return {
+    ran: true, applied: true,
+    purgedFiches: targetFicheIds.length, purgedQuestions: questionIds.length,
+    purgedContainers: targetContainerIds.length, containersSkipped: !safeToRemoveContainers,
+  };
+}
+
 /** point d'entrée bootstrap : applique toutes les migrations en attente */
 export async function runMigrations() {
   const items = await migrateItemsToV1();
   const documents = await migrateDocumentsV2();
   const anatImages = await migrateAnatImagesV1();
   const orphans = await migrateOrphanCleanupV1();
-  return { items, documents, anatImages, orphans };
+  const demoZombies = await migrateDemoZombiesCleanup();
+  return { items, documents, anatImages, orphans, demoZombies };
 }
