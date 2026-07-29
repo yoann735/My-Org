@@ -6,7 +6,8 @@
    ============================================================ */
 import { get, set, del, values, setMany, createStore } from 'idb-keyval';
 import { isoDate } from './sm2.js';
-import { queuePush, pullAllRecords, pushBlob, pullBlob } from '../data/sync.js';
+import { queuePush, pullAllRecords, pushBlob, pullBlob, flushOutbox } from '../data/sync.js';
+import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
 const store = (name) => createStore('medrevise-' + name, 'v1');
 const S = {
@@ -278,4 +279,48 @@ export async function reconcileAll() {
     }
   }
   return { ok: true, cloudEmpty: cloudRows.length === 0 };
+}
+
+/* ============================================================
+   B — RATTRAPAGE INCONDITIONNEL (filet de sécurité, indépendant de la
+   comparaison ci-dessus). reconcileAll() ne remet en file un enregistrement
+   local que s'il a pu comparer avec le cloud (pull réussi) ET a détecté un
+   écart — un pull raté, ou un écart non détecté pour quelque raison que ce
+   soit, laisse alors des écritures locales orphelines indéfiniment.
+   queueAllLocalForPush() ne compare RIEN : il remet TOUT le local syncable
+   dans l'outbox, sans condition. Idempotent et sans risque — un upsert
+   identique ne change rien côté cloud — et le dataset personnel reste petit
+   (comme MealWeek). Appelé par syncNow() (boot + bouton "Forcer la sync"),
+   toujours APRÈS reconcileAll() : l'état local est alors déjà à jour avec le
+   cloud, donc ce qu'on remet en file est forcément ce qu'il faut pousser
+   (jamais une version qu'on vient tout juste d'écraser par plus récent).
+   ============================================================ */
+export async function queueAllLocalForPush() {
+  for (const name of SYNCABLE) {
+    const recs = (await values(S[name])) || [];
+    for (const rec of recs) {
+      if (!rec || !rec.id) continue;
+      queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString());
+    }
+  }
+}
+
+/* ============================================================
+   C — SYNCHRO COMPLÈTE, POINT D'ENTRÉE UNIQUE. Rejoue l'outbox → réconcilie
+   (pull + merge) → rattrape inconditionnellement tout le local → repousse
+   immédiatement (sans attendre le debounce). Utilisée au boot ET par le
+   bouton "Forcer la synchro" (Réglages desktop, accueil mobile) : mêmes
+   garanties partout, jamais deux chemins différents à maintenir.
+   Retourne un statut exploitable par l'UI plutôt qu'un booléen :
+   'disabled' (sync non configurée — rien à faire, jamais une erreur),
+   'offline' (pull cloud impossible cette fois — état local intact, retry
+   au prochain déclencheur), 'ok' (pull + merge réussis).
+   ============================================================ */
+export async function syncNow() {
+  if (!SYNC_ENABLED) return { status: 'disabled' };
+  await flushOutbox();
+  const rec = await reconcileAll();
+  await queueAllLocalForPush();
+  await flushOutbox();
+  return { status: rec.ok ? 'ok' : 'offline', cloudEmpty: rec.cloudEmpty };
 }

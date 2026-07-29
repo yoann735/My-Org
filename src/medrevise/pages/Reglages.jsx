@@ -4,7 +4,7 @@
    ============================================================ */
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, EdTop, Switch, matiereMeta } from '../components/ui.jsx';
+import { Card, EdTop, Switch, matiereMeta, syncStatusLabel } from '../components/ui.jsx';
 import { J_INTERVALS } from '../lib/sm2.js';
 import { wipeAll } from '../lib/storage.js';
 
@@ -170,6 +170,12 @@ export function Reglages({ ctx }) {
         <Card title="Données & confidentialité" icon="box">
           <div className="hint" style={{ marginBottom: 12 }}>100 % local : fiches, images et PDF sont stockés sur cet appareil (IndexedDB).</div>
           <button type="button" className="btn" style={{ color: 'var(--crit)' }} onClick={resetData}><Icon name="trash" size={15} /> Réinitialiser MedRevise</button>
+        </Card>
+        <Card title="Synchronisation" icon="refresh">
+          <div className="hint" style={{ marginBottom: 12 }}>{syncStatusLabel(ctx.syncState)}</div>
+          <button type="button" className="btn" disabled={ctx.syncState?.status === 'syncing'} onClick={ctx.forceSync}>
+            <Icon name="refresh" size={15} /> {ctx.syncState?.status === 'syncing' ? 'Synchronisation…' : 'Forcer la synchro'}
+          </button>
         </Card>
       </div>
     </div>

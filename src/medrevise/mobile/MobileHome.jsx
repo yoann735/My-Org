@@ -9,7 +9,7 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled } from '../lib/planning.js';
-import { matiereMeta } from '../components/ui.jsx';
+import { matiereMeta, syncStatusLabel } from '../components/ui.jsx';
 
 export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman }) {
   const { db } = ctx;
@@ -54,6 +54,10 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
     <div className="mrm-app">
       <div className="mrm-header">
         <span className="mrm-brand"><Icon name="grad" size={18} /> MedRevise</span>
+        <button type="button" className="mrm-icon-btn" disabled={ctx.syncState?.status === 'syncing'}
+          onClick={ctx.forceSync} aria-label="Forcer la synchro" title={syncStatusLabel(ctx.syncState)}>
+          <Icon name="refresh" size={18} className={ctx.syncState?.status === 'syncing' ? 'spin' : ''} />
+        </button>
         <button type="button" className="mrm-icon-btn" onClick={ctx.toggleTheme} aria-label="Thème">
           <Icon name={ctx.theme === 'dark' ? 'sun' : 'moon'} size={18} />
         </button>

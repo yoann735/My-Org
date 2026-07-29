@@ -80,6 +80,17 @@ export function matiereMeta(m) {
   return { label: m.nom, tint: m.couleur || FALLBACK_TINT, icon: m.icon || 'book' };
 }
 
+/* ---- statut de syncNow() (lib/storage.js), partagé Réglages (desktop) et
+   MobileHome (bouton "Forcer la synchro" de l'accueil mobile) ---- */
+export function syncStatusLabel(syncState) {
+  const s = syncState && syncState.status;
+  if (s === 'syncing') return 'Synchronisation en cours…';
+  if (s === 'disabled') return 'Synchro cloud désactivée (variables Supabase absentes sur ce déploiement).';
+  if (s === 'offline') return 'Hors ligne ou cloud injoignable — nouvel essai automatique à la reconnexion.';
+  if (s === 'ok' && syncState.at) return 'Synchronisé à ' + new Date(syncState.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) + '.';
+  return 'Pas encore synchronisé cette session.';
+}
+
 /* ---- Card ---- */
 export function Card({ title, icon, action, children, style, className = '' }) {
   return (

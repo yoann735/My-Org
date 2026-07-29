@@ -17,10 +17,9 @@ import { AnatQuiz } from './session/AnatQuiz.jsx';
 import { PdfReader } from './pdf/PdfReader.jsx';
 import { SchemaEditorScreen } from './documents/SchemaEditorScreen.jsx';
 import {
-  getAll, put, putMany, remove, getStats, setStats as saveStats, genId, reconcileAll,
+  getAll, put, putMany, remove, getStats, setStats as saveStats, genId, syncNow,
   purgeSource, purgeMatiere, purgeFiche,
 } from './lib/storage.js';
-import { flushOutbox } from './data/sync.js';
 import { runMigrations } from './lib/migrate.js';
 import { todayISO } from './lib/sm2.js';
 import { addDays } from './lib/planning.js';
@@ -67,6 +66,9 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [focusFiche, setFocusFiche] = useState(null);
   const [pdfView, setPdfView] = useState(null); // { ficheId, mode: 'read'|'edit', returnScreen }
   const [schemaView, setSchemaView] = useState(null); // { ficheId, returnScreen }
+  // 'idle' | 'syncing' | 'ok' | 'offline' | 'disabled' — exposé pour le bouton
+  // "Forcer la synchro" (Réglages desktop, accueil mobile), voir forceSync ci-dessous.
+  const [syncState, setSyncState] = useState({ status: 'idle', at: null });
 
   const reload = useCallback(async () => {
     const [sources, matieres, fiches, questions, anatstruct, st] = await Promise.all([
@@ -76,36 +78,42 @@ export default function MedReviseApp({ themeApi, goHub }) {
     setStats(st);
   }, []);
 
+  // syncNow() (lib/storage.js) fait, dans l'ordre : rejoue l'outbox → réconcilie
+  // (pull + merge cloud) → remet TOUT le local syncable en file d'envoi sans
+  // condition (rattrape toute écriture jamais poussée, pas seulement les nouvelles)
+  // → repousse immédiatement. Un seul point d'entrée, réutilisé par le bouton
+  // "Forcer la synchro" (forceSync ci-dessous) : mêmes garanties partout.
+  const forceSync = useCallback(async () => {
+    setSyncState((s) => ({ ...s, status: 'syncing' }));
+    const r = await syncNow();
+    if (r.status === 'ok') await reload();
+    setSyncState({ status: r.status, at: new Date().toISOString() });
+    return r;
+  }, [reload]);
+
   // A — synchro cloud (no-op silencieux si non configurée/hors-ligne, voir sync.js).
   // Plus de seed de démo (retiré — voir docs/diag-reseed-mobile.md) : un appareil
   // vierge démarre simplement vide, réconcilié avec le cloud s'il y en a un.
-  // flushOutbox() AVANT reconcileAll() : rejoue toute écriture (notamment un
-  // tombstone) restée dans l'outbox d'une session précédente tuée avant le flush —
-  // sinon reconcileAll ne peut pas la redécouvrir (l'enregistrement supprimé n'est
-  // déjà plus visible localement) et réimporterait la version encore vivante côté
-  // cloud (voir data/sync.js, docs/audit-sync-mobile.md §3.2/§6 Risque 2).
   useEffect(() => { (async () => {
-    await flushOutbox();
-    await reconcileAll();
+    await forceSync();
     await runMigrations(); await reload();
-  })(); }, [reload]);
+  })(); }, [forceSync, reload]);
 
   // reconcile à la reconnexion réseau et quand l'onglet redevient visible (retour d'un
   // autre appareil) — capte les changements faits ailleurs sans polling permanent.
-  // flushOutbox() d'abord, même raison qu'au boot : ne pas laisser reconcileAll tirer
-  // une version cloud périmée par-dessus un envoi encore en attente sur cet appareil.
   useEffect(() => {
-    const onSync = () => { flushOutbox().then(() => reconcileAll()).then((r) => { if (r.ok) reload(); }); };
+    const onSync = () => { forceSync(); };
     const onVisible = () => { if (document.visibilityState === 'visible') onSync(); };
     window.addEventListener('online', onSync);
     document.addEventListener('visibilitychange', onVisible);
     return () => { window.removeEventListener('online', onSync); document.removeEventListener('visibilitychange', onVisible); };
-  }, [reload]);
+  }, [forceSync]);
 
   const ctx = {
     theme, toggleTheme, goHub,
     go: setScreen,
     db, stats, reload,
+    syncState, forceSync,
     focusFiche, setFocusFiche,
     session, feynman, exercice, anatQuiz, pdfView, schemaView,
 
