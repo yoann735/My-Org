@@ -53,14 +53,21 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
   return (
     <div className="mrm-app">
       <div className="mrm-header">
-        <span className="mrm-brand"><Icon name="grad" size={18} /> MedRevise</span>
-        <button type="button" className="mrm-icon-btn" disabled={ctx.syncState?.status === 'syncing'}
-          onClick={ctx.forceSync} aria-label="Forcer la synchro" title={syncStatusLabel(ctx.syncState)}>
-          <Icon name="refresh" size={18} className={ctx.syncState?.status === 'syncing' ? 'spin' : ''} />
-        </button>
-        <button type="button" className="mrm-icon-btn" onClick={ctx.toggleTheme} aria-label="Thème">
-          <Icon name={ctx.theme === 'dark' ? 'sun' : 'moon'} size={18} />
-        </button>
+        <div className="mrm-header-left">
+          <button type="button" className="mrm-icon-btn" onClick={ctx.goHub} aria-label="Changer d'app" title="Retour au sélecteur d'applications">
+            <Icon name="grid" size={17} />
+          </button>
+          <span className="mrm-brand"><Icon name="grad" size={18} /> MedRevise</span>
+        </div>
+        <div className="mrm-header-actions">
+          <button type="button" className="mrm-icon-btn" disabled={ctx.syncState?.status === 'syncing'}
+            onClick={ctx.forceSync} aria-label="Forcer la synchro" title={syncStatusLabel(ctx.syncState)}>
+            <Icon name="refresh" size={18} className={ctx.syncState?.status === 'syncing' ? 'spin' : ''} />
+          </button>
+          <button type="button" className="mrm-icon-btn" onClick={ctx.toggleTheme} aria-label="Thème">
+            <Icon name={ctx.theme === 'dark' ? 'sun' : 'moon'} size={18} />
+          </button>
+        </div>
       </div>
 
       <div className="mrm-scroll">
