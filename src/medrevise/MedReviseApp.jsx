@@ -17,7 +17,8 @@ import { AnatQuiz } from './session/AnatQuiz.jsx';
 import { PdfReader } from './pdf/PdfReader.jsx';
 import { SchemaEditorScreen } from './documents/SchemaEditorScreen.jsx';
 import {
-  seedIfEmpty, getAll, put, putMany, remove, getStats, setStats as saveStats, genId, reconcileAll,
+  seedIfEmpty, getAll, put, putMany, remove, getStats, setStats as saveStats, genId, reconcileAll, canSeed,
+  purgeSource, purgeMatiere, purgeFiche,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 import { todayISO } from './lib/sm2.js';
@@ -75,14 +76,21 @@ export default function MedReviseApp({ themeApi, goHub }) {
   }, []);
 
   // A — synchro cloud (no-op silencieux si non configurée/hors-ligne, voir sync.js) :
-  // réconcilier AVANT le seed, sinon un appareil vierge sèmerait des données de démo
-  // localement avant même d'avoir eu la chance de rapatrier le vrai compte cloud.
-  useEffect(() => { (async () => { await reconcileAll(); await seedIfEmpty(); await runMigrations(); await reload(); })(); }, [reload]);
+  // réconcilier AVANT le seed. Semer n'est plus déclenché par la seule absence de
+  // données locales : canSeed() exige soit la sync désactivée, soit un cloud
+  // CONFIRMÉ vide par reconcileAll — sinon un pull raté sur un appareil vierge
+  // sèmerait des ID fixes (fac/physio/f-resp…) qui pourraient ressusciter de
+  // vraies données ailleurs à la prochaine réconciliation (voir storage.js).
+  useEffect(() => { (async () => {
+    const rec = await reconcileAll();
+    if (canSeed(rec)) await seedIfEmpty();
+    await runMigrations(); await reload();
+  })(); }, [reload]);
 
   // reconcile à la reconnexion réseau et quand l'onglet redevient visible (retour d'un
   // autre appareil) — capte les changements faits ailleurs sans polling permanent.
   useEffect(() => {
-    const onSync = () => { reconcileAll().then((changed) => { if (changed) reload(); }); };
+    const onSync = () => { reconcileAll().then((r) => { if (r.ok) reload(); }); };
     const onVisible = () => { if (document.visibilityState === 'visible') onSync(); };
     window.addEventListener('online', onSync);
     document.addEventListener('visibilitychange', onVisible);
@@ -174,6 +182,32 @@ export default function MedReviseApp({ themeApi, goHub }) {
     setFicheArchived: async (ficheId, on) => {
       const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
       await put('fiches', { ...f, archive: on }); await reload();
+    },
+    // pendant de setSourceRappels, mais au niveau FICHE : retire/remet cette seule
+    // fiche de la méthode des J (isFicheScheduled, planning.js), sans effet sur le
+    // cours parent ni sur les autres fiches. Réversible, ne touche pas archive.
+    setFicheRappelsJ: async (ficheId, on) => {
+      const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
+      await put('fiches', { ...f, rappelsJ: on }); await reload();
+    },
+    // suppression DÉFINITIVE et irréversible (Réglages → corbeille), à distinguer de
+    // setSourceArchived/setMatiereArchived/setFicheArchived (archivage, restaurable) :
+    // ceci tombstone en cascade (source→matières→fiches→questions/highlights/annotations/
+    // docs/exos) et se propage à tous les appareils. purgeTrash vide toute la corbeille
+    // d'un coup (idempotent : purger deux fois le même id ne casse rien).
+    permanentlyDeleteSource: async (sourceId) => { await purgeSource(sourceId); await reload(); },
+    permanentlyDeleteMatiere: async (matiereId) => { await purgeMatiere(matiereId); await reload(); },
+    permanentlyDeleteFiche: async (ficheId) => { await purgeFiche(ficheId); await reload(); },
+    emptyTrash: async () => {
+      const srcs = db.sources.filter((s) => s.archive);
+      const mats = db.matieres.filter((m) => m.archive);
+      const fics = db.fiches.filter((f) => f.archive);
+      await Promise.all([
+        ...srcs.map((s) => purgeSource(s.id)),
+        ...mats.map((m) => purgeMatiere(m.id)),
+        ...fics.map((f) => purgeFiche(f.id)),
+      ]);
+      await reload();
     },
     // corbeille (A5/A6) : supprime la matière (archive, restaurable depuis Réglages).
     // Si elle contient encore des fiches actives, elles sont déplacées vers

@@ -210,6 +210,11 @@ export function Bibliotheque({ ctx }) {
                                         )}
                                         <div className="row" style={{ gap: 6 }}>
                                           <EtiquetteIconButton value={f.etiquette} onClick={(e) => openEtqMenu(e, f.id)} />
+                                          {!isTranscript && (
+                                            <BellButton on={f.rappelsJ !== false} onToggle={() => ctx.setFicheRappelsJ(f.id, f.rappelsJ === false)}
+                                              onText="Rappels J actifs — cette fiche entre dans la planification de la méthode des J."
+                                              offText="Fiche en pause — elle ne sort plus dans la série du jour de la méthode des J, mais reste consultable et révisable manuellement." />
+                                          )}
                                           {isTranscript ? (
                                             <span className="pill" style={{ height: 22, fontSize: 10.5 }}><Icon name="edit" size={11} /> TRANSCRIPT</span>
                                           ) : isSchema ? (

@@ -33,10 +33,12 @@ export function effectiveCoef(db, fiche, idx) {
   return 3;
 }
 
-/** une fiche est dans le planning si la SOURCE a les rappels J activés (et non archivée) */
+/** une fiche est dans le planning si la SOURCE a les rappels J activés (et non archivée)
+ *  ET que la fiche elle-même n'a pas été retirée individuellement (fiche.rappelsJ) */
 export function isFicheScheduled(db, fiche, idx) {
   const { mById, sById } = idx || index(db);
   if (!fiche || fiche.archive) return false;
+  if (fiche.rappelsJ === false) return false;
   const m = mById[fiche.matiereId];
   if (!m || m.archive) return false;
   const s = sById[m.sourceId];

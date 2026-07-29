@@ -29,6 +29,28 @@ export function Reglages({ ctx }) {
     await wipeAll(); await seedIfEmpty(); await ctx.reload();
   };
 
+  const deleteSource = (s) => {
+    if (!window.confirm(`Supprimer le cours « ${s.nom} » ? Il sera déplacé dans la corbeille (restaurable ici tant que la corbeille n'est pas vidée).`)) return;
+    ctx.setSourceArchived(s.id, true);
+  };
+  const trashCount = archived.length + archivedMatieres.length + archivedFiches.length;
+  const emptyTrash = () => {
+    if (!window.confirm(`Vider la corbeille ? ${archived.length} cours, ${archivedMatieres.length} matière(s) et ${archivedFiches.length} fiche(s) seront supprimés DÉFINITIVEMENT, sur tous tes appareils. Cette action est IRRÉVERSIBLE.`)) return;
+    ctx.emptyTrash();
+  };
+  const deleteSourceForever = (s) => {
+    if (!window.confirm(`Supprimer définitivement le cours « ${s.nom} » et tout son contenu ? Action IRRÉVERSIBLE, sur tous tes appareils.`)) return;
+    ctx.permanentlyDeleteSource(s.id);
+  };
+  const deleteMatiereForever = (m) => {
+    if (!window.confirm(`Supprimer définitivement la matière « ${m.nom} » et ses fiches ? Action IRRÉVERSIBLE, sur tous tes appareils.`)) return;
+    ctx.permanentlyDeleteMatiere(m.id);
+  };
+  const deleteFicheForever = (f) => {
+    if (!window.confirm(`Supprimer définitivement la fiche « ${f.titre} » ? Action IRRÉVERSIBLE, sur tous tes appareils.`)) return;
+    ctx.permanentlyDeleteFiche(f.id);
+  };
+
   return (
     <div className="screen scroll fadein">
       <div className="topbar">
@@ -72,6 +94,7 @@ export function Reglages({ ctx }) {
                 </div>
                 <div className="srcmgr-actions">
                   <div className="src-set-toggle"><span className={'src-set-state' + (on ? ' on' : '')}>{on ? 'Rappels J' : 'En pause'}</span><Switch on={on} onChange={(v) => ctx.setSourceRappels(s.id, v)} /></div>
+                  <button type="button" className="srcmgr-edit" title="Supprimer ce cours" onClick={() => deleteSource(s)}><Icon name="trash" size={14} /></button>
                 </div>
               </div>
             );
@@ -85,11 +108,19 @@ export function Reglages({ ctx }) {
                 <span className="srcmgr-ic sm" style={{ background: `color-mix(in srgb, ${s.tint || '#7C6FE0'} 16%, transparent)`, color: s.tint || '#7C6FE0' }}><Icon name={s.icon || 'folder'} size={13} /></span>
                 <span className="srcmgr-archname">{s.nom}</span>
                 <button className="btn ghost sm" onClick={() => ctx.setSourceArchived(s.id, false)}><Icon name="refresh" size={13} /> Restaurer</button>
+                <button className="btn ghost sm" style={{ color: 'var(--crit)' }} title="Supprimer définitivement" onClick={() => deleteSourceForever(s)}><Icon name="trash" size={13} /></button>
               </div>
             ))}
           </div>
         )}
       </Card>
+
+      {trashCount > 0 && (
+        <div className="row" style={{ maxWidth: 820, marginBottom: 16, justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="hint">{trashCount} élément{trashCount > 1 ? 's' : ''} dans la corbeille.</div>
+          <button type="button" className="btn" style={{ color: 'var(--crit)' }} onClick={emptyTrash}><Icon name="trash" size={14} /> Vider la corbeille</button>
+        </div>
+      )}
 
       {/* Corbeille : matières supprimées depuis Réviser (clic droit), restaurables */}
       {archivedMatieres.length > 0 && (
@@ -101,6 +132,7 @@ export function Reglages({ ctx }) {
               <div className="srcmgr-archrow" key={m.id}>
                 <span className="srcmgr-archname">{m.nom}{src && <span className="hint"> — {src.nom}</span>}</span>
                 <button className="btn ghost sm" onClick={() => ctx.setMatiereArchived(m.id, false)}><Icon name="refresh" size={13} /> Restaurer</button>
+                <button className="btn ghost sm" style={{ color: 'var(--crit)' }} title="Supprimer définitivement" onClick={() => deleteMatiereForever(m)}><Icon name="trash" size={13} /></button>
               </div>
             );
           })}
@@ -117,6 +149,7 @@ export function Reglages({ ctx }) {
               <div className="srcmgr-archrow" key={f.id}>
                 <span className="srcmgr-archname">{f.titre}{mat && <span className="hint"> — {matiereMeta(mat).label}</span>}</span>
                 <button className="btn ghost sm" onClick={() => ctx.setFicheArchived(f.id, false)}><Icon name="refresh" size={13} /> Restaurer</button>
+                <button className="btn ghost sm" style={{ color: 'var(--crit)' }} title="Supprimer définitivement" onClick={() => deleteFicheForever(f)}><Icon name="trash" size={13} /></button>
               </div>
             );
           })}

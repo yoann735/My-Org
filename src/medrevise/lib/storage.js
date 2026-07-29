@@ -7,6 +7,7 @@
 import { get, set, del, values, setMany, createStore } from 'idb-keyval';
 import { todayISO, isoDate } from './sm2.js';
 import { queuePush, pullAllRecords, pushBlob, pullBlob } from '../data/sync.js';
+import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
 const store = (name) => createStore('medrevise-' + name, 'v1');
 const S = {
@@ -243,16 +244,59 @@ export async function wipeAll() {
 }
 
 /* ============================================================
+   PURGE DÉFINITIVE (corbeille → "Vider la corbeille" / suppression unitaire,
+   Réglages). Contrairement à l'archivage (soft-delete restaurable, simple
+   champ `archive`), ceci est un VRAI hard-delete : tombstone poussé au cloud
+   (remove()) pour chaque enregistrement + toute sa descendance, afin de ne
+   jamais laisser d'orphelins et de ne jamais pouvoir "revenir" via un autre
+   appareil pas encore synchronisé. Irréversible — l'appelant est responsable
+   de la confirmation utilisateur.
+   ============================================================ */
+export async function purgeFiche(ficheId) {
+  const [questions, highlights, annotations] = await Promise.all([getAll('questions'), getAll('highlights'), getAll('annotations')]);
+  await Promise.all([
+    ...(questions || []).filter((q) => q.ficheId === ficheId).map((q) => Promise.all([remove('questions', q.id), remove('exos', q.id)])),
+    ...(highlights || []).filter((h) => h.ficheId === ficheId).map((h) => remove('highlights', h.id)),
+    ...(annotations || []).filter((a) => a.ficheId === ficheId).map((a) => remove('annotations', a.id)),
+    removeDoc(ficheId),
+  ]);
+  await remove('fiches', ficheId);
+}
+
+export async function purgeMatiere(matiereId) {
+  const [fiches, anatstruct] = await Promise.all([getAll('fiches'), getAll('anatstruct')]);
+  await Promise.all([
+    ...(fiches || []).filter((f) => f.matiereId === matiereId).map((f) => purgeFiche(f.id)),
+    ...(anatstruct || []).filter((s) => s.matiereId === matiereId).map((s) => remove('anatstruct', s.id)),
+  ]);
+  await remove('matieres', matiereId);
+}
+
+export async function purgeSource(sourceId) {
+  const matieres = await getAll('matieres');
+  await Promise.all((matieres || []).filter((m) => m.sourceId === sourceId).map((m) => purgeMatiere(m.id)));
+  await remove('sources', sourceId);
+}
+
+/* ============================================================
    A — RÉCONCILIATION CLOUD (LWW par enregistrement). Appelée au démarrage,
    à la reconnexion réseau et quand l'onglet redevient visible (voir
    MedReviseApp.jsx). Dataset personnel ≈ petit → un fetch complet de la
    table à chaque passage suffit (comme MealWeek), pas de curseur incrémental.
    Sans réseau / non configuré (pullAllRecords → null) : no-op, IndexedDB
    reste seul juge — jamais de plantage, jamais de perte locale.
+
+   Retourne { ok, cloudEmpty } plutôt qu'un simple booléen : l'appelant
+   (MedReviseApp.jsx) en a besoin pour décider s'il est SÛR de semer les
+   données de démo (seedIfEmpty) — semer alors que le pull a simplement
+   échoué (ok=false) créerait des ID fixes (fac/physio/f-resp…) qui, une
+   fois poussés avec un timestamp neuf, peuvent gagner la comparaison LWW
+   face à de vraies données plus anciennes (ou déjà supprimées) partageant
+   ces mêmes ID sur un autre appareil → résurrection. Voir l'audit de sync.
    ============================================================ */
 export async function reconcileAll() {
   const cloudRows = await pullAllRecords();
-  if (cloudRows === null) return false;
+  if (cloudRows === null) return { ok: false, cloudEmpty: false };
 
   const byStore = new Map();
   for (const row of cloudRows) {
@@ -292,5 +336,14 @@ export async function reconcileAll() {
       await set(id, cloud.data, S[name]);
     }
   }
-  return true;
+  return { ok: true, cloudEmpty: cloudRows.length === 0 };
+}
+
+/* seedIfEmpty() ne doit tourner que quand on est SÛR qu'aucune donnée n'existe
+   nulle part (ni localement ni côté cloud) — jamais simplement parce que le
+   pull a échoué. Sync désactivée (app 100 % locale, pas de multi-appareil) :
+   toujours permis. Sync activée : seulement si reconcileAll a confirmé un
+   cloud vide (premier lancement réel) — voir reconcileAll ci-dessus. */
+export function canSeed(reconcileResult) {
+  return !SYNC_ENABLED || (!!reconcileResult && reconcileResult.ok && reconcileResult.cloudEmpty);
 }

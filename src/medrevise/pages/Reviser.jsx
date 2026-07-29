@@ -384,6 +384,17 @@ export function Reviser({ ctx }) {
               onClick: () => s && ctx.setSourceRappels(s.id, !on),
             }];
           })() : []),
+          // même mécanisme, au niveau FICHE : n'affecte que cette fiche (pas le
+          // cours parent, pas les fiches sœurs). Réversible.
+          ...(ctxMenu.type === 'fiche' ? (() => {
+            const f = db.fiches.find((x) => x.id === ctxMenu.id);
+            const on = !f || f.rappelsJ !== false;
+            return [{
+              label: on ? 'Retirer de la méthode des J' : 'Remettre dans la méthode des J',
+              icon: on ? 'bellOff' : 'bell',
+              onClick: () => f && ctx.setFicheRappelsJ(f.id, !on),
+            }];
+          })() : []),
           {
             label: 'Supprimer', icon: 'trash', danger: true, onClick: () => {
               if (ctxMenu.type === 'source') askDeleteSource(ctxMenu.id);

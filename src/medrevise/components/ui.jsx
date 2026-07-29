@@ -376,14 +376,14 @@ function CollapseToggle({ collapsed, onToggle }) {
    calculée depuis getBoundingClientRect) : il échappe à tout conteneur
    `overflow` ancêtre (ex. la sidebar scrollable "Cours & matières") et à
    son stacking context, contrairement à un simple `position: absolute`. ---- */
-export function BellButton({ on, onToggle }) {
+export function BellButton({ on, onToggle, onText, offText }) {
   const [show, setShow] = useState(false);
   const [pos, setPos] = useState(null);
   const btnRef = useRef(null);
   const timer = useRef(null);
   const text = on
-    ? "Rappels J actifs — ce cours entre dans la planification de la méthode des J."
-    : "Cours en pause — ses fiches ne sortent plus dans la série du jour de la méthode des J, mais restent consultables et révisables manuellement.";
+    ? (onText || "Rappels J actifs — ce cours entre dans la planification de la méthode des J.")
+    : (offText || "Cours en pause — ses fiches ne sortent plus dans la série du jour de la méthode des J, mais restent consultables et révisables manuellement.");
   const openTip = () => {
     const r = btnRef.current && btnRef.current.getBoundingClientRect();
     if (!r) return;
