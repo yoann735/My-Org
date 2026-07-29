@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta, EtiquetteQuickSet } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
-import { applyReview, QUALITY, QUALITY_TO_RATING, qualityFromRatio, jStepForInterval, todayISO, computeStreak } from '../lib/sm2.js';
+import { applyReview, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, jStepForInterval, todayISO, computeStreak } from '../lib/sm2.js';
 import { effectiveCoef, index } from '../lib/planning.js';
 import { blobURL } from '../lib/storage.js';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
@@ -65,8 +65,17 @@ export function Session({ ctx }) {
     // volée) : ils ne sont jamais planifiés ni écrits en base (aucun impact méthode des J).
     if (item && !item.ephemeral) {
       const quality = RATING_QUALITY[rating];
-      const updated = applyReview(item, quality, item._coef || 3);
+      let updated = applyReview(item, quality, item._coef || 3);
       delete updated._fiche; delete updated._matiere; delete updated._coef; delete updated._j;
+      // rotation QCM (Étape 4, lib/planning.js pickQcmSubset) : suivi de la
+      // dernière présentation + du dernier résultat, DISTINCT de la notation
+      // SM-2 3 boutons — correction directe (cochées == reponses_correctes),
+      // pas la qualité choisie ensuite pour la méthode des J.
+      if (item.type === 'qcm') {
+        const correct = new Set(item.reponses_correctes || []);
+        const ok = selectedIds.length === correct.size && selectedIds.every((id) => correct.has(id));
+        updated = { ...updated, lastSeenAt: todayISO(), lastResult: ok ? 'ok' : 'ko' };
+      }
       await ctx.saveQuestion(updated);
     }
     setResults((r) => { const n = r.slice(0, idx); n[idx] = { id: item.id, type: item.type, rating }; return n; });
@@ -166,7 +175,11 @@ function AnatImage({ imageId, compact }) {
 
 function QcmCard({ item, meta, selectedIds, setSelectedIds, validated, validate, pulse, onRate, canPrev, onPrev }) {
   const multiple = !!item.multiple;
-  const options = item.options || [];
+  // ordre des options mélangé à l'AFFICHAGE (Étape 5) — mémorisé par item.id pour
+  // ne pas rebattre à chaque re-render (sélection, validation…) ; la correction
+  // reste par id (reponses_correctes), jamais par position. Même mélange que le
+  // QCM mobile (mobile/MobileSession.jsx) — lib/sm2.js#shuffle, pas de doublon.
+  const options = useMemo(() => shuffle(item.options || []), [item.id]);
   const correct = new Set(item.reponses_correctes || []);
   const isOk = validated && selectedIds.length === correct.size && selectedIds.every((id) => correct.has(id));
   const optLabel = (id) => { const o = options.find((x) => x.id === id); return o ? o.texte : id; };

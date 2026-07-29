@@ -164,6 +164,11 @@
 .rev-mode .rm-go { margin-top: 6px; font-size: 12.5px; font-weight: 700; color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
 .rev-mode:hover:not(:disabled) .rm-go { gap: 9px; }
 
+/* QCM — modulation libre du nombre proposé (v1.1, Étape 3) */
+.qcm-mod { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-2); }
+.qcm-mod-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); margin-bottom: 8px; }
+.qcm-mod-label { display: inline-flex; align-items: center; gap: 6px; }
+
 /* cards Pratique (D2) : une par exercice, cliquables */
 .exo-card { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; text-align: left; font-family: inherit; color: var(--text); border: 1px solid var(--border); border-radius: 13px; background: var(--card); padding: 13px 14px; cursor: pointer; box-shadow: var(--shadow); transition: transform .12s, box-shadow .15s, border-color .15s; }
 .exo-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }

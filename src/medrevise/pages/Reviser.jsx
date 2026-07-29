@@ -3,12 +3,14 @@
    (cases à cocher, sélection simple/multiple, coef, rappels J).
    Droite : méthode des J (frise) + cards QCM/Flash/Feynman + erreurs.
    ============================================================ */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox } from '../components/ui.jsx';
 import {
   index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, missedQuestions, topConcepts, todayPlan, overdueByFiche,
+  qcmConseilleFor, pickQcmSubset,
 } from '../lib/planning.js';
+import { shuffle } from '../lib/sm2.js';
 import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
 import { allCoches } from '../lib/anatSchema.js';
 import { CarnetBody } from './Carnet.jsx';
@@ -71,10 +73,29 @@ export function Reviser({ ctx }) {
   const title = multi ? `${selFiches.length} fiches sélectionnées` : (primary ? primary.titre : '');
   const mins = (n) => Math.max(1, Math.round(n * 0.8));
 
+  // QCM — nombre conseillé (meta.qcm_conseille) + modulation libre (Étape 3),
+  // rotation du stock (Étape 4, pickQcmSubset) : le curseur se réinitialise au
+  // conseillé (ou au total si absent) à chaque nouvelle sélection de fiche.
+  const qcmConseille = !multi && primary ? qcmConseilleFor(primary) : null;
+  const [qcmCount, setQcmCount] = useState(null);
+  useEffect(() => {
+    const def = qcmConseille != null ? Math.min(qcmConseille, qcmItems.length) : qcmItems.length;
+    setQcmCount(def);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [primary && primary.id, qcmItems.length]);
+
   const viewCoursPdf = () => { if (primary && primary.pdfId) ctx.openPdfReader(primary.id, 'read', 'revise', 'pdf'); };
   const viewCoursHtml = () => { if (primary && primary.htmlId) ctx.openPdfReader(primary.id, 'read', 'revise', 'html'); };
   const launch = (mode) => {
-    const items = mode === 'qcm' ? qcmItems : mode === 'flash' ? flashItems : [...qcmItems, ...flashItems];
+    if (mode === 'qcm') {
+      const n = Math.min(qcmCount || qcmItems.length, qcmItems.length);
+      // pioche dans le stock existant (rotation : ratés + jamais-vus/anciens en
+      // priorité), puis ordre de présentation aléatoire à chaque session.
+      const items = shuffle(pickQcmSubset(qcmItems, n));
+      if (items.length) ctx.startSession(items, title);
+      return;
+    }
+    const items = mode === 'flash' ? flashItems : [...qcmItems, ...flashItems];
     if (items.length) ctx.startSession(items, title);
   };
   const launchToday = () => dueSel.length && ctx.startSession(dueSel, title + " — Aujourd'hui");
@@ -304,7 +325,7 @@ export function Reviser({ ctx }) {
               <div className="rev-modes">
                 <button className="rev-mode" onClick={() => launch('qcm')} disabled={!qcmItems.length}>
                   <div className="rm-ic" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}><Icon name="list" size={20} /></div>
-                  <div className="rm-n tnum">{qcmItems.length}</div><div className="rm-l">QCM</div>
+                  <div className="rm-n tnum">{qcmItems.length ? Math.min(qcmCount || qcmItems.length, qcmItems.length) : 0}</div><div className="rm-l">QCM</div>
                   <div className="rm-go">Lancer <Icon name="arrowR" size={14} /></div>
                 </button>
                 <button className="rev-mode" onClick={() => launch('flash')} disabled={!flashItems.length}>
@@ -318,6 +339,22 @@ export function Reviser({ ctx }) {
                   <div className="rm-go">Expliquer <Icon name="arrowR" size={14} /></div>
                 </button>
               </div>
+
+              {/* Étape 3 — révision libre : module le nombre de QCM proposés (1..total),
+                  conseillé = meta.qcm_conseille (sinon tout le stock). La sélection PARMI
+                  ce nombre tourne d'un J à l'autre (pickQcmSubset, Étape 4) — jamais
+                  d'invention, on pioche dans le stock existant de la fiche. */}
+              {!multi && qcmItems.length > 1 && (
+                <div className="qcm-mod">
+                  <div className="qcm-mod-head">
+                    <span className="qcm-mod-label"><Icon name="list" size={13} /> QCM à réviser : <strong className="tnum">{qcmCount ?? qcmItems.length}</strong> / {qcmItems.length}</span>
+                    {qcmConseille != null && <span className="pill" style={{ height: 22 }}>conseillé : {qcmConseille}</span>}
+                  </div>
+                  <input type="range" min={1} max={qcmItems.length} value={qcmCount ?? qcmItems.length}
+                    onChange={(e) => setQcmCount(Number(e.target.value))}
+                    style={{ width: '100%', accentColor: 'var(--accent)' }} />
+                </div>
+              )}
 
               <button className="btn lg" style={{ width: '100%', marginTop: 14, justifyContent: 'center' }} onClick={() => launch('all')} disabled={!qcmItems.length && !flashItems.length}>
                 <Icon name="layers" size={17} /> {multi ? 'Réviser toutes les fiches' : 'Réviser toute cette fiche'} ({qcmItems.length + flashItems.length} cartes · ~{mins(qcmItems.length + flashItems.length)} min)

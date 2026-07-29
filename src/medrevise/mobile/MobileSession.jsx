@@ -8,7 +8,7 @@
    ============================================================ */
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { applyReview, QUALITY, QUALITY_TO_RATING, qualityFromRatio, todayISO, computeStreak } from '../lib/sm2.js';
+import { applyReview, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, todayISO, computeStreak } from '../lib/sm2.js';
 import { effectiveCoef, index } from '../lib/planning.js';
 import { Tex } from '../components/Tex.jsx';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
@@ -16,16 +16,6 @@ import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords 
 const isFlash = (t) => t === 'flashcard' || t === 'flash';
 const RATING_QUALITY = { fail: QUALITY.rate, hard: QUALITY.difficile, easy: QUALITY.facile };
 const resolveRating = (r) => (typeof r === 'number' ? (QUALITY_TO_RATING[r] || 'hard') : r);
-
-/** mélange stable (Fisher-Yates) — nouvelle permutation à chaque appel. */
-function shuffle(arr) {
-  const a = arr.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
 
 export function MobileSession({ ctx, onQuit }) {
   const session = ctx.session || { items: [], title: 'Révision' };
@@ -44,12 +34,18 @@ export function MobileSession({ ctx, onQuit }) {
   const clozeMode = (ctx.stats && ctx.stats.clozeMode) || 'actif';
   const setClozeMode = (m) => ctx.saveStats({ ...ctx.stats, clozeMode: m });
 
-  const advance = async (ratingIn) => {
+  const advance = async (ratingIn, extra) => {
     const rating = resolveRating(ratingIn);
     if (item && !item.ephemeral) {
       const quality = RATING_QUALITY[rating];
-      const updated = applyReview(item, quality, item._coef || 3);
+      let updated = applyReview(item, quality, item._coef || 3);
       delete updated._fiche; delete updated._coef;
+      // rotation QCM (Étape 4, lib/planning.js pickQcmSubset) : suivi de la
+      // dernière présentation + du dernier résultat (correction directe, pas
+      // la notation SM-2 3 boutons) — voir même logique en desktop Session.jsx.
+      if (item.type === 'qcm' && extra) {
+        updated = { ...updated, lastSeenAt: todayISO(), lastResult: extra.qcmOk ? 'ok' : 'ko' };
+      }
       await ctx.saveQuestion(updated);
     }
     setResults((r) => { const n = r.slice(0, idx); n[idx] = { rating }; return n; });
@@ -132,7 +128,7 @@ function MobileQcmCard({ item, onRate }) {
           {distract.filter((d) => selectedIds.includes(d.option_id)).map((d, i) => (
             <div className="mrm-explication" key={i} style={{ marginTop: 8 }}><Tex>{d.pourquoi_faux}</Tex></div>
           ))}
-          <MobileRateButtons onRate={onRate} />
+          <MobileRateButtons onRate={(r) => onRate(r, { qcmOk: isOk })} />
         </>
       )}
     </div>

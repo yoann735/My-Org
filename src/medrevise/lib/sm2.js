@@ -55,6 +55,18 @@ export function feynmanVerdict({ revealed, grille, checked, selfNote }) {
   return base.every((c) => checked[c.id]) ? 'ok' : 'ko';
 }
 
+/** mélange (Fisher-Yates) — nouvelle permutation à chaque appel, ne modifie pas
+   l'original. Seul mélangeur de l'app (lib/anatQuizGen.js, mobile/MobileSession.jsx,
+   session/Session.jsx, lib/planning.js) — ne pas en recoder un autre ailleurs. */
+export function shuffle(arr) {
+  const a = (arr || []).slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 /** normalisation tolérante pour comparer une saisie à la réponse stockée
    (minuscules, sans accents, trim, espaces multiples réduits). */
 export function normalizeAnswer(s) {

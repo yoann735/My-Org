@@ -14,12 +14,7 @@
    ============================================================ */
 import { champsFor } from './anatParse.js';
 import { normalizeAnat } from './anatMatch.js';
-
-function shuffle(arr) {
-  const a = arr.slice();
-  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
-  return a;
-}
+import { shuffle } from './sm2.js';
 
 /** coches réellement porteuses de théorie (type + au moins un champ rempli). */
 export function theoryCoches(coches) {

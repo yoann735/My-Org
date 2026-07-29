@@ -328,3 +328,37 @@ export function topConcepts(list, n = 3) {
   list.forEach((q) => { map[q.concept] = (map[q.concept] || 0) + (q.missed || 1); });
   return Object.entries(map).map(([concept, k]) => ({ concept, n: k })).sort((a, b) => b.n - a.n).slice(0, n);
 }
+
+/* ============================================================
+   QCM — nombre conseillé + rotation du stock (v1.1, Étapes 3-4). Distinct de
+   la méthode des J (SM-2 par item) : ceci module la TAILLE d'une série QCM
+   lancée en révision libre (page Reviser, bouton QCM d'une fiche), en piochant
+   dans le stock existant de la fiche — jamais d'invention de contenu.
+   ============================================================ */
+
+/** meta.qcm_conseille (fiche.meta, JSON v1.1) → entier positif, ou null si absent/invalide. */
+export function qcmConseilleFor(fiche) {
+  const n = fiche && fiche.meta && fiche.meta.qcm_conseille;
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/**
+ * Choisit `n` QCM parmi `items` en FAISANT TOURNER le stock : priorité absolue
+ * aux ratés récents (q.lastResult === 'ko'), puis aux jamais-vus/vus il y a le
+ * plus longtemps (q.lastSeenAt, mis à jour à chaque présentation — voir
+ * markQcmSeen dans session/Session.jsx). Sur plusieurs J, en tournant, tout le
+ * stock finit par être vu. n >= items.length → tout le stock (pas de rotation
+ * à faire). Ne choisit QUE dans le stock fourni, n'invente rien.
+ */
+export function pickQcmSubset(items, n) {
+  if (!items || !items.length || n == null || n >= items.length) return items || [];
+  const ranked = items.slice().sort((a, b) => {
+    const aFailed = a.lastResult === 'ko', bFailed = b.lastResult === 'ko';
+    if (aFailed !== bFailed) return aFailed ? -1 : 1; // raté récent → priorité absolue
+    const aSeen = a.lastSeenAt || null, bSeen = b.lastSeenAt || null;
+    if (!aSeen !== !bSeen) return aSeen ? 1 : -1; // jamais vu → priorité
+    if (aSeen && bSeen && aSeen !== bSeen) return aSeen < bSeen ? -1 : 1; // vu il y a le plus longtemps → priorité
+    return 0;
+  });
+  return ranked.slice(0, Math.max(1, n));
+}

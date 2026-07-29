@@ -22,6 +22,7 @@ export function Feynman({ ctx }) {
   const [revealed, setRevealed] = useState(false);
   const [checked, setChecked] = useState({}); // { [critereId]: bool }
   const [selfNote, setSelfNote] = useState(null); // repli sans grille : 'ok' | 'ko'
+  const [checkedPoints, setCheckedPoints] = useState({}); // { [pointIndex]: bool } — synthèse globale (checklist points_cles_attendus)
 
   if (!items.length) {
     return (
@@ -39,10 +40,15 @@ export function Feynman({ ctx }) {
   const meta = matiereMeta(fiche && ix.mById[fiche.matiereId]);
   const grille = item.grille_autoevaluation || [];
   const essentiels = grille.filter((c) => c.essentiel);
+  // v1.1 — Feynman de SYNTHÈSE GLOBALE : "points_cles_attendus" devient une
+  // checklist de must-have (au lieu d'une simple liste à puces).
+  const isGlobal = !!item.synthese_globale;
+  const points = item.points_cles_attendus || [];
 
-  const reset = () => { setText(''); setRevealed(false); setChecked({}); setSelfNote(null); };
+  const reset = () => { setText(''); setRevealed(false); setChecked({}); setSelfNote(null); setCheckedPoints({}); };
   const go = (d) => { setIdx((i) => Math.min(items.length - 1, Math.max(0, i + d))); reset(); };
   const toggle = (id) => setChecked((c) => ({ ...c, [id]: !c[id] }));
+  const togglePoint = (i) => setCheckedPoints((c) => ({ ...c, [i]: !c[i] }));
 
   // verdict : "tous_essentiels" → tous les critères essentiels cochés.
   // Sans grille (Feynman hérité) → auto-note manuelle. Partagé avec le
@@ -64,11 +70,16 @@ export function Feynman({ ctx }) {
         </div>
       </div>
 
-      <div className="card" style={{ maxWidth: 820, margin: '0 auto' }}>
+      <div className={'card' + (isGlobal ? ' fey-global' : '')} style={{ maxWidth: 820, margin: '0 auto' }}>
         <div className="card-body">
-          <div className="rev-concept"><span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.tint, display: 'inline-block' }} /> {meta.label} · {item.theme || item.concept}</div>
-          <div className="serif" style={{ fontSize: 22, margin: '8px 0 4px' }}><Tex>{item.consigne || `Explique « ${item.theme || item.concept} »`}</Tex></div>
-          <div className="hint" style={{ marginBottom: 8 }}>Explique avec tes propres mots, puis compare-toi au modèle.</div>
+          <div className="rev-concept">
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.tint, display: 'inline-block' }} /> {meta.label} · {item.theme || item.concept}
+            {isGlobal && <span className="pill accent" style={{ marginLeft: 8, height: 22 }}><Icon name="layers" size={11} /> Synthèse globale</span>}
+          </div>
+          <div className="serif" style={{ fontSize: 22, margin: '8px 0 4px' }}>
+            <Tex>{item.consigne || (isGlobal ? "Explique l'ensemble du cours comme à quelqu'un qui découvre…" : `Explique « ${item.theme || item.concept} »`)}</Tex>
+          </div>
+          <div className="hint" style={{ marginBottom: 8 }}>{isGlobal ? 'Explique tout le cours de bout en bout, avec tes propres mots, puis compare-toi au modèle.' : 'Explique avec tes propres mots, puis compare-toi au modèle.'}</div>
 
           {fiche && fiche.synthese && (
             <details className="rev-synthese" style={{ margin: '10px 0 2px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px' }}>
@@ -102,11 +113,26 @@ export function Feynman({ ctx }) {
                 </RevealBlock>
               )}
 
-              {(item.points_cles_attendus || []).length > 0 && (
+              {points.length > 0 && (isGlobal ? (
+                <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 14, background: 'var(--card-2)' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <Icon name="list" size={15} /> Checklist — coche ce que tu as couvert
+                    <span className="hint" style={{ marginLeft: 'auto' }}>{points.filter((_p, i) => checkedPoints[i]).length}/{points.length}</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {points.map((p, i) => (
+                      <label key={i} className="fey-crit" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer', padding: '8px 10px', borderRadius: 9, background: checkedPoints[i] ? 'var(--accent-soft)' : 'transparent', border: '1px solid ' + (checkedPoints[i] ? 'var(--accent)' : 'var(--border)') }}>
+                        <input type="checkbox" checked={!!checkedPoints[i]} onChange={() => togglePoint(i)} style={{ marginTop: 3, accentColor: 'var(--accent)' }} />
+                        <span style={{ fontSize: 14 }}><Tex>{p}</Tex></span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : (
                 <RevealBlock icon="list" title="Points clés attendus">
-                  <ul className="fey-list" style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>{item.points_cles_attendus.map((p, i) => <li key={i}><Tex>{p}</Tex></li>)}</ul>
+                  <ul className="fey-list" style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>{points.map((p, i) => <li key={i}><Tex>{p}</Tex></li>)}</ul>
                 </RevealBlock>
-              )}
+              ))}
 
               {(item.erreurs_frequentes || []).length > 0 && (
                 <RevealBlock icon="alert" title="Erreurs fréquentes" tint="var(--accent-2)">

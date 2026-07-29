@@ -52,13 +52,22 @@ function FeynmanCard({ item, fiche, onNext, isLast }) {
   const [revealed, setRevealed] = useState(false);
   const [checked, setChecked] = useState({});
   const [selfNote, setSelfNote] = useState(null);
+  const [checkedPoints, setCheckedPoints] = useState({}); // synthèse globale — checklist points_cles_attendus
   const grille = item.grille_autoevaluation || [];
   const verdict = feynmanVerdict({ revealed, grille, checked, selfNote });
+  // v1.1 — Feynman de SYNTHÈSE GLOBALE : points_cles_attendus devient une checklist.
+  const isGlobal = !!item.synthese_globale;
+  const points = item.points_cles_attendus || [];
 
   return (
     <div>
-      <div className="mrm-concept">{item.theme || item.concept}</div>
-      <div className="mrm-question"><Tex>{item.consigne || `Explique « ${item.theme || item.concept} »`}</Tex></div>
+      <div className="mrm-concept">
+        {item.theme || item.concept}
+        {isGlobal && <span className="mrm-chip-btn" style={{ marginLeft: 8, minHeight: 'auto', padding: '2px 10px', fontSize: 11 }}><Icon name="layers" size={11} /> Synthèse globale</span>}
+      </div>
+      <div className="mrm-question">
+        <Tex>{item.consigne || (isGlobal ? "Explique l'ensemble du cours comme à quelqu'un qui découvre…" : `Explique « ${item.theme || item.concept} »`)}</Tex>
+      </div>
 
       <textarea className="mrm-textarea" style={{ minHeight: 130 }} value={text} readOnly={revealed}
         onChange={(e) => setText(e.target.value)} placeholder="Écris ton explication avec tes mots…" />
@@ -76,12 +85,22 @@ function FeynmanCard({ item, fiche, onNext, isLast }) {
           {item.analogie_suggeree && (
             <div className="mrm-explication" style={{ marginTop: 10 }}><strong>Analogie</strong><div style={{ marginTop: 6 }}><Tex>{item.analogie_suggeree}</Tex></div></div>
           )}
-          {(item.points_cles_attendus || []).length > 0 && (
+          {points.length > 0 && (isGlobal ? (
+            <div style={{ marginTop: 14 }}>
+              <div className="mrm-section-head" style={{ marginBottom: 8 }}>Checklist — coche ce que tu as couvert ({points.filter((_p, i) => checkedPoints[i]).length}/{points.length})</div>
+              {points.map((p, i) => (
+                <button type="button" key={i} className={'mrm-criterion' + (checkedPoints[i] ? ' on' : '')} onClick={() => setCheckedPoints((c) => ({ ...c, [i]: !c[i] }))}>
+                  <input type="checkbox" readOnly checked={!!checkedPoints[i]} />
+                  <span><Tex>{p}</Tex></span>
+                </button>
+              ))}
+            </div>
+          ) : (
             <div className="mrm-explication" style={{ marginTop: 10 }}>
               <strong>Points clés</strong>
-              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{item.points_cles_attendus.map((p, i) => <li key={i}><Tex>{p}</Tex></li>)}</ul>
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{points.map((p, i) => <li key={i}><Tex>{p}</Tex></li>)}</ul>
             </div>
-          )}
+          ))}
 
           {grille.length > 0 ? (
             <div style={{ marginTop: 14 }}>
