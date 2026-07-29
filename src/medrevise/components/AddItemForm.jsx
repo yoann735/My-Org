@@ -12,6 +12,8 @@ import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Modal } from './ui.jsx';
 import { appendItemsToFiche } from '../lib/import.js';
+import { parsePastedJson } from '../lib/parsePastedJson.js';
+import { ImportJsonField } from './ImportFlow.jsx';
 
 const OPT_LETTERS = ['a', 'b', 'c', 'd'];
 const TYPES = [
@@ -25,6 +27,7 @@ const TYPES = [
 const lines = (s) => (s || '').split('\n').map((l) => l.trim()).filter(Boolean);
 
 export function AddItemModal({ ctx, ficheId, ficheTitre, onClose }) {
+  const [source, setSource] = useState('form'); // form | json
   const [type, setType] = useState('qcm');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(0); // compteur, pour "Ajouté ✓ (N)" + permettre d'en ajouter plusieurs à la suite
@@ -43,23 +46,106 @@ export function AddItemModal({ ctx, ficheId, ficheTitre, onClose }) {
   return (
     <Modal title={`Ajouter un item — ${ficheTitre}`} onClose={onClose} width="min(640px, 94vw)">
       <div className="seg" style={{ marginBottom: 14 }}>
-        {TYPES.map((t) => (
-          <button key={t.id} type="button" className={'seg-btn' + (type === t.id ? ' active' : '')} onClick={() => { setType(t.id); setDone(0); }}>
-            <Icon name={t.icon} size={13} /> {t.label}
-          </button>
-        ))}
+        <button type="button" className={'seg-btn' + (source === 'form' ? ' active' : '')} onClick={() => { setSource('form'); setDone(0); }}><Icon name="edit" size={13} /> Formulaire</button>
+        <button type="button" className={'seg-btn' + (source === 'json' ? ' active' : '')} onClick={() => { setSource('json'); setDone(0); }}><Icon name="upload" size={13} /> Coller du JSON</button>
       </div>
+
+      {source === 'form' ? (
+        <>
+          <div className="seg" style={{ marginBottom: 14 }}>
+            {TYPES.map((t) => (
+              <button key={t.id} type="button" className={'seg-btn' + (type === t.id ? ' active' : '')} onClick={() => { setType(t.id); setDone(0); }}>
+                <Icon name={t.icon} size={13} /> {t.label}
+              </button>
+            ))}
+          </div>
+          {done > 0 && (
+            <div className="err-mini ok" style={{ marginBottom: 12 }}>
+              <div className="em-ic"><Icon name="check" size={16} stroke={2.5} /></div>
+              <div className="em-body"><div className="em-title">{done} item{done > 1 ? 's' : ''} ajouté{done > 1 ? 's' : ''} ✓</div><div className="hint">Révisable immédiatement, comme un item importé.</div></div>
+            </div>
+          )}
+          {type === 'qcm' && <QcmForm onAdd={add} busy={busy} />}
+          {type === 'flashcard' && <FlashcardForm onAdd={add} busy={busy} />}
+          {type === 'exercice' && <ExerciceForm onAdd={add} busy={busy} />}
+          {type === 'feynman' && <FeynmanForm onAdd={add} busy={busy} />}
+        </>
+      ) : (
+        <PasteJsonForm ctx={ctx} ficheId={ficheId} done={done} setDone={setDone} />
+      )}
+    </Modal>
+  );
+}
+
+/* ---- « Coller du JSON » : un item seul ({...}) ou {"items":[...]} v1.1, RÉUTILISE
+   le validateur d'import (parsePastedJson → normalizeV1Item) — items invalides
+   ignorés et comptés, comme le flux d'import complet. Aperçu avant confirmation,
+   puis appendItemsToFiche (mêmes ids uniques + dédoublonnage sur srcId que
+   l'import Rattrapage — jamais d'écrasement des items déjà présents). ---- */
+function PasteJsonForm({ ctx, ficheId, done, setDone }) {
+  const [jsonText, setJsonText] = useState('');
+  const [parseError, setParseError] = useState(null);
+  const [preview, setPreview] = useState(null); // { items, counts, duplicates }
+  const [busy, setBusy] = useState(false);
+
+  const doPreview = () => {
+    const res = parsePastedJson(jsonText);
+    if (!res.ok) { setParseError(res.error); return; }
+    if (!res.items.length) { setParseError('Aucun item valide trouvé dans ce JSON.'); return; }
+    const existingSrc = new Set((ctx.db.questions || []).filter((q) => q.ficheId === ficheId).map((q) => q.srcId).filter(Boolean));
+    const duplicates = res.items.filter((it) => it.id && existingSrc.has(it.id)).length;
+    setParseError(null);
+    setPreview({ items: res.items, counts: res.counts, duplicates });
+  };
+
+  const confirm = async () => {
+    if (!preview) return;
+    setBusy(true);
+    try {
+      const res = await appendItemsToFiche({ ficheId, items: preview.items });
+      await ctx.reload();
+      setDone((n) => n + res.count);
+      setJsonText(''); setPreview(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (preview) {
+    const c = preview.counts;
+    const total = c.qcm + c.flashcard + c.feynman + c.exercice;
+    return (
+      <div className="fadein">
+        <div className="err-mini ok" style={{ marginBottom: 12 }}>
+          <div className="em-ic"><Icon name="check" size={16} stroke={2.5} /></div>
+          <div className="em-body">
+            <div className="em-title">{c.qcm} QCM · {c.flashcard} flashcards · {c.feynman} Feynman · {c.exercice} exercice{c.exercice > 1 ? 's' : ''} détecté{total > 1 ? 's' : ''}</div>
+            {c.ignored > 0 && <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {c.ignored} item{c.ignored > 1 ? 's' : ''} ignoré{c.ignored > 1 ? 's' : ''} (format invalide)</div>}
+            {preview.duplicates > 0 && <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {preview.duplicates} doublon{preview.duplicates > 1 ? 's' : ''} ignoré{preview.duplicates > 1 ? 's' : ''} (déjà dans cette fiche)</div>}
+          </div>
+        </div>
+        <div className="imp-actions">
+          <button className="btn ghost" onClick={() => setPreview(null)}>Retour</button>
+          <button className="btn primary" onClick={confirm} disabled={busy}><Icon name="check" size={15} /> Ajouter à la fiche</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fadein">
       {done > 0 && (
         <div className="err-mini ok" style={{ marginBottom: 12 }}>
           <div className="em-ic"><Icon name="check" size={16} stroke={2.5} /></div>
-          <div className="em-body"><div className="em-title">{done} item{done > 1 ? 's' : ''} ajouté{done > 1 ? 's' : ''} ✓</div><div className="hint">Révisable immédiatement, comme un item importé.</div></div>
+          <div className="em-body"><div className="em-title">{done} item{done > 1 ? 's' : ''} ajouté{done > 1 ? 's' : ''} ✓</div><div className="hint">Révisable immédiatement (SM-2, cloze, rotation…), comme un item importé.</div></div>
         </div>
       )}
-      {type === 'qcm' && <QcmForm onAdd={add} busy={busy} />}
-      {type === 'flashcard' && <FlashcardForm onAdd={add} busy={busy} />}
-      {type === 'exercice' && <ExerciceForm onAdd={add} busy={busy} />}
-      {type === 'feynman' && <FeynmanForm onAdd={add} busy={busy} />}
-    </Modal>
+      <ImportJsonField label={'JSON (un item seul, ou {"items":[...]})'} placeholder={'Colle ici un item v1.1 ({"type":"qcm", ...}) ou {"items":[...]}.'}
+        value={jsonText} onChange={(v) => { setJsonText(v); setParseError(null); }} error={parseError} />
+      <div className="imp-actions">
+        <button className="btn primary" onClick={doPreview} disabled={!jsonText.trim()}><Icon name="check" size={15} /> Prévisualiser</button>
+      </div>
+    </div>
   );
 }
 

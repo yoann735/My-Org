@@ -12,7 +12,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { DestPicker, CourseDocField, detectDocKind } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
-import { createFicheFromQuestions, appendItemsToFiche } from '../lib/import.js';
+import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
 
 const SUBJECTS = [
@@ -42,6 +42,7 @@ export function ImportRattrapage({ ctx }) {
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [doc, setDoc] = useState(null); // document du cours (optionnel, PDF OU HTML) à rattacher
+  const [forceNew, setForceNew] = useState(false); // override : créer quand même une nouvelle fiche malgré le titre identique
 
   // fiches candidates pour l'ajout (fiches v1.0 "standard", non archivées)
   const srcById = useMemo(() => Object.fromEntries(db.sources.map((s) => [s.id, s])), [db.sources]);
@@ -55,28 +56,42 @@ export function ImportRattrapage({ ctx }) {
     return `${s ? s.nom : '?'} › ${m ? m.nom : '?'} › ${f.titre}`;
   };
 
+  // fiche existante de même destination (même matière + même titre) — évite de
+  // créer une fiche en double quand Théorie et Pratique d'un même cours sont
+  // collées séparément (§2). Uniquement pertinent en mode "Nouvelle fiche" (le
+  // mode "Fiche existante" désigne déjà explicitement sa cible).
+  const matchedFiche = useMemo(
+    () => (destMode === 'new' ? findMatchingFiche(db.fiches, { matiereId: matId, titre: title }) : null),
+    [db.fiches, destMode, matId, title],
+  );
+  const willAppendToMatch = destMode === 'new' && !!matchedFiche && !forceNew;
+  const effAppend = destMode === 'existing' || willAppendToMatch;
+  const effFicheId = destMode === 'existing' ? ficheId : (willAppendToMatch ? matchedFiche.id : null);
+
   const srcLabel = (db.sources.find((s) => s.id === srcId) || {}).nom || '—';
   const matLabel = (db.matieres.find((m) => m.id === matId) || {}).nom || '—';
-  const destLabel = destMode === 'new'
-    ? `${srcLabel} / ${matLabel} / ${title.trim() || 'Fiche de rattrapage'}`
-    : ((existingFiches.find((f) => f.id === ficheId) && ficheLabel(existingFiches.find((f) => f.id === ficheId))) || '—');
+  const destLabel = willAppendToMatch
+    ? `${ficheLabel(matchedFiche)} (fiche existante)`
+    : destMode === 'new'
+      ? `${srcLabel} / ${matLabel} / ${title.trim() || 'Fiche de rattrapage'}`
+      : ((existingFiches.find((f) => f.id === ficheId) && ficheLabel(existingFiches.find((f) => f.id === ficheId))) || '—');
 
   const missing = destMode === 'new'
     ? [!srcId && 'un cours', !matId && 'une matière', !title.trim() && 'un titre'].filter(Boolean)
     : [!ficheId && 'une fiche existante'].filter(Boolean);
   const canPreview = !!matiere && missing.length === 0 && !!jsonText.trim();
 
-  // fiche ciblée en mode ajout + ses documents déjà rattachés (pour ne jamais
-  // écraser silencieusement — affichés en info, remplacés seulement si on
-  // attache un nouveau document du MÊME type via le champ unique ci-dessous).
-  const targetFiche = destMode === 'existing' ? existingFiches.find((f) => f.id === ficheId) : null;
+  // fiche ciblée en mode ajout (existant explicite OU match auto détecté) + ses
+  // documents déjà rattachés (pour ne jamais écraser silencieusement — affichés
+  // en info, remplacés seulement si on attache un nouveau document du MÊME type).
+  const targetFiche = effAppend ? (destMode === 'existing' ? existingFiches.find((f) => f.id === ficheId) : matchedFiche) : null;
   const targetHasPdf = !!(targetFiche && targetFiche.pdfId);
   const targetHasHtml = !!(targetFiche && targetFiche.htmlId);
   const docKind = detectDocKind(doc);
 
   const reset = () => {
     setJsonText(''); setParseError(null); setPreview(null); setState('edit'); setResult(null);
-    setDoc(null);
+    setDoc(null); setForceNew(false);
   };
 
   const doPreview = () => {
@@ -89,10 +104,10 @@ export function ImportRattrapage({ ctx }) {
     const ouverts = exos.filter((e) => e.sous_type === 'ouvert').length;
     const theoryCount = res.counts.qcm + res.counts.flashcard + res.counts.feynman;
 
-    // doublons (uniquement si ajout à une fiche existante) — calculé depuis ctx.db
+    // doublons (uniquement si ajout à une fiche existante, explicite ou auto-détectée)
     let duplicates = 0;
-    if (destMode === 'existing' && ficheId) {
-      const existingSrc = new Set(db.questions.filter((q) => q.ficheId === ficheId).map((q) => q.srcId).filter(Boolean));
+    if (effAppend && effFicheId) {
+      const existingSrc = new Set(db.questions.filter((q) => q.ficheId === effFicheId).map((q) => q.srcId).filter(Boolean));
       duplicates = res.items.filter((it) => it.id && existingSrc.has(it.id)).length;
     }
 
@@ -127,17 +142,18 @@ export function ImportRattrapage({ ctx }) {
       } catch (e) { /* ignore */ }
     }
     let res;
-    if (destMode === 'new') {
-      res = await createFicheFromQuestions({
+    if (effAppend) {
+      const r = await appendItemsToFiche({ ficheId: effFicheId, items: preview.res.items });
+      if (pdfId) await ctx.setFichePdf(effFicheId, pdfId, pdfName);
+      if (htmlId) await ctx.setFicheHtml(effFicheId, htmlId, htmlName);
+      res = { fiche: r.fiche, count: r.count, duplicates: r.duplicates, appended: true };
+    } else {
+      const r = await createFicheFromQuestions({
         matiereId: matId, titre: title, items: preview.res.items,
         synthese: preview.res.synthese, meta: { ...preview.res.meta, matiere },
         pdfId, pdfName, htmlId, htmlName,
       });
-      res = { fiche: res.fiche, count: res.count, duplicates: 0 };
-    } else {
-      res = await appendItemsToFiche({ ficheId, items: preview.res.items });
-      if (pdfId) await ctx.setFichePdf(ficheId, pdfId, pdfName);
-      if (htmlId) await ctx.setFicheHtml(ficheId, htmlId, htmlName);
+      res = { fiche: r.fiche, count: r.count, duplicates: 0, appended: false };
     }
     await ctx.reload();
     setResult(res); setState('done'); setBusy(false);
@@ -167,9 +183,9 @@ export function ImportRattrapage({ ctx }) {
   if (state === 'done' && result) {
     return (
       <ImportDoneScreen
-        title={destMode === 'new' ? 'Fiche prête !' : 'Items ajoutés !'}
+        title={result.appended ? 'Items ajoutés !' : 'Fiche prête !'}
         message={<>
-          ✓ {result.count} item{result.count > 1 ? 's' : ''} {destMode === 'new' ? 'importé' + (result.count > 1 ? 's' : '') : 'ajouté' + (result.count > 1 ? 's' : '')}
+          ✓ {result.count} item{result.count > 1 ? 's' : ''} {result.appended ? 'ajouté' + (result.count > 1 ? 's' : '') : 'importé' + (result.count > 1 ? 's' : '')}
           {result.duplicates > 0 && ` · ${result.duplicates} doublon${result.duplicates > 1 ? 's' : ''} ignoré${result.duplicates > 1 ? 's' : ''}`}.
         </>}
         resetLabel="Coller un autre JSON" onReset={reset} ctx={ctx} ficheId={result.fiche.id} />
@@ -180,7 +196,7 @@ export function ImportRattrapage({ ctx }) {
   if (state === 'preview' && preview) {
     const c = preview.res.counts;
     return (
-      <ImportPreviewCard counts={c} destLabel={(destMode === 'new' ? 'nouvelle fiche — ' : 'ajout à — ') + destLabel}
+      <ImportPreviewCard counts={c} destLabel={(effAppend ? 'ajout à — ' : 'nouvelle fiche — ') + destLabel}
         infoLines={[
           preview.exos > 0 && { text: <>{preview.exos} exercice{preview.exos > 1 ? 's' : ''} (dont {preview.numeriques} numérique{preview.numeriques > 1 ? 's' : ''}, {preview.ouverts} ouvert{preview.ouverts > 1 ? 's' : ''}).</> },
           {
@@ -234,6 +250,23 @@ export function ImportRattrapage({ ctx }) {
             <label>Titre de la fiche</label>
             <input className="imp-title" placeholder="ex : Chimie — Cinétique réactionnelle (cours 4)" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
+
+          {/* fiche existante détectée (même matière + même titre) — évite de créer
+             une fiche en double (ex: Théorie puis Pratique du même cours collées
+             séparément). Par défaut on ajoute à cette fiche ; override explicite. */}
+          {matchedFiche && (
+            <div className="err-mini ok" style={{ marginBottom: 14 }}>
+              <div className="em-ic"><Icon name="check" size={16} /></div>
+              <div className="em-body">
+                <div className="em-title">Fiche existante trouvée : « {matchedFiche.titre} »</div>
+                <div className="hint">
+                  {forceNew
+                    ? <>Une nouvelle fiche sera créée quand même, malgré le titre identique. <button type="button" className="linklike" onClick={() => setForceNew(false)}>Ajouter plutôt à la fiche existante</button></>
+                    : <>Les items seront ajoutés à cette fiche (théorie + pratique dans une seule fiche). <button type="button" className="linklike" onClick={() => setForceNew(true)}>Créer quand même une nouvelle fiche</button></>}
+                </div>
+              </div>
+            </div>
+          )}
         </>
       ) : (
         <div className="imp-field">

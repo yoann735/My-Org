@@ -2,13 +2,13 @@
    MedRevise — Dashboard : CTA série du jour (méthode des J),
    calendrier de la SEMAINE, import de fiche, streak.
    ============================================================ */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
-import { createFicheFromQuestions } from '../lib/import.js';
+import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { cleanTranscript } from '../documents/lib/transcript.js';
@@ -257,17 +257,30 @@ function ImportPanel({ ctx }) {
   const [parseError, setParseError] = useState(null);
   const [parsed, setParsed] = useState(null); // { questions, synthese, counts }
   const [pasteDoc, setPasteDoc] = useState(null); // document du cours (optionnel, PDF OU HTML) rattaché à la fiche créée
+  const [forceNew, setForceNew] = useState(false); // override : créer quand même une nouvelle fiche malgré le titre identique
 
   const reset = () => {
     setState('form'); setTitle(''); setResult(null);
-    setJsonText(''); setParseError(null); setParsed(null); setPasteDoc(null);
+    setJsonText(''); setParseError(null); setParsed(null); setPasteDoc(null); setForceNew(false);
   };
 
   const srcLabel = (db.sources.find((s) => s.id === srcId) || {}).nom || '—';
   const matLabel = (db.matieres.find((m) => m.id === matId) || {}).nom || '—';
-  const destLabel = `${srcLabel} / ${matLabel} / ${title.trim() || 'Fiche importée'}`;
+  // fiche existante de même destination (même matière + même titre) — évite de
+  // créer une fiche en double quand Théorie et Pratique d'un même cours sont
+  // importées séparément (§2). Par défaut, on y ajoute plutôt que d'en créer une.
+  const matchedFiche = useMemo(() => findMatchingFiche(db.fiches, { matiereId: matId, titre: title }), [db.fiches, matId, title]);
+  const willAppend = !!matchedFiche && !forceNew;
+  const destLabel = willAppend
+    ? `${srcLabel} / ${matLabel} / ${matchedFiche.titre} (fiche existante)`
+    : `${srcLabel} / ${matLabel} / ${title.trim() || 'Fiche importée'}`;
   const missing = [!srcId && 'un cours', !matId && 'une matière', !title.trim() && 'un titre'].filter(Boolean);
   const ready = missing.length === 0 && !!jsonText.trim();
+  const previewDuplicates = useMemo(() => {
+    if (!willAppend || !parsed) return 0;
+    const existingSrc = new Set(db.questions.filter((q) => q.ficheId === matchedFiche.id).map((q) => q.srcId).filter(Boolean));
+    return parsed.items.filter((it) => it.id && existingSrc.has(it.id)).length;
+  }, [willAppend, parsed, matchedFiche, db.questions]);
 
   const parseJson = () => {
     const res = parsePastedJson(jsonText);
@@ -289,10 +302,19 @@ function ImportPanel({ ctx }) {
         else { pdfId = blobId; pdfName = pasteDoc.name; }
       } catch (e) { /* ignore */ }
     }
-    const res = await createFicheFromQuestions({
-      matiereId: matId, titre: title, items: parsed.items, synthese: parsed.synthese, meta: parsed.meta,
-      pdfId, pdfName, htmlId, htmlName,
-    });
+    let res;
+    if (willAppend) {
+      const r = await appendItemsToFiche({ ficheId: matchedFiche.id, items: parsed.items });
+      if (pdfId) await ctx.setFichePdf(matchedFiche.id, pdfId, pdfName);
+      if (htmlId) await ctx.setFicheHtml(matchedFiche.id, htmlId, htmlName);
+      res = { fiche: r.fiche, count: r.count, duplicates: r.duplicates, appended: true };
+    } else {
+      const r = await createFicheFromQuestions({
+        matiereId: matId, titre: title, items: parsed.items, synthese: parsed.synthese, meta: parsed.meta,
+        pdfId, pdfName, htmlId, htmlName,
+      });
+      res = { fiche: r.fiche, count: r.count, duplicates: 0, appended: false };
+    }
     await ctx.reload();
     setResult(res); setState('done'); setBusy(false);
   };
@@ -338,6 +360,23 @@ function ImportPanel({ ctx }) {
             <input className="imp-title" placeholder="ex : Système respiratoire — chapitre 3" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
 
+          {/* fiche existante détectée (même matière + même titre) — évite de créer
+             une fiche en double (ex: Théorie puis Pratique du même cours). Par
+             défaut on ajoute à cette fiche ; override explicite possible. */}
+          {matchedFiche && (
+            <div className="err-mini ok" style={{ marginBottom: 14 }}>
+              <div className="em-ic"><Icon name="check" size={16} /></div>
+              <div className="em-body">
+                <div className="em-title">Fiche existante trouvée : « {matchedFiche.titre} »</div>
+                <div className="hint">
+                  {forceNew
+                    ? <>Une nouvelle fiche sera créée quand même, malgré le titre identique. <button type="button" className="linklike" onClick={() => setForceNew(false)}>Ajouter plutôt à la fiche existante</button></>
+                    : <>Les items seront ajoutés à cette fiche (pas de nouvelle fiche créée). <button type="button" className="linklike" onClick={() => setForceNew(true)}>Créer quand même une nouvelle fiche</button></>}
+                </div>
+              </div>
+            </div>
+          )}
+
           <CourseDocField file={pasteDoc} onFile={setPasteDoc}
             hint="PDF (lecture + surlignage) ou fiche HTML autonome. Rattaché à la fiche pour « Voir le cours ». Facultatif." />
 
@@ -353,16 +392,21 @@ function ImportPanel({ ctx }) {
       )}
 
       {mode === 'standard' && state === 'preview' && parsed && (
-        <ImportPreviewCard counts={parsed.counts} destLabel={destLabel}
+        <ImportPreviewCard counts={parsed.counts} destLabel={(willAppend ? 'ajout à — ' : 'nouvelle fiche — ') + destLabel}
           infoLines={[
-            parsed.synthese && { text: 'Synthèse incluse ✓' },
+            parsed.synthese && !willAppend && { text: 'Synthèse incluse ✓' },
             { text: pasteDoc ? <>{detectDocKind(pasteDoc) === 'html' ? 'Fiche HTML jointe' : 'PDF du cours joint'} : {pasteDoc.name} ✓</> : 'Aucun document du cours joint.' },
+            willAppend && previewDuplicates > 0 && { text: `${previewDuplicates} doublon${previewDuplicates > 1 ? 's' : ''} ignoré${previewDuplicates > 1 ? 's' : ''} (déjà dans la fiche)`, icon: 'alert', accent: true },
           ]}
           onBack={() => setState('form')} onConfirm={confirmImport} busy={busy} />
       )}
 
       {mode === 'standard' && state === 'done' && result && (
-        <ImportDoneScreen message={<>✓ {result.count} questions importées.</>}
+        <ImportDoneScreen title={result.appended ? 'Items ajoutés !' : 'Fiche prête !'}
+          message={<>
+            ✓ {result.count} question{result.count > 1 ? 's' : ''} {result.appended ? 'ajoutée' + (result.count > 1 ? 's' : '') : 'importée' + (result.count > 1 ? 's' : '')}
+            {result.duplicates > 0 && ` · ${result.duplicates} doublon${result.duplicates > 1 ? 's' : ''} ignoré${result.duplicates > 1 ? 's' : ''}`}.
+          </>}
           onReset={reset} ctx={ctx} ficheId={result.fiche.id} />
       )}
     </Card>

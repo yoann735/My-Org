@@ -10,6 +10,20 @@ import { toInternalItem } from './adapter.js';
 import { todayISO } from './sm2.js';
 
 /**
+ * Fiche EXISTANTE de même destination (même matière + même titre, insensible à
+ * la casse/aux espaces) parmi les fiches "standard" non archivées — sert à
+ * proposer par défaut l'AJOUT à cette fiche plutôt qu'une création en double
+ * (ex: Théorie puis Pratique d'un même cours, importées séparément). null si
+ * aucune correspondance.
+ */
+export function findMatchingFiche(fiches, { matiereId, titre }) {
+  const norm = (t) => (t || '').trim().toLowerCase();
+  const nt = norm(titre);
+  if (!matiereId || !nt) return null;
+  return (fiches || []).find((f) => f.type === 'standard' && !f.archive && f.matiereId === matiereId && norm(f.titre) === nt) || null;
+}
+
+/**
  * Crée une fiche standard + ses questions dans IndexedDB à partir d'un tableau
  * d'items v1.0 DÉJÀ parsé (flux « coller le JSON », Standard ou Rattrapage).
  * La synthèse est stockée sur la fiche (affichée sur l'onglet Feynman).

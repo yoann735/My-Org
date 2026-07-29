@@ -45,6 +45,10 @@ export function parsePastedJson(raw) {
     meta = data.meta && typeof data.meta === 'object' ? data.meta : {};
     synthese = str(meta.resume);
     rawItems = data.items;
+  } else if (typeof data.type === 'string') {
+    // item v1.x SEUL, sans wrapper {items:[...]} — ex. "Ajouter un item" → Coller
+    // du JSON (un item collé isolément). Re-normalisé comme les autres ci-dessous.
+    rawItems = [data];
   } else {
     return { ok: false, error: ERR };
   }
