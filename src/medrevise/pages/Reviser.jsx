@@ -144,11 +144,18 @@ export function Reviser({ ctx }) {
   const askDeleteSource = (id) => { const s = db.sources.find((x) => x.id === id); if (s) setConfirmDel({ type: 'source', id, nom: s.nom }); };
   const askDeleteMatiere = (id) => { const m = db.matieres.find((x) => x.id === id); if (m) setConfirmDel({ type: 'matiere', id, nom: matiereMeta(m).label, fichesCount: fichesOf(id).length }); };
   const askDeleteFiche = (id) => { const f = db.fiches.find((x) => x.id === id); if (f) setConfirmDel({ type: 'fiche', id, nom: f.titre }); };
+  // suppression d'exercice(s) : PAS un archivage (contrairement à source/matière/fiche
+  // ci-dessus) — canal durable ctx.deleteQuestion/deleteAllExercices (remove() → vrai
+  // tombstone propagé par l'outbox), donc bien irréversible tout de suite.
+  const askDeleteExercice = (item) => setConfirmDel({ type: 'exercice', id: item.id, nom: item.theme || item.concept || 'Exercice' });
+  const askDeleteAllExercices = () => { if (!primary) return; setConfirmDel({ type: 'exercices-all', id: primary.id, nom: primary.titre, exoCount: exoItems.length }); };
   const confirmDelete = async () => {
     if (!confirmDel) return;
     if (confirmDel.type === 'source') await ctx.setSourceArchived(confirmDel.id, true);
     else if (confirmDel.type === 'matiere') await ctx.deleteMatiere(confirmDel.id);
     else if (confirmDel.type === 'fiche') await ctx.setFicheArchived(confirmDel.id, true);
+    else if (confirmDel.type === 'exercice') await ctx.deleteQuestion(confirmDel.id);
+    else if (confirmDel.type === 'exercices-all') await ctx.deleteAllExercices(confirmDel.id);
     setConfirmDel(null);
   };
 
@@ -384,7 +391,10 @@ export function Reviser({ ctx }) {
 
               {/* PRATIQUE : exercices — HORS méthode des J. Liste de cards, une par
                   exercice, librement choisie (filtres thème / difficulté / statut). */}
-              {exoItems.length > 0 && <ExerciceCards items={exoItems} meta={meta} onOpen={openExo} />}
+              {exoItems.length > 0 && (
+                <ExerciceCards items={exoItems} meta={meta} onOpen={openExo} onDelete={askDeleteExercice}
+                  onDeleteAll={!multi ? askDeleteAllExercices : null} />
+              )}
 
               <div style={{ marginTop: 14 }}>
                 <ErrorSummary ctx={ctx} ix={ix} selIds={selIds} title={title} />
@@ -470,14 +480,22 @@ export function Reviser({ ctx }) {
 
       {confirmDel && (
         <ConfirmModal
-          title={confirmDel.type === 'source' ? 'Supprimer ce cours ?' : confirmDel.type === 'matiere' ? 'Supprimer cette matière ?' : 'Supprimer cette fiche ?'}
+          title={confirmDel.type === 'source' ? 'Supprimer ce cours ?'
+            : confirmDel.type === 'matiere' ? 'Supprimer cette matière ?'
+            : confirmDel.type === 'fiche' ? 'Supprimer cette fiche ?'
+            : confirmDel.type === 'exercice' ? 'Supprimer cet exercice ?'
+            : 'Supprimer tous les exercices ?'}
           body={confirmDel.type === 'source'
             ? `« ${confirmDel.nom} » sera déplacé dans la corbeille — restaurable depuis Réglages.`
             : confirmDel.type === 'matiere'
               ? (confirmDel.fichesCount > 0
                 ? `Cette matière contient ${confirmDel.fichesCount} fiche${confirmDel.fichesCount > 1 ? 's' : ''}. Elles seront déplacées dans « À classer ». « ${confirmDel.nom} » sera ensuite envoyée dans la corbeille — restaurable depuis Réglages.`
                 : `« ${confirmDel.nom} » sera déplacée dans la corbeille — restaurable depuis Réglages.`)
-              : `« ${confirmDel.nom} » sera déplacée dans la corbeille — restaurable depuis Réglages.`}
+              : confirmDel.type === 'fiche'
+                ? `« ${confirmDel.nom} » sera déplacée dans la corbeille — restaurable depuis Réglages.`
+                : confirmDel.type === 'exercice'
+                  ? `« ${confirmDel.nom} » sera supprimé définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible — pas de corbeille pour les exercices.`
+                  : `Les ${confirmDel.exoCount} exercice${confirmDel.exoCount > 1 ? 's' : ''} de « ${confirmDel.nom} » seront supprimés définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible. Les QCM, flashcards et Feynman de cette fiche ne sont pas concernés.`}
           confirmLabel="Supprimer"
           danger
           onConfirm={confirmDelete}
@@ -498,7 +516,7 @@ const EXO_STATUS = {
   review: { label: 'À revoir', icon: 'refresh', color: 'var(--accent-2)' },
 };
 
-function ExerciceCards({ items, meta, onOpen }) {
+function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll }) {
   const [fTheme, setFTheme] = useState('all');
   const [fDiff, setFDiff] = useState('all');
   const [fStatut, setFStatut] = useState('all');
@@ -516,6 +534,11 @@ function ExerciceCards({ items, meta, onOpen }) {
         <Icon name="target" size={14} style={{ color: 'var(--text-3)' }} />
         <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--text-3)' }}>Pratique</span>
         <span className="hint" style={{ marginLeft: 'auto' }}>{filtered.length}/{items.length} exercice{items.length > 1 ? 's' : ''}</span>
+        {onDeleteAll && (
+          <button type="button" className="btn ghost sm" style={{ color: 'var(--crit)' }} onClick={onDeleteAll} title="Supprimer tous les exercices de cette fiche (QCM/flashcards/Feynman non concernés)">
+            <Icon name="trash" size={13} /> Supprimer tous les exercices
+          </button>
+        )}
       </div>
 
       <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -547,11 +570,19 @@ function ExerciceCards({ items, meta, onOpen }) {
             const st = EXO_STATUS[statut];
             const numeric = it.sous_type === 'numerique';
             return (
-              <button key={it.id} className="exo-card" onClick={() => onOpen(it)}>
+              <div key={it.id} className="exo-card" role="button" tabIndex={0}
+                onClick={() => onOpen(it)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(it); } }}>
                 <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 8, width: '100%' }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.tint, flex: '0 0 auto' }} />
                   <span style={{ fontWeight: 700, fontSize: 13.5, minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{it.theme || 'Exercice'}</span>
                   <span className="exo-status" style={{ color: st.color, flex: '0 0 auto' }} title={st.label}><Icon name={st.icon} size={12} /> {st.label}</span>
+                  {onDelete && (
+                    <button type="button" className="cd-ic" style={{ width: 26, height: 26, flex: '0 0 auto' }} title="Supprimer cet exercice"
+                      onClick={(e) => { e.stopPropagation(); onDelete(it); }}>
+                      <Icon name="trash" size={12} />
+                    </button>
+                  )}
                 </div>
                 <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                   <span className="pill" style={{ height: 22 }}>{EXO_DIFF[it.difficulte] || 'Intermédiaire'} · {it.difficulte || 2}</span>
@@ -559,7 +590,7 @@ function ExerciceCards({ items, meta, onOpen }) {
                   {it.necessite_calculatrice && <span className="pill accent" style={{ height: 22 }}><Icon name="grad" size={11} /> Calculatrice</span>}
                 </div>
                 <div className="exo-open">Ouvrir <Icon name="arrowR" size={13} /></div>
-              </button>
+              </div>
             );
           })}
         </div>

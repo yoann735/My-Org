@@ -289,6 +289,14 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await reload();
     },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },
+    // suppression en masse : tous les exercices (type 'exercice') d'UNE fiche, sans
+    // toucher aux QCM/flashcards/Feynman de la même fiche. Même canal durable que
+    // deleteQuestion (remove() → tombstone + outbox), juste appliqué à tout le lot.
+    deleteAllExercices: async (ficheId) => {
+      const exos = db.questions.filter((q) => q.ficheId === ficheId && q.type === 'exercice');
+      await Promise.all(exos.map((q) => remove('questions', q.id)));
+      await reload();
+    },
     clearQuestionError: async (id) => {
       const q = db.questions.find((x) => x.id === id); if (!q) return;
       await put('questions', { ...q, missed: 0 }); await reload();
