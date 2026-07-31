@@ -4,9 +4,9 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal } from '../components/ui.jsx';
+import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
-import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche } from '../lib/planning.js';
+import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, dueByCoursOn } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
@@ -168,6 +168,20 @@ function DayPopup({ day, ctx, onClose }) {
   const lines = Object.values(groups).sort((a, b) => b.items.length - a.items.length);
   const dateLabel = new Date(day.date + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
+  // rééquilibrage calendrier (étape 2/3) : recalculé depuis ctx.db (RÉEL, pas
+  // day.byFiche qui pour un jour futur est une PROJECTION) — le jour source
+  // dégonfle et disparaît de la liste dès qu'il n'a plus rien de dû, sans
+  // fermer la popup, puisque ce recalcul suit ctx.db à chaque rendu.
+  const [reorg, setReorg] = useState(false);
+  const [moveTarget, setMoveTarget] = useState(null); // { type: 'source'|'fiche', id, nom, count }
+  const coursGroups = reorg ? dueByCoursOn(ctx.db, day.date) : [];
+  const confirmMove = async (toDate) => {
+    if (!moveTarget) return;
+    if (moveTarget.type === 'source') await ctx.moveSourceDay(moveTarget.id, day.date, toDate);
+    else await ctx.moveFicheDay(moveTarget.id, day.date, toDate);
+    setMoveTarget(null);
+  };
+
   return (
     <div className="day-pop-scrim" onClick={onClose}>
       <div className="day-pop" onClick={(e) => e.stopPropagation()}>
@@ -179,10 +193,50 @@ function DayPopup({ day, ctx, onClose }) {
                 {day.isToday ? dateLabel : day.isProjected ? `${day.total} cours prévu${day.total > 1 ? 's' : ''}` : `${day.total} carte${day.total > 1 ? 's' : ''}`}
               </div>
             </div>
-            <button className="icon-btn sm" onClick={onClose}><Icon name="x" size={16} /></button>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <button className={reorg ? 'btn primary sm' : 'btn ghost sm'} onClick={() => setReorg((v) => !v)} title="Déplacer des cartes de ce jour vers un autre">
+                <Icon name="sliders" size={13} /> Réorganiser
+              </button>
+              <button className="icon-btn sm" onClick={onClose}><Icon name="x" size={16} /></button>
+            </div>
           </div>
         </div>
         <div className="day-pop-body">
+          {reorg ? (
+            coursGroups.length === 0 ? (
+              <div className="hint">Plus aucune carte dues ce jour-là (qcm/flashcards) — rien à déplacer.</div>
+            ) : coursGroups.map((cg) => {
+              const srcMeta = matiereMeta(null);
+              return (
+                <div key={cg.source ? cg.source.id : '?'} style={{ marginBottom: 14 }}>
+                  <div className="row spread" style={{ marginBottom: 6 }}>
+                    <div className="dl-title">
+                      <span className="tsrc-ic" style={{ background: `color-mix(in srgb, ${(cg.source && cg.source.tint) || srcMeta.tint} 16%, transparent)`, color: (cg.source && cg.source.tint) || srcMeta.tint, marginRight: 6 }}>
+                        <Icon name={(cg.source && cg.source.icon) || 'folder'} size={12} />
+                      </span>
+                      {cg.source ? cg.source.nom : 'Sans cours'} <span className="hint">· {cg.total} carte{cg.total > 1 ? 's' : ''}</span>
+                    </div>
+                    <button className="btn ghost sm" onClick={() => setMoveTarget({ type: 'source', id: cg.source.id, nom: cg.source.nom, count: cg.total })} disabled={!cg.source}>
+                      <Icon name="arrowR" size={12} /> Déplacer le cours
+                    </button>
+                  </div>
+                  {cg.fiches.map((g) => (
+                    <div className="day-line" key={g.fiche.id}>
+                      <div className="dl-ic" style={{ background: `color-mix(in srgb, ${matiereMeta(g.matiere).tint} 15%, transparent)`, color: matiereMeta(g.matiere).tint }}><Icon name="cards" size={17} /></div>
+                      <div className="dl-main">
+                        <div className="dl-title">{g.fiche.titre} <span className="j-tag">{g.jLabel}</span></div>
+                        <div className="dl-sub"><span>{g.items.length} carte{g.items.length > 1 ? 's' : ''} · {matiereMeta(g.matiere).label}</span></div>
+                      </div>
+                      <button className="btn ghost sm" onClick={() => setMoveTarget({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>
+                        <Icon name="arrowR" size={12} /> Déplacer
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })
+          ) : (
+          <>
           {day.isProjected && (
             <div className="hint" style={{ marginBottom: 10 }}><Icon name="info" size={12} /> Projection à titre indicatif (méthode des J) — se recalcule selon tes révisions réelles.</div>
           )}
@@ -225,16 +279,31 @@ function DayPopup({ day, ctx, onClose }) {
               </div>
             );
           })}
-        </div>
-        <div className="day-pop-foot">
-          <button className="btn" style={{ flex: 1 }} onClick={onClose}>Fermer</button>
-          {day.isToday && day.items.length > 0 && (
-            <button className="btn primary" style={{ flex: 1 }} onClick={() => { onClose(); ctx.startSession(day.items, 'Révision du jour'); }}>
-              <Icon name="play" size={15} fill /> Réviser les cartes
-            </button>
+          </>
           )}
         </div>
+        {!reorg && (
+          <div className="day-pop-foot">
+            <button className="btn" style={{ flex: 1 }} onClick={onClose}>Fermer</button>
+            {day.isToday && day.items.length > 0 && (
+              <button className="btn primary" style={{ flex: 1 }} onClick={() => { onClose(); ctx.startSession(day.items, 'Révision du jour'); }}>
+                <Icon name="play" size={15} fill /> Réviser les cartes
+              </button>
+            )}
+          </div>
+        )}
       </div>
+      {moveTarget && (
+        <DateActionModal
+          title={`Déplacer « ${moveTarget.nom} »`}
+          label="Nouvelle date"
+          confirmLabel="Déplacer"
+          count={moveTarget.count}
+          body={`${moveTarget.count} carte${moveTarget.count > 1 ? 's' : ''} ${moveTarget.count > 1 ? 'seront déplacées' : 'sera déplacée'} vers cette date. Palier, historique et progression restent inchangés — seule la date de réapparition change.`}
+          onConfirm={confirmMove}
+          onCancel={() => setMoveTarget(null)}
+        />
+      )}
     </div>
   );
 }

@@ -5,7 +5,7 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, ShiftStartModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
+import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
 import {
   index, effectiveCoef, ficheJ, ficheJDistribution, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, missedQuestions, topConcepts, todayPlan, overdueByFiche,
   qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor,
@@ -501,9 +501,14 @@ export function Reviser({ ctx }) {
       )}
 
       {shiftStart && (
-        <ShiftStartModal
+        <DateActionModal
           title={`Décaler le départ — « ${shiftStart.nom} »`}
+          label="Nouvelle date de départ (J0)"
+          confirmLabel="Décaler"
           count={shiftStartCount}
+          body={shiftStartCount > 0
+            ? `${shiftStartCount} carte${shiftStartCount > 1 ? 's' : ''} jamais révisée${shiftStartCount > 1 ? 's' : ''} ${shiftStartCount > 1 ? 'seront décalées' : 'sera décalée'} à cette date. Les cartes déjà entamées ne sont pas touchées.`
+            : "Aucune carte jamais révisée ici — rien à décaler."}
           onConfirm={confirmShiftStart}
           onCancel={() => setShiftStart(null)}
         />

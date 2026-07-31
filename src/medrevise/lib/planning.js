@@ -255,6 +255,25 @@ export function unstartedQuestionsFor(db, { sourceId, ficheId } = {}, idx) {
   });
 }
 
+/* ---- rééquilibrage calendrier — Réviser, étape 2/3. Déplace des cartes DÉJÀ
+   EN CYCLE : contrairement à isUnstarted ci-dessus, AUCUN filtre de palier/
+   historique ici — seul nextReview change à la mutation (MedReviseApp.jsx
+   moveSourceDay/moveFicheDay), palier/interval/historique intacts. dueOnFor
+   restreint dueOn() (même sémantique : "aujourd'hui" inclut le retard) à un
+   cours ou une fiche, pour cibler EXACTEMENT les cartes réellement dues ce
+   jour précis — jamais une projection (ficheProjection extrapole des
+   occurrences futures hypothétiques, inadaptée pour une écriture réelle). */
+export function dueOnFor(db, dateISO, { sourceId, ficheId } = {}, idx) {
+  const ix = idx || index(db);
+  return dueOn(db, dateISO, ix).filter((q) => {
+    const f = ix.fById[q.ficheId];
+    if (!f) return false;
+    if (ficheId) return f.id === ficheId;
+    if (sourceId) { const m = ix.mById[f.matiereId]; return !!m && m.sourceId === sourceId; }
+    return false;
+  });
+}
+
 /** regroupe une liste de questions par fiche, avec compteurs + J + coef */
 export function groupByFiche(db, questions, idx) {
   const ix = idx || index(db);
@@ -279,6 +298,25 @@ export function groupByFiche(db, questions, idx) {
 /** plan d'aujourd'hui groupé par fiche, plus volumineux d'abord */
 export function todayPlan(db, idx) {
   return groupByFiche(db, dueToday(db, idx), idx).sort((a, b) => b.items.length - a.items.length);
+}
+
+/** répartition Cours → Fiche des cartes RÉELLEMENT dues à une date (retard
+   inclus pour aujourd'hui, voir dueOn) — alimente le rééquilibrage calendrier
+   (étape 2/3, DayPopup desktop + plan du jour mobile) : chaque groupe cours
+   porte ses fiches (groupByFiche), pour permettre un bouton « Déplacer » au
+   niveau cours ET au niveau fiche depuis la même liste. Triée par volume
+   décroissant (le cours le plus chargé d'abord). */
+export function dueByCoursOn(db, dateISO, idx) {
+  const ix = idx || index(db);
+  const byFiche = groupByFiche(db, dueOn(db, dateISO, ix), ix);
+  const bySource = {};
+  byFiche.forEach((g) => {
+    const sid = g.source ? g.source.id : '?';
+    if (!bySource[sid]) bySource[sid] = { source: g.source, fiches: [], total: 0 };
+    bySource[sid].fiches.push(g);
+    bySource[sid].total += g.items.length;
+  });
+  return Object.values(bySource).sort((a, b) => b.total - a.total);
 }
 
 /** semaine de 7 jours (weekOffset: 0 = cette semaine) */

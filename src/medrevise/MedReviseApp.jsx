@@ -22,7 +22,7 @@ import {
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 import { todayISO } from './lib/sm2.js';
-import { addDays, unstartedQuestionsFor } from './lib/planning.js';
+import { addDays, unstartedQuestionsFor, dueOnFor } from './lib/planning.js';
 import { useIsMobile } from '../shared/hooks/useMediaQuery.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
 
@@ -305,6 +305,27 @@ export default function MedReviseApp({ themeApi, goHub }) {
       if (!targets.length) return;
       await putBackup('pre-decalage-fiche-' + ficheId + '-' + Date.now(), targets);
       await putMany('questions', targets.map((q) => ({ ...q, nextReview: date })));
+      await reload();
+    },
+    // rééquilibrage calendrier — Réviser, étape 2/3. Déplace les cartes RÉELLEMENT
+    // dues le jour `fromDate` (dueOnFor, retard inclus si fromDate = aujourd'hui)
+    // vers `toDate`. Contrairement à shiftSourceStart/shiftFicheStart (étape 1) :
+    // AUCUN filtre palier/historique — une carte déjà en cycle (J+14, ou revenue
+    // à J0 après un Raté) se déplace comme les autres. Seul nextReview change ;
+    // palier/interval/historique/missed restent intacts. putBackup avant l'écriture
+    // en masse, même précaution qu'à l'étape 1.
+    moveSourceDay: async (sourceId, fromDate, toDate) => {
+      const targets = dueOnFor(db, fromDate, { sourceId });
+      if (!targets.length) return;
+      await putBackup('pre-reequilibrage-source-' + sourceId + '-' + Date.now(), targets);
+      await putMany('questions', targets.map((q) => ({ ...q, nextReview: toDate })));
+      await reload();
+    },
+    moveFicheDay: async (ficheId, fromDate, toDate) => {
+      const targets = dueOnFor(db, fromDate, { ficheId });
+      if (!targets.length) return;
+      await putBackup('pre-reequilibrage-fiche-' + ficheId + '-' + Date.now(), targets);
+      await putMany('questions', targets.map((q) => ({ ...q, nextReview: toDate })));
       await reload();
     },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },

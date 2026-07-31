@@ -505,31 +505,29 @@ export function ConfirmModal({ title, body, confirmLabel = 'Confirmer', danger, 
   );
 }
 
-/* ---- décalage du départ (J0), niveau cours ou fiche (Réviser, étape 1/3) ----
-   `count` = nombre de cartes jamais révisées concernées (voir planning.js
-   unstartedQuestionsFor/isUnstarted) — informatif, ne bloque pas la saisie
-   mais désactive Confirmer si 0 (rien à décaler). Date bornée à aujourd'hui
-   minimum (pas de décalage dans le passé). */
-export function ShiftStartModal({ title, count, onConfirm, onCancel }) {
+/* ---- modale générique « choisir une date puis confirmer » — partagée par le
+   décalage du départ J0 (étape 1/3, Reviser.jsx) et le rééquilibrage calendrier
+   (étape 2/3, Dashboard.jsx/MobileHome.jsx) : même geste (tap → date → confirmer),
+   seul le texte/libellé change selon l'appelant. `count` (optionnel) désactive
+   Confirmer à 0 (rien à faire) ; `body` porte le message contextuel (nombre de
+   cartes concernées, ce qui va/ne va pas bouger). Date bornée à aujourd'hui
+   minimum (jamais dans le passé, aux deux étapes). */
+export function DateActionModal({ title, body, label = 'Nouvelle date', confirmLabel = 'Confirmer', count, onConfirm, onCancel }) {
   const [date, setDate] = useState(todayISO());
   return (
     <div className="day-pop-scrim" onClick={onCancel}>
       <div className="day-pop" style={{ width: 'min(420px, 92vw)' }} onClick={(e) => e.stopPropagation()}>
         <div className="day-pop-head"><div className="serif" style={{ fontSize: 19 }}>{title}</div></div>
         <div className="day-pop-body">
-          <div className="hint" style={{ fontSize: 13.5, marginBottom: 12 }}>
-            {count > 0
-              ? `${count} carte${count > 1 ? 's' : ''} jamais révisée${count > 1 ? 's' : ''} ${count > 1 ? 'seront décalées' : 'sera décalée'} à cette date. Les cartes déjà entamées ne sont pas touchées.`
-              : "Aucune carte jamais révisée ici — rien à décaler."}
-          </div>
+          <div className="hint" style={{ fontSize: 13.5, marginBottom: 12 }}>{body}</div>
           <div className="imp-field">
-            <label>Nouvelle date de départ (J0)</label>
+            <label>{label}</label>
             <input type="date" className="imp-title" style={{ maxWidth: 190 }} min={todayISO()} value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
         </div>
         <div className="day-pop-foot">
           <button className="btn" style={{ flex: 1 }} onClick={onCancel}>Annuler</button>
-          <button className="btn primary" style={{ flex: 1 }} disabled={!count} onClick={() => onConfirm(date)}>Décaler</button>
+          <button className="btn primary" style={{ flex: 1 }} disabled={count === 0} onClick={() => onConfirm(date)}>{confirmLabel}</button>
         </div>
       </div>
     </div>

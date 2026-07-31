@@ -9,7 +9,8 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled } from '../lib/planning.js';
-import { matiereMeta, syncStatusLabel } from '../components/ui.jsx';
+import { todayISO } from '../lib/sm2.js';
+import { matiereMeta, syncStatusLabel, DateActionModal } from '../components/ui.jsx';
 
 export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman }) {
   const { db } = ctx;
@@ -18,6 +19,26 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
   const plan = useMemo(() => todayPlan(db, ix), [db, ix]);
   const overdue = useMemo(() => overdueByFiche(db, ix).filter((g) => !g.isSchema), [db, ix]);
   const [confirmDismiss, setConfirmDismiss] = useState(null);
+  // rééquilibrage calendrier (étape 2/3) : côté mobile, source = toujours
+  // "aujourd'hui" (pas de calendrier hebdo mobile) — désengorger la journée
+  // qu'on regarde. moveTarget déclenche la même modale date que le desktop ;
+  // seul nextReview change (voir ctx.moveSourceDay/moveFicheDay).
+  const [moveTarget, setMoveTarget] = useState(null); // { type: 'source'|'fiche', id, nom, count }
+  const coursToday = useMemo(() => {
+    const bySource = {};
+    plan.forEach((g) => {
+      if (!g.source) return;
+      if (!bySource[g.source.id]) bySource[g.source.id] = { source: g.source, total: 0 };
+      bySource[g.source.id].total += g.items.length;
+    });
+    return Object.values(bySource);
+  }, [plan]);
+  const confirmMove = async (toDate) => {
+    if (!moveTarget) return;
+    if (moveTarget.type === 'source') await ctx.moveSourceDay(moveTarget.id, todayISO(), toDate);
+    else await ctx.moveFicheDay(moveTarget.id, todayISO(), toDate);
+    setMoveTarget(null);
+  };
 
   const startAll = () => due.length && onStartSession(due, "Série du jour");
   const startFiche = (group) => onStartSession(group.items, group.fiche.titre);
@@ -106,6 +127,25 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
           </div>
         )}
 
+        {coursToday.length > 0 && (
+          <div className="mrm-section">
+            <div className="mrm-section-head"><Icon name="folder" size={15} /> <span>Cours du jour</span></div>
+            <div className="mrm-list">
+              {coursToday.map((c) => (
+                <div className="mrm-row" key={c.source.id}>
+                  <div className="mrm-row-main">
+                    <div className="mrm-row-title">{c.source.nom}</div>
+                    <div className="mrm-row-sub">{c.total} carte{c.total > 1 ? 's' : ''} due{c.total > 1 ? 's' : ''}</div>
+                  </div>
+                  <div className="mrm-row-actions">
+                    <button type="button" className="mrm-chip-btn ghost" onClick={() => setMoveTarget({ type: 'source', id: c.source.id, nom: c.source.nom, count: c.total })}>Déplacer</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {ficheRows.length > 0 && (
           <div className="mrm-section">
             <div className="mrm-section-head"><Icon name="cards" size={15} /> <span>Fiches</span></div>
@@ -124,6 +164,9 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
                     <div className="mrm-row-actions">
                       {g.items.length > 0 && (
                         <button type="button" className="mrm-chip-btn" onClick={() => startFiche(g)}>Réviser</button>
+                      )}
+                      {g.items.length > 0 && (
+                        <button type="button" className="mrm-chip-btn ghost" onClick={() => setMoveTarget({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>Déplacer</button>
                       )}
                       {extras && extras.exercice.length > 0 && (
                         <button type="button" className="mrm-chip-btn ghost" onClick={() => onStartExercice(extras.exercice, g.fiche.titre)}>Exercices ({extras.exercice.length})</button>
@@ -146,6 +189,18 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
           </div>
         )}
       </div>
+
+      {moveTarget && (
+        <DateActionModal
+          title={`Déplacer « ${moveTarget.nom} »`}
+          label="Nouvelle date"
+          confirmLabel="Déplacer"
+          count={moveTarget.count}
+          body={`${moveTarget.count} carte${moveTarget.count > 1 ? 's' : ''} ${moveTarget.count > 1 ? 'seront déplacées' : 'sera déplacée'} vers cette date. Palier, historique et progression restent inchangés — seule la date de réapparition change.`}
+          onConfirm={confirmMove}
+          onCancel={() => setMoveTarget(null)}
+        />
+      )}
 
       {confirmDismiss && (
         <div className="mrm-scrim" onClick={() => setConfirmDismiss(null)}>
