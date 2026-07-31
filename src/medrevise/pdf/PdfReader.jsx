@@ -46,6 +46,7 @@ import { EdTop, detectDocKind } from '../components/ui.jsx';
 import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit } from '../lib/storage.js';
 import { RICH_EXTENSIONS, richToHTML } from '../documents/lib/richtext.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
+import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -170,6 +171,10 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   // d'anatomie dans Import Anatomie Théorie, hors du store `questions`/fiches).
   const canAddItem = !docProp && !!ficheId && !!fiche;
   const [showAddItem, setShowAddItem] = useState(false);
+  // atelier "Voir le cours" (branche HTML) : fenêtre étroite → bascule CSS-only
+  // cours/items (voir @media dans etudes.css), ignorée sur fenêtre large où les
+  // deux colonnes s'affichent toujours ensemble.
+  const [mobileView, setMobileView] = useState('course');
 
   // source affichée quand la fiche porte À LA FOIS un PDF et une fiche HTML —
   // indépendant du mode Lecture/Édition (qui ne s'applique qu'au PDF).
@@ -611,6 +616,11 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   }
 
   if (srcTab === 'html') {
+    // atelier "Voir le cours" : cours (iframe) + sidebar d'items persistante côte
+    // à côte — remplace l'ancien bouton "Ajouter un item" en modale (qui masquait
+    // le cours) par CourseItemsSidebar, intégrée, jamais superposée. `canAddItem`
+    // (vraie fiche db.fiches, pas un docProp générique) régit aussi l'affichage
+    // de la sidebar : elle n'a de sens que pour une fiche réelle avec des items.
     return (
       <div className={embedded ? 'fadein' : 'screen scroll fadein'}>
         {!embedded && (
@@ -625,29 +635,37 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
             <button className="btn ghost sm" onClick={() => setSrcTab('pdf')}><Icon name="filePdf" size={13} /> Voir le PDF</button>
           )}
           <div style={{ flex: 1 }} />
-          {canAddItem && (
-            <button className="btn sm" onClick={() => setShowAddItem(true)}><Icon name="plus" size={13} /> Ajouter un item</button>
-          )}
           <label className="btn ghost sm" style={{ cursor: 'pointer' }} title="Attacher un document (PDF ou HTML) — remplace le document du même type">
             <Icon name="upload" size={13} /> Attacher un document
             <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={(e) => attachDoc(e.target.files[0])} />
           </label>
         </div>
         {htmlLoadError && <div className="err-mini" style={{ marginBottom: 12 }}><div className="em-ic crit"><Icon name="alert" size={16} /></div><div className="em-body"><div className="em-title">{htmlLoadError}</div></div></div>}
-        <div className="pdfr-html-wrap">
-          {!htmlUrl && !htmlLoadError && <div className="gen-spinner" style={{ width: 40, height: 40, margin: '60px auto' }} />}
-          {htmlUrl && (
-            // allow-scripts : les fiches contiennent leur propre bouton lecture/édition
-            // (JS interne) — sans ce token, sandbox="allow-same-origin" seul désactive
-            // TOUT script (y compris les onclick inline), rendant ce bouton inerte au
-            // clic. Le contenu est intégralement local et auto-généré par l'utilisateur
-            // (aucune requête réseau, aucun contenu tiers) : risque borné et accepté.
-            <iframe src={htmlUrl} title={fiche.titre} sandbox="allow-same-origin allow-scripts" className="pdfr-html-frame" />
-          )}
-        </div>
-        {showAddItem && canAddItem && (
-          <AddItemModal ctx={ctx} ficheId={ficheId} ficheTitre={fiche.titre} onClose={() => setShowAddItem(false)} />
+
+        {canAddItem && (
+          // fenêtre étroite : les deux panneaux restent MONTÉS en permanence (l'iframe
+          // ne recharge jamais au toggle) — seule la visibilité change en CSS via cet
+          // attribut, voir @media (max-width: 900px) dans etudes.css.
+          <div className="pdfr-mobile-toggle seg">
+            <button type="button" className={'seg-btn' + (mobileView === 'course' ? ' active' : '')} onClick={() => setMobileView('course')}><Icon name="fileHtml" size={13} /> Cours</button>
+            <button type="button" className={'seg-btn' + (mobileView === 'items' ? ' active' : '')} onClick={() => setMobileView('items')}><Icon name="cards" size={13} /> Items</button>
+          </div>
         )}
+
+        <div className={'pdfr-workshop' + (canAddItem ? '' : ' single')} data-mobile-view={mobileView}>
+          <div className="pdfr-html-wrap pdfr-workshop-course">
+            {!htmlUrl && !htmlLoadError && <div className="gen-spinner" style={{ width: 40, height: 40, margin: '60px auto' }} />}
+            {htmlUrl && (
+              // allow-scripts : les fiches contiennent leur propre bouton lecture/édition
+              // (JS interne) — sans ce token, sandbox="allow-same-origin" seul désactive
+              // TOUT script (y compris les onclick inline), rendant ce bouton inerte au
+              // clic. Le contenu est intégralement local et auto-généré par l'utilisateur
+              // (aucune requête réseau, aucun contenu tiers) : risque borné et accepté.
+              <iframe src={htmlUrl} title={fiche.titre} sandbox="allow-same-origin allow-scripts" className="pdfr-html-frame" />
+            )}
+          </div>
+          {canAddItem && <CourseItemsSidebar ctx={ctx} ficheId={ficheId} />}
+        </div>
       </div>
     );
   }

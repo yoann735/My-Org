@@ -1,5 +1,5 @@
 /* ============================================================
-   MedRevise — ajout MANUEL d'un item à une fiche (sans passer par un import
+   MedRevise — ajout ET édition MANUELS d'un item (sans passer par un import
    JSON). Un seul formulaire compact par type (QCM / Flashcard / Exercice /
    Feynman), volontairement réduit aux champs utiles à une saisie manuelle —
    mais l'item construit respecte le schéma v1.0 (schema.js) et passe par le
@@ -7,6 +7,17 @@
    normalizeV1Item → newItem) : id unique, état SM-2 initial, aucun cas
    particulier côté lecteur (Session/Exercice/Feynman le traitent comme un
    item importé). AUCUN appel réseau/IA.
+
+   `ItemForm` (dispatcher par type) est le morceau RÉUTILISÉ tel quel par
+   AddItemModal (ajout, modale — Réviser/PdfReader) ET par
+   CourseItemsSidebar (ajout ET édition inline, atelier "Voir le cours") :
+   passer `initial` préremplit les champs (édition), `submitLabel` change le
+   texte du bouton, `onCancel` affiche un bouton Annuler. Les champs
+   "avancés" que ce formulaire simple n'expose pas (essentiel par critère,
+   regle_reussite, unites_acceptees, étapes de correction détaillées) sont
+   PRÉSERVÉS depuis `initial` plutôt qu'écrasés par un défaut — éditer via ce
+   formulaire simple ne doit jamais faire régresser un item plus riche
+   (importé via JSON).
    ============================================================ */
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -14,9 +25,9 @@ import { Modal } from './ui.jsx';
 import { appendItemsToFiche } from '../lib/import.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { ImportJsonField } from './ImportFlow.jsx';
+import { OPTION_LETTERS } from '../lib/schema.js';
 
-const OPT_LETTERS = ['a', 'b', 'c', 'd'];
-const TYPES = [
+export const TYPES = [
   { id: 'qcm', label: 'QCM', icon: 'list' },
   { id: 'flashcard', label: 'Flashcard', icon: 'cards' },
   { id: 'exercice', label: 'Exercice', icon: 'target' },
@@ -25,6 +36,16 @@ const TYPES = [
 
 /** textarea "une ligne = une entrée" → tableau de chaînes non vides. */
 const lines = (s) => (s || '').split('\n').map((l) => l.trim()).filter(Boolean);
+
+/** dispatcher par type — seul point qui connaît les 4 formulaires, réutilisé
+    par la modale (ajout) et la sidebar de l'atelier (ajout + édition). */
+export function ItemForm({ type, initial, submitLabel, onSubmit, onCancel, busy }) {
+  if (type === 'qcm') return <QcmForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;
+  if (type === 'flashcard') return <FlashcardForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;
+  if (type === 'exercice') return <ExerciceForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;
+  if (type === 'feynman') return <FeynmanForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;
+  return null;
+}
 
 export function AddItemModal({ ctx, ficheId, ficheTitre, onClose }) {
   const [source, setSource] = useState('form'); // form | json
@@ -65,10 +86,7 @@ export function AddItemModal({ ctx, ficheId, ficheTitre, onClose }) {
               <div className="em-body"><div className="em-title">{done} item{done > 1 ? 's' : ''} ajouté{done > 1 ? 's' : ''} ✓</div><div className="hint">Révisable immédiatement, comme un item importé.</div></div>
             </div>
           )}
-          {type === 'qcm' && <QcmForm onAdd={add} busy={busy} />}
-          {type === 'flashcard' && <FlashcardForm onAdd={add} busy={busy} />}
-          {type === 'exercice' && <ExerciceForm onAdd={add} busy={busy} />}
-          {type === 'feynman' && <FeynmanForm onAdd={add} busy={busy} />}
+          <ItemForm type={type} onSubmit={add} busy={busy} />
         </>
       ) : (
         <PasteJsonForm ctx={ctx} ficheId={ficheId} done={done} setDone={setDone} />
@@ -81,8 +99,9 @@ export function AddItemModal({ ctx, ficheId, ficheTitre, onClose }) {
    le validateur d'import (parsePastedJson → normalizeV1Item) — items invalides
    ignorés et comptés, comme le flux d'import complet. Aperçu avant confirmation,
    puis appendItemsToFiche (mêmes ids uniques + dédoublonnage sur srcId que
-   l'import Rattrapage — jamais d'écrasement des items déjà présents). ---- */
-function PasteJsonForm({ ctx, ficheId, done, setDone }) {
+   l'import Rattrapage — jamais d'écrasement des items déjà présents). Exporté :
+   réutilisé tel quel par la sidebar de l'atelier "Voir le cours". ---- */
+export function PasteJsonForm({ ctx, ficheId, done, setDone }) {
   const [jsonText, setJsonText] = useState('');
   const [parseError, setParseError] = useState(null);
   const [preview, setPreview] = useState(null); // { items, counts, duplicates }
@@ -149,30 +168,41 @@ function PasteJsonForm({ ctx, ficheId, done, setDone }) {
   );
 }
 
-/* ---- QCM : énoncé, 4 options, la/les bonne(s), explication ---- */
-function QcmForm({ onAdd, busy }) {
-  const [theme, setTheme] = useState('');
-  const [enonce, setEnonce] = useState('');
-  const [options, setOptions] = useState(OPT_LETTERS.map(() => ({ texte: '', correct: false })));
-  const [explication, setExplication] = useState('');
+/* ---- QCM : énoncé, options (2 à 8 — dynamique), la/les bonne(s), explication.
+   Éditer un QCM importé avec >4 options ne les tronque plus (BUG évité : la
+   version précédente de ce formulaire figeait 4 lignes ; un QCM v1.0 en
+   autorise jusqu'à 8, cf. OPTION_LETTERS). ---- */
+function QcmForm({ onAdd, busy, initial, submitLabel, onCancel }) {
+  const [theme, setTheme] = useState(initial?.theme || '');
+  const [enonce, setEnonce] = useState(initial?.enonce || '');
+  const [options, setOptions] = useState(() => {
+    if (initial?.options?.length) {
+      const correctSet = new Set(initial.reponses_correctes || []);
+      return initial.options.map((o) => ({ texte: o.texte || '', correct: correctSet.has(o.id) }));
+    }
+    return OPTION_LETTERS.slice(0, 4).map(() => ({ texte: '', correct: false }));
+  });
+  const [explication, setExplication] = useState(initial?.explication || '');
 
   const setOpt = (i, patch) => setOptions((o) => o.map((x, j) => (i === j ? { ...x, ...patch } : x)));
+  const addOption = () => setOptions((o) => (o.length < OPTION_LETTERS.length ? [...o, { texte: '', correct: false }] : o));
+  const removeOption = (i) => setOptions((o) => (o.length > 2 ? o.filter((_, j) => j !== i) : o));
   const filled = options.filter((o) => o.texte.trim());
   const correctCount = options.filter((o) => o.texte.trim() && o.correct).length;
   const ready = !!enonce.trim() && filled.length >= 2 && correctCount >= 1;
 
   const submit = async () => {
     if (!ready) return;
-    const kept = options.map((o, i) => ({ ...o, id: OPT_LETTERS[i] })).filter((o) => o.texte.trim());
+    const kept = options.map((o, i) => ({ ...o, id: OPTION_LETTERS[i] })).filter((o) => o.texte.trim());
     await onAdd({
-      type: 'qcm', theme: theme.trim(), difficulte: 'intermediaire',
+      type: 'qcm', theme: theme.trim(), difficulte: initial?.difficulte || 'intermediaire',
       enonce: enonce.trim(),
       multiple: correctCount > 1,
       options: kept.map((o) => ({ id: o.id, texte: o.texte.trim() })),
       reponses_correctes: kept.filter((o) => o.correct).map((o) => o.id),
       explication: explication.trim(),
     });
-    setEnonce(''); setOptions(OPT_LETTERS.map(() => ({ texte: '', correct: false }))); setExplication('');
+    if (!initial) { setEnonce(''); setOptions(OPTION_LETTERS.slice(0, 4).map(() => ({ texte: '', correct: false }))); setExplication(''); }
   };
 
   return (
@@ -191,17 +221,24 @@ function QcmForm({ onAdd, busy }) {
           {options.map((o, i) => (
             <div key={i} className="row" style={{ gap: 8 }}>
               <input type="checkbox" checked={o.correct} onChange={(e) => setOpt(i, { correct: e.target.checked })} disabled={!o.texte.trim()} style={{ accentColor: 'var(--accent)' }} />
-              <input className="imp-title" style={{ flex: 1 }} placeholder={`Option ${OPT_LETTERS[i].toUpperCase()}`} value={o.texte} onChange={(e) => setOpt(i, { texte: e.target.value })} />
+              <input className="imp-title" style={{ flex: 1 }} placeholder={`Option ${(OPTION_LETTERS[i] || '?').toUpperCase()}`} value={o.texte} onChange={(e) => setOpt(i, { texte: e.target.value })} />
+              {options.length > 2 && (
+                <button type="button" className="cd-ic" title="Retirer cette option" onClick={() => removeOption(i)}><Icon name="x" size={12} /></button>
+              )}
             </div>
           ))}
         </div>
+        {options.length < OPTION_LETTERS.length && (
+          <button type="button" className="btn ghost sm" style={{ marginTop: 8 }} onClick={addOption}><Icon name="plus" size={12} /> Ajouter une option</button>
+        )}
       </div>
       <div className="imp-field">
         <label>Explication <span className="imp-opt">(optionnel)</span></label>
         <textarea className="imp-title" style={{ minHeight: 60, resize: 'vertical', fontFamily: 'inherit' }} value={explication} onChange={(e) => setExplication(e.target.value)} placeholder="Pourquoi c'est la bonne réponse…" />
       </div>
       <div className="imp-actions">
-        <button className="btn primary" onClick={submit} disabled={!ready || busy}><Icon name="check" size={15} /> Ajouter ce QCM</button>
+        {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
+        <button className="btn primary" onClick={submit} disabled={!ready || busy}><Icon name="check" size={15} /> {submitLabel || 'Ajouter ce QCM'}</button>
       </div>
       {!ready && <div className="hint" style={{ marginTop: 8 }}>Énoncé + au moins 2 options + 1 bonne réponse cochée.</div>}
     </div>
@@ -209,22 +246,22 @@ function QcmForm({ onAdd, busy }) {
 }
 
 /* ---- Flashcard : recto, verso, indice/à-retenir optionnels ---- */
-function FlashcardForm({ onAdd, busy }) {
-  const [theme, setTheme] = useState('');
-  const [recto, setRecto] = useState('');
-  const [verso, setVerso] = useState('');
-  const [indice, setIndice] = useState('');
-  const [aRetenir, setARetenir] = useState('');
+function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel }) {
+  const [theme, setTheme] = useState(initial?.theme || '');
+  const [recto, setRecto] = useState(initial?.recto || '');
+  const [verso, setVerso] = useState(initial?.verso || '');
+  const [indice, setIndice] = useState(initial?.indice || '');
+  const [aRetenir, setARetenir] = useState(initial?.a_retenir || '');
   const ready = !!recto.trim() && !!verso.trim();
 
   const submit = async () => {
     if (!ready) return;
     await onAdd({
-      type: 'flashcard', theme: theme.trim(), difficulte: 'intermediaire',
+      type: 'flashcard', theme: theme.trim(), difficulte: initial?.difficulte || 'intermediaire',
       recto: recto.trim(), verso: verso.trim(),
       indice: indice.trim() || null, a_retenir: aRetenir.trim(),
     });
-    setRecto(''); setVerso(''); setIndice(''); setARetenir('');
+    if (!initial) { setRecto(''); setVerso(''); setIndice(''); setARetenir(''); }
   };
 
   return (
@@ -250,7 +287,8 @@ function FlashcardForm({ onAdd, busy }) {
         <input className="imp-title" value={aRetenir} onChange={(e) => setARetenir(e.target.value)} />
       </div>
       <div className="imp-actions">
-        <button className="btn primary" onClick={submit} disabled={!ready || busy}><Icon name="check" size={15} /> Ajouter cette flashcard</button>
+        {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
+        <button className="btn primary" onClick={submit} disabled={!ready || busy}><Icon name="check" size={15} /> {submitLabel || 'Ajouter cette flashcard'}</button>
       </div>
       {!ready && <div className="hint" style={{ marginTop: 8 }}>Recto et verso requis.</div>}
     </div>
@@ -258,24 +296,29 @@ function FlashcardForm({ onAdd, busy }) {
 }
 
 /* ---- Feynman : consigne, réponse-modèle, points clés, grille ---- */
-function FeynmanForm({ onAdd, busy }) {
-  const [theme, setTheme] = useState('');
-  const [consigne, setConsigne] = useState('');
-  const [reponseModele, setReponseModele] = useState('');
-  const [pointsCles, setPointsCles] = useState('');
-  const [grille, setGrille] = useState('');
+function FeynmanForm({ onAdd, busy, initial, submitLabel, onCancel }) {
+  const [theme, setTheme] = useState(initial?.theme || '');
+  const [consigne, setConsigne] = useState(initial?.consigne || '');
+  const [reponseModele, setReponseModele] = useState(initial?.reponse_modele || '');
+  const [pointsCles, setPointsCles] = useState((initial?.points_cles_attendus || []).join('\n'));
+  const [grille, setGrille] = useState((initial?.grille_autoevaluation || []).map((g) => g.critere).join('\n'));
   const ready = !!consigne.trim() && !!reponseModele.trim();
 
   const submit = async () => {
     if (!ready) return;
+    // édition : un critère dont le texte n'a pas changé garde son "essentiel"
+    // d'origine (un import JSON peut porter essentiel:false, que ce formulaire
+    // simple n'expose pas) — un critère nouveau/renommé retombe sur true,
+    // comme à la création.
+    const prevEssentiel = new Map((initial?.grille_autoevaluation || []).map((g) => [g.critere, g.essentiel]));
     await onAdd({
-      type: 'feynman', theme: theme.trim(), difficulte: 'intermediaire',
+      type: 'feynman', theme: theme.trim(), difficulte: initial?.difficulte || 'intermediaire',
       consigne: consigne.trim(), reponse_modele: reponseModele.trim(),
       points_cles_attendus: lines(pointsCles),
-      grille_autoevaluation: lines(grille).map((critere) => ({ critere, essentiel: true })),
-      regle_reussite: 'tous_essentiels',
+      grille_autoevaluation: lines(grille).map((critere) => ({ critere, essentiel: prevEssentiel.has(critere) ? prevEssentiel.get(critere) : true })),
+      regle_reussite: initial?.regle_reussite || 'tous_essentiels',
     });
-    setConsigne(''); setReponseModele(''); setPointsCles(''); setGrille('');
+    if (!initial) { setConsigne(''); setReponseModele(''); setPointsCles(''); setGrille(''); }
   };
 
   return (
@@ -301,7 +344,8 @@ function FeynmanForm({ onAdd, busy }) {
         <textarea className="imp-title" style={{ minHeight: 60, resize: 'vertical', fontFamily: 'inherit' }} value={grille} onChange={(e) => setGrille(e.target.value)} />
       </div>
       <div className="imp-actions">
-        <button className="btn primary" onClick={submit} disabled={!ready || busy}><Icon name="check" size={15} /> Ajouter ce Feynman</button>
+        {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
+        <button className="btn primary" onClick={submit} disabled={!ready || busy}><Icon name="check" size={15} /> {submitLabel || 'Ajouter ce Feynman'}</button>
       </div>
       {!ready && <div className="hint" style={{ marginTop: 8 }}>Consigne et réponse modèle requises.</div>}
     </div>
@@ -309,16 +353,16 @@ function FeynmanForm({ onAdd, busy }) {
 }
 
 /* ---- Exercice : énoncé, sous_type (numérique | ouvert), indices, correction ---- */
-function ExerciceForm({ onAdd, busy }) {
-  const [theme, setTheme] = useState('');
-  const [enonce, setEnonce] = useState('');
-  const [sousType, setSousType] = useState('numerique');
-  const [valeurMin, setValeurMin] = useState('');
-  const [valeurMax, setValeurMax] = useState('');
-  const [unite, setUnite] = useState('');
-  const [grille, setGrille] = useState('');
-  const [indices, setIndices] = useState('');
-  const [conclusion, setConclusion] = useState('');
+function ExerciceForm({ onAdd, busy, initial, submitLabel, onCancel }) {
+  const [theme, setTheme] = useState(initial?.theme || '');
+  const [enonce, setEnonce] = useState(initial?.enonce || '');
+  const [sousType, setSousType] = useState(initial?.sous_type || 'numerique');
+  const [valeurMin, setValeurMin] = useState(initial?.reponse?.valeur_min != null ? String(initial.reponse.valeur_min) : '');
+  const [valeurMax, setValeurMax] = useState(initial?.reponse?.valeur_max != null ? String(initial.reponse.valeur_max) : '');
+  const [unite, setUnite] = useState(initial?.reponse?.unite || '');
+  const [grille, setGrille] = useState((initial?.grille_autoevaluation || []).map((g) => g.critere).join('\n'));
+  const [indices, setIndices] = useState((initial?.indices || []).map((i) => i.texte).join('\n'));
+  const [conclusion, setConclusion] = useState(initial?.correction?.conclusion || '');
 
   const minN = Number(valeurMin), maxN = Number(valeurMax);
   const numOk = sousType === 'numerique' && valeurMin.trim() !== '' && valeurMax.trim() !== '' && Number.isFinite(minN) && Number.isFinite(maxN);
@@ -327,18 +371,23 @@ function ExerciceForm({ onAdd, busy }) {
 
   const submit = async () => {
     if (!ready) return;
+    const prevEssentiel = new Map((initial?.grille_autoevaluation || []).map((g) => [g.critere, g.essentiel]));
     const base = {
-      type: 'exercice', theme: theme.trim(), difficulte: 'intermediaire',
+      type: 'exercice', theme: theme.trim(), difficulte: initial?.difficulte || 'intermediaire',
       sous_type: sousType, enonce: enonce.trim(),
       indices: lines(indices).map((texte, i) => ({ niveau: i + 1, texte })),
-      correction: { etapes: [], conclusion: conclusion.trim() },
+      // étapes détaillées : ce formulaire simple n'expose que la conclusion —
+      // préserve les étapes existantes d'un item importé plutôt que les vider.
+      correction: { etapes: (initial?.correction?.etapes) || [], conclusion: conclusion.trim() },
     };
     if (sousType === 'numerique') {
-      await onAdd({ ...base, reponse: { valeur_min: minN, valeur_max: maxN, unite: unite.trim(), unites_acceptees: [] } });
+      // unités acceptées (synonymes) : non éditables ici, préservées telles quelles.
+      const prevUnites = (initial?.sous_type === 'numerique' && initial?.reponse?.unites_acceptees) || [];
+      await onAdd({ ...base, reponse: { valeur_min: minN, valeur_max: maxN, unite: unite.trim(), unites_acceptees: prevUnites } });
     } else {
-      await onAdd({ ...base, grille_autoevaluation: lines(grille).map((critere) => ({ critere, essentiel: true })), regle_reussite: 'tous_essentiels' });
+      await onAdd({ ...base, grille_autoevaluation: lines(grille).map((critere) => ({ critere, essentiel: prevEssentiel.has(critere) ? prevEssentiel.get(critere) : true })), regle_reussite: initial?.regle_reussite || 'tous_essentiels' });
     }
-    setEnonce(''); setValeurMin(''); setValeurMax(''); setUnite(''); setGrille(''); setIndices(''); setConclusion('');
+    if (!initial) { setEnonce(''); setValeurMin(''); setValeurMax(''); setUnite(''); setGrille(''); setIndices(''); setConclusion(''); }
   };
 
   return (
@@ -388,7 +437,8 @@ function ExerciceForm({ onAdd, busy }) {
         <textarea className="imp-title" style={{ minHeight: 50, resize: 'vertical', fontFamily: 'inherit' }} value={conclusion} onChange={(e) => setConclusion(e.target.value)} />
       </div>
       <div className="imp-actions">
-        <button className="btn primary" onClick={submit} disabled={!ready || busy}><Icon name="check" size={15} /> Ajouter cet exercice</button>
+        {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
+        <button className="btn primary" onClick={submit} disabled={!ready || busy}><Icon name="check" size={15} /> {submitLabel || 'Ajouter cet exercice'}</button>
       </div>
       {!ready && <div className="hint" style={{ marginTop: 8 }}>Énoncé requis, {sousType === 'numerique' ? 'valeurs min/max requises' : 'au moins un critère de grille requis'}.</div>}
     </div>
