@@ -192,14 +192,13 @@ function DayPopup({ day, ctx, onClose }) {
     else await ctx.moveFicheDay(moveTarget.id, day.date, toDate, { cascade: cascadeOn });
     setMoveTarget(null);
   };
-  // « Sauter aujourd'hui » : uniquement pertinent depuis la popup du jour
-  // COURANT (day.isToday) — la cible (dueOnFor(db, aujourd'hui, ...)) porte
-  // toujours sur aujourd'hui, jamais sur day.date d'un jour futur affiché.
+  // « Sauter » : disponible pour N'IMPORTE QUEL jour affiché (day.date), pas
+  // seulement aujourd'hui — cible = cartes dues CE jour précis.
   const [skipTarget, setSkipTarget] = useState(null); // { type, id, nom, count }
   const confirmSkip = async () => {
     if (!skipTarget) return;
-    if (skipTarget.type === 'source') await ctx.skipTodaySource(skipTarget.id);
-    else await ctx.skipTodayFiche(skipTarget.id);
+    if (skipTarget.type === 'source') await ctx.skipDaySource(skipTarget.id, day.date);
+    else await ctx.skipDayFiche(skipTarget.id, day.date);
     setSkipTarget(null);
   };
 
@@ -238,11 +237,9 @@ function DayPopup({ day, ctx, onClose }) {
                       {cg.source ? cg.source.nom : 'Sans cours'} <span className="hint">· {cg.total} carte{cg.total > 1 ? 's' : ''}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      {day.isToday && (
-                        <button className="btn ghost sm" onClick={() => setSkipTarget({ type: 'source', id: cg.source.id, nom: cg.source.nom, count: cg.total })} disabled={!cg.source}>
-                          <Icon name="clock" size={12} /> Sauter aujourd'hui
-                        </button>
-                      )}
+                      <button className="btn ghost sm" onClick={() => setSkipTarget({ type: 'source', id: cg.source.id, nom: cg.source.nom, count: cg.total })} disabled={!cg.source}>
+                        <Icon name="clock" size={12} /> Sauter ce jour
+                      </button>
                       <button className="btn ghost sm" onClick={() => startMove({ type: 'source', id: cg.source.id, nom: cg.source.nom, count: cg.total })} disabled={!cg.source}>
                         <Icon name="arrowR" size={12} /> Déplacer le cours
                       </button>
@@ -256,11 +253,9 @@ function DayPopup({ day, ctx, onClose }) {
                         <div className="dl-sub"><span>{g.items.length} carte{g.items.length > 1 ? 's' : ''} · {matiereMeta(g.matiere).label}</span></div>
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        {day.isToday && (
-                          <button className="btn ghost sm" onClick={() => setSkipTarget({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>
-                            <Icon name="clock" size={12} /> Sauter
-                          </button>
-                        )}
+                        <button className="btn ghost sm" onClick={() => setSkipTarget({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>
+                          <Icon name="clock" size={12} /> Sauter
+                        </button>
                         <button className="btn ghost sm" onClick={() => startMove({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>
                           <Icon name="arrowR" size={12} /> Déplacer
                         </button>
@@ -349,8 +344,8 @@ function DayPopup({ day, ctx, onClose }) {
       )}
       {skipTarget && (
         <ConfirmModal
-          title={`Sauter aujourd'hui — « ${skipTarget.nom} »`}
-          body={`${skipTarget.count} carte${skipTarget.count > 1 ? 's' : ''} ${skipTarget.count > 1 ? 'seront repoussées à leur' : 'sera repoussée à sa'} prochaine échéance (comme si révisées sans être notées). Palier, historique et progression restent inchangés.`}
+          title={`Sauter ce jour — « ${skipTarget.nom} »`}
+          body={`${skipTarget.count} carte${skipTarget.count > 1 ? 's' : ''} ${skipTarget.count > 1 ? 'avanceront' : 'avancera'} à leur palier suivant, comme lors d'une révision réussie ce jour-là (sans note à donner) — elles disparaissent de ce jour, le reste du planning est inchangé.`}
           confirmLabel="Sauter"
           onConfirm={confirmSkip}
           onCancel={() => setSkipTarget(null)}

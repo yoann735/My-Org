@@ -56,8 +56,8 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
   const [skipTarget, setSkipTarget] = useState(null); // { type, id, nom, count }
   const confirmSkip = async () => {
     if (!skipTarget) return;
-    if (skipTarget.type === 'source') await ctx.skipTodaySource(skipTarget.id);
-    else await ctx.skipTodayFiche(skipTarget.id);
+    if (skipTarget.type === 'source') await ctx.skipDaySource(skipTarget.id, todayISO());
+    else await ctx.skipDayFiche(skipTarget.id, todayISO());
     setSkipTarget(null);
   };
 
@@ -238,7 +238,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
       {skipTarget && (
         <ConfirmModal
           title={`Sauter aujourd'hui — « ${skipTarget.nom} »`}
-          body={`${skipTarget.count} carte${skipTarget.count > 1 ? 's' : ''} ${skipTarget.count > 1 ? 'seront repoussées à leur' : 'sera repoussée à sa'} prochaine échéance (comme si révisées sans être notées). Palier, historique et progression restent inchangés.`}
+          body={`${skipTarget.count} carte${skipTarget.count > 1 ? 's' : ''} ${skipTarget.count > 1 ? 'avanceront' : 'avancera'} à leur palier suivant, comme lors d'une révision réussie aujourd'hui (sans note à donner) — elles disparaissent d'aujourd'hui, le reste du planning est inchangé.`}
           confirmLabel="Sauter"
           onConfirm={confirmSkip}
           onCancel={() => setSkipTarget(null)}

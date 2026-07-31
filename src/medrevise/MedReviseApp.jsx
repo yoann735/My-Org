@@ -21,7 +21,7 @@ import {
   purgeSource, purgeMatiere, purgeFiche, putBackup,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
-import { todayISO, PALIER_DELAYS } from './lib/sm2.js';
+import { todayISO, PALIER_DELAYS, nextPalier } from './lib/sm2.js';
 import { addDays, unstartedQuestionsFor, dueOnFor, dueFromOn, diffDays } from './lib/planning.js';
 import { useIsMobile } from '../shared/hooks/useMediaQuery.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
@@ -338,31 +338,46 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await putMany('questions', targets.map((q) => ({ ...q, nextReview: cascade ? addDays(q.nextReview, shift) : toDate })));
       await reload();
     },
-    // « Sauter aujourd'hui » : variante de moveSourceDay/moveFicheDay pour les
-    // cartes dues AUJOURD'HUI (dueOnFor) d'un cours/fiche — les repousse à leur
-    // PROCHAINE échéance normale (aujourd'hui + délai du palier COURANT), comme
-    // si révisées sans être notées. AUCUN changement de palier/interval/
-    // historique/missed (pas de note = pas de progression), et aucune autre
-    // carte n'est touchée (contrairement à la cascade, pas d'effet sur les
-    // échéances déjà programmées plus loin).
-    // Math.max(1, …) : le délai de J0 est 0 (PALIER_DELAYS[0]) — sans ce
-    // plancher, sauter une carte encore au palier 0 (le cas le plus courant,
-    // juste après un import massif) réécrivait nextReview = aujourd'hui,
-    // un no-op silencieux (bug constaté : clic sans effet visible).
-    skipTodaySource: async (sourceId) => {
-      const today = todayISO();
-      const targets = dueOnFor(db, today, { sourceId });
+    // « Sauter » un jour donné pour un cours/une fiche : cible = cartes dues
+    // CE jour précis (dueOnFor(db, dateISO, …), dateISO peut être un jour futur
+    // du calendrier, pas seulement aujourd'hui). Les fait avancer comme une
+    // révision RÉUSSIE (quality 5, « Facile ») — réutilise nextPalier() (même
+    // fonction que Session.jsx/applyReview) pour la transition de palier, ne
+    // recode pas cette logique. Seule différence avec applyReview : nextPalier()
+    // ancre nextReview sur `new Date()` (la vraie date du jour), inadapté ici
+    // puisqu'on doit pouvoir sauter un jour FUTUR du calendrier — on ancre donc
+    // nous-mêmes nextReview/l'entrée d'historique sur dateISO (le jour sauté),
+    // avec le même PALIER_DELAYS. palier avance réellement, historique reçoit
+    // l'entrée comme une vraie révision : c'est voulu (remplace l'ancien
+    // comportement qui ne touchait pas le palier).
+    skipDaySource: async (sourceId, dateISO) => {
+      const targets = dueOnFor(db, dateISO, { sourceId });
       if (!targets.length) return;
       await putBackup('pre-saut-source-' + sourceId + '-' + Date.now(), targets);
-      await putMany('questions', targets.map((q) => ({ ...q, nextReview: addDays(today, Math.max(1, PALIER_DELAYS[q.palier || 0])) })));
+      await putMany('questions', targets.map((q) => {
+        const palier = nextPalier(5, q.palier || 0).palier;
+        return {
+          ...q, palier, interval: PALIER_DELAYS[palier],
+          nextReview: addDays(dateISO, PALIER_DELAYS[palier]),
+          historique: (q.historique || []).concat([{ date: dateISO, qualite: 5 }]),
+          missed: 0,
+        };
+      }));
       await reload();
     },
-    skipTodayFiche: async (ficheId) => {
-      const today = todayISO();
-      const targets = dueOnFor(db, today, { ficheId });
+    skipDayFiche: async (ficheId, dateISO) => {
+      const targets = dueOnFor(db, dateISO, { ficheId });
       if (!targets.length) return;
       await putBackup('pre-saut-fiche-' + ficheId + '-' + Date.now(), targets);
-      await putMany('questions', targets.map((q) => ({ ...q, nextReview: addDays(today, Math.max(1, PALIER_DELAYS[q.palier || 0])) })));
+      await putMany('questions', targets.map((q) => {
+        const palier = nextPalier(5, q.palier || 0).palier;
+        return {
+          ...q, palier, interval: PALIER_DELAYS[palier],
+          nextReview: addDays(dateISO, PALIER_DELAYS[palier]),
+          historique: (q.historique || []).concat([{ date: dateISO, qualite: 5 }]),
+          missed: 0,
+        };
+      }));
       await reload();
     },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },
