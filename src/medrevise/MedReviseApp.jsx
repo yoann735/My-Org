@@ -71,10 +71,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [syncState, setSyncState] = useState({ status: 'idle', at: null });
 
   const reload = useCallback(async () => {
-    const [sources, matieres, fiches, questions, anatstruct, st] = await Promise.all([
-      getAll('sources'), getAll('matieres'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getStats(),
+    const [sources, matieres, fiches, questions, anatstruct, sessionsLog, st] = await Promise.all([
+      getAll('sources'), getAll('matieres'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getStats(),
     ]);
-    setDb({ sources, matieres, fiches, questions, anatstruct });
+    setDb({ sources, matieres, fiches, questions, anatstruct, sessionsLog });
     setStats(st);
   }, []);
 
@@ -397,6 +397,15 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await put('questions', { ...q, missed: 0 }); await reload();
     },
     saveStats: async (s) => { await saveStats(s); setStats(s); },
+    // écran de fin de série (QCM/flashcards, desktop + mobile) : un point par
+    // série TERMINÉE, jamais reconstruit depuis l'historique par carte (qui ne
+    // distingue pas les séries entre elles) — voir lib/storage.js pour le choix
+    // du store. `ficheId` est null pour une série multi-fiches : volontairement
+    // exclue de tout graphique par fiche plutôt que d'en fausser un.
+    logSessionResult: async (rec) => {
+      await put('sessionsLog', { id: genId('sl'), createdAt: new Date().toISOString(), ...rec });
+      await reload();
+    },
   };
 
   if (!db) {

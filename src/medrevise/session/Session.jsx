@@ -6,7 +6,7 @@
    ============================================================ */
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Breadcrumb, matiereMeta, EtiquetteQuickSet } from '../components/ui.jsx';
+import { Breadcrumb, matiereMeta, EtiquetteQuickSet, SessionTrendCard } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { applyReview, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, labelForPalier, todayISO, computeStreak } from '../lib/sm2.js';
 import { effectiveCoef, index } from '../lib/planning.js';
@@ -479,24 +479,38 @@ function Celebration({ items, results, session, ctx }) {
   const colors = ['var(--accent)', 'var(--accent-2)', '#4FA6D9', '#4FB87A', '#E0556B'];
   const confetti = useMemo(() => Array.from({ length: 42 }, (_, i) => ({ left: Math.random() * 100, delay: Math.random() * 0.6, dur: 1.6 + Math.random() * 1.4, bg: colors[i % colors.length], rot: Math.random() * 360 })), []);
 
+  // proposition (non bloquante) de mettre à jour l'étiquette, ET point de la
+  // courbe d'évolution — seulement si la session portait sur UNE SEULE fiche
+  // (sinon ambigu, on ne propose/loggue rien plutôt que de fausser un graphique).
+  const ficheIds = [...new Set(items.map((it) => it.ficheId).filter(Boolean))];
+  const singleFiche = ficheIds.length === 1 ? ctx.db.fiches.find((f) => f.id === ficheIds[0]) : null;
+
   // record TODAY as a real activity day, then recompute the streak from
-  // actual activity (never fictional/pre-filled days).
+  // actual activity (never fictional/pre-filled days) ; loggue aussi le
+  // résultat de cette série (écran de fin — graphique d'évolution, voir
+  // ctx.logSessionResult/SessionTrendCard).
   useEffect(() => {
     const s = ctx.stats || {};
     const today = todayISO();
-    if ((s.activityDays || []).includes(today)) return;
-    const activityDays = [...(s.activityDays || []), today];
-    const streak = computeStreak(activityDays);
-    ctx.saveStats({ ...s, activityDays, streak, best: Math.max(s.best || 0, streak), dernierJourRevise: today });
+    if (!(s.activityDays || []).includes(today)) {
+      const activityDays = [...(s.activityDays || []), today];
+      const streak = computeStreak(activityDays);
+      ctx.saveStats({ ...s, activityDays, streak, best: Math.max(s.best || 0, streak), dernierJourRevise: today });
+    }
+    if (singleFiche) {
+      ctx.logSessionResult({
+        ficheId: singleFiche.id, title: session.title, date: today,
+        total: items.length, good, qcmTotal, qcmGood, flashTotal, flashGood,
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const failedItems = items.filter((it, i) => results[i] && results[i].rating === 'fail');
 
-  // proposition (non bloquante) de mettre à jour l'étiquette — seulement si la
-  // session portait sur UNE SEULE fiche (sinon ambigu, on ne propose rien).
-  const ficheIds = [...new Set(items.map((it) => it.ficheId).filter(Boolean))];
-  const singleFiche = ficheIds.length === 1 ? ctx.db.fiches.find((f) => f.id === ficheIds[0]) : null;
+  const ficheLog = useMemo(() => (singleFiche
+    ? (ctx.db.sessionsLog || []).filter((r) => r.ficheId === singleFiche.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    : null), [ctx.db.sessionsLog, singleFiche]);
 
   return (
     <div className="screen scroll fadein">
@@ -510,6 +524,7 @@ function Celebration({ items, results, session, ctx }) {
           {flashTotal > 0 && <div className="cel-stat"><Icon name="cards" size={16} /> <strong className="tnum">{flashGood}/{flashTotal}</strong> flashcards ✓</div>}
         </div>
         <div className="cel-streak"><Icon name="fire" size={15} fill /> Série : {(ctx.stats && ctx.stats.streak) || 1} jour{((ctx.stats && ctx.stats.streak) || 1) > 1 ? 's' : ''} !</div>
+        {ficheLog && <SessionTrendCard log={ficheLog} />}
         {singleFiche && (
           <div style={{ marginTop: 18, display: 'flex', justifyContent: 'center' }}>
             <EtiquetteQuickSet value={singleFiche.etiquette} onChange={(v) => ctx.setFicheEtiquette(singleFiche.id, v)} />

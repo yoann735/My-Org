@@ -25,13 +25,17 @@ const S = {
   exos: store('exos'),       // bloc-notes (brouillon) persisté par exercice
   docs: store('docs'),       // contenu TipTap des transcripts (clé = ficheId)
   anatstruct: store('anatstruct'), // fiches de structure anatomique (théorie, champs typés)
+  sessionsLog: store('sessionsLog'), // un point par série QCM/flashcard terminée (écran de fin, graphique d'évolution)
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
 // appareil à l'autre (voir data/sync.js). `meta`/`backups` restent locaux (détails
 // d'implémentation d'un appareil donné) ; `blobs` a son propre canal (Storage, pas la
 // table `medrevise_records` — trop gros pour du JSONB), voir putBlob/getBlob plus bas.
-const SYNCABLE = ['sources', 'matieres', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct'];
+// `sessionsLog` est syncable pour la même raison que `questions`/`stats` : la
+// tendance affichée en fin de série doit refléter l'activité desktop ET mobile,
+// pas seulement cet appareil.
+const SYNCABLE = ['sources', 'matieres', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog'];
 
 export function genId(prefix = 'x') {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);

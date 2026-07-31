@@ -220,6 +220,74 @@ export function JLadder({ jIndex, counts }) {
   );
 }
 
+/* ---- graphique d'évolution en fin de série (Celebration desktop / MobileSessionDone) —
+   SVG maison, pas de lib de chart (aucune n'est installée). `points` : déjà triés
+   chronologiquement, [{ date, rate }] (rate 0..1). preserveAspectRatio="none" + une
+   largeur CSS à 100% (voir .strend-svg) : la largeur RÉELLE s'adapte au conteneur
+   (desktop large / mobile étroit), la viewBox ne fixe qu'un ratio de dessin. ---- */
+export function SessionTrendChart({ points, height = 56 }) {
+  if (!points || points.length < 2) return null;
+  const width = 260; // viewBox uniquement — la largeur affichée vient du CSS
+  const n = points.length;
+  const gap = 4;
+  const barW = Math.max(4, (width - gap * (n - 1)) / n);
+  const lastIdx = n - 1;
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="strend-svg">
+      {points.map((p, i) => {
+        const h = Math.max(2, Math.round(p.rate * (height - 4)));
+        const x = i * (barW + gap);
+        const y = height - h;
+        return (
+          <rect key={i} x={x} y={y} width={barW} height={h} rx={2}
+            style={{ fill: i === lastIdx ? 'var(--accent)' : 'var(--border-2)' }}>
+            <title>{p.date} — {Math.round(p.rate * 100)}%</title>
+          </rect>
+        );
+      })}
+    </svg>
+  );
+}
+
+/** carte "Évolution" complète (titre + tendance ↑/↓ + graphique + 2 chiffres clés),
+   réutilisée par Session.jsx (desktop) ET MobileSession.jsx (mobile). `log` : entrées
+   sessionsLog déjà filtrées sur LA fiche de cette série et triées chronologiquement
+   (la plus récente — celle qu'on vient de terminer — en dernier). Honnête si <2
+   points : pas de tendance fabriquée, juste une invitation à revenir. */
+export function SessionTrendCard({ log }) {
+  if (!log || log.length < 2) {
+    return (
+      <div className="cel-trend">
+        <span className="cel-trend-title"><Icon name="clock" size={14} /> Évolution</span>
+        <div className="hint" style={{ marginTop: 8 }}>Reviens après ta prochaine série sur cette fiche pour voir la tendance.</div>
+      </div>
+    );
+  }
+  const points = log.slice(-10).map((r) => ({ date: r.date, rate: r.total ? r.good / r.total : 0 }));
+  const last = points[points.length - 1];
+  const prev = points[points.length - 2];
+  const trend = last.rate > prev.rate ? 'up' : last.rate < prev.rate ? 'down' : 'flat';
+  const best = Math.max(...points.map((p) => p.rate));
+
+  return (
+    <div className="cel-trend">
+      <div className="cel-trend-head">
+        <span className="cel-trend-title"><Icon name="clock" size={14} /> Évolution — {points.length} dernières séries</span>
+        <span className={'cel-trend-arrow ' + trend}>
+          {trend === 'up' && <><Icon name="chevU" size={12} /> mieux qu'avant</>}
+          {trend === 'down' && <><Icon name="chevD" size={12} /> moins bien qu'avant</>}
+          {trend === 'flat' && 'stable'}
+        </span>
+      </div>
+      <SessionTrendChart points={points} />
+      <div className="cel-trend-stats">
+        <span>Meilleure série : <strong className="tnum">{Math.round(best * 100)}%</strong></span>
+        <span>Aujourd'hui : <strong className="tnum">{Math.round(last.rate * 100)}%</strong></span>
+      </div>
+    </div>
+  );
+}
+
 /* ---- breadcrumb ---- */
 export function Breadcrumb({ parts }) {
   return (

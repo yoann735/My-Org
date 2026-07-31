@@ -12,6 +12,7 @@ import { applyReview, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, tod
 import { effectiveCoef, index } from '../lib/planning.js';
 import { Tex } from '../components/Tex.jsx';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
+import { SessionTrendCard } from '../components/ui.jsx';
 
 const isFlash = (t) => t === 'flashcard' || t === 'flash';
 const RATING_QUALITY = { fail: QUALITY.rate, hard: QUALITY.difficile, easy: QUALITY.facile };
@@ -274,16 +275,37 @@ function MobileRateButtons({ onRate }) {
 
 function MobileSessionDone({ items, results, title, ctx, onQuit }) {
   const good = results.filter((r) => r && r.rating !== 'fail').length;
+  const qcmTotal = items.filter((i) => i.type === 'qcm').length;
+  const flashTotal = items.filter((i) => isFlash(i.type)).length;
+  const qcmGood = results.filter((r) => r && r.type === 'qcm' && r.rating !== 'fail').length;
+  const flashGood = results.filter((r) => r && isFlash(r.type) && r.rating !== 'fail').length;
+
+  // même règle que desktop (Session.jsx/Celebration) : une seule fiche → on
+  // loggue le point d'évolution ; plusieurs fiches → rien, plutôt que fausser
+  // un graphique.
+  const ficheIds = [...new Set(items.map((it) => it.ficheId).filter(Boolean))];
+  const singleFicheId = ficheIds.length === 1 ? ficheIds[0] : null;
 
   useEffect(() => {
     const s = ctx.stats || {};
     const today = todayISO();
-    if ((s.activityDays || []).includes(today)) return;
-    const activityDays = [...(s.activityDays || []), today];
-    const streak = computeStreak(activityDays);
-    ctx.saveStats({ ...s, activityDays, streak, best: Math.max(s.best || 0, streak), dernierJourRevise: today });
+    if (!(s.activityDays || []).includes(today)) {
+      const activityDays = [...(s.activityDays || []), today];
+      const streak = computeStreak(activityDays);
+      ctx.saveStats({ ...s, activityDays, streak, best: Math.max(s.best || 0, streak), dernierJourRevise: today });
+    }
+    if (singleFicheId) {
+      ctx.logSessionResult({
+        ficheId: singleFicheId, title, date: today,
+        total: items.length, good, qcmTotal, qcmGood, flashTotal, flashGood,
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const ficheLog = useMemo(() => (singleFicheId
+    ? (ctx.db.sessionsLog || []).filter((r) => r.ficheId === singleFicheId).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    : null), [ctx.db.sessionsLog, singleFicheId]);
 
   return (
     <div className="mrm-app">
@@ -294,6 +316,7 @@ function MobileSessionDone({ items, results, title, ctx, onQuit }) {
         {(ctx.stats && ctx.stats.streak > 0) && (
           <div className="mrm-streak"><Icon name="fire" size={14} fill /> Série : {ctx.stats.streak} jour{ctx.stats.streak > 1 ? 's' : ''}</div>
         )}
+        {ficheLog && <SessionTrendCard log={ficheLog} />}
         <button type="button" className="mrm-primary-btn" style={{ maxWidth: 260, marginTop: 10 }} onClick={onQuit}>
           <Icon name="home" size={17} /> Retour à l'accueil
         </button>
