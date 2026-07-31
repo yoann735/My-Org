@@ -22,7 +22,7 @@ import {
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 import { todayISO } from './lib/sm2.js';
-import { addDays, unstartedQuestionsFor, dueOnFor } from './lib/planning.js';
+import { addDays, unstartedQuestionsFor, dueOnFor, dueFromOn, diffDays } from './lib/planning.js';
 import { useIsMobile } from '../shared/hooks/useMediaQuery.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
 
@@ -314,18 +314,28 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // à J0 après un Raté) se déplace comme les autres. Seul nextReview change ;
     // palier/interval/historique/missed restent intacts. putBackup avant l'écriture
     // en masse, même précaution qu'à l'étape 1.
-    moveSourceDay: async (sourceId, fromDate, toDate) => {
-      const targets = dueOnFor(db, fromDate, { sourceId });
+    // `cascade` (étape 3/3) : variante de la même fonction, pas une réécriture.
+    // Sans cascade : cible = dueOnFor (jour A précis), écrit une date COMMUNE
+    // (toDate) sur toutes les cartes ciblées — inchangé depuis l'étape 2.
+    // Avec cascade : cible = dueFromOn (jour A ET toutes ses échéances futures
+    // déjà programmées), et chaque carte glisse de +N jours (N = diffDays(A,B))
+    // depuis SON PROPRE nextReview — glissement uniforme, écarts entre cartes
+    // préservés, jamais une date commune. Dans les deux cas, seul nextReview
+    // change ; palier/interval/historique/missed intacts.
+    moveSourceDay: async (sourceId, fromDate, toDate, { cascade = false } = {}) => {
+      const targets = cascade ? dueFromOn(db, fromDate, { sourceId }) : dueOnFor(db, fromDate, { sourceId });
       if (!targets.length) return;
       await putBackup('pre-reequilibrage-source-' + sourceId + '-' + Date.now(), targets);
-      await putMany('questions', targets.map((q) => ({ ...q, nextReview: toDate })));
+      const shift = cascade ? diffDays(fromDate, toDate) : null;
+      await putMany('questions', targets.map((q) => ({ ...q, nextReview: cascade ? addDays(q.nextReview, shift) : toDate })));
       await reload();
     },
-    moveFicheDay: async (ficheId, fromDate, toDate) => {
-      const targets = dueOnFor(db, fromDate, { ficheId });
+    moveFicheDay: async (ficheId, fromDate, toDate, { cascade = false } = {}) => {
+      const targets = cascade ? dueFromOn(db, fromDate, { ficheId }) : dueOnFor(db, fromDate, { ficheId });
       if (!targets.length) return;
       await putBackup('pre-reequilibrage-fiche-' + ficheId + '-' + Date.now(), targets);
-      await putMany('questions', targets.map((q) => ({ ...q, nextReview: toDate })));
+      const shift = cascade ? diffDays(fromDate, toDate) : null;
+      await putMany('questions', targets.map((q) => ({ ...q, nextReview: cascade ? addDays(q.nextReview, shift) : toDate })));
       await reload();
     },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },

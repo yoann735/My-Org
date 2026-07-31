@@ -8,7 +8,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled } from '../lib/planning.js';
+import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled, dueFromOn, addDays, diffDays } from '../lib/planning.js';
 import { todayISO } from '../lib/sm2.js';
 import { matiereMeta, syncStatusLabel, DateActionModal } from '../components/ui.jsx';
 
@@ -23,7 +23,8 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
   // "aujourd'hui" (pas de calendrier hebdo mobile) — désengorger la journée
   // qu'on regarde. moveTarget déclenche la même modale date que le desktop ;
   // seul nextReview change (voir ctx.moveSourceDay/moveFicheDay).
-  const [moveTarget, setMoveTarget] = useState(null); // { type: 'source'|'fiche', id, nom, count }
+  const [moveTarget, setMoveTarget] = useState(null); // { type: 'source'|'fiche', id, nom, count, cascadeCount }
+  const [cascadeOn, setCascadeOn] = useState(false);
   const coursToday = useMemo(() => {
     const bySource = {};
     plan.forEach((g) => {
@@ -33,10 +34,20 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
     });
     return Object.values(bySource);
   }, [plan]);
+  // cascade (étape 3/3) : même mécanique que le desktop (voir Dashboard.jsx) —
+  // cascadeCount précalculé au clic sur « Déplacer », pas recalculé à chaque
+  // frappe dans le sélecteur de date.
+  const startMove = (target) => {
+    const cascadeCount = target.type === 'source'
+      ? dueFromOn(db, todayISO(), { sourceId: target.id }).length
+      : dueFromOn(db, todayISO(), { ficheId: target.id }).length;
+    setCascadeOn(false);
+    setMoveTarget({ ...target, cascadeCount });
+  };
   const confirmMove = async (toDate) => {
     if (!moveTarget) return;
-    if (moveTarget.type === 'source') await ctx.moveSourceDay(moveTarget.id, todayISO(), toDate);
-    else await ctx.moveFicheDay(moveTarget.id, todayISO(), toDate);
+    if (moveTarget.type === 'source') await ctx.moveSourceDay(moveTarget.id, todayISO(), toDate, { cascade: cascadeOn });
+    else await ctx.moveFicheDay(moveTarget.id, todayISO(), toDate, { cascade: cascadeOn });
     setMoveTarget(null);
   };
 
@@ -138,7 +149,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
                     <div className="mrm-row-sub">{c.total} carte{c.total > 1 ? 's' : ''} due{c.total > 1 ? 's' : ''}</div>
                   </div>
                   <div className="mrm-row-actions">
-                    <button type="button" className="mrm-chip-btn ghost" onClick={() => setMoveTarget({ type: 'source', id: c.source.id, nom: c.source.nom, count: c.total })}>Déplacer</button>
+                    <button type="button" className="mrm-chip-btn ghost" onClick={() => startMove({ type: 'source', id: c.source.id, nom: c.source.nom, count: c.total })}>Déplacer</button>
                   </div>
                 </div>
               ))}
@@ -166,7 +177,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
                         <button type="button" className="mrm-chip-btn" onClick={() => startFiche(g)}>Réviser</button>
                       )}
                       {g.items.length > 0 && (
-                        <button type="button" className="mrm-chip-btn ghost" onClick={() => setMoveTarget({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>Déplacer</button>
+                        <button type="button" className="mrm-chip-btn ghost" onClick={() => startMove({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>Déplacer</button>
                       )}
                       {extras && extras.exercice.length > 0 && (
                         <button type="button" className="mrm-chip-btn ghost" onClick={() => onStartExercice(extras.exercice, g.fiche.titre)}>Exercices ({extras.exercice.length})</button>
@@ -195,8 +206,16 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
           title={`Déplacer « ${moveTarget.nom} »`}
           label="Nouvelle date"
           confirmLabel="Déplacer"
-          count={moveTarget.count}
-          body={`${moveTarget.count} carte${moveTarget.count > 1 ? 's' : ''} ${moveTarget.count > 1 ? 'seront déplacées' : 'sera déplacée'} vers cette date. Palier, historique et progression restent inchangés — seule la date de réapparition change.`}
+          count={cascadeOn ? moveTarget.cascadeCount : moveTarget.count}
+          minDate={cascadeOn ? addDays(todayISO(), 1) : undefined}
+          cascade={{
+            checked: cascadeOn,
+            onChange: setCascadeOn,
+            label: `Décaler aussi les révisions suivantes de ${moveTarget.type === 'source' ? 'ce cours' : 'cette fiche'} (${moveTarget.cascadeCount} carte${moveTarget.cascadeCount > 1 ? 's' : ''} au total)`,
+          }}
+          body={(date) => cascadeOn
+            ? `${moveTarget.cascadeCount} carte${moveTarget.cascadeCount > 1 ? 's' : ''} (dues aujourd'hui et toutes leurs échéances futures déjà programmées) ${moveTarget.cascadeCount > 1 ? 'seront décalées' : 'sera décalée'} de ${diffDays(todayISO(), date)} jour${diffDays(todayISO(), date) > 1 ? 's' : ''}. Les cartes déjà en retard ne bougent pas. Palier, historique et progression restent inchangés.`
+            : `${moveTarget.count} carte${moveTarget.count > 1 ? 's' : ''} ${moveTarget.count > 1 ? 'seront déplacées' : 'sera déplacée'} vers cette date. Palier, historique et progression restent inchangés — seule la date de réapparition change.`}
           onConfirm={confirmMove}
           onCancel={() => setMoveTarget(null)}
         />

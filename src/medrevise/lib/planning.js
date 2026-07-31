@@ -62,6 +62,13 @@ export function fmtDay(dateISO) {
   return new Date(dateISO + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' });
 }
 export const DOW = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+/** nombre de jours entre deux dates ISO (b - a) — sert au glissement uniforme
+   de la cascade (étape 3/3, voir dueFromOn plus bas). */
+export function diffDays(aISO, bISO) {
+  const a = new Date(aISO + 'T12:00:00');
+  const b = new Date(bISO + 'T12:00:00');
+  return Math.round((b - a) / 86400000);
+}
 
 /* ---- due questions ---- */
 export function scheduledQuestions(db, idx) {
@@ -266,6 +273,27 @@ export function unstartedQuestionsFor(db, { sourceId, ficheId } = {}, idx) {
 export function dueOnFor(db, dateISO, { sourceId, ficheId } = {}, idx) {
   const ix = idx || index(db);
   return dueOn(db, dateISO, ix).filter((q) => {
+    const f = ix.fById[q.ficheId];
+    if (!f) return false;
+    if (ficheId) return f.id === ficheId;
+    if (sourceId) { const m = ix.mById[f.matiereId]; return !!m && m.sourceId === sourceId; }
+    return false;
+  });
+}
+
+/* ---- cascade — Réviser, étape 3/3 : variante ÉLARGIE de dueOnFor. Au lieu
+   de cibler UNIQUEMENT les cartes dues le jour A (dueOnFor), cible aussi
+   toutes leurs échéances FUTURES déjà programmées (nextReview >= dateA) —
+   simple seuil de date, PAS la sémantique calendaire de dueOn (qui traite
+   "aujourd'hui" spécialement pour inclure le retard : ici on veut un seuil
+   brut, les cartes strictement avant dateA restent exclues dans tous les
+   cas). MedReviseApp.jsx applique ensuite un glissement UNIFORME (+N jours,
+   voir diffDays) sur le nextReview de chaque carte ciblée, jamais une date
+   commune — les écarts entre cartes sont préservés. */
+export function dueFromOn(db, dateISO, { sourceId, ficheId } = {}, idx) {
+  const ix = idx || index(db);
+  return scheduledQuestions(db, ix).filter((q) => {
+    if (q.nextReview < dateISO) return false;
     const f = ix.fById[q.ficheId];
     if (!f) return false;
     if (ficheId) return f.id === ficheId;

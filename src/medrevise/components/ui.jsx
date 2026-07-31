@@ -507,23 +507,37 @@ export function ConfirmModal({ title, body, confirmLabel = 'Confirmer', danger, 
 
 /* ---- modale générique « choisir une date puis confirmer » — partagée par le
    décalage du départ J0 (étape 1/3, Reviser.jsx) et le rééquilibrage calendrier
-   (étape 2/3, Dashboard.jsx/MobileHome.jsx) : même geste (tap → date → confirmer),
-   seul le texte/libellé change selon l'appelant. `count` (optionnel) désactive
-   Confirmer à 0 (rien à faire) ; `body` porte le message contextuel (nombre de
-   cartes concernées, ce qui va/ne va pas bouger). Date bornée à aujourd'hui
-   minimum (jamais dans le passé, aux deux étapes). */
-export function DateActionModal({ title, body, label = 'Nouvelle date', confirmLabel = 'Confirmer', count, onConfirm, onCancel }) {
-  const [date, setDate] = useState(todayISO());
+   (étape 2/3 et sa cascade étape 3/3, Dashboard.jsx/MobileHome.jsx) : même geste
+   (tap → date → confirmer), seul le texte/libellé change selon l'appelant.
+   `count` désactive Confirmer à 0 (rien à faire). `body` accepte une chaîne OU
+   une fonction `(date) => texte` — nécessaire pour la cascade, dont le message
+   ("décalées de N jours") dépend de la date choisie DANS la modale (état
+   interne `date`, jamais remonté à l'appelant). `minDate` (par défaut
+   aujourd'hui) peut être relevé par l'appelant (ex. cascade cochée → jour A + 1,
+   pour interdire un décalage négatif) ; si la date déjà choisie tombe sous ce
+   minimum après un changement, elle est remontée automatiquement. `cascade`
+   (optionnel) affiche une case à cocher contrôlée par l'appelant — absente pour
+   l'étape 1 (pas de concept de cascade là-bas), présente pour l'étape 2/3. */
+export function DateActionModal({ title, body, label = 'Nouvelle date', confirmLabel = 'Confirmer', count, minDate, cascade, onConfirm, onCancel }) {
+  const min = minDate || todayISO();
+  const [date, setDate] = useState(min);
+  useEffect(() => { if (date < min) setDate(min); }, [min]);
   return (
     <div className="day-pop-scrim" onClick={onCancel}>
       <div className="day-pop" style={{ width: 'min(420px, 92vw)' }} onClick={(e) => e.stopPropagation()}>
         <div className="day-pop-head"><div className="serif" style={{ fontSize: 19 }}>{title}</div></div>
         <div className="day-pop-body">
-          <div className="hint" style={{ fontSize: 13.5, marginBottom: 12 }}>{body}</div>
+          <div className="hint" style={{ fontSize: 13.5, marginBottom: 12 }}>{typeof body === 'function' ? body(date) : body}</div>
           <div className="imp-field">
             <label>{label}</label>
-            <input type="date" className="imp-title" style={{ maxWidth: 190 }} min={todayISO()} value={date} onChange={(e) => setDate(e.target.value)} />
+            <input type="date" className="imp-title" style={{ maxWidth: 190 }} min={min} value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
+          {cascade && (
+            <label className="row" style={{ marginTop: 12, gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}>
+              <input type="checkbox" checked={cascade.checked} onChange={(e) => cascade.onChange(e.target.checked)} style={{ marginTop: 2 }} />
+              <span className="hint" style={{ fontSize: 13.5 }}>{cascade.label}</span>
+            </label>
+          )}
         </div>
         <div className="day-pop-foot">
           <button className="btn" style={{ flex: 1 }} onClick={onCancel}>Annuler</button>

@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
-import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, dueByCoursOn } from '../lib/planning.js';
+import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, dueByCoursOn, dueFromOn, addDays, diffDays } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
@@ -173,12 +173,23 @@ function DayPopup({ day, ctx, onClose }) {
   // dégonfle et disparaît de la liste dès qu'il n'a plus rien de dû, sans
   // fermer la popup, puisque ce recalcul suit ctx.db à chaque rendu.
   const [reorg, setReorg] = useState(false);
-  const [moveTarget, setMoveTarget] = useState(null); // { type: 'source'|'fiche', id, nom, count }
+  const [moveTarget, setMoveTarget] = useState(null); // { type: 'source'|'fiche', id, nom, count, cascadeCount }
+  const [cascadeOn, setCascadeOn] = useState(false);
   const coursGroups = reorg ? dueByCoursOn(ctx.db, day.date) : [];
+  // cascadeCount précalculé au clic sur « Déplacer » (voir dueFromOn, étape 3/3) —
+  // ne dépend PAS de la date choisie dans la modale, seulement de day.date/du
+  // périmètre, donc pas besoin de le recalculer à chaque frappe dans le sélecteur.
+  const startMove = (target) => {
+    const cascadeCount = target.type === 'source'
+      ? dueFromOn(ctx.db, day.date, { sourceId: target.id }).length
+      : dueFromOn(ctx.db, day.date, { ficheId: target.id }).length;
+    setCascadeOn(false);
+    setMoveTarget({ ...target, cascadeCount });
+  };
   const confirmMove = async (toDate) => {
     if (!moveTarget) return;
-    if (moveTarget.type === 'source') await ctx.moveSourceDay(moveTarget.id, day.date, toDate);
-    else await ctx.moveFicheDay(moveTarget.id, day.date, toDate);
+    if (moveTarget.type === 'source') await ctx.moveSourceDay(moveTarget.id, day.date, toDate, { cascade: cascadeOn });
+    else await ctx.moveFicheDay(moveTarget.id, day.date, toDate, { cascade: cascadeOn });
     setMoveTarget(null);
   };
 
@@ -216,7 +227,7 @@ function DayPopup({ day, ctx, onClose }) {
                       </span>
                       {cg.source ? cg.source.nom : 'Sans cours'} <span className="hint">· {cg.total} carte{cg.total > 1 ? 's' : ''}</span>
                     </div>
-                    <button className="btn ghost sm" onClick={() => setMoveTarget({ type: 'source', id: cg.source.id, nom: cg.source.nom, count: cg.total })} disabled={!cg.source}>
+                    <button className="btn ghost sm" onClick={() => startMove({ type: 'source', id: cg.source.id, nom: cg.source.nom, count: cg.total })} disabled={!cg.source}>
                       <Icon name="arrowR" size={12} /> Déplacer le cours
                     </button>
                   </div>
@@ -227,7 +238,7 @@ function DayPopup({ day, ctx, onClose }) {
                         <div className="dl-title">{g.fiche.titre} <span className="j-tag">{g.jLabel}</span></div>
                         <div className="dl-sub"><span>{g.items.length} carte{g.items.length > 1 ? 's' : ''} · {matiereMeta(g.matiere).label}</span></div>
                       </div>
-                      <button className="btn ghost sm" onClick={() => setMoveTarget({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>
+                      <button className="btn ghost sm" onClick={() => startMove({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>
                         <Icon name="arrowR" size={12} /> Déplacer
                       </button>
                     </div>
@@ -298,8 +309,16 @@ function DayPopup({ day, ctx, onClose }) {
           title={`Déplacer « ${moveTarget.nom} »`}
           label="Nouvelle date"
           confirmLabel="Déplacer"
-          count={moveTarget.count}
-          body={`${moveTarget.count} carte${moveTarget.count > 1 ? 's' : ''} ${moveTarget.count > 1 ? 'seront déplacées' : 'sera déplacée'} vers cette date. Palier, historique et progression restent inchangés — seule la date de réapparition change.`}
+          count={cascadeOn ? moveTarget.cascadeCount : moveTarget.count}
+          minDate={cascadeOn ? addDays(day.date, 1) : undefined}
+          cascade={{
+            checked: cascadeOn,
+            onChange: setCascadeOn,
+            label: `Décaler aussi les révisions suivantes de ${moveTarget.type === 'source' ? 'ce cours' : 'cette fiche'} (${moveTarget.cascadeCount} carte${moveTarget.cascadeCount > 1 ? 's' : ''} au total)`,
+          }}
+          body={(date) => cascadeOn
+            ? `${moveTarget.cascadeCount} carte${moveTarget.cascadeCount > 1 ? 's' : ''} (dues ce jour-là et toutes leurs échéances futures déjà programmées) ${moveTarget.cascadeCount > 1 ? 'seront décalées' : 'sera décalée'} de ${diffDays(day.date, date)} jour${diffDays(day.date, date) > 1 ? 's' : ''}. Les cartes déjà passées avant ce jour ne bougent pas. Palier, historique et progression restent inchangés.`
+            : `${moveTarget.count} carte${moveTarget.count > 1 ? 's' : ''} ${moveTarget.count > 1 ? 'seront déplacées' : 'sera déplacée'} vers cette date. Palier, historique et progression restent inchangés — seule la date de réapparition change.`}
           onConfirm={confirmMove}
           onCancel={() => setMoveTarget(null)}
         />
