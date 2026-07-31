@@ -140,9 +140,9 @@ export async function setStats(s) {
   return rec;
 }
 
-/* ---- helpers de création (avec init méthode des J) ---- */
-export function newQuestion(ficheId, q, dueOffset = 0) {
-  const d = new Date(); d.setDate(d.getDate() + dueOffset);
+/* ---- helpers de création (avec init méthode des J — cadence fixe à
+   paliers, voir lib/sm2.js) ---- */
+export function newQuestion(ficheId, q, startDate = isoDate()) {
   return {
     // conserve les champs supplémentaires (categorie_question, difficulte,
     // categorie_carte, explication_simple, lien_avec_le_cours, pieges_frequents,
@@ -152,26 +152,28 @@ export function newQuestion(ficheId, q, dueOffset = 0) {
     question: q.question || '', choix: q.choix || [], bonneReponse: q.bonneReponse ?? 0, explication: q.explication || '',
     recto: q.recto || '', verso: q.verso || '',
     niveau: q.niveau || null,
-    interval: dueOffset, repetition: 0, efactor: 2.5,
-    nextReview: isoDate(d), historique: [], missed: 0,
+    interval: 0, palier: 0,
+    nextReview: startDate, historique: [], missed: 0,
   };
 }
 
 /* Item v1.0 (schéma unifié) → enregistrement planifiable en base.
    `item` est déjà un item "superset" (v1.0 + champs legacy) produit par
-   toInternalItem(). On lui donne une clé primaire neuve + l'état SM-2 initial.
+   toInternalItem(). On lui donne une clé primaire neuve + l'état palier
+   initial (J0). `startDate` (YYYY-MM-DD, défaut aujourd'hui) : date du
+   premier passage choisie à l'import (voir lib/import.js) — remplace
+   l'ancien décalage en jours (dueOffset), toujours appelé à 0 en pratique.
    (Ne remplace pas newQuestion : les flux legacy passent par toInternalItem
    en amont, ce helper reçoit toujours un item déjà normalisé.) */
-export function newItem(ficheId, item, dueOffset = 0) {
-  const d = new Date(); d.setDate(d.getDate() + dueOffset);
+export function newItem(ficheId, item, startDate = isoDate()) {
   return {
     ...item,
     // clé primaire neuve (évite les collisions entre fiches) ; srcId conserve
     // l'id v1.0 d'origine du JSON → sert au dédoublonnage lors d'un ajout à une
     // fiche existante (mode Rattrapage).
     id: genId('q'), srcId: item.id || null, ficheId, type: item.type,
-    interval: dueOffset, repetition: 0, efactor: 2.5,
-    nextReview: isoDate(d), historique: [], missed: 0,
+    interval: 0, palier: 0,
+    nextReview: startDate, historique: [], missed: 0,
   };
 }
 

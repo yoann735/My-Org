@@ -28,8 +28,9 @@ export function findMatchingFiche(fiches, { matiereId, titre }) {
  * d'items v1.0 DÉJÀ parsé (flux « coller le JSON », Standard ou Rattrapage).
  * La synthèse est stockée sur la fiche (affichée sur l'onglet Feynman).
  */
-export async function createFicheFromQuestions({ matiereId, titre, items, synthese, meta, pdfId, pdfName, htmlId, htmlName }) {
+export async function createFicheFromQuestions({ matiereId, titre, items, synthese, meta, pdfId, pdfName, htmlId, htmlName, startDate }) {
   const ficheId = genId('f');
+  const start = startDate || todayISO();
   const fiche = {
     id: ficheId, matiereId,
     titre: (titre || 'Fiche importée').trim(),
@@ -43,8 +44,10 @@ export async function createFicheFromQuestions({ matiereId, titre, items, synthe
     meta: meta && typeof meta === 'object' ? meta : null,
   };
   await put('fiches', fiche);
+  // startDate = date du palier J0 (méthode des J), choisie à l'import — distincte
+  // de dateImport ci-dessus (horodatage informatif du moment de l'import).
   const qs = (items || [])
-    .map((raw) => toInternalItem(raw, (it) => newItem(ficheId, it, 0)))
+    .map((raw) => toInternalItem(raw, (it) => newItem(ficheId, it, start)))
     .filter(Boolean);
   await putMany('questions', qs);
   return { fiche, count: qs.length, synthese: fiche.synthese };
@@ -57,18 +60,19 @@ export async function createFicheFromQuestions({ matiereId, titre, items, synthe
  * parmi les items de la fiche est ignoré et compté.
  * @returns {{fiche, count, duplicates}} | {ok:false}
  */
-export async function appendItemsToFiche({ ficheId, items }) {
+export async function appendItemsToFiche({ ficheId, items, startDate }) {
   const fiche = await getOne('fiches', ficheId);
   if (!fiche) return { ok: false };
   const all = await getAll('questions');
   const existingSrc = new Set(all.filter((q) => q.ficheId === ficheId).map((q) => q.srcId).filter(Boolean));
+  const start = startDate || todayISO();
 
   let duplicates = 0;
   const fresh = [];
   for (const raw of (items || [])) {
     const srcId = raw && raw.id;
     if (srcId && existingSrc.has(srcId)) { duplicates++; continue; }
-    const rec = toInternalItem(raw, (it) => newItem(ficheId, it, 0));
+    const rec = toInternalItem(raw, (it) => newItem(ficheId, it, start));
     if (!rec) continue;
     fresh.push(rec);
     if (srcId) existingSrc.add(srcId); // évite les doublons intra-collage
@@ -189,8 +193,8 @@ export async function saveAnatSchema({ ficheId, matiereId, titre, sousCategorie,
       dateImport: todayISO(),
       images: cleanImages,
       imageId: first.imageId, imageW: first.imageW, imageH: first.imageH, coches: first.coches,
-      // item planifiable SM-2 (étape C)
-      interval: 0, repetition: 0, efactor: 2.5, nextReview: todayISO(), historique: [], missed: 0,
+      // item planifiable méthode des J (étape C) — cadence fixe, voir lib/sm2.js
+      interval: 0, palier: 0, nextReview: todayISO(), historique: [], missed: 0,
     };
   }
   await put('fiches', fiche);

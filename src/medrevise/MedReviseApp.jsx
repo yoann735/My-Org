@@ -18,11 +18,11 @@ import { PdfReader } from './pdf/PdfReader.jsx';
 import { SchemaEditorScreen } from './documents/SchemaEditorScreen.jsx';
 import {
   getAll, put, putMany, remove, getStats, setStats as saveStats, genId, syncNow,
-  purgeSource, purgeMatiere, purgeFiche,
+  purgeSource, purgeMatiere, purgeFiche, putBackup,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 import { todayISO } from './lib/sm2.js';
-import { addDays } from './lib/planning.js';
+import { addDays, unstartedQuestionsFor } from './lib/planning.js';
 import { useIsMobile } from '../shared/hooks/useMediaQuery.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
 
@@ -286,6 +286,25 @@ export default function MedReviseApp({ themeApi, goHub }) {
         const targets = db.questions.filter((q) => ids.has(q.id));
         await putMany('questions', targets.map((q) => ({ ...q, nextReview: addDays(today, q.interval || 1) })));
       }
+      await reload();
+    },
+    // décalage du départ (J0) — Réviser, étape 1/3. Ne touche QUE les cartes
+    // jamais révisées (unstartedQuestionsFor : palier 0 ET historique vide —
+    // exclut les cartes revenues à J0 après un Raté, qui ONT un historique).
+    // putBackup avant l'écriture en masse (précaution type migration), puis
+    // seul nextReview change ; palier/interval/historique/missed inchangés.
+    shiftSourceStart: async (sourceId, date) => {
+      const targets = unstartedQuestionsFor(db, { sourceId });
+      if (!targets.length) return;
+      await putBackup('pre-decalage-source-' + sourceId + '-' + Date.now(), targets);
+      await putMany('questions', targets.map((q) => ({ ...q, nextReview: date })));
+      await reload();
+    },
+    shiftFicheStart: async (ficheId, date) => {
+      const targets = unstartedQuestionsFor(db, { ficheId });
+      if (!targets.length) return;
+      await putBackup('pre-decalage-fiche-' + ficheId + '-' + Date.now(), targets);
+      await putMany('questions', targets.map((q) => ({ ...q, nextReview: date })));
       await reload();
     },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },

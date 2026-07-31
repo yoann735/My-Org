@@ -5,10 +5,10 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
+import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, ShiftStartModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
 import {
-  index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, missedQuestions, topConcepts, todayPlan, overdueByFiche,
-  qcmConseilleFor, pickQcmSubset,
+  index, effectiveCoef, ficheJ, ficheJDistribution, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, missedQuestions, topConcepts, todayPlan, overdueByFiche,
+  qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor,
 } from '../lib/planning.js';
 import { shuffle } from '../lib/sm2.js';
 import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
@@ -27,6 +27,7 @@ export function Reviser({ ctx }) {
   const [ctxMenu, setCtxMenu] = useState(null); // { type: 'source'|'matiere', id, x, y }
   const [confirmDel, setConfirmDel] = useState(null); // { type, id, nom, fichesCount }
   const [showAddItem, setShowAddItem] = useState(false);
+  const [shiftStart, setShiftStart] = useState(null); // { type: 'source'|'fiche', id, nom }
 
   const dueIdsToday = useMemo(() => new Set(dueToday(db, ix).map((q) => q.id)), [db, ix]);
   const dueSchemaIds = useMemo(() => new Set(dueSchemasToday(db, ix).map((f) => f.id)), [db, ix]);
@@ -157,6 +158,21 @@ export function Reviser({ ctx }) {
     else if (confirmDel.type === 'exercice') await ctx.deleteQuestion(confirmDel.id);
     else if (confirmDel.type === 'exercices-all') await ctx.deleteAllExercices(confirmDel.id);
     setConfirmDel(null);
+  };
+
+  // décalage du départ (J0) — étape 1/3 : cours (source) ou fiche, cartes
+  // jamais révisées uniquement (voir planning.js unstartedQuestionsFor).
+  const askShiftSource = (id) => { const s = db.sources.find((x) => x.id === id); if (s) setShiftStart({ type: 'source', id, nom: s.nom }); };
+  const askShiftFiche = (id) => { const f = db.fiches.find((x) => x.id === id); if (f) setShiftStart({ type: 'fiche', id, nom: f.titre }); };
+  const shiftStartCount = useMemo(() => {
+    if (!shiftStart) return 0;
+    return unstartedQuestionsFor(db, shiftStart.type === 'source' ? { sourceId: shiftStart.id } : { ficheId: shiftStart.id }, ix).length;
+  }, [shiftStart, db, ix]);
+  const confirmShiftStart = async (date) => {
+    if (!shiftStart) return;
+    if (shiftStart.type === 'source') await ctx.shiftSourceStart(shiftStart.id, date);
+    else await ctx.shiftFicheStart(shiftStart.id, date);
+    setShiftStart(null);
   };
 
   // BUG4 : drag & drop des fiches vers une autre matière/cours, ici aussi via @dnd-kit.
@@ -317,7 +333,7 @@ export function Reviser({ ctx }) {
                     : dueSel.length > 0
                       ? <div className="jc-title"><span className="jc-today-badge">Aujourd'hui</span> {dueSel.length} carte{dueSel.length > 1 ? 's' : ''} à réviser</div>
                       : <div className="jc-title">Rien dû aujourd'hui pour cette sélection.</div>}
-                  {!multi && jp && jp.jIndex >= 0 && <JLadder jIndex={jp.jIndex} />}
+                  {!multi && jp && jp.jIndex >= 0 && <JLadder jIndex={jp.jIndex} counts={ficheJDistribution(db, primary.id, ix)} />}
                 </div>
                 {!multi && primary && primary.pdfId && (
                   <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={viewCoursPdf} title="Ouvrir le PDF source en lecture seule">
@@ -464,6 +480,12 @@ export function Reviser({ ctx }) {
               onClick: () => f && ctx.setFicheRappelsJ(f.id, !on),
             }];
           })() : []),
+          // décalage du départ (J0) — cours ou fiche entière, cartes jamais
+          // révisées uniquement (étape 1/3, voir planning.js unstartedQuestionsFor).
+          ...(ctxMenu.type === 'source' || ctxMenu.type === 'fiche' ? [{
+            label: 'Décaler le départ…', icon: 'calendar',
+            onClick: () => (ctxMenu.type === 'source' ? askShiftSource(ctxMenu.id) : askShiftFiche(ctxMenu.id)),
+          }] : []),
           {
             label: 'Supprimer', icon: 'trash', danger: true, onClick: () => {
               if (ctxMenu.type === 'source') askDeleteSource(ctxMenu.id);
@@ -476,6 +498,15 @@ export function Reviser({ ctx }) {
 
       {showAddItem && primary && (
         <AddItemModal ctx={ctx} ficheId={primary.id} ficheTitre={primary.titre} onClose={() => setShowAddItem(false)} />
+      )}
+
+      {shiftStart && (
+        <ShiftStartModal
+          title={`Décaler le départ — « ${shiftStart.nom} »`}
+          count={shiftStartCount}
+          onConfirm={confirmShiftStart}
+          onCancel={() => setShiftStart(null)}
+        />
       )}
 
       {confirmDel && (

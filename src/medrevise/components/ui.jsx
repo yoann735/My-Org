@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Icon } from '../../shared/Icon.jsx';
-import { J_INTERVALS } from '../lib/sm2.js';
+import { PALIER_LABELS, todayISO } from '../lib/sm2.js';
 
 const FALLBACK_TINT = '#7C6FE0';
 
@@ -191,15 +191,28 @@ export function CatBadge({ matiere }) {
 }
 
 /* ---- méthode des J ladder ---- */
-export function JLadder({ jIndex }) {
+/** `counts` (optionnel, lib/planning.js ficheJDistribution) : répartition des
+   cartes de la fiche par palier — rend visible qu'une notation a fait avancer
+   UNE carte même quand `jIndex` (dérivé de la carte la MOINS avancée) ne
+   bouge pas encore. Omis pour les fiches à un seul item planifiable
+   (anat_schema) où une répartition n'a pas de sens. */
+export function JLadder({ jIndex, counts }) {
   return (
     <div className="jladder">
-      {J_INTERVALS.map((j, i) => {
+      {PALIER_LABELS.map((label, i) => {
         const cls = i < jIndex ? ' past' : i === jIndex ? ' current' : ' future';
+        const c = counts && counts[i];
         return (
-          <span className="jl-wrap" key={j} style={{ display: 'contents' }}>
+          <span className="jl-wrap" key={label} style={{ display: 'contents' }}>
             {i > 0 && <span className={'jl-link' + (i <= jIndex ? ' done' : '')} />}
-            <span className={'jl-step' + cls}>J+{j}{i === jIndex && <em>auj.</em>}</span>
+            <span className={'jl-step' + cls}>
+              {label}{i === jIndex && <em>auj.</em>}
+              {c != null && c.count > 0 && (
+                <span style={{ opacity: 0.85 }}>
+                  · {c.count}{c.dueToday > 0 && <span style={{ marginLeft: 2 }}>●</span>}
+                </span>
+              )}
+            </span>
           </span>
         );
       })}
@@ -492,6 +505,37 @@ export function ConfirmModal({ title, body, confirmLabel = 'Confirmer', danger, 
   );
 }
 
+/* ---- décalage du départ (J0), niveau cours ou fiche (Réviser, étape 1/3) ----
+   `count` = nombre de cartes jamais révisées concernées (voir planning.js
+   unstartedQuestionsFor/isUnstarted) — informatif, ne bloque pas la saisie
+   mais désactive Confirmer si 0 (rien à décaler). Date bornée à aujourd'hui
+   minimum (pas de décalage dans le passé). */
+export function ShiftStartModal({ title, count, onConfirm, onCancel }) {
+  const [date, setDate] = useState(todayISO());
+  return (
+    <div className="day-pop-scrim" onClick={onCancel}>
+      <div className="day-pop" style={{ width: 'min(420px, 92vw)' }} onClick={(e) => e.stopPropagation()}>
+        <div className="day-pop-head"><div className="serif" style={{ fontSize: 19 }}>{title}</div></div>
+        <div className="day-pop-body">
+          <div className="hint" style={{ fontSize: 13.5, marginBottom: 12 }}>
+            {count > 0
+              ? `${count} carte${count > 1 ? 's' : ''} jamais révisée${count > 1 ? 's' : ''} ${count > 1 ? 'seront décalées' : 'sera décalée'} à cette date. Les cartes déjà entamées ne sont pas touchées.`
+              : "Aucune carte jamais révisée ici — rien à décaler."}
+          </div>
+          <div className="imp-field">
+            <label>Nouvelle date de départ (J0)</label>
+            <input type="date" className="imp-title" style={{ maxWidth: 190 }} min={todayISO()} value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+        </div>
+        <div className="day-pop-foot">
+          <button className="btn" style={{ flex: 1 }} onClick={onCancel}>Annuler</button>
+          <button className="btn primary" style={{ flex: 1 }} disabled={!count} onClick={() => onConfirm(date)}>Décaler</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ============================================================
    Drag & drop des fiches (BUG4/BUG5), sur @dnd-kit/core.
    Choix délibéré : PAS de @dnd-kit/sortable — sa réanimation automatique
@@ -674,7 +718,7 @@ export function CourseDocField({ file, onFile, label = 'Document du cours (PDF o
 export function CoefControl({ value, inherited, onSet, onReset }) {
   const set = (v) => onSet(Math.max(1, Math.min(5, v)));
   return (
-    <div className={'coefctl' + (inherited ? ' inherited' : '')} onClick={(e) => e.stopPropagation()} title="Priorité de révision (coefficient)">
+    <div className={'coefctl' + (inherited ? ' inherited' : '')} onClick={(e) => e.stopPropagation()} title="Poids dans le carnet d'erreurs (coefficient) — la cadence des J est désormais fixe, quel que soit le coef">
       <span className="cc-label">coef</span>
       <button className="cc-btn" type="button" onClick={() => set(value - 1)} disabled={value <= 1} aria-label="Diminuer"><Icon name="minus" size={12} stroke={2.6} /></button>
       <span className="cc-val tnum">{value}</span>

@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta, EtiquetteQuickSet } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
-import { applyReview, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, jStepForInterval, todayISO, computeStreak } from '../lib/sm2.js';
+import { applyReview, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, labelForPalier, todayISO, computeStreak } from '../lib/sm2.js';
 import { effectiveCoef, index } from '../lib/planning.js';
 import { blobURL } from '../lib/storage.js';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
@@ -32,7 +32,7 @@ export function Session({ ctx }) {
     const enriched = src.map((it) => {
       const f = ix.fById[it.ficheId];
       const m = f && ix.mById[f.matiereId];
-      return { ...it, _fiche: f, _matiere: m, _coef: effectiveCoef(ctx.db, f, ix), _j: jStepForInterval(it.interval).jLabel };
+      return { ...it, _fiche: f, _matiere: m, _coef: effectiveCoef(ctx.db, f, ix), _j: labelForPalier(it.palier).jLabel };
     });
     const order = [];
     const seen = [];

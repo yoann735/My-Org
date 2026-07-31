@@ -3,7 +3,7 @@
    échéances par question (nextReview), pas un hash. Fonctions PURES
    sur un snapshot { sources, matieres, fiches, questions }.
    ============================================================ */
-import { jStepForInterval, todayISO, isoDate, J_INTERVALS } from './sm2.js';
+import { labelForPalier, todayISO, isoDate, PALIER_DELAYS, PALIER_LABELS } from './sm2.js';
 
 const SCHEDULED_TYPES = new Set(['qcm', 'flashcard']);
 // exercices : HORS méthode des J (comme le Feynman). Ils ne sont plus programmés,
@@ -117,36 +117,38 @@ export function overdueByFiche(db, idx) {
 
 /* ============================================================
    PROJECTION des J futurs (calendrier — lecture seule). Pour une fiche,
-   calcule ses prochaines occurrences sur l'échelle J (J_INTERVALS =
-   [1,3,7,14,30]) à partir de son échéance EFFECTIVE actuelle :
+   calcule ses prochaines occurrences sur l'échelle des paliers fixes
+   (PALIER_DELAYS = [0,3,7,14,30]) à partir de son échéance EFFECTIVE
+   actuelle :
    - point de départ = nextReview si pas en retard, sinon aujourd'hui +
      interval (même recalage que dismissOverdue — jamais la date manquée) ;
-   - puis les rangs suivants de l'échelle, en jours ajoutés à ce point de
-     départ (delta entre rangs, pas un enchaînement de vraies révisions).
-   RECALCULÉ à chaque appel depuis l'état réel (repetition/interval/
-   nextReview) — ne stocke ni ne modifie RIEN, ne touche pas sm2()/
-   applyReview. Si la fiche est révisée entre-temps, la projection suivante
-   reflète naturellement le nouvel état. ============================== */
+   - puis les paliers suivants, en jours ajoutés à ce point de départ (delta
+     entre paliers — EXACT désormais, la cadence étant fixe, pas une simple
+     approximation par bucket).
+   RECALCULÉ à chaque appel depuis l'état réel (palier/nextReview) — ne
+   stocke ni ne modifie RIEN, ne touche pas applyReview. Si la fiche est
+   révisée entre-temps, la projection suivante reflète naturellement le
+   nouvel état. ============================== */
 export function ficheProjection(db, fiche, idx) {
   const ix = idx || index(db);
   const today = todayISO();
-  let interval, nextReview;
+  let palier, nextReview;
   if (fiche.type === 'anat_schema') {
-    interval = fiche.interval || 0;
+    palier = fiche.palier || 0;
     nextReview = fiche.nextReview || today;
   } else {
     const qs = (db.questions || []).filter((q) => q.ficheId === fiche.id && J_TYPES.has(q.type));
     if (!qs.length) return [];
     const soonest = qs.reduce((a, b) => (a.nextReview <= b.nextReview ? a : b));
-    interval = soonest.interval || 0;
+    palier = soonest.palier || 0;
     nextReview = soonest.nextReview;
   }
+  const interval = PALIER_DELAYS[palier];
   const anchorDate = nextReview < today ? addDays(today, interval || 1) : nextReview;
-  const startIdx = Math.max(jStepForInterval(interval).jIndex, 0);
   const out = [];
-  for (let k = startIdx; k < J_INTERVALS.length; k++) {
-    const days = k === startIdx ? 0 : (J_INTERVALS[k] - J_INTERVALS[startIdx]);
-    out.push({ date: addDays(anchorDate, days), jIndex: k, jLabel: 'J+' + J_INTERVALS[k] });
+  for (let k = palier; k < PALIER_DELAYS.length; k++) {
+    const days = k === palier ? 0 : (PALIER_DELAYS[k] - PALIER_DELAYS[palier]);
+    out.push({ date: addDays(anchorDate, days), jIndex: k, jLabel: PALIER_LABELS[k] });
   }
   return out;
 }
@@ -202,11 +204,55 @@ export function dueSchemasToday(db, idx) { return dueSchemasOn(db, todayISO(), i
 export function ficheJ(db, ficheId, idx) {
   const ix = idx || index(db);
   const f = ix.fById[ficheId];
-  if (f && f.type === 'anat_schema') return jStepForInterval(f.interval || 0);
+  if (f && f.type === 'anat_schema') return labelForPalier(f.palier);
   const qs = (db.questions || []).filter((q) => q.ficheId === ficheId && J_TYPES.has(q.type));
   if (!qs.length) return { jIndex: -1, jLabel: '—' };
   const soonest = qs.reduce((a, b) => (a.nextReview <= b.nextReview ? a : b));
-  return jStepForInterval(soonest.interval);
+  return labelForPalier(soonest.palier);
+}
+
+/** répartition des cartes théorie (qcm/flashcard) d'une fiche PAR PALIER —
+   alimente la frise détaillée (Reviser.jsx, JLadder) : rend visible qu'une
+   notation a fait avancer UNE carte même quand ficheJ() (dérivé de la carte
+   la MOINS avancée) ne bouge pas encore. Non pertinent pour anat_schema
+   (un seul item planifiable par fiche, pas de répartition à montrer). */
+export function ficheJDistribution(db, ficheId, idx) {
+  const ix = idx || index(db);
+  const today = todayISO();
+  const qs = (db.questions || []).filter((q) => q.ficheId === ficheId && J_TYPES.has(q.type));
+  return PALIER_LABELS.map((jLabel, i) => {
+    const atThisPalier = qs.filter((q) => (q.palier || 0) === i);
+    return {
+      jIndex: i, jLabel,
+      count: atThisPalier.length,
+      dueToday: atThisPalier.filter((q) => q.nextReview <= today).length,
+    };
+  });
+}
+
+/* ---- décalage du départ (J0) — Réviser, étape 1/3 (mécanique cadence
+   fixe/nextReview, voir sm2.js). Ne cible QUE les cartes JAMAIS révisées :
+   une carte revenue à J0 après un Raté (nextPalier) a aussi palier===0 mais
+   PORTE UN historique — ce n'est pas "jamais révisée", décaler sa date
+   écraserait un cycle déjà en cours. isUnstarted() distingue donc les deux
+   par historique vide, pas par palier seul. ---- */
+export function isUnstarted(q) {
+  return (q.palier || 0) === 0 && (!q.historique || q.historique.length === 0);
+}
+/** cartes qcm/flashcard jamais révisées d'un cours ({sourceId}) ou d'une
+   seule fiche ({ficheId}) — alimente à la fois le compteur de confirmation
+   et la cible de la mutation (décalage de J0), pour ne pas dupliquer le
+   filtre entre les deux. */
+export function unstartedQuestionsFor(db, { sourceId, ficheId } = {}, idx) {
+  const ix = idx || index(db);
+  return (db.questions || []).filter((q) => {
+    if (!SCHEDULED_TYPES.has(q.type) || !isUnstarted(q)) return false;
+    const f = ix.fById[q.ficheId];
+    if (!f) return false;
+    if (ficheId) return f.id === ficheId;
+    if (sourceId) { const m = ix.mById[f.matiereId]; return !!m && m.sourceId === sourceId; }
+    return false;
+  });
 }
 
 /** regroupe une liste de questions par fiche, avec compteurs + J + coef */

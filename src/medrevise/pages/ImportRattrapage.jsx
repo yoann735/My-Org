@@ -14,6 +14,7 @@ import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../compone
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
+import { isoDate } from '../lib/sm2.js';
 
 const SUBJECTS = [
   { id: 'Biologie', label: 'Biologie', icon: 'lungs' },
@@ -43,6 +44,7 @@ export function ImportRattrapage({ ctx }) {
   const [busy, setBusy] = useState(false);
   const [doc, setDoc] = useState(null); // document du cours (optionnel, PDF OU HTML) à rattacher
   const [forceNew, setForceNew] = useState(false); // override : créer quand même une nouvelle fiche malgré le titre identique
+  const [startDate, setStartDate] = useState(isoDate()); // date du palier J0 (méthode des J), modifiable à l'aperçu
 
   // fiches candidates pour l'ajout (fiches v1.0 "standard", non archivées)
   const srcById = useMemo(() => Object.fromEntries(db.sources.map((s) => [s.id, s])), [db.sources]);
@@ -91,7 +93,7 @@ export function ImportRattrapage({ ctx }) {
 
   const reset = () => {
     setJsonText(''); setParseError(null); setPreview(null); setState('edit'); setResult(null);
-    setDoc(null); setForceNew(false);
+    setDoc(null); setForceNew(false); setStartDate(isoDate());
   };
 
   const doPreview = () => {
@@ -143,7 +145,7 @@ export function ImportRattrapage({ ctx }) {
     }
     let res;
     if (effAppend) {
-      const r = await appendItemsToFiche({ ficheId: effFicheId, items: preview.res.items });
+      const r = await appendItemsToFiche({ ficheId: effFicheId, items: preview.res.items, startDate });
       if (pdfId) await ctx.setFichePdf(effFicheId, pdfId, pdfName);
       if (htmlId) await ctx.setFicheHtml(effFicheId, htmlId, htmlName);
       res = { fiche: r.fiche, count: r.count, duplicates: r.duplicates, appended: true };
@@ -151,7 +153,7 @@ export function ImportRattrapage({ ctx }) {
       const r = await createFicheFromQuestions({
         matiereId: matId, titre: title, items: preview.res.items,
         synthese: preview.res.synthese, meta: { ...preview.res.meta, matiere },
-        pdfId, pdfName, htmlId, htmlName,
+        pdfId, pdfName, htmlId, htmlName, startDate,
       });
       res = { fiche: r.fiche, count: r.count, duplicates: 0, appended: false };
     }
@@ -209,6 +211,7 @@ export function ImportRattrapage({ ctx }) {
           preview.duplicates > 0 && { text: `${preview.duplicates} doublon${preview.duplicates > 1 ? 's' : ''} ignoré${preview.duplicates > 1 ? 's' : ''} (déjà dans la fiche)`, icon: 'alert', accent: true },
         ]}
         warnings={preview.warnings}
+        startDate={startDate} onStartDateChange={setStartDate}
         onBack={() => setState('edit')} onConfirm={confirmImport} busy={busy} />
     );
   }

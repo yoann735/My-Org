@@ -9,6 +9,7 @@
 import { getAll, putMany, getMeta, setMeta, putBackup, remove } from './storage.js';
 import { toInternalItem } from './adapter.js';
 import { pullAllRecords, pushTombstonesNow } from '../data/sync.js';
+import { palierFromInterval, PALIER_DELAYS } from './sm2.js';
 
 const MIGRATIONS_KEY = 'migrations';
 const MIG_V1 = 'items-v1.0';
@@ -16,6 +17,7 @@ const MIG_DOCS = 'documents-v2';
 const MIG_ANAT_IMG = 'anat-images-v1';
 const MIG_ORPHANS = 'orphan-cleanup-v1';
 const MIG_DEMO_ZOMBIES = 'demo-zombies-cleanup-v1';
+const MIG_CADENCE_FIXE = 'cadence-fixe-v1';
 
 // IDs fixes du seed de démo (lib/storage.js:194-203) — voir docs/audit-sync-mobile.md §3.1 :
 // une course de réensemencement historique (déjà corrigée via canSeed) a pu faire gagner
@@ -248,6 +250,54 @@ export async function migrateDemoZombiesCleanup() {
   };
 }
 
+/**
+ * Cadence FIXE "méthode des J" (remplace le moteur SM-2 adaptatif — voir
+ * docs/diag-repetition-espacee.md). NON DESTRUCTIVE : sauvegarde intégrale
+ * avant conversion. Convertit chaque question ET chaque fiche `anat_schema`
+ * qui porte encore un ancien `repetition`/`efactor` vers le nouveau champ
+ * unique `palier` (0..4) :
+ *   - `palier` = bucket du `interval` existant immédiatement INFÉRIEUR
+ *     (palierFromInterval, lib/sm2.js) — conservateur, jamais arrondi
+ *     au-dessus des performances déjà démontrées. Les cartes à l'ancien
+ *     plafond de 90 j (les mieux sues) sont ramenées à J+30 (nouveau plafond).
+ *   - `nextReview` N'EST PAS modifié : les échéances déjà en cours (dues, en
+ *     retard, ou futures) sont honorées telles quelles — seule la PROCHAINE
+ *     notation suivra la nouvelle cadence fixe. Le rééquilibrage global du
+ *     planning est un chantier séparé, volontairement pas fait ici.
+ *   - `repetition`/`efactor` sont retirés (n'existent plus dans le moteur).
+ * Idempotente : marqueur + plus aucun enregistrement `repetition`/`efactor`
+ * à trouver dès la 2e passe.
+ */
+export async function migrateCadenceFixeV1() {
+  const applied = await appliedList();
+  if (applied.includes(MIG_CADENCE_FIXE)) return { ran: false };
+
+  const [questions, fiches] = await Promise.all([getAll('questions'), getAll('fiches')]);
+  const legacyQuestions = (questions || []).filter((q) => q && ('repetition' in q || 'efactor' in q));
+  const legacySchemas = (fiches || []).filter((f) => f && f.type === 'anat_schema' && ('repetition' in f || 'efactor' in f));
+
+  if (!legacyQuestions.length && !legacySchemas.length) {
+    await setMeta(MIGRATIONS_KEY, [...applied, MIG_CADENCE_FIXE]);
+    return { ran: true, migratedQuestions: 0, migratedSchemas: 0 };
+  }
+
+  await putBackup('pre-' + MIG_CADENCE_FIXE, { questions: legacyQuestions, schemas: legacySchemas });
+
+  const convert = (rec) => {
+    const { repetition, efactor, ...rest } = rec;
+    const palier = palierFromInterval(rec.interval || 0);
+    return { ...rest, palier, interval: PALIER_DELAYS[palier] };
+  };
+  const outQuestions = legacyQuestions.map(convert);
+  const outSchemas = legacySchemas.map(convert);
+
+  if (outQuestions.length) await putMany('questions', outQuestions);
+  if (outSchemas.length) await putMany('fiches', outSchemas);
+
+  await setMeta(MIGRATIONS_KEY, [...applied, MIG_CADENCE_FIXE]);
+  return { ran: true, migratedQuestions: outQuestions.length, migratedSchemas: outSchemas.length };
+}
+
 /** point d'entrée bootstrap : applique toutes les migrations en attente */
 export async function runMigrations() {
   const items = await migrateItemsToV1();
@@ -255,5 +305,6 @@ export async function runMigrations() {
   const anatImages = await migrateAnatImagesV1();
   const orphans = await migrateOrphanCleanupV1();
   const demoZombies = await migrateDemoZombiesCleanup();
-  return { items, documents, anatImages, orphans, demoZombies };
+  const cadenceFixe = await migrateCadenceFixeV1();
+  return { items, documents, anatImages, orphans, demoZombies, cadenceFixe };
 }

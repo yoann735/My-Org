@@ -26,7 +26,7 @@ export function ImportJsonField({ label, placeholder, value, onChange, error }) 
 /* ---- carte « aperçu avant import » : compteurs + destination + lignes
    d'info spécifiques au mode (PDF joint, doublons, synthèse…) + avertissements
    non bloquants (Rattrapage) ---- */
-export function ImportPreviewCard({ counts, destLabel, infoLines = [], warnings = [], onBack, onConfirm, busy }) {
+export function ImportPreviewCard({ counts, destLabel, infoLines = [], warnings = [], startDate, onStartDateChange, onBack, onConfirm, busy }) {
   const total = counts.qcm + counts.flashcard + counts.feynman + counts.exercice;
   return (
     <div className="fadein imp-dest">
@@ -48,6 +48,13 @@ export function ImportPreviewCard({ counts, destLabel, infoLines = [], warnings 
           )}
         </div>
       </div>
+      {onStartDateChange && (
+        <div className="imp-field" style={{ marginBottom: 14 }}>
+          <label>Premier passage (J0)</label>
+          <input type="date" className="imp-title" style={{ maxWidth: 190 }} value={startDate} onChange={(e) => onStartDateChange(e.target.value)} />
+          <div className="hint" style={{ marginTop: 4 }}>Par défaut aujourd'hui — change-la pour démarrer ce paquet plus tard.</div>
+        </div>
+      )}
       {warnings.map((w, i) => (
         <div className="err-mini" key={i} style={{ marginBottom: 10 }}>
           <div className="em-ic crit"><Icon name="alert" size={16} /></div>

@@ -16,7 +16,7 @@ import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta } from '../components/ui.jsx';
 import { index, effectiveCoef } from '../lib/planning.js';
-import { applyReview, qualityFromRatio, todayISO, computeStreak, jStepForInterval } from '../lib/sm2.js';
+import { applyReview, qualityFromRatio, todayISO, computeStreak, labelForPalier } from '../lib/sm2.js';
 import { matchAnat } from '../lib/anatMatch.js';
 import { champsFor } from '../lib/anatParse.js';
 import { ZonesLayer, VueAideToggle } from '../pages/ImportAnatomieVisuel.jsx';
@@ -197,7 +197,7 @@ export function AnatQuiz({ ctx }) {
       await ctx.saveStats({ ...s, activityDays, streak, best: Math.max(s.best || 0, streak), dernierJourRevise: today });
     }
     setFinalScore({
-      correct: combinedCorrect, total: totalCount, jLabel: jStepForInterval(updated.interval).jLabel,
+      correct: combinedCorrect, total: totalCount, jLabel: labelForPalier(updated.palier).jLabel,
       visual: correctCount, visualTotal: maskedIds.length,
       theory: theoryCorrect, theoryTotal: theoryQuestions.length,
     });

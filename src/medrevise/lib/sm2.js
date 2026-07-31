@@ -1,12 +1,14 @@
 /* ============================================================
-   MedRevise — méthode des J : SM-2 + modulation par coefficient
-   + plafond 90 j (rien n'est jamais oublié). Implémente le handoff §3.
-   Une carte (qcm/flashcard) porte: interval, repetition, efactor,
-   nextReview (YYYY-MM-DD), historique[].
+   MedRevise — méthode des J : cadence FIXE à 5 paliers (remplace l'ancien
+   moteur SM-2 adaptatif — voir docs/diag-repetition-espacee.md). Une carte
+   (qcm/flashcard) porte : palier (0..4), interval (dérivé, = délai du
+   palier courant, gardé pour compat des lectures existantes), nextReview
+   (YYYY-MM-DD), historique[]. Le coef n'intervient plus dans ce calcul
+   (voir lib/planning.js effectiveCoef — gardé pour le carnet d'erreurs
+   uniquement).
    ============================================================ */
-export const PLAFOND_JOURS = 90;
-export const COEF_MULT = { 5: 0.6, 4: 0.8, 3: 1.0, 2: 1.2, 1: 1.4 };
-export const J_INTERVALS = [1, 3, 7, 14, 30]; // cycle initial affiché (frise)
+export const PALIER_DELAYS = [0, 3, 7, 14, 30];
+export const PALIER_LABELS = ['J0', 'J+3', 'J+7', 'J+14', 'J+30'];
 
 // notation 3 boutons → qualité SM-2
 export const QUALITY = { facile: 5, difficile: 3, rate: 1 };
@@ -86,50 +88,38 @@ export function todayISO() {
 }
 
 /**
- * SM-2 modulé par coefficient, plafonné à 90 j.
- * @returns { interval, repetition, efactor, nextReview }
+ * Cadence fixe "méthode des J" : Raté → repart à J0 · Difficile → reste au
+ * palier courant (même délai qu'à l'arrivée) · Facile → avance d'un palier,
+ * plafonne à J+30 (dernier palier : "régime de croisière", revient tous les
+ * 30 j tant que c'est facile). nextReview est toujours ancré sur la date
+ * RÉELLE de cette révision (jamais une addition depuis une échéance passée).
+ * @returns { palier, interval, nextReview }
  */
-export function sm2(quality, repetition, previousInterval, previousEfactor, coef = 3) {
-  let interval, newRepetition, efactor;
+export function nextPalier(quality, palier) {
+  const current = palier || 0;
+  let newPalier;
+  if (quality >= 5) newPalier = Math.min(current + 1, PALIER_DELAYS.length - 1); // facile → avance
+  else if (quality >= 3) newPalier = current;                                     // difficile → reste
+  else newPalier = 0;                                                             // raté → repart à J0
 
-  if (quality >= 3) {
-    if (repetition === 0) interval = 1;
-    else if (repetition === 1) interval = 6;
-    else interval = Math.round(previousInterval * previousEfactor);
-    newRepetition = repetition + 1;
-  } else {
-    newRepetition = 0;
-    interval = 1;
-  }
-
-  efactor = previousEfactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
-  if (efactor < 1.3) efactor = 1.3;
-
-  // modulation par coefficient + plafond absolu
-  interval = Math.round(interval * (COEF_MULT[coef] ?? 1.0));
-  if (interval < 1) interval = 1;
-  if (interval > PLAFOND_JOURS) interval = PLAFOND_JOURS;
-
+  const interval = PALIER_DELAYS[newPalier];
   const nextReview = new Date();
   nextReview.setDate(nextReview.getDate() + interval);
-  return { interval, repetition: newRepetition, efactor, nextReview: isoDate(nextReview) };
+  return { palier: newPalier, interval, nextReview: isoDate(nextReview) };
 }
 
-/** applique une réponse à une question et renvoie la question mise à jour */
+/** applique une réponse à une question et renvoie la question mise à jour.
+   `coef` est accepté (signature stable pour tous les appelants existants :
+   Session.jsx, MobileSession.jsx, Exercice.jsx, AnatQuiz.jsx…) mais n'entre
+   plus dans le calcul du délai — voir lib/planning.js effectiveCoef pour son
+   seul usage restant (pondération du carnet d'erreurs). */
 export function applyReview(question, quality, coef = 3) {
-  const res = sm2(
-    quality,
-    question.repetition || 0,
-    question.interval || 0,
-    question.efactor || 2.5,
-    coef,
-  );
+  const res = nextPalier(quality, question.palier || 0);
   const historique = (question.historique || []).concat([{ date: todayISO(), qualite: quality }]);
   return {
     ...question,
+    palier: res.palier,
     interval: res.interval,
-    repetition: res.repetition,
-    efactor: res.efactor,
     nextReview: res.nextReview,
     historique,
     // carnet d'erreurs : un échec l'y ajoute, une réussite l'en retire aussitôt
@@ -151,12 +141,22 @@ export function computeStreak(activityDays) {
   return streak;
 }
 
-/** étape de la frise J+1→J+30 la plus proche d'un interval courant (pour le badge "J") */
-export function jStepForInterval(interval) {
-  if (!interval || interval <= 0) return { jIndex: -1, jLabel: 'Nouveau' };
-  let jIndex = 0;
-  for (let i = 0; i < J_INTERVALS.length; i++) {
-    if (interval >= J_INTERVALS[i]) jIndex = i;
+/** libellé EXACT d'un palier (0..4) — badge "J", frise. `palier` est toujours
+   défini dès qu'une carte/fiche existe (voir lib/storage.js) ; le repli
+   'Nouveau' ne sert qu'aux enregistrements pas encore migrés. */
+export function labelForPalier(palier) {
+  if (palier == null || palier < 0) return { jIndex: -1, jLabel: 'Nouveau' };
+  const jIndex = Math.min(palier, PALIER_LABELS.length - 1);
+  return { jIndex, jLabel: PALIER_LABELS[jIndex] };
+}
+
+/** bucketing d'un ANCIEN interval (ex-moteur SM-2 adaptatif) vers le palier
+   fixe immédiatement INFÉRIEUR. Usage UNIQUE : migration (lib/migrate.js)
+   pour convertir les cartes existantes — jamais appelé par le moteur courant. */
+export function palierFromInterval(interval) {
+  let palier = 0;
+  for (let i = 0; i < PALIER_DELAYS.length; i++) {
+    if (interval >= PALIER_DELAYS[i]) palier = i;
   }
-  return { jIndex, jLabel: 'J+' + J_INTERVALS[Math.min(jIndex, J_INTERVALS.length - 1)] };
+  return palier;
 }

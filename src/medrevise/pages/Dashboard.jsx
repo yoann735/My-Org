@@ -258,10 +258,11 @@ function ImportPanel({ ctx }) {
   const [parsed, setParsed] = useState(null); // { questions, synthese, counts }
   const [pasteDoc, setPasteDoc] = useState(null); // document du cours (optionnel, PDF OU HTML) rattaché à la fiche créée
   const [forceNew, setForceNew] = useState(false); // override : créer quand même une nouvelle fiche malgré le titre identique
+  const [startDate, setStartDate] = useState(isoDate()); // date du palier J0 (méthode des J), modifiable à l'aperçu
 
   const reset = () => {
     setState('form'); setTitle(''); setResult(null);
-    setJsonText(''); setParseError(null); setParsed(null); setPasteDoc(null); setForceNew(false);
+    setJsonText(''); setParseError(null); setParsed(null); setPasteDoc(null); setForceNew(false); setStartDate(isoDate());
   };
 
   const srcLabel = (db.sources.find((s) => s.id === srcId) || {}).nom || '—';
@@ -304,14 +305,14 @@ function ImportPanel({ ctx }) {
     }
     let res;
     if (willAppend) {
-      const r = await appendItemsToFiche({ ficheId: matchedFiche.id, items: parsed.items });
+      const r = await appendItemsToFiche({ ficheId: matchedFiche.id, items: parsed.items, startDate });
       if (pdfId) await ctx.setFichePdf(matchedFiche.id, pdfId, pdfName);
       if (htmlId) await ctx.setFicheHtml(matchedFiche.id, htmlId, htmlName);
       res = { fiche: r.fiche, count: r.count, duplicates: r.duplicates, appended: true };
     } else {
       const r = await createFicheFromQuestions({
         matiereId: matId, titre: title, items: parsed.items, synthese: parsed.synthese, meta: parsed.meta,
-        pdfId, pdfName, htmlId, htmlName,
+        pdfId, pdfName, htmlId, htmlName, startDate,
       });
       res = { fiche: r.fiche, count: r.count, duplicates: 0, appended: false };
     }
@@ -398,6 +399,7 @@ function ImportPanel({ ctx }) {
             { text: pasteDoc ? <>{detectDocKind(pasteDoc) === 'html' ? 'Fiche HTML jointe' : 'PDF du cours joint'} : {pasteDoc.name} ✓</> : 'Aucun document du cours joint.' },
             willAppend && previewDuplicates > 0 && { text: `${previewDuplicates} doublon${previewDuplicates > 1 ? 's' : ''} ignoré${previewDuplicates > 1 ? 's' : ''} (déjà dans la fiche)`, icon: 'alert', accent: true },
           ]}
+          startDate={startDate} onStartDateChange={setStartDate}
           onBack={() => setState('form')} onConfirm={confirmImport} busy={busy} />
       )}
 
