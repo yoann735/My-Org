@@ -21,10 +21,22 @@ export function MobileSession({ ctx, onQuit }) {
   const session = ctx.session || { items: [], title: 'Révision' };
   const ix = useMemo(() => index(ctx.db), [ctx.db]);
 
+  // ordre aléatoire par id, tiré UNE SEULE FOIS au lancement (clé = session) —
+  // pas dans le useMemo `items` : celui-ci dépend de ctx.db, qui change à
+  // chaque carte notée (saveQuestion → reload), un shuffle() posé là
+  // rebattrait l'ordre en plein milieu de la série (voir même fix, desktop
+  // Session.jsx).
+  const shuffleRank = useMemo(() => {
+    const m = new Map();
+    shuffle(session.items || []).forEach((it, i) => m.set(it.id, i));
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
   const items = useMemo(() => (session.items || []).filter((it) => it.type === 'qcm' || isFlash(it.type)).map((it) => {
     const f = ix.fById[it.ficheId];
     return { ...it, _fiche: f, _coef: effectiveCoef(ctx.db, f, ix) };
-  }), [session, ctx.db, ix]);
+  }).sort((a, b) => (shuffleRank.get(a.id) ?? 0) - (shuffleRank.get(b.id) ?? 0)), [session, ctx.db, ix, shuffleRank]);
 
   const [idx, setIdx] = useState(0);
   const [results, setResults] = useState([]);

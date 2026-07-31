@@ -26,7 +26,21 @@ export function Session({ ctx }) {
   const session = ctx.session || { items: [], title: 'Révision' };
   const ix = useMemo(() => index(ctx.db), [ctx.db]);
 
-  // enrich + order: grouped by matière, QCM then flashcards
+  // ordre aléatoire par id, tiré UNE SEULE FOIS au lancement (clé = session,
+  // stable toute la durée de la série) — PAS dans le useMemo `items` ci-dessous :
+  // celui-ci dépend de ctx.db, qui change à CHAQUE carte notée (saveQuestion →
+  // reload), donc un shuffle() posé là rebattrait l'ordre en plein milieu de la
+  // série au lieu d'une fois par lancement.
+  const shuffleRank = useMemo(() => {
+    const m = new Map();
+    shuffle(session.items || []).forEach((it, i) => m.set(it.id, i));
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
+  // enrich + order: grouped by matière, QCM puis flashcards, mélangés DANS
+  // chaque groupe (méthode des J : QCM avant flashcards reste voulu, seul
+  // l'ordre à l'intérieur de chaque bloc est randomisé).
   const items = useMemo(() => {
     const src = (session.items || []).filter((it) => it.type === 'qcm' || isFlash(it.type));
     const enriched = src.map((it) => {
@@ -34,15 +48,16 @@ export function Session({ ctx }) {
       const m = f && ix.mById[f.matiereId];
       return { ...it, _fiche: f, _matiere: m, _coef: effectiveCoef(ctx.db, f, ix), _j: labelForPalier(it.palier).jLabel };
     });
+    const byRank = (a, b) => (shuffleRank.get(a.id) ?? 0) - (shuffleRank.get(b.id) ?? 0);
     const order = [];
     const seen = [];
     enriched.forEach((it) => { const k = it._matiere ? it._matiere.id : '?'; if (!seen.includes(k)) seen.push(k); });
     seen.forEach((mid) => {
       const inCat = enriched.filter((i) => (i._matiere ? i._matiere.id : '?') === mid);
-      order.push(...inCat.filter((i) => i.type === 'qcm'), ...inCat.filter((i) => isFlash(i.type)));
+      order.push(...inCat.filter((i) => i.type === 'qcm').sort(byRank), ...inCat.filter((i) => isFlash(i.type)).sort(byRank));
     });
     return order.length ? order : enriched;
-  }, [session, ctx.db, ix]);
+  }, [session, ctx.db, ix, shuffleRank]);
 
   const [idx, setIdx] = useState(0);
   const [anim, setAnim] = useState('in');
