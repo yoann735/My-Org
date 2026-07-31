@@ -131,7 +131,10 @@ export function Reviser({ ctx }) {
   };
   const launchToday = () => dueSel.length && ctx.startSession(dueSel, title + " — Aujourd'hui");
   // pratique : un clic ouvre UN exercice précis (choix libre, pas de série imposée).
-  const openExo = (item) => ctx.startExercice([item], title);
+  // BUG : envoyer un tableau à UN item désactivait Précédent/Suivant en permanence
+  // dans l'écran Exercice (isFirst/isLast toujours vrais) — on passe la série
+  // complète de la sélection courante, positionnée sur l'exercice cliqué.
+  const openExo = (item) => ctx.startExercice(exoItems, title, { startId: item.id });
   const isRen = (type, id) => renaming && renaming.type === type && renaming.id === id;
   const startRename = (type, id, current) => { setDraft(current); setRenaming({ type, id }); };
   const commitRename = () => {

@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { applyReview, qualityForExercice, todayISO, computeStreak } from '../lib/sm2.js';
-import { checkNumerique } from '../lib/correction.js';
+import { checkNumerique, parseScientificValue } from '../lib/correction.js';
 import { evalExpr } from '../lib/calc.js';
 import { effectiveCoef, index } from '../lib/planning.js';
 import { getExoNote, setExoNote } from '../lib/storage.js';
@@ -136,14 +136,38 @@ function Workstation({ item, coef, ctx, isLast, onNext, onDone }) {
   );
 }
 
+// clavier scientifique du champ Valeur — identique au desktop (session/Exercice.jsx) :
+// insère du texte déjà valide pour evalExpr, rien de nouveau à parser.
+const SCI_KEYS = [
+  { label: '^', insert: '^', title: 'Exposant (ex. 2^3)' },
+  { label: '×10ⁿ', insert: '*10^', title: 'Notation scientifique (ex. 3*10^-3)' },
+  { label: '√', insert: 'sqrt(', title: 'Racine carrée' },
+  { label: 'π', insert: 'pi', title: 'Pi' },
+  { label: '±', insert: '-', title: 'Signe moins (ex. exposant négatif)' },
+];
+
 function NumericAnswer({ item, validated, onValidate }) {
   const r = item.reponse || {};
   const [val, setVal] = useState('');
   const [unit, setUnit] = useState(r.unite || '');
   const [res, setRes] = useState(null);
+  const valRef = useRef(null);
+
+  const insertAtCursor = (text) => {
+    const el = valRef.current;
+    const start = el ? (el.selectionStart ?? val.length) : val.length;
+    const end = el ? (el.selectionEnd ?? val.length) : val.length;
+    const next = val.slice(0, start) + text + val.slice(end);
+    setVal(next);
+    const pos = start + text.length;
+    requestAnimationFrame(() => { if (el) { el.focus(); el.setSelectionRange(pos, pos); } });
+  };
+
+  const preview = val.trim() ? parseScientificValue(val) : null;
+  const previewInvalid = !!val.trim() && preview == null;
 
   const submit = () => {
-    const check = checkNumerique(`${val} ${unit}`.trim(), r);
+    const check = checkNumerique(val, unit, r);
     setRes(check);
     onValidate(check.ok);
   };
@@ -151,8 +175,21 @@ function NumericAnswer({ item, validated, onValidate }) {
   return (
     <div className="mrm-field">
       <label>Ta réponse{r.unite ? ` (${r.unite})` : ''}</label>
-      <input className="mrm-input" inputMode="decimal" value={val} disabled={validated}
-        onChange={(e) => setVal(e.target.value)} placeholder="ex : 2.02" />
+      {!validated && (
+        <div className="row" style={{ gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+          {SCI_KEYS.map((k) => (
+            <button key={k.label} type="button" className="mrm-btn" style={{ flex: '0 1 auto', minHeight: 40, padding: '0 14px', fontFamily: 'ui-monospace, monospace' }}
+              title={k.title} onClick={() => insertAtCursor(k.insert)}>{k.label}</button>
+          ))}
+        </div>
+      )}
+      <input ref={valRef} className="mrm-input" inputMode="text" value={val} disabled={validated}
+        onChange={(e) => setVal(e.target.value)} placeholder="ex : 2.02 ou 3*10^-3" />
+      {!validated && val.trim() && (
+        <div className="hint" style={{ marginTop: 4, fontSize: 12, color: previewInvalid ? 'var(--crit)' : undefined }}>
+          {previewInvalid ? 'Expression invalide' : `≈ ${preview}`}
+        </div>
+      )}
       {!validated && (
         <button type="button" className="mrm-primary-btn" disabled={!val.trim()} onClick={submit}>Valider</button>
       )}

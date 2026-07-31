@@ -124,7 +124,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
     },
     startFeynman: (payload) => { setFeynman(payload); setScreen('feynman'); },
     // page Exercice (poste de travail) : une liste d'exercices parcourue un par un.
-    startExercice: (items, title) => { setExercice({ items: items || [], title: title || 'Exercices' }); setScreen('exercice'); },
+    // startId (optionnel) : positionne la série sur l'exercice cliqué (ExerciceCards,
+    // Réviser) au lieu de toujours redémarrer à l'index 0 — Précédent/Suivant
+    // parcourent alors la série complète, pas un item isolé.
+    startExercice: (items, title, opts = {}) => { setExercice({ items: items || [], title: title || 'Exercices', startId: opts.startId || null }); setScreen('exercice'); },
     // quiz d'anatomie visuelle (fiche anat_schema) : écran dédié.
     startAnatQuiz: (fiche, opts = {}) => {
       setAnatQuiz({ fiche, mode: opts.mode || 'total', proportion: opts.proportion ?? 0.5, theory: !!opts.theory });

@@ -17,17 +17,31 @@ import { Breadcrumb, EdTop, matiereMeta, EtiquetteQuickSet } from '../components
 import { Tex } from '../components/Tex.jsx';
 import { index, effectiveCoef } from '../lib/planning.js';
 import { applyReview, qualityForExercice, todayISO, computeStreak } from '../lib/sm2.js';
-import { checkNumerique } from '../lib/correction.js';
+import { checkNumerique, parseScientificValue } from '../lib/correction.js';
 import { evalExpr } from '../lib/calc.js';
 import { getExoNote, setExoNote } from '../lib/storage.js';
 
 const DIFF = { 1: 'Facile', 2: 'Intermédiaire', 3: 'Difficile' };
 
+// clavier scientifique du champ Valeur (NumericAnswer) : insère du texte déjà
+// valide pour evalExpr (lib/calc.js) — mêmes tokens que la calculatrice intégrée
+// de cet écran (sqrt(/pi), rien de nouveau à parser.
+const SCI_KEYS = [
+  { label: '^', insert: '^', title: 'Exposant (ex. 2^3)' },
+  { label: '×10ⁿ', insert: '*10^', title: 'Notation scientifique (ex. 3*10^-3)' },
+  { label: '√', insert: 'sqrt(', title: 'Racine carrée' },
+  { label: 'π', insert: 'pi', title: 'Pi' },
+  { label: '±', insert: '-', title: 'Signe moins (ex. pour un exposant négatif)' },
+];
+
 export function Exercice({ ctx }) {
   const payload = ctx.exercice || { items: [], title: 'Exercices' };
   const items = (payload.items || []).filter((it) => it.type === 'exercice');
   const ix = useMemo(() => index(ctx.db), [ctx.db]);
-  const [idx, setIdx] = useState(0);
+  // démarre sur l'exercice cliqué (payload.startId, voir ctx.startExercice) plutôt
+  // que toujours à l'index 0 — sans ça, cliquer le 3e exercice d'une fiche rouvrait
+  // le 1er de la série.
+  const [idx, setIdx] = useState(() => { const i = items.findIndex((it) => it.id === payload.startId); return i >= 0 ? i : 0; });
 
   if (!items.length) {
     return (
@@ -305,9 +319,28 @@ function NumericAnswer({ item, validated, onValidate }) {
   const units = [r.unite, ...(r.unites_acceptees || [])].filter(Boolean);
   const uniqUnits = [...new Set(units)];
   const [res, setRes] = useState(null);
+  const valRef = useRef(null);
+
+  // clavier scientifique : insère au curseur (pas juste en fin de champ) — sans
+  // ref, ou hors focus, on retombe simplement sur un append en fin de saisie.
+  const insertAtCursor = (text) => {
+    const el = valRef.current;
+    const start = el ? (el.selectionStart ?? val.length) : val.length;
+    const end = el ? (el.selectionEnd ?? val.length) : val.length;
+    const next = val.slice(0, start) + text + val.slice(end);
+    setVal(next);
+    const pos = start + text.length;
+    requestAnimationFrame(() => { if (el) { el.focus(); el.setSelectionRange(pos, pos); } });
+  };
+
+  // aperçu live (texte, pas KaTeX) : confirme que la saisie se parse avant de
+  // valider — une expression cassée (parenthèse manquante…) est signalée ici
+  // plutôt que découverte après coup comme une simple mauvaise réponse.
+  const preview = val.trim() ? parseScientificValue(val) : null;
+  const previewInvalid = !!val.trim() && preview == null;
 
   const submit = () => {
-    const check = checkNumerique(`${val} ${unit}`.trim(), r);
+    const check = checkNumerique(val, unit, r);
     setRes(check);
     onValidate(check.ok);
   };
@@ -315,12 +348,25 @@ function NumericAnswer({ item, validated, onValidate }) {
   return (
     <div className="card"><div className="card-body">
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Ta réponse</div>
+      {!validated && (
+        <div className="row" style={{ gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+          {SCI_KEYS.map((k) => (
+            <button key={k.label} type="button" className="btn ghost sm" style={{ fontFamily: 'ui-monospace, monospace' }}
+              title={k.title} onClick={() => insertAtCursor(k.insert)}>{k.label}</button>
+          ))}
+        </div>
+      )}
       <div className="row" style={{ gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 140px' }}>
           <label className="hint" style={{ display: 'block', marginBottom: 4 }}>Valeur</label>
-          <input className="imp-title" value={val} onChange={(e) => setVal(e.target.value)} disabled={validated}
-            placeholder="ex : 2.02" inputMode="decimal" style={{ width: '100%', fontFamily: 'ui-monospace, monospace' }}
+          <input ref={valRef} className="imp-title" value={val} onChange={(e) => setVal(e.target.value)} disabled={validated}
+            placeholder="ex : 2.02 ou 3*10^-3" inputMode="text" style={{ width: '100%', fontFamily: 'ui-monospace, monospace' }}
             onKeyDown={(e) => { if (e.key === 'Enter' && !validated && val.trim()) submit(); }} />
+          {!validated && val.trim() && (
+            <div className="hint" style={{ marginTop: 4, fontSize: 12, color: previewInvalid ? 'var(--accent-2)' : 'var(--text-3)' }}>
+              {previewInvalid ? 'Expression invalide' : `≈ ${preview}`}
+            </div>
+          )}
         </div>
         <div style={{ flex: '0 1 140px' }}>
           <label className="hint" style={{ display: 'block', marginBottom: 4 }}>Unité</label>

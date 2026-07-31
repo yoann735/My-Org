@@ -5,6 +5,7 @@
    on teste valeur_min <= saisie <= valeur_max, et on valide l'unité si elle
    est fournie et figure dans unites_acceptees.
    ============================================================ */
+import { evalExpr } from './calc.js';
 
 /**
  * Sépare une saisie « 1 234,5 m/s » en nombre + unité et normalise le nombre.
@@ -16,7 +17,7 @@ export function parseNumericInput(raw) {
   let s = String(raw == null ? '' : raw).trim();
   if (!s) return { value: null, unit: '', raw: s };
   // retire espaces (normaux + insécables) = séparateurs de milliers éventuels
-  s = s.replace(/[\s  ]/g, '');
+  s = s.replace(/[\s  ]/g, '');
   // sépare la partie numérique (début) de l'unité (reste)
   const m = s.match(/^([+-]?[\d.,]+(?:[eE][+-]?\d+)?)(.*)$/);
   if (!m) return { value: null, unit: s, raw };
@@ -29,16 +30,40 @@ export function parseNumericInput(raw) {
   return { value: Number.isFinite(value) ? value : null, unit, raw };
 }
 
-const normU = (u) => String(u || '').toLowerCase().replace(/[\s ]/g, '');
+const normU = (u) => String(u || '').toLowerCase().replace(/[\s ]/g, '');
+
+/**
+ * Convertit une saisie du champ "Valeur" en nombre reel. Reutilise le meme
+ * evaluateur que la calculatrice integree (evalExpr, lib/calc.js) : accepte
+ * donc un nombre simple ("0.003") ou une expression scientifique tapee via
+ * le clavier scientifique ("3*10^-3", "sqrt(9)", "pi/2"...). Une saisie
+ * ambigue ou syntaxiquement invalide (parenthese non fermee, caractere
+ * inconnu...) leve dans evalExpr -> renvoie null ici, JAMAIS une valeur
+ * devinee : le champ est alors traite comme vide/faux par checkNumerique.
+ * @returns {number|null}
+ */
+export function parseScientificValue(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s) return null;
+  try {
+    const v = evalExpr(s);
+    return Number.isFinite(v) ? v : null;
+  } catch (e) {
+    return null;
+  }
+}
 
 /**
  * Corrige une saisie contre reponse{valeur_min, valeur_max, unites_acceptees, unite}.
+ * valRaw/unitRaw : champs Valeur/Unite deja separes cote UI (NumericAnswer) —
+ * pas de re-decoupage d'une chaine combinee, la valeur passe par parseScientificValue.
  * @returns {{ok:boolean, value:number|null, inRange:boolean, unitProvided:boolean,
  *            unitOk:boolean, empty:boolean}}
  */
-export function checkNumerique(input, reponse) {
+export function checkNumerique(valRaw, unitRaw, reponse) {
   const r = reponse || {};
-  const { value, unit } = parseNumericInput(input);
+  const value = parseScientificValue(valRaw);
+  const unit = String(unitRaw || '').trim();
   const empty = value == null;
   const min = Number(r.valeur_min);
   const max = Number(r.valeur_max);
