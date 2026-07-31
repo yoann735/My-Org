@@ -4,7 +4,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal } from '../components/ui.jsx';
+import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, dueByCoursOn, dueFromOn, addDays, diffDays } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
@@ -192,6 +192,16 @@ function DayPopup({ day, ctx, onClose }) {
     else await ctx.moveFicheDay(moveTarget.id, day.date, toDate, { cascade: cascadeOn });
     setMoveTarget(null);
   };
+  // « Sauter aujourd'hui » : uniquement pertinent depuis la popup du jour
+  // COURANT (day.isToday) — la cible (dueOnFor(db, aujourd'hui, ...)) porte
+  // toujours sur aujourd'hui, jamais sur day.date d'un jour futur affiché.
+  const [skipTarget, setSkipTarget] = useState(null); // { type, id, nom, count }
+  const confirmSkip = async () => {
+    if (!skipTarget) return;
+    if (skipTarget.type === 'source') await ctx.skipTodaySource(skipTarget.id);
+    else await ctx.skipTodayFiche(skipTarget.id);
+    setSkipTarget(null);
+  };
 
   return (
     <div className="day-pop-scrim" onClick={onClose}>
@@ -227,9 +237,16 @@ function DayPopup({ day, ctx, onClose }) {
                       </span>
                       {cg.source ? cg.source.nom : 'Sans cours'} <span className="hint">· {cg.total} carte{cg.total > 1 ? 's' : ''}</span>
                     </div>
-                    <button className="btn ghost sm" onClick={() => startMove({ type: 'source', id: cg.source.id, nom: cg.source.nom, count: cg.total })} disabled={!cg.source}>
-                      <Icon name="arrowR" size={12} /> Déplacer le cours
-                    </button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {day.isToday && (
+                        <button className="btn ghost sm" onClick={() => setSkipTarget({ type: 'source', id: cg.source.id, nom: cg.source.nom, count: cg.total })} disabled={!cg.source}>
+                          <Icon name="clock" size={12} /> Sauter aujourd'hui
+                        </button>
+                      )}
+                      <button className="btn ghost sm" onClick={() => startMove({ type: 'source', id: cg.source.id, nom: cg.source.nom, count: cg.total })} disabled={!cg.source}>
+                        <Icon name="arrowR" size={12} /> Déplacer le cours
+                      </button>
+                    </div>
                   </div>
                   {cg.fiches.map((g) => (
                     <div className="day-line" key={g.fiche.id}>
@@ -238,9 +255,16 @@ function DayPopup({ day, ctx, onClose }) {
                         <div className="dl-title">{g.fiche.titre} <span className="j-tag">{g.jLabel}</span></div>
                         <div className="dl-sub"><span>{g.items.length} carte{g.items.length > 1 ? 's' : ''} · {matiereMeta(g.matiere).label}</span></div>
                       </div>
-                      <button className="btn ghost sm" onClick={() => startMove({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>
-                        <Icon name="arrowR" size={12} /> Déplacer
-                      </button>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {day.isToday && (
+                          <button className="btn ghost sm" onClick={() => setSkipTarget({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>
+                            <Icon name="clock" size={12} /> Sauter
+                          </button>
+                        )}
+                        <button className="btn ghost sm" onClick={() => startMove({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>
+                          <Icon name="arrowR" size={12} /> Déplacer
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -321,6 +345,15 @@ function DayPopup({ day, ctx, onClose }) {
             : `${moveTarget.count} carte${moveTarget.count > 1 ? 's' : ''} ${moveTarget.count > 1 ? 'seront déplacées' : 'sera déplacée'} vers cette date. Palier, historique et progression restent inchangés — seule la date de réapparition change.`}
           onConfirm={confirmMove}
           onCancel={() => setMoveTarget(null)}
+        />
+      )}
+      {skipTarget && (
+        <ConfirmModal
+          title={`Sauter aujourd'hui — « ${skipTarget.nom} »`}
+          body={`${skipTarget.count} carte${skipTarget.count > 1 ? 's' : ''} ${skipTarget.count > 1 ? 'seront repoussées à leur' : 'sera repoussée à sa'} prochaine échéance (comme si révisées sans être notées). Palier, historique et progression restent inchangés.`}
+          confirmLabel="Sauter"
+          onConfirm={confirmSkip}
+          onCancel={() => setSkipTarget(null)}
         />
       )}
     </div>

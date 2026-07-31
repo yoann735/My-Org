@@ -10,7 +10,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled, dueFromOn, addDays, diffDays } from '../lib/planning.js';
 import { todayISO } from '../lib/sm2.js';
-import { matiereMeta, syncStatusLabel, DateActionModal } from '../components/ui.jsx';
+import { matiereMeta, syncStatusLabel, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 
 export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman }) {
   const { db } = ctx;
@@ -49,6 +49,16 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
     if (moveTarget.type === 'source') await ctx.moveSourceDay(moveTarget.id, todayISO(), toDate, { cascade: cascadeOn });
     else await ctx.moveFicheDay(moveTarget.id, todayISO(), toDate, { cascade: cascadeOn });
     setMoveTarget(null);
+  };
+  // « Sauter aujourd'hui » — source toujours aujourd'hui côté mobile, pas de
+  // condition isToday à gérer (contrairement au desktop qui peut afficher un
+  // jour futur).
+  const [skipTarget, setSkipTarget] = useState(null); // { type, id, nom, count }
+  const confirmSkip = async () => {
+    if (!skipTarget) return;
+    if (skipTarget.type === 'source') await ctx.skipTodaySource(skipTarget.id);
+    else await ctx.skipTodayFiche(skipTarget.id);
+    setSkipTarget(null);
   };
 
   const startAll = () => due.length && onStartSession(due, "Série du jour");
@@ -149,6 +159,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
                     <div className="mrm-row-sub">{c.total} carte{c.total > 1 ? 's' : ''} due{c.total > 1 ? 's' : ''}</div>
                   </div>
                   <div className="mrm-row-actions">
+                    <button type="button" className="mrm-chip-btn ghost" onClick={() => setSkipTarget({ type: 'source', id: c.source.id, nom: c.source.nom, count: c.total })}>Sauter aujourd'hui</button>
                     <button type="button" className="mrm-chip-btn ghost" onClick={() => startMove({ type: 'source', id: c.source.id, nom: c.source.nom, count: c.total })}>Déplacer</button>
                   </div>
                 </div>
@@ -175,6 +186,9 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
                     <div className="mrm-row-actions">
                       {g.items.length > 0 && (
                         <button type="button" className="mrm-chip-btn" onClick={() => startFiche(g)}>Réviser</button>
+                      )}
+                      {g.items.length > 0 && (
+                        <button type="button" className="mrm-chip-btn ghost" onClick={() => setSkipTarget({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>Sauter</button>
                       )}
                       {g.items.length > 0 && (
                         <button type="button" className="mrm-chip-btn ghost" onClick={() => startMove({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>Déplacer</button>
@@ -218,6 +232,16 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
             : `${moveTarget.count} carte${moveTarget.count > 1 ? 's' : ''} ${moveTarget.count > 1 ? 'seront déplacées' : 'sera déplacée'} vers cette date. Palier, historique et progression restent inchangés — seule la date de réapparition change.`}
           onConfirm={confirmMove}
           onCancel={() => setMoveTarget(null)}
+        />
+      )}
+
+      {skipTarget && (
+        <ConfirmModal
+          title={`Sauter aujourd'hui — « ${skipTarget.nom} »`}
+          body={`${skipTarget.count} carte${skipTarget.count > 1 ? 's' : ''} ${skipTarget.count > 1 ? 'seront repoussées à leur' : 'sera repoussée à sa'} prochaine échéance (comme si révisées sans être notées). Palier, historique et progression restent inchangés.`}
+          confirmLabel="Sauter"
+          onConfirm={confirmSkip}
+          onCancel={() => setSkipTarget(null)}
         />
       )}
 

@@ -21,7 +21,7 @@ import {
   purgeSource, purgeMatiere, purgeFiche, putBackup,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
-import { todayISO } from './lib/sm2.js';
+import { todayISO, PALIER_DELAYS } from './lib/sm2.js';
 import { addDays, unstartedQuestionsFor, dueOnFor, dueFromOn, diffDays } from './lib/planning.js';
 import { useIsMobile } from '../shared/hooks/useMediaQuery.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
@@ -336,6 +336,29 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await putBackup('pre-reequilibrage-fiche-' + ficheId + '-' + Date.now(), targets);
       const shift = cascade ? diffDays(fromDate, toDate) : null;
       await putMany('questions', targets.map((q) => ({ ...q, nextReview: cascade ? addDays(q.nextReview, shift) : toDate })));
+      await reload();
+    },
+    // « Sauter aujourd'hui » : variante de moveSourceDay/moveFicheDay pour les
+    // cartes dues AUJOURD'HUI (dueOnFor) d'un cours/fiche — les repousse à leur
+    // PROCHAINE échéance normale (aujourd'hui + délai du palier COURANT), comme
+    // si révisées sans être notées. AUCUN changement de palier/interval/
+    // historique/missed (pas de note = pas de progression), et aucune autre
+    // carte n'est touchée (contrairement à la cascade, pas d'effet sur les
+    // échéances déjà programmées plus loin).
+    skipTodaySource: async (sourceId) => {
+      const today = todayISO();
+      const targets = dueOnFor(db, today, { sourceId });
+      if (!targets.length) return;
+      await putBackup('pre-saut-source-' + sourceId + '-' + Date.now(), targets);
+      await putMany('questions', targets.map((q) => ({ ...q, nextReview: addDays(today, PALIER_DELAYS[q.palier || 0]) })));
+      await reload();
+    },
+    skipTodayFiche: async (ficheId) => {
+      const today = todayISO();
+      const targets = dueOnFor(db, today, { ficheId });
+      if (!targets.length) return;
+      await putBackup('pre-saut-fiche-' + ficheId + '-' + Date.now(), targets);
+      await putMany('questions', targets.map((q) => ({ ...q, nextReview: addDays(today, PALIER_DELAYS[q.palier || 0]) })));
       await reload();
     },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },
