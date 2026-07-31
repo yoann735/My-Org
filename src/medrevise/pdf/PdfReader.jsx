@@ -45,6 +45,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, detectDocKind } from '../components/ui.jsx';
 import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit } from '../lib/storage.js';
 import { RICH_EXTENSIONS, richToHTML } from '../documents/lib/richtext.js';
+import { AddItemModal } from '../components/AddItemForm.jsx';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -164,6 +165,11 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   const initialSrcTab = srcTabProp ?? (pdfView && pdfView.srcTab);
   const close = onClose || ctx.closePdfReader;
   const fiche = docProp || db.fiches.find((f) => f.id === ficheId);
+  // « Ajouter un item » (réutilise AddItemModal, comme dans Réviser) : uniquement pour
+  // une vraie fiche (`db.fiches`, ficheId connu) — pas pour `docProp` (ex : structure
+  // d'anatomie dans Import Anatomie Théorie, hors du store `questions`/fiches).
+  const canAddItem = !docProp && !!ficheId && !!fiche;
+  const [showAddItem, setShowAddItem] = useState(false);
 
   // source affichée quand la fiche porte À LA FOIS un PDF et une fiche HTML —
   // indépendant du mode Lecture/Édition (qui ne s'applique qu'au PDF).
@@ -619,6 +625,9 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
             <button className="btn ghost sm" onClick={() => setSrcTab('pdf')}><Icon name="filePdf" size={13} /> Voir le PDF</button>
           )}
           <div style={{ flex: 1 }} />
+          {canAddItem && (
+            <button className="btn sm" onClick={() => setShowAddItem(true)}><Icon name="plus" size={13} /> Ajouter un item</button>
+          )}
           <label className="btn ghost sm" style={{ cursor: 'pointer' }} title="Attacher un document (PDF ou HTML) — remplace le document du même type">
             <Icon name="upload" size={13} /> Attacher un document
             <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={(e) => attachDoc(e.target.files[0])} />
@@ -636,6 +645,9 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
             <iframe src={htmlUrl} title={fiche.titre} sandbox="allow-same-origin allow-scripts" className="pdfr-html-frame" />
           )}
         </div>
+        {showAddItem && canAddItem && (
+          <AddItemModal ctx={ctx} ficheId={ficheId} ficheTitre={fiche.titre} onClose={() => setShowAddItem(false)} />
+        )}
       </div>
     );
   }
@@ -687,6 +699,9 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
 
         <div style={{ flex: 1 }} />
 
+        {canAddItem && (
+          <button className="btn sm" onClick={() => setShowAddItem(true)}><Icon name="plus" size={13} /> Ajouter un item</button>
+        )}
         <button className="btn ghost sm" onClick={() => setPanelOpen((v) => !v)} title="Notions surlignées">
           <Icon name={panelOpen ? 'chevR' : 'chevL'} size={13} /> Notions ({highlights.length})
         </button>
@@ -782,6 +797,10 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
           <button className="hl-delete" onClick={deleteHighlightConfirmed}><Icon name="trash" size={13} /> Supprimer</button>
         </div>,
         document.body,
+      )}
+
+      {showAddItem && canAddItem && (
+        <AddItemModal ctx={ctx} ficheId={ficheId} ficheTitre={fiche.titre} onClose={() => setShowAddItem(false)} />
       )}
     </div>
   );
