@@ -6,7 +6,7 @@
    à l'AFFICHAGE seulement : la correction reste par id, jamais par
    position, comme partout ailleurs dans l'app).
    ============================================================ */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { applyReview, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, todayISO, computeStreak } from '../lib/sm2.js';
 import { effectiveCoef, index } from '../lib/planning.js';
@@ -47,11 +47,34 @@ export function MobileSession({ ctx, onQuit }) {
   const clozeMode = (ctx.stats && ctx.stats.clozeMode) || 'actif';
   const setClozeMode = (m) => ctx.saveStats({ ...ctx.stats, clozeMode: m });
 
+  // chrono par carte (flashcards) — même mécanique que desktop Session.jsx :
+  // temps ACTIF (pause pendant visibilitychange→hidden), plafond des temps
+  // aberrants géré par applyReview (MAX_CARD_TIME_MS, lib/sm2.js).
+  const cardElapsedRef = useRef(0);
+  const runningSinceRef = useRef(null);
+  useEffect(() => {
+    const onVis = () => {
+      if (document.hidden) {
+        if (runningSinceRef.current != null) { cardElapsedRef.current += Date.now() - runningSinceRef.current; runningSinceRef.current = null; }
+      } else {
+        runningSinceRef.current = Date.now();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+  useEffect(() => {
+    cardElapsedRef.current = 0;
+    runningSinceRef.current = document.hidden ? null : Date.now();
+  }, [idx]);
+  const cardElapsedMs = () => cardElapsedRef.current + (runningSinceRef.current != null ? Date.now() - runningSinceRef.current : 0);
+
   const advance = async (ratingIn, extra) => {
     const rating = resolveRating(ratingIn);
     if (item && !item.ephemeral) {
       const quality = RATING_QUALITY[rating];
-      let updated = applyReview(item, quality, item._coef || 3);
+      const applyExtra = isFlash(item.type) ? { tempsMs: cardElapsedMs() } : {};
+      let updated = applyReview(item, quality, item._coef || 3, applyExtra);
       delete updated._fiche; delete updated._coef;
       // rotation QCM (Étape 4, lib/planning.js pickQcmSubset) : suivi de la
       // dernière présentation + du dernier résultat (correction directe, pas

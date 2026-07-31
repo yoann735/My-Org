@@ -17,6 +17,16 @@ import { putBlob } from '../lib/storage.js';
 import { CarnetBody } from './Carnet.jsx';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 
+/** formate un temps par carte (ms) en texte court — secondes sous la minute,
+    "Xm Ys" au-delà (rare pour une flashcard). */
+const formatCardTime = (ms) => {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rest = s % 60;
+  return rest ? `${m}m ${rest}s` : `${m}m`;
+};
+
 export function Reviser({ ctx }) {
   const { db } = ctx;
   const ix = useMemo(() => index(db), [db]);
@@ -87,6 +97,16 @@ export function Reviser({ ctx }) {
   const feynItems = selItems.filter((q) => q.type === 'feynman');
   const exoItems = selItems.filter((q) => q.type === 'exercice');
   const dueSel = selItems.filter((q) => dueIdsToday.has(q.id)); // cartes dues (théorie) uniquement
+
+  // temps moyen PAR CARTE (flashcards) — moyenne de toutes les entrées
+  // historique[].tempsMs chronométrées (Session.jsx/MobileSession.jsx), pas
+  // de notion de "série complète" : chaque entrée est déjà une observation
+  // individuelle valide. null tant qu'aucune carte n'a encore été chronométrée.
+  const avgFlashTimeMs = useMemo(() => {
+    const times = [];
+    flashItems.forEach((q) => (q.historique || []).forEach((h) => { if (Number.isFinite(h.tempsMs)) times.push(h.tempsMs); }));
+    return times.length ? times.reduce((a, b) => a + b, 0) / times.length : null;
+  }, [flashItems]);
 
   const jp = primary ? ficheJ(db, primary.id, ix) : null;
   const scheduled = primary ? isFicheScheduled(db, primary, ix) : false;
@@ -397,6 +417,7 @@ export function Reviser({ ctx }) {
                 <button className="rev-mode" onClick={() => launch('flash')} disabled={!flashItems.length}>
                   <div className="rm-ic" style={{ background: 'var(--accent-2-soft)', color: 'var(--accent-2)' }}><Icon name="cards" size={20} /></div>
                   <div className="rm-n tnum">{flashItems.length}</div><div className="rm-l">Flashcards</div>
+                  {avgFlashTimeMs != null && <div className="rm-time">≈{formatCardTime(avgFlashTimeMs)}/carte</div>}
                   <div className="rm-go">Lancer <Icon name="arrowR" size={14} /></div>
                 </button>
                 <button className="rev-mode" onClick={() => feynItems.length && ctx.startFeynman({ items: feynItems, title })} disabled={!feynItems.length}>

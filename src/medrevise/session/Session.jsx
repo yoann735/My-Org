@@ -4,7 +4,7 @@
    applique le VRAI SM-2 (persisté), Précédent, déroulé sectorisé,
    célébration + mise à jour du streak.
    ============================================================ */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta, EtiquetteQuickSet, SessionTrendCard } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
@@ -74,13 +74,40 @@ export function Session({ ctx }) {
   const clozeMode = (ctx.stats && ctx.stats.clozeMode) || 'actif';
   const setClozeMode = (m) => ctx.saveStats({ ...ctx.stats, clozeMode: m });
 
+  // chrono par carte (flashcards) : temps ACTIF, pas wall-clock — cardElapsedRef
+  // accumule, runningSinceRef pointe le début du segment en cours (null =
+  // en pause, onglet caché). Le plafond (rejet des temps aberrants) est géré
+  // par applyReview (MAX_CARD_TIME_MS, lib/sm2.js), pas ici.
+  const cardElapsedRef = useRef(0);
+  const runningSinceRef = useRef(null);
+  useEffect(() => {
+    const onVis = () => {
+      if (document.hidden) {
+        if (runningSinceRef.current != null) { cardElapsedRef.current += Date.now() - runningSinceRef.current; runningSinceRef.current = null; }
+      } else {
+        runningSinceRef.current = Date.now();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+  // nouvelle carte affichée (avance, précédent, roadmap) → le chrono repart de zéro.
+  useEffect(() => {
+    cardElapsedRef.current = 0;
+    runningSinceRef.current = document.hidden ? null : Date.now();
+  }, [idx]);
+  const cardElapsedMs = () => cardElapsedRef.current + (runningSinceRef.current != null ? Date.now() - runningSinceRef.current : 0);
+
   const advance = async (ratingIn) => {
     const rating = resolveRating(ratingIn);
     // persist SM-2 — SAUF pour les items ÉPHÉMÈRES (théorie de schéma générée à la
     // volée) : ils ne sont jamais planifiés ni écrits en base (aucun impact méthode des J).
     if (item && !item.ephemeral) {
       const quality = RATING_QUALITY[rating];
-      let updated = applyReview(item, quality, item._coef || 3);
+      // chrono uniquement pour les flashcards (voir la demande) — un QCM n'a
+      // pas de "temps par carte" affiché dans Réviser.
+      const applyExtra = isFlash(item.type) ? { tempsMs: cardElapsedMs() } : {};
+      let updated = applyReview(item, quality, item._coef || 3, applyExtra);
       delete updated._fiche; delete updated._matiere; delete updated._coef; delete updated._j;
       // rotation QCM (Étape 4, lib/planning.js pickQcmSubset) : suivi de la
       // dernière présentation + du dernier résultat, DISTINCT de la notation

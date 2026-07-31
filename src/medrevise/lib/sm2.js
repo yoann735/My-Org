@@ -113,9 +113,26 @@ export function nextPalier(quality, palier) {
    Session.jsx, MobileSession.jsx, Exercice.jsx, AnatQuiz.jsx…) mais n'entre
    plus dans le calcul du délai — voir lib/planning.js effectiveCoef pour son
    seul usage restant (pondération du carnet d'erreurs). */
-export function applyReview(question, quality, coef = 3) {
+// chrono par carte (flashcards, Session.jsx/MobileSession.jsx) : plafond de
+// sécurité — au-delà, la carte n'est pas comptée dans la moyenne "temps par
+// carte" (Reviser), en plus de la pause visibilitychange déjà gérée côté
+// appelant (onglet en arrière-plan/écran verrouillé). qualite/palier restent
+// enregistrés normalement, seul tempsMs est omis.
+export const MAX_CARD_TIME_MS = 3 * 60 * 1000;
+
+/** applique une réponse à une question et renvoie la question mise à jour.
+   `coef` est accepté (signature stable pour tous les appelants existants :
+   Session.jsx, MobileSession.jsx, Exercice.jsx, AnatQuiz.jsx…) mais n'entre
+   plus dans le calcul du délai — voir lib/planning.js effectiveCoef pour son
+   seul usage restant (pondération du carnet d'erreurs). `extra.tempsMs`
+   (optionnel, flashcards uniquement) : temps actif passé sur la carte, voir
+   MAX_CARD_TIME_MS ci-dessus. */
+export function applyReview(question, quality, coef = 3, extra = {}) {
   const res = nextPalier(quality, question.palier || 0);
-  const historique = (question.historique || []).concat([{ date: todayISO(), qualite: quality }]);
+  const entry = { date: todayISO(), qualite: quality };
+  const tempsMs = extra && extra.tempsMs;
+  if (Number.isFinite(tempsMs) && tempsMs >= 0 && tempsMs <= MAX_CARD_TIME_MS) entry.tempsMs = Math.round(tempsMs);
+  const historique = (question.historique || []).concat([entry]);
   return {
     ...question,
     palier: res.palier,
