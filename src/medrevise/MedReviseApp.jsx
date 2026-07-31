@@ -345,12 +345,16 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // historique/missed (pas de note = pas de progression), et aucune autre
     // carte n'est touchée (contrairement à la cascade, pas d'effet sur les
     // échéances déjà programmées plus loin).
+    // Math.max(1, …) : le délai de J0 est 0 (PALIER_DELAYS[0]) — sans ce
+    // plancher, sauter une carte encore au palier 0 (le cas le plus courant,
+    // juste après un import massif) réécrivait nextReview = aujourd'hui,
+    // un no-op silencieux (bug constaté : clic sans effet visible).
     skipTodaySource: async (sourceId) => {
       const today = todayISO();
       const targets = dueOnFor(db, today, { sourceId });
       if (!targets.length) return;
       await putBackup('pre-saut-source-' + sourceId + '-' + Date.now(), targets);
-      await putMany('questions', targets.map((q) => ({ ...q, nextReview: addDays(today, PALIER_DELAYS[q.palier || 0]) })));
+      await putMany('questions', targets.map((q) => ({ ...q, nextReview: addDays(today, Math.max(1, PALIER_DELAYS[q.palier || 0])) })));
       await reload();
     },
     skipTodayFiche: async (ficheId) => {
@@ -358,7 +362,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const targets = dueOnFor(db, today, { ficheId });
       if (!targets.length) return;
       await putBackup('pre-saut-fiche-' + ficheId + '-' + Date.now(), targets);
-      await putMany('questions', targets.map((q) => ({ ...q, nextReview: addDays(today, PALIER_DELAYS[q.palier || 0]) })));
+      await putMany('questions', targets.map((q) => ({ ...q, nextReview: addDays(today, Math.max(1, PALIER_DELAYS[q.palier || 0])) })));
       await reload();
     },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },
