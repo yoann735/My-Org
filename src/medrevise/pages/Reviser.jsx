@@ -29,6 +29,16 @@ export function Reviser({ ctx }) {
   const [showAddItem, setShowAddItem] = useState(false);
   const [shiftStart, setShiftStart] = useState(null); // { type: 'source'|'fiche', id, nom }
 
+  // remonte la fiche restaurée (ci-dessus) dans le viewport au montage — sans ça
+  // la sélection est correcte mais reste hors-écran si elle était scrollée bas.
+  const treeScrollRef = useRef(null);
+  useEffect(() => {
+    if (selIds.length !== 1) return;
+    const el = treeScrollRef.current?.querySelector(`[data-fiche-row="${selIds[0]}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const dueIdsToday = useMemo(() => new Set(dueToday(db, ix).map((q) => q.id)), [db, ix]);
   const dueSchemaIds = useMemo(() => new Set(dueSchemasToday(db, ix).map((f) => f.id)), [db, ix]);
   const overdue = useMemo(() => overdueByFiche(db, ix), [db, ix]);
@@ -52,8 +62,16 @@ export function Reviser({ ctx }) {
     return qOfFiche(fId).filter((q) => dueIdsToday.has(q.id)).length;
   };
 
-  const selectOnly = (id) => setSelIds([id]);
-  const toggle = (id) => setSelIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  // le cours/fiche actif est répercuté dans ctx.focusFiche (état de nav déjà
+  // utilisé par Bibliothèque/ImportFlow pour pointer Réviser sur une fiche) :
+  // ça sert ici de mémoire de position, puisque Reviser est démonté/remonté à
+  // chaque aller-retour vers une session (key={screen} dans MedReviseApp) et
+  // perdrait sinon selIds à chaque Quitter/Précédent depuis une révision.
+  const selectOnly = (id) => { setSelIds([id]); ctx.setFocusFiche(id); };
+  const toggle = (id) => {
+    setSelIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+    ctx.setFocusFiche(id);
+  };
 
   const selFiches = db.fiches.filter((f) => selIds.includes(f.id));
   const empty = selFiches.length === 0;
@@ -214,7 +232,7 @@ export function Reviser({ ctx }) {
             <span className="tree-head-title"><Icon name="folder" size={15} /> Cours &amp; matières</span>
             <button className="tree-clear" onClick={() => setSelIds([])} disabled={empty}>Tout décocher</button>
           </div>
-          <div className="tree-scroll scroll">
+          <div className="tree-scroll scroll" ref={treeScrollRef}>
             <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
             {db.sources.filter((s) => !s.archive).map((src) => {
               const mats = matieresOf(src.id).filter((m) => fichesOf(m.id).length);
@@ -268,7 +286,7 @@ export function Reviser({ ctx }) {
                           const cdt = dueCountFiche(f.id);
                           const ren = isRen('fiche', f.id);
                           return (
-                            <div key={f.id}>
+                            <div key={f.id} data-fiche-row={f.id}>
                               <DropSlot matiereId={mat.id} beforeId={f.id} />
                               <DraggableFiche id={f.id} disabled={ren}>
                                 {ren ? (
