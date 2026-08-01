@@ -5,7 +5,7 @@
    Hiérarchie : SOURCE(cours) → MATIÈRE → FICHE → QUESTIONS / STRUCTURES.
    ============================================================ */
 import { get, set, del, values, setMany, createStore } from 'idb-keyval';
-import { isoDate, buildPlanFrom } from './sm2.js';
+import { isoDate, buildPlanFrom, dueDateForJalon } from './sm2.js';
 import { queuePush, pullAllRecords, pushBlob, pullBlob, flushOutbox } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
@@ -153,10 +153,15 @@ export async function setStats(s) {
    cursor directement sur la première échéance restante, les jalons déjà
    passés ne sont jamais "dus"/"en retard". Seuls les types SCHEDULED (qcm/
    flashcard, voir planning.js SCHEDULED_TYPES) reçoivent `plan`/`cursor` —
-   exercice/feynman sont HORS méthode des J, ils n'ont ni dates ni palier à
-   porter. */
+   feynman est HORS méthode des J, il n'a ni dates ni palier à porter.
+   Exercice : méthode des J PROPRE (Étape A, sm2.js dueDateForJalon) — UNE
+   seule échéance (`dueDate`), traduite depuis le "jalon" fourni par le
+   prompt de génération + CE MÊME `startDate` (même J0 que la théorie de la
+   fiche, y compris passé). `item.jalon` absent/invalide → pas de `dueDate`,
+   comportement legacy inchangé (toujours librement accessible). */
 export function newItem(ficheId, item, startDate = isoDate()) {
   const scheduled = item.type === 'qcm' || item.type === 'flashcard';
+  const dueDate = item.type === 'exercice' ? dueDateForJalon(item.jalon, startDate) : null;
   return {
     ...item,
     // clé primaire neuve (évite les collisions entre fiches) ; srcId conserve
@@ -164,6 +169,7 @@ export function newItem(ficheId, item, startDate = isoDate()) {
     // fiche existante (mode Rattrapage).
     id: genId('q'), srcId: item.id || null, ficheId, type: item.type,
     ...(scheduled ? buildPlanFrom(startDate) : {}),
+    ...(dueDate ? { dueDate } : {}),
     historique: [], missed: 0,
   };
 }

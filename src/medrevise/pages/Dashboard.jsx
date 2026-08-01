@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
-import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, missedQuestions, weakPoints, isWeekend, dueByCoursOn, dueFromOn, addDays, diffDays } from '../lib/planning.js';
+import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, missedQuestions, weakPoints, isWeekend, dueExosToday, dueExosByFiche, dueByCoursOn, dueFromOn, addDays, diffDays } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
@@ -28,6 +28,9 @@ export function Dashboard({ ctx }) {
   const plan = todayPlan(db);
   const overdue = overdueByFiche(db);
   const startOverdueFiche = (g) => (g.isSchema ? ctx.startAnatQuiz(g.fiche, { mode: 'total' }) : ctx.startSession(g.items, g.fiche.titre + ' — Rattrapage'));
+  // méthode des J des exercices (Étape A) : canal PROPRE, jamais mélangé à
+  // `due`/`plan` (théorie) ci-dessus — voir lib/planning.js dueExosByFiche.
+  const dueExos = dueExosByFiche(db);
 
   return (
     <div className="screen scroll fadein">
@@ -67,6 +70,7 @@ export function Dashboard({ ctx }) {
 
         <div className="dash-grid-col">
           <RattrapageCard ctx={ctx} overdue={overdue} startOverdueFiche={startOverdueFiche} />
+          <ExosDuJourCard ctx={ctx} groups={dueExos} />
           <StreakWidget stats={ctx.stats} />
         </div>
       </div>
@@ -130,6 +134,40 @@ function RattrapageCard({ ctx, overdue, startOverdueFiche }) {
             Refaire mes erreurs ({reviewable.length})
           </button>
         </div>
+      )}
+    </Card>
+  );
+}
+
+/* ---------- exercices du jour (méthode des J des exercices, Étape A) ----------
+   Canal ENTIÈREMENT séparé de la théorie (RattrapageCard/TodaySeriesCard
+   ci-dessus) : source = dueExosByFiche (planning.js), compteur propre,
+   jamais additionné à `due`/`plan`. "Faire" lance une session d'exercices
+   normale (ctx.startExercice → recordExerciceAttempt, inchangé) ; une fois
+   répondu (juste ou faux), l'exo sort de exerciceStatus==='todo' donc du
+   groupe au prochain rendu — consommé, il ne revient jamais (pas de
+   rattrapage exercices ici, chantier séparé — étape C). */
+function ExosDuJourCard({ ctx, groups }) {
+  const total = groups.reduce((s, g) => s + g.items.length, 0);
+  if (!total) return null;
+  return (
+    <Card title="Exercices du jour" icon="target" action={<span className="pill">{total} exercice{total > 1 ? 's' : ''}</span>}>
+      <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 216, overflowY: 'auto' }}>
+        {groups.map((g, i) => (
+          <div className="row spread" key={g.fiche.id} style={{ gap: 8, padding: '7px 0', borderTop: i ? '1px solid var(--border-2)' : 'none' }}>
+            <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.fiche.titre}</div>
+              <div className="hint" style={{ fontSize: 11 }}>{matiereMeta(g.matiere).label} · {g.items.length} exercice{g.items.length > 1 ? 's' : ''}</div>
+            </div>
+            <button className="btn ghost sm" onClick={() => ctx.startExercice(g.items, g.fiche.titre + ' — Exercices')}>Faire</button>
+          </div>
+        ))}
+      </div>
+      {groups.length > 1 && (
+        <button className="btn ghost sm" style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}
+          onClick={() => ctx.startExercice(groups.flatMap((g) => g.items), 'Exercices du jour')}>
+          Tout faire ({total})
+        </button>
       )}
     </Card>
   );
@@ -476,7 +514,10 @@ function ImportPanel({ ctx }) {
     }
     let res;
     if (willAppend) {
-      const r = await appendItemsToFiche({ ficheId: matchedFiche.id, items: parsed.items, startDate });
+      // meta (ex. difficulte_chapitre) : même correctif que ImportRattrapage.jsx —
+      // sans ce paramètre, un ajout à une fiche existante perdait silencieusement
+      // le meta du paste (voir appendItemsToFiche, lib/import.js).
+      const r = await appendItemsToFiche({ ficheId: matchedFiche.id, items: parsed.items, startDate, meta: parsed.meta });
       if (pdfId) await ctx.setFichePdf(matchedFiche.id, pdfId, pdfName);
       if (htmlId) await ctx.setFicheHtml(matchedFiche.id, htmlId, htmlName);
       res = { fiche: r.fiche, count: r.count, duplicates: r.duplicates, appended: true };

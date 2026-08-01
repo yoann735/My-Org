@@ -60,9 +60,15 @@ export async function createFicheFromQuestions({ matiereId, titre, items, synthe
  * Pratique dans la même fiche que la Théorie). Append pur (jamais d'écrasement).
  * Dédoublonnage sur item.id : un item dont l'id v1.0 figure déjà (via srcId)
  * parmi les items de la fiche est ignoré et compté.
+ * `meta` (optionnel) : contrairement à createFicheFromQuestions, cette fonction
+ * n'écrivait jusqu'ici JAMAIS le `meta` de la fiche — un `difficulte_chapitre`
+ * (ou toute autre méta v1.1) collé sur CE paste précis (typiquement la moitié
+ * "Pratique", exercices, du mode Rattrapage) était donc silencieusement perdu.
+ * Merge non destructif dans le `meta` existant de la fiche (n'écrase pas les
+ * clés déjà posées par la moitié "Théorie" du même flux).
  * @returns {{fiche, count, duplicates}} | {ok:false}
  */
-export async function appendItemsToFiche({ ficheId, items, startDate }) {
+export async function appendItemsToFiche({ ficheId, items, startDate, meta }) {
   const fiche = await getOne('fiches', ficheId);
   if (!fiche) return { ok: false };
   const all = await getAll('questions');
@@ -80,7 +86,12 @@ export async function appendItemsToFiche({ ficheId, items, startDate }) {
     if (srcId) existingSrc.add(srcId); // évite les doublons intra-collage
   }
   if (fresh.length) await putMany('questions', fresh);
-  return { fiche, count: fresh.length, duplicates };
+  let updatedFiche = fiche;
+  if (meta && typeof meta === 'object') {
+    updatedFiche = { ...fiche, meta: { ...(fiche.meta || {}), ...meta } };
+    await put('fiches', updatedFiche);
+  }
+  return { fiche: updatedFiche, count: fresh.length, duplicates };
 }
 
 /**

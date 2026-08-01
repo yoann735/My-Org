@@ -225,6 +225,41 @@ export function exerciceStatus(q) {
   return (h[h.length - 1].qualite >= 3) ? 'ok' : 'review';
 }
 
+/* ---- méthode des J des EXERCICES (Étape A) : cadence PROPRE (sm2.js
+   dueDateForJalon), une seule échéance par item (`dueDate`), JAMAIS mélangée
+   aux compteurs théorie — filtrée par EXERCICE_TYPE, disjoint de
+   SCHEDULED_TYPES (dueOn/dueToday) par construction. Match EXACT uniquement
+   (pas de "dû + retard" : le rattrapage exercices est un chantier séparé,
+   étape C) — un exo dont l'échéance est déjà passée (J0 posé dans le passé)
+   ne matche simplement plus rien ici : ni dû, ni en retard, même logique
+   que la théorie. Exclut les exos déjà répondus (exerciceStatus !== 'todo')
+   — consommés, ils ne réapparaissent jamais (pas de notion de "prochain
+   jalon" pour un exercice, contrairement à une carte théorie). ---- */
+export function dueExosOn(db, dateISO, idx) {
+  const ix = idx || index(db);
+  return (db.questions || []).filter((q) =>
+    q.type === EXERCICE_TYPE && q.dueDate === dateISO && exerciceStatus(q) === 'todo'
+    && ix.fById[q.ficheId] && isFicheScheduled(db, ix.fById[q.ficheId], ix));
+}
+export function dueExosToday(db, idx) { return dueExosOn(db, todayISO(), idx); }
+/** exercices dus aujourd'hui, regroupés par fiche — même esprit que
+   groupByFiche, en plus léger (pas de J label théorie, non pertinent pour
+   un exercice). Alimente la card "Exercices du jour" (Dashboard.jsx). */
+export function dueExosByFiche(db, idx) {
+  const ix = idx || index(db);
+  const map = {};
+  dueExosToday(db, ix).forEach((q) => {
+    const f = ix.fById[q.ficheId];
+    if (!f) return;
+    if (!map[f.id]) {
+      const m = ix.mById[f.matiereId];
+      map[f.id] = { fiche: f, matiere: m, source: m && ix.sById[m.sourceId], items: [] };
+    }
+    map[f.id].items.push(q);
+  });
+  return Object.values(map);
+}
+
 /* ---- schémas d'anatomie visuelle (anat_schema) : la FICHE elle-même est
    l'item planifiable (elle porte plan/cursor, voir lib/sm2.js buildPlan),
    pas des questions. On les gère en parallèle des questions. ---- */

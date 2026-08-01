@@ -145,7 +145,10 @@ export function ImportRattrapage({ ctx }) {
     }
     let res;
     if (effAppend) {
-      const r = await appendItemsToFiche({ ficheId: effFicheId, items: preview.res.items, startDate });
+      // meta (ex. difficulte_chapitre, v1.1) : sans ce paramètre, un paste "Pratique"
+      // (exercices) qui porte cette info la perdait silencieusement — voir
+      // appendItemsToFiche (lib/import.js), merge non destructif dans le meta existant.
+      const r = await appendItemsToFiche({ ficheId: effFicheId, items: preview.res.items, startDate, meta: preview.res.meta });
       if (pdfId) await ctx.setFichePdf(effFicheId, pdfId, pdfName);
       if (htmlId) await ctx.setFicheHtml(effFicheId, htmlId, htmlName);
       res = { fiche: r.fiche, count: r.count, duplicates: r.duplicates, appended: true };

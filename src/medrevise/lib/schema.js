@@ -15,6 +15,12 @@
    - fiche.meta.qcm_conseille (entier|null) — passe déjà tel quel via
      parsePastedJson (meta = objet libre stocké sur la fiche), pas de champ
      d'item à valider ici ; lu par lib/planning.js (qcmConseilleFor).
+   - fiche.meta.difficulte_chapitre — même mécanisme (passe-plat via meta),
+     pas encore consommé (méthode des J des exercices, étape B).
+   - exercice.jalon / exercice.difficulte_exo (validés ci-dessous,
+     EXO_JALONS/EXO_DIFFICULTES) — méthode des J des exercices (étape A) :
+     jalon LOGIQUE traduit en date absolue à l'import (storage.js newItem,
+     lib/sm2.js dueDateForJalon), indépendante de la cadence théorie.
    ============================================================ */
 
 export const SCHEMA_VERSION = '1.0';
@@ -24,6 +30,13 @@ export const MATIERES = ['Biologie', 'Chimie', 'Physique', 'Mathematiques'];
 
 /** lettres d'options QCM (id d'option = a, b, c, …) */
 export const OPTION_LETTERS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+
+/** méthode des J des EXERCICES (Étape A, indépendante de la cadence théorie
+   ci-dessus — voir lib/sm2.js EXO_LABELS/dueDateForJalon) : jalon LOGIQUE
+   assigné par le prompt de génération, valeur libre sinon (self-contained,
+   pas d'import croisé avec sm2.js pour une simple liste de validation). */
+const EXO_JALONS = new Set(['J0', 'J+2', 'J+7', 'J+15', 'J+30', 'J+45']);
+const EXO_DIFFICULTES = new Set(['F', 'M', 'D']);
 
 /* ---------- petits helpers purs ---------- */
 const isStr = (v) => typeof v === 'string' && v.trim().length > 0;
@@ -192,6 +205,13 @@ function normExercice(raw, c) {
   if (!isStr(raw.enonce)) return null;
   const sous_type = str(raw.sous_type).trim();
   if (sous_type !== 'numerique' && sous_type !== 'ouvert') return null;
+  // méthode des J des exercices (Étape A) : "jalon" LOGIQUE (pas une date —
+  // traduit en date absolue à l'import, voir storage.js newItem/sm2.js
+  // dueDateForJalon) + "difficulte_exo", posés par le prompt de génération.
+  // Absent/invalide → null, comportement legacy inchangé (exo toujours
+  // librement accessible, jamais dans "Exercices du jour").
+  const jalonRaw = str(raw.jalon).trim();
+  const difficulteExoRaw = str(raw.difficulte_exo).trim();
   const common = {
     ...c, type: 'exercice', sous_type,
     enonce: raw.enonce.trim(),
@@ -201,6 +221,8 @@ function normExercice(raw, c) {
     indices: normIndices(raw.indices),
     pieges: asArray(raw.pieges).map(str).filter(Boolean),
     correction: normCorrection(raw.correction),
+    jalon: EXO_JALONS.has(jalonRaw) ? jalonRaw : null,
+    difficulte_exo: EXO_DIFFICULTES.has(difficulteExoRaw) ? difficulteExoRaw : null,
   };
   if (sous_type === 'numerique') {
     const reponse = normReponseNumerique(raw.reponse);

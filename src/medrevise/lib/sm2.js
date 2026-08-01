@@ -125,6 +125,37 @@ export function buildPlanFrom(startDate) {
   return { plan, cursor: cursor === -1 ? plan.length : cursor };
 }
 
+/* ============================================================
+   MedRevise — méthode des J des EXERCICES (Étape A, socle). Cadence PROPRE,
+   INDÉPENDANTE de la théorie (PLAN_DELAYS ci-dessus) : le prompt de
+   génération assigne à chaque exercice UN SEUL "jalon" logique
+   ("J0"|"J+2"|...|"J+45"), pas 7 comme une carte théorie — un exercice n'a
+   qu'UNE échéance (`dueDate`, champ unique sur l'item, voir storage.js
+   newItem), consommée une fois répondu (voir planning.js exerciceStatus).
+   Jamais mélangé au canal théorie (types disjoints : SCHEDULED_TYPES vs
+   EXERCICE_TYPE, planning.js). ============================== */
+export const EXO_DELAYS = [0, 2, 7, 15, 30, 45];
+export const EXO_LABELS = ['J0', 'J+2', 'J+7', 'J+15', 'J+30', 'J+45'];
+const EXO_JALON_TO_DELAY = Object.fromEntries(EXO_LABELS.map((label, i) => [label, EXO_DELAYS[i]]));
+
+/** traduit le "jalon" logique d'un exercice (champ du prompt de génération)
+   en date ABSOLUE unique à partir du J0 de la fiche (aujourd'hui par défaut,
+   ou une date passée — même mécanisme que buildPlanFrom pour la théorie).
+   `null` si `jalon` absent/invalide (contenu legacy sans ce champ) : l'exo
+   reste alors sans `dueDate`, comportement actuel inchangé (toujours
+   librement accessible, jamais dans "Exercices du jour"). Pas de
+   plan[]/cursor ici — un seul jalon, pas 7, donc pas de tableau à
+   construire ni de position à suivre : une fois répondu, l'exo est
+   consommé (exerciceStatus), il ne "revient" jamais à une échéance
+   suivante (contrairement à la théorie). */
+export function dueDateForJalon(jalon, startDate) {
+  const delay = EXO_JALON_TO_DELAY[jalon];
+  if (delay == null) return null;
+  const d = new Date(startDate + 'T12:00:00');
+  d.setDate(d.getDate() + delay);
+  return isoDate(d);
+}
+
 // chrono par carte (flashcards, Session.jsx/MobileSession.jsx) : plafond de
 // sécurité — au-delà, la carte n'est pas comptée dans la moyenne "temps par
 // carte" (Reviser), en plus de la pause visibilitychange déjà gérée côté
