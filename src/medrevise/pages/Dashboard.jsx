@@ -174,6 +174,16 @@ function ExosDuJourCard({ ctx, groups }) {
 }
 
 /* ---------- week calendar ---------- */
+/** libellé du pied de case-jour (Fiches/schémas + Exercices) — extrait pour
+   être réutilisé tel quel si besoin, et pour ne pas alourdir le JSX de la
+   case avec la logique des séparateurs " · ". */
+function dayFootLabel(day) {
+  const parts = [];
+  if (day.cardsTotal > 0) parts.push(day.isProjected ? `${day.cardsTotal} cours` : `${day.cardsTotal} carte${day.cardsTotal > 1 ? 's' : ''}`);
+  if ((day.schemas || []).length > 0) parts.push(`${day.schemas.length} schéma${day.schemas.length > 1 ? 's' : ''}`);
+  if (day.exosTotal > 0) parts.push(`${day.exosTotal} exo${day.exosTotal > 1 ? 's' : ''}`);
+  return parts.join(' · ');
+}
 function WeekCalendar({ ctx, onPick }) {
   const [wk, setWk] = useState(0);
   const { monday, days } = weekData(ctx.db, wk);
@@ -229,13 +239,27 @@ function WeekCalendar({ ctx, onPick }) {
                   );
                 })}
               </div>
-              {day.total > 0 && (
-                <div className="wcal-foot">
-                  {day.cardsTotal > 0 && (day.isProjected ? `${day.cardsTotal} cours` : `${day.cardsTotal} carte${day.cardsTotal > 1 ? 's' : ''}`)}
-                  {day.cardsTotal > 0 && (day.schemas || []).length > 0 ? ' · ' : ''}
-                  {(day.schemas || []).length > 0 && `${day.schemas.length} schéma${day.schemas.length > 1 ? 's' : ''}`}
+              {/* section "Exercices" — canal séparé de la théorie ci-dessus
+                 (day.exos, planning.js dueExosByFicheOn), fond/bordure distincts
+                 (.wcal-exos) pour la repérer d'un coup d'œil. */}
+              {(day.exos || []).length > 0 && (
+                <div className="wcal-exos">
+                  <div className="wcal-exos-label">Exercices</div>
+                  {day.exos.map((g) => {
+                    const meta = matiereMeta(g.matiere);
+                    return (
+                      <div className="wcal-course" key={g.fiche.id}>
+                        <span className="wcc-bar" style={{ background: meta.tint }} />
+                        <div className="wcc-text">
+                          <div className="wcc-cat" style={{ color: meta.tint }}>{meta.label}</div>
+                          <div className="wcc-title">{g.fiche.titre} <span className="wcc-j">{g.items.length} exo{g.items.length > 1 ? 's' : ''}</span></div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
+              {day.total > 0 && <div className="wcal-foot">{dayFootLabel(day)}</div>}
             </button>
           );
         })}
@@ -245,6 +269,18 @@ function WeekCalendar({ ctx, onPick }) {
 }
 
 /* ---------- day detail popup ---------- */
+/** libellé d'en-tête pour un jour non-aujourd'hui (today affiche juste la date,
+   inchangé) — combine "cours prévus" (théorie projetée) et "exercices" (canal
+   séparé, jamais mélangé dans le compte) selon ce que le jour contient. */
+function dayHeaderLabel(day) {
+  const theoryN = day.byFiche.length + (day.schemas || []).length;
+  const exN = day.exosTotal || 0;
+  if (!day.isProjected) return `${day.total} carte${day.total > 1 ? 's' : ''}`;
+  const parts = [];
+  if (theoryN > 0) parts.push(`${theoryN} cours prévu${theoryN > 1 ? 's' : ''}`);
+  if (exN > 0) parts.push(`${exN} exercice${exN > 1 ? 's' : ''}`);
+  return parts.join(' + ') || `${day.total} cours prévu${day.total > 1 ? 's' : ''}`;
+}
 function DayPopup({ day, ctx, onClose }) {
   // aujourd'hui : regroupement RÉEL par matière+type (inchangé, actionnable).
   // jour futur (isProjected) : day.byFiche/day.schemas sont déjà des projections
@@ -303,7 +339,7 @@ function DayPopup({ day, ctx, onClose }) {
             <div>
               <div className="kpi-label" style={{ marginBottom: 4 }}>{day.isToday ? "Aujourd'hui" : 'Le ' + dateLabel}</div>
               <div className="serif" style={{ fontSize: 22, textTransform: 'capitalize' }}>
-                {day.isToday ? dateLabel : day.isProjected ? `${day.total} cours prévu${day.total > 1 ? 's' : ''}` : `${day.total} carte${day.total > 1 ? 's' : ''}`}
+                {day.isToday ? dateLabel : dayHeaderLabel(day)}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -402,6 +438,27 @@ function DayPopup({ day, ctx, onClose }) {
               </div>
             );
           })}
+          {/* section "Exercices" — canal séparé de la théorie ci-dessus (day.exos,
+             planning.js dueExosByFicheOn), fond/bordure distincts (.day-pop-exos)
+             pour la repérer d'un coup d'œil, même esprit que ExosDuJourCard. */}
+          {(day.exos || []).length > 0 && (
+            <div className="day-pop-exos">
+              <div className="day-pop-exos-label">Exercices</div>
+              {day.exos.map((g) => {
+                const meta = matiereMeta(g.matiere);
+                return (
+                  <div className="day-line" key={g.fiche.id}>
+                    <div className="dl-ic" style={{ background: `color-mix(in srgb, ${meta.tint} 15%, transparent)`, color: meta.tint }}><Icon name="target" size={17} /></div>
+                    <div className="dl-main">
+                      <div className="dl-title">{g.items.length} exercice{g.items.length > 1 ? 's' : ''} · {meta.label}</div>
+                      <div className="dl-sub"><span>{g.fiche.titre}</span></div>
+                    </div>
+                    {day.isToday && <button className="btn ghost sm" onClick={() => { onClose(); ctx.startExercice(g.items, g.fiche.titre + ' — Exercices'); }}>Faire</button>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           </>
           )}
         </div>

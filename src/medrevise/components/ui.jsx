@@ -10,6 +10,20 @@ import { Icon } from '../../shared/Icon.jsx';
 import { PLAN_LABELS, todayISO } from '../lib/sm2.js';
 
 const FALLBACK_TINT = '#7C6FE0';
+/** palette de secours pour une matière SANS couleur choisie (m.couleur) —
+   distincte par matière (hash déterministe de son id), pour que le calendrier
+   distingue les matières visuellement dès avant tout réglage utilisateur
+   (Réglages → Couleurs par matière écrase ce choix via m.couleur). */
+const MATIERE_PALETTE = ['#7C6FE0', '#4FA6D9', '#4CAF7D', '#E0A63E', '#E0637C', '#8E6BB0', '#3E9CB5', '#C9873E'];
+function hashId(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+function defaultTintFor(m) {
+  const key = (m && (m.id || m.nom)) || '';
+  return key ? MATIERE_PALETTE[hashId(key) % MATIERE_PALETTE.length] : FALLBACK_TINT;
+}
 
 /* ---- étiquette de cours (Bibliothèque + sidebar Réviser + fin de session) ----
    100 % manuelle, purement informative : AUCUN effet sur SM-2 / méthode des J
@@ -77,7 +91,7 @@ export function EtiquetteQuickSet({ value, onChange }) {
 /** display meta for a matière (label / tint / icon), tolerant of missing fields */
 export function matiereMeta(m) {
   if (!m) return { label: '—', tint: FALLBACK_TINT, icon: 'book' };
-  return { label: m.nom, tint: m.couleur || FALLBACK_TINT, icon: m.icon || 'book' };
+  return { label: m.nom, tint: m.couleur || defaultTintFor(m), icon: m.icon || 'book' };
 }
 
 /* ---- statut de syncNow() (lib/storage.js), partagé Réglages (desktop) et

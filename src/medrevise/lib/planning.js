@@ -242,13 +242,17 @@ export function dueExosOn(db, dateISO, idx) {
     && ix.fById[q.ficheId] && isFicheScheduled(db, ix.fById[q.ficheId], ix));
 }
 export function dueExosToday(db, idx) { return dueExosOn(db, todayISO(), idx); }
-/** exercices dus aujourd'hui, regroupés par fiche — même esprit que
+/** exercices dus à une date donnée, regroupés par fiche — même esprit que
    groupByFiche, en plus léger (pas de J label théorie, non pertinent pour
-   un exercice). Alimente la card "Exercices du jour" (Dashboard.jsx). */
-export function dueExosByFiche(db, idx) {
+   un exercice). Paramétrée par date (pas seulement "aujourd'hui") pour
+   alimenter à la fois la card "Exercices du jour" (dueExosByFiche, ci-
+   dessous) ET le calendrier hebdo (weekData, qui l'appelle jour par jour —
+   dueExosOn matche déjà une échéance EXACTE par date, aucune projection à
+   gérer contrairement à la théorie). */
+export function dueExosByFicheOn(db, dateISO, idx) {
   const ix = idx || index(db);
   const map = {};
-  dueExosToday(db, ix).forEach((q) => {
+  dueExosOn(db, dateISO, ix).forEach((q) => {
     const f = ix.fById[q.ficheId];
     if (!f) return;
     if (!map[f.id]) {
@@ -259,6 +263,7 @@ export function dueExosByFiche(db, idx) {
   });
   return Object.values(map);
 }
+export function dueExosByFiche(db, idx) { return dueExosByFicheOn(db, todayISO(), idx); }
 
 /* ---- schémas d'anatomie visuelle (anat_schema) : la FICHE elle-même est
    l'item planifiable (elle porte plan/cursor, voir lib/sm2.js buildPlan),
@@ -468,7 +473,7 @@ export function weekData(db, weekOffset = 0, idx) {
     const date = addDays(monday, i);
     const isToday = date === today;
     const isPast = date < today;
-    let items = [], schemas = [], byFiche = [];
+    let items = [], schemas = [], byFiche = [], exos = [];
 
     if (isToday) {
       // aujourd'hui : données RÉELLES et actionnables (inchangé — "Lancer la série").
@@ -490,13 +495,19 @@ export function weekData(db, weekOffset = 0, idx) {
     }
     // passé (isPast) : reste vide, comportement inchangé (rien à projeter en arrière).
 
+    // exercices : canal SÉPARÉ de la théorie (dueExosByFicheOn, échéance EXACTE
+    // par dueDate, jamais de projection ni de retard) — calculé aujourd'hui ET
+    // les jours futurs, jamais dans le passé (même limite que la théorie).
+    if (!isPast) exos = dueExosByFicheOn(db, date, ix);
+    const exosTotal = exos.reduce((s, g) => s + g.items.length, 0);
+
     days.push({
       date, dow: DOW[i], dayNum: new Date(date + 'T00:00:00').getDate(),
       isToday, isPast, isProjected: !isToday && !isPast,
-      // total affiché = cartes réelles (aujourd'hui) OU cours projetés (futur) + schémas
-      total: (isToday ? items.length : byFiche.length) + schemas.length,
+      // total affiché = cartes réelles (aujourd'hui) OU cours projetés (futur) + schémas + exercices
+      total: (isToday ? items.length : byFiche.length) + schemas.length + exosTotal,
       cardsTotal: isToday ? items.length : byFiche.length,
-      items, schemas, byFiche,
+      items, schemas, byFiche, exos, exosTotal,
     });
   }
   return { monday, days };

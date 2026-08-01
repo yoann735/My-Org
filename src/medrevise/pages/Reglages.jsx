@@ -21,6 +21,7 @@ export function Reglages({ ctx }) {
   const matsOf = (sid) => db.matieres.filter((m) => m.sourceId === sid && !m.archive);
   const archivedMatieres = db.matieres.filter((m) => m.archive);
   const archivedFiches = db.fiches.filter((f) => f.archive);
+  const allMatieres = db.matieres.filter((m) => !m.archive);
 
   const commitRename = () => { if (renaming) ctx.renameSource(renaming, draft); setRenaming(null); };
   const commitCat = () => { if (catDraft.trim() && addCatFor) ctx.addMatiere(addCatFor, catDraft); setAddCatFor(null); setCatDraft(''); };
@@ -118,6 +119,29 @@ export function Reglages({ ctx }) {
           </div>
         )}
       </Card>
+
+      {/* Couleur par matière : alimente le calendrier (WeekCalendar/DayPopup) ET
+         sa légende — matiereMeta (ui.jsx) lit m.couleur en priorité, avec un
+         fallback distinct par matière tant que rien n'est choisi ici. */}
+      {allMatieres.length > 0 && (
+        <Card title="Couleurs par matière" icon="cards" style={{ maxWidth: 820, marginBottom: 16 }}>
+          <div className="hint" style={{ marginBottom: 14 }}>Colore les fiches et exercices de chaque matière dans le calendrier. Sans choix ici, chaque matière garde une couleur par défaut distincte.</div>
+          <div className="matcolor-list">
+            {allMatieres.map((m) => {
+              const src = db.sources.find((s) => s.id === m.sourceId);
+              const tint = matiereMeta(m).tint;
+              return (
+                <div className="matcolor-row" key={m.id}>
+                  <label className="matcolor-swatch" style={{ background: tint }}>
+                    <input type="color" value={tint} onChange={(e) => ctx.setMatiereCouleur(m.id, e.target.value)} />
+                  </label>
+                  <div className="matcolor-name">{m.nom}{src && <span className="hint"> — {src.nom}</span>}</div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       {trashCount > 0 && (
         <div className="row" style={{ maxWidth: 820, marginBottom: 16, justifyContent: 'space-between', alignItems: 'center' }}>

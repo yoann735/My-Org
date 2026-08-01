@@ -181,6 +181,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const m = db.matieres.find((x) => x.id === matiereId); if (!m) return;
       await put('matieres', { ...m, coef: v }); await reload();
     },
+    setMatiereCouleur: async (matiereId, couleur) => {
+      const m = db.matieres.find((x) => x.id === matiereId); if (!m) return;
+      await put('matieres', { ...m, couleur }); await reload();
+    },
     setSourceRappels: async (sourceId, on) => {
       const s = db.sources.find((x) => x.id === sourceId); if (!s) return;
       await put('sources', { ...s, rappelsJ: on }); await reload();
@@ -200,7 +204,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
     },
     addMatiere: async (sourceId, nom) => {
       const id = genId('m');
-      await put('matieres', { id, sourceId, nom: (nom || 'Nouvelle matière').trim(), couleur: '#4FA6D9', coef: 3, icon: 'book' });
+      // pas de `couleur` fixe ici : matiereMeta (ui.jsx) retombe sur une teinte
+      // par défaut DISTINCTE par matière (hash de l'id) tant que l'utilisateur
+      // n'a rien choisi dans Réglages → Couleurs par matière.
+      await put('matieres', { id, sourceId, nom: (nom || 'Nouvelle matière').trim(), coef: 3, icon: 'book' });
       await reload(); return id;
     },
     renameFiche: async (ficheId, titre) => {
