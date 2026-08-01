@@ -28,6 +28,10 @@ export function Reglages({ ctx }) {
     if (!window.confirm('Réinitialiser MedRevise (toutes les fiches, questions et statistiques) ?')) return;
     await wipeAll(); await ctx.reload();
   };
+  const resetAllJ = async () => {
+    if (!window.confirm("Réinitialiser les dates ? Efface toutes les échéances J (calendrier, dus, retards) de TOUTES les fiches — le contenu (flashcards, QCM, Feynman, historique) est conservé. Chaque fiche redevient « sans planning », en attente qu'on lui pose un nouveau J0.")) return;
+    await ctx.resetAllJ();
+  };
 
   const deleteSource = (s) => {
     if (!window.confirm(`Supprimer le cours « ${s.nom} » ? Il sera déplacé dans la corbeille (restaurable ici tant que la corbeille n'est pas vidée).`)) return;
@@ -165,7 +169,8 @@ export function Reglages({ ctx }) {
         </Card>
         <Card title="Méthode des J" icon="calendar">
           <div className="row wrap" style={{ gap: 7 }}>{PLAN_LABELS.map((j) => <span className="j-tag" key={j}>{j}</span>)}</div>
-          <div className="hint" style={{ marginTop: 10 }}>Chronologie fixe : les 7 échéances sont posées à l'import et ne bougent jamais automatiquement (seul l'onglet Réorganiser peut les décaler) — Facile/Difficile/Raté sont purement informatives, sans effet sur les dates.</div>
+          <div className="hint" style={{ marginTop: 10, marginBottom: 12 }}>Chronologie fixe : les 7 échéances sont posées à l'import et ne bougent jamais automatiquement (seul l'onglet Réorganiser peut les décaler) — Facile/Difficile/Raté sont purement informatives, sans effet sur les dates.</div>
+          <button type="button" className="btn" style={{ color: 'var(--crit)' }} onClick={resetAllJ}><Icon name="calendar" size={15} /> Réinitialiser les dates</button>
         </Card>
         <Card title="Données & confidentialité" icon="box">
           <div className="hint" style={{ marginBottom: 12 }}>100 % local : fiches, images et PDF sont stockés sur cet appareil (IndexedDB).</div>

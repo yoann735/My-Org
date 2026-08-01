@@ -8,7 +8,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
 import {
   index, effectiveCoef, ficheJ, ficheJDistribution, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, missedQuestions, topConcepts, todayPlan, overdueByFiche,
-  qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor,
+  qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor,
 } from '../lib/planning.js';
 import { shuffle } from '../lib/sm2.js';
 import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
@@ -201,13 +201,18 @@ export function Reviser({ ctx }) {
     setConfirmDel(null);
   };
 
-  // décalage du départ (J0) — étape 1/3 : cours (source) ou fiche, cartes
-  // jamais révisées uniquement (voir planning.js unstartedQuestionsFor).
+  // décalage/pose du départ (J0) — étape 1/3 : cours (source) ou fiche, cartes
+  // sans planning actif OU jamais révisées (voir planning.js isUnstarted) —
+  // couvre aussi bien une fiche jamais commencée qu'une fiche resetée
+  // (Réglages → "Réinitialiser les dates"). Compte questions ET fiches
+  // anat_schema (unstartedSchemasFor), sinon un cours composé uniquement de
+  // schémas afficherait toujours "rien à décaler".
   const askShiftSource = (id) => { const s = db.sources.find((x) => x.id === id); if (s) setShiftStart({ type: 'source', id, nom: s.nom }); };
   const askShiftFiche = (id) => { const f = db.fiches.find((x) => x.id === id); if (f) setShiftStart({ type: 'fiche', id, nom: f.titre }); };
   const shiftStartCount = useMemo(() => {
     if (!shiftStart) return 0;
-    return unstartedQuestionsFor(db, shiftStart.type === 'source' ? { sourceId: shiftStart.id } : { ficheId: shiftStart.id }, ix).length;
+    const target = shiftStart.type === 'source' ? { sourceId: shiftStart.id } : { ficheId: shiftStart.id };
+    return unstartedQuestionsFor(db, target, ix).length + unstartedSchemasFor(db, target, ix).length;
   }, [shiftStart, db, ix]);
   const confirmShiftStart = async (date) => {
     if (!shiftStart) return;
@@ -548,9 +553,10 @@ export function Reviser({ ctx }) {
           label="Nouvelle date de départ (J0)"
           confirmLabel="Décaler"
           count={shiftStartCount}
+          allowPast
           body={shiftStartCount > 0
-            ? `${shiftStartCount} carte${shiftStartCount > 1 ? 's' : ''} jamais révisée${shiftStartCount > 1 ? 's' : ''} ${shiftStartCount > 1 ? 'seront décalées' : 'sera décalée'} à cette date. Les cartes déjà entamées ne sont pas touchées.`
-            : "Aucune carte jamais révisée ici — rien à décaler."}
+            ? `${shiftStartCount} carte${shiftStartCount > 1 ? 's' : ''} sans planning actif ${shiftStartCount > 1 ? 'seront décalées' : 'sera décalée'} à cette date — une date PASSÉE est acceptée (cours déjà commencé) : les jalons déjà écoulés seront traités comme déjà faits, pas comme du retard. Les cartes déjà entamées ne sont pas touchées.`
+            : "Aucune carte sans planning actif ici — rien à décaler."}
           onConfirm={confirmShiftStart}
           onCancel={() => setShiftStart(null)}
         />

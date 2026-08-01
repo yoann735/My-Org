@@ -586,10 +586,13 @@ export function ConfirmModal({ title, body, confirmLabel = 'Confirmer', danger, 
    minimum après un changement, elle est remontée automatiquement. `cascade`
    (optionnel) affiche une case à cocher contrôlée par l'appelant — absente pour
    l'étape 1 (pas de concept de cascade là-bas), présente pour l'étape 2/3. */
-export function DateActionModal({ title, body, label = 'Nouvelle date', confirmLabel = 'Confirmer', count, minDate, cascade, onConfirm, onCancel }) {
-  const min = minDate || todayISO();
-  const [date, setDate] = useState(min);
-  useEffect(() => { if (date < min) setDate(min); }, [min]);
+export function DateActionModal({ title, body, label = 'Nouvelle date', confirmLabel = 'Confirmer', count, minDate, allowPast, cascade, onConfirm, onCancel }) {
+  // allowPast (pose/décalage du J0, Reviser.jsx "Décaler le départ") : AUCUNE
+  // borne — un cours déjà commencé dans la vraie vie peut avoir un J0 passé.
+  // Les autres usages (Réorganiser, Sauter) gardent min=aujourd'hui par défaut.
+  const min = allowPast ? null : (minDate || todayISO());
+  const [date, setDate] = useState(min || todayISO());
+  useEffect(() => { if (min && date < min) setDate(min); }, [min]);
   return (
     <div className="day-pop-scrim" onClick={onCancel}>
       <div className="day-pop" style={{ width: 'min(420px, 92vw)' }} onClick={(e) => e.stopPropagation()}>
@@ -598,7 +601,7 @@ export function DateActionModal({ title, body, label = 'Nouvelle date', confirmL
           <div className="hint" style={{ fontSize: 13.5, marginBottom: 12 }}>{typeof body === 'function' ? body(date) : body}</div>
           <div className="imp-field">
             <label>{label}</label>
-            <input type="date" className="imp-title" style={{ maxWidth: 190 }} min={min} value={date} onChange={(e) => setDate(e.target.value)} />
+            <input type="date" className="imp-title" style={{ maxWidth: 190 }} min={min || undefined} value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           {cascade && (
             <label className="row" style={{ marginTop: 12, gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}>

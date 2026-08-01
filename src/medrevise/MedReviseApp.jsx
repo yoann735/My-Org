@@ -21,8 +21,8 @@ import {
   purgeSource, purgeMatiere, purgeFiche, putBackup,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
-import { todayISO, buildPlan } from './lib/sm2.js';
-import { addDays, unstartedQuestionsFor, dueOnFor, dueFromOn, diffDays, planIndexOn } from './lib/planning.js';
+import { todayISO, buildPlanFrom } from './lib/sm2.js';
+import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor, dueFromOn, diffDays, planIndexOn } from './lib/planning.js';
 import { useIsMobile } from '../shared/hooks/useMediaQuery.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
 
@@ -295,6 +295,27 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
       await put('fiches', { ...f, etiquette: etiquette || null }); await reload();
     },
+    // « Réinitialiser les dates » (Réglages, bouton destructif confirmé côté
+    // UI) : efface le planning (plan/cursor) de TOUTES les questions qcm/
+    // flashcard et fiches anat_schema — calendrier vide, plus aucune
+    // échéance due nulle part. Le CONTENU (fiches, cartes, historique,
+    // carnet d'erreurs) reste intact, seules les dates/J disparaissent :
+    // une carte sans `plan` est déjà proprement exclue de tout calcul de
+    // planning (dueOn/overdue/projection, voir planning.js) et s'affiche
+    // "Nouvelle" (labelForCursor, sm2.js) — aucun nouvel état à gérer.
+    // Exercices/Feynman : rien à faire, ils n'ont jamais eu de plan/cursor
+    // (storage.js newItem ne leur en donne pas). putBackup avant l'écriture
+    // en masse ; idempotent (rien à effacer une 2e fois si déjà fait).
+    resetAllJ: async () => {
+      const targets = db.questions.filter((q) => (q.type === 'qcm' || q.type === 'flashcard') && q.plan);
+      const schemaTargets = db.fiches.filter((f) => f.type === 'anat_schema' && f.plan);
+      if (!targets.length && !schemaTargets.length) return;
+      await putBackup('pre-reset-j-' + Date.now(), { questions: targets, schemas: schemaTargets });
+      const strip = (rec) => { const { plan, cursor, ...rest } = rec; return rest; };
+      if (targets.length) await putMany('questions', targets.map(strip));
+      if (schemaTargets.length) await putMany('fiches', schemaTargets.map(strip));
+      await reload();
+    },
     // « Retirer du retard » (boîte À rattraper, Dashboard/Réviser) : NE révise
     // PAS — repousse juste l'échéance COURANTE (plan[cursor]) à demain, SANS
     // toucher aux échéances suivantes ni au cursor (le niveau de la fiche ne
@@ -319,23 +340,32 @@ export default function MedReviseApp({ themeApi, goHub }) {
       }
       await reload();
     },
-    // décalage du départ (J0) — Réviser, étape 1/3. Ne touche QUE les cartes
-    // jamais révisées (unstartedQuestionsFor : cursor === 0). putBackup avant
-    // l'écriture en masse (précaution type migration), puis le `plan` ENTIER
-    // est reconstruit depuis la nouvelle date (buildPlan) — sans risque
-    // puisqu'il n'y a encore aucun historique à préserver ; cursor reste 0.
+    // décalage/pose du départ (J0) — Réviser, étape 1/3. Cible les cartes SANS
+    // planning actif OU jamais révisées (unstartedQuestionsFor/unstartedSchemasFor
+    // — voir planning.js isUnstarted). `date` PEUT être dans le passé (cours déjà
+    // commencé dans la vraie vie, ou fiche resetée qu'on repositionne) :
+    // buildPlanFrom (pas buildPlan) place alors le cursor sur la première
+    // échéance restante au lieu de 0 — les jalons déjà passés ne sont jamais
+    // "dus"/"en retard". putBackup avant l'écriture en masse (précaution type
+    // migration) ; sans risque puisqu'il n'y a pas (ou plus) d'historique de
+    // planning à préserver ici. Couvre AUSSI les fiches anat_schema (l'item
+    // planifiable vit sur la fiche, pas des questions), absentes avant ce fix.
     shiftSourceStart: async (sourceId, date) => {
       const targets = unstartedQuestionsFor(db, { sourceId });
-      if (!targets.length) return;
-      await putBackup('pre-decalage-source-' + sourceId + '-' + Date.now(), targets);
-      await putMany('questions', targets.map((q) => ({ ...q, plan: buildPlan(date) })));
+      const schemaTargets = unstartedSchemasFor(db, { sourceId });
+      if (!targets.length && !schemaTargets.length) return;
+      await putBackup('pre-decalage-source-' + sourceId + '-' + Date.now(), { questions: targets, schemas: schemaTargets });
+      if (targets.length) await putMany('questions', targets.map((q) => ({ ...q, ...buildPlanFrom(date) })));
+      if (schemaTargets.length) await putMany('fiches', schemaTargets.map((f) => ({ ...f, ...buildPlanFrom(date) })));
       await reload();
     },
     shiftFicheStart: async (ficheId, date) => {
       const targets = unstartedQuestionsFor(db, { ficheId });
-      if (!targets.length) return;
-      await putBackup('pre-decalage-fiche-' + ficheId + '-' + Date.now(), targets);
-      await putMany('questions', targets.map((q) => ({ ...q, plan: buildPlan(date) })));
+      const schemaTargets = unstartedSchemasFor(db, { ficheId });
+      if (!targets.length && !schemaTargets.length) return;
+      await putBackup('pre-decalage-fiche-' + ficheId + '-' + Date.now(), { questions: targets, schemas: schemaTargets });
+      if (targets.length) await putMany('questions', targets.map((q) => ({ ...q, ...buildPlanFrom(date) })));
+      if (schemaTargets.length) await putMany('fiches', schemaTargets.map((f) => ({ ...f, ...buildPlanFrom(date) })));
       await reload();
     },
     // rééquilibrage calendrier — Réviser, étape 2/3. Déplace les cartes RÉELLEMENT

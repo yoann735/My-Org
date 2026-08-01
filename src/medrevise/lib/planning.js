@@ -269,22 +269,38 @@ export function ficheJDistribution(db, ficheId, idx) {
   });
 }
 
-/* ---- décalage du départ (J0) — Réviser, étape 1/3. Ne cible QUE les cartes
-   JAMAIS révisées (cursor === 0) : décaler leur plan entier (buildPlan) ne
-   perd aucun historique puisqu'il n'y en a pas encore. ---- */
+/* ---- décalage/pose du départ (J0) — Réviser, étape 1/3. Cible les cartes
+   SANS planning actif (`!q.plan`, ex. après un Reset des J) ET les cartes
+   jamais révisées (cursor === 0, un plan existe déjà) : reconstruire leur
+   plan entier (buildPlanFrom) ne perd aucun historique puisqu'il n'y en a
+   pas encore, ou plus rien à perdre (déjà effacé par le reset). ---- */
 export function isUnstarted(q) {
-  return (q.cursor || 0) === 0;
+  return !q.plan || (q.cursor || 0) === 0;
 }
-/** cartes qcm/flashcard jamais révisées d'un cours ({sourceId}) ou d'une
-   seule fiche ({ficheId}) — alimente à la fois le compteur de confirmation
-   et la cible de la mutation (décalage de J0), pour ne pas dupliquer le
-   filtre entre les deux. */
+/** cartes qcm/flashcard sans planning actif OU jamais révisées, d'un cours
+   ({sourceId}) ou d'une seule fiche ({ficheId}) — alimente à la fois le
+   compteur de confirmation et la cible de la mutation (décalage/pose de
+   J0), pour ne pas dupliquer le filtre entre les deux. */
 export function unstartedQuestionsFor(db, { sourceId, ficheId } = {}, idx) {
   const ix = idx || index(db);
   return (db.questions || []).filter((q) => {
     if (!SCHEDULED_TYPES.has(q.type) || !isUnstarted(q)) return false;
     const f = ix.fById[q.ficheId];
     if (!f) return false;
+    if (ficheId) return f.id === ficheId;
+    if (sourceId) { const m = ix.mById[f.matiereId]; return !!m && m.sourceId === sourceId; }
+    return false;
+  });
+}
+/** miroir de unstartedQuestionsFor pour les fiches `anat_schema` (l'item
+   planifiable vit sur la FICHE, pas sur des questions — voir
+   scheduledSchemas) : jamais couvert avant, nécessaire pour qu'une fiche
+   schéma resetée (plus de `plan` du tout) puisse elle aussi se faire poser
+   un J0 via "Décaler le départ". */
+export function unstartedSchemasFor(db, { sourceId, ficheId } = {}, idx) {
+  const ix = idx || index(db);
+  return (db.fiches || []).filter((f) => {
+    if (f.type !== 'anat_schema' || !isUnstarted(f)) return false;
     if (ficheId) return f.id === ficheId;
     if (sourceId) { const m = ix.mById[f.matiereId]; return !!m && m.sourceId === sourceId; }
     return false;

@@ -108,6 +108,23 @@ export function buildPlan(startDate) {
   });
 }
 
+/** construit le plan ET place le `cursor` correctement quand `startDate` est
+   dans le PASSÉ (import d'un cours déjà commencé dans la vraie vie, ou
+   décalage du départ vers une date antérieure) : les jalons strictement
+   antérieurs à aujourd'hui sont considérés DÉJÀ FAITS (jamais "dus" ni "en
+   retard"), le cursor pointe directement sur la première échéance restante
+   (date >= aujourd'hui). Si `startDate` est aujourd'hui ou dans le futur,
+   équivaut exactement à `buildPlan(startDate)` + cursor 0 (comportement
+   inchangé). Si TOUTES les échéances sont déjà passées, cursor = plan.length
+   → la carte est "Terminée" (même état qu'un cycle normalement achevé, voir
+   labelForCursor — aucun nouvel état à gérer). */
+export function buildPlanFrom(startDate) {
+  const plan = buildPlan(startDate);
+  const today = todayISO();
+  const cursor = plan.findIndex((e) => e.date >= today);
+  return { plan, cursor: cursor === -1 ? plan.length : cursor };
+}
+
 // chrono par carte (flashcards, Session.jsx/MobileSession.jsx) : plafond de
 // sécurité — au-delà, la carte n'est pas comptée dans la moyenne "temps par
 // carte" (Reviser), en plus de la pause visibilitychange déjà gérée côté

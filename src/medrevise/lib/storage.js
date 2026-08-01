@@ -5,7 +5,7 @@
    Hiérarchie : SOURCE(cours) → MATIÈRE → FICHE → QUESTIONS / STRUCTURES.
    ============================================================ */
 import { get, set, del, values, setMany, createStore } from 'idb-keyval';
-import { isoDate, buildPlan } from './sm2.js';
+import { isoDate, buildPlanFrom } from './sm2.js';
 import { queuePush, pullAllRecords, pushBlob, pullBlob, flushOutbox } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
@@ -148,10 +148,13 @@ export async function setStats(s) {
    déjà un item "superset" (v1.0 + champs legacy) produit par toInternalItem().
    On lui donne une clé primaire neuve + son état initial méthode des J.
    `startDate` (YYYY-MM-DD, défaut aujourd'hui) : date de départ (J0) choisie
-   à l'import (voir lib/import.js). Chronologie FIXE (lib/sm2.js buildPlan) :
-   seuls les types SCHEDULED (qcm/flashcard, voir planning.js SCHEDULED_TYPES)
-   reçoivent `plan`/`cursor` — exercice/feynman sont HORS méthode des J, ils
-   n'ont ni dates ni palier à porter. */
+   à l'import (voir lib/import.js) — PEUT être dans le passé (cours déjà
+   commencé dans la vraie vie) : buildPlanFrom (lib/sm2.js) place alors le
+   cursor directement sur la première échéance restante, les jalons déjà
+   passés ne sont jamais "dus"/"en retard". Seuls les types SCHEDULED (qcm/
+   flashcard, voir planning.js SCHEDULED_TYPES) reçoivent `plan`/`cursor` —
+   exercice/feynman sont HORS méthode des J, ils n'ont ni dates ni palier à
+   porter. */
 export function newItem(ficheId, item, startDate = isoDate()) {
   const scheduled = item.type === 'qcm' || item.type === 'flashcard';
   return {
@@ -160,7 +163,7 @@ export function newItem(ficheId, item, startDate = isoDate()) {
     // l'id v1.0 d'origine du JSON → sert au dédoublonnage lors d'un ajout à une
     // fiche existante (mode Rattrapage).
     id: genId('q'), srcId: item.id || null, ficheId, type: item.type,
-    ...(scheduled ? { plan: buildPlan(startDate), cursor: 0 } : {}),
+    ...(scheduled ? buildPlanFrom(startDate) : {}),
     historique: [], missed: 0,
   };
 }
