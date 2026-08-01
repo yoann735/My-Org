@@ -25,6 +25,24 @@ function nextDate(record) {
   return plan[cursor].date;
 }
 
+/** index (>= cursor) de l'échéance qui tombe EXACTEMENT sur `dateISO` — pas
+   seulement l'échéance COURANTE (nextDate/plan[cursor]) : la chronologie
+   étant FIXE, une carte pas encore arrivée à son J0/J+1 porte déjà, dans son
+   `plan`, la date exacte de ses échéances suivantes (J+3, J+7…). -1 si
+   aucune correspondance (cycle terminé ou date absente du plan restant).
+   SEUL point de correspondance "carte ↔ jour futur" — dueOn (jour futur),
+   dueFromOn (cascade) et MedReviseApp.jsx (shiftPlan) s'appuient dessus
+   pour rester d'accord sur ce qu'une carte "a ce jour-là". */
+export function planIndexOn(record, dateISO) {
+  const plan = record && record.plan;
+  const cursor = (record && record.cursor) || 0;
+  if (!plan) return -1;
+  for (let k = cursor; k < plan.length; k++) {
+    if (plan[k].date === dateISO) return k;
+  }
+  return -1;
+}
+
 /* ---- index helpers ---- */
 export function index(db) {
   const sById = Object.fromEntries((db.sources || []).map((s) => [s.id, s]));
@@ -87,16 +105,20 @@ export function scheduledQuestions(db, idx) {
   return (db.questions || []).filter((q) => SCHEDULED_TYPES.has(q.type) && isFicheScheduled(db, ix.fById[q.ficheId], ix));
 }
 
-/** questions dues à une date (par défaut aujourd'hui) — inclut le retard pour aujourd'hui */
+/** questions dues à une date (par défaut aujourd'hui) — inclut le retard pour
+   aujourd'hui. Jour FUTUR : ne teste PAS seulement l'échéance courante
+   (nextDate) mais tout le `plan` restant (planIndexOn) — une carte pas
+   encore arrivée à J0/J+1 aujourd'hui a déjà, dans son plan FIXE, la date
+   exacte de son J+3/J+7 à venir ; l'ignorer ferait sous-compter ce jour-là
+   par rapport à la projection calendrier (weekData/ficheProjection), qui
+   lit déjà tout `plan.slice(cursor)`. */
 export function dueOn(db, dateISO, idx) {
   const ix = idx || index(db);
   const today = todayISO();
   return scheduledQuestions(db, ix).filter((q) => {
-    const d = nextDate(q);
-    if (d == null) return false;                                 // cycle terminé
-    if (dateISO === today) return d <= dateISO;                   // aujourd'hui = dû + en retard
+    if (dateISO === today) { const d = nextDate(q); return d != null && d <= dateISO; } // aujourd'hui = dû + en retard
     if (dateISO < today) return false;                            // pas de révision dans le passé
-    return d === dateISO;                                         // jour futur précis
+    return planIndexOn(q, dateISO) >= 0;                           // jour futur : n'importe quelle échéance restante
   });
 }
 export function dueToday(db, idx) { return dueOn(db, todayISO(), idx); }
@@ -201,11 +223,9 @@ export function dueSchemasOn(db, dateISO, idx) {
   const ix = idx || index(db);
   const today = todayISO();
   return scheduledSchemas(db, ix).filter((f) => {
-    const d = nextDate(f);
-    if (d == null) return false;                   // cycle terminé
-    if (dateISO === today) return d <= dateISO;     // aujourd'hui = dû + en retard
+    if (dateISO === today) { const d = nextDate(f); return d != null && d <= dateISO; }
     if (dateISO < today) return false;
-    return d === dateISO;                           // jour futur précis
+    return planIndexOn(f, dateISO) >= 0;            // jour futur : même logique que dueOn
   });
 }
 export function dueSchemasToday(db, idx) { return dueSchemasOn(db, todayISO(), idx); }
@@ -305,8 +325,10 @@ export function dueOnFor(db, dateISO, { sourceId, ficheId } = {}, idx) {
 export function dueFromOn(db, dateISO, { sourceId, ficheId } = {}, idx) {
   const ix = idx || index(db);
   return scheduledQuestions(db, ix).filter((q) => {
-    const d = nextDate(q);
-    if (d == null || d < dateISO) return false;
+    const plan = q.plan, cursor = q.cursor || 0;
+    // cycle terminé, ou même sa DERNIÈRE échéance est avant dateISO (dates
+    // croissantes : si la dernière est trop tôt, toutes le sont) → rien à cascader.
+    if (!plan || cursor >= plan.length || plan[plan.length - 1].date < dateISO) return false;
     const f = ix.fById[q.ficheId];
     if (!f) return false;
     if (ficheId) return f.id === ficheId;
@@ -349,7 +371,16 @@ export function todayPlan(db, idx) {
    décroissant (le cours le plus chargé d'abord). */
 export function dueByCoursOn(db, dateISO, idx) {
   const ix = idx || index(db);
-  const byFiche = groupByFiche(db, dueOn(db, dateISO, ix), ix);
+  // groupByFiche/ficheJ étiquettent avec le palier COURANT de la fiche (correct
+  // pour todayPlan) — ici dateISO peut être un jour futur où l'occurrence qui
+  // tombe CE jour-là n'est pas forcément l'échéance courante (planIndexOn) :
+  // on réétiquette donc chaque groupe avec le VRAI palier de l'occurrence du
+  // jour, pour rester cohérent avec le libellé affiché dans la vue normale
+  // (weekData/ficheProjection, qui étiquette déjà par occurrence).
+  const byFiche = groupByFiche(db, dueOn(db, dateISO, ix), ix).map((g) => {
+    const at = planIndexOn(g.items[0], dateISO);
+    return at >= 0 ? { ...g, jIndex: at, jLabel: PLAN_LABELS[at] } : g;
+  });
   const bySource = {};
   byFiche.forEach((g) => {
     const sid = g.source ? g.source.id : '?';

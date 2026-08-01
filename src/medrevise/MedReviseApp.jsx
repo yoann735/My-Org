@@ -22,7 +22,7 @@ import {
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 import { todayISO, buildPlan } from './lib/sm2.js';
-import { addDays, unstartedQuestionsFor, dueOnFor, dueFromOn, diffDays } from './lib/planning.js';
+import { addDays, unstartedQuestionsFor, dueOnFor, dueFromOn, diffDays, planIndexOn } from './lib/planning.js';
 import { useIsMobile } from '../shared/hooks/useMediaQuery.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
 
@@ -33,16 +33,21 @@ import { MobileApp } from './mobile/MobileApp.jsx';
 const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen };
 
 // Réorganiser (ctx.moveSourceDay/moveFicheDay ci-dessous) : décale le `plan`
-// fixe (lib/sm2.js buildPlan) d'une carte DÉJÀ EN CYCLE. Sans cascade, seule
-// l'entrée COURANTE (plan[cursor]) reçoit `toDate` — les échéances suivantes
-// ne bougent pas. Avec cascade, TOUTE entrée `k >= cursor` glisse de `shift`
-// jours — les entrées déjà faites (`k < cursor`) ne sont JAMAIS touchées,
-// dans les deux cas.
-function shiftPlan(rec, cascade, shift, toDate) {
-  const cursor = rec.cursor || 0;
+// fixe (lib/sm2.js buildPlan) d'une carte DÉJÀ EN CYCLE. La cible n'est PAS
+// forcément l'entrée COURANTE (plan[cursor]) : depuis le fix planIndexOn
+// (dueOn/dueOnFor/dueFromOn lisent tout le plan restant, pas seulement
+// nextDate), le jour cliqué peut correspondre à une échéance FUTURE pas
+// encore atteinte (ex. le J+3 d'une carte encore à J0) — on recalcule donc
+// l'index exact (planIndexOn) plutôt que de supposer `cursor`. Sans cascade,
+// seule CETTE entrée reçoit `toDate`. Avec cascade, TOUTE entrée `k >= at`
+// glisse de `shift` jours. Les entrées avant `at` (déjà faites, ou pas
+// encore ciblées) ne sont JAMAIS touchées, dans les deux cas.
+function shiftPlan(rec, fromDate, cascade, shift, toDate) {
+  const at = planIndexOn(rec, fromDate);
+  if (at < 0) return rec; // défensif : ne devrait pas arriver (déjà filtré par dueOnFor/dueFromOn)
   const plan = rec.plan.map((entry, i) => {
-    if (i < cursor) return entry;
-    if (!cascade) return i === cursor ? { ...entry, date: toDate } : entry;
+    if (i < at) return entry;
+    if (!cascade) return i === at ? { ...entry, date: toDate } : entry;
     return { ...entry, date: addDays(entry.date, shift) };
   });
   return { ...rec, plan };
@@ -340,20 +345,21 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // après un Raté) se déplace comme les autres. putBackup avant l'écriture
     // en masse, même précaution qu'à l'étape 1.
     // `cascade` (étape 3/3) : variante de la même fonction, pas une réécriture.
-    // Sans cascade : cible = dueOnFor (jour A précis), seule l'entrée COURANTE
-    // du plan (plan[cursor]) reçoit `toDate` — les échéances suivantes ne
-    // bougent pas.
+    // Sans cascade : cible = dueOnFor (jour A précis), seule l'entrée qui
+    // correspond à CE jour (planIndexOn, pas forcément plan[cursor] — voir
+    // shiftPlan) reçoit `toDate` — les échéances suivantes ne bougent pas.
     // Avec cascade : cible = dueFromOn (jour A ET toutes ses échéances futures
-    // déjà programmées), et TOUTE entrée `k >= cursor` du plan glisse de +N
+    // déjà programmées), et TOUTE entrée à partir de celle-là glisse de +N
     // jours (N = diffDays(A,B)) — glissement uniforme, écarts entre paliers ET
-    // entre cartes préservés. Dans les deux cas, les entrées avant `cursor`
-    // (déjà faites) et `cursor`/`historique`/`missed` restent intacts.
+    // entre cartes préservés. Dans les deux cas, les entrées avant cette
+    // échéance (déjà faites, ou pas encore ciblées) et `cursor`/`historique`/
+    // `missed` restent intacts.
     moveSourceDay: async (sourceId, fromDate, toDate, { cascade = false } = {}) => {
       const targets = cascade ? dueFromOn(db, fromDate, { sourceId }) : dueOnFor(db, fromDate, { sourceId });
       if (!targets.length) return;
       await putBackup('pre-reequilibrage-source-' + sourceId + '-' + Date.now(), targets);
       const shift = cascade ? diffDays(fromDate, toDate) : null;
-      await putMany('questions', targets.map((q) => shiftPlan(q, cascade, shift, toDate)));
+      await putMany('questions', targets.map((q) => shiftPlan(q, fromDate, cascade, shift, toDate)));
       await reload();
     },
     moveFicheDay: async (ficheId, fromDate, toDate, { cascade = false } = {}) => {
@@ -361,23 +367,25 @@ export default function MedReviseApp({ themeApi, goHub }) {
       if (!targets.length) return;
       await putBackup('pre-reequilibrage-fiche-' + ficheId + '-' + Date.now(), targets);
       const shift = cascade ? diffDays(fromDate, toDate) : null;
-      await putMany('questions', targets.map((q) => shiftPlan(q, cascade, shift, toDate)));
+      await putMany('questions', targets.map((q) => shiftPlan(q, fromDate, cascade, shift, toDate)));
       await reload();
     },
     // « Sauter » un jour donné pour un cours/une fiche : cible = cartes dues
     // CE jour précis (dueOnFor(db, dateISO, …), dateISO peut être un jour futur
-    // du calendrier, pas seulement aujourd'hui). Chronologie FIXE oblige : la
-    // date de la carte ne bouge JAMAIS ici, seul `cursor` avance d'un cran —
-    // exactement comme une vraie révision (advanceQuestion, lib/sm2.js), sans
-    // note à donner. L'entrée d'historique est ancrée sur dateISO (le jour
-    // sauté, potentiellement futur), pas sur aujourd'hui.
+    // du calendrier, pas seulement aujourd'hui — depuis le fix planIndexOn,
+    // ça inclut une échéance future pas encore atteinte, ex. le J+3 d'une
+    // carte encore à J0). Chronologie FIXE oblige : la date de la carte ne
+    // bouge JAMAIS ici, `cursor` avance jusqu'à JUSTE APRÈS l'échéance
+    // ciblée (planIndexOn + 1, pas bêtement cursor+1 — sinon on avancerait
+    // la mauvaise échéance si ce n'est pas celle en cours). L'entrée
+    // d'historique est ancrée sur dateISO (le jour sauté), pas sur aujourd'hui.
     skipDaySource: async (sourceId, dateISO) => {
       const targets = dueOnFor(db, dateISO, { sourceId });
       if (!targets.length) return;
       await putBackup('pre-saut-source-' + sourceId + '-' + Date.now(), targets);
       await putMany('questions', targets.map((q) => ({
         ...q,
-        cursor: Math.min((q.cursor || 0) + 1, q.plan.length),
+        cursor: Math.min(planIndexOn(q, dateISO) + 1, q.plan.length),
         historique: (q.historique || []).concat([{ date: dateISO, qualite: 5 }]),
         missed: 0,
       })));
@@ -389,7 +397,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await putBackup('pre-saut-fiche-' + ficheId + '-' + Date.now(), targets);
       await putMany('questions', targets.map((q) => ({
         ...q,
-        cursor: Math.min((q.cursor || 0) + 1, q.plan.length),
+        cursor: Math.min(planIndexOn(q, dateISO) + 1, q.plan.length),
         historique: (q.historique || []).concat([{ date: dateISO, qualite: 5 }]),
         missed: 0,
       })));
