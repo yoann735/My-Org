@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, Switch, matiereMeta, syncStatusLabel } from '../components/ui.jsx';
-import { PALIER_LABELS } from '../lib/sm2.js';
+import { PLAN_LABELS } from '../lib/sm2.js';
 import { wipeAll } from '../lib/storage.js';
 
 export function Reglages({ ctx }) {
@@ -164,8 +164,8 @@ export function Reglages({ ctx }) {
           </div>
         </Card>
         <Card title="Méthode des J" icon="calendar">
-          <div className="row wrap" style={{ gap: 7 }}>{PALIER_LABELS.map((j) => <span className="j-tag" key={j}>{j}</span>)}</div>
-          <div className="hint" style={{ marginTop: 10 }}>Cadence fixe à 5 paliers — Facile avance d'un palier, Difficile reste, Raté repart à J0.</div>
+          <div className="row wrap" style={{ gap: 7 }}>{PLAN_LABELS.map((j) => <span className="j-tag" key={j}>{j}</span>)}</div>
+          <div className="hint" style={{ marginTop: 10 }}>Chronologie fixe : les 7 échéances sont posées à l'import et ne bougent jamais automatiquement (seul l'onglet Réorganiser peut les décaler) — Facile/Difficile/Raté sont purement informatives, sans effet sur les dates.</div>
         </Card>
         <Card title="Données & confidentialité" icon="box">
           <div className="hint" style={{ marginBottom: 12 }}>100 % local : fiches, images et PDF sont stockés sur cet appareil (IndexedDB).</div>

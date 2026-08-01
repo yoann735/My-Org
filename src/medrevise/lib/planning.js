@@ -1,9 +1,9 @@
 /* ============================================================
-   MedRevise — planning "méthode des J" calculé sur les vraies
-   échéances par question (nextReview), pas un hash. Fonctions PURES
-   sur un snapshot { sources, matieres, fiches, questions }.
+   MedRevise — planning "méthode des J" calculé sur la chronologie FIXE de
+   chaque carte (plan/cursor, voir lib/sm2.js buildPlan), pas un hash.
+   Fonctions PURES sur un snapshot { sources, matieres, fiches, questions }.
    ============================================================ */
-import { labelForPalier, todayISO, isoDate, PALIER_DELAYS, PALIER_LABELS } from './sm2.js';
+import { labelForCursor, todayISO, isoDate, PLAN_LABELS } from './sm2.js';
 
 const SCHEDULED_TYPES = new Set(['qcm', 'flashcard']);
 // exercices : HORS méthode des J (comme le Feynman). Ils ne sont plus programmés,
@@ -13,6 +13,17 @@ const SCHEDULED_TYPES = new Set(['qcm', 'flashcard']);
 const EXERCICE_TYPE = 'exercice';
 // types comptant pour le J AFFICHÉ d'une fiche (théorie uniquement désormais)
 const J_TYPES = new Set(['qcm', 'flashcard']);
+
+/** date de la PROCHAINE échéance non faite d'une carte/fiche planifiée
+   (plan/cursor) — null si le cycle est terminé (cursor >= plan.length).
+   SEUL point de lecture de `plan`/`cursor` pour le calcul des "dues" de ce
+   fichier — ne dupliquer cette lecture nulle part ailleurs. */
+function nextDate(record) {
+  const plan = record && record.plan;
+  const cursor = (record && record.cursor) || 0;
+  if (!plan || cursor >= plan.length) return null;
+  return plan[cursor].date;
+}
 
 /* ---- index helpers ---- */
 export function index(db) {
@@ -81,28 +92,29 @@ export function dueOn(db, dateISO, idx) {
   const ix = idx || index(db);
   const today = todayISO();
   return scheduledQuestions(db, ix).filter((q) => {
-    if (dateISO === today) return q.nextReview <= dateISO;       // aujourd'hui = dû + en retard
-    if (dateISO < today) return false;                           // pas de révision dans le passé
-    return q.nextReview === dateISO;                             // jour futur précis
+    const d = nextDate(q);
+    if (d == null) return false;                                 // cycle terminé
+    if (dateISO === today) return d <= dateISO;                   // aujourd'hui = dû + en retard
+    if (dateISO < today) return false;                            // pas de révision dans le passé
+    return d === dateISO;                                         // jour futur précis
   });
 }
 export function dueToday(db, idx) { return dueOn(db, todayISO(), idx); }
 
 /* ---- « boîte des J non faits » : items dont l'échéance est STRICTEMENT passée
-   (nextReview < aujourd'hui), séparés du "dû aujourd'hui" (dueToday inclut déjà
-   le retard, volontairement inchangé — voir dueOn). Ne recale RIEN : réviser
-   l'item applique applyReview/sm2 normalement, qui base déjà le prochain
-   intervalle sur la date de révision EFFECTIVE (new Date() dans sm2()), jamais
-   sur l'échéance manquée — aucune nouvelle logique de planification ici. ---- */
+   (nextDate < aujourd'hui), séparés du "dû aujourd'hui" (dueToday inclut déjà
+   le retard, volontairement inchangé — voir dueOn). Ne recale RIEN : la date
+   de la carte est FIXE (plan/cursor, lib/sm2.js) — réviser l'item avance
+   seulement `cursor`, jamais un recalcul de date ici ni ailleurs. ---- */
 export function overdueQuestions(db, idx) {
   const ix = idx || index(db);
   const today = todayISO();
-  return scheduledQuestions(db, ix).filter((q) => q.nextReview < today);
+  return scheduledQuestions(db, ix).filter((q) => { const d = nextDate(q); return d != null && d < today; });
 }
 export function overdueSchemas(db, idx) {
   const ix = idx || index(db);
   const today = todayISO();
-  return scheduledSchemas(db, ix).filter((f) => (f.nextReview || today) < today);
+  return scheduledSchemas(db, ix).filter((f) => { const d = nextDate(f); return d != null && d < today; });
 }
 /** regroupe questions ET schémas en retard, une entrée par fiche, triée par
    ancienneté (la plus en retard d'abord — priorité). */
@@ -110,54 +122,45 @@ export function overdueByFiche(db, idx) {
   const ix = idx || index(db);
   const qGroups = groupByFiche(db, overdueQuestions(db, ix), ix).map((g) => ({
     ...g, isSchema: false,
-    oldest: g.items.reduce((min, q) => (q.nextReview < min ? q.nextReview : min), g.items[0].nextReview),
+    oldest: g.items.reduce((min, q) => (nextDate(q) < min ? nextDate(q) : min), nextDate(g.items[0])),
   }));
   const schemaGroups = overdueSchemas(db, ix).map((f) => {
     const m = ix.mById[f.matiereId];
     return {
       fiche: f, matiere: m, source: m && ix.sById[m.sourceId], items: [], qcm: 0, flash: 0, isSchema: true,
-      ...ficheJ(db, f.id, ix), coef: effectiveCoef(db, f, ix), oldest: f.nextReview || todayISO(),
+      ...ficheJ(db, f.id, ix), coef: effectiveCoef(db, f, ix), oldest: nextDate(f) || todayISO(),
     };
   });
   return [...qGroups, ...schemaGroups].sort((a, b) => (a.oldest < b.oldest ? -1 : a.oldest > b.oldest ? 1 : 0));
 }
 
 /* ============================================================
-   PROJECTION des J futurs (calendrier — lecture seule). Pour une fiche,
-   calcule ses prochaines occurrences sur l'échelle des paliers fixes
-   (PALIER_DELAYS = [0,3,7,14,30]) à partir de son échéance EFFECTIVE
-   actuelle :
-   - point de départ = nextReview si pas en retard, sinon aujourd'hui +
-     interval (même recalage que dismissOverdue — jamais la date manquée) ;
-   - puis les paliers suivants, en jours ajoutés à ce point de départ (delta
-     entre paliers — EXACT désormais, la cadence étant fixe, pas une simple
-     approximation par bucket).
-   RECALCULÉ à chaque appel depuis l'état réel (palier/nextReview) — ne
-   stocke ni ne modifie RIEN, ne touche pas applyReview. Si la fiche est
-   révisée entre-temps, la projection suivante reflète naturellement le
-   nouvel état. ============================== */
-export function ficheProjection(db, fiche, idx) {
-  const ix = idx || index(db);
-  const today = todayISO();
-  let palier, nextReview;
+   PROJECTION des J futurs (calendrier — lecture seule). La chronologie
+   étant désormais FIXE (plan/cursor, lib/sm2.js buildPlan), il n'y a plus
+   rien à RECALCULER : chaque carte porte déjà ses 7 échéances réelles —
+   on se contente de LIRE `plan` à partir de `cursor` (les échéances avant
+   `cursor` sont déjà faites, ce ne sont pas des occurrences futures). Ne
+   stocke ni ne modifie RIEN. Si la fiche est révisée entre-temps, la
+   projection suivante reflète naturellement le nouveau `cursor`. ======== */
+export function ficheProjection(db, fiche) {
+  let record;
   if (fiche.type === 'anat_schema') {
-    palier = fiche.palier || 0;
-    nextReview = fiche.nextReview || today;
+    record = fiche;
   } else {
     const qs = (db.questions || []).filter((q) => q.ficheId === fiche.id && J_TYPES.has(q.type));
     if (!qs.length) return [];
-    const soonest = qs.reduce((a, b) => (a.nextReview <= b.nextReview ? a : b));
-    palier = soonest.palier || 0;
-    nextReview = soonest.nextReview;
+    // la carte la MOINS avancée pilote la projection affichée — une carte déjà
+    // terminée (cycle clos) ne doit jamais masquer une carte encore active.
+    record = qs.reduce((a, b) => {
+      const da = nextDate(a), db_ = nextDate(b);
+      if (da == null) return b;
+      if (db_ == null) return a;
+      return da <= db_ ? a : b;
+    });
   }
-  const interval = PALIER_DELAYS[palier];
-  const anchorDate = nextReview < today ? addDays(today, interval || 1) : nextReview;
-  const out = [];
-  for (let k = palier; k < PALIER_DELAYS.length; k++) {
-    const days = k === palier ? 0 : (PALIER_DELAYS[k] - PALIER_DELAYS[palier]);
-    out.push({ date: addDays(anchorDate, days), jIndex: k, jLabel: PALIER_LABELS[k] });
-  }
-  return out;
+  const plan = record.plan || [];
+  const cursor = record.cursor || 0;
+  return plan.slice(cursor).map((p) => ({ date: p.date, jIndex: p.i, jLabel: p.label }));
 }
 
 /** projection pour toutes les fiches planifiées (rappels J actifs, non archivées). */
@@ -165,7 +168,7 @@ export function allFicheProjections(db, idx) {
   const ix = idx || index(db);
   return (db.fiches || [])
     .filter((f) => isFicheScheduled(db, f, ix))
-    .map((f) => ({ fiche: f, matiere: ix.mById[f.matiereId], occurrences: ficheProjection(db, f, ix) }))
+    .map((f) => ({ fiche: f, matiere: ix.mById[f.matiereId], occurrences: ficheProjection(db, f) }))
     .filter((e) => e.occurrences.length);
 }
 
@@ -188,7 +191,7 @@ export function exerciceStatus(q) {
 }
 
 /* ---- schémas d'anatomie visuelle (anat_schema) : la FICHE elle-même est
-   l'item planifiable SM-2 (elle porte interval/repetition/efactor/nextReview),
+   l'item planifiable (elle porte plan/cursor, voir lib/sm2.js buildPlan),
    pas des questions. On les gère en parallèle des questions. ---- */
 export function scheduledSchemas(db, idx) {
   const ix = idx || index(db);
@@ -198,53 +201,59 @@ export function dueSchemasOn(db, dateISO, idx) {
   const ix = idx || index(db);
   const today = todayISO();
   return scheduledSchemas(db, ix).filter((f) => {
-    const nr = f.nextReview || today;
-    if (dateISO === today) return nr <= dateISO;   // aujourd'hui = dû + en retard
+    const d = nextDate(f);
+    if (d == null) return false;                   // cycle terminé
+    if (dateISO === today) return d <= dateISO;     // aujourd'hui = dû + en retard
     if (dateISO < today) return false;
-    return nr === dateISO;                          // jour futur précis
+    return d === dateISO;                           // jour futur précis
   });
 }
 export function dueSchemasToday(db, idx) { return dueSchemasOn(db, todayISO(), idx); }
 
 /** J affiché d'une fiche : anat_schema → dérivé de la fiche elle-même ;
-   sinon → dérivé de sa question la plus proche d'échéance */
+   sinon → dérivé de sa question la plus proche d'échéance (une carte déjà
+   terminée ne masque jamais une carte encore active, voir ficheProjection) */
 export function ficheJ(db, ficheId, idx) {
   const ix = idx || index(db);
   const f = ix.fById[ficheId];
-  if (f && f.type === 'anat_schema') return labelForPalier(f.palier);
+  if (f && f.type === 'anat_schema') return labelForCursor(f);
   const qs = (db.questions || []).filter((q) => q.ficheId === ficheId && J_TYPES.has(q.type));
   if (!qs.length) return { jIndex: -1, jLabel: '—' };
-  const soonest = qs.reduce((a, b) => (a.nextReview <= b.nextReview ? a : b));
-  return labelForPalier(soonest.palier);
+  const soonest = qs.reduce((a, b) => {
+    const da = nextDate(a), db_ = nextDate(b);
+    if (da == null) return b;
+    if (db_ == null) return a;
+    return da <= db_ ? a : b;
+  });
+  return labelForCursor(soonest);
 }
 
-/** répartition des cartes théorie (qcm/flashcard) d'une fiche PAR PALIER —
-   alimente la frise détaillée (Reviser.jsx, JLadder) : rend visible qu'une
-   notation a fait avancer UNE carte même quand ficheJ() (dérivé de la carte
-   la MOINS avancée) ne bouge pas encore. Non pertinent pour anat_schema
-   (un seul item planifiable par fiche, pas de répartition à montrer). */
+/** répartition des cartes théorie (qcm/flashcard) d'une fiche PAR ÉCHÉANCE
+   COURANTE (cursor) — alimente la frise détaillée (Reviser.jsx, JLadder) :
+   rend visible qu'une notation a fait avancer UNE carte même quand ficheJ()
+   (dérivé de la carte la MOINS avancée) ne bouge pas encore. Une carte
+   terminée (cursor === plan.length) ne rentre dans aucun des 7 crans —
+   elle est sortie du planning actif. Non pertinent pour anat_schema (un
+   seul item planifiable par fiche, pas de répartition à montrer). */
 export function ficheJDistribution(db, ficheId, idx) {
   const ix = idx || index(db);
   const today = todayISO();
   const qs = (db.questions || []).filter((q) => q.ficheId === ficheId && J_TYPES.has(q.type));
-  return PALIER_LABELS.map((jLabel, i) => {
-    const atThisPalier = qs.filter((q) => (q.palier || 0) === i);
+  return PLAN_LABELS.map((jLabel, i) => {
+    const atThisPalier = qs.filter((q) => (q.cursor || 0) === i);
     return {
       jIndex: i, jLabel,
       count: atThisPalier.length,
-      dueToday: atThisPalier.filter((q) => q.nextReview <= today).length,
+      dueToday: atThisPalier.filter((q) => { const d = nextDate(q); return d != null && d <= today; }).length,
     };
   });
 }
 
-/* ---- décalage du départ (J0) — Réviser, étape 1/3 (mécanique cadence
-   fixe/nextReview, voir sm2.js). Ne cible QUE les cartes JAMAIS révisées :
-   une carte revenue à J0 après un Raté (nextPalier) a aussi palier===0 mais
-   PORTE UN historique — ce n'est pas "jamais révisée", décaler sa date
-   écraserait un cycle déjà en cours. isUnstarted() distingue donc les deux
-   par historique vide, pas par palier seul. ---- */
+/* ---- décalage du départ (J0) — Réviser, étape 1/3. Ne cible QUE les cartes
+   JAMAIS révisées (cursor === 0) : décaler leur plan entier (buildPlan) ne
+   perd aucun historique puisqu'il n'y en a pas encore. ---- */
 export function isUnstarted(q) {
-  return (q.palier || 0) === 0 && (!q.historique || q.historique.length === 0);
+  return (q.cursor || 0) === 0;
 }
 /** cartes qcm/flashcard jamais révisées d'un cours ({sourceId}) ou d'une
    seule fiche ({ficheId}) — alimente à la fois le compteur de confirmation
@@ -263,13 +272,13 @@ export function unstartedQuestionsFor(db, { sourceId, ficheId } = {}, idx) {
 }
 
 /* ---- rééquilibrage calendrier — Réviser, étape 2/3. Déplace des cartes DÉJÀ
-   EN CYCLE : contrairement à isUnstarted ci-dessus, AUCUN filtre de palier/
-   historique ici — seul nextReview change à la mutation (MedReviseApp.jsx
-   moveSourceDay/moveFicheDay), palier/interval/historique intacts. dueOnFor
-   restreint dueOn() (même sémantique : "aujourd'hui" inclut le retard) à un
-   cours ou une fiche, pour cibler EXACTEMENT les cartes réellement dues ce
-   jour précis — jamais une projection (ficheProjection extrapole des
-   occurrences futures hypothétiques, inadaptée pour une écriture réelle). */
+   EN CYCLE : contrairement à isUnstarted ci-dessus, AUCUN filtre de cursor
+   ici — seule l'échéance courante (plan[cursor]) change à la mutation
+   (MedReviseApp.jsx moveSourceDay/moveFicheDay), le reste du plan/historique
+   intact. dueOnFor restreint dueOn() (même sémantique : "aujourd'hui" inclut
+   le retard) à un cours ou une fiche, pour cibler EXACTEMENT les cartes
+   réellement dues ce jour précis — jamais une projection (ficheProjection
+   lit les occurrences déjà fixées, inadaptée pour une écriture réelle). */
 export function dueOnFor(db, dateISO, { sourceId, ficheId } = {}, idx) {
   const ix = idx || index(db);
   return dueOn(db, dateISO, ix).filter((q) => {
@@ -283,17 +292,21 @@ export function dueOnFor(db, dateISO, { sourceId, ficheId } = {}, idx) {
 
 /* ---- cascade — Réviser, étape 3/3 : variante ÉLARGIE de dueOnFor. Au lieu
    de cibler UNIQUEMENT les cartes dues le jour A (dueOnFor), cible aussi
-   toutes leurs échéances FUTURES déjà programmées (nextReview >= dateA) —
+   toutes leurs échéances FUTURES déjà programmées (nextDate >= dateA) —
    simple seuil de date, PAS la sémantique calendaire de dueOn (qui traite
    "aujourd'hui" spécialement pour inclure le retard : ici on veut un seuil
-   brut, les cartes strictement avant dateA restent exclues dans tous les
-   cas). MedReviseApp.jsx applique ensuite un glissement UNIFORME (+N jours,
-   voir diffDays) sur le nextReview de chaque carte ciblée, jamais une date
-   commune — les écarts entre cartes sont préservés. */
+   brut, les cartes strictement avant dateA — ou déjà terminées — restent
+   exclues dans tous les cas). Chaque carte porte désormais RÉELLEMENT ses
+   propres échéances futures dans `plan` (contrairement à l'ancien moteur où
+   seule la prochaine date existait) : MedReviseApp.jsx applique un
+   glissement UNIFORME (+N jours, voir diffDays) sur `plan[k].date` pour
+   tout `k >= cursor` de chaque carte ciblée, jamais une date commune — les
+   écarts entre paliers ET entre cartes sont préservés. */
 export function dueFromOn(db, dateISO, { sourceId, ficheId } = {}, idx) {
   const ix = idx || index(db);
   return scheduledQuestions(db, ix).filter((q) => {
-    if (q.nextReview < dateISO) return false;
+    const d = nextDate(q);
+    if (d == null || d < dateISO) return false;
     const f = ix.fById[q.ficheId];
     if (!f) return false;
     if (ficheId) return f.id === ficheId;

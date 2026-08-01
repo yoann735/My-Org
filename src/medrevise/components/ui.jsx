@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Icon } from '../../shared/Icon.jsx';
-import { PALIER_LABELS, todayISO } from '../lib/sm2.js';
+import { PLAN_LABELS, todayISO } from '../lib/sm2.js';
 
 const FALLBACK_TINT = '#7C6FE0';
 
@@ -199,7 +199,7 @@ export function CatBadge({ matiere }) {
 export function JLadder({ jIndex, counts }) {
   return (
     <div className="jladder">
-      {PALIER_LABELS.map((label, i) => {
+      {PLAN_LABELS.map((label, i) => {
         const cls = i < jIndex ? ' past' : i === jIndex ? ' current' : ' future';
         const c = counts && counts[i];
         return (

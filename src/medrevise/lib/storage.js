@@ -5,7 +5,7 @@
    Hiérarchie : SOURCE(cours) → MATIÈRE → FICHE → QUESTIONS / STRUCTURES.
    ============================================================ */
 import { get, set, del, values, setMany, createStore } from 'idb-keyval';
-import { isoDate } from './sm2.js';
+import { isoDate, buildPlan } from './sm2.js';
 import { queuePush, pullAllRecords, pushBlob, pullBlob, flushOutbox } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
@@ -144,40 +144,24 @@ export async function setStats(s) {
   return rec;
 }
 
-/* ---- helpers de création (avec init méthode des J — cadence fixe à
-   paliers, voir lib/sm2.js) ---- */
-export function newQuestion(ficheId, q, startDate = isoDate()) {
-  return {
-    // conserve les champs supplémentaires (categorie_question, difficulte,
-    // categorie_carte, explication_simple, lien_avec_le_cours, pieges_frequents,
-    // question_verification…) utiles pour filtrer/afficher et évaluer Feynman
-    ...q,
-    id: genId('q'), ficheId, type: q.type, concept: q.concept || '',
-    question: q.question || '', choix: q.choix || [], bonneReponse: q.bonneReponse ?? 0, explication: q.explication || '',
-    recto: q.recto || '', verso: q.verso || '',
-    niveau: q.niveau || null,
-    interval: 0, palier: 0,
-    nextReview: startDate, historique: [], missed: 0,
-  };
-}
-
-/* Item v1.0 (schéma unifié) → enregistrement planifiable en base.
-   `item` est déjà un item "superset" (v1.0 + champs legacy) produit par
-   toInternalItem(). On lui donne une clé primaire neuve + l'état palier
-   initial (J0). `startDate` (YYYY-MM-DD, défaut aujourd'hui) : date du
-   premier passage choisie à l'import (voir lib/import.js) — remplace
-   l'ancien décalage en jours (dueOffset), toujours appelé à 0 en pratique.
-   (Ne remplace pas newQuestion : les flux legacy passent par toInternalItem
-   en amont, ce helper reçoit toujours un item déjà normalisé.) */
+/* Item v1.0 (schéma unifié) → enregistrement planifiable en base. `item` est
+   déjà un item "superset" (v1.0 + champs legacy) produit par toInternalItem().
+   On lui donne une clé primaire neuve + son état initial méthode des J.
+   `startDate` (YYYY-MM-DD, défaut aujourd'hui) : date de départ (J0) choisie
+   à l'import (voir lib/import.js). Chronologie FIXE (lib/sm2.js buildPlan) :
+   seuls les types SCHEDULED (qcm/flashcard, voir planning.js SCHEDULED_TYPES)
+   reçoivent `plan`/`cursor` — exercice/feynman sont HORS méthode des J, ils
+   n'ont ni dates ni palier à porter. */
 export function newItem(ficheId, item, startDate = isoDate()) {
+  const scheduled = item.type === 'qcm' || item.type === 'flashcard';
   return {
     ...item,
     // clé primaire neuve (évite les collisions entre fiches) ; srcId conserve
     // l'id v1.0 d'origine du JSON → sert au dédoublonnage lors d'un ajout à une
     // fiche existante (mode Rattrapage).
     id: genId('q'), srcId: item.id || null, ficheId, type: item.type,
-    interval: 0, palier: 0,
-    nextReview: startDate, historique: [], missed: 0,
+    ...(scheduled ? { plan: buildPlan(startDate), cursor: 0 } : {}),
+    historique: [], missed: 0,
   };
 }
 

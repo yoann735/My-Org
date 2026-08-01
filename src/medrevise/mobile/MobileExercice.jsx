@@ -1,23 +1,21 @@
 /* ============================================================
    MedRevise mobile — exercice (numérique ou ouvert). RÉUTILISE
-   checkNumerique (correction.js), qualityForExercice/applyReview (sm2.js),
-   evalExpr (calc.js) et ctx.saveQuestion/getExoNote/setExoNote — identique
-   au desktop (session/Exercice.jsx), présentation neuve : une carte à la
-   fois, indices repliés, calculatrice réduite à un champ + "=".
+   checkNumerique (correction.js), qualityForExercice/recordExerciceAttempt
+   (sm2.js), evalExpr (calc.js) et ctx.saveQuestion/getExoNote/setExoNote —
+   identique au desktop (session/Exercice.jsx), présentation neuve : une
+   carte à la fois, indices repliés, calculatrice réduite à un champ + "=".
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Tex } from '../components/Tex.jsx';
-import { applyReview, qualityForExercice, todayISO, computeStreak } from '../lib/sm2.js';
+import { recordExerciceAttempt, qualityForExercice, todayISO, computeStreak } from '../lib/sm2.js';
 import { checkNumerique, parseScientificValue } from '../lib/correction.js';
 import { evalExpr } from '../lib/calc.js';
-import { effectiveCoef, index } from '../lib/planning.js';
 import { getExoNote, setExoNote } from '../lib/storage.js';
 
 export function MobileExercice({ ctx, onQuit }) {
   const payload = ctx.exercice || { items: [], title: 'Exercices' };
   const items = (payload.items || []).filter((it) => it.type === 'exercice');
-  const ix = index(ctx.db);
   const [idx, setIdx] = useState(0);
   const item = items[idx];
 
@@ -33,9 +31,6 @@ export function MobileExercice({ ctx, onQuit }) {
     );
   }
 
-  const fiche = ix.fById[item.ficheId];
-  const coef = effectiveCoef(ctx.db, fiche, ix);
-
   return (
     <div className="mrm-app">
       <div className="mrm-header">
@@ -44,7 +39,7 @@ export function MobileExercice({ ctx, onQuit }) {
         <span className="mrm-progress-n">{idx + 1} / {items.length}</span>
       </div>
       <div className="mrm-body">
-        <Workstation key={item.id} item={item} coef={coef} ctx={ctx}
+        <Workstation key={item.id} item={item} ctx={ctx}
           isLast={idx === items.length - 1}
           onNext={() => setIdx((i) => Math.min(items.length - 1, i + 1))}
           onDone={idx === items.length - 1 ? onQuit : null} />
@@ -53,7 +48,7 @@ export function MobileExercice({ ctx, onQuit }) {
   );
 }
 
-function Workstation({ item, coef, ctx, isLast, onNext, onDone }) {
+function Workstation({ item, ctx, isLast, onNext, onDone }) {
   const numeric = item.sous_type === 'numerique';
   const indices = item.indices || [];
   const [revealed, setRevealed] = useState(0);
@@ -64,7 +59,7 @@ function Workstation({ item, coef, ctx, isLast, onNext, onDone }) {
     if (appliedRef.current) return;
     appliedRef.current = true;
     const quality = qualityForExercice(success, revealed);
-    const updated = applyReview(item, quality, coef);
+    const updated = recordExerciceAttempt(item, quality);
     await ctx.saveQuestion(updated);
     const s = ctx.stats || {};
     const today = todayISO();

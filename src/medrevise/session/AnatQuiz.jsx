@@ -15,8 +15,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta } from '../components/ui.jsx';
-import { index, effectiveCoef } from '../lib/planning.js';
-import { applyReview, qualityFromRatio, todayISO, computeStreak, labelForPalier } from '../lib/sm2.js';
+import { index } from '../lib/planning.js';
+import { advanceQuestion, qualityFromRatio, todayISO, computeStreak, labelForCursor } from '../lib/sm2.js';
 import { matchAnat } from '../lib/anatMatch.js';
 import { champsFor } from '../lib/anatParse.js';
 import { ZonesLayer, VueAideToggle } from '../pages/ImportAnatomieVisuel.jsx';
@@ -185,8 +185,7 @@ export function AnatQuiz({ ctx }) {
 
   const finish = async () => {
     const quality = qualityFromRatio(ratio);
-    const coef = effectiveCoef(db, fiche, ix);
-    const updated = applyReview(fiche, quality, coef);
+    const updated = advanceQuestion(fiche, quality);
     await ctx.saveFiche(updated);
     // enregistre le jour d'activité réel + recalcul du streak (comme les sessions)
     const s = ctx.stats || {};
@@ -197,7 +196,7 @@ export function AnatQuiz({ ctx }) {
       await ctx.saveStats({ ...s, activityDays, streak, best: Math.max(s.best || 0, streak), dernierJourRevise: today });
     }
     setFinalScore({
-      correct: combinedCorrect, total: totalCount, jLabel: labelForPalier(updated.palier).jLabel,
+      correct: combinedCorrect, total: totalCount, jLabel: labelForCursor(updated).jLabel,
       visual: correctCount, visualTotal: maskedIds.length,
       theory: theoryCorrect, theoryTotal: theoryQuestions.length,
     });

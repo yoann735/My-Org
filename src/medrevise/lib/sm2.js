@@ -1,14 +1,23 @@
 /* ============================================================
-   MedRevise — méthode des J : cadence FIXE à 5 paliers (remplace l'ancien
-   moteur SM-2 adaptatif — voir docs/diag-repetition-espacee.md). Une carte
-   (qcm/flashcard) porte : palier (0..4), interval (dérivé, = délai du
-   palier courant, gardé pour compat des lectures existantes), nextReview
-   (YYYY-MM-DD), historique[]. Le coef n'intervient plus dans ce calcul
-   (voir lib/planning.js effectiveCoef — gardé pour le carnet d'erreurs
-   uniquement).
+   MedRevise — méthode des J : CHRONOLOGIE FIXE par carte (remplace le
+   moteur à paliers RECALCULÉS à chaque notation — voir
+   docs/audit-methode-des-J.md : Difficile/Raté à J0 reprogrammaient la
+   carte à AUJOURD'HUI, elle revenait donc chaque jour). Une carte
+   (qcm/flashcard, ou fiche anat_schema) porte :
+   - `plan` : 7 échéances ABSOLUES posées une seule fois à l'import
+     (buildPlan), qui ne bougent JAMAIS automatiquement — ni par une note,
+     ni par un retard, ni par un rattrapage. Seul l'onglet Réorganiser
+     (décalage manuel explicite, MedReviseApp.jsx) peut les modifier.
+   - `cursor` : index de la PROCHAINE échéance non faite. `cursor ===
+     plan.length` → cycle terminé (carte "Terminée", sort du planning actif).
+   - `historique[]` : log informatif des notes (inchangé).
+   - `missed` : carnet d'erreurs — Raté ET Difficile l'incrémentent, SEUL
+     Facile le remet à 0 (voir advanceQuestion).
+   Le coef n'intervient plus dans ce calcul (voir lib/planning.js
+   effectiveCoef — gardé pour le carnet d'erreurs uniquement).
    ============================================================ */
-export const PALIER_DELAYS = [0, 3, 7, 14, 30];
-export const PALIER_LABELS = ['J0', 'J+3', 'J+7', 'J+14', 'J+30'];
+export const PLAN_DELAYS = [0, 1, 3, 7, 14, 30, 90];
+export const PLAN_LABELS = ['J0', 'J+1', 'J+3', 'J+7', 'J+14', 'J+30', 'J+90'];
 
 // notation 3 boutons → qualité SM-2
 export const QUALITY = { facile: 5, difficile: 3, rate: 1 };
@@ -87,61 +96,61 @@ export function todayISO() {
   return isoDate();
 }
 
-/**
- * Cadence fixe "méthode des J" : Raté → repart à J0 · Difficile → reste au
- * palier courant (même délai qu'à l'arrivée) · Facile → avance d'un palier,
- * plafonne à J+30 (dernier palier : "régime de croisière", revient tous les
- * 30 j tant que c'est facile). nextReview est toujours ancré sur la date
- * RÉELLE de cette révision (jamais une addition depuis une échéance passée).
- * @returns { palier, interval, nextReview }
- */
-export function nextPalier(quality, palier) {
-  const current = palier || 0;
-  let newPalier;
-  if (quality >= 5) newPalier = Math.min(current + 1, PALIER_DELAYS.length - 1); // facile → avance
-  else if (quality >= 3) newPalier = current;                                     // difficile → reste
-  else newPalier = 0;                                                             // raté → repart à J0
-
-  const interval = PALIER_DELAYS[newPalier];
-  const nextReview = new Date();
-  nextReview.setDate(nextReview.getDate() + interval);
-  return { palier: newPalier, interval, nextReview: isoDate(nextReview) };
+/** construit les 7 échéances FIXES d'une carte/fiche à partir de sa date de
+   départ (J0). Appelé UNE SEULE FOIS à la création (storage.js/import.js) ou
+   par un décalage explicite (MedReviseApp.jsx shiftSourceStart/shiftFicheStart,
+   ré-ancrage complet d'une carte jamais commencée) — jamais par une notation. */
+export function buildPlan(startDate) {
+  return PLAN_DELAYS.map((delay, i) => {
+    const d = new Date(startDate + 'T12:00:00');
+    d.setDate(d.getDate() + delay);
+    return { i, label: PLAN_LABELS[i], date: isoDate(d) };
+  });
 }
 
-/** applique une réponse à une question et renvoie la question mise à jour.
-   `coef` est accepté (signature stable pour tous les appelants existants :
-   Session.jsx, MobileSession.jsx, Exercice.jsx, AnatQuiz.jsx…) mais n'entre
-   plus dans le calcul du délai — voir lib/planning.js effectiveCoef pour son
-   seul usage restant (pondération du carnet d'erreurs). */
 // chrono par carte (flashcards, Session.jsx/MobileSession.jsx) : plafond de
 // sécurité — au-delà, la carte n'est pas comptée dans la moyenne "temps par
 // carte" (Reviser), en plus de la pause visibilitychange déjà gérée côté
-// appelant (onglet en arrière-plan/écran verrouillé). qualite/palier restent
+// appelant (onglet en arrière-plan/écran verrouillé). qualite/cursor restent
 // enregistrés normalement, seul tempsMs est omis.
 export const MAX_CARD_TIME_MS = 3 * 60 * 1000;
 
-/** applique une réponse à une question et renvoie la question mise à jour.
-   `coef` est accepté (signature stable pour tous les appelants existants :
-   Session.jsx, MobileSession.jsx, Exercice.jsx, AnatQuiz.jsx…) mais n'entre
-   plus dans le calcul du délai — voir lib/planning.js effectiveCoef pour son
-   seul usage restant (pondération du carnet d'erreurs). `extra.tempsMs`
-   (optionnel, flashcards uniquement) : temps actif passé sur la carte, voir
-   MAX_CARD_TIME_MS ci-dessus. */
-export function applyReview(question, quality, coef = 3, extra = {}) {
-  const res = nextPalier(quality, question.palier || 0);
+/** fait avancer une carte/fiche planifiée d'UN cran fixe — QUELLE QUE SOIT
+   la note (Facile/Difficile/Raté sont désormais purement informatives pour
+   la chronologie, voir le header du fichier) : `cursor` progresse de 1, le
+   `plan` lui-même n'est JAMAIS réécrit ici. `cursor === plan.length` → cycle
+   terminé (voir planning.js, une carte terminée sort de scheduledQuestions).
+   Carnet d'erreurs (`missed`) : Raté ET Difficile l'incrémentent, SEUL
+   Facile (quality 5) le remet à zéro (QUALITY : facile=5, difficile=3,
+   rate=1) — volontairement différent d'un simple seuil "réussite" : on veut
+   revoir Raté ET Difficile au carnet, pas seulement les échecs francs.
+   `extra.tempsMs` (optionnel, flashcards) : temps actif passé sur la carte,
+   voir MAX_CARD_TIME_MS. */
+export function advanceQuestion(record, quality, extra = {}) {
+  const plan = record.plan || [];
+  const cursor = Math.min((record.cursor || 0) + 1, plan.length);
   const entry = { date: todayISO(), qualite: quality };
   const tempsMs = extra && extra.tempsMs;
   if (Number.isFinite(tempsMs) && tempsMs >= 0 && tempsMs <= MAX_CARD_TIME_MS) entry.tempsMs = Math.round(tempsMs);
-  const historique = (question.historique || []).concat([entry]);
+  const historique = (record.historique || []).concat([entry]);
   return {
-    ...question,
-    palier: res.palier,
-    interval: res.interval,
-    nextReview: res.nextReview,
+    ...record,
+    cursor,
     historique,
-    // carnet d'erreurs : un échec l'y ajoute, une réussite l'en retire aussitôt
-    missed: quality < 3 ? (question.missed || 0) + 1 : 0,
+    missed: quality >= 5 ? 0 : (record.missed || 0) + 1,
   };
+}
+
+/** enregistre une tentative d'EXERCICE (historique + carnet), SANS toucher à
+   aucune date — les exercices sont HORS méthode des J (planning.js
+   SCHEDULED_TYPES), ils ne portent ni `plan` ni `cursor`. Seuil de succès
+   INCHANGÉ par rapport à avant cette refonte (quality>=3 = réussi, même
+   partiellement avec indices — voir qualityForExercice) : distinct du
+   mapping 3 boutons qcm/flashcard (advanceQuestion) qui n'a que les valeurs
+   1/3/5 (fail/hard/easy) — qualityForExercice renvoie aussi 2 et 4. */
+export function recordExerciceAttempt(question, quality) {
+  const historique = (question.historique || []).concat([{ date: todayISO(), qualite: quality }]);
+  return { ...question, historique, missed: quality >= 3 ? 0 : (question.missed || 0) + 1 };
 }
 
 /** streak = nombre de jours d'activité consécutifs se terminant aujourd'hui
@@ -158,22 +167,31 @@ export function computeStreak(activityDays) {
   return streak;
 }
 
-/** libellé EXACT d'un palier (0..4) — badge "J", frise. `palier` est toujours
-   défini dès qu'une carte/fiche existe (voir lib/storage.js) ; le repli
-   'Nouveau' ne sert qu'aux enregistrements pas encore migrés. */
-export function labelForPalier(palier) {
-  if (palier == null || palier < 0) return { jIndex: -1, jLabel: 'Nouveau' };
-  const jIndex = Math.min(palier, PALIER_LABELS.length - 1);
-  return { jIndex, jLabel: PALIER_LABELS[jIndex] };
+/** libellé EXACT de la PROCHAINE échéance d'une carte/fiche planifiée (plan/
+   cursor) — badge "J", frise. `plan` est toujours défini dès qu'une carte/
+   fiche qcm/flashcard/anat_schema existe (voir lib/storage.js) ; le repli
+   'Nouveau' ne sert qu'aux enregistrements pas encore migrés. `cursor >=
+   plan.length` → cycle terminé (voir buildPlan/advanceQuestion). */
+export function labelForCursor(record) {
+  const plan = record && record.plan;
+  if (!plan || !plan.length) return { jIndex: -1, jLabel: 'Nouveau' };
+  const cursor = record.cursor || 0;
+  if (cursor >= plan.length) return { jIndex: plan.length, jLabel: 'Terminée' };
+  return { jIndex: cursor, jLabel: plan[cursor].label };
 }
 
-/** bucketing d'un ANCIEN interval (ex-moteur SM-2 adaptatif) vers le palier
-   fixe immédiatement INFÉRIEUR. Usage UNIQUE : migration (lib/migrate.js)
-   pour convertir les cartes existantes — jamais appelé par le moteur courant. */
+/** [LEGACY] bucketing d'un ANCIEN interval (ex-moteur SM-2 adaptatif) vers le
+   palier fixe à 5 crans immédiatement INFÉRIEUR — usage UNIQUE : la
+   migration historique `migrateCadenceFixeV1` (lib/migrate.js), déjà
+   appliquée sur les comptes existants, jamais appelée par le moteur
+   courant. Tableau privé, INDÉPENDANT de PLAN_DELAYS (chronologie fixe
+   actuelle, 7 crans) : ce sont deux migrations distinctes, à des moments
+   distincts de l'historique du moteur — ne pas fusionner les deux cadences. */
+const LEGACY_5_PALIER_DELAYS = [0, 3, 7, 14, 30];
 export function palierFromInterval(interval) {
   let palier = 0;
-  for (let i = 0; i < PALIER_DELAYS.length; i++) {
-    if (interval >= PALIER_DELAYS[i]) palier = i;
+  for (let i = 0; i < LEGACY_5_PALIER_DELAYS.length; i++) {
+    if (interval >= LEGACY_5_PALIER_DELAYS[i]) palier = i;
   }
   return palier;
 }

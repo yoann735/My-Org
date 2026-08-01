@@ -8,8 +8,9 @@
    ============================================================ */
 import { getAll, putMany, getMeta, setMeta, putBackup, remove } from './storage.js';
 import { toInternalItem } from './adapter.js';
+import { addDays } from './planning.js';
 import { pullAllRecords, pushTombstonesNow } from '../data/sync.js';
-import { palierFromInterval, PALIER_DELAYS } from './sm2.js';
+import { palierFromInterval, todayISO, PLAN_DELAYS, PLAN_LABELS } from './sm2.js';
 
 const MIGRATIONS_KEY = 'migrations';
 const MIG_V1 = 'items-v1.0';
@@ -18,6 +19,14 @@ const MIG_ANAT_IMG = 'anat-images-v1';
 const MIG_ORPHANS = 'orphan-cleanup-v1';
 const MIG_DEMO_ZOMBIES = 'demo-zombies-cleanup-v1';
 const MIG_CADENCE_FIXE = 'cadence-fixe-v1';
+const MIG_CHRONO_FIXE = 'chronologie-fixe-v1';
+// ancienne cadence à 5 paliers (avant CETTE refonte), FIGÉE : usage UNIQUE
+// des deux migrations ci-dessous (jamais le moteur courant, voir sm2.js
+// PLAN_DELAYS). Ancien palier (0..4) → nouvel index plan (0..6, J0/J+1/J+3/
+// J+7/J+14/J+30/J+90) : correspondance directe, les 5 anciens paliers sont
+// un SOUS-ENSEMBLE des 7 nouveaux (J0→0, J+3→2, J+7→3, J+14→4, J+30→5).
+const LEGACY_PALIER_DELAYS = [0, 3, 7, 14, 30];
+const LEGACY_TO_PLAN_INDEX = [0, 2, 3, 4, 5];
 
 // IDs fixes du seed de démo (lib/storage.js:194-203) — voir docs/audit-sync-mobile.md §3.1 :
 // une course de réensemencement historique (déjà corrigée via canSeed) a pu faire gagner
@@ -286,7 +295,7 @@ export async function migrateCadenceFixeV1() {
   const convert = (rec) => {
     const { repetition, efactor, ...rest } = rec;
     const palier = palierFromInterval(rec.interval || 0);
-    return { ...rest, palier, interval: PALIER_DELAYS[palier] };
+    return { ...rest, palier, interval: LEGACY_PALIER_DELAYS[palier] };
   };
   const outQuestions = legacyQuestions.map(convert);
   const outSchemas = legacySchemas.map(convert);
@@ -298,6 +307,68 @@ export async function migrateCadenceFixeV1() {
   return { ran: true, migratedQuestions: outQuestions.length, migratedSchemas: outSchemas.length };
 }
 
+/**
+ * Chronologie FIXE "méthode des J" (remplace le moteur à paliers RECALCULÉS
+ * à chaque notation — voir docs/audit-methode-des-J.md : Difficile/Raté à
+ * J0 reprogrammaient la carte à AUJOURD'HUI, elle revenait donc chaque
+ * jour). NON DESTRUCTIVE : sauvegarde intégrale avant conversion. Convertit
+ * chaque question qcm/flashcard ET chaque fiche `anat_schema` qui porte
+ * encore `palier`/`interval`/`nextReview` (ancien moteur, cadence
+ * [0,3,7,14,30]) vers `plan` (7 échéances FIXES) + `cursor` :
+ *   - correspondance directe ancien palier → nouvel index (LEGACY_TO_PLAN_INDEX,
+ *     les 5 anciens paliers sont un sous-ensemble des 7 nouveaux) ;
+ *   - `nextReview` actuel N'EST PAS perdu : il devient `plan[cursor].date` TEL
+ *     QUEL (même échéance honorée, y compris si déjà en retard — AUCUN
+ *     recalcul forcé par la migration, même philosophie que
+ *     migrateCadenceFixeV1 ci-dessus) ;
+ *   - les échéances FUTURES (`k > cursor`) sont projetées depuis cette même
+ *     ancre avec les nouveaux deltas (exactement ce que calculait déjà
+ *     l'ancien ficheProjection en LECTURE — rendu permanent ici) ;
+ *   - les échéances PASSÉES (`k < cursor`) sont reconstruites en soustrayant
+ *     du même ancrage — best-effort informatif SEULEMENT (jamais relues pour
+ *     la planification) : l'ancien moteur ne conservait de toute façon pas la
+ *     date de chaque palier individuellement (un Raté remettait le palier à
+ *     0 sans historiser la date des étapes franchies).
+ * Idempotente : marqueur + plus aucune question qcm/flashcard ou fiche
+ * anat_schema sans `plan` à trouver dès la 2e passe.
+ */
+export async function migrateChronologieFixeV1() {
+  const applied = await appliedList();
+  if (applied.includes(MIG_CHRONO_FIXE)) return { ran: false };
+
+  const [questions, fiches] = await Promise.all([getAll('questions'), getAll('fiches')]);
+  const legacyQuestions = (questions || []).filter((q) => q && (q.type === 'qcm' || q.type === 'flashcard') && !q.plan);
+  const legacySchemas = (fiches || []).filter((f) => f && f.type === 'anat_schema' && !f.plan);
+
+  if (!legacyQuestions.length && !legacySchemas.length) {
+    await setMeta(MIGRATIONS_KEY, [...applied, MIG_CHRONO_FIXE]);
+    return { ran: true, migratedQuestions: 0, migratedSchemas: 0 };
+  }
+
+  await putBackup('pre-' + MIG_CHRONO_FIXE, { questions: legacyQuestions, schemas: legacySchemas });
+
+  const convert = (rec) => {
+    const oldPalier = Math.min(Math.max(rec.palier || 0, 0), LEGACY_PALIER_DELAYS.length - 1);
+    const cursor = LEGACY_TO_PLAN_INDEX[oldPalier];
+    const anchorDate = rec.nextReview || todayISO();
+    const anchorDelay = PLAN_DELAYS[cursor];
+    const plan = PLAN_DELAYS.map((delay, i) => ({
+      i, label: PLAN_LABELS[i],
+      date: addDays(anchorDate, delay - anchorDelay),
+    }));
+    const { palier, interval, nextReview, ...rest } = rec;
+    return { ...rest, plan, cursor };
+  };
+  const outQuestions = legacyQuestions.map(convert);
+  const outSchemas = legacySchemas.map(convert);
+
+  if (outQuestions.length) await putMany('questions', outQuestions);
+  if (outSchemas.length) await putMany('fiches', outSchemas);
+
+  await setMeta(MIGRATIONS_KEY, [...applied, MIG_CHRONO_FIXE]);
+  return { ran: true, migratedQuestions: outQuestions.length, migratedSchemas: outSchemas.length };
+}
+
 /** point d'entrée bootstrap : applique toutes les migrations en attente */
 export async function runMigrations() {
   const items = await migrateItemsToV1();
@@ -306,5 +377,6 @@ export async function runMigrations() {
   const orphans = await migrateOrphanCleanupV1();
   const demoZombies = await migrateDemoZombiesCleanup();
   const cadenceFixe = await migrateCadenceFixeV1();
-  return { items, documents, anatImages, orphans, demoZombies, cadenceFixe };
+  const chronologieFixe = await migrateChronologieFixeV1();
+  return { items, documents, anatImages, orphans, demoZombies, cadenceFixe, chronologieFixe };
 }

@@ -2,12 +2,12 @@
    MedRevise — workflow d'import (handoff §9). Full JSON local : chaque flux
    colle un JSON v1.0 (Standard, Rattrapage) ou un texte typé (Anatomie
    Théorie, extraction locale sans IA) ou un schéma annoté (Anatomie Schéma).
-   Aucun appel réseau. Les fiches créées entrent dans le cycle des J via
-   nextReview = aujourd'hui.
+   Aucun appel réseau. Les fiches créées entrent dans le cycle des J avec un
+   `plan` (chronologie fixe, lib/sm2.js buildPlan) ancré sur aujourd'hui (J0).
    ============================================================ */
 import { genId, put, putMany, getOne, getAll, newItem } from './storage.js';
 import { toInternalItem } from './adapter.js';
-import { todayISO } from './sm2.js';
+import { todayISO, buildPlan } from './sm2.js';
 
 /**
  * Fiche EXISTANTE de même destination (même matière + même titre, insensible à
@@ -193,8 +193,8 @@ export async function saveAnatSchema({ ficheId, matiereId, titre, sousCategorie,
       dateImport: todayISO(),
       images: cleanImages,
       imageId: first.imageId, imageW: first.imageW, imageH: first.imageH, coches: first.coches,
-      // item planifiable méthode des J (étape C) — cadence fixe, voir lib/sm2.js
-      interval: 0, palier: 0, nextReview: todayISO(), historique: [], missed: 0,
+      // item planifiable méthode des J (étape C) — chronologie fixe, voir lib/sm2.js
+      plan: buildPlan(todayISO()), cursor: 0, historique: [], missed: 0,
     };
   }
   await put('fiches', fiche);

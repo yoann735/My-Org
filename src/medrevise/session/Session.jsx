@@ -8,8 +8,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta, EtiquetteQuickSet, SessionTrendCard } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
-import { applyReview, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, labelForPalier, todayISO, computeStreak } from '../lib/sm2.js';
-import { effectiveCoef, index } from '../lib/planning.js';
+import { advanceQuestion, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, labelForCursor, todayISO, computeStreak } from '../lib/sm2.js';
+import { index } from '../lib/planning.js';
 import { blobURL } from '../lib/storage.js';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
 
@@ -46,7 +46,7 @@ export function Session({ ctx }) {
     const enriched = src.map((it) => {
       const f = ix.fById[it.ficheId];
       const m = f && ix.mById[f.matiereId];
-      return { ...it, _fiche: f, _matiere: m, _coef: effectiveCoef(ctx.db, f, ix), _j: labelForPalier(it.palier).jLabel };
+      return { ...it, _fiche: f, _matiere: m, _j: labelForCursor(it).jLabel };
     });
     const byRank = (a, b) => (shuffleRank.get(a.id) ?? 0) - (shuffleRank.get(b.id) ?? 0);
     const order = [];
@@ -77,7 +77,7 @@ export function Session({ ctx }) {
   // chrono par carte (flashcards) : temps ACTIF, pas wall-clock — cardElapsedRef
   // accumule, runningSinceRef pointe le début du segment en cours (null =
   // en pause, onglet caché). Le plafond (rejet des temps aberrants) est géré
-  // par applyReview (MAX_CARD_TIME_MS, lib/sm2.js), pas ici.
+  // par advanceQuestion (MAX_CARD_TIME_MS, lib/sm2.js), pas ici.
   const cardElapsedRef = useRef(0);
   const runningSinceRef = useRef(null);
   useEffect(() => {
@@ -107,8 +107,8 @@ export function Session({ ctx }) {
       // chrono uniquement pour les flashcards (voir la demande) — un QCM n'a
       // pas de "temps par carte" affiché dans Réviser.
       const applyExtra = isFlash(item.type) ? { tempsMs: cardElapsedMs() } : {};
-      let updated = applyReview(item, quality, item._coef || 3, applyExtra);
-      delete updated._fiche; delete updated._matiere; delete updated._coef; delete updated._j;
+      let updated = advanceQuestion(item, quality, applyExtra);
+      delete updated._fiche; delete updated._matiere; delete updated._j;
       // rotation QCM (Étape 4, lib/planning.js pickQcmSubset) : suivi de la
       // dernière présentation + du dernier résultat, DISTINCT de la notation
       // SM-2 3 boutons — correction directe (cochées == reponses_correctes),

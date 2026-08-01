@@ -15,8 +15,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, EdTop, matiereMeta, EtiquetteQuickSet } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
-import { index, effectiveCoef } from '../lib/planning.js';
-import { applyReview, qualityForExercice, todayISO, computeStreak } from '../lib/sm2.js';
+import { index } from '../lib/planning.js';
+import { recordExerciceAttempt, qualityForExercice, todayISO, computeStreak } from '../lib/sm2.js';
 import { checkNumerique, parseScientificValue } from '../lib/correction.js';
 import { evalExpr } from '../lib/calc.js';
 import { getExoNote, setExoNote } from '../lib/storage.js';
@@ -76,7 +76,7 @@ export function Exercice({ ctx }) {
       </div>
 
       {/* remount par exercice → tout l'état (indices, notes, réponse) se réinitialise */}
-      <Workstation key={item.id} item={item} fiche={fiche} meta={meta} ctx={ctx} ix={ix}
+      <Workstation key={item.id} item={item} fiche={fiche} meta={meta} ctx={ctx}
         isFirst={idx === 0} isLast={idx === items.length - 1} onNext={goNext} onPrev={goPrev} />
     </div>
   );
@@ -85,7 +85,7 @@ export function Exercice({ ctx }) {
 /* ============================================================
    Poste de travail d'UN exercice
    ============================================================ */
-function Workstation({ item, fiche, meta, ctx, ix, isFirst, isLast, onNext, onPrev }) {
+function Workstation({ item, fiche, meta, ctx, isFirst, isLast, onNext, onPrev }) {
   const numeric = item.sous_type === 'numerique';
   const indices = item.indices || [];
   const [revealed, setRevealed] = useState(0);          // indices révélés (0..n)
@@ -98,8 +98,7 @@ function Workstation({ item, fiche, meta, ctx, ix, isFirst, isLast, onNext, onPr
     if (appliedRef.current) return;
     appliedRef.current = true;
     const quality = qualityForExercice(success, revealed);
-    const coef = effectiveCoef(ctx.db, fiche, ix);
-    const updated = applyReview(item, quality, coef);
+    const updated = recordExerciceAttempt(item, quality);
     await ctx.saveQuestion(updated);
     setDone(true);
     const s = ctx.stats || {};

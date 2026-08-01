@@ -1,6 +1,6 @@
 /* ============================================================
-   MedRevise mobile — session QCM + Flashcard. RÉUTILISE le moteur SM-2
-   (applyReview, QUALITY) et ctx.saveQuestion/ctx.saveStats — identique au
+   MedRevise mobile — session QCM + Flashcard. RÉUTILISE le moteur
+   (advanceQuestion, QUALITY) et ctx.saveQuestion/ctx.saveStats — identique au
    desktop (session/Session.jsx) — seule la présentation change (une carte
    plein écran à la fois, gros boutons empilés, ordre des options mélangé
    à l'AFFICHAGE seulement : la correction reste par id, jamais par
@@ -8,8 +8,8 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { applyReview, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, todayISO, computeStreak } from '../lib/sm2.js';
-import { effectiveCoef, index } from '../lib/planning.js';
+import { advanceQuestion, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, todayISO, computeStreak } from '../lib/sm2.js';
+import { index } from '../lib/planning.js';
 import { Tex } from '../components/Tex.jsx';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
 import { SessionTrendCard } from '../components/ui.jsx';
@@ -36,7 +36,7 @@ export function MobileSession({ ctx, onQuit }) {
 
   const items = useMemo(() => (session.items || []).filter((it) => it.type === 'qcm' || isFlash(it.type)).map((it) => {
     const f = ix.fById[it.ficheId];
-    return { ...it, _fiche: f, _coef: effectiveCoef(ctx.db, f, ix) };
+    return { ...it, _fiche: f };
   }).sort((a, b) => (shuffleRank.get(a.id) ?? 0) - (shuffleRank.get(b.id) ?? 0)), [session, ctx.db, ix, shuffleRank]);
 
   const [idx, setIdx] = useState(0);
@@ -49,7 +49,7 @@ export function MobileSession({ ctx, onQuit }) {
 
   // chrono par carte (flashcards) — même mécanique que desktop Session.jsx :
   // temps ACTIF (pause pendant visibilitychange→hidden), plafond des temps
-  // aberrants géré par applyReview (MAX_CARD_TIME_MS, lib/sm2.js).
+  // aberrants géré par advanceQuestion (MAX_CARD_TIME_MS, lib/sm2.js).
   const cardElapsedRef = useRef(0);
   const runningSinceRef = useRef(null);
   useEffect(() => {
@@ -74,8 +74,8 @@ export function MobileSession({ ctx, onQuit }) {
     if (item && !item.ephemeral) {
       const quality = RATING_QUALITY[rating];
       const applyExtra = isFlash(item.type) ? { tempsMs: cardElapsedMs() } : {};
-      let updated = applyReview(item, quality, item._coef || 3, applyExtra);
-      delete updated._fiche; delete updated._coef;
+      let updated = advanceQuestion(item, quality, applyExtra);
+      delete updated._fiche;
       // rotation QCM (Étape 4, lib/planning.js pickQcmSubset) : suivi de la
       // dernière présentation + du dernier résultat (correction directe, pas
       // la notation SM-2 3 boutons) — voir même logique en desktop Session.jsx.
