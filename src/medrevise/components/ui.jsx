@@ -389,7 +389,12 @@ export function TodaySeriesCard({ plan, onStart, compact, collapsed, onToggleCol
    card dense, ton neutre, pensée pour tenir à côté du calendrier de la semaine.
    onDismissFiche(group) (optionnel) : « Retirer » — sort la fiche du retard
    SANS la réviser (voir Dashboard/Reviser pour l'implémentation du recalage). */
-export function OverdueBox({ groups, onStartFiche, onStartAll, onDismissFiche, collapsible, collapsed, onToggleCollapse }) {
+/** `bare` (Dashboard RattrapageCard) : rend le contenu SANS le `<Card>` propre
+   (ni titre/pill/icône) — l'appelant fournit sa propre Card englobante (avec
+   son propre en-tête regroupant retards + carnet d'erreurs). Le reste
+   (liste, "Tout rattraper", confirm dismiss) est strictement identique,
+   aucune logique dupliquée. */
+export function OverdueBox({ groups, onStartFiche, onStartAll, onDismissFiche, collapsible, collapsed, onToggleCollapse, bare }) {
   const [confirmDismiss, setConfirmDismiss] = useState(null); // group en attente de confirmation
   if (!groups || !groups.length) return null;
   const questionGroups = groups.filter((g) => !g.isSchema && g.items.length);
@@ -412,15 +417,9 @@ export function OverdueBox({ groups, onStartFiche, onStartAll, onDismissFiche, c
     );
   }
 
-  return (
-    <Card title="À rattraper" icon="clock"
-      action={(
-        <div className="row" style={{ gap: 8 }}>
-          <span className="pill">{groups.length} fiche{groups.length > 1 ? 's' : ''}</span>
-          {collapsible && <button type="button" className="icon-btn sm" title="Replier" onClick={onToggleCollapse}><Icon name="chevU" size={15} /></button>}
-        </div>
-      )}>
-      <div className="hint" style={{ marginBottom: 10, fontSize: 12 }}>Échéance dépassée — se recale à partir d'aujourd'hui une fois révisée.</div>
+  const content = (
+    <>
+      <div className="hint" style={{ marginBottom: 10, fontSize: 12 }}>Échéance dépassée — la réviser l'avance simplement au palier suivant, la date ne bouge pas.</div>
       <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 216, overflowY: 'auto' }}>
         {groups.map((g, i) => (
           <div className="row spread" key={g.fiche.id} style={{ gap: 8, padding: '7px 0', borderTop: i ? '1px solid var(--border-2)' : 'none' }}>
@@ -448,6 +447,20 @@ export function OverdueBox({ groups, onStartFiche, onStartAll, onDismissFiche, c
           confirmLabel="Retirer" onCancel={() => setConfirmDismiss(null)}
           onConfirm={() => { onDismissFiche(confirmDismiss); setConfirmDismiss(null); }} />
       )}
+    </>
+  );
+
+  if (bare) return content;
+
+  return (
+    <Card title="À rattraper" icon="clock"
+      action={(
+        <div className="row" style={{ gap: 8 }}>
+          <span className="pill">{groups.length} fiche{groups.length > 1 ? 's' : ''}</span>
+          {collapsible && <button type="button" className="icon-btn sm" title="Replier" onClick={onToggleCollapse}><Icon name="chevU" size={15} /></button>}
+        </div>
+      )}>
+      {content}
     </Card>
   );
 }

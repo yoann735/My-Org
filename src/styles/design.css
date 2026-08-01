@@ -239,6 +239,13 @@ body {
   background: var(--card); border: 1px solid var(--border); border-radius: 16px;
   box-shadow: var(--shadow);
 }
+/* MedRevise — boîte de rattrapage le week-end (Dashboard.jsx RattrapageCard) :
+   même token vert que le reste de l'app (--ok, succès), pas une nouvelle couleur. */
+.card.rattrapage-weekend {
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 6%, var(--card));
+}
+.card.rattrapage-weekend .card-head { border-bottom-color: color-mix(in srgb, var(--ok) 24%, var(--border-2)); }
 .card-head { display: flex; align-items: center; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--border-2); }
 .card-head h3 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
 .card-head .ic { color: var(--text-2); }

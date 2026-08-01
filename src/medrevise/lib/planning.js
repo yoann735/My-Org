@@ -91,6 +91,13 @@ export function fmtDay(dateISO) {
   return new Date(dateISO + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' });
 }
 export const DOW = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+/** samedi/dimanche EN HEURE LOCALE (jamais d'UTC, comme isoDate/todayISO) —
+   déclenche le traitement visuel week-end de la boîte de rattrapage
+   (Dashboard.jsx RattrapageCard). */
+export function isWeekend(d = new Date()) {
+  const day = d.getDay();
+  return day === 0 || day === 6;
+}
 /** nombre de jours entre deux dates ISO (b - a) — sert au glissement uniforme
    de la cascade (étape 3/3, voir dueFromOn plus bas). */
 export function diffDays(aISO, bISO) {
@@ -105,18 +112,24 @@ export function scheduledQuestions(db, idx) {
   return (db.questions || []).filter((q) => SCHEDULED_TYPES.has(q.type) && isFicheScheduled(db, ix.fById[q.ficheId], ix));
 }
 
-/** questions dues à une date (par défaut aujourd'hui) — inclut le retard pour
-   aujourd'hui. Jour FUTUR : ne teste PAS seulement l'échéance courante
-   (nextDate) mais tout le `plan` restant (planIndexOn) — une carte pas
-   encore arrivée à J0/J+1 aujourd'hui a déjà, dans son plan FIXE, la date
-   exacte de son J+3/J+7 à venir ; l'ignorer ferait sous-compter ce jour-là
-   par rapport à la projection calendrier (weekData/ficheProjection), qui
-   lit déjà tout `plan.slice(cursor)`. */
+/** questions dues à une date (par défaut aujourd'hui) — STRICTEMENT ce jour-là,
+   retard EXCLU (le retard vit exclusivement dans overdueQuestions/la boîte de
+   rattrapage du Dashboard, jamais mélangé à "dû aujourd'hui" — voir
+   docs/audit-methode-des-J.md pour l'ancien comportement, où une carte en
+   retard restait dans le flux du jour ET dans la boîte en double affichage).
+   Jour FUTUR : ne teste PAS seulement l'échéance courante (nextDate) mais
+   tout le `plan` restant (planIndexOn) — une carte pas encore arrivée à J0/J+1
+   aujourd'hui a déjà, dans son plan FIXE, la date exacte de son J+3/J+7 à
+   venir ; l'ignorer ferait sous-compter ce jour-là par rapport à la
+   projection calendrier (weekData/ficheProjection), qui lit déjà tout
+   `plan.slice(cursor)`. Toute carte reste TOUJOURS atteignable : soit ici
+   (dû aujourd'hui, exact), soit dans overdueQuestions (retard), soit ici pour
+   un jour futur (planIndexOn) — jamais les trois à la fois, jamais aucune. */
 export function dueOn(db, dateISO, idx) {
   const ix = idx || index(db);
   const today = todayISO();
   return scheduledQuestions(db, ix).filter((q) => {
-    if (dateISO === today) { const d = nextDate(q); return d != null && d <= dateISO; } // aujourd'hui = dû + en retard
+    if (dateISO === today) { const d = nextDate(q); return d === dateISO; } // aujourd'hui STRICT — le retard est ailleurs
     if (dateISO < today) return false;                            // pas de révision dans le passé
     return planIndexOn(q, dateISO) >= 0;                           // jour futur : n'importe quelle échéance restante
   });
@@ -124,10 +137,10 @@ export function dueOn(db, dateISO, idx) {
 export function dueToday(db, idx) { return dueOn(db, todayISO(), idx); }
 
 /* ---- « boîte des J non faits » : items dont l'échéance est STRICTEMENT passée
-   (nextDate < aujourd'hui), séparés du "dû aujourd'hui" (dueToday inclut déjà
-   le retard, volontairement inchangé — voir dueOn). Ne recale RIEN : la date
-   de la carte est FIXE (plan/cursor, lib/sm2.js) — réviser l'item avance
-   seulement `cursor`, jamais un recalcul de date ici ni ailleurs. ---- */
+   (nextDate < aujourd'hui) — SEULE source du retard désormais (dueToday ne
+   l'inclut plus du tout, voir dueOn). Ne recale RIEN : la date de la carte
+   est FIXE (plan/cursor, lib/sm2.js) — réviser l'item avance seulement
+   `cursor`, jamais un recalcul de date ici ni ailleurs. ---- */
 export function overdueQuestions(db, idx) {
   const ix = idx || index(db);
   const today = todayISO();
@@ -223,7 +236,7 @@ export function dueSchemasOn(db, dateISO, idx) {
   const ix = idx || index(db);
   const today = todayISO();
   return scheduledSchemas(db, ix).filter((f) => {
-    if (dateISO === today) { const d = nextDate(f); return d != null && d <= dateISO; }
+    if (dateISO === today) { const d = nextDate(f); return d === dateISO; } // aujourd'hui STRICT, même logique que dueOn
     if (dateISO < today) return false;
     return planIndexOn(f, dateISO) >= 0;            // jour futur : même logique que dueOn
   });
@@ -264,7 +277,7 @@ export function ficheJDistribution(db, ficheId, idx) {
     return {
       jIndex: i, jLabel,
       count: atThisPalier.length,
-      dueToday: atThisPalier.filter((q) => { const d = nextDate(q); return d != null && d <= today; }).length,
+      dueToday: atThisPalier.filter((q) => { const d = nextDate(q); return d === today; }).length, // strict, cohérent avec dueOn (le retard n'est plus compté "dû")
     };
   });
 }
