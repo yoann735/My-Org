@@ -12,7 +12,7 @@ import { advanceQuestion, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle,
 import { index } from '../lib/planning.js';
 import { Tex } from '../components/Tex.jsx';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
-import { SessionTrendCard } from '../components/ui.jsx';
+import { SessionTrendCard, EtiquetteIconButton, etiquetteMenuItems, ContextMenu } from '../components/ui.jsx';
 
 const isFlash = (t) => t === 'flashcard' || t === 'flash';
 const RATING_QUALITY = { fail: QUALITY.rate, hard: QUALITY.difficile, easy: QUALITY.facile };
@@ -112,14 +112,14 @@ export function MobileSession({ ctx, onQuit }) {
       </div>
       <div className="mrm-body">
         {item.type === 'qcm'
-          ? <MobileQcmCard key={item.id} item={item} onRate={advance} />
-          : <MobileFlashCard key={item.id} item={item} onRate={advance} clozeMode={clozeMode} setClozeMode={setClozeMode} />}
+          ? <MobileQcmCard key={item.id} item={item} onRate={advance} ctx={ctx} />
+          : <MobileFlashCard key={item.id} item={item} onRate={advance} clozeMode={clozeMode} setClozeMode={setClozeMode} ctx={ctx} />}
       </div>
     </div>
   );
 }
 
-function MobileQcmCard({ item, onRate }) {
+function MobileQcmCard({ item, onRate, ctx }) {
   const options = useMemo(() => shuffle(item.options || []), [item.id]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [validated, setValidated] = useState(false);
@@ -164,14 +164,14 @@ function MobileQcmCard({ item, onRate }) {
           {distract.filter((d) => selectedIds.includes(d.option_id)).map((d, i) => (
             <div className="mrm-explication" key={i} style={{ marginTop: 8 }}><Tex>{d.pourquoi_faux}</Tex></div>
           ))}
-          <MobileRateButtons onRate={(r) => onRate(r, { qcmOk: isOk })} />
+          <MobileRateButtons onRate={(r) => onRate(r, { qcmOk: isOk })} item={item} ctx={ctx} />
         </>
       )}
     </div>
   );
 }
 
-function MobileFlashCard({ item, onRate, clozeMode, setClozeMode }) {
+function MobileFlashCard({ item, onRate, clozeMode, setClozeMode, ctx }) {
   const cloze = isCloze(item);
   return (
     <div>
@@ -183,8 +183,8 @@ function MobileFlashCard({ item, onRate, clozeMode, setClozeMode }) {
         </div>
       )}
       {cloze && clozeMode === 'actif'
-        ? <MobileClozeActiveCard item={item} onRate={onRate} />
-        : <MobileClassicFlashCard item={item} cloze={cloze} onRate={onRate} />}
+        ? <MobileClozeActiveCard item={item} onRate={onRate} ctx={ctx} />
+        : <MobileClassicFlashCard item={item} cloze={cloze} onRate={onRate} ctx={ctx} />}
     </div>
   );
 }
@@ -197,7 +197,7 @@ function MobileClozeVerso({ parts }) {
   return parts.map((p, i) => (p.hl ? <mark key={i} className="mrm-cloze-mark">{p.text}</mark> : <span key={i}>{p.text}</span>));
 }
 
-function MobileClassicFlashCard({ item, cloze, onRate }) {
+function MobileClassicFlashCard({ item, cloze, onRate, ctx }) {
   const [flipped, setFlipped] = useState(false);
   const [showIndice, setShowIndice] = useState(false);
   const rectoSegments = useMemo(() => (cloze ? parseCloze(item.recto, item.cloze) : null), [item.id, cloze]);
@@ -222,7 +222,7 @@ function MobileClassicFlashCard({ item, cloze, onRate }) {
           )}
         </button>
       </div>
-      {flipped && <MobileRateButtons onRate={onRate} />}
+      {flipped && <MobileRateButtons onRate={onRate} item={item} ctx={ctx} />}
     </div>
   );
 }
@@ -230,7 +230,7 @@ function MobileClassicFlashCard({ item, cloze, onRate }) {
 /* cloze, MODE ACTIF : un champ de saisie par trou, correction tolérante (RÉUTILISE
    matchClozeBlank → matchAnat, quiz d'anatomie). Qualité SM-2 dérivée du ratio
    de trous justes (qualityFromRatio) — pas de notation 3 boutons ici. */
-function MobileClozeActiveCard({ item, onRate }) {
+function MobileClozeActiveCard({ item, onRate, ctx }) {
   const blanks = useMemo(() => clozeBlanks(item.recto, item.cloze), [item.id]);
   const segments = useMemo(() => parseCloze(item.recto, item.cloze), [item.id]);
   const [values, setValues] = useState(() => blanks.map(() => ''));
@@ -279,6 +279,7 @@ function MobileClozeActiveCard({ item, onRate }) {
       ) : (
         <>
           <div className="mrm-explication" style={{ marginTop: 10 }}><strong className="tnum">{correctCount}/{blanks.length}</strong> trou{blanks.length > 1 ? 's' : ''} juste{blanks.length > 1 ? 's' : ''}</div>
+          <MobileEtiquetteControl item={item} ctx={ctx} />
           <button type="button" className="mrm-primary-btn" onClick={finish}><Icon name="check" size={16} /> Continuer</button>
         </>
       )}
@@ -286,12 +287,45 @@ function MobileClozeActiveCard({ item, onRate }) {
   );
 }
 
-function MobileRateButtons({ onRate }) {
+function MobileRateButtons({ onRate, item, ctx }) {
   return (
-    <div className="mrm-rate">
-      <button type="button" className="mrm-rate-btn fail" onClick={() => onRate('fail')}>Raté <span className="sub">à revoir vite</span></button>
-      <button type="button" className="mrm-rate-btn hard" onClick={() => onRate('hard')}>Difficile <span className="sub">bientôt</span></button>
-      <button type="button" className="mrm-rate-btn easy" onClick={() => onRate('easy')}>Facile <span className="sub">dans longtemps</span></button>
+    <div>
+      <div className="mrm-rate">
+        <button type="button" className="mrm-rate-btn fail" onClick={() => onRate('fail')}>Raté <span className="sub">à revoir vite</span></button>
+        <button type="button" className="mrm-rate-btn hard" onClick={() => onRate('hard')}>Difficile <span className="sub">bientôt</span></button>
+        <button type="button" className="mrm-rate-btn easy" onClick={() => onRate('easy')}>Facile <span className="sub">dans longtemps</span></button>
+      </div>
+      <MobileEtiquetteControl item={item} ctx={ctx} />
+    </div>
+  );
+}
+
+/* ---- étiquette de statut du COURS depuis l'écran de réponse mobile (QCM +
+   flashcard, cloze saisie compris) : RÉUTILISE tel quel EtiquetteIconButton +
+   etiquetteMenuItems + ContextMenu + ctx.setFicheEtiquette — le MÊME trio que
+   la bibliothèque desktop (Bibliotheque.jsx), importé du même fichier partagé
+   (components/ui.jsx), pas un système d'étiquettes séparé pour le mobile.
+   Bouton icône (30px) + menu flottant plutôt que la rangée de chips desktop
+   (EtiquetteQuickSet) : ça reste compact sur un écran étroit, ne pousse pas
+   la carte. Ne touche NI la carte ni son rattachement (ficheId) ni son
+   plan/cursor SM-2 — uniquement fiche.etiquette, même écriture outbox que
+   partout ailleurs. */
+function MobileEtiquetteControl({ item, ctx }) {
+  const [menu, setMenu] = useState(null);
+  const fiche = item && item._fiche;
+  if (!fiche) return null;
+  const openMenu = (e) => {
+    e.stopPropagation();
+    setMenu({ x: Math.min(e.clientX, window.innerWidth - 200), y: Math.min(e.clientY, window.innerHeight - 170) });
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12 }}>
+      <span className="hint" style={{ fontSize: 12.5 }}>Étiquette du cours</span>
+      <EtiquetteIconButton value={fiche.etiquette} onClick={openMenu} />
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)}
+          items={etiquetteMenuItems(fiche.etiquette, (v) => ctx.setFicheEtiquette(fiche.id, v))} />
+      )}
     </div>
   );
 }
