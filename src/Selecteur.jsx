@@ -3,8 +3,11 @@
    Ported from the Claude Design `index.html`. Shares the theme with
    both apps. MedRevise is shown but flagged "bientôt" until built.
    ============================================================ */
+import { useEffect, useState } from 'react';
 import { Icon } from './shared/Icon.jsx';
 import { weekKpis } from './mealweek/data/dataLayer.js';
+import { getAll } from './medrevise/lib/storage.js';
+import { dueToday } from './medrevise/lib/planning.js';
 
 function readJSON(key, fallback) {
   try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); }
@@ -20,6 +23,20 @@ export function Selecteur({ themeApi, onOpen, medReady = false }) {
   let meals = 0;
   try { meals = weekKpis(weekKey, slotsOff).mealsPlanned; } catch (e) { meals = 0; }
 
+  // live MedRevise stat (cards due today, theory only — same source as the
+  // Dashboard's calendar count: dueToday(db).length, schemas/exos excluded).
+  const [dueCount, setDueCount] = useState(null); // null tant que le chargement IndexedDB n'est pas fini
+  useEffect(() => {
+    if (!medReady) return;
+    let cancelled = false;
+    Promise.all(['sources', 'matieres', 'fiches', 'questions'].map(getAll))
+      .then(([sources, matieres, fiches, questions]) => {
+        if (!cancelled) setDueCount(dueToday({ sources, matieres, fiches, questions }).length);
+      })
+      .catch(() => { if (!cancelled) setDueCount(0); });
+    return () => { cancelled = true; };
+  }, [medReady]);
+
   return (
     <div className="hub">
       <div className="hub-top">
@@ -34,7 +51,7 @@ export function Selecteur({ themeApi, onOpen, medReady = false }) {
         <p>Choisis ton espace pour aujourd'hui.</p>
       </div>
 
-      <div className="hub-cards three">
+      <div className="hub-cards">
         {/* MealWeek */}
         <div className="hub-card" onClick={() => onOpen('mealweek')}>
           <div className="hc-glow" style={{ background: 'radial-gradient(circle, color-mix(in srgb, var(--accent) 40%, transparent), transparent 65%)' }} />
@@ -55,25 +72,15 @@ export function Selecteur({ themeApi, onOpen, medReady = false }) {
           <div className="hc-desc">Révise tes cours de médecine : QCM, flashcards et mode Feynman, générés depuis tes fiches.</div>
           <div className="hc-foot">
             <span className="hc-stat" style={{ color: '#4FA6D9' }}>
-              <Icon name="cards" size={15} /> {medReady ? '0 cartes à réviser' : 'Bientôt disponible'}
+              <Icon name="cards" size={15} />
+              {medReady ? `${dueCount == null ? '…' : dueCount} carte${dueCount === 1 ? '' : 's'} à réviser` : 'Bientôt disponible'}
             </span>
-            <span className="hc-enter">Ouvrir <Icon name="arrowR" size={16} /></span>
-          </div>
-        </div>
-        {/* My Org */}
-        <div className="hub-card" onClick={() => onOpen('myorg')}>
-          <div className="hc-glow" style={{ background: 'radial-gradient(circle, color-mix(in srgb, #4CAF8E 45%, transparent), transparent 65%)' }} />
-          <div className="hc-icon" style={{ background: 'linear-gradient(145deg, var(--accent), #4CAF8E)' }}><Icon name="target" size={28} /></div>
-          <div className="hc-title">My Org</div>
-          <div className="hc-desc">Organise ta vie perso : to-do, objectifs annuels, et bientôt calendrier, finance et santé.</div>
-          <div className="hc-foot">
-            <span className="hc-stat" style={{ color: '#4CAF8E' }}><Icon name="check" size={15} /> To-do & objectifs</span>
             <span className="hc-enter">Ouvrir <Icon name="arrowR" size={16} /></span>
           </div>
         </div>
       </div>
 
-      <div className="hub-foot">Trois apps, un même univers · thème {theme === 'dark' ? 'sombre' : 'clair'}</div>
+      <div className="hub-foot">Deux apps, un même univers · thème {theme === 'dark' ? 'sombre' : 'clair'}</div>
     </div>
   );
 }
