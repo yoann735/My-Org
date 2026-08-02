@@ -126,7 +126,7 @@ function Workstation({ item, fiche, meta, ctx, mode, isFirst, isLast, onNext, on
           <span className="pill" style={{ height: 22 }}>{DIFF[item.difficulte] || 'Intermédiaire'}</span>
           {item.necessite_calculatrice && <span className="pill accent" style={{ height: 22 }}><Icon name="grad" size={12} /> Calculatrice</span>}
         </div>
-        <div className="serif" style={{ fontSize: 20, lineHeight: 1.5, margin: '6px 0 12px' }}><Tex>{item.enonce}</Tex></div>
+        <div className="exo-enonce" style={{ fontSize: 20, lineHeight: 1.6, margin: '6px 0 12px' }}><Tex>{item.enonce}</Tex></div>
 
         {(item.donnees || []).length > 0 && <DonneesTable donnees={item.donnees} />}
         {(item.formules || []).length > 0 && <FormulesBlock formules={item.formules} />}
