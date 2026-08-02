@@ -107,7 +107,12 @@ export function Session({ ctx }) {
       // chrono uniquement pour les flashcards (voir la demande) — un QCM n'a
       // pas de "temps par carte" affiché dans Réviser.
       const applyExtra = isFlash(item.type) ? { tempsMs: cardElapsedMs() } : {};
-      let updated = advanceQuestion(item, quality, applyExtra);
+      // repart de la version la PLUS RÉCENTE en base, pas du snapshot figé de
+      // session.items : si la carte a été réassignée à une autre fiche entre-
+      // temps (FicheReassign, écran de réponse), `item.ficheId` est encore
+      // l'ancien — écrire à partir de lui écraserait le déplacement.
+      const current = ctx.db.questions.find((q) => q.id === item.id) || item;
+      let updated = advanceQuestion(current, quality, applyExtra);
       delete updated._fiche; delete updated._matiere; delete updated._j;
       // rotation QCM (Étape 4, lib/planning.js pickQcmSubset) : suivi de la
       // dernière présentation + du dernier résultat, DISTINCT de la notation
@@ -190,8 +195,8 @@ export function Session({ ctx }) {
       <div className="rev-stage scroll" style={{ flex: '1 1 auto', overflowY: 'auto', minHeight: 0, paddingTop: 4, paddingBottom: 10, justifyContent: 'flex-start' }}>
         <div className={'rev-anim-' + anim} key={idx}>
           {item.type === 'qcm'
-            ? <QcmCard item={item} meta={meta} selectedIds={selectedIds} setSelectedIds={setSelectedIds} validated={validated} validate={validate} pulse={pulse} onRate={advance} canPrev={idx > 0} onPrev={goPrev} />
-            : <FlashCardView item={item} meta={meta} flipped={flipped} setFlipped={setFlipped} onRate={advance} canPrev={idx > 0} onPrev={goPrev} clozeMode={clozeMode} setClozeMode={setClozeMode} />}
+            ? <QcmCard item={item} meta={meta} selectedIds={selectedIds} setSelectedIds={setSelectedIds} validated={validated} validate={validate} pulse={pulse} onRate={advance} canPrev={idx > 0} onPrev={goPrev} ctx={ctx} />
+            : <FlashCardView item={item} meta={meta} flipped={flipped} setFlipped={setFlipped} onRate={advance} canPrev={idx > 0} onPrev={goPrev} clozeMode={clozeMode} setClozeMode={setClozeMode} ctx={ctx} />}
         </div>
       </div>
 
@@ -215,7 +220,7 @@ function AnatImage({ imageId, compact }) {
   );
 }
 
-function QcmCard({ item, meta, selectedIds, setSelectedIds, validated, validate, pulse, onRate, canPrev, onPrev }) {
+function QcmCard({ item, meta, selectedIds, setSelectedIds, validated, validate, pulse, onRate, canPrev, onPrev, ctx }) {
   const multiple = !!item.multiple;
   // ordre des options mélangé à l'AFFICHAGE (Étape 5) — mémorisé par item.id pour
   // ne pas rebattre à chaque re-render (sélection, validation…) ; la correction
@@ -283,13 +288,13 @@ function QcmCard({ item, meta, selectedIds, setSelectedIds, validated, validate,
             })}
           </div>
         )}
-        <RatingButtons onRate={onRate} canPrev={canPrev} onPrev={onPrev} />
+        <RatingButtons onRate={onRate} canPrev={canPrev} onPrev={onPrev} item={item} ctx={ctx} />
       </>}
     </div>
   );
 }
 
-function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPrev, clozeMode, setClozeMode }) {
+function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPrev, clozeMode, setClozeMode, ctx }) {
   const cloze = isCloze(item);
   return (
     <div>
@@ -302,8 +307,8 @@ function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPre
         </div>
       )}
       {cloze && clozeMode === 'actif'
-        ? <ClozeActiveCard item={item} meta={meta} onRate={onRate} canPrev={canPrev} onPrev={onPrev} />
-        : <ClassicFlashCard item={item} meta={meta} cloze={cloze} flipped={flipped} setFlipped={setFlipped} onRate={onRate} canPrev={canPrev} onPrev={onPrev} />}
+        ? <ClozeActiveCard item={item} meta={meta} onRate={onRate} canPrev={canPrev} onPrev={onPrev} ctx={ctx} />
+        : <ClassicFlashCard item={item} meta={meta} cloze={cloze} flipped={flipped} setFlipped={setFlipped} onRate={onRate} canPrev={canPrev} onPrev={onPrev} ctx={ctx} />}
     </div>
   );
 }
@@ -311,7 +316,7 @@ function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPre
 /* ---- flashcard classique (flip recto/verso) — aussi utilisée par le cloze en
    mode « Retourner » : recto avec blancs visuels, verso avec les mots
    masqués mis en évidence (pas de saisie, juste une auto-évaluation SM-2). ---- */
-function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canPrev, onPrev }) {
+function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canPrev, onPrev, ctx }) {
   const [showIndice, setShowIndice] = useState(false); // réinitialisé au changement de carte (remount via key={idx})
   const revealIndice = (e) => { e.stopPropagation(); setShowIndice(true); };
   const rectoSegments = useMemo(() => (cloze ? parseCloze(item.recto, item.cloze) : null), [item.id, cloze]);
@@ -345,7 +350,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
         </div>
       </div>
       {flipped
-        ? <RatingButtons onRate={onRate} canPrev={canPrev} onPrev={onPrev} />
+        ? <RatingButtons onRate={onRate} canPrev={canPrev} onPrev={onPrev} item={item} ctx={ctx} />
         : canPrev && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}><button className="btn ghost" onClick={onPrev}><Icon name="chevL" size={15} /> Carte précédente</button></div>}
     </div>
   );
@@ -365,7 +370,7 @@ function ClozeVerso({ parts }) {
    (RÉUTILISE matchClozeBlank → matchAnat, le matcher du quiz d'anatomie).
    Qualité SM-2 dérivée du ratio de trous justes (qualityFromRatio, comme le
    quiz d'anatomie) — pas de notation 3 boutons ici. ---- */
-function ClozeActiveCard({ item, meta, onRate, canPrev, onPrev }) {
+function ClozeActiveCard({ item, meta, onRate, canPrev, onPrev, ctx }) {
   const blanks = useMemo(() => clozeBlanks(item.recto, item.cloze), [item.id]);
   const segments = useMemo(() => parseCloze(item.recto, item.cloze), [item.id]);
   const [values, setValues] = useState(() => blanks.map(() => ''));
@@ -419,6 +424,7 @@ function ClozeActiveCard({ item, meta, onRate, canPrev, onPrev }) {
       ) : (
         <div style={{ marginTop: 18 }}>
           <div className="hint"><strong className="tnum">{correctCount}/{blanks.length}</strong> trou{blanks.length > 1 ? 's' : ''} juste{blanks.length > 1 ? 's' : ''}</div>
+          <FicheReassign item={item} ctx={ctx} />
           <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <button className="btn ghost" disabled={!canPrev} style={{ opacity: canPrev ? 1 : 0.4 }} onClick={onPrev}><Icon name="chevL" size={15} /> Précédent</button>
             <button className="btn primary lg" onClick={finish}><Icon name="check" size={15} /> Continuer</button>
@@ -429,7 +435,7 @@ function ClozeActiveCard({ item, meta, onRate, canPrev, onPrev }) {
   );
 }
 
-function RatingButtons({ onRate, canPrev, onPrev }) {
+function RatingButtons({ onRate, canPrev, onPrev, item, ctx }) {
   return (
     <div>
       <div className="rev-rate">
@@ -437,7 +443,72 @@ function RatingButtons({ onRate, canPrev, onPrev }) {
         <button className="rate-btn hard" onClick={() => onRate('hard')}>Difficile<span className="rb-sub">bientôt</span></button>
         <button className="rate-btn easy" onClick={() => onRate('easy')}>Facile<span className="rb-sub">dans longtemps</span></button>
       </div>
+      <FicheReassign item={item} ctx={ctx} />
       {canPrev && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><button className="btn ghost sm" onClick={onPrev}><Icon name="chevL" size={14} /> Revenir à la carte précédente</button></div>}
+    </div>
+  );
+}
+
+/* ---- réassignation de fiche depuis l'écran de réponse (QCM/flashcard, y
+   compris cloze en saisie) : contrôle discret, réutilise ctx.saveQuestion
+   (même écriture outbox que la notation SM-2). Ne touche QUE `ficheId` — le
+   plan/cursor/historique/missed de la carte restent intacts, ce n'est pas un
+   nouveau cycle, juste un changement d'appartenance. La liste ne propose que
+   des fiches de contenu existantes (exclut les fiches anat_schema — planning
+   dédié, pas un conteneur de qcm/flashcard — et tout ce qui est archivé). */
+function FicheReassign({ item, ctx }) {
+  const [open, setOpen] = useState(false);
+  const [justMoved, setJustMoved] = useState(false);
+  // état local pour la valeur "courante" affichée/comparée : item.ficheId vient
+  // du snapshot figé de session.items (jamais mis à jour pendant la session,
+  // voir advance() plus haut) — sans ça, un 2e déplacement sur la MÊME carte
+  // comparerait contre l'ancienne valeur d'avant-session, pas contre celle
+  // qu'on vient d'écrire.
+  const [currentFicheId, setCurrentFicheId] = useState(item.ficheId);
+  const { db } = ctx;
+
+  const options = useMemo(() => (db.fiches || [])
+    .filter((f) => !f.archive && f.type !== 'anat_schema')
+    .map((f) => {
+      const m = db.matieres.find((mm) => mm.id === f.matiereId);
+      const s = m && db.sources.find((ss) => ss.id === m.sourceId);
+      return { fiche: f, matiere: m, source: s };
+    })
+    .filter((e) => e.matiere && !e.matiere.archive && e.source && !e.source.archive)
+    .sort((a, b) => (a.source.nom + a.matiere.nom + a.fiche.titre).localeCompare(b.source.nom + b.matiere.nom + b.fiche.titre)),
+  [db.fiches, db.matieres, db.sources]);
+
+  const move = async (e) => {
+    const newFicheId = e.target.value;
+    setOpen(false);
+    if (!newFicheId || newFicheId === currentFicheId) return;
+    // base la version en base la plus fraîche (pas le snapshot `item`), au cas
+    // où un déplacement/une notation aurait déjà écrit entre-temps.
+    const current = (db.questions || []).find((q) => q.id === item.id) || item;
+    const updated = { ...current, ficheId: newFicheId };
+    delete updated._fiche; delete updated._matiere; delete updated._j;
+    await ctx.saveQuestion(updated);
+    setCurrentFicheId(newFicheId);
+    setJustMoved(true);
+  };
+
+  if (!open) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
+        <button type="button" className="btn ghost sm" onClick={() => { setJustMoved(false); setOpen(true); }}>
+          <Icon name="tag" size={13} /> {justMoved ? 'Déplacée ✓ — changer à nouveau' : 'Déplacer vers un autre cours'}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 10 }}>
+      <select className="imp-title" style={{ maxWidth: 340 }} defaultValue={currentFicheId} onChange={move} onBlur={() => setOpen(false)} autoFocus>
+        {options.map(({ fiche, matiere, source }) => (
+          <option key={fiche.id} value={fiche.id}>{source.nom} · {matiere.nom} · {fiche.titre}</option>
+        ))}
+      </select>
+      <button type="button" className="icon-btn sm" onClick={() => setOpen(false)}><Icon name="x" size={14} /></button>
     </div>
   );
 }
