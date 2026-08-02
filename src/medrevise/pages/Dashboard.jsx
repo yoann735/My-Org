@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
-import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, missedQuestions, weakPoints, isWeekend, dueByCoursOn, dueFromOn, addDays, diffDays } from '../lib/planning.js';
+import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, missedQuestions, weakPoints, isWeekend, dueByCoursOn, dueFromOn, addDays, diffDays, weekendReviewByFiche } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
@@ -67,6 +67,7 @@ export function Dashboard({ ctx }) {
 
         <div className="dash-grid-col">
           <RattrapageCard ctx={ctx} overdue={overdue} startOverdueFiche={startOverdueFiche} />
+          <WeekendReviewCard ctx={ctx} />
           <StreakWidget stats={ctx.stats} />
         </div>
       </div>
@@ -131,6 +132,48 @@ function RattrapageCard({ ctx, overdue, startOverdueFiche }) {
           </button>
         </div>
       )}
+    </Card>
+  );
+}
+
+/* ---------- révision du week-end (Dashboard UNIQUEMENT, isWeekend) ----------
+   DISTINCTE de RattrapageCard (retards/erreurs) et des exos dus normaux
+   (dueExosOn, calendrier) : ici, des exos DÉJÀ faits cette semaine (lundi →
+   aujourd'hui, weekendReviewByFiche), 2 max par fiche, à refaire pour ancrer.
+   Lancés via startExercice(..., { mode: 'weekend' }) — AUCUNE écriture côté
+   Exercice.jsx (voir Workstation.applyResult) : rejouer ne touche jamais le
+   statut/historique/dueDate normal de l'exo, session bonus pure. */
+function WeekendReviewCard({ ctx }) {
+  const { db } = ctx;
+  if (!isWeekend()) return null;
+  const groups = weekendReviewByFiche(db);
+  if (!groups.length) return null;
+  const allItems = groups.flatMap((g) => g.items);
+
+  return (
+    <Card title="Révision du week-end" icon="refresh" className="rattrapage-weekend"
+      action={<span className="pill">{allItems.length} exo{allItems.length > 1 ? 's' : ''}</span>}>
+      <div className="hint" style={{ fontSize: 12, marginBottom: 10 }}>
+        Les exercices faits cette semaine, à refaire pour ancrer — ça ne touche pas leur statut normal.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {groups.map((g, i) => {
+          const meta = matiereMeta(g.matiere);
+          return (
+            <div className="row spread" key={g.fiche.id} style={{ gap: 8, padding: '7px 0', borderTop: i ? '1px solid var(--border-2)' : 'none' }}>
+              <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.fiche.titre}</div>
+                <div className="hint" style={{ fontSize: 11 }}>{meta.label} · {g.items.length} exo{g.items.length > 1 ? 's' : ''}</div>
+              </div>
+              <button className="btn ghost sm" onClick={() => ctx.startExercice(g.items, g.fiche.titre + ' — Révision week-end', { mode: 'weekend' })}>Refaire</button>
+            </div>
+          );
+        })}
+      </div>
+      <button className="btn ghost sm" style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}
+        onClick={() => ctx.startExercice(allItems, 'Révision du week-end', { mode: 'weekend' })}>
+        Tout refaire ({allItems.length})
+      </button>
     </Card>
   );
 }

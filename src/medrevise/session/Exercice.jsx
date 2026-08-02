@@ -67,6 +67,7 @@ export function Exercice({ ctx }) {
           <Breadcrumb parts={['Réviser', meta.label, (fiche && fiche.titre) || payload.title, 'Exercice']} />
           <div className="row" style={{ gap: 10, marginTop: 9 }}>
             <span className="rp-count tnum">{idx + 1} / {items.length}</span>
+            {payload.mode === 'weekend' && <span className="pill accent" style={{ height: 22 }}>Session bonus · rien n'est enregistré</span>}
           </div>
         </div>
         <div className="topbar-actions">
@@ -76,7 +77,7 @@ export function Exercice({ ctx }) {
       </div>
 
       {/* remount par exercice → tout l'état (indices, notes, réponse) se réinitialise */}
-      <Workstation key={item.id} item={item} fiche={fiche} meta={meta} ctx={ctx}
+      <Workstation key={item.id} item={item} fiche={fiche} meta={meta} ctx={ctx} mode={payload.mode}
         isFirst={idx === 0} isLast={idx === items.length - 1} onNext={goNext} onPrev={goPrev} />
     </div>
   );
@@ -85,7 +86,7 @@ export function Exercice({ ctx }) {
 /* ============================================================
    Poste de travail d'UN exercice
    ============================================================ */
-function Workstation({ item, fiche, meta, ctx, isFirst, isLast, onNext, onPrev }) {
+function Workstation({ item, fiche, meta, ctx, mode, isFirst, isLast, onNext, onPrev }) {
   const numeric = item.sous_type === 'numerique';
   const indices = item.indices || [];
   const [revealed, setRevealed] = useState(0);          // indices révélés (0..n)
@@ -94,13 +95,19 @@ function Workstation({ item, fiche, meta, ctx, isFirst, isLast, onNext, onPrev }
   const appliedRef = useRef(false);
 
   // ---- SM-2 : appliqué une seule fois, à la validation ----
+  // mode 'weekend' (WeekendReviewCard, Dashboard) : session bonus sur un exo
+  // DÉJÀ fait cette semaine — on affiche la correction normalement mais on
+  // s'arrête là, AUCUNE écriture (ni recordExerciceAttempt/historique, ni
+  // saveQuestion, ni statut, ni streak) : rejouer ne doit jamais toucher le
+  // cycle normal de l'exo.
   const applyResult = async (success) => {
     if (appliedRef.current) return;
     appliedRef.current = true;
+    setDone(true);
+    if (mode === 'weekend') return;
     const quality = qualityForExercice(success, revealed);
     const updated = recordExerciceAttempt(item, quality);
     await ctx.saveQuestion(updated);
-    setDone(true);
     const s = ctx.stats || {};
     const today = todayISO();
     if (!(s.activityDays || []).includes(today)) {
@@ -156,8 +163,9 @@ function Workstation({ item, fiche, meta, ctx, isFirst, isLast, onNext, onPrev }
         {/* correction numérique : après validation */}
         {numeric && validated && <NumericCorrection item={item} />}
 
-        {/* proposition (non bloquante) en fin de série, sur la fiche du dernier exercice fait */}
-        {isLast && done && fiche && (
+        {/* proposition (non bloquante) en fin de série, sur la fiche du dernier exercice fait —
+           masquée en mode 'weekend' (session bonus, aucune écriture proposée). */}
+        {isLast && done && fiche && mode !== 'weekend' && (
           <div className="card fadein"><div className="card-body">
             <EtiquetteQuickSet value={fiche.etiquette} onChange={(v) => ctx.setFicheEtiquette(fiche.id, v)} />
           </div></div>

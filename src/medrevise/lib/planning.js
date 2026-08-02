@@ -265,6 +265,41 @@ export function dueExosByFicheOn(db, dateISO, idx) {
 }
 export function dueExosByFiche(db, idx) { return dueExosByFicheOn(db, todayISO(), idx); }
 
+/* ---- révision week-end (Dashboard, WeekendReviewCard) : PAS la méthode des J
+   des exos (dueExosOn, échéance dueDate) — ici on ressort des exos DÉJÀ FAITS
+   cette semaine (lundi → aujourd'hui, même notion que weekData/
+   startOfWeekISO), pour une session bonus de mémorisation. Lecture SEULE de
+   `historique` : cette fonction ne modifie jamais rien, et le mode 'weekend'
+   de startExercice (voir MedReviseApp.jsx/Exercice.jsx) n'écrit rien non plus
+   quand on rejoue un exo depuis ici — la tentative de la semaine reste la
+   dernière du dossier, le statut/dueDate de l'exo ne bougent pas. */
+export function weekendReviewByFiche(db, idx) {
+  const ix = idx || index(db);
+  const monday = startOfWeekISO(todayISO());
+  const today = todayISO();
+  const map = {};
+  (db.questions || []).forEach((q) => {
+    if (q.type !== EXERCICE_TYPE) return;
+    const f = ix.fById[q.ficheId];
+    if (!f || !isFicheScheduled(db, f, ix)) return;
+    const attemptsThisWeek = (q.historique || []).filter((h) => h.date >= monday && h.date <= today);
+    if (!attemptsThisWeek.length) return;
+    const lastDate = attemptsThisWeek.reduce((max, h) => (h.date > max ? h.date : max), attemptsThisWeek[0].date);
+    if (!map[f.id]) {
+      const m = ix.mById[f.matiereId];
+      map[f.id] = { fiche: f, matiere: m, source: m && ix.sById[m.sourceId], items: [] };
+    }
+    map[f.id].items.push({ q, lastDate });
+  });
+  // 2 exos MAX par fiche — les 2 tentés le plus récemment cette semaine (pas
+  // de priorité aux ratés, pas de complément si le chapitre n'en a qu'1 : ce
+  // sont les MÊMES exos déjà vus, jamais des neufs).
+  return Object.values(map).map((g) => ({
+    ...g,
+    items: g.items.slice().sort((a, b) => (a.lastDate < b.lastDate ? 1 : a.lastDate > b.lastDate ? -1 : 0)).slice(0, 2).map((e) => e.q),
+  }));
+}
+
 /* ---- schémas d'anatomie visuelle (anat_schema) : la FICHE elle-même est
    l'item planifiable (elle porte plan/cursor, voir lib/sm2.js buildPlan),
    pas des questions. On les gère en parallèle des questions. ---- */

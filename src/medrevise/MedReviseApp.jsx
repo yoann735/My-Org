@@ -148,7 +148,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // startId (optionnel) : positionne la série sur l'exercice cliqué (ExerciceCards,
     // Réviser) au lieu de toujours redémarrer à l'index 0 — Précédent/Suivant
     // parcourent alors la série complète, pas un item isolé.
-    startExercice: (items, title, opts = {}) => { setExercice({ items: items || [], title: title || 'Exercices', startId: opts.startId || null }); setScreen('exercice'); },
+    // mode (optionnel) : 'weekend' → session bonus (WeekendReviewCard, Dashboard),
+    // voir Exercice.jsx Workstation.applyResult, AUCUNE écriture (historique/
+    // missed/statut/dueDate de l'exo intacts).
+    startExercice: (items, title, opts = {}) => { setExercice({ items: items || [], title: title || 'Exercices', startId: opts.startId || null, mode: opts.mode || null }); setScreen('exercice'); },
     // quiz d'anatomie visuelle (fiche anat_schema) : écran dédié.
     startAnatQuiz: (fiche, opts = {}) => {
       setAnatQuiz({ fiche, mode: opts.mode || 'total', proportion: opts.proportion ?? 0.5, theory: !!opts.theory });
