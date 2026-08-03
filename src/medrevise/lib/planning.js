@@ -370,6 +370,14 @@ export function dueByCoursOn(db, dateISO, idx) {
   return Object.values(bySource).sort((a, b) => b.total - a.total);
 }
 
+/** vrai si `record` a été révisé exactement à `dateISO` (une entrée
+   historique[] datée ce jour-là) — SEUL point de lecture rétrospective du
+   calendrier (weekData, jours passés) : purement AFFICHAGE, ne sert jamais
+   au calcul du dû/en retard (dueOn/overdueQuestions, basés sur dueDate). */
+function reviewedOn(record, dateISO) {
+  return !!(record && record.historique && record.historique.some((h) => h.date === dateISO));
+}
+
 /** semaine de 7 jours (weekOffset: 0 = cette semaine). Moteur adaptatif :
    une carte ne porte plus qu'UNE échéance connue (dueDate) — "aujourd'hui"
    et "un jour futur" utilisent donc EXACTEMENT le même calcul réel (dueOn/
@@ -377,7 +385,14 @@ export function dueByCoursOn(db, dateISO, idx) {
    part (ficheProjection) pour les jours futurs. Perte assumée de la
    profondeur du calendrier (plus de J+30/J+90 affichés à l'avance : la
    prochaine échéance après celle-ci n'existe pas tant qu'elle n'a pas été
-   notée) — voir la mécanique validée. */
+   notée) — voir la mécanique validée.
+   Jours PASSÉS : AFFICHAGE seul (jamais de calcul de dû/retard, qui reste
+   exclusivement dueOn/overdueQuestions) — reconstitue ce qui a été révisé
+   CE jour-là via `historique[]` (reviewedOn), pour un simple rappel visuel
+   estompé (.wcal-day.past{opacity:.42}, déjà en place côté CSS) ; aucune
+   action n'y est proposée (Réorganiser/Sauter ciblent dueOn/dueOnFor, qui ne
+   retournent jamais rien pour une date passée — lecture seule de fait, sans
+   code de garde supplémentaire à ajouter ici). */
 export function weekData(db, weekOffset = 0, idx) {
   const ix = idx || index(db);
   const today = todayISO();
@@ -389,25 +404,30 @@ export function weekData(db, weekOffset = 0, idx) {
     const isPast = date < today;
     let items = [], schemas = [], byFiche = [], exos = [];
 
-    if (!isPast) {
+    if (isPast) {
+      items = scheduledQuestions(db, ix).filter((q) => reviewedOn(q, date));
+      schemas = scheduledSchemas(db, ix).filter((f) => reviewedOn(f, date)).map((f) => ({ fiche: f, matiere: ix.mById[f.matiereId], ...ficheJ(db, f.id, ix) }));
+      byFiche = groupByFiche(db, items, ix);
+    } else {
       items = dueOn(db, date, ix);
       schemas = dueSchemasOn(db, date, ix).map((f) => ({ fiche: f, matiere: ix.mById[f.matiereId], ...ficheJ(db, f.id, ix) }));
       byFiche = groupByFiche(db, items, ix);
     }
-    // passé (isPast) : reste vide, comportement inchangé (rien à projeter en arrière).
 
     // exercices : canal SÉPARÉ de la théorie (dueExosByFicheOn, échéance EXACTE
     // par dueDate, jamais de projection ni de retard) — calculé aujourd'hui ET
-    // les jours futurs, jamais dans le passé (même limite que la théorie).
+    // les jours futurs. Jours passés : hors périmètre de cette demande (purement
+    // "cours/cartes"), reste vide comme avant.
     if (!isPast) exos = dueExosByFicheOn(db, date, ix);
     const exosTotal = exos.reduce((s, g) => s + g.items.length, 0);
 
+    const isProjected = !isToday && !isPast;
     days.push({
       date, dow: DOW[i], dayNum: new Date(date + 'T00:00:00').getDate(),
-      isToday, isPast, isProjected: !isToday && !isPast,
-      // total affiché = cartes réelles (aujourd'hui) OU cours projetés (futur) + schémas + exercices
-      total: (isToday ? items.length : byFiche.length) + schemas.length + exosTotal,
-      cardsTotal: isToday ? items.length : byFiche.length,
+      isToday, isPast, isProjected,
+      // total affiché = cartes réelles (aujourd'hui/passé) OU cours projetés (futur) + schémas + exercices
+      total: (isProjected ? byFiche.length : items.length) + schemas.length + exosTotal,
+      cardsTotal: isProjected ? byFiche.length : items.length,
       items, schemas, byFiche, exos, exosTotal,
     });
   }
