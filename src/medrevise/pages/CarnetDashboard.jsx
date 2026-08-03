@@ -141,15 +141,25 @@ function V1Row({ v1, v2Count, fiche, matiere, ctx }) {
     e.stopPropagation();
     setCoursMenu({ x: Math.min(e.clientX, window.innerWidth - 260), y: Math.min(e.clientY, window.innerHeight - 110) });
   };
+  const [popupBlocked, setPopupBlocked] = useState(false);
   const viewCoursInApp = () => { if (fiche) ctx.openPdfReader(fiche.id, 'read', 'carnet', 'html'); };
   // "nouvelle fenêtre" : RÉUTILISE le même blob que la vue interne
-  // (PdfReader.jsx, srcTab 'html' — getBlob(fiche.htmlId) + object URL), juste
-  // ouvert dans un onglet natif du navigateur au lieu de l'iframe intégrée.
+  // (PdfReader.jsx, srcTab 'html' — getBlob(fiche.htmlId) + object URL), mais
+  // vise une VRAIE fenêtre séparée (pas un onglet) : la présence de features
+  // de taille/chrome (width/height, menubar=no, etc.) est ce qui pousse
+  // Chrome/Firefox/Safari à détacher une fenêtre plutôt qu'ouvrir un onglet —
+  // best-effort, certains navigateurs/réglages utilisateur ignorent quand
+  // même et ouvrent un onglet (rien à faire de plus côté app, aucune API ne
+  // le garantit). Bloqueur de popup : window.open renvoie null/undefined,
+  // jamais d'exception — on l'affiche proprement plutôt que planter.
   const viewCoursNewWindow = async () => {
     if (!fiche || !fiche.htmlId) return;
     const blob = await getBlob(fiche.htmlId);
     if (!blob) return;
-    window.open(URL.createObjectURL(blob), '_blank');
+    const url = URL.createObjectURL(blob);
+    const features = 'popup=yes,width=1100,height=850,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes';
+    const win = window.open(url, '_blank', features);
+    if (!win) { setPopupBlocked(true); setTimeout(() => setPopupBlocked(false), 4000); }
   };
 
   return (
@@ -197,6 +207,11 @@ function V1Row({ v1, v2Count, fiche, matiere, ctx }) {
           </button>
           <button className="icon-btn sm" title="Retirer du carnet" style={{ color: 'var(--text-3)', marginLeft: 'auto' }} onClick={() => setConfirmDelete(true)}><Icon name="trash" size={14} /></button>
         </div>
+        {popupBlocked && (
+          <div className="hint" style={{ marginTop: 6, color: 'var(--crit)' }}>
+            <Icon name="alert" size={12} /> Fenêtre bloquée par le navigateur — autorise les popups pour ce site puis réessaie.
+          </div>
+        )}
         {open && (
           <div style={{ marginTop: 8 }}>
             <pre className="imp-title" style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12 }}>{json}</pre>

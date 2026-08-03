@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
+import { Tex } from '../components/Tex.jsx';
 import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, dueFromOn, addDays, diffDays, weekendReviewByFiche, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
@@ -106,8 +107,9 @@ function RattrapageCard({ ctx, overdue, startOverdueFiche }) {
 
 // aperçu carnet (Dashboard, liste compacte) : {{mots}} de cloze dépliés en
 // texte normal (pas d'interactivité dans un simple aperçu) — même traitement
-// que CarnetDashboard.jsx/MobileHome.jsx, évite tout caractère de balisage
-// brut ici aussi.
+// que CarnetDashboard.jsx/MobileHome.jsx. Le résultat DOIT être rendu via
+// <Tex> côté appelant pour le LaTeX ($...$) — cette fonction ne fait que le
+// nettoyage cloze, elle ne rend rien seule.
 const carnetPreviewText = (s, n) => {
   const cleaned = (s || '').replace(/\{\{([^{}]+)\}\}/g, '$1');
   return cleaned.length > n ? cleaned.slice(0, n).trim() + '…' : cleaned;
@@ -134,7 +136,7 @@ function CarnetErreurCard({ ctx }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 12 }}>
         {recent.map((v) => (
           <div key={v.id} style={{ fontSize: 12.5, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            <span style={{ color: 'var(--text-3)' }}>•</span> {carnetPreviewText(v.recto, 70)}
+            <span style={{ color: 'var(--text-3)' }}>•</span> <Tex>{carnetPreviewText(v.recto, 70)}</Tex>
           </div>
         ))}
       </div>
