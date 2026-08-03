@@ -19,13 +19,14 @@
    formulaire simple ne doit jamais faire régresser un item plus riche
    (importé via JSON).
    ============================================================ */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Modal } from './ui.jsx';
 import { appendItemsToFiche } from '../lib/import.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { ImportJsonField } from './ImportFlow.jsx';
 import { OPTION_LETTERS } from '../lib/schema.js';
+import { parseCloze } from '../lib/cloze.js';
 
 export const TYPES = [
   { id: 'qcm', label: 'QCM', icon: 'list' },
@@ -245,14 +246,53 @@ function QcmForm({ onAdd, busy, initial, submitLabel, onCancel }) {
   );
 }
 
-/* ---- Flashcard : recto, verso, indice/à-retenir optionnels ---- */
+/* ---- Flashcard : recto, verso, indice/à-retenir optionnels, trous (cloze) ----
+   Le trou EST le marqueur {{...}} lui-même, directement dans `recto` — jamais un
+   offset externe à tenir synchronisé : "Ajouter un trou" fait juste l'insertion
+   des accolades autour de la sélection courante, "Retirer" les retire. Le format
+   de sortie (recto avec {{mot}} + tableau `cloze`) EST le format existant
+   (lib/cloze.js#parseCloze/isCloze) — aucun nouveau format, aucune saisie de
+   {{ }} à la main. Une flashcard sans aucun {{ }} reste une carte classique. */
 function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel }) {
   const [theme, setTheme] = useState(initial?.theme || '');
   const [recto, setRecto] = useState(initial?.recto || '');
   const [verso, setVerso] = useState(initial?.verso || '');
   const [indice, setIndice] = useState(initial?.indice || '');
   const [aRetenir, setARetenir] = useState(initial?.a_retenir || '');
+  const [holeHint, setHoleHint] = useState(null);
+  const rectoRef = useRef(null);
   const ready = !!recto.trim() && !!verso.trim();
+
+  // segments texte/trou dérivés du recto tel quel — aucun état séparé à
+  // maintenir en phase : le {{...}} DANS le texte fait foi (voir cloze.js).
+  const segments = parseCloze(recto, []);
+  const blanks = segments.filter((s) => s.type === 'blank');
+
+  const addHole = () => {
+    const el = rectoRef.current;
+    if (!el) return;
+    const start = el.selectionStart, end = el.selectionEnd;
+    if (start == null || end == null || start === end) {
+      setHoleHint('Sélectionne d’abord le mot à masquer dans le recto.');
+      return;
+    }
+    const selected = recto.slice(start, end);
+    if (/\{\{|\}\}/.test(selected)) {
+      setHoleHint('La sélection chevauche déjà un trou existant.');
+      return;
+    }
+    const next = recto.slice(0, start) + '{{' + selected + '}}' + recto.slice(end);
+    setRecto(next);
+    setHoleHint(null);
+  };
+
+  // retire le N-ième trou (index d'apparition, voir parseCloze) : remet son
+  // contenu en texte normal, sans toucher au reste du recto.
+  const removeHole = (blankIndex) => {
+    let i = 0;
+    const next = recto.replace(/\{\{([^{}]+)\}\}/g, (m, word) => (i++ === blankIndex ? word : m));
+    setRecto(next);
+  };
 
   const submit = async () => {
     if (!ready) return;
@@ -260,8 +300,9 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel }) {
       type: 'flashcard', theme: theme.trim(), difficulte: initial?.difficulte || 'intermediaire',
       recto: recto.trim(), verso: verso.trim(),
       indice: indice.trim() || null, a_retenir: aRetenir.trim(),
+      cloze: blanks.map((b) => b.expected),
     });
-    if (!initial) { setRecto(''); setVerso(''); setIndice(''); setARetenir(''); }
+    if (!initial) { setRecto(''); setVerso(''); setIndice(''); setARetenir(''); setHoleHint(null); }
   };
 
   return (
@@ -271,8 +312,37 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel }) {
         <input className="imp-title" placeholder="ex : Surfactant" value={theme} onChange={(e) => setTheme(e.target.value)} />
       </div>
       <div className="imp-field">
-        <label>Recto</label>
-        <textarea className="imp-title" style={{ minHeight: 60, resize: 'vertical', fontFamily: 'inherit' }} value={recto} onChange={(e) => setRecto(e.target.value)} placeholder="Question / terme…" />
+        <div className="row spread" style={{ alignItems: 'center' }}>
+          <label style={{ marginBottom: 0 }}>Recto</label>
+          <button type="button" className="btn ghost sm" onClick={addHole} title="Sélectionne un mot dans le recto, puis clique ici pour le transformer en trou (cloze)">
+            <Icon name="box" size={13} /> Ajouter un trou
+          </button>
+        </div>
+        <textarea ref={rectoRef} className="imp-title" style={{ minHeight: 60, resize: 'vertical', fontFamily: 'inherit', marginTop: 6 }}
+          value={recto} onChange={(e) => { setRecto(e.target.value); setHoleHint(null); }} placeholder="Question / terme… (sélectionne un mot puis « Ajouter un trou » pour une carte à trou)" />
+        {holeHint && <div className="hint" style={{ marginTop: 6, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {holeHint}</div>}
+        {blanks.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <div className="hint" style={{ marginBottom: 6 }}>Aperçu de la carte à trou :</div>
+            <div style={{ lineHeight: 1.7 }}>
+              {segments.map((s, i) => s.type === 'text'
+                ? <span key={i}>{s.value}</span>
+                : (
+                  <button key={i} type="button" onClick={() => removeHole(s.index)} title="Cliquer pour retirer ce trou"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 3, margin: '0 2px', padding: '1px 7px',
+                      border: '1px dashed var(--accent)', borderRadius: 6, background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+                      color: 'var(--accent)', fontSize: 12.5, cursor: 'pointer',
+                    }}>
+                    [ … ] <Icon name="x" size={10} />
+                  </button>
+                ))}
+            </div>
+            <div className="hint" style={{ marginTop: 6 }}>
+              Réponse{blanks.length > 1 ? 's' : ''} : {blanks.map((b) => b.expected).join(', ')}
+            </div>
+          </div>
+        )}
       </div>
       <div className="imp-field">
         <label>Verso</label>
