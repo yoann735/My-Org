@@ -12,6 +12,7 @@ import { isoDate } from '../lib/sm2.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
+import { emptyCounts } from '../lib/schema.js';
 import { cleanTranscript } from '../documents/lib/transcript.js';
 import { ImportAnatomieTheorie } from './ImportAnatomieTheorie.jsx';
 import { ImportAnatomieVisuel } from './ImportAnatomieVisuel.jsx';
@@ -562,7 +563,10 @@ function ImportPanel({ ctx }) {
     ? `${srcLabel} / ${matLabel} / ${matchedFiche.titre} (fiche existante)`
     : `${srcLabel} / ${matLabel} / ${title.trim() || 'Fiche importée'}`;
   const missing = [!srcId && 'un cours', !matId && 'une matière', !title.trim() && 'un titre'].filter(Boolean);
-  const ready = missing.length === 0 && !!jsonText.trim();
+  // le JSON collé est OPTIONNEL depuis l'ajout de l'import "fiche HTML seule" :
+  // il faut soit des questions collées, soit un document (PDF/HTML) à rattacher —
+  // les deux vides n'ont rien à importer.
+  const ready = missing.length === 0 && (!!jsonText.trim() || !!pasteDoc);
   const previewDuplicates = useMemo(() => {
     if (!willAppend || !parsed) return 0;
     const existingSrc = new Set(db.questions.filter((q) => q.ficheId === matchedFiche.id).map((q) => q.srcId).filter(Boolean));
@@ -570,6 +574,14 @@ function ImportPanel({ ctx }) {
   }, [willAppend, parsed, matchedFiche, db.questions]);
 
   const parseJson = () => {
+    // pas de JSON collé → fiche (ou doc rattaché à une fiche existante) SANS
+    // aucune question, cartes créées après coup dans l'app ("Voir le cours").
+    if (!jsonText.trim()) {
+      setParseError(null);
+      setParsed({ items: [], meta: null, counts: emptyCounts(), synthese: '' });
+      setState('preview');
+      return;
+    }
     const res = parsePastedJson(jsonText);
     if (!res.ok) { setParseError(res.error); return; }
     if (res.items.length === 0) {
@@ -675,9 +687,12 @@ function ImportPanel({ ctx }) {
 
           <div className="imp-actions">
             <button className="btn ghost" onClick={reset}>Annuler</button>
-            <button className="btn primary" onClick={parseJson} disabled={!ready}><Icon name="check" size={15} /> Importer les questions</button>
+            <button className="btn primary" onClick={parseJson} disabled={!ready}><Icon name="check" size={15} /> {jsonText.trim() ? 'Importer les questions' : 'Créer la fiche'}</button>
           </div>
           {missing.length > 0 && <div className="hint" style={{ marginTop: 8 }}>Il manque : {missing.join(', ')}.</div>}
+          {missing.length === 0 && !jsonText.trim() && !pasteDoc && (
+            <div className="hint" style={{ marginTop: 8 }}>Colle des questions (JSON) et/ou attache un document (PDF/HTML) pour continuer — une fiche HTML seule, sans questions, est possible.</div>
+          )}
         </div>
       )}
 
@@ -694,10 +709,12 @@ function ImportPanel({ ctx }) {
 
       {mode === 'standard' && state === 'done' && result && (
         <ImportDoneScreen title={result.appended ? 'Items ajoutés !' : 'Fiche prête !'}
-          message={<>
-            ✓ {result.count} question{result.count > 1 ? 's' : ''} {result.appended ? 'ajoutée' + (result.count > 1 ? 's' : '') : 'importée' + (result.count > 1 ? 's' : '')}
-            {result.duplicates > 0 && ` · ${result.duplicates} doublon${result.duplicates > 1 ? 's' : ''} ignoré${result.duplicates > 1 ? 's' : ''}`}.
-          </>}
+          message={result.count === 0
+            ? <>✓ Fiche créée, sans question pour l’instant — ajoute des cartes depuis « Voir le cours ».</>
+            : <>
+              ✓ {result.count} question{result.count > 1 ? 's' : ''} {result.appended ? 'ajoutée' + (result.count > 1 ? 's' : '') : 'importée' + (result.count > 1 ? 's' : '')}
+              {result.duplicates > 0 && ` · ${result.duplicates} doublon${result.duplicates > 1 ? 's' : ''} ignoré${result.duplicates > 1 ? 's' : ''}`}.
+            </>}
           onReset={reset} ctx={ctx} ficheId={result.fiche.id} />
       )}
     </Card>
