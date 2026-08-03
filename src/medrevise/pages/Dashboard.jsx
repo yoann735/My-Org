@@ -104,9 +104,19 @@ function RattrapageCard({ ctx, overdue, startOverdueFiche }) {
   );
 }
 
+// aperçu carnet (Dashboard, liste compacte) : {{mots}} de cloze dépliés en
+// texte normal (pas d'interactivité dans un simple aperçu) — même traitement
+// que CarnetDashboard.jsx/MobileHome.jsx, évite tout caractère de balisage
+// brut ici aussi.
+const carnetPreviewText = (s, n) => {
+  const cleaned = (s || '').replace(/\{\{([^{}]+)\}\}/g, '$1');
+  return cleaned.length > n ? cleaned.slice(0, n).trim() + '…' : cleaned;
+};
+
 /* ---------- carnet d'erreurs v2 (Dashboard UNIQUEMENT) ----------
-   Emplacement principal de la card de synthèse — le DÉTAIL (liste, actions
-   rapides) est l'étape 3 ; ici juste les compteurs + l'entrée vers l'écran
+   Emplacement principal de la card de synthèse : compteurs + les 5 erreurs
+   V1 les plus RÉCENTES (tri par carnetAt desc — simple intitulé, sans détail,
+   juste pour voir d'un coup d'œil ce qui est en carnet) + entrée vers l'écran
    dédié (SCREENS.carnet). SEUL carnet d'erreurs de l'app désormais — l'ancien
    mécanisme (missed/weakPoints, qui vivait dans RattrapageCard ci-dessus) a
    été entièrement retiré. */
@@ -115,12 +125,20 @@ function CarnetErreurCard({ ctx }) {
   const v1 = carnetV1Questions(db);
   const aRevoir = carnetV2Questions(db, 'a_revoir');
   if (!v1.length) return null;
+  const recent = [...v1].sort((a, b) => (b.carnetAt || '').localeCompare(a.carnetAt || '')).slice(0, 5);
   return (
     <Card title="Carnet d'erreurs" icon="target" action={<span className="pill">{v1.length}</span>}>
       <div className="hint" style={{ fontSize: 12.5, marginBottom: 10 }}>
         {v1.length} flashcard{v1.length > 1 ? 's' : ''} en carnet · {aRevoir.length} flashcard{aRevoir.length > 1 ? 's' : ''} d'erreur à revoir
       </div>
-      <button className="btn ghost sm" style={{ width: '100%', justifyContent: 'center' }} onClick={() => ctx.go('carnet')}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 12 }}>
+        {recent.map((v) => (
+          <div key={v.id} style={{ fontSize: 12.5, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ color: 'var(--text-3)' }}>•</span> {carnetPreviewText(v.recto, 70)}
+          </div>
+        ))}
+      </div>
+      <button className="btn primary sm" style={{ width: '100%', justifyContent: 'center' }} onClick={() => ctx.go('carnet')}>
         <Icon name="ext" size={13} /> Ouvrir le carnet
       </button>
     </Card>

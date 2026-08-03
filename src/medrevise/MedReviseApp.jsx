@@ -59,9 +59,13 @@ function MedBottomNav({ current, onNav }) {
     { id: 'dashboard', label: 'Accueil', icon: 'home' },
     { id: 'revise', label: 'Réviser', icon: 'cards' },
     { id: 'library', label: 'Biblio', icon: 'book' },
+    { id: 'carnet', label: 'Carnet', icon: 'target' },
   ];
+  // 'carnet' est un onglet à part entière désormais — retiré de la liste
+  // ci-dessous (même fix que StudySidebar, ui.jsx) pour ne pas allumer
+  // "Réviser" ET "Carnet" en même temps sur l'écran carnet.
   const active = (id) => current === id
-    || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz', 'pdf', 'schemaedit', 'carnet'].includes(current));
+    || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz', 'pdf', 'schemaedit'].includes(current));
   return (
     <nav className="bottom-nav">
       {items.map((n) => (

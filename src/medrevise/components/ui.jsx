@@ -146,10 +146,14 @@ const ED_NAV = [
   { id: 'dashboard', label: 'Accueil', icon: 'home' },
   { id: 'revise', label: 'Réviser', icon: 'cards' },
   { id: 'library', label: 'Bibliothèque', icon: 'book' },
+  { id: 'carnet', label: "Carnet d'erreurs", icon: 'target' },
 ];
 
 export function StudySidebar({ current, onNav, expanded, onToggle, onHub }) {
-  const isActive = (id) => current === id || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz', 'pdf', 'schemaedit', 'carnet'].includes(current));
+  // 'carnet' est un onglet à part entière désormais (plus un sous-état de
+  // 'revise') — retiré de la liste ci-dessous pour ne pas allumer les DEUX
+  // onglets à la fois quand on est sur l'écran carnet.
+  const isActive = (id) => current === id || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz', 'pdf', 'schemaedit'].includes(current));
   return (
     <nav className={'sidebar' + (expanded ? ' expanded' : '')}>
       <div className="sb-brand">

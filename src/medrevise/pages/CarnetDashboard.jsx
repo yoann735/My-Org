@@ -21,11 +21,12 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, EdTop, Modal, ConfirmModal, matiereMeta } from '../components/ui.jsx';
+import { Card, EdTop, Modal, ConfirmModal, ContextMenu, matiereMeta } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { ImportJsonField } from '../components/ImportFlow.jsx';
 import { carnetV1Questions, carnetV2Questions, index } from '../lib/planning.js';
 import { parseErrorCardsJson } from '../lib/parseErrorCardsJson.js';
+import { getBlob } from '../lib/storage.js';
 
 const trunc = (s, n) => (s && s.length > n ? s.slice(0, n).trim() + '…' : s);
 // affichage LISTE (pas la carte de révision elle-même, qui a déjà son propre
@@ -135,7 +136,21 @@ function V1Row({ v1, v2Count, fiche, matiere, ctx }) {
   };
   const meta = matiereMeta(matiere);
   const hasHtml = !!(fiche && fiche.htmlId);
-  const viewCours = () => { if (fiche) ctx.openPdfReader(fiche.id, 'read', 'carnet', 'html'); };
+  const [coursMenu, setCoursMenu] = useState(null); // { x, y } — choix app/nouvelle fenêtre
+  const openCoursMenu = (e) => {
+    e.stopPropagation();
+    setCoursMenu({ x: Math.min(e.clientX, window.innerWidth - 260), y: Math.min(e.clientY, window.innerHeight - 110) });
+  };
+  const viewCoursInApp = () => { if (fiche) ctx.openPdfReader(fiche.id, 'read', 'carnet', 'html'); };
+  // "nouvelle fenêtre" : RÉUTILISE le même blob que la vue interne
+  // (PdfReader.jsx, srcTab 'html' — getBlob(fiche.htmlId) + object URL), juste
+  // ouvert dans un onglet natif du navigateur au lieu de l'iframe intégrée.
+  const viewCoursNewWindow = async () => {
+    if (!fiche || !fiche.htmlId) return;
+    const blob = await getBlob(fiche.htmlId);
+    if (!blob) return;
+    window.open(URL.createObjectURL(blob), '_blank');
+  };
 
   return (
     <div className="card err-v1-card">
@@ -164,9 +179,15 @@ function V1Row({ v1, v2Count, fiche, matiere, ctx }) {
         {/* actions */}
         <div className="err-v1-actions">
           {hasHtml && (
-            <button className="btn ghost sm" onClick={viewCours} title="Ouvrir la fiche HTML du cours">
+            <button className="btn ghost sm" onClick={openCoursMenu} title="Ouvrir la fiche HTML du cours">
               <Icon name="fileHtml" size={13} /> Voir le cours
             </button>
+          )}
+          {coursMenu && (
+            <ContextMenu x={coursMenu.x} y={coursMenu.y} onClose={() => setCoursMenu(null)} items={[
+              { label: "Ouvrir dans l'app", icon: 'fileHtml', onClick: viewCoursInApp },
+              { label: 'Ouvrir dans une nouvelle fenêtre', icon: 'ext', onClick: viewCoursNewWindow },
+            ]} />
           )}
           <button className="btn ghost sm" onClick={() => setOpen((o) => !o)}>
             <Icon name={open ? 'chevU' : 'upload'} size={13} /> {open ? 'Masquer' : 'Extraire'}
