@@ -10,6 +10,7 @@ import { Dashboard } from './pages/Dashboard.jsx';
 import { Reviser } from './pages/Reviser.jsx';
 import { Bibliotheque } from './pages/Bibliotheque.jsx';
 import { Reglages } from './pages/Reglages.jsx';
+import { CarnetDashboard } from './pages/CarnetDashboard.jsx';
 import { Session } from './session/Session.jsx';
 import { Feynman } from './session/Feynman.jsx';
 import { Exercice } from './session/Exercice.jsx';
@@ -18,7 +19,7 @@ import { PdfReader } from './pdf/PdfReader.jsx';
 import { SchemaEditorScreen } from './documents/SchemaEditorScreen.jsx';
 import {
   getAll, put, putMany, remove, getStats, setStats as saveStats, genId, syncNow,
-  purgeSource, purgeMatiere, purgeFiche, putBackup,
+  purgeSource, purgeMatiere, purgeFiche, putBackup, newErrorCard,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 import { todayISO, buildPlanFrom } from './lib/sm2.js';
@@ -30,7 +31,7 @@ import { MobileApp } from './mobile/MobileApp.jsx';
 // de documents ET rend PdfReader/SchemaEditorScreen/TranscriptEditor EMBARQUÉS dans
 // son panneau de droite. 'pdf'/'schemaedit' restent des routes plein-écran, mais ne
 // sont plus atteignables QUE depuis Réviser (« Voir le cours » / « Éditer le schéma »).
-const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen };
+const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard };
 
 // Réorganiser (ctx.moveSourceDay/moveFicheDay ci-dessous) : décale le `plan`
 // fixe (lib/sm2.js buildPlan) d'une carte DÉJÀ EN CYCLE. La cible n'est PAS
@@ -60,7 +61,7 @@ function MedBottomNav({ current, onNav }) {
     { id: 'library', label: 'Biblio', icon: 'book' },
   ];
   const active = (id) => current === id
-    || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz', 'pdf', 'schemaedit'].includes(current));
+    || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz', 'pdf', 'schemaedit', 'carnet'].includes(current));
   return (
     <nav className="bottom-nav">
       {items.map((n) => (
@@ -455,6 +456,24 @@ export default function MedReviseApp({ themeApi, goHub }) {
     clearQuestionError: async (id) => {
       const q = db.questions.find((x) => x.id === id); if (!q) return;
       await put('questions', { ...q, missed: 0 }); await reload();
+    },
+    // carnet d'erreurs v2 (étape 2) : statut d'une V2 ('a_revoir'|'resolu'|
+    // 'pause') — ne touche JAMAIS plan/cursor/historique (une V2 n'en a pas,
+    // voir storage.js#newErrorCard), juste son état d'affichage dans le
+    // tableau de bord. La suppression d'une V2 réutilise deleteQuestion
+    // (générique, même store 'questions').
+    setV2Statut: async (id, statut) => {
+      const q = db.questions.find((x) => x.id === id); if (!q) return;
+      await put('questions', { ...q, statut }); await reload();
+    },
+    // crée une ou plusieurs V2 à partir du JSON collé (lib/parseErrorCardsJson.js,
+    // déjà validé — cards = [{recto,verso,sourceErrorId}]) : reliées à leur V1,
+    // jamais planifiées, rangées "à revoir" par défaut (newErrorCard).
+    createErrorCards: async (cards) => {
+      if (!cards || !cards.length) return 0;
+      await putMany('questions', cards.map(newErrorCard));
+      await reload();
+      return cards.length;
     },
     saveStats: async (s) => { await saveStats(s); setStats(s); },
     // écran de fin de série (QCM/flashcards, desktop + mobile) : un point par

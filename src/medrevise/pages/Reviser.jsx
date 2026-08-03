@@ -8,13 +8,12 @@ import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
 import {
   index, effectiveCoef, ficheJ, ficheJDistribution, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, missedQuestions, topConcepts, todayPlan, overdueByFiche,
-  qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor,
+  qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, carnetV1Questions, carnetV2Questions,
 } from '../lib/planning.js';
 import { shuffle } from '../lib/sm2.js';
 import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
 import { allCoches } from '../lib/anatSchema.js';
 import { putBlob } from '../lib/storage.js';
-import { CarnetBody } from './Carnet.jsx';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 
 /** formate un temps par carte (ms) en texte court — secondes sous la minute,
@@ -56,8 +55,6 @@ export function Reviser({ ctx }) {
   const startOverdueFiche = (g) => (g.isSchema ? ctx.startAnatQuiz(g.fiche, { mode: 'total' }) : ctx.startSession(g.items, g.fiche.titre + ' — Rattrapage'));
   // redite du Dashboard : repliée PAR DÉFAUT ici (état persisté, undefined = replié).
   const rattraperCollapsed = (ctx.stats && ctx.stats.rattraperCollapsedReviser) !== false;
-  // replié PAR DÉFAUT (état persisté, undefined = replié) — même logique que rattraperCollapsed.
-  const carnetCollapsed = (ctx.stats && ctx.stats.carnetCollapsed) !== false;
   const fichesOf = (matId) => db.fiches.filter((f) => f.matiereId === matId && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
   const matieresOf = (srcId) => db.matieres.filter((m) => m.sourceId === srcId && !m.archive);
   // repérage « d'un coup d'œil » des schémas d'anatomie dans l'arbre (point E).
@@ -465,32 +462,15 @@ export function Reviser({ ctx }) {
             </>
           )}
 
-          {/* carnet d'erreurs — intégré DANS la colonne de droite (pas une grille à
-             part sous .revise-grid) : reste aligné avec le contenu de révision et
-             juste en dessous, quelle que soit la hauteur de l'arbre à gauche (sinon,
-             quand l'arbre est plus haut que le panneau de droite, le carnet se
-             retrouvait poussé loin en dessous, avec un grand vide au-dessus). Replié
-             par défaut, contenu dans une card comme le reste (jamais en apesanteur). */}
+          {/* carnet d'erreurs v2 (étape 2) : REMPLACE l'ancien embed CarnetBody
+             (Carnet.jsx, retiré) — juste un lien d'entrée ici, le contenu (V1 +
+             raisons, extraction JSON, V2 à revoir/résolu) vit sur son propre
+             écran (SCREENS.carnet, MedReviseApp.jsx) : trop riche pour une
+             section repliable. missed/weakPoints (ErrorSummary ci-dessus,
+             RattrapageCard du Dashboard) restent INCHANGÉS — carnet
+             complémentaire, pas remplacé. */}
           <div style={{ marginTop: 22 }}>
-            {carnetCollapsed ? (
-              <div className="card">
-                <button type="button" className="card-head" onClick={() => ctx.saveStats({ ...ctx.stats, carnetCollapsed: false })}
-                  style={{ width: '100%', cursor: 'pointer', background: 'none', border: 'none', font: 'inherit', color: 'inherit' }}>
-                  <Icon name="target" size={17} className="ic" />
-                  <h3>Carnet d'erreurs</h3>
-                  <div className="right"><Icon name="chevD" size={15} /></div>
-                </button>
-              </div>
-            ) : (
-              <>
-                <button type="button" onClick={() => ctx.saveStats({ ...ctx.stats, carnetCollapsed: true })}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 12, color: 'inherit', font: 'inherit' }}>
-                  <Icon name="chevU" size={16} style={{ color: 'var(--text-3)' }} />
-                  <h2 className="serif" style={{ fontSize: 20, margin: 0 }}>Carnet d'erreurs</h2>
-                </button>
-                <CarnetBody ctx={ctx} />
-              </>
-            )}
+            <CarnetEntryCard ctx={ctx} />
           </div>
         </div>
       </div>
@@ -679,6 +659,31 @@ function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/* carnet d'erreurs v2 (étape 2) : carte d'entrée vers l'écran dédié
+   (SCREENS.carnet) — compteurs seulement, tout le détail vit là-bas. */
+function CarnetEntryCard({ ctx }) {
+  const v1 = carnetV1Questions(ctx.db);
+  const aRevoir = carnetV2Questions(ctx.db, 'a_revoir');
+  return (
+    <div className="card">
+      <button type="button" className="card-head" onClick={() => ctx.go('carnet')}
+        style={{ width: '100%', cursor: 'pointer', background: 'none', border: 'none', font: 'inherit', color: 'inherit' }}>
+        <Icon name="target" size={17} className="ic" />
+        <h3>Carnet d'erreurs</h3>
+        <div className="right"><Icon name="chevR" size={15} /></div>
+      </button>
+      <div className="card-body">
+        <div className="hint" style={{ fontSize: 13 }}>
+          {v1.length} flashcard{v1.length > 1 ? 's' : ''} en carnet · {aRevoir.length} flashcard{aRevoir.length > 1 ? 's' : ''} d'erreur à revoir
+        </div>
+        <button className="btn ghost sm" style={{ marginTop: 10, width: '100%', justifyContent: 'center' }} onClick={() => ctx.go('carnet')}>
+          Ouvrir le carnet
+        </button>
+      </div>
     </div>
   );
 }

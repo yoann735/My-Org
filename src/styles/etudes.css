@@ -554,6 +554,13 @@
 .rate-btn.fail:hover { border-color: var(--crit); background: color-mix(in srgb, var(--crit) 10%, transparent); }
 .rate-btn:disabled { opacity: .45; cursor: default; transform: none; }
 
+/* carnet d'erreurs v2 (étape 2) : notation d'une V2 (Résolu/À revoir), 2 colonnes au lieu de 3 */
+.rev-rate.erreur-rate { grid-template-columns: repeat(2, 1fr); }
+.rate-btn.revoir { color: color-mix(in srgb, var(--warn) 70%, var(--text)); }
+.rate-btn.revoir:hover { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.rate-btn.resolu { color: color-mix(in srgb, var(--ok) 74%, var(--text)); }
+.rate-btn.resolu:hover { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+
 /* carnet d'erreurs v2 (étape 1) : carte "pourquoi tu l'as loupée ?" sous les 3 boutons de notation */
 .carnet-prompt { margin-top: 14px; padding: 13px 15px; border-radius: 12px; background: color-mix(in srgb, var(--crit) 6%, transparent); border: 1px solid color-mix(in srgb, var(--crit) 20%, transparent); animation: fadeup .25s ease; }
 .carnet-prompt-title { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: color-mix(in srgb, var(--crit) 74%, var(--text)); margin-bottom: 8px; }

@@ -174,6 +174,24 @@ export function newItem(ficheId, item, startDate = isoDate()) {
   };
 }
 
+/* carnet d'erreurs v2 (étape 2) : une V2 ("flashcard d'erreur") — type DISTINCT
+   `flashcard_erreur`, jamais 'flashcard', pour rester exclue par construction
+   de tout ce qui est indexé sur SCHEDULED_TYPES (planning.js) et du `scheduled`
+   ci-dessus (newItem) : aucun `plan`/`cursor`, jamais dans le calendrier ni les
+   compteurs du jour — même mécanisme que EXERCICE_TYPE, pas un cas particulier
+   à ajouter dans les filtres existants. `ficheId: null` (ne vit dans aucun
+   cours) ; `sourceErrorId` relie la V2 à sa V1 (flashcard normale, carnetAt
+   non-null — voir Session.jsx/MobileSession.jsx étape 1). Pas d'historique/
+   missed : aucun cycle, rien à cumuler. `statut` : 'a_revoir' (défaut) |
+   'resolu' | 'pause'. */
+export function newErrorCard({ recto, verso, sourceErrorId }) {
+  return {
+    id: genId('q'), type: 'flashcard_erreur', ficheId: null,
+    sourceErrorId, recto, verso,
+    statut: 'a_revoir', createdAt: new Date().toISOString(),
+  };
+}
+
 /* tout effacer (réglages → reset) — pousse aussi les suppressions en tombstones
    cloud (SYNCABLE) pour qu'un reset local ne se fasse pas silencieusement
    "annuler" par la réconciliation suivante (qui rapatrierait sinon les données

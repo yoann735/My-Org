@@ -14,7 +14,11 @@ import { blobURL } from '../lib/storage.js';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
 
 const KEYS = ['A', 'B', 'C', 'D', 'E'];
-const isFlash = (t) => t === 'flashcard' || t === 'flash';
+// carnet d'erreurs v2 (étape 2) : 'flashcard_erreur' (V2, storage.js#newErrorCard)
+// est traitée comme une flashcard pour le RENDU (carte flip) — jamais pour la
+// persistance SM-2 (voir erreurMode/advance() ci-dessous, qui bifurque AVANT
+// tout advanceQuestion).
+const isFlash = (t) => t === 'flashcard' || t === 'flash' || t === 'flashcard_erreur';
 const RATING_QUALITY = { fail: QUALITY.rate, hard: QUALITY.difficile, easy: QUALITY.facile };
 // une notation peut arriver soit comme étiquette ('fail'|'hard'|'easy', 3 boutons),
 // soit comme qualité SM-2 numérique déjà résolue (cloze actif, dérivée du ratio de
@@ -24,6 +28,13 @@ const resolveRating = (r) => (typeof r === 'number' ? (QUALITY_TO_RATING[r] || '
 
 export function Session({ ctx }) {
   const session = ctx.session || { items: [], title: 'Révision' };
+  // carnet d'erreurs v2 (étape 2) : session de révision des V2 (Réviser mes
+  // flashcards d'erreur, CarnetDashboard.jsx) — même précédent que
+  // startExercice(..., {mode:'weekend'}) (Exercice.jsx, session bonus sans
+  // écriture). En mode 'erreur' : carte flip réutilisée telle quelle, mais
+  // advance() ne passe JAMAIS par advanceQuestion/plan/cursor (les V2 n'en
+  // ont pas) — voir plus bas.
+  const erreurMode = session.mode === 'erreur';
   const ix = useMemo(() => index(ctx.db), [ctx.db]);
 
   // ordre aléatoire par id, tiré UNE SEULE FOIS au lancement (clé = session,
@@ -115,6 +126,17 @@ export function Session({ ctx }) {
   };
 
   const advance = async (ratingIn) => {
+    // carnet d'erreurs v2 (étape 2) : mode 'erreur' — ratingIn est ici
+    // 'resolu'|'a_revoir' (ErreurRatingButtons), JAMAIS 'fail'/'hard'/'easy'.
+    // Bifurque AVANT tout le reste : pas de resolveRating (numérique = cloze
+    // actif, N/A pour une V2), pas d'advanceQuestion, pas de carnetPrompt
+    // (celui-ci concerne UNIQUEMENT les V1) — juste ctx.setV2Statut, puis la
+    // navigation habituelle (proceedToNext, réutilisée telle quelle).
+    if (erreurMode) {
+      if (item) await ctx.setV2Statut(item.id, ratingIn);
+      proceedToNext(ratingIn === 'resolu' ? 'easy' : 'fail', item.id, item.type);
+      return;
+    }
     const rating = resolveRating(ratingIn);
     // persist SM-2 — SAUF pour les items ÉPHÉMÈRES (théorie de schéma générée à la
     // volée) : ils ne sont jamais planifiés ni écrits en base (aucun impact méthode des J).
@@ -206,22 +228,25 @@ export function Session({ ctx }) {
   const totInType = curType === 'qcm' ? qcmTotal : flashTotal;
   const minsLeft = Math.max(1, Math.round((items.length - idx) * 0.8));
   const meta = matiereMeta(item._matiere);
-  const typeLabel = curType === 'qcm' ? 'QCM' : 'Flashcards';
+  const typeLabel = curType === 'qcm' ? 'QCM' : erreurMode ? "Flashcards d'erreur" : 'Flashcards';
 
   return (
     <div className="screen noscroll fadein" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="ctx-bar">
         <div style={{ minWidth: 0 }}>
-          <Breadcrumb parts={['Réviser', meta.label, (item._fiche && item._fiche.titre) || session.title, typeLabel]} />
+          {/* erreurMode : pas de matière/fiche (V2 hors cours, ficheId null) ni de
+             badge "J" (pas de plan/cursor — le badge afficherait "Nouveau", trompeur
+             pour une carte volontairement hors cycle). */}
+          <Breadcrumb parts={erreurMode ? ['Carnet', session.title, typeLabel] : ['Réviser', meta.label, (item._fiche && item._fiche.titre) || session.title, typeLabel]} />
           <div className="row" style={{ gap: 10, marginTop: 9 }}>
-            <span className="pill accent" style={{ height: 26 }}><Icon name="calendar" size={12} /> {item._j}</span>
+            {!erreurMode && <span className="pill accent" style={{ height: 26 }}><Icon name="calendar" size={12} /> {item._j}</span>}
             <span className="rp-count tnum">{posInType} / {totInType} {typeLabel}</span>
             <span className="meta"><Icon name="clock" size={13} className="ic" /> ~{minsLeft} min restantes</span>
           </div>
         </div>
         <div className="topbar-actions">
           <button className="btn ghost" disabled={idx === 0} onClick={goPrev} style={{ opacity: idx === 0 ? 0.4 : 1 }}><Icon name="chevL" size={16} /> Précédent</button>
-          <button className="btn ghost" onClick={() => ctx.go('revise')}><Icon name="x" size={16} /> Quitter</button>
+          <button className="btn ghost" onClick={() => ctx.go(erreurMode ? 'carnet' : 'revise')}><Icon name="x" size={16} /> Quitter</button>
           <button className="icon-btn" onClick={ctx.toggleTheme}><Icon name={ctx.theme === 'dark' ? 'sun' : 'moon'} size={19} /></button>
         </div>
       </div>
@@ -235,7 +260,7 @@ export function Session({ ctx }) {
         <div className={'rev-anim-' + anim} key={idx}>
           {item.type === 'qcm'
             ? <QcmCard item={item} meta={meta} selectedIds={selectedIds} setSelectedIds={setSelectedIds} validated={validated} validate={validate} pulse={pulse} onRate={advance} canPrev={idx > 0} onPrev={goPrev} ctx={ctx} />
-            : <FlashCardView item={item} meta={meta} flipped={flipped} setFlipped={setFlipped} onRate={advance} canPrev={idx > 0} onPrev={goPrev} clozeMode={clozeMode} setClozeMode={setClozeMode} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={submitCarnetRaison} onCarnetSkip={skipCarnetRaison} />}
+            : <FlashCardView item={item} meta={meta} flipped={flipped} setFlipped={setFlipped} onRate={advance} canPrev={idx > 0} onPrev={goPrev} clozeMode={clozeMode} setClozeMode={setClozeMode} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={submitCarnetRaison} onCarnetSkip={skipCarnetRaison} erreurMode={erreurMode} />}
         </div>
       </div>
 
@@ -333,7 +358,7 @@ function QcmCard({ item, meta, selectedIds, setSelectedIds, validated, validate,
   );
 }
 
-function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPrev, clozeMode, setClozeMode, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip }) {
+function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPrev, clozeMode, setClozeMode, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip, erreurMode }) {
   const cloze = isCloze(item);
   return (
     <div>
@@ -347,10 +372,11 @@ function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPre
       )}
       {/* carnet d'erreurs v2 (étape 1) : uniquement la flashcard classique (flip),
          via son bouton "Raté" explicite — pas le cloze en mode saisie, auto-noté
-         sans bouton Raté (voir ClozeActiveCard#finish). */}
+         sans bouton Raté (voir ClozeActiveCard#finish). Une V2 (erreurMode) n'est
+         jamais cloze (voir newErrorCard) — passe toujours par ClassicFlashCard. */}
       {cloze && clozeMode === 'actif'
         ? <ClozeActiveCard item={item} meta={meta} onRate={onRate} canPrev={canPrev} onPrev={onPrev} ctx={ctx} />
-        : <ClassicFlashCard item={item} meta={meta} cloze={cloze} flipped={flipped} setFlipped={setFlipped} onRate={onRate} canPrev={canPrev} onPrev={onPrev} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} />}
+        : <ClassicFlashCard item={item} meta={meta} cloze={cloze} flipped={flipped} setFlipped={setFlipped} onRate={onRate} canPrev={canPrev} onPrev={onPrev} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} erreurMode={erreurMode} />}
     </div>
   );
 }
@@ -358,7 +384,7 @@ function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPre
 /* ---- flashcard classique (flip recto/verso) — aussi utilisée par le cloze en
    mode « Retourner » : recto avec blancs visuels, verso avec les mots
    masqués mis en évidence (pas de saisie, juste une auto-évaluation SM-2). ---- */
-function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canPrev, onPrev, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip }) {
+function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canPrev, onPrev, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip, erreurMode }) {
   const [showIndice, setShowIndice] = useState(false); // réinitialisé au changement de carte (remount via key={idx})
   const revealIndice = (e) => { e.stopPropagation(); setShowIndice(true); };
   const rectoSegments = useMemo(() => (cloze ? parseCloze(item.recto, item.cloze) : null), [item.id, cloze]);
@@ -368,7 +394,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
       <div className="flash-scene">
         <div className={'flash-card' + (flipped ? ' flipped' : '')} onClick={() => setFlipped((f) => !f)}>
           <div className="flash-face front">
-            <span className="ff-tag" style={{ color: meta.tint }}>{meta.label} · {item.theme}</span>
+            <span className="ff-tag" style={{ color: meta.tint }}>{erreurMode ? "Flashcard d'erreur" : `${meta.label} · ${item.theme}`}</span>
             {item.imageId
               ? <div className="ff-imgwrap"><AnatImage imageId={item.imageId} compact /><div className="ff-imgq">{cloze ? <ClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div></div>
               : <div className="ff-text">{cloze ? <ClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div>}
@@ -392,7 +418,9 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
         </div>
       </div>
       {flipped
-        ? <RatingButtons onRate={onRate} canPrev={canPrev} onPrev={onPrev} item={item} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} />
+        ? (erreurMode
+            ? <ErreurRatingButtons onRate={onRate} canPrev={canPrev} onPrev={onPrev} />
+            : <RatingButtons onRate={onRate} canPrev={canPrev} onPrev={onPrev} item={item} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} />)
         : canPrev && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}><button className="btn ghost" onClick={onPrev}><Icon name="chevL" size={15} /> Carte précédente</button></div>}
     </div>
   );
@@ -493,6 +521,24 @@ function RatingButtons({ onRate, canPrev, onPrev, item, ctx, carnetPrompt, onCar
       {awaitingCarnet && <CarnetPrompt onSubmit={onCarnetSubmit} onSkip={onCarnetSkip} />}
       {!awaitingCarnet && <CardEtiquetteControl item={item} ctx={ctx} />}
       {!awaitingCarnet && canPrev && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><button className="btn ghost sm" onClick={onPrev}><Icon name="chevL" size={14} /> Revenir à la carte précédente</button></div>}
+    </div>
+  );
+}
+
+/** carnet d'erreurs v2 (étape 2) : notation d'une V2 pendant "Réviser mes
+   flashcards d'erreur" (Session.jsx erreurMode) — 2 boutons SEULEMENT
+   (Résolu/À revoir), PAS Facile/Difficile/Raté : une V2 n'a pas de cycle J,
+   rien à faire avancer (voir advance() qui bifurque sur ctx.setV2Statut,
+   jamais advanceQuestion). Pas de CardEtiquetteControl (item._fiche est
+   toujours undefined pour une V2, ficheId null). */
+function ErreurRatingButtons({ onRate, canPrev, onPrev }) {
+  return (
+    <div>
+      <div className="rev-rate erreur-rate">
+        <button className="rate-btn revoir" onClick={() => onRate('a_revoir')}>À revoir<span className="rb-sub">pas encore acquis</span></button>
+        <button className="rate-btn resolu" onClick={() => onRate('resolu')}>Résolu<span className="rb-sub">c'est bon</span></button>
+      </div>
+      {canPrev && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><button className="btn ghost sm" onClick={onPrev}><Icon name="chevL" size={14} /> Revenir à la carte précédente</button></div>}
     </div>
   );
 }
@@ -647,7 +693,7 @@ function Celebration({ items, results, session, ctx }) {
         <div className="cel-score">« {session.title} » — {good}/{items.length} réussies</div>
         <div className="cel-summary">
           {qcmTotal > 0 && <div className="cel-stat"><Icon name="list" size={16} /> <strong className="tnum">{qcmGood}/{qcmTotal}</strong> QCM ✓</div>}
-          {flashTotal > 0 && <div className="cel-stat"><Icon name="cards" size={16} /> <strong className="tnum">{flashGood}/{flashTotal}</strong> flashcards ✓</div>}
+          {flashTotal > 0 && <div className="cel-stat"><Icon name="cards" size={16} /> <strong className="tnum">{flashGood}/{flashTotal}</strong> {session.mode === 'erreur' ? 'résolues' : 'flashcards ✓'}</div>}
         </div>
         <div className="cel-streak"><Icon name="fire" size={15} fill /> Série : {(ctx.stats && ctx.stats.streak) || 1} jour{((ctx.stats && ctx.stats.streak) || 1) > 1 ? 's' : ''} !</div>
         {ficheLog && <SessionTrendCard log={ficheLog} />}
@@ -657,9 +703,13 @@ function Celebration({ items, results, session, ctx }) {
           </div>
         )}
         <div className="row" style={{ gap: 12, justifyContent: 'center', marginTop: 26 }}>
-          <button className="btn lg" onClick={() => ctx.go('revise')}><Icon name="cards" size={16} /> Revenir à Réviser</button>
+          <button className="btn lg" onClick={() => ctx.go(session.mode === 'erreur' ? 'carnet' : 'revise')}><Icon name="cards" size={16} /> {session.mode === 'erreur' ? 'Revenir au carnet' : 'Revenir à Réviser'}</button>
           {failedItems.length
-            ? <button className="btn primary lg" onClick={() => ctx.startSession(failedItems, 'Mes erreurs')}><Icon name="refresh" size={16} /> Refaire les ratées ({failedItems.length})</button>
+            // carnet d'erreurs v2 (étape 2) : en mode 'erreur', "les ratées" sont
+            // les V2 encore "à revoir" — relancer DOIT préserver mode:'erreur'
+            // (sinon Session.jsx tenterait un advanceQuestion sur des cartes sans
+            // plan/cursor).
+            ? <button className="btn primary lg" onClick={() => ctx.startSession(failedItems, session.mode === 'erreur' ? "Mes flashcards d'erreur" : 'Mes erreurs', session.mode === 'erreur' ? { mode: 'erreur' } : {})}><Icon name="refresh" size={16} /> {session.mode === 'erreur' ? 'Refaire celles à revoir' : 'Refaire les ratées'} ({failedItems.length})</button>
             : <button className="btn primary lg" onClick={() => ctx.go('dashboard')}><Icon name="home" size={16} /> Continuer</button>}
         </div>
       </div>

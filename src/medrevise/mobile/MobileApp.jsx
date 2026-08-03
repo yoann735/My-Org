@@ -31,7 +31,7 @@ export function MobileApp({ ctx }) {
   }
   return (
     <MobileHome ctx={ctx}
-      onStartSession={(items, title) => { ctx.startSession(items, title); setScreen('session'); }}
+      onStartSession={(items, title, meta) => { ctx.startSession(items, title, meta); setScreen('session'); }}
       onStartExercice={(items, title) => { ctx.startExercice(items, title); setScreen('exercice'); }}
       onStartFeynman={(payload) => { ctx.startFeynman(payload); setScreen('feynman'); }}
     />

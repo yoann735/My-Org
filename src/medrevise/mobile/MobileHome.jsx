@@ -8,7 +8,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled, dueFromOn, addDays, diffDays } from '../lib/planning.js';
+import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled, dueFromOn, addDays, diffDays, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
 import { todayISO } from '../lib/sm2.js';
 import { matiereMeta, syncStatusLabel, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 
@@ -63,6 +63,13 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
 
   const startAll = () => due.length && onStartSession(due, "Série du jour");
   const startFiche = (group) => onStartSession(group.items, group.fiche.titre);
+
+  // carnet d'erreurs v2 (étape 2) : portée mobile = CONSULTATION + lancer la
+  // série (le geste "au pouce", week-end inclus) — PAS l'extraction/collage
+  // JSON, geste "bureau" réservé au tableau de bord desktop (SCREENS.carnet).
+  const carnetV1 = useMemo(() => carnetV1Questions(db), [db]);
+  const carnetARevoir = useMemo(() => carnetV2Questions(db, 'a_revoir'), [db]);
+  const startErreurs = () => carnetARevoir.length && onStartSession(carnetARevoir, "Mes flashcards d'erreur", { mode: 'erreur' });
 
   // exercices/Feynman : HORS méthode des J (pas de date d'échéance), donc
   // jamais dans todayPlan — regroupés à part pour rester joignables. NE
@@ -204,6 +211,29 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {carnetV1.length > 0 && (
+          <div className="mrm-section">
+            <div className="mrm-section-head">
+              <Icon name="target" size={15} />
+              <span>Carnet d'erreurs</span>
+              <span className="mrm-count">{carnetV1.length}</span>
+            </div>
+            <div className="mrm-list">
+              {carnetV1.map((v1) => (
+                <div className="mrm-row" key={v1.id}>
+                  <div className="mrm-row-main">
+                    <div className="mrm-row-title">{v1.recto}</div>
+                    {v1.carnetRaison && <div className="mrm-row-sub">{v1.carnetRaison}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button type="button" className="mrm-primary-btn" disabled={!carnetARevoir.length} onClick={startErreurs}>
+              <Icon name="play" size={17} fill /> Réviser mes flashcards d'erreur ({carnetARevoir.length})
+            </button>
           </div>
         )}
 

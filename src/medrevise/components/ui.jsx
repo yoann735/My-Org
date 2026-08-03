@@ -149,7 +149,7 @@ const ED_NAV = [
 ];
 
 export function StudySidebar({ current, onNav, expanded, onToggle, onHub }) {
-  const isActive = (id) => current === id || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz', 'pdf', 'schemaedit'].includes(current));
+  const isActive = (id) => current === id || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz', 'pdf', 'schemaedit', 'carnet'].includes(current));
   return (
     <nav className={'sidebar' + (expanded ? ' expanded' : '')}>
       <div className="sb-brand">

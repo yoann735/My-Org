@@ -14,12 +14,18 @@ import { Tex } from '../components/Tex.jsx';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
 import { SessionTrendCard, EtiquetteIconButton, etiquetteMenuItems, ContextMenu } from '../components/ui.jsx';
 
-const isFlash = (t) => t === 'flashcard' || t === 'flash';
+// carnet d'erreurs v2 (étape 2) : 'flashcard_erreur' (V2) traitée comme une
+// flashcard pour le RENDU, jamais pour la persistance SM-2 (voir
+// erreurMode/advance() ci-dessous) — même choix que desktop Session.jsx.
+const isFlash = (t) => t === 'flashcard' || t === 'flash' || t === 'flashcard_erreur';
 const RATING_QUALITY = { fail: QUALITY.rate, hard: QUALITY.difficile, easy: QUALITY.facile };
 const resolveRating = (r) => (typeof r === 'number' ? (QUALITY_TO_RATING[r] || 'hard') : r);
 
 export function MobileSession({ ctx, onQuit }) {
   const session = ctx.session || { items: [], title: 'Révision' };
+  // carnet d'erreurs v2 (étape 2) : "Réviser mes flashcards d'erreur" —
+  // mêmes précédent/contraintes que desktop Session.jsx (voir là-bas).
+  const erreurMode = session.mode === 'erreur';
   const ix = useMemo(() => index(ctx.db), [ctx.db]);
 
   // ordre aléatoire par id, tiré UNE SEULE FOIS au lancement (clé = session) —
@@ -85,6 +91,14 @@ export function MobileSession({ ctx, onQuit }) {
   };
 
   const advance = async (ratingIn, extra) => {
+    // carnet d'erreurs v2 (étape 2) : ratingIn ici = 'resolu'|'a_revoir'
+    // (MobileErreurRateButtons), jamais 'fail'/'hard'/'easy' — bifurque avant
+    // tout le reste, aucun advanceQuestion (pas de plan/cursor sur une V2).
+    if (erreurMode) {
+      if (item) await ctx.setV2Statut(item.id, ratingIn);
+      proceedToNext(ratingIn === 'resolu' ? 'easy' : 'fail');
+      return;
+    }
     const rating = resolveRating(ratingIn);
     if (item && !item.ephemeral) {
       const quality = RATING_QUALITY[rating];
@@ -141,7 +155,7 @@ export function MobileSession({ ctx, onQuit }) {
     );
   }
 
-  if (finished) return <MobileSessionDone items={items} results={results} title={session.title} ctx={ctx} onQuit={onQuit} />;
+  if (finished) return <MobileSessionDone items={items} results={results} title={session.title} ctx={ctx} onQuit={onQuit} erreurMode={erreurMode} />;
 
   return (
     <div className="mrm-app">
@@ -153,7 +167,7 @@ export function MobileSession({ ctx, onQuit }) {
       <div className="mrm-body">
         {item.type === 'qcm'
           ? <MobileQcmCard key={item.id} item={item} onRate={advance} ctx={ctx} />
-          : <MobileFlashCard key={item.id} item={item} onRate={advance} clozeMode={clozeMode} setClozeMode={setClozeMode} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={submitCarnetRaison} onCarnetSkip={skipCarnetRaison} />}
+          : <MobileFlashCard key={item.id} item={item} onRate={advance} clozeMode={clozeMode} setClozeMode={setClozeMode} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={submitCarnetRaison} onCarnetSkip={skipCarnetRaison} erreurMode={erreurMode} />}
       </div>
     </div>
   );
@@ -211,23 +225,23 @@ function MobileQcmCard({ item, onRate, ctx }) {
   );
 }
 
-function MobileFlashCard({ item, onRate, clozeMode, setClozeMode, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip }) {
+function MobileFlashCard({ item, onRate, clozeMode, setClozeMode, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip, erreurMode }) {
   const cloze = isCloze(item);
   return (
     <div>
-      <div className="mrm-concept">{item.theme || item.concept}</div>
+      <div className="mrm-concept">{erreurMode ? "Flashcard d'erreur" : (item.theme || item.concept)}</div>
       {cloze && (
         <div className="mrm-cloze-toggle">
           <button type="button" className={'mrm-chip-btn' + (clozeMode === 'actif' ? '' : ' ghost')} onClick={() => setClozeMode('actif')} style={{ marginRight: 8 }}><Icon name="edit" size={13} /> Saisie</button>
           <button type="button" className={'mrm-chip-btn' + (clozeMode === 'flemme' ? '' : ' ghost')} onClick={() => setClozeMode('flemme')}><Icon name="refresh" size={13} /> Retourner</button>
         </div>
       )}
-      {/* carnet d'erreurs v2 (étape 1) : uniquement la flashcard classique
+      {/* carnet d'erreurs v2 (étape 1/2) : uniquement la flashcard classique
          (flip), pas le cloze en mode saisie — voir Session.jsx desktop pour
-         le même choix de portée. */}
+         le même choix de portée. Une V2 n'est jamais cloze (newErrorCard). */}
       {cloze && clozeMode === 'actif'
         ? <MobileClozeActiveCard item={item} onRate={onRate} ctx={ctx} />
-        : <MobileClassicFlashCard item={item} cloze={cloze} onRate={onRate} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} />}
+        : <MobileClassicFlashCard item={item} cloze={cloze} onRate={onRate} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} erreurMode={erreurMode} />}
     </div>
   );
 }
@@ -240,7 +254,7 @@ function MobileClozeVerso({ parts }) {
   return parts.map((p, i) => (p.hl ? <mark key={i} className="mrm-cloze-mark">{p.text}</mark> : <span key={i}>{p.text}</span>));
 }
 
-function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip }) {
+function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip, erreurMode }) {
   const [flipped, setFlipped] = useState(false);
   const [showIndice, setShowIndice] = useState(false);
   const rectoSegments = useMemo(() => (cloze ? parseCloze(item.recto, item.cloze) : null), [item.id, cloze]);
@@ -265,7 +279,9 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
           )}
         </button>
       </div>
-      {flipped && <MobileRateButtons onRate={onRate} item={item} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} />}
+      {flipped && (erreurMode
+        ? <MobileErreurRateButtons onRate={onRate} />
+        : <MobileRateButtons onRate={onRate} item={item} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} />)}
     </div>
   );
 }
@@ -348,6 +364,18 @@ function MobileRateButtons({ onRate, item, ctx, carnetPrompt, onCarnetSubmit, on
   );
 }
 
+/** carnet d'erreurs v2 (étape 2) : notation d'une V2 mobile — 2 boutons
+   SEULEMENT (Résolu/À revoir), pas Facile/Difficile/Raté (pas de cycle J,
+   voir advance()/ErreurRatingButtons desktop pour le même choix). */
+function MobileErreurRateButtons({ onRate }) {
+  return (
+    <div className="mrm-rate mrm-erreur-rate">
+      <button type="button" className="mrm-rate-btn revoir" onClick={() => onRate('a_revoir')}>À revoir <span className="sub">pas encore acquis</span></button>
+      <button type="button" className="mrm-rate-btn resolu" onClick={() => onRate('resolu')}>Résolu <span className="sub">c'est bon</span></button>
+    </div>
+  );
+}
+
 /** carnet d'erreurs v2 (étape 1) : carte "pourquoi tu l'as loupée ?" mobile —
    même mécanique que desktop (Session.jsx CarnetPrompt) : "Ajouter" exige un
    texte non vide, "Passer" avance sans rien enregistrer de plus. */
@@ -401,7 +429,7 @@ function MobileEtiquetteControl({ item, ctx }) {
   );
 }
 
-function MobileSessionDone({ items, results, title, ctx, onQuit }) {
+function MobileSessionDone({ items, results, title, ctx, onQuit, erreurMode }) {
   const good = results.filter((r) => r && r.rating !== 'fail').length;
   const qcmTotal = items.filter((i) => i.type === 'qcm').length;
   const flashTotal = items.filter((i) => isFlash(i.type)).length;
@@ -440,7 +468,7 @@ function MobileSessionDone({ items, results, title, ctx, onQuit }) {
       <div className="mrm-done">
         <Icon name="trophy" size={40} />
         <div style={{ fontSize: 20, fontWeight: 700 }}>Série terminée !</div>
-        <div style={{ color: 'var(--text-2)' }}>« {title} » — {good}/{items.length} réussies</div>
+        <div style={{ color: 'var(--text-2)' }}>« {title} » — {good}/{items.length} {erreurMode ? 'résolues' : 'réussies'}</div>
         {(ctx.stats && ctx.stats.streak > 0) && (
           <div className="mrm-streak"><Icon name="fire" size={14} fill /> Série : {ctx.stats.streak} jour{ctx.stats.streak > 1 ? 's' : ''}</div>
         )}

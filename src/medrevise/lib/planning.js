@@ -596,6 +596,23 @@ export function topConcepts(list, n = 3) {
 }
 
 /* ============================================================
+   Carnet d'erreurs v2 (étape 2) — DISTINCT de missedQuestions/weakPoints
+   ci-dessus (l'ancien carnet, cumulatif/pondéré par coefficient, INCHANGÉ) :
+   V1 = flashcard normale marquée en carnet (carnetAt non-null, voir
+   Session.jsx/MobileSession.jsx étape 1). V2 = flashcard d'erreur liée
+   (type 'flashcard_erreur', voir storage.js#newErrorCard) — jamais dans
+   SCHEDULED_TYPES, donc déjà absente de tout calcul ci-dessus par
+   construction, pas besoin d'exclusion explicite.
+   ============================================================ */
+export function carnetV1Questions(db) {
+  return (db.questions || []).filter((q) => q.type === 'flashcard' && q.carnetAt);
+}
+/** `statut` optionnel ('a_revoir'|'resolu'|'pause') pour ne récupérer qu'une catégorie. */
+export function carnetV2Questions(db, statut) {
+  return (db.questions || []).filter((q) => q.type === 'flashcard_erreur' && (!statut || q.statut === statut));
+}
+
+/* ============================================================
    QCM — nombre conseillé + rotation du stock (v1.1, Étapes 3-4). Distinct de
    la méthode des J (SM-2 par item) : ceci module la TAILLE d'une série QCM
    lancée en révision libre (page Reviser, bouton QCM d'une fiche), en piochant

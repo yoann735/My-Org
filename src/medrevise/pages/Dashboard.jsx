@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
-import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, missedQuestions, weakPoints, isWeekend, dueByCoursOn, dueFromOn, addDays, diffDays, weekendReviewByFiche } from '../lib/planning.js';
+import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, missedQuestions, weakPoints, isWeekend, dueByCoursOn, dueFromOn, addDays, diffDays, weekendReviewByFiche, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
@@ -67,6 +67,7 @@ export function Dashboard({ ctx }) {
 
         <div className="dash-grid-col">
           <RattrapageCard ctx={ctx} overdue={overdue} startOverdueFiche={startOverdueFiche} />
+          <CarnetErreurCard ctx={ctx} />
           <WeekendReviewCard ctx={ctx} />
           <StreakWidget stats={ctx.stats} />
         </div>
@@ -79,8 +80,9 @@ export function Dashboard({ ctx }) {
 
 /* ---------- boîte de rattrapage (Dashboard UNIQUEMENT) ----------
    Réunit RETARDS (overdueByFiche, réutilise OverdueBox en mode `bare` —
-   aucune logique dupliquée) ET CARNET D'ERREURS (missedQuestions/weakPoints,
-   mêmes fonctions que Carnet.jsx) dans une seule card, deux sections.
+   aucune logique dupliquée) ET CARNET D'ERREURS (missedQuestions/weakPoints —
+   ancien mécanisme, DISTINCT et complémentaire du carnet v2/SCREENS.carnet)
+   dans une seule card, deux sections.
    NE TOUCHE JAMAIS aux dates : "Rattraper"/"Revoir" lancent une session
    normale (ctx.startSession → advanceQuestion), qui fait sortir la carte de
    la boîte au prochain rendu (cursor avancé → plus overdue ; missed remis à
@@ -132,6 +134,28 @@ function RattrapageCard({ ctx, overdue, startOverdueFiche }) {
           </button>
         </div>
       )}
+    </Card>
+  );
+}
+
+/* ---------- carnet d'erreurs v2 (Dashboard UNIQUEMENT) ----------
+   Emplacement principal de la card de synthèse — le DÉTAIL (liste, actions
+   rapides) est l'étape 3 ; ici juste les compteurs + l'entrée vers l'écran
+   dédié (SCREENS.carnet). DISTINCTE de RattrapageCard (ancien mécanisme
+   missed/weakPoints, inchangé) — les deux coexistent. */
+function CarnetErreurCard({ ctx }) {
+  const { db } = ctx;
+  const v1 = carnetV1Questions(db);
+  const aRevoir = carnetV2Questions(db, 'a_revoir');
+  if (!v1.length) return null;
+  return (
+    <Card title="Carnet d'erreurs" icon="target" action={<span className="pill">{v1.length}</span>}>
+      <div className="hint" style={{ fontSize: 12.5, marginBottom: 10 }}>
+        {v1.length} flashcard{v1.length > 1 ? 's' : ''} en carnet · {aRevoir.length} flashcard{aRevoir.length > 1 ? 's' : ''} d'erreur à revoir
+      </div>
+      <button className="btn ghost sm" style={{ width: '100%', justifyContent: 'center' }} onClick={() => ctx.go('carnet')}>
+        <Icon name="ext" size={13} /> Ouvrir le carnet
+      </button>
     </Card>
   );
 }

@@ -109,6 +109,12 @@
 .mrm-rate-btn.easy { background: var(--ok); }
 .mrm-rate-btn:disabled { opacity: .4; }
 
+/* carnet d'erreurs v2 (étape 2) : notation d'une V2 (Résolu/À revoir), 2 colonnes côte à côte au lieu d'empilées */
+.mrm-erreur-rate { flex-direction: row; }
+.mrm-erreur-rate .mrm-rate-btn { flex: 1; }
+.mrm-rate-btn.revoir { background: var(--warn); }
+.mrm-rate-btn.resolu { background: var(--ok); }
+
 /* carnet d'erreurs v2 (étape 1) : carte "pourquoi tu l'as loupée ?" sous les 3 boutons de notation */
 .mrm-carnet-prompt { margin-top: 16px; padding: 14px; border-radius: 14px; background: color-mix(in srgb, var(--crit) 8%, transparent); border: 1px solid color-mix(in srgb, var(--crit) 22%, transparent); }
 .mrm-carnet-prompt-title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: color-mix(in srgb, var(--crit) 70%, var(--text)); margin-bottom: 8px; }
