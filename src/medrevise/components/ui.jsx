@@ -42,6 +42,23 @@ export function EtiquetteDot({ value, style }) {
   return <span className="etq-dot" style={{ background: e.color, ...style }} title={e.label} />;
 }
 
+/** poignée de repli UNIFORME des deux sidebars de la Bibliothèque (liste des cours à
+   gauche, cartes QCM/Flashcard à droite) : barre fine pleine hauteur, au bord du
+   panneau opposé au contenu central — jamais un repli vertical, jamais un "moignon".
+   `side` = de quel côté du contenu central vit le panneau que cette poignée commande
+   ('left' = panneau à gauche, comme la liste ; 'right' = panneau à droite, comme les
+   cartes). Convention du chevron : replié → pointe vers le centre (« clique pour
+   rouvrir vers ici ») ; ouvert → pointe vers le bord de l'écran (« clique pour
+   replier vers là ») — même règle des deux côtés, juste en miroir. */
+export function SplitHandle({ side, collapsed, onClick }) {
+  const icon = side === 'left' ? (collapsed ? 'chevR' : 'chevL') : (collapsed ? 'chevL' : 'chevR');
+  return (
+    <button type="button" className="split-handle" onClick={onClick} title={collapsed ? 'Afficher le panneau' : 'Replier le panneau'}>
+      <Icon name={icon} size={13} />
+    </button>
+  );
+}
+
 /** icône seule, cliquable (Bibliothèque) : pastille pleine si étiquette posée,
    contour discret sinon — ne pousse jamais le titre du cours hors du cadre.
    Le clic est géré par l'appelant (ouvre un ContextMenu avec les 3 valeurs +

@@ -942,14 +942,17 @@
 .pdfr-html-frame { display: block; width: 100%; height: calc(100vh - 230px); border: 0; background: #fff; }
 
 /* ---------- atelier "Voir le cours" (branche HTML) : cours + sidebar d'items ---------- */
-.pdfr-workshop { display: flex; gap: 18px; align-items: flex-start; }
+.pdfr-workshop { display: flex; gap: 10px; align-items: stretch; }
 .pdfr-workshop-course { flex: 1 1 60%; min-width: 0; }
 .pdfr-workshop.single .pdfr-workshop-course { flex: 1 1 auto; }
 .pdfr-mobile-toggle { display: none; margin-bottom: 12px; }
 
-.pis { flex: 0 0 380px; min-width: 0; display: flex; flex-direction: column; max-height: calc(100vh - 230px); background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: flex-basis .16s ease; }
-.pis-head { padding: 10px 10px 0; flex: 0 0 auto; }
-.pis-head h4 { font-size: 13px; color: var(--text-2); }
+/* refonte UX (repli HORIZONTAL uniquement, même mécanique que .lib-master côté
+   liste) : `.pis` reste TOUJOURS monté, seule sa flex-basis anime de 380px à 0 —
+   la poignée (SplitHandle, voir CourseItemsSidebar.jsx/.split-handle) vit à côté,
+   dans le flux, jamais un repli vertical ni un "moignon" résiduel. */
+.pis { flex: 0 0 380px; min-width: 0; display: flex; flex-direction: column; max-height: calc(100vh - 230px); background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: flex-basis .18s ease; }
+.pis.collapsed { flex-basis: 0; border-width: 0; }
 .pis-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 10px 0; flex: 0 0 auto; }
 .pis-tab { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 9px; border: 1px solid var(--border-2); background: var(--bg-2); color: var(--text-2); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .pis-tab.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
@@ -992,21 +995,22 @@
    que la liste scrolle — PdfReader/SchemaEditorScreen/TranscriptEditor s'y rendent
    EMBARQUÉS (props embedded, voir ces fichiers).
 
-   Refonte UX (repli HORIZONTAL, Bibliotheque.jsx `listCollapsed`) : `.lib-master` reste
-   TOUJOURS monté, dans une colonne flex dont seule la LARGEUR change (jamais empilée
-   verticalement, jamais retirée du DOM) — repliée automatiquement à l'ouverture d'un
-   cours et sous 960px au montage, rouvrable en un clic sur le rail (`.lib-rail`). Même
-   mécanisme à toutes les tailles d'écran, pas de règle 1-colonne séparée à maintenir. */
-.lib-split { display: flex; gap: 20px; align-items: flex-start; }
-.lib-master { flex: 0 0 340px; min-width: 0; transition: flex-basis .16s ease; }
-.lib-master.collapsed { flex: 0 0 52px; }
+   Refonte UX (repli HORIZONTAL uniquement, Bibliotheque.jsx `listCollapsed`) :
+   `.lib-master` reste TOUJOURS monté (jamais empilé verticalement, jamais retiré du
+   DOM) — seule sa `flex-basis` anime de 340px à 0, `overflow:hidden` masque son
+   contenu progressivement pendant le glissement. La poignée (`SplitHandle`, voir
+   ui.jsx/.split-handle) vit dans le flux, entre la liste et le lecteur — repliée
+   automatiquement à l'ouverture d'un cours, rouvrable d'un clic sur la même poignée. */
+.lib-split { display: flex; align-items: stretch; gap: 10px; }
+.lib-master { flex: 0 0 340px; min-width: 0; overflow: hidden; transition: flex-basis .18s ease; }
+.lib-master.collapsed { flex-basis: 0; }
 .lib-detail { flex: 1 1 auto; min-width: 0; position: sticky; top: 0; }
 .lib-detail-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 320px; padding: 40px 20px; border: 1px dashed var(--border); border-radius: 14px; color: var(--text-3); background: var(--card-2); }
 
-/* rail replié — un seul bouton pleine hauteur, propre (pas un moignon de flèche) */
-.lib-rail { width: 100%; min-height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 18px 0; border: 1px solid var(--border-2); border-radius: 12px; background: var(--card-2); color: var(--text-3); cursor: pointer; transition: border-color .12s, color .12s; }
-.lib-rail:hover { border-color: var(--accent); color: var(--accent); }
-.lib-rail-label { writing-mode: vertical-rl; text-orientation: mixed; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+/* ---------- poignée de repli UNIFORME (liste à gauche ET cartes à droite, voir
+   SplitHandle/ui.jsx) : barre fine pleine hauteur, chevron centré, rien d'autre. ---------- */
+.split-handle { flex: 0 0 18px; align-self: stretch; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-2); border-radius: 8px; background: var(--card-2); color: var(--text-3); cursor: pointer; padding: 0; transition: background .15s, border-color .15s, color .15s; }
+.split-handle:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
 /* en-tête (recherche + Nouveau transcript) — une seule bande visuelle cohérente */
 .lib-toolbar { margin-bottom: 16px; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--border-2); border-radius: 12px; background: var(--card-2); }
@@ -1022,13 +1026,6 @@
 .lib-fiche-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 14px; color: var(--text); }
 .lib-fiche-etq { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; cursor: pointer; }
 .lib-fiche-meta { margin-top: 3px; padding-left: 22px; font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* rail replié de la sidebar cartes (CourseItemsSidebar) — même langage visuel que
-   `.lib-rail` (liste de gauche) : un seul bouton plein, propre, pas une flèche isolée. */
-.pis-collapsed { flex: 0 0 52px; padding: 0; border: none; background: transparent; }
-.pis-rail { width: 100%; height: 100%; min-height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 18px 0; border: 1px solid var(--border-2); border-radius: 14px; background: var(--card-2); color: var(--text-3); cursor: pointer; transition: border-color .12s, color .12s; }
-.pis-rail:hover { border-color: var(--accent); color: var(--accent); }
-.pis-rail-label { writing-mode: vertical-rl; text-orientation: mixed; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
 
 /* ---------- Chantier 1 : édition de texte existant (couche superposée) ---------- */
 .edit-block-static, .edit-block-active { position: absolute; box-sizing: border-box; background: #fff; overflow-y: auto; color: #16162a; }

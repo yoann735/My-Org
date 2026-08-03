@@ -10,7 +10,7 @@
    ============================================================ */
 import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal } from '../components/ui.jsx';
+import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
@@ -198,18 +198,6 @@ export function Bibliotheque({ ctx }) {
 
       <div className="lib-split">
         <div className={'lib-master' + (listCollapsed ? ' collapsed' : '')}>
-          {listCollapsed ? (
-            <button type="button" className="lib-rail" onClick={() => setListCollapsed(false)} title="Afficher la liste des cours">
-              <Icon name="chevR" size={16} />
-              <span className="lib-rail-label">Cours</span>
-            </button>
-          ) : (
-          <>
-          <div className="row spread" style={{ marginBottom: 12 }}>
-            <h3 style={{ margin: 0 }}>Cours</h3>
-            <button type="button" className="icon-btn sm" onClick={() => setListCollapsed(true)} title="Replier la liste"><Icon name="chevL" size={14} /></button>
-          </div>
-
           {creatingTranscript && (
             <NewTranscript ctx={ctx} onDone={() => setCreatingTranscript(false)}
               onCreated={(fiche) => { setSelected({ ficheId: fiche.id, kind: 'transcript' }); setListCollapsed(true); }} />
@@ -329,9 +317,9 @@ export function Bibliotheque({ ctx }) {
             </div>
             </FicheDndProvider>
           )}
-          </>
-          )}
         </div>
+
+        <SplitHandle side="left" collapsed={listCollapsed} onClick={() => setListCollapsed((v) => !v)} />
 
         <div className="lib-detail">
           {!selected ? (
