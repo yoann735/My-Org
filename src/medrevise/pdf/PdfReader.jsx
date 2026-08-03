@@ -47,6 +47,7 @@ import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit } from
 import { RICH_EXTENSIONS, richToHTML } from '../documents/lib/richtext.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
+import { buildCourseExport } from '../lib/courseExport.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -197,6 +198,27 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     })();
     return () => { cancelled = true; if (objUrl) URL.revokeObjectURL(objUrl); };
   }, [fiche && fiche.htmlId]);
+
+  // "Tout exporter" (atelier "Voir le cours", branche HTML) : cours + surlignages
+  // + cartes manuelles en un seul JSON (contrat medrevise_cours_export v1, voir
+  // lib/courseExport.js), copié dans le presse-papier pour un prompt externe.
+  // Lit directement le DOM de l'iframe — blob: URL + sandbox="allow-same-origin"
+  // la rend same-origin avec le parent, donc accessible sans postMessage.
+  const courseIframeRef = useRef(null);
+  const [courseExportOk, setCourseExportOk] = useState(false);
+  const exportAllCourse = async () => {
+    const idoc = courseIframeRef.current && courseIframeRef.current.contentDocument;
+    const docEl = idoc && idoc.getElementById('doc');
+    if (!docEl) return;
+    const matiereNom = (db.matieres.find((m) => m.id === fiche.matiereId) || {}).nom || '';
+    const cartes = db.questions.filter((q) => q.ficheId === ficheId && (q.type === 'qcm' || q.type === 'flashcard'));
+    const payload = buildCourseExport({ fiche, matiereNom, docEl, cartes });
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      setCourseExportOk(true);
+      setTimeout(() => setCourseExportOk(false), 2200);
+    } catch (e) { /* ignore */ }
+  };
 
   const [pdfDoc, setPdfDoc] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -635,6 +657,11 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
             <button className="btn ghost sm" onClick={() => setSrcTab('pdf')}><Icon name="filePdf" size={13} /> Voir le PDF</button>
           )}
           <div style={{ flex: 1 }} />
+          {canAddItem && (
+            <button className="btn sm" onClick={exportAllCourse} disabled={!htmlUrl} title="Cours + surlignages + cartes déjà créées, en un JSON prêt pour un prompt externe">
+              <Icon name={courseExportOk ? 'check' : 'copy'} size={13} /> {courseExportOk ? 'Copié ✓' : 'Tout exporter'}
+            </button>
+          )}
           <label className="btn ghost sm" style={{ cursor: 'pointer' }} title="Attacher un document (PDF ou HTML) — remplace le document du même type">
             <Icon name="upload" size={13} /> Attacher un document
             <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={(e) => attachDoc(e.target.files[0])} />
@@ -661,7 +688,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
               // TOUT script (y compris les onclick inline), rendant ce bouton inerte au
               // clic. Le contenu est intégralement local et auto-généré par l'utilisateur
               // (aucune requête réseau, aucun contenu tiers) : risque borné et accepté.
-              <iframe src={htmlUrl} title={fiche.titre} sandbox="allow-same-origin allow-scripts" className="pdfr-html-frame" />
+              <iframe ref={courseIframeRef} src={htmlUrl} title={fiche.titre} sandbox="allow-same-origin allow-scripts" className="pdfr-html-frame" />
             )}
           </div>
           {canAddItem && <CourseItemsSidebar ctx={ctx} ficheId={ficheId} />}
