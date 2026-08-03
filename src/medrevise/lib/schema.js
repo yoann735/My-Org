@@ -83,21 +83,28 @@ function commonFields(raw) {
    stricte sur ce qui rend l'item exploitable (énoncé, réponses…).
    ============================================================ */
 
+// QCM — 2 formats d'options/réponses acceptés EN ENTRÉE, un seul en interne :
+// - interne   : options = [{id,texte}],       reponses_correctes = [id, ...]
+// - "prompt"  : options = ["texte", ...],      reponses_correctes = [index, ...] (0-based)
+// Les deux sont détectés champ par champ (pas un flag global) et convertis vers
+// le format interne ci-dessus — jamais stockés autrement que {id,texte}/[id].
 function normQcm(raw, c) {
-  if (!isStr(raw.enonce)) return null;
-  // options : {id,texte} — id manquant → lettre par position ; ids rendus uniques
+  if (!isStr(raw.enonce)) return { ok: false, reason: 'énoncé manquant' };
   const seen = new Set();
   const options = asArray(raw.options).map((o, i) => {
-    let id = str(o && o.id).trim() || OPTION_LETTERS[i] || 'o' + i;
+    // id : fourni seulement si `o` est un objet {id,...} (format interne) —
+    // une simple chaîne (format "prompt") n'a pas d'id, on lui en attribue un.
+    const providedId = (o && typeof o === 'object' && o.id != null) ? str(o.id).trim() : '';
+    let id = providedId || OPTION_LETTERS[i] || 'o' + i;
     while (seen.has(id)) id += '_';
     seen.add(id);
-    const texte = str(o && (o.texte != null ? o.texte : o.text)).trim();
+    const texte = typeof o === 'string' ? o.trim() : str(o && (o.texte != null ? o.texte : o.text)).trim();
     return { id, texte };
   }).filter((o) => o.texte);
-  if (options.length < 2) return null;
+  if (options.length < 2) return { ok: false, reason: `moins de 2 options avec un texte non vide (${options.length} trouvée${options.length > 1 ? 's' : ''})` };
   const ids = new Set(options.map((o) => o.id));
-  // reponses_correctes : TOUJOURS un tableau d'ids. Accepte des index legacy
-  // (entiers) qu'on convertit vers l'id d'option correspondant.
+  // reponses_correctes : TOUJOURS un tableau d'ids en sortie. Accepte des index
+  // numériques 0-based (format "prompt") OU des ids déjà internes.
   const reponses = asArray(raw.reponses_correctes)
     .map((r) => {
       if (typeof r === 'number' && options[r]) return options[r].id;
@@ -109,52 +116,75 @@ function normQcm(raw, c) {
     })
     .filter(Boolean);
   const reponses_correctes = [...new Set(reponses)];
-  if (!reponses_correctes.length) return null;
+  if (!reponses_correctes.length) return { ok: false, reason: 'aucune réponse correcte reconnue (reponses_correctes vide ou index hors des options)' };
   const multiple = raw.multiple != null ? !!raw.multiple : reponses_correctes.length > 1;
-  const explication_distracteurs = asArray(raw.explication_distracteurs)
-    .map((e) => (e && (e.option_id != null)
-      ? { option_id: str(e.option_id), pourquoi_faux: str(e.pourquoi_faux) }
-      : null))
-    .filter(Boolean);
+  // explication_distracteurs : format interne [{option_id, pourquoi_faux}], OU
+  // format "prompt" (tableau de chaînes, dans l'ordre des mauvaises options) —
+  // rattachées alors POSITIONNELLEMENT aux options hors reponses_correctes.
+  const rawDistracteurs = asArray(raw.explication_distracteurs);
+  const explication_distracteurs = rawDistracteurs.length && rawDistracteurs.every((e) => typeof e === 'string')
+    ? (() => {
+        const wrongOptions = options.filter((o) => !reponses_correctes.includes(o.id));
+        return rawDistracteurs
+          .map((txt, i) => (wrongOptions[i] ? { option_id: wrongOptions[i].id, pourquoi_faux: str(txt).trim() } : null))
+          .filter(Boolean);
+      })()
+    : rawDistracteurs
+      .map((e) => (e && e.option_id != null ? { option_id: str(e.option_id), pourquoi_faux: str(e.pourquoi_faux) } : null))
+      .filter(Boolean);
   return {
-    ...c, type: 'qcm',
-    enonce: raw.enonce.trim(), multiple, options, reponses_correctes,
-    explication: str(raw.explication).trim(),
-    explication_distracteurs,
-    source_cours: isStr(raw.source_cours) ? raw.source_cours.trim() : null,
+    ok: true,
+    item: {
+      ...c, type: 'qcm',
+      enonce: raw.enonce.trim(), multiple, options, reponses_correctes,
+      explication: str(raw.explication).trim(),
+      explication_distracteurs,
+      source_cours: isStr(raw.source_cours) ? raw.source_cours.trim() : null,
+    },
   };
 }
 
 function normFlashcard(raw, c) {
-  if (!isStr(raw.recto) || !isStr(raw.verso)) return null;
+  const okRecto = isStr(raw.recto), okVerso = isStr(raw.verso);
+  if (!okRecto || !okVerso) {
+    return { ok: false, reason: !okRecto && !okVerso ? 'recto et verso manquants' : !okRecto ? 'recto manquant' : 'verso manquant' };
+  }
   // v1.1 : "cloze" (optionnel) = mots/expressions masqués dans le recto (voir
   // lib/cloze.js pour le parsing "{{mot}}" + rendu). Absent/vide → flashcard
   // recto/verso classique inchangée (rétro-compatible).
   const cloze = asArray(raw.cloze).map(str).map((s) => s.trim()).filter(Boolean);
   return {
-    ...c, type: 'flashcard',
-    recto: raw.recto.trim(), verso: raw.verso.trim(),
-    indice: isStr(raw.indice) ? raw.indice.trim() : null,
-    a_retenir: str(raw.a_retenir).trim(),
-    ...(cloze.length ? { cloze } : {}),
+    ok: true,
+    item: {
+      ...c, type: 'flashcard',
+      recto: raw.recto.trim(), verso: raw.verso.trim(),
+      indice: isStr(raw.indice) ? raw.indice.trim() : null,
+      a_retenir: str(raw.a_retenir).trim(),
+      ...(cloze.length ? { cloze } : {}),
+    },
   };
 }
 
 function normFeynman(raw, c) {
   const consigne = str(raw.consigne).trim();
   const reponse_modele = str(raw.reponse_modele).trim();
-  if (!consigne || !reponse_modele) return null;
+  if (!consigne || !reponse_modele) {
+    return { ok: false, reason: !consigne && !reponse_modele ? 'consigne et réponse modèle manquantes' : !consigne ? 'consigne manquante' : 'réponse modèle manquante' };
+  }
   return {
-    ...c, type: 'feynman',
-    consigne, reponse_modele,
-    points_cles_attendus: asArray(raw.points_cles_attendus).map(str).filter(Boolean),
-    analogie_suggeree: isStr(raw.analogie_suggeree) ? raw.analogie_suggeree.trim() : null,
-    erreurs_frequentes: asArray(raw.erreurs_frequentes).map(str).filter(Boolean),
-    grille_autoevaluation: normGrille(raw.grille_autoevaluation),
-    regle_reussite: str(raw.regle_reussite).trim() || 'tous_essentiels',
-    // v1.1 : true = Feynman de SYNTHÈSE GLOBALE (explique tout le cours), les
-    // points_cles_attendus font office de checklist. Défaut false (Feynman ponctuel).
-    synthese_globale: !!raw.synthese_globale,
+    ok: true,
+    item: {
+      ...c, type: 'feynman',
+      consigne, reponse_modele,
+      points_cles_attendus: asArray(raw.points_cles_attendus).map(str).filter(Boolean),
+      analogie_suggeree: isStr(raw.analogie_suggeree) ? raw.analogie_suggeree.trim() : null,
+      erreurs_frequentes: asArray(raw.erreurs_frequentes).map(str).filter(Boolean),
+      grille_autoevaluation: normGrille(raw.grille_autoevaluation),
+      regle_reussite: str(raw.regle_reussite).trim() || 'tous_essentiels',
+      // v1.1 : true = Feynman de SYNTHÈSE GLOBALE (explique tout le cours), les
+      // points_cles_attendus font office de checklist. Défaut false (Feynman ponctuel).
+      synthese_globale: !!raw.synthese_globale,
+    },
   };
 }
 
@@ -202,9 +232,11 @@ function normReponseNumerique(raw) {
   };
 }
 function normExercice(raw, c) {
-  if (!isStr(raw.enonce)) return null;
+  if (!isStr(raw.enonce)) return { ok: false, reason: 'énoncé manquant' };
   const sous_type = str(raw.sous_type).trim();
-  if (sous_type !== 'numerique' && sous_type !== 'ouvert') return null;
+  if (sous_type !== 'numerique' && sous_type !== 'ouvert') {
+    return { ok: false, reason: `sous_type invalide ("${sous_type || 'absent'}", attendu "numerique" ou "ouvert")` };
+  }
   // méthode des J des exercices (Étape A) : "jalon" LOGIQUE (pas une date —
   // traduit en date absolue à l'import, voir storage.js newItem/sm2.js
   // dueDateForJalon) + "difficulte_exo", posés par le prompt de génération.
@@ -226,16 +258,19 @@ function normExercice(raw, c) {
   };
   if (sous_type === 'numerique') {
     const reponse = normReponseNumerique(raw.reponse);
-    if (!reponse) return null; // bornes valeur_min/valeur_max requises
-    return { ...common, reponse };
+    if (!reponse) return { ok: false, reason: 'réponse numérique invalide (valeur_min/valeur_max requis)' };
+    return { ok: true, item: { ...common, reponse } };
   }
   // ouvert : pas de correction auto → grille + règle obligatoires
   const grille = normGrille(raw.grille_autoevaluation);
-  if (!grille.length) return null;
+  if (!grille.length) return { ok: false, reason: 'grille d’auto-évaluation manquante (exercice "ouvert")' };
   return {
-    ...common, reponse: null,
-    grille_autoevaluation: grille,
-    regle_reussite: str(raw.regle_reussite).trim() || 'tous_essentiels',
+    ok: true,
+    item: {
+      ...common, reponse: null,
+      grille_autoevaluation: grille,
+      regle_reussite: str(raw.regle_reussite).trim() || 'tous_essentiels',
+    },
   };
 }
 
@@ -243,14 +278,15 @@ const NORMALIZERS = { qcm: normQcm, flashcard: normFlashcard, feynman: normFeynm
 
 /**
  * Normalise/valide un item DÉJÀ au vocabulaire v1.0 (noms de champs v1.0).
- * @returns {{ok:true, item}|{ok:false}}
+ * `reason` (si ok:false) explique PRÉCISÉMENT pourquoi, pour l'afficher à
+ * l'utilisateur (voir parsePastedJson.js) plutôt qu'un compteur muet.
+ * @returns {{ok:true, item}|{ok:false, reason:string}}
  */
 export function normalizeV1Item(raw) {
-  if (!raw || typeof raw !== 'object') return { ok: false };
+  if (!raw || typeof raw !== 'object') return { ok: false, reason: 'item invalide (pas un objet)' };
   const fn = NORMALIZERS[raw.type];
-  if (!fn) return { ok: false };
-  const item = fn(raw, commonFields(raw));
-  return item ? { ok: true, item } : { ok: false };
+  if (!fn) return { ok: false, reason: `type inconnu ("${raw.type}")` };
+  return fn(raw, commonFields(raw));
 }
 
 /** compteurs vides pour l'aperçu d'import */

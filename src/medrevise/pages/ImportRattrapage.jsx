@@ -201,7 +201,7 @@ export function ImportRattrapage({ ctx }) {
   if (state === 'preview' && preview) {
     const c = preview.res.counts;
     return (
-      <ImportPreviewCard counts={c} destLabel={(effAppend ? 'ajout à — ' : 'nouvelle fiche — ') + destLabel}
+      <ImportPreviewCard counts={c} errors={preview.res.errors} destLabel={(effAppend ? 'ajout à — ' : 'nouvelle fiche — ') + destLabel}
         infoLines={[
           preview.exos > 0 && { text: <>{preview.exos} exercice{preview.exos > 1 ? 's' : ''} (dont {preview.numeriques} numérique{preview.numeriques > 1 ? 's' : ''}, {preview.ouverts} ouvert{preview.ouverts > 1 ? 's' : ''}).</> },
           {

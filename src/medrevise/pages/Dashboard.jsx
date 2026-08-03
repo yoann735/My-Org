@@ -578,7 +578,7 @@ function ImportPanel({ ctx }) {
     // aucune question, cartes créées après coup dans l'app ("Voir le cours").
     if (!jsonText.trim()) {
       setParseError(null);
-      setParsed({ items: [], meta: null, counts: emptyCounts(), synthese: '' });
+      setParsed({ items: [], meta: null, counts: emptyCounts(), synthese: '', errors: [] });
       setState('preview');
       return;
     }
@@ -697,7 +697,7 @@ function ImportPanel({ ctx }) {
       )}
 
       {mode === 'standard' && state === 'preview' && parsed && (
-        <ImportPreviewCard counts={parsed.counts} destLabel={(willAppend ? 'ajout à — ' : 'nouvelle fiche — ') + destLabel}
+        <ImportPreviewCard counts={parsed.counts} errors={parsed.errors} destLabel={(willAppend ? 'ajout à — ' : 'nouvelle fiche — ') + destLabel}
           infoLines={[
             parsed.synthese && !willAppend && { text: 'Synthèse incluse ✓' },
             { text: pasteDoc ? <>{detectDocKind(pasteDoc) === 'html' ? 'Fiche HTML jointe' : 'PDF du cours joint'} : {pasteDoc.name} ✓</> : 'Aucun document du cours joint.' },

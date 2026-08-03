@@ -20,8 +20,12 @@ export function cleanPastedJson(raw) {
 const str = (v) => (v == null ? '' : String(v));
 
 /**
+ * `errors` (parallèle à `counts.ignored`, jamais un simple compteur muet) donne,
+ * pour CHAQUE item rejeté, son rang (1-based), son type déclaré et la raison
+ * précise (voir schema.js#normalizeV1Item) — affiché à l'utilisateur au lieu de
+ * "X items ignorés" (voir ImportFlow.jsx#ImportPreviewCard / AddItemForm.jsx#PasteJsonForm).
  * @returns {{ok:false, error:string}
- *   | {ok:true, items:Array, meta:object, counts:{qcm,flashcard,feynman,exercice,ignored}, synthese:string}}
+ *   | {ok:true, items:Array, meta:object, counts:{qcm,flashcard,feynman,exercice,ignored}, synthese:string, errors:Array<{index,type,reason}>}}
  */
 export function parsePastedJson(raw) {
   const cleaned = cleanPastedJson(raw);
@@ -55,14 +59,19 @@ export function parsePastedJson(raw) {
 
   const counts = emptyCounts();
   const items = [];
-  for (const it of rawItems) {
+  const errors = [];
+  rawItems.forEach((it, i) => {
     // legacy : repasse par l'adaptateur ; v1.0 : normalisation directe.
     const src = legacy ? legacyDocToV1({ questions: [it] }).items[0] : it;
-    const res = src && normalizeV1Item(src);
-    if (!res || !res.ok) { counts.ignored++; continue; }
+    const res = src ? normalizeV1Item(src) : { ok: false, reason: 'entrée invalide (legacy non convertible)' };
+    if (!res.ok) {
+      counts.ignored++;
+      errors.push({ index: i + 1, type: (it && typeof it === 'object' && str(it.type)) || 'inconnu', reason: res.reason || 'format invalide' });
+      return;
+    }
     counts[res.item.type]++;
     items.push(res.item);
-  }
+  });
 
-  return { ok: true, items, meta, counts, synthese: str(synthese) };
+  return { ok: true, items, meta, counts, synthese: str(synthese), errors };
 }

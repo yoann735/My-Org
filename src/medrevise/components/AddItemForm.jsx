@@ -105,7 +105,7 @@ export function AddItemModal({ ctx, ficheId, ficheTitre, onClose }) {
 export function PasteJsonForm({ ctx, ficheId, done, setDone }) {
   const [jsonText, setJsonText] = useState('');
   const [parseError, setParseError] = useState(null);
-  const [preview, setPreview] = useState(null); // { items, counts, duplicates }
+  const [preview, setPreview] = useState(null); // { items, counts, duplicates, errors }
   const [busy, setBusy] = useState(false);
 
   const doPreview = () => {
@@ -115,7 +115,7 @@ export function PasteJsonForm({ ctx, ficheId, done, setDone }) {
     const existingSrc = new Set((ctx.db.questions || []).filter((q) => q.ficheId === ficheId).map((q) => q.srcId).filter(Boolean));
     const duplicates = res.items.filter((it) => it.id && existingSrc.has(it.id)).length;
     setParseError(null);
-    setPreview({ items: res.items, counts: res.counts, duplicates });
+    setPreview({ items: res.items, counts: res.counts, duplicates, errors: res.errors });
   };
 
   const confirm = async () => {
@@ -140,7 +140,16 @@ export function PasteJsonForm({ ctx, ficheId, done, setDone }) {
           <div className="em-ic"><Icon name="check" size={16} stroke={2.5} /></div>
           <div className="em-body">
             <div className="em-title">{c.qcm} QCM · {c.flashcard} flashcards · {c.feynman} Feynman · {c.exercice} exercice{c.exercice > 1 ? 's' : ''} détecté{total > 1 ? 's' : ''}</div>
-            {c.ignored > 0 && <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {c.ignored} item{c.ignored > 1 ? 's' : ''} ignoré{c.ignored > 1 ? 's' : ''} (format invalide)</div>}
+            {c.ignored > 0 && (
+              <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}>
+                <Icon name="alert" size={12} /> {c.ignored} item{c.ignored > 1 ? 's' : ''} ignoré{c.ignored > 1 ? 's' : ''}
+                {(preview.errors || []).length > 0 && (
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                    {preview.errors.map((e, i) => <li key={i}>Item {e.index} ({e.type}) : {e.reason}</li>)}
+                  </ul>
+                )}
+              </div>
+            )}
             {preview.duplicates > 0 && <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {preview.duplicates} doublon{preview.duplicates > 1 ? 's' : ''} ignoré{preview.duplicates > 1 ? 's' : ''} (déjà dans cette fiche)</div>}
           </div>
         </div>

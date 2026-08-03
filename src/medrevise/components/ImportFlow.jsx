@@ -26,7 +26,7 @@ export function ImportJsonField({ label, placeholder, value, onChange, error }) 
 /* ---- carte « aperçu avant import » : compteurs + destination + lignes
    d'info spécifiques au mode (PDF joint, doublons, synthèse…) + avertissements
    non bloquants (Rattrapage) ---- */
-export function ImportPreviewCard({ counts, destLabel, infoLines = [], warnings = [], startDate, onStartDateChange, onBack, onConfirm, busy }) {
+export function ImportPreviewCard({ counts, destLabel, infoLines = [], warnings = [], errors = [], startDate, onStartDateChange, onBack, onConfirm, busy }) {
   const total = counts.qcm + counts.flashcard + counts.feynman + counts.exercice;
   return (
     <div className="fadein imp-dest">
@@ -43,7 +43,12 @@ export function ImportPreviewCard({ counts, destLabel, infoLines = [], warnings 
           ))}
           {counts.ignored > 0 && (
             <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}>
-              <Icon name="alert" size={12} /> {counts.ignored} item{counts.ignored > 1 ? 's' : ''} ignoré{counts.ignored > 1 ? 's' : ''} (format invalide)
+              <Icon name="alert" size={12} /> {counts.ignored} item{counts.ignored > 1 ? 's' : ''} ignoré{counts.ignored > 1 ? 's' : ''}
+              {errors.length > 0 && (
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                  {errors.map((e, i) => <li key={i}>Item {e.index} ({e.type}) : {e.reason}</li>)}
+                </ul>
+              )}
             </div>
           )}
         </div>
