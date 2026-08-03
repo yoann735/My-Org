@@ -20,6 +20,7 @@ const MIG_ORPHANS = 'orphan-cleanup-v1';
 const MIG_DEMO_ZOMBIES = 'demo-zombies-cleanup-v1';
 const MIG_CADENCE_FIXE = 'cadence-fixe-v1';
 const MIG_CHRONO_FIXE = 'chronologie-fixe-v1';
+const MIG_RESET_MISSED = 'reset-ancien-carnet-erreurs-v1';
 // ancienne cadence à 5 paliers (avant CETTE refonte), FIGÉE : usage UNIQUE
 // des deux migrations ci-dessous (jamais le moteur courant, voir sm2.js
 // PLAN_DELAYS). Ancien palier (0..4) → nouvel index plan (0..6, J0/J+1/J+3/
@@ -369,6 +370,34 @@ export async function migrateChronologieFixeV1() {
   return { ran: true, migratedQuestions: outQuestions.length, migratedSchemas: outSchemas.length };
 }
 
+/**
+ * Retrait de l'ancien carnet d'erreurs (missedQuestions/weakPoints/
+ * topConcepts, planning.js — remplacé par le carnet v2, type
+ * flashcard_erreur). NE TOUCHE PAS au moteur chrono : `missed` reste géré
+ * tel quel par advanceQuestion/recordExerciceAttempt (sm2.js), plan/cursor/
+ * historique de chaque carte et le planning J sont intacts — cette migration
+ * efface UNIQUEMENT le résidu actuel (missed remis à 0 sur les questions qui
+ * en portaient un), puisque plus aucun écran ne le lit désormais. NON
+ * DESTRUCTIVE : sauvegarde intégrale avant écriture.
+ */
+export async function migrateResetMissedV1() {
+  const applied = await appliedList();
+  if (applied.includes(MIG_RESET_MISSED)) return { ran: false };
+
+  const questions = await getAll('questions');
+  const targets = (questions || []).filter((q) => q && q.missed);
+  if (!targets.length) {
+    await setMeta(MIGRATIONS_KEY, [...applied, MIG_RESET_MISSED]);
+    return { ran: true, reset: 0 };
+  }
+
+  await putBackup('pre-' + MIG_RESET_MISSED, targets);
+  await putMany('questions', targets.map((q) => ({ ...q, missed: 0 })));
+
+  await setMeta(MIGRATIONS_KEY, [...applied, MIG_RESET_MISSED]);
+  return { ran: true, reset: targets.length };
+}
+
 /** point d'entrée bootstrap : applique toutes les migrations en attente */
 export async function runMigrations() {
   const items = await migrateItemsToV1();
@@ -378,5 +407,6 @@ export async function runMigrations() {
   const demoZombies = await migrateDemoZombiesCleanup();
   const cadenceFixe = await migrateCadenceFixeV1();
   const chronologieFixe = await migrateChronologieFixeV1();
-  return { items, documents, anatImages, orphans, demoZombies, cadenceFixe, chronologieFixe };
+  const resetMissed = await migrateResetMissedV1();
+  return { items, documents, anatImages, orphans, demoZombies, cadenceFixe, chronologieFixe, resetMissed };
 }

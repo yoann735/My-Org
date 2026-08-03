@@ -548,56 +548,13 @@ export function weekData(db, weekOffset = 0, idx) {
   return { monday, days };
 }
 
-/* ---- carnet d'erreurs ---- */
-/** une fiche existe encore ET n'est pas archivée (elle, sa matière, son cours) —
-   défensif : couvre le cas où un cours/une fiche a été supprimé (archivé via la
-   corbeille, ou orphelin si la fiche a été retirée sans passer par l'archivage).
-   Ne regarde PAS rappelsJ (pause) : un cours en pause ou retiré de la méthode
-   des J garde ses erreurs visibles dans le carnet — seule la suppression compte. */
-function ficheStillExists(fiche, idx) {
-  if (!fiche || fiche.archive) return false;
-  const m = idx.mById[fiche.matiereId];
-  if (!m || m.archive) return false;
-  const s = idx.sById[m.sourceId];
-  return !!s && !s.archive;
-}
-
-export function missedQuestions(db, idx) {
-  const ix = idx || index(db);
-  return (db.questions || [])
-    .filter((q) => q.missed > 0 && ficheStillExists(ix.fById[q.ficheId], ix))
-    .map((q) => {
-      const f = ix.fById[q.ficheId];
-      const m = f && ix.mById[f.matiereId];
-      return { ...q, fiche: f, matiere: m };
-    }).sort((a, b) => b.missed - a.missed);
-}
-
-/** points faibles pondérés par coefficient (handoff §5.5) */
-export function weakPoints(db, idx) {
-  const ix = idx || index(db);
-  const byFiche = {};
-  missedQuestions(db, ix).forEach((q) => {
-    const f = ix.fById[q.ficheId];
-    if (!f) return;
-    const e = byFiche[f.id] || (byFiche[f.id] = { fiche: f, matiere: ix.mById[f.matiereId], misses: 0, concepts: 0, list: [] });
-    e.misses += q.missed; e.concepts += 1; e.list.push(q);
-  });
-  return Object.values(byFiche).map((e) => {
-    const coef = effectiveCoef(db, e.fiche, ix);
-    return { ...e, coef, score: e.misses * coef };
-  }).sort((a, b) => b.score - a.score);
-}
-
-export function topConcepts(list, n = 3) {
-  const map = {};
-  list.forEach((q) => { map[q.concept] = (map[q.concept] || 0) + (q.missed || 1); });
-  return Object.entries(map).map(([concept, k]) => ({ concept, n: k })).sort((a, b) => b.n - a.n).slice(0, n);
-}
-
 /* ============================================================
-   Carnet d'erreurs v2 (étape 2) — DISTINCT de missedQuestions/weakPoints
-   ci-dessus (l'ancien carnet, cumulatif/pondéré par coefficient, INCHANGÉ) :
+   Carnet d'erreurs v2 — SEUL carnet d'erreurs de l'app (l'ancien mécanisme
+   cumulatif/pondéré — missedQuestions/weakPoints/topConcepts, ficheStillExists —
+   a été entièrement retiré : plus aucun écran ne le consulte). `missed` reste
+   un champ géré par le moteur chrono (advanceQuestion/recordExerciceAttempt,
+   sm2.js) — INCHANGÉ, ce n'est plus QUE de la bookkeeping interne au cycle des
+   J, sans lecteur applicatif.
    V1 = flashcard normale marquée en carnet (carnetAt non-null, voir
    Session.jsx/MobileSession.jsx étape 1). V2 = flashcard d'erreur liée
    (type 'flashcard_erreur', voir storage.js#newErrorCard) — jamais dans

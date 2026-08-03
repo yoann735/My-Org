@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
 import {
-  index, effectiveCoef, ficheJ, ficheJDistribution, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, missedQuestions, topConcepts, todayPlan, overdueByFiche,
+  index, effectiveCoef, ficheJ, ficheJDistribution, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, todayPlan, overdueByFiche,
   qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, carnetV1Questions, carnetV2Questions,
 } from '../lib/planning.js';
 import { shuffle } from '../lib/sm2.js';
@@ -455,10 +455,6 @@ export function Reviser({ ctx }) {
                 <ExerciceCards items={exoItems} meta={meta} onOpen={openExo} onDelete={askDeleteExercice}
                   onDeleteAll={!multi ? askDeleteAllExercices : null} />
               )}
-
-              <div style={{ marginTop: 14 }}>
-                <ErrorSummary ctx={ctx} ix={ix} selIds={selIds} title={title} />
-              </div>
             </>
           )}
 
@@ -466,9 +462,9 @@ export function Reviser({ ctx }) {
              (Carnet.jsx, retiré) — juste un lien d'entrée ici, le contenu (V1 +
              raisons, extraction JSON, V2 à revoir/résolu) vit sur son propre
              écran (SCREENS.carnet, MedReviseApp.jsx) : trop riche pour une
-             section repliable. missed/weakPoints (ErrorSummary ci-dessus,
-             RattrapageCard du Dashboard) restent INCHANGÉS — carnet
-             complémentaire, pas remplacé. */}
+             section repliable. L'ancien mécanisme (missed/weakPoints,
+             ErrorSummary/RattrapageCard) a été entièrement retiré — le carnet
+             v2 est désormais le SEUL carnet d'erreurs de l'app. */}
           <div style={{ marginTop: 22 }}>
             <CarnetEntryCard ctx={ctx} />
           </div>
@@ -684,38 +680,6 @@ function CarnetEntryCard({ ctx }) {
           Ouvrir le carnet
         </button>
       </div>
-    </div>
-  );
-}
-
-/* erreurs de la sélection courante + accès au carnet complet (handoff §5.3) */
-function ErrorSummary({ ctx, ix, selIds, title }) {
-  const missed = missedQuestions(ctx.db, ix).filter((m) => selIds.includes(m.ficheId));
-  const reviewable = missed.filter((m) => m.type !== 'feynman');
-  const totalMisses = missed.reduce((a, m) => a + m.missed, 0);
-  const tops = topConcepts(missed, 3);
-
-  if (!missed.length) {
-    return (
-      <div className="err-mini ok">
-        <div className="em-ic"><Icon name="check" size={18} stroke={2.5} /></div>
-        <div className="em-body">
-          <div className="em-title">Aucune erreur sur {selIds.length > 1 ? 'cette sélection' : 'cette fiche'}</div>
-          <div className="hint">Rien à rejouer — tout est maîtrisé ici.</div>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className="err-mini">
-      <div className="em-ic crit"><Icon name="target" size={18} /></div>
-      <div className="em-body">
-        <div className="em-title"><strong className="tnum">{missed.length}</strong> question{missed.length > 1 ? 's' : ''} ratée{missed.length > 1 ? 's' : ''} · {totalMisses} erreurs</div>
-        <div className="em-concepts">{tops.map((t) => <span className="em-chip" key={t.concept}>{t.concept} <em className="tnum">×{t.n}</em></span>)}</div>
-      </div>
-      <button className="btn err-mode-btn" onClick={() => ctx.startSession(reviewable, (title || 'Mes erreurs') + ' — erreurs')} disabled={!reviewable.length} title="Rejouer toutes les erreurs d'un coup">
-        <Icon name="refresh" size={14} /> Mode erreur ({reviewable.length})
-      </button>
     </div>
   );
 }

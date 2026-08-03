@@ -1,10 +1,7 @@
 /* ============================================================
-   MedRevise — Carnet d'erreurs v2 (étape 2). Écran dédié (SCREENS.carnet),
-   REMPLACE l'ancien Carnet.jsx (CarnetBody, retiré) comme "LE" carnet complet.
-   L'ancien mécanisme (missed/weakPoints, planning.js) reste INTACT et vit
-   ailleurs (Dashboard RattrapageCard, Reviser ErrorSummary) — complémentaire,
-   pas remplacé (stats par fiche pondérées coef vs. cartes précises à
-   retravailler ici).
+   MedRevise — Carnet d'erreurs v2. Écran dédié (SCREENS.carnet), SEUL carnet
+   d'erreurs de l'app : l'ancien mécanisme (missed/weakPoints/topConcepts,
+   Carnet.jsx, RattrapageCard, ErrorSummary) a été entièrement retiré.
 
    Vocabulaire : V1 = flashcard normale en carnet (carnetAt non-null, étape 1).
    V2 = "flashcard d'erreur" liée à sa V1 par sourceErrorId (type

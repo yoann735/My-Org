@@ -453,10 +453,6 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await Promise.all(exos.map((q) => remove('questions', q.id)));
       await reload();
     },
-    clearQuestionError: async (id) => {
-      const q = db.questions.find((x) => x.id === id); if (!q) return;
-      await put('questions', { ...q, missed: 0 }); await reload();
-    },
     // carnet d'erreurs v2 (étape 2) : statut d'une V2 ('a_revoir'|'resolu'|
     // 'pause') — ne touche JAMAIS plan/cursor/historique (une V2 n'en a pas,
     // voir storage.js#newErrorCard), juste son état d'affichage dans le

@@ -11,10 +11,12 @@
    - `cursor` : index de la PROCHAINE échéance non faite. `cursor ===
      plan.length` → cycle terminé (carte "Terminée", sort du planning actif).
    - `historique[]` : log informatif des notes (inchangé).
-   - `missed` : carnet d'erreurs — Raté ET Difficile l'incrémentent, SEUL
-     Facile le remet à 0 (voir advanceQuestion).
+   - `missed` : Raté ET Difficile l'incrémentent, SEUL Facile le remet à 0
+     (voir advanceQuestion) — bookkeeping interne au moteur, plus consulté par
+     aucun écran (l'ancien carnet d'erreurs qui le lisait a été retiré ; le
+     carnet actuel, type flashcard_erreur, n'en dépend pas).
    Le coef n'intervient plus dans ce calcul (voir lib/planning.js
-   effectiveCoef — gardé pour le carnet d'erreurs uniquement).
+   effectiveCoef — coefficient éditable par fiche, Réviser).
    ============================================================ */
 export const PLAN_DELAYS = [0, 1, 3, 7, 14, 30, 90];
 export const PLAN_LABELS = ['J0', 'J+1', 'J+3', 'J+7', 'J+14', 'J+30', 'J+90'];
@@ -168,10 +170,10 @@ export const MAX_CARD_TIME_MS = 3 * 60 * 1000;
    la chronologie, voir le header du fichier) : `cursor` progresse de 1, le
    `plan` lui-même n'est JAMAIS réécrit ici. `cursor === plan.length` → cycle
    terminé (voir planning.js, une carte terminée sort de scheduledQuestions).
-   Carnet d'erreurs (`missed`) : Raté ET Difficile l'incrémentent, SEUL
-   Facile (quality 5) le remet à zéro (QUALITY : facile=5, difficile=3,
-   rate=1) — volontairement différent d'un simple seuil "réussite" : on veut
-   revoir Raté ET Difficile au carnet, pas seulement les échecs francs.
+   `missed` : Raté ET Difficile l'incrémentent, SEUL Facile (quality 5) le
+   remet à zéro (QUALITY : facile=5, difficile=3, rate=1) — bookkeeping
+   interne au moteur (plus aucun écran ne le lit, voir header du fichier),
+   conservé tel quel pour ne pas toucher au moteur chrono.
    `extra.tempsMs` (optionnel, flashcards) : temps actif passé sur la carte,
    voir MAX_CARD_TIME_MS. */
 export function advanceQuestion(record, quality, extra = {}) {

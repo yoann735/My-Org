@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
-import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, missedQuestions, weakPoints, isWeekend, dueByCoursOn, dueFromOn, addDays, diffDays, weekendReviewByFiche, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
+import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, dueFromOn, addDays, diffDays, weekendReviewByFiche, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
@@ -79,61 +79,27 @@ export function Dashboard({ ctx }) {
 }
 
 /* ---------- boîte de rattrapage (Dashboard UNIQUEMENT) ----------
-   Réunit RETARDS (overdueByFiche, réutilise OverdueBox en mode `bare` —
-   aucune logique dupliquée) ET CARNET D'ERREURS (missedQuestions/weakPoints —
-   ancien mécanisme, DISTINCT et complémentaire du carnet v2/SCREENS.carnet)
-   dans une seule card, deux sections.
-   NE TOUCHE JAMAIS aux dates : "Rattraper"/"Revoir" lancent une session
-   normale (ctx.startSession → advanceQuestion), qui fait sortir la carte de
-   la boîte au prochain rendu (cursor avancé → plus overdue ; missed remis à
-   0 sur Facile → plus dans le carnet) — comportement déjà acquis, rien de
-   neuf à écrire ici. Week-end (isWeekend, planning.js) : bordure/fond verts
-   + titre dédié ; en semaine, même contenu, style neutre. */
+   RETARDS UNIQUEMENT (overdueByFiche, réutilise OverdueBox en mode `bare` —
+   aucune logique dupliquée). L'ancien carnet d'erreurs (missedQuestions/
+   weakPoints) qui vivait ici a été entièrement retiré — le SEUL carnet
+   d'erreurs de l'app est désormais le v2 (CarnetErreurCard ci-dessous,
+   SCREENS.carnet). NE TOUCHE JAMAIS aux dates : "Rattraper" lance une
+   session normale (ctx.startSession → advanceQuestion), qui fait sortir la
+   carte de la boîte au prochain rendu (cursor avancé → plus overdue).
+   Week-end (isWeekend, planning.js) : bordure/fond verts + titre dédié ; en
+   semaine, même contenu, style neutre. */
 function RattrapageCard({ ctx, overdue, startOverdueFiche }) {
-  const { db } = ctx;
-  const missed = missedQuestions(db);
-  const reviewable = missed.filter((m) => m.type !== 'feynman');
-  const weak = weakPoints(db);
-  if (!overdue.length && !missed.length) return null;
+  if (!overdue.length) return null;
 
   const weekend = isWeekend();
-  const title = weekend ? 'Retards + erreurs de la semaine à rattraper' : 'À rattraper';
-  const fichesCount = overdue.length + weak.length;
+  const title = weekend ? 'Retards de la semaine à rattraper' : 'À rattraper';
 
   return (
     <Card title={title} icon="clock" className={weekend ? 'rattrapage-weekend' : ''}
-      action={<span className="pill">{fichesCount} fiche{fichesCount > 1 ? 's' : ''}</span>}>
-      {overdue.length > 0 && (
-        <div style={{ marginBottom: weak.length > 0 ? 16 : 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Retards</div>
-          <OverdueBox bare groups={overdue} onStartFiche={startOverdueFiche}
-            onStartAll={(items) => ctx.startSession(items, 'Rattrapage')}
-            onDismissFiche={ctx.dismissOverdue} />
-        </div>
-      )}
-      {weak.length > 0 && (
-        <div style={{ paddingTop: overdue.length > 0 ? 14 : 0, borderTop: overdue.length > 0 ? '1px solid var(--border-2)' : 'none' }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Carnet d'erreurs</div>
-          <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 216, overflowY: 'auto' }}>
-            {weak.slice(0, 5).map((w, i) => {
-              const meta = matiereMeta(w.matiere);
-              return (
-                <div className="row spread" key={w.fiche.id} style={{ gap: 8, padding: '7px 0', borderTop: i ? '1px solid var(--border-2)' : 'none' }}>
-                  <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.fiche.titre}</div>
-                    <div className="hint" style={{ fontSize: 11 }}>{meta.label} · {w.misses} erreur{w.misses > 1 ? 's' : ''}</div>
-                  </div>
-                  <button className="btn ghost sm" onClick={() => ctx.startSession(w.list.filter((m) => m.type !== 'feynman'), w.fiche.titre + ' — erreurs')}>Revoir</button>
-                </div>
-              );
-            })}
-          </div>
-          <button className="btn ghost sm" style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}
-            disabled={!reviewable.length} onClick={() => ctx.startSession(reviewable, 'Mes erreurs')}>
-            Refaire mes erreurs ({reviewable.length})
-          </button>
-        </div>
-      )}
+      action={<span className="pill">{overdue.length} fiche{overdue.length > 1 ? 's' : ''}</span>}>
+      <OverdueBox bare groups={overdue} onStartFiche={startOverdueFiche}
+        onStartAll={(items) => ctx.startSession(items, 'Rattrapage')}
+        onDismissFiche={ctx.dismissOverdue} />
     </Card>
   );
 }
@@ -141,8 +107,9 @@ function RattrapageCard({ ctx, overdue, startOverdueFiche }) {
 /* ---------- carnet d'erreurs v2 (Dashboard UNIQUEMENT) ----------
    Emplacement principal de la card de synthèse — le DÉTAIL (liste, actions
    rapides) est l'étape 3 ; ici juste les compteurs + l'entrée vers l'écran
-   dédié (SCREENS.carnet). DISTINCTE de RattrapageCard (ancien mécanisme
-   missed/weakPoints, inchangé) — les deux coexistent. */
+   dédié (SCREENS.carnet). SEUL carnet d'erreurs de l'app désormais — l'ancien
+   mécanisme (missed/weakPoints, qui vivait dans RattrapageCard ci-dessus) a
+   été entièrement retiré. */
 function CarnetErreurCard({ ctx }) {
   const { db } = ctx;
   const v1 = carnetV1Questions(db);
