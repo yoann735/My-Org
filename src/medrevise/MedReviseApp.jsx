@@ -304,6 +304,17 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
       await put('fiches', { ...f, htmlId: htmlId || null, htmlName: htmlId ? (htmlName || f.htmlName || null) : null }); await reload();
     },
+    // Bibliothèque → « Remplacer le fichier HTML » : écrase UNIQUEMENT htmlId/htmlName
+    // de la fiche (même champ que setFicheHtml/« Voir le cours »), jamais les cartes/
+    // plan/carnet (autres stores, non touchés ici). putBackup avant l'écrasement —
+    // la confirmation elle-même est portée par la modale appelante (Bibliotheque.jsx),
+    // pas ici (même convention que permanentlyDelete*/emptyTrash).
+    replaceFicheHtml: async (ficheId, htmlId, htmlName) => {
+      const f = db.fiches.find((x) => x.id === ficheId); if (!f || !htmlId) return;
+      await putBackup('pre-remplace-html-' + ficheId + '-' + Date.now(), { fiche: f });
+      await put('fiches', { ...f, htmlId, htmlName: htmlName || null });
+      await reload();
+    },
     // étiquette de cours (100 % manuelle, purement informative — voir CLAUDE.md/prompt) :
     // aucun effet sur SM-2/méthode des J, juste un marqueur visuel sur la fiche.
     setFicheEtiquette: async (ficheId, etiquette) => {

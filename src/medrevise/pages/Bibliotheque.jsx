@@ -10,7 +10,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker, EtiquetteIconButton, etiquetteMenuItems, ContextMenu, detectDocKind, BellButton } from '../components/ui.jsx';
+import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker, EtiquetteIconButton, etiquetteMenuItems, ContextMenu, detectDocKind, BellButton, Modal } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
@@ -36,6 +36,7 @@ export function Bibliotheque({ ctx }) {
   const [selected, setSelected] = useState(null); // { ficheId, kind: 'fiche'|'schema'|'transcript', mode? }
   const [creatingTranscript, setCreatingTranscript] = useState(false);
   const [etqMenu, setEtqMenu] = useState(null); // { x, y, ficheId } — menu compact de l'étiquette
+  const [replacingHtmlId, setReplacingHtmlId] = useState(null); // ficheId — modale « Remplacer le fichier HTML »
 
   const startRename = (type, id, current) => { setDraft(current); setRenaming({ type, id }); };
   const isRen = (type, id) => renaming && renaming.type === type && renaming.id === id;
@@ -235,6 +236,10 @@ export function Bibliotheque({ ctx }) {
                                           {!isSchema && !isTranscript && f.htmlId && (
                                             <button className="cd-ic" title="Ouvrir la fiche HTML" onClick={() => openDoc(f, 'edit', 'html')}><Icon name="fileHtml" size={14} /></button>
                                           )}
+                                          {!isSchema && !isTranscript && f.htmlId && (
+                                            <button className="cd-ic" title="Remplacer le fichier HTML (les cartes/planning/carnet de cette fiche ne sont pas touchés)"
+                                              onClick={() => setReplacingHtmlId(f.id)}><Icon name="refresh" size={14} /></button>
+                                          )}
                                           {!isSchema && !isTranscript && (!f.pdfId || !f.htmlId) && (
                                             <label className="cd-ic" title="Attacher un document (PDF ou HTML)" style={{ cursor: 'pointer' }} onClick={(e) => e.stopPropagation()}>
                                               <Icon name="upload" size={14} />
@@ -299,7 +304,71 @@ export function Bibliotheque({ ctx }) {
         <ContextMenu x={etqMenu.x} y={etqMenu.y} onClose={() => setEtqMenu(null)}
           items={etiquetteMenuItems((db.fiches.find((x) => x.id === etqMenu.ficheId) || {}).etiquette, (v) => ctx.setFicheEtiquette(etqMenu.ficheId, v))} />
       )}
+
+      {replacingHtmlId && (
+        <ReplaceHtmlModal ctx={ctx} fiche={db.fiches.find((x) => x.id === replacingHtmlId)} onClose={() => setReplacingHtmlId(null)} />
+      )}
     </div>
+  );
+}
+
+/* remplace le fichier HTML d'une fiche EXISTANTE (fichier ou HTML collé) — ne
+   touche que fiche.htmlId/htmlName (même champ que « Voir le cours »/setFicheHtml) ;
+   cartes (QCM/flashcard/Feynman/exercice), plan J et carnet d'erreurs vivent dans
+   d'autres stores (questions/highlights/annotations), jamais effleurés ici.
+   L'avertissement + le bouton « Remplacer » explicite tiennent lieu de
+   confirmation (pas de second dialogue, inutile pour un geste aussi direct). */
+function ReplaceHtmlModal({ ctx, fiche, onClose }) {
+  const [mode, setMode] = useState('file'); // file | paste
+  const [file, setFile] = useState(null);
+  const [pasted, setPasted] = useState('');
+  const [busy, setBusy] = useState(false);
+  if (!fiche) return null;
+  const ready = mode === 'file' ? !!file : !!pasted.trim();
+
+  const confirm = async () => {
+    if (!ready || busy) return;
+    setBusy(true);
+    try {
+      const blob = mode === 'file' ? file : new Blob([pasted], { type: 'text/html' });
+      const name = mode === 'file' ? file.name : (fiche.htmlName || 'fiche.html');
+      const blobId = await putBlob(blob);
+      await ctx.replaceFicheHtml(fiche.id, blobId, name);
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Remplacer le fichier HTML" onClose={onClose}>
+      <div className="hint" style={{ marginBottom: 12 }}>
+        Remplace le document HTML actuel ({fiche.htmlName || 'fiche HTML'}) de « {fiche.titre} » par une
+        nouvelle version. Les cartes (QCM, flashcards, Feynman, exercices), le planning des J et le carnet
+        d'erreurs de cette fiche restent intacts — seul le cours affiché dans « Voir le cours » change.
+      </div>
+      <div className="seg" style={{ marginBottom: 12 }}>
+        <button type="button" className={'seg-btn' + (mode === 'file' ? ' active' : '')} onClick={() => setMode('file')}><Icon name="upload" size={13} /> Fichier</button>
+        <button type="button" className={'seg-btn' + (mode === 'paste' ? ' active' : '')} onClick={() => setMode('paste')}><Icon name="edit" size={13} /> Coller le HTML</button>
+      </div>
+      {mode === 'file' ? (
+        <div className="imp-field">
+          <label>Nouveau fichier HTML</label>
+          <input type="file" accept="text/html,.html" onChange={(e) => setFile(e.target.files[0] || null)} />
+          {file && <div className="hint" style={{ marginTop: 6 }}>{file.name}</div>}
+        </div>
+      ) : (
+        <div className="imp-field">
+          <label>Code HTML collé</label>
+          <textarea className="imp-title" style={{ minHeight: 160, resize: 'vertical', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12.5 }}
+            placeholder="Colle ici tout le contenu HTML de la fiche mise à jour." value={pasted} onChange={(e) => setPasted(e.target.value)} />
+        </div>
+      )}
+      <div className="imp-actions" style={{ marginTop: 14 }}>
+        <button className="btn ghost" onClick={onClose}>Annuler</button>
+        <button className="btn danger" disabled={!ready || busy} onClick={confirm}><Icon name="refresh" size={14} /> Remplacer (écrase l'ancien fichier)</button>
+      </div>
+    </Modal>
   );
 }
 
