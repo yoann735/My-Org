@@ -11,6 +11,12 @@ import { Icon } from '../../shared/Icon.jsx';
 import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled, dueFromOn, addDays, diffDays, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
 import { todayISO } from '../lib/sm2.js';
 import { matiereMeta, syncStatusLabel, DateActionModal, ConfirmModal } from '../components/ui.jsx';
+import { Tex } from '../components/Tex.jsx';
+
+// carnet d'erreurs v2 : aperçu LISTE (pas la carte de révision interactive) —
+// déplie les {{mots}} de cloze en texte normal avant rendu <Tex> (LaTeX), même
+// traitement que CarnetDashboard.jsx desktop (voir là-bas pour le détail).
+const stripCloze = (s) => (s || '').replace(/\{\{([^{}]+)\}\}/g, '$1');
 
 export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman }) {
   const { db } = ctx;
@@ -225,7 +231,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
               {carnetV1.map((v1) => (
                 <div className="mrm-row" key={v1.id}>
                   <div className="mrm-row-main">
-                    <div className="mrm-row-title">{v1.recto}</div>
+                    <div className="mrm-row-title"><Tex>{stripCloze(v1.recto)}</Tex></div>
                     {v1.carnetRaison && <div className="mrm-row-sub">{v1.carnetRaison}</div>}
                   </div>
                 </div>

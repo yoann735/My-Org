@@ -475,6 +475,20 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await reload();
       return cards.length;
     },
+    // "sortir du carnet" une V1 : carnetAt/carnetRaison → null — la flashcard
+    // elle-même n'est PAS supprimée (plan/cursor/historique/missed intacts,
+    // reste dans son cycle J normal), juste retirée du carnet d'erreurs v2.
+    // Cascade : ses V2 liées sont supprimées aussi (reco validée — une V2
+    // ("flashcard d'erreur ciblée") n'a plus de sens sans sa V1).
+    removeFromCarnet: async (v1Id) => {
+      const q = db.questions.find((x) => x.id === v1Id); if (!q) return;
+      const linkedV2 = db.questions.filter((x) => x.type === 'flashcard_erreur' && x.sourceErrorId === v1Id);
+      await Promise.all([
+        put('questions', { ...q, carnetAt: null, carnetRaison: null }),
+        ...linkedV2.map((v2) => remove('questions', v2.id)),
+      ]);
+      await reload();
+    },
     saveStats: async (s) => { await saveStats(s); setStats(s); },
     // écran de fin de série (QCM/flashcards, desktop + mobile) : un point par
     // série TERMINÉE, jamais reconstruit depuis l'historique par carte (qui ne

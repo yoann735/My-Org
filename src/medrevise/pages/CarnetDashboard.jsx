@@ -24,12 +24,21 @@
    ============================================================ */
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, EdTop, Modal } from '../components/ui.jsx';
+import { Card, EdTop, Modal, ConfirmModal } from '../components/ui.jsx';
+import { Tex } from '../components/Tex.jsx';
 import { ImportJsonField } from '../components/ImportFlow.jsx';
 import { carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
 import { parseErrorCardsJson } from '../lib/parseErrorCardsJson.js';
 
 const trunc = (s, n) => (s && s.length > n ? s.slice(0, n).trim() + '…' : s);
+// affichage LISTE (pas la carte de révision elle-même, qui a déjà son propre
+// rendu cloze interactif via ClassicFlashCard/ClozeRecto) : les {{mots}} de
+// cloze sont ici juste dépliés en texte normal (pas de trou à remplir dans un
+// aperçu), PUIS rendu via <Tex> pour le LaTeX ($...$/$$...$$, KaTeX déjà
+// utilisé partout ailleurs dans l'app). Dépliage AVANT troncature pour ne
+// jamais couper une accolade en plein milieu.
+const stripCloze = (s) => (s || '').replace(/\{\{([^{}]+)\}\}/g, '$1');
+const previewText = (s, n) => trunc(stripCloze(s), n);
 
 export function CarnetDashboard({ ctx }) {
   const { db } = ctx;
@@ -73,12 +82,12 @@ export function CarnetDashboard({ ctx }) {
       <div className="dash-grid" style={{ marginTop: 18 }}>
         <div className="dash-grid-col">
           <Card title="À revoir" icon="clock" action={<span className="pill accent">{aRevoir.length}</span>}>
-            <V2List v2s={aRevoir} v1ById={v1ById} ctx={ctx} empty="Aucune flashcard d'erreur à revoir." actions="a_revoir" />
+            <V2Groups v2s={aRevoir} v1ById={v1ById} ctx={ctx} empty="Aucune flashcard d'erreur à revoir." actions="a_revoir" showRevise />
           </Card>
         </div>
         <div className="dash-grid-col">
           <Card title="Résolu" icon="check" action={<span className="pill">{resolu.length}</span>}>
-            <V2List v2s={resolu} v1ById={v1ById} ctx={ctx} empty="Rien de résolu pour l'instant." actions="resolu" />
+            <V2Groups v2s={resolu} v1ById={v1ById} ctx={ctx} empty="Rien de résolu pour l'instant." actions="resolu" />
           </Card>
         </div>
       </div>
@@ -86,7 +95,7 @@ export function CarnetDashboard({ ctx }) {
       {pause.length > 0 && (
         <div style={{ marginTop: 18 }}>
           <Card title="En pause" icon="bellOff" action={<span className="pill">{pause.length}</span>}>
-            <V2List v2s={pause} v1ById={v1ById} ctx={ctx} empty="" actions="pause" />
+            <V2Groups v2s={pause} v1ById={v1ById} ctx={ctx} empty="" actions="pause" />
           </Card>
         </div>
       )}
@@ -95,13 +104,17 @@ export function CarnetDashboard({ ctx }) {
 }
 
 /* ---- une V1 (flashcard normale en carnet) : recto/verso + raison + boutons
-   Extraire (JSON figé, copiable — format FIXE, ne pas changer les clés) ET
+   Extraire (JSON figé, copiable — format FIXE, ne pas changer les clés),
    Ajouter (ouvre le collage JSON EN CONTEXTE de cette V1 — voir
-   AddErrorCardModal, rattachement par targetV1Id, pas par le JSON). ---- */
+   AddErrorCardModal, rattachement par targetV1Id, pas par le JSON), Supprimer
+   (retire la V1 du carnet — carnetAt/carnetRaison → null, la flashcard reste
+   dans son cycle J normal — ET supprime ses V2 liées, voir
+   ctx.removeFromCarnet ; confirmation obligatoire). ---- */
 function V1Row({ v1, v2Count, first, ctx }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const json = JSON.stringify({
     type: 'erreur_source', flashcard_id: v1.id,
     recto: v1.recto, verso: v1.verso, raison_echec: v1.carnetRaison || '',
@@ -113,8 +126,8 @@ function V1Row({ v1, v2Count, first, ctx }) {
     <div className="err-line" style={{ borderTop: first ? 'none' : undefined, flexDirection: 'column', alignItems: 'stretch' }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
         <div className="el-main">
-          <div className="el-q">{trunc(v1.recto, 90)}</div>
-          <div className="hint" style={{ marginTop: 4 }}>{trunc(v1.verso, 110)}</div>
+          <div className="el-q"><Tex>{previewText(v1.recto, 90)}</Tex></div>
+          <div className="hint" style={{ marginTop: 4 }}><Tex>{previewText(v1.verso, 110)}</Tex></div>
           {v1.carnetRaison && <div className="hint" style={{ marginTop: 6 }}><Icon name="edit" size={11} /> {v1.carnetRaison}</div>}
           {v2Count > 0 && <div className="hint" style={{ marginTop: 4, fontSize: 11 }}>{v2Count} flashcard{v2Count > 1 ? 's' : ''} d'erreur liée{v2Count > 1 ? 's' : ''}</div>}
         </div>
@@ -125,6 +138,7 @@ function V1Row({ v1, v2Count, first, ctx }) {
           <button className="btn ghost sm" onClick={() => setShowAdd(true)}>
             <Icon name="plus" size={13} /> Ajouter
           </button>
+          <button className="icon-btn sm" title="Retirer du carnet" style={{ color: 'var(--text-3)' }} onClick={() => setConfirmDelete(true)}><Icon name="trash" size={14} /></button>
         </div>
       </div>
       {open && (
@@ -136,42 +150,75 @@ function V1Row({ v1, v2Count, first, ctx }) {
         </div>
       )}
       {showAdd && <AddErrorCardModal ctx={ctx} v1={v1} onClose={() => setShowAdd(false)} />}
+      {confirmDelete && (
+        <ConfirmModal
+          title="Retirer cette flashcard du carnet ?"
+          body={v2Count > 0
+            ? `La flashcard reste intacte dans son cycle J normal, elle sort juste du carnet d'erreurs. Ses ${v2Count} flashcard${v2Count > 1 ? 's' : ''} d'erreur liée${v2Count > 1 ? 's' : ''} ${v2Count > 1 ? 'seront supprimées' : 'sera supprimée'} aussi (elle${v2Count > 1 ? 's' : ''} n'a${v2Count > 1 ? 'nt' : ''} plus de sens sans elle).`
+            : "La flashcard reste intacte dans son cycle J normal, elle sort juste du carnet d'erreurs."}
+          confirmLabel="Retirer"
+          danger
+          onConfirm={() => { ctx.removeFromCarnet(v1.id); setConfirmDelete(false); }}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
     </div>
   );
 }
 
-/* ---- liste de V2, groupées par V1 — actions selon la catégorie affichée. ---- */
-function V2List({ v2s, v1ById, ctx, empty, actions }) {
+/* ---- V2 "à revoir"/"résolu"/"pause", GROUPÉES sous leur V1 d'origine (un
+   en-tête par V1 + ses V2 en dessous) — plus lisible qu'un vrac plat. Bouton
+   "Réviser ces cartes" par groupe (showRevise, section "À revoir" seulement) :
+   lance la série UNIQUEMENT avec les V2 de CETTE V1 (même mode 'erreur' que
+   le bouton global). V2 sans V1 résolvable (cas défensif, rare) : regroupées
+   sous un en-tête générique plutôt que de disparaître. ---- */
+function V2Groups({ v2s, v1ById, ctx, empty, actions, showRevise }) {
   if (!v2s.length) return empty ? <div className="hint">{empty}</div> : null;
+  const groups = [];
+  const byV1 = new Map();
+  v2s.forEach((v2) => {
+    const key = v2.sourceErrorId;
+    let g = byV1.get(key);
+    if (!g) { g = { v1: v1ById[key] || null, items: [] }; byV1.set(key, g); groups.push(g); }
+    g.items.push(v2);
+  });
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      {v2s.map((v2, i) => {
-        const v1 = v1ById[v2.sourceErrorId];
-        return (
-          <div className="err-line" key={v2.id} style={{ borderTop: i ? '1px solid var(--border-2)' : 'none' }}>
-            <div className="el-main">
-              {v1 && <div className="el-concept">{trunc(v1.recto, 60)}{v2.angle && <span className="em-chip" style={{ marginLeft: 6 }}>{v2.angle}</span>}</div>}
-              <div className="el-q">{trunc(v2.recto, 90)}</div>
-              <div className="hint" style={{ marginTop: 4 }}>{trunc(v2.verso, 110)}</div>
-            </div>
-            <div className="el-actions" style={{ flexWrap: 'wrap' }}>
-              {actions === 'a_revoir' && (
-                <>
-                  <button className="btn ghost sm" onClick={() => ctx.setV2Statut(v2.id, 'resolu')}><Icon name="check" size={13} /> Résolu</button>
-                  <button className="icon-btn sm" title="Mettre en pause" style={{ color: 'var(--text-3)' }} onClick={() => ctx.setV2Statut(v2.id, 'pause')}><Icon name="bellOff" size={14} /></button>
-                </>
-              )}
-              {actions === 'resolu' && (
-                <button className="btn ghost sm" onClick={() => ctx.setV2Statut(v2.id, 'a_revoir')}><Icon name="refresh" size={13} /> À revoir</button>
-              )}
-              {actions === 'pause' && (
-                <button className="btn ghost sm" onClick={() => ctx.setV2Statut(v2.id, 'a_revoir')}><Icon name="refresh" size={13} /> À revoir</button>
-              )}
-              <button className="icon-btn sm" title="Supprimer" style={{ color: 'var(--text-3)' }} onClick={() => ctx.deleteQuestion(v2.id)}><Icon name="trash" size={14} /></button>
-            </div>
+    <div>
+      {groups.map((g, gi) => (
+        <div className="err-course" key={g.v1 ? g.v1.id : 'orphelines-' + gi}>
+          <div className="err-course-head">
+            <span className="ec-bar" style={{ background: 'var(--accent)' }} />
+            <span className="ec-title">{g.v1 ? <Tex>{previewText(g.v1.recto, 60)}</Tex> : 'Autres flashcards d\'erreur'}</span>
+            <span className="ec-badge tnum">{g.items.length} carte{g.items.length > 1 ? 's' : ''}</span>
+            {showRevise && (
+              <button className="btn sm" style={{ marginLeft: 8 }} onClick={() => ctx.startSession(g.items, g.v1 ? previewText(g.v1.recto, 40) : 'Mes flashcards d\'erreur', { mode: 'erreur' })}>
+                <Icon name="play" size={12} fill /> Réviser ces cartes
+              </button>
+            )}
           </div>
-        );
-      })}
+          {g.items.map((v2, i) => (
+            <div className="err-line" key={v2.id} style={{ borderTop: i ? '1px solid var(--border-2)' : 'none' }}>
+              <div className="el-main">
+                {v2.angle && <div className="el-concept"><span className="em-chip">{v2.angle}</span></div>}
+                <div className="el-q"><Tex>{previewText(v2.recto, 90)}</Tex></div>
+                <div className="hint" style={{ marginTop: 4 }}><Tex>{previewText(v2.verso, 110)}</Tex></div>
+              </div>
+              <div className="el-actions" style={{ flexWrap: 'wrap' }}>
+                {actions === 'a_revoir' && (
+                  <>
+                    <button className="btn ghost sm" onClick={() => ctx.setV2Statut(v2.id, 'resolu')}><Icon name="check" size={13} /> Résolu</button>
+                    <button className="icon-btn sm" title="Mettre en pause" style={{ color: 'var(--text-3)' }} onClick={() => ctx.setV2Statut(v2.id, 'pause')}><Icon name="bellOff" size={14} /></button>
+                  </>
+                )}
+                {(actions === 'resolu' || actions === 'pause') && (
+                  <button className="btn ghost sm" onClick={() => ctx.setV2Statut(v2.id, 'a_revoir')}><Icon name="refresh" size={13} /> À revoir</button>
+                )}
+                <button className="icon-btn sm" title="Supprimer" style={{ color: 'var(--text-3)' }} onClick={() => ctx.deleteQuestion(v2.id)}><Icon name="trash" size={14} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -218,7 +265,7 @@ function AddErrorCardModal({ ctx, v1, onClose }) {
   };
 
   return (
-    <Modal title={`Ajouter une flashcard d'erreur — ${trunc(v1.recto, 50)}`} onClose={onClose} width="min(640px, 94vw)">
+    <Modal title={`Ajouter une flashcard d'erreur — ${previewText(v1.recto, 50)}`} onClose={onClose} width="min(640px, 94vw)">
       <div className="hint" style={{ marginBottom: 12 }}>
         Colle ici le JSON renvoyé par ton prompt externe (une ou plusieurs cartes). Elles seront rattachées à cette erreur, même si le JSON ne porte pas de <code>source_error_id</code> (ou un id incorrect).
       </div>
