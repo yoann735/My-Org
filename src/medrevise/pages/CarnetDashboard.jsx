@@ -22,12 +22,12 @@
    parseErrorCardsJson.js) — évite le rejet "source_error_id inconnu" quand le
    prompt externe a mal recopié/halluciné l'id.
    ============================================================ */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, EdTop, Modal, ConfirmModal } from '../components/ui.jsx';
+import { Card, EdTop, Modal, ConfirmModal, matiereMeta } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { ImportJsonField } from '../components/ImportFlow.jsx';
-import { carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
+import { carnetV1Questions, carnetV2Questions, index } from '../lib/planning.js';
 import { parseErrorCardsJson } from '../lib/parseErrorCardsJson.js';
 
 const trunc = (s, n) => (s && s.length > n ? s.slice(0, n).trim() + '…' : s);
@@ -39,9 +39,14 @@ const trunc = (s, n) => (s && s.length > n ? s.slice(0, n).trim() + '…' : s);
 // jamais couper une accolade en plein milieu.
 const stripCloze = (s) => (s || '').replace(/\{\{([^{}]+)\}\}/g, '$1');
 const previewText = (s, n) => trunc(stripCloze(s), n);
+// carte V1 (redesign) : question ET réponse en ENTIER, jamais tronquées —
+// nettoyées (cloze déplié) et rendues KaTeX, mais aucune troncature ici,
+// contrairement à previewText (listes V2, volontairement compactes).
+const cleanFull = (s) => stripCloze(s);
 
 export function CarnetDashboard({ ctx }) {
   const { db } = ctx;
+  const ix = useMemo(() => index(db), [db]);
   const v1s = carnetV1Questions(db);
   const v2All = carnetV2Questions(db);
   const aRevoir = v2All.filter((v) => v.statut === 'a_revoir');
@@ -69,15 +74,23 @@ export function CarnetDashboard({ ctx }) {
         </button>
       </div>
 
-      <Card title="Mes erreurs (V1)" icon="target" action={<span className="pill">{v1s.length}</span>}>
-        {!v1s.length ? (
-          <div className="err-empty"><Icon name="check" size={26} stroke={2.5} /><div>Aucune flashcard en carnet pour l'instant.</div></div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {v1s.map((v1, i) => <V1Row key={v1.id} v1={v1} v2Count={v2All.filter((v) => v.sourceErrorId === v1.id).length} first={i === 0} ctx={ctx} />)}
-          </div>
-        )}
-      </Card>
+      <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Icon name="target" size={17} />
+        <h2 className="serif" style={{ fontSize: 18, margin: 0 }}>Mes erreurs (V1)</h2>
+        <span className="pill">{v1s.length}</span>
+      </div>
+      {!v1s.length ? (
+        <Card><div className="err-empty"><Icon name="check" size={26} stroke={2.5} /><div>Aucune flashcard en carnet pour l'instant.</div></div></Card>
+      ) : (
+        v1s.map((v1) => {
+          const fiche = ix.fById[v1.ficheId];
+          const matiere = fiche && ix.mById[fiche.matiereId];
+          return (
+            <V1Row key={v1.id} v1={v1} v2Count={v2All.filter((v) => v.sourceErrorId === v1.id).length}
+              fiche={fiche} matiere={matiere} ctx={ctx} />
+          );
+        })
+      )}
 
       <div className="dash-grid" style={{ marginTop: 18 }}>
         <div className="dash-grid-col">
@@ -103,14 +116,17 @@ export function CarnetDashboard({ ctx }) {
   );
 }
 
-/* ---- une V1 (flashcard normale en carnet) : recto/verso + raison + boutons
-   Extraire (JSON figé, copiable — format FIXE, ne pas changer les clés),
-   Ajouter (ouvre le collage JSON EN CONTEXTE de cette V1 — voir
-   AddErrorCardModal, rattachement par targetV1Id, pas par le JSON), Supprimer
-   (retire la V1 du carnet — carnetAt/carnetRaison → null, la flashcard reste
-   dans son cycle J normal — ET supprime ses V2 liées, voir
-   ctx.removeFromCarnet ; confirmation obligatoire). ---- */
-function V1Row({ v1, v2Count, first, ctx }) {
+/* ---- une V1 (flashcard normale en carnet) — carte pleine, redesign :
+   question ET réponse en ENTIER (jamais tronquées, LaTeX/cloze nettoyés),
+   note d'erreur en évidence (bloc distinct, réutilise le style de
+   carnet-prompt — même famille visuelle que "pourquoi tu l'as loupée ?",
+   étape 1), cours d'appartenance affiché + bouton "Voir le cours" (ouvre le
+   HTML existant via ctx.openPdfReader, RÉUTILISÉ tel quel — seulement si
+   fiche.htmlId), puis Extraire/Ajouter/Supprimer. Supprimer = ctx.removeFromCarnet
+   (carnetAt/carnetRaison → null + cascade suppression des V2 liées — reco
+   validée : sort la V1 du carnet ET efface tout ce qui en dépendait, la
+   flashcard elle-même restant intacte hors carnet). ---- */
+function V1Row({ v1, v2Count, fiche, matiere, ctx }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -122,39 +138,73 @@ function V1Row({ v1, v2Count, first, ctx }) {
   const copy = async () => {
     try { await navigator.clipboard.writeText(json); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch (e) { /* ignore */ }
   };
+  const meta = matiereMeta(matiere);
+  const hasHtml = !!(fiche && fiche.htmlId);
+  const viewCours = () => { if (fiche) ctx.openPdfReader(fiche.id, 'read', 'carnet', 'html'); };
+
   return (
-    <div className="err-line" style={{ borderTop: first ? 'none' : undefined, flexDirection: 'column', alignItems: 'stretch' }}>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-        <div className="el-main">
-          <div className="el-q"><Tex>{previewText(v1.recto, 90)}</Tex></div>
-          <div className="hint" style={{ marginTop: 4 }}><Tex>{previewText(v1.verso, 110)}</Tex></div>
-          {v1.carnetRaison && <div className="hint" style={{ marginTop: 6 }}><Icon name="edit" size={11} /> {v1.carnetRaison}</div>}
-          {v2Count > 0 && <div className="hint" style={{ marginTop: 4, fontSize: 11 }}>{v2Count} flashcard{v2Count > 1 ? 's' : ''} d'erreur liée{v2Count > 1 ? 's' : ''}</div>}
+    <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card-body">
+        {/* cours d'appartenance */}
+        <div className="row" style={{ gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <span className="pill" title="Cours d'appartenance">
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.tint, display: 'inline-block' }} />
+            {fiche ? fiche.titre : 'Cours introuvable'}
+          </span>
+          {fiche && <span className="hint" style={{ fontSize: 12 }}>{meta.label}</span>}
         </div>
-        <div className="el-actions" style={{ flexWrap: 'wrap' }}>
+
+        {/* question, en entier */}
+        <div style={{ fontSize: 15.5, fontWeight: 600, lineHeight: 1.55 }}>
+          <Tex>{cleanFull(v1.recto)}</Tex>
+        </div>
+
+        {/* réponse, en entier — jamais coupée */}
+        <div style={{ marginTop: 12, padding: '11px 13px', borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--border-2)' }}>
+          <div className="hint" style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 5 }}>Réponse</div>
+          <div style={{ fontSize: 14, lineHeight: 1.55 }}><Tex>{cleanFull(v1.verso)}</Tex></div>
+        </div>
+
+        {/* pourquoi j'ai foiré — bien distinct de la réponse */}
+        {v1.carnetRaison && (
+          <div className="carnet-prompt" style={{ marginTop: 10 }}>
+            <div className="carnet-prompt-title"><Icon name="edit" size={13} /> Ma note d'erreur</div>
+            <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>{v1.carnetRaison}</div>
+          </div>
+        )}
+
+        {v2Count > 0 && <div className="hint" style={{ marginTop: 10, fontSize: 11.5 }}>{v2Count} flashcard{v2Count > 1 ? 's' : ''} d'erreur liée{v2Count > 1 ? 's' : ''}</div>}
+
+        {/* actions */}
+        <div className="row" style={{ gap: 8, marginTop: 14, flexWrap: 'wrap', paddingTop: 12, borderTop: '1px solid var(--border-2)' }}>
+          {hasHtml && (
+            <button className="btn ghost sm" onClick={viewCours} title="Ouvrir la fiche HTML du cours">
+              <Icon name="fileHtml" size={13} /> Voir le cours
+            </button>
+          )}
           <button className="btn ghost sm" onClick={() => setOpen((o) => !o)}>
             <Icon name={open ? 'chevU' : 'upload'} size={13} /> {open ? 'Masquer' : 'Extraire'}
           </button>
           <button className="btn ghost sm" onClick={() => setShowAdd(true)}>
             <Icon name="plus" size={13} /> Ajouter
           </button>
-          <button className="icon-btn sm" title="Retirer du carnet" style={{ color: 'var(--text-3)' }} onClick={() => setConfirmDelete(true)}><Icon name="trash" size={14} /></button>
+          <button className="icon-btn sm" title="Retirer du carnet" style={{ color: 'var(--text-3)', marginLeft: 'auto' }} onClick={() => setConfirmDelete(true)}><Icon name="trash" size={14} /></button>
         </div>
+        {open && (
+          <div style={{ marginTop: 10 }}>
+            <pre className="imp-title" style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12 }}>{json}</pre>
+            <button className="btn ghost sm" style={{ marginTop: 8 }} onClick={copy}>
+              <Icon name={copied ? 'check' : 'copy'} size={13} /> {copied ? 'Copié ✓' : 'Copier'}
+            </button>
+          </div>
+        )}
       </div>
-      {open && (
-        <div style={{ marginTop: 10 }}>
-          <pre className="imp-title" style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12 }}>{json}</pre>
-          <button className="btn ghost sm" style={{ marginTop: 8 }} onClick={copy}>
-            <Icon name={copied ? 'check' : 'copy'} size={13} /> {copied ? 'Copié ✓' : 'Copier'}
-          </button>
-        </div>
-      )}
       {showAdd && <AddErrorCardModal ctx={ctx} v1={v1} onClose={() => setShowAdd(false)} />}
       {confirmDelete && (
         <ConfirmModal
           title="Retirer cette flashcard du carnet ?"
           body={v2Count > 0
-            ? `La flashcard reste intacte dans son cycle J normal, elle sort juste du carnet d'erreurs. Ses ${v2Count} flashcard${v2Count > 1 ? 's' : ''} d'erreur liée${v2Count > 1 ? 's' : ''} ${v2Count > 1 ? 'seront supprimées' : 'sera supprimée'} aussi (elle${v2Count > 1 ? 's' : ''} n'a${v2Count > 1 ? 'nt' : ''} plus de sens sans elle).`
+            ? `La flashcard reste intacte dans son cycle J normal, elle sort juste du carnet d'erreurs. Ses ${v2Count} flashcard${v2Count > 1 ? 's' : ''} d'erreur liée${v2Count > 1 ? 's' : ''} ${v2Count > 1 ? 'seront supprimées' : 'sera supprimée'} aussi — comme si cette erreur n'avait jamais existé dans le carnet.`
             : "La flashcard reste intacte dans son cycle J normal, elle sort juste du carnet d'erreurs."}
           confirmLabel="Retirer"
           danger
