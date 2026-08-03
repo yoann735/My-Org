@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { Modal } from './ui.jsx';
-import { SUBJECTS, DEFAULT_PROMPTS } from '../lib/coursePrompts.js';
+import { SUBJECTS, DEFAULT_PROMPTS, parsePromptsMd } from '../lib/coursePrompts.js';
 
 const effectiveText = (ctx, id) => (ctx.promptOverrides && ctx.promptOverrides[id]) || DEFAULT_PROMPTS[id];
 
@@ -26,6 +26,7 @@ export function CoursePromptsButton({ ctx }) {
   const [pop, setPop] = useState(null); // { top, left }
   const [copiedId, setCopiedId] = useState(null);
   const [modalState, setModalState] = useState(null); // { subject, mode: 'view'|'edit' }
+  const [bulkOpen, setBulkOpen] = useState(false);
   const btnRef = useRef(null);
 
   const openPop = () => {
@@ -69,7 +70,7 @@ export function CoursePromptsButton({ ctx }) {
             </div>
           ))}
           <button type="button" className="btn ghost sm" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
-            onClick={() => { setPop(null); setModalState({ subject: SUBJECTS[0].id, mode: 'edit' }); }}>
+            onClick={() => { setPop(null); setBulkOpen(true); }}>
             <Icon name="sliders" size={13} /> Modifier les 4
           </button>
         </div>,
@@ -79,7 +80,79 @@ export function CoursePromptsButton({ ctx }) {
       {modalState && (
         <PromptModal ctx={ctx} initial={modalState} onClose={() => setModalState(null)} />
       )}
+      {bulkOpen && (
+        <BulkPromptModal ctx={ctx} onClose={() => setBulkOpen(false)} />
+      )}
     </>
+  );
+}
+
+/** "Modifier les 4" — colle le fichier .md COMPLET (les 4 prompts d'un coup),
+   découpé automatiquement par matière (parsePromptsMd, lib/coursePrompts.js)
+   sur les séparateurs "=== PROMPT XXX ===" déjà présents dans le fichier.
+   Étape "Prévisualiser" OBLIGATOIRE avant "Enregistrer les 4" : montre les 4
+   matières trouvées (✓ + longueur) ou manquantes (séparateur introuvable) —
+   jamais d'enregistrement partiel silencieux si une matière manque. */
+function BulkPromptModal({ ctx, onClose }) {
+  const [raw, setRaw] = useState('');
+  const [parsed, setParsed] = useState(null); // { results, missing } | null tant que pas prévisualisé (ou après une frappe qui invalide l'aperçu)
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const onRawChange = (e) => { setRaw(e.target.value); setParsed(null); setSaved(false); };
+  const preview = () => setParsed(parsePromptsMd(raw));
+  const canSave = !!parsed && parsed.missing.length === 0;
+
+  const save = async () => {
+    if (!canSave || saving) return;
+    setSaving(true);
+    // merge ATOMIQUE des 4 (voir MedReviseApp.jsx#saveAllPromptOverrides) —
+    // jamais 4 appels séquentiels à savePromptOverride, qui s'écraseraient
+    // entre eux (chaque appel referme le promptOverrides du rendu courant).
+    await ctx.saveAllPromptOverrides(parsed.results);
+    setSaving(false);
+    setSaved(true);
+    setTimeout(onClose, 900);
+  };
+
+  return (
+    <Modal title="Modifier les 4 prompts — coller le MD complet" onClose={onClose} width="min(760px, 94vw)">
+      <div className="hint" style={{ marginBottom: 10 }}>
+        Colle ici le fichier .md entier (les 4 prompts séparés par <code>=== PROMPT PHYSIQUE ===</code>, etc.) — l'app découpe automatiquement chaque bloc vers la bonne matière.
+      </div>
+      <textarea className="cpm-edit" style={{ minHeight: 260 }} value={raw} onChange={onRawChange} spellCheck={false} placeholder="Colle ici le MD complet des 4 prompts…" />
+      <div className="imp-actions" style={{ marginTop: 12 }}>
+        <button type="button" className="btn ghost" onClick={preview} disabled={!raw.trim()}><Icon name="search" size={14} /> Prévisualiser</button>
+        {canSave && (
+          <button type="button" className="btn primary" onClick={save} disabled={saving}>
+            <Icon name="check" size={14} /> {saved ? 'Enregistré ✓' : (saving ? 'Enregistrement…' : 'Enregistrer les 4')}
+          </button>
+        )}
+      </div>
+
+      {parsed && (
+        <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {SUBJECTS.map((s) => {
+            const text = parsed.results[s.id];
+            return (
+              <div key={s.id} className="row" style={{ gap: 8, alignItems: 'center' }}>
+                <Icon name={text ? 'check' : 'x'} size={14} style={{ color: text ? 'var(--ok)' : 'var(--crit)', flex: '0 0 auto' }} />
+                <strong style={{ minWidth: 110 }}>{s.label}</strong>
+                {text
+                  ? <span className="hint">✓ ({text.length} caractères)</span>
+                  : <span className="hint" style={{ color: 'var(--crit)' }}>manquant — séparateur "=== PROMPT {s.label.toUpperCase()} ===" introuvable ou mal écrit</span>}
+              </div>
+            );
+          })}
+          {!canSave && (
+            <div className="hint" style={{ marginTop: 6, color: 'var(--crit)', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+              <Icon name="alert" size={13} style={{ flex: '0 0 auto', marginTop: 1 }} />
+              <span>Il manque au moins une matière — <strong>rien n'a été enregistré</strong>. Corrige le séparateur manquant dans le texte collé puis reprévisualise avant de pouvoir enregistrer.</span>
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
   );
 }
 

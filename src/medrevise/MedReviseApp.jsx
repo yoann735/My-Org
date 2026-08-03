@@ -455,6 +455,18 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await setCoursePrompts(next);
       setPromptOverrides(next);
     },
+    // "Modifier les 4" (collage du MD complet, CoursePromptsMenu.jsx) : merge
+    // ATOMIQUE des 4 matières en UN seul next/write/setState — appeler
+    // savePromptOverride 4 fois de suite dans une boucle serait incorrect
+    // (chaque appel referme `promptOverrides` au moment du RENDU courant,
+    // qui n'a pas encore vu les écritures précédentes de la même boucle :
+    // seule la dernière matière survivrait, les autres écrasées par un
+    // `next` construit sur la même base non rafraîchie).
+    saveAllPromptOverrides: async (overridesBySubject) => {
+      const next = { ...promptOverrides, ...overridesBySubject };
+      await setCoursePrompts(next);
+      setPromptOverrides(next);
+    },
     resetPromptOverride: async (subjectId) => {
       const next = { ...promptOverrides };
       delete next[subjectId];
