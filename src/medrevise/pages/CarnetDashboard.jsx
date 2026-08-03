@@ -150,7 +150,7 @@ function V2List({ v2s, v1ById, ctx, empty, actions }) {
         return (
           <div className="err-line" key={v2.id} style={{ borderTop: i ? '1px solid var(--border-2)' : 'none' }}>
             <div className="el-main">
-              {v1 && <div className="el-concept">{trunc(v1.recto, 60)}</div>}
+              {v1 && <div className="el-concept">{trunc(v1.recto, 60)}{v2.angle && <span className="em-chip" style={{ marginLeft: 6 }}>{v2.angle}</span>}</div>}
               <div className="el-q">{trunc(v2.recto, 90)}</div>
               <div className="hint" style={{ marginTop: 4 }}>{trunc(v2.verso, 110)}</div>
             </div>
@@ -195,7 +195,12 @@ function AddErrorCardModal({ ctx, v1, onClose }) {
   const analyse = () => {
     const res = parseErrorCardsJson(jsonText, v1.id);
     if (!res.ok) { setParseError(res.error); setPreview(null); return; }
-    if (!res.cards.length) { setParseError('Aucune flashcard d\'erreur valide trouvée (recto/verso manquants).'); setPreview(null); return; }
+    if (!res.cards.length) {
+      // dit LAQUELLE et POURQUOI, pas un total générique — voir parseErrorCardsJson#errors.
+      const detail = res.errors.map((e) => `carte ${e.index} : ${e.reason}`).join(' · ');
+      setParseError(detail ? `Aucune flashcard d'erreur valide (${detail}).` : "Aucune flashcard d'erreur valide trouvée.");
+      setPreview(null); return;
+    }
     setParseError(null);
     setPreview(res);
   };
@@ -225,7 +230,7 @@ function AddErrorCardModal({ ctx, v1, onClose }) {
       )}
       {!preview ? (
         <>
-          <ImportJsonField label="JSON collé" placeholder='[{"recto":"...","verso":"..."}]' value={jsonText} onChange={(v) => { setJsonText(v); setParseError(null); }} error={parseError} />
+          <ImportJsonField label="JSON collé" placeholder='{"cartes_erreur":[{"recto":"...","verso":"..."}]}' value={jsonText} onChange={(v) => { setJsonText(v); setParseError(null); }} error={parseError} />
           <div className="imp-actions" style={{ justifyContent: 'flex-start' }}>
             <button className="btn primary" disabled={!jsonText.trim()} onClick={analyse}><Icon name="upload" size={14} /> Analyser</button>
           </div>
@@ -236,9 +241,12 @@ function AddErrorCardModal({ ctx, v1, onClose }) {
             <div className="em-ic"><Icon name="check" size={16} stroke={2.5} /></div>
             <div className="em-body">
               <div className="em-title">{preview.counts.created} flashcard{preview.counts.created > 1 ? 's' : ''} d'erreur détectée{preview.counts.created > 1 ? 's' : ''}</div>
-              {preview.counts.ignored > 0 && (
+              {preview.errors.length > 0 && (
                 <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}>
-                  <Icon name="alert" size={12} /> {preview.counts.ignored} ignorée{preview.counts.ignored > 1 ? 's' : ''} (recto/verso manquants)
+                  <Icon name="alert" size={12} /> {preview.errors.length} ignorée{preview.errors.length > 1 ? 's' : ''} :
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                    {preview.errors.map((e, i) => <li key={i}>Carte {e.index} : {e.reason}</li>)}
+                  </ul>
                 </div>
               )}
               {preview.counts.mismatched > 0 && (

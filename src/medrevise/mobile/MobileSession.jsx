@@ -227,10 +227,14 @@ function MobileQcmCard({ item, onRate, ctx }) {
 
 function MobileFlashCard({ item, onRate, clozeMode, setClozeMode, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip, erreurMode }) {
   const cloze = isCloze(item);
+  // carnet d'erreurs v2 : une V2 peut porter un cloze (prompt externe) mais
+  // jamais le mode "Saisie" — son finish() émet une qualité SM-2 numérique,
+  // pas 'resolu'/'a_revoir' (voir même choix, Session.jsx desktop).
+  const clozeActive = cloze && clozeMode === 'actif' && !erreurMode;
   return (
     <div>
       <div className="mrm-concept">{erreurMode ? "Flashcard d'erreur" : (item.theme || item.concept)}</div>
-      {cloze && (
+      {cloze && !erreurMode && (
         <div className="mrm-cloze-toggle">
           <button type="button" className={'mrm-chip-btn' + (clozeMode === 'actif' ? '' : ' ghost')} onClick={() => setClozeMode('actif')} style={{ marginRight: 8 }}><Icon name="edit" size={13} /> Saisie</button>
           <button type="button" className={'mrm-chip-btn' + (clozeMode === 'flemme' ? '' : ' ghost')} onClick={() => setClozeMode('flemme')}><Icon name="refresh" size={13} /> Retourner</button>
@@ -238,8 +242,8 @@ function MobileFlashCard({ item, onRate, clozeMode, setClozeMode, ctx, carnetPro
       )}
       {/* carnet d'erreurs v2 (étape 1/2) : uniquement la flashcard classique
          (flip), pas le cloze en mode saisie — voir Session.jsx desktop pour
-         le même choix de portée. Une V2 n'est jamais cloze (newErrorCard). */}
-      {cloze && clozeMode === 'actif'
+         le même choix de portée. */}
+      {clozeActive
         ? <MobileClozeActiveCard item={item} onRate={onRate} ctx={ctx} />
         : <MobileClassicFlashCard item={item} cloze={cloze} onRate={onRate} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} erreurMode={erreurMode} />}
     </div>

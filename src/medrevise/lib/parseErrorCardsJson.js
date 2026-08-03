@@ -2,22 +2,35 @@
    MedRevise — carnet d'erreurs v2 : validateur du JSON collé pour créer des
    flashcards d'erreur (V2), à partir du retour d'un prompt EXTERNE (aucun
    appel réseau/IA ici — l'app ne fait que lire du JSON, comme partout
-   ailleurs dans l'import). Format attendu par entrée :
-     { "recto": "...", "verso": "...", "source_error_id": "<id V1>" }
-   Accepte un objet seul, un tableau, ou {"items":[...]} — même souplesse que
-   parsePastedJson (lib/parsePastedJson.js) — mais validateur DÉDIÉ, pas une
-   extension de normalizeV1Item/schema.js : une V2 n'a pas de fiche, n'est pas
-   un item v1.0.
+   ailleurs dans l'import).
 
-   Rattachement (fix : "Ajouter" est maintenant déclenché DEPUIS une V1
-   précise, CarnetDashboard.jsx) : `targetV1Id`, fourni par l'UI (l'id RÉEL de
-   la V1 cliquée), est la SEULE source de vérité pour sourceErrorId — jamais
-   le `source_error_id` du JSON, qui n'est qu'une vérification secondaire NON
-   BLOQUANTE (le prompt externe peut le recopier de travers ou l'halluciner ;
-   compté dans `counts.mismatched` pour information, ne rejette jamais une
-   carte). Seule validation bloquante restante : recto/verso non vides.
+   Formats acceptés (dans cet ordre) :
+   - { "cartes_erreur": [...] }  — format du prompt externe (1 à 3 cartes),
+     chaque entrée : { recto, verso, cloze: [...]|null, indice: "..."|null,
+     a_retenir, source_error_id, angle: "coeur"|"piege"|"transfert" }.
+   - un tableau nu [...]
+   - { "items": [...] }
+   - un objet seul {...}
+   Mapping vers le modèle V2 interne (storage.js#newErrorCard) : recto/verso
+   tels quels ; cloze → MÊME représentation que les flashcards v1.0
+   (schema.js normFlashcard : tableau de mots masqués, le recto est censé
+   porter les "{{mot}}" correspondants — lib/cloze.js#parseCloze gère déjà
+   gracieusement un décalage éventuel, rien à revalider ici) ; indice/
+   a_retenir passe-plat ; angle = champ informatif, stocké tel quel si présent
+   (aucune valeur imposée, juste affiché dans le tableau de bord).
+
+   Rattachement : `targetV1Id`, fourni par l'UI (l'id RÉEL de la V1 cliquée,
+   CarnetDashboard.jsx), est la SEULE source de vérité pour sourceErrorId —
+   jamais le `source_error_id` du JSON, qui n'est qu'une vérification
+   secondaire NON BLOQUANTE (compté dans `counts.mismatched`, ne rejette
+   jamais une carte).
+
+   Validation bloquante : recto ET verso non vides. Une carte rejetée est
+   tracée dans `errors` (index 1-based + raison précise), pas juste comptée —
+   pour un message qui dit LAQUELLE et POURQUOI, pas un total générique.
    ============================================================ */
 import { cleanPastedJson } from './parsePastedJson.js';
+import { asArray } from './schema.js';
 
 const ERR = 'JSON invalide — recopie toute la réponse du prompt, sans texte autour.';
 const isStr = (v) => typeof v === 'string' && v.trim().length > 0;
@@ -25,9 +38,11 @@ const isStr = (v) => typeof v === 'string' && v.trim().length > 0;
 /**
  * @param {string} raw
  * @param {string} targetV1Id - id RÉEL de la V1 depuis laquelle "Ajouter" a été
- *   cliqué (CarnetDashboard.jsx) — rattachement de TOUTES les cartes valides,
- *   quel que soit le contenu de source_error_id dans le JSON.
- * @returns {{ok:false, error:string} | {ok:true, cards:Array<{recto,verso,sourceErrorId}>, counts:{created:number, ignored:number, mismatched:number}}}
+ *   cliqué — rattachement de TOUTES les cartes valides, quel que soit le
+ *   contenu de source_error_id dans le JSON.
+ * @returns {{ok:false, error:string}
+ *   | {ok:true, cards:Array<{recto,verso,sourceErrorId,cloze?,indice?,a_retenir?,angle?}>,
+ *      counts:{created:number, ignored:number, mismatched:number}, errors:Array<{index:number, reason:string}>}}
  */
 export function parseErrorCardsJson(raw, targetV1Id) {
   const cleaned = cleanPastedJson(raw);
@@ -38,20 +53,39 @@ export function parseErrorCardsJson(raw, targetV1Id) {
   catch (e) { return { ok: false, error: ERR }; }
   if (!data || typeof data !== 'object') return { ok: false, error: ERR };
 
-  const rawItems = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : [data];
+  const rawItems = Array.isArray(data) ? data
+    : Array.isArray(data.cartes_erreur) ? data.cartes_erreur
+    : Array.isArray(data.items) ? data.items
+    : [data];
 
   const counts = { created: 0, ignored: 0, mismatched: 0 };
+  const errors = [];
   const cards = [];
-  for (const it of rawItems) {
-    if (!it || typeof it !== 'object') { counts.ignored++; continue; }
+  rawItems.forEach((it, i) => {
+    const n = i + 1;
+    if (!it || typeof it !== 'object') { errors.push({ index: n, reason: 'entrée invalide (pas un objet)' }); counts.ignored++; return; }
     const recto = isStr(it.recto) ? it.recto.trim() : '';
     const verso = isStr(it.verso) ? it.verso.trim() : '';
-    if (!recto || !verso) { counts.ignored++; continue; }
+    if (!recto && !verso) { errors.push({ index: n, reason: 'recto et verso manquants' }); counts.ignored++; return; }
+    if (!recto) { errors.push({ index: n, reason: 'recto manquant' }); counts.ignored++; return; }
+    if (!verso) { errors.push({ index: n, reason: 'verso manquant' }); counts.ignored++; return; }
+
     // filet non bloquant : juste comptabilisé si absent/différent, jamais un motif de rejet.
     const claimedSourceId = isStr(it.source_error_id) ? it.source_error_id.trim() : '';
     if (claimedSourceId && claimedSourceId !== targetV1Id) counts.mismatched++;
-    cards.push({ recto, verso, sourceErrorId: targetV1Id });
+
+    const cloze = asArray(it.cloze).map(String).map((s) => s.trim()).filter(Boolean);
+    const indice = isStr(it.indice) ? it.indice.trim() : null;
+    const a_retenir = isStr(it.a_retenir) ? it.a_retenir.trim() : '';
+    const angle = isStr(it.angle) ? it.angle.trim() : null;
+
+    cards.push({
+      recto, verso, sourceErrorId: targetV1Id,
+      ...(cloze.length ? { cloze } : {}),
+      indice, a_retenir,
+      ...(angle ? { angle } : {}),
+    });
     counts.created++;
-  }
-  return { ok: true, cards, counts };
+  });
+  return { ok: true, cards, counts, errors };
 }

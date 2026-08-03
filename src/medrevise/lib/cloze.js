@@ -7,9 +7,11 @@
    ============================================================ */
 import { matchAnat } from './anatMatch.js';
 
-/** un item flashcard porte-t-il un cloze exploitable ? */
+/** un item flashcard (V1 'flashcard' OU V2 'flashcard_erreur', carnet
+   d'erreurs — voir storage.js#newErrorCard/lib/parseErrorCardsJson.js, MÊME
+   représentation cloze que v1.0) porte-t-il un cloze exploitable ? */
 export function isCloze(item) {
-  return !!(item && item.type === 'flashcard' && Array.isArray(item.cloze) && item.cloze.length > 0);
+  return !!(item && (item.type === 'flashcard' || item.type === 'flashcard_erreur') && Array.isArray(item.cloze) && item.cloze.length > 0);
 }
 
 /**

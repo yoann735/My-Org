@@ -183,11 +183,18 @@ export function newItem(ficheId, item, startDate = isoDate()) {
    cours) ; `sourceErrorId` relie la V2 à sa V1 (flashcard normale, carnetAt
    non-null — voir Session.jsx/MobileSession.jsx étape 1). Pas d'historique/
    missed : aucun cycle, rien à cumuler. `statut` : 'a_revoir' (défaut) |
-   'resolu' | 'pause'. */
-export function newErrorCard({ recto, verso, sourceErrorId }) {
+   'resolu' | 'pause'. `cloze`/`indice`/`a_retenir` : MÊME représentation que
+   les flashcards v1.0 (schema.js normFlashcard) — voir lib/cloze.js#isCloze,
+   étendu pour reconnaître aussi 'flashcard_erreur'. `angle` (optionnel,
+   "coeur"|"piege"|"transfert" côté prompt externe) : purement informatif,
+   affiché dans le tableau de bord, aucune valeur imposée ici. */
+export function newErrorCard({ recto, verso, sourceErrorId, cloze, indice, a_retenir, angle }) {
   return {
     id: genId('q'), type: 'flashcard_erreur', ficheId: null,
     sourceErrorId, recto, verso,
+    ...(cloze && cloze.length ? { cloze } : {}),
+    indice: indice || null, a_retenir: a_retenir || '',
+    ...(angle ? { angle } : {}),
     statut: 'a_revoir', createdAt: new Date().toISOString(),
   };
 }

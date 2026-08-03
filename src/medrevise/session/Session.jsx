@@ -360,9 +360,17 @@ function QcmCard({ item, meta, selectedIds, setSelectedIds, validated, validate,
 
 function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPrev, clozeMode, setClozeMode, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip, erreurMode }) {
   const cloze = isCloze(item);
+  // carnet d'erreurs v2 : une V2 PEUT porter un cloze (prompt externe,
+  // parseErrorCardsJson.js) — mais jamais le mode "Saisie" (ClozeActiveCard) :
+  // son finish() émet une QUALITÉ SM-2 numérique (qualityFromRatio), pas
+  // 'resolu'/'a_revoir', ce qui casserait ctx.setV2Statut. En erreurMode, on
+  // force donc "Retourner" (ClassicFlashCard sait déjà rendre un recto/verso
+  // cloze SANS notation active) — seul sous-mode compatible avec le bouton
+  // Résolu/À revoir.
+  const clozeActive = cloze && clozeMode === 'actif' && !erreurMode;
   return (
     <div>
-      {cloze && (
+      {cloze && !erreurMode && (
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
           <div className="seg">
             <button type="button" className={'seg-btn' + (clozeMode === 'actif' ? ' active' : '')} onClick={() => setClozeMode('actif')}><Icon name="edit" size={13} /> Saisie</button>
@@ -372,9 +380,8 @@ function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPre
       )}
       {/* carnet d'erreurs v2 (étape 1) : uniquement la flashcard classique (flip),
          via son bouton "Raté" explicite — pas le cloze en mode saisie, auto-noté
-         sans bouton Raté (voir ClozeActiveCard#finish). Une V2 (erreurMode) n'est
-         jamais cloze (voir newErrorCard) — passe toujours par ClassicFlashCard. */}
-      {cloze && clozeMode === 'actif'
+         sans bouton Raté (voir ClozeActiveCard#finish). */}
+      {clozeActive
         ? <ClozeActiveCard item={item} meta={meta} onRate={onRate} canPrev={canPrev} onPrev={onPrev} ctx={ctx} />
         : <ClassicFlashCard item={item} meta={meta} cloze={cloze} flipped={flipped} setFlipped={setFlipped} onRate={onRate} canPrev={canPrev} onPrev={onPrev} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} erreurMode={erreurMode} />}
     </div>
