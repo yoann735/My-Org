@@ -155,6 +155,17 @@ export function exerciceStatus(q) {
   return (h[h.length - 1].qualite >= 3) ? 'ok' : 'review';
 }
 
+/** vrai si l'exercice porte les 2 champs de la méthode des J des exos
+   (prompt "pratique méthode J") : `jalon` (J0/J+2/J+7/J+15/J+30/J+45) ET
+   `difficulte_exo` (F/M/D) — schema.js#normExercice les normalise déjà à
+   `null` s'ils sont absents/invalides (voir EXO_JALONS/EXO_DIFFICULTES), un
+   simple test de présence suffit ici, pas besoin de revalider les valeurs.
+   Purement un marquage visuel (badge cours/pastille exo) — ne modifie ni ne
+   filtre jamais la planification (dueExosOn/dueDateForJalon, inchangés). */
+export function isExoConforme(q) {
+  return !!(q && q.jalon && q.difficulte_exo);
+}
+
 /* ---- méthode des J des EXERCICES (Étape A) : cadence PROPRE (sm2.js
    dueDateForJalon), une seule échéance par item (`dueDate`), JAMAIS mélangée
    aux compteurs théorie — filtrée par EXERCICE_TYPE, disjoint de

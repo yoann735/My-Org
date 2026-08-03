@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, TodaySeriesCard, JBadge, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
 import {
-  index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, todayPlan, overdueByFiche,
+  index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isExoConforme, isFicheScheduled, todayPlan, overdueByFiche,
   qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, unstartedExosFor, carnetV1Questions, carnetV2Questions,
 } from '../lib/planning.js';
 import { shuffle } from '../lib/sm2.js';
@@ -624,13 +624,15 @@ function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll }) {
   const [fTheme, setFTheme] = useState('all');
   const [fDiff, setFDiff] = useState('all');
   const [fStatut, setFStatut] = useState('all');
+  const [fConforme, setFConforme] = useState('all'); // 'all' | 'conforme' | 'ancien' — voir isExoConforme (lib/planning.js)
 
   const themes = useMemo(() => [...new Set(items.map((i) => i.theme).filter(Boolean))], [items]);
   const withStatus = useMemo(() => items.map((it) => ({ it, statut: exerciceStatus(it) })), [items]);
   const filtered = withStatus.filter(({ it, statut }) =>
     (fTheme === 'all' || it.theme === fTheme)
     && (fDiff === 'all' || String(it.difficulte || 2) === fDiff)
-    && (fStatut === 'all' || statut === fStatut));
+    && (fStatut === 'all' || statut === fStatut)
+    && (fConforme === 'all' || (fConforme === 'conforme') === isExoConforme(it)));
 
   return (
     <div style={{ marginTop: 22 }}>
@@ -664,6 +666,11 @@ function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll }) {
           <option value="ok">Réussi</option>
           <option value="review">À revoir</option>
         </select>
+        <select className="et-select" value={fConforme} onChange={(e) => setFConforme(e.target.value)} title="Filtrer selon la conformité à la méthode des J (champs jalon/difficulte_exo)">
+          <option value="all">Tous (conformes + anciens)</option>
+          <option value="conforme">Conformes méthode J</option>
+          <option value="ancien">Anciens (hors méthode)</option>
+        </select>
       </div>
 
       {filtered.length === 0 ? (
@@ -673,12 +680,18 @@ function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll }) {
           {filtered.map(({ it, statut }) => {
             const st = EXO_STATUS[statut];
             const numeric = it.sous_type === 'numerique';
+            const conforme = isExoConforme(it);
             return (
               <div key={it.id} className="exo-card" role="button" tabIndex={0}
                 onClick={() => onOpen(it)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(it); } }}>
                 <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 8, width: '100%' }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.tint, flex: '0 0 auto' }} />
+                  {conforme && (
+                    <span title={`Conforme méthode J (${it.jalon} · ${it.difficulte_exo})`} style={{ display: 'flex', flex: '0 0 auto' }}>
+                      <Icon name="sparkle" size={12} style={{ color: 'var(--accent)' }} />
+                    </span>
+                  )}
                   <span style={{ fontWeight: 700, fontSize: 13.5, minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{it.theme || 'Exercice'}</span>
                   <span className="exo-status" style={{ color: st.color, flex: '0 0 auto' }} title={st.label}><Icon name={st.icon} size={12} /> {st.label}</span>
                   {onDelete && (
