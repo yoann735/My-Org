@@ -42,10 +42,10 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { PDFDocument, rgb, BlendMode } from 'pdf-lib';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, detectDocKind } from '../components/ui.jsx';
+import { EdTop, detectDocKind, Modal } from '../components/ui.jsx';
 import { getBlob, putBlob, putBlobAt, getAll, put, remove, newHighlight, newTextEdit } from '../lib/storage.js';
 import { RICH_EXTENSIONS, richToHTML } from '../documents/lib/richtext.js';
-import { AddItemModal } from '../components/AddItemForm.jsx';
+import { AddItemModal, PasteJsonForm } from '../components/AddItemForm.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
 import { buildCourseExport } from '../lib/courseExport.js';
@@ -174,6 +174,13 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   // d'anatomie dans Import Anatomie Théorie, hors du store `questions`/fiches).
   const canAddItem = !docProp && !!ficheId && !!fiche;
   const [showAddItem, setShowAddItem] = useState(false);
+  // "Importer des items" (atelier "Voir le cours", branche HTML) : coller le JSON
+  // produit par un des 4 prompts de complétion ("Voir les prompts") — réutilise
+  // PasteJsonForm/appendItemsToFiche tel quel (même parseur v1.1, même
+  // dédoublonnage), rien de nouveau. Remplace "Attacher un document", qui ne
+  // servait à rien une fois le cours déjà attaché.
+  const [showImportItems, setShowImportItems] = useState(false);
+  const [importedCount, setImportedCount] = useState(0);
   // atelier "Voir le cours" (branche HTML) : fenêtre étroite → bascule CSS-only
   // cours/items (voir @media dans etudes.css), ignorée sur fenêtre large où les
   // deux colonnes s'affichent toujours ensemble.
@@ -735,10 +742,11 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
             </button>
           )}
           {canAddItem && <CoursePromptsButton ctx={ctx} />}
-          <label className="btn ghost sm" style={{ cursor: 'pointer' }} title="Attacher un document (PDF ou HTML) — remplace le document du même type">
-            <Icon name="upload" size={13} /> Attacher un document
-            <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={(e) => attachDoc(e.target.files[0])} />
-          </label>
+          {canAddItem && (
+            <button className="btn ghost sm" onClick={() => { setImportedCount(0); setShowImportItems(true); }} title="Coller le JSON produit par un prompt de complétion — ajoute les nouvelles cartes à cette fiche">
+              <Icon name="upload" size={13} /> Importer des items
+            </button>
+          )}
         </div>
         {htmlLoadError && <div className="err-mini" style={{ marginBottom: 12 }}><div className="em-ic crit"><Icon name="alert" size={16} /></div><div className="em-body"><div className="em-title">{htmlLoadError}</div></div></div>}
 
@@ -766,6 +774,16 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
           </div>
           {canAddItem && <CourseItemsSidebar ctx={ctx} ficheId={ficheId} />}
         </div>
+
+        {showImportItems && (
+          <Modal title="Importer des items" onClose={() => setShowImportItems(false)} width="min(640px, 94vw)">
+            <div className="hint" style={{ marginBottom: 12 }}>
+              Colle ici le JSON produit par un des 4 prompts de complétion (« Voir les prompts ») —
+              les nouvelles cartes (QCM, flashcards, Feynman) sont ajoutées à cette fiche, sans doublon.
+            </div>
+            <PasteJsonForm ctx={ctx} ficheId={ficheId} done={importedCount} setDone={setImportedCount} />
+          </Modal>
+        )}
       </div>
     );
   }

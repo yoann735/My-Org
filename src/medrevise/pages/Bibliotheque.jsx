@@ -171,7 +171,7 @@ export function Bibliotheque({ ctx }) {
     : null;
 
   return (
-    <div className="screen scroll fadein">
+    <div className="screen scroll fadein lib-screen">
       <div className="topbar">
         <div>
           <h1 className="serif">Bibliothèque</h1>

@@ -1013,6 +1013,12 @@
    poignée) ; `.lib-master-body` (le contenu, démonté pendant le repli) est un
    enfant flex, la poignée (`SplitHandle`) l'autre — INTÉGRÉE au bord DROIT de la
    sidebar, pas un élément séparé posé à côté dans `.lib-split`. */
+/* `.lib-screen` (root de Bibliotheque.jsx) : colonne flex pour que `.lib-split`
+   (donc `.lib-master`/sa poignée repliée) s'étire sur toute la hauteur DISPONIBLE
+   de l'écran — jusqu'en bas, au niveau où s'arrête la sidebar de nav — au lieu de
+   ne faire que la hauteur de son propre contenu. */
+.lib-screen { display: flex; flex-direction: column; padding-bottom: 14px; }
+.lib-screen .lib-split { flex: 1 1 auto; min-height: 0; }
 .lib-split { display: flex; align-items: stretch; gap: 10px; }
 .lib-master { flex: 0 0 340px; min-width: 0; display: flex; flex-direction: row; align-items: stretch; overflow: hidden; transition: flex-basis .18s ease; }
 .lib-master.collapsed { flex-basis: 18px; }

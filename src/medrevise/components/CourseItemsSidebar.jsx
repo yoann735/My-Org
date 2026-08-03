@@ -76,6 +76,7 @@ export function CourseItemsSidebar({ ctx, ficheId }) {
 
   return (
     <div className={'pis' + (collapsed ? ' collapsed' : '')}>
+      <SplitHandle side="right" collapsed={collapsed} onClick={() => setCollapsed((v) => !v)} />
       {!collapsed && (
       <div className="pis-body">
       <div className="pis-tabs">
@@ -151,7 +152,6 @@ export function CourseItemsSidebar({ ctx, ficheId }) {
       )}
       </div>
       )}
-      <SplitHandle side="right" collapsed={collapsed} onClick={() => setCollapsed((v) => !v)} />
     </div>
   );
 }
