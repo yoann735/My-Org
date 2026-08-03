@@ -721,9 +721,9 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
           )}
           {/* indicateur discret d'auto-save — voir performCourseSave/scheduleCourseSave */}
           {saveStatus !== 'idle' && (
-            <span className="hint" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span className="hint" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {saveStatus === 'saving'
-                ? <><span className="gen-spinner" style={{ width: 12, height: 12 }} /> Enregistrement…</>
+                ? <><span className="spinner-sm" /> Enregistrement…</>
                 : <><Icon name="check" size={13} style={{ color: 'var(--ok)' }} /> Enregistré</>}
             </span>
           )}

@@ -394,6 +394,9 @@
 .gen-load { max-width: 560px; margin: 40px auto; text-align: center; }
 .gen-spinner { width: 64px; height: 64px; margin: 0 auto 24px; border-radius: 50%; border: 5px solid var(--track); border-top-color: var(--accent); animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* petit spinner inline (indicateur d'auto-save "Voir le cours", etc.) — bordure
+   proportionnée à la taille, contrairement à .gen-spinner (pensé pour 64px). */
+.spinner-sm { width: 13px; height: 13px; flex: 0 0 auto; border-radius: 50%; border: 2px solid var(--track); border-top-color: var(--accent); animation: spin .8s linear infinite; }
 .gen-steps { display: flex; flex-direction: column; gap: 10px; margin-top: 26px; text-align: left; }
 .gen-step { display: flex; align-items: center; gap: 12px; padding: 13px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); font-size: 14px; color: var(--text-2); transition: all .3s; }
 .gen-step.done { color: var(--text); border-color: color-mix(in srgb, var(--ok) 35%, var(--border)); }
