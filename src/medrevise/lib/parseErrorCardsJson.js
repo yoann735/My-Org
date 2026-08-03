@@ -53,22 +53,33 @@ export function parseErrorCardsJson(raw, targetV1Id) {
   catch (e) { return { ok: false, error: ERR }; }
   if (!data || typeof data !== 'object') return { ok: false, error: ERR };
 
+  const shape = Array.isArray(data) ? 'tableau nu'
+    : Array.isArray(data.cartes_erreur) ? 'cartes_erreur'
+    : Array.isArray(data.items) ? 'items'
+    : 'objet seul';
   const rawItems = Array.isArray(data) ? data
     : Array.isArray(data.cartes_erreur) ? data.cartes_erreur
     : Array.isArray(data.items) ? data.items
     : [data];
+  // debug TEMPORAIRE : confirme quel format a été détecté + combien d'entrées
+  // trouvées, avant même la validation carte par carte ci-dessous.
+  console.warn(`[parseErrorCardsJson] format détecté : ${shape} (${rawItems.length} carte${rawItems.length > 1 ? 's' : ''})`);
 
   const counts = { created: 0, ignored: 0, mismatched: 0 };
   const errors = [];
   const cards = [];
+  // debug TEMPORAIRE (à retirer une fois confirmé stable en usage réel) : trace
+  // dans la console navigateur POURQUOI une carte est jugée invalide — voir
+  // aussi errors[] (raison exacte, déjà remontée à l'utilisateur dans la modale).
+  const debugIgnore = (n, reason, it) => { errors.push({ index: n, reason }); counts.ignored++; console.warn(`[parseErrorCardsJson] carte ${n} ignorée : ${reason}`, it); };
   rawItems.forEach((it, i) => {
     const n = i + 1;
-    if (!it || typeof it !== 'object') { errors.push({ index: n, reason: 'entrée invalide (pas un objet)' }); counts.ignored++; return; }
+    if (!it || typeof it !== 'object') { debugIgnore(n, 'entrée invalide (pas un objet)', it); return; }
     const recto = isStr(it.recto) ? it.recto.trim() : '';
     const verso = isStr(it.verso) ? it.verso.trim() : '';
-    if (!recto && !verso) { errors.push({ index: n, reason: 'recto et verso manquants' }); counts.ignored++; return; }
-    if (!recto) { errors.push({ index: n, reason: 'recto manquant' }); counts.ignored++; return; }
-    if (!verso) { errors.push({ index: n, reason: 'verso manquant' }); counts.ignored++; return; }
+    if (!recto && !verso) { debugIgnore(n, 'recto et verso manquants', it); return; }
+    if (!recto) { debugIgnore(n, 'recto manquant', it); return; }
+    if (!verso) { debugIgnore(n, 'verso manquant', it); return; }
 
     // filet non bloquant : juste comptabilisé si absent/différent, jamais un motif de rejet.
     const claimedSourceId = isStr(it.source_error_id) ? it.source_error_id.trim() : '';
