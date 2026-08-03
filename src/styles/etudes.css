@@ -948,11 +948,13 @@
 .pdfr-mobile-toggle { display: none; margin-bottom: 12px; }
 
 /* refonte UX (repli HORIZONTAL uniquement, même mécanique que .lib-master côté
-   liste) : `.pis` reste TOUJOURS monté, seule sa flex-basis anime de 380px à 0 —
-   la poignée (SplitHandle, voir CourseItemsSidebar.jsx/.split-handle) vit à côté,
-   dans le flux, jamais un repli vertical ni un "moignon" résiduel. */
-.pis { flex: 0 0 380px; min-width: 0; display: flex; flex-direction: column; max-height: calc(100vh - 230px); background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: flex-basis .18s ease; }
-.pis.collapsed { flex-basis: 0; border-width: 0; }
+   liste) : `.pis` = la sidebar ENTIÈRE (poignée + contenu), poignée INTÉGRÉE à son
+   bord GAUCHE (côté cours, premier enfant en flex-direction row) — jamais un
+   élément séparé posé à côté. Repliée : `.pis-body` démonté, flex-basis réduite à
+   la largeur de la poignée, plus aucun "moignon". */
+.pis { flex: 0 0 380px; min-width: 0; display: flex; flex-direction: row; align-items: stretch; max-height: calc(100vh - 230px); overflow: hidden; transition: flex-basis .18s ease; }
+.pis.collapsed { flex-basis: 18px; }
+.pis-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-left: 8px; }
 .pis-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 10px 0; flex: 0 0 auto; }
 .pis-tab { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 9px; border: 1px solid var(--border-2); background: var(--bg-2); color: var(--text-2); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .pis-tab.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
@@ -1004,20 +1006,24 @@
    que la liste scrolle — PdfReader/SchemaEditorScreen/TranscriptEditor s'y rendent
    EMBARQUÉS (props embedded, voir ces fichiers).
 
-   Refonte UX (repli HORIZONTAL uniquement, Bibliotheque.jsx `listCollapsed`) :
-   `.lib-master` reste TOUJOURS monté (jamais empilé verticalement, jamais retiré du
-   DOM) — seule sa `flex-basis` anime de 340px à 0, `overflow:hidden` masque son
-   contenu progressivement pendant le glissement. La poignée (`SplitHandle`, voir
-   ui.jsx/.split-handle) vit dans le flux, entre la liste et le lecteur — repliée
-   automatiquement à l'ouverture d'un cours, rouvrable d'un clic sur la même poignée. */
+   Refonte UX (repli HORIZONTAL UNIQUEMENT, Bibliotheque.jsx `listCollapsed`) :
+   `.lib-master` = la sidebar ENTIÈRE (contenu + poignée), jamais empilée
+   verticalement (plus aucun accordéon par cours — voir card-head, Bibliotheque.jsx),
+   jamais retirée du DOM. Seule sa `flex-basis` anime de 340px à 18px (largeur de la
+   poignée) ; `.lib-master-body` (le contenu, démonté pendant le repli) est un
+   enfant flex, la poignée (`SplitHandle`) l'autre — INTÉGRÉE au bord DROIT de la
+   sidebar, pas un élément séparé posé à côté dans `.lib-split`. */
 .lib-split { display: flex; align-items: stretch; gap: 10px; }
-.lib-master { flex: 0 0 340px; min-width: 0; overflow: hidden; transition: flex-basis .18s ease; }
-.lib-master.collapsed { flex-basis: 0; }
+.lib-master { flex: 0 0 340px; min-width: 0; display: flex; flex-direction: row; align-items: stretch; overflow: hidden; transition: flex-basis .18s ease; }
+.lib-master.collapsed { flex-basis: 18px; }
+.lib-master-body { flex: 1 1 auto; min-width: 0; margin-right: 8px; }
 .lib-detail { flex: 1 1 auto; min-width: 0; position: sticky; top: 0; }
 .lib-detail-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 320px; padding: 40px 20px; border: 1px dashed var(--border); border-radius: 14px; color: var(--text-3); background: var(--card-2); }
 
 /* ---------- poignée de repli UNIFORME (liste à gauche ET cartes à droite, voir
-   SplitHandle/ui.jsx) : barre fine pleine hauteur, chevron centré, rien d'autre. ---------- */
+   SplitHandle/ui.jsx) : barre fine pleine hauteur, chevron centré, rien d'autre —
+   INTÉGRÉE en enfant direct de `.lib-master`/`.pis` (voir ci-dessus/plus haut),
+   jamais un élément flottant séparé dans le gap entre panneaux. ---------- */
 .split-handle { flex: 0 0 18px; align-self: stretch; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-2); border-radius: 8px; background: var(--card-2); color: var(--text-3); cursor: pointer; padding: 0; transition: background .15s, border-color .15s, color .15s; }
 .split-handle:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 

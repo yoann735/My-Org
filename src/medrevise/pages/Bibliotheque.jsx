@@ -26,7 +26,6 @@ const schemaCoches = (f) => totalCoches(f);
 export function Bibliotheque({ ctx }) {
   const { db } = ctx;
   const ix = useMemo(() => index(db), [db]);
-  const [open, setOpen] = useState({});
   const [openFiche, setOpenFiche] = useState({});
   const [q, setQ] = useState('');
   const [renaming, setRenaming] = useState(null); // { type, id }
@@ -198,6 +197,8 @@ export function Bibliotheque({ ctx }) {
 
       <div className="lib-split">
         <div className={'lib-master' + (listCollapsed ? ' collapsed' : '')}>
+        {!listCollapsed && (
+        <div className="lib-master-body">
           {creatingTranscript && (
             <NewTranscript ctx={ctx} onDone={() => setCreatingTranscript(false)}
               onCreated={(fiche) => { setSelected({ ficheId: fiche.id, kind: 'transcript' }); setListCollapsed(true); }} />
@@ -226,22 +227,19 @@ export function Bibliotheque({ ctx }) {
             <div className="lib-tree" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {db.sources.filter((s) => !s.archive).map((src) => {
                 const mats = db.matieres.filter((m) => m.sourceId === src.id && !m.archive);
-                const openS = !!open[src.id];
                 return (
                   <div className="card" key={src.id}>
-                    <div className="card-head" style={{ cursor: 'pointer', color: 'var(--text)' }} onClick={() => setOpen((o) => ({ ...o, [src.id]: !openS }))}>
-                      <Icon name={openS ? 'chevD' : 'chevR'} size={16} className="ic" />
+                    <div className="card-head" style={{ color: 'var(--text)' }}>
                       <span className="tsrc-ic" style={{ background: `color-mix(in srgb, ${src.tint || '#7C6FE0'} 16%, transparent)`, color: src.tint || '#7C6FE0' }}><Icon name={src.icon || 'folder'} size={14} /></span>
                       {isRen('source', src.id)
                         ? <RenameInput />
                         : <h3 style={{ color: 'var(--text)' }} onDoubleClick={(e) => { e.stopPropagation(); startRename('source', src.id, src.nom); }} title="Double-clic pour renommer">{src.nom}</h3>}
-                      <div className="right" style={{ display: 'flex', alignItems: 'center', gap: 8 }} onClick={(e) => e.stopPropagation()}>
+                      <div className="right" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span className="hint">{mats.length} matière{mats.length > 1 ? 's' : ''}</span>
                         <BellButton on={src.rappelsJ !== false} onToggle={() => ctx.setSourceRappels(src.id, src.rappelsJ === false)} />
                       </div>
                     </div>
-                    {openS && (
-                      <div className="card-body" style={{ paddingTop: 0 }}>
+                    <div className="card-body" style={{ paddingTop: 0 }}>
                         {mats.map((mat) => {
                           const mm = matiereMeta(mat);
                           const fiches = db.fiches.filter((f) => f.matiereId === mat.id && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
@@ -309,8 +307,7 @@ export function Bibliotheque({ ctx }) {
                             </div>
                           );
                         })}
-                      </div>
-                    )}
+                    </div>
                   </div>
                 );
               })}
@@ -318,8 +315,9 @@ export function Bibliotheque({ ctx }) {
             </FicheDndProvider>
           )}
         </div>
-
-        <SplitHandle side="left" collapsed={listCollapsed} onClick={() => setListCollapsed((v) => !v)} />
+        )}
+          <SplitHandle side="left" collapsed={listCollapsed} onClick={() => setListCollapsed((v) => !v)} />
+        </div>
 
         <div className="lib-detail">
           {!selected ? (

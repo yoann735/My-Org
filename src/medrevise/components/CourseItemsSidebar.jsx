@@ -32,10 +32,10 @@ export function CourseItemsSidebar({ ctx, ficheId }) {
   const [activeType, setActiveType] = useState('qcm');
   const items = useMemo(() => ficheItems.filter((q) => q.type === activeType), [ficheItems, activeType]);
   const activeLabel = (TYPES.find((t) => t.id === activeType) || {}).label || '';
-  // refonte UX Bibliothèque : la vue cours a besoin de respirer — repli HORIZONTAL
-  // uniquement, via la même poignée que la liste de gauche (SplitHandle, ui.jsx) —
-  // `.pis` reste TOUJOURS monté (seule sa flex-basis anime, voir etudes.css), pas
-  // de rail à part avec sa propre mise en page à maintenir.
+  // repli HORIZONTAL uniquement, via la même poignée que la liste de gauche
+  // (SplitHandle, ui.jsx) — INTÉGRÉE dans `.pis` (bord GAUCHE, côté cours), pas un
+  // élément séparé posé à côté. `.pis` reste monté, seule sa flex-basis anime
+  // (voir etudes.css) ; le contenu (tabs+liste) est démonté pendant le repli.
   const [collapsed, setCollapsed] = useState(false);
 
   // ---- ajout (réutilise ItemForm/PasteJsonForm, même flux que AddItemModal) ----
@@ -75,9 +75,9 @@ export function CourseItemsSidebar({ ctx, ficheId }) {
   };
 
   return (
-    <>
-      <SplitHandle side="right" collapsed={collapsed} onClick={() => setCollapsed((v) => !v)} />
-      <div className={'pis' + (collapsed ? ' collapsed' : '')}>
+    <div className={'pis' + (collapsed ? ' collapsed' : '')}>
+      {!collapsed && (
+      <div className="pis-body">
       <div className="pis-tabs">
         {TYPES.map((t) => (
           <button key={t.id} type="button" className={'pis-tab' + (activeType === t.id ? ' active' : '')}
@@ -150,7 +150,9 @@ export function CourseItemsSidebar({ ctx, ficheId }) {
         />
       )}
       </div>
-    </>
+      )}
+      <SplitHandle side="right" collapsed={collapsed} onClick={() => setCollapsed((v) => !v)} />
+    </div>
   );
 }
 
