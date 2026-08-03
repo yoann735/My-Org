@@ -404,7 +404,7 @@ export function Reviser({ ctx }) {
               <div className="row spread" style={{ alignItems: 'center', gap: 8, margin: '16px 2px 8px' }}>
                 <div className="row" style={{ alignItems: 'center', gap: 8 }}>
                   <Icon name="lightbulb" size={14} style={{ color: 'var(--text-3)' }} />
-                  <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--text-3)' }}>Théorie</span>
+                  <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--text-3)' }}>Cours</span>
                 </div>
                 {!multi && primary && (
                   <button className="btn ghost sm" onClick={() => setShowAddItem(true)}><Icon name="plus" size={13} /> Ajouter un item</button>
@@ -449,8 +449,9 @@ export function Reviser({ ctx }) {
                 <Icon name="layers" size={17} /> {multi ? 'Réviser toutes les fiches' : 'Réviser toute cette fiche'} ({qcmItems.length + flashItems.length} cartes · ~{mins(qcmItems.length + flashItems.length)} min)
               </button>
 
-              {/* PRATIQUE : exercices — HORS méthode des J. Liste de cards, une par
-                  exercice, librement choisie (filtres thème / difficulté / statut). */}
+              {/* section "Exercices" (libellé affiché — anciennement "Pratique") : HORS
+                  méthode des J. Liste de cards, une par exercice, librement choisie
+                  (filtres thème / difficulté / statut). */}
               {exoItems.length > 0 && (
                 <ExerciceCards items={exoItems} meta={meta} onOpen={openExo} onDelete={askDeleteExercice}
                   onDeleteAll={!multi ? askDeleteAllExercices : null} />
@@ -566,9 +567,10 @@ export function Reviser({ ctx }) {
   );
 }
 
-/* ---- PRATIQUE : liste de cards, UNE par exercice (choix libre, hors méthode des J).
-   Chaque card : thème, difficulté (1|2|3), badge numérique/ouvert, badge Calculatrice,
-   statut (jamais fait / réussi / à revoir). Filtres thème / difficulté / statut. ---- */
+/* ---- section "Exercices" (libellé affiché — anciennement "Pratique") : liste de
+   cards, UNE par exercice (choix libre, hors méthode des J). Chaque card : thème,
+   difficulté (1|2|3), badge numérique/ouvert, badge Calculatrice, statut (jamais
+   fait / réussi / à revoir). Filtres thème / difficulté / statut. ---- */
 const EXO_DIFF = { 1: 'Facile', 2: 'Intermédiaire', 3: 'Difficile' };
 const EXO_STATUS = {
   todo: { label: 'Jamais fait', icon: 'clock', color: 'var(--text-3)' },
@@ -592,7 +594,7 @@ function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll }) {
     <div style={{ marginTop: 22 }}>
       <div className="row" style={{ alignItems: 'center', gap: 8, margin: '0 2px 10px' }}>
         <Icon name="target" size={14} style={{ color: 'var(--text-3)' }} />
-        <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--text-3)' }}>Pratique</span>
+        <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--text-3)' }}>Exercices</span>
         <span className="hint" style={{ marginLeft: 'auto' }}>{filtered.length}/{items.length} exercice{items.length > 1 ? 's' : ''}</span>
         {onDeleteAll && (
           <button type="button" className="btn ghost sm" style={{ color: 'var(--crit)' }} onClick={onDeleteAll} title="Supprimer tous les exercices de cette fiche (QCM/flashcards/Feynman non concernés)">

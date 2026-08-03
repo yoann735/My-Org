@@ -133,10 +133,13 @@ function CarnetErreurCard({ ctx }) {
       <div className="hint" style={{ fontSize: 12.5, marginBottom: 10 }}>
         {v1.length} flashcard{v1.length > 1 ? 's' : ''} en carnet · {aRevoir.length} flashcard{aRevoir.length > 1 ? 's' : ''} d'erreur à revoir
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
         {recent.map((v) => (
-          <div key={v.id} style={{ fontSize: 12.5, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            <span style={{ color: 'var(--text-3)' }}>•</span> <Tex>{carnetPreviewText(v.recto, 70)}</Tex>
+          <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 10px', borderRadius: 9, background: 'var(--bg-2)' }}>
+            <span style={{ width: 3, height: 14, borderRadius: 2, background: 'var(--accent)', flex: '0 0 auto' }} />
+            <span style={{ fontSize: 12.5, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <Tex>{carnetPreviewText(v.recto, 70)}</Tex>
+            </span>
           </div>
         ))}
       </div>
