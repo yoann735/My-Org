@@ -8,7 +8,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled, dueFromOn, addDays, diffDays, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
+import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
 import { todayISO } from '../lib/sm2.js';
 import { matiereMeta, syncStatusLabel, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
@@ -28,9 +28,10 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
   // rééquilibrage calendrier (étape 2/3) : côté mobile, source = toujours
   // "aujourd'hui" (pas de calendrier hebdo mobile) — désengorger la journée
   // qu'on regarde. moveTarget déclenche la même modale date que le desktop ;
-  // seul nextReview change (voir ctx.moveSourceDay/moveFicheDay).
-  const [moveTarget, setMoveTarget] = useState(null); // { type: 'source'|'fiche', id, nom, count, cascadeCount }
-  const [cascadeOn, setCascadeOn] = useState(false);
+  // seule `dueDate` change (voir ctx.moveSourceDay/moveFicheDay). Pas de
+  // toggle cascade (moteur adaptatif : une seule échéance connue par carte,
+  // voir Dashboard.jsx desktop pour le détail).
+  const [moveTarget, setMoveTarget] = useState(null); // { type: 'source'|'fiche', id, nom, count }
   const coursToday = useMemo(() => {
     const bySource = {};
     plan.forEach((g) => {
@@ -40,25 +41,16 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
     });
     return Object.values(bySource);
   }, [plan]);
-  // cascade (étape 3/3) : même mécanique que le desktop (voir Dashboard.jsx) —
-  // cascadeCount précalculé au clic sur « Déplacer », pas recalculé à chaque
-  // frappe dans le sélecteur de date.
-  const startMove = (target) => {
-    const cascadeCount = target.type === 'source'
-      ? dueFromOn(db, todayISO(), { sourceId: target.id }).length
-      : dueFromOn(db, todayISO(), { ficheId: target.id }).length;
-    setCascadeOn(false);
-    setMoveTarget({ ...target, cascadeCount });
-  };
+  const startMove = (target) => setMoveTarget(target);
   const confirmMove = async (toDate) => {
     if (!moveTarget) return;
-    if (moveTarget.type === 'source') await ctx.moveSourceDay(moveTarget.id, todayISO(), toDate, { cascade: cascadeOn });
-    else await ctx.moveFicheDay(moveTarget.id, todayISO(), toDate, { cascade: cascadeOn });
+    if (moveTarget.type === 'source') await ctx.moveSourceDay(moveTarget.id, todayISO(), toDate);
+    else await ctx.moveFicheDay(moveTarget.id, todayISO(), toDate);
     setMoveTarget(null);
   };
-  // « Sauter aujourd'hui » — source toujours aujourd'hui côté mobile, pas de
-  // condition isToday à gérer (contrairement au desktop qui peut afficher un
-  // jour futur).
+  // « Sauter aujourd'hui » — VRAI no-op (aucune écriture, voir MedReviseApp.jsx
+  // skipDaySource/skipDayFiche) : la carte reste due aujourd'hui, juste un
+  // aparté visuel qui ferme la confirmation sans rien changer en base.
   const [skipTarget, setSkipTarget] = useState(null); // { type, id, nom, count }
   const confirmSkip = async () => {
     if (!skipTarget) return;
@@ -256,16 +248,8 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
           title={`Déplacer « ${moveTarget.nom} »`}
           label="Nouvelle date"
           confirmLabel="Déplacer"
-          count={cascadeOn ? moveTarget.cascadeCount : moveTarget.count}
-          minDate={cascadeOn ? addDays(todayISO(), 1) : undefined}
-          cascade={{
-            checked: cascadeOn,
-            onChange: setCascadeOn,
-            label: `Décaler aussi les révisions suivantes de ${moveTarget.type === 'source' ? 'ce cours' : 'cette fiche'} (${moveTarget.cascadeCount} carte${moveTarget.cascadeCount > 1 ? 's' : ''} au total)`,
-          }}
-          body={(date) => cascadeOn
-            ? `${moveTarget.cascadeCount} carte${moveTarget.cascadeCount > 1 ? 's' : ''} (dues aujourd'hui et toutes leurs échéances futures déjà programmées) ${moveTarget.cascadeCount > 1 ? 'seront décalées' : 'sera décalée'} de ${diffDays(todayISO(), date)} jour${diffDays(todayISO(), date) > 1 ? 's' : ''}. Les cartes déjà en retard ne bougent pas. Palier, historique et progression restent inchangés.`
-            : `${moveTarget.count} carte${moveTarget.count > 1 ? 's' : ''} ${moveTarget.count > 1 ? 'seront déplacées' : 'sera déplacée'} vers cette date. Palier, historique et progression restent inchangés — seule la date de réapparition change.`}
+          count={moveTarget.count}
+          body={(date) => `${moveTarget.count} carte${moveTarget.count > 1 ? 's' : ''} ${moveTarget.count > 1 ? 'seront déplacées' : 'sera déplacée'} vers cette date. Intervalle, historique et progression restent inchangés — seule la date de réapparition change.`}
           onConfirm={confirmMove}
           onCancel={() => setMoveTarget(null)}
         />
@@ -274,7 +258,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
       {skipTarget && (
         <ConfirmModal
           title={`Sauter aujourd'hui — « ${skipTarget.nom} »`}
-          body={`${skipTarget.count} carte${skipTarget.count > 1 ? 's' : ''} ${skipTarget.count > 1 ? 'avanceront' : 'avancera'} à leur palier suivant, comme lors d'une révision réussie aujourd'hui (sans note à donner) — elles disparaissent d'aujourd'hui, le reste du planning est inchangé.`}
+          body={`${skipTarget.count} carte${skipTarget.count > 1 ? 's' : ''} ${skipTarget.count > 1 ? 'restent' : 'reste'} due${skipTarget.count > 1 ? 's' : ''} aujourd'hui — aucune écriture, rien n'avance : c'est juste un aparté visuel, elles réapparaîtront la prochaine fois que tu ouvres l'accueil.`}
           confirmLabel="Sauter"
           onConfirm={confirmSkip}
           onCancel={() => setSkipTarget(null)}

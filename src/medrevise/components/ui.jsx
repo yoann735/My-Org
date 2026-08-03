@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Icon } from '../../shared/Icon.jsx';
-import { PLAN_LABELS, todayISO } from '../lib/sm2.js';
+import { todayISO } from '../lib/sm2.js';
 
 const FALLBACK_TINT = '#7C6FE0';
 /** palette de secours pour une matière SANS couleur choisie (m.couleur) —
@@ -225,34 +225,14 @@ export function CatBadge({ matiere }) {
   );
 }
 
-/* ---- méthode des J ladder ---- */
-/** `counts` (optionnel, lib/planning.js ficheJDistribution) : répartition des
-   cartes de la fiche par palier — rend visible qu'une notation a fait avancer
-   UNE carte même quand `jIndex` (dérivé de la carte la MOINS avancée) ne
-   bouge pas encore. Omis pour les fiches à un seul item planifiable
-   (anat_schema) où une répartition n'a pas de sens. */
-export function JLadder({ jIndex, counts }) {
-  return (
-    <div className="jladder">
-      {PLAN_LABELS.map((label, i) => {
-        const cls = i < jIndex ? ' past' : i === jIndex ? ' current' : ' future';
-        const c = counts && counts[i];
-        return (
-          <span className="jl-wrap" key={label} style={{ display: 'contents' }}>
-            {i > 0 && <span className={'jl-link' + (i <= jIndex ? ' done' : '')} />}
-            <span className={'jl-step' + cls}>
-              {label}{i === jIndex && <em>auj.</em>}
-              {c != null && c.count > 0 && (
-                <span style={{ opacity: 0.85 }}>
-                  · {c.count}{c.dueToday > 0 && <span style={{ marginLeft: 2 }}>●</span>}
-                </span>
-              )}
-            </span>
-          </span>
-        );
-      })}
-    </div>
-  );
+/* ---- méthode des J — badge d'intervalle (remplace l'ancienne frise à 7
+   crans, JLadder) : le moteur adaptatif n'a plus de paliers nommés, juste un
+   intervalle courant en jours — plus rien à représenter comme une
+   progression le long d'une échelle fixe. `jLabel` vient de
+   lib/sm2.js#labelForCursor ("J+N" ou "Terminée"). */
+export function JBadge({ jLabel }) {
+  if (!jLabel) return null;
+  return <span className="j-tag jbadge">{jLabel}</span>;
 }
 
 /* ---- graphique d'évolution en fin de série (Celebration desktop / MobileSessionDone) —
@@ -623,18 +603,14 @@ export function ConfirmModal({ title, body, confirmLabel = 'Confirmer', danger, 
 
 /* ---- modale générique « choisir une date puis confirmer » — partagée par le
    décalage du départ J0 (étape 1/3, Reviser.jsx) et le rééquilibrage calendrier
-   (étape 2/3 et sa cascade étape 3/3, Dashboard.jsx/MobileHome.jsx) : même geste
-   (tap → date → confirmer), seul le texte/libellé change selon l'appelant.
-   `count` désactive Confirmer à 0 (rien à faire). `body` accepte une chaîne OU
-   une fonction `(date) => texte` — nécessaire pour la cascade, dont le message
-   ("décalées de N jours") dépend de la date choisie DANS la modale (état
-   interne `date`, jamais remonté à l'appelant). `minDate` (par défaut
-   aujourd'hui) peut être relevé par l'appelant (ex. cascade cochée → jour A + 1,
-   pour interdire un décalage négatif) ; si la date déjà choisie tombe sous ce
-   minimum après un changement, elle est remontée automatiquement. `cascade`
-   (optionnel) affiche une case à cocher contrôlée par l'appelant — absente pour
-   l'étape 1 (pas de concept de cascade là-bas), présente pour l'étape 2/3. */
-export function DateActionModal({ title, body, label = 'Nouvelle date', confirmLabel = 'Confirmer', count, minDate, allowPast, cascade, onConfirm, onCancel }) {
+   (étape 2/3, Dashboard.jsx/MobileHome.jsx) : même geste (tap → date →
+   confirmer), seul le texte/libellé change selon l'appelant. `count` désactive
+   Confirmer à 0 (rien à faire). `body` accepte une chaîne OU une fonction
+   `(date) => texte` (état interne `date`, jamais remonté à l'appelant).
+   `minDate` (par défaut aujourd'hui) peut être relevé par l'appelant. Plus de
+   toggle "cascade" (moteur adaptatif : une seule échéance connue par carte,
+   voir la mécanique validée — retiré des deux appelants). */
+export function DateActionModal({ title, body, label = 'Nouvelle date', confirmLabel = 'Confirmer', count, minDate, allowPast, onConfirm, onCancel }) {
   // allowPast (pose/décalage du J0, Reviser.jsx "Décaler le départ") : AUCUNE
   // borne — un cours déjà commencé dans la vraie vie peut avoir un J0 passé.
   // Les autres usages (Réorganiser, Sauter) gardent min=aujourd'hui par défaut.
@@ -651,12 +627,6 @@ export function DateActionModal({ title, body, label = 'Nouvelle date', confirmL
             <label>{label}</label>
             <input type="date" className="imp-title" style={{ maxWidth: 190 }} min={min || undefined} value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
-          {cascade && (
-            <label className="row" style={{ marginTop: 12, gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}>
-              <input type="checkbox" checked={cascade.checked} onChange={(e) => cascade.onChange(e.target.checked)} style={{ marginTop: 2 }} />
-              <span className="hint" style={{ fontSize: 13.5 }}>{cascade.label}</span>
-            </label>
-          )}
         </div>
         <div className="day-pop-foot">
           <button className="btn" style={{ flex: 1 }} onClick={onCancel}>Annuler</button>

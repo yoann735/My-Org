@@ -3,13 +3,13 @@
    colle un JSON v1.0 (Standard, Rattrapage) ou un texte typé (Anatomie
    Théorie, extraction locale sans IA) ou un schéma annoté (Anatomie Schéma).
    Aucun appel réseau. Les fiches créées entrent dans le cycle des J avec un
-   `plan` (chronologie fixe, lib/sm2.js buildPlanFrom) ancré sur la date de
-   J0 choisie (aujourd'hui par défaut, ou une date passée — cursor placé sur
-   la première échéance restante).
+   intervalle adaptatif (lib/sm2.js startAdaptive) ancré sur la date de J0
+   choisie (aujourd'hui par défaut, ou une date passée — `dueDate` posée
+   directement, immédiatement "en retard" si passée).
    ============================================================ */
 import { genId, put, putMany, getOne, getAll, newItem } from './storage.js';
 import { toInternalItem } from './adapter.js';
-import { todayISO, buildPlanFrom } from './sm2.js';
+import { todayISO, startAdaptive } from './sm2.js';
 
 /**
  * Fiche EXISTANTE de même destination (même matière + même titre, insensible à
@@ -206,10 +206,10 @@ export async function saveAnatSchema({ ficheId, matiereId, titre, sousCategorie,
       dateImport: todayISO(),
       images: cleanImages,
       imageId: first.imageId, imageW: first.imageW, imageH: first.imageH, coches: first.coches,
-      // item planifiable méthode des J (étape C) — chronologie fixe, voir lib/sm2.js
-      // (buildPlanFrom : équivaut à cursor 0 pour "aujourd'hui", prêt si un
-      // date-picker de J0 est ajouté un jour à ce flux, aucun aujourd'hui)
-      ...buildPlanFrom(todayISO()), historique: [], missed: 0,
+      // item planifiable méthode des J (étape C) — moteur adaptatif, voir
+      // lib/sm2.js startAdaptive (prêt si un date-picker de J0 est ajouté un
+      // jour à ce flux, aujourd'hui par défaut pour l'instant)
+      ...startAdaptive(todayISO()), historique: [], missed: 0,
     };
   }
   await put('fiches', fiche);

@@ -5,9 +5,9 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, TodaySeriesCard, JLadder, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
+import { EdTop, TodaySeriesCard, JBadge, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
 import {
-  index, effectiveCoef, ficheJ, ficheJDistribution, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, todayPlan, overdueByFiche,
+  index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, todayPlan, overdueByFiche,
   qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, carnetV1Questions, carnetV2Questions,
 } from '../lib/planning.js';
 import { shuffle } from '../lib/sm2.js';
@@ -376,7 +376,7 @@ export function Reviser({ ctx }) {
                     : dueSel.length > 0
                       ? <div className="jc-title"><span className="jc-today-badge">Aujourd'hui</span> {dueSel.length} carte{dueSel.length > 1 ? 's' : ''} à réviser</div>
                       : <div className="jc-title">Rien dû aujourd'hui pour cette sélection.</div>}
-                  {!multi && jp && jp.jIndex >= 0 && <JLadder jIndex={jp.jIndex} counts={ficheJDistribution(db, primary.id, ix)} />}
+                  {!multi && jp && jp.jIndex >= 0 && <JBadge jLabel={jp.jLabel} />}
                 </div>
                 {!multi && primary && primary.pdfId && (
                   <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={viewCoursPdf} title="Ouvrir le PDF source en lecture seule">
@@ -728,7 +728,7 @@ function AnatSchemaLauncher({ fiche, ctx, meta, due, scheduled, jp }) {
             : due
               ? <div className="jc-title"><span className="jc-today-badge">Aujourd'hui</span> schéma à réviser ({nb} coche{nb > 1 ? 's' : ''})</div>
               : <div className="jc-title">Schéma de {nb} coche{nb > 1 ? 's' : ''} — rien dû aujourd'hui.</div>}
-          {jp && jp.jIndex >= 0 && <JLadder jIndex={jp.jIndex} />}
+          {jp && jp.jIndex >= 0 && <JBadge jLabel={jp.jLabel} />}
         </div>
       </div>
 

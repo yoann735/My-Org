@@ -1,9 +1,10 @@
 /* ============================================================
-   MedRevise — planning "méthode des J" calculé sur la chronologie FIXE de
-   chaque carte (plan/cursor, voir lib/sm2.js buildPlan), pas un hash.
-   Fonctions PURES sur un snapshot { sources, matieres, fiches, questions }.
+   MedRevise — planning "méthode des J" calculé sur le moteur ADAPTATIF de
+   chaque carte (intervalDays/dueDate, voir lib/sm2.js advanceQuestion), pas
+   un hash. Fonctions PURES sur un snapshot { sources, matieres, fiches,
+   questions }.
    ============================================================ */
-import { labelForCursor, todayISO, isoDate, PLAN_LABELS } from './sm2.js';
+import { labelForCursor, todayISO, isoDate } from './sm2.js';
 
 const SCHEDULED_TYPES = new Set(['qcm', 'flashcard']);
 // exercices : HORS méthode des J (comme le Feynman). Ils ne sont plus programmés,
@@ -15,32 +16,13 @@ const EXERCICE_TYPE = 'exercice';
 const J_TYPES = new Set(['qcm', 'flashcard']);
 
 /** date de la PROCHAINE échéance non faite d'une carte/fiche planifiée
-   (plan/cursor) — null si le cycle est terminé (cursor >= plan.length).
-   SEUL point de lecture de `plan`/`cursor` pour le calcul des "dues" de ce
-   fichier — ne dupliquer cette lecture nulle part ailleurs. */
+   (moteur adaptatif, intervalDays/dueDate) — null si le cycle est terminé
+   (`termine`) ou si la carte n'a pas encore d'échéance. SEUL point de
+   lecture de `dueDate` pour le calcul des "dues" de ce fichier — ne pas
+   dupliquer cette lecture nulle part ailleurs. */
 function nextDate(record) {
-  const plan = record && record.plan;
-  const cursor = (record && record.cursor) || 0;
-  if (!plan || cursor >= plan.length) return null;
-  return plan[cursor].date;
-}
-
-/** index (>= cursor) de l'échéance qui tombe EXACTEMENT sur `dateISO` — pas
-   seulement l'échéance COURANTE (nextDate/plan[cursor]) : la chronologie
-   étant FIXE, une carte pas encore arrivée à son J0/J+1 porte déjà, dans son
-   `plan`, la date exacte de ses échéances suivantes (J+3, J+7…). -1 si
-   aucune correspondance (cycle terminé ou date absente du plan restant).
-   SEUL point de correspondance "carte ↔ jour futur" — dueOn (jour futur),
-   dueFromOn (cascade) et MedReviseApp.jsx (shiftPlan) s'appuient dessus
-   pour rester d'accord sur ce qu'une carte "a ce jour-là". */
-export function planIndexOn(record, dateISO) {
-  const plan = record && record.plan;
-  const cursor = (record && record.cursor) || 0;
-  if (!plan) return -1;
-  for (let k = cursor; k < plan.length; k++) {
-    if (plan[k].date === dateISO) return k;
-  }
-  return -1;
+  if (!record || record.termine) return null;
+  return record.dueDate || null;
 }
 
 /* ---- index helpers ---- */
@@ -98,13 +80,6 @@ export function isWeekend(d = new Date()) {
   const day = d.getDay();
   return day === 0 || day === 6;
 }
-/** nombre de jours entre deux dates ISO (b - a) — sert au glissement uniforme
-   de la cascade (étape 3/3, voir dueFromOn plus bas). */
-export function diffDays(aISO, bISO) {
-  const a = new Date(aISO + 'T12:00:00');
-  const b = new Date(bISO + 'T12:00:00');
-  return Math.round((b - a) / 86400000);
-}
 
 /* ---- due questions ---- */
 export function scheduledQuestions(db, idx) {
@@ -117,30 +92,23 @@ export function scheduledQuestions(db, idx) {
    rattrapage du Dashboard, jamais mélangé à "dû aujourd'hui" — voir
    docs/audit-methode-des-J.md pour l'ancien comportement, où une carte en
    retard restait dans le flux du jour ET dans la boîte en double affichage).
-   Jour FUTUR : ne teste PAS seulement l'échéance courante (nextDate) mais
-   tout le `plan` restant (planIndexOn) — une carte pas encore arrivée à J0/J+1
-   aujourd'hui a déjà, dans son plan FIXE, la date exacte de son J+3/J+7 à
-   venir ; l'ignorer ferait sous-compter ce jour-là par rapport à la
-   projection calendrier (weekData/ficheProjection), qui lit déjà tout
-   `plan.slice(cursor)`. Toute carte reste TOUJOURS atteignable : soit ici
-   (dû aujourd'hui, exact), soit dans overdueQuestions (retard), soit ici pour
-   un jour futur (planIndexOn) — jamais les trois à la fois, jamais aucune. */
+   Moteur adaptatif : une carte ne porte plus qu'UNE seule échéance connue
+   (`dueDate`), donc "aujourd'hui" et "un jour futur" utilisent EXACTEMENT la
+   même comparaison (match strict sur `dueDate`) — plus de projection à
+   part (voir weekData, qui a perdu la profondeur des J+30/J+90 affichés à
+   l'avance, perte assumée). Jamais de révision dans le passé (le retard vit
+   dans overdueQuestions). */
 export function dueOn(db, dateISO, idx) {
   const ix = idx || index(db);
-  const today = todayISO();
-  return scheduledQuestions(db, ix).filter((q) => {
-    if (dateISO === today) { const d = nextDate(q); return d === dateISO; } // aujourd'hui STRICT — le retard est ailleurs
-    if (dateISO < today) return false;                            // pas de révision dans le passé
-    return planIndexOn(q, dateISO) >= 0;                           // jour futur : n'importe quelle échéance restante
-  });
+  if (dateISO < todayISO()) return [];
+  return scheduledQuestions(db, ix).filter((q) => nextDate(q) === dateISO);
 }
 export function dueToday(db, idx) { return dueOn(db, todayISO(), idx); }
 
 /* ---- « boîte des J non faits » : items dont l'échéance est STRICTEMENT passée
    (nextDate < aujourd'hui) — SEULE source du retard désormais (dueToday ne
-   l'inclut plus du tout, voir dueOn). Ne recale RIEN : la date de la carte
-   est FIXE (plan/cursor, lib/sm2.js) — réviser l'item avance seulement
-   `cursor`, jamais un recalcul de date ici ni ailleurs. ---- */
+   l'inclut plus du tout, voir dueOn). Ne recale RIEN d'elle-même : seule une
+   VRAIE notation (advanceQuestion, lib/sm2.js) recalcule `dueDate`. ---- */
 export function overdueQuestions(db, idx) {
   const ix = idx || index(db);
   const today = todayISO();
@@ -167,44 +135,6 @@ export function overdueByFiche(db, idx) {
     };
   });
   return [...qGroups, ...schemaGroups].sort((a, b) => (a.oldest < b.oldest ? -1 : a.oldest > b.oldest ? 1 : 0));
-}
-
-/* ============================================================
-   PROJECTION des J futurs (calendrier — lecture seule). La chronologie
-   étant désormais FIXE (plan/cursor, lib/sm2.js buildPlan), il n'y a plus
-   rien à RECALCULER : chaque carte porte déjà ses 7 échéances réelles —
-   on se contente de LIRE `plan` à partir de `cursor` (les échéances avant
-   `cursor` sont déjà faites, ce ne sont pas des occurrences futures). Ne
-   stocke ni ne modifie RIEN. Si la fiche est révisée entre-temps, la
-   projection suivante reflète naturellement le nouveau `cursor`. ======== */
-export function ficheProjection(db, fiche) {
-  let record;
-  if (fiche.type === 'anat_schema') {
-    record = fiche;
-  } else {
-    const qs = (db.questions || []).filter((q) => q.ficheId === fiche.id && J_TYPES.has(q.type));
-    if (!qs.length) return [];
-    // la carte la MOINS avancée pilote la projection affichée — une carte déjà
-    // terminée (cycle clos) ne doit jamais masquer une carte encore active.
-    record = qs.reduce((a, b) => {
-      const da = nextDate(a), db_ = nextDate(b);
-      if (da == null) return b;
-      if (db_ == null) return a;
-      return da <= db_ ? a : b;
-    });
-  }
-  const plan = record.plan || [];
-  const cursor = record.cursor || 0;
-  return plan.slice(cursor).map((p) => ({ date: p.date, jIndex: p.i, jLabel: p.label }));
-}
-
-/** projection pour toutes les fiches planifiées (rappels J actifs, non archivées). */
-export function allFicheProjections(db, idx) {
-  const ix = idx || index(db);
-  return (db.fiches || [])
-    .filter((f) => isFicheScheduled(db, f, ix))
-    .map((f) => ({ fiche: f, matiere: ix.mById[f.matiereId], occurrences: ficheProjection(db, f) }))
-    .filter((e) => e.occurrences.length);
 }
 
 /* ---- exercices (type "exercice") : HORS méthode des J. Aucune planification :
@@ -301,26 +231,23 @@ export function weekendReviewByFiche(db, idx) {
 }
 
 /* ---- schémas d'anatomie visuelle (anat_schema) : la FICHE elle-même est
-   l'item planifiable (elle porte plan/cursor, voir lib/sm2.js buildPlan),
-   pas des questions. On les gère en parallèle des questions. ---- */
+   l'item planifiable (elle porte intervalDays/dueDate, même moteur adaptatif
+   que qcm/flashcard, voir lib/sm2.js), pas des questions. On les gère en
+   parallèle des questions. ---- */
 export function scheduledSchemas(db, idx) {
   const ix = idx || index(db);
   return (db.fiches || []).filter((f) => f.type === 'anat_schema' && isFicheScheduled(db, f, ix));
 }
 export function dueSchemasOn(db, dateISO, idx) {
   const ix = idx || index(db);
-  const today = todayISO();
-  return scheduledSchemas(db, ix).filter((f) => {
-    if (dateISO === today) { const d = nextDate(f); return d === dateISO; } // aujourd'hui STRICT, même logique que dueOn
-    if (dateISO < today) return false;
-    return planIndexOn(f, dateISO) >= 0;            // jour futur : même logique que dueOn
-  });
+  if (dateISO < todayISO()) return [];
+  return scheduledSchemas(db, ix).filter((f) => nextDate(f) === dateISO);
 }
 export function dueSchemasToday(db, idx) { return dueSchemasOn(db, todayISO(), idx); }
 
 /** J affiché d'une fiche : anat_schema → dérivé de la fiche elle-même ;
    sinon → dérivé de sa question la plus proche d'échéance (une carte déjà
-   terminée ne masque jamais une carte encore active, voir ficheProjection) */
+   terminée ne masque jamais une carte encore active) */
 export function ficheJ(db, ficheId, idx) {
   const ix = idx || index(db);
   const f = ix.fById[ficheId];
@@ -336,34 +263,14 @@ export function ficheJ(db, ficheId, idx) {
   return labelForCursor(soonest);
 }
 
-/** répartition des cartes théorie (qcm/flashcard) d'une fiche PAR ÉCHÉANCE
-   COURANTE (cursor) — alimente la frise détaillée (Reviser.jsx, JLadder) :
-   rend visible qu'une notation a fait avancer UNE carte même quand ficheJ()
-   (dérivé de la carte la MOINS avancée) ne bouge pas encore. Une carte
-   terminée (cursor === plan.length) ne rentre dans aucun des 7 crans —
-   elle est sortie du planning actif. Non pertinent pour anat_schema (un
-   seul item planifiable par fiche, pas de répartition à montrer). */
-export function ficheJDistribution(db, ficheId, idx) {
-  const ix = idx || index(db);
-  const today = todayISO();
-  const qs = (db.questions || []).filter((q) => q.ficheId === ficheId && J_TYPES.has(q.type));
-  return PLAN_LABELS.map((jLabel, i) => {
-    const atThisPalier = qs.filter((q) => (q.cursor || 0) === i);
-    return {
-      jIndex: i, jLabel,
-      count: atThisPalier.length,
-      dueToday: atThisPalier.filter((q) => { const d = nextDate(q); return d === today; }).length, // strict, cohérent avec dueOn (le retard n'est plus compté "dû")
-    };
-  });
-}
-
 /* ---- décalage/pose du départ (J0) — Réviser, étape 1/3. Cible les cartes
-   SANS planning actif (`!q.plan`, ex. après un Reset des J) ET les cartes
-   jamais révisées (cursor === 0, un plan existe déjà) : reconstruire leur
-   plan entier (buildPlanFrom) ne perd aucun historique puisqu'il n'y en a
-   pas encore, ou plus rien à perdre (déjà effacé par le reset). ---- */
+   SANS planning actif (`q.intervalDays == null`, ex. après un Reset des J)
+   ET les cartes jamais révisées (`historique` vide, un intervalle existe
+   déjà mais aucune note encore prise) : ré-ancrer leur départ (startAdaptive)
+   ne perd aucun historique puisqu'il n'y en a pas encore, ou plus rien à
+   perdre (déjà effacé par le reset). ---- */
 export function isUnstarted(q) {
-  return !q.plan || (q.cursor || 0) === 0;
+  return q.intervalDays == null || !(q.historique && q.historique.length);
 }
 /** cartes qcm/flashcard sans planning actif OU jamais révisées, d'un cours
    ({sourceId}) ou d'une seule fiche ({ficheId}) — alimente à la fois le
@@ -396,43 +303,16 @@ export function unstartedSchemasFor(db, { sourceId, ficheId } = {}, idx) {
 }
 
 /* ---- rééquilibrage calendrier — Réviser, étape 2/3. Déplace des cartes DÉJÀ
-   EN CYCLE : contrairement à isUnstarted ci-dessus, AUCUN filtre de cursor
-   ici — seule l'échéance courante (plan[cursor]) change à la mutation
-   (MedReviseApp.jsx moveSourceDay/moveFicheDay), le reste du plan/historique
-   intact. dueOnFor restreint dueOn() (même sémantique : "aujourd'hui" inclut
-   le retard) à un cours ou une fiche, pour cibler EXACTEMENT les cartes
-   réellement dues ce jour précis — jamais une projection (ficheProjection
-   lit les occurrences déjà fixées, inadaptée pour une écriture réelle). */
+   EN CYCLE : contrairement à isUnstarted ci-dessus, aucun filtre — seule
+   `dueDate` change à la mutation (MedReviseApp.jsx moveSourceDay/
+   moveFicheDay), `intervalDays`/`historique`/`missed` intacts (aucun toggle
+   cascade : le moteur adaptatif n'a plus qu'une seule échéance par carte,
+   voir la mécanique validée). dueOnFor restreint dueOn() (même sémantique :
+   "aujourd'hui" inclut le retard) à un cours ou une fiche, pour cibler
+   EXACTEMENT les cartes réellement dues ce jour précis. */
 export function dueOnFor(db, dateISO, { sourceId, ficheId } = {}, idx) {
   const ix = idx || index(db);
   return dueOn(db, dateISO, ix).filter((q) => {
-    const f = ix.fById[q.ficheId];
-    if (!f) return false;
-    if (ficheId) return f.id === ficheId;
-    if (sourceId) { const m = ix.mById[f.matiereId]; return !!m && m.sourceId === sourceId; }
-    return false;
-  });
-}
-
-/* ---- cascade — Réviser, étape 3/3 : variante ÉLARGIE de dueOnFor. Au lieu
-   de cibler UNIQUEMENT les cartes dues le jour A (dueOnFor), cible aussi
-   toutes leurs échéances FUTURES déjà programmées (nextDate >= dateA) —
-   simple seuil de date, PAS la sémantique calendaire de dueOn (qui traite
-   "aujourd'hui" spécialement pour inclure le retard : ici on veut un seuil
-   brut, les cartes strictement avant dateA — ou déjà terminées — restent
-   exclues dans tous les cas). Chaque carte porte désormais RÉELLEMENT ses
-   propres échéances futures dans `plan` (contrairement à l'ancien moteur où
-   seule la prochaine date existait) : MedReviseApp.jsx applique un
-   glissement UNIFORME (+N jours, voir diffDays) sur `plan[k].date` pour
-   tout `k >= cursor` de chaque carte ciblée, jamais une date commune — les
-   écarts entre paliers ET entre cartes sont préservés. */
-export function dueFromOn(db, dateISO, { sourceId, ficheId } = {}, idx) {
-  const ix = idx || index(db);
-  return scheduledQuestions(db, ix).filter((q) => {
-    const plan = q.plan, cursor = q.cursor || 0;
-    // cycle terminé, ou même sa DERNIÈRE échéance est avant dateISO (dates
-    // croissantes : si la dernière est trop tôt, toutes le sont) → rien à cascader.
-    if (!plan || cursor >= plan.length || plan[plan.length - 1].date < dateISO) return false;
     const f = ix.fById[q.ficheId];
     if (!f) return false;
     if (ficheId) return f.id === ficheId;
@@ -475,16 +355,11 @@ export function todayPlan(db, idx) {
    décroissant (le cours le plus chargé d'abord). */
 export function dueByCoursOn(db, dateISO, idx) {
   const ix = idx || index(db);
-  // groupByFiche/ficheJ étiquettent avec le palier COURANT de la fiche (correct
-  // pour todayPlan) — ici dateISO peut être un jour futur où l'occurrence qui
-  // tombe CE jour-là n'est pas forcément l'échéance courante (planIndexOn) :
-  // on réétiquette donc chaque groupe avec le VRAI palier de l'occurrence du
-  // jour, pour rester cohérent avec le libellé affiché dans la vue normale
-  // (weekData/ficheProjection, qui étiquette déjà par occurrence).
-  const byFiche = groupByFiche(db, dueOn(db, dateISO, ix), ix).map((g) => {
-    const at = planIndexOn(g.items[0], dateISO);
-    return at >= 0 ? { ...g, jIndex: at, jLabel: PLAN_LABELS[at] } : g;
-  });
+  // moteur adaptatif : une carte n'a qu'UNE échéance connue (dueDate), donc le
+  // libellage par défaut de groupByFiche/ficheJ (palier COURANT) est déjà
+  // exact quel que soit le jour interrogé — plus besoin de réétiqueter
+  // l'occurrence (contrairement à l'ancienne chronologie fixe à 7 crans).
+  const byFiche = groupByFiche(db, dueOn(db, dateISO, ix), ix);
   const bySource = {};
   byFiche.forEach((g) => {
     const sid = g.source ? g.source.id : '?';
@@ -495,14 +370,18 @@ export function dueByCoursOn(db, dateISO, idx) {
   return Object.values(bySource).sort((a, b) => b.total - a.total);
 }
 
-/** semaine de 7 jours (weekOffset: 0 = cette semaine) */
+/** semaine de 7 jours (weekOffset: 0 = cette semaine). Moteur adaptatif :
+   une carte ne porte plus qu'UNE échéance connue (dueDate) — "aujourd'hui"
+   et "un jour futur" utilisent donc EXACTEMENT le même calcul réel (dueOn/
+   dueSchemasOn), là où l'ancienne chronologie fixe lisait une projection à
+   part (ficheProjection) pour les jours futurs. Perte assumée de la
+   profondeur du calendrier (plus de J+30/J+90 affichés à l'avance : la
+   prochaine échéance après celle-ci n'existe pas tant qu'elle n'a pas été
+   notée) — voir la mécanique validée. */
 export function weekData(db, weekOffset = 0, idx) {
   const ix = idx || index(db);
   const today = todayISO();
   const monday = addDays(startOfWeekISO(today), weekOffset * 7);
-  // calculée une fois pour toute la semaine — chaque jour futur y pioche ses
-  // occurrences (voir ficheProjection : lecture seule, rien n'est stocké).
-  const projections = allFicheProjections(db, ix);
   const days = [];
   for (let i = 0; i < 7; i++) {
     const date = addDays(monday, i);
@@ -510,23 +389,10 @@ export function weekData(db, weekOffset = 0, idx) {
     const isPast = date < today;
     let items = [], schemas = [], byFiche = [], exos = [];
 
-    if (isToday) {
-      // aujourd'hui : données RÉELLES et actionnables (inchangé — "Lancer la série").
+    if (!isPast) {
       items = dueOn(db, date, ix);
       schemas = dueSchemasOn(db, date, ix).map((f) => ({ fiche: f, matiere: ix.mById[f.matiereId], ...ficheJ(db, f.id, ix) }));
       byFiche = groupByFiche(db, items, ix);
-    } else if (!isPast) {
-      // futur : PROJECTION — toutes les fiches dont une échéance (réelle ou
-      // projetée) tombe ce jour-là, tous J confondus. Même forme {fiche,
-      // matiere, jLabel} que byFiche/schemas ci-dessus → aucun changement
-      // requis côté rendu (WeekCalendar/DayPopup lisent déjà ces champs).
-      projections.forEach((p) => {
-        p.occurrences.forEach((o) => {
-          if (o.date !== date) return;
-          const entry = { fiche: p.fiche, matiere: p.matiere, jLabel: o.jLabel };
-          if (p.fiche.type === 'anat_schema') schemas.push(entry); else byFiche.push(entry);
-        });
-      });
     }
     // passé (isPast) : reste vide, comportement inchangé (rien à projeter en arrière).
 

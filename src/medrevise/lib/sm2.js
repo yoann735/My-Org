@@ -1,15 +1,26 @@
 /* ============================================================
-   MedRevise — méthode des J : CHRONOLOGIE FIXE par carte (remplace le
-   moteur à paliers RECALCULÉS à chaque notation — voir
-   docs/audit-methode-des-J.md : Difficile/Raté à J0 reprogrammaient la
-   carte à AUJOURD'HUI, elle revenait donc chaque jour). Une carte
-   (qcm/flashcard, ou fiche anat_schema) porte :
-   - `plan` : 7 échéances ABSOLUES posées une seule fois à l'import
-     (buildPlan), qui ne bougent JAMAIS automatiquement — ni par une note,
-     ni par un retard, ni par un rattrapage. Seul l'onglet Réorganiser
-     (décalage manuel explicite, MedReviseApp.jsx) peut les modifier.
-   - `cursor` : index de la PROCHAINE échéance non faite. `cursor ===
-     plan.length` → cycle terminé (carte "Terminée", sort du planning actif).
+   MedRevise — méthode des J : MOTEUR ADAPTATIF par carte (remplace la
+   chronologie FIXE à 7 échéances précalculées — voir docs/audit-methode-
+   des-J.md pour l'historique : un PREMIER moteur adaptatif avait déjà
+   existé ici et avait été abandonné parce que Difficile/Raté à J0
+   reprogrammaient la carte à AUJOURD'HUI, elle revenait donc chaque jour.
+   CE moteur-ci évite explicitement ce piège : un Raté ne remet JAMAIS la
+   carte "due aujourd'hui" en base — le retour le jour même (relearning
+   step) est purement une répétition EN MÉMOIRE DE SESSION (voir
+   session/Session.jsx), jamais une deuxième écriture de `dueDate`.
+   Une carte (qcm/flashcard, ou fiche anat_schema — même moteur partagé)
+   porte :
+   - `intervalDays` : intervalle courant en jours (entier ≥ 1), démarre à
+     INTERVAL_START (1) à la création (startAdaptive).
+   - `dueDate` : date ABSOLUE unique de la prochaine échéance, ou `null` si
+     `termine`. Remplace `plan[]` — une seule échéance connue d'avance, la
+     suivante n'existe qu'après la prochaine notation (perte assumée de la
+     projection calendrier lointaine, voir docs/audit-methode-des-J.md).
+   - `capped` : true si `dueDate` est l'échéance à INTERVAL_CAP (90j) posée
+     par un plafonnement — sert à distinguer "ceci est la dernière étape"
+     de "encore un cycle normal" (voir advanceQuestion).
+   - `termine` : true une fois le cycle sorti du planning actif (remplace
+     `cursor === plan.length`).
    - `historique[]` : log informatif des notes (inchangé).
    - `missed` : Raté ET Difficile l'incrémentent, SEUL Facile le remet à 0
      (voir advanceQuestion) — bookkeeping interne au moteur, plus consulté par
@@ -18,8 +29,10 @@
    Le coef n'intervient plus dans ce calcul (voir lib/planning.js
    effectiveCoef — coefficient éditable par fiche, Réviser).
    ============================================================ */
-export const PLAN_DELAYS = [0, 1, 3, 7, 14, 30, 90];
-export const PLAN_LABELS = ['J0', 'J+1', 'J+3', 'J+7', 'J+14', 'J+30', 'J+90'];
+export const INTERVAL_START = 1;
+export const INTERVAL_CAP = 90;
+export const EASY_MULT = 2.5;
+export const HARD_MULT = 1.3;
 
 // notation 3 boutons → qualité SM-2
 export const QUALITY = { facile: 5, difficile: 3, rate: 1 };
@@ -98,38 +111,31 @@ export function todayISO() {
   return isoDate();
 }
 
-/** construit les 7 échéances FIXES d'une carte/fiche à partir de sa date de
-   départ (J0). Appelé UNE SEULE FOIS à la création (storage.js/import.js) ou
-   par un décalage explicite (MedReviseApp.jsx shiftSourceStart/shiftFicheStart,
-   ré-ancrage complet d'une carte jamais commencée) — jamais par une notation. */
-export function buildPlan(startDate) {
-  return PLAN_DELAYS.map((delay, i) => {
-    const d = new Date(startDate + 'T12:00:00');
-    d.setDate(d.getDate() + delay);
-    return { i, label: PLAN_LABELS[i], date: isoDate(d) };
-  });
+/** date ISO + n jours (LOCALE, jamais d'UTC — même méthode que isoDate). Petit
+   utilitaire interne au moteur, pour ne pas dépendre de lib/planning.js
+   addDays (planning.js importe déjà DE sm2.js — jamais l'inverse). */
+function addDaysLocal(dateISO, n) {
+  const d = new Date(dateISO + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  return isoDate(d);
 }
 
-/** construit le plan ET place le `cursor` correctement quand `startDate` est
-   dans le PASSÉ (import d'un cours déjà commencé dans la vraie vie, ou
-   décalage du départ vers une date antérieure) : les jalons strictement
-   antérieurs à aujourd'hui sont considérés DÉJÀ FAITS (jamais "dus" ni "en
-   retard"), le cursor pointe directement sur la première échéance restante
-   (date >= aujourd'hui). Si `startDate` est aujourd'hui ou dans le futur,
-   équivaut exactement à `buildPlan(startDate)` + cursor 0 (comportement
-   inchangé). Si TOUTES les échéances sont déjà passées, cursor = plan.length
-   → la carte est "Terminée" (même état qu'un cycle normalement achevé, voir
-   labelForCursor — aucun nouvel état à gérer). */
-export function buildPlanFrom(startDate) {
-  const plan = buildPlan(startDate);
-  const today = todayISO();
-  const cursor = plan.findIndex((e) => e.date >= today);
-  return { plan, cursor: cursor === -1 ? plan.length : cursor };
+/** état de départ d'une carte/fiche planifiable (qcm/flashcard/anat_schema) —
+   remplace buildPlanFrom. Appelé UNE SEULE FOIS à la création (storage.js
+   newItem, lib/import.js) ou par un ré-ancrage explicite d'une carte JAMAIS
+   révisée (MedReviseApp.jsx shiftSourceStart/shiftFicheStart) — jamais par
+   une notation. `startDate` PEUT être dans le passé (cours déjà commencé
+   dans la vraie vie) : la carte est alors immédiatement "en retard"
+   (dueDate < aujourd'hui), ce qui la fait apparaître directement dans la
+   boîte de rattrapage — aucun calcul de position à faire, contrairement à
+   l'ancien buildPlanFrom (une seule échéance, pas 7 à positionner). */
+export function startAdaptive(startDate) {
+  return { intervalDays: INTERVAL_START, dueDate: startDate, capped: false, termine: false };
 }
 
 /* ============================================================
    MedRevise — méthode des J des EXERCICES (Étape A, socle). Cadence PROPRE,
-   INDÉPENDANTE de la théorie (PLAN_DELAYS ci-dessus) : le prompt de
+   INDÉPENDANTE de la théorie (moteur adaptatif ci-dessus) : le prompt de
    génération assigne à chaque exercice UN SEUL "jalon" logique
    ("J0"|"J+2"|...|"J+45"), pas 7 comme une carte théorie — un exercice n'a
    qu'UNE échéance (`dueDate`, champ unique sur l'item, voir storage.js
@@ -142,7 +148,7 @@ const EXO_JALON_TO_DELAY = Object.fromEntries(EXO_LABELS.map((label, i) => [labe
 
 /** traduit le "jalon" logique d'un exercice (champ du prompt de génération)
    en date ABSOLUE unique à partir du J0 de la fiche (aujourd'hui par défaut,
-   ou une date passée — même mécanisme que buildPlanFrom pour la théorie).
+   ou une date passée — même mécanisme que startAdaptive pour la théorie).
    `null` si `jalon` absent/invalide (contenu legacy sans ce champ) : l'exo
    reste alors sans `dueDate`, comportement actuel inchangé (toujours
    librement accessible, jamais dans "Exercices du jour"). Pas de
@@ -165,30 +171,72 @@ export function dueDateForJalon(jalon, startDate) {
 // enregistrés normalement, seul tempsMs est omis.
 export const MAX_CARD_TIME_MS = 3 * 60 * 1000;
 
-/** fait avancer une carte/fiche planifiée d'UN cran fixe — QUELLE QUE SOIT
-   la note (Facile/Difficile/Raté sont désormais purement informatives pour
-   la chronologie, voir le header du fichier) : `cursor` progresse de 1, le
-   `plan` lui-même n'est JAMAIS réécrit ici. `cursor === plan.length` → cycle
-   terminé (voir planning.js, une carte terminée sort de scheduledQuestions).
-   `missed` : Raté ET Difficile l'incrémentent, SEUL Facile (quality 5) le
-   remet à zéro (QUALITY : facile=5, difficile=3, rate=1) — bookkeeping
-   interne au moteur (plus aucun écran ne le lit, voir header du fichier),
-   conservé tel quel pour ne pas toucher au moteur chrono.
-   `extra.tempsMs` (optionnel, flashcards) : temps actif passé sur la carte,
-   voir MAX_CARD_TIME_MS. */
-export function advanceQuestion(record, quality, extra = {}) {
-  const plan = record.plan || [];
-  const cursor = Math.min((record.cursor || 0) + 1, plan.length);
+function historyEntry(quality, extra) {
   const entry = { date: todayISO(), qualite: quality };
   const tempsMs = extra && extra.tempsMs;
   if (Number.isFinite(tempsMs) && tempsMs >= 0 && tempsMs <= MAX_CARD_TIME_MS) entry.tempsMs = Math.round(tempsMs);
-  const historique = (record.historique || []).concat([entry]);
-  return {
-    ...record,
-    cursor,
-    historique,
-    missed: quality >= 5 ? 0 : (record.missed || 0) + 1,
-  };
+  return entry;
+}
+
+/** fait avancer une carte/fiche planifiée selon le moteur ADAPTATIF (voir le
+   header du fichier) : la note choisie recalcule RÉELLEMENT `intervalDays`/
+   `dueDate`, contrairement à l'ancienne chronologie fixe.
+   - Raté (QUALITY.rate) : intervalDays → INTERVAL_START (1), dueDate →
+     demain. Le retour "le jour même" (relearning step) n'est PAS ici — c'est
+     une répétition en mémoire de session (session/Session.jsx), qui rejoue
+     une note via `recordRelearnAttempt` SANS jamais rappeler cette fonction
+     une 2e fois le même jour (voir le bug historique documenté en tête de
+     fichier : recalculer la date une 2e fois le même jour la ferait revenir
+     "aujourd'hui" indéfiniment).
+   - Facile/Difficile : intervalDays × EASY_MULT/HARD_MULT, arrondi, avec un
+     plancher de progression de +1 jour (sinon Difficile × 1.3 reste bloqué à
+     l'intervalle 1 indéfiniment : round(1×1.3) = 1). Si le résultat dépasse
+     INTERVAL_CAP (90), il est plafonné à 90 pile et `capped` passe à true —
+     ceci est la DERNIÈRE échéance avant sortie (voir ci-dessous).
+   - Carte déjà `capped` (à son échéance J+90 plafonnée) : Facile/Difficile
+     → TERMINE la carte (dueDate: null, termine: true) ; Raté → relance un
+     cycle complet (comme n'importe quel Raté), ne termine JAMAIS — choix
+     validé explicitement : "Rater = pas acquise, elle doit repartir".
+   `missed` : Raté ET Difficile l'incrémentent, SEUL Facile (quality 5) le
+   remet à zéro — bookkeeping interne au moteur (plus aucun écran ne le lit),
+   conservé tel quel. `extra.tempsMs` (optionnel, flashcards) : voir
+   MAX_CARD_TIME_MS. */
+export function advanceQuestion(record, quality, extra = {}) {
+  const historique = (record.historique || []).concat([historyEntry(quality, extra)]);
+  const missed = quality >= 5 ? 0 : (record.missed || 0) + 1;
+  const isFail = quality === QUALITY.rate;
+
+  if (record.capped) {
+    if (isFail) {
+      return { ...record, intervalDays: INTERVAL_START, dueDate: addDaysLocal(todayISO(), 1), capped: false, termine: false, historique, missed };
+    }
+    return { ...record, dueDate: null, termine: true, historique, missed };
+  }
+
+  if (isFail) {
+    return { ...record, intervalDays: INTERVAL_START, dueDate: addDaysLocal(todayISO(), 1), capped: false, historique, missed };
+  }
+
+  const mult = quality >= 5 ? EASY_MULT : HARD_MULT;
+  const base = record.intervalDays || INTERVAL_START;
+  let nextInterval = Math.max(base + 1, Math.round(base * mult));
+  let capped = false;
+  if (nextInterval > INTERVAL_CAP) { nextInterval = INTERVAL_CAP; capped = true; }
+  return { ...record, intervalDays: nextInterval, dueDate: addDaysLocal(todayISO(), nextInterval), capped, historique, missed };
+}
+
+/** répétition de relearning (session/Session.jsx, mobile/MobileSession.jsx) :
+   même jour, EN MÉMOIRE DE SESSION uniquement — écrit dans `historique`
+   (pour que le carnet d'erreurs détecte 2 ratés d'affilée MÊME si le 2e
+   vient de cette répétition), sans jamais retoucher `intervalDays`/`dueDate`/
+   `capped`/`termine` (déjà fixés par le Raté initial qui a déclenché cette
+   répétition) — même patron que recordExerciceAttempt ci-dessous
+   (historique-only), pour la même raison : rejouer advanceQuestion ici
+   écraserait le `dueDate` déjà posé et pourrait reproduire le bug historique
+   (carte "due aujourd'hui" en boucle, voir header du fichier). */
+export function recordRelearnAttempt(record, quality, extra = {}) {
+  const historique = (record.historique || []).concat([historyEntry(quality, extra)]);
+  return { ...record, historique, missed: quality >= 5 ? 0 : (record.missed || 0) + 1 };
 }
 
 /** enregistre une tentative d'EXERCICE (historique + carnet), SANS toucher à
@@ -229,17 +277,19 @@ export function computeStreak(activityDays) {
   return streak;
 }
 
-/** libellé EXACT de la PROCHAINE échéance d'une carte/fiche planifiée (plan/
-   cursor) — badge "J", frise. `plan` est toujours défini dès qu'une carte/
-   fiche qcm/flashcard/anat_schema existe (voir lib/storage.js) ; le repli
-   'Nouveau' ne sert qu'aux enregistrements pas encore migrés. `cursor >=
-   plan.length` → cycle terminé (voir buildPlan/advanceQuestion). */
+/** libellé de la carte/fiche planifiée — badge "J" (Dashboard/Réviser/
+   Session). `jIndex` : -1 = jamais planifiée (repli pour un enregistrement
+   pas encore migré), 0 = cycle actif, 1 = terminée (garde la sémantique
+   `jIndex >= 0` = "affiche un badge", utilisée par les écrans existants).
+   Remplace l'ancienne frise à 7 crans (plan/cursor) : le moteur adaptatif
+   n'a qu'un intervalle courant, pas de paliers nommés — le libellé devient
+   simplement "J+N" (N = intervalDays). */
 export function labelForCursor(record) {
-  const plan = record && record.plan;
-  if (!plan || !plan.length) return { jIndex: -1, jLabel: 'Nouveau' };
-  const cursor = record.cursor || 0;
-  if (cursor >= plan.length) return { jIndex: plan.length, jLabel: 'Terminée' };
-  return { jIndex: cursor, jLabel: plan[cursor].label };
+  if (!record || (record.dueDate == null && record.intervalDays == null && !record.termine)) {
+    return { jIndex: -1, jLabel: 'Nouveau' };
+  }
+  if (record.termine) return { jIndex: 1, jLabel: 'Terminée' };
+  return { jIndex: 0, jLabel: 'J+' + (record.intervalDays || INTERVAL_START) };
 }
 
 /** [LEGACY] bucketing d'un ANCIEN interval (ex-moteur SM-2 adaptatif) vers le

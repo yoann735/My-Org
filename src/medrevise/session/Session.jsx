@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta, EtiquetteQuickSet, SessionTrendCard } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
-import { advanceQuestion, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, labelForCursor, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
+import { advanceQuestion, recordRelearnAttempt, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, labelForCursor, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
 import { index } from '../lib/planning.js';
 import { blobURL } from '../lib/storage.js';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
@@ -78,14 +78,28 @@ export function Session({ ctx }) {
   const [validated, setValidated] = useState(false);
   const [flipped, setFlipped] = useState(false);
   const [pulse, setPulse] = useState('');
-  // carnet d'erreurs v2 (étape 1) : { rating, updated } tant qu'on attend une
-  // décision (Ajouter/Passer) après un 2e+ raté consécutif sur une flashcard —
-  // null sinon. `updated` = le record déjà persisté par advance() (plan/cursor/
-  // historique/missed à jour), réutilisé tel quel pour y greffer carnetRaison/
-  // carnetAt sans recalculer la méthode des J.
+  // carnet d'erreurs v2 (étape 1) : { rating, updated, addedRelearn } tant
+  // qu'on attend une décision (Ajouter/Passer) après un 2e+ raté consécutif
+  // sur une flashcard — null sinon. `updated` = le record déjà persisté par
+  // advance() (intervalDays/dueDate/historique/missed à jour), réutilisé tel
+  // quel pour y greffer carnetRaison/carnetAt sans recalculer la méthode des
+  // J. `addedRelearn` : voir extraItems ci-dessous.
   const [carnetPrompt, setCarnetPrompt] = useState(null);
+  // relearning step (moteur adaptatif, Raté) : file d'attente EN MÉMOIRE DE
+  // SESSION uniquement, jamais persistée — une carte ratée y est ajoutée et
+  // ne réapparaît qu'APRÈS toutes les cartes initialement prévues ("fin de
+  // séance"), pour un second passage. Distincte de `items` (qui reste la
+  // liste FIXE de la série, dérivée de session.items) : `allItems` étend la
+  // série affichée sans jamais toucher à `items` lui-même (Roadmap/compteurs
+  // affichent naturellement le total qui grandit d'1 à chaque Raté, comme un
+  // "learning step" — même principe que la plupart des apps de répétition
+  // espacée). `_relearn: true` sur l'entrée marque un second passage : sa
+  // notation appelle recordRelearnAttempt (historique-only, voir sm2.js) et
+  // n'est JAMAIS re-mise en file (une seule répétition par Raté, confirmé).
+  const [extraItems, setExtraItems] = useState([]);
+  const allItems = useMemo(() => [...items, ...extraItems], [items, extraItems]);
 
-  const item = items[idx];
+  const item = allItems[idx];
   const resetCard = () => { setSelectedIds([]); setValidated(false); setFlipped(false); setPulse(''); setCarnetPrompt(null); };
   // mode cloze (saisie/retourner) : bascule simple, mémorisée entre sessions (stats).
   const clozeMode = (ctx.stats && ctx.stats.clozeMode) || 'actif';
@@ -117,10 +131,15 @@ export function Session({ ctx }) {
 
   // avance réellement à la carte suivante (ou termine la série) — extrait
   // d'advance() pour être rejouable APRÈS la décision du carnet d'erreurs
-  // (Ajouter/Passer), sans dupliquer la persistance SM-2.
-  const proceedToNext = (rating, itemId, itemType) => {
+  // (Ajouter/Passer), sans dupliquer la persistance du moteur. `addedRelearn`
+  // : true si CETTE notation vient de pousser une nouvelle entrée dans
+  // extraItems (Raté) — `allItems.length` n'a pas encore répercuté ce push
+  // au moment de cet appel (setExtraItems est async), donc on corrige le
+  // total explicitement plutôt que de lire une valeur non encore à jour.
+  const proceedToNext = (rating, itemId, itemType, addedRelearn = false) => {
     setResults((r) => { const n = r.slice(0, idx); n[idx] = { id: itemId, type: itemType, rating }; return n; });
-    if (idx + 1 >= items.length) { setAnim('out'); setTimeout(() => setFinished(true), 240); return; }
+    const total = allItems.length + (addedRelearn ? 1 : 0);
+    if (idx + 1 >= total) { setAnim('out'); setTimeout(() => setFinished(true), 240); return; }
     setAnim('out');
     setTimeout(() => { setIdx((i) => i + 1); resetCard(); setAnim('in'); }, 240);
   };
@@ -138,18 +157,23 @@ export function Session({ ctx }) {
       return;
     }
     const rating = resolveRating(ratingIn);
-    // persist SM-2 — SAUF pour les items ÉPHÉMÈRES (théorie de schéma générée à la
+    let addedRelearn = false;
+    // persist — SAUF pour les items ÉPHÉMÈRES (théorie de schéma générée à la
     // volée) : ils ne sont jamais planifiés ni écrits en base (aucun impact méthode des J).
     if (item && !item.ephemeral) {
       const quality = RATING_QUALITY[rating];
       // chrono uniquement pour les flashcards (voir la demande) — un QCM n'a
       // pas de "temps par carte" affiché dans Réviser.
       const applyExtra = isFlash(item.type) ? { tempsMs: cardElapsedMs() } : {};
-      let updated = advanceQuestion(item, quality, applyExtra);
-      delete updated._fiche; delete updated._matiere; delete updated._j;
+      // relearning (moteur adaptatif) : une répétition (`item._relearn`) ne
+      // rejoue JAMAIS le calcul d'intervalle (recordRelearnAttempt,
+      // historique-only) — sinon on écraserait le dueDate déjà posé par le
+      // Raté initial et reproduirait le bug historique (voir sm2.js header).
+      let updated = item._relearn ? recordRelearnAttempt(item, quality, applyExtra) : advanceQuestion(item, quality, applyExtra);
+      delete updated._fiche; delete updated._matiere; delete updated._j; delete updated._relearn;
       // rotation QCM (Étape 4, lib/planning.js pickQcmSubset) : suivi de la
       // dernière présentation + du dernier résultat, DISTINCT de la notation
-      // SM-2 3 boutons — correction directe (cochées == reponses_correctes),
+      // 3 boutons — correction directe (cochées == reponses_correctes),
       // pas la qualité choisie ensuite pour la méthode des J.
       if (item.type === 'qcm') {
         const correct = new Set(item.reponses_correctes || []);
@@ -157,30 +181,44 @@ export function Session({ ctx }) {
         updated = { ...updated, lastSeenAt: todayISO(), lastResult: ok ? 'ok' : 'ko' };
       }
       await ctx.saveQuestion(updated);
-      // carnet d'erreurs v2 (étape 1) : la note SM-2 est déjà persistée ci-dessus
+      // relearning step (Raté, moteur adaptatif) : la carte revient EN
+      // MÉMOIRE DE SESSION en fin de série (voir extraItems ci-dessus) — une
+      // seule fois par Raté, jamais si `item` est déjà une répétition
+      // (`item._relearn`, pas de récursion, confirmé). S'applique à QCM ET
+      // flashcard (la règle 1 ne restreint pas aux flashcards, contrairement
+      // au carnet d'erreurs ci-dessous).
+      if (!item._relearn && rating === 'fail') {
+        const f = ix.fById[updated.ficheId];
+        const m = f && ix.mById[f.matiereId];
+        setExtraItems((prev) => [...prev, { ...updated, _fiche: f, _matiere: m, _j: 'Reprise', _relearn: true }]);
+        addedRelearn = true;
+      }
+      // carnet d'erreurs v2 (étape 1) : la note est déjà persistée ci-dessus
       // (le cycle des J avance normalement, quelle que soit la suite) — on
       // interrompt seulement la NAVIGATION vers la carte suivante, le temps que
       // l'utilisateur décide d'ajouter une raison ou de passer. Flashcards
       // uniquement (isFlash), et seulement via le bouton "Raté" explicite —
-      // pas le cloze en mode saisie (auto-noté, pas de bouton Raté).
+      // pas le cloze en mode saisie (auto-noté, pas de bouton Raté). S'applique
+      // aussi bien à un Raté "normal" qu'à un Raté sur la répétition de
+      // relearning (updated.historique porte alors les 2 entrées consécutives).
       if (isFlash(item.type) && rating === 'fail' && lastTwoAreFails(updated.historique)) {
-        setCarnetPrompt({ rating, updated });
+        setCarnetPrompt({ rating, updated, addedRelearn });
         return;
       }
     }
-    proceedToNext(rating, item.id, item.type);
+    proceedToNext(rating, item.id, item.type, addedRelearn);
   };
 
   // "Ajouter au carnet d'erreurs" : greffe carnetRaison/carnetAt sur le record
   // déjà avancé par advance() (autre écriture outbox, LWW — aucun impact sur
-  // plan/cursor/historique/missed déjà sauvés).
+  // intervalDays/dueDate/historique/missed déjà sauvés).
   const submitCarnetRaison = async (raison) => {
     const p = carnetPrompt;
     if (!p) return;
     const text = (raison || '').trim();
     if (text) await ctx.saveQuestion({ ...p.updated, carnetRaison: text, carnetAt: todayISO() });
     setCarnetPrompt(null);
-    proceedToNext(p.rating, p.updated.id, p.updated.type);
+    proceedToNext(p.rating, p.updated.id, p.updated.type, p.addedRelearn);
   };
 
   // "Passer" : avance sans rien enregistrer de plus (la note Raté, elle, est
@@ -189,7 +227,7 @@ export function Session({ ctx }) {
     const p = carnetPrompt;
     if (!p) return;
     setCarnetPrompt(null);
-    proceedToNext(p.rating, p.updated.id, p.updated.type);
+    proceedToNext(p.rating, p.updated.id, p.updated.type, p.addedRelearn);
   };
 
   const goPrev = () => { if (idx === 0) return; setAnim('outR'); setTimeout(() => { setIdx((i) => i - 1); resetCard(); setAnim('inL'); }, 220); };
@@ -217,16 +255,16 @@ export function Session({ ctx }) {
       </div>
     );
   }
-  if (finished) return <Celebration items={items} results={results} session={session} ctx={ctx} />;
+  if (finished) return <Celebration items={allItems} results={results} session={session} ctx={ctx} />;
 
-  const qcmTotal = items.filter((i) => i.type === 'qcm').length;
-  const flashTotal = items.filter((i) => isFlash(i.type)).length;
-  const qcmDone = items.slice(0, idx).filter((i) => i.type === 'qcm').length;
-  const flashDone = items.slice(0, idx).filter((i) => isFlash(i.type)).length;
+  const qcmTotal = allItems.filter((i) => i.type === 'qcm').length;
+  const flashTotal = allItems.filter((i) => isFlash(i.type)).length;
+  const qcmDone = allItems.slice(0, idx).filter((i) => i.type === 'qcm').length;
+  const flashDone = allItems.slice(0, idx).filter((i) => isFlash(i.type)).length;
   const curType = item.type;
   const posInType = curType === 'qcm' ? qcmDone + 1 : flashDone + 1;
   const totInType = curType === 'qcm' ? qcmTotal : flashTotal;
-  const minsLeft = Math.max(1, Math.round((items.length - idx) * 0.8));
+  const minsLeft = Math.max(1, Math.round((allItems.length - idx) * 0.8));
   const meta = matiereMeta(item._matiere);
   const typeLabel = curType === 'qcm' ? 'QCM' : erreurMode ? "Flashcards d'erreur" : 'Flashcards';
 
@@ -252,8 +290,8 @@ export function Session({ ctx }) {
       </div>
 
       <div className="rev-prog" style={{ maxWidth: 720, margin: '0 auto 18px', width: '100%' }}>
-        <div className="bar"><span style={{ width: (idx / items.length) * 100 + '%' }} /></div>
-        <span className="rp-count tnum">{idx + 1} / {items.length}</span>
+        <div className="bar"><span style={{ width: (idx / allItems.length) * 100 + '%' }} /></div>
+        <span className="rp-count tnum">{idx + 1} / {allItems.length}</span>
       </div>
 
       <div className="rev-stage scroll" style={{ flex: '1 1 auto', overflowY: 'auto', minHeight: 0, paddingTop: 4, paddingBottom: 10, justifyContent: 'flex-start' }}>
@@ -264,7 +302,7 @@ export function Session({ ctx }) {
         </div>
       </div>
 
-      <Roadmap items={items} idx={idx} onJump={jumpTo} />
+      <Roadmap items={allItems} idx={idx} onJump={jumpTo} />
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { Tex } from '../components/Tex.jsx';
-import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, dueFromOn, addDays, diffDays, weekendReviewByFiche, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
+import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, weekendReviewByFiche, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
 import { isoDate } from '../lib/sm2.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
@@ -322,27 +322,19 @@ function DayPopup({ day, ctx, onClose }) {
   // dégonfle et disparaît de la liste dès qu'il n'a plus rien de dû, sans
   // fermer la popup, puisque ce recalcul suit ctx.db à chaque rendu.
   const [reorg, setReorg] = useState(false);
-  const [moveTarget, setMoveTarget] = useState(null); // { type: 'source'|'fiche', id, nom, count, cascadeCount }
-  const [cascadeOn, setCascadeOn] = useState(false);
+  const [moveTarget, setMoveTarget] = useState(null); // { type: 'source'|'fiche', id, nom, count }
   const coursGroups = reorg ? dueByCoursOn(ctx.db, day.date) : [];
-  // cascadeCount précalculé au clic sur « Déplacer » (voir dueFromOn, étape 3/3) —
-  // ne dépend PAS de la date choisie dans la modale, seulement de day.date/du
-  // périmètre, donc pas besoin de le recalculer à chaque frappe dans le sélecteur.
-  const startMove = (target) => {
-    const cascadeCount = target.type === 'source'
-      ? dueFromOn(ctx.db, day.date, { sourceId: target.id }).length
-      : dueFromOn(ctx.db, day.date, { ficheId: target.id }).length;
-    setCascadeOn(false);
-    setMoveTarget({ ...target, cascadeCount });
-  };
+  const startMove = (target) => setMoveTarget(target);
   const confirmMove = async (toDate) => {
     if (!moveTarget) return;
-    if (moveTarget.type === 'source') await ctx.moveSourceDay(moveTarget.id, day.date, toDate, { cascade: cascadeOn });
-    else await ctx.moveFicheDay(moveTarget.id, day.date, toDate, { cascade: cascadeOn });
+    if (moveTarget.type === 'source') await ctx.moveSourceDay(moveTarget.id, day.date, toDate);
+    else await ctx.moveFicheDay(moveTarget.id, day.date, toDate);
     setMoveTarget(null);
   };
-  // « Sauter » : disponible pour N'IMPORTE QUEL jour affiché (day.date), pas
-  // seulement aujourd'hui — cible = cartes dues CE jour précis.
+  // « Sauter » : VRAI no-op (aucune écriture) — la carte reste due CE jour-là,
+  // disponible pour N'IMPORTE QUEL jour affiché (day.date), pas seulement
+  // aujourd'hui. Juste un aparté visuel — ferme la confirmation sans rien
+  // changer en base.
   const [skipTarget, setSkipTarget] = useState(null); // { type, id, nom, count }
   const confirmSkip = async () => {
     if (!skipTarget) return;
@@ -433,18 +425,6 @@ function DayPopup({ day, ctx, onClose }) {
               </div>
             );
           })}
-          {day.isProjected && day.byFiche.map((c) => {
-            const meta = matiereMeta(c.matiere);
-            return (
-              <div className="day-line" key={c.fiche.id}>
-                <div className="dl-ic" style={{ background: `color-mix(in srgb, ${meta.tint} 15%, transparent)`, color: meta.tint }}><Icon name="cards" size={17} /></div>
-                <div className="dl-main">
-                  <div className="dl-title">{c.fiche.titre}</div>
-                  <div className="dl-sub"><span>{meta.label} · <span className="j-tag">{c.jLabel}</span></span></div>
-                </div>
-              </div>
-            );
-          })}
           {(day.schemas || []).map((s) => {
             const meta = matiereMeta(s.matiere);
             return (
@@ -499,16 +479,8 @@ function DayPopup({ day, ctx, onClose }) {
           title={`Déplacer « ${moveTarget.nom} »`}
           label="Nouvelle date"
           confirmLabel="Déplacer"
-          count={cascadeOn ? moveTarget.cascadeCount : moveTarget.count}
-          minDate={cascadeOn ? addDays(day.date, 1) : undefined}
-          cascade={{
-            checked: cascadeOn,
-            onChange: setCascadeOn,
-            label: `Décaler aussi les révisions suivantes de ${moveTarget.type === 'source' ? 'ce cours' : 'cette fiche'} (${moveTarget.cascadeCount} carte${moveTarget.cascadeCount > 1 ? 's' : ''} au total)`,
-          }}
-          body={(date) => cascadeOn
-            ? `${moveTarget.cascadeCount} carte${moveTarget.cascadeCount > 1 ? 's' : ''} (dues ce jour-là et toutes leurs échéances futures déjà programmées) ${moveTarget.cascadeCount > 1 ? 'seront décalées' : 'sera décalée'} de ${diffDays(day.date, date)} jour${diffDays(day.date, date) > 1 ? 's' : ''}. Les cartes déjà passées avant ce jour ne bougent pas. Palier, historique et progression restent inchangés.`
-            : `${moveTarget.count} carte${moveTarget.count > 1 ? 's' : ''} ${moveTarget.count > 1 ? 'seront déplacées' : 'sera déplacée'} vers cette date. Palier, historique et progression restent inchangés — seule la date de réapparition change.`}
+          count={moveTarget.count}
+          body={(date) => `${moveTarget.count} carte${moveTarget.count > 1 ? 's' : ''} ${moveTarget.count > 1 ? 'seront déplacées' : 'sera déplacée'} vers cette date. Intervalle, historique et progression restent inchangés — seule la date de réapparition change.`}
           onConfirm={confirmMove}
           onCancel={() => setMoveTarget(null)}
         />
@@ -516,7 +488,7 @@ function DayPopup({ day, ctx, onClose }) {
       {skipTarget && (
         <ConfirmModal
           title={`Sauter ce jour — « ${skipTarget.nom} »`}
-          body={`${skipTarget.count} carte${skipTarget.count > 1 ? 's' : ''} ${skipTarget.count > 1 ? 'avanceront' : 'avancera'} à leur palier suivant, comme lors d'une révision réussie ce jour-là (sans note à donner) — elles disparaissent de ce jour, le reste du planning est inchangé.`}
+          body={`${skipTarget.count} carte${skipTarget.count > 1 ? 's' : ''} ${skipTarget.count > 1 ? 'restent' : 'reste'} due${skipTarget.count > 1 ? 's' : ''} ce jour-là — aucune écriture, rien n'avance : c'est juste un aparté visuel, elles réapparaîtront la prochaine fois que tu ouvres ce jour.`}
           confirmLabel="Sauter"
           onConfirm={confirmSkip}
           onCancel={() => setSkipTarget(null)}

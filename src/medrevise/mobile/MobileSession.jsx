@@ -8,7 +8,7 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { advanceQuestion, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
+import { advanceQuestion, recordRelearnAttempt, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
 import { index } from '../lib/planning.js';
 import { Tex } from '../components/Tex.jsx';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
@@ -45,14 +45,23 @@ export function MobileSession({ ctx, onQuit }) {
     return { ...it, _fiche: f };
   }).sort((a, b) => (shuffleRank.get(a.id) ?? 0) - (shuffleRank.get(b.id) ?? 0)), [session, ctx.db, ix, shuffleRank]);
 
+  // relearning step (moteur adaptatif, Raté) — même mécanique que desktop
+  // Session.jsx : file EN MÉMOIRE DE SESSION uniquement, ajoutée en fin de
+  // série, jamais persistée comme file d'attente. Voir Session.jsx pour le
+  // détail (bug historique évité : le retour "le jour même" ne rejoue jamais
+  // le calcul de dueDate).
+  const [extraItems, setExtraItems] = useState([]);
+  const allItems = useMemo(() => [...items, ...extraItems], [items, extraItems]);
+
   const [idx, setIdx] = useState(0);
   const [results, setResults] = useState([]);
   const [finished, setFinished] = useState(false);
-  // carnet d'erreurs v2 (étape 1) : { rating, updated } tant qu'on attend
-  // Ajouter/Passer après un 2e+ raté consécutif sur une flashcard — même
+  // carnet d'erreurs v2 (étape 1) : { rating, updated, addedRelearn } tant
+  // qu'on attend Ajouter/Passer après un 2e+ raté consécutif sur une
+  // flashcard — même
   // mécanique que desktop Session.jsx, voir là-bas pour le détail.
   const [carnetPrompt, setCarnetPrompt] = useState(null);
-  const item = items[idx];
+  const item = allItems[idx];
   // mode cloze (saisie/retourner) : bascule simple, mémorisée entre sessions (stats).
   const clozeMode = (ctx.stats && ctx.stats.clozeMode) || 'actif';
   const setClozeMode = (m) => ctx.saveStats({ ...ctx.stats, clozeMode: m });
@@ -83,10 +92,11 @@ export function MobileSession({ ctx, onQuit }) {
   // d'advance() pour être rejouable APRÈS la décision du carnet d'erreurs
   // (Ajouter/Passer), sans dupliquer la persistance SM-2 — même découpage que
   // desktop Session.jsx.
-  const proceedToNext = (rating) => {
+  const proceedToNext = (rating, addedRelearn = false) => {
     setResults((r) => { const n = r.slice(0, idx); n[idx] = { rating }; return n; });
     setCarnetPrompt(null);
-    if (idx + 1 >= items.length) { setFinished(true); return; }
+    const total = allItems.length + (addedRelearn ? 1 : 0);
+    if (idx + 1 >= total) { setFinished(true); return; }
     setIdx((i) => i + 1);
   };
 
@@ -100,47 +110,59 @@ export function MobileSession({ ctx, onQuit }) {
       return;
     }
     const rating = resolveRating(ratingIn);
+    let addedRelearn = false;
     if (item && !item.ephemeral) {
       const quality = RATING_QUALITY[rating];
       const applyExtra = isFlash(item.type) ? { tempsMs: cardElapsedMs() } : {};
-      let updated = advanceQuestion(item, quality, applyExtra);
-      delete updated._fiche;
+      // relearning (moteur adaptatif) : une répétition (`item._relearn`) ne
+      // rejoue jamais le calcul d'intervalle — voir desktop Session.jsx pour
+      // le détail du bug historique évité.
+      let updated = item._relearn ? recordRelearnAttempt(item, quality, applyExtra) : advanceQuestion(item, quality, applyExtra);
+      delete updated._fiche; delete updated._relearn;
       // rotation QCM (Étape 4, lib/planning.js pickQcmSubset) : suivi de la
       // dernière présentation + du dernier résultat (correction directe, pas
-      // la notation SM-2 3 boutons) — voir même logique en desktop Session.jsx.
+      // la notation 3 boutons) — voir même logique en desktop Session.jsx.
       if (item.type === 'qcm' && extra) {
         updated = { ...updated, lastSeenAt: todayISO(), lastResult: extra.qcmOk ? 'ok' : 'ko' };
       }
       await ctx.saveQuestion(updated);
-      // carnet d'erreurs v2 (étape 1) : note SM-2 déjà persistée ci-dessus (le
+      // relearning step (Raté) : la carte revient EN MÉMOIRE DE SESSION en
+      // fin de série (même mécanique que desktop Session.jsx) — une seule
+      // fois par Raté, jamais si `item` est déjà une répétition.
+      if (!item._relearn && rating === 'fail') {
+        const f = ix.fById[updated.ficheId];
+        setExtraItems((prev) => [...prev, { ...updated, _fiche: f, _relearn: true }]);
+        addedRelearn = true;
+      }
+      // carnet d'erreurs v2 (étape 1) : note déjà persistée ci-dessus (le
       // cycle des J avance normalement) — on interrompt seulement la
       // navigation, le temps qu'on décide d'ajouter une raison ou de passer.
       // Flashcards uniquement, via le bouton "Raté" explicite (pas le cloze
       // en mode saisie, auto-noté, voir MobileClozeActiveCard#finish).
       if (isFlash(item.type) && rating === 'fail' && lastTwoAreFails(updated.historique)) {
-        setCarnetPrompt({ rating, updated });
+        setCarnetPrompt({ rating, updated, addedRelearn });
         return;
       }
     }
-    proceedToNext(rating);
+    proceedToNext(rating, addedRelearn);
   };
 
   // "Ajouter au carnet d'erreurs" : greffe carnetRaison/carnetAt sur le record
   // déjà avancé par advance() — autre écriture outbox (LWW), aucun impact sur
-  // plan/cursor/historique/missed déjà sauvés.
+  // intervalDays/dueDate/historique/missed déjà sauvés.
   const submitCarnetRaison = async (raison) => {
     const p = carnetPrompt;
     if (!p) return;
     const text = (raison || '').trim();
     if (text) await ctx.saveQuestion({ ...p.updated, carnetRaison: text, carnetAt: todayISO() });
-    proceedToNext(p.rating);
+    proceedToNext(p.rating, p.addedRelearn);
   };
 
   // "Passer" : avance sans rien enregistrer de plus (la note Raté est déjà persistée).
   const skipCarnetRaison = () => {
     const p = carnetPrompt;
     if (!p) return;
-    proceedToNext(p.rating);
+    proceedToNext(p.rating, p.addedRelearn);
   };
 
   if (!items.length) {
@@ -155,14 +177,14 @@ export function MobileSession({ ctx, onQuit }) {
     );
   }
 
-  if (finished) return <MobileSessionDone items={items} results={results} title={session.title} ctx={ctx} onQuit={onQuit} erreurMode={erreurMode} />;
+  if (finished) return <MobileSessionDone items={allItems} results={results} title={session.title} ctx={ctx} onQuit={onQuit} erreurMode={erreurMode} />;
 
   return (
     <div className="mrm-app">
       <div className="mrm-header">
         <button type="button" className="mrm-quit" onClick={onQuit} aria-label="Quitter"><Icon name="x" size={18} /></button>
-        <div className="mrm-progress"><span style={{ width: (idx / items.length) * 100 + '%' }} /></div>
-        <span className="mrm-progress-n">{idx + 1} / {items.length}</span>
+        <div className="mrm-progress"><span style={{ width: (idx / allItems.length) * 100 + '%' }} /></div>
+        <span className="mrm-progress-n">{idx + 1} / {allItems.length}</span>
       </div>
       <div className="mrm-body">
         {item.type === 'qcm'

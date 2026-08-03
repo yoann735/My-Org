@@ -10,7 +10,7 @@ import { getAll, putMany, getMeta, setMeta, putBackup, remove } from './storage.
 import { toInternalItem } from './adapter.js';
 import { addDays } from './planning.js';
 import { pullAllRecords, pushTombstonesNow } from '../data/sync.js';
-import { palierFromInterval, todayISO, PLAN_DELAYS, PLAN_LABELS } from './sm2.js';
+import { palierFromInterval, todayISO, INTERVAL_START, INTERVAL_CAP } from './sm2.js';
 
 const MIGRATIONS_KEY = 'migrations';
 const MIG_V1 = 'items-v1.0';
@@ -21,13 +21,21 @@ const MIG_DEMO_ZOMBIES = 'demo-zombies-cleanup-v1';
 const MIG_CADENCE_FIXE = 'cadence-fixe-v1';
 const MIG_CHRONO_FIXE = 'chronologie-fixe-v1';
 const MIG_RESET_MISSED = 'reset-ancien-carnet-erreurs-v1';
+const MIG_ADAPTATIF = 'moteur-adaptatif-v1';
 // ancienne cadence à 5 paliers (avant CETTE refonte), FIGÉE : usage UNIQUE
-// des deux migrations ci-dessous (jamais le moteur courant, voir sm2.js
-// PLAN_DELAYS). Ancien palier (0..4) → nouvel index plan (0..6, J0/J+1/J+3/
-// J+7/J+14/J+30/J+90) : correspondance directe, les 5 anciens paliers sont
-// un SOUS-ENSEMBLE des 7 nouveaux (J0→0, J+3→2, J+7→3, J+14→4, J+30→5).
+// des deux migrations ci-dessous (jamais le moteur courant). Ancien palier
+// (0..4) → nouvel index plan (0..6, J0/J+1/J+3/J+7/J+14/J+30/J+90) :
+// correspondance directe, les 5 anciens paliers sont un SOUS-ENSEMBLE des 7
+// nouveaux (J0→0, J+3→2, J+7→3, J+14→4, J+30→5).
 const LEGACY_PALIER_DELAYS = [0, 3, 7, 14, 30];
 const LEGACY_TO_PLAN_INDEX = [0, 2, 3, 4, 5];
+// chronologie fixe à 7 crans (moteur remplacé par le moteur ADAPTATIF de
+// cette refonte) — copie FIGÉE, privée à migrateChronologieFixeV1 ET
+// migrateAdaptatifV1 ci-dessous : le moteur courant (sm2.js) n'a plus de
+// paliers nommés, seulement un intervalle continu, ces deux migrations
+// restent les SEULES à devoir connaître l'ancienne cadence.
+const CHRONO_FIXE_PLAN_DELAYS = [0, 1, 3, 7, 14, 30, 90];
+const CHRONO_FIXE_PLAN_LABELS = ['J0', 'J+1', 'J+3', 'J+7', 'J+14', 'J+30', 'J+90'];
 
 // IDs fixes du seed de démo (lib/storage.js:194-203) — voir docs/audit-sync-mobile.md §3.1 :
 // une course de réensemencement historique (déjà corrigée via canSeed) a pu faire gagner
@@ -352,9 +360,9 @@ export async function migrateChronologieFixeV1() {
     const oldPalier = Math.min(Math.max(rec.palier || 0, 0), LEGACY_PALIER_DELAYS.length - 1);
     const cursor = LEGACY_TO_PLAN_INDEX[oldPalier];
     const anchorDate = rec.nextReview || todayISO();
-    const anchorDelay = PLAN_DELAYS[cursor];
-    const plan = PLAN_DELAYS.map((delay, i) => ({
-      i, label: PLAN_LABELS[i],
+    const anchorDelay = CHRONO_FIXE_PLAN_DELAYS[cursor];
+    const plan = CHRONO_FIXE_PLAN_DELAYS.map((delay, i) => ({
+      i, label: CHRONO_FIXE_PLAN_LABELS[i],
       date: addDays(anchorDate, delay - anchorDelay),
     }));
     const { palier, interval, nextReview, ...rest } = rec;
@@ -371,11 +379,70 @@ export async function migrateChronologieFixeV1() {
 }
 
 /**
+ * Moteur ADAPTATIF (remplace la chronologie FIXE à 7 échéances précalculées,
+ * voir sm2.js header) : convertit chaque question qcm/flashcard ET chaque
+ * fiche `anat_schema` qui porte encore `plan`/`cursor` vers `intervalDays`/
+ * `dueDate`/`capped`/`termine`. NON DESTRUCTIVE : sauvegarde intégrale avant
+ * conversion. Correspondance DIRECTE cursor → intervalDays (garde la
+ * progression, ne recale rien à aujourd'hui) :
+ *   - cursor 0 (J0 pas encore fait)     → intervalDays = 1
+ *   - cursor 1..5 (J+1 à J+30 restants) → intervalDays = l'ancien délai du
+ *     palier visé (CHRONO_FIXE_PLAN_DELAYS[cursor], ex. cursor 3 = J+7 → 7)
+ *   - cursor 6 (J+90 restant, dernière échéance) → intervalDays = 90,
+ *     `capped = true` (la carte est déjà à son plafond, la PROCHAINE
+ *     notation la termine ou relance un cycle — voir advanceQuestion)
+ *   - cursor >= plan.length (déjà "Terminée" sous l'ancien moteur)
+ *     → `dueDate: null, termine: true`, intervalDays informatif (90)
+ * Dans tous les cas où une échéance existe encore (cursor < plan.length),
+ * `dueDate` reprend TEL QUEL `plan[cursor].date` (même échéance honorée, y
+ * compris si déjà en retard — aucun recalcul forcé, même philosophie que
+ * migrateChronologieFixeV1 ci-dessus). `historique`/`missed` intacts.
+ * Idempotente : marqueur + plus aucune question/fiche avec `plan` à trouver
+ * dès la 2e passe.
+ */
+export async function migrateAdaptatifV1() {
+  const applied = await appliedList();
+  if (applied.includes(MIG_ADAPTATIF)) return { ran: false };
+
+  const [questions, fiches] = await Promise.all([getAll('questions'), getAll('fiches')]);
+  const legacyQuestions = (questions || []).filter((q) => q && (q.type === 'qcm' || q.type === 'flashcard') && q.plan);
+  const legacySchemas = (fiches || []).filter((f) => f && f.type === 'anat_schema' && f.plan);
+
+  if (!legacyQuestions.length && !legacySchemas.length) {
+    await setMeta(MIGRATIONS_KEY, [...applied, MIG_ADAPTATIF]);
+    return { ran: true, migratedQuestions: 0, migratedSchemas: 0 };
+  }
+
+  await putBackup('pre-' + MIG_ADAPTATIF, { questions: legacyQuestions, schemas: legacySchemas });
+
+  const convert = (rec) => {
+    const plan = rec.plan || [];
+    const cursor = Math.min(rec.cursor || 0, plan.length);
+    const { plan: _plan, cursor: _cursor, ...rest } = rec;
+    if (cursor >= plan.length) {
+      return { ...rest, intervalDays: INTERVAL_CAP, dueDate: null, capped: true, termine: true };
+    }
+    const intervalDays = cursor === 0 ? INTERVAL_START : CHRONO_FIXE_PLAN_DELAYS[cursor];
+    const dueDate = plan[cursor].date;
+    const capped = cursor === plan.length - 1; // dernière échéance (J+90) déjà plafonnée
+    return { ...rest, intervalDays, dueDate, capped, termine: false };
+  };
+  const outQuestions = legacyQuestions.map(convert);
+  const outSchemas = legacySchemas.map(convert);
+
+  if (outQuestions.length) await putMany('questions', outQuestions);
+  if (outSchemas.length) await putMany('fiches', outSchemas);
+
+  await setMeta(MIGRATIONS_KEY, [...applied, MIG_ADAPTATIF]);
+  return { ran: true, migratedQuestions: outQuestions.length, migratedSchemas: outSchemas.length };
+}
+
+/**
  * Retrait de l'ancien carnet d'erreurs (missedQuestions/weakPoints/
  * topConcepts, planning.js — remplacé par le carnet v2, type
- * flashcard_erreur). NE TOUCHE PAS au moteur chrono : `missed` reste géré
- * tel quel par advanceQuestion/recordExerciceAttempt (sm2.js), plan/cursor/
- * historique de chaque carte et le planning J sont intacts — cette migration
+ * flashcard_erreur). NE TOUCHE PAS au moteur adaptatif : `missed` reste géré
+ * tel quel par advanceQuestion/recordExerciceAttempt (sm2.js), intervalDays/
+ * dueDate/historique de chaque carte et le planning J sont intacts — cette migration
  * efface UNIQUEMENT le résidu actuel (missed remis à 0 sur les questions qui
  * en portaient un), puisque plus aucun écran ne le lit désormais. NON
  * DESTRUCTIVE : sauvegarde intégrale avant écriture.
@@ -407,6 +474,7 @@ export async function runMigrations() {
   const demoZombies = await migrateDemoZombiesCleanup();
   const cadenceFixe = await migrateCadenceFixeV1();
   const chronologieFixe = await migrateChronologieFixeV1();
+  const adaptatif = await migrateAdaptatifV1();
   const resetMissed = await migrateResetMissedV1();
-  return { items, documents, anatImages, orphans, demoZombies, cadenceFixe, chronologieFixe, resetMissed };
+  return { items, documents, anatImages, orphans, demoZombies, cadenceFixe, chronologieFixe, adaptatif, resetMissed };
 }

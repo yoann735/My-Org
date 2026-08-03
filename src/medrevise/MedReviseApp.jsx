@@ -23,8 +23,8 @@ import {
   getCoursePrompts, setCoursePrompts,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
-import { todayISO, buildPlanFrom } from './lib/sm2.js';
-import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor, dueFromOn, diffDays, planIndexOn } from './lib/planning.js';
+import { todayISO, startAdaptive } from './lib/sm2.js';
+import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor } from './lib/planning.js';
 import { useIsMobile } from '../shared/hooks/useMediaQuery.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
 
@@ -33,27 +33,6 @@ import { MobileApp } from './mobile/MobileApp.jsx';
 // son panneau de droite. 'pdf'/'schemaedit' restent des routes plein-écran, mais ne
 // sont plus atteignables QUE depuis Réviser (« Voir le cours » / « Éditer le schéma »).
 const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard };
-
-// Réorganiser (ctx.moveSourceDay/moveFicheDay ci-dessous) : décale le `plan`
-// fixe (lib/sm2.js buildPlan) d'une carte DÉJÀ EN CYCLE. La cible n'est PAS
-// forcément l'entrée COURANTE (plan[cursor]) : depuis le fix planIndexOn
-// (dueOn/dueOnFor/dueFromOn lisent tout le plan restant, pas seulement
-// nextDate), le jour cliqué peut correspondre à une échéance FUTURE pas
-// encore atteinte (ex. le J+3 d'une carte encore à J0) — on recalcule donc
-// l'index exact (planIndexOn) plutôt que de supposer `cursor`. Sans cascade,
-// seule CETTE entrée reçoit `toDate`. Avec cascade, TOUTE entrée `k >= at`
-// glisse de `shift` jours. Les entrées avant `at` (déjà faites, ou pas
-// encore ciblées) ne sont JAMAIS touchées, dans les deux cas.
-function shiftPlan(rec, fromDate, cascade, shift, toDate) {
-  const at = planIndexOn(rec, fromDate);
-  if (at < 0) return rec; // défensif : ne devrait pas arriver (déjà filtré par dueOnFor/dueFromOn)
-  const plan = rec.plan.map((entry, i) => {
-    if (i < at) return entry;
-    if (!cascade) return i === at ? { ...entry, date: toDate } : entry;
-    return { ...entry, date: addDays(entry.date, shift) };
-  });
-  return { ...rec, plan };
-}
 
 function MedBottomNav({ current, onNav }) {
   const items = [
@@ -327,40 +306,35 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await put('fiches', { ...f, etiquette: etiquette || null }); await reload();
     },
     // « Réinitialiser les dates » (Réglages, bouton destructif confirmé côté
-    // UI) : efface le planning (plan/cursor) de TOUTES les questions qcm/
-    // flashcard et fiches anat_schema — calendrier vide, plus aucune
-    // échéance due nulle part. Le CONTENU (fiches, cartes, historique,
-    // carnet d'erreurs) reste intact, seules les dates/J disparaissent :
-    // une carte sans `plan` est déjà proprement exclue de tout calcul de
-    // planning (dueOn/overdue/projection, voir planning.js) et s'affiche
-    // "Nouvelle" (labelForCursor, sm2.js) — aucun nouvel état à gérer.
-    // Exercices/Feynman : rien à faire, ils n'ont jamais eu de plan/cursor
+    // UI) : efface le planning (intervalDays/dueDate/capped/termine) de TOUTES
+    // les questions qcm/flashcard et fiches anat_schema — calendrier vide,
+    // plus aucune échéance due nulle part. Le CONTENU (fiches, cartes,
+    // historique, carnet d'erreurs) reste intact, seules les dates/J
+    // disparaissent : une carte sans `intervalDays` est déjà proprement
+    // exclue de tout calcul de planning (dueOn/overdue, voir planning.js) et
+    // s'affiche "Nouvelle" (labelForCursor, sm2.js) — aucun nouvel état à
+    // gérer. Exercices/Feynman : rien à faire, ils n'ont jamais eu ce champ
     // (storage.js newItem ne leur en donne pas). putBackup avant l'écriture
     // en masse ; idempotent (rien à effacer une 2e fois si déjà fait).
     resetAllJ: async () => {
-      const targets = db.questions.filter((q) => (q.type === 'qcm' || q.type === 'flashcard') && q.plan);
-      const schemaTargets = db.fiches.filter((f) => f.type === 'anat_schema' && f.plan);
+      const targets = db.questions.filter((q) => (q.type === 'qcm' || q.type === 'flashcard') && q.intervalDays != null);
+      const schemaTargets = db.fiches.filter((f) => f.type === 'anat_schema' && f.intervalDays != null);
       if (!targets.length && !schemaTargets.length) return;
       await putBackup('pre-reset-j-' + Date.now(), { questions: targets, schemas: schemaTargets });
-      const strip = (rec) => { const { plan, cursor, ...rest } = rec; return rest; };
+      const strip = (rec) => { const { intervalDays, dueDate, capped, termine, ...rest } = rec; return rest; };
       if (targets.length) await putMany('questions', targets.map(strip));
       if (schemaTargets.length) await putMany('fiches', schemaTargets.map(strip));
       await reload();
     },
     // « Retirer du retard » (boîte À rattraper, Dashboard/Réviser) : NE révise
-    // PAS — repousse juste l'échéance COURANTE (plan[cursor]) à demain, SANS
-    // toucher aux échéances suivantes ni au cursor (le niveau de la fiche ne
-    // change pas). Cas particulier de "Réorganiser décoché" (une seule
-    // occurrence bouge), ciblé automatiquement sur demain plutôt que choisi
-    // par l'utilisateur — un simple report d'un jour sur les items
-    // effectivement en retard de `group`.
+    // PAS — repousse juste `dueDate` à demain, SANS toucher à `intervalDays`
+    // (même principe que Réorganiser : déplacer une échéance ne change QUE
+    // cette date). Cas particulier de "Réorganiser" ciblé automatiquement sur
+    // demain plutôt que choisi par l'utilisateur — un simple report d'un jour
+    // sur les items effectivement en retard de `group`.
     dismissOverdue: async (group) => {
       const tomorrow = addDays(todayISO(), 1);
-      const bump = (rec) => {
-        const cursor = rec.cursor || 0;
-        const plan = rec.plan.map((entry, i) => (i === cursor ? { ...entry, date: tomorrow } : entry));
-        return { ...rec, plan };
-      };
+      const bump = (rec) => ({ ...rec, dueDate: tomorrow });
       if (group.isSchema) {
         const f = db.fiches.find((x) => x.id === group.fiche.id); if (!f) return;
         await put('fiches', bump(f));
@@ -375,19 +349,19 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // planning actif OU jamais révisées (unstartedQuestionsFor/unstartedSchemasFor
     // — voir planning.js isUnstarted). `date` PEUT être dans le passé (cours déjà
     // commencé dans la vraie vie, ou fiche resetée qu'on repositionne) :
-    // buildPlanFrom (pas buildPlan) place alors le cursor sur la première
-    // échéance restante au lieu de 0 — les jalons déjà passés ne sont jamais
-    // "dus"/"en retard". putBackup avant l'écriture en masse (précaution type
+    // startAdaptive pose alors `dueDate = date` directement, immédiatement "en
+    // retard" si passée — aucune position à calculer (contrairement à l'ancienne
+    // chronologie fixe). putBackup avant l'écriture en masse (précaution type
     // migration) ; sans risque puisqu'il n'y a pas (ou plus) d'historique de
     // planning à préserver ici. Couvre AUSSI les fiches anat_schema (l'item
-    // planifiable vit sur la fiche, pas des questions), absentes avant ce fix.
+    // planifiable vit sur la fiche, pas des questions).
     shiftSourceStart: async (sourceId, date) => {
       const targets = unstartedQuestionsFor(db, { sourceId });
       const schemaTargets = unstartedSchemasFor(db, { sourceId });
       if (!targets.length && !schemaTargets.length) return;
       await putBackup('pre-decalage-source-' + sourceId + '-' + Date.now(), { questions: targets, schemas: schemaTargets });
-      if (targets.length) await putMany('questions', targets.map((q) => ({ ...q, ...buildPlanFrom(date) })));
-      if (schemaTargets.length) await putMany('fiches', schemaTargets.map((f) => ({ ...f, ...buildPlanFrom(date) })));
+      if (targets.length) await putMany('questions', targets.map((q) => ({ ...q, ...startAdaptive(date) })));
+      if (schemaTargets.length) await putMany('fiches', schemaTargets.map((f) => ({ ...f, ...startAdaptive(date) })));
       await reload();
     },
     shiftFicheStart: async (ficheId, date) => {
@@ -395,75 +369,41 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const schemaTargets = unstartedSchemasFor(db, { ficheId });
       if (!targets.length && !schemaTargets.length) return;
       await putBackup('pre-decalage-fiche-' + ficheId + '-' + Date.now(), { questions: targets, schemas: schemaTargets });
-      if (targets.length) await putMany('questions', targets.map((q) => ({ ...q, ...buildPlanFrom(date) })));
-      if (schemaTargets.length) await putMany('fiches', schemaTargets.map((f) => ({ ...f, ...buildPlanFrom(date) })));
+      if (targets.length) await putMany('questions', targets.map((q) => ({ ...q, ...startAdaptive(date) })));
+      if (schemaTargets.length) await putMany('fiches', schemaTargets.map((f) => ({ ...f, ...startAdaptive(date) })));
       await reload();
     },
     // rééquilibrage calendrier — Réviser, étape 2/3. Déplace les cartes RÉELLEMENT
     // dues le jour `fromDate` (dueOnFor, retard inclus si fromDate = aujourd'hui)
-    // vers `toDate`. Contrairement à shiftSourceStart/shiftFicheStart (étape 1) :
-    // AUCUN filtre de cursor — une carte déjà en cycle (J+14, ou revenue à J0
-    // après un Raté) se déplace comme les autres. putBackup avant l'écriture
-    // en masse, même précaution qu'à l'étape 1.
-    // `cascade` (étape 3/3) : variante de la même fonction, pas une réécriture.
-    // Sans cascade : cible = dueOnFor (jour A précis), seule l'entrée qui
-    // correspond à CE jour (planIndexOn, pas forcément plan[cursor] — voir
-    // shiftPlan) reçoit `toDate` — les échéances suivantes ne bougent pas.
-    // Avec cascade : cible = dueFromOn (jour A ET toutes ses échéances futures
-    // déjà programmées), et TOUTE entrée à partir de celle-là glisse de +N
-    // jours (N = diffDays(A,B)) — glissement uniforme, écarts entre paliers ET
-    // entre cartes préservés. Dans les deux cas, les entrées avant cette
-    // échéance (déjà faites, ou pas encore ciblées) et `cursor`/`historique`/
-    // `missed` restent intacts.
-    moveSourceDay: async (sourceId, fromDate, toDate, { cascade = false } = {}) => {
-      const targets = cascade ? dueFromOn(db, fromDate, { sourceId }) : dueOnFor(db, fromDate, { sourceId });
+    // vers `toDate` : ne change QUE `dueDate`, jamais `intervalDays`/`capped`/
+    // `historique`/`missed` (confirmé — déplacer une carte ne touche pas son
+    // intervalle courant). Pas de toggle "cascade" : le moteur adaptatif n'a
+    // plus qu'UNE échéance connue par carte (contrairement à l'ancienne
+    // chronologie fixe à 7 crans) — il n'y a plus rien de plus à décaler,
+    // cascade ON/OFF étaient devenus identiques (retiré, voir la mécanique
+    // validée). putBackup avant l'écriture en masse.
+    moveSourceDay: async (sourceId, fromDate, toDate) => {
+      const targets = dueOnFor(db, fromDate, { sourceId });
       if (!targets.length) return;
       await putBackup('pre-reequilibrage-source-' + sourceId + '-' + Date.now(), targets);
-      const shift = cascade ? diffDays(fromDate, toDate) : null;
-      await putMany('questions', targets.map((q) => shiftPlan(q, fromDate, cascade, shift, toDate)));
+      await putMany('questions', targets.map((q) => ({ ...q, dueDate: toDate })));
       await reload();
     },
-    moveFicheDay: async (ficheId, fromDate, toDate, { cascade = false } = {}) => {
-      const targets = cascade ? dueFromOn(db, fromDate, { ficheId }) : dueOnFor(db, fromDate, { ficheId });
+    moveFicheDay: async (ficheId, fromDate, toDate) => {
+      const targets = dueOnFor(db, fromDate, { ficheId });
       if (!targets.length) return;
       await putBackup('pre-reequilibrage-fiche-' + ficheId + '-' + Date.now(), targets);
-      const shift = cascade ? diffDays(fromDate, toDate) : null;
-      await putMany('questions', targets.map((q) => shiftPlan(q, fromDate, cascade, shift, toDate)));
+      await putMany('questions', targets.map((q) => ({ ...q, dueDate: toDate })));
       await reload();
     },
-    // « Sauter » un jour donné pour un cours/une fiche : cible = cartes dues
-    // CE jour précis (dueOnFor(db, dateISO, …), dateISO peut être un jour futur
-    // du calendrier, pas seulement aujourd'hui — depuis le fix planIndexOn,
-    // ça inclut une échéance future pas encore atteinte, ex. le J+3 d'une
-    // carte encore à J0). Chronologie FIXE oblige : la date de la carte ne
-    // bouge JAMAIS ici, `cursor` avance jusqu'à JUSTE APRÈS l'échéance
-    // ciblée (planIndexOn + 1, pas bêtement cursor+1 — sinon on avancerait
-    // la mauvaise échéance si ce n'est pas celle en cours). L'entrée
-    // d'historique est ancrée sur dateISO (le jour sauté), pas sur aujourd'hui.
-    skipDaySource: async (sourceId, dateISO) => {
-      const targets = dueOnFor(db, dateISO, { sourceId });
-      if (!targets.length) return;
-      await putBackup('pre-saut-source-' + sourceId + '-' + Date.now(), targets);
-      await putMany('questions', targets.map((q) => ({
-        ...q,
-        cursor: Math.min(planIndexOn(q, dateISO) + 1, q.plan.length),
-        historique: (q.historique || []).concat([{ date: dateISO, qualite: 5 }]),
-        missed: 0,
-      })));
-      await reload();
-    },
-    skipDayFiche: async (ficheId, dateISO) => {
-      const targets = dueOnFor(db, dateISO, { ficheId });
-      if (!targets.length) return;
-      await putBackup('pre-saut-fiche-' + ficheId + '-' + Date.now(), targets);
-      await putMany('questions', targets.map((q) => ({
-        ...q,
-        cursor: Math.min(planIndexOn(q, dateISO) + 1, q.plan.length),
-        historique: (q.historique || []).concat([{ date: dateISO, qualite: 5 }]),
-        missed: 0,
-      })));
-      await reload();
-    },
+    // « Sauter » un jour donné pour un cours/une fiche : VRAI no-op — la carte
+    // reste due le même jour (aucune écriture), elle réapparaît simplement la
+    // prochaine fois qu'on ouvre ce jour. Ancien comportement (avançait le
+    // cursor + loguait une fausse note Facile) retiré : contraire à
+    // l'intention ("aucun effet", confirmé) — ne cible même plus de cartes,
+    // ne fait plus rien du tout.
+    skipDaySource: async () => {},
+    skipDayFiche: async () => {},
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },
     // suppression en masse : tous les exercices (type 'exercice') d'UNE fiche, sans
     // toucher aux QCM/flashcards/Feynman de la même fiche. Même canal durable que

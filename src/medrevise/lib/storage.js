@@ -5,7 +5,7 @@
    Hiérarchie : SOURCE(cours) → MATIÈRE → FICHE → QUESTIONS / STRUCTURES.
    ============================================================ */
 import { get, set, del, values, setMany, createStore } from 'idb-keyval';
-import { isoDate, buildPlanFrom, dueDateForJalon } from './sm2.js';
+import { isoDate, startAdaptive, dueDateForJalon } from './sm2.js';
 import { queuePush, pullAllRecords, pushBlob, pullBlob, flushOutbox } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
@@ -174,11 +174,12 @@ export async function setCoursePrompts(overrides) {
    On lui donne une clé primaire neuve + son état initial méthode des J.
    `startDate` (YYYY-MM-DD, défaut aujourd'hui) : date de départ (J0) choisie
    à l'import (voir lib/import.js) — PEUT être dans le passé (cours déjà
-   commencé dans la vraie vie) : buildPlanFrom (lib/sm2.js) place alors le
-   cursor directement sur la première échéance restante, les jalons déjà
-   passés ne sont jamais "dus"/"en retard". Seuls les types SCHEDULED (qcm/
-   flashcard, voir planning.js SCHEDULED_TYPES) reçoivent `plan`/`cursor` —
-   feynman est HORS méthode des J, il n'a ni dates ni palier à porter.
+   commencé dans la vraie vie) : startAdaptive (lib/sm2.js) pose alors
+   directement `dueDate = startDate`, immédiatement "en retard" si passée
+   (aucune position à calculer, contrairement à l'ancienne chronologie fixe).
+   Seuls les types SCHEDULED (qcm/flashcard, voir planning.js SCHEDULED_TYPES)
+   reçoivent `intervalDays`/`dueDate`/`capped`/`termine` — feynman est HORS
+   méthode des J, il n'a ni dates ni intervalle à porter.
    Exercice : méthode des J PROPRE (Étape A, sm2.js dueDateForJalon) — UNE
    seule échéance (`dueDate`), traduite depuis le "jalon" fourni par le
    prompt de génération + CE MÊME `startDate` (même J0 que la théorie de la
@@ -193,7 +194,7 @@ export function newItem(ficheId, item, startDate = isoDate()) {
     // l'id v1.0 d'origine du JSON → sert au dédoublonnage lors d'un ajout à une
     // fiche existante (mode Rattrapage).
     id: genId('q'), srcId: item.id || null, ficheId, type: item.type,
-    ...(scheduled ? buildPlanFrom(startDate) : {}),
+    ...(scheduled ? startAdaptive(startDate) : {}),
     ...(dueDate ? { dueDate } : {}),
     historique: [], missed: 0,
   };
