@@ -301,6 +301,26 @@ export function unstartedSchemasFor(db, { sourceId, ficheId } = {}, idx) {
     return false;
   });
 }
+/** miroir de unstartedQuestionsFor pour les EXERCICES (méthode des J propre,
+   sm2.js dueDateForJalon/EXO_DELAYS — jamais mélangée à la théorie ci-dessus,
+   canal séparé, voir SCHEDULED_TYPES vs EXERCICE_TYPE). Cible les exercices
+   `jalon` (sinon rien à recalculer, voir dueDateForJalon) JAMAIS tentés
+   (exerciceStatus 'todo') — un exercice déjà répondu ne "revient" jamais à
+   une échéance suivante (contrairement à une carte théorie), décaler sa
+   dueDate n'aurait aucun effet observable ; on ne le touche donc pas, même
+   philosophie que isUnstarted côté théorie (ne jamais recaler une progression
+   déjà entamée). */
+export function unstartedExosFor(db, { sourceId, ficheId } = {}, idx) {
+  const ix = idx || index(db);
+  return (db.questions || []).filter((q) => {
+    if (q.type !== EXERCICE_TYPE || !q.jalon || exerciceStatus(q) !== 'todo') return false;
+    const f = ix.fById[q.ficheId];
+    if (!f) return false;
+    if (ficheId) return f.id === ficheId;
+    if (sourceId) { const m = ix.mById[f.matiereId]; return !!m && m.sourceId === sourceId; }
+    return false;
+  });
+}
 
 /* ---- rééquilibrage calendrier — Réviser, étape 2/3. Déplace des cartes DÉJÀ
    EN CYCLE : contrairement à isUnstarted ci-dessus, aucun filtre — seule

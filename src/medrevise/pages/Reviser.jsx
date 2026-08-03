@@ -8,7 +8,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, TodaySeriesCard, JBadge, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
 import {
   index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, todayPlan, overdueByFiche,
-  qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, carnetV1Questions, carnetV2Questions,
+  qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, unstartedExosFor, carnetV1Questions, carnetV2Questions,
 } from '../lib/planning.js';
 import { shuffle } from '../lib/sm2.js';
 import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
@@ -37,6 +37,7 @@ export function Reviser({ ctx }) {
   const [confirmDel, setConfirmDel] = useState(null); // { type, id, nom, fichesCount }
   const [showAddItem, setShowAddItem] = useState(false);
   const [shiftStart, setShiftStart] = useState(null); // { type: 'source'|'fiche', id, nom }
+  const [shiftExosStart, setShiftExosStart] = useState(null); // { type: 'source'|'fiche', id, nom } — même chose, pour les exercices
 
   // remonte la fiche restaurée (ci-dessus) dans le viewport au montage — sans ça
   // la sélection est correcte mais reste hors-écran si elle était scrollée bas.
@@ -216,6 +217,26 @@ export function Reviser({ ctx }) {
     if (shiftStart.type === 'source') await ctx.shiftSourceStart(shiftStart.id, date);
     else await ctx.shiftFicheStart(shiftStart.id, date);
     setShiftStart(null);
+  };
+
+  // décalage/pose du départ (J0) — même geste, pour les EXERCICES (canal
+  // HORS méthode des J théorie, calendrier FIXE — jalons J0/J+2/J+7/J+15/
+  // J+30/J+45, sm2.js dueDateForJalon). Séparé de shiftStart ci-dessus :
+  // exercices et théorie restent deux échéanciers indépendants partout
+  // ailleurs dans l'app (planning.js SCHEDULED_TYPES vs EXERCICE_TYPE), pas
+  // de raison de les recaler ensemble en un seul geste ici.
+  const askShiftExosSource = (id) => { const s = db.sources.find((x) => x.id === id); if (s) setShiftExosStart({ type: 'source', id, nom: s.nom }); };
+  const askShiftExosFiche = (id) => { const f = db.fiches.find((x) => x.id === id); if (f) setShiftExosStart({ type: 'fiche', id, nom: f.titre }); };
+  const shiftExosStartCount = useMemo(() => {
+    if (!shiftExosStart) return 0;
+    const target = shiftExosStart.type === 'source' ? { sourceId: shiftExosStart.id } : { ficheId: shiftExosStart.id };
+    return unstartedExosFor(db, target, ix).length;
+  }, [shiftExosStart, db, ix]);
+  const confirmShiftExosStart = async (date) => {
+    if (!shiftExosStart) return;
+    if (shiftExosStart.type === 'source') await ctx.shiftExosSourceStart(shiftExosStart.id, date);
+    else await ctx.shiftExosFicheStart(shiftExosStart.id, date);
+    setShiftExosStart(null);
   };
 
   // BUG4 : drag & drop des fiches vers une autre matière/cours, ici aussi via @dnd-kit.
@@ -510,6 +531,12 @@ export function Reviser({ ctx }) {
             label: 'Décaler le départ…', icon: 'calendar',
             onClick: () => (ctxMenu.type === 'source' ? askShiftSource(ctxMenu.id) : askShiftFiche(ctxMenu.id)),
           }] : []),
+          // même geste, pour les exercices (calendrier fixe, canal séparé —
+          // voir planning.js unstartedExosFor / MedReviseApp.jsx shiftExosSourceStart).
+          ...(ctxMenu.type === 'source' || ctxMenu.type === 'fiche' ? [{
+            label: 'Décaler le départ des exercices…', icon: 'calendar',
+            onClick: () => (ctxMenu.type === 'source' ? askShiftExosSource(ctxMenu.id) : askShiftExosFiche(ctxMenu.id)),
+          }] : []),
           {
             label: 'Supprimer', icon: 'trash', danger: true, onClick: () => {
               if (ctxMenu.type === 'source') askDeleteSource(ctxMenu.id);
@@ -536,6 +563,21 @@ export function Reviser({ ctx }) {
             : "Aucune carte sans planning actif ici — rien à décaler."}
           onConfirm={confirmShiftStart}
           onCancel={() => setShiftStart(null)}
+        />
+      )}
+
+      {shiftExosStart && (
+        <DateActionModal
+          title={`Décaler le départ des exercices — « ${shiftExosStart.nom} »`}
+          label="Nouvelle date de départ (J0) des exercices"
+          confirmLabel="Décaler"
+          count={shiftExosStartCount}
+          allowPast
+          body={shiftExosStartCount > 0
+            ? `${shiftExosStartCount} exercice${shiftExosStartCount > 1 ? 's' : ''} jamais tenté${shiftExosStartCount > 1 ? 's' : ''} ${shiftExosStartCount > 1 ? 'seront recalés' : 'sera recalé'} sur cette nouvelle date de départ — chaque jalon fixe (J0/J+2/J+7/J+15/J+30/J+45) se recalcule depuis cette date. Une date PASSÉE est acceptée : les jalons déjà écoulés ne seront ni dus ni en retard (comme un exercice échu aujourd'hui). Les exercices déjà tentés ne sont pas touchés.`
+            : "Aucun exercice jamais tenté ici — rien à décaler."}
+          onConfirm={confirmShiftExosStart}
+          onCancel={() => setShiftExosStart(null)}
         />
       )}
 
