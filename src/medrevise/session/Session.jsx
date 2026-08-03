@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta, EtiquetteQuickSet, SessionTrendCard } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
-import { advanceQuestion, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, labelForCursor, todayISO, computeStreak } from '../lib/sm2.js';
+import { advanceQuestion, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, labelForCursor, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
 import { index } from '../lib/planning.js';
 import { blobURL } from '../lib/storage.js';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
@@ -67,9 +67,15 @@ export function Session({ ctx }) {
   const [validated, setValidated] = useState(false);
   const [flipped, setFlipped] = useState(false);
   const [pulse, setPulse] = useState('');
+  // carnet d'erreurs v2 (étape 1) : { rating, updated } tant qu'on attend une
+  // décision (Ajouter/Passer) après un 2e+ raté consécutif sur une flashcard —
+  // null sinon. `updated` = le record déjà persisté par advance() (plan/cursor/
+  // historique/missed à jour), réutilisé tel quel pour y greffer carnetRaison/
+  // carnetAt sans recalculer la méthode des J.
+  const [carnetPrompt, setCarnetPrompt] = useState(null);
 
   const item = items[idx];
-  const resetCard = () => { setSelectedIds([]); setValidated(false); setFlipped(false); setPulse(''); };
+  const resetCard = () => { setSelectedIds([]); setValidated(false); setFlipped(false); setPulse(''); setCarnetPrompt(null); };
   // mode cloze (saisie/retourner) : bascule simple, mémorisée entre sessions (stats).
   const clozeMode = (ctx.stats && ctx.stats.clozeMode) || 'actif';
   const setClozeMode = (m) => ctx.saveStats({ ...ctx.stats, clozeMode: m });
@@ -98,6 +104,16 @@ export function Session({ ctx }) {
   }, [idx]);
   const cardElapsedMs = () => cardElapsedRef.current + (runningSinceRef.current != null ? Date.now() - runningSinceRef.current : 0);
 
+  // avance réellement à la carte suivante (ou termine la série) — extrait
+  // d'advance() pour être rejouable APRÈS la décision du carnet d'erreurs
+  // (Ajouter/Passer), sans dupliquer la persistance SM-2.
+  const proceedToNext = (rating, itemId, itemType) => {
+    setResults((r) => { const n = r.slice(0, idx); n[idx] = { id: itemId, type: itemType, rating }; return n; });
+    if (idx + 1 >= items.length) { setAnim('out'); setTimeout(() => setFinished(true), 240); return; }
+    setAnim('out');
+    setTimeout(() => { setIdx((i) => i + 1); resetCard(); setAnim('in'); }, 240);
+  };
+
   const advance = async (ratingIn) => {
     const rating = resolveRating(ratingIn);
     // persist SM-2 — SAUF pour les items ÉPHÉMÈRES (théorie de schéma générée à la
@@ -119,11 +135,39 @@ export function Session({ ctx }) {
         updated = { ...updated, lastSeenAt: todayISO(), lastResult: ok ? 'ok' : 'ko' };
       }
       await ctx.saveQuestion(updated);
+      // carnet d'erreurs v2 (étape 1) : la note SM-2 est déjà persistée ci-dessus
+      // (le cycle des J avance normalement, quelle que soit la suite) — on
+      // interrompt seulement la NAVIGATION vers la carte suivante, le temps que
+      // l'utilisateur décide d'ajouter une raison ou de passer. Flashcards
+      // uniquement (isFlash), et seulement via le bouton "Raté" explicite —
+      // pas le cloze en mode saisie (auto-noté, pas de bouton Raté).
+      if (isFlash(item.type) && rating === 'fail' && lastTwoAreFails(updated.historique)) {
+        setCarnetPrompt({ rating, updated });
+        return;
+      }
     }
-    setResults((r) => { const n = r.slice(0, idx); n[idx] = { id: item.id, type: item.type, rating }; return n; });
-    if (idx + 1 >= items.length) { setAnim('out'); setTimeout(() => setFinished(true), 240); return; }
-    setAnim('out');
-    setTimeout(() => { setIdx((i) => i + 1); resetCard(); setAnim('in'); }, 240);
+    proceedToNext(rating, item.id, item.type);
+  };
+
+  // "Ajouter au carnet d'erreurs" : greffe carnetRaison/carnetAt sur le record
+  // déjà avancé par advance() (autre écriture outbox, LWW — aucun impact sur
+  // plan/cursor/historique/missed déjà sauvés).
+  const submitCarnetRaison = async (raison) => {
+    const p = carnetPrompt;
+    if (!p) return;
+    const text = (raison || '').trim();
+    if (text) await ctx.saveQuestion({ ...p.updated, carnetRaison: text, carnetAt: todayISO() });
+    setCarnetPrompt(null);
+    proceedToNext(p.rating, p.updated.id, p.updated.type);
+  };
+
+  // "Passer" : avance sans rien enregistrer de plus (la note Raté, elle, est
+  // déjà persistée).
+  const skipCarnetRaison = () => {
+    const p = carnetPrompt;
+    if (!p) return;
+    setCarnetPrompt(null);
+    proceedToNext(p.rating, p.updated.id, p.updated.type);
   };
 
   const goPrev = () => { if (idx === 0) return; setAnim('outR'); setTimeout(() => { setIdx((i) => i - 1); resetCard(); setAnim('inL'); }, 220); };
@@ -191,7 +235,7 @@ export function Session({ ctx }) {
         <div className={'rev-anim-' + anim} key={idx}>
           {item.type === 'qcm'
             ? <QcmCard item={item} meta={meta} selectedIds={selectedIds} setSelectedIds={setSelectedIds} validated={validated} validate={validate} pulse={pulse} onRate={advance} canPrev={idx > 0} onPrev={goPrev} ctx={ctx} />
-            : <FlashCardView item={item} meta={meta} flipped={flipped} setFlipped={setFlipped} onRate={advance} canPrev={idx > 0} onPrev={goPrev} clozeMode={clozeMode} setClozeMode={setClozeMode} ctx={ctx} />}
+            : <FlashCardView item={item} meta={meta} flipped={flipped} setFlipped={setFlipped} onRate={advance} canPrev={idx > 0} onPrev={goPrev} clozeMode={clozeMode} setClozeMode={setClozeMode} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={submitCarnetRaison} onCarnetSkip={skipCarnetRaison} />}
         </div>
       </div>
 
@@ -289,7 +333,7 @@ function QcmCard({ item, meta, selectedIds, setSelectedIds, validated, validate,
   );
 }
 
-function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPrev, clozeMode, setClozeMode, ctx }) {
+function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPrev, clozeMode, setClozeMode, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip }) {
   const cloze = isCloze(item);
   return (
     <div>
@@ -301,9 +345,12 @@ function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPre
           </div>
         </div>
       )}
+      {/* carnet d'erreurs v2 (étape 1) : uniquement la flashcard classique (flip),
+         via son bouton "Raté" explicite — pas le cloze en mode saisie, auto-noté
+         sans bouton Raté (voir ClozeActiveCard#finish). */}
       {cloze && clozeMode === 'actif'
         ? <ClozeActiveCard item={item} meta={meta} onRate={onRate} canPrev={canPrev} onPrev={onPrev} ctx={ctx} />
-        : <ClassicFlashCard item={item} meta={meta} cloze={cloze} flipped={flipped} setFlipped={setFlipped} onRate={onRate} canPrev={canPrev} onPrev={onPrev} ctx={ctx} />}
+        : <ClassicFlashCard item={item} meta={meta} cloze={cloze} flipped={flipped} setFlipped={setFlipped} onRate={onRate} canPrev={canPrev} onPrev={onPrev} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} />}
     </div>
   );
 }
@@ -311,7 +358,7 @@ function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPre
 /* ---- flashcard classique (flip recto/verso) — aussi utilisée par le cloze en
    mode « Retourner » : recto avec blancs visuels, verso avec les mots
    masqués mis en évidence (pas de saisie, juste une auto-évaluation SM-2). ---- */
-function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canPrev, onPrev, ctx }) {
+function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canPrev, onPrev, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip }) {
   const [showIndice, setShowIndice] = useState(false); // réinitialisé au changement de carte (remount via key={idx})
   const revealIndice = (e) => { e.stopPropagation(); setShowIndice(true); };
   const rectoSegments = useMemo(() => (cloze ? parseCloze(item.recto, item.cloze) : null), [item.id, cloze]);
@@ -345,7 +392,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
         </div>
       </div>
       {flipped
-        ? <RatingButtons onRate={onRate} canPrev={canPrev} onPrev={onPrev} item={item} ctx={ctx} />
+        ? <RatingButtons onRate={onRate} canPrev={canPrev} onPrev={onPrev} item={item} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} />
         : canPrev && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}><button className="btn ghost" onClick={onPrev}><Icon name="chevL" size={15} /> Carte précédente</button></div>}
     </div>
   );
@@ -430,16 +477,49 @@ function ClozeActiveCard({ item, meta, onRate, canPrev, onPrev, ctx }) {
   );
 }
 
-function RatingButtons({ onRate, canPrev, onPrev, item, ctx }) {
+function RatingButtons({ onRate, canPrev, onPrev, item, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip }) {
+  // carnet d'erreurs v2 (étape 1) : la note est déjà enregistrée dès qu'on
+  // attend une décision (Ajouter/Passer) — les 3 boutons se désactivent pour
+  // éviter une double notation de la même carte pendant que la carte
+  // "pourquoi" est affichée dessous.
+  const awaitingCarnet = !!carnetPrompt;
   return (
     <div>
       <div className="rev-rate">
-        <button className="rate-btn fail" onClick={() => onRate('fail')}>Raté<span className="rb-sub">à revoir vite</span></button>
-        <button className="rate-btn hard" onClick={() => onRate('hard')}>Difficile<span className="rb-sub">bientôt</span></button>
-        <button className="rate-btn easy" onClick={() => onRate('easy')}>Facile<span className="rb-sub">dans longtemps</span></button>
+        <button className="rate-btn fail" disabled={awaitingCarnet} onClick={() => onRate('fail')}>Raté<span className="rb-sub">à revoir vite</span></button>
+        <button className="rate-btn hard" disabled={awaitingCarnet} onClick={() => onRate('hard')}>Difficile<span className="rb-sub">bientôt</span></button>
+        <button className="rate-btn easy" disabled={awaitingCarnet} onClick={() => onRate('easy')}>Facile<span className="rb-sub">dans longtemps</span></button>
       </div>
-      <CardEtiquetteControl item={item} ctx={ctx} />
-      {canPrev && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><button className="btn ghost sm" onClick={onPrev}><Icon name="chevL" size={14} /> Revenir à la carte précédente</button></div>}
+      {awaitingCarnet && <CarnetPrompt onSubmit={onCarnetSubmit} onSkip={onCarnetSkip} />}
+      {!awaitingCarnet && <CardEtiquetteControl item={item} ctx={ctx} />}
+      {!awaitingCarnet && canPrev && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><button className="btn ghost sm" onClick={onPrev}><Icon name="chevL" size={14} /> Revenir à la carte précédente</button></div>}
+    </div>
+  );
+}
+
+/** carnet d'erreurs v2 (étape 1) : carte "pourquoi tu l'as loupée ?" — sous les
+   3 boutons de notation, au 2e raté consécutif (et chaque raté suivant tant que
+   le streak dure, voir lastTwoAreFails). "Ajouter" exige un texte non vide ;
+   "Passer" avance sans rien enregistrer de plus (la note Raté est déjà persistée
+   par advance() avant l'affichage de cette carte). */
+function CarnetPrompt({ onSubmit, onSkip }) {
+  const [raison, setRaison] = useState('');
+  return (
+    <div className="carnet-prompt">
+      <div className="carnet-prompt-title"><Icon name="edit" size={13} /> Pourquoi tu l'as loupée ?</div>
+      <textarea
+        className="imp-title"
+        style={{ width: '100%', minHeight: 56, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+        value={raison}
+        onChange={(e) => setRaison(e.target.value)}
+        placeholder="Ta raison (confusion, pas révisé, mal compris…)"
+      />
+      <div className="carnet-prompt-actions">
+        <button type="button" className="btn ghost sm" onClick={onSkip}>Passer</button>
+        <button type="button" className="btn primary sm" disabled={!raison.trim()} onClick={() => onSubmit(raison)}>
+          <Icon name="plus" size={13} /> Ajouter au carnet d'erreurs
+        </button>
+      </div>
     </div>
   );
 }

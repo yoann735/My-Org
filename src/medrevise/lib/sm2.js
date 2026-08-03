@@ -201,6 +201,18 @@ export function recordExerciceAttempt(question, quality) {
   return { ...question, historique, missed: quality >= 3 ? 0 : (question.missed || 0) + 1 };
 }
 
+/** carnet d'erreurs v2 (étape 1, Session.jsx/MobileSession.jsx) : vrai si les
+   2 DERNIÈRES entrées d'un historique[] sont toutes deux "Raté" (qualite ===
+   QUALITY.rate). Dérivé de historique[] à chaque appel — volontairement PAS
+   de champ dédié (ex. consecutiveFails) qui pourrait diverger de la source
+   de vérité. Une note Facile/Difficile entre deux ratés casse la séquence
+   automatiquement (elle occupe une des 2 dernières positions). */
+export function lastTwoAreFails(historique) {
+  const h = historique || [];
+  const n = h.length;
+  return n >= 2 && h[n - 1].qualite === QUALITY.rate && h[n - 2].qualite === QUALITY.rate;
+}
+
 /** streak = nombre de jours d'activité consécutifs se terminant aujourd'hui
    (ou hier, tant que la chaîne n'est pas encore cassée). Calculé à partir
    des VRAIS jours enregistrés, jamais de valeurs fictives. */

@@ -107,6 +107,11 @@
 .mrm-rate-btn.fail { background: var(--crit); }
 .mrm-rate-btn.hard { background: var(--warn); }
 .mrm-rate-btn.easy { background: var(--ok); }
+.mrm-rate-btn:disabled { opacity: .4; }
+
+/* carnet d'erreurs v2 (étape 1) : carte "pourquoi tu l'as loupée ?" sous les 3 boutons de notation */
+.mrm-carnet-prompt { margin-top: 16px; padding: 14px; border-radius: 14px; background: color-mix(in srgb, var(--crit) 8%, transparent); border: 1px solid color-mix(in srgb, var(--crit) 22%, transparent); }
+.mrm-carnet-prompt-title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: color-mix(in srgb, var(--crit) 70%, var(--text)); margin-bottom: 8px; }
 
 .mrm-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
 .mrm-field label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-3); }

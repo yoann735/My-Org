@@ -8,7 +8,7 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { advanceQuestion, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, todayISO, computeStreak } from '../lib/sm2.js';
+import { advanceQuestion, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
 import { index } from '../lib/planning.js';
 import { Tex } from '../components/Tex.jsx';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
@@ -42,6 +42,10 @@ export function MobileSession({ ctx, onQuit }) {
   const [idx, setIdx] = useState(0);
   const [results, setResults] = useState([]);
   const [finished, setFinished] = useState(false);
+  // carnet d'erreurs v2 (étape 1) : { rating, updated } tant qu'on attend
+  // Ajouter/Passer après un 2e+ raté consécutif sur une flashcard — même
+  // mécanique que desktop Session.jsx, voir là-bas pour le détail.
+  const [carnetPrompt, setCarnetPrompt] = useState(null);
   const item = items[idx];
   // mode cloze (saisie/retourner) : bascule simple, mémorisée entre sessions (stats).
   const clozeMode = (ctx.stats && ctx.stats.clozeMode) || 'actif';
@@ -69,6 +73,17 @@ export function MobileSession({ ctx, onQuit }) {
   }, [idx]);
   const cardElapsedMs = () => cardElapsedRef.current + (runningSinceRef.current != null ? Date.now() - runningSinceRef.current : 0);
 
+  // avance réellement à la carte suivante (ou termine la série) — extrait
+  // d'advance() pour être rejouable APRÈS la décision du carnet d'erreurs
+  // (Ajouter/Passer), sans dupliquer la persistance SM-2 — même découpage que
+  // desktop Session.jsx.
+  const proceedToNext = (rating) => {
+    setResults((r) => { const n = r.slice(0, idx); n[idx] = { rating }; return n; });
+    setCarnetPrompt(null);
+    if (idx + 1 >= items.length) { setFinished(true); return; }
+    setIdx((i) => i + 1);
+  };
+
   const advance = async (ratingIn, extra) => {
     const rating = resolveRating(ratingIn);
     if (item && !item.ephemeral) {
@@ -83,10 +98,35 @@ export function MobileSession({ ctx, onQuit }) {
         updated = { ...updated, lastSeenAt: todayISO(), lastResult: extra.qcmOk ? 'ok' : 'ko' };
       }
       await ctx.saveQuestion(updated);
+      // carnet d'erreurs v2 (étape 1) : note SM-2 déjà persistée ci-dessus (le
+      // cycle des J avance normalement) — on interrompt seulement la
+      // navigation, le temps qu'on décide d'ajouter une raison ou de passer.
+      // Flashcards uniquement, via le bouton "Raté" explicite (pas le cloze
+      // en mode saisie, auto-noté, voir MobileClozeActiveCard#finish).
+      if (isFlash(item.type) && rating === 'fail' && lastTwoAreFails(updated.historique)) {
+        setCarnetPrompt({ rating, updated });
+        return;
+      }
     }
-    setResults((r) => { const n = r.slice(0, idx); n[idx] = { rating }; return n; });
-    if (idx + 1 >= items.length) { setFinished(true); return; }
-    setIdx((i) => i + 1);
+    proceedToNext(rating);
+  };
+
+  // "Ajouter au carnet d'erreurs" : greffe carnetRaison/carnetAt sur le record
+  // déjà avancé par advance() — autre écriture outbox (LWW), aucun impact sur
+  // plan/cursor/historique/missed déjà sauvés.
+  const submitCarnetRaison = async (raison) => {
+    const p = carnetPrompt;
+    if (!p) return;
+    const text = (raison || '').trim();
+    if (text) await ctx.saveQuestion({ ...p.updated, carnetRaison: text, carnetAt: todayISO() });
+    proceedToNext(p.rating);
+  };
+
+  // "Passer" : avance sans rien enregistrer de plus (la note Raté est déjà persistée).
+  const skipCarnetRaison = () => {
+    const p = carnetPrompt;
+    if (!p) return;
+    proceedToNext(p.rating);
   };
 
   if (!items.length) {
@@ -113,7 +153,7 @@ export function MobileSession({ ctx, onQuit }) {
       <div className="mrm-body">
         {item.type === 'qcm'
           ? <MobileQcmCard key={item.id} item={item} onRate={advance} ctx={ctx} />
-          : <MobileFlashCard key={item.id} item={item} onRate={advance} clozeMode={clozeMode} setClozeMode={setClozeMode} ctx={ctx} />}
+          : <MobileFlashCard key={item.id} item={item} onRate={advance} clozeMode={clozeMode} setClozeMode={setClozeMode} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={submitCarnetRaison} onCarnetSkip={skipCarnetRaison} />}
       </div>
     </div>
   );
@@ -171,7 +211,7 @@ function MobileQcmCard({ item, onRate, ctx }) {
   );
 }
 
-function MobileFlashCard({ item, onRate, clozeMode, setClozeMode, ctx }) {
+function MobileFlashCard({ item, onRate, clozeMode, setClozeMode, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip }) {
   const cloze = isCloze(item);
   return (
     <div>
@@ -182,9 +222,12 @@ function MobileFlashCard({ item, onRate, clozeMode, setClozeMode, ctx }) {
           <button type="button" className={'mrm-chip-btn' + (clozeMode === 'flemme' ? '' : ' ghost')} onClick={() => setClozeMode('flemme')}><Icon name="refresh" size={13} /> Retourner</button>
         </div>
       )}
+      {/* carnet d'erreurs v2 (étape 1) : uniquement la flashcard classique
+         (flip), pas le cloze en mode saisie — voir Session.jsx desktop pour
+         le même choix de portée. */}
       {cloze && clozeMode === 'actif'
         ? <MobileClozeActiveCard item={item} onRate={onRate} ctx={ctx} />
-        : <MobileClassicFlashCard item={item} cloze={cloze} onRate={onRate} ctx={ctx} />}
+        : <MobileClassicFlashCard item={item} cloze={cloze} onRate={onRate} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} />}
     </div>
   );
 }
@@ -197,7 +240,7 @@ function MobileClozeVerso({ parts }) {
   return parts.map((p, i) => (p.hl ? <mark key={i} className="mrm-cloze-mark">{p.text}</mark> : <span key={i}>{p.text}</span>));
 }
 
-function MobileClassicFlashCard({ item, cloze, onRate, ctx }) {
+function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip }) {
   const [flipped, setFlipped] = useState(false);
   const [showIndice, setShowIndice] = useState(false);
   const rectoSegments = useMemo(() => (cloze ? parseCloze(item.recto, item.cloze) : null), [item.id, cloze]);
@@ -222,7 +265,7 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx }) {
           )}
         </button>
       </div>
-      {flipped && <MobileRateButtons onRate={onRate} item={item} ctx={ctx} />}
+      {flipped && <MobileRateButtons onRate={onRate} item={item} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} />}
     </div>
   );
 }
@@ -287,15 +330,43 @@ function MobileClozeActiveCard({ item, onRate, ctx }) {
   );
 }
 
-function MobileRateButtons({ onRate, item, ctx }) {
+function MobileRateButtons({ onRate, item, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip }) {
+  // carnet d'erreurs v2 (étape 1) : boutons désactivés pendant qu'on attend
+  // Ajouter/Passer — la note est déjà enregistrée, on évite une double
+  // notation de la même carte (voir même choix, desktop Session.jsx).
+  const awaitingCarnet = !!carnetPrompt;
   return (
     <div>
       <div className="mrm-rate">
-        <button type="button" className="mrm-rate-btn fail" onClick={() => onRate('fail')}>Raté <span className="sub">à revoir vite</span></button>
-        <button type="button" className="mrm-rate-btn hard" onClick={() => onRate('hard')}>Difficile <span className="sub">bientôt</span></button>
-        <button type="button" className="mrm-rate-btn easy" onClick={() => onRate('easy')}>Facile <span className="sub">dans longtemps</span></button>
+        <button type="button" className="mrm-rate-btn fail" disabled={awaitingCarnet} onClick={() => onRate('fail')}>Raté <span className="sub">à revoir vite</span></button>
+        <button type="button" className="mrm-rate-btn hard" disabled={awaitingCarnet} onClick={() => onRate('hard')}>Difficile <span className="sub">bientôt</span></button>
+        <button type="button" className="mrm-rate-btn easy" disabled={awaitingCarnet} onClick={() => onRate('easy')}>Facile <span className="sub">dans longtemps</span></button>
       </div>
-      <MobileEtiquetteControl item={item} ctx={ctx} />
+      {awaitingCarnet && <MobileCarnetPrompt onSubmit={onCarnetSubmit} onSkip={onCarnetSkip} />}
+      {!awaitingCarnet && <MobileEtiquetteControl item={item} ctx={ctx} />}
+    </div>
+  );
+}
+
+/** carnet d'erreurs v2 (étape 1) : carte "pourquoi tu l'as loupée ?" mobile —
+   même mécanique que desktop (Session.jsx CarnetPrompt) : "Ajouter" exige un
+   texte non vide, "Passer" avance sans rien enregistrer de plus. */
+function MobileCarnetPrompt({ onSubmit, onSkip }) {
+  const [raison, setRaison] = useState('');
+  return (
+    <div className="mrm-carnet-prompt">
+      <div className="mrm-carnet-prompt-title"><Icon name="edit" size={13} /> Pourquoi tu l'as loupée ?</div>
+      <textarea
+        className="mrm-textarea"
+        style={{ minHeight: 64 }}
+        value={raison}
+        onChange={(e) => setRaison(e.target.value)}
+        placeholder="Ta raison (confusion, pas révisé, mal compris…)"
+      />
+      <button type="button" className="mrm-primary-btn" disabled={!raison.trim()} onClick={() => onSubmit(raison)}>
+        <Icon name="plus" size={15} /> Ajouter au carnet d'erreurs
+      </button>
+      <button type="button" className="mrm-ghost-btn" onClick={onSkip}>Passer</button>
     </div>
   );
 }
