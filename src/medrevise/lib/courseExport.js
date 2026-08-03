@@ -54,13 +54,30 @@ export function extractHighlights(docEl) {
   });
 }
 
+// projection v1.1 "propre" pour le prompt externe — retire l'état de planning/sync
+// (plan/cursor/historique/missed/updatedAt/srcId/ficheId/id) et les doublons legacy
+// de l'adaptateur (concept/question/choix/bonneReponse/_schema) : un enregistrement
+// db.questions brut n'est PAS le contrat de sortie, juste sa source.
+const CARTE_FIELDS = {
+  flashcard: ['theme', 'type', 'recto', 'verso', 'cloze', 'indice', 'a_retenir', 'difficulte', 'tags'],
+  qcm: ['theme', 'type', 'enonce', 'options', 'reponses_correctes', 'explication', 'explication_distracteurs', 'difficulte', 'tags'],
+};
+
+function projectCarte(item) {
+  const fields = CARTE_FIELDS[item.type];
+  if (!fields) return null;
+  const out = {};
+  fields.forEach((f) => { if (item[f] !== undefined) out[f] = item[f]; });
+  return out;
+}
+
 /**
  * Assemble le contrat medrevise_cours_export v1.
  * @param {object} p
  * @param {object} p.fiche — enregistrement db.fiches (titre)
  * @param {string} p.matiereNom — nom de la matière (db.matieres)
  * @param {HTMLElement} p.docEl — #doc de l'iframe (gabarit HTML)
- * @param {object[]} p.cartes — items v1.1 déjà normalisés (qcm/flashcard) de cette fiche
+ * @param {object[]} p.cartes — enregistrements bruts db.questions (qcm/flashcard) de cette fiche
  */
 export function buildCourseExport({ fiche, matiereNom, docEl, cartes }) {
   return {
@@ -72,6 +89,6 @@ export function buildCourseExport({ fiche, matiereNom, docEl, cartes }) {
       texte_structure: ficheToText(docEl),
     },
     surlignages: extractHighlights(docEl),
-    cartes_manuelles: cartes,
+    cartes_manuelles: (cartes || []).map(projectCarte).filter(Boolean),
   };
 }
