@@ -167,16 +167,28 @@ function normFlashcard(raw, c) {
 
 function normFeynman(raw, c) {
   const consigne = str(raw.consigne).trim();
-  const reponse_modele = str(raw.reponse_modele).trim();
-  if (!consigne || !reponse_modele) {
-    return { ok: false, reason: !consigne && !reponse_modele ? 'consigne et réponse modèle manquantes' : !consigne ? 'consigne manquante' : 'réponse modèle manquante' };
+  if (!consigne) return { ok: false, reason: 'consigne manquante' };
+  // v1.1 (prompts de complétion) : "points_cles" (au lieu de points_cles_attendus)
+  // — même mécanisme de checklist déjà en place (Feynman.jsx), juste un nom de
+  // champ différent en entrée ; on normalise vers points_cles_attendus (raw.
+  // points_cles_attendus prime s'il est fourni, sinon on retombe sur points_cles).
+  const pointsRaw = raw.points_cles_attendus != null ? raw.points_cles_attendus : raw.points_cles;
+  const points_cles_attendus = asArray(pointsRaw).map(str).map((s) => s.trim()).filter(Boolean);
+  const reponseModeleRaw = str(raw.reponse_modele).trim();
+  if (!reponseModeleRaw && !points_cles_attendus.length) {
+    return { ok: false, reason: 'ni réponse modèle ni points clés (reponse_modele/points_cles absents)' };
   }
+  // reponse_modele absente (format "prompt" : consigne + points_cles seulement) →
+  // synthétisée à partir des points_cles_attendus eux-mêmes (jamais inventée) : le
+  // bloc "Réponse modèle" de l'écran Feynman est rendu SANS condition, une chaîne
+  // vide y laisserait un encadré vide plutôt que ce récapitulatif.
+  const reponse_modele = reponseModeleRaw || points_cles_attendus.map((p) => '• ' + p).join('\n');
   return {
     ok: true,
     item: {
       ...c, type: 'feynman',
       consigne, reponse_modele,
-      points_cles_attendus: asArray(raw.points_cles_attendus).map(str).filter(Boolean),
+      points_cles_attendus,
       analogie_suggeree: isStr(raw.analogie_suggeree) ? raw.analogie_suggeree.trim() : null,
       erreurs_frequentes: asArray(raw.erreurs_frequentes).map(str).filter(Boolean),
       grille_autoevaluation: normGrille(raw.grille_autoevaluation),
