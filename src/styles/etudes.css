@@ -566,6 +566,20 @@
 .carnet-prompt-title { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: color-mix(in srgb, var(--crit) 74%, var(--text)); margin-bottom: 8px; }
 .carnet-prompt-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 
+/* carnet d'erreurs v2 : carte V1 COMPACTE (liste dense, plusieurs erreurs visibles sans
+   scroller) — hiérarchie par typo (taille/gris), pas par des cadres. lc-1/lc-2 : troncature
+   visuelle multi-ligne (le texte complet reste dans le DOM, rien n'est perdu côté données —
+   seul l'affichage est condensé). */
+.lc-1 { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.lc-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.err-v1-card { margin-bottom: 8px; }
+.err-v1-card .card-body { padding: 12px 14px; }
+.err-v1-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3); margin-bottom: 4px; }
+.err-v1-a { margin-top: 3px; font-size: 13px; color: var(--text-2); line-height: 1.45; }
+.err-v1-note { margin-top: 3px; font-size: 12.5px; color: var(--text-2); line-height: 1.4; }
+.err-v1-note-label { color: var(--text-3); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-right: 5px; }
+.err-v1-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
 /* slide transitions */
 .rev-anim-in { animation: slideIn .34s cubic-bezier(.3,0,.2,1); }
 .rev-anim-out { animation: slideOut .26s cubic-bezier(.4,0,1,1) forwards; }

@@ -116,16 +116,14 @@ export function CarnetDashboard({ ctx }) {
   );
 }
 
-/* ---- une V1 (flashcard normale en carnet) — carte pleine, redesign :
-   question ET réponse en ENTIER (jamais tronquées, LaTeX/cloze nettoyés),
-   note d'erreur en évidence (bloc distinct, réutilise le style de
-   carnet-prompt — même famille visuelle que "pourquoi tu l'as loupée ?",
-   étape 1), cours d'appartenance affiché + bouton "Voir le cours" (ouvre le
-   HTML existant via ctx.openPdfReader, RÉUTILISÉ tel quel — seulement si
-   fiche.htmlId), puis Extraire/Ajouter/Supprimer. Supprimer = ctx.removeFromCarnet
-   (carnetAt/carnetRaison → null + cascade suppression des V2 liées — reco
-   validée : sort la V1 du carnet ET efface tout ce qui en dépendait, la
-   flashcard elle-même restant intacte hors carnet). ---- */
+/* ---- une V1 (flashcard normale en carnet) — carte COMPACTE : hiérarchie par
+   typo (taille/gris), pas par des cadres. Question KaTeX pleine (courte,
+   1 flashcard) ; réponse + note d'erreur en texte simple, condensées à 1-2
+   lignes visuellement (lc-1/lc-2, le texte complet reste dans le DOM — rien
+   n'est perdu, juste moins étalé). Cours d'appartenance + boutons Voir le
+   cours/Extraire/Ajouter/Supprimer inchangés dans leur fonction, juste plus
+   denses. Supprimer = ctx.removeFromCarnet (carnetAt/carnetRaison → null +
+   cascade suppression des V2 liées). ---- */
 function V1Row({ v1, v2Count, fiche, matiere, ctx }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -143,40 +141,31 @@ function V1Row({ v1, v2Count, fiche, matiere, ctx }) {
   const viewCours = () => { if (fiche) ctx.openPdfReader(fiche.id, 'read', 'carnet', 'html'); };
 
   return (
-    <div className="card" style={{ marginBottom: 14 }}>
+    <div className="card err-v1-card">
       <div className="card-body">
-        {/* cours d'appartenance */}
-        <div className="row" style={{ gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-          <span className="pill" title="Cours d'appartenance">
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.tint, display: 'inline-block' }} />
-            {fiche ? fiche.titre : 'Cours introuvable'}
-          </span>
-          {fiche && <span className="hint" style={{ fontSize: 12 }}>{meta.label}</span>}
+        {/* cours d'appartenance — ligne meta discrète, pas un pill imposant */}
+        <div className="err-v1-meta">
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: meta.tint, flex: '0 0 auto' }} />
+          <span>{fiche ? fiche.titre : 'Cours introuvable'}{fiche ? ` · ${meta.label}` : ''}</span>
         </div>
 
-        {/* question, en entier */}
-        <div style={{ fontSize: 15.5, fontWeight: 600, lineHeight: 1.55 }}>
+        {/* question — texte normal, pas de cadre */}
+        <div style={{ fontSize: 14.5, fontWeight: 600, lineHeight: 1.45, color: 'var(--text)' }}>
           <Tex>{cleanFull(v1.recto)}</Tex>
         </div>
 
-        {/* réponse, en entier — jamais coupée */}
-        <div style={{ marginTop: 12, padding: '11px 13px', borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--border-2)' }}>
-          <div className="hint" style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 5 }}>Réponse</div>
-          <div style={{ fontSize: 14, lineHeight: 1.55 }}><Tex>{cleanFull(v1.verso)}</Tex></div>
-        </div>
+        {/* réponse — texte simple, gris, condensée à 2 lignes visuellement */}
+        <div className="err-v1-a lc-2"><Tex>{cleanFull(v1.verso)}</Tex></div>
 
-        {/* pourquoi j'ai foiré — bien distinct de la réponse */}
+        {/* note d'erreur — libellé discret, pas de fond coloré */}
         {v1.carnetRaison && (
-          <div className="carnet-prompt" style={{ marginTop: 10 }}>
-            <div className="carnet-prompt-title"><Icon name="edit" size={13} /> Ma note d'erreur</div>
-            <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>{v1.carnetRaison}</div>
-          </div>
+          <div className="err-v1-note lc-1"><span className="err-v1-note-label">Ma note</span>{v1.carnetRaison}</div>
         )}
 
-        {v2Count > 0 && <div className="hint" style={{ marginTop: 10, fontSize: 11.5 }}>{v2Count} flashcard{v2Count > 1 ? 's' : ''} d'erreur liée{v2Count > 1 ? 's' : ''}</div>}
+        {v2Count > 0 && <div className="hint" style={{ marginTop: 4, fontSize: 11 }}>{v2Count} flashcard{v2Count > 1 ? 's' : ''} d'erreur liée{v2Count > 1 ? 's' : ''}</div>}
 
         {/* actions */}
-        <div className="row" style={{ gap: 8, marginTop: 14, flexWrap: 'wrap', paddingTop: 12, borderTop: '1px solid var(--border-2)' }}>
+        <div className="err-v1-actions">
           {hasHtml && (
             <button className="btn ghost sm" onClick={viewCours} title="Ouvrir la fiche HTML du cours">
               <Icon name="fileHtml" size={13} /> Voir le cours
@@ -191,7 +180,7 @@ function V1Row({ v1, v2Count, fiche, matiere, ctx }) {
           <button className="icon-btn sm" title="Retirer du carnet" style={{ color: 'var(--text-3)', marginLeft: 'auto' }} onClick={() => setConfirmDelete(true)}><Icon name="trash" size={14} /></button>
         </div>
         {open && (
-          <div style={{ marginTop: 10 }}>
+          <div style={{ marginTop: 8 }}>
             <pre className="imp-title" style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12 }}>{json}</pre>
             <button className="btn ghost sm" style={{ marginTop: 8 }} onClick={copy}>
               <Icon name={copied ? 'check' : 'copy'} size={13} /> {copied ? 'Copié ✓' : 'Copier'}
