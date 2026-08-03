@@ -32,6 +32,9 @@ export function CourseItemsSidebar({ ctx, ficheId }) {
   const [activeType, setActiveType] = useState('qcm');
   const items = useMemo(() => ficheItems.filter((q) => q.type === activeType), [ficheItems, activeType]);
   const activeLabel = (TYPES.find((t) => t.id === activeType) || {}).label || '';
+  // refonte UX Bibliothèque : la vue cours a besoin de respirer — ce panneau se
+  // replie en un rail fin (icônes + compteurs), pour rendre sa largeur au cours.
+  const [collapsed, setCollapsed] = useState(false);
 
   // ---- ajout (réutilise ItemForm/PasteJsonForm, même flux que AddItemModal) ----
   const [adding, setAdding] = useState(false);
@@ -69,6 +72,21 @@ export function CourseItemsSidebar({ ctx, ficheId }) {
     setConfirmDel(null);
   };
 
+  if (collapsed) {
+    return (
+      <div className="pis pis-collapsed">
+        <button type="button" className="icon-btn sm" onClick={() => setCollapsed(false)} title="Afficher les cartes de ce cours"><Icon name="chevL" size={14} /></button>
+        {TYPES.map((t) => (
+          <button key={t.id} type="button" className="pis-rail-item" title={`${t.label} (${countByType[t.id]})`}
+            onClick={() => { setCollapsed(false); setActiveType(t.id); }}>
+            <Icon name={t.icon} size={15} />
+            <span className="pis-rail-n">{countByType[t.id]}</span>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="pis">
       <div className="pis-tabs">
@@ -78,6 +96,7 @@ export function CourseItemsSidebar({ ctx, ficheId }) {
             <Icon name={t.icon} size={13} /> {t.label} <span className="pis-tab-n tnum">{countByType[t.id]}</span>
           </button>
         ))}
+        <button type="button" className="icon-btn sm" style={{ marginLeft: 'auto' }} onClick={() => setCollapsed(true)} title="Réduire ce panneau"><Icon name="chevR" size={14} /></button>
       </div>
 
       <div className="pis-scroll scroll">

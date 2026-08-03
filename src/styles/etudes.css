@@ -985,18 +985,38 @@
 /* ---------- C : Bibliothèque master-detail (liste + lecteur/éditeur embarqué) ----------
    Liste à gauche (largeur fixe raisonnable), panneau de droite qui prend le reste et
    reste ancré (sticky) pendant que la liste scrolle — PdfReader/SchemaEditorScreen/
-   TranscriptEditor s'y rendent EMBARQUÉS (props embedded, voir ces fichiers). Repli en
-   1 colonne sous 960px (même seuil d'esprit que les autres breakpoints de ce fichier). */
+   TranscriptEditor s'y rendent EMBARQUÉS (props embedded, voir ces fichiers).
+
+   Refonte UX (repli auto de la liste à l'ouverture d'un cours, voir Bibliotheque.jsx
+   `showMaster`) : quand un cours est ouvert, `.lib-master` n'est PLUS DANS LE DOM (React
+   conditionnel, pas juste caché) — `.lib-split` reçoit alors `grid-template-columns: 1fr`
+   en style inline, le lecteur prend toute la largeur. Sous 960px, ce même mécanisme fait
+   déjà tout le travail responsive (pas de règle 1-colonne séparée à maintenir). */
 .lib-split { display: grid; grid-template-columns: minmax(300px, 360px) 1fr; gap: 20px; align-items: start; }
 .lib-master { min-width: 0; }
 .lib-detail { min-width: 0; position: sticky; top: 0; }
 .lib-detail-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 320px; padding: 40px 20px; border: 1px dashed var(--border); border-radius: 14px; color: var(--text-3); background: var(--card-2); }
-.lib-fiche.selected { background: var(--accent-soft); }
 
-@media (max-width: 960px) {
-  .lib-split { grid-template-columns: 1fr; }
-  .lib-detail { position: static; }
-}
+/* en-tête (recherche + Nouveau transcript) — une seule bande visuelle cohérente */
+.lib-toolbar { margin-bottom: 16px; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--border-2); border-radius: 12px; background: var(--card-2); }
+
+/* ---------- ligne de cours (refonte) : 2 lignes — titre+actions / méta discrète.
+   L'ellipsis du titre (min-width:0 + flex:1 1 auto) et les icônes en flex:0 0 auto
+   (voir JSX) sont ce qui garantit qu'aucune icône ne déborde jamais de la colonne,
+   quelle que soit la longueur du titre. ---------- */
+.lib-fiche { border: 1px solid var(--border-2); border-radius: 12px; padding: 10px 12px; margin-bottom: 6px; transition: border-color .12s, background .12s; }
+.lib-fiche:hover { border-color: var(--border); }
+.lib-fiche.selected { background: var(--accent-soft); border-color: var(--accent); }
+.lib-fiche-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lib-fiche-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 14px; color: var(--text); }
+.lib-fiche-etq { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; cursor: pointer; }
+.lib-fiche-meta { margin-top: 3px; padding-left: 22px; font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* rail replié de la sidebar cartes (CourseItemsSidebar) — voir son bouton de repli */
+.pis-collapsed { flex: 0 0 56px; width: 56px; align-items: center; padding: 10px 6px; gap: 8px; }
+.pis-rail-item { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; padding: 7px 2px; border: 1px solid var(--border-2); border-radius: 9px; background: var(--bg-2); color: var(--text-2); cursor: pointer; }
+.pis-rail-item:hover { border-color: var(--accent); color: var(--accent); }
+.pis-rail-n { font-size: 10px; font-weight: 700; color: var(--text-3); }
 
 /* ---------- Chantier 1 : édition de texte existant (couche superposée) ---------- */
 .edit-block-static, .edit-block-active { position: absolute; box-sizing: border-box; background: #fff; overflow-y: auto; color: #16162a; }

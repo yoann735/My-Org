@@ -8,9 +8,9 @@
    (props embedded/onClose, voir ces fichiers). Layout master-detail
    responsive (`.lib-split`, voir etudes.css).
    ============================================================ */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker, EtiquetteIconButton, etiquetteMenuItems, ContextMenu, detectDocKind, BellButton, Modal } from '../components/ui.jsx';
+import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
@@ -37,6 +37,15 @@ export function Bibliotheque({ ctx }) {
   const [creatingTranscript, setCreatingTranscript] = useState(false);
   const [etqMenu, setEtqMenu] = useState(null); // { x, y, ficheId } — menu compact de l'étiquette
   const [replacingHtmlId, setReplacingHtmlId] = useState(null); // ficheId — modale « Remplacer le fichier HTML »
+  // refonte UX : la liste (arbre) se replie automatiquement dès qu'un cours est
+  // ouvert (donne toute la largeur au lecteur) — reste manipulable via un bouton
+  // dans chaque sens (« Replier »/« Liste des cours »). `showMaster` protège contre
+  // un état incohérent (repliée mais rien sélectionné → jamais d'écran vide).
+  const [listCollapsed, setListCollapsed] = useState(false);
+  const [ficheMenu, setFicheMenu] = useState(null); // { x, y, ficheId } — menu « … » (actions secondaires)
+  const [confirmArchive, setConfirmArchive] = useState(null); // fiche à archiver (confirmation)
+  const attachInputRef = useRef(null);
+  const [attachTarget, setAttachTarget] = useState(null); // ficheId ciblé par l'input fichier partagé du menu « … »
 
   const startRename = (type, id, current) => { setDraft(current); setRenaming({ type, id }); };
   const isRen = (type, id) => renaming && renaming.type === type && renaming.id === id;
@@ -57,16 +66,21 @@ export function Bibliotheque({ ctx }) {
 
   const qById = (fId) => db.questions.filter((x) => x.ficheId === fId);
   const count = (fId, t) => qById(fId).filter((x) => x.type === t).length;
+  // repliée mais rien sélectionné → jamais d'écran vide (protège l'état incohérent).
+  const showMaster = !(listCollapsed && selected);
 
   // ouvre le document d'une fiche dans le panneau de droite (jamais de navigation
   // d'écran) ; kind dérivé de docKind() — pdfId → 'fiche', anat_schema → 'schema',
-  // transcript → 'transcript'.
+  // transcript → 'transcript'. Replie la liste dans la foulée (le lecteur prend
+  // toute la largeur) — « Liste des cours » (lib-detail) la rouvre en un clic.
   const openDoc = (f, mode, srcTab) => {
     const kind = docKind(f);
     if (kind === 'fiche') setSelected({ ficheId: f.id, kind: 'fiche', mode: mode || 'read', srcTab });
     else if (kind === 'schema') setSelected({ ficheId: f.id, kind: 'schema' });
     else if (kind === 'transcript') setSelected({ ficheId: f.id, kind: 'transcript' });
+    if (kind) setListCollapsed(true);
   };
+  const closeDoc = () => { setSelected(null); setListCollapsed(false); };
   // input UNIQUE (PDF ou HTML) pour rattacher un document — le type est détecté
   // à la volée, le stockage bascule sur fiche.pdfId ou fiche.htmlId en conséquence.
   const attachDoc = async (ficheId, file) => {
@@ -76,15 +90,63 @@ export function Bibliotheque({ ctx }) {
     if (kind === 'html') await ctx.setFicheHtml(ficheId, blobId, file.name);
     else await ctx.setFichePdf(ficheId, blobId, file.name);
     setSelected({ ficheId, kind: 'fiche', mode: 'edit', srcTab: kind });
+    setListCollapsed(true);
+  };
+  // déclenché depuis le menu « … » (« Attacher un document ») : un seul input
+  // fichier partagé pour toute la liste, ciblé via `attachTarget` — évite un
+  // <input> par ligne (celui-ci reste caché en permanence, voir plus bas).
+  const requestAttach = (ficheId) => { setAttachTarget(ficheId); attachInputRef.current?.click(); };
+  const onAttachInputChange = (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file && attachTarget) attachDoc(attachTarget, file);
+    setAttachTarget(null);
   };
   const openEtqMenu = (e, ficheId) => {
     e.stopPropagation();
     setEtqMenu({ x: Math.min(e.clientX, window.innerWidth - 200), y: Math.min(e.clientY, window.innerHeight - 170), ficheId });
   };
+  const openFicheMenu = (e, ficheId) => {
+    e.stopPropagation();
+    setFicheMenu({ x: Math.min(e.clientX, window.innerWidth - 240), y: Math.min(e.clientY, window.innerHeight - 320), ficheId });
+  };
   const removeTranscript = async (ficheId) => {
     await deleteTranscript(ficheId);
     if (selected && selected.ficheId === ficheId) setSelected(null);
     await ctx.reload();
+  };
+  const confirmArchiveFiche = async () => {
+    if (!confirmArchive) return;
+    await ctx.setFicheArchived(confirmArchive.id, true);
+    if (selected && selected.ficheId === confirmArchive.id) closeDoc();
+    setConfirmArchive(null);
+  };
+
+  // contenu du menu « … » d'une ligne de cours : TOUT ce qui n'est pas visible en
+  // permanence (voir la refonte UX) — rien n'est supprimé, juste regroupé. `x,y`
+  // = position du clic qui a ouvert ce menu (réutilisée si « Étiquette » l'ouvre
+  // à son tour, au même endroit).
+  const ficheMenuItems = (f, x, y) => {
+    const isSchema = f.type === 'anat_schema';
+    const isTranscript = f.type === 'transcript';
+    const items = [{ label: 'Renommer', icon: 'edit', onClick: () => startRename('fiche', f.id, f.titre) }];
+    if (!isSchema && !isTranscript) {
+      items.push({ label: f.etiquette ? 'Changer l’étiquette' : 'Poser une étiquette', icon: 'tag', onClick: () => setEtqMenu({ x, y, ficheId: f.id }) });
+      if (f.pdfId && f.htmlId) {
+        items.push({ label: 'Ouvrir en PDF', icon: 'filePdf', onClick: () => openDoc(f, 'edit', 'pdf') });
+        items.push({ label: 'Ouvrir en HTML', icon: 'fileHtml', onClick: () => openDoc(f, 'edit', 'html') });
+      }
+      if (f.htmlId) items.push({ label: 'Remplacer le fichier HTML', icon: 'refresh', onClick: () => setReplacingHtmlId(f.id) });
+      if (!f.pdfId || !f.htmlId) items.push({ label: 'Attacher un document', icon: 'upload', onClick: () => requestAttach(f.id) });
+      items.push({
+        label: f.rappelsJ === false ? 'Reprendre les rappels J' : 'Mettre les rappels J en pause', icon: 'bell',
+        onClick: () => ctx.setFicheRappelsJ(f.id, f.rappelsJ === false),
+      });
+    }
+    items.push(isTranscript
+      ? { label: 'Supprimer ce transcript', icon: 'trash', danger: true, onClick: () => removeTranscript(f.id) }
+      : { label: 'Supprimer', icon: 'trash', danger: true, onClick: () => setConfirmArchive(f) });
+    return items;
   };
 
   // BUG5 : drag & drop des fiches via @dnd-kit (voir FicheDndProvider/ui.jsx).
@@ -118,7 +180,7 @@ export function Bibliotheque({ ctx }) {
         <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
       </div>
 
-      <div className="row spread" style={{ marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+      <div className="lib-toolbar row spread">
         <div className="search" style={{ maxWidth: 520, flex: '1 1 320px' }}>
           <Icon name="search" size={16} className="ic" />
           <input placeholder="Rechercher une notion (ex : lactate, nerf radial…)" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -129,11 +191,24 @@ export function Bibliotheque({ ctx }) {
         </button>
       </div>
 
-      <div className="lib-split">
+      {/* input fichier PARTAGÉ (menu « … » → Attacher un document) — un seul pour
+         toute la liste, jamais affiché ; voir requestAttach/onAttachInputChange. */}
+      <input ref={attachInputRef} type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={onAttachInputChange} />
+
+      <div className="lib-split" style={showMaster ? undefined : { gridTemplateColumns: '1fr' }}>
+        {showMaster && (
         <div className="lib-master">
           {creatingTranscript && (
             <NewTranscript ctx={ctx} onDone={() => setCreatingTranscript(false)}
-              onCreated={(fiche) => setSelected({ ficheId: fiche.id, kind: 'transcript' })} />
+              onCreated={(fiche) => { setSelected({ ficheId: fiche.id, kind: 'transcript' }); setListCollapsed(true); }} />
+          )}
+
+          {/* replie manuellement la liste sans fermer le cours ouvert — pendant à
+             « Liste des cours » côté détail (repli auto à l'ouverture). */}
+          {selected && (
+            <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 10 }}>
+              <button className="btn ghost sm" onClick={() => setListCollapsed(true)}><Icon name="chevL" size={13} /> Replier</button>
+            </div>
           )}
 
           {matches ? (
@@ -190,70 +265,39 @@ export function Bibliotheque({ ctx }) {
                                 const isTranscript = f.type === 'transcript';
                                 const kind = docKind(f);
                                 const isSel = !!(selected && selected.ficheId === f.id);
+                                const paused = !isTranscript && f.rappelsJ === false;
+                                const etq = etiquetteMeta(f.etiquette);
+                                const metaLine = isTranscript ? 'Transcript'
+                                  : isSchema ? `Schéma · ${schemaViews(f) > 1 ? schemaViews(f) + ' vues · ' : ''}${schemaCoches(f)} coche${schemaCoches(f) > 1 ? 's' : ''}`
+                                    : `${count(f.id, 'qcm')} QCM · ${count(f.id, 'flashcard')} flash${isAnat ? ' · images' : ''}`;
                                 return (
                                   <div key={f.id}>
                                     <DropSlot matiereId={mat.id} beforeId={f.id} />
-                                    <DraggableFiche id={f.id} disabled={isRen('fiche', f.id)} className={'lib-fiche' + (isSel ? ' selected' : '')}
-                                      style={{ border: '1px solid ' + (isSel ? 'var(--accent)' : 'var(--border-2)'), borderRadius: 12, padding: '11px 13px' }}>
-                                      <div className="row spread" style={{ flexWrap: 'wrap', rowGap: 6 }}>
-                                        {isRen('fiche', f.id) ? (
-                                          <div style={{ flex: 1, minWidth: 0 }}><RenameInput /></div>
-                                        ) : (
-                                          <div role="button" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text)', flex: '1 1 auto', minWidth: 0 }}
+                                    <DraggableFiche id={f.id} disabled={isRen('fiche', f.id)} className={'lib-fiche' + (isSel ? ' selected' : '')}>
+                                      {isRen('fiche', f.id) ? (
+                                        <RenameInput />
+                                      ) : (
+                                        <>
+                                          <div role="button" className="lib-fiche-row" style={{ cursor: 'pointer' }}
                                             onClick={() => { if (kind) openDoc(f); else setOpenFiche((o) => ({ ...o, [f.id]: !fo })); }}
                                             onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }}
                                             title={kind ? 'Clic = ouvrir le document · double-clic = renommer' : 'Clic = ouvrir · double-clic = renommer'}>
                                             {kind
-                                              ? <Icon name={DOC_META[kind].icon} size={14} style={{ color: isSel ? 'var(--accent)' : 'var(--text-3)' }} />
-                                              : <Icon name={fo ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)' }} />}
-                                            <span style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.titre}</span>
+                                              ? <Icon name={DOC_META[kind].icon} size={14} style={{ color: isSel ? 'var(--accent)' : 'var(--text-3)', flex: '0 0 auto' }} />
+                                              : <Icon name={fo ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />}
+                                            <span className="lib-fiche-title">{f.titre}</span>
+                                            {etq && <span className="lib-fiche-etq" style={{ background: etq.color }} title={`Étiquette : ${etq.label}`} onClick={(e) => openEtqMenu(e, f.id)} />}
+                                            {paused && <Icon name="bellOff" size={13} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} title="Rappels J en pause" />}
+                                            {!isTranscript && (
+                                              <button type="button" className="cd-ic" title="Réviser" onClick={(e) => { e.stopPropagation(); if (isSchema) { ctx.startAnatQuiz(f, { mode: 'total' }); } else { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); } }}>
+                                                <Icon name="play" size={13} />
+                                              </button>
+                                            )}
+                                            <button type="button" className="cd-ic" title="Autres actions" onClick={(e) => openFicheMenu(e, f.id)}><Icon name="more" size={15} stroke={2.6} /></button>
                                           </div>
-                                        )}
-                                        <div className="row" style={{ gap: 6 }}>
-                                          <EtiquetteIconButton value={f.etiquette} onClick={(e) => openEtqMenu(e, f.id)} />
-                                          {!isTranscript && (
-                                            <BellButton on={f.rappelsJ !== false} onToggle={() => ctx.setFicheRappelsJ(f.id, f.rappelsJ === false)}
-                                              onText="Rappels J actifs — cette fiche entre dans la planification de la méthode des J."
-                                              offText="Fiche en pause — elle ne sort plus dans la série du jour de la méthode des J, mais reste consultable et révisable manuellement." />
-                                          )}
-                                          {isTranscript ? (
-                                            <span className="pill" style={{ height: 22, fontSize: 10.5 }}><Icon name="edit" size={11} /> TRANSCRIPT</span>
-                                          ) : isSchema ? (
-                                            <span className="pill" style={{ height: 22, fontSize: 10.5 }}><Icon name="image" size={11} /> SCHÉMA · {schemaViews(f) > 1 ? `${schemaViews(f)} vues · ` : ''}{schemaCoches(f)} coche{schemaCoches(f) > 1 ? 's' : ''}</span>
-                                          ) : (
-                                            <>
-                                              <span className="pill accent" style={{ height: 22, fontSize: 10.5 }}>{count(f.id, 'qcm')} QCM</span>
-                                              <span className="pill amber" style={{ height: 22, fontSize: 10.5 }}>{count(f.id, 'flashcard')} flash</span>
-                                              {isAnat && <span className="pill" style={{ height: 22, fontSize: 10.5 }}><Icon name="image" size={11} /> IMAGES</span>}
-                                            </>
-                                          )}
-                                          {isSchema && (
-                                            <button className="cd-ic" title="Éditer le schéma" onClick={() => openDoc(f)}><Icon name="edit" size={14} /></button>
-                                          )}
-                                          {!isSchema && !isTranscript && f.pdfId && (
-                                            <button className="cd-ic" title="Ouvrir le PDF (lecture / surlignage)" onClick={() => openDoc(f, 'edit', 'pdf')}><Icon name="filePdf" size={14} /></button>
-                                          )}
-                                          {!isSchema && !isTranscript && f.htmlId && (
-                                            <button className="cd-ic" title="Ouvrir la fiche HTML" onClick={() => openDoc(f, 'edit', 'html')}><Icon name="fileHtml" size={14} /></button>
-                                          )}
-                                          {!isSchema && !isTranscript && f.htmlId && (
-                                            <button className="cd-ic" title="Remplacer le fichier HTML (les cartes/planning/carnet de cette fiche ne sont pas touchés)"
-                                              onClick={() => setReplacingHtmlId(f.id)}><Icon name="refresh" size={14} /></button>
-                                          )}
-                                          {!isSchema && !isTranscript && (!f.pdfId || !f.htmlId) && (
-                                            <label className="cd-ic" title="Attacher un document (PDF ou HTML)" style={{ cursor: 'pointer' }} onClick={(e) => e.stopPropagation()}>
-                                              <Icon name="upload" size={14} />
-                                              <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={(e) => attachDoc(f.id, e.target.files[0])} />
-                                            </label>
-                                          )}
-                                          {isTranscript && (
-                                            <button className="cd-ic" title="Supprimer ce transcript" onClick={() => removeTranscript(f.id)} style={{ color: 'var(--accent-2)' }}><Icon name="trash" size={14} /></button>
-                                          )}
-                                          {!isTranscript && (
-                                            <button className="cd-ic" title="Réviser" onClick={() => { if (isSchema) { ctx.startAnatQuiz(f, { mode: 'total' }); } else { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); } }}><Icon name="play" size={14} /></button>
-                                          )}
-                                        </div>
-                                      </div>
+                                          <div className="lib-fiche-meta">{metaLine}</div>
+                                        </>
+                                      )}
                                       {fo && !kind && (
                                         <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
                                           {qById(f.id).map((x) => (
@@ -282,8 +326,14 @@ export function Bibliotheque({ ctx }) {
             </FicheDndProvider>
           )}
         </div>
+        )}
 
         <div className="lib-detail">
+          {!showMaster && (
+            <button className="btn ghost sm" style={{ marginBottom: 12 }} onClick={() => setListCollapsed(false)}>
+              <Icon name="chevL" size={13} /> Liste des cours
+            </button>
+          )}
           {!selected ? (
             <div className="lib-detail-empty">
               <Icon name="book" size={28} />
@@ -291,11 +341,11 @@ export function Bibliotheque({ ctx }) {
               <div className="hint" style={{ marginTop: 6 }}>Clique une fiche avec PDF, schéma ou transcript pour l'ouvrir ici.</div>
             </div>
           ) : selected.kind === 'fiche' ? (
-            <PdfReader key={selected.ficheId + ':' + (selected.mode || '') + ':' + (selected.srcTab || '')} ctx={ctx} ficheId={selected.ficheId} mode={selected.mode} initialSrcTab={selected.srcTab} embedded onClose={() => setSelected(null)} />
+            <PdfReader key={selected.ficheId + ':' + (selected.mode || '') + ':' + (selected.srcTab || '')} ctx={ctx} ficheId={selected.ficheId} mode={selected.mode} initialSrcTab={selected.srcTab} embedded onClose={closeDoc} />
           ) : selected.kind === 'schema' ? (
-            <SchemaEditorScreen key={selected.ficheId} ctx={ctx} ficheId={selected.ficheId} embedded onClose={() => setSelected(null)} />
+            <SchemaEditorScreen key={selected.ficheId} ctx={ctx} ficheId={selected.ficheId} embedded onClose={closeDoc} />
           ) : selected.kind === 'transcript' ? (
-            <TranscriptEditor key={selected.ficheId} ctx={ctx} ficheId={selected.ficheId} onClose={() => setSelected(null)} />
+            <TranscriptEditor key={selected.ficheId} ctx={ctx} ficheId={selected.ficheId} onClose={closeDoc} />
           ) : null}
         </div>
       </div>
@@ -303,6 +353,20 @@ export function Bibliotheque({ ctx }) {
       {etqMenu && (
         <ContextMenu x={etqMenu.x} y={etqMenu.y} onClose={() => setEtqMenu(null)}
           items={etiquetteMenuItems((db.fiches.find((x) => x.id === etqMenu.ficheId) || {}).etiquette, (v) => ctx.setFicheEtiquette(etqMenu.ficheId, v))} />
+      )}
+
+      {ficheMenu && (() => {
+        const f = db.fiches.find((x) => x.id === ficheMenu.ficheId);
+        return f ? <ContextMenu x={ficheMenu.x} y={ficheMenu.y} onClose={() => setFicheMenu(null)} items={ficheMenuItems(f, ficheMenu.x, ficheMenu.y)} /> : null;
+      })()}
+
+      {confirmArchive && (
+        <ConfirmModal
+          title="Supprimer ce cours ?"
+          body={<>« {confirmArchive.titre} » sera déplacé dans la corbeille (Réglages), restaurable tant qu'elle n'est pas vidée. Les cartes et le planning associés partent avec.</>}
+          confirmLabel="Supprimer" danger
+          onConfirm={confirmArchiveFiche} onCancel={() => setConfirmArchive(null)}
+        />
       )}
 
       {replacingHtmlId && (
