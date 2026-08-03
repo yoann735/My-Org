@@ -20,6 +20,7 @@ import { SchemaEditorScreen } from './documents/SchemaEditorScreen.jsx';
 import {
   getAll, put, putMany, remove, getStats, setStats as saveStats, genId, syncNow,
   purgeSource, purgeMatiere, purgeFiche, putBackup, newErrorCard,
+  getCoursePrompts, setCoursePrompts,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 import { todayISO, buildPlanFrom } from './lib/sm2.js';
@@ -85,6 +86,9 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [expanded, setExpanded] = useState(false);
   const [db, setDb] = useState(null);
   const [stats, setStats] = useState(null);
+  // surcharges des 4 prompts "Voir les prompts" (vue cours) — {} tant qu'aucune
+  // matière n'a été éditée ; DEFAULT_PROMPTS (lib/coursePrompts.js) comble le reste.
+  const [promptOverrides, setPromptOverrides] = useState({});
   const [session, setSession] = useState(null);
   const [feynman, setFeynman] = useState(null);
   const [exercice, setExercice] = useState(null); // { items:[exercice], title }
@@ -97,11 +101,12 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [syncState, setSyncState] = useState({ status: 'idle', at: null });
 
   const reload = useCallback(async () => {
-    const [sources, matieres, fiches, questions, anatstruct, sessionsLog, st] = await Promise.all([
-      getAll('sources'), getAll('matieres'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getStats(),
+    const [sources, matieres, fiches, questions, anatstruct, sessionsLog, st, pr] = await Promise.all([
+      getAll('sources'), getAll('matieres'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getStats(), getCoursePrompts(),
     ]);
     setDb({ sources, matieres, fiches, questions, anatstruct, sessionsLog });
     setStats(st);
+    setPromptOverrides(pr);
   }, []);
 
   // syncNow() (lib/storage.js) fait, dans l'ordre : rejoue l'outbox → réconcilie
@@ -138,7 +143,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const ctx = {
     theme, toggleTheme, goHub,
     go: setScreen,
-    db, stats, reload,
+    db, stats, reload, promptOverrides,
     syncState, forceSync,
     focusFiche, setFocusFiche,
     session, feynman, exercice, anatQuiz, pdfView, schemaView,
@@ -501,6 +506,21 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await reload();
     },
     saveStats: async (s) => { await saveStats(s); setStats(s); },
+    // "Voir les prompts" (vue cours) : surcharge le prompt d'UNE matière (persistant,
+    // outbox durable — même mécanique que saveStats). `resetPromptOverride` retire la
+    // clé plutôt que d'écrire le défaut en dur, pour que DEFAULT_PROMPTS reste la
+    // seule source de vérité du contenu par défaut (voir lib/coursePrompts.js).
+    savePromptOverride: async (subjectId, text) => {
+      const next = { ...promptOverrides, [subjectId]: text };
+      await setCoursePrompts(next);
+      setPromptOverrides(next);
+    },
+    resetPromptOverride: async (subjectId) => {
+      const next = { ...promptOverrides };
+      delete next[subjectId];
+      await setCoursePrompts(next);
+      setPromptOverrides(next);
+    },
     // écran de fin de série (QCM/flashcards, desktop + mobile) : un point par
     // série TERMINÉE, jamais reconstruit depuis l'historique par carte (qui ne
     // distingue pas les séries entre elles) — voir lib/storage.js pour le choix

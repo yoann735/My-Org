@@ -984,6 +984,15 @@
 .hl-swatch:hover { transform: scale(1.12); }
 .hl-swatch.selected { border-color: var(--text); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--text); }
 .hl-picker-sep { width: 1px; align-self: stretch; background: var(--border-2); margin: 0 2px; }
+
+/* ---------- "Voir les prompts" (vue cours) : popover ancrée + modale lecture/édition ---------- */
+.cpm-pop { position: fixed; z-index: 400; width: 280px; display: flex; flex-direction: column; gap: 4px; background: var(--card); border: 1px solid var(--border); border-radius: 13px; padding: 10px; box-shadow: var(--shadow-lg); animation: fade .12s ease; }
+.cpm-pop-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); padding: 2px 4px 6px; }
+.cpm-row { display: flex; align-items: center; gap: 6px; }
+.cpm-copy { flex: 1 1 auto; display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-radius: 9px; border: 1px solid transparent; background: var(--bg-2); color: var(--text); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; transition: background .12s, border-color .12s, color .12s; }
+.cpm-copy:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.cpm-view { white-space: pre-wrap; max-height: 55vh; overflow-y: auto; margin: 0; padding: 14px 16px; border-radius: 10px; background: var(--bg-2); font-size: 12.5px; line-height: 1.55; color: var(--text-2); font-family: inherit; }
+.cpm-edit { width: 100%; min-height: 55vh; resize: vertical; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border-2); background: var(--card-2); color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.5; }
 .hl-delete { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 8px; border: none; background: color-mix(in srgb, var(--crit) 12%, transparent); color: var(--crit); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .hl-delete:hover { background: color-mix(in srgb, var(--crit) 20%, transparent); }
 .hl-edit-btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 8px; border: none; background: var(--accent-soft); color: var(--accent); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }

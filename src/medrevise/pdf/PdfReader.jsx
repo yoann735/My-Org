@@ -47,6 +47,7 @@ import { getBlob, putBlob, putBlobAt, getAll, put, remove, newHighlight, newText
 import { RICH_EXTENSIONS, richToHTML } from '../documents/lib/richtext.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
+import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
 import { buildCourseExport } from '../lib/courseExport.js';
 import { serializeCourseHtml } from '../lib/courseHtmlSave.js';
 
@@ -733,6 +734,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
               <Icon name={courseExportOk ? 'check' : 'copy'} size={13} /> {courseExportOk ? 'Copié ✓' : 'Tout exporter'}
             </button>
           )}
+          {canAddItem && <CoursePromptsButton ctx={ctx} />}
           <label className="btn ghost sm" style={{ cursor: 'pointer' }} title="Attacher un document (PDF ou HTML) — remplace le document du même type">
             <Icon name="upload" size={13} /> Attacher un document
             <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={(e) => attachDoc(e.target.files[0])} />

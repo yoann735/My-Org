@@ -26,6 +26,7 @@ const S = {
   docs: store('docs'),       // contenu TipTap des transcripts (clé = ficheId)
   anatstruct: store('anatstruct'), // fiches de structure anatomique (théorie, champs typés)
   sessionsLog: store('sessionsLog'), // un point par série QCM/flashcard terminée (écran de fin, graphique d'évolution)
+  prompts: store('prompts'), // surcharges des 4 prompts "Voir les prompts" (vue cours), voir lib/coursePrompts.js
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
@@ -35,7 +36,7 @@ const S = {
 // `sessionsLog` est syncable pour la même raison que `questions`/`stats` : la
 // tendance affichée en fin de série doit refléter l'activité desktop ET mobile,
 // pas seulement cet appareil.
-const SYNCABLE = ['sources', 'matieres', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog'];
+const SYNCABLE = ['sources', 'matieres', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts'];
 
 export function genId(prefix = 'x') {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -152,6 +153,19 @@ export async function setStats(s) {
   const rec = { ...s, id: 'stats', updatedAt };
   await set('stats', rec, S.stats);
   queuePush('stats', 'stats', rec, updatedAt);
+  return rec;
+}
+
+/* ---- surcharges des 4 prompts "Voir les prompts" (carte unique, même mécanique que
+   stats) : seules les matières EFFECTIVEMENT éditées par l'utilisateur sont stockées
+   ici (clé = id de matière, ex. "physique") — DEFAULT_PROMPTS (lib/coursePrompts.js)
+   sert de secours pour les autres/à l'état initial. "Réinitialiser" = retirer la clé. */
+export async function getCoursePrompts() { return (await get('prompts', S.prompts)) || {}; }
+export async function setCoursePrompts(overrides) {
+  const updatedAt = new Date().toISOString();
+  const rec = { ...overrides, id: 'prompts', updatedAt };
+  await set('prompts', rec, S.prompts);
+  queuePush('prompts', 'prompts', rec, updatedAt);
   return rec;
 }
 
