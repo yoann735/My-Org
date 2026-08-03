@@ -12,9 +12,15 @@
    jamais dans un cycle J, catégorisée à_revoir/resolu/pause (ctx.setV2Statut).
 
    Flux : Extraire (JSON figé, copié vers un prompt EXTERNE) → l'utilisateur
-   colle le retour du prompt ici (Ajouter une flashcard d'erreur) → validé par
-   lib/parseErrorCardsJson.js → ctx.createErrorCards. Aucun appel réseau/IA
-   dans l'app à aucun moment.
+   colle le retour du prompt ici → validé par lib/parseErrorCardsJson.js →
+   ctx.createErrorCards. Aucun appel réseau/IA dans l'app à aucun moment.
+
+   "Ajouter une flashcard d'erreur" est déclenché DEPUIS chaque V1 (bouton sur
+   sa ligne, à côté d'Extraire), PAS un bouton global : l'app connaît alors
+   l'id RÉEL de la V1 cible et rattache les cartes créées à celle-ci,
+   indépendamment du source_error_id du JSON collé (filet non bloquant, voir
+   parseErrorCardsJson.js) — évite le rejet "source_error_id inconnu" quand le
+   prompt externe a mal recopié/halluciné l'id.
    ============================================================ */
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -33,7 +39,6 @@ export function CarnetDashboard({ ctx }) {
   const resolu = v2All.filter((v) => v.statut === 'resolu');
   const pause = v2All.filter((v) => v.statut === 'pause');
   const v1ById = Object.fromEntries(v1s.map((v) => [v.id, v]));
-  const [showAdd, setShowAdd] = useState(false);
 
   return (
     <div className="screen scroll fadein">
@@ -53,9 +58,6 @@ export function CarnetDashboard({ ctx }) {
           onClick={() => ctx.startSession(aRevoir, "Mes flashcards d'erreur", { mode: 'erreur' })}>
           <Icon name="play" size={15} fill /> Réviser mes flashcards d'erreur ({aRevoir.length})
         </button>
-        <button className="btn ghost" onClick={() => setShowAdd(true)}>
-          <Icon name="plus" size={14} /> Ajouter une flashcard d'erreur
-        </button>
       </div>
 
       <Card title="Mes erreurs (V1)" icon="target" action={<span className="pill">{v1s.length}</span>}>
@@ -63,7 +65,7 @@ export function CarnetDashboard({ ctx }) {
           <div className="err-empty"><Icon name="check" size={26} stroke={2.5} /><div>Aucune flashcard en carnet pour l'instant.</div></div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {v1s.map((v1, i) => <V1Row key={v1.id} v1={v1} v2Count={v2All.filter((v) => v.sourceErrorId === v1.id).length} first={i === 0} />)}
+            {v1s.map((v1, i) => <V1Row key={v1.id} v1={v1} v2Count={v2All.filter((v) => v.sourceErrorId === v1.id).length} first={i === 0} ctx={ctx} />)}
           </div>
         )}
       </Card>
@@ -88,17 +90,18 @@ export function CarnetDashboard({ ctx }) {
           </Card>
         </div>
       )}
-
-      {showAdd && <AddErrorCardModal ctx={ctx} v1s={v1s} onClose={() => setShowAdd(false)} />}
     </div>
   );
 }
 
-/* ---- une V1 (flashcard normale en carnet) : recto/verso + raison + bouton
-   Extraire (JSON figé, copiable) — format FIXE, ne pas changer les clés. ---- */
-function V1Row({ v1, v2Count, first }) {
+/* ---- une V1 (flashcard normale en carnet) : recto/verso + raison + boutons
+   Extraire (JSON figé, copiable — format FIXE, ne pas changer les clés) ET
+   Ajouter (ouvre le collage JSON EN CONTEXTE de cette V1 — voir
+   AddErrorCardModal, rattachement par targetV1Id, pas par le JSON). ---- */
+function V1Row({ v1, v2Count, first, ctx }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
   const json = JSON.stringify({
     type: 'erreur_source', flashcard_id: v1.id,
     recto: v1.recto, verso: v1.verso, raison_echec: v1.carnetRaison || '',
@@ -115,9 +118,12 @@ function V1Row({ v1, v2Count, first }) {
           {v1.carnetRaison && <div className="hint" style={{ marginTop: 6 }}><Icon name="edit" size={11} /> {v1.carnetRaison}</div>}
           {v2Count > 0 && <div className="hint" style={{ marginTop: 4, fontSize: 11 }}>{v2Count} flashcard{v2Count > 1 ? 's' : ''} d'erreur liée{v2Count > 1 ? 's' : ''}</div>}
         </div>
-        <div className="el-actions">
+        <div className="el-actions" style={{ flexWrap: 'wrap' }}>
           <button className="btn ghost sm" onClick={() => setOpen((o) => !o)}>
             <Icon name={open ? 'chevU' : 'upload'} size={13} /> {open ? 'Masquer' : 'Extraire'}
+          </button>
+          <button className="btn ghost sm" onClick={() => setShowAdd(true)}>
+            <Icon name="plus" size={13} /> Ajouter
           </button>
         </div>
       </div>
@@ -129,6 +135,7 @@ function V1Row({ v1, v2Count, first }) {
           </button>
         </div>
       )}
+      {showAdd && <AddErrorCardModal ctx={ctx} v1={v1} onClose={() => setShowAdd(false)} />}
     </div>
   );
 }
@@ -173,9 +180,12 @@ function V2List({ v2s, v1ById, ctx, empty, actions }) {
    EXTERNE (aucun appel réseau/IA ici). RÉUTILISE ImportJsonField tel quel
    (components/ImportFlow.jsx, même brique que l'import standard) — validateur
    DÉDIÉ (parseErrorCardsJson), pas parsePastedJson (V2 hors vocabulaire
-   v1.0/fiches). Aperçu (créées/ignorées) avant confirmation, jamais de crash
-   sur un JSON mal formé ou un source_error_id inconnu. ---- */
-function AddErrorCardModal({ ctx, v1s, onClose }) {
+   v1.0/fiches). Déclenchée DEPUIS une V1 précise (V1Row) : `v1` fournit l'id
+   RÉEL utilisé pour le rattachement — le source_error_id du JSON collé n'est
+   qu'un filet non bloquant, jamais un motif de rejet (voir
+   lib/parseErrorCardsJson.js). Aperçu (créées/ignorées) avant confirmation,
+   jamais de crash sur un JSON mal formé ou sans recto/verso. ---- */
+function AddErrorCardModal({ ctx, v1, onClose }) {
   const [jsonText, setJsonText] = useState('');
   const [parseError, setParseError] = useState(null);
   const [preview, setPreview] = useState(null); // { cards, counts }
@@ -183,9 +193,9 @@ function AddErrorCardModal({ ctx, v1s, onClose }) {
   const [done, setDone] = useState(0);
 
   const analyse = () => {
-    const res = parseErrorCardsJson(jsonText, v1s);
+    const res = parseErrorCardsJson(jsonText, v1.id);
     if (!res.ok) { setParseError(res.error); setPreview(null); return; }
-    if (!res.cards.length) { setParseError("Aucune flashcard d'erreur valide trouvée (JSON mal formé ou source_error_id inconnu)."); setPreview(null); return; }
+    if (!res.cards.length) { setParseError('Aucune flashcard d\'erreur valide trouvée (recto/verso manquants).'); setPreview(null); return; }
     setParseError(null);
     setPreview(res);
   };
@@ -203,9 +213,9 @@ function AddErrorCardModal({ ctx, v1s, onClose }) {
   };
 
   return (
-    <Modal title="Ajouter une flashcard d'erreur" onClose={onClose} width="min(640px, 94vw)">
+    <Modal title={`Ajouter une flashcard d'erreur — ${trunc(v1.recto, 50)}`} onClose={onClose} width="min(640px, 94vw)">
       <div className="hint" style={{ marginBottom: 12 }}>
-        Colle ici le JSON renvoyé par ton prompt externe (une ou plusieurs cartes, chacune avec <code>source_error_id</code>).
+        Colle ici le JSON renvoyé par ton prompt externe (une ou plusieurs cartes). Elles seront rattachées à cette erreur, même si le JSON ne porte pas de <code>source_error_id</code> (ou un id incorrect).
       </div>
       {done > 0 && (
         <div className="err-mini ok" style={{ marginBottom: 12 }}>
@@ -215,7 +225,7 @@ function AddErrorCardModal({ ctx, v1s, onClose }) {
       )}
       {!preview ? (
         <>
-          <ImportJsonField label="JSON collé" placeholder='[{"recto":"...","verso":"...","source_error_id":"..."}]' value={jsonText} onChange={(v) => { setJsonText(v); setParseError(null); }} error={parseError} />
+          <ImportJsonField label="JSON collé" placeholder='[{"recto":"...","verso":"..."}]' value={jsonText} onChange={(v) => { setJsonText(v); setParseError(null); }} error={parseError} />
           <div className="imp-actions" style={{ justifyContent: 'flex-start' }}>
             <button className="btn primary" disabled={!jsonText.trim()} onClick={analyse}><Icon name="upload" size={14} /> Analyser</button>
           </div>
@@ -228,7 +238,12 @@ function AddErrorCardModal({ ctx, v1s, onClose }) {
               <div className="em-title">{preview.counts.created} flashcard{preview.counts.created > 1 ? 's' : ''} d'erreur détectée{preview.counts.created > 1 ? 's' : ''}</div>
               {preview.counts.ignored > 0 && (
                 <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}>
-                  <Icon name="alert" size={12} /> {preview.counts.ignored} ignorée{preview.counts.ignored > 1 ? 's' : ''} (format invalide ou source_error_id inconnu)
+                  <Icon name="alert" size={12} /> {preview.counts.ignored} ignorée{preview.counts.ignored > 1 ? 's' : ''} (recto/verso manquants)
+                </div>
+              )}
+              {preview.counts.mismatched > 0 && (
+                <div className="hint" style={{ marginTop: 4 }}>
+                  <Icon name="info" size={12} /> {preview.counts.mismatched} carte{preview.counts.mismatched > 1 ? 's' : ''} portai{preview.counts.mismatched > 1 ? 'ent' : 't'} un autre id dans le JSON — rattachée{preview.counts.mismatched > 1 ? 's' : ''} ici quand même.
                 </div>
               )}
             </div>
