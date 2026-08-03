@@ -15,6 +15,7 @@ import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
 import { allCoches } from '../lib/anatSchema.js';
 import { putBlob } from '../lib/storage.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
+import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
 
 /** formate un temps par carte (ms) en texte court — secondes sous la minute,
     "Xm Ys" au-delà (rare pour une flashcard). */
@@ -331,6 +332,10 @@ export function Reviser({ ctx }) {
                           const sel = selIds.includes(f.id);
                           const cdt = dueCountFiche(f.id);
                           const ren = isRen('fiche', f.id);
+                          // même détection que Bibliotheque.jsx (isExoConforme, planning.js) —
+                          // repère d'un coup d'œil les cours qui ont des exos issus du prompt
+                          // "pratique méthode J", ici aussi dans l'arbre de Réviser.
+                          const hasConformeExos = qOfFiche(f.id).some((x) => x.type === 'exercice' && isExoConforme(x));
                           return (
                             <div key={f.id} data-fiche-row={f.id}>
                               <DropSlot matiereId={mat.id} beforeId={f.id} />
@@ -352,6 +357,7 @@ export function Reviser({ ctx }) {
                                       <span className="tc-name">{f.titre}</span>
                                       {f.type === 'anat_schema' && <span title="Schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex', marginLeft: 4 }}><Icon name="image" size={12} /></span>}
                                       <EtiquetteDot value={f.etiquette} style={{ marginLeft: 4 }} />
+                                      {hasConformeExos && <span title="Contient des exercices conformes à la méthode des J (jalon + difficulté)" style={{ display: 'inline-flex', marginLeft: 4 }}><Icon name="sparkle" size={12} style={{ color: 'var(--accent)' }} /></span>}
                                       {overdueFicheIds.has(f.id) && <span title="En retard — à rattraper" style={{ color: 'var(--crit)', display: 'inline-flex', marginLeft: 4 }}><Icon name="alert" size={12} /></span>}
                                       {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
                                     </button>
@@ -475,7 +481,7 @@ export function Reviser({ ctx }) {
                   (filtres thème / difficulté / statut). */}
               {exoItems.length > 0 && (
                 <ExerciceCards items={exoItems} meta={meta} onOpen={openExo} onDelete={askDeleteExercice}
-                  onDeleteAll={!multi ? askDeleteAllExercices : null} />
+                  onDeleteAll={!multi ? askDeleteAllExercices : null} ctx={ctx} />
               )}
             </>
           )}
@@ -620,7 +626,7 @@ const EXO_STATUS = {
   review: { label: 'À revoir', icon: 'refresh', color: 'var(--accent-2)' },
 };
 
-function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll }) {
+function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll, ctx }) {
   const [fTheme, setFTheme] = useState('all');
   const [fDiff, setFDiff] = useState('all');
   const [fStatut, setFStatut] = useState('all');
@@ -640,6 +646,7 @@ function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll }) {
         <Icon name="target" size={14} style={{ color: 'var(--text-3)' }} />
         <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--text-3)' }}>Exercices</span>
         <span className="hint" style={{ marginLeft: 'auto' }}>{filtered.length}/{items.length} exercice{items.length > 1 ? 's' : ''}</span>
+        {ctx && <CoursePromptsButton ctx={ctx} kind="pratique" />}
         {onDeleteAll && (
           <button type="button" className="btn ghost sm" style={{ color: 'var(--crit)' }} onClick={onDeleteAll} title="Supprimer tous les exercices de cette fiche (QCM/flashcards/Feynman non concernés)">
             <Icon name="trash" size={13} /> Supprimer tous les exercices
