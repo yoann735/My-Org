@@ -168,6 +168,18 @@ export async function setCoursePrompts(overrides) {
   queuePush('prompts', 'prompts', rec, updatedAt);
   return rec;
 }
+/* ---- surcharges des 4 prompts PRATIQUE (exercices), même mécanique que
+   ci-dessus — MÊME store `S.prompts` (déjà SYNCABLE), clé DISTINCTE
+   ('exoPrompts' vs 'prompts') : deux enregistrements indépendants dans la
+   même collection outbox, comme deux ids différents dans 'questions'. */
+export async function getExoPrompts() { return (await get('exoPrompts', S.prompts)) || {}; }
+export async function setExoPrompts(overrides) {
+  const updatedAt = new Date().toISOString();
+  const rec = { ...overrides, id: 'exoPrompts', updatedAt };
+  await set('exoPrompts', rec, S.prompts);
+  queuePush('prompts', 'exoPrompts', rec, updatedAt);
+  return rec;
+}
 
 /* Item v1.0 (schéma unifié) → enregistrement planifiable en base. `item` est
    déjà un item "superset" (v1.0 + champs legacy) produit par toInternalItem().

@@ -5,24 +5,64 @@
    Ce bouton ne génère RIEN : il copie/affiche/édite un texte figé, réutilise
    le même mécanisme presse-papier que "Tout exporter" (navigator.clipboard).
 
-   Contenu par défaut = DEFAULT_PROMPTS (lib/coursePrompts.js, figé, fourni par
-   l'utilisateur). Une surcharge éditée par l'utilisateur (ctx.promptOverrides,
-   persistée via outbox durable — storage.js#getCoursePrompts/setCoursePrompts)
-   prime toujours sur le défaut ; "Réinitialiser" retire la surcharge.
+   Deux VARIANTES du même composant, sélectionnées par la prop `kind` :
+   - 'theorie' (défaut) : DEFAULT_PROMPTS/parsePromptsMd (lib/coursePrompts.js),
+     surcharges ctx.promptOverrides, séparateurs "=== PROMPT XXX ===".
+   - 'pratique' (exercices, méthode des J des exos) : DEFAULT_EXO_PROMPTS/
+     parseExoPromptsMd (lib/exoPrompts.js), surcharges ctx.exoPromptOverrides
+     (stockage SÉPARÉ, storage.js#getExoPrompts/setExoPrompts), séparateurs
+     "## N — MATIÈRE — PRATIQUE" + bloc de code. Les deux variantes ne se
+     mélangent JAMAIS (stockage et contenu par défaut distincts).
+
+   Contenu par défaut = fourni par l'utilisateur, figé dans lib/coursePrompts.js
+   ou lib/exoPrompts.js. Une surcharge éditée par l'utilisateur (persistée via
+   outbox durable) prime toujours sur le défaut ; "Réinitialiser" retire la
+   surcharge.
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { Modal } from './ui.jsx';
 import { SUBJECTS, DEFAULT_PROMPTS, parsePromptsMd } from '../lib/coursePrompts.js';
-
-const effectiveText = (ctx, id) => (ctx.promptOverrides && ctx.promptOverrides[id]) || DEFAULT_PROMPTS[id];
+import { DEFAULT_EXO_PROMPTS, parseExoPromptsMd } from '../lib/exoPrompts.js';
 
 async function copyToClipboard(text) {
   try { await navigator.clipboard.writeText(text); return true; } catch (e) { return false; }
 }
 
-export function CoursePromptsButton({ ctx }) {
+/** construit la config de variante à partir de `kind` + `ctx` — un seul
+   endroit où les deux variantes divergent, tout le reste du fichier ne lit
+   plus que `cfg`. */
+function buildCfg(kind, ctx) {
+  const isExo = kind === 'pratique';
+  return {
+    kind,
+    icon: isExo ? 'target' : 'sparkle',
+    label: isExo ? 'Voir les prompts (exercices)' : 'Voir les prompts',
+    triggerTitle: isExo
+      ? 'Les 4 prompts PRATIQUE (méthode des J des exercices) à coller dans un chat externe'
+      : 'Les 4 prompts de complétion à coller dans un chat externe',
+    popupTitle: isExo ? 'Prompts pratique (exercices)' : 'Prompts de complétion',
+    defaultPrompts: isExo ? DEFAULT_EXO_PROMPTS : DEFAULT_PROMPTS,
+    overrides: isExo ? ctx.exoPromptOverrides : ctx.promptOverrides,
+    parseMd: isExo ? parseExoPromptsMd : parsePromptsMd,
+    saveOne: isExo ? ctx.saveExoPromptOverride : ctx.savePromptOverride,
+    saveAll: isExo ? ctx.saveAllExoPromptOverrides : ctx.saveAllPromptOverrides,
+    resetOne: isExo ? ctx.resetExoPromptOverride : ctx.resetPromptOverride,
+    bulkTitle: isExo ? 'Modifier les 4 prompts pratique — coller le MD complet' : 'Modifier les 4 prompts — coller le MD complet',
+    bulkHint: isExo
+      ? <>Colle ici le fichier .md entier (les 4 sections <code>## N — MATIÈRE — PRATIQUE</code>, chacune suivie d'un bloc de code) — l'app découpe automatiquement chaque bloc vers la bonne matière.</>
+      : <>Colle ici le fichier .md entier (les 4 prompts séparés par <code>=== PROMPT PHYSIQUE ===</code>, etc.) — l'app découpe automatiquement chaque bloc vers la bonne matière.</>,
+    missingHint: (label) => (isExo
+      ? `manquant — titre "## N — ${label.toUpperCase()} — PRATIQUE" (+ son bloc de code) introuvable ou mal écrit`
+      : `manquant — séparateur "=== PROMPT ${label.toUpperCase()} ===" introuvable ou mal écrit`),
+  };
+}
+
+const effectiveText = (cfg, id) => (cfg.overrides && cfg.overrides[id]) || cfg.defaultPrompts[id];
+
+export function CoursePromptsButton({ ctx, kind = 'theorie' }) {
+  const cfg = buildCfg(kind, ctx);
   const [pop, setPop] = useState(null); // { top, left }
   const [copiedId, setCopiedId] = useState(null);
   const [modalState, setModalState] = useState(null); // { subject, mode: 'view'|'edit' }
@@ -44,7 +84,7 @@ export function CoursePromptsButton({ ctx }) {
   }, [pop]);
 
   const copySubject = async (id) => {
-    if (await copyToClipboard(effectiveText(ctx, id))) {
+    if (await copyToClipboard(effectiveText(cfg, id))) {
       setCopiedId(id);
       setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1800);
     }
@@ -52,13 +92,13 @@ export function CoursePromptsButton({ ctx }) {
 
   return (
     <>
-      <button ref={btnRef} type="button" className="btn ghost sm" onClick={openPop} title="Les 4 prompts de complétion à coller dans un chat externe">
-        <Icon name="sparkle" size={13} /> Voir les prompts
+      <button ref={btnRef} type="button" className="btn ghost sm" onClick={openPop} title={cfg.triggerTitle}>
+        <Icon name={cfg.icon} size={13} /> {cfg.label}
       </button>
 
       {pop && createPortal(
         <div className="cpm-pop" style={{ top: pop.top, left: pop.left }}>
-          <div className="cpm-pop-title">Prompts de complétion</div>
+          <div className="cpm-pop-title">{cfg.popupTitle}</div>
           {SUBJECTS.map((s) => (
             <div key={s.id} className="cpm-row">
               <button type="button" className="cpm-copy" onClick={() => copySubject(s.id)} title="Copier ce prompt">
@@ -78,48 +118,46 @@ export function CoursePromptsButton({ ctx }) {
       )}
 
       {modalState && (
-        <PromptModal ctx={ctx} initial={modalState} onClose={() => setModalState(null)} />
+        <PromptModal cfg={cfg} initial={modalState} onClose={() => setModalState(null)} />
       )}
       {bulkOpen && (
-        <BulkPromptModal ctx={ctx} onClose={() => setBulkOpen(false)} />
+        <BulkPromptModal cfg={cfg} onClose={() => setBulkOpen(false)} />
       )}
     </>
   );
 }
 
 /** "Modifier les 4" — colle le fichier .md COMPLET (les 4 prompts d'un coup),
-   découpé automatiquement par matière (parsePromptsMd, lib/coursePrompts.js)
-   sur les séparateurs "=== PROMPT XXX ===" déjà présents dans le fichier.
-   Étape "Prévisualiser" OBLIGATOIRE avant "Enregistrer les 4" : montre les 4
+   découpé automatiquement par matière (cfg.parseMd) sur les séparateurs
+   propres à la variante (théorie ou pratique, voir buildCfg). Étape
+   "Prévisualiser" OBLIGATOIRE avant "Enregistrer les 4" : montre les 4
    matières trouvées (✓ + longueur) ou manquantes (séparateur introuvable) —
    jamais d'enregistrement partiel silencieux si une matière manque. */
-function BulkPromptModal({ ctx, onClose }) {
+function BulkPromptModal({ cfg, onClose }) {
   const [raw, setRaw] = useState('');
   const [parsed, setParsed] = useState(null); // { results, missing } | null tant que pas prévisualisé (ou après une frappe qui invalide l'aperçu)
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const onRawChange = (e) => { setRaw(e.target.value); setParsed(null); setSaved(false); };
-  const preview = () => setParsed(parsePromptsMd(raw));
+  const preview = () => setParsed(cfg.parseMd(raw));
   const canSave = !!parsed && parsed.missing.length === 0;
 
   const save = async () => {
     if (!canSave || saving) return;
     setSaving(true);
-    // merge ATOMIQUE des 4 (voir MedReviseApp.jsx#saveAllPromptOverrides) —
-    // jamais 4 appels séquentiels à savePromptOverride, qui s'écraseraient
-    // entre eux (chaque appel referme le promptOverrides du rendu courant).
-    await ctx.saveAllPromptOverrides(parsed.results);
+    // merge ATOMIQUE des 4 (MedReviseApp.jsx#saveAllPromptOverrides/
+    // saveAllExoPromptOverrides) — jamais 4 appels séquentiels à saveOne, qui
+    // s'écraseraient entre eux (chaque appel referme les overrides du rendu courant).
+    await cfg.saveAll(parsed.results);
     setSaving(false);
     setSaved(true);
     setTimeout(onClose, 900);
   };
 
   return (
-    <Modal title="Modifier les 4 prompts — coller le MD complet" onClose={onClose} width="min(760px, 94vw)">
-      <div className="hint" style={{ marginBottom: 10 }}>
-        Colle ici le fichier .md entier (les 4 prompts séparés par <code>=== PROMPT PHYSIQUE ===</code>, etc.) — l'app découpe automatiquement chaque bloc vers la bonne matière.
-      </div>
+    <Modal title={cfg.bulkTitle} onClose={onClose} width="min(760px, 94vw)">
+      <div className="hint" style={{ marginBottom: 10 }}>{cfg.bulkHint}</div>
       <textarea className="cpm-edit" style={{ minHeight: 260 }} value={raw} onChange={onRawChange} spellCheck={false} placeholder="Colle ici le MD complet des 4 prompts…" />
       <div className="imp-actions" style={{ marginTop: 12 }}>
         <button type="button" className="btn ghost" onClick={preview} disabled={!raw.trim()}><Icon name="search" size={14} /> Prévisualiser</button>
@@ -140,7 +178,7 @@ function BulkPromptModal({ ctx, onClose }) {
                 <strong style={{ minWidth: 110 }}>{s.label}</strong>
                 {text
                   ? <span className="hint">✓ ({text.length} caractères)</span>
-                  : <span className="hint" style={{ color: 'var(--crit)' }}>manquant — séparateur "=== PROMPT {s.label.toUpperCase()} ===" introuvable ou mal écrit</span>}
+                  : <span className="hint" style={{ color: 'var(--crit)' }}>{cfg.missingHint(s.label)}</span>}
               </div>
             );
           })}
@@ -156,38 +194,38 @@ function BulkPromptModal({ ctx, onClose }) {
   );
 }
 
-function PromptModal({ ctx, initial, onClose }) {
+function PromptModal({ cfg, initial, onClose }) {
   const [subject, setSubject] = useState(initial.subject);
   const [mode, setMode] = useState(initial.mode);
-  const [editText, setEditText] = useState(() => effectiveText(ctx, initial.subject));
+  const [editText, setEditText] = useState(() => effectiveText(cfg, initial.subject));
   const [copied, setCopied] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
 
   // resynchronise le brouillon d'édition quand on change de matière — la surcharge
   // éventuelle (ou le défaut) de la matière NOUVELLEMENT active fait foi.
-  useEffect(() => { setEditText(effectiveText(ctx, subject)); }, [subject]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setEditText(effectiveText(cfg, subject)); }, [subject]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const hasOverride = !!(ctx.promptOverrides && ctx.promptOverrides[subject]);
-  const isDirty = mode === 'edit' && editText !== effectiveText(ctx, subject);
+  const hasOverride = !!(cfg.overrides && cfg.overrides[subject]);
+  const isDirty = mode === 'edit' && editText !== effectiveText(cfg, subject);
 
   // enregistre le brouillon en cours AVANT de changer de matière ou de fermer —
   // on ne perd jamais une modification en cours de frappe (pas de prompt de
   // confirmation fragile, juste un flush systématique).
-  const flush = async () => { if (isDirty) await ctx.savePromptOverride(subject, editText); };
+  const flush = async () => { if (isDirty) await cfg.saveOne(subject, editText); };
   const switchSubject = async (next) => { await flush(); setSubject(next); };
   const close = async () => { await flush(); onClose(); };
 
   const save = async () => {
-    await ctx.savePromptOverride(subject, editText);
+    await cfg.saveOne(subject, editText);
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 1600);
   };
   const reset = async () => {
-    await ctx.resetPromptOverride(subject);
-    setEditText(DEFAULT_PROMPTS[subject]);
+    await cfg.resetOne(subject);
+    setEditText(cfg.defaultPrompts[subject]);
   };
   const copy = async () => {
-    if (await copyToClipboard(mode === 'edit' ? editText : effectiveText(ctx, subject))) {
+    if (await copyToClipboard(mode === 'edit' ? editText : effectiveText(cfg, subject))) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     }
@@ -212,7 +250,7 @@ function PromptModal({ ctx, initial, onClose }) {
       {!hasOverride && <div className="hint" style={{ marginBottom: 10 }}>Prompt par défaut (jamais modifié pour cette matière).</div>}
 
       {mode === 'view' ? (
-        <pre className="cpm-view">{effectiveText(ctx, subject)}</pre>
+        <pre className="cpm-view">{effectiveText(cfg, subject)}</pre>
       ) : (
         <textarea className="cpm-edit" value={editText} onChange={(e) => setEditText(e.target.value)} spellCheck={false} />
       )}

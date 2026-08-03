@@ -742,6 +742,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
             </button>
           )}
           {canAddItem && <CoursePromptsButton ctx={ctx} />}
+          {canAddItem && <CoursePromptsButton ctx={ctx} kind="pratique" />}
           {canAddItem && (
             <button className="btn ghost sm" onClick={() => { setImportedCount(0); setShowImportItems(true); }} title="Coller le JSON produit par un prompt de complétion — ajoute les nouvelles cartes à cette fiche">
               <Icon name="upload" size={13} /> Importer des items
