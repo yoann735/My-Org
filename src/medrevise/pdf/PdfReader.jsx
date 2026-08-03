@@ -43,11 +43,12 @@ import { PDFDocument, rgb, BlendMode } from 'pdf-lib';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, detectDocKind } from '../components/ui.jsx';
-import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit } from '../lib/storage.js';
+import { getBlob, putBlob, putBlobAt, getAll, put, remove, newHighlight, newTextEdit } from '../lib/storage.js';
 import { RICH_EXTENSIONS, richToHTML } from '../documents/lib/richtext.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { buildCourseExport } from '../lib/courseExport.js';
+import { serializeCourseHtml } from '../lib/courseHtmlSave.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -184,11 +185,26 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
 
   const [htmlUrl, setHtmlUrl] = useState(null);
   const [htmlLoadError, setHtmlLoadError] = useState(null);
+  // CRITIQUE (auto-save, voir plus bas) : quand l'auto-save écrit un NOUVEL id de
+  // blob (1ère écriture d'une session d'édition) et met à jour fiche.htmlId, CET
+  // effet se redéclenche puisqu'il dépend de fiche.htmlId — sans garde-fou, il
+  // rechargerait l'iframe depuis le blob qu'on vient tout juste d'écrire, ce qui
+  // PERDRAIT l'édition en cours (nouveau document, historique undo/redo remis à
+  // zéro). `autosavedHtmlIdRef` retient le DERNIER id que NOUS avons écrit : si
+  // fiche.htmlId correspond déjà, on ne touche à rien (l'iframe affiche déjà la
+  // bonne version) — un changement externe réel (Remplacer le fichier HTML,
+  // réconciliation multi-appareil) a toujours un id DIFFÉRENT et recharge normalement.
+  const autosavedHtmlIdRef = useRef(null);
+  // ref sur l'iframe "Voir le cours" — lue par l'auto-save ET par "Tout exporter"
+  // (blob: URL + sandbox="allow-same-origin" la rend same-origin avec le parent,
+  // donc accessible sans postMessage).
+  const courseIframeRef = useRef(null);
   useEffect(() => {
     let cancelled = false;
     let objUrl = null;
+    if (!fiche || !fiche.htmlId) { setHtmlUrl(null); setHtmlLoadError(null); return; }
+    if (fiche.htmlId === autosavedHtmlIdRef.current) return; // notre propre écriture — iframe déjà à jour
     setHtmlUrl(null); setHtmlLoadError(null);
-    if (!fiche || !fiche.htmlId) return;
     (async () => {
       const blob = await getBlob(fiche.htmlId);
       if (cancelled) return;
@@ -199,12 +215,59 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     return () => { cancelled = true; if (objUrl) URL.revokeObjectURL(objUrl); };
   }, [fiche && fiche.htmlId]);
 
+  // ---- auto-save du cours HTML (surlignage, édition de texte, images, undo/redo…) ----
+  // Détecte TOUTE modification du DOM de l'iframe (MutationObserver sur #doc, posé au
+  // chargement — voir onCourseIframeLoad), debounce ~800ms, sérialise (même logique que
+  // le bouton "Enregistrer" du gabarit, voir lib/courseHtmlSave.js) et écrit :
+  // - 1er tick d'une session d'édition : putBlob (nouvel id) + ctx.setFicheHtml (outbox
+  //   durable, fiche.htmlId à jour pour la synchro/les autres appareils) ;
+  // - ticks suivants de la MÊME session : putBlobAt sur ce même id (pas de nouvel id,
+  //   donc fiche.htmlId ne change plus → l'effet ci-dessus ne recharge pas l'iframe).
+  const [saveStatus, setSaveStatus] = useState('idle'); // idle | saving | saved
+  const sessionBlobIdRef = useRef(null);
+  const saveTimerRef = useRef(null);
+  const observerRef = useRef(null);
+  const performCourseSave = async () => {
+    const idoc = courseIframeRef.current && courseIframeRef.current.contentDocument;
+    if (!idoc) return;
+    setSaveStatus('saving');
+    const html = serializeCourseHtml(idoc);
+    const blob = new Blob([html], { type: 'text/html' });
+    if (sessionBlobIdRef.current) {
+      await putBlobAt(sessionBlobIdRef.current, blob);
+    } else {
+      const id = await putBlob(blob);
+      sessionBlobIdRef.current = id;
+      autosavedHtmlIdRef.current = id;
+      await ctx.setFicheHtml(ficheId, id, fiche.htmlName);
+    }
+    setSaveStatus('saved');
+  };
+  const scheduleCourseSave = () => {
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => { performCourseSave(); }, 800);
+  };
+  const onCourseIframeLoad = () => {
+    const idoc = courseIframeRef.current && courseIframeRef.current.contentDocument;
+    const target = idoc && idoc.getElementById('doc');
+    if (observerRef.current) { observerRef.current.disconnect(); observerRef.current = null; }
+    if (!target) return;
+    // attributeFilter volontairement restreint : exclut `contenteditable` (bascule
+    // Lecture/Édition sur #doc lui-même, purement transitoire — serializeCourseHtml
+    // le normalise de toute façon à l'enregistrement) pour ne pas déclencher un
+    // autosave à chaque simple bascule de mode, sans contenu réellement changé.
+    const observer = new MutationObserver(scheduleCourseSave);
+    observer.observe(target, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'data-hl'] });
+    observerRef.current = observer;
+  };
+  useEffect(() => () => {
+    clearTimeout(saveTimerRef.current);
+    if (observerRef.current) observerRef.current.disconnect();
+  }, []);
+
   // "Tout exporter" (atelier "Voir le cours", branche HTML) : cours + surlignages
   // + cartes manuelles en un seul JSON (contrat medrevise_cours_export v1, voir
   // lib/courseExport.js), copié dans le presse-papier pour un prompt externe.
-  // Lit directement le DOM de l'iframe — blob: URL + sandbox="allow-same-origin"
-  // la rend same-origin avec le parent, donc accessible sans postMessage.
-  const courseIframeRef = useRef(null);
   const [courseExportOk, setCourseExportOk] = useState(false);
   const exportAllCourse = async () => {
     const idoc = courseIframeRef.current && courseIframeRef.current.contentDocument;
@@ -656,6 +719,14 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
           {!!fiche.pdfId && (
             <button className="btn ghost sm" onClick={() => setSrcTab('pdf')}><Icon name="filePdf" size={13} /> Voir le PDF</button>
           )}
+          {/* indicateur discret d'auto-save — voir performCourseSave/scheduleCourseSave */}
+          {saveStatus !== 'idle' && (
+            <span className="hint" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              {saveStatus === 'saving'
+                ? <><span className="gen-spinner" style={{ width: 12, height: 12 }} /> Enregistrement…</>
+                : <><Icon name="check" size={13} style={{ color: 'var(--ok)' }} /> Enregistré</>}
+            </span>
+          )}
           <div style={{ flex: 1 }} />
           {canAddItem && (
             <button className="btn sm" onClick={exportAllCourse} disabled={!htmlUrl} title="Cours + surlignages + cartes déjà créées, en un JSON prêt pour un prompt externe">
@@ -688,7 +759,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
               // TOUT script (y compris les onclick inline), rendant ce bouton inerte au
               // clic. Le contenu est intégralement local et auto-généré par l'utilisateur
               // (aucune requête réseau, aucun contenu tiers) : risque borné et accepté.
-              <iframe ref={courseIframeRef} src={htmlUrl} title={fiche.titre} sandbox="allow-same-origin allow-scripts" className="pdfr-html-frame" />
+              <iframe ref={courseIframeRef} src={htmlUrl} title={fiche.titre} sandbox="allow-same-origin allow-scripts" className="pdfr-html-frame" onLoad={onCourseIframeLoad} />
             )}
           </div>
           {canAddItem && <CourseItemsSidebar ctx={ctx} ficheId={ficheId} />}

@@ -73,6 +73,17 @@ export async function putBlob(blob) {
   pushBlob(id, blob); // fire-and-forget
   return id;
 }
+// écrase le contenu d'un blob EXISTANT, MÊME id (contrairement à putBlob) — sert
+// l'auto-save du HTML de cours (PdfReader) : écrire "en place" pendant une session
+// d'édition évite de faire changer fiche.htmlId à chaque tick de debounce (ce qui
+// rechargerait l'iframe et perdrait l'édition en cours). Un seul putBlob (nouvel id)
+// est fait au DÉBUT de la session d'édition (voir PdfReader) ; tous les autosaves
+// suivants de cette même session passent par putBlobAt sur ce même id.
+export async function putBlobAt(id, blob) {
+  await set(id, blob, S.blobs);
+  pushBlob(id, blob); // fire-and-forget
+  return id;
+}
 export async function getBlob(id) {
   const local = await get(id, S.blobs);
   if (local) return local;

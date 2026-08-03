@@ -37,11 +37,14 @@ export function Bibliotheque({ ctx }) {
   const [creatingTranscript, setCreatingTranscript] = useState(false);
   const [etqMenu, setEtqMenu] = useState(null); // { x, y, ficheId } — menu compact de l'étiquette
   const [replacingHtmlId, setReplacingHtmlId] = useState(null); // ficheId — modale « Remplacer le fichier HTML »
-  // refonte UX : la liste (arbre) se replie automatiquement dès qu'un cours est
-  // ouvert (donne toute la largeur au lecteur) — reste manipulable via un bouton
-  // dans chaque sens (« Replier »/« Liste des cours »). `showMaster` protège contre
-  // un état incohérent (repliée mais rien sélectionné → jamais d'écran vide).
-  const [listCollapsed, setListCollapsed] = useState(false);
+  // refonte UX (repli HORIZONTAL, pas un démontage) : la liste reste TOUJOURS
+  // montée, dans une colonne qui rétrécit en rail (voir .lib-master.collapsed,
+  // etudes.css) — jamais empilée verticalement, jamais totalement invisible.
+  // Repliée automatiquement à l'ouverture d'un cours (donne de la place au
+  // lecteur) et sur petite fenêtre au montage ; un seul contrôle pour la
+  // rouvrir (le chevron du rail) — plus de bouton « Liste des cours » séparé
+  // (redondant avec « Retour », voir le point 3 de la demande).
+  const [listCollapsed, setListCollapsed] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 960px)').matches);
   const [ficheMenu, setFicheMenu] = useState(null); // { x, y, ficheId } — menu « … » (actions secondaires)
   const [confirmArchive, setConfirmArchive] = useState(null); // fiche à archiver (confirmation)
   const attachInputRef = useRef(null);
@@ -66,13 +69,11 @@ export function Bibliotheque({ ctx }) {
 
   const qById = (fId) => db.questions.filter((x) => x.ficheId === fId);
   const count = (fId, t) => qById(fId).filter((x) => x.type === t).length;
-  // repliée mais rien sélectionné → jamais d'écran vide (protège l'état incohérent).
-  const showMaster = !(listCollapsed && selected);
 
   // ouvre le document d'une fiche dans le panneau de droite (jamais de navigation
   // d'écran) ; kind dérivé de docKind() — pdfId → 'fiche', anat_schema → 'schema',
   // transcript → 'transcript'. Replie la liste dans la foulée (le lecteur prend
-  // toute la largeur) — « Liste des cours » (lib-detail) la rouvre en un clic.
+  // toute la largeur) — le chevron du rail la rouvre en un clic.
   const openDoc = (f, mode, srcTab) => {
     const kind = docKind(f);
     if (kind === 'fiche') setSelected({ ficheId: f.id, kind: 'fiche', mode: mode || 'read', srcTab });
@@ -195,20 +196,23 @@ export function Bibliotheque({ ctx }) {
          toute la liste, jamais affiché ; voir requestAttach/onAttachInputChange. */}
       <input ref={attachInputRef} type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={onAttachInputChange} />
 
-      <div className="lib-split" style={showMaster ? undefined : { gridTemplateColumns: '1fr' }}>
-        {showMaster && (
-        <div className="lib-master">
+      <div className="lib-split">
+        <div className={'lib-master' + (listCollapsed ? ' collapsed' : '')}>
+          {listCollapsed ? (
+            <button type="button" className="lib-rail" onClick={() => setListCollapsed(false)} title="Afficher la liste des cours">
+              <Icon name="chevR" size={16} />
+              <span className="lib-rail-label">Cours</span>
+            </button>
+          ) : (
+          <>
+          <div className="row spread" style={{ marginBottom: 12 }}>
+            <h3 style={{ margin: 0 }}>Cours</h3>
+            <button type="button" className="icon-btn sm" onClick={() => setListCollapsed(true)} title="Replier la liste"><Icon name="chevL" size={14} /></button>
+          </div>
+
           {creatingTranscript && (
             <NewTranscript ctx={ctx} onDone={() => setCreatingTranscript(false)}
               onCreated={(fiche) => { setSelected({ ficheId: fiche.id, kind: 'transcript' }); setListCollapsed(true); }} />
-          )}
-
-          {/* replie manuellement la liste sans fermer le cours ouvert — pendant à
-             « Liste des cours » côté détail (repli auto à l'ouverture). */}
-          {selected && (
-            <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 10 }}>
-              <button className="btn ghost sm" onClick={() => setListCollapsed(true)}><Icon name="chevL" size={13} /> Replier</button>
-            </div>
           )}
 
           {matches ? (
@@ -325,15 +329,11 @@ export function Bibliotheque({ ctx }) {
             </div>
             </FicheDndProvider>
           )}
+          </>
+          )}
         </div>
-        )}
 
         <div className="lib-detail">
-          {!showMaster && (
-            <button className="btn ghost sm" style={{ marginBottom: 12 }} onClick={() => setListCollapsed(false)}>
-              <Icon name="chevL" size={13} /> Liste des cours
-            </button>
-          )}
           {!selected ? (
             <div className="lib-detail-empty">
               <Icon name="book" size={28} />

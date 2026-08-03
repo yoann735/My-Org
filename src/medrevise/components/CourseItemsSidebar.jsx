@@ -32,8 +32,10 @@ export function CourseItemsSidebar({ ctx, ficheId }) {
   const [activeType, setActiveType] = useState('qcm');
   const items = useMemo(() => ficheItems.filter((q) => q.type === activeType), [ficheItems, activeType]);
   const activeLabel = (TYPES.find((t) => t.id === activeType) || {}).label || '';
+  const totalCount = countByType.qcm + countByType.flashcard + countByType.exercice + countByType.feynman;
   // refonte UX Bibliothèque : la vue cours a besoin de respirer — ce panneau se
-  // replie en un rail fin (icônes + compteurs), pour rendre sa largeur au cours.
+  // replie en un rail plein, cohérent avec celui de la liste de gauche (etudes.css
+  // `.pis-rail` ~ `.lib-rail`) — plus de flèche isolée mal placée.
   const [collapsed, setCollapsed] = useState(false);
 
   // ---- ajout (réutilise ItemForm/PasteJsonForm, même flux que AddItemModal) ----
@@ -75,20 +77,20 @@ export function CourseItemsSidebar({ ctx, ficheId }) {
   if (collapsed) {
     return (
       <div className="pis pis-collapsed">
-        <button type="button" className="icon-btn sm" onClick={() => setCollapsed(false)} title="Afficher les cartes de ce cours"><Icon name="chevL" size={14} /></button>
-        {TYPES.map((t) => (
-          <button key={t.id} type="button" className="pis-rail-item" title={`${t.label} (${countByType[t.id]})`}
-            onClick={() => { setCollapsed(false); setActiveType(t.id); }}>
-            <Icon name={t.icon} size={15} />
-            <span className="pis-rail-n">{countByType[t.id]}</span>
-          </button>
-        ))}
+        <button type="button" className="pis-rail" onClick={() => setCollapsed(false)} title="Afficher les cartes de ce cours">
+          <Icon name="chevL" size={16} />
+          <span className="pis-rail-label">Cartes{totalCount ? ` · ${totalCount}` : ''}</span>
+        </button>
       </div>
     );
   }
 
   return (
     <div className="pis">
+      <div className="pis-head row spread">
+        <h4 style={{ margin: 0 }}>Cartes</h4>
+        <button type="button" className="icon-btn sm" onClick={() => setCollapsed(true)} title="Réduire ce panneau"><Icon name="chevR" size={14} /></button>
+      </div>
       <div className="pis-tabs">
         {TYPES.map((t) => (
           <button key={t.id} type="button" className={'pis-tab' + (activeType === t.id ? ' active' : '')}
@@ -96,7 +98,6 @@ export function CourseItemsSidebar({ ctx, ficheId }) {
             <Icon name={t.icon} size={13} /> {t.label} <span className="pis-tab-n tnum">{countByType[t.id]}</span>
           </button>
         ))}
-        <button type="button" className="icon-btn sm" style={{ marginLeft: 'auto' }} onClick={() => setCollapsed(true)} title="Réduire ce panneau"><Icon name="chevR" size={14} /></button>
       </div>
 
       <div className="pis-scroll scroll">
