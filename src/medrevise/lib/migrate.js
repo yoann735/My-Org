@@ -340,14 +340,29 @@ export async function migrateCadenceFixeV1() {
  *     0 sans historiser la date des étapes franchies).
  * Idempotente : marqueur + plus aucune question qcm/flashcard ou fiche
  * anat_schema sans `plan` à trouver dès la 2e passe.
+ *
+ * BUG CORRIGÉ (audit du 2026-08-04, ~323 cartes remises à J+1) : cette
+ * migration est restée bloquée en amont pendant un moment (voir
+ * migrateCadenceFixeV1/migrateAdaptatifV1 ci-après, jamais exécutées entre-
+ * temps), pendant lequel l'app a continué de créer/faire progresser des
+ * cartes DIRECTEMENT sur le moteur adaptatif (`newItem` → `startAdaptive`,
+ * jamais de `plan`). Le filtre `!q.plan` seul ne distingue pas "vraie carte
+ * legacy jamais convertie" de "carte moderne qui n'a simplement jamais eu
+ * `plan`" — quand la migration a fini par tourner, elle a donc aussi
+ * "converti" des centaines de cartes déjà sur le moteur adaptatif, écrasant
+ * leur `intervalDays`/`dueDate` réels (progression SM-2 accumulée) par un
+ * cursor 0 synthétique ancré sur `todayISO()` (palier/nextReview absents).
+ * Fix : exiger EN PLUS l'absence d'`intervalDays` — une carte qui a déjà
+ * rejoint le moteur adaptatif n'a plus rien à faire convertir ici, quel que
+ * soit l'état de `plan`.
  */
 export async function migrateChronologieFixeV1() {
   const applied = await appliedList();
   if (applied.includes(MIG_CHRONO_FIXE)) return { ran: false };
 
   const [questions, fiches] = await Promise.all([getAll('questions'), getAll('fiches')]);
-  const legacyQuestions = (questions || []).filter((q) => q && (q.type === 'qcm' || q.type === 'flashcard') && !q.plan);
-  const legacySchemas = (fiches || []).filter((f) => f && f.type === 'anat_schema' && !f.plan);
+  const legacyQuestions = (questions || []).filter((q) => q && (q.type === 'qcm' || q.type === 'flashcard') && !q.plan && q.intervalDays == null);
+  const legacySchemas = (fiches || []).filter((f) => f && f.type === 'anat_schema' && !f.plan && f.intervalDays == null);
 
   if (!legacyQuestions.length && !legacySchemas.length) {
     await setMeta(MIGRATIONS_KEY, [...applied, MIG_CHRONO_FIXE]);
