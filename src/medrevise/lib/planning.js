@@ -4,7 +4,7 @@
    un hash. Fonctions PURES sur un snapshot { sources, matieres, fiches,
    questions }.
    ============================================================ */
-import { labelForCursor, todayISO, isoDate } from './sm2.js';
+import { labelForCursor, todayISO, isoDate, trueDaysSinceJ0, isDueBecauseStruggled } from './sm2.js';
 
 const SCHEDULED_TYPES = new Set(['qcm', 'flashcard']);
 // exercices : HORS méthode des J (comme le Feynman). Ils ne sont plus programmés,
@@ -97,11 +97,18 @@ export function scheduledQuestions(db, idx) {
    même comparaison (match strict sur `dueDate`) — plus de projection à
    part (voir weekData, qui a perdu la profondeur des J+30/J+90 affichés à
    l'avance, perte assumée). Jamais de révision dans le passé (le retard vit
-   dans overdueQuestions). */
+   dans overdueQuestions).
+   « Sauter » (`q.skippedOn`, MedReviseApp.jsx skipDaySource/skipDayFiche) :
+   exclut une carte UNIQUEMENT le jour exact où elle a été sautée — aucune
+   écriture de progression, `dueDate`/`intervalDays` intacts, donc elle
+   redevient normalement "dues" dès le jour suivant (dateISO change, le
+   match `skippedOn === dateISO` ne tient plus). Comparaison ici, PAS dans
+   `nextDate` : `nextDate`/labelForCursor doivent continuer de refléter la
+   vraie prochaine échéance de la carte, sauter ne la change pas. */
 export function dueOn(db, dateISO, idx) {
   const ix = idx || index(db);
   if (dateISO < todayISO()) return [];
-  return scheduledQuestions(db, ix).filter((q) => nextDate(q) === dateISO);
+  return scheduledQuestions(db, ix).filter((q) => nextDate(q) === dateISO && q.skippedOn !== dateISO);
 }
 export function dueToday(db, idx) { return dueOn(db, todayISO(), idx); }
 
@@ -258,11 +265,18 @@ export function dueSchemasToday(db, idx) { return dueSchemasOn(db, todayISO(), i
 
 /** J affiché d'une fiche : anat_schema → dérivé de la fiche elle-même ;
    sinon → dérivé de sa question la plus proche d'échéance (une carte déjà
-   terminée ne masque jamais une carte encore active) */
+   terminée ne masque jamais une carte encore active).
+   `jTrueDays`/`aRevoir` (anat_schema uniquement ici — pas de liste d'items
+   séparée pour un schéma, la fiche EST l'item) : voir sm2.js
+   trueDaysSinceJ0/isDueBecauseStruggled. Pour qcm/flashcard, ces deux champs
+   sont calculés par `groupByFiche` à partir des items RÉELLEMENT groupés
+   (plus fidèle que de rejouer une recherche "soonest" indépendante ici). */
 export function ficheJ(db, ficheId, idx) {
   const ix = idx || index(db);
   const f = ix.fById[ficheId];
-  if (f && f.type === 'anat_schema') return labelForCursor(f);
+  if (f && f.type === 'anat_schema') {
+    return { ...labelForCursor(f), jTrueDays: trueDaysSinceJ0(f), aRevoir: isDueBecauseStruggled(f) };
+  }
   const qs = (db.questions || []).filter((q) => q.ficheId === ficheId && J_TYPES.has(q.type));
   if (!qs.length) return { jIndex: -1, jLabel: '—' };
   const soonest = qs.reduce((a, b) => {
@@ -352,7 +366,16 @@ export function dueOnFor(db, dateISO, { sourceId, ficheId } = {}, idx) {
   });
 }
 
-/** regroupe une liste de questions par fiche, avec compteurs + J + coef */
+/** regroupe une liste de questions par fiche, avec compteurs + J + coef.
+   `aRevoir`/`jTrueDays` calculés à partir des ITEMS RÉELLEMENT groupés ici
+   (les cartes effectivement dues ce jour-là pour cette fiche), pas d'une
+   recherche indépendante sur toute la fiche (voir sm2.js
+   isDueBecauseStruggled/trueDaysSinceJ0) :
+   - `aRevoir` = au moins une carte du groupe revient parce que sa dernière
+     note était Difficile/Ratée (pas juste son cours normal) ;
+   - `jTrueDays` = la plus ANCIENNE (max) parmi les cartes du groupe — la
+     carte présente dans ce cycle depuis le plus longtemps, repère le plus
+     représentatif du "temps de vie" de cette fiche à cette date. */
 export function groupByFiche(db, questions, idx) {
   const ix = idx || index(db);
   const map = {};
@@ -370,6 +393,11 @@ export function groupByFiche(db, questions, idx) {
     ...g,
     ...ficheJ(db, g.fiche.id, ix),
     coef: effectiveCoef(db, g.fiche, ix),
+    aRevoir: g.items.some(isDueBecauseStruggled),
+    jTrueDays: g.items.reduce((max, q) => {
+      const d = trueDaysSinceJ0(q);
+      return d != null && (max == null || d > max) ? d : max;
+    }, null),
   }));
 }
 

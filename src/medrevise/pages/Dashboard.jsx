@@ -204,6 +204,28 @@ function dayFootLabel(day) {
   if (day.exosTotal > 0) parts.push(`${day.exosTotal} exo${day.exosTotal > 1 ? 's' : ''}`);
   return parts.join(' · ');
 }
+/* ---- indicateur "à revoir" (calendrier + vue Réorganiser) : petite pastille
+   discrète (icône seule, pas de texte) affichée quand la DERNIÈRE note de la
+   carte due est Difficile ou Ratée (planning.js groupByFiche/ficheJ →
+   sm2.js#isDueBecauseStruggled) — distingue visuellement "revient vite car
+   ratée" de "suit son cours normal". `title` porte l'explication complète
+   (hover), le glyphe seul suffit au premier coup d'œil. ---- */
+function ARevoirBadge() {
+  return (
+    <span className="jr-arevoir" title="Due car sa dernière note était Difficile ou Ratée — revient plus vite que la normale">
+      <Icon name="alert" size={10} />
+    </span>
+  );
+}
+/* ---- "vrai J+N depuis le début" (voir sm2.js#trueDaysSinceJ0) : jours
+   écoulés depuis le tout premier départ de la carte, PAS l'intervalle
+   courant (déjà affiché par jLabel, ex. "J+7" = prochaine échéance dans 7
+   jours). `null` → rien à afficher (carte créée avant ce champ ET jamais
+   notée, aucun repère fiable). ---- */
+function TrueJBadge({ days }) {
+  if (days == null) return null;
+  return <span className="jr-truej" title="Jours écoulés depuis le tout premier départ de cette carte (pas son prochain délai)">J0+{days}</span>;
+}
 function WeekCalendar({ ctx, onPick }) {
   const [wk, setWk] = useState(0);
   const { monday, days } = weekData(ctx.db, wk);
@@ -241,7 +263,10 @@ function WeekCalendar({ ctx, onPick }) {
                       <span className="wcc-bar" style={{ background: meta.tint }} />
                       <div className="wcc-text">
                         <div className="wcc-cat" style={{ color: meta.tint }}>{meta.label}</div>
-                        <div className="wcc-title">{c.fiche.titre} <span className="wcc-j">{c.jLabel}</span></div>
+                        <div className="wcc-title">
+                          {c.fiche.titre} <span className="wcc-j">{c.jLabel}</span>
+                          {c.aRevoir && <ARevoirBadge />}
+                        </div>
                       </div>
                     </div>
                   );
@@ -253,7 +278,10 @@ function WeekCalendar({ ctx, onPick }) {
                       <span className="wcc-bar" style={{ background: meta.tint }} />
                       <div className="wcc-text">
                         <div className="wcc-cat" style={{ color: meta.tint }}><Icon name="image" size={10} /> {meta.label}</div>
-                        <div className="wcc-title">{s.fiche.titre} <span className="wcc-j">{s.jLabel} · schéma</span></div>
+                        <div className="wcc-title">
+                          {s.fiche.titre} <span className="wcc-j">{s.jLabel} · schéma</span>
+                          {s.aRevoir && <ARevoirBadge />}
+                        </div>
                       </div>
                     </div>
                   );
@@ -331,10 +359,11 @@ function DayPopup({ day, ctx, onClose }) {
     else await ctx.moveFicheDay(moveTarget.id, day.date, toDate);
     setMoveTarget(null);
   };
-  // « Sauter » : VRAI no-op (aucune écriture) — la carte reste due CE jour-là,
-  // disponible pour N'IMPORTE QUEL jour affiché (day.date), pas seulement
-  // aujourd'hui. Juste un aparté visuel — ferme la confirmation sans rien
-  // changer en base.
+  // « Sauter » : persiste `skippedOn = day.date` sur les cartes réellement
+  // dues CE jour-là (ctx.skipDaySource/skipDayFiche, MedReviseApp.jsx) —
+  // fonctionne pour N'IMPORTE QUEL jour affiché (day.date), pas seulement
+  // aujourd'hui. Aucune écriture de progression (intervalDays/dueDate/
+  // historique intacts) : la carte redevient due normalement le jour suivant.
   const [skipTarget, setSkipTarget] = useState(null); // { type, id, nom, count }
   const confirmSkip = async () => {
     if (!skipTarget) return;
@@ -390,7 +419,11 @@ function DayPopup({ day, ctx, onClose }) {
                     <div className="day-line" key={g.fiche.id}>
                       <div className="dl-ic" style={{ background: `color-mix(in srgb, ${matiereMeta(g.matiere).tint} 15%, transparent)`, color: matiereMeta(g.matiere).tint }}><Icon name="cards" size={17} /></div>
                       <div className="dl-main">
-                        <div className="dl-title">{g.fiche.titre} <span className="j-tag">{g.jLabel}</span></div>
+                        <div className="dl-title">
+                          {g.fiche.titre} <span className="j-tag">{g.jLabel}</span>
+                          <TrueJBadge days={g.jTrueDays} />
+                          {g.aRevoir && <ARevoirBadge />}
+                        </div>
                         <div className="dl-sub"><span>{g.items.length} carte{g.items.length > 1 ? 's' : ''} · {matiereMeta(g.matiere).label}</span></div>
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
@@ -488,7 +521,7 @@ function DayPopup({ day, ctx, onClose }) {
       {skipTarget && (
         <ConfirmModal
           title={`Sauter ce jour — « ${skipTarget.nom} »`}
-          body={`${skipTarget.count} carte${skipTarget.count > 1 ? 's' : ''} ${skipTarget.count > 1 ? 'restent' : 'reste'} due${skipTarget.count > 1 ? 's' : ''} ce jour-là — aucune écriture, rien n'avance : c'est juste un aparté visuel, elles réapparaîtront la prochaine fois que tu ouvres ce jour.`}
+          body={`${skipTarget.count} carte${skipTarget.count > 1 ? 's' : ''} oubliée${skipTarget.count > 1 ? 's' : ''} pour ${day.isToday ? "aujourd'hui" : 'ce jour-là'} seulement — l'intervalle et la progression ne bougent pas, elles redeviendront dues normalement le jour suivant.`}
           confirmLabel="Sauter"
           onConfirm={confirmSkip}
           onCancel={() => setSkipTarget(null)}

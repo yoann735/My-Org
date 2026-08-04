@@ -206,7 +206,12 @@ export function newItem(ficheId, item, startDate = isoDate()) {
     // l'id v1.0 d'origine du JSON → sert au dédoublonnage lors d'un ajout à une
     // fiche existante (mode Rattrapage).
     id: genId('q'), srcId: item.id || null, ficheId, type: item.type,
-    ...(scheduled ? startAdaptive(startDate) : {}),
+    // j0Date : "vrai" départ de la carte, posé UNE FOIS ici (ou à un "Décaler
+    // le départ" explicite, voir MedReviseApp.jsx shiftSourceStart/
+    // shiftFicheStart) — jamais retouché par advanceQuestion ensuite. Sert au
+    // "vrai J+N depuis le début" du calendrier (sm2.js trueDaysSinceJ0),
+    // distinct de intervalDays (délai jusqu'à la PROCHAINE échéance).
+    ...(scheduled ? { ...startAdaptive(startDate), j0Date: startDate } : {}),
     ...(dueDate ? { dueDate } : {}),
     historique: [], missed: 0,
   };

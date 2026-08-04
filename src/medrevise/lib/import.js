@@ -208,8 +208,9 @@ export async function saveAnatSchema({ ficheId, matiereId, titre, sousCategorie,
       imageId: first.imageId, imageW: first.imageW, imageH: first.imageH, coches: first.coches,
       // item planifiable méthode des J (étape C) — moteur adaptatif, voir
       // lib/sm2.js startAdaptive (prêt si un date-picker de J0 est ajouté un
-      // jour à ce flux, aujourd'hui par défaut pour l'instant)
-      ...startAdaptive(todayISO()), historique: [], missed: 0,
+      // jour à ce flux, aujourd'hui par défaut pour l'instant). j0Date : vrai
+      // départ, voir storage.js#newItem pour le détail du mécanisme.
+      ...startAdaptive(todayISO()), j0Date: todayISO(), historique: [], missed: 0,
     };
   }
   await put('fiches', fiche);

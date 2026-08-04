@@ -48,9 +48,9 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
     else await ctx.moveFicheDay(moveTarget.id, todayISO(), toDate);
     setMoveTarget(null);
   };
-  // « Sauter aujourd'hui » — VRAI no-op (aucune écriture, voir MedReviseApp.jsx
-  // skipDaySource/skipDayFiche) : la carte reste due aujourd'hui, juste un
-  // aparté visuel qui ferme la confirmation sans rien changer en base.
+  // « Sauter aujourd'hui » — persiste `skippedOn = aujourd'hui` (voir
+  // MedReviseApp.jsx skipDaySource/skipDayFiche) : aucune écriture de
+  // progression, la carte redevient due normalement dès demain.
   const [skipTarget, setSkipTarget] = useState(null); // { type, id, nom, count }
   const confirmSkip = async () => {
     if (!skipTarget) return;
@@ -258,7 +258,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
       {skipTarget && (
         <ConfirmModal
           title={`Sauter aujourd'hui — « ${skipTarget.nom} »`}
-          body={`${skipTarget.count} carte${skipTarget.count > 1 ? 's' : ''} ${skipTarget.count > 1 ? 'restent' : 'reste'} due${skipTarget.count > 1 ? 's' : ''} aujourd'hui — aucune écriture, rien n'avance : c'est juste un aparté visuel, elles réapparaîtront la prochaine fois que tu ouvres l'accueil.`}
+          body={`${skipTarget.count} carte${skipTarget.count > 1 ? 's' : ''} oubliée${skipTarget.count > 1 ? 's' : ''} pour aujourd'hui seulement — l'intervalle et la progression ne bougent pas, elles redeviendront dues normalement demain.`}
           confirmLabel="Sauter"
           onConfirm={confirmSkip}
           onCancel={() => setSkipTarget(null)}

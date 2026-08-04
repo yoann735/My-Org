@@ -308,14 +308,18 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await put('fiches', { ...f, etiquette: etiquette || null }); await reload();
     },
     // « Réinitialiser les dates » (Réglages, bouton destructif confirmé côté
-    // UI) : efface le planning (intervalDays/dueDate/capped/termine) de TOUTES
-    // les questions qcm/flashcard et fiches anat_schema — calendrier vide,
-    // plus aucune échéance due nulle part. Le CONTENU (fiches, cartes,
-    // historique, carnet d'erreurs) reste intact, seules les dates/J
-    // disparaissent : une carte sans `intervalDays` est déjà proprement
-    // exclue de tout calcul de planning (dueOn/overdue, voir planning.js) et
-    // s'affiche "Nouvelle" (labelForCursor, sm2.js) — aucun nouvel état à
-    // gérer. Exercices/Feynman : rien à faire, ils n'ont jamais eu ce champ
+    // UI) : efface le planning (intervalDays/dueDate/capped/termine/j0Date)
+    // de TOUTES les questions qcm/flashcard et fiches anat_schema —
+    // calendrier vide, plus aucune échéance due nulle part. Le CONTENU
+    // (fiches, cartes, historique, carnet d'erreurs) reste intact, seules
+    // les dates/J disparaissent : une carte sans `intervalDays` est déjà
+    // proprement exclue de tout calcul de planning (dueOn/overdue, voir
+    // planning.js) et s'affiche "Nouvelle" (labelForCursor, sm2.js) — aucun
+    // nouvel état à gérer. `j0Date` retiré AVEC les autres : un "vrai J+N
+    // depuis le début" qui survivrait à un reset planning serait trompeur
+    // (la carte redevient "sans planning", son prochain "Décaler le départ"
+    // lui posera un j0Date FRAIS, voir shiftSourceStart/shiftFicheStart).
+    // Exercices/Feynman : rien à faire, ils n'ont jamais eu ces champs
     // (storage.js newItem ne leur en donne pas). putBackup avant l'écriture
     // en masse ; idempotent (rien à effacer une 2e fois si déjà fait).
     resetAllJ: async () => {
@@ -323,7 +327,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const schemaTargets = db.fiches.filter((f) => f.type === 'anat_schema' && f.intervalDays != null);
       if (!targets.length && !schemaTargets.length) return;
       await putBackup('pre-reset-j-' + Date.now(), { questions: targets, schemas: schemaTargets });
-      const strip = (rec) => { const { intervalDays, dueDate, capped, termine, ...rest } = rec; return rest; };
+      const strip = (rec) => { const { intervalDays, dueDate, capped, termine, j0Date, ...rest } = rec; return rest; };
       if (targets.length) await putMany('questions', targets.map(strip));
       if (schemaTargets.length) await putMany('fiches', schemaTargets.map(strip));
       await reload();
@@ -353,17 +357,19 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // commencé dans la vraie vie, ou fiche resetée qu'on repositionne) :
     // startAdaptive pose alors `dueDate = date` directement, immédiatement "en
     // retard" si passée — aucune position à calculer (contrairement à l'ancienne
-    // chronologie fixe). putBackup avant l'écriture en masse (précaution type
-    // migration) ; sans risque puisqu'il n'y a pas (ou plus) d'historique de
-    // planning à préserver ici. Couvre AUSSI les fiches anat_schema (l'item
-    // planifiable vit sur la fiche, pas des questions).
+    // chronologie fixe). `j0Date: date` posé EN MÊME TEMPS — c'est littéralement
+    // le vrai début de la carte (voir sm2.js trueDaysSinceJ0/storage.js newItem).
+    // putBackup avant l'écriture en masse (précaution type migration) ; sans
+    // risque puisqu'il n'y a pas (ou plus) d'historique de planning à préserver
+    // ici. Couvre AUSSI les fiches anat_schema (l'item planifiable vit sur la
+    // fiche, pas des questions).
     shiftSourceStart: async (sourceId, date) => {
       const targets = unstartedQuestionsFor(db, { sourceId });
       const schemaTargets = unstartedSchemasFor(db, { sourceId });
       if (!targets.length && !schemaTargets.length) return;
       await putBackup('pre-decalage-source-' + sourceId + '-' + Date.now(), { questions: targets, schemas: schemaTargets });
-      if (targets.length) await putMany('questions', targets.map((q) => ({ ...q, ...startAdaptive(date) })));
-      if (schemaTargets.length) await putMany('fiches', schemaTargets.map((f) => ({ ...f, ...startAdaptive(date) })));
+      if (targets.length) await putMany('questions', targets.map((q) => ({ ...q, ...startAdaptive(date), j0Date: date })));
+      if (schemaTargets.length) await putMany('fiches', schemaTargets.map((f) => ({ ...f, ...startAdaptive(date), j0Date: date })));
       await reload();
     },
     shiftFicheStart: async (ficheId, date) => {
@@ -371,8 +377,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const schemaTargets = unstartedSchemasFor(db, { ficheId });
       if (!targets.length && !schemaTargets.length) return;
       await putBackup('pre-decalage-fiche-' + ficheId + '-' + Date.now(), { questions: targets, schemas: schemaTargets });
-      if (targets.length) await putMany('questions', targets.map((q) => ({ ...q, ...startAdaptive(date) })));
-      if (schemaTargets.length) await putMany('fiches', schemaTargets.map((f) => ({ ...f, ...startAdaptive(date) })));
+      if (targets.length) await putMany('questions', targets.map((q) => ({ ...q, ...startAdaptive(date), j0Date: date })));
+      if (schemaTargets.length) await putMany('fiches', schemaTargets.map((f) => ({ ...f, ...startAdaptive(date), j0Date: date })));
       await reload();
     },
     // décalage/pose du départ (J0) des EXERCICES — même geste que ci-dessus,
@@ -425,14 +431,35 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await putMany('questions', targets.map((q) => ({ ...q, dueDate: toDate })));
       await reload();
     },
-    // « Sauter » un jour donné pour un cours/une fiche : VRAI no-op — la carte
-    // reste due le même jour (aucune écriture), elle réapparaît simplement la
-    // prochaine fois qu'on ouvre ce jour. Ancien comportement (avançait le
-    // cursor + loguait une fausse note Facile) retiré : contraire à
-    // l'intention ("aucun effet", confirmé) — ne cible même plus de cartes,
-    // ne fait plus rien du tout.
-    skipDaySource: async () => {},
-    skipDayFiche: async () => {},
+    // « Sauter » un jour donné pour un cours/une fiche : oubliée pour CE jour
+    // précis, sans toucher au moteur d'intervalle — écrit `skippedOn: date`
+    // sur chaque carte réellement due ce jour-là (dueOnFor, même ciblage que
+    // moveSourceDay/moveFicheDay). AUCUNE progression : `intervalDays`/
+    // `dueDate`/`capped`/`termine`/`historique` intacts, donc la carte revient
+    // normalement dès le jour SUIVANT (planning.js#dueOn compare
+    // `skippedOn === dateISO` — un jour différent ne matche plus, elle
+    // redevient due comme prévu). Pas de putBackup ici (contrairement à
+    // moveSourceDay/moveFicheDay) : un simple flag non destructif, sans
+    // risque de perte de progression à couvrir.
+    // (Historique du bug : l'ancienne version était un VRAI no-op — un
+    // "aparté visuel" qui ne persistait rien du tout, ni en IndexedDB ni dans
+    // l'outbox cloud, d'où la carte qui "revenait" au refresh — elle n'était
+    // jamais partie. Rien n'y était "bloqué" à proprement parler : cliquer de
+    // nouveau relançait le même no-op, silencieusement. Cette version-ci
+    // persiste réellement le saut, via putMany → queuePush (storage.js),
+    // exactement comme toute autre écriture de l'app.)
+    skipDaySource: async (sourceId, date) => {
+      const targets = dueOnFor(db, date, { sourceId });
+      if (!targets.length) return;
+      await putMany('questions', targets.map((q) => ({ ...q, skippedOn: date })));
+      await reload();
+    },
+    skipDayFiche: async (ficheId, date) => {
+      const targets = dueOnFor(db, date, { ficheId });
+      if (!targets.length) return;
+      await putMany('questions', targets.map((q) => ({ ...q, skippedOn: date })));
+      await reload();
+    },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },
     // suppression en masse : tous les exercices (type 'exercice') d'UNE fiche, sans
     // toucher aux QCM/flashcards/Feynman de la même fiche. Même canal durable que

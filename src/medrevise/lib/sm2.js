@@ -292,6 +292,51 @@ export function labelForCursor(record) {
   return { jIndex: 0, jLabel: 'J+' + (record.intervalDays || INTERVAL_START) };
 }
 
+/** "vrai" J0 d'une carte/fiche planifiable — date de sa TOUTE PREMIÈRE mise en
+   cycle, à ne jamais confondre avec `intervalDays` (délai jusqu'à la PROCHAINE
+   échéance, remis à l'échelle à chaque notation). Posé UNE SEULE FOIS et
+   jamais retouché ensuite :
+   - à la création (storage.js#newItem) ;
+   - à un "Décaler le départ" explicite (MedReviseApp.jsx shiftSourceStart/
+     shiftFicheStart) — ré-ancrer une carte JAMAIS révisée EST son vrai début ;
+   - jamais par advanceQuestion (moteur d'intervalle, inchangé).
+   Repli pour une carte créée AVANT l'ajout de `j0Date` (aucune carte n'en a
+   avant ce champ) : la date de sa PREMIÈRE note (`historique[0].date`), le
+   meilleur repère rétroactif disponible. `null` si ni l'un ni l'autre
+   n'existe (carte jamais notée ET créée avant ce champ) — jamais inventé. */
+export function trueJ0Date(record) {
+  if (!record) return null;
+  if (record.j0Date) return record.j0Date;
+  const h = record.historique;
+  if (h && h.length) return h[0].date;
+  return null;
+}
+
+/** nombre de jours écoulés depuis `trueJ0Date` (voir ci-dessus) — le "vrai
+   J+N depuis le début", pour se repérer dans le temps de vie de la carte,
+   PAS dans son prochain délai (`intervalDays`, déjà affiché par `jLabel`).
+   `null` si `trueJ0Date` est inconnu (jamais de valeur négative inventée). */
+export function trueDaysSinceJ0(record, todayIso = todayISO()) {
+  const j0 = trueJ0Date(record);
+  if (!j0) return null;
+  const start = new Date(j0 + 'T12:00:00');
+  const today = new Date(todayIso + 'T12:00:00');
+  const days = Math.round((today - start) / 86400000);
+  return days >= 0 ? days : 0; // j0 dans le futur (incohérent) : filet de sécurité, jamais négatif
+}
+
+/** vrai si la DERNIÈRE note de l'historique est Difficile ou Raté — la carte
+   revient plus vite que la normale, à distinguer visuellement (calendrier/
+   Réorganiser) d'une carte qui suit simplement son cours normal (dernière
+   note Facile, ou jamais notée). Lecture seule de `historique`, ne modifie
+   et ne recalcule rien du moteur d'intervalle. */
+export function isDueBecauseStruggled(record) {
+  const h = record && record.historique;
+  if (!h || !h.length) return false;
+  const last = h[h.length - 1].qualite;
+  return last === QUALITY.difficile || last === QUALITY.rate;
+}
+
 /** [LEGACY] bucketing d'un ANCIEN interval (ex-moteur SM-2 adaptatif) vers le
    palier fixe à 5 crans immédiatement INFÉRIEUR — usage UNIQUE : la
    migration historique `migrateCadenceFixeV1` (lib/migrate.js), déjà
