@@ -29,10 +29,9 @@
    tracée dans `errors` (index 1-based + raison précise), pas juste comptée —
    pour un message qui dit LAQUELLE et POURQUOI, pas un total générique.
    ============================================================ */
-import { cleanPastedJson } from './parsePastedJson.js';
+import { parseLooseJson } from './parsePastedJson.js';
 import { asArray } from './schema.js';
 
-const ERR = 'JSON invalide — recopie toute la réponse du prompt, sans texte autour.';
 const isStr = (v) => typeof v === 'string' && v.trim().length > 0;
 
 /**
@@ -45,13 +44,10 @@ const isStr = (v) => typeof v === 'string' && v.trim().length > 0;
  *      counts:{created:number, ignored:number, mismatched:number}, errors:Array<{index:number, reason:string}>}}
  */
 export function parseErrorCardsJson(raw, targetV1Id) {
-  const cleaned = cleanPastedJson(raw);
-  if (!cleaned) return { ok: false, error: ERR };
-
-  let data;
-  try { data = JSON.parse(cleaned); }
-  catch (e) { return { ok: false, error: ERR }; }
-  if (!data || typeof data !== 'object') return { ok: false, error: ERR };
+  const parsed = parseLooseJson(raw);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  const data = parsed.data;
+  if (!data || typeof data !== 'object') return { ok: false, error: 'JSON invalide — recopie toute la réponse du prompt, sans texte autour.' };
 
   const shape = Array.isArray(data) ? 'tableau nu'
     : Array.isArray(data.cartes_erreur) ? 'cartes_erreur'
