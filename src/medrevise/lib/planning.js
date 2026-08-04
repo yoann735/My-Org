@@ -491,8 +491,20 @@ export function weekData(db, weekOffset = 0, idx) {
 
     if (isPast) {
       items = scheduledQuestions(db, ix).filter((q) => reviewedOn(q, date));
-      schemas = scheduledSchemas(db, ix).filter((f) => reviewedOn(f, date)).map((f) => ({ fiche: f, matiere: ix.mById[f.matiereId], ...ficheJ(db, f.id, ix) }));
-      byFiche = groupByFiche(db, items, ix);
+      // PAS de ficheJ()/soonestLabel() ici (bug corrigé, audit 2026-08-05) :
+      // `jLabel`/`jIndex`/`jTrueDays`/`aRevoirCount` sont TOUS dérivés de
+      // l'état COURANT (aujourd'hui) d'une carte — intervalDays est une
+      // valeur PROSPECTIVE ("dans combien de jours la prochaine fois"), pas
+      // une trace de ce qui s'est passé CE jour-là. Une carte notée le 28
+      // juillet peut avoir été renotée depuis et afficher n'importe quel
+      // intervalle "actuel" (7, 30, 90…) sans rapport avec le 28 juillet —
+      // le badge sautait donc de façon incohérente d'un jour passé à l'autre
+      // selon QUELLES cartes avaient été notées ce jour-là et où elles en
+      // sont AUJOURD'HUI. Un jour passé n'affiche donc plus que le compte de
+      // cartes/fiche — jamais un "J+N" pour une échéance qui n'en est plus
+      // une. (Le calcul d'intervalle lui-même n'a jamais été en cause.)
+      schemas = scheduledSchemas(db, ix).filter((f) => reviewedOn(f, date)).map((f) => ({ fiche: f, matiere: ix.mById[f.matiereId] }));
+      byFiche = groupByFiche(db, items, ix).map(({ jLabel, jIndex, jTrueDays, aRevoirCount, ...rest }) => rest);
     } else {
       items = dueOn(db, date, ix);
       schemas = dueSchemasOn(db, date, ix).map((f) => ({ fiche: f, matiere: ix.mById[f.matiereId], ...ficheJ(db, f.id, ix) }));

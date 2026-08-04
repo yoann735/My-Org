@@ -204,19 +204,21 @@ function dayFootLabel(day) {
   if (day.exosTotal > 0) parts.push(`${day.exosTotal} exo${day.exosTotal > 1 ? 's' : ''}`);
   return parts.join(' · ');
 }
-/* ---- indicateur "à revoir" (calendrier + vue Réorganiser) : pastille
-   discrète affichée quand AU MOINS UNE carte du groupe a sa dernière note
-   Difficile ou Ratée (planning.js groupByFiche/ficheJ → sm2.js
-   isDueBecauseStruggled). `count` = NOMBRE de cartes concernées, TOUJOURS
-   affiché à côté de l'icône — jamais un triangle nu collé à "40 cartes" sans
-   dire combien (Anomalie 2, audit 2026-08-04 : ça laissait croire que le lot
-   ENTIER était raté). `title` porte le décompte complet en toutes lettres
-   pour le survol. ---- */
+/* ---- mention "à revoir" (calendrier + vue Réorganiser) : discrète,
+   affichée quand AU MOINS UNE carte du groupe a sa dernière note Difficile
+   ou Ratée (planning.js groupByFiche/ficheJ → sm2.js isDueBecauseStruggled).
+   `count` = NOMBRE de cartes concernées, TOUJOURS affiché à côté de l'icône
+   — jamais un triangle nu collé à "40 cartes" sans dire combien (Anomalie 2,
+   audit 2026-08-04 : ça laissait croire que le lot ENTIER était raté).
+   Style NEUTRE (audit 2026-08-05) : "à revoir" est une info normale du
+   fonctionnement de la méthode des J, pas une alerte — icône `refresh`
+   (ça revient) plutôt qu'un triangle d'alerte, couleur du thème (pas
+   rouge/orange). `title` porte le décompte complet en toutes lettres. ---- */
 function ARevoirBadge({ count }) {
   if (!count) return null;
   return (
     <span className="jr-arevoir" title={`${count} carte${count > 1 ? 's' : ''} due${count > 1 ? 's' : ''} à revoir — dernière note Difficile ou Ratée`}>
-      <Icon name="alert" size={10} />{count}
+      <Icon name="refresh" size={10} />{count}
     </span>
   );
 }
@@ -262,12 +264,18 @@ function WeekCalendar({ ctx, onPick }) {
                 {day.byFiche.map((c) => {
                   const meta = matiereMeta(c.matiere);
                   return (
-                    <div className="wcal-course" key={c.fiche.id + '-' + (c.jLabel || '')}>
+                    <div className="wcal-course" key={c.fiche.id + '-' + (c.jLabel || c.items.length)}>
                       <span className="wcc-bar" style={{ background: meta.tint }} />
                       <div className="wcc-text">
                         <div className="wcc-cat" style={{ color: meta.tint }}>{meta.label}</div>
                         <div className="wcc-title">
-                          {c.fiche.titre} <span className="wcc-j">{c.jLabel}</span>
+                          {c.fiche.titre}{' '}
+                          {/* jour passé (audit 2026-08-05) : PAS de "J+N" — intervalDays est
+                             prospectif, un jour déjà passé n'a pas d'échéance à afficher.
+                             À la place, le compte RÉEL de cartes révisées ce jour-là. */}
+                          {c.jLabel
+                            ? <span className="wcc-j">{c.jLabel}</span>
+                            : <span className="wcc-j">{c.items.length} carte{c.items.length > 1 ? 's' : ''}</span>}
                           <ARevoirBadge count={c.aRevoirCount} />
                         </div>
                       </div>
@@ -277,12 +285,12 @@ function WeekCalendar({ ctx, onPick }) {
                 {(day.schemas || []).map((s) => {
                   const meta = matiereMeta(s.matiere);
                   return (
-                    <div className="wcal-course" key={s.fiche.id + '-' + (s.jLabel || '')}>
+                    <div className="wcal-course" key={s.fiche.id + '-' + (s.jLabel || 'past')}>
                       <span className="wcc-bar" style={{ background: meta.tint }} />
                       <div className="wcc-text">
                         <div className="wcc-cat" style={{ color: meta.tint }}><Icon name="image" size={10} /> {meta.label}</div>
                         <div className="wcc-title">
-                          {s.fiche.titre} <span className="wcc-j">{s.jLabel} · schéma</span>
+                          {s.fiche.titre} <span className="wcc-j">{s.jLabel ? `${s.jLabel} · schéma` : 'schéma'}</span>
                           <ARevoirBadge count={s.aRevoirCount} />
                         </div>
                       </div>
@@ -412,15 +420,18 @@ function DayPopup({ day, ctx, onClose }) {
                  plus de triangle générique collé sur tout un cours. Lecture
                  seule (historique), pas d'action de masse ici : on VOIT
                  lesquelles reviennent à cause d'un échec, on agit ensuite via
-                 les boutons Sauter/Déplacer habituels plus bas si besoin. */}
+                 les boutons Sauter/Déplacer habituels plus bas si besoin.
+                 Style NEUTRE (audit 2026-08-05) : une info normale de la
+                 méthode des J, pas une alerte — pas de rouge/orange, icône
+                 `refresh` (couleur de la matière, comme toute autre carte). */}
               {revoirTotal > 0 && (
                 <div className="day-pop-revoir">
                   <div className="day-pop-revoir-label">
-                    <Icon name="alert" size={11} /> À revoir — {revoirTotal} carte{revoirTotal > 1 ? 's' : ''} due{revoirTotal > 1 ? 's' : ''} aujourd'hui à cause d'un échec (dernière note Difficile ou Ratée)
+                    <Icon name="refresh" size={11} /> À revoir — {revoirTotal} carte{revoirTotal > 1 ? 's' : ''} due{revoirTotal > 1 ? 's' : ''} aujourd'hui suite à une note Difficile ou Ratée
                   </div>
                   {revoirByFiche.map((g) => (
                     <div className="day-line" key={g.fiche.id}>
-                      <div className="dl-ic" style={{ background: 'color-mix(in srgb, var(--warn) 16%, transparent)', color: 'var(--warn)' }}><Icon name="alert" size={17} /></div>
+                      <div className="dl-ic" style={{ background: `color-mix(in srgb, ${matiereMeta(g.matiere).tint} 15%, transparent)`, color: matiereMeta(g.matiere).tint }}><Icon name="refresh" size={17} /></div>
                       <div className="dl-main">
                         <div className="dl-title">{g.fiche.titre} <span className="hint">· {matiereMeta(g.matiere).label}</span></div>
                         <div className="dl-sub">
