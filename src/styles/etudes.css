@@ -75,6 +75,13 @@
 .day-pop-exos { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border-2); }
 .day-pop-exos-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); margin-bottom: 2px; }
 
+/* section "À revoir" (vue Réorganiser, Dashboard.jsx DayPopup) : cartes dont
+   la dernière note est Difficile/Ratée, PAR CARTE — mêmes proportions que
+   .day-pop-exos, teinte --warn pour la distinguer visuellement du reste. */
+.day-pop-revoir { margin-bottom: 14px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--warn) 7%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 22%, transparent); }
+.day-pop-revoir-label { display: flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: color-mix(in srgb, var(--warn) 75%, var(--text)); margin-bottom: 4px; }
+.day-pop-revoir .day-line { padding: 9px 0; }
+
 /* integrated import dropzone (compact) */
 .dz-compact { display: block; border: 2px dashed var(--border); border-radius: 16px; background: var(--card); padding: 30px; text-align: center; transition: all .2s; cursor: pointer; box-sizing: border-box; }
 .dz-compact.over { border-color: var(--accent); background: var(--accent-soft); }

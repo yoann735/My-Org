@@ -8,7 +8,7 @@ import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, weekendReviewByFiche, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
-import { isoDate } from '../lib/sm2.js';
+import { isoDate, isDueBecauseStruggled } from '../lib/sm2.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
@@ -204,16 +204,19 @@ function dayFootLabel(day) {
   if (day.exosTotal > 0) parts.push(`${day.exosTotal} exo${day.exosTotal > 1 ? 's' : ''}`);
   return parts.join(' · ');
 }
-/* ---- indicateur "à revoir" (calendrier + vue Réorganiser) : petite pastille
-   discrète (icône seule, pas de texte) affichée quand la DERNIÈRE note de la
-   carte due est Difficile ou Ratée (planning.js groupByFiche/ficheJ →
-   sm2.js#isDueBecauseStruggled) — distingue visuellement "revient vite car
-   ratée" de "suit son cours normal". `title` porte l'explication complète
-   (hover), le glyphe seul suffit au premier coup d'œil. ---- */
-function ARevoirBadge() {
+/* ---- indicateur "à revoir" (calendrier + vue Réorganiser) : pastille
+   discrète affichée quand AU MOINS UNE carte du groupe a sa dernière note
+   Difficile ou Ratée (planning.js groupByFiche/ficheJ → sm2.js
+   isDueBecauseStruggled). `count` = NOMBRE de cartes concernées, TOUJOURS
+   affiché à côté de l'icône — jamais un triangle nu collé à "40 cartes" sans
+   dire combien (Anomalie 2, audit 2026-08-04 : ça laissait croire que le lot
+   ENTIER était raté). `title` porte le décompte complet en toutes lettres
+   pour le survol. ---- */
+function ARevoirBadge({ count }) {
+  if (!count) return null;
   return (
-    <span className="jr-arevoir" title="Due car sa dernière note était Difficile ou Ratée — revient plus vite que la normale">
-      <Icon name="alert" size={10} />
+    <span className="jr-arevoir" title={`${count} carte${count > 1 ? 's' : ''} due${count > 1 ? 's' : ''} à revoir — dernière note Difficile ou Ratée`}>
+      <Icon name="alert" size={10} />{count}
     </span>
   );
 }
@@ -265,7 +268,7 @@ function WeekCalendar({ ctx, onPick }) {
                         <div className="wcc-cat" style={{ color: meta.tint }}>{meta.label}</div>
                         <div className="wcc-title">
                           {c.fiche.titre} <span className="wcc-j">{c.jLabel}</span>
-                          {c.aRevoir && <ARevoirBadge />}
+                          <ARevoirBadge count={c.aRevoirCount} />
                         </div>
                       </div>
                     </div>
@@ -280,7 +283,7 @@ function WeekCalendar({ ctx, onPick }) {
                         <div className="wcc-cat" style={{ color: meta.tint }}><Icon name="image" size={10} /> {meta.label}</div>
                         <div className="wcc-title">
                           {s.fiche.titre} <span className="wcc-j">{s.jLabel} · schéma</span>
-                          {s.aRevoir && <ARevoirBadge />}
+                          <ARevoirBadge count={s.aRevoirCount} />
                         </div>
                       </div>
                     </div>
@@ -352,6 +355,16 @@ function DayPopup({ day, ctx, onClose }) {
   const [reorg, setReorg] = useState(false);
   const [moveTarget, setMoveTarget] = useState(null); // { type: 'source'|'fiche', id, nom, count }
   const coursGroups = reorg ? dueByCoursOn(ctx.db, day.date) : [];
+  // Anomalie 2 (audit 2026-08-04) : le triangle "à revoir" collé sur un cours
+  // entier ne dit pas LESQUELLES de ses cartes reviennent à cause d'un échec.
+  // Regroupement dédié, PAR CARTE (pas par cours) : toutes les cartes dues ce
+  // jour-là dont la dernière note est Difficile/Ratée, groupées par fiche
+  // pour rester lisibles — lecture seule de `historique`, ne modifie rien.
+  const revoirByFiche = reorg ? coursGroups
+    .flatMap((cg) => cg.fiches)
+    .map((g) => ({ fiche: g.fiche, matiere: g.matiere, items: g.items.filter(isDueBecauseStruggled) }))
+    .filter((g) => g.items.length > 0) : [];
+  const revoirTotal = revoirByFiche.reduce((s, g) => s + g.items.length, 0);
   const startMove = (target) => setMoveTarget(target);
   const confirmMove = async (toDate) => {
     if (!moveTarget) return;
@@ -393,7 +406,32 @@ function DayPopup({ day, ctx, onClose }) {
         </div>
         <div className="day-pop-body">
           {reorg ? (
-            coursGroups.length === 0 ? (
+            <>
+              {/* section dédiée "À revoir" (Anomalie 2, audit 2026-08-04) : les
+                 cartes réellement ratées/difficiles, PAR CARTE, mises à part —
+                 plus de triangle générique collé sur tout un cours. Lecture
+                 seule (historique), pas d'action de masse ici : on VOIT
+                 lesquelles reviennent à cause d'un échec, on agit ensuite via
+                 les boutons Sauter/Déplacer habituels plus bas si besoin. */}
+              {revoirTotal > 0 && (
+                <div className="day-pop-revoir">
+                  <div className="day-pop-revoir-label">
+                    <Icon name="alert" size={11} /> À revoir — {revoirTotal} carte{revoirTotal > 1 ? 's' : ''} due{revoirTotal > 1 ? 's' : ''} aujourd'hui à cause d'un échec (dernière note Difficile ou Ratée)
+                  </div>
+                  {revoirByFiche.map((g) => (
+                    <div className="day-line" key={g.fiche.id}>
+                      <div className="dl-ic" style={{ background: 'color-mix(in srgb, var(--warn) 16%, transparent)', color: 'var(--warn)' }}><Icon name="alert" size={17} /></div>
+                      <div className="dl-main">
+                        <div className="dl-title">{g.fiche.titre} <span className="hint">· {matiereMeta(g.matiere).label}</span></div>
+                        <div className="dl-sub">
+                          <span>{g.items.length} carte{g.items.length > 1 ? 's' : ''} à revoir · {g.items.map((it) => it.theme || (it.type === 'qcm' ? 'QCM' : 'Flashcard')).join(', ')}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {coursGroups.length === 0 ? (
               <div className="hint">Plus aucune carte dues ce jour-là (qcm/flashcards) — rien à déplacer.</div>
             ) : coursGroups.map((cg) => {
               const srcMeta = matiereMeta(null);
@@ -422,9 +460,14 @@ function DayPopup({ day, ctx, onClose }) {
                         <div className="dl-title">
                           {g.fiche.titre} <span className="j-tag">{g.jLabel}</span>
                           <TrueJBadge days={g.jTrueDays} />
-                          {g.aRevoir && <ARevoirBadge />}
                         </div>
-                        <div className="dl-sub"><span>{g.items.length} carte{g.items.length > 1 ? 's' : ''} · {matiereMeta(g.matiere).label}</span></div>
+                        <div className="dl-sub">
+                          <span>
+                            {g.items.length} carte{g.items.length > 1 ? 's' : ''} · {matiereMeta(g.matiere).label}
+                            {g.aRevoirCount > 0 && `, dont ${g.aRevoirCount} à revoir`}
+                          </span>
+                          <ARevoirBadge count={g.aRevoirCount} />
+                        </div>
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button className="btn ghost sm" onClick={() => setSkipTarget({ type: 'fiche', id: g.fiche.id, nom: g.fiche.titre, count: g.items.length })}>
@@ -438,7 +481,8 @@ function DayPopup({ day, ctx, onClose }) {
                   ))}
                 </div>
               );
-            })
+            })}
+            </>
           ) : (
           <>
           {day.isProjected && (

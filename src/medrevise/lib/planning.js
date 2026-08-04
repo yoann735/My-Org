@@ -263,11 +263,39 @@ export function dueSchemasOn(db, dateISO, idx) {
 }
 export function dueSchemasToday(db, idx) { return dueSchemasOn(db, todayISO(), idx); }
 
+/** libellé "J+N" (jLabel/jIndex, sm2.js#labelForCursor) de la carte la PLUS
+   PROCHE D'ÉCHÉANCE parmi une LISTE DONNÉE — factorisé pour servir deux
+   usages différents avec la MÊME logique de sélection :
+   - `ficheJ` l'appelle avec TOUTES les cartes théorie de la fiche (vue
+     "prochaine échéance" globale, ex. TodaySeriesCard "Prochain : ...") ;
+   - `groupByFiche` l'appelle avec SEULEMENT les cartes du groupe qu'il vient
+     de construire (celles réellement dues CE jour précis, calendrier/vue
+     Réorganiser).
+   Bug corrigé (audit 2026-08-04, "La diffraction" bloquée à "J+1" plusieurs
+   jours de suite) : `groupByFiche` réutilisait `ficheJ` AVEC LA FICHE
+   ENTIÈRE — si UNE carte de la fiche traînait à intervalle 1, le badge du
+   jour affichait "J+1" en permanence, MÊME les jours où la carte due n'était
+   même pas celle-là (les autres avaient pourtant bien progressé, J+3/J+7).
+   Le calcul d'intervalle lui-même (sm2.js#advanceQuestion) n'a jamais été en
+   cause — uniquement CE badge, qui pioche maintenant dans le bon lot. */
+function soonestLabel(items) {
+  if (!items.length) return { jIndex: -1, jLabel: '—' };
+  const soonest = items.reduce((a, b) => {
+    const da = nextDate(a), db_ = nextDate(b);
+    if (da == null) return b;
+    if (db_ == null) return a;
+    return da <= db_ ? a : b;
+  });
+  return labelForCursor(soonest);
+}
+
 /** J affiché d'une fiche : anat_schema → dérivé de la fiche elle-même ;
-   sinon → dérivé de sa question la plus proche d'échéance (une carte déjà
-   terminée ne masque jamais une carte encore active).
-   `jTrueDays`/`aRevoir` (anat_schema uniquement ici — pas de liste d'items
-   séparée pour un schéma, la fiche EST l'item) : voir sm2.js
+   sinon → dérivé de sa question la plus proche d'échéance, PARMI TOUTE la
+   fiche (une carte déjà terminée ne masque jamais une carte encore active) —
+   usage volontairement GLOBAL, pas "ce jour-là" (voir soonestLabel/
+   groupByFiche pour la version day-scoped, utilisée par le calendrier).
+   `jTrueDays`/`aRevoirCount` (anat_schema uniquement ici — pas de liste
+   d'items séparée pour un schéma, la fiche EST l'item) : voir sm2.js
    trueDaysSinceJ0/isDueBecauseStruggled. Pour qcm/flashcard, ces deux champs
    sont calculés par `groupByFiche` à partir des items RÉELLEMENT groupés
    (plus fidèle que de rejouer une recherche "soonest" indépendante ici). */
@@ -275,17 +303,10 @@ export function ficheJ(db, ficheId, idx) {
   const ix = idx || index(db);
   const f = ix.fById[ficheId];
   if (f && f.type === 'anat_schema') {
-    return { ...labelForCursor(f), jTrueDays: trueDaysSinceJ0(f), aRevoir: isDueBecauseStruggled(f) };
+    return { ...labelForCursor(f), jTrueDays: trueDaysSinceJ0(f), aRevoirCount: isDueBecauseStruggled(f) ? 1 : 0 };
   }
   const qs = (db.questions || []).filter((q) => q.ficheId === ficheId && J_TYPES.has(q.type));
-  if (!qs.length) return { jIndex: -1, jLabel: '—' };
-  const soonest = qs.reduce((a, b) => {
-    const da = nextDate(a), db_ = nextDate(b);
-    if (da == null) return b;
-    if (db_ == null) return a;
-    return da <= db_ ? a : b;
-  });
-  return labelForCursor(soonest);
+  return soonestLabel(qs);
 }
 
 /* ---- décalage/pose du départ (J0) — Réviser, étape 1/3. Cible les cartes
@@ -367,12 +388,17 @@ export function dueOnFor(db, dateISO, { sourceId, ficheId } = {}, idx) {
 }
 
 /** regroupe une liste de questions par fiche, avec compteurs + J + coef.
-   `aRevoir`/`jTrueDays` calculés à partir des ITEMS RÉELLEMENT groupés ici
-   (les cartes effectivement dues ce jour-là pour cette fiche), pas d'une
-   recherche indépendante sur toute la fiche (voir sm2.js
-   isDueBecauseStruggled/trueDaysSinceJ0) :
-   - `aRevoir` = au moins une carte du groupe revient parce que sa dernière
-     note était Difficile/Ratée (pas juste son cours normal) ;
+   `jLabel`/`jIndex` (soonestLabel), `aRevoirCount`/`jTrueDays` — TOUS
+   calculés à partir des ITEMS RÉELLEMENT groupés ici (les cartes
+   effectivement dues ce jour-là pour cette fiche), jamais d'une recherche
+   indépendante sur toute la fiche (voir sm2.js isDueBecauseStruggled/
+   trueDaysSinceJ0, et soonestLabel ci-dessus pour le détail du bug corrigé) :
+   - `jLabel`/`jIndex` = intervalle de la carte du GROUPE la plus proche
+     d'échéance (day-scoped, contrairement à ficheJ) ;
+   - `aRevoirCount` = NOMBRE de cartes du groupe dont la dernière note était
+     Difficile/Ratée (jamais un simple booléen "au moins une" — Anomalie 2,
+     audit 2026-08-04 : un triangle générique sur tout un cours de 40 cartes
+     alors que 17 seulement étaient concernées, aucune façon de le savoir) ;
    - `jTrueDays` = la plus ANCIENNE (max) parmi les cartes du groupe — la
      carte présente dans ce cycle depuis le plus longtemps, repère le plus
      représentatif du "temps de vie" de cette fiche à cette date. */
@@ -391,9 +417,9 @@ export function groupByFiche(db, questions, idx) {
   });
   return Object.values(map).map((g) => ({
     ...g,
-    ...ficheJ(db, g.fiche.id, ix),
+    ...soonestLabel(g.items),
     coef: effectiveCoef(db, g.fiche, ix),
-    aRevoir: g.items.some(isDueBecauseStruggled),
+    aRevoirCount: g.items.filter(isDueBecauseStruggled).length,
     jTrueDays: g.items.reduce((max, q) => {
       const d = trueDaysSinceJ0(q);
       return d != null && (max == null || d > max) ? d : max;
