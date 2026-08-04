@@ -995,6 +995,9 @@
 .cpm-copy:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .cpm-view { white-space: pre-wrap; max-height: 55vh; overflow-y: auto; margin: 0; padding: 14px 16px; border-radius: 10px; background: var(--bg-2); font-size: 12.5px; line-height: 1.55; color: var(--text-2); font-family: inherit; }
 .cpm-edit { width: 100%; min-height: 55vh; resize: vertical; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border-2); background: var(--card-2); color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.5; }
+
+/* ---------- accès central "Prompts" (sidebar nav) : regroupe théorie + pratique dans une seule modale ---------- */
+.apm-group + .apm-group { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
 .hl-delete { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 8px; border: none; background: color-mix(in srgb, var(--crit) 12%, transparent); color: var(--crit); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .hl-delete:hover { background: color-mix(in srgb, var(--crit) 20%, transparent); }
 .hl-edit-btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 8px; border: none; background: var(--accent-soft); color: var(--accent); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }

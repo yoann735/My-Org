@@ -545,7 +545,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const Current = SCREENS[screen] || Dashboard;
   return (
     <div className="app">
-      <StudySidebar current={screen} onNav={setScreen} expanded={expanded} onToggle={() => setExpanded((v) => !v)} onHub={goHub} />
+      <StudySidebar current={screen} onNav={setScreen} expanded={expanded} onToggle={() => setExpanded((v) => !v)} onHub={goHub} ctx={ctx} />
       <div className="main">
         <Current ctx={ctx} key={screen} />
       </div>

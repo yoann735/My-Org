@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Icon } from '../../shared/Icon.jsx';
 import { todayISO } from '../lib/sm2.js';
+import { AllPromptsModal } from './CoursePromptsMenu.jsx';
 
 const FALLBACK_TINT = '#7C6FE0';
 /** palette de secours pour une matière SANS couleur choisie (m.couleur) —
@@ -166,11 +167,16 @@ const ED_NAV = [
   { id: 'carnet', label: "Carnet d'erreurs", icon: 'target' },
 ];
 
-export function StudySidebar({ current, onNav, expanded, onToggle, onHub }) {
+export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx }) {
   // 'carnet' est un onglet à part entière désormais (plus un sous-état de
   // 'revise') — retiré de la liste ci-dessous pour ne pas allumer les DEUX
   // onglets à la fois quand on est sur l'écran carnet.
   const isActive = (id) => current === id || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz', 'pdf', 'schemaedit'].includes(current));
+  // Accès central "Prompts" (voir CoursePromptsMenu.jsx#AllPromptsModal) : point
+  // d'entrée SUPPLÉMENTAIRE vers les mêmes 8 prompts (4 théorie + 4 pratique),
+  // en plus des boutons "Voir les prompts" déjà présents en vue cours — ne les
+  // remplace pas, même stockage donc toute modif se reflète partout.
+  const [promptsOpen, setPromptsOpen] = useState(false);
   return (
     <nav className={'sidebar' + (expanded ? ' expanded' : '')}>
       <div className="sb-brand">
@@ -187,6 +193,10 @@ export function StudySidebar({ current, onNav, expanded, onToggle, onHub }) {
       </div>
       <div className="sb-spacer" />
       <div className="sb-foot">
+        <div className={'sb-item' + (promptsOpen ? ' active' : '')} onClick={() => setPromptsOpen(true)} title="Prompts — copier un prompt théorie ou exercices">
+          <span className="sb-icon"><Icon name="layers" size={20} /></span>
+          <span className="sb-label">Prompts</span>
+        </div>
         <div className={'sb-item' + (current === 'settings' ? ' active' : '')} onClick={() => onNav('settings')} title="Réglages">
           <span className="sb-icon"><Icon name="settings" size={20} /></span>
           <span className="sb-label">Réglages</span>
@@ -200,6 +210,7 @@ export function StudySidebar({ current, onNav, expanded, onToggle, onHub }) {
           <span className="sb-label">Réduire</span>
         </button>
       </div>
+      {promptsOpen && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOpen(false)} />}
     </nav>
   );
 }

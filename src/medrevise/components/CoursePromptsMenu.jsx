@@ -127,6 +127,75 @@ export function CoursePromptsButton({ ctx, kind = 'theorie' }) {
   );
 }
 
+/** Accès CENTRAL sidebar (bas de nav, à côté de Réglages) : regroupe les
+   8 prompts (4 théorie + 4 pratique) en un seul endroit, pour copier sans
+   passer par un cours. RÉUTILISE buildCfg/SUBJECTS/effectiveText/PromptModal/
+   BulkPromptModal tels quels — mêmes stockages (getCoursePrompts/
+   getExoPrompts via ctx), donc une modif ici se reflète aussi dans les
+   boutons "Voir les prompts" existants (vue cours), et inversement.
+   Le sous-dialogue (voir/modifier une matière, ou "Modifier les 4") remplace
+   temporairement la liste plutôt que de s'empiler dessus (même convention
+   que CoursePromptsButton, qui referme son popover avant d'ouvrir un
+   modal) ; fermer le sous-dialogue revient à la liste. */
+export function AllPromptsModal({ ctx, onClose }) {
+  const cfgTheorie = buildCfg('theorie', ctx);
+  const cfgPratique = buildCfg('pratique', ctx);
+  const [copiedKey, setCopiedKey] = useState(null); // `${kind}:${subjectId}`
+  const [modalState, setModalState] = useState(null); // { kind, subject, mode }
+  const [bulkKind, setBulkKind] = useState(null); // 'theorie' | 'pratique' | null
+
+  const copySubject = async (cfg, id) => {
+    if (await copyToClipboard(effectiveText(cfg, id))) {
+      const key = `${cfg.kind}:${id}`;
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((c) => (c === key ? null : c)), 1800);
+    }
+  };
+
+  const renderGroup = (cfg, groupLabel) => (
+    <div className="apm-group" key={cfg.kind}>
+      <div className="cpm-pop-title">{groupLabel}</div>
+      {SUBJECTS.map((s) => {
+        const key = `${cfg.kind}:${s.id}`;
+        return (
+          <div key={s.id} className="cpm-row">
+            <button type="button" className="cpm-copy" onClick={() => copySubject(cfg, s.id)} title="Copier ce prompt">
+              <Icon name={copiedKey === key ? 'check' : 'copy'} size={13} style={copiedKey === key ? { color: 'var(--ok)' } : undefined} />
+              {copiedKey === key ? 'Copié ✓' : s.label}
+            </button>
+            <button type="button" className="cd-ic" title="Voir en entier" onClick={() => setModalState({ kind: cfg.kind, subject: s.id, mode: 'view' })}><Icon name="ext" size={13} /></button>
+            <button type="button" className="cd-ic" title="Modifier" onClick={() => setModalState({ kind: cfg.kind, subject: s.id, mode: 'edit' })}><Icon name="edit" size={13} /></button>
+          </div>
+        );
+      })}
+      <button type="button" className="btn ghost sm" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+        onClick={() => setBulkKind(cfg.kind)}>
+        <Icon name="sliders" size={13} /> Modifier les 4
+      </button>
+    </div>
+  );
+
+  const modalCfg = modalState && (modalState.kind === 'pratique' ? cfgPratique : cfgTheorie);
+  const bulkCfg = bulkKind && (bulkKind === 'pratique' ? cfgPratique : cfgTheorie);
+
+  return (
+    <>
+      {!modalState && !bulkKind && (
+        <Modal title="Tous les prompts" onClose={onClose} width="min(420px, 94vw)">
+          {renderGroup(cfgTheorie, 'Théorie — QCM, flashcards, Feynman')}
+          {renderGroup(cfgPratique, 'Exercices — méthode des J')}
+        </Modal>
+      )}
+      {modalState && (
+        <PromptModal cfg={modalCfg} initial={modalState} onClose={() => setModalState(null)} />
+      )}
+      {bulkKind && (
+        <BulkPromptModal cfg={bulkCfg} onClose={() => setBulkKind(null)} />
+      )}
+    </>
+  );
+}
+
 /** "Modifier les 4" — colle le fichier .md COMPLET (les 4 prompts d'un coup),
    découpé automatiquement par matière (cfg.parseMd) sur les séparateurs
    propres à la variante (théorie ou pratique, voir buildCfg). Étape
