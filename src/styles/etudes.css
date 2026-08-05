@@ -1042,7 +1042,7 @@
 .lib-split { display: flex; align-items: stretch; gap: 10px; }
 .lib-master { flex: 0 0 340px; min-width: 0; display: flex; flex-direction: row; align-items: stretch; overflow: hidden; transition: flex-basis .18s ease; }
 .lib-master.collapsed { flex-basis: 18px; }
-.lib-master-body { flex: 1 1 auto; min-width: 0; margin-right: 8px; }
+.lib-master-body { flex: 1 1 auto; min-width: 0; min-height: 0; margin-right: 8px; overflow-y: auto; }
 .lib-detail { flex: 1 1 auto; min-width: 0; position: sticky; top: 0; }
 .lib-detail-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 320px; padding: 40px 20px; border: 1px dashed var(--border); border-radius: 14px; color: var(--text-3); background: var(--card-2); }
 
