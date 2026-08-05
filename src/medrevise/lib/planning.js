@@ -19,10 +19,26 @@ const J_TYPES = new Set(['qcm', 'flashcard']);
    (moteur adaptatif, intervalDays/dueDate) — null si le cycle est terminé
    (`termine`) ou si la carte n'a pas encore d'échéance. SEUL point de
    lecture de `dueDate` pour le calcul des "dues" de ce fichier — ne pas
-   dupliquer cette lecture nulle part ailleurs. */
+   dupliquer cette lecture nulle part ailleurs.
+   « Sauter » (`q.skippedOn`, MedReviseApp.jsx skipDaySource/skipDayFiche) :
+   ÉCHÉANCE EFFECTIVE, jamais écrite en base — `dueDate` réel reste intact à
+   vie (aucune mutation ici, fonction PURE). Si la carte a été sautée LE
+   JOUR de son échéance réelle ou après (`skippedOn >= dueDate` — cas d'un
+   saut répété plusieurs jours de suite, voir skipDayFiche), la date lue par
+   dueOn/overdueQuestions/overdueByFiche devient `skippedOn + 1 jour` au
+   lieu de `dueDate` : la carte disparaît du jour sauté (plus de match exact
+   avec aujourd'hui) ET ne tombe PAS dans "À rattraper" le lendemain (elle
+   redevient "due normalement" ce jour-là, pas "en retard") — seulement si
+   elle reste non révisée APRÈS ce lendemain qu'elle rejoint le retard
+   légitime (comportement identique à n'importe quelle carte due, jamais
+   traitée). Un `skippedOn` d'un cycle antérieur (< dueDate courant, ex.
+   après une vraie révision qui a fait avancer dueDate) ne matche plus la
+   condition et n'a donc aucun effet — pas de rémanence indéfinie. */
 function nextDate(record) {
   if (!record || record.termine) return null;
-  return record.dueDate || null;
+  const due = record.dueDate || null;
+  if (due != null && record.skippedOn && record.skippedOn >= due) return addDays(record.skippedOn, 1);
+  return due;
 }
 
 /* ---- index helpers ---- */
