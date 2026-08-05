@@ -26,7 +26,7 @@ import { Tex } from '../components/Tex.jsx';
 import { ImportJsonField } from '../components/ImportFlow.jsx';
 import { carnetV1Questions, carnetV2Questions, index } from '../lib/planning.js';
 import { parseErrorCardsJson } from '../lib/parseErrorCardsJson.js';
-import { getBlob } from '../lib/storage.js';
+import { openHtmlInNewWindow } from '../lib/storage.js';
 
 const trunc = (s, n) => (s && s.length > n ? s.slice(0, n).trim() + '…' : s);
 // affichage LISTE (pas la carte de révision elle-même, qui a déjà son propre
@@ -143,23 +143,14 @@ function V1Row({ v1, v2Count, fiche, matiere, ctx }) {
   };
   const [popupBlocked, setPopupBlocked] = useState(false);
   const viewCoursInApp = () => { if (fiche) ctx.openPdfReader(fiche.id, 'read', 'carnet', 'html'); };
-  // "nouvelle fenêtre" : RÉUTILISE le même blob que la vue interne
-  // (PdfReader.jsx, srcTab 'html' — getBlob(fiche.htmlId) + object URL), mais
-  // vise une VRAIE fenêtre séparée (pas un onglet) : la présence de features
-  // de taille/chrome (width/height, menubar=no, etc.) est ce qui pousse
-  // Chrome/Firefox/Safari à détacher une fenêtre plutôt qu'ouvrir un onglet —
-  // best-effort, certains navigateurs/réglages utilisateur ignorent quand
-  // même et ouvrent un onglet (rien à faire de plus côté app, aucune API ne
-  // le garantit). Bloqueur de popup : window.open renvoie null/undefined,
-  // jamais d'exception — on l'affiche proprement plutôt que planter.
+  // "nouvelle fenêtre" : openHtmlInNewWindow (lib/storage.js) — SEUL point
+  // d'ouverture d'un HTML de cours en fenêtre détachée, réutilisé partout
+  // (aussi la page Exercice). Bloqueur de popup : ne lève jamais d'exception,
+  // juste false — on l'affiche proprement plutôt que planter.
   const viewCoursNewWindow = async () => {
     if (!fiche || !fiche.htmlId) return;
-    const blob = await getBlob(fiche.htmlId);
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const features = 'popup=yes,width=1100,height=850,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes';
-    const win = window.open(url, '_blank', features);
-    if (!win) { setPopupBlocked(true); setTimeout(() => setPopupBlocked(false), 4000); }
+    const ok = await openHtmlInNewWindow(fiche.htmlId);
+    if (!ok) { setPopupBlocked(true); setTimeout(() => setPopupBlocked(false), 4000); }
   };
 
   return (

@@ -97,6 +97,20 @@ export async function blobURL(id) {
   const b = await getBlob(id);
   return b ? URL.createObjectURL(b) : null;
 }
+/* « Voir le cours » en nouvelle fenêtre (carnet d'erreurs, exercices…) : SEUL point
+   d'ouverture d'un HTML de cours en fenêtre détachée — réutilise blobURL ci-dessus,
+   toute nouvelle demande de ce mécanisme doit appeler cette fonction plutôt que
+   dupliquer window.open. Les features de taille/chrome (width/height, menubar=no…)
+   sont ce qui pousse Chrome/Firefox/Safari à détacher une vraie fenêtre plutôt
+   qu'ouvrir un onglet — best-effort, certains réglages navigateur ouvrent quand même
+   un onglet. window.open renvoie null/undefined si bloqué par le popup-blocker,
+   jamais d'exception : retourne un booléen, à l'appelant d'afficher le message. */
+export async function openHtmlInNewWindow(htmlId) {
+  const url = await blobURL(htmlId);
+  if (!url) return false;
+  const features = 'popup=yes,width=1100,height=850,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes';
+  return !!window.open(url, '_blank', features);
+}
 
 /* ---- surlignages PDF (Partie B) ---- */
 export function newHighlight({ ficheId, page, texte, couleur, rects }) {

@@ -19,7 +19,7 @@ import { index } from '../lib/planning.js';
 import { recordExerciceAttempt, qualityForExercice, todayISO, computeStreak } from '../lib/sm2.js';
 import { checkNumerique, parseScientificValue } from '../lib/correction.js';
 import { evalExpr } from '../lib/calc.js';
-import { getExoNote, setExoNote } from '../lib/storage.js';
+import { getExoNote, setExoNote, openHtmlInNewWindow } from '../lib/storage.js';
 
 const DIFF = { 1: 'Facile', 2: 'Intermédiaire', 3: 'Difficile' };
 
@@ -60,6 +60,18 @@ export function Exercice({ ctx }) {
   const goNext = () => setIdx((i) => Math.min(items.length - 1, i + 1));
   const goPrev = () => setIdx((i) => Math.max(0, i - 1));
 
+  // « Voir le cours » : ouvre le HTML de la fiche de l'exercice AFFICHÉ (fiche
+  // recalculée à chaque changement d'idx ci-dessus, un même lot d'exercices
+  // pouvant mélanger plusieurs fiches) dans une vraie fenêtre détachée —
+  // openHtmlInNewWindow (lib/storage.js), même mécanisme que le carnet
+  // d'erreurs (CarnetDashboard.jsx), rien de recodé.
+  const [popupBlocked, setPopupBlocked] = useState(false);
+  const viewCoursNewWindow = async () => {
+    if (!fiche || !fiche.htmlId) return;
+    const ok = await openHtmlInNewWindow(fiche.htmlId);
+    if (!ok) { setPopupBlocked(true); setTimeout(() => setPopupBlocked(false), 4000); }
+  };
+
   return (
     <div className="screen scroll fadein">
       <div className="ctx-bar">
@@ -71,10 +83,20 @@ export function Exercice({ ctx }) {
           </div>
         </div>
         <div className="topbar-actions">
+          {fiche && fiche.htmlId && (
+            <button className="btn ghost" onClick={viewCoursNewWindow} title="Ouvrir le cours (fiche HTML) dans une nouvelle fenêtre">
+              <Icon name="fileHtml" size={16} /> Voir le cours
+            </button>
+          )}
           <button className="btn ghost" onClick={() => ctx.go('revise')}><Icon name="x" size={16} /> Quitter</button>
           <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
         </div>
       </div>
+      {popupBlocked && (
+        <div className="hint" style={{ marginTop: -8, marginBottom: 12, color: 'var(--crit)' }}>
+          <Icon name="alert" size={12} /> Fenêtre bloquée par le navigateur — autorise les popups pour ce site puis réessaie.
+        </div>
+      )}
 
       {/* remount par exercice → tout l'état (indices, notes, réponse) se réinitialise */}
       <Workstation key={item.id} item={item} fiche={fiche} meta={meta} ctx={ctx} mode={payload.mode}
