@@ -732,6 +732,13 @@
 .jr-truej { display: inline-block; font-size: 9.5px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-3); margin-left: 4px; white-space: nowrap; }
 .jr-arevoir { display: inline-flex; align-items: center; gap: 1px; font-size: 9.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-2); margin-left: 4px; vertical-align: middle; }
 
+/* ---- card "Erreurs fréquentes" (Dashboard, CoursARevoirCard) : rangée
+   cliquable (div, pas bouton — voir commentaire du composant), léger fond au
+   survol pour signaler l'affordance, coins arrondis pour que le fond de
+   survol ne déborde pas du padding horizontal de la card. ---- */
+.arevoir-row { cursor: pointer; border-radius: 8px; transition: background .12s; }
+.arevoir-row:hover { background: var(--bg-2); }
+
 /* ---- filtre sous-catégories (anatomie) ---- */
 .subfilter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 11px 14px; border: 1px solid var(--border); border-radius: 13px; background: var(--card); box-shadow: var(--shadow); }
 .subfilter .sf-label { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); margin-right: 2px; }

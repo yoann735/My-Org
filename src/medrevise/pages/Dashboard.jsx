@@ -152,18 +152,21 @@ function CarnetErreurCard({ ctx }) {
   );
 }
 
-/* ---------- cours à revoir (Dashboard UNIQUEMENT) ----------
+/* ---------- erreurs fréquentes (Dashboard UNIQUEMENT) ----------
    TOUJOURS visible (contrairement à RattrapageCard/CarnetErreurCard/
    WeekendReviewCard qui se masquent quand vides) — affichage EN LECTURE
    SEULE, indépendant de la méthode des J/du carnet d'erreurs : classe les
    cours (fiches) par nombre de cartes qcm/flashcard dont la DERNIÈRE note
    est Difficile ou Ratée (strugglingByFiche, planning.js), peu importe si
    elles sont dues aujourd'hui. Top 8, style neutre (pas d'alerte — icône
-   `refresh`, comme ARevoirBadge ci-dessus, même logique visuelle). Clic sur
-   un cours → lance une session sur TOUTES ses cartes (qcm/flashcard),
-   même patron que le bouton « Réviser » de la Bibliothèque
-   (Bibliotheque.jsx, setFocusFiche + startSession) — ne modifie rien de la
-   fiche elle-même, juste une navigation. */
+   `refresh`, comme ARevoirBadge ci-dessus, même logique visuelle). Rangées
+   en `div.row.spread` + séparateur `border-2` (MÊME patron que OverdueBox/
+   RattrapageCard juste au-dessus, PAS un `<button>` : un bouton nu sans
+   reset CSS complet affiche le contour par défaut du navigateur, d'où les
+   barres blanches à corriger). Clic sur un cours → lance une session sur
+   TOUTES ses cartes (qcm/flashcard), même patron que le bouton « Réviser »
+   de la Bibliothèque (Bibliotheque.jsx, setFocusFiche + startSession) — ne
+   modifie rien de la fiche elle-même, juste une navigation. */
 function CoursARevoirCard({ ctx }) {
   const { db } = ctx;
   const groups = strugglingByFiche(db).slice(0, 8);
@@ -172,23 +175,23 @@ function CoursARevoirCard({ ctx }) {
     ctx.startSession(db.questions.filter((q) => q.ficheId === g.fiche.id && (q.type === 'qcm' || q.type === 'flashcard')), g.fiche.titre);
   };
   return (
-    <Card title="Cours à revoir" icon="refresh">
+    <Card title="Erreurs fréquentes" icon="refresh">
       {groups.length === 0 ? (
-        <div className="hint" style={{ fontSize: 12.5 }}>Rien à revoir — aucune carte n'a sa dernière note Difficile ou Ratée.</div>
+        <div className="hint" style={{ fontSize: 12.5 }}>Aucune erreur fréquente — aucune carte n'a sa dernière note Difficile ou Ratée.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           {groups.map((g, i) => {
             const meta = matiereMeta(g.matiere);
             return (
-              <button type="button" key={g.fiche.id} className="row spread"
-                style={{ gap: 8, padding: '7px 0', borderTop: i ? '1px solid var(--border-2)' : 'none', width: '100%', textAlign: 'left', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer' }}
+              <div className="row spread arevoir-row" key={g.fiche.id}
+                style={{ gap: 8, padding: '8px 2px', borderTop: i ? '1px solid var(--border-2)' : 'none' }}
                 onClick={() => startFiche(g)}>
                 <div style={{ minWidth: 0, flex: '1 1 auto' }}>
                   <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.fiche.titre}</div>
                   <div className="hint" style={{ fontSize: 11 }}>{meta.label}</div>
                 </div>
-                <span className="pill">{g.count} carte{g.count > 1 ? 's' : ''} à revoir</span>
-              </button>
+                <span className="pill">{g.count} erreur{g.count > 1 ? 's' : ''} fréquente{g.count > 1 ? 's' : ''}</span>
+              </div>
             );
           })}
         </div>
