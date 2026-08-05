@@ -569,6 +569,35 @@ export function carnetV2Questions(db, statut) {
 }
 
 /* ============================================================
+   « Cours à revoir » (Dashboard) — repérage des fiches à retravailler, basé
+   UNIQUEMENT sur l'état ACTUEL de chaque carte théorie (qcm/flashcard) :
+   sa DERNIÈRE note (isDueBecauseStruggled, sm2.js) est Difficile ou Ratée,
+   peu importe sa dueDate/le retard (indépendant de overdueByFiche/la méthode
+   des J : une carte peut être "à revoir" au sens ici sans être due). Lecture
+   seule de `historique`, aucun champ dérivé stocké — recalculé à la volée à
+   chaque appel. Volontairement DISTINCT du carnet d'erreurs (carnetV1/V2
+   Questions, flashcards marquées explicitement) : ici, aucun marquage
+   manuel, juste un comptage de la dernière note sur TOUTES les cartes
+   qcm/flashcard actives (fiche/matière/source non archivées — une fiche
+   archivée n'a plus rien "à retravailler"). ============================== */
+export function strugglingByFiche(db, idx) {
+  const ix = idx || index(db);
+  const map = {};
+  (db.questions || []).forEach((q) => {
+    if (!SCHEDULED_TYPES.has(q.type) || !isDueBecauseStruggled(q)) return;
+    const f = ix.fById[q.ficheId];
+    if (!f || f.archive) return;
+    const m = ix.mById[f.matiereId];
+    if (!m || m.archive) return;
+    const s = ix.sById[m.sourceId];
+    if (!s || s.archive) return;
+    if (!map[f.id]) map[f.id] = { fiche: f, matiere: m, source: s, count: 0 };
+    map[f.id].count++;
+  });
+  return Object.values(map).sort((a, b) => b.count - a.count);
+}
+
+/* ============================================================
    QCM — nombre conseillé + rotation du stock (v1.1, Étapes 3-4). Distinct de
    la méthode des J (SM-2 par item) : ceci module la TAILLE d'une série QCM
    lancée en révision libre (page Reviser, bouton QCM d'une fiche), en piochant

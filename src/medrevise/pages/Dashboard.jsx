@@ -7,7 +7,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { Tex } from '../components/Tex.jsx';
-import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, weekendReviewByFiche, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
+import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, weekendReviewByFiche, carnetV1Questions, carnetV2Questions, strugglingByFiche } from '../lib/planning.js';
 import { isoDate, isDueBecauseStruggled } from '../lib/sm2.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
@@ -70,6 +70,7 @@ export function Dashboard({ ctx }) {
         <div className="dash-grid-col">
           <RattrapageCard ctx={ctx} overdue={overdue} startOverdueFiche={startOverdueFiche} />
           <CarnetErreurCard ctx={ctx} />
+          <CoursARevoirCard ctx={ctx} />
           <WeekendReviewCard ctx={ctx} />
           <StreakWidget stats={ctx.stats} />
         </div>
@@ -147,6 +148,51 @@ function CarnetErreurCard({ ctx }) {
       <button className="btn primary sm" style={{ width: '100%', justifyContent: 'center' }} onClick={() => ctx.go('carnet')}>
         <Icon name="ext" size={13} /> Ouvrir le carnet
       </button>
+    </Card>
+  );
+}
+
+/* ---------- cours à revoir (Dashboard UNIQUEMENT) ----------
+   TOUJOURS visible (contrairement à RattrapageCard/CarnetErreurCard/
+   WeekendReviewCard qui se masquent quand vides) — affichage EN LECTURE
+   SEULE, indépendant de la méthode des J/du carnet d'erreurs : classe les
+   cours (fiches) par nombre de cartes qcm/flashcard dont la DERNIÈRE note
+   est Difficile ou Ratée (strugglingByFiche, planning.js), peu importe si
+   elles sont dues aujourd'hui. Top 8, style neutre (pas d'alerte — icône
+   `refresh`, comme ARevoirBadge ci-dessus, même logique visuelle). Clic sur
+   un cours → lance une session sur TOUTES ses cartes (qcm/flashcard),
+   même patron que le bouton « Réviser » de la Bibliothèque
+   (Bibliotheque.jsx, setFocusFiche + startSession) — ne modifie rien de la
+   fiche elle-même, juste une navigation. */
+function CoursARevoirCard({ ctx }) {
+  const { db } = ctx;
+  const groups = strugglingByFiche(db).slice(0, 8);
+  const startFiche = (g) => {
+    ctx.setFocusFiche(g.fiche.id);
+    ctx.startSession(db.questions.filter((q) => q.ficheId === g.fiche.id && (q.type === 'qcm' || q.type === 'flashcard')), g.fiche.titre);
+  };
+  return (
+    <Card title="Cours à revoir" icon="refresh">
+      {groups.length === 0 ? (
+        <div className="hint" style={{ fontSize: 12.5 }}>Rien à revoir — aucune carte n'a sa dernière note Difficile ou Ratée.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {groups.map((g, i) => {
+            const meta = matiereMeta(g.matiere);
+            return (
+              <button type="button" key={g.fiche.id} className="row spread"
+                style={{ gap: 8, padding: '7px 0', borderTop: i ? '1px solid var(--border-2)' : 'none', width: '100%', textAlign: 'left', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer' }}
+                onClick={() => startFiche(g)}>
+                <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.fiche.titre}</div>
+                  <div className="hint" style={{ fontSize: 11 }}>{meta.label}</div>
+                </div>
+                <span className="pill">{g.count} carte{g.count > 1 ? 's' : ''} à revoir</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </Card>
   );
 }
