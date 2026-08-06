@@ -48,6 +48,15 @@ export function Bibliotheque({ ctx }) {
   const [confirmArchive, setConfirmArchive] = useState(null); // fiche à archiver (confirmation)
   const attachInputRef = useRef(null);
   const [attachTarget, setAttachTarget] = useState(null); // ficheId ciblé par l'input fichier partagé du menu « … »
+  // sous-dossiers d'une matière (pur rangement d'affichage, voir fiche.dossierId) :
+  // dossierMenu = menu « … » d'une ligne dossier (renommer/supprimer), moveMenu =
+  // sous-menu « Déplacer vers » d'une fiche (racine ou un dossier de sa matière),
+  // openDossier = replié/déplié (mémoire seulement, comme openFiche), confirmDeleteDossier
+  // = confirmation avant suppression (les fiches contenues reviennent à la racine).
+  const [openDossier, setOpenDossier] = useState({});
+  const [dossierMenu, setDossierMenu] = useState(null); // { x, y, dossierId }
+  const [moveMenu, setMoveMenu] = useState(null); // { x, y, ficheId }
+  const [confirmDeleteDossier, setConfirmDeleteDossier] = useState(null); // dossier à supprimer
 
   const startRename = (type, id, current) => { setDraft(current); setRenaming({ type, id }); };
   const isRen = (type, id) => renaming && renaming.type === type && renaming.id === id;
@@ -55,6 +64,7 @@ export function Bibliotheque({ ctx }) {
     if (renaming && draft.trim()) {
       if (renaming.type === 'source') ctx.renameSource(renaming.id, draft);
       else if (renaming.type === 'matiere') ctx.renameMatiere(renaming.id, draft);
+      else if (renaming.type === 'dossier') ctx.renameDossier(renaming.id, draft);
       else ctx.renameFiche(renaming.id, draft);
     }
     setRenaming(null);
@@ -130,6 +140,10 @@ export function Bibliotheque({ ctx }) {
     const isSchema = f.type === 'anat_schema';
     const isTranscript = f.type === 'transcript';
     const items = [{ label: 'Renommer', icon: 'edit', onClick: () => startRename('fiche', f.id, f.titre) }];
+    // « Déplacer vers » : racine de la matière ou un de ses sous-dossiers — pur
+    // rangement d'affichage (voir fiche.dossierId), disponible pour tout type de
+    // fiche (y compris schéma/transcript), à la différence des items ci-dessous.
+    items.push({ label: 'Déplacer vers…', icon: 'folder', onClick: () => setMoveMenu({ x, y, ficheId: f.id }) });
     if (!isSchema && !isTranscript) {
       items.push({ label: f.etiquette ? 'Changer l’étiquette' : 'Poser une étiquette', icon: 'tag', onClick: () => setEtqMenu({ x, y, ficheId: f.id }) });
       if (f.pdfId && f.htmlId) {
@@ -149,10 +163,115 @@ export function Bibliotheque({ ctx }) {
     return items;
   };
 
+  // items du sous-menu « Déplacer vers » (ouvert depuis ficheMenuItems) : racine
+  // de la matière + chaque dossier de CETTE matière (une fiche est soit à la
+  // racine, soit dans UN dossier — jamais les deux, voir moveFicheTo).
+  const moveMenuItems = (f) => {
+    const mat = db.matieres.find((x) => x.id === f.matiereId);
+    const dossiers = db.dossiers.filter((d) => d.matiereId === f.matiereId).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+    const items = [{
+      label: <span style={{ fontWeight: !f.dossierId ? 700 : 500 }}>Racine de {mat ? mat.nom : 'la matière'}{!f.dossierId ? ' ✓' : ''}</span>,
+      onClick: () => ctx.moveFicheTo(f.id, f.matiereId, null, null),
+    }];
+    dossiers.forEach((d) => items.push({
+      label: <span style={{ fontWeight: f.dossierId === d.id ? 700 : 500 }}><Icon name="folder" size={12} /> {d.nom}{f.dossierId === d.id ? ' ✓' : ''}</span>,
+      onClick: () => ctx.moveFicheTo(f.id, f.matiereId, null, d.id),
+    }));
+    return items;
+  };
+
   // BUG5 : drag & drop des fiches via @dnd-kit (voir FicheDndProvider/ui.jsx).
-  const onDropAt = ({ ficheId, matiereId, beforeFicheId }) => {
+  // dossierId (depuis l'id de DropSlot survolé) : null = racine de la matière.
+  const onDropAt = ({ ficheId, matiereId, dossierId, beforeFicheId }) => {
     if (beforeFicheId === ficheId) return;
-    ctx.moveFicheTo(ficheId, matiereId, beforeFicheId);
+    ctx.moveFicheTo(ficheId, matiereId, beforeFicheId, dossierId || null);
+  };
+  // ligne d'une fiche (draggable + DropSlot précédent) — extrait en fonction pour
+  // être réutilisé identique à la racine de la matière ET dans un dossier : le
+  // bucket (racine ou dossier) se déduit simplement de f.dossierId, jamais passé
+  // à part (une fiche est soit à la racine, soit dans UN dossier, jamais les deux).
+  const renderFiche = (f) => {
+    const fo = !!openFiche[f.id];
+    const isAnat = f.type === 'anatomie';
+    const isSchema = f.type === 'anat_schema';
+    const isTranscript = f.type === 'transcript';
+    const kind = docKind(f);
+    const isSel = !!(selected && selected.ficheId === f.id);
+    const paused = !isTranscript && f.rappelsJ === false;
+    const etq = etiquetteMeta(f.etiquette);
+    // repère les cours contenant des exos issus du prompt "pratique méthode J"
+    // (jalon + difficulte_exo, voir planning.js#isExoConforme) — purement visuel,
+    // ne filtre/ne modifie aucun exercice.
+    const hasConformeExos = qById(f.id).some((x) => x.type === 'exercice' && isExoConforme(x));
+    const metaLine = isTranscript ? 'Transcript'
+      : isSchema ? `Schéma · ${schemaViews(f) > 1 ? schemaViews(f) + ' vues · ' : ''}${schemaCoches(f)} coche${schemaCoches(f) > 1 ? 's' : ''}`
+        : `${count(f.id, 'qcm')} QCM · ${count(f.id, 'flashcard')} flash${isAnat ? ' · images' : ''}`;
+    return (
+      <div key={f.id}>
+        <DropSlot matiereId={f.matiereId} dossierId={f.dossierId || null} beforeId={f.id} />
+        <DraggableFiche id={f.id} disabled={isRen('fiche', f.id)} className={'lib-fiche' + (isSel ? ' selected' : '')}>
+          {isRen('fiche', f.id) ? (
+            <RenameInput />
+          ) : (
+            <>
+              <div role="button" className="lib-fiche-row" style={{ cursor: 'pointer' }}
+                onClick={() => { if (kind) openDoc(f); else setOpenFiche((o) => ({ ...o, [f.id]: !fo })); }}
+                onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }}
+                title={kind ? 'Clic = ouvrir le document · double-clic = renommer' : 'Clic = ouvrir · double-clic = renommer'}>
+                {kind
+                  ? <Icon name={DOC_META[kind].icon} size={14} style={{ color: isSel ? 'var(--accent)' : 'var(--text-3)', flex: '0 0 auto' }} />
+                  : <Icon name={fo ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />}
+                <span className="lib-fiche-title">{f.titre}</span>
+                {etq && <span className="lib-fiche-etq" style={{ background: etq.color }} title={`Étiquette : ${etq.label}`} onClick={(e) => openEtqMenu(e, f.id)} />}
+                {hasConformeExos && (
+                  <span title="Contient des exercices conformes à la méthode des J (jalon + difficulté)" style={{ display: 'flex', flex: '0 0 auto' }}>
+                    <Icon name="sparkle" size={13} style={{ color: 'var(--accent)' }} />
+                  </span>
+                )}
+                {paused && <Icon name="bellOff" size={13} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} title="Rappels J en pause" />}
+                {!isTranscript && (
+                  <button type="button" className="cd-ic" title="Réviser" onClick={(e) => { e.stopPropagation(); if (isSchema) { ctx.startAnatQuiz(f, { mode: 'total' }); } else { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); } }}>
+                    <Icon name="play" size={13} />
+                  </button>
+                )}
+                <button type="button" className="cd-ic" title="Autres actions" onClick={(e) => openFicheMenu(e, f.id)}><Icon name="more" size={15} stroke={2.6} /></button>
+              </div>
+              <div className="lib-fiche-meta">{metaLine}</div>
+            </>
+          )}
+          {fo && !kind && (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {qById(f.id).map((x) => (
+                <div className="row spread" key={x.id} style={{ padding: '6px 0', borderTop: '1px solid var(--border-2)' }}>
+                  <span style={{ fontSize: 12.5, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><Icon name={x.type === 'flashcard' ? 'cards' : x.type === 'feynman' ? 'lightbulb' : 'list'} size={12} /> {x.concept}</span>
+                  <button className="cd-ic" title="Supprimer" onClick={() => ctx.deleteQuestion(x.id)}><Icon name="trash" size={13} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </DraggableFiche>
+      </div>
+    );
+  };
+  // création d'un dossier : créé immédiatement (nom par défaut) puis bascule tout
+  // de suite en renommage — même geste "créer → taper le nom" que pour une matière.
+  const createDossier = async (matiereId) => {
+    const id = await ctx.addDossier(matiereId, 'Nouveau dossier');
+    setOpenDossier((o) => ({ ...o, [id]: true }));
+    startRename('dossier', id, 'Nouveau dossier');
+  };
+  const openDossierMenu = (e, dossierId) => {
+    e.stopPropagation();
+    setDossierMenu({ x: Math.min(e.clientX, window.innerWidth - 200), y: Math.min(e.clientY, window.innerHeight - 120), dossierId });
+  };
+  const dossierMenuItems = (d) => [
+    { label: 'Renommer', icon: 'edit', onClick: () => startRename('dossier', d.id, d.nom) },
+    { label: 'Supprimer le dossier', icon: 'trash', danger: true, onClick: () => setConfirmDeleteDossier(d) },
+  ];
+  const confirmDeleteDossierNow = async () => {
+    if (!confirmDeleteDossier) return;
+    await ctx.deleteDossier(confirmDeleteDossier.id);
+    setConfirmDeleteDossier(null);
   };
   const renderFicheOverlay = (ficheId) => {
     const f = db.fiches.find((x) => x.id === ficheId);
@@ -242,77 +361,58 @@ export function Bibliotheque({ ctx }) {
                     <div className="card-body" style={{ paddingTop: 0 }}>
                         {mats.map((mat) => {
                           const mm = matiereMeta(mat);
-                          const fiches = db.fiches.filter((f) => f.matiereId === mat.id && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+                          const allFiches = db.fiches.filter((f) => f.matiereId === mat.id && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+                          const rootFiches = allFiches.filter((f) => !f.dossierId);
+                          const dossiers = db.dossiers.filter((d) => d.matiereId === mat.id).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
                           return (
                             <div key={mat.id} style={{ marginTop: 14 }}>
                               {isRen('matiere', mat.id)
                                 ? <div style={{ marginBottom: 8 }}><RenameInput /></div>
                                 : <div className="cat-badge" style={{ background: `color-mix(in srgb, ${mm.tint} 14%, transparent)`, color: mm.tint, borderColor: `color-mix(in srgb, ${mm.tint} 30%, transparent)`, marginBottom: 8, cursor: 'pointer' }} onDoubleClick={() => startRename('matiere', mat.id, mm.label)} title="Double-clic pour renommer"><Icon name={mm.icon} size={12} /> {mm.label}</div>}
-                              {fiches.map((f) => {
-                                const fo = !!openFiche[f.id];
-                                const isAnat = f.type === 'anatomie';
-                                const isSchema = f.type === 'anat_schema';
-                                const isTranscript = f.type === 'transcript';
-                                const kind = docKind(f);
-                                const isSel = !!(selected && selected.ficheId === f.id);
-                                const paused = !isTranscript && f.rappelsJ === false;
-                                const etq = etiquetteMeta(f.etiquette);
-                                // repère les cours contenant des exos issus du prompt "pratique méthode J"
-                                // (jalon + difficulte_exo, voir planning.js#isExoConforme) — purement visuel,
-                                // ne filtre/ne modifie aucun exercice.
-                                const hasConformeExos = qById(f.id).some((x) => x.type === 'exercice' && isExoConforme(x));
-                                const metaLine = isTranscript ? 'Transcript'
-                                  : isSchema ? `Schéma · ${schemaViews(f) > 1 ? schemaViews(f) + ' vues · ' : ''}${schemaCoches(f)} coche${schemaCoches(f) > 1 ? 's' : ''}`
-                                    : `${count(f.id, 'qcm')} QCM · ${count(f.id, 'flashcard')} flash${isAnat ? ' · images' : ''}`;
+
+                              {rootFiches.map(renderFiche)}
+                              <DropSlot matiereId={mat.id} dossierId={null} beforeId={null} variant={rootFiches.length ? 'line' : 'zone'} label={dossiers.length ? 'Déposer ici (racine)' : 'Déposer ici'} />
+                              {rootFiches.length === 0 && dossiers.length === 0 && <div className="hint">Aucune fiche.</div>}
+
+                              {/* sous-dossiers (rangement d'affichage pur, voir fiche.dossierId) : un seul
+                                 niveau, chaque dossier repliable, jamais lus par le planning/J. */}
+                              {dossiers.map((d) => {
+                                const folderFiches = allFiches.filter((f) => f.dossierId === d.id);
+                                const isOpen = !!openDossier[d.id];
                                 return (
-                                  <div key={f.id}>
-                                    <DropSlot matiereId={mat.id} beforeId={f.id} />
-                                    <DraggableFiche id={f.id} disabled={isRen('fiche', f.id)} className={'lib-fiche' + (isSel ? ' selected' : '')}>
-                                      {isRen('fiche', f.id) ? (
-                                        <RenameInput />
-                                      ) : (
-                                        <>
-                                          <div role="button" className="lib-fiche-row" style={{ cursor: 'pointer' }}
-                                            onClick={() => { if (kind) openDoc(f); else setOpenFiche((o) => ({ ...o, [f.id]: !fo })); }}
-                                            onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }}
-                                            title={kind ? 'Clic = ouvrir le document · double-clic = renommer' : 'Clic = ouvrir · double-clic = renommer'}>
-                                            {kind
-                                              ? <Icon name={DOC_META[kind].icon} size={14} style={{ color: isSel ? 'var(--accent)' : 'var(--text-3)', flex: '0 0 auto' }} />
-                                              : <Icon name={fo ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />}
-                                            <span className="lib-fiche-title">{f.titre}</span>
-                                            {etq && <span className="lib-fiche-etq" style={{ background: etq.color }} title={`Étiquette : ${etq.label}`} onClick={(e) => openEtqMenu(e, f.id)} />}
-                                            {hasConformeExos && (
-                                              <span title="Contient des exercices conformes à la méthode des J (jalon + difficulté)" style={{ display: 'flex', flex: '0 0 auto' }}>
-                                                <Icon name="sparkle" size={13} style={{ color: 'var(--accent)' }} />
-                                              </span>
-                                            )}
-                                            {paused && <Icon name="bellOff" size={13} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} title="Rappels J en pause" />}
-                                            {!isTranscript && (
-                                              <button type="button" className="cd-ic" title="Réviser" onClick={(e) => { e.stopPropagation(); if (isSchema) { ctx.startAnatQuiz(f, { mode: 'total' }); } else { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); } }}>
-                                                <Icon name="play" size={13} />
-                                              </button>
-                                            )}
-                                            <button type="button" className="cd-ic" title="Autres actions" onClick={(e) => openFicheMenu(e, f.id)}><Icon name="more" size={15} stroke={2.6} /></button>
-                                          </div>
-                                          <div className="lib-fiche-meta">{metaLine}</div>
-                                        </>
-                                      )}
-                                      {fo && !kind && (
-                                        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                          {qById(f.id).map((x) => (
-                                            <div className="row spread" key={x.id} style={{ padding: '6px 0', borderTop: '1px solid var(--border-2)' }}>
-                                              <span style={{ fontSize: 12.5, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><Icon name={x.type === 'flashcard' ? 'cards' : x.type === 'feynman' ? 'lightbulb' : 'list'} size={12} /> {x.concept}</span>
-                                              <button className="cd-ic" title="Supprimer" onClick={() => ctx.deleteQuestion(x.id)}><Icon name="trash" size={13} /></button>
-                                            </div>
-                                          ))}
+                                  <div key={d.id} style={{ marginTop: 10 }}>
+                                    {isRen('dossier', d.id) ? (
+                                      <div className="lib-fiche" style={{ marginBottom: 6 }}>
+                                        <div className="lib-fiche-row"><Icon name={isOpen ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)' }} /><RenameInput /></div>
+                                      </div>
+                                    ) : (
+                                      <div className="lib-fiche" style={{ marginBottom: 6, background: 'var(--card-2)', cursor: 'pointer' }}
+                                        onClick={() => setOpenDossier((o) => ({ ...o, [d.id]: !isOpen }))}
+                                        onDoubleClick={(e) => { e.stopPropagation(); startRename('dossier', d.id, d.nom); }}
+                                        title="Clic = déplier/replier · double-clic = renommer">
+                                        <div className="lib-fiche-row">
+                                          <Icon name={isOpen ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />
+                                          <Icon name="folder" size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />
+                                          <span className="lib-fiche-title">{d.nom}</span>
+                                          <span className="hint" style={{ flex: '0 0 auto' }}>{folderFiches.length} fiche{folderFiches.length > 1 ? 's' : ''}</span>
+                                          <button type="button" className="cd-ic" title="Autres actions" onClick={(e) => openDossierMenu(e, d.id)}><Icon name="more" size={15} stroke={2.6} /></button>
                                         </div>
-                                      )}
-                                    </DraggableFiche>
+                                      </div>
+                                    )}
+                                    {isOpen && (
+                                      <div style={{ marginLeft: 18, paddingLeft: 10, borderLeft: '2px solid var(--border-2)' }}>
+                                        {folderFiches.map(renderFiche)}
+                                        <DropSlot matiereId={mat.id} dossierId={d.id} beforeId={null} variant={folderFiches.length ? 'line' : 'zone'} />
+                                        {folderFiches.length === 0 && <div className="hint">Dossier vide.</div>}
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })}
-                              <DropSlot matiereId={mat.id} beforeId={null} variant={fiches.length ? 'line' : 'zone'} />
-                              {fiches.length === 0 && <div className="hint">Aucune fiche.</div>}
+
+                              <button type="button" className="btn ghost sm" style={{ marginTop: 8 }} onClick={() => createDossier(mat.id)}>
+                                <Icon name="plus" size={13} /> Nouveau dossier
+                              </button>
                             </div>
                           );
                         })}
@@ -354,6 +454,25 @@ export function Bibliotheque({ ctx }) {
         const f = db.fiches.find((x) => x.id === ficheMenu.ficheId);
         return f ? <ContextMenu x={ficheMenu.x} y={ficheMenu.y} onClose={() => setFicheMenu(null)} items={ficheMenuItems(f, ficheMenu.x, ficheMenu.y)} /> : null;
       })()}
+
+      {moveMenu && (() => {
+        const f = db.fiches.find((x) => x.id === moveMenu.ficheId);
+        return f ? <ContextMenu x={moveMenu.x} y={moveMenu.y} onClose={() => setMoveMenu(null)} items={moveMenuItems(f)} /> : null;
+      })()}
+
+      {dossierMenu && (() => {
+        const d = db.dossiers.find((x) => x.id === dossierMenu.dossierId);
+        return d ? <ContextMenu x={dossierMenu.x} y={dossierMenu.y} onClose={() => setDossierMenu(null)} items={dossierMenuItems(d)} /> : null;
+      })()}
+
+      {confirmDeleteDossier && (
+        <ConfirmModal
+          title="Supprimer ce dossier ?"
+          body={<>« {confirmDeleteDossier.nom} » sera supprimé. Ses fiches ne sont PAS supprimées : elles reviennent à la racine de la matière.</>}
+          confirmLabel="Supprimer le dossier" danger
+          onConfirm={confirmDeleteDossierNow} onCancel={() => setConfirmDeleteDossier(null)}
+        />
+      )}
 
       {confirmArchive && (
         <ConfirmModal

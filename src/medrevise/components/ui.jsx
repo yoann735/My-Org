@@ -654,11 +654,12 @@ export function DateActionModal({ title, body, label = 'Nouvelle date', confirmL
    des voisins ("push") est explicitement exclue du besoin ("pas
    d'animation de poussée"). À la place : des créneaux de dépôt (`DropSlot`)
    discrets et immobiles entre chaque fiche (et un en fin de chaque
-   matière), qui s'allument en barre d'insertion (ou zone) uniquement quand
-   survolés. Les fiches voisines ne bougent jamais — seule celle en cours
-   de glissement change d'opacité, et un DragOverlay (portal interne à
+   matière/dossier), qui s'allument en barre d'insertion (ou zone) uniquement
+   quand survolés. Les fiches voisines ne bougent jamais — seule celle en
+   cours de glissement change d'opacité, et un DragOverlay (portal interne à
    dnd-kit) suit le curseur. Id draggable : "fiche:<id>". Id créneau :
-   "slot:<matiereId>:<beforeFicheId|END>".
+   "slot:<matiereId>:<dossierId|ROOT>:<beforeFicheId|END>" — dossierId=ROOT
+   = racine de la matière (voir fiche.dossierId, sous-dossiers Bibliothèque).
    ============================================================ */
 export function FicheDndProvider({ onDropAt, renderOverlay, children }) {
   const [activeId, setActiveId] = useState(null);
@@ -676,8 +677,8 @@ export function FicheDndProvider({ onDropAt, renderOverlay, children }) {
         const { active, over } = e;
         if (!over) return;
         const ficheId = stripPrefix(active.id);
-        const [, matiereId, beforeRaw] = String(over.id).split(':');
-        onDropAt({ ficheId, matiereId, beforeFicheId: beforeRaw === 'END' ? null : beforeRaw });
+        const [, matiereId, dossierRaw, beforeRaw] = String(over.id).split(':');
+        onDropAt({ ficheId, matiereId, dossierId: dossierRaw === 'ROOT' ? null : dossierRaw, beforeFicheId: beforeRaw === 'END' ? null : beforeRaw });
       }}>
       {children}
       <DragOverlay dropAnimation={null}>
@@ -700,9 +701,11 @@ export function DraggableFiche({ id, disabled, className = '', style, children }
 }
 
 /** Créneau de dépôt immobile : "line" = fine barre d'insertion entre 2 fiches,
-    "zone" = zone plus large ("déposer ici") en fin de matière / matière vide. */
-export function DropSlot({ matiereId, beforeId, variant = 'line', label = 'Déposer ici' }) {
-  const id = `slot:${matiereId}:${beforeId || 'END'}`;
+    "zone" = zone plus large ("déposer ici") en fin de matière/dossier ou bucket
+    vide. dossierId (optionnel) = sous-dossier ciblé, absent/null = racine de
+    la matière. */
+export function DropSlot({ matiereId, dossierId, beforeId, variant = 'line', label = 'Déposer ici' }) {
+  const id = `slot:${matiereId}:${dossierId || 'ROOT'}:${beforeId || 'END'}`;
   const { setNodeRef, isOver } = useDroppable({ id });
   if (variant === 'zone') {
     return <div ref={setNodeRef} className={'dnd-zone' + (isOver ? ' over' : '')}>{label}</div>;

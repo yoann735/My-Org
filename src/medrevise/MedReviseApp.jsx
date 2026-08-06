@@ -81,10 +81,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [syncState, setSyncState] = useState({ status: 'idle', at: null });
 
   const reload = useCallback(async () => {
-    const [sources, matieres, fiches, questions, anatstruct, sessionsLog, st, pr, epr] = await Promise.all([
-      getAll('sources'), getAll('matieres'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getStats(), getCoursePrompts(), getExoPrompts(),
+    const [sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, st, pr, epr] = await Promise.all([
+      getAll('sources'), getAll('matieres'), getAll('dossiers'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getStats(), getCoursePrompts(), getExoPrompts(),
     ]);
-    setDb({ sources, matieres, fiches, questions, anatstruct, sessionsLog });
+    setDb({ sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog });
     setStats(st);
     setPromptOverrides(pr);
     setExoPromptOverrides(epr);
@@ -212,6 +212,38 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const m = db.matieres.find((x) => x.id === matiereId); if (!m || !nom.trim()) return;
       await put('matieres', { ...m, nom: nom.trim() }); await reload();
     },
+    // sous-dossiers d'une matière (Bibliothèque) : pur rangement d'affichage, voir
+    // fiche.dossierId — jamais lu par sm2.js/planning.js, aucun effet sur le
+    // planning/J/révision. Même patron que addMatiere/renameMatiere/deleteMatiere,
+    // un cran plus bas.
+    addDossier: async (matiereId, nom) => {
+      const id = genId('d');
+      const siblings = db.dossiers.filter((d) => d.matiereId === matiereId);
+      await put('dossiers', { id, matiereId, nom: (nom || 'Nouveau dossier').trim(), ordre: siblings.length });
+      await reload(); return id;
+    },
+    renameDossier: async (dossierId, nom) => {
+      const d = db.dossiers.find((x) => x.id === dossierId); if (!d || !nom.trim()) return;
+      await put('dossiers', { ...d, nom: nom.trim() }); await reload();
+    },
+    // supprime le dossier SANS supprimer les fiches qu'il contient : elles
+    // reviennent à la racine de la matière (dossierId → null), ajoutées en fin des
+    // fiches déjà à la racine. putBackup avant la réassignation de masse (voir
+    // convention storage.js#putBackup) — irréversible seulement pour le dossier
+    // lui-même, jamais pour son contenu.
+    deleteDossier: async (dossierId) => {
+      const d = db.dossiers.find((x) => x.id === dossierId); if (!d) return;
+      const fiches = db.fiches.filter((f) => f.dossierId === dossierId && !f.archive);
+      if (fiches.length) {
+        await putBackup(`pre-delete-dossier-${dossierId}-${Date.now()}`, { dossier: d, fiches });
+        const rootSiblings = db.fiches
+          .filter((f) => f.matiereId === d.matiereId && !f.dossierId && !f.archive)
+          .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+        await putMany('fiches', fiches.map((f, i) => ({ ...f, dossierId: null, ordre: rootSiblings.length + i })));
+      }
+      await remove('dossiers', dossierId);
+      await reload();
+    },
     setMatiereArchived: async (matiereId, on) => {
       const m = db.matieres.find((x) => x.id === matiereId); if (!m) return;
       await put('matieres', { ...m, archive: on }); await reload();
@@ -260,22 +292,28 @@ export default function MedReviseApp({ themeApi, goHub }) {
           uncatId = genId('m');
           await put('matieres', { id: uncatId, sourceId: m.sourceId, nom: 'À classer', couleur: '#9AA0AE', icon: 'box', coef: 3, uncategorized: true, archive: false });
         }
-        await putMany('fiches', fiches.map((f) => ({ ...f, matiereId: uncatId })));
+        // dossierId réinitialisé : un dossier appartient à SA matière d'origine
+        // (voir fiche.dossierId) — « À classer » est un bac plat, pas de dossiers.
+        await putMany('fiches', fiches.map((f) => ({ ...f, matiereId: uncatId, dossierId: null })));
       }
       await put('matieres', { ...m, archive: true });
       await reload();
     },
-    // A8 : réordonne / déplace une fiche (drag & drop dans la Bibliothèque).
-    // beforeFicheId=null → ajoutée en fin de la matière cible.
-    moveFicheTo: async (ficheId, matiereId, beforeFicheId) => {
+    // A8 : réordonne / déplace une fiche (drag & drop, ou menu « Déplacer vers »,
+    // dans la Bibliothèque). beforeFicheId=null → ajoutée en fin du bucket cible.
+    // dossierId (optionnel) : sous-dossier cible au sein de la matière — null/
+    // absent = racine de la matière. Les frères/sœurs pris en compte pour
+    // l'ordre sont scopés au MÊME bucket (matiereId + dossierId), le dossier
+    // reste un pur rangement d'affichage (voir fiche.dossierId, storage.js).
+    moveFicheTo: async (ficheId, matiereId, beforeFicheId, dossierId = null) => {
       const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
       const siblings = db.fiches
-        .filter((x) => x.matiereId === matiereId && x.id !== ficheId && !x.archive)
+        .filter((x) => x.matiereId === matiereId && (x.dossierId || null) === (dossierId || null) && x.id !== ficheId && !x.archive)
         .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
       let at = siblings.length;
       if (beforeFicheId) { const i = siblings.findIndex((x) => x.id === beforeFicheId); if (i >= 0) at = i; }
       const ordered = [...siblings.slice(0, at), f, ...siblings.slice(at)];
-      await putMany('fiches', ordered.map((x, i) => ({ ...x, matiereId, ordre: i })));
+      await putMany('fiches', ordered.map((x, i) => ({ ...x, matiereId, dossierId: dossierId || null, ordre: i })));
       await reload();
     },
     // B1 : rattache (ou détache, pdfId=null) un PDF à une fiche existante.

@@ -13,6 +13,7 @@ const store = (name) => createStore('medrevise-' + name, 'v1');
 const S = {
   sources: store('sources'),
   matieres: store('matieres'),
+  dossiers: store('dossiers'), // sous-dossiers d'affichage à l'intérieur d'une matière (voir fiche.dossierId) — organisation pure, jamais lu par sm2.js/planning.js
   fiches: store('fiches'),
   questions: store('questions'),
   structures: store('structures'),
@@ -36,7 +37,7 @@ const S = {
 // `sessionsLog` est syncable pour la même raison que `questions`/`stats` : la
 // tendance affichée en fin de série doit refléter l'activité desktop ET mobile,
 // pas seulement cet appareil.
-const SYNCABLE = ['sources', 'matieres', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts'];
+const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts'];
 
 export function genId(prefix = 'x') {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -295,10 +296,11 @@ export async function purgeFiche(ficheId) {
 }
 
 export async function purgeMatiere(matiereId) {
-  const [fiches, anatstruct] = await Promise.all([getAll('fiches'), getAll('anatstruct')]);
+  const [fiches, anatstruct, dossiers] = await Promise.all([getAll('fiches'), getAll('anatstruct'), getAll('dossiers')]);
   await Promise.all([
     ...(fiches || []).filter((f) => f.matiereId === matiereId).map((f) => purgeFiche(f.id)),
     ...(anatstruct || []).filter((s) => s.matiereId === matiereId).map((s) => remove('anatstruct', s.id)),
+    ...(dossiers || []).filter((d) => d.matiereId === matiereId).map((d) => remove('dossiers', d.id)),
   ]);
   await remove('matieres', matiereId);
 }
