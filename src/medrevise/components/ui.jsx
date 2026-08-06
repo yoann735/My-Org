@@ -713,6 +713,48 @@ export function DropSlot({ matiereId, dossierId, beforeId, variant = 'line', lab
   return <div ref={setNodeRef} className={'dnd-slot' + (isOver ? ' over' : '')} />;
 }
 
+/* ---- sous-dossier d'une matière (rangement d'affichage pur, voir fiche.dossierId,
+   storage.js) — ligne repliable partagée par Bibliotheque.jsx ET Reviser.jsx : les
+   deux écrans doivent afficher un dossier de façon RIGOUREUSEMENT identique (mêmes
+   classes/tailles/espacements), donc UN SEUL rendu ici plutôt que deux copies qui
+   pourraient diverger. `renameInput` = élément déjà monté (le RenameInput propre à
+   chaque page, avec son propre draft/commit) inséré tel quel quand `isRenaming`.
+   `onMenu` = handler du bouton « … » (ouvre le petit menu Renommer/Supprimer,
+   propre à chaque page — voir dossierMenuItems). */
+export function DossierRow({ dossier, isOpen, fichesCount, isRenaming, renameInput, onToggle, onRename, onMenu }) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      {isRenaming ? (
+        <div className="lib-fiche" style={{ marginBottom: 6 }}>
+          <div className="lib-fiche-row"><Icon name={isOpen ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)' }} />{renameInput}</div>
+        </div>
+      ) : (
+        <div className="lib-fiche" style={{ marginBottom: 6, background: 'var(--card-2)', cursor: 'pointer' }}
+          onClick={onToggle}
+          onDoubleClick={(e) => { e.stopPropagation(); onRename(); }}
+          title="Clic = déplier/replier · double-clic = renommer">
+          <div className="lib-fiche-row">
+            <Icon name={isOpen ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />
+            <Icon name="folder" size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />
+            <span className="lib-fiche-title">{dossier.nom}</span>
+            <span className="hint" style={{ flex: '0 0 auto' }}>{fichesCount} fiche{fichesCount > 1 ? 's' : ''}</span>
+            <button type="button" className="cd-ic" title="Autres actions" onClick={onMenu}><Icon name="more" size={15} stroke={2.6} /></button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** bouton « + Nouveau dossier », même style partout (voir DossierRow). */
+export function DossierAddButton({ onClick }) {
+  return (
+    <button type="button" className="btn ghost sm" style={{ marginTop: 8 }} onClick={onClick}>
+      <Icon name="plus" size={13} /> Nouveau dossier
+    </button>
+  );
+}
+
 /* ---- destination picker (Cours + Matière) with inline creation ----
    New cours / matière are created from a typed name (placeholder, no
    default label) — shared by both import flows. */

@@ -5,7 +5,7 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, TodaySeriesCard, JBadge, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
+import { EdTop, TodaySeriesCard, JBadge, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
 import {
   index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isExoConforme, isFicheScheduled, todayPlan, overdueByFiche,
   qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, unstartedExosFor, carnetV1Questions, carnetV2Questions,
@@ -34,14 +34,19 @@ export function Reviser({ ctx }) {
   const [openSrc, setOpenSrc] = useState(() => Object.fromEntries(db.sources.map((s) => [s.id, true])));
   const [renaming, setRenaming] = useState(null); // { type: 'source'|'matiere'|'dossier'|'fiche', id }
   const [draft, setDraft] = useState('');
-  const [ctxMenu, setCtxMenu] = useState(null); // { type: 'source'|'matiere'|'dossier'|'fiche', id, x, y }
+  const [ctxMenu, setCtxMenu] = useState(null); // { type: 'source'|'matiere'|'fiche', id, x, y }
   const [confirmDel, setConfirmDel] = useState(null); // { type, id, nom, fichesCount }
   const [showAddItem, setShowAddItem] = useState(false);
   // sous-dossiers d'une matière (même store/`fiche.dossierId` que Bibliotheque.jsx —
-  // pur rangement d'affichage, voir MedReviseApp.jsx/storage.js) : openDossier =
-  // déplié/replié (mémoire seulement, comme openSrc) ; moveMenu = sous-menu
-  // « Déplacer vers » ouvert depuis le menu contextuel d'une fiche.
+  // pur rangement d'affichage, voir MedReviseApp.jsx/storage.js), rendu via le MÊME
+  // composant DossierRow (ui.jsx) que la Bibliothèque — visuellement identique par
+  // construction. openDossier = déplié/replié (mémoire seulement, comme openSrc) ;
+  // dossierMenu = menu « … » (Renommer/Supprimer) d'un dossier, MÊME mécanique que
+  // Bibliotheque.jsx (pas le menu contextuel générique matière/source/fiche
+  // ci-dessus, qui reste au clic droit) ; moveMenu = sous-menu « Déplacer vers »
+  // ouvert depuis le menu contextuel d'une fiche.
   const [openDossier, setOpenDossier] = useState({});
+  const [dossierMenu, setDossierMenu] = useState(null); // { x, y, dossierId }
   const [moveMenu, setMoveMenu] = useState(null); // { x, y, ficheId }
   const [shiftStart, setShiftStart] = useState(null); // { type: 'source'|'fiche', id, nom }
   const [shiftExosStart, setShiftExosStart] = useState(null); // { type: 'source'|'fiche', id, nom } — même chose, pour les exercices
@@ -274,6 +279,26 @@ export function Reviser({ ctx }) {
     setOpenDossier((o) => ({ ...o, [id]: true }));
     startRename('dossier', id, 'Nouveau dossier');
   };
+  // menu « … » d'un dossier (Renommer/Supprimer), MÊME mécanique que
+  // Bibliotheque.jsx — ouvert par DossierRow, pas par le clic droit générique.
+  const openDossierMenu = (e, dossierId) => {
+    e.stopPropagation();
+    setDossierMenu({ x: Math.min(e.clientX, window.innerWidth - 200), y: Math.min(e.clientY, window.innerHeight - 120), dossierId });
+  };
+  const dossierMenuItems = (d) => [
+    { label: 'Renommer', icon: 'edit', onClick: () => startRename('dossier', d.id, d.nom) },
+    { label: 'Supprimer le dossier', icon: 'trash', danger: true, onClick: () => askDeleteDossier(d.id) },
+  ];
+  // input de renommage d'un dossier — MÊME rendu que le RenameInput de
+  // Bibliotheque.jsx (`.srcmgr-input`, contrôlé) ; les autres entités (source/
+  // matière/fiche) gardent leur input `.tree-rename` propre à Réviser, seul le
+  // dossier doit être visuellement identique aux deux écrans.
+  const DossierRenameInput = () => (
+    <input className="srcmgr-input" autoFocus value={draft} onClick={(e) => e.stopPropagation()}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
+      onBlur={commitRename} />
+  );
   // items du sous-menu « Déplacer vers » (ouvert depuis le menu contextuel d'une
   // fiche) : racine de la matière + chaque dossier de CETTE matière — même liste
   // que Bibliotheque.jsx, même ctx.moveFicheTo.
@@ -418,43 +443,31 @@ export function Reviser({ ctx }) {
                         {rootFiches.map((f) => renderTreeFiche(mat, f))}
                         <DropSlot matiereId={mat.id} dossierId={null} beforeId={null} variant={rootFiches.length ? 'line' : 'zone'} label={dossiers.length ? 'Déposer ici (racine)' : 'Déposer ici'} />
 
-                        {/* sous-dossiers (même store/fiche.dossierId que Bibliotheque.jsx) : un
-                           seul niveau, repliable, sans impact sur le planning/J/révision. */}
+                        {/* sous-dossiers (même store/fiche.dossierId que Bibliotheque.jsx), rendu
+                           via le MÊME composant DossierRow (ui.jsx) — identique à la Bibliothèque
+                           par construction, un seul niveau, sans impact sur le planning/J/révision. */}
                         {dossiers.map((d) => {
                           const folderFiches = allFiches.filter((f) => f.dossierId === d.id);
                           const isOpen = !!openDossier[d.id];
                           return (
                             <div key={d.id}>
-                              <div className="tree-cat-row" onContextMenu={(e) => openCtxMenu(e, 'dossier', d.id)}
-                                onTouchStart={(e) => startPress(e, 'dossier', d.id)} onTouchEnd={cancelPress} onTouchMove={cancelPress} onTouchCancel={cancelPress}
-                                title="Clic = déplier/replier · clic droit (ou appui long) : renommer / supprimer">
-                                {isRen('dossier', d.id) ? (
-                                  <input className="tree-rename" style={{ flex: 1 }} autoFocus defaultValue={d.nom} onFocus={(e) => e.target.select()}
-                                    onChange={(e) => setDraft(e.target.value)}
-                                    onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
-                                    onBlur={commitRename} />
-                                ) : (
-                                  <button type="button" className="tree-cat" onClick={() => setOpenDossier((o) => ({ ...o, [d.id]: !isOpen }))}>
-                                    <Icon name={isOpen ? 'chevD' : 'chevR'} size={13} style={{ color: 'var(--text-3)' }} />
-                                    <Icon name="folder" size={12} style={{ color: 'var(--text-3)' }} />
-                                    <span className="tcat-label" style={{ flex: 1 }}>{d.nom}</span>
-                                    <span className="hint" style={{ fontSize: 11, fontWeight: 400 }}>{folderFiches.length}</span>
-                                  </button>
-                                )}
-                              </div>
+                              <DossierRow dossier={d} isOpen={isOpen} fichesCount={folderFiches.length}
+                                isRenaming={isRen('dossier', d.id)} renameInput={<DossierRenameInput />}
+                                onToggle={() => setOpenDossier((o) => ({ ...o, [d.id]: !isOpen }))}
+                                onRename={() => startRename('dossier', d.id, d.nom)}
+                                onMenu={(e) => openDossierMenu(e, d.id)} />
                               {isOpen && (
-                                <div style={{ marginLeft: 10, paddingLeft: 8, borderLeft: '2px solid var(--border-2)' }}>
+                                <div style={{ marginLeft: 18, paddingLeft: 10, borderLeft: '2px solid var(--border-2)' }}>
                                   {folderFiches.map((f) => renderTreeFiche(mat, f))}
                                   <DropSlot matiereId={mat.id} dossierId={d.id} beforeId={null} variant={folderFiches.length ? 'line' : 'zone'} />
+                                  {folderFiches.length === 0 && <div className="hint">Dossier vide.</div>}
                                 </div>
                               )}
                             </div>
                           );
                         })}
 
-                        <button type="button" className="tree-add" style={{ marginLeft: 8, marginTop: 4 }} onClick={() => createDossier(mat.id)}>
-                          <Icon name="plus" size={11} /> Nouveau dossier
-                        </button>
+                        <DossierAddButton onClick={() => createDossier(mat.id)} />
                       </div>
                     );
                   })}
@@ -591,7 +604,6 @@ export function Reviser({ ctx }) {
             label: 'Renommer', icon: 'edit', onClick: () => {
               if (ctxMenu.type === 'source') { const s = db.sources.find((x) => x.id === ctxMenu.id); if (s) startRename('source', ctxMenu.id, s.nom); }
               else if (ctxMenu.type === 'matiere') { const m = db.matieres.find((x) => x.id === ctxMenu.id); if (m) startRename('matiere', ctxMenu.id, m.nom); }
-              else if (ctxMenu.type === 'dossier') { const d = db.dossiers.find((x) => x.id === ctxMenu.id); if (d) startRename('dossier', ctxMenu.id, d.nom); }
               else { const f = db.fiches.find((x) => x.id === ctxMenu.id); if (f) startRename('fiche', ctxMenu.id, f.titre); }
             },
           },
@@ -640,7 +652,6 @@ export function Reviser({ ctx }) {
             label: 'Supprimer', icon: 'trash', danger: true, onClick: () => {
               if (ctxMenu.type === 'source') askDeleteSource(ctxMenu.id);
               else if (ctxMenu.type === 'matiere') askDeleteMatiere(ctxMenu.id);
-              else if (ctxMenu.type === 'dossier') askDeleteDossier(ctxMenu.id);
               else askDeleteFiche(ctxMenu.id);
             },
           },
@@ -650,6 +661,11 @@ export function Reviser({ ctx }) {
       {moveMenu && (() => {
         const f = db.fiches.find((x) => x.id === moveMenu.ficheId);
         return f ? <ContextMenu x={moveMenu.x} y={moveMenu.y} onClose={() => setMoveMenu(null)} items={moveMenuItems(f)} /> : null;
+      })()}
+
+      {dossierMenu && (() => {
+        const d = db.dossiers.find((x) => x.id === dossierMenu.dossierId);
+        return d ? <ContextMenu x={dossierMenu.x} y={dossierMenu.y} onClose={() => setDossierMenu(null)} items={dossierMenuItems(d)} /> : null;
       })()}
 
       {showAddItem && primary && (

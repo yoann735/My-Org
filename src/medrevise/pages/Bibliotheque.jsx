@@ -10,7 +10,7 @@
    ============================================================ */
 import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
+import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
 import { index, isExoConforme } from '../lib/planning.js';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
@@ -380,25 +380,12 @@ export function Bibliotheque({ ctx }) {
                                 const folderFiches = allFiches.filter((f) => f.dossierId === d.id);
                                 const isOpen = !!openDossier[d.id];
                                 return (
-                                  <div key={d.id} style={{ marginTop: 10 }}>
-                                    {isRen('dossier', d.id) ? (
-                                      <div className="lib-fiche" style={{ marginBottom: 6 }}>
-                                        <div className="lib-fiche-row"><Icon name={isOpen ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)' }} /><RenameInput /></div>
-                                      </div>
-                                    ) : (
-                                      <div className="lib-fiche" style={{ marginBottom: 6, background: 'var(--card-2)', cursor: 'pointer' }}
-                                        onClick={() => setOpenDossier((o) => ({ ...o, [d.id]: !isOpen }))}
-                                        onDoubleClick={(e) => { e.stopPropagation(); startRename('dossier', d.id, d.nom); }}
-                                        title="Clic = déplier/replier · double-clic = renommer">
-                                        <div className="lib-fiche-row">
-                                          <Icon name={isOpen ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />
-                                          <Icon name="folder" size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />
-                                          <span className="lib-fiche-title">{d.nom}</span>
-                                          <span className="hint" style={{ flex: '0 0 auto' }}>{folderFiches.length} fiche{folderFiches.length > 1 ? 's' : ''}</span>
-                                          <button type="button" className="cd-ic" title="Autres actions" onClick={(e) => openDossierMenu(e, d.id)}><Icon name="more" size={15} stroke={2.6} /></button>
-                                        </div>
-                                      </div>
-                                    )}
+                                  <div key={d.id}>
+                                    <DossierRow dossier={d} isOpen={isOpen} fichesCount={folderFiches.length}
+                                      isRenaming={isRen('dossier', d.id)} renameInput={<RenameInput />}
+                                      onToggle={() => setOpenDossier((o) => ({ ...o, [d.id]: !isOpen }))}
+                                      onRename={() => startRename('dossier', d.id, d.nom)}
+                                      onMenu={(e) => openDossierMenu(e, d.id)} />
                                     {isOpen && (
                                       <div style={{ marginLeft: 18, paddingLeft: 10, borderLeft: '2px solid var(--border-2)' }}>
                                         {folderFiches.map(renderFiche)}
@@ -410,9 +397,7 @@ export function Bibliotheque({ ctx }) {
                                 );
                               })}
 
-                              <button type="button" className="btn ghost sm" style={{ marginTop: 8 }} onClick={() => createDossier(mat.id)}>
-                                <Icon name="plus" size={13} /> Nouveau dossier
-                              </button>
+                              <DossierAddButton onClick={() => createDossier(mat.id)} />
                             </div>
                           );
                         })}
