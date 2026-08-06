@@ -294,7 +294,7 @@
 .tree-check .tc-dash { width: 8px; height: 2px; border-radius: 1px; background: var(--accent); display: block; }
 .tree-course { display: flex; align-items: center; gap: 6px; margin: 1px 0 1px 7px; border-radius: 8px; }
 .tree-course.on { background: var(--accent-soft); }
-.tree-course-main { flex: 1 1 auto; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: none; background: none; border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 12.8px; color: var(--text-2); min-width: 0; transition: color .12s; }
+.tree-course-main { flex: 1 1 auto; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: none; background: none; border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 14px; color: var(--text-2); min-width: 0; transition: color .12s; }
 .tree-course-main:hover { color: var(--text); }
 .tree-course.on .tree-course-main { color: var(--text); font-weight: 600; }
 .tree-course .tc-name { min-width: 0; flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -683,7 +683,7 @@
 .coefctl .cc-reset:hover { opacity: 1; color: var(--text); }
 
 /* ---- renommage inline d'une fiche ---- */
-.tree-rename { flex: 1 1 auto; min-width: 0; font-family: inherit; font-size: 12.8px; font-weight: 600; color: var(--text); background: var(--card); border: 1.5px solid var(--accent); border-radius: 7px; padding: 5px 8px; outline: none; margin: 1px 0; }
+.tree-rename { flex: 1 1 auto; min-width: 0; font-family: inherit; font-size: 14px; font-weight: 600; color: var(--text); background: var(--card); border: 1.5px solid var(--accent); border-radius: 7px; padding: 5px 8px; outline: none; margin: 1px 0; }
 
 /* ---- toggle source discret (cloche) ---- */
 .src-mute { position: relative; width: 26px; height: 26px; border-radius: 8px; border: none; background: transparent; color: var(--text-3); display: grid; place-items: center; cursor: pointer; flex: 0 0 auto; opacity: .5; transition: opacity .14s, background .12s, color .12s; }
@@ -700,7 +700,7 @@
 .tsrc-name { font-size: 12.5px; font-weight: 800; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-src.off .tree-src-main { opacity: .5; }
 .tree-src .tree-group { margin-left: 8px; }
-.tree-cat-row .tree-cat .tcat-label { font-weight: 700; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-cat-row .tree-cat .tcat-label { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- toggle source (rappels J) ---- */
 .src-toggle { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; }
