@@ -32,11 +32,17 @@ export function Reviser({ ctx }) {
   const ix = useMemo(() => index(db), [db]);
   const [selIds, setSelIds] = useState(() => (ctx.focusFiche ? [ctx.focusFiche] : (db.fiches[0] ? [db.fiches[0].id] : [])));
   const [openSrc, setOpenSrc] = useState(() => Object.fromEntries(db.sources.map((s) => [s.id, true])));
-  const [renaming, setRenaming] = useState(null); // { type: 'source'|'matiere'|'fiche', id }
+  const [renaming, setRenaming] = useState(null); // { type: 'source'|'matiere'|'dossier'|'fiche', id }
   const [draft, setDraft] = useState('');
-  const [ctxMenu, setCtxMenu] = useState(null); // { type: 'source'|'matiere', id, x, y }
+  const [ctxMenu, setCtxMenu] = useState(null); // { type: 'source'|'matiere'|'dossier'|'fiche', id, x, y }
   const [confirmDel, setConfirmDel] = useState(null); // { type, id, nom, fichesCount }
   const [showAddItem, setShowAddItem] = useState(false);
+  // sous-dossiers d'une matière (même store/`fiche.dossierId` que Bibliotheque.jsx —
+  // pur rangement d'affichage, voir MedReviseApp.jsx/storage.js) : openDossier =
+  // déplié/replié (mémoire seulement, comme openSrc) ; moveMenu = sous-menu
+  // « Déplacer vers » ouvert depuis le menu contextuel d'une fiche.
+  const [openDossier, setOpenDossier] = useState({});
+  const [moveMenu, setMoveMenu] = useState(null); // { x, y, ficheId }
   const [shiftStart, setShiftStart] = useState(null); // { type: 'source'|'fiche', id, nom }
   const [shiftExosStart, setShiftExosStart] = useState(null); // { type: 'source'|'fiche', id, nom } — même chose, pour les exercices
 
@@ -59,6 +65,9 @@ export function Reviser({ ctx }) {
   const rattraperCollapsed = (ctx.stats && ctx.stats.rattraperCollapsedReviser) !== false;
   const fichesOf = (matId) => db.fiches.filter((f) => f.matiereId === matId && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
   const matieresOf = (srcId) => db.matieres.filter((m) => m.sourceId === srcId && !m.archive);
+  // sous-dossiers d'une matière — même store que Bibliotheque.jsx (aucune donnée
+  // propre à Reviser, juste une autre vue du même rangement).
+  const dossiersOf = (matId) => db.dossiers.filter((d) => d.matiereId === matId).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
   // repérage « d'un coup d'œil » des schémas d'anatomie dans l'arbre (point E).
   const matHasSchema = (matId) => fichesOf(matId).some((f) => f.type === 'anat_schema');
   const srcHasSchema = (srcId) => matieresOf(srcId).some((m) => matHasSchema(m.id));
@@ -161,6 +170,7 @@ export function Reviser({ ctx }) {
     if (renaming.type === 'fiche') ctx.renameFiche(renaming.id, draft);
     else if (renaming.type === 'matiere') ctx.renameMatiere(renaming.id, draft);
     else if (renaming.type === 'source') ctx.renameSource(renaming.id, draft);
+    else if (renaming.type === 'dossier') ctx.renameDossier(renaming.id, draft);
     setRenaming(null);
   };
 
@@ -185,6 +195,10 @@ export function Reviser({ ctx }) {
   const askDeleteSource = (id) => { const s = db.sources.find((x) => x.id === id); if (s) setConfirmDel({ type: 'source', id, nom: s.nom }); };
   const askDeleteMatiere = (id) => { const m = db.matieres.find((x) => x.id === id); if (m) setConfirmDel({ type: 'matiere', id, nom: matiereMeta(m).label, fichesCount: fichesOf(id).length }); };
   const askDeleteFiche = (id) => { const f = db.fiches.find((x) => x.id === id); if (f) setConfirmDel({ type: 'fiche', id, nom: f.titre }); };
+  // suppression d'un dossier (même sémantique que Bibliotheque.jsx) : les fiches
+  // contenues ne sont PAS supprimées, elles reviennent à la racine de la matière
+  // (ctx.deleteDossier — putBackup avant la réassignation de masse).
+  const askDeleteDossier = (id) => { const d = db.dossiers.find((x) => x.id === id); if (d) setConfirmDel({ type: 'dossier', id, nom: d.nom, fichesCount: db.fiches.filter((f) => f.dossierId === id && !f.archive).length }); };
   // suppression d'exercice(s) : PAS un archivage (contrairement à source/matière/fiche
   // ci-dessus) — canal durable ctx.deleteQuestion/deleteAllExercices (remove() → vrai
   // tombstone propagé par l'outbox), donc bien irréversible tout de suite.
@@ -194,6 +208,7 @@ export function Reviser({ ctx }) {
     if (!confirmDel) return;
     if (confirmDel.type === 'source') await ctx.setSourceArchived(confirmDel.id, true);
     else if (confirmDel.type === 'matiere') await ctx.deleteMatiere(confirmDel.id);
+    else if (confirmDel.type === 'dossier') await ctx.deleteDossier(confirmDel.id);
     else if (confirmDel.type === 'fiche') await ctx.setFicheArchived(confirmDel.id, true);
     else if (confirmDel.type === 'exercice') await ctx.deleteQuestion(confirmDel.id);
     else if (confirmDel.type === 'exercices-all') await ctx.deleteAllExercices(confirmDel.id);
@@ -241,14 +256,83 @@ export function Reviser({ ctx }) {
   };
 
   // BUG4 : drag & drop des fiches vers une autre matière/cours, ici aussi via @dnd-kit.
-  const onDropAt = ({ ficheId, matiereId, beforeFicheId }) => {
+  // dossierId (depuis l'id de DropSlot survolé, voir ui.jsx) : null = racine de
+  // la matière cible — même mécanique que Bibliotheque.jsx (même ctx.moveFicheTo).
+  const onDropAt = ({ ficheId, matiereId, dossierId, beforeFicheId }) => {
     if (beforeFicheId === ficheId) return;
-    ctx.moveFicheTo(ficheId, matiereId, beforeFicheId);
+    ctx.moveFicheTo(ficheId, matiereId, beforeFicheId, dossierId || null);
   };
   const renderFicheOverlay = (ficheId) => {
     const f = db.fiches.find((x) => x.id === ficheId);
     if (!f) return null;
     return <div className="dnd-overlay-card tree-course on" style={{ padding: '9px 14px' }}><span className="tc-name">{f.titre}</span></div>;
+  };
+  // création d'un dossier : créé immédiatement (nom par défaut) puis bascule tout
+  // de suite en renommage — même geste que Bibliotheque.jsx.
+  const createDossier = async (matiereId) => {
+    const id = await ctx.addDossier(matiereId, 'Nouveau dossier');
+    setOpenDossier((o) => ({ ...o, [id]: true }));
+    startRename('dossier', id, 'Nouveau dossier');
+  };
+  // items du sous-menu « Déplacer vers » (ouvert depuis le menu contextuel d'une
+  // fiche) : racine de la matière + chaque dossier de CETTE matière — même liste
+  // que Bibliotheque.jsx, même ctx.moveFicheTo.
+  const moveMenuItems = (f) => {
+    const mat = db.matieres.find((x) => x.id === f.matiereId);
+    const dossiers = dossiersOf(f.matiereId);
+    const items = [{
+      label: <span style={{ fontWeight: !f.dossierId ? 700 : 500 }}>Racine de {mat ? matiereMeta(mat).label : 'la matière'}{!f.dossierId ? ' ✓' : ''}</span>,
+      onClick: () => ctx.moveFicheTo(f.id, f.matiereId, null, null),
+    }];
+    dossiers.forEach((d) => items.push({
+      label: <span style={{ fontWeight: f.dossierId === d.id ? 700 : 500 }}><Icon name="folder" size={12} /> {d.nom}{f.dossierId === d.id ? ' ✓' : ''}</span>,
+      onClick: () => ctx.moveFicheTo(f.id, f.matiereId, null, d.id),
+    }));
+    return items;
+  };
+  // ligne d'une fiche dans l'arbre (DropSlot + DraggableFiche) — extrait en
+  // fonction pour être identique à la racine de la matière ET dans un dossier
+  // (même patron que Bibliotheque.jsx#renderFiche) : le bucket se déduit de
+  // f.dossierId, jamais passé à part.
+  const renderTreeFiche = (mat, f) => {
+    const sel = selIds.includes(f.id);
+    const cdt = dueCountFiche(f.id);
+    const ren = isRen('fiche', f.id);
+    // même détection que Bibliotheque.jsx (isExoConforme, planning.js) —
+    // repère d'un coup d'œil les cours qui ont des exos issus du prompt
+    // "pratique méthode J", ici aussi dans l'arbre de Réviser.
+    const hasConformeExos = qOfFiche(f.id).some((x) => x.type === 'exercice' && isExoConforme(x));
+    return (
+      <div key={f.id} data-fiche-row={f.id}>
+        <DropSlot matiereId={mat.id} dossierId={f.dossierId || null} beforeId={f.id} />
+        <DraggableFiche id={f.id} disabled={ren}>
+          {ren ? (
+            <div className="tree-course on">
+              <span className="tree-check" style={{ visibility: 'hidden' }} />
+              <input className="tree-rename" autoFocus defaultValue={f.titre} onFocus={(e) => e.target.select()}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
+                onBlur={commitRename} />
+            </div>
+          ) : (
+            <div className={'tree-course' + (sel ? ' on' : '')}
+              onContextMenu={(e) => openCtxMenu(e, 'fiche', f.id)}
+              onTouchStart={(e) => startPress(e, 'fiche', f.id)} onTouchEnd={cancelPress} onTouchMove={cancelPress} onTouchCancel={cancelPress}>
+              <button className={'tree-check' + (sel ? ' on' : '')} onClick={() => toggle(f.id)} title="Cocher / décocher">{sel ? <Icon name="check" size={11} stroke={3} /> : null}</button>
+              <button className="tree-course-main" onClick={() => selectOnly(f.id)} onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }} title="Clic = sélectionner · double-clic = renommer">
+                <span className="tc-name">{f.titre}</span>
+                {f.type === 'anat_schema' && <span title="Schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex', marginLeft: 4 }}><Icon name="image" size={12} /></span>}
+                <EtiquetteDot value={f.etiquette} style={{ marginLeft: 4 }} />
+                {hasConformeExos && <span title="Contient des exercices conformes à la méthode des J (jalon + difficulté)" style={{ display: 'inline-flex', marginLeft: 4 }}><Icon name="sparkle" size={12} style={{ color: 'var(--accent)' }} /></span>}
+                {overdueFicheIds.has(f.id) && <span title="En retard — à rattraper" style={{ color: 'var(--crit)', display: 'inline-flex', marginLeft: 4 }}><Icon name="alert" size={12} /></span>}
+                {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
+              </button>
+              <CoefControl value={effectiveCoef(db, f, ix)} inherited={f.coef == null} onSet={(v) => ctx.setFicheCoef(f.id, v)} onReset={() => ctx.setFicheCoef(f.id, null)} />
+            </div>
+          )}
+        </DraggableFiche>
+      </div>
+    );
   };
 
   return (
@@ -310,7 +394,9 @@ export function Reviser({ ctx }) {
                     <BellButton on={on} onToggle={() => ctx.setSourceRappels(src.id, !on)} />
                   </div>
                   {openS && mats.map((mat) => {
-                    const fiches = fichesOf(mat.id);
+                    const allFiches = fichesOf(mat.id);
+                    const rootFiches = allFiches.filter((f) => !f.dossierId);
+                    const dossiers = dossiersOf(mat.id);
                     const mm = matiereMeta(mat);
                     return (
                       <div className="tree-group" key={mat.id}>
@@ -328,47 +414,47 @@ export function Reviser({ ctx }) {
                           )}
                           <CoefControl value={mat.coef ?? 3} inherited={false} onSet={(v) => ctx.setMatiereCoef(mat.id, v)} />
                         </div>
-                        {fiches.map((f) => {
-                          const sel = selIds.includes(f.id);
-                          const cdt = dueCountFiche(f.id);
-                          const ren = isRen('fiche', f.id);
-                          // même détection que Bibliotheque.jsx (isExoConforme, planning.js) —
-                          // repère d'un coup d'œil les cours qui ont des exos issus du prompt
-                          // "pratique méthode J", ici aussi dans l'arbre de Réviser.
-                          const hasConformeExos = qOfFiche(f.id).some((x) => x.type === 'exercice' && isExoConforme(x));
+
+                        {rootFiches.map((f) => renderTreeFiche(mat, f))}
+                        <DropSlot matiereId={mat.id} dossierId={null} beforeId={null} variant={rootFiches.length ? 'line' : 'zone'} label={dossiers.length ? 'Déposer ici (racine)' : 'Déposer ici'} />
+
+                        {/* sous-dossiers (même store/fiche.dossierId que Bibliotheque.jsx) : un
+                           seul niveau, repliable, sans impact sur le planning/J/révision. */}
+                        {dossiers.map((d) => {
+                          const folderFiches = allFiches.filter((f) => f.dossierId === d.id);
+                          const isOpen = !!openDossier[d.id];
                           return (
-                            <div key={f.id} data-fiche-row={f.id}>
-                              <DropSlot matiereId={mat.id} beforeId={f.id} />
-                              <DraggableFiche id={f.id} disabled={ren}>
-                                {ren ? (
-                                  <div className="tree-course on">
-                                    <span className="tree-check" style={{ visibility: 'hidden' }} />
-                                    <input className="tree-rename" autoFocus defaultValue={f.titre} onFocus={(e) => e.target.select()}
-                                      onChange={(e) => setDraft(e.target.value)}
-                                      onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
-                                      onBlur={commitRename} />
-                                  </div>
+                            <div key={d.id}>
+                              <div className="tree-cat-row" onContextMenu={(e) => openCtxMenu(e, 'dossier', d.id)}
+                                onTouchStart={(e) => startPress(e, 'dossier', d.id)} onTouchEnd={cancelPress} onTouchMove={cancelPress} onTouchCancel={cancelPress}
+                                title="Clic = déplier/replier · clic droit (ou appui long) : renommer / supprimer">
+                                {isRen('dossier', d.id) ? (
+                                  <input className="tree-rename" style={{ flex: 1 }} autoFocus defaultValue={d.nom} onFocus={(e) => e.target.select()}
+                                    onChange={(e) => setDraft(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
+                                    onBlur={commitRename} />
                                 ) : (
-                                  <div className={'tree-course' + (sel ? ' on' : '')}
-                                    onContextMenu={(e) => openCtxMenu(e, 'fiche', f.id)}
-                                    onTouchStart={(e) => startPress(e, 'fiche', f.id)} onTouchEnd={cancelPress} onTouchMove={cancelPress} onTouchCancel={cancelPress}>
-                                    <button className={'tree-check' + (sel ? ' on' : '')} onClick={() => toggle(f.id)} title="Cocher / décocher">{sel ? <Icon name="check" size={11} stroke={3} /> : null}</button>
-                                    <button className="tree-course-main" onClick={() => selectOnly(f.id)} onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }} title="Clic = sélectionner · double-clic = renommer">
-                                      <span className="tc-name">{f.titre}</span>
-                                      {f.type === 'anat_schema' && <span title="Schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex', marginLeft: 4 }}><Icon name="image" size={12} /></span>}
-                                      <EtiquetteDot value={f.etiquette} style={{ marginLeft: 4 }} />
-                                      {hasConformeExos && <span title="Contient des exercices conformes à la méthode des J (jalon + difficulté)" style={{ display: 'inline-flex', marginLeft: 4 }}><Icon name="sparkle" size={12} style={{ color: 'var(--accent)' }} /></span>}
-                                      {overdueFicheIds.has(f.id) && <span title="En retard — à rattraper" style={{ color: 'var(--crit)', display: 'inline-flex', marginLeft: 4 }}><Icon name="alert" size={12} /></span>}
-                                      {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
-                                    </button>
-                                    <CoefControl value={effectiveCoef(db, f, ix)} inherited={f.coef == null} onSet={(v) => ctx.setFicheCoef(f.id, v)} onReset={() => ctx.setFicheCoef(f.id, null)} />
-                                  </div>
+                                  <button type="button" className="tree-cat" onClick={() => setOpenDossier((o) => ({ ...o, [d.id]: !isOpen }))}>
+                                    <Icon name={isOpen ? 'chevD' : 'chevR'} size={13} style={{ color: 'var(--text-3)' }} />
+                                    <Icon name="folder" size={12} style={{ color: 'var(--text-3)' }} />
+                                    <span className="tcat-label" style={{ flex: 1 }}>{d.nom}</span>
+                                    <span className="hint" style={{ fontSize: 11, fontWeight: 400 }}>{folderFiches.length}</span>
+                                  </button>
                                 )}
-                              </DraggableFiche>
+                              </div>
+                              {isOpen && (
+                                <div style={{ marginLeft: 10, paddingLeft: 8, borderLeft: '2px solid var(--border-2)' }}>
+                                  {folderFiches.map((f) => renderTreeFiche(mat, f))}
+                                  <DropSlot matiereId={mat.id} dossierId={d.id} beforeId={null} variant={folderFiches.length ? 'line' : 'zone'} />
+                                </div>
+                              )}
                             </div>
                           );
                         })}
-                        <DropSlot matiereId={mat.id} beforeId={null} variant={fiches.length ? 'line' : 'zone'} />
+
+                        <button type="button" className="tree-add" style={{ marginLeft: 8, marginTop: 4 }} onClick={() => createDossier(mat.id)}>
+                          <Icon name="plus" size={11} /> Nouveau dossier
+                        </button>
                       </div>
                     );
                   })}
@@ -505,9 +591,16 @@ export function Reviser({ ctx }) {
             label: 'Renommer', icon: 'edit', onClick: () => {
               if (ctxMenu.type === 'source') { const s = db.sources.find((x) => x.id === ctxMenu.id); if (s) startRename('source', ctxMenu.id, s.nom); }
               else if (ctxMenu.type === 'matiere') { const m = db.matieres.find((x) => x.id === ctxMenu.id); if (m) startRename('matiere', ctxMenu.id, m.nom); }
+              else if (ctxMenu.type === 'dossier') { const d = db.dossiers.find((x) => x.id === ctxMenu.id); if (d) startRename('dossier', ctxMenu.id, d.nom); }
               else { const f = db.fiches.find((x) => x.id === ctxMenu.id); if (f) startRename('fiche', ctxMenu.id, f.titre); }
             },
           },
+          // « Déplacer vers » (racine ou un dossier de la matière) — même sous-menu
+          // que Bibliotheque.jsx, ouvert au même endroit que ce menu contextuel.
+          ...(ctxMenu.type === 'fiche' ? [{
+            label: 'Déplacer vers…', icon: 'folder',
+            onClick: () => setMoveMenu({ x: ctxMenu.x, y: ctxMenu.y, ficheId: ctxMenu.id }),
+          }] : []),
           // retire/remet un COURS (source) de la méthode des J — réutilise le flag
           // rappelsJ existant (BellButton) : n'affecte que la planification SM-2
           // (série du jour, calendrier, à rattraper), le contenu reste intact.
@@ -547,11 +640,17 @@ export function Reviser({ ctx }) {
             label: 'Supprimer', icon: 'trash', danger: true, onClick: () => {
               if (ctxMenu.type === 'source') askDeleteSource(ctxMenu.id);
               else if (ctxMenu.type === 'matiere') askDeleteMatiere(ctxMenu.id);
+              else if (ctxMenu.type === 'dossier') askDeleteDossier(ctxMenu.id);
               else askDeleteFiche(ctxMenu.id);
             },
           },
         ]} />
       )}
+
+      {moveMenu && (() => {
+        const f = db.fiches.find((x) => x.id === moveMenu.ficheId);
+        return f ? <ContextMenu x={moveMenu.x} y={moveMenu.y} onClose={() => setMoveMenu(null)} items={moveMenuItems(f)} /> : null;
+      })()}
 
       {showAddItem && primary && (
         <AddItemModal ctx={ctx} ficheId={primary.id} ficheTitre={primary.titre} onClose={() => setShowAddItem(false)} />
@@ -591,6 +690,7 @@ export function Reviser({ ctx }) {
         <ConfirmModal
           title={confirmDel.type === 'source' ? 'Supprimer ce cours ?'
             : confirmDel.type === 'matiere' ? 'Supprimer cette matière ?'
+            : confirmDel.type === 'dossier' ? 'Supprimer ce dossier ?'
             : confirmDel.type === 'fiche' ? 'Supprimer cette fiche ?'
             : confirmDel.type === 'exercice' ? 'Supprimer cet exercice ?'
             : 'Supprimer tous les exercices ?'}
@@ -600,11 +700,13 @@ export function Reviser({ ctx }) {
               ? (confirmDel.fichesCount > 0
                 ? `Cette matière contient ${confirmDel.fichesCount} fiche${confirmDel.fichesCount > 1 ? 's' : ''}. Elles seront déplacées dans « À classer ». « ${confirmDel.nom} » sera ensuite envoyée dans la corbeille — restaurable depuis Réglages.`
                 : `« ${confirmDel.nom} » sera déplacée dans la corbeille — restaurable depuis Réglages.`)
-              : confirmDel.type === 'fiche'
-                ? `« ${confirmDel.nom} » sera déplacée dans la corbeille — restaurable depuis Réglages.`
-                : confirmDel.type === 'exercice'
-                  ? `« ${confirmDel.nom} » sera supprimé définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible — pas de corbeille pour les exercices.`
-                  : `Les ${confirmDel.exoCount} exercice${confirmDel.exoCount > 1 ? 's' : ''} de « ${confirmDel.nom} » seront supprimés définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible. Les QCM, flashcards et Feynman de cette fiche ne sont pas concernés.`}
+              : confirmDel.type === 'dossier'
+                ? `« ${confirmDel.nom} » sera supprimé. Ses fiches ne sont PAS supprimées : elles reviennent à la racine de la matière.`
+                : confirmDel.type === 'fiche'
+                  ? `« ${confirmDel.nom} » sera déplacée dans la corbeille — restaurable depuis Réglages.`
+                  : confirmDel.type === 'exercice'
+                    ? `« ${confirmDel.nom} » sera supprimé définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible — pas de corbeille pour les exercices.`
+                    : `Les ${confirmDel.exoCount} exercice${confirmDel.exoCount > 1 ? 's' : ''} de « ${confirmDel.nom} » seront supprimés définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible. Les QCM, flashcards et Feynman de cette fiche ne sont pas concernés.`}
           confirmLabel="Supprimer"
           danger
           onConfirm={confirmDelete}
