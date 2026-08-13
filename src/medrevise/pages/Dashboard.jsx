@@ -7,7 +7,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { Tex } from '../components/Tex.jsx';
-import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, weekendReviewByFiche, carnetV1Questions, carnetV2Questions, strugglingByFiche } from '../lib/planning.js';
+import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, weekExosByMatiere, carnetV1Questions, carnetV2Questions, strugglingByFiche } from '../lib/planning.js';
 import { isoDate, isDueBecauseStruggled } from '../lib/sm2.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
@@ -200,44 +200,102 @@ function CoursARevoirCard({ ctx }) {
   );
 }
 
-/* ---------- révision du week-end (Dashboard UNIQUEMENT, isWeekend) ----------
-   DISTINCTE de RattrapageCard (retards/erreurs) et des exos dus normaux
-   (dueExosOn, calendrier) : ici, des exos DÉJÀ faits cette semaine (lundi →
-   aujourd'hui, weekendReviewByFiche), 2 max par fiche, à refaire pour ancrer.
-   Lancés via startExercice(..., { mode: 'weekend' }) — AUCUNE écriture côté
-   Exercice.jsx (voir Workstation.applyResult) : rejouer ne touche jamais le
-   statut/historique/dueDate normal de l'exo, session bonus pure. */
+/* ---------- exercices de la semaine (Dashboard UNIQUEMENT, isWeekend) ----------
+   Récap de fin de semaine : TOUS les exos dont l'échéance de la méthode des J
+   tombait cette semaine (weekExosByMatiere — lundi→dimanche, `jalon` requis
+   donc exos LIBRES exclus), FAITS OU PAS. Distincte de RattrapageCard
+   (retards théorie) et de la card "Exercices du jour" (dueExosOn, échéance du
+   jour uniquement, jamais tentés uniquement).
+
+   Repliée par MATIÈRE (chevron, `open` local) : un récap de semaine complet
+   tient rarement en une liste plate, et la matière est la maille de lecture
+   demandée. Repliée par défaut — la card reste un coup d'œil, on déroule ce
+   qu'on veut traiter.
+
+   FAIRE / REFAIRE — réutilise startExercice tel quel, avec le SEUL réglage qui
+   change quelque chose, le `mode` :
+   - exo jamais tenté ('todo') → « Faire », session NORMALE (pas de mode) :
+     c'est une vraie première tentative, elle doit s'enregistrer comme
+     n'importe quelle autre (recordExerciceAttempt + streak, Exercice.jsx
+     Workstation.applyResult). Rattraper depuis ici == l'avoir fait à temps.
+   - exo déjà tenté ('ok'/'review') → « Refaire », mode 'weekend' : session
+     bonus, AUCUNE écriture (historique/missed/statut/dueDate intacts) —
+     comportement historique de cette card, conservé tel quel.
+   Dans les deux cas on ne touche PAS au moteur des J : aucune dueDate n'est
+   recalculée ici, seul le chemin d'accès à l'exo est nouveau. */
+const EXO_STATUS_META = {
+  ok: { pill: 'pill ok', label: 'Réussi', icon: 'check' },
+  review: { pill: 'pill warn', label: 'À revoir', icon: 'refresh' },
+  todo: { pill: 'pill', label: 'Pas fait', icon: 'clock' },
+};
+
 function WeekendReviewCard({ ctx }) {
   const { db } = ctx;
+  const [open, setOpen] = useState({});
   if (!isWeekend()) return null;
-  const groups = weekendReviewByFiche(db);
+  const groups = weekExosByMatiere(db);
   if (!groups.length) return null;
-  const allItems = groups.flatMap((g) => g.items);
+
+  const total = groups.reduce((s, g) => s + g.items.length, 0);
+  const totalTodo = groups.reduce((s, g) => s + g.todo, 0);
+  const toggle = (id) => setOpen((o) => ({ ...o, [id]: !o[id] }));
+  // un exo lancé seul : la série vaut cet exo, titre = son chapitre (même
+  // patron que les autres points d'entrée exercice de l'app).
+  const startOne = (e) => ctx.startExercice([e.q], e.fiche.titre, e.status === 'todo' ? {} : { mode: 'weekend' });
 
   return (
-    <Card title="Révision du week-end" icon="refresh" className="rattrapage-weekend"
-      action={<span className="pill">{allItems.length} exo{allItems.length > 1 ? 's' : ''}</span>}>
+    <Card title="Exercices de la semaine" icon="refresh" className="rattrapage-weekend"
+      action={<span className="pill">{total - totalTodo}/{total} fait{total - totalTodo > 1 ? 's' : ''}</span>}>
       <div className="hint" style={{ fontSize: 12, marginBottom: 10 }}>
-        Les exercices faits cette semaine, à refaire pour ancrer — ça ne touche pas leur statut normal.
+        Tous les exercices dont l'échéance J tombait cette semaine{totalTodo > 0 ? <> — <strong>{totalTodo} jamais ouvert{totalTodo > 1 ? 's' : ''}</strong></> : ''}. Refaire un exo déjà fait ne touche pas son statut.
       </div>
+
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {groups.map((g, i) => {
           const meta = matiereMeta(g.matiere);
+          const id = g.matiere ? g.matiere.id : '?';
+          const isOpen = !!open[id];
           return (
-            <div className="row spread" key={g.fiche.id} style={{ gap: 8, padding: '7px 0', borderTop: i ? '1px solid var(--border-2)' : 'none' }}>
-              <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.fiche.titre}</div>
-                <div className="hint" style={{ fontSize: 11 }}>{meta.label} · {g.items.length} exo{g.items.length > 1 ? 's' : ''}</div>
+            <div key={id} style={{ borderTop: i ? '1px solid var(--border-2)' : 'none' }}>
+              <div className="row spread arevoir-row" style={{ gap: 8, padding: '8px 2px', cursor: 'pointer' }}
+                onClick={() => toggle(id)} role="button" aria-expanded={isOpen}>
+                <div className="row" style={{ gap: 8, minWidth: 0, flex: '1 1 auto' }}>
+                  <Icon name={isOpen ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.tint, flex: '0 0 auto' }} />
+                  <span style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta.label}</span>
+                </div>
+                <span className={g.todo > 0 ? 'pill warn' : 'pill ok'} style={{ flex: '0 0 auto' }}>
+                  {g.todo > 0 ? `${g.todo} à faire` : 'Tout fait'}
+                </span>
               </div>
-              <button className="btn ghost sm" onClick={() => ctx.startExercice(g.items, g.fiche.titre + ' — Révision week-end', { mode: 'weekend' })}>Refaire</button>
+
+              {isOpen && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '2px 0 10px 22px' }}>
+                  {g.items.map((e) => {
+                    const sm = EXO_STATUS_META[e.status];
+                    return (
+                      <div className="row spread" key={e.q.id} style={{ gap: 8, padding: '6px 10px', borderRadius: 9, background: 'var(--bg-2)' }}>
+                        <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                          <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <Tex>{carnetPreviewText(e.q.enonce, 60)}</Tex>
+                          </div>
+                          <div className="hint" style={{ fontSize: 10.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {e.fiche.titre} · {e.q.jalon}
+                          </div>
+                        </div>
+                        <span className={sm.pill} style={{ flex: '0 0 auto' }}><Icon name={sm.icon} size={11} /> {sm.label}</span>
+                        <button className="btn ghost sm" style={{ flex: '0 0 auto' }} onClick={() => startOne(e)}>
+                          {e.status === 'todo' ? 'Faire' : 'Refaire'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })}
       </div>
-      <button className="btn ghost sm" style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}
-        onClick={() => ctx.startExercice(allItems, 'Révision du week-end', { mode: 'weekend' })}>
-        Tout refaire ({allItems.length})
-      </button>
     </Card>
   );
 }

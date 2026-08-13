@@ -229,39 +229,63 @@ export function dueExosByFicheOn(db, dateISO, idx) {
 }
 export function dueExosByFiche(db, idx) { return dueExosByFicheOn(db, todayISO(), idx); }
 
-/* ---- révision week-end (Dashboard, WeekendReviewCard) : PAS la méthode des J
-   des exos (dueExosOn, échéance dueDate) — ici on ressort des exos DÉJÀ FAITS
-   cette semaine (lundi → aujourd'hui, même notion que weekData/
-   startOfWeekISO), pour une session bonus de mémorisation. Lecture SEULE de
-   `historique` : cette fonction ne modifie jamais rien, et le mode 'weekend'
-   de startExercice (voir MedReviseApp.jsx/Exercice.jsx) n'écrit rien non plus
-   quand on rejoue un exo depuis ici — la tentative de la semaine reste la
-   dernière du dossier, le statut/dueDate de l'exo ne bougent pas. */
-export function weekendReviewByFiche(db, idx) {
+/* ---- récap de semaine des EXERCICES (Dashboard, WeekendReviewCard) :
+   TOUS les exos dont l'ÉCHÉANCE de la méthode des J (`dueDate`, posée par
+   dueDateForJalon) tombe dans la semaine courante (lundi → dimanche, même
+   notion de semaine que weekData/startOfWeekISO) — faits OU PAS. C'est un
+   récap de ce qui était PRÉVU cette semaine, pas une trace de ce qui a été
+   fait : un exo jamais ouvert (`exerciceStatus` 'todo') y figure au même
+   titre qu'un exo réussi ou raté, c'est tout l'intérêt de la card.
+   (Remplace l'ancienne sélection "exos DÉJÀ faits cette semaine, 2 max par
+   fiche", qui lisait `historique` et ratait donc exactement ce qu'on veut
+   voir le week-end : les exos qu'on a laissés passer.)
+
+   Semaine ENTIÈRE (jusqu'à dimanche, pas jusqu'à aujourd'hui) : la card
+   s'affiche samedi/dimanche, un exo dû dimanche fait bien partie du bilan de
+   la semaine qu'on est en train de clore.
+
+   Exos LIBRES (`jalon` null — legacy/hors prompt "pratique méthode J", voir
+   schema.js#normExercice) : EXCLUS par le test `q.jalon`. Ils n'ont d'ailleurs
+   jamais de `dueDate` (sm2.js#dueDateForJalon renvoie null), donc le filtre de
+   date suffirait — le test explicite reste la garantie lisible que ce récap ne
+   concerne QUE les exos planifiés, et tient même si un `dueDate` arrivait un
+   jour par un autre chemin.
+
+   Lecture SEULE (fonction PURE) : ne touche ni `dueDate`, ni `historique`, ni
+   aucun statut — le moteur des J est inchangé, cette fonction ne fait
+   qu'afficher. Regroupement par MATIÈRE (pas par fiche comme le reste du
+   fichier) : c'est la maille de lecture demandée pour ce récap. ---- */
+export function weekExosByMatiere(db, idx) {
   const ix = idx || index(db);
   const monday = startOfWeekISO(todayISO());
-  const today = todayISO();
+  const sunday = addDays(monday, 6);
   const map = {};
   (db.questions || []).forEach((q) => {
-    if (q.type !== EXERCICE_TYPE) return;
+    if (q.type !== EXERCICE_TYPE || !q.jalon) return;
+    if (!q.dueDate || q.dueDate < monday || q.dueDate > sunday) return;
     const f = ix.fById[q.ficheId];
     if (!f || !isFicheScheduled(db, f, ix)) return;
-    const attemptsThisWeek = (q.historique || []).filter((h) => h.date >= monday && h.date <= today);
-    if (!attemptsThisWeek.length) return;
-    const lastDate = attemptsThisWeek.reduce((max, h) => (h.date > max ? h.date : max), attemptsThisWeek[0].date);
-    if (!map[f.id]) {
-      const m = ix.mById[f.matiereId];
-      map[f.id] = { fiche: f, matiere: m, source: m && ix.sById[m.sourceId], items: [] };
-    }
-    map[f.id].items.push({ q, lastDate });
+    const m = ix.mById[f.matiereId];
+    const mid = m ? m.id : '?';
+    if (!map[mid]) map[mid] = { matiere: m, items: [] };
+    map[mid].items.push({ q, fiche: f, status: exerciceStatus(q), dueDate: q.dueDate });
   });
-  // 2 exos MAX par fiche — les 2 tentés le plus récemment cette semaine (pas
-  // de priorité aux ratés, pas de complément si le chapitre n'en a qu'1 : ce
-  // sont les MÊMES exos déjà vus, jamais des neufs).
-  return Object.values(map).map((g) => ({
-    ...g,
-    items: g.items.slice().sort((a, b) => (a.lastDate < b.lastDate ? 1 : a.lastDate > b.lastDate ? -1 : 0)).slice(0, 2).map((e) => e.q),
-  }));
+  return Object.values(map).map((g) => {
+    // tri interne : les NON FAITS d'abord (c'est ce qui reste à rattraper),
+    // puis par échéance croissante — l'ordre dans lequel la semaine s'est
+    // déroulée.
+    const items = g.items.slice().sort((a, b) => {
+      const aTodo = a.status === 'todo', bTodo = b.status === 'todo';
+      if (aTodo !== bTodo) return aTodo ? -1 : 1;
+      return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
+    });
+    return {
+      ...g, items,
+      todo: items.filter((e) => e.status === 'todo').length,
+      ok: items.filter((e) => e.status === 'ok').length,
+      review: items.filter((e) => e.status === 'review').length,
+    };
+  }).sort((a, b) => (b.todo - a.todo) || (a.matiere && b.matiere ? String(a.matiere.nom).localeCompare(String(b.matiere.nom)) : 0));
 }
 
 /* ---- schémas d'anatomie visuelle (anat_schema) : la FICHE elle-même est
