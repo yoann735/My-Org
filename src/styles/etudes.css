@@ -162,18 +162,93 @@
 .tree-check.part { border-color: var(--accent); }
 .tree-check .tc-dash { width: 9px; height: 2px; border-radius: 1px; background: var(--accent); display: block; }
 
-/* ---------- REVISE hub : carte méthode des J ---------- */
-.jcard { display: flex; align-items: center; gap: 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 18px 20px; box-shadow: var(--shadow); }
-.jcard .jc-ic { width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; flex: 0 0 auto; }
-.jcard .jc-main { flex: 1 1 auto; min-width: 0; }
-.jcard .jc-label { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); }
-.jcard .jc-title { font-size: 16px; font-weight: 700; margin-top: 3px; }
-.jcard .jc-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+/* ---------- REVISE hub : carte méthode des J ----------
+   .jcard et ses enfants (.jc-ic/.jc-main/.jc-label/.jc-title/.jc-tags), ainsi que
+   la variante multi (.jcard-multi/.jc-head/.jc-courselist/.jc-courline) plus bas,
+   ont été retirés à l'ÉTAPE 2 : les trois vues du panneau droit utilisent
+   désormais le bandeau .revbar. Seuls .jc-today-badge et .jc-paused survivent —
+   le bandeau les réutilise tels quels. */
 
-/* ---------- REVISE hub : 3 cards type (gros chiffres) ---------- */
-/* cards compactes (E) : elles n'affichent qu'un chiffre + un libellé → inutile
-   de les surdimensionner (on rend la place à la sidebar Cours & matières). */
-.rev-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
+/* ============================================================
+   ÉTAPE 2 (audit UX Réviser) — panneau droit compacté.
+   .revbar remplace .jcard sur les TROIS vues du panneau (fiche, chapitre,
+   schéma d'anatomie) ; .rev-launch remplace .rev-modes POUR CET ÉCRAN
+   SEULEMENT (.rev-mode reste tel quel : ImportRattrapage.jsx s'en sert
+   encore comme grande carte de sélection de matière).
+   ============================================================ */
+.revbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-height: 48px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 13px; background: var(--card); box-shadow: var(--shadow); }
+.revbar .rb-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: 0 0 auto; }
+.revbar .rb-id { display: flex; flex-direction: column; min-width: 0; flex: 1 1 220px; line-height: 1.25; }
+.revbar .rb-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.revbar .rb-title { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.revbar .rb-state { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; font-size: 13px; color: var(--text-2); }
+.revbar .rb-state .hint { font-size: 12.5px; }
+.revbar .rb-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.revbar .rb-more { width: 34px; height: 34px; }
+/* le badge « en pause » vit ici sur une seule ligne (il était en pleine phrase) */
+.revbar .jc-paused { font-size: 12.5px; }
+
+/* CTA principal : remonté au-dessus des trois modes, et seul élément « plein » du
+   panneau — c'est l'action la plus fréquente de l'écran. */
+.rev-cta { width: 100%; justify-content: center; gap: 10px; margin-top: 10px; }
+.rev-cta .rc-meta { font-weight: 500; opacity: .82; font-variant-numeric: tabular-nums; }
+
+/* trois lanceurs d'une ligne (~44 px) : un compteur + un mot n'ont jamais demandé
+   une carte de 134 px. Le popover QCM s'ancre sur la tuile → position: relative,
+   et surtout PAS d'overflow: hidden qui le rognerait. */
+.rev-launch { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.rl-tile { position: relative; display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 11px; background: var(--card); box-shadow: var(--shadow); transition: border-color .15s, box-shadow .15s; }
+.rl-tile:hover:not(:has(.rl-main:disabled)) { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); box-shadow: var(--shadow-lg); }
+.rl-main { flex: 1 1 auto; display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 0 10px 0 9px; min-width: 0; border: none; background: none; border-radius: 11px; cursor: pointer; font-family: inherit; color: var(--text); text-align: left; }
+.rl-main:disabled { opacity: .42; cursor: not-allowed; }
+.rl-ic { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; flex: 0 0 auto; }
+.rl-n { font-size: 16px; font-weight: 800; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.rl-l { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rl-time { font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--text-3); }
+.rl-go { margin-left: auto; color: var(--accent); display: inline-flex; flex: 0 0 auto; transition: transform .12s; }
+.rl-main:hover:not(:disabled) .rl-go { transform: translateX(3px); }
+.rl-mod { width: 30px; flex: 0 0 auto; border: none; border-left: 1px solid var(--border-2); background: none; color: var(--text-3); cursor: pointer; display: grid; place-items: center; border-radius: 0 11px 11px 0; }
+.rl-mod:hover, .rl-mod.on { color: var(--accent); background: var(--accent-soft); }
+.rl-pop { position: absolute; top: calc(100% + 6px); left: 0; right: 0; min-width: 230px; z-index: 30; padding: 12px 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: var(--shadow-lg); }
+.rl-pop-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-2); margin-bottom: 9px; }
+
+/* exercices : une ligne par exercice (c'était une grille de cartes) */
+.exo-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 13px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; }
+.exo-row { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 6px 11px; border-top: 1px solid var(--border-2); cursor: pointer; transition: background .12s; }
+.exo-row:first-child { border-top: none; }
+.exo-row:hover { background: var(--card-2); }
+.exo-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.exo-row .ex-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.exo-row .ex-theme { flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exo-row .ex-pill { height: 21px; flex: 0 0 auto; font-size: 11px; }
+.exo-row .ex-statut { flex: 0 0 auto; }
+.exo-row .ex-del { width: 28px; height: 28px; flex: 0 0 auto; opacity: 0; transition: opacity .12s; }
+.exo-row:hover .ex-del, .exo-row:focus-within .ex-del { opacity: 1; }
+.exo-row .ex-go { color: var(--accent); display: inline-flex; flex: 0 0 auto; }
+/* tactile / clavier : pas de survol, la corbeille doit rester atteignable */
+@media (hover: none) { .exo-row .ex-del { opacity: 1; } }
+
+/* carnet d'erreurs : une ligne, pas une carte */
+.carnet-line { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin-top: 14px; padding: 0 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: var(--shadow); cursor: pointer; font-family: inherit; color: var(--text-2); }
+.carnet-line:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); color: var(--text); }
+.carnet-line .cl-title { font-weight: 700; font-size: 13.5px; color: var(--text); }
+.carnet-line .cl-counts { margin-left: auto; font-size: 12.5px; }
+
+/* état vide réduit (le grand .rev-empty reste celui des écrans de session) */
+.rev-empty.rev-empty-sm { padding: 26px 20px; gap: 6px; }
+.rev-empty.rev-empty-sm .re-title { font-size: 15px; }
+
+/* sous 1100 px la colonne de droite est trop étroite pour trois lanceurs côte à côte */
+@media (max-width: 1100px) {
+  .rev-launch { grid-template-columns: 1fr; }
+  .rl-pop { left: 0; right: auto; }
+}
+
+/* ---------- cartes .rev-mode : SÉLECTION DE MATIÈRE (ImportRattrapage.jsx) ----------
+   Ce sont les grandes cartes du choix de matière à l'import. Elles servaient AUSSI
+   de lanceurs QCM/Flashcards/Feynman sur Réviser jusqu'à l'ÉTAPE 2 — remplacées
+   là-bas par .rev-launch (une ligne de ~44 px). Le conteneur .rev-modes, propre à
+   Réviser, a donc disparu ; ne pas resupprimer ce bloc-ci : il est encore utilisé. */
 .rev-mode { border: 1px solid var(--border); border-radius: 13px; background: var(--card); padding: 13px 15px; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; box-shadow: var(--shadow); transition: transform .12s, box-shadow .15s, border-color .15s; text-align: left; font-family: inherit; color: var(--text); }
 .rev-mode:hover:not(:disabled) { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
 .rev-mode:disabled { opacity: .4; cursor: not-allowed; }
@@ -185,17 +260,10 @@
 .rev-mode .rm-go { margin-top: 6px; font-size: 12.5px; font-weight: 700; color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
 .rev-mode:hover:not(:disabled) .rm-go { gap: 9px; }
 
-/* QCM — modulation libre du nombre proposé (v1.1, Étape 3) */
-.qcm-mod { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-2); }
-.qcm-mod-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); margin-bottom: 8px; }
-.qcm-mod-label { display: inline-flex; align-items: center; gap: 6px; }
-
-/* cards Pratique (D2) : une par exercice, cliquables */
-.exo-card { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; text-align: left; font-family: inherit; color: var(--text); border: 1px solid var(--border); border-radius: 13px; background: var(--card); padding: 13px 14px; cursor: pointer; box-shadow: var(--shadow); transition: transform .12s, box-shadow .15s, border-color .15s; }
-.exo-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+/* .qcm-mod (bloc-curseur permanent) et .exo-card (grille de cartes d'exercices)
+   retirés à l'ÉTAPE 2 : le curseur QCM vit dans le popover .rl-pop, les exercices
+   dans la liste .exo-list. .exo-status reste : les lignes s'en servent toujours. */
 .exo-status { font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-.exo-open { margin-top: 2px; font-size: 12.5px; font-weight: 700; color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
-.exo-card:hover .exo-open { gap: 9px; }
 .rev-mode:hover:not(:disabled) .rm-go { gap: 9px; }
 
 /* ---------- REVISE : hint + lignes de cours (clic vs case) ---------- */
@@ -219,13 +287,6 @@
 
 /* jcard today badge + multi list */
 .jc-today-badge { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11.5px; font-weight: 700; margin-right: 7px; }
-.jcard.jcard-multi { flex-direction: column; align-items: stretch; gap: 12px; }
-.jcard .jc-head { display: flex; align-items: center; gap: 12px; justify-content: space-between; flex-wrap: wrap; }
-.jc-courselist { display: flex; flex-direction: column; gap: 7px; }
-.jc-courline { display: flex; align-items: center; gap: 10px; padding: 8px 11px; border-radius: 10px; background: var(--bg-2); border: 1px solid var(--border-2); }
-.jc-courline.due { border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-soft); }
-.jc-courline .jcl-bar { width: 4px; height: 18px; border-radius: 3px; flex: 0 0 auto; }
-.jc-courline .jcl-name { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .j-tag.j-today { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 /* today-cta extras */

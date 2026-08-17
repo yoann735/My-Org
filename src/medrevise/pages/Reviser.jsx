@@ -55,6 +55,12 @@ export function Reviser({ ctx }) {
   // panneau de droite, MUTUELLEMENT EXCLUSIF avec la sélection de fiches
   // (selIds) : sélectionner un chapitre vide selIds et inversement, le panneau
   // n'a donc jamais deux sujets à la fois.
+  // ÉTAPE 2 — panneau droit compacté : `barMenu` = menu « ⋯ » du bandeau de fiche
+  // (mêmes actions que le clic droit de l'arbre, plus « Ajouter un item » qui avait
+  // son propre en-tête de section) ; `qcmPop` = popover de modulation du nombre de
+  // QCM, qui remplace le bloc-curseur permanent.
+  const [barMenu, setBarMenu] = useState(null); // { x, y }
+  const [qcmPop, setQcmPop] = useState(false);
   const [selChapitre, setSelChapitre] = useState(null); // id de dossier (parentId ≠ null)
   const [showAddChapExo, setShowAddChapExo] = useState(false);
   const [shiftStart, setShiftStart] = useState(null); // { type: 'source'|'fiche', id, nom }
@@ -68,6 +74,25 @@ export function Reviser({ ctx }) {
     if (el) el.scrollIntoView({ block: 'nearest' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // fermeture du popover QCM : clic ailleurs, Échap, ou défilement — mêmes gestes
+  // que ContextMenu (ui.jsx), pour qu'un popover ne reste jamais ouvert derrière.
+  useEffect(() => {
+    if (!qcmPop) return undefined;
+    const close = () => setQcmPop(false);
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [qcmPop]);
+  // une nouvelle sélection referme le popover (son contenu ne parlerait plus de la
+  // fiche affichée).
+  useEffect(() => { setQcmPop(false); }, [selIds, selChapitre]);
 
   const dueIdsToday = useMemo(() => new Set(dueToday(db, ix).map((q) => q.id)), [db, ix]);
   const dueSchemaIds = useMemo(() => new Set(dueSchemasToday(db, ix).map((f) => f.id)), [db, ix]);
@@ -618,30 +643,33 @@ export function Reviser({ ctx }) {
                QCM/flashcards/Feynman — un chapitre ne porte que des exercices, et
                ceux-ci sont LIBRES (jamais dus, jamais au calendrier). */
             <>
-              <div className="jcard">
-                <div className="jc-ic" style={{ background: `color-mix(in srgb, ${chapMeta.tint} 15%, transparent)`, color: chapMeta.tint }}><Icon name="target" size={20} /></div>
-                <div className="jc-main">
-                  <div className="jc-label">{chapMeta.label}{chapUnite ? ` · ${chapUnite.nom}` : ''}</div>
-                  <div className="jc-title">{chapitreSel.nom}</div>
-                  <div className="hint" style={{ marginTop: 2 }}>
-                    {chapExos.length} exercice{chapExos.length > 1 ? 's' : ''} de chapitre — hors méthode des J, à faire librement.
-                  </div>
+              {/* ÉTAPE 2 — même bandeau que pour une fiche (.revbar), pour que les deux
+                 vues du panneau droit se ressemblent. Contenu et actions inchangés. */}
+              <div className="revbar">
+                <span className="rb-ic" style={{ background: `color-mix(in srgb, ${chapMeta.tint} 15%, transparent)`, color: chapMeta.tint }}><Icon name="target" size={16} /></span>
+                <div className="rb-id">
+                  <span className="rb-label">{chapMeta.label}{chapUnite ? ` · ${chapUnite.nom}` : ''}</span>
+                  <span className="rb-title" title={chapitreSel.nom}>{chapitreSel.nom}</span>
                 </div>
-                {/* « Tout exporter » du chapitre — même sortie que celui d'une fiche
-                   (atelier « Voir le cours »), appliqué à TOUTES les fiches du chapitre
-                   et copié dans le presse-papier, pour le prompt « exos de chapitre ». */}
-                <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }}
-                  onClick={exportChapitre} disabled={chapExportBusy}
-                  title="Copier le cours + surlignages + cartes de TOUTES les fiches de ce chapitre">
-                  <Icon name={chapExport && !chapExport.error ? 'check' : 'copy'} size={14} />
-                  {chapExportBusy ? 'Export…' : chapExport && !chapExport.error ? `Copié ✓ (${chapExport.count})` : 'Tout exporter'}
-                </button>
-                <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={() => setShowAddChapExo(true)}>
-                  <Icon name="plus" size={14} /> Importer des items
-                </button>
-                <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={() => setSelChapitre(null)} title="Fermer la vue chapitre">
-                  <Icon name="x" size={14} /> Fermer
-                </button>
+                <div className="rb-state">
+                  <span className="hint">{chapExos.length} exercice{chapExos.length > 1 ? 's' : ''} de chapitre — hors méthode des J</span>
+                </div>
+                <div className="rb-actions">
+                  {/* « Tout exporter » du chapitre — même sortie que celui d'une fiche
+                     (atelier « Voir le cours »), appliqué à TOUTES les fiches du chapitre
+                     et copié dans le presse-papier, pour le prompt « exos de chapitre ». */}
+                  <button className="btn ghost sm" onClick={exportChapitre} disabled={chapExportBusy}
+                    title="Copier le cours + surlignages + cartes de TOUTES les fiches de ce chapitre">
+                    <Icon name={chapExport && !chapExport.error ? 'check' : 'copy'} size={14} />
+                    {chapExportBusy ? 'Export…' : chapExport && !chapExport.error ? `Copié ✓ (${chapExport.count})` : 'Tout exporter'}
+                  </button>
+                  <button className="btn ghost sm" onClick={() => setShowAddChapExo(true)}>
+                    <Icon name="plus" size={14} /> Importer des items
+                  </button>
+                  <button type="button" className="cd-ic" onClick={() => setSelChapitre(null)} title="Fermer la vue chapitre">
+                    <Icon name="x" size={14} />
+                  </button>
+                </div>
               </div>
 
               {/* compte rendu de l'export : combien de fiches sont parties, et
@@ -679,100 +707,139 @@ export function Reviser({ ctx }) {
               )}
             </>
           ) : empty ? (
-            <div className="rev-empty">
-              <Icon name="cards" size={30} />
+            /* ÉTAPE 2 — état vide réduit : il ne s'affiche qu'au tout premier
+               passage, inutile de lui donner la hauteur d'une carte pleine. */
+            <div className="rev-empty rev-empty-sm">
+              <Icon name="cards" size={22} />
               <div className="re-title">Sélectionne une fiche</div>
-              <div className="hint">Coche une ou plusieurs fiches à gauche pour voir QCM, flashcards et erreurs.</div>
+              <div className="hint">Clique une fiche à gauche pour voir QCM, flashcards et Feynman.</div>
             </div>
           ) : isSchemaSel ? (
             <AnatSchemaLauncher fiche={primary} ctx={ctx} ix={ix} meta={meta} due={dueSchemaIds.has(primary.id)} scheduled={scheduled} jp={jp} />
           ) : (
             <>
-              <div className="jcard">
-                <div className="jc-ic" style={{ background: `color-mix(in srgb, ${meta.tint} 15%, transparent)`, color: meta.tint }}><Icon name="calendar" size={20} /></div>
-                <div className="jc-main">
-                  <div className="jc-label">Méthode des J · {title}</div>
-                  {!scheduled
-                    ? <div className="jc-title"><span className="jc-paused">Cours en pause</span> — hors planning J (révisable manuellement)</div>
-                    : dueSel.length > 0
-                      ? <div className="jc-title"><span className="jc-today-badge">Aujourd'hui</span> {dueSel.length} carte{dueSel.length > 1 ? 's' : ''} à réviser</div>
-                      : <div className="jc-title">Rien dû aujourd'hui pour cette sélection.</div>}
+              {/* ÉTAPE 2 — l'ex-carte « Méthode des J » (.jcard, ≈ 82 px) devient un
+                 BANDEAU d'une ligne : même information (matière, titre, palier J, état
+                 dû/en pause), mêmes actions, sur ~48 px. « Ajouter un item », qui
+                 occupait un en-tête de section à lui seul, passe dans le menu ⋯. */}
+              <div className="revbar">
+                <span className="rb-ic" style={{ background: `color-mix(in srgb, ${meta.tint} 15%, transparent)`, color: meta.tint }}><Icon name="calendar" size={16} /></span>
+                <div className="rb-id">
+                  <span className="rb-label">Méthode des J{!multi && primMat ? ` · ${matiereMeta(primMat).label}` : ''}</span>
+                  <span className="rb-title" title={title}>{title}</span>
+                </div>
+                <div className="rb-state">
                   {!multi && jp && jp.jIndex >= 0 && <JBadge jLabel={jp.jLabel} />}
+                  {!scheduled
+                    ? <span className="jc-paused">En pause</span>
+                    : dueSel.length > 0
+                      ? <><span className="jc-today-badge">Aujourd'hui</span> <span className="tnum">{dueSel.length}</span> carte{dueSel.length > 1 ? 's' : ''}</>
+                      : <span className="hint">Rien dû aujourd'hui</span>}
                 </div>
-                {!multi && primary && primary.pdfId && (
-                  <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={viewCoursPdf} title="Ouvrir le PDF source en lecture seule">
-                    <Icon name="filePdf" size={14} /> Voir le cours{primary.htmlId ? ' (PDF)' : ''}
-                  </button>
-                )}
-                {!multi && primary && primary.htmlId && (
-                  <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={viewCoursHtml} title="Ouvrir la fiche HTML du cours">
-                    <Icon name="fileHtml" size={14} /> Voir le cours{primary.pdfId ? ' (HTML)' : ''}
-                  </button>
-                )}
-                {/* aucun document rattaché : à la même place, propose de le rattacher
-                   directement (input unique PDF/HTML — mêmes stockage/lecteur que
-                   partout ailleurs) ; redevient "Voir le cours" dès que c'est fait. */}
-                {!multi && primary && !primary.pdfId && !primary.htmlId && (
-                  <label className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center', cursor: 'pointer' }} title="Rattacher le PDF ou la fiche HTML du cours">
-                    <Icon name="upload" size={14} /> Importer une fiche
-                    <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }}
-                      onChange={(e) => { attachCoursDoc(e.target.files[0]); e.target.value = ''; }} />
-                  </label>
-                )}
-                {dueSel.length > 0 && <button className="btn primary" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={launchToday}><Icon name="play" size={14} fill /> Lancer aujourd'hui</button>}
+                <div className="rb-actions">
+                  {!multi && primary && primary.pdfId && (
+                    <button className="btn ghost sm" onClick={viewCoursPdf} title="Ouvrir le PDF source en lecture seule">
+                      <Icon name="filePdf" size={14} /> Voir le cours{primary.htmlId ? ' (PDF)' : ''}
+                    </button>
+                  )}
+                  {!multi && primary && primary.htmlId && (
+                    <button className="btn ghost sm" onClick={viewCoursHtml} title="Ouvrir la fiche HTML du cours">
+                      <Icon name="fileHtml" size={14} /> Voir le cours{primary.pdfId ? ' (HTML)' : ''}
+                    </button>
+                  )}
+                  {/* aucun document rattaché : à la même place, propose de le rattacher
+                     directement (input unique PDF/HTML — mêmes stockage/lecteur que
+                     partout ailleurs) ; redevient "Voir le cours" dès que c'est fait. */}
+                  {!multi && primary && !primary.pdfId && !primary.htmlId && (
+                    <label className="btn ghost sm" style={{ cursor: 'pointer' }} title="Rattacher le PDF ou la fiche HTML du cours">
+                      <Icon name="upload" size={14} /> Importer une fiche
+                      <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }}
+                        onChange={(e) => { attachCoursDoc(e.target.files[0]); e.target.value = ''; }} />
+                    </label>
+                  )}
+                  {dueSel.length > 0 && <button className="btn primary sm" onClick={launchToday}><Icon name="play" size={13} fill /> Lancer aujourd'hui</button>}
+                  {!multi && primary && (
+                    <button type="button" className="cd-ic rb-more" title="Autres actions sur cette fiche"
+                      onClick={(e) => setBarMenu({ x: Math.min(e.clientX, window.innerWidth - 230), y: Math.min(e.clientY, window.innerHeight - 170) })}>
+                      <Icon name="more" size={15} stroke={2.6} />
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="row spread" style={{ alignItems: 'center', gap: 8, margin: '16px 2px 8px' }}>
-                <div className="row" style={{ alignItems: 'center', gap: 8 }}>
-                  <Icon name="lightbulb" size={14} style={{ color: 'var(--text-3)' }} />
-                  <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--text-3)' }}>Cours</span>
-                </div>
-                {!multi && primary && (
-                  <button className="btn ghost sm" onClick={() => setShowAddItem(true)}><Icon name="plus" size={13} /> Ajouter un item</button>
-                )}
-              </div>
-              <div className="rev-modes">
-                <button className="rev-mode" onClick={() => launch('qcm')} disabled={!qcmItems.length}>
-                  <div className="rm-ic" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}><Icon name="list" size={20} /></div>
-                  <div className="rm-n tnum">{qcmItems.length ? Math.min(qcmCount || qcmItems.length, qcmItems.length) : 0}</div><div className="rm-l">QCM</div>
-                  <div className="rm-go">Lancer <Icon name="arrowR" size={14} /></div>
-                </button>
-                <button className="rev-mode" onClick={() => launch('flash')} disabled={!flashItems.length}>
-                  <div className="rm-ic" style={{ background: 'var(--accent-2-soft)', color: 'var(--accent-2)' }}><Icon name="cards" size={20} /></div>
-                  <div className="rm-n tnum">{flashItems.length}</div><div className="rm-l">Flashcards</div>
-                  {avgFlashTimeMs != null && <div className="rm-time">≈{formatCardTime(avgFlashTimeMs)}/carte</div>}
-                  <div className="rm-go">Lancer <Icon name="arrowR" size={14} /></div>
-                </button>
-                <button className="rev-mode" onClick={() => feynItems.length && ctx.startFeynman({ items: feynItems, title })} disabled={!feynItems.length}>
-                  <div className="rm-ic" style={{ background: 'color-mix(in srgb, #4FA6D9 15%, transparent)', color: '#4FA6D9' }}><Icon name="lightbulb" size={20} /></div>
-                  <div className="rm-n tnum">{feynItems.length}</div><div className="rm-l">Feynman</div>
-                  <div className="rm-go">Expliquer <Icon name="arrowR" size={14} /></div>
-                </button>
-              </div>
-
-              {/* Étape 3 — révision libre : module le nombre de QCM proposés (1..total),
-                  conseillé = meta.qcm_conseille (sinon tout le stock). La sélection PARMI
-                  ce nombre tourne d'un J à l'autre (pickQcmSubset, Étape 4) — jamais
-                  d'invention, on pioche dans le stock existant de la fiche. */}
-              {!multi && qcmItems.length > 1 && (
-                <div className="qcm-mod">
-                  <div className="qcm-mod-head">
-                    <span className="qcm-mod-label"><Icon name="list" size={13} /> QCM à réviser : <strong className="tnum">{qcmCount ?? qcmItems.length}</strong> / {qcmItems.length}</span>
-                    {qcmConseille != null && <span className="pill" style={{ height: 22 }}>conseillé : {qcmConseille}</span>}
-                  </div>
-                  <input type="range" min={1} max={qcmItems.length} value={qcmCount ?? qcmItems.length}
-                    onChange={(e) => setQcmCount(Number(e.target.value))}
-                    style={{ width: '100%', accentColor: 'var(--accent)' }} />
-                </div>
-              )}
-
-              <button className="btn lg" style={{ width: '100%', marginTop: 14, justifyContent: 'center' }} onClick={() => launch('all')} disabled={!qcmItems.length && !flashItems.length}>
-                <Icon name="layers" size={17} /> {multi ? 'Réviser toutes les fiches' : 'Réviser toute cette fiche'} ({qcmItems.length + flashItems.length} cartes · ~{mins(qcmItems.length + flashItems.length)} min)
+              {/* ÉTAPE 2 — l'action la plus fréquente passe DEVANT les trois modes
+                 (elle était auparavant tout en bas, après le curseur QCM). */}
+              <button className="btn primary lg rev-cta" onClick={() => launch('all')} disabled={!qcmItems.length && !flashItems.length}>
+                <Icon name="play" size={16} fill /> {multi ? 'Réviser toutes les fiches' : 'Réviser toute cette fiche'}
+                <span className="rc-meta">{qcmItems.length + flashItems.length} cartes · ~{mins(qcmItems.length + flashItems.length)} min</span>
               </button>
 
+              {/* ÉTAPE 2 — les trois cartes (≈ 134 px chacune pour un nombre et un mot)
+                 deviennent trois boutons d'une ligne (~44 px). Classe .rev-launch propre
+                 à cet écran : .rev-mode reste tel quel, ImportRattrapage.jsx s'en sert
+                 encore comme grande carte. */}
+              <div className="rev-launch">
+                <div className="rl-tile">
+                  <button className="rl-main" onClick={() => launch('qcm')} disabled={!qcmItems.length}>
+                    <span className="rl-ic" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}><Icon name="list" size={15} /></span>
+                    <span className="rl-n tnum">{qcmItems.length ? Math.min(qcmCount || qcmItems.length, qcmItems.length) : 0}</span>
+                    <span className="rl-l">QCM</span>
+                    <span className="rl-go"><Icon name="arrowR" size={14} /></span>
+                  </button>
+                  {/* modulation du nombre de QCM : même logique qu'avant (1..total,
+                     conseillé = meta.qcm_conseille, rotation par pickQcmSubset), mais
+                     dans un popover au lieu d'un bloc encadré permanent. */}
+                  {!multi && qcmItems.length > 1 && (
+                    <button type="button" className={'rl-mod' + (qcmPop ? ' on' : '')} title="Choisir le nombre de QCM"
+                      aria-expanded={qcmPop}
+                      /* stopPropagation sur mousedown ET click : c'est le mousedown que
+                         guette le fermeur global ci-dessus — sans ça, rouvrir le popover
+                         le refermerait dans la foulée, et bouger le curseur le fermerait. */
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); setQcmPop((v) => !v); }}>
+                      <Icon name="chevD" size={13} />
+                    </button>
+                  )}
+                  {qcmPop && !multi && qcmItems.length > 1 && (
+                    <div className="rl-pop" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+                      <div className="rl-pop-head">
+                        <span>QCM à réviser : <strong className="tnum">{qcmCount ?? qcmItems.length}</strong> / {qcmItems.length}</span>
+                        {qcmConseille != null && <span className="pill" style={{ height: 20 }}>conseillé : {qcmConseille}</span>}
+                      </div>
+                      <input type="range" min={1} max={qcmItems.length} value={qcmCount ?? qcmItems.length}
+                        onChange={(e) => setQcmCount(Number(e.target.value))}
+                        style={{ width: '100%', accentColor: 'var(--accent)' }} />
+                      <div className="row" style={{ gap: 6, marginTop: 8 }}>
+                        {qcmConseille != null && (
+                          <button className="btn ghost sm" onClick={() => setQcmCount(Math.min(qcmConseille, qcmItems.length))}>Conseillé</button>
+                        )}
+                        <button className="btn ghost sm" onClick={() => setQcmCount(qcmItems.length)}>Tout ({qcmItems.length})</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="rl-tile">
+                  <button className="rl-main" onClick={() => launch('flash')} disabled={!flashItems.length}>
+                    <span className="rl-ic" style={{ background: 'var(--accent-2-soft)', color: 'var(--accent-2)' }}><Icon name="cards" size={15} /></span>
+                    <span className="rl-n tnum">{flashItems.length}</span>
+                    <span className="rl-l">Flashcards{avgFlashTimeMs != null && <em className="rl-time"> ≈{formatCardTime(avgFlashTimeMs)}/carte</em>}</span>
+                    <span className="rl-go"><Icon name="arrowR" size={14} /></span>
+                  </button>
+                </div>
+                <div className="rl-tile">
+                  <button className="rl-main" onClick={() => feynItems.length && ctx.startFeynman({ items: feynItems, title })} disabled={!feynItems.length}>
+                    <span className="rl-ic" style={{ background: 'color-mix(in srgb, #4FA6D9 15%, transparent)', color: '#4FA6D9' }}><Icon name="lightbulb" size={15} /></span>
+                    <span className="rl-n tnum">{feynItems.length}</span>
+                    <span className="rl-l">Feynman</span>
+                    <span className="rl-go"><Icon name="arrowR" size={14} /></span>
+                  </button>
+                </div>
+              </div>
+
               {/* section "Exercices" (libellé affiché — anciennement "Pratique") : HORS
-                  méthode des J. Liste de cards, une par exercice, librement choisie
-                  (filtres thème / difficulté / statut). */}
+                  méthode des J. Liste dense, une LIGNE par exercice (ÉTAPE 2 : c'était
+                  une grille de cartes), librement choisie (filtres thème / difficulté /
+                  statut, affichés dès que la liste est longue). */}
               {exoItems.length > 0 && (
                 <ExerciceCards items={exoItems} meta={meta} onOpen={openExo} onDelete={askDeleteExercice}
                   onDeleteAll={!multi ? askDeleteAllExercices : null} ctx={ctx} />
@@ -780,16 +847,11 @@ export function Reviser({ ctx }) {
             </>
           )}
 
-          {/* carnet d'erreurs v2 (étape 2) : REMPLACE l'ancien embed CarnetBody
-             (Carnet.jsx, retiré) — juste un lien d'entrée ici, le contenu (V1 +
-             raisons, extraction JSON, V2 à revoir/résolu) vit sur son propre
-             écran (SCREENS.carnet, MedReviseApp.jsx) : trop riche pour une
-             section repliable. L'ancien mécanisme (missed/weakPoints,
-             ErrorSummary/RattrapageCard) a été entièrement retiré — le carnet
-             v2 est désormais le SEUL carnet d'erreurs de l'app. */}
-          <div style={{ marginTop: 22 }}>
-            <CarnetEntryCard ctx={ctx} />
-          </div>
+          {/* carnet d'erreurs v2 : simple lien d'entrée — le contenu (V1 + raisons,
+             extraction JSON, V2 à revoir/résolu) vit sur son propre écran
+             (SCREENS.carnet), qui est AUSSI un onglet de la barre de navigation.
+             ÉTAPE 2 : réduit d'une carte complète à une ligne, compteurs conservés. */}
+          <CarnetEntryLine ctx={ctx} />
         </div>
       </div>
 
@@ -852,6 +914,22 @@ export function Reviser({ ctx }) {
               else if (ctxMenu.type === 'matiere') askDeleteMatiere(ctxMenu.id);
               else askDeleteFiche(ctxMenu.id);
             },
+          },
+        ]} />
+      )}
+
+      {/* ÉTAPE 2 — menu « ⋯ » du bandeau de fiche. Il n'invente aucune action : il
+         regroupe « Ajouter un item » (qui avait un en-tête de section pour lui seul)
+         et deux gestes déjà offerts par le clic droit dans l'arbre, à portée de la
+         fiche ouverte. Rendu par le MÊME ContextMenu que l'arbre. */}
+      {barMenu && primary && (
+        <ContextMenu x={barMenu.x} y={barMenu.y} onClose={() => setBarMenu(null)} items={[
+          { label: 'Ajouter un item', icon: 'plus', onClick: () => setShowAddItem(true) },
+          { label: 'Décaler le départ…', icon: 'calendar', onClick: () => askShiftFiche(primary.id) },
+          {
+            label: primary.rappelsJ !== false ? 'Retirer de la méthode des J' : 'Remettre dans la méthode des J',
+            icon: primary.rappelsJ !== false ? 'bellOff' : 'bell',
+            onClick: () => ctx.setFicheRappelsJ(primary.id, !(primary.rappelsJ !== false)),
           },
         ]} />
       )}
@@ -948,6 +1026,9 @@ function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll, ctx }) {
     (fTheme === 'all' || it.theme === fTheme)
     && (fDiff === 'all' || String(it.difficulte || 2) === fDiff)
     && (fStatut === 'all' || statut === fStatut));
+  // « ou un filtre est déjà posé » : sans ça, supprimer des exercices sous le seuil
+  // masquerait des filtres actifs, et la liste paraîtrait vide sans raison visible.
+  const filtersShown = items.length > 6 || fTheme !== 'all' || fDiff !== 'all' || fStatut !== 'all';
 
   return (
     <div style={{ marginTop: 22 }}>
@@ -963,7 +1044,10 @@ function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll, ctx }) {
         )}
       </div>
 
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+      {/* ÉTAPE 2 — les filtres n'apparaissent que quand la liste est assez longue pour
+         en avoir besoin (au-delà de 6), ou quand un filtre est déjà posé : sinon ils
+         occupaient une ligne pleine au-dessus de trois exercices. */}
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 12, display: filtersShown ? undefined : 'none' }}>
         {themes.length > 1 && (
           <select className="et-select" value={fTheme} onChange={(e) => setFTheme(e.target.value)} title="Filtrer par thème">
             <option value="all">Tous les thèmes</option>
@@ -987,31 +1071,32 @@ function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll, ctx }) {
       {filtered.length === 0 ? (
         <div className="hint" style={{ padding: '10px 2px' }}>Aucun exercice ne correspond à ces filtres.</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+        /* ÉTAPE 2 — une LIGNE par exercice au lieu d'une carte de grille : mêmes
+           informations (thème, difficulté, numérique/ouvert, calculatrice, statut),
+           deux fois plus d'exercices visibles à hauteur égale, et un balayage
+           vertical au lieu d'un balayage en damier. Ligne entière cliquable,
+           44 px de haut, la corbeille reste une cible distincte. */
+        <div className="exo-list">
           {filtered.map(({ it, statut }) => {
             const st = EXO_STATUS[statut];
             const numeric = it.sous_type === 'numerique';
             return (
-              <div key={it.id} className="exo-card" role="button" tabIndex={0}
+              <div key={it.id} className="exo-row" role="button" tabIndex={0}
                 onClick={() => onOpen(it)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(it); } }}>
-                <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 8, width: '100%' }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.tint, flex: '0 0 auto' }} />
-                  <span style={{ fontWeight: 700, fontSize: 13.5, minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{it.theme || 'Exercice'}</span>
-                  <span className="exo-status" style={{ color: st.color, flex: '0 0 auto' }} title={st.label}><Icon name={st.icon} size={12} /> {st.label}</span>
-                  {onDelete && (
-                    <button type="button" className="cd-ic" style={{ width: 26, height: 26, flex: '0 0 auto' }} title="Supprimer cet exercice"
-                      onClick={(e) => { e.stopPropagation(); onDelete(it); }}>
-                      <Icon name="trash" size={12} />
-                    </button>
-                  )}
-                </div>
-                <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-                  <span className="pill" style={{ height: 22 }}>{EXO_DIFF[it.difficulte] || 'Intermédiaire'} · {it.difficulte || 2}</span>
-                  <span className="pill" style={{ height: 22 }}>{numeric ? 'numérique' : 'ouvert'}</span>
-                  {it.necessite_calculatrice && <span className="pill accent" style={{ height: 22 }}><Icon name="grad" size={11} /> Calculatrice</span>}
-                </div>
-                <div className="exo-open">Ouvrir <Icon name="arrowR" size={13} /></div>
+                <span className="ex-dot" style={{ background: meta.tint }} />
+                <span className="ex-theme">{it.theme || 'Exercice'}</span>
+                <span className="pill ex-pill" title={`Difficulté ${it.difficulte || 2}`}>{EXO_DIFF[it.difficulte] || 'Intermédiaire'}</span>
+                <span className="pill ex-pill">{numeric ? 'numérique' : 'ouvert'}</span>
+                {it.necessite_calculatrice && <span className="pill accent ex-pill" title="Calculatrice nécessaire"><Icon name="grad" size={11} /></span>}
+                <span className="exo-status ex-statut" style={{ color: st.color }} title={st.label}><Icon name={st.icon} size={12} /> {st.label}</span>
+                {onDelete && (
+                  <button type="button" className="cd-ic ex-del" title="Supprimer cet exercice"
+                    onClick={(e) => { e.stopPropagation(); onDelete(it); }}>
+                    <Icon name="trash" size={12} />
+                  </button>
+                )}
+                <span className="ex-go"><Icon name="arrowR" size={14} /></span>
               </div>
             );
           })}
@@ -1021,28 +1106,23 @@ function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll, ctx }) {
   );
 }
 
-/* carnet d'erreurs v2 (étape 2) : carte d'entrée vers l'écran dédié
-   (SCREENS.carnet) — compteurs seulement, tout le détail vit là-bas. */
-function CarnetEntryCard({ ctx }) {
+/* carnet d'erreurs v2 : lien d'entrée vers l'écran dédié (SCREENS.carnet, qui est
+   AUSSI un onglet de la barre de navigation) — compteurs seulement, tout le détail
+   vit là-bas. ÉTAPE 2 : une carte complète (en-tête + corps + bouton pleine largeur)
+   pour deux compteurs et un lien, c'était trois fois la place nécessaire → une ligne
+   cliquable de 44 px, mêmes compteurs, même destination. */
+function CarnetEntryLine({ ctx }) {
   const v1 = carnetV1Questions(ctx.db);
   const aRevoir = carnetV2Questions(ctx.db, 'a_revoir');
   return (
-    <div className="card">
-      <button type="button" className="card-head" onClick={() => ctx.go('carnet')}
-        style={{ width: '100%', cursor: 'pointer', background: 'none', border: 'none', font: 'inherit', color: 'inherit' }}>
-        <Icon name="target" size={17} className="ic" />
-        <h3>Carnet d'erreurs</h3>
-        <div className="right"><Icon name="chevR" size={15} /></div>
-      </button>
-      <div className="card-body">
-        <div className="hint" style={{ fontSize: 13 }}>
-          {v1.length} flashcard{v1.length > 1 ? 's' : ''} en carnet · {aRevoir.length} flashcard{aRevoir.length > 1 ? 's' : ''} d'erreur à revoir
-        </div>
-        <button className="btn ghost sm" style={{ marginTop: 10, width: '100%', justifyContent: 'center' }} onClick={() => ctx.go('carnet')}>
-          Ouvrir le carnet
-        </button>
-      </div>
-    </div>
+    <button type="button" className="carnet-line" onClick={() => ctx.go('carnet')}>
+      <Icon name="target" size={15} />
+      <span className="cl-title">Carnet d'erreurs</span>
+      <span className="cl-counts">
+        <span className="tnum">{v1.length}</span> en carnet · <span className="tnum">{aRevoir.length}</span> à revoir
+      </span>
+      <Icon name="chevR" size={15} />
+    </button>
   );
 }
 
@@ -1079,20 +1159,24 @@ function AnatSchemaLauncher({ fiche, ctx, meta, due, scheduled, jp }) {
 
   return (
     <>
-      <div className="jcard">
-        <div className="jc-ic" style={{ background: `color-mix(in srgb, ${meta.tint} 15%, transparent)`, color: meta.tint }}><Icon name="image" size={20} /></div>
-        <div className="jc-main">
-          <div className="jc-label">Méthode des J · {fiche.titre}</div>
-          {!scheduled
-            ? <div className="jc-title"><span className="jc-paused">Cours en pause</span> — hors planning J (révisable manuellement)</div>
-            : due
-              ? <div className="jc-title"><span className="jc-today-badge">Aujourd'hui</span> schéma à réviser ({nb} coche{nb > 1 ? 's' : ''})</div>
-              : <div className="jc-title">Schéma de {nb} coche{nb > 1 ? 's' : ''} — rien dû aujourd'hui.</div>}
+      {/* ÉTAPE 2 — même bandeau que les deux autres vues du panneau droit (.revbar). */}
+      <div className="revbar">
+        <span className="rb-ic" style={{ background: `color-mix(in srgb, ${meta.tint} 15%, transparent)`, color: meta.tint }}><Icon name="image" size={16} /></span>
+        <div className="rb-id">
+          <span className="rb-label">Méthode des J · schéma</span>
+          <span className="rb-title" title={fiche.titre}>{fiche.titre}</span>
+        </div>
+        <div className="rb-state">
           {jp && jp.jIndex >= 0 && <JBadge jLabel={jp.jLabel} />}
+          {!scheduled
+            ? <span className="jc-paused">En pause</span>
+            : due
+              ? <><span className="jc-today-badge">Aujourd'hui</span> <span className="tnum">{nb}</span> coche{nb > 1 ? 's' : ''}</>
+              : <span className="hint"><span className="tnum">{nb}</span> coche{nb > 1 ? 's' : ''} — rien dû aujourd'hui</span>}
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: 14 }}>
+      <div className="card" style={{ marginTop: 12 }}>
         <div className="card-body">
           <div className="imp-field">
             <label>Mode de révision</label>
