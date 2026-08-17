@@ -117,22 +117,37 @@ function Workstation({ item, fiche, meta, ctx, mode, isFirst, isLast, onNext, on
   const numeric = item.sous_type === 'numerique';
   const indices = item.indices || [];
   const [revealed, setRevealed] = useState(0);          // indices révélés (0..n)
-  const [validated, setValidated] = useState(false);    // réponse soumise
-  const [done, setDone] = useState(false);              // exercice noté (SM-2 appliqué)
+  const [validated, setValidated] = useState(false);    // réponse soumise (numérique)
+  const [corrigeVu, setCorrigeVu] = useState(false);    // correction affichée (ouvert)
+  const [done, setDone] = useState(false);              // statut posé
   const appliedRef = useRef(false);
+  // Verdict AUTOMATIQUE (numérique : juste/faux · ouvert : grille d'auto-évaluation).
+  // Purement INDICATIF depuis cette version : il aide à décider, il ne décide plus.
+  const [autoVerdict, setAutoVerdict] = useState(null); // 'ok' | 'ko' | null
+  // MON choix explicite — la SEULE chose qui pose le statut de l'exercice.
+  const [statut, setStatut] = useState(null);           // 'ok' | 'ko' | null
+  // l'exercice est "répondu" (donc le choix de statut s'affiche) une fois la
+  // réponse soumise (numérique) ou la correction affichée (ouvert).
+  const answered = numeric ? validated : corrigeVu;
 
-  // ---- SM-2 : appliqué une seule fois, à la validation ----
-  // mode 'weekend' (WeekendReviewCard, Dashboard) : session bonus sur un exo
-  // DÉJÀ fait cette semaine — on affiche la correction normalement mais on
-  // s'arrête là, AUCUNE écriture (ni recordExerciceAttempt/historique, ni
-  // saveQuestion, ni statut, ni streak) : rejouer ne doit jamais toucher le
-  // cycle normal de l'exo.
-  const applyResult = async (success) => {
+  // ---- statut : écrit UNE SEULE FOIS, et UNIQUEMENT sur mon clic ----
+  // Tant que je n'ai pas choisi, rien n'est enregistré : l'exercice reste "jamais
+  // fait" (exerciceStatus lit historique[], qui reste vide). C'est le changement
+  // de cette version — auparavant le verdict auto déclenchait l'écriture tout seul.
+  // Le canal d'écriture, lui, ne change pas : qualityForExercice + recordExerciceAttempt,
+  // exactement comme avant. « Réussi » → qualité ≥ 3 (plancher garanti, même avec
+  // des indices utilisés) → statut 'ok' ; « À revoir » → 2 → statut 'review'. Mon
+  // choix se traduit donc toujours fidèlement, sans qu'un indice puisse le contredire.
+  // mode 'weekend' : session bonus, AUCUNE écriture (ni historique, ni streak) —
+  // plus aucun appelant ne l'utilise depuis le retrait des J exos, conservé par
+  // sécurité pour l'API de ctx.startExercice.
+  const chooseStatut = async (choix) => {
     if (appliedRef.current) return;
     appliedRef.current = true;
+    setStatut(choix);
     setDone(true);
     if (mode === 'weekend') return;
-    const quality = qualityForExercice(success, revealed);
+    const quality = qualityForExercice(choix === 'ok', revealed);
     const updated = recordExerciceAttempt(item, quality);
     await ctx.saveQuestion(updated);
     const s = ctx.stats || {};
@@ -183,12 +198,18 @@ function Workstation({ item, fiche, meta, ctx, mode, isFirst, isLast, onNext, on
         <Notepad itemId={item.id} />
         {item.necessite_calculatrice && <Calculator />}
 
+        {/* les deux sous-types ne font plus que REMONTER leur verdict auto —
+           aucun des deux n'enregistre quoi que ce soit. */}
         {numeric
-          ? <NumericAnswer item={item} validated={validated} onValidate={(ok) => { setValidated(true); applyResult(ok); }} />
-          : <OpenAnswer item={item} onApply={applyResult} />}
+          ? <NumericAnswer item={item} validated={validated} onValidate={(ok) => { setValidated(true); setAutoVerdict(ok ? 'ok' : 'ko'); }} />
+          : <OpenAnswer item={item} revealed={corrigeVu} onReveal={() => setCorrigeVu(true)} onAutoVerdict={setAutoVerdict} />}
 
         {/* correction numérique : après validation */}
         {numeric && validated && <NumericCorrection item={item} />}
+
+        {/* MON verdict : identique pour numérique et ouvert (un seul composant,
+           pas deux parcours qui pourraient diverger). */}
+        {answered && <StatutChooser auto={autoVerdict} statut={statut} onChoose={chooseStatut} bonus={mode === 'weekend'} />}
 
         {/* proposition (non bloquante) en fin de série, sur la fiche du dernier exercice fait —
            masquée en mode 'weekend' (session bonus, aucune écriture proposée). */}
@@ -440,6 +461,55 @@ function NumericAnswer({ item, validated, onValidate }) {
   );
 }
 
+/* ---------------- MON verdict : le statut de l'exercice ----------------
+   Le SEUL endroit qui pose le statut d'un exercice, et il ne se déclenche que
+   sur un clic. Partagé par les deux sous-types (numérique ET ouvert) : un seul
+   parcours de fin d'exercice, pas deux qui pourraient diverger.
+   `auto` (verdict de la correction automatique / de la grille) est affiché à
+   TITRE INDICATIF : il aide à décider et n'impose rien — on peut mettre « À
+   revoir » sur un exo que l'auto juge juste (envie de le retravailler), ou
+   « Réussi » sur un exo que l'auto juge faux (un simple arrondi).
+   Tant qu'aucun bouton n'est cliqué, RIEN n'est écrit : l'exercice reste
+   « jamais fait ». Le choix n'est pris qu'une fois (voir appliedRef). */
+function StatutChooser({ auto, statut, onChoose, bonus }) {
+  const AUTO_LABEL = { ok: 'Juste', ko: 'Faux' };
+  return (
+    <div className="card fadein"><div className="card-body">
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 7 }}>
+        <Icon name="target" size={15} /> Ton verdict
+      </div>
+      <div className="hint" style={{ marginBottom: 12 }}>
+        C'est toi qui décides du statut de cet exercice.
+        {auto ? <> La correction automatique dit <strong>{AUTO_LABEL[auto]}</strong> — à titre indicatif, tu n'es pas obligé de la suivre.</> : null}
+        {bonus ? ' Session bonus : rien ne sera enregistré.' : ''}
+      </div>
+
+      {statut ? (
+        <div className={'err-mini' + (statut === 'ok' ? ' ok' : '')} style={{ alignItems: 'center' }}>
+          <div className={'em-ic' + (statut === 'ok' ? '' : ' crit')}><Icon name={statut === 'ok' ? 'check' : 'refresh'} size={18} stroke={2.5} /></div>
+          <div className="em-body">
+            <div className="em-title">{statut === 'ok' ? 'Réussi ✓' : 'À revoir ✓'}</div>
+            <div className="hint">
+              {bonus ? 'Session bonus — statut non modifié.'
+                : statut === 'ok' ? 'Enregistré. Cet exercice ne figurera pas dans les « à revoir » du week-end.'
+                  : 'Enregistré. Tu le retrouveras dans la carte « À revoir » de ce week-end.'}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+          <button className="btn primary lg" style={{ flex: '1 1 160px', justifyContent: 'center' }} onClick={() => onChoose('ok')}>
+            <Icon name="check" size={16} /> Réussi
+          </button>
+          <button className="btn lg" style={{ flex: '1 1 160px', justifyContent: 'center' }} onClick={() => onChoose('ko')}>
+            <Icon name="refresh" size={16} /> À revoir
+          </button>
+        </div>
+      )}
+    </div></div>
+  );
+}
+
 /* ---------------- Correction NUMÉRIQUE (étapes + conclusion + pièges) ---------------- */
 function NumericCorrection({ item }) {
   const c = item.correction || {};
@@ -453,18 +523,21 @@ function NumericCorrection({ item }) {
 }
 
 /* ---------------- Réponse OUVERTE (éditeur riche + grille) ---------------- */
-function OpenAnswer({ item, onApply }) {
+/* `revealed`/`onReveal` sont remontés au Workstation (il en a besoin pour savoir
+   quand proposer le choix de statut). Ce composant ne décide plus rien et
+   n'enregistre plus rien : il calcule le verdict de la grille et le REMONTE
+   (onAutoVerdict) à titre indicatif — le statut est posé par StatutChooser, sur
+   clic de l'utilisateur. Les anciens boutons « Forcer : Juste / À revoir » +
+   « Enregistrer le résultat » ont été remplacés par ce choix systématique. */
+function OpenAnswer({ item, revealed, onReveal, onAutoVerdict }) {
   const grille = item.grille_autoevaluation || [];
   const essentiels = grille.filter((g) => g.essentiel);
-  const [revealed, setRevealed] = useState(false);
   const [checked, setChecked] = useState({});
-  const [override, setOverride] = useState(null); // 'ok' | 'ko'
-  const [saved, setSaved] = useState(false);
 
   const grilleOk = (essentiels.length ? essentiels : grille).every((g) => checked[g.id]);
-  const verdict = override || (grille.length ? (grilleOk ? 'ok' : 'ko') : null);
-
-  const save = () => { setSaved(true); onApply(verdict === 'ok'); };
+  const verdict = grille.length ? (grilleOk ? 'ok' : 'ko') : null;
+  // remonte le verdict indicatif à chaque coche (et à l'affichage de la correction).
+  useEffect(() => { if (revealed) onAutoVerdict(verdict); }, [revealed, verdict]);
 
   return (
     <>
@@ -472,7 +545,7 @@ function OpenAnswer({ item, onApply }) {
         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Ta solution rédigée</div>
         <RichEditor disabled={revealed} />
         {!revealed && (
-          <button className="btn primary lg" style={{ marginTop: 12, width: '100%', justifyContent: 'center' }} onClick={() => setRevealed(true)}>
+          <button className="btn primary lg" style={{ marginTop: 12, width: '100%', justifyContent: 'center' }} onClick={onReveal}>
             <Icon name="check" size={15} /> Valider et voir la correction
           </button>
         )}
@@ -497,21 +570,14 @@ function OpenAnswer({ item, onApply }) {
             </div>
           )}
 
+          {/* lecture INDICATIVE de la grille — elle ne pose plus le statut
+             (voir StatutChooser, juste en dessous de cette carte). */}
           {verdict && (
             <div className={'err-mini' + (verdict === 'ok' ? ' ok' : '')} style={{ marginTop: 12, alignItems: 'center' }}>
               <div className={'em-ic' + (verdict === 'ok' ? '' : ' crit')}><Icon name={verdict === 'ok' ? 'check' : 'target'} size={18} stroke={2.5} /></div>
-              <div className="em-body"><div className="em-title">{verdict === 'ok' ? 'Réussi — l\'essentiel est couvert.' : 'À revoir — critères essentiels manquants.'}</div></div>
+              <div className="em-body"><div className="em-title">{verdict === 'ok' ? 'La grille est couverte.' : 'Des critères essentiels manquent.'}</div></div>
             </div>
           )}
-
-          <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span className="hint">Forcer :</span>
-            <button className={'btn sm' + (override === 'ok' ? ' primary' : '')} onClick={() => setOverride('ok')}><Icon name="check" size={13} /> Juste</button>
-            <button className={'btn sm' + (override === 'ko' ? ' primary' : '')} onClick={() => setOverride('ko')}><Icon name="refresh" size={13} /> À revoir</button>
-            <button className="btn primary" style={{ marginLeft: 'auto' }} onClick={save} disabled={saved || !verdict}>
-              <Icon name="check" size={14} /> {saved ? 'Enregistré ✓' : 'Enregistrer le résultat'}
-            </button>
-          </div>
 
           <Pieges pieges={item.pieges} />
         </div></div>
