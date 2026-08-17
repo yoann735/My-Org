@@ -10,7 +10,7 @@
    ============================================================ */
 import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
+import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
 import { index, isExoConforme } from '../lib/planning.js';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
@@ -48,11 +48,13 @@ export function Bibliotheque({ ctx }) {
   const [confirmArchive, setConfirmArchive] = useState(null); // fiche à archiver (confirmation)
   const attachInputRef = useRef(null);
   const [attachTarget, setAttachTarget] = useState(null); // ficheId ciblé par l'input fichier partagé du menu « … »
-  // sous-dossiers d'une matière (pur rangement d'affichage, voir fiche.dossierId) :
-  // dossierMenu = menu « … » d'une ligne dossier (renommer/supprimer), moveMenu =
-  // sous-menu « Déplacer vers » d'une fiche (racine ou un dossier de sa matière),
-  // openDossier = replié/déplié (mémoire seulement, comme openFiche), confirmDeleteDossier
-  // = confirmation avant suppression (les fiches contenues reviennent à la racine).
+  // sous-dossiers d'une matière (pur rangement d'affichage, voir fiche.dossierId),
+  // sur DEUX niveaux : Unité → Chapitre (voir MedReviseApp.jsx#addDossier/parentId).
+  // dossierMenu = menu « … » d'une ligne unité OU chapitre (renommer/supprimer),
+  // moveMenu = sous-menu « Déplacer vers » d'une fiche (racine, une unité, ou un
+  // chapitre de sa matière), openDossier = replié/déplié — keyé par id, donc commun
+  // aux deux niveaux (mémoire seulement, comme openFiche), confirmDeleteDossier =
+  // confirmation avant suppression (les fiches contenues remontent d'un niveau).
   const [openDossier, setOpenDossier] = useState({});
   const [dossierMenu, setDossierMenu] = useState(null); // { x, y, dossierId }
   const [moveMenu, setMoveMenu] = useState(null); // { x, y, ficheId }
@@ -78,6 +80,19 @@ export function Bibliotheque({ ctx }) {
 
   const qById = (fId) => db.questions.filter((x) => x.ficheId === fId);
   const count = (fId, t) => qById(fId).filter((x) => x.type === t).length;
+
+  // arbre des dossiers sur 2 niveaux — le niveau se déduit de parentId (voir
+  // MedReviseApp.jsx#addDossier), aucune donnée propre à cet écran : Reviser.jsx
+  // lit exactement le même store avec les mêmes helpers.
+  const byOrdre = (a, b) => (a.ordre ?? 0) - (b.ordre ?? 0);
+  const unitesOf = (matId) => db.dossiers.filter((d) => d.matiereId === matId && !d.parentId).sort(byOrdre);
+  const chapitresOf = (uniteId) => db.dossiers.filter((d) => d.parentId === uniteId).sort(byOrdre);
+  // fiches d'une unité, chapitres INCLUS : compteur affiché sur la ligne repliée
+  // (sinon il mentirait), jamais utilisé pour le rendu du contenu.
+  const fichesCountRecursif = (allFiches, uniteId) => {
+    const ids = [uniteId, ...chapitresOf(uniteId).map((c) => c.id)];
+    return allFiches.filter((f) => ids.includes(f.dossierId)).length;
+  };
 
   // ouvre le document d'une fiche dans le panneau de droite (jamais de navigation
   // d'écran) ; kind dérivé de docKind() — pdfId → 'fiche', anat_schema → 'schema',
@@ -164,19 +179,25 @@ export function Bibliotheque({ ctx }) {
   };
 
   // items du sous-menu « Déplacer vers » (ouvert depuis ficheMenuItems) : racine
-  // de la matière + chaque dossier de CETTE matière (une fiche est soit à la
-  // racine, soit dans UN dossier — jamais les deux, voir moveFicheTo).
+  // de la matière + chaque unité + chaque chapitre (indenté sous son unité) de
+  // CETTE matière — une fiche est dans exactement UN bucket (racine, unité OU
+  // chapitre), jamais deux, voir moveFicheTo. Liste identique à Reviser.jsx.
   const moveMenuItems = (f) => {
     const mat = db.matieres.find((x) => x.id === f.matiereId);
-    const dossiers = db.dossiers.filter((d) => d.matiereId === f.matiereId).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
     const items = [{
       label: <span style={{ fontWeight: !f.dossierId ? 700 : 500 }}>Racine de {mat ? mat.nom : 'la matière'}{!f.dossierId ? ' ✓' : ''}</span>,
       onClick: () => ctx.moveFicheTo(f.id, f.matiereId, null, null),
     }];
-    dossiers.forEach((d) => items.push({
-      label: <span style={{ fontWeight: f.dossierId === d.id ? 700 : 500 }}><Icon name="folder" size={12} /> {d.nom}{f.dossierId === d.id ? ' ✓' : ''}</span>,
-      onClick: () => ctx.moveFicheTo(f.id, f.matiereId, null, d.id),
-    }));
+    unitesOf(f.matiereId).forEach((u) => {
+      items.push({
+        label: <span style={{ fontWeight: f.dossierId === u.id ? 700 : 500 }}><Icon name="folder" size={12} /> {u.nom}{f.dossierId === u.id ? ' ✓' : ''}</span>,
+        onClick: () => ctx.moveFicheTo(f.id, f.matiereId, null, u.id),
+      });
+      chapitresOf(u.id).forEach((c) => items.push({
+        label: <span style={{ fontWeight: f.dossierId === c.id ? 700 : 500, paddingLeft: 14 }}>└ <Icon name="folder" size={12} /> {c.nom}{f.dossierId === c.id ? ' ✓' : ''}</span>,
+        onClick: () => ctx.moveFicheTo(f.id, f.matiereId, null, c.id),
+      }));
+    });
     return items;
   };
 
@@ -253,12 +274,20 @@ export function Bibliotheque({ ctx }) {
       </div>
     );
   };
-  // création d'un dossier : créé immédiatement (nom par défaut) puis bascule tout
-  // de suite en renommage — même geste "créer → taper le nom" que pour une matière.
-  const createDossier = async (matiereId) => {
-    const id = await ctx.addDossier(matiereId, 'Nouveau dossier');
+  // création d'une unité / d'un chapitre : créé immédiatement (nom par défaut) puis
+  // bascule tout de suite en renommage — même geste "créer → taper le nom" que pour
+  // une matière, aux deux niveaux.
+  const createUnite = async (matiereId) => {
+    const id = await ctx.addDossier(matiereId, 'Nouvelle unité');
+    if (!id) return;
     setOpenDossier((o) => ({ ...o, [id]: true }));
-    startRename('dossier', id, 'Nouveau dossier');
+    startRename('dossier', id, 'Nouvelle unité');
+  };
+  const createChapitre = async (matiereId, uniteId) => {
+    const id = await ctx.addDossier(matiereId, 'Nouveau chapitre', uniteId);
+    if (!id) return;
+    setOpenDossier((o) => ({ ...o, [uniteId]: true, [id]: true }));
+    startRename('dossier', id, 'Nouveau chapitre');
   };
   const openDossierMenu = (e, dossierId) => {
     e.stopPropagation();
@@ -266,7 +295,7 @@ export function Bibliotheque({ ctx }) {
   };
   const dossierMenuItems = (d) => [
     { label: 'Renommer', icon: 'edit', onClick: () => startRename('dossier', d.id, d.nom) },
-    { label: 'Supprimer le dossier', icon: 'trash', danger: true, onClick: () => setConfirmDeleteDossier(d) },
+    { label: d.parentId ? 'Supprimer le chapitre' : "Supprimer l'unité", icon: 'trash', danger: true, onClick: () => setConfirmDeleteDossier(d) },
   ];
   const confirmDeleteDossierNow = async () => {
     if (!confirmDeleteDossier) return;
@@ -363,7 +392,7 @@ export function Bibliotheque({ ctx }) {
                           const mm = matiereMeta(mat);
                           const allFiches = db.fiches.filter((f) => f.matiereId === mat.id && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
                           const rootFiches = allFiches.filter((f) => !f.dossierId);
-                          const dossiers = db.dossiers.filter((d) => d.matiereId === mat.id).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+                          const unites = unitesOf(mat.id);
                           return (
                             <div key={mat.id} style={{ marginTop: 14 }}>
                               {isRen('matiere', mat.id)
@@ -371,33 +400,63 @@ export function Bibliotheque({ ctx }) {
                                 : <div className="cat-badge" style={{ background: `color-mix(in srgb, ${mm.tint} 14%, transparent)`, color: mm.tint, borderColor: `color-mix(in srgb, ${mm.tint} 30%, transparent)`, marginBottom: 8, cursor: 'pointer' }} onDoubleClick={() => startRename('matiere', mat.id, mm.label)} title="Double-clic pour renommer"><Icon name={mm.icon} size={12} /> {mm.label}</div>}
 
                               {rootFiches.map(renderFiche)}
-                              <DropSlot matiereId={mat.id} dossierId={null} beforeId={null} variant={rootFiches.length ? 'line' : 'zone'} label={dossiers.length ? 'Déposer ici (racine)' : 'Déposer ici'} />
-                              {rootFiches.length === 0 && dossiers.length === 0 && <div className="hint">Aucune fiche.</div>}
+                              <DropSlot matiereId={mat.id} dossierId={null} beforeId={null} variant={rootFiches.length ? 'line' : 'zone'} label={unites.length ? 'Déposer ici (racine)' : 'Déposer ici'} />
+                              {rootFiches.length === 0 && unites.length === 0 && <div className="hint">Aucune fiche.</div>}
 
-                              {/* sous-dossiers (rangement d'affichage pur, voir fiche.dossierId) : un seul
-                                 niveau, chaque dossier repliable, jamais lus par le planning/J. */}
-                              {dossiers.map((d) => {
-                                const folderFiches = allFiches.filter((f) => f.dossierId === d.id);
-                                const isOpen = !!openDossier[d.id];
+                              {/* dossiers sur DEUX niveaux (Unité → Chapitre, voir parentId) : rangement
+                                 d'affichage pur (fiche.dossierId), jamais lus par le planning/J. Le
+                                 chapitre réutilise le MÊME DossierRow et la MÊME indentation
+                                 (DOSSIER_INDENT) que l'unité, appliqués un cran plus bas. */}
+                              {unites.map((u) => {
+                                const chapitres = chapitresOf(u.id);
+                                const uniteFiches = allFiches.filter((f) => f.dossierId === u.id);
+                                const uOpen = !!openDossier[u.id];
                                 return (
-                                  <div key={d.id}>
-                                    <DossierRow dossier={d} isOpen={isOpen} fichesCount={folderFiches.length}
-                                      isRenaming={isRen('dossier', d.id)} renameInput={<RenameInput />}
-                                      onToggle={() => setOpenDossier((o) => ({ ...o, [d.id]: !isOpen }))}
-                                      onRename={() => startRename('dossier', d.id, d.nom)}
-                                      onMenu={(e) => openDossierMenu(e, d.id)} />
-                                    {isOpen && (
-                                      <div style={{ marginLeft: 18, paddingLeft: 10, borderLeft: '2px solid var(--border-2)' }}>
-                                        {folderFiches.map(renderFiche)}
-                                        <DropSlot matiereId={mat.id} dossierId={d.id} beforeId={null} variant={folderFiches.length ? 'line' : 'zone'} />
-                                        {folderFiches.length === 0 && <div className="hint">Dossier vide.</div>}
+                                  <div key={u.id}>
+                                    <DossierRow dossier={u} isOpen={uOpen}
+                                      fichesCount={fichesCountRecursif(allFiches, u.id)} sousDossiersCount={chapitres.length}
+                                      isRenaming={isRen('dossier', u.id)} renameInput={<RenameInput />}
+                                      onToggle={() => setOpenDossier((o) => ({ ...o, [u.id]: !uOpen }))}
+                                      onRename={() => startRename('dossier', u.id, u.nom)}
+                                      onMenu={(e) => openDossierMenu(e, u.id)} />
+                                    {uOpen && (
+                                      <div style={DOSSIER_INDENT}>
+                                        {uniteFiches.map(renderFiche)}
+                                        <DropSlot matiereId={mat.id} dossierId={u.id} beforeId={null} variant={uniteFiches.length ? 'line' : 'zone'} label={chapitres.length ? "Déposer ici (unité)" : 'Déposer ici'} />
+                                        {uniteFiches.length === 0 && chapitres.length === 0 && <div className="hint">Unité vide.</div>}
+
+                                        {chapitres.map((c) => {
+                                          const chapFiches = allFiches.filter((f) => f.dossierId === c.id);
+                                          const cOpen = !!openDossier[c.id];
+                                          return (
+                                            <div key={c.id}>
+                                              <DossierRow dossier={c} isOpen={cOpen} fichesCount={chapFiches.length}
+                                                isRenaming={isRen('dossier', c.id)} renameInput={<RenameInput />}
+                                                onToggle={() => setOpenDossier((o) => ({ ...o, [c.id]: !cOpen }))}
+                                                onRename={() => startRename('dossier', c.id, c.nom)}
+                                                onMenu={(e) => openDossierMenu(e, c.id)} />
+                                              {cOpen && (
+                                                <div style={DOSSIER_INDENT}>
+                                                  {chapFiches.map(renderFiche)}
+                                                  <DropSlot matiereId={mat.id} dossierId={c.id} beforeId={null} variant={chapFiches.length ? 'line' : 'zone'} />
+                                                  {chapFiches.length === 0 && <div className="hint">Chapitre vide.</div>}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+
+                                        {/* le chapitre est le DERNIER niveau : aucun bouton de création
+                                           à l'intérieur d'un chapitre (limite 2 niveaux côté UI, doublée
+                                           par la garde de MedReviseApp.jsx#addDossier). */}
+                                        <DossierAddButton onClick={() => createChapitre(mat.id, u.id)} label="Nouveau chapitre" />
                                       </div>
                                     )}
                                   </div>
                                 );
                               })}
 
-                              <DossierAddButton onClick={() => createDossier(mat.id)} />
+                              <DossierAddButton onClick={() => createUnite(mat.id)} label="Nouvelle unité" />
                             </div>
                           );
                         })}
@@ -450,14 +509,23 @@ export function Bibliotheque({ ctx }) {
         return d ? <ContextMenu x={dossierMenu.x} y={dossierMenu.y} onClose={() => setDossierMenu(null)} items={dossierMenuItems(d)} /> : null;
       })()}
 
-      {confirmDeleteDossier && (
-        <ConfirmModal
-          title="Supprimer ce dossier ?"
-          body={<>« {confirmDeleteDossier.nom} » sera supprimé. Ses fiches ne sont PAS supprimées : elles reviennent à la racine de la matière.</>}
-          confirmLabel="Supprimer le dossier" danger
-          onConfirm={confirmDeleteDossierNow} onCancel={() => setConfirmDeleteDossier(null)}
-        />
-      )}
+      {/* confirmation de suppression : les compteurs décrivent le sous-arbre
+         réellement touché par ctx.deleteDossier (une unité emporte ses chapitres, et
+         ses fiches comme celles de ses chapitres remontent à la racine) — textes
+         partagés avec Reviser.jsx via dossierDeleteTexts. */}
+      {confirmDeleteDossier && (() => {
+        const d = confirmDeleteDossier;
+        const chapitres = d.parentId ? [] : chapitresOf(d.id);
+        const ids = [d.id, ...chapitres.map((c) => c.id)];
+        const nFiches = db.fiches.filter((f) => ids.includes(f.dossierId) && !f.archive).length;
+        const t = dossierDeleteTexts(d, chapitres.length, nFiches);
+        return (
+          <ConfirmModal
+            title={t.title} body={t.body} confirmLabel={t.confirmLabel} danger
+            onConfirm={confirmDeleteDossierNow} onCancel={() => setConfirmDeleteDossier(null)}
+          />
+        );
+      })()}
 
       {confirmArchive && (
         <ConfirmModal

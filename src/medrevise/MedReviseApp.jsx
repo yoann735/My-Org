@@ -212,36 +212,64 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const m = db.matieres.find((x) => x.id === matiereId); if (!m || !nom.trim()) return;
       await put('matieres', { ...m, nom: nom.trim() }); await reload();
     },
-    // sous-dossiers d'une matière (Bibliothèque) : pur rangement d'affichage, voir
-    // fiche.dossierId — jamais lu par sm2.js/planning.js, aucun effet sur le
-    // planning/J/révision. Même patron que addMatiere/renameMatiere/deleteMatiere,
-    // un cran plus bas.
-    addDossier: async (matiereId, nom) => {
+    // sous-dossiers d'une matière (Réviser + Bibliothèque) : pur rangement
+    // d'affichage, voir fiche.dossierId — jamais lu par sm2.js/planning.js, aucun
+    // effet sur le planning/J/révision. Même patron que addMatiere/renameMatiere/
+    // deleteMatiere, un cran plus bas.
+    //
+    // DEUX NIVEAUX EXACTEMENT (Unité → Chapitre), portés par le seul champ
+    // `parentId` : dossier SANS parentId = UNITÉ (enfant direct de la matière),
+    // dossier AVEC parentId = CHAPITRE (enfant d'une unité). Le niveau se DÉDUIT
+    // de parentId — pas de champ `type` à maintenir en cohérence.
+    // `matiereId` est conservé sur les chapitres (dénormalisé, redondant avec
+    // celui du parent) VOLONTAIREMENT : purgeMatiere (storage.js) et tous les
+    // filtres `d.matiereId === ...` restent valables tels quels, et un chapitre ne
+    // peut jamais devenir orphelin à la suppression d'une matière.
+    // fiche.dossierId, lui, ne change pas de sémantique : il pointe vers l'unité
+    // OU vers le chapitre (une fiche est dans exactement un bucket).
+    addDossier: async (matiereId, nom, parentId = null) => {
+      // garde « 2 niveaux » côté données (l'UI n'offre déjà aucun 3e niveau) : on
+      // ne peut créer un chapitre que SOUS une unité, jamais sous un chapitre.
+      if (parentId) {
+        const p = db.dossiers.find((x) => x.id === parentId);
+        if (!p || p.parentId) return null;
+      }
       const id = genId('d');
-      const siblings = db.dossiers.filter((d) => d.matiereId === matiereId);
-      await put('dossiers', { id, matiereId, nom: (nom || 'Nouveau dossier').trim(), ordre: siblings.length });
+      // frères = même matière ET même parent (les `ordre` sont scopés au niveau).
+      const siblings = db.dossiers.filter((d) => d.matiereId === matiereId && (d.parentId || null) === (parentId || null));
+      await put('dossiers', { id, matiereId, parentId: parentId || null, nom: (nom || (parentId ? 'Nouveau chapitre' : 'Nouvelle unité')).trim(), ordre: siblings.length });
       await reload(); return id;
     },
     renameDossier: async (dossierId, nom) => {
       const d = db.dossiers.find((x) => x.id === dossierId); if (!d || !nom.trim()) return;
       await put('dossiers', { ...d, nom: nom.trim() }); await reload();
     },
-    // supprime le dossier SANS supprimer les fiches qu'il contient : elles
-    // reviennent à la racine de la matière (dossierId → null), ajoutées en fin des
-    // fiches déjà à la racine. putBackup avant la réassignation de masse (voir
-    // convention storage.js#putBackup) — irréversible seulement pour le dossier
-    // lui-même, jamais pour son contenu.
+    // supprime le dossier SANS supprimer les fiches qu'il contient, à un niveau
+    // près selon ce qu'on supprime :
+    //  - CHAPITRE : ses fiches remontent dans l'UNITÉ parente (dossierId → parentId) ;
+    //  - UNITÉ : ses chapitres sont supprimés avec elle (sinon ils resteraient
+    //    orphelins, sans parent affichable) et TOUTES les fiches concernées (les
+    //    siennes + celles de ses chapitres) remontent à la RACINE de la matière.
+    // Dans les deux cas les fiches sont ajoutées en fin du bucket cible, et un
+    // putBackup couvre le dossier, ses chapitres et les fiches réassignées AVANT la
+    // mutation de masse (voir convention storage.js#putBackup) — irréversible
+    // seulement pour le(s) dossier(s), jamais pour leur contenu.
     deleteDossier: async (dossierId) => {
       const d = db.dossiers.find((x) => x.id === dossierId); if (!d) return;
-      const fiches = db.fiches.filter((f) => f.dossierId === dossierId && !f.archive);
-      if (fiches.length) {
-        await putBackup(`pre-delete-dossier-${dossierId}-${Date.now()}`, { dossier: d, fiches });
-        const rootSiblings = db.fiches
-          .filter((f) => f.matiereId === d.matiereId && !f.dossierId && !f.archive)
-          .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
-        await putMany('fiches', fiches.map((f, i) => ({ ...f, dossierId: null, ordre: rootSiblings.length + i })));
+      const chapitres = d.parentId ? [] : db.dossiers.filter((x) => x.parentId === dossierId);
+      const ids = [dossierId, ...chapitres.map((c) => c.id)];
+      const fiches = db.fiches.filter((f) => ids.includes(f.dossierId) && !f.archive);
+      const cible = d.parentId || null; // chapitre → unité parente ; unité → racine
+      if (fiches.length || chapitres.length) {
+        await putBackup(`pre-delete-dossier-${dossierId}-${Date.now()}`, { dossier: d, chapitres, fiches });
       }
-      await remove('dossiers', dossierId);
+      if (fiches.length) {
+        const targetSiblings = db.fiches
+          .filter((f) => f.matiereId === d.matiereId && (f.dossierId || null) === cible && !f.archive)
+          .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+        await putMany('fiches', fiches.map((f, i) => ({ ...f, dossierId: cible, ordre: targetSiblings.length + i })));
+      }
+      await Promise.all(ids.map((id) => remove('dossiers', id)));
       await reload();
     },
     setMatiereArchived: async (matiereId, on) => {

@@ -720,8 +720,13 @@ export function DropSlot({ matiereId, dossierId, beforeId, variant = 'line', lab
    pourraient diverger. `renameInput` = élément déjà monté (le RenameInput propre à
    chaque page, avec son propre draft/commit) inséré tel quel quand `isRenaming`.
    `onMenu` = handler du bouton « … » (ouvre le petit menu Renommer/Supprimer,
-   propre à chaque page — voir dossierMenuItems). */
-export function DossierRow({ dossier, isOpen, fichesCount, isRenaming, renameInput, onToggle, onRename, onMenu }) {
+   propre à chaque page — voir dossierMenuItems).
+   SERT AUX DEUX NIVEAUX à l'identique (unité ET chapitre, voir addDossier/parentId) :
+   `sousDossiersCount` est la SEULE différence, optionnel — renseigné sur une unité
+   (ajoute « · 2 chapitres »), absent sur un chapitre → rendu strictement inchangé.
+   `fichesCount` d'une unité est RÉCURSIF (ses fiches + celles de ses chapitres),
+   sinon le compteur mentirait quand l'unité est repliée. */
+export function DossierRow({ dossier, isOpen, fichesCount, sousDossiersCount, isRenaming, renameInput, onToggle, onRename, onMenu }) {
   return (
     <div style={{ marginTop: 10 }}>
       {isRenaming ? (
@@ -737,7 +742,10 @@ export function DossierRow({ dossier, isOpen, fichesCount, isRenaming, renameInp
             <Icon name={isOpen ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />
             <Icon name="folder" size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />
             <span className="lib-fiche-title">{dossier.nom}</span>
-            <span className="hint" style={{ flex: '0 0 auto' }}>{fichesCount} fiche{fichesCount > 1 ? 's' : ''}</span>
+            <span className="hint" style={{ flex: '0 0 auto' }}>
+              {fichesCount} fiche{fichesCount > 1 ? 's' : ''}
+              {sousDossiersCount != null && ` · ${sousDossiersCount} chapitre${sousDossiersCount > 1 ? 's' : ''}`}
+            </span>
             <button type="button" className="cd-ic" title="Autres actions" onClick={onMenu}><Icon name="more" size={15} stroke={2.6} /></button>
           </div>
         </div>
@@ -746,11 +754,39 @@ export function DossierRow({ dossier, isOpen, fichesCount, isRenaming, renameInp
   );
 }
 
-/** bouton « + Nouveau dossier », même style partout (voir DossierRow). */
-export function DossierAddButton({ onClick }) {
+/** Indentation d'UN niveau de dossier — appliquée à l'identique sous une matière
+    (contenu d'une unité) et sous une unité (contenu d'un chapitre), dans les deux
+    écrans : une seule constante, donc aucune dérive possible entre les niveaux. */
+export const DOSSIER_INDENT = { marginLeft: 18, paddingLeft: 10, borderLeft: '2px solid var(--border-2)' };
+
+/** Textes de la confirmation de suppression d'un dossier — partagés par les DEUX
+    écrans (même geste, mêmes conséquences → mêmes mots, pas deux formulations qui
+    divergent). `chapitresCount`/`fichesCount` décrivent le sous-arbre réellement
+    supprimé/déplacé par ctx.deleteDossier (fichesCount d'une unité inclut celles de
+    ses chapitres). */
+export function dossierDeleteTexts(dossier, chapitresCount = 0, fichesCount = 0) {
+  const isChapitre = !!dossier.parentId;
+  const pron = isChapitre ? 'il' : 'elle';
+  const cible = isChapitre ? "dans l'unité parente" : 'à la racine de la matière';
+  const chap = !isChapitre && chapitresCount > 0
+    ? ` Ses ${chapitresCount} chapitre${chapitresCount > 1 ? 's' : ''} ${chapitresCount > 1 ? 'seront supprimés' : 'sera supprimé'} avec elle.`
+    : '';
+  const fic = fichesCount > 0
+    ? ` ${fichesCount > 1 ? `Les ${fichesCount} fiches` : 'La fiche'} qu'${pron} contient ${fichesCount > 1 ? 'ne sont PAS supprimées : elles remontent' : "n'est PAS supprimée : elle remonte"} ${cible}.`
+    : '';
+  return {
+    title: isChapitre ? 'Supprimer ce chapitre ?' : 'Supprimer cette unité ?',
+    body: `« ${dossier.nom} » sera supprimé${isChapitre ? '' : 'e'}.${chap}${fic}`,
+    confirmLabel: isChapitre ? 'Supprimer le chapitre' : "Supprimer l'unité",
+  };
+}
+
+/** bouton « + Nouvelle unité » / « + Nouveau chapitre », même style partout (voir
+    DossierRow) : `label` est la SEULE variation entre les deux niveaux. */
+export function DossierAddButton({ onClick, label = 'Nouvelle unité' }) {
   return (
     <button type="button" className="btn ghost sm" style={{ marginTop: 8 }} onClick={onClick}>
-      <Icon name="plus" size={13} /> Nouveau dossier
+      <Icon name="plus" size={13} /> {label}
     </button>
   );
 }
