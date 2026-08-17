@@ -4,10 +4,11 @@
    Droite : méthode des J (frise) + cards QCM/Flash/Feynman + erreurs.
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, JBadge, matiereMeta, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, EtiquetteDot, detectDocKind } from '../components/ui.jsx';
 import {
-  index, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, overdueByFiche,
+  index, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, overdueByFiche, nextDate, fmtDay,
   qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, carnetV1Questions, carnetV2Questions,
 } from '../lib/planning.js';
 import { shuffle } from '../lib/sm2.js';
@@ -96,7 +97,10 @@ export function Reviser({ ctx }) {
   const [draft, setDraft] = useState('');
   const [ctxMenu, setCtxMenu] = useState(null); // { type: 'source'|'matiere'|'fiche', id, x, y }
   const [confirmDel, setConfirmDel] = useState(null); // { type, id, nom, fichesCount }
-  const [showAddItem, setShowAddItem] = useState(false);
+  // ÉTAPE 4 — la modale « Ajouter un item » vise une FICHE explicite (et non plus
+  // implicitement celle du panneau) : le menu contextuel de n'importe quelle ligne
+  // peut donc l'ouvrir, y compris sur une fiche qui n'est pas la sélection courante.
+  const [addItemFiche, setAddItemFiche] = useState(null); // ficheId | null
   // sous-dossiers d'une matière (même store/`fiche.dossierId` que Bibliotheque.jsx —
   // pur rangement d'affichage, voir MedReviseApp.jsx/storage.js), rendu via le MÊME
   // composant DossierRow (ui.jsx) que la Bibliothèque — visuellement identique par
@@ -210,10 +214,164 @@ export function Reviser({ ctx }) {
   // openChapitreExos) : le panneau de droite n'a jamais deux sujets à la fois.
   const selectOnly = (id) => { setSelChapitre(null); setSelIds([id]); ctx.setFocusFiche(id); };
   const toggle = (id) => {
+    cancelRenameTimer();
     setSelChapitre(null);
     setSelIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
     ctx.setFocusFiche(id);
   };
+
+  /* ============================================================
+     ÉTAPE 4 — gestes sur une ligne de fiche, modèle Finder.
+
+     · clic simple                 → ouvre la fiche (panneau droit)
+     · double-clic RAPIDE          → ouvre le cours (PDF/HTML). Ne renomme JAMAIS.
+     · clic sur une fiche DÉJÀ seule sélectionnée, puis PAUSE → renomme sur place
+     · Cmd/Ctrl + clic             → ajoute/retire de la sélection
+     · Maj + clic                  → sélectionne la plage depuis la dernière fiche
+     · F2                          → renomme (second chemin, comme le menu)
+
+     Le renommage « clic-pause » et l'ouverture du cours se disputent le MÊME
+     premier clic : on arme donc un délai au clic, que le second clic annule.
+     RENAME_DELAY doit rester > au seuil de double-clic du système (~400-500 ms),
+     sinon un double-clic un peu lent renommerait au lieu d'ouvrir.
+     ============================================================ */
+  const RENAME_DELAY = 650;
+  const renameTimer = useRef(null);
+  const cancelRenameTimer = () => { clearTimeout(renameTimer.current); renameTimer.current = null; };
+  // ancre de la sélection par plage (Maj + clic) : dernière fiche cliquée SANS Maj.
+  const rangeAnchor = useRef(null);
+
+  // ordre d'affichage À PLAT des fiches réellement visibles (cours dépliés, dossiers
+  // ouverts) — c'est cet ordre-là que suivent Maj + clic et les flèches ↑ ↓, jamais
+  // l'ordre de la base : sélectionner une plage doit sélectionner ce que l'œil voit.
+  const visibleFicheIds = useMemo(() => {
+    const out = [];
+    db.sources.filter((s) => !s.archive).forEach((src) => {
+      if (openSrc[src.id] === false) return;
+      matieresOf(src.id).filter((m) => fichesOf(m.id).length).forEach((mat) => {
+        const all = fichesOf(mat.id);
+        all.filter((f) => !f.dossierId).forEach((f) => out.push(f.id));
+        unitesOf(mat.id).forEach((u) => {
+          if (!openDossier[u.id]) return;
+          all.filter((f) => f.dossierId === u.id).forEach((f) => out.push(f.id));
+          chapitresOf(u.id).forEach((c) => {
+            if (!openDossier[c.id]) return;
+            all.filter((f) => f.dossierId === c.id).forEach((f) => out.push(f.id));
+          });
+        });
+      });
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db.sources, db.matieres, db.fiches, db.dossiers, openSrc, openDossier]);
+
+  const selectRangeTo = (id) => {
+    const from = rangeAnchor.current;
+    const a = visibleFicheIds.indexOf(from);
+    const b = visibleFicheIds.indexOf(id);
+    if (a < 0 || b < 0) { selectOnly(id); rangeAnchor.current = id; return; }
+    const [lo, hi] = a <= b ? [a, b] : [b, a];
+    setSelChapitre(null);
+    setSelIds(visibleFicheIds.slice(lo, hi + 1));
+    ctx.setFocusFiche(id);
+  };
+
+  // ouvre le COURS d'une fiche quelconque (pas seulement celle du panneau) —
+  // même lecteur que les boutons « Voir le cours » du bandeau.
+  const viewCoursOf = (ficheId) => {
+    const f = db.fiches.find((x) => x.id === ficheId);
+    if (!f) return false;
+    if (f.pdfId) { ctx.openPdfReader(f.id, 'read', 'revise', 'pdf'); return true; }
+    if (f.htmlId) { ctx.openPdfReader(f.id, 'read', 'revise', 'html'); return true; }
+    return false; // aucun document rattaché : le double-clic ne fait rien
+  };
+  const ficheHasDoc = (ficheId) => { const f = ix.fById[ficheId]; return !!(f && (f.pdfId || f.htmlId)); };
+  // « Lancer aujourd'hui » sur UNE fiche donnée (le bandeau, lui, lance la sélection
+  // courante) : mêmes items dus, même session, même titre suffixé.
+  const launchTodayFor = (ficheId) => {
+    const f = ix.fById[ficheId];
+    if (!f) return;
+    if (f.type === 'anat_schema') { if (dueSchemaIds.has(f.id)) ctx.startAnatQuiz(f, { mode: 'total' }); return; }
+    const items = db.questions.filter((q) => q.ficheId === f.id && dueIdsToday.has(q.id));
+    if (items.length) ctx.startSession(items, f.titre + " — Aujourd'hui");
+  };
+
+  const onFicheClick = (e, f) => {
+    cancelRenameTimer();
+    // Cmd/Ctrl : ajout/retrait — même effet que la case à cocher, sans viser.
+    if (e.metaKey || e.ctrlKey) { toggle(f.id); rangeAnchor.current = f.id; return; }
+    if (e.shiftKey) { selectRangeTo(f.id); return; }
+    const wasOnlySelection = selIds.length === 1 && selIds[0] === f.id;
+    if (!wasOnlySelection) { selectOnly(f.id); rangeAnchor.current = f.id; return; }
+    // déjà sélectionnée seule : on arme le renommage « clic-pause » du Finder.
+    // Le double-clic (ci-dessous) annule ce délai avant qu'il n'expire.
+    renameTimer.current = setTimeout(() => { renameTimer.current = null; startRename('fiche', f.id, f.titre); }, RENAME_DELAY);
+  };
+  const onFicheDoubleClick = (e, f) => {
+    e.stopPropagation();
+    cancelRenameTimer(); // un double-clic rapide ne renomme JAMAIS
+    viewCoursOf(f.id);
+  };
+  // tout ce qui interrompt l'intention « clic-pause » désarme le délai : commencer
+  // un glisser, sortir de la ligne, faire défiler la liste, appuyer sur une touche.
+  useEffect(() => cancelRenameTimer, []);
+
+  /* ---- infobulle riche (survol prolongé d'une fiche) ----
+     Ce que le survol montrait jusqu'ici : rien d'utile. Ce qu'il montre maintenant :
+     le nom complet (les longs sont tronqués dans la colonne), l'emplacement, le
+     palier J et la PROCHAINE ÉCHÉANCE, la répartition des cartes, le retard.
+     Rendue en portail (position fixe) pour ne pas être rognée par la liste, qui
+     défile — même raison que le menu contextuel (ui.jsx). */
+  const HOVER_DELAY = 600;
+  const hoverTimer = useRef(null);
+  const [hoverCard, setHoverCard] = useState(null); // { ficheId, x, y }
+  const startHover = (e, ficheId) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => setHoverCard({ ficheId, x: r.right + 10, y: r.top }), HOVER_DELAY);
+  };
+  const endHover = () => { clearTimeout(hoverTimer.current); setHoverCard(null); cancelRenameTimer(); };
+  useEffect(() => () => clearTimeout(hoverTimer.current), []);
+  // le défilement de la liste déplacerait la carte par rapport à sa ligne : on la ferme.
+  useEffect(() => {
+    if (!hoverCard) return undefined;
+    const close = () => setHoverCard(null);
+    window.addEventListener('scroll', close, true);
+    return () => window.removeEventListener('scroll', close, true);
+  }, [hoverCard]);
+
+  const hoverInfo = useMemo(() => {
+    if (!hoverCard) return null;
+    const f = ix.fById[hoverCard.ficheId];
+    if (!f) return null;
+    const mat = ix.mById[f.matiereId];
+    const src = mat ? db.sources.find((s) => s.id === mat.sourceId) : null;
+    const dossier = f.dossierId ? db.dossiers.find((d) => d.id === f.dossierId) : null;
+    const unite = dossier && dossier.parentId ? db.dossiers.find((d) => d.id === dossier.parentId) : null;
+    const qs = db.questions.filter((q) => q.ficheId === f.id);
+    const count = (t) => qs.filter((q) => q.type === t).length;
+    const jp2 = ficheJ(db, f.id, ix);
+    // prochaine échéance = la plus proche parmi les cartes encore actives (même
+    // lecture que le planning, via nextDate — jamais une date recalculée à la main).
+    const dates = f.type === 'anat_schema'
+      ? [nextDate(f)].filter(Boolean)
+      : qs.filter((q) => q.type === 'qcm' || q.type === 'flashcard').map(nextDate).filter(Boolean);
+    const soonest = dates.length ? dates.sort()[0] : null;
+    const g = overdueGroupOf(f.id);
+    return {
+      titre: f.titre,
+      lieu: [src && src.nom, mat && matiereMeta(mat).label, unite && unite.nom, dossier && dossier.nom].filter(Boolean).join(' · '),
+      jLabel: jp2 && jp2.jIndex >= 0 ? jp2.jLabel : null,
+      scheduled: isFicheScheduled(db, f, ix),
+      soonest,
+      isSchema: f.type === 'anat_schema',
+      qcm: count('qcm'), flash: count('flashcard'), feyn: count('feynman'), exo: count('exercice'),
+      due: dueCountFiche(f.id),
+      retard: g ? (g.isSchema ? 1 : g.items.length) : 0,
+      hasDoc: !!(f.pdfId || f.htmlId),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hoverCard, db, ix, overdue]);
   const openChapitreExos = (chapitreId) => { setSelIds([]); setSelChapitre(chapitreId); };
 
   const selFiches = db.fiches.filter((f) => selIds.includes(f.id));
@@ -312,13 +470,18 @@ export function Reviser({ ctx }) {
   // pas de contenu exportable : elle est SIGNALÉE, jamais silencieusement omise.
   const [chapExport, setChapExport] = useState(null); // { count, skipped: string[] }
   const [chapExportBusy, setChapExportBusy] = useState(false);
-  const exportChapitre = async () => {
-    if (!chapitreSel) return;
+  // ÉTAPE 4 — `chap` explicite pour que le menu contextuel d'un chapitre puisse
+  // exporter SANS ouvrir la vue chapitre ; sans argument, c'est le chapitre affiché
+  // (comportement d'origine du bouton du bandeau, inchangé).
+  const exportChapitre = async (chap) => {
+    const target = chap || chapitreSel;
+    if (!target) return;
     setChapExportBusy(true);
     try {
-      const matiereNom = (ix.mById[chapitreSel.matiereId] || {}).nom || '';
+      const matiereNom = (ix.mById[target.matiereId] || {}).nom || '';
+      const uniteDuChap = db.dossiers.find((d) => d.id === target.parentId) || null;
       const fichesDuChap = db.fiches
-        .filter((f) => f.dossierId === chapitreSel.id && !f.archive)
+        .filter((f) => f.dossierId === target.id && !f.archive)
         .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
       const entries = [];
       const skipped = [];
@@ -329,7 +492,7 @@ export function Reviser({ ctx }) {
         entries.push(buildCourseExport({ fiche: f, matiereNom, docEl, cartes }));
       }
       const payload = buildChapitreExport({
-        chapitre: chapitreSel, uniteNom: chapUnite ? chapUnite.nom : '', matiereNom, fiches: entries,
+        chapitre: target, uniteNom: uniteDuChap ? uniteDuChap.nom : '', matiereNom, fiches: entries,
       });
       await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
       setChapExport({ count: entries.length, skipped });
@@ -341,6 +504,48 @@ export function Reviser({ ctx }) {
       setChapExportBusy(false);
     }
   };
+  /* ---- clavier dans la liste (ÉTAPE 4) ----
+     ↑ ↓ déplacent la sélection d'une fiche à l'autre dans l'ordre VU (donc dossiers
+     repliés ignorés), Entrée ouvre le cours, Espace coche/décoche, F2 renomme,
+     ← replie le dossier/cours de la fiche courante. Un champ de saisie (renommage,
+     filtre) garde évidemment ses touches. */
+  const focusFicheRow = (id) => {
+    const el = treeScrollRef.current && treeScrollRef.current.querySelector(`[data-fiche-btn="${id}"]`);
+    if (el) { el.focus(); el.scrollIntoView({ block: 'nearest' }); }
+  };
+  const onTreeKeyDown = (e) => {
+    const tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    const cur = selIds.length ? selIds[selIds.length - 1] : null;
+    const i = cur ? visibleFicheIds.indexOf(cur) : -1;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!visibleFicheIds.length) return;
+      e.preventDefault();
+      cancelRenameTimer();
+      const next = e.key === 'ArrowDown'
+        ? visibleFicheIds[Math.min(i + 1, visibleFicheIds.length - 1)] ?? visibleFicheIds[0]
+        : visibleFicheIds[Math.max(i - 1, 0)] ?? visibleFicheIds[0];
+      // Maj + flèche prolonge la plage, comme Maj + clic.
+      if (e.shiftKey && rangeAnchor.current) selectRangeTo(next);
+      else { selectOnly(next); rangeAnchor.current = next; }
+      focusFicheRow(next);
+      return;
+    }
+    if (!cur) return;
+    const f = ix.fById[cur];
+    if (!f) return;
+    if (e.key === 'Enter') { e.preventDefault(); cancelRenameTimer(); viewCoursOf(cur); }
+    else if (e.key === ' ') { e.preventDefault(); cancelRenameTimer(); toggle(cur); }
+    else if (e.key === 'F2') { e.preventDefault(); cancelRenameTimer(); startRename('fiche', cur, f.titre); }
+    else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      // replie le contenant de la fiche : son dossier s'il est dans un dossier,
+      // sinon le cours (source) auquel elle appartient.
+      if (f.dossierId) setOpenDossier((o) => ({ ...o, [f.dossierId]: false }));
+      else { const mat = ix.mById[f.matiereId]; if (mat) setOpenSrc((o) => ({ ...o, [mat.sourceId]: false })); }
+    }
+  };
+
   const isRen = (type, id) => renaming && renaming.type === type && renaming.id === id;
   const startRename = (type, id, current) => { setDraft(current); setRenaming({ type, id }); };
   const commitRename = () => {
@@ -355,6 +560,9 @@ export function Reviser({ ctx }) {
   // clic droit desktop sur un cours ou une matière (empêche le menu natif du navigateur)
   const openCtxMenu = (e, type, id) => {
     e.preventDefault();
+    // ÉTAPE 4 — un menu qui s'ouvre annule le renommage « clic-pause » armé juste
+    // avant : sans ça, le champ de saisie apparaîtrait DERRIÈRE le menu.
+    cancelRenameTimer();
     setCtxMenu({ type, id, x: Math.min(e.clientX, window.innerWidth - 190), y: Math.min(e.clientY, window.innerHeight - 110) });
   };
   // appui long tactile explicite (le "contextmenu" natif sur long-press n'est pas fiable
@@ -470,10 +678,15 @@ export function Reviser({ ctx }) {
     setDossierMenu({ x: Math.min(e.clientX, window.innerWidth - 200), y: Math.min(e.clientY, window.innerHeight - 120), dossierId });
   };
   const dossierMenuItems = (d) => [
-    { label: 'Renommer', icon: 'edit', onClick: () => startRename('dossier', d.id, d.nom) },
     // second point d'entrée vers la vue "Exercices du chapitre" (le premier étant le
     // bouton cible de la ligne, voir DossierRow#onOpenExos) — chapitres seulement.
     ...(d.parentId ? [{ label: 'Exercices du chapitre', icon: 'target', onClick: () => openChapitreExos(d.id) }] : []),
+    // ÉTAPE 4 — « Tout exporter » sans passer par la vue chapitre : MÊME fonction,
+    // à qui l'on précise juste sur quel chapitre travailler.
+    ...(d.parentId ? [{ label: 'Tout exporter', icon: 'copy', onClick: () => exportChapitre(d) }] : []),
+    // ÉTAPE 4 — créer un chapitre depuis l'unité elle-même.
+    ...(!d.parentId ? [{ label: 'Nouveau chapitre', icon: 'folder', onClick: () => createChapitre(d.matiereId, d.id) }] : []),
+    { label: 'Renommer', icon: 'edit', onClick: () => startRename('dossier', d.id, d.nom) },
     { label: d.parentId ? 'Supprimer le chapitre' : "Supprimer l'unité", icon: 'trash', danger: true, onClick: () => askDeleteDossier(d.id) },
   ];
   // input de renommage d'un dossier — MÊME rendu que le RenameInput de
@@ -539,8 +752,12 @@ export function Reviser({ ctx }) {
               <button className={'tree-check' + (sel ? ' on' : '')} onClick={() => toggle(f.id)} title="Cocher / décocher">
                 <span className="tc-box">{sel ? <Icon name="check" size={11} stroke={3} /> : null}</span>
               </button>
-              <button className="tree-course-main" onClick={() => selectOnly(f.id)} onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }} title="Clic = sélectionner · double-clic = renommer">
-                <span className="tc-name" title={f.titre}>{f.titre}</span>
+              <button className="tree-course-main" data-fiche-btn={f.id}
+                onClick={(e) => onFicheClick(e, f)}
+                onDoubleClick={(e) => onFicheDoubleClick(e, f)}
+                onPointerDown={cancelRenameTimer}
+                onMouseEnter={(e) => startHover(e, f.id)} onMouseLeave={endHover}>
+                <span className="tc-name">{f.titre}</span>
                 <span className="tc-meta">
                   {f.type === 'anat_schema' && <span title="Schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex' }}><Icon name="image" size={12} /></span>}
                   <EtiquetteDot value={f.etiquette} />
@@ -587,7 +804,7 @@ export function Reviser({ ctx }) {
             <span className="tree-head-title"><Icon name="folder" size={15} /> Cours &amp; matières</span>
             <button className="tree-clear" onClick={() => setSelIds([])} disabled={empty}>Tout décocher</button>
           </div>
-          <div className="tree-scroll scroll" ref={treeScrollRef}>
+          <div className="tree-scroll scroll" ref={treeScrollRef} onKeyDown={onTreeKeyDown}>
             <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
             {db.sources.filter((s) => !s.archive).map((src) => {
               const mats = matieresOf(src.id).filter((m) => fichesOf(m.id).length);
@@ -954,14 +1171,42 @@ export function Reviser({ ctx }) {
 
       {ctxMenu && (
         <ContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} items={[
+          /* ÉTAPE 4 — menu unifié : les mêmes entrées au clic droit ET au « ⋯ », sur
+             les quatre types de ligne. Les actions de RÉVISION arrivent en tête, la
+             gestion (renommer / déplacer / supprimer) ensuite. Aucune n'est inventée :
+             chacune appelle ce que l'écran fait déjà par ailleurs. */
           // ÉTAPE 1 — rattrapage d'UNE fiche en retard, là où l'encadré « À rattraper »
           // le proposait : même appel (startOverdueFiche) sur le même groupe, donc même
           // comportement pour un schéma d'anatomie comme pour des cartes. N'apparaît que
-          // si cette fiche est réellement en retard, et EN TÊTE de menu : c'est une action
-          // de révision, elle passe avant la gestion (renommer/déplacer/supprimer).
+          // si cette fiche est réellement en retard.
           ...(ctxMenu.type === 'fiche' && overdueGroupOf(ctxMenu.id) ? [{
             label: 'Rattraper maintenant', icon: 'clock',
             onClick: () => { const g = overdueGroupOf(ctxMenu.id); if (g) startOverdueFiche(g); },
+          }] : []),
+          // « Voir le cours » : n'apparaît que si un document est réellement rattaché
+          // (sinon l'entrée promettrait une ouverture qui ne se produirait pas).
+          ...(ctxMenu.type === 'fiche' && ficheHasDoc(ctxMenu.id) ? [{
+            label: 'Voir le cours', icon: 'filePdf', onClick: () => viewCoursOf(ctxMenu.id),
+          }] : []),
+          // « Lancer aujourd'hui » sur CETTE fiche (le bandeau ne le propose que pour la
+          // sélection courante) — n'apparaît que s'il y a réellement des cartes dues.
+          ...(ctxMenu.type === 'fiche' && dueCountFiche(ctxMenu.id) > 0 ? [{
+            label: `Lancer aujourd'hui (${dueCountFiche(ctxMenu.id)})`, icon: 'play',
+            onClick: () => launchTodayFor(ctxMenu.id),
+          }] : []),
+          // déplier / replier tout un cours d'un coup (ses matières sont toujours
+          // rendues avec lui : c'est le pli du cours qui compte).
+          ...(ctxMenu.type === 'source' ? [{
+            label: openSrc[ctxMenu.id] === false ? 'Déplier ce cours' : 'Replier ce cours', icon: 'layers',
+            onClick: () => setOpenSrc((o) => ({ ...o, [ctxMenu.id]: o[ctxMenu.id] === false })),
+          }] : []),
+          // création d'une unité depuis la matière (le bouton dédié vit dans la liste,
+          // ce second chemin évite d'aller le chercher).
+          ...(ctxMenu.type === 'matiere' ? [{
+            label: 'Nouvelle unité', icon: 'folder', onClick: () => createUnite(ctxMenu.id),
+          }] : []),
+          ...(ctxMenu.type === 'fiche' ? [{
+            label: 'Ajouter un item', icon: 'plus', onClick: () => setAddItemFiche(ctxMenu.id),
           }] : []),
           {
             label: 'Renommer', icon: 'edit', onClick: () => {
@@ -1015,13 +1260,77 @@ export function Reviser({ ctx }) {
         ]} />
       )}
 
+      {/* ÉTAPE 4 — « Tout exporter » est désormais joignable depuis le menu d'un
+         chapitre, donc SANS ouvrir la vue chapitre : le compte rendu (combien de
+         fiches copiées, lesquelles omises faute de cours HTML) doit rester visible
+         dans ce cas aussi, sinon l'export réussirait ou échouerait en silence.
+         Même contenu que le bandeau de la vue chapitre, en surimpression. */}
+      {chapExport && !chapitreSel && (
+        <div className="chap-export-toast">
+          <div className={'err-mini' + (chapExport.error ? '' : ' ok')}>
+            <div className="em-ic"><Icon name={chapExport.error ? 'alert' : 'check'} size={16} stroke={2.5} /></div>
+            <div className="em-body">
+              {chapExport.error ? (
+                <div className="em-title">Export impossible — presse-papier refusé par le navigateur.</div>
+              ) : (
+                <>
+                  <div className="em-title">{chapExport.count} fiche{chapExport.count > 1 ? 's' : ''} copiée{chapExport.count > 1 ? 's' : ''} dans le presse-papier ✓</div>
+                  {chapExport.skipped.length > 0 && (
+                    <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}>
+                      <Icon name="alert" size={12} /> Non exportée{chapExport.skipped.length > 1 ? 's' : ''} (aucun cours HTML rattaché) : {chapExport.skipped.join(', ')}.
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ÉTAPE 4 — infobulle riche : elle sort du flux (portail vers le body) pour ne
+         pas être rognée par la liste, qui défile et masque tout ce qui déborde. */}
+      {hoverCard && hoverInfo && createPortal(
+        <div className="fiche-tip" style={{ left: Math.min(hoverCard.x, window.innerWidth - 300), top: Math.min(hoverCard.y, window.innerHeight - 210) }} role="tooltip">
+          <div className="ft-title">{hoverInfo.titre}</div>
+          {hoverInfo.lieu && <div className="ft-lieu">{hoverInfo.lieu}</div>}
+          <div className="ft-rows">
+            <div className="ft-row">
+              <span>Méthode des J</span>
+              <strong>
+                {!hoverInfo.scheduled ? 'en pause'
+                  : hoverInfo.jLabel ? hoverInfo.jLabel : '—'}
+              </strong>
+            </div>
+            <div className="ft-row">
+              <span>Prochaine échéance</span>
+              <strong>{hoverInfo.scheduled && hoverInfo.soonest ? fmtDay(hoverInfo.soonest) : '—'}</strong>
+            </div>
+            {hoverInfo.due > 0 && (
+              <div className="ft-row accent"><span>À réviser aujourd'hui</span><strong className="tnum">{hoverInfo.due}</strong></div>
+            )}
+            {hoverInfo.retard > 0 && (
+              <div className="ft-row crit"><span>En retard</span><strong className="tnum">{hoverInfo.retard}</strong></div>
+            )}
+          </div>
+          <div className="ft-chips">
+            {hoverInfo.isSchema && <span className="pill">schéma d'anatomie</span>}
+            {hoverInfo.qcm > 0 && <span className="pill"><span className="tnum">{hoverInfo.qcm}</span> QCM</span>}
+            {hoverInfo.flash > 0 && <span className="pill"><span className="tnum">{hoverInfo.flash}</span> flash</span>}
+            {hoverInfo.feyn > 0 && <span className="pill"><span className="tnum">{hoverInfo.feyn}</span> Feynman</span>}
+            {hoverInfo.exo > 0 && <span className="pill"><span className="tnum">{hoverInfo.exo}</span> exos</span>}
+          </div>
+          <div className="ft-hint">{hoverInfo.hasDoc ? 'Double-clic : ouvrir le cours' : 'Aucun cours rattaché'} · Clic droit : toutes les actions</div>
+        </div>,
+        document.body,
+      )}
+
       {/* ÉTAPE 2 — menu « ⋯ » du bandeau de fiche. Il n'invente aucune action : il
          regroupe « Ajouter un item » (qui avait un en-tête de section pour lui seul)
          et deux gestes déjà offerts par le clic droit dans l'arbre, à portée de la
          fiche ouverte. Rendu par le MÊME ContextMenu que l'arbre. */}
       {barMenu && primary && (
         <ContextMenu x={barMenu.x} y={barMenu.y} onClose={() => setBarMenu(null)} items={[
-          { label: 'Ajouter un item', icon: 'plus', onClick: () => setShowAddItem(true) },
+          { label: 'Ajouter un item', icon: 'plus', onClick: () => setAddItemFiche(primary.id) },
           { label: 'Décaler le départ…', icon: 'calendar', onClick: () => askShiftFiche(primary.id) },
           {
             label: primary.rappelsJ !== false ? 'Retirer de la méthode des J' : 'Remettre dans la méthode des J',
@@ -1041,8 +1350,8 @@ export function Reviser({ ctx }) {
         return d ? <ContextMenu x={dossierMenu.x} y={dossierMenu.y} onClose={() => setDossierMenu(null)} items={dossierMenuItems(d)} /> : null;
       })()}
 
-      {showAddItem && primary && (
-        <AddItemModal ctx={ctx} ficheId={primary.id} ficheTitre={primary.titre} onClose={() => setShowAddItem(false)} />
+      {addItemFiche && ix.fById[addItemFiche] && (
+        <AddItemModal ctx={ctx} ficheId={addItemFiche} ficheTitre={ix.fById[addItemFiche].titre} onClose={() => setAddItemFiche(null)} />
       )}
 
       {/* import ciblé CHAPITRE : MÊME modale, même validateur tolérant — seule la

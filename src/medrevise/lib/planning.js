@@ -34,7 +34,11 @@ const J_TYPES = new Set(['qcm', 'flashcard']);
    traitée). Un `skippedOn` d'un cycle antérieur (< dueDate courant, ex.
    après une vraie révision qui a fait avancer dueDate) ne matche plus la
    condition et n'a donc aucun effet — pas de rémanence indéfinie. */
-function nextDate(record) {
+/* exporté (étape 4 de l'audit UX Réviser) pour l'infobulle riche de l'arbre, qui
+   affiche la prochaine échéance d'une fiche : elle DOIT lire la date par ce même
+   chemin (report d'un jour après un `skippedOn`), sinon elle annoncerait une date
+   que le planning ne retiendrait pas. */
+export function nextDate(record) {
   if (!record || record.termine) return null;
   const due = record.dueDate || null;
   if (due != null && record.skippedOn && record.skippedOn >= due) return addDays(record.skippedOn, 1);
