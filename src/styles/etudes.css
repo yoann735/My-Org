@@ -170,6 +170,41 @@
    le bandeau les réutilise tels quels. */
 
 /* ============================================================
+   ÉTAPE 3 (audit UX Réviser) — la liste « Cours & matières » domine.
+   Lignes de 44 px à tous les niveaux, cases à cocher cliquables sur 32 px,
+   bouton « ⋯ » au survol, poignée de redimensionnement.
+   ============================================================ */
+
+/* poignée : colonne de 10 px entre la liste et le panneau droit, pleine hauteur */
+.tree-resizer { position: sticky; top: 8px; height: calc(100vh - 96px); display: grid; place-items: center; cursor: col-resize; border-radius: 6px; touch-action: none; }
+.tree-resizer:hover, .tree-resizer:focus-visible { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.tree-resizer:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tree-resizer .tr-grip { width: 3px; height: 40px; border-radius: 2px; background: var(--border); transition: background .12s; }
+.tree-resizer:hover .tr-grip, .tree-resizer:focus-visible .tr-grip { background: var(--accent); }
+
+/* bouton « ⋯ » d'une ligne de l'arbre : révélé au survol et au focus clavier, mais
+   TOUJOURS présent sur tactile, où il n'y a pas de survol (le clic droit y étant
+   remplacé par l'appui long, il faut un chemin visible). */
+.tree-more { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; border: none; background: none; border-radius: 9px; color: var(--text-3); cursor: pointer; opacity: 0; transition: opacity .12s, color .12s, background .12s; }
+.tree-more:hover { color: var(--accent); background: var(--accent-soft); }
+.tree-more:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
+.tree-src-row:hover .tree-more, .tree-cat-row:hover .tree-more, .tree-course:hover .tree-more,
+.tree-src-row:focus-within .tree-more, .tree-cat-row:focus-within .tree-more, .tree-course:focus-within .tree-more { opacity: 1; }
+@media (hover: none) { .tree-more { opacity: 1; } }
+
+/* état « cours en pause » : le bouton cloche a quitté la ligne, l'état reste lisible */
+.tsrc-off { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: var(--bg-2); border: 1px solid var(--border-2); color: var(--text-3); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+/* la cloche reste utilisée par la Bibliothèque : lui donner enfin un style (la classe
+   .src-mute n'avait AUCUNE règle, le bouton s'affichait au style natif du navigateur). */
+.src-mute { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; border: none; background: none; border-radius: 9px; color: var(--text-3); cursor: pointer; transition: color .12s, background .12s; }
+.src-mute:hover { color: var(--accent); background: var(--accent-soft); }
+.src-mute.off { color: var(--accent-2); }
+
+/* zones de dépôt au repos : une bande de 6 px, sans cadre ni libellé — elles ne
+   s'ouvrent que pendant un glisser (voir FicheDragCtx, ui.jsx). */
+.dnd-zone.idle { margin: 2px 0; padding: 0; height: 6px; border: none; background: none; }
+
+/* ============================================================
    ÉTAPE 2 (audit UX Réviser) — panneau droit compacté.
    .revbar remplace .jcard sur les TROIS vues du panneau (fiche, chapitre,
    schéma d'anatomie) ; .rev-launch remplace .rev-modes POUR CET ÉCRAN
@@ -913,12 +948,28 @@
 .tree-card .tree-scroll { padding: 10px; }
 .tree-card .tree-src { margin-bottom: 20px; }
 .tree-card .tree-src:last-child { margin-bottom: 0; }
-.tree-card .tree-src-row { padding: 9px 9px 9px 7px; }
 .tree-card .tree-group { margin: 16px 0 6px; }
 .tree-card .tree-src > .tree-group:first-of-type { margin-top: 12px; }
-.tree-card .tree-cat-row { padding: 5px 7px; margin-bottom: 3px; }
-.tree-card .tree-course { margin: 4px 0 4px 10px; }
-.tree-card .tree-course-main { padding: 10px 12px; gap: 10px; }
+.tree-card .tree-course { margin: 3px 0 3px 10px; }
+/* ÉTAPE 3 — une seule hauteur de ligne, 44 px, à tous les niveaux (cours, matière,
+   fiche) : plus besoin de viser, et la liste se lit comme une colonne régulière. */
+.tree-card .tree-src-row { padding: 0 6px 0 7px; min-height: 44px; }
+.tree-card .tree-cat-row { padding: 0 6px 0 7px; min-height: 44px; margin-bottom: 2px; }
+.tree-card .tree-course-main { padding: 0 4px 0 10px; gap: 8px; min-height: 44px; align-items: center; }
+
+/* ÉTAPE 3 — la LIGNE DE COURS n'avait, elle, AUCUNE règle : ni .tree-src-row ni
+   .tree-src-main n'étaient déclarés nulle part, et le préréglage Tailwind est
+   désactivé (tailwind.config.js, preflight: false). Ce <button> s'affichait donc
+   avec le style natif du navigateur — fond gris, bordure, police système, hauteur
+   dictée par l'UA. C'est le niveau le plus haut de la hiérarchie : il est désormais
+   dessiné comme les autres. Ces deux classes n'existent que dans Réviser. */
+.tree-src-row { display: flex; align-items: center; gap: 2px; }
+.tree-src-main { flex: 1 1 auto; display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 44px; padding: 0 8px; border: none; background: none; border-radius: 10px; font-family: inherit; font-size: 14.5px; font-weight: 800; color: var(--text); cursor: pointer; text-align: left; transition: background .12s; }
+.tree-src-main:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.tree-src-main:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* la pastille d'icône du cours : scopée à l'arbre, car .tsrc-ic sert aussi (avec ses
+   styles en ligne) à la Bibliothèque et à l'Accueil, qu'on ne touche pas ici. */
+.tree-card .tsrc-ic { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; flex: 0 0 auto; }
 
 /* ---------- B1 : sélecteur de fiche PDF (onglet "PDF") ---------- */
 .pdfpick-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; margin-bottom: 6px; border: 1px solid var(--border-2); border-radius: 10px; background: var(--card); cursor: pointer; font-family: inherit; font-size: 13.5px; color: var(--text); transition: border-color .12s, background .12s; }
@@ -1082,47 +1133,37 @@
 .soon h1 { font-family: 'DM Serif Display', serif; font-size: 34px; margin: 0; }
 .soon p { color: var(--text-2); max-width: 420px; margin: 0; }
 
-/* ---------- E : sidebar « Cours & matières » élargie + noms lisibles en entier ----------
-   La colonne de l'arbre est nettement plus large (voir --tree-col dans Reviser) et les
-   titres de fiche/matière/cours ne sont plus tronqués : ils passent à la ligne au lieu
-   de finir en « … ». L'aération de la hiérarchie (cours / matière / fiche) est conservée. */
-.tree-card .tree-course-main { align-items: flex-start; }
-.tree-card .tc-name,
+/* ---------- ÉTAPE 3 : noms sur UNE ligne, icônes en bloc de droite ----------
+   L'empilement de correctifs précédent (retour à la ligne, puis min-width 9ch +
+   word-break + line-clamp 2 pour empêcher le nom de se couper une lettre par ligne)
+   traitait un symptôme : le nom et les icônes se disputaient la largeur d'une colonne
+   de 380 px. Avec 520 px réglables et un bloc d'icônes de largeur fixe (.tc-meta),
+   le problème n'existe plus — le nom prend toute la place restante, sur une seule
+   ligne, et finit en « … » avec le nom complet en infobulle. Une ligne = une hauteur
+   constante, donc une cible de clic stable. */
+.tree-card .tc-name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
 .tree-card .tsrc-name,
-.tree-card .tcat-label,
-.tree-card .tree-cat-row .tree-cat .tcat-label { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.32; word-break: break-word; }
-/* le badge « à réviser » reste aligné en haut de la ligne */
-.tree-card .tree-course-main .due-badge { margin-top: 1px; }
+.tree-card .tcat-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* bloc d'icônes de fin de ligne (schéma, étiquette, retard, badge « à réviser ») :
+   largeur dictée par son contenu, jamais comprimé, jamais compressant. */
+.tree-card .tc-meta { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; margin-left: auto; padding-left: 6px; }
+.tree-card .tc-meta > * { flex: 0 0 auto; }
 
-/* correctif d'affichage : sur une ligne qui porte des icônes (schéma, étiquette,
-   sparkle « exos conformes », alerte retard, badge violet « à réviser »), le nom
-   se retrouvait comprimé à quasi rien et, à cause du `word-break: break-word`
-   ci-dessus, se coupait UNE LETTRE PAR LIGNE (texte vertical) — d'autant plus
-   dans un chapitre, où l'indentation des deux niveaux réduit encore la largeur.
-   Trois garde-fous, purement visuels :
-   1. la largeur est RÉSERVÉE au nom (plancher min-width) — il ne peut plus être
-      écrasé sous une largeur lisible ;
-   2. les icônes/badges ne se compriment plus (flex: 0 0 auto) et ne volent donc
-      plus la place du texte ;
-   3. la coupe en plein mot est abandonnée (word-break: normal) : le nom passe à
-      la ligne entre les mots, sur 2 lignes maximum puis « … ».
-   Une fiche sans icône, elle, tient déjà sur sa ligne : rien ne change pour elle. */
-.tree-card .tc-name {
-  flex: 1 1 auto;
-  min-width: 9ch;
-  word-break: normal;
-  overflow-wrap: anywhere;   /* un mot unique plus large que la colonne coupe quand même */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.tree-card .tree-course-main > span:not(.tc-name),
-.tree-card .tree-course-main .due-badge,
-.tree-card .tree-course-main .etq-dot { flex: 0 0 auto; }
+/* case à cocher : 18 px dessinés, 32 px cliquables — la cible était de 17 px, sous le
+   minimum d'accessibilité (24 px) et très loin du confort (44 px). */
+.tree-card .tree-check { width: 32px; height: 32px; border: none; background: none; border-radius: 9px; display: grid; place-items: center; padding: 0; }
+.tree-card .tree-check:hover .tc-box { border-color: var(--accent); }
+.tree-card .tree-check:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tree-card .tree-check .tc-box { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--border); background: var(--card); display: grid; place-items: center; color: #fff; transition: background .12s, border-color .12s; }
+.tree-card .tree-check.on .tc-box { background: var(--accent); border-color: var(--accent); }
+/* la case ne colore plus le fond du bouton lui-même (règle héritée plus haut) */
+.tree-card .tree-check.on { background: none; }
 
-/* responsive : sous 900px, l'arbre repasse au-dessus de la zone de droite (1 colonne) */
+/* responsive : sous 900px, l'arbre repasse au-dessus de la zone de droite (1 colonne).
+   La poignée n'a plus de sens dans cette disposition — masquée (elle laisserait sinon
+   une colonne vide de pleine hauteur au milieu du flux). */
 @media (max-width: 900px) {
   .revise-grid { grid-template-columns: 1fr !important; }
   .tree-card { position: static; max-height: 340px; }
+  .tree-resizer { display: none; }
 }

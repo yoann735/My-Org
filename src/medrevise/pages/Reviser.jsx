@@ -5,7 +5,7 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, JBadge, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, EtiquetteDot, detectDocKind } from '../components/ui.jsx';
+import { EdTop, JBadge, matiereMeta, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, EtiquetteDot, detectDocKind } from '../components/ui.jsx';
 import {
   index, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, overdueByFiche,
   qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, carnetV1Questions, carnetV2Questions,
@@ -27,6 +27,65 @@ const formatCardTime = (ms) => {
   const rest = s % 60;
   return rest ? `${m}m ${rest}s` : `${m}m`;
 };
+
+/* ÉTAPE 3 — largeur de la liste « Cours & matières ».
+   Elle était censée être pilotée par --tree-col : cette variable CSS n'a JAMAIS été
+   définie nulle part, c'est donc la valeur de repli (380 px) qui s'appliquait depuis
+   toujours — un commentaire de etudes.css affirmait pourtant le contraire. Elle est
+   désormais une vraie valeur, par défaut 520 px, ajustable à la poignée et mémorisée
+   dans stats (même canal que les autres préférences d'affichage). */
+const TREE_MIN = 320;
+const TREE_MAX = 760;
+const TREE_DEFAULT = 520;
+const clampTree = (w) => Math.max(TREE_MIN, Math.min(TREE_MAX, Math.round(w)));
+
+/** Poignée de redimensionnement de la liste : glisser à la souris/au doigt, double-clic
+    pour revenir à la largeur par défaut, flèches ← → au clavier (16 px par appui).
+    NB : SplitHandle (ui.jsx) ne convenait pas — c'est une poignée de REPLI (un clic,
+    un chevron), pas un redimensionneur. */
+function TreeResizer({ width, onResize, onCommit }) {
+  const ref = useRef(null);
+  const drag = useRef(null);
+  // `last` porte la dernière largeur calculée : `width` (props) reste la valeur du
+  // rendu courant, elle serait périmée au moment où l'on enregistre.
+  const last = useRef(width);
+  const apply = (w) => { last.current = w; onResize(w); };
+  const onPointerDown = (e) => {
+    drag.current = { x: e.clientX, w: width };
+    last.current = width;
+    if (ref.current && ref.current.setPointerCapture) ref.current.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  };
+  const onPointerMove = (e) => {
+    if (!drag.current) return;
+    apply(clampTree(drag.current.w + (e.clientX - drag.current.x)));
+  };
+  const endDrag = (e) => {
+    if (!drag.current) return;
+    drag.current = null;
+    if (ref.current && ref.current.releasePointerCapture && e.pointerId != null) {
+      try { ref.current.releasePointerCapture(e.pointerId); } catch { /* déjà relâché */ }
+    }
+    onCommit(last.current);
+  };
+  const onKeyDown = (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const w = clampTree(width + (e.key === 'ArrowRight' ? 16 : -16));
+    apply(w);
+    onCommit(w);
+  };
+  return (
+    <div ref={ref} className="tree-resizer" role="separator" aria-orientation="vertical" tabIndex={0}
+      aria-label="Largeur de la liste des cours" aria-valuenow={width} aria-valuemin={TREE_MIN} aria-valuemax={TREE_MAX}
+      title="Glisser pour redimensionner · double-clic pour revenir à la largeur par défaut"
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}
+      onDoubleClick={() => { apply(TREE_DEFAULT); onCommit(TREE_DEFAULT); }}
+      onKeyDown={onKeyDown}>
+      <span className="tr-grip" />
+    </div>
+  );
+}
 
 export function Reviser({ ctx }) {
   const { db } = ctx;
@@ -61,6 +120,10 @@ export function Reviser({ ctx }) {
   // QCM, qui remplace le bloc-curseur permanent.
   const [barMenu, setBarMenu] = useState(null); // { x, y }
   const [qcmPop, setQcmPop] = useState(false);
+  // largeur de la liste : état local pendant le glisser (fluide, sans écrire en base
+  // à chaque pixel), enregistrée dans stats une seule fois, au relâchement.
+  const [treeW, setTreeW] = useState(() => clampTree((ctx.stats && ctx.stats.treeColWidth) || TREE_DEFAULT));
+  const commitTreeW = (w) => { if (w !== ((ctx.stats && ctx.stats.treeColWidth) || TREE_DEFAULT)) ctx.saveStats({ ...ctx.stats, treeColWidth: w }); };
   const [selChapitre, setSelChapitre] = useState(null); // id de dossier (parentId ≠ null)
   const [showAddChapExo, setShowAddChapExo] = useState(false);
   const [shiftStart, setShiftStart] = useState(null); // { type: 'source'|'fiche', id, nom }
@@ -465,16 +528,29 @@ export function Reviser({ ctx }) {
                 onBlur={commitRename} />
             </div>
           ) : (
+            /* ÉTAPE 3 — la ligne fait 44 px, la case à cocher reçoit le clic sur une
+               zone de 32 px autour d'un carré de 18 px, les icônes sont groupées à
+               droite dans un bloc de largeur fixe (le nom ne se fait plus écraser),
+               et un « ⋯ » apparaît au survol : le clic droit n'est plus le seul
+               chemin vers les actions de la fiche. */
             <div className={'tree-course' + (sel ? ' on' : '')}
               onContextMenu={(e) => openCtxMenu(e, 'fiche', f.id)}
               onTouchStart={(e) => startPress(e, 'fiche', f.id)} onTouchEnd={cancelPress} onTouchMove={cancelPress} onTouchCancel={cancelPress}>
-              <button className={'tree-check' + (sel ? ' on' : '')} onClick={() => toggle(f.id)} title="Cocher / décocher">{sel ? <Icon name="check" size={11} stroke={3} /> : null}</button>
+              <button className={'tree-check' + (sel ? ' on' : '')} onClick={() => toggle(f.id)} title="Cocher / décocher">
+                <span className="tc-box">{sel ? <Icon name="check" size={11} stroke={3} /> : null}</span>
+              </button>
               <button className="tree-course-main" onClick={() => selectOnly(f.id)} onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }} title="Clic = sélectionner · double-clic = renommer">
-                <span className="tc-name">{f.titre}</span>
-                {f.type === 'anat_schema' && <span title="Schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex', marginLeft: 4 }}><Icon name="image" size={12} /></span>}
-                <EtiquetteDot value={f.etiquette} style={{ marginLeft: 4 }} />
-                {overdueFicheIds.has(f.id) && <span title="En retard — à rattraper" style={{ color: 'var(--crit)', display: 'inline-flex', marginLeft: 4 }}><Icon name="alert" size={12} /></span>}
-                {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
+                <span className="tc-name" title={f.titre}>{f.titre}</span>
+                <span className="tc-meta">
+                  {f.type === 'anat_schema' && <span title="Schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex' }}><Icon name="image" size={12} /></span>}
+                  <EtiquetteDot value={f.etiquette} />
+                  {overdueFicheIds.has(f.id) && <span title="En retard — à rattraper" style={{ color: 'var(--crit)', display: 'inline-flex' }}><Icon name="alert" size={12} /></span>}
+                  {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
+                </span>
+              </button>
+              <button type="button" className="tree-more" title="Autres actions (ou clic droit)"
+                onClick={(e) => { e.stopPropagation(); openCtxMenu(e, 'fiche', f.id); }}>
+                <Icon name="more" size={15} stroke={2.6} />
               </button>
             </div>
           )}
@@ -502,7 +578,9 @@ export function Reviser({ ctx }) {
          ET rabaisser l'arbre d'autant. Aucune capacité perdue — voir le commentaire
          d'overdueGroupOf ci-dessus pour le rattrapage. */}
 
-      <div className="revise-grid" style={{ display: 'grid', gridTemplateColumns: 'var(--tree-col, 380px) minmax(0,1fr)', gap: 20, alignItems: 'start', marginTop: 20 }}>
+      {/* ÉTAPE 3 — trois colonnes : liste · poignée · panneau droit. La largeur vient
+         de l'état (mémorisé dans stats), plus d'une variable CSS jamais définie. */}
+      <div className="revise-grid" style={{ display: 'grid', gridTemplateColumns: `${treeW}px 10px minmax(0,1fr)`, gap: 10, alignItems: 'start', marginTop: 20 }}>
         {/* tree */}
         <div className="tree-card">
           <div className="tree-head">
@@ -535,9 +613,22 @@ export function Reviser({ ctx }) {
                         <span className="tsrc-ic" style={{ background: `color-mix(in srgb, ${src.tint || '#7C6FE0'} 16%, transparent)`, color: src.tint || '#7C6FE0' }}><Icon name={src.icon || 'folder'} size={13} /></span>
                         <span className="tsrc-name">{src.nom}</span>
                         {srcHasSchema(src.id) && <span title="Contient un schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex', marginLeft: 4 }}><Icon name="image" size={12} /></span>}
+                        {/* ÉTAPE 3 — le bouton cloche quitte la ligne (il n'avait
+                           d'ailleurs aucun style : la classe .src-mute n'existait pas
+                           en CSS) ; l'ÉTAT, lui, reste lisible d'un coup d'œil, et le
+                           geste passe par le menu (« Retirer / remettre dans la méthode
+                           des J »), au clic droit comme au « ⋯ ». */}
+                        {!on && (
+                          <span className="tsrc-off" title="Cours en pause — ses fiches ne sortent plus dans la série du jour, mais restent révisables manuellement.">
+                            <Icon name="bellOff" size={12} /> en pause
+                          </span>
+                        )}
                       </button>
                     )}
-                    <BellButton on={on} onToggle={() => ctx.setSourceRappels(src.id, !on)} />
+                    <button type="button" className="tree-more" title="Autres actions (ou clic droit)"
+                      onClick={(e) => { e.stopPropagation(); openCtxMenu(e, 'source', src.id); }}>
+                      <Icon name="more" size={15} stroke={2.6} />
+                    </button>
                   </div>
                   {openS && mats.map((mat) => {
                     const allFiches = fichesOf(mat.id);
@@ -558,6 +649,10 @@ export function Reviser({ ctx }) {
                           ) : (
                             <span className="tcat-label" style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 5 }}>{mm.label}{matHasSchema(mat.id) && <span title="Contient un schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex' }}><Icon name="image" size={11} /></span>}</span>
                           )}
+                          <button type="button" className="tree-more" title="Autres actions (ou clic droit)"
+                            onClick={(e) => { e.stopPropagation(); openCtxMenu(e, 'matiere', mat.id); }}>
+                            <Icon name="more" size={15} stroke={2.6} />
+                          </button>
                         </div>
 
                         {/* création EN HAUT (juste sous l'en-tête de la matière), pas noyée sous
@@ -634,6 +729,8 @@ export function Reviser({ ctx }) {
              infobulle porte déjà le texte complet (voir due-badge dans renderTreeFiche).
              Autant de hauteur rendue à la liste, à chaque écran. */}
         </div>
+
+        <TreeResizer width={treeW} onResize={setTreeW} onCommit={commitTreeW} />
 
         {/* right */}
         <div>

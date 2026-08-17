@@ -3,9 +3,9 @@
    etudes.css classes for visual fidelity, but is wired to our real
    data model (matiere = {id,nom,couleur,icon}, fiche, questions).
    ============================================================ */
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { DndContext, DragOverlay, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragOverlay, MeasuringStrategy, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Icon } from '../../shared/Icon.jsx';
 import { todayISO } from '../lib/sm2.js';
 import { AllPromptsModal } from './CoursePromptsMenu.jsx';
@@ -661,6 +661,13 @@ export function DateActionModal({ title, body, label = 'Nouvelle date', confirmL
    "slot:<matiereId>:<dossierId|ROOT>:<beforeFicheId|END>" — dossierId=ROOT
    = racine de la matière (voir fiche.dossierId, sous-dossiers Bibliothèque).
    ============================================================ */
+/** Un glisser est-il en cours ? Publié par FicheDndProvider, lu par DropSlot pour
+    n'ouvrir les zones de dépôt QU'À CE MOMENT-LÀ (étape 3 de l'audit UX Réviser) :
+    au repos elles occupaient une quarantaine de pixels par matière, par unité et par
+    chapitre, dans les DEUX écrans qui montrent l'arbre. Les deux consomment le même
+    composant, ils restent donc rigoureusement identiques. */
+const FicheDragCtx = createContext(false);
+
 export function FicheDndProvider({ onDropAt, renderOverlay, children }) {
   const [activeId, setActiveId] = useState(null);
   const sensors = useSensors(
@@ -669,7 +676,11 @@ export function FicheDndProvider({ onDropAt, renderOverlay, children }) {
   );
   const stripPrefix = (id) => String(id).slice('fiche:'.length);
   return (
+    // measuring `Always` : les zones de dépôt s'ouvrent AU DÉBUT du glisser, donc la
+    // mise en page bouge à cet instant précis. Sans re-mesure continue, dnd-kit
+    // garderait les positions d'avant l'ouverture et viserait à côté.
     <DndContext sensors={sensors} collisionDetection={closestCenter}
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       onDragStart={(e) => setActiveId(e.active.id)}
       onDragCancel={() => setActiveId(null)}
       onDragEnd={(e) => {
@@ -680,7 +691,7 @@ export function FicheDndProvider({ onDropAt, renderOverlay, children }) {
         const [, matiereId, dossierRaw, beforeRaw] = String(over.id).split(':');
         onDropAt({ ficheId, matiereId, dossierId: dossierRaw === 'ROOT' ? null : dossierRaw, beforeFicheId: beforeRaw === 'END' ? null : beforeRaw });
       }}>
-      {children}
+      <FicheDragCtx.Provider value={!!activeId}>{children}</FicheDragCtx.Provider>
       <DragOverlay dropAnimation={null}>
         {activeId ? renderOverlay(stripPrefix(activeId)) : null}
       </DragOverlay>
@@ -707,8 +718,12 @@ export function DraggableFiche({ id, disabled, className = '', style, children }
 export function DropSlot({ matiereId, dossierId, beforeId, variant = 'line', label = 'Déposer ici' }) {
   const id = `slot:${matiereId}:${dossierId || 'ROOT'}:${beforeId || 'END'}`;
   const { setNodeRef, isOver } = useDroppable({ id });
+  const dragging = useContext(FicheDragCtx);
   if (variant === 'zone') {
-    return <div ref={setNodeRef} className={'dnd-zone' + (isOver ? ' over' : '')}>{label}</div>;
+    // au repos : le nœud reste monté (donc toujours enregistré comme cible) mais
+    // se réduit à une fine bande sans cadre ni libellé — il ne s'ouvre qu'au
+    // moment où un glisser commence.
+    return <div ref={setNodeRef} className={'dnd-zone' + (isOver ? ' over' : '') + (dragging ? '' : ' idle')}>{dragging ? label : null}</div>;
   }
   return <div ref={setNodeRef} className={'dnd-slot' + (isOver ? ' over' : '')} />;
 }
