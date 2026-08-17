@@ -783,13 +783,19 @@ export function dossierDeleteTexts(dossier, chapitresCount = 0, fichesCount = 0)
 
 /** bouton « + Nouvelle unité » / « + Nouveau chapitre », même style partout (voir
     DossierRow) : `label` est la SEULE variation entre les deux niveaux. */
-export function DossierAddButton({ onClick, label = 'Nouvelle unité' }) {
+export function DossierAddButton({ onClick, label = 'Nouvelle unité', style }) {
   return (
-    <button type="button" className="btn ghost sm" style={{ marginTop: 8 }} onClick={onClick}>
+    <button type="button" className="btn ghost sm" style={{ marginTop: 8, ...style }} onClick={onClick}>
       <Icon name="plus" size={13} /> {label}
     </button>
   );
 }
+
+/** Placement des boutons de création : EN HAUT de leur conteneur (juste sous
+    l'en-tête de la matière / de l'unité), avant la liste — accessibles sans
+    scroller une longue liste de fiches. Même marge aux deux niveaux et dans les
+    deux écrans. */
+export const DOSSIER_ADD_TOP = { marginTop: 4, marginBottom: 8 };
 
 /* ---- destination picker (Cours + Matière) with inline creation ----
    New cours / matière are created from a typed name (placeholder, no

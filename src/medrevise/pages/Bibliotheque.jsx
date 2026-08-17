@@ -10,7 +10,7 @@
    ============================================================ */
 import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
+import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
 import { index, isExoConforme } from '../lib/planning.js';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
@@ -399,6 +399,10 @@ export function Bibliotheque({ ctx }) {
                                 ? <div style={{ marginBottom: 8 }}><RenameInput /></div>
                                 : <div className="cat-badge" style={{ background: `color-mix(in srgb, ${mm.tint} 14%, transparent)`, color: mm.tint, borderColor: `color-mix(in srgb, ${mm.tint} 30%, transparent)`, marginBottom: 8, cursor: 'pointer' }} onDoubleClick={() => startRename('matiere', mat.id, mm.label)} title="Double-clic pour renommer"><Icon name={mm.icon} size={12} /> {mm.label}</div>}
 
+                              {/* création EN HAUT (juste sous l'en-tête de la matière), pas noyée
+                                 sous la liste des fiches — voir DOSSIER_ADD_TOP. */}
+                              <DossierAddButton onClick={() => createUnite(mat.id)} label="Nouvelle unité" style={DOSSIER_ADD_TOP} />
+
                               {rootFiches.map(renderFiche)}
                               <DropSlot matiereId={mat.id} dossierId={null} beforeId={null} variant={rootFiches.length ? 'line' : 'zone'} label={unites.length ? 'Déposer ici (racine)' : 'Déposer ici'} />
                               {rootFiches.length === 0 && unites.length === 0 && <div className="hint">Aucune fiche.</div>}
@@ -421,6 +425,12 @@ export function Bibliotheque({ ctx }) {
                                       onMenu={(e) => openDossierMenu(e, u.id)} />
                                     {uOpen && (
                                       <div style={DOSSIER_INDENT}>
+                                        {/* création EN HAUT, juste sous l'en-tête de l'unité. Le chapitre
+                                           est le DERNIER niveau : aucun bouton de création à l'intérieur
+                                           d'un chapitre (limite 2 niveaux côté UI, doublée par la garde de
+                                           MedReviseApp.jsx#addDossier). */}
+                                        <DossierAddButton onClick={() => createChapitre(mat.id, u.id)} label="Nouveau chapitre" style={DOSSIER_ADD_TOP} />
+
                                         {uniteFiches.map(renderFiche)}
                                         <DropSlot matiereId={mat.id} dossierId={u.id} beforeId={null} variant={uniteFiches.length ? 'line' : 'zone'} label={chapitres.length ? "Déposer ici (unité)" : 'Déposer ici'} />
                                         {uniteFiches.length === 0 && chapitres.length === 0 && <div className="hint">Unité vide.</div>}
@@ -445,18 +455,11 @@ export function Bibliotheque({ ctx }) {
                                             </div>
                                           );
                                         })}
-
-                                        {/* le chapitre est le DERNIER niveau : aucun bouton de création
-                                           à l'intérieur d'un chapitre (limite 2 niveaux côté UI, doublée
-                                           par la garde de MedReviseApp.jsx#addDossier). */}
-                                        <DossierAddButton onClick={() => createChapitre(mat.id, u.id)} label="Nouveau chapitre" />
                                       </div>
                                     )}
                                   </div>
                                 );
                               })}
-
-                              <DossierAddButton onClick={() => createUnite(mat.id)} label="Nouvelle unité" />
                             </div>
                           );
                         })}

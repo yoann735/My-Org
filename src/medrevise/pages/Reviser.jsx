@@ -5,7 +5,7 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, TodaySeriesCard, JBadge, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, dossierDeleteTexts, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
+import { EdTop, TodaySeriesCard, JBadge, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
 import {
   index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isExoConforme, isFicheScheduled, todayPlan, overdueByFiche,
   qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, unstartedExosFor, carnetV1Questions, carnetV2Questions,
@@ -480,6 +480,10 @@ export function Reviser({ ctx }) {
                           <CoefControl value={mat.coef ?? 3} inherited={false} onSet={(v) => ctx.setMatiereCoef(mat.id, v)} />
                         </div>
 
+                        {/* création EN HAUT (juste sous l'en-tête de la matière), pas noyée sous
+                           la liste des fiches — voir DOSSIER_ADD_TOP. */}
+                        <DossierAddButton onClick={() => createUnite(mat.id)} label="Nouvelle unité" style={DOSSIER_ADD_TOP} />
+
                         {rootFiches.map((f) => renderTreeFiche(mat, f))}
                         <DropSlot matiereId={mat.id} dossierId={null} beforeId={null} variant={rootFiches.length ? 'line' : 'zone'} label={unites.length ? 'Déposer ici (racine)' : 'Déposer ici'} />
 
@@ -501,6 +505,12 @@ export function Reviser({ ctx }) {
                                 onMenu={(e) => openDossierMenu(e, u.id)} />
                               {uOpen && (
                                 <div style={DOSSIER_INDENT}>
+                                  {/* création EN HAUT, juste sous l'en-tête de l'unité. Le chapitre est
+                                     le DERNIER niveau : aucun bouton de création à l'intérieur d'un
+                                     chapitre (limite 2 niveaux côté UI, doublée par la garde de
+                                     MedReviseApp.jsx#addDossier). */}
+                                  <DossierAddButton onClick={() => createChapitre(mat.id, u.id)} label="Nouveau chapitre" style={DOSSIER_ADD_TOP} />
+
                                   {uniteFiches.map((f) => renderTreeFiche(mat, f))}
                                   <DropSlot matiereId={mat.id} dossierId={u.id} beforeId={null} variant={uniteFiches.length ? 'line' : 'zone'} label={chapitres.length ? "Déposer ici (unité)" : 'Déposer ici'} />
                                   {uniteFiches.length === 0 && chapitres.length === 0 && <div className="hint">Unité vide.</div>}
@@ -525,18 +535,11 @@ export function Reviser({ ctx }) {
                                       </div>
                                     );
                                   })}
-
-                                  {/* le chapitre est le DERNIER niveau : aucun bouton de création à
-                                     l'intérieur d'un chapitre (limite 2 niveaux côté UI, doublée par la
-                                     garde de MedReviseApp.jsx#addDossier). */}
-                                  <DossierAddButton onClick={() => createChapitre(mat.id, u.id)} label="Nouveau chapitre" />
                                 </div>
                               )}
                             </div>
                           );
                         })}
-
-                        <DossierAddButton onClick={() => createUnite(mat.id)} label="Nouvelle unité" />
                       </div>
                     );
                   })}
