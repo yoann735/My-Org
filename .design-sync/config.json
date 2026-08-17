@@ -1,0 +1,83 @@
+{
+  "projectId": "3bb6b22a-26e1-46a1-95f4-c1dc96811742",
+  "shape": "package",
+  "pkg": "mealweek",
+  "globalName": "MyOrgDS",
+  "entry": ".design-sync/ds-entry.mjs",
+  "srcDir": "src",
+  "guidelinesGlob": [],
+  "readmeHeader": ".design-sync/conventions.md",
+  "componentSrcMap": {
+    "Icon": "src/shared/Icon.jsx",
+    "Card": "src/medrevise/components/ui.jsx",
+    "Switch": "src/medrevise/components/ui.jsx",
+    "TypeChip": "src/medrevise/components/ui.jsx",
+    "CatBadge": "src/medrevise/components/ui.jsx",
+    "JBadge": "src/medrevise/components/ui.jsx",
+    "Breadcrumb": "src/medrevise/components/ui.jsx",
+    "SplitHandle": "src/medrevise/components/ui.jsx",
+    "EdTop": "src/medrevise/components/ui.jsx",
+    "BellButton": "src/medrevise/components/ui.jsx",
+    "EtiquetteDot": "src/medrevise/components/ui.jsx",
+    "EtiquetteIconButton": "src/medrevise/components/ui.jsx",
+    "EtiquetteQuickSet": "src/medrevise/components/ui.jsx",
+    "Modal": "src/medrevise/components/ui.jsx",
+    "ConfirmModal": "src/medrevise/components/ui.jsx",
+    "DateActionModal": "src/medrevise/components/ui.jsx",
+    "ContextMenu": "src/medrevise/components/ui.jsx",
+    "SessionTrendChart": "src/medrevise/components/ui.jsx",
+    "SessionTrendCard": "src/medrevise/components/ui.jsx",
+    "TodaySeriesCard": "src/medrevise/components/ui.jsx",
+    "OverdueBox": "src/medrevise/components/ui.jsx",
+    "DossierRow": "src/medrevise/components/ui.jsx",
+    "DossierAddButton": "src/medrevise/components/ui.jsx",
+    "CourseDocField": "src/medrevise/components/ui.jsx",
+    "FicheDndProvider": "src/medrevise/components/ui.jsx",
+    "DraggableFiche": "src/medrevise/components/ui.jsx",
+    "DropSlot": "src/medrevise/components/ui.jsx",
+    "StudySidebar": null,
+    "DestPicker": null,
+    "ICONS": null,
+    "ETIQUETTES": null
+  },
+  "dtsPropsFor": {
+    "Icon": "/** Clé de l'inventaire ICONS (ex. 'home', 'cards', 'target', 'filePdf'). */\n  name: string;\n  /** Côté du carré SVG, en px. */\n  size?: number;\n  /** Épaisseur du tracé. */\n  stroke?: number;\n  className?: string;\n  style?: React.CSSProperties;\n  /** Remplit la forme au lieu de la tracer. */\n  fill?: boolean;",
+    "Card": "/** Sans titre, l'en-tête entier (titre, icône, action) est omis. */\n  title?: React.ReactNode;\n  /** Nom d'icône affiché devant le titre. */\n  icon?: string;\n  /** Contenu aligné à droite de l'en-tête (bouton, pastille…). */\n  action?: React.ReactNode;\n  children?: React.ReactNode;\n  style?: React.CSSProperties;\n  className?: string;",
+    "Switch": "on: boolean;\n  /** Reçoit la valeur SUIVANTE, pas l'événement. */\n  onChange: (next: boolean) => void;",
+    "TypeChip": "type: 'qcm' | 'flashcard' | 'feynman';\n  /** Préfixe le libellé quand il est fourni. */\n  count?: number;",
+    "CatBadge": "/** Matière dont le badge tire son libellé, sa teinte et son icône. */\n  matiere?: { nom: string; couleur?: string; icon?: string } | null;",
+    "JBadge": "/** Palier de la méthode des J (ex. 'J+7'). Vide ⇒ rien n'est rendu. */\n  jLabel?: string | null;",
+    "Breadcrumb": "/** Segments du fil d'Ariane ; le dernier est rendu comme position courante. */\n  parts: React.ReactNode[];",
+    "SplitHandle": "/** De quel côté du contenu central vit le panneau commandé. */\n  side: 'left' | 'right';\n  collapsed: boolean;\n  onClick: () => void;",
+    "EdTop": "theme: 'light' | 'dark';\n  onTheme: () => void;\n  /** Omis ⇒ le bouton de retour au hub n'est pas rendu. */\n  onHub?: () => void;",
+    "BellButton": "/** true = rappels J actifs ; false = cours en pause. */\n  on: boolean;\n  onToggle: () => void;\n  /** Textes de l'infobulle, si les libellés par défaut ne conviennent pas. */\n  onText?: string;\n  offText?: string;",
+    "EtiquetteDot": "value?: 'a_apprendre' | 'a_reapprendre' | 'revision_j' | null;\n  style?: React.CSSProperties;",
+    "EtiquetteIconButton": "value?: 'a_apprendre' | 'a_reapprendre' | 'revision_j' | null;\n  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;",
+    "EtiquetteQuickSet": "value?: 'a_apprendre' | 'a_reapprendre' | 'revision_j' | null;\n  /** null = retirer l'étiquette. */\n  onChange: (value: 'a_apprendre' | 'a_reapprendre' | 'revision_j' | null) => void;",
+    "Modal": "title?: React.ReactNode;\n  onClose: () => void;\n  /** Toute largeur CSS ; défaut 'min(560px, 94vw)'. */\n  width?: string;\n  children?: React.ReactNode;",
+    "ConfirmModal": "title: React.ReactNode;\n  body?: React.ReactNode;\n  confirmLabel?: string;\n  /** Colore le bouton de confirmation en rouge. */\n  danger?: boolean;\n  onConfirm: () => void;\n  onCancel: () => void;",
+    "DateActionModal": "title: React.ReactNode;\n  body?: React.ReactNode;\n  /** Libellé du champ de date. */\n  label?: string;\n  confirmLabel?: string;\n  /** Nombre d'éléments concernés, affiché près du champ. */\n  count?: number;\n  /** Borne basse ISO (AAAA-MM-JJ). */\n  minDate?: string;\n  /** Autorise une date passée. */\n  allowPast?: boolean;\n  onConfirm: (dateISO: string) => void;\n  onCancel: () => void;",
+    "ContextMenu": "/** Position fixe, en coordonnées viewport. */\n  x: number;\n  y: number;\n  items: Array<{ label: React.ReactNode; icon?: string; onClick: () => void; danger?: boolean }>;\n  /** Appelé au clic ailleurs, au défilement et à Échap. */\n  onClose: () => void;",
+    "SessionTrendChart": "/** `rate` dans [0,1]. Moins de 2 points ⇒ rien n'est rendu. */\n  points: Array<{ date: string; rate: number }>;\n  height?: number;",
+    "SessionTrendCard": "/** Une entrée par série révisée ; moins de 2 ⇒ état d'attente. */\n  log: Array<{ date: string; good: number; total: number }>;",
+    "TodaySeriesCard": "/** Série du jour, dans l'ordre de révision. */\n  plan: Array<{ fiche: { id: string; titre: string; type?: string }; matiere?: { nom: string; couleur?: string; icon?: string }; jLabel: string; qcm: number; flash: number; items: unknown[] }>;\n  onStart: (items: unknown[], title: string) => void;\n  /** Variante dense. */\n  compact?: boolean;\n  collapsed?: boolean;\n  /** Omis ⇒ aucune poignée de repli. */\n  onToggleCollapse?: () => void;",
+    "OverdueBox": "/** Une entrée par fiche en retard. */\n  groups: Array<{ fiche: { id: string; titre: string; type?: string }; matiere?: { nom: string; couleur?: string; icon?: string }; items: unknown[]; isSchema?: boolean }>;\n  onStartFiche: (group: { fiche: { id: string; titre: string; type?: string }; items: unknown[]; isSchema?: boolean }) => void;\n  onStartAll: (items: unknown[]) => void;\n  /** Omis ⇒ pas de bouton « retirer du retard ». */\n  onDismissFiche?: (group: { fiche: { id: string; titre: string; type?: string } }) => void;\n  collapsible?: boolean;\n  collapsed?: boolean;\n  onToggleCollapse?: () => void;\n  /** Rend le contenu nu, sans la carte englobante. */\n  bare?: boolean;",
+    "DossierRow": "dossier: { id: string; nom: string; parentId?: string | null; matiereId: string };\n  isOpen: boolean;\n  fichesCount: number;\n  /** Renseigné sur une unité (ajoute « · N chapitres »), absent sur un chapitre. */\n  sousDossiersCount?: number;\n  exosCount?: number;\n  /** Omis ⇒ pas de bouton « exercices du chapitre ». */\n  onOpenExos?: () => void;\n  isRenaming?: boolean;\n  /** Champ de saisie inséré tel quel quand isRenaming. */\n  renameInput?: React.ReactNode;\n  onToggle: () => void;\n  onRename: () => void;\n  onMenu: (e: React.MouseEvent<HTMLButtonElement>) => void;",
+    "DossierAddButton": "onClick: () => void;\n  label?: string;\n  style?: React.CSSProperties;",
+    "CourseDocField": "/** PDF ou HTML ; null ⇒ zone de dépôt. */\n  file?: File | null;\n  /** null = retirer le document. */\n  onFile: (file: File | null) => void;\n  label?: string;\n  hint?: React.ReactNode;",
+    "FicheDndProvider": "/** Appelé au dépôt ; dossierId null = racine de la matière, beforeFicheId null = fin de liste. */\n  onDropAt: (target: { ficheId: string; matiereId: string; dossierId: string | null; beforeFicheId: string | null }) => void;\n  /** Rendu de la fiche pendant le glisser. */\n  renderOverlay: (ficheId: string) => React.ReactNode;\n  children?: React.ReactNode;",
+    "DraggableFiche": "/** Doit être rendu dans un FicheDndProvider. */\n  id: string;\n  disabled?: boolean;\n  className?: string;\n  style?: React.CSSProperties;\n  children?: React.ReactNode;",
+    "DropSlot": "/** Doit être rendu dans un FicheDndProvider. */\n  matiereId: string;\n  /** null = racine de la matière. */\n  dossierId?: string | null;\n  /** null = fin de liste. */\n  beforeId?: string | null;\n  /** 'line' = barre d'insertion fine ; 'zone' = zone « déposer ici ». */\n  variant?: 'line' | 'zone';\n  label?: string;"
+  },
+  "overrides": {
+    "ConfirmModal": {
+      "cardMode": "column"
+    },
+    "Modal": {
+      "cardMode": "column"
+    },
+    "DateActionModal": {
+      "cardMode": "column"
+    }
+  }
+}
