@@ -23,8 +23,8 @@ import {
   getCoursePrompts, setCoursePrompts, getExoPrompts, setExoPrompts,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
-import { todayISO, startAdaptive, dueDateForJalon } from './lib/sm2.js';
-import { addDays, unstartedQuestionsFor, unstartedSchemasFor, unstartedExosFor, dueOnFor } from './lib/planning.js';
+import { todayISO, startAdaptive } from './lib/sm2.js';
+import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor } from './lib/planning.js';
 import { useIsMobile } from '../shared/hooks/useMediaQuery.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
 
@@ -457,33 +457,11 @@ export default function MedReviseApp({ themeApi, goHub }) {
       if (schemaTargets.length) await putMany('fiches', schemaTargets.map((f) => ({ ...f, ...startAdaptive(date), j0Date: date })));
       await reload();
     },
-    // décalage/pose du départ (J0) des EXERCICES — même geste que ci-dessus,
-    // adapté au calendrier FIXE des exos (sm2.js dueDateForJalon/EXO_DELAYS,
-    // canal HORS méthode des J théorie, jamais mélangé). Contrairement à
-    // startAdaptive (une seule dueDate posée telle quelle), chaque exercice
-    // recalcule sa propre échéance depuis SON `jalon` fixe (J0/J+2/J+7/J+15/
-    // J+30/J+45) + la nouvelle date de départ — déterministe, pas d'adaptatif
-    // ici. `date` PEUT être dans le passé : un jalon qui tombe alors avant
-    // aujourd'hui n'est ni dû ni en retard (dueExosOn ne matche que
-    // EXACTEMENT aujourd'hui/un jour futur, aucun canal de rattrapage exos —
-    // comportement déjà en place, rien à ajouter ici). Cible uniquement les
-    // exercices jamais tentés (unstartedExosFor) — un exercice déjà répondu
-    // ne revient jamais à une échéance suivante, le décaler n'aurait aucun
-    // effet observable. putBackup avant l'écriture en masse.
-    shiftExosSourceStart: async (sourceId, date) => {
-      const targets = unstartedExosFor(db, { sourceId });
-      if (!targets.length) return;
-      await putBackup('pre-decalage-exos-source-' + sourceId + '-' + Date.now(), targets);
-      await putMany('questions', targets.map((q) => ({ ...q, dueDate: dueDateForJalon(q.jalon, date) })));
-      await reload();
-    },
-    shiftExosFicheStart: async (ficheId, date) => {
-      const targets = unstartedExosFor(db, { ficheId });
-      if (!targets.length) return;
-      await putBackup('pre-decalage-exos-fiche-' + ficheId + '-' + Date.now(), targets);
-      await putMany('questions', targets.map((q) => ({ ...q, dueDate: dueDateForJalon(q.jalon, date) })));
-      await reload();
-    },
+    // (chantier 4) shiftExosSourceStart/shiftExosFicheStart ont été RETIRÉS avec
+    // la méthode des J des exercices : un exercice n'ayant plus d'échéance, il n'y
+    // a plus de départ à décaler. Le décalage de la THÉORIE ci-dessus est
+    // inchangé. Les anciens exos gardent leur `jalon`/`dueDate` en base, plus
+    // personne ne les lit.
     // rééquilibrage calendrier — Réviser, étape 2/3. Déplace les cartes RÉELLEMENT
     // dues le jour `fromDate` (dueOnFor, retard inclus si fromDate = aujourd'hui)
     // vers `toDate` : ne change QUE `dueDate`, jamais `intervalDays`/`capped`/

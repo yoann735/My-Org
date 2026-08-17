@@ -178,114 +178,56 @@ export function exerciceStatus(q) {
   return (h[h.length - 1].qualite >= 3) ? 'ok' : 'review';
 }
 
-/** vrai si l'exercice porte les 2 champs de la méthode des J des exos
-   (prompt "pratique méthode J") : `jalon` (J0/J+2/J+7/J+15/J+30/J+45) ET
-   `difficulte_exo` (F/M/D) — schema.js#normExercice les normalise déjà à
-   `null` s'ils sont absents/invalides (voir EXO_JALONS/EXO_DIFFICULTES), un
-   simple test de présence suffit ici, pas besoin de revalider les valeurs.
-   Purement un marquage visuel (badge cours/pastille exo) — ne modifie ni ne
-   filtre jamais la planification (dueExosOn/dueDateForJalon, inchangés). */
-export function isExoConforme(q) {
-  return !!(q && q.jalon && q.difficulte_exo);
+/* ---- CARTE WEEK-END « À revoir » (chantier 4) — remplace l'ancien récap
+   "exercices de la semaine" (weekExosByMatiere, retiré avec la méthode des J
+   des exercices) et les fonctions de dû (dueExosOn/dueExosToday/
+   dueExosByFicheOn/unstartedExosFor/isExoConforme, retirées elles aussi).
+
+   Sélection : les exercices marqués « à revoir » PENDANT LA SEMAINE COURANTE
+   (lundi → dimanche, même notion de semaine que startOfWeekISO/weekData). Un
+   exo marqué une semaine précédente n'y figure PLUS — sauf s'il est re-marqué
+   cette semaine, ce qui réécrit sa dernière entrée d'historique.
+
+   AUCUN champ nouveau : le statut vient de exerciceStatus (dernière entrée de
+   historique[]) et la date de marquage est celle de cette même entrée, écrite
+   par sm2.js#recordExerciceAttempt. Même principe que lastTwoAreFails — on
+   dérive de la source de vérité plutôt que d'entretenir un champ parallèle qui
+   pourrait diverger.
+
+   Accepte les exos SANS fiche (exos de chapitre, chapitreId — voir
+   storage.js#newChapitreExo) : leur matière se résout via le chapitre. Un exo
+   dont ni la fiche ni le chapitre n'existent plus est ignoré (jamais de groupe
+   fantôme). Regroupement par MATIÈRE, comme l'ancienne card. ---- */
+export function lastAttemptDate(q) {
+  const h = (q && q.historique) || [];
+  return h.length ? h[h.length - 1].date || null : null;
 }
 
-/* ---- méthode des J des EXERCICES (Étape A) : cadence PROPRE (sm2.js
-   dueDateForJalon), une seule échéance par item (`dueDate`), JAMAIS mélangée
-   aux compteurs théorie — filtrée par EXERCICE_TYPE, disjoint de
-   SCHEDULED_TYPES (dueOn/dueToday) par construction. Match EXACT uniquement
-   (pas de "dû + retard" : le rattrapage exercices est un chantier séparé,
-   étape C) — un exo dont l'échéance est déjà passée (J0 posé dans le passé)
-   ne matche simplement plus rien ici : ni dû, ni en retard, même logique
-   que la théorie. Exclut les exos déjà répondus (exerciceStatus !== 'todo')
-   — consommés, ils ne réapparaissent jamais (pas de notion de "prochain
-   jalon" pour un exercice, contrairement à une carte théorie). ---- */
-export function dueExosOn(db, dateISO, idx) {
-  const ix = idx || index(db);
-  return (db.questions || []).filter((q) =>
-    q.type === EXERCICE_TYPE && q.dueDate === dateISO && exerciceStatus(q) === 'todo'
-    && ix.fById[q.ficheId] && isFicheScheduled(db, ix.fById[q.ficheId], ix));
-}
-export function dueExosToday(db, idx) { return dueExosOn(db, todayISO(), idx); }
-/** exercices dus à une date donnée, regroupés par fiche — même esprit que
-   groupByFiche, en plus léger (pas de J label théorie, non pertinent pour
-   un exercice). Paramétrée par date (pas seulement "aujourd'hui") pour
-   alimenter à la fois la card "Exercices du jour" (dueExosByFiche, ci-
-   dessous) ET le calendrier hebdo (weekData, qui l'appelle jour par jour —
-   dueExosOn matche déjà une échéance EXACTE par date, aucune projection à
-   gérer contrairement à la théorie). */
-export function dueExosByFicheOn(db, dateISO, idx) {
-  const ix = idx || index(db);
-  const map = {};
-  dueExosOn(db, dateISO, ix).forEach((q) => {
-    const f = ix.fById[q.ficheId];
-    if (!f) return;
-    if (!map[f.id]) {
-      const m = ix.mById[f.matiereId];
-      map[f.id] = { fiche: f, matiere: m, source: m && ix.sById[m.sourceId], items: [] };
-    }
-    map[f.id].items.push(q);
-  });
-  return Object.values(map);
-}
-export function dueExosByFiche(db, idx) { return dueExosByFicheOn(db, todayISO(), idx); }
-
-/* ---- récap de semaine des EXERCICES (Dashboard, WeekendReviewCard) :
-   TOUS les exos dont l'ÉCHÉANCE de la méthode des J (`dueDate`, posée par
-   dueDateForJalon) tombe dans la semaine courante (lundi → dimanche, même
-   notion de semaine que weekData/startOfWeekISO) — faits OU PAS. C'est un
-   récap de ce qui était PRÉVU cette semaine, pas une trace de ce qui a été
-   fait : un exo jamais ouvert (`exerciceStatus` 'todo') y figure au même
-   titre qu'un exo réussi ou raté, c'est tout l'intérêt de la card.
-   (Remplace l'ancienne sélection "exos DÉJÀ faits cette semaine, 2 max par
-   fiche", qui lisait `historique` et ratait donc exactement ce qu'on veut
-   voir le week-end : les exos qu'on a laissés passer.)
-
-   Semaine ENTIÈRE (jusqu'à dimanche, pas jusqu'à aujourd'hui) : la card
-   s'affiche samedi/dimanche, un exo dû dimanche fait bien partie du bilan de
-   la semaine qu'on est en train de clore.
-
-   Exos LIBRES (`jalon` null — legacy/hors prompt "pratique méthode J", voir
-   schema.js#normExercice) : EXCLUS par le test `q.jalon`. Ils n'ont d'ailleurs
-   jamais de `dueDate` (sm2.js#dueDateForJalon renvoie null), donc le filtre de
-   date suffirait — le test explicite reste la garantie lisible que ce récap ne
-   concerne QUE les exos planifiés, et tient même si un `dueDate` arrivait un
-   jour par un autre chemin.
-
-   Lecture SEULE (fonction PURE) : ne touche ni `dueDate`, ni `historique`, ni
-   aucun statut — le moteur des J est inchangé, cette fonction ne fait
-   qu'afficher. Regroupement par MATIÈRE (pas par fiche comme le reste du
-   fichier) : c'est la maille de lecture demandée pour ce récap. ---- */
-export function weekExosByMatiere(db, idx) {
+export function exosARevoirCetteSemaine(db, idx) {
   const ix = idx || index(db);
   const monday = startOfWeekISO(todayISO());
   const sunday = addDays(monday, 6);
+  const dossiers = db.dossiers || [];
   const map = {};
   (db.questions || []).forEach((q) => {
-    if (q.type !== EXERCICE_TYPE || !q.jalon) return;
-    if (!q.dueDate || q.dueDate < monday || q.dueDate > sunday) return;
-    const f = ix.fById[q.ficheId];
-    if (!f || !isFicheScheduled(db, f, ix)) return;
-    const m = ix.mById[f.matiereId];
+    if (q.type !== EXERCICE_TYPE || exerciceStatus(q) !== 'review') return;
+    const marque = lastAttemptDate(q);
+    if (!marque || marque < monday || marque > sunday) return;
+    // porteur = la fiche (exo de fiche) OU le chapitre (exo de chapitre) ;
+    // l'un des deux au moins doit exister encore.
+    const fiche = ix.fById[q.ficheId];
+    if (fiche && fiche.archive) return;
+    const chapitre = !fiche && q.chapitreId ? dossiers.find((d) => d.id === q.chapitreId) : null;
+    if (!fiche && !chapitre) return;
+    const m = ix.mById[fiche ? fiche.matiereId : chapitre.matiereId];
     const mid = m ? m.id : '?';
     if (!map[mid]) map[mid] = { matiere: m, items: [] };
-    map[mid].items.push({ q, fiche: f, status: exerciceStatus(q), dueDate: q.dueDate });
+    map[mid].items.push({ q, fiche: fiche || null, chapitre, marque, contexte: fiche ? fiche.titre : chapitre.nom });
   });
-  return Object.values(map).map((g) => {
-    // tri interne : les NON FAITS d'abord (c'est ce qui reste à rattraper),
-    // puis par échéance croissante — l'ordre dans lequel la semaine s'est
-    // déroulée.
-    const items = g.items.slice().sort((a, b) => {
-      const aTodo = a.status === 'todo', bTodo = b.status === 'todo';
-      if (aTodo !== bTodo) return aTodo ? -1 : 1;
-      return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
-    });
-    return {
-      ...g, items,
-      todo: items.filter((e) => e.status === 'todo').length,
-      ok: items.filter((e) => e.status === 'ok').length,
-      review: items.filter((e) => e.status === 'review').length,
-    };
-  }).sort((a, b) => (b.todo - a.todo) || (a.matiere && b.matiere ? String(a.matiere.nom).localeCompare(String(b.matiere.nom)) : 0));
+  return Object.values(map)
+    .map((g) => ({ ...g, items: g.items.slice().sort((a, b) => (a.marque < b.marque ? -1 : a.marque > b.marque ? 1 : 0)) }))
+    .sort((a, b) => (b.items.length - a.items.length)
+      || (a.matiere && b.matiere ? String(a.matiere.nom).localeCompare(String(b.matiere.nom)) : 0));
 }
 
 /* ---- schémas d'anatomie visuelle (anat_schema) : la FICHE elle-même est
@@ -382,26 +324,6 @@ export function unstartedSchemasFor(db, { sourceId, ficheId } = {}, idx) {
   const ix = idx || index(db);
   return (db.fiches || []).filter((f) => {
     if (f.type !== 'anat_schema' || !isUnstarted(f)) return false;
-    if (ficheId) return f.id === ficheId;
-    if (sourceId) { const m = ix.mById[f.matiereId]; return !!m && m.sourceId === sourceId; }
-    return false;
-  });
-}
-/** miroir de unstartedQuestionsFor pour les EXERCICES (méthode des J propre,
-   sm2.js dueDateForJalon/EXO_DELAYS — jamais mélangée à la théorie ci-dessus,
-   canal séparé, voir SCHEDULED_TYPES vs EXERCICE_TYPE). Cible les exercices
-   `jalon` (sinon rien à recalculer, voir dueDateForJalon) JAMAIS tentés
-   (exerciceStatus 'todo') — un exercice déjà répondu ne "revient" jamais à
-   une échéance suivante (contrairement à une carte théorie), décaler sa
-   dueDate n'aurait aucun effet observable ; on ne le touche donc pas, même
-   philosophie que isUnstarted côté théorie (ne jamais recaler une progression
-   déjà entamée). */
-export function unstartedExosFor(db, { sourceId, ficheId } = {}, idx) {
-  const ix = idx || index(db);
-  return (db.questions || []).filter((q) => {
-    if (q.type !== EXERCICE_TYPE || !q.jalon || exerciceStatus(q) !== 'todo') return false;
-    const f = ix.fById[q.ficheId];
-    if (!f) return false;
     if (ficheId) return f.id === ficheId;
     if (sourceId) { const m = ix.mById[f.matiereId]; return !!m && m.sourceId === sourceId; }
     return false;
@@ -527,7 +449,7 @@ export function weekData(db, weekOffset = 0, idx) {
     const date = addDays(monday, i);
     const isToday = date === today;
     const isPast = date < today;
-    let items = [], schemas = [], byFiche = [], exos = [];
+    let items = [], schemas = [], byFiche = [];
 
     if (isPast) {
       items = scheduledQuestions(db, ix).filter((q) => reviewedOn(q, date));
@@ -551,21 +473,18 @@ export function weekData(db, weekOffset = 0, idx) {
       byFiche = groupByFiche(db, items, ix);
     }
 
-    // exercices : canal SÉPARÉ de la théorie (dueExosByFicheOn, échéance EXACTE
-    // par dueDate, jamais de projection ni de retard) — calculé aujourd'hui ET
-    // les jours futurs. Jours passés : hors périmètre de cette demande (purement
-    // "cours/cartes"), reste vide comme avant.
-    if (!isPast) exos = dueExosByFicheOn(db, date, ix);
-    const exosTotal = exos.reduce((s, g) => s + g.items.length, 0);
+    // (chantier 4) plus AUCUN exercice au calendrier : ils n'ont plus d'échéance.
+    // Le canal `exos`/`exosTotal` qui vivait ici a été retiré — la théorie
+    // (items/schémas/byFiche ci-dessus) est strictement inchangée.
 
     const isProjected = !isToday && !isPast;
     days.push({
       date, dow: DOW[i], dayNum: new Date(date + 'T00:00:00').getDate(),
       isToday, isPast, isProjected,
-      // total affiché = cartes réelles (aujourd'hui/passé) OU cours projetés (futur) + schémas + exercices
-      total: (isProjected ? byFiche.length : items.length) + schemas.length + exosTotal,
+      // total affiché = cartes réelles (aujourd'hui/passé) OU cours projetés (futur) + schémas
+      total: (isProjected ? byFiche.length : items.length) + schemas.length,
       cardsTotal: isProjected ? byFiche.length : items.length,
-      items, schemas, byFiche, exos, exosTotal,
+      items, schemas, byFiche,
     });
   }
   return { monday, days };

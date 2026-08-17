@@ -11,7 +11,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
-import { index, isExoConforme } from '../lib/planning.js';
+import { index } from '../lib/planning.js';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
 import { docKind, DOC_META, createTranscript, deleteTranscript } from '../documents/lib/documents.js';
@@ -220,10 +220,6 @@ export function Bibliotheque({ ctx }) {
     const isSel = !!(selected && selected.ficheId === f.id);
     const paused = !isTranscript && f.rappelsJ === false;
     const etq = etiquetteMeta(f.etiquette);
-    // repère les cours contenant des exos issus du prompt "pratique méthode J"
-    // (jalon + difficulte_exo, voir planning.js#isExoConforme) — purement visuel,
-    // ne filtre/ne modifie aucun exercice.
-    const hasConformeExos = qById(f.id).some((x) => x.type === 'exercice' && isExoConforme(x));
     const metaLine = isTranscript ? 'Transcript'
       : isSchema ? `Schéma · ${schemaViews(f) > 1 ? schemaViews(f) + ' vues · ' : ''}${schemaCoches(f)} coche${schemaCoches(f) > 1 ? 's' : ''}`
         : `${count(f.id, 'qcm')} QCM · ${count(f.id, 'flashcard')} flash${isAnat ? ' · images' : ''}`;
@@ -244,11 +240,6 @@ export function Bibliotheque({ ctx }) {
                   : <Icon name={fo ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />}
                 <span className="lib-fiche-title">{f.titre}</span>
                 {etq && <span className="lib-fiche-etq" style={{ background: etq.color }} title={`Étiquette : ${etq.label}`} onClick={(e) => openEtqMenu(e, f.id)} />}
-                {hasConformeExos && (
-                  <span title="Contient des exercices conformes à la méthode des J (jalon + difficulté)" style={{ display: 'flex', flex: '0 0 auto' }}>
-                    <Icon name="sparkle" size={13} style={{ color: 'var(--accent)' }} />
-                  </span>
-                )}
                 {paused && <Icon name="bellOff" size={13} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} title="Rappels J en pause" />}
                 {!isTranscript && (
                   <button type="button" className="cd-ic" title="Réviser" onClick={(e) => { e.stopPropagation(); if (isSchema) { ctx.startAnatQuiz(f, { mode: 'total' }); } else { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); } }}>

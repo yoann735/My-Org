@@ -7,8 +7,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, TodaySeriesCard, JBadge, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
 import {
-  index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isExoConforme, isFicheScheduled, todayPlan, overdueByFiche,
-  qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, unstartedExosFor, carnetV1Questions, carnetV2Questions,
+  index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, todayPlan, overdueByFiche,
+  qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, carnetV1Questions, carnetV2Questions,
 } from '../lib/planning.js';
 import { shuffle } from '../lib/sm2.js';
 import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
@@ -58,7 +58,6 @@ export function Reviser({ ctx }) {
   const [selChapitre, setSelChapitre] = useState(null); // id de dossier (parentId ≠ null)
   const [showAddChapExo, setShowAddChapExo] = useState(false);
   const [shiftStart, setShiftStart] = useState(null); // { type: 'source'|'fiche', id, nom }
-  const [shiftExosStart, setShiftExosStart] = useState(null); // { type: 'source'|'fiche', id, nom } — même chose, pour les exercices
 
   // remonte la fiche restaurée (ci-dessus) dans le viewport au montage — sans ça
   // la sélection est correcte mais reste hors-écran si elle était scrollée bas.
@@ -342,26 +341,6 @@ export function Reviser({ ctx }) {
     setShiftStart(null);
   };
 
-  // décalage/pose du départ (J0) — même geste, pour les EXERCICES (canal
-  // HORS méthode des J théorie, calendrier FIXE — jalons J0/J+2/J+7/J+15/
-  // J+30/J+45, sm2.js dueDateForJalon). Séparé de shiftStart ci-dessus :
-  // exercices et théorie restent deux échéanciers indépendants partout
-  // ailleurs dans l'app (planning.js SCHEDULED_TYPES vs EXERCICE_TYPE), pas
-  // de raison de les recaler ensemble en un seul geste ici.
-  const askShiftExosSource = (id) => { const s = db.sources.find((x) => x.id === id); if (s) setShiftExosStart({ type: 'source', id, nom: s.nom }); };
-  const askShiftExosFiche = (id) => { const f = db.fiches.find((x) => x.id === id); if (f) setShiftExosStart({ type: 'fiche', id, nom: f.titre }); };
-  const shiftExosStartCount = useMemo(() => {
-    if (!shiftExosStart) return 0;
-    const target = shiftExosStart.type === 'source' ? { sourceId: shiftExosStart.id } : { ficheId: shiftExosStart.id };
-    return unstartedExosFor(db, target, ix).length;
-  }, [shiftExosStart, db, ix]);
-  const confirmShiftExosStart = async (date) => {
-    if (!shiftExosStart) return;
-    if (shiftExosStart.type === 'source') await ctx.shiftExosSourceStart(shiftExosStart.id, date);
-    else await ctx.shiftExosFicheStart(shiftExosStart.id, date);
-    setShiftExosStart(null);
-  };
-
   // BUG4 : drag & drop des fiches vers une autre matière/cours, ici aussi via @dnd-kit.
   // dossierId (depuis l'id de DropSlot survolé, voir ui.jsx) : null = racine de
   // la matière cible — même mécanique que Bibliotheque.jsx (même ctx.moveFicheTo).
@@ -441,10 +420,6 @@ export function Reviser({ ctx }) {
     const sel = selIds.includes(f.id);
     const cdt = dueCountFiche(f.id);
     const ren = isRen('fiche', f.id);
-    // même détection que Bibliotheque.jsx (isExoConforme, planning.js) —
-    // repère d'un coup d'œil les cours qui ont des exos issus du prompt
-    // "pratique méthode J", ici aussi dans l'arbre de Réviser.
-    const hasConformeExos = qOfFiche(f.id).some((x) => x.type === 'exercice' && isExoConforme(x));
     return (
       <div key={f.id} data-fiche-row={f.id}>
         <DropSlot matiereId={mat.id} dossierId={f.dossierId || null} beforeId={f.id} />
@@ -466,7 +441,6 @@ export function Reviser({ ctx }) {
                 <span className="tc-name">{f.titre}</span>
                 {f.type === 'anat_schema' && <span title="Schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex', marginLeft: 4 }}><Icon name="image" size={12} /></span>}
                 <EtiquetteDot value={f.etiquette} style={{ marginLeft: 4 }} />
-                {hasConformeExos && <span title="Contient des exercices conformes à la méthode des J (jalon + difficulté)" style={{ display: 'inline-flex', marginLeft: 4 }}><Icon name="sparkle" size={12} style={{ color: 'var(--accent)' }} /></span>}
                 {overdueFicheIds.has(f.id) && <span title="En retard — à rattraper" style={{ color: 'var(--crit)', display: 'inline-flex', marginLeft: 4 }}><Icon name="alert" size={12} /></span>}
                 {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
               </button>
@@ -859,12 +833,6 @@ export function Reviser({ ctx }) {
             label: 'Décaler le départ…', icon: 'calendar',
             onClick: () => (ctxMenu.type === 'source' ? askShiftSource(ctxMenu.id) : askShiftFiche(ctxMenu.id)),
           }] : []),
-          // même geste, pour les exercices (calendrier fixe, canal séparé —
-          // voir planning.js unstartedExosFor / MedReviseApp.jsx shiftExosSourceStart).
-          ...(ctxMenu.type === 'source' || ctxMenu.type === 'fiche' ? [{
-            label: 'Décaler le départ des exercices…', icon: 'calendar',
-            onClick: () => (ctxMenu.type === 'source' ? askShiftExosSource(ctxMenu.id) : askShiftExosFiche(ctxMenu.id)),
-          }] : []),
           {
             label: 'Supprimer', icon: 'trash', danger: true, onClick: () => {
               if (ctxMenu.type === 'source') askDeleteSource(ctxMenu.id);
@@ -908,21 +876,6 @@ export function Reviser({ ctx }) {
             : "Aucune carte sans planning actif ici — rien à décaler."}
           onConfirm={confirmShiftStart}
           onCancel={() => setShiftStart(null)}
-        />
-      )}
-
-      {shiftExosStart && (
-        <DateActionModal
-          title={`Décaler le départ des exercices — « ${shiftExosStart.nom} »`}
-          label="Nouvelle date de départ (J0) des exercices"
-          confirmLabel="Décaler"
-          count={shiftExosStartCount}
-          allowPast
-          body={shiftExosStartCount > 0
-            ? `${shiftExosStartCount} exercice${shiftExosStartCount > 1 ? 's' : ''} jamais tenté${shiftExosStartCount > 1 ? 's' : ''} ${shiftExosStartCount > 1 ? 'seront recalés' : 'sera recalé'} sur cette nouvelle date de départ — chaque jalon fixe (J0/J+2/J+7/J+15/J+30/J+45) se recalcule depuis cette date. Une date PASSÉE est acceptée : les jalons déjà écoulés ne seront ni dus ni en retard (comme un exercice échu aujourd'hui). Les exercices déjà tentés ne sont pas touchés.`
-            : "Aucun exercice jamais tenté ici — rien à décaler."}
-          onConfirm={confirmShiftExosStart}
-          onCancel={() => setShiftExosStart(null)}
         />
       )}
 
@@ -975,15 +928,13 @@ function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll, ctx }) {
   const [fTheme, setFTheme] = useState('all');
   const [fDiff, setFDiff] = useState('all');
   const [fStatut, setFStatut] = useState('all');
-  const [fConforme, setFConforme] = useState('all'); // 'all' | 'conforme' | 'ancien' — voir isExoConforme (lib/planning.js)
 
   const themes = useMemo(() => [...new Set(items.map((i) => i.theme).filter(Boolean))], [items]);
   const withStatus = useMemo(() => items.map((it) => ({ it, statut: exerciceStatus(it) })), [items]);
   const filtered = withStatus.filter(({ it, statut }) =>
     (fTheme === 'all' || it.theme === fTheme)
     && (fDiff === 'all' || String(it.difficulte || 2) === fDiff)
-    && (fStatut === 'all' || statut === fStatut)
-    && (fConforme === 'all' || (fConforme === 'conforme') === isExoConforme(it)));
+    && (fStatut === 'all' || statut === fStatut));
 
   return (
     <div style={{ marginTop: 22 }}>
@@ -1018,11 +969,6 @@ function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll, ctx }) {
           <option value="ok">Réussi</option>
           <option value="review">À revoir</option>
         </select>
-        <select className="et-select" value={fConforme} onChange={(e) => setFConforme(e.target.value)} title="Filtrer selon la conformité à la méthode des J (champs jalon/difficulte_exo)">
-          <option value="all">Tous (conformes + anciens)</option>
-          <option value="conforme">Conformes méthode J</option>
-          <option value="ancien">Anciens (hors méthode)</option>
-        </select>
       </div>
 
       {filtered.length === 0 ? (
@@ -1032,18 +978,12 @@ function ExerciceCards({ items, meta, onOpen, onDelete, onDeleteAll, ctx }) {
           {filtered.map(({ it, statut }) => {
             const st = EXO_STATUS[statut];
             const numeric = it.sous_type === 'numerique';
-            const conforme = isExoConforme(it);
             return (
               <div key={it.id} className="exo-card" role="button" tabIndex={0}
                 onClick={() => onOpen(it)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(it); } }}>
                 <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 8, width: '100%' }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.tint, flex: '0 0 auto' }} />
-                  {conforme && (
-                    <span title={`Conforme méthode J (${it.jalon} · ${it.difficulte_exo})`} style={{ display: 'flex', flex: '0 0 auto' }}>
-                      <Icon name="sparkle" size={12} style={{ color: 'var(--accent)' }} />
-                    </span>
-                  )}
                   <span style={{ fontWeight: 700, fontSize: 13.5, minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{it.theme || 'Exercice'}</span>
                   <span className="exo-status" style={{ color: st.color, flex: '0 0 auto' }} title={st.label}><Icon name={st.icon} size={12} /> {st.label}</span>
                   {onDelete && (

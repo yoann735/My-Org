@@ -7,7 +7,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { Tex } from '../components/Tex.jsx';
-import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, weekExosByMatiere, carnetV1Questions, carnetV2Questions, strugglingByFiche } from '../lib/planning.js';
+import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, exosARevoirCetteSemaine, fmtDay, carnetV1Questions, carnetV2Questions, strugglingByFiche } from '../lib/planning.js';
 import { isoDate, isDueBecauseStruggled } from '../lib/sm2.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
@@ -71,7 +71,7 @@ export function Dashboard({ ctx }) {
           <RattrapageCard ctx={ctx} overdue={overdue} startOverdueFiche={startOverdueFiche} />
           <CarnetErreurCard ctx={ctx} />
           <CoursARevoirCard ctx={ctx} />
-          <WeekendReviewCard ctx={ctx} />
+          <ExosARevoirCard ctx={ctx} />
           <StreakWidget stats={ctx.stats} />
         </div>
       </div>
@@ -154,7 +154,7 @@ function CarnetErreurCard({ ctx }) {
 
 /* ---------- erreurs fréquentes (Dashboard UNIQUEMENT) ----------
    TOUJOURS visible (contrairement à RattrapageCard/CarnetErreurCard/
-   WeekendReviewCard qui se masquent quand vides) — affichage EN LECTURE
+   ExosARevoirCard qui se masquent quand vides) — affichage EN LECTURE
    SEULE, indépendant de la méthode des J/du carnet d'erreurs : classe les
    cours (fiches) par nombre de cartes qcm/flashcard dont la DERNIÈRE note
    est Difficile ou Ratée (strugglingByFiche, planning.js), peu importe si
@@ -200,54 +200,41 @@ function CoursARevoirCard({ ctx }) {
   );
 }
 
-/* ---------- exercices de la semaine (Dashboard UNIQUEMENT, isWeekend) ----------
-   Récap de fin de semaine : TOUS les exos dont l'échéance de la méthode des J
-   tombait cette semaine (weekExosByMatiere — lundi→dimanche, `jalon` requis
-   donc exos LIBRES exclus), FAITS OU PAS. Distincte de RattrapageCard
-   (retards théorie) et de la card "Exercices du jour" (dueExosOn, échéance du
-   jour uniquement, jamais tentés uniquement).
+/* ---------- carte week-end « À revoir » (Dashboard UNIQUEMENT, isWeekend) ----------
+   REMPLACE l'ancien récap "Exercices de la semaine" (qui listait les exos dont
+   l'échéance J tombait dans la semaine) : la méthode des J des exercices a été
+   retirée (chantier 4), cette notion de "dû" n'existe plus.
 
-   Repliée par MATIÈRE (chevron, `open` local) : un récap de semaine complet
-   tient rarement en une liste plate, et la matière est la maille de lecture
-   demandée. Repliée par défaut — la card reste un coup d'œil, on déroule ce
-   qu'on veut traiter.
+   Contenu : les exercices que J'AI marqués « à revoir » PENDANT LA SEMAINE
+   COURANTE (planning.js exosARevoirCetteSemaine — statut dérivé de historique[],
+   date de marquage = celle de la dernière tentative). Un exo marqué une semaine
+   antérieure n'y figure pas : la carte est le bilan de CETTE semaine, pas une
+   dette qui s'accumule.
 
-   FAIRE / REFAIRE — réutilise startExercice tel quel, avec le SEUL réglage qui
-   change quelque chose, le `mode` :
-   - exo jamais tenté ('todo') → « Faire », session NORMALE (pas de mode) :
-     c'est une vraie première tentative, elle doit s'enregistrer comme
-     n'importe quelle autre (recordExerciceAttempt + streak, Exercice.jsx
-     Workstation.applyResult). Rattraper depuis ici == l'avoir fait à temps.
-   - exo déjà tenté ('ok'/'review') → « Refaire », mode 'weekend' : session
-     bonus, AUCUNE écriture (historique/missed/statut/dueDate intacts) —
-     comportement historique de cette card, conservé tel quel.
-   Dans les deux cas on ne touche PAS au moteur des J : aucune dueDate n'est
-   recalculée ici, seul le chemin d'accès à l'exo est nouveau. */
-const EXO_STATUS_META = {
-  ok: { pill: 'pill ok', label: 'Réussi', icon: 'check' },
-  review: { pill: 'pill warn', label: 'À revoir', icon: 'refresh' },
-  todo: { pill: 'pill', label: 'Pas fait', icon: 'clock' },
-};
-
-function WeekendReviewCard({ ctx }) {
+   REFAIRE en mode NORMAL (pas le mode 'weekend' de l'ancienne card, qui
+   n'écrivait rien) : c'est tout l'intérêt ici — refaire l'exo et le réussir
+   met à jour son statut, donc le fait SORTIR de la carte. Une session qui
+   n'enregistre rien ne pourrait jamais la vider.
+   Concerne UNIQUEMENT les exercices — la théorie (retards qcm/flashcards) a sa
+   propre boîte, RattrapageCard, inchangée. ---------- */
+function ExosARevoirCard({ ctx }) {
   const { db } = ctx;
   const [open, setOpen] = useState({});
   if (!isWeekend()) return null;
-  const groups = weekExosByMatiere(db);
+  const groups = exosARevoirCetteSemaine(db);
   if (!groups.length) return null;
 
   const total = groups.reduce((s, g) => s + g.items.length, 0);
-  const totalTodo = groups.reduce((s, g) => s + g.todo, 0);
   const toggle = (id) => setOpen((o) => ({ ...o, [id]: !o[id] }));
-  // un exo lancé seul : la série vaut cet exo, titre = son chapitre (même
-  // patron que les autres points d'entrée exercice de l'app).
-  const startOne = (e) => ctx.startExercice([e.q], e.fiche.titre, e.status === 'todo' ? {} : { mode: 'weekend' });
+  // un exo lancé seul : la série vaut cet exo, titre = son porteur (fiche ou
+  // chapitre). Mode NORMAL — la tentative s'enregistre.
+  const startOne = (e) => ctx.startExercice([e.q], e.contexte);
 
   return (
-    <Card title="Exercices de la semaine" icon="refresh" className="rattrapage-weekend"
-      action={<span className="pill">{total - totalTodo}/{total} fait{total - totalTodo > 1 ? 's' : ''}</span>}>
+    <Card title="À revoir ce week-end" icon="refresh" className="rattrapage-weekend"
+      action={<span className="pill warn">{total} exo{total > 1 ? 's' : ''}</span>}>
       <div className="hint" style={{ fontSize: 12, marginBottom: 10 }}>
-        Tous les exercices dont l'échéance J tombait cette semaine{totalTodo > 0 ? <> — <strong>{totalTodo} jamais ouvert{totalTodo > 1 ? 's' : ''}</strong></> : ''}. Refaire un exo déjà fait ne touche pas son statut.
+        Les exercices que tu as marqués « à revoir » cette semaine. Réussis-en un et il sort de la liste.
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -264,32 +251,24 @@ function WeekendReviewCard({ ctx }) {
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.tint, flex: '0 0 auto' }} />
                   <span style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta.label}</span>
                 </div>
-                <span className={g.todo > 0 ? 'pill warn' : 'pill ok'} style={{ flex: '0 0 auto' }}>
-                  {g.todo > 0 ? `${g.todo} à faire` : 'Tout fait'}
-                </span>
+                <span className="pill warn" style={{ flex: '0 0 auto' }}>{g.items.length} à revoir</span>
               </div>
 
               {isOpen && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '2px 0 10px 22px' }}>
-                  {g.items.map((e) => {
-                    const sm = EXO_STATUS_META[e.status];
-                    return (
-                      <div className="row spread" key={e.q.id} style={{ gap: 8, padding: '6px 10px', borderRadius: 9, background: 'var(--bg-2)' }}>
-                        <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                          <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            <Tex>{carnetPreviewText(e.q.enonce, 60)}</Tex>
-                          </div>
-                          <div className="hint" style={{ fontSize: 10.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {e.fiche.titre} · {e.q.jalon}
-                          </div>
+                  {g.items.map((e) => (
+                    <div className="row spread" key={e.q.id} style={{ gap: 8, padding: '6px 10px', borderRadius: 9, background: 'var(--bg-2)' }}>
+                      <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                        <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <Tex>{carnetPreviewText(e.q.enonce, 60)}</Tex>
                         </div>
-                        <span className={sm.pill} style={{ flex: '0 0 auto' }}><Icon name={sm.icon} size={11} /> {sm.label}</span>
-                        <button className="btn ghost sm" style={{ flex: '0 0 auto' }} onClick={() => startOne(e)}>
-                          {e.status === 'todo' ? 'Faire' : 'Refaire'}
-                        </button>
+                        <div className="hint" style={{ fontSize: 10.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {e.contexte}{e.chapitre ? ' · chapitre' : ''} · marqué {fmtDay(e.marque)}
+                        </div>
                       </div>
-                    );
-                  })}
+                      <button className="btn ghost sm" style={{ flex: '0 0 auto' }} onClick={() => startOne(e)}>Refaire</button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -301,14 +280,14 @@ function WeekendReviewCard({ ctx }) {
 }
 
 /* ---------- week calendar ---------- */
-/** libellé du pied de case-jour (Fiches/schémas + Exercices) — extrait pour
+/** libellé du pied de case-jour (fiches/schémas ; les exercices ne sont plus
+   au calendrier depuis le retrait de leur méthode des J) — extrait pour
    être réutilisé tel quel si besoin, et pour ne pas alourdir le JSX de la
    case avec la logique des séparateurs " · ". */
 function dayFootLabel(day) {
   const parts = [];
   if (day.cardsTotal > 0) parts.push(day.isProjected ? `${day.cardsTotal} cours` : `${day.cardsTotal} carte${day.cardsTotal > 1 ? 's' : ''}`);
   if ((day.schemas || []).length > 0) parts.push(`${day.schemas.length} schéma${day.schemas.length > 1 ? 's' : ''}`);
-  if (day.exosTotal > 0) parts.push(`${day.exosTotal} exo${day.exosTotal > 1 ? 's' : ''}`);
   return parts.join(' · ');
 }
 /* ---- mention "à revoir" (calendrier + vue Réorganiser) : discrète,
@@ -405,26 +384,6 @@ function WeekCalendar({ ctx, onPick }) {
                   );
                 })}
               </div>
-              {/* section "Exercices" — canal séparé de la théorie ci-dessus
-                 (day.exos, planning.js dueExosByFicheOn), séparateur + libellé
-                 discrets (.wcal-exos) pour la repérer d'un coup d'œil. */}
-              {(day.exos || []).length > 0 && (
-                <div className="wcal-exos">
-                  <div className="wcal-exos-label">Exercices</div>
-                  {day.exos.map((g) => {
-                    const meta = matiereMeta(g.matiere);
-                    return (
-                      <div className="wcal-course" key={g.fiche.id}>
-                        <span className="wcc-bar" style={{ background: meta.tint }} />
-                        <div className="wcc-text">
-                          <div className="wcc-cat" style={{ color: meta.tint }}>{meta.label}</div>
-                          <div className="wcc-title">{g.fiche.titre} <span className="wcc-j">{g.items.length} exo{g.items.length > 1 ? 's' : ''}</span></div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
               {day.total > 0 && <div className="wcal-foot">{dayFootLabel(day)}</div>}
             </button>
           );
@@ -436,16 +395,12 @@ function WeekCalendar({ ctx, onPick }) {
 
 /* ---------- day detail popup ---------- */
 /** libellé d'en-tête pour un jour non-aujourd'hui (today affiche juste la date,
-   inchangé) — combine "cours prévus" (théorie projetée) et "exercices" (canal
-   séparé, jamais mélangé dans le compte) selon ce que le jour contient. */
+   inchangé). Ne parle plus que de théorie : les exercices ont quitté le
+   calendrier avec leur méthode des J (chantier 4). */
 function dayHeaderLabel(day) {
   const theoryN = day.byFiche.length + (day.schemas || []).length;
-  const exN = day.exosTotal || 0;
   if (!day.isProjected) return `${day.total} carte${day.total > 1 ? 's' : ''}`;
-  const parts = [];
-  if (theoryN > 0) parts.push(`${theoryN} cours prévu${theoryN > 1 ? 's' : ''}`);
-  if (exN > 0) parts.push(`${exN} exercice${exN > 1 ? 's' : ''}`);
-  return parts.join(' + ') || `${day.total} cours prévu${day.total > 1 ? 's' : ''}`;
+  return `${theoryN || day.total} cours prévu${(theoryN || day.total) > 1 ? 's' : ''}`;
 }
 function DayPopup({ day, ctx, onClose }) {
   // aujourd'hui : regroupement RÉEL par matière+type (inchangé, actionnable).
@@ -633,28 +588,6 @@ function DayPopup({ day, ctx, onClose }) {
               </div>
             );
           })}
-          {/* section "Exercices" — canal séparé de la théorie ci-dessus (day.exos,
-             planning.js dueExosByFicheOn), séparateur + libellé discrets
-             (.day-pop-exos) pour la repérer d'un coup d'œil. Seul point d'accès
-             aux exercices du jour depuis le Dashboard (plus de card dédiée). */}
-          {(day.exos || []).length > 0 && (
-            <div className="day-pop-exos">
-              <div className="day-pop-exos-label">Exercices</div>
-              {day.exos.map((g) => {
-                const meta = matiereMeta(g.matiere);
-                return (
-                  <div className="day-line" key={g.fiche.id}>
-                    <div className="dl-ic" style={{ background: `color-mix(in srgb, ${meta.tint} 15%, transparent)`, color: meta.tint }}><Icon name="target" size={17} /></div>
-                    <div className="dl-main">
-                      <div className="dl-title">{g.items.length} exercice{g.items.length > 1 ? 's' : ''} · {meta.label}</div>
-                      <div className="dl-sub"><span>{g.fiche.titre}</span></div>
-                    </div>
-                    {day.isToday && <button className="btn ghost sm" onClick={() => { onClose(); ctx.startExercice(g.items, g.fiche.titre + ' — Exercices'); }}>Faire</button>}
-                  </div>
-                );
-              })}
-            </div>
-          )}
           </>
           )}
         </div>

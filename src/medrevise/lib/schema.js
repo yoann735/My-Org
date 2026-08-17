@@ -18,9 +18,10 @@
    - fiche.meta.difficulte_chapitre — même mécanisme (passe-plat via meta),
      pas encore consommé (méthode des J des exercices, étape B).
    - exercice.jalon / exercice.difficulte_exo (validés ci-dessous,
-     EXO_JALONS/EXO_DIFFICULTES) — méthode des J des exercices (étape A) :
-     jalon LOGIQUE traduit en date absolue à l'import (storage.js newItem,
-     lib/sm2.js dueDateForJalon), indépendante de la cadence théorie.
+     EXO_JALONS/EXO_DIFFICULTES) — MÉTADONNÉES INERTES depuis le retrait de la
+     méthode des J des exercices (chantier 4) : toujours acceptées et conservées
+     sur l'item pour ne pas casser les prompts/collages existants, mais plus
+     rien ne les lit (aucune échéance n'en est dérivée).
    ============================================================ */
 
 export const SCHEMA_VERSION = '1.0';
@@ -31,10 +32,11 @@ export const MATIERES = ['Biologie', 'Chimie', 'Physique', 'Mathematiques'];
 /** lettres d'options QCM (id d'option = a, b, c, …) */
 export const OPTION_LETTERS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
-/** méthode des J des EXERCICES (Étape A, indépendante de la cadence théorie
-   ci-dessus — voir lib/sm2.js EXO_LABELS/dueDateForJalon) : jalon LOGIQUE
-   assigné par le prompt de génération, valeur libre sinon (self-contained,
-   pas d'import croisé avec sm2.js pour une simple liste de validation). */
+/** valeurs acceptées pour `jalon`/`difficulte_exo` d'un exercice. Ces champs ne
+   pilotent PLUS rien (méthode des J des exercices retirée, chantier 4) : la
+   validation reste ici uniquement pour que les JSON déjà produits par les
+   prompts continuent de passer à l'import, avec ces champs conservés tels quels
+   sur l'item. Self-contained : pas d'import croisé pour une liste de valeurs. */
 const EXO_JALONS = new Set(['J0', 'J+2', 'J+7', 'J+15', 'J+30', 'J+45']);
 const EXO_DIFFICULTES = new Set(['F', 'M', 'D']);
 
@@ -249,11 +251,9 @@ function normExercice(raw, c) {
   if (sous_type !== 'numerique' && sous_type !== 'ouvert') {
     return { ok: false, reason: `sous_type invalide ("${sous_type || 'absent'}", attendu "numerique" ou "ouvert")` };
   }
-  // méthode des J des exercices (Étape A) : "jalon" LOGIQUE (pas une date —
-  // traduit en date absolue à l'import, voir storage.js newItem/sm2.js
-  // dueDateForJalon) + "difficulte_exo", posés par le prompt de génération.
-  // Absent/invalide → null, comportement legacy inchangé (exo toujours
-  // librement accessible, jamais dans "Exercices du jour").
+  // "jalon"/"difficulte_exo" posés par le prompt de génération : conservés tels
+  // quels (absent/invalide → null), mais INERTES — aucune échéance n'en découle
+  // plus depuis le retrait de la méthode des J des exercices (chantier 4).
   const jalonRaw = str(raw.jalon).trim();
   const difficulteExoRaw = str(raw.difficulte_exo).trim();
   const common = {

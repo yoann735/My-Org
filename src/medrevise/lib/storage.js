@@ -5,7 +5,7 @@
    Hiérarchie : SOURCE(cours) → MATIÈRE → FICHE → QUESTIONS / STRUCTURES.
    ============================================================ */
 import { get, set, del, values, setMany, createStore } from 'idb-keyval';
-import { isoDate, startAdaptive, dueDateForJalon } from './sm2.js';
+import { isoDate, startAdaptive } from './sm2.js';
 import { queuePush, pullAllRecords, pushBlob, pullBlob, flushOutbox } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
@@ -207,14 +207,15 @@ export async function setExoPrompts(overrides) {
    Seuls les types SCHEDULED (qcm/flashcard, voir planning.js SCHEDULED_TYPES)
    reçoivent `intervalDays`/`dueDate`/`capped`/`termine` — feynman est HORS
    méthode des J, il n'a ni dates ni intervalle à porter.
-   Exercice : méthode des J PROPRE (Étape A, sm2.js dueDateForJalon) — UNE
-   seule échéance (`dueDate`), traduite depuis le "jalon" fourni par le
-   prompt de génération + CE MÊME `startDate` (même J0 que la théorie de la
-   fiche, y compris passé). `item.jalon` absent/invalide → pas de `dueDate`,
-   comportement legacy inchangé (toujours librement accessible). */
+   Exercice : AUCUNE planification (chantier 4) — plus de traduction d'un
+   "jalon" en échéance, donc jamais de `dueDate` : un exercice se fait
+   librement, son seul état est son STATUT (planning.js exerciceStatus). Un
+   `jalon`/`difficulte_exo` présent dans le JSON collé est conservé tel quel
+   sur l'item (métadonnée inerte, pour ne pas casser les prompts existants),
+   mais plus rien ne le lit. Un exo créé ici est donc exactement de la même
+   nature qu'un exo de chapitre (newChapitreExo ci-dessous). */
 export function newItem(ficheId, item, startDate = isoDate()) {
   const scheduled = item.type === 'qcm' || item.type === 'flashcard';
-  const dueDate = item.type === 'exercice' ? dueDateForJalon(item.jalon, startDate) : null;
   return {
     ...item,
     // clé primaire neuve (évite les collisions entre fiches) ; srcId conserve
@@ -227,7 +228,6 @@ export function newItem(ficheId, item, startDate = isoDate()) {
     // "vrai J+N depuis le début" du calendrier (sm2.js trueDaysSinceJ0),
     // distinct de intervalDays (délai jusqu'à la PROCHAINE échéance).
     ...(scheduled ? { ...startAdaptive(startDate), j0Date: startDate } : {}),
-    ...(dueDate ? { dueDate } : {}),
     historique: [], missed: 0,
   };
 }
@@ -238,13 +238,12 @@ export function newItem(ficheId, item, startDate = isoDate()) {
    MÊME mécanique que newErrorCard ci-dessous : `ficheId: null` + un id de
    rattachement propre (`chapitreId`). C'est ce `ficheId: null` qui met ces exos
    HORS de tout planning par CONSTRUCTION, sans ajouter un cas particulier dans le
-   moindre filtre : chaque lecteur d'exercices (planning.js dueExosOn /
-   weekExosByMatiere / unstartedExosFor, Réviser, accueil mobile) résout déjà la
-   fiche par `ix.fById[q.ficheId]` et abandonne si elle est absente.
-   Volontairement PAS de startAdaptive ni de dueDate : un exo de chapitre est libre
-   (jamais dû, jamais en retard, jamais au calendrier). Un `jalon` présent dans le
-   JSON collé est conservé tel quel (informatif) mais n'est jamais traduit en
-   échéance — sans `dueDate`, il reste inerte partout.
+   moindre filtre : les lecteurs qui résolvent la fiche par `ix.fById[q.ficheId]`
+   (Réviser, accueil mobile) abandonnent si elle est absente.
+   Volontairement PAS de startAdaptive ni de dueDate — comme TOUS les exercices
+   désormais (newItem ci-dessus, méthode des J des exercices retirée au chantier
+   4) : un exercice se fait librement, il n'est jamais dû. Un `jalon` présent dans
+   le JSON collé est conservé tel quel (métadonnée inerte).
    La matière (couleur, fil d'Ariane) n'est PAS recopiée ici : elle se déduit du
    chapitre (dossier.matiereId), source de vérité unique. */
 export function newChapitreExo(chapitreId, item) {
