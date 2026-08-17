@@ -26,8 +26,6 @@
      (voir advanceQuestion) — bookkeeping interne au moteur, plus consulté par
      aucun écran (l'ancien carnet d'erreurs qui le lisait a été retiré ; le
      carnet actuel, type flashcard_erreur, n'en dépend pas).
-   Le coef n'intervient plus dans ce calcul (voir lib/planning.js
-   effectiveCoef — coefficient éditable par fiche, Réviser).
    ============================================================ */
 export const INTERVAL_START = 1;
 export const INTERVAL_CAP = 90;

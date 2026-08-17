@@ -36,7 +36,7 @@ export async function createTranscript({ matiereId, titre, originalText, doc }) 
   const id = genId('f');
   const fiche = {
     id, matiereId, titre: (titre || 'Transcript').trim(),
-    sousTitre: 'Transcript', type: 'transcript', coef: null, dateImport: todayISO(),
+    sousTitre: 'Transcript', type: 'transcript', dateImport: todayISO(),
     originalText: originalText || '',
   };
   await put('fiches', fiche);

@@ -167,14 +167,6 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // ---- mutations (persist + reload) ----
     saveQuestion: async (q) => { await put('questions', q); await reload(); },
     saveFiche: async (f) => { await put('fiches', f); await reload(); },
-    setFicheCoef: async (ficheId, v) => {
-      const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
-      await put('fiches', { ...f, coef: v }); await reload();
-    },
-    setMatiereCoef: async (matiereId, v) => {
-      const m = db.matieres.find((x) => x.id === matiereId); if (!m) return;
-      await put('matieres', { ...m, coef: v }); await reload();
-    },
     setMatiereCouleur: async (matiereId, couleur) => {
       const m = db.matieres.find((x) => x.id === matiereId); if (!m) return;
       await put('matieres', { ...m, couleur }); await reload();
@@ -193,7 +185,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     },
     addSource: async (nom) => {
       const id = genId('s');
-      await put('sources', { id, nom: (nom || 'Nouveau cours').trim(), rappelsJ: true, archive: false, coef: 3, icon: 'folder', tint: '#7C6FE0' });
+      await put('sources', { id, nom: (nom || 'Nouveau cours').trim(), rappelsJ: true, archive: false, icon: 'folder', tint: '#7C6FE0' });
       await reload(); return id;
     },
     addMatiere: async (sourceId, nom) => {
@@ -201,7 +193,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
       // pas de `couleur` fixe ici : matiereMeta (ui.jsx) retombe sur une teinte
       // par défaut DISTINCTE par matière (hash de l'id) tant que l'utilisateur
       // n'a rien choisi dans Réglages → Couleurs par matière.
-      await put('matieres', { id, sourceId, nom: (nom || 'Nouvelle matière').trim(), coef: 3, icon: 'book' });
+      await put('matieres', { id, sourceId, nom: (nom || 'Nouvelle matière').trim(), icon: 'book' });
       await reload(); return id;
     },
     renameFiche: async (ficheId, titre) => {
@@ -328,7 +320,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
         let uncatId = uncat && uncat.id;
         if (!uncatId) {
           uncatId = genId('m');
-          await put('matieres', { id: uncatId, sourceId: m.sourceId, nom: 'À classer', couleur: '#9AA0AE', icon: 'box', coef: 3, uncategorized: true, archive: false });
+          await put('matieres', { id: uncatId, sourceId: m.sourceId, nom: 'À classer', couleur: '#9AA0AE', icon: 'box', uncategorized: true, archive: false });
         }
         // dossierId réinitialisé : un dossier appartient à SA matière d'origine
         // (voir fiche.dossierId) — « À classer » est un bac plat, pas de dossiers.

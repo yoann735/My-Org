@@ -3,8 +3,8 @@
    type "anat_schema" : on masque le TEXTE de certaines coches (champ de
    saisie vide) tout en gardant flèches + ancres visibles. L'étudiant
    remplit, on corrige avec une normalisation tolérante, puis on mappe le
-   % de bonnes réponses sur une qualité SM-2 (moteur existant) modulée par
-   le coefficient de la fiche/matière — exactement comme les autres fiches.
+   % de bonnes réponses sur une qualité SM-2 (moteur existant) — exactement
+   comme les autres fiches.
 
    Modes :
    - TOTAL : toutes les coches masquées.

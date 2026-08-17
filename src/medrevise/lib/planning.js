@@ -49,17 +49,6 @@ export function index(db) {
   return { sById, mById, fById };
 }
 
-export function effectiveCoef(db, fiche, idx) {
-  const { mById, sById } = idx || index(db);
-  if (!fiche) return 3;
-  if (fiche.coef != null) return fiche.coef;
-  const m = mById[fiche.matiereId];
-  if (m && m.coef != null) return m.coef;
-  const s = m && sById[m.sourceId];
-  if (s && s.coef != null) return s.coef;
-  return 3;
-}
-
 /** une fiche est dans le planning si la SOURCE a les rappels J activés (et non archivée)
  *  ET que la fiche elle-même n'a pas été retirée individuellement (fiche.rappelsJ) */
 export function isFicheScheduled(db, fiche, idx) {
@@ -154,7 +143,7 @@ export function overdueByFiche(db, idx) {
     const m = ix.mById[f.matiereId];
     return {
       fiche: f, matiere: m, source: m && ix.sById[m.sourceId], items: [], qcm: 0, flash: 0, isSchema: true,
-      ...ficheJ(db, f.id, ix), coef: effectiveCoef(db, f, ix), oldest: nextDate(f) || todayISO(),
+      ...ficheJ(db, f.id, ix), oldest: nextDate(f) || todayISO(),
     };
   });
   return [...qGroups, ...schemaGroups].sort((a, b) => (a.oldest < b.oldest ? -1 : a.oldest > b.oldest ? 1 : 0));
@@ -349,7 +338,7 @@ export function dueOnFor(db, dateISO, { sourceId, ficheId } = {}, idx) {
   });
 }
 
-/** regroupe une liste de questions par fiche, avec compteurs + J + coef.
+/** regroupe une liste de questions par fiche, avec compteurs + J.
    `jLabel`/`jIndex` (soonestLabel), `aRevoirCount`/`jTrueDays` — TOUS
    calculés à partir des ITEMS RÉELLEMENT groupés ici (les cartes
    effectivement dues ce jour-là pour cette fiche), jamais d'une recherche
@@ -380,7 +369,6 @@ export function groupByFiche(db, questions, idx) {
   return Object.values(map).map((g) => ({
     ...g,
     ...soonestLabel(g.items),
-    coef: effectiveCoef(db, g.fiche, ix),
     aRevoirCount: g.items.filter(isDueBecauseStruggled).length,
     jTrueDays: g.items.reduce((max, q) => {
       const d = trueDaysSinceJ0(q);

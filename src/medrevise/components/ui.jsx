@@ -930,16 +930,3 @@ export function CourseDocField({ file, onFile, label = 'Document du cours (PDF o
   );
 }
 
-/* ---- inline coefficient control (1..5) ---- */
-export function CoefControl({ value, inherited, onSet, onReset }) {
-  const set = (v) => onSet(Math.max(1, Math.min(5, v)));
-  return (
-    <div className={'coefctl' + (inherited ? ' inherited' : '')} onClick={(e) => e.stopPropagation()} title="Poids dans le carnet d'erreurs (coefficient) — la cadence des J est désormais fixe, quel que soit le coef">
-      <span className="cc-label">coef</span>
-      <button className="cc-btn" type="button" onClick={() => set(value - 1)} disabled={value <= 1} aria-label="Diminuer"><Icon name="minus" size={12} stroke={2.6} /></button>
-      <span className="cc-val tnum">{value}</span>
-      <button className="cc-btn" type="button" onClick={() => set(value + 1)} disabled={value >= 5} aria-label="Augmenter"><Icon name="plus" size={12} stroke={2.6} /></button>
-      {!inherited && onReset && <button className="cc-reset" type="button" title="Revenir au coef hérité" onClick={onReset}><Icon name="refresh" size={11} /></button>}
-    </div>
-  );
-}

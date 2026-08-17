@@ -37,7 +37,7 @@ export async function createFicheFromQuestions({ matiereId, titre, items, synthe
     id: ficheId, matiereId,
     titre: (titre || 'Fiche importée').trim(),
     sousTitre: 'Importée',
-    type: 'standard', coef: null,
+    type: 'standard',
     pdfId: pdfId || null, pdfName: (pdfId && pdfName) || null,
     htmlId: htmlId || null, htmlName: (htmlId && htmlName) || null,
     dateImport: todayISO(),
@@ -238,7 +238,7 @@ export async function saveAnatSchema({ ficheId, matiereId, titre, sousCategorie,
   } else {
     fiche = {
       id: genId('f'), matiereId, titre: (titre || 'Schéma anatomique').trim(),
-      sousTitre, type: 'anat_schema', sousCategorie: sousCategorie || null, coef: null,
+      sousTitre, type: 'anat_schema', sousCategorie: sousCategorie || null,
       dateImport: todayISO(),
       images: cleanImages,
       imageId: first.imageId, imageW: first.imageW, imageH: first.imageH, coches: first.coches,

@@ -270,7 +270,7 @@
 
 /* ============================================================
    AJOUTS — navbar compacte, mode erreur, points faibles,
-   coefficients, visionneuse PDF
+   visionneuse PDF
    ============================================================ */
 
 /* ---- navbar matières/cours compacte + scroll interne ---- */
@@ -315,16 +315,6 @@
 .err-mini .em-title { font-size: 14px; font-weight: 600; }
 .err-mini .em-chip { font-size: 11.5px; padding: 3px 8px; border-radius: 999px; background: var(--bg-2); border: 1px solid var(--border-2); color: var(--text-2); }
 .err-mini .em-chip em { font-style: normal; color: var(--crit); font-weight: 700; }
-
-/* ---- coefficients (réglages) ---- */
-.coef-list { display: flex; flex-direction: column; gap: 12px; }
-.coef-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto minmax(90px,140px); align-items: center; gap: 14px; }
-.coef-row .coef-dot { width: 11px; height: 11px; border-radius: 50%; }
-.coef-row .coef-name { font-weight: 600; font-size: 14px; }
-.coef-stepper { display: flex; align-items: center; gap: 8px; }
-.coef-stepper .coef-val { font-family: 'DM Serif Display', serif; font-size: 22px; min-width: 22px; text-align: center; }
-.coef-track { height: 7px; border-radius: 999px; background: var(--bg-2); overflow: hidden; }
-.coef-track span { display: block; height: 100%; border-radius: 999px; transition: width .18s; }
 
 /* ---- visionneuse PDF ---- */
 .pdf-scrim { position: fixed; inset: 0; background: rgba(15,18,30,.62); backdrop-filter: blur(4px); display: grid; place-items: center; z-index: 60; padding: 28px; animation: fadein .15s; }
@@ -663,53 +653,11 @@
 }
 
 /* ============================================================
-   AJOUTS — coefficients inline, sources, sous-cat anat, images,
+   AJOUTS — sources, sous-cat anat, images,
    déroulé sectorisé, navigation Précédent
    ============================================================ */
 
-/* ---- contrôle de coefficient inline (discret — révélé au survol) ---- */
-.coefctl { display: inline-flex; align-items: center; gap: 1px; padding: 1px 5px 1px 7px; border-radius: 999px; background: transparent; border: 1px solid transparent; flex: 0 0 auto; transition: background .14s, border-color .14s; }
-.coefctl:hover, .coefctl:focus-within { background: var(--bg-2); border-color: var(--border); }
-.coefctl .cc-label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); margin-right: 1px; }
-.coefctl .cc-btn { width: 18px; height: 18px; border-radius: 6px; border: none; background: transparent; color: var(--text-3); display: grid; place-items: center; cursor: pointer; opacity: 0; transition: opacity .14s, background .12s, color .12s; }
-.coefctl:hover .cc-btn, .coefctl:focus-within .cc-btn { opacity: 1; color: var(--accent); }
-.coefctl .cc-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.coefctl .cc-btn:disabled { opacity: .22; cursor: default; }
-.coefctl .cc-val { font-size: 12.5px; font-weight: 800; min-width: 12px; text-align: center; color: var(--text-2); font-variant-numeric: tabular-nums; }
-.coefctl:hover .cc-val, .coefctl:focus-within .cc-val { color: var(--text); }
-.coefctl.inherited .cc-val { color: var(--text-3); }
-.coefctl .cc-reset { width: 16px; height: 16px; border-radius: 5px; border: none; background: transparent; color: var(--text-3); display: grid; place-items: center; cursor: pointer; opacity: 0; margin-left: 1px; }
-.coefctl:hover .cc-reset, .coefctl:focus-within .cc-reset { opacity: .65; }
-.coefctl .cc-reset:hover { opacity: 1; color: var(--text); }
-
-/* ---- renommage inline d'une fiche ---- */
-.tree-rename { flex: 1 1 auto; min-width: 0; font-family: inherit; font-size: 14px; font-weight: 600; color: var(--text); background: var(--card); border: 1.5px solid var(--accent); border-radius: 7px; padding: 5px 8px; outline: none; margin: 1px 0; }
-
-/* ---- toggle source discret (cloche) ---- */
-.src-mute { position: relative; width: 26px; height: 26px; border-radius: 8px; border: none; background: transparent; color: var(--text-3); display: grid; place-items: center; cursor: pointer; flex: 0 0 auto; opacity: .5; transition: opacity .14s, background .12s, color .12s; }
-.src-mute:hover { opacity: 1; background: var(--card); color: var(--text-2); }
-.src-mute.off { color: var(--warn); opacity: .9; }
-.src-mute.off:hover { background: color-mix(in srgb, var(--warn) 12%, transparent); }
-.bell-tt-portal { position: fixed; width: 230px; max-width: 60vw; background: var(--text); color: var(--bg); font-size: 11.5px; font-weight: 500; line-height: 1.4; padding: 8px 10px; border-radius: 9px; box-shadow: var(--shadow-lg); z-index: 300; text-align: left; pointer-events: none; animation: fade .12s ease; }
-
-/* ---- arbo SOURCE dans Réviser ---- */
-.tree-src { margin-bottom: 7px; }
-.tree-src-row { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 4px; border-radius: 9px; background: var(--bg-2); }
-.tree-src-main { flex: 1 1 auto; display: flex; align-items: center; gap: 7px; border: none; background: none; cursor: pointer; font-family: inherit; color: var(--text); min-width: 0; padding: 0; }
-.tsrc-ic { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; flex: 0 0 auto; }
-.tsrc-name { font-size: 12.5px; font-weight: 800; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tree-src.off .tree-src-main { opacity: .5; }
-.tree-src .tree-group { margin-left: 8px; }
-.tree-cat-row .tree-cat .tcat-label { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* ---- toggle source (rappels J) ---- */
-.src-toggle { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; }
-.src-tg-label { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: var(--text-3); white-space: nowrap; }
-.src-tg-label.on { color: var(--ok); }
-
-/* ---- jcard : coefficients + état pause ---- */
-.jc-coefs { display: flex; align-items: center; gap: 9px; margin-top: 13px; flex-wrap: wrap; }
-.jc-coef-lab { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-3); }
+/* ---- jcard : état pause ---- */
 .jc-paused { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; background: var(--bg-2); border: 1px solid var(--border); color: var(--text-2); font-size: 11.5px; font-weight: 700; }
 
 /* ---- barre de sources (dashboard) ---- */
@@ -818,7 +766,7 @@
 }
 
 /* ============================================================
-   AJOUTS v2 — coef en popover discret, légende bulles, gestion
+   AJOUTS v2 — légende bulles, gestion
    des cours (ex-sources), import avec destination
    ============================================================ */
 
@@ -829,33 +777,6 @@
 .tree-foot { flex-wrap: wrap; gap: 6px 14px; }
 .tf-item { display: inline-flex; align-items: center; gap: 6px; }
 .tf-badge { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 9.5px; font-weight: 800; display: inline-grid; place-items: center; font-variant-numeric: tabular-nums; }
-
-/* ---- coef : bulle discrète révélée au survol de la ligne ---- */
-.coef-bubble { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; height: 20px; padding: 0 6px 0 5px; margin-right: 2px; border-radius: 999px; border: 1px solid transparent; background: transparent; color: var(--text-3); cursor: pointer; font-family: inherit; opacity: 0; transition: opacity .14s, background .12s, color .12s, border-color .12s; }
-.coef-bubble .cb-val { font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.tree-cat-row:hover .coef-bubble, .tree-course:hover .coef-bubble, .coef-bubble.open, .coef-bubble.set { opacity: 1; }
-.coef-bubble.set { color: var(--accent); }
-.coef-bubble:hover, .coef-bubble.open { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 28%, transparent); color: var(--accent); }
-
-.coef-pop-scrim { position: fixed; inset: 0; z-index: 120; }
-.coef-pop { position: fixed; z-index: 121; width: 222px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 14px; animation: cpin .16s ease; }
-@keyframes cpin { from { opacity: 0; transform: translateY(-5px); } }
-.coef-pop .cp-head { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--text-2); margin-bottom: 12px; }
-.cp-stepper { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 12px; }
-.cp-btn { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-2); color: var(--accent); display: grid; place-items: center; cursor: pointer; transition: all .12s; }
-.cp-btn:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent); }
-.cp-btn:disabled { opacity: .32; cursor: default; }
-.cp-val { font-family: 'DM Serif Display', serif; font-size: 30px; min-width: 30px; text-align: center; line-height: 1; }
-.cp-scale { display: flex; gap: 6px; justify-content: center; margin-bottom: 12px; }
-.cp-dot { width: 30px; height: 8px; border-radius: 999px; border: none; background: var(--bg-2); cursor: pointer; padding: 0; transition: background .12s; }
-.cp-dot.on { background: var(--accent); }
-.cp-note { font-size: 11px; color: var(--text-3); line-height: 1.45; text-align: center; }
-.cp-reset { display: flex; align-items: center; gap: 6px; margin: 10px auto 0; border: 1px solid var(--border); background: var(--bg-2); color: var(--text-2); font-family: inherit; font-size: 11.5px; font-weight: 600; padding: 6px 12px; border-radius: 9px; cursor: pointer; }
-.cp-reset:hover { color: var(--text); border-color: var(--text-3); }
-
-/* ---- jcard : indice « priorité dans l'arbre » ---- */
-.jc-coefhint { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 11.5px; color: var(--text-3); }
-.jc-coefhint svg { color: var(--accent); }
 
 /* ---- renommage de cours dans l'arbre ---- */
 .tree-src-row .tree-rename { flex: 1 1 auto; font-weight: 800; }
@@ -934,10 +855,6 @@
 .tree-card .tree-cat-row { padding: 5px 7px; margin-bottom: 3px; }
 .tree-card .tree-course { margin: 4px 0 4px 10px; }
 .tree-card .tree-course-main { padding: 10px 12px; gap: 10px; }
-.tree-card .tree-course .coefctl { margin-left: 8px; opacity: .55; transform: scale(.9); transform-origin: right center; }
-.tree-card .tree-course:hover .coefctl, .tree-card .tree-course .coefctl:focus-within { opacity: .95; }
-.tree-card .tree-cat-row .coefctl { opacity: .72; }
-.tree-card .tree-cat-row .coefctl:hover, .tree-card .tree-cat-row .coefctl:focus-within { opacity: 1; }
 
 /* ---------- B1 : sélecteur de fiche PDF (onglet "PDF") ---------- */
 .pdfpick-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; margin-bottom: 6px; border: 1px solid var(--border-2); border-radius: 10px; background: var(--card); cursor: pointer; font-family: inherit; font-size: 13.5px; color: var(--text); transition: border-color .12s, background .12s; }
@@ -1110,7 +1027,7 @@
 .tree-card .tsrc-name,
 .tree-card .tcat-label,
 .tree-card .tree-cat-row .tree-cat .tcat-label { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.32; word-break: break-word; }
-/* le badge « à réviser » et le contrôle de coef restent alignés en haut de la ligne */
+/* le badge « à réviser » reste aligné en haut de la ligne */
 .tree-card .tree-course-main .due-badge { margin-top: 1px; }
 
 /* correctif d'affichage : sur une ligne qui porte des icônes (schéma, étiquette,

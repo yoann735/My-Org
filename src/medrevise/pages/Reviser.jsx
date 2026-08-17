@@ -1,13 +1,13 @@
 /* ============================================================
    MedRevise — Réviser (hub). Gauche : arbre Cours → Matière → Fiche
-   (cases à cocher, sélection simple/multiple, coef, rappels J).
+   (cases à cocher, sélection simple/multiple, rappels J).
    Droite : méthode des J (frise) + cards QCM/Flash/Feynman + erreurs.
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, TodaySeriesCard, JBadge, CoefControl, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
+import { EdTop, TodaySeriesCard, JBadge, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
 import {
-  index, effectiveCoef, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, todayPlan, overdueByFiche,
+  index, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, todayPlan, overdueByFiche,
   qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, carnetV1Questions, carnetV2Questions,
 } from '../lib/planning.js';
 import { shuffle } from '../lib/sm2.js';
@@ -444,7 +444,6 @@ export function Reviser({ ctx }) {
                 {overdueFicheIds.has(f.id) && <span title="En retard — à rattraper" style={{ color: 'var(--crit)', display: 'inline-flex', marginLeft: 4 }}><Icon name="alert" size={12} /></span>}
                 {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
               </button>
-              <CoefControl value={effectiveCoef(db, f, ix)} inherited={f.coef == null} onSet={(v) => ctx.setFicheCoef(f.id, v)} onReset={() => ctx.setFicheCoef(f.id, null)} />
             </div>
           )}
         </DraggableFiche>
@@ -529,7 +528,6 @@ export function Reviser({ ctx }) {
                           ) : (
                             <span className="tcat-label" style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 5 }}>{mm.label}{matHasSchema(mat.id) && <span title="Contient un schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex' }}><Icon name="image" size={11} /></span>}</span>
                           )}
-                          <CoefControl value={mat.coef ?? 3} inherited={false} onSet={(v) => ctx.setMatiereCoef(mat.id, v)} />
                         </div>
 
                         {/* création EN HAUT (juste sous l'en-tête de la matière), pas noyée sous
