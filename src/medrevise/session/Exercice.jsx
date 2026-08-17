@@ -56,7 +56,12 @@ export function Exercice({ ctx }) {
 
   const item = items[idx];
   const fiche = ix.fById[item.ficheId];
-  const meta = matiereMeta(fiche && ix.mById[fiche.matiereId]);
+  // exo DE CHAPITRE (chapitreId, ficheId null — voir storage.js#newChapitreExo) :
+  // aucune fiche à résoudre, la matière (couleur + fil d'Ariane) vient du chapitre.
+  // Tout le reste de l'écran est déjà défensif sur `fiche` (elle reste absente ici) :
+  // « Voir le cours » et l'étiquette de fin de série se masquent d'eux-mêmes.
+  const chapitre = item.chapitreId ? (ctx.db.dossiers || []).find((d) => d.id === item.chapitreId) : null;
+  const meta = matiereMeta(fiche ? ix.mById[fiche.matiereId] : (chapitre ? ix.mById[chapitre.matiereId] : null));
   const goNext = () => setIdx((i) => Math.min(items.length - 1, i + 1));
   const goPrev = () => setIdx((i) => Math.max(0, i - 1));
 
@@ -76,7 +81,7 @@ export function Exercice({ ctx }) {
     <div className="screen scroll fadein">
       <div className="ctx-bar">
         <div style={{ minWidth: 0 }}>
-          <Breadcrumb parts={['Réviser', meta.label, (fiche && fiche.titre) || payload.title, 'Exercice']} />
+          <Breadcrumb parts={['Réviser', meta.label, (fiche && fiche.titre) || (chapitre && chapitre.nom) || payload.title, 'Exercice']} />
           <div className="row" style={{ gap: 10, marginTop: 9 }}>
             <span className="rp-count tnum">{idx + 1} / {items.length}</span>
             {payload.mode === 'weekend' && <span className="pill accent" style={{ height: 22 }}>Session bonus · rien n'est enregistré</span>}

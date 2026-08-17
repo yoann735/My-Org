@@ -232,6 +232,31 @@ export function newItem(ficheId, item, startDate = isoDate()) {
   };
 }
 
+/* EXERCICE DE CHAPITRE : un exercice rattaché non pas à une fiche mais à un
+   CHAPITRE (dossier de niveau 2, parentId ≠ null — voir MedReviseApp.jsx#addDossier),
+   pour couvrir l'ensemble des notions du chapitre plutôt qu'une fiche précise.
+   MÊME mécanique que newErrorCard ci-dessous : `ficheId: null` + un id de
+   rattachement propre (`chapitreId`). C'est ce `ficheId: null` qui met ces exos
+   HORS de tout planning par CONSTRUCTION, sans ajouter un cas particulier dans le
+   moindre filtre : chaque lecteur d'exercices (planning.js dueExosOn /
+   weekExosByMatiere / unstartedExosFor, Réviser, accueil mobile) résout déjà la
+   fiche par `ix.fById[q.ficheId]` et abandonne si elle est absente.
+   Volontairement PAS de startAdaptive ni de dueDate : un exo de chapitre est libre
+   (jamais dû, jamais en retard, jamais au calendrier). Un `jalon` présent dans le
+   JSON collé est conservé tel quel (informatif) mais n'est jamais traduit en
+   échéance — sans `dueDate`, il reste inerte partout.
+   La matière (couleur, fil d'Ariane) n'est PAS recopiée ici : elle se déduit du
+   chapitre (dossier.matiereId), source de vérité unique. */
+export function newChapitreExo(chapitreId, item) {
+  return {
+    ...item,
+    id: genId('q'), srcId: item.id || null,
+    ficheId: null, chapitreId,
+    type: item.type,
+    historique: [], missed: 0,
+  };
+}
+
 /* carnet d'erreurs v2 (étape 2) : une V2 ("flashcard d'erreur") — type DISTINCT
    `flashcard_erreur`, jamais 'flashcard', pour rester exclue par construction
    de tout ce qui est indexé sur SCHEDULED_TYPES (planning.js) et du `scheduled`
@@ -296,11 +321,18 @@ export async function purgeFiche(ficheId) {
 }
 
 export async function purgeMatiere(matiereId) {
-  const [fiches, anatstruct, dossiers] = await Promise.all([getAll('fiches'), getAll('anatstruct'), getAll('dossiers')]);
+  const [fiches, anatstruct, dossiers, questions] = await Promise.all([getAll('fiches'), getAll('anatstruct'), getAll('dossiers'), getAll('questions')]);
+  const dossiersOfMat = (dossiers || []).filter((d) => d.matiereId === matiereId);
+  // exercices rattachés aux CHAPITRES de cette matière (chapitreId, ficheId null —
+  // voir newChapitreExo) : purgeFiche ne les voit pas (il ne connaît que ficheId),
+  // ils resteraient donc orphelins en base ET dans le cloud. Purgés ici avec leurs
+  // dossiers, pour la même raison que anatstruct juste au-dessus.
+  const chapIds = new Set(dossiersOfMat.map((d) => d.id));
   await Promise.all([
     ...(fiches || []).filter((f) => f.matiereId === matiereId).map((f) => purgeFiche(f.id)),
     ...(anatstruct || []).filter((s) => s.matiereId === matiereId).map((s) => remove('anatstruct', s.id)),
-    ...(dossiers || []).filter((d) => d.matiereId === matiereId).map((d) => remove('dossiers', d.id)),
+    ...(questions || []).filter((q) => q.chapitreId && chapIds.has(q.chapitreId)).map((q) => Promise.all([remove('questions', q.id), remove('exos', q.id)])),
+    ...dossiersOfMat.map((d) => remove('dossiers', d.id)),
   ]);
   await remove('matieres', matiereId);
 }

@@ -7,7 +7,7 @@
    choisie (aujourd'hui par défaut, ou une date passée — `dueDate` posée
    directement, immédiatement "en retard" si passée).
    ============================================================ */
-import { genId, put, putMany, getOne, getAll, newItem } from './storage.js';
+import { genId, put, putMany, getOne, getAll, newItem, newChapitreExo } from './storage.js';
 import { toInternalItem } from './adapter.js';
 import { todayISO, startAdaptive } from './sm2.js';
 
@@ -92,6 +92,42 @@ export async function appendItemsToFiche({ ficheId, items, startDate, meta }) {
     await put('fiches', updatedFiche);
   }
   return { fiche: updatedFiche, count: fresh.length, duplicates };
+}
+
+/**
+ * AJOUTE des exercices à un CHAPITRE (dossier de niveau 2) plutôt qu'à une fiche.
+ * Décalque appendItemsToFiche : append pur (jamais d'écrasement), dédoublonnage sur
+ * l'id v1.0 d'origine (`srcId`) — mais SCOPÉ AU CHAPITRE (deux chapitres peuvent
+ * recevoir le même exercice source sans se gêner) — et une seule écriture groupée.
+ * Le JSON est parsé EN AMONT par parsePastedJson (validateur tolérant partagé, non
+ * modifié) : cette fonction reçoit des items v1.0 déjà normalisés.
+ * Un chapitre ne porte QUE des exercices : les items d'un autre type sont écartés
+ * ici et RENDUS À L'APPELANT (`ignoredNonExo`) pour être annoncés à l'utilisateur,
+ * jamais avalés en silence.
+ * Que des créations → pas de putBackup (rien d'existant n'est réécrit).
+ * @returns {{count, duplicates, ignoredNonExo}}
+ */
+export async function appendExosToChapitre({ chapitreId, items }) {
+  const all = await getAll('questions');
+  const existingSrc = new Set(all.filter((q) => q.chapitreId === chapitreId).map((q) => q.srcId).filter(Boolean));
+
+  let duplicates = 0;
+  let ignoredNonExo = 0;
+  const fresh = [];
+  for (const raw of (items || [])) {
+    if (!raw || raw.type !== 'exercice') { ignoredNonExo++; continue; }
+    const srcId = raw.id;
+    if (srcId && existingSrc.has(srcId)) { duplicates++; continue; }
+    // MÊME chemin de normalisation que appendItemsToFiche (toInternalItem →
+    // normalizeV1Item) : un exo de chapitre est un item v1.0 ordinaire, aucun cas
+    // particulier côté lecteur. Seule la fabrique finale change (rattachement).
+    const rec = toInternalItem(raw, (it) => newChapitreExo(chapitreId, it));
+    if (!rec) continue;
+    fresh.push(rec);
+    if (srcId) existingSrc.add(srcId); // évite les doublons intra-collage
+  }
+  if (fresh.length) await putMany('questions', fresh);
+  return { count: fresh.length, duplicates, ignoredNonExo };
 }
 
 /**

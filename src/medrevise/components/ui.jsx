@@ -726,7 +726,7 @@ export function DropSlot({ matiereId, dossierId, beforeId, variant = 'line', lab
    (ajoute « · 2 chapitres »), absent sur un chapitre → rendu strictement inchangé.
    `fichesCount` d'une unité est RÉCURSIF (ses fiches + celles de ses chapitres),
    sinon le compteur mentirait quand l'unité est repliée. */
-export function DossierRow({ dossier, isOpen, fichesCount, sousDossiersCount, isRenaming, renameInput, onToggle, onRename, onMenu }) {
+export function DossierRow({ dossier, isOpen, fichesCount, sousDossiersCount, exosCount, onOpenExos, isRenaming, renameInput, onToggle, onRename, onMenu }) {
   return (
     <div style={{ marginTop: 10 }}>
       {isRenaming ? (
@@ -745,7 +745,18 @@ export function DossierRow({ dossier, isOpen, fichesCount, sousDossiersCount, is
             <span className="hint" style={{ flex: '0 0 auto' }}>
               {fichesCount} fiche{fichesCount > 1 ? 's' : ''}
               {sousDossiersCount != null && ` · ${sousDossiersCount} chapitre${sousDossiersCount > 1 ? 's' : ''}`}
+              {exosCount > 0 && ` · ${exosCount} exo${exosCount > 1 ? 's' : ''}`}
             </span>
+            {/* accès aux EXERCICES DU CHAPITRE — même emplacement/même style que le
+               bouton « play » d'une ligne de fiche. Rendu uniquement si l'écran passe
+               le handler (Réviser), donc la Bibliothèque reste inchangée. Le clic ne
+               déplie pas : il ouvre la vue chapitre dans le panneau de droite. */}
+            {onOpenExos && (
+              <button type="button" className="cd-ic" title="Exercices du chapitre"
+                onClick={(e) => { e.stopPropagation(); onOpenExos(); }}>
+                <Icon name="target" size={14} />
+              </button>
+            )}
             <button type="button" className="cd-ic" title="Autres actions" onClick={onMenu}><Icon name="more" size={15} stroke={2.6} /></button>
           </div>
         </div>
@@ -764,7 +775,7 @@ export const DOSSIER_INDENT = { marginLeft: 18, paddingLeft: 10, borderLeft: '2p
     divergent). `chapitresCount`/`fichesCount` décrivent le sous-arbre réellement
     supprimé/déplacé par ctx.deleteDossier (fichesCount d'une unité inclut celles de
     ses chapitres). */
-export function dossierDeleteTexts(dossier, chapitresCount = 0, fichesCount = 0) {
+export function dossierDeleteTexts(dossier, chapitresCount = 0, fichesCount = 0, exosCount = 0) {
   const isChapitre = !!dossier.parentId;
   const pron = isChapitre ? 'il' : 'elle';
   const cible = isChapitre ? "dans l'unité parente" : 'à la racine de la matière';
@@ -774,9 +785,15 @@ export function dossierDeleteTexts(dossier, chapitresCount = 0, fichesCount = 0)
   const fic = fichesCount > 0
     ? ` ${fichesCount > 1 ? `Les ${fichesCount} fiches` : 'La fiche'} qu'${pron} contient ${fichesCount > 1 ? 'ne sont PAS supprimées : elles remontent' : "n'est PAS supprimée : elle remonte"} ${cible}.`
     : '';
+  // exercices DE CHAPITRE (chapitreId) : eux n'ont aucun niveau où remonter — ils
+  // partent avec le chapitre. Dit explicitement, jamais sous-entendu (c'est la
+  // seule perte réelle de ce geste, voir MedReviseApp.jsx#deleteDossier).
+  const exo = exosCount > 0
+    ? ` ⚠ ${exosCount > 1 ? `Les ${exosCount} exercices de chapitre seront supprimés` : "L'exercice de chapitre sera supprimé"} définitivement (aucun niveau supérieur ne peut les accueillir).`
+    : '';
   return {
     title: isChapitre ? 'Supprimer ce chapitre ?' : 'Supprimer cette unité ?',
-    body: `« ${dossier.nom} » sera supprimé${isChapitre ? '' : 'e'}.${chap}${fic}`,
+    body: `« ${dossier.nom} » sera supprimé${isChapitre ? '' : 'e'}.${chap}${fic}${exo}`,
     confirmLabel: isChapitre ? 'Supprimer le chapitre' : "Supprimer l'unité",
   };
 }

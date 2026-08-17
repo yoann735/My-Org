@@ -260,8 +260,15 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const ids = [dossierId, ...chapitres.map((c) => c.id)];
       const fiches = db.fiches.filter((f) => ids.includes(f.dossierId) && !f.archive);
       const cible = d.parentId || null; // chapitre → unité parente ; unité → racine
-      if (fiches.length || chapitres.length) {
-        await putBackup(`pre-delete-dossier-${dossierId}-${Date.now()}`, { dossier: d, chapitres, fiches });
+      // exercices rattachés aux chapitres supprimés (chapitreId, voir
+      // storage.js#newChapitreExo) : contrairement aux fiches, ils n'ont NULLE PART
+      // où remonter (un exo se rattache à une fiche ou à un chapitre, jamais à une
+      // unité ni à une matière) — ils sont donc supprimés avec leur chapitre. Le
+      // putBackup ci-dessous les embarque, et la modale de confirmation annonce leur
+      // nombre explicitement (voir dossierDeleteTexts).
+      const exos = db.questions.filter((q) => q.chapitreId && ids.includes(q.chapitreId));
+      if (fiches.length || chapitres.length || exos.length) {
+        await putBackup(`pre-delete-dossier-${dossierId}-${Date.now()}`, { dossier: d, chapitres, fiches, exos });
       }
       if (fiches.length) {
         const targetSiblings = db.fiches
@@ -269,7 +276,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
           .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
         await putMany('fiches', fiches.map((f, i) => ({ ...f, dossierId: cible, ordre: targetSiblings.length + i })));
       }
-      await Promise.all(ids.map((id) => remove('dossiers', id)));
+      await Promise.all([
+        ...exos.map((q) => remove('questions', q.id)),
+        ...ids.map((id) => remove('dossiers', id)),
+      ]);
       await reload();
     },
     setMatiereArchived: async (matiereId, on) => {
@@ -532,6 +542,13 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // deleteQuestion (remove() → tombstone + outbox), juste appliqué à tout le lot.
     deleteAllExercices: async (ficheId) => {
       const exos = db.questions.filter((q) => q.ficheId === ficheId && q.type === 'exercice');
+      await Promise.all(exos.map((q) => remove('questions', q.id)));
+      await reload();
+    },
+    // pendant du précédent pour un CHAPITRE (exos rattachés par chapitreId, voir
+    // storage.js#newChapitreExo) — même canal durable, juste l'autre rattachement.
+    deleteAllExosChapitre: async (chapitreId) => {
+      const exos = db.questions.filter((q) => q.chapitreId === chapitreId && q.type === 'exercice');
       await Promise.all(exos.map((q) => remove('questions', q.id)));
       await reload();
     },

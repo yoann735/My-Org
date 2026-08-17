@@ -521,7 +521,11 @@ export function Bibliotheque({ ctx }) {
         const chapitres = d.parentId ? [] : chapitresOf(d.id);
         const ids = [d.id, ...chapitres.map((c) => c.id)];
         const nFiches = db.fiches.filter((f) => ids.includes(f.dossierId) && !f.archive).length;
-        const t = dossierDeleteTexts(d, chapitres.length, nFiches);
+        // exos DE CHAPITRE emportés (voir MedReviseApp.jsx#deleteDossier) : la
+        // Bibliothèque n'affiche pas ces exos, mais elle ne doit pas les supprimer
+        // en silence — même texte qu'à Réviser.
+        const nExos = db.questions.filter((q) => q.chapitreId && ids.includes(q.chapitreId)).length;
+        const t = dossierDeleteTexts(d, chapitres.length, nFiches, nExos);
         return (
           <ConfirmModal
             title={t.title} body={t.body} confirmLabel={t.confirmLabel} danger

@@ -48,6 +48,14 @@ export function Reviser({ ctx }) {
   const [openDossier, setOpenDossier] = useState({});
   const [dossierMenu, setDossierMenu] = useState(null); // { x, y, dossierId }
   const [moveMenu, setMoveMenu] = useState(null); // { x, y, ficheId }
+  // EXERCICES DE CHAPITRE (chantier 2) : un chapitre peut porter ses propres
+  // exercices (chapitreId, ficheId null — voir storage.js#newChapitreExo), qui
+  // couvrent l'ensemble de ses fiches. `selChapitre` = chapitre affiché dans le
+  // panneau de droite, MUTUELLEMENT EXCLUSIF avec la sélection de fiches
+  // (selIds) : sélectionner un chapitre vide selIds et inversement, le panneau
+  // n'a donc jamais deux sujets à la fois.
+  const [selChapitre, setSelChapitre] = useState(null); // id de dossier (parentId ≠ null)
+  const [showAddChapExo, setShowAddChapExo] = useState(false);
   const [shiftStart, setShiftStart] = useState(null); // { type: 'source'|'fiche', id, nom }
   const [shiftExosStart, setShiftExosStart] = useState(null); // { type: 'source'|'fiche', id, nom } — même chose, pour les exercices
 
@@ -83,6 +91,9 @@ export function Reviser({ ctx }) {
     const ids = [uniteId, ...chapitresOf(uniteId).map((c) => c.id)];
     return allFiches.filter((f) => ids.includes(f.dossierId)).length;
   };
+  // exercices rattachés à UN chapitre (pas à ses fiches : celles-ci gardent leurs
+  // propres exos, inchangés — voir storage.js#newChapitreExo).
+  const exosOfChapitre = (chapitreId) => db.questions.filter((q) => q.chapitreId === chapitreId && q.type === 'exercice');
   // repérage « d'un coup d'œil » des schémas d'anatomie dans l'arbre (point E).
   const matHasSchema = (matId) => fichesOf(matId).some((f) => f.type === 'anat_schema');
   const srcHasSchema = (srcId) => matieresOf(srcId).some((m) => matHasSchema(m.id));
@@ -100,11 +111,15 @@ export function Reviser({ ctx }) {
   // ça sert ici de mémoire de position, puisque Reviser est démonté/remonté à
   // chaque aller-retour vers une session (key={screen} dans MedReviseApp) et
   // perdrait sinon selIds à chaque Quitter/Précédent depuis une révision.
-  const selectOnly = (id) => { setSelIds([id]); ctx.setFocusFiche(id); };
+  // sélectionner une fiche ferme la vue chapitre (et réciproquement, voir
+  // openChapitreExos) : le panneau de droite n'a jamais deux sujets à la fois.
+  const selectOnly = (id) => { setSelChapitre(null); setSelIds([id]); ctx.setFocusFiche(id); };
   const toggle = (id) => {
+    setSelChapitre(null);
     setSelIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
     ctx.setFocusFiche(id);
   };
+  const openChapitreExos = (chapitreId) => { setSelIds([]); setSelChapitre(chapitreId); };
 
   const selFiches = db.fiches.filter((f) => selIds.includes(f.id));
   const empty = selFiches.length === 0;
@@ -113,6 +128,15 @@ export function Reviser({ ctx }) {
   const primMat = primary && ix.mById[primary.matiereId];
   const meta = matiereMeta(primMat);
   const isSchemaSel = !multi && primary && primary.type === 'anat_schema';
+
+  // vue chapitre (exercices de chapitre) — dérivée de selChapitre. `chapitreSel` est
+  // null dès que la sélection porte sur des fiches : le panneau de droite bascule
+  // entièrement de l'un à l'autre. La matière vient du CHAPITRE (dossier.matiereId),
+  // jamais recopiée sur les exos.
+  const chapitreSel = selChapitre ? db.dossiers.find((d) => d.id === selChapitre && d.parentId) || null : null;
+  const chapExos = chapitreSel ? exosOfChapitre(chapitreSel.id) : [];
+  const chapMeta = matiereMeta(chapitreSel ? ix.mById[chapitreSel.matiereId] : null);
+  const chapUnite = chapitreSel ? db.dossiers.find((d) => d.id === chapitreSel.parentId) : null;
 
   const selItems = db.questions.filter((q) => selIds.includes(q.ficheId));
   const qcmItems = selItems.filter((q) => q.type === 'qcm');
@@ -178,6 +202,9 @@ export function Reviser({ ctx }) {
   // dans l'écran Exercice (isFirst/isLast toujours vrais) — on passe la série
   // complète de la sélection courante, positionnée sur l'exercice cliqué.
   const openExo = (item) => ctx.startExercice(exoItems, title, { startId: item.id });
+  // MÊME lecteur d'exercices que pour une fiche (ctx.startExercice prend déjà un
+  // tableau d'items quelconque) — seul le lot passé change.
+  const openChapExo = (item) => ctx.startExercice(chapExos, chapitreSel ? chapitreSel.nom : 'Exercices', { startId: item.id });
   const isRen = (type, id) => renaming && renaming.type === type && renaming.id === id;
   const startRename = (type, id, current) => { setDraft(current); setRenaming({ type, id }); };
   const commitRename = () => {
@@ -223,6 +250,9 @@ export function Reviser({ ctx }) {
       type: 'dossier', id, nom: d.nom, dossier: d,
       chapitresCount: chapitres.length,
       fichesCount: db.fiches.filter((f) => ids.includes(f.dossierId) && !f.archive).length,
+      // exos DE CHAPITRE emportés par la suppression (ils n'ont aucun niveau où
+      // remonter, voir MedReviseApp.jsx#deleteDossier) — annoncés dans la modale.
+      exosCount: db.questions.filter((q) => q.chapitreId && ids.includes(q.chapitreId)).length,
     });
   };
   // suppression d'exercice(s) : PAS un archivage (contrairement à source/matière/fiche
@@ -230,11 +260,13 @@ export function Reviser({ ctx }) {
   // tombstone propagé par l'outbox), donc bien irréversible tout de suite.
   const askDeleteExercice = (item) => setConfirmDel({ type: 'exercice', id: item.id, nom: item.theme || item.concept || 'Exercice' });
   const askDeleteAllExercices = () => { if (!primary) return; setConfirmDel({ type: 'exercices-all', id: primary.id, nom: primary.titre, exoCount: exoItems.length }); };
+  // pendant pour un CHAPITRE (exos rattachés par chapitreId) — même canal durable.
+  const askDeleteAllExosChapitre = () => { if (!chapitreSel) return; setConfirmDel({ type: 'exos-chapitre-all', id: chapitreSel.id, nom: chapitreSel.nom, exoCount: chapExos.length }); };
   // textes de suppression d'un dossier (unité OU chapitre) — partagés avec
   // Bibliotheque.jsx (ui.jsx#dossierDeleteTexts) pour que les deux écrans annoncent
   // EXACTEMENT les mêmes conséquences.
   const dossierDelTexts = confirmDel && confirmDel.type === 'dossier'
-    ? dossierDeleteTexts(confirmDel.dossier, confirmDel.chapitresCount, confirmDel.fichesCount)
+    ? dossierDeleteTexts(confirmDel.dossier, confirmDel.chapitresCount, confirmDel.fichesCount, confirmDel.exosCount)
     : null;
   const confirmDelete = async () => {
     if (!confirmDel) return;
@@ -244,6 +276,7 @@ export function Reviser({ ctx }) {
     else if (confirmDel.type === 'fiche') await ctx.setFicheArchived(confirmDel.id, true);
     else if (confirmDel.type === 'exercice') await ctx.deleteQuestion(confirmDel.id);
     else if (confirmDel.type === 'exercices-all') await ctx.deleteAllExercices(confirmDel.id);
+    else if (confirmDel.type === 'exos-chapitre-all') await ctx.deleteAllExosChapitre(confirmDel.id);
     setConfirmDel(null);
   };
 
@@ -322,6 +355,9 @@ export function Reviser({ ctx }) {
   };
   const dossierMenuItems = (d) => [
     { label: 'Renommer', icon: 'edit', onClick: () => startRename('dossier', d.id, d.nom) },
+    // second point d'entrée vers la vue "Exercices du chapitre" (le premier étant le
+    // bouton cible de la ligne, voir DossierRow#onOpenExos) — chapitres seulement.
+    ...(d.parentId ? [{ label: 'Exercices du chapitre', icon: 'target', onClick: () => openChapitreExos(d.id) }] : []),
     { label: d.parentId ? 'Supprimer le chapitre' : "Supprimer l'unité", icon: 'trash', danger: true, onClick: () => askDeleteDossier(d.id) },
   ];
   // input de renommage d'un dossier — MÊME rendu que le RenameInput de
@@ -521,6 +557,7 @@ export function Reviser({ ctx }) {
                                     return (
                                       <div key={c.id}>
                                         <DossierRow dossier={c} isOpen={cOpen} fichesCount={chapFiches.length}
+                                          exosCount={exosOfChapitre(c.id).length} onOpenExos={() => openChapitreExos(c.id)}
                                           isRenaming={isRen('dossier', c.id)} renameInput={<DossierRenameInput />}
                                           onToggle={() => setOpenDossier((o) => ({ ...o, [c.id]: !cOpen }))}
                                           onRename={() => startRename('dossier', c.id, c.nom)}
@@ -555,7 +592,41 @@ export function Reviser({ ctx }) {
 
         {/* right */}
         <div>
-          {empty ? (
+          {chapitreSel ? (
+            /* vue EXERCICES DU CHAPITRE : même liste de cards que pour une fiche
+               (ExerciceCards, réutilisé tel quel), sans card "Méthode des J" ni
+               QCM/flashcards/Feynman — un chapitre ne porte que des exercices, et
+               ceux-ci sont LIBRES (jamais dus, jamais au calendrier). */
+            <>
+              <div className="jcard">
+                <div className="jc-ic" style={{ background: `color-mix(in srgb, ${chapMeta.tint} 15%, transparent)`, color: chapMeta.tint }}><Icon name="target" size={20} /></div>
+                <div className="jc-main">
+                  <div className="jc-label">{chapMeta.label}{chapUnite ? ` · ${chapUnite.nom}` : ''}</div>
+                  <div className="jc-title">{chapitreSel.nom}</div>
+                  <div className="hint" style={{ marginTop: 2 }}>
+                    {chapExos.length} exercice{chapExos.length > 1 ? 's' : ''} de chapitre — hors méthode des J, à faire librement.
+                  </div>
+                </div>
+                <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={() => setShowAddChapExo(true)}>
+                  <Icon name="plus" size={14} /> Importer des items
+                </button>
+                <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={() => setSelChapitre(null)} title="Fermer la vue chapitre">
+                  <Icon name="x" size={14} /> Fermer
+                </button>
+              </div>
+
+              {chapExos.length > 0 ? (
+                <ExerciceCards items={chapExos} meta={chapMeta} onOpen={openChapExo} onDelete={askDeleteExercice}
+                  onDeleteAll={askDeleteAllExosChapitre} ctx={ctx} />
+              ) : (
+                <div className="rev-empty" style={{ marginTop: 18 }}>
+                  <Icon name="target" size={30} />
+                  <div className="re-title">Aucun exercice dans ce chapitre</div>
+                  <div className="hint">« Importer des items » colle un JSON d'exercices et les rattache à ce chapitre (pas à une fiche).</div>
+                </div>
+              )}
+            </>
+          ) : empty ? (
             <div className="rev-empty">
               <Icon name="cards" size={30} />
               <div className="re-title">Sélectionne une fiche</div>
@@ -744,6 +815,13 @@ export function Reviser({ ctx }) {
         <AddItemModal ctx={ctx} ficheId={primary.id} ficheTitre={primary.titre} onClose={() => setShowAddItem(false)} />
       )}
 
+      {/* import ciblé CHAPITRE : MÊME modale, même validateur tolérant — seule la
+         cible change (chapitreId au lieu de ficheId), et le type est restreint à
+         « Exercice » côté formulaire (un chapitre ne porte que des exercices). */}
+      {showAddChapExo && chapitreSel && (
+        <AddItemModal ctx={ctx} chapitreId={chapitreSel.id} chapitreNom={chapitreSel.nom} onClose={() => setShowAddChapExo(false)} />
+      )}
+
       {shiftStart && (
         <DateActionModal
           title={`Décaler le départ — « ${shiftStart.nom} »`}
@@ -781,6 +859,7 @@ export function Reviser({ ctx }) {
             : confirmDel.type === 'dossier' ? dossierDelTexts.title
             : confirmDel.type === 'fiche' ? 'Supprimer cette fiche ?'
             : confirmDel.type === 'exercice' ? 'Supprimer cet exercice ?'
+            : confirmDel.type === 'exos-chapitre-all' ? 'Supprimer tous les exercices du chapitre ?'
             : 'Supprimer tous les exercices ?'}
           body={confirmDel.type === 'source'
             ? `« ${confirmDel.nom} » sera déplacé dans la corbeille — restaurable depuis Réglages.`
@@ -794,7 +873,9 @@ export function Reviser({ ctx }) {
                   ? `« ${confirmDel.nom} » sera déplacée dans la corbeille — restaurable depuis Réglages.`
                   : confirmDel.type === 'exercice'
                     ? `« ${confirmDel.nom} » sera supprimé définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible — pas de corbeille pour les exercices.`
-                    : `Les ${confirmDel.exoCount} exercice${confirmDel.exoCount > 1 ? 's' : ''} de « ${confirmDel.nom} » seront supprimés définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible. Les QCM, flashcards et Feynman de cette fiche ne sont pas concernés.`}
+                    : confirmDel.type === 'exos-chapitre-all'
+                      ? `Les ${confirmDel.exoCount} exercice${confirmDel.exoCount > 1 ? 's' : ''} du chapitre « ${confirmDel.nom} » seront supprimés définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible. Les fiches du chapitre et LEURS propres exercices ne sont pas concernés.`
+                      : `Les ${confirmDel.exoCount} exercice${confirmDel.exoCount > 1 ? 's' : ''} de « ${confirmDel.nom} » seront supprimés définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible. Les QCM, flashcards et Feynman de cette fiche ne sont pas concernés.`}
           confirmLabel={dossierDelTexts ? dossierDelTexts.confirmLabel : 'Supprimer'}
           danger
           onConfirm={confirmDelete}

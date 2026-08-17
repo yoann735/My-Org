@@ -22,7 +22,7 @@
 import { useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Modal } from './ui.jsx';
-import { appendItemsToFiche } from '../lib/import.js';
+import { appendItemsToFiche, appendExosToChapitre } from '../lib/import.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { ImportJsonField } from './ImportFlow.jsx';
 import { OPTION_LETTERS } from '../lib/schema.js';
@@ -48,16 +48,22 @@ export function ItemForm({ type, initial, submitLabel, onSubmit, onCancel, busy 
   return null;
 }
 
-export function AddItemModal({ ctx, ficheId, ficheTitre, onClose }) {
+/* `chapitreId` (optionnel) : cible CHAPITRE au lieu d'une fiche — un chapitre ne
+   porte QUE des exercices (voir storage.js#newChapitreExo), donc le sélecteur de
+   type est réduit à « Exercice » et l'ajout passe par appendExosToChapitre. Tout le
+   reste (formulaires, aperçu, validateur tolérant) est le MÊME code, pas une copie. */
+export function AddItemModal({ ctx, ficheId, ficheTitre, chapitreId, chapitreNom, onClose }) {
+  const isChapitre = !!chapitreId;
   const [source, setSource] = useState('form'); // form | json
-  const [type, setType] = useState('qcm');
+  const [type, setType] = useState(isChapitre ? 'exercice' : 'qcm');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(0); // compteur, pour "Ajouté ✓ (N)" + permettre d'en ajouter plusieurs à la suite
 
   const add = async (raw) => {
     setBusy(true);
     try {
-      await appendItemsToFiche({ ficheId, items: [raw] });
+      if (isChapitre) await appendExosToChapitre({ chapitreId, items: [raw] });
+      else await appendItemsToFiche({ ficheId, items: [raw] });
       await ctx.reload();
       setDone((n) => n + 1);
     } finally {
@@ -66,7 +72,7 @@ export function AddItemModal({ ctx, ficheId, ficheTitre, onClose }) {
   };
 
   return (
-    <Modal title={`Ajouter un item — ${ficheTitre}`} onClose={onClose} width="min(640px, 94vw)">
+    <Modal title={isChapitre ? `Ajouter un exercice — ${chapitreNom}` : `Ajouter un item — ${ficheTitre}`} onClose={onClose} width="min(640px, 94vw)">
       <div className="seg" style={{ marginBottom: 14 }}>
         <button type="button" className={'seg-btn' + (source === 'form' ? ' active' : '')} onClick={() => { setSource('form'); setDone(0); }}><Icon name="edit" size={13} /> Formulaire</button>
         <button type="button" className={'seg-btn' + (source === 'json' ? ' active' : '')} onClick={() => { setSource('json'); setDone(0); }}><Icon name="upload" size={13} /> Coller du JSON</button>
@@ -75,7 +81,7 @@ export function AddItemModal({ ctx, ficheId, ficheTitre, onClose }) {
       {source === 'form' ? (
         <>
           <div className="seg" style={{ marginBottom: 14 }}>
-            {TYPES.map((t) => (
+            {TYPES.filter((t) => !isChapitre || t.id === 'exercice').map((t) => (
               <button key={t.id} type="button" className={'seg-btn' + (type === t.id ? ' active' : '')} onClick={() => { setType(t.id); setDone(0); }}>
                 <Icon name={t.icon} size={13} /> {t.label}
               </button>
@@ -90,7 +96,7 @@ export function AddItemModal({ ctx, ficheId, ficheTitre, onClose }) {
           <ItemForm type={type} onSubmit={add} busy={busy} />
         </>
       ) : (
-        <PasteJsonForm ctx={ctx} ficheId={ficheId} done={done} setDone={setDone} />
+        <PasteJsonForm ctx={ctx} ficheId={ficheId} chapitreId={chapitreId} done={done} setDone={setDone} />
       )}
     </Modal>
   );
@@ -102,27 +108,44 @@ export function AddItemModal({ ctx, ficheId, ficheTitre, onClose }) {
    puis appendItemsToFiche (mêmes ids uniques + dédoublonnage sur srcId que
    l'import Rattrapage — jamais d'écrasement des items déjà présents). Exporté :
    réutilisé tel quel par la sidebar de l'atelier "Voir le cours". ---- */
-export function PasteJsonForm({ ctx, ficheId, done, setDone }) {
+export function PasteJsonForm({ ctx, ficheId, chapitreId, done, setDone }) {
+  // cible CHAPITRE (chapitreId) : MÊME validateur tolérant (parsePastedJson, non
+  // modifié), seule la destination change — et un chapitre ne portant que des
+  // exercices, les QCM/flashcards/Feynman valides du collage sont écartés et
+  // ANNONCÉS dans l'aperçu (jamais avalés en silence).
+  const isChapitre = !!chapitreId;
   const [jsonText, setJsonText] = useState('');
   const [parseError, setParseError] = useState(null);
-  const [preview, setPreview] = useState(null); // { items, counts, duplicates, errors }
+  const [preview, setPreview] = useState(null); // { items, counts, duplicates, errors, nonExo }
   const [busy, setBusy] = useState(false);
 
   const doPreview = () => {
     const res = parsePastedJson(jsonText);
     if (!res.ok) { setParseError(res.error); return; }
     if (!res.items.length) { setParseError('Aucun item valide trouvé dans ce JSON.'); return; }
-    const existingSrc = new Set((ctx.db.questions || []).filter((q) => q.ficheId === ficheId).map((q) => q.srcId).filter(Boolean));
-    const duplicates = res.items.filter((it) => it.id && existingSrc.has(it.id)).length;
+    const nonExo = isChapitre ? res.items.filter((it) => it.type !== 'exercice').length : 0;
+    if (isChapitre && nonExo === res.items.length) {
+      setParseError('Aucun exercice dans ce JSON — un chapitre ne porte que des exercices (les QCM/flashcards/Feynman s\'ajoutent à une fiche).');
+      return;
+    }
+    // doublons scopés à la MÊME cible que l'ajout (chapitre ou fiche) : deux
+    // chapitres peuvent recevoir le même exercice source sans se gêner.
+    const existingSrc = new Set((ctx.db.questions || [])
+      .filter((q) => (isChapitre ? q.chapitreId === chapitreId : q.ficheId === ficheId))
+      .map((q) => q.srcId).filter(Boolean));
+    const duplicates = res.items.filter((it) => it.id && existingSrc.has(it.id)
+      && (!isChapitre || it.type === 'exercice')).length;
     setParseError(null);
-    setPreview({ items: res.items, counts: res.counts, duplicates, errors: res.errors });
+    setPreview({ items: res.items, counts: res.counts, duplicates, errors: res.errors, nonExo });
   };
 
   const confirm = async () => {
     if (!preview) return;
     setBusy(true);
     try {
-      const res = await appendItemsToFiche({ ficheId, items: preview.items });
+      const res = isChapitre
+        ? await appendExosToChapitre({ chapitreId, items: preview.items })
+        : await appendItemsToFiche({ ficheId, items: preview.items });
       await ctx.reload();
       setDone((n) => n + res.count);
       setJsonText(''); setPreview(null);
@@ -150,12 +173,19 @@ export function PasteJsonForm({ ctx, ficheId, done, setDone }) {
                 )}
               </div>
             )}
-            {preview.duplicates > 0 && <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {preview.duplicates} doublon{preview.duplicates > 1 ? 's' : ''} ignoré{preview.duplicates > 1 ? 's' : ''} (déjà dans cette fiche)</div>}
+            {/* cible chapitre : les items valides d'un autre type sont écartés — dit ici,
+               avant confirmation, plutôt que constaté après coup. */}
+            {isChapitre && preview.nonExo > 0 && (
+              <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}>
+                <Icon name="alert" size={12} /> {preview.nonExo} item{preview.nonExo > 1 ? 's' : ''} non-exercice ignoré{preview.nonExo > 1 ? 's' : ''} — un chapitre ne porte que des exercices (les QCM/flashcards/Feynman s'ajoutent à une fiche).
+              </div>
+            )}
+            {preview.duplicates > 0 && <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {preview.duplicates} doublon{preview.duplicates > 1 ? 's' : ''} ignoré{preview.duplicates > 1 ? 's' : ''} (déjà dans {isChapitre ? 'ce chapitre' : 'cette fiche'})</div>}
           </div>
         </div>
         <div className="imp-actions">
           <button className="btn ghost" onClick={() => setPreview(null)}>Retour</button>
-          <button className="btn primary" onClick={confirm} disabled={busy}><Icon name="check" size={15} /> Ajouter à la fiche</button>
+          <button className="btn primary" onClick={confirm} disabled={busy}><Icon name="check" size={15} /> {isChapitre ? 'Ajouter au chapitre' : 'Ajouter à la fiche'}</button>
         </div>
       </div>
     );
