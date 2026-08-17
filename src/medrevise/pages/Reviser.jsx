@@ -13,7 +13,8 @@ import {
 import { shuffle } from '../lib/sm2.js';
 import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
 import { allCoches } from '../lib/anatSchema.js';
-import { putBlob } from '../lib/storage.js';
+import { putBlob, getBlob } from '../lib/storage.js';
+import { buildCourseExport, buildChapitreExport, docElFromHtml } from '../lib/courseExport.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
 
@@ -205,6 +206,47 @@ export function Reviser({ ctx }) {
   // MÊME lecteur d'exercices que pour une fiche (ctx.startExercice prend déjà un
   // tableau d'items quelconque) — seul le lot passé change.
   const openChapExo = (item) => ctx.startExercice(chapExos, chapitreSel ? chapitreSel.nom : 'Exercices', { startId: item.id });
+
+  // « Tout exporter » AU NIVEAU DU CHAPITRE : applique l'export fiche EXISTANT
+  // (buildCourseExport — texte structuré via ficheToText, surlignages mark.hl
+  // prioritaire/cloze, cartes manuelles projetées) à CHAQUE fiche du chapitre, puis
+  // regroupe. Le #doc de chaque fiche vient de son HTML stocké (docElFromHtml), pas
+  // d'une iframe : aucune fiche n'a besoin d'être ouverte. Lecture pure — rien n'est
+  // écrit, ni en base ni dans les blobs. Les images restent des [IMAGE : légende]
+  // (ficheToText), donc aucun base64 dans la sortie.
+  // Une fiche sans HTML (schéma d'anatomie, transcript, cours jamais rattaché) n'a
+  // pas de contenu exportable : elle est SIGNALÉE, jamais silencieusement omise.
+  const [chapExport, setChapExport] = useState(null); // { count, skipped: string[] }
+  const [chapExportBusy, setChapExportBusy] = useState(false);
+  const exportChapitre = async () => {
+    if (!chapitreSel) return;
+    setChapExportBusy(true);
+    try {
+      const matiereNom = (ix.mById[chapitreSel.matiereId] || {}).nom || '';
+      const fichesDuChap = db.fiches
+        .filter((f) => f.dossierId === chapitreSel.id && !f.archive)
+        .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+      const entries = [];
+      const skipped = [];
+      for (const f of fichesDuChap) {
+        const docEl = f.htmlId ? docElFromHtml(await (await getBlob(f.htmlId))?.text()) : null;
+        if (!docEl) { skipped.push(f.titre); continue; }
+        const cartes = db.questions.filter((q) => q.ficheId === f.id && (q.type === 'qcm' || q.type === 'flashcard'));
+        entries.push(buildCourseExport({ fiche: f, matiereNom, docEl, cartes }));
+      }
+      const payload = buildChapitreExport({
+        chapitre: chapitreSel, uniteNom: chapUnite ? chapUnite.nom : '', matiereNom, fiches: entries,
+      });
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      setChapExport({ count: entries.length, skipped });
+      setTimeout(() => setChapExport(null), 6000);
+    } catch (e) {
+      setChapExport({ count: 0, skipped: [], error: true });
+      setTimeout(() => setChapExport(null), 4000);
+    } finally {
+      setChapExportBusy(false);
+    }
+  };
   const isRen = (type, id) => renaming && renaming.type === type && renaming.id === id;
   const startRename = (type, id, current) => { setDraft(current); setRenaming({ type, id }); };
   const commitRename = () => {
@@ -607,6 +649,15 @@ export function Reviser({ ctx }) {
                     {chapExos.length} exercice{chapExos.length > 1 ? 's' : ''} de chapitre — hors méthode des J, à faire librement.
                   </div>
                 </div>
+                {/* « Tout exporter » du chapitre — même sortie que celui d'une fiche
+                   (atelier « Voir le cours »), appliqué à TOUTES les fiches du chapitre
+                   et copié dans le presse-papier, pour le prompt « exos de chapitre ». */}
+                <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }}
+                  onClick={exportChapitre} disabled={chapExportBusy}
+                  title="Copier le cours + surlignages + cartes de TOUTES les fiches de ce chapitre">
+                  <Icon name={chapExport && !chapExport.error ? 'check' : 'copy'} size={14} />
+                  {chapExportBusy ? 'Export…' : chapExport && !chapExport.error ? `Copié ✓ (${chapExport.count})` : 'Tout exporter'}
+                </button>
                 <button className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'center' }} onClick={() => setShowAddChapExo(true)}>
                   <Icon name="plus" size={14} /> Importer des items
                 </button>
@@ -614,6 +665,29 @@ export function Reviser({ ctx }) {
                   <Icon name="x" size={14} /> Fermer
                 </button>
               </div>
+
+              {/* compte rendu de l'export : combien de fiches sont parties, et
+                 SURTOUT lesquelles ont été omises faute de cours HTML — sinon un
+                 export incomplet passerait pour complet. */}
+              {chapExport && (
+                <div className={'err-mini' + (chapExport.error ? '' : ' ok')} style={{ marginTop: 12 }}>
+                  <div className="em-ic"><Icon name={chapExport.error ? 'alert' : 'check'} size={16} stroke={2.5} /></div>
+                  <div className="em-body">
+                    {chapExport.error ? (
+                      <div className="em-title">Export impossible — presse-papier refusé par le navigateur.</div>
+                    ) : (
+                      <>
+                        <div className="em-title">{chapExport.count} fiche{chapExport.count > 1 ? 's' : ''} copiée{chapExport.count > 1 ? 's' : ''} dans le presse-papier ✓</div>
+                        {chapExport.skipped.length > 0 && (
+                          <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}>
+                            <Icon name="alert" size={12} /> Non exportée{chapExport.skipped.length > 1 ? 's' : ''} (aucun cours HTML rattaché) : {chapExport.skipped.join(', ')}.
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {chapExos.length > 0 ? (
                 <ExerciceCards items={chapExos} meta={chapMeta} onOpen={openChapExo} onDelete={askDeleteExercice}

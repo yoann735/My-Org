@@ -92,3 +92,36 @@ export function buildCourseExport({ fiche, matiereNom, docEl, cartes }) {
     cartes_manuelles: (cartes || []).map(projectCarte).filter(Boolean),
   };
 }
+
+/**
+ * Reconstruit l'élément #doc d'une fiche à partir du HTML STOCKÉ (blob), sans
+ * ouvrir l'atelier « Voir le cours ». C'est le seul chaînon qui manquait pour
+ * appliquer l'export ci-dessus à une fiche qu'on n'affiche pas : côté atelier le
+ * #doc vient de l'iframe vivante (PdfReader.jsx), ici d'un parse hors écran. Le
+ * document produit n'est jamais inséré dans la page et n'exécute aucun script
+ * (DOMParser ne lance pas les <script> du gabarit) — lecture pure.
+ * @returns {HTMLElement|null} #doc, ou null si le HTML n'est pas un gabarit fiche
+ */
+export function docElFromHtml(html) {
+  if (!html) return null;
+  return new DOMParser().parseFromString(html, 'text/html').getElementById('doc');
+}
+
+/**
+ * Export d'un CHAPITRE = le MÊME contrat medrevise_cours_export v1, une entrée par
+ * fiche du chapitre, dans un tableau `fiches`. Rien n'est reformaté : chaque entrée
+ * est exactement ce que produit « Tout exporter » de la fiche correspondante (texte
+ * structuré + surlignages + cartes manuelles), donc reste lisible seule.
+ * @param {object[]} p.fiches — résultats de buildCourseExport, dans l'ordre du chapitre
+ */
+export function buildChapitreExport({ chapitre, uniteNom, matiereNom, fiches }) {
+  return {
+    type: 'medrevise_chapitre_export',
+    version: 1,
+    matiere: matiereNom || '',
+    unite: uniteNom || '',
+    chapitre: (chapitre && chapitre.nom) || '',
+    nb_fiches: (fiches || []).length,
+    fiches: fiches || [],
+  };
+}
