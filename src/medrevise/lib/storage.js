@@ -161,7 +161,12 @@ export async function removeDoc(ficheId) {
 }
 
 /* ---- stats (carte unique) ---- */
-const DEFAULT_STATS = { streak: 0, dernierJourRevise: null, jokerUtilise: false, best: 0, activityDays: [], serieCollapsed: false };
+// `serieCollapsed` et `rattraperCollapsedReviser` retirés (ÉTAPE 1, audit UX Réviser) :
+// ils ne pilotaient que le repli des deux encadrés « Série du jour » / « À rattraper »
+// SUR L'ÉCRAN RÉVISER, lesquels n'y sont plus (l'Accueil rend TodaySeriesCard sans repli).
+// Les clés déjà écrites chez un utilisateur existant sont simplement ignorées à la
+// lecture — aucune migration n'est nécessaire, rien ne les relit.
+const DEFAULT_STATS = { streak: 0, dernierJourRevise: null, jokerUtilise: false, best: 0, activityDays: [] };
 export async function getStats() { return (await get('stats', S.stats)) || { ...DEFAULT_STATS }; }
 export async function setStats(s) {
   const updatedAt = new Date().toISOString();

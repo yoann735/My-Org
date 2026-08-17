@@ -5,9 +5,9 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, TodaySeriesCard, JBadge, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, EtiquetteDot, OverdueBox, detectDocKind } from '../components/ui.jsx';
+import { EdTop, JBadge, matiereMeta, BellButton, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, EtiquetteDot, detectDocKind } from '../components/ui.jsx';
 import {
-  index, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, todayPlan, overdueByFiche,
+  index, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, overdueByFiche,
   qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, carnetV1Questions, carnetV2Questions,
 } from '../lib/planning.js';
 import { shuffle } from '../lib/sm2.js';
@@ -74,8 +74,15 @@ export function Reviser({ ctx }) {
   const overdue = useMemo(() => overdueByFiche(db, ix), [db, ix]);
   const overdueFicheIds = useMemo(() => new Set(overdue.map((g) => g.fiche.id)), [overdue]);
   const startOverdueFiche = (g) => (g.isSchema ? ctx.startAnatQuiz(g.fiche, { mode: 'total' }) : ctx.startSession(g.items, g.fiche.titre + ' — Rattrapage'));
-  // redite du Dashboard : repliée PAR DÉFAUT ici (état persisté, undefined = replié).
-  const rattraperCollapsed = (ctx.stats && ctx.stats.rattraperCollapsedReviser) !== false;
+  // ÉTAPE 1 — l'encadré « À rattraper » a été retiré de cet écran : c'est une redite
+  // du Dashboard (Dashboard.jsx, OverdueBox `bare`), il était replié par défaut et
+  // plafonnait la hauteur de l'arbre. RIEN N'EST PERDU : le retard reste signalé
+  // ligne par ligne dans l'arbre (icône d'alerte, overdueFicheIds ci-dessous) et
+  // l'action de rattrapage passe par le menu contextuel de la fiche
+  // (« Rattraper maintenant », voir ContextMenu plus bas) — d'où le groupe de retard
+  // retrouvé ici par fiche. « Retirer du retard » (ctx.dismissOverdue) reste sur le
+  // Dashboard, seul endroit qui portait déjà ce geste avec sa confirmation.
+  const overdueGroupOf = (ficheId) => overdue.find((g) => g.fiche.id === ficheId) || null;
   const fichesOf = (matId) => db.fiches.filter((f) => f.matiereId === matId && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
   const matieresOf = (srcId) => db.matieres.filter((m) => m.sourceId === srcId && !m.archive);
   // sous-dossiers d'une matière sur DEUX niveaux — même store et MÊMES helpers que
@@ -453,24 +460,22 @@ export function Reviser({ ctx }) {
 
   return (
     <div className="screen scroll fadein">
-      <div className="topbar">
-        <div>
-          <h1 className="serif">Réviser</h1>
-          <div className="sub">Choisis une fiche, ajuste ses priorités, lance tes QCM, flashcards ou Feynman.</div>
-        </div>
+      {/* ÉTAPE 1 — topbar sur UNE ligne : le sous-titre décrivait ce que l'écran
+         montre déjà, et chaque pixel gagné ici est un pixel rendu à l'arbre
+         (voir .tree-card, max-height calée sur la hauteur de ce qui précède). */}
+      {/* alignItems en ligne (et pas dans design.css) : .topbar est partagée par tous
+         les écrans des DEUX apps, qui ont encore un sous-titre — seul ce titre-ci est
+         sur une seule ligne et a besoin d'un centrage vertical. */}
+      <div className="topbar" style={{ alignItems: 'center' }}>
+        <h1 className="serif">Réviser</h1>
         <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
       </div>
 
-      <TodaySeriesCard plan={todayPlan(db, ix)} onStart={ctx.startSession} compact
-        collapsed={!!(ctx.stats && ctx.stats.serieCollapsed)}
-        onToggleCollapse={() => ctx.saveStats({ ...ctx.stats, serieCollapsed: !(ctx.stats && ctx.stats.serieCollapsed) })} />
-
-      {overdue.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <OverdueBox groups={overdue} onStartFiche={startOverdueFiche} onStartAll={(items) => ctx.startSession(items, 'Rattrapage')} onDismissFiche={ctx.dismissOverdue}
-            collapsible collapsed={rattraperCollapsed} onToggleCollapse={() => ctx.saveStats({ ...ctx.stats, rattraperCollapsedReviser: !rattraperCollapsed })} />
-        </div>
-      )}
+      {/* ÉTAPE 1 — « Série du jour » (TodaySeriesCard) et « À rattraper » (OverdueBox)
+         ont été retirés d'ici : tous deux vivent déjà sur l'Accueil (Dashboard.jsx),
+         d'où les séries se lancent. Les garder ici, c'était occuper le haut de l'écran
+         ET rabaisser l'arbre d'autant. Aucune capacité perdue — voir le commentaire
+         d'overdueGroupOf ci-dessus pour le rattrapage. */}
 
       <div className="revise-grid" style={{ display: 'grid', gridTemplateColumns: 'var(--tree-col, 380px) minmax(0,1fr)', gap: 20, alignItems: 'start', marginTop: 20 }}>
         {/* tree */}
@@ -599,9 +604,10 @@ export function Reviser({ ctx }) {
             })}
             </FicheDndProvider>
           </div>
-          <div className="tree-foot">
-            <span className="tf-item"><span className="tf-badge tnum">N</span> à réviser aujourd'hui</span>
-          </div>
+          {/* ÉTAPE 1 — la légende de pied (« N à réviser aujourd'hui ») est retirée :
+             un badge violet numéroté s'explique seul après le premier jour, et son
+             infobulle porte déjà le texte complet (voir due-badge dans renderTreeFiche).
+             Autant de hauteur rendue à la liste, à chaque écran. */}
         </div>
 
         {/* right */}
@@ -789,6 +795,15 @@ export function Reviser({ ctx }) {
 
       {ctxMenu && (
         <ContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} items={[
+          // ÉTAPE 1 — rattrapage d'UNE fiche en retard, là où l'encadré « À rattraper »
+          // le proposait : même appel (startOverdueFiche) sur le même groupe, donc même
+          // comportement pour un schéma d'anatomie comme pour des cartes. N'apparaît que
+          // si cette fiche est réellement en retard, et EN TÊTE de menu : c'est une action
+          // de révision, elle passe avant la gestion (renommer/déplacer/supprimer).
+          ...(ctxMenu.type === 'fiche' && overdueGroupOf(ctxMenu.id) ? [{
+            label: 'Rattraper maintenant', icon: 'clock',
+            onClick: () => { const g = overdueGroupOf(ctxMenu.id); if (g) startOverdueFiche(g); },
+          }] : []),
           {
             label: 'Renommer', icon: 'edit', onClick: () => {
               if (ctxMenu.type === 'source') { const s = db.sources.find((x) => x.id === ctxMenu.id); if (s) startRename('source', ctxMenu.id, s.nom); }

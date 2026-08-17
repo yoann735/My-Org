@@ -274,7 +274,12 @@
    ============================================================ */
 
 /* ---- navbar matières/cours compacte + scroll interne ---- */
-.tree-card { border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: var(--shadow); display: flex; flex-direction: column; max-height: calc(100vh - 230px); overflow: hidden; position: sticky; top: 8px; }
+/* ÉTAPE 1 (audit UX Réviser) — la hauteur de la liste est le complément de ce qui la
+   surplombe. Avec le retrait de « Série du jour » et « À rattraper », il ne reste que
+   le padding de .screen (26 px) + la topbar sur une ligne (~58 px) + la marge de la
+   grille : 230 px de réserve n'ont plus lieu d'être, 96 px suffisent — soit ~134 px
+   de liste visible en plus, à écran égal. */
+.tree-card { border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: var(--shadow); display: flex; flex-direction: column; max-height: calc(100vh - 96px); overflow: hidden; position: sticky; top: 8px; }
 .tree-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border-2); }
 .tree-head .tree-head-title { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; font-size: 13.5px; }
 .tree-clear { margin-left: auto; border: 1px solid var(--border); background: var(--bg-2); color: var(--text-2); font-size: 11.5px; font-weight: 600; padding: 4px 9px; border-radius: 8px; cursor: pointer; font-family: inherit; }
@@ -299,7 +304,8 @@
 .tree-course.on .tree-course-main { color: var(--text); font-weight: 600; }
 .tree-course .tc-name { min-width: 0; flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .due-badge.sm { min-width: 17px; height: 17px; font-size: 10px; padding: 0 4px; }
-.tree-foot { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3); padding: 9px 14px; border-top: 1px solid var(--border-2); }
+/* .tree-foot / .tf-item / .tf-badge retirés (ÉTAPE 1) : plus aucun markup ne les
+   portait après la suppression de la légende de pied de l'arbre. */
 
 /* ---- zone droite vide ---- */
 .rev-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; text-align: center; padding: 60px 30px; border: 1px dashed var(--border); border-radius: 16px; color: var(--text-3); }
@@ -770,13 +776,10 @@
    des cours (ex-sources), import avec destination
    ============================================================ */
 
-/* ---- arbre : bouton « + Cours » + légende de pied ---- */
+/* ---- arbre : bouton « + Cours » ---- */
 .tree-add { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border)); background: var(--accent-soft); color: var(--accent); font-size: 11.5px; font-weight: 700; padding: 4px 9px; border-radius: 8px; cursor: pointer; font-family: inherit; }
 .tree-add:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .tree-head .tree-clear { margin-left: 0; }
-.tree-foot { flex-wrap: wrap; gap: 6px 14px; }
-.tf-item { display: inline-flex; align-items: center; gap: 6px; }
-.tf-badge { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 9.5px; font-weight: 800; display: inline-grid; place-items: center; font-variant-numeric: tabular-nums; }
 
 /* ---- renommage de cours dans l'arbre ---- */
 .tree-src-row .tree-rename { flex: 1 1 auto; font-weight: 800; }
