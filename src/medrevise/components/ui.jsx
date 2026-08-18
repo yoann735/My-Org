@@ -15,7 +15,12 @@ const FALLBACK_TINT = '#7C6FE0';
    distincte par matière (hash déterministe de son id), pour que le calendrier
    distingue les matières visuellement dès avant tout réglage utilisateur
    (Réglages → Couleurs par matière écrase ce choix via m.couleur). */
-const MATIERE_PALETTE = ['#7C6FE0', '#4FA6D9', '#4CAF7D', '#E0A63E', '#E0637C', '#8E6BB0', '#3E9CB5', '#C9873E'];
+// ÉCLAIRCIE (18/08) : cette palette avait été choisie contre le fond BLANC du
+// thème clair. Sur le fond quasi-noir de la direction Motion Lab, ces teintes
+// se distinguaient mal — surtout dans le calendrier, où elles ne portent qu'un
+// filet de 1 px et un libellé de 9,5 px. Luminosité plancher portée à 66 % ;
+// TEINTE ET SATURATION INCHANGÉES (conversion HLS, aucune dérive de teinte).
+const MATIERE_PALETTE = ['#7D70E0', '#70B7E0', '#86CAA8', '#E7BA6A', '#E26E86', '#A98EC3', '#7EC1D3', '#D9AB78'];
 function hashId(s) {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;

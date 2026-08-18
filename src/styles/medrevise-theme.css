@@ -915,16 +915,25 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 [data-app="medrevise"] :is(.card, .today-cta, .cel-trend)::after {
   content: '';
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
+  /* -1px, PAS 0 : `inset: 0` cale l'anneau sur la boîte de rembourrage, donc
+     JUSTE À CÔTÉ de la bordure réelle — 1 px de bordure + 1 px d'anneau, et le
+     trait paraît deux fois plus épais au survol. À -1px l'anneau se superpose
+     EXACTEMENT à la bordure : c'est la même ligne qui s'éclaire, elle ne
+     s'élargit jamais. Le rayon est augmenté d'autant pour que les coins
+     restent concentriques. */
+  inset: -1px;
+  border-radius: calc(var(--r, 8px) + 1px);
   padding: 1px;
-  background: radial-gradient(ellipse 95% 150% at var(--mx, 50%) var(--my, 50%),
-    rgba(255,255,255,.28) 0%,
-    rgba(244,242,255,.22) 20%,
-    rgba(214,206,246,.15) 42%,
-    rgba(178,160,235,.08) 64%,
-    color-mix(in srgb, var(--accent) 3.5%, transparent) 80%,
-    transparent 94%);
+  /* Lueur NEUTRE et courte : un segment lumineux qui glisse le long du bord.
+     Là où elle est transparente, la bordure d'origine reste visible — d'où
+     une ligne unique dont une portion s'éclaire, jamais un second cadre.
+     L'ellipse est plus resserrée qu'avant (70/120 % contre 95/150 %) : le
+     segment est plus court, on lit un déplacement au lieu d'un halo diffus. */
+  background: radial-gradient(ellipse 70% 120% at var(--mx, 50%) var(--my, 50%),
+    rgba(255,255,255,.55) 0%,
+    rgba(255,255,255,.28) 22%,
+    rgba(255,255,255,.10) 45%,
+    transparent 72%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -1036,4 +1045,49 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 /* Réglage système « moins d'animation » : les filets restent, figés. */
 @media (prefers-reduced-motion: reduce) {
   [data-app="medrevise"] .ld-skel i::after { animation: none; transform: translateX(-20%); }
+}
+
+/* ─── AJUSTEMENTS DE VISIBILITÉ (18/08) ──────────────────────
+   Trois retours d'usage sur écran réel, tous « même teinte, plus vif ». */
+
+/* 2 · Calendrier : teintes de matière trop sombres.
+
+   LA VRAIE CAUSE ÉTAIT À LA SOURCE, pas ici : MATIERE_PALETTE (ui.jsx) avait
+   été choisie contre le fond BLANC du thème clair. Elle est désormais
+   éclaircie à 66 % de luminosité, teinte et saturation intactes (conversion
+   HLS) — ce qui corrige toutes les matières SANS couleur choisie, partout
+   dans l'app et pas seulement au calendrier.
+
+   Le filtre ci-dessous ne sert plus qu'aux matières dont la couleur a été
+   choisie à la main dans Réglages, qu'aucune règle CSS ne peut réécrire.
+   Il est volontairement MODÉRÉ : brightness() opère en sRGB, donc au-delà
+   d'environ 1,2 il sature le canal le plus fort d'une couleur déjà claire et
+   DÉCALE LA TEINTE (mesuré : 1,45 déplaçait #a47bff de 258° à 287°, du violet
+   vers le magenta). À 1,18 les couleurs sombres gagnent nettement en
+   présence et les claires ne dérivent que de 3 à 4°, imperceptibles.
+   L'opacité de 0,85 héritée de la maquette est supprimée : elle assombrissait
+   encore. */
+[data-app="medrevise"] .wcal-course .wcc-cat,
+[data-app="medrevise"] .wcc-cat { opacity: 1; filter: brightness(1.18) saturate(1.04); }
+[data-app="medrevise"] .wcal-course .wcc-bar,
+[data-app="medrevise"] .wcc-bar { opacity: 1; filter: brightness(1.18) saturate(1.04); }
+
+/* 3 · Badges J : le gris --text-3 les rendait presque invisibles. Ils passent
+   à --text-2 avec un filet un peu plus present — le style mono discret est
+   conservé, c'est le contraste qui monte. */
+[data-app="medrevise"] :is(.j-tag, .jbadge, .tc-jbadge) {
+  color: var(--text-2) !important;
+  border-color: var(--border) !important;
+}
+
+/* 4 · Survol d'une ligne : le dégradé gauche→droite était à 3,5 % de blanc,
+   soit à la limite du perceptible. Porté à 9 %, avec une traîne plus longue.
+   La barre verticale de gauche ne change pas, elle était juste. */
+[data-app="medrevise"] .lib-fiche:hover,
+[data-app="medrevise"] :is(.tree-course, .tree-src-row):hover {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, #fff 9%, transparent),
+    color-mix(in srgb, #fff 4%, transparent) 45%,
+    color-mix(in srgb, #fff 1.5%, transparent) 75%,
+    transparent) !important;
 }
