@@ -67,8 +67,12 @@
   --todo: #54545C;                  /* jamais fait — nouveau */
 
   /* ---------- fonds : très sombres, étagés, neutres ---------- */
-  --bg: #08080A;
-  --bg-2: #0E0E11;
+  /* ÉCLAIRCIS (18/08) : le fond était trop proche du noir pur, les cartes
+     (--card: #000) ne s'en détachaient pas. Le fond monte d'un cran vers le
+     gris-noir, les surfaces restent NOIRES : on creuse l'écart au lieu de
+     l'aplatir, et les cartes se lisent comme des creux. */
+  --bg: #121215;
+  --bg-2: #17171B;
   --card: #000000;
   --card-2: #121216;
   --sidebar: #0C0C0F;
@@ -361,7 +365,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   position: absolute;
   left: 0; top: 6px; bottom: 6px;
   width: 1px;
-  background: color-mix(in srgb, #fff 34%, transparent);
+  background: color-mix(in srgb, #E8F0FF 36%, transparent);
   transform: scaleY(0);
   transition: transform .24s cubic-bezier(.2,.7,.2,1);
 }
@@ -457,7 +461,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   position: absolute;
   left: 0; top: 6px; bottom: 6px;
   width: 1px;
-  background: color-mix(in srgb, #fff 34%, transparent);
+  background: color-mix(in srgb, #E8F0FF 36%, transparent);
   transform: scaleY(0);
   transition: transform .24s cubic-bezier(.2,.7,.2,1);
   pointer-events: none;
@@ -1085,9 +1089,75 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
    La barre verticale de gauche ne change pas, elle était juste. */
 [data-app="medrevise"] .lib-fiche:hover,
 [data-app="medrevise"] :is(.tree-course, .tree-src-row):hover {
+  /* TEINTE REFROIDIE : la valeur d'avant était du blanc PUR (mesuré :
+     rgba(255,255,255,.09)), donc neutre en théorie. Perçue beige quand même —
+     c'est un effet de contraste simultané : un gris neutre entouré de violet
+     et de bleu est lu comme chaud par l'œil. On compense à la source en
+     partant d'un blanc légèrement bleuté plutôt que d'un blanc pur. */
   background: linear-gradient(90deg,
-    color-mix(in srgb, #fff 9%, transparent),
-    color-mix(in srgb, #fff 4%, transparent) 45%,
-    color-mix(in srgb, #fff 1.5%, transparent) 75%,
+    color-mix(in srgb, #E8F0FF 10%, transparent),
+    color-mix(in srgb, #E8F0FF 4.5%, transparent) 45%,
+    color-mix(in srgb, #E8F0FF 1.5%, transparent) 75%,
     transparent) !important;
 }
+
+/* ─── PROPOSITIONS À ARBITRER ─────────────────────────────────
+   Deux variantes de logo et deux de « série du jour », activées par une
+   classe sur la racine. Une seule sera conservée — l'autre sera supprimée
+   une fois le choix fait. */
+
+/* ── LOGO · variante A : monogramme au filet ──
+   Le bloc plein disparaît : un carré au filet, fond transparent, le glyphe
+   à l'accent. Même vocabulaire que les boutons-icônes du lot B. */
+.logo-a .sb-logo, .logo-a .soon-logo {
+  background: none !important;
+  background-image: none !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border)) !important;
+  color: var(--accent) !important;
+  box-shadow: none !important;
+}
+.logo-a .sb-logo { width: 32px !important; height: 32px !important; border-radius: var(--r) !important; }
+.logo-a .soon-logo { width: 54px !important; height: 54px !important; border-radius: var(--r) !important; }
+
+/* ── LOGO · variante B : glyphe nu ──
+   Plus de contenant du tout. Le signe seul, à l'accent, aligné sur le
+   texte de la marque — le traitement le plus discret possible. */
+.logo-b .sb-logo, .logo-b .soon-logo {
+  background: none !important;
+  background-image: none !important;
+  border: none !important;
+  color: var(--accent) !important;
+  box-shadow: none !important;
+  width: auto !important; height: auto !important;
+  border-radius: 0 !important;
+}
+.logo-b .sb-logo svg { width: 26px; height: 26px; }
+.logo-b .soon-logo svg { width: 40px; height: 40px; }
+
+/* ── SÉRIE DU JOUR · variante A : arête d'accent ──
+   La carte reste noire, mais son bord gauche devient une arête d'accent de
+   3 px et sa surface monte d'un cran. Discret, impossible à confondre. */
+[data-app="medrevise"].serie-a .today-cta {
+  background: var(--elev-1) !important;
+  border-left: 3px solid var(--accent) !important;
+  padding-left: 24px !important;
+}
+[data-app="medrevise"].serie-a .tc-eyebrow { color: var(--accent) !important; }
+
+/* ── SÉRIE DU JOUR · variante B : cadre d'accent et filet de crête ──
+   Filet d'accent sur tout le pourtour, à faible opacité, plus une ligne
+   lumineuse sur l'arête haute — la carte semble éclairée par le dessus. */
+[data-app="medrevise"].serie-b .today-cta {
+  background: var(--elev-1) !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent) !important;
+  position: relative;
+}
+[data-app="medrevise"].serie-b .today-cta::before {
+  content: '';
+  position: absolute;
+  left: 14px; right: 14px; top: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 85%, #fff), transparent);
+  pointer-events: none;
+}
+[data-app="medrevise"].serie-b .tc-eyebrow { color: var(--accent) !important; }
