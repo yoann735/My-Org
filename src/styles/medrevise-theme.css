@@ -98,7 +98,7 @@
      les trois niveaux restent séparés d'un facteur ~1,7 de contraste, et la
      dérive froide d'origine (le bleu quelques points au-dessus du rouge et du
      vert) est conservée sur les trois. */
-  --text: #F2F2F6;                  /* était #EDEDF0 */
+  --text: #FBFBFD;                  /* #EDEDF0 → #F2F2F6 → #FBFBFD */
   --text-2: #B3B3BC;                /* était #94949C */
   --text-3: #8A8A94;                /* était #5C5C64 */
 
@@ -201,6 +201,13 @@ body { font-family: var(--font-sans); }
   --accent: var(--text-3);
   --text: var(--text-3);
 }
+
+/* Noms de fiches dans l'arborescence de Réviser. La base (etudes.css) les met
+   en --text-2 et ne passe au blanc qu'au survol. Même raison que
+   .lib-fiche-title ci-dessus : c'est du contenu, ça se lit en permanence.
+   Surchargé ICI et pas dans etudes.css, pour que « Retrouver l'UI d'avant »
+   reste au pixel près. */
+.tree-course-main { color: var(--text) !important; }
 
 /* Matière : la teinte reste, mais portée par un point et un filet — plus par
    un aplat. L'icône disparaît, le point la remplace. currentColor vaut la
@@ -431,10 +438,13 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   white-space: nowrap;
   font-size: 13px !important;
   font-weight: 500 !important;
-  color: var(--text-2) !important;
+  /* CONTENU, donc --text (18/08). La maquette gardait ces noms en gris et ne
+     les révélait en blanc qu'au survol : joli sur une planche, intenable dans
+     un écran où on LIT ces noms en permanence — ce sont les unités, chapitres
+     et fiches. Le survol garde son retour visuel par le fond, pas par l'encre. */
+  color: var(--text) !important;
   transition: color .22s ease;
 }
-.lib-fiche:hover .lib-fiche-title { color: var(--text) !important; }
 .lib-fiche .hint {
   flex: 0 1 auto !important;
   min-width: 0 !important;
@@ -612,7 +622,8 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   color: var(--text-3) !important;
 }
 .tc-next { color: var(--text-3) !important; }
-.tc-types, .tc-nextitem { color: var(--text-2) !important; }
+.tc-types { color: var(--text-2) !important; }
+.tc-nextitem { color: var(--text) !important; }   /* CONTENU : nom de la fiche suivante */
 :is(.tc-sub, .tc-next, .tc-nextitem, .tc-types) { font-size: 12.5px !important; opacity: 1 !important; }
 .tc-chip, .tc-jbadge { background: transparent !important; border: 1px solid var(--border) !important; color: var(--text-2) !important; }
 
@@ -851,7 +862,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 .wcal-dhead { align-items: baseline !important; justify-content: space-between; gap: 6px !important; }
 .wcal-dow { font-family: var(--font-mono) !important; font-size: 10px !important; letter-spacing: .1em !important; color: var(--text-3) !important; font-weight: 500 !important; }
-.wcal-dnum { font-size: 17px !important; font-weight: 600 !important; letter-spacing: -.02em !important; color: var(--text-2) !important; margin-left: 0 !important; }
+.wcal-dnum { font-size: 17px !important; font-weight: 600 !important; letter-spacing: -.02em !important; color: var(--text) !important; margin-left: 0 !important; }
 .wcal-day.today .wcal-dnum { color: var(--text) !important; }
 .wcal-day.today .wcal-dow { color: var(--accent) !important; }
 /* le repère « Auj. » est conservé — un signal porté par la seule couleur
@@ -883,7 +894,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .wcal-course .wcc-title, .wcc-title {
   font-size: 12.5px !important;
   font-weight: 400 !important;
-  color: var(--text-2) !important;
+  color: var(--text) !important;   /* CONTENU : c'est le nom de la fiche */
   line-height: 1.35 !important;
   margin-top: 2px !important;
   display: block;
