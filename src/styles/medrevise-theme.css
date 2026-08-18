@@ -1003,6 +1003,24 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
    ci-dessous rétablit l'ordre (0,5,1), et le !important verrouille. */
 [data-app="medrevise"] :is(.btn.primary, .sh-cta):not(:disabled):hover svg { color: inherit !important; }
 
+/* GARDE-FOU 2 bis — trouvé le 18/08 en comparant AU PIXEL PRÈS avec l'UI
+   d'avant (bascule des Réglages). L'élément ACTIF de la barre latérale a lui
+   aussi un fond plein en --accent (`.sb-item.active .sb-icon`, design.css),
+   mais il n'était dans aucune des deux listes ci-dessus. Conséquences
+   mesurées, pas déduites :
+     - au survol, l'icône virait au --accent-bright SUR du --accent →
+       contraste 1,15:1, autrement dit invisible ;
+     - au repos, l'opacité .72 de la règle de base la délavait : l'encre
+       peinte n'était plus #07070A mais son mélange à 72 % avec le violet.
+   Après correctif, mesuré à 6,57:1 dans les DEUX états.
+   L'UI d'avant, elle, y met une encre sombre franche : c'est cet état qu'on
+   rétablit. Spécificité (0,5,1), au-dessus des (0,4,2) de la règle de survol. */
+[data-app="medrevise"] .sb-item.active .sb-icon svg,
+[data-app="medrevise"] .sb-item.active:hover .sb-icon svg {
+  color: var(--on-accent) !important;
+  opacity: 1;
+}
+
 /* Une icône hors élément interactif reste strictement fixe. */
 [data-app="medrevise"] svg { animation: none; }
 
