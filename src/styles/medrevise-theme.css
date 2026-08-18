@@ -82,10 +82,25 @@
   --track: #141418;
   --scrim: rgba(6,6,8,.72);         /* DÉRIVÉ : la maquette n'a pas de voile */
 
-  /* ---------- texte ---------- */
-  --text: #EDEDF0;
-  --text-2: #94949C;
-  --text-3: #5C5C64;
+  /* ---------- texte ----------
+     RELEVÉ (18/08) : les trois niveaux venaient de la maquette, pensée pour
+     être regardée en grand ; sur écran, les deux niveaux bas passaient mal.
+     Contrastes MESURÉS avant, sur les cinq fonds de l'app :
+       --text    17,97 → 15,72:1   confortable, mais relevé d'un cran
+       --text-2   6,98 →  6,10:1   passable, jamais confortable
+       --text-3   3,17 →  2,77:1   SOUS le seuil AA (4,5:1) partout, et c'est
+                                   lui qui porte 63 textes : eyebrows en
+                                   petites capitales, hints, sous-titres, et
+                                   les badges J — à 10 px.
+     Après relève, sur le fond le PIRE (--track #141418, le plus clair) :
+       --text 16,45:1 · --text-2 8,83:1 · --text-3 5,38:1
+     Tout passe AA, y compris le niveau le plus discret. La hiérarchie tient :
+     les trois niveaux restent séparés d'un facteur ~1,7 de contraste, et la
+     dérive froide d'origine (le bleu quelques points au-dessus du rouge et du
+     vert) est conservée sur les trois. */
+  --text: #F2F2F6;                  /* était #EDEDF0 */
+  --text-2: #B3B3BC;                /* était #94949C */
+  --text-3: #8A8A94;                /* était #5C5C64 */
 
   /* ---------- traits : deux épaisseurs de gris, très proches ----------
      ÉCLAIRCIS (18/08) : les valeurs de la maquette (#181A1E / #131418) se
