@@ -21,7 +21,7 @@
    ============================================================ */
 import { useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Modal } from './ui.jsx';
+import { Modal, LoaderL6 } from './ui.jsx';
 import { appendItemsToFiche, appendExosToChapitre } from '../lib/import.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { ImportJsonField } from './ImportFlow.jsx';
@@ -185,7 +185,10 @@ export function PasteJsonForm({ ctx, ficheId, chapitreId, done, setDone }) {
         </div>
         <div className="imp-actions">
           <button className="btn ghost" onClick={() => setPreview(null)}>Retour</button>
-          <button className="btn primary" onClick={confirm} disabled={busy}><Icon name="check" size={15} /> {isChapitre ? 'Ajouter au chapitre' : 'Ajouter à la fiche'}</button>
+          <button className="btn primary" onClick={confirm} disabled={busy}>
+            {busy ? <LoaderL6 inline label="Ajout en cours" /> : <Icon name="check" size={15} />}
+            {isChapitre ? 'Ajouter au chapitre' : 'Ajouter à la fiche'}
+          </button>
         </div>
       </div>
     );

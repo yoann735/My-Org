@@ -159,6 +159,24 @@ export function EdTop({ theme, onTheme, onHub }) {
   );
 }
 
+/** Loader « squelette au trait » (L6 de la maquette Claude Design) — le seul
+    indicateur de chargement de MedRevise. Des filets de 1 px parcourus par le
+    dégradé du spectre ; tout le mouvement est en CSS, ce composant ne fait que
+    poser le markup.
+    `inline` : version courte d'une seule ligne, pour un bouton en cours
+    d'action, où un bloc de quatre filets n'aurait pas sa place. */
+export function LoaderL6({ inline = false, label }) {
+  const n = inline ? 1 : 4;
+  return (
+    <div className={'ld-l6' + (inline ? ' ld-l6-inline' : '')} role="status" aria-live="polite" aria-label={label || 'Chargement en cours'}>
+      <div className={'ld-skel' + (inline ? ' inline' : '')}>
+        {Array.from({ length: n }, (_, i) => <i key={i} />)}
+      </div>
+      {label && !inline && <div className="ld-label">{label}</div>}
+    </div>
+  );
+}
+
 /* ---- left sidebar ---- */
 const ED_NAV = [
   { id: 'dashboard', label: 'Accueil', icon: 'home' },

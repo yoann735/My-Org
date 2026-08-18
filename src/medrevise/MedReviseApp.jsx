@@ -5,7 +5,7 @@
    ============================================================ */
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../shared/Icon.jsx';
-import { StudySidebar } from './components/ui.jsx';
+import { StudySidebar, LoaderL6 } from './components/ui.jsx';
 import { Dashboard } from './pages/Dashboard.jsx';
 import { Reviser } from './pages/Reviser.jsx';
 import { Bibliotheque } from './pages/Bibliotheque.jsx';
@@ -624,7 +624,12 @@ export default function MedReviseApp({ themeApi, goHub }) {
   };
 
   if (!db) {
-    return <div className="soon"><div className="soon-logo"><Icon name="grad" size={30} /></div><p>Chargement de MedRevise…</p></div>;
+    return (
+      <div className="soon" data-app="medrevise">
+        <div className="soon-logo"><Icon name="grad" size={30} /></div>
+        <div style={{ width: 220 }}><LoaderL6 label="Chargement de MedRevise" /></div>
+      </div>
+    );
   }
 
   // petit écran : shell mobile dédié (révision uniquement) — même ctx, mêmes

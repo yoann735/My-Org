@@ -993,3 +993,47 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) {
   [data-app="medrevise"] :is(button, a, [role="button"], .sb-item, .tree-src-main, .lib-fiche):hover svg { animation: none; }
 }
+
+/* ─── 3 · LOADER L6 « squelette au trait » ────────────────────
+   Porté depuis la maquette (.ld-skel). Quatre filets de 1 px, chacun
+   parcouru par --grad-l6 (le dégradé du spectre, posé à l'étape 1), décalés
+   de 0,18 s les uns des autres.
+
+   Pas de retour arrière visible : le balayage va de -105 % à 72 %, et comme
+   le dégradé est TRANSPARENT à ses deux extrémités, la reprise de boucle se
+   fait alors que rien n'est peint. L'œil ne voit qu'un passage continu. */
+[data-app="medrevise"] .ld-skel { display: flex; flex-direction: column; gap: 9px; width: 100%; }
+[data-app="medrevise"] .ld-skel i { display: block; height: 1px; background: var(--border); position: relative; overflow: hidden; }
+[data-app="medrevise"] .ld-skel i::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  width: 150%;
+  background: var(--grad-l6);
+  transform: translateX(-105%);
+  animation: mr-shim 2.4s linear infinite;
+}
+[data-app="medrevise"] .ld-skel i:nth-child(2)::after { animation-delay: .18s; }
+[data-app="medrevise"] .ld-skel i:nth-child(3)::after { animation-delay: .36s; }
+[data-app="medrevise"] .ld-skel i:nth-child(4)::after { animation-delay: .54s; }
+@keyframes mr-shim { from { transform: translateX(-105%); } to { transform: translateX(72%); } }
+
+/* Variante en ligne, pour un bouton en cours d'action : un seul filet court,
+   le bloc de quatre lignes n'aurait pas sa place dans un bouton. */
+[data-app="medrevise"] .ld-skel.inline { width: 58px; gap: 0; }
+[data-app="medrevise"] .ld-skel.inline i { height: 1px; }
+
+[data-app="medrevise"] .ld-label {
+  margin-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  text-align: center;
+}
+
+/* Réglage système « moins d'animation » : les filets restent, figés. */
+@media (prefers-reduced-motion: reduce) {
+  [data-app="medrevise"] .ld-skel i::after { animation: none; transform: translateX(-20%); }
+}
