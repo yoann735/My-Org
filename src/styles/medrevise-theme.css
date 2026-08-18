@@ -124,3 +124,85 @@ body { font-family: var(--font-sans); }
 .sb-brand-name { font-family: var(--font-sans); font-weight: 700; letter-spacing: -.02em; }
 .sb-brand-name small { font-family: var(--font-sans); }
 .exo-enonce { font-family: var(--font-sans); }
+
+/* ════════════════════════════════════════════════════════════
+   ÉTAPE 2 — PORTAGE DES COMPOSANTS
+   Source : projet Claude Design, templates/composants/theme-motion.css,
+   section « UNIFICATION : tous les composants du DS sur la direction
+   validée ». Les groupes numérotés ci-dessous sont CEUX DE LA MAQUETTE.
+
+   Deux adaptations systématiques, valables pour tous les lots :
+   · le scope `.lab` de la maquette est retiré (portée globale, décidée à
+     l'étape 1) — sauf pour les surfaces en portail, déjà non scopées ;
+   · les familles écrites en dur dans la maquette ('Instrument Sans',
+     'DM Mono' — c'était la typo T1) deviennent var(--font-sans) /
+     var(--font-mono), sinon le portage réintroduirait une typo que tu n'as
+     pas retenue (tu as validé T3).
+   Correspondance des noms : --hair → --border-2, --line → --border.
+
+   Les !important viennent de la maquette : ils sont nécessaires, ces règles
+   doivent battre des styles en ligne posés par les composants React
+   (CatBadge écrit background/color/borderColor en style inline).
+   ════════════════════════════════════════════════════════════ */
+
+/* ─── LOT A · groupe 1 · ÉTIQUETTES ───────────────────────────
+   Un seul vocabulaire : filet de 1 px, aucun fond, la couleur portée par le
+   texte et par un point. Les pavés colorés disparaissent. */
+:is(.pill, .cat-badge, .j-tag, .jbadge, .tc-chip, .tc-jbadge) {
+  background: transparent !important;
+  background-image: none !important;
+  border: 1px solid var(--border-2) !important;
+  border-radius: var(--r-2) !important;
+  box-shadow: none !important;
+  height: 22px !important;
+  padding: 0 8px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  letter-spacing: .01em;
+  gap: 6px !important;
+  transition: border-color .2s ease, color .2s ease;
+}
+:is(.pill, .j-tag, .jbadge, .tc-chip, .tc-jbadge) { color: var(--text-2) !important; }
+.pill:hover { border-color: var(--border) !important; color: var(--text) !important; }
+
+/* Palier des J : traité comme une donnée technique, pas comme un accent. */
+:is(.j-tag, .jbadge, .tc-jbadge) {
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  letter-spacing: .06em;
+  color: var(--text-3) !important;
+  /* neutralise les variables locales dont héritaient les anciennes règles */
+  --accent: var(--text-3);
+  --text: var(--text-3);
+}
+
+/* Matière : la teinte reste, mais portée par un point et un filet — plus par
+   un aplat. L'icône disparaît, le point la remplace. currentColor vaut la
+   teinte de la matière, posée en style inline par le composant CatBadge. */
+.cat-badge {
+  position: relative;
+  padding-left: 18px !important;
+  border-color: color-mix(in srgb, currentColor 24%, transparent) !important;
+}
+.cat-badge::before {
+  content: '';
+  position: absolute;
+  left: 8px; top: 50%;
+  width: 4px; height: 4px; margin-top: -2px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .9;
+}
+.cat-badge:hover { border-color: color-mix(in srgb, currentColor 44%, transparent) !important; }
+.cat-badge svg { display: none; }
+
+/* Statuts : la couleur passe dans le TEXTE, éclaircie pour rester lisible
+   sur fond noir, et dans le filet à faible opacité. */
+.pill.ok      { color: color-mix(in srgb, var(--ok) 62%, #fff) !important;     border-color: color-mix(in srgb, var(--ok) 26%, transparent) !important; }
+.pill.warn,
+.pill.amber   { color: color-mix(in srgb, var(--warn) 62%, #fff) !important;   border-color: color-mix(in srgb, var(--warn) 26%, transparent) !important; }
+.pill.crit    { color: color-mix(in srgb, var(--crit) 62%, #fff) !important;   border-color: color-mix(in srgb, var(--crit) 26%, transparent) !important; }
+.pill.accent  { color: color-mix(in srgb, var(--accent) 66%, #fff) !important; border-color: color-mix(in srgb, var(--accent) 30%, transparent) !important; }
+
+/* Point d'étiquette : rond net, sans halo. */
+.etq-dot { width: 7px !important; height: 7px !important; border-radius: 50% !important; box-shadow: none !important; }
