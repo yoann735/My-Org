@@ -533,13 +533,89 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   color: var(--accent) !important;
 }
 
-/* ─── Correctif transitoire · étiquettes dans le bandeau violet ───
-   Le lot A met les étiquettes en gris (--text-2 / --text-3). Dans le bandeau
-   « Série du jour », qui a encore son dégradé violet, ce gris tombe à un
-   contraste de ~1,05 : illisible. Mesuré, pas supposé.
-   À SUPPRIMER AU LOT F : le bandeau y perd son dégradé pour un fond plat, et
-   les étiquettes y redeviennent lisibles sans exception. */
-.today-cta :is(.tc-chip, .tc-jbadge) {
-  color: #fff !important;
-  border-color: color-mix(in srgb, #fff 34%, transparent) !important;
+
+
+/* ─── LOT F · groupe 6 · SÉRIE DU JOUR ────────────────────────
+   Le bandeau perd son dégradé violet et son halo : il devient une surface
+   plate au filet, comme toutes les autres. Ce qui le distingue désormais,
+   c'est sa typographie — titre à 21 px, compteur à 34 px, sur-titres en
+   mono espacé — et non plus sa couleur.
+
+   Le correctif transitoire du lot E (blanc forcé sur .tc-chip/.tc-jbadge)
+   a été retiré : sans dégradé, les gris du lot A redeviennent lisibles. */
+.today-cta {
+  background: var(--card) !important;
+  background-image: none !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r) !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+  font-family: inherit !important;
+  padding: 20px 22px !important;
+  height: auto;
+  min-height: 0;
+  position: relative;
+  /* comme au lot C : overflow:hidden non repris, il ne sert que le halo
+     de l'étape 3 — plus rien ne déborde ici une fois .tc-glow masqué. */
 }
+.tc-glow { display: none !important; }
+
+/* Hiérarchie de texte : c'est elle qui porte le bandeau maintenant. */
+.tc-title {
+  font-family: inherit !important;
+  font-size: 21px !important;
+  font-weight: 600 !important;
+  letter-spacing: -.02em !important;
+  line-height: 1.25 !important;
+  color: var(--text) !important;
+}
+.tc-n {
+  font-family: inherit !important;
+  font-size: 34px !important;
+  font-weight: 600 !important;
+  letter-spacing: -.03em !important;
+  font-variant-numeric: tabular-nums;
+  color: var(--text) !important;
+}
+.tc-eyebrow, .tc-l {
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  letter-spacing: .09em !important;
+  text-transform: uppercase !important;
+  opacity: 1 !important;
+  color: var(--text-3) !important;
+}
+.tc-next { color: var(--text-3) !important; }
+.tc-types, .tc-nextitem { color: var(--text-2) !important; }
+:is(.tc-sub, .tc-next, .tc-nextitem, .tc-types) { font-size: 12.5px !important; opacity: 1 !important; }
+.tc-chip, .tc-jbadge { background: transparent !important; border: 1px solid var(--border) !important; color: var(--text-2) !important; }
+
+/* Le bouton de lancement reste le seul élément plein : même dégradé vertical
+   que .btn.primary, en plus compact. Ses effets propres (halo, pulsation)
+   sont coupés — l'étape 3 décidera de ce qui revient. */
+.sh-cta {
+  background: linear-gradient(180deg, color-mix(in srgb, #fff 6%, var(--accent)), var(--accent)) !important;
+  border: 1px solid color-mix(in srgb, #000 26%, var(--accent)) !important;
+  color: var(--on-accent) !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,.6) !important;
+  border-radius: var(--r) !important;
+  height: 34px !important;
+  padding: 0 15px !important;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  letter-spacing: .005em;
+  animation: none !important;
+  transition: background .18s ease, border-color .18s ease, transform .18s cubic-bezier(.2,.7,.2,1) !important;
+}
+.sh-cta:hover {
+  background: linear-gradient(180deg, color-mix(in srgb, #fff 14%, var(--accent)), color-mix(in srgb, #fff 4%, var(--accent))) !important;
+}
+.sh-cta:active { transform: translateY(1px); }
+.sh-cta::before, .sh-cta::after { display: none !important; }
+
+/* EXTRAPOLATION ASSUMÉE : la maquette ne traite pas l'état « tout est à
+   jour » (.today-cta.done), qui avait son propre dégradé vert. Aplati comme
+   le reste, il perdrait tout signal de réussite ; la teinte --ok est donc
+   conservée sur le sur-titre et le filet, jamais en aplat. */
+.today-cta.done { border-color: color-mix(in srgb, var(--ok) 26%, transparent) !important; }
+.today-cta.done .tc-eyebrow { color: color-mix(in srgb, var(--ok) 62%, #fff) !important; }
