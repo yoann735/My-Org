@@ -70,9 +70,12 @@
   /* ÉCLAIRCIS (18/08) : le fond était trop proche du noir pur, les cartes
      (--card: #000) ne s'en détachaient pas. Le fond monte d'un cran vers le
      gris-noir, les surfaces restent NOIRES : on creuse l'écart au lieu de
-     l'aplatir, et les cartes se lisent comme des creux. */
-  --bg: #121215;
-  --bg-2: #17171B;
+     l'aplatir, et les cartes se lisent comme des creux.
+     RÉAJUSTÉ : #121215 grisait trop la page. #0C0C10 reste franchement
+     sombre — 12/255 au-dessus du noir — tout en gardant l'écart avec les
+     cartes, qui sont, elles, à zéro. */
+  --bg: #0C0C10;
+  --bg-2: #121217;
   --card: #000000;
   --card-2: #121216;
   --sidebar: #0C0C0F;
@@ -1106,33 +1109,22 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
    classe sur la racine. Une seule sera conservée — l'autre sera supprimée
    une fois le choix fait. */
 
-/* ── LOGO · variante A : monogramme au filet ──
-   Le bloc plein disparaît : un carré au filet, fond transparent, le glyphe
-   à l'accent. Même vocabulaire que les boutons-icônes du lot B. */
-.logo-a .sb-logo, .logo-a .soon-logo {
+/* ── LOGO · monogramme au filet (variante A, retenue) ──
+   Le bloc plein à dégradé violet→bleu disparaît : un carré au trait, fond
+   transparent, le glyphe à l'accent. Même vocabulaire que les boutons-icônes
+   du lot B, donc la marque cesse d'être le seul aplat coloré de l'interface.
+   S'applique à .sb-logo — donc à MedRevise ET MealWeek — et à .soon-logo,
+   l'écran de démarrage. Le `!important` est nécessaire : MedRevise pose son
+   dégradé en style inline (ui.jsx:206). */
+.sb-logo, .soon-logo {
   background: none !important;
   background-image: none !important;
   border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border)) !important;
   color: var(--accent) !important;
   box-shadow: none !important;
 }
-.logo-a .sb-logo { width: 32px !important; height: 32px !important; border-radius: var(--r) !important; }
-.logo-a .soon-logo { width: 54px !important; height: 54px !important; border-radius: var(--r) !important; }
-
-/* ── LOGO · variante B : glyphe nu ──
-   Plus de contenant du tout. Le signe seul, à l'accent, aligné sur le
-   texte de la marque — le traitement le plus discret possible. */
-.logo-b .sb-logo, .logo-b .soon-logo {
-  background: none !important;
-  background-image: none !important;
-  border: none !important;
-  color: var(--accent) !important;
-  box-shadow: none !important;
-  width: auto !important; height: auto !important;
-  border-radius: 0 !important;
-}
-.logo-b .sb-logo svg { width: 26px; height: 26px; }
-.logo-b .soon-logo svg { width: 40px; height: 40px; }
+.sb-logo { width: 32px !important; height: 32px !important; border-radius: var(--r) !important; }
+.soon-logo { width: 54px !important; height: 54px !important; border-radius: var(--r) !important; }
 
 /* ── SÉRIE DU JOUR · variante A : arête d'accent ──
    La carte reste noire, mais son bord gauche devient une arête d'accent de
