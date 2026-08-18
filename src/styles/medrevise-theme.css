@@ -1,0 +1,126 @@
+/* ============================================================
+   DIRECTION ARTISTIQUE « MOTION LAB » — ÉTAPE 1 : LES TOKENS.
+
+   Source : projet Claude Design « MyOrg Design System »,
+   templates/motion-lab/theme-motion.css, gabarit « Signature animée —
+   atelier », qui s'annonce lui-même comme la « fondation validée
+   (neutre, bordures discrètes, accent violet, coins 8 px) ».
+   Les valeurs ci-dessous sont reprises telles quelles de cette maquette ;
+   les rares valeurs dérivées sont signalées une par une.
+
+   POURQUOI UN FICHIER À PART, ET PAS design.css :
+   design.css est le design system PARTAGÉ (MealWeek + MedRevise + hub).
+   En le laissant intact, l'ancienne palette reste entière et récupérable,
+   et cette direction tient dans un seul fichier — la retirer, c'est
+   supprimer une ligne d'import dans main.jsx.
+
+   PORTÉE : GLOBALE, sur décision explicite (18/08/2026). Les tokens sont
+   posés sur :root ET sur les deux valeurs de data-theme, donc la direction
+   s'applique quel que soit le réglage clair/sombre, dans les DEUX apps.
+   Pour la restreindre à MedRevise plus tard : remplacer le sélecteur du
+   bloc de tokens par [data-app="medrevise"] et poser cet attribut sur la
+   racine de MedReviseApp.jsx. Rien d'autre à changer.
+
+   ÉTAPE 1 = TOKENS UNIQUEMENT. Aucun composant n'est redessiné ici, aucune
+   animation n'est branchée. Les rayons sont DÉCLARÉS mais pas encore câblés
+   (287 border-radius littéraux dans design.css + etudes.css, 0 via var()) :
+   c'est le travail de l'étape 2.
+   ============================================================ */
+
+/* Typographie validée : T3 · Plus Jakarta Sans, sans famille mono dédiée.
+   Le rôle « mono » (libellés techniques, chiffres) est tenu par la même
+   famille, espacée — c'est exactement ce que fait .lab.ty-3 dans la maquette. */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root,
+:root[data-theme="light"],
+:root[data-theme="dark"] {
+  /* ---------- spectre harmonisé : une seule famille, cinq teintes ----------
+     Le violet porte l'actif ; le spectre complet ne vit que dans les
+     animations et les dégradés (loaders, jauges). */
+  --sp1: #fa8aec;   /* rose   */
+  --sp2: #a47bff;   /* violet */
+  --sp3: #17b2ff;   /* cyan   */
+  --sp4: #02cd88;   /* vert   */
+  --sp5: #c4d423;   /* lime   */
+  --sp6: #ff9a3c;   /* ambre  */
+  --sp7: #ff4f66;   /* rouge  */
+  --spectrum: linear-gradient(90deg, var(--sp1), var(--sp2) 26%, var(--sp3) 52%, var(--sp4) 76%, var(--sp5));
+
+  /* dégradé du loader L6 « Squelette au trait » : le spectre, fondu aux
+     deux extrémités pour qu'un filet de 1 px n'ait ni début ni fin nets. */
+  --grad-l6: linear-gradient(90deg, transparent 0%, rgba(250,138,236,.35) 8%,
+    var(--sp1) 20%, var(--sp2) 36%, var(--sp3) 52%, var(--sp4) 68%,
+    var(--sp5) 84%, rgba(196,212,35,.3) 93%, transparent 100%);
+
+  /* ---------- accents ---------- */
+  --accent: var(--sp2);
+  --accent-2: var(--sp2);           /* la maquette pose accent-2 = accent */
+  --on-accent: #07070A;
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-2-soft: color-mix(in srgb, var(--accent-2) 10%, transparent);
+
+  /* ---------- statuts ---------- */
+  --ok: var(--sp4);                 /* réussi / maîtrisé */
+  --warn: var(--sp6);               /* à revoir          */
+  --crit: var(--sp7);               /* raté              */
+  --todo: #54545C;                  /* jamais fait — nouveau */
+
+  /* ---------- fonds : très sombres, étagés, neutres ---------- */
+  --bg: #08080A;
+  --bg-2: #0E0E11;
+  --card: #000000;
+  --card-2: #121216;
+  --sidebar: #0C0C0F;
+  --track: #141418;
+  --scrim: rgba(6,6,8,.72);         /* DÉRIVÉ : la maquette n'a pas de voile */
+
+  /* ---------- texte ---------- */
+  --text: #EDEDF0;
+  --text-2: #94949C;
+  --text-3: #5C5C64;
+
+  /* ---------- traits : deux épaisseurs de gris, très proches ---------- */
+  --border: #181A1E;                /* « line » */
+  --border-2: #131418;              /* « hair » */
+  --inset: inset 0 0 0 1px var(--border);
+
+  /* ---------- ombres : aucune au repos ---------- */
+  --shadow: none;
+  --shadow-lg: 0 2px 6px rgba(0,0,0,.5), 0 18px 40px -18px rgba(0,0,0,.9);
+
+  /* week-end du calendrier : suit accent-2, devenu violet */
+  --weekend: color-mix(in srgb, var(--accent-2) 9%, var(--card));
+  --weekend-border: color-mix(in srgb, var(--accent-2) 30%, var(--border));
+
+  /* ---------- typographie ---------- */
+  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --mono-tracking: .1em;            /* ce qui distingue le rôle « mono » en T3 */
+
+  /* ---------- rayons : DÉCLARÉS, pas encore câblés (étape 2) ----------
+     Échelle relevée dans la maquette : pastilles 4, boutons 6, segments 7,
+     cartes 8 (--r), panneaux 10. Les 999px et 50% existants ne bougeront pas. */
+  --r-1: 4px;
+  --r-2: 6px;
+  --r-3: 7px;
+  --r: 8px;
+  --r-5: 10px;
+}
+
+/* ============================================================
+   RECÂBLAGE TYPOGRAPHIQUE
+   Les familles étaient écrites en dur dans design.css (5 sites). On les
+   redirige vers les tokens en rejouant les MÊMES sélecteurs : ce fichier
+   étant importé après, il l'emporte à spécificité égale — design.css reste
+   inchangé sur le disque.
+   ============================================================ */
+body { font-family: var(--font-sans); }
+
+/* La direction validée n'a PAS de serif : ses titres sont le sans en 600,
+   resserré. .serif garde son nom (il est utilisé partout dans le markup)
+   mais ne rend plus un serif. */
+.serif { font-family: var(--font-sans); font-weight: 600; letter-spacing: -.03em; }
+.sb-brand-name { font-family: var(--font-sans); font-weight: 700; letter-spacing: -.02em; }
+.sb-brand-name small { font-family: var(--font-sans); }
+.exo-enonce { font-family: var(--font-sans); }
