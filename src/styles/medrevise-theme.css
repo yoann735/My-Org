@@ -619,3 +619,64 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
    conservée sur le sur-titre et le filet, jamais en aplat. */
 .today-cta.done { border-color: color-mix(in srgb, var(--ok) 26%, transparent) !important; }
 .today-cta.done .tc-eyebrow { color: color-mix(in srgb, var(--ok) 62%, #fff) !important; }
+
+/* ─── LOT G · groupe 7 · MENUS & SURFACES FLOTTANTES ──────────
+   Ces surfaces sont rendues en PORTAIL vers <body> : elles échappent à tout
+   conteneur, d'où des règles non scopées — c'est déjà ainsi dans la maquette.
+   Elles adoptent le même noir et le même filet que le reste, avec une ombre
+   portée franche pour se détacher de ce qu'elles recouvrent.
+
+   Substitution assumée : la maquette pose #141418 pour le survol d'entrée ;
+   on utilise --elev-2 (#16161B), écart de 2/255, imperceptible — mais piloté
+   par le thème plutôt que figé. */
+.ctx-menu {
+  background: var(--elev-0) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r) !important;
+  padding: 4px !important;
+  box-shadow: 0 12px 34px rgba(0,0,0,.7) !important;
+  color: var(--text) !important;
+  font-family: var(--font-sans) !important;
+  min-width: 184px;
+}
+.ctx-menu-item {
+  border-radius: var(--r-2) !important;
+  padding: 7px 9px !important;
+  font-size: 12.5px !important;
+  color: var(--text-2) !important;
+  gap: 9px !important;
+  transition: background .16s ease, color .16s ease;
+}
+.ctx-menu-item:hover { background: var(--elev-2) !important; color: var(--text) !important; }
+.ctx-menu-item.danger { color: color-mix(in srgb, var(--crit) 55%, #fff) !important; }
+.ctx-menu-item.danger:hover {
+  background: color-mix(in srgb, var(--crit) 8%, transparent) !important;
+  color: color-mix(in srgb, var(--crit) 55%, #fff) !important;
+}
+.ctx-menu-item svg { opacity: .8; }
+
+/* Modales : voile plus dense et légèrement flouté, fenêtre au même noir. */
+.day-pop-scrim { background: rgba(4,4,6,.72) !important; backdrop-filter: blur(3px); }
+.day-pop {
+  background: var(--elev-0) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r) !important;
+  box-shadow: 0 22px 60px rgba(0,0,0,.72) !important;
+  font-family: var(--font-sans) !important;
+}
+
+/* En modale, l'action destructive est déjà ENGAGÉE : elle s'assume en rouge,
+   contrairement au bouton utilitaire discret du lot C. */
+.day-pop .btn.danger {
+  background: color-mix(in srgb, var(--crit) 10%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--crit) 52%, transparent) !important;
+  color: color-mix(in srgb, var(--crit) 25%, #fff) !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+  transition: background .18s ease, border-color .18s ease, color .18s ease;
+}
+.day-pop .btn.danger:hover {
+  background: color-mix(in srgb, var(--crit) 18%, transparent) !important;
+  border-color: color-mix(in srgb, var(--crit) 78%, transparent) !important;
+  color: #fff !important;
+}
