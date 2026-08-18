@@ -423,3 +423,123 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 /* Texte secondaire, PARTOUT (202 usages dans les deux apps) : 13 → 11.5 px.
    C'est la règle du groupe 4 de la maquette, appliquée telle quelle. */
 .hint { color: var(--text-3) !important; font-size: 11.5px !important; }
+
+/* ─── Décision 1 · badge « Aujourd'hui » ──────────────────────
+   Dernier petit élément plein de l'interface avec le CTA : aligné sur le
+   vocabulaire des étiquettes. La forme en gélule (999px) est conservée,
+   c'est sa signature. */
+.jc-today-badge {
+  background: transparent !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent) !important;
+  color: color-mix(in srgb, var(--accent) 70%, #fff) !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+/* ─── Décision 2 · lignes de l'arbre de Réviser ───────────────
+   ALIGNÉES sur .lib-fiche. La maquette ne traite pas .tree-*, mais deux
+   raisons l'emportent : .tree-course.on posait un aplat d'accent
+   (--accent-soft), soit précisément l'élément plein isolé qu'on retire ;
+   et les deux arbres de l'app doivent avoir UN seul vocabulaire de survol
+   et de sélection. Les hauteurs de 44 px et les cibles de clic issues de
+   l'audit UX ne sont pas touchées — uniquement l'habillage. */
+:is(.tree-course, .tree-src-row) {
+  position: relative;
+  border-radius: var(--r);
+  transition: background .22s ease;
+}
+:is(.tree-course, .tree-src-row)::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 6px; bottom: 6px;
+  width: 1px;
+  background: color-mix(in srgb, #fff 34%, transparent);
+  transform: scaleY(0);
+  transition: transform .24s cubic-bezier(.2,.7,.2,1);
+  pointer-events: none;
+}
+:is(.tree-course, .tree-src-row):hover {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, #fff 3.5%, transparent),
+    color-mix(in srgb, #fff 1%, transparent) 55%,
+    transparent);
+}
+:is(.tree-course, .tree-src-row):hover::before { transform: scaleY(1); }
+/* neutralise les fonds de survol internes hérités, sinon ils s'ajoutent */
+.tree-course-main:hover, .tree-src-main:hover { background: transparent; }
+/* sélection : même vocabulaire que .lib-fiche.selected */
+.tree-course.on { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.tree-course.on::before { transform: scaleY(1); background: var(--accent); }
+
+/* ─── LOT E · groupe 5 · DÉPÔT & IMPORT ───────────────────────
+   Les cibles de dépôt passent du gros pointillé de 2 px au filet de 1 px, et
+   ne s'allument qu'au survol d'une fiche portée : passage en trait plein,
+   accent à 5 %. */
+:root,
+:root[data-theme="light"],
+:root[data-theme="dark"] { --elev-0: #0A0A0C; }   /* surface flottante / zone de dépôt */
+
+.dnd-zone {
+  background: transparent !important;
+  border: 1px dashed var(--border-2) !important;
+  border-radius: var(--r) !important;
+  color: var(--text-3) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  transition: border-color .2s ease, color .2s ease, background .2s ease;
+}
+.dnd-zone.over {
+  background: color-mix(in srgb, var(--accent) 5%, transparent) !important;
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent) !important;
+  border-style: solid !important;
+  color: var(--accent) !important;
+}
+.dnd-slot.over::before {
+  background: var(--accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent) !important;
+}
+
+/* Zone de dépôt d'un document : plus haute, centrée, sans majuscules. */
+.dz-compact {
+  background: var(--elev-0) !important;
+  border: 1px dashed var(--border-2) !important;
+  border-radius: var(--r) !important;
+  color: var(--text-3) !important;
+  padding: 30px 22px !important;
+  min-height: 132px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 13px !important;
+  transition: border-color .2s ease, background .2s ease, color .2s ease;
+}
+.dz-compact:hover { border-color: var(--border) !important; color: var(--text-2) !important; }
+.dz-compact.over {
+  background: color-mix(in srgb, var(--accent) 5%, transparent) !important;
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent) !important;
+  border-style: solid !important;
+  color: var(--accent) !important;
+}
+.dz-compact, .dz-compact span { text-transform: none !important; letter-spacing: 0 !important; }
+.dz-compact span { font-weight: 500 !important; }
+
+/* Champs d'import : le libellé quitte la petite capitale espacée. */
+.imp-field > label { font-size: 12px !important; color: var(--text-2) !important; font-weight: 500 !important; text-transform: none !important; letter-spacing: 0 !important; }
+.imp-opt { color: var(--text-3) !important; font-weight: 400 !important; }
+/* Pastille de choix active : filet d'accent, plus d'aplat. */
+.imp-chip.on {
+  background: transparent !important;
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent) !important;
+  color: var(--accent) !important;
+}
+
+/* ─── Correctif transitoire · étiquettes dans le bandeau violet ───
+   Le lot A met les étiquettes en gris (--text-2 / --text-3). Dans le bandeau
+   « Série du jour », qui a encore son dégradé violet, ce gris tombe à un
+   contraste de ~1,05 : illisible. Mesuré, pas supposé.
+   À SUPPRIMER AU LOT F : le bandeau y perd son dégradé pour un fond plat, et
+   les étiquettes y redeviennent lisibles sans exception. */
+.today-cta :is(.tc-chip, .tc-jbadge) {
+  color: #fff !important;
+  border-color: color-mix(in srgb, #fff 34%, transparent) !important;
+}
