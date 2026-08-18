@@ -206,3 +206,131 @@ body { font-family: var(--font-sans); }
 
 /* Point d'étiquette : rond net, sans halo. */
 .etq-dot { width: 7px !important; height: 7px !important; border-radius: 50% !important; box-shadow: none !important; }
+
+/* ─── LOT A (complément) · compteur d'échéance ────────────────
+   EXTRAPOLATION ASSUMÉE : .due-badge n'est pas listé dans le groupe 1 de la
+   maquette. Il est aligné ici sur le même vocabulaire que les autres
+   étiquettes — filet, pas d'aplat, couleur dans le texte — parce qu'il vit
+   au milieu d'elles dans l'arbre de Réviser. Ses dimensions propres (et
+   celles de .due-badge.sm) sont conservées. */
+.due-badge {
+  background: transparent !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent) !important;
+  border-radius: var(--r-2) !important;
+  color: color-mix(in srgb, var(--accent) 70%, #fff) !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+/* ─── Tokens ajoutés à l'étape 2 ──────────────────────────────
+   La maquette pose ces gris en dur (#101014, #16161B, #111115, #24242A).
+   On les nomme ici pour qu'ils restent pilotés par le thème, conformément à
+   la règle « rien de figé ». Ce sont les trois niveaux d'élévation au-dessus
+   du fond, et la bordure de survol. */
+:root,
+:root[data-theme="light"],
+:root[data-theme="dark"] {
+  --elev-1: #101014;      /* fond de bouton, survol de bouton-icône */
+  --elev-2: #16161B;      /* survol de bouton, piste d'interrupteur */
+  --elev-3: #111115;      /* segment actif */
+  --border-hover: #24242A;
+}
+
+/* ─── LOT B · groupe 2 · BOUTONS-ICÔNES ───────────────────────
+   Plus de pavé gris permanent : au repos le bouton est invisible, seul son
+   icône est là. Le filet et le fond n'apparaissent qu'au survol. */
+:is(.icon-btn, .cd-ic, .split-handle, .tc-collapse-btn) {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--r) !important;
+  color: var(--text-3) !important;
+  box-shadow: none !important;
+  transition: border-color .2s ease, color .2s ease, background .2s ease;
+}
+:is(.icon-btn, .cd-ic, .split-handle, .tc-collapse-btn):hover {
+  background: var(--elev-1) !important;
+  border-color: var(--border-2) !important;
+  color: var(--text) !important;
+}
+.icon-btn { width: 32px !important; height: 32px !important; }
+.icon-btn.sm, .cd-ic { width: 28px !important; height: 28px !important; }
+
+/* ─── LOT C · socle · CARTES, BOUTONS, SEGMENTS, INTERRUPTEURS ─
+   La carte perd son ombre et ses 16 px de rayon : elle ne tient plus que par
+   son filet. C'est le socle de toute la direction — les lots suivants
+   supposent cette surface-là. */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: none;
+  position: relative;
+  /* NB : la maquette ajoute overflow:hidden, uniquement pour le halo de
+     bordure de l'étape 3. Non repris ici — il rognerait les menus et
+     infobulles qui débordent d'une carte. À réintroduire avec le halo. */
+  transition: border-color .26s ease, transform .26s cubic-bezier(.2,.7,.2,1);
+}
+.card-head { border-bottom: 1px solid var(--border-2); }
+.card-head h3 { font-size: 12.5px; font-weight: 600; color: var(--text); letter-spacing: -.005em; }
+.card-head .ic { color: var(--text-3); }
+
+/* Boutons : fond très sombre, filet, poids 500. */
+.btn {
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: none;
+  transition: background .16s, border-color .16s, transform .12s;
+}
+.btn:hover { background: var(--elev-2); border-color: var(--border-hover); }
+/* Primaire : dégradé vertical de l'accent, liseré haut plus clair — le seul
+   élément « plein » de l'interface. */
+.btn.primary {
+  background: linear-gradient(180deg, color-mix(in srgb, #fff 6%, var(--accent)), var(--accent));
+  border: 1px solid color-mix(in srgb, #000 26%, var(--accent));
+  border-top-color: color-mix(in srgb, #fff 34%, var(--accent));
+  color: var(--on-accent);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0,0,0,.6);
+}
+.btn.primary:hover {
+  background: linear-gradient(180deg, color-mix(in srgb, #fff 14%, var(--accent)), color-mix(in srgb, #fff 4%, var(--accent)));
+}
+.btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); box-shadow: none; }
+.btn.ghost:hover { color: var(--text); background: color-mix(in srgb, #fff 3%, transparent); }
+/* Destructif : neutre au repos, il ne devient rouge qu'au survol — sauf en
+   modale, où l'action est déjà engagée (traité au lot G). */
+.btn.danger {
+  background: var(--elev-1) !important;
+  background-image: none !important;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  box-shadow: none !important;
+  transition: background .16s, border-color .16s, color .16s;
+}
+.btn.danger:hover {
+  background: color-mix(in srgb, var(--crit) 7%, transparent) !important;
+  border-color: color-mix(in srgb, var(--crit) 42%, transparent);
+  color: color-mix(in srgb, var(--crit) 55%, #fff);
+}
+.btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+/* Rayon unique pour tout ce qui se clique (groupe 9 de la maquette). */
+:is(.btn, .btn.sm, .btn.lg, .btn.ghost, .btn.primary, .sh-cta, .seg-btn) { border-radius: var(--r) !important; }
+
+/* Segments : conteneur transparent au filet, actif en léger relief. */
+.seg { background: transparent; border: 1px solid var(--border); border-radius: var(--r-3); padding: 3px; }
+.seg-btn { color: var(--text-3); transition: color .18s, background .18s; }
+.seg-btn.active { background: var(--elev-3); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
+
+/* Interrupteur : piste sombre au filet, accent plein quand il est actif. */
+.switch { background: var(--elev-2); border: 1px solid var(--border); box-shadow: none !important; }
+.switch.on { background: var(--accent); border-color: transparent; }
+
+/* Liens */
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
