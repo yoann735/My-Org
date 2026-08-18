@@ -80,9 +80,13 @@
   --text-2: #94949C;
   --text-3: #5C5C64;
 
-  /* ---------- traits : deux épaisseurs de gris, très proches ---------- */
-  --border: #181A1E;                /* « line » */
-  --border-2: #131418;              /* « hair » */
+  /* ---------- traits : deux épaisseurs de gris, très proches ----------
+     ÉCLAIRCIS (18/08) : les valeurs de la maquette (#181A1E / #131418) se
+     distinguaient mal du fond sur un vrai écran. Luminosité relevée d'environ
+     75 %, TEINTE ET SATURATION CONSERVÉES (~218° et ~228°, 11 % de
+     saturation), pour que les filets restent des filets — pas des traits. */
+  --border: #2A2E35;                /* « line » — était #181A1E */
+  --border-2: #21232A;              /* « hair » — était #131418 */
   --inset: inset 0 0 0 1px var(--border);
 
   /* ---------- ombres : aucune au repos ---------- */
@@ -233,7 +237,7 @@ body { font-family: var(--font-sans); }
   --elev-1: #101014;      /* fond de bouton, survol de bouton-icône */
   --elev-2: #16161B;      /* survol de bouton, piste d'interrupteur */
   --elev-3: #111115;      /* segment actif */
-  --border-hover: #24242A;
+  --border-hover: #3A3A43;   /* était #24242A — doit rester PLUS CLAIR que --border, sinon le survol assombrit le filet */
 }
 
 /* ─── LOT B · groupe 2 · BOUTONS-ICÔNES ───────────────────────
@@ -767,3 +771,125 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   border-radius: 50%;
   background: var(--accent);
 }
+
+/* ─── CALENDRIER HEBDOMADAIRE ─────────────────────────────────
+   Porté depuis la maquette (.wk-* de templates/motion-lab), appliqué aux
+   classes .wcal-* de l'app.
+
+   POURQUOI EN CSS SEUL : le calendrier n'est PAS un des 27 composants
+   capturés par design-sync — c'est du JSX en ligne dans Dashboard.jsx. Mais
+   sa structure correspond à celle de la maquette, nœud pour nœud :
+     .wcal-grid → .wk        .wcal-courses → .wk-items
+     .wcal-day  → .wk-day    .wcal-course  → .wk-it
+     .wcal-dhead→ .wk-head   .wcc-cat      → .wk-sub
+     .wcal-dow  → .wk-dow    .wcc-title    → .wk-t
+     .wcal-dnum → .wk-num    .wcc-j        → .wk-j
+     .wcal-foot → .wk-foot   .wcc-bar      → .wk-it::before
+   Aucun JSX n'est touché : le portage reste dans le fichier de thème, donc
+   réversible comme tout le reste.
+
+   Le changement de fond : on passe de sept CARTES encadrées, espacées de
+   8 px, qui se soulèvent au survol, à sept COLONNES séparées par un simple
+   filet vertical — la structure jour par jour se lit d'un trait. */
+
+/* La grille : plus d'espacement, ce sont les filets qui séparent.
+   ADAPTATION : la maquette pose minmax(152px,1fr) avec défilement
+   horizontal dans un conteneur dédié (.wk-wrap) que l'app n'a pas.
+   minmax(0,1fr) laisse les sept colonnes s'adapter à la largeur réelle
+   de la carte, sans barre de défilement. */
+.wcal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)) !important; gap: 0 !important; }
+
+.wcal-day {
+  border: none !important;
+  border-left: 1px solid var(--border-2) !important;
+  border-radius: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
+  min-height: 216px !important;
+  padding: 14px 12px 12px !important;
+  gap: 11px !important;
+  position: relative;
+}
+.wcal-day:first-child { border-left: none !important; }
+/* plus de soulèvement : la colonne est un repère, pas une carte cliquable
+   qui se détache. Le survol se contente d'éclaircir le contenu. */
+.wcal-day:hover:not(:disabled) { transform: none !important; box-shadow: none !important; border-color: var(--border-2) !important; }
+.wcal-day.past { opacity: .42 !important; }
+
+/* Aujourd'hui : un filet d'accent posé sur le haut de la colonne, au lieu
+   d'un cadre complet qui enfermait la journée. */
+.wcal-day.today { border-color: var(--border-2) !important; box-shadow: none !important; }
+.wcal-day.today::before {
+  content: '';
+  position: absolute;
+  left: -1px; right: 0; top: 0;
+  height: 1px;
+  background: var(--accent);
+}
+
+.wcal-dhead { align-items: baseline !important; justify-content: space-between; gap: 6px !important; }
+.wcal-dow { font-family: var(--font-mono) !important; font-size: 10px !important; letter-spacing: .1em !important; color: var(--text-3) !important; font-weight: 500 !important; }
+.wcal-dnum { font-size: 17px !important; font-weight: 600 !important; letter-spacing: -.02em !important; color: var(--text-2) !important; margin-left: 0 !important; }
+.wcal-day.today .wcal-dnum { color: var(--text) !important; }
+.wcal-day.today .wcal-dow { color: var(--accent) !important; }
+/* le repère « Auj. » est conservé — un signal porté par la seule couleur
+   serait plus fragile — mais réduit à une mention discrète. */
+.wcal-today-dot { font-family: var(--font-mono) !important; font-size: 9px !important; color: var(--accent) !important; font-weight: 500 !important; letter-spacing: .06em !important; }
+
+.wcal-courses { gap: 9px !important; max-height: none !important; overflow: visible !important; }
+.wcal-empty { font-size: 12px !important; color: var(--text-3) !important; }
+
+/* Une entrée = un filet vertical de 1 px à la couleur de la matière, puis
+   la matière en petites capitales et le titre en dessous. La barre passe de
+   3 px arrondis à un filet net, posé en absolu. */
+.wcal-course { position: relative; padding-left: 9px !important; gap: 0 !important; display: block !important; }
+.wcal-course .wcc-bar, .wcc-bar {
+  position: absolute !important;
+  left: 0; top: 2px; bottom: 2px;
+  width: 1px !important;
+  border-radius: 0 !important;
+  opacity: .85;
+}
+.wcal-course .wcc-cat, .wcc-cat {
+  font-family: var(--font-mono) !important;
+  font-size: 9.5px !important;
+  letter-spacing: .09em !important;
+  font-weight: 500 !important;
+  opacity: .85;
+  margin-bottom: 0 !important;
+}
+.wcal-course .wcc-title, .wcc-title {
+  font-size: 12.5px !important;
+  font-weight: 400 !important;
+  color: var(--text-2) !important;
+  line-height: 1.35 !important;
+  margin-top: 2px !important;
+  display: block;
+}
+.wcal-course .wcc-j, .wcc-j {
+  display: inline !important;
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  color: var(--text-3) !important;
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  margin-left: 5px;
+  white-space: nowrap;
+}
+
+.wcal-foot {
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  color: var(--text-3) !important;
+  letter-spacing: .04em !important;
+  margin-top: auto !important;
+  padding-top: 10px !important;
+}
+.wcal-day.today .wcal-foot { color: var(--accent) !important; }
+
+/* La section « exercices » d'une journée n'existe pas dans la maquette :
+   elle garde sa séparation, alignée sur le nouveau filet. */
+.wcal-exos { border-top-color: var(--border-2) !important; }
