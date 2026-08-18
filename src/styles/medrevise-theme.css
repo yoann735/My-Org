@@ -938,3 +938,58 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) {
   [data-app="medrevise"] :is(.card, .today-cta, .cel-trend)::after { display: none; }
 }
+
+/* ─── 2 · RE-DESSIN DES ICÔNES AU SURVOL ──────────────────────
+   Version « signature » de la maquette (section UNIFICATION), pas la
+   variante ic-retrace : celle-ci exigerait un calque SVG dupliqué dans
+   chaque bouton et un JS mesurant getTotalLength() de chaque tracé, soit
+   modifier Icon.jsx et ses ~200 appels. Le rendu décrit — opacité de base
+   qui ne tombe jamais à zéro, montée progressive, violet vif — est celui de
+   la version CSS, obtenue sans une ligne de JavaScript.
+
+   L'effet est gouverné par l'INTERACTIVITÉ RÉELLE du DOM. Trois classes
+   s'ajoutent à la liste : ce sont des <div> cliquables sans role, leurs
+   icônes seraient restées figées alors que la ligne réagit déjà au survol. */
+:root, :root[data-theme="light"], :root[data-theme="dark"] { --accent-bright: #b57cff; }
+
+[data-app="medrevise"] :is(button, a, [role="button"], [role="link"], label[for], summary,
+  .sb-item, .tree-src-main, .lib-fiche):not(:disabled) svg {
+  opacity: .72;
+  transition: opacity .24s ease, color .24s ease;
+}
+[data-app="medrevise"] :is(button, a, [role="button"], [role="link"], label[for], summary,
+  .sb-item, .tree-src-main, .lib-fiche):not(:disabled):hover svg {
+  opacity: 1;
+  color: var(--accent-bright);
+  animation: mr-inkup .5s cubic-bezier(.32,.02,.2,1);
+}
+@keyframes mr-inkup { from { opacity: .62; } to { opacity: 1; } }
+
+/* GARDE-FOU 1, absent de la maquette : certaines icônes portent une couleur
+   SÉMANTIQUE posée en style inline sur un parent (statut d'exercice, teinte
+   de matière au calendrier, étiquettes). Les faire virer au violet leur
+   ferait perdre leur sens — elles gardent la leur. */
+[data-app="medrevise"] :is(button, a, [role="button"], [role="link"], label[for], summary,
+  .sb-item, .tree-src-main, .lib-fiche):hover :is([style*="color"]) svg,
+[data-app="medrevise"] :is(button, a, [role="button"], [role="link"], label[for], summary,
+  .sb-item, .tree-src-main, .lib-fiche):hover svg[style*="color"] { color: inherit; }
+
+/* GARDE-FOU 2 : sur les boutons pleins (CTA), le fond EST déjà l'accent —
+   une icône violette y deviendrait illisible. Elle garde l'encre sombre et
+   ne fait que gagner en opacité.
+
+   La première écriture de cette règle ne s'appliquait PAS, et c'est un piège
+   de spécificité qui mérite d'être noté : :is() prend la spécificité de son
+   argument le PLUS FORT. La règle principale contient `label[for]`, soit
+   (0,1,1), ce qui la porte à (0,4,2) — au-dessus des (0,4,1) de ce
+   garde-fou, qui perdait donc silencieusement. Constaté en mesurant la
+   couleur réelle de l'icône, pas en relisant le CSS. Le :not(:disabled)
+   ci-dessous rétablit l'ordre (0,5,1), et le !important verrouille. */
+[data-app="medrevise"] :is(.btn.primary, .sh-cta):not(:disabled):hover svg { color: inherit !important; }
+
+/* Une icône hors élément interactif reste strictement fixe. */
+[data-app="medrevise"] svg { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-app="medrevise"] :is(button, a, [role="button"], .sb-item, .tree-src-main, .lib-fiche):hover svg { animation: none; }
+}
