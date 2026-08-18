@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, Switch, matiereMeta, syncStatusLabel } from '../components/ui.jsx';
+import { isClassicUI, setClassicUI } from '../../shared/uiMode.js';
 import { wipeAll } from '../lib/storage.js';
 
 export function Reglages({ ctx }) {
@@ -14,6 +15,8 @@ export function Reglages({ ctx }) {
   const [addCatFor, setAddCatFor] = useState(null);
   const [catDraft, setCatDraft] = useState('');
   const [showArch, setShowArch] = useState(false);
+  // Lu une fois : la seule façon de le changer est l'interrupteur, qui recharge.
+  const uiClassique = isClassicUI();
 
   const active = db.sources.filter((s) => !s.archive);
   const archived = db.sources.filter((s) => s.archive);
@@ -184,6 +187,25 @@ export function Reglages({ ctx }) {
       )}
 
       <div className="settings-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 820 }}>
+        {/* Bascule d'apparence — voir src/shared/uiMode.js pour ce qu'elle
+            annule exactement et pourquoi elle recharge la page. Elle est ici
+            plutôt que dans un réglage propre à MedRevise parce que la couche
+            visuelle est GLOBALE : MealWeek et le hub la reçoivent aussi. */}
+        <Card title="Apparence" icon="sliders">
+          <div className="row spread" style={{ alignItems: 'center', gap: 12 }}>
+            <div>
+              <div style={{ fontWeight: 600 }}>Retrouver l'UI d'avant</div>
+              <div className="hint">Rend l'ancienne interface à l'identique — couleurs, polices, rayons, animations. Les fonctionnalités et les gestes ne changent pas.</div>
+            </div>
+            <Switch on={uiClassique} onChange={setClassicUI} />
+          </div>
+          <div className="hint" style={{ marginTop: 12 }}>
+            {uiClassique
+              ? 'Interface d\'origine active. Coupe l\'interrupteur pour revenir à la direction actuelle.'
+              : 'Direction actuelle active.'}
+            {' '}S'applique aussi à MealWeek et au hub, et recharge la page.
+          </div>
+        </Card>
         <Card title="Profil" icon="settings">
           <div className="row" style={{ gap: 14 }}>
             <div className="avatar" style={{ width: 56, height: 56, fontSize: 20, borderRadius: 16 }}>MR</div>

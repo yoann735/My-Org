@@ -21,6 +21,7 @@
    ============================================================ */
 import { useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { isClassicUI } from '../../shared/uiMode.js';
 import { Modal, LoaderL6 } from './ui.jsx';
 import { appendItemsToFiche, appendExosToChapitre } from '../lib/import.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
@@ -186,7 +187,7 @@ export function PasteJsonForm({ ctx, ficheId, chapitreId, done, setDone }) {
         <div className="imp-actions">
           <button className="btn ghost" onClick={() => setPreview(null)}>Retour</button>
           <button className="btn primary" onClick={confirm} disabled={busy}>
-            {busy ? <LoaderL6 inline label="Ajout en cours" /> : <Icon name="check" size={15} />}
+            {busy && !isClassicUI() ? <LoaderL6 inline label="Ajout en cours" /> : <Icon name="check" size={15} />}
             {isChapitre ? 'Ajouter au chapitre' : 'Ajouter à la fiche'}
           </button>
         </div>

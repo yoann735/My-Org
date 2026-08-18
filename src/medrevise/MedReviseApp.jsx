@@ -12,6 +12,7 @@ import { Bibliotheque } from './pages/Bibliotheque.jsx';
 import { Reglages } from './pages/Reglages.jsx';
 import { CarnetDashboard } from './pages/CarnetDashboard.jsx';
 import { initSpotlight } from './lib/spotlight.js';
+import { isClassicUI } from '../shared/uiMode.js';
 import { Session } from './session/Session.jsx';
 import { Feynman } from './session/Feynman.jsx';
 import { Exercice } from './session/Exercice.jsx';
@@ -624,6 +625,11 @@ export default function MedReviseApp({ themeApi, goHub }) {
   };
 
   if (!db) {
+    // Mode « UI d'avant » : l'écran de démarrage d'origine, une simple ligne de
+    // texte — le loader L6 est un composant de l'étape 3 du portage.
+    if (isClassicUI()) {
+      return <div className="soon"><div className="soon-logo"><Icon name="grad" size={30} /></div><p>Chargement de MedRevise…</p></div>;
+    }
     return (
       <div className="soon" data-app="medrevise">
         <div className="soon-logo"><Icon name="grad" size={30} /></div>

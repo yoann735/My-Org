@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
+import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, JBadge, matiereMeta, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, EtiquetteDot, detectDocKind, LoaderL6 } from '../components/ui.jsx';
 import {
   index, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, overdueByFiche, nextDate, fmtDay,
@@ -974,7 +975,7 @@ export function Reviser({ ctx }) {
                      et copié dans le presse-papier, pour le prompt « exos de chapitre ». */}
                   <button className="btn ghost sm" onClick={exportChapitre} disabled={chapExportBusy}
                     title="Copier le cours + surlignages + cartes de TOUTES les fiches de ce chapitre">
-                    {chapExportBusy ? <LoaderL6 inline label="Export en cours" /> : <Icon name={chapExport && !chapExport.error ? 'check' : 'copy'} size={14} />}
+                    {chapExportBusy && !isClassicUI() ? <LoaderL6 inline label="Export en cours" /> : <Icon name={chapExport && !chapExport.error ? 'check' : 'copy'} size={14} />}
                     {chapExportBusy ? 'Export…' : chapExport && !chapExport.error ? `Copié ✓ (${chapExport.count})` : 'Tout exporter'}
                   </button>
                   <button className="btn ghost sm" onClick={() => setShowAddChapExo(true)}>

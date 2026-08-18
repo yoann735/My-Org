@@ -16,10 +16,16 @@
    que soit le nombre de cartes. Rendu identique, coût constant.
    ============================================================ */
 
+import { isClassicUI } from '../../shared/uiMode.js';
+
 const SEL = '.card, .today-cta, .cel-trend';
 
 export function initSpotlight(root) {
   if (!root) return () => {};
+  // Mode « UI d'avant » : le halo est une animation de la direction Motion Lab,
+  // il n'existait pas. Garde-fou posé ICI et pas chez l'appelant, pour qu'un
+  // futur appel depuis un autre écran hérite du même contrat.
+  if (isClassicUI()) return () => {};
   // Respecte le réglage système : pas de halo si l'utilisateur a demandé
   // moins d'animation.
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return () => {};

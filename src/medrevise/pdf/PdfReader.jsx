@@ -42,6 +42,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { PDFDocument, rgb, BlendMode } from 'pdf-lib';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
+import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, detectDocKind, Modal, LoaderL6 } from '../components/ui.jsx';
 import { getBlob, putBlob, putBlobAt, getAll, put, remove, newHighlight, newTextEdit } from '../lib/storage.js';
 import { RICH_EXTENSIONS, richToHTML } from '../documents/lib/richtext.js';
@@ -845,7 +846,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
         <span title={copyTitle} style={{ display: 'inline-flex' }}>
           <button className="btn sm" onClick={copyPriority} disabled={!highlights.length}><Icon name={copiedCount ? 'check' : 'copy'} size={13} /> {copyLabel}</button>
         </span>
-        <button className="btn ghost sm" onClick={exportAnnotated} disabled={!highlights.length || exporting}>{exporting ? <LoaderL6 inline label="Export en cours" /> : <Icon name="filePdf" size={13} />} {exporting ? 'Export…' : 'Exporter PDF annoté'}</button>
+        <button className="btn ghost sm" onClick={exportAnnotated} disabled={!highlights.length || exporting}>{exporting && !isClassicUI() ? <LoaderL6 inline label="Export en cours" /> : <Icon name="filePdf" size={13} />} {exporting ? 'Export…' : 'Exporter PDF annoté'}</button>
       </div>
 
       {mode === 'edit' && activeEdit && editor && (
