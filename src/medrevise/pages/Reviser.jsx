@@ -973,7 +973,15 @@ export function Reviser({ ctx }) {
                   {/* « Tout exporter » du chapitre — même sortie que celui d'une fiche
                      (atelier « Voir le cours »), appliqué à TOUTES les fiches du chapitre
                      et copié dans le presse-papier, pour le prompt « exos de chapitre ». */}
-                  <button className="btn ghost sm" onClick={exportChapitre} disabled={chapExportBusy}
+                  {/* Handler ENVELOPPÉ, et il doit le rester. Passé par référence,
+                      React l'appelle avec l'événement de clic, qui arrive alors
+                      comme paramètre `chap` — or un SyntheticEvent est truthy,
+                      donc le repli `chap || chapitreSel` ne joue pas et l'export
+                      part sur un objet qui n'a ni id, ni nom, ni matiereId :
+                      quatre champs vides et zéro fiche. Inoffensif jusqu'à
+                      l'étape 4, où `chap` a été ajouté pour le menu contextuel
+                      sans que ce bouton soit mis à jour. */}
+                  <button className="btn ghost sm" onClick={() => exportChapitre()} disabled={chapExportBusy}
                     title="Copier le cours + surlignages + cartes de TOUTES les fiches de ce chapitre">
                     {chapExportBusy && !isClassicUI() ? <LoaderL6 inline label="Export en cours" /> : <Icon name={chapExport && !chapExport.error ? 'check' : 'copy'} size={14} />}
                     {chapExportBusy ? 'Export…' : chapExport && !chapExport.error ? `Copié ✓ (${chapExport.count})` : 'Tout exporter'}
