@@ -893,3 +893,48 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 /* La section « exercices » d'une journée n'existe pas dans la maquette :
    elle garde sa séparation, alignée sur le nouveau filet. */
 .wcal-exos { border-top-color: var(--border-2) !important; }
+
+/* ════════════════════════════════════════════════════════════
+   ÉTAPE 3 — ANIMATIONS
+   Toutes scopées sous [data-app="medrevise"] : le fichier de thème est
+   global depuis l'étape 1, mais ces effets sont pour MedRevise seule.
+   MealWeek ne peut pas les recevoir, par construction.
+   ════════════════════════════════════════════════════════════ */
+
+/* ─── 1 · HALO DE BORDURE QUI SUIT LE CURSEUR ─────────────────
+   Un ::after couvre l'élément, `padding: 1px` + masque en exclusion : seul
+   l'ANNEAU d'un pixel est peint. Son fond est un dégradé radial centré sur
+   la position du curseur (--mx/--my, écrites par lib/spotlight.js), donc la
+   portion éclairée se déplace le long du contour SANS SAUT — c'est le centre
+   du dégradé qui bouge, pas un bord qui s'allume.
+   Les rayons du dégradé sont en POURCENTAGES de l'élément : le halo est
+   proportionnel à la taille de la carte, sans calcul.
+   Couleur neutre : blanc discret, qui ne vire au violet qu'en toute fin de
+   course, à 3,5 %. */
+[data-app="medrevise"] :is(.card, .today-cta, .cel-trend) { position: relative; }
+[data-app="medrevise"] :is(.card, .today-cta, .cel-trend)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: radial-gradient(ellipse 95% 150% at var(--mx, 50%) var(--my, 50%),
+    rgba(255,255,255,.28) 0%,
+    rgba(244,242,255,.22) 20%,
+    rgba(214,206,246,.15) 42%,
+    rgba(178,160,235,.08) 64%,
+    color-mix(in srgb, var(--accent) 3.5%, transparent) 80%,
+    transparent 94%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: var(--gop, 0);
+  transition: opacity .2s linear;
+  pointer-events: none;
+}
+/* Réglage système « moins d'animation » : le halo disparaît (le JS ne se
+   branche même pas, ceci n'est que la ceinture). */
+@media (prefers-reduced-motion: reduce) {
+  [data-app="medrevise"] :is(.card, .today-cta, .cel-trend)::after { display: none; }
+}

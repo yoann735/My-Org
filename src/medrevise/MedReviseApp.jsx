@@ -11,6 +11,7 @@ import { Reviser } from './pages/Reviser.jsx';
 import { Bibliotheque } from './pages/Bibliotheque.jsx';
 import { Reglages } from './pages/Reglages.jsx';
 import { CarnetDashboard } from './pages/CarnetDashboard.jsx';
+import { initSpotlight } from './lib/spotlight.js';
 import { Session } from './session/Session.jsx';
 import { Feynman } from './session/Feynman.jsx';
 import { Exercice } from './session/Exercice.jsx';
@@ -120,6 +121,15 @@ export default function MedReviseApp({ themeApi, goHub }) {
     document.addEventListener('visibilitychange', onVisible);
     return () => { window.removeEventListener('online', onSync); document.removeEventListener('visibilitychange', onVisible); };
   }, [forceSync]);
+
+  // ÉTAPE 3 — halo de bordure qui suit le curseur. Branché une seule fois, dès
+  // que la base est chargée (donc que la racine [data-app] est dans le DOM) ;
+  // `!!db` et non `db` en dépendance, sinon chaque reload() rebrancherait tout.
+  const dbPret = !!db;
+  useEffect(() => {
+    if (!dbPret) return undefined;
+    return initSpotlight(document.querySelector('[data-app="medrevise"]'));
+  }, [dbPret]);
 
   const ctx = {
     theme, toggleTheme, goHub,
@@ -624,7 +634,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
 
   const Current = SCREENS[screen] || Dashboard;
   return (
-    <div className="app">
+    /* data-app : marqueur de portée posé à l'ÉTAPE 3. Le fichier de thème est
+       global depuis l'étape 1 ; les ANIMATIONS, elles, sont scopées sous cet
+       attribut — MealWeek ne peut donc pas les recevoir, par construction. */
+    <div className="app" data-app="medrevise">
       <StudySidebar current={screen} onNav={setScreen} expanded={expanded} onToggle={() => setExpanded((v) => !v)} onHub={goHub} ctx={ctx} />
       <div className="main">
         <Current ctx={ctx} key={screen} />
