@@ -680,3 +680,90 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   border-color: color-mix(in srgb, var(--crit) 78%, transparent) !important;
   color: #fff !important;
 }
+
+/* ─── LOT H · groupe 8 + « rappels des J » ────────────────────
+   Fil d'Ariane, tendance, étiquettes rapides, et la cloche de mise en pause. */
+
+.breadcrumb { font-size: 12px !important; color: var(--text-3) !important; gap: 7px !important; }
+.breadcrumb svg { opacity: .5; }
+
+.cel-trend {
+  background: var(--elev-0) !important;
+  border: 1px solid var(--border-2) !important;
+  border-radius: var(--r) !important;
+}
+.cel-trend-head { font-size: 11.5px !important; color: var(--text-3) !important; }
+
+.etq-quickset { gap: 7px !important; }
+.etq-quickset button { border-radius: var(--r) !important; }
+
+/* ─── La cloche des rappels J ─────────────────────────────────
+   ÉCART DÉLIBÉRÉ AVEC LA MAQUETTE, sur demande explicite.
+
+   Ce que la maquette proposait : un bouton au filet PLUS une pastille d'état
+   permanente en angle (accent quand actif, gris quand en pause). Deux
+   réserves, vérifiées dans le code :
+   · la pastille fait doublon — BellButton rend déjà deux icônes distinctes
+     (`bell` / `bellOff`, ui.jsx:530), la forme porte donc déjà l'état ;
+   · son anneau était figé à #08080A, la couleur du FOND DE PAGE. Or la
+     cloche vit dans une carte (--card: #000) : l'anneau s'y serait vu comme
+     un liseré plus clair, pas comme un détourage.
+   Elle est donc retirée, et la distinction d'état passe dans la COULEUR.
+
+   Au passage, un bug hérité de l'étape 1 : .src-mute.off utilisait
+   --accent-2, devenu violet — un cours en pause s'affichait dans la même
+   famille que l'état actif au survol, les deux états devenaient
+   indiscernables autrement que par la forme de l'icône. */
+.src-mute {
+  width: 34px !important;
+  height: 34px !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--r) !important;
+  color: var(--text-3) !important;      /* actif = état normal, discret */
+  box-shadow: none !important;
+  cursor: pointer;
+  transition: border-color .2s ease, background .2s ease, color .2s ease;
+}
+.src-mute:hover {
+  background: var(--elev-1) !important;
+  border-color: var(--border-2) !important;
+  color: var(--text) !important;
+}
+.src-mute svg { width: 17px; height: 17px; }
+/* En pause = une EXCEPTION, elle doit se voir : ambre, la couleur
+   « attention sans gravité » de la palette. */
+.src-mute.off { color: var(--warn) !important; }
+.src-mute.off:hover { color: color-mix(in srgb, var(--warn) 70%, #fff) !important; }
+
+/* Infobulle de la cloche (portail vers <body>, comme les menus du lot G).
+   Elle explique ce que « mettre en pause » implique : c'est le seul endroit
+   où ce texte existe, il doit être lisible. */
+.bell-tt-portal {
+  position: fixed;
+  z-index: 500;
+  max-width: 236px;
+  padding: 10px 12px !important;
+  padding-left: 26px !important;
+  background: var(--elev-0) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r) !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,.66) !important;
+  font-family: var(--font-sans) !important;
+  font-size: 12.5px !important;
+  line-height: 1.5 !important;
+  color: var(--text-2) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+.bell-tt-portal::before {
+  content: '';
+  position: absolute;
+  left: 12px; top: 15px;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
