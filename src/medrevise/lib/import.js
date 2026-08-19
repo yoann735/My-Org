@@ -29,12 +29,20 @@ export function findMatchingFiche(fiches, { matiereId, titre }) {
  * Crée une fiche standard + ses questions dans IndexedDB à partir d'un tableau
  * d'items v1.0 DÉJÀ parsé (flux « coller le JSON », Standard ou Rattrapage).
  * La synthèse est stockée sur la fiche (affichée sur l'onglet Feynman).
+ * `dossierId`/`ordre` (optionnels, absents des flux d'import historiques qui créent
+ * toujours à la racine de la matière) : rangement d'affichage POSÉ DÈS LA CRÉATION.
+ * Sert au dépôt d'un fichier directement sur une unité/un chapitre de l'arbre
+ * (Reviser.jsx#confirmFileDrop) — ctx.moveFicheTo ne peut pas servir là : il cherche
+ * la fiche dans le `db` du rendu courant, où celle qu'on vient de créer n'est pas
+ * encore, et sortirait sans rien faire.
  */
-export async function createFicheFromQuestions({ matiereId, titre, items, synthese, meta, pdfId, pdfName, htmlId, htmlName, startDate }) {
+export async function createFicheFromQuestions({ matiereId, titre, items, synthese, meta, pdfId, pdfName, htmlId, htmlName, startDate, dossierId = null, ordre }) {
   const ficheId = genId('f');
   const start = startDate || todayISO();
   const fiche = {
     id: ficheId, matiereId,
+    dossierId: dossierId || null,
+    ...(Number.isFinite(ordre) ? { ordre } : {}),
     titre: (titre || 'Fiche importée').trim(),
     sousTitre: 'Importée',
     type: 'standard',

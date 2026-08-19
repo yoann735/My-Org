@@ -1188,3 +1188,26 @@
   .tree-card { position: static; max-height: 340px; }
   .tree-resizer { display: none; }
 }
+
+/* ---------- IMPORT PAR GLISSER-DÉPOSER DE FICHIER SUR L'ARBRE (Réviser) ----------
+   Cible sous le curseur pendant qu'un fichier venu du Finder survole l'arbre. Rien
+   à voir avec .dnd-slot/.dnd-zone (glisser INTERNE des fiches, @dnd-kit) : les deux
+   ne peuvent pas être actifs en même temps (canaux d'événements disjoints). La plus
+   profonde des cibles l'emporte — chapitre > unité > matière > arbre. */
+.tree-card .file-drop-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--r, 10px);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+/* retour du dépôt (import réussi, ou raison de son échec) : une ligne discrète sous
+   l'en-tête, pas un bloc .err-mini qui mangerait la hauteur rendue à l'arbre. */
+.tree-drop-hint {
+  display: flex; align-items: center; gap: 7px;
+  margin: 0 10px 8px; padding: 7px 10px;
+  border-radius: var(--r, 9px);
+  font-size: 12px; font-weight: 600; line-height: 1.35;
+  background: color-mix(in srgb, var(--accent-2, var(--accent)) 12%, transparent);
+  color: var(--text-2);
+}
+.tree-drop-hint.ok { background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); }

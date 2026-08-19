@@ -12,13 +12,16 @@ import {
   index, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, overdueByFiche, nextDate, fmtDay,
   qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, carnetV1Questions, carnetV2Questions,
 } from '../lib/planning.js';
-import { shuffle } from '../lib/sm2.js';
+import { shuffle, todayISO } from '../lib/sm2.js';
 import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
 import { allCoches } from '../lib/anatSchema.js';
 import { putBlob, getBlob } from '../lib/storage.js';
 import { buildCourseExport, buildChapitreExport, docElFromHtml } from '../lib/courseExport.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
+import { useTreeFileDrop, FileDropModal } from '../components/TreeFileDrop.jsx';
+import { titreFromFile, titreFromFilename } from '../lib/fileTitre.js';
+import { createFicheFromQuestions } from '../lib/import.js';
 
 /** formate un temps par carte (ms) en texte court — secondes sous la minute,
     "Xm Ys" au-delà (rare pour une flashcard). */
@@ -657,6 +660,100 @@ export function Reviser({ ctx }) {
     if (!f) return null;
     return <div className="dnd-overlay-card tree-course on" style={{ padding: '9px 14px' }}><span className="tc-name">{f.titre}</span></div>;
   };
+  /* ============================================================
+     IMPORT ULTRA-RAPIDE — fichier glissé depuis le Finder DIRECTEMENT sur l'arbre.
+     Raccourci AJOUTÉ : l'import du tableau de bord et la Bibliothèque restent
+     inchangés, ce flux-ci ne fait que court-circuiter le trajet
+     « dashboard → import → Réviser → re-glisser ».
+     Neuf : la capture du fichier système + le spring-loaded (TreeFileDrop.jsx) et
+     la modale minimale. Le reste est le chemin d'import EXISTANT, à l'identique :
+     putBlob (storage.js) → createFicheFromQuestions avec items: [] (lib/import.js,
+     cas « fiche HTML seule » déjà utilisé par Dashboard.jsx quand aucun JSON n'est
+     collé), à qui l'on précise juste le dossier de destination (voir confirmFileDrop).
+     ============================================================ */
+  const [fileDrop, setFileDrop] = useState(null); // { file, kind, matiereId, dossierId, titre, date, ignored }
+  const [fileDropBusy, setFileDropBusy] = useState(false);
+  const [dropHint, setDropHint] = useState(null); // { text, ok } — message transitoire sous l'en-tête de l'arbre
+  const hintTimer = useRef(null);
+  const flashHint = (text, ok = false) => {
+    setDropHint({ text, ok });
+    if (hintTimer.current) clearTimeout(hintTimer.current);
+    hintTimer.current = setTimeout(() => setDropHint(null), 5000);
+  };
+  useEffect(() => () => { if (hintTimer.current) clearTimeout(hintTimer.current); }, []);
+
+  // survol prolongé : on DÉPLIE (jamais on ne replie) — mêmes états d'ouverture que
+  // le clic ordinaire, aucun modèle parallèle.
+  const springOpen = (s) => {
+    if (s.type === 'source') setOpenSrc((o) => (o[s.id] !== false ? o : { ...o, [s.id]: true }));
+    else setOpenDossier((o) => (o[s.id] ? o : { ...o, [s.id]: true }));
+  };
+
+  // un dépôt = UN fichier (v1) : le premier document exploitable, les autres sont
+  // annoncés dans la modale, jamais avalés en silence.
+  const onTreeFiles = async ({ files, matiereId, dossierId }) => {
+    if (!files.length) return;
+    if (!matiereId) {
+      // l'arbre ne montre que les matières qui portent déjà au moins une fiche
+      // (filtre inchangé) : une ligne de cours, ou le vide entre deux blocs, n'a
+      // pas de destination — on le dit plutôt que de ne rien faire.
+      flashHint('Aucune destination ici — dépose la fiche sur une matière, une unité ou un chapitre.');
+      return;
+    }
+    const docs = files.filter((f) => detectDocKind(f));
+    if (!docs.length) { flashHint('Seuls les fichiers HTML et PDF peuvent être importés ici.'); return; }
+    const file = docs[0];
+    const kind = detectDocKind(file);
+    // lecture SEULE du HTML (DOMParser, aucun script exécuté — voir lib/fileTitre.js)
+    const titre = await titreFromFile(file, kind);
+    setDropHint(null);
+    setFileDrop({ file, kind, matiereId, dossierId: dossierId || null, titre, date: todayISO(), ignored: files.length - 1 });
+  };
+
+  const fd = useTreeFileDrop({ onSpring: springOpen, onFiles: onTreeFiles });
+
+  // libellé de destination affiché dans la modale (Cours / Matière / Unité / Chapitre)
+  const fileDropDest = () => {
+    if (!fileDrop) return '';
+    const mat = ix.mById[fileDrop.matiereId] || null;
+    const src = mat ? db.sources.find((x) => x.id === mat.sourceId) : null;
+    const dos = fileDrop.dossierId ? db.dossiers.find((d) => d.id === fileDrop.dossierId) : null;
+    const parent = dos && dos.parentId ? db.dossiers.find((d) => d.id === dos.parentId) : null;
+    return [src && src.nom, mat && matiereMeta(mat).label, parent && parent.nom, dos && dos.nom].filter(Boolean).join(' / ');
+  };
+
+  const confirmFileDrop = async () => {
+    if (!fileDrop || fileDropBusy) return;
+    const { file, kind, matiereId, dossierId, titre, date } = fileDrop;
+    setFileDropBusy(true);
+    try {
+      const blobId = await putBlob(file);
+      // rang de fin dans le bucket visé — même tri que partout (ordre ?? 0), pour que
+      // la fiche importée se pose SOUS celles qui y sont déjà.
+      const voisines = db.fiches.filter((f) => f.matiereId === matiereId && (f.dossierId || null) === (dossierId || null) && !f.archive);
+      const ordre = voisines.length ? Math.max(...voisines.map((f) => f.ordre ?? 0)) + 1 : 0;
+      // le rattachement est posé DÈS LA CRÉATION (dossierId/ordre) plutôt qu'après coup
+      // par ctx.moveFicheTo : ce dernier cherche la fiche dans le `db` du rendu courant,
+      // où celle qu'on vient de créer ne figure pas encore — il sortirait sans rien faire.
+      const r = await createFicheFromQuestions({
+        matiereId, dossierId, ordre, items: [],
+        titre: titre.trim() || titreFromFilename(file.name),
+        htmlId: kind === 'html' ? blobId : null, htmlName: kind === 'html' ? file.name : null,
+        pdfId: kind === 'pdf' ? blobId : null, pdfName: kind === 'pdf' ? file.name : null,
+        startDate: date,
+      });
+      await ctx.reload();
+      setFileDrop(null);
+      setSelChapitre(null);
+      setSelIds([r.fiche.id]); // la fiche importée devient la sélection : son cours est à un clic
+      flashHint(`« ${r.fiche.titre} » importée.`, true);
+    } catch (e) {
+      flashHint("L'import a échoué — le fichier n'a pas pu être enregistré.");
+    } finally {
+      setFileDropBusy(false);
+    }
+  };
+
   // création d'une unité / d'un chapitre : créé immédiatement (nom par défaut) puis
   // bascule tout de suite en renommage — même geste que Bibliotheque.jsx, aux deux
   // niveaux.
@@ -730,7 +827,11 @@ export function Reviser({ ctx }) {
     const cdt = dueCountFiche(f.id);
     const ren = isRen('fiche', f.id);
     return (
-      <div key={f.id} data-fiche-row={f.id}>
+      /* déposer un fichier SUR une fiche = le déposer dans le dossier qui la
+         contient (pas de zone morte entre deux lignes). Aucun spring ici : il n'y
+         a rien à déplier. */
+      <div key={f.id} data-fiche-row={f.id} className={fd.dropClass('fiche:' + f.id).trim()}
+        {...fd.dropProps({ key: 'fiche:' + f.id, matiereId: mat.id, dossierId: f.dossierId || null })}>
         <DropSlot matiereId={mat.id} dossierId={f.dossierId || null} beforeId={f.id} />
         <DraggableFiche id={f.id} disabled={ren}>
           {ren ? (
@@ -805,7 +906,19 @@ export function Reviser({ ctx }) {
             <span className="tree-head-title"><Icon name="folder" size={15} /> Cours &amp; matières</span>
             <button className="tree-clear" onClick={() => setSelIds([])} disabled={empty}>Tout décocher</button>
           </div>
-          <div className="tree-scroll scroll" ref={treeScrollRef} onKeyDown={onTreeKeyDown}>
+          {/* retour du glisser-déposer de fichier : import réussi, ou raison pour
+             laquelle il n'a rien donné. S'efface seul au bout de 5 s. */}
+          {dropHint && (
+            <div className={'tree-drop-hint' + (dropHint.ok ? ' ok' : '')} role="status">
+              <Icon name={dropHint.ok ? 'check' : 'alert'} size={13} stroke={2.5} />
+              <span>{dropHint.text}</span>
+            </div>
+          )}
+          {/* le conteneur est lui-même une cible « sans destination » : un fichier lâché
+             entre deux blocs est AVALÉ (sinon le navigateur ouvrirait le fichier et
+             quitterait l'app en pleine session) puis expliqué, jamais silencieux. */}
+          <div className="tree-scroll scroll" ref={treeScrollRef} onKeyDown={onTreeKeyDown}
+            {...fd.dropProps({ key: 'tree' })}>
             <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
             {db.sources.filter((s) => !s.archive).map((src) => {
               const mats = matieresOf(src.id).filter((m) => fichesOf(m.id).length);
@@ -814,7 +927,9 @@ export function Reviser({ ctx }) {
               const on = src.rappelsJ !== false;
               return (
                 <div className={'tree-src' + (on ? '' : ' off')} key={src.id}>
-                  <div className="tree-src-row" onContextMenu={(e) => openCtxMenu(e, 'source', src.id)}
+                  <div className={'tree-src-row' + fd.dropClass('src:' + src.id)}
+                    {...fd.dropProps({ key: 'src:' + src.id, spring: { type: 'source', id: src.id } })}
+                    onContextMenu={(e) => openCtxMenu(e, 'source', src.id)}
                     onTouchStart={(e) => startPress(e, 'source', src.id)} onTouchEnd={cancelPress} onTouchMove={cancelPress} onTouchCancel={cancelPress}
                     title="Clic droit (ou appui long) : renommer / supprimer">
                     {isRen('source', src.id) ? (
@@ -854,7 +969,11 @@ export function Reviser({ ctx }) {
                     const unites = unitesOf(mat.id);
                     const mm = matiereMeta(mat);
                     return (
-                      <div className="tree-group" key={mat.id}>
+                      /* cible de REPLI de la matière (dossierId = null → racine) : les
+                         cibles plus profondes (unité, chapitre, ligne de fiche) arrêtent
+                         la propagation et l'emportent. */
+                      <div className={'tree-group' + fd.dropClass('mat:' + mat.id)} key={mat.id}
+                        {...fd.dropProps({ key: 'mat:' + mat.id, matiereId: mat.id })}>
                         <div className="tree-cat-row" onContextMenu={(e) => openCtxMenu(e, 'matiere', mat.id)}
                           onTouchStart={(e) => startPress(e, 'matiere', mat.id)} onTouchEnd={cancelPress} onTouchMove={cancelPress} onTouchCancel={cancelPress}
                           title="Clic droit (ou appui long) : renommer / supprimer">
@@ -889,7 +1008,8 @@ export function Reviser({ ctx }) {
                           const uniteFiches = allFiches.filter((f) => f.dossierId === u.id);
                           const uOpen = !!openDossier[u.id];
                           return (
-                            <div key={u.id}>
+                            <div key={u.id} className={fd.dropClass('dos:' + u.id).trim()}
+                              {...fd.dropProps({ key: 'dos:' + u.id, matiereId: mat.id, dossierId: u.id, spring: { type: 'dossier', id: u.id } })}>
                               <DossierRow dossier={u} isOpen={uOpen}
                                 fichesCount={fichesCountRecursif(allFiches, u.id)} sousDossiersCount={chapitres.length}
                                 isRenaming={isRen('dossier', u.id)} renameInput={<DossierRenameInput />}
@@ -912,7 +1032,8 @@ export function Reviser({ ctx }) {
                                     const chapFiches = allFiches.filter((f) => f.dossierId === c.id);
                                     const cOpen = !!openDossier[c.id];
                                     return (
-                                      <div key={c.id}>
+                                      <div key={c.id} className={fd.dropClass('dos:' + c.id).trim()}
+                                        {...fd.dropProps({ key: 'dos:' + c.id, matiereId: mat.id, dossierId: c.id, spring: { type: 'dossier', id: c.id } })}>
                                         <DossierRow dossier={c} isOpen={cOpen} fichesCount={chapFiches.length}
                                           exosCount={exosOfChapitre(c.id).length} onOpenExos={() => openChapitreExos(c.id)}
                                           isRenaming={isRen('dossier', c.id)} renameInput={<DossierRenameInput />}
@@ -1358,6 +1479,19 @@ export function Reviser({ ctx }) {
         const d = db.dossiers.find((x) => x.id === dossierMenu.dossierId);
         return d ? <ContextMenu x={dossierMenu.x} y={dossierMenu.y} onClose={() => setDossierMenu(null)} items={dossierMenuItems(d)} /> : null;
       })()}
+
+      {/* pop-up MINIMAL de l'import par glisser-déposer : titre pré-rempli
+         (modifiable) + date de J0, rien d'autre. Rien n'est écrit avant « Importer ». */}
+      {fileDrop && (
+        <FileDropModal
+          file={fileDrop.file} kind={fileDrop.kind} destLabel={fileDropDest()}
+          titre={fileDrop.titre} onTitre={(v) => setFileDrop((d) => ({ ...d, titre: v }))}
+          date={fileDrop.date} onDate={(v) => setFileDrop((d) => ({ ...d, date: v }))}
+          ignored={fileDrop.ignored} busy={fileDropBusy}
+          onCancel={() => { if (!fileDropBusy) setFileDrop(null); }}
+          onConfirm={confirmFileDrop}
+        />
+      )}
 
       {addItemFiche && ix.fById[addItemFiche] && (
         <AddItemModal ctx={ctx} ficheId={addItemFiche} ficheTitre={ix.fById[addItemFiche].titre} onClose={() => setAddItemFiche(null)} />
