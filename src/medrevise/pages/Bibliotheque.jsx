@@ -12,6 +12,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
+import { useTreeOpenState } from '../components/useTreeOpenState.js';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
 import { docKind, DOC_META, createTranscript, deleteTranscript } from '../documents/lib/documents.js';
@@ -53,9 +54,13 @@ export function Bibliotheque({ ctx }) {
   // dossierMenu = menu « … » d'une ligne unité OU chapitre (renommer/supprimer),
   // moveMenu = sous-menu « Déplacer vers » d'une fiche (racine, une unité, ou un
   // chapitre de sa matière), openDossier = replié/déplié — keyé par id, donc commun
-  // aux deux niveaux (mémoire seulement, comme openFiche), confirmDeleteDossier =
-  // confirmation avant suppression (les fiches contenues remontent d'un niveau).
-  const [openDossier, setOpenDossier] = useState({});
+  // aux deux niveaux, et désormais MÉMORISÉ (stats) et PARTAGÉ avec Réviser : un
+  // chapitre ouvert ici reste ouvert là-bas, et survit au rechargement. Voir
+  // useTreeOpenState.js. `sources: false` — cet écran n'affiche pas le repli des
+  // cours, il ne doit donc pas toucher à cette part de l'état.
+  // confirmDeleteDossier = confirmation avant suppression (les fiches contenues
+  // remontent d'un niveau).
+  const { openDossier, setOpenDossier } = useTreeOpenState(ctx, { sources: false });
   const [dossierMenu, setDossierMenu] = useState(null); // { x, y, dossierId }
   const [moveMenu, setMoveMenu] = useState(null); // { x, y, ficheId }
   const [confirmDeleteDossier, setConfirmDeleteDossier] = useState(null); // dossier à supprimer

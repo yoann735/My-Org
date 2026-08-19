@@ -22,6 +22,7 @@ import { AddItemModal } from '../components/AddItemForm.jsx';
 import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
 import { useTreeFileDrop, FileDropModal } from '../components/TreeFileDrop.jsx';
 import { titreFromFile, titreFromFilename } from '../lib/fileTitre.js';
+import { useTreeOpenState, ancestorDossierIds } from '../components/useTreeOpenState.js';
 import { createFicheFromQuestions } from '../lib/import.js';
 
 /** formate un temps par carte (ms) en texte court — secondes sous la minute,
@@ -112,7 +113,19 @@ export function Reviser({ ctx }) {
   const { db } = ctx;
   const ix = useMemo(() => index(db), [db]);
   const [selIds, setSelIds] = useState(() => (ctx.focusFiche ? [ctx.focusFiche] : (db.fiches[0] ? [db.fiches[0].id] : [])));
-  const [openSrc, setOpenSrc] = useState(() => Object.fromEntries(db.sources.map((s) => [s.id, true])));
+  // dépliage de l'arbre (cours + unités + chapitres) : MÉMORISÉ dans stats, partagé
+  // avec la Bibliothèque — voir useTreeOpenState.js. Quitter l'écran ou recharger la
+  // page ne referme plus rien. `alsoOpen` : UNIQUEMENT quand un autre écran nous
+  // envoie explicitement vers une fiche (ctx.focusFiche), ses dossiers sont dépliés
+  // d'office — sinon on atterrirait sur une sélection correcte mais invisible.
+  // Hors de ce cas, l'état mémorisé fait foi et n'est JAMAIS forcé : un dossier que
+  // l'on vient de replier soi-même doit rester replié au retour.
+  const initialOpen = useMemo(
+    () => (ctx.focusFiche ? ancestorDossierIds(db.fiches.find((f) => f.id === ctx.focusFiche), db.dossiers) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const { openDossier, setOpenDossier, openSrc, setOpenSrc } = useTreeOpenState(ctx, { sources: true, alsoOpen: initialOpen });
   const [renaming, setRenaming] = useState(null); // { type: 'source'|'matiere'|'dossier'|'fiche', id }
   const [draft, setDraft] = useState('');
   const [ctxMenu, setCtxMenu] = useState(null); // { type: 'source'|'matiere'|'fiche', id, x, y }
@@ -124,12 +137,12 @@ export function Reviser({ ctx }) {
   // sous-dossiers d'une matière (même store/`fiche.dossierId` que Bibliotheque.jsx —
   // pur rangement d'affichage, voir MedReviseApp.jsx/storage.js), rendu via le MÊME
   // composant DossierRow (ui.jsx) que la Bibliothèque — visuellement identique par
-  // construction. openDossier = déplié/replié (mémoire seulement, comme openSrc) ;
+  // construction. openDossier (déplié/replié) vient désormais de useTreeOpenState
+  // ci-dessus : PERSISTÉ, plus « mémoire seulement » ;
   // dossierMenu = menu « … » (Renommer/Supprimer) d'un dossier, MÊME mécanique que
   // Bibliotheque.jsx (pas le menu contextuel générique matière/source/fiche
   // ci-dessus, qui reste au clic droit) ; moveMenu = sous-menu « Déplacer vers »
   // ouvert depuis le menu contextuel d'une fiche.
-  const [openDossier, setOpenDossier] = useState({});
   const [dossierMenu, setDossierMenu] = useState(null); // { x, y, dossierId }
   const [moveMenu, setMoveMenu] = useState(null); // { x, y, ficheId }
   // EXERCICES DE CHAPITRE (chantier 2) : un chapitre peut porter ses propres
@@ -152,15 +165,37 @@ export function Reviser({ ctx }) {
   const [showAddChapExo, setShowAddChapExo] = useState(false);
   const [shiftStart, setShiftStart] = useState(null); // { type: 'source'|'fiche', id, nom }
 
-  // remonte la fiche restaurée (ci-dessus) dans le viewport au montage — sans ça
-  // la sélection est correcte mais reste hors-écran si elle était scrollée bas.
+  /* Au montage : on retrouve l'arbre EXACTEMENT là où on l'avait laissé.
+     1. la position de défilement mémorisée (stats.treeScrollTop) est reposée ;
+     2. puis la fiche restaurée est amenée dans le viewport — `block: 'nearest'` ne
+        bouge rien si elle y est déjà, donc la position du point 1 est conservée
+        dans le cas normal, et seule une sélection hors-écran provoque un ajustement.
+     Ses dossiers sont déjà dépliés (initialOpen ci-dessus), sa ligne existe donc. */
   const treeScrollRef = useRef(null);
   useEffect(() => {
+    const box = treeScrollRef.current;
+    if (!box) return;
+    const top = (ctx.stats && ctx.stats.treeScrollTop) || 0;
+    if (top) box.scrollTop = top;
     if (selIds.length !== 1) return;
-    const el = treeScrollRef.current?.querySelector(`[data-fiche-row="${selIds[0]}"]`);
+    const el = box.querySelector(`[data-fiche-row="${selIds[0]}"]`);
     if (el) el.scrollIntoView({ block: 'nearest' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* Mémorisation de la position de défilement — écrite à l'ARRÊT du défilement
+     (débounce), pas à chaque pixel : `stats` part dans l'outbox de synchro à chaque
+     écriture, une par geste suffit largement. */
+  const scrollSaveTimer = useRef(null);
+  const onTreeScroll = (e) => {
+    const top = Math.round(e.currentTarget.scrollTop);
+    if (scrollSaveTimer.current) clearTimeout(scrollSaveTimer.current);
+    scrollSaveTimer.current = setTimeout(() => {
+      scrollSaveTimer.current = null;
+      if (ctx.stats && (ctx.stats.treeScrollTop || 0) !== top) ctx.saveStats({ ...ctx.stats, treeScrollTop: top });
+    }, 600);
+  };
+  useEffect(() => () => { if (scrollSaveTimer.current) clearTimeout(scrollSaveTimer.current); }, []);
 
   // fermeture du popover QCM : clic ailleurs, Échap, ou défilement — mêmes gestes
   // que ContextMenu (ui.jsx), pour qu'un popover ne reste jamais ouvert derrière.
@@ -947,7 +982,7 @@ export function Reviser({ ctx }) {
           {/* le conteneur est lui-même une cible « sans destination » : un fichier lâché
              entre deux blocs est AVALÉ (sinon le navigateur ouvrirait le fichier et
              quitterait l'app en pleine session) puis expliqué, jamais silencieux. */}
-          <div className="tree-scroll scroll" ref={treeScrollRef} onKeyDown={onTreeKeyDown}
+          <div className="tree-scroll scroll" ref={treeScrollRef} onKeyDown={onTreeKeyDown} onScroll={onTreeScroll}
             {...fd.dropProps({ key: 'tree' })}>
             <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
             {db.sources.filter((s) => !s.archive).map((src) => {

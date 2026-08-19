@@ -524,6 +524,18 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   font-weight: 500 !important;
   transition: border-color .2s ease, color .2s ease, background .2s ease;
 }
+/* AU REPOS (aucun glisser en cours) une zone de dépôt n'est qu'une bande d'attente
+   de 6 px : PAS de cadre du tout. La règle .dnd-zone ci-dessus étant en !important,
+   elle écrasait `.dnd-zone.idle { border: none }` (etudes.css, sans !important) —
+   d'où un rectangle pointillé permanent sous « Nouvelle unité » / « Nouveau
+   chapitre », visible en permanence alors que rien n'est glissé. Neutralisé ici,
+   dans la couche qui a introduit le !important, plutôt qu'en surenchérissant
+   ailleurs. Le cadre revient normalement dès qu'un glisser commence (.idle tombe). */
+.dnd-zone.idle {
+  border: none !important;
+  background: none !important;
+  padding: 0 !important;
+}
 .dnd-zone.over {
   background: color-mix(in srgb, var(--accent) 5%, transparent) !important;
   border-color: color-mix(in srgb, var(--accent) 48%, transparent) !important;
