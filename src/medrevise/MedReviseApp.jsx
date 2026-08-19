@@ -26,7 +26,7 @@ import {
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 import { todayISO, startAdaptive } from './lib/sm2.js';
-import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor } from './lib/planning.js';
+import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor, linkedV2Questions } from './lib/planning.js';
 import { useIsMobile } from '../shared/hooks/useMediaQuery.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
 
@@ -131,6 +131,33 @@ export default function MedReviseApp({ themeApi, goHub }) {
     if (!dbPret) return undefined;
     return initSpotlight(document.querySelector('[data-app="medrevise"]'));
   }, [dbPret]);
+
+  /* ============================================================
+     SUPPRESSION EN MASSE des cartes d'UN type, dans UNE fiche (ou dans un chapitre
+     pour les exos de chapitre). Un seul chemin pour les quatre types — le MÊME que
+     la suppression unitaire (deleteQuestion → remove() → tombstone + outbox, donc
+     propagé aux autres appareils), juste appliqué au lot.
+     - putBackup AVANT toute suppression (convention des mutations de masse, cf.
+       deleteDossier/resetJ plus haut) : le lot exact part dans le store `backups`.
+     - PÉRIMÈTRE STRICT : ce type, cette fiche. Les autres types de la fiche et les
+       autres fiches ne sont jamais touchés (`ficheId` + `type` dans le filtre).
+     - SEULE interaction : les V2 du carnet d'erreurs liées aux flashcards supprimées
+       (sourceErrorId) partent avec elles — exactement la cascade déjà appliquée par
+       removeFromCarnet, une V2 n'ayant pas de sens sans sa V1. Elles sont comptées et
+       ANNONCÉES dans la modale de confirmation (Reviser.jsx), jamais en douce. Le
+       reste du carnet (V2 d'autres fiches, V1 non supprimées) n'est pas concerné.
+     @returns {number} nombre de cartes du type supprimées (hors V2 en cascade)
+     ============================================================ */
+  const deleteCardsOfType = async ({ ficheId = null, chapitreId = null, type }) => {
+    const cibles = db.questions.filter((q) => q.type === type
+      && (ficheId ? q.ficheId === ficheId : q.chapitreId === chapitreId));
+    if (!cibles.length) return 0;
+    const v2 = type === 'flashcard' ? linkedV2Questions(db, cibles.map((q) => q.id)) : [];
+    await putBackup(`pre-delete-${type}-${ficheId || chapitreId}-${Date.now()}`, { questions: cibles, carnetV2: v2 });
+    await Promise.all([...cibles, ...v2].map((q) => remove('questions', q.id)));
+    await reload();
+    return cibles.length;
+  };
 
   const ctx = {
     theme, toggleTheme, goHub,
@@ -518,21 +545,15 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await reload();
     },
     deleteQuestion: async (id) => { await remove('questions', id); await reload(); },
-    // suppression en masse : tous les exercices (type 'exercice') d'UNE fiche, sans
-    // toucher aux QCM/flashcards/Feynman de la même fiche. Même canal durable que
-    // deleteQuestion (remove() → tombstone + outbox), juste appliqué à tout le lot.
-    deleteAllExercices: async (ficheId) => {
-      const exos = db.questions.filter((q) => q.ficheId === ficheId && q.type === 'exercice');
-      await Promise.all(exos.map((q) => remove('questions', q.id)));
-      await reload();
-    },
+    // suppression en masse des cartes d'UN type d'UNE fiche ('qcm' | 'flashcard' |
+    // 'feynman' | 'exercice') — voir deleteCardsOfType ci-dessus : putBackup, canal
+    // durable, périmètre strict (ce type, cette fiche).
+    deleteAllOfType: (ficheId, type) => deleteCardsOfType({ ficheId, type }),
+    // raccourci historique (section « Exercices » d'une fiche) : même chemin, type figé.
+    deleteAllExercices: (ficheId) => deleteCardsOfType({ ficheId, type: 'exercice' }),
     // pendant du précédent pour un CHAPITRE (exos rattachés par chapitreId, voir
-    // storage.js#newChapitreExo) — même canal durable, juste l'autre rattachement.
-    deleteAllExosChapitre: async (chapitreId) => {
-      const exos = db.questions.filter((q) => q.chapitreId === chapitreId && q.type === 'exercice');
-      await Promise.all(exos.map((q) => remove('questions', q.id)));
-      await reload();
-    },
+    // storage.js#newChapitreExo) — même chemin, juste l'autre rattachement.
+    deleteAllExosChapitre: (chapitreId) => deleteCardsOfType({ chapitreId, type: 'exercice' }),
     // carnet d'erreurs v2 (étape 2) : statut d'une V2 ('a_revoir'|'resolu'|
     // 'pause') — ne touche JAMAIS plan/cursor/historique (une V2 n'en a pas,
     // voir storage.js#newErrorCard), juste son état d'affichage dans le

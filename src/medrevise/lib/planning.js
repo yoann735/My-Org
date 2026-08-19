@@ -502,6 +502,17 @@ export function carnetV1Questions(db) {
 export function carnetV2Questions(db, statut) {
   return (db.questions || []).filter((q) => q.type === 'flashcard_erreur' && (!statut || q.statut === statut));
 }
+/**
+ * V2 du carnet RATTACHÉES à un lot de V1 (par sourceErrorId). Une V2 n'a pas de sens
+ * sans sa V1 : c'est déjà la règle de MedReviseApp.jsx#removeFromCarnet, qui supprime
+ * les V2 liées quand une V1 quitte le carnet. Exporté ici pour que la suppression en
+ * masse (deleteCardsOfType) et le COMPTE annoncé dans sa modale de confirmation
+ * (Reviser.jsx) lisent rigoureusement la même relation.
+ */
+export function linkedV2Questions(db, v1Ids) {
+  const set = v1Ids instanceof Set ? v1Ids : new Set(v1Ids);
+  return (db.questions || []).filter((q) => q.type === 'flashcard_erreur' && set.has(q.sourceErrorId));
+}
 
 /* ============================================================
    « Cours à revoir » (Dashboard) — repérage des fiches à retravailler, basé

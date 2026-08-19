@@ -11,6 +11,7 @@ import { EdTop, JBadge, matiereMeta, ContextMenu, ConfirmModal, DateActionModal,
 import {
   index, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, overdueByFiche, nextDate, fmtDay,
   qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, carnetV1Questions, carnetV2Questions,
+  linkedV2Questions,
 } from '../lib/planning.js';
 import { shuffle, todayISO } from '../lib/sm2.js';
 import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
@@ -32,6 +33,21 @@ const formatCardTime = (ms) => {
   const rest = s % 60;
   return rest ? `${m}m ${rest}s` : `${m}m`;
 };
+
+/* Libellés des QUATRE types de cartes d'une fiche — servent au menu « ⋯ » ET à la
+   modale de confirmation, pour que le mot et le nombre annoncés soient exactement les
+   mêmes des deux côtés. `autres` = ce que la suppression NE touche PAS, énoncé
+   explicitement dans la modale (le périmètre est la première chose à vérifier avant
+   de confirmer une suppression irréversible). */
+const CARD_TYPES = {
+  qcm: { un: 'le QCM', plur: 'QCM', vSing: 'sera supprimé', vPlur: 'seront supprimés', autres: 'flashcards, Feynman et exercices' },
+  flashcard: { un: 'la flashcard', plur: 'flashcards', vSing: 'sera supprimée', vPlur: 'seront supprimées', autres: 'QCM, Feynman et exercices' },
+  feynman: { un: 'le Feynman', plur: 'Feynman', vSing: 'sera supprimé', vPlur: 'seront supprimés', autres: 'QCM, flashcards et exercices' },
+  exercice: { un: "l'exercice", plur: 'exercices', vSing: 'sera supprimé', vPlur: 'seront supprimés', autres: 'QCM, flashcards et Feynman' },
+};
+/** « les 23 flashcards » / « la flashcard » — jamais « les 1 flashcard ». */
+const cardLot = (type, n) => (n > 1 ? `les ${n} ${CARD_TYPES[type].plur}` : CARD_TYPES[type].un);
+const capFirst = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 
 /* ÉTAPE 3 — largeur de la liste « Cours & matières ».
    Elle était censée être pilotée par --tree-col : cette variable CSS n'a JAMAIS été
@@ -607,7 +623,21 @@ export function Reviser({ ctx }) {
   // ci-dessus) — canal durable ctx.deleteQuestion/deleteAllExercices (remove() → vrai
   // tombstone propagé par l'outbox), donc bien irréversible tout de suite.
   const askDeleteExercice = (item) => setConfirmDel({ type: 'exercice', id: item.id, nom: item.theme || item.concept || 'Exercice' });
-  const askDeleteAllExercices = () => { if (!primary) return; setConfirmDel({ type: 'exercices-all', id: primary.id, nom: primary.titre, exoCount: exoItems.length }); };
+  /* SUPPRESSION EN MASSE des cartes d'un type de LA fiche affichée (menu « ⋯ » du
+     bandeau, et bouton « Tout supprimer » de la section Exercices — même chemin).
+     Rien n'est supprimé ici : on ne fait qu'ouvrir la modale de confirmation, avec le
+     compte EXACT. `v2Count` = flashcards d'erreur du carnet liées aux cartes visées
+     (flashcards seulement) : elles partent en cascade, comme dans removeFromCarnet, et
+     sont donc annoncées. Voir MedReviseApp.jsx#deleteCardsOfType (putBackup + périmètre). */
+  const cardsOfType = (type) => selItems.filter((q) => q.type === type);
+  const askDeleteCards = (type) => {
+    if (!primary || multi) return;
+    const lot = cardsOfType(type);
+    if (!lot.length) return;
+    const v2Count = type === 'flashcard' ? linkedV2Questions(db, lot.map((q) => q.id)).length : 0;
+    setConfirmDel({ type: 'cards-all', id: primary.id, nom: primary.titre, cardType: type, count: lot.length, v2Count });
+  };
+  const askDeleteAllExercices = () => askDeleteCards('exercice');
   // pendant pour un CHAPITRE (exos rattachés par chapitreId) — même canal durable.
   const askDeleteAllExosChapitre = () => { if (!chapitreSel) return; setConfirmDel({ type: 'exos-chapitre-all', id: chapitreSel.id, nom: chapitreSel.nom, exoCount: chapExos.length }); };
   // textes de suppression d'un dossier (unité OU chapitre) — partagés avec
@@ -623,7 +653,7 @@ export function Reviser({ ctx }) {
     else if (confirmDel.type === 'dossier') await ctx.deleteDossier(confirmDel.id);
     else if (confirmDel.type === 'fiche') await ctx.setFicheArchived(confirmDel.id, true);
     else if (confirmDel.type === 'exercice') await ctx.deleteQuestion(confirmDel.id);
-    else if (confirmDel.type === 'exercices-all') await ctx.deleteAllExercices(confirmDel.id);
+    else if (confirmDel.type === 'cards-all') await ctx.deleteAllOfType(confirmDel.id, confirmDel.cardType);
     else if (confirmDel.type === 'exos-chapitre-all') await ctx.deleteAllExosChapitre(confirmDel.id);
     setConfirmDel(null);
   };
@@ -1467,6 +1497,19 @@ export function Reviser({ ctx }) {
             icon: primary.rappelsJ !== false ? 'bellOff' : 'bell',
             onClick: () => ctx.setFicheRappelsJ(primary.id, !(primary.rappelsJ !== false)),
           },
+          /* VIDER LA FICHE PAR TYPE. Une entrée PAR TYPE (jamais un « tout supprimer »
+             global) : on peut repartir de zéro sur les flashcards sans toucher aux QCM.
+             Le compte exact est dans le libellé, donc lisible AVANT même d'ouvrir la
+             modale ; un type sans carte n'apparaît pas (pas d'entrée morte). Le clic
+             n'ouvre que la confirmation — voir askDeleteCards. */
+          ...Object.keys(CARD_TYPES)
+            .map((type) => ({ type, n: cardsOfType(type).length }))
+            .filter(({ n }) => n > 0)
+            .map(({ type, n }) => ({
+              label: `Supprimer ${cardLot(type, n)}`,
+              icon: 'trash', danger: true,
+              onClick: () => askDeleteCards(type),
+            })),
         ]} />
       )}
 
@@ -1526,8 +1569,8 @@ export function Reviser({ ctx }) {
             : confirmDel.type === 'dossier' ? dossierDelTexts.title
             : confirmDel.type === 'fiche' ? 'Supprimer cette fiche ?'
             : confirmDel.type === 'exercice' ? 'Supprimer cet exercice ?'
-            : confirmDel.type === 'exos-chapitre-all' ? 'Supprimer tous les exercices du chapitre ?'
-            : 'Supprimer tous les exercices ?'}
+            : confirmDel.type === 'cards-all' ? `Supprimer ${cardLot(confirmDel.cardType, confirmDel.count)} de cette fiche ?`
+            : 'Supprimer tous les exercices du chapitre ?'}
           body={confirmDel.type === 'source'
             ? `« ${confirmDel.nom} » sera déplacé dans la corbeille — restaurable depuis Réglages.`
             : confirmDel.type === 'matiere'
@@ -1540,9 +1583,9 @@ export function Reviser({ ctx }) {
                   ? `« ${confirmDel.nom} » sera déplacée dans la corbeille — restaurable depuis Réglages.`
                   : confirmDel.type === 'exercice'
                     ? `« ${confirmDel.nom} » sera supprimé définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible — pas de corbeille pour les exercices.`
-                    : confirmDel.type === 'exos-chapitre-all'
-                      ? `Les ${confirmDel.exoCount} exercice${confirmDel.exoCount > 1 ? 's' : ''} du chapitre « ${confirmDel.nom} » seront supprimés définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible. Les fiches du chapitre et LEURS propres exercices ne sont pas concernés.`
-                      : `Les ${confirmDel.exoCount} exercice${confirmDel.exoCount > 1 ? 's' : ''} de « ${confirmDel.nom} » seront supprimés définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible. Les QCM, flashcards et Feynman de cette fiche ne sont pas concernés.`}
+                    : confirmDel.type === 'cards-all'
+                    ? `${capFirst(cardLot(confirmDel.cardType, confirmDel.count))} de « ${confirmDel.nom} » ${confirmDel.count > 1 ? CARD_TYPES[confirmDel.cardType].vPlur : CARD_TYPES[confirmDel.cardType].vSing} définitivement (sur tous tes appareils, dès la prochaine synchro). Action irréversible depuis l'app — une sauvegarde du lot est enregistrée juste avant, dans la base locale. Les ${CARD_TYPES[confirmDel.cardType].autres} de cette fiche ne sont pas concernés, ni les autres fiches.${confirmDel.v2Count > 0 ? ` ${confirmDel.v2Count} flashcard${confirmDel.v2Count > 1 ? 's' : ''} d'erreur du carnet, liée${confirmDel.v2Count > 1 ? 's' : ''} à ces cartes, ${confirmDel.v2Count > 1 ? 'seront supprimées' : 'sera supprimée'} avec elles.` : ''}`
+                    : `Les ${confirmDel.exoCount} exercice${confirmDel.exoCount > 1 ? 's' : ''} du chapitre « ${confirmDel.nom} » seront supprimés définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible. Les fiches du chapitre et LEURS propres exercices ne sont pas concernés.`}
           confirmLabel={dossierDelTexts ? dossierDelTexts.confirmLabel : 'Supprimer'}
           danger
           onConfirm={confirmDelete}
