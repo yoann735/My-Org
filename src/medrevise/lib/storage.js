@@ -200,6 +200,20 @@ export async function setExoPrompts(overrides) {
   queuePush('prompts', 'exoPrompts', rec, updatedAt);
   return rec;
 }
+/* ---- surcharge du prompt "Exercices de chapitre" (lib/chapExoPrompt.js) —
+   même mécanique et MÊME store `S.prompts` que les deux au-dessus, TROISIÈME
+   clé distincte ('chapExoPrompts'). Une seule entrée à l'intérieur (id
+   CHAP_EXO_ID) au lieu de quatre matières : ce prompt est unique et sert les
+   4 matières, mais la FORME stockée reste { clé → texte }, donc rien de
+   particulier ici. */
+export async function getChapExoPrompts() { return (await get('chapExoPrompts', S.prompts)) || {}; }
+export async function setChapExoPrompts(overrides) {
+  const updatedAt = new Date().toISOString();
+  const rec = { ...overrides, id: 'chapExoPrompts', updatedAt };
+  await set('chapExoPrompts', rec, S.prompts);
+  queuePush('prompts', 'chapExoPrompts', rec, updatedAt);
+  return rec;
+}
 
 /* Item v1.0 (schéma unifié) → enregistrement planifiable en base. `item` est
    déjà un item "superset" (v1.0 + champs legacy) produit par toInternalItem().

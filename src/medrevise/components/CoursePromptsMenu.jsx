@@ -5,18 +5,25 @@
    Ce bouton ne génère RIEN : il copie/affiche/édite un texte figé, réutilise
    le même mécanisme presse-papier que "Tout exporter" (navigator.clipboard).
 
-   Deux VARIANTES du même composant, sélectionnées par la prop `kind` :
+   Trois VARIANTES du même composant, sélectionnées par la prop `kind` :
    - 'theorie' (défaut) : DEFAULT_PROMPTS/parsePromptsMd (lib/coursePrompts.js),
      surcharges ctx.promptOverrides, séparateurs "=== PROMPT XXX ===".
    - 'pratique' (exercices, méthode des J des exos) : DEFAULT_EXO_PROMPTS/
      parseExoPromptsMd (lib/exoPrompts.js), surcharges ctx.exoPromptOverrides
      (stockage SÉPARÉ, storage.js#getExoPrompts/setExoPrompts), séparateurs
-     "## N — MATIÈRE — PRATIQUE" + bloc de code. Les deux variantes ne se
-     mélangent JAMAIS (stockage et contenu par défaut distincts).
+     "## N — MATIÈRE — PRATIQUE" + bloc de code.
+   - 'chapitre' (exercices couvrant TOUT un chapitre) : DEFAULT_CHAP_EXO_PROMPTS
+     (lib/chapExoPrompt.js), surcharges ctx.chapExoPromptOverrides (stockage
+     encore SÉPARÉ, storage.js#getChapExoPrompts/setChapExoPrompts). Seule
+     variante à n'avoir qu'UNE entrée au lieu de quatre : ce prompt est unique
+     et sert les 4 matières (il détecte la matière depuis les fiches collées),
+     donc pas de découpage par matière et pas de "Modifier les 4".
+   Les variantes ne se mélangent JAMAIS (stockage et contenu par défaut
+   distincts).
 
-   Contenu par défaut = fourni par l'utilisateur, figé dans lib/coursePrompts.js
-   ou lib/exoPrompts.js. Une surcharge éditée par l'utilisateur (persistée via
-   outbox durable) prime toujours sur le défaut ; "Réinitialiser" retire la
+   Contenu par défaut = fourni par l'utilisateur, figé dans lib/coursePrompts.js,
+   lib/exoPrompts.js ou lib/chapExoPrompt.js. Une surcharge éditée par
+   l'utilisateur (persistée via outbox durable) prime toujours sur le défaut ; "Réinitialiser" retire la
    surcharge.
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
@@ -25,18 +32,41 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Modal } from './ui.jsx';
 import { SUBJECTS, DEFAULT_PROMPTS, parsePromptsMd } from '../lib/coursePrompts.js';
 import { DEFAULT_EXO_PROMPTS, parseExoPromptsMd } from '../lib/exoPrompts.js';
+import { CHAP_EXO_ENTRIES, DEFAULT_CHAP_EXO_PROMPTS } from '../lib/chapExoPrompt.js';
 
 async function copyToClipboard(text) {
   try { await navigator.clipboard.writeText(text); return true; } catch (e) { return false; }
 }
 
 /** construit la config de variante à partir de `kind` + `ctx` — un seul
-   endroit où les deux variantes divergent, tout le reste du fichier ne lit
-   plus que `cfg`. */
+   endroit où les variantes divergent, tout le reste du fichier ne lit
+   plus que `cfg`. Champs communs à toutes : `entries` (les prompts de la
+   catégorie, 4 matières ou 1 entrée unique) et `bulk` (la catégorie
+   propose-t-elle "Modifier les 4"). */
 function buildCfg(kind, ctx) {
+  // 'chapitre' : prompt UNIQUE valable pour les 4 matières — une seule entrée
+  // dans `entries`, et `bulk: false` (il n'y a rien à découper par matière,
+  // donc pas de "Modifier les 4" ni de parseur de collage en masse).
+  if (kind === 'chapitre') {
+    return {
+      kind,
+      entries: CHAP_EXO_ENTRIES,
+      bulk: false,
+      icon: 'layers',
+      label: 'Voir le prompt',
+      triggerTitle: "Le prompt « Exercices de chapitre » (couvre tout le chapitre) à coller dans un chat externe, avec l'export « Tout exporter »",
+      popupTitle: 'Prompt exercices de chapitre',
+      defaultPrompts: DEFAULT_CHAP_EXO_PROMPTS,
+      overrides: ctx.chapExoPromptOverrides,
+      saveOne: ctx.saveChapExoPromptOverride,
+      resetOne: ctx.resetChapExoPromptOverride,
+    };
+  }
   const isExo = kind === 'pratique';
   return {
     kind,
+    entries: SUBJECTS,
+    bulk: true,
     icon: isExo ? 'target' : 'sparkle',
     label: isExo ? 'Voir les prompts (exercices)' : 'Voir les prompts',
     triggerTitle: isExo
@@ -99,7 +129,7 @@ export function CoursePromptsButton({ ctx, kind = 'theorie' }) {
       {pop && createPortal(
         <div className="cpm-pop" style={{ top: pop.top, left: pop.left }}>
           <div className="cpm-pop-title">{cfg.popupTitle}</div>
-          {SUBJECTS.map((s) => (
+          {cfg.entries.map((s) => (
             <div key={s.id} className="cpm-row">
               <button type="button" className="cpm-copy" onClick={() => copySubject(s.id)} title="Copier ce prompt">
                 <Icon name={copiedId === s.id ? 'check' : 'copy'} size={13} style={copiedId === s.id ? { color: 'var(--ok)' } : undefined} />
@@ -109,10 +139,12 @@ export function CoursePromptsButton({ ctx, kind = 'theorie' }) {
               <button type="button" className="cd-ic" title="Modifier" onClick={() => { setPop(null); setModalState({ subject: s.id, mode: 'edit' }); }}><Icon name="edit" size={13} /></button>
             </div>
           ))}
-          <button type="button" className="btn ghost sm" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
-            onClick={() => { setPop(null); setBulkOpen(true); }}>
-            <Icon name="sliders" size={13} /> Modifier les 4
-          </button>
+          {cfg.bulk && (
+            <button type="button" className="btn ghost sm" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+              onClick={() => { setPop(null); setBulkOpen(true); }}>
+              <Icon name="sliders" size={13} /> Modifier les 4
+            </button>
+          )}
         </div>,
         document.body,
       )}
@@ -128,11 +160,13 @@ export function CoursePromptsButton({ ctx, kind = 'theorie' }) {
 }
 
 /** Accès CENTRAL sidebar (bas de nav, à côté de Réglages) : regroupe les
-   8 prompts (4 théorie + 4 pratique) en un seul endroit, pour copier sans
-   passer par un cours. RÉUTILISE buildCfg/SUBJECTS/effectiveText/PromptModal/
-   BulkPromptModal tels quels — mêmes stockages (getCoursePrompts/
-   getExoPrompts via ctx), donc une modif ici se reflète aussi dans les
-   boutons "Voir les prompts" existants (vue cours), et inversement.
+   9 prompts (4 théorie + 4 pratique + 1 exercices de chapitre) en un seul
+   endroit, pour copier sans passer par un cours. La 3e catégorie n'a qu'UNE
+   entrée : ce prompt est unique et sert les 4 matières.
+   RÉUTILISE buildCfg/effectiveText/PromptModal/BulkPromptModal tels quels —
+   mêmes stockages (getCoursePrompts/getExoPrompts/getChapExoPrompts via ctx),
+   donc une modif ici se reflète aussi dans les boutons "Voir les prompts" /
+   "Voir le prompt" existants (vue cours, vue chapitre), et inversement.
    Le sous-dialogue (voir/modifier une matière, ou "Modifier les 4") remplace
    temporairement la liste plutôt que de s'empiler dessus (même convention
    que CoursePromptsButton, qui referme son popover avant d'ouvrir un
@@ -140,6 +174,7 @@ export function CoursePromptsButton({ ctx, kind = 'theorie' }) {
 export function AllPromptsModal({ ctx, onClose }) {
   const cfgTheorie = buildCfg('theorie', ctx);
   const cfgPratique = buildCfg('pratique', ctx);
+  const cfgChapitre = buildCfg('chapitre', ctx);
   const [copiedKey, setCopiedKey] = useState(null); // `${kind}:${subjectId}`
   const [modalState, setModalState] = useState(null); // { kind, subject, mode }
   const [bulkKind, setBulkKind] = useState(null); // 'theorie' | 'pratique' | null
@@ -155,7 +190,7 @@ export function AllPromptsModal({ ctx, onClose }) {
   const renderGroup = (cfg, groupLabel) => (
     <div className="apm-group" key={cfg.kind}>
       <div className="cpm-pop-title">{groupLabel}</div>
-      {SUBJECTS.map((s) => {
+      {cfg.entries.map((s) => {
         const key = `${cfg.kind}:${s.id}`;
         return (
           <div key={s.id} className="cpm-row">
@@ -168,15 +203,20 @@ export function AllPromptsModal({ ctx, onClose }) {
           </div>
         );
       })}
-      <button type="button" className="btn ghost sm" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
-        onClick={() => setBulkKind(cfg.kind)}>
-        <Icon name="sliders" size={13} /> Modifier les 4
-      </button>
+      {cfg.bulk && (
+        <button type="button" className="btn ghost sm" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+          onClick={() => setBulkKind(cfg.kind)}>
+          <Icon name="sliders" size={13} /> Modifier les 4
+        </button>
+      )}
     </div>
   );
 
-  const modalCfg = modalState && (modalState.kind === 'pratique' ? cfgPratique : cfgTheorie);
-  const bulkCfg = bulkKind && (bulkKind === 'pratique' ? cfgPratique : cfgTheorie);
+  const CFG_BY_KIND = { theorie: cfgTheorie, pratique: cfgPratique, chapitre: cfgChapitre };
+  const modalCfg = modalState && CFG_BY_KIND[modalState.kind];
+  // 'chapitre' n'expose pas "Modifier les 4" (cfg.bulk false), donc bulkKind
+  // ne peut valoir que 'theorie' ou 'pratique' — routé par la même table.
+  const bulkCfg = bulkKind && CFG_BY_KIND[bulkKind];
 
   return (
     <>
@@ -184,6 +224,7 @@ export function AllPromptsModal({ ctx, onClose }) {
         <Modal title="Tous les prompts" onClose={onClose} width="min(420px, 94vw)">
           {renderGroup(cfgTheorie, 'Théorie — QCM, flashcards, Feynman')}
           {renderGroup(cfgPratique, 'Exercices — méthode des J')}
+          {renderGroup(cfgChapitre, 'Exercices de chapitre — couverture globale')}
         </Modal>
       )}
       {modalState && (
@@ -239,7 +280,7 @@ function BulkPromptModal({ cfg, onClose }) {
 
       {parsed && (
         <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {SUBJECTS.map((s) => {
+          {cfg.entries.map((s) => {
             const text = parsed.results[s.id];
             return (
               <div key={s.id} className="row" style={{ gap: 8, alignItems: 'center' }}>
@@ -300,23 +341,32 @@ function PromptModal({ cfg, initial, onClose }) {
     }
   };
 
-  const label = (SUBJECTS.find((s) => s.id === subject) || {}).label || '';
+  const label = (cfg.entries.find((s) => s.id === subject) || {}).label || '';
+  // sélecteur de matière masqué quand la variante n'a qu'une entrée
+  // ('chapitre') : un onglet unique et non cliquable n'apprend rien.
+  const multi = cfg.entries.length > 1;
 
   return (
     <Modal title={`Prompt — ${label}`} onClose={close} width="min(720px, 94vw)">
       <div className="row spread" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-        <div className="seg">
-          {SUBJECTS.map((s) => (
-            <button key={s.id} type="button" className={'seg-btn' + (subject === s.id ? ' active' : '')} onClick={() => switchSubject(s.id)}>{s.label}</button>
-          ))}
-        </div>
+        {multi ? (
+          <div className="seg">
+            {cfg.entries.map((s) => (
+              <button key={s.id} type="button" className={'seg-btn' + (subject === s.id ? ' active' : '')} onClick={() => switchSubject(s.id)}>{s.label}</button>
+            ))}
+          </div>
+        ) : <span />}
         <div className="seg">
           <button type="button" className={'seg-btn' + (mode === 'view' ? ' active' : '')} onClick={() => setMode('view')}><Icon name="book" size={13} /> Lecture</button>
           <button type="button" className={'seg-btn' + (mode === 'edit' ? ' active' : '')} onClick={() => setMode('edit')}><Icon name="edit" size={13} /> Modifier</button>
         </div>
       </div>
 
-      {!hasOverride && <div className="hint" style={{ marginBottom: 10 }}>Prompt par défaut (jamais modifié pour cette matière).</div>}
+      {!hasOverride && (
+        <div className="hint" style={{ marginBottom: 10 }}>
+          {multi ? 'Prompt par défaut (jamais modifié pour cette matière).' : 'Prompt par défaut (jamais modifié).'}
+        </div>
+      )}
 
       {mode === 'view' ? (
         <pre className="cpm-view">{effectiveText(cfg, subject)}</pre>

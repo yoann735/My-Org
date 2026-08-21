@@ -1172,6 +1172,12 @@ export function Reviser({ ctx }) {
                     {chapExportBusy && !isClassicUI() ? <LoaderL6 inline label="Export en cours" /> : <Icon name={chapExport && !chapExport.error ? 'check' : 'copy'} size={14} />}
                     {chapExportBusy ? 'Export…' : chapExport && !chapExport.error ? `Copié ✓ (${chapExport.count})` : 'Tout exporter'}
                   </button>
+                  {/* pendant du bouton ci-dessus : "Tout exporter" copie les fiches,
+                     celui-ci donne le prompt « Exercices de chapitre » à coller avec
+                     elles dans un chat externe. Même composant que les autres prompts
+                     (CoursePromptsMenu.jsx), variante 'chapitre' : un seul prompt,
+                     valable pour les 4 matières. */}
+                  {ctx && <CoursePromptsButton ctx={ctx} kind="chapitre" />}
                   <button className="btn ghost sm" onClick={() => setShowAddChapExo(true)}>
                     <Icon name="plus" size={14} /> Importer des items
                   </button>

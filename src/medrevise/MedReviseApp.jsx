@@ -23,6 +23,7 @@ import {
   getAll, put, putMany, remove, getStats, setStats as saveStats, genId, syncNow,
   purgeSource, purgeMatiere, purgeFiche, putBackup, newErrorCard,
   getCoursePrompts, setCoursePrompts, getExoPrompts, setExoPrompts,
+  getChapExoPrompts, setChapExoPrompts,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 import { todayISO, startAdaptive } from './lib/sm2.js';
@@ -71,6 +72,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // matière n'a été éditée ; DEFAULT_PROMPTS (lib/coursePrompts.js) comble le reste.
   const [promptOverrides, setPromptOverrides] = useState({});
   const [exoPromptOverrides, setExoPromptOverrides] = useState({});
+  // surcharge du prompt UNIQUE "Exercices de chapitre" (lib/chapExoPrompt.js) :
+  // une seule clé (CHAP_EXO_ID) au lieu de quatre matières, même forme de
+  // stockage { clé → texte } que les deux au-dessus.
+  const [chapExoPromptOverrides, setChapExoPromptOverrides] = useState({});
   const [session, setSession] = useState(null);
   const [feynman, setFeynman] = useState(null);
   const [exercice, setExercice] = useState(null); // { items:[exercice], title }
@@ -83,13 +88,14 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [syncState, setSyncState] = useState({ status: 'idle', at: null });
 
   const reload = useCallback(async () => {
-    const [sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, st, pr, epr] = await Promise.all([
-      getAll('sources'), getAll('matieres'), getAll('dossiers'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getStats(), getCoursePrompts(), getExoPrompts(),
+    const [sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, st, pr, epr, cepr] = await Promise.all([
+      getAll('sources'), getAll('matieres'), getAll('dossiers'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getStats(), getCoursePrompts(), getExoPrompts(), getChapExoPrompts(),
     ]);
     setDb({ sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog });
     setStats(st);
     setPromptOverrides(pr);
     setExoPromptOverrides(epr);
+    setChapExoPromptOverrides(cepr);
   }, []);
 
   // syncNow() (lib/storage.js) fait, dans l'ordre : rejoue l'outbox → réconcilie
@@ -162,7 +168,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const ctx = {
     theme, toggleTheme, goHub,
     go: setScreen,
-    db, stats, reload, promptOverrides, exoPromptOverrides,
+    db, stats, reload, promptOverrides, exoPromptOverrides, chapExoPromptOverrides,
     syncState, forceSync,
     focusFiche, setFocusFiche,
     session, feynman, exercice, anatQuiz, pdfView, schemaView,
@@ -633,6 +639,21 @@ export default function MedReviseApp({ themeApi, goHub }) {
       delete next[subjectId];
       await setExoPrompts(next);
       setExoPromptOverrides(next);
+    },
+    // "Exercices de chapitre" — mêmes garanties, stockage/état encore SÉPARÉS
+    // (getChapExoPrompts/setChapExoPrompts, chapExoPromptOverrides). Pas de
+    // pendant "saveAll…" ici : ce prompt est unique (une seule clé), il n'y a
+    // jamais quatre matières à fusionner d'un coup.
+    saveChapExoPromptOverride: async (promptId, text) => {
+      const next = { ...chapExoPromptOverrides, [promptId]: text };
+      await setChapExoPrompts(next);
+      setChapExoPromptOverrides(next);
+    },
+    resetChapExoPromptOverride: async (promptId) => {
+      const next = { ...chapExoPromptOverrides };
+      delete next[promptId];
+      await setChapExoPrompts(next);
+      setChapExoPromptOverrides(next);
     },
     // écran de fin de série (QCM/flashcards, desktop + mobile) : un point par
     // série TERMINÉE, jamais reconstruit depuis l'historique par carte (qui ne
