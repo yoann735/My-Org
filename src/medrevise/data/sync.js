@@ -154,14 +154,63 @@ if (typeof window !== 'undefined') {
   });
 }
 
-/** Récupère TOUS les enregistrements cloud (dataset personnel ≈ petit — un fetch
- *  complet par réconciliation, comme MealWeek). null si hors-ligne/non configuré. */
+/* Taille de page. PostgREST plafonne TOUTE réponse à 1000 lignes par défaut
+   (`content-range: 0-999/*`), sans erreur ni avertissement : la requête répond
+   200 OK avec un jeu tronqué. C'était LE défaut corrigé ici. */
+const PAGE = 1000;
+/* Garde-fou anti-boucle. 200 pages = 200 000 enregistrements, très au-delà de tout
+   usage réel : si on l'atteint, quelque chose ne va pas (curseur qui n'avance
+   pas, ordre instable) et il vaut mieux échouer franchement que boucler. */
+const MAX_PAGES = 200;
+
+/**
+ * Récupère TOUS les enregistrements cloud, en paginant.
+ *
+ * HISTORIQUE — pourquoi cette fonction est critique (voir docs/audit-sync-J-2026.md) :
+ * elle faisait un `select()` nu, donc plafonné à 1000 lignes par PostgREST. Au-delà
+ * de ce volume, `reconcileAll` (lib/storage.js) ne voyait qu'une fraction du cloud,
+ * avec deux conséquences graves :
+ *   - un enregistrement local dont la ligne cloud était hors fenêtre passait pour
+ *     « absent du cloud » et était repoussé avec son horodatage périmé — rejeté
+ *     depuis par l'écriture conditionnelle, d'où des appareils définitivement figés ;
+ *   - les enregistrements cloud hors fenêtre n'étaient JAMAIS rapatriés.
+ * Et surtout, l'état local incomplet qui en résultait faisait passer des cartes
+ * valides pour des orphelines auprès de migrateOrphanCleanupV1, qui les supprimait
+ * en propageant des tombstones (95 cartes perdues le 25/08/2026 — migration
+ * neutralisée depuis).
+ *
+ * DEUX RÈGLES À NE JAMAIS ASSOUPLIR ICI :
+ *
+ * 1. ORDRE TOTAL ET STABLE. On trie sur la clé primaire (store, record_id) : sans
+ *    `order`, PostgREST ne garantit rien entre deux pages, et une ligne peut être
+ *    sautée ou vue deux fois.
+ *
+ * 2. TOUT OU RIEN. La moindre page en erreur renvoie `null`, jamais un tableau
+ *    partiel. Un résultat partiel est PIRE qu'une absence de résultat : `reconcileAll`
+ *    le prendrait pour la vérité du cloud et en déduirait des absences imaginaires.
+ *    `null` = « je n'ai pas pu lire », et reconcileAll ne fait alors rien du tout.
+ *
+ * @returns {Promise<Array|null>} tous les enregistrements, ou null si la lecture
+ *   complète n'a pas pu aboutir (hors-ligne, non configuré, erreur, garde-fou).
+ */
 export async function pullAllRecords() {
   if (!SYNC_ENABLED) return null;
   try {
-    const { data, error } = await supabase.from(RECORDS_TABLE).select('store,record_id,data,updated_at,deleted');
-    if (error) return null;
-    return data || [];
+    const tout = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE;
+      const { data, error } = await supabase
+        .from(RECORDS_TABLE)
+        .select('store,record_id,data,updated_at,deleted')
+        .order('store', { ascending: true })
+        .order('record_id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) return null;            // règle 2 : jamais de partiel
+      const lot = data || [];
+      tout.push(...lot);
+      if (lot.length < PAGE) return tout; // dernière page : on a tout
+    }
+    return null;                          // garde-fou atteint : on échoue franchement
   } catch (e) { return null; }
 }
 
