@@ -6,7 +6,7 @@
    ============================================================ */
 import { get, set, del, values, entries, setMany, createStore } from 'idb-keyval';
 import { isoDate, startAdaptive } from './sm2.js';
-import { queuePush, pullAllRecords, pushBlob, pullBlob, flushOutbox } from '../data/sync.js';
+import { queuePush, pullAllRecords, pushBlob, pullBlob, flushOutbox, isPushDegraded } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
 const store = (name) => createStore('medrevise-' + name, 'v1');
@@ -467,7 +467,13 @@ export async function syncNow() {
   if (!SYNC_ENABLED) return { status: 'disabled' };
   await flushOutbox();
   const rec = await reconcileAll();
+  // C2 (docs/audit-sync-J-2026.md §2) : NE JAMAIS pousser après un tirage raté.
+  // reconcileAll sort sans avoir rien fusionné quand le pull échoue ; enchaîner
+  // sur queueAllLocalForPush revenait à republier tout l'état local par-dessus un
+  // cloud qu'on n'a même pas lu — le scénario « pull KO / push OK » d'un réseau
+  // mobile. L'état local reste intact, on retentera au prochain déclencheur.
+  if (!rec.ok) return { status: 'offline', cloudEmpty: false, degraded: isPushDegraded() };
   await queueAllLocalForPush();
   await flushOutbox();
-  return { status: rec.ok ? 'ok' : 'offline', cloudEmpty: rec.cloudEmpty };
+  return { status: 'ok', cloudEmpty: rec.cloudEmpty, degraded: isPushDegraded() };
 }

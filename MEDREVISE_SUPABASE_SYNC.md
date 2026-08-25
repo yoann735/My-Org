@@ -59,6 +59,86 @@ create policy "medrevise_blobs_anon_all"
   with check (bucket_id = 'medrevise-blobs');
 ```
 
+## Étape (b bis) — OBLIGATOIRE : l'écriture conditionnelle
+
+> Ajoutée après l'audit du 25/08/2026 (`docs/audit-sync-J-2026.md`). **Sans ce script, la
+> synchro tourne en mode DÉGRADÉ** : l'app le dit explicitement dans Réglages →
+> Synchronisation, et une écriture périmée peut encore écraser une version plus récente
+> au cloud (défaut « C1 » de l'audit — c'était LA cause des divergences entre appareils).
+
+Un `upsert` PostgREST ne sait pas exprimer de condition : il écrase la ligne quoi qu'elle
+contienne, `updated_at` compris — qu'il fait donc *reculer*. Le garde-fou doit vivre dans
+la base. SQL Editor → New query → Run :
+
+```sql
+create or replace function public.medrevise_push(records jsonb)
+returns integer
+language plpgsql
+security invoker
+as $$
+declare n integer;
+begin
+  with entrant as (
+    select
+      (r->>'store')::text                       as store,
+      (r->>'record_id')::text                   as record_id,
+      coalesce(r->'data', '{}'::jsonb)          as data,
+      (r->>'updated_at')::timestamptz           as updated_at,
+      coalesce((r->>'deleted')::boolean, false) as deleted
+    from jsonb_array_elements(records) as r
+  ),
+  -- un même (store, record_id) peut apparaître deux fois dans le lot : Postgres
+  -- refuse alors « ON CONFLICT DO UPDATE command cannot affect row a second time ».
+  -- On ne garde que la version la plus récente de chaque enregistrement.
+  dedup as (
+    select distinct on (store, record_id) *
+    from entrant
+    order by store, record_id, updated_at desc
+  ),
+  ins as (
+    insert into public.medrevise_records as mr (store, record_id, data, updated_at, deleted)
+    select store, record_id, data, updated_at, deleted from dedup
+    on conflict (store, record_id) do update
+      set data       = excluded.data,
+          updated_at = excluded.updated_at,
+          deleted    = excluded.deleted
+      where excluded.updated_at > mr.updated_at   -- ← LE garde-fou
+    returning 1
+  )
+  select count(*) into n from ins;
+  return n;
+end;
+$$;
+
+grant execute on function public.medrevise_push(jsonb) to anon;
+
+-- PostgREST met sa vue du schéma en cache : on la rafraîchit pour que la fonction
+-- soit visible immédiatement plutôt qu'au bout de quelques minutes.
+notify pgrst, 'reload schema';
+```
+
+`security invoker` : la fonction s'exécute avec les droits de l'appelant (`anon`), donc la
+RLS de `medrevise_records` continue de s'appliquer normalement — aucun privilège élevé.
+
+**Vérification** (doit renvoyer `1` puis `0`) :
+
+```sql
+select public.medrevise_push('[{"store":"_test","record_id":"t1","data":{"v":1},
+  "updated_at":"2030-01-01T00:00:00Z","deleted":false}]'::jsonb);   -- → 1 (écrit)
+
+select public.medrevise_push('[{"store":"_test","record_id":"t1","data":{"v":0},
+  "updated_at":"2020-01-01T00:00:00Z","deleted":false}]'::jsonb);   -- → 0 (REFUSÉ : périmé)
+
+select data->>'v' from public.medrevise_records
+ where store = '_test' and record_id = 't1';                        -- → 1, pas 0
+
+delete from public.medrevise_records where store = '_test';         -- nettoyage
+```
+
+Si la deuxième requête renvoie `0` et que la valeur est restée à `1`, le garde-fou est
+actif. Côté app : Réglages → Synchronisation → « Forcer la synchro » ne doit plus
+mentionner le mode dégradé.
+
 ## Étape (c) — Vérifier les variables d'environnement
 
 Mêmes variables que MealWeek, **déjà suffisantes** (aucune nouvelle à ajouter) :

@@ -107,7 +107,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
     setSyncState((s) => ({ ...s, status: 'syncing' }));
     const r = await syncNow();
     if (r.status === 'ok') await reload();
-    setSyncState({ status: r.status, at: new Date().toISOString() });
+    // `degraded` : la RPC conditionnelle `medrevise_push` est absente de Supabase
+    // (script SQL pas encore exécuté) et l'envoi est retombé sur l'ancien upsert
+    // non protégé — remonté tel quel à l'UI, voir ui.jsx#syncStatusLabel.
+    setSyncState({ status: r.status, at: new Date().toISOString(), degraded: !!r.degraded });
     return r;
   }, [reload]);
 

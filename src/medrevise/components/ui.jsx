@@ -131,7 +131,21 @@ export function syncStatusLabel(syncState) {
   if (s === 'syncing') return 'Synchronisation en cours…';
   if (s === 'disabled') return 'Synchro cloud désactivée (variables Supabase absentes sur ce déploiement).';
   if (s === 'offline') return 'Hors ligne ou cloud injoignable — nouvel essai automatique à la reconnexion.';
-  if (s === 'ok' && syncState.at) return 'Synchronisé à ' + new Date(syncState.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) + '.';
+  if (s === 'ok') {
+    const quand = syncState.at
+      ? ' à ' + new Date(syncState.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      : '';
+    // Mode dégradé : la synchro FONCTIONNE, mais sans le garde-fou serveur — une
+    // écriture périmée peut encore écraser une version plus récente au cloud (voir
+    // data/sync.js, bloc « ÉCRITURE CLOUD CONDITIONNELLE »). On le dit clairement
+    // plutôt que d'afficher un « Synchronisé » rassurant et faux.
+    if (syncState.degraded) {
+      return 'Synchronisé' + quand + ", mais en mode DÉGRADÉ : la fonction medrevise_push est absente de Supabase, "
+        + "les écritures périmées ne sont donc pas refusées. Exécute le script SQL de MEDREVISE_SUPABASE_SYNC.md, "
+        + 'puis reclique « Forcer la synchro ».';
+    }
+    return 'Synchronisé' + quand + '.';
+  }
   return 'Pas encore synchronisé cette session.';
 }
 
