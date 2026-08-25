@@ -12,6 +12,7 @@ import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled, carnetV1Q
 import { todayISO } from '../lib/sm2.js';
 import { matiereMeta, syncStatusLabel, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
+import { exportBackup } from '../lib/backupExport.js';
 
 // carnet d'erreurs v2 : aperçu LISTE (pas la carte de révision interactive) —
 // déplie les {{mots}} de cloze en texte normal avant rendu <Tex> (LaTeX), même
@@ -57,6 +58,22 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
     if (skipTarget.type === 'source') await ctx.skipDaySource(skipTarget.id, todayISO());
     else await ctx.skipDayFiche(skipTarget.id, todayISO());
     setSkipTarget(null);
+  };
+
+  // « Exporter toutes mes données » — le mobile n'a pas d'écran Réglages (voir
+  // MobileApp.jsx), donc la sauvegarde vit ici, en bas de l'accueil. MÊME
+  // fonction que le desktop (lib/backupExport.js), donc mêmes garanties :
+  // lecture seule, aucun appel réseau, aucune synchro déclenchée. Sur iPhone,
+  // deliverFile passe par la feuille de partage iOS (« Enregistrer dans
+  // Fichiers ») plutôt que par un <a download>, peu fiable sur Safari iOS.
+  const [backup, setBackup] = useState({ busy: false, message: '' });
+  const runExport = async (withBlobs) => {
+    setBackup({ busy: true, message: 'Lecture des données…' });
+    const res = await exportBackup({
+      withBlobs,
+      onProgress: (m) => setBackup({ busy: true, message: m }),
+    });
+    setBackup({ busy: false, message: res.message });
   };
 
   const startAll = () => due.length && onStartSession(due, "Série du jour");
@@ -241,6 +258,23 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
             <div>Tout est à jour pour aujourd'hui 🎉</div>
           </div>
         )}
+
+        <div className="mrm-section">
+          <div className="mrm-section-head"><Icon name="archive" size={15} /> <span>Sauvegarde</span></div>
+          <div className="mrm-card">
+            <div className="mrm-row-sub" style={{ marginBottom: 12 }}>
+              Enregistre tout ce que contient cet appareil dans un fichier JSON.
+              Lecture seule : rien n'est modifié, rien n'est envoyé au cloud.
+            </div>
+            <button type="button" className="mrm-primary-btn" disabled={backup.busy} onClick={() => runExport(false)}>
+              <Icon name="archive" size={17} /> {backup.busy ? 'Export en cours…' : 'Exporter toutes mes données'}
+            </button>
+            <button type="button" className="mrm-btn" style={{ marginTop: 8, width: '100%' }} disabled={backup.busy} onClick={() => runExport(true)}>
+              <Icon name="image" size={16} /> Avec les images et PDF
+            </button>
+            {backup.message && <div className="mrm-row-sub" style={{ marginTop: 10 }}>{backup.message}</div>}
+          </div>
+        </div>
       </div>
 
       {moveTarget && (

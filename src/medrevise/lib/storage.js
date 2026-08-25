@@ -4,7 +4,7 @@
    pour localStorage. Chaque "table" = un petit store clé→enregistrement.
    Hiérarchie : SOURCE(cours) → MATIÈRE → FICHE → QUESTIONS / STRUCTURES.
    ============================================================ */
-import { get, set, del, values, setMany, createStore } from 'idb-keyval';
+import { get, set, del, values, entries, setMany, createStore } from 'idb-keyval';
 import { isoDate, startAdaptive } from './sm2.js';
 import { queuePush, pullAllRecords, pushBlob, pullBlob, flushOutbox } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
@@ -47,6 +47,20 @@ export function genId(prefix = 'x') {
    SYNCABLE ; IndexedDB reste écrit en premier et fait foi en local même hors-ligne) ---- */
 export const getAll = (name) => values(S[name]);
 export const getOne = (name, id) => get(id, S[name]);
+
+/* ---- LECTURE SEULE pour la sauvegarde locale (lib/backupExport.js) ----
+   Deux exports strictement passifs : ils ne DOIVENT jamais écrire, horodater ni
+   mettre quoi que ce soit en file de synchro.
+   - `SYNCABLE_STORES` : la liste ci-dessus réexportée telle quelle, pour que la
+     sauvegarde couvre EXACTEMENT ce que la synchro couvre — jamais une seconde
+     liste recopiée à la main, qui divergerait au premier store ajouté.
+   - `getAllEntries` : lecture clé→valeur brute d'un store. Nécessaire pour les
+     `blobs`, dont l'id n'est PAS dans la valeur (contrairement aux autres stores,
+     où `rec.id` existe) — et surtout pour ne pas passer par `getBlob`, qui va
+     CHERCHER le blob au cloud quand il manque en local (voir plus bas). Une
+     sauvegarde ne doit produire aucun appel réseau. ---- */
+export const SYNCABLE_STORES = SYNCABLE;
+export const getAllEntries = (name) => entries(S[name]);
 export async function put(name, rec) {
   const stamped = SYNCABLE.includes(name) ? { ...rec, updatedAt: new Date().toISOString() } : rec;
   await set(stamped.id, stamped, S[name]);

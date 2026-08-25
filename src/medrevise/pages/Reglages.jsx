@@ -7,9 +7,22 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, Switch, matiereMeta, syncStatusLabel } from '../components/ui.jsx';
 import { isClassicUI, setClassicUI } from '../../shared/uiMode.js';
 import { wipeAll } from '../lib/storage.js';
+import { exportBackup } from '../lib/backupExport.js';
 
 export function Reglages({ ctx }) {
   const { db } = ctx;
+  // « Exporter toutes mes données » — lecture seule intégrale (voir
+  // lib/backupExport.js) : aucune écriture, aucun appel réseau, aucune synchro
+  // déclenchée. `busy` empêche juste un double clic pendant la lecture.
+  const [backup, setBackup] = useState({ busy: false, message: '' });
+  const runExport = async (withBlobs) => {
+    setBackup({ busy: true, message: 'Lecture des données…' });
+    const res = await exportBackup({
+      withBlobs,
+      onProgress: (m) => setBackup({ busy: true, message: m }),
+    });
+    setBackup({ busy: false, message: res.message });
+  };
   const [renaming, setRenaming] = useState(null);
   const [draft, setDraft] = useState('');
   const [addCatFor, setAddCatFor] = useState(null);
@@ -221,6 +234,24 @@ export function Reglages({ ctx }) {
           </div>
           <div className="hint" style={{ marginTop: 10, marginBottom: 12 }}>Moteur adaptatif : chaque carte porte son propre intervalle (en jours), qui démarre à 1 et se multiplie à chaque révision. Un Raté le remet à 1 jour (reprise le jour même, puis due à J+1). Au-delà de 90 jours, l'intervalle est plafonné à J+90 pile ; après cette dernière révision, Facile/Difficile termine la carte, Raté relance un cycle complet.</div>
           <button type="button" className="btn" style={{ color: 'var(--crit)' }} onClick={resetAllJ}><Icon name="calendar" size={15} /> Réinitialiser les dates</button>
+        </Card>
+        <Card title="Sauvegarde" icon="archive">
+          <div className="hint" style={{ marginBottom: 12 }}>
+            Enregistre TOUT ce que contient cet appareil dans un seul fichier JSON
+            (cours, matières, dossiers, fiches, cartes, méthode des J, carnet
+            d'erreurs, schémas, statistiques, prompts). Opération en lecture
+            seule : rien n'est modifié, rien n'est envoyé au cloud, aucune
+            synchro n'est déclenchée. À faire sur chaque appareil.
+          </div>
+          <div className="row wrap" style={{ gap: 8 }}>
+            <button type="button" className="btn" disabled={backup.busy} onClick={() => runExport(false)}>
+              <Icon name="archive" size={15} /> {backup.busy ? 'Export en cours…' : 'Exporter toutes mes données'}
+            </button>
+            <button type="button" className="btn" disabled={backup.busy} onClick={() => runExport(true)}>
+              <Icon name="image" size={15} /> Avec les images et PDF
+            </button>
+          </div>
+          {backup.message && <div className="hint" style={{ marginTop: 10 }}>{backup.message}</div>}
         </Card>
         <Card title="Données & confidentialité" icon="box">
           <div className="hint" style={{ marginBottom: 12 }}>100 % local : fiches, images et PDF sont stockés sur cet appareil (IndexedDB).</div>
