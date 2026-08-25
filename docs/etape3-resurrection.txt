@@ -1,0 +1,350 @@
+MedRevise — ETAPE 3 : ressusciter les 95 cartes supprimées à tort
+Dossier de vérification — généré le 2026-08-25T13:24:31.524Z
+Rien n'a été exécuté. Aucune écriture cloud n'a été faite pour produire ce document.
+
+==============================================================================
+1. CE QUI S'EST PASSÉ, EN UNE PAGE
+==============================================================================
+
+Le 25/08/2026 à 10:53:00 UTC (12:53 Paris), 95 cartes ont été supprimées en une
+seule salve et tombstonées au cloud, donc propagées aux 3 appareils.
+
+Cause (corrigée depuis, commit ef992b6) :
+  sync.js pullAllRecords() faisait un select() nu -> PostgREST plafonne a 1000
+  lignes sans erreur (200 OK). Sur 1641 lignes, l'app n'en voyait que 1000.
+  L'etat local reconstruit etait donc incomplet : 4 fiches vivantes au cloud
+  manquaient en local. migrateOrphanCleanupV1, qui tourne au boot juste apres la
+  synchro, comparait au contenu LOCAL : toutes les cartes de ces fiches sont
+  passees pour orphelines et sont parties via remove(), avec tombstone.
+
+Les 4 fiches concernees sont TOUTES vivantes au cloud (deleted = false). Elles
+n'ont jamais ete supprimees. Seules leurs cartes l'ont ete.
+
+==============================================================================
+2. CONFIRMATION 95 / 95
+==============================================================================
+
+Source de verite : ~/Downloads/medrevise-REFERENCE-fusionnee.json
+  schema        : medrevise-backup/1
+  exporte le    : 2026-08-25T08:40:42.480Z
+  hote          : my-org-blue.vercel.app
+  questions     : 1111
+
+Tombstones questions dates du 25/08 au cloud   : 110
+  dont la salve de 10:53 (l'incident)            :  95
+  dont autres horaires (07:49 a 08:27)           :  15  <- voir section 6
+
+>>> Les 95 de la salve sont PRESENTES dans la reference : 95 / 95 (100 %).
+>>> Aucune des 95 n'est absente. Aucune n'est hors reference.
+
+Repartition :  avec historique de revision : 66     sans historique : 29
+Par fiche   :  Champ Electrique (25)   Electricité Statique (15)   La diffraction (25)   Les ions (30)
+Par type    :  exercice (24)   feynman (7)   flashcard (37)   qcm (27)
+
+==============================================================================
+3. ATTENTION — LE SQL EVIDENT EST FAUX
+==============================================================================
+
+Le SQL auquel on pense spontanement :
+
+    update public.medrevise_records set deleted = false
+     where store = 'questions' and record_id in (...);
+
+NE FONCTIONNE PAS, et aggraverait la situation. Verifie sur la base :
+
+    record_id        deleted   data
+    qms5vsyu9ixfg    true      {}
+    qmt8drm6darg8    true      {}
+    qmt8drm6dayx7    true      {}
+    ... (les 95, sans exception)
+
+storage.js#remove() pousse ses tombstones avec data = {} : le CONTENU de la carte
+n'est pas conserve cote cloud, seul l'identifiant l'est. Un simple deleted = false
+ressusciterait donc 95 enregistrements VIDES, qui seraient ensuite adoptes par les
+3 appareils (reconcileAll fait set(id, cloud.data), soit set(id, {})). On passerait
+de 95 cartes absentes a 95 cartes fantomes, presentes mais sans recto, sans verso,
+sans historique et sans dueDate — et sans moyen simple de les distinguer.
+
+Le contenu ne peut venir que d'une seule source : ta sauvegarde de reference.
+
+==============================================================================
+4. DEUX FACONS CORRECTES DE PROCEDER
+==============================================================================
+
+OPTION A — LE BOUTON "RESTAURER UNE SAUVEGARDE"  (recommandee)
+  Reglages > Restaurer une sauvegarde > choisir medrevise-REFERENCE-fusionnee.json
+  Ce que ca fait pour ces 95 cartes : elles font partie des 1111 du fichier, donc
+  elles sont reecrites en local AVEC leur contenu et leur historique, horodatees a
+  l'instant, puis poussees. L'ecriture conditionnelle les accepte (horodatage neuf
+  > celui du tombstone) et queuePush envoie deleted = false. Elles ressuscitent
+  completes.
+  Avantages : aucun SQL, chemin deja teste de bout en bout, et le reste de l'etat
+  est remis d'aplomb au passage. C'est l'etape 4 qui absorbe l'etape 3.
+  A savoir  : cela reecrit AUSSI les 1016 autres cartes avec l'etat du fichier.
+
+OPTION B — LE SQL CIBLE  (si tu veux ne toucher QUE ces 95)
+  Fichier genere : ~/Downloads/etape3-resurrection.sql
+  Il restaure data ET deleted, depuis le contenu exact de ta reference. Il est
+  encadre par begin; ... commit; avec un controle avant (doit renvoyer 95) et un
+  controle apres (doit renvoyer 95 vivants / 0 vide). En cas d'anomalie : rollback;
+  Il n'est pas dans le depot : il contient le texte de tes cartes.
+
+  Apres execution, sur chaque appareil : Reglages > Forcer la synchro.
+  Les 95 reviendront (updated_at = now() gagne la comparaison conditionnelle).
+
+Reversibilite : dans les deux cas les 95 restent dans ta sauvegarde de reference.
+Rien de ce qui suit ne peut te faire perdre ces cartes une seconde fois.
+
+==============================================================================
+5. LES 95 CARTES, EN DETAIL
+==============================================================================
+
+Triees par fiche, puis par type. hist = nombre d'entrees dans historique[].
+due / int = dueDate et intervalDays tels qu'ils sont dans la reference.
+
+  #   record_id        type              hist  due         int  apercu
+  ----------------------------------------------------------------------------------------------------------------
+
+  [Champ Electrique]  —  matiere : Physique  —  ficheId : fms6kg0v3qagu
+  1   qmsecxt8v570d    exercice          0     2026-07-30  -    En un point P de l'espace, on place une charge d'essai de 
+  2   qmsecxt8v7p0c    exercice          0     2026-08-01  -    On considère les grandeurs suivantes : une température de 
+  3   qmsecxt8vlk03    exercice          0     2026-07-30  -    En un point M règne un champ électrique d'intensité 8 N/C,
+  4   qmsecxt8vwfr6    exercice          1     2026-08-06  -    En un point P, une première charge d'essai de 1,5 C subit 
+  5   qmsecxt8w3wlc    exercice          1     2026-08-06  -    En un point donné, une charge d'essai de 8 µC subit une fo
+  6   qmsecxt8wir7y    exercice          0     2026-08-29  -    Pour cartographier le champ en un point P, on y place une 
+  7   qmsecxt8wizgu    exercice          0     2026-08-29  -    Lors d'un examen blanc, un étudiant écrit que le champ éle
+  8   qmsecxt8wybsi    exercice          0     2026-08-14  -    Une charge placée en un point d'un champ électrique subit 
+  9   qms6kg0v6b3do    feynman           0     -           -    Explique tout le cours de bout en bout, comme si tu l'ense
+  10  qms6kg0v68alb    flashcard         7     2026-10-07  45   Comment vérifier l'homogénéité de la relation F = q · E ?
+  11  qms6kg0v68cyy    flashcard         6     2026-10-07  45   Le champ qui exerce une force sur une charge est créé par 
+  12  qms6kg0v6a82t    flashcard         5     2026-10-07  45   Le champ électrique en un point est la {{force}} électriqu
+  13  qms6kg0v6bkgq    flashcard         5     2026-10-07  45   Quelle est l'unité SI de la charge électrique ?
+  14  qms6kg0v6cjuu    flashcard         5     2026-10-07  45   Pour définir le champ, on utilise une charge d'essai {{pet
+  15  qms6kg0v6dc1m    flashcard         4     2026-10-07  45   Le champ créé par une charge {{faiblit}} lorsque la distan
+  16  qms6kg0v6g7si    flashcard         4     2026-10-07  45   Quelle est l'unité SI de la force électrique ?
+  17  qms6kg0v6mz8s    flashcard         4     2026-10-07  45   Le champ en un point dépend-il de la charge d'essai qu'on 
+  18  qms6kg0v6os5p    flashcard         5     2026-10-07  45   Faraday remplace la mystérieuse action à distance par un i
+  19  qms6kg0v6pakk    flashcard         4     2026-10-07  45   Le champ électrique est-il une force ?
+  20  qms6kg0v6sixn    flashcard         4     2026-10-07  45   Dans l'exemple du cours, une force de 10 N s'exerce sur un
+  21  qms6kg0v6a3s7    qcm               3     2026-10-07  45   Une charge d'essai q = 2 C placée en un point y subit une 
+  22  qms6kg0v6cjf3    qcm               3     2026-10-07  45   Quel est le principal intérêt pratique de connaître le cha
+  23  qms6kg0v6nybn    qcm               3     2026-10-07  45   Comment varie l'intensité du champ créé par une charge lor
+  24  qms6kg0v6oa1g    qcm               3     2026-09-15  23   En un point, le champ vaut 5 N/C (mesuré avec une charge d
+  25  qms6kg0v6qrl4    qcm               3     2026-10-07  45   En un point où le champ vaut 5 N/C, on place une charge de
+
+  [Electricité Statique]  —  matiere : Physique  —  ficheId : fms7ro8mjbxyk
+  26  qms7rpyng08zt    exercice          0     -           -    Justifiez le mot « statique » dans l'expression « électric
+  27  qms7rpyng3chy    exercice          0     -           -    Après avoir frotté deux surfaces, votre main s'est chargée
+  28  qms7rpyng7iiq    exercice          0     -           -    (a) Un ballon frotté (négatif) est éloigné au-dessus d'une
+  29  qms7rpyngb74b    exercice          0     -           -    Avant tout frottement, un ballon et une chevelure ne s'att
+  30  qms7ro8moizaa    feynman           0     -           -    Explique pourquoi un ballon chargé négativement attire un 
+  31  qms7ro8mowpjv    feynman           0     -           -    Explique tout le cours de bout en bout, comme si tu l'ense
+  32  qms7ro8mo6b4z    flashcard         2     2026-09-02  20   Polarisation : dans un objet neutre, le ballon chargé {{sé
+  33  qms7ro8mob0r2    flashcard         2     2026-09-09  20   Comment se comparent la force électrostatique et la gravit
+  34  qms7ro8mozxlb    flashcard         2     2026-09-09  20   En frottant un ballon sur des cheveux, les électrons passe
+  35  qms7ro8mo152i    qcm               2     2026-09-09  20   Un ballon chargé négativement attire un petit morceau de p
+  36  qms7ro8mo35ot    qcm               2     2026-09-09  20   Un ballon chargé négativement attire à la fois des cheveux
+  37  qms7ro8mo7v2p    qcm               2     2026-09-09  20   Pourquoi la plupart des objets qui nous entourent sont-ils
+  38  qms7ro8moesys    qcm               2     2026-09-02  20   Pourquoi les cheveux d'une personne en contact avec un gén
+  39  qms7ro8monxr1    qcm               2     2026-09-02  20   Une mèche de cheveux chargée positivement est soulevée par
+  40  qms7ro8mowehc    qcm               2     2026-09-02  20   Lors d'un frottement entre deux matériaux, quelle(s) parti
+
+  [La diffraction]  —  matiere : Physique  —  ficheId : fms8z4qvzb7vw
+  41  qmsectqi56dab    exercice          0     2026-08-07  -    Un faisceau de lumière rouge de longueur d'onde $\lambda =
+  42  qmsectqi58vx4    exercice          0     2026-07-31  -    En un point P d'un écran se superposent, au même instant, 
+  43  qmsectqi5bfc1    exercice          0     2026-08-02  -    Une onde sonore de longueur d'onde $\lambda = 0{,}70$ m re
+  44  qmsectqi5g9ek    exercice          0     2026-08-30  -    Un faisceau de lumière cohérente traverse une région où se
+  45  qmsectqi5l215    exercice          0     2026-08-02  -    Un ruban opaque de largeur $d = 0{,}15$ mm est éclairé par
+  46  qmsectqi5l5uq    exercice          0     2026-08-30  -    Un ingénieur conçoit un cache opaque destiné à projeter un
+  47  qmsectqi5lplz    exercice          0     2026-07-31  -    Un fil métallique fin, de diamètre $d = 40$ µm, est placé 
+  48  qmsectqi5sisu    exercice          0     2026-08-15  -    En un point Q d'un écran, deux ondes issues de la diffract
+  49  qmsectqi5z3ob    exercice          0     2026-08-15  -    Un camarade affirme : « Puisque la courbure des ondes diff
+  50  qms8z4qw167em    feynman           0     -           -    Explique tout le cours de bout en bout, comme si tu le don
+  51  qmsdcpsy45boc    flashcard         3     2026-08-24  13   une onde est une {{perturbation}} qui se propage de proche
+  52  qmsdcvhf489t8    flashcard         2     2026-08-15  8    C'est quoi la diffraction ?
+  53  qmsdcwaj0f6kc    flashcard         2     2026-08-14  8    Qu'est ce qui cause la diffraction
+  54  qmsdcxgz5eaxg    flashcard         2     2026-08-15  8    Quel est l'état du milieu dans lequel ce propage l'onde lo
+  55  qmsdcychuzd5a    flashcard         2     2026-08-15  8    Quel est l'effet de l'onde lors de la diffraction
+  56  qmsdd02r9wxsm    flashcard         6     2026-08-29  10   Comment est l'effet de la diffraction si d ≈ λ
+  57  qmsddinn0e3ji    flashcard         4     2026-09-25  33   quel est cette unité µm ? Quelle est sa valeur comparé au 
+  58  qmsdj32zgwkg8    flashcard         2     2026-08-15  8    Figure observée sur l'écran — Pourquoi l'intensité des tac
+  59  qmsdj32zgx8k8    flashcard         2     2026-08-15  8    Diffraction — Pourquoi deux familles d'ondes se superposen
+  60  qms8z4qw0ca07    qcm               4     2026-08-25  18   Dans quel cas l'interférence entre deux ondes est-elle des
+  61  qms8z4qw0cfjy    qcm               4     2026-09-01  20   Dans quel cas les effets de la diffraction sont-ils specta
+  62  qms8z4qw0gqe2    qcm               3     2026-08-14  8    Concernant la courbure des ondes derrière un obstacle, que
+  63  qms8z4qw0pueq    qcm               4     2026-08-25  18   Lors de la diffraction d'une onde par un obstacle, quelles
+  64  qms8z4qw0zdeq    qcm               3     2026-08-14  8    Qu'est-ce que la diffraction ?
+  65  qmsdj32zgdgjz    qcm               4     2026-08-16  8    Un obstacle fin vertical est éclairé par un laser. On plac
+
+  [Les ions]  —  matiere : Chimie  —  ficheId : fms5vsyu4wqtg
+  66  qms5x1mxb4if0    exercice          0     -           -    L'azote possède 7 protons. En gagnant des électrons, il fo
+  67  qms5x1mxb6lap    exercice          0     -           -    Un ion monoatomique porte une charge nette de +2 et possèd
+  68  qms5x1mxb9n82    exercice          0     -           -    Un atome de sodium neutre (11 protons) cède un électron à 
+  69  qms5vsyu96w9i    feynman           0     -           -    Reprends tout le cours de bout en bout : pars de l'atome n
+  70  qms5vsyu9q38a    feynman           0     -           -    Explique la différence entre un cation et un anion en décr
+  71  qms5vsyu9qqlk    feynman           0     -           -    Explique, comme à un camarade, pourquoi un atome qui gagne
+  72  qms5vsyu9156i    flashcard         2     2026-08-24  18   Noms des ions Br−, N3− et P3− ?
+  73  qms5vsyu935w7    flashcard         3     2026-10-08  45   En chimie, la particule que l'on suit de près est l'{{élec
+  74  qms5vsyu937t9    flashcard         2     2026-08-24  18   Un {{ion}} est un atome, ou un groupe d'atomes, portant un
+  75  qms5vsyu991a9    flashcard         2     2026-08-24  18   Platine : nombre de masse A = 195, 78 protons, 74 électron
+  76  qms5vsyu9b709    flashcard         2     2026-08-24  18   Un atome qui {{gagne}} des électrons devient un {{anion}} 
+  77  qms5vsyu9cgk9    flashcard         2     2026-08-24  18   Charges et notations des ions potassium et magnésium ?
+  78  qms5vsyu9d7he    flashcard         2     2026-08-24  18   Lors d'une réaction, les protons restent {{inchangés}} et 
+  79  qms5vsyu9gks2    flashcard         2     2026-08-24  18   Un atome est {{neutre}} quand il compte autant de {{proton
+  80  qms5vsyu9gpye    flashcard         2     2026-08-24  18   Le nom d'un cation reprend celui de l'{{élément}} ; le nom
+  81  qms5vsyu9ixfg    flashcard         2     2026-08-24  18   La charge d'un ion vaut : nombre de {{protons}} moins nomb
+  82  qms5vsyu9lr1e    flashcard         2     2026-08-24  18   Gagner des électrons rend-il un ion plus positif ou plus n
+  83  qms5vsyu9r4j1    flashcard         2     2026-08-24  18   Le {{proton}}, de charge +1, se situe dans le {{noyau}} et
+  84  qms5vsyu9v9st    flashcard         2     2026-08-24  18   Quelle est la charge de l'ion aluminium et comment le note
+  85  qms5vsyu9xgik    flashcard         2     2026-08-24  18   Un {{cation}} est un ion chargé positivement ; un {{anion}
+  86  qms5vsyu963mk    qcm               2     2026-08-24  18   Le platine a un nombre de masse A = 195 et 78 protons. Com
+  87  qms5vsyu971e7    qcm               2     2026-08-24  18   Un ion de charge 2+ possède 18 électrons. Combien de proto
+  88  qms5vsyu982pi    qcm               2     2026-08-24  18   Lors d'une réaction chimique, qu'arrive-t-il aux particule
+  89  qms5vsyu9at5q    qcm               2     2026-08-24  18   Comment note-t-on correctement l'ion sodium ?
+  90  qms5vsyu9cu0x    qcm               2     2026-08-24  18   L'azote possède 7 protons et gagne 3 électrons. Quelle est
+  91  qms5vsyu9mrri    qcm               2     2026-08-24  18   Quelle particule fixe l'identité de l'élément chimique ?
+  92  qms5vsyu9nfcq    qcm               2     2026-08-24  18   Quelle association particule / charge / localisation est c
+  93  qms5vsyu9nqk9    qcm               2     2026-08-24  18   Un atome qui gagne des électrons devient :
+  94  qms5vsyu9ybtl    qcm               3     2026-10-08  45   Parmi les ions suivants, lesquels sont des cations ?
+  95  qms5vsyu9z7tq    qcm               4     2026-10-08  45   Le bore possède 5 protons et gagne 1 électron. Quel ion ob
+
+==============================================================================
+6. LES 15 AUTRES TOMBSTONES DU 25/08 — NON INCLUS
+==============================================================================
+
+Entre 07:49 et 08:27 UTC, 15 autres cartes ont ete tombstonees. Elles ne sont PAS
+dans la reference, et ne sont donc PAS incluses dans la resurrection.
+
+Deux lectures possibles, a trancher par toi :
+  - ce sont des suppressions VOLONTAIRES faites ce matin-la (menage dans une fiche,
+    vidage par type...) : dans ce cas tout est normal, il n'y a rien a faire ;
+  - ou ce sont des cartes creees APRES l'export de la reference : elles seraient
+    alors perdues, mais elles ne peuvent de toute facon pas etre restaurees, leur
+    contenu n'existant nulle part (data = {} au cloud, absentes du fichier).
+
+  record_id          supprime a (UTC)
+  ----------------------------------------------
+  qmt8d5vv84iob      2026-08-25T07:49:37
+  qmt8d5vv86uk2      2026-08-25T08:05:36
+  qmt8d5vv88tnj      2026-08-25T08:05:41
+  qmt8d5vv89r2d      2026-08-25T08:05:42
+  qmt8d5vv8pjvz      2026-08-25T08:05:44
+  qmt8drm6darg8      2026-08-25T08:06:45
+  qmt8drm6dayx7      2026-08-25T08:06:48
+  qmt8drm6dbc43      2026-08-25T08:06:51
+  qmt8drm6dcy51      2026-08-25T08:07:08
+  qmt8drm6diczg      2026-08-25T08:07:23
+  qmt8drm6dm40q      2026-08-25T08:07:28
+  qmt8drm6drkvh      2026-08-25T08:12:21
+  qmt8drm6dttp4      2026-08-25T08:09:23
+  qmt8drm6dyh1e      2026-08-25T08:09:37
+  qmt8egorjsczw      2026-08-25T08:27:44
+
+==============================================================================
+7. LISTE BRUTE DES 95 record_id (pour copier-coller / verification)
+==============================================================================
+
+qmsecxt8v570d
+qmsecxt8v7p0c
+qmsecxt8vlk03
+qmsecxt8vwfr6
+qmsecxt8w3wlc
+qmsecxt8wir7y
+qmsecxt8wizgu
+qmsecxt8wybsi
+qms6kg0v6b3do
+qms6kg0v68alb
+qms6kg0v68cyy
+qms6kg0v6a82t
+qms6kg0v6bkgq
+qms6kg0v6cjuu
+qms6kg0v6dc1m
+qms6kg0v6g7si
+qms6kg0v6mz8s
+qms6kg0v6os5p
+qms6kg0v6pakk
+qms6kg0v6sixn
+qms6kg0v6a3s7
+qms6kg0v6cjf3
+qms6kg0v6nybn
+qms6kg0v6oa1g
+qms6kg0v6qrl4
+qms7rpyng08zt
+qms7rpyng3chy
+qms7rpyng7iiq
+qms7rpyngb74b
+qms7ro8moizaa
+qms7ro8mowpjv
+qms7ro8mo6b4z
+qms7ro8mob0r2
+qms7ro8mozxlb
+qms7ro8mo152i
+qms7ro8mo35ot
+qms7ro8mo7v2p
+qms7ro8moesys
+qms7ro8monxr1
+qms7ro8mowehc
+qmsectqi56dab
+qmsectqi58vx4
+qmsectqi5bfc1
+qmsectqi5g9ek
+qmsectqi5l215
+qmsectqi5l5uq
+qmsectqi5lplz
+qmsectqi5sisu
+qmsectqi5z3ob
+qms8z4qw167em
+qmsdcpsy45boc
+qmsdcvhf489t8
+qmsdcwaj0f6kc
+qmsdcxgz5eaxg
+qmsdcychuzd5a
+qmsdd02r9wxsm
+qmsddinn0e3ji
+qmsdj32zgwkg8
+qmsdj32zgx8k8
+qms8z4qw0ca07
+qms8z4qw0cfjy
+qms8z4qw0gqe2
+qms8z4qw0pueq
+qms8z4qw0zdeq
+qmsdj32zgdgjz
+qms5x1mxb4if0
+qms5x1mxb6lap
+qms5x1mxb9n82
+qms5vsyu96w9i
+qms5vsyu9q38a
+qms5vsyu9qqlk
+qms5vsyu9156i
+qms5vsyu935w7
+qms5vsyu937t9
+qms5vsyu991a9
+qms5vsyu9b709
+qms5vsyu9cgk9
+qms5vsyu9d7he
+qms5vsyu9gks2
+qms5vsyu9gpye
+qms5vsyu9ixfg
+qms5vsyu9lr1e
+qms5vsyu9r4j1
+qms5vsyu9v9st
+qms5vsyu9xgik
+qms5vsyu963mk
+qms5vsyu971e7
+qms5vsyu982pi
+qms5vsyu9at5q
+qms5vsyu9cu0x
+qms5vsyu9mrri
+qms5vsyu9nfcq
+qms5vsyu9nqk9
+qms5vsyu9ybtl
+qms5vsyu9z7tq
+
+==============================================================================
+8. CE QUE JE N'AI PAS FAIT
+==============================================================================
+
+- Aucune ecriture dans Supabase pour produire ce dossier (lectures seules).
+- Le SQL n'a PAS ete execute. Il attend ta validation.
+- Les 15 tombstones de 07:49-08:27 n'ont pas ete touches.
+- La cle anon n'apparait ni ici ni dans le SQL genere.
