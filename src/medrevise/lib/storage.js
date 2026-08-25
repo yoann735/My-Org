@@ -4,7 +4,7 @@
    pour localStorage. Chaque "table" = un petit store clé→enregistrement.
    Hiérarchie : SOURCE(cours) → MATIÈRE → FICHE → QUESTIONS / STRUCTURES.
    ============================================================ */
-import { get, set, del, values, entries, setMany, createStore } from 'idb-keyval';
+import { get, set, del, clear, values, entries, setMany, createStore } from 'idb-keyval';
 import { isoDate, startAdaptive } from './sm2.js';
 import { queuePush, pullAllRecords, pushBlob, pullBlob, flushOutbox, isPushDegraded } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
@@ -61,6 +61,50 @@ export const getOne = (name, id) => get(id, S[name]);
      sauvegarde ne doit produire aucun appel réseau. ---- */
 export const SYNCABLE_STORES = SYNCABLE;
 export const getAllEntries = (name) => entries(S[name]);
+
+/* ============================================================
+   RESTAURATION D'UNE SAUVEGARDE (lib/backupImport.js). Trois primitives, ici
+   plutôt que dans le module d'import, parce qu'elles ont besoin des poignées de
+   store `S` — qui ne sortent jamais de ce fichier.
+   ============================================================ */
+
+/* Verrou de synchro. Pendant une restauration, `visibilitychange` peut déclencher
+   forceSync (MedReviseApp.jsx) : une réconciliation qui tombe au milieu d'un
+   clear()/setMany() mélangerait l'ancien état et le nouveau. Le verrou fait de
+   syncNow() un no-op explicite ('paused') le temps de l'opération. */
+let syncPaused = false;
+export function setSyncPaused(v) { syncPaused = !!v; }
+export function isSyncPaused() { return syncPaused; }
+
+/** Remplace INTÉGRALEMENT le contenu d'un store syncable par `recs` : clear()
+ *  puis setMany(), et surtout PAS un upsert par id — sinon tout enregistrement
+ *  local absent de la sauvegarde survivrait, et l'état obtenu ne serait pas
+ *  exactement celui du fichier.
+ *  `stamp` : horodatage NEUF appliqué à tous les enregistrements. Sans lui, la
+ *  sauvegarde (forcément plus ancienne que « maintenant ») perdrait la
+ *  comparaison LWW face au cloud et la restauration serait défaite dans la
+ *  seconde. C'est le prix assumé : on perd le « dernier modifié » d'origine. */
+export async function replaceStore(name, recs, stamp) {
+  if (!SYNCABLE.includes(name)) throw new Error('store non restaurable : ' + name);
+  const stamped = (recs || []).filter((r) => r && r.id).map((r) => ({ ...r, updatedAt: stamp }));
+  await clear(S[name]);
+  if (stamped.length) await setMany(stamped.map((r) => [r.id, r]), S[name]);
+  stamped.forEach((r) => queuePush(name, r.id, r, stamp));
+  return stamped.length;
+}
+
+/** Écrit des blobs en FUSION : on ajoute/écrase, on ne vide JAMAIS le store.
+ *  Décision explicite (voir docs/audit-sync-J-2026.md et la mécanique validée) :
+ *  un blob en trop est inoffensif — plus aucune fiche ne le référence — alors
+ *  qu'un blob supprimé est irrécupérable, et trop volumineux pour tenir dans un
+ *  putBackup. C'est le seul store dont l'état final n'est pas rigoureusement
+ *  celui du fichier, et c'est voulu. Aucun push cloud ici : les blobs ont leur
+ *  propre canal (Storage), et ils y sont déjà. */
+export async function mergeBlobs(pairs) {
+  if (!pairs || !pairs.length) return 0;
+  await setMany(pairs, S.blobs);
+  return pairs.length;
+}
 export async function put(name, rec) {
   const stamped = SYNCABLE.includes(name) ? { ...rec, updatedAt: new Date().toISOString() } : rec;
   await set(stamped.id, stamped, S[name]);
@@ -465,6 +509,7 @@ export async function queueAllLocalForPush() {
    ============================================================ */
 export async function syncNow() {
   if (!SYNC_ENABLED) return { status: 'disabled' };
+  if (syncPaused) return { status: 'paused' }; // restauration en cours, voir setSyncPaused
   await flushOutbox();
   const rec = await reconcileAll();
   // C2 (docs/audit-sync-J-2026.md §2) : NE JAMAIS pousser après un tirage raté.

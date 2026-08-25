@@ -2,12 +2,13 @@
    MedRevise — Réglages : gestion des cours (sources) + matières,
    rappels J, archivage ; profil ; méthode des J ; objectif ; reset.
    ============================================================ */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, Switch, matiereMeta, syncStatusLabel } from '../components/ui.jsx';
 import { isClassicUI, setClassicUI } from '../../shared/uiMode.js';
 import { wipeAll } from '../lib/storage.js';
-import { exportBackup } from '../lib/backupExport.js';
+import { exportBackup, formatOctets } from '../lib/backupExport.js';
+import { validateBackup, currentCounts, importBackup, computeCloudDiff, applyCloudTombstones } from '../lib/backupImport.js';
 
 export function Reglages({ ctx }) {
   const { db } = ctx;
@@ -23,6 +24,53 @@ export function Reglages({ ctx }) {
     });
     setBackup({ busy: false, message: res.message });
   };
+  // « Restaurer une sauvegarde » (voir lib/backupImport.js). Machine d'état
+  // volontairement explicite : choisir un fichier → comparer → remplacer →
+  // examiner le diff cloud → (second geste) supprimer. Rien n'est irréversible
+  // avant un clic dédié.
+  const fileRef = useRef(null);
+  const [restore, setRestore] = useState({
+    busy: false, erreur: '', message: '',
+    data: null, pret: null, actuel: null, meta: null, octets: 0,
+    fait: false, diff: null,
+  });
+
+  const onPickFile = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = ''; // permet de resélectionner le même fichier après un essai
+    if (!f) return;
+    setRestore((r) => ({ ...r, busy: true, erreur: '', message: 'Lecture du fichier…', diff: null, fait: false }));
+    try {
+      const data = JSON.parse(await f.text());
+      const v = validateBackup(data, f.size);
+      if (!v.ok) { setRestore((r) => ({ ...r, busy: false, erreur: v.erreur, pret: null, data: null, message: '' })); return; }
+      const actuel = await currentCounts();
+      setRestore((r) => ({ ...r, busy: false, message: '', data, pret: v.compteurs, actuel, meta: v.meta, octets: f.size }));
+    } catch (err) {
+      setRestore((r) => ({ ...r, busy: false, pret: null, data: null, message: '', erreur: 'Fichier illisible : ' + String((err && err.message) || err) }));
+    }
+  };
+
+  const runImport = async () => {
+    setRestore((r) => ({ ...r, busy: true, message: 'Restauration…' }));
+    const res = await importBackup(restore.data, { onProgress: (m) => setRestore((r) => ({ ...r, message: m })) });
+    if (!res.ok) { setRestore((r) => ({ ...r, busy: false, message: res.message })); return; }
+    await ctx.reload();
+    setRestore((r) => ({ ...r, message: res.message + ' Calcul du diff cloud…' }));
+    const diff = await computeCloudDiff(restore.data);
+    setRestore((r) => ({
+      ...r, busy: false, fait: true, pret: null, diff: diff.ok ? diff : null,
+      message: res.message + (diff.ok ? '' : ' (diff cloud indisponible : hors ligne)'),
+    }));
+  };
+
+  const runTombstones = async () => {
+    if (!window.confirm(`Supprimer définitivement ${restore.diff.total} enregistrements au cloud ? Cette action se propage à TOUS tes appareils et ne peut pas être annulée.`)) return;
+    setRestore((r) => ({ ...r, busy: true, message: 'Suppression au cloud…' }));
+    const res = await applyCloudTombstones(restore.diff);
+    setRestore((r) => ({ ...r, busy: false, diff: res.ok ? null : r.diff, message: res.message }));
+  };
+
   const [renaming, setRenaming] = useState(null);
   const [draft, setDraft] = useState('');
   const [addCatFor, setAddCatFor] = useState(null);
@@ -252,6 +300,92 @@ export function Reglages({ ctx }) {
             </button>
           </div>
           {backup.message && <div className="hint" style={{ marginTop: 10 }}>{backup.message}</div>}
+        </Card>
+        <Card title="Restaurer une sauvegarde" icon="upload">
+          <div className="hint" style={{ marginBottom: 12 }}>
+            Remet CET appareil dans l'état d'un fichier exporté, puis pousse cet état
+            au cloud comme référence. Les images et PDF sont fusionnés, jamais
+            supprimés. L'état actuel est sauvegardé avant toute écriture.
+          </div>
+          <input ref={fileRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={onPickFile} />
+          <button type="button" className="btn" disabled={restore.busy} onClick={() => fileRef.current && fileRef.current.click()}>
+            <Icon name="upload" size={15} /> {restore.busy ? 'Lecture…' : 'Choisir un fichier de sauvegarde…'}
+          </button>
+
+          {restore.erreur && <div className="hint" style={{ marginTop: 10, color: 'var(--crit)' }}>{restore.erreur}</div>}
+
+          {restore.pret && !restore.fait && (
+            <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>Remplacer les données de cet appareil ?</div>
+              <div className="hint" style={{ marginBottom: 10 }}>
+                Sauvegarde du {restore.meta.exporteLe ? new Date(restore.meta.exporteLe).toLocaleString('fr-FR') : '?'}
+                {restore.meta.hote ? ` — ${restore.meta.hote}` : ''} · {formatOctets(restore.octets)}
+              </div>
+              <table style={{ width: '100%', fontSize: 13.5, borderCollapse: 'collapse', marginBottom: 12 }}>
+                <thead><tr>
+                  <th style={{ textAlign: 'left', padding: '4px 0', color: 'var(--text-2)', fontWeight: 500 }}>Store</th>
+                  <th style={{ textAlign: 'right', padding: '4px 8px', color: 'var(--text-2)', fontWeight: 500 }}>Actuellement</th>
+                  <th style={{ textAlign: 'right', padding: '4px 0', color: 'var(--text-2)', fontWeight: 500 }}>Le fichier</th>
+                </tr></thead>
+                <tbody>
+                  {Object.keys(restore.pret).filter((k) => restore.pret[k] || restore.actuel[k]).map((k) => (
+                    <tr key={k}>
+                      <td style={{ padding: '3px 0' }}>{k}</td>
+                      <td style={{ textAlign: 'right', padding: '3px 8px', fontVariantNumeric: 'tabular-nums' }}>{restore.actuel[k] ?? 0}</td>
+                      <td style={{ textAlign: 'right', padding: '3px 0', fontVariantNumeric: 'tabular-nums',
+                                   fontWeight: restore.pret[k] !== restore.actuel[k] ? 700 : 400,
+                                   color: restore.pret[k] !== restore.actuel[k] ? 'var(--accent)' : 'inherit' }}>{restore.pret[k]}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="row wrap" style={{ gap: 8 }}>
+                <button type="button" className="btn" disabled={restore.busy} onClick={() => setRestore((r) => ({ ...r, pret: null, data: null }))}>Annuler</button>
+                <button type="button" className="btn" style={{ color: 'var(--crit)' }} disabled={restore.busy} onClick={runImport}>
+                  <Icon name="upload" size={15} /> Remplacer
+                </button>
+              </div>
+            </div>
+          )}
+
+          {restore.message && <div className="hint" style={{ marginTop: 10 }}>{restore.message}</div>}
+
+          {restore.diff && (
+            <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                Suppressions au cloud — {restore.diff.total} enregistrement{restore.diff.total > 1 ? 's' : ''} à examiner
+              </div>
+              {restore.diff.total === 0 ? (
+                <div className="hint">Le cloud ne contient rien qui soit absent de la sauvegarde. Aucune suppression nécessaire.</div>
+              ) : (
+                <>
+                  <div className="hint" style={{ marginBottom: 8 }}>
+                    Présents au cloud, absents du fichier. Tant que tu ne les supprimes pas, ils
+                    redescendront sur cet appareil à la prochaine réconciliation.
+                    <strong> La suppression est définitive et se propage à tous tes appareils.</strong>
+                  </div>
+                  <div className="row wrap" style={{ gap: 6, marginBottom: 8 }}>
+                    {Object.entries(restore.diff.parStore).map(([k, n]) => <span key={k} className="j-tag">{k} : {n}</span>)}
+                  </div>
+                  <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8, marginBottom: 10 }}>
+                    {restore.diff.exemples.map((e) => (
+                      <div key={e.store + e.id} style={{ fontSize: 12.5, padding: '3px 0', display: 'flex', gap: 8 }}>
+                        <span style={{ color: 'var(--text-2)', minWidth: 92 }}>{e.store}</span>
+                        <span style={{ flex: 1 }}>{e.apercu}</span>
+                        <span style={{ color: 'var(--text-2)' }}>{String(e.modifie || '').slice(0, 10)}</span>
+                      </div>
+                    ))}
+                    {restore.diff.total > restore.diff.exemples.length && (
+                      <div className="hint" style={{ marginTop: 6 }}>… et {restore.diff.total - restore.diff.exemples.length} autres.</div>
+                    )}
+                  </div>
+                  <button type="button" className="btn" style={{ color: 'var(--crit)' }} disabled={restore.busy} onClick={runTombstones}>
+                    <Icon name="trash" size={15} /> Supprimer ces {restore.diff.total} enregistrements au cloud
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </Card>
         <Card title="Données & confidentialité" icon="box">
           <div className="hint" style={{ marginBottom: 12 }}>100 % local : fiches, images et PDF sont stockés sur cet appareil (IndexedDB).</div>
