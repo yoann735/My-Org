@@ -23,7 +23,7 @@
    ne peut pas le redécouvrir tout seul et réimporterait la version encore
    vivante côté cloud sans ce rejeu préalable).
    ============================================================ */
-import { set, entries, delMany, createStore } from 'idb-keyval';
+import { set, keys, entries, delMany, createStore } from 'idb-keyval';
 import { supabase, SYNC_ENABLED, RECORDS_TABLE, BLOBS_BUCKET } from './supabaseClient.js';
 
 const outboxStore = createStore('medrevise-outbox', 'v1');
@@ -130,6 +130,15 @@ async function flushPending() {
     finally { flushing = null; }
   })();
   return flushing;
+}
+
+/** Nombre d'écritures locales encore EN ATTENTE d'envoi. Lecture seule, sert à
+ *  l'indicateur de synchro (lib/syncStatus.js) : tant que ce nombre n'est pas nul,
+ *  l'appareil a du retard à pousser, même si sa comparaison avec le cloud semble
+ *  bonne par ailleurs. 0 si la synchro n'est pas configurée (rien ne s'accumule). */
+export async function outboxCount() {
+  if (!SYNC_ENABLED) return 0;
+  try { return ((await keys(outboxStore)) || []).length; } catch (e) { return 0; }
 }
 
 /** Rejoue l'outbox laissée par une session précédente (app tuée avant tout flush, pas

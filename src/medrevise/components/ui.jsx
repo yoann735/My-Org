@@ -3,10 +3,11 @@
    etudes.css classes for visual fidelity, but is wired to our real
    data model (matiere = {id,nom,couleur,icon}, fiche, questions).
    ============================================================ */
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, MeasuringStrategy, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Icon } from '../../shared/Icon.jsx';
+import { comparerAuCloud, derniereSyncReussie } from '../lib/syncStatus.js';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { todayISO } from '../lib/sm2.js';
 import { AllPromptsModal } from './CoursePromptsMenu.jsx';
@@ -147,6 +148,108 @@ export function syncStatusLabel(syncState) {
     return 'Synchronisé' + quand + '.';
   }
   return 'Pas encore synchronisé cette session.';
+}
+
+/* ---- Indicateur « à jour avec le cloud » (voir lib/syncStatus.js) ----
+   MÊME composant sur desktop (Réglages) et sur mobile (accueil) : c'est ce qui
+   garantit que les deux écrans affichent exactement la même empreinte pour un
+   même état. Deux appareils alignés montrent la MÊME valeur — c'est la preuve
+   visuelle recherchée, et elle ne demande de compter aucune carte.
+   `compact` : variante mobile, sans le détail par store. */
+export function SyncIndicator({ compact = false, refreshKey = 0 }) {
+  const [etat, setEtat] = useState(null);
+  const [enCours, setEnCours] = useState(false);
+  const [detail, setDetail] = useState(false);
+
+  const verifier = useCallback(async () => {
+    setEnCours(true);
+    try { setEtat(await comparerAuCloud()); }
+    catch (e) { setEtat({ statut: 'erreur', message: String((e && e.message) || e) }); }
+    setEnCours(false);
+  }, []);
+
+  useEffect(() => { verifier(); }, [verifier, refreshKey]);
+
+  const derniere = derniereSyncReussie();
+  const quand = derniere ? new Date(derniere).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : null;
+
+  const bandeau = () => {
+    if (enCours && !etat) return { txt: 'Vérification…', couleur: 'var(--text-2)' };
+    if (!etat) return { txt: '—', couleur: 'var(--text-2)' };
+    if (etat.statut === 'disabled') return { txt: 'Synchro cloud désactivée sur ce déploiement', couleur: 'var(--text-2)' };
+    if (etat.statut === 'offline') return { txt: '⚠️ Cloud injoignable — état non vérifiable', couleur: 'var(--warn, #d08a2a)' };
+    if (etat.statut === 'erreur') return { txt: '⚠️ Vérification impossible : ' + etat.message, couleur: 'var(--crit)' };
+    if (etat.statut === 'ajour') return { txt: '✅ À jour avec le cloud', couleur: 'var(--ok, #3fae7a)' };
+    return { txt: `⚠️ Pas à jour — ${etat.ecarts + etat.enAttente} élément${(etat.ecarts + etat.enAttente) > 1 ? 's' : ''} à synchroniser`, couleur: 'var(--warn, #d08a2a)' };
+  };
+  const b = bandeau();
+  const utile = etat && (etat.statut === 'ajour' || etat.statut === 'ecart');
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontWeight: 600, color: b.couleur, marginBottom: utile ? 8 : 0 }}>{b.txt}</div>
+
+      {utile && (
+        <>
+          {/* L'EMPREINTE : la valeur à comparer entre appareils. */}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-2)' }}>Empreinte cloud</span>
+            <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 15, fontWeight: 700, letterSpacing: '.06em' }}>
+              {etat.hash}
+            </code>
+            <span style={{ fontSize: 12, color: 'var(--text-2)', fontVariantNumeric: 'tabular-nums' }}>
+              · {etat.n} enregistrements
+            </span>
+          </div>
+          {etat.statut === 'ecart' && (
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-2)' }}>Empreinte locale</span>
+              <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 14, color: 'var(--warn, #d08a2a)' }}>
+                {etat.hashLocal}
+              </code>
+              <span style={{ fontSize: 12, color: 'var(--text-2)', fontVariantNumeric: 'tabular-nums' }}>
+                · {etat.local.n} en local
+              </span>
+            </div>
+          )}
+
+          <div style={{ fontSize: 12.5, color: 'var(--text-2)' }}>
+            {etat.statut === 'ajour'
+              ? 'Cette empreinte doit être IDENTIQUE sur tous tes appareils à jour.'
+              : `À rapatrier : ${etat.aTirer} · à envoyer : ${etat.aPousser} · versions différentes : ${etat.divergents}`}
+          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 3 }}>
+            En attente d'envoi : <strong>{etat.enAttente}</strong>
+            {quand ? ` · dernière synchro réussie : ${quand}` : ' · aucune synchro réussie enregistrée'}
+          </div>
+
+          {!compact && etat.statut === 'ecart' && etat.exemples.length > 0 && (
+            <>
+              <button type="button" className="btn sm" style={{ marginTop: 8 }} onClick={() => setDetail((d) => !d)}>
+                {detail ? 'Masquer le détail' : 'Voir le détail'}
+              </button>
+              {detail && (
+                <div style={{ marginTop: 6, maxHeight: 160, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8, fontSize: 12 }}>
+                  {etat.exemples.map((e) => (
+                    <div key={e.k} style={{ padding: '2px 0', fontFamily: 'ui-monospace, monospace' }}>
+                      {e.k} — {e.quoi}
+                    </div>
+                  ))}
+                  {etat.ecarts > etat.exemples.length && (
+                    <div style={{ marginTop: 4 }}>… et {etat.ecarts - etat.exemples.length} autres.</div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      <button type="button" className="btn sm" style={{ marginTop: 8 }} disabled={enCours} onClick={verifier}>
+        <Icon name="refresh" size={13} className={enCours ? 'spin' : ''} /> {enCours ? 'Vérification…' : 'Revérifier'}
+      </button>
+    </div>
+  );
 }
 
 /* ---- Card ---- */

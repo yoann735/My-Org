@@ -26,6 +26,7 @@ import {
   getChapExoPrompts, setChapExoPrompts,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
+import { marquerSyncReussie } from './lib/syncStatus.js';
 import { todayISO, startAdaptive } from './lib/sm2.js';
 import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor, linkedV2Questions } from './lib/planning.js';
 import { useIsMobile } from '../shared/hooks/useMediaQuery.js';
@@ -106,7 +107,9 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const forceSync = useCallback(async () => {
     setSyncState((s) => ({ ...s, status: 'syncing' }));
     const r = await syncNow();
-    if (r.status === 'ok') await reload();
+    // trace locale (localStorage) de la derniere synchro REUSSIE, pour que
+    // l'indicateur puisse l'afficher meme apres un rechargement de page.
+    if (r.status === 'ok') { marquerSyncReussie(); await reload(); }
     // `degraded` : la RPC conditionnelle `medrevise_push` est absente de Supabase
     // (script SQL pas encore exécuté) et l'envoi est retombé sur l'ancien upsert
     // non protégé — remonté tel quel à l'UI, voir ui.jsx#syncStatusLabel.

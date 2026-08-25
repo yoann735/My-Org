@@ -4,7 +4,7 @@
    ============================================================ */
 import { useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, EdTop, Switch, matiereMeta, syncStatusLabel } from '../components/ui.jsx';
+import { Card, EdTop, Switch, matiereMeta, syncStatusLabel, SyncIndicator } from '../components/ui.jsx';
 import { isClassicUI, setClassicUI } from '../../shared/uiMode.js';
 import { wipeAll } from '../lib/storage.js';
 import { exportBackup, formatOctets } from '../lib/backupExport.js';
@@ -28,6 +28,8 @@ export function Reglages({ ctx }) {
   // volontairement explicite : choisir un fichier → comparer → remplacer →
   // examiner le diff cloud → (second geste) supprimer. Rien n'est irréversible
   // avant un clic dédié.
+  // force le recalcul de l'indicateur de synchro apres un « Forcer la synchro »
+  const [syncTick, setSyncTick] = useState(0);
   const fileRef = useRef(null);
   const [restore, setRestore] = useState({
     busy: false, erreur: '', message: '',
@@ -393,9 +395,13 @@ export function Reglages({ ctx }) {
         </Card>
         <Card title="Synchronisation" icon="refresh">
           <div className="hint" style={{ marginBottom: 12 }}>{syncStatusLabel(ctx.syncState)}</div>
-          <button type="button" className="btn" disabled={ctx.syncState?.status === 'syncing'} onClick={ctx.forceSync}>
+          <button type="button" className="btn" disabled={ctx.syncState?.status === 'syncing'} onClick={async () => { await ctx.forceSync(); setSyncTick((t) => t + 1); }}>
             <Icon name="refresh" size={15} /> {ctx.syncState?.status === 'syncing' ? 'Synchronisation…' : 'Forcer la synchro'}
           </button>
+          {/* Comparaison REELLE local <-> cloud, avec empreinte comparable entre
+              appareils (voir lib/syncStatus.js). Recalculee apres chaque synchro
+              forcee via syncTick. */}
+          <SyncIndicator refreshKey={syncTick} />
         </Card>
       </div>
     </div>

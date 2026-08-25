@@ -10,7 +10,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
 import { todayISO } from '../lib/sm2.js';
-import { matiereMeta, syncStatusLabel, DateActionModal, ConfirmModal } from '../components/ui.jsx';
+import { matiereMeta, syncStatusLabel, DateActionModal, ConfirmModal, SyncIndicator } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { exportBackup } from '../lib/backupExport.js';
 
@@ -66,6 +66,8 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
   // lecture seule, aucun appel réseau, aucune synchro déclenchée. Sur iPhone,
   // deliverFile passe par la feuille de partage iOS (« Enregistrer dans
   // Fichiers ») plutôt que par un <a download>, peu fiable sur Safari iOS.
+  // recalcul de l'indicateur apres un appui sur l'icone de synchro
+  const [syncTick, setSyncTick] = useState(0);
   const [backup, setBackup] = useState({ busy: false, message: '' });
   const runExport = async (withBlobs) => {
     setBackup({ busy: true, message: 'Lecture des données…' });
@@ -125,7 +127,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
         </div>
         <div className="mrm-header-actions">
           <button type="button" className="mrm-icon-btn" disabled={ctx.syncState?.status === 'syncing'}
-            onClick={ctx.forceSync} aria-label="Forcer la synchro" title={syncStatusLabel(ctx.syncState)}>
+            onClick={async () => { await ctx.forceSync(); setSyncTick((t) => t + 1); }} aria-label="Forcer la synchro" title={syncStatusLabel(ctx.syncState)}>
             <Icon name="refresh" size={18} className={ctx.syncState?.status === 'syncing' ? 'spin' : ''} />
           </button>
           <button type="button" className="mrm-icon-btn" onClick={ctx.toggleTheme} aria-label="Thème">
@@ -258,6 +260,15 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
             <div>Tout est à jour pour aujourd'hui 🎉</div>
           </div>
         )}
+
+        <div className="mrm-section">
+          <div className="mrm-section-head"><Icon name="refresh" size={15} /> <span>Synchronisation</span></div>
+          <div className="mrm-card">
+            {/* MEME composant que Reglages desktop : l'empreinte affichée ici doit
+                être identique à celle de l'ordi quand les deux sont à jour. */}
+            <SyncIndicator compact refreshKey={syncTick} />
+          </div>
+        </div>
 
         <div className="mrm-section">
           <div className="mrm-section-head"><Icon name="archive" size={15} /> <span>Sauvegarde</span></div>
