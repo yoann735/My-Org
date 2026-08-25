@@ -68,7 +68,11 @@ create policy "medrevise_blobs_anon_all"
 
 Un `upsert` PostgREST ne sait pas exprimer de condition : il écrase la ligne quoi qu'elle
 contienne, `updated_at` compris — qu'il fait donc *reculer*. Le garde-fou doit vivre dans
-la base. SQL Editor → New query → Run :
+la base.
+
+**Le script est dans le dépôt : [`supabase/medrevise_push.sql`](supabase/medrevise_push.sql)**
+— ouvre-le, copie tout, colle dans SQL Editor → New query → Run. Il est reproduit ci-dessous
+pour référence :
 
 ```sql
 create or replace function public.medrevise_push(records jsonb)
