@@ -5,7 +5,7 @@
    ============================================================ */
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, Stepper, Switch } from '../components/primitives.jsx';
-import { TopActions } from './_shared.jsx';
+import { TopActions, ExportCsvButton } from './_shared.jsx';
 import { ACCENTS } from '../../shared/constants.js';
 import { useState } from 'react';
 
@@ -137,9 +137,16 @@ export function Settings({ ctx }) {
           <div className="hint" style={{ marginBottom: 12 }}>
             MealWeek est 100% local : aucune donnée ne quitte cet appareil. Vos coches, favoris et réglages sont stockés dans le navigateur (localStorage).
           </div>
-          <button type="button" className="btn" style={{ color: 'var(--crit)' }} onClick={ctx.resetAll}>
-            <Icon name="trash" size={15} /> Réinitialiser mes données locales
-          </button>
+          <div className="row wrap" style={{ gap: 10 }}>
+            <ExportCsvButton />
+            <button type="button" className="btn" style={{ color: 'var(--crit)' }} onClick={ctx.resetAll}>
+              <Icon name="trash" size={15} /> Réinitialiser mes données locales
+            </button>
+          </div>
+          <div className="hint" style={{ marginTop: 10 }}>
+            L'export CSV contient les 43 recettes en détail : une ligne par ingrédient
+            (livrés et « non inclus »), avec nutrition, coût et allergènes.
+          </div>
         </Card>
       </div>
     </div>

@@ -1,5 +1,8 @@
 /* shared bits used across screens */
+import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { RECIPES } from '../data/dataLayer.js';
+import { exportRecipesCsv } from '../lib/exportRecipesCsv.js';
 
 /** hub + theme toggle + avatar (top-right of every screen) */
 export function TopActions({ ctx }) {
@@ -62,5 +65,32 @@ export function ResetSlotsButton({ ctx }) {
     <button type="button" className="btn ghost" onClick={ctx.resetSlots} title="Réactiver tous les repas">
       <Icon name="refresh" size={15} /> Tout réactiver ({ctx.disabledCount})
     </button>
+  );
+}
+
+/** Export CSV exhaustif de la bibliothèque — une ligne par couple
+    (recette, ingrédient), ingrédients livrés ET non inclus. Toujours la base
+    ENTIÈRE (43 recettes), jamais le sous-ensemble filtré à l'écran : c'est une
+    sauvegarde, pas une vue. Utilisable au doigt sur mobile (téléchargement
+    natif, ou feuille de partage iOS — voir exportRecipesCsv). */
+export function ExportCsvButton({ className = 'btn', style }) {
+  const [etat, setEtat] = useState({ busy: false, message: '' });
+
+  const run = async () => {
+    if (etat.busy) return;
+    setEtat({ busy: true, message: '' });
+    const res = await exportRecipesCsv(RECIPES);
+    setEtat({ busy: false, message: res.message });
+  };
+
+  return (
+    <div className="row wrap" style={{ gap: 10, ...style }}>
+      <button type="button" className={className} onClick={run} disabled={etat.busy}
+        title={`Télécharger un CSV détaillé des ${RECIPES.length} recettes (une ligne par ingrédient)`}>
+        <Icon name="upload" size={15} />
+        {etat.busy ? 'Export en cours…' : 'Exporter toutes les recettes (CSV)'}
+      </button>
+      {etat.message && <span className="hint">{etat.message}</span>}
+    </div>
   );
 }
