@@ -5,7 +5,7 @@
    ============================================================ */
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, Stepper, Switch } from '../components/primitives.jsx';
-import { TopActions, ExportCsvButton } from './_shared.jsx';
+import { TopActions, ExportCsvButton, ExportIngredientsCsvButton } from './_shared.jsx';
 import { ACCENTS } from '../../shared/constants.js';
 import { useState } from 'react';
 
@@ -139,13 +139,16 @@ export function Settings({ ctx }) {
           </div>
           <div className="row wrap" style={{ gap: 10 }}>
             <ExportCsvButton />
+            <ExportIngredientsCsvButton />
             <button type="button" className="btn" style={{ color: 'var(--crit)' }} onClick={ctx.resetAll}>
               <Icon name="trash" size={15} /> Réinitialiser mes données locales
             </button>
           </div>
           <div className="hint" style={{ marginTop: 10 }}>
-            L'export CSV contient les 43 recettes en détail : une ligne par ingrédient
-            (livrés et « non inclus »), avec nutrition, coût et allergènes.
+            L'export recettes contient les 43 recettes en détail : une ligne par ingrédient
+            (livrés et « non inclus »), avec nutrition, coût et allergènes. L'export
+            ingrédients reprend les 140 entrées de la base : une ligne par format d'achat,
+            avec prix Chronodrive, contenance, prix au kg/L, DLC et substitut.
           </div>
         </Card>
       </div>

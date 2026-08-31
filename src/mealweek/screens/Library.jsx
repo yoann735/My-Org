@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { ProteinBadge, ComplexityPill, Meta } from '../components/primitives.jsx';
-import { TopActions, ExportCsvButton } from './_shared.jsx';
+import { TopActions, ExportCsvButton, ExportIngredientsCsvButton } from './_shared.jsx';
 import { RECIPES, PROT, proteinClass, recipeProtein } from '../data/dataLayer.js';
 
 const TIMES = { 20: '≤20 min', 25: '≤25 min', 30: '≤30 min' };
@@ -93,10 +93,13 @@ export function Library({ ctx }) {
           <button type="button" className={'fpill' + (fOven ? ' on amber' : '')} onClick={() => setFOven(!fOven)}><Icon name="fire" size={13} fill={fOven} /> Four</button>
           <button type="button" className={'fpill' + (fPizza ? ' on amber' : '')} onClick={() => setFPizza(!fPizza)}><Icon name="pizza" size={13} /> Pizza WE</button>
         </div>
-        {/* export : porte sur TOUTE la base (les 43 recettes), pas sur le
-            résultat filtré ci-dessus — d'où le libellé explicite. */}
+        {/* exports : portent sur TOUTE la base (43 recettes / 140 ingrédients),
+            pas sur le résultat filtré ci-dessus — d'où les libellés explicites.
+            `frow` enveloppe déjà sur petit écran : les deux boutons passent
+            l'un sous l'autre au doigt plutôt que de déborder. */}
         <div className="frow" style={{ paddingTop: 4, borderTop: '1px solid var(--border-2)' }}>
           <ExportCsvButton />
+          <ExportIngredientsCsvButton />
         </div>
         {chips.length > 0 && (
           <div className="frow" style={{ paddingTop: 4, borderTop: '1px solid var(--border-2)' }}>

@@ -1,8 +1,9 @@
 /* shared bits used across screens */
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { RECIPES } from '../data/dataLayer.js';
+import { RECIPES, ING_REF } from '../data/dataLayer.js';
 import { exportRecipesCsv } from '../lib/exportRecipesCsv.js';
+import { exportIngredientsCsv } from '../lib/exportIngredientsCsv.js';
 
 /** hub + theme toggle + avatar (top-right of every screen) */
 export function TopActions({ ctx }) {
@@ -89,6 +90,34 @@ export function ExportCsvButton({ className = 'btn', style }) {
         title={`Télécharger un CSV détaillé des ${RECIPES.length} recettes (une ligne par ingrédient)`}>
         <Icon name="upload" size={15} />
         {etat.busy ? 'Export en cours…' : 'Exporter toutes les recettes (CSV)'}
+      </button>
+      {etat.message && <span className="hint">{etat.message}</span>}
+    </div>
+  );
+}
+
+/** Export CSV exhaustif de la base ingrédients — une ligne par couple
+    (ingrédient, format d'achat) : les 140 entrées de ingredients_ref, un
+    ingrédient multi-format donnant une ligne par format. Prix Chronodrive,
+    contenance et prix au kg/L compris. Comme l'export recettes : toujours la
+    base ENTIÈRE, et utilisable au doigt sur mobile (téléchargement natif, ou
+    feuille de partage iOS — voir exportIngredientsCsv). */
+export function ExportIngredientsCsvButton({ className = 'btn', style }) {
+  const [etat, setEtat] = useState({ busy: false, message: '' });
+
+  const run = async () => {
+    if (etat.busy) return;
+    setEtat({ busy: true, message: '' });
+    const res = await exportIngredientsCsv(ING_REF);
+    setEtat({ busy: false, message: res.message });
+  };
+
+  return (
+    <div className="row wrap" style={{ gap: 10, ...style }}>
+      <button type="button" className={className} onClick={run} disabled={etat.busy}
+        title={`Télécharger un CSV détaillé des ${Object.keys(ING_REF).length} ingrédients (une ligne par format d'achat, prix Chronodrive)`}>
+        <Icon name="upload" size={15} />
+        {etat.busy ? 'Export en cours…' : 'Exporter tous les ingrédients (CSV)'}
       </button>
       {etat.message && <span className="hint">{etat.message}</span>}
     </div>

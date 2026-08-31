@@ -310,7 +310,7 @@ export function formatGrammes(str) {
 }
 
 /** volume d'un libellé de format, en cl : "20cl"→20, "3x20cl"→60, "1l"→100. null sinon. */
-function formatVolumeCl(str) {
+export function formatVolumeCl(str) {
   const s = String(str || '').toLowerCase();
   const toCl = (v, u) => (u === 'cl' ? v : u === 'ml' ? v / 10 : v * 100); // l → 100 cl, ml → 0.1 cl
   let m = s.match(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(cl|ml|l)\b/);
