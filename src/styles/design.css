@@ -475,7 +475,14 @@ body {
 @keyframes slidein { from { transform: translateX(40px); opacity: .4; } }
 
 /* ============================================================
-   COOK MODE — full-screen recipe overlay
+   COOK MODE — overlay de détail recette
+   Desktop : deux colonnes — « ce qu'il faut » (ingrédients,
+   nutrition, source) à gauche, « ce qu'on fait » (les étapes, qui
+   sont l'élément central) à droite, chacune défilant séparément.
+   Mobile  : une seule colonne défilante, ordonnée pour la cuisine —
+   ingrédients, étapes, nutrition, source (voir `order` plus bas).
+   Le tableau nutritionnel et le CTA vers la recette d'origine sont
+   TOUJOURS visibles : ni onglet, ni accordéon, ni « voir plus ».
    ============================================================ */
 .cook-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; }
 .cook-overlay.recipe-overlay { z-index: 80; }
@@ -489,40 +496,91 @@ body {
 }
 @keyframes cookin { from { transform: translateY(18px) scale(.985); opacity: .4; } }
 
-.cook-top { display: flex; gap: 20px; padding: 24px 28px 20px; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
+/* ---- en-tête : titre, puis temps / étapes / ustensiles ---- */
+.cook-top {
+  display: flex; gap: 24px; align-items: flex-start;
+  padding: 22px 26px 18px; border-bottom: 1px solid var(--border);
+  flex: 0 0 auto; background: var(--card);
+}
 .cook-top-main { min-width: 0; flex: 1 1 auto; }
-.cook-top-side { display: flex; flex-direction: column; align-items: flex-end; gap: 14px; flex: 0 0 auto; }
-.portion-box { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.cook-title { margin: 0 0 11px; font-size: 30px; line-height: 1.08; letter-spacing: -.015em; }
+.cook-metas { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.cook-metas .meta { font-size: 13.5px; font-weight: 600; color: var(--text-2); }
+.cook-top-side { display: flex; flex-direction: column; align-items: flex-end; gap: 13px; flex: 0 0 auto; }
 
-.cook-body { flex: 1 1 auto; display: grid; grid-template-columns: 340px 1fr; min-height: 0; overflow: hidden; }
-.cook-left { border-right: 1px solid var(--border); padding: 20px 22px 28px; overflow-y: auto; background: var(--card-2); }
-.cook-right { padding: 16px 26px 28px; overflow-y: auto; }
+/* sélecteur de portions — toujours visible, étiqueté */
+.portion-box {
+  display: flex; align-items: center; gap: 11px;
+  padding: 6px 8px 6px 14px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--card-2);
+}
+.portion-box .pb-label {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--text-3); white-space: nowrap;
+}
 
-.cook-sec-head { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; color: var(--text); }
-.cook-sec-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+/* ---- corps ---- */
+.cook-body {
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+  display: grid; grid-template-columns: minmax(320px, 380px) 1fr;
+}
+.cook-left {
+  border-right: 1px solid var(--border); background: var(--card-2);
+  padding: 20px 22px 26px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 24px;
+}
+.cook-right { padding: 18px 26px 28px; overflow-y: auto; }
+.cook-sec { min-width: 0; }
+
+.cook-sec-head { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; color: var(--text); }
+.cook-sec-head h3 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
 .cook-sec-head .ic, .cook-sec-head > svg:first-child { color: var(--accent); }
-.cook-sub { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-3); margin: 20px 0 9px; }
+.cook-sub { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-3); margin: 0 0 9px; }
 
+/* ---- ingrédients : « ce qu'il faut » ---- */
 .ing-list { display: flex; flex-direction: column; gap: 2px; }
 .ing-check {
-  display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
-  padding: 9px 8px; border: none; background: none; border-radius: var(--r, 9px); cursor: pointer;
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 10px 9px; border: none; background: none; border-radius: var(--r, 10px); cursor: pointer;
   font-family: inherit; color: var(--text); transition: background .12s;
 }
 .ing-check:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
-.ing-box { width: 20px; height: 20px; border-radius: var(--r-2, 6px); border: 1.8px solid var(--border); background: var(--card); display: grid; place-items: center; color: transparent; flex: 0 0 auto; transition: all .14s; }
+.ing-box { width: 21px; height: 21px; border-radius: var(--r-2, 6px); border: 1.8px solid var(--border); background: var(--card); display: grid; place-items: center; color: transparent; flex: 0 0 auto; transition: all .14s; }
 .ing-check.on .ing-box { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.ing-nm { font-size: 13.5px; font-weight: 500; flex: 1 1 auto; min-width: 0; }
-.ing-note { font-size: 11px; font-style: italic; font-weight: 400; color: var(--text-3); margin-left: 4px; }
+.ing-nm { font-size: 14px; font-weight: 500; flex: 1 1 auto; min-width: 0; line-height: 1.35; }
+.ing-note { font-size: 11.5px; font-style: italic; font-weight: 400; color: var(--text-3); margin-left: 4px; }
 .ing-check.on .ing-nm { text-decoration: line-through; color: var(--text-3); }
-.ing-q { font-size: 12.5px; font-weight: 700; color: var(--text); flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.ing-q { font-size: 13px; font-weight: 700; color: var(--text); flex: 0 0 auto; font-variant-numeric: tabular-nums; }
 .ing-check.on .ing-q { color: var(--text-3); }
 
-.nut-toggle { display: flex; align-items: center; gap: 9px; width: 100%; margin-top: 22px; padding: 12px 14px; border: 1px solid var(--border); background: var(--card); border-radius: var(--r, 11px); cursor: pointer; font-family: inherit; font-size: 13.5px; color: var(--text); transition: border-color .14s; }
-.nut-toggle:hover { border-color: var(--text-3); }
-.nut-toggle > svg:first-child { color: var(--accent); }
-.nut-panel { margin-top: 12px; padding: 16px; border: 1px solid var(--border); border-radius: var(--r, 12px); background: var(--card); animation: fadeup .2s ease; }
+/* ---- tableau nutritionnel : toujours affiché ---- */
+.nut-table {
+  width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border); border-radius: var(--r, 12px); overflow: hidden;
+  background: var(--card);
+}
+.nut-table th, .nut-table td { padding: 9px 12px; text-align: right; }
+.nut-table th:first-child, .nut-table td:first-child { text-align: left; }
+.nut-table thead th {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-3); background: var(--card-2); border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.nut-table tbody tr + tr td { border-top: 1px solid var(--border-2); }
+.nut-table tbody td { font-size: 13.5px; color: var(--text-2); }
+.nut-table tbody td:first-child { font-weight: 600; color: var(--text); }
+.nut-table tbody td.val { font-weight: 700; color: var(--text); }
+.nut-table tbody td.val-total { color: var(--accent); }
 
+/* ---- CTA vers la recette d'origine ---- */
+.cook-cta {
+  width: 100%; min-height: 50px; padding: 13px 18px; font-size: 14.5px; font-weight: 700;
+  border-radius: var(--r, 13px);
+}
+.cook-cta:active { transform: scale(.985); }
+.cook-cta .cta-src { font-weight: 600; opacity: .7; }
+
+/* ---- étapes : « ce qu'on fait » ---- */
 .step-progress { width: 120px; height: 6px; border-radius: 999px; background: var(--track); overflow: hidden; }
 .step-progress > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); transition: width .3s; }
 
@@ -534,11 +592,11 @@ body {
 .cook-step:hover { border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); }
 .cook-step:active { transform: scale(.995); }
 .cook-step.done { background: var(--card-2); }
-.cstep-num { font-size: 38px; line-height: .9; color: var(--accent); flex: 0 0 auto; width: 42px; }
+.cstep-num { font-size: 34px; line-height: .95; color: var(--accent); flex: 0 0 auto; width: 40px; }
 .cook-step.done .cstep-num { color: var(--text-3); }
-.cstep-body { flex: 1 1 auto; min-width: 0; padding-top: 3px; }
+.cstep-body { flex: 1 1 auto; min-width: 0; padding-top: 2px; }
 .cstep-title { font-size: 16px; font-weight: 600; margin-bottom: 5px; letter-spacing: -.01em; }
-.cstep-text { font-size: 14.5px; color: var(--text-2); line-height: 1.6; white-space: pre-line; }
+.cstep-text { font-size: 15.5px; color: var(--text-2); line-height: 1.62; white-space: pre-line; }
 .cook-step.done .cstep-title, .cook-step.done .cstep-text { text-decoration: line-through; opacity: .5; }
 .cstep-check { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--border); background: var(--card); display: grid; place-items: center; color: transparent; flex: 0 0 auto; transition: all .16s; align-self: center; }
 .cstep-check.on { background: var(--ok); border-color: var(--ok); color: #fff; }
@@ -957,22 +1015,53 @@ body {
   .shop-summary .ss-div { display: none; }
   .shop-summary .ss-break { justify-content: space-between; }
 
-  /* ---- Recipe overlay: full-screen sheet ---- */
+  /* ---- Overlay recette : feuille plein écran, une seule colonne ----
+     `display: contents` dissout la colonne de gauche pour que ses
+     sections deviennent des enfants directs de .cook-body : on peut
+     alors les ordonner autour des étapes avec `order`. Ordre voulu en
+     cuisine : ingrédients (ce qu'il faut) → étapes (ce qu'on fait) →
+     nutrition → recette d'origine. */
   .cook-overlay { place-items: stretch; }
   .cook-panel { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; border: none; }
-  .cook-top { padding: 16px 16px 14px; flex-wrap: wrap; gap: 12px; }
-  .cook-top h1 { font-size: 24px !important; }
-  .cook-top-side { flex-direction: row-reverse; align-items: center; width: 100%; justify-content: space-between; }
-  .portion-box { align-items: flex-start; }
-  /* tabbed body on mobile (see RecipeDetail) */
-  .cook-body.tabbed { display: block; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-  .cook-body.tabbed .cook-left,
-  .cook-body.tabbed .cook-right { border: none; padding: 16px; background: var(--bg); }
-  .recipe-tabs { display: flex; padding: 0 12px; gap: 4px; border-bottom: 1px solid var(--border); background: var(--bg); position: sticky; top: 0; z-index: 3; }
-  .recipe-tabs .tab { flex: 1; border-radius: 0; border-bottom: 2px solid transparent; background: none; box-shadow: none; }
-  .recipe-tabs .tab.active { border-bottom-color: var(--accent); color: var(--accent); background: none; box-shadow: none; }
-  .cook-step { padding: 14px 14px; gap: 12px; }
+  /* en-tête empilé : titre + repères, puis les portions ; la croix est
+     sortie du flux en haut à droite pour ne pas rogner le titre. */
+  .cook-top { position: relative; flex-direction: column; align-items: stretch; gap: 12px; padding: 14px 16px 13px; }
+  .cook-top-main { padding-right: 44px; }
+  .cook-title { font-size: 22px; margin-bottom: 9px; }
+  .cook-metas .meta { font-size: 13px; }
+  .cook-top-side { flex-direction: row; align-items: center; gap: 10px; }
+  .cook-top-side > .icon-btn { position: absolute; top: 12px; right: 12px; }
+  .portion-box { padding: 5px 6px 5px 12px; gap: 9px; }
+
+  .cook-body { display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .cook-left { display: contents; }
+  .cook-right { padding: 4px 16px 16px; overflow: visible; }
+  .cook-sec { padding: 0 16px; }
+  .cook-sec-ing { order: 1; padding-top: 16px; }
+  .cook-right { order: 2; }
+  .cook-sec-nut { order: 3; }
+  .cook-sec-subs { order: 4; }
+  .cook-sec-cta { order: 5; padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
+  /* filet de séparation entre sections empilées */
+  .cook-sec-nut, .cook-sec-subs { padding-top: 20px; border-top: 1px solid var(--border-2); margin-top: 4px; }
+  .cook-sec-cta { padding-top: 18px; }
+
+  /* l'en-tête « Préparation » ne colle pas : c'est le corps qui défile */
+  .cook-right .cook-sec-head { position: static !important; }
+
+  /* lisibilité en cuisine : cibles tactiles et texte plus grands */
+  .ing-check { padding: 12px 8px; }
+  .ing-nm { font-size: 15px; }
+  .ing-q { font-size: 14px; }
+  .cook-step { padding: 16px 15px; gap: 13px; }
   .cstep-num { font-size: 30px; width: 32px; }
+  .cstep-title { font-size: 16.5px; }
+  .cstep-text { font-size: 16px; line-height: 1.65; }
+  .cook-cta { min-height: 52px; font-size: 15px; }
+  /* tableau nutritionnel : 3 colonnes tiennent sur un écran étroit */
+  .nut-table th, .nut-table td { padding: 9px 8px; }
+  .nut-table tbody td { font-size: 13px; }
+  .nut-table thead th { font-size: 10px; letter-spacing: .04em; }
 
   /* freeze table → cards */
   .freeze-row { grid-template-columns: 1fr 1fr; gap: 4px 10px; padding: 12px 14px; }

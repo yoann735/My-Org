@@ -1,39 +1,40 @@
 /* ============================================================
-   Recipe overlay — "mode cuisine".
-   Desktop : faithful two-column cook layout (ingredients + nutrition
-             on the left, numbered steps on the right).
-   Mobile  : 3 tabs (Ingrédients / Étapes / Nutrition) — easier to use
-             one-handed in the kitchen (brief requirement).
-   Portion selector (1-6) rescales ingredients AND nutrition live.
-   Delivered ingredients and "non inclus" are two distinct lists.
-   Step checkboxes are persisted (per recipe) via ctx.
+   Overlay de détail recette — « mode cuisine ».
+
+   Hiérarchie : le titre, le temps et les ustensiles en haut, le
+   sélecteur de portions à côté et toujours visible. Puis deux zones
+   nettement séparées — « ce qu'il faut » (ingrédients cochables,
+   tableau nutritionnel, recette d'origine) et « ce qu'on fait »
+   (les étapes numérotées, qui prennent la place principale).
+
+   Desktop : deux colonnes (ingrédients | étapes), chacune défilante.
+   Mobile  : une seule colonne défilante, réordonnée par CSS —
+             ingrédients, étapes, nutrition, source. Pas d'onglets :
+             on fait défiler, on ne cherche pas.
+
+   Le tableau nutritionnel est TOUJOURS affiché (jamais replié), et le
+   lien vers la source est un vrai bouton plein.
+
+   Le sélecteur de portions pilote l'état global ctx.portions (le même
+   que les Réglages) et met à l'échelle les quantités affichées et la
+   colonne « total » du tableau. Les cases d'étapes sont persistées.
    ============================================================ */
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { Stepper } from './primitives.jsx';
-import { useIsMobile } from '../../shared/hooks/useMediaQuery.js';
 import {
-  scaleIngredientQty, scaledNutrition, NUTRITION_FIELDS, weekRecipes,
+  scaleIngredientQty, scaledNutrition, NUTRITION_FIELDS, weekRecipes, fmtNum,
 } from '../data/dataLayer.js';
 
 export function RecipeDetail({ recipe, onClose, ctx }) {
-  const mobile = useIsMobile();
-  // LOT 2 : un SEUL slider "Portions" — celui-ci pilote le même état global
-  // (ctx.portions) que les Réglages et l'onglet Courses. Pas d'état local.
   const portions = (ctx && ctx.portions) || 2;
   const setPortions = (ctx && ctx.setPortions) || (() => {});
-  const [got, setGot] = useState({});           // transient "j'ai pris" ticks
-  const [tab, setTab] = useState('ing');         // mobile tab
-  const [showNut, setShowNut] = useState(false); // desktop collapsible nutrition
+  const [got, setGot] = useState({}); // coches éphémères « je l'ai sorti »
 
   const stepsDone = (ctx.cookSteps && ctx.cookSteps[recipe.id]) || {};
 
-  useEffect(() => {
-    setGot({});
-    setShowNut(false);
-    setTab('ing');
-  }, [recipe.id]);
+  useEffect(() => { setGot({}); }, [recipe.id]);
 
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape') onClose(); };
@@ -48,8 +49,6 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
   // pour que la quantité prise ici ne prive pas l'autre recette.
   const removedInWeek = (ctx && ctx.removedInWeek) || {};
   const recettesSemaine = weekRecipes(ctx && ctx.weekKey).filter((r) => !removedInWeek[r.id]);
-  // le badge n'a de sens que si CETTE recette est elle-même au planning de la
-  // semaine retenue : sinon il n'y a pas de course commune à partager.
   const dansLaSemaine = recettesSemaine.some((r) => r.id === recipe.id);
   const sharedCount = (produit) => {
     if (!produit || !dansLaSemaine) return 0;
@@ -66,183 +65,182 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
   const doneCount = steps.filter((s, k) => stepsDone[k]).length;
   const progress = steps.length ? Math.round((doneCount / steps.length) * 100) : 0;
 
-  /* ---- ingredients column ---- */
-  const Ingredients = (
-    <>
-      <div className="cook-sec-head">
-        <Icon name="cart" size={16} />
-        <h3>Ingrédients livrés</h3>
-        <span className="hint tnum" style={{ marginLeft: 'auto' }}>× {portions} pers.</span>
-      </div>
-      <div className="ing-list">
-        {delivered.map((i, k) => (
-          <button
-            key={'d-' + i.nom}
-            type="button"
-            className={'ing-check' + (got['d' + k] ? ' on' : '')}
-            onClick={() => setGot((g) => ({ ...g, ['d' + k]: !g['d' + k] }))}
-          >
-            <span className="ing-box"><Icon name="check" size={12} stroke={3} /></span>
-            <span className="ing-nm">
-              {i.nom}
-              {sharedCount(i.produit_chronodrive) > 0 && <SharedBadge count={sharedCount(i.produit_chronodrive)} />}
-              {i.origine === 'placard' && (
-                <span className="pill ok" style={{ height: 18, fontSize: 9.5, marginLeft: 4 }}>
-                  <Icon name="home" size={9} /> Placard
-                </span>
-              )}
-              {i.equivalent ? <span className="ing-note">· {i.equivalent}</span> : null}
-            </span>
-            <span className="ing-q tnum">{scaleIngredientQty(i, portions)}</span>
-          </button>
-        ))}
-      </div>
-
-      {recipe.ustensiles && recipe.ustensiles.length > 0 && (
-        <>
-          <div className="cook-sub">Ustensiles</div>
-          <div className="row wrap" style={{ gap: 6 }}>
-            {recipe.ustensiles.map((u) => (
-              <span className="pill" key={u} style={{ height: 26, fontSize: 11.5 }}>
-                <Icon name="utensil" size={12} /> {u}
-              </span>
-            ))}
-          </div>
-        </>
-      )}
-
-      {recipe.substitutions && recipe.substitutions !== 'aucune' && (
-        <>
-          <div className="cook-sub">Substitutions</div>
-          <div className="hint" style={{ lineHeight: 1.5 }}>{recipe.substitutions}</div>
-        </>
-      )}
-
-      {sourceUrl && (
-        <a
-          className="btn ghost"
-          href={sourceUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ marginTop: 16, width: '100%' }}
-        >
-          <Icon name="ext" size={15} /> Recette originale{sourceNom ? ' — ' + sourceNom : ''}
-        </a>
-      )}
-
-      {/* desktop-only collapsible nutrition */}
-      {!mobile && (
-        <>
-          <button type="button" className="nut-toggle" onClick={() => setShowNut((v) => !v)}>
-            <Icon name="bowl" size={15} />
-            <span style={{ fontWeight: 600 }}>Valeurs nutritionnelles</span>
-            <span className="hint" style={{ marginLeft: 'auto' }}>× {portions}</span>
-            <Icon name={showNut ? 'chevU' : 'chevD'} size={16} />
-          </button>
-          {showNut && <div className="nut-panel"><NutritionGauges recipe={recipe} portions={portions} /></div>}
-        </>
-      )}
-    </>
-  );
-
-  /* ---- steps column ---- */
-  const Steps = (
-    <>
-      <div
-        className="cook-sec-head"
-        style={{ position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 2, paddingTop: 2 }}
-      >
-        <Icon name="list" size={16} />
-        <h3>Préparation</h3>
-        <div className="row" style={{ marginLeft: 'auto', gap: 10 }}>
-          <div className="step-progress"><span style={{ width: progress + '%' }} /></div>
-          <span className="hint tnum">{doneCount}/{steps.length}</span>
-        </div>
-      </div>
-      <div className="cook-steps">
-        {steps.map((s, k) => (
-          <div
-            key={k}
-            className={'cook-step' + (stepsDone[k] ? ' done' : '')}
-            onClick={() => ctx.toggleStep(recipe.id, k)}
-          >
-            <div className="cstep-num serif">{s.numero ?? k + 1}</div>
-            <div className="cstep-body">
-              <div className="cstep-title">{s.titre}</div>
-              <div className="cstep-text">{s.texte}</div>
-            </div>
-            <div className={'cstep-check' + (stepsDone[k] ? ' on' : '')}>
-              <Icon name="check" size={16} stroke={3} />
-            </div>
-          </div>
-        ))}
-        <div className="cook-finish">
-          {progress === 100
-            ? <div className="finish-done"><Icon name="check" size={18} stroke={3} /> Bon appétit ! Recette terminée.</div>
-            : <div className="hint" style={{ textAlign: 'center' }}>Cochez chaque étape au fur et à mesure.</div>}
-        </div>
-      </div>
-    </>
-  );
-
   return (
-    <div className="cook-overlay recipe-overlay">
+    <div className="cook-overlay recipe-overlay" role="dialog" aria-modal="true" aria-label={recipe.nom}>
       <div className="overlay-scrim" onClick={onClose} />
       <div className="cook-panel">
-        {/* top bar */}
+
+        {/* ---- en-tête : titre, repères, portions ---- */}
         <header className="cook-top">
           <div className="cook-top-main">
-            <div className="row wrap" style={{ gap: 10, marginBottom: 6 }}>
-              <span className="meta"><Icon name="clock" size={13} className="ic" /> {recipe.temps}</span>
-              <span className="meta"><Icon name="list" size={13} className="ic" /> {steps.length} étapes</span>
+            <h1 className="cook-title serif">{recipe.nom}</h1>
+            <div className="cook-metas">
+              <span className="meta"><Icon name="clock" size={14} className="ic" /> {recipe.temps}</span>
+              <span className="meta"><Icon name="list" size={14} className="ic" /> {steps.length} étapes</span>
               {(recipe.ustensiles || []).map((u) => (
-                <span className="pill" key={u} style={{ height: 24, fontSize: 11 }}><Icon name="utensil" size={12} /> {u}</span>
+                <span className="pill" key={u} style={{ height: 25, fontSize: 11.5 }}>
+                  <Icon name="utensil" size={12} /> {u}
+                </span>
               ))}
             </div>
-            <h1 className="serif" style={{ fontSize: 34, margin: 0, lineHeight: 1.02 }}>{recipe.nom}</h1>
           </div>
           <div className="cook-top-side">
-            <button className="icon-btn" onClick={onClose} title="Fermer (Échap)" type="button"><Icon name="x" size={18} /></button>
+            <button className="icon-btn" onClick={onClose} title="Fermer (Échap)" aria-label="Fermer" type="button">
+              <Icon name="x" size={18} />
+            </button>
             <div className="portion-box">
-              <span className="kpi-label" style={{ marginBottom: 0 }}>Portions</span>
-              <Stepper value={portions} min={1} max={6} onChange={setPortions} subLabel="pers." />
+              <span className="pb-label">Portions</span>
+              <Stepper value={portions} min={1} max={6} onChange={setPortions} suffix=" pers." />
             </div>
           </div>
         </header>
 
-        {/* mobile tab strip */}
-        {mobile && (
-          <div className="recipe-tabs">
-            <button type="button" className={'tab' + (tab === 'ing' ? ' active' : '')} onClick={() => setTab('ing')}>Ingrédients</button>
-            <button type="button" className={'tab' + (tab === 'steps' ? ' active' : '')} onClick={() => setTab('steps')}>Étapes</button>
-            <button type="button" className={'tab' + (tab === 'nut' ? ' active' : '')} onClick={() => setTab('nut')}>Nutrition</button>
-          </div>
-        )}
+        {/* ---- corps ---- */}
+        <div className="cook-body">
+          <aside className="cook-left scroll">
 
-        {/* body */}
-        {mobile ? (
-          <div className="cook-body tabbed scroll">
-            {tab === 'ing' && <div className="cook-left">{Ingredients}</div>}
-            {tab === 'steps' && <div className="cook-right">{Steps}</div>}
-            {tab === 'nut' && (
-              <div className="cook-left">
-                <div className="cook-sec-head"><Icon name="bowl" size={16} /><h3>Nutrition</h3><span className="hint" style={{ marginLeft: 'auto' }}>× {portions} pers.</span></div>
-                <NutritionGauges recipe={recipe} portions={portions} />
+            {/* ce qu'il faut */}
+            <section className="cook-sec cook-sec-ing">
+              <div className="cook-sec-head">
+                <Icon name="cart" size={16} />
+                <h3>Ingrédients</h3>
+                <span className="hint tnum" style={{ marginLeft: 'auto' }}>pour {portions} pers.</span>
               </div>
+              <div className="ing-list">
+                {delivered.map((i, k) => (
+                  <button
+                    key={'d-' + i.nom + k}
+                    type="button"
+                    className={'ing-check' + (got['d' + k] ? ' on' : '')}
+                    onClick={() => setGot((g) => ({ ...g, ['d' + k]: !g['d' + k] }))}
+                  >
+                    <span className="ing-box"><Icon name="check" size={12} stroke={3} /></span>
+                    <span className="ing-nm">
+                      {i.nom}
+                      {sharedCount(i.produit_chronodrive) > 0 && <SharedBadge count={sharedCount(i.produit_chronodrive)} />}
+                      {i.origine === 'placard' && (
+                        <span className="pill ok" style={{ height: 18, fontSize: 9.5, marginLeft: 4 }}>
+                          <Icon name="home" size={9} /> Placard
+                        </span>
+                      )}
+                      {i.equivalent ? <span className="ing-note">· {i.equivalent}</span> : null}
+                    </span>
+                    <span className="ing-q tnum">{scaleIngredientQty(i, portions)}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* nutrition — toujours affichée */}
+            <section className="cook-sec cook-sec-nut">
+              <div className="cook-sec-head">
+                <Icon name="bowl" size={16} />
+                <h3>Valeurs nutritionnelles</h3>
+              </div>
+              <NutritionTable recipe={recipe} portions={portions} />
+            </section>
+
+            {recipe.substitutions && recipe.substitutions !== 'aucune' && (
+              <section className="cook-sec cook-sec-subs">
+                <div className="cook-sub">Substitutions</div>
+                <div className="hint" style={{ lineHeight: 1.55 }}>{recipe.substitutions}</div>
+              </section>
             )}
-          </div>
-        ) : (
-          <div className="cook-body scroll">
-            <aside className="cook-left scroll">{Ingredients}</aside>
-            <main className="cook-right scroll">{Steps}</main>
-          </div>
-        )}
+
+            {sourceUrl && (
+              <section className="cook-sec cook-sec-cta">
+                <a
+                  className="btn primary cook-cta"
+                  href={sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Icon name="ext" size={17} />
+                  Voir la recette originale
+                  {sourceNom && <span className="cta-src">· {sourceNom}</span>}
+                </a>
+              </section>
+            )}
+          </aside>
+
+          {/* ce qu'on fait */}
+          <main className="cook-right scroll">
+            <div
+              className="cook-sec-head"
+              style={{ position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 2, paddingTop: 4, paddingBottom: 4 }}
+            >
+              <Icon name="list" size={16} />
+              <h3>Préparation</h3>
+              <div className="row" style={{ marginLeft: 'auto', gap: 10 }}>
+                <div className="step-progress"><span style={{ width: progress + '%' }} /></div>
+                <span className="hint tnum">{doneCount}/{steps.length}</span>
+              </div>
+            </div>
+            <div className="cook-steps">
+              {steps.map((s, k) => (
+                <div
+                  key={k}
+                  className={'cook-step' + (stepsDone[k] ? ' done' : '')}
+                  onClick={() => ctx.toggleStep(recipe.id, k)}
+                >
+                  <div className="cstep-num serif">{s.numero ?? k + 1}</div>
+                  <div className="cstep-body">
+                    {s.titre && <div className="cstep-title">{s.titre}</div>}
+                    <div className="cstep-text">{s.texte}</div>
+                  </div>
+                  <div className={'cstep-check' + (stepsDone[k] ? ' on' : '')}>
+                    <Icon name="check" size={16} stroke={3} />
+                  </div>
+                </div>
+              ))}
+              <div className="cook-finish">
+                {progress === 100
+                  ? <div className="finish-done"><Icon name="check" size={18} stroke={3} /> Bon appétit ! Recette terminée.</div>
+                  : <div className="hint" style={{ textAlign: 'center' }}>Cochez chaque étape au fur et à mesure.</div>}
+              </div>
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   );
 }
 
-/* ---- badge "ingrédient partagé cette semaine" (survol desktop + tap mobile) ----
+/* ---- tableau nutritionnel ----
+   Une ligne par nutriment présent dans les données. Colonne « par
+   portion » = la valeur du fichier telle quelle ; colonne « total »
+   (seulement au-delà d'une portion) = la même valeur mise à l'échelle
+   par scaledNutrition. Aucun calcul nouveau. */
+function NutritionTable({ recipe, portions }) {
+  const base = recipe.nutrition_1portion || {};
+  const total = scaledNutrition(recipe, portions);
+  const rows = NUTRITION_FIELDS.filter((f) => base[f.key] != null);
+  if (!rows.length) return <div className="hint">Valeurs non renseignées pour cette recette.</div>;
+
+  const montreTotal = portions > 1;
+  return (
+    <table className="nut-table">
+      <thead>
+        <tr>
+          <th>Nutriment</th>
+          <th>Par portion</th>
+          {montreTotal && <th>Pour {portions} pers.</th>}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((f) => (
+          <tr key={f.key}>
+            <td>{f.label}</td>
+            <td className="val">{fmtNum(base[f.key])} {f.unit}</td>
+            {montreTotal && <td className="val val-total">{fmtNum(total[f.key])} {f.unit}</td>}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/* ---- badge « ingrédient partagé cette semaine » (survol desktop + tap mobile) ----
    Le déclencheur est un <span> role="button" (jamais un <button> imbriqué dans
    le <button> de la ligne) et stoppe la propagation pour ne pas cocher l'ingrédient.
 
@@ -322,44 +320,5 @@ function SharedBadge({ count }) {
         document.body,
       )}
     </span>
-  );
-}
-
-/* ---- nutrition gauges (scaled) ---- */
-function NutritionGauges({ recipe, portions }) {
-  const n = scaledNutrition(recipe, portions);
-  const rows = NUTRITION_FIELDS
-    .filter((f) => n[f.key] != null)
-    .map((f) => ({ ...f, value: n[f.key] }));
-  const maxKey = rows.reduce((a, b) => ((b.value / b.max) > (a.value / a.max) ? b : a), rows[0]);
-
-  return (
-    <div>
-      {portions > 1 && (
-        <div className="pill amber" style={{ marginBottom: 14, height: 24, fontSize: 11 }}>
-          × {portions} pers. au total
-        </div>
-      )}
-      {rows.map((r) => {
-        const pct = Math.max(3, Math.min(100, (r.value / r.max) * 100));
-        const isMax = maxKey && r.key === maxKey.key;
-        const sub = r.label.startsWith('dont');
-        return (
-          <div key={r.key} style={{ marginBottom: 11, paddingLeft: sub ? 12 : 0 }}>
-            <div className="row spread" style={{ marginBottom: 5 }}>
-              <span style={{ fontSize: 12.5, fontWeight: sub ? 500 : 600, color: isMax ? 'var(--accent)' : (sub ? 'var(--text-3)' : 'var(--text-2)') }}>{r.label}</span>
-              <span className="tnum" style={{ fontSize: 12.5, fontWeight: 700 }}>
-                {String(r.value).replace('.', ',')} {r.unit}
-                <span className="t3" style={{ fontWeight: 500, marginLeft: 5 }}>{Math.round((r.value / r.rda) * 100)}%</span>
-              </span>
-            </div>
-            <div className="hbar" style={{ height: sub ? 5 : 7 }}>
-              <span style={{ width: pct + '%', background: isMax ? 'var(--accent-2)' : 'var(--accent)' }} />
-            </div>
-          </div>
-        );
-      })}
-      <div className="hint" style={{ marginTop: 10 }}>% des apports quotidiens recommandés (base 2000 kcal).</div>
-    </div>
   );
 }

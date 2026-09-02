@@ -13,6 +13,7 @@
    articles perso libres.
    ============================================================ */
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { Check, WeekNav, Stepper } from '../components/primitives.jsx';
 import { TopActions, ResetRemovedButton } from './_shared.jsx';
@@ -84,7 +85,7 @@ export function Shopping({ ctx }) {
             <div className="sl-row head">
               <span>Ingrédient (nom Chronodrive)</span>
               <span>Utilisation</span>
-              <span style={{ textAlign: 'right' }}>Paquets</span>
+              <span style={{ textAlign: 'right' }}>Quantité</span>
               <span style={{ textAlign: 'right' }}>Prix</span>
               <span style={{ textAlign: 'right' }}>Action</span>
             </div>
@@ -106,21 +107,26 @@ export function Shopping({ ctx }) {
                         <div className="sl-name">
                           <div className="nm">
                             {r.nomChronodrive}
-                            {r.substitut && !checked && (
-                              <span className="tip subst-ic">
-                                <Icon name="refresh" size={11} />
-                                <span className="tip-body">Substitut : {r.substitut}</span>
-                              </span>
-                            )}
-                            {r.verdict && r.verdict.includes('Reste') && !checked && (
-                              <span className="pill amber" style={{ height: 18, fontSize: 9.5 }}>♻️ Reste</span>
-                            )}
                             {carted && <span className="cart-badge"><Icon name="cart" size={9} /> Panier</span>}
+                            {r.reste > 0 && !checked && (
+                              <InfoTip
+                                className="pill amber"
+                                style={{ height: 18, fontSize: 9.5 }}
+                                aria="Reste après la semaine"
+                                texte={`Ce qu'il restera après la semaine : le format vendu (${r.packDisplay || r.formatLabel}) dépasse de ${fmtNum(r.reste)} ${r.besoinUnit} ce que les recettes consomment.`}
+                              >
+                                ♻️ Reste {fmtNum(r.reste)} {r.besoinUnit}
+                              </InfoTip>
+                            )}
                             {r.aVerifier && !checked && (
-                              <span className="tip subst-ic" style={{ color: 'var(--accent-2)' }}>
+                              <InfoTip
+                                className="subst-ic"
+                                style={{ color: 'var(--accent-2)' }}
+                                aria="Rattachement à vérifier"
+                                texte="Produit non rattaché à une recette : vérifiez s'il vous sert encore après le retrait."
+                              >
                                 <Icon name="alert" size={11} />
-                                <span className="tip-body">Produit non rattaché à une recette : vérifiez s'il vous sert encore après le retrait.</span>
-                              </span>
+                              </InfoTip>
                             )}
                           </div>
                           {r.besoinValue != null && (
@@ -128,7 +134,9 @@ export function Shopping({ ctx }) {
                           )}
                         </div>
                         <UsageCell row={r} />
-                        <div className="sl-qty">{r.packDisplay || r.formatLabel || '—'}</div>
+                        <div className="sl-qty" title={r.packDisplay || undefined}>
+                          {r.nbPaquets != null ? r.nbPaquets : '—'}
+                        </div>
                         <div className="sl-price">{money(r.price)}</div>
                         <div className="sl-act">
                           {!checked && (
@@ -283,5 +291,85 @@ function UsageCell({ row }) {
         </div>
       )}
     </div>
+  );
+}
+
+/* ============================================================
+   Petite infobulle explicative — survol au clavier/souris ET tap.
+   Le `.tip` du design system ne réagit qu'au `:hover`, inutilisable au
+   doigt : on gère donc l'ouverture en JS et on rend le contenu via un
+   PORTAL vers document.body, en position: fixed. Il reste ainsi hors du
+   flux de la ligne de courses (pas de décalage, pas de rognage par le
+   conteneur qui défile). Un seul tooltip par instance ; fermeture au
+   départ souris, au scroll/resize, au tap extérieur et à Échap.
+   ============================================================ */
+function InfoTip({ children, texte, className = '', style, aria }) {
+  const ref = useRef(null);
+  const [coords, setCoords] = useState(null); // null = caché
+
+  const show = () => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setCoords({ x: r.left + r.width / 2, y: r.top });
+  };
+  const hide = () => setCoords(null);
+  // un tap synthétise mouseenter PUIS click : on AFFICHE toujours, jamais de
+  // bascule, sinon le tooltip se refermerait dans la foulée.
+  const openOn = (e) => { e.stopPropagation(); show(); };
+
+  useEffect(() => {
+    if (!coords) return undefined;
+    const onScrollResize = () => hide();
+    const onOutside = (e) => { if (ref.current && !ref.current.contains(e.target)) hide(); };
+    window.addEventListener('scroll', onScrollResize, true);
+    window.addEventListener('resize', onScrollResize);
+    document.addEventListener('mousedown', onOutside);
+    document.addEventListener('touchstart', onOutside);
+    return () => {
+      window.removeEventListener('scroll', onScrollResize, true);
+      window.removeEventListener('resize', onScrollResize);
+      document.removeEventListener('mousedown', onOutside);
+      document.removeEventListener('touchstart', onOutside);
+    };
+  }, [coords]);
+
+  return (
+    <span
+      ref={ref}
+      role="button"
+      tabIndex={0}
+      className={className}
+      style={{ cursor: 'help', ...style }}
+      aria-label={aria ? `${aria} — ${texte}` : texte}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      onClick={openOn}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openOn(e); }
+        else if (e.key === 'Escape') hide();
+      }}
+    >
+      {children}
+      {coords && createPortal(
+        <span
+          role="tooltip"
+          style={{
+            position: 'fixed', left: coords.x, top: coords.y,
+            transform: 'translate(-50%, calc(-100% - 8px))',
+            zIndex: 9999, pointerEvents: 'none',
+            background: 'var(--text)', color: 'var(--bg)',
+            fontSize: 11.5, fontWeight: 500, padding: '8px 11px', borderRadius: 8,
+            width: 250, maxWidth: '78vw', lineHeight: 1.4, textAlign: 'left',
+            boxShadow: 'var(--shadow-lg)', whiteSpace: 'normal',
+          }}
+        >
+          {texte}
+        </span>,
+        document.body,
+      )}
+    </span>
   );
 }
