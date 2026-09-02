@@ -17,6 +17,7 @@ import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { Check, WeekNav, Stepper } from '../components/primitives.jsx';
 import { TopActions, ResetRemovedButton } from './_shared.jsx';
+import { copyText, formatShoppingList } from '../lib/copyShoppingList.js';
 import {
   weekShopping, groupShoppingByCategory, weekBudget, chronodriveLink, money, fmtNum,
 } from '../data/dataLayer.js';
@@ -64,7 +65,8 @@ export function Shopping({ ctx }) {
           </div>
         </div>
         <div className="topbar-actions">
-          <WeekNav weekKey={weekKey} onPrev={ctx.prevWeek} onNext={ctx.nextWeek} />
+          <WeekNav weekKey={weekKey} auto={ctx.autoRotate} apercu={ctx.enApercu}
+            onPrev={ctx.prevWeek} onNext={ctx.nextWeek} onExitApercu={ctx.exitApercu} />
           <a className="btn primary" href="https://www.chronodrive.com" target="_blank" rel="noopener noreferrer">
             <Icon name="cart" size={16} /> Chronodrive <Icon name="ext" size={14} />
           </a>
@@ -73,6 +75,7 @@ export function Shopping({ ctx }) {
       </div>
 
       <div className="row wrap" style={{ marginBottom: 16, gap: 10 }}>
+        <CopyListButton rows={rows} isChecked={isChecked} />
         <ResetRemovedButton ctx={ctx} />
         <span className="hint">Retirez une recette depuis l'<button type="button" className="linklike" onClick={() => ctx.go('dashboard')}>Accueil</button> : ses produits disparaissent d'ici.</span>
       </div>
@@ -371,5 +374,50 @@ function InfoTip({ children, texte, className = '', style, aria }) {
         document.body,
       )}
     </span>
+  );
+}
+
+/* ============================================================
+   « Copier la liste de courses de la semaine »
+   Met dans le presse-papier une ligne par produit, au format
+   « Produit exact x quantité », prêt à coller dans une tâche externe.
+   Les produits cochés « déjà en stock » sont ignorés — ils n'ont rien à
+   faire dans une liste d'achats — et le message le dit explicitement.
+   ============================================================ */
+function CopyListButton({ rows, isChecked }) {
+  const [etat, setEtat] = useState({ busy: false, message: '' });
+  const aAcheter = rows.filter((r) => !isChecked(r.name));
+  const enStock = rows.length - aAcheter.length;
+
+  const run = async () => {
+    if (etat.busy) return;
+    if (!aAcheter.length) {
+      setEtat({ busy: false, message: 'Rien à copier : tout est déjà en stock.' });
+      return;
+    }
+    setEtat({ busy: true, message: '' });
+    const ok = await copyText(formatShoppingList(aAcheter));
+    setEtat({
+      busy: false,
+      message: ok
+        ? `${aAcheter.length} produit${aAcheter.length > 1 ? 's' : ''} copié${aAcheter.length > 1 ? 's' : ''}${enStock ? ` · ${enStock} déjà en stock ignoré${enStock > 1 ? 's' : ''}` : ''}.`
+        : "La copie a échoué — votre navigateur l'a refusée.",
+    });
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        className="btn"
+        onClick={run}
+        disabled={etat.busy}
+        title={`Copier ${aAcheter.length} produit(s) au format « Produit x quantité », une ligne par produit`}
+      >
+        <Icon name="copy" size={15} />
+        {etat.busy ? 'Copie…' : 'Copier la liste de courses'}
+      </button>
+      {etat.message && <span className="hint">{etat.message}</span>}
+    </>
   );
 }

@@ -8,8 +8,16 @@
    recettes qu'il en a retirées. Tout l'état vit dans un unique objet
    `userState` (voir data/useUserState.js) : localStorage immédiat +
    synchronisation multi-appareils via Supabase.
+
+   ROTATION AUTOMATIQUE (réglable) : quand elle est active, la semaine
+   affichée n'est plus `state.week` mais celle que déduit l'ancrage
+   (voir lib/rotation.js) — elle avance seule chaque dimanche. La
+   sélection manuelle reste possible : elle ouvre alors un choix entre
+   « juste regarder » (aperçu éphémère, la rotation continue) et
+   « désactiver la rotation » (retour au mode manuel, sur la semaine
+   qu'on vient d'ouvrir).
    ============================================================ */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Sidebar, BottomNav } from './components/Navigation.jsx';
 import { RecipeDetail } from './components/RecipeDetail.jsx';
 import { Dashboard } from './screens/Dashboard.jsx';
@@ -17,7 +25,9 @@ import { Shopping } from './screens/Shopping.jsx';
 import { Library } from './screens/Library.jsx';
 import { Settings } from './screens/Settings.jsx';
 import { useUserState } from './data/useUserState.js';
-import { nextWeekKey, prevWeekKey, recipeById, weekShopping } from './data/dataLayer.js';
+import { DEFAULT_WEEK, WEEK_KEYS, nextWeekKey, prevWeekKey, recipeById, weekShopping } from './data/dataLayer.js';
+import { creerAncre, indexAuto, prochainBasculement } from './lib/rotation.js';
+import { RotationDialog } from './components/RotationDialog.jsx';
 
 const SCREENS = { dashboard: Dashboard, shopping: Shopping, library: Library, settings: Settings };
 
@@ -32,13 +42,53 @@ export default function MealWeekApp({ themeApi, goHub }) {
   /* ---- persistent state : un seul objet, synchronisé ---- */
   const [state, setField, resetState] = useUserState();
   const {
-    week: weekKey, budget: weeklyBudget, portions, store,
+    week: manualWeek, autoRotate, autoAnchor, budget: weeklyBudget, portions, store,
     removed, sidebar: sidebarOpen, shopChecked: shoppingChecked, cart,
     perso, favorites, banned, cookSteps,
   } = state;
 
+  /* ---- rotation automatique ----
+     `preview` est ÉPHÉMÈRE (jamais persisté) : regarder une autre semaine
+     ne doit ni déplacer l'ancrage, ni couper la rotation. */
+  const [preview, setPreview] = useState(null);
+  const [previewAccepte, setPreviewAccepte] = useState(false); // « juste regarder » retenu pour la session
+  const [demande, setDemande] = useState(null);                // semaine visée, en attente du choix
+  const [, tick] = useState(0);                                // re-rendu au basculement de minuit
+
+  const autoWeek = WEEK_KEYS[indexAuto(autoAnchor, WEEK_KEYS.length)] || DEFAULT_WEEK;
+  const weekKey = autoRotate ? (preview || autoWeek) : manualWeek;
+  const enApercu = autoRotate && !!preview && preview !== autoWeek;
+  const prochainChangement = prochainBasculement();
+
+  /* l'app peut rester ouverte au passage du dimanche : on programme un
+     re-rendu juste après la bascule pour que la semaine suive. */
+  useEffect(() => {
+    if (!autoRotate) return undefined;
+    const delai = Math.max(1000, Math.min(prochainChangement.getTime() - Date.now() + 1000, 2147483647));
+    const id = setTimeout(() => tick((n) => n + 1), delai);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRotate, autoWeek]);
+
   /* recettes retirées de la semaine COURANTE : { [recipeId]: true } */
   const removedInWeek = (removed && removed[weekKey]) || {};
+
+  /* Navigation entre semaines. En manuel, elle déplace la semaine retenue.
+     En auto, elle demande d'abord ce qu'on veut faire — puis le choix
+     « juste regarder » est mémorisé pour ne plus interrompre. */
+  const allerVers = (cible) => {
+    if (!autoRotate) { setField('week', cible); return; }
+    if (previewAccepte) { setPreview(cible); return; }
+    setDemande(cible);
+  };
+
+  const desactiverRotation = (semaineChoisie) => {
+    setField('week', semaineChoisie || weekKey);
+    setField('autoRotate', false);
+    setPreview(null);
+    setPreviewAccepte(false);
+    setDemande(null);
+  };
 
   /* ---- derived ---- */
   const shoppingBadge = weekShopping(weekKey, removedInWeek)
@@ -67,10 +117,31 @@ export default function MealWeekApp({ themeApi, goHub }) {
     accent, setAccent,
     goHub,
 
-    // semaine-type retenue — la dernière parcourue est celle qui est gardée
+    // semaine-type affichée : la dernière parcourue en manuel, celle que
+    // dicte l'ancrage en rotation automatique
     weekKey,
-    prevWeek: () => setField('week', (w) => prevWeekKey(w)),
-    nextWeek: () => setField('week', (w) => nextWeekKey(w)),
+    prevWeek: () => allerVers(prevWeekKey(weekKey)),
+    nextWeek: () => allerVers(nextWeekKey(weekKey)),
+
+    // rotation automatique
+    autoRotate: !!autoRotate,
+    autoWeek,
+    enApercu,
+    prochainChangement,
+    exitApercu: () => setPreview(null),
+    toggleAutoRotate: () => {
+      if (autoRotate) {
+        // retour au manuel : on garde la semaine sous les yeux
+        desactiverRotation(weekKey);
+      } else {
+        // on ancre sur la semaine affichée : aujourd'hui ne change rien,
+        // la bascule aura lieu au prochain dimanche
+        setField('autoAnchor', creerAncre(Math.max(0, WEEK_KEYS.indexOf(manualWeek))));
+        setField('autoRotate', true);
+        setPreview(null);
+        setPreviewAccepte(false);
+      }
+    },
 
     // recettes retirées de la semaine courante
     removedInWeek,
@@ -148,6 +219,15 @@ export default function MealWeekApp({ themeApi, goHub }) {
       </div>
 
       {openRecipe && <RecipeDetail recipe={openRecipe} onClose={() => setOpenId(null)} ctx={ctx} />}
+
+      {demande && (
+        <RotationDialog
+          cible={demande}
+          onApercu={() => { setPreviewAccepte(true); setPreview(demande); setDemande(null); }}
+          onDesactiver={() => desactiverRotation(demande)}
+          onClose={() => setDemande(null)}
+        />
+      )}
 
       <BottomNav current={screen} onNav={setScreen} shoppingBadge={shoppingBadge} />
     </div>

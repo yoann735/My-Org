@@ -4,9 +4,10 @@
    portions, retrieval store. All persisted via ctx (localStorage).
    ============================================================ */
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, Stepper } from '../components/primitives.jsx';
+import { Card, Stepper, Switch } from '../components/primitives.jsx';
 import { TopActions, ExportCsvButton, ExportIngredientsCsvButton } from './_shared.jsx';
 import { ACCENTS } from '../../shared/constants.js';
+import { formatJour } from '../lib/rotation.js';
 import { useState } from 'react';
 
 const THEME_MODES = [
@@ -83,20 +84,44 @@ export function Settings({ ctx }) {
           </div>
         </Card>
 
-        {/* Semaine retenue */}
-        <Card title="Semaine-type retenue" icon="calendar">
-          <div className="set-row">
-            <div style={{ minWidth: 0 }}>
-              <div className="set-label">Semaine {(ctx.weekKey || '').replace(/\D/g, '') || '—'}</div>
-              <div className="hint" style={{ marginTop: 2 }}>
-                La dernière semaine-type parcourue depuis l'Accueil est retenue et synchronisée.
-                {ctx.removedCount > 0 && ` ${ctx.removedCount} recette(s) en ont été retirées.`}
+        {/* Semaine retenue + rotation automatique */}
+        <Card title="Semaine-type" icon="calendar">
+          <div className="set-list">
+            <div className="set-row">
+              <div style={{ minWidth: 0 }}>
+                <div className="set-label">Changer de semaine automatiquement chaque dimanche</div>
+                <div className="hint" style={{ marginTop: 2 }}>
+                  La semaine affichée avance seule d'un cran chaque dimanche, en boucle sur les 8
+                  semaines-types. Le réglage est synchronisé entre vos appareils.
+                </div>
+              </div>
+              <div style={{ marginLeft: 'auto' }}>
+                <Switch on={ctx.autoRotate} onChange={ctx.toggleAutoRotate} />
               </div>
             </div>
-            <div style={{ marginLeft: 'auto' }}>
-              <button type="button" className="btn ghost" style={{ padding: '7px 12px' }} onClick={() => ctx.go('dashboard')}>
-                <Icon name="arrowR" size={14} /> Changer
-              </button>
+            <div className="set-div" />
+            <div className="set-row">
+              <div style={{ minWidth: 0 }}>
+                <div className="set-label">
+                  Semaine {(ctx.weekKey || '').replace(/\D/g, '') || '—'}
+                  {ctx.autoRotate && (
+                    <span className="pill ok" style={{ marginLeft: 8, height: 20, fontSize: 10, verticalAlign: 'middle' }}>
+                      <Icon name="refresh" size={10} /> Auto
+                    </span>
+                  )}
+                </div>
+                <div className="hint" style={{ marginTop: 2 }}>
+                  {ctx.autoRotate
+                    ? <>Prochain changement : <strong style={{ color: 'var(--text)' }}>{formatJour(ctx.prochainChangement)}</strong>. Vous pouvez toujours ouvrir une autre semaine à la main depuis l'Accueil.</>
+                    : <>La dernière semaine-type parcourue depuis l'Accueil est retenue et synchronisée.</>}
+                  {ctx.removedCount > 0 && ` ${ctx.removedCount} recette(s) en ont été retirées.`}
+                </div>
+              </div>
+              <div style={{ marginLeft: 'auto' }}>
+                <button type="button" className="btn ghost" style={{ padding: '7px 12px' }} onClick={() => ctx.go('dashboard')}>
+                  <Icon name="arrowR" size={14} /> Changer
+                </button>
+              </div>
             </div>
           </div>
         </Card>

@@ -3,6 +3,10 @@
 
    TOUT l'état modifiable par l'utilisateur vit dans UN seul objet :
    - `week`        : la semaine-type RETENUE (la dernière parcourue) ;
+   - `autoRotate`  : rotation automatique des semaines chaque dimanche ;
+   - `autoAnchor`  : l'ancrage de cette rotation ({semaine, index}), posé à
+                     l'activation — il transite par la sync pour que tous
+                     les appareils tombent sur la même semaine ;
    - `removed`     : les recettes retirées, par semaine
                      ({ S1: { R09: true } }) ;
    - `shopChecked` / `cart` : les cases « déjà en stock » / « ajouté au
@@ -34,6 +38,8 @@ const CONTENT_RESET = 'v2-2026-09-02';
 function buildDefaults() {
   return {
     week: DEFAULT_WEEK,
+    autoRotate: false,
+    autoAnchor: null,
     removed: {},
     budget: BUDGET_TARGET,
     portions: 2,
@@ -65,6 +71,8 @@ function purgeAncienContenu(data) {
   d.cookSteps = {};
   d.perso = (Array.isArray(d.perso) ? d.perso : []).filter((p) => !p.fixe);
   d.week = DEFAULT_WEEK;
+  d.autoRotate = false;
+  d.autoAnchor = null;
   d.contentReset = CONTENT_RESET;
   return d;
 }

@@ -92,19 +92,35 @@ export function Stepper({ value, min = 1, max = 6, step = 1, onChange, suffix, s
 
 /* ---- sélecteur de semaine-type (S1 … S8) ----
    Parcourt les 8 semaines-types du fichier V2 et affiche le total de
-   celle qui est ouverte. La dernière semaine parcourue est celle qui
-   est retenue et persistée (voir useUserState). */
-export function WeekNav({ weekKey, onPrev, onNext }) {
+   celle qui est ouverte. En mode manuel, la dernière semaine parcourue
+   est celle qui est retenue et persistée (voir useUserState).
+
+   Deux états signalés ici :
+   - « Auto » : la rotation automatique tient la semaine à jour ;
+   - « Aperçu » : on regarde une autre semaine sans couper la rotation —
+     le bouton retour ramène sur la semaine du jour. */
+export function WeekNav({ weekKey, auto, apercu, onPrev, onNext, onExitApercu }) {
   const wk = weekRaw(weekKey);
   const total = wk && wk.total_eur;
   return (
-    <div className="weeknav">
-      <button onClick={onPrev} title="Semaine-type précédente" type="button"><Icon name="chevL" size={18} /></button>
-      <span className="wk">
-        {weekKey || '—'}
-        {total != null && <span className="wk-budget" style={{ marginLeft: 6, color: 'var(--text-3)', fontWeight: 600 }}>· ~{money0(total)}</span>}
-      </span>
-      <button onClick={onNext} title="Semaine-type suivante" type="button"><Icon name="chevR" size={18} /></button>
+    <div className="row" style={{ gap: 8 }}>
+      <div className="weeknav">
+        <button onClick={onPrev} title="Semaine-type précédente" type="button"><Icon name="chevL" size={18} /></button>
+        <span className="wk">
+          {weekKey || '—'}
+          {total != null && <span className="wk-budget" style={{ marginLeft: 6, color: 'var(--text-3)', fontWeight: 600 }}>· ~{money0(total)}</span>}
+          {apercu
+            ? <span className="pill amber" style={{ marginLeft: 7, height: 20, fontSize: 10 }}>Aperçu</span>
+            : auto && <span className="pill ok" style={{ marginLeft: 7, height: 20, fontSize: 10 }}><Icon name="refresh" size={10} /> Auto</span>}
+        </span>
+        <button onClick={onNext} title="Semaine-type suivante" type="button"><Icon name="chevR" size={18} /></button>
+      </div>
+      {apercu && onExitApercu && (
+        <button type="button" className="btn ghost" style={{ padding: '7px 11px' }} onClick={onExitApercu}
+          title="Revenir à la semaine tenue par la rotation automatique">
+          <Icon name="refresh" size={14} /> Semaine du jour
+        </button>
+      )}
     </div>
   );
 }

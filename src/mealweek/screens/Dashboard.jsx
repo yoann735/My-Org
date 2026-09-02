@@ -12,6 +12,7 @@ import { TopActions, ResetRemovedButton } from './_shared.jsx';
 import {
   weekPlan, weekKpis, weekNutrition, weekBudget, weekRaw, recipeById, money, money0,
 } from '../data/dataLayer.js';
+import { formatJour } from '../lib/rotation.js';
 
 const JOURS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
@@ -61,12 +62,15 @@ export function Dashboard({ ctx }) {
             </span>
           </h1>
           <div className="sub">
-            Semaine-type retenue — elle est mémorisée et retrouvée au prochain lancement.
+            {ctx.autoRotate
+              ? <>Rotation automatique · prochain changement <strong style={{ color: 'var(--text)' }}>{formatJour(ctx.prochainChangement)}</strong>{ctx.enApercu && <> · vous regardez la semaine {(ctx.weekKey || '').replace(/\D/g, '')}, la rotation continue</>}</>
+              : <>Semaine-type retenue — elle est mémorisée et retrouvée au prochain lancement.</>}
             {ctx.removedCount > 0 && <strong style={{ color: 'var(--accent-2)' }}> · {ctx.removedCount} recette{ctx.removedCount > 1 ? 's' : ''} retirée{ctx.removedCount > 1 ? 's' : ''}</strong>}
           </div>
         </div>
         <div className="topbar-actions">
-          <WeekNav weekKey={weekKey} onPrev={ctx.prevWeek} onNext={ctx.nextWeek} />
+          <WeekNav weekKey={weekKey} auto={ctx.autoRotate} apercu={ctx.enApercu}
+            onPrev={ctx.prevWeek} onNext={ctx.nextWeek} onExitApercu={ctx.exitApercu} />
           <TopActions ctx={ctx} />
         </div>
       </div>
