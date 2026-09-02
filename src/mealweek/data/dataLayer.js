@@ -1,194 +1,112 @@
 /* ============================================================
-   MealWeek — data layer (single source of truth)
-   Adapts the frozen mealweek_data.json into the shapes the UI
-   consumes. No network, no generation: everything is derived
-   deterministically from the JSON at build time.
+   MealWeek — data layer (V2, 2026-09-02)
 
-   Key facts about the raw data:
-   - recipes / ingredients_ref / weeks are OBJECTS keyed by id/name.
-   - ingredient quantities (qty_1portion) are STRINGS for ONE portion,
-     often with unicode fractions ("½ sachet(s)", "3 pièce(s)", "150 g").
-   - prices live in ingredients_ref (Chronodrive), keyed by ingredient name.
-   - business rules live in meta.regles.
+   Adapte mealweek_data.json (V2 : 22 recettes, 8 semaines-types
+   indépendantes S1-S8, 84 produits Chronodrive) aux formes que
+   consomme l'UI.
+
+   PRINCIPE : les données V2 sont utilisées TELLES QUELLES. Aucune
+   quantité, aucun format d'achat, aucun prix n'est recalculé ici —
+   la liste de courses d'une semaine, ses formats et ses totaux
+   viennent du fichier. Ce module ne fait qu'assembler et filtrer.
+
+   La seule dérivation est le RATTACHEMENT produit → recette
+   (voir « ATTRIBUTION » plus bas) : le fichier ne porte pas ce lien
+   et il est nécessaire pour retirer les ingrédients d'une recette
+   écartée. Il est volontairement PRUDENT : en cas de doute, la ligne
+   de courses est conservée.
    ============================================================ */
 import RAW from './mealweek_data.json';
 
-/* ---------- top-level slices ---------- */
-export const META = RAW.meta;
-export const RULES = RAW.meta.regles;
-export const BUDGET_TARGET = RAW.meta.regles.budget_cible; // 60 €
-export const PERSO_FIXES = RAW.meta.courses_perso_fixes;   // skyr ×2 + bananes
-export const STOCK_PERMANENT = RAW.meta.stock_permanent;   // huile, sel, …
-export const PROTEIN_STRATEGY = RAW.protein_strategy;
+/* ---------- tranches de premier niveau ---------- */
+export const META = RAW.meta || {};
+export const RULES = META.regles || {};
+export const BUDGET_TARGET = 55; // budget cible annoncé par meta.modele
 
-export const RECIPES_BY_ID = RAW.recipes;
-export const RECIPES = Object.values(RAW.recipes);
-export const recipeById = (id) => RAW.recipes[id] || null;
+export const RECIPES_BY_ID = RAW.recipes || {};
+export const RECIPES = Object.values(RECIPES_BY_ID).sort((a, b) => (a.num || 0) - (b.num || 0));
+export const recipeById = (id) => RECIPES_BY_ID[id] || null;
 
-export const ING_REF = RAW.ingredients_ref; // keyed by ingredient name
-export const ingRef = (name) => RAW.ingredients_ref[name] || null;
+export const ING_REF = RAW.ingredients_ref || {};
+export const ingRef = (name) => ING_REF[name] || null;
 
-export const WEEKS = RAW.weeks;                      // standard : { S1…S6 }
-export const WEEKS_ECO = RAW.weeks_eco || {};        // éco : { E1, E2 }
-export const WEEK_KEYS = Object.keys(RAW.weeks);     // ['S1', … 'S6']
-export const WEEK_KEYS_ECO = Object.keys(WEEKS_ECO); // ['E1', 'E2']
-/* lookup that works for both sets (keys are distinct: S* vs E*) so the
-   eco switch is just "which weekKey is current". */
-const ALL_WEEKS = { ...RAW.weeks, ...WEEKS_ECO };
-export const weekRaw = (key) => ALL_WEEKS[key] || null;
-export const weekKeysFor = (eco) => (eco ? WEEK_KEYS_ECO : WEEK_KEYS);
-export const isEcoKey = (key) => WEEK_KEYS_ECO.includes(key);
+export const WEEKS = RAW.weeks || {};
+export const WEEK_KEYS = Object.keys(WEEKS);            // ['S1' … 'S8']
+export const weekRaw = (key) => WEEKS[key] || null;
+export const DEFAULT_WEEK = WEEK_KEYS[0] || '';
 
-/* ---------- days ---------- */
-export const DAY_KEYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-export const DAY_FULL = {
-  Lun: 'Lundi', Mar: 'Mardi', Mer: 'Mercredi', Jeu: 'Jeudi',
-  Ven: 'Vendredi', Sam: 'Samedi', Dim: 'Dimanche',
+export function nextWeekKey(key) {
+  if (!WEEK_KEYS.length) return key;
+  const i = WEEK_KEYS.indexOf(key);
+  return WEEK_KEYS[(i + 1 + WEEK_KEYS.length) % WEEK_KEYS.length];
+}
+export function prevWeekKey(key) {
+  if (!WEEK_KEYS.length) return key;
+  const i = WEEK_KEYS.indexOf(key);
+  return WEEK_KEYS[(i - 1 + WEEK_KEYS.length) % WEEK_KEYS.length];
+}
+
+/** liste des recettes d'une semaine (objets), dans l'ordre du fichier */
+export function weekRecipes(weekKey) {
+  const wk = weekRaw(weekKey);
+  return ((wk && wk.recettes_semaine) || []).map(recipeById).filter(Boolean);
+}
+
+/* ---------- helpers de formatage (purs) ---------- */
+export function fmtNum(v) {
+  if (v == null || Number.isNaN(Number(v))) return '';
+  const r = Math.round(Number(v) * 100) / 100;
+  return Number.isInteger(r) ? String(r) : String(r).replace('.', ',');
+}
+export const money = (n) => (Math.round((n || 0) * 100) / 100).toFixed(2).replace('.', ',') + '€';
+export const money0 = (n) => Math.round(n || 0) + '€';
+
+/** "25 min (10 + 15)" -> 25 ; null si non chiffrable */
+export function tempsMinutes(recipe) {
+  const m = String((recipe && recipe.temps) || '').match(/(\d+)\s*min/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/** teinte douce dérivée de l'id d'une recette (purement décoratif) */
+export function recipeTint(id) {
+  const n = parseInt(String(id).replace(/\D/g, ''), 10) || 0;
+  const hue = (n * 47) % 360;
+  return {
+    bg: `hsla(${hue}, 68%, 55%, 0.09)`,
+    border: `hsla(${hue}, 60%, 50%, 0.45)`,
+    solid: `hsl(${hue}, 58%, 52%)`,
+  };
+}
+
+/* ---------- rayons ----------
+   Le fichier porte le rayon sur chaque ligne. On n'impose pas d'ordre :
+   les groupes sortent dans leur ordre d'apparition dans les données.
+   L'emoji n'est qu'une décoration d'en-tête de groupe. */
+const RAYON_EMOJI = {
+  'Charcuterie': '🥓',
+  'Crèmerie': '🧀',
+  'Frais': '🥚',
+  'Fruits & légumes': '🥦',
+  'Viande': '🥩',
+  'Épicerie': '🥫',
+  'Surgelé (week-end)': '❄️',
+  'Placard': '🏠',
 };
-export const WEEKEND_DAYS = ['Sam', 'Dim'];
-
-/* ---------- meal slots ----------
-   Each day has two slots: midi (leftover lunch) + soir (dinner).
-   A slot is identified globally by "<dayKey>-<meal>" (e.g. "Sam-soir"),
-   so activation is a recurring weekly pattern shared across S1..S6.
-   `slotsOff` is a map { slotKey: true } — absent/false means active.
-   This generalizes (and replaces) the old "hide the weekend" lever:
-   the weekend is just the four slots below. */
-export const MEALS = ['midi', 'soir'];
-export const slotKey = (dayKey, meal) => `${dayKey}-${meal}`;
-export const WEEKEND_SLOTS = ['Sam-midi', 'Sam-soir', 'Dim-midi', 'Dim-soir'];
-export const isSlotOff = (slotsOff, dayKey, meal) => !!(slotsOff && slotsOff[slotKey(dayKey, meal)]);
-
-/* ============================================================
-   PROTEINS — map the 9 messy raw labels onto 5 color classes.
-   Order matters (first match wins).
-   ============================================================ */
-export const PROT = {
-  beef: { label: 'Bœuf', cls: 'beef' },
-  poultry: { label: 'Volaille', cls: 'poultry' },
-  pork: { label: 'Porc', cls: 'pork' },
-  fish: { label: 'Poisson', cls: 'fish' },
-  veggie: { label: 'Végé', cls: 'veggie' },
-};
-
-export function proteinClass(proteine) {
-  const s = (proteine || '').toLowerCase();
-  if (/(bœuf|boeuf|merguez|agneau|steak|haché)/.test(s)) return 'beef';
-  if (/(poulet|dinde|canard|volaille)/.test(s)) return 'poultry';
-  if (/(porc|charcuterie|chorizo|jambon|lard|saucisse|prosciutto|poitrine|effiloché)/.test(s)) return 'pork';
-  if (/(poisson|fruits de mer|saumon|cabillaud|crevette|thon|colin|truite)/.test(s)) return 'fish';
-  return 'veggie';
+export function splitCategory(rayon) {
+  if (!rayon) return { emoji: '🛒', label: 'Autres' };
+  return { emoji: RAYON_EMOJI[rayon] || '🛒', label: rayon };
 }
 
-/** protein color class + short label for a recipe */
-export function recipeProtein(recipe) {
-  const cls = proteinClass(recipe.proteine);
-  return { cls, label: PROT[cls].label, raw: recipe.proteine };
-}
-
-/* ============================================================
-   COMPLEXITY / COST mapping (raw → pill variant)
-   ============================================================ */
-export const COMPLEXITY_VARIANT = { 'Facile': 'ok', 'Intermédiaire': 'warn', 'Difficile': 'crit' };
-
-/* ============================================================
-   CHRONODRIVE CATEGORIES — display order. The raw category strings
-   already carry an emoji prefix ("🥦 Légumes frais").
-   ============================================================ */
-export const CATEGORIES_ORDER = [
-  '🥦 Légumes frais',
-  '🥩 Viandes & protéines',
-  '🍚 Féculents & céréales',
-  '🧀 Produits laitiers',
-  '🥚 Frais',
-  '🥫 Conserves & bocaux',
-  '🫙 Sauces & condiments',
-  '🌿 Épices & aromates',
-  '🌱 Herbes fraîches',
-  '🍞 Pains & boulangerie',
-  '🏠 Ingrédients maison',
-];
-
-/** split "🥦 Légumes frais" -> { emoji:'🥦', label:'Légumes frais' } */
-export function splitCategory(cat) {
-  if (!cat) return { emoji: '🛒', label: 'Autres' };
-  const sp = cat.indexOf(' ');
-  if (sp === -1) return { emoji: '🛒', label: cat };
-  return { emoji: cat.slice(0, sp), label: cat.slice(sp + 1) };
-}
-
-function categoryRank(cat) {
-  const i = CATEGORIES_ORDER.indexOf(cat);
-  return i === -1 ? 999 : i;
-}
-
-/* ============================================================
-   QUANTITY PARSING & SCALING
-   Base quantity = 1 portion. Slider 1-6 multiplies.
-   ============================================================ */
-const FRACTIONS = { '¼': 0.25, '½': 0.5, '¾': 0.75, '⅓': 1 / 3, '⅔': 2 / 3, '⅛': 0.125, '⅜': 0.375, '⅝': 0.625, '⅞': 0.875 };
-
-/** parse "½ sachet(s)" -> { value:0.5, unit:'sachet(s)' }; non-numeric -> {value:null} */
-export function parseQty(raw) {
-  if (raw == null) return { value: null, unit: '' };
-  const s = String(raw).trim();
-  const m = s.match(/^(\d+(?:[.,]\d+)?)?\s*([¼½¾⅓⅔⅛⅜⅝⅞])?\s*(.*)$/u);
-  if (!m) return { value: null, unit: s };
-  let value = 0, has = false;
-  if (m[1]) { value += parseFloat(m[1].replace(',', '.')); has = true; }
-  if (m[2]) { value += FRACTIONS[m[2]] || 0; has = true; }
-  return { value: has ? value : null, unit: (m[3] || '').trim() };
-}
-
-function fmtNum(v) {
-  const r = Math.round(v * 100) / 100;
-  if (Number.isInteger(r)) return String(r);
-  return String(r).replace('.', ',');
-}
-export { fmtNum };
-
-/* ============================================================
-   FORMULE UNIQUE DE QUANTITÉ (LOT 2)
-   besoin = qty_1portion × portions. AUCUN facteur ×2 caché : le
-   doublement "dîner du soir + déjeuner du lendemain" est représenté
-   UNIQUEMENT par le fait que le slider Portions vaut 2 par défaut.
-   Cette fonction est la SEULE source de vérité pour les quantités —
-   l'affichage recette (scaleQty), la demande de l'onglet Courses, le
-   choix du format multi-format et le total du popover d'usage l'appellent.
-   Accepte soit une chaîne "65 g" / "½ pièce(s)", soit une valeur numérique
-   déjà parsée (utile pour sommer plusieurs recettes). Renvoie un NOMBRE
-   (dans l'unité de la quantité), ou null si non chiffrable ("selon le goût").
-   ============================================================ */
-export function besoinIngredient(qty1portion, portions = 1) {
-  const value = typeof qty1portion === 'number' ? qty1portion : parseQty(qty1portion).value;
-  if (value == null) return null;
-  return value * portions;
-}
-
-/** scale a "1 portion" quantity string by `portions` (affichage recette) —
-    passe par besoinIngredient pour garantir une formule unique. */
-export function scaleQty(raw, portions = 1) {
-  const { value, unit } = parseQty(raw);
-  if (value == null) return String(raw ?? ''); // e.g. "selon le goût"
-  return fmtNum(besoinIngredient(value, portions)) + (unit ? ' ' + unit : '');
-}
-
-/* ============================================================
-   NUTRITION — scale per-portion values by `portions`
-   ============================================================ */
+/* ---------- nutrition ---------- */
 export const NUTRITION_FIELDS = [
   { key: 'kcal', label: 'Calories', unit: 'kcal', max: 1100, rda: 2000 },
   { key: 'proteines_g', label: 'Protéines', unit: 'g', max: 60, rda: 50 },
   { key: 'glucides_g', label: 'Glucides', unit: 'g', max: 110, rda: 260 },
   { key: 'lipides_g', label: 'Lipides', unit: 'g', max: 70, rda: 70 },
-  { key: 'satures_g', label: 'dont saturés', unit: 'g', max: 30, rda: 20 },
-  { key: 'sucres_g', label: 'dont sucres', unit: 'g', max: 40, rda: 90 },
-  { key: 'fibres_g', label: 'Fibres', unit: 'g', max: 25, rda: 30 },
-  { key: 'sel_g', label: 'Sel', unit: 'g', max: 6, rda: 6 },
 ];
 
 export function scaledNutrition(recipe, portions = 1) {
-  const n = recipe.nutrition_1portion || {};
+  const n = (recipe && recipe.nutrition_1portion) || {};
   const out = {};
   Object.keys(n).forEach((k) => {
     out[k] = typeof n[k] === 'number' ? Math.round(n[k] * portions * 100) / 100 : n[k];
@@ -196,431 +114,296 @@ export function scaledNutrition(recipe, portions = 1) {
   return out;
 }
 
-/* ============================================================
-   WEEK CYCLE — S1..S6, rotation after S6 (rule: meta.regles.cycle).
-   No calendar dates exist in the data, so weeks are referenced by
-   their key + theme, and days by weekday name (matches congelation
-   freeze_day / use_day which use "Lun".."Dim").
-   ============================================================ */
-export function nextWeekKey(key) {
-  const list = isEcoKey(key) ? WEEK_KEYS_ECO : WEEK_KEYS;
-  const i = list.indexOf(key);
-  return list[(i + 1) % list.length];
-}
-export function prevWeekKey(key) {
-  const list = isEcoKey(key) ? WEEK_KEYS_ECO : WEEK_KEYS;
-  const i = list.indexOf(key);
-  return list[(i - 1 + list.length) % list.length];
+/** met à l'échelle une quantité "1 portion" du fichier ("130 g", "0.5 g").
+    Utilise qty_valeur + unite quand ils sont là — pas de reparsing hasardeux. */
+export function scaleIngredientQty(ing, portions = 1) {
+  if (!ing) return '';
+  if (typeof ing.qty_valeur === 'number') {
+    return fmtNum(ing.qty_valeur * portions) + (ing.unite ? ' ' + ing.unite : '');
+  }
+  return String(ing.qty_1portion ?? '');
 }
 
 /* ============================================================
-   WEEK PLAN — build midi/soir slots per day.
-   Rule cuisson_x2: every dinner is cooked double → the leftover is
-   the NEXT day's lunch. So:
-     soir[day] = day.diner
-     midi[day] = previous day's dinner (leftover)
-     midi[Lun] = previous week's Sunday dinner (cycle continues)
+   PLANNING D'UNE SEMAINE
+   Le fichier donne `planning` : 8 lignes, du dimanche de retrait au
+   dimanche midi suivant, chacune avec son midi, son soir, l'id de la
+   recette cuisinée le soir, les kcal, la note et les macros.
+   On les rend telles quelles. Le midi d'un jour est la 2e portion du
+   dîner de la VEILLE : on en déduit l'id de recette du midi à partir
+   de la ligne précédente, ce que le fichier exprime déjà en texte
+   (« Portion 2 de : … »).
    ============================================================ */
-export function weekPlan(weekKey) {
+export function weekPlan(weekKey, removed = {}) {
   const wk = weekRaw(weekKey);
-  if (!wk) return null;
-  const prevWk = weekRaw(prevWeekKey(weekKey));
-  const days = DAY_KEYS.map((dk, i) => {
-    const day = wk.days[dk];
-    const soirId = day.diner;
-    const midiId = i > 0 ? wk.days[DAY_KEYS[i - 1]].diner : (prevWk ? prevWk.days.Dim.diner : null);
-    return {
-      key: dk,
-      full: DAY_FULL[dk],
-      weekend: !!day.weekend,
-      soir: soirId,
-      midi: midiId,
-      midiLeftover: true, // by the cuisson_x2 rule, lunch is always leftovers
-      midiText: day.midi_lendemain,
-    };
-  });
-  return { key: weekKey, theme: wk.theme, raw: wk, days };
+  const rows = (wk && wk.planning) || [];
+  const off = (id) => !!(id && removed[id]);
+
+  return {
+    key: weekKey || '',
+    titre: (wk && wk.titre) || '',
+    total: (wk && wk.total_eur) || 0,
+    raw: wk,
+    days: rows.map((row, i) => {
+      const soirId = row.recette_id || null;
+      const prev = i > 0 ? rows[i - 1] : null;
+      const midiId = prev && prev.recette_id && /portion\s*2/i.test(String(row.midi || ''))
+        ? prev.recette_id
+        : null;
+      return {
+        key: row.jour,
+        full: row.jour,
+        weekend: /samedi|dimanche/i.test(String(row.jour || '')),
+        midi: row.midi || '',
+        midiRecipeId: midiId,
+        midiOff: off(midiId),
+        soir: row.soir || '',
+        soirRecipeId: soirId,
+        soirOff: off(soirId),
+        kcal: row.kcal_portion,
+        aCuisiner: row.a_cuisiner || '',
+        note: row.note || '',
+        macros: row.macros || '',
+      };
+    }),
+  };
 }
 
-/* Dinners actually cooked (and therefore bought), honoring per-slot
-   activation. By the cuisson_x2 rule a dinner feeds two slots: its own
-   `soir` slot and the NEXT day's `midi` (the leftover). So the dinner is
-   needed as long as at least one of those two slots is still active —
-   disabling a leftover lunch alone never drops it while the dinner is
-   still eaten, and vice-versa. (Sunday's leftover feeds next week's
-   Monday lunch, i.e. the same global "Lun-midi" slot.) */
-export function cookedDays(weekKey, slotsOff = {}) {
-  const wk = weekRaw(weekKey);
-  if (!wk) return [];
-  return DAY_KEYS
-    .filter((dk, i) => {
-      const nextDay = DAY_KEYS[(i + 1) % DAY_KEYS.length];
-      return !isSlotOff(slotsOff, dk, 'soir') || !isSlotOff(slotsOff, nextDay, 'midi');
-    })
-    .map((dk) => ({ dk, recipe: recipeById(wk.days[dk].diner), weekend: wk.days[dk].weekend }))
-    .filter((d) => d.recipe);
+/* ============================================================
+   ATTRIBUTION produit de courses → recettes de la semaine
+
+   Le fichier V2 nomme les produits différemment des deux côtés :
+   les recettes utilisent un libellé générique (« Filets de poulet »,
+   « Oignons jaunes ») et les courses le nom Chronodrive exact
+   (« Auchan filets de poulet blanc 260 g », « Oignon jaune 1 kg »).
+   Il n'existe aucun champ de liaison.
+
+   On rattache donc par confinement de tokens, et UNIQUEMENT quand
+   TOUS les tokens significatifs du libellé recette se retrouvent dans
+   le nom du produit — pas de correspondance partielle, pas de table de
+   synonymes. Ce qui ne se rattache pas reste « non rattaché ».
+
+   Conséquence voulue (choix : rattachement prudent) : une ligne de
+   courses n'est retirée que si elle est rattachée avec certitude à des
+   recettes toutes retirées. Une ligne non rattachée, ou partagée avec
+   une recette encore au planning, est TOUJOURS conservée. On ne fait
+   donc jamais disparaître un ingrédient encore nécessaire ; au pire il
+   reste une ligne en trop, signalée dans l'écran Courses.
+   ============================================================ */
+const STOP = new Set([
+  'auchan', 'essentiel', 'tavola', 'terroir', 'bonduelle', 'herta', 'casa', 'azzurra',
+  'marie', 'ristorante', 'duc', 'ducros', 'boulangere', 'conquete', 'saveur', 'recette',
+  'les', 'des', 'aux', 'egoutte', 'piece', 'tranche', 'boite', 'sachet', 'pour', 'par',
+]);
+
+function tokens(str) {
+  return String(str || '')
+    .toLowerCase()
+    .replace(/œ/g, 'oe').replace(/æ/g, 'ae')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9/ ]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t && t.length > 2 && !/^\d/.test(t))
+    .map((t) => t.replace(/(s|x)$/, ''))
+    .filter((t) => t.length > 2 && !STOP.has(t));
 }
 
-/* All meal slots currently active (midi + soir per day), with their
-   recipe — drives meal counts and the nutrition recap. */
-export function activeSlots(weekKey, slotsOff = {}) {
-  const plan = weekPlan(weekKey);
-  if (!plan) return [];
+/** true si tous les tokens de `libelle` sont présents dans `produit` */
+function contenuDans(libelle, produit) {
+  const a = tokens(libelle);
+  if (!a.length) return false;
+  const b = new Set(tokens(produit));
+  return a.every((t) => b.has(t));
+}
+
+/** ids des recettes de la semaine auxquelles ce produit se rattache
+    avec certitude (tableau vide = non rattaché) */
+function attribuer(produit, recipes) {
   const out = [];
-  plan.days.forEach((d) => {
-    if (d.midi && !isSlotOff(slotsOff, d.key, 'midi')) out.push({ dayKey: d.key, meal: 'midi', recipeId: d.midi });
-    if (d.soir && !isSlotOff(slotsOff, d.key, 'soir')) out.push({ dayKey: d.key, meal: 'soir', recipeId: d.soir });
+  recipes.forEach((r) => {
+    const hit = (r.ingredients_livres || []).some((ing) =>
+      String(ing.produit_chronodrive || '')
+        .split('/')
+        .some((alt) => contenuDans(alt, produit)));
+    if (hit) out.push(r.id);
   });
   return out;
 }
 
 /* ============================================================
-   SHOPPING LIST — aggregate the fresh (delivered, non home-stock)
-   ingredients of the week's cooked dinners, deduped by name, priced
-   from ingredients_ref. Responds live to the weekend toggle.
-
-   NOTE (assumption, documented in README): we buy one purchase
-   format per unique ingredient. The raw data also ships per-week
-   `budget_*_estime` figures and per-ingredient `ingredients_status`
-   verdicts (Consommé / Reste); those are surfaced as info, but the
-   live total is computed here so the weekend lever actually moves it.
+   LISTE DE COURSES D'UNE SEMAINE
+   = les lignes `courses` + `weekend` (surgelé, pizza) + `placard`
+   de la semaine, telles que fournies. Prix, formats et quantités
+   sortent du fichier sans retouche.
    ============================================================ */
-/* ============================================================
-   FORMATS D'ACHAT & QUANTITÉS (LOT 2 — v6)
-   Le besoin d'une semaine peut dépasser un paquet → on achète autant de
-   paquets que nécessaire. Pour un ingrédient multi-format, on choisit le
-   format qui MINIMISE le coût total (à égalité de coût : le moins de
-   gaspillage). Les formats viennent de `ingredients_ref`.
-   ============================================================ */
-
-/** extrait les grammes d'un libellé de format : "250g"→250, "1kg"→1000,
-    "2 x 125g"→250 ; null si l'unité n'est pas en poids (ex. "1 pièce"). */
-export function formatGrammes(str) {
-  if (str == null) return null;
-  const s = String(str).toLowerCase();
-  let m = s.match(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(kg|g)\b/);
-  if (m) {
-    const c = parseFloat(m[1].replace(',', '.'));
-    const q = parseFloat(m[2].replace(',', '.'));
-    return c * q * (m[3] === 'kg' ? 1000 : 1);
-  }
-  m = s.match(/(\d+(?:[.,]\d+)?)\s*(kg|g)\b/);
-  if (m) return parseFloat(m[1].replace(',', '.')) * (m[2] === 'kg' ? 1000 : 1);
-  return null;
+/* `contenu_achete` du fichier est le contenu TOTAL acheté (tous paquets
+   confondus), et le format unitaire est déjà dans le nom du produit
+   (« … 20 cl », « … 250 g »). On l'affiche donc sans le diviser :
+   1 paquet  -> « 1 × 400 g »
+   n paquets -> « 2 paquets · 400 ml » (400 ml au total) */
+function libellePaquets(qte, contenu, unite) {
+  if (contenu == null) return qte != null ? String(qte) : '';
+  const total = `${fmtNum(contenu)} ${unite || ''}`.trim();
+  if (qte == null || qte <= 1) return `1 × ${total}`;
+  return `${qte} paquets · ${total}`;
 }
 
-/** volume d'un libellé de format, en cl : "20cl"→20, "3x20cl"→60, "1l"→100. null sinon. */
-export function formatVolumeCl(str) {
-  const s = String(str || '').toLowerCase();
-  const toCl = (v, u) => (u === 'cl' ? v : u === 'ml' ? v / 10 : v * 100); // l → 100 cl, ml → 0.1 cl
-  let m = s.match(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(cl|ml|l)\b/);
-  if (m) return parseFloat(m[1].replace(',', '.')) * toCl(parseFloat(m[2].replace(',', '.')), m[3]);
-  m = s.match(/(\d+(?:[.,]\d+)?)\s*(cl|ml|l)\b/);
-  if (m) return toCl(parseFloat(m[1].replace(',', '.')), m[2]);
-  return null;
+function ligneCourse(c, recipes) {
+  const recettes = attribuer(c.produit, recipes);
+  const reste = c.reste || 0;
+  return {
+    name: c.produit,
+    nomChronodrive: c.produit,
+    categorie: c.rayon,
+    kind: 'course',
+    besoinValue: c.besoin_semaine,
+    besoinUnit: c.unite || '',
+    formatLabel: c.contenu_achete != null ? `${fmtNum(c.contenu_achete)} ${c.unite || ''}`.trim() : '',
+    nbPaquets: c.qte_acheter,
+    packDisplay: libellePaquets(c.qte_acheter, c.contenu_achete, c.unite),
+    price: c.total || 0,
+    reste,
+    // réutilise la pastille « Reste » de l'écran Courses
+    verdict: reste > 0 ? `Reste ${fmtNum(reste)} ${c.unite || ''}`.trim() : null,
+    recettes,
+    attribue: recettes.length > 0,
+  };
 }
 
-/** nombre d'unités de comptage d'un format, pour les mots donnés :
-    "1 pièce"→1, "6 pièces"→6, "2 x 4 sachets"→8. null si le mot ne matche pas
-    (ex. "1 tête" avec unité "pièce" → null → on achètera 1 paquet). */
-function formatCount(str, words) {
-  const s = String(str || '').toLowerCase();
-  const w = '(?:' + words.join('|') + ')';
-  let m = s.match(new RegExp('(\\d+(?:[.,]\\d+)?)\\s*[x×]\\s*(\\d+(?:[.,]\\d+)?)\\s*' + w));
-  if (m) return parseFloat(m[1].replace(',', '.')) * parseFloat(m[2].replace(',', '.'));
-  m = s.match(new RegExp('(\\d+(?:[.,]\\d+)?)\\s*' + w));
-  if (m) return parseFloat(m[1].replace(',', '.'));
-  return null;
+function ligneSimple(x, kind) {
+  const qte = x.qte != null ? x.qte : 1;
+  const contenu = x.contenu_format;
+  return {
+    name: x.produit,
+    nomChronodrive: x.produit,
+    categorie: x.rayon,
+    kind,
+    besoinValue: x.qte_utilisee != null ? x.qte_utilisee : null,
+    besoinUnit: x.unite || '',
+    formatLabel: contenu != null ? `${fmtNum(contenu)} ${x.unite || ''}`.trim() : '',
+    nbPaquets: qte,
+    packDisplay: libellePaquets(qte, contenu, x.unite),
+    price: x.total || 0,
+    reste: 0,
+    verdict: null,
+    recettes: [],       // ni la pizza, ni le surgelé, ni le placard ne dépendent d'une recette
+    attribue: false,
+  };
 }
 
-/** magnitude d'un format DANS l'unité du besoin (g, cl, pièce, sachet…). */
-function formatMagnitude(formatStr, grammes, unite) {
-  const u = (unite || '').toLowerCase();
-  if (isWeightUnit(unite)) return grammes != null ? grammes : formatGrammes(formatStr);
-  if (u === 'cl' || u === 'ml' || u === 'l' || u.startsWith('litre')) return formatVolumeCl(formatStr);
-  if (u.startsWith('pièce') || u.startsWith('piece')) return formatCount(formatStr, ['pièce', 'piece', 'pcs', 'pc']);
-  if (u.startsWith('sachet')) return formatCount(formatStr, ['sachet']);
-  return formatCount(formatStr, [u].filter(Boolean));
-}
-
-/** enlève le préfixe "R02: " d'une quantité d'usage → valeur numérique (1 portion). */
-function parseUsageQty(qStr) {
-  if (qStr == null) return null;
-  return parseQty(String(qStr).replace(/^[^:]*:\s*/, '')).value;
-}
-
-/** formats candidats d'un ingrédient (depuis ingredients_ref) : tableau
-    `formats` si multi_format, sinon format unique {format_achat, prix}.
-    `fallback` = {format, prix} issu de la recette si l'ingrédient est absent du ref. */
-export function candidateFormats(name, fallback = null) {
-  const ref = ingRef(name);
-  if (ref && ref.multi_format && Array.isArray(ref.formats) && ref.formats.length) {
-    return ref.formats.map((f) => ({
-      format: f.format,
-      grammes: f.grammes != null ? f.grammes : formatGrammes(f.format),
-      prix: f.prix,
-    }));
-  }
-  if (ref && (ref.format_achat || ref.prix != null)) {
-    return [{
-      format: ref.format_achat || (fallback && fallback.format) || '',
-      grammes: formatGrammes(ref.format_achat),
-      prix: ref.prix != null ? ref.prix : (fallback && fallback.prix) || 0,
-    }];
-  }
-  if (fallback) return [{ format: fallback.format || '', grammes: formatGrammes(fallback.format), prix: fallback.prix || 0 }];
-  return [{ format: '', grammes: null, prix: 0 }];
-}
-
-/** true si l'unité est un poids (g / kg) — sinon on compte en pièces/cl/sachet. */
-function isWeightUnit(unite) {
-  const u = (unite || '').toLowerCase();
-  return u === 'g' || u === 'kg' || u.startsWith('gramme');
-}
-
-/** nombre de paquets d'un format (de magnitude `mag` dans l'unité du besoin). */
-function packsFor(besoin, mag) {
-  if (besoin == null) return 1;
-  if (mag && mag > 0) return Math.max(1, Math.ceil(besoin / mag));
-  return 1; // magnitude du format inconnue dans cette unité → 1 paquet couvre
-}
-
-/** choisit le format qui minimise le COÛT total (égalité → moins de gaspillage). */
-export function chooseFormat(besoin, unite, formats) {
-  let best = null;
-  for (const f of formats) {
-    const mag = formatMagnitude(f.format, f.grammes, unite);
-    const nb = packsFor(besoin, mag);
-    const cost = Math.round(nb * (f.prix || 0) * 100) / 100;
-    const waste = mag ? nb * mag - (besoin || 0) : 0;
-    const cand = { format: f.format, grammes: f.grammes, magnitude: mag, prix: f.prix || 0, nb, cost, waste };
-    if (!best || cand.cost < best.cost - 1e-9 || (Math.abs(cand.cost - best.cost) < 1e-9 && cand.waste < best.waste)) best = cand;
-  }
-  return best || { format: '', grammes: null, prix: 0, nb: 1, cost: 0, waste: 0 };
-}
-
-/* ============================================================
-   NB PAQUETS — règles d'achat par ingrédient (LOT 2). Ordre :
-   a) AIL : les recettes comptent en GOUSSES → 1 tête ≈ gousses_par_tete.
-      nb_têtes = ceil(gousses / gousses_par_tete). (6 gousses → 1 tête, pas 6.)
-   b) ŒUFS : vendus par boîte → nb_boîtes = ceil(œufs / oeufs_par_boite).
-   c) ÉPICES / HERBES SÉCHÉES (unite == "sachet") : 1 POT ENTIER, JAMAIS plus
-      d'un, quel que soit le nombre de recettes (l'utilisateur gère le dosage).
-   d) TOUT LE RESTE : chooseFormat (multi-format, coût minimisé, multipacks).
-   Renvoie toujours { nb, format, prix, cost }. cost = total de la ligne.
-   ============================================================ */
-export function computePurchase(name, besoin, unite, fallback = null) {
-  const ref = ingRef(name);
-  const round2 = (x) => Math.round(x * 100) / 100;
-
-  // a) AIL (gousses → têtes)
-  if (ref && ref.gousses_par_tete) {
-    const per = ref.gousses_par_tete;
-    const prix = ref.prix != null ? ref.prix : 0;
-    const nb = besoin == null ? 1 : Math.max(1, Math.ceil(besoin / per));
-    return { nb, format: ref.format_achat || `1 tête (≈${per} gousses)`, prix, cost: round2(nb * prix) };
-  }
-  // b) ŒUFS (boîte de N)
-  if (ref && ref.oeufs_par_boite) {
-    const per = ref.oeufs_par_boite;
-    const prix = ref.prix != null ? ref.prix : 0;
-    const nb = besoin == null ? 1 : Math.max(1, Math.ceil(besoin / per));
-    return { nb, format: ref.format_achat || `Boîte de ${per}`, prix, cost: round2(nb * prix) };
-  }
-  // c) ÉPICES / HERBES SÉCHÉES (sachet) → 1 pot, jamais plus
-  if ((unite || '').toLowerCase().startsWith('sachet')) {
-    const prix = ref && ref.prix != null ? ref.prix : (fallback && fallback.prix) || 0;
-    return { nb: 1, format: (ref && ref.format_achat) || (fallback && fallback.format) || '1 pot', prix, cost: round2(prix) };
-  }
-  // d) tout le reste
-  const chosen = chooseFormat(besoin, unite, candidateFormats(name, fallback));
-  return { nb: chosen.nb, format: chosen.format, prix: chosen.prix, cost: chosen.cost };
-}
-
-export function weekShopping(weekKey, slotsOff = {}, portions = 2) {
+/**
+ * @param {string} weekKey
+ * @param {Object} removed  { [recipeId]: true } recettes retirées de CETTE semaine
+ */
+export function weekShopping(weekKey, removed = {}) {
   const wk = weekRaw(weekKey);
-  const status = (wk && wk.ingredients_status) || {};
-  const usageAll = (wk && wk.ingredients_usage) || {};
-  // LOT 3 — semaines "super_eco" : une recette peut être cuisinée plusieurs fois.
-  // total_base_1p TIENT DÉJÀ compte des répétitions ; on reconstitue donc le besoin
-  // en multipliant la contribution PAR RECETTE par son nombre de répétitions
-  // (rep = 1 par défaut → semaines normales inchangées). On ne multiplie JAMAIS
-  // une seconde fois ensuite.
-  const reps = (wk && wk.repetitions) || {};
-  const repOf = (rid) => reps[rid] || 1;
-  const cooked = cookedDays(weekKey, slotsOff);
-  const activeIds = new Set(cooked.map((d) => d.recipe.id)); // respecte les repas désactivés
-  const map = new Map();
+  if (!wk) return [];
+  const recipes = weekRecipes(weekKey);
+  const estRetiree = (id) => !!removed[id];
 
-  cooked.forEach(({ recipe }) => {
-    (recipe.ingredients_livres || []).forEach((ing) => {
-      const name = ing.nom;
-      if (!map.has(name)) {
-        const ref = ingRef(name);
-        map.set(name, {
-          name,
-          categorie: ing.categorie || (ref && ref.categorie) || '🥫 Conserves & bocaux',
-          nomChronodrive: (ref && ref.nom_chronodrive) || ing.nom,
-          lien: ing.lien_chronodrive || (ref && ref.lien_chronodrive) || '',
-          substitut: (ref && ref.substitut) || '',
-          dlc: ing.dlc_jours != null ? ing.dlc_jours : (ref && ref.dlc_jours),
-          dispo: ref && ref.dispo_chronodrive,
-          verdict: status[name] ? status[name].verdict : null,
-          verdictDetail: status[name] ? status[name].detail : null,
-          multiFormat: !!(ref && ref.multi_format),
-          _fallback: { format: ing.format_achat, prix: ing.prix_chronodrive },
-          uses: [],
-        });
-      }
-      map.get(name).uses.push({ id: recipe.id, nom: recipe.nom, qty: ing.qty_1portion });
+  const rows = [
+    ...(wk.courses || []).map((c) => ligneCourse(c, recipes)),
+    ...(wk.weekend || []).map((x) => ligneSimple(x, 'weekend')),
+    ...(wk.placard || []).map((x) => ligneSimple(x, 'placard')),
+  ];
+
+  return rows
+    // retrait UNIQUEMENT si toutes les recettes rattachées sont retirées
+    .filter((r) => !(r.attribue && r.recettes.every(estRetiree)))
+    .map((r) => {
+      const restantes = r.recettes.filter((id) => !estRetiree(id));
+      // « à vérifier » : ligne d'ingrédient non rattachée, alors qu'au moins
+      // une recette a été retirée — elle est peut-être devenue inutile.
+      const aVerifier = r.kind === 'course' && !r.attribue && Object.keys(removed).some(estRetiree);
+      return {
+        ...r,
+        aVerifier,
+        count: restantes.length,
+        uses: restantes.map((id) => {
+          const rec = recipeById(id);
+          const ing = ((rec && rec.ingredients_livres) || []).find((x) =>
+            String(x.produit_chronodrive || '').split('/').some((alt) => contenuDans(alt, r.name)));
+          return { id, nom: (rec && rec.nom) || id, rep: 1, qty: ing ? ing.qty_1portion : '—' };
+        }),
+      };
     });
-  });
-
-  map.forEach((row) => {
-    const usage = usageAll[row.name];
-    let base1p = null;   // besoin cumulé pour 1 portion (recettes ACTIVES)
-    let unite = '';
-    let perRecipe = [];
-
-    // 1) source enrichie : ingredients_usage (total_base_1p par recette), restreinte
-    //    aux recettes réellement cuisinées → respecte les slots désactivés.
-    if (usage && usage.sommable !== false && Array.isArray(usage.recettes)) {
-      unite = usage.unite || '';
-      let sum = 0;
-      let any = false;
-      usage.recettes.forEach((rid, i) => {
-        if (!activeIds.has(rid)) return;
-        const val = parseUsageQty(usage.quantites ? usage.quantites[i] : null);
-        const rep = repOf(rid);
-        perRecipe.push({ id: rid, nom: (recipeById(rid) || {}).nom || rid, val, rep });
-        if (val != null) { sum += val * rep; any = true; } // rep=1 hors semaines super_eco
-      });
-      if (any) base1p = sum; // = usage.total_base_1p quand toutes les recettes sont actives
-      else if (perRecipe.length) base1p = 0;
-    }
-
-    // 2) repli : somme "live" des quantités des recettes cuisinées (× répétitions)
-    if (base1p == null) {
-      const parsed = row.uses.map((u) => ({ ...parseQty(u.qty), id: u.id, rep: repOf(u.id) }));
-      const s = parsed.reduce((a, p) => a + ((p.value || 0) * p.rep), 0);
-      base1p = parsed.some((p) => p.value != null) ? s : null;
-      unite = unite || (parsed.find((p) => p.value != null) || {}).unit || '';
-      perRecipe = row.uses.map((u) => ({ id: u.id, nom: u.nom, val: parseQty(u.qty).value, rep: repOf(u.id) }));
-    }
-
-    const besoin = base1p == null ? null : besoinIngredient(base1p, portions);
-    row.besoinPerPortion = base1p;
-    row.besoinUnit = unite;
-    row.besoinValue = besoin;
-    row.count = perRecipe.length;
-    row.perRecipe = perRecipe;
-    // quantité PAR PORTION par recette (pour le popover d'usage) — avec le
-    // nombre de répétitions dans la semaine (rep>1 en mode super_eco).
-    row.uses = perRecipe.map((p) => ({ id: p.id, nom: p.nom, rep: p.rep || 1, qty: p.val == null ? '—' : fmtNum(p.val) + (unite ? ' ' + unite : '') }));
-
-    // format & nombre de paquets (règles AIL / ŒUFS / sachet, sinon coût minimisé)
-    const chosen = computePurchase(row.name, besoin, unite, row._fallback);
-    row.nbPaquets = chosen.nb;
-    row.formatLabel = chosen.format;
-    row.formatPrix = chosen.prix;
-    row.price = chosen.cost; // coût total de la ligne (nb paquets × prix)
-    row.packDisplay = chosen.format ? `${chosen.nb} × ${chosen.format}` : String(chosen.nb);
-  });
-
-  return [...map.values()].sort((a, b) => {
-    const ra = categoryRank(a.categorie), rb = categoryRank(b.categorie);
-    if (ra !== rb) return ra - rb;
-    return a.name.localeCompare(b.name, 'fr');
-  });
 }
 
-/** group shopping rows by category, in display order */
-export function groupShoppingByCategory(rows) {
+/** regroupe les lignes par rayon, dans leur ordre d'apparition */
+export function groupShoppingByCategory(rows = []) {
   const groups = new Map();
   rows.forEach((r) => {
     if (!groups.has(r.categorie)) groups.set(r.categorie, []);
     groups.get(r.categorie).push(r);
   });
-  return [...groups.entries()]
-    .sort((a, b) => categoryRank(a[0]) - categoryRank(b[0]))
-    .map(([categorie, items]) => ({ categorie, ...splitCategory(categorie), items }));
+  return [...groups.entries()].map(([categorie, items]) => ({
+    categorie, ...splitCategory(categorie), items,
+  }));
+}
+
+/** lien magasin — recherche Chronodrive sur le nom du produit */
+export function chronodriveLink(row) {
+  const q = encodeURIComponent((row && (row.nomChronodrive || row.name)) || '');
+  return `https://www.chronodrive.com/courses/recherche?q=${q}`;
 }
 
 /* ============================================================
-   BUDGET — recipe (fresh) total + perso, vs 60 € target.
+   BUDGET
+   Total = somme des lignes de courses AFFICHÉES et non cochées
+   « déjà en stock », + les articles perso saisis par l'utilisateur.
+   Les prix viennent du fichier ; rien n'est recalculé.
    ============================================================ */
-export function persoTotal(persoItems) {
-  return persoItems.filter((p) => !p.checked).reduce((a, p) => a + (p.total ?? p.prix_unitaire * p.qty ?? 0), 0);
-}
-
-/** Single source of truth for the weekly budget (NET — after deducting
-   what the user already has in stock: unchecked shopping rows + unchecked
-   perso). Used by BOTH the Dashboard and Shopping so they always agree. */
-export function weekBudget(weekKey, slotsOff = {}, shoppingChecked = {}, perso = [], portions = 2) {
-  const rows = weekShopping(weekKey, slotsOff, portions);
+export function weekBudget(weekKey, removed = {}, shoppingChecked = {}, perso = []) {
+  const rows = weekShopping(weekKey, removed);
   const recipesTotal = rows
     .filter((r) => !shoppingChecked[`${weekKey}::${r.name}`])
-    .reduce((a, r) => a + r.price, 0);
-  const persoNet = perso
+    .reduce((a, r) => a + (r.price || 0), 0);
+  const persoNet = (perso || [])
     .filter((p) => !p.checked)
     .reduce((a, p) => a + (p.total || 0), 0);
-  return { recipesTotal, persoTotal: persoNet, total: recipesTotal + persoNet };
+  return {
+    recipesTotal: Math.round(recipesTotal * 100) / 100,
+    persoTotal: Math.round(persoNet * 100) / 100,
+    total: Math.round((recipesTotal + persoNet) * 100) / 100,
+  };
 }
 
-/** default perso list seeded from meta.courses_perso_fixes */
+/** liste perso par défaut — le modèle V2 n'en fournit pas */
 export function defaultPerso() {
-  return PERSO_FIXES.map((p, i) => {
-    const mult = p.qty || 1;
-    const unitPrice = p.prix_unitaire != null ? p.prix_unitaire : (mult ? (p.total || 0) / mult : (p.total || 0));
-    return {
-      id: 'perso-' + i,
-      nom: p.nom,
-      qty: p.qty,
-      mult,
-      unitPrice,
-      total: p.total,
-      fixe: true,
-      checked: false,
-    };
-  });
+  return [];
 }
 
 /* ============================================================
-   WEEK KPIs — for the dashboard.
+   KPIs & RÉCAP NUTRITIONNEL — sur la semaine retenue
    ============================================================ */
-export function weekKpis(weekKey, slotsOff = {}) {
-  const cooked = cookedDays(weekKey, slotsOff);
-  const slots = activeSlots(weekKey, slotsOff);
+export function weekKpis(weekKey, removed = {}) {
+  const plan = weekPlan(weekKey, removed);
+  const actifs = plan.days.filter((d) => !d.soirOff && d.kcal != null);
+  const totalKcal = actifs.reduce((a, d) => a + (d.kcal || 0), 0);
+  const avgKcalDay = actifs.length ? Math.round(totalKcal / actifs.length) : 0;
 
-  // calories: average per active day, summing that day's active meals
-  const kcalByDay = {};
-  slots.forEach((s) => {
-    const r = recipeById(s.recipeId);
-    kcalByDay[s.dayKey] = (kcalByDay[s.dayKey] || 0) + (r?.nutrition_1portion?.kcal || 0);
-  });
-  const activeDays = Object.keys(kcalByDay).length;
-  const totalKcal = Object.values(kcalByDay).reduce((a, b) => a + b, 0);
-  const avgKcalDay = activeDays ? Math.round(totalKcal / activeDays) : 0;
+  const restantes = weekRecipes(weekKey).filter((r) => !removed[r.id]);
+  const temps = restantes.map(tempsMinutes).filter((t) => t != null);
+  const avgTime = temps.length ? Math.round(temps.reduce((a, b) => a + b, 0) / temps.length) : 0;
 
-  // time: average over cooked dinners
-  const avgTime = cooked.length
-    ? Math.round(cooked.reduce((a, c) => a + (c.recipe.temps_min || 0), 0) / cooked.length)
-    : 0;
+  // repas planifiés = créneaux midi + soir encore servis
+  const mealsPlanned = plan.days.reduce((a, d) =>
+    a + (d.midi && !d.midiOff ? 1 : 0) + (d.soir && !d.soirOff ? 1 : 0), 0);
+  const mealsTotal = plan.days.reduce((a, d) => a + (d.midi ? 1 : 0) + (d.soir ? 1 : 0), 0);
 
-  const ovenCount = cooked.filter((c) => c.recipe.four).length;
-  const mealsPlanned = slots.length; // active midi/soir slots, out of 14
-
-  return { avgKcalDay, avgTime, ovenCount, mealsPlanned, cookedCount: cooked.length };
+  return {
+    avgKcalDay, avgTime, mealsPlanned, mealsTotal,
+    recipeCount: restantes.length,
+    cookedCount: restantes.length,
+  };
 }
 
-/** average nutrition per active meal slot for the week */
-export function weekNutrition(weekKey, slotsOff = {}) {
-  const slots = activeSlots(weekKey, slotsOff);
+/** moyenne des macros par portion sur les recettes encore au planning */
+export function weekNutrition(weekKey, removed = {}) {
+  const restantes = weekRecipes(weekKey).filter((r) => !removed[r.id]);
   const acc = { kcal: 0, proteines_g: 0, glucides_g: 0, lipides_g: 0 };
   let count = 0;
-  slots.forEach((s) => {
-    const r = recipeById(s.recipeId);
-    if (!r) return;
+  restantes.forEach((r) => {
     const n = r.nutrition_1portion || {};
     acc.kcal += n.kcal || 0;
     acc.proteines_g += n.proteines_g || 0;
@@ -636,29 +419,4 @@ export function weekNutrition(weekKey, slotsOff = {}) {
     lipides_g: Math.round(acc.lipides_g / count),
     count,
   };
-}
-
-/* ============================================================
-   MISC helpers
-   ============================================================ */
-export const money = (n) => (Math.round(n * 100) / 100).toFixed(2).replace('.', ',') + '€';
-export const money0 = (n) => Math.round(n) + '€';
-
-/* soft per-recipe tint — leftovers share their dinner's id, so they
-   share the tint (visually links a dinner to next day's lunch). */
-export function recipeTint(id) {
-  const num = parseInt(String(id).replace(/\D/g, ''), 10) || 0;
-  const hue = (num * 47) % 360;
-  return {
-    bg: `hsla(${hue}, 68%, 55%, 0.09)`,
-    border: `hsla(${hue}, 60%, 50%, 0.45)`,
-    solid: `hsl(${hue}, 58%, 52%)`,
-  };
-}
-
-/** chronodrive link with a search fallback when no direct link exists */
-export function chronodriveLink(row) {
-  if (row && row.lien) return row.lien;
-  const q = encodeURIComponent((row && (row.nomChronodrive || row.name)) || '');
-  return `https://www.chronodrive.com/courses/recherche?q=${q}`;
 }

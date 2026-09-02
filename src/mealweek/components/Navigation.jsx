@@ -7,7 +7,6 @@ import { Icon } from '../../shared/Icon.jsx';
 
 export const NAV = [
   { id: 'dashboard', label: 'Accueil', icon: 'home' },
-  { id: 'planning', label: 'Semaine', icon: 'calendar' },
   { id: 'shopping', label: 'Courses', icon: 'cart' },
   { id: 'library', label: 'Recettes', icon: 'book' },
 ];

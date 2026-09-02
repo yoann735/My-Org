@@ -1,50 +1,46 @@
 /* ============================================================
-   Screen — Bibliothèque (40 recettes filtrables)
-   Filters: protéine, temps, complexité, coût, four, pizza + search.
-   Favorites & banned recipes persisted via ctx.
+   Screen — Bibliothèque de recettes
+   Les 22 recettes du fichier V2, filtrables et cherchables. Ouvrir
+   une recette affiche son détail en overlay (ingrédients livrés,
+   étapes numérotées, nutrition par portion, temps, ustensiles).
+
+   Les filtres portent uniquement sur des champs réellement présents
+   dans les données V2 (nom, temps de préparation). Les anciens filtres
+   protéine / complexité / coût / four / pizza n'ont plus de données
+   correspondantes et ont donc été retirés.
+
+   Favoris et recettes bannies restent persistés via ctx.
    ============================================================ */
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { ProteinBadge, ComplexityPill, Meta } from '../components/primitives.jsx';
+import { Meta } from '../components/primitives.jsx';
 import { TopActions, ExportCsvButton, ExportIngredientsCsvButton } from './_shared.jsx';
-import { RECIPES, PROT, proteinClass, recipeProtein } from '../data/dataLayer.js';
+import { RECIPES, recipeTint, tempsMinutes } from '../data/dataLayer.js';
 
 const TIMES = { 20: '≤20 min', 25: '≤25 min', 30: '≤30 min' };
-const COSTS = ['Économique', 'Moyen', 'Moyen-élevé'];
 
 export function Library({ ctx }) {
   const [view, setView] = useState('grid');
   const [search, setSearch] = useState('');
-  const [fProt, setFProt] = useState([]);
   const [fTime, setFTime] = useState(null);
-  const [fCplx, setFCplx] = useState([]);
-  const [fCost, setFCost] = useState([]);
-  const [fOven, setFOven] = useState(false);
-  const [fPizza, setFPizza] = useState(false);
+  const [fFav, setFFav] = useState(false);
   const [showBanned, setShowBanned] = useState(true);
-
-  const toggle = (arr, set, v) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
   const filtered = RECIPES.filter((r) => {
     const q = search.trim().toLowerCase();
-    if (q && !((r.nom || '').toLowerCase().includes(q) || (r.tagline || '').toLowerCase().includes(q))) return false;
-    if (fProt.length && !fProt.includes(proteinClass(r.proteine))) return false;
-    if (fTime && r.temps_min > fTime) return false;
-    if (fCplx.length && !fCplx.includes(r.complexite)) return false;
-    if (fCost.length && !fCost.includes(r.cout)) return false;
-    if (fOven && !r.four) return false;
-    if (fPizza && !r.pizza) return false;
+    if (q && !(r.nom || '').toLowerCase().includes(q)
+        && !(r.ingredients_livres || []).some((i) => (i.nom || '').toLowerCase().includes(q))) return false;
+    const t = tempsMinutes(r);
+    if (fTime && (t == null || t > fTime)) return false;
+    if (fFav && !ctx.favorites[r.id]) return false;
     if (!showBanned && ctx.banned[r.id]) return false;
     return true;
   });
 
   const chips = [];
-  fProt.forEach((p) => chips.push({ label: PROT[p].label, clear: () => toggle(fProt, setFProt, p) }));
   if (fTime) chips.push({ label: TIMES[fTime], clear: () => setFTime(null) });
-  fCplx.forEach((c) => chips.push({ label: c, clear: () => toggle(fCplx, setFCplx, c) }));
-  fCost.forEach((c) => chips.push({ label: c, clear: () => toggle(fCost, setFCost, c) }));
-  if (fOven) chips.push({ label: 'Four', clear: () => setFOven(false) });
-  if (fPizza) chips.push({ label: 'Pizza WE', clear: () => setFPizza(false) });
+  if (fFav) chips.push({ label: 'Favoris', clear: () => setFFav(false) });
+  if (!showBanned) chips.push({ label: 'Bannies masquées', clear: () => setShowBanned(true) });
 
   return (
     <div className="screen scroll fadein">
@@ -69,34 +65,22 @@ export function Library({ ctx }) {
       {/* filter bar */}
       <div className="card" style={{ padding: '14px 16px', marginBottom: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div className="frow">
-          <span className="kpi-label" style={{ marginRight: 4 }}>Protéine</span>
-          {Object.entries(PROT).map(([k, p]) => (
-            <button key={k} type="button" className={'fpill' + (fProt.includes(k) ? ' on' : '')} onClick={() => toggle(fProt, setFProt, k)}>
-              <span className={'dot ' + p.cls} style={fProt.includes(k) ? { background: '#fff' } : null} /> {p.label}
-            </button>
-          ))}
-          <span style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 4px' }} />
+          <span className="kpi-label" style={{ marginRight: 4 }}>Temps</span>
           {Object.entries(TIMES).map(([v, l]) => (
             <button key={v} type="button" className={'fpill' + (fTime === +v ? ' on' : '')} onClick={() => setFTime(fTime === +v ? null : +v)}>{l}</button>
           ))}
-        </div>
-        <div className="frow">
-          <span className="kpi-label" style={{ marginRight: 4 }}>Complexité</span>
-          {['Facile', 'Intermédiaire', 'Difficile'].map((c) => (
-            <button key={c} type="button" className={'fpill' + (fCplx.includes(c) ? ' on' : '')} onClick={() => toggle(fCplx, setFCplx, c)}>{c}</button>
-          ))}
           <span style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 4px' }} />
-          {COSTS.map((c) => (
-            <button key={c} type="button" className={'fpill' + (fCost.includes(c) ? ' on' : '')} onClick={() => toggle(fCost, setFCost, c)}>{c}</button>
-          ))}
-          <span style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 4px' }} />
-          <button type="button" className={'fpill' + (fOven ? ' on amber' : '')} onClick={() => setFOven(!fOven)}><Icon name="fire" size={13} fill={fOven} /> Four</button>
-          <button type="button" className={'fpill' + (fPizza ? ' on amber' : '')} onClick={() => setFPizza(!fPizza)}><Icon name="pizza" size={13} /> Pizza WE</button>
+          <button type="button" className={'fpill' + (fFav ? ' on amber' : '')} onClick={() => setFFav(!fFav)}>
+            <Icon name="star" size={13} fill={fFav} /> Favoris
+          </button>
+          <button type="button" className={'fpill' + (!showBanned ? ' on' : '')} onClick={() => setShowBanned(!showBanned)}>
+            <Icon name="ban" size={13} /> Masquer les bannies
+          </button>
         </div>
-        {/* exports : portent sur TOUTE la base (43 recettes / 140 ingrédients),
-            pas sur le résultat filtré ci-dessus — d'où les libellés explicites.
-            `frow` enveloppe déjà sur petit écran : les deux boutons passent
-            l'un sous l'autre au doigt plutôt que de déborder. */}
+        {/* exports : portent sur TOUTE la base, pas sur le résultat filtré
+            ci-dessus — d'où les libellés explicites. `frow` enveloppe déjà sur
+            petit écran : les deux boutons passent l'un sous l'autre au doigt
+            plutôt que de déborder. */}
         <div className="frow" style={{ paddingTop: 4, borderTop: '1px solid var(--border-2)' }}>
           <ExportCsvButton />
           <ExportIngredientsCsvButton />
@@ -132,30 +116,31 @@ export function Library({ ctx }) {
 }
 
 function RecipeCard({ r, isBanned, isFav, onOpen, onBan, onFav }) {
-  const p = recipeProtein(r);
+  const t = recipeTint(r.id);
+  const kcal = Math.round((r.nutrition_1portion || {}).kcal || 0);
   return (
     <div className="card" onClick={onOpen}
       style={{ padding: 18, cursor: isBanned ? 'default' : 'pointer', opacity: isBanned ? 0.55 : 1, position: 'relative', display: 'flex', flexDirection: 'column', gap: 11 }}>
-      <span style={{ position: 'absolute', left: 0, top: 14, bottom: 14, width: 3, borderRadius: 3, background: `var(--p-${p.cls})` }} />
+      <span style={{ position: 'absolute', left: 0, top: 14, bottom: 14, width: 3, borderRadius: 3, background: t.solid }} />
       <div className="row spread" style={{ alignItems: 'flex-start' }}>
         <div style={{ minWidth: 0, paddingLeft: 6 }}>
           <div style={{ fontWeight: 600, fontSize: 16, letterSpacing: '-.01em', lineHeight: 1.2 }}>{r.nom}</div>
-          {r.tagline && r.tagline !== r.nom && <div className="ital muted" style={{ fontSize: 13, marginTop: 3 }}>{r.tagline}</div>}
         </div>
         <button type="button" onClick={(e) => { e.stopPropagation(); onFav(); }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: isFav ? 'var(--accent-2)' : 'var(--text-3)', padding: 2, flex: '0 0 auto' }}>
           <Icon name="star" size={18} fill={isFav} />
         </button>
       </div>
-      <div className="row wrap" style={{ gap: 7, paddingLeft: 6 }}>
-        <ProteinBadge recipe={r} />
-        <ComplexityPill level={r.complexite} />
-        {r.four && <span className="pill amber" style={{ height: 24, fontSize: 11 }}><Icon name="fire" size={12} fill /> Four</span>}
-        {r.pizza && <span className="pill amber" style={{ height: 24, fontSize: 11 }}><Icon name="pizza" size={12} /> Pizza</span>}
-      </div>
+      {r.ustensiles && r.ustensiles.length > 0 && (
+        <div className="row wrap" style={{ gap: 7, paddingLeft: 6 }}>
+          {r.ustensiles.map((u) => (
+            <span className="pill" key={u} style={{ height: 24, fontSize: 11 }}><Icon name="utensil" size={12} /> {u}</span>
+          ))}
+        </div>
+      )}
       <div className="row wrap" style={{ gap: 14, paddingLeft: 6, paddingTop: 2 }}>
-        <Meta icon="clock">{r.temps_min} min</Meta>
-        <Meta icon="flame">{r.nutrition_1portion?.kcal} kcal</Meta>
-        <Meta icon="euro">{r.cout}</Meta>
+        <Meta icon="clock">{r.temps}</Meta>
+        <Meta icon="flame">{kcal} kcal</Meta>
+        <Meta icon="list">{(r.etapes || []).length} étapes</Meta>
       </div>
       <div style={{ position: 'absolute', bottom: 12, right: 12 }}>
         {isBanned
@@ -168,21 +153,19 @@ function RecipeCard({ r, isBanned, isFav, onOpen, onBan, onFav }) {
 }
 
 function LibListRow({ r, isBanned, isFav, onOpen, onBan, onFav }) {
-  const p = recipeProtein(r);
+  const t = recipeTint(r.id);
+  const kcal = Math.round((r.nutrition_1portion || {}).kcal || 0);
   return (
     <div className="card" onClick={onOpen} style={{ padding: '12px 16px', cursor: isBanned ? 'default' : 'pointer', opacity: isBanned ? 0.55 : 1, display: 'flex', alignItems: 'center', gap: 14 }}>
-      <span style={{ width: 4, height: 34, borderRadius: 3, background: `var(--p-${p.cls})`, flex: '0 0 auto' }} />
+      <span style={{ width: 4, height: 34, borderRadius: 3, background: t.solid, flex: '0 0 auto' }} />
       <button type="button" onClick={(e) => { e.stopPropagation(); onFav(); }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: isFav ? 'var(--accent-2)' : 'var(--text-3)', padding: 0, flex: '0 0 auto' }}>
         <Icon name="star" size={17} fill={isFav} />
       </button>
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ fontWeight: 600, fontSize: 14.5 }}>{r.nom} {isBanned && <span className="pill crit" style={{ height: 19, fontSize: 9.5, marginLeft: 6 }}>Bannie</span>}</div>
-        {r.tagline && r.tagline !== r.nom && <div className="ital muted" style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.tagline}</div>}
       </div>
-      <ProteinBadge recipe={r} />
-      <ComplexityPill level={r.complexite} />
-      <Meta icon="clock">{r.temps_min}min</Meta>
-      <Meta icon="euro">{r.cout}</Meta>
+      <Meta icon="clock">{r.temps}</Meta>
+      <Meta icon="flame">{kcal} kcal</Meta>
       {isBanned
         ? <button type="button" className="btn" style={{ padding: '5px 11px', fontSize: 12 }} onClick={(e) => { e.stopPropagation(); onBan(); }}><Icon name="refresh" size={13} /> Réactiver</button>
         : <button type="button" className="icon-btn sm" style={{ color: 'var(--crit)' }} onClick={(e) => { e.stopPropagation(); onBan(); }} title="Bannir"><Icon name="ban" size={15} /></button>}

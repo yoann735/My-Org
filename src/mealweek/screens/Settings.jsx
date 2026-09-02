@@ -4,7 +4,7 @@
    portions, retrieval store. All persisted via ctx (localStorage).
    ============================================================ */
 import { Icon } from '../../shared/Icon.jsx';
-import { Card, Stepper, Switch } from '../components/primitives.jsx';
+import { Card, Stepper } from '../components/primitives.jsx';
 import { TopActions, ExportCsvButton, ExportIngredientsCsvButton } from './_shared.jsx';
 import { ACCENTS } from '../../shared/constants.js';
 import { useState } from 'react';
@@ -83,16 +83,22 @@ export function Settings({ ctx }) {
           </div>
         </Card>
 
-        {/* Mode éco */}
-        <Card title="Mode éco" icon="euro">
+        {/* Semaine retenue */}
+        <Card title="Semaine-type retenue" icon="calendar">
           <div className="set-row">
             <div style={{ minWidth: 0 }}>
-              <div className="set-label">Semaines éco</div>
-              <div className="hint" style={{ marginTop: 2 }}>Remplace les semaines standard par des semaines moins chères (E1, E2).</div>
+              <div className="set-label">Semaine {(ctx.weekKey || '').replace(/\D/g, '') || '—'}</div>
+              <div className="hint" style={{ marginTop: 2 }}>
+                La dernière semaine-type parcourue depuis l'Accueil est retenue et synchronisée.
+                {ctx.removedCount > 0 && ` ${ctx.removedCount} recette(s) en ont été retirées.`}
+              </div>
             </div>
-            <div style={{ marginLeft: 'auto' }}><Switch on={ctx.ecoMode} onChange={ctx.toggleEco} /></div>
+            <div style={{ marginLeft: 'auto' }}>
+              <button type="button" className="btn ghost" style={{ padding: '7px 12px' }} onClick={() => ctx.go('dashboard')}>
+                <Icon name="arrowR" size={14} /> Changer
+              </button>
+            </div>
           </div>
-          {ctx.ecoMode && <div className="hint" style={{ marginTop: 10 }}><span className="pill ok" style={{ height: 22, fontSize: 11 }}><Icon name="check" size={12} /> Mode éco actif</span></div>}
         </Card>
 
         {/* Magasin */}
@@ -124,10 +130,10 @@ export function Settings({ ctx }) {
         {/* Objectifs */}
         <Card title="Objectifs hebdomadaires" icon="euro" style={{ gridColumn: '1 / -1' }}>
           <div className="set-list">
-            <StepperRow label="Budget hebdomadaire" sub="Objectif de dépenses pour la semaine (cible recommandée : 60€)"
+            <StepperRow label="Budget hebdomadaire" sub="Objectif de dépenses pour la semaine (cible du modèle V2 : 55€)"
               value={ctx.weeklyBudget} suffix="€" min={40} max={300} step={5} onChange={ctx.setWeeklyBudget} big />
             <div className="set-div" />
-            <StepperRow label="Portions" sub="Pilote toutes les quantités (recettes, nutrition, courses). Réglé sur 2 = 1 dîner + 1 déjeuner du lendemain."
+            <StepperRow label="Portions" sub="Met à l'échelle les quantités affichées dans le détail d'une recette. Réglé sur 2 = 1 dîner + 1 déjeuner du lendemain."
               value={ctx.portions} suffix=" pers." min={1} max={6} step={1} onChange={ctx.setPortions} />
           </div>
         </Card>
@@ -135,7 +141,8 @@ export function Settings({ ctx }) {
         {/* Données */}
         <Card title="Données & confidentialité" icon="box" style={{ gridColumn: '1 / -1' }}>
           <div className="hint" style={{ marginBottom: 12 }}>
-            MealWeek est 100% local : aucune donnée ne quitte cet appareil. Vos coches, favoris et réglages sont stockés dans le navigateur (localStorage).
+            La semaine retenue, les recettes retirées, les coches de courses, vos favoris et vos réglages
+            sont enregistrés dans ce navigateur (localStorage) et synchronisés entre vos appareils via Supabase.
           </div>
           <div className="row wrap" style={{ gap: 10 }}>
             <ExportCsvButton />
@@ -145,10 +152,8 @@ export function Settings({ ctx }) {
             </button>
           </div>
           <div className="hint" style={{ marginTop: 10 }}>
-            L'export recettes contient les 43 recettes en détail : une ligne par ingrédient
-            (livrés et « non inclus »), avec nutrition, coût et allergènes. L'export
-            ingrédients reprend les 140 entrées de la base : une ligne par format d'achat,
-            avec prix Chronodrive, contenance, prix au kg/L, DLC et substitut.
+            Les exports reprennent toute la base V2 : une ligne par recette, une ligne par
+            produit de référence.
           </div>
         </Card>
       </div>

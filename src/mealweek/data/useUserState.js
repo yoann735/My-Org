@@ -1,62 +1,85 @@
 /* ============================================================
-   MealWeek — état utilisateur centralisé + sync multi-appareils (LOT 5).
+   MealWeek — état utilisateur centralisé + sync multi-appareils.
 
-   TOUT l'état modifiable par l'utilisateur (coches "déjà en stock",
-   "ajouté au panier", courses cochées, repas désactivés du planning,
-   slider Portions, mode éco, semaine courante, favoris, bannis, étapes
-   de cuisine, sidebar…) vit dans UN seul objet `data`.
+   TOUT l'état modifiable par l'utilisateur vit dans UN seul objet :
+   - `week`        : la semaine-type RETENUE (la dernière parcourue) ;
+   - `removed`     : les recettes retirées, par semaine
+                     ({ S1: { R09: true } }) ;
+   - `shopChecked` / `cart` : les cases « déjà en stock » / « ajouté au
+                     panier » de l'écran Courses ;
+   - les préférences (budget, portions, magasin, sidebar), les favoris,
+     les recettes bannies et les étapes de cuisine cochées.
 
    Persistance :
-   - localStorage IMMÉDIATE (offline + instantané) sous une clé unique.
-   - Sync cloud Supabase (débounce ~800 ms, last-write-wins) via la table
-     `mealweek_state` (id / data jsonb / updated_at). Ligne unique 'default'.
-   - Au démarrage : si la ligne cloud est plus récente que le local, on
-     adopte le cloud ; sinon on garde (et on pousse) le local.
-   - Hors-ligne / Supabase non configuré : aucun plantage, fallback local.
-
-   Migration : au premier lancement de cette version, l'état est reconstruit
-   à partir des anciennes clés localStorage dispersées (mw.eco, mw.week, …)
-   pour ne rien perdre.
+   - localStorage IMMÉDIATE (offline + instantané) sous une clé unique ;
+   - sync cloud Supabase (débounce ~800 ms, last-write-wins) via la table
+     `mealweek_state` (id / data jsonb / updated_at), ligne unique ;
+   - au démarrage : si la ligne cloud est plus récente que le local, on
+     adopte le cloud, sinon on garde (et on pousse) le local ;
+   - hors-ligne / Supabase non configuré : aucun plantage, repli local.
    ============================================================ */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SYNC_ENABLED, supabase, STATE_TABLE, STATE_ROW_ID } from './supabaseClient.js';
-import { WEEK_KEYS, BUDGET_TARGET, defaultPerso } from './dataLayer.js';
+import { WEEK_KEYS, DEFAULT_WEEK, BUDGET_TARGET, defaultPerso } from './dataLayer.js';
 
 const LOCAL_KEY = 'mw.state.v1';
 const EPOCH = new Date(0).toISOString();
 
-/* anciennes clés éparses → champ centralisé (pour la migration) */
-const OLD_KEYS = {
-  eco: 'mw.eco',
-  week: 'mw.week',
-  budget: 'mw.budget',
-  portions: 'mw.portions',
-  store: 'mw.store',
-  slotsOff: 'mw.slotsOff',
-  sidebar: 'mw.sidebar',
-  shopChecked: 'mw.shopChecked',
-  perso: 'mw.perso',
-  favorites: 'mw.fav',
-  banned: 'mw.banned',
-  cookSteps: 'mw.cookSteps',
-};
+/* Bascule de purge unique. L'état sauvegardé avant la V2 référence des
+   semaines et des recettes qui n'existent plus (S1-S6/E1-E2, anciens ids,
+   créneaux `slotsOff`). Changer cette valeur rejoue la purge partout —
+   sur chaque appareil comme dans le cloud, via la sync habituelle. */
+const CONTENT_RESET = 'v2-2026-09-02';
 
 function buildDefaults() {
   return {
-    eco: false,
-    week: WEEK_KEYS[0],
+    week: DEFAULT_WEEK,
+    removed: {},
     budget: BUDGET_TARGET,
     portions: 2,
     store: 'Chronodrive',
-    slotsOff: {},
     sidebar: false,
     shopChecked: {},
-    cart: {}, // LOT 4 — "ajouté au panier"
+    cart: {},
     perso: defaultPerso(),
     favorites: {},
     banned: {},
     cookSteps: {},
+    contentReset: CONTENT_RESET,
   };
+}
+
+/* Champs hérités des versions précédentes, sans équivalent en V2 :
+   ils sont abandonnés à la purge plutôt que traînés indéfiniment. */
+const CHAMPS_OBSOLETES = ['eco', 'slotsOff'];
+
+function purgeAncienContenu(data) {
+  const d = { ...data };
+  CHAMPS_OBSOLETES.forEach((k) => { delete d[k]; });
+  // tout ce qui est indexé par semaine ou par recette pointe vers l'ancien contenu
+  d.removed = {};
+  d.shopChecked = {};
+  d.cart = {};
+  d.favorites = {};
+  d.banned = {};
+  d.cookSteps = {};
+  d.perso = (Array.isArray(d.perso) ? d.perso : []).filter((p) => !p.fixe);
+  d.week = DEFAULT_WEEK;
+  d.contentReset = CONTENT_RESET;
+  return d;
+}
+
+/** état issu du disque ou du cloud, remis d'aplomb : valeurs par défaut
+    complétées, semaine inconnue ramenée sur la première, purge unique. */
+function normaliser(raw) {
+  // le drapeau doit être lu sur l'état STOCKÉ : buildDefaults() le porte déjà,
+  // donc le tester après fusion ne déclencherait jamais la purge.
+  const aPurger = !raw || raw.contentReset !== CONTENT_RESET;
+  let d = { ...buildDefaults(), ...(raw || {}) };
+  if (aPurger) d = purgeAncienContenu(d);
+  if (!WEEK_KEYS.includes(d.week)) d.week = DEFAULT_WEEK;
+  if (!d.removed || typeof d.removed !== 'object') d.removed = {};
+  return d;
 }
 
 function readJSON(key) {
@@ -68,28 +91,12 @@ function readJSON(key) {
   }
 }
 
-/** état initial : clé unique si présente, sinon migration des anciennes clés. */
 function loadInitial() {
   const wrap = readJSON(LOCAL_KEY);
   if (wrap && wrap.data) {
-    return { data: { ...buildDefaults(), ...wrap.data }, updated_at: wrap.updated_at || EPOCH };
+    return { data: normaliser(wrap.data), updated_at: wrap.updated_at || EPOCH };
   }
-  const data = buildDefaults();
-  let migrated = false;
-  for (const [field, oldKey] of Object.entries(OLD_KEYS)) {
-    const v = readJSON(oldKey);
-    if (v !== undefined) { data[field] = v; migrated = true; }
-  }
-  // legacy : ancien booléen "masquer le week-end" → slots Sam/Dim off
-  try {
-    if (localStorage.getItem('mw.slotsOff') == null && localStorage.getItem('mw.weekend') === 'false') {
-      data.slotsOff = { 'Sam-midi': true, 'Sam-soir': true, 'Dim-midi': true, 'Dim-soir': true };
-      migrated = true;
-    }
-  } catch (e) { /* ignore */ }
-  // migré → updated_at = maintenant (le local a de la valeur) ; sinon epoch
-  // (nouvel appareil vierge → le cloud, s'il existe, gagne au 1er sync).
-  return { data, updated_at: migrated ? new Date().toISOString() : EPOCH };
+  return { data: buildDefaults(), updated_at: EPOCH };
 }
 
 export function useUserState() {
@@ -140,8 +147,8 @@ export function useUserState() {
             const localTs = new Date(wrapRef.current.updated_at).getTime();
             const cloudTs = new Date(row.updated_at).getTime();
             if (cloudTs > localTs) {
-              // cloud plus récent → on l'adopte
-              setWrap({ data: { ...buildDefaults(), ...row.data }, updated_at: row.updated_at });
+              // cloud plus récent → on l'adopte (normalisé : purge + semaine valide)
+              setWrap({ data: normaliser(row.data), updated_at: row.updated_at });
               bootstrapped.current = true;
               return;
             }

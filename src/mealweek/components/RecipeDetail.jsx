@@ -11,10 +11,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
-import { Stepper, ComplexityPill, ProteinBadge, Meta } from './primitives.jsx';
+import { Stepper } from './primitives.jsx';
 import { useIsMobile } from '../../shared/hooks/useMediaQuery.js';
 import {
-  scaleQty, scaledNutrition, NUTRITION_FIELDS, recipeProtein, money, weekRaw,
+  scaleIngredientQty, scaledNutrition, NUTRITION_FIELDS, weekRecipes,
 } from '../data/dataLayer.js';
 
 export function RecipeDetail({ recipe, onClose, ctx }) {
@@ -42,19 +42,29 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
   }, [onClose]);
 
   const delivered = recipe.ingredients_livres || [];
-  const nonInclus = recipe.non_inclus || [];
-  // Ingrédient partagé : utilisé par >1 recette de la SEMAINE EN COURS
-  // (ingredients_usage[nom].count > 1). On repère ainsi, dans la section
-  // "Ingrédients livrés", ce qui sert aussi ailleurs cette semaine-là.
-  const weekUsage = (weekRaw(ctx && ctx.weekKey) || {}).ingredients_usage || {};
-  const sharedCount = (name) => {
-    const u = weekUsage[name];
-    return u && u.count > 1 ? u.count : 0;
+
+  // Ingrédient partagé : le même produit Chronodrive est utilisé par une
+  // AUTRE recette encore au planning de la semaine retenue. On le signale
+  // pour que la quantité prise ici ne prive pas l'autre recette.
+  const removedInWeek = (ctx && ctx.removedInWeek) || {};
+  const recettesSemaine = weekRecipes(ctx && ctx.weekKey).filter((r) => !removedInWeek[r.id]);
+  // le badge n'a de sens que si CETTE recette est elle-même au planning de la
+  // semaine retenue : sinon il n'y a pas de course commune à partager.
+  const dansLaSemaine = recettesSemaine.some((r) => r.id === recipe.id);
+  const sharedCount = (produit) => {
+    if (!produit || !dansLaSemaine) return 0;
+    const n = recettesSemaine.filter((r) =>
+      (r.ingredients_livres || []).some((i) => i.produit_chronodrive === produit)).length;
+    return n > 1 ? n : 0;
   };
+
+  // lien vers la recette d'origine : `source` est du texte « Marmiton — https://… »
+  const sourceUrl = (String(recipe.source || '').match(/https?:\/\/\S+/) || [null])[0];
+  const sourceNom = String(recipe.source || '').split('—')[0].trim();
+
   const steps = recipe.etapes || [];
   const doneCount = steps.filter((s, k) => stepsDone[k]).length;
   const progress = steps.length ? Math.round((doneCount / steps.length) * 100) : 0;
-  const prot = recipeProtein(recipe);
 
   /* ---- ingredients column ---- */
   const Ingredients = (
@@ -73,37 +83,20 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
             onClick={() => setGot((g) => ({ ...g, ['d' + k]: !g['d' + k] }))}
           >
             <span className="ing-box"><Icon name="check" size={12} stroke={3} /></span>
-            <span className="ing-nm">{i.nom}{sharedCount(i.nom) > 0 && <SharedBadge count={sharedCount(i.nom)} />}{i.note ? <span className="ing-note">· {i.note}</span> : null}</span>
-            <span className="ing-q tnum">{scaleQty(i.qty_1portion, portions)}</span>
+            <span className="ing-nm">
+              {i.nom}
+              {sharedCount(i.produit_chronodrive) > 0 && <SharedBadge count={sharedCount(i.produit_chronodrive)} />}
+              {i.origine === 'placard' && (
+                <span className="pill ok" style={{ height: 18, fontSize: 9.5, marginLeft: 4 }}>
+                  <Icon name="home" size={9} /> Placard
+                </span>
+              )}
+              {i.equivalent ? <span className="ing-note">· {i.equivalent}</span> : null}
+            </span>
+            <span className="ing-q tnum">{scaleIngredientQty(i, portions)}</span>
           </button>
         ))}
       </div>
-
-      {nonInclus.length > 0 && (
-        <>
-          <div className="cook-sub">Non inclus — à prévoir chez vous</div>
-          <div className="ing-list">
-            {nonInclus.map((i, k) => (
-              <button
-                key={'n-' + i.nom}
-                type="button"
-                className={'ing-check' + (got['n' + k] ? ' on' : '')}
-                onClick={() => setGot((g) => ({ ...g, ['n' + k]: !g['n' + k] }))}
-              >
-                <span className="ing-box"><Icon name="check" size={12} stroke={3} /></span>
-                <span className="ing-nm">
-                  {i.nom}{' '}
-                  <span className="pill ok" style={{ height: 18, fontSize: 9.5, marginLeft: 4 }}>
-                    <Icon name="home" size={9} /> Maison
-                  </span>
-                  {i.note ? <span className="ing-note">· {i.note}</span> : null}
-                </span>
-                <span className="ing-q tnum">{scaleQty(i.qty, portions)}</span>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
 
       {recipe.ustensiles && recipe.ustensiles.length > 0 && (
         <>
@@ -118,22 +111,22 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
         </>
       )}
 
-      {recipe.allergenes && (
+      {recipe.substitutions && recipe.substitutions !== 'aucune' && (
         <>
-          <div className="cook-sub">Allergènes</div>
-          <div className="hint" style={{ lineHeight: 1.5 }}>{recipe.allergenes}</div>
+          <div className="cook-sub">Substitutions</div>
+          <div className="hint" style={{ lineHeight: 1.5 }}>{recipe.substitutions}</div>
         </>
       )}
 
-      {recipe.url && (
+      {sourceUrl && (
         <a
           className="btn ghost"
-          href={recipe.url}
+          href={sourceUrl}
           target="_blank"
           rel="noopener noreferrer"
           style={{ marginTop: 16, width: '100%' }}
         >
-          <Icon name="ext" size={15} /> Recette originale HelloFresh
+          <Icon name="ext" size={15} /> Recette originale{sourceNom ? ' — ' + sourceNom : ''}
         </a>
       )}
 
@@ -200,16 +193,13 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
         <header className="cook-top">
           <div className="cook-top-main">
             <div className="row wrap" style={{ gap: 10, marginBottom: 6 }}>
-              {recipe.complexite && <ComplexityPill level={recipe.complexite} />}
-              <span className="meta"><Icon name="clock" size={13} className="ic" /> {recipe.temps_min} min</span>
-              <ProteinBadge recipe={recipe} />
-              {recipe.four && <span className="pill amber" style={{ height: 24, fontSize: 11 }}><Icon name="fire" size={12} fill /> Four</span>}
-              {recipe.pizza && <span className="pill amber" style={{ height: 24, fontSize: 11 }}><Icon name="pizza" size={12} /> Pizza WE</span>}
+              <span className="meta"><Icon name="clock" size={13} className="ic" /> {recipe.temps}</span>
+              <span className="meta"><Icon name="list" size={13} className="ic" /> {steps.length} étapes</span>
+              {(recipe.ustensiles || []).map((u) => (
+                <span className="pill" key={u} style={{ height: 24, fontSize: 11 }}><Icon name="utensil" size={12} /> {u}</span>
+              ))}
             </div>
             <h1 className="serif" style={{ fontSize: 34, margin: 0, lineHeight: 1.02 }}>{recipe.nom}</h1>
-            {recipe.tagline && recipe.tagline !== recipe.nom && (
-              <div className="ital muted" style={{ fontSize: 16, marginTop: 4 }}>{recipe.tagline}</div>
-            )}
           </div>
           <div className="cook-top-side">
             <button className="icon-btn" onClick={onClose} title="Fermer (Échap)" type="button"><Icon name="x" size={18} /></button>

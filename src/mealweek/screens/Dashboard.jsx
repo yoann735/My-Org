@@ -1,44 +1,53 @@
 /* ============================================================
-   Screen — Dashboard / calendrier hebdomadaire
-   KPIs (budget / calories / temps / four) + weekly calendar +
-   "prochaine recette" hero + budget breakdown + nutrition recap.
+   Screen — Dashboard / semaine-type retenue
+   KPIs (budget / calories / temps / recettes) + planning de la semaine
+   + « prochaine recette » + détail du budget + récap nutritionnel.
+   Tout est branché sur la semaine-type actuellement retenue et sur les
+   recettes que l'utilisateur en a retirées.
    ============================================================ */
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, Bar, HBar, WeekNav } from '../components/primitives.jsx';
 import { WeekCalendar } from '../components/WeekCalendar.jsx';
-import { TopActions, EcoToggle } from './_shared.jsx';
+import { TopActions, ResetRemovedButton } from './_shared.jsx';
 import {
-  weekPlan, weekKpis, weekNutrition, weekBudget, recipeById, recipeProtein,
-  money, money0, DAY_KEYS,
+  weekPlan, weekKpis, weekNutrition, weekBudget, weekRaw, recipeById, money, money0,
 } from '../data/dataLayer.js';
 
-export function Dashboard({ ctx }) {
-  const { weekKey, weeklyBudget, slotsOff } = ctx;
-  const plan = weekPlan(weekKey);
-  const kpi = weekKpis(weekKey, slotsOff);
-  const nut = weekNutrition(weekKey, slotsOff);
+const JOURS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
-  // NET budget (after deducting "j'ai déjà") — same source of truth as Shopping
-  const { recipesTotal, persoTotal: persoT, total: budgetTotal } = weekBudget(weekKey, slotsOff, ctx.shoppingChecked, ctx.perso, ctx.portions);
+export function Dashboard({ ctx }) {
+  const { weekKey, weeklyBudget, removedInWeek } = ctx;
+  const plan = weekPlan(weekKey, removedInWeek);
+  const kpi = weekKpis(weekKey, removedInWeek);
+  const nut = weekNutrition(weekKey, removedInWeek);
+  const wk = weekRaw(weekKey);
+
+  const { recipesTotal, persoTotal: persoT, total: budgetTotal } =
+    weekBudget(weekKey, removedInWeek, ctx.shoppingChecked, ctx.perso);
   const over = budgetTotal > weeklyBudget;
 
-  // "prochaine recette" = the dinner cooked TONIGHT (each evening a new recipe;
-  // lunch = previous night's leftovers). Start from the real current weekday and
-  // walk forward to the next active dinner.
-  const todayIdx = (new Date().getDay() + 6) % 7; // Lun=0 … Dim=6
-  let nextDay = null, nextLabel = 'Ce soir';
-  for (let i = 0; i < 7; i++) {
-    const dk = DAY_KEYS[(todayIdx + i) % 7];
-    const d = plan.days.find((x) => x.key === dk);
-    if (d && d.soir && !slotsOff[`${dk}-soir`]) { nextDay = d; nextLabel = i === 0 ? 'Ce soir' : d.full; break; }
+  /* « prochaine recette » = le prochain dîner encore au planning, à partir
+     du jour réel. Les jours du planning V2 sont nommés en clair
+     (« Lundi », « Dimanche (retrait) »…) : on repart du nom du jour. */
+  const todayName = JOURS[new Date().getDay()];
+  const startIdx = Math.max(0, plan.days.findIndex((d) => d.full.startsWith(todayName)));
+  let nextDay = null;
+  let nextLabel = 'Ce soir';
+  for (let i = 0; i < plan.days.length; i++) {
+    const d = plan.days[(startIdx + i) % plan.days.length];
+    if (d.soirRecipeId && !d.soirOff) {
+      nextDay = d;
+      nextLabel = i === 0 ? 'Ce soir' : d.full;
+      break;
+    }
   }
-  const next = nextDay ? recipeById(nextDay.soir) : null;
+  const next = nextDay ? recipeById(nextDay.soirRecipeId) : null;
 
   const kpis = [
     { icon: 'euro', tint: 'var(--accent)', label: 'Budget semaine', val: <>{money0(budgetTotal)} <small>/ {weeklyBudget}€</small></>, bar: { value: budgetTotal, max: weeklyBudget, variant: over ? 'crit' : '' } },
     { icon: 'flame', tint: 'var(--p-pork)', label: 'Calories moy./jour', val: <>{kpi.avgKcalDay} <small>kcal</small></> },
     { icon: 'clock', tint: 'var(--p-fish)', label: 'Temps moyen', val: <>{kpi.avgTime} <small>min</small></> },
-    { icon: 'fire', tint: 'var(--accent-2)', label: 'Recettes au four', val: <>{kpi.ovenCount} <small>cette semaine</small></> },
+    { icon: 'book', tint: 'var(--accent-2)', label: 'Recettes à cuisiner', val: <>{kpi.recipeCount} <small>cette semaine</small></> },
   ];
 
   return (
@@ -46,15 +55,17 @@ export function Dashboard({ ctx }) {
       <div className="topbar">
         <div style={{ minWidth: 0 }}>
           <h1 className="serif">
-            {ctx.ecoMode ? 'Semaine éco ' : 'Semaine '}{weekKey.replace(/\D/g, '')}{' '}
-            <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>—</span>{' '}
-            <span style={{ fontSize: 24, color: 'var(--text-2)' }}>{plan.theme}</span>
-            {ctx.ecoMode && <span className="pill ok" style={{ marginLeft: 10, verticalAlign: 'middle', height: 24, fontSize: 12 }}><Icon name="euro" size={12} /> Mode éco</span>}
+            Semaine {(weekKey || '').replace(/\D/g, '') || '—'}
+            <span style={{ color: 'var(--text-3)', fontWeight: 400, fontSize: 24 }}>
+              {' '}sur {plan.days.length ? 8 : 0}
+            </span>
           </h1>
-          <div className="sub">Votre planning de la semaine en un coup d'œil. {ctx.disabledCount > 0 && <strong style={{ color: 'var(--accent-2)' }}>· {ctx.disabledCount} repas désactivé{ctx.disabledCount > 1 ? 's' : ''}</strong>}</div>
+          <div className="sub">
+            Semaine-type retenue — elle est mémorisée et retrouvée au prochain lancement.
+            {ctx.removedCount > 0 && <strong style={{ color: 'var(--accent-2)' }}> · {ctx.removedCount} recette{ctx.removedCount > 1 ? 's' : ''} retirée{ctx.removedCount > 1 ? 's' : ''}</strong>}
+          </div>
         </div>
         <div className="topbar-actions">
-          <EcoToggle ctx={ctx} />
           <WeekNav weekKey={weekKey} onPrev={ctx.prevWeek} onNext={ctx.nextWeek} />
           <TopActions ctx={ctx} />
         </div>
@@ -68,13 +79,12 @@ export function Dashboard({ ctx }) {
             <div className="nr-main">
               <span className="nr-eyebrow"><Icon name="clock" size={13} /> Prochaine recette · {nextLabel === 'Ce soir' ? 'Ce soir' : nextLabel + ' soir'}</span>
               <div className="nr-title serif">{next.nom}</div>
-              {next.tagline && next.tagline !== next.nom && (
-                <div className="nr-tag ital">{next.tagline}</div>
-              )}
               <div className="row wrap nr-metas">
-                <span className="nr-meta"><span className="dot" style={{ background: `var(--p-${recipeProtein(next).cls})`, width: 9, height: 9 }} /> {recipeProtein(next).label}</span>
-                <span className="nr-meta"><Icon name="clock" size={14} /> {next.temps_min} min</span>
-                <span className="nr-meta"><Icon name="flame" size={14} /> {next.nutrition_1portion?.kcal} kcal</span>
+                <span className="nr-meta"><Icon name="clock" size={14} /> {next.temps}</span>
+                <span className="nr-meta"><Icon name="flame" size={14} /> {Math.round(next.nutrition_1portion?.kcal || 0)} kcal</span>
+                {next.ustensiles && next.ustensiles.length > 0 && (
+                  <span className="nr-meta"><Icon name="utensil" size={14} /> {next.ustensiles.join(', ')}</span>
+                )}
               </div>
             </div>
             <button className="nr-cta" type="button" onClick={(e) => { e.stopPropagation(); ctx.openRecipe(next.id); }}>
@@ -90,7 +100,7 @@ export function Dashboard({ ctx }) {
           <div className="kpi" key={i}>
             <div className="kpi-top">
               <div className="kpi-ic" style={{ background: `color-mix(in srgb, ${k.tint} 16%, transparent)`, color: k.tint }}>
-                <Icon name={k.icon} size={17} fill={k.icon === 'fire'} />
+                <Icon name={k.icon} size={17} />
               </div>
               <div className="kpi-label">{k.label}</div>
             </div>
@@ -101,21 +111,27 @@ export function Dashboard({ ctx }) {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {/* calendar (full width) */}
+        {/* planning de la semaine (pleine largeur) */}
         <div className="card" style={{ overflow: 'hidden' }}>
           <div className="card-head">
             <Icon name="calendar" size={17} className="ic" />
-            <h3>Calendrier hebdomadaire</h3>
+            <h3>Planning de la semaine</h3>
             <div className="right">
+              <ResetRemovedButton ctx={ctx} />
               <span className="pill"><Icon name="refresh" size={12} /> Restes réutilisés</span>
-              <span className="pill accent">{kpi.mealsPlanned}/14 repas</span>
-              <button className="btn ghost" style={{ padding: '6px 11px' }} onClick={() => ctx.go('planning')}>
-                <Icon name="grid" size={15} /> Planning
-              </button>
+              <span className="pill accent">{kpi.mealsPlanned}/{kpi.mealsTotal} repas</span>
             </div>
           </div>
           <div className="card-body" style={{ padding: 18 }}>
-            <WeekCalendar weekKey={weekKey} onOpenRecipe={ctx.openRecipe} slotsOff={slotsOff} onToggleSlot={ctx.toggleSlot} />
+            <WeekCalendar
+              weekKey={weekKey}
+              removed={removedInWeek}
+              onOpenRecipe={ctx.openRecipe}
+              onToggleRecipe={ctx.toggleRecipeRemoved}
+            />
+            <div className="hint" style={{ marginTop: 12 }}>
+              <Icon name="ban" size={12} /> Survolez une recette et cliquez sur le bouton pour la retirer de la semaine : le récap et la liste de courses se mettent à jour.
+            </div>
           </div>
         </div>
 
@@ -124,14 +140,17 @@ export function Dashboard({ ctx }) {
           <Card title="Budget de la semaine" icon="euro" className="eqcard"
             action={<button className="icon-btn sm" title="Régler le budget" onClick={() => ctx.go('settings')} type="button"><Icon name="edit" size={15} /></button>}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 13, height: '100%' }}>
-              <BudgetRow label="Courses recettes" value={recipesTotal} />
-              <BudgetRow label="Courses perso (skyr, bananes)" value={persoT} />
+              <BudgetRow label="Courses de la semaine" value={recipesTotal} />
+              <BudgetRow label="Courses perso" value={persoT} />
               <div style={{ height: 1, background: 'var(--border-2)' }} />
               <div className="row spread">
                 <span style={{ fontWeight: 700, fontSize: 15 }}>Total semaine</span>
                 <span className="tnum serif" style={{ fontSize: 22, color: over ? 'var(--crit)' : 'var(--accent)' }}>{money(budgetTotal)}</span>
               </div>
               <Bar value={budgetTotal} max={weeklyBudget} variant={over ? 'crit' : ''} />
+              {wk && wk.total_eur != null && (
+                <div className="hint">Total annoncé pour {weekKey} dans les données : {money(wk.total_eur)}</div>
+              )}
               <div className="budget-target" style={{ marginTop: 'auto' }}>
                 <span className="hint">Objectif {weeklyBudget}€</span>
                 <span className={'pill ' + (over ? 'crit' : 'ok')} style={{ marginLeft: 'auto' }}>
@@ -146,9 +165,9 @@ export function Dashboard({ ctx }) {
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
               <HBar label="Calories" value={nut.kcal} max={900} unit="kcal" />
               <HBar label="Protéines" value={nut.proteines_g} max={50} unit="g" highlight />
-              <HBar label="Glucides" value={nut.glucides_g} max={100} unit="g" />
+              <HBar label="Glucides" value={nut.glucides_g} max={110} unit="g" />
               <HBar label="Lipides" value={nut.lipides_g} max={60} unit="g" />
-              <div className="hint" style={{ marginTop: 'auto', paddingTop: 12 }}>Moyenne par repas planifié ({nut.count} repas)</div>
+              <div className="hint" style={{ marginTop: 'auto', paddingTop: 12 }}>Moyenne par portion sur les {nut.count} recette{nut.count > 1 ? 's' : ''} de la semaine</div>
             </div>
           </Card>
         </div>

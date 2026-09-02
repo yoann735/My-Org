@@ -1,21 +1,28 @@
 /* ============================================================
    Screen — Liste de courses
-   Fresh ingredients aggregated by Chronodrive category, with the
-   Chronodrive name + link (not the raw HelloFresh name), price,
-   substitute, and a "j'ai déjà" toggle (persisted). Personal items
-   pre-filled (skyr ×2 + bananes). Live total vs 60€, weekend lever.
+   Exactement les lignes de courses de la SEMAINE-TYPE RETENUE, telles
+   que fournies par les données V2 : produit Chronodrive, rayon,
+   nombre de paquets, contenu et prix relevé. Rien n'est recalculé.
+
+   Retirer une recette de la semaine (depuis l'Accueil) retire ses
+   lignes d'ici — prudemment : une ligne partagée avec une recette
+   encore au planning, ou qu'on n'a pas pu rattacher avec certitude,
+   est conservée et signalée « à vérifier » (voir dataLayer).
+
+   Cases « déjà en stock » / « ajouté au panier » persistées, et
+   articles perso libres.
    ============================================================ */
 import { useState, useRef, useEffect } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Check, WeekNav, Stepper } from '../components/primitives.jsx';
-import { TopActions, WeekendToggle, ResetSlotsButton } from './_shared.jsx';
+import { TopActions, ResetRemovedButton } from './_shared.jsx';
 import {
   weekShopping, groupShoppingByCategory, weekBudget, chronodriveLink, money, fmtNum,
 } from '../data/dataLayer.js';
 
 export function Shopping({ ctx }) {
-  const { weekKey, slotsOff, weeklyBudget } = ctx;
-  const rows = weekShopping(weekKey, slotsOff, ctx.portions);
+  const { weekKey, removedInWeek, weeklyBudget } = ctx;
+  const rows = weekShopping(weekKey, removedInWeek);
   const groups = groupShoppingByCategory(rows);
 
   const isChecked = (name) => !!ctx.shoppingChecked[`${weekKey}::${name}`];
@@ -25,7 +32,7 @@ export function Shopping({ ctx }) {
   const toggleCart = (name) => ctx.toggleCartItem(`${weekKey}::${name}`);
 
   // same single source of truth as the Dashboard (net budget)
-  const { recipesTotal: recipeTotal, persoTotal, total: grand } = weekBudget(weekKey, slotsOff, ctx.shoppingChecked, ctx.perso, ctx.portions);
+  const { recipesTotal: recipeTotal, persoTotal, total: grand } = weekBudget(weekKey, removedInWeek, ctx.shoppingChecked, ctx.perso);
   const over = grand > weeklyBudget;
   const toBuy = rows.filter((r) => !isChecked(r.name)).length;
 
@@ -48,11 +55,11 @@ export function Shopping({ ctx }) {
         <div style={{ minWidth: 0 }}>
           <h1 className="serif">
             Courses{' '}
-            <span style={{ color: 'var(--text-3)', fontWeight: 400, fontSize: 24 }}>— Semaine {weekKey.replace('S', '')}</span>
+            <span style={{ color: 'var(--text-3)', fontWeight: 400, fontSize: 24 }}>— Semaine {(weekKey || '').replace(/\D/g, '') || '—'}</span>
           </h1>
           <div className="sub">
-            {toBuy} ingrédient(s) à acheter · retrait chez <strong style={{ color: 'var(--text)' }}>{ctx.store || 'Chronodrive'}</strong>
-            {ctx.disabledCount > 0 && <strong style={{ color: 'var(--accent-2)' }}> · {ctx.disabledCount} repas désactivé{ctx.disabledCount > 1 ? 's' : ''}</strong>}
+            {toBuy} produit(s) à acheter · retrait chez <strong style={{ color: 'var(--text)' }}>{ctx.store || 'Chronodrive'}</strong>
+            {ctx.removedCount > 0 && <strong style={{ color: 'var(--accent-2)' }}> · {ctx.removedCount} recette{ctx.removedCount > 1 ? 's' : ''} retirée{ctx.removedCount > 1 ? 's' : ''}</strong>}
           </div>
         </div>
         <div className="topbar-actions">
@@ -65,15 +72,14 @@ export function Shopping({ ctx }) {
       </div>
 
       <div className="row wrap" style={{ marginBottom: 16, gap: 10 }}>
-        <WeekendToggle ctx={ctx} />
-        <ResetSlotsButton ctx={ctx} />
-        <span className="hint">Désactivez des repas dans le <button type="button" className="linklike" onClick={() => ctx.go('planning')}>Planning</button> : seuls les ingrédients encore nécessaires restent ici.</span>
+        <ResetRemovedButton ctx={ctx} />
+        <span className="hint">Retirez une recette depuis l'<button type="button" className="linklike" onClick={() => ctx.go('dashboard')}>Accueil</button> : ses produits disparaissent d'ici.</span>
       </div>
 
       <div className="shop-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.7fr) minmax(290px,1fr)', gap: 24, alignItems: 'start' }}>
         {/* recipe ingredients */}
         <div>
-          <h2 className="serif" style={{ fontSize: 20, margin: '0 0 12px' }}>Pour vos recettes</h2>
+          <h2 className="serif" style={{ fontSize: 20, margin: '0 0 12px' }}>Courses de la semaine</h2>
           <div className="card" style={{ overflow: 'hidden' }}>
             <div className="sl-row head">
               <span>Ingrédient (nom Chronodrive)</span>
@@ -110,12 +116,18 @@ export function Shopping({ ctx }) {
                               <span className="pill amber" style={{ height: 18, fontSize: 9.5 }}>♻️ Reste</span>
                             )}
                             {carted && <span className="cart-badge"><Icon name="cart" size={9} /> Panier</span>}
+                            {r.aVerifier && !checked && (
+                              <span className="tip subst-ic" style={{ color: 'var(--accent-2)' }}>
+                                <Icon name="alert" size={11} />
+                                <span className="tip-body">Produit non rattaché à une recette : vérifiez s'il vous sert encore après le retrait.</span>
+                              </span>
+                            )}
                           </div>
                           {r.besoinValue != null && (
                             <div className="rc">Besoin {fmtNum(r.besoinValue)} {r.besoinUnit}</div>
                           )}
                         </div>
-                        <UsageCell row={r} portions={ctx.portions} />
+                        <UsageCell row={r} />
                         <div className="sl-qty">{r.packDisplay || r.formatLabel || '—'}</div>
                         <div className="sl-price">{money(r.price)}</div>
                         <div className="sl-act">
@@ -137,7 +149,7 @@ export function Shopping({ ctx }) {
                 </div>
               );
             })}
-            {rows.length === 0 && <div className="card-body hint">Aucun ingrédient frais pour cette sélection.</div>}
+            {rows.length === 0 && <div className="card-body hint">Aucun produit pour cette semaine.</div>}
           </div>
         </div>
 
@@ -207,28 +219,13 @@ export function Shopping({ ctx }) {
 }
 
 /* ============================================================
-   LOT 3 — cellule "Utilisation" + popover (survol desktop / tap mobile).
-   Le nombre de recettes et les quantités par recette sont calculés EN
-   DIRECT (row.uses / row.besoinValue) — le JSON n'a pas de champ
-   ingredients_usage figé, ce qui garantit que ça respecte les repas
-   désactivés et la valeur du slider Portions. Le total en bas = la
-   formule UNIQUE besoinIngredient (qty_1portion × portions).
+   Cellule « Utilisation » + popover (survol desktop / tap mobile).
+   Liste les recettes de la semaine encore au planning qui utilisent ce
+   produit, avec la quantité PAR PORTION telle qu'elle figure dans la
+   recette. Le besoin de la semaine, le nombre de paquets et le prix
+   viennent directement des données de la semaine — rien n'est recalculé.
    ============================================================ */
-/* détail du besoin, ex. "125 g × 4 recettes × 2 portions = 1000 g → 4 × 250g" */
-function usageDetail(row, portions) {
-  const per = (row.perRecipe || []).filter((p) => p.val != null);
-  if (!per.length || row.besoinValue == null) return '';
-  const unit = row.besoinUnit || '';
-  const vals = per.map((p) => p.val);
-  const allEqual = vals.every((v) => Math.abs(v - vals[0]) < 1e-9);
-  const left = allEqual
-    ? `${fmtNum(vals[0])} ${unit} × ${per.length} recette${per.length > 1 ? 's' : ''} × ${portions} portion${portions > 1 ? 's' : ''}`
-    : `${fmtNum(row.besoinPerPortion)} ${unit} (1 portion) × ${portions} portion${portions > 1 ? 's' : ''}`;
-  const pack = row.formatLabel ? ` → ${row.nbPaquets} × ${row.formatLabel}` : '';
-  return `${left} = ${fmtNum(row.besoinValue)} ${unit}${pack}`.replace(/\s+/g, ' ').trim();
-}
-
-function UsageCell({ row, portions }) {
+function UsageCell({ row }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const uses = row.uses || [];
@@ -242,7 +239,10 @@ function UsageCell({ row, portions }) {
     return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('touchstart', onDoc); };
   }, [open]);
 
-  if (!count) return <div className="sl-use" />;
+  if (!count) {
+    // produit du placard, surgelé du week-end, ou ligne non rattachée
+    return <div className="sl-use" />;
+  }
 
   return (
     <div
@@ -260,25 +260,25 @@ function UsageCell({ row, portions }) {
           <ul className="use-pop-list">
             {uses.map((u, i) => (
               <li key={u.id + '-' + i}>
-                <span className="up-r">{u.id} – {u.nom}{u.rep > 1 && <span className="pill accent" style={{ height: 15, fontSize: 9, marginLeft: 5, padding: '0 5px' }}>×{u.rep}</span>}</span>
+                <span className="up-r">{u.id} – {u.nom}</span>
                 <span className="up-q">{u.qty}</span>
               </li>
             ))}
           </ul>
           {row.besoinValue != null && (
-            <>
-              <div className="use-pop-total">
-                <span>Besoin (× {portions} pers.)</span>
-                <strong>{fmtNum(row.besoinValue)} {row.besoinUnit}</strong>
-              </div>
-              {row.formatLabel && (
-                <div className="use-pop-total" style={{ borderTop: 'none', marginTop: 2, paddingTop: 0 }}>
-                  <span>À acheter</span>
-                  <strong style={{ color: 'var(--text)' }}>{row.nbPaquets} × {row.formatLabel} · {money(row.price)}</strong>
-                </div>
-              )}
-              <div className="use-pop-detail">{usageDetail(row, portions)}</div>
-            </>
+            <div className="use-pop-total">
+              <span>Besoin de la semaine</span>
+              <strong>{fmtNum(row.besoinValue)} {row.besoinUnit}</strong>
+            </div>
+          )}
+          {row.packDisplay && (
+            <div className="use-pop-total" style={{ borderTop: 'none', marginTop: 2, paddingTop: 0 }}>
+              <span>À acheter</span>
+              <strong style={{ color: 'var(--text)' }}>{row.packDisplay} · {money(row.price)}</strong>
+            </div>
+          )}
+          {row.reste > 0 && (
+            <div className="use-pop-detail">Reste après la semaine : {fmtNum(row.reste)} {row.besoinUnit}</div>
           )}
         </div>
       )}

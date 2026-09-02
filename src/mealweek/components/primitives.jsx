@@ -3,7 +3,7 @@
    converted to ESM React modules and wired to the real data layer).
    ============================================================ */
 import { Icon } from '../../shared/Icon.jsx';
-import { PROT, COMPLEXITY_VARIANT, recipeProtein, weekRaw, money0 } from '../data/dataLayer.js';
+import { weekRaw, money0 } from '../data/dataLayer.js';
 
 /* ---- Card ---- */
 export function Card({ title, icon, action, children, style, className = '', bodyStyle }) {
@@ -50,23 +50,6 @@ export function Meta({ icon, children, accent, fill = false }) {
   );
 }
 
-/* ---- protein badge (maps raw protein → color class) ---- */
-export function ProteinBadge({ recipe, protein, withLabel = true }) {
-  const p = recipe ? recipeProtein(recipe) : (protein ? { cls: protein, label: PROT[protein]?.label } : null);
-  if (!p) return null;
-  return (
-    <span className="prot-badge">
-      <span className={'dot ' + p.cls} />
-      {withLabel && p.label}
-    </span>
-  );
-}
-
-/* ---- complexity pill ---- */
-export function ComplexityPill({ level }) {
-  return <span className={'pill ' + (COMPLEXITY_VARIANT[level] || '')}>{level}</span>;
-}
-
 /* ---- checkbox ---- */
 export function Check({ on, onChange, round }) {
   return (
@@ -107,20 +90,21 @@ export function Stepper({ value, min = 1, max = 6, step = 1, onChange, suffix, s
   );
 }
 
-/* ---- week navigator (S1..S6 / E1..E5 / X1..X3 cycle) ----
-   LOT 4 : affiche le budget estimé de la semaine (budget_total_estime)
-   directement dans le sélecteur de semaines. */
-export function WeekNav({ weekKey, theme, onPrev, onNext }) {
+/* ---- sélecteur de semaine-type (S1 … S8) ----
+   Parcourt les 8 semaines-types du fichier V2 et affiche le total de
+   celle qui est ouverte. La dernière semaine parcourue est celle qui
+   est retenue et persistée (voir useUserState). */
+export function WeekNav({ weekKey, onPrev, onNext }) {
   const wk = weekRaw(weekKey);
-  const est = wk && wk.budget_total_estime;
+  const total = wk && wk.total_eur;
   return (
     <div className="weeknav">
-      <button onClick={onPrev} title="Semaine précédente" type="button"><Icon name="chevL" size={18} /></button>
+      <button onClick={onPrev} title="Semaine-type précédente" type="button"><Icon name="chevL" size={18} /></button>
       <span className="wk">
-        {weekKey}{theme ? ` · ${theme}` : ''}
-        {est != null && <span className="wk-budget" style={{ marginLeft: 6, color: 'var(--text-3)', fontWeight: 600 }}>· ~{money0(est)}</span>}
+        {weekKey || '—'}
+        {total != null && <span className="wk-budget" style={{ marginLeft: 6, color: 'var(--text-3)', fontWeight: 600 }}>· ~{money0(total)}</span>}
       </span>
-      <button onClick={onNext} title="Semaine suivante" type="button"><Icon name="chevR" size={18} /></button>
+      <button onClick={onNext} title="Semaine-type suivante" type="button"><Icon name="chevR" size={18} /></button>
     </div>
   );
 }
