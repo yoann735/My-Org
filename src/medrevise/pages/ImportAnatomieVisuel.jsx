@@ -23,12 +23,41 @@ import { ANAT_TYPES, champsFor, parseStructure, detectTypeInfo } from '../lib/an
 import { SCHEMA_VUES, vueLabel, useVueAide } from '../lib/anatSchema.js';
 
 const SOUS_CATS = ['Muscles', 'Os', 'Nerfs', 'Ligaments', 'Vaisseaux'];
+/* PALETTE D'ANNOTATION — 6 teintes, miroir LITTÉRAL des tokens du thème
+   (medrevise-theme.css : --sp2, dérivé, --sp3, --sp1, --sp5, --text-2). Valeurs en
+   dur et non en `var(--…)` car elles partent aussi dans le SVG et dans le canvas
+   d'export, qui ne résolvent pas les variables CSS.
+
+   RÈGLE D'ENSEMBLE : teintes FROIDES = identité (quelle structure), teintes CHAUDES
+   = jugement (--ok / --warn / --crit = juste / presque / faux dans le quiz). Le vert,
+   l'ambre et le rouge sont donc VOLONTAIREMENT absents d'ici : la palette précédente
+   (14 teintes) contenait #4FB87A, #E0A34F et #E0556B — exactement les trois couleurs
+   de correction d'AnatQuiz, au point qu'on pouvait colorier une coche dans le vert
+   signifiant « bonne réponse ».
+
+   La couleur n'est plus l'identifiant d'une coche : c'est son NUMÉRO qui la distingue
+   (lisible, illimité). Toutes les coches naissent donc en violet accent, et la couleur
+   redevient un outil de GROUPEMENT facultatif, replié dans « Apparence ». */
 const COLORS = [
-  '#7C6FE0', '#E0556B', '#4FB87A', '#4FA6D9', '#E0A34F', '#B45FD9',
-  '#E0C93F', '#3FC7B8', '#D97B4F', '#5F7FE0', '#8FCB4F', '#E05F9E',
-  '#4F63A6', '#9A7A4F',
-]; // A — palette élargie (14 teintes distinctes) + color picker libre (voir StyleControls)
+  '#a47bff', // violet — défaut, = --sp2 / --accent
+  '#5B8CFF', // bleu   — dérivé, comble l'écart violet → cyan
+  '#17b2ff', // cyan   — --sp3
+  '#fa8aec', // rose   — --sp1
+  '#c4d423', // lime   — --sp5
+  '#B3B3BC', // neutre — --text-2, pour une annotation secondaire
+];
 const DEFAULT_COLOR = COLORS[0];
+const COLOR_NAMES = { '#a47bff': 'Violet', '#5B8CFF': 'Bleu', '#17b2ff': 'Cyan', '#fa8aec': 'Rose', '#c4d423': 'Lime', '#B3B3BC': 'Neutre' };
+const colorName = (hex) => COLOR_NAMES[hex] || 'Personnalisée';
+
+/* « Colorer par type » — action PONCTUELLE (bouton de la barre d'outils), pas un
+   automatisme : la couleur suit alors le type anatomique posé par l'analyse de
+   théorie. Convention d'atlas respectée dans la limite de la palette — le rouge de
+   l'artère est réservé à la correction, elle hérite donc du cyan, la veine du bleu. */
+const TYPE_COLORS = {
+  os: '#a47bff', muscle: '#fa8aec', nerf: '#c4d423',
+  artere: '#17b2ff', veine: '#5B8CFF', tissu_conjonctif: '#B3B3BC',
+};
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const markerId = (col) => 'anat-ah-' + (col || DEFAULT_COLOR).replace('#', '');
 const DEFAULT_ZONE_OPACITY = 0.25;
@@ -299,6 +328,19 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
   const updateCoche = (id, patch) => setCoches((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   const delCoche = (id) => { setCoches((cs) => cs.filter((c) => c.id !== id)); setSelectedId(null); };
 
+  /* ↓/↑ dans le panneau : coche suivante / précédente, en bouclant, sans refermer. */
+  const navCoche = (id, dir) => {
+    const i = coches.findIndex((c) => c.id === id);
+    if (i < 0 || coches.length < 2) return;
+    setSelectedId(coches[(i + dir + coches.length) % coches.length].id);
+  };
+
+  /* « Colorer par type » : applique TYPE_COLORS aux coches dont l'analyse de théorie a
+     posé un type. Action ponctuelle et réversible (les couleurs restent modifiables
+     une à une) — la couleur n'est jamais recalculée toute seule ensuite. */
+  const typedCount = coches.filter((c) => c.type && TYPE_COLORS[c.type]).length;
+  const colorByType = () => setCoches((cs) => cs.map((c) => (c.type && TYPE_COLORS[c.type] ? { ...c, couleur: TYPE_COLORS[c.type] } : c)));
+
   // applique un changement de style à une zone (+ synchronise la couleur du badge ;
   // pour le pinceau, activer/désactiver le remplissage ferme/ouvre le tracé).
   const applyZoneStyle = (c, patch) => {
@@ -411,7 +453,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
     const c = {
       id: genId('c'), kind: 'point', ancre: { x: p.x, y: p.y },
       boite: { x: clamp01(p.x + 0.11), y: clamp01(p.y - 0.06) },
-      texte: '', couleur: COLORS[coches.length % COLORS.length], numero,
+      texte: '', couleur: DEFAULT_COLOR, numero,
     };
     setCoches((cs) => [...cs, c]);
     setSelectedId(c.id);
@@ -423,7 +465,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
   const addZone = (zone) => {
     const numero = coches.length + 1;
     const ctr = centroidOf({ kind: 'zone', zone });
-    const couleur = zone.stroke || zone.fill || COLORS[coches.length % COLORS.length];
+    const couleur = zone.stroke || zone.fill || DEFAULT_COLOR;
     const c = {
       id: genId('c'), kind: 'zone', zone,
       // le libellé se pose à côté du centroïde ; ancre = centroïde (cohérence).
@@ -668,6 +710,12 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
           <button type="button" className="seg-btn" disabled={scale >= ZOOM_MAX - 0.001} onClick={() => zoomAtCenter(scale * ZOOM_STEP)}><Icon name="plus" size={13} /></button>
         </div>
         {scale !== 1 && <button type="button" className="btn ghost sm" onClick={resetZoom}><Icon name="maximize" size={13} /> Ajuster</button>}
+        {typedCount > 0 && (
+          <button type="button" className="btn ghost sm" onClick={colorByType}
+            title="Donne à chaque coche la couleur de son type anatomique (os, muscle, nerf…)">
+            <Icon name="sparkle" size={13} /> Colorer par type ({typedCount})
+          </button>
+        )}
         <div style={{ flex: 1 }} />
         <button type="button" className="btn ghost sm" disabled={exporting} onClick={() => doExport('png')}><Icon name="upload" size={13} /> Export image</button>
         <button type="button" className="btn ghost sm" disabled={exporting} onClick={() => doExport('pdf')}><Icon name="filePdf" size={13} /> Export PDF</button>
@@ -776,7 +824,8 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
             return null; // pinceau (path) : repositionnement global (translation) uniquement
           })()}
 
-          {/* boîtes de libellé — déplaçables + édition inline + popover. maxWidth était
+          {/* boîtes de libellé — déplaçables ; la sélection ouvre le PANNEAU DE COCHE
+              (CochePanel), où le nom s'édite désormais. maxWidth était
               "46%" (du cadre transformé) ; hors du cadre, on le convertit en px à partir
               de frameBox.width pour garder le même sens ("46% de la largeur affichée
               de l'image"), indépendant de la largeur de la carte/overlay. */}
@@ -788,52 +837,16 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
               <div key={'b' + c.id} onPointerDown={(e) => startDrag(e, c, 'boite')}
                 style={{ position: 'absolute', left: p.x, top: p.y, transform: 'translate(-50%,-50%)', display: 'flex', alignItems: 'center', gap: 6, maxWidth: Math.round(frameBox.width * 0.46), padding: '4px 8px', borderRadius: 8, background: 'var(--card)', border: `2px solid ${col}`, boxShadow: sel ? `0 0 0 3px color-mix(in srgb, ${col} 30%, transparent), 0 4px 12px rgba(0,0,0,.2)` : '0 2px 8px rgba(0,0,0,.18)', cursor: 'grab', touchAction: 'none', lineHeight: 1.2, zIndex: sel ? 5 : 2, pointerEvents: 'auto' }}>
                 <span style={{ flex: '0 0 auto', width: 18, height: 18, borderRadius: '50%', background: col, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>{c.numero}</span>
-                {sel ? (
-                  <input autoFocus value={c.texte} placeholder="nom de la structure"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onChange={(e) => updateCoche(c.id, { texte: e.target.value })}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setSelectedId(null); }}
-                    style={{ border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', font: 'inherit', fontSize: 13, fontWeight: 600, width: Math.max(90, (c.texte || '').length * 8 + 20), maxWidth: 220 }} />
-                ) : (
-                  <span style={{ fontSize: 13, fontWeight: 600, color: c.texte ? 'var(--text)' : 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.texte || '(sans nom)'}</span>
-                )}
+                {/* la puce AFFICHE le nom ; il s'ÉDITE dans le panneau (titre), ce qui
+                    supprime l'input à largeur calculée qui sautait pendant la frappe. */}
+                <span style={{ fontSize: 13, fontWeight: 600, color: c.texte ? 'var(--text)' : 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.texte || '(sans nom)'}</span>
+                {/* `flipUp` : sous la moitié basse de l'image, le panneau s'ouvre VERS LE
+                    HAUT au lieu de déborder hors du cadre (une coche en bas restait
+                    inéditable). Décidé sur la coordonnée relative, donc juste à tout zoom. */}
                 {sel && (
-                  <div onPointerDown={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', gap: 8, padding: '9px 10px', borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border)', boxShadow: '0 6px 20px rgba(0,0,0,.25)', zIndex: 10, width: 270 }}>
-                    <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-                      {c.kind === 'zone' ? (
-                        <span className="hint" style={{ flex: 1, fontSize: 11, fontWeight: 700 }}>{SHAPE_LABEL[c.zone.shape] || 'Forme'}</span>
-                      ) : (
-                        <div className="row" style={{ gap: 5, flex: 1, flexWrap: 'wrap' }}>
-                          {COLORS.map((sc) => (
-                            <button key={sc} type="button" title="Changer la couleur" onClick={() => updateCoche(c.id, { couleur: sc })}
-                              style={{ width: 18, height: 18, borderRadius: '50%', background: sc, border: sc === col ? '2px solid var(--text)' : '2px solid transparent', cursor: 'pointer', flex: '0 0 auto' }} />
-                          ))}
-                          <input type="color" title="Couleur libre" value={col} onChange={(e) => updateCoche(c.id, { couleur: e.target.value })}
-                            style={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid var(--border)', padding: 0, cursor: 'pointer', flex: '0 0 auto', background: 'conic-gradient(red,yellow,lime,cyan,blue,magenta,red)', WebkitAppearance: 'none', appearance: 'none' }} />
-                        </div>
-                      )}
-                      <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
-                      <button type="button" className="cd-ic" title={c.kind === 'zone' ? 'Supprimer cette zone' : 'Supprimer cette coche'} onClick={() => delCoche(c.id)} style={{ color: 'var(--accent-2)' }}><Icon name="trash" size={14} /></button>
-                    </div>
-                    {c.kind === 'zone' && (
-                      <StyleControls value={zoneStyle(c)} allowFill={c.zone.shape !== 'line'} onChange={(patch) => applyZoneStyle(c, patch)} />
-                    )}
-                    <div>
-                      <label className="hint" style={{ display: 'block', fontSize: 11, marginBottom: 3 }}>Autres réponses acceptées <span style={{ opacity: .7 }}>(virgules)</span></label>
-                      <input value={(c.reponses_acceptees || []).join(', ')}
-                        placeholder="ex : nerf cubital, N. ulnaire"
-                        onChange={(e) => updateCoche(c.id, { reponses_acceptees: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
-                        style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', background: 'var(--bg-2)', color: 'var(--text)', font: 'inherit', fontSize: 12, fontWeight: 500, padding: '5px 7px' }} />
-                    </div>
-                    {/* A — coller la théorie DIRECTEMENT dans la carte (analyse locale, sans IA) */}
-                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                      <CocheTheorieInline coche={c} updateCoche={updateCoche} onOpenFull={setTheorieFor} />
-                    </div>
-                    {/* C — Valider : les modifs sont déjà enregistrées en direct ; on ferme la carte proprement */}
-                    <button type="button" className="btn primary sm" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setSelectedId(null)}>
-                      <Icon name="check" size={13} /> Valider
-                    </button>
-                  </div>
+                  <CochePanel coche={c} col={col} updateCoche={updateCoche} delCoche={delCoche}
+                    onClose={() => setSelectedId(null)} applyZoneStyle={applyZoneStyle} onOpenFull={setTheorieFor}
+                    onNav={(dir) => navCoche(c.id, dir)} flipUp={c.boite.y > 0.55} />
                 )}
               </div>
             );
@@ -858,6 +871,23 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
   );
 }
 
+/* Sélecteur de couleur LIBRE (au-delà de la palette) : pastille NEUTRE cerclée de
+   pointillés marquée « + », l'input natif rendu transparent par-dessus. Auparavant un
+   aplat `conic-gradient` arc-en-ciel — le seul de l'app, à rebours de la direction
+   sobre, et qui attirait l'œil plus que la palette elle-même.
+   Défini au niveau MODULE (et non dans le corps de StyleControls) : un composant
+   recréé à chaque rendu serait démonté/remonté, et l'input perdrait le fil pendant
+   qu'on fait glisser la pipette du sélecteur natif. */
+function FreePicker({ value, onPick, size = 16 }) {
+  return (
+    <label title="Autre couleur" style={{ position: 'relative', width: size, height: size, borderRadius: '50%', border: '1px dashed var(--border)', display: 'grid', placeItems: 'center', cursor: 'pointer', flex: '0 0 auto', color: 'var(--text-3)', fontSize: Math.round(size * 0.5), fontWeight: 700, lineHeight: 1 }}>
+      +
+      <input type="color" value={value || DEFAULT_COLOR} onChange={(e) => onPick(e.target.value)}
+        style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', padding: 0, border: 'none', cursor: 'pointer' }} />
+    </label>
+  );
+}
+
 /* ---- réglages de style d'une zone (remplissage + opacité + contour + épaisseur).
    Réutilisé par la barre de style (formes à venir) et le popover (forme sélectionnée).
    `fill`/`stroke` valant null = « sans ». `allowFill=false` pour le trait. ---- */
@@ -867,9 +897,6 @@ function StyleControls({ value, onChange, allowFill = true }) {
   const strokeOn = v.stroke != null;
   const swatch = (sc, active) => ({ width: 16, height: 16, borderRadius: '50%', background: sc, border: active ? '2px solid var(--text)' : '2px solid transparent', cursor: 'pointer', flex: '0 0 auto' });
   const miniBtn = (on) => ({ fontSize: 10.5, padding: '1px 7px', borderRadius: 6, border: '1px solid var(--border)', background: on ? 'var(--accent)' : 'transparent', color: on ? '#fff' : 'var(--text-3)', cursor: 'pointer' });
-  // A — sélecteur de couleur libre (au-delà de la palette) : input natif stylé en
-  // rond, superposé à un dégradé arc-en-ciel pour signaler « autre couleur ».
-  const pickerStyle = { width: 16, height: 16, borderRadius: '50%', border: '2px solid var(--border)', padding: 0, cursor: 'pointer', flex: '0 0 auto', background: 'conic-gradient(red,yellow,lime,cyan,blue,magenta,red)', WebkitAppearance: 'none', appearance: 'none' };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {allowFill && (
@@ -877,13 +904,13 @@ function StyleControls({ value, onChange, allowFill = true }) {
           <div className="row" style={{ gap: 5, alignItems: 'center', marginBottom: 5, flexWrap: 'wrap' }}>
             <span className="hint" style={{ fontSize: 10.5, fontWeight: 700, width: 52 }}>Remplir</span>
             {COLORS.map((sc) => <button key={sc} type="button" title="Couleur de remplissage" onClick={() => onChange({ fill: sc })} style={swatch(sc, v.fill === sc)} />)}
-            <input type="color" title="Couleur libre" value={v.fill || DEFAULT_COLOR} onChange={(e) => onChange({ fill: e.target.value })} style={pickerStyle} />
+            <FreePicker value={v.fill} onPick={(hex) => onChange({ fill: hex })} />
             <button type="button" style={miniBtn(fillOn)} onClick={() => onChange({ fill: fillOn ? null : DEFAULT_COLOR })}>{fillOn ? 'oui' : 'sans'}</button>
           </div>
           {fillOn && (
             <div className="row" style={{ gap: 6, alignItems: 'center' }} title="Opacité du remplissage">
               <Icon name="drop" size={12} />
-              <input type="range" min="5" max="60" value={Math.round((v.fillOpacity ?? DEFAULT_ZONE_OPACITY) * 100)} onChange={(e) => onChange({ fillOpacity: Number(e.target.value) / 100 })} style={{ flex: 1 }} />
+              <input type="range" className="anat-range" min="5" max="60" value={Math.round((v.fillOpacity ?? DEFAULT_ZONE_OPACITY) * 100)} onChange={(e) => onChange({ fillOpacity: Number(e.target.value) / 100 })} style={{ flex: 1 }} />
               <span className="hint" style={{ fontSize: 10, width: 30, textAlign: 'right' }}>{Math.round((v.fillOpacity ?? DEFAULT_ZONE_OPACITY) * 100)}%</span>
             </div>
           )}
@@ -893,21 +920,149 @@ function StyleControls({ value, onChange, allowFill = true }) {
         <div className="row" style={{ gap: 5, alignItems: 'center', marginBottom: 5, flexWrap: 'wrap' }}>
           <span className="hint" style={{ fontSize: 10.5, fontWeight: 700, width: 52 }}>Contour</span>
           {COLORS.map((sc) => <button key={sc} type="button" title="Couleur du contour" onClick={() => onChange({ stroke: sc })} style={swatch(sc, v.stroke === sc)} />)}
-          <input type="color" title="Couleur libre" value={v.stroke || DEFAULT_COLOR} onChange={(e) => onChange({ stroke: e.target.value })} style={pickerStyle} />
+          <FreePicker value={v.stroke} onPick={(hex) => onChange({ stroke: hex })} />
           <button type="button" style={miniBtn(strokeOn)} onClick={() => onChange({ stroke: strokeOn ? null : DEFAULT_COLOR })}>{strokeOn ? 'oui' : 'sans'}</button>
         </div>
         {strokeOn && (
           <div className="row" style={{ gap: 6, alignItems: 'center', marginBottom: 5 }} title="Opacité du contour">
             <Icon name="drop" size={12} />
-            <input type="range" min="10" max="100" value={Math.round((v.strokeOpacity ?? DEFAULT_STROKE_OPACITY) * 100)} onChange={(e) => onChange({ strokeOpacity: Number(e.target.value) / 100 })} style={{ flex: 1 }} />
+            <input type="range" className="anat-range" min="10" max="100" value={Math.round((v.strokeOpacity ?? DEFAULT_STROKE_OPACITY) * 100)} onChange={(e) => onChange({ strokeOpacity: Number(e.target.value) / 100 })} style={{ flex: 1 }} />
             <span className="hint" style={{ fontSize: 10, width: 30, textAlign: 'right' }}>{Math.round((v.strokeOpacity ?? DEFAULT_STROKE_OPACITY) * 100)}%</span>
           </div>
         )}
         <div className="row" style={{ gap: 6, alignItems: 'center' }} title="Épaisseur du contour / pinceau">
           <span className="hint" style={{ fontSize: 10 }}>épaisseur</span>
-          <input type="range" min="1" max="10" step="0.5" value={v.strokeWidth ?? DEFAULT_STROKE_WIDTH} onChange={(e) => onChange({ strokeWidth: Number(e.target.value) })} style={{ flex: 1 }} />
+          <input type="range" className="anat-range" min="1" max="10" step="0.5" value={v.strokeWidth ?? DEFAULT_STROKE_WIDTH} onChange={(e) => onChange({ strokeWidth: Number(e.target.value) })} style={{ flex: 1 }} />
           <span className="hint" style={{ fontSize: 10, width: 22, textAlign: 'right' }}>{v.strokeWidth ?? DEFAULT_STROKE_WIDTH}</span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---- PANNEAU DE COCHE — 320 px, QUATRE blocs hiérarchisés et étiquetés :
+   IDENTITÉ (numéro + nom en TITRE + état) · THÉORIE · RÉPONSES ACCEPTÉES ·
+   APPARENCE (repliée). Refonte UX :
+
+   - Le nom s'édite ICI et non plus dans la puce posée sur l'image. Il a enfin une
+     allure de titre, et surtout sa largeur ne saute plus pendant la frappe (l'ancien
+     input calculait `len × 8 + 20`). La puce reflète la saisie en direct.
+   - La THÉORIE (le contenu qui produit les cartes de révision) remonte avant les
+     réglages ; l'APPARENCE — 42 pastilles autrefois à l'ouverture — se replie sur une
+     ligne de résumé.
+   - Tout est enregistré au fil de la frappe : le bouton dit donc « Fermer », pas
+     « Valider », qui laissait croire qu'on pouvait perdre sa saisie en cliquant ailleurs.
+   - Suppression en PIED et en DEUX TEMPS (elle était collée aux pastilles de couleur).
+   - ↓/↑ passent à la coche suivante/précédente sans fermer le panneau. ---- */
+function CochePanel({ coche: c, col, updateCoche, delCoche, onClose, applyZoneStyle, onOpenFull, onNav, flipUp }) {
+  const [openStyle, setOpenStyle] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const nbChamps = c.type && c.champs ? champsFor(c.type).filter((d) => (c.champs[d.key] || '').trim()).length : 0;
+  const typeLabel = c.type && ANAT_TYPES[c.type] ? ANAT_TYPES[c.type].label : null;
+
+  // la confirmation de suppression retombe seule au bout de 3 s
+  useEffect(() => {
+    if (!confirmDel) return undefined;
+    const t = setTimeout(() => setConfirmDel(false), 3000);
+    return () => clearTimeout(t);
+  }, [confirmDel]);
+
+  /* ↓/↑ : coche suivante / précédente SANS refermer. On ne les intercepte PAS dans un
+     textarea ni un select, où les flèches naviguent réellement (lignes, options) —
+     mais on les prend dans les champs d'une ligne, sinon le raccourci serait
+     inatteignable : le titre reçoit l'autofocus à l'ouverture, c'est donc là que se
+     trouve le curseur quand on appuie. Dans un input simple les flèches verticales ne
+     font que porter le caret en début/fin : rien d'utile n'est volé. */
+  const onKeyDown = (e) => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+    if (tag === 'textarea' || tag === 'select') return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); onNav(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); onNav(-1); }
+  };
+
+  const secLabel = { fontSize: 10, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-3)' };
+  const field = { width: '100%', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', background: 'var(--bg-2)', color: 'var(--text)', font: 'inherit', fontSize: 12, fontWeight: 500, padding: '5px 7px' };
+  const rule = <div style={{ height: 1, background: 'var(--border)' }} />;
+
+  return (
+    <div onPointerDown={(e) => e.stopPropagation()} onKeyDown={onKeyDown}
+      style={{ position: 'absolute', ...(flipUp ? { bottom: 'calc(100% + 8px)' } : { top: 'calc(100% + 8px)' }), left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border)', boxShadow: '0 6px 20px rgba(0,0,0,.45)', zIndex: 10, width: 320, overflow: 'hidden', cursor: 'default' }}>
+
+      {/* ---- 1. IDENTITÉ ---- */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: '12px 13px 11px' }}>
+        <div className="row" style={{ gap: 9, alignItems: 'center' }}>
+          <span style={{ flex: '0 0 auto', width: 18, height: 18, borderRadius: '50%', background: col, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>{c.numero}</span>
+          <input autoFocus value={c.texte} placeholder="Nom de la structure"
+            onChange={(e) => updateCoche(c.id, { texte: e.target.value })}
+            onKeyDown={(e) => { if (e.key === 'Enter') onClose(); }}
+            style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', font: 'inherit', fontSize: 15, fontWeight: 700, letterSpacing: '-.01em', padding: 0 }} />
+          <button type="button" className="cd-ic" title="Fermer" onClick={onClose}><Icon name="x" size={14} /></button>
+        </div>
+        <div className="row" style={{ gap: 7, paddingLeft: 27, fontSize: 11, color: 'var(--text-3)', flexWrap: 'wrap', alignItems: 'center' }}>
+          {c.kind === 'zone' && <span>{SHAPE_LABEL[c.zone.shape] || 'Forme'}</span>}
+          {typeLabel ? (
+            <>
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 999, color: 'var(--ok)', border: '1px solid color-mix(in srgb, var(--ok) 45%, transparent)', background: 'color-mix(in srgb, var(--ok) 10%, transparent)' }}>{typeLabel}</span>
+              <span>{nbChamps} champ{nbChamps > 1 ? 's' : ''} de théorie</span>
+            </>
+          ) : <span>Aucune théorie — colle le texte ci-dessous</span>}
+        </div>
+      </div>
+      {rule}
+
+      {/* ---- 2. THÉORIE (le contenu pédagogique passe avant les réglages) ---- */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: '12px 13px' }}>
+        <span style={secLabel}>Théorie</span>
+        <CocheTheorieInline coche={c} updateCoche={updateCoche} onOpenFull={onOpenFull} />
+      </div>
+      {rule}
+
+      {/* ---- 3. RÉPONSES ACCEPTÉES ---- */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: '12px 13px' }}>
+        <span style={secLabel}>Réponses aussi acceptées</span>
+        <input value={(c.reponses_acceptees || []).join(', ')} placeholder="humerus, os du bras"
+          onChange={(e) => updateCoche(c.id, { reponses_acceptees: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })}
+          style={field} />
+      </div>
+      {rule}
+
+      {/* ---- 4. APPARENCE — repliée : au repos, une ligne de résumé au lieu des
+           pastilles. Dépliée, 6 teintes au lieu de 14 (et 14 × 2 de plus pour une zone). ---- */}
+      <button type="button" onClick={() => setOpenStyle((o) => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 13px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', font: 'inherit' }}>
+        <span style={{ ...secLabel, flex: 1 }}>Apparence</span>
+        <span style={{ width: 14, height: 14, borderRadius: '50%', background: col, flex: '0 0 auto' }} />
+        <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+          {colorName(col)}{c.kind === 'zone' ? ` · ${zoneStyle(c).strokeWidth} px` : ''}
+        </span>
+        <span style={{ display: 'grid', placeItems: 'center', color: 'var(--text-3)', transform: openStyle ? 'none' : 'rotate(-90deg)', transition: 'transform .12s ease' }}><Icon name="chevD" size={13} /></span>
+      </button>
+      {openStyle && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9, padding: '0 13px 12px' }}>
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            {COLORS.map((sc) => (
+              <button key={sc} type="button" title={colorName(sc)} onClick={() => updateCoche(c.id, { couleur: sc })}
+                style={{ width: 20, height: 20, borderRadius: '50%', background: sc, border: sc === col ? '2px solid var(--text)' : '2px solid transparent', cursor: 'pointer', flex: '0 0 auto' }} />
+            ))}
+            <FreePicker value={col} size={20} onPick={(hex) => updateCoche(c.id, { couleur: hex })} />
+          </div>
+          {c.kind === 'zone' && (
+            <StyleControls value={zoneStyle(c)} allowFill={c.zone.shape !== 'line'} onChange={(patch) => applyZoneStyle(c, patch)} />
+          )}
+        </div>
+      )}
+
+      {/* ---- PIED : suppression à l'opposé du titre, en deux temps ---- */}
+      <div className="row" style={{ gap: 7, padding: '11px 13px', background: 'var(--card-2)' }}>
+        <button type="button" className="btn sm" onClick={() => (confirmDel ? delCoche(c.id) : setConfirmDel(true))}
+          title={c.kind === 'zone' ? 'Supprimer cette zone' : 'Supprimer cette coche'}
+          style={{ color: 'var(--crit)', borderColor: confirmDel ? 'var(--crit)' : 'color-mix(in srgb, var(--crit) 30%, var(--border))' }}>
+          <Icon name="trash" size={13} /> {confirmDel ? 'Confirmer' : 'Supprimer'}
+        </button>
+        <button type="button" className="btn primary sm" style={{ flex: 1, justifyContent: 'center' }} onClick={onClose}>
+          <Icon name="check" size={13} /> Fermer
+        </button>
       </div>
     </div>
   );
@@ -929,7 +1084,6 @@ function CocheTheorieInline({ coche, updateCoche, onOpenFull }) {
   // on ne compte QUE les champs du type courant (une clé orpheline d'un ancien
   // type est conservée mais ne doit pas gonfler le décompte).
   const nb = coche.type && coche.champs ? champsFor(coche.type).filter((d) => (coche.champs[d.key] || '').trim()).length : 0;
-  const typeLabel = coche.type && ANAT_TYPES[coche.type] ? ANAT_TYPES[coche.type].label : coche.type;
 
   const commit = (text, t) => {
     const r = parseStructure(text, t);
@@ -948,14 +1102,6 @@ function CocheTheorieInline({ coche, updateCoche, onOpenFull }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <label className="hint" style={{ display: 'block', fontSize: 11, fontWeight: 700 }}>
-        Théorie <span style={{ opacity: .7, fontWeight: 500 }}>(optionnel — colle le texte)</span>
-      </label>
-      {nb > 0 && (
-        <div className="hint" style={{ fontSize: 11, color: 'var(--accent)', margin: 0 }}>
-          <Icon name="check" size={11} /> {typeLabel} · {nb} champ{nb > 1 ? 's' : ''} enregistré{nb > 1 ? 's' : ''}
-        </div>
-      )}
       {note && note.missing.length > 0 && (
         <div className="hint" style={{ fontSize: 11, color: 'var(--accent-2)', margin: 0 }}>
           <Icon name="alert" size={11} /> Non détecté(s) : {note.missing.join(', ')} — « Détailler / corriger » pour compléter.

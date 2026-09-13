@@ -1209,3 +1209,31 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   pointer-events: none;
 }
 [data-app="medrevise"].serie-b .tc-eyebrow { color: var(--accent) !important; }
+
+/* ============================================================
+   ANATOMIE — curseurs d'opacité / d'épaisseur du panneau de coche.
+   Les `input[type=range]` s'affichaient au style NATIF du navigateur (piste et
+   pouce gris système), seuls éléments hors thème du panneau. Piste `--border`,
+   pouce `--accent`. Additif et cantonné à `.anat-range` : aucun autre curseur
+   de l'app n'est touché.
+   ============================================================ */
+.anat-range {
+  -webkit-appearance: none; appearance: none;
+  height: 14px; background: transparent; cursor: pointer;
+}
+.anat-range::-webkit-slider-runnable-track {
+  height: 3px; border-radius: 2px; background: var(--border);
+}
+.anat-range::-moz-range-track {
+  height: 3px; border-radius: 2px; background: var(--border);
+}
+.anat-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 11px; height: 11px; margin-top: -4px;
+  border-radius: 50%; border: none; background: var(--accent);
+}
+.anat-range::-moz-range-thumb {
+  width: 11px; height: 11px;
+  border-radius: 50%; border: none; background: var(--accent);
+}
+.anat-range:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
