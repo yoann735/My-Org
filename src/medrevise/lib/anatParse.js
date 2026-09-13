@@ -82,7 +82,8 @@ export function champsFor(type) {
 
 /* replie une chaîne en minuscules SANS accents, en préservant EXACTEMENT la
    longueur (indices alignés avec l'original) — donc PAS de NFD (qui change la
-   longueur). Table char→char des diacritiques français courants. */
+   longueur). Table char→char des diacritiques français courants, PLUS les
+   variantes typographiques d'APOSTROPHE (voir ci-dessous). */
 const FOLD = {
   à: 'a', â: 'a', ä: 'a', á: 'a', ã: 'a', å: 'a',
   ç: 'c',
@@ -93,6 +94,15 @@ const FOLD = {
   ù: 'u', ú: 'u', û: 'u', ü: 'u',
   ý: 'y', ÿ: 'y',
   œ: 'oe', æ: 'ae', // (rares ici ; longueur 2 — évités dans les alias)
+  /* APOSTROPHES — toutes repliées vers l'apostrophe DROITE ' (U+0027), la forme
+     utilisée dans les alias (« s'articule avec », « type d'os »). Un texte collé
+     depuis Word / Notes / un PDF de cours porte presque toujours la courbe ’
+     (U+2019) : sans ce repli, « S’articule avec : » n'était reconnu par AUCUN
+     alias, la détection tombait sur le repli `tissu_conjonctif` et les 5 champs
+     d'un os finissaient en un seul bloc `description`. Substitutions 1 car → 1
+     car : l'invariant « fold() préserve la longueur » (indices réutilisés sur le
+     texte brut, cf. parseStructure) reste vrai. */
+  '’': "'", '‘': "'", 'ʼ': "'", '‛': "'", '′': "'", '´': "'", '`': "'",
 };
 function fold(s) {
   let out = '';
@@ -111,19 +121,32 @@ function foldedHasLabel(folded, aliases) {
 }
 
 /**
- * Détecte le TYPE probable d'après les ÉTIQUETTES présentes dans le texte collé
- * (marqueurs discriminants). Résultat PRÉ-SÉLECTIONNÉ, à confirmer par l'utilisateur.
- * Ordre = du plus spécifique au plus générique.
+ * Détecte le TYPE d'après les ÉTIQUETTES présentes dans le texte collé (marqueurs
+ * discriminants). Ordre = du plus spécifique au plus générique.
+ *
+ * @returns {{ type: string, detected: boolean }}
+ *   detected:true  → un marqueur a RÉELLEMENT été reconnu (`tissu_conjonctif`
+ *                    inclus, via son étiquette « Description : » = choix assumé).
+ *   detected:false → AUCUN marqueur reconnu. `type` n'est alors qu'un REPLI
+ *                    (tissu_conjonctif = champ libre), à NE PAS enregistrer sans
+ *                    confirmation de l'utilisateur : c'est exactement ce repli muet
+ *                    qui classait des os en « tissu conjonctif ».
  */
-export function detectType(text) {
+export function detectTypeInfo(text) {
   const f = fold(text || '');
   const has = (al) => foldedHasLabel(f, al);
-  if (has(['structures vascularisees', 'structures irriguees'])) return 'artere';
-  if (has(['vaisseaux tributaires', 'tributaires', 'affluents']) || has(['drainage', 'se draine dans'])) return 'veine';
-  if (has(["s'articule avec", 's articule avec', 'articule avec', 'articulations']) || has(["type d'os", 'type d os', 'type os'])) return 'os';
-  if (has(['insertion', 'insertions'])) return 'muscle';
-  if (has(['rameaux', 'branches', 'collaterales']) || has(['innervation']) || has(['trajectoire', 'trajet'])) return 'nerf';
-  return 'tissu_conjonctif';
+  if (has(['structures vascularisees', 'structures irriguees'])) return { type: 'artere', detected: true };
+  if (has(['vaisseaux tributaires', 'tributaires', 'affluents']) || has(['drainage', 'se draine dans'])) return { type: 'veine', detected: true };
+  if (has(["s'articule avec", 's articule avec', 'articule avec', 'articulations']) || has(["type d'os", 'type d os', 'type os'])) return { type: 'os', detected: true };
+  if (has(['insertion', 'insertions'])) return { type: 'muscle', detected: true };
+  if (has(['rameaux', 'branches', 'collaterales']) || has(['innervation']) || has(['trajectoire', 'trajet'])) return { type: 'nerf', detected: true };
+  if (has(['description'])) return { type: 'tissu_conjonctif', detected: true }; // étiquette explicite → voulu
+  return { type: 'tissu_conjonctif', detected: false }; // repli faute de mieux → À CONFIRMER
+}
+
+/** type seul (rétro-compat) — préfère `detectTypeInfo` pour savoir si c'est un repli. */
+export function detectType(text) {
+  return detectTypeInfo(text).type;
 }
 
 /**

@@ -52,7 +52,18 @@ export function ImportAnatomieTheorie({ ctx }) {
 
   const defs = champsFor(type);
 
-  const changeType = (t) => { setType(t); setChamps(null); setMissing([]); };
+  // changement de type APRÈS analyse : on re-découpe le texte collé avec le nouveau
+  // type et on FUSIONNE — une valeur déjà saisie n'est jamais écrasée par du vide, et
+  // les clés de l'ancien type restent dans l'objet (re-cliquer ce type les retrouve).
+  const changeType = (t) => {
+    setType(t);
+    if (!champs) { setMissing([]); return; } // pas encore analysé : rien à préserver
+    const parsed = raw.trim() ? parseStructure(raw, t).champs : {};
+    const next = { ...champs };
+    Object.entries(parsed).forEach(([k, v]) => { if ((v || '').trim()) next[k] = v; });
+    setChamps(next);
+    setMissing(champsFor(t).filter((d) => !((next[d.key] || '').trim())).map((d) => d.label));
+  };
   const analyse = () => { const r = parseStructure(raw, type); setChamps(r.champs); setMissing(r.missing); setJustSaved(null); };
   const setChamp = (k, v) => setChamps((c) => ({ ...(c || {}), [k]: v }));
 

@@ -19,7 +19,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { DestPicker } from '../components/ui.jsx';
 import { genId, putBlob } from '../lib/storage.js';
 import { saveAnatSchema } from '../lib/import.js';
-import { ANAT_TYPES, champsFor, parseStructure, detectType } from '../lib/anatParse.js';
+import { ANAT_TYPES, champsFor, parseStructure, detectTypeInfo } from '../lib/anatParse.js';
 import { SCHEMA_VUES, vueLabel, useVueAide } from '../lib/anatSchema.js';
 
 const SOUS_CATS = ['Muscles', 'Os', 'Nerfs', 'Ligaments', 'Vaisseaux'];
@@ -916,18 +916,34 @@ function StyleControls({ value, onChange, allowFill = true }) {
 /* ---- A : THÉORIE INLINE dans la carte de la coche — coller un texte + « Analyser »
    (détection du type + extraction des champs, 100 % local, sans IA) directement dans
    le popover, en plus du nom. « Détailler » ouvre la modale complète pour corriger
-   finement. La théorie enregistrée se comporte ensuite comme d'habitude (quiz/QCM). ---- */
+   finement. La théorie enregistrée se comporte ensuite comme d'habitude (quiz/QCM).
+
+   JAMAIS EN AVEUGLE : si `detectTypeInfo` ne reconnaît AUCUN marqueur, rien n'est
+   enregistré — on demande le type (le texte collé reste intact dans la zone). Et
+   quand des champs attendus manquent, on le DIT au lieu de laisser croire à un
+   succès. ---- */
 function CocheTheorieInline({ coche, updateCoche, onOpenFull }) {
   const [raw, setRaw] = useState('');
-  const nb = coche.champs ? Object.values(coche.champs).filter((v) => (v || '').trim()).length : 0;
+  const [ask, setAsk] = useState(null);   // texte analysé dont le type n'a PAS été détecté
+  const [note, setNote] = useState(null); // { type, missing } — bilan de la dernière analyse
+  // on ne compte QUE les champs du type courant (une clé orpheline d'un ancien
+  // type est conservée mais ne doit pas gonfler le décompte).
+  const nb = coche.type && coche.champs ? champsFor(coche.type).filter((d) => (coche.champs[d.key] || '').trim()).length : 0;
   const typeLabel = coche.type && ANAT_TYPES[coche.type] ? ANAT_TYPES[coche.type].label : coche.type;
+
+  const commit = (text, t) => {
+    const r = parseStructure(text, t);
+    updateCoche(coche.id, { type: t, champs: r.champs });
+    setRaw(''); setAsk(null);
+    setNote({ type: t, missing: r.missing });
+  };
 
   const analyse = () => {
     if (!raw.trim()) return;
-    const t = detectType(raw);
-    const r = parseStructure(raw, t);
-    updateCoche(coche.id, { type: t, champs: r.champs });
-    setRaw('');
+    setNote(null);
+    const info = detectTypeInfo(raw);
+    if (!info.detected) { setAsk(raw); return; } // aucun marqueur → on demande, on n'écrit rien
+    commit(raw, info.type);
   };
 
   return (
@@ -940,9 +956,26 @@ function CocheTheorieInline({ coche, updateCoche, onOpenFull }) {
           <Icon name="check" size={11} /> {typeLabel} · {nb} champ{nb > 1 ? 's' : ''} enregistré{nb > 1 ? 's' : ''}
         </div>
       )}
-      <textarea value={raw} onChange={(e) => setRaw(e.target.value)} onPointerDown={(e) => e.stopPropagation()}
+      {note && note.missing.length > 0 && (
+        <div className="hint" style={{ fontSize: 11, color: 'var(--accent-2)', margin: 0 }}>
+          <Icon name="alert" size={11} /> Non détecté(s) : {note.missing.join(', ')} — « Détailler / corriger » pour compléter.
+        </div>
+      )}
+      <textarea value={raw} onChange={(e) => { setRaw(e.target.value); setAsk(null); }} onPointerDown={(e) => e.stopPropagation()}
         placeholder={'Colle la théorie (ex : « Origine : … Insertion : … »). Type et champs détectés automatiquement, sans IA.'}
         style={{ width: '100%', minHeight: 54, resize: 'vertical', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', background: 'var(--bg-2)', color: 'var(--text)', font: 'inherit', fontSize: 12, padding: '6px 7px' }} />
+      {ask && (
+        <div style={{ border: '1px solid var(--accent-2)', borderRadius: 7, padding: '6px 7px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div className="hint" style={{ fontSize: 11, color: 'var(--accent-2)', margin: 0 }}>
+            <Icon name="alert" size={11} /> Type <strong>non détecté</strong> (aucune étiquette reconnue) — rien n'a été enregistré. Choisis le type :
+          </div>
+          <div className="imp-chips" style={{ gap: 4 }}>
+            {TYPE_ORDER.map((t) => (
+              <button key={t} type="button" className="imp-chip" style={{ fontSize: 11 }} onClick={() => commit(ask, t)}>{ANAT_TYPES[t].label}</button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="row" style={{ gap: 6 }}>
         <button type="button" className="btn primary sm" style={{ flex: 1, justifyContent: 'center' }} onClick={analyse} disabled={!raw.trim()}>
           <Icon name="sparkle" size={12} /> Analyser
@@ -1108,23 +1141,56 @@ function TheorieCocheModal({ coche, onSave, onClose }) {
   const [champs, setChamps] = useState(coche.champs && Object.keys(coche.champs).length ? coche.champs : null);
   const [raw, setRaw] = useState('');
   const [missing, setMissing] = useState([]);
-  const [detected, setDetected] = useState(false);
+  const [detect, setDetect] = useState(null); // null (pas d'analyse) | 'ok' (type détecté/confirmé) | 'none' (aucun marqueur → à confirmer)
 
   const defs = champsFor(type);
 
-  // « Analyser » : détecte le type PUIS extrait les champs de ce type.
+  // libellés des champs du type `t` restés vides dans `obj`.
+  const missingFor = (t, obj) => champsFor(t).filter((d) => !((obj && obj[d.key] || '').trim())).map((d) => d.label);
+
+  /* TEXTE SOURCE pour un re-parse : le texte fraîchement collé, sinon reconstitué
+     depuis ce qui est DÉJÀ saisi. Cas clé : une coche mal classée en tissu conjonctif
+     porte tout le texte d'origine dans `description` — repartir de là permet de
+     récupérer les vrais champs en cliquant simplement le bon type. */
+  const sourceText = () => {
+    if (raw.trim()) return raw;
+    const c = champs || {};
+    const desc = (c.description || '').trim();
+    if (desc) return desc;
+    return champsFor(type)
+      .map((d) => (((c[d.key] || '').trim()) ? `${d.label} : ${String(c[d.key]).trim()}` : ''))
+      .filter(Boolean).join('\n');
+  };
+
+  /* FUSION : on n'écrase jamais une valeur par du vide. Les clés de l'ancien type
+     restent dans l'objet — re-cliquer ce type les retrouve intactes. C'est ce qui
+     garantit qu'un changement de type ne fait JAMAIS perdre une saisie. */
+  const mergeChamps = (base, parsed) => {
+    const next = { ...(base || {}) };
+    Object.entries(parsed || {}).forEach(([k, v]) => { if ((v || '').trim()) next[k] = v; });
+    return next;
+  };
+
+  // « Analyser » : détecte le type PUIS extrait les champs de ce type. Si AUCUN
+  // marqueur n'est reconnu, on le signale et on bloque l'enregistrement (detect='none')
+  // au lieu de classer silencieusement en tissu conjonctif.
   const analyse = () => {
     if (!raw.trim()) return;
-    const t = detectType(raw);
-    setType(t); setDetected(true);
-    const r = parseStructure(raw, t);
-    setChamps(r.champs); setMissing(r.missing);
+    const info = detectTypeInfo(raw);
+    const r = parseStructure(raw, info.type);
+    const next = mergeChamps(champs, r.champs);
+    setType(info.type); setDetect(info.detected ? 'ok' : 'none');
+    setChamps(next); setMissing(missingFor(info.type, next));
   };
-  // changement manuel du type : re-parse le texte collé avec le nouveau type
+  // changement manuel du type : re-parse le texte SOURCE avec le nouveau type et
+  // fusionne — aucune valeur déjà saisie n'est effacée. Choisir un type vaut
+  // confirmation quand la détection avait échoué.
   const changeType = (t) => {
+    const src = sourceText();
+    const next = src ? mergeChamps(champs, parseStructure(src, t).champs) : { ...(champs || {}) };
     setType(t);
-    if (raw.trim()) { const r = parseStructure(raw, t); setChamps(r.champs); setMissing(r.missing); }
-    else { const next = {}; champsFor(t).forEach((d) => { next[d.key] = (champs && champs[d.key]) || ''; }); setChamps(next); }
+    setDetect(detect === 'none' ? 'ok' : detect);
+    setChamps(next); setMissing(missingFor(t, next));
   };
   const setChamp = (k, v) => setChamps((c) => ({ ...(c || {}), [k]: v }));
   const longField = (k) => champs && (champs[k] || '').length > 60;
@@ -1148,7 +1214,16 @@ function TheorieCocheModal({ coche, onSave, onClose }) {
           </div>
 
           <div className="imp-field">
-            <label>Type de structure {detected && <span className="imp-opt">(détecté — confirme ou corrige)</span>}</label>
+            <label>Type de structure
+              {detect === 'ok' && <span className="imp-opt"> (détecté — confirme ou corrige)</span>}
+              {detect === 'none' && <span className="imp-opt" style={{ color: 'var(--accent-2)' }}> (NON détecté — à choisir)</span>}
+            </label>
+            {detect === 'none' && (
+              <div className="hint" style={{ color: 'var(--accent-2)', margin: '2px 0 8px' }}>
+                <Icon name="alert" size={13} /> Aucune étiquette reconnue dans le texte — le type n'a pas pu être déduit.
+                Choisis-le ci-dessous (le texte est alors re-découpé) ; l'enregistrement reste bloqué jusque-là.
+              </div>
+            )}
             <div className="imp-chips">
               {TYPE_ORDER.map((t) => <button key={t} className={'imp-chip' + (type === t ? ' on' : '')} onClick={() => changeType(t)}>{ANAT_TYPES[t].label}</button>)}
             </div>
@@ -1174,7 +1249,7 @@ function TheorieCocheModal({ coche, onSave, onClose }) {
         <div className="day-pop-foot">
           {coche.champs && Object.keys(coche.champs).length > 0 && <button className="btn ghost" onClick={clear} title="Retirer la théorie de cette coche"><Icon name="trash" size={14} /> Retirer</button>}
           <button className="btn" onClick={onClose}>Annuler</button>
-          <button className="btn primary" style={{ flex: 1 }} onClick={save} disabled={!champs}><Icon name="check" size={15} /> Enregistrer la théorie</button>
+          <button className="btn primary" style={{ flex: 1 }} onClick={save} disabled={!champs || detect === 'none'} title={detect === 'none' ? 'Choisis d\'abord le type de structure' : undefined}><Icon name="check" size={15} /> Enregistrer la théorie</button>
         </div>
       </div>
     </div>
