@@ -1011,7 +1011,6 @@
 .pdfr-textlayer ::selection { background: rgba(56, 132, 255, .35); }
 .pdfr-hlayer { position: absolute; inset: 0; pointer-events: none; }
 .pdfr-hl-rect { position: absolute; mix-blend-mode: multiply; border-radius: 2px; }
-.pdfr-hl-rect.clickable { pointer-events: auto; cursor: pointer; }
 .pdfr-match-rect { position: absolute; background: color-mix(in srgb, #FFB020 55%, transparent); border-radius: 2px; pointer-events: none; }
 .pdfr-match-rect.active { background: color-mix(in srgb, #FF3B30 62%, transparent); outline: 2px solid #FF3B30; outline-offset: 1px; }
 .pdfr-panel { width: 280px; flex: 0 0 auto; max-height: calc(100vh - 230px); overflow-y: auto; background: var(--card); border: 1px solid var(--border); border-radius: var(--r, 14px); padding: 16px; }
@@ -1211,3 +1210,16 @@
   color: var(--text-2);
 }
 .tree-drop-hint.ok { background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); }
+
+/* ---------- lecteur PDF : sens des couleurs + note (étape 3) ---------- */
+.hl-swatch-col { display: inline-flex; flex-direction: column; align-items: center; gap: 3px; padding: 0; border: none; background: none; cursor: pointer; font-family: inherit; }
+.hl-swatch-col .hl-swatch { display: block; }
+.hl-swatch-lbl { font-size: 9.5px; font-weight: 700; color: var(--text-3); letter-spacing: .02em; }
+.hl-picker-col { flex-direction: column; align-items: stretch; gap: 8px; width: 270px; }
+.hl-note { width: 100%; box-sizing: border-box; resize: vertical; min-height: 44px; font-family: inherit; font-size: 12.5px; line-height: 1.4; color: var(--text); background: var(--bg-2); border: 1px solid var(--border-2); border-radius: var(--r, 8px); padding: 7px 9px; }
+.hl-note:focus { outline: none; border-color: var(--accent); }
+.hl-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: -2px 0 10px; font-size: 11px; color: var(--text-3); }
+.hl-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.hl-legend i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+.hl-entry-tag { margin-left: 6px; padding: 0 5px; border-radius: 4px; background: var(--bg-2); color: var(--text-2); font-size: 9.5px; letter-spacing: .04em; }
+.hl-entry-note { margin-top: 4px; font-size: 12px; font-style: italic; color: var(--text-2); display: flex; gap: 5px; align-items: baseline; }

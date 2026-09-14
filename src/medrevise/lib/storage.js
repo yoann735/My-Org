@@ -171,9 +171,17 @@ export async function openHtmlInNewWindow(htmlId) {
   return !!window.open(url, '_blank', features);
 }
 
-/* ---- surlignages PDF (Partie B) ---- */
-export function newHighlight({ ficheId, page, texte, couleur, rects }) {
-  return { id: genId('h'), ficheId, page, texte, couleur: couleur || 'jaune', rects: rects || [], createdAt: new Date().toISOString() };
+/* ---- surlignages PDF (Partie B) ----
+   `anchor` (étape 3, facultatif) : position dans le texte de la page, voir
+   « ANCRAGE » dans pdf/PdfReader.jsx. `note` (facultatif) : remarque de l'étudiant,
+   l'équivalent des encadrés .note du gabarit HTML. Deux champs AJOUTÉS : un
+   surlignage plus ancien, qui ne les a pas, reste valide tel quel (rects seuls). */
+export function newHighlight({ ficheId, page, texte, couleur, rects, anchor, note }) {
+  return {
+    id: genId('h'), ficheId, page, texte, couleur: couleur || 'jaune', rects: rects || [],
+    anchor: anchor || null, note: note || null,
+    createdAt: new Date().toISOString(),
+  };
 }
 
 /* ---- édition de texte PDF (Chantier 1) : couche superposée qui masque un bloc de

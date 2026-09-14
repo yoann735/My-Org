@@ -65,13 +65,17 @@ function useDevicePixelRatio() {
   return dpr;
 }
 
+// Sens des couleurs = celui du gabarit HTML (voir SENS_PAR_COULEUR, lib/courseExport.js) :
+// jaune = notion PRIORITAIRE, rose = CLOZE, vert/bleu = surlignage simple. Mêmes ids
+// que data-hl du gabarit, pour que l'export des deux sources parle la même langue.
 const COLORS = [
-  { id: 'jaune', hex: '#FFD84D' },
-  { id: 'vert', hex: '#8BE38B' },
-  { id: 'bleu', hex: '#7EC8FF' },
-  { id: 'rose', hex: '#FF9FD1' },
+  { id: 'jaune', hex: '#FFD84D', short: 'Prio', label: 'Prioritaire' },
+  { id: 'vert', hex: '#8BE38B', short: 'Vert', label: 'Surlignage simple' },
+  { id: 'bleu', hex: '#7EC8FF', short: 'Bleu', label: 'Surlignage simple' },
+  { id: 'rose', hex: '#FF9FD1', short: 'Cloze', label: 'Cloze' },
 ];
 const COLOR_HEX = Object.fromEntries(COLORS.map((c) => [c.id, c.hex]));
+const COLOR_TAG = { jaune: 'Prioritaire', rose: 'Cloze' }; // étiquette affichée dans le panneau
 const COLOR_RGB = { jaune: rgb(1, 0.85, 0.3), vert: rgb(0.55, 0.89, 0.55), bleu: rgb(0.5, 0.78, 1), rose: rgb(1, 0.62, 0.82) };
 
 const FONT_SIZES = ['10px', '11px', '12px', '13px', '14px', '16px', '18px', '20px', '24px', '28px', '32px'];
@@ -143,6 +147,102 @@ async function buildTextLayer(page, viewport, container) {
 function cleanSelectedText(raw, { inline = false } = {}) {
   const t = pdfjsLib.normalizeUnicode(raw || '').replace(/\u0000/g, '');
   return inline ? t.replace(/\s+/g, ' ').trim() : t;
+}
+
+/* ============================================================
+   ANCRAGE D'UN SURLIGNAGE DANS LE TEXTE (étape 3).
+   Un surlignage garde ses `rects` (géométrie au moment de la création — servent
+   encore à l'export PDF annoté et de repli), et gagne un `anchor` : la position
+   dans le texte de la page, en indices de morceaux pdf.js + caractères :
+     { v: 1, start: { item, char }, end: { item, char } }   (end.char exclu)
+   `item` = index du <span> dans la couche de texte = index des items NON VIDES de
+   getTextContent (même contrat que computePageTextMap). C'est déterministe pour un
+   même PDF : l'ancre ne dépend ni du zoom, ni de l'écran, ni de la couche de texte.
+   À l'affichage, les rects sont RECALCULÉS depuis l'ancre (Range DOM) — un surlignage
+   reste donc collé au texte même si la couche change un jour. Garde-fou : si le texte
+   retrouvé par l'ancre n'est plus exactement `texte` (autre version de pdf.js, PDF
+   remplacé…), on affiche les rects stockés plutôt qu'un surlignage au mauvais endroit.
+   ============================================================ */
+
+/** borne d'une sélection (nœud DOM + offset) → position { item, char }. La borne
+    tombe le plus souvent DANS le texte d'un span ; sinon (glisser terminé dans le vide,
+    sur un <br>, sur une autre page), on prend le premier caractère du premier span
+    APRÈS elle (début) ou le dernier caractère du dernier span AVANT elle (fin). */
+function boundaryToPosition(spans, node, offset, edge) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    const idx = spans.indexOf(node.parentElement);
+    if (idx >= 0) return { item: idx, char: offset };
+  }
+  const probe = document.createRange();
+  probe.setStart(node, offset);
+  if (edge === 'start') {
+    for (let i = 0; i < spans.length; i++) {
+      if (spans[i].firstChild && probe.comparePoint(spans[i].firstChild, 0) >= 0) return { item: i, char: 0 };
+    }
+    return null;
+  }
+  for (let i = spans.length - 1; i >= 0; i--) {
+    const t = spans[i].firstChild;
+    if (t && probe.comparePoint(t, t.length) <= 0) return { item: i, char: t.length };
+  }
+  return null;
+}
+
+/** Range DOM (sélection) → ancre sur CETTE page (une sélection qui déborde sur la page
+    suivante est bornée à la fin de celle-ci). null si rien de sélectionné ici. */
+function anchorFromRange(container, range) {
+  const spans = [...container.querySelectorAll('span')];
+  const start = boundaryToPosition(spans, range.startContainer, range.startOffset, 'start');
+  const end = boundaryToPosition(spans, range.endContainer, range.endOffset, 'end');
+  if (!start || !end) return null;
+  if (end.item < start.item || (end.item === start.item && end.char <= start.char)) return null;
+  return { v: 1, start, end };
+}
+
+/** ancre → Range DOM sur la couche de texte montée, ou null si l'ancre ne correspond
+    à aucun texte de cette page (indices hors bornes). */
+function rangeFromAnchor(container, anchor) {
+  if (!container || !anchor || !anchor.start || !anchor.end) return null;
+  const spans = container.querySelectorAll('span');
+  const s = spans[anchor.start.item] && spans[anchor.start.item].firstChild;
+  const e = spans[anchor.end.item] && spans[anchor.end.item].firstChild;
+  if (!s || !e || anchor.start.char > s.length || anchor.end.char > e.length) return null;
+  try {
+    const r = document.createRange();
+    r.setStart(s, anchor.start.char);
+    r.setEnd(e, anchor.end.char);
+    return r;
+  } catch (err) { return null; }
+}
+
+/** rects d'un Range, normalisés [0,1] par rapport à la page, sans chevauchements : un
+    span entièrement couvert remonte à la fois sa boîte et celle de son texte, deux
+    rectangles presque identiques qui, en fusion « multiply », dessineraient une tache
+    plus foncée. On ne garde que le plus grand des deux. */
+function rectsFromRange(container, range) {
+  const cr = container.getBoundingClientRect();
+  if (!cr.width || !cr.height) return [];
+  const inside = (a, b) => a.left >= b.left - 0.5 && a.top >= b.top - 0.5 && a.right <= b.right + 0.5 && a.bottom <= b.bottom + 0.5;
+  const kept = [];
+  for (const r of range.getClientRects()) {
+    if (!(r.width > 0 && r.height > 0)) continue;
+    if (kept.some((k) => inside(r, k))) continue;
+    for (let i = kept.length - 1; i >= 0; i--) if (inside(kept[i], r)) kept.splice(i, 1);
+    kept.push(r);
+  }
+  return kept.map((r) => ({ x: (r.left - cr.left) / cr.width, y: (r.top - cr.top) / cr.height, width: r.width / cr.width, height: r.height / cr.height }));
+}
+
+/** ordre de lecture des surlignages : page, puis position dans le texte (ancre), à
+    défaut hauteur sur la page (anciens surlignages sans ancre), puis date. */
+function compareHighlights(a, b) {
+  if (a.page !== b.page) return a.page - b.page;
+  if (a.anchor && b.anchor) {
+    return (a.anchor.start.item - b.anchor.start.item) || (a.anchor.start.char - b.anchor.start.char);
+  }
+  const ya = a.rects && a.rects[0] ? a.rects[0].y : 0;
+  const yb = b.rects && b.rects[0] ? b.rects[0].y : 0;
+  return (ya - yb) || String(a.createdAt).localeCompare(String(b.createdAt));
 }
 
 /** carte de position du texte d'une page, normalisée [0,1] (indépendante du zoom et
@@ -399,13 +499,18 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
 
   const reloadHighlights = async () => {
     const all = await getAll('highlights');
-    setHighlights(all.filter((h) => h.ficheId === ficheId).sort((a, b) => (a.page - b.page) || a.createdAt.localeCompare(b.createdAt)));
+    setHighlights(all.filter((h) => h.ficheId === ficheId).sort(compareHighlights));
   };
   const reloadEdits = async () => {
     const all = await getAll('annotations');
     setEdits(all.filter((a) => a.ficheId === ficheId));
   };
   useEffect(() => { reloadHighlights(); reloadEdits(); setActiveEditId(null); }, [ficheId]);
+  // les surlignages ne vivent pas dans `db` (lus à part, ci-dessus) : sans ceci, ceux
+  // qu'une synchro rapatrie d'un autre appareil (retour sur l'onglet, reconnexion —
+  // MedReviseApp.jsx appelle alors reload(), qui remplace `db`) n'apparaîtraient qu'à
+  // la réouverture du lecteur.
+  useEffect(() => { reloadHighlights(); }, [db]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // B2 : offsets cumulés (px, à l'échelle courante) — le contenu scale strictement
   // linéairement (le gap scale aussi), ce qui rend le zoom centré sur le curseur trivial.
@@ -498,31 +603,47 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scale]);
 
+  // popover d'un surlignage existant : fermer = enregistrer la note si elle a changé.
+  // Toutes les sorties (clic extérieur, Échap, bouton OK) passent par ici — la note ne
+  // peut donc pas se perdre en refermant la popover sans « valider ».
+  const closeEditingHl = async () => {
+    if (!editingHl) return;
+    const cur = editingHl;
+    setEditingHl(null);
+    const h = highlights.find((x) => x.id === cur.id);
+    const note = (cur.note || '').trim() || null;
+    if (h && note !== (h.note || null)) {
+      await put('highlights', { ...h, note });
+      await reloadHighlights();
+    }
+  };
+
   // ferme les popovers flottants au clic extérieur / Échap
   useEffect(() => {
     if (!pending && !editingHl) return;
-    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.hl-picker'))) { setPending(null); setEditingHl(null); } };
-    const onKey = (e) => { if (e.key === 'Escape') { setPending(null); setEditingHl(null); } };
+    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.hl-picker'))) { setPending(null); closeEditingHl(); } };
+    const onKey = (e) => { if (e.key === 'Escape') { setPending(null); closeEditingHl(); } };
     window.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey);
     return () => { window.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); };
-  }, [pending, editingHl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, editingHl, highlights]);
 
-  const handleCreateHighlightRequest = (payload) => setPending(payload);
+  const handleCreateHighlightRequest = (payload) => { setEditingHl(null); setPending(payload); };
   const commitHighlight = async (couleur) => {
     if (!pending) return;
-    const rec = newHighlight({ ficheId, page: pending.page, texte: pending.texte, couleur, rects: pending.rects });
+    const rec = newHighlight({ ficheId, page: pending.page, texte: pending.texte, couleur, rects: pending.rects, anchor: pending.anchor });
     await put('highlights', rec);
     setPending(null);
     window.getSelection && window.getSelection().removeAllRanges();
     await reloadHighlights();
   };
-  const handleHighlightClick = (h, e) => setEditingHl({ id: h.id, couleur: h.couleur, x: e.clientX, y: e.clientY });
+  const handleHighlightClick = (h, e) => { setPending(null); setEditingHl({ id: h.id, couleur: h.couleur, note: h.note || '', x: e.clientX, y: e.clientY }); };
   const changeHighlightColor = async (couleur) => {
     if (!editingHl) return;
     const h = highlights.find((x) => x.id === editingHl.id); if (!h) { setEditingHl(null); return; }
-    await put('highlights', { ...h, couleur });
-    setEditingHl(null);
+    await put('highlights', { ...h, couleur, note: (editingHl.note || '').trim() || null });
+    setEditingHl((cur) => (cur ? { ...cur, couleur } : cur)); // reste ouverte : on peut encore écrire la note
     await reloadHighlights();
   };
   const deleteHighlightConfirmed = async () => {
@@ -949,13 +1070,17 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
                 <Icon name={copiedCount ? 'check' : 'copy'} size={13} /> {copyLabel}
               </button>
             </span>
-            {highlights.length === 0 && <div className="hint">Surligne du texte en mode Édition pour le retrouver ici.</div>}
+            <div className="hl-legend">
+              {COLORS.map((c) => <span key={c.id}><i style={{ background: c.hex }} />{COLOR_TAG[c.id] || c.short}</span>)}
+            </div>
+            {highlights.length === 0 && <div className="hint">Sélectionne du texte pour le surligner. Clique un surlignage pour changer sa couleur, ajouter une note ou le supprimer.</div>}
             {highlights.map((h) => (
               <div className="hl-entry" key={h.id} onClick={() => scrollToPageFraction(h.page, (h.rects[0] && h.rects[0].y) || 0)}>
                 <span className="hl-dot" style={{ background: COLOR_HEX[h.couleur] || COLOR_HEX.jaune }} />
                 <div>
-                  <div className="hl-entry-page">p.{h.page}</div>
+                  <div className="hl-entry-page">p.{h.page}{COLOR_TAG[h.couleur] && <span className="hl-entry-tag">{COLOR_TAG[h.couleur]}</span>}</div>
                   <div className="hl-entry-txt">« {h.texte.length > 140 ? h.texte.slice(0, 140) + '…' : h.texte} »</div>
+                  {h.note && <div className="hl-entry-note"><Icon name="edit" size={11} /> {h.note}</div>}
                 </div>
               </div>
             ))}
@@ -964,28 +1089,44 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
       </div>
 
       {mode === 'edit' && (
-        <div className="hint" style={{ marginTop: 10 }}><Icon name="info" size={13} /> Sélectionne du texte pour le surligner ou l'éditer (choix proposé après la sélection). Clique un surlignage pour changer sa couleur ou le supprimer.</div>
+        <div className="hint" style={{ marginTop: 10 }}><Icon name="info" size={13} /> Sélectionne du texte pour le surligner ou l'éditer (choix proposé après la sélection). Clique un surlignage pour changer sa couleur, ajouter une note ou le supprimer.</div>
       )}
 
+      {/* sélection → surligner (Lecture ET Édition) ; « Éditer ce texte » reste propre au
+          mode Édition. Chaque pastille porte son sens, comme dans le gabarit. */}
       {pending && createPortal(
-        <div className="hl-picker" style={{ left: Math.min(pending.x, window.innerWidth - 260), top: Math.min(pending.y + 8, window.innerHeight - 60) }}>
+        <div className="hl-picker" style={{ left: Math.min(pending.x, window.innerWidth - (mode === 'edit' ? 330 : 250)), top: Math.min(pending.y + 8, window.innerHeight - 70) }}>
           {COLORS.map((c) => (
-            <button key={c.id} className="hl-swatch" style={{ background: c.hex }} title={'Surligner en ' + c.id} onClick={() => commitHighlight(c.id)} />
+            <button key={c.id} className="hl-swatch-col" title={c.label} onClick={() => commitHighlight(c.id)}>
+              <span className="hl-swatch" style={{ background: c.hex }} />
+              <span className="hl-swatch-lbl">{c.short}</span>
+            </button>
           ))}
           <span className="hl-picker-sep" />
-          <button className="hl-edit-btn" title="Éditer ce texte" onClick={startEditFromSelection}><Icon name="edit" size={13} /> Éditer</button>
+          {mode === 'edit' && <button className="hl-edit-btn" title="Éditer ce texte" onClick={startEditFromSelection}><Icon name="edit" size={13} /> Éditer</button>}
           <button className="hl-cancel" title="Annuler" onClick={() => setPending(null)}><Icon name="x" size={13} /></button>
         </div>,
         document.body,
       )}
 
       {editingHl && createPortal(
-        <div className="hl-picker" style={{ left: Math.min(editingHl.x, window.innerWidth - 230), top: Math.min(editingHl.y + 8, window.innerHeight - 70) }}>
-          {COLORS.map((c) => (
-            <button key={c.id} className={'hl-swatch' + (editingHl.couleur === c.id ? ' selected' : '')} style={{ background: c.hex }} title={'Couleur ' + c.id} onClick={() => changeHighlightColor(c.id)} />
-          ))}
-          <span className="hl-picker-sep" />
-          <button className="hl-delete" onClick={deleteHighlightConfirmed}><Icon name="trash" size={13} /> Supprimer</button>
+        <div className="hl-picker hl-picker-col" style={{ left: Math.min(editingHl.x, window.innerWidth - 290), top: Math.min(editingHl.y + 8, window.innerHeight - 170) }}>
+          <div className="row" style={{ gap: 7, alignItems: 'center' }}>
+            {COLORS.map((c) => (
+              <button key={c.id} className="hl-swatch-col" title={c.label} onClick={() => changeHighlightColor(c.id)}>
+                <span className={'hl-swatch' + (editingHl.couleur === c.id ? ' selected' : '')} style={{ background: c.hex }} />
+                <span className="hl-swatch-lbl">{c.short}</span>
+              </button>
+            ))}
+            <span className="hl-picker-sep" />
+            <button className="hl-delete" onClick={deleteHighlightConfirmed}><Icon name="trash" size={13} /> Supprimer</button>
+          </div>
+          <textarea className="hl-note" rows={2} placeholder="Note (facultatif) — ta remarque ou ta question"
+            value={editingHl.note} onChange={(e) => { const note = e.target.value; setEditingHl((cur) => (cur ? { ...cur, note } : cur)); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) closeEditingHl(); }} />
+          <div className="row" style={{ justifyContent: 'flex-end' }}>
+            <button className="btn sm" onClick={closeEditingHl}><Icon name="check" size={13} /> OK</button>
+          </div>
         </div>,
         document.body,
       )}
@@ -1008,6 +1149,25 @@ function PdfPageContent({
   const textLayerRef = useRef(null);
   const renderTaskRef = useRef(null);
   const [matchRects, setMatchRects] = useState([]);
+  const [layerVersion, setLayerVersion] = useState(0); // +1 à chaque (re)construction de la couche de texte
+
+  // rects AFFICHÉS de chaque surlignage ancré, recalculés depuis l'ancre sur la couche
+  // réellement montée (voir « ANCRAGE » en tête de fichier). Absents de la table (ancien
+  // surlignage sans ancre, couche pas encore prête, texte qui ne correspond plus) →
+  // on affiche h.rects, la géométrie enregistrée à la création.
+  const [shownRects, setShownRects] = useState({});
+  useLayoutEffect(() => {
+    const container = textLayerRef.current;
+    if (!container || !layerVersion) { setShownRects({}); return; }
+    const next = {};
+    for (const h of highlights) {
+      const range = h.anchor && rangeFromAnchor(container, h.anchor);
+      if (!range || cleanSelectedText(range.toString(), { inline: true }) !== h.texte) continue;
+      const rects = rectsFromRange(container, range);
+      if (rects.length) next[h.id] = rects;
+    }
+    setShownRects(next);
+  }, [highlights, layerVersion]);
 
   // BUG 1 : annule tout rendu pdf.js encore en vol avant d'en démarrer un nouveau sur le
   // MÊME <canvas> — deux RenderTask concurrents sur un même contexte 2D peuvent laisser sa
@@ -1044,6 +1204,7 @@ function PdfPageContent({
       if (cancelled) return;
       await buildTextLayer(page, viewport, textLayerRef.current);
       if (cancelled) return;
+      setLayerVersion((v) => v + 1); // couche de texte prête : les ancres peuvent être résolues
       // Chantier 2 : la textLayer réelle vient d'être (re)construite pour ce scale —
       // c'est le bon moment pour mesurer les rects exacts des occurrences via Range.
       setMatchRects(computeMatchRectsFromDom(textLayerRef.current, matches));
@@ -1069,20 +1230,38 @@ function PdfPageContent({
   // lignes). Le choix entre "surligner" et "éditer ce texte" se fait ensuite dans la
   // popover (voir `pending` / commitHighlight / startEditFromSelection dans PdfReader) —
   // les deux actions partagent donc exactement la même géométrie de sélection.
-  const handleMouseUp = () => {
-    if (mode !== 'edit') return;
+  //
+  // Étape 3 : actif en Lecture comme en Édition. Un simple clic (sélection vide) sur un
+  // surlignage l'ouvre (couleur, note, suppression) — par test de position plutôt que
+  // par un clic sur le rectangle : les rectangles restent transparents à la souris, on
+  // peut donc toujours sélectionner du texte déjà surligné.
+  const handleMouseUp = (e) => {
     const sel = window.getSelection();
     const container = textLayerRef.current;
-    if (!container || !sel || sel.isCollapsed || !container.contains(sel.anchorNode)) return;
+    if (!container || !sel) return;
+    if (sel.isCollapsed) {
+      const cr = container.getBoundingClientRect();
+      if (!cr.width || !cr.height) return;
+      const px = (e.clientX - cr.left) / cr.width, py = (e.clientY - cr.top) / cr.height;
+      const hit = [...highlights].reverse().find((h) => (shownRects[h.id] || h.rects).some((r) => px >= r.x && px <= r.x + r.width && py >= r.y && py <= r.y + r.height));
+      if (hit) onHighlightClick(hit, e);
+      return;
+    }
+    if (!container.contains(sel.anchorNode)) return;
+    const selRange = sel.getRangeAt(0);
+    // ancre bornée à CETTE page ; le texte et les rects en découlent (une sélection qui
+    // déborde sur la page suivante ne produit plus de rects hors page). Repli sur la
+    // sélection brute si aucune ancre n'est calculable.
+    const anchor = anchorFromRange(container, selRange);
+    const range = (anchor && rangeFromAnchor(container, anchor)) || selRange;
     // sur une ligne : un surlignage à cheval sur deux lignes donne « un calcul : un IMC »,
     // pas deux lignes (ni, avant les <br>, « unIMC »)
-    const texte = cleanSelectedText(sel.toString(), { inline: true });
+    const texte = cleanSelectedText(range.toString(), { inline: true });
     if (!texte) return;
-    const range = sel.getRangeAt(0);
-    const clientRects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
     const cr = container.getBoundingClientRect();
-    if (!clientRects.length || !cr.width || !cr.height) return;
-    const rects = clientRects.map((r) => ({ x: (r.left - cr.left) / cr.width, y: (r.top - cr.top) / cr.height, width: r.width / cr.width, height: r.height / cr.height }));
+    const rects = rectsFromRange(container, range);
+    if (!rects.length) return;
+    const clientRects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
     // BUG C : typographie EXACTE du texte d'origine (celle du <span> pdf.js réellement
     // rendu), normalisée à la hauteur de page pour survivre au zoom. Reprise à
     // l'identique par la boîte d'édition ET le rendu final → même box model, donc
@@ -1091,8 +1270,8 @@ function PdfPageContent({
     const cs = startEl ? window.getComputedStyle(startEl) : null;
     const fontSizeRel = cs ? (parseFloat(cs.fontSize) / cr.height) : null;
     const fontFamily = cs ? cs.fontFamily : null;
-    const anchor = clientRects[clientRects.length - 1];
-    onCreateHighlight({ page: pageNum, texte, rects, x: anchor.right, y: anchor.bottom, fontSizeRel, fontFamily });
+    const last = clientRects[clientRects.length - 1];
+    onCreateHighlight({ page: pageNum, texte, rects, anchor, x: last.right, y: last.bottom, fontSizeRel, fontFamily });
   };
 
   return (
@@ -1100,11 +1279,9 @@ function PdfPageContent({
       <canvas ref={canvasRef} />
       <div ref={textLayerRef} className="pdfr-textlayer" onMouseUp={handleMouseUp} onCopy={handleCopy} />
       <div className="pdfr-hlayer">
-        {highlights.flatMap((h) => h.rects.map((r, i) => (
-          <div key={h.id + ':' + i} className={'pdfr-hl-rect' + (mode === 'edit' ? ' clickable' : '')}
-            style={{ left: r.x * 100 + '%', top: r.y * 100 + '%', width: r.width * 100 + '%', height: r.height * 100 + '%', background: COLOR_HEX[h.couleur] || COLOR_HEX.jaune }}
-            title={mode === 'edit' ? 'Cliquer pour modifier' : h.texte}
-            onClick={mode === 'edit' ? (e) => onHighlightClick(h, e) : undefined} />
+        {highlights.flatMap((h) => (shownRects[h.id] || h.rects).map((r, i) => (
+          <div key={h.id + ':' + i} className="pdfr-hl-rect"
+            style={{ left: r.x * 100 + '%', top: r.y * 100 + '%', width: r.width * 100 + '%', height: r.height * 100 + '%', background: COLOR_HEX[h.couleur] || COLOR_HEX.jaune }} />
         )))}
         {matchRects.map((m) => (
           <div key={'m' + m.idx + ':' + m.ri} className={'pdfr-match-rect' + (m.idx === activeMatchIdx ? ' active' : '')}
