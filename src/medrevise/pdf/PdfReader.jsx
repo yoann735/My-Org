@@ -37,8 +37,7 @@
    ============================================================ */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import * as pdfjsLib from 'pdfjs-dist';
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { pdfjsLib, openPdf, outputScaleFor } from './pdfjsSetup.js';
 import { PDFDocument, rgb, BlendMode } from 'pdf-lib';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -52,7 +51,19 @@ import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
 import { buildCourseExport } from '../lib/courseExport.js';
 import { serializeCourseHtml } from '../lib/courseHtmlSave.js';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+/** densité réelle de l'écran, suivie en direct : elle change quand la fenêtre passe
+    d'un écran Retina à un écran externe, ou au zoom navigateur (Cmd +/−). Une page
+    rendue pour l'ancienne densité serait floue (ou inutilement lourde) sur la nouvelle. */
+function useDevicePixelRatio() {
+  const [dpr, setDpr] = useState(() => window.devicePixelRatio || 1);
+  useEffect(() => {
+    const mq = window.matchMedia(`(resolution: ${dpr}dppx)`);
+    const onChange = () => setDpr(window.devicePixelRatio || 1);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [dpr]);
+  return dpr;
+}
 
 const COLORS = [
   { id: 'jaune', hex: '#FFD84D' },
@@ -299,6 +310,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   const [scale, setScale] = useState(1.6); // B3 : 160% par défaut
   const [mode, setMode] = useState(modeProp ?? (pdfView && pdfView.mode) ?? 'read');
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 0 });
+  const dpr = useDevicePixelRatio();
 
   const [highlights, setHighlights] = useState([]);
   const [pending, setPending] = useState(null); // nouveau surlignage en attente { page, texte, rects, x, y }
@@ -332,7 +344,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
         const blob = await getBlob(fiche.pdfId);
         if (!blob) { if (!cancelled) setLoadError('PDF introuvable.'); return; }
         const buf = await blob.arrayBuffer();
-        const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+        const doc = await openPdf(buf);
         if (cancelled) return;
         const sizes = [];
         for (let i = 1; i <= doc.numPages; i++) {
@@ -870,7 +882,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
                 return (
                   <div key={n} className="pdfr-page" style={style}>
                     <PdfPageContent
-                      pdfDoc={pdfDoc} pageNum={n} scale={scale} mode={mode} pageHeight={h}
+                      pdfDoc={pdfDoc} pageNum={n} scale={scale} dpr={dpr} mode={mode} pageHeight={h}
                       highlights={highlightsByPage[n] || EMPTY_ARRAY}
                       edits={editsByPage[n] || EMPTY_ARRAY}
                       activeEditId={activeEditId}
@@ -948,7 +960,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     texte + surlignages + surlignage de recherche (géométrie exacte, Chantier 2) + blocs
     de texte édités (Chantier 1). */
 function PdfPageContent({
-  pdfDoc, pageNum, scale, mode, pageHeight, highlights, edits, activeEditId, matches, activeMatchIdx,
+  pdfDoc, pageNum, scale, dpr, mode, pageHeight, highlights, edits, activeEditId, matches, activeMatchIdx,
   onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor,
 }) {
   const canvasRef = useRef(null);
@@ -970,10 +982,15 @@ function PdfPageContent({
       if (cancelled) return;
       const viewport = page.getViewport({ scale });
       const canvas = canvasRef.current;
-      canvas.width = viewport.width; canvas.height = viewport.height;
+      // netteté : le canvas porte `os` pixels réels par pixel CSS (2 sur Retina) et
+      // reste AFFICHÉ à la taille du viewport — la couche de texte et les surlignages,
+      // positionnés en px CSS, ne voient aucune différence.
+      const os = outputScaleFor(viewport.width, viewport.height, dpr);
+      canvas.width = Math.floor(viewport.width * os); canvas.height = Math.floor(viewport.height * os);
+      canvas.style.width = `${viewport.width}px`; canvas.style.height = `${viewport.height}px`;
       const c2d = canvas.getContext('2d');
       c2d.setTransform(1, 0, 0, 1, 0, 0);
-      const task = page.render({ canvasContext: c2d, viewport });
+      const task = page.render({ canvasContext: c2d, viewport, transform: os !== 1 ? [os, 0, 0, os, 0, 0] : undefined });
       renderTaskRef.current = task;
       try {
         await task.promise;
@@ -994,7 +1011,7 @@ function PdfPageContent({
       cancelled = true;
       if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (e) { /* ignore */ } }
     };
-  }, [pdfDoc, pageNum, scale, matches]);
+  }, [pdfDoc, pageNum, scale, dpr, matches]);
 
   // BUG 2 : un clic seul (sélection vide) ne doit RIEN déclencher — ni surlignage, ni
   // édition. L'unité d'action est toujours une sélection réelle de texte, mesurée via

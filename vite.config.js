@@ -1,5 +1,45 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import fs from 'node:fs';
+import path from 'node:path';
+
+/* Ressources binaires de pdf.js servies par l'app elle-même, sous /pdfjs/…
+   (MedRevise, lecteur PDF — voir src/medrevise/pdf/pdfjsSetup.js).
+
+   POURQUOI. pdf.js va chercher à la demande, par URL + nom de fichier FIXE :
+   les polices standard (PDF dont une police n'est pas intégrée), les CMaps
+   (textes CJK/encodages prédéfinis) et les décodeurs wasm (images JPX/JBIG2).
+   Sans URL fournie, ces cas s'affichent faux ou pas du tout. Un import `?url`
+   ne convient pas : Vite hache les noms, pdf.js ne les retrouverait pas.
+
+   Copiés depuis node_modules/pdfjs-dist AU BUILD (jamais commités) : toujours
+   la version exacte de la librairie installée. Servis en dev par un
+   middleware. Rien n'est chargé tant qu'un PDF ne le réclame pas. Vercel sert
+   les fichiers statiques avant d'appliquer la réécriture SPA de vercel.json. */
+const PDFJS_DIRS = ['cmaps', 'standard_fonts', 'wasm', 'iccs'];
+const PDFJS_ROOT = path.resolve('node_modules/pdfjs-dist');
+function pdfjsAssets() {
+  return {
+    name: 'pdfjs-assets',
+    configureServer(server) {
+      server.middlewares.use('/pdfjs', (req, res, next) => {
+        const [dir, file, ...rest] = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '').split('/');
+        if (!PDFJS_DIRS.includes(dir) || !file || rest.length || file.startsWith('.')) return next();
+        const abs = path.join(PDFJS_ROOT, dir, file);
+        if (!fs.existsSync(abs)) return next();
+        if (file.endsWith('.wasm')) res.setHeader('Content-Type', 'application/wasm');
+        fs.createReadStream(abs).pipe(res);
+      });
+    },
+    generateBundle() {
+      for (const dir of PDFJS_DIRS) {
+        for (const file of fs.readdirSync(path.join(PDFJS_ROOT, dir))) {
+          this.emitFile({ type: 'asset', fileName: `pdfjs/${dir}/${file}`, source: fs.readFileSync(path.join(PDFJS_ROOT, dir, file)) });
+        }
+      }
+    },
+  };
+}
 
 /* Le <link> de la couche visuelle « Motion Lab », posé DANS le HTML au build.
 
@@ -56,7 +96,7 @@ function lienTheme() {
 
 // Zero-config Vercel deploy: build -> `dist`. No env, no backend.
 export default defineConfig({
-  plugins: [react(), lienTheme()],
+  plugins: [react(), lienTheme(), pdfjsAssets()],
   // Honor the PORT env var when provided (lets tooling assign a free port);
   // falls back to Vite's default for plain `npm run dev`.
   server: process.env.PORT ? { port: Number(process.env.PORT) } : undefined,
