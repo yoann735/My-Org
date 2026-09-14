@@ -229,7 +229,9 @@ function Workstation({ item, fiche, meta, ctx, mode, isFirst, isLast, onNext, on
 }
 
 /* ---------------- Données ---------------- */
-// exporté : réutilisé tel quel par le mode Apprentissage (apprentissage/UniteSplit.jsx)
+// exporté (comme Notepad, Calculator, NumericAnswer, OpenAnswer, CorrectionSteps, Pieges) :
+// réutilisé TEL QUEL par le mode Apprentissage (apprentissage/ExoApprentissage.jsx), qui
+// les assemble sans StatutChooser ni recordExerciceAttempt — aucun changement de rendu ici.
 export function DonneesTable({ donnees }) {
   return (
     <div style={{ marginTop: 6 }}>
@@ -274,7 +276,7 @@ export function FormulesBlock({ formules }) {
 }
 
 /* ---------------- Bloc-notes (persisté par exercice) ---------------- */
-function Notepad({ itemId }) {
+export function Notepad({ itemId }) {
   const [note, setNote] = useState('');
   const [loaded, setLoaded] = useState(false);
   const tRef = useRef(null);
@@ -305,7 +307,7 @@ const CALC_KEYS = [
   ['0', '.', 'E', '+', '√'],
 ];
 const CALC_FUNCS = ['sqrt(', 'log(', 'ln(', 'exp(', 'pi', 'e'];
-function Calculator() {
+export function Calculator() {
   const [expr, setExpr] = useState('');
   const [mem, setMem] = useState(null);
   const [history, setHistory] = useState([]); // [{expr, res}] session
@@ -368,7 +370,7 @@ function Calculator() {
 }
 
 /* ---------------- Réponse NUMÉRIQUE ---------------- */
-function NumericAnswer({ item, validated, onValidate }) {
+export function NumericAnswer({ item, validated, onValidate }) {
   const r = item.reponse || {};
   const [val, setVal] = useState('');
   const [unit, setUnit] = useState('');
@@ -530,7 +532,7 @@ function NumericCorrection({ item }) {
    (onAutoVerdict) à titre indicatif — le statut est posé par StatutChooser, sur
    clic de l'utilisateur. Les anciens boutons « Forcer : Juste / À revoir » +
    « Enregistrer le résultat » ont été remplacés par ce choix systématique. */
-function OpenAnswer({ item, revealed, onReveal, onAutoVerdict }) {
+export function OpenAnswer({ item, revealed, onReveal, onAutoVerdict }) {
   const grille = item.grille_autoevaluation || [];
   const essentiels = grille.filter((g) => g.essentiel);
   const [checked, setChecked] = useState({});
@@ -588,7 +590,7 @@ function OpenAnswer({ item, revealed, onReveal, onAutoVerdict }) {
 }
 
 /* étapes numérotées + conclusion (partagé numérique/ouvert) */
-function CorrectionSteps({ correction }) {
+export function CorrectionSteps({ correction }) {
   const c = correction || {};
   return (
     <>
@@ -614,7 +616,7 @@ function CorrectionSteps({ correction }) {
 }
 
 /* pièges (fin de correction, dans les deux modes) */
-function Pieges({ pieges }) {
+export function Pieges({ pieges }) {
   if (!pieges || !pieges.length) return null;
   return (
     <div style={{ marginTop: 14 }}>

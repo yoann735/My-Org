@@ -73,6 +73,22 @@ export async function createUnite({ titre, matiereId = null, pdfId, pdfName = nu
   return put('apprentissage', unite);
 }
 
+/** exos d'un collage déjà présents dans l'unité (même id d'origine `srcId`). */
+export function doublonsDansUnite(unite, items) {
+  const deja = new Set(((unite && unite.items) || []).map((i) => i.srcId).filter(Boolean));
+  return (items || []).filter((it) => it.id && deja.has(it.id)).length;
+}
+
+/** AJOUTE des exos À LA FIN d'une unité existante (l'ordre d'apprentissage du lot
+    déjà là est conservé). Un exo dont l'id d'origine y figure déjà est ignoré et compté.
+    @returns {{unite, ajoutes:number, doublons:number}} */
+export async function appendExosToUnite(unite, items) {
+  const deja = new Set((unite.items || []).map((i) => i.srcId).filter(Boolean));
+  const nouveaux = (items || []).filter((it) => !(it.id && deja.has(it.id)));
+  const maj = await put('apprentissage', { ...unite, items: [...(unite.items || []), ...nouveaux.map(versItemUnite)] });
+  return { unite: maj, ajoutes: nouveaux.length, doublons: (items || []).length - nouveaux.length };
+}
+
 /** Supprime l'unité et SES surlignages. Le PDF (blob) n'est jamais supprimé : il peut
     appartenir à une fiche, et un blob orphelin est inoffensif (même règle que
     storage.js#mergeBlobs). Les surlignages d'une fiche dont on a repris le PDF

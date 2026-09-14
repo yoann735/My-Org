@@ -1280,3 +1280,27 @@
   /* la préférence « masqué » du grand écran ne s'applique pas ici : c'est la bascule qui décide */
   .appr-split.masque[data-vue="cours"] .appr-cours { flex: 1 1 100%; width: auto; visibility: visible; }
 }
+
+/* ---------- mode Apprentissage : exo interactif + guide pas à pas ---------- */
+.appr-reponse { margin-top: 12px; }
+.appr-reponse .card { box-shadow: none; border: 1px solid var(--border-2); background: var(--bg-2); }
+.appr-choices { gap: 7px; }
+.appr-choices .rev-choice { padding: 9px 12px; font-size: 15px; }
+.appr-distracteurs { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+.appr-distracteurs .hint { padding: 6px 10px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--border-2); opacity: .8; }
+.appr-distracteurs .hint.choisi { opacity: 1; border-color: var(--accent-2); }
+.appr-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-2); }
+.appr-actions .btn.active { background: var(--accent-soft); color: var(--accent); }
+.appr-indices { display: flex; flex-direction: column; gap: 7px; margin-top: 10px; }
+.appr-indice { display: flex; gap: 8px; align-items: baseline; padding: 8px 12px; border-radius: 10px; background: var(--accent-soft); font-size: 14px; }
+.appr-indice strong { color: var(--accent); flex: 0 0 auto; font-size: 13px; }
+.appr-outils { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-top: 10px; }
+.appr-guide { margin-top: 12px; padding: 14px; border-radius: var(--r, 12px); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, var(--card)); }
+.appr-guide-ferme { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; }
+.appr-guide-titre { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 13.5px; color: var(--accent); }
+.appr-guide-progres { display: flex; gap: 4px; }
+.appr-guide-progres i { width: 18px; height: 5px; border-radius: 3px; background: var(--border); transition: background .2s; }
+.appr-guide-progres i.on { background: var(--accent); }
+.appr-guide-etapes > div > div:last-child { animation: fade .25s ease; }
+.appr-guide-fin { display: inline-flex; align-items: center; gap: 5px; color: var(--ok, #3fae7a); font-weight: 600; }
+.appr-cours.halo .pdfr-scroll { box-shadow: 0 0 0 3px var(--accent); transition: box-shadow .2s; }
