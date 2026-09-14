@@ -127,7 +127,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
         </div>
         <div className="mrm-header-actions">
           <button type="button" className="mrm-icon-btn" disabled={ctx.syncState?.status === 'syncing'}
-            onClick={async () => { await ctx.forceSync(); setSyncTick((t) => t + 1); }} aria-label="Forcer la synchro" title={syncStatusLabel(ctx.syncState)}>
+            onClick={async () => { await ctx.forceSync({ complet: true }); setSyncTick((t) => t + 1); }} aria-label="Forcer la synchro" title={syncStatusLabel(ctx.syncState)}>
             <Icon name="refresh" size={18} className={ctx.syncState?.status === 'syncing' ? 'spin' : ''} />
           </button>
           <button type="button" className="mrm-icon-btn" onClick={ctx.toggleTheme} aria-label="Thème">

@@ -395,7 +395,7 @@ export function Reglages({ ctx }) {
         </Card>
         <Card title="Synchronisation" icon="refresh">
           <div className="hint" style={{ marginBottom: 12 }}>{syncStatusLabel(ctx.syncState)}</div>
-          <button type="button" className="btn" disabled={ctx.syncState?.status === 'syncing'} onClick={async () => { await ctx.forceSync(); setSyncTick((t) => t + 1); }}>
+          <button type="button" className="btn" disabled={ctx.syncState?.status === 'syncing'} onClick={async () => { await ctx.forceSync({ complet: true }); setSyncTick((t) => t + 1); }}>
             <Icon name="refresh" size={15} /> {ctx.syncState?.status === 'syncing' ? 'Synchronisation…' : 'Forcer la synchro'}
           </button>
           {/* Comparaison REELLE local <-> cloud, avec empreinte comparable entre

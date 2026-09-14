@@ -472,14 +472,29 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   const textMapCache = useRef({});
 
   // charge le document + précalcule la taille réelle de chaque page (scale=1)
+  // `pdfManquant` : le fichier n'est ni sur cet appareil ni lisible au cloud (pas encore
+  // envoyé par l'appareil d'import, ou hors ligne). Ce n'est PAS une fatalité (étape 5 :
+  // l'appareil d'origine le renvoie tout seul) — on retente donc à chaque synchro
+  // (`db` remplacé par reload()) et sur « Réessayer », sans rouvrir le cours.
+  const [pdfRetry, setPdfRetry] = useState(0);
+  const [pdfManquant, setPdfManquant] = useState(false);
+  useEffect(() => { if (pdfManquant) setPdfRetry((t) => t + 1); }, [db]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     let cancelled = false;
-    setPdfDoc(null); setLoadError(null); setPageSizes([]); textMapCache.current = {};
+    setPdfDoc(null); setLoadError(null); setPdfManquant(false); setPageSizes([]); textMapCache.current = {};
     if (!fiche || !fiche.pdfId) return;
     (async () => {
       try {
         const blob = await getBlob(fiche.pdfId);
-        if (!blob) { if (!cancelled) setLoadError('PDF introuvable.'); return; }
+        if (!blob) {
+          if (!cancelled) {
+            setPdfManquant(true);
+            setLoadError(navigator.onLine === false
+              ? "PDF pas encore disponible sur cet appareil — tu es hors ligne. Il s'ouvrira dès le retour du réseau."
+              : "PDF pas encore arrivé au cloud — l'appareil où il a été importé l'enverra automatiquement à sa prochaine ouverture de MedRevise. Nouvel essai à chaque synchro.");
+          }
+          return;
+        }
         const buf = await blob.arrayBuffer();
         const doc = await openPdf(buf);
         if (cancelled) return;
@@ -496,7 +511,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
       }
     })();
     return () => { cancelled = true; };
-  }, [fiche && fiche.pdfId]);
+  }, [fiche && fiche.pdfId, pdfRetry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reloadHighlights = async () => {
     const all = await getAll('highlights');
@@ -1048,7 +1063,13 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
         <EditToolbar editor={editor} onReset={() => resetEdit(activeEdit.id)} onClose={() => setActiveEditId(null)} />
       )}
 
-      {loadError && <div className="err-mini" style={{ marginBottom: 12 }}><div className="em-ic crit"><Icon name="alert" size={16} /></div><div className="em-body"><div className="em-title">{loadError}</div></div></div>}
+      {loadError && (
+        <div className="err-mini" style={{ marginBottom: 12 }}>
+          <div className="em-ic crit"><Icon name="alert" size={16} /></div>
+          <div className="em-body"><div className="em-title">{loadError}</div></div>
+          {pdfManquant && <button className="btn sm" onClick={() => setPdfRetry((t) => t + 1)}><Icon name="refresh" size={13} /> Réessayer</button>}
+        </div>
+      )}
 
       <div className="pdfr-body">
         <div className="pdfr-scroll" ref={scrollRef} onScroll={onScroll}>

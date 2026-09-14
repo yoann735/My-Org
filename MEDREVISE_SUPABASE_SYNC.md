@@ -163,9 +163,18 @@ Si tu viens de les ajouter pour la première fois : redémarre `vite` en local, 
   cloud est vide → la réconciliation pousse automatiquement TOUT ce qui existe déjà en
   local sur cet appareil, sans rien écraser (le plus récent gagne toujours par
   enregistrement, et un appareil vierge face à un cloud vide n'a jamais l'avantage).
-- **Blobs (images/PDF)** : uploadés en tâche de fond à la création, **téléchargés
-  paresseusement** (seulement quand un enregistrement pullé référence un blob absent
-  localement) — évite de retélécharger toutes les images à chaque synchro.
+- **Blobs (images/PDF/HTML de cours)** : envoyés par une **outbox persistée**
+  (`medrevise-blob-outbox`, voir `data/sync.js`) — l'entrée est écrite avant l'envoi et
+  retirée seulement quand Supabase confirme ; rejouée au boot, à la reconnexion, au retour
+  sur l'onglet et par un minuteur à délai croissant (15 s → 5 min). Un fichier refusé pour
+  sa taille (413, limite du plan) est marqué bloqué et retenté seulement par « Forcer la
+  synchro ». Filet de sécurité : un **audit** (au démarrage, puis au plus toutes les 10 min,
+  et à chaque « Forcer la synchro ») liste le bucket et remet en file tout fichier
+  référencé présent sur l'appareil mais absent du cloud. L'indicateur « À jour avec le
+  cloud » (Réglages) affiche « Fichiers au cloud : n / total » et n'est jamais vert tant
+  qu'un fichier manque. **Téléchargement paresseux** inchangé (seulement quand un
+  enregistrement référence un blob absent localement) ; le lecteur PDF retente à chaque
+  synchro si le fichier n'est pas encore arrivé.
 - **Suppressions** : propagées en tombstones (`deleted = true`) pour qu'un enregistrement
   supprimé sur un appareil ne « ressuscite » pas via un autre appareil resté en cache.
 - Hors-ligne : les écritures cloud échouent silencieusement, tout reste en IndexedDB et

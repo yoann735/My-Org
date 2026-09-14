@@ -28,10 +28,11 @@
    un `del`), les compter d'un côté seulement fausserait tout.
 
    STRICTEMENT EN LECTURE. Aucune écriture IndexedDB, aucune écriture cloud,
-   aucune synchro déclenchée. Le seul appel réseau est le `pullAllRecords()` de
-   lecture, celui-là même que fait la réconciliation.
+   aucune synchro déclenchée. Les seuls appels réseau sont des lectures : le
+   `pullAllRecords()` de la réconciliation, et la liste du bucket des fichiers
+   (storage.js#etatBlobs, étape 5).
    ============================================================ */
-import { SYNCABLE_STORES, getAll } from './storage.js';
+import { SYNCABLE_STORES, getAll, etatBlobs } from './storage.js';
 import { pullAllRecords, outboxCount } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
@@ -97,6 +98,12 @@ export async function comparerAuCloud() {
   const enAttente = await outboxCount();
   const cloud = await etatCloud();
   if (!cloud) return { statut: 'offline', local, enAttente };
+  // FICHIERS (étape 5) : des enregistrements alignés ne suffisent pas — une fiche
+  // synchronisée dont le PDF n'est pas au cloud s'ouvrira « PDF introuvable » ailleurs.
+  // Liste du bucket illisible → on ne conclut rien, comme pour les enregistrements.
+  const blobs = await etatBlobs();
+  if (!blobs) return { statut: 'offline', local, enAttente };
+  const fichiersEnSouffrance = blobs.enAttente + blobs.aEnvoyer.length + blobs.bloques.length + blobs.introuvables.length;
 
   const L = new Map(local.lignes.map((l) => [cle(l), val(l)]));
   const C = new Map(cloud.lignes.map((l) => [cle(l), val(l)]));
@@ -113,8 +120,9 @@ export async function comparerAuCloud() {
 
   const ecarts = aTirer + aPousser + divergents;
   return {
-    statut: (ecarts === 0 && enAttente === 0) ? 'ajour' : 'ecart',
+    statut: (ecarts === 0 && enAttente === 0 && fichiersEnSouffrance === 0) ? 'ajour' : 'ecart',
     ecarts, aTirer, aPousser, divergents, enAttente, exemples,
+    blobs, fichiersEnSouffrance,
     local, cloud,
     // identiques quand tout est aligné : c'est CE couple qu'on compare entre appareils
     hash: cloud.hash, hashLocal: local.hash, n: cloud.n,

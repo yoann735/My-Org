@@ -104,16 +104,19 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // condition (rattrape toute écriture jamais poussée, pas seulement les nouvelles)
   // → repousse immédiatement. Un seul point d'entrée, réutilisé par le bouton
   // "Forcer la synchro" (forceSync ci-dessous) : mêmes garanties partout.
-  const forceSync = useCallback(async () => {
+  // `opts.complet` (boutons « Forcer la synchro ») : audit des fichiers imposé + retente
+  // des fichiers bloqués (voir storage.js#syncBlobs). Les déclencheurs automatiques
+  // (boot, reconnexion, retour sur l'onglet) passent sans options.
+  const forceSync = useCallback(async (opts) => {
     setSyncState((s) => ({ ...s, status: 'syncing' }));
-    const r = await syncNow();
+    const r = await syncNow(opts);
     // trace locale (localStorage) de la derniere synchro REUSSIE, pour que
     // l'indicateur puisse l'afficher meme apres un rechargement de page.
     if (r.status === 'ok') { marquerSyncReussie(); await reload(); }
     // `degraded` : la RPC conditionnelle `medrevise_push` est absente de Supabase
     // (script SQL pas encore exécuté) et l'envoi est retombé sur l'ancien upsert
     // non protégé — remonté tel quel à l'UI, voir ui.jsx#syncStatusLabel.
-    setSyncState({ status: r.status, at: new Date().toISOString(), degraded: !!r.degraded });
+    setSyncState({ status: r.status, at: new Date().toISOString(), degraded: !!r.degraded, blobs: r.blobs || null });
     return r;
   }, [reload]);
 

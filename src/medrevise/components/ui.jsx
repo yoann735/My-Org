@@ -125,6 +125,19 @@ export function matiereMeta(m) {
   return { label: m.nom, tint: m.couleur || defaultTintFor(m), icon: m.icon || 'book' };
 }
 
+/* ---- fichiers (PDF, HTML de cours, images) : ce qui n'est pas encore au cloud.
+   Jamais de « tout va bien » tant qu'un fichier manque — c'est précisément ce qui
+   ferait un « PDF introuvable » sur l'autre appareil. ---- */
+const pluriel = (n, mot) => `${n} ${mot}${n > 1 ? 's' : ''}`;
+function blobsLabel(b) {
+  if (!b) return '';
+  const parts = [];
+  if (b.enAttente) parts.push(`${pluriel(b.enAttente, 'fichier')} en cours d'envoi (réessai automatique)`);
+  if (b.bloques) parts.push(`${pluriel(b.bloques, 'fichier')} refusé${b.bloques > 1 ? 's' : ''} par le cloud (trop volumineux)`);
+  if (b.introuvables) parts.push(`${pluriel(b.introuvables, 'fichier')} ni sur cet appareil ni au cloud — ouvre MedRevise sur l'appareil qui l'a importé pour qu'il le renvoie`);
+  return parts.length ? ' Fichiers : ' + parts.join(' · ') + '.' : '';
+}
+
 /* ---- statut de syncNow() (lib/storage.js), partagé Réglages (desktop) et
    MobileHome (bouton "Forcer la synchro" de l'accueil mobile) ---- */
 export function syncStatusLabel(syncState) {
@@ -145,7 +158,7 @@ export function syncStatusLabel(syncState) {
         + "les écritures périmées ne sont donc pas refusées. Exécute le script SQL de MEDREVISE_SUPABASE_SYNC.md, "
         + 'puis reclique « Forcer la synchro ».';
     }
-    return 'Synchronisé' + quand + '.';
+    return 'Synchronisé' + quand + '.' + blobsLabel(syncState.blobs);
   }
   return 'Pas encore synchronisé cette session.';
 }
@@ -180,7 +193,8 @@ export function SyncIndicator({ compact = false, refreshKey = 0 }) {
     if (etat.statut === 'offline') return { txt: '⚠️ Cloud injoignable — état non vérifiable', couleur: 'var(--warn, #d08a2a)' };
     if (etat.statut === 'erreur') return { txt: '⚠️ Vérification impossible : ' + etat.message, couleur: 'var(--crit)' };
     if (etat.statut === 'ajour') return { txt: '✅ À jour avec le cloud', couleur: 'var(--ok, #3fae7a)' };
-    return { txt: `⚠️ Pas à jour — ${etat.ecarts + etat.enAttente} élément${(etat.ecarts + etat.enAttente) > 1 ? 's' : ''} à synchroniser`, couleur: 'var(--warn, #d08a2a)' };
+    const n = etat.ecarts + etat.enAttente + (etat.fichiersEnSouffrance || 0);
+    return { txt: `⚠️ Pas à jour — ${n} élément${n > 1 ? 's' : ''} à synchroniser`, couleur: 'var(--warn, #d08a2a)' };
   };
   const b = bandeau();
   const utile = etat && (etat.statut === 'ajour' || etat.statut === 'ecart');
@@ -222,6 +236,18 @@ export function SyncIndicator({ compact = false, refreshKey = 0 }) {
             En attente d'envoi : <strong>{etat.enAttente}</strong>
             {quand ? ` · dernière synchro réussie : ${quand}` : ' · aucune synchro réussie enregistrée'}
           </div>
+          {etat.blobs && (
+            <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 3 }}>
+              Fichiers (PDF, cours, images) au cloud : <strong>{etat.blobs.auCloud} / {etat.blobs.references}</strong>
+              {etat.fichiersEnSouffrance > 0 && (
+                <span style={{ color: 'var(--warn, #d08a2a)' }}>{blobsLabel({
+                  enAttente: etat.blobs.enAttente + etat.blobs.aEnvoyer.length,
+                  bloques: etat.blobs.bloques.length,
+                  introuvables: etat.blobs.introuvables.length,
+                })}</span>
+              )}
+            </div>
+          )}
 
           {!compact && etat.statut === 'ecart' && etat.exemples.length > 0 && (
             <>

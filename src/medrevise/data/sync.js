@@ -23,7 +23,7 @@
    ne peut pas le redécouvrir tout seul et réimporterait la version encore
    vivante côté cloud sans ce rejeu préalable).
    ============================================================ */
-import { set, keys, entries, delMany, createStore } from 'idb-keyval';
+import { get, set, del, keys, entries, delMany, createStore } from 'idb-keyval';
 import { supabase, SYNC_ENABLED, RECORDS_TABLE, BLOBS_BUCKET } from './supabaseClient.js';
 
 const outboxStore = createStore('medrevise-outbox', 'v1');
@@ -98,20 +98,38 @@ export function queuePush(store, id, data, updatedAt, deleted = false) {
   if (!SYNC_ENABLED) return;
   const key = store + ':' + id;
   set(key, { store, record_id: id, data, updated_at: updatedAt, deleted }, outboxStore)
+    .then(() => { outboxOuvert = true; })
     .catch(() => { /* écriture outbox best-effort ; en pire cas, pas pire qu'avant l'outbox */ });
   clearTimeout(pushTimer);
   pushTimer = setTimeout(flushPending, PUSH_DEBOUNCE_MS);
 }
 
+/* ============================================================
+   JAMAIS D'OUVERTURE DE BASE PENDANT LA FERMETURE DE LA PAGE.
+   Constaté (étape 5, reproduit aussi sur le code d'avant) : sur un appareil qui
+   n'a encore jamais synchronisé, recharger ou quitter la page juste après l'avoir
+   ouverte faisait CRÉER la base `medrevise-outbox` depuis le gestionnaire
+   `pagehide`/`visibilitychange` — en pleine destruction de la page. Chrome
+   laisse alors cette création suspendue, et TOUTE ouverture ultérieure de la base
+   attend indéfiniment : l'app reste bloquée sur « Chargement de MedRevise ».
+   Règle : un vidage déclenché par la fermeture n'ouvre une outbox que si la page
+   l'a DÉJÀ ouverte normalement. On ne perd rien : s'il n'a jamais été ouvert dans
+   cette session, rien n'y a été ajouté depuis le dernier démarrage, et ce qui y
+   dort sera rejoué au prochain boot.
+   ============================================================ */
+let outboxOuvert = false;
+
 /** Vide l'outbox vers Supabase : ne retire QUE les entrées confirmées par l'upsert —
  *  un échec (hors-ligne, etc.) laisse tout en place pour le prochain déclencheur
  *  (debounce, pagehide/visibilitychange, reconnexion réseau, ou prochain boot). */
-async function flushPending() {
+async function flushPending({ depuisFermeture = false } = {}) {
   if (!SYNC_ENABLED) return;
+  if (depuisFermeture && !outboxOuvert) return; // voir « JAMAIS D'OUVERTURE… » ci-dessus
   if (flushing) return flushing; // un flush déjà en vol suffit — l'outbox reste la source de vérité
   flushing = (async () => {
     try {
       const snapshot = await entries(outboxStore); // [[clé, valeur], ...] — pris AVANT l'appel réseau
+      outboxOuvert = true;
       if (!snapshot.length) return;
       const batch = snapshot.map(([, v]) => v);
       // pushRecords (ci-dessus) passe par la RPC conditionnelle et vérifie `error`
@@ -157,10 +175,14 @@ export function flushOutbox() {
 // rejeu au boot. Fire-and-forget : ne bloque jamais la fermeture, l'outbox persistée
 // garantit le rattrapage plus tard si l'appel n'aboutit pas à temps.
 if (typeof window !== 'undefined') {
-  window.addEventListener('pagehide', () => { flushPending(); });
+  window.addEventListener('pagehide', () => { flushPending({ depuisFermeture: true }); });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') flushPending();
+    const cache = document.visibilityState === 'hidden';
+    if (cache) flushPending({ depuisFermeture: true });
+    // blobs : on retente dans les deux sens (retour sur l'onglet = souvent retour du réseau)
+    flushBlobOutbox({ depuisFermeture: cache }); // eslint-disable-line no-use-before-define
   });
+  window.addEventListener('online', () => { flushBlobOutbox(); }); // eslint-disable-line no-use-before-define
 }
 
 /* Taille de page. PostgREST plafonne TOUTE réponse à 1000 lignes par défaut
@@ -246,10 +268,154 @@ export async function pushTombstonesNow(records) {
   }
 }
 
-export async function pushBlob(id, blob) {
-  if (!SYNC_ENABLED || !blob) return;
-  try { await supabase.storage.from(BLOBS_BUCKET).upload(id, blob, { upsert: true, contentType: blob.type || undefined }); }
-  catch (e) { /* best-effort : l'image reste dispo localement, resynchro pas automatique si échec */ }
+/* ============================================================
+   OUTBOX DES BLOBS (PDF, HTML de cours, images) — étape 5.
+
+   LE DÉFAUT CORRIGÉ. L'ancien pushBlob tentait l'envoi UNE fois, sans lire le
+   résultat : supabase-js ne rejette pas sur un échec (réseau, 413, 5xx), il
+   résout avec `{ error }`. Un PDF importé hors ligne ou sur un réseau qui coupe
+   n'arrivait donc JAMAIS au cloud, sans que rien ne le signale — et l'autre
+   appareil affichait « PDF introuvable » pour toujours.
+
+   MÊME MODÈLE QUE L'OUTBOX DES ENREGISTREMENTS (plus haut) :
+   - l'entrée est écrite dans un store IndexedDB dédié AVANT tout envoi, et
+     ne disparaît qu'une fois l'upload CONFIRMÉ (pas d'`error`) ;
+   - elle survit à un onglet fermé, à un crash, à un redémarrage ;
+   - rejouée au boot, à la reconnexion, au retour sur l'onglet, et par un
+     minuteur à délai croissant tant qu'il reste quelque chose à envoyer.
+   Différence voulue : l'entrée ne contient PAS le fichier (déjà dans le store
+   `medrevise-blobs`, relu au moment de l'envoi) — pas de doublon de 50 Mo.
+
+   RÉÉCRITURE D'UN MÊME ID (auto-save du HTML de cours, storage.js#putBlobAt) :
+   chaque écriture repose `queuedAt`. Un envoi ne retire l'entrée que si
+   `queuedAt` n'a pas bougé entre-temps — sinon la version plus récente,
+   écrite pendant l'upload, repart au tour suivant au lieu d'être oubliée.
+
+   ÉCHEC DÉFINITIF (fichier refusé pour sa taille, 413) : réessayer toutes les
+   5 minutes renverrait des dizaines de Mo pour rien. L'entrée est marquée
+   `bloque`, sortie des essais automatiques, affichée dans l'indicateur de
+   synchro, et retentée seulement par « Forcer la synchro ».
+   ============================================================ */
+const blobOutboxStore = createStore('medrevise-blob-outbox', 'v1');
+// MÊME base/store que S.blobs de lib/storage.js (relu ici sans importer storage.js,
+// voir le commentaire d'en-tête sur le cycle d'import).
+const localBlobsStore = createStore('medrevise-blobs', 'v1');
+
+const BLOB_RETRY_MS = [15e3, 30e3, 60e3, 120e3, 300e3];
+let blobRetryTimer = null;
+let blobRetryStep = 0;
+let blobFlushing = null;
+let blobSoonTimer = null;
+
+const estTropGros = (error) => {
+  const status = Number(error && (error.status || error.statusCode));
+  return status === 413 || /too large|exceeded the maximum|payload/i.test(String((error && error.message) || ''));
+};
+
+/** Met un blob en file d'envoi (persisté AVANT de rendre la main) puis programme un
+ *  envoi rapide. À appeler après chaque écriture locale d'un blob. */
+let blobOutboxOuvert = false; // même règle que outboxOuvert (« JAMAIS D'OUVERTURE… »)
+
+export async function queueBlobPush(id) {
+  if (!SYNC_ENABLED || !id) return;
+  await set(id, { id, queuedAt: new Date().toISOString(), attempts: 0 }, blobOutboxStore)
+    .then(() => { blobOutboxOuvert = true; })
+    .catch(() => { /* pire cas : rattrapé par l'audit (auditBlobs) */ });
+  clearTimeout(blobSoonTimer);
+  blobSoonTimer = setTimeout(() => { flushBlobOutbox(); }, 500);
+}
+
+function scheduleBlobRetry(apresEchec) {
+  clearTimeout(blobRetryTimer);
+  const delai = apresEchec ? BLOB_RETRY_MS[Math.min(blobRetryStep++, BLOB_RETRY_MS.length - 1)] : 0;
+  if (!apresEchec) blobRetryStep = 0;
+  blobRetryTimer = setTimeout(() => { flushBlobOutbox(); }, delai);
+}
+
+/** Envoie un blob. { ok } ou { ok: false, bloque, reseau, message }. */
+async function uploadBlob(id, blob) {
+  try {
+    const { error } = await supabase.storage.from(BLOBS_BUCKET).upload(id, blob, { upsert: true, contentType: blob.type || undefined });
+    if (!error) return { ok: true };
+    const status = Number(error.status || error.statusCode) || 0;
+    return { ok: false, bloque: estTropGros(error), reseau: !status, message: String(error.message || error) };
+  } catch (e) {
+    return { ok: false, bloque: false, reseau: true, message: String((e && e.message) || e) };
+  }
+}
+
+/**
+ * Vide l'outbox des blobs, un fichier à la fois (des PDF de plusieurs Mo en
+ * parallèle satureraient une connexion mobile). Un seul vidage à la fois.
+ * @param {{ inclureBloques?: boolean, depuisFermeture?: boolean }} opts —
+ *   `inclureBloques` : « Forcer la synchro » retente aussi les fichiers bloqués ;
+ *   `depuisFermeture` : appel depuis la fermeture/mise en arrière-plan de la page.
+ * @returns {Promise<{ envoyes: number, echecs: number, restants: number }>}
+ */
+export function flushBlobOutbox({ inclureBloques = false, depuisFermeture = false } = {}) {
+  if (!SYNC_ENABLED || (depuisFermeture && !blobOutboxOuvert)) return Promise.resolve({ envoyes: 0, echecs: 0, restants: 0 });
+  if (blobFlushing) return blobFlushing;
+  blobFlushing = (async () => {
+    let envoyes = 0, echecs = 0;
+    try {
+      const snapshot = await entries(blobOutboxStore);
+      blobOutboxOuvert = true;
+      for (const [id, entry] of snapshot) {
+        if (entry.bloque && !inclureBloques) continue;
+        const blob = await get(id, localBlobsStore);
+        if (!blob) { await del(id, blobOutboxStore); continue; } // plus rien à envoyer d'ici
+        const r = await uploadBlob(id, blob);
+        const cur = await get(id, blobOutboxStore);
+        const inchange = cur && cur.queuedAt === entry.queuedAt;
+        if (r.ok) {
+          envoyes++;
+          if (inchange) await del(id, blobOutboxStore); // réécrit pendant l'envoi → repart au tour suivant
+        } else {
+          echecs++;
+          if (cur) {
+            await set(id, {
+              ...cur, attempts: (cur.attempts || 0) + 1, lastError: r.message, lastTryAt: new Date().toISOString(),
+              bloque: r.bloque || undefined, taille: blob.size,
+            }, blobOutboxStore);
+          }
+          if (r.reseau) break; // hors ligne : inutile d'enchaîner les autres fichiers
+        }
+      }
+    } catch (e) { echecs++; /* IndexedDB indisponible : réessayé plus tard */ }
+    const reste = ((await entries(blobOutboxStore).catch(() => [])) || []).filter(([, v]) => !v.bloque);
+    if (reste.length) scheduleBlobRetry(echecs > 0);
+    else { clearTimeout(blobRetryTimer); blobRetryStep = 0; }
+    return { envoyes, echecs, restants: reste.length };
+  })().finally(() => { blobFlushing = null; });
+  return blobFlushing;
+}
+
+/** Contenu de l'outbox des blobs (lecture seule, pour l'indicateur de synchro). */
+export async function blobOutboxEntries() {
+  if (!SYNC_ENABLED) return [];
+  try { return ((await entries(blobOutboxStore)) || []).map(([, v]) => v); } catch (e) { return []; }
+}
+
+/**
+ * Noms de TOUS les blobs présents au cloud, en paginant. Même règle que
+ * pullAllRecords : tout ou rien — `null` si une seule page échoue, jamais une
+ * liste partielle (qui ferait croire à des absences et renverrait des Mo pour rien).
+ * @returns {Promise<Set<string>|null>}
+ */
+export async function listCloudBlobs() {
+  if (!SYNC_ENABLED) return null;
+  const LIMIT = 1000;
+  const noms = new Set();
+  try {
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const { data, error } = await supabase.storage.from(BLOBS_BUCKET)
+        .list('', { limit: LIMIT, offset: page * LIMIT, sortBy: { column: 'name', order: 'asc' } });
+      if (error || !Array.isArray(data)) return null;
+      data.forEach((o) => { if (o && o.name) noms.add(o.name); });
+      if (data.length < LIMIT) return noms;
+    }
+    return null;
+  } catch (e) { return null; }
 }
 
 export async function pullBlob(id) {

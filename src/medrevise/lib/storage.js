@@ -4,9 +4,9 @@
    pour localStorage. Chaque "table" = un petit store clé→enregistrement.
    Hiérarchie : SOURCE(cours) → MATIÈRE → FICHE → QUESTIONS / STRUCTURES.
    ============================================================ */
-import { get, set, del, clear, values, entries, setMany, createStore } from 'idb-keyval';
+import { get, set, del, clear, keys, values, entries, setMany, createStore } from 'idb-keyval';
 import { isoDate, startAdaptive } from './sm2.js';
-import { queuePush, pullAllRecords, pushBlob, pullBlob, flushOutbox, isPushDegraded } from '../data/sync.js';
+import { queuePush, pullAllRecords, queueBlobPush, flushBlobOutbox, blobOutboxEntries, listCloudBlobs, pullBlob, flushOutbox, isPushDegraded } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
 const store = (name) => createStore('medrevise-' + name, 'v1');
@@ -99,7 +99,9 @@ export async function replaceStore(name, recs, stamp) {
  *  qu'un blob supprimé est irrécupérable, et trop volumineux pour tenir dans un
  *  putBackup. C'est le seul store dont l'état final n'est pas rigoureusement
  *  celui du fichier, et c'est voulu. Aucun push cloud ici : les blobs ont leur
- *  propre canal (Storage), et ils y sont déjà. */
+ *  propre canal (Storage), et ils y sont normalement déjà — s'il en manque un au
+ *  cloud, l'audit des blobs (auditBlobs, plus bas) le remet en file au prochain
+ *  « Forcer la synchro ». */
 export async function mergeBlobs(pairs) {
   if (!pairs || !pairs.length) return 0;
   await setMany(pairs, S.blobs);
@@ -124,13 +126,15 @@ export async function remove(name, id) {
 }
 
 /* ---- blobs (images recadrées, PDF) — Storage cloud (pas la table de records :
-   trop gros pour du JSONB). Upload best-effort en tâche de fond (n'attend pas le
-   réseau) ; téléchargement paresseux à la première lecture manquante localement
-   (évite de re-télécharger toutes les images à chaque réconciliation). ---- */
+   trop gros pour du JSONB). Envoi par OUTBOX persistée (data/sync.js, « OUTBOX DES
+   BLOBS ») : l'entrée est écrite avant de rendre la main, l'envoi part en tâche de
+   fond et est retenté jusqu'à confirmation — jamais d'attente réseau ici.
+   Téléchargement paresseux à la première lecture manquante localement (évite de
+   re-télécharger toutes les images à chaque réconciliation). ---- */
 export async function putBlob(blob) {
   const id = genId('b');
   await set(id, blob, S.blobs);
-  pushBlob(id, blob); // fire-and-forget
+  await queueBlobPush(id);
   return id;
 }
 // écrase le contenu d'un blob EXISTANT, MÊME id (contrairement à putBlob) — sert
@@ -141,8 +145,77 @@ export async function putBlob(blob) {
 // suivants de cette même session passent par putBlobAt sur ce même id.
 export async function putBlobAt(id, blob) {
   await set(id, blob, S.blobs);
-  pushBlob(id, blob); // fire-and-forget
+  await queueBlobPush(id); // même id : repose queuedAt, la dernière version repartira
   return id;
+}
+
+/* ============================================================
+   AUDIT DES BLOBS — filet de sécurité, l'équivalent de queueAllLocalForPush pour
+   les fichiers. L'outbox ne couvre que les écritures faites DEPUIS l'étape 5 : un
+   PDF dont l'envoi a échoué avant (ancien pushBlob « une seule tentative ») n'y est
+   pas. L'audit compare ce que les enregistrements RÉFÉRENCENT à ce que le cloud
+   contient réellement, et remet en file tout fichier présent ici mais absent là-bas.
+
+   « Référencé » = à n'importe quelle profondeur d'un enregistrement syncable, soit
+   une valeur égale à l'id d'un blob présent ici, soit un champ `…Id` (pdfId, htmlId,
+   imageId, blobId d'une image de transcript…) dont la valeur a la forme d'un id de
+   blob (genId('b')). Sans liste de champs recopiée à la main : un futur champ qui
+   porte un blob est couvert d'office. La condition « champ …Id » évite de prendre un
+   mot quelconque (« biologie ») pour un fichier manquant. Les blobs NON référencés
+   (anciennes versions d'un HTML auto-sauvegardé) ne sont pas envoyés : inutile de
+   remplir le bucket de fichiers que plus rien n'affiche.
+   ============================================================ */
+async function referencedBlobIds() {
+  const locaux = new Set((await keys(S.blobs)) || []);
+  const refs = new Set();
+  const walk = (v, key) => {
+    if (typeof v === 'string') {
+      if (locaux.has(v) || (/Id$/.test(key || '') && /^b[0-9a-z]{6,}$/.test(v))) refs.add(v);
+      return;
+    }
+    if (Array.isArray(v)) { v.forEach((x) => walk(x, key)); return; }
+    if (v && typeof v === 'object' && !(v instanceof Blob)) Object.entries(v).forEach(([k, x]) => walk(x, k));
+  };
+  for (const name of SYNCABLE) ((await values(S[name])) || []).forEach(walk);
+  return { refs, locaux };
+}
+
+/**
+ * État des fichiers pour CET appareil. Lecture seule (aucun envoi).
+ * @returns {Promise<object|null>} null si le cloud n'a pas pu être listé en entier.
+ *   aEnvoyer    — référencés, présents ici, absents du cloud, pas encore en file
+ *   enAttente   — en file d'envoi (retentés automatiquement)
+ *   bloques     — refusés par le cloud (taille), retentés seulement à la demande
+ *   introuvables— référencés mais NI ici NI au cloud : seul l'appareil qui les a
+ *                 importés peut les renvoyer (il le fera à son prochain audit)
+ */
+export async function etatBlobs() {
+  if (!SYNC_ENABLED) return null;
+  const cloud = await listCloudBlobs();
+  if (!cloud) return null;
+  const { refs, locaux } = await referencedBlobIds();
+  const file = await blobOutboxEntries();
+  const enFile = new Set(file.map((e) => e.id));
+  const aEnvoyer = [], introuvables = [];
+  refs.forEach((id) => {
+    if (cloud.has(id)) return;
+    if (locaux.has(id)) { if (!enFile.has(id)) aEnvoyer.push(id); } else introuvables.push(id);
+  });
+  return {
+    references: refs.size, auCloud: [...refs].filter((id) => cloud.has(id)).length,
+    aEnvoyer, introuvables,
+    enAttente: file.filter((e) => !e.bloque).length,
+    bloques: file.filter((e) => e.bloque),
+  };
+}
+
+/** Remet en file les fichiers référencés présents ici mais absents du cloud.
+ *  @returns {Promise<object|null>} l'état constaté (voir etatBlobs), null si cloud illisible. */
+export async function auditBlobs() {
+  const etat = await etatBlobs();
+  if (!etat) return null;
+  for (const id of etat.aEnvoyer) await queueBlobPush(id);
+  return etat;
 }
 export async function getBlob(id) {
   const local = await get(id, S.blobs);
@@ -515,7 +588,7 @@ export async function queueAllLocalForPush() {
    'offline' (pull cloud impossible cette fois — état local intact, retry
    au prochain déclencheur), 'ok' (pull + merge réussis).
    ============================================================ */
-export async function syncNow() {
+export async function syncNow(opts = {}) {
   if (!SYNC_ENABLED) return { status: 'disabled' };
   if (syncPaused) return { status: 'paused' }; // restauration en cours, voir setSyncPaused
   await flushOutbox();
@@ -525,8 +598,36 @@ export async function syncNow() {
   // sur queueAllLocalForPush revenait à republier tout l'état local par-dessus un
   // cloud qu'on n'a même pas lu — le scénario « pull KO / push OK » d'un réseau
   // mobile. L'état local reste intact, on retentera au prochain déclencheur.
-  if (!rec.ok) return { status: 'offline', cloudEmpty: false, degraded: isPushDegraded() };
+  // Les BLOBS, eux, peuvent partir quand même : un fichier n'est jamais « plus
+  // ancien » que le cloud (même id = même fichier, ou la dernière auto-sauvegarde).
+  if (!rec.ok) { flushBlobOutbox(); return { status: 'offline', cloudEmpty: false, degraded: isPushDegraded() }; }
   await queueAllLocalForPush();
   await flushOutbox();
-  return { status: 'ok', cloudEmpty: rec.cloudEmpty, degraded: isPushDegraded() };
+  const blobs = await syncBlobs(opts);
+  return { status: 'ok', cloudEmpty: rec.cloudEmpty, degraded: isPushDegraded(), blobs };
+}
+
+/* Blobs dans syncNow : audit (liste du bucket) au premier passage de la session puis
+   au plus toutes les 10 min — « Forcer la synchro » (opts.complet) l'impose et retente
+   aussi les fichiers bloqués. L'envoi lui-même n'est JAMAIS attendu ici : des dizaines
+   de Mo de PDF ne doivent pas retenir le démarrage de l'app ni le bouton ; l'outbox
+   travaille en tâche de fond et l'indicateur montre ce qui reste. */
+const AUDIT_BLOBS_MS = 10 * 60 * 1000;
+let dernierAuditBlobs = 0;
+async function syncBlobs(opts = {}) {
+  let etat = null;
+  if (opts.complet || Date.now() - dernierAuditBlobs > AUDIT_BLOBS_MS) {
+    etat = await auditBlobs();
+    if (etat) dernierAuditBlobs = Date.now();
+  }
+  flushBlobOutbox({ inclureBloques: !!opts.complet });
+  if (!etat) return null;
+  // synchro forcée : les fichiers bloqués viennent d'être relancés ci-dessus — les
+  // annoncer « refusés » serait faux tant que ce nouvel essai n'a pas répondu.
+  const relances = opts.complet ? etat.bloques.length : 0;
+  return {
+    enAttente: etat.enAttente + etat.aEnvoyer.length + relances,
+    bloques: etat.bloques.length - relances,
+    introuvables: etat.introuvables.length,
+  };
 }
