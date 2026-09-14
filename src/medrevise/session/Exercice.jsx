@@ -229,7 +229,8 @@ function Workstation({ item, fiche, meta, ctx, mode, isFirst, isLast, onNext, on
 }
 
 /* ---------------- Données ---------------- */
-function DonneesTable({ donnees }) {
+// exporté : réutilisé tel quel par le mode Apprentissage (apprentissage/UniteSplit.jsx)
+export function DonneesTable({ donnees }) {
   return (
     <div style={{ marginTop: 6 }}>
       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="list" size={14} /> Données</div>
@@ -253,7 +254,7 @@ function DonneesTable({ donnees }) {
 }
 
 /* ---------------- Formules (repliable) ---------------- */
-function FormulesBlock({ formules }) {
+export function FormulesBlock({ formules }) {
   return (
     <details style={{ marginTop: 12, background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px' }} open>
       <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>

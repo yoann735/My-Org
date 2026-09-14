@@ -312,7 +312,11 @@ function computeMatchRectsFromDom(container, matches) {
 // sur un enregistrement qui n'est PAS une fiche `db.fiches` (ex : une structure
 // anatomique de l'écran Anatomie Théorie). Sans ces props, comportement inchangé
 // (fiche résolue via ficheId + ctx.db.fiches, mutée via ctx.setFichePdf/setFicheHtml).
-export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSrcTab: srcTabProp, doc: docProp, onSetPdf, onSetHtml, embedded, onClose }) {
+// `ajusterLargeur` / `panneauNotionsOuvert` (mode Apprentissage, écran splitté) : options
+// FACULTATIVES — absentes, le lecteur se comporte exactement comme avant (160 %, panneau
+// ouvert). `ajusterLargeur` cale le zoom sur la largeur du panneau, et le recale quand
+// ce panneau change de largeur (poignée) tant que l'utilisateur n'a pas zoomé lui-même.
+export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSrcTab: srcTabProp, doc: docProp, onSetPdf, onSetHtml, embedded, onClose, ajusterLargeur = false, panneauNotionsOuvert = true }) {
   const { pdfView, db } = ctx;
   const ficheId = ficheIdProp ?? (pdfView && pdfView.ficheId);
   const initialSrcTab = srcTabProp ?? (pdfView && pdfView.srcTab);
@@ -462,7 +466,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   const [activeMatch, setActiveMatch] = useState(0);
   const [searching, setSearching] = useState(false);
 
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(panneauNotionsOuvert);
   const [copiedCount, setCopiedCount] = useState(0); // >0 → confirmation « N notions copiées »
   const [exporting, setExporting] = useState(false);
 
@@ -577,7 +581,34 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   };
 
   // B3 : zoom centré sur un point écran donné (curseur, ou centre du viewport pour les boutons)
+  // zoom « ajusté à la largeur » (voir la prop ajusterLargeur) : observé en continu, pour
+  // suivre la poignée de l'écran splitté ; abandonné dès le premier zoom manuel.
+  const zoomManuel = useRef(false);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!ajusterLargeur || !el || !pageSizes.length || typeof ResizeObserver === 'undefined') return undefined;
+    const largeurPage = pageSizes.reduce((m, sz) => Math.max(m, sz.width), 0);
+    let raf = null;
+    const ajuster = () => {
+      raf = null;
+      if (zoomManuel.current) return;
+      const dispo = el.clientWidth - 28; // marge pour l'ombre de page et la barre de défilement
+      if (dispo < 120 || !largeurPage) return; // panneau masqué/replié : on garde le zoom actuel
+      const cible = Math.max(0.4, Math.min(4, +(dispo / largeurPage).toFixed(3)));
+      setScale((sc) => {
+        if (Math.abs(sc - cible) <= 0.01) return sc;
+        pendingScroll.current = el.scrollTop * (cible / sc); // garde le même endroit du cours à l'écran
+        return cible;
+      });
+    };
+    const ro = new ResizeObserver(() => { if (!raf) raf = requestAnimationFrame(ajuster); });
+    ro.observe(el);
+    ajuster();
+    return () => { ro.disconnect(); if (raf) cancelAnimationFrame(raf); };
+  }, [ajusterLargeur, pageSizes]);
+
   const zoomAt = (clientY, newScaleRaw) => {
+    zoomManuel.current = true;
     const el = scrollRef.current;
     const newScale = Math.max(0.4, Math.min(4, +newScaleRaw.toFixed(3)));
     if (!el) { setScale(newScale); return; }
