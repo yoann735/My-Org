@@ -125,8 +125,13 @@ export async function importBackup(data, { onProgress } = {}) {
     //    Si le navigateur meurt sur les blobs (étape 3), les données sont déjà là.
     const restaure = {};
     for (const nom of SYNCABLE_STORES) {
+      // store ABSENT du fichier (sauvegarde faite avant l'ajout de ce store, ex.
+      // `apprentissage`) : on n'y touche pas. Le vider rayerait des données que la
+      // sauvegarde ne pouvait pas contenir. Un store PRÉSENT, même vide, reste
+      // remplacé à l'identique, comme avant.
+      if (!Array.isArray(data.stores[nom])) { restaure[nom] = 0; continue; }
       step(`Restauration : ${nom}…`);
-      restaure[nom] = await replaceStore(nom, data.stores[nom] || [], stamp);
+      restaure[nom] = await replaceStore(nom, data.stores[nom], stamp);
     }
 
     // 3) blobs, par lots, en libérant chaque base64 au fur et à mesure : c'est
@@ -183,6 +188,7 @@ export async function computeCloudDiff(data) {
   for (const row of rows) {
     if (row.deleted) continue;                      // déjà un tombstone
     if (!SYNCABLE_STORES.includes(row.store)) continue;
+    if (!Array.isArray(data.stores[row.store])) continue; // store absent du fichier : jamais proposé à la suppression
     if (dansFichier[row.store].has(row.record_id)) continue;
     aSupprimer.push(row);
   }

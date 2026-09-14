@@ -11,6 +11,7 @@ import { Reviser } from './pages/Reviser.jsx';
 import { Bibliotheque } from './pages/Bibliotheque.jsx';
 import { Reglages } from './pages/Reglages.jsx';
 import { CarnetDashboard } from './pages/CarnetDashboard.jsx';
+import { Apprentissage } from './pages/Apprentissage.jsx';
 import { initSpotlight } from './lib/spotlight.js';
 import { isClassicUI } from '../shared/uiMode.js';
 import { Session } from './session/Session.jsx';
@@ -36,7 +37,7 @@ import { MobileApp } from './mobile/MobileApp.jsx';
 // de documents ET rend PdfReader/SchemaEditorScreen/TranscriptEditor EMBARQUÉS dans
 // son panneau de droite. 'pdf'/'schemaedit' restent des routes plein-écran, mais ne
 // sont plus atteignables QUE depuis Réviser (« Voir le cours » / « Éditer le schéma »).
-const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard };
+const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard, apprentissage: Apprentissage };
 
 function MedBottomNav({ current, onNav }) {
   const items = [
@@ -89,10 +90,12 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [syncState, setSyncState] = useState({ status: 'idle', at: null });
 
   const reload = useCallback(async () => {
-    const [sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, st, pr, epr, cepr] = await Promise.all([
-      getAll('sources'), getAll('matieres'), getAll('dossiers'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getStats(), getCoursePrompts(), getExoPrompts(), getChapExoPrompts(),
+    const [sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, apprentissage, st, pr, epr, cepr] = await Promise.all([
+      getAll('sources'), getAll('matieres'), getAll('dossiers'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getAll('apprentissage'), getStats(), getCoursePrompts(), getExoPrompts(), getChapExoPrompts(),
     ]);
-    setDb({ sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog });
+    // `apprentissage` : unités du mode Apprentissage (lib/apprentissage.js). Clé AJOUTÉE
+    // à db, lue par le seul écran Apprentissage — aucun calcul existant ne la parcourt.
+    setDb({ sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, apprentissage });
     setStats(st);
     setPromptOverrides(pr);
     setExoPromptOverrides(epr);

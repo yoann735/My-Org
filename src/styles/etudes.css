@@ -1223,3 +1223,10 @@
 .hl-legend i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
 .hl-entry-tag { margin-left: 6px; padding: 0 5px; border-radius: 4px; background: var(--bg-2); color: var(--text-2); font-size: 9.5px; letter-spacing: .04em; }
 .hl-entry-note { margin-top: 4px; font-size: 12px; font-style: italic; color: var(--text-2); display: flex; gap: 5px; align-items: baseline; }
+
+/* ---------- mode Apprentissage : liste des unités ---------- */
+.appr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.appr-card .card-body { display: flex; flex-direction: column; height: 100%; }
+.appr-titre { font-size: 18px; line-height: 1.3; }
+.appr-pdf { margin-top: 4px; display: flex; align-items: center; gap: 5px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.appr-card .row.spread { margin-top: auto !important; padding-top: 14px; }

@@ -213,13 +213,13 @@ function normDonnees(raw) {
 function normFormules(raw) {
   return asArray(raw).map((f) => ({ nom: str(f && f.nom), expression: str(f && f.expression), usage: str(f && f.usage) }));
 }
-function normIndices(raw) {
+export function normIndices(raw) {
   return asArray(raw)
     .map((ind, i) => ({ niveau: Number(ind && ind.niveau) || i + 1, texte: str(ind && ind.texte).trim() }))
     .filter((ind) => ind.texte)
     .sort((a, b) => a.niveau - b.niveau);
 }
-function normCorrection(raw) {
+export function normCorrection(raw) {
   const r = raw || {};
   return {
     etapes: asArray(r.etapes).map((e, i) => ({

@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
+import { ImportApprentissage } from '../components/ImportApprentissage.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, exosARevoirCetteSemaine, fmtDay, carnetV1Questions, carnetV2Questions, strugglingByFiche } from '../lib/planning.js';
 import { isoDate, isDueBecauseStruggled } from '../lib/sm2.js';
@@ -626,11 +627,29 @@ function DayPopup({ day, ctx, onClose }) {
   );
 }
 
+/* ---------- fin d'import Apprentissage : même badge que ImportDoneScreen, mais les
+   actions mènent à l'écran Apprentissage (pas à Réviser : ces exos n'y sont pas). ---------- */
+function ImportDoneScreenApprentissage({ unite, onReset, ctx }) {
+  const n = (unite.items || []).length;
+  return (
+    <div className="fadein" style={{ textAlign: 'center', padding: '6px 0' }}>
+      <div className="gd-badge" style={{ width: 60, height: 60, borderRadius: 18, margin: '0 auto 14px' }}><Icon name="check" size={30} stroke={3} /></div>
+      <div className="serif" style={{ fontSize: 21 }}>Unité prête !</div>
+      <div className="hint" style={{ marginTop: 8 }}>✓ « {unite.titre} » — {n} exo{n > 1 ? 's' : ''} liés au PDF du cours.</div>
+      <div className="row" style={{ gap: 10, justifyContent: 'center', marginTop: 18, flexWrap: 'wrap' }}>
+        <button className="btn" onClick={onReset}><Icon name="refresh" size={14} /> Autre unité</button>
+        <button className="btn primary" onClick={() => ctx.go('apprentissage')}><Icon name="brain" size={14} /> Apprentissage</button>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- import : destination → coller le JSON → aperçu → confirmer ----------
    Full JSON local (aucun appel réseau) : même flux que Rattrapage. */
 function ImportPanel({ ctx }) {
   const { db } = ctx;
-  const [mode, setMode] = useState('standard'); // standard | anat | rattrapage
+  const [mode, setMode] = useState('standard'); // standard | anat | rattrapage | apprentissage
+  const [apprDone, setApprDone] = useState(null); // unité créée par l'import Apprentissage
   const [anatSub, setAnatSub] = useState('theorie'); // theorie (existant, inchangé) | visuel (schéma annoté → anat_schema)
   const [state, setState] = useState('form'); // form | preview | done
   const sources = db.sources.filter((s) => !s.archive);
@@ -728,9 +747,17 @@ function ImportPanel({ ctx }) {
           <button type="button" className={'seg-btn' + (mode === 'standard' ? ' active' : '')} onClick={() => setMode('standard')}><Icon name="filePdf" size={13} /> Standard</button>
           <button type="button" className={'seg-btn' + (mode === 'anat' ? ' active' : '')} onClick={() => setMode('anat')}><Icon name="bone" size={13} /> Anatomie</button>
           <button type="button" className={'seg-btn' + (mode === 'rattrapage' ? ' active' : '')} onClick={() => setMode('rattrapage')}><Icon name="grad" size={13} /> Rattrapage</button>
+          <button type="button" className={'seg-btn' + (mode === 'apprentissage' ? ' active' : '')} onClick={() => setMode('apprentissage')}><Icon name="brain" size={13} /> Apprentissage</button>
         </div>
       )}>
       {mode === 'rattrapage' && <ImportRattrapage ctx={ctx} />}
+      {/* mode Apprentissage : composant séparé (exos + PDF → unité, sans planification),
+         les trois imports ci-dessus/ci-dessous n'en dépendent pas. */}
+      {mode === 'apprentissage' && (apprDone
+        ? (
+          <ImportDoneScreenApprentissage unite={apprDone} onReset={() => setApprDone(null)} ctx={ctx} />
+        )
+        : <ImportApprentissage ctx={ctx} onCancel={() => setMode('standard')} onDone={setApprDone} />)}
       {mode === 'anat' && (
         <div className="fadein">
           <div className="imp-field">

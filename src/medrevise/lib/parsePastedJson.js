@@ -94,10 +94,14 @@ const str = (v) => (v == null ? '' : String(v));
  * pour CHAQUE item rejeté, son rang (1-based), son type déclaré et la raison
  * précise (voir schema.js#normalizeV1Item) — affiché à l'utilisateur au lieu de
  * "X items ignorés" (voir ImportFlow.jsx#ImportPreviewCard / AddItemForm.jsx#PasteJsonForm).
+ * `opts.enrichItem(raw, item)` (facultatif) : appelé sur chaque item VALIDE avec l'item
+ * brut collé, renvoie l'item à garder. Seul usage : le mode Apprentissage
+ * (lib/apprentissage.js) y conserve indices + correction des QCM, que le schéma
+ * classique ne garde pas. Sans option, sortie strictement identique à avant.
  * @returns {{ok:false, error:string}
  *   | {ok:true, items:Array, meta:object, counts:{qcm,flashcard,feynman,exercice,ignored}, synthese:string, errors:Array<{index,type,reason}>}}
  */
-export function parsePastedJson(raw) {
+export function parsePastedJson(raw, opts = {}) {
   const parsed = parseLooseJson(raw);
   if (!parsed.ok) return { ok: false, error: parsed.error };
   const data = parsed.data;
@@ -143,7 +147,7 @@ export function parsePastedJson(raw) {
       return;
     }
     counts[res.item.type]++;
-    items.push(res.item);
+    items.push(opts.enrichItem && !legacy ? opts.enrichItem(it, res.item) : res.item);
   });
 
   return { ok: true, items, meta, counts, synthese: str(synthese), errors };

@@ -28,6 +28,11 @@ const S = {
   anatstruct: store('anatstruct'), // fiches de structure anatomique (théorie, champs typés)
   sessionsLog: store('sessionsLog'), // un point par série QCM/flashcard terminée (écran de fin, graphique d'évolution)
   prompts: store('prompts'), // surcharges des 4 prompts "Voir les prompts" (vue cours), voir lib/coursePrompts.js
+  // MODE APPRENTISSAGE : une « unité » = un lot d'exos (qcm/exercice v1.1) + le PDF du
+  // cours (voir lib/apprentissage.js). Store À PART, et non `questions` : planning,
+  // méthode des J, stats, carnet, recherche et exports ne lisent que `questions`/
+  // `fiches` — ces exos restent donc hors de tout suivi PAR CONSTRUCTION.
+  apprentissage: store('apprentissage'),
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
@@ -37,7 +42,7 @@ const S = {
 // `sessionsLog` est syncable pour la même raison que `questions`/`stats` : la
 // tendance affichée en fin de série doit refléter l'activité desktop ET mobile,
 // pas seulement cet appareil.
-const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts'];
+const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage'];
 
 export function genId(prefix = 'x') {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
