@@ -16,8 +16,10 @@ import {
 import { shuffle, todayISO } from '../lib/sm2.js';
 import { genTheoryItems, theoryCount } from '../lib/anatQuizGen.js';
 import { allCoches } from '../lib/anatSchema.js';
-import { putBlob, getBlob } from '../lib/storage.js';
-import { buildCourseExport, buildChapitreExport, docElFromHtml } from '../lib/courseExport.js';
+import { putBlob, getBlob, getAll } from '../lib/storage.js';
+import { buildCourseExport, buildCourseExportFromParts, buildChapitreExport, docElFromHtml } from '../lib/courseExport.js';
+import { pdfCourseParts } from '../lib/pdfCourseText.js';
+import { openPdf, pdfjsLib } from '../pdf/pdfjsSetup.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
 import { useTreeFileDrop, FileDropModal } from '../components/TreeFileDrop.jsx';
@@ -521,7 +523,10 @@ export function Reviser({ ctx }) {
   // d'une iframe : aucune fiche n'a besoin d'être ouverte. Lecture pure — rien n'est
   // écrit, ni en base ni dans les blobs. Les images restent des [IMAGE : légende]
   // (ficheToText), donc aucun base64 dans la sortie.
-  // Une fiche sans HTML (schéma d'anatomie, transcript, cours jamais rattaché) n'a
+  // Fiche PDF (pdfId sans htmlId) : même contrat, texte structuré + surlignages tirés
+  // du PDF et du store `highlights` (lib/pdfCourseText.js) — lue sans être affichée.
+  // Une fiche qui porte les deux garde le HTML, comme avant.
+  // Une fiche sans document (schéma d'anatomie, transcript, cours jamais rattaché) n'a
   // pas de contenu exportable : elle est SIGNALÉE, jamais silencieusement omise.
   const [chapExport, setChapExport] = useState(null); // { count, skipped: string[] }
   const [chapExportBusy, setChapExportBusy] = useState(false);
@@ -540,11 +545,28 @@ export function Reviser({ ctx }) {
         .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
       const entries = [];
       const skipped = [];
+      const allHighlights = fichesDuChap.some((f) => !f.htmlId && f.pdfId) ? await getAll('highlights') : [];
       for (const f of fichesDuChap) {
-        const docEl = f.htmlId ? docElFromHtml(await (await getBlob(f.htmlId))?.text()) : null;
-        if (!docEl) { skipped.push(f.titre); continue; }
         const cartes = db.questions.filter((q) => q.ficheId === f.id && (q.type === 'qcm' || q.type === 'flashcard'));
-        entries.push(buildCourseExport({ fiche: f, matiereNom, docEl, cartes }));
+        const docEl = f.htmlId ? docElFromHtml(await (await getBlob(f.htmlId))?.text()) : null;
+        if (docEl) { entries.push(buildCourseExport({ fiche: f, matiereNom, docEl, cartes })); continue; }
+        const pdfBlob = !f.htmlId && f.pdfId ? await getBlob(f.pdfId) : null;
+        if (!pdfBlob) { skipped.push(f.titre); continue; }
+        let pdfDoc = null;
+        try {
+          pdfDoc = await openPdf(await pdfBlob.arrayBuffer());
+          const { texteStructure, surlignages } = await pdfCourseParts(
+            pdfDoc, allHighlights.filter((h) => h.ficheId === f.id), { normalize: pdfjsLib.normalizeUnicode },
+          );
+          entries.push(buildCourseExportFromParts({ fiche: f, matiereNom, texteStructure, surlignages, cartes }));
+        } catch (e) {
+          skipped.push(f.titre); // PDF illisible : signalé comme les autres, l'export continue
+        } finally {
+          // pdf.js 6 : c'est la tâche de chargement qui se détruit (libère son worker),
+          // plus le document lui-même. Jamais bloquant : un échec ici ne doit pas faire
+          // échouer l'export.
+          if (pdfDoc && pdfDoc.loadingTask) pdfDoc.loadingTask.destroy().catch(() => {});
+        }
       }
       const payload = buildChapitreExport({
         chapitre: target, uniteNom: uniteDuChap ? uniteDuChap.nom : '', matiereNom, fiches: entries,
@@ -1201,7 +1223,7 @@ export function Reviser({ ctx }) {
                         <div className="em-title">{chapExport.count} fiche{chapExport.count > 1 ? 's' : ''} copiée{chapExport.count > 1 ? 's' : ''} dans le presse-papier ✓</div>
                         {chapExport.skipped.length > 0 && (
                           <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}>
-                            <Icon name="alert" size={12} /> Non exportée{chapExport.skipped.length > 1 ? 's' : ''} (aucun cours HTML rattaché) : {chapExport.skipped.join(', ')}.
+                            <Icon name="alert" size={12} /> Non exportée{chapExport.skipped.length > 1 ? 's' : ''} (aucun cours HTML ou PDF lisible rattaché) : {chapExport.skipped.join(', ')}.
                           </div>
                         )}
                       </>
@@ -1478,7 +1500,7 @@ export function Reviser({ ctx }) {
                   <div className="em-title">{chapExport.count} fiche{chapExport.count > 1 ? 's' : ''} copiée{chapExport.count > 1 ? 's' : ''} dans le presse-papier ✓</div>
                   {chapExport.skipped.length > 0 && (
                     <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}>
-                      <Icon name="alert" size={12} /> Non exportée{chapExport.skipped.length > 1 ? 's' : ''} (aucun cours HTML rattaché) : {chapExport.skipped.join(', ')}.
+                      <Icon name="alert" size={12} /> Non exportée{chapExport.skipped.length > 1 ? 's' : ''} (aucun cours HTML ou PDF lisible rattaché) : {chapExport.skipped.join(', ')}.
                     </div>
                   )}
                 </>

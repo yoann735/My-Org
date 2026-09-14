@@ -4,6 +4,10 @@
    paramétré sur un élément racine (#doc de la fiche) au lieu d'une closure sur
    `doc`. Ne pas faire diverger cette logique de l'original sans mettre à jour
    les deux (le gabarit reste un fichier HTML autonome, sans dépendance JS externe).
+
+   Les deux morceaux de FORME (légende d'en-tête, mise en tableau) sont exportés
+   pour que le texte structuré d'une fiche PDF (lib/pdfCourseText.js) sorte
+   exactement au même format, sans en recopier une seconde version à la main.
    ============================================================ */
 
 function inline(el) {
@@ -14,14 +18,31 @@ function inline(el) {
   return c.textContent.replace(/\s+/g, ' ').trim();
 }
 
-function tableToText(t) {
-  const rows = [...t.querySelectorAll('tr')].map((tr) =>
-    [...tr.children].map((c) => inline(c)).join(' | '));
-  const cap = t.querySelector('caption');
+/** lignes de cellules DÉJÀ mises en ligne (textes) → bloc [TABLEAU] du gabarit.
+    @param {string[][]} cells — une entrée par ligne, une chaîne par cellule
+    @param {string|null} caption — légende déjà mise en ligne, ou null */
+export function tableCellsToText(cells, caption) {
+  const rows = cells.map((row) => row.join(' | '));
   const head = rows.length ? ['| ' + rows[0] + ' |'] : [];
   if (rows.length) head.push('|' + rows[0].split('|').map(() => '---').join('|') + '|');
   const body = rows.slice(1).map((r) => '| ' + r + ' |');
-  return (cap ? '[TABLEAU] ' + inline(cap) + '\n' : '[TABLEAU]\n') + head.concat(body).join('\n');
+  return (caption ? '[TABLEAU] ' + caption + '\n' : '[TABLEAU]\n') + head.concat(body).join('\n');
+}
+
+function tableToText(t) {
+  const cells = [...t.querySelectorAll('tr')].map((tr) => [...tr.children].map((c) => inline(c)));
+  const cap = t.querySelector('caption');
+  return tableCellsToText(cells, cap ? inline(cap) : null);
+}
+
+/** en-tête de conventions du texte structuré ; `n` = nombre de surlignages. */
+export function legendeFiche(n) {
+  return 'FICHE DE RÉVISION — texte structuré\n' +
+    'Conventions : [PRIORITAIRE]…[/PRIORITAIRE] = passage surligné par l’étudiant ' +
+    '(notion jugée prioritaire' + (n ? '' : ' — aucun dans cette fiche') + '). ' +
+    '[NOTE PERSONNELLE] = remarque ou question de l’étudiant. ' +
+    '[À RETENIR] = points essentiels. [TABLEAU] = données structurées. ' +
+    '[IMAGE : …] = figure du cours et sa légende.\n' + '='.repeat(60) + '\n';
 }
 
 /** @param {HTMLElement} doc — l'élément #doc de la fiche (gabarit HTML) */
@@ -61,12 +82,5 @@ export function ficheToText(doc) {
     if (t) out.push(t);
   });
   const n = doc.querySelectorAll('mark.hl').length;
-  const legende =
-    'FICHE DE RÉVISION — texte structuré\n' +
-    'Conventions : [PRIORITAIRE]…[/PRIORITAIRE] = passage surligné par l’étudiant ' +
-    '(notion jugée prioritaire' + (n ? '' : ' — aucun dans cette fiche') + '). ' +
-    '[NOTE PERSONNELLE] = remarque ou question de l’étudiant. ' +
-    '[À RETENIR] = points essentiels. [TABLEAU] = données structurées. ' +
-    '[IMAGE : …] = figure du cours et sa légende.\n' + '='.repeat(60) + '\n';
-  return legende + out.join('\n\n');
+  return legendeFiche(n) + out.join('\n\n');
 }

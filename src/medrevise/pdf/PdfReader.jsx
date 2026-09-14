@@ -48,7 +48,8 @@ import { RICH_EXTENSIONS, richToHTML } from '../documents/lib/richtext.js';
 import { AddItemModal, PasteJsonForm } from '../components/AddItemForm.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
-import { buildCourseExport } from '../lib/courseExport.js';
+import { buildCourseExport, buildCourseExportFromParts } from '../lib/courseExport.js';
+import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import { serializeCourseHtml } from '../lib/courseHtmlSave.js';
 
 /** densité réelle de l'écran, suivie en direct : elle change quand la fenêtre passe
@@ -701,30 +702,37 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   const gotoPrevMatch = () => { if (matches.length) setActiveMatch((i) => (i - 1 + matches.length) % matches.length); };
   const closeSearch = () => { setSearch(''); setDebouncedSearch(''); setMatches([]); };
 
-  // livrable (chantier A) — bloc texte prêt à coller dans un chat, à partir du TEXTE EN
-  // CLAIR stocké de chaque surlignage (jamais une détection de couleur). Notions dans
-  // l'ordre des pages (highlights est déjà trié par page puis createdAt). La référence de
-  // page est omise quand la source n'a pas de pagination (page == null : futur transcript).
-  const buildPriorityText = () => {
-    const lines = highlights
-      .map((h, i) => `${i + 1}. "${h.texte}"${h.page != null ? ` (p.${h.page})` : ''}`)
-      .join('\n');
-    return `NOTIONS SOULIGNÉES / PRIORITAIRES :\n${lines}`;
-  };
+  // étape 4 — MÊME FORMAT QUE LES FICHES HTML (voir lib/pdfCourseText.js) :
+  // « Copier les notions » = le texte structuré de « Copier pour un prompt » du gabarit
+  // (cours entier, passages surlignés en [PRIORITAIRE], notes, tableaux) ;
+  // « Tout exporter » = le JSON medrevise_cours_export v1, construit par la même fonction
+  // que pour une fiche HTML (buildCourseExportFromParts).
+  const pdfParts = () => pdfCourseParts(pdfDoc, highlights, { normalize: pdfjsLib.normalizeUnicode });
   const copyPriority = async () => {
-    if (!highlights.length) return;
+    if (!pdfDoc) return;
     try {
-      await navigator.clipboard.writeText(buildPriorityText());
-      setCopiedCount(highlights.length);
+      const { texteStructure } = await pdfParts();
+      await navigator.clipboard.writeText(texteStructure);
+      setCopiedCount(highlights.length || -1);
       setTimeout(() => setCopiedCount(0), 2200);
     } catch (e) { /* ignore */ }
   };
-  const copyLabel = copiedCount
+  const exportAllPdfCourse = async () => {
+    if (!pdfDoc || !fiche) return;
+    try {
+      const { texteStructure, surlignages } = await pdfParts();
+      const matiereNom = (db.matieres.find((m) => m.id === fiche.matiereId) || {}).nom || '';
+      const cartes = db.questions.filter((q) => q.ficheId === ficheId && (q.type === 'qcm' || q.type === 'flashcard'));
+      const payload = buildCourseExportFromParts({ fiche, matiereNom, texteStructure, surlignages, cartes });
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      setCourseExportOk(true);
+      setTimeout(() => setCourseExportOk(false), 2200);
+    } catch (e) { /* ignore */ }
+  };
+  const copyLabel = copiedCount > 0
     ? `${copiedCount} notion${copiedCount > 1 ? 's' : ''} copiée${copiedCount > 1 ? 's' : ''}`
-    : 'Copier les notions prioritaires';
-  const copyTitle = highlights.length
-    ? 'Copie le texte des passages surlignés, prêt à coller dans un chat'
-    : 'Aucune notion surlignée — surligne du texte pour activer ce bouton';
+    : copiedCount < 0 ? 'Cours copié' : 'Copier les notions';
+  const copyTitle = 'Cours en texte structuré, passages surlignés en [PRIORITAIRE] et notes — même format que « Copier pour un prompt » du gabarit HTML';
 
   // export secondaire — PDF avec les surlignages incrustés (confort de lecture hors app ;
   // suppose des pages non pivotées — limite acceptée, cas rare pour un cours scanné/exporté normal)
@@ -1014,11 +1022,24 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
         {canAddItem && (
           <button className="btn sm" onClick={() => setShowAddItem(true)}><Icon name="plus" size={13} /> Ajouter un item</button>
         )}
+        {/* même chaîne que l'atelier « Voir le cours » d'une fiche HTML : export → prompts → import */}
+        {canAddItem && (
+          <button className="btn sm" onClick={exportAllPdfCourse} disabled={!pdfDoc} title="Cours + surlignages + cartes déjà créées, en un JSON prêt pour un prompt externe — même format qu'une fiche HTML">
+            <Icon name={courseExportOk ? 'check' : 'copy'} size={13} /> {courseExportOk ? 'Copié ✓' : 'Tout exporter'}
+          </button>
+        )}
+        {canAddItem && <CoursePromptsButton ctx={ctx} />}
+        {canAddItem && <CoursePromptsButton ctx={ctx} kind="pratique" />}
+        {canAddItem && (
+          <button className="btn ghost sm" onClick={() => { setImportedCount(0); setShowImportItems(true); }} title="Coller le JSON produit par un prompt de complétion — ajoute les nouvelles cartes à cette fiche">
+            <Icon name="upload" size={13} /> Importer des items
+          </button>
+        )}
         <button className="btn ghost sm" onClick={() => setPanelOpen((v) => !v)} title="Notions surlignées">
           <Icon name={panelOpen ? 'chevR' : 'chevL'} size={13} /> Notions ({highlights.length})
         </button>
         <span title={copyTitle} style={{ display: 'inline-flex' }}>
-          <button className="btn sm" onClick={copyPriority} disabled={!highlights.length}><Icon name={copiedCount ? 'check' : 'copy'} size={13} /> {copyLabel}</button>
+          <button className="btn sm" onClick={copyPriority} disabled={!pdfDoc}><Icon name={copiedCount ? 'check' : 'copy'} size={13} /> {copyLabel}</button>
         </span>
         <button className="btn ghost sm" onClick={exportAnnotated} disabled={!highlights.length || exporting}>{exporting && !isClassicUI() ? <LoaderL6 inline label="Export en cours" /> : <Icon name="filePdf" size={13} />} {exporting ? 'Export…' : 'Exporter PDF annoté'}</button>
       </div>
@@ -1066,7 +1087,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
           <div className="pdfr-panel">
             <h3 className="serif">Notions surlignées</h3>
             <span title={copyTitle} style={{ display: 'block' }}>
-              <button className="btn sm" onClick={copyPriority} disabled={!highlights.length} style={{ width: '100%', justifyContent: 'center', marginBottom: 12 }}>
+              <button className="btn sm" onClick={copyPriority} disabled={!pdfDoc} style={{ width: '100%', justifyContent: 'center', marginBottom: 12 }}>
                 <Icon name={copiedCount ? 'check' : 'copy'} size={13} /> {copyLabel}
               </button>
             </span>
@@ -1133,6 +1154,16 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
 
       {showAddItem && canAddItem && (
         <AddItemModal ctx={ctx} ficheId={ficheId} ficheTitre={fiche.titre} onClose={() => setShowAddItem(false)} />
+      )}
+
+      {showImportItems && canAddItem && (
+        <Modal title="Importer des items" onClose={() => setShowImportItems(false)} width="min(640px, 94vw)">
+          <div className="hint" style={{ marginBottom: 12 }}>
+            Colle ici le JSON produit par un des 4 prompts de complétion (« Voir les prompts ») —
+            les nouvelles cartes (QCM, flashcards, Feynman) sont ajoutées à cette fiche, sans doublon.
+          </div>
+          <PasteJsonForm ctx={ctx} ficheId={ficheId} done={importedCount} setDone={setImportedCount} />
+        </Modal>
       )}
     </div>
   );

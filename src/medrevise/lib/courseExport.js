@@ -14,7 +14,8 @@
    ============================================================ */
 import { ficheToText } from './ficheToText.js';
 
-const SENS_PAR_COULEUR = { jaune: 'notion_importante', rose: 'cloze' };
+// partagé avec les fiches PDF (lib/pdfCourseText.js) : une seule table de sens
+export const SENS_PAR_COULEUR = { jaune: 'notion_importante', rose: 'cloze' };
 
 function isWhitespaceText(node) {
   return !!node && node.nodeType === Node.TEXT_NODE && /^\s*$/.test(node.nodeValue);
@@ -80,15 +81,28 @@ function projectCarte(item) {
  * @param {object[]} p.cartes — enregistrements bruts db.questions (qcm/flashcard) de cette fiche
  */
 export function buildCourseExport({ fiche, matiereNom, docEl, cartes }) {
+  return buildCourseExportFromParts({
+    fiche, matiereNom, cartes,
+    texteStructure: ficheToText(docEl),
+    surlignages: extractHighlights(docEl),
+  });
+}
+
+/**
+ * Même contrat, à partir de morceaux déjà calculés — c'est le chemin des fiches PDF
+ * (texte structuré + surlignages produits par lib/pdfCourseText.js au lieu d'un #doc).
+ * Un seul endroit construit l'objet : HTML et PDF ne peuvent pas diverger de forme.
+ */
+export function buildCourseExportFromParts({ fiche, matiereNom, texteStructure, surlignages, cartes }) {
   return {
     type: 'medrevise_cours_export',
     version: 1,
     matiere: matiereNom || '',
     cours: {
       titre: fiche.titre || '',
-      texte_structure: ficheToText(docEl),
+      texte_structure: texteStructure,
     },
-    surlignages: extractHighlights(docEl),
+    surlignages,
     cartes_manuelles: (cartes || []).map(projectCarte).filter(Boolean),
   };
 }
