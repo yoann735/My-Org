@@ -83,13 +83,29 @@ const EMPTY_ARRAY = []; // référence stable pour les pages sans highlights/edi
 /** couche de texte invisible mais sélectionnable, positionnée depuis item.transform.
     Un seul <span> (= un seul nœud texte) par item de contenu texte — c'est cet
     alignement d'index avec computePageTextMap qui permet à computeMatchRectsFromDom
-    et au clic d'édition de retrouver le bon nœud texte réel dans le DOM. */
+    et au clic d'édition de retrouver le bon nœud texte réel dans le DOM (les <br>
+    ajoutés ci-dessous ne sont pas des <span> : ils ne décalent aucun index).
+
+    Deux corrections (docs/diag-pdf-etape0.md, constats 2 à 4) :
+    - FINS DE LIGNE : pdf.js les signale par `hasEOL`, très souvent sur un item VIDE
+      (str "") que l'ancien filtre jetait. Sans séparateur entre deux spans, la
+      sélection recollait les lignes (« un calcul : unIMC »). Un <br> par hasEOL —
+      même convention que la couche officielle de pdf.js — rend le « \n » à la copie.
+    - LARGEUR : chaque span est dessiné en sans-serif, pas dans la police du PDF ; sa
+      largeur naturelle diffère donc du texte peint sur le canvas (jusqu'à +60 px sur
+      un titre), et la sélection/les surlignages débordaient. On l'étire (scaleX) à la
+      largeur exacte donnée par pdf.js. Les items faits d'espaces seuls ne sont PAS
+      étirés : entre deux cellules de tableau, ils couvriraient toute la case vide. */
 async function buildTextLayer(page, viewport, container) {
   const textContent = await page.getTextContent();
   container.replaceChildren();
   const frag = document.createDocumentFragment();
+  const toFit = []; // [span, largeur cible en px, angle, espaces seuls]
   for (const item of textContent.items) {
-    if (!item.str) continue;
+    if (!item.str) {
+      if (item.hasEOL) frag.appendChild(document.createElement('br'));
+      continue;
+    }
     const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
     const angle = Math.atan2(tx[1], tx[0]);
     const fontHeight = Math.hypot(tx[2], tx[3]) || 1;
@@ -103,10 +119,30 @@ async function buildTextLayer(page, viewport, container) {
     span.style.fontFamily = 'sans-serif';
     span.style.lineHeight = '1';
     span.style.transformOrigin = '0% 100%';
-    if (angle) span.style.transform = `rotate(${angle}rad)`;
     frag.appendChild(span);
+    toFit.push([span, item.width * viewport.scale, angle, !item.str.trim()]);
+    if (item.hasEOL) frag.appendChild(document.createElement('br'));
   }
   container.appendChild(frag);
+  // toutes les lectures de largeur PUIS toutes les écritures : un seul calcul de mise
+  // en page pour la page entière, au lieu d'un par span. Mesure faite AVANT toute
+  // transformation (largeur naturelle, non pivotée).
+  const natural = toFit.map(([span]) => span.getBoundingClientRect().width);
+  toFit.forEach(([span, target, angle, blank], k) => {
+    const parts = [];
+    if (angle) parts.push(`rotate(${angle}rad)`);
+    if (!blank && natural[k] > 0 && target > 0) parts.push(`scaleX(${target / natural[k]})`);
+    if (parts.length) span.style.transform = parts.join(' ');
+  });
+}
+
+/** texte d'une sélection, tel qu'il doit sortir de l'app. pdf.js normalise ses
+    caractères de compatibilité (ligatures « ﬁ », espaces insécables…) ; `inline`
+    replie en plus tous les blancs sur une ligne — même règle que `inline()` du
+    gabarit (ficheToText.js), pour le texte d'un surlignage. */
+function cleanSelectedText(raw, { inline = false } = {}) {
+  const t = pdfjsLib.normalizeUnicode(raw || '').replace(/\u0000/g, '');
+  return inline ? t.replace(/\s+/g, ' ').trim() : t;
 }
 
 /** carte de position du texte d'une page, normalisée [0,1] (indépendante du zoom et
@@ -380,7 +416,12 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
       offsets.push(y);
       y += pageSizes[i].height * scale + GAP * scale;
     }
-    return { offsets, totalHeight: Math.max(0, y - GAP * scale) };
+    // largeur de la page la plus large : le conteneur ne descend jamais sous elle (voir
+    // .pdfr-pages plus bas). Sans ça, une page plus large que la zone visible (zoom,
+    // fenêtre étroite) était centrée par left:50% + translateX(-50%) dans un conteneur
+    // plus étroit qu'elle — son bord gauche partait en négatif, hors de portée du scroll.
+    const maxWidth = pageSizes.reduce((m, s) => Math.max(m, s.width), 0) * scale;
+    return { offsets, totalHeight: Math.max(0, y - GAP * scale), maxWidth };
   }, [pageSizes, scale]);
 
   const computeVisibleRange = () => {
@@ -871,7 +912,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
         <div className="pdfr-scroll" ref={scrollRef} onScroll={onScroll}>
           {!pdfDoc && !loadError && <div className="gen-spinner" style={{ width: 40, height: 40, margin: '60px auto' }} />}
           {pdfDoc && (
-            <div className="pdfr-pages" style={{ height: layout.totalHeight }}>
+            <div className="pdfr-pages" style={{ height: layout.totalHeight, width: layout.maxWidth, minWidth: '100%' }}>
               {pageSizes.map((sz, idx) => {
                 const n = idx + 1;
                 const top = layout.offsets[idx];
@@ -1013,6 +1054,15 @@ function PdfPageContent({
     };
   }, [pdfDoc, pageNum, scale, dpr, matches]);
 
+  // Cmd+C : le texte copié garde ses retours à la ligne (issus des <br>), caractères
+  // de compatibilité normalisés. Sélection vide → copie native, on ne touche à rien.
+  const handleCopy = (e) => {
+    const raw = window.getSelection && window.getSelection().toString();
+    if (!raw) return;
+    e.clipboardData.setData('text/plain', cleanSelectedText(raw));
+    e.preventDefault();
+  };
+
   // BUG 2 : un clic seul (sélection vide) ne doit RIEN déclencher — ni surlignage, ni
   // édition. L'unité d'action est toujours une sélection réelle de texte, mesurée via
   // l'API Range du DOM (gère nativement les sélections à cheval sur plusieurs spans/
@@ -1024,7 +1074,9 @@ function PdfPageContent({
     const sel = window.getSelection();
     const container = textLayerRef.current;
     if (!container || !sel || sel.isCollapsed || !container.contains(sel.anchorNode)) return;
-    const texte = sel.toString().trim();
+    // sur une ligne : un surlignage à cheval sur deux lignes donne « un calcul : un IMC »,
+    // pas deux lignes (ni, avant les <br>, « unIMC »)
+    const texte = cleanSelectedText(sel.toString(), { inline: true });
     if (!texte) return;
     const range = sel.getRangeAt(0);
     const clientRects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
@@ -1046,7 +1098,7 @@ function PdfPageContent({
   return (
     <>
       <canvas ref={canvasRef} />
-      <div ref={textLayerRef} className="pdfr-textlayer" onMouseUp={handleMouseUp} />
+      <div ref={textLayerRef} className="pdfr-textlayer" onMouseUp={handleMouseUp} onCopy={handleCopy} />
       <div className="pdfr-hlayer">
         {highlights.flatMap((h) => h.rects.map((r, i) => (
           <div key={h.id + ':' + i} className={'pdfr-hl-rect' + (mode === 'edit' ? ' clickable' : '')}
