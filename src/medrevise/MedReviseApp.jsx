@@ -724,18 +724,11 @@ export default function MedReviseApp({ themeApi, goHub }) {
       <StudySidebar current={screen} onNav={setScreen} expanded={expanded} onToggle={() => setExpanded((v) => !v)} onHub={goHub} ctx={ctx}
         focus={focusNotes} onQuitterFocus={() => basculerFocus(false)} />
       <div className="main">
-        {/* SORTIE N°1 du mode focus. Rendue par le SHELL, pas par la page : elle reste
-            donc visible quel que soit l'état de l'écran — y compris un document ouvert
-            en plein lecteur PDF. C'est ce qui rend impossible de s'enfermer ici. */}
-        {focusNotes && (
-          <div className="focus-bar">
-            <Icon name="target" size={15} />
-            <span className="fb-txt">Mode focus — seule la Prise de notes est accessible.</span>
-            <button type="button" className="btn sm" onClick={() => basculerFocus(false)}>
-              <Icon name="maximize" size={13} /> Quitter le mode focus
-            </button>
-          </div>
-        )}
+        {/* Le bandeau « Mode focus » a été RETIRÉ à la demande de l'utilisateur.
+            Il reste TROIS sorties, aucune dans le flux de lecture : l'entrée
+            « Quitter le focus » au pied de la barre latérale (ui.jsx), l'interrupteur
+            de l'en-tête de Prise de notes, et le repli sans interface décrit dans
+            lib/focusMode.js (une lecture qui échoue renvoie toujours « pas de focus »). */}
         <Current ctx={ctx} key={screen} />
       </div>
       <MedBottomNav current={screen} onNav={setScreen} focus={focusNotes} />

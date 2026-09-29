@@ -1,158 +1,87 @@
 /* ============================================================
-   MedRevise — IMPORT d'un DOCUMENT DE NOTES (onglet Prise de notes).
+   MedRevise — CONFIRMATION D'ORDRE DES PAGES (Prise de notes).
 
-   Le fichier n'est rattaché à AUCUNE fiche : il devient un enregistrement du
-   store `notes` (lib/notes.js) et son contenu part dans le store `blobs` par
-   `putBlob`, exactement comme le PDF d'une unité d'apprentissage
-   (ImportApprentissage.jsx) — même canal, même outbox, même synchro.
+   Ce composant ne sert plus qu'à UN cas : plusieurs images déposées d'un coup,
+   dont il faut valider l'ordre avant d'en faire les pages d'un PDF. Tout le
+   reste — un PDF, une image seule — s'importe et s'ouvre SANS passer par ici
+   (voir pages/PriseDeNotes.jsx : on glisse, c'est ouvert).
 
-   DEUX ENTRÉES, UN SEUL RÉSULTAT — toujours un PDF :
-   - un PDF, stocké tel quel ;
-   - une ou plusieurs IMAGES, converties en PDF (une page par image) par
-     lib/imageToPdf.js. C'est ce qui permet de réutiliser le lecteur existant
-     au lieu d'écrire une seconde visionneuse : surlignage, zoom, recherche,
-     export annoté marchent d'office sur une photo de cours.
-
-   REFUSÉS EXPLICITEMENT : .docx / .pptx / .odt / .pages / .key — aucun de ces
-   formats ne se convertit proprement hors ligne dans un navigateur. On le dit
-   avec le nom du fichier et la marche à suivre, plutôt que d'échouer à moitié.
+   La lecture du dépôt et l'écriture vivent dans lib/noteImport.js.
    ============================================================ */
 import { useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { putBlob } from '../lib/storage.js';
-import { titreFromFilename } from '../lib/fileTitre.js';
-import { createNote } from '../lib/notes.js';
-import { estImage, ordonnerImages, imagesToPdf } from '../lib/imageToPdf.js';
+import { analyserFichiers, importerNote } from '../lib/noteImport.js';
+import { ordonnerImages } from '../lib/imageToPdf.js';
 
-const estPdf = (f) => !!f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name || ''));
-const estBureautique = (f) => /\.(docx?|pptx?|odt|odp|pages|key)$/i.test((f && f.name) || '');
-
-export function ImportNote({ ctx, onDone, onCancel }) {
-  const [kind, setKind] = useState(null);     // 'pdf' | 'images'
-  const [fichiers, setFichiers] = useState([]); // [File] — 1 si pdf, 1..N si images
-  const [titre, setTitre] = useState('');
+export function ImportNote({ ctx, fichiersInitiaux = [], titreInitial = '', onDone, onCancel }) {
+  const [fichiers, setFichiers] = useState(fichiersInitiaux);
+  const [titre, setTitre] = useState(titreInitial);
   const [over, setOver] = useState(false);
   const [erreur, setErreur] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const ajouter = (fileList) => {
-    const recus = [...(fileList || [])].filter(Boolean);
-    if (!recus.length) return;
-
-    const bureau = recus.find(estBureautique);
-    if (bureau) {
-      setErreur(`« ${bureau.name} » n'est pas lisible ici : ce format ne se convertit pas proprement hors ligne. Exporte-le en PDF (Fichier → Exporter au format PDF), puis dépose le PDF.`);
-      return;
-    }
-    const inconnu = recus.find((f) => !estPdf(f) && !estImage(f));
-    if (inconnu) {
-      setErreur(`« ${inconnu.name} » n'est pas accepté. Formats : PDF, ou images (PNG, JPEG, WebP…).`);
-      return;
-    }
-    const pdfs = recus.filter(estPdf);
-    const images = recus.filter((f) => !estPdf(f));
-    if (pdfs.length && images.length) {
-      setErreur('Dépose soit un PDF, soit des images — pas les deux à la fois.');
-      return;
-    }
-
-    if (pdfs.length) {
-      if (pdfs.length > 1) { setErreur('Un seul PDF à la fois.'); return; }
-      setErreur(null);
-      setKind('pdf');
-      setFichiers([pdfs[0]]);
-      if (!titre.trim()) setTitre(titreFromFilename(pdfs[0].name));
-      return;
-    }
-
-    // images : on CUMULE les dépôts successifs (plusieurs photos d'un même cours
-    // peuvent arriver en deux fois), puis on trie par nom.
+  const ajouter = (liste) => {
+    const lu = analyserFichiers(liste);
+    if (!lu.ok) { setErreur(lu.erreur); return; }
+    if (lu.kind !== 'images') { setErreur('Ici, on n’ajoute que des images (une page par image).'); return; }
     setErreur(null);
-    setKind('images');
-    const suivantes = ordonnerImages([...(kind === 'images' ? fichiers : []), ...images]);
-    setFichiers(suivantes);
-    if (!titre.trim()) setTitre(titreFromFilename(suivantes[0].name));
+    setFichiers(ordonnerImages([...fichiers, ...lu.fichiers]));
+  };
+  const retirer = (i) => setFichiers(fichiers.filter((_, k) => k !== i));
+  const deplacer = (i, pas) => {
+    const j = i + pas;
+    if (j < 0 || j >= fichiers.length) return;
+    const copie = [...fichiers];
+    [copie[i], copie[j]] = [copie[j], copie[i]];
+    setFichiers(copie);
   };
 
-  const retirer = (i) => {
-    const reste = fichiers.filter((_, k) => k !== i);
-    setFichiers(reste);
-    if (!reste.length) setKind(null);
-  };
-  const toutRetirer = () => { setFichiers([]); setKind(null); setErreur(null); };
-
-  const importer = async () => {
+  const valider = async () => {
     if (!fichiers.length || busy) return;
-    setBusy(true);
-    setErreur(null);
+    setBusy(true); setErreur(null);
     try {
-      let pdfId, pdfName, origine;
-      if (kind === 'pdf') {
-        pdfId = await putBlob(fichiers[0]);
-        pdfName = fichiers[0].name;
-        origine = 'pdf';
-      } else {
-        const blob = await imagesToPdf(fichiers);           // peut lever (image non décodable)
-        pdfId = await putBlob(blob);
-        pdfName = `${(titre || 'document').trim()}.pdf`;
-        origine = 'image';
-      }
-      const note = await createNote({ titre, pdfId, pdfName, origine });
+      const note = await importerNote({ kind: 'images', fichiers, titre });
       await ctx.reload();
       onDone && onDone(note);
     } catch (e) {
       setErreur((e && e.message) || "L'import a échoué — le fichier n'a pas pu être enregistré.");
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   };
-
-  const nbPages = kind === 'images' ? fichiers.length : 0;
 
   return (
     <div className="imp-form">
       <div className="imp-field">
-        <label>Document</label>
-
-        {fichiers.length > 0 && (
-          <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
-            {fichiers.map((f, i) => (
-              <div key={f.name + i} className="row spread" style={{ gap: 10, padding: '9px 12px', border: '1px solid var(--border-2)', borderRadius: 10, background: 'var(--bg-2)' }}>
-                <div className="row" style={{ gap: 8, minWidth: 0, alignItems: 'center' }}>
-                  <Icon name={kind === 'images' ? 'image' : 'filePdf'} size={16} />
-                  {kind === 'images' && <span className="hint tnum" style={{ fontSize: 11.5 }}>p.{i + 1}</span>}
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                </div>
-                <button type="button" className="btn ghost sm" onClick={() => retirer(i)} title="Retirer"><Icon name="x" size={13} /></button>
+        <label>Ordre des pages <span className="imp-opt">({fichiers.length} image{fichiers.length > 1 ? 's' : ''} → {fichiers.length} page{fichiers.length > 1 ? 's' : ''})</span></label>
+        <div style={{ display: 'grid', gap: 6 }}>
+          {fichiers.map((f, i) => (
+            <div key={f.name + i} className="row spread" style={{ gap: 10, padding: '9px 12px', border: '1px solid var(--border-2)', borderRadius: 10, background: 'var(--bg-2)' }}>
+              <div className="row" style={{ gap: 8, minWidth: 0, alignItems: 'center' }}>
+                <span className="hint tnum" style={{ fontSize: 11.5, minWidth: 26 }}>p.{i + 1}</span>
+                <Icon name="image" size={15} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
               </div>
-            ))}
-            <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-              {kind === 'images' && <span className="hint" style={{ fontSize: 11.5 }}>{nbPages} image{nbPages > 1 ? 's' : ''} → {nbPages} page{nbPages > 1 ? 's' : ''}, dans cet ordre (tri par nom de fichier).</span>}
-              <span style={{ flex: 1 }} />
-              <button type="button" className="btn ghost sm" onClick={toutRetirer}>Tout retirer</button>
+              <div className="row" style={{ gap: 4, flex: '0 0 auto' }}>
+                <button type="button" className="icon-btn sm" title="Monter" disabled={i === 0} onClick={() => deplacer(i, -1)}><Icon name="chevU" size={13} /></button>
+                <button type="button" className="icon-btn sm" title="Descendre" disabled={i === fichiers.length - 1} onClick={() => deplacer(i, 1)}><Icon name="chevD" size={13} /></button>
+                <button type="button" className="btn ghost sm" title="Retirer" onClick={() => retirer(i)}><Icon name="x" size={13} /></button>
+              </div>
             </div>
-          </div>
-        )}
-
+          ))}
+        </div>
         <label className={'imp-drop' + (over ? ' over' : '')}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: fichiers.length ? '12px' : '22px 12px', border: '1.5px dashed var(--border)', borderRadius: 10, cursor: 'pointer', background: over ? 'var(--accent-soft)' : 'transparent' }}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px', marginTop: 8, border: '1.5px dashed var(--border)', borderRadius: 10, cursor: 'pointer', background: over ? 'var(--accent-soft)' : 'transparent' }}
           onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
           onDrop={(e) => { e.preventDefault(); setOver(false); ajouter(e.dataTransfer.files); }}>
-          <Icon name="upload" size={15} />
-          {fichiers.length ? (kind === 'images' ? 'Ajouter d’autres images' : 'Remplacer le PDF') : 'Glisse un PDF ou des images ici, ou clique pour choisir'}
-          <input type="file" multiple accept="application/pdf,.pdf,image/*" style={{ display: 'none' }}
+          <Icon name="upload" size={15} /> Ajouter d’autres images
+          <input type="file" multiple accept="image/*" style={{ display: 'none' }}
             onChange={(e) => { ajouter(e.target.files); e.target.value = ''; }} />
         </label>
-
-        <div className="hint" style={{ marginTop: 6 }}>
-          PDF, ou images (PNG, JPEG, WebP…) converties en PDF — une page par image. Stocké sur cet appareil et envoyé au cloud comme les autres PDF. Aucun lien avec tes fiches : ce document n'entre ni dans la méthode des J, ni dans les statistiques.
-        </div>
+        <div className="hint" style={{ marginTop: 6 }}>Trié par nom de fichier au dépôt — réordonne ici si besoin.</div>
       </div>
 
       <div className="imp-field">
         <label>Titre</label>
-        <input className="imp-title" value={titre} onChange={(e) => setTitre(e.target.value)}
-          placeholder="Titre du document" style={{ width: '100%' }} />
+        <input className="imp-title" value={titre} onChange={(e) => setTitre(e.target.value)} placeholder="Titre du document" style={{ width: '100%' }} />
       </div>
 
       {erreur && (
@@ -164,8 +93,8 @@ export function ImportNote({ ctx, onDone, onCancel }) {
 
       <div className="imp-actions">
         <button className="btn ghost" onClick={onCancel} disabled={busy}>Annuler</button>
-        <button className="btn primary" onClick={importer} disabled={!fichiers.length || busy}>
-          <Icon name="check" size={15} /> {busy ? (kind === 'images' ? 'Conversion…' : 'Import…') : 'Ajouter le document'}
+        <button className="btn primary" onClick={valider} disabled={!fichiers.length || busy}>
+          <Icon name="check" size={15} /> {busy ? 'Conversion…' : 'Créer le document'}
         </button>
       </div>
     </div>

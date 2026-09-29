@@ -8,17 +8,21 @@
    NAMESPACE aux annotations. Rien du lecteur n'est réécrit ici — le surlignage,
    le zoom, la recherche et l'export annoté marchent d'office.
    ============================================================ */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, ConfirmModal } from '../components/ui.jsx';
 import { ImportNote } from '../components/ImportNote.jsx';
 import { PdfReader } from '../pdf/PdfReader.jsx';
 import { deleteNote, renameNote, comptesAnnotations } from '../lib/notes.js';
+import { analyserFichiers, importerNote, demandeConfirmation } from '../lib/noteImport.js';
 
 export function PriseDeNotes({ ctx }) {
   const { db } = ctx;
   const notes = [...(db.notes || [])].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  const [creation, setCreation] = useState(false);
+  const [confirmation, setConfirmation] = useState(null); // { fichiers, titre } — seul cas : plusieurs images
+  const [survol, setSurvol] = useState(false);            // un fichier est au-dessus de la page
+  const [occupe, setOccupe] = useState(false);            // import en cours
+  const compteurSurvol = useRef(0);                       // dragleave se déclenche aussi en passant sur un enfant
   const [ouvertId, setOuvertId] = useState(null);
   const [aSupprimer, setASupprimer] = useState(null);
   const [renommage, setRenommage] = useState(null); // { id, valeur }
@@ -36,6 +40,33 @@ export function PriseDeNotes({ ctx }) {
   }, [db.notes, ouvertId]);
 
   const annoncer = (msg) => { setFlash(msg); setTimeout(() => setFlash(null), 4000); };
+
+  /* ZÉRO CLIC : un dépôt valide importe ET ouvre le document. Le seul cas qui
+     s'interpose est plusieurs images d'un coup, dont il faut valider l'ordre des
+     pages (voir components/ImportNote.jsx). */
+  const traiter = async (liste) => {
+    if (occupe) return;
+    const lu = analyserFichiers(liste);
+    if (!lu.ok) { annoncer(lu.erreur); return; }
+    if (demandeConfirmation(lu)) { setConfirmation({ fichiers: lu.fichiers, titre: lu.titre }); return; }
+    setOccupe(true);
+    try {
+      const note = await importerNote(lu);
+      await ctx.reload();
+      setOuvertId(note.id); // ouvert immédiatement : c'est tout l'intérêt du geste
+    } catch (e) {
+      annoncer((e && e.message) || "L'import a échoué — le fichier n'a pas pu être enregistré.");
+    } finally { setOccupe(false); }
+  };
+
+  // dragenter/dragleave se déclenchent aussi en traversant les enfants : on compte
+  // les entrées/sorties plutôt que de se fier au dernier événement reçu.
+  const surDragEnter = (e) => {
+    if (!e.dataTransfer || ![...e.dataTransfer.types].includes('Files')) return;
+    compteurSurvol.current += 1; setSurvol(true);
+  };
+  const surDragLeave = () => { compteurSurvol.current -= 1; if (compteurSurvol.current <= 0) { compteurSurvol.current = 0; setSurvol(false); } };
+  const surDrop = (e) => { e.preventDefault(); compteurSurvol.current = 0; setSurvol(false); traiter(e.dataTransfer.files); };
 
   const supprimer = async () => {
     const n = aSupprimer;
@@ -67,7 +98,8 @@ export function PriseDeNotes({ ctx }) {
   }
 
   return (
-    <div className="screen scroll fadein">
+    <div className={'screen scroll fadein pdn-screen' + (survol ? ' survol' : '')}
+      onDragEnter={surDragEnter} onDragOver={(e) => { e.preventDefault(); }} onDragLeave={surDragLeave} onDrop={surDrop}>
       <div className="topbar">
         <div>
           <h1 className="serif">Prise de notes</h1>
@@ -81,33 +113,34 @@ export function PriseDeNotes({ ctx }) {
             title={ctx.focusNotes ? 'Revenir à tous les onglets' : 'Ne garder que la Prise de notes, même après un rechargement'}>
             <Icon name={ctx.focusNotes ? 'maximize' : 'target'} size={14} /> {ctx.focusNotes ? 'Quitter le mode focus' : 'Mode focus'}
           </button>
-          {!creation && <button className="btn primary" onClick={() => setCreation(true)}><Icon name="plus" size={15} /> Nouveau document</button>}
           <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
         </div>
       </div>
 
-      {creation && (
+      {confirmation && (
         <Card style={{ marginBottom: 18 }}>
-          <ImportNote ctx={ctx}
-            onCancel={() => setCreation(false)}
-            onDone={(n) => { setCreation(false); annoncer(`« ${n.titre} » ajouté.`); setOuvertId(n.id); }} />
+          <ImportNote ctx={ctx} fichiersInitiaux={confirmation.fichiers} titreInitial={confirmation.titre}
+            onCancel={() => setConfirmation(null)}
+            onDone={(n) => { setConfirmation(null); setOuvertId(n.id); }} />
         </Card>
       )}
 
       {flash && <div className="err-mini ok" style={{ marginBottom: 14 }}><div className="em-ic"><Icon name="check" size={16} /></div><div className="em-body"><div className="em-title">{flash}</div></div></div>}
 
-      {!notes.length && !creation && (
-        <div className="rev-empty" style={{ marginTop: 50 }}>
-          <Icon name="edit" size={30} />
-          <div className="re-title">Aucun document de notes</div>
-          <div className="hint" style={{ maxWidth: 460, textAlign: 'center' }}>
-            Dépose un PDF de cours : tu pourras le lire, le surligner et l'annoter ici. Ces documents restent à part — ils n'entrent ni dans tes fiches, ni dans la méthode des J.
+      {!notes.length && !confirmation && (
+        <label className="pdn-zone">
+          <Icon name="upload" size={40} />
+          <div className="pdn-zone-titre">Glisse un PDF ou des images ici</div>
+          <div className="pdn-zone-sous">
+            {occupe ? 'Import en cours…' : 'Le document s’ouvre aussitôt, prêt à être surligné et annoté. Ces documents restent à part : ni fiches, ni méthode des J, ni statistiques.'}
           </div>
-          <button className="btn primary" onClick={() => setCreation(true)}><Icon name="plus" size={15} /> Ajouter un document</button>
-        </div>
+          <span className="pdn-zone-lien">ou clique pour parcourir</span>
+          <input type="file" multiple accept="application/pdf,.pdf,image/*" style={{ display: 'none' }}
+            onChange={(e) => { traiter(e.target.files); e.target.value = ''; }} />
+        </label>
       )}
 
-      {notes.length > 0 && (
+      {notes.length > 0 && !confirmation && (
         <div className="appr-grid">
           {notes.map((n) => (
             <div className="card appr-card" key={n.id}>
@@ -142,6 +175,22 @@ export function PriseDeNotes({ ctx }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {notes.length > 0 && !confirmation && (
+        <label className="pdn-zone mince">
+          <Icon name="upload" size={17} />
+          <span>{occupe ? 'Import en cours…' : 'Glisse un PDF ou des images n’importe où sur cette page — ou clique ici'}</span>
+          <input type="file" multiple accept="application/pdf,.pdf,image/*" style={{ display: 'none' }}
+            onChange={(e) => { traiter(e.target.files); e.target.value = ''; }} />
+        </label>
+      )}
+
+      {/* voile de dépôt : la page ENTIÈRE est une cible, il faut que ça se voie */}
+      {survol && (
+        <div className="pdn-voile">
+          <div className="pdn-voile-carte"><Icon name="upload" size={30} /><div>Déposer ici</div></div>
         </div>
       )}
 
