@@ -582,20 +582,19 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     if (!outilsNotes) return undefined;
     const onKey = (e) => {
       if (cibleEditable(e.target) || cibleEditable(document.activeElement)) return;
-      // Suppr / Retour arrière sur une boîte sélectionnée dont le texte n'a PAS le
-      // curseur (sinon la garde ci-dessus a déjà rendu la main à l'éditeur).
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        const b = edits.find((a) => a.id === activeEditId && a.kind === 'libre');
-        if (b) { e.preventDefault(); supprimerBoite(b); }
-        return;
-      }
+      /* CORRECTIF (défaut 4) : PLUS de suppression au clavier ici. Un écouteur
+         global sur Suppr/Retour arrière effaçait la boîte active dès que le curseur
+         n'était pas dans son texte — par exemple juste après un clic sur son
+         bandeau. La suppression au clavier vit désormais SUR la boîte elle-même
+         (voir NoteBox#onKeyDown), donc elle ne peut se déclencher que si le
+         bandeau de CETTE boîte a réellement le focus. */
       if (!(e.metaKey || e.ctrlKey) || String(e.key).toLowerCase() !== 'z') return;
       e.preventDefault();
       if (e.shiftKey) hist.retablir(); else hist.annuler();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [outilsNotes, hist.annuler, hist.retablir, edits, activeEditId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [outilsNotes, hist.annuler, hist.retablir]);
   // les surlignages ne vivent pas dans `db` (lus à part, ci-dessus) : sans ceci, ceux
   // qu'une synchro rapatrie d'un autre appareil (retour sur l'onglet, reconnexion —
   // MedReviseApp.jsx appelle alors reload(), qui remplace `db`) n'apparaîtraient qu'à
@@ -733,6 +732,15 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
       await hist.appliquer(cmdModifier('highlights', h, { ...h, note }, 'Note du surlignage'));
     }
   };
+
+  // Échap : désélectionner la boîte / le bloc actif (avant, seul « Terminé » le
+  // permettait). Posé À PART des popovers ci-dessous, qui ont leur propre Échap.
+  useEffect(() => {
+    if (!activeEditId) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setActiveEditId(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeEditId]);
 
   // ferme les popovers flottants au clic extérieur / Échap
   useEffect(() => {
@@ -907,11 +915,15 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   /* SEULE écriture d'annotation qui ne passe PAS par l'historique, et c'est
      délibéré : le TEXTE d'un bloc a son propre historique (celui de TipTap).
      Deux piles, deux portées, départagées par la cible du clavier — voir
-     l'effet des raccourcis plus haut et lib/annotHistory.js. */
-  const saveEditContent = async (edit, json) => {
-    const updated = { ...edit, content: json };
+     l'effet des raccourcis plus haut et lib/annotHistory.js.
+     Prend un ID, jamais un instantané : on repart de l'enregistrement le plus
+     récent et on ne change QUE `content` (défaut 3, voir les refs plus haut). */
+  const saveEditContent = async (id, json) => {
+    const base = (editsRef.current || []).find((a) => a.id === id);
+    if (!base) return;
+    const updated = { ...base, content: json };
     await put('annotations', updated);
-    setEdits((arr) => arr.map((a) => (a.id === edit.id ? updated : a)));
+    setEdits((arr) => arr.map((a) => (a.id === id ? updated : a)));
   };
   const resetEdit = async (id) => {
     const a = edits.find((x) => x.id === id);
@@ -923,6 +935,16 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   // Déclarés ICI, avant leur première utilisation dans le fichier (boiteFraiche).
   const editSaveTimer = useRef(null);
   const editLastJson = useRef(null);
+  /* CORRECTIF (boîte de texte, défaut 3) : l'éditeur TipTap n'est recréé qu'au
+     changement de bloc actif ; son `onUpdate` capturait donc l'enregistrement tel
+     qu'il était À CE MOMENT-LÀ, et la sauvegarde différée réécrivait cette version
+     périmée — y compris sa GÉOMÉTRIE. Déplacer une boîte puis taper dedans la
+     faisait resauter à sa position d'avant. Ces refs donnent toujours l'état
+     courant, quelle que soit l'ancienneté de la fermeture. */
+  const editsRef = useRef(edits);
+  editsRef.current = edits;
+  const activeEditIdRef = useRef(activeEditId);
+  activeEditIdRef.current = activeEditId;
 
   /* ---- BOÎTE DE TEXTE LIBRE ----
      Posée n'importe où sur une page (pas forcément sur du texte), déplaçable,
@@ -957,6 +979,12 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     if (!actuel) return;
     await hist.appliquer(cmdModifier('annotations', { ...actuel, ...GEO(avant) }, { ...actuel, ...GEO(apres) }, libelle));
   };
+  const changerCouleurBoite = async (b, couleur) => {
+    const actuel = boiteFraiche(b.id, b);
+    if (!actuel || actuel.couleur === couleur) return;
+    setCouleurBoite(couleur); // la prochaine boîte héritera du dernier choix
+    await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, couleur }, 'Couleur de la boîte'));
+  };
   const supprimerBoite = async (b) => {
     if (!b) return;
     const actuel = boiteFraiche(b.id, b); // restaurer la boîte AVEC son texte le plus récent
@@ -972,18 +1000,19 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     extensions: RICH_EXTENSIONS,
     content: (activeEdit && activeEdit.content) || undefined,
     onUpdate: ({ editor: ed }) => {
-      if (!activeEdit) return;
+      const id = activeEditIdRef.current; // jamais l'instantané de la création (défaut 3)
+      if (!id) return;
       const json = ed.getJSON();
       editLastJson.current = json;
       clearTimeout(editSaveTimer.current);
-      editSaveTimer.current = setTimeout(() => { saveEditContent(activeEdit, json); editLastJson.current = null; }, 400);
+      editSaveTimer.current = setTimeout(() => { saveEditContent(id, json); editLastJson.current = null; }, 400);
     },
   }, [activeEditId]);
   // au changement de bloc actif (ou fermeture) : flush immédiat d'une sauvegarde en attente
   useEffect(() => () => {
-    if (editSaveTimer.current && editLastJson.current && activeEdit) {
+    if (editSaveTimer.current && editLastJson.current && activeEditIdRef.current) {
       clearTimeout(editSaveTimer.current);
-      saveEditContent(activeEdit, editLastJson.current);
+      saveEditContent(activeEditIdRef.current, editLastJson.current);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeEditId]);
@@ -1239,6 +1268,8 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
 
       {activeEdit && editor && (mode === 'edit' || activeEdit.kind === 'libre') && (
         <EditToolbar editor={editor} libre={activeEdit.kind === 'libre'}
+          couleur={activeEdit.couleur}
+          onCouleur={(c) => changerCouleurBoite(activeEdit, c)}
           onReset={() => (activeEdit.kind === 'libre' ? supprimerBoite(activeEdit) : resetEdit(activeEdit.id))}
           onClose={() => setActiveEditId(null)} />
       )}
@@ -1627,6 +1658,32 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const [apercu, setApercu] = useState(null); // géométrie pendant le geste (état local, non persisté)
   const b = apercu || boite;
   const html = useMemo(() => richToHTML(boite.content), [boite.content]);
+  const barreRef = useRef(null);
+  const clicRef = useRef(null); // coordonnées du clic d'activation, pour y poser le curseur
+
+  /* CORRECTIF (défaut 1) : à l'activation, personne ne donnait le focus à
+     l'éditeur. Le curseur restait sur <body> : la frappe n'arrivait nulle part, et
+     la barre de mise en forme s'appliquait à une sélection VIDE — donc sans effet
+     visible (défaut 2). On met le focus dès que l'éditeur est monté dans la boîte,
+     et on pose le curseur À L'ENDROIT CLIQUÉ (posAtCoords) plutôt qu'au début. */
+  useEffect(() => {
+    if (!active || !editor) return;
+    const t = setTimeout(() => {
+      try {
+        const pt = clicRef.current;
+        clicRef.current = null;
+        const at = pt && editor.view.posAtCoords({ left: pt.x, top: pt.y });
+        if (at && Number.isFinite(at.pos)) editor.chain().focus().setTextSelection(at.pos).run();
+        else editor.commands.focus('end');
+      } catch (err) { try { editor.commands.focus('end'); } catch (e2) { /* ignore */ } }
+    }, 0); // après que EditorContent a monté la vue ProseMirror dans cette boîte
+    return () => clearTimeout(t);
+  }, [active, editor]);
+
+  const activer = (e) => {
+    if (e) clicRef.current = { x: e.clientX, y: e.clientY };
+    onActivate(boite.id);
+  };
 
   const demarrer = (e, type) => {
     if (e.button !== 0) return;
@@ -1659,7 +1716,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       setApercu(null);
       onGeste(false); // relâché ici ; handleMouseUp consommera le drapeau s'il est appelé
       if (bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de la boîte' : 'Redimension de la boîte');
-      else if (type === 'move') onActivate(boite.id); // clic sans déplacement sur le bandeau → activer
+      else if (type === 'move') onActivate(boite.id); // clic sans déplacement sur le bandeau → sélectionner
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -1672,7 +1729,15 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
 
   return (
     <div className={'note-box' + (active ? ' active' : '')} style={style}>
-      <div className="nb-bar" onPointerDown={(e) => demarrer(e, 'move')} title="Glisser pour déplacer">
+      {/* CORRECTIF (défaut 4) : le bandeau est focusable, et c'est LUI qui porte la
+          suppression au clavier — plus aucun écouteur global ne peut effacer la
+          boîte pendant que le curseur est ailleurs. */}
+      <div className="nb-bar" ref={barreRef} tabIndex={0} title="Glisser pour déplacer · Suppr pour effacer"
+        onPointerDown={(e) => { demarrer(e, 'move'); if (barreRef.current) barreRef.current.focus(); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onSupprimer(boite); }
+          if (e.key === 'Enter') { e.preventDefault(); activer(null); }
+        }}>
         <span className="nb-grip"><Icon name="grip" size={12} /></span>
         <span className="nb-spacer" />
         <button type="button" className="nb-btn danger" title="Supprimer cette boîte"
@@ -1685,7 +1750,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       {/* VERROU 4 : le corps est du TEXTE, pas une poignée. */}
       {active && editor
         ? <div className="nb-body"><EditorContent editor={editor} /></div>
-        : <div className="nb-body" onClick={() => onActivate(boite.id)} dangerouslySetInnerHTML={{ __html: html }} />}
+        : <div className="nb-body" onClick={activer} dangerouslySetInnerHTML={{ __html: html }} />}
 
       <div className="nb-corner" title="Glisser pour redimensionner" onPointerDown={(e) => demarrer(e, 'resize')} />
     </div>
@@ -1727,7 +1792,7 @@ function TextEditBlock({ edit, active, editable, onActivate, editor, pageHeight 
     plutôt qu'une popover flottante ancrée sur le bloc, pour rester fiable pendant le
     scroll/zoom (un bloc édité peut sortir du viewport pendant qu'on le rédige). Pilote
     la MÊME instance `editor` que celle rendue dans le bloc (passée par PdfReader). */
-function EditToolbar({ editor, onReset, onClose, libre = false }) {
+function EditToolbar({ editor, onReset, onClose, libre = false, couleur = null, onCouleur = null }) {
   const [, force] = useState(0);
   useEffect(() => {
     const rerender = () => force((v) => v + 1);
@@ -1738,8 +1803,29 @@ function EditToolbar({ editor, onReset, onClose, libre = false }) {
   const active = (name, attrs) => editor.isActive(name, attrs);
   const run = (fn) => fn(editor.chain().focus()).run();
 
+  /* CORRECTIF (défaut 2) : un `mousedown` sur un bouton de cette barre RETIRE le
+     curseur de l'éditeur. `chain().focus()` le rendait bien, mais sur une sélection
+     déjà perdue : la mise en forme s'appliquait alors à une sélection vide, donc
+     sans effet visible. On empêche la barre de prendre le focus — sauf sur les
+     <select> et <input>, qui ont besoin de s'ouvrir normalement. */
+  const garderLeCurseur = (e) => {
+    if (e.target && e.target.closest && e.target.closest('select, input')) return;
+    e.preventDefault();
+  };
+
   return (
-    <div className="pdfr-edit-toolbar">
+    <div className="pdfr-edit-toolbar" onMouseDown={garderLeCurseur}>
+      {libre && onCouleur && (
+        <>
+          <span className="et-sep" />
+          {COLORS.map((c) => (
+            <button key={c.id} type="button" title={`Fond ${c.label.toLowerCase()}`} onClick={() => onCouleur(c.id)}
+              style={{ width: 17, height: 17, borderRadius: 5, background: c.hex, cursor: 'pointer', flex: '0 0 auto',
+                border: couleur === c.id ? '2px solid var(--text)' : '1px solid rgba(0,0,0,.25)' }} />
+          ))}
+          <span className="et-sep" />
+        </>
+      )}
       <button type="button" className={'et-btn' + (active('bold') ? ' active' : '')} title="Gras" onClick={() => run((c) => c.toggleBold())}><b>G</b></button>
       <button type="button" className={'et-btn' + (active('italic') ? ' active' : '')} title="Italique" onClick={() => run((c) => c.toggleItalic())}><i>I</i></button>
       <button type="button" className={'et-btn' + (active('underline') ? ' active' : '')} title="Souligné" onClick={() => run((c) => c.toggleUnderline())}><u>U</u></button>
