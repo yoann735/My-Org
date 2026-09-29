@@ -11,6 +11,7 @@ import { comparerAuCloud, derniereSyncReussie } from '../lib/syncStatus.js';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { todayISO } from '../lib/sm2.js';
 import { AllPromptsModal } from './CoursePromptsMenu.jsx';
+import { dernierEchecCloud } from '../data/sync.js';
 
 const FALLBACK_TINT = '#7C6FE0';
 /** palette de secours pour une matière SANS couleur choisie (m.couleur) —
@@ -144,7 +145,14 @@ export function syncStatusLabel(syncState) {
   const s = syncState && syncState.status;
   if (s === 'syncing') return 'Synchronisation en cours…';
   if (s === 'disabled') return 'Synchro cloud désactivée (variables Supabase absentes sur ce déploiement).';
-  if (s === 'offline') return 'Hors ligne ou cloud injoignable — nouvel essai automatique à la reconnexion.';
+  if (s === 'offline') {
+    // Même distinction que l'indicateur plus bas : « hors ligne » et « le serveur
+    // n'existe plus » demandent des gestes très différents.
+    const t = (dernierEchecCloud() || {}).type;
+    if (t === 'hote') return 'Le serveur cloud ne répond pas (projet Supabase supprimé, en pause, ou URL erronée) — vérifie la configuration Supabase.';
+    if (t === 'refus') return 'Le cloud refuse la lecture (droits, RLS ou quota) — vérifie la configuration Supabase.';
+    return 'Hors ligne — nouvel essai automatique à la reconnexion.';
+  }
   if (s === 'ok') {
     const quand = syncState.at
       ? ' à ' + new Date(syncState.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
@@ -190,7 +198,15 @@ export function SyncIndicator({ compact = false, refreshKey = 0 }) {
     if (enCours && !etat) return { txt: 'Vérification…', couleur: 'var(--text-2)' };
     if (!etat) return { txt: '—', couleur: 'var(--text-2)' };
     if (etat.statut === 'disabled') return { txt: 'Synchro cloud désactivée sur ce déploiement', couleur: 'var(--text-2)' };
-    if (etat.statut === 'offline') return { txt: '⚠️ Cloud injoignable — état non vérifiable', couleur: 'var(--warn, #d08a2a)' };
+    if (etat.statut === 'offline') {
+      // Dire OÙ est la panne : « injoignable » tout court a déjà coûté une nuit
+      // de recherche (voir docs/diag-supabase-nuit.md).
+      const t = (etat.cause && etat.cause.type) || null;
+      if (t === 'reseau') return { txt: '⚠️ Cet appareil est hors ligne — état non vérifiable', couleur: 'var(--warn, #d08a2a)' };
+      if (t === 'hote') return { txt: '⚠️ Le serveur cloud ne répond pas (projet Supabase supprimé, en pause, ou URL erronée) — état non vérifiable', couleur: 'var(--crit)' };
+      if (t === 'refus') return { txt: '⚠️ Le cloud refuse la lecture (droits, RLS ou quota) — état non vérifiable', couleur: 'var(--crit)' };
+      return { txt: '⚠️ Cloud injoignable — état non vérifiable', couleur: 'var(--warn, #d08a2a)' };
+    }
     if (etat.statut === 'erreur') return { txt: '⚠️ Vérification impossible : ' + etat.message, couleur: 'var(--crit)' };
     if (etat.statut === 'ajour') return { txt: '✅ À jour avec le cloud', couleur: 'var(--ok, #3fae7a)' };
     const n = etat.ecarts + etat.enAttente + (etat.fichiersEnSouffrance || 0);

@@ -33,7 +33,7 @@
    (storage.js#etatBlobs, étape 5).
    ============================================================ */
 import { SYNCABLE_STORES, getAll, etatBlobs } from './storage.js';
-import { pullAllRecords, outboxCount } from '../data/sync.js';
+import { pullAllRecords, outboxCount, dernierEchecCloud } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
 /** Date -> forme canonique unique. Voir « LE PIÈGE » ci-dessus. */
@@ -97,12 +97,12 @@ export async function comparerAuCloud() {
   const local = await etatLocal();
   const enAttente = await outboxCount();
   const cloud = await etatCloud();
-  if (!cloud) return { statut: 'offline', local, enAttente };
+  if (!cloud) return { statut: 'offline', local, enAttente, cause: dernierEchecCloud() };
   // FICHIERS (étape 5) : des enregistrements alignés ne suffisent pas — une fiche
   // synchronisée dont le PDF n'est pas au cloud s'ouvrira « PDF introuvable » ailleurs.
   // Liste du bucket illisible → on ne conclut rien, comme pour les enregistrements.
   const blobs = await etatBlobs();
-  if (!blobs) return { statut: 'offline', local, enAttente };
+  if (!blobs) return { statut: 'offline', local, enAttente, cause: dernierEchecCloud() };
   const fichiersEnSouffrance = blobs.enAttente + blobs.aEnvoyer.length + blobs.bloques.length + blobs.introuvables.length;
 
   const L = new Map(local.lignes.map((l) => [cle(l), val(l)]));

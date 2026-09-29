@@ -224,6 +224,38 @@ const MAX_PAGES = 200;
  * @returns {Promise<Array|null>} tous les enregistrements, ou null si la lecture
  *   complète n'a pas pu aboutir (hors-ligne, non configuré, erreur, garde-fou).
  */
+/* ---- POURQUOI LA LECTURE CLOUD A ÉCHOUÉ (diagnostic, pas de logique) ----
+   `pullAllRecords` renvoie `null` sur TOUTE erreur — c'est la règle « jamais de
+   résultat partiel », et elle est juste. Mais du coup l'app affichait le même
+   « Cloud injoignable » pour une coupure réseau de dix secondes et pour un projet
+   Supabase qui n'existe plus (nuit du 29/09/2026, voir docs/diag-supabase-nuit.md :
+   NXDOMAIN, la panne a duré sans qu'on sache où chercher).
+
+   On retient donc la DERNIÈRE cause constatée. Le navigateur ne dit pas « DNS
+   introuvable » — toute erreur réseau y est un `TypeError: Failed to fetch` — mais
+   `navigator.onLine` suffit à trancher ce qui compte : si la machine est en ligne
+   et que l'hôte ne répond pas, le problème est EN FACE, pas ici.
+
+   Purement informatif : rien dans la synchro ne lit cette valeur. */
+let dernierEchecLecture = null;
+export const dernierEchecCloud = () => dernierEchecLecture;
+
+function noterEchec(erreur) {
+  const message = (erreur && (erreur.message || erreur.error_description || String(erreur))) || 'inconnue';
+  const enLigne = typeof navigator === 'undefined' ? true : navigator.onLine !== false;
+  const reseau = /fetch|network|NetworkError|Load failed/i.test(message);
+  dernierEchecLecture = {
+    quand: new Date().toISOString(),
+    message,
+    // 'hote'   : on est en ligne mais l'hôte ne répond pas → projet supprimé,
+    //            en pause, URL fausse, ou panne du fournisseur ;
+    // 'reseau' : la machine elle-même est hors ligne ;
+    // 'refus'  : l'hôte a répondu, mais a refusé (droits, RLS, quota).
+    type: reseau ? (enLigne ? 'hote' : 'reseau') : 'refus',
+  };
+  return null;
+}
+
 export async function pullAllRecords() {
   if (!SYNC_ENABLED) return null;
   try {
@@ -236,13 +268,13 @@ export async function pullAllRecords() {
         .order('store', { ascending: true })
         .order('record_id', { ascending: true })
         .range(from, from + PAGE - 1);
-      if (error) return null;            // règle 2 : jamais de partiel
+      if (error) return noterEchec(error); // règle 2 : jamais de partiel
       const lot = data || [];
       tout.push(...lot);
       if (lot.length < PAGE) return tout; // dernière page : on a tout
     }
-    return null;                          // garde-fou atteint : on échoue franchement
-  } catch (e) { return null; }
+    return noterEchec(new Error('trop de pages'));  // garde-fou atteint : on échoue franchement
+  } catch (e) { return noterEchec(e); }
 }
 
 /**
