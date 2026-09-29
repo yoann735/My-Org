@@ -1304,3 +1304,39 @@
 .appr-guide-etapes > div > div:last-child { animation: fade .25s ease; }
 .appr-guide-fin { display: inline-flex; align-items: center; gap: 5px; color: var(--ok, #3fae7a); font-weight: 600; }
 .appr-cours.halo .pdfr-scroll { box-shadow: 0 0 0 3px var(--accent); transition: box-shadow .2s; }
+
+/* ---- PRISE DE NOTES : boîte de texte libre posée sur une page de PDF ----
+   Elle doit se LIRE comme un ajout de l'étudiant, jamais comme une partie du
+   document : fond teinté opaque, bordure franche, ombre portée.
+   Trois zones aux rôles STRICTEMENT séparés (voir pdf/PdfReader.jsx, « les
+   quatre verrous ») :
+   - .nb-bar    : la poignée de DÉPLACEMENT (et la corbeille). Le seul endroit
+                  d'où un glisser peut partir.
+   - .nb-corner : la poignée de REDIMENSION, en bas à droite.
+   - le corps   : le TEXTE. Cliquer dedans place le curseur, ça ne déplace rien —
+                  sans quoi on ne pourrait plus sélectionner le texte de la boîte.
+   .pdfr-drawlayer n'existe QUE pendant que l'outil « Boîte de texte » est actif :
+   posée au-dessus de la couche de texte, elle intercepte tout, donc ni la
+   sélection ni le test de position des surlignages ne peuvent se déclencher. */
+.pdfr-drawlayer { position: absolute; inset: 0; cursor: crosshair; user-select: none; }
+.pdfr-drawlayer .nb-preview { position: absolute; border: 1.5px dashed var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 6px; pointer-events: none; }
+
+.note-box { position: absolute; box-sizing: border-box; display: flex; flex-direction: column;
+  border: 1.5px solid rgba(0,0,0,.28); border-radius: 7px; overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0,0,0,.18); color: #16162a; }
+.note-box.active { border-color: var(--accent); box-shadow: 0 3px 14px rgba(0,0,0,.28); }
+.note-box .nb-bar { display: flex; align-items: center; gap: 4px; padding: 2px 4px; cursor: grab;
+  background: rgba(0,0,0,.10); border-bottom: 1px solid rgba(0,0,0,.12); flex: 0 0 auto; user-select: none; }
+.note-box .nb-bar:active { cursor: grabbing; }
+.note-box .nb-grip { opacity: .55; display: inline-flex; }
+.note-box .nb-spacer { flex: 1; }
+.note-box .nb-btn { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+  border: 0; border-radius: 4px; background: transparent; cursor: pointer; color: inherit; opacity: .65; }
+.note-box .nb-btn:hover { opacity: 1; background: rgba(0,0,0,.12); }
+.note-box .nb-btn.danger:hover { background: rgba(200,30,30,.20); }
+.note-box .nb-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 5px 7px; font-size: 13px; line-height: 1.35; cursor: text; }
+.note-box .nb-body p { margin: 0 0 .25em; }
+.note-box .nb-body p:last-child { margin-bottom: 0; }
+.note-box .nb-body .ProseMirror { outline: none; min-height: 100%; }
+.note-box .nb-corner { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, rgba(0,0,0,.35) 50%); }

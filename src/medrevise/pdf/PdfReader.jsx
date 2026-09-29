@@ -34,6 +34,19 @@
    vide) ne déclenche donc jamais rien. Après la sélection, une popover
    propose de surligner (4 couleurs) OU d'éditer ce texte précis ; la
    boîte d'édition est l'union des rects de la sélection, pas un span.
+
+   PRISE DE NOTES (prop `outilsNotes`, onglet pages/PriseDeNotes.jsx). Trois
+   ajouts, TOUS inactifs quand la prop est absente — le lecteur des fiches
+   (Bibliothèque, Réviser, Apprentissage, Import Anatomie) se comporte donc
+   exactement comme avant :
+   - un sélecteur d'outil « Sélection / Boîte de texte » ;
+   - la BOÎTE DE TEXTE LIBRE (kind:'libre' dans le store `annotations`),
+     posable n'importe où, déplaçable, redimensionnable, supprimable — voir
+     le composant NoteBox plus bas et ses QUATRE VERROUS, qui garantissent
+     qu'un geste de boîte ne déclenche jamais ni sélection ni surlignage ;
+   - Annuler / Rétablir (lib/annotHistory.js). L'historique, lui, est tenu
+     en TOUTES circonstances : seuls ses boutons et ses raccourcis dépendent
+     de `outilsNotes`.
    ============================================================ */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -43,7 +56,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, detectDocKind, Modal, LoaderL6 } from '../components/ui.jsx';
-import { getBlob, putBlob, putBlobAt, getAll, put, remove, newHighlight, newTextEdit } from '../lib/storage.js';
+import { getBlob, putBlob, putBlobAt, getAll, put, remove, newHighlight, newTextEdit, newNoteBox } from '../lib/storage.js';
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cibleEditable } from '../lib/annotHistory.js';
 import { RICH_EXTENSIONS, richToHTML } from '../documents/lib/richtext.js';
 import { AddItemModal, PasteJsonForm } from '../components/AddItemForm.jsx';
@@ -79,6 +92,18 @@ const COLORS = [
 const COLOR_HEX = Object.fromEntries(COLORS.map((c) => [c.id, c.hex]));
 const COLOR_TAG = { jaune: 'Prioritaire', rose: 'Cloze' }; // étiquette affichée dans le panneau
 const COLOR_RGB = { jaune: rgb(1, 0.85, 0.3), vert: rgb(0.55, 0.89, 0.55), bleu: rgb(0.5, 0.78, 1), rose: rgb(1, 0.62, 0.82) };
+
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+const clamp01 = (v) => clamp(v, 0, 1);
+/** teinte de fond d'une boîte de texte : la couleur de la palette, opacifiée. */
+const avecAlpha = (hex, a) => {
+  const h = String(hex || '#FFD84D').replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+};
+/** taille par défaut d'une boîte posée d'un simple clic (fraction de page). */
+const BOITE_DEFAUT = { width: 0.30, height: 0.075 };
+const BOITE_MIN = { width: 0.04, height: 0.022 };
 
 const FONT_SIZES = ['10px', '11px', '12px', '13px', '14px', '16px', '18px', '20px', '24px', '28px', '32px'];
 const FONT_FAMILIES = ['inherit', 'serif', 'sans-serif', 'monospace', 'Georgia', 'Arial', 'Times New Roman'];
@@ -461,8 +486,14 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   const [pending, setPending] = useState(null); // nouveau surlignage en attente { page, texte, rects, x, y }
   const [editingHl, setEditingHl] = useState(null); // popover changer couleur / supprimer { id, couleur, x, y }
 
-  const [edits, setEdits] = useState([]); // Chantier 1 : blocs de texte édités
+  const [edits, setEdits] = useState([]); // blocs de texte : remplacement (Chantier 1) ET boîtes libres (kind:'libre')
   const [activeEditId, setActiveEditId] = useState(null);
+  // outil actif de la Prise de notes. 'boite' monte une couche de tracé AU-DESSUS de
+  // la couche de texte (voir PdfPageContent) : tant qu'il est actif, ni la sélection
+  // ni le test de position des surlignages ne peuvent se déclencher — c'est
+  // structurel, pas une suite de conditions à ne pas oublier.
+  const [outil, setOutil] = useState('selection'); // 'selection' | 'boite'
+  const [couleurBoite, setCouleurBoite] = useState('jaune');
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -550,14 +581,21 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   useEffect(() => {
     if (!outilsNotes) return undefined;
     const onKey = (e) => {
-      if (!(e.metaKey || e.ctrlKey) || String(e.key).toLowerCase() !== 'z') return;
       if (cibleEditable(e.target) || cibleEditable(document.activeElement)) return;
+      // Suppr / Retour arrière sur une boîte sélectionnée dont le texte n'a PAS le
+      // curseur (sinon la garde ci-dessus a déjà rendu la main à l'éditeur).
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const b = edits.find((a) => a.id === activeEditId && a.kind === 'libre');
+        if (b) { e.preventDefault(); supprimerBoite(b); }
+        return;
+      }
+      if (!(e.metaKey || e.ctrlKey) || String(e.key).toLowerCase() !== 'z') return;
       e.preventDefault();
       if (e.shiftKey) hist.retablir(); else hist.annuler();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [outilsNotes, hist.annuler, hist.retablir]);
+  }, [outilsNotes, hist.annuler, hist.retablir, edits, activeEditId]); // eslint-disable-line react-hooks/exhaustive-deps
   // les surlignages ne vivent pas dans `db` (lus à part, ci-dessus) : sans ceci, ceux
   // qu'une synchro rapatrie d'un autre appareil (retour sur l'onglet, reconnexion —
   // MedReviseApp.jsx appelle alors reload(), qui remplace `db`) n'apparaîtraient qu'à
@@ -866,6 +904,10 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     setPending(null);
     window.getSelection && window.getSelection().removeAllRanges();
   };
+  /* SEULE écriture d'annotation qui ne passe PAS par l'historique, et c'est
+     délibéré : le TEXTE d'un bloc a son propre historique (celui de TipTap).
+     Deux piles, deux portées, départagées par la cible du clavier — voir
+     l'effet des raccourcis plus haut et lib/annotHistory.js. */
   const saveEditContent = async (edit, json) => {
     const updated = { ...edit, content: json };
     await put('annotations', updated);
@@ -877,12 +919,55 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     if (a) await hist.appliquer(cmdSupprimer('annotations', a, "Retrait du bloc de texte"));
   };
 
+  // sauvegarde différée du texte d'un bloc/d'une boîte (voir l'éditeur plus bas).
+  // Déclarés ICI, avant leur première utilisation dans le fichier (boiteFraiche).
+  const editSaveTimer = useRef(null);
+  const editLastJson = useRef(null);
+
+  /* ---- BOÎTE DE TEXTE LIBRE ----
+     Posée n'importe où sur une page (pas forcément sur du texte), déplaçable,
+     redimensionnable, supprimable. Même store et même géométrie normalisée [0,1]
+     que le bloc de remplacement de texte — seul `kind: 'libre'` les distingue.
+     Les trois actions passent par l'historique : la boîte naît annulable. */
+  const creerBoite = async ({ page, x, y, width, height }) => {
+    const rec = newNoteBox({ ficheId, page, x, y, width, height, couleur: couleurBoite });
+    await hist.appliquer(cmdCreer('annotations', rec, 'Boîte de texte'));
+    setActiveEditId(rec.id);
+    setOutil('selection'); // on vient de la poser : on veut écrire dedans, pas en tracer une autre
+  };
+  /* Version LA PLUS FRAÎCHE d'une boîte. Indispensable : un geste part d'un instantané
+     pris au pointerdown, or l'utilisateur a pu taper dans la boîte juste avant, et la
+     sauvegarde du texte est différée de 400 ms (voir onUpdate de l'éditeur). Écrire
+     l'instantané tel quel écraserait ces caractères-là. On repart donc de
+     l'enregistrement courant, et du contenu en attente s'il y en a un — le geste ne
+     change QUE la géométrie. */
+  const boiteFraiche = (id, repli) => {
+    const base = edits.find((a) => a.id === id) || repli;
+    if (!base) return null;
+    const enAttente = activeEditId === id && editLastJson.current;
+    return enAttente ? { ...base, content: editLastJson.current } : base;
+  };
+  const GEO = (o) => ({ x: o.x, y: o.y, width: o.width, height: o.height });
+
+  // UNE entrée d'historique par geste, pas soixante : l'état d'avant est capturé au
+  // pointerdown (dans NoteBox) et la commande n'est empilée qu'au pointerup.
+  const majBoite = async (avant, apres, libelle) => {
+    if (!avant || !apres) return;
+    const actuel = boiteFraiche(avant.id, avant);
+    if (!actuel) return;
+    await hist.appliquer(cmdModifier('annotations', { ...actuel, ...GEO(avant) }, { ...actuel, ...GEO(apres) }, libelle));
+  };
+  const supprimerBoite = async (b) => {
+    if (!b) return;
+    const actuel = boiteFraiche(b.id, b); // restaurer la boîte AVEC son texte le plus récent
+    if (activeEditId === b.id) setActiveEditId(null);
+    await hist.appliquer(cmdSupprimer('annotations', actuel || b, 'Suppression de la boîte'));
+  };
+
   // Chantier 1 : UNE SEULE instance TipTap, possédée ici et partagée par le bloc affiché
   // (positionné sur sa page) ET la barre d'outils fixe — sinon les deux se désynchronisent
   // (historique d'annulation séparé, boutons qui ne reflètent pas ce qui s'affiche).
   const activeEdit = edits.find((a) => a.id === activeEditId) || null;
-  const editSaveTimer = useRef(null);
-  const editLastJson = useRef(null);
   const editor = useEditor({
     extensions: RICH_EXTENSIONS,
     content: (activeEdit && activeEdit.content) || undefined,
@@ -913,7 +998,11 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   // le tableau source réel, rend ces props stables sauf changement effectif de leur contenu.
   const groupByPage = (arr) => { const map = {}; arr.forEach((x) => { (map[x.page] || (map[x.page] = [])).push(x); }); return map; };
   const highlightsByPage = useMemo(() => groupByPage(highlights), [highlights]);
-  const editsByPage = useMemo(() => groupByPage(edits), [edits]);
+  // deux familles dans le MÊME store : les blocs de remplacement de texte (sans
+  // `kind`, historiques) et les boîtes libres (`kind: 'libre'`). Rendues par des
+  // composants différents, jamais mélangées.
+  const blocsByPage = useMemo(() => groupByPage(edits.filter((a) => a.kind !== 'libre')), [edits]);
+  const boitesByPage = useMemo(() => groupByPage(edits.filter((a) => a.kind === 'libre')), [edits]);
   const matchesByPage = useMemo(() => groupByPage(matches), [matches]);
 
   // input UNIQUE (PDF ou HTML) : le type est détecté à la volée, le stockage
@@ -1076,6 +1165,23 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
         </div>
 
         {outilsNotes && (
+          <div className="seg" style={{ marginLeft: 4 }}>
+            <button type="button" className={'seg-btn' + (outil === 'selection' ? ' active' : '')} onClick={() => setOutil('selection')}
+              title="Sélectionner du texte, surligner, déplacer une boîte"><Icon name="grip" size={13} /> Sélection</button>
+            <button type="button" className={'seg-btn' + (outil === 'boite' ? ' active' : '')} onClick={() => setOutil('boite')}
+              title="Tracer une boîte de texte n'importe où sur la page"><Icon name="edit" size={13} /> Boîte de texte</button>
+          </div>
+        )}
+        {outilsNotes && outil === 'boite' && (
+          <div className="row" style={{ gap: 4 }} title="Couleur de la prochaine boîte">
+            {COLORS.map((c) => (
+              <button key={c.id} type="button" onClick={() => setCouleurBoite(c.id)} title={c.label}
+                style={{ width: 18, height: 18, borderRadius: 5, background: c.hex, cursor: 'pointer',
+                  border: couleurBoite === c.id ? '2px solid var(--text)' : '1px solid rgba(0,0,0,.25)' }} />
+            ))}
+          </div>
+        )}
+        {outilsNotes && (
           <div className="row" style={{ gap: 4 }}>
             <button className="icon-btn sm" onClick={hist.annuler} disabled={!hist.peutAnnuler}
               title={hist.peutAnnuler ? `Annuler — ${hist.libelleAnnuler} (${RACCOURCI}Z)` : `Annuler (${RACCOURCI}Z)`}>
@@ -1131,8 +1237,10 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
         <button className="btn ghost sm" onClick={exportAnnotated} disabled={!highlights.length || exporting}>{exporting && !isClassicUI() ? <LoaderL6 inline label="Export en cours" /> : <Icon name="filePdf" size={13} />} {exporting ? 'Export…' : 'Exporter PDF annoté'}</button>
       </div>
 
-      {mode === 'edit' && activeEdit && editor && (
-        <EditToolbar editor={editor} onReset={() => resetEdit(activeEdit.id)} onClose={() => setActiveEditId(null)} />
+      {activeEdit && editor && (mode === 'edit' || activeEdit.kind === 'libre') && (
+        <EditToolbar editor={editor} libre={activeEdit.kind === 'libre'}
+          onReset={() => (activeEdit.kind === 'libre' ? supprimerBoite(activeEdit) : resetEdit(activeEdit.id))}
+          onClose={() => setActiveEditId(null)} />
       )}
 
       {loadError && (
@@ -1160,7 +1268,12 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
                     <PdfPageContent
                       pdfDoc={pdfDoc} pageNum={n} scale={scale} dpr={dpr} mode={mode} pageHeight={h}
                       highlights={highlightsByPage[n] || EMPTY_ARRAY}
-                      edits={editsByPage[n] || EMPTY_ARRAY}
+                      edits={blocsByPage[n] || EMPTY_ARRAY}
+                      boites={boitesByPage[n] || EMPTY_ARRAY}
+                      outil={outilsNotes ? outil : 'selection'}
+                      onCreerBoite={creerBoite}
+                      onMajBoite={majBoite}
+                      onSupprimerBoite={supprimerBoite}
                       activeEditId={activeEditId}
                       matches={matchesByPage[n] || EMPTY_ARRAY}
                       activeMatchIdx={activeMatch}
@@ -1266,8 +1379,8 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     texte + surlignages + surlignage de recherche (géométrie exacte, Chantier 2) + blocs
     de texte édités (Chantier 1). */
 function PdfPageContent({
-  pdfDoc, pageNum, scale, dpr, mode, pageHeight, highlights, edits, activeEditId, matches, activeMatchIdx,
-  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor,
+  pdfDoc, pageNum, scale, dpr, mode, pageHeight, highlights, edits, boites, outil, activeEditId, matches, activeMatchIdx,
+  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite,
 }) {
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
@@ -1339,6 +1452,44 @@ function PdfPageContent({
     };
   }, [pdfDoc, pageNum, scale, dpr, matches]);
 
+  /* tracé d'une NOUVELLE boîte : cliquer-glisser dessine le rectangle, un simple
+     clic pose une boîte de taille par défaut au point visé. Tout est normalisé
+     [0,1] par rapport à la page, donc indépendant du zoom. */
+  const [trace, setTrace] = useState(null);
+  const demarrerTrace = (e) => {
+    e.preventDefault(); // pas de sélection native pendant le tracé
+    const r = e.currentTarget.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const x0 = clamp01((e.clientX - r.left) / r.width);
+    const y0 = clamp01((e.clientY - r.top) / r.height);
+    let courant = null;
+    const move = (ev) => {
+      const x1 = clamp01((ev.clientX - r.left) / r.width);
+      const y1 = clamp01((ev.clientY - r.top) / r.height);
+      courant = { x: Math.min(x0, x1), y: Math.min(y0, y1), width: Math.abs(x1 - x0), height: Math.abs(y1 - y0) };
+      setTrace(courant);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setTrace(null);
+      let rect = courant;
+      if (!rect || rect.width < BOITE_MIN.width || rect.height < BOITE_MIN.height) {
+        rect = { x: x0, y: y0, width: BOITE_DEFAUT.width, height: BOITE_DEFAUT.height };
+      }
+      // la boîte ne sort jamais de la page
+      const x = clamp(rect.x, 0, 1 - BOITE_MIN.width);
+      const y = clamp(rect.y, 0, 1 - BOITE_MIN.height);
+      onCreerBoite({
+        page: pageNum, x, y,
+        width: clamp(rect.width, BOITE_MIN.width, 1 - x),
+        height: clamp(rect.height, BOITE_MIN.height, 1 - y),
+      });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   // Cmd+C : le texte copié garde ses retours à la ligne (issus des <br>), caractères
   // de compatibilité normalisés. Sélection vide → copie native, on ne touche à rien.
   const handleCopy = (e) => {
@@ -1359,7 +1510,12 @@ function PdfPageContent({
   // surlignage l'ouvre (couleur, note, suppression) — par test de position plutôt que
   // par un clic sur le rectangle : les rectangles restent transparents à la souris, on
   // peut donc toujours sélectionner du texte déjà surligné.
+  // VERROU 3 (voir l'en-tête de fichier) : un geste de boîte qui vient de se
+  // terminer ne doit RIEN déclencher ici, même si le pointeur a fini sa course
+  // hors de la boîte — auquel cas le mouseup atteint bien cette couche.
+  const gesteBoite = useRef(false);
   const handleMouseUp = (e) => {
+    if (gesteBoite.current) { gesteBoite.current = false; return; }
     const sel = window.getSelection();
     const container = textLayerRef.current;
     if (!container || !sel) return;
@@ -1415,7 +1571,124 @@ function PdfPageContent({
       {edits.map((a) => (
         <TextEditBlock key={a.id} edit={a} active={a.id === activeEditId} editable={mode === 'edit'} onActivate={onActivateEdit} editor={a.id === activeEditId ? activeEditor : null} pageHeight={pageHeight} />
       ))}
+
+      {/* VERROU 1 : la couche de tracé n'existe QUE pendant que l'outil « Boîte de
+          texte » est actif, et elle est posée AU-DESSUS de la couche de texte. Tant
+          qu'elle est là, aucun événement n'atteint `pdfr-textlayer` : ni sélection,
+          ni surlignage, ni test de position. Rien à désactiver, rien à oublier. */}
+      {outil === 'boite' && (
+        <div className="pdfr-drawlayer" onPointerDown={demarrerTrace}>
+          {trace && (
+            <div className="nb-preview" style={{ left: trace.x * 100 + '%', top: trace.y * 100 + '%', width: trace.width * 100 + '%', height: trace.height * 100 + '%' }} />
+          )}
+        </div>
+      )}
+
+      {/* rendues APRÈS la couche de tracé : une boîte existante reste toujours
+          atteignable, même l'outil « Boîte de texte » actif. */}
+      {boites.map((b) => (
+        <NoteBox key={b.id} boite={b} active={b.id === activeEditId}
+          editor={b.id === activeEditId ? activeEditor : null}
+          onActivate={onActivateEdit}
+          onGeste={(enCours) => { gesteBoite.current = enCours; }}
+          onMaj={onMajBoite} onSupprimer={onSupprimerBoite} />
+      ))}
     </>
+  );
+}
+
+/* ============================================================
+   BOÎTE DE TEXTE LIBRE — et la séparation stricte des interactions.
+
+   Le piège : cette boîte et le surligneur vivent sur la même page. Un glisser
+   de boîte ne doit JAMAIS produire une sélection de texte ni un test de
+   position de surlignage. Quatre verrous indépendants, parce qu'aucun ne
+   couvre tout seul l'ensemble des cas :
+
+   1. OUTIL EXPLICITE — l'outil « Boîte de texte » monte `.pdfr-drawlayer`
+      AU-DESSUS de la couche de texte : pendant le tracé, `pdfr-textlayer` ne
+      reçoit plus rien du tout. Structurel, pas conditionnel.
+   2. LE GESTE PART D'UNE POIGNÉE, jamais de la couche de texte : le bandeau
+      (déplacement) ou le coin (redimension). `preventDefault()` empêche le
+      navigateur de démarrer une sélection, `stopPropagation()` isole le geste.
+      Même patron éprouvé que le glisser des coches d'anatomie
+      (pages/ImportAnatomieVisuel.jsx) : seuil de 4 px, écouteurs sur window,
+      coordonnées normalisées par getBoundingClientRect.
+   3. GARDE À L'ENTRÉE du hit-test (`gesteBoite`, voir handleMouseUp) — pour le
+      cas où le pointeur termine sa course HORS de la boîte.
+   4. LE CORPS N'EST PAS UNE POIGNÉE : cliquer dans le texte place le curseur.
+      Si la boîte entière était déplaçable, on ne pourrait plus sélectionner
+      son propre texte.
+
+   Une seule entrée d'historique par geste : l'état d'avant est capturé au
+   pointerdown, la commande empilée au pointerup, et seulement si ça a bougé.
+   ============================================================ */
+function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer }) {
+  const [apercu, setApercu] = useState(null); // géométrie pendant le geste (état local, non persisté)
+  const b = apercu || boite;
+  const html = useMemo(() => richToHTML(boite.content), [boite.content]);
+
+  const demarrer = (e, type) => {
+    if (e.button !== 0) return;
+    e.preventDefault();   // VERROU 2 : pas de sélection native
+    e.stopPropagation();  // VERROU 2 : l'événement ne remonte pas à la page
+    const page = e.currentTarget.closest('.pdfr-page');
+    const r = page && page.getBoundingClientRect();
+    if (!r || !r.width || !r.height) return;
+    const depart = { x: e.clientX, y: e.clientY };
+    const avant = boite;
+    let courant = null;
+    let bouge = false;
+    onGeste(true);
+
+    const move = (ev) => {
+      if (!bouge && Math.abs(ev.clientX - depart.x) + Math.abs(ev.clientY - depart.y) <= 4) return;
+      bouge = true;
+      const dx = (ev.clientX - depart.x) / r.width;
+      const dy = (ev.clientY - depart.y) / r.height;
+      courant = type === 'move'
+        ? { ...avant, x: clamp(avant.x + dx, 0, 1 - avant.width), y: clamp(avant.y + dy, 0, 1 - avant.height) }
+        : { ...avant,
+            width: clamp(avant.width + dx, BOITE_MIN.width, 1 - avant.x),
+            height: clamp(avant.height + dy, BOITE_MIN.height, 1 - avant.y) };
+      setApercu(courant);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setApercu(null);
+      onGeste(false); // relâché ici ; handleMouseUp consommera le drapeau s'il est appelé
+      if (bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de la boîte' : 'Redimension de la boîte');
+      else if (type === 'move') onActivate(boite.id); // clic sans déplacement sur le bandeau → activer
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const style = {
+    left: b.x * 100 + '%', top: b.y * 100 + '%', width: b.width * 100 + '%', height: b.height * 100 + '%',
+    background: avecAlpha(COLOR_HEX[boite.couleur] || COLOR_HEX.jaune, 0.92),
+  };
+
+  return (
+    <div className={'note-box' + (active ? ' active' : '')} style={style}>
+      <div className="nb-bar" onPointerDown={(e) => demarrer(e, 'move')} title="Glisser pour déplacer">
+        <span className="nb-grip"><Icon name="grip" size={12} /></span>
+        <span className="nb-spacer" />
+        <button type="button" className="nb-btn danger" title="Supprimer cette boîte"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onSupprimer(boite); }}>
+          <Icon name="trash" size={12} />
+        </button>
+      </div>
+
+      {/* VERROU 4 : le corps est du TEXTE, pas une poignée. */}
+      {active && editor
+        ? <div className="nb-body"><EditorContent editor={editor} /></div>
+        : <div className="nb-body" onClick={() => onActivate(boite.id)} dangerouslySetInnerHTML={{ __html: html }} />}
+
+      <div className="nb-corner" title="Glisser pour redimensionner" onPointerDown={(e) => demarrer(e, 'resize')} />
+    </div>
   );
 }
 
@@ -1454,7 +1727,7 @@ function TextEditBlock({ edit, active, editable, onActivate, editor, pageHeight 
     plutôt qu'une popover flottante ancrée sur le bloc, pour rester fiable pendant le
     scroll/zoom (un bloc édité peut sortir du viewport pendant qu'on le rédige). Pilote
     la MÊME instance `editor` que celle rendue dans le bloc (passée par PdfReader). */
-function EditToolbar({ editor, onReset, onClose }) {
+function EditToolbar({ editor, onReset, onClose, libre = false }) {
   const [, force] = useState(0);
   useEffect(() => {
     const rerender = () => force((v) => v + 1);
@@ -1495,7 +1768,9 @@ function EditToolbar({ editor, onReset, onClose }) {
       <button type="button" className="et-btn" title="Annuler" onClick={() => editor.chain().focus().undo().run()}><Icon name="refresh" size={13} style={{ transform: 'scaleX(-1)' }} /></button>
       <button type="button" className="et-btn" title="Rétablir" onClick={() => editor.chain().focus().redo().run()}><Icon name="refresh" size={13} /></button>
       <span style={{ flex: 1 }} />
-      <button type="button" className="btn ghost sm" onClick={onReset}><Icon name="refresh" size={13} /> Réinitialiser (texte d'origine)</button>
+      <button type="button" className="btn ghost sm" onClick={onReset}>
+        {libre ? <><Icon name="trash" size={13} /> Supprimer la boîte</> : <><Icon name="refresh" size={13} /> Réinitialiser (texte d'origine)</>}
+      </button>
       <button type="button" className="btn sm" onClick={onClose}><Icon name="check" size={13} /> Terminé</button>
     </div>
   );

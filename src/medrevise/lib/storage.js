@@ -283,6 +283,24 @@ export function newTextEdit({ ficheId, page, x, y, width, height, originalText, 
   };
 }
 
+/* ---- BOÎTE DE TEXTE LIBRE (Prise de notes) : un bloc posé N'IMPORTE OÙ sur une
+   page — pas forcément sur du texte — déplaçable, redimensionnable, supprimable.
+   MÊME store `annotations` et MÊME schéma géométrique que le bloc de remplacement
+   de texte ci-dessus (x,y,width,height normalisés [0,1] par rapport à la page) :
+   seul `kind` les distingue. Un enregistrement ANCIEN n'a pas de `kind` et reste
+   donc lu comme un bloc de remplacement — aucune migration, rien à convertir.
+   `couleur` : un id de la palette des surlignages (voir COLORS, pdf/PdfReader.jsx),
+   pour que la boîte se voie comme un ajout et non comme un morceau du PDF. ---- */
+export function newNoteBox({ ficheId, page, x, y, width, height, couleur, content }) {
+  return {
+    id: genId('an'), ficheId, page, x, y, width, height,
+    kind: 'libre',
+    couleur: couleur || 'jaune',
+    content: content || { type: 'doc', content: [{ type: 'paragraph' }] },
+    createdAt: new Date().toISOString(),
+  };
+}
+
 /* ---- meta (migrations) + backups (sauvegardes pré-migration) ---- */
 export const getMeta = (key) => get(key, S.meta);
 export const setMeta = (key, val) => set(key, val, S.meta);
