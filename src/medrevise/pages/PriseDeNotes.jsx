@@ -74,6 +74,13 @@ export function PriseDeNotes({ ctx }) {
           <div className="sub">Tes cours en PDF, lus et annotés — sans planification, sans suivi, sans lien avec tes fiches.</div>
         </div>
         <div className="topbar-actions">
+          {/* SORTIE N°2 du mode focus (les autres : le bandeau du shell et le pied
+              de la barre latérale, voir lib/focusMode.js). Le MÊME interrupteur
+              active et désactive — jamais un réglage caché ailleurs. */}
+          <button className={'btn sm' + (ctx.focusNotes ? '' : ' ghost')} onClick={() => ctx.basculerFocus(!ctx.focusNotes)}
+            title={ctx.focusNotes ? 'Revenir à tous les onglets' : 'Ne garder que la Prise de notes, même après un rechargement'}>
+            <Icon name={ctx.focusNotes ? 'maximize' : 'target'} size={14} /> {ctx.focusNotes ? 'Quitter le mode focus' : 'Mode focus'}
+          </button>
           {!creation && <button className="btn primary" onClick={() => setCreation(true)}><Icon name="plus" size={15} /> Nouveau document</button>}
           <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
         </div>

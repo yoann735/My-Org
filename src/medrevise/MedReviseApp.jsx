@@ -13,6 +13,7 @@ import { Reglages } from './pages/Reglages.jsx';
 import { CarnetDashboard } from './pages/CarnetDashboard.jsx';
 import { Apprentissage } from './pages/Apprentissage.jsx';
 import { PriseDeNotes } from './pages/PriseDeNotes.jsx';
+import { estFocusNotes, setFocusNotes, ECRAN_FOCUS } from './lib/focusMode.js';
 import { initSpotlight } from './lib/spotlight.js';
 import { isClassicUI } from '../shared/uiMode.js';
 import { Session } from './session/Session.jsx';
@@ -40,8 +41,8 @@ import { MobileApp } from './mobile/MobileApp.jsx';
 // sont plus atteignables QUE depuis Réviser (« Voir le cours » / « Éditer le schéma »).
 const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard, apprentissage: Apprentissage, notes: PriseDeNotes };
 
-function MedBottomNav({ current, onNav }) {
-  const items = [
+function MedBottomNav({ current, onNav, focus }) {
+  const items = focus ? [{ id: ECRAN_FOCUS, label: 'Prise de notes', icon: 'edit' }] : [
     { id: 'dashboard', label: 'Accueil', icon: 'home' },
     { id: 'revise', label: 'Réviser', icon: 'cards' },
     { id: 'library', label: 'Biblio', icon: 'book' },
@@ -67,7 +68,20 @@ function MedBottomNav({ current, onNav }) {
 export default function MedReviseApp({ themeApi, goHub }) {
   const { theme, toggleTheme } = themeApi;
   const isMobile = useIsMobile(); // petit écran → shell mobile dédié (voir mobile/MobileApp.jsx)
-  const [screen, setScreen] = useState('dashboard');
+  // MODE FOCUS (lib/focusMode.js) : lu AVANT le premier rendu, ce qui fait toute la
+  // persistance — au rechargement on repart directement sur Prise de notes.
+  const [focusNotes, setFocusNotesState] = useState(() => estFocusNotes());
+  const [screen, setScreenBrut] = useState(() => (estFocusNotes() ? ECRAN_FOCUS : 'dashboard'));
+  // Garde : tant que le focus est actif, AUCUNE autre destination n'est acceptée —
+  // y compris venant d'un appel oublié quelque part (ctx.go, openPdfReader…).
+  const setScreen = useCallback((id) => {
+    setScreenBrut((cur) => (estFocusNotes() && id !== ECRAN_FOCUS ? cur : id));
+  }, []);
+  const basculerFocus = useCallback((actif) => {
+    setFocusNotes(actif);
+    setFocusNotesState(!!actif);
+    setScreenBrut(actif ? ECRAN_FOCUS : 'dashboard');
+  }, []);
   const [expanded, setExpanded] = useState(false);
   const [db, setDb] = useState(null);
   const [stats, setStats] = useState(null);
@@ -183,6 +197,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const ctx = {
     theme, toggleTheme, goHub,
     go: setScreen,
+    focusNotes, basculerFocus,
     db, stats, reload, promptOverrides, exoPromptOverrides, chapExoPromptOverrides,
     syncState, forceSync,
     focusFiche, setFocusFiche,
@@ -705,12 +720,25 @@ export default function MedReviseApp({ themeApi, goHub }) {
     /* data-app : marqueur de portée posé à l'ÉTAPE 3. Le fichier de thème est
        global depuis l'étape 1 ; les ANIMATIONS, elles, sont scopées sous cet
        attribut — MealWeek ne peut donc pas les recevoir, par construction. */
-    <div className="app" data-app="medrevise">
-      <StudySidebar current={screen} onNav={setScreen} expanded={expanded} onToggle={() => setExpanded((v) => !v)} onHub={goHub} ctx={ctx} />
+    <div className={'app' + (focusNotes ? ' focus-notes' : '')} data-app="medrevise">
+      <StudySidebar current={screen} onNav={setScreen} expanded={expanded} onToggle={() => setExpanded((v) => !v)} onHub={goHub} ctx={ctx}
+        focus={focusNotes} onQuitterFocus={() => basculerFocus(false)} />
       <div className="main">
+        {/* SORTIE N°1 du mode focus. Rendue par le SHELL, pas par la page : elle reste
+            donc visible quel que soit l'état de l'écran — y compris un document ouvert
+            en plein lecteur PDF. C'est ce qui rend impossible de s'enfermer ici. */}
+        {focusNotes && (
+          <div className="focus-bar">
+            <Icon name="target" size={15} />
+            <span className="fb-txt">Mode focus — seule la Prise de notes est accessible.</span>
+            <button type="button" className="btn sm" onClick={() => basculerFocus(false)}>
+              <Icon name="maximize" size={13} /> Quitter le mode focus
+            </button>
+          </div>
+        )}
         <Current ctx={ctx} key={screen} />
       </div>
-      <MedBottomNav current={screen} onNav={setScreen} />
+      <MedBottomNav current={screen} onNav={setScreen} focus={focusNotes} />
     </div>
   );
 }

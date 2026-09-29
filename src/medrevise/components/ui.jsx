@@ -342,7 +342,7 @@ const ED_NAV = [
   { id: 'notes', label: 'Prise de notes', icon: 'edit' },       // PDF autonomes, lus et annotés, sans suivi (pages/PriseDeNotes.jsx)
 ];
 
-export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx }) {
+export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx, focus = false, onQuitterFocus }) {
   // 'carnet' est un onglet à part entière désormais (plus un sous-état de
   // 'revise') — retiré de la liste ci-dessous pour ne pas allumer les DEUX
   // onglets à la fois quand on est sur l'écran carnet.
@@ -359,7 +359,8 @@ export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx })
         <div className="sb-brand-name">MedRevise<small>Révision</small></div>
       </div>
       <div className="sb-nav">
-        {ED_NAV.map((n) => (
+        {/* MODE FOCUS (lib/focusMode.js) : il ne reste qu'une entrée. */}
+        {(focus ? ED_NAV.filter((n) => n.id === 'notes') : ED_NAV).map((n) => (
           <div key={n.id} className={'sb-item' + (isActive(n.id) ? ' active' : '')} onClick={() => onNav(n.id)} title={n.label}>
             <span className="sb-icon"><Icon name={n.icon} size={20} /></span>
             <span className="sb-label">{n.label}</span>
@@ -368,6 +369,16 @@ export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx })
       </div>
       <div className="sb-spacer" />
       <div className="sb-foot">
+        {/* SORTIE N°3 du mode focus : le pied de barre, qui remplace Prompts /
+            Réglages / Changer d'app tant que le focus dure. Redondante avec le
+            bandeau du shell — c'est voulu, on ne veut aucun cas où l'on reste
+            coincé, même si un style venait à masquer l'autre. */}
+        {focus ? (
+          <div className="sb-item" onClick={onQuitterFocus} title="Quitter le mode focus et retrouver tous les onglets">
+            <span className="sb-icon"><Icon name="maximize" size={20} /></span>
+            <span className="sb-label">Quitter le focus</span>
+          </div>
+        ) : (<>
         <div className={'sb-item' + (promptsOpen ? ' active' : '')} onClick={() => setPromptsOpen(true)} title="Prompts — copier un prompt théorie ou exercices">
           <span className="sb-icon"><Icon name="layers" size={20} /></span>
           <span className="sb-label">Prompts</span>
@@ -380,6 +391,7 @@ export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx })
           <span className="sb-icon"><Icon name="grid" size={20} /></span>
           <span className="sb-label">Changer d'app</span>
         </div>
+        </>)}
         <button className="sb-toggle" onClick={onToggle} title={expanded ? 'Réduire' : 'Étendre'}>
           <span className="sb-icon"><Icon name="panel" size={19} /></span>
           <span className="sb-label">Réduire</span>
