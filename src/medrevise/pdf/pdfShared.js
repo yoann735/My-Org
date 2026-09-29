@@ -276,3 +276,118 @@ export function computeMatchRectsFromDom(container, matches) {
   });
   return out;
 }
+
+/* ============================================================
+   CRAYON — géométrie du trait (étape 6). Fonctions PURES, sans DOM : elles se
+   testent hors navigateur, ce qui est précieux pour de la géométrie.
+
+   Tous les points sont normalisés [0,1] par rapport à la page, comme les
+   surlignages et les boîtes — donc indépendants du zoom.
+
+   LE MODE AIMANT, en deux temps :
+     1. SIMPLIFIER (Ramer–Douglas–Peucker) : retire les points qui n'apportent
+        rien à la forme. C'est ce qui enlève le tremblement de la main.
+     2. ACCROCHER : tout segment à moins de TOLERANCE_DEG d'un multiple de 45°
+        est redressé exactement sur cet axe. Une ligne presque droite devient
+        droite ; une courbe voulue reste une courbe, parce que ses segments ne
+        sont jamais tous proches d'un même axe.
+   Les extrémités sont recousues au fur et à mesure : chaque segment redressé
+   part du point d'arrivée du précédent, donc le trait ne se disloque pas.
+   ============================================================ */
+
+export const EPAISSEURS = [
+  { id: 'fin', label: 'Fin', v: 0.0022 },
+  { id: 'moyen', label: 'Moyen', v: 0.0042 },
+  { id: 'epais', label: 'Épais', v: 0.0075 },
+];
+const TOLERANCE_DEG = 7;   // au-delà, on considère que l'angle est voulu
+/* Seuil de simplification, en FRACTION DE HAUTEUR DE PAGE. Réglé à l'usage :
+   à 0,0016 (~2 px au zoom courant) un tremblement de main ordinaire passait
+   entre les mailles — les points étaient conservés, donc chaque micro-segment
+   gardait un angle de ±10°, donc l'accrochage angulaire ne s'appliquait à aucun
+   et le trait restait ondulé. 0,0035 (~5 px) absorbe le tremblement sans
+   toucher aux courbes voulues, dont l'écart se compte en dizaines de pixels. */
+const EPSILON_RDP = 0.0035;
+
+/** distance d'un point à un segment (au carré, on ne compare que des distances). */
+function distanceCarreeAuSegment(p, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const l2 = dx * dx + dy * dy;
+  if (l2 === 0) return (p[0] - a[0]) ** 2 + (p[1] - a[1]) ** 2;
+  let t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return (p[0] - (a[0] + t * dx)) ** 2 + (p[1] - (a[1] + t * dy)) ** 2;
+}
+
+/** Ramer–Douglas–Peucker, itératif (une pile plutôt que la récursion : un trait
+    peut compter des milliers de points, et on ne veut pas dépendre de la pile
+    d'appels du moteur). */
+export function simplifierRDP(points, epsilon = EPSILON_RDP) {
+  const n = (points || []).length;
+  if (n < 3) return [...(points || [])];
+  const garder = new Array(n).fill(false);
+  garder[0] = garder[n - 1] = true;
+  const pile = [[0, n - 1]];
+  const eps2 = epsilon * epsilon;
+  while (pile.length) {
+    const [i, j] = pile.pop();
+    let max = 0, idx = -1;
+    for (let k = i + 1; k < j; k++) {
+      const d = distanceCarreeAuSegment(points[k], points[i], points[j]);
+      if (d > max) { max = d; idx = k; }
+    }
+    if (idx !== -1 && max > eps2) { garder[idx] = true; pile.push([i, idx], [idx, j]); }
+  }
+  return points.filter((_, i) => garder[i]);
+}
+
+/** redresse les segments presque horizontaux / verticaux / à 45°. `ratio` corrige
+    le fait qu'une page n'est pas carrée : sans lui, un trait visuellement
+    horizontal ne le serait pas dans l'espace normalisé. */
+export function accrocherAngles(points, ratio = 1, toleranceDeg = TOLERANCE_DEG) {
+  if ((points || []).length < 2) return [...(points || [])];
+  const sortie = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const a = sortie[i - 1];
+    const b = points[i];
+    const dx = (b[0] - a[0]) * ratio, dy = b[1] - a[1];
+    const longueur = Math.hypot(dx, dy);
+    if (longueur === 0) { sortie.push([a[0], a[1]]); continue; }
+    const angle = Math.atan2(dy, dx);
+    const cible = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+    if (Math.abs(angle - cible) * 180 / Math.PI <= toleranceDeg) {
+      sortie.push([a[0] + (Math.cos(cible) * longueur) / ratio, a[1] + Math.sin(cible) * longueur]);
+    } else {
+      sortie.push([b[0], b[1]]);
+    }
+  }
+  return sortie;
+}
+
+/** Traitement complet appliqué AU RELÂCHEMENT. Sans aimant, le trait brut est
+    conservé tel quel : la case à cocher est donc réversible dans son principe —
+    ce qui a été dessiné à main levée le reste. */
+export function lisserTrait(points, { aimant = false, ratio = 1 } = {}) {
+  const p = (points || []).filter((q) => Array.isArray(q) && q.length === 2);
+  if (p.length < 2) return p;
+  if (!aimant) return p;
+  return accrocherAngles(simplifierRDP(p), ratio);
+}
+
+/** Le clic est-il sur ce trait ? (gomme) — distance au segment le plus proche.
+    `seuil` en fraction de page : un trait fin doit rester facile à viser. */
+export function traitTouche(trait, x, y, seuil = 0.012) {
+  const pts = (trait && trait.points) || [];
+  if (pts.length < 2) return false;
+  const s2 = seuil * seuil;
+  for (let i = 1; i < pts.length; i++) {
+    if (distanceCarreeAuSegment([x, y], pts[i - 1], pts[i]) <= s2) return true;
+  }
+  return false;
+}
+
+/** points normalisés → attribut `points` d'un <polyline> SVG en pourcentage de
+    la boîte de la page (viewBox 0 0 100 100, preserveAspectRatio="none"). */
+export function pointsVersSvg(points) {
+  return (points || []).map(([x, y]) => `${(x * 100).toFixed(3)},${(y * 100).toFixed(3)}`).join(' ');
+}

@@ -1437,3 +1437,22 @@
 .pdfr-page.outil-gomme .pdfr-hl-rect { outline-color: var(--crit); }
 .note-box.gomme { cursor: not-allowed; outline: 2px solid transparent; }
 .note-box.gomme:hover { outline-color: var(--crit); }
+
+/* ---- CRAYON (étape 6) ----
+   Une seule couche SVG par page, transparente à la souris : on doit pouvoir
+   continuer à sélectionner le texte dessous. La couche de CAPTURE, elle,
+   n'existe que pendant que l'outil Crayon est actif — même principe que la
+   couche de tracé de la boîte (VERROU 1) : tant qu'elle est là, ni sélection
+   ni surlignage ne peuvent se déclencher. */
+.pdfr-inklayer { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.pdfr-inkcapture { position: absolute; inset: 0; cursor: crosshair; user-select: none; touch-action: none; }
+
+.ptb-epaisseur { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 22px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--bg-2); color: var(--text-2); cursor: pointer; }
+.ptb-epaisseur:hover { color: var(--text); }
+.ptb-epaisseur.actif { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+.ptb-bascule { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: var(--r, 8px); background: var(--bg-2); color: var(--text-2);
+  font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.ptb-bascule.actif { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }

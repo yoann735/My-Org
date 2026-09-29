@@ -301,6 +301,28 @@ export function newNoteBox({ ficheId, page, x, y, width, height, couleur, conten
   };
 }
 
+/* ---- TRAIT AU CRAYON (Prise de notes) : dessin à main levée sur une page.
+   Troisième `kind` du store `annotations`, à côté du bloc de remplacement de
+   texte (sans kind) et de la boîte libre ('libre') — même store, même canal de
+   synchro, même historique d'annulation, aucune migration.
+   `points` : [[x,y], …] normalisés [0,1] par rapport à la page, donc
+   indépendants du zoom, comme les rects d'un surlignage.
+   `epaisseur` : en FRACTION DE HAUTEUR DE PAGE, pour suivre le zoom elle aussi.
+   `aimant` : le trait a-t-il été lissé et redressé à la pose (voir
+   pdf/pdfShared.js#lisserTrait). Informatif : le résultat est déjà dans
+   `points`, on ne relisse jamais deux fois. ---- */
+export function newTrait({ ficheId, page, points, couleur, epaisseur, aimant }) {
+  return {
+    id: genId('an'), ficheId, page,
+    kind: 'trait',
+    points: points || [],
+    couleur: couleur || 'jaune',
+    epaisseur: epaisseur || 0.0042,
+    aimant: !!aimant,
+    createdAt: new Date().toISOString(),
+  };
+}
+
 /* ---- meta (migrations) + backups (sauvegardes pré-migration) ---- */
 export const getMeta = (key) => get(key, S.meta);
 export const setMeta = (key, val) => set(key, val, S.meta);

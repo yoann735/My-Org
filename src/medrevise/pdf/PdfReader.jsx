@@ -56,7 +56,7 @@ import { useEditor } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, detectDocKind, Modal, LoaderL6 } from '../components/ui.jsx';
-import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox } from '../lib/storage.js';
+import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait } from '../lib/storage.js';
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cibleEditable } from '../lib/annotHistory.js';
 import { RICH_EXTENSIONS } from '../documents/lib/richtext.js';
 import { AddItemModal, PasteJsonForm } from '../components/AddItemForm.jsx';
@@ -65,7 +65,7 @@ import { buildCourseExportFromParts } from '../lib/courseExport.js';
 import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
   COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI,
-  useDevicePixelRatio, compareHighlights, computePageTextMap,
+  useDevicePixelRatio, compareHighlights, computePageTextMap, EPAISSEURS,
 } from './pdfShared.js';
 import { PdfPageContent, EditToolbar } from './PdfPage.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
@@ -140,6 +140,8 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   // structurel, pas une suite de conditions à ne pas oublier.
   const [outil, setOutil] = useState('main'); // main | surligneur | boite | crayon | gomme
   const [couleurActive, setCouleurActive] = useState('jaune'); // partagée par surligneur, boîte et crayon
+  const [epaisseur, setEpaisseur] = useState(EPAISSEURS[1].id);
+  const [aimant, setAimant] = useState(true); // le lissage est utile par défaut ; décochable
   // changer d'outil ferme ce qui appartenait au précédent
   const choisirOutil = (id) => { setOutil(id); setPending(null); setEditingHl(null); if (id !== 'main') setActiveEditId(null); };
 
@@ -685,6 +687,21 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     setCouleurBoite(couleur); // la prochaine boîte héritera du dernier choix
     await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, couleur }, 'Couleur de la boîte'));
   };
+  /* ---- CRAYON ----
+     Le trait arrive DÉJÀ lissé de la page (lisserTrait est appliqué au
+     relâchement, voir PdfPage) : on ne relisse jamais deux fois, et un trait
+     enregistré sans aimant reste brut pour toujours. Une entrée d'historique
+     par trait — Cmd+Z efface le trait entier, jamais un bout. */
+  const creerTrait = async ({ page, points }) => {
+    if (!points || points.length < 2) return;
+    const rec = newTrait({ ficheId, page, points, couleur: couleurActive,
+      epaisseur: (EPAISSEURS.find((e) => e.id === epaisseur) || EPAISSEURS[1]).v, aimant });
+    await hist.appliquer(cmdCreer('annotations', rec, 'Trait au crayon'));
+  };
+  const supprimerTrait = async (t) => {
+    if (t) await hist.appliquer(cmdSupprimer('annotations', t, 'Suppression du trait'));
+  };
+
   const supprimerBoite = async (b) => {
     if (!b) return;
     const actuel = boiteFraiche(b.id, b); // restaurer la boîte AVEC son texte le plus récent
@@ -730,8 +747,9 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   // deux familles dans le MÊME store : les blocs de remplacement de texte (sans
   // `kind`, historiques) et les boîtes libres (`kind: 'libre'`). Rendues par des
   // composants différents, jamais mélangées.
-  const blocsByPage = useMemo(() => groupByPage(edits.filter((a) => a.kind !== 'libre')), [edits]);
+  const blocsByPage = useMemo(() => groupByPage(edits.filter((a) => !a.kind)), [edits]);
   const boitesByPage = useMemo(() => groupByPage(edits.filter((a) => a.kind === 'libre')), [edits]);
+  const traitsByPage = useMemo(() => groupByPage(edits.filter((a) => a.kind === 'trait')), [edits]);
   const matchesByPage = useMemo(() => groupByPage(matches), [matches]);
 
   // input UNIQUE (PDF ou HTML) : le type est détecté à la volée, le stockage
@@ -815,6 +833,22 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
         onPrecedent={gotoPrevMatch} onSuivant={gotoNextMatch} onFermerRecherche={closeSearch}
         panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={highlights.length}
         actionsDocument={actionsDocument}
+        contexteSupplementaire={outil === 'crayon' ? (
+          <>
+            <span className="ptb-sep" />
+            {EPAISSEURS.map((e) => (
+              <button key={e.id} type="button" title={`Épaisseur ${e.label.toLowerCase()}`}
+                className={'ptb-epaisseur' + (epaisseur === e.id ? ' actif' : '')} onClick={() => setEpaisseur(e.id)}>
+                <span style={{ height: Math.max(2, e.v * 900), width: 22, borderRadius: 3, background: 'currentColor', display: 'block' }} />
+              </button>
+            ))}
+            <span className="ptb-sep" />
+            <button type="button" className={'ptb-bascule' + (aimant ? ' actif' : '')} onClick={() => setAimant((v) => !v)}
+              title="Lisse le tremblement et redresse les traits presque droits. Décoché, le trait est conservé tel qu'il a été tracé.">
+              <Icon name="sparkle" size={13} /> Aimant {aimant ? 'activé' : 'désactivé'}
+            </button>
+          </>
+        ) : null}
         outilsAnnotation={outilsNotes}
       />
       {activeEdit && editor && (
@@ -852,6 +886,12 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
                       highlights={highlightsByPage[n] || EMPTY_ARRAY}
                       edits={blocsByPage[n] || EMPTY_ARRAY}
                       boites={boitesByPage[n] || EMPTY_ARRAY}
+                      traits={traitsByPage[n] || EMPTY_ARRAY}
+                      onCreerTrait={creerTrait}
+                      onSupprimerTrait={supprimerTrait}
+                      couleurTrait={couleurActive}
+                      epaisseurTrait={(EPAISSEURS.find((e) => e.id === epaisseur) || EPAISSEURS[1]).v}
+                      aimantActif={aimant}
                       outil={outilsNotes ? outil : 'main'}
                       onCreerBoite={creerBoite}
                       onMajBoite={majBoite}

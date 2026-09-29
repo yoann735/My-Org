@@ -24,14 +24,17 @@ import {
   COLORS, COLOR_HEX, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT,
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
+  lisserTrait, traitTouche, pointsVersSvg,
 } from './pdfShared.js';
 
 /** rendu d'une seule page (montée uniquement si proche du viewport) : canvas + couche de
     texte + surlignages + surlignage de recherche (géométrie exacte, Chantier 2) + blocs
     de texte édités (Chantier 1). */
 export function PdfPageContent({
-  pdfDoc, pageNum, scale, pageHeight, dpr, highlights, edits, boites, outil, activeEditId, matches, activeMatchIdx,
-  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, cibleHlId,
+  pdfDoc, pageNum, scale, pageHeight, dpr, highlights, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
+  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite,
+  onCreerTrait, onSupprimerTrait, cibleHlId,
+  couleurTrait = 'jaune', epaisseurTrait = 0.0042, aimantActif = true,
 }) {
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
@@ -168,6 +171,40 @@ export function PdfPageContent({
   };
   useEffect(() => () => { if (rafSurvol.current) cancelAnimationFrame(rafSurvol.current); }, []);
 
+  /* CRAYON. Même principe de couche que la boîte (VERROU 1) : tant que l'outil
+     est actif, une couche posée au-dessus de la couche de texte intercepte tout,
+     donc ni sélection ni surlignage ne peuvent se déclencher pendant qu'on dessine.
+     On échantillonne avec un pas minimal — sans ça un trait lent enregistrerait
+     des milliers de points quasi confondus, pour rien.
+     `ratio` = largeur/hauteur de la page : sans lui, l'accrochage angulaire
+     redresserait de travers, l'espace normalisé n'étant pas carré. */
+  const [traitEnCours, setTraitEnCours] = useState(null);
+  const PAS_MIN = 0.0025;
+  const demarrerTrait = (e) => {
+    e.preventDefault();
+    const r = e.currentTarget.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const ratio = r.width / r.height;
+    const pt = (ev) => [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)];
+    let points = [pt(e)];
+    setTraitEnCours(points);
+    const move = (ev) => {
+      const q = pt(ev);
+      const d = Math.hypot(q[0] - points[points.length - 1][0], q[1] - points[points.length - 1][1]);
+      if (d < PAS_MIN) return;
+      points = [...points, q];
+      setTraitEnCours(points);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setTraitEnCours(null);
+      if (points.length >= 2) onCreerTrait({ page: pageNum, points: lisserTrait(points, { aimant: aimantActif, ratio }) });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   // Cmd+C : le texte copié garde ses retours à la ligne (issus des <br>), caractères
   // de compatibilité normalisés. Sélection vide → copie native, on ne touche à rien.
   const handleCopy = (e) => {
@@ -194,6 +231,18 @@ export function PdfPageContent({
   const gesteBoite = useRef(false);
   const handleMouseUp = (e) => {
     if (gesteBoite.current) { gesteBoite.current = false; return; }
+    // GOMME sur un trait : la couche SVG est transparente à la souris (on doit
+    // pouvoir sélectionner le texte dessous), donc test de position, comme pour
+    // les surlignages. Le trait l'emporte : il est dessiné au-dessus.
+    if (outil === 'gomme') {
+      const c = textLayerRef.current;
+      const cr = c && c.getBoundingClientRect();
+      if (cr && cr.width && cr.height) {
+        const px = (e.clientX - cr.left) / cr.width, py = (e.clientY - cr.top) / cr.height;
+        const t = [...(traits || [])].reverse().find((x) => traitTouche(x, px, py));
+        if (t) { onSupprimerTrait(t); return; }
+      }
+    }
     const sel = window.getSelection();
     const container = textLayerRef.current;
     if (!container || !sel) return;
@@ -252,6 +301,29 @@ export function PdfPageContent({
       {edits.map((a) => (
         <TextEditBlock key={a.id} edit={a} active={a.id === activeEditId} editable={outil === 'main'} onActivate={onActivateEdit} editor={a.id === activeEditId ? activeEditor : null} pageHeight={pageHeight} />
       ))}
+
+      {/* Les traits au crayon : un seul <svg> par page, transparent à la souris.
+          `vector-effect: non-scaling-stroke` garde l'épaisseur constante à l'écran
+          quel que soit le zoom, sans recalculer quoi que ce soit. */}
+      {(traits.length > 0 || traitEnCours) && (
+        <svg className="pdfr-inklayer" viewBox="0 0 100 100" preserveAspectRatio="none">
+          {traits.map((t) => (
+            <polyline key={t.id} points={pointsVersSvg(t.points)}
+              stroke={COLOR_HEX[t.couleur] || COLOR_HEX.jaune}
+              strokeWidth={Math.max(1.2, (t.epaisseur || 0.0042) * (pageHeight || 800))}
+              fill="none" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          ))}
+          {traitEnCours && (
+            <polyline points={pointsVersSvg(traitEnCours)} stroke={COLOR_HEX[couleurTrait] || COLOR_HEX.jaune}
+              strokeWidth={Math.max(1.2, epaisseurTrait * (pageHeight || 800))}
+              fill="none" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity="0.85" />
+          )}
+        </svg>
+      )}
+
+      {outil === 'crayon' && (
+        <div className="pdfr-inkcapture" onPointerDown={demarrerTrait} />
+      )}
 
       {/* VERROU 1 : la couche de tracé n'existe QUE pendant que l'outil « Boîte de
           texte » est actif, et elle est posée AU-DESSUS de la couche de texte. Tant
