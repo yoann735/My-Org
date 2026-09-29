@@ -44,6 +44,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, detectDocKind, Modal, LoaderL6 } from '../components/ui.jsx';
 import { getBlob, putBlob, putBlobAt, getAll, put, remove, newHighlight, newTextEdit } from '../lib/storage.js';
+import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cibleEditable } from '../lib/annotHistory.js';
 import { RICH_EXTENSIONS, richToHTML } from '../documents/lib/richtext.js';
 import { AddItemModal, PasteJsonForm } from '../components/AddItemForm.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
@@ -81,6 +82,9 @@ const COLOR_RGB = { jaune: rgb(1, 0.85, 0.3), vert: rgb(0.55, 0.89, 0.55), bleu:
 
 const FONT_SIZES = ['10px', '11px', '12px', '13px', '14px', '16px', '18px', '20px', '24px', '28px', '32px'];
 const FONT_FAMILIES = ['inherit', 'serif', 'sans-serif', 'monospace', 'Georgia', 'Arial', 'Times New Roman'];
+
+/** libellé du modificateur dans les infobulles — « Cmd » sur Mac, « Ctrl » ailleurs. */
+const RACCOURCI = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? 'Cmd+' : 'Ctrl+';
 
 const GAP = 18; // px à scale=1 — scale avec `scale` pour garder un contenu strictement linéaire
 const EMPTY_ARRAY = []; // référence stable pour les pages sans highlights/edits/matches (BUG 1)
@@ -316,7 +320,7 @@ function computeMatchRectsFromDom(container, matches) {
 // FACULTATIVES — absentes, le lecteur se comporte exactement comme avant (160 %, panneau
 // ouvert). `ajusterLargeur` cale le zoom sur la largeur du panneau, et le recale quand
 // ce panneau change de largeur (poignée) tant que l'utilisateur n'a pas zoomé lui-même.
-export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSrcTab: srcTabProp, doc: docProp, onSetPdf, onSetHtml, embedded, onClose, ajusterLargeur = false, panneauNotionsOuvert = true }) {
+export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSrcTab: srcTabProp, doc: docProp, onSetPdf, onSetHtml, embedded, onClose, ajusterLargeur = false, panneauNotionsOuvert = true, outilsNotes = false }) {
   const { pdfView, db } = ctx;
   const ficheId = ficheIdProp ?? (pdfView && pdfView.ficheId);
   const initialSrcTab = srcTabProp ?? (pdfView && pdfView.srcTab);
@@ -525,7 +529,35 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     const all = await getAll('annotations');
     setEdits(all.filter((a) => a.ficheId === ficheId));
   };
-  useEffect(() => { reloadHighlights(); reloadEdits(); setActiveEditId(null); }, [ficheId]);
+
+  /* ---- ANNULER / RÉTABLIR (lib/annotHistory.js) ----
+     TOUTES les écritures d'annotation de ce composant passent par `hist.appliquer`
+     — jamais put/remove en direct. C'est la seule règle à tenir pour qu'aucune
+     action ne puisse échapper à l'historique, aujourd'hui comme demain.
+     La pile est tenue quel que soit le contexte ; seuls les BOUTONS et les
+     RACCOURCIS sont réservés à `outilsNotes` (onglet Prise de notes), pour que le
+     comportement du lecteur dans Bibliothèque / Réviser / Apprentissage reste
+     exactement celui d'avant. Un seul drapeau à changer pour l'ouvrir partout. */
+  const rechargerAnnotations = async () => { await reloadHighlights(); await reloadEdits(); };
+  const hist = useAnnotHistorique(rechargerAnnotations);
+
+  useEffect(() => { reloadHighlights(); reloadEdits(); setActiveEditId(null); hist.vider(); }, [ficheId]);
+
+  // Cmd/Ctrl+Z et Cmd/Ctrl+Maj+Z. IGNORÉS dès que la frappe vise un champ de saisie
+  // ou du contenu éditable : le texte a son propre historique (TipTap dans une boîte,
+  // la zone de note d'un surlignage). C'est la cible du clavier qui départage les deux
+  // historiques — pas un mode, pas un réglage.
+  useEffect(() => {
+    if (!outilsNotes) return undefined;
+    const onKey = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || String(e.key).toLowerCase() !== 'z') return;
+      if (cibleEditable(e.target) || cibleEditable(document.activeElement)) return;
+      e.preventDefault();
+      if (e.shiftKey) hist.retablir(); else hist.annuler();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [outilsNotes, hist.annuler, hist.retablir]);
   // les surlignages ne vivent pas dans `db` (lus à part, ci-dessus) : sans ceci, ceux
   // qu'une synchro rapatrie d'un autre appareil (retour sur l'onglet, reconnexion —
   // MedReviseApp.jsx appelle alors reload(), qui remplace `db`) n'apparaîtraient qu'à
@@ -660,8 +692,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     const h = highlights.find((x) => x.id === cur.id);
     const note = (cur.note || '').trim() || null;
     if (h && note !== (h.note || null)) {
-      await put('highlights', { ...h, note });
-      await reloadHighlights();
+      await hist.appliquer(cmdModifier('highlights', h, { ...h, note }, 'Note du surlignage'));
     }
   };
 
@@ -680,24 +711,22 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   const commitHighlight = async (couleur) => {
     if (!pending) return;
     const rec = newHighlight({ ficheId, page: pending.page, texte: pending.texte, couleur, rects: pending.rects, anchor: pending.anchor });
-    await put('highlights', rec);
     setPending(null);
     window.getSelection && window.getSelection().removeAllRanges();
-    await reloadHighlights();
+    await hist.appliquer(cmdCreer('highlights', rec, 'Surlignage'));
   };
   const handleHighlightClick = (h, e) => { setPending(null); setEditingHl({ id: h.id, couleur: h.couleur, note: h.note || '', x: e.clientX, y: e.clientY }); };
   const changeHighlightColor = async (couleur) => {
     if (!editingHl) return;
     const h = highlights.find((x) => x.id === editingHl.id); if (!h) { setEditingHl(null); return; }
-    await put('highlights', { ...h, couleur, note: (editingHl.note || '').trim() || null });
     setEditingHl((cur) => (cur ? { ...cur, couleur } : cur)); // reste ouverte : on peut encore écrire la note
-    await reloadHighlights();
+    await hist.appliquer(cmdModifier('highlights', h, { ...h, couleur, note: (editingHl.note || '').trim() || null }, 'Couleur du surlignage'));
   };
   const deleteHighlightConfirmed = async () => {
     if (!editingHl) return;
-    await remove('highlights', editingHl.id);
+    const h = highlights.find((x) => x.id === editingHl.id);
     setEditingHl(null);
-    await reloadHighlights();
+    if (h) await hist.appliquer(cmdSupprimer('highlights', h, 'Suppression du surlignage'));
   };
 
   // recherche temps réel (debounce léger) : matching textuel sur une carte de position
@@ -832,8 +861,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
       ficheId, page: pending.page, x: x0, y: y0, width: x1 - x0, height: y1 - y0,
       originalText: pending.texte, fontSize: pending.fontSizeRel || null, fontFamily: pending.fontFamily || null,
     });
-    await put('annotations', rec);
-    await reloadEdits();
+    await hist.appliquer(cmdCreer('annotations', rec, 'Bloc de texte'));
     setActiveEditId(rec.id);
     setPending(null);
     window.getSelection && window.getSelection().removeAllRanges();
@@ -844,9 +872,9 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     setEdits((arr) => arr.map((a) => (a.id === edit.id ? updated : a)));
   };
   const resetEdit = async (id) => {
-    await remove('annotations', id);
-    setEdits((arr) => arr.filter((a) => a.id !== id));
+    const a = edits.find((x) => x.id === id);
     if (activeEditId === id) setActiveEditId(null);
+    if (a) await hist.appliquer(cmdSupprimer('annotations', a, "Retrait du bloc de texte"));
   };
 
   // Chantier 1 : UNE SEULE instance TipTap, possédée ici et partagée par le bloc affiché
@@ -1046,6 +1074,19 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
           <span className="hint tnum" style={{ minWidth: 44, textAlign: 'center' }}>{Math.round(scale * 100)}%</span>
           <button className="icon-btn sm" onClick={() => zoomButtons(1.15)}><Icon name="plus" size={14} /></button>
         </div>
+
+        {outilsNotes && (
+          <div className="row" style={{ gap: 4 }}>
+            <button className="icon-btn sm" onClick={hist.annuler} disabled={!hist.peutAnnuler}
+              title={hist.peutAnnuler ? `Annuler — ${hist.libelleAnnuler} (${RACCOURCI}Z)` : `Annuler (${RACCOURCI}Z)`}>
+              <Icon name="refresh" size={14} style={{ transform: 'scaleX(-1)' }} />
+            </button>
+            <button className="icon-btn sm" onClick={hist.retablir} disabled={!hist.peutRetablir}
+              title={hist.peutRetablir ? `Rétablir — ${hist.libelleRetablir} (${RACCOURCI}Maj+Z)` : `Rétablir (${RACCOURCI}Maj+Z)`}>
+              <Icon name="refresh" size={14} />
+            </button>
+          </div>
+        )}
 
         <div className="search" style={{ maxWidth: 240, height: 34 }}>
           <Icon name="search" size={14} className="ic" />
