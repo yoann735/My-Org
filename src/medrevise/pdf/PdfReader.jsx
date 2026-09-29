@@ -60,7 +60,7 @@ import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNo
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cibleEditable } from '../lib/annotHistory.js';
 import { RICH_EXTENSIONS } from '../documents/lib/richtext.js';
 import { AddItemModal, PasteJsonForm } from '../components/AddItemForm.jsx';
-import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
+import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
 import { buildCourseExportFromParts } from '../lib/courseExport.js';
 import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
@@ -68,6 +68,7 @@ import {
   useDevicePixelRatio, compareHighlights, computePageTextMap,
 } from './pdfShared.js';
 import { PdfPageContent, EditToolbar } from './PdfPage.jsx';
+import { PdfToolbar } from './PdfToolbar.jsx';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 
 
@@ -118,7 +119,12 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   const [numPages, setNumPages] = useState(0);
   const [pageSizes, setPageSizes] = useState([]); // [{width,height}] à scale=1
   const [scale, setScale] = useState(1.6); // B3 : 160% par défaut
-  const [mode, setMode] = useState(modeProp ?? (pdfView && pdfView.mode) ?? 'read');
+  /* `mode` ('read' | 'edit') est MORT à l'étape 5 : il ne commandait qu'une chose
+     — si un bloc de remplacement de texte était cliquable — tout en portant le
+     nom le plus fort de l'interface. Un seul axe le remplace : l'OUTIL ACTIF.
+     La prop `modeProp` reste acceptée pour ne pas casser les appelants
+     (Bibliothèque, ctx.openPdfReader) ; elle est simplement ignorée, et sera
+     retirée à l'étape 7 avec le reste de l'échafaudage. */
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 0 });
   const dpr = useDevicePixelRatio();
 
@@ -132,8 +138,10 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   // la couche de texte (voir PdfPageContent) : tant qu'il est actif, ni la sélection
   // ni le test de position des surlignages ne peuvent se déclencher — c'est
   // structurel, pas une suite de conditions à ne pas oublier.
-  const [outil, setOutil] = useState('selection'); // 'selection' | 'boite'
-  const [couleurBoite, setCouleurBoite] = useState('jaune');
+  const [outil, setOutil] = useState('main'); // main | surligneur | boite | crayon | gomme
+  const [couleurActive, setCouleurActive] = useState('jaune'); // partagée par surligneur, boîte et crayon
+  // changer d'outil ferme ce qui appartenait au précédent
+  const choisirOutil = (id) => { setOutil(id); setPending(null); setEditingHl(null); if (id !== 'main') setActiveEditId(null); };
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -282,6 +290,22 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     scrollRaf.current = requestAnimationFrame(() => { scrollRaf.current = null; computeVisibleRange(); });
   };
 
+  // page affichée = la première dont le bas dépasse le haut du viewport. Calculée
+  // depuis `visibleRange`, déjà tenue à jour par le défilement : rien de neuf à
+  // observer, donc rien de neuf à désynchroniser.
+  const pageCourante = Math.min(numPages || 1, (visibleRange.start || 0) + 1);
+
+  // « Ajuster à la largeur » : la même formule que l'ajustement automatique de
+  // l'écran splitté (voir `ajusterLargeur`), déclenchée à la demande.
+  const ajusterALaLargeur = () => {
+    const el = scrollRef.current;
+    if (!el || !pageSizes.length) return;
+    const largeur = pageSizes.reduce((m, sz) => Math.max(m, sz.width), 0);
+    const dispo = el.clientWidth - 28;
+    if (dispo < 120 || !largeur) return;
+    zoomAt(el.getBoundingClientRect().top, dispo / largeur);
+  };
+
   const scrollToPageFraction = (pageNum, fracY = 0) => {
     const idx = pageNum - 1;
     if (!layout.offsets.length || !pageSizes[idx] || !scrollRef.current) return;
@@ -393,15 +417,27 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, editingHl, highlights]);
 
-  const handleCreateHighlightRequest = (payload) => { setEditingHl(null); setPending(payload); };
-  const commitHighlight = async (couleur) => {
-    if (!pending) return;
-    const rec = newHighlight({ ficheId, page: pending.page, texte: pending.texte, couleur, rects: pending.rects, anchor: pending.anchor });
+  /* Avec l'outil SURLIGNEUR, une sélection surligne AUSSITÔT dans la couleur
+     active : aucune popover, c'est ce qu'on a demandé en choisissant l'outil.
+     Avec la MAIN, on garde la popover (couleur au choix, ou remplacer le texte). */
+  const handleCreateHighlightRequest = (payload) => {
+    setEditingHl(null);
+    if (outil === 'surligneur') { commitHighlightAvec(payload, couleurActive); return; }
+    setPending(payload);
+  };
+  const commitHighlightAvec = async (p, couleur) => {
+    const rec = newHighlight({ ficheId, page: p.page, texte: p.texte, couleur, rects: p.rects, anchor: p.anchor });
     setPending(null);
     window.getSelection && window.getSelection().removeAllRanges();
     await hist.appliquer(cmdCreer('highlights', rec, 'Surlignage'));
   };
-  const handleHighlightClick = (h, e) => { setPending(null); setEditingHl({ id: h.id, couleur: h.couleur, note: h.note || '', texte: h.texte || '', x: e.clientX, y: e.clientY }); };
+  const commitHighlight = (couleur) => { if (pending) { setCouleurActive(couleur); commitHighlightAvec(pending, couleur); } };
+  const gommer = async (h) => { await hist.appliquer(cmdSupprimer('highlights', h, 'Suppression du surlignage')); };
+  const handleHighlightClick = (h, e) => {
+    if (outil === 'gomme') { gommer(h); return; }
+    setPending(null);
+    setEditingHl({ id: h.id, couleur: h.couleur, note: h.note || '', texte: h.texte || '', x: e.clientX, y: e.clientY });
+  };
   const changeHighlightColor = async (couleur) => {
     if (!editingHl) return;
     const h = highlights.find((x) => x.id === editingHl.id); if (!h) { setEditingHl(null); return; }
@@ -482,6 +518,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   // dans la branche HTML, qui a son propre exemplaire depuis l'extraction (étape 4) :
   // les deux branches ne coexistent jamais, le partager n'avait aucun sens.
   const [courseExportOk, setCourseExportOk] = useState(false);
+  const [promptsOuverts, setPromptsOuverts] = useState(false);
   const exportAllPdfCourse = async () => {
     if (!pdfDoc || !fiche) return;
     try {
@@ -498,6 +535,25 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     ? `${copiedCount} notion${copiedCount > 1 ? 's' : ''} copiée${copiedCount > 1 ? 's' : ''}`
     : copiedCount < 0 ? 'Cours copié' : 'Copier les notions';
   const copyTitle = 'Cours en texte structuré, passages surlignés en [PRIORITAIRE] et notes — même format que « Copier pour un prompt » du gabarit HTML';
+
+  /* MENU « ⋯ Document ». Huit contrôles qui encombraient la barre alors qu'on
+     s'en sert rarement — et dont cinq n'existent que pour une vraie fiche. Les
+     deux boutons « Voir les prompts » identiques côte à côte deviennent deux
+     entrées nommées. « Tout exporter » et « Copier les notions » se retrouvent
+     voisines, là où leur parenté se voit. */
+  const actionsDocument = [
+    { label: exporting ? 'Export en cours…' : 'Exporter le PDF annoté', icon: 'filePdf',
+      onClick: () => { if (highlights.length && !exporting) exportAnnotated(); } },
+    { label: copiedCount ? 'Notions copiées ✓' : 'Copier les notions', icon: 'copy', onClick: copyPriority },
+    canAddItem && { label: courseExportOk ? 'Copié ✓' : 'Tout exporter (JSON)', icon: 'copy', onClick: exportAllPdfCourse },
+    canAddItem && { label: 'Ajouter un item', icon: 'plus', onClick: () => setShowAddItem(true) },
+    canAddItem && { label: 'Importer des items', icon: 'upload', onClick: () => { setImportedCount(0); setShowImportItems(true); } },
+    // UNE entrée au lieu de deux boutons identiques côte à côte : AllPromptsModal
+    // réunit déjà les 8 prompts (4 théorie + 4 exercices), et c'est le même
+    // stockage que les anciens boutons — rien ne change pour le contenu.
+    canAddItem && { label: 'Prompts (théorie et exercices)', icon: 'layers', onClick: () => setPromptsOuverts(true) },
+    !!fiche.htmlId && { label: 'Voir la fiche HTML', icon: 'fileHtml', onClick: () => setSrcTab('html') },
+  ];
 
   // export secondaire — PDF avec les surlignages incrustés (confort de lecture hors app ;
   // suppose des pages non pivotées — limite acceptée, cas rare pour un cours scanné/exporté normal)
@@ -748,97 +804,20 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
         </div>
       )}
 
-      <div className="pdfr-toolbar">
-        <button className="btn ghost sm" onClick={close}><Icon name="chevL" size={14} /> Retour</button>
-        {!!fiche.htmlId && (
-          <button className="btn ghost sm" onClick={() => setSrcTab('html')}><Icon name="fileHtml" size={13} /> Voir le HTML</button>
-        )}
-
-        <div className="seg" style={{ marginLeft: 4 }}>
-          <button type="button" className={'seg-btn' + (mode === 'read' ? ' active' : '')} onClick={() => { setMode('read'); setActiveEditId(null); }}><Icon name="book" size={13} /> Lecture</button>
-          <button type="button" className={'seg-btn' + (mode === 'edit' ? ' active' : '')} onClick={() => setMode('edit')}><Icon name="edit" size={13} /> Édition</button>
-        </div>
-
-        <div className="row" style={{ gap: 4 }}>
-          <button className="icon-btn sm" onClick={() => zoomButtons(1 / 1.15)}><Icon name="minus" size={14} /></button>
-          <span className="hint tnum" style={{ minWidth: 44, textAlign: 'center' }}>{Math.round(scale * 100)}%</span>
-          <button className="icon-btn sm" onClick={() => zoomButtons(1.15)}><Icon name="plus" size={14} /></button>
-        </div>
-
-        {outilsNotes && (
-          <div className="seg" style={{ marginLeft: 4 }}>
-            <button type="button" className={'seg-btn' + (outil === 'selection' ? ' active' : '')} onClick={() => setOutil('selection')}
-              title="Sélectionner du texte, surligner, déplacer une boîte"><Icon name="grip" size={13} /> Sélection</button>
-            <button type="button" className={'seg-btn' + (outil === 'boite' ? ' active' : '')} onClick={() => setOutil('boite')}
-              title="Tracer une boîte de texte n'importe où sur la page"><Icon name="edit" size={13} /> Boîte de texte</button>
-          </div>
-        )}
-        {outilsNotes && outil === 'boite' && (
-          <div className="row" style={{ gap: 4 }} title="Couleur de la prochaine boîte">
-            {COLORS.map((c) => (
-              <button key={c.id} type="button" onClick={() => setCouleurBoite(c.id)} title={c.label}
-                style={{ width: 18, height: 18, borderRadius: 5, background: c.hex, cursor: 'pointer',
-                  border: couleurBoite === c.id ? '2px solid var(--text)' : '1px solid rgba(0,0,0,.25)' }} />
-            ))}
-          </div>
-        )}
-        {outilsNotes && (
-          <div className="row" style={{ gap: 4 }}>
-            <button className="icon-btn sm" onClick={hist.annuler} disabled={!hist.peutAnnuler}
-              title={hist.peutAnnuler ? `Annuler — ${hist.libelleAnnuler} (${RACCOURCI}Z)` : `Annuler (${RACCOURCI}Z)`}>
-              <Icon name="refresh" size={14} style={{ transform: 'scaleX(-1)' }} />
-            </button>
-            <button className="icon-btn sm" onClick={hist.retablir} disabled={!hist.peutRetablir}
-              title={hist.peutRetablir ? `Rétablir — ${hist.libelleRetablir} (${RACCOURCI}Maj+Z)` : `Rétablir (${RACCOURCI}Maj+Z)`}>
-              <Icon name="refresh" size={14} />
-            </button>
-          </div>
-        )}
-
-        <div className="search" style={{ maxWidth: 240, height: 34 }}>
-          <Icon name="search" size={14} className="ic" />
-          <input placeholder="Rechercher…" value={search} onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (e.shiftKey) gotoPrevMatch(); else gotoNextMatch(); } if (e.key === 'Escape') closeSearch(); }} />
-          {search && <button className="icon-btn sm" onClick={closeSearch}><Icon name="x" size={13} /></button>}
-        </div>
-        {!!search && (
-          <div className="row" style={{ gap: 4 }}>
-            <span className="hint tnum" style={{ minWidth: 56, textAlign: 'center' }}>
-              {searching ? '…' : matches.length ? `${activeMatch + 1} / ${matches.length}` : 'Aucun résultat'}
-            </span>
-            <button className="icon-btn sm" disabled={!matches.length} onClick={gotoPrevMatch} title="Précédent (Maj+Entrée)"><Icon name="chevU" size={14} /></button>
-            <button className="icon-btn sm" disabled={!matches.length} onClick={gotoNextMatch} title="Suivant (Entrée)"><Icon name="chevD" size={14} /></button>
-          </div>
-        )}
-
-        <div style={{ flex: 1 }} />
-
-        {canAddItem && (
-          <button className="btn sm" onClick={() => setShowAddItem(true)}><Icon name="plus" size={13} /> Ajouter un item</button>
-        )}
-        {/* même chaîne que l'atelier « Voir le cours » d'une fiche HTML : export → prompts → import */}
-        {canAddItem && (
-          <button className="btn sm" onClick={exportAllPdfCourse} disabled={!pdfDoc} title="Cours + surlignages + cartes déjà créées, en un JSON prêt pour un prompt externe — même format qu'une fiche HTML">
-            <Icon name={courseExportOk ? 'check' : 'copy'} size={13} /> {courseExportOk ? 'Copié ✓' : 'Tout exporter'}
-          </button>
-        )}
-        {canAddItem && <CoursePromptsButton ctx={ctx} />}
-        {canAddItem && <CoursePromptsButton ctx={ctx} kind="pratique" />}
-        {canAddItem && (
-          <button className="btn ghost sm" onClick={() => { setImportedCount(0); setShowImportItems(true); }} title="Coller le JSON produit par un prompt de complétion — ajoute les nouvelles cartes à cette fiche">
-            <Icon name="upload" size={13} /> Importer des items
-          </button>
-        )}
-        <button className="btn ghost sm" onClick={() => setPanelOpen((v) => !v)} title="Notions surlignées">
-          <Icon name={panelOpen ? 'chevR' : 'chevL'} size={13} /> Notions ({highlights.length})
-        </button>
-        <span title={copyTitle} style={{ display: 'inline-flex' }}>
-          <button className="btn sm" onClick={copyPriority} disabled={!pdfDoc}><Icon name={copiedCount ? 'check' : 'copy'} size={13} /> {copyLabel}</button>
-        </span>
-        <button className="btn ghost sm" onClick={exportAnnotated} disabled={!highlights.length || exporting}>{exporting && !isClassicUI() ? <LoaderL6 inline label="Export en cours" /> : <Icon name="filePdf" size={13} />} {exporting ? 'Export…' : 'Exporter PDF annoté'}</button>
-      </div>
-
-      {activeEdit && editor && (mode === 'edit' || activeEdit.kind === 'libre') && (
+      <PdfToolbar
+        onClose={close}
+        pageCourante={pageCourante} numPages={numPages} onAllerPage={(n) => scrollToPageFraction(n, 0)}
+        scale={scale} onZoom={zoomButtons} onAjuster={ajusterALaLargeur}
+        outil={outil} setOutil={choisirOutil}
+        couleurActive={couleurActive} setCouleurActive={setCouleurActive}
+        hist={hist}
+        search={search} setSearch={setSearch} matches={matches} activeMatch={activeMatch} searching={searching}
+        onPrecedent={gotoPrevMatch} onSuivant={gotoNextMatch} onFermerRecherche={closeSearch}
+        panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={highlights.length}
+        actionsDocument={actionsDocument}
+        outilsAnnotation={outilsNotes}
+      />
+      {activeEdit && editor && (
         <EditToolbar editor={editor} libre={activeEdit.kind === 'libre'}
           couleur={activeEdit.couleur}
           onCouleur={(c) => changerCouleurBoite(activeEdit, c)}
@@ -869,11 +848,11 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
                 return (
                   <div key={n} className="pdfr-page" style={style}>
                     <PdfPageContent
-                      pdfDoc={pdfDoc} pageNum={n} scale={scale} dpr={dpr} mode={mode} pageHeight={h}
+                      pdfDoc={pdfDoc} pageNum={n} scale={scale} dpr={dpr} pageHeight={h}
                       highlights={highlightsByPage[n] || EMPTY_ARRAY}
                       edits={blocsByPage[n] || EMPTY_ARRAY}
                       boites={boitesByPage[n] || EMPTY_ARRAY}
-                      outil={outilsNotes ? outil : 'selection'}
+                      outil={outilsNotes ? outil : 'main'}
                       onCreerBoite={creerBoite}
                       onMajBoite={majBoite}
                       onSupprimerBoite={supprimerBoite}
@@ -919,14 +898,13 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
         )}
       </div>
 
-      {mode === 'edit' && (
-        <div className="hint" style={{ marginTop: 10 }}><Icon name="info" size={13} /> Sélectionne du texte pour le surligner ou l'éditer (choix proposé après la sélection). Clique un surlignage pour changer sa couleur, ajouter une note ou le supprimer.</div>
-      )}
-
-      {/* sélection → surligner (Lecture ET Édition) ; « Éditer ce texte » reste propre au
-          mode Édition. Chaque pastille porte son sens, comme dans le gabarit. */}
+      {/* Popover de sélection, outil MAIN uniquement : choisir la couleur, ou
+          remplacer le texte. Avec l'outil Surligneur, la sélection surligne
+          directement dans la couleur active — pas de popover, c'est le sens même
+          d'avoir choisi un outil. « Remplacer ce texte » (l'ancien mode Édition)
+          est désormais une entrée d'ici, plus un mode global. */}
       {pending && createPortal(
-        <div className="hl-picker" style={{ left: Math.min(pending.x, window.innerWidth - (mode === 'edit' ? 330 : 250)), top: Math.min(pending.y + 8, window.innerHeight - 70) }}>
+        <div className="hl-picker" style={{ left: Math.min(pending.x, window.innerWidth - 340), top: Math.min(pending.y + 8, window.innerHeight - 70) }}>
           {COLORS.map((c) => (
             <button key={c.id} className="hl-swatch-col" title={c.label} onClick={() => commitHighlight(c.id)}>
               <span className="hl-swatch" style={{ background: c.hex }} />
@@ -934,7 +912,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
             </button>
           ))}
           <span className="hl-picker-sep" />
-          {mode === 'edit' && <button className="hl-edit-btn" title="Éditer ce texte" onClick={startEditFromSelection}><Icon name="edit" size={13} /> Éditer</button>}
+          <button className="hl-edit-btn" title="Masquer ce passage et le réécrire" onClick={startEditFromSelection}><Icon name="edit" size={13} /> Remplacer</button>
           <button className="hl-cancel" title="Annuler" onClick={() => setPending(null)}><Icon name="x" size={13} /></button>
         </div>,
         document.body,
@@ -974,6 +952,8 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
         </div>,
         document.body,
       )}
+
+      {promptsOuverts && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOuverts(false)} />}
 
       {showAddItem && canAddItem && (
         <AddItemModal ctx={ctx} ficheId={ficheId} ficheTitre={fiche.titre} onClose={() => setShowAddItem(false)} />

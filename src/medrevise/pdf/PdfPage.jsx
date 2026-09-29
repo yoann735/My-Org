@@ -30,7 +30,7 @@ import {
     texte + surlignages + surlignage de recherche (géométrie exacte, Chantier 2) + blocs
     de texte édités (Chantier 1). */
 export function PdfPageContent({
-  pdfDoc, pageNum, scale, dpr, mode, pageHeight, highlights, edits, boites, outil, activeEditId, matches, activeMatchIdx,
+  pdfDoc, pageNum, scale, pageHeight, dpr, highlights, edits, boites, outil, activeEditId, matches, activeMatchIdx,
   onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, cibleHlId,
 }) {
   const canvasRef = useRef(null);
@@ -235,9 +235,9 @@ export function PdfPageContent({
   return (
     <>
       <canvas ref={canvasRef} />
-      <div ref={textLayerRef} className="pdfr-textlayer" onMouseUp={handleMouseUp} onCopy={handleCopy}
+      <div ref={textLayerRef} className={'pdfr-textlayer outil-' + outil} onMouseUp={handleMouseUp} onCopy={handleCopy}
         onMouseMove={handleMouseMove} onMouseLeave={() => setSurvolId(null)}
-        style={survolId ? { cursor: 'pointer' } : undefined} />
+        style={survolId && outil !== 'gomme' ? { cursor: 'pointer' } : undefined} />
       <div className="pdfr-hlayer">
         {highlights.flatMap((h) => (shownRects[h.id] || h.rects).map((r, i) => (
           <div key={h.id + ':' + i}
@@ -250,7 +250,7 @@ export function PdfPageContent({
         ))}
       </div>
       {edits.map((a) => (
-        <TextEditBlock key={a.id} edit={a} active={a.id === activeEditId} editable={mode === 'edit'} onActivate={onActivateEdit} editor={a.id === activeEditId ? activeEditor : null} pageHeight={pageHeight} />
+        <TextEditBlock key={a.id} edit={a} active={a.id === activeEditId} editable={outil === 'main'} onActivate={onActivateEdit} editor={a.id === activeEditId ? activeEditor : null} pageHeight={pageHeight} />
       ))}
 
       {/* VERROU 1 : la couche de tracé n'existe QUE pendant que l'outil « Boîte de
@@ -268,7 +268,7 @@ export function PdfPageContent({
       {/* rendues APRÈS la couche de tracé : une boîte existante reste toujours
           atteignable, même l'outil « Boîte de texte » actif. */}
       {boites.map((b) => (
-        <NoteBox key={b.id} boite={b} active={b.id === activeEditId}
+        <NoteBox key={b.id} boite={b} active={b.id === activeEditId} gomme={outil === 'gomme'}
           editor={b.id === activeEditId ? activeEditor : null}
           onActivate={onActivateEdit}
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
@@ -304,7 +304,7 @@ export function PdfPageContent({
    Une seule entrée d'historique par geste : l'état d'avant est capturé au
    pointerdown, la commande empilée au pointerup, et seulement si ça a bougé.
    ============================================================ */
-function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer }) {
+function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, gomme = false }) {
   const [apercu, setApercu] = useState(null); // géométrie pendant le geste (état local, non persisté)
   const b = apercu || boite;
   const html = useMemo(() => richToHTML(boite.content), [boite.content]);
@@ -331,6 +331,8 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   }, [active, editor]);
 
   const activer = (e) => {
+    // GOMME : un clic n'ouvre pas la boîte, il l'efface (annulable par Cmd+Z).
+    if (gomme) { onSupprimer(boite); return; }
     if (e) clicRef.current = { x: e.clientX, y: e.clientY };
     onActivate(boite.id);
   };
@@ -378,12 +380,13 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   };
 
   return (
-    <div className={'note-box' + (active ? ' active' : '')} style={style}>
+    <div className={'note-box' + (active ? ' active' : '') + (gomme ? ' gomme' : '')} style={style}>
       {/* CORRECTIF (défaut 4) : le bandeau est focusable, et c'est LUI qui porte la
           suppression au clavier — plus aucun écouteur global ne peut effacer la
           boîte pendant que le curseur est ailleurs. */}
-      <div className="nb-bar" ref={barreRef} tabIndex={0} title="Glisser pour déplacer · Suppr pour effacer"
-        onPointerDown={(e) => { demarrer(e, 'move'); if (barreRef.current) barreRef.current.focus(); }}
+      <div className="nb-bar" ref={barreRef} tabIndex={0}
+        title={gomme ? 'Cliquer pour effacer cette boîte' : 'Glisser pour déplacer · Suppr pour effacer'}
+        onPointerDown={(e) => { if (gomme) { e.preventDefault(); onSupprimer(boite); return; } demarrer(e, 'move'); if (barreRef.current) barreRef.current.focus(); }}
         onKeyDown={(e) => {
           if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onSupprimer(boite); }
           if (e.key === 'Enter') { e.preventDefault(); activer(null); }

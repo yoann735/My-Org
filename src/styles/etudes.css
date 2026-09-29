@@ -1389,3 +1389,51 @@
   background: color-mix(in srgb, var(--crit) 12%, transparent); color: var(--crit);
   font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: background .12s; }
 .hl-delete-large:hover { background: color-mix(in srgb, var(--crit) 22%, transparent); }
+
+/* ---- BARRE D'OUTILS DU LECTEUR PDF (étape 5) ----
+   Trois zones : naviguer (gauche) · LES OUTILS (centre) · chercher/agir (droite).
+   Les outils sont au centre parce que c'est ce qu'on utilise en permanence ;
+   tout ce qui est rare est parti dans le menu « ⋯ ». */
+.pdfr-barre { gap: 12px; flex-wrap: nowrap; }
+.pdfr-barre .ptb-zone { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.pdfr-barre .ptb-droite { margin-left: auto; }
+.ptb-sep { width: 1px; height: 22px; background: var(--border-2); flex: 0 0 auto; }
+.ptb-pages, .ptb-zoom { display: flex; align-items: center; gap: 3px; font-size: 12.5px; color: var(--text-2); }
+.ptb-pages .tnum { min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* Le groupe d'outils : un vrai segmenté, visuellement plus dense que le reste. */
+.ptb-outils { display: flex; align-items: center; gap: 2px; padding: 3px;
+  border: 1px solid var(--border); border-radius: var(--r, 11px); background: var(--bg-2); flex: 0 0 auto; }
+.ptb-outil { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
+  border: none; border-radius: var(--r, 8px); background: transparent; color: var(--text-2);
+  font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.ptb-outil:hover { background: var(--card); color: var(--text); }
+.ptb-outil.actif { background: var(--accent); color: #fff; box-shadow: var(--shadow); }
+.ptb-outils .ptb-sep { margin: 0 3px; }
+
+.ptb-recherche { max-width: 210px; height: 32px; }
+.ptb-resultats { display: flex; align-items: center; gap: 3px; }
+.ptb-resultats .tnum { min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* Barre contextuelle : les réglages du SEUL outil actif. */
+.pdfr-contexte { display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  padding: 7px 12px; margin: -6px 0 14px; border: 1px solid var(--border);
+  border-radius: var(--r, 11px); background: var(--card); box-shadow: var(--shadow); }
+.ptb-contexte-titre { font-size: 12px; font-weight: 700; color: var(--text-2); margin-right: 4px; }
+.ptb-pastille { width: 20px; height: 20px; border-radius: 6px; cursor: pointer;
+  border: 1px solid rgba(0,0,0,.25); transition: transform .1s; flex: 0 0 auto; }
+.ptb-pastille:hover { transform: scale(1.12); }
+.ptb-pastille.actif { border: 2px solid var(--text); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--text); }
+
+/* Repli : d'abord les libellés des outils, puis la recherche. Les outils, eux,
+   ne disparaissent jamais — c'est ce pour quoi on est là. */
+@media (max-width: 1250px) { .ptb-outil-lbl { display: none; } .ptb-outil { padding: 0 8px; } }
+@media (max-width: 1050px) { .pdfr-barre { flex-wrap: wrap; } .pdfr-barre .ptb-droite { margin-left: 0; } }
+@media (max-width: 900px)  { .ptb-recherche { max-width: 150px; } }
+
+/* Curseurs : l'outil actif doit se lire sans regarder la barre. */
+.pdfr-textlayer.outil-surligneur { cursor: text; }
+.pdfr-textlayer.outil-gomme { cursor: not-allowed; user-select: none; }
+.pdfr-page.outil-gomme .pdfr-hl-rect { outline-color: var(--crit); }
+.note-box.gomme { cursor: not-allowed; outline: 2px solid transparent; }
+.note-box.gomme:hover { outline-color: var(--crit); }
