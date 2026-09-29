@@ -339,6 +339,7 @@ const ED_NAV = [
   { id: 'library', label: 'Bibliothèque', icon: 'book' },
   { id: 'carnet', label: "Carnet d'erreurs", icon: 'target' },
   { id: 'apprentissage', label: 'Apprentissage', icon: 'brain' }, // exos + PDF du cours, sans suivi (pages/Apprentissage.jsx)
+  { id: 'notes', label: 'Prise de notes', icon: 'edit' },       // PDF autonomes, lus et annotés, sans suivi (pages/PriseDeNotes.jsx)
 ];
 
 export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx }) {

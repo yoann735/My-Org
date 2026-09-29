@@ -33,6 +33,13 @@ const S = {
   // méthode des J, stats, carnet, recherche et exports ne lisent que `questions`/
   // `fiches` — ces exos restent donc hors de tout suivi PAR CONSTRUCTION.
   apprentissage: store('apprentissage'),
+  // PRISE DE NOTES : un « document de notes » = un PDF autonome, sans fiche
+  // (voir lib/notes.js). Même raison d'être un store À PART que `apprentissage` :
+  // planning, méthode des J, stats, carnet, recherche et exports ne lisent que
+  // `questions`/`fiches` — ces documents en restent donc absents PAR CONSTRUCTION.
+  // Leurs annotations ne sont PAS ici : elles vivent dans `highlights`/`annotations`
+  // avec `ficheId = note.id` (clé de namespace, pas clé étrangère).
+  notes: store('notes'),
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
@@ -42,7 +49,7 @@ const S = {
 // `sessionsLog` est syncable pour la même raison que `questions`/`stats` : la
 // tendance affichée en fin de série doit refléter l'activité desktop ET mobile,
 // pas seulement cet appareil.
-const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage'];
+const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes'];
 
 export function genId(prefix = 'x') {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
