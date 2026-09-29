@@ -761,7 +761,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     window.getSelection && window.getSelection().removeAllRanges();
     await hist.appliquer(cmdCreer('highlights', rec, 'Surlignage'));
   };
-  const handleHighlightClick = (h, e) => { setPending(null); setEditingHl({ id: h.id, couleur: h.couleur, note: h.note || '', x: e.clientX, y: e.clientY }); };
+  const handleHighlightClick = (h, e) => { setPending(null); setEditingHl({ id: h.id, couleur: h.couleur, note: h.note || '', texte: h.texte || '', x: e.clientX, y: e.clientY }); };
   const changeHighlightColor = async (couleur) => {
     if (!editingHl) return;
     const h = highlights.find((x) => x.id === editingHl.id); if (!h) { setEditingHl(null); return; }
@@ -1310,6 +1310,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
                       activeMatchIdx={activeMatch}
                       onCreateHighlight={handleCreateHighlightRequest}
                       onHighlightClick={handleHighlightClick}
+                      cibleHlId={editingHl ? editingHl.id : null}
                       onActivateEdit={setActiveEditId}
                       activeEditor={editor}
                     />
@@ -1368,7 +1369,15 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
       )}
 
       {editingHl && createPortal(
-        <div className="hl-picker hl-picker-col" style={{ left: Math.min(editingHl.x, window.innerWidth - 290), top: Math.min(editingHl.y + 8, window.innerHeight - 170) }}>
+        <div className="hl-picker hl-picker-col" style={{ left: Math.min(editingHl.x, window.innerWidth - 300), top: Math.min(editingHl.y + 10, window.innerHeight - 250) }}>
+          {/* ON DIT CE QU'ON TIENT : sans cet extrait, rien n'indique quel surlignage
+              la popover vise — surtout quand plusieurs se touchent. Le surlignage
+              concerné est en plus cerclé sur la page (classe `cible`). */}
+          <div className="hl-tete">
+            <span className="hl-extrait" title={editingHl.texte}>{editingHl.texte || 'Surlignage'}</span>
+            <button className="hl-cancel" title="Fermer" onClick={closeEditingHl}><Icon name="x" size={13} /></button>
+          </div>
+
           <div className="row" style={{ gap: 7, alignItems: 'center' }}>
             {COLORS.map((c) => (
               <button key={c.id} className="hl-swatch-col" title={c.label} onClick={() => changeHighlightColor(c.id)}>
@@ -1376,15 +1385,20 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
                 <span className="hl-swatch-lbl">{c.short}</span>
               </button>
             ))}
-            <span className="hl-picker-sep" />
-            <button className="hl-delete" onClick={deleteHighlightConfirmed}><Icon name="trash" size={13} /> Supprimer</button>
           </div>
+
           <textarea className="hl-note" rows={2} placeholder="Note (facultatif) — ta remarque ou ta question"
             value={editingHl.note} onChange={(e) => { const note = e.target.value; setEditingHl((cur) => (cur ? { ...cur, note } : cur)); }}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) closeEditingHl(); }} />
-          <div className="row" style={{ justifyContent: 'flex-end' }}>
-            <button className="btn sm" onClick={closeEditingHl}><Icon name="check" size={13} /> OK</button>
-          </div>
+          <div className="hl-aide">La note s'enregistre en fermant.</div>
+
+          {/* L'ACTION QU'ON VENAIT CHERCHER : pleine largeur, rouge, en bas.
+              Pas de confirmation — c'est annulable (Cmd+Z), et une boîte de dialogue
+              de plus serait un obstacle pour un geste qu'on répète. */}
+          <button className="hl-delete-large" onClick={deleteHighlightConfirmed}
+            title={`Supprimer ce surlignage (annulable par ${RACCOURCI}Z)`}>
+            <Icon name="trash" size={14} /> Supprimer ce surlignage
+          </button>
         </div>,
         document.body,
       )}
@@ -1411,7 +1425,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     de texte édités (Chantier 1). */
 function PdfPageContent({
   pdfDoc, pageNum, scale, dpr, mode, pageHeight, highlights, edits, boites, outil, activeEditId, matches, activeMatchIdx,
-  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite,
+  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, cibleHlId,
 }) {
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
@@ -1521,6 +1535,33 @@ function PdfPageContent({
     window.addEventListener('pointerup', up);
   };
 
+  /* CONTOUR AU SURVOL : le surlignage sous le curseur s'entoure, et le curseur passe
+     en « main ». Sans ça, rien n'indiquait qu'un surlignage était cliquable — c'est
+     la première raison pour laquelle le supprimer n'était pas évident.
+     MÊME test de position que le clic (les rectangles sont transparents à la souris,
+     pour qu'on puisse toujours sélectionner le texte dessous), limité à une frame. */
+  const [survolId, setSurvolId] = useState(null);
+  const rafSurvol = useRef(null);
+  const positionSurlignage = (clientX, clientY) => {
+    const container = textLayerRef.current;
+    if (!container) return null;
+    const cr = container.getBoundingClientRect();
+    if (!cr.width || !cr.height) return null;
+    const px = (clientX - cr.left) / cr.width, py = (clientY - cr.top) / cr.height;
+    const hit = [...highlights].reverse().find((h) => (shownRects[h.id] || h.rects).some((r) => px >= r.x && px <= r.x + r.width && py >= r.y && py <= r.y + r.height));
+    return hit || null;
+  };
+  const handleMouseMove = (e) => {
+    if (rafSurvol.current) return;
+    const { clientX, clientY } = e; // capturé avant la frame suivante
+    rafSurvol.current = requestAnimationFrame(() => {
+      rafSurvol.current = null;
+      const hit = positionSurlignage(clientX, clientY);
+      setSurvolId((cur) => (hit ? (cur === hit.id ? cur : hit.id) : (cur === null ? cur : null)));
+    });
+  };
+  useEffect(() => () => { if (rafSurvol.current) cancelAnimationFrame(rafSurvol.current); }, []);
+
   // Cmd+C : le texte copié garde ses retours à la ligne (issus des <br>), caractères
   // de compatibilité normalisés. Sélection vide → copie native, on ne touche à rien.
   const handleCopy = (e) => {
@@ -1588,10 +1629,13 @@ function PdfPageContent({
   return (
     <>
       <canvas ref={canvasRef} />
-      <div ref={textLayerRef} className="pdfr-textlayer" onMouseUp={handleMouseUp} onCopy={handleCopy} />
+      <div ref={textLayerRef} className="pdfr-textlayer" onMouseUp={handleMouseUp} onCopy={handleCopy}
+        onMouseMove={handleMouseMove} onMouseLeave={() => setSurvolId(null)}
+        style={survolId ? { cursor: 'pointer' } : undefined} />
       <div className="pdfr-hlayer">
         {highlights.flatMap((h) => (shownRects[h.id] || h.rects).map((r, i) => (
-          <div key={h.id + ':' + i} className="pdfr-hl-rect"
+          <div key={h.id + ':' + i}
+            className={'pdfr-hl-rect' + (h.id === survolId ? ' survol' : '') + (h.id === cibleHlId ? ' cible' : '')}
             style={{ left: r.x * 100 + '%', top: r.y * 100 + '%', width: r.width * 100 + '%', height: r.height * 100 + '%', background: COLOR_HEX[h.couleur] || COLOR_HEX.jaune }} />
         )))}
         {matchRects.map((m) => (
