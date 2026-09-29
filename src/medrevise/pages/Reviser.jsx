@@ -338,8 +338,8 @@ export function Reviser({ ctx }) {
   const viewCoursOf = (ficheId) => {
     const f = db.fiches.find((x) => x.id === ficheId);
     if (!f) return false;
-    if (f.pdfId) { ctx.openPdfReader(f.id, 'read', 'revise', 'pdf'); return true; }
-    if (f.htmlId) { ctx.openPdfReader(f.id, 'read', 'revise', 'html'); return true; }
+    if (f.pdfId) { ctx.openPdfReader(f.id, 'revise', 'pdf'); return true; }
+    if (f.htmlId) { ctx.openPdfReader(f.id, 'revise', 'html'); return true; }
     return false; // aucun document rattaché : le double-clic ne fait rien
   };
   const ficheHasDoc = (ficheId) => { const f = ix.fById[ficheId]; return !!(f && (f.pdfId || f.htmlId)); };
@@ -481,8 +481,8 @@ export function Reviser({ ctx }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primary && primary.id, qcmItems.length]);
 
-  const viewCoursPdf = () => { if (primary && primary.pdfId) ctx.openPdfReader(primary.id, 'read', 'revise', 'pdf'); };
-  const viewCoursHtml = () => { if (primary && primary.htmlId) ctx.openPdfReader(primary.id, 'read', 'revise', 'html'); };
+  const viewCoursPdf = () => { if (primary && primary.pdfId) ctx.openPdfReader(primary.id, 'revise', 'pdf'); };
+  const viewCoursHtml = () => { if (primary && primary.htmlId) ctx.openPdfReader(primary.id, 'revise', 'html'); };
   // input UNIQUE (PDF ou HTML, même chemin que Bibliothèque/import) pour rattacher
   // un document directement depuis Réviser, sans passer par un écran d'import —
   // "Voir le cours" apparaît ensuite de lui-même (primary.pdfId/htmlId à jour).

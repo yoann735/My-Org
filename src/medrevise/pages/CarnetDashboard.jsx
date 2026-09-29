@@ -142,7 +142,7 @@ function V1Row({ v1, v2Count, fiche, matiere, ctx }) {
     setCoursMenu({ x: Math.min(e.clientX, window.innerWidth - 260), y: Math.min(e.clientY, window.innerHeight - 110) });
   };
   const [popupBlocked, setPopupBlocked] = useState(false);
-  const viewCoursInApp = () => { if (fiche) ctx.openPdfReader(fiche.id, 'read', 'carnet', 'html'); };
+  const viewCoursInApp = () => { if (fiche) ctx.openPdfReader(fiche.id, 'carnet', 'html'); };
   // "nouvelle fenêtre" : openHtmlInNewWindow (lib/storage.js) — SEUL point
   // d'ouverture d'un HTML de cours en fenêtre détachée, réutilisé partout
   // (aussi la page Exercice). Bloqueur de popup : ne lève jamais d'exception,

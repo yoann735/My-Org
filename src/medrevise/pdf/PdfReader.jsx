@@ -35,18 +35,17 @@
    propose de surligner (4 couleurs) OU d'éditer ce texte précis ; la
    boîte d'édition est l'union des rects de la sélection, pas un span.
 
-   PRISE DE NOTES (prop `outilsNotes`, onglet pages/PriseDeNotes.jsx). Trois
-   ajouts, TOUS inactifs quand la prop est absente — le lecteur des fiches
-   (Bibliothèque, Réviser, Apprentissage, Import Anatomie) se comporte donc
-   exactement comme avant :
-   - un sélecteur d'outil « Sélection / Boîte de texte » ;
-   - la BOÎTE DE TEXTE LIBRE (kind:'libre' dans le store `annotations`),
-     posable n'importe où, déplaçable, redimensionnable, supprimable — voir
-     le composant NoteBox plus bas et ses QUATRE VERROUS, qui garantissent
-     qu'un geste de boîte ne déclenche jamais ni sélection ni surlignage ;
-   - Annuler / Rétablir (lib/annotHistory.js). L'historique, lui, est tenu
-     en TOUTES circonstances : seuls ses boutons et ses raccourcis dépendent
-     de `outilsNotes`.
+   OUTILS D'ANNOTATION — actifs PARTOUT depuis l'étape 7 (Réviser, Bibliothèque,
+   Apprentissage, Import Anatomie, Prise de notes ouvrent le MÊME lecteur avec
+   les MÊMES outils) :
+   - un seul axe, l'OUTIL ACTIF : Sélection · Surligneur · Boîte · Crayon ·
+     Gomme (voir pdf/PdfToolbar.jsx). Il remplace l'ancien couple
+     « Lecture / Édition », qui ne commandait qu'une chose ;
+   - la BOÎTE DE TEXTE LIBRE (kind:'libre') et le TRAIT AU CRAYON
+     (kind:'trait') dans le store `annotations` — voir NoteBox et ses QUATRE
+     VERROUS, qui garantissent qu'un geste d'annotation ne déclenche jamais ni
+     sélection ni surlignage ;
+   - Annuler / Rétablir (lib/annotHistory.js) sur toutes les annotations.
    ============================================================ */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -85,16 +84,31 @@ import { CourseHtmlView } from './CourseHtmlView.jsx';
 // FACULTATIVES — absentes, le lecteur se comporte exactement comme avant (160 %, panneau
 // ouvert). `ajusterLargeur` cale le zoom sur la largeur du panneau, et le recale quand
 // ce panneau change de largeur (poignée) tant que l'utilisateur n'a pas zoomé lui-même.
-export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSrcTab: srcTabProp, doc: docProp, onSetPdf, onSetHtml, embedded, onClose, ajusterLargeur = false, panneauNotionsOuvert = true, outilsNotes = false }) {
+/* UNE SEULE FORME D'APPEL (étape 7). `ficheId` servait tantôt de clé étrangère,
+   tantôt de simple espace de noms pour les annotations, et `doc` court-circuitait
+   le tout : trois façons d'ouvrir le même lecteur, une par écran.
+
+     source = { id, titre, pdfId, pdfName, htmlId, htmlName, ficheId? }
+       id      → clé d'espace de noms des annotations (toujours présente)
+       ficheId → présent SEULEMENT si c'est une vraie fiche de `db.fiches` ;
+                 c'est lui, et lui seul, qui débloque les actions « fiche »
+                 (ajouter/importer des items, prompts, export JSON).
+
+   Les anciennes props (`ficheId`, `doc`, `initialSrcTab`) restent acceptées : le
+   mode plein écran passe encore par ctx.pdfView, et les rétirer d'un coup aurait
+   été le seul changement risqué de cette étape. */
+export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: srcTabProp, doc: docProp, onSetPdf, onSetHtml, embedded, onClose, ajusterLargeur = false, panneauNotionsOuvert = true }) {
   const { pdfView, db } = ctx;
-  const ficheId = ficheIdProp ?? (pdfView && pdfView.ficheId);
+  const ficheId = (source && source.id) ?? ficheIdProp ?? (pdfView && pdfView.ficheId);
   const initialSrcTab = srcTabProp ?? (pdfView && pdfView.srcTab);
   const close = onClose || ctx.closePdfReader;
-  const fiche = docProp || db.fiches.find((f) => f.id === ficheId);
-  // « Ajouter un item » (réutilise AddItemModal, comme dans Réviser) : uniquement pour
-  // une vraie fiche (`db.fiches`, ficheId connu) — pas pour `docProp` (ex : structure
-  // d'anatomie dans Import Anatomie Théorie, hors du store `questions`/fiches).
-  const canAddItem = !docProp && !!ficheId && !!fiche;
+  // la vraie fiche, s'il y en a une : par `source.ficheId`, ou par l'ancien chemin
+  const idFiche = source ? source.ficheId : (docProp ? null : ficheId);
+  const ficheReelle = idFiche ? db.fiches.find((f) => f.id === idFiche) : null;
+  const fiche = ficheReelle || source || docProp;
+  // Actions propres à une fiche (items, prompts, export JSON) : elles n'ont aucun
+  // sens pour un document de notes ou une structure d'anatomie.
+  const canAddItem = !!ficheReelle;
   const [showAddItem, setShowAddItem] = useState(false);
   // "Importer des items" (atelier "Voir le cours", branche HTML) : coller le JSON
   // produit par un des 4 prompts de complétion ("Voir les prompts") — réutilise
@@ -119,12 +133,9 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   const [numPages, setNumPages] = useState(0);
   const [pageSizes, setPageSizes] = useState([]); // [{width,height}] à scale=1
   const [scale, setScale] = useState(1.6); // B3 : 160% par défaut
-  /* `mode` ('read' | 'edit') est MORT à l'étape 5 : il ne commandait qu'une chose
-     — si un bloc de remplacement de texte était cliquable — tout en portant le
-     nom le plus fort de l'interface. Un seul axe le remplace : l'OUTIL ACTIF.
-     La prop `modeProp` reste acceptée pour ne pas casser les appelants
-     (Bibliothèque, ctx.openPdfReader) ; elle est simplement ignorée, et sera
-     retirée à l'étape 7 avec le reste de l'échafaudage. */
+  /* `mode` ('read' | 'edit') a été RETIRÉ (étapes 5 puis 7). Il ne commandait
+     qu'une chose — si un bloc de remplacement de texte était cliquable — tout en
+     portant le nom le plus fort de l'interface. L'outil actif l'a remplacé. */
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 0 });
   const dpr = useDevicePixelRatio();
 
@@ -138,7 +149,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   // la couche de texte (voir PdfPageContent) : tant qu'il est actif, ni la sélection
   // ni le test de position des surlignages ne peuvent se déclencher — c'est
   // structurel, pas une suite de conditions à ne pas oublier.
-  const [outil, setOutil] = useState('main'); // main | surligneur | boite | crayon | gomme
+  const [outil, setOutil] = useState('main'); // main | surligneur | boite | crayon | gomme — actif sur TOUS les écrans depuis l'étape 7
   const [couleurActive, setCouleurActive] = useState('jaune'); // partagée par surligneur, boîte et crayon
   const [epaisseur, setEpaisseur] = useState(EPAISSEURS[1].id);
   const [aimant, setAimant] = useState(true); // le lissage est utile par défaut ; décochable
@@ -215,10 +226,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
      TOUTES les écritures d'annotation de ce composant passent par `hist.appliquer`
      — jamais put/remove en direct. C'est la seule règle à tenir pour qu'aucune
      action ne puisse échapper à l'historique, aujourd'hui comme demain.
-     La pile est tenue quel que soit le contexte ; seuls les BOUTONS et les
-     RACCOURCIS sont réservés à `outilsNotes` (onglet Prise de notes), pour que le
-     comportement du lecteur dans Bibliothèque / Réviser / Apprentissage reste
-     exactement celui d'avant. Un seul drapeau à changer pour l'ouvrir partout. */
+     Boutons et raccourcis sont actifs sur tous les écrans depuis l'étape 7. */
   const rechargerAnnotations = async () => { await reloadHighlights(); await reloadEdits(); };
   const hist = useAnnotHistorique(rechargerAnnotations);
 
@@ -229,7 +237,6 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
   // la zone de note d'un surlignage). C'est la cible du clavier qui départage les deux
   // historiques — pas un mode, pas un réglage.
   useEffect(() => {
-    if (!outilsNotes) return undefined;
     const onKey = (e) => {
       if (cibleEditable(e.target) || cibleEditable(document.activeElement)) return;
       /* CORRECTIF (défaut 4) : PLUS de suppression au clavier ici. Un écouteur
@@ -244,7 +251,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [outilsNotes, hist.annuler, hist.retablir]);
+  }, [hist.annuler, hist.retablir]);
   // les surlignages ne vivent pas dans `db` (lus à part, ci-dessus) : sans ceci, ceux
   // qu'une synchro rapatrie d'un autre appareil (retour sur l'onglet, reconnexion —
   // MedReviseApp.jsx appelle alors reload(), qui remplace `db`) n'apparaîtraient qu'à
@@ -849,7 +856,6 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
             </button>
           </>
         ) : null}
-        outilsAnnotation={outilsNotes}
       />
       {activeEdit && editor && (
         <EditToolbar editor={editor} libre={activeEdit.kind === 'libre'}
@@ -892,7 +898,7 @@ export function PdfReader({ ctx, ficheId: ficheIdProp, mode: modeProp, initialSr
                       couleurTrait={couleurActive}
                       epaisseurTrait={(EPAISSEURS.find((e) => e.id === epaisseur) || EPAISSEURS[1]).v}
                       aimantActif={aimant}
-                      outil={outilsNotes ? outil : 'main'}
+                      outil={outil}
                       onCreerBoite={creerBoite}
                       onMajBoite={majBoite}
                       onSupprimerBoite={supprimerBoite}

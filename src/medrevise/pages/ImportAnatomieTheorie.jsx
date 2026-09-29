@@ -220,7 +220,7 @@ export function ImportAnatomieTheorie({ ctx }) {
                 <StructureTable struct={s} />
                 {openedDoc && openedDoc.id === s.id && (s.pdfId || s.htmlId) && (
                   <div style={{ marginTop: 12, border: '1px solid var(--border-2)', borderRadius: 12, padding: 12 }}>
-                    <PdfReader key={s.id} ctx={ctx} doc={{ ...s, titre: s.nom }} initialSrcTab={openedDoc.srcTab}
+                    <PdfReader key={s.id} ctx={ctx} source={{ ...s, id: s.id, titre: s.nom }} initialSrcTab={openedDoc.srcTab}
                       onSetPdf={(pdfId, pdfName) => setStructPdf(s.id, pdfId, pdfName)}
                       onSetHtml={(htmlId, htmlName) => setStructHtml(s.id, htmlId, htmlName)}
                       embedded onClose={() => setOpenedDoc(null)} />

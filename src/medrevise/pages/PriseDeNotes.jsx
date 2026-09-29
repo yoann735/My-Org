@@ -90,9 +90,7 @@ export function PriseDeNotes({ ctx }) {
   if (ouvert) {
     return (
       <PdfReader key={ouvert.id} ctx={ctx}
-        ficheId={ouvert.id}
-        doc={{ titre: ouvert.titre, pdfId: ouvert.pdfId, pdfName: ouvert.pdfName }}
-        outilsNotes
+        source={{ id: ouvert.id, titre: ouvert.titre, pdfId: ouvert.pdfId, pdfName: ouvert.pdfName }}
         onClose={() => setOuvertId(null)} />
     );
   }

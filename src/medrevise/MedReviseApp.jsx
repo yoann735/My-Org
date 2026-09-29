@@ -98,7 +98,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [exercice, setExercice] = useState(null); // { items:[exercice], title }
   const [anatQuiz, setAnatQuiz] = useState(null); // { fiche, mode:'total'|'random', proportion }
   const [focusFiche, setFocusFiche] = useState(null);
-  const [pdfView, setPdfView] = useState(null); // { ficheId, mode: 'read'|'edit', returnScreen }
+  const [pdfView, setPdfView] = useState(null); // { ficheId, returnScreen, srcTab }
   const [schemaView, setSchemaView] = useState(null); // { ficheId, returnScreen }
   // 'idle' | 'syncing' | 'ok' | 'offline' | 'disabled' — exposé pour le bouton
   // "Forcer la synchro" (Réglages desktop, accueil mobile), voir forceSync ci-dessous.
@@ -226,8 +226,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
 
     // ---- lecteur PDF (Partie B) : ouvert en overlay plein écran (nouvel
     // écran 'pdf'), revient à l'écran d'où il a été ouvert à la fermeture.
-    openPdfReader: (ficheId, mode, returnScreen, srcTab) => {
-      setPdfView({ ficheId, mode: mode || 'read', returnScreen: returnScreen || screen, srcTab });
+    // `mode` ('read'|'edit') a disparu avec le faux mode Lecture/Édition du
+    // lecteur (étapes 5 et 7) : la signature n'en prend plus.
+    openPdfReader: (ficheId, returnScreen, srcTab) => {
+      setPdfView({ ficheId, returnScreen: returnScreen || screen, srcTab });
       setScreen('pdf');
     },
     closePdfReader: () => { const back = pdfView && pdfView.returnScreen; setScreen(back || 'library'); setPdfView(null); },

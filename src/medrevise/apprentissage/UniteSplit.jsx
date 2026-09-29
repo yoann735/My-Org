@@ -111,7 +111,8 @@ export function UniteSplit({ ctx, unite, onRetour }) {
 
         <div className={'appr-cours' + (halo ? ' halo' : '')} aria-label="Cours (PDF)" aria-hidden={prefs.masque}>
           <PdfReader ctx={ctx} embedded ajusterLargeur panneauNotionsOuvert={false}
-            ficheId={cleSurlignages(unite)} doc={{ titre: unite.titre, pdfId: unite.pdfId, pdfName: unite.pdfName }}
+            source={{ id: cleSurlignages(unite), ficheId: unite.ficheId || null,
+                      titre: unite.titre, pdfId: unite.pdfId, pdfName: unite.pdfName }}
             onClose={() => (window.matchMedia('(max-width: 900px)').matches ? setVue('exos') : maj({ masque: true }))} />
         </div>
       </div>

@@ -103,9 +103,10 @@ export function Bibliotheque({ ctx }) {
   // d'écran) ; kind dérivé de docKind() — pdfId → 'fiche', anat_schema → 'schema',
   // transcript → 'transcript'. Replie la liste dans la foulée (le lecteur prend
   // toute la largeur) — le chevron du rail la rouvre en un clic.
-  const openDoc = (f, mode, srcTab) => {
+  // `mode` ('read'|'edit') a disparu avec le faux mode du lecteur (étapes 5 et 7).
+  const openDoc = (f, srcTab) => {
     const kind = docKind(f);
-    if (kind === 'fiche') setSelected({ ficheId: f.id, kind: 'fiche', mode: mode || 'read', srcTab });
+    if (kind === 'fiche') setSelected({ ficheId: f.id, kind: 'fiche', srcTab });
     else if (kind === 'schema') setSelected({ ficheId: f.id, kind: 'schema' });
     else if (kind === 'transcript') setSelected({ ficheId: f.id, kind: 'transcript' });
     if (kind) setListCollapsed(true);
@@ -119,7 +120,7 @@ export function Bibliotheque({ ctx }) {
     const blobId = await putBlob(file);
     if (kind === 'html') await ctx.setFicheHtml(ficheId, blobId, file.name);
     else await ctx.setFichePdf(ficheId, blobId, file.name);
-    setSelected({ ficheId, kind: 'fiche', mode: 'edit', srcTab: kind });
+    setSelected({ ficheId, kind: 'fiche', srcTab: kind });
     setListCollapsed(true);
   };
   // déclenché depuis le menu « … » (« Attacher un document ») : un seul input
@@ -167,8 +168,8 @@ export function Bibliotheque({ ctx }) {
     if (!isSchema && !isTranscript) {
       items.push({ label: f.etiquette ? 'Changer l’étiquette' : 'Poser une étiquette', icon: 'tag', onClick: () => setEtqMenu({ x, y, ficheId: f.id }) });
       if (f.pdfId && f.htmlId) {
-        items.push({ label: 'Ouvrir en PDF', icon: 'filePdf', onClick: () => openDoc(f, 'edit', 'pdf') });
-        items.push({ label: 'Ouvrir en HTML', icon: 'fileHtml', onClick: () => openDoc(f, 'edit', 'html') });
+        items.push({ label: 'Ouvrir en PDF', icon: 'filePdf', onClick: () => openDoc(f, 'pdf') });
+        items.push({ label: 'Ouvrir en HTML', icon: 'fileHtml', onClick: () => openDoc(f, 'html') });
       }
       if (f.htmlId) items.push({ label: 'Remplacer le fichier HTML', icon: 'refresh', onClick: () => setReplacingHtmlId(f.id) });
       if (!f.pdfId || !f.htmlId) items.push({ label: 'Attacher un document', icon: 'upload', onClick: () => requestAttach(f.id) });
@@ -479,7 +480,7 @@ export function Bibliotheque({ ctx }) {
               <div className="hint" style={{ marginTop: 6 }}>Clique une fiche avec PDF, schéma ou transcript pour l'ouvrir ici.</div>
             </div>
           ) : selected.kind === 'fiche' ? (
-            <PdfReader key={selected.ficheId + ':' + (selected.mode || '') + ':' + (selected.srcTab || '')} ctx={ctx} ficheId={selected.ficheId} mode={selected.mode} initialSrcTab={selected.srcTab} embedded onClose={closeDoc} />
+            <PdfReader key={selected.ficheId + ':' + (selected.srcTab || '')} ctx={ctx} source={{ id: selected.ficheId, ficheId: selected.ficheId }} initialSrcTab={selected.srcTab} embedded onClose={closeDoc} />
           ) : selected.kind === 'schema' ? (
             <SchemaEditorScreen key={selected.ficheId} ctx={ctx} ficheId={selected.ficheId} embedded onClose={closeDoc} />
           ) : selected.kind === 'transcript' ? (
