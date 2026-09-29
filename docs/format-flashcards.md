@@ -15,7 +15,7 @@ texte collé
   └─ lib/import.js#createFicheFromQuestions  (l.39)  nouvelle fiche
      ou lib/import.js#appendItemsToFiche     (l.79)  ajout à une fiche existante (+ dédoublonnage)
        └─ lib/adapter.js#toInternalItem      (l.117)
-       └─ lib/storage.js#newItem             (l.389) nouvel id, srcId, dates de la méthode des J
+       └─ lib/storage.js#newItem             (l.387) nouvel id, srcId, dates de la méthode des J
 ```
 
 Point important : `normFlashcard` **reconstruit** l'objet champ par champ (schema.js l.158-166).
@@ -43,7 +43,7 @@ d'en ajouter d'autres.
 
 ### Ce que l'APP génère (ne pas le fournir : c'est supprimé ou écrasé)
 
-Posé par `lib/storage.js#newItem` (l.389-403) et `lib/adapter.js#toInternalItem` (l.117-131) :
+Posé par `lib/storage.js#newItem` (l.387-403) et `lib/adapter.js#toInternalItem` (l.117-131) :
 
 | Champ | Origine |
 |---|---|
