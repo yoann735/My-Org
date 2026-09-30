@@ -82,6 +82,9 @@
 
 .mrm-flash-scene { min-height: 260px; display: flex; }
 .mrm-flash-card {
+  /* color explicite : un <button> n'hérite PAS de la couleur du texte — en thème sombre,
+     le recto s'écrivait en noir sur fond noir (vu le 30/09). */
+  color: var(--text);
   flex: 1; min-height: 260px; border-radius: 20px; border: 1px solid var(--border); background: var(--card);
   display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 28px 22px; gap: 14px;
 }
