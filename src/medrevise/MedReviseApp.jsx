@@ -724,13 +724,11 @@ export default function MedReviseApp({ themeApi, goHub }) {
        attribut — MealWeek ne peut donc pas les recevoir, par construction. */
     <div className={'app' + (focusNotes ? ' focus-notes' : '')} data-app="medrevise">
       <StudySidebar current={screen} onNav={setScreen} expanded={expanded} onToggle={() => setExpanded((v) => !v)} onHub={goHub} ctx={ctx}
-        focus={focusNotes} onQuitterFocus={() => basculerFocus(false)} />
+        focus={focusNotes} onBasculerFocus={basculerFocus} />
       <div className="main">
-        {/* Le bandeau « Mode focus » a été RETIRÉ à la demande de l'utilisateur.
-            Il reste TROIS sorties, aucune dans le flux de lecture : l'entrée
-            « Quitter le focus » au pied de la barre latérale (ui.jsx), l'interrupteur
-            de l'en-tête de Prise de notes, et le repli sans interface décrit dans
-            lib/focusMode.js (une lecture qui échoue renvoie toujours « pas de focus »). */}
+        {/* MODE FOCUS : une seule commande, l'icône « Focus » de la barre latérale
+            (ui.jsx#StudySidebar) — elle active ET désactive. Repli sans interface :
+            voir lib/focusMode.js (une lecture qui échoue renvoie « pas de focus »). */}
         <Current ctx={ctx} key={screen} />
       </div>
       <MedBottomNav current={screen} onNav={setScreen} focus={focusNotes} />

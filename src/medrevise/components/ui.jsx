@@ -358,7 +358,7 @@ const ED_NAV = [
   { id: 'notes', label: 'Prise de notes', icon: 'edit' },       // PDF autonomes, lus et annotés, sans suivi (pages/PriseDeNotes.jsx)
 ];
 
-export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx, focus = false, onQuitterFocus }) {
+export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx, focus = false, onBasculerFocus }) {
   // 'carnet' est un onglet à part entière désormais (plus un sous-état de
   // 'revise') — retiré de la liste ci-dessous pour ne pas allumer les DEUX
   // onglets à la fois quand on est sur l'écran carnet.
@@ -385,16 +385,17 @@ export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx, f
       </div>
       <div className="sb-spacer" />
       <div className="sb-foot">
-        {/* SORTIE N°3 du mode focus : le pied de barre, qui remplace Prompts /
-            Réglages / Changer d'app tant que le focus dure. Redondante avec le
-            bandeau du shell — c'est voulu, on ne veut aucun cas où l'on reste
-            coincé, même si un style venait à masquer l'autre. */}
-        {focus ? (
-          <div className="sb-item" onClick={onQuitterFocus} title="Quitter le mode focus et retrouver tous les onglets">
-            <span className="sb-icon"><Icon name="maximize" size={20} /></span>
-            <span className="sb-label">Quitter le focus</span>
-          </div>
-        ) : (<>
+        {/* MODE FOCUS (lib/focusMode.js) : UNE icône, ici, au-dessus de Prompts et
+            Réglages — le SEUL endroit pour l'activer comme pour le désactiver. Même
+            place et même icône dans les deux états (allumée = focus actif), donc on
+            sait toujours où cliquer pour en sortir. */}
+        <div className={'sb-item sb-focus' + (focus ? ' active' : '')} onClick={() => onBasculerFocus(!focus)}
+          role="switch" aria-checked={focus}
+          title={focus ? 'Focus actif — cliquer pour quitter et retrouver tous les onglets' : 'Mode focus : ne garder que la Prise de notes (même après un rechargement)'}>
+          <span className="sb-icon"><Icon name="target" size={20} /></span>
+          <span className="sb-label">{focus ? 'Focus' : 'Mode focus'}</span>
+        </div>
+        {!focus && (<>
         <div className={'sb-item' + (promptsOpen ? ' active' : '')} onClick={() => setPromptsOpen(true)} title="Prompts — copier un prompt théorie ou exercices">
           <span className="sb-icon"><Icon name="layers" size={20} /></span>
           <span className="sb-label">Prompts</span>
