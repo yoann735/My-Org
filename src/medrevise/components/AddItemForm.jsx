@@ -28,6 +28,7 @@ import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { ImportJsonField } from './ImportFlow.jsx';
 import { OPTION_LETTERS } from '../lib/schema.js';
 import { parseCloze } from '../lib/cloze.js';
+import { OcclusionEditorModal } from './OcclusionImage.jsx';
 
 export const TYPES = [
   { id: 'qcm', label: 'QCM', icon: 'list' },
@@ -59,6 +60,7 @@ export function AddItemModal({ ctx, ficheId, ficheTitre, chapitreId, chapitreNom
   const [type, setType] = useState(isChapitre ? 'exercice' : 'qcm');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(0); // compteur, pour "Ajouté ✓ (N)" + permettre d'en ajouter plusieurs à la suite
+  const [occ, setOcc] = useState(false); // fenêtre « flashcard image » (components/OcclusionImage.jsx)
 
   const add = async (raw) => {
     setBusy(true);
@@ -94,7 +96,14 @@ export function AddItemModal({ ctx, ficheId, ficheTitre, chapitreId, chapitreNom
               <div className="em-body"><div className="em-title">{done} item{done > 1 ? 's' : ''} ajouté{done > 1 ? 's' : ''} ✓</div><div className="hint">Révisable immédiatement, comme un item importé.</div></div>
             </div>
           )}
+          {type === 'flashcard' && !isChapitre && (
+            <button type="button" className="btn ghost sm" style={{ marginBottom: 12 }} onClick={() => setOcc(true)}
+              title="Colle une image, dessine des masques à deviner et pose des textes">
+              <Icon name="image" size={13} /> Ou une flashcard image (masques sur une image)…
+            </button>
+          )}
           <ItemForm type={type} onSubmit={add} busy={busy} />
+          {occ && <OcclusionEditorModal ctx={ctx} ficheId={ficheId} onClose={() => setOcc(false)} onSaved={() => setDone((n) => n + 1)} />}
         </>
       ) : (
         <PasteJsonForm ctx={ctx} ficheId={ficheId} chapitreId={chapitreId} done={done} setDone={setDone} />

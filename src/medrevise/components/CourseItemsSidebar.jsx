@@ -29,6 +29,7 @@ import { ConfirmModal, SplitHandle } from './ui.jsx';
 import { ItemForm, PasteJsonForm, TYPES } from './AddItemForm.jsx';
 import { appendItemsToFiche } from '../lib/import.js';
 import { toInternalItem } from '../lib/adapter.js';
+import { OcclusionEditorModal, OcclusionView, estOcclusion } from './OcclusionImage.jsx';
 
 export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null }) {
   const avecItems = !!ficheId;
@@ -82,6 +83,9 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
 
   // ---- suppression (même canal durable que partout ailleurs) ----
   const [confirmDel, setConfirmDel] = useState(null);
+  // FLASHCARD IMAGE : création / modification dans une grande fenêtre (l'éditeur de
+  // schéma ne tient pas dans un panneau de 380 px). `true` = nouvelle, objet = modifier.
+  const [occEdition, setOccEdition] = useState(null);
   const doDelete = async () => {
     if (!confirmDel) return;
     await ctx.deleteQuestion(confirmDel.id);
@@ -112,11 +116,22 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         <div className="pis-scroll scroll pis-extra">{extraActif.contenu}</div>
       ) : (
       <div className="pis-scroll scroll">
-        {!adding ? (
+        {!adding ? (activeType === 'flashcard' ? (
+          /* deux sortes de flashcards, côte à côte : on voit tout de suite qu'on
+             peut en faire une à partir d'une IMAGE (masques à deviner). */
+          <div className="pis-ajout-duo">
+            <button type="button" className="btn primary sm" onClick={() => setAdding(true)} title="Recto / verso, carte à trous…">
+              <Icon name="plus" size={13} /> Flashcard texte
+            </button>
+            <button type="button" className="btn primary sm" onClick={() => setOccEdition(true)} title="Colle une image, dessine des masques à deviner et pose des textes">
+              <Icon name="image" size={13} /> Flashcard image
+            </button>
+          </div>
+        ) : (
           <button type="button" className="btn primary sm" style={{ width: '100%', justifyContent: 'center', margin: '12px 0' }} onClick={() => setAdding(true)}>
             <Icon name="plus" size={13} /> Ajouter — {activeLabel}
           </button>
-        ) : (
+        )) : (
           <div className="pis-add card" style={{ margin: '12px 0' }}>
             <div className="card-body">
               <div className="row spread" style={{ marginBottom: 10 }}>
@@ -158,12 +173,17 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
               </div>
             ) : (
               <ItemReadCard key={item.id} item={item}
-                onEdit={() => { setEditingId(item.id); setAdding(false); }}
+                onEdit={() => { if (estOcclusion(item)) { setOccEdition(item); return; } setEditingId(item.id); setAdding(false); }}
                 onDelete={() => setConfirmDel(item)} />
             )
           ))}
         </div>
       </div>
+      )}
+
+      {occEdition && (
+        <OcclusionEditorModal ctx={ctx} ficheId={ficheId} initial={occEdition === true ? null : occEdition}
+          onClose={() => setOccEdition(null)} />
       )}
 
       {confirmDel && (
@@ -193,7 +213,7 @@ function ItemReadCard({ item, onEdit, onDelete }) {
           </div>
         </div>
         {item.type === 'qcm' && <QcmReadBody item={item} />}
-        {item.type === 'flashcard' && <FlashcardReadBody item={item} />}
+        {item.type === 'flashcard' && (estOcclusion(item) ? <OcclusionReadBody item={item} /> : <FlashcardReadBody item={item} />)}
         {item.type === 'feynman' && <FeynmanReadBody item={item} />}
         {item.type === 'exercice' && <ExerciceReadBody item={item} />}
       </div>
@@ -225,6 +245,20 @@ function FlashcardReadBody({ item }) {
       <div className="pis-face"><span className="pis-face-tag">Recto</span><Tex>{item.recto}</Tex></div>
       <div className="pis-face"><span className="pis-face-tag">Verso</span><Tex>{item.verso}</Tex></div>
       {item.a_retenir && <div className="hint" style={{ marginTop: 6 }}><strong>À retenir : </strong><Tex>{item.a_retenir}</Tex></div>}
+    </>
+  );
+}
+
+/* flashcard image : l'image en mode « réponse » (masques en contour + réponses),
+   la question au-dessus. */
+function OcclusionReadBody({ item }) {
+  const occ = item.occlusion || {};
+  const nb = (occ.coches || []).filter((c) => c.kind === 'zone').length;
+  return (
+    <>
+      <div className="pis-face"><span className="pis-face-tag">Flashcard image · {nb} masque{nb > 1 ? 's' : ''}</span><Tex>{item.recto}</Tex></div>
+      <OcclusionView occ={occ} revele maxH={200} />
+      {!item.versoAuto && <div className="hint" style={{ marginTop: 6 }}><Tex>{item.verso}</Tex></div>}
     </>
   );
 }

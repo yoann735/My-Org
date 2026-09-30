@@ -273,7 +273,12 @@ export function ImportAnatomieVisuel({ ctx }) {
    Tout est positionné en % (coords relatives × taille affichée) → le
    zoom / redimensionnement ne désaligne jamais les coches.
    ============================================================ */
-export function SchemaEditor({ image, setImage, coches, setCoches }) {
+// `sansExport` (facultatif) : masque « Export image / PDF » — utilisé par la flashcard
+// image (components/OcclusionImage.jsx), où l'export d'archivage n'a pas de sens.
+// Absent : comportement de l'anatomie strictement inchangé.
+// `variante='flashcard'` (facultatif) : panneau de coche simplifié (Masque / Texte,
+// sans théorie ni synonymes). Absent : anatomie inchangée.
+export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = false, variante = null }) {
   const frameRef = useRef(null);
   const outerRef = useRef(null); // B — cadre visible (overflow:hidden) : reçoit le listener wheel natif
   const [mode, setMode] = useState('select'); // select | point | brush | line | rect | ellipse | poly
@@ -717,8 +722,8 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
           </button>
         )}
         <div style={{ flex: 1 }} />
-        <button type="button" className="btn ghost sm" disabled={exporting} onClick={() => doExport('png')}><Icon name="upload" size={13} /> Export image</button>
-        <button type="button" className="btn ghost sm" disabled={exporting} onClick={() => doExport('pdf')}><Icon name="filePdf" size={13} /> Export PDF</button>
+        {!sansExport && <button type="button" className="btn ghost sm" disabled={exporting} onClick={() => doExport('png')}><Icon name="upload" size={13} /> Export image</button>}
+        {!sansExport && <button type="button" className="btn ghost sm" disabled={exporting} onClick={() => doExport('pdf')}><Icon name="filePdf" size={13} /> Export PDF</button>}
       </div>
       {mode === 'point' && <div className="hint" style={{ marginBottom: 8, color: 'var(--accent)' }}><Icon name="target" size={13} /> Clique un point de l'image pour y placer une coche. Repasse en « Sélection » pour la modifier.</div>}
 
@@ -835,18 +840,21 @@ export function SchemaEditor({ image, setImage, coches, setCoches }) {
             const p = toScreen(c.boite.x, c.boite.y);
             return (
               <div key={'b' + c.id} onPointerDown={(e) => startDrag(e, c, 'boite')}
-                style={{ position: 'absolute', left: p.x, top: p.y, transform: 'translate(-50%,-50%)', display: 'flex', alignItems: 'center', gap: 6, maxWidth: Math.round(frameBox.width * 0.46), padding: '4px 8px', borderRadius: 8, background: 'var(--card)', border: `2px solid ${col}`, boxShadow: sel ? `0 0 0 3px color-mix(in srgb, ${col} 30%, transparent), 0 4px 12px rgba(0,0,0,.2)` : '0 2px 8px rgba(0,0,0,.18)', cursor: 'grab', touchAction: 'none', lineHeight: 1.2, zIndex: sel ? 5 : 2, pointerEvents: 'auto' }}>
+                /* zIndex 7 si sélectionnée : au-dessus des poignées de forme (6) — sinon
+                   son panneau (enfant, donc prisonnier de ce contexte) passait SOUS les
+                   poignées et « Supprimer » devenait incliquable (vu le 30/09). */
+                style={{ position: 'absolute', left: p.x, top: p.y, transform: 'translate(-50%,-50%)', display: 'flex', alignItems: 'center', gap: 6, maxWidth: Math.round(frameBox.width * 0.46), padding: '4px 8px', borderRadius: 8, background: 'var(--card)', border: `2px solid ${col}`, boxShadow: sel ? `0 0 0 3px color-mix(in srgb, ${col} 30%, transparent), 0 4px 12px rgba(0,0,0,.2)` : '0 2px 8px rgba(0,0,0,.18)', cursor: 'grab', touchAction: 'none', lineHeight: 1.2, zIndex: sel ? 7 : 2, pointerEvents: 'auto' }}>
                 <span style={{ flex: '0 0 auto', width: 18, height: 18, borderRadius: '50%', background: col, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>{c.numero}</span>
                 {/* la puce AFFICHE le nom ; il s'ÉDITE dans le panneau (titre), ce qui
                     supprime l'input à largeur calculée qui sautait pendant la frappe. */}
-                <span style={{ fontSize: 13, fontWeight: 600, color: c.texte ? 'var(--text)' : 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.texte || '(sans nom)'}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: c.texte ? 'var(--text)' : 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.texte || (variante === 'flashcard' ? (c.kind === 'zone' ? '(masque sans réponse)' : '(texte vide)') : '(sans nom)')}</span>
                 {/* `flipUp` : sous la moitié basse de l'image, le panneau s'ouvre VERS LE
                     HAUT au lieu de déborder hors du cadre (une coche en bas restait
                     inéditable). Décidé sur la coordonnée relative, donc juste à tout zoom. */}
                 {sel && (
                   <CochePanel coche={c} col={col} updateCoche={updateCoche} delCoche={delCoche}
                     onClose={() => setSelectedId(null)} applyZoneStyle={applyZoneStyle} onOpenFull={setTheorieFor}
-                    onNav={(dir) => navCoche(c.id, dir)} flipUp={c.boite.y > 0.55} />
+                    onNav={(dir) => navCoche(c.id, dir)} flipUp={c.boite.y > 0.55} simple={variante === 'flashcard'} />
                 )}
               </div>
             );
@@ -954,7 +962,7 @@ function StyleControls({ value, onChange, allowFill = true }) {
      « Valider », qui laissait croire qu'on pouvait perdre sa saisie en cliquant ailleurs.
    - Suppression en PIED et en DEUX TEMPS (elle était collée aux pastilles de couleur).
    - ↓/↑ passent à la coche suivante/précédente sans fermer le panneau. ---- */
-function CochePanel({ coche: c, col, updateCoche, delCoche, onClose, applyZoneStyle, onOpenFull, onNav, flipUp }) {
+function CochePanel({ coche: c, col, updateCoche, delCoche, onClose, applyZoneStyle, onOpenFull, onNav, flipUp, simple = false }) {
   const [openStyle, setOpenStyle] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const nbChamps = c.type && c.champs ? champsFor(c.type).filter((d) => (c.champs[d.key] || '').trim()).length : 0;
@@ -993,13 +1001,16 @@ function CochePanel({ coche: c, col, updateCoche, delCoche, onClose, applyZoneSt
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: '12px 13px 11px' }}>
         <div className="row" style={{ gap: 9, alignItems: 'center' }}>
           <span style={{ flex: '0 0 auto', width: 18, height: 18, borderRadius: '50%', background: col, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>{c.numero}</span>
-          <input autoFocus value={c.texte} placeholder="Nom de la structure"
+          <input autoFocus value={c.texte} placeholder={simple ? (c.kind === 'zone' ? 'Réponse cachée sous ce masque' : 'Texte à afficher sur l’image') : 'Nom de la structure'}
             onChange={(e) => updateCoche(c.id, { texte: e.target.value })}
             onKeyDown={(e) => { if (e.key === 'Enter') onClose(); }}
             style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', font: 'inherit', fontSize: 15, fontWeight: 700, letterSpacing: '-.01em', padding: 0 }} />
           <button type="button" className="cd-ic" title="Fermer" onClick={onClose}><Icon name="x" size={14} /></button>
         </div>
         <div className="row" style={{ gap: 7, paddingLeft: 27, fontSize: 11, color: 'var(--text-3)', flexWrap: 'wrap', alignItems: 'center' }}>
+          {simple ? (
+            <span>{c.kind === 'zone' ? `Masque à deviner · ${SHAPE_LABEL[c.zone.shape] || 'Forme'}` : 'Texte visible sur l’image'}</span>
+          ) : (<>
           {c.kind === 'zone' && <span>{SHAPE_LABEL[c.zone.shape] || 'Forme'}</span>}
           {typeLabel ? (
             <>
@@ -1007,10 +1018,12 @@ function CochePanel({ coche: c, col, updateCoche, delCoche, onClose, applyZoneSt
               <span>{nbChamps} champ{nbChamps > 1 ? 's' : ''} de théorie</span>
             </>
           ) : <span>Aucune théorie — colle le texte ci-dessous</span>}
+          </>)}
         </div>
       </div>
       {rule}
 
+      {!simple && (<>
       {/* ---- 2. THÉORIE (le contenu pédagogique passe avant les réglages) ---- */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: '12px 13px' }}>
         <span style={secLabel}>Théorie</span>
@@ -1026,6 +1039,7 @@ function CochePanel({ coche: c, col, updateCoche, delCoche, onClose, applyZoneSt
           style={field} />
       </div>
       {rule}
+      </>)}
 
       {/* ---- 4. APPARENCE — repliée : au repos, une ligne de résumé au lieu des
            pastilles. Dépliée, 6 teintes au lieu de 14 (et 14 × 2 de plus pour une zone). ---- */}

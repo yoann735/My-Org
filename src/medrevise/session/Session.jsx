@@ -5,6 +5,7 @@
    célébration + mise à jour du streak.
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta, EtiquetteQuickSet, SessionTrendCard } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
@@ -430,6 +431,9 @@ function FlashCardView({ item, meta, flipped, setFlipped, onRate, canPrev, onPre
    mode « Retourner » : recto avec blancs visuels, verso avec les mots
    masqués mis en évidence (pas de saisie, juste une auto-évaluation SM-2). ---- */
 function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canPrev, onPrev, ctx, carnetPrompt, onCarnetSubmit, onCarnetSkip, erreurMode }) {
+  // FLASHCARD IMAGE (components/OcclusionImage.jsx) : même carte, même notation
+  // méthode des J — seules les faces changent (masques opaques → révélés).
+  const occ = estOcclusion(item) ? item.occlusion : null;
   const [showIndice, setShowIndice] = useState(false); // réinitialisé au changement de carte (remount via key={idx})
   const revealIndice = (e) => { e.stopPropagation(); setShowIndice(true); };
   const rectoSegments = useMemo(() => (cloze ? parseCloze(item.recto, item.cloze) : null), [item.id, cloze]);
@@ -437,10 +441,12 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
   return (
     <div>
       <div className="flash-scene">
-        <div className={'flash-card' + (flipped ? ' flipped' : '')} onClick={() => setFlipped((f) => !f)}>
+        <div className={'flash-card' + (flipped ? ' flipped' : '') + (occ ? ' occ' : '')} onClick={() => setFlipped((f) => !f)}>
           <div className="flash-face front">
             <span className="ff-tag" style={{ color: meta.tint }}>{erreurMode ? "Flashcard d'erreur" : `${meta.label} · ${item.theme}`}</span>
-            {item.imageId
+            {occ
+              ? <div className="ff-occ"><OcclusionView occ={occ} /><div className="ff-imgq"><Tex>{item.recto}</Tex></div></div>
+              : item.imageId
               ? <div className="ff-imgwrap"><AnatImage imageId={item.imageId} compact /><div className="ff-imgq">{cloze ? <ClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div></div>
               : <div className="ff-text">{cloze ? <ClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div>}
             {item.indice && (showIndice
@@ -452,7 +458,9 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
           </div>
           <div className="flash-face back">
             <span className="ff-tag">Réponse</span>
-            <div className="ff-text">{cloze ? <ClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>
+            {occ
+              ? <div className="ff-occ"><OcclusionView occ={occ} revele />{!item.versoAuto && <div className="ff-imgq"><Tex>{item.verso}</Tex></div>}</div>
+              : <div className="ff-text">{cloze ? <ClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>}
             {item.a_retenir && (
               <div className="ff-aretenir" style={{ marginTop: 10, padding: '8px 12px', borderRadius: 10, background: 'var(--accent-soft)', border: '1px solid var(--accent)', fontSize: 13.5, display: 'flex', gap: 7, alignItems: 'baseline' }}>
                 <Icon name="star" size={13} style={{ color: 'var(--accent)', flex: '0 0 auto' }} /> <span><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></span>
