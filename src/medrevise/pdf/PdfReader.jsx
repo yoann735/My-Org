@@ -47,6 +47,7 @@
      sélection ni surlignage ;
    - Annuler / Rétablir (lib/annotHistory.js) sur toutes les annotations.
    ============================================================ */
+import { separerParType } from '../lib/annotationTypes.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { pdfjsLib, openPdf } from './pdfjsSetup.js';
@@ -830,9 +831,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // deux familles dans le MÊME store : les blocs de remplacement de texte (sans
   // `kind`, historiques) et les boîtes libres (`kind: 'libre'`). Rendues par des
   // composants différents, jamais mélangées.
-  const blocsByPage = useMemo(() => groupByPage(edits.filter((a) => !a.kind)), [edits]);
-  const boitesByPage = useMemo(() => groupByPage(edits.filter((a) => a.kind === 'libre')), [edits]);
-  const traitsByPage = useMemo(() => groupByPage(edits.filter((a) => a.kind === 'trait')), [edits]);
+  // annotations EN MÉMOIRE, séparées par type (lib/annotationTypes.js) : une
+  // collection par catégorie, puis regroupées par page pour l'affichage.
+  const parType = useMemo(() => separerParType([], edits), [edits]);
+  const blocsByPage = useMemo(() => groupByPage(parType.bloc), [parType]);
+  const boitesByPage = useMemo(() => groupByPage(parType.boite), [parType]);
+  // traits de crayon ET de surligneur : même calque d'encre (le mode règle le rendu)
+  const traitsByPage = useMemo(() => groupByPage([...parType.trait, ...parType.surligneur]), [parType]);
   const matchesByPage = useMemo(() => groupByPage(matches), [matches]);
 
   // contenu de l'onglet « Notions » du panneau commun (voir CourseItemsSidebar)

@@ -19,7 +19,8 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, ConfirmModal } from '../components/ui.jsx';
 import { ImportNote } from '../components/ImportNote.jsx';
 import { PdfReader } from '../pdf/PdfReader.jsx';
-import { deleteNote, renameNote, comptesAnnotations, elementsPriseDeNotes, rangerDansBibliotheque } from '../lib/notes.js';
+import { deleteNote, renameNote, elementsPriseDeNotes, rangerDansBibliotheque } from '../lib/notes.js';
+import { comptesParType, resumeParType } from '../lib/annotationTypes.js';
 import { RangerDialog } from '../components/RangerDialog.jsx';
 import { analyserFichiers, importerNote, demandeConfirmation } from '../lib/noteImport.js';
 
@@ -60,7 +61,7 @@ export function PriseDeNotes({ ctx }) {
   // au retour du lecteur (on vient peut-être d'y surligner).
   useEffect(() => {
     let vivant = true;
-    comptesAnnotations().then((m) => { if (vivant) setComptes(m); });
+    comptesParType().then((m) => { if (vivant) setComptes(m); });
     return () => { vivant = false; };
   }, [db.notes, ouvertId]);
 
@@ -199,7 +200,8 @@ export function PriseDeNotes({ ctx }) {
                   <div className="pdn-range non">Pas encore rangé dans la Bibliothèque</div>
                 )}
                 <div className="hint" style={{ marginTop: 6 }}>
-                  {comptes[n.id] ? `${comptes[n.id]} annotation${comptes[n.id] > 1 ? 's' : ''}` : 'Aucune annotation'}
+                  {/* détail PAR TYPE (lib/annotationTypes.js) : « 2 surlignages · 1 boîte » */}
+                  {comptes[n.id] && comptes[n.id].total ? resumeParType(comptes[n.id]) : 'Aucune annotation'}
                 </div>
 
                 <div className="hint" style={{ fontSize: 11.5, marginTop: 4 }}>Ajouté le {new Date(n.createdAt).toLocaleDateString('fr-FR')}</div>

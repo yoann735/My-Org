@@ -281,7 +281,8 @@ export async function openHtmlInNewWindow(htmlId) {
    surlignage plus ancien, qui ne les a pas, reste valide tel quel (rects seuls). */
 export function newHighlight({ ficheId, page, texte, couleur, rects, anchor, note }) {
   return {
-    id: genId('h'), ficheId, page, texte, couleur: couleur || 'jaune', rects: rects || [],
+    id: genId('h'), type: 'surlignage', // type explicite : voir lib/annotationTypes.js
+    ficheId, page, texte, couleur: couleur || 'jaune', rects: rects || [],
     anchor: anchor || null, note: note || null,
     createdAt: new Date().toISOString(),
   };
@@ -294,7 +295,7 @@ export function newHighlight({ ficheId, page, texte, couleur, rects, anchor, not
    n'est jamais modifié — couche superposée uniquement, réinitialisable. ---- */
 export function newTextEdit({ ficheId, page, x, y, width, height, originalText, fontSize, fontFamily, content }) {
   return {
-    id: genId('an'), ficheId, page, x, y, width, height,
+    id: genId('an'), type: 'bloc', ficheId, page, x, y, width, height,
     originalText, fontSize: fontSize || null, fontFamily: fontFamily || null,
     content: content || { type: 'doc', content: [{ type: 'paragraph', content: originalText ? [{ type: 'text', text: originalText }] : [] }] },
     createdAt: new Date().toISOString(),
@@ -312,7 +313,7 @@ export function newTextEdit({ ficheId, page, x, y, width, height, originalText, 
 export function newNoteBox({ ficheId, page, x, y, width, height, couleur, content }) {
   return {
     id: genId('an'), ficheId, page, x, y, width, height,
-    kind: 'libre',
+    kind: 'libre', type: 'boite',
     couleur: couleur || 'jaune',
     content: content || { type: 'doc', content: [{ type: 'paragraph' }] },
     createdAt: new Date().toISOString(),
@@ -332,7 +333,7 @@ export function newNoteBox({ ficheId, page, x, y, width, height, couleur, conten
 export function newTrait({ ficheId, page, points, couleur, epaisseur, aimant, mode }) {
   return {
     id: genId('an'), ficheId, page,
-    kind: 'trait',
+    kind: 'trait', type: mode === 'surligneur' ? 'surligneur' : 'trait',
     // 'dessin' (fin, doux) | 'surligneur' (épais, translucide). Absent sur les traits
     // d'avant le 30/09 : lus comme 'dessin' (voir pdfShared#modeDuTrait).
     mode: mode === 'surligneur' ? 'surligneur' : 'dessin',

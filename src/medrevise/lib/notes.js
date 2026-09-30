@@ -57,18 +57,8 @@ export async function deleteNote(note) {
   await remove('notes', note.id);
 }
 
-/** Nombre d'annotations (surlignages + boîtes de texte) par document, en UNE
-    lecture des deux stores — la liste en affiche le compte sans charger les PDF.
-    Lecture pure : n'écrit rien, ne met rien en file de synchro. */
-export async function comptesAnnotations() {
-  const [hs, ans] = await Promise.all([getAll('highlights'), getAll('annotations')]);
-  const map = {};
-  for (const r of [...(hs || []), ...(ans || [])]) {
-    if (!r || !r.ficheId) continue;
-    map[r.ficheId] = (map[r.ficheId] || 0) + 1;
-  }
-  return map;
-}
+/* Compter les annotations par document : lib/annotationTypes.js#comptesParType
+   (détail par type). */
 
 /* ============================================================
    RANGER UN DOCUMENT DANS LA BIBLIOTHÈQUE — UNE SEULE FICHE, MÊME ID.
