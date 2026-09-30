@@ -504,7 +504,8 @@ export function PdfPageContent({
           onActivate={onActivateEdit}
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
           onMaj={onMajBoite} onSupprimer={onSupprimerBoite} onModifier={onModifierBoite}
-          enAncrage={b.id === ancrageBoiteId} onDemanderAncrage={onDemanderAncrage} />
+          enAncrage={b.id === ancrageBoiteId} onDemanderAncrage={onDemanderAncrage}
+          pageWidth={pageWidth} pageHeight={pageHeight} />
       ))}
 
       {/* VISÉE D'UN ANCRAGE : au-dessus de tout, sur la page de la boîte seulement.
@@ -547,7 +548,7 @@ export function PdfPageContent({
    Une seule entrée d'historique par geste : l'état d'avant est capturé au
    pointerdown, la commande empilée au pointerup, et seulement si ça a bougé.
    ============================================================ */
-function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, onDemanderAncrage }) {
+function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, onDemanderAncrage, pageWidth, pageHeight }) {
   const [apercu, setApercu] = useState(null); // géométrie pendant le geste (état local, non persisté)
   const b = apercu || boite;
   const html = useMemo(() => richToHTML(boite.content), [boite.content]);
@@ -661,8 +662,39 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     );
   }
 
+  /* FLÈCHE (demande du 30/09) : du BORD de la boîte jusqu'à l'endroit ancré.
+     Calculée en pixels de page (viewBox = taille de la page) pour que la pointe ne
+     soit jamais déformée ; elle part de la géométrie AFFICHÉE (`b`, qui inclut
+     l'aperçu pendant un déplacement) : la flèche suit la boîte en direct. */
+  const fleche = (() => {
+    if (!ancre || !boite.fleche || !pageWidth || !pageHeight) return null;
+    const W = pageWidth, H = pageHeight;
+    const bx = b.x * W, by = b.y * H, bw = b.width * W, bh = b.height * H;
+    const cx = bx + bw / 2, cy = by + bh / 2, ax = ancre.x * W, ay = ancre.y * H;
+    const dx = ax - cx, dy = ay - cy;
+    if (ax >= bx && ax <= bx + bw && ay >= by && ay <= by + bh) return null; // point sous la boîte : rien à relier
+    const t = Math.min(dx ? (bw / 2) / Math.abs(dx) : Infinity, dy ? (bh / 2) / Math.abs(dy) : Infinity);
+    const sx = cx + dx * t, sy = cy + dy * t;
+    const L = Math.hypot(ax - sx, ay - sy);
+    if (L < 14) return null;
+    const recul = 7 / L; // la pointe s'arrête au bord du repère rond (rayon 6)
+    return { W, H, sx, sy, ex: ax - (ax - sx) * recul, ey: ay - (ay - sy) * recul };
+  })();
+  const couleurFleche = COULEUR_FLECHE[boite.couleur] || COULEUR_FLECHE.jaune;
+
   return (
     <>
+    {fleche && (
+      <svg className="nb-fleche" viewBox={`0 0 ${fleche.W} ${fleche.H}`} preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <marker id={'pointe-' + boite.id} viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill={couleurFleche} />
+          </marker>
+        </defs>
+        <line x1={fleche.sx} y1={fleche.sy} x2={fleche.ex} y2={fleche.ey} stroke={couleurFleche} strokeWidth="2" strokeLinecap="round"
+          markerEnd={`url(#pointe-${boite.id})`} />
+      </svg>
+    )}
     {ancre && (
       <span className="nb-ancre" title={titreAncre}
         style={{ left: ancre.x * 100 + '%', top: ancre.y * 100 + '%', borderColor: COLOR_HEX[boite.couleur] || COLOR_HEX.jaune }} />
@@ -685,6 +717,12 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onDemanderAncrage(enAncrage ? null : boite.id); }}>
           <Icon name="target" size={12} />
+        </button>
+        <button type="button" className={'nb-btn' + (ancre && boite.fleche ? ' actif' : '')} disabled={!ancre}
+          title={!ancre ? 'Flèche : rattache d’abord la boîte à un endroit (bouton cible)' : boite.fleche ? 'Retirer la flèche' : 'Ajouter une flèche vers l’endroit rattaché'}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); if (ancre) onModifier(boite, { fleche: !boite.fleche }, boite.fleche ? 'Retrait de la flèche' : 'Ajout de la flèche'); }}>
+          <Icon name="arrowR" size={12} />
         </button>
         {ancre && (
           <button type="button" className="nb-btn" title="Détacher la boîte de cet endroit"
@@ -715,6 +753,10 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     </>
   );
 }
+
+/** teinte FONCÉE de chaque couleur de boîte, pour que la flèche reste lisible sur
+    le blanc de la page (les couleurs de boîte sont des pastels). */
+const COULEUR_FLECHE = { jaune: '#B8920A', vert: '#2F8F3A', bleu: '#2A72B8', rose: '#C2457F' };
 
 /** Chantier 1 : rendu d'un bloc de texte édité. Masque le rendu original (fond opaque
     calé sur la boîte englobante d'origine) et affiche le contenu riche par-dessus —
