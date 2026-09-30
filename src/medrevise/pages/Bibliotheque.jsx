@@ -21,6 +21,11 @@ import { PdfReader } from '../pdf/PdfReader.jsx';
 import { TranscriptEditor } from '../documents/TranscriptEditor.jsx';
 import { SchemaEditorScreen } from '../documents/SchemaEditorScreen.jsx';
 
+const MODES_AFFICHAGE = [
+  { id: 'arbre', label: 'Arbre', icon: 'layers', aide: 'Arbre : ranger et organiser (affichage principal)' },
+  { id: 'grille', label: 'Grille', icon: 'grid', aide: 'Grille : une carte par fiche, par matière' },
+  { id: 'liste', label: 'Liste', icon: 'list', aide: 'Liste : toutes les fiches, triables par colonne' },
+];
 const schemaViews = (f) => ficheImages(f).length;
 const schemaCoches = (f) => totalCoches(f);
 
@@ -375,6 +380,137 @@ export function Bibliotheque({ ctx }) {
     );
   };
 
+  /* ---------- MODES D'AFFICHAGE : Arbre (défaut) · Grille · Liste ----------
+     Voir docs/biblio-affichages.md. Le mode est une préférence d'affichage
+     (stats.biblioAffichage), comme le repli de l'arbre. Grille et Liste ne font
+     que MONTRER autrement les mêmes fiches, avec les mêmes actions (ouvrir,
+     réviser, menu ⋯) ; ranger reste le rôle de l'arbre. */
+  const affichage = ['grille', 'liste'].includes(ctx.stats && ctx.stats.biblioAffichage) ? ctx.stats.biblioAffichage : 'arbre';
+  const choisirAffichage = (m) => {
+    if (m === affichage) return;
+    setSelected(null); setListCollapsed(false);
+    ctx.saveStats({ ...(ctx.stats || {}), biblioAffichage: m });
+  };
+  const [triListe, setTriListe] = useState({ col: 'section', sens: 1 });
+  // toutes les fiches visibles, dans l'ordre de l'arbre (sections triées, matières, ordre)
+  const lignesBiblio = (() => {
+    const out = [];
+    trierSections(db.sources.filter((s) => !s.archive), ctx.stats).forEach((src, iSec) => {
+      db.matieres.filter((m) => m.sourceId === src.id && !m.archive).forEach((mat, iMat) => {
+        db.fiches.filter((f) => f.matiereId === mat.id && !f.archive).sort(byOrdre).forEach((f, iF) => {
+          const d = f.dossierId && db.dossiers.find((x) => x.id === f.dossierId);
+          const p = d && d.parentId && db.dossiers.find((x) => x.id === d.parentId);
+          out.push({
+            f, src, mat, mm: matiereMeta(mat), kind: docKind(f),
+            dossier: [p && p.nom, d && d.nom].filter(Boolean).join(' › '),
+            nCartes: count(f.id, 'qcm') + count(f.id, 'flashcard'),
+            rang: iSec * 1e6 + iMat * 1e3 + iF,
+          });
+        });
+      });
+    });
+    return out;
+  })();
+  const iconeFiche = (l) => (l.f.priseDeNotes ? 'edit' : l.kind ? DOC_META[l.kind].icon : 'cards');
+  const libelleType = (l) => (l.f.priseDeNotes ? 'Prise de notes' : l.kind === 'schema' ? 'Schéma' : l.kind === 'transcript' ? 'Transcript' : l.f.pdfId ? 'PDF' : l.f.htmlId ? 'HTML' : 'Cartes seules');
+  const reviserFiche = (f) => {
+    if (f.type === 'anat_schema') ctx.startAnatQuiz(f, { mode: 'total' });
+    else { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); }
+  };
+  const actionsFiche = (l) => (
+    <span className="lv-actions" onClick={(e) => e.stopPropagation()}>
+      {l.f.type !== 'transcript' && <button type="button" className="cd-ic" title="Réviser cette fiche" onClick={() => reviserFiche(l.f)}><Icon name="play" size={12} /></button>}
+      <button type="button" className="cd-ic" title="Autres actions" onClick={(e) => openFicheMenu(e, l.f.id)}><Icon name="more" size={14} stroke={2.6} /></button>
+    </span>
+  );
+  const fmtDate = (iso) => (iso ? new Date(iso + (iso.length === 10 ? 'T12:00:00' : '')).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+
+  // GRILLE : section › matière, une carte par fiche
+  const renderGrille = () => {
+    const parSection = [];
+    lignesBiblio.forEach((l) => {
+      let s = parSection.find((x) => x.src.id === l.src.id);
+      if (!s) { s = { src: l.src, mats: [] }; parSection.push(s); }
+      let m = s.mats.find((x) => x.mat.id === l.mat.id);
+      if (!m) { m = { mat: l.mat, mm: l.mm, lignes: [] }; s.mats.push(m); }
+      m.lignes.push(l);
+    });
+    return (
+      <div className="lv-grille fadein">
+        {!parSection.length && <div className="lib-detail-empty"><Icon name="book" size={28} /><div style={{ marginTop: 10 }}>Aucune fiche pour l'instant.</div></div>}
+        {parSection.map((s) => (
+          <section key={s.src.id} className="lv-section">
+            <h2 className="lv-section-titre">{s.src.nom}</h2>
+            {s.mats.map((m) => (
+              <div key={m.mat.id} className="lv-matiere">
+                <div className="lv-matiere-titre"><span className="lt-point" style={{ background: m.mm.tint }} /> {m.mm.label} <span className="lv-compte">{m.lignes.length}</span></div>
+                <div className="lv-cartes">
+                  {m.lignes.map((l) => (
+                    <div key={l.f.id} role="button" tabIndex={0} className={'lv-carte' + (l.kind ? '' : ' sans-doc')} style={{ '--teinte': l.mm.tint }}
+                      onClick={() => { if (l.kind) openDoc(l.f); }} onKeyDown={(e) => { if (e.key === 'Enter' && l.kind) openDoc(l.f); }}
+                      title={l.kind ? 'Ouvrir le document' : 'Fiche sans document — ▷ pour réviser'}>
+                      <div className="lv-carte-bandeau"><Icon name={iconeFiche(l)} size={22} /></div>
+                      <div className="lv-carte-corps">
+                        <div className="lv-carte-titre">{l.f.titre}</div>
+                        <div className="lv-carte-lieu">{l.dossier || 'Racine de la matière'}</div>
+                        <div className="lv-carte-pied">
+                          <span>{libelleType(l)}{l.nCartes ? ` · ${l.nCartes} carte${l.nCartes > 1 ? 's' : ''}` : ''}</span>
+                          {actionsFiche(l)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </section>
+        ))}
+      </div>
+    );
+  };
+
+  // LISTE : tableau dense, tri par colonne
+  const COLONNES = [
+    { id: 'titre', label: 'Fiche', val: (l) => l.f.titre.toLowerCase() },
+    { id: 'section', label: 'Section › Matière', val: (l) => l.rang },
+    { id: 'dossier', label: 'Dossier', val: (l) => (l.dossier || '').toLowerCase() },
+    { id: 'cartes', label: 'Cartes', val: (l) => l.nCartes },
+    { id: 'date', label: 'Ajoutée', val: (l) => l.f.dateImport || '' },
+  ];
+  const renderListe = () => {
+    const col = COLONNES.find((c) => c.id === triListe.col) || COLONNES[1];
+    const lignes = [...lignesBiblio].sort((a, b) => {
+      const x = col.val(a), y = col.val(b);
+      return (x < y ? -1 : x > y ? 1 : a.rang - b.rang) * triListe.sens;
+    });
+    const trier = (id) => setTriListe((t) => (t.col === id ? { col: id, sens: -t.sens } : { col: id, sens: id === 'cartes' || id === 'date' ? -1 : 1 }));
+    return (
+      <div className="lv-liste fadein">
+        <div className="lv-ligne lv-entete" role="row">
+          {COLONNES.map((c) => (
+            <button key={c.id} type="button" className={'lv-col lv-col-' + c.id + (triListe.col === c.id ? ' trie' : '')} onClick={() => trier(c.id)} title={`Trier par ${c.label.toLowerCase()}`}>
+              {c.label}{triListe.col === c.id && <Icon name={triListe.sens > 0 ? 'chevD' : 'chevU'} size={12} />}
+            </button>
+          ))}
+          <span className="lv-col lv-col-actions" />
+        </div>
+        {lignes.map((l) => (
+          <div key={l.f.id} role="row" tabIndex={0} className={'lv-ligne' + (l.kind ? '' : ' sans-doc')}
+            onClick={() => { if (l.kind) openDoc(l.f); }} onKeyDown={(e) => { if (e.key === 'Enter' && l.kind) openDoc(l.f); }}
+            title={l.kind ? 'Ouvrir le document' : 'Fiche sans document — ▷ pour réviser'}>
+            <span className="lv-col lv-col-titre"><Icon name={iconeFiche(l)} size={14} className="lt-ic" /> <span className="lv-texte">{l.f.titre}</span></span>
+            <span className="lv-col lv-col-section"><span className="lt-point" style={{ background: l.mm.tint }} /> <span className="lv-texte">{l.src.nom} › {l.mm.label}</span></span>
+            <span className="lv-col lv-col-dossier"><span className="lv-texte">{l.dossier || '—'}</span></span>
+            <span className="lv-col lv-col-cartes">{l.nCartes || '—'}</span>
+            <span className="lv-col lv-col-date">{fmtDate(l.f.dateImport)}</span>
+            <span className="lv-col lv-col-actions">{actionsFiche(l)}</span>
+          </div>
+        ))}
+        {!lignes.length && <div className="lib-detail-empty"><Icon name="book" size={28} /><div style={{ marginTop: 10 }}>Aucune fiche pour l'instant.</div></div>}
+      </div>
+    );
+  };
+
   return (
     <div className="screen scroll fadein lib-screen">
       <div className="topbar">
@@ -386,9 +522,20 @@ export function Bibliotheque({ ctx }) {
            notion DANS un cours se fait dans le lecteur (Ctrl/Cmd+F). Le seul bouton
            qui restait dans la barre d'outils rejoint l'en-tête. */}
         <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* MODES D'AFFICHAGE (docs/biblio-affichages.md) — l'arbre reste le défaut */}
+          <div className="seg lib-modes" role="tablist" aria-label="Affichage de la Bibliothèque">
+            {MODES_AFFICHAGE.map((m) => (
+              <button key={m.id} type="button" role="tab" aria-selected={affichage === m.id} title={m.aide}
+                className={'seg-btn' + (affichage === m.id ? ' active' : '')} onClick={() => choisirAffichage(m.id)}>
+                <Icon name={m.icon} size={13} /> {m.label}
+              </button>
+            ))}
+          </div>
+          {affichage === 'arbre' && (
           <button className="btn ghost sm" onClick={() => setCreatingTranscript((v) => !v)}>
             <Icon name={creatingTranscript ? 'x' : 'plus'} size={13} /> {creatingTranscript ? 'Fermer' : 'Nouveau transcript'}
           </button>
+          )}
           <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
         </div>
       </div>
@@ -397,7 +544,10 @@ export function Bibliotheque({ ctx }) {
          toute la liste, jamais affiché ; voir requestAttach/onAttachInputChange. */}
       <input ref={attachInputRef} type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={onAttachInputChange} />
 
-      <div className="lib-split">
+      {affichage !== 'arbre' && !selected ? (
+        affichage === 'grille' ? renderGrille() : renderListe()
+      ) : (
+      <div className={'lib-split' + (affichage !== 'arbre' ? ' lib-split-seul' : '')}>
         <div className={'lib-master' + (listCollapsed ? ' collapsed' : '')}>
         {!listCollapsed && (
         <div className="lib-master-body">
@@ -548,6 +698,7 @@ export function Bibliotheque({ ctx }) {
           ) : null}
         </div>
       </div>
+      )}
 
       {modaleDepot}
 

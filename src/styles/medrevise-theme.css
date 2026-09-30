@@ -1474,3 +1474,66 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .imp2-dest, .imp2-manque { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .imp2-dest { color: var(--text-2); padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border-2); background: color-mix(in srgb, #fff 3%, transparent); }
 .imp2-manque { color: var(--text-3); }
+
+/* ============================================================
+   BIBLIOTHÈQUE — MODES D'AFFICHAGE Grille / Liste (docs/biblio-affichages.md)
+   ============================================================ */
+.lib-modes .seg-btn { display: inline-flex; align-items: center; gap: 6px; }
+.lib-split-seul .lib-master { display: none; }
+
+/* GRILLE */
+.lv-grille { display: flex; flex-direction: column; gap: 30px; padding-bottom: 30px; }
+.lv-section-titre { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); }
+.lv-section-titre::after { content: ''; flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+.lv-matiere { margin-bottom: 20px; }
+.lv-matiere-titre { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; font-size: 16px; font-weight: 650; color: var(--text); }
+.lv-matiere-titre .lt-point { width: 10px; height: 10px; }
+.lv-compte { font-size: 11.5px; font-weight: 600; color: var(--text-3); padding: 0 8px; height: 19px; line-height: 19px; border-radius: 999px; border: 1px solid var(--border-2); }
+.lv-cartes { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.lv-carte {
+  display: flex; flex-direction: column; min-width: 0; cursor: pointer; overflow: hidden;
+  border-radius: var(--r-5); border: 1px solid var(--border-2); background: var(--card);
+  transition: border-color .2s ease, transform .2s ease, box-shadow .2s ease;
+}
+.lv-carte:hover { border-color: color-mix(in srgb, var(--teinte) 50%, var(--border)); transform: translateY(-2px); box-shadow: 0 10px 28px -14px color-mix(in srgb, var(--teinte) 60%, transparent); }
+.lv-carte:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lv-carte.sans-doc { cursor: default; }
+.lv-carte-bandeau {
+  height: 64px; display: grid; place-items: center; color: color-mix(in srgb, var(--teinte) 85%, #fff);
+  background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--teinte) 34%, transparent), color-mix(in srgb, var(--teinte) 8%, transparent) 70%);
+  border-bottom: 1px solid var(--border-2);
+}
+.lv-carte-corps { display: flex; flex-direction: column; gap: 6px; padding: 12px 13px 10px; min-width: 0; flex: 1 1 auto; }
+.lv-carte-titre { font-size: 14.5px; font-weight: 600; color: var(--text); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.6em; }
+.lv-carte-lieu { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv-carte-pied { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 6px; font-size: 11.5px; color: var(--text-3); }
+.lv-actions { display: inline-flex; gap: 2px; flex: 0 0 auto; }
+.lv-actions .cd-ic { width: 26px !important; height: 26px !important; background: transparent !important; border-color: transparent !important; }
+.lv-actions .cd-ic:hover { background: var(--elev-1, #16161B) !important; border-color: var(--border-2) !important; }
+
+/* LISTE */
+.lv-liste { border: 1px solid var(--border-2); border-radius: var(--r-5); background: var(--card); overflow: hidden; margin-bottom: 30px; }
+.lv-ligne {
+  display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1.6fr) minmax(0, 1.2fr) 70px 110px 64px;
+  align-items: center; gap: 12px; min-height: 42px; padding: 0 14px; border-top: 1px solid var(--border-2);
+  font-size: 13.5px; color: var(--text-2); cursor: pointer; transition: background .15s ease;
+}
+.lv-ligne:first-child { border-top: none; }
+.lv-ligne:not(.lv-entete):hover { background: linear-gradient(90deg, color-mix(in srgb, #fff 4%, transparent), transparent); color: var(--text); }
+.lv-ligne.sans-doc { cursor: default; }
+.lv-ligne:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.lv-entete { min-height: 38px; cursor: default; background: color-mix(in srgb, #fff 2%, transparent); }
+.lv-entete .lv-col { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: none; background: none; font: inherit; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); cursor: pointer; text-align: left; }
+.lv-entete .lv-col.trie { color: var(--accent); }
+.lv-entete .lv-col-actions { cursor: default; }
+.lv-col { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.lv-texte { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.lv-col-titre { color: var(--text); font-weight: 550; }
+.lv-col-cartes { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+.lv-entete .lv-col-cartes { justify-content: flex-end; }
+.lv-col-date { font-size: 12.5px; color: var(--text-3); }
+.lv-col-actions { justify-content: flex-end; }
+.lv-ligne .lv-actions { opacity: 0; transition: opacity .15s ease; }
+.lv-ligne:hover .lv-actions, .lv-ligne:focus-within .lv-actions { opacity: 1; }
+@media (hover: none) { .lv-ligne .lv-actions { opacity: 1; } }
+@media (max-width: 1000px) { .lv-ligne { grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) 60px 64px; } .lv-col-dossier, .lv-col-date { display: none !important; } }
