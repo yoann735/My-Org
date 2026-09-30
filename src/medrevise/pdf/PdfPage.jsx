@@ -707,7 +707,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         title={`« ${extrait.slice(0, 100)}${extrait.length > 100 ? '…' : ''} »${ancre && ancre.texte ? `\n${titreAncre}` : ''}\nClic : rouvrir · Glisser : déplacer`}
         onPointerDown={(e) => glisserPoint(e, { cible, depart: ancre ? { x: ancre.x, y: ancre.y } : { x: b.x, y: b.y }, surClic: rouvrir })}
         onClick={(e) => e.stopPropagation()}>
-        <IconeEpingle size={13} />
+        <IconeEpingle size={18} />
       </button>
     );
   }

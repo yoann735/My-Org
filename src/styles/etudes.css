@@ -1521,6 +1521,10 @@
 .nb-pastille { cursor: grab; margin: 0; transform: translate(-50%, -50%); }
 .nb-pastille:hover { transform: translate(-50%, -50%) scale(1.15); }
 .nb-pastille.glisse { transform: translate(-50%, -50%) scale(1.2); }
+/* pin d'une boîte RÉDUITE, agrandi (30/09) : 22 → 32 px, icône 13 → 18 px, liseré
+   blanc + ombre pour qu'il se détache sur une page blanche comme sur un schéma. */
+.nb-pastille { width: 32px; height: 32px; border: 2px solid #fff; color: rgba(0,0,0,.78);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.28), 0 3px 10px rgba(0,0,0,.35); }
 
 /* ============ FLASHCARD IMAGE (components/OcclusionImage.jsx) ============ */
 .occ-view { position: relative; margin: 0 auto; border-radius: 10px; overflow: hidden; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.18); }
