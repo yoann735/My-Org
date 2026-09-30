@@ -11,7 +11,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DropCible, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
-import { index } from '../lib/planning.js';
 import { useTreeOpenState, trierSections, deplacerSection } from '../components/useTreeOpenState.js';
 import { useImportParDepot } from '../components/TreeFileDrop.jsx';
 import { putBlob } from '../lib/storage.js';
@@ -27,9 +26,7 @@ const schemaCoches = (f) => totalCoches(f);
 
 export function Bibliotheque({ ctx }) {
   const { db } = ctx;
-  const ix = useMemo(() => index(db), [db]);
   const [openFiche, setOpenFiche] = useState({});
-  const [q, setQ] = useState('');
   const [renaming, setRenaming] = useState(null); // { type, id }
   const [draft, setDraft] = useState('');
   // C — panneau de droite : quelle fiche-document est ouverte (jamais de
@@ -389,31 +386,22 @@ export function Bibliotheque({ ctx }) {
     );
   };
 
-  const search = q.trim().toLowerCase();
-  const matches = search
-    ? db.questions.filter((x) => (x.concept + ' ' + (x.question || '') + ' ' + (x.recto || '') + ' ' + (x.explication || '') + ' ' + (x.verso || '')).toLowerCase().includes(search))
-      .map((x) => { const f = ix.fById[x.ficheId]; return { ...x, fiche: f, matiere: f && ix.mById[f.matiereId] }; })
-    : null;
-
   return (
     <div className="screen scroll fadein lib-screen">
       <div className="topbar">
         <div>
           <h1 className="serif">Bibliothèque</h1>
-          <div className="sub">Tous tes cours, fiches et documents. Recherche transversale.</div>
+          <div className="sub">Tous tes cours, fiches et documents.</div>
         </div>
-        <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
-      </div>
-
-      <div className="lib-toolbar row spread">
-        <div className="search" style={{ maxWidth: 520, flex: '1 1 320px' }}>
-          <Icon name="search" size={16} className="ic" />
-          <input placeholder="Rechercher une notion (ex : lactate, nerf radial…)" value={q} onChange={(e) => setQ(e.target.value)} />
-          {q && <button className="icon-btn sm" onClick={() => setQ('')}><Icon name="x" size={14} /></button>}
+        {/* « Rechercher une notion » retiré (30/09) : pas utile ici — chercher une
+           notion DANS un cours se fait dans le lecteur (Ctrl/Cmd+F). Le seul bouton
+           qui restait dans la barre d'outils rejoint l'en-tête. */}
+        <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button className="btn ghost sm" onClick={() => setCreatingTranscript((v) => !v)}>
+            <Icon name={creatingTranscript ? 'x' : 'plus'} size={13} /> {creatingTranscript ? 'Fermer' : 'Nouveau transcript'}
+          </button>
+          <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
         </div>
-        <button className="btn ghost sm" onClick={() => setCreatingTranscript((v) => !v)}>
-          <Icon name={creatingTranscript ? 'x' : 'plus'} size={13} /> {creatingTranscript ? 'Fermer' : 'Nouveau transcript'}
-        </button>
       </div>
 
       {/* input fichier PARTAGÉ (menu « … » → Attacher un document) — un seul pour
@@ -429,25 +417,6 @@ export function Bibliotheque({ ctx }) {
               onCreated={(fiche) => { setSelected({ ficheId: fiche.id, kind: 'transcript' }); setListCollapsed(true); }} />
           )}
 
-          {matches ? (
-            <div className="card"><div className="card-body">
-              <div className="hint" style={{ marginBottom: 10 }}>{matches.length} résultat{matches.length > 1 ? 's' : ''}</div>
-              {matches.map((m) => {
-                const mm = matiereMeta(m.matiere);
-                return (
-                  <div className="day-line" key={m.id}>
-                    <div className="dl-ic" style={{ background: `color-mix(in srgb, ${mm.tint} 15%, transparent)`, color: mm.tint }}><Icon name={m.type === 'flashcard' ? 'cards' : m.type === 'feynman' ? 'lightbulb' : 'list'} size={16} /></div>
-                    <div className="dl-main">
-                      <div className="dl-title">{m.concept}</div>
-                      <div className="dl-sub"><span>{mm.label} · {m.fiche && m.fiche.titre}</span></div>
-                    </div>
-                    <button className="cd-ic" title="Supprimer cette question" onClick={() => ctx.deleteQuestion(m.id)}><Icon name="trash" size={14} /></button>
-                  </div>
-                );
-              })}
-              {!matches.length && <div className="hint">Aucune question ne correspond.</div>}
-            </div></div>
-          ) : (
             <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
             <div className="lib-tree" {...fd.dropProps({ key: 'tree' })}>
               {annonce && (
@@ -569,7 +538,6 @@ export function Bibliotheque({ ctx }) {
               }); })()}
             </div>
             </FicheDndProvider>
-          )}
         </div>
         )}
           <SplitHandle side="left" collapsed={listCollapsed} onClick={() => setListCollapsed((v) => !v)} />
