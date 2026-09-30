@@ -180,16 +180,32 @@ export async function putBlobAt(id, blob) {
 async function referencedBlobIds() {
   const locaux = new Set((await keys(S.blobs)) || []);
   const refs = new Set();
+  // QUI référence chaque fichier (le premier propriétaire de premier niveau trouvé) :
+  // sert à dire en clair « le cours HTML de la fiche « Les ions » » au lieu d'un
+  // simple compteur quand un fichier manque. Lecture seule, comme le reste.
+  const proprietaires = new Map();
+  let courant = null;
   const walk = (v, key) => {
     if (typeof v === 'string') {
-      if (locaux.has(v) || (/Id$/.test(key || '') && /^b[0-9a-z]{6,}$/.test(v))) refs.add(v);
+      if (locaux.has(v) || (/Id$/.test(key || '') && /^b[0-9a-z]{6,}$/.test(v))) {
+        refs.add(v);
+        if (courant && !proprietaires.has(v)) proprietaires.set(v, { ...courant, champ: key || null });
+      }
       return;
     }
     if (Array.isArray(v)) { v.forEach((x) => walk(x, key)); return; }
     if (v && typeof v === 'object' && !(v instanceof Blob)) Object.entries(v).forEach(([k, x]) => walk(x, k));
   };
-  for (const name of SYNCABLE) ((await values(S[name])) || []).forEach(walk);
-  return { refs, locaux };
+  for (const name of SYNCABLE) {
+    ((await values(S[name])) || []).forEach((rec) => {
+      courant = rec && typeof rec === 'object'
+        ? { store: name, id: rec.id || null, titre: rec.titre || rec.nom || null, pdfName: rec.pdfName || null, htmlName: rec.htmlName || null }
+        : null;
+      walk(rec);
+    });
+  }
+  courant = null;
+  return { refs, locaux, proprietaires };
 }
 
 /**
@@ -205,7 +221,7 @@ export async function etatBlobs() {
   if (!SYNC_ENABLED) return null;
   const cloud = await listCloudBlobs();
   if (!cloud) return null;
-  const { refs, locaux } = await referencedBlobIds();
+  const { refs, locaux, proprietaires } = await referencedBlobIds();
   const file = await blobOutboxEntries();
   const enFile = new Set(file.map((e) => e.id));
   const aEnvoyer = [], introuvables = [];
@@ -216,6 +232,8 @@ export async function etatBlobs() {
   return {
     references: refs.size, auCloud: [...refs].filter((id) => cloud.has(id)).length,
     aEnvoyer, introuvables,
+    // pour chaque introuvable : à quoi il appartient (store, titre, champ, nom de fichier)
+    introuvablesDetail: introuvables.map((id) => ({ id, ...(proprietaires.get(id) || {}) })),
     enAttente: file.filter((e) => !e.bloque).length,
     bloques: file.filter((e) => e.bloque),
   };

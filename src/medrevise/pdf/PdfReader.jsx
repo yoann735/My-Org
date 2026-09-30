@@ -54,7 +54,7 @@ import { PDFDocument, BlendMode } from 'pdf-lib';
 import { useEditor } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
-import { EdTop, detectDocKind, Modal, LoaderL6 } from '../components/ui.jsx';
+import { EdTop, detectDocKind, Modal, LoaderL6, ConfirmModal } from '../components/ui.jsx';
 import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait } from '../lib/storage.js';
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cibleEditable } from '../lib/annotHistory.js';
 import { RICH_EXTENSIONS } from '../documents/lib/richtext.js';
@@ -563,6 +563,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // les deux branches ne coexistent jamais, le partager n'avait aucun sens.
   const [courseExportOk, setCourseExportOk] = useState(false);
   const [promptsOuverts, setPromptsOuverts] = useState(false);
+  const [detacherPdf, setDetacherPdf] = useState(false);
   const exportAllPdfCourse = async () => {
     if (!pdfDoc || !fiche) return;
     try {
@@ -599,7 +600,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     !!fiche.htmlId && { label: 'Voir la fiche HTML', icon: 'fileHtml', onClick: () => setSrcTab('html') },
     // l'ancien bouton « Remplacer » de la popover de sélection, qui n'existe plus
     !!pending && { label: 'Remplacer le texte sélectionné', icon: 'edit', onClick: () => startEditFromSelection() },
+    // retire le LIEN vers le PDF (la fiche, ses cartes et ses annotations restent) — confirmation
+    canAddItem && { label: 'Détacher le PDF…', icon: 'x', onClick: () => setDetacherPdf(true) },
   ];
+
 
   // export secondaire — PDF avec les surlignages incrustés (confort de lecture hors app ;
   // suppose des pages non pivotées — limite acceptée, cas rare pour un cours scanné/exporté normal)
@@ -908,7 +912,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   if (srcTab === 'html') {
     return (
       <CourseHtmlView ctx={ctx} fiche={fiche} ficheId={ficheId} canAddItem={canAddItem}
-        embedded={embedded} close={close} onVoirPdf={() => setSrcTab('pdf')} />
+        embedded={embedded} close={close} onVoirPdf={() => setSrcTab('pdf')} onRattacher={attachDoc} />
     );
   }
 
@@ -978,6 +982,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           <div className="em-ic crit"><Icon name="alert" size={16} /></div>
           <div className="em-body"><div className="em-title">{loadError}</div></div>
           {pdfManquant && <button className="btn sm" onClick={() => setPdfRetry((t) => t + 1)}><Icon name="refresh" size={13} /> Réessayer</button>}
+          {/* le fichier d'origine sous la main : le rattacher ici, sans rien perdre */}
+          {pdfManquant && (
+            <label className="btn sm primary" style={{ cursor: 'pointer' }}>
+              <Icon name="upload" size={13} /> Rattacher le fichier…
+              <input type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
+                onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) attachDoc(f); }} />
+            </label>
+          )}
         </div>
       )}
 
@@ -1063,6 +1075,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       )}
 
       {promptsOuverts && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOuverts(false)} />}
+      {detacherPdf && (
+        <ConfirmModal title="Détacher le PDF ?"
+          body={`La fiche « ${fiche.titre} », ses cartes et ses annotations restent. Seul le lien vers le fichier${fiche.pdfName ? ` « ${fiche.pdfName} »` : ''} est retiré ; tu pourras rattacher un PDF plus tard.`}
+          confirmLabel="Détacher"
+          onConfirm={async () => { setDetacherPdf(false); await ctx.setFichePdf(ficheReelle.id, null); }}
+          onCancel={() => setDetacherPdf(false)} />
+      )}
 
       {showAddItem && canAddItem && (
         <AddItemModal ctx={ctx} ficheId={ficheId} ficheTitre={fiche.titre} onClose={() => setShowAddItem(false)} />

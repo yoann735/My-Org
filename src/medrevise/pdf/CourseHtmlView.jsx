@@ -37,7 +37,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, Modal } from '../components/ui.jsx';
+import { EdTop, Modal, ConfirmModal } from '../components/ui.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
 import { COLORS, COLOR_HEX, COLOR_TAG, RACCOURCI } from './pdfShared.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
@@ -48,7 +48,7 @@ import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { buildCourseExport } from '../lib/courseExport.js';
 import { serializeCourseHtml } from '../lib/courseHtmlSave.js';
 
-export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, close, onVoirPdf }) {
+export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, close, onVoirPdf, onRattacher = null }) {
   const { db } = ctx;
   const [mobileView, setMobileView] = useState('course');
   const [showImportItems, setShowImportItems] = useState(false);
@@ -79,7 +79,7 @@ export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, clos
     (async () => {
       const blob = await getBlob(fiche.htmlId);
       if (cancelled) return;
-      if (!blob) { setHtmlLoadError('Fichier HTML introuvable.'); return; }
+      if (!blob) { setHtmlLoadError(navigator.onLine === false ? 'hors-ligne' : 'introuvable'); return; }
       objUrl = URL.createObjectURL(blob);
       setHtmlUrl(objUrl);
     })();
@@ -256,6 +256,7 @@ export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, clos
     libelleAnnuler: 'dernière modification du cours', libelleRetablir: 'dernière modification annulée',
   };
   const [panelOpen, setPanelOpen] = useState(true);
+  const [detacher, setDetacher] = useState(false);
   const [showAddItem, setShowAddItem] = useState(false);
   const [promptsOuverts, setPromptsOuverts] = useState(false);
   const [notionsCopiees, setNotionsCopiees] = useState(false);
@@ -316,6 +317,8 @@ export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, clos
     canAddItem && { label: 'Importer des items', icon: 'upload', onClick: () => { setImportedCount(0); setShowImportItems(true); } },
     canAddItem && { label: 'Prompts (théorie et exercices)', icon: 'layers', onClick: () => setPromptsOuverts(true) },
     !!fiche.pdfId && { label: 'Voir le PDF', icon: 'filePdf', onClick: () => onVoirPdf() },
+    // retire le LIEN vers le fichier (la fiche et ses cartes restent) — confirmation
+    canAddItem && { label: 'Détacher le cours HTML…', icon: 'x', onClick: () => setDetacher(true) },
   ];
 
   // indicateur discret d'auto-save — voir performCourseSave/scheduleCourseSave
@@ -348,7 +351,28 @@ export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, clos
         panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={marques.length}
         actionsDocument={actionsDocument}
       />
-      {htmlLoadError && <div className="err-mini" style={{ marginBottom: 12 }}><div className="em-ic crit"><Icon name="alert" size={16} /></div><div className="em-body"><div className="em-title">{htmlLoadError}</div></div></div>}
+      {/* FICHIER ABSENT (ni sur cet appareil, ni au cloud) : on dit lequel, et on
+          propose de le rattacher sur place — l'app reste utilisable (cartes, panneau). */}
+      {htmlLoadError && (
+        <div className="err-mini" style={{ marginBottom: 12 }}>
+          <div className="em-ic crit"><Icon name="alert" size={16} /></div>
+          <div className="em-body">
+            <div className="em-title">{htmlLoadError === 'hors-ligne'
+              ? 'Cours HTML pas encore sur cet appareil — tu es hors ligne. Il s’ouvrira dès le retour du réseau.'
+              : 'Le cours HTML de cette fiche n’est ni sur cet appareil ni au cloud.'}</div>
+            {htmlLoadError !== 'hors-ligne' && (
+              <div className="em-sub">{fiche.htmlName ? `Fichier attendu : ${fiche.htmlName}. ` : ''}Si tu as encore le fichier d’origine, rattache-le : tes cartes et tes surlignages ne bougent pas.</div>
+            )}
+          </div>
+          {htmlLoadError !== 'hors-ligne' && onRattacher && (
+            <label className="btn sm primary" style={{ cursor: 'pointer', flex: '0 0 auto' }}>
+              <Icon name="upload" size={13} /> Rattacher le fichier…
+              <input type="file" accept="text/html,.html,.htm" style={{ display: 'none' }}
+                onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) onRattacher(f); }} />
+            </label>
+          )}
+        </div>
+      )}
 
       {/* fenêtre étroite : les deux panneaux restent MONTÉS en permanence (l'iframe
           ne recharge jamais au toggle) — seule la visibilité change en CSS via cet
@@ -390,6 +414,13 @@ export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, clos
         <AddItemModal ctx={ctx} ficheId={ficheId} ficheTitre={fiche.titre} onClose={() => setShowAddItem(false)} />
       )}
       {promptsOuverts && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOuverts(false)} />}
+      {detacher && (
+        <ConfirmModal title="Détacher le cours HTML ?"
+          body={`La fiche « ${fiche.titre} » et toutes ses cartes restent. Seul le lien vers le fichier${fiche.htmlName ? ` « ${fiche.htmlName} »` : ''} est retiré ; tu pourras rattacher un fichier plus tard.`}
+          confirmLabel="Détacher"
+          onConfirm={async () => { setDetacher(false); await ctx.setFicheHtml(ficheId, null); }}
+          onCancel={() => setDetacher(false)} />
+      )}
 
       {bulle && createPortal(
         <div className="hl-picker hl-bulle" style={{ left: Math.min(bulle.x, window.innerWidth - 280), top: Math.min(bulle.y + 10, window.innerHeight - 60) }}>

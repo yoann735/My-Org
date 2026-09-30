@@ -130,6 +130,15 @@ export function matiereMeta(m) {
    Jamais de « tout va bien » tant qu'un fichier manque — c'est précisément ce qui
    ferait un « PDF introuvable » sur l'autre appareil. ---- */
 const pluriel = (n, mot) => `${n} ${mot}${n > 1 ? 's' : ''}`;
+/** « le cours HTML (Les-ions.html) de la fiche « Les ions » » — à partir du propriétaire
+    trouvé par storage.js#referencedBlobIds. */
+const QUOI = { htmlId: 'le cours HTML', pdfId: 'le PDF', imageId: "l'image" };
+const OU = { fiches: 'de la fiche', notes: 'du document de notes', anatstruct: 'de la structure', apprentissage: "de l'unité" };
+export function decrireFichier(d) {
+  if (!d || !d.store) return `fichier ${d && d.id}`;
+  const nom = d.champ === 'htmlId' ? d.htmlName : d.champ === 'pdfId' ? d.pdfName : null;
+  return `${QUOI[d.champ] || 'un fichier'}${nom ? ` (${nom})` : ''} ${OU[d.store] || 'de'} « ${d.titre || d.id} »`;
+}
 function blobsLabel(b) {
   if (!b) return '';
   const parts = [];
@@ -262,6 +271,13 @@ export function SyncIndicator({ compact = false, refreshKey = 0 }) {
                   introuvables: etat.blobs.introuvables.length,
                 })}</span>
               )}
+              {/* LE fichier manquant, nommé : quelle fiche, quel document — pour savoir
+                  ce que c'est avant de décider (voir docs/fichier-manquant.md). */}
+              {(etat.blobs.introuvablesDetail || []).map((d) => (
+                <div key={d.id} style={{ marginTop: 3 }}>
+                  Manquant : <strong>{decrireFichier(d)}</strong> — ouvre la fiche pour rattacher le fichier d'origine.
+                </div>
+              ))}
             </div>
           )}
 
