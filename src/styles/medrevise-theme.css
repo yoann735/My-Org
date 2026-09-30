@@ -1413,3 +1413,4 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .lt-arbre .due-badge.sm { font-size: 11.5px; }
 :is(.lib-tree, .lt-arbre) :is(.srcmgr-input, .tree-rename) { height: 27px; font-size: 14px; }
 .lib-master { flex-basis: 370px; }
+.tree-rattraper { display: inline-flex; align-items: center; gap: 5px; color: var(--warn) !important; border-color: color-mix(in srgb, var(--warn) 35%, transparent) !important; background: color-mix(in srgb, var(--warn) 8%, transparent) !important; }

@@ -231,6 +231,9 @@ export function Reviser({ ctx }) {
   // retrouvé ici par fiche. « Retirer du retard » (ctx.dismissOverdue) reste sur le
   // Dashboard, seul endroit qui portait déjà ce geste avec sa confirmation.
   const overdueGroupOf = (ficheId) => overdue.find((g) => g.fiche.id === ficheId) || null;
+  // « Retirer du retard » (sans réviser) : même geste et même confirmation que
+  // l'ancienne carte « À rattraper » du tableau de bord (ctx.dismissOverdue).
+  const [confirmRetard, setConfirmRetard] = useState(null);
   const fichesOf = (matId) => db.fiches.filter((f) => f.matiereId === matId && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
   const matieresOf = (srcId) => db.matieres.filter((m) => m.sourceId === srcId && !m.archive);
   // sous-dossiers d'une matière sur DEUX niveaux — même store et MÊMES helpers que
@@ -946,6 +949,15 @@ export function Reviser({ ctx }) {
         <div className="tree-card">
           <div className="tree-head">
             <span className="tree-head-title"><Icon name="folder" size={15} /> Cours &amp; matières</span>
+            {/* « À rattraper » vit ICI depuis qu'il a quitté le tableau de bord (30/09) :
+               tout le retard en une série ; fiche par fiche, clic droit → « Rattraper
+               maintenant » / « Retirer du retard… ». */}
+            {overdue.length > 0 && (
+              <button className="tree-clear tree-rattraper" title={`${overdue.length} fiche${overdue.length > 1 ? 's' : ''} en retard — tout rattraper en une série`}
+                onClick={() => ctx.startSession(overdue.filter((g) => !g.isSchema).flatMap((g) => g.items || []), 'Rattrapage')}>
+                <Icon name="clock" size={12} /> Rattraper ({overdue.length})
+              </button>
+            )}
             <button className="tree-clear" onClick={() => setSelIds([])} disabled={empty}>Tout décocher</button>
           </div>
           {/* retour du glisser-déposer de fichier : import réussi, ou raison pour
@@ -1355,6 +1367,10 @@ export function Reviser({ ctx }) {
           // comportement pour un schéma d'anatomie comme pour des cartes. N'apparaît que
           // si cette fiche est réellement en retard.
           ...(ctxMenu.type === 'fiche' && overdueGroupOf(ctxMenu.id) ? [{
+            label: 'Retirer du retard…', icon: 'x',
+            onClick: () => { const g = overdueGroupOf(ctxMenu.id); if (g) setConfirmRetard(g); },
+          }] : []),
+          ...(ctxMenu.type === 'fiche' && overdueGroupOf(ctxMenu.id) ? [{
             label: 'Rattraper maintenant', icon: 'clock',
             onClick: () => { const g = overdueGroupOf(ctxMenu.id); if (g) startOverdueFiche(g); },
           }] : []),
@@ -1541,6 +1557,13 @@ export function Reviser({ ctx }) {
       {/* pop-up MINIMAL de l'import par glisser-déposer : titre pré-rempli
          (modifiable) + date de J0, rien d'autre. Rien n'est écrit avant « Importer ». */}
       {modaleDepot}
+
+      {confirmRetard && (
+        <ConfirmModal title="Retirer cette fiche du retard ?"
+          body={<>« {confirmRetard.fiche.titre} » ne sera pas révisée. Sa prochaine échéance est simplement recalée à partir d'aujourd'hui (le niveau de la fiche ne change pas).</>}
+          confirmLabel="Retirer" onCancel={() => setConfirmRetard(null)}
+          onConfirm={() => { ctx.dismissOverdue(confirmRetard); setConfirmRetard(null); }} />
+      )}
 
       {addItemFiche && ix.fById[addItemFiche] && (
         <AddItemModal ctx={ctx} ficheId={addItemFiche} ficheTitre={ix.fById[addItemFiche].titre} onClose={() => setAddItemFiche(null)} />

@@ -29,8 +29,6 @@ export function Dashboard({ ctx }) {
   const due = dueToday(db);
   const dueSchemas = dueSchemasToday(db);
   const plan = todayPlan(db);
-  const overdue = overdueByFiche(db);
-  const startOverdueFiche = (g) => (g.isSchema ? ctx.startAnatQuiz(g.fiche, { mode: 'total' }) : ctx.startSession(g.items, g.fiche.titre + ' — Rattrapage'));
 
   return (
     <div className="screen scroll fadein">
@@ -61,19 +59,27 @@ export function Dashboard({ ctx }) {
           <Card title="Calendrier de la semaine — méthode des J" icon="calendar"
             action={<span className="pill accent"><Icon name="cards" size={13} /> {due.length} carte{due.length > 1 ? 's' : ''}{dueSchemas.length > 0 ? ` + ${dueSchemas.length} schéma${dueSchemas.length > 1 ? 's' : ''}` : ''} aujourd'hui</span>}>
             <WeekCalendar ctx={ctx} onPick={setSelDay} />
+            {/* légende = matières qui PEUVENT apparaître au calendrier : section active
+               (ni archivée, ni en pause de la méthode des J), matière non archivée,
+               au moins une fiche suivie. Les matières désactivées n'ont rien à y faire. */}
             <div className="jcal-legend" style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border-2)' }}>
-              {db.matieres.map((m) => { const mm = matiereMeta(m); return <span key={m.id}><i style={{ background: mm.tint }} /> {mm.label}</span>; })}
+              {matieresDuCalendrier(db).map((m) => { const mm = matiereMeta(m); return <span key={m.id}><i style={{ background: mm.tint }} /> {mm.label}</span>; })}
             </div>
           </Card>
           <ImportPanel ctx={ctx} />
         </div>
 
+        {/* RETIRÉES DU TABLEAU DE BORD (30/09) — les fonctions restent dans l'app :
+           « À rattraper » → Réviser (icône d'alerte sur la fiche, « Rattraper
+           maintenant » / « Retirer du retard… » au clic droit, bouton « Rattraper (N) »
+           en tête de l'arbre) ; « À revoir ce week-end » (exercices) → vue des
+           exercices du dossier dans Réviser ; « Série en cours » → la série continue
+           d'être comptée (stats), la carte n'est plus affichée. Composants conservés
+           ci-dessous (RattrapageCard, ExosARevoirCard, StreakWidget) : les remettre,
+           c'est une ligne chacun. */}
         <div className="dash-grid-col">
-          <RattrapageCard ctx={ctx} overdue={overdue} startOverdueFiche={startOverdueFiche} />
           <CarnetErreurCard ctx={ctx} />
           <CoursARevoirCard ctx={ctx} />
-          <ExosARevoirCard ctx={ctx} />
-          <StreakWidget stats={ctx.stats} />
         </div>
       </div>
 
@@ -82,7 +88,17 @@ export function Dashboard({ ctx }) {
   );
 }
 
-/* ---------- boîte de rattrapage (Dashboard UNIQUEMENT) ----------
+/** matières affichées dans la légende du calendrier : celles qui peuvent y figurer. */
+function matieresDuCalendrier(db) {
+  const sources = new Map((db.sources || []).map((s) => [s.id, s]));
+  return (db.matieres || []).filter((m) => {
+    const s = sources.get(m.sourceId);
+    if (m.archive || !s || s.archive || s.rappelsJ === false) return false;
+    return (db.fiches || []).some((f) => f.matiereId === m.id && !f.archive && f.rappelsJ !== false);
+  });
+}
+
+/* ---------- boîte de rattrapage (plus affichée au Dashboard depuis le 30/09) ----------
    RETARDS UNIQUEMENT (overdueByFiche, réutilise OverdueBox en mode `bare` —
    aucune logique dupliquée). L'ancien carnet d'erreurs (missedQuestions/
    weakPoints) qui vivait ici a été entièrement retiré — le SEUL carnet
