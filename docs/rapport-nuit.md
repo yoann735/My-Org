@@ -1,158 +1,158 @@
-# Rapport de nuit — 30 septembre 2026 (quatrième nuit) : Bibliothèque ↔ Prise de notes
+# Rapport de nuit — 30 septembre 2026 (cinquième nuit) : finitions
 
-**En une phrase : un document de Prise de notes se range maintenant dans la Bibliothèque en
-restant LE MÊME objet (même id, preuve ci-dessous) ; on peut glisser des fichiers du Finder
-sur la sidebar de la Bibliothèque comme dans Réviser ; et la sidebar est redessinée en arbre
-clair.**
+**En une phrase : les 7 points sont faits et testés dans l'app. Les deux sidebars
+(Bibliothèque et Réviser) partagent maintenant le même design ; l'UX de la Bibliothèque n'a pas
+bougé d'un pixel. Six bugs d'affichage ont été corrigés, dont les deux que tu avais signalés.**
 
-Aucune donnée réelle modifiée cette nuit (cloud : lecture seule). MealWeek : 0 fichier
-touché. Tout est testé à la souris réelle (Chrome isolé), poussé et **déployé** (vérifié dans
-le bundle de production).
+Aucune donnée réelle touchée, aucune écriture cloud. MealWeek et `src/shared` : 0 fichier
+modifié (vérifié par `git diff`). Tout est poussé et déployé.
 
-| Commit | Contenu |
+| Commit | Point |
 |---|---|
-| `1a28724` | T1 — rangement d'un document : même id, aucune copie (logique) |
-| `481a1f9` | T1 — fenêtre « Ranger dans la Bibliothèque » après l'import + bouton sur chaque document |
-| `83ca5e9` | T2 — glisser un fichier sur l'arbre de la Bibliothèque (code partagé avec Réviser) |
-| `f68bfbd` | T3 — audit `docs/audit-sidebar-biblio.md` |
-| `0322e54` | T3 — sidebar redessinée |
+| `49e9c47` | 7 — champ de renommage et icônes de survol à la bonne taille (Bibliothèque) |
+| `e6b4e80` | 3 — retrait de « Rechercher une notion » |
+| `ae2fcd2` | 2 — pin de boîte réduite plus grand |
+| `5bec569` | 4 — Cmd/Ctrl+F dans le lecteur |
+| `138e461` | 1 — annotations séparées par type |
+| `02539a2` | 5 — nouvel habillage de la sidebar Bibliothèque (UI seulement) |
+| `4120108` | 6 — même design et même usage pour la sidebar de Réviser |
+| `dbcb37a` | 7 — chasse aux bugs : formulaires, segments, Réglages, infobulles |
 
 ---
 
-## TÂCHE 1 — Prise de notes ↔ Bibliothèque ✅
+## 1. Annotations séparées par type ✅
 
-### Le choix qui garantit « une seule fiche »
-Un document de Prise de notes vivait dans un store à part (`notes`). **Le ranger ne le copie
-pas : il DEVIENT la fiche de la Bibliothèque.** L'enregistrement passe du store `notes` au
-store `fiches` **avec le même id**, le même fichier PDF (même `pdfId`, jamais dupliqué) et donc
-les mêmes annotations (surlignages, boîtes, traits sont indexés par cet id). Prise de notes
-continue de l'afficher (sa liste = documents pas encore rangés + fiches venues de Prise de
-notes). Un seul objet, affiché à trois endroits : Prise de notes, Bibliothèque, Réviser.
+Avant, il y avait deux stores, dont un « fourre-tout » : `highlights` (les surlignages) et
+`annotations`, qui mélangeait trois choses différentes (boîtes, traits de crayon, blocs de texte
+remplacés), qu'on ne distinguait que par un champ facultatif.
 
-Sécurité : la fiche est écrite **avant** que l'ancien enregistrement ne soit retiré (si
-l'app est interrompue entre les deux, il reste deux enregistrements de même id, et la liste
-n'en montre qu'un ; le rangement suivant nettoie). Ranger une deuxième fois = **déplacer**
-la fiche (le geste du glisser-déposer), jamais la recréer.
+Maintenant, **chaque annotation a un type, et un seul** : `surlignage`, `boite`, `trait`,
+`surligneur` (trait à main levée) ou `bloc`. Tout est défini dans un seul fichier,
+`lib/annotationTypes.js`.
+- **Nouvelles annotations** : elles écrivent leur type.
+- **Anciennes annotations** : elles sont classées à la lecture par les règles d'avant, sans
+  migration et sans réécriture.
+- **Dans le lecteur** : il tient ses annotations en mémoire en collections séparées, une par type.
+- **Prise de notes** : chaque carte affiche le détail, par exemple « 1 surlignage · 1 boîte ·
+  1 trait · 1 trait de surligneur ».
 
-### Ce que tu vois
-1. **Après un glisser-déposer dans Prise de notes**, une fenêtre demande où ranger :
-   **Section › Matière › Dossier**, chaque liste avec « + Nouvelle section… / + Nouvelle
-   matière… / + Nouveau dossier… » pour créer sur place. Le chemin s'affiche
-   (« Cours P2 › Cardiologie › ECG »). **« Plus tard »** ouvre le document comme avant.
-2. **Sur chaque carte** de Prise de notes : l'emplacement (« Cours P2 › Cardiologie ›
-   ECG ») ou « Pas encore rangé dans la Bibliothèque », et le bouton **« Ranger dans la
-   Bibliothèque »** / **« Modifier le rangement »** (même fenêtre, bouton « Déplacer ici »
-   grisé tant que rien ne change).
-3. **Documents existants** : ils ont le même bouton. Rangé, un ancien document garde ses
-   annotations d'avant (testé avec une annotation du 25/09).
-4. Bonus : rangé, le document a le **panneau complet** (QCM, flashcards…) puisque c'est une
-   vraie fiche ; dans la Bibliothèque il porte la mention « Prise de notes ».
-5. Corbeille depuis Prise de notes d'un document rangé : c'est la fiche → **corbeille
-   restaurable** (message explicite), pas une suppression définitive.
+**Testé** :
+- Les 4 types ont été créés à la souris, chacun avec son type écrit, et s'affichent correctement.
+- Cmd+Z / Maj+Cmd+Z conservent le type.
+- Les anciennes annotations de test (sans type) sont bien classées : surlignage, trait, bloc.
 
-Tes 2 documents actuels (lus dans le cloud, sans rien écrire) : « 1 1 Orientation et
-conventions vf (1) » et « Anatomie Palpatoire bac1 … MI (2) ». Ils ne sont **pas** rangés :
-à toi de choisir leur place avec le bouton.
+**Pas fait, par sécurité** : je n'ai pas déplacé physiquement les annotations existantes dans un
+store par type. Cela réécrirait **toutes** tes annotations dans le cloud, avec un risque de
+conflit entre appareils (un appareil hors ligne pourrait recréer l'ancien enregistrement).
+L'étape actuelle est réversible et suffit pour gérer chaque type séparément. Si tu veux aussi
+cette séparation physique, elle se prépare avec une sauvegarde, et je te la soumettrai avant
+exécution.
 
----
+## 2. Pin de boîte réduite ✅
 
-## PREUVE ANTI-DOUBLON (mesurée dans la base, scénario complet à la souris)
+Il passe de 22 à **32 px**, l'icône de 13 à 18 px, avec un liseré blanc et une ombre pour se
+détacher de la page. Clic = rouvrir, glisser = déplacer : inchangés et testés.
 
-Document « Preuve anti-doublon.pdf » glissé dans Prise de notes, rangé à l'import dans
-Cours P2 › Cardiologie › ECG, puis :
+## 3. « Rechercher une notion » retiré de la Bibliothèque ✅
 
-| Étape | Enregistrements avec cet id | Fichiers PDF | Fiches utilisant ce PDF | Annotations de cet id |
-|---|---|---|---|---|
-| Avant | notes 0 · fiches 0 | 17 | — | 0 |
-| Rangé à l'import | **notes 0 · fiches 1** (id `nmuoc93p9ful7`) | **18 (+1)** | **1** | 0 |
-| Surligné **dans Prise de notes** | fiches 1 | 18 | 1 | 1 → **la Bibliothèque l'affiche** (1 surlignage à l'écran) |
-| Surligné **dans la Bibliothèque** | fiches 1 | 18 | 1 | 2 → **Prise de notes l'affiche** (2 surlignages à l'écran, « 2 annotations » sur la carte) |
-| Renommé **dans la Bibliothèque** | fiches 1 | 18 | 1 | 2 → Prise de notes affiche « Preuve — renommée en Bibliothèque » |
-| Déplacé **depuis Prise de notes** vers Pneumologie | **fiches 1, même id** | 18 | 1 | 2 → Réviser l'affiche au nouvel endroit |
+Le champ et la liste de résultats sont retirés. La barre d'outils, vide sans eux, disparaît
+aussi : « Nouveau transcript » rejoint l'en-tête, et l'arbre remonte d'autant.
 
-Et sur toute la base à chaque étape : **0 id commun** entre documents et fiches,
-**0 PDF partagé** entre deux fiches. Le document d'avant (rangé plus tôt) : même id
-`nmuobfr6jwhqr`, son annotation du 25/09 (`hl_note_avant`) pointe toujours dessus,
-plus aucun enregistrement `notes`.
+## 4. Cmd/Ctrl+F dans le lecteur ✅
 
-Côté cloud (quand la synchro tourne) ranger = 1 fiche écrite + 1 marqueur de suppression de
-l'ancien enregistrement `notes` — les deux gestes normaux de l'app, rien de massif.
+Quand un PDF est ouvert, **Cmd+F (Mac) ou Ctrl+F** place le curseur dans la recherche **du
+lecteur**, avec le texte sélectionné ; celle de Chrome ne s'ouvre pas (vérifié). Pour passer
+d'une occurrence à l'autre : **Entrée / Maj+Entrée**, ou **Cmd/Ctrl+G / Maj+Cmd/Ctrl+G**.
+**Échap** ferme la recherche. Le raccourci est rappelé dans le champ (« Rechercher… (⌘F) »).
 
----
+**Testé** :
+- « valve » donne 24 occurrences ; suivant et précédent passent de 1 à 2, puis 3, puis 2.
+- Une occurrence trouvée en page 3 amène bien le lecteur en page 3.
+- Fonctionne dans la Bibliothèque et dans Prise de notes.
 
-## TÂCHE 2 — Glisser un fichier sur la Bibliothèque ✅
+**Fiches HTML** : elles ne sont pas interceptées, car le Cmd+F de Chrome y cherche déjà dans le
+cours.
 
-La logique de Réviser (dépôt → petite fenêtre titre + J0 → création) est devenue **un seul
-code partagé** par Réviser et la Bibliothèque (pas de copie).
-- Lâché sur un **dossier** (même fermé) → la fiche est créée **dedans** ✓
-- Lâché sur une **matière** → à sa **racine** ✓
-- Survol prolongé d'un dossier fermé → il **s'ouvre** (sous-dossier atteint) ✓
-- **Images** → converties en PDF (même conversion que Prise de notes), aussi dans Réviser ✓
-- **.docx / .pptx** → refusés avec l'explication « exporte-le en PDF » (pas de conversion
-  fiable hors ligne) ✓
-- Lâché hors d'une matière → « Aucune destination ici… », l'app ne quitte jamais la page ✓
-- Réviser retesté : dépôt, image, « Annuler » n'écrit rien ✓
+## 5. Sidebar Bibliothèque — nouveau look, **UX inchangée** ✅
 
-## TÂCHE 3 — Sidebar ✅
+**Je confirme que l'UX n'a PAS changé** : même disposition, mêmes boutons aux mêmes endroits,
+mêmes gestes, même ordre. **Preuve mesurée** : positions et hauteurs des 25 premières lignes
+identiques au pixel, avant et après. J'ai aussi rejoué tous les gestes : repli mémorisé, ↑ ↓,
+création, menus, glisser-déposer, dépôt de fichiers.
 
-**Audit : `docs/audit-sidebar-biblio.md`** — chaque élément, ce qui déborde, chaque bouton
-et son mécanisme. Constats principaux : en-tête de section de 101 à 126 px avec le nom
-sur deux lignes ; 84 px par fiche ; 7 titres sur 12 tronqués ; la matière (petite pastille)
-moins visible que ses fiches ; 3 boutons différents pour créer un dossier.
+Ce qui change, uniquement le look :
+- **Panneau** : noir, filet fin, léger halo violet.
+- **Sections** : en capitales espacées, suivies d'un filet.
+- **Matières** : pastille avec halo, et un lavis très léger de leur couleur.
+- **Dossiers** : icône violette.
+- **Compteurs** : en petites gélules.
+- **Survol** : dégradé et filet vertical.
+- **Sélection** : fond violet et barre à gauche.
+- **Boutons de survol** : discrets.
 
-**Refonte** (arbre type Finder, sombre et fin) :
+## 6. Même design pour la sidebar de Réviser ✅
 
-| | Avant | Après |
+La sidebar de Réviser utilise maintenant le **même arbre** (même rendu, même composant pour les
+dossiers) :
+- **Sections** : ↑ ↓, cloche et ⋯ au survol.
+- **Matières** : repliables, avec le même état mémorisé que la Bibliothèque.
+- **Boutons « Nouveau dossier »** : ceux qui étaient répétés partout sont remplacés par le « + »
+  des lignes.
+- **Glisser une fiche** : on peut la lâcher sur un dossier **fermé** ou sur une matière, comme
+  dans la Bibliothèque.
+- **Hauteur des fiches** : 30 px au lieu d'environ 76.
+
+**Ce que Réviser garde, parce que c'est son rôle** :
+- la case à cocher, à la place de la flèche et au même endroit ;
+- le badge des cartes à réviser ;
+- clic = sélectionner, double-clic = ouvrir le cours ;
+- le clic droit, les flèches du clavier, l'infobulle détaillée, les exercices de dossier.
+
+**Testé** : sélection, multi-sélection, ↑ ↓, F2, clic droit, repli d'une matière, création
+d'un dossier, glisser une fiche dans un dossier, double-clic, dépôt d'un fichier, infobulle.
+
+**Bug trouvé et corrigé au passage** : dans Réviser, ↑ ↓ au clavier suivaient l'ordre de
+création des sections, pas l'ordre affiché.
+
+## 7. Chasse aux bugs ✅
+
+Méthode : j'ai parcouru chaque écran à la souris et au clavier, et ouvert chaque menu. Deux
+passes automatiques ont complété le tour : l'une survole toutes les lignes et mesure chaque
+bouton, l'autre cherche les débordements.
+
+| Bug | Où | Correction |
 |---|---|---|
-| Hauteur d'une ligne | 84 à 126 px | **30 px** (section 28) |
-| Lignes visibles à l'écran | ~8 | **22** |
-| Titres tronqués | 7 / 12 | 2 / 30 (titres de plus de ~40 caractères) |
+| **Champ de renommage énorme** (15 px gras, cadre épais, dans une ligne en 13 px) | Bibliothèque et Réviser : section, matière, dossier, fiche | 13 px, 24 px de haut, aux 4 niveaux et dans les deux écrans |
+| **Icônes énormes au survol d'une section** (cloche de 34 px dans une ligne de 28 px) | Bibliothèque, et Réviser avec le nouveau design | 24 px / icône 14 px ; la passe de survol ne trouve plus rien sur les 7 écrans |
+| Champs **collés** (0 px entre eux), libellé « Recto » en **16 px** au lieu de 12, texte d'aide qui **débordait** | formulaires « Nouvel item » : QCM, flashcard, exercice, Feynman | 12 px entre les champs, libellé à 12 px, zone agrandie |
+| Icône du segment actif **invisible** (noire sur fond sombre) | tous les sélecteurs à segments (Formulaire / JSON, QCM / Flashcard…) | l'icône suit la couleur du texte |
+| Pastille de matière **en double** (« • ● Cardiologie ») | Réglages | doublon masqué |
+| Interrupteurs **sans libellé** (inaccessibles au lecteur d'écran) | Réglages | rôle « interrupteur » + libellé |
+| Infobulles **perdues** (« Rappels J en pause », « orthographe tolérée ») | Bibliothèque, séance (ordinateur et mobile) | icônes enveloppées pour que l'infobulle s'affiche |
+| ↑ ↓ du clavier dans le désordre après un « Monter » | Réviser | ordre affiché |
 
-- **Section** : une ligne en titre de groupe ; flèche de repli ; **↑ ↓** et cloche au survol
-  (la cloche reste affichée quand les rappels sont en pause).
-- **Matière** : ligne en gras avec son point de couleur, **repliable** (nouveau, mémorisé) ;
-  au survol **+** (nouveau dossier, nom présélectionné) et ⋯.
-- **Dossier** : flèche + dossier + nom + nombre ; **+** (sous-dossier) et ⋯ au survol ;
-  « Nouveau dossier dedans » dans le menu.
-- **Fiche** : titre sur toute la largeur ; ▷ et ⋯ au survol ; détail dans l'infobulle.
-- **« + Nouvelle matière »** en bas de chaque section.
-- Corrigé au passage : au début d'un glisser de fiche, les zones « Déposer ici »
-  grandissaient et **tout l'arbre bougeait sous le curseur** (la fiche tombait une ligne
-  trop bas). Elles gardent maintenant leur taille : testé, la fiche tombe dans le dossier
-  visé.
-
-Testé : repli section/matière/dossier (mémorisé après rechargement), ↑ ↓, création
-matière/dossier/sous-dossier, menus, ouverture d'un document, glisser une fiche sur un dossier
-fermé, réordonner deux fiches, dépôt de fichiers.
-
----
+**Parcouru sans rien trouver** :
+- Accueil, dont une séance complète : répondre, valider, noter, carte suivante, quitter.
+- Carnet d'erreurs, Prompts, Apprentissage, Prise de notes (rangement, renommage), Réglages.
+- Le lecteur : barre, menu ⋯, pop-up de surlignage, barre d'actions d'une boîte, onglets du
+  panneau.
 
 ## Check-list de non-régression (après chaque commit)
 
 ```
 Réviser · Bibliothèque PDF · Bibliothèque HTML · Apprentissage · Import Anatomie · Prise de notes → OK
-Glisser-déposer de fichiers dans Réviser → OK (même code, retesté)
+(anciennes annotations : surlignage, trait, bloc toujours affichés)
 MealWeek → s'ouvre normalement — 0 fichier touché
 Erreurs console : 0
 ```
 
-## Ce que j'ai choisi de NE PAS faire (sécurité / doute)
+## Ce que j'ai choisi de NE PAS faire
 
-1. **Ranger tes 2 documents réels** : c'est une décision de rangement, je te la laisse (un
-   clic chacun).
-2. **« Retirer de la Bibliothèque »** (redevenir un simple document de notes) : ce serait un
-   nouveau passage d'un store à l'autre ; pas demandé, donc pas ajouté. On peut le
-   déplacer, le renommer ou le mettre à la corbeille.
-3. **Convertir les .docx / .pptx** : impossible proprement hors ligne ; message clair à la
-   place.
-4. **Toucher à l'arbre de Réviser** : seul le code d'import par dépôt est partagé ; son
-   apparence est identique (le composant de ligne de dossier partagé n'a pas été modifié).
-5. **« Déplacer vers… » d'une fiche de Bibliothèque vers une autre matière** : le menu ⋯
-   reste limité à la matière (comme avant) ; entre matières, le glisser-déposer marche.
-
-## Méthode
-
-Chrome headless isolé (profil jetable, base locale, synchro désactivée), vrais événements
-souris/clavier et **vrais glisser-déposer de fichiers depuis le disque** (pipeline d'entrée de
-Chrome, comme depuis le Finder). Cloud : lecture seule (comptage de tes documents). Fichiers de
-test jamais commités, supprimés.
+1. **Déplacer physiquement les annotations** dans des stores séparés : c'est une réécriture de
+   masse dans le cloud (voir point 1). La séparation est faite dans le code, en mémoire et sur
+   chaque nouvel enregistrement.
+2. **Intercepter Cmd+F dans une fiche HTML** : le Cmd+F de Chrome y fonctionne déjà.
+3. **Rendre à Réviser le clic = « ouvrir le document » de la Bibliothèque** : dans Réviser, le
+   clic sélectionne la fiche pour la réviser. C'est le rôle de l'écran, je l'ai gardé.
+4. **« Mode focus »** : ma passe automatique l'a activé par erreur, dans le Chrome de test
+   seulement. Je l'ai désactivé, rien n'a été touché chez toi.
