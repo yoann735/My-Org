@@ -463,10 +463,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setPending(payload);
   };
   const commitHighlightAvec = async (p, couleur) => {
-    const rec = newHighlight({ ficheId, page: p.page, texte: p.texte, couleur, rects: p.rects, anchor: p.anchor });
     setPending(null);
     window.getSelection && window.getSelection().removeAllRanges();
-    await hist.appliquer(cmdCreer('highlights', rec, 'Surlignage'));
+    // `segments` = les morceaux encore libres (voir soustraireAncres). Vide : tout
+    // était déjà surligné, on ne crée RIEN — pas de ré-accentuation, pas de doublon.
+    const morceaux = Array.isArray(p.segments) ? p.segments : [{ texte: p.texte, rects: p.rects, anchor: p.anchor }];
+    const cmds = morceaux.map((m) => cmdCreer('highlights',
+      newHighlight({ ficheId, page: p.page, texte: m.texte, couleur, rects: m.rects, anchor: m.anchor }), 'Surlignage'));
+    if (!cmds.length) return;
+    await hist.appliquer(cmds.length === 1 ? cmds[0] : {
+      libelle: 'Surlignage',
+      faire: async () => { for (const c of cmds) await c.faire(); },
+      defaire: async () => { for (const c of [...cmds].reverse()) await c.defaire(); },
+    });
   };
   const handleHighlightClick = (h, e) => {
     setPending(null);

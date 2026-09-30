@@ -24,9 +24,35 @@ import {
   COLORS, COLOR_HEX, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT,
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
+  soustraireAncres, partCouverte,
   lisserTrait, traitTouche, cheminLisse, suivreEnDouceur, modeDuTrait,
   EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR,
 } from './pdfShared.js';
+
+/** position dans le TEXTE la plus proche d'un point écran : la ligne (span) la
+    plus proche verticalement, puis le caractère à la hauteur du point, borné aux
+    extrémités de la ligne. null si la couche ne contient aucun texte. */
+function positionTexteProche(container, x, y) {
+  let best = null, dBest = Infinity;
+  for (const sp of container.querySelectorAll('span')) {
+    const t = sp.firstChild;
+    if (!t || t.nodeType !== Node.TEXT_NODE || !t.length) continue;
+    const r = sp.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    const dy = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+    const dx = x < r.left ? r.left - x : x > r.right ? x - r.right : 0;
+    const d = dy * 1000 + dx; // la LIGNE d'abord, puis la plus proche horizontalement
+    if (d < dBest) { dBest = d; best = { sp, t, r }; }
+  }
+  if (!best) return null;
+  const { t, r } = best;
+  if (x <= r.left) return { node: t, offset: 0 };
+  if (x >= r.right) return { node: t, offset: t.length };
+  const c = document.caretRangeFromPoint ? document.caretRangeFromPoint(x, r.top + r.height / 2) : null;
+  if (c && c.startContainer === t) return { node: t, offset: c.startOffset };
+  // repli : proportion de la largeur (spans étirés à la largeur exacte du texte)
+  return { node: t, offset: Math.max(0, Math.min(t.length, Math.round(((x - r.left) / r.width) * t.length))) };
+}
 
 /** rendu d'une seule page (montée uniquement si proche du viewport) : canvas + couche de
     texte + surlignages + surlignage de recherche (géométrie exacte, Chantier 2) + blocs
@@ -316,10 +342,24 @@ export function PdfPageContent({
       return;
     }
     if (!container.contains(sel.anchorNode)) return;
-    const selRange = sel.getRangeAt(0);
-    // ancre bornée à CETTE page ; le texte et les rects en découlent (une sélection qui
-    // déborde sur la page suivante ne produit plus de rects hors page). Repli sur la
-    // sélection brute si aucune ancre n'est calculable.
+    /* CORRECTIF (nuit du 30/09) : sur une couche de texte faite de spans en position
+       absolue, quand le glisser se termine ENTRE deux lignes (ou dans une marge),
+       Chrome pose la borne mobile de la sélection sur le conteneur — « DIV, 37 » —
+       dont l'index d'enfant n'a aucun rapport avec la position à l'écran : le
+       surlignage englobait alors plusieurs lignes de trop sous le curseur. Dans ce
+       cas, on reprend la borne sur la LIGNE la plus proche du pointeur, à la
+       hauteur du pointeur (bornée aux extrémités de la ligne). */
+    let selRange = sel.getRangeAt(0);
+    if (sel.focusNode && sel.focusNode.nodeType !== Node.TEXT_NODE && sel.anchorNode.nodeType === Node.TEXT_NODE) {
+      const pos = positionTexteProche(container, e.clientX, e.clientY);
+      if (pos) {
+        const r = document.createRange();
+        r.setStart(sel.anchorNode, sel.anchorOffset);
+        if (r.comparePoint(pos.node, pos.offset) < 0) { r.setStart(pos.node, pos.offset); r.setEnd(sel.anchorNode, sel.anchorOffset); }
+        else r.setEnd(pos.node, pos.offset);
+        if (!r.collapsed) selRange = r;
+      }
+    }
     const anchor = anchorFromRange(container, selRange);
     const range = (anchor && rangeFromAnchor(container, anchor)) || selRange;
     // sur une ligne : un surlignage à cheval sur deux lignes donne « un calcul : un IMC »,
@@ -339,7 +379,24 @@ export function PdfPageContent({
     const fontSizeRel = cs ? (parseFloat(cs.fontSize) / cr.height) : null;
     const fontFamily = cs ? cs.fontFamily : null;
     const last = clientRects[clientRects.length - 1];
-    onCreateHighlight({ page: pageNum, texte, rects, anchor, x: last.right, y: last.bottom, fontSizeRel, fontFamily });
+    // morceaux de la sélection que ne couvre AUCUN surlignage existant (voir
+    // soustraireAncres) — ce sont eux, et eux seuls, que le surligneur colorera
+    const segments = [];
+    if (anchor) {
+      const sansAncre = highlights.filter((h) => !h.anchor).flatMap((h) => shownRects[h.id] || h.rects || []);
+      for (const seg of soustraireAncres(anchor, highlights.map((h) => h.anchor).filter(Boolean))) {
+        const r = rangeFromAnchor(container, seg);
+        const t = r && cleanSelectedText(r.toString(), { inline: true });
+        if (!t || !/[\p{L}\p{N}]/u.test(t)) continue; // espace ou ponctuation seule entre deux surlignages
+        const rs = rectsFromRange(container, r).filter((x) => partCouverte(x, sansAncre) < 0.5);
+        if (rs.length) segments.push({ texte: t, rects: rs, anchor: seg });
+      }
+    } else {
+      const toutes = highlights.flatMap((h) => shownRects[h.id] || h.rects || []);
+      const rs = rects.filter((x) => partCouverte(x, toutes) < 0.5);
+      if (rs.length) segments.push({ texte, rects: rs, anchor: null });
+    }
+    onCreateHighlight({ page: pageNum, texte, rects, anchor, segments, x: last.right, y: last.bottom, fontSizeRel, fontFamily });
   };
 
   return (

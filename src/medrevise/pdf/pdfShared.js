@@ -208,6 +208,50 @@ export function rectsFromRange(container, range) {
   return kept.map((r) => ({ x: (r.left - cr.left) / cr.width, y: (r.top - cr.top) / cr.height, width: r.width / cr.width, height: r.height / cr.height }));
 }
 
+/* ============================================================
+   PAS DE SURLIGNAGE PAR-DESSUS UN SURLIGNAGE (nuit du 30/09).
+   Avant, re-sélectionner un passage déjà surligné créait un second surlignage
+   au même endroit : deux rectangles en « multiply » → couleur ré-accentuée, et
+   un doublon dans le panneau et à l'export. Désormais on retire de la nouvelle
+   ancre tout ce que couvrent déjà les ancres existantes de la page : seuls les
+   morceaux LIBRES sont surlignés (souvent zéro, parfois deux bouts de part et
+   d'autre d'un surlignage existant).
+   ============================================================ */
+const cmpPos = (a, b) => (a.item - b.item) || (a.char - b.char);
+
+/** [anchor] moins l'union des [existantes] → liste d'ancres disjointes, dans
+    l'ordre du texte. Fonction pure. */
+export function soustraireAncres(anchor, existantes) {
+  if (!anchor || !anchor.start || !anchor.end) return [];
+  const autres = (existantes || [])
+    .filter((a) => a && a.start && a.end && cmpPos(a.end, anchor.start) > 0 && cmpPos(a.start, anchor.end) < 0)
+    .sort((a, b) => cmpPos(a.start, b.start));
+  const libres = [];
+  let curseur = anchor.start;
+  for (const a of autres) {
+    if (cmpPos(a.start, curseur) > 0) libres.push({ v: 1, start: curseur, end: cmpPos(a.start, anchor.end) < 0 ? a.start : anchor.end });
+    if (cmpPos(a.end, curseur) > 0) curseur = a.end;
+    if (cmpPos(curseur, anchor.end) >= 0) break;
+  }
+  if (cmpPos(curseur, anchor.end) < 0) libres.push({ v: 1, start: curseur, end: anchor.end });
+  return libres;
+}
+
+/** part de la surface de `r` couverte par au moins un rectangle de `autres`
+    (approximation : le plus grand recouvrement unitaire). Sert aux anciens
+    surlignages SANS ancre, qu'on ne peut comparer que géométriquement. */
+export function partCouverte(r, autres) {
+  const aire = r.width * r.height;
+  if (!aire) return 1;
+  let max = 0;
+  for (const o of autres || []) {
+    const w = Math.min(r.x + r.width, o.x + o.width) - Math.max(r.x, o.x);
+    const h = Math.min(r.y + r.height, o.y + o.height) - Math.max(r.y, o.y);
+    if (w > 0 && h > 0) max = Math.max(max, (w * h) / aire);
+  }
+  return max;
+}
+
 /** ordre de lecture des surlignages : page, puis position dans le texte (ancre), à
     défaut hauteur sur la page (anciens surlignages sans ancre), puis date. */
 export function compareHighlights(a, b) {
