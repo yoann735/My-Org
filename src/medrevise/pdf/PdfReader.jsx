@@ -142,8 +142,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const dpr = useDevicePixelRatio();
 
   const [highlights, setHighlights] = useState([]);
-  const [pending, setPending] = useState(null); // nouveau surlignage en attente { page, texte, rects, x, y }
-  const [editingHl, setEditingHl] = useState(null); // popover changer couleur / supprimer { id, couleur, x, y }
+  // SÉLECTION EN ATTENTE (outil Sélection) : la dernière sélection de texte, gardée
+  // SANS rien afficher. Elle sert à deux gestes « à la Word » : cliquer ensuite
+  // l'outil Surligneur la surligne ; « Remplacer le texte sélectionné » (menu ⋯)
+  // la réécrit. Elle s'efface dès que la sélection du navigateur disparaît.
+  const [pending, setPending] = useState(null); // { page, texte, rects, anchor, … }
+  const [editingHl, setEditingHl] = useState(null); // bulle d'un surlignage existant { id, couleur, texte, x, y }
 
   const [edits, setEdits] = useState([]); // blocs de texte : remplacement (Chantier 1) ET boîtes libres (kind:'libre')
   const [activeEditId, setActiveEditId] = useState(null);
@@ -157,7 +161,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [aimant, setAimant] = useState(true); // le lissage est utile par défaut ; décochable (mode dessin seulement)
   const [modeCrayon, setModeCrayon] = useState('dessin'); // dessin (fin, doux) | surligneur (épais, translucide)
   // changer d'outil ferme ce qui appartenait au précédent
-  const choisirOutil = (id) => { setOutil(id); setPending(null); setEditingHl(null); if (id !== 'main') setActiveEditId(null); };
+  const choisirOutil = (id) => {
+    // comme dans Word : du texte est sélectionné, on prend le surligneur → il est surligné
+    if (id === 'surligneur' && pending && window.getSelection && !window.getSelection().isCollapsed) {
+      commitHighlightAvec(pending, couleurActive);
+    }
+    setOutil(id); setPending(null); setEditingHl(null); if (id !== 'main') setActiveEditId(null);
+  };
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -411,19 +421,18 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scale]);
 
-  // popover d'un surlignage existant : fermer = enregistrer la note si elle a changé.
-  // Toutes les sorties (clic extérieur, Échap, bouton OK) passent par ici — la note ne
-  // peut donc pas se perdre en refermant la popover sans « valider ».
-  const closeEditingHl = async () => {
-    if (!editingHl) return;
-    const cur = editingHl;
-    setEditingHl(null);
-    const h = highlights.find((x) => x.id === cur.id);
-    const note = (cur.note || '').trim() || null;
-    if (h && note !== (h.note || null)) {
-      await hist.appliquer(cmdModifier('highlights', h, { ...h, note }, 'Note du surlignage'));
-    }
-  };
+  /* SURLIGNAGE « COMME WORD » (nuit du 30/09) : plus de note au clic. La bulle
+     d'un surlignage existant ne propose que sa couleur et « Supprimer ». Les notes
+     déjà écrites ne sont pas perdues : elles restent affichées dans le panneau et
+     exportées comme avant — on ne peut simplement plus en créer depuis la bulle. */
+  const closeEditingHl = () => { setEditingHl(null); };
+  // la sélection en attente meurt avec la sélection du navigateur
+  useEffect(() => {
+    if (!pending) return undefined;
+    const onSel = () => { const sel = window.getSelection(); if (!sel || sel.isCollapsed) setPending(null); };
+    document.addEventListener('selectionchange', onSel);
+    return () => document.removeEventListener('selectionchange', onSel);
+  }, [pending]);
 
   // Échap : désélectionner la boîte / le bloc actif (avant, seul « Terminé » le
   // permettait). Posé À PART des popovers ci-dessous, qui ont leur propre Échap.
@@ -434,20 +443,20 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     return () => window.removeEventListener('keydown', onKey);
   }, [activeEditId]);
 
-  // ferme les popovers flottants au clic extérieur / Échap
+  // ferme la bulle d'un surlignage au clic extérieur / Échap
   useEffect(() => {
-    if (!pending && !editingHl) return;
-    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.hl-picker'))) { setPending(null); closeEditingHl(); } };
-    const onKey = (e) => { if (e.key === 'Escape') { setPending(null); closeEditingHl(); } };
+    if (!editingHl) return;
+    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.hl-picker'))) closeEditingHl(); };
+    const onKey = (e) => { if (e.key === 'Escape') closeEditingHl(); };
     window.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey);
     return () => { window.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending, editingHl, highlights]);
+  }, [editingHl, highlights]);
 
   /* Avec l'outil SURLIGNEUR, une sélection surligne AUSSITÔT dans la couleur
-     active : aucune popover, c'est ce qu'on a demandé en choisissant l'outil.
-     Avec la MAIN, on garde la popover (couleur au choix, ou remplacer le texte). */
+     active. Avec l'outil SÉLECTION, rien ne s'affiche : on sélectionne pour
+     copier, ou pour surligner ensuite en prenant le Surligneur (voir choisirOutil). */
   const handleCreateHighlightRequest = (payload) => {
     setEditingHl(null);
     if (outil === 'surligneur') { commitHighlightAvec(payload, couleurActive); return; }
@@ -459,16 +468,15 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     window.getSelection && window.getSelection().removeAllRanges();
     await hist.appliquer(cmdCreer('highlights', rec, 'Surlignage'));
   };
-  const commitHighlight = (couleur) => { if (pending) { setCouleurActive(couleur); commitHighlightAvec(pending, couleur); } };
   const handleHighlightClick = (h, e) => {
     setPending(null);
-    setEditingHl({ id: h.id, couleur: h.couleur, note: h.note || '', texte: h.texte || '', x: e.clientX, y: e.clientY });
+    setEditingHl({ id: h.id, couleur: h.couleur, texte: h.texte || '', x: e.clientX, y: e.clientY });
   };
   const changeHighlightColor = async (couleur) => {
     if (!editingHl) return;
     const h = highlights.find((x) => x.id === editingHl.id); if (!h) { setEditingHl(null); return; }
-    setEditingHl((cur) => (cur ? { ...cur, couleur } : cur)); // reste ouverte : on peut encore écrire la note
-    await hist.appliquer(cmdModifier('highlights', h, { ...h, couleur, note: (editingHl.note || '').trim() || null }, 'Couleur du surlignage'));
+    setEditingHl(null); // un choix, un geste : la bulle se referme
+    if (h.couleur !== couleur) await hist.appliquer(cmdModifier('highlights', h, { ...h, couleur }, 'Couleur du surlignage'));
   };
   const deleteHighlightConfirmed = async () => {
     if (!editingHl) return;
@@ -579,6 +587,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // stockage que les anciens boutons — rien ne change pour le contenu.
     canAddItem && { label: 'Prompts (théorie et exercices)', icon: 'layers', onClick: () => setPromptsOuverts(true) },
     !!fiche.htmlId && { label: 'Voir la fiche HTML', icon: 'fileHtml', onClick: () => setSrcTab('html') },
+    // l'ancien bouton « Remplacer » de la popover de sélection, qui n'existe plus
+    !!pending && { label: 'Remplacer le texte sélectionné', icon: 'edit', onClick: () => startEditFromSelection() },
   ];
 
   // export secondaire — PDF avec les surlignages incrustés (confort de lecture hors app ;
@@ -973,7 +983,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             <div className="hl-legend">
               {COLORS.map((c) => <span key={c.id}><i style={{ background: c.hex }} />{COLOR_TAG[c.id] || c.short}</span>)}
             </div>
-            {highlights.length === 0 && <div className="hint">Sélectionne du texte pour le surligner. Clique un surlignage pour changer sa couleur, ajouter une note ou le supprimer.</div>}
+            {highlights.length === 0 && <div className="hint">Prends le Surligneur et sélectionne du texte : il est surligné. Clique un surlignage pour changer sa couleur ou le supprimer.</div>}
             {highlights.map((h) => (
               <div className="hl-entry" key={h.id} onClick={() => scrollToPageFraction(h.page, (h.rects[0] && h.rects[0].y) || 0)}>
                 <span className="hl-dot" style={{ background: COLOR_HEX[h.couleur] || COLOR_HEX.jaune }} />
@@ -988,56 +998,18 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         )}
       </div>
 
-      {/* Popover de sélection, outil MAIN uniquement : choisir la couleur, ou
-          remplacer le texte. Avec l'outil Surligneur, la sélection surligne
-          directement dans la couleur active — pas de popover, c'est le sens même
-          d'avoir choisi un outil. « Remplacer ce texte » (l'ancien mode Édition)
-          est désormais une entrée d'ici, plus un mode global. */}
-      {pending && createPortal(
-        <div className="hl-picker" style={{ left: Math.min(pending.x, window.innerWidth - 340), top: Math.min(pending.y + 8, window.innerHeight - 70) }}>
+      {/* BULLE d'un surlignage : sa couleur, ou le supprimer. Rien d'autre. */}
+      {editingHl && createPortal(
+        <div className="hl-picker hl-bulle" style={{ left: Math.min(editingHl.x, window.innerWidth - 280), top: Math.min(editingHl.y + 10, window.innerHeight - 60) }}>
           {COLORS.map((c) => (
-            <button key={c.id} className="hl-swatch-col" title={c.label} onClick={() => commitHighlight(c.id)}>
-              <span className="hl-swatch" style={{ background: c.hex }} />
-              <span className="hl-swatch-lbl">{c.short}</span>
+            <button key={c.id} type="button" className="hl-swatch-col" title={c.label} onClick={() => changeHighlightColor(c.id)}>
+              <span className={'hl-swatch' + (editingHl.couleur === c.id ? ' selected' : '')} style={{ background: c.hex }} />
             </button>
           ))}
           <span className="hl-picker-sep" />
-          <button className="hl-edit-btn" title="Masquer ce passage et le réécrire" onClick={startEditFromSelection}><Icon name="edit" size={13} /> Remplacer</button>
-          <button className="hl-cancel" title="Annuler" onClick={() => setPending(null)}><Icon name="x" size={13} /></button>
-        </div>,
-        document.body,
-      )}
-
-      {editingHl && createPortal(
-        <div className="hl-picker hl-picker-col" style={{ left: Math.min(editingHl.x, window.innerWidth - 300), top: Math.min(editingHl.y + 10, window.innerHeight - 250) }}>
-          {/* ON DIT CE QU'ON TIENT : sans cet extrait, rien n'indique quel surlignage
-              la popover vise — surtout quand plusieurs se touchent. Le surlignage
-              concerné est en plus cerclé sur la page (classe `cible`). */}
-          <div className="hl-tete">
-            <span className="hl-extrait" title={editingHl.texte}>{editingHl.texte || 'Surlignage'}</span>
-            <button className="hl-cancel" title="Fermer" onClick={closeEditingHl}><Icon name="x" size={13} /></button>
-          </div>
-
-          <div className="row" style={{ gap: 7, alignItems: 'center' }}>
-            {COLORS.map((c) => (
-              <button key={c.id} className="hl-swatch-col" title={c.label} onClick={() => changeHighlightColor(c.id)}>
-                <span className={'hl-swatch' + (editingHl.couleur === c.id ? ' selected' : '')} style={{ background: c.hex }} />
-                <span className="hl-swatch-lbl">{c.short}</span>
-              </button>
-            ))}
-          </div>
-
-          <textarea className="hl-note" rows={2} placeholder="Note (facultatif) — ta remarque ou ta question"
-            value={editingHl.note} onChange={(e) => { const note = e.target.value; setEditingHl((cur) => (cur ? { ...cur, note } : cur)); }}
-            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) closeEditingHl(); }} />
-          <div className="hl-aide">La note s'enregistre en fermant.</div>
-
-          {/* L'ACTION QU'ON VENAIT CHERCHER : pleine largeur, rouge, en bas.
-              Pas de confirmation — c'est annulable (Cmd+Z), et une boîte de dialogue
-              de plus serait un obstacle pour un geste qu'on répète. */}
-          <button className="hl-delete-large" onClick={deleteHighlightConfirmed}
+          <button type="button" className="hl-delete" onClick={deleteHighlightConfirmed}
             title={`Supprimer ce surlignage (annulable par ${RACCOURCI}Z)`}>
-            <Icon name="trash" size={14} /> Supprimer ce surlignage
+            <Icon name="trash" size={13} /> Supprimer
           </button>
         </div>,
         document.body,

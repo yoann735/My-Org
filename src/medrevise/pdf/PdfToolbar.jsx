@@ -78,6 +78,7 @@ export function PdfToolbar({
             {OUTILS.map((o) => (
               <button key={o.id} type="button" title={`${o.label} — ${o.aide}`}
                 className={'ptb-outil' + (outil === o.id ? ' actif' : '')}
+                onMouseDown={(e) => e.preventDefault()} /* garde la sélection de texte : Surligneur la surligne */
                 onClick={() => setOutil(o.id)}>
                 <Icon name={o.icon} size={15} /><span className="ptb-outil-lbl">{o.label}</span>
               </button>
