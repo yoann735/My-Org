@@ -10,7 +10,7 @@
    ============================================================ */
 import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
+import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DropCible, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
 import { useTreeOpenState, trierSections, deplacerSection } from '../components/useTreeOpenState.js';
 import { putBlob } from '../lib/storage.js';
@@ -438,6 +438,7 @@ export function Bibliotheque({ ctx }) {
                                   /* LIGNE DE MATIÈRE : nom (double-clic = renommer) · « + Dossier »,
                                      l'action la plus fréquente, en clair · ⋯ (renommer, dossier,
                                      supprimer la matière). */
+                                  <DropCible matiereId={mat.id} dossierId={null} className="lib-mat-cible">
                                   <div className="lib-mat-ligne">
                                     <div className="cat-badge" style={{ background: `color-mix(in srgb, ${mm.tint} 14%, transparent)`, color: mm.tint, borderColor: `color-mix(in srgb, ${mm.tint} 30%, transparent)`, cursor: 'pointer' }} onDoubleClick={() => startRename('matiere', mat.id, mm.label)} title="Double-clic pour renommer"><Icon name={mm.icon} size={12} /> {mm.label}</div>
                                     <button type="button" className="btn sm lib-add-dossier" onClick={() => createUnite(mat.id)} title={`Créer un dossier dans ${mm.label}`}>
@@ -447,6 +448,7 @@ export function Bibliotheque({ ctx }) {
                                       <Icon name="more" size={15} stroke={2.6} />
                                     </button>
                                   </div>
+                                  </DropCible>
                                 )}
 
                               {rootFiches.map(renderFiche)}
@@ -463,12 +465,16 @@ export function Bibliotheque({ ctx }) {
                                 const uOpen = !!openDossier[u.id];
                                 return (
                                   <div key={u.id}>
+                                    {/* toute la LIGNE du dossier reçoit une fiche lâchée dessus, même
+                                       fermé ; un survol prolongé l'ouvre (voir DropCible). */}
+                                    <DropCible matiereId={mat.id} dossierId={u.id} onSurvolProlonge={() => setOpenDossier((o) => (o[u.id] ? o : { ...o, [u.id]: true }))}>
                                     <DossierRow dossier={u} isOpen={uOpen}
                                       fichesCount={fichesCountRecursif(allFiches, u.id)} sousDossiersCount={chapitres.length}
                                       isRenaming={isRen('dossier', u.id)} renameInput={<RenameInput />}
                                       onToggle={() => setOpenDossier((o) => ({ ...o, [u.id]: !uOpen }))}
                                       onRename={() => startRename('dossier', u.id, u.nom)}
                                       onMenu={(e) => openDossierMenu(e, u.id)} />
+                                    </DropCible>
                                     {uOpen && (
                                       <div style={DOSSIER_INDENT}>
                                         {/* création EN HAUT, juste sous l'en-tête de l'unité. Le chapitre
@@ -486,11 +492,13 @@ export function Bibliotheque({ ctx }) {
                                           const cOpen = !!openDossier[c.id];
                                           return (
                                             <div key={c.id}>
+                                              <DropCible matiereId={mat.id} dossierId={c.id} onSurvolProlonge={() => setOpenDossier((o) => (o[c.id] ? o : { ...o, [c.id]: true }))}>
                                               <DossierRow dossier={c} isOpen={cOpen} fichesCount={chapFiches.length}
                                                 isRenaming={isRen('dossier', c.id)} renameInput={<RenameInput />}
                                                 onToggle={() => setOpenDossier((o) => ({ ...o, [c.id]: !cOpen }))}
                                                 onRename={() => startRename('dossier', c.id, c.nom)}
                                                 onMenu={(e) => openDossierMenu(e, c.id)} />
+                                              </DropCible>
                                               {cOpen && (
                                                 <div style={DOSSIER_INDENT}>
                                                   {chapFiches.map(renderFiche)}

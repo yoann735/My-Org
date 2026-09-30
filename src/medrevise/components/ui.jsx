@@ -948,6 +948,23 @@ export function DropSlot({ matiereId, dossierId, beforeId, variant = 'line', lab
   return <div ref={setNodeRef} className={'dnd-slot' + (isOver ? ' over' : '')} />;
 }
 
+/** CIBLE DE DÉPÔT « LARGE » : toute une ligne (un dossier, même FERMÉ, ou une
+    matière) accepte une fiche lâchée dessus — elle va à la FIN de ce dossier / à la
+    racine de la matière. Même dnd-kit, même format d'id que DropSlot (préfixe
+    différent, pour rester unique) : FicheDndProvider#onDragEnd le lit tel quel.
+    `onSurvolProlonge` : appelé après 650 ms de survol pendant un glisser (ex.
+    ouvrir le dossier survolé, pour viser une fiche précise à l'intérieur). */
+export function DropCible({ matiereId, dossierId, onSurvolProlonge, children, className = '' }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `cible:${matiereId}:${dossierId || 'ROOT'}:END` });
+  const dragging = useContext(FicheDragCtx);
+  useEffect(() => {
+    if (!isOver || !dragging || !onSurvolProlonge) return undefined;
+    const t = setTimeout(onSurvolProlonge, 650);
+    return () => clearTimeout(t);
+  }, [isOver, dragging]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <div ref={setNodeRef} className={className + (dragging ? ' dnd-cible' : '') + (isOver && dragging ? ' over' : '')}>{children}</div>;
+}
+
 /* ---- sous-dossier d'une matière (rangement d'affichage pur, voir fiche.dossierId,
    storage.js) — ligne repliable partagée par Bibliotheque.jsx ET Reviser.jsx : les
    deux écrans doivent afficher un dossier de façon RIGOUREUSEMENT identique (mêmes

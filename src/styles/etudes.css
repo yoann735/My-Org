@@ -1581,3 +1581,6 @@
 .lib-add-dossier { height: 26px; padding: 0 10px; font-size: 12px; font-weight: 600; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); background: var(--accent-soft); }
 .lib-add-dossier:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .lib-add { height: 26px; padding: 0 9px; font-size: 12px; }
+/* cible de dépôt « large » (ligne de dossier / de matière) pendant un glisser */
+.dnd-cible { border-radius: 10px; transition: box-shadow .12s, background .12s; }
+.dnd-cible.over { box-shadow: 0 0 0 2px var(--accent); background: var(--accent-soft); }
