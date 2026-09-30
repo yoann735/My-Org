@@ -59,7 +59,7 @@ function positionTexteProche(container, x, y) {
     de texte édités (Chantier 1). */
 export function PdfPageContent({
   pdfDoc, pageNum, scale, pageHeight, dpr, highlights, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
-  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth,
+  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, onDemanderAncrage = () => {},
   onCreerTrait, onSupprimerTraits, cibleHlId,
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, aimantActif = true, modeCrayon = 'dessin',
 }) {
@@ -304,6 +304,27 @@ export function PdfPageContent({
     window.addEventListener('pointerup', up);
   };
 
+  /* ANCRAGE d'une boîte : la boîte en attente est-elle sur CETTE page ? Le point
+     est normalisé [0,1] comme tout le reste (indépendant du zoom) ; le passage
+     retenu est la ligne de texte la plus proche du point (positionTexteProche),
+     pour dire en clair À QUOI la boîte est rattachée. */
+  const boiteEnAncrage = ancrageBoiteId ? (boites || []).find((b) => b.id === ancrageBoiteId) : null;
+  const poserAncre = (e) => {
+    if (e.button !== 0 || !boiteEnAncrage) return;
+    e.preventDefault(); e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const x = clamp01((e.clientX - r.left) / r.width), y = clamp01((e.clientY - r.top) / r.height);
+    let texte = null;
+    const pos = textLayerRef.current && positionTexteProche(textLayerRef.current, e.clientX, e.clientY);
+    if (pos) {
+      const ligneTxt = cleanSelectedText(pos.node.nodeValue || '', { inline: true });
+      texte = ligneTxt.length > 90 ? ligneTxt.slice(0, 90) + '…' : ligneTxt;
+    }
+    onDemanderAncrage(null);
+    onModifierBoite(boiteEnAncrage, { ancre: { x, y, texte: texte || null } }, 'Ancrage de la boîte');
+  };
+
   // Cmd+C : le texte copié garde ses retours à la ligne (issus des <br>), caractères
   // de compatibilité normalisés. Sélection vide → copie native, on ne touche à rien.
   const handleCopy = (e) => {
@@ -482,8 +503,17 @@ export function PdfPageContent({
           editor={b.id === activeEditId ? activeEditor : null}
           onActivate={onActivateEdit}
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
-          onMaj={onMajBoite} onSupprimer={onSupprimerBoite} onModifier={onModifierBoite} />
+          onMaj={onMajBoite} onSupprimer={onSupprimerBoite} onModifier={onModifierBoite}
+          enAncrage={b.id === ancrageBoiteId} onDemanderAncrage={onDemanderAncrage} />
       ))}
+
+      {/* VISÉE D'UN ANCRAGE : au-dessus de tout, sur la page de la boîte seulement.
+          Un clic = l'endroit visé (point exact + le passage de texte le plus proche). */}
+      {boiteEnAncrage && (
+        <div className="pdfr-ancrage" onPointerDown={poserAncre}>
+          <div className="pdfr-ancrage-aide">Clique l’endroit de la fiche auquel rattacher cette boîte · Échap pour annuler</div>
+        </div>
+      )}
 
       {/* GOMME : posée en DERNIER, au-dessus des boîtes — elle ne touche qu'aux traits. */}
       {outil === 'gomme' && <div className="pdfr-gommecapture" onPointerDown={demarrerGomme} />}
@@ -517,7 +547,7 @@ export function PdfPageContent({
    Une seule entrée d'historique par geste : l'état d'avant est capturé au
    pointerdown, la commande empilée au pointerup, et seulement si ça a bougé.
    ============================================================ */
-function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier }) {
+function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, onDemanderAncrage }) {
   const [apercu, setApercu] = useState(null); // géométrie pendant le geste (état local, non persisté)
   const b = apercu || boite;
   const html = useMemo(() => richToHTML(boite.content), [boite.content]);
@@ -615,9 +645,14 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      ouverture à l'autre et d'un appareil à l'autre. Une boîte d'avant n'a pas le
      champ : elle est ouverte. */
   const extrait = (boite.content ? richToHTML(boite.content).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '') || 'Boîte de texte';
+  /* ANCRE : le point visé de la page. Repère discret à cet endroit ; une boîte
+     ancrée ET réduite devient une pastille posée SUR le passage visé. */
+  const ancre = boite.ancre && Number.isFinite(boite.ancre.x) && Number.isFinite(boite.ancre.y) ? boite.ancre : null;
+  const titreAncre = ancre ? (ancre.texte ? `Rattachée à « ${ancre.texte} »` : 'Rattachée à cet endroit') : '';
   if (boite.reduite) {
+    const lieu = ancre ? { left: ancre.x * 100 + '%', top: ancre.y * 100 + '%', transform: 'translate(-50%, -50%)', margin: 0 } : { left: b.x * 100 + '%', top: b.y * 100 + '%' };
     return (
-      <button type="button" className="nb-pastille" style={{ left: b.x * 100 + '%', top: b.y * 100 + '%', background: COLOR_HEX[boite.couleur] || COLOR_HEX.jaune }}
+      <button type="button" className={'nb-pastille' + (ancre ? ' ancree' : '')} style={{ ...lieu, background: COLOR_HEX[boite.couleur] || COLOR_HEX.jaune }}
         title={`${extrait.slice(0, 120)}${extrait.length > 120 ? '…' : ''} — cliquer pour rouvrir`}
         onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onGeste(true); }}
         onClick={(e) => { e.stopPropagation(); onGeste(false); onModifier(boite, { reduite: false }, 'Réouverture de la boîte'); }}>
@@ -627,7 +662,12 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   }
 
   return (
-    <div ref={boiteRef} className={'note-box' + (active ? ' active' : '')} style={style}>
+    <>
+    {ancre && (
+      <span className="nb-ancre" title={titreAncre}
+        style={{ left: ancre.x * 100 + '%', top: ancre.y * 100 + '%', borderColor: COLOR_HEX[boite.couleur] || COLOR_HEX.jaune }} />
+    )}
+    <div ref={boiteRef} className={'note-box' + (active ? ' active' : '') + (enAncrage ? ' en-ancrage' : '')} style={style}>
       {/* CORRECTIF (défaut 4) : le bandeau est focusable, et c'est LUI qui porte la
           suppression au clavier — plus aucun écouteur global ne peut effacer la
           boîte pendant que le curseur est ailleurs. */}
@@ -640,6 +680,19 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         }}>
         <span className="nb-grip"><Icon name="grip" size={12} /></span>
         <span className="nb-spacer" />
+        <button type="button" className={'nb-btn' + (ancre ? ' actif' : '') + (enAncrage ? ' vise' : '')}
+          title={enAncrage ? 'Viser annulé si tu recliques (ou Échap)' : ancre ? `${titreAncre} — cliquer pour viser un autre endroit` : 'Rattacher la boîte à un endroit précis de la fiche'}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onDemanderAncrage(enAncrage ? null : boite.id); }}>
+          <Icon name="target" size={12} />
+        </button>
+        {ancre && (
+          <button type="button" className="nb-btn" title="Détacher la boîte de cet endroit"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onModifier(boite, { ancre: null, fleche: false }, 'Détachement de la boîte'); }}>
+            <Icon name="x" size={12} />
+          </button>
+        )}
         <button type="button" className="nb-btn" title="Réduire en pastille (un clic sur la pastille la rouvre)"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onModifier(boite, { reduite: true }, 'Réduction de la boîte'); }}>
@@ -659,6 +712,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
 
       <div className="nb-corner" title="Glisser pour redimensionner" onPointerDown={(e) => demarrer(e, 'resize')} />
     </div>
+    </>
   );
 }
 

@@ -167,7 +167,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (id === 'surligneur' && pending && window.getSelection && !window.getSelection().isCollapsed) {
       commitHighlightAvec(pending, couleurActive);
     }
-    setOutil(id); setPending(null); setEditingHl(null); if (id !== 'main') setActiveEditId(null);
+    setOutil(id); setPending(null); setEditingHl(null); setAncrageBoiteId(null); if (id !== 'main') setActiveEditId(null);
   };
 
   const [search, setSearch] = useState('');
@@ -738,6 +738,17 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (patch.reduite && activeEditId === b.id) setActiveEditId(null); // on replie : on quitte l'édition
     await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, ...patch }, libelle));
   };
+  /* ANCRAGE (demande du 30/09) : « viser » l'endroit de la page auquel la boîte se
+     rapporte. `ancrageBoiteId` = la boîte qui attend son point ; la page concernée
+     pose alors une couche de visée au-dessus de tout (voir PdfPage). Échap, ou
+     changer d'outil, annule. */
+  const [ancrageBoiteId, setAncrageBoiteId] = useState(null);
+  useEffect(() => {
+    if (!ancrageBoiteId) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setAncrageBoiteId(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [ancrageBoiteId]);
   const changerCouleurBoite = async (b, couleur) => {
     const actuel = boiteFraiche(b.id, b);
     if (!actuel || actuel.couleur === couleur) return;
@@ -1006,6 +1017,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onMajBoite={majBoite}
                       onSupprimerBoite={supprimerBoite}
                       onModifierBoite={modifierBoite}
+                      ancrageBoiteId={ancrageBoiteId} onDemanderAncrage={setAncrageBoiteId}
                       pageWidth={w}
                       activeEditId={activeEditId}
                       matches={matchesByPage[n] || EMPTY_ARRAY}
