@@ -1383,3 +1383,33 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
    thème, garde la sienne. */
 .srcmgr-cats .cat-badge > span:empty { display: none; }
 .imp-field > .row > label { font-size: 12px !important; color: var(--text-2) !important; font-weight: 500 !important; text-transform: none !important; letter-spacing: 0 !important; }
+
+/* ============================================================
+   SIDEBARS Bibliothèque + Réviser — UN CRAN PLUS GRAND (demande du 30/09) :
+   « parfait, juste un peu trop petit ». Même disposition, mêmes éléments, même
+   comportement : seules les tailles montent d'environ 15 % (lignes 30 → 34 px,
+   textes +1 px, icônes +2 px, retrait 16 → 18 px). Largeur de la liste de la
+   Bibliothèque 340 → 370 px pour que les noms plus grands gardent leur place.
+   ============================================================ */
+.lt-rangee { height: 34px; gap: 7px; padding: 0 7px 0 5px; font-size: 14px; }
+.lt-sec { height: 32px; }
+.lt-sec .lt-nom { font-size: 11.5px; }
+.lt-mat .lt-nom { font-size: 15px; }
+.lt-dos .lt-nom { font-size: 14.5px; }
+.lt-fiche .lt-nom { font-size: 14px; }
+.lt-rangee svg.lt-pli { flex: 0 0 16px; width: 16px; height: 16px; }
+.lt-rangee svg.lt-ic { width: 16px; height: 16px; }
+.lt-pli { flex-basis: 16px; width: 16px; }
+.lt-point { flex: 0 0 9px; width: 9px; height: 9px; }
+.lt-compte { height: 19px; line-height: 19px; font-size: 11.5px; min-width: 22px; }
+.lt-actions :is(.cd-ic, .src-mute) { width: 27px !important; height: 27px !important; }
+.lt-actions svg, .lt-actions .src-mute svg { width: 16px; height: 16px; }
+.lt-enfants { margin-left: 12px; padding-left: 6px; }
+.lt-enfants-sec { margin-left: 0; padding-left: 0; }
+.lt-vide { font-size: 12px; padding-left: 28px; }
+.lt-ajout { font-size: 13.5px !important; }
+.lt-coche { flex-basis: 16px; width: 16px; height: 34px; }
+.lt-coche .tc-box { width: 15px; height: 15px; }
+.lt-arbre .due-badge.sm { font-size: 11.5px; }
+:is(.lib-tree, .lt-arbre) :is(.srcmgr-input, .tree-rename) { height: 27px; font-size: 14px; }
+.lib-master { flex-basis: 370px; }
