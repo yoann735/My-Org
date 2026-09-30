@@ -22,10 +22,8 @@ import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import { openPdf, pdfjsLib } from '../pdf/pdfjsSetup.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
-import { useTreeFileDrop, FileDropModal } from '../components/TreeFileDrop.jsx';
-import { titreFromFile, titreFromFilename } from '../lib/fileTitre.js';
+import { useImportParDepot } from '../components/TreeFileDrop.jsx';
 import { useTreeOpenState, ancestorDossierIds, trierSections } from '../components/useTreeOpenState.js';
-import { createFicheFromQuestions } from '../lib/import.js';
 
 /** formate un temps par carte (ms) en texte court — secondes sous la minute,
     "Xm Ys" au-delà (rare pour une flashcard). */
@@ -761,10 +759,9 @@ export function Reviser({ ctx }) {
      la modale minimale. Le reste est le chemin d'import EXISTANT, à l'identique :
      putBlob (storage.js) → createFicheFromQuestions avec items: [] (lib/import.js,
      cas « fiche HTML seule » déjà utilisé par Dashboard.jsx quand aucun JSON n'est
-     collé), à qui l'on précise juste le dossier de destination (voir confirmFileDrop).
+     collé), à qui l'on précise juste le dossier de destination — code partagé avec la
+     Bibliothèque (TreeFileDrop.jsx#useImportParDepot).
      ============================================================ */
-  const [fileDrop, setFileDrop] = useState(null); // { file, kind, matiereId, dossierId, titre, date, ignored }
-  const [fileDropBusy, setFileDropBusy] = useState(false);
   const [dropHint, setDropHint] = useState(null); // { text, ok } — message transitoire sous l'en-tête de l'arbre
   const hintTimer = useRef(null);
   const flashHint = (text, ok = false) => {
@@ -781,70 +778,13 @@ export function Reviser({ ctx }) {
     else setOpenDossier((o) => (o[s.id] ? o : { ...o, [s.id]: true }));
   };
 
-  // un dépôt = UN fichier (v1) : le premier document exploitable, les autres sont
-  // annoncés dans la modale, jamais avalés en silence.
-  const onTreeFiles = async ({ files, matiereId, dossierId }) => {
-    if (!files.length) return;
-    if (!matiereId) {
-      // l'arbre ne montre que les matières qui portent déjà au moins une fiche
-      // (filtre inchangé) : une ligne de cours, ou le vide entre deux blocs, n'a
-      // pas de destination — on le dit plutôt que de ne rien faire.
-      flashHint('Aucune destination ici — dépose la fiche sur une matière ou un dossier.');
-      return;
-    }
-    const docs = files.filter((f) => detectDocKind(f));
-    if (!docs.length) { flashHint('Seuls les fichiers HTML et PDF peuvent être importés ici.'); return; }
-    const file = docs[0];
-    const kind = detectDocKind(file);
-    // lecture SEULE du HTML (DOMParser, aucun script exécuté — voir lib/fileTitre.js)
-    const titre = await titreFromFile(file, kind);
-    setDropHint(null);
-    setFileDrop({ file, kind, matiereId, dossierId: dossierId || null, titre, date: todayISO(), ignored: files.length - 1 });
-  };
-
-  const fd = useTreeFileDrop({ onSpring: springOpen, onFiles: onTreeFiles });
-
-  // libellé de destination affiché dans la modale (Cours / Matière / Unité / Chapitre)
-  const fileDropDest = () => {
-    if (!fileDrop) return '';
-    const mat = ix.mById[fileDrop.matiereId] || null;
-    const src = mat ? db.sources.find((x) => x.id === mat.sourceId) : null;
-    const dos = fileDrop.dossierId ? db.dossiers.find((d) => d.id === fileDrop.dossierId) : null;
-    const parent = dos && dos.parentId ? db.dossiers.find((d) => d.id === dos.parentId) : null;
-    return [src && src.nom, mat && matiereMeta(mat).label, parent && parent.nom, dos && dos.nom].filter(Boolean).join(' / ');
-  };
-
-  const confirmFileDrop = async () => {
-    if (!fileDrop || fileDropBusy) return;
-    const { file, kind, matiereId, dossierId, titre, date } = fileDrop;
-    setFileDropBusy(true);
-    try {
-      const blobId = await putBlob(file);
-      // rang de fin dans le bucket visé — même tri que partout (ordre ?? 0), pour que
-      // la fiche importée se pose SOUS celles qui y sont déjà.
-      const voisines = db.fiches.filter((f) => f.matiereId === matiereId && (f.dossierId || null) === (dossierId || null) && !f.archive);
-      const ordre = voisines.length ? Math.max(...voisines.map((f) => f.ordre ?? 0)) + 1 : 0;
-      // le rattachement est posé DÈS LA CRÉATION (dossierId/ordre) plutôt qu'après coup
-      // par ctx.moveFicheTo : ce dernier cherche la fiche dans le `db` du rendu courant,
-      // où celle qu'on vient de créer ne figure pas encore — il sortirait sans rien faire.
-      const r = await createFicheFromQuestions({
-        matiereId, dossierId, ordre, items: [],
-        titre: titre.trim() || titreFromFilename(file.name),
-        htmlId: kind === 'html' ? blobId : null, htmlName: kind === 'html' ? file.name : null,
-        pdfId: kind === 'pdf' ? blobId : null, pdfName: kind === 'pdf' ? file.name : null,
-        startDate: date,
-      });
-      await ctx.reload();
-      setFileDrop(null);
-      setSelChapitre(null);
-      setSelIds([r.fiche.id]); // la fiche importée devient la sélection : son cours est à un clic
-      flashHint(`« ${r.fiche.titre} » importée.`, true);
-    } catch (e) {
-      flashHint("L'import a échoué — le fichier n'a pas pu être enregistré.");
-    } finally {
-      setFileDropBusy(false);
-    }
-  };
+  // tout le chemin d'import (formats, modale, putBlob → createFicheFromQuestions)
+  // est partagé avec la Bibliothèque : components/TreeFileDrop.jsx#useImportParDepot.
+  const { fd, modale: modaleDepot } = useImportParDepot(ctx, {
+    onSpring: springOpen,
+    annoncer: flashHint,
+    onImporte: (fiche) => { setSelChapitre(null); setSelIds([fiche.id]); }, // la fiche importée devient la sélection : son cours est à un clic
+  });
 
   // création d'une unité / d'un chapitre : créé immédiatement (nom par défaut) puis
   // bascule tout de suite en renommage — même geste que Bibliotheque.jsx, aux deux
@@ -1594,16 +1534,7 @@ export function Reviser({ ctx }) {
 
       {/* pop-up MINIMAL de l'import par glisser-déposer : titre pré-rempli
          (modifiable) + date de J0, rien d'autre. Rien n'est écrit avant « Importer ». */}
-      {fileDrop && (
-        <FileDropModal
-          file={fileDrop.file} kind={fileDrop.kind} destLabel={fileDropDest()}
-          titre={fileDrop.titre} onTitre={(v) => setFileDrop((d) => ({ ...d, titre: v }))}
-          date={fileDrop.date} onDate={(v) => setFileDrop((d) => ({ ...d, date: v }))}
-          ignored={fileDrop.ignored} busy={fileDropBusy}
-          onCancel={() => { if (!fileDropBusy) setFileDrop(null); }}
-          onConfirm={confirmFileDrop}
-        />
-      )}
+      {modaleDepot}
 
       {addItemFiche && ix.fById[addItemFiche] && (
         <AddItemModal ctx={ctx} ficheId={addItemFiche} ficheTitre={ix.fById[addItemFiche].titre} onClose={() => setAddItemFiche(null)} />

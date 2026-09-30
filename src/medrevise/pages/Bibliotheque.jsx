@@ -8,11 +8,12 @@
    (props embedded/onClose, voir ces fichiers). Layout master-detail
    responsive (`.lib-split`, voir etudes.css).
    ============================================================ */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DropCible, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
 import { useTreeOpenState, trierSections, deplacerSection } from '../components/useTreeOpenState.js';
+import { useImportParDepot } from '../components/TreeFileDrop.jsx';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
 import { docKind, DOC_META, createTranscript, deleteTranscript } from '../documents/lib/documents.js';
@@ -69,6 +70,32 @@ export function Bibliotheque({ ctx }) {
   // précédé d'un putBackup) — avec une confirmation qui dit tout ce qui bouge.
   const [matMenu, setMatMenu] = useState(null); // { x, y, matiereId }
   const [confirmDeleteMatiere, setConfirmDeleteMatiere] = useState(null); // { matiere, fiches, dossiers, cartes }
+
+  /* IMPORT PAR DÉPÔT D'UN FICHIER (Finder) SUR L'ARBRE — exactement le mécanisme de
+     Réviser, par le MÊME code (TreeFileDrop.jsx#useImportParDepot) : lâché sur un
+     dossier → la fiche est créée DANS ce dossier ; sur une matière → à sa racine ;
+     survol prolongé d'une section/d'un dossier fermé → il s'ouvre. Canal HTML5
+     natif, disjoint du glisser-déposer interne des fiches (dnd-kit). */
+  const [annonce, setAnnonce] = useState(null); // { texte, ok }
+  const annonceTimer = useRef(null);
+  const annoncer = (texte, ok = false) => {
+    setAnnonce({ texte, ok });
+    if (annonceTimer.current) clearTimeout(annonceTimer.current);
+    annonceTimer.current = setTimeout(() => setAnnonce(null), 5000);
+  };
+  useEffect(() => () => { if (annonceTimer.current) clearTimeout(annonceTimer.current); }, []);
+  const { fd, modale: modaleDepot } = useImportParDepot(ctx, {
+    onSpring: (sp) => {
+      if (sp.type === 'source') setOpenSrc((o) => (o[sp.id] !== false ? o : { ...o, [sp.id]: true }));
+      else setOpenDossier((o) => (o[sp.id] ? o : { ...o, [sp.id]: true }));
+    },
+    annoncer,
+    // la fiche importée reste visible là où on l'a lâchée : son dossier (et son parent) ouverts
+    onImporte: (fiche) => {
+      const d = fiche.dossierId && db.dossiers.find((x) => x.id === fiche.dossierId);
+      if (d) setOpenDossier((o) => ({ ...o, [d.id]: true, ...(d.parentId ? { [d.parentId]: true } : {}) }));
+    },
+  });
   const createMatiere = async (sourceId) => {
     const id = await ctx.addMatiere(sourceId, 'Nouvelle matière');
     if (id) startRename('matiere', id, 'Nouvelle matière');
@@ -255,7 +282,8 @@ export function Bibliotheque({ ctx }) {
       : isSchema ? `Schéma · ${schemaViews(f) > 1 ? schemaViews(f) + ' vues · ' : ''}${schemaCoches(f)} coche${schemaCoches(f) > 1 ? 's' : ''}`
         : `${f.priseDeNotes ? 'Prise de notes · ' : ''}${count(f.id, 'qcm')} QCM · ${count(f.id, 'flashcard')} flash${isAnat ? ' · images' : ''}`;
     return (
-      <div key={f.id}>
+      <div key={f.id} className={fd.dropClass('fiche:' + f.id).trim()}
+        {...fd.dropProps({ key: 'fiche:' + f.id, matiereId: f.matiereId, dossierId: f.dossierId || null })}>
         <DropSlot matiereId={f.matiereId} dossierId={f.dossierId || null} beforeId={f.id} />
         <DraggableFiche id={f.id} disabled={isRen('fiche', f.id)} className={'lib-fiche' + (isSel ? ' selected' : '')}>
           {isRen('fiche', f.id) ? (
@@ -394,12 +422,19 @@ export function Bibliotheque({ ctx }) {
             </div></div>
           ) : (
             <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
-            <div className="lib-tree" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="lib-tree" style={{ display: 'flex', flexDirection: 'column', gap: 12 }} {...fd.dropProps({ key: 'tree' })}>
+              {annonce && (
+                <div className={'tree-drop-hint' + (annonce.ok ? ' ok' : '')} role="status">
+                  <Icon name={annonce.ok ? 'check' : 'alert'} size={13} stroke={2.5} />
+                  <span>{annonce.texte}</span>
+                </div>
+              )}
               {(() => { const sections = trierSections(db.sources.filter((s) => !s.archive), ctx.stats); return sections.map((src, iSec) => {
                 const mats = db.matieres.filter((m) => m.sourceId === src.id && !m.archive);
                 const srcOuverte = openSrc[src.id] !== false;
                 return (
-                  <div className={'card lib-section' + (srcOuverte ? '' : ' repliee')} key={src.id}>
+                  <div className={'card lib-section' + (srcOuverte ? '' : ' repliee') + fd.dropClass('src:' + src.id)} key={src.id}
+                    {...fd.dropProps({ key: 'src:' + src.id, spring: { type: 'source', id: src.id } })}>
                     {/* SECTION : clic sur la flèche (ou l'en-tête vide) = replier/déplier,
                        mémorisé et partagé avec Réviser ; ↑/↓ = changer l'ordre (stats). */}
                     <div className="card-head" style={{ color: 'var(--text)' }}>
@@ -431,7 +466,8 @@ export function Bibliotheque({ ctx }) {
                           const rootFiches = allFiches.filter((f) => !f.dossierId);
                           const unites = unitesOf(mat.id);
                           return (
-                            <div key={mat.id} style={{ marginTop: 14 }}>
+                            <div key={mat.id} style={{ marginTop: 14 }} className={fd.dropClass('mat:' + mat.id).trim()}
+                              {...fd.dropProps({ key: 'mat:' + mat.id, matiereId: mat.id })}>
                               {isRen('matiere', mat.id)
                                 ? <div style={{ marginBottom: 8 }}><RenameInput /></div>
                                 : (
@@ -464,7 +500,8 @@ export function Bibliotheque({ ctx }) {
                                 const uniteFiches = allFiches.filter((f) => f.dossierId === u.id);
                                 const uOpen = !!openDossier[u.id];
                                 return (
-                                  <div key={u.id}>
+                                  <div key={u.id} className={fd.dropClass('dos:' + u.id).trim()}
+                                    {...fd.dropProps({ key: 'dos:' + u.id, matiereId: mat.id, dossierId: u.id, spring: { type: 'dossier', id: u.id } })}>
                                     {/* toute la LIGNE du dossier reçoit une fiche lâchée dessus, même
                                        fermé ; un survol prolongé l'ouvre (voir DropCible). */}
                                     <DropCible matiereId={mat.id} dossierId={u.id} onSurvolProlonge={() => setOpenDossier((o) => (o[u.id] ? o : { ...o, [u.id]: true }))}>
@@ -491,7 +528,8 @@ export function Bibliotheque({ ctx }) {
                                           const chapFiches = allFiches.filter((f) => f.dossierId === c.id);
                                           const cOpen = !!openDossier[c.id];
                                           return (
-                                            <div key={c.id}>
+                                            <div key={c.id} className={fd.dropClass('dos:' + c.id).trim()}
+                                              {...fd.dropProps({ key: 'dos:' + c.id, matiereId: mat.id, dossierId: c.id, spring: { type: 'dossier', id: c.id } })}>
                                               <DropCible matiereId={mat.id} dossierId={c.id} onSurvolProlonge={() => setOpenDossier((o) => (o[c.id] ? o : { ...o, [c.id]: true }))}>
                                               <DossierRow dossier={c} isOpen={cOpen} fichesCount={chapFiches.length}
                                                 isRenaming={isRen('dossier', c.id)} renameInput={<RenameInput />}
@@ -546,6 +584,8 @@ export function Bibliotheque({ ctx }) {
           ) : null}
         </div>
       </div>
+
+      {modaleDepot}
 
       {etqMenu && (
         <ContextMenu x={etqMenu.x} y={etqMenu.y} onClose={() => setEtqMenu(null)}

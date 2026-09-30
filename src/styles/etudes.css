@@ -1196,7 +1196,8 @@
    à voir avec .dnd-slot/.dnd-zone (glisser INTERNE des fiches, @dnd-kit) : les deux
    ne peuvent pas être actifs en même temps (canaux d'événements disjoints). La plus
    profonde des cibles l'emporte — chapitre > unité > matière > arbre. */
-.tree-card .file-drop-over {
+.tree-card .file-drop-over,
+.lib-tree .file-drop-over {
   outline: 2px dashed var(--accent);
   outline-offset: -2px;
   border-radius: var(--r, 10px);
@@ -1593,3 +1594,4 @@
 .ranger-dlg .ranger-champ > span { font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3, var(--muted)); }
 .ranger-dlg .ranger-chemin { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2, rgba(127,127,127,.08)); color: var(--text-2, inherit); }
 .pdn-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
+.lib-tree .tree-drop-hint { margin: 0; }

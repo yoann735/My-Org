@@ -20,7 +20,13 @@
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Modal } from './ui.jsx';
+import { Modal, detectDocKind, matiereMeta } from './ui.jsx';
+import { putBlob } from '../lib/storage.js';
+import { todayISO } from '../lib/sm2.js';
+import { titreFromFile, titreFromFilename } from '../lib/fileTitre.js';
+import { createFicheFromQuestions } from '../lib/import.js';
+import { estImage, ordonnerImages, imagesToPdf } from '../lib/imageToPdf.js';
+import { estBureautique } from '../lib/noteImport.js';
 
 /** délai d'ouverture au survol prolongé — le Finder se situe autour de 500-700 ms. */
 export const SPRING_DELAY = 600;
@@ -119,7 +125,7 @@ export function useTreeFileDrop({ onSpring, onFiles }) {
    écrans d'import — un date-picker identique à celui de l'aperçu d'import
    (components/ImportFlow.jsx). RIEN n'est écrit tant qu'« Importer » n'est pas
    cliqué : annuler laisse la base exactement dans son état d'avant. ---- */
-export function FileDropModal({ file, kind, destLabel, titre, onTitre, date, onDate, ignored = 0, busy, onCancel, onConfirm }) {
+export function FileDropModal({ file, kind, destLabel, titre, onTitre, date, onDate, ignored = 0, nbImages = 0, busy, onCancel, onConfirm }) {
   const canImport = !busy && !!titre.trim();
   return (
     <Modal title="Importer cette fiche" width="min(460px, 94vw)" onClose={onCancel}>
@@ -127,6 +133,11 @@ export function FileDropModal({ file, kind, destLabel, titre, onTitre, date, onD
         <Icon name={kind === 'html' ? 'fileHtml' : 'filePdf'} size={16} />
         <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
       </div>
+      {nbImages > 0 && (
+        <div className="hint" style={{ marginBottom: 8 }}>
+          {nbImages > 1 ? `${nbImages} images → un PDF de ${nbImages} pages (ordre des noms de fichier).` : 'Image → un PDF d’une page.'}
+        </div>
+      )}
       <div className="hint" style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
         <Icon name="folder" size={12} /> {destLabel}
       </div>
@@ -156,4 +167,110 @@ export function FileDropModal({ file, kind, destLabel, titre, onTitre, date, onD
       </div>
     </Modal>
   );
+}
+
+/* ============================================================
+   IMPORT PAR DÉPÔT SUR UN ARBRE — la logique COMPLÈTE, partagée par Réviser et la
+   Bibliothèque (auparavant écrite dans Reviser.jsx seul) : un dépôt → la modale
+   minimale → putBlob → createFicheFromQuestions (items: [], dossier visé posé dès
+   la création). Aucune fiche n'est écrite avant « Importer ».
+
+   Formats : PDF et HTML comme avant ; IMAGES (une ou plusieurs) converties en un
+   PDF, par la conversion déjà utilisée par Prise de notes (lib/imageToPdf.js) ;
+   Word/PowerPoint/Keynote refusés AVEC l'explication (pas de conversion fiable
+   hors ligne — même message que Prise de notes).
+
+   @param ctx
+   @param onSpring   déplier une section/un dossier au survol prolongé
+   @param annoncer   (texte, ok) → message transitoire à l'écran
+   @param onImporte  (fiche) → après un import réussi (sélection, ouverture…)
+   @returns { fd, modale } — `fd` = useTreeFileDrop (dropProps/dropClass),
+            `modale` = l'élément à rendre (null si aucun dépôt en cours)
+   ============================================================ */
+export function useImportParDepot(ctx, { onSpring, annoncer, onImporte }) {
+  const { db } = ctx;
+  const [depot, setDepot] = useState(null); // { file, fichiers?, kind, matiereId, dossierId, titre, date, ignored }
+  const [occupe, setOccupe] = useState(false);
+
+  const onFiles = async ({ files, matiereId, dossierId }) => {
+    if (!files.length) return;
+    if (!matiereId) { annoncer('Aucune destination ici — dépose le fichier sur une matière ou un dossier.'); return; }
+    const docs = files.filter((f) => detectDocKind(f));
+    const images = files.filter((f) => !detectDocKind(f) && estImage(f));
+    const bureau = files.find(estBureautique);
+    if (!docs.length && !images.length) {
+      annoncer(bureau
+        ? `« ${bureau.name} » ne se convertit pas proprement hors ligne : exporte-le en PDF (Fichier → Exporter au format PDF), puis dépose le PDF.`
+        : 'Formats acceptés : PDF, HTML ou images.');
+      return;
+    }
+    if (docs.length) {
+      const file = docs[0];
+      const kind = detectDocKind(file);
+      // lecture SEULE du HTML (DOMParser, aucun script exécuté — voir lib/fileTitre.js)
+      const titre = await titreFromFile(file, kind);
+      setDepot({ file, kind, matiereId, dossierId: dossierId || null, titre, date: todayISO(), ignored: files.length - 1 });
+      return;
+    }
+    const ordonnees = ordonnerImages(images);
+    setDepot({ file: ordonnees[0], fichiers: ordonnees, kind: 'images', matiereId, dossierId: dossierId || null,
+      titre: titreFromFilename(ordonnees[0].name), date: todayISO(), ignored: files.length - images.length });
+  };
+
+  const fd = useTreeFileDrop({ onSpring, onFiles });
+
+  // destination affichée : Section / Matière / Dossier / Sous-dossier
+  const destination = () => {
+    if (!depot) return '';
+    const mat = (db.matieres || []).find((m) => m.id === depot.matiereId) || null;
+    const src = mat ? db.sources.find((x) => x.id === mat.sourceId) : null;
+    const dos = depot.dossierId ? db.dossiers.find((d) => d.id === depot.dossierId) : null;
+    const parent = dos && dos.parentId ? db.dossiers.find((d) => d.id === dos.parentId) : null;
+    return [src && src.nom, mat && matiereMeta(mat).label, parent && parent.nom, dos && dos.nom].filter(Boolean).join(' / ');
+  };
+
+  const confirmer = async () => {
+    if (!depot || occupe) return;
+    const { file, fichiers, kind, matiereId, dossierId, titre, date } = depot;
+    setOccupe(true);
+    try {
+      const estImages = kind === 'images';
+      const blobId = await putBlob(estImages ? await imagesToPdf(fichiers) : file);
+      const nomPdf = estImages ? `${(titre.trim() || titreFromFilename(file.name))}.pdf` : file.name;
+      // rang de fin dans le bucket visé — même tri que partout (ordre ?? 0), pour que
+      // la fiche importée se pose SOUS celles qui y sont déjà.
+      const voisines = db.fiches.filter((f) => f.matiereId === matiereId && (f.dossierId || null) === (dossierId || null) && !f.archive);
+      const ordre = voisines.length ? Math.max(...voisines.map((f) => f.ordre ?? 0)) + 1 : 0;
+      // le rattachement est posé DÈS LA CRÉATION (dossierId/ordre) plutôt qu'après coup
+      // par ctx.moveFicheTo : ce dernier cherche la fiche dans le `db` du rendu courant,
+      // où celle qu'on vient de créer ne figure pas encore — il sortirait sans rien faire.
+      const r = await createFicheFromQuestions({
+        matiereId, dossierId, ordre, items: [],
+        titre: titre.trim() || titreFromFilename(file.name),
+        htmlId: kind === 'html' ? blobId : null, htmlName: kind === 'html' ? file.name : null,
+        pdfId: kind !== 'html' ? blobId : null, pdfName: kind !== 'html' ? nomPdf : null,
+        startDate: date,
+      });
+      await ctx.reload();
+      setDepot(null);
+      annoncer(`« ${r.fiche.titre} » importée.`, true);
+      if (onImporte) onImporte(r.fiche);
+    } catch (e) {
+      annoncer("L'import a échoué — le fichier n'a pas pu être enregistré.");
+    } finally {
+      setOccupe(false);
+    }
+  };
+
+  const modale = depot ? (
+    <FileDropModal
+      file={depot.file} kind={depot.kind === 'html' ? 'html' : 'pdf'} destLabel={destination()}
+      titre={depot.titre} onTitre={(v) => setDepot((d) => ({ ...d, titre: v }))}
+      date={depot.date} onDate={(v) => setDepot((d) => ({ ...d, date: v }))}
+      ignored={depot.ignored} nbImages={depot.kind === 'images' ? depot.fichiers.length : 0} busy={occupe}
+      onCancel={() => { if (!occupe) setDepot(null); }}
+      onConfirm={confirmer} />
+  ) : null;
+
+  return { fd, modale };
 }
