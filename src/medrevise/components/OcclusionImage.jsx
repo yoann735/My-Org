@@ -12,7 +12,7 @@
    - une ZONE dessinée (rectangle, ellipse, polygone, pinceau) = un MASQUE à
      deviner. Recto : opaque, marqué « ? ». Verso : contour + sa réponse (le texte
      de la zone, facultatif) ;
-   - une ÉTIQUETTE (outil « Coche ») = un TEXTE posé sur l'image, visible des
+   - une ÉTIQUETTE (outil « Texte », « Coche » dans l'anatomie) = un TEXTE posé sur l'image, visible des
      deux côtés.
 
    STOCKAGE : une flashcard ORDINAIRE (type 'flashcard', recto/verso) qui porte en
@@ -194,13 +194,15 @@ export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, on
 
   return (
     <Modal title={initial ? 'Modifier la flashcard image' : 'Nouvelle flashcard image'} onClose={confirmerFermeture ? () => {} : demanderFermeture} width="min(1180px, 96vw)">
+      {/* la règle, en UNE ligne */}
       <div className="occ-aide">
-        <span><b>1.</b> Colle une capture (<kbd>⌘V</kbd>), glisse ou choisis une image.</span>
-        <span><b>2.</b> <span className="occ-puce masque" /> Dessine une <b>zone</b> (Rectangle, Ellipse, Pinceau…) = un <b>masque à deviner</b> — écris sa réponse dans son texte.</span>
-        <span><b>3.</b> <span className="occ-puce texte" /> Outil <b>Coche</b> : clique un endroit = un <b>texte</b> visible sur l’image.</span>
+        <span><kbd>⌘V</kbd> colle une capture (ou glisse / choisis une image)</span>
+        <span><span className="occ-puce masque" /> <b>Zone</b> (Rectangle, Ellipse…) = <b>masque à deviner</b> — écris sa réponse</span>
+        <span><span className="occ-puce texte" /> <b>Texte</b> = visible sur l’image</span>
       </div>
 
-      <SchemaEditor image={image} setImage={choisirImage} coches={coches} setCoches={setCoches} sansExport variante="flashcard" />
+      <SchemaEditor image={image} setImage={choisirImage} coches={coches} setCoches={setCoches} sansExport variante="flashcard"
+        imageMaxH="max(220px, calc(86vh - 350px))" />
 
       <div className="occ-champs">
         <div className="imp-field">

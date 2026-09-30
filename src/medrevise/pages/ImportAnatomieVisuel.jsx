@@ -278,7 +278,9 @@ export function ImportAnatomieVisuel({ ctx }) {
 // Absent : comportement de l'anatomie strictement inchangé.
 // `variante='flashcard'` (facultatif) : panneau de coche simplifié (Masque / Texte,
 // sans théorie ni synonymes). Absent : anatomie inchangée.
-export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = false, variante = null }) {
+// `imageMaxH` (facultatif) : hauteur maximale de l'image affichée (défaut inchangé).
+export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = false, variante = null, imageMaxH = 'min(64vh, 600px)' }) {
+  const compact = variante === 'flashcard';
   const frameRef = useRef(null);
   const outerRef = useRef(null); // B — cadre visible (overflow:hidden) : reçoit le listener wheel natif
   const [mode, setMode] = useState('select'); // select | point | brush | line | rect | ellipse | poly
@@ -695,6 +697,38 @@ export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = 
   return (
     <div>
       {/* barre d'outils */}
+      {compact ? (
+        /* VARIANTE COMPACTE (flashcard image) : UNE ligne d'outils — icône + mot court,
+           l'explication de chaque outil dans son infobulle — et, seulement pendant qu'on
+           dessine, UNE ligne de style. Plus d'encadré, plus de curseurs pleine largeur. */
+        <div className="sc-barre">
+          <div className="seg sc-seg">
+            <button type="button" className={'seg-btn' + (mode === 'select' ? ' active' : '')} onClick={() => setMode('select')} title="Sélection : clique une étiquette pour la modifier, glisse le fond pour te déplacer"><Icon name="grip" size={13} /> Sélection</button>
+            <button type="button" className={'seg-btn' + (mode === 'point' ? ' active' : '')} onClick={() => setMode('point')} title="Coche : clique l'image pour y poser un TEXTE visible"><Icon name="target" size={13} /> Texte</button>
+          </div>
+          <div className="seg sc-seg">
+            {DRAW_TOOLS.map((t) => (
+              <button key={t.key} type="button" className={'seg-btn' + (mode === t.key ? ' active' : '')} onClick={() => selectTool(t.key)} title={`${t.label} — ${TOOL_HINT[t.key]} (= un MASQUE à deviner)`}><Icon name={t.icon} size={13} /> {t.label}</button>
+            ))}
+          </div>
+          <div style={{ flex: 1 }} />
+          <label className="btn ghost sm" style={{ cursor: 'pointer' }} title="Remplacer l'image (les masques et textes sont gardés)">
+            <Icon name="image" size={13} /> Changer
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => setImage(e.target.files[0])} />
+          </label>
+          <div className="seg sc-seg" title="Zoom (molette, Ctrl/Cmd+molette, ou boutons)">
+            <button type="button" className="seg-btn" disabled={scale <= ZOOM_MIN + 0.001} onClick={() => zoomAtCenter(scale / ZOOM_STEP)} title="Dézoomer"><Icon name="minus" size={13} /></button>
+            <button type="button" className="seg-btn" onClick={resetZoom} title="Ajuster : l'image entière" style={{ minWidth: 48, justifyContent: 'center' }}>{Math.round(scale * 100)}%</button>
+            <button type="button" className="seg-btn" disabled={scale >= ZOOM_MAX - 0.001} onClick={() => zoomAtCenter(scale * ZOOM_STEP)} title="Zoomer"><Icon name="plus" size={13} /></button>
+          </div>
+          {DRAW_TOOLS.some((t) => t.key === mode) && (
+            <div className="sc-style-ligne">
+              <StyleControls compact value={style} onChange={(patch) => setStyle((s) => ({ ...s, ...patch }))} allowFill={mode !== 'line'} />
+            </div>
+          )}
+          {mode === 'point' && <div className="sc-aide">Clique un endroit de l'image pour y poser un texte. Repasse en « Sélection » pour le modifier.</div>}
+        </div>
+      ) : (<>
       <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <div className="seg">
           <button type="button" className={'seg-btn' + (mode === 'select' ? ' active' : '')} onClick={() => setMode('select')}><Icon name="grip" size={13} /> Sélection</button>
@@ -738,12 +772,14 @@ export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = 
         </div>
       )}
 
+      </>)}
+
       {/* zone image + overlay — B : image CADRÉE pour tenir entièrement (fit-to-container),
           sans scroll obligatoire. Le cadre (frameRef) épouse exactement l'image affichée,
           donc les coordonnées relatives (% de frameRef) restent alignées. */}
       <div ref={outerRef} style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-2)', display: 'flex', justifyContent: 'center' }}>
         <div ref={frameRef} style={{ position: 'relative', maxWidth: '100%', minWidth: 0, lineHeight: 0, transform: (scale !== 1 || pan.x || pan.y) ? `translate(${pan.x}px, ${pan.y}px) scale(${scale})` : undefined, transformOrigin: '0 0', cursor: panning ? 'grabbing' : (spaceDown || mode === 'select') ? 'grab' : (mode === 'point' || DRAW_TOOLS.some((t) => t.key === mode)) ? 'crosshair' : 'default', touchAction: 'none' }} onPointerDown={onFrameDown} onDoubleClick={() => { if (mode === 'poly') setDraftPoly((pts) => { finishPoly(pts); return null; }); }}>
-          <img src={image.url} alt="schéma" draggable={false} style={{ display: 'block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: 'min(64vh, 600px)', userSelect: 'none' }} />
+          <img src={image.url} alt="schéma" draggable={false} style={{ display: 'block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: imageMaxH, userSelect: 'none' }} />
 
           {/* ZONES — sous les flèches/libellés */}
           <ZonesLayer coches={coches} selectedId={selectedId} mode={mode} onZonePointerDown={startZoneDrag} />
@@ -862,9 +898,9 @@ export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = 
         </div>
       </div>
 
-      <div className="hint" style={{ marginTop: 10 }}>
+      {!compact && <div className="hint" style={{ marginTop: 10 }}>
         <Icon name="info" size={13} /> Positions en coordonnées relatives — le zoom ne désaligne rien. Molette ou Ctrl/Cmd+molette pour zoomer, boutons +/-, ou <strong>clic-glissé sur le fond</strong> pour déplacer la vue (Espace+glisser ou clic molette marchent aussi, y compris avec un outil de dessin actif). L'export image/PDF aplatit tout (archivage/impression seulement) et <strong>n'est pas réimportable en quiz</strong>.
-      </div>
+      </div>}
 
       {theorieFor && (() => {
         const c = coches.find((x) => x.id === theorieFor);
@@ -899,8 +935,9 @@ function FreePicker({ value, onPick, size = 16 }) {
 /* ---- réglages de style d'une zone (remplissage + opacité + contour + épaisseur).
    Réutilisé par la barre de style (formes à venir) et le popover (forme sélectionnée).
    `fill`/`stroke` valant null = « sans ». `allowFill=false` pour le trait. ---- */
-function StyleControls({ value, onChange, allowFill = true }) {
+function StyleControls({ value, onChange, allowFill = true, compact = false }) {
   const v = value || {};
+  if (compact) return <StyleControlsCompact value={v} onChange={onChange} allowFill={allowFill} />;
   const fillOn = allowFill && v.fill != null;
   const strokeOn = v.stroke != null;
   const swatch = (sc, active) => ({ width: 16, height: 16, borderRadius: '50%', background: sc, border: active ? '2px solid var(--text)' : '2px solid transparent', cursor: 'pointer', flex: '0 0 auto' });
@@ -944,6 +981,50 @@ function StyleControls({ value, onChange, allowFill = true }) {
           <span className="hint" style={{ fontSize: 10, width: 22, textAlign: 'right' }}>{v.strokeWidth ?? DEFAULT_STROKE_WIDTH}</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---- STYLE EN UNE LIGNE (créateur de flashcard image) : mêmes réglages que
+   StyleControls — remplissage, opacité, contour, épaisseur — mais en barre
+   d'outils : pastilles, mini-curseurs de 64 px, bascules « sans ». Retour
+   utilisateur : « un slider immense, un espace énorme gâché pour les couleurs ». */
+function StyleControlsCompact({ value: v, onChange, allowFill }) {
+  const fillOn = allowFill && v.fill != null;
+  const strokeOn = v.stroke != null;
+  const pastille = (sc, actif, titre, patch) => (
+    <button key={sc} type="button" title={titre} onClick={() => onChange(patch)} className={'sc-pastille' + (actif ? ' actif' : '')} style={{ background: sc }} />
+  );
+  const bascule = (on, titre, patch) => (
+    <button type="button" className={'sc-bascule' + (on ? '' : ' off')} title={titre} onClick={() => onChange(patch)}>{on ? 'avec' : 'sans'}</button>
+  );
+  const pct = (x) => Math.round(x * 100);
+  return (
+    <div className="sc-ligne">
+      {allowFill && (
+        <div className="sc-groupe" title="Remplissage de la forme">
+          <span className="sc-lbl">Remplir</span>
+          {COLORS.map((sc) => pastille(sc, fillOn && v.fill === sc, `Remplir en ${colorName(sc).toLowerCase()}`, { fill: sc }))}
+          <FreePicker value={v.fill} size={16} onPick={(hex) => onChange({ fill: hex })} />
+          {bascule(fillOn, fillOn ? 'Sans remplissage' : 'Avec remplissage', { fill: fillOn ? null : DEFAULT_COLOR })}
+          {fillOn && (
+            <label className="sc-mini" title={`Opacité du remplissage : ${pct(v.fillOpacity ?? DEFAULT_ZONE_OPACITY)} %`}>
+              <Icon name="drop" size={11} />
+              <input type="range" min="5" max="100" value={pct(v.fillOpacity ?? DEFAULT_ZONE_OPACITY)} onChange={(e) => onChange({ fillOpacity: Number(e.target.value) / 100 })} />
+            </label>
+          )}
+        </div>
+      )}
+      <div className="sc-groupe" title="Contour de la forme">
+        <span className="sc-lbl">Contour</span>
+        {COLORS.map((sc) => pastille(sc, strokeOn && v.stroke === sc, `Contour ${colorName(sc).toLowerCase()}`, { stroke: sc }))}
+        <FreePicker value={v.stroke} size={16} onPick={(hex) => onChange({ stroke: hex })} />
+        {bascule(strokeOn, strokeOn ? 'Sans contour' : 'Avec contour', { stroke: strokeOn ? null : DEFAULT_COLOR })}
+      </div>
+      <label className="sc-groupe sc-mini" title={`Épaisseur du trait : ${v.strokeWidth ?? DEFAULT_STROKE_WIDTH}`}>
+        <span className="sc-lbl">Épaisseur</span>
+        <input type="range" min="1" max="10" step="0.5" value={v.strokeWidth ?? DEFAULT_STROKE_WIDTH} onChange={(e) => onChange({ strokeWidth: Number(e.target.value) })} />
+      </label>
     </div>
   );
 }
@@ -1062,7 +1143,7 @@ function CochePanel({ coche: c, col, updateCoche, delCoche, onClose, applyZoneSt
             <FreePicker value={col} size={20} onPick={(hex) => updateCoche(c.id, { couleur: hex })} />
           </div>
           {c.kind === 'zone' && (
-            <StyleControls value={zoneStyle(c)} allowFill={c.zone.shape !== 'line'} onChange={(patch) => applyZoneStyle(c, patch)} />
+            <StyleControls compact={simple} value={zoneStyle(c)} allowFill={c.zone.shape !== 'line'} onChange={(patch) => applyZoneStyle(c, patch)} />
           )}
         </div>
       )}

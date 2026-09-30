@@ -1541,8 +1541,8 @@
 .pis-ajout-duo .btn { justify-content: center; }
 .pis-item .occ-view { margin-top: 6px; }
 /* fenêtre d'édition : la règle en trois points, et les champs */
-.occ-aide { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 12px; padding: 10px 12px; border-radius: 10px;
-  background: var(--accent-soft); font-size: 13px; color: var(--text); }
+.occ-aide { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 8px; padding: 6px 10px; border-radius: 8px;
+  background: var(--accent-soft); font-size: 12px; color: var(--text); }
 .occ-aide kbd { font-family: inherit; font-size: 11.5px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--card); }
 .occ-puce { display: inline-block; width: 11px; height: 11px; border-radius: 3px; vertical-align: -1px; margin-right: 2px; }
 .occ-puce.masque { background: #8B6FE8; }
@@ -1550,3 +1550,21 @@
 .occ-champs { display: grid; grid-template-columns: 1.3fr 1.3fr 1fr; gap: 10px; margin-top: 12px; }
 @media (max-width: 800px) { .occ-champs { grid-template-columns: 1fr; } }
 .occ-pied { position: sticky; bottom: -1px; z-index: 12; background: var(--card); padding: 10px 0 2px; margin-top: 10px; border-top: 1px solid var(--border); }
+
+/* ===== CRÉATEUR DE FLASHCARD IMAGE — mise en page (nuit du 30/09, 3e) =====
+   La fenêtre utilise toute sa hauteur (le corps d'une .day-pop est limité à 52vh
+   par défaut) ; l'image est bornée par SchemaEditor#imageMaxH pour tenir entière. */
+.day-pop:has(.occ-aide) .day-pop-body { max-height: none; flex: 1 1 auto; padding-top: 6px; }
+.sc-barre { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.sc-seg .seg-btn { padding: 5px 9px; font-size: 12px; gap: 5px; }
+.sc-style-ligne { flex: 1 0 100%; padding: 5px 8px; border: 1px solid var(--border-2); border-radius: 9px; background: var(--card-2); }
+.sc-aide { flex: 1 0 100%; font-size: 12px; color: var(--accent); }
+.sc-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.sc-groupe { display: inline-flex; align-items: center; gap: 5px; }
+.sc-lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); margin-right: 2px; }
+.sc-pastille { width: 16px; height: 16px; border-radius: 50%; border: 2px solid transparent; padding: 0; cursor: pointer; flex: 0 0 auto; }
+.sc-pastille.actif { border-color: var(--text); box-shadow: 0 0 0 1px var(--card); }
+.sc-bascule { font: inherit; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 6px; border: 1px solid var(--border); background: var(--accent); color: #fff; cursor: pointer; }
+.sc-bascule.off { background: transparent; color: var(--text-3); }
+.sc-mini { display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); }
+.sc-mini input[type=range] { width: 64px; accent-color: var(--accent); }
