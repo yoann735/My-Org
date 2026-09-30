@@ -137,6 +137,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      qu'une chose — si un bloc de remplacement de texte était cliquable — tout en
      portant le nom le plus fort de l'interface. L'outil actif l'a remplacé. */
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 0 });
+  const [pageLue, setPageLue] = useState(1);
   const dpr = useDevicePixelRatio();
 
   const [highlights, setHighlights] = useState([]);
@@ -292,6 +293,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       if (layout.offsets[i] <= bottom) { end = i; break; }
     }
     setVisibleRange({ start: Math.max(0, start), end: Math.max(start, end) });
+    // page LUE : celle qui occupe la ligne de lecture (un tiers du haut de la zone
+    // visible, plafonné). `visibleRange` inclut un écran de marge AU-DESSUS pour
+    // pré-rendre : s'en servir comme page courante donnait toujours la page d'avant,
+    // et « page suivante » renvoyait sur la page déjà affichée (compteur figé).
+    const ligne = el.scrollTop + Math.min(el.clientHeight * 0.33, 240);
+    let lue = 0;
+    for (let i = 0; i < layout.offsets.length; i++) { if (layout.offsets[i] <= ligne) lue = i; else break; }
+    setPageLue(lue + 1);
   };
   useEffect(() => { computeVisibleRange(); }, [layout]);
   const onScroll = () => {
@@ -299,10 +308,18 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     scrollRaf.current = requestAnimationFrame(() => { scrollRaf.current = null; computeVisibleRange(); });
   };
 
-  // page affichée = la première dont le bas dépasse le haut du viewport. Calculée
-  // depuis `visibleRange`, déjà tenue à jour par le défilement : rien de neuf à
-  // observer, donc rien de neuf à désynchroniser.
-  const pageCourante = Math.min(numPages || 1, (visibleRange.start || 0) + 1);
+  // page affichée = celle qui passe sous la ligne de lecture (voir computeVisibleRange),
+  // tenue à jour par le même défilement que le rendu virtualisé.
+  const pageCourante = Math.min(numPages || 1, Math.max(1, pageLue));
+  // aller à une page : son bord haut juste sous la barre, sans la marge de 70 px
+  // qu'utilisent recherche et notions (qui visent une LIGNE, pas une page).
+  const allerALaPage = (n) => {
+    const idx = Math.max(0, Math.min(numPages - 1, n - 1));
+    const el = scrollRef.current;
+    if (!el || layout.offsets[idx] == null) return;
+    el.scrollTop = Math.max(0, layout.offsets[idx] - 8 * scale);
+    computeVisibleRange();
+  };
 
   // « Ajuster à la largeur » : la même formule que l'ajustement automatique de
   // l'écran splitté (voir `ajusterLargeur`), déclenchée à la demande.
@@ -831,7 +848,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
       <PdfToolbar
         onClose={close}
-        pageCourante={pageCourante} numPages={numPages} onAllerPage={(n) => scrollToPageFraction(n, 0)}
+        pageCourante={pageCourante} numPages={numPages} onAllerPage={allerALaPage}
         scale={scale} onZoom={zoomButtons} onAjuster={ajusterALaLargeur}
         outil={outil} setOutil={choisirOutil}
         couleurActive={couleurActive} setCouleurActive={setCouleurActive}
