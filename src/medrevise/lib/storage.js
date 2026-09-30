@@ -311,10 +311,13 @@ export function newNoteBox({ ficheId, page, x, y, width, height, couleur, conten
    `aimant` : le trait a-t-il été lissé et redressé à la pose (voir
    pdf/pdfShared.js#lisserTrait). Informatif : le résultat est déjà dans
    `points`, on ne relisse jamais deux fois. ---- */
-export function newTrait({ ficheId, page, points, couleur, epaisseur, aimant }) {
+export function newTrait({ ficheId, page, points, couleur, epaisseur, aimant, mode }) {
   return {
     id: genId('an'), ficheId, page,
     kind: 'trait',
+    // 'dessin' (fin, doux) | 'surligneur' (épais, translucide). Absent sur les traits
+    // d'avant le 30/09 : lus comme 'dessin' (voir pdfShared#modeDuTrait).
+    mode: mode === 'surligneur' ? 'surligneur' : 'dessin',
     points: points || [],
     couleur: couleur || 'jaune',
     epaisseur: epaisseur || 0.0042,

@@ -65,6 +65,7 @@ import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
   COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI,
   useDevicePixelRatio, compareHighlights, computePageTextMap, EPAISSEURS,
+  MODES_CRAYON, EPAISSEUR_SURLIGNEUR,
 } from './pdfShared.js';
 import { PdfPageContent, EditToolbar } from './PdfPage.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
@@ -152,8 +153,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // structurel, pas une suite de conditions à ne pas oublier.
   const [outil, setOutil] = useState('main'); // main | surligneur | boite | crayon | gomme — actif sur TOUS les écrans depuis l'étape 7
   const [couleurActive, setCouleurActive] = useState('jaune'); // partagée par surligneur, boîte et crayon
-  const [epaisseur, setEpaisseur] = useState(EPAISSEURS[1].id);
-  const [aimant, setAimant] = useState(true); // le lissage est utile par défaut ; décochable
+  const [epaisseur, setEpaisseur] = useState(EPAISSEURS[0].id); // mode dessin : trait FIN par défaut
+  const [aimant, setAimant] = useState(true); // le lissage est utile par défaut ; décochable (mode dessin seulement)
+  const [modeCrayon, setModeCrayon] = useState('dessin'); // dessin (fin, doux) | surligneur (épais, translucide)
   // changer d'outil ferme ce qui appartenait au précédent
   const choisirOutil = (id) => { setOutil(id); setPending(null); setEditingHl(null); if (id !== 'main') setActiveEditId(null); };
 
@@ -720,11 +722,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      relâchement, voir PdfPage) : on ne relisse jamais deux fois, et un trait
      enregistré sans aimant reste brut pour toujours. Une entrée d'historique
      par trait — Cmd+Z efface le trait entier, jamais un bout. */
-  const creerTrait = async ({ page, points }) => {
+  const creerTrait = async ({ page, points, mode = 'dessin' }) => {
     if (!points || points.length < 2) return;
-    const rec = newTrait({ ficheId, page, points, couleur: couleurActive,
-      epaisseur: (EPAISSEURS.find((e) => e.id === epaisseur) || EPAISSEURS[1]).v, aimant });
-    await hist.appliquer(cmdCreer('annotations', rec, 'Trait au crayon'));
+    const surligneur = mode === 'surligneur';
+    const rec = newTrait({ ficheId, page, points, couleur: couleurActive, mode,
+      epaisseur: surligneur ? EPAISSEUR_SURLIGNEUR : (EPAISSEURS.find((e) => e.id === epaisseur) || EPAISSEURS[0]).v,
+      aimant: !surligneur && aimant });
+    await hist.appliquer(cmdCreer('annotations', rec, surligneur ? 'Surligneur à main levée' : 'Trait au crayon'));
   };
   const supprimerTrait = async (t) => {
     if (t) await hist.appliquer(cmdSupprimer('annotations', t, 'Suppression du trait'));
@@ -864,17 +868,30 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         contexteSupplementaire={outil === 'crayon' ? (
           <>
             <span className="ptb-sep" />
-            {EPAISSEURS.map((e) => (
-              <button key={e.id} type="button" title={`Épaisseur ${e.label.toLowerCase()}`}
-                className={'ptb-epaisseur' + (epaisseur === e.id ? ' actif' : '')} onClick={() => setEpaisseur(e.id)}>
-                <span style={{ height: Math.max(2, e.v * 900), width: 22, borderRadius: 3, background: 'currentColor', display: 'block' }} />
-              </button>
-            ))}
-            <span className="ptb-sep" />
-            <button type="button" className={'ptb-bascule' + (aimant ? ' actif' : '')} onClick={() => setAimant((v) => !v)}
-              title="Lisse le tremblement et redresse les traits presque droits. Décoché, le trait est conservé tel qu'il a été tracé.">
-              <Icon name="sparkle" size={13} /> Aimant {aimant ? 'activé' : 'désactivé'}
-            </button>
+            <div className="ptb-segment" role="group" aria-label="Mode du crayon">
+              {MODES_CRAYON.map((m) => (
+                <button key={m.id} type="button" className={modeCrayon === m.id ? 'actif' : ''} onClick={() => setModeCrayon(m.id)}
+                  title={m.id === 'dessin' ? 'Trait fin et doux, pour écrire ou schématiser' : 'Trait épais et translucide, pour surligner à main levée'}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            {modeCrayon === 'dessin' && (
+              <>
+                <span className="ptb-sep" />
+                {EPAISSEURS.map((e) => (
+                  <button key={e.id} type="button" title={`Épaisseur ${e.label.toLowerCase()}`}
+                    className={'ptb-epaisseur' + (epaisseur === e.id ? ' actif' : '')} onClick={() => setEpaisseur(e.id)}>
+                    <span style={{ height: Math.max(2, e.v * 900), width: 22, borderRadius: 3, background: 'currentColor', display: 'block' }} />
+                  </button>
+                ))}
+                <span className="ptb-sep" />
+                <button type="button" className={'ptb-bascule' + (aimant ? ' actif' : '')} onClick={() => setAimant((v) => !v)}
+                  title="Lisse le tremblement et redresse les traits presque droits. Décoché, le trait est conservé tel qu'il a été tracé.">
+                  <Icon name="sparkle" size={13} /> Aimant {aimant ? 'activé' : 'désactivé'}
+                </button>
+              </>
+            )}
           </>
         ) : null}
       />
@@ -919,6 +936,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       couleurTrait={couleurActive}
                       epaisseurTrait={(EPAISSEURS.find((e) => e.id === epaisseur) || EPAISSEURS[1]).v}
                       aimantActif={aimant}
+                      modeCrayon={modeCrayon}
                       outil={outil}
                       onCreerBoite={creerBoite}
                       onMajBoite={majBoite}

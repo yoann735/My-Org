@@ -24,7 +24,8 @@ import {
   COLORS, COLOR_HEX, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT,
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
-  lisserTrait, traitTouche, pointsVersSvg,
+  lisserTrait, traitTouche, cheminLisse, suivreEnDouceur, modeDuTrait,
+  EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR,
 } from './pdfShared.js';
 
 /** rendu d'une seule page (montée uniquement si proche du viewport) : canvas + couche de
@@ -34,7 +35,7 @@ export function PdfPageContent({
   pdfDoc, pageNum, scale, pageHeight, dpr, highlights, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
   onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite,
   onCreerTrait, onSupprimerTrait, cibleHlId,
-  couleurTrait = 'jaune', epaisseurTrait = 0.0042, aimantActif = true,
+  couleurTrait = 'jaune', epaisseurTrait = 0.0042, aimantActif = true, modeCrayon = 'dessin',
 }) {
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
@@ -178,28 +179,54 @@ export function PdfPageContent({
      des milliers de points quasi confondus, pour rien.
      `ratio` = largeur/hauteur de la page : sans lui, l'accrochage angulaire
      redresserait de travers, l'espace normalisé n'étant pas carré. */
+  /* FLUIDITÉ (nuit du 30/09) : l'ancien échantillonnage gardait un point tous les
+     ~3 px et le rendait en segments droits — d'où un trait anguleux. Désormais :
+     1. TOUS les événements du pointeur (getCoalescedEvents : la souris en émet
+        plusieurs par image, le navigateur n'en livre qu'un) ;
+     2. un pas minimal sous le pixel, pour ne garder que ce qui bouge ;
+     3. le STREAMLINE (suivreEnDouceur) qui absorbe le tremblement en direct ;
+     4. un rendu en courbes (cheminLisse), en direct comme une fois enregistré.
+     Le dernier point rejoint la position réelle au relâchement : le trait finit
+     exactement sous le curseur, sans le retard du lissage. */
   const [traitEnCours, setTraitEnCours] = useState(null);
-  const PAS_MIN = 0.0025;
+  const PAS_MIN = 0.0007;
   const demarrerTrait = (e) => {
+    if (e.button !== 0) return;
     e.preventDefault();
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return;
     const ratio = r.width / r.height;
+    const surligneur = modeCrayon === 'surligneur';
     const pt = (ev) => [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)];
     let points = [pt(e)];
+    let brut = points[0];
+    let raf = null;
+    const peindre = () => { raf = null; setTraitEnCours(points); };
     setTraitEnCours(points);
-    const move = (ev) => {
-      const q = pt(ev);
-      const d = Math.hypot(q[0] - points[points.length - 1][0], q[1] - points[points.length - 1][1]);
-      if (d < PAS_MIN) return;
-      points = [...points, q];
-      setTraitEnCours(points);
+    const ajouter = (q) => {
+      brut = q;
+      const lisse = suivreEnDouceur(points[points.length - 1], q, surligneur ? 0.3 : 0.45);
+      const der = points[points.length - 1];
+      if (Math.hypot(lisse[0] - der[0], lisse[1] - der[1]) < PAS_MIN) return;
+      points = [...points, lisse];
     };
-    const up = () => {
+    const move = (ev) => {
+      const lot = typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : [];
+      (lot.length ? lot : [ev]).forEach((x) => ajouter(pt(x)));
+      if (!raf) raf = requestAnimationFrame(peindre);
+    };
+    const up = (ev) => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      if (raf) cancelAnimationFrame(raf);
       setTraitEnCours(null);
-      if (points.length >= 2) onCreerTrait({ page: pageNum, points: lisserTrait(points, { aimant: aimantActif, ratio }) });
+      const fin = ev && Number.isFinite(ev.clientX) ? pt(ev) : brut;
+      const der = points[points.length - 1];
+      if (Math.hypot(fin[0] - der[0], fin[1] - der[1]) > 1e-6) points = [...points, fin];
+      if (points.length >= 2) {
+        onCreerTrait({ page: pageNum, mode: modeCrayon,
+          points: lisserTrait(points, { aimant: !surligneur && aimantActif, ratio }) });
+      }
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -305,21 +332,40 @@ export function PdfPageContent({
       {/* Les traits au crayon : un seul <svg> par page, transparent à la souris.
           `vector-effect: non-scaling-stroke` garde l'épaisseur constante à l'écran
           quel que soit le zoom, sans recalculer quoi que ce soit. */}
-      {(traits.length > 0 || traitEnCours) && (
-        <svg className="pdfr-inklayer" viewBox="0 0 100 100" preserveAspectRatio="none">
-          {traits.map((t) => (
-            <polyline key={t.id} points={pointsVersSvg(t.points)}
+      {/* DEUX calques : les surligneurs en fusion « multiply » (le texte reste
+          noir dessous) et SOUS les dessins. L'opacité est portée par le TRAIT
+          entier (stroke-opacity d'un seul <path>) : un trait qui se recroise ne
+          fonce pas sur lui-même, comme un vrai surligneur. */}
+      {(traits.length > 0 || traitEnCours) && (() => {
+        const H = pageHeight || 800;
+        const rendu = (t, cle, apercu = false) => {
+          const surl = modeDuTrait(t) === 'surligneur';
+          const ep = surl ? (t.epaisseur || EPAISSEUR_SURLIGNEUR) : (t.epaisseur || 0.0042);
+          return (
+            <path key={cle} d={cheminLisse(t.points)} fill="none"
               stroke={COLOR_HEX[t.couleur] || COLOR_HEX.jaune}
-              strokeWidth={Math.max(1.2, (t.epaisseur || 0.0042) * (pageHeight || 800))}
-              fill="none" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          ))}
-          {traitEnCours && (
-            <polyline points={pointsVersSvg(traitEnCours)} stroke={COLOR_HEX[couleurTrait] || COLOR_HEX.jaune}
-              strokeWidth={Math.max(1.2, epaisseurTrait * (pageHeight || 800))}
-              fill="none" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity="0.85" />
-          )}
-        </svg>
-      )}
+              strokeOpacity={surl ? OPACITE_SURLIGNEUR : (apercu ? 0.9 : 1)}
+              strokeWidth={Math.max(surl ? 4 : 1, ep * H)}
+              strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          );
+        };
+        const enCours = traitEnCours && { points: traitEnCours, couleur: couleurTrait, mode: modeCrayon,
+          epaisseur: modeCrayon === 'surligneur' ? EPAISSEUR_SURLIGNEUR : epaisseurTrait };
+        const surl = traits.filter((t) => modeDuTrait(t) === 'surligneur');
+        const dess = traits.filter((t) => modeDuTrait(t) !== 'surligneur');
+        return (
+          <>
+            <svg className="pdfr-inklayer surligneur" viewBox="0 0 100 100" preserveAspectRatio="none">
+              {surl.map((t) => rendu(t, t.id))}
+              {enCours && enCours.mode === 'surligneur' && rendu(enCours, 'en-cours', true)}
+            </svg>
+            <svg className="pdfr-inklayer" viewBox="0 0 100 100" preserveAspectRatio="none">
+              {dess.map((t) => rendu(t, t.id))}
+              {enCours && enCours.mode !== 'surligneur' && rendu(enCours, 'en-cours', true)}
+            </svg>
+          </>
+        );
+      })()}
 
       {outil === 'crayon' && (
         <div className="pdfr-inkcapture" onPointerDown={demarrerTrait} />

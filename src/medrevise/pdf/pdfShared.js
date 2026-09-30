@@ -364,22 +364,50 @@ export function accrocherAngles(points, ratio = 1, toleranceDeg = TOLERANCE_DEG)
   return sortie;
 }
 
-/** Traitement complet appliqué AU RELÂCHEMENT. Sans aimant, le trait brut est
-    conservé tel quel : la case à cocher est donc réversible dans son principe —
-    ce qui a été dessiné à main levée le reste. */
+/** Traitement complet appliqué AU RELÂCHEMENT. Sans aimant, la FORME tracée est
+    conservée : on ne retire que les points redondants à l'échelle du sous-pixel
+    (EPSILON_FIN), invisibles mais qui alourdissent le stockage et la synchro
+    maintenant que la capture lit tous les événements coalescés. */
+const EPSILON_FIN = 0.0004;
 export function lisserTrait(points, { aimant = false, ratio = 1 } = {}) {
   const p = (points || []).filter((q) => Array.isArray(q) && q.length === 2);
   if (p.length < 2) return p;
-  if (!aimant) return p;
+  if (!aimant) return simplifierRDP(p, EPSILON_FIN);
   return accrocherAngles(simplifierRDP(p), ratio);
 }
 
+/* ---- DEUX MODES DE CRAYON (nuit du 30/09) ----
+   - « dessin » : trait fin, doux — rendu en courbes, pas en segments ;
+   - « surligneur » : trait épais (≈ une ligne de texte de cours), semi-transparent
+     et en fusion « multiply » : le texte dessous reste noir et lisible.
+   Un trait sans `mode` (tous ceux d'avant) est un trait de dessin. */
+export const MODES_CRAYON = [
+  { id: 'dessin', label: 'Dessin' },
+  { id: 'surligneur', label: 'Surligneur' },
+];
+/** épaisseur du surligneur, en fraction de hauteur de page : une ligne de texte
+    en 11 pt sur A4 fait ≈ 0,013 ; un peu plus pour couvrir jambages et accents. */
+export const EPAISSEUR_SURLIGNEUR = 0.017;
+export const OPACITE_SURLIGNEUR = 0.38;
+export const modeDuTrait = (t) => (t && t.mode === 'surligneur' ? 'surligneur' : 'dessin');
+
+/** STREAMLINE (lissage en direct, façon Procreate) : chaque nouveau point ne
+    rejoint qu'une fraction du chemin vers la position réelle du pointeur. La
+    main tremble, le trait non. `force` 0 = brut, 1 = immobile. */
+export function suivreEnDouceur(dernier, brut, force = 0.45) {
+  if (!dernier) return brut;
+  return [dernier[0] + (brut[0] - dernier[0]) * (1 - force), dernier[1] + (brut[1] - dernier[1]) * (1 - force)];
+}
+
 /** Le clic est-il sur ce trait ? (gomme) — distance au segment le plus proche.
-    `seuil` en fraction de page : un trait fin doit rester facile à viser. */
+    `seuil` en fraction de page : un trait fin doit rester facile à viser, et un
+    trait de surligneur se touche sur toute son épaisseur. */
 export function traitTouche(trait, x, y, seuil = 0.012) {
   const pts = (trait && trait.points) || [];
-  if (pts.length < 2) return false;
-  const s2 = seuil * seuil;
+  if (!pts.length) return false;
+  const s = Math.max(seuil, modeDuTrait(trait) === 'surligneur' ? (trait.epaisseur || EPAISSEUR_SURLIGNEUR) * 0.6 : 0);
+  const s2 = s * s;
+  if (pts.length === 1) return distanceCarreeAuSegment([x, y], pts[0], pts[0]) <= s2;
   for (let i = 1; i < pts.length; i++) {
     if (distanceCarreeAuSegment([x, y], pts[i - 1], pts[i]) <= s2) return true;
   }
@@ -390,4 +418,24 @@ export function traitTouche(trait, x, y, seuil = 0.012) {
     la boîte de la page (viewBox 0 0 100 100, preserveAspectRatio="none"). */
 export function pointsVersSvg(points) {
   return (points || []).map(([x, y]) => `${(x * 100).toFixed(3)},${(y * 100).toFixed(3)}`).join(' ');
+}
+
+/** points normalisés → attribut `d` d'un <path> LISSÉ (même repère que
+    pointsVersSvg). Courbes quadratiques passant par les MILIEUX des segments,
+    chaque point servant de point de contrôle : la courbe est continue et sans
+    angle, et elle reste collée au tracé (elle ne s'en écarte jamais de plus
+    d'une demi-distance entre deux points échantillonnés, soit < 1 px). */
+export function cheminLisse(points) {
+  const p = (points || []).map(([x, y]) => [x * 100, y * 100]);
+  if (!p.length) return '';
+  const f = (v) => v.toFixed(3);
+  if (p.length === 1) return `M${f(p[0][0])} ${f(p[0][1])} l0.001 0`; // un point : un rond (linecap)
+  if (p.length === 2) return `M${f(p[0][0])} ${f(p[0][1])} L${f(p[1][0])} ${f(p[1][1])}`;
+  let d = `M${f(p[0][0])} ${f(p[0][1])}`;
+  for (let i = 1; i < p.length - 1; i++) {
+    const mx = (p[i][0] + p[i + 1][0]) / 2, my = (p[i][1] + p[i + 1][1]) / 2;
+    d += ` Q${f(p[i][0])} ${f(p[i][1])} ${f(mx)} ${f(my)}`;
+  }
+  const z = p[p.length - 1];
+  return `${d} L${f(z[0])} ${f(z[1])}`;
 }
