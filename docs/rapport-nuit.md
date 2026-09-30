@@ -1,8 +1,8 @@
 # Rapport de nuit — 30 septembre 2026 (sixième nuit) : finitions UX/UI
 
-Les 5 points sont faits, testés dans l'app et poussés. **Limite d'usage atteinte avant la
-check-list finale** : la dernière check-list complète (5 écrans + MealWeek, 0 erreur) a été
-passée après le point 2, avant le point 4. Le point 4 a été testé seul (voir plus bas).
+Les 5 points sont faits, testés dans l'app et poussés. **Check-list finale passée après le
+dernier commit** : Réviser · Bibliothèque PDF · Bibliothèque HTML · Apprentissage · Import
+Anatomie · Prise de notes → OK ; MealWeek s'ouvre normalement ; 0 erreur console.
 Aucune donnée réelle modifiée ; ton Chrome a seulement été lu (dashboard, légende).
 MealWeek : 0 fichier touché.
 
@@ -62,4 +62,3 @@ MealWeek : 0 fichier touché.
   l'import reste disponible, comme tuile. Si tu pensais à autre chose, dis-le.
 - **Série en cours** : elle continue d'être comptée, mais n'est plus affichée nulle part.
 - **Miniatures de PDF dans la grille** : trop lourd (voir `docs/biblio-affichages.md`).
-- **Check-list finale** après le point 4 : pas passée, faute d'usage restant. À relancer.
