@@ -979,7 +979,7 @@ export function DossierRow({ dossier, isOpen, fichesCount, sousDossiersCount, ex
             <span className="lib-fiche-title">{dossier.nom}</span>
             <span className="hint" style={{ flex: '0 0 auto' }}>
               {fichesCount} fiche{fichesCount > 1 ? 's' : ''}
-              {sousDossiersCount != null && ` · ${sousDossiersCount} chapitre${sousDossiersCount > 1 ? 's' : ''}`}
+              {sousDossiersCount != null && ` · ${sousDossiersCount} dossier${sousDossiersCount > 1 ? 's' : ''}`}
               {exosCount > 0 && ` · ${exosCount} exo${exosCount > 1 ? 's' : ''}`}
             </span>
             {/* accès aux EXERCICES DU CHAPITRE — même emplacement/même style que le
@@ -987,7 +987,7 @@ export function DossierRow({ dossier, isOpen, fichesCount, sousDossiersCount, ex
                le handler (Réviser), donc la Bibliothèque reste inchangée. Le clic ne
                déplie pas : il ouvre la vue chapitre dans le panneau de droite. */}
             {onOpenExos && (
-              <button type="button" className="cd-ic" title="Exercices du chapitre"
+              <button type="button" className="cd-ic" title="Exercices du dossier"
                 onClick={(e) => { e.stopPropagation(); onOpenExos(); }}>
                 <Icon name="target" size={14} />
               </button>
@@ -1012,10 +1012,10 @@ export const DOSSIER_INDENT = { marginLeft: 18, paddingLeft: 10, borderLeft: '2p
     ses chapitres). */
 export function dossierDeleteTexts(dossier, chapitresCount = 0, fichesCount = 0, exosCount = 0) {
   const isChapitre = !!dossier.parentId;
-  const pron = isChapitre ? 'il' : 'elle';
-  const cible = isChapitre ? "dans l'unité parente" : 'à la racine de la matière';
+  const pron = 'il';
+  const cible = isChapitre ? 'dans le dossier parent' : 'à la racine de la matière';
   const chap = !isChapitre && chapitresCount > 0
-    ? ` Ses ${chapitresCount} chapitre${chapitresCount > 1 ? 's' : ''} ${chapitresCount > 1 ? 'seront supprimés' : 'sera supprimé'} avec elle.`
+    ? (chapitresCount > 1 ? ` Les ${chapitresCount} dossiers qu'il contient seront supprimés avec lui.` : " Le dossier qu'il contient sera supprimé avec lui.")
     : '';
   const fic = fichesCount > 0
     ? ` ${fichesCount > 1 ? `Les ${fichesCount} fiches` : 'La fiche'} qu'${pron} contient ${fichesCount > 1 ? 'ne sont PAS supprimées : elles remontent' : "n'est PAS supprimée : elle remonte"} ${cible}.`
@@ -1024,18 +1024,18 @@ export function dossierDeleteTexts(dossier, chapitresCount = 0, fichesCount = 0,
   // partent avec le chapitre. Dit explicitement, jamais sous-entendu (c'est la
   // seule perte réelle de ce geste, voir MedReviseApp.jsx#deleteDossier).
   const exo = exosCount > 0
-    ? ` ⚠ ${exosCount > 1 ? `Les ${exosCount} exercices de chapitre seront supprimés` : "L'exercice de chapitre sera supprimé"} définitivement (aucun niveau supérieur ne peut les accueillir).`
+    ? ` ⚠ ${exosCount > 1 ? `Les ${exosCount} exercices du dossier seront supprimés` : "L'exercice du dossier sera supprimé"} définitivement (aucun niveau supérieur ne peut les accueillir).`
     : '';
   return {
-    title: isChapitre ? 'Supprimer ce chapitre ?' : 'Supprimer cette unité ?',
-    body: `« ${dossier.nom} » sera supprimé${isChapitre ? '' : 'e'}.${chap}${fic}${exo}`,
-    confirmLabel: isChapitre ? 'Supprimer le chapitre' : "Supprimer l'unité",
+    title: 'Supprimer ce dossier ?',
+    body: `« ${dossier.nom} » sera supprimé.${chap}${fic}${exo}`,
+    confirmLabel: 'Supprimer le dossier',
   };
 }
 
 /** bouton « + Nouvelle unité » / « + Nouveau chapitre », même style partout (voir
     DossierRow) : `label` est la SEULE variation entre les deux niveaux. */
-export function DossierAddButton({ onClick, label = 'Nouvelle unité', style }) {
+export function DossierAddButton({ onClick, label = 'Nouveau dossier', style }) {
   return (
     <button type="button" className="btn ghost sm" style={{ marginTop: 8, ...style }} onClick={onClick}>
       <Icon name="plus" size={13} /> {label}

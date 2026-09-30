@@ -315,7 +315,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const id = genId('d');
       // frères = même matière ET même parent (les `ordre` sont scopés au niveau).
       const siblings = db.dossiers.filter((d) => d.matiereId === matiereId && (d.parentId || null) === (parentId || null));
-      await put('dossiers', { id, matiereId, parentId: parentId || null, nom: (nom || (parentId ? 'Nouveau chapitre' : 'Nouvelle unité')).trim(), ordre: siblings.length });
+      await put('dossiers', { id, matiereId, parentId: parentId || null, nom: (nom || (parentId ? 'Nouveau dossier' : 'Nouveau dossier')).trim(), ordre: siblings.length });
       await reload(); return id;
     },
     renameDossier: async (dossierId, nom) => {

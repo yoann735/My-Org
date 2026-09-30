@@ -54,8 +54,8 @@ function buildCfg(kind, ctx) {
       bulk: false,
       icon: 'layers',
       label: 'Voir le prompt',
-      triggerTitle: "Le prompt « Exercices de chapitre » (couvre tout le chapitre) à coller dans un chat externe, avec l'export « Tout exporter »",
-      popupTitle: 'Prompt exercices de chapitre',
+      triggerTitle: "Le prompt « Exercices du dossier » (couvre tout le dossier) à coller dans un chat externe, avec l'export « Tout exporter »",
+      popupTitle: 'Prompt exercices du dossier',
       defaultPrompts: DEFAULT_CHAP_EXO_PROMPTS,
       overrides: ctx.chapExoPromptOverrides,
       saveOne: ctx.saveChapExoPromptOverride,
@@ -224,7 +224,7 @@ export function AllPromptsModal({ ctx, onClose }) {
         <Modal title="Tous les prompts" onClose={onClose} width="min(420px, 94vw)">
           {renderGroup(cfgTheorie, 'Théorie — QCM, flashcards, Feynman')}
           {renderGroup(cfgPratique, 'Exercices — méthode des J')}
-          {renderGroup(cfgChapitre, 'Exercices de chapitre — couverture globale')}
+          {renderGroup(cfgChapitre, 'Exercices du dossier — couverture globale')}
         </Modal>
       )}
       {modalState && (

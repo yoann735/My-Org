@@ -784,7 +784,7 @@ export function Reviser({ ctx }) {
       // l'arbre ne montre que les matières qui portent déjà au moins une fiche
       // (filtre inchangé) : une ligne de cours, ou le vide entre deux blocs, n'a
       // pas de destination — on le dit plutôt que de ne rien faire.
-      flashHint('Aucune destination ici — dépose la fiche sur une matière, une unité ou un chapitre.');
+      flashHint('Aucune destination ici — dépose la fiche sur une matière ou un dossier.');
       return;
     }
     const docs = files.filter((f) => detectDocKind(f));
@@ -845,16 +845,16 @@ export function Reviser({ ctx }) {
   // bascule tout de suite en renommage — même geste que Bibliotheque.jsx, aux deux
   // niveaux.
   const createUnite = async (matiereId) => {
-    const id = await ctx.addDossier(matiereId, 'Nouvelle unité');
+    const id = await ctx.addDossier(matiereId, 'Nouveau dossier');
     if (!id) return;
     setOpenDossier((o) => ({ ...o, [id]: true }));
-    startRename('dossier', id, 'Nouvelle unité');
+    startRename('dossier', id, 'Nouveau dossier');
   };
   const createChapitre = async (matiereId, uniteId) => {
-    const id = await ctx.addDossier(matiereId, 'Nouveau chapitre', uniteId);
+    const id = await ctx.addDossier(matiereId, 'Nouveau dossier', uniteId);
     if (!id) return;
     setOpenDossier((o) => ({ ...o, [uniteId]: true, [id]: true }));
-    startRename('dossier', id, 'Nouveau chapitre');
+    startRename('dossier', id, 'Nouveau dossier');
   };
   // menu « … » d'un dossier (Renommer/Supprimer), MÊME mécanique que
   // Bibliotheque.jsx — ouvert par DossierRow, pas par le clic droit générique.
@@ -863,16 +863,16 @@ export function Reviser({ ctx }) {
     setDossierMenu({ x: Math.min(e.clientX, window.innerWidth - 200), y: Math.min(e.clientY, window.innerHeight - 120), dossierId });
   };
   const dossierMenuItems = (d) => [
-    // second point d'entrée vers la vue "Exercices du chapitre" (le premier étant le
+    // second point d'entrée vers la vue "Exercices du dossier" (le premier étant le
     // bouton cible de la ligne, voir DossierRow#onOpenExos) — chapitres seulement.
-    ...(d.parentId ? [{ label: 'Exercices du chapitre', icon: 'target', onClick: () => openChapitreExos(d.id) }] : []),
+    ...(d.parentId ? [{ label: 'Exercices du dossier', icon: 'target', onClick: () => openChapitreExos(d.id) }] : []),
     // ÉTAPE 4 — « Tout exporter » sans passer par la vue chapitre : MÊME fonction,
     // à qui l'on précise juste sur quel chapitre travailler.
     ...(d.parentId ? [{ label: 'Tout exporter', icon: 'copy', onClick: () => exportChapitre(d) }] : []),
     // ÉTAPE 4 — créer un chapitre depuis l'unité elle-même.
-    ...(!d.parentId ? [{ label: 'Nouveau chapitre', icon: 'folder', onClick: () => createChapitre(d.matiereId, d.id) }] : []),
+    ...(!d.parentId ? [{ label: 'Nouveau dossier', icon: 'folder', onClick: () => createChapitre(d.matiereId, d.id) }] : []),
     { label: 'Renommer', icon: 'edit', onClick: () => startRename('dossier', d.id, d.nom) },
-    { label: d.parentId ? 'Supprimer le chapitre' : "Supprimer l'unité", icon: 'trash', danger: true, onClick: () => askDeleteDossier(d.id) },
+    { label: 'Supprimer le dossier', icon: 'trash', danger: true, onClick: () => askDeleteDossier(d.id) },
   ];
   // input de renommage d'un dossier — MÊME rendu que le RenameInput de
   // Bibliotheque.jsx (`.srcmgr-input`, contrôlé) ; les autres entités (source/
@@ -1081,7 +1081,7 @@ export function Reviser({ ctx }) {
 
                         {/* création EN HAUT (juste sous l'en-tête de la matière), pas noyée sous
                            la liste des fiches — voir DOSSIER_ADD_TOP. */}
-                        <DossierAddButton onClick={() => createUnite(mat.id)} label="Nouvelle unité" style={DOSSIER_ADD_TOP} />
+                        <DossierAddButton onClick={() => createUnite(mat.id)} label="Nouveau dossier" style={DOSSIER_ADD_TOP} />
 
                         {rootFiches.map((f) => renderTreeFiche(mat, f))}
                         <DropSlot matiereId={mat.id} dossierId={null} beforeId={null} variant={rootFiches.length ? 'line' : 'zone'} label={unites.length ? 'Déposer ici (racine)' : 'Déposer ici'} />
@@ -1109,11 +1109,11 @@ export function Reviser({ ctx }) {
                                      le DERNIER niveau : aucun bouton de création à l'intérieur d'un
                                      chapitre (limite 2 niveaux côté UI, doublée par la garde de
                                      MedReviseApp.jsx#addDossier). */}
-                                  <DossierAddButton onClick={() => createChapitre(mat.id, u.id)} label="Nouveau chapitre" style={DOSSIER_ADD_TOP} />
+                                  <DossierAddButton onClick={() => createChapitre(mat.id, u.id)} label="Nouveau dossier" style={DOSSIER_ADD_TOP} />
 
                                   {uniteFiches.map((f) => renderTreeFiche(mat, f))}
-                                  <DropSlot matiereId={mat.id} dossierId={u.id} beforeId={null} variant={uniteFiches.length ? 'line' : 'zone'} label={chapitres.length ? "Déposer ici (unité)" : 'Déposer ici'} />
-                                  {uniteFiches.length === 0 && chapitres.length === 0 && <div className="hint">Unité vide.</div>}
+                                  <DropSlot matiereId={mat.id} dossierId={u.id} beforeId={null} variant={uniteFiches.length ? 'line' : 'zone'} label={chapitres.length ? "Déposer ici (dossier)" : 'Déposer ici'} />
+                                  {uniteFiches.length === 0 && chapitres.length === 0 && <div className="hint">Dossier vide.</div>}
 
                                   {chapitres.map((c) => {
                                     const chapFiches = allFiches.filter((f) => f.dossierId === c.id);
@@ -1131,7 +1131,7 @@ export function Reviser({ ctx }) {
                                           <div style={DOSSIER_INDENT}>
                                             {chapFiches.map((f) => renderTreeFiche(mat, f))}
                                             <DropSlot matiereId={mat.id} dossierId={c.id} beforeId={null} variant={chapFiches.length ? 'line' : 'zone'} />
-                                            {chapFiches.length === 0 && <div className="hint">Chapitre vide.</div>}
+                                            {chapFiches.length === 0 && <div className="hint">Dossier vide.</div>}
                                           </div>
                                         )}
                                       </div>
@@ -1175,7 +1175,7 @@ export function Reviser({ ctx }) {
                   <span className="rb-title" title={chapitreSel.nom}>{chapitreSel.nom}</span>
                 </div>
                 <div className="rb-state">
-                  <span className="hint">{chapExos.length} exercice{chapExos.length > 1 ? 's' : ''} de chapitre — hors méthode des J</span>
+                  <span className="hint">{chapExos.length} exercice{chapExos.length > 1 ? 's' : ''} du dossier — hors méthode des J</span>
                 </div>
                 <div className="rb-actions">
                   {/* « Tout exporter » du chapitre — même sortie que celui d'une fiche
@@ -1190,7 +1190,7 @@ export function Reviser({ ctx }) {
                       l'étape 4, où `chap` a été ajouté pour le menu contextuel
                       sans que ce bouton soit mis à jour. */}
                   <button className="btn ghost sm" onClick={() => exportChapitre()} disabled={chapExportBusy}
-                    title="Copier le cours + surlignages + cartes de TOUTES les fiches de ce chapitre">
+                    title="Copier le cours + surlignages + cartes de TOUTES les fiches de ce dossier">
                     {chapExportBusy && !isClassicUI() ? <LoaderL6 inline label="Export en cours" /> : <Icon name={chapExport && !chapExport.error ? 'check' : 'copy'} size={14} />}
                     {chapExportBusy ? 'Export…' : chapExport && !chapExport.error ? `Copié ✓ (${chapExport.count})` : 'Tout exporter'}
                   </button>
@@ -1203,7 +1203,7 @@ export function Reviser({ ctx }) {
                   <button className="btn ghost sm" onClick={() => setShowAddChapExo(true)}>
                     <Icon name="plus" size={14} /> Importer des items
                   </button>
-                  <button type="button" className="cd-ic" onClick={() => setSelChapitre(null)} title="Fermer la vue chapitre">
+                  <button type="button" className="cd-ic" onClick={() => setSelChapitre(null)} title="Fermer la vue dossier">
                     <Icon name="x" size={14} />
                   </button>
                 </div>
@@ -1238,8 +1238,8 @@ export function Reviser({ ctx }) {
               ) : (
                 <div className="rev-empty" style={{ marginTop: 18 }}>
                   <Icon name="target" size={30} />
-                  <div className="re-title">Aucun exercice dans ce chapitre</div>
-                  <div className="hint">« Importer des items » colle un JSON d'exercices et les rattache à ce chapitre (pas à une fiche).</div>
+                  <div className="re-title">Aucun exercice dans ce dossier</div>
+                  <div className="hint">« Importer des items » colle un JSON d'exercices et les rattache à ce dossier (pas à une fiche).</div>
                 </div>
               )}
             </>
@@ -1426,7 +1426,7 @@ export function Reviser({ ctx }) {
           // création d'une unité depuis la matière (le bouton dédié vit dans la liste,
           // ce second chemin évite d'aller le chercher).
           ...(ctxMenu.type === 'matiere' ? [{
-            label: 'Nouvelle unité', icon: 'folder', onClick: () => createUnite(ctxMenu.id),
+            label: 'Nouveau dossier', icon: 'folder', onClick: () => createUnite(ctxMenu.id),
           }] : []),
           ...(ctxMenu.type === 'fiche' ? [{
             label: 'Ajouter un item', icon: 'plus', onClick: () => setAddItemFiche(ctxMenu.id),
@@ -1633,7 +1633,7 @@ export function Reviser({ ctx }) {
             : confirmDel.type === 'fiche' ? 'Supprimer cette fiche ?'
             : confirmDel.type === 'exercice' ? 'Supprimer cet exercice ?'
             : confirmDel.type === 'cards-all' ? `Supprimer ${cardLot(confirmDel.cardType, confirmDel.count)} de cette fiche ?`
-            : 'Supprimer tous les exercices du chapitre ?'}
+            : 'Supprimer tous les exercices du dossier ?'}
           body={confirmDel.type === 'source'
             ? `« ${confirmDel.nom} » sera déplacé dans la corbeille — restaurable depuis Réglages.`
             : confirmDel.type === 'matiere'
@@ -1648,7 +1648,7 @@ export function Reviser({ ctx }) {
                     ? `« ${confirmDel.nom} » sera supprimé définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible — pas de corbeille pour les exercices.`
                     : confirmDel.type === 'cards-all'
                     ? `${capFirst(cardLot(confirmDel.cardType, confirmDel.count))} de « ${confirmDel.nom} » ${confirmDel.count > 1 ? CARD_TYPES[confirmDel.cardType].vPlur : CARD_TYPES[confirmDel.cardType].vSing} définitivement (sur tous tes appareils, dès la prochaine synchro). Action irréversible depuis l'app — une sauvegarde du lot est enregistrée juste avant, dans la base locale. Les ${CARD_TYPES[confirmDel.cardType].autres} de cette fiche ne sont pas concernés, ni les autres fiches.${confirmDel.v2Count > 0 ? ` ${confirmDel.v2Count} flashcard${confirmDel.v2Count > 1 ? 's' : ''} d'erreur du carnet, liée${confirmDel.v2Count > 1 ? 's' : ''} à ces cartes, ${confirmDel.v2Count > 1 ? 'seront supprimées' : 'sera supprimée'} avec elles.` : ''}`
-                    : `Les ${confirmDel.exoCount} exercice${confirmDel.exoCount > 1 ? 's' : ''} du chapitre « ${confirmDel.nom} » seront supprimés définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible. Les fiches du chapitre et LEURS propres exercices ne sont pas concernés.`}
+                    : `Les ${confirmDel.exoCount} exercice${confirmDel.exoCount > 1 ? 's' : ''} du dossier « ${confirmDel.nom} » seront supprimés définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible. Les fiches du dossier et LEURS propres exercices ne sont pas concernés.`}
           confirmLabel={dossierDelTexts ? dossierDelTexts.confirmLabel : 'Supprimer'}
           danger
           onConfirm={confirmDelete}

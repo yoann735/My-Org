@@ -24,7 +24,7 @@ export const CHAP_EXO_ID = 'chapitre';
 /* même forme que SUBJECTS (lib/coursePrompts.js) — CoursePromptsMenu.jsx
    itère sur cette liste comme sur les matières, ici longue de 1. */
 export const CHAP_EXO_ENTRIES = [
-  { id: CHAP_EXO_ID, label: 'Exercices de chapitre' },
+  { id: CHAP_EXO_ID, label: 'Exercices du dossier' }, // libellé affiché ; l'id 'chapitre' (clé des surcharges enregistrées) ne change pas
 ];
 
 export const DEFAULT_CHAP_EXO_PROMPTS = {

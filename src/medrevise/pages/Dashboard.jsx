@@ -264,7 +264,7 @@ function ExosARevoirCard({ ctx }) {
                           <Tex>{carnetPreviewText(e.q.enonce, 60)}</Tex>
                         </div>
                         <div className="hint" style={{ fontSize: 10.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {e.contexte}{e.chapitre ? ' · chapitre' : ''} · marqué {fmtDay(e.marque)}
+                          {e.contexte}{e.chapitre ? ' · dossier' : ''} · marqué {fmtDay(e.marque)}
                         </div>
                       </div>
                       <button className="btn ghost sm" style={{ flex: '0 0 auto' }} onClick={() => startOne(e)}>Refaire</button>
@@ -786,7 +786,7 @@ function ImportPanel({ ctx }) {
 
           <div className="imp-field">
             <label>Titre de la fiche</label>
-            <input className="imp-title" placeholder="ex : Système respiratoire — chapitre 3" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <input className="imp-title" placeholder="ex : Système respiratoire — partie 3" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
 
           {/* fiche existante détectée (même matière + même titre) — évite de créer

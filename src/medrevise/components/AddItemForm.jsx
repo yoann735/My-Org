@@ -135,7 +135,7 @@ export function PasteJsonForm({ ctx, ficheId, chapitreId, done, setDone }) {
     if (!res.items.length) { setParseError('Aucun item valide trouvé dans ce JSON.'); return; }
     const nonExo = isChapitre ? res.items.filter((it) => it.type !== 'exercice').length : 0;
     if (isChapitre && nonExo === res.items.length) {
-      setParseError('Aucun exercice dans ce JSON — un chapitre ne porte que des exercices (les QCM/flashcards/Feynman s\'ajoutent à une fiche).');
+      setParseError('Aucun exercice dans ce JSON — un dossier ne porte que des exercices (les QCM/flashcards/Feynman s\'ajoutent à une fiche).');
       return;
     }
     // doublons scopés à la MÊME cible que l'ajout (chapitre ou fiche) : deux
@@ -187,17 +187,17 @@ export function PasteJsonForm({ ctx, ficheId, chapitreId, done, setDone }) {
                avant confirmation, plutôt que constaté après coup. */}
             {isChapitre && preview.nonExo > 0 && (
               <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}>
-                <Icon name="alert" size={12} /> {preview.nonExo} item{preview.nonExo > 1 ? 's' : ''} non-exercice ignoré{preview.nonExo > 1 ? 's' : ''} — un chapitre ne porte que des exercices (les QCM/flashcards/Feynman s'ajoutent à une fiche).
+                <Icon name="alert" size={12} /> {preview.nonExo} item{preview.nonExo > 1 ? 's' : ''} non-exercice ignoré{preview.nonExo > 1 ? 's' : ''} — un dossier ne porte que des exercices (les QCM/flashcards/Feynman s'ajoutent à une fiche).
               </div>
             )}
-            {preview.duplicates > 0 && <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {preview.duplicates} doublon{preview.duplicates > 1 ? 's' : ''} ignoré{preview.duplicates > 1 ? 's' : ''} (déjà dans {isChapitre ? 'ce chapitre' : 'cette fiche'})</div>}
+            {preview.duplicates > 0 && <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {preview.duplicates} doublon{preview.duplicates > 1 ? 's' : ''} ignoré{preview.duplicates > 1 ? 's' : ''} (déjà dans {isChapitre ? 'ce dossier' : 'cette fiche'})</div>}
           </div>
         </div>
         <div className="imp-actions">
           <button className="btn ghost" onClick={() => setPreview(null)}>Retour</button>
           <button className="btn primary" onClick={confirm} disabled={busy}>
             {busy && !isClassicUI() ? <LoaderL6 inline label="Ajout en cours" /> : <Icon name="check" size={15} />}
-            {isChapitre ? 'Ajouter au chapitre' : 'Ajouter à la fiche'}
+            {isChapitre ? 'Ajouter au dossier' : 'Ajouter à la fiche'}
           </button>
         </div>
       </div>

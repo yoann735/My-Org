@@ -275,16 +275,16 @@ export function Bibliotheque({ ctx }) {
   // bascule tout de suite en renommage — même geste "créer → taper le nom" que pour
   // une matière, aux deux niveaux.
   const createUnite = async (matiereId) => {
-    const id = await ctx.addDossier(matiereId, 'Nouvelle unité');
+    const id = await ctx.addDossier(matiereId, 'Nouveau dossier');
     if (!id) return;
     setOpenDossier((o) => ({ ...o, [id]: true }));
-    startRename('dossier', id, 'Nouvelle unité');
+    startRename('dossier', id, 'Nouveau dossier');
   };
   const createChapitre = async (matiereId, uniteId) => {
-    const id = await ctx.addDossier(matiereId, 'Nouveau chapitre', uniteId);
+    const id = await ctx.addDossier(matiereId, 'Nouveau dossier', uniteId);
     if (!id) return;
     setOpenDossier((o) => ({ ...o, [uniteId]: true, [id]: true }));
-    startRename('dossier', id, 'Nouveau chapitre');
+    startRename('dossier', id, 'Nouveau dossier');
   };
   const openDossierMenu = (e, dossierId) => {
     e.stopPropagation();
@@ -292,7 +292,7 @@ export function Bibliotheque({ ctx }) {
   };
   const dossierMenuItems = (d) => [
     { label: 'Renommer', icon: 'edit', onClick: () => startRename('dossier', d.id, d.nom) },
-    { label: d.parentId ? 'Supprimer le chapitre' : "Supprimer l'unité", icon: 'trash', danger: true, onClick: () => setConfirmDeleteDossier(d) },
+    { label: 'Supprimer le dossier', icon: 'trash', danger: true, onClick: () => setConfirmDeleteDossier(d) },
   ];
   const confirmDeleteDossierNow = async () => {
     if (!confirmDeleteDossier) return;
@@ -398,7 +398,7 @@ export function Bibliotheque({ ctx }) {
 
                               {/* création EN HAUT (juste sous l'en-tête de la matière), pas noyée
                                  sous la liste des fiches — voir DOSSIER_ADD_TOP. */}
-                              <DossierAddButton onClick={() => createUnite(mat.id)} label="Nouvelle unité" style={DOSSIER_ADD_TOP} />
+                              <DossierAddButton onClick={() => createUnite(mat.id)} label="Nouveau dossier" style={DOSSIER_ADD_TOP} />
 
                               {rootFiches.map(renderFiche)}
                               <DropSlot matiereId={mat.id} dossierId={null} beforeId={null} variant={rootFiches.length ? 'line' : 'zone'} label={unites.length ? 'Déposer ici (racine)' : 'Déposer ici'} />
@@ -426,11 +426,11 @@ export function Bibliotheque({ ctx }) {
                                            est le DERNIER niveau : aucun bouton de création à l'intérieur
                                            d'un chapitre (limite 2 niveaux côté UI, doublée par la garde de
                                            MedReviseApp.jsx#addDossier). */}
-                                        <DossierAddButton onClick={() => createChapitre(mat.id, u.id)} label="Nouveau chapitre" style={DOSSIER_ADD_TOP} />
+                                        <DossierAddButton onClick={() => createChapitre(mat.id, u.id)} label="Nouveau dossier" style={DOSSIER_ADD_TOP} />
 
                                         {uniteFiches.map(renderFiche)}
-                                        <DropSlot matiereId={mat.id} dossierId={u.id} beforeId={null} variant={uniteFiches.length ? 'line' : 'zone'} label={chapitres.length ? "Déposer ici (unité)" : 'Déposer ici'} />
-                                        {uniteFiches.length === 0 && chapitres.length === 0 && <div className="hint">Unité vide.</div>}
+                                        <DropSlot matiereId={mat.id} dossierId={u.id} beforeId={null} variant={uniteFiches.length ? 'line' : 'zone'} label={chapitres.length ? "Déposer ici (dossier)" : 'Déposer ici'} />
+                                        {uniteFiches.length === 0 && chapitres.length === 0 && <div className="hint">Dossier vide.</div>}
 
                                         {chapitres.map((c) => {
                                           const chapFiches = allFiches.filter((f) => f.dossierId === c.id);
@@ -446,7 +446,7 @@ export function Bibliotheque({ ctx }) {
                                                 <div style={DOSSIER_INDENT}>
                                                   {chapFiches.map(renderFiche)}
                                                   <DropSlot matiereId={mat.id} dossierId={c.id} beforeId={null} variant={chapFiches.length ? 'line' : 'zone'} />
-                                                  {chapFiches.length === 0 && <div className="hint">Chapitre vide.</div>}
+                                                  {chapFiches.length === 0 && <div className="hint">Dossier vide.</div>}
                                                 </div>
                                               )}
                                             </div>
