@@ -1,45 +1,44 @@
 # Rapport de nuit — 30 septembre → 1er octobre 2026
 
-**En une phrase : tes données sont en sécurité (locales ET cloud), le lecteur est fini et
-poussé, et il te reste UN clic à faire chez Supabase.**
+**En une phrase : Supabase est RÉACTIVÉ et ses données sont intactes, tes données locales
+aussi, le lecteur est fini (avec les nouveautés boîtes : ancrage, flèche, repli), tout est
+poussé et déployé.**
 
-Aucune écriture cloud n'a été faite. Rien n'a été supprimé, recréé ni réinjecté.
-MealWeek : 0 fichier touché (`git log -- src/mealweek src/shared` vide depuis hier soir).
+Aucune écriture dans la base, rien supprimé, rien recréé, rien réinjecté.
+MealWeek : 0 fichier touché (`git log -- src/mealweek src/shared` vide sur toute la nuit).
 
 ---
 
-## ⚠️ À lire en premier : Supabase n'est PAS perdu
+## ✅ Supabase : réactivé
 
-Hier je t'ai écrit que le projet Supabase était probablement **supprimé**. **C'était faux.**
-Cette nuit j'ai pu ouvrir ton tableau de bord (lecture seule) :
+Hier je t'avais écrit « probablement supprimé » : c'était faux, il était **en pause**
+(veille automatique du plan gratuit, vers le 21/09). Cette nuit, sur ton autorisation :
 
-> Project "My Org" is paused — *All data, including backups and storage objects, remains
-> safe.* You can resume this project from the dashboard until **01 Nov 2027**.
+1. « Resume project » cliqué. Seule boîte de dialogue : *« Your project's data will be
+   restored to when it was initially paused. [Cancel] [Resume] »* — ni facturation, ni plan,
+   ni mot de passe → confirmé.
+2. Statut final : **Healthy**, DNS revenu, API qui répond.
+3. Contrôles en **lecture seule** : la fonction `medrevise_push` et le bucket
+   `medrevise-blobs` sont là ; la table compte **71 fiches, 1 153 cartes, 44 sessions**
+   vivantes, dernière écriture le **14/09** (un autre appareil). Détail : `docs/diag-supabase.md` § 7.
 
-C'est la mise en veille automatique du plan gratuit (tes 3 projets sont en pause). Un projet
-en pause perd son DNS, d'où le « NXDOMAIN » qui m'avait trompé. Détails et preuves :
-**`docs/diag-supabase.md`**.
+## 👉 Tes gestes restants (plus rien d'obligatoire côté Supabase)
 
-## ✅ Tes clics restants, dans l'ordre
+| # | Geste | Pourquoi |
+|---|---|---|
+| 1 | Ouvrir MedRevise d'abord sur **l'appareil utilisé en dernier** (celui du 14/09 — téléphone ?) | il réconcilie avec le cloud et renvoie ce qu'il a de plus récent |
+| 2 | Puis sur **ce Mac** | sa dernière synchro date du 26/08 : il récupère le cloud, puis renvoie le reste ; `medrevise_push` refuse toute écriture plus ancienne que le cloud |
+| 3 | Réglages → vérifier « à jour avec le cloud » sur chaque appareil | l'indicateur existant |
 
-| # | Geste | Où | Pourquoi |
-|---|---|---|---|
-| 1 | *(recommandé)* Exporter une sauvegarde sur **chaque autre appareil** (téléphone, autre ordi) | MedRevise → Réglages → Sauvegarde → « Avec les images et PDF » | ce Mac est déjà sauvegardé (voir plus bas) ; les autres, je n'y ai pas accès |
-| 2 | **Resume project** | supabase.com → My Org → bouton « Resume project » | le seul geste nécessaire ; rien d'autre à configurer |
-| 3 | Attendre que le projet soit « Healthy » (quelques minutes) | même page | DNS et API reviennent |
-| 4 | *(facultatif)* Vérifier le contenu | SQL Editor → coller `supabase/verif-apres-reprise.sql` → Run | **lecture seule** (transaction `read only` + `rollback`) : lignes par store, dernière écriture, fonction `medrevise_push`, bucket |
-| 5 | Ouvrir MedRevise sur l'appareil le plus à jour, puis Réglages → **Forcer la synchro** | l'app | réconciliation normale (last-write-wins) |
-| 6 | Puis les autres appareils, un par un | l'app | chacun renvoie ce qu'il a de plus récent |
+Je n'ai **pas** ouvert l'app sur ce Mac après la reprise : c'est ce qui aurait déclenché
+son gros envoi, et l'ordre ci-dessus est plus sûr.
 
-**Rien à faire sur Vercel** : l'URL et la clé du build pointent déjà sur ce projet (vérifié :
-JWT décodé, `ref = deaonugwvbapkdixdowk`).
+**Pour éviter une nouvelle pause** (7 jours sans activité en plan gratuit) : ouvrir l'app au
+moins une fois par semaine, ou passer le projet en Pro. Si ça arrive quand même, l'app
+démarre désormais tout de suite et reste utilisable en local (commit `f92b895`).
 
-**Ne PAS exécuter** `supabase/restauration-projet.sql` : il servait à recréer un projet
-supprimé. Sur ton projet existant, son `create or replace` remplacerait ta fonction
-`medrevise_push`. Je lui ai mis un avertissement en tête.
-
-Pour éviter une nouvelle pause : passer le projet en Pro, ou l'ouvrir au moins une fois par
-semaine. Et si ça se reproduit, l'app reste désormais utilisable immédiatement (voir tâche 2).
+**Ne jamais exécuter** `supabase/restauration-projet.sql` sur ce projet (avertissement en
+tête du fichier). `supabase/verif-apres-reprise.sql` (lecture seule) reste disponible.
 
 ---
 
@@ -106,6 +105,17 @@ et déployé (vérifié dans le bundle de production).
 | 9 | PDF et HTML dans le même lecteur | `54b5d78` | Même barre, **même panneau de droite sur les deux : QCM / Flashcard / Exercice / Feynman + Notions**. Sur une fiche HTML, Surligneur / Annuler / Rétablir / bulle agissent via les boutons du gabarit (mêmes sécurités que les siens). |
 | 10 | Valable pour toutes les fiches existantes | `784305c` | Aucune migration : anciens surlignages (avec ou sans ancre, avec note), anciens traits, boîtes, blocs, fiches HTML actuelles et **anciennes** : tout s'affiche. Preuves : `docs/verif-retrocompat-lecteur.md`. |
 
+### Nouveautés boîtes de texte (demande 4 a/b/c)
+
+| | Commit | Ce que ça fait | Vérifié (souris réelle) |
+|---|---|---|---|
+| 4c Repliable | `17e7371` | « – » réduit la boîte en **pastille** ronde de sa couleur (infobulle = début du texte) ; un clic la rouvre. État **mémorisé** sur la boîte (synchro, Cmd+Z). | réduite ⇒ pastille ; rechargement ⇒ toujours réduite ; rouverte, texte intact |
+| 4a Ancrage | `14d41f4` | Bouton **cible** : « Clique l'endroit de la fiche… » ; le point exact + la ligne de texte visée sont enregistrés (« Rattachée à « La valve mitrale… » »). Repère rond à l'endroit ; une boîte ancrée ET réduite devient une pastille **posée sur le passage**. « × » détache. | repère = point cliqué au pixel (390,433) ; pastille idem ; conservé au rechargement ; Échap annule la visée |
+| 4b Flèche | `492199b` | Bouton **flèche** (grisé sans ancre) : du bord de la boîte jusqu'au repère, teinte foncée de la boîte. Suit la boîte quand on la déplace, juste à tout zoom. | départ sur le bord (0 px), pointe au bord du repère (7 px du centre) — après déplacement, zoom et rechargement |
+
+Bandeau d'une boîte, de gauche à droite : poignée · **cible** · **flèche** · (× détacher) ·
+**–** réduire · 🗑 supprimer. Les boîtes existantes (sans ces champs) sont inchangées.
+
 ### Check-list de non-régression (rejouée en fin de nuit)
 
 ```
@@ -118,6 +128,7 @@ Prise de notes         lecteur OK, panneau Notions
 MealWeek               s'ouvre normalement
 Erreurs console        0
 Outils (souris réelle, version finale) : pages 2→3→2→1 ; boîte créée + « Texte tapé tout de suite » en gras ;
+boîte réduite / ancrée / fléchée (voir ci-dessus) ;
 crayon dessin + surligneur ; gomme efface la courbe traversée, la boîte reste.
 ```
 
@@ -141,16 +152,18 @@ crayon dessin + surligneur ; gomme efface la courbe traversée, la boîte reste.
 
 ## Ce que j'ai choisi de NE PAS faire
 
-1. **Cliquer « Resume project »** : c'est ton infra, et c'est une écriture — ton clic.
-2. **Exécuter du SQL**, même en lecture : la base est arrêtée ; le script de contrôle est prêt.
-3. **Télécharger les sauvegardes cloud** (« Download backups ») : inutile, Supabase garantit
-   les données ; et c'est un téléchargement de ton infra.
-4. **Toucher aux variables Vercel** : elles sont justes.
-5. **Réinjecter depuis une sauvegarde** : inutile puisque rien n'est perdu. (Si un jour il le
+1. **Déclencher la synchro depuis ce Mac** après la reprise (voir « gestes restants »).
+2. **Exécuter du SQL** dans ta base, même en lecture : les contrôles ont été faits par l'API
+   (GET) et les pages du tableau de bord.
+3. **Tester l'écriture** (appeler `medrevise_push`) : ç'aurait été écrire dans ta base ;
+   la fonction est vérifiée présente, son premier usage réel sera ta synchro.
+4. **Télécharger les sauvegardes cloud** (« Download backups ») : inutile.
+5. **Toucher aux variables Vercel** : elles sont justes.
+6. **Réinjecter depuis une sauvegarde** : inutile puisque rien n'est perdu. (Si un jour il le
    fallait : Réglages → Restaurer une sauvegarde, qui montre un aperçu avant d'écrire et
    sauvegarde l'état actuel d'abord.)
-6. **Ouvrir tes autres appareils** : impossible d'ici.
-7. Dans Réglages de la prod, **seul** le bouton d'export a été cliqué — ni « Réinitialiser
+7. **Ouvrir tes autres appareils** : impossible d'ici.
+8. Dans Réglages de la prod, **seul** le bouton d'export a été cliqué — ni « Réinitialiser
    les dates », ni « Restaurer une sauvegarde », ni « Forcer la synchro ».
 
 ## Méthode, et ce qui a gêné

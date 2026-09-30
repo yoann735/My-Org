@@ -1,5 +1,10 @@
 # Diagnostic Supabase — 30 septembre 2026 (lecture seule)
 
+> **MISE À JOUR — projet RÉACTIVÉ le 30/09 (sur ton autorisation).** « Resume project »
+> cliqué ; seule boîte de dialogue : « Your project's data will be restored to when it
+> was initially paused. [Cancel] [Resume] » — ni facturation, ni plan, ni mot de passe.
+> Statut final : **Healthy**. Contrôles en lecture seule, voir § 7.
+
 **Verdict : le projet n'est PAS supprimé. Il est EN PAUSE, et Supabase affirme que
 toutes ses données sont intactes.** La remise en route tient en un clic
 (« Resume project »), qui t'appartient. Aucune recréation, aucune réinjection n'est
@@ -119,3 +124,35 @@ leur propre IndexedDB, inaccessible d'ici. Leur sauvegarde fait partie de tes ge
   écriture plus ancienne que ce qui est déjà au cloud.
 - Si le projet repasse en pause un jour (plan gratuit), l'app reste désormais utilisable
   immédiatement (démarrage non bloquant, commit f92b895) et garde tout en local.
+
+## 7. Après la réactivation — contrôles en lecture seule
+
+```
+Tableau de bord   STATUS Healthy · Advisor : aucun problème
+DNS               deaonugwvbapkdixdowk.supabase.co → NOERROR
+Fonction          medrevise_push(records jsonb) → integer   (Database → Functions)
+Bucket            medrevise-blobs, 1 policy                  (Storage → Files)
+Table (API REST, GET avec la clé anon du build, en-tête count=exact) :
+  1 716 lignes, dont 409 tombstones — dernière écriture 2026-09-14 20:03 UTC
+  store          lignes  vivantes
+  fiches             78        71
+  questions        1453      1153
+  sessionsLog        44        44
+  dossiers           27        26
+  matieres            5         3
+  sources             3         2
+  highlights          4         4
+  apprentissage       1         1
+  stats / prompts   1 / 1
+```
+
+Le cloud a donc **plus** que ce Mac (71 fiches / 1 153 cartes contre 66 / 1 140) : un autre
+appareil y a écrit jusqu'au 14/09. La mise en veille date vraisemblablement du ~21/09
+(7 jours sans activité, règle du plan gratuit).
+
+**Synchro volontairement NON déclenchée depuis ce Mac.** Sa dernière synchro date du
+26/08 : l'ouvrir maintenant repousserait tout son contenu (le « gros push » à éviter). Ce
+n'est pas dangereux — `medrevise_push` refuse côté serveur toute écriture plus ancienne —
+mais l'ordre recommandé est : d'abord l'appareil utilisé en dernier (celui du 14/09), puis
+les autres. Le chemin de LECTURE de la synchro (le même GET que `pullAllRecords`) répond ;
+aucune écriture n'a été tentée pour « tester » l'écriture.
