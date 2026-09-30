@@ -1,158 +1,109 @@
-# Rapport de nuit — 30 septembre → 1er octobre 2026 (deuxième nuit)
+# Rapport de nuit — 30 septembre → 1er octobre 2026 (troisième nuit)
 
-**En une phrase : les boîtes sont claires et leur épingle se déplace, les flashcards image
-existent et entrent dans la méthode des J, et le fichier manquant est identifié — c'est
-« Les-ions.html », et tu en as une copie identique sur ton disque.**
+**En une phrase : « Les ions » est supprimée (74/74, plus d'avertissement), le créateur de
+flashcard image est propre, « Unités/Chapitres » s'appellent « Dossiers », et la Bibliothèque
+gère sections, matières, dossiers et glisser-déposer.**
 
-Rien supprimé, aucune écriture cloud (le cloud n'a été que lu, en GET), MealWeek : 0 fichier
-touché. Tout est testé à la souris réelle (voir « Méthode »), poussé et déployé.
-
----
-
-## ✅ Ce que tu as à faire (2 minutes, facultatif)
-
-**Remettre le fichier manquant** (recommandé) : MedRevise → Bibliothèque → Rattrapage → Chimie
-→ **« Les ions »** → bouton **« Rattacher le fichier… »** → choisis
-`Documents/Formations & cours/Rattrapage/Fiches/Chimie/Les-ions.html`.
-Réglages affichera ensuite 74/74. Détails et autres options : **`docs/fichier-manquant.md`**.
+Rien d'autre supprimé. Seule écriture sur tes vraies données : la suppression de « Les ions »,
+que tu as autorisée. MealWeek : 0 fichier touché. Tout est testé à la souris réelle, poussé et
+déployé.
 
 ---
 
-## TÂCHE 3 — le fichier manquant (1 sur 74) — commit `bedec42`
+## TÂCHE 1 — corrections rapides
 
-| | |
-|---|---|
-| **C'est** | le **cours HTML `Les-ions.html`** (377 450 octets) de la fiche **« Les ions »** |
-| Où | cours *Rattrapage* › matière *Chimie* › dossier *Unit 1* — 44 cartes (21 flashcards, 13 QCM, 7 exercices, 3 Feynman), qui n'ont **pas** besoin du fichier |
-| Importé | le 29/07/2026 à 10:08 UTC, 40 min après la création de la fiche ; jamais modifié dans l'app depuis |
-| Appareil | le **Chrome d'un Mac** l'avait encore le 25/08 (il est dans la sauvegarde faite depuis ce navigateur) ; aucun appareil connu ne l'a aujourd'hui |
-| **Copies intactes** | ① `~/Documents/Formations & cours/Rattrapage/Fiches/Chimie/Les-ions.html` ② ta sauvegarde de référence du 25/08 — **identiques à l'octet** (même SHA-256) |
+### 1.1 Fiche fantôme « Les ions » : supprimée ✅
+Faite dans ton Chrome, par les gestes normaux de l'app (Bibliothèque → Supprimer → corbeille →
+Réglages → Supprimer définitivement), après deux filets de sécurité :
+- `~/Downloads/medrevise-cloud-enregistrements-avant-suppression-les-ions-2026-09-30.json` —
+  copie intégrale de la table du cloud (1 911 lignes), lue juste avant ;
+- ta sauvegarde locale du 30/09 15:39 (déjà là).
 
-**Tes options** (je n'en ai appliqué aucune) :
-- **A — le remettre** (recommandé) : bouton « Rattacher le fichier… » sur la fiche (ci-dessus).
-- **B — l'appareil d'origine** : ouvrir MedRevise sur tes autres appareils ; peu probable
-  qu'il y soit encore, sans risque.
-- **C — ne plus y penser** : fiche « Les ions » → menu ⋯ → **« Détacher le cours HTML… »**
-  (confirmation demandée) : la fiche et ses 44 cartes restent, seul le lien disparaît.
+**Ce qui a changé, vérifié au cloud (avant / après, enregistrement par enregistrement)** :
+- **45 enregistrements supprimés, tous liés à « Les ions »** : la fiche + ses 44 cartes ;
+- 45 « marqueurs de suppression » vides ajoutés (brouillons d'exercice et document de la fiche,
+  `deleted=true`, aucune donnée) — c'est la façon normale dont l'app efface ;
+- **rien d'autre** : aucune autre carte, fiche ou matière n'a bougé. (Mon clic pour déplier
+  « Unit 1 » avait modifié l'état plié/déplié ; je l'ai replié, l'état d'origine est rétabli.)
+- Réglages : **« ✅ À jour avec le cloud » · Fichiers 74 / 74** — plus d'avertissement.
+  (Le total est 74 et non 75 : le fichier fantôme n'est simplement plus compté.)
 
-**Côté app (ce qui a changé)** :
-- Réglages ne dit plus seulement « 1 fichier ni ici ni au cloud » mais **lequel** :
-  « le cours HTML (Les-ions.html) de la fiche « Les ions » ».
-- Une fiche dont le fichier manque reste utilisable (cartes, panneau), dit ce qui manque et
-  propose **« Rattacher le fichier… »** sur place (HTML et PDF).
-- Menu ⋯ : « Détacher le cours HTML… » / « Détacher le PDF… », **avec confirmation**.
+À savoir : ton Chrome sur ce Mac n'avait **pas synchronisé depuis le 26/08**. L'ouvrir pour
+cette suppression a fait sa première synchro (tirage du cloud d'abord, rien de local à
+pousser) : il est maintenant à jour (empreinte identique au cloud).
 
-Vérifié : fiche à fichier fantôme ⇒ message + bouton ; vrai fichier choisi ⇒ cours affiché ;
-détacher ⇒ lien retiré, cartes conservées.
+### 1.2 Grosse image : entièrement visible ✅ — commit `18c19bc`
+La fenêtre ne donnait que 52 % de la hauteur d'écran à son contenu ; une grande image obligeait
+à défiler dedans. Maintenant le créateur prend toute la hauteur et **l'image tient entière**
+(zoom toujours là). **Le fichier stocké est l'original, intact** (vérifié : 52 982 o,
+1800 × 2400, identiques). Mesuré : 1 071 px de contenu pour 475 visibles → 706 pour 706.
 
----
-
-## TÂCHE 1 — boîtes : contrôles limpides + épingle déplaçable — commit `f461dc8`
-
-**Avant** : cinq icônes de 18 px sans texte (cible, flèche, ×, –, corbeille).
-**Maintenant** : au-dessus de la boîte (dessous si elle touche le haut de la page), visible
-quand la boîte est active ou survolée, une barre **à libellés** :
-
-> 📍 **Épingler** · ➚ **Flèche** · — **Réduire** · 🗑 **Supprimer**
-
-- **Épingler** : « Clique l'endroit de la fiche où épingler cette boîte · Échap pour annuler ».
-  Épinglée, le bouton devient **« Retirer l'épingle »**. L'icône est une vraie épingle.
-- **Flèche** : jamais grisée. Sans épingle, elle fait d'abord poser l'épingle, puis se trace
-  toute seule. Avec : **« Retirer la flèche »**.
-- **Déplacer l'épingle** : on la **glisse** directement sur la page (le passage visé est
-  recalculé, la flèche suit).
-- **Boîte réduite** : sa pastille se **glisse** où tu veux (épinglée : l'épingle suit ; libre :
-  la boîte rouvrira à l'endroit du lâcher) ; un **clic** la rouvre. Position mémorisée.
-- Chaque bouton a une infobulle qui dit **comment**. Tout est annulable (Cmd+Z).
-
-Vérifié : barre = [Épingler, Flèche, Réduire, Supprimer] ; Flèche sans épingle ⇒ visée puis
-flèche ; épingle glissée sur « Le debit cardiaque » ⇒ texte recalculé, pointe au bord du repère ;
-pastille glissée ⇒ exactement au point visé (330,548) ; boîte libre réduite déplacée ⇒ rouvre au
-point du lâcher ; survol ⇒ barre, départ ⇒ cachée ; Supprimer puis Cmd+Z ⇒ restaurée.
+### 1.3 Popup du créateur réagencée ✅ — même commit
+- **une ligne d'outils** : Sélection · Texte | Pinceau · Trait · Rectangle · Ellipse ·
+  Polygone | Changer l'image · − 100 % + ;
+- **une ligne de style**, seulement pendant qu'on dessine : pastilles de couleur, bascules
+  avec/sans, mini-curseurs (fini les deux curseurs pleine largeur et le grand encadré) ;
+- l'aide tient sur une ligne ; l'outil « Coche » s'appelle **« Texte »** ici.
 
 ---
 
-## TÂCHE 2 — flashcards IMAGE (occlusion) — commit `50aec11`
+## TÂCHE 2 — « Unités / Chapitres » → « Dossiers » ✅
 
-**Réutilisé, pas réinventé** : l'éditeur de schéma de l'**anatomie** (`SchemaEditor`), son
-format (coches en coordonnées relatives) et son rendu (`ZonesLayer`).
+**Audit : `docs/audit-renommage.md`** (commit `2032710`). Une unité et un chapitre étaient
+déjà **le même objet** (store `dossiers`, le chapitre n'étant qu'un dossier dans un dossier) :
+le renommage est purement d'affichage.
 
-**Où** : panneau de droite → onglet **Flashcard** → deux boutons côte à côte, **« Flashcard
-texte »** et **« Flashcard image »**. Aussi : ⋯ → Ajouter un item → Flashcard → « Ou une
-flashcard image… ». L'édition se fait dans une **grande fenêtre** : l'éditeur ne tient pas dans
-les 380 px du panneau.
+**Renommé** (commit `023ae09`) : Nouveau dossier · Supprimer le dossier · Dossier vide. ·
+« 7 fiches · 4 dossiers » · « Supprimer ce dossier ? » · Exercices du dossier · prompt
+« Exercices du dossier » · « · dossier » dans le carnet · noms par défaut.
+**Pas touché** : toutes les clés de données (`dossiers`, `dossierId`, `chapitreId`,
+`treeOpenDossiers`, clés d'export, id de prompt).
+**Laissé exprès (homonymes)** : l'**unité physique** d'un exercice numérique (mmol/L) et
+l'**« unité d'apprentissage »** de l'onglet Apprentissage — un autre objet (exos + PDF), pas un
+dossier. *Si tu veux aussi renommer ce dernier (ex. « Séance »), dis-le : ce sont 15 libellés.*
 
-**Comment** (rappelé en haut de la fenêtre) :
-1. **Colle** une capture (⌘V), glisse ou choisis une image.
-2. Dessine une **zone** (Rectangle, Ellipse, Polygone, Pinceau) = un **masque à deviner** ;
-   tape sa réponse dans son texte (« Réponse cachée sous ce masque »).
-3. Outil **Coche** : clique un endroit = un **texte visible** sur l'image.
-4. Question (par défaut « Que cachent les masques ? »), réponse écrite facultative, thème.
+---
 
-**En révision** (ordinateur et mobile) : recto = masques opaques numérotés **?1 ?2 ?3** + les
-textes ; verso = contours + réponses posées sur l'image. Notation Raté / Difficile / Facile,
-**méthode des J identique** à une flashcard texte (c'en est une, avec une image en plus).
+## TÂCHE 3 — Bibliothèque « QG » ✅
 
-**Garde-fous** : bouton « Créer » désactivé tant qu'il n'y a ni image ni masque (et il dit
-pourquoi) ; pied de fenêtre collant ; **confirmation avant de fermer** s'il y a du travail non
-enregistré — Échap, qu'on tape souvent dans un éditeur, ne peut plus tout effacer ; coller du
-texte dans un champ ne remplace pas l'image ; image perdue ⇒ message + re-choix.
+**Audit : `docs/audit-bibliotheque.md`** (commit `8787086`). Découverte : le glisser-déposer
+des fiches **existait déjà** dans la Bibliothèque (le même que Réviser), mais on ne pouvait
+lâcher que sur les petites zones « Déposer ici », visibles seulement dans les dossiers ouverts.
 
-**Tests « comme un utilisateur »** — tous passés, 0 erreur console :
-
-| Intention | Résultat |
-|---|---|
-| ouvrir sans image / avec image sans masque | « Créer » désactivé + raison |
-| coller une capture | image affichée |
-| 2 rectangles + 1 ellipse + 1 coche | « 3 masques · 1 texte » |
-| créer | carte enregistrée, image stockée, `intervalDays 1`, due aujourd'hui |
-| réviser : recto | ?1 ?2 ?3 + « VG », **aucune** réponse visible |
-| réviser : verso + « Facile » | réponses visibles ; 1 → 3 jours, historique +1 |
-| modifier : changer une réponse, supprimer un masque, changer l'image | enregistré, **état de révision conservé** |
-| Échap / Annuler en cours d'édition | confirmation ; « non » garde tout |
-| supprimer | carte retirée |
-| mobile (390 px) | image 312 px, masques, révélation, notation |
-| éditeur d'anatomie | inchangé (export, théorie, synonymes) |
-
-**Deux défauts trouvés en testant, et corrigés** :
-- **Mobile, thème sombre** (`8588c1c`) : le recto de **toutes** les flashcards s'écrivait en
-  noir sur fond noir (un `<button>` n'hérite pas de la couleur du texte).
-- **Éditeur de schéma** (aussi celui de l'anatomie) : le panneau d'une coche passait **sous**
-  les poignées de forme — « Supprimer » était incliquable sur une ellipse.
-
-**Revue UX, et ce que j'ai rectifié** : aide en 3 points en tête ; vocabulaire d'anatomie
-remplacé dans ce contexte (« Réponse cachée sous ce masque », « (masque sans réponse) » au lieu
-de « Nom de la structure » / « (sans nom) ») ; théorie, synonymes et « Export image/PDF »
-masqués ici ; pied collant ; confirmation de fermeture ; second point d'entrée depuis
-« Ajouter un item ».
-
-**Limite connue** : une carte = tous ses masques d'un coup (pas « un masque par carte » à la
-Anki). C'est ajoutable si tu préfères réviser chaque masque séparément.
+| | Commit | Ce que ça fait | Vérifié |
+|---|---|---|---|
+| 3.1 Sections | `a9bb97b` | **flèche** pour replier/déplier (même état mémorisé que Réviser) ; **↑ / ↓** au survol pour l'ordre, mémorisé (préférence d'affichage, aucun champ ajouté) — Réviser suit le même ordre | repliée ⇒ toujours repliée au rechargement ; « Monter » ⇒ 1re, idem dans Réviser |
+| 3.2 Matières | `6dd9cb4` | **« + Matière »** dans l'en-tête de section ; menu **⋯** sur chaque matière : Renommer · Nouveau dossier · **Supprimer la matière…** — le geste existant (fiches → « À classer » avec leur méthode des J, matière → corbeille restaurable), **précédé d'une sauvegarde** (`putBackup`, ajoutée aussi pour Réviser) et d'une confirmation qui dit tout | « Sa fiche (2 cartes) n'est PAS supprimée… » ; fiche dans « À classer », matière à la corbeille, sauvegarde `pre-delete-matiere-…` créée |
+| 3.3 Dossiers | `6dd9cb4` | bouton **« + Dossier »** accentué dans la ligne de chaque matière ; à la création, **le nom provisoire est sélectionné** (on tape directement le vrai nom — avant, la frappe s'ajoutait à « Nouveau dossier ») | dossier « Cellule » créé du premier coup |
+| 3.4 Glisser-déposer | `49cb999` | lâcher une fiche **sur la ligne d'un dossier, même fermé**, ou **sur le nom d'une matière** ; survoler un dossier fermé ~0,6 s pendant le glisser l'**ouvre** ; surbrillance de la cible | dossier fermé d'une autre matière ✓ · matière d'une autre section ✓ · ouverture au survol ✓ · ligne d'insertion classique ✓ · Réviser inchangé ✓ |
 
 ---
 
 ## Check-list de non-régression (version finale)
 
 ```
-Réviser · Bibliothèque PDF · Bibliothèque HTML · Apprentissage · Import Anatomie · Prise de notes
-→ lecteur, outils, panneau (QCM | Flashcard | Exercice | Feynman | Notions) : OK
-MealWeek → s'ouvre normalement (« Semaine 1 sur 8 ») — 0 fichier touché
+Réviser · Bibliothèque PDF · Bibliothèque HTML · Apprentissage · Import Anatomie · Prise de notes → OK
+Glisser-déposer dans Réviser → OK (inchangé)
+MealWeek → s'ouvre normalement — 0 fichier touché
 Erreurs console : 0
 ```
 
 ## Ce que j'ai choisi de NE PAS faire
 
-1. **Rattacher ou détacher « Les ions » à ta place** : c'est une écriture sur tes données
-   réelles ; tout est prêt pour ton clic (option A ou C).
-2. **Restaurer ta sauvegarde de référence** pour récupérer ce fichier : cela remettrait TOUT
-   l'appareil dans l'état du 25/08.
-3. **Écrire dans le cloud**, même pour vérifier : lecture seule (GET + listing du bucket).
-4. **Toucher l'anatomie** au-delà du strict nécessaire : deux options facultatives
-   (comportement par défaut inchangé) et un correctif de superposition.
+1. **Renommer « unité d'apprentissage »** (onglet Apprentissage) : ce n'est pas un dossier ;
+   je te laisse décider.
+2. **Supprimer définitivement une matière** depuis la Bibliothèque : la suppression passe par
+   la corbeille (restaurable), comme partout dans l'app.
+3. **Importer des fichiers du Finder par glisser dans la Bibliothèque** (ça existe dans
+   Réviser) : autre geste que « ranger » ; à ajouter si tu veux.
+4. **Glisser des sections ou des matières** : l'ordre des sections se fait par ↑ / ↓, plus sûr
+   pour quelques éléments.
+5. **Découper 1.2/1.3 et 3.2/3.3 en commits séparés** : chaque paire modifie les mêmes lignes ;
+   un commit chacune, message détaillé pour les deux points.
 
 ## Méthode
 
-Tests dans un Chrome headless isolé (profil jetable, base locale, synchro désactivée) piloté
-par de **vrais événements souris/clavier** (CDP), captures à l'appui ; fichiers choisis via le
-vrai sélecteur (`DOM.setFileInputFiles`) ; collage via un vrai `ClipboardEvent` portant un
-fichier image. Fichiers de test (`public/*.tmp.*`) jamais commités, supprimés.
+Suppression de « Les ions » : dans ton Chrome, par les gestes de l'app, avec copie du cloud
+avant et comparaison du cloud après. Tout le reste : Chrome headless isolé (profil jetable,
+base locale, synchro désactivée), vrais événements souris/clavier (CDP). Fichiers de test
+jamais commités, supprimés.
