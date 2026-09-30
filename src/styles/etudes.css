@@ -1568,3 +1568,11 @@
 .sc-bascule.off { background: transparent; color: var(--text-3); }
 .sc-mini { display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); }
 .sc-mini input[type=range] { width: 64px; accent-color: var(--accent); }
+
+/* ===== BIBLIOTHÈQUE « QG » (nuit du 30/09, 3e) ===== */
+.lib-sec-pli { display: grid; place-items: center; width: 24px; height: 24px; margin-right: 2px; border: none; border-radius: 7px; background: transparent; color: var(--text-3); cursor: pointer; }
+.lib-sec-pli:hover { background: var(--bg-2); color: var(--text); }
+.lib-sec-ordre { display: inline-flex; gap: 2px; opacity: .45; transition: opacity .12s; }
+.lib-section:hover .lib-sec-ordre, .lib-sec-ordre:focus-within { opacity: 1; }
+.lib-sec-ordre .cd-ic:disabled { opacity: .3; cursor: default; }
+.lib-section.repliee .card-head { border-bottom: none; }

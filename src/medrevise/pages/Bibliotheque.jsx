@@ -12,7 +12,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
-import { useTreeOpenState } from '../components/useTreeOpenState.js';
+import { useTreeOpenState, trierSections, deplacerSection } from '../components/useTreeOpenState.js';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
 import { docKind, DOC_META, createTranscript, deleteTranscript } from '../documents/lib/documents.js';
@@ -56,11 +56,11 @@ export function Bibliotheque({ ctx }) {
   // chapitre de sa matière), openDossier = replié/déplié — keyé par id, donc commun
   // aux deux niveaux, et désormais MÉMORISÉ (stats) et PARTAGÉ avec Réviser : un
   // chapitre ouvert ici reste ouvert là-bas, et survit au rechargement. Voir
-  // useTreeOpenState.js. `sources: false` — cet écran n'affiche pas le repli des
-  // cours, il ne doit donc pas toucher à cette part de l'état.
+  // useTreeOpenState.js. `sources: true` depuis la Bibliothèque « QG » : les sections
+  // se replient ici aussi, avec le MÊME état mémorisé que Réviser.
   // confirmDeleteDossier = confirmation avant suppression (les fiches contenues
   // remontent d'un niveau).
-  const { openDossier, setOpenDossier } = useTreeOpenState(ctx, { sources: false });
+  const { openDossier, setOpenDossier, openSrc, setOpenSrc } = useTreeOpenState(ctx, { sources: true });
   const [dossierMenu, setDossierMenu] = useState(null); // { x, y, dossierId }
   const [moveMenu, setMoveMenu] = useState(null); // { x, y, ficheId }
   const [confirmDeleteDossier, setConfirmDeleteDossier] = useState(null); // dossier à supprimer
@@ -370,11 +370,18 @@ export function Bibliotheque({ ctx }) {
           ) : (
             <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
             <div className="lib-tree" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {db.sources.filter((s) => !s.archive).map((src) => {
+              {(() => { const sections = trierSections(db.sources.filter((s) => !s.archive), ctx.stats); return sections.map((src, iSec) => {
                 const mats = db.matieres.filter((m) => m.sourceId === src.id && !m.archive);
+                const srcOuverte = openSrc[src.id] !== false;
                 return (
-                  <div className="card" key={src.id}>
+                  <div className={'card lib-section' + (srcOuverte ? '' : ' repliee')} key={src.id}>
+                    {/* SECTION : clic sur la flèche (ou l'en-tête vide) = replier/déplier,
+                       mémorisé et partagé avec Réviser ; ↑/↓ = changer l'ordre (stats). */}
                     <div className="card-head" style={{ color: 'var(--text)' }}>
+                      <button type="button" className="lib-sec-pli" title={srcOuverte ? 'Replier la section' : 'Déplier la section'}
+                        onClick={() => setOpenSrc((o) => ({ ...o, [src.id]: !srcOuverte }))}>
+                        <Icon name={srcOuverte ? 'chevD' : 'chevR'} size={15} />
+                      </button>
                       <span className="tsrc-ic" style={{ background: `color-mix(in srgb, ${src.tint || '#7C6FE0'} 16%, transparent)`, color: src.tint || '#7C6FE0' }}><Icon name={src.icon || 'folder'} size={14} /></span>
                       {isRen('source', src.id)
                         ? <RenameInput />
@@ -382,8 +389,13 @@ export function Bibliotheque({ ctx }) {
                       <div className="right" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span className="hint">{mats.length} matière{mats.length > 1 ? 's' : ''}</span>
                         <BellButton on={src.rappelsJ !== false} onToggle={() => ctx.setSourceRappels(src.id, src.rappelsJ === false)} />
+                        <span className="lib-sec-ordre">
+                          <button type="button" className="cd-ic" disabled={iSec === 0} title="Monter la section" onClick={() => deplacerSection(ctx, sections, src.id, -1)}><Icon name="chevU" size={14} /></button>
+                          <button type="button" className="cd-ic" disabled={iSec === sections.length - 1} title="Descendre la section" onClick={() => deplacerSection(ctx, sections, src.id, 1)}><Icon name="chevD" size={14} /></button>
+                        </span>
                       </div>
                     </div>
+                    {srcOuverte && (
                     <div className="card-body" style={{ paddingTop: 0 }}>
                         {mats.map((mat) => {
                           const mm = matiereMeta(mat);
@@ -461,9 +473,10 @@ export function Bibliotheque({ ctx }) {
                           );
                         })}
                     </div>
+                    )}
                   </div>
                 );
-              })}
+              }); })()}
             </div>
             </FicheDndProvider>
           )}

@@ -81,3 +81,30 @@ export function ancestorDossierIds(fiche, dossiers) {
   if (!dos) return [];
   return dos.parentId ? [dos.id, dos.parentId] : [dos.id];
 }
+
+/* ============================================================
+   ORDRE DES SECTIONS (cours) — préférence d'affichage, rangée comme le repli dans
+   `stats` (clé `ordreSections` = liste d'ids) : aucun champ ajouté aux sections,
+   aucune migration, synchronisé comme le reste. Les sections absentes de la liste
+   (nouvelles) gardent leur ordre de création, à la suite.
+   Partagé par la Bibliothèque (boutons ↑/↓) et Réviser (qui suit le même ordre).
+   ============================================================ */
+export const ORDRE_SECTIONS_KEY = 'ordreSections';
+
+export function trierSections(sources, stats) {
+  const ordre = (stats && stats[ORDRE_SECTIONS_KEY]) || [];
+  const rang = new Map(ordre.map((id, i) => [id, i]));
+  return (sources || [])
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => ((rang.has(a.s.id) ? rang.get(a.s.id) : ordre.length + a.i) - (rang.has(b.s.id) ? rang.get(b.s.id) : ordre.length + b.i)))
+    .map((x) => x.s);
+}
+
+/** monte (`dir` = -1) ou descend (+1) une section parmi les sections affichées. */
+export function deplacerSection(ctx, sectionsAffichees, id, dir) {
+  const ids = sectionsAffichees.map((s) => s.id);
+  const i = ids.indexOf(id), j = i + dir;
+  if (i < 0 || j < 0 || j >= ids.length) return;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  ctx.saveStats({ ...(ctx.stats || {}), [ORDRE_SECTIONS_KEY]: ids });
+}

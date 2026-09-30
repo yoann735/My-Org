@@ -24,7 +24,7 @@ import { AddItemModal } from '../components/AddItemForm.jsx';
 import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
 import { useTreeFileDrop, FileDropModal } from '../components/TreeFileDrop.jsx';
 import { titreFromFile, titreFromFilename } from '../lib/fileTitre.js';
-import { useTreeOpenState, ancestorDossierIds } from '../components/useTreeOpenState.js';
+import { useTreeOpenState, ancestorDossierIds, trierSections } from '../components/useTreeOpenState.js';
 import { createFicheFromQuestions } from '../lib/import.js';
 
 /** formate un temps par carte (ms) en texte court — secondes sous la minute,
@@ -1007,7 +1007,7 @@ export function Reviser({ ctx }) {
           <div className="tree-scroll scroll" ref={treeScrollRef} onKeyDown={onTreeKeyDown} onScroll={onTreeScroll}
             {...fd.dropProps({ key: 'tree' })}>
             <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
-            {db.sources.filter((s) => !s.archive).map((src) => {
+            {trierSections(db.sources.filter((s) => !s.archive), ctx.stats).map((src) => { /* même ordre que la Bibliothèque (stats.ordreSections) */
               const mats = matieresOf(src.id).filter((m) => fichesOf(m.id).length);
               if (!mats.length) return null;
               const openS = openSrc[src.id] !== false;
