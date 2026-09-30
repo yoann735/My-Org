@@ -351,7 +351,7 @@ function MobileClozeActiveCard({ item, onRate, ctx }) {
                 placeholder={`Trou ${i + 1}`}
               />
               {validated && (ev.ok
-                ? <Icon name="check" size={15} title={ev.typo ? 'Juste (orthographe tolérée)' : undefined} style={{ color: 'var(--ok)', flex: '0 0 auto' }} />
+                ? <span title={ev.typo ? 'Juste (orthographe tolérée)' : undefined} style={{ display: 'inline-flex', color: 'var(--ok)', flex: '0 0 auto' }}><Icon name="check" size={15} /></span>
                 : <span className="mrm-cloze-expected">{b.expected}</span>)}
             </div>
           );

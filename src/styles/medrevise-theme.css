@@ -359,6 +359,10 @@ body { font-family: var(--font-sans); }
 .seg { background: transparent; border: 1px solid var(--border); border-radius: var(--r-3); padding: 3px; }
 .seg-btn { color: var(--text-3); transition: color .18s, background .18s; }
 .seg-btn.active { background: var(--elev-3); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
+/* l'icône du segment actif héritait de l'ancienne règle « svg = --on-accent »
+   (texte NOIR, pensé pour l'ancien fond violet) : sur le fond sombre actuel elle
+   devenait un carré noir invisible. Elle suit désormais la couleur du texte. */
+.seg-btn.active svg { color: inherit !important; }
 
 /* Interrupteur : piste sombre au filet, accent plein quand il est actif. */
 .switch { background: var(--elev-2); border: 1px solid var(--border); box-shadow: none !important; }
@@ -1372,3 +1376,10 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .lt-arbre .due-badge.sm { flex: 0 0 auto; }
 .lt-arbre .lt-section.off .lt-sec .lt-nom { color: color-mix(in srgb, var(--warn) 70%, var(--text-3)); }
 .lt-arbre { padding: 6px 6px 10px; }
+
+/* Réglages · puces de matière : le thème dessine déjà la pastille de couleur
+   (.cat-badge::before) ; la pastille écrite dans la puce faisait doublon
+   (« • ● Cardiologie »). Masquée ici seulement : l'interface classique, sans ce
+   thème, garde la sienne. */
+.srcmgr-cats .cat-badge > span:empty { display: none; }
+.imp-field > .row > label { font-size: 12px !important; color: var(--text-2) !important; font-weight: 500 !important; text-transform: none !important; letter-spacing: 0 !important; }

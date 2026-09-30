@@ -259,7 +259,7 @@ function QcmForm({ onAdd, busy, initial, submitLabel, onCancel }) {
   };
 
   return (
-    <div>
+    <div className="aif-champs">
       <div className="imp-field">
         <label>Thème <span className="imp-opt">(optionnel)</span></label>
         <input className="imp-title" placeholder="ex : Effet Bohr" value={theme} onChange={(e) => setTheme(e.target.value)} />
@@ -358,7 +358,7 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel }) {
   };
 
   return (
-    <div>
+    <div className="aif-champs">
       <div className="imp-field">
         <label>Thème <span className="imp-opt">(optionnel)</span></label>
         <input className="imp-title" placeholder="ex : Surfactant" value={theme} onChange={(e) => setTheme(e.target.value)} />
@@ -370,8 +370,8 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel }) {
             <Icon name="box" size={13} /> Ajouter un trou
           </button>
         </div>
-        <textarea ref={rectoRef} className="imp-title" style={{ minHeight: 60, resize: 'vertical', fontFamily: 'inherit', marginTop: 6 }}
-          value={recto} onChange={(e) => { setRecto(e.target.value); setHoleHint(null); }} placeholder="Question / terme… (sélectionne un mot puis « Ajouter un trou » pour une carte à trou)" />
+        <textarea ref={rectoRef} className="imp-title" style={{ minHeight: 78, resize: 'vertical', fontFamily: 'inherit', marginTop: 6 }}
+          value={recto} onChange={(e) => { setRecto(e.target.value); setHoleHint(null); }} placeholder="Question / terme… (pour une carte à trou : sélectionne un mot, puis « Ajouter un trou »)" />
         {holeHint && <div className="hint" style={{ marginTop: 6, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {holeHint}</div>}
         {blanks.length > 0 && (
           <div style={{ marginTop: 8 }}>
@@ -444,7 +444,7 @@ function FeynmanForm({ onAdd, busy, initial, submitLabel, onCancel }) {
   };
 
   return (
-    <div>
+    <div className="aif-champs">
       <div className="imp-field">
         <label>Thème <span className="imp-opt">(optionnel)</span></label>
         <input className="imp-title" placeholder="ex : Plexus brachial" value={theme} onChange={(e) => setTheme(e.target.value)} />
@@ -513,7 +513,7 @@ function ExerciceForm({ onAdd, busy, initial, submitLabel, onCancel }) {
   };
 
   return (
-    <div>
+    <div className="aif-champs">
       <div className="imp-field">
         <label>Thème <span className="imp-opt">(optionnel)</span></label>
         <input className="imp-title" placeholder="ex : Cinétique réactionnelle" value={theme} onChange={(e) => setTheme(e.target.value)} />

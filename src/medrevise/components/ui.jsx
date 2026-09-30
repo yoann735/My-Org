@@ -327,9 +327,10 @@ export function Card({ title, icon, action, children, style, className = '' }) {
 }
 
 /* ---- Switch ---- */
-export function Switch({ on, onChange }) {
+export function Switch({ on, onChange, label }) {
+  // interrupteur : rôle et état annoncés (il n'avait ni texte, ni titre, ni libellé)
   return (
-    <button className={'switch' + (on ? ' on' : '')} type="button" aria-pressed={on} onClick={() => onChange(!on)} />
+    <button className={'switch' + (on ? ' on' : '')} type="button" role="switch" aria-checked={on} aria-label={label} title={label} onClick={() => onChange(!on)} />
   );
 }
 

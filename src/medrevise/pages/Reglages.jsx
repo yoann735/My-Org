@@ -163,7 +163,7 @@ export function Reglages({ ctx }) {
                   </div>
                 </div>
                 <div className="srcmgr-actions">
-                  <div className="src-set-toggle"><span className={'src-set-state' + (on ? ' on' : '')}>{on ? 'Rappels J' : 'En pause'}</span><Switch on={on} onChange={(v) => ctx.setSourceRappels(s.id, v)} /></div>
+                  <div className="src-set-toggle"><span className={'src-set-state' + (on ? ' on' : '')}>{on ? 'Rappels J' : 'En pause'}</span><Switch on={on} onChange={(v) => ctx.setSourceRappels(s.id, v)} label={on ? `Rappels J actifs pour « ${s.nom} » — mettre en pause` : `« ${s.nom} » en pause — réactiver les rappels J`} /></div>
                   <button type="button" className="srcmgr-edit" title="Supprimer ce cours" onClick={() => deleteSource(s)}><Icon name="trash" size={14} /></button>
                 </div>
               </div>
@@ -260,7 +260,7 @@ export function Reglages({ ctx }) {
               <div style={{ fontWeight: 600 }}>Retrouver l'UI d'avant</div>
               <div className="hint">Rend l'ancienne interface à l'identique — couleurs, polices, rayons, animations. Les fonctionnalités et les gestes ne changent pas.</div>
             </div>
-            <Switch on={uiClassique} onChange={setClassicUI} />
+            <Switch on={uiClassique} onChange={setClassicUI} label="Interface classique" />
           </div>
           <div className="hint" style={{ marginTop: 12 }}>
             {uiClassique

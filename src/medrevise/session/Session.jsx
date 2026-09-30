@@ -528,7 +528,7 @@ function ClozeActiveCard({ item, meta, onRate, canPrev, onPrev, ctx }) {
                 placeholder={`Trou ${i + 1}`}
               />
               {validated && (ev.ok
-                ? <Icon name="check" size={16} title={ev.typo ? 'Juste (orthographe tolérée)' : undefined} style={{ color: 'var(--ok)', flex: '0 0 auto' }} />
+                ? <span title={ev.typo ? 'Juste (orthographe tolérée)' : undefined} style={{ display: 'inline-flex', color: 'var(--ok)', flex: '0 0 auto' }}><Icon name="check" size={16} /></span>
                 : <>
                     <span className="cloze-expected">{b.expected}</span>
                     <button type="button" className="btn ghost sm" onClick={() => toggleOverride(i)}>

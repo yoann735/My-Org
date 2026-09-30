@@ -1673,3 +1673,10 @@
 :is(.lib-tree, .lt-arbre) .dnd-zone.over::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 3px; border-radius: 2px; background: var(--accent); transform: translateY(-50%); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
 :is(.lib-tree, .lt-arbre) .dnd-cible { border-radius: 7px; }
 :is(.lib-tree, .lt-arbre) .file-drop-over { outline-offset: 0; }
+
+/* formulaires « Nouvel item » (components/AddItemForm.jsx) : les champs étaient
+   empilés sans aucun espace (conteneur bloc), et le libellé « Recto », posé dans
+   une rangée avec « Ajouter un trou », échappait au style des libellés (16 px au
+   lieu de 11–12). */
+.aif-champs { display: flex; flex-direction: column; gap: 12px; }
+.imp-field > .row > label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); }
