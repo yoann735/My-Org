@@ -1,3 +1,17 @@
+-- ############################################################################
+-- ##  NE PAS EXÉCUTER — mise à jour du 30/09/2026 (voir docs/diag-supabase.md)
+-- ##
+-- ##  Le projet « My Org » (deaonugwvbapkdixdowk) n'est PAS supprimé : il est
+-- ##  EN PAUSE, et Supabase indique que toutes ses données, sauvegardes et
+-- ##  fichiers sont intacts. La remise en route = « Resume project » dans le
+-- ##  tableau de bord, et RIEN d'autre.
+-- ##
+-- ##  Sur un projet qui existe déjà, ce script n'est PAS neutre : son
+-- ##  `create or replace function medrevise_push` remplacerait la fonction en
+-- ##  place par la version ci-dessous. Il ne sert QUE si un jour il faut
+-- ##  repartir d'un projet NEUF et vide.
+-- ############################################################################
+--
 -- ============================================================================
 -- MedRevise — RESTAURATION D'UN PROJET SUPABASE NEUF
 --

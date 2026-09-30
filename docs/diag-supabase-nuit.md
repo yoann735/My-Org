@@ -1,3 +1,9 @@
+> **⚠️ CORRIGÉ le 30/09/2026 — voir `docs/diag-supabase.md`.** La conclusion ci-dessous
+> (« projet supprimé ») est **fausse** : le tableau de bord Supabase montre le projet
+> **en pause**, données intactes, relançable jusqu'au 01/11/2027. Un projet en pause perd
+> aussi son DNS ; le NXDOMAIN ne permettait pas de trancher. Ne pas utiliser
+> `supabase/restauration-projet.sql` sur ce projet.
+
 # Diagnostic — « Cloud injoignable, état non vérifiable » (nuit du 29 au 30 septembre 2026)
 
 **Verdict : le projet Supabase visé par la production n'existe plus.** Son nom d'hôte ne
