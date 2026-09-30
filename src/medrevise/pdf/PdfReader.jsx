@@ -678,10 +678,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      que le bloc de remplacement de texte — seul `kind: 'libre'` les distingue.
      Les trois actions passent par l'historique : la boîte naît annulable. */
   const creerBoite = async ({ page, x, y, width, height }) => {
-    const rec = newNoteBox({ ficheId, page, x, y, width, height, couleur: couleurBoite });
+    // CORRECTIF : `couleurBoite` n'était déclaré nulle part. La ReferenceError partait
+    // dans une fonction async appelée depuis un écouteur pointerup — promesse rejetée,
+    // rien à l'écran : l'outil « ne créait rien ». La couleur est celle de la barre
+    // contextuelle, partagée par tous les outils colorés.
+    const rec = newNoteBox({ ficheId, page, x, y, width, height, couleur: couleurActive });
     await hist.appliquer(cmdCreer('annotations', rec, 'Boîte de texte'));
     setActiveEditId(rec.id);
-    setOutil('selection'); // on vient de la poser : on veut écrire dedans, pas en tracer une autre
+    setOutil('main'); // on vient de la poser : on veut écrire dedans, pas en tracer une autre ('selection' n'était pas un outil)
   };
   /* Version LA PLUS FRAÎCHE d'une boîte. Indispensable : un geste part d'un instantané
      pris au pointerdown, or l'utilisateur a pu taper dans la boîte juste avant, et la
@@ -708,7 +712,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const changerCouleurBoite = async (b, couleur) => {
     const actuel = boiteFraiche(b.id, b);
     if (!actuel || actuel.couleur === couleur) return;
-    setCouleurBoite(couleur); // la prochaine boîte héritera du dernier choix
+    setCouleurActive(couleur); // la prochaine boîte héritera du dernier choix
     await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, couleur }, 'Couleur de la boîte'));
   };
   /* ---- CRAYON ----

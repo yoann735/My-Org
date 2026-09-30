@@ -388,17 +388,36 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      la barre de mise en forme s'appliquait à une sélection VIDE — donc sans effet
      visible (défaut 2). On met le focus dès que l'éditeur est monté dans la boîte,
      et on pose le curseur À L'ENDROIT CLIQUÉ (posAtCoords) plutôt qu'au début. */
+  /* Deuxième correctif (nuit du 30/09) : `commands.focus()` de TipTap donne le
+     focus dans un requestAnimationFrame. Juste après la création d'une boîte, la
+     vue n'était pas toujours encore montée DANS la boîte, et le focus restait sur
+     le bouton d'outil cliqué juste avant — la première Espace tapée « cliquait »
+     alors ce bouton et désactivait la boîte. On attend donc que la vue soit
+     réellement dans CETTE boîte, on pose la sélection par commande, puis on
+     donne le focus au DOM de façon synchrone (view.focus()). */
+  const boiteRef = useRef(null);
   useEffect(() => {
-    if (!active || !editor) return;
-    const t = setTimeout(() => {
+    if (!active || !editor) return undefined;
+    let essais = 0;
+    let t = null;
+    const essayer = () => {
+      if (editor.isDestroyed) return;
+      let dom = null;
+      try { dom = editor.view && editor.view.dom; } catch (e) { dom = null; }
+      if (!dom || !boiteRef.current || !boiteRef.current.contains(dom)) {
+        if (essais++ < 40) t = setTimeout(essayer, 16);
+        return;
+      }
       try {
         const pt = clicRef.current;
         clicRef.current = null;
         const at = pt && editor.view.posAtCoords({ left: pt.x, top: pt.y });
-        if (at && Number.isFinite(at.pos)) editor.chain().focus().setTextSelection(at.pos).run();
-        else editor.commands.focus('end');
-      } catch (err) { try { editor.commands.focus('end'); } catch (e2) { /* ignore */ } }
-    }, 0); // après que EditorContent a monté la vue ProseMirror dans cette boîte
+        const pos = at && Number.isFinite(at.pos) ? at.pos : editor.state.doc.content.size;
+        editor.commands.setTextSelection(pos);
+        editor.view.focus();
+      } catch (err) { try { editor.view.focus(); } catch (e2) { /* ignore */ } }
+    };
+    t = setTimeout(essayer, 0);
     return () => clearTimeout(t);
   }, [active, editor]);
 
@@ -452,7 +471,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   };
 
   return (
-    <div className={'note-box' + (active ? ' active' : '') + (gomme ? ' gomme' : '')} style={style}>
+    <div ref={boiteRef} className={'note-box' + (active ? ' active' : '') + (gomme ? ' gomme' : '')} style={style}>
       {/* CORRECTIF (défaut 4) : le bandeau est focusable, et c'est LUI qui porte la
           suppression au clavier — plus aucun écouteur global ne peut effacer la
           boîte pendant que le curseur est ailleurs. */}
