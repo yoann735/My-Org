@@ -59,7 +59,7 @@ function positionTexteProche(container, x, y) {
     de texte édités (Chantier 1). */
 export function PdfPageContent({
   pdfDoc, pageNum, scale, pageHeight, dpr, highlights, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
-  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, onDemanderAncrage = () => {},
+  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, onDemanderAncrage = () => {},
   onCreerTrait, onSupprimerTraits, cibleHlId,
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, aimantActif = true, modeCrayon = 'dessin',
 }) {
@@ -309,20 +309,23 @@ export function PdfPageContent({
      retenu est la ligne de texte la plus proche du point (positionTexteProche),
      pour dire en clair À QUOI la boîte est rattachée. */
   const boiteEnAncrage = ancrageBoiteId ? (boites || []).find((b) => b.id === ancrageBoiteId) : null;
+  // la ligne de texte la plus proche d'un point écran (sert aussi au glisser de l'épingle)
+  const texteProche = (cx, cy) => {
+    const pos = textLayerRef.current && positionTexteProche(textLayerRef.current, cx, cy);
+    if (!pos) return null;
+    const t = cleanSelectedText(pos.node.nodeValue || '', { inline: true });
+    return t ? (t.length > 90 ? t.slice(0, 90) + '…' : t) : null;
+  };
   const poserAncre = (e) => {
     if (e.button !== 0 || !boiteEnAncrage) return;
     e.preventDefault(); e.stopPropagation();
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return;
     const x = clamp01((e.clientX - r.left) / r.width), y = clamp01((e.clientY - r.top) / r.height);
-    let texte = null;
-    const pos = textLayerRef.current && positionTexteProche(textLayerRef.current, e.clientX, e.clientY);
-    if (pos) {
-      const ligneTxt = cleanSelectedText(pos.node.nodeValue || '', { inline: true });
-      texte = ligneTxt.length > 90 ? ligneTxt.slice(0, 90) + '…' : ligneTxt;
-    }
+    const texte = texteProche(e.clientX, e.clientY);
+    const avecFleche = ancrageFleche; // « Flèche » cliquée sans épingle : on trace la flèche dans la foulée
     onDemanderAncrage(null);
-    onModifierBoite(boiteEnAncrage, { ancre: { x, y, texte: texte || null } }, 'Ancrage de la boîte');
+    onModifierBoite(boiteEnAncrage, { ancre: { x, y, texte: texte || null }, ...(avecFleche ? { fleche: true } : {}) }, avecFleche ? 'Épingle et flèche' : 'Épinglage de la boîte');
   };
 
   // Cmd+C : le texte copié garde ses retours à la ligne (issus des <br>), caractères
@@ -505,14 +508,14 @@ export function PdfPageContent({
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
           onMaj={onMajBoite} onSupprimer={onSupprimerBoite} onModifier={onModifierBoite}
           enAncrage={b.id === ancrageBoiteId} onDemanderAncrage={onDemanderAncrage}
-          pageWidth={pageWidth} pageHeight={pageHeight} />
+          pageWidth={pageWidth} pageHeight={pageHeight} texteProche={texteProche} />
       ))}
 
       {/* VISÉE D'UN ANCRAGE : au-dessus de tout, sur la page de la boîte seulement.
           Un clic = l'endroit visé (point exact + le passage de texte le plus proche). */}
       {boiteEnAncrage && (
         <div className="pdfr-ancrage" onPointerDown={poserAncre}>
-          <div className="pdfr-ancrage-aide">Clique l’endroit de la fiche auquel rattacher cette boîte · Échap pour annuler</div>
+          <div className="pdfr-ancrage-aide">{ancrageFleche ? 'Clique l’endroit que la flèche doit viser' : 'Clique l’endroit de la fiche où épingler cette boîte'} · Échap pour annuler</div>
         </div>
       )}
 
@@ -548,7 +551,7 @@ export function PdfPageContent({
    Une seule entrée d'historique par geste : l'état d'avant est capturé au
    pointerdown, la commande empilée au pointerup, et seulement si ça a bougé.
    ============================================================ */
-function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, onDemanderAncrage, pageWidth, pageHeight }) {
+function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, onDemanderAncrage, pageWidth, pageHeight, texteProche }) {
   const [apercu, setApercu] = useState(null); // géométrie pendant le geste (état local, non persisté)
   const b = apercu || boite;
   const html = useMemo(() => richToHTML(boite.content), [boite.content]);
@@ -640,24 +643,71 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     background: avecAlpha(COLOR_HEX[boite.couleur] || COLOR_HEX.jaune, 0.92),
   };
 
-  /* REPLIABLE (demande du 30/09) : « – » réduit la boîte en une PASTILLE, un clic
-     sur la pastille la rouvre. L'état `reduite` est ENREGISTRÉ sur la boîte (même
-     store, même synchro, annulable) : elle reste comme on l'a laissée, d'une
-     ouverture à l'autre et d'un appareil à l'autre. Une boîte d'avant n'a pas le
-     champ : elle est ouverte. */
-  const extrait = (boite.content ? richToHTML(boite.content).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '') || 'Boîte de texte';
-  /* ANCRE : le point visé de la page. Repère discret à cet endroit ; une boîte
-     ancrée ET réduite devient une pastille posée SUR le passage visé. */
-  const ancre = boite.ancre && Number.isFinite(boite.ancre.x) && Number.isFinite(boite.ancre.y) ? boite.ancre : null;
-  const titreAncre = ancre ? (ancre.texte ? `Rattachée à « ${ancre.texte} »` : 'Rattachée à cet endroit') : '';
+  /* ÉPINGLE (ancre) : le point de la fiche auquel la boîte se rapporte. Un repère
+     rond à cet endroit ; une boîte épinglée ET réduite devient une pastille posée
+     SUR ce passage. Une boîte d'avant n'a ni ancre, ni `reduite` : ouverte, libre. */
+  const extrait = (boite.content ? richToHTML(boite.content).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '') || 'Boîte vide';
+  const [pointApercu, setPointApercu] = useState(null); // position pendant le glisser d'une épingle / pastille
+  const ancreBrute = boite.ancre && Number.isFinite(boite.ancre.x) && Number.isFinite(boite.ancre.y) ? boite.ancre : null;
+  const ancre = ancreBrute && pointApercu && pointApercu.cible === 'ancre' ? { ...ancreBrute, ...pointApercu } : ancreBrute;
+  const titreAncre = ancre ? (ancre.texte ? `Épinglée sur « ${ancre.texte} »` : 'Épinglée à cet endroit') : '';
+
+  /* GLISSER UN POINT (l'épingle, ou la pastille d'une boîte réduite). Un simple
+     clic (< 4 px) n'est pas un glisser : il garde son sens (rouvrir la pastille).
+     Le point reste dans la page ; le passage visé est recalculé au relâchement. */
+  const glisserPoint = (e, { cible, depart, surClic }) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const page = e.currentTarget.closest('.pdfr-page');
+    const r = page && page.getBoundingClientRect();
+    if (!r || !r.width || !r.height) return;
+    const d0 = { x: e.clientX, y: e.clientY };
+    let bouge = false, dernier = null;
+    onGeste(true);
+    const move = (ev) => {
+      if (!bouge && Math.abs(ev.clientX - d0.x) + Math.abs(ev.clientY - d0.y) <= 4) return;
+      bouge = true;
+      dernier = { x: clamp01(depart.x + (ev.clientX - d0.x) / r.width), y: clamp01(depart.y + (ev.clientY - d0.y) / r.height), cx: ev.clientX, cy: ev.clientY };
+      setPointApercu({ cible, x: dernier.x, y: dernier.y });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      onGeste(false);
+      setPointApercu(null);
+      if (!bouge || !dernier) { if (surClic) surClic(); return; }
+      if (cible === 'ancre') {
+        onModifier(boite, { ancre: { x: dernier.x, y: dernier.y, texte: texteProche ? texteProche(dernier.cx, dernier.cy) : null } }, 'Déplacement de l’épingle');
+      } else { // pastille d'une boîte NON épinglée : la boîte rouvrira à cet endroit
+        onModifier(boite, { x: clamp(dernier.x, 0, 1 - boite.width), y: clamp(dernier.y, 0, 1 - boite.height) }, 'Déplacement de la boîte réduite');
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  // survol (barre d'actions) — déclaré AVANT le retour anticipé de la pastille : même
+  // nombre de hooks que la boîte soit ouverte ou réduite.
+  const [survol, setSurvol] = useState(false);
+  const timerSurvol = useRef(null);
+  const entrer = () => { clearTimeout(timerSurvol.current); setSurvol(true); };
+  const sortir = () => { clearTimeout(timerSurvol.current); timerSurvol.current = setTimeout(() => setSurvol(false), 250); };
+  useEffect(() => () => clearTimeout(timerSurvol.current), []);
+  const rouvrir = () => onModifier(boite, { reduite: false }, 'Réouverture de la boîte');
+  const couleurBoite = COLOR_HEX[boite.couleur] || COLOR_HEX.jaune;
+
+  /* RÉDUITE : une pastille. Glisser = la déplacer (épinglée : l'épingle suit, le
+     passage visé est recalculé ; libre : la boîte rouvrira là). Clic = rouvrir. */
   if (boite.reduite) {
-    const lieu = ancre ? { left: ancre.x * 100 + '%', top: ancre.y * 100 + '%', transform: 'translate(-50%, -50%)', margin: 0 } : { left: b.x * 100 + '%', top: b.y * 100 + '%' };
+    const pos = pointApercu && pointApercu.cible === 'pastille' ? pointApercu : (ancre || { x: b.x, y: b.y });
+    const cible = ancre ? 'ancre' : 'pastille';
     return (
-      <button type="button" className={'nb-pastille' + (ancre ? ' ancree' : '')} style={{ ...lieu, background: COLOR_HEX[boite.couleur] || COLOR_HEX.jaune }}
-        title={`${extrait.slice(0, 120)}${extrait.length > 120 ? '…' : ''} — cliquer pour rouvrir`}
-        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onGeste(true); }}
-        onClick={(e) => { e.stopPropagation(); onGeste(false); onModifier(boite, { reduite: false }, 'Réouverture de la boîte'); }}>
-        <Icon name="edit" size={12} />
+      <button type="button" className={'nb-pastille' + (pointApercu ? ' glisse' : '')}
+        style={{ left: pos.x * 100 + '%', top: pos.y * 100 + '%', background: couleurBoite }}
+        title={`« ${extrait.slice(0, 100)}${extrait.length > 100 ? '…' : ''} »${ancre && ancre.texte ? `\n${titreAncre}` : ''}\nClic : rouvrir · Glisser : déplacer`}
+        onPointerDown={(e) => glisserPoint(e, { cible, depart: ancre ? { x: ancre.x, y: ancre.y } : { x: b.x, y: b.y }, surClic: rouvrir })}
+        onClick={(e) => e.stopPropagation()}>
+        <IconeEpingle size={13} />
       </button>
     );
   }
@@ -682,6 +732,14 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   })();
   const couleurFleche = COULEUR_FLECHE[boite.couleur] || COULEUR_FLECHE.jaune;
 
+  /* LES ACTIONS DE LA BOÎTE — une barre À LIBELLÉS, au-dessus de la boîte, visible
+     quand la boîte est active ou survolée (retour de l'utilisateur : cinq icônes de
+     18 px sans texte, « on ne comprend pas quoi fait quoi »). Chaque bouton dit ce
+     qu'il fait ; l'infobulle dit comment. La « Flèche » n'est jamais grisée : sans
+     épingle, elle commence par la faire poser, puis se trace toute seule. */
+  const actionsVisibles = active || survol || enAncrage;
+  const stop = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onClick: (e) => { e.stopPropagation(); fn(); } });
+
   return (
     <>
     {fleche && (
@@ -696,51 +754,60 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       </svg>
     )}
     {ancre && (
-      <span className="nb-ancre" title={titreAncre}
-        style={{ left: ancre.x * 100 + '%', top: ancre.y * 100 + '%', borderColor: COLOR_HEX[boite.couleur] || COLOR_HEX.jaune }} />
+      <span className={'nb-ancre' + (pointApercu ? ' glisse' : '')} title={`${titreAncre}\nGlisser pour déplacer l’épingle`}
+        style={{ left: ancre.x * 100 + '%', top: ancre.y * 100 + '%', borderColor: couleurBoite }}
+        onPointerDown={(e) => glisserPoint(e, { cible: 'ancre', depart: { x: ancreBrute.x, y: ancreBrute.y } })} />
     )}
-    <div ref={boiteRef} className={'note-box' + (active ? ' active' : '') + (enAncrage ? ' en-ancrage' : '')} style={style}>
+    {actionsVisibles && (
+      <div className={'nb-actions' + (pageHeight && b.y * pageHeight < 42 ? ' dessous' : '')}
+        style={{ left: b.x * 100 + '%', top: (pageHeight && b.y * pageHeight < 42 ? b.y + b.height : b.y) * 100 + '%' }}
+        onMouseEnter={entrer} onMouseLeave={sortir}
+        onPointerDown={(e) => e.stopPropagation()}>
+        {enAncrage ? (
+          <button type="button" className="nb-act vise" {...stop(() => onDemanderAncrage(null))} title="Annuler (Échap)">
+            <IconeEpingle size={13} /> Clique l’endroit à épingler… <span className="nb-act-x">Annuler</span>
+          </button>
+        ) : (<>
+          {ancre ? (
+            <button type="button" className="nb-act actif" {...stop(() => onModifier(boite, { ancre: null, fleche: false }, 'Retrait de l’épingle'))}
+              title={`${titreAncre}. Pour la déplacer : glisse l’épingle sur la page. Cliquer ici la retire (et la flèche avec).`}>
+              <IconeEpingle size={13} /> Retirer l’épingle
+            </button>
+          ) : (
+            <button type="button" className="nb-act" {...stop(() => onDemanderAncrage(boite.id))}
+              title="Épingler la boîte à un endroit précis de la fiche : clique ensuite sur le passage visé.">
+              <IconeEpingle size={13} /> Épingler
+            </button>
+          )}
+          <button type="button" className={'nb-act' + (ancre && boite.fleche ? ' actif' : '')}
+            {...stop(() => (ancre ? onModifier(boite, { fleche: !boite.fleche }, boite.fleche ? 'Retrait de la flèche' : 'Ajout de la flèche') : onDemanderAncrage(boite.id, { fleche: true })))}
+            title={!ancre ? 'Flèche vers un endroit de la fiche : clique ensuite sur le passage visé, la flèche se trace toute seule.' : boite.fleche ? 'Retirer la flèche' : 'Tracer une flèche de la boîte vers son épingle'}>
+            <Icon name="arrowR" size={13} /> {ancre && boite.fleche ? 'Retirer la flèche' : 'Flèche'}
+          </button>
+          <button type="button" className="nb-act" {...stop(() => onModifier(boite, { reduite: true }, 'Réduction de la boîte'))}
+            title="Réduire en pastille : un clic sur la pastille rouvre la boîte, un glisser la déplace.">
+            <Icon name="minus" size={13} /> Réduire
+          </button>
+          <button type="button" className="nb-act danger" {...stop(() => onSupprimer(boite))} title={`Supprimer la boîte (annulable par ${RACCOURCI_Z})`}>
+            <Icon name="trash" size={13} /> Supprimer
+          </button>
+        </>)}
+      </div>
+    )}
+    <div ref={boiteRef} className={'note-box' + (active ? ' active' : '') + (enAncrage ? ' en-ancrage' : '')} style={style}
+      onMouseEnter={entrer} onMouseLeave={sortir}>
       {/* CORRECTIF (défaut 4) : le bandeau est focusable, et c'est LUI qui porte la
           suppression au clavier — plus aucun écouteur global ne peut effacer la
           boîte pendant que le curseur est ailleurs. */}
       <div className="nb-bar" ref={barreRef} tabIndex={0}
-        title="Glisser pour déplacer · Suppr pour effacer"
+        title="Glisser ici pour déplacer la boîte · Suppr pour l’effacer"
         onPointerDown={(e) => { demarrer(e, 'move'); if (barreRef.current) barreRef.current.focus(); }}
         onKeyDown={(e) => {
           if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onSupprimer(boite); }
           if (e.key === 'Enter') { e.preventDefault(); activer(null); }
         }}>
         <span className="nb-grip"><Icon name="grip" size={12} /></span>
-        <span className="nb-spacer" />
-        <button type="button" className={'nb-btn' + (ancre ? ' actif' : '') + (enAncrage ? ' vise' : '')}
-          title={enAncrage ? 'Viser annulé si tu recliques (ou Échap)' : ancre ? `${titreAncre} — cliquer pour viser un autre endroit` : 'Rattacher la boîte à un endroit précis de la fiche'}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); onDemanderAncrage(enAncrage ? null : boite.id); }}>
-          <Icon name="target" size={12} />
-        </button>
-        <button type="button" className={'nb-btn' + (ancre && boite.fleche ? ' actif' : '')} disabled={!ancre}
-          title={!ancre ? 'Flèche : rattache d’abord la boîte à un endroit (bouton cible)' : boite.fleche ? 'Retirer la flèche' : 'Ajouter une flèche vers l’endroit rattaché'}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); if (ancre) onModifier(boite, { fleche: !boite.fleche }, boite.fleche ? 'Retrait de la flèche' : 'Ajout de la flèche'); }}>
-          <Icon name="arrowR" size={12} />
-        </button>
-        {ancre && (
-          <button type="button" className="nb-btn" title="Détacher la boîte de cet endroit"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onModifier(boite, { ancre: null, fleche: false }, 'Détachement de la boîte'); }}>
-            <Icon name="x" size={12} />
-          </button>
-        )}
-        <button type="button" className="nb-btn" title="Réduire en pastille (un clic sur la pastille la rouvre)"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); onModifier(boite, { reduite: true }, 'Réduction de la boîte'); }}>
-          <Icon name="minus" size={12} />
-        </button>
-        <button type="button" className="nb-btn danger" title="Supprimer cette boîte"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); onSupprimer(boite); }}>
-          <Icon name="trash" size={12} />
-        </button>
+        {ancre && <span className="nb-etat" title={titreAncre}><IconeEpingle size={11} /></span>}
       </div>
 
       {/* VERROU 4 : le corps est du TEXTE, pas une poignée. */}
@@ -753,6 +820,16 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     </>
   );
 }
+
+/** l'épingle : une icône qui dit ce qu'elle est (l'icône « cible » ne le disait pas). */
+function IconeEpingle({ size = 13 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z" /><circle cx="12" cy="11" r="2.2" />
+    </svg>
+  );
+}
+const RACCOURCI_Z = (typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '') ? 'Cmd' : 'Ctrl') + '+Z';
 
 /** teinte FONCÉE de chaque couleur de boîte, pour que la flèche reste lisible sur
     le blanc de la page (les couleurs de boîte sont des pastels). */

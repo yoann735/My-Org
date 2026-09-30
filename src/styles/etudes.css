@@ -1497,3 +1497,26 @@
 
 /* sous-ligne explicative d'un encart d'erreur (fichier manquant…) */
 .err-mini .em-sub { font-size: 12.5px; color: var(--text-2); margin-top: 3px; line-height: 1.4; }
+
+/* BARRE D'ACTIONS d'une boîte de texte : au-dessus de la boîte, à libellés
+   (Épingler · Flèche · Réduire · Supprimer), visible quand la boîte est active ou
+   survolée. Posée à côté de la boîte (qui masque ses débordements). */
+.nb-actions { position: absolute; transform: translateY(calc(-100% - 5px)); display: flex; gap: 3px; padding: 3px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 9px; box-shadow: 0 4px 14px rgba(0,0,0,.28);
+  z-index: 6; white-space: nowrap; }
+.nb-actions.dessous { transform: translateY(5px); } /* boîte collée en haut de page : la barre passe dessous */
+.nb-act { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border: 1px solid transparent;
+  border-radius: 7px; background: transparent; color: var(--text); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.nb-act:hover { background: var(--bg-2); border-color: var(--border-2); }
+.nb-act.actif { color: var(--accent); background: var(--accent-soft); }
+.nb-act.danger { color: var(--crit); }
+.nb-act.danger:hover { background: color-mix(in srgb, var(--crit) 12%, transparent); }
+.nb-act.vise { background: var(--accent); color: #fff; }
+.nb-act .nb-act-x { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: rgba(255,255,255,.22); font-size: 11px; }
+.note-box .nb-etat { margin-left: auto; opacity: .7; display: inline-flex; }
+/* épingle et pastille : on les attrape pour les déplacer */
+.nb-ancre { cursor: grab; }
+.nb-ancre.glisse, .nb-pastille.glisse { cursor: grabbing; transform: scale(1.2); }
+.nb-pastille { cursor: grab; margin: 0; transform: translate(-50%, -50%); }
+.nb-pastille:hover { transform: translate(-50%, -50%) scale(1.15); }
+.nb-pastille.glisse { transform: translate(-50%, -50%) scale(1.2); }

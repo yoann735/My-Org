@@ -167,7 +167,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (id === 'surligneur' && pending && window.getSelection && !window.getSelection().isCollapsed) {
       commitHighlightAvec(pending, couleurActive);
     }
-    setOutil(id); setPending(null); setEditingHl(null); setAncrageBoiteId(null); if (id !== 'main') setActiveEditId(null);
+    setOutil(id); setPending(null); setEditingHl(null); setAncrage(null); if (id !== 'main') setActiveEditId(null);
   };
 
   const [search, setSearch] = useState('');
@@ -746,10 +746,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      rapporte. `ancrageBoiteId` = la boîte qui attend son point ; la page concernée
      pose alors une couche de visée au-dessus de tout (voir PdfPage). Échap, ou
      changer d'outil, annule. */
-  const [ancrageBoiteId, setAncrageBoiteId] = useState(null);
+  const [ancrage, setAncrage] = useState(null); // { id, fleche } — la boîte qui attend son épingle
+  const ancrageBoiteId = ancrage ? ancrage.id : null;
+  const setAncrageBoiteId = (id, opts) => setAncrage(id ? { id, fleche: !!(opts && opts.fleche) } : null);
   useEffect(() => {
     if (!ancrageBoiteId) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') setAncrageBoiteId(null); };
+    const onKey = (e) => { if (e.key === 'Escape') setAncrage(null); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [ancrageBoiteId]);
@@ -1029,7 +1031,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onMajBoite={majBoite}
                       onSupprimerBoite={supprimerBoite}
                       onModifierBoite={modifierBoite}
-                      ancrageBoiteId={ancrageBoiteId} onDemanderAncrage={setAncrageBoiteId}
+                      ancrageBoiteId={ancrageBoiteId} ancrageFleche={!!(ancrage && ancrage.fleche)} onDemanderAncrage={setAncrageBoiteId}
                       pageWidth={w}
                       activeEditId={activeEditId}
                       matches={matchesByPage[n] || EMPTY_ARRAY}
