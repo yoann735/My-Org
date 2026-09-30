@@ -1,168 +1,166 @@
-# Rapport de nuit — 29 au 30 septembre 2026
+# Rapport de nuit — 30 septembre → 1er octobre 2026
 
-Deux chantiers : le **refactor du lecteur PDF** (terminé) et le **problème Supabase**
-(diagnostiqué, préparé — il reste des gestes qui n'appartiennent qu'à toi).
+**En une phrase : tes données sont en sécurité (locales ET cloud), le lecteur est fini et
+poussé, et il te reste UN clic à faire chez Supabase.**
 
-**Aucune écriture cloud n'a été faite.** Rien n'a été supprimé, migré ni réinitialisé.
-
----
-
-## ⚠️ À FAIRE EN PREMIER AU RÉVEIL, avant tout le reste
-
-**Exporte une sauvegarde locale sur CHAQUE appareil** : MedRevise → Réglages →
-« Enregistre TOUT ce que contient cet appareil dans un seul fichier JSON ».
-C'est une opération en lecture seule, elle ne déclenche aucune synchro.
-
-Pourquoi c'est urgent : le projet Supabase visé par la production **n'existe plus**
-(voir plus bas). La copie cloud de tes données est donc très probablement perdue, et
-**les copies locales de tes appareils sont aujourd'hui les seules qui restent**.
-Je n'ai pas pu faire cette sauvegarde à ta place : macOS interdit l'accès au profil
-Chrome (`ls ~/Library/.../Google/Chrome` → `Operation not permitted`). Je n'ai
-tenté aucun contournement — c'est une protection du système, pas un obstacle.
+Aucune écriture cloud n'a été faite. Rien n'a été supprimé, recréé ni réinjecté.
+MealWeek : 0 fichier touché (`git log -- src/mealweek src/shared` vide depuis hier soir).
 
 ---
 
-## TÂCHE 1 — Supabase « Cloud injoignable »
+## ⚠️ À lire en premier : Supabase n'est PAS perdu
 
-### Le diagnostic, en une phrase
+Hier je t'ai écrit que le projet Supabase était probablement **supprimé**. **C'était faux.**
+Cette nuit j'ai pu ouvrir ton tableau de bord (lecture seule) :
 
-Le nom d'hôte du projet Supabase ne résout plus en DNS (**NXDOMAIN**, confirmé sur le
-résolveur système, 1.1.1.1 et 8.8.8.8, alors qu'un hôte témoin répond normalement).
-Un projet simplement *en pause* garderait son DNS et renverrait une erreur HTTP ; un
-hôte qui disparaît des DNS signifie que le projet a été **supprimé**, ou que son
-identifiant a changé. Détail complet et preuves : **`docs/diag-supabase-nuit.md`**.
+> Project "My Org" is paused — *All data, including backups and storage objects, remains
+> safe.* You can resume this project from the dashboard until **01 Nov 2027**.
 
-Écarté, avec la preuve à chaque fois : réseau, déploiement en cours, variables d'env
-absentes, RPC manquante, RLS, quota, régression d'un commit récent. Vercel est sain
-(6 déploiements production `READY`), et les deux variables `VITE_SUPABASE_*` sont
-bien présentes et bien inlinées dans le bundle servi.
+C'est la mise en veille automatique du plan gratuit (tes 3 projets sont en pause). Un projet
+en pause perd son DNS, d'où le « NXDOMAIN » qui m'avait trompé. Détails et preuves :
+**`docs/diag-supabase.md`**.
 
-### Ce que j'ai fait côté code (sans toucher au cloud)
+## ✅ Tes clics restants, dans l'ordre
 
-L'app affichait le même « Cloud injoignable » pour une coupure de dix secondes et
-pour un projet disparu. Elle dit maintenant **où** est la panne :
+| # | Geste | Où | Pourquoi |
+|---|---|---|---|
+| 1 | *(recommandé)* Exporter une sauvegarde sur **chaque autre appareil** (téléphone, autre ordi) | MedRevise → Réglages → Sauvegarde → « Avec les images et PDF » | ce Mac est déjà sauvegardé (voir plus bas) ; les autres, je n'y ai pas accès |
+| 2 | **Resume project** | supabase.com → My Org → bouton « Resume project » | le seul geste nécessaire ; rien d'autre à configurer |
+| 3 | Attendre que le projet soit « Healthy » (quelques minutes) | même page | DNS et API reviennent |
+| 4 | *(facultatif)* Vérifier le contenu | SQL Editor → coller `supabase/verif-apres-reprise.sql` → Run | **lecture seule** (transaction `read only` + `rollback`) : lignes par store, dernière écriture, fonction `medrevise_push`, bucket |
+| 5 | Ouvrir MedRevise sur l'appareil le plus à jour, puis Réglages → **Forcer la synchro** | l'app | réconciliation normale (last-write-wins) |
+| 6 | Puis les autres appareils, un par un | l'app | chacun renvoie ce qu'il a de plus récent |
 
-> ⚠️ Le serveur cloud ne répond pas (projet Supabase supprimé, en pause, ou URL
-> erronée) — état non vérifiable
+**Rien à faire sur Vercel** : l'URL et la clé du build pointent déjà sur ce projet (vérifié :
+JWT décodé, `ref = deaonugwvbapkdixdowk`).
 
-Vérifié en reproduisant la panne réelle en local (un `.env` gitignoré pointant vers un
-hôte inexistant, supprimé depuis). Aucun changement du comportement de la synchro :
-mêmes appels, mêmes règles, mêmes garde-fous — seul le diagnostic affiché change.
+**Ne PAS exécuter** `supabase/restauration-projet.sql` : il servait à recréer un projet
+supprimé. Sur ton projet existant, son `create or replace` remplacerait ta fonction
+`medrevise_push`. Je lui ai mis un avertissement en tête.
 
-### Ce qui t'attend, et que je n'ai PAS fait
+Pour éviter une nouvelle pause : passer le projet en Pro, ou l'ouvrir au moins une fois par
+semaine. Et si ça se reproduit, l'app reste désormais utilisable immédiatement (voir tâche 2).
 
-Créer un projet Supabase demande ton compte ; exécuter du SQL sur ta base est une
-écriture. Les deux sortent de ce que je m'autorise en autonomie. Tout est prêt :
+---
 
-| # | Geste | Où |
+## TÂCHE 2 — Supabase : diagnostic, données, remise en route
+
+### Tes données locales : confirmées intactes, noir sur blanc
+
+Lues dans l'IndexedDB de ton Chrome (production), depuis une page statique du site pour ne
+pas démarrer l'app, en comptage seul :
+
+| | Ce Mac, cette nuit | Ta sauvegarde de référence du 25/08 |
 |---|---|---|
-| 1 | **Sauvegarder en local** sur chaque appareil | Réglages → sauvegarde JSON |
-| 2 | Vérifier dans le tableau de bord Supabase si le projet est supprimé, en pause, ou déplacé | supabase.com |
-| 3 | Si le projet est récupérable : le réactiver, et **rien d'autre** ne sera nécessaire | — |
-| 4 | Sinon : créer un projet neuf, puis **répétition à blanc** du script | `supabase/restauration-projet.sql`, tel quel (il finit par `rollback;`) |
-| 5 | Si les contrôles AVANT/APRÈS sont bons : remplacer `rollback;` par `commit;` et réexécuter | idem |
-| 6 | Mettre à jour `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` sur Vercel, puis **Redeploy** | Vercel → my-org → Settings → Environment Variables |
-| 7 | Ouvrir l'app sur l'appareil le plus complet en premier, et forcer la synchro | Réglages → Forcer la synchro |
-| 8 | Puis les autres appareils, un par un | — |
+| fiches | **66** | 62 |
+| cartes (questions) | **1 140** | 1 111 |
+| sessions | **42** | 39 |
+| dossiers | **24** | 22 |
+| matières / cours | 2 / 1 | 2 / 1 |
+| envois en attente | 0 | — |
 
-`supabase/restauration-projet.sql` recrée la table `medrevise_records` + sa RLS, le
-bucket `medrevise-blobs` + sa policy, et la fonction `medrevise_push` (le garde-fou
-`updated_at`). Il ne contient **aucun** DROP, DELETE, TRUNCATE ni UPDATE de données,
-il est idempotent, et il affiche un contrôle avant et après.
+**Rien n'est perdu en local : ce Mac a même plus que ta référence.** Ses images/PDF ne sont
+pas sur cet appareil, ils sont dans le stockage cloud (0,06 Go, intact selon Supabase).
+Sa dernière synchro réussie date du **26/08** : il sera à jour après l'étape 5.
 
-### Ce que tu ne risques pas, et pourquoi je peux l'affirmer
-
-Se rebrancher sur un projet **vide** ne détruira rien en local. Dans
-`storage.js#reconcileAll`, une suppression locale n'a lieu que face à un *tombstone
-cloud plus récent* (`cloud.deleted && cloudTs >= localTs`). Un projet neuf n'a ni
-ligne ni tombstone : chaque enregistrement local sera **poussé** vers le cloud, jamais
-effacé. Et `syncNow` porte déjà le garde-fou C2 — « ne jamais pousser après un tirage
-raté » —, c'est pour ça que la panne n'a rien abîmé pendant qu'elle durait.
-
-L'ordre des appareils (point 7) n'est important que pour le confort : en
-last-write-wins, c'est la version la plus récente de chaque enregistrement qui gagne,
-quel que soit l'ordre. Les **fichiers** (PDF, images), eux, ne remonteront au bucket
-que depuis les appareils qui les détiennent : il faudra bien synchroniser chacun.
-
----
-
-## TÂCHE 2 — Refactor du lecteur PDF : terminé
-
-Sept étapes, sept commits, tous poussés, `npm run build` vert avant chacun.
-
-| Étape | Commit | Ce qui change |
-|---|---|---|
-| 1 | `6177005` | Boîte de texte réparée : 4 défauts enchaînés (focus manquant, mise en forme sans effet, fermeture périmée qui réécrivait la géométrie, Retour arrière destructeur) + couleur d'une boîte existante + Échap |
-| 2 | `e102c95` | Bandeau du mode focus retiré ; accueil Prise de notes = drag & drop plein écran, import en zéro clic |
-| 3 | `4642ead` | Suppression d'un surlignage limpide : contour au survol, cible cerclée, bouton rouge pleine largeur |
-| 4 | `9f22e70` | Découpage à comportement identique : `PdfReader` 1907 → 990 lignes, + `pdfShared` (278), `PdfPage` (514), `CourseHtmlView` (212) |
-| 5 | `7f13483` | Un seul axe d'outil (fin du faux mode Lecture/Édition), barre en 3 zones + barre contextuelle + menu ⋯, gomme |
-| 6 | `58cb112` | Crayon à main levée + mode aimant (simplification RDP puis accrochage angulaire) |
-| 7 | `9d4c85a` | Un seul lecteur : prop `source` unique, `outilsNotes` et `mode` supprimés, outils actifs **partout** |
-| — | `94cc0de` | Message de panne cloud précis (tâche 1) |
-
-**Combien de lecteurs y avait-il ? Un seul.** Ton impression de « plusieurs versions »
-était juste, mais la cause était ailleurs : un fichier de 1907 lignes contenant DEUX
-visionneuses sans rapport (le PDF et l'atelier HTML), chacune avec sa barre d'outils,
-plus cinq axes de mode orthogonaux. Aucun vestige à supprimer : il fallait séparer.
-
-### Une régression, attrapée et corrigée
-
-Le découpage de l'étape 4 a emporté `courseExportOk` avec la branche HTML, alors que
-la barre PDF s'en sert aussi → `ReferenceError` et écran blanc sur Réviser. La
-check-list l'a vu immédiatement ; corrigé dans le même commit. C'est exactement ce
-pour quoi l'étape 4 n'apportait aucune fonctionnalité.
-
-### Check-list de non-régression, rejouée à chaque étape
-
-Six points d'entrée du lecteur, dans un Chrome headless isolé, sur une base locale :
+**Sauvegarde neuve produite cette nuit** (bouton d'export de l'app, lecture seule) :
 
 ```
-Réviser            canvas=1  page=1 / 2  outils=[Sélection/Surligneur/Boîte/Crayon/Gomme]
-Biblio · PDF       canvas=1  page=1 / 2  outils=[…]
-Biblio · HTML      iframe=1  atelier=1   (CourseHtmlView, #doc relu — pas le lecteur PDF)
-Apprentissage      canvas=2  page=1 / 2  outils=[…]
-Anatomie théorie   canvas=1  page=1 / 2  outils=[…]
-Prise de notes     canvas=2  page=1 / 2  outils=[…]
-TOTAL erreurs console : 0
+~/Downloads/medrevise-sauvegarde-my-org-blue.vercel.app-2026-09-30-15h39.json
+2 688 620 octets — SHA-256 e63c2821a951d17109f6534c1c44e0da320acc0e032f9b1ae3b58496d4e047e7
+compteurs = IndexedDB, à l'unité (66 / 1 140 / 42 / 24 …)
 ```
 
-### Un changement de comportement volontaire, à connaître
+Recomptée après l'ouverture de l'app : strictement identique, 0 envoi en attente.
 
-Depuis l'étape 7, **les outils d'annotation (surligneur, boîte, crayon, gomme) et
-l'undo/redo sont actifs sur les PDF de tes fiches** — Réviser, Bibliothèque,
-Apprentissage, Import Anatomie — et plus seulement en Prise de notes. C'est ce que
-« un seul lecteur partout » implique, et tu l'as validé. Si tu préfères les réserver
-à la Prise de notes, c'est une condition à remettre, pas un retour en arrière.
+### L'app sans cloud : plus de blocage au démarrage — commit `f92b895`
+
+Avant, rien ne s'affichait tant que la synchro n'avait pas échoué. Maintenant l'app affiche
+d'abord ce qu'elle a en local, puis la synchro (même séquence, même ordre) tourne derrière.
+Testé sur un serveur local pointé vers un hôte **inventé** (jamais ton vrai projet) :
+
+```
+jusqu'à l'app utilisable :  7 271 ms  →  225 ms
+Réglages : « Le serveur cloud ne répond pas (projet Supabase supprimé, en pause, ou URL erronée) »
+usage hors cloud : surlignage créé → conservé au rechargement → 2 envois en attente, 0 erreur
+```
+
+---
+
+## TÂCHE 1 — Lecteur PDF/HTML : les 10 points, faits et testés
+
+Testé **à la souris réelle** (événements souris natifs), dans ton Chrome au début puis dans
+un Chrome headless isolé (voir « Méthode »). Build vert avant chaque commit, tout est poussé
+et déployé (vérifié dans le bundle de production).
+
+| # | Demande | Commit | Cause trouvée / ce qui change |
+|---|---|---|---|
+| 1 | Surlignage simple comme Word, pas de note | `b95aebb` | Surligneur : sélection = surligné. Sélection : **plus aucune popover** ; prendre le Surligneur avec du texte sélectionné le surligne (comme Word). Clic sur un surlignage → petite bulle **4 couleurs + Supprimer**, sans note. « Remplacer le texte » est dans le menu ⋯. |
+| 2 | Pas de re-surlignage | `ff94f07` | On retire de la sélection ce qui est déjà surligné : seul le libre est coloré ; tout couvert ⇒ rien. **Bug trouvé au passage** : un glisser qui finissait entre deux lignes surlignait plusieurs lignes de trop (Chrome renvoyait une borne « DIV, 37 ») — corrigé. |
+| 3 | Page précédente / suivante cassée | `03c7574` | Le compteur prenait la page *pré-rendue au-dessus* de l'écran : figé sur 1/3, « suivante » ne bougeait pas. Mesuré après : 1→2→3→2→1. |
+| 4 | Boîte de texte qui ne crée rien | `5b267e9` | **Deux causes** : une variable `couleurBoite` qui n'existait pas (erreur silencieuse : aucune boîte), puis le focus qui restait sur le bouton « Boîte » (ta première Espace le « cliquait »). Maintenant : tracer → écrire aussitôt → gras/couleur → déplacer → redimensionner → tout conservé au rechargement. |
+| 5 | Crayon : dessin fluide + surligneur | `c8e2601` | Barre du crayon : **[Dessin \| Surligneur]**. Dessin : fin, tous les points de la souris, lissage « streamline » en direct, rendu en courbes. Surligneur : épais comme une ligne de texte, translucide, le texte reste noir dessous. Aimant conservé (dessin). |
+| 6 | Crayon décalé au-dessus du curseur | `fabfb5e` | Le calque SVG faisait 952×952 sur une page de 952×1347 (un `<svg>` garde son ratio carré) : tout était écrasé vers le haut, ~150 px en bas de page. Mesuré après : trait = curseur au pixel, à 160 % et 212 %, écran Retina. Tes anciens traits se remettent d'eux-mêmes à leur vraie place. |
+| 7 | Gomme : logo, décalage, portée | `34c702b` | (a) le 🚫 (`cursor: not-allowed`) remplacé par un rond centré ; (b) même cause que le 6, plus une mesure sur la page exacte ; (c) elle n'efface **que** les traits de crayon — jamais un surlignage ni une boîte. On peut glisser pour en effacer plusieurs ; un geste = un Cmd+Z. |
+| 8 | Mode focus = une icône | `ad0d250` | Icône « Focus » dans la barre latérale, au-dessus de Prompts/Réglages ; un clic active, un clic désactive, allumée quand actif. Tous les autres points d'activation retirés. |
+| 9 | PDF et HTML dans le même lecteur | `54b5d78` | Même barre, **même panneau de droite sur les deux : QCM / Flashcard / Exercice / Feynman + Notions**. Sur une fiche HTML, Surligneur / Annuler / Rétablir / bulle agissent via les boutons du gabarit (mêmes sécurités que les siens). |
+| 10 | Valable pour toutes les fiches existantes | `784305c` | Aucune migration : anciens surlignages (avec ou sans ancre, avec note), anciens traits, boîtes, blocs, fiches HTML actuelles et **anciennes** : tout s'affiche. Preuves : `docs/verif-retrocompat-lecteur.md`. |
+
+### Check-list de non-régression (rejouée en fin de nuit)
+
+```
+Réviser (plein écran)  canvas=1 texte=33 page 1/3  5 outils  panneau QCM|Flashcard|Exercice|Feynman|Notions
+Bibliothèque · PDF     idem — anciens surlignage + trait + bloc affichés, note ancienne visible
+Bibliothèque · HTML    iframe  outils Sélection/Surligneur  même panneau
+Apprentissage          lecteur OK, panneau Notions (replié par défaut, comme avant)
+Import Anatomie        lecteur OK, panneau Notions
+Prise de notes         lecteur OK, panneau Notions
+MealWeek               s'ouvre normalement
+Erreurs console        0
+Outils (souris réelle, version finale) : pages 2→3→2→1 ; boîte créée + « Texte tapé tout de suite » en gras ;
+crayon dessin + surligneur ; gomme efface la courbe traversée, la boîte reste.
+```
+
+### Changements de comportement à connaître
+
+- **Plus de note sur les surlignages** (comme demandé). Les notes existantes restent visibles
+  dans l'onglet Notions et partent à l'export ; on ne peut plus en créer ni en modifier.
+- **Panneau de droite ouvert par défaut** sur toutes les fiches (il remplace « Notions
+  surlignées »). Le bouton « Panneau » de la barre le replie.
+- **Fiche HTML** : la barre interne du gabarit ne garde que ce que la barre commune n'a pas
+  (Mode lecture, G, I, Titre, Sous-titre, Image, Enregistrer). Pastilles, Annuler/Rétablir
+  et « Copier pour un prompt » passent par la barre commune (Copier : onglet Notions).
+- **Boîte, crayon et gomme n'existent que sur les PDF.** Une fiche HTML n'a pas de pages :
+  ces outils dessinent en coordonnées de page. C'est la seule différence entre les deux
+  lecteurs ; si tu les veux aussi sur HTML, c'est un chantier à part (le cours HTML devrait
+  devenir une « page » unique de hauteur fixe).
+- **Crayon** : le lissage arrondit un peu les pointes d'un tracé très rapide (2 à 4 px au
+  sommet d'une vague rapide) ; début et fin sont exactement sous le curseur.
 
 ---
 
 ## Ce que j'ai choisi de NE PAS faire
 
-1. **Toucher au cloud**, de quelque façon que ce soit. Pas d'écriture, pas de SQL, pas
-   de variable d'environnement modifiée, pas de redeploy déclenché.
-2. **Lire ou copier ta base locale** depuis le profil Chrome : macOS le refuse, et je
-   n'ai pas cherché à contourner.
-3. **Répéter le SQL à blanc sur une vraie base** : ni `psql`, ni `docker`, ni la CLI
-   `supabase` sur cette machine. Le script est donc livré avec son `begin; … rollback;`
-   pour que la répétition se fasse chez toi, en un clic, avec les contrôles visibles.
-4. **Décrypter les valeurs des variables Vercel.** Inutile : les variables `VITE_*`
-   sont inlinées dans le bundle public, ce qui a suffi pour vérifier la configuration.
-5. **Corriger le démarrage lent quand le cloud est mort.** Constat mesuré cette nuit :
-   avec un hôte injoignable, l'app reste ~7,5 s sur l'écran de chargement, parce que la
-   synchro de démarrage attend le réseau avant le premier rendu. C'est réparable (rendre
-   l'app utilisable d'abord, synchroniser ensuite), mais ça touche l'ordre d'amorçage de
-   la synchro — je ne voulais pas y toucher la nuit où le cloud est déjà en panne.
-6. **Corriger le `key` React de `QcmApprentissage`** que je t'avais signalé hier : après
-   vérification, il venait de mon jeu de test, pas de l'app.
+1. **Cliquer « Resume project »** : c'est ton infra, et c'est une écriture — ton clic.
+2. **Exécuter du SQL**, même en lecture : la base est arrêtée ; le script de contrôle est prêt.
+3. **Télécharger les sauvegardes cloud** (« Download backups ») : inutile, Supabase garantit
+   les données ; et c'est un téléchargement de ton infra.
+4. **Toucher aux variables Vercel** : elles sont justes.
+5. **Réinjecter depuis une sauvegarde** : inutile puisque rien n'est perdu. (Si un jour il le
+   fallait : Réglages → Restaurer une sauvegarde, qui montre un aperçu avant d'écrire et
+   sauvegarde l'état actuel d'abord.)
+6. **Ouvrir tes autres appareils** : impossible d'ici.
+7. Dans Réglages de la prod, **seul** le bouton d'export a été cliqué — ni « Réinitialiser
+   les dates », ni « Restaurer une sauvegarde », ni « Forcer la synchro ».
 
-## Détails de méthode
+## Méthode, et ce qui a gêné
 
-L'extension Claude pour Chrome n'étant pas connectée, j'ai piloté un **Chrome headless
-isolé** (profil jetable, port CDP 9333, sans aucun rapport avec ton navigateur ni ta
-session) via un petit client CDP sans dépendance. La base de test a été peuplée en
-appelant les **vrais modules du dépôt** servis par Vite. Aucun `.env` n'existe dans le
-dépôt, donc `SYNC_ENABLED = false` en local : l'instance de test ne pouvait pas joindre
-le cloud, même par accident.
-
-`src/mealweek/` et `src/shared/` : **0 fichier touché** de toute la nuit.
+- Au début, l'extension Chrome était connectée et j'ai testé dans ton Chrome (serveur local
+  isolé, base vide, synchro désactivée). Puis ton onglet est passé « caché » (fenêtre réduite
+  ou recouverte) : Chrome y gèle l'animation, pdf.js ne rendait plus les pages, et les clics
+  de l'extension n'arrivaient plus. J'ai donc continué dans un **Chrome headless isolé**
+  (profil jetable, sans lien avec ton navigateur) piloté par un petit client CDP qui envoie
+  de vrais événements souris/clavier.
+- Ton Chrome n'a servi, pour le reste de la nuit, qu'à : lire le tableau de bord Supabase,
+  compter ton IndexedDB, et cliquer « Exporter » dans Réglages.
+- Fichiers de test (`public/*.tmp.*`) : jamais commités, supprimés à la fin.
