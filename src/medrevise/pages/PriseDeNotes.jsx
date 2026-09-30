@@ -7,18 +7,25 @@
    la prop `doc` porte le PDF (aucune fiche), et `ficheId` sert de CLÉ DE
    NAMESPACE aux annotations. Rien du lecteur n'est réécrit ici — le surlignage,
    le zoom, la recherche et l'export annoté marchent d'office.
+
+   RANGER DANS LA BIBLIOTHÈQUE (lib/notes.js#rangerDansBibliotheque) : juste
+   après l'import, puis à tout moment depuis la carte, le document peut être
+   rangé dans une Section › Matière › Dossier. Il DEVIENT alors la fiche de la
+   Bibliothèque — MÊME id, même PDF, mêmes annotations, aucune copie — et reste
+   affiché ici (liste = documents non rangés + fiches `priseDeNotes`).
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, ConfirmModal } from '../components/ui.jsx';
 import { ImportNote } from '../components/ImportNote.jsx';
 import { PdfReader } from '../pdf/PdfReader.jsx';
-import { deleteNote, renameNote, comptesAnnotations } from '../lib/notes.js';
+import { deleteNote, renameNote, comptesAnnotations, elementsPriseDeNotes, rangerDansBibliotheque } from '../lib/notes.js';
+import { RangerDialog } from '../components/RangerDialog.jsx';
 import { analyserFichiers, importerNote, demandeConfirmation } from '../lib/noteImport.js';
 
 export function PriseDeNotes({ ctx }) {
   const { db } = ctx;
-  const notes = [...(db.notes || [])].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const notes = elementsPriseDeNotes(db); // documents non rangés + fiches issues de Prise de notes
   const [confirmation, setConfirmation] = useState(null); // { fichiers, titre } — seul cas : plusieurs images
   const [survol, setSurvol] = useState(false);            // un fichier est au-dessus de la page
   const [occupe, setOccupe] = useState(false);            // import en cours
@@ -28,6 +35,24 @@ export function PriseDeNotes({ ctx }) {
   const [renommage, setRenommage] = useState(null); // { id, valeur }
   const [flash, setFlash] = useState(null);
   const [comptes, setComptes] = useState({});
+  const [ranger, setRanger] = useState(null); // { id, titre, apresImport } — fenêtre « Ranger dans la Bibliothèque »
+
+  // où la fiche est rangée : « Section › Matière › Dossier »
+  const emplacement = (f) => {
+    if (!f) return null;
+    const m = db.matieres.find((x) => x.id === f.matiereId);
+    const s = m && db.sources.find((x) => x.id === m.sourceId);
+    const d = f.dossierId && db.dossiers.find((x) => x.id === f.dossierId);
+    const p = d && d.parentId && db.dossiers.find((x) => x.id === d.parentId);
+    return [s && s.nom, m && m.nom, p && p.nom, d && d.nom].filter(Boolean).join(' › ');
+  };
+  const validerRangement = async (choix) => {
+    const r = ranger;
+    await rangerDansBibliotheque(ctx, r.id, choix);
+    setRanger(null);
+    annoncer(`« ${r.titre} » est rangé dans la Bibliothèque — le même document, pas une copie.`);
+    if (r.apresImport) setOuvertId(r.id);
+  };
 
   const ouvert = notes.find((n) => n.id === ouvertId) || null;
 
@@ -53,7 +78,9 @@ export function PriseDeNotes({ ctx }) {
     try {
       const note = await importerNote(lu);
       await ctx.reload();
-      setOuvertId(note.id); // ouvert immédiatement : c'est tout l'intérêt du geste
+      // l'import est fait (rien ne peut se perdre) ; on demande OÙ le ranger —
+      // « Plus tard » l'ouvre tel quel, comme avant.
+      setRanger({ id: note.id, titre: note.titre, apresImport: true });
     } catch (e) {
       annoncer((e && e.message) || "L'import a échoué — le fichier n'a pas pu être enregistré.");
     } finally { setOccupe(false); }
@@ -71,7 +98,13 @@ export function PriseDeNotes({ ctx }) {
   const supprimer = async () => {
     const n = aSupprimer;
     setASupprimer(null);
-    await deleteNote(n);
+    if (n.fiche) {
+      // fiche rangée : même geste que partout dans l'app → corbeille (restaurable)
+      await ctx.setFicheArchived(n.id, true);
+      annoncer(`« ${n.titre} » est dans la corbeille (Réglages) — restaurable.`);
+      return;
+    }
+    await deleteNote(n.note);
     await ctx.reload();
     annoncer(`« ${n.titre} » supprimé.`);
   };
@@ -81,16 +114,20 @@ export function PriseDeNotes({ ctx }) {
     const n = notes.find((x) => x.id === renommage.id);
     setRenommage(null);
     if (!n) return;
-    await renameNote(n, renommage.valeur);
+    if (n.fiche) { await ctx.renameFiche(n.id, renommage.valeur); return; }
+    await renameNote(n.note, renommage.valeur);
     await ctx.reload();
   };
 
   // document supprimé ailleurs (autre appareil) pendant qu'il était ouvert :
   // `ouvert` devient null et on retombe simplement sur la liste.
-  if (ouvert) {
+  if (ouvert && !ranger) {
+    // fiche rangée : ouverte EXACTEMENT comme la Bibliothèque l'ouvre (même id,
+    // même fiche) ; document non rangé : comme avant.
     return (
       <PdfReader key={ouvert.id} ctx={ctx}
-        source={{ id: ouvert.id, titre: ouvert.titre, pdfId: ouvert.pdfId, pdfName: ouvert.pdfName }}
+        source={ouvert.fiche ? { id: ouvert.id, ficheId: ouvert.id }
+          : { id: ouvert.id, titre: ouvert.titre, pdfId: ouvert.note.pdfId, pdfName: ouvert.note.pdfName }}
         onClose={() => setOuvertId(null)} />
     );
   }
@@ -101,7 +138,7 @@ export function PriseDeNotes({ ctx }) {
       <div className="topbar">
         <div>
           <h1 className="serif">Prise de notes</h1>
-          <div className="sub">Tes cours en PDF, lus et annotés — sans planification, sans suivi, sans lien avec tes fiches.</div>
+          <div className="sub">Tes cours en PDF, lus et annotés. Range-les dans la Bibliothèque quand tu veux : c'est le même document, pas une copie.</div>
         </div>
         <div className="topbar-actions">
           <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
@@ -112,7 +149,7 @@ export function PriseDeNotes({ ctx }) {
         <Card style={{ marginBottom: 18 }}>
           <ImportNote ctx={ctx} fichiersInitiaux={confirmation.fichiers} titreInitial={confirmation.titre}
             onCancel={() => setConfirmation(null)}
-            onDone={(n) => { setConfirmation(null); setOuvertId(n.id); }} />
+            onDone={(n) => { setConfirmation(null); setRanger({ id: n.id, titre: n.titre, apresImport: true }); }} />
         </Card>
       )}
 
@@ -136,9 +173,12 @@ export function PriseDeNotes({ ctx }) {
           {notes.map((n) => (
             <div className="card appr-card" key={n.id}>
               <div className="card-body">
-                <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                <div className="row" style={{ gap: 6, alignItems: 'center', marginBottom: 6 }}>
                   <Icon name={n.origine === 'image' ? 'image' : 'filePdf'} size={13} />
                   <span className="hint" style={{ fontSize: 12 }}>{n.origine === 'image' ? 'Image convertie en PDF' : 'Document PDF'}</span>
+                  <span style={{ flex: 1 }} />
+                  <button className="cd-ic" title="Renommer" onClick={() => setRenommage({ id: n.id, valeur: n.titre })}><Icon name="edit" size={13} /></button>
+                  <button className="cd-ic" title={n.fiche ? 'Mettre à la corbeille' : 'Supprimer le document'} onClick={() => setASupprimer(n)}><Icon name="trash" size={13} /></button>
                 </div>
 
                 {renommage && renommage.id === n.id ? (
@@ -151,17 +191,24 @@ export function PriseDeNotes({ ctx }) {
                 )}
 
                 <div className="hint appr-pdf"><Icon name="filePdf" size={12} /> {n.pdfName || 'Document'}</div>
+                {n.fiche ? (
+                  <div className="pdn-range" title="Rangé dans la Bibliothèque — le même document">
+                    <Icon name="folder" size={12} /> <span>{emplacement(n.fiche) || 'Bibliothèque'}</span>
+                  </div>
+                ) : (
+                  <div className="pdn-range non">Pas encore rangé dans la Bibliothèque</div>
+                )}
                 <div className="hint" style={{ marginTop: 6 }}>
                   {comptes[n.id] ? `${comptes[n.id]} annotation${comptes[n.id] > 1 ? 's' : ''}` : 'Aucune annotation'}
                 </div>
 
-                <div className="row spread" style={{ marginTop: 14, alignItems: 'center' }}>
-                  <span className="hint" style={{ fontSize: 11.5 }}>Ajouté le {new Date(n.createdAt).toLocaleDateString('fr-FR')}</span>
-                  <div className="row" style={{ gap: 6 }}>
-                    <button className="btn ghost sm" title="Renommer" onClick={() => setRenommage({ id: n.id, valeur: n.titre })}><Icon name="edit" size={13} /></button>
-                    <button className="btn ghost sm" title="Supprimer le document" onClick={() => setASupprimer(n)}><Icon name="trash" size={13} /></button>
-                    <button className="btn primary sm" onClick={() => setOuvertId(n.id)}><Icon name="book" size={13} /> Ouvrir</button>
-                  </div>
+                <div className="hint" style={{ fontSize: 11.5, marginTop: 4 }}>Ajouté le {new Date(n.createdAt).toLocaleDateString('fr-FR')}</div>
+                <div className="pdn-actions">
+                  <button className="btn primary sm" onClick={() => setOuvertId(n.id)}><Icon name="book" size={13} /> Ouvrir</button>
+                  <button className="btn sm" title={n.fiche ? 'Changer de section, matière ou dossier (même fiche, déplacée)' : 'Choisir sa section, sa matière et son dossier — même document, pas de copie'}
+                    onClick={() => setRanger({ id: n.id, titre: n.titre, actuel: n.fiche ? { matiereId: n.fiche.matiereId, dossierId: n.fiche.dossierId || null } : null })}>
+                    <Icon name="folder" size={13} /> {n.fiche ? 'Modifier le rangement' : 'Ranger dans la Bibliothèque'}
+                  </button>
                 </div>
               </div>
             </div>
@@ -185,10 +232,21 @@ export function PriseDeNotes({ ctx }) {
         </div>
       )}
 
-      {aSupprimer && (
+      {aSupprimer && (aSupprimer.fiche ? (
+        <ConfirmModal danger title={`Mettre « ${aSupprimer.titre} » à la corbeille ?`}
+          body="Ce document est rangé dans la Bibliothèque : c'est la même fiche. Elle part à la corbeille (Réglages), d'ici ET de la Bibliothèque, avec ses annotations et ses cartes — restaurable à tout moment."
+          confirmLabel="Mettre à la corbeille" onConfirm={supprimer} onCancel={() => setASupprimer(null)} />
+      ) : (
         <ConfirmModal danger title={`Supprimer « ${aSupprimer.titre} » ?`}
           body="Le document et ses annotations (surlignages, boîtes de texte) seront supprimés, sur tous tes appareils. Tes fiches, tes cartes et la méthode des J ne sont pas concernées."
           confirmLabel="Supprimer" onConfirm={supprimer} onCancel={() => setASupprimer(null)} />
+      ))}
+
+      {ranger && (
+        <RangerDialog ctx={ctx} titre={ranger.titre} actuel={ranger.actuel || null}
+          labelAnnuler={ranger.apresImport ? 'Plus tard' : 'Annuler'}
+          onRanger={validerRangement}
+          onClose={() => { const r = ranger; setRanger(null); if (r.apresImport) setOuvertId(r.id); }} />
       )}
     </div>
   );

@@ -253,7 +253,7 @@ export function Bibliotheque({ ctx }) {
     const etq = etiquetteMeta(f.etiquette);
     const metaLine = isTranscript ? 'Transcript'
       : isSchema ? `Schéma · ${schemaViews(f) > 1 ? schemaViews(f) + ' vues · ' : ''}${schemaCoches(f)} coche${schemaCoches(f) > 1 ? 's' : ''}`
-        : `${count(f.id, 'qcm')} QCM · ${count(f.id, 'flashcard')} flash${isAnat ? ' · images' : ''}`;
+        : `${f.priseDeNotes ? 'Prise de notes · ' : ''}${count(f.id, 'qcm')} QCM · ${count(f.id, 'flashcard')} flash${isAnat ? ' · images' : ''}`;
     return (
       <div key={f.id}>
         <DropSlot matiereId={f.matiereId} dossierId={f.dossierId || null} beforeId={f.id} />
