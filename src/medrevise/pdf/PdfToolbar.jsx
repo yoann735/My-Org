@@ -20,7 +20,7 @@
    Tout ce qui est rare ou propre à une fiche (exports, prompts, items) part
    dans le menu « ⋯ Document » : huit boutons de moins sur la barre.
    ============================================================ */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { ContextMenu } from '../components/ui.jsx';
 import { COLORS, RACCOURCI } from './pdfShared.js';
@@ -54,6 +54,35 @@ export function PdfToolbar({
   const actions = (actionsDocument || []).filter(Boolean);
   const outils = outilsDisponibles ? OUTILS.filter((o) => outilsDisponibles.includes(o.id)) : OUTILS;
   const outilActif = outils.find((o) => o.id === outil) || outils[0];
+
+  /* Cmd/Ctrl+F = la recherche DU LECTEUR, pas celle du navigateur (qui ne voit ni
+     le texte des pages pdf.js hors écran, ni les occurrences numérotées) : tant que
+     le lecteur est affiché, le raccourci place le curseur dans son champ, texte
+     sélectionné. Cmd/Ctrl+G et Maj+Cmd/Ctrl+G = occurrence suivante / précédente,
+     comme dans un navigateur. Rien n'est intercepté si la recherche n'existe pas
+     (vue HTML : le Cmd+F du navigateur y cherche déjà dans le cours). */
+  const champRecherche = useRef(null);
+  const suivantRef = useRef(onSuivant); suivantRef.current = onSuivant;
+  const precedentRef = useRef(onPrecedent); precedentRef.current = onPrecedent;
+  useEffect(() => {
+    if (sansRecherche) return undefined;
+    const onKey = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const k = String(e.key).toLowerCase();
+      if (k === 'f' && !e.shiftKey) {
+        const champ = champRecherche.current;
+        if (!champ) return;
+        e.preventDefault();
+        champ.focus(); champ.select();
+      } else if (k === 'g' && champRecherche.current && champRecherche.current.value) {
+        e.preventDefault();
+        if (e.shiftKey) precedentRef.current(); else suivantRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sansRecherche]);
+  const raccourciF = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘F' : 'Ctrl+F';
 
   return (
     <>
@@ -107,7 +136,7 @@ export function PdfToolbar({
           {!sansRecherche && (<>
           <div className="search ptb-recherche">
             <Icon name="search" size={14} className="ic" />
-            <input placeholder="Rechercher…" value={search} onChange={(e) => setSearch(e.target.value)}
+            <input ref={champRecherche} placeholder={`Rechercher… (${raccourciF})`} title={`Rechercher dans le document (${raccourciF}) · Entrée : suivant · Maj+Entrée : précédent`} value={search} onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (e.shiftKey) onPrecedent(); else onSuivant(); } if (e.key === 'Escape') onFermerRecherche(); }} />
             {search && <button className="icon-btn sm" onClick={onFermerRecherche} title="Fermer la recherche"><Icon name="x" size={13} /></button>}
           </div>
