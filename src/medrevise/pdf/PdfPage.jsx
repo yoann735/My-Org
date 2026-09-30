@@ -59,7 +59,7 @@ function positionTexteProche(container, x, y) {
     de texte édités (Chantier 1). */
 export function PdfPageContent({
   pdfDoc, pageNum, scale, pageHeight, dpr, highlights, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
-  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite,
+  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth,
   onCreerTrait, onSupprimerTraits, cibleHlId,
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, aimantActif = true, modeCrayon = 'dessin',
 }) {
@@ -482,7 +482,7 @@ export function PdfPageContent({
           editor={b.id === activeEditId ? activeEditor : null}
           onActivate={onActivateEdit}
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
-          onMaj={onMajBoite} onSupprimer={onSupprimerBoite} />
+          onMaj={onMajBoite} onSupprimer={onSupprimerBoite} onModifier={onModifierBoite} />
       ))}
 
       {/* GOMME : posée en DERNIER, au-dessus des boîtes — elle ne touche qu'aux traits. */}
@@ -517,7 +517,7 @@ export function PdfPageContent({
    Une seule entrée d'historique par geste : l'état d'avant est capturé au
    pointerdown, la commande empilée au pointerup, et seulement si ça a bougé.
    ============================================================ */
-function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer }) {
+function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier }) {
   const [apercu, setApercu] = useState(null); // géométrie pendant le geste (état local, non persisté)
   const b = apercu || boite;
   const html = useMemo(() => richToHTML(boite.content), [boite.content]);
@@ -609,6 +609,23 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     background: avecAlpha(COLOR_HEX[boite.couleur] || COLOR_HEX.jaune, 0.92),
   };
 
+  /* REPLIABLE (demande du 30/09) : « – » réduit la boîte en une PASTILLE, un clic
+     sur la pastille la rouvre. L'état `reduite` est ENREGISTRÉ sur la boîte (même
+     store, même synchro, annulable) : elle reste comme on l'a laissée, d'une
+     ouverture à l'autre et d'un appareil à l'autre. Une boîte d'avant n'a pas le
+     champ : elle est ouverte. */
+  const extrait = (boite.content ? richToHTML(boite.content).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '') || 'Boîte de texte';
+  if (boite.reduite) {
+    return (
+      <button type="button" className="nb-pastille" style={{ left: b.x * 100 + '%', top: b.y * 100 + '%', background: COLOR_HEX[boite.couleur] || COLOR_HEX.jaune }}
+        title={`${extrait.slice(0, 120)}${extrait.length > 120 ? '…' : ''} — cliquer pour rouvrir`}
+        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onGeste(true); }}
+        onClick={(e) => { e.stopPropagation(); onGeste(false); onModifier(boite, { reduite: false }, 'Réouverture de la boîte'); }}>
+        <Icon name="edit" size={12} />
+      </button>
+    );
+  }
+
   return (
     <div ref={boiteRef} className={'note-box' + (active ? ' active' : '')} style={style}>
       {/* CORRECTIF (défaut 4) : le bandeau est focusable, et c'est LUI qui porte la
@@ -623,6 +640,11 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         }}>
         <span className="nb-grip"><Icon name="grip" size={12} /></span>
         <span className="nb-spacer" />
+        <button type="button" className="nb-btn" title="Réduire en pastille (un clic sur la pastille la rouvre)"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onModifier(boite, { reduite: true }, 'Réduction de la boîte'); }}>
+          <Icon name="minus" size={12} />
+        </button>
         <button type="button" className="nb-btn danger" title="Supprimer cette boîte"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onSupprimer(boite); }}>

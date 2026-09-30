@@ -729,6 +729,15 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!actuel) return;
     await hist.appliquer(cmdModifier('annotations', { ...actuel, ...GEO(avant) }, { ...actuel, ...GEO(apres) }, libelle));
   };
+  /* Modification générique d'une boîte (repli, ancre, flèche…) : repart de la
+     version la plus fraîche (texte en attente compris) et passe par l'historique —
+     une entrée par geste, annulable par Cmd+Z comme tout le reste. */
+  const modifierBoite = async (b, patch, libelle) => {
+    const actuel = boiteFraiche(b.id, b);
+    if (!actuel) return;
+    if (patch.reduite && activeEditId === b.id) setActiveEditId(null); // on replie : on quitte l'édition
+    await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, ...patch }, libelle));
+  };
   const changerCouleurBoite = async (b, couleur) => {
     const actuel = boiteFraiche(b.id, b);
     if (!actuel || actuel.couleur === couleur) return;
@@ -996,6 +1005,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onCreerBoite={creerBoite}
                       onMajBoite={majBoite}
                       onSupprimerBoite={supprimerBoite}
+                      onModifierBoite={modifierBoite}
+                      pageWidth={w}
                       activeEditId={activeEditId}
                       matches={matchesByPage[n] || EMPTY_ARRAY}
                       activeMatchIdx={activeMatch}

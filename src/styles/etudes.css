@@ -1343,6 +1343,11 @@
 .note-box .nb-body .ProseMirror { outline: none; min-height: 100%; }
 .note-box .nb-corner { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize;
   background: linear-gradient(135deg, transparent 50%, rgba(0,0,0,.35) 50%); }
+/* boîte RÉDUITE : une pastille ronde, discrète, qu'un clic rouvre */
+.nb-pastille { position: absolute; width: 22px; height: 22px; margin: -2px 0 0 -2px; padding: 0; border-radius: 50%;
+  border: 1.5px solid rgba(0,0,0,.35); color: rgba(0,0,0,.7); display: grid; place-items: center; cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,.25); transition: transform .12s; z-index: 2; }
+.nb-pastille:hover { transform: scale(1.15); }
 
 
 
