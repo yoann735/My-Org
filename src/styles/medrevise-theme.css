@@ -1414,3 +1414,63 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 :is(.lib-tree, .lt-arbre) :is(.srcmgr-input, .tree-rename) { height: 27px; font-size: 14px; }
 .lib-master { flex-basis: 370px; }
 .tree-rattraper { display: inline-flex; align-items: center; gap: 5px; color: var(--warn) !important; border-color: color-mix(in srgb, var(--warn) 35%, transparent) !important; background: color-mix(in srgb, var(--warn) 8%, transparent) !important; }
+
+/* ============================================================
+   TABLEAU DE BORD · CARTE « IMPORTER UNE FICHE » (refonte du 30/09)
+   Tuiles de type d'import · étapes numérotées reliées par un filet · pied qui
+   résume la destination. Vocabulaire Motion Lab : noir, filets fins, violet.
+   ============================================================ */
+.imp2 .card-body { padding-top: 14px; }
+.imp2-sous { font-size: 13px; color: var(--text-3); margin: -2px 0 14px; }
+.imp2-types { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 22px; }
+@media (max-width: 1100px) { .imp2-types { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.imp2-type {
+  position: relative; display: flex; align-items: center; gap: 11px; min-width: 0; text-align: left;
+  padding: 12px 13px; border-radius: var(--r-5); cursor: pointer; font: inherit; color: var(--text-2);
+  background: linear-gradient(180deg, color-mix(in srgb, #fff 2.5%, transparent), transparent);
+  border: 1px solid var(--border-2); transition: border-color .2s ease, background .2s ease, color .2s ease, transform .2s ease;
+}
+.imp2-type:hover { border-color: var(--border); color: var(--text); transform: translateY(-1px); }
+.imp2-type.actif {
+  color: var(--text); border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, transparent), color-mix(in srgb, var(--accent) 3%, transparent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.imp2-type-ic {
+  flex: 0 0 34px; width: 34px; height: 34px; border-radius: var(--r); display: grid; place-items: center;
+  color: var(--text-3); background: color-mix(in srgb, #fff 4%, transparent); border: 1px solid var(--border-2);
+  transition: color .2s ease, background .2s ease;
+}
+.imp2-type.actif .imp2-type-ic { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.imp2-type-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.imp2-type-nom { font-size: 13.5px; font-weight: 650; color: inherit; }
+.imp2-type-desc { font-size: 11.5px; line-height: 1.35; color: var(--text-3); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* étapes : numéro rond + filet vertical qui relie les étapes */
+.imp2-etapes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.imp2-etape { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 14px; padding-bottom: 22px; }
+.imp2-etape:not(:last-child)::before { content: ''; position: absolute; left: 13.5px; top: 30px; bottom: 4px; width: 1px; background: linear-gradient(var(--border), var(--border-2)); }
+.imp2-num {
+  width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 12.5px; font-weight: 700; color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 9%, var(--card));
+}
+.imp2-etape-corps { min-width: 0; padding-top: 3px; }
+.imp2-etape-titre { font-size: 14.5px; font-weight: 650; color: var(--text); margin-bottom: 12px; }
+.imp2-etape-aide { font-weight: 400; font-size: 12.5px; color: var(--text-3); }
+.imp2-form .imp-dest-head { display: none; }
+.imp2-titre-champ { width: 100%; font-size: 15px !important; height: 44px; }
+.imp2-contenu { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 14px; align-items: start; }
+@media (max-width: 1100px) { .imp2-contenu { grid-template-columns: minmax(0, 1fr); } }
+.imp2-contenu .imp-field { margin: 0; }
+.imp2-contenu textarea { min-height: 150px !important; }
+
+/* pied : résumé de la destination + actions */
+.imp2-pied {
+  display: flex; align-items: center; gap: 10px; margin-top: 2px; padding-top: 16px;
+  border-top: 1px solid var(--border-2);
+}
+.imp2-resume { flex: 1 1 auto; min-width: 0; font-size: 12.5px; }
+.imp2-dest, .imp2-manque { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imp2-dest { color: var(--text-2); padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border-2); background: color-mix(in srgb, #fff 3%, transparent); }
+.imp2-manque { color: var(--text-3); }

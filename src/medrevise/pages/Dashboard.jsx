@@ -660,6 +660,13 @@ function ImportDoneScreenApprentissage({ unite, onReset, ctx }) {
   );
 }
 
+const TYPES_IMPORT = [
+  { id: 'standard', icon: 'filePdf', nom: 'Fiche de cours', desc: 'QCM, flashcards, Feynman + ton PDF' },
+  { id: 'anat', icon: 'bone', nom: 'Anatomie', desc: 'Théorie typée ou schéma annoté' },
+  { id: 'rattrapage', icon: 'grad', nom: 'Rattrapage', desc: 'Théorie et pratique d’un même cours' },
+  { id: 'apprentissage', icon: 'brain', nom: 'Apprentissage', desc: 'Exercices + PDF, sans planification' },
+];
+
 /* ---------- import : destination → coller le JSON → aperçu → confirmer ----------
    Full JSON local (aucun appel réseau) : même flux que Rattrapage. */
 function ImportPanel({ ctx }) {
@@ -757,15 +764,22 @@ function ImportPanel({ ctx }) {
   };
 
   return (
-    <Card title="Importer une fiche" icon="upload"
-      action={(
-        <div className="seg" style={{ transform: 'scale(.92)' }}>
-          <button type="button" className={'seg-btn' + (mode === 'standard' ? ' active' : '')} onClick={() => setMode('standard')}><Icon name="filePdf" size={13} /> Standard</button>
-          <button type="button" className={'seg-btn' + (mode === 'anat' ? ' active' : '')} onClick={() => setMode('anat')}><Icon name="bone" size={13} /> Anatomie</button>
-          <button type="button" className={'seg-btn' + (mode === 'rattrapage' ? ' active' : '')} onClick={() => setMode('rattrapage')}><Icon name="grad" size={13} /> Rattrapage</button>
-          <button type="button" className={'seg-btn' + (mode === 'apprentissage' ? ' active' : '')} onClick={() => setMode('apprentissage')}><Icon name="brain" size={13} /> Apprentissage</button>
-        </div>
-      )}>
+    /* CARTE D'IMPORT (refonte du 30/09) : quatre TUILES pour choisir le type
+       d'import (au lieu d'un petit sélecteur perdu dans l'en-tête), puis pour le
+       cas courant — une fiche standard — trois ÉTAPES numérotées (où la ranger,
+       son titre, son contenu : cours + questions côte à côte) et un pied qui
+       résume la destination à côté du bouton. Aucune logique d'import touchée. */
+    <Card title="Importer une fiche" icon="upload" className="imp2">
+      <div className="imp2-sous">Colle la réponse de Claude, joins ton cours : la fiche est prête à réviser.</div>
+      <div className="imp2-types" role="tablist">
+        {TYPES_IMPORT.map((t) => (
+          <button key={t.id} type="button" role="tab" aria-selected={mode === t.id}
+            className={'imp2-type' + (mode === t.id ? ' actif' : '')} onClick={() => setMode(t.id)}>
+            <span className="imp2-type-ic"><Icon name={t.icon} size={17} /></span>
+            <span className="imp2-type-txt"><span className="imp2-type-nom">{t.nom}</span><span className="imp2-type-desc">{t.desc}</span></span>
+          </button>
+        ))}
+      </div>
       {mode === 'rattrapage' && <ImportRattrapage ctx={ctx} />}
       {/* mode Apprentissage : composant séparé (exos + PDF → unité, sans planification),
          les trois imports ci-dessus/ci-dessous n'en dépendent pas. */}
@@ -795,47 +809,63 @@ function ImportPanel({ ctx }) {
       )}
 
       {mode === 'standard' && state === 'form' && (
-        <div className="fadein imp-dest">
-          <div className="imp-dest-head"><Icon name="folder" size={15} /> Où ranger cette fiche&nbsp;?</div>
-
-          <DestPicker ctx={ctx} srcId={srcId} setSrcId={setSrcId} matId={matId} setMatId={setMatId} />
-
-          <div className="imp-field">
-            <label>Titre de la fiche</label>
-            <input className="imp-title" placeholder="ex : Système respiratoire — partie 3" value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-
-          {/* fiche existante détectée (même matière + même titre) — évite de créer
-             une fiche en double (ex: Théorie puis Pratique du même cours). Par
-             défaut on ajoute à cette fiche ; override explicite possible. */}
-          {matchedFiche && (
-            <div className="err-mini ok" style={{ marginBottom: 14 }}>
-              <div className="em-ic"><Icon name="check" size={16} /></div>
-              <div className="em-body">
-                <div className="em-title">Fiche existante trouvée : « {matchedFiche.titre} »</div>
-                <div className="hint">
-                  {forceNew
-                    ? <>Une nouvelle fiche sera créée quand même, malgré le titre identique. <button type="button" className="linklike" onClick={() => setForceNew(false)}>Ajouter plutôt à la fiche existante</button></>
-                    : <>Les items seront ajoutés à cette fiche (pas de nouvelle fiche créée). <button type="button" className="linklike" onClick={() => setForceNew(true)}>Créer quand même une nouvelle fiche</button></>}
+        <div className="fadein imp2-form">
+          <ol className="imp2-etapes">
+            <li className="imp2-etape">
+              <span className="imp2-num">1</span>
+              <div className="imp2-etape-corps">
+                <div className="imp2-etape-titre">Où la ranger ?</div>
+                <DestPicker ctx={ctx} srcId={srcId} setSrcId={setSrcId} matId={matId} setMatId={setMatId} />
+              </div>
+            </li>
+            <li className="imp2-etape">
+              <span className="imp2-num">2</span>
+              <div className="imp2-etape-corps">
+                <div className="imp2-etape-titre">Son titre</div>
+                <input className="imp-title imp2-titre-champ" placeholder="ex : Système respiratoire — partie 3" value={title} onChange={(e) => setTitle(e.target.value)} />
+                {/* fiche existante détectée (même matière + même titre) — évite de créer
+                   une fiche en double (ex: Théorie puis Pratique du même cours). Par
+                   défaut on ajoute à cette fiche ; override explicite possible. */}
+                {matchedFiche && (
+                  <div className="err-mini ok" style={{ marginTop: 10 }}>
+                    <div className="em-ic"><Icon name="check" size={16} /></div>
+                    <div className="em-body">
+                      <div className="em-title">Fiche existante trouvée : « {matchedFiche.titre} »</div>
+                      <div className="hint">
+                        {forceNew
+                          ? <>Une nouvelle fiche sera créée quand même, malgré le titre identique. <button type="button" className="linklike" onClick={() => setForceNew(false)}>Ajouter plutôt à la fiche existante</button></>
+                          : <>Les items seront ajoutés à cette fiche (pas de nouvelle fiche créée). <button type="button" className="linklike" onClick={() => setForceNew(true)}>Créer quand même une nouvelle fiche</button></>}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </li>
+            <li className="imp2-etape">
+              <span className="imp2-num">3</span>
+              <div className="imp2-etape-corps">
+                <div className="imp2-etape-titre">Son contenu <span className="imp2-etape-aide">— le cours, les questions, ou les deux</span></div>
+                <div className="imp2-contenu">
+                  <CourseDocField file={pasteDoc} onFile={setPasteDoc} label="Le cours (PDF ou HTML)"
+                    hint="Pour le lire, le surligner et « Voir le cours »." />
+                  <ImportJsonField label="Les questions (réponse JSON de Claude)" placeholder="Colle ici la réponse JSON que Claude t'a donnée dans le chat."
+                    value={jsonText} onChange={(v) => { setJsonText(v); setParseError(null); }} error={parseError} />
                 </div>
               </div>
+            </li>
+          </ol>
+
+          <div className="imp2-pied">
+            <div className="imp2-resume">
+              {missing.length > 0
+                ? <span className="imp2-manque"><Icon name="info" size={13} /> Il manque : {missing.join(', ')}.</span>
+                : !jsonText.trim() && !pasteDoc
+                  ? <span className="imp2-manque"><Icon name="info" size={13} /> Ajoute le cours et/ou les questions.</span>
+                  : <span className="imp2-dest"><Icon name="folder" size={13} /> {destLabel}</span>}
             </div>
-          )}
-
-          <CourseDocField file={pasteDoc} onFile={setPasteDoc}
-            hint="PDF (lecture + surlignage) ou fiche HTML autonome. Rattaché à la fiche pour « Voir le cours ». Facultatif." />
-
-          <ImportJsonField label="RÉPONSE DE CLAUDE (JSON)" placeholder="Colle ici la réponse JSON que Claude t'a donnée dans le chat."
-            value={jsonText} onChange={(v) => { setJsonText(v); setParseError(null); }} error={parseError} />
-
-          <div className="imp-actions">
-            <button className="btn ghost" onClick={reset}>Annuler</button>
+            <button className="btn ghost" onClick={reset}>Effacer</button>
             <button className="btn primary" onClick={parseJson} disabled={!ready}><Icon name="check" size={15} /> {jsonText.trim() ? 'Importer les questions' : 'Créer la fiche'}</button>
           </div>
-          {missing.length > 0 && <div className="hint" style={{ marginTop: 8 }}>Il manque : {missing.join(', ')}.</div>}
-          {missing.length === 0 && !jsonText.trim() && !pasteDoc && (
-            <div className="hint" style={{ marginTop: 8 }}>Colle des questions (JSON) et/ou attache un document (PDF/HTML) pour continuer — une fiche HTML seule, sans questions, est possible.</div>
-          )}
         </div>
       )}
 
