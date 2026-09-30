@@ -12,6 +12,15 @@
      ailleurs dans l'app) ;
    - ConfirmModal (ui.jsx) pour la suppression.
    Jamais de nouvelle fiche créée : tout est rattaché à `ficheId`.
+
+   PANNEAU COMMUN PDF + HTML (nuit du 30/09) : c'est désormais LE panneau de
+   droite du lecteur, pour les fiches PDF comme pour les fiches HTML — mêmes
+   onglets, même comportement. Trois options, toutes facultatives :
+   - `ongletsEnPlus` : onglets propres au document ouvert (« Notions » : les
+     passages surlignés), ajoutés APRÈS QCM / Flashcard / Exercice / Feynman ;
+   - `ficheId` absent (document de notes, structure d'anatomie) : pas d'items
+     possibles, seuls les onglets en plus s'affichent ;
+   - `replie` / `onReplier` : repli piloté de l'extérieur (bouton de la barre).
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -21,22 +30,27 @@ import { ItemForm, PasteJsonForm, TYPES } from './AddItemForm.jsx';
 import { appendItemsToFiche } from '../lib/import.js';
 import { toInternalItem } from '../lib/adapter.js';
 
-export function CourseItemsSidebar({ ctx, ficheId }) {
-  const ficheItems = useMemo(() => (ctx.db.questions || []).filter((q) => q.ficheId === ficheId), [ctx.db, ficheId]);
+export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null }) {
+  const avecItems = !!ficheId;
+  const extras = (ongletsEnPlus || []).filter(Boolean);
+  const ficheItems = useMemo(() => (avecItems ? (ctx.db.questions || []).filter((q) => q.ficheId === ficheId) : []), [ctx.db, ficheId, avecItems]);
   const countByType = useMemo(() => {
     const c = { qcm: 0, flashcard: 0, exercice: 0, feynman: 0 };
     ficheItems.forEach((q) => { if (c[q.type] != null) c[q.type]++; });
     return c;
   }, [ficheItems]);
 
-  const [activeType, setActiveType] = useState('qcm');
+  const [activeType, setActiveType] = useState(() => ongletInitial || (avecItems ? 'qcm' : (extras[0] && extras[0].id) || 'qcm'));
+  const extraActif = extras.find((o) => o.id === activeType) || null;
   const items = useMemo(() => ficheItems.filter((q) => q.type === activeType), [ficheItems, activeType]);
   const activeLabel = (TYPES.find((t) => t.id === activeType) || {}).label || '';
   // repli HORIZONTAL uniquement, via la même poignée que la liste de gauche
   // (SplitHandle, ui.jsx) — INTÉGRÉE dans `.pis` (bord GAUCHE, côté cours), pas un
   // élément séparé posé à côté. `.pis` reste monté, seule sa flex-basis anime
   // (voir etudes.css) ; le contenu (tabs+liste) est démonté pendant le repli.
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsedLocal, setCollapsedLocal] = useState(false);
+  const collapsed = replie == null ? collapsedLocal : replie;
+  const setCollapsed = (fn) => { const v = typeof fn === 'function' ? fn(collapsed) : fn; if (onReplier) onReplier(v); else setCollapsedLocal(v); };
 
   // ---- ajout (réutilise ItemForm/PasteJsonForm, même flux que AddItemModal) ----
   const [adding, setAdding] = useState(false);
@@ -80,14 +94,23 @@ export function CourseItemsSidebar({ ctx, ficheId }) {
       {!collapsed && (
       <div className="pis-body">
       <div className="pis-tabs">
-        {TYPES.map((t) => (
+        {avecItems && TYPES.map((t) => (
           <button key={t.id} type="button" className={'pis-tab' + (activeType === t.id ? ' active' : '')}
             onClick={() => { setActiveType(t.id); setAdding(false); setEditingId(null); }}>
             <Icon name={t.icon} size={13} /> {t.label} <span className="pis-tab-n tnum">{countByType[t.id]}</span>
           </button>
         ))}
+        {extras.map((o) => (
+          <button key={o.id} type="button" className={'pis-tab' + (activeType === o.id ? ' active' : '')}
+            onClick={() => { setActiveType(o.id); setAdding(false); setEditingId(null); }}>
+            <Icon name={o.icon || 'edit'} size={13} /> {o.label} {o.n != null && <span className="pis-tab-n tnum">{o.n}</span>}
+          </button>
+        ))}
       </div>
 
+      {extraActif ? (
+        <div className="pis-scroll scroll pis-extra">{extraActif.contenu}</div>
+      ) : (
       <div className="pis-scroll scroll">
         {!adding ? (
           <button type="button" className="btn primary sm" style={{ width: '100%', justifyContent: 'center', margin: '12px 0' }} onClick={() => setAdding(true)}>
@@ -141,6 +164,7 @@ export function CourseItemsSidebar({ ctx, ficheId }) {
           ))}
         </div>
       </div>
+      )}
 
       {confirmDel && (
         <ConfirmModal

@@ -46,10 +46,14 @@ export function PdfToolbar({
   search, setSearch, matches, activeMatch, searching, onPrecedent, onSuivant, onFermerRecherche,
   panelOpen, setPanelOpen, nbNotions,
   actionsDocument, outilsAnnotation = true, contexteSupplementaire = null,
+  // MÊME BARRE pour les fiches HTML (nuit du 30/09) : un document HTML n'a ni pages
+  // ni zoom propre, et seuls les outils qui ont un sens sur lui y sont proposés.
+  sansPages = false, sansRecherche = false, outilsDisponibles = null, statut = null,
 }) {
   const [menu, setMenu] = useState(null);
   const actions = (actionsDocument || []).filter(Boolean);
-  const outilActif = OUTILS.find((o) => o.id === outil) || OUTILS[0];
+  const outils = outilsDisponibles ? OUTILS.filter((o) => outilsDisponibles.includes(o.id)) : OUTILS;
+  const outilActif = outils.find((o) => o.id === outil) || outils[0];
 
   return (
     <>
@@ -57,6 +61,8 @@ export function PdfToolbar({
         {/* ---- ZONE GAUCHE : naviguer dans le document ---- */}
         <div className="ptb-zone">
           <button className="btn ghost sm" onClick={onClose} title="Revenir à la liste"><Icon name="chevL" size={14} /> Retour</button>
+          {statut}
+          {!sansPages && (<>
           <span className="ptb-sep" />
           <div className="ptb-pages" title="Page affichée">
             <button className="icon-btn sm" disabled={pageCourante <= 1} onClick={() => onAllerPage(pageCourante - 1)} title="Page précédente"><Icon name="chevU" size={13} /></button>
@@ -70,12 +76,13 @@ export function PdfToolbar({
             <button className="icon-btn sm" onClick={() => onZoom(1.15)} title="Zoomer"><Icon name="plus" size={14} /></button>
             <button className="icon-btn sm" onClick={onAjuster} title="Ajuster à la largeur"><Icon name="maximize" size={13} /></button>
           </div>
+          </>)}
         </div>
 
         {/* ---- ZONE CENTRE : LES OUTILS. Le cœur du lecteur, donc au centre. ---- */}
         {outilsAnnotation && (
           <div className="ptb-outils" role="group" aria-label="Outils d'annotation">
-            {OUTILS.map((o) => (
+            {outils.map((o) => (
               <button key={o.id} type="button" title={`${o.label} — ${o.aide}`}
                 className={'ptb-outil' + (outil === o.id ? ' actif' : '')}
                 onMouseDown={(e) => e.preventDefault()} /* garde la sélection de texte : Surligneur la surligne */
@@ -97,6 +104,7 @@ export function PdfToolbar({
 
         {/* ---- ZONE DROITE : chercher, lire ses notions, agir sur le document ---- */}
         <div className="ptb-zone ptb-droite">
+          {!sansRecherche && (<>
           <div className="search ptb-recherche">
             <Icon name="search" size={14} className="ic" />
             <input placeholder="Rechercher…" value={search} onChange={(e) => setSearch(e.target.value)}
@@ -110,8 +118,11 @@ export function PdfToolbar({
               <button className="icon-btn sm" disabled={!matches.length} onClick={onSuivant} title="Suivant (Entrée)"><Icon name="chevD" size={13} /></button>
             </div>
           )}
-          <button className="btn ghost sm" onClick={() => setPanelOpen((v) => !v)} title="Panneau des notions surlignées">
-            <Icon name={panelOpen ? 'chevR' : 'chevL'} size={13} /> Notions {nbNotions ? `(${nbNotions})` : ''}
+          </>)}
+          {/* le panneau de droite est le MÊME sur PDF et HTML : items de la fiche
+              (QCM, flashcards, exercices, Feynman) + notions surlignées */}
+          <button className="btn ghost sm" onClick={() => setPanelOpen((v) => !v)} title={panelOpen ? 'Replier le panneau' : 'Ouvrir le panneau : items de la fiche et notions surlignées'}>
+            <Icon name={panelOpen ? 'chevR' : 'chevL'} size={13} /> Panneau {nbNotions ? `· ${nbNotions} notion${nbNotions > 1 ? 's' : ''}` : ''}
           </button>
           {!!actions.length && (
             <button className="icon-btn sm" title="Actions sur le document"

@@ -70,6 +70,7 @@ import {
 import { PdfPageContent, EditToolbar } from './PdfPage.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
+import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 
 
 /* C — bi-mode : route plein-écran (déclenchée par Réviser, via ctx.pdfView /
@@ -808,6 +809,31 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const traitsByPage = useMemo(() => groupByPage(edits.filter((a) => a.kind === 'trait')), [edits]);
   const matchesByPage = useMemo(() => groupByPage(matches), [matches]);
 
+  // contenu de l'onglet « Notions » du panneau commun (voir CourseItemsSidebar)
+  const notionsPdf = (
+    <div className="pis-notions">
+      <span title={copyTitle} style={{ display: 'block' }}>
+        <button className="btn sm" onClick={copyPriority} disabled={!pdfDoc} style={{ width: '100%', justifyContent: 'center', marginBottom: 12 }}>
+          <Icon name={copiedCount ? 'check' : 'copy'} size={13} /> {copyLabel}
+        </button>
+      </span>
+      <div className="hl-legend">
+        {COLORS.map((c) => <span key={c.id}><i style={{ background: c.hex }} />{COLOR_TAG[c.id] || c.short}</span>)}
+      </div>
+      {highlights.length === 0 && <div className="hint">Prends le Surligneur et sélectionne du texte : il est surligné. Clique un surlignage pour changer sa couleur ou le supprimer.</div>}
+      {highlights.map((h) => (
+        <div className="hl-entry" key={h.id} onClick={() => scrollToPageFraction(h.page, (h.rects[0] && h.rects[0].y) || 0)}>
+          <span className="hl-dot" style={{ background: COLOR_HEX[h.couleur] || COLOR_HEX.jaune }} />
+          <div>
+            <div className="hl-entry-page">p.{h.page}{COLOR_TAG[h.couleur] && <span className="hl-entry-tag">{COLOR_TAG[h.couleur]}</span>}</div>
+            <div className="hl-entry-txt">« {h.texte.length > 140 ? h.texte.slice(0, 140) + '…' : h.texte} »</div>
+            {h.note && <div className="hl-entry-note"><Icon name="edit" size={11} /> {h.note}</div>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   // input UNIQUE (PDF ou HTML) : le type est détecté à la volée, le stockage
   // bascule sur pdfId/onSetPdf ou htmlId/onSetHtml en conséquence.
   const attachDoc = async (file) => {
@@ -935,8 +961,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         </div>
       )}
 
-      <div className="pdfr-body">
-        <div className="pdfr-scroll" ref={scrollRef} onScroll={onScroll}>
+      {/* fenêtre étroite : même bascule Cours / Panneau que sur une fiche HTML */}
+      <div className="pdfr-mobile-toggle seg">
+        <button type="button" className={'seg-btn' + (mobileView === 'course' ? ' active' : '')} onClick={() => setMobileView('course')}><Icon name="filePdf" size={13} /> Cours</button>
+        <button type="button" className={'seg-btn' + (mobileView === 'items' ? ' active' : '')} onClick={() => { setMobileView('items'); setPanelOpen(true); }}><Icon name="cards" size={13} /> Panneau</button>
+      </div>
+      <div className="pdfr-body pdfr-workshop" data-mobile-view={mobileView}>
+        <div className="pdfr-scroll pdfr-workshop-course" ref={scrollRef} onScroll={onScroll}>
           {!pdfDoc && !loadError && <div className="gen-spinner" style={{ width: 40, height: 40, margin: '60px auto' }} />}
           {pdfDoc && (
             <div className="pdfr-pages" style={{ height: layout.totalHeight, width: layout.maxWidth, minWidth: '100%' }}>
@@ -981,30 +1012,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           )}
         </div>
 
-        {panelOpen && (
-          <div className="pdfr-panel">
-            <h3 className="serif">Notions surlignées</h3>
-            <span title={copyTitle} style={{ display: 'block' }}>
-              <button className="btn sm" onClick={copyPriority} disabled={!pdfDoc} style={{ width: '100%', justifyContent: 'center', marginBottom: 12 }}>
-                <Icon name={copiedCount ? 'check' : 'copy'} size={13} /> {copyLabel}
-              </button>
-            </span>
-            <div className="hl-legend">
-              {COLORS.map((c) => <span key={c.id}><i style={{ background: c.hex }} />{COLOR_TAG[c.id] || c.short}</span>)}
-            </div>
-            {highlights.length === 0 && <div className="hint">Prends le Surligneur et sélectionne du texte : il est surligné. Clique un surlignage pour changer sa couleur ou le supprimer.</div>}
-            {highlights.map((h) => (
-              <div className="hl-entry" key={h.id} onClick={() => scrollToPageFraction(h.page, (h.rects[0] && h.rects[0].y) || 0)}>
-                <span className="hl-dot" style={{ background: COLOR_HEX[h.couleur] || COLOR_HEX.jaune }} />
-                <div>
-                  <div className="hl-entry-page">p.{h.page}{COLOR_TAG[h.couleur] && <span className="hl-entry-tag">{COLOR_TAG[h.couleur]}</span>}</div>
-                  <div className="hl-entry-txt">« {h.texte.length > 140 ? h.texte.slice(0, 140) + '…' : h.texte} »</div>
-                  {h.note && <div className="hl-entry-note"><Icon name="edit" size={11} /> {h.note}</div>}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* PANNEAU DE DROITE — le MÊME que sur une fiche HTML (CourseItemsSidebar) :
+            QCM / Flashcard / Exercice / Feynman pour une vraie fiche, plus l'onglet
+            « Notions » (les passages surlignés de CE PDF). Pour un document sans
+            fiche (Prise de notes, anatomie), seul l'onglet Notions existe. */}
+        <CourseItemsSidebar ctx={ctx} ficheId={ficheReelle ? ficheReelle.id : null}
+          ongletsEnPlus={[{ id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length, contenu: notionsPdf }]}
+          ongletInitial={ficheReelle ? null : 'notions'}
+          replie={!panelOpen} onReplier={(v) => setPanelOpen(!v)} />
       </div>
 
       {/* BULLE d'un surlignage : sa couleur, ou le supprimer. Rien d'autre. */}
