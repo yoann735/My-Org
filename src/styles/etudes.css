@@ -1444,7 +1444,12 @@
    n'existe que pendant que l'outil Crayon est actif — même principe que la
    couche de tracé de la boîte (VERROU 1) : tant qu'elle est là, ni sélection
    ni surlignage ne peuvent se déclencher. */
-.pdfr-inklayer { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+/* width/height EXPLICITES : un <svg> est un élément remplacé — en position absolue,
+   `inset: 0` seul ne l'étire pas, il garde son ratio intrinsèque (celui du viewBox,
+   carré). Il faisait donc la largeur de la page mais une hauteur ÉGALE à cette
+   largeur : tout trait s'affichait écrasé vers le haut, jusqu'à ~150 px au-dessus
+   du curseur en bas de page (et la gomme semblait « effacer à côté »). */
+.pdfr-inklayer { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .pdfr-inkcapture { position: absolute; inset: 0; cursor: crosshair; user-select: none; touch-action: none; }
 
 .ptb-epaisseur { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 22px;
