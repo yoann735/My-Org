@@ -463,7 +463,7 @@ export function Bibliotheque({ ctx }) {
                               {...fd.dropProps({ key: 'mat:' + mat.id, matiereId: mat.id })}>
                               {/* toute la ligne de la matière reçoit une fiche lâchée dessus (racine) */}
                               <DropCible matiereId={mat.id} dossierId={null} onSurvolProlonge={() => setMatFermee((o) => (o[mat.id] ? { ...o, [mat.id]: false } : o))}>
-                                <div className="lt-rangee lt-mat" role="button" title={(matOuverte ? 'Replier' : 'Déplier') + ' la matière · double-clic = renommer'}
+                                <div className="lt-rangee lt-mat" role="button" style={{ '--teinte': mm.tint }} title={(matOuverte ? 'Replier' : 'Déplier') + ' la matière · double-clic = renommer'}
                                   onClick={() => setMatFermee((o) => ({ ...o, [mat.id]: matOuverte }))}
                                   onDoubleClick={(e) => { e.stopPropagation(); startRename('matiere', mat.id, mm.label); }}>
                                   <Icon name={matOuverte ? 'chevD' : 'chevR'} size={13} className="lt-pli" />

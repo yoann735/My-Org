@@ -1255,3 +1255,100 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   font-size: 13px; font-weight: 500; line-height: 22px;
   border-width: 1px; border-radius: var(--r-2);
 }
+
+/* ============================================================
+   SIDEBAR « ARBRE » — HABILLAGE (UI SEULEMENT) · Bibliothèque ET Réviser
+   Demande du 30/09 : même disposition, mêmes boutons aux mêmes endroits,
+   mêmes gestes — seul le LOOK change, dans le vocabulaire Motion Lab (noir,
+   filets fins, accent violet, Plus Jakarta Sans). Aucune hauteur de ligne ni
+   aucun retrait n'est modifié : la géométrie est mesurée identique avant/après.
+   Classes .lt-* (components : Bibliotheque.jsx, et Reviser.jsx qui les reprend).
+   ============================================================ */
+.lib-tree {
+  background:
+    radial-gradient(120% 60% at 0% 0%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 60%),
+    var(--card) !important;
+  border: 1px solid var(--border-2) !important;
+  border-radius: var(--r-5) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
+}
+.lt-section + .lt-section { border-top: 1px solid var(--border-2); }
+
+/* lignes : texte sur fond noir, et au survol le vocabulaire du LOT D — dégradé
+   horizontal très faible + filet vertical de 1 px qui se déploie à gauche. */
+.lt-rangee { border-radius: var(--r-2); transition: background .2s ease, color .2s ease; font-family: var(--font-sans); }
+.lt-rangee::before {
+  content: ''; position: absolute; left: 0; top: 7px; bottom: 7px; width: 1px;
+  background: color-mix(in srgb, #E8F0FF 40%, transparent);
+  transform: scaleY(0); transition: transform .24s cubic-bezier(.2,.7,.2,1); pointer-events: none;
+}
+.lt-rangee:hover {
+  background: linear-gradient(90deg, color-mix(in srgb, #fff 4.5%, transparent), color-mix(in srgb, #fff 1.2%, transparent) 60%, transparent);
+}
+.lt-rangee:hover::before { transform: scaleY(1); }
+.lt-pli { color: color-mix(in srgb, var(--text-3) 80%, transparent); transition: color .2s ease; }
+.lt-rangee:hover .lt-pli { color: var(--text-2); }
+.lt-ic { color: var(--text-3); opacity: .85; }
+
+/* SECTION : titre de groupe en capitales espacées, suivi d'un filet qui file
+   jusqu'au bord (la place est déjà là : le nom prend toute la largeur). */
+.lt-sec .lt-nom {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .14em; color: var(--text-3);
+}
+.lt-sec .lt-nom::after { content: ''; flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+.lt-sec:hover { background: none; }
+.lt-sec:hover::before { transform: scaleY(0); }
+.lt-sec:hover .lt-nom { color: var(--text); }
+
+/* MATIÈRE : pastille de couleur avec un halo de sa propre teinte, nom en blanc. */
+.lt-mat .lt-nom { font-weight: 650; font-size: 13.5px; color: var(--text); letter-spacing: -.005em; }
+/* la teinte de la matière (--teinte, posée sur la ligne) donne le halo de la
+   pastille et un lavis très léger derrière le nom. */
+.lt-mat .lt-point { box-shadow: 0 0 0 3px color-mix(in srgb, var(--teinte, var(--accent)) 18%, transparent), 0 0 10px color-mix(in srgb, var(--teinte, var(--accent)) 55%, transparent); }
+.lt-mat { background: linear-gradient(90deg, color-mix(in srgb, var(--teinte, var(--accent)) 7%, transparent), transparent 55%); }
+.lt-mat:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--teinte, var(--accent)) 12%, transparent), transparent 70%); }
+.lt-mat::before { background: var(--teinte, var(--accent)); }
+
+/* DOSSIER : icône en violet discret — le seul repère coloré de la structure. */
+.lt-dos .lt-ic { color: color-mix(in srgb, var(--accent) 70%, var(--text-3)); opacity: 1; }
+.lt-dos .lt-nom { color: var(--text); font-weight: 550; }
+
+/* FICHE : nom en gris clair, blanc au survol. */
+.lt-fiche .lt-nom { color: var(--text-2); font-weight: 450; }
+.lt-fiche .lt-rangee:hover .lt-nom { color: var(--text); }
+.lt-fiche.selected > .lt-rangee {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 14%, transparent), color-mix(in srgb, var(--accent) 4%, transparent) 70%, transparent) !important;
+}
+.lt-fiche.selected > .lt-rangee::before { transform: scaleY(1); background: var(--accent); width: 2px; }
+.lt-fiche.selected > .lt-rangee .lt-nom { color: var(--text); font-weight: 600; }
+.lt-fiche.selected > .lt-rangee .lt-ic { color: var(--accent); opacity: 1; }
+
+/* COMPTEURS : petites gélules à chiffres tabulaires. */
+.lt-compte {
+  min-width: 20px; padding: 0 6px; height: 17px; line-height: 17px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 600; text-align: center; color: var(--text-3);
+  background: color-mix(in srgb, #fff 3.5%, transparent); border: 1px solid var(--border-2);
+}
+
+/* ACTIONS AU SURVOL : boutons nus, fond au survol ; le fondu reprend le fond de
+   la ligne survolée (noir + dégradé), sans aplat gris visible. */
+.lt-actions { background: linear-gradient(to right, transparent, var(--card) 14px) !important; }
+.lt-actions :is(.cd-ic, .src-mute) { background: transparent !important; border-color: transparent !important; color: var(--text-3) !important; }
+.lt-actions :is(.cd-ic, .src-mute):hover { background: var(--elev-1, #16161B) !important; border-color: var(--border-2) !important; color: var(--text) !important; }
+.lt-actions .src-mute.off { color: var(--warn) !important; }
+.lt-fiche.selected > .lt-rangee .lt-actions { background: linear-gradient(to right, transparent, color-mix(in srgb, var(--accent) 10%, var(--card)) 14px) !important; }
+
+/* ARBORESCENCE : filets guides en « hair », plus lumineux quand on survole le groupe. */
+.lt-enfants { border-left-color: var(--border-2); transition: border-color .2s ease; }
+.lt-enfants:hover { border-left-color: var(--border); }
+.lt-enfants-sec { border-left: none; }
+
+/* CRÉER / VIDE */
+.lt-ajout { color: var(--text-3) !important; font-weight: 500; }
+.lt-ajout:hover { color: var(--accent) !important; background: linear-gradient(90deg, var(--accent-soft), transparent) !important; }
+.lt-ajout:hover::before { background: var(--accent); }
+.lt-vide { color: color-mix(in srgb, var(--text-3) 80%, transparent); font-size: 11px; }
+
+/* états d'alerte (rappels en pause) : ambre de la palette */
+.lt-etat { color: var(--warn); }
