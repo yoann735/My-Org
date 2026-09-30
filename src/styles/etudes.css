@@ -1576,3 +1576,8 @@
 .lib-section:hover .lib-sec-ordre, .lib-sec-ordre:focus-within { opacity: 1; }
 .lib-sec-ordre .cd-ic:disabled { opacity: .3; cursor: default; }
 .lib-section.repliee .card-head { border-bottom: none; }
+.lib-mat-ligne { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.lib-mat-ligne .cat-badge { margin-bottom: 0; }
+.lib-add-dossier { height: 26px; padding: 0 10px; font-size: 12px; font-weight: 600; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); background: var(--accent-soft); }
+.lib-add-dossier:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.lib-add { height: 26px; padding: 0 9px; font-size: 12px; }

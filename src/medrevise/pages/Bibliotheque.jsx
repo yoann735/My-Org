@@ -64,8 +64,32 @@ export function Bibliotheque({ ctx }) {
   const [dossierMenu, setDossierMenu] = useState(null); // { x, y, dossierId }
   const [moveMenu, setMoveMenu] = useState(null); // { x, y, ficheId }
   const [confirmDeleteDossier, setConfirmDeleteDossier] = useState(null); // dossier à supprimer
+  // MATIÈRES depuis la Bibliothèque (« QG ») : créer, et supprimer par le MÊME chemin
+  // que Réviser (ctx.deleteMatiere : fiches → « À classer », matière → corbeille,
+  // précédé d'un putBackup) — avec une confirmation qui dit tout ce qui bouge.
+  const [matMenu, setMatMenu] = useState(null); // { x, y, matiereId }
+  const [confirmDeleteMatiere, setConfirmDeleteMatiere] = useState(null); // { matiere, fiches, dossiers, cartes }
+  const createMatiere = async (sourceId) => {
+    const id = await ctx.addMatiere(sourceId, 'Nouvelle matière');
+    if (id) startRename('matiere', id, 'Nouvelle matière');
+  };
+  const askDeleteMatiere = (matiereId) => {
+    const m = db.matieres.find((x) => x.id === matiereId); if (!m) return;
+    const fiches = db.fiches.filter((f) => f.matiereId === matiereId && !f.archive);
+    const ids = new Set(fiches.map((f) => f.id));
+    setConfirmDeleteMatiere({
+      matiere: m, fiches: fiches.length,
+      dossiers: (db.dossiers || []).filter((d) => d.matiereId === matiereId).length,
+      cartes: db.questions.filter((q) => ids.has(q.ficheId)).length,
+    });
+  };
 
-  const startRename = (type, id, current) => { setDraft(current); setRenaming({ type, id }); };
+  // NOM PROVISOIRE SÉLECTIONNÉ à l'ouverture du renommage (comme le Finder) : on
+  // tape directement le vrai nom. Le champ est remonté à chaque rendu (composant
+  // recréé), donc on re-sélectionne au focus TANT QUE le texte est encore le nom de
+  // départ — dès la première frappe il diffère, et plus rien n'est re-sélectionné.
+  const renommageFrais = useRef(null); // nom de départ du renommage en cours
+  const startRename = (type, id, current) => { renommageFrais.current = current; setDraft(current); setRenaming({ type, id }); };
   const isRen = (type, id) => renaming && renaming.type === type && renaming.id === id;
   const commitRename = () => {
     if (renaming && draft.trim()) {
@@ -78,6 +102,7 @@ export function Bibliotheque({ ctx }) {
   };
   const RenameInput = () => (
     <input className="srcmgr-input" autoFocus value={draft} onClick={(e) => e.stopPropagation()}
+      onFocus={(e) => { if (e.target.value === renommageFrais.current) e.target.select(); }}
       onChange={(e) => setDraft(e.target.value)}
       onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
       onBlur={commitRename} />
@@ -388,6 +413,9 @@ export function Bibliotheque({ ctx }) {
                         : <h3 style={{ color: 'var(--text)' }} onDoubleClick={(e) => { e.stopPropagation(); startRename('source', src.id, src.nom); }} title="Double-clic pour renommer">{src.nom}</h3>}
                       <div className="right" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span className="hint">{mats.length} matière{mats.length > 1 ? 's' : ''}</span>
+                        <button type="button" className="btn ghost sm lib-add" title="Créer une matière dans cette section" onClick={() => createMatiere(src.id)}>
+                          <Icon name="plus" size={13} /> Matière
+                        </button>
                         <BellButton on={src.rappelsJ !== false} onToggle={() => ctx.setSourceRappels(src.id, src.rappelsJ === false)} />
                         <span className="lib-sec-ordre">
                           <button type="button" className="cd-ic" disabled={iSec === 0} title="Monter la section" onClick={() => deplacerSection(ctx, sections, src.id, -1)}><Icon name="chevU" size={14} /></button>
@@ -406,11 +434,20 @@ export function Bibliotheque({ ctx }) {
                             <div key={mat.id} style={{ marginTop: 14 }}>
                               {isRen('matiere', mat.id)
                                 ? <div style={{ marginBottom: 8 }}><RenameInput /></div>
-                                : <div className="cat-badge" style={{ background: `color-mix(in srgb, ${mm.tint} 14%, transparent)`, color: mm.tint, borderColor: `color-mix(in srgb, ${mm.tint} 30%, transparent)`, marginBottom: 8, cursor: 'pointer' }} onDoubleClick={() => startRename('matiere', mat.id, mm.label)} title="Double-clic pour renommer"><Icon name={mm.icon} size={12} /> {mm.label}</div>}
-
-                              {/* création EN HAUT (juste sous l'en-tête de la matière), pas noyée
-                                 sous la liste des fiches — voir DOSSIER_ADD_TOP. */}
-                              <DossierAddButton onClick={() => createUnite(mat.id)} label="Nouveau dossier" style={DOSSIER_ADD_TOP} />
+                                : (
+                                  /* LIGNE DE MATIÈRE : nom (double-clic = renommer) · « + Dossier »,
+                                     l'action la plus fréquente, en clair · ⋯ (renommer, dossier,
+                                     supprimer la matière). */
+                                  <div className="lib-mat-ligne">
+                                    <div className="cat-badge" style={{ background: `color-mix(in srgb, ${mm.tint} 14%, transparent)`, color: mm.tint, borderColor: `color-mix(in srgb, ${mm.tint} 30%, transparent)`, cursor: 'pointer' }} onDoubleClick={() => startRename('matiere', mat.id, mm.label)} title="Double-clic pour renommer"><Icon name={mm.icon} size={12} /> {mm.label}</div>
+                                    <button type="button" className="btn sm lib-add-dossier" onClick={() => createUnite(mat.id)} title={`Créer un dossier dans ${mm.label}`}>
+                                      <Icon name="folder" size={13} /> + Dossier
+                                    </button>
+                                    <button type="button" className="cd-ic" title="Actions sur la matière" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMatMenu({ x: Math.min(r.left, window.innerWidth - 250), y: r.bottom + 4, matiereId: mat.id }); }}>
+                                      <Icon name="more" size={15} stroke={2.6} />
+                                    </button>
+                                  </div>
+                                )}
 
                               {rootFiches.map(renderFiche)}
                               <DropSlot matiereId={mat.id} dossierId={null} beforeId={null} variant={rootFiches.length ? 'line' : 'zone'} label={unites.length ? 'Déposer ici (racine)' : 'Déposer ici'} />
@@ -526,6 +563,31 @@ export function Bibliotheque({ ctx }) {
          réellement touché par ctx.deleteDossier (une unité emporte ses chapitres, et
          ses fiches comme celles de ses chapitres remontent à la racine) — textes
          partagés avec Reviser.jsx via dossierDeleteTexts. */}
+      {matMenu && (() => {
+        const m = db.matieres.find((x) => x.id === matMenu.matiereId);
+        if (!m) return null;
+        return (
+          <ContextMenu x={matMenu.x} y={matMenu.y} onClose={() => setMatMenu(null)} items={[
+            { label: 'Renommer', icon: 'edit', onClick: () => startRename('matiere', m.id, matiereMeta(m).label) },
+            { label: 'Nouveau dossier', icon: 'folder', onClick: () => createUnite(m.id) },
+            { label: 'Supprimer la matière…', icon: 'trash', danger: true, onClick: () => askDeleteMatiere(m.id) },
+          ]} />
+        );
+      })()}
+      {confirmDeleteMatiere && (() => {
+        const c = confirmDeleteMatiere;
+        const nom = matiereMeta(c.matiere).label;
+        const pl = (n, mot) => `${n} ${mot}${n > 1 ? 's' : ''}`;
+        return (
+          <ConfirmModal title={`Supprimer la matière « ${nom} » ?`}
+            body={c.fiches
+              ? `${c.fiches > 1 ? `Ses ${c.fiches} fiches` : 'Sa fiche'} (${pl(c.cartes, 'carte')}) ${c.fiches > 1 ? 'ne sont PAS supprimées : elles sont déplacées' : "n'est PAS supprimée : elle est déplacée"} dans « À classer », dans la même section, et ${c.fiches > 1 ? 'leur' : 'sa'} méthode des J continue.${c.dossiers ? ` Ses ${pl(c.dossiers, 'dossier')} disparaissent de l'arbre (les fiches qu'ils rangeaient passent à plat dans « À classer »).` : ''} « ${nom} » va ensuite dans la corbeille — restaurable depuis Réglages. Une sauvegarde de sécurité est faite avant.`
+              : `« ${nom} » ne contient aucune fiche${c.dossiers ? ` (${pl(c.dossiers, 'dossier')} vide${c.dossiers > 1 ? 's' : ''})` : ''}. Elle va dans la corbeille — restaurable depuis Réglages. Une sauvegarde de sécurité est faite avant.`}
+            confirmLabel="Supprimer la matière" danger
+            onConfirm={async () => { setConfirmDeleteMatiere(null); await ctx.deleteMatiere(c.matiere.id); }}
+            onCancel={() => setConfirmDeleteMatiere(null)} />
+        );
+      })()}
       {confirmDeleteDossier && (() => {
         const d = confirmDeleteDossier;
         const chapitres = d.parentId ? [] : chapitresOf(d.id);

@@ -401,6 +401,11 @@ export default function MedReviseApp({ themeApi, goHub }) {
     deleteMatiere: async (matiereId) => {
       const m = db.matieres.find((x) => x.id === matiereId); if (!m) return;
       const fiches = db.fiches.filter((f) => f.matiereId === matiereId && !f.archive);
+      // sauvegarde AVANT la mutation de masse (convention storage.js#putBackup) :
+      // la matière, ses fiches telles qu'elles sont rangées, et ses dossiers.
+      await putBackup(`pre-delete-matiere-${matiereId}-${Date.now()}`, {
+        matiere: m, fiches, dossiers: (db.dossiers || []).filter((d) => d.matiereId === matiereId),
+      });
       if (fiches.length) {
         let uncat = db.matieres.find((x) => x.sourceId === m.sourceId && x.uncategorized && !x.archive);
         let uncatId = uncat && uncat.id;

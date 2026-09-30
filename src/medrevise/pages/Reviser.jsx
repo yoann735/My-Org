@@ -624,7 +624,12 @@ export function Reviser({ ctx }) {
   };
 
   const isRen = (type, id) => renaming && renaming.type === type && renaming.id === id;
-  const startRename = (type, id, current) => { setDraft(current); setRenaming({ type, id }); };
+  // NOM PROVISOIRE SÉLECTIONNÉ à l'ouverture du renommage (comme le Finder) : on
+  // tape directement le vrai nom. Le champ est remonté à chaque rendu (composant
+  // recréé), donc on re-sélectionne au focus TANT QUE le texte est encore le nom de
+  // départ — dès la première frappe il diffère, et plus rien n'est re-sélectionné.
+  const renommageFrais = useRef(null); // nom de départ du renommage en cours
+  const startRename = (type, id, current) => { renommageFrais.current = current; setDraft(current); setRenaming({ type, id }); };
   const commitRename = () => {
     if (!renaming) return;
     if (renaming.type === 'fiche') ctx.renameFiche(renaming.id, draft);
@@ -880,6 +885,7 @@ export function Reviser({ ctx }) {
   // dossier doit être visuellement identique aux deux écrans.
   const DossierRenameInput = () => (
     <input className="srcmgr-input" autoFocus value={draft} onClick={(e) => e.stopPropagation()}
+      onFocus={(e) => { if (e.target.value === renommageFrais.current) e.target.select(); }}
       onChange={(e) => setDraft(e.target.value)}
       onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
       onBlur={commitRename} />
