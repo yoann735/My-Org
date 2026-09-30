@@ -1197,7 +1197,7 @@
    ne peuvent pas être actifs en même temps (canaux d'événements disjoints). La plus
    profonde des cibles l'emporte — chapitre > unité > matière > arbre. */
 .tree-card .file-drop-over,
-.lib-tree .file-drop-over {
+:is(.lib-tree, .lt-arbre) .file-drop-over {
   outline: 2px dashed var(--accent);
   outline-offset: -2px;
   border-radius: var(--r, 10px);
@@ -1598,7 +1598,7 @@
 .ranger-dlg .ranger-champ > span { font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3, var(--muted)); }
 .ranger-dlg .ranger-chemin { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2, rgba(127,127,127,.08)); color: var(--text-2, inherit); }
 .pdn-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
-.lib-tree .tree-drop-hint { margin: 0; }
+:is(.lib-tree, .lt-arbre) .tree-drop-hint { margin: 0; }
 
 /* ============================================================
    BIBLIOTHÈQUE — ARBRE « type Finder » (refonte, docs/audit-sidebar-biblio.md).
@@ -1661,15 +1661,15 @@
 .lt-carte:hover .cd-ic { opacity: 1; }
 
 /* glisser-déposer interne : créneaux sans épaisseur au repos dans cet arbre dense */
-.lib-tree .dnd-slot { height: 4px; margin: -2px 0; }
+:is(.lib-tree, .lt-arbre) .dnd-slot { height: 4px; margin: -2px 0; }
 /* zones « Déposer ici » : dans cet arbre dense, elles ne GRANDISSENT PAS au début
    d'un glisser (elles passaient de 2 à ~40 px : tout l'arbre bougeait sous le
    curseur et la fiche tombait une ligne plus bas). Elles restent une bande fixe et
    s'allument en ligne d'insertion, comme les créneaux entre deux fiches. */
-.lib-tree .dnd-zone, .lib-tree .dnd-zone.idle, .lib-tree .dnd-zone.over {
+:is(.lib-tree, .lt-arbre) :is(.dnd-zone, .dnd-zone.idle, .dnd-zone.over) {
   position: relative; height: 4px !important; margin: -1px 0 !important; padding: 0 !important;
   border: none !important; background: none !important; font-size: 0 !important; overflow: visible;
 }
-.lib-tree .dnd-zone.over::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 3px; border-radius: 2px; background: var(--accent); transform: translateY(-50%); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
-.lib-tree .dnd-cible { border-radius: 7px; }
-.lib-tree .file-drop-over { outline-offset: 0; }
+:is(.lib-tree, .lt-arbre) .dnd-zone.over::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 3px; border-radius: 2px; background: var(--accent); transform: translateY(-50%); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+:is(.lib-tree, .lt-arbre) .dnd-cible { border-radius: 7px; }
+:is(.lib-tree, .lt-arbre) .file-drop-over { outline-offset: 0; }

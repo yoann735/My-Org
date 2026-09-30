@@ -1249,7 +1249,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
    ============================================================ */
 .lt-actions :is(.cd-ic, .src-mute) { width: 24px !important; height: 24px !important; border-radius: var(--r-2) !important; }
 .lt-actions .src-mute svg { width: 14px; height: 14px; }
-.lib-tree .srcmgr-input {
+:is(.lib-tree, .lt-arbre) :is(.srcmgr-input, .tree-rename) {
   flex: 1 1 auto; min-width: 0; width: 100%; max-width: none;
   height: 24px; padding: 0 7px;
   font-size: 13px; font-weight: 500; line-height: 22px;
@@ -1352,3 +1352,23 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* états d'alerte (rappels en pause) : ambre de la palette */
 .lt-etat { color: var(--warn); }
+
+/* ---- Réviser : ce que sa ligne a EN PLUS de celle de la Bibliothèque ----
+   la case à cocher (à la place de la flèche, même emplacement de 14 px) et le
+   nom cliquable (bouton : clic = sélectionner, double-clic = ouvrir le cours). */
+.lt-coche { flex: 0 0 14px; width: 14px; height: 30px; padding: 0; margin: 0; border: none; background: none; display: grid; place-items: center; cursor: pointer; }
+.lt-coche .tc-box {
+  width: 13px; height: 13px; border-radius: 4px; display: grid; place-items: center;
+  border: 1.5px solid var(--border); background: transparent; color: var(--on-accent);
+  transition: border-color .15s ease, background .15s ease;
+}
+.lt-coche:hover .tc-box { border-color: var(--text-3); }
+.lt-coche.on .tc-box { background: var(--accent); border-color: var(--accent); }
+.lt-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; height: 100%; padding: 0; border: none; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.lt-main:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; border-radius: var(--r-1); }
+.lt-etat.lt-neutre { color: var(--text-3); }
+.lt-etat.lt-retard { color: var(--crit); }
+.lt-compte-exo { display: inline-flex; align-items: center; gap: 3px; color: color-mix(in srgb, var(--accent) 75%, var(--text-3)); }
+.lt-arbre .due-badge.sm { flex: 0 0 auto; }
+.lt-arbre .lt-section.off .lt-sec .lt-nom { color: color-mix(in srgb, var(--warn) 70%, var(--text-3)); }
+.lt-arbre { padding: 6px 6px 10px; }

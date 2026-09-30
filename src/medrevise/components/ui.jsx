@@ -965,62 +965,9 @@ export function DropCible({ matiereId, dossierId, onSurvolProlonge, children, cl
   return <div ref={setNodeRef} className={className + (dragging ? ' dnd-cible' : '') + (isOver && dragging ? ' over' : '')}>{children}</div>;
 }
 
-/* ---- sous-dossier d'une matière (rangement d'affichage pur, voir fiche.dossierId,
-   storage.js) — ligne repliable partagée par Bibliotheque.jsx ET Reviser.jsx : les
-   deux écrans doivent afficher un dossier de façon RIGOUREUSEMENT identique (mêmes
-   classes/tailles/espacements), donc UN SEUL rendu ici plutôt que deux copies qui
-   pourraient diverger. `renameInput` = élément déjà monté (le RenameInput propre à
-   chaque page, avec son propre draft/commit) inséré tel quel quand `isRenaming`.
-   `onMenu` = handler du bouton « … » (ouvre le petit menu Renommer/Supprimer,
-   propre à chaque page — voir dossierMenuItems).
-   SERT AUX DEUX NIVEAUX à l'identique (unité ET chapitre, voir addDossier/parentId) :
-   `sousDossiersCount` est la SEULE différence, optionnel — renseigné sur une unité
-   (ajoute « · 2 chapitres »), absent sur un chapitre → rendu strictement inchangé.
-   `fichesCount` d'une unité est RÉCURSIF (ses fiches + celles de ses chapitres),
-   sinon le compteur mentirait quand l'unité est repliée. */
-export function DossierRow({ dossier, isOpen, fichesCount, sousDossiersCount, exosCount, onOpenExos, isRenaming, renameInput, onToggle, onRename, onMenu }) {
-  return (
-    <div style={{ marginTop: 10 }}>
-      {isRenaming ? (
-        <div className="lib-fiche" style={{ marginBottom: 6 }}>
-          <div className="lib-fiche-row"><Icon name={isOpen ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)' }} />{renameInput}</div>
-        </div>
-      ) : (
-        <div className="lib-fiche" style={{ marginBottom: 6, background: 'var(--card-2)', cursor: 'pointer' }}
-          onClick={onToggle}
-          onDoubleClick={(e) => { e.stopPropagation(); onRename(); }}
-          title="Clic = déplier/replier · double-clic = renommer">
-          <div className="lib-fiche-row">
-            <Icon name={isOpen ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />
-            <Icon name="folder" size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />
-            <span className="lib-fiche-title">{dossier.nom}</span>
-            <span className="hint" style={{ flex: '0 0 auto' }}>
-              {fichesCount} fiche{fichesCount > 1 ? 's' : ''}
-              {sousDossiersCount != null && ` · ${sousDossiersCount} dossier${sousDossiersCount > 1 ? 's' : ''}`}
-              {exosCount > 0 && ` · ${exosCount} exo${exosCount > 1 ? 's' : ''}`}
-            </span>
-            {/* accès aux EXERCICES DU CHAPITRE — même emplacement/même style que le
-               bouton « play » d'une ligne de fiche. Rendu uniquement si l'écran passe
-               le handler (Réviser), donc la Bibliothèque reste inchangée. Le clic ne
-               déplie pas : il ouvre la vue chapitre dans le panneau de droite. */}
-            {onOpenExos && (
-              <button type="button" className="cd-ic" title="Exercices du dossier"
-                onClick={(e) => { e.stopPropagation(); onOpenExos(); }}>
-                <Icon name="target" size={14} />
-              </button>
-            )}
-            <button type="button" className="cd-ic" title="Autres actions" onClick={onMenu}><Icon name="more" size={15} stroke={2.6} /></button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Indentation d'UN niveau de dossier — appliquée à l'identique sous une matière
-    (contenu d'une unité) et sous une unité (contenu d'un chapitre), dans les deux
-    écrans : une seule constante, donc aucune dérive possible entre les niveaux. */
-export const DOSSIER_INDENT = { marginLeft: 18, paddingLeft: 10, borderLeft: '2px solid var(--border-2)' };
+/* (DossierRow et DOSSIER_INDENT — l'ancienne ligne de dossier encadrée — ont été
+   remplacés le 30/09 par LigneDossierArbre et la classe .lt-enfants, communs à la
+   Bibliothèque et à Réviser : voir plus bas.) */
 
 /** Textes de la confirmation de suppression d'un dossier — partagés par les DEUX
     écrans (même geste, mêmes conséquences → mêmes mots, pas deux formulations qui
@@ -1050,21 +997,6 @@ export function dossierDeleteTexts(dossier, chapitresCount = 0, fichesCount = 0,
   };
 }
 
-/** bouton « + Nouvelle unité » / « + Nouveau chapitre », même style partout (voir
-    DossierRow) : `label` est la SEULE variation entre les deux niveaux. */
-export function DossierAddButton({ onClick, label = 'Nouveau dossier', style }) {
-  return (
-    <button type="button" className="btn ghost sm" style={{ marginTop: 8, ...style }} onClick={onClick}>
-      <Icon name="plus" size={13} /> {label}
-    </button>
-  );
-}
-
-/** Placement des boutons de création : EN HAUT de leur conteneur (juste sous
-    l'en-tête de la matière / de l'unité), avant la liste — accessibles sans
-    scroller une longue liste de fiches. Même marge aux deux niveaux et dans les
-    deux écrans. */
-export const DOSSIER_ADD_TOP = { marginTop: 4, marginBottom: 8 };
 
 /* ---- destination picker (Cours + Matière) with inline creation ----
    New cours / matière are created from a typed name (placeholder, no
@@ -1182,3 +1114,36 @@ export function CourseDocField({ file, onFile, label = 'Document du cours (PDF o
   );
 }
 
+
+/* ---- LIGNE DE DOSSIER DE L'ARBRE (Bibliothèque ET Réviser, refonte du 30/09) ----
+   flèche · dossier · nom · nombre de fiches ; au survol : « + » (sous-dossier,
+   niveau 1 seulement — 2 niveaux maximum), exercices du dossier (Réviser), ⋯.
+   Clic = replier/déplier, double-clic = renommer. UN seul rendu pour les deux
+   écrans : ils affichent un dossier rigoureusement à l'identique. */
+export function LigneDossierArbre({ dossier, ouvert, nFiches = 0, renameInput = null, onToggle, onRename, onAjout, onMenu, exosCount = 0, onOpenExos }) {
+  const stop = (e) => e.stopPropagation();
+  if (renameInput) {
+    return (
+      <div className="lt-rangee lt-dos">
+        <Icon name={ouvert ? 'chevD' : 'chevR'} size={13} className="lt-pli" />
+        <Icon name="folder" size={14} className="lt-ic" />
+        {renameInput}
+      </div>
+    );
+  }
+  return (
+    <div className="lt-rangee lt-dos" role="button" title={(ouvert ? 'Replier' : 'Déplier') + ' le dossier · double-clic = renommer'}
+      onClick={onToggle} onDoubleClick={(e) => { e.stopPropagation(); onRename(); }}>
+      <Icon name={ouvert ? 'chevD' : 'chevR'} size={13} className="lt-pli" />
+      <Icon name="folder" size={14} className="lt-ic" />
+      <span className="lt-nom">{dossier.nom}</span>
+      {exosCount > 0 && <span className="lt-compte lt-compte-exo" title={`${exosCount} exercice${exosCount > 1 ? 's' : ''} du dossier`}><Icon name="target" size={10} /> {exosCount}</span>}
+      {nFiches > 0 && <span className="lt-compte" title={`${nFiches} fiche${nFiches > 1 ? 's' : ''}`}>{nFiches}</span>}
+      <span className="lt-actions" onClick={stop} onDoubleClick={stop}>
+        {onAjout && <button type="button" className="cd-ic" title={`Nouveau dossier dans « ${dossier.nom} »`} onClick={onAjout}><Icon name="plus" size={14} /></button>}
+        {onOpenExos && <button type="button" className="cd-ic" title="Exercices du dossier" onClick={onOpenExos}><Icon name="target" size={14} /></button>}
+        <button type="button" className="cd-ic" title="Actions sur le dossier" onClick={onMenu}><Icon name="more" size={14} stroke={2.6} /></button>
+      </span>
+    </div>
+  );
+}

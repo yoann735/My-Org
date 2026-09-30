@@ -7,7 +7,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
-import { EdTop, JBadge, matiereMeta, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, EtiquetteDot, detectDocKind, LoaderL6 } from '../components/ui.jsx';
+import { EdTop, JBadge, matiereMeta, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DropCible, LigneDossierArbre, BellButton, dossierDeleteTexts, EtiquetteDot, detectDocKind, LoaderL6 } from '../components/ui.jsx';
+import { docKind, DOC_META } from '../documents/lib/documents.js';
 import {
   index, ficheJ, dueToday, dueSchemasToday, exerciceStatus, isFicheScheduled, overdueByFiche, nextDate, fmtDay,
   qcmConseilleFor, pickQcmSubset, unstartedQuestionsFor, unstartedSchemasFor, carnetV1Questions, carnetV2Questions,
@@ -23,7 +24,7 @@ import { openPdf, pdfjsLib } from '../pdf/pdfjsSetup.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
 import { useImportParDepot } from '../components/TreeFileDrop.jsx';
-import { useTreeOpenState, ancestorDossierIds, trierSections } from '../components/useTreeOpenState.js';
+import { useTreeOpenState, ancestorDossierIds, trierSections, deplacerSection } from '../components/useTreeOpenState.js';
 
 /** formate un temps par carte (ms) en texte court — secondes sous la minute,
     "Xm Ys" au-delà (rare pour une flashcard). */
@@ -125,7 +126,7 @@ export function Reviser({ ctx }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
-  const { openDossier, setOpenDossier, openSrc, setOpenSrc } = useTreeOpenState(ctx, { sources: true, alsoOpen: initialOpen });
+  const { openDossier, setOpenDossier, openSrc, setOpenSrc, matFermee, setMatFermee } = useTreeOpenState(ctx, { sources: true, matieres: true, alsoOpen: initialOpen });
   const [renaming, setRenaming] = useState(null); // { type: 'source'|'matiere'|'dossier'|'fiche', id }
   const [draft, setDraft] = useState('');
   const [ctxMenu, setCtxMenu] = useState(null); // { type: 'source'|'matiere'|'fiche', id, x, y }
@@ -136,7 +137,7 @@ export function Reviser({ ctx }) {
   const [addItemFiche, setAddItemFiche] = useState(null); // ficheId | null
   // sous-dossiers d'une matière (même store/`fiche.dossierId` que Bibliotheque.jsx —
   // pur rangement d'affichage, voir MedReviseApp.jsx/storage.js), rendu via le MÊME
-  // composant DossierRow (ui.jsx) que la Bibliothèque — visuellement identique par
+  // composant LigneDossierArbre (ui.jsx) que la Bibliothèque — visuellement identique par
   // construction. openDossier (déplié/replié) vient désormais de useTreeOpenState
   // ci-dessus : PERSISTÉ, plus « mémoire seulement » ;
   // dossierMenu = menu « … » (Renommer/Supprimer) d'un dossier, MÊME mécanique que
@@ -301,9 +302,12 @@ export function Reviser({ ctx }) {
   // l'ordre de la base : sélectionner une plage doit sélectionner ce que l'œil voit.
   const visibleFicheIds = useMemo(() => {
     const out = [];
-    db.sources.filter((s) => !s.archive).forEach((src) => {
+    // ordre AFFICHÉ des sections (stats.ordreSections), pas l'ordre de création :
+    // sinon ↑/↓ sautait d'une section à l'autre dans le désordre après un « Monter ».
+    trierSections(db.sources.filter((s) => !s.archive), ctx.stats).forEach((src) => {
       if (openSrc[src.id] === false) return;
       matieresOf(src.id).filter((m) => fichesOf(m.id).length).forEach((mat) => {
+        if (matFermee[mat.id]) return; // matière repliée : ses fiches ne sont pas vues
         const all = fichesOf(mat.id);
         all.filter((f) => !f.dossierId).forEach((f) => out.push(f.id));
         unitesOf(mat.id).forEach((u) => {
@@ -318,7 +322,7 @@ export function Reviser({ ctx }) {
     });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db.sources, db.matieres, db.fiches, db.dossiers, openSrc, openDossier]);
+  }, [db.sources, db.matieres, db.fiches, db.dossiers, openSrc, openDossier, matFermee, ctx.stats]);
 
   const selectRangeTo = (id) => {
     const from = rangeAnchor.current;
@@ -802,14 +806,14 @@ export function Reviser({ ctx }) {
     startRename('dossier', id, 'Nouveau dossier');
   };
   // menu « … » d'un dossier (Renommer/Supprimer), MÊME mécanique que
-  // Bibliotheque.jsx — ouvert par DossierRow, pas par le clic droit générique.
+  // Bibliotheque.jsx — ouvert par LigneDossierArbre, pas par le clic droit générique.
   const openDossierMenu = (e, dossierId) => {
     e.stopPropagation();
     setDossierMenu({ x: Math.min(e.clientX, window.innerWidth - 200), y: Math.min(e.clientY, window.innerHeight - 120), dossierId });
   };
   const dossierMenuItems = (d) => [
     // second point d'entrée vers la vue "Exercices du dossier" (le premier étant le
-    // bouton cible de la ligne, voir DossierRow#onOpenExos) — chapitres seulement.
+    // bouton cible de la ligne, voir LigneDossierArbre#onOpenExos) — chapitres seulement.
     ...(d.parentId ? [{ label: 'Exercices du dossier', icon: 'target', onClick: () => openChapitreExos(d.id) }] : []),
     // ÉTAPE 4 — « Tout exporter » sans passer par la vue chapitre : MÊME fonction,
     // à qui l'on précise juste sur quel chapitre travailler.
@@ -859,6 +863,7 @@ export function Reviser({ ctx }) {
     const sel = selIds.includes(f.id);
     const cdt = dueCountFiche(f.id);
     const ren = isRen('fiche', f.id);
+    const kind = docKind(f);
     return (
       /* déposer un fichier SUR une fiche = le déposer dans le dossier qui la
          contient (pas de zone morte entre deux lignes). Aucun spring ici : il n'y
@@ -866,44 +871,48 @@ export function Reviser({ ctx }) {
       <div key={f.id} data-fiche-row={f.id} className={fd.dropClass('fiche:' + f.id).trim()}
         {...fd.dropProps({ key: 'fiche:' + f.id, matiereId: mat.id, dossierId: f.dossierId || null })}>
         <DropSlot matiereId={mat.id} dossierId={f.dossierId || null} beforeId={f.id} />
-        <DraggableFiche id={f.id} disabled={ren}>
+        {/* MÊME LIGNE que la Bibliothèque (.lt-*, refonte du 30/09) ; Réviser y
+           garde ce qui lui est propre : la case à cocher (à la place de la flèche),
+           le badge des cartes dues, le clic = sélectionner / double-clic = ouvrir
+           le cours, le clic droit, le clavier et l'infobulle riche. */}
+        <DraggableFiche id={f.id} disabled={ren} className={'lt-ligne lt-fiche' + (sel ? ' selected' : '')}>
           {ren ? (
-            <div className="tree-course on">
-              <span className="tree-check" style={{ visibility: 'hidden' }} />
+            <div className="lt-rangee">
+              <span className="lt-pli" />
               <input className="tree-rename" autoFocus defaultValue={f.titre} onFocus={(e) => e.target.select()}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
                 onBlur={commitRename} />
             </div>
           ) : (
-            /* ÉTAPE 3 — la ligne fait 44 px, la case à cocher reçoit le clic sur une
-               zone de 32 px autour d'un carré de 18 px, les icônes sont groupées à
-               droite dans un bloc de largeur fixe (le nom ne se fait plus écraser),
-               et un « ⋯ » apparaît au survol : le clic droit n'est plus le seul
-               chemin vers les actions de la fiche. */
-            <div className={'tree-course' + (sel ? ' on' : '')}
+            <div className="lt-rangee"
               onContextMenu={(e) => openCtxMenu(e, 'fiche', f.id)}
               onTouchStart={(e) => startPress(e, 'fiche', f.id)} onTouchEnd={cancelPress} onTouchMove={cancelPress} onTouchCancel={cancelPress}>
-              <button className={'tree-check' + (sel ? ' on' : '')} onClick={() => toggle(f.id)} title="Cocher / décocher">
-                <span className="tc-box">{sel ? <Icon name="check" size={11} stroke={3} /> : null}</span>
+              <button className={'lt-coche' + (sel ? ' on' : '')} onClick={() => toggle(f.id)} title="Cocher / décocher">
+                <span className="tc-box">{sel ? <Icon name="check" size={11} stroke={3.6} /> : null}</span>
               </button>
-              <button className="tree-course-main" data-fiche-btn={f.id}
+              <Icon name={f.type === 'anat_schema' ? 'image' : f.priseDeNotes ? 'edit' : kind ? DOC_META[kind].icon : 'cards'} size={14} className="lt-ic" />
+              <button className="lt-main" data-fiche-btn={f.id}
                 onClick={(e) => onFicheClick(e, f)}
                 onDoubleClick={(e) => onFicheDoubleClick(e, f)}
                 onPointerDown={cancelRenameTimer}
                 onMouseEnter={(e) => startHover(e, f.id)} onMouseLeave={endHover}>
-                <span className="tc-name">{f.titre}</span>
-                <span className="tc-meta">
-                  {f.type === 'anat_schema' && <span title="Schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex' }}><Icon name="image" size={12} /></span>}
-                  <EtiquetteDot value={f.etiquette} />
-                  {overdueFicheIds.has(f.id) && <span title="En retard — à rattraper" style={{ color: 'var(--crit)', display: 'inline-flex' }}><Icon name="alert" size={12} /></span>}
-                  {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
-                </span>
+                <span className="lt-nom">{f.titre}</span>
               </button>
-              <button type="button" className="tree-more" title="Autres actions (ou clic droit)"
-                onClick={(e) => { e.stopPropagation(); openCtxMenu(e, 'fiche', f.id); }}>
-                <Icon name="more" size={15} stroke={2.6} />
-              </button>
+              <EtiquetteDot value={f.etiquette} />
+              {f.rappelsJ === false && <span className="lt-etat" title="Rappels J en pause pour cette fiche"><Icon name="bellOff" size={12} /></span>}
+              {overdueFicheIds.has(f.id) && <span className="lt-etat lt-retard" title="En retard — à rattraper"><Icon name="alert" size={12} /></span>}
+              {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
+              <span className="lt-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                {f.type !== 'transcript' && (
+                  <button type="button" className="cd-ic" title="Réviser cette fiche" onClick={() => { if (f.type === 'anat_schema') ctx.startAnatQuiz(f, { mode: 'total' }); else { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); } }}>
+                    <Icon name="play" size={12} />
+                  </button>
+                )}
+                <button type="button" className="cd-ic" title="Autres actions (ou clic droit)" onClick={(e) => openCtxMenu(e, 'fiche', f.id)}>
+                  <Icon name="more" size={14} stroke={2.6} />
+                </button>
+              </span>
             </div>
           )}
         </DraggableFiche>
@@ -950,92 +959,87 @@ export function Reviser({ ctx }) {
           {/* le conteneur est lui-même une cible « sans destination » : un fichier lâché
              entre deux blocs est AVALÉ (sinon le navigateur ouvrirait le fichier et
              quitterait l'app en pleine session) puis expliqué, jamais silencieux. */}
-          <div className="tree-scroll scroll" ref={treeScrollRef} onKeyDown={onTreeKeyDown} onScroll={onTreeScroll}
+          <div className="tree-scroll scroll lt-arbre" ref={treeScrollRef} onKeyDown={onTreeKeyDown} onScroll={onTreeScroll}
             {...fd.dropProps({ key: 'tree' })}>
             <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
-            {trierSections(db.sources.filter((s) => !s.archive), ctx.stats).map((src) => { /* même ordre que la Bibliothèque (stats.ordreSections) */
+            {/* ARBRE : même rendu que la Bibliothèque (.lt-*, refonte du 30/09) —
+               section · matière (repliable) · dossier · fiche, actions au survol. */}
+            {(() => { const sections = trierSections(db.sources.filter((s) => !s.archive), ctx.stats); return sections.map((src, iSec) => { /* même ordre que la Bibliothèque (stats.ordreSections) */
               const mats = matieresOf(src.id).filter((m) => fichesOf(m.id).length);
               if (!mats.length) return null;
               const openS = openSrc[src.id] !== false;
               const on = src.rappelsJ !== false;
               return (
-                <div className={'tree-src' + (on ? '' : ' off')} key={src.id}>
-                  <div className={'tree-src-row' + fd.dropClass('src:' + src.id)}
+                <div className={'lt-section' + (on ? '' : ' off')} key={src.id}>
+                  <div className={'lt-rangee lt-sec' + fd.dropClass('src:' + src.id)} role="button"
                     {...fd.dropProps({ key: 'src:' + src.id, spring: { type: 'source', id: src.id } })}
+                    onClick={() => { if (!isRen('source', src.id)) setOpenSrc((o) => ({ ...o, [src.id]: !openS })); }}
+                    onDoubleClick={(e) => { e.stopPropagation(); startRename('source', src.id, src.nom); }}
                     onContextMenu={(e) => openCtxMenu(e, 'source', src.id)}
                     onTouchStart={(e) => startPress(e, 'source', src.id)} onTouchEnd={cancelPress} onTouchMove={cancelPress} onTouchCancel={cancelPress}
-                    title="Clic droit (ou appui long) : renommer / supprimer">
+                    title={(openS ? 'Replier' : 'Déplier') + ' la section · double-clic = renommer · clic droit = actions'}>
+                    <Icon name={openS ? 'chevD' : 'chevR'} size={13} className="lt-pli" />
                     {isRen('source', src.id) ? (
-                      <div className="tree-src-main" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                        <Icon name={openS ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)' }} />
-                        <input className="tree-rename" autoFocus defaultValue={src.nom} onFocus={(e) => e.target.select()}
-                          onChange={(e) => setDraft(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
-                          onBlur={commitRename} />
-                      </div>
-                    ) : (
-                      <button className="tree-src-main" onClick={() => setOpenSrc((o) => ({ ...o, [src.id]: !openS }))}>
-                        <Icon name={openS ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)' }} />
-                        <span className="tsrc-ic" style={{ background: `color-mix(in srgb, ${src.tint || '#7C6FE0'} 16%, transparent)`, color: src.tint || '#7C6FE0' }}><Icon name={src.icon || 'folder'} size={13} /></span>
-                        <span className="tsrc-name">{src.nom}</span>
-                        {srcHasSchema(src.id) && <span title="Contient un schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex', marginLeft: 4 }}><Icon name="image" size={12} /></span>}
-                        {/* ÉTAPE 3 — le bouton cloche quitte la ligne (il n'avait
-                           d'ailleurs aucun style : la classe .src-mute n'existait pas
-                           en CSS) ; l'ÉTAT, lui, reste lisible d'un coup d'œil, et le
-                           geste passe par le menu (« Retirer / remettre dans la méthode
-                           des J »), au clic droit comme au « ⋯ ». */}
-                        {!on && (
-                          <span className="tsrc-off" title="Cours en pause — ses fiches ne sortent plus dans la série du jour, mais restent révisables manuellement.">
-                            <Icon name="bellOff" size={12} /> en pause
-                          </span>
-                        )}
-                      </button>
-                    )}
-                    <button type="button" className="tree-more" title="Autres actions (ou clic droit)"
-                      onClick={(e) => { e.stopPropagation(); openCtxMenu(e, 'source', src.id); }}>
-                      <Icon name="more" size={15} stroke={2.6} />
-                    </button>
+                      <input className="tree-rename" autoFocus defaultValue={src.nom} onFocus={(e) => e.target.select()} onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
+                        onBlur={commitRename} />
+                    ) : <span className="lt-nom">{src.nom}</span>}
+                    {srcHasSchema(src.id) && <span className="lt-etat lt-neutre" title="Contient un schéma d'anatomie"><Icon name="image" size={12} /></span>}
+                    {!on && <span className="lt-etat" title="Section en pause — ses fiches ne sortent plus dans la série du jour, mais restent révisables manuellement."><Icon name="bellOff" size={12} /></span>}
+                    <span className="lt-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                      <button type="button" className="cd-ic" disabled={iSec === 0} title="Monter la section" onClick={() => deplacerSection(ctx, sections, src.id, -1)}><Icon name="chevU" size={14} /></button>
+                      <button type="button" className="cd-ic" disabled={iSec === sections.length - 1} title="Descendre la section" onClick={() => deplacerSection(ctx, sections, src.id, 1)}><Icon name="chevD" size={14} /></button>
+                      <BellButton on={on} onToggle={() => ctx.setSourceRappels(src.id, !on)} />
+                      <button type="button" className="cd-ic" title="Autres actions (ou clic droit)" onClick={(e) => openCtxMenu(e, 'source', src.id)}><Icon name="more" size={14} stroke={2.6} /></button>
+                    </span>
                   </div>
-                  {openS && mats.map((mat) => {
+                  {openS && (
+                    <div className="lt-enfants lt-enfants-sec">
+                  {mats.map((mat) => {
                     const allFiches = fichesOf(mat.id);
                     const rootFiches = allFiches.filter((f) => !f.dossierId);
                     const unites = unitesOf(mat.id);
                     const mm = matiereMeta(mat);
+                    const matOuverte = !matFermee[mat.id];
                     return (
                       /* cible de REPLI de la matière (dossierId = null → racine) : les
                          cibles plus profondes (unité, chapitre, ligne de fiche) arrêtent
                          la propagation et l'emportent. */
-                      <div className={'tree-group' + fd.dropClass('mat:' + mat.id)} key={mat.id}
+                      <div className={fd.dropClass('mat:' + mat.id).trim()} key={mat.id}
                         {...fd.dropProps({ key: 'mat:' + mat.id, matiereId: mat.id })}>
-                        <div className="tree-cat-row" onContextMenu={(e) => openCtxMenu(e, 'matiere', mat.id)}
+                        <DropCible matiereId={mat.id} dossierId={null} onSurvolProlonge={() => setMatFermee((o) => (o[mat.id] ? { ...o, [mat.id]: false } : o))}>
+                        <div className="lt-rangee lt-mat" role="button" style={{ '--teinte': mm.tint }}
+                          onClick={() => { if (!isRen('matiere', mat.id)) setMatFermee((o) => ({ ...o, [mat.id]: matOuverte })); }}
+                          onDoubleClick={(e) => { e.stopPropagation(); startRename('matiere', mat.id, mm.label); }}
+                          onContextMenu={(e) => openCtxMenu(e, 'matiere', mat.id)}
                           onTouchStart={(e) => startPress(e, 'matiere', mat.id)} onTouchEnd={cancelPress} onTouchMove={cancelPress} onTouchCancel={cancelPress}
-                          title="Clic droit (ou appui long) : renommer / supprimer">
-                          <span className="tcat-dot" style={{ background: mm.tint, marginLeft: 4 }} />
+                          title={(matOuverte ? 'Replier' : 'Déplier') + ' la matière · double-clic = renommer · clic droit = actions'}>
+                          <Icon name={matOuverte ? 'chevD' : 'chevR'} size={13} className="lt-pli" />
+                          <span className="lt-point" style={{ background: mm.tint }} />
                           {isRen('matiere', mat.id) ? (
-                            <input className="tree-rename" style={{ flex: 1 }} autoFocus defaultValue={mm.label} onFocus={(e) => e.target.select()}
+                            <input className="tree-rename" autoFocus defaultValue={mm.label} onFocus={(e) => e.target.select()} onClick={(e) => e.stopPropagation()}
                               onChange={(e) => setDraft(e.target.value)}
                               onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
                               onBlur={commitRename} />
-                          ) : (
-                            <span className="tcat-label" style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 5 }}>{mm.label}{matHasSchema(mat.id) && <span title="Contient un schéma d'anatomie" style={{ color: 'var(--text-3)', display: 'inline-flex' }}><Icon name="image" size={11} /></span>}</span>
-                          )}
-                          <button type="button" className="tree-more" title="Autres actions (ou clic droit)"
-                            onClick={(e) => { e.stopPropagation(); openCtxMenu(e, 'matiere', mat.id); }}>
-                            <Icon name="more" size={15} stroke={2.6} />
-                          </button>
+                          ) : <span className="lt-nom">{mm.label}</span>}
+                          {matHasSchema(mat.id) && <span className="lt-etat lt-neutre" title="Contient un schéma d'anatomie"><Icon name="image" size={11} /></span>}
+                          <span className="lt-compte" title={`${allFiches.length} fiche${allFiches.length > 1 ? 's' : ''}`}>{allFiches.length}</span>
+                          <span className="lt-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                            <button type="button" className="cd-ic" title={`Nouveau dossier dans « ${mm.label} »`} onClick={() => { setMatFermee((o) => ({ ...o, [mat.id]: false })); createUnite(mat.id); }}><Icon name="plus" size={14} /></button>
+                            <button type="button" className="cd-ic" title="Autres actions (ou clic droit)" onClick={(e) => openCtxMenu(e, 'matiere', mat.id)}><Icon name="more" size={14} stroke={2.6} /></button>
+                          </span>
                         </div>
+                        </DropCible>
 
-                        {/* création EN HAUT (juste sous l'en-tête de la matière), pas noyée sous
-                           la liste des fiches — voir DOSSIER_ADD_TOP. */}
-                        <DossierAddButton onClick={() => createUnite(mat.id)} label="Nouveau dossier" style={DOSSIER_ADD_TOP} />
-
+                        {matOuverte && (
+                        <div className="lt-enfants">
                         {rootFiches.map((f) => renderTreeFiche(mat, f))}
                         <DropSlot matiereId={mat.id} dossierId={null} beforeId={null} variant={rootFiches.length ? 'line' : 'zone'} label={unites.length ? 'Déposer ici (racine)' : 'Déposer ici'} />
 
-                        {/* dossiers sur DEUX niveaux (Unité → Chapitre, même store/fiche.dossierId
-                           et mêmes helpers que Bibliotheque.jsx), rendus via le MÊME composant
-                           DossierRow et la MÊME indentation (DOSSIER_INDENT, ui.jsx) — identiques à
-                           la Bibliothèque par construction, sans impact sur le planning/J/révision. */}
+                        {/* dossiers sur DEUX niveaux (parentId) : même ligne que la
+                           Bibliothèque (ui.jsx#LigneDossierArbre), sans impact sur le
+                           planning/J/révision. */}
                         {unites.map((u) => {
                           const chapitres = chapitresOf(u.id);
                           const uniteFiches = allFiches.filter((f) => f.dossierId === u.id);
@@ -1043,23 +1047,18 @@ export function Reviser({ ctx }) {
                           return (
                             <div key={u.id} className={fd.dropClass('dos:' + u.id).trim()}
                               {...fd.dropProps({ key: 'dos:' + u.id, matiereId: mat.id, dossierId: u.id, spring: { type: 'dossier', id: u.id } })}>
-                              <DossierRow dossier={u} isOpen={uOpen}
-                                fichesCount={fichesCountRecursif(allFiches, u.id)} sousDossiersCount={chapitres.length}
-                                isRenaming={isRen('dossier', u.id)} renameInput={<DossierRenameInput />}
-                                onToggle={() => setOpenDossier((o) => ({ ...o, [u.id]: !uOpen }))}
-                                onRename={() => startRename('dossier', u.id, u.nom)}
-                                onMenu={(e) => openDossierMenu(e, u.id)} />
+                              <DropCible matiereId={mat.id} dossierId={u.id} onSurvolProlonge={() => setOpenDossier((o) => (o[u.id] ? o : { ...o, [u.id]: true }))}>
+                                <LigneDossierArbre dossier={u} ouvert={uOpen} nFiches={fichesCountRecursif(allFiches, u.id)}
+                                  renameInput={isRen('dossier', u.id) ? <DossierRenameInput /> : null}
+                                  onToggle={() => setOpenDossier((o) => ({ ...o, [u.id]: !uOpen }))}
+                                  onRename={() => startRename('dossier', u.id, u.nom)}
+                                  onAjout={() => createChapitre(mat.id, u.id)}
+                                  onMenu={(e) => openDossierMenu(e, u.id)} />
+                              </DropCible>
                               {uOpen && (
-                                <div style={DOSSIER_INDENT}>
-                                  {/* création EN HAUT, juste sous l'en-tête de l'unité. Le chapitre est
-                                     le DERNIER niveau : aucun bouton de création à l'intérieur d'un
-                                     chapitre (limite 2 niveaux côté UI, doublée par la garde de
-                                     MedReviseApp.jsx#addDossier). */}
-                                  <DossierAddButton onClick={() => createChapitre(mat.id, u.id)} label="Nouveau dossier" style={DOSSIER_ADD_TOP} />
-
+                                <div className="lt-enfants">
                                   {uniteFiches.map((f) => renderTreeFiche(mat, f))}
                                   <DropSlot matiereId={mat.id} dossierId={u.id} beforeId={null} variant={uniteFiches.length ? 'line' : 'zone'} label={chapitres.length ? "Déposer ici (dossier)" : 'Déposer ici'} />
-                                  {uniteFiches.length === 0 && chapitres.length === 0 && <div className="hint">Dossier vide.</div>}
 
                                   {chapitres.map((c) => {
                                     const chapFiches = allFiches.filter((f) => f.dossierId === c.id);
@@ -1067,33 +1066,40 @@ export function Reviser({ ctx }) {
                                     return (
                                       <div key={c.id} className={fd.dropClass('dos:' + c.id).trim()}
                                         {...fd.dropProps({ key: 'dos:' + c.id, matiereId: mat.id, dossierId: c.id, spring: { type: 'dossier', id: c.id } })}>
-                                        <DossierRow dossier={c} isOpen={cOpen} fichesCount={chapFiches.length}
-                                          exosCount={exosOfChapitre(c.id).length} onOpenExos={() => openChapitreExos(c.id)}
-                                          isRenaming={isRen('dossier', c.id)} renameInput={<DossierRenameInput />}
-                                          onToggle={() => setOpenDossier((o) => ({ ...o, [c.id]: !cOpen }))}
-                                          onRename={() => startRename('dossier', c.id, c.nom)}
-                                          onMenu={(e) => openDossierMenu(e, c.id)} />
+                                        <DropCible matiereId={mat.id} dossierId={c.id} onSurvolProlonge={() => setOpenDossier((o) => (o[c.id] ? o : { ...o, [c.id]: true }))}>
+                                          <LigneDossierArbre dossier={c} ouvert={cOpen} nFiches={chapFiches.length}
+                                            exosCount={exosOfChapitre(c.id).length} onOpenExos={() => openChapitreExos(c.id)}
+                                            renameInput={isRen('dossier', c.id) ? <DossierRenameInput /> : null}
+                                            onToggle={() => setOpenDossier((o) => ({ ...o, [c.id]: !cOpen }))}
+                                            onRename={() => startRename('dossier', c.id, c.nom)}
+                                            onMenu={(e) => openDossierMenu(e, c.id)} />
+                                        </DropCible>
                                         {cOpen && (
-                                          <div style={DOSSIER_INDENT}>
+                                          <div className="lt-enfants">
                                             {chapFiches.map((f) => renderTreeFiche(mat, f))}
                                             <DropSlot matiereId={mat.id} dossierId={c.id} beforeId={null} variant={chapFiches.length ? 'line' : 'zone'} />
-                                            {chapFiches.length === 0 && <div className="hint">Dossier vide.</div>}
+                                            {chapFiches.length === 0 && <div className="lt-vide">Vide — glisse une fiche ou un fichier ici</div>}
                                           </div>
                                         )}
                                       </div>
                                     );
                                   })}
+                                  {uniteFiches.length === 0 && chapitres.length === 0 && <div className="lt-vide">Vide — glisse une fiche ou un fichier ici</div>}
                                 </div>
                               )}
                             </div>
                           );
                         })}
+                        </div>
+                        )}
                       </div>
                     );
                   })}
+                    </div>
+                  )}
                 </div>
               );
-            })}
+            }); })()}
             </FicheDndProvider>
           </div>
           {/* ÉTAPE 1 — la légende de pied (« N à réviser aujourd'hui ») est retirée :

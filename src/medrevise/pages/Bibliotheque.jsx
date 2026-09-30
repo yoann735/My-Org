@@ -10,7 +10,7 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DropCible, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
+import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DropCible, LigneDossierArbre, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
 import { useTreeOpenState, trierSections, deplacerSection } from '../components/useTreeOpenState.js';
 import { useImportParDepot } from '../components/TreeFileDrop.jsx';
 import { putBlob } from '../lib/storage.js';
@@ -357,25 +357,14 @@ export function Bibliotheque({ ctx }) {
   };
   // LIGNE D'UN DOSSIER (Bibliothèque) : flèche · dossier · nom · nombre de fiches ·
   // au survol « + » (sous-dossier, niveau 1 seulement — 2 niveaux maximum) et ⋯.
-  // Rendu propre à la Bibliothèque : ui.jsx#DossierRow reste celui de Réviser.
-  const ligneDossier = (d, nFiches, onAjout) => {
-    const ouvert = !!openDossier[d.id];
-    if (isRen('dossier', d.id)) return <div className="lt-rangee lt-dos"><Icon name={ouvert ? 'chevD' : 'chevR'} size={13} className="lt-pli" /><Icon name="folder" size={14} className="lt-ic" /><RenameInput /></div>;
-    return (
-      <div className="lt-rangee lt-dos" role="button" title={(ouvert ? 'Replier' : 'Déplier') + ' le dossier · double-clic = renommer'}
-        onClick={() => setOpenDossier((o) => ({ ...o, [d.id]: !ouvert }))}
-        onDoubleClick={(e) => { e.stopPropagation(); startRename('dossier', d.id, d.nom); }}>
-        <Icon name={ouvert ? 'chevD' : 'chevR'} size={13} className="lt-pli" />
-        <Icon name="folder" size={14} className="lt-ic" />
-        <span className="lt-nom">{d.nom}</span>
-        {nFiches > 0 && <span className="lt-compte" title={`${nFiches} fiche${nFiches > 1 ? 's' : ''}`}>{nFiches}</span>}
-        <span className="lt-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-          {onAjout && <button type="button" className="cd-ic" title={`Nouveau dossier dans « ${d.nom} »`} onClick={onAjout}><Icon name="plus" size={14} /></button>}
-          <button type="button" className="cd-ic" title="Actions sur le dossier" onClick={(e) => openDossierMenu(e, d.id)}><Icon name="more" size={14} stroke={2.6} /></button>
-        </span>
-      </div>
-    );
-  };
+  // Composant partagé avec Réviser : ui.jsx#LigneDossierArbre.
+  const ligneDossier = (d, nFiches, onAjout) => (
+    <LigneDossierArbre dossier={d} ouvert={!!openDossier[d.id]} nFiches={nFiches}
+      renameInput={isRen('dossier', d.id) ? <RenameInput /> : null}
+      onToggle={() => setOpenDossier((o) => ({ ...o, [d.id]: !o[d.id] }))}
+      onRename={() => startRename('dossier', d.id, d.nom)}
+      onAjout={onAjout} onMenu={(e) => openDossierMenu(e, d.id)} />
+  );
   const renderFicheOverlay = (ficheId) => {
     const f = db.fiches.find((x) => x.id === ficheId);
     if (!f) return null;
