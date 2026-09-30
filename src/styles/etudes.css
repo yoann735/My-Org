@@ -1595,3 +1595,77 @@
 .ranger-dlg .ranger-chemin { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2, rgba(127,127,127,.08)); color: var(--text-2, inherit); }
 .pdn-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
 .lib-tree .tree-drop-hint { margin: 0; }
+
+/* ============================================================
+   BIBLIOTHÈQUE — ARBRE « type Finder » (refonte, docs/audit-sidebar-biblio.md).
+   Une ligne = un élément (section, matière, dossier, fiche), 30 px, sans cadre ;
+   même grammaire à chaque niveau : [flèche] [icône] nom … compteur, et les
+   actions (+ / ▷ / ⋯) qui REMPLACENT le compteur au survol, par-dessus la fin de
+   la ligne — le nom garde toute la largeur. Indentation régulière de 16 px avec
+   un trait guide fin. Couleurs = tokens de l'app, aucune nouvelle teinte.
+   ============================================================ */
+.lib-tree { display: flex; flex-direction: column; gap: 10px; padding: 8px 6px 10px; border: 1px solid var(--border-2); border-radius: var(--r, 12px); background: var(--card); }
+.lt-section + .lt-section { border-top: 1px solid var(--border-2); padding-top: 8px; }
+.lt-rangee {
+  position: relative; display: flex; align-items: center; gap: 6px; min-width: 0;
+  height: 30px; padding: 0 6px 0 4px; border-radius: 7px; cursor: pointer;
+  color: var(--text-2); font-size: 13px; user-select: none;
+}
+.lt-rangee:hover { background: var(--card-2); color: var(--text); }
+.lt-pli { flex: 0 0 14px; width: 14px; color: var(--text-3); }
+.lt-ic { flex: 0 0 auto; color: var(--text-3); }
+.lt-nom { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lt-compte { flex: 0 0 auto; min-width: 18px; text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-3); }
+.lt-etat { flex: 0 0 auto; display: inline-flex; color: var(--warn, var(--text-3)); }
+/* actions au survol : posées PAR-DESSUS la fin de la ligne (fond = fond de survol) */
+.lt-actions {
+  position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
+  display: none; align-items: center; gap: 1px; padding-left: 14px;
+  background: linear-gradient(to right, transparent, var(--card-2) 12px);
+}
+.lt-rangee:hover > .lt-actions, .lt-rangee:focus-within > .lt-actions { display: inline-flex; }
+.lt-actions .cd-ic { width: 24px; height: 24px; }
+.lt-actions .cd-ic:disabled { opacity: .25; cursor: default; }
+.lt-actions .src-mute { width: 24px; height: 24px; }
+@media (hover: none) { .lt-actions { display: inline-flex; background: none; position: static; transform: none; padding-left: 0; } }
+
+/* niveaux */
+.lt-sec { height: 28px; }
+.lt-sec .lt-nom { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-3); }
+.lt-sec:hover .lt-nom { color: var(--text-2); }
+.lt-mat .lt-nom { font-weight: 650; color: var(--text); font-size: 13.5px; }
+.lt-point { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; }
+.lt-dos .lt-nom { color: var(--text); font-weight: 500; }
+.lt-fiche .lt-nom { color: var(--text-2); }
+.lt-fiche .lt-rangee:hover .lt-nom { color: var(--text); }
+.lt-fiche.selected > .lt-rangee { background: var(--accent-soft); }
+.lt-fiche.selected > .lt-rangee .lt-nom, .lt-fiche.selected > .lt-rangee .lt-ic { color: var(--accent); font-weight: 600; }
+.lt-fiche.selected > .lt-rangee .lt-actions { background: linear-gradient(to right, transparent, color-mix(in srgb, var(--accent) 16%, var(--card)) 12px); }
+.lt-fiche .lib-fiche-etq { width: 7px; height: 7px; }
+.lt-ajout { color: var(--text-3); background: none; border: none; width: 100%; font: inherit; font-size: 12.5px; text-align: left; }
+.lt-ajout:hover { color: var(--accent); background: var(--accent-soft); }
+.lt-ajout .lt-pli { color: inherit; }
+
+/* indentation : 16 px par niveau, trait guide aligné sous la flèche du parent */
+.lt-enfants { margin-left: 10px; padding-left: 6px; border-left: 1px solid var(--border-2); }
+.lt-enfants-sec { margin-left: 0; padding-left: 0; border-left: none; }
+.lt-vide { padding: 4px 8px 6px 24px; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-3); font-style: italic; }
+.lt-cartes { margin: 0 0 4px 24px; padding-left: 8px; border-left: 1px solid var(--border-2); }
+.lt-carte { display: flex; align-items: center; gap: 6px; min-height: 26px; font-size: 12px; color: var(--text-2); }
+.lt-carte > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lt-carte .cd-ic { opacity: 0; width: 22px; height: 22px; }
+.lt-carte:hover .cd-ic { opacity: 1; }
+
+/* glisser-déposer interne : créneaux sans épaisseur au repos dans cet arbre dense */
+.lib-tree .dnd-slot { height: 4px; margin: -2px 0; }
+/* zones « Déposer ici » : dans cet arbre dense, elles ne GRANDISSENT PAS au début
+   d'un glisser (elles passaient de 2 à ~40 px : tout l'arbre bougeait sous le
+   curseur et la fiche tombait une ligne plus bas). Elles restent une bande fixe et
+   s'allument en ligne d'insertion, comme les créneaux entre deux fiches. */
+.lib-tree .dnd-zone, .lib-tree .dnd-zone.idle, .lib-tree .dnd-zone.over {
+  position: relative; height: 4px !important; margin: -1px 0 !important; padding: 0 !important;
+  border: none !important; background: none !important; font-size: 0 !important; overflow: visible;
+}
+.lib-tree .dnd-zone.over::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 3px; border-radius: 2px; background: var(--accent); transform: translateY(-50%); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+.lib-tree .dnd-cible { border-radius: 7px; }
+.lib-tree .file-drop-over { outline-offset: 0; }

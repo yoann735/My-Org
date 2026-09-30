@@ -22,6 +22,7 @@ import { useEffect, useState } from 'react';
 
 const OPEN_KEY = 'treeOpenDossiers';
 const CLOSED_SRC_KEY = 'treeClosedSources';
+const CLOSED_MAT_KEY = 'treeClosedMatieres'; // matières repliées (Bibliothèque seulement)
 
 const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 /** ids dont l'état vaut `valeur` — triés, pour que deux états égaux se comparent égaux. */
@@ -40,7 +41,10 @@ const idsWhere = (map, valeur) => Object.keys(map).filter((id) => !!map[id] === 
  *                       au premier rendu : le défilement vers la sélection a besoin
  *                       que sa ligne existe déjà dans le DOM.
  */
-export function useTreeOpenState(ctx, { sources = false, alsoOpen = [] } = {}) {
+/* @param opts.matieres true = gère aussi le repli des MATIÈRES (ouvertes par défaut,
+                         liste des repliées dans `stats.treeClosedMatieres`). Seule la
+                         Bibliothèque l'active ; Réviser n'a pas de repli de matière. */
+export function useTreeOpenState(ctx, { sources = false, matieres = false, alsoOpen = [] } = {}) {
   const st = ctx.stats || {};
   const [openDossier, setOpenDossier] = useState(() => Object.fromEntries(
     [...(st[OPEN_KEY] || []), ...alsoOpen].map((id) => [id, true]),
@@ -49,6 +53,8 @@ export function useTreeOpenState(ctx, { sources = false, alsoOpen = [] } = {}) {
     const replies = new Set(st[CLOSED_SRC_KEY] || []);
     return Object.fromEntries(((ctx.db && ctx.db.sources) || []).map((s) => [s.id, !replies.has(s.id)]));
   });
+
+  const [matFermee, setMatFermee] = useState(() => Object.fromEntries((st[CLOSED_MAT_KEY] || []).map((id) => [id, true])));
 
   // Écriture uniquement quand l'état CHANGE vraiment (comparaison de listes triées) :
   // saveStats reposant `ctx.stats`, une écriture inconditionnelle rejouerait en boucle.
@@ -61,11 +67,15 @@ export function useTreeOpenState(ctx, { sources = false, alsoOpen = [] } = {}) {
       const replies = idsWhere(openSrc, false);
       if (!sameList(replies, [...(ctx.stats[CLOSED_SRC_KEY] || [])].sort())) patch[CLOSED_SRC_KEY] = replies;
     }
+    if (matieres) {
+      const fermees = idsWhere(matFermee, true);
+      if (!sameList(fermees, [...(ctx.stats[CLOSED_MAT_KEY] || [])].sort())) patch[CLOSED_MAT_KEY] = fermees;
+    }
     if (Object.keys(patch).length) ctx.saveStats({ ...ctx.stats, ...patch });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openDossier, openSrc, ctx.stats, sources]);
+  }, [openDossier, openSrc, matFermee, ctx.stats, sources, matieres]);
 
-  return { openDossier, setOpenDossier, openSrc, setOpenSrc };
+  return { openDossier, setOpenDossier, openSrc, setOpenSrc, matFermee, setMatFermee };
 }
 
 /**

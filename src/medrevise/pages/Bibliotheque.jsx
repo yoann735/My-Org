@@ -10,7 +10,7 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DropCible, DossierRow, DossierAddButton, DOSSIER_INDENT, DOSSIER_ADD_TOP, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
+import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DropCible, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
 import { index } from '../lib/planning.js';
 import { useTreeOpenState, trierSections, deplacerSection } from '../components/useTreeOpenState.js';
 import { useImportParDepot } from '../components/TreeFileDrop.jsx';
@@ -61,7 +61,7 @@ export function Bibliotheque({ ctx }) {
   // se replient ici aussi, avec le MÊME état mémorisé que Réviser.
   // confirmDeleteDossier = confirmation avant suppression (les fiches contenues
   // remontent d'un niveau).
-  const { openDossier, setOpenDossier, openSrc, setOpenSrc } = useTreeOpenState(ctx, { sources: true });
+  const { openDossier, setOpenDossier, openSrc, setOpenSrc, matFermee, setMatFermee } = useTreeOpenState(ctx, { sources: true, matieres: true });
   const [dossierMenu, setDossierMenu] = useState(null); // { x, y, dossierId }
   const [moveMenu, setMoveMenu] = useState(null); // { x, y, ficheId }
   const [confirmDeleteDossier, setConfirmDeleteDossier] = useState(null); // dossier à supprimer
@@ -278,6 +278,8 @@ export function Bibliotheque({ ctx }) {
     const isSel = !!(selected && selected.ficheId === f.id);
     const paused = !isTranscript && f.rappelsJ === false;
     const etq = etiquetteMeta(f.etiquette);
+    const nCartes = isTranscript || isSchema ? 0 : count(f.id, 'qcm') + count(f.id, 'flashcard');
+    // le détail (compteurs) passe dans l'infobulle : la ligne garde toute sa largeur au titre
     const metaLine = isTranscript ? 'Transcript'
       : isSchema ? `Schéma · ${schemaViews(f) > 1 ? schemaViews(f) + ' vues · ' : ''}${schemaCoches(f)} coche${schemaCoches(f) > 1 ? 's' : ''}`
         : `${f.priseDeNotes ? 'Prise de notes · ' : ''}${count(f.id, 'qcm')} QCM · ${count(f.id, 'flashcard')} flash${isAnat ? ' · images' : ''}`;
@@ -285,39 +287,41 @@ export function Bibliotheque({ ctx }) {
       <div key={f.id} className={fd.dropClass('fiche:' + f.id).trim()}
         {...fd.dropProps({ key: 'fiche:' + f.id, matiereId: f.matiereId, dossierId: f.dossierId || null })}>
         <DropSlot matiereId={f.matiereId} dossierId={f.dossierId || null} beforeId={f.id} />
-        <DraggableFiche id={f.id} disabled={isRen('fiche', f.id)} className={'lib-fiche' + (isSel ? ' selected' : '')}>
+        <DraggableFiche id={f.id} disabled={isRen('fiche', f.id)} className={'lt-ligne lt-fiche' + (isSel ? ' selected' : '')}>
           {isRen('fiche', f.id) ? (
-            <RenameInput />
+            <div className="lt-rangee"><span className="lt-pli" /><RenameInput /></div>
           ) : (
-            <>
-              <div role="button" className="lib-fiche-row" style={{ cursor: 'pointer' }}
-                onClick={() => { if (kind) openDoc(f); else setOpenFiche((o) => ({ ...o, [f.id]: !fo })); }}
-                onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }}
-                title={kind ? 'Clic = ouvrir le document · double-clic = renommer' : 'Clic = ouvrir · double-clic = renommer'}>
-                {kind
-                  ? <Icon name={DOC_META[kind].icon} size={14} style={{ color: isSel ? 'var(--accent)' : 'var(--text-3)', flex: '0 0 auto' }} />
-                  : <Icon name={fo ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} />}
-                <span className="lib-fiche-title">{f.titre}</span>
-                {etq && <span className="lib-fiche-etq" style={{ background: etq.color }} title={`Étiquette : ${etq.label}`} onClick={(e) => openEtqMenu(e, f.id)} />}
-                {paused && <Icon name="bellOff" size={13} style={{ color: 'var(--text-3)', flex: '0 0 auto' }} title="Rappels J en pause" />}
+            <div role="button" className="lt-rangee"
+              onClick={() => { if (kind) openDoc(f); else setOpenFiche((o) => ({ ...o, [f.id]: !fo })); }}
+              onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }}
+              title={`${f.titre}\n${metaLine}\n${kind ? 'Clic = ouvrir le document' : 'Clic = voir les cartes'} · double-clic = renommer · glisser = déplacer`}>
+              {kind
+                ? <><span className="lt-pli" /><Icon name={f.priseDeNotes ? 'edit' : DOC_META[kind].icon} size={14} className="lt-ic" /></>
+                : <><Icon name={fo ? 'chevD' : 'chevR'} size={13} className="lt-pli" /><Icon name="cards" size={14} className="lt-ic" /></>}
+              <span className="lt-nom">{f.titre}</span>
+              {etq && <span className="lib-fiche-etq" style={{ background: etq.color }} title={`Étiquette : ${etq.label}`} onClick={(e) => openEtqMenu(e, f.id)} />}
+              {paused && <Icon name="bellOff" size={12} className="lt-ic" title="Rappels J en pause" />}
+              {nCartes > 0 && <span className="lt-compte" title={`${nCartes} carte${nCartes > 1 ? 's' : ''}`}>{nCartes}</span>}
+              <span className="lt-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
                 {!isTranscript && (
-                  <button type="button" className="cd-ic" title="Réviser" onClick={(e) => { e.stopPropagation(); if (isSchema) { ctx.startAnatQuiz(f, { mode: 'total' }); } else { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); } }}>
-                    <Icon name="play" size={13} />
+                  <button type="button" className="cd-ic" title="Réviser cette fiche" onClick={() => { if (isSchema) { ctx.startAnatQuiz(f, { mode: 'total' }); } else { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); } }}>
+                    <Icon name="play" size={12} />
                   </button>
                 )}
-                <button type="button" className="cd-ic" title="Autres actions" onClick={(e) => openFicheMenu(e, f.id)}><Icon name="more" size={15} stroke={2.6} /></button>
-              </div>
-              <div className="lib-fiche-meta">{metaLine}</div>
-            </>
+                <button type="button" className="cd-ic" title="Autres actions" onClick={(e) => openFicheMenu(e, f.id)}><Icon name="more" size={14} stroke={2.6} /></button>
+              </span>
+            </div>
           )}
           {fo && !kind && (
-            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div className="lt-cartes">
               {qById(f.id).map((x) => (
-                <div className="row spread" key={x.id} style={{ padding: '6px 0', borderTop: '1px solid var(--border-2)' }}>
-                  <span style={{ fontSize: 12.5, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><Icon name={x.type === 'flashcard' ? 'cards' : x.type === 'feynman' ? 'lightbulb' : 'list'} size={12} /> {x.concept}</span>
-                  <button className="cd-ic" title="Supprimer" onClick={() => ctx.deleteQuestion(x.id)}><Icon name="trash" size={13} /></button>
+                <div className="lt-carte" key={x.id}>
+                  <Icon name={x.type === 'flashcard' ? 'cards' : x.type === 'feynman' ? 'lightbulb' : 'list'} size={11} />
+                  <span>{x.concept}</span>
+                  <button className="cd-ic" title="Supprimer cette carte" onClick={() => ctx.deleteQuestion(x.id)}><Icon name="trash" size={12} /></button>
                 </div>
               ))}
+              {!qById(f.id).length && <div className="lt-vide">Aucune carte.</div>}
             </div>
           )}
         </DraggableFiche>
@@ -345,12 +349,35 @@ export function Bibliotheque({ ctx }) {
   };
   const dossierMenuItems = (d) => [
     { label: 'Renommer', icon: 'edit', onClick: () => startRename('dossier', d.id, d.nom) },
+    // sous-dossier : au 1er niveau seulement (2 niveaux maximum, garde de addDossier)
+    ...(d.parentId ? [] : [{ label: 'Nouveau dossier dedans', icon: 'folder', onClick: () => createChapitre(d.matiereId, d.id) }]),
     { label: 'Supprimer le dossier', icon: 'trash', danger: true, onClick: () => setConfirmDeleteDossier(d) },
   ];
   const confirmDeleteDossierNow = async () => {
     if (!confirmDeleteDossier) return;
     await ctx.deleteDossier(confirmDeleteDossier.id);
     setConfirmDeleteDossier(null);
+  };
+  // LIGNE D'UN DOSSIER (Bibliothèque) : flèche · dossier · nom · nombre de fiches ·
+  // au survol « + » (sous-dossier, niveau 1 seulement — 2 niveaux maximum) et ⋯.
+  // Rendu propre à la Bibliothèque : ui.jsx#DossierRow reste celui de Réviser.
+  const ligneDossier = (d, nFiches, onAjout) => {
+    const ouvert = !!openDossier[d.id];
+    if (isRen('dossier', d.id)) return <div className="lt-rangee lt-dos"><Icon name={ouvert ? 'chevD' : 'chevR'} size={13} className="lt-pli" /><Icon name="folder" size={14} className="lt-ic" /><RenameInput /></div>;
+    return (
+      <div className="lt-rangee lt-dos" role="button" title={(ouvert ? 'Replier' : 'Déplier') + ' le dossier · double-clic = renommer'}
+        onClick={() => setOpenDossier((o) => ({ ...o, [d.id]: !ouvert }))}
+        onDoubleClick={(e) => { e.stopPropagation(); startRename('dossier', d.id, d.nom); }}>
+        <Icon name={ouvert ? 'chevD' : 'chevR'} size={13} className="lt-pli" />
+        <Icon name="folder" size={14} className="lt-ic" />
+        <span className="lt-nom">{d.nom}</span>
+        {nFiches > 0 && <span className="lt-compte" title={`${nFiches} fiche${nFiches > 1 ? 's' : ''}`}>{nFiches}</span>}
+        <span className="lt-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+          {onAjout && <button type="button" className="cd-ic" title={`Nouveau dossier dans « ${d.nom} »`} onClick={onAjout}><Icon name="plus" size={14} /></button>}
+          <button type="button" className="cd-ic" title="Actions sur le dossier" onClick={(e) => openDossierMenu(e, d.id)}><Icon name="more" size={14} stroke={2.6} /></button>
+        </span>
+      </div>
+    );
   };
   const renderFicheOverlay = (ficheId) => {
     const f = db.fiches.find((x) => x.id === ficheId);
@@ -422,140 +449,120 @@ export function Bibliotheque({ ctx }) {
             </div></div>
           ) : (
             <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
-            <div className="lib-tree" style={{ display: 'flex', flexDirection: 'column', gap: 12 }} {...fd.dropProps({ key: 'tree' })}>
+            <div className="lib-tree" {...fd.dropProps({ key: 'tree' })}>
               {annonce && (
                 <div className={'tree-drop-hint' + (annonce.ok ? ' ok' : '')} role="status">
                   <Icon name={annonce.ok ? 'check' : 'alert'} size={13} stroke={2.5} />
                   <span>{annonce.texte}</span>
                 </div>
               )}
+              {/* ARBRE « type Finder » (refonte, voir docs/audit-sidebar-biblio.md) :
+                 Section › Matière › Dossier › Fiche, une ligne par élément, même
+                 grammaire à chaque niveau — flèche de repli · icône · nom · compteur ·
+                 actions au survol (+ / ▷ / ⋯). Tout le reste (glisser-déposer des
+                 fiches, dépôt de fichiers, renommage, menus, états mémorisés) est
+                 inchangé. */}
               {(() => { const sections = trierSections(db.sources.filter((s) => !s.archive), ctx.stats); return sections.map((src, iSec) => {
                 const mats = db.matieres.filter((m) => m.sourceId === src.id && !m.archive);
                 const srcOuverte = openSrc[src.id] !== false;
+                const rappels = src.rappelsJ !== false;
                 return (
-                  <div className={'card lib-section' + (srcOuverte ? '' : ' repliee') + fd.dropClass('src:' + src.id)} key={src.id}
+                  <div className={'lt-section' + fd.dropClass('src:' + src.id)} key={src.id}
                     {...fd.dropProps({ key: 'src:' + src.id, spring: { type: 'source', id: src.id } })}>
-                    {/* SECTION : clic sur la flèche (ou l'en-tête vide) = replier/déplier,
-                       mémorisé et partagé avec Réviser ; ↑/↓ = changer l'ordre (stats). */}
-                    <div className="card-head" style={{ color: 'var(--text)' }}>
-                      <button type="button" className="lib-sec-pli" title={srcOuverte ? 'Replier la section' : 'Déplier la section'}
-                        onClick={() => setOpenSrc((o) => ({ ...o, [src.id]: !srcOuverte }))}>
-                        <Icon name={srcOuverte ? 'chevD' : 'chevR'} size={15} />
-                      </button>
-                      <span className="tsrc-ic" style={{ background: `color-mix(in srgb, ${src.tint || '#7C6FE0'} 16%, transparent)`, color: src.tint || '#7C6FE0' }}><Icon name={src.icon || 'folder'} size={14} /></span>
-                      {isRen('source', src.id)
-                        ? <RenameInput />
-                        : <h3 style={{ color: 'var(--text)' }} onDoubleClick={(e) => { e.stopPropagation(); startRename('source', src.id, src.nom); }} title="Double-clic pour renommer">{src.nom}</h3>}
-                      <div className="right" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span className="hint">{mats.length} matière{mats.length > 1 ? 's' : ''}</span>
-                        <button type="button" className="btn ghost sm lib-add" title="Créer une matière dans cette section" onClick={() => createMatiere(src.id)}>
-                          <Icon name="plus" size={13} /> Matière
-                        </button>
-                        <BellButton on={src.rappelsJ !== false} onToggle={() => ctx.setSourceRappels(src.id, src.rappelsJ === false)} />
-                        <span className="lib-sec-ordre">
-                          <button type="button" className="cd-ic" disabled={iSec === 0} title="Monter la section" onClick={() => deplacerSection(ctx, sections, src.id, -1)}><Icon name="chevU" size={14} /></button>
-                          <button type="button" className="cd-ic" disabled={iSec === sections.length - 1} title="Descendre la section" onClick={() => deplacerSection(ctx, sections, src.id, 1)}><Icon name="chevD" size={14} /></button>
-                        </span>
-                      </div>
+                    <div className="lt-rangee lt-sec" role="button" title={(srcOuverte ? 'Replier' : 'Déplier') + ' la section · double-clic = renommer'}
+                      onClick={() => setOpenSrc((o) => ({ ...o, [src.id]: !srcOuverte }))}
+                      onDoubleClick={(e) => { e.stopPropagation(); startRename('source', src.id, src.nom); }}>
+                      <Icon name={srcOuverte ? 'chevD' : 'chevR'} size={13} className="lt-pli" />
+                      {isRen('source', src.id) ? <RenameInput /> : <span className="lt-nom">{src.nom}</span>}
+                      {!rappels && <span className="lt-etat" title="Rappels J en pause pour cette section"><Icon name="bellOff" size={12} /></span>}
+                      <span className="lt-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                        <button type="button" className="cd-ic" disabled={iSec === 0} title="Monter la section" onClick={() => deplacerSection(ctx, sections, src.id, -1)}><Icon name="chevU" size={14} /></button>
+                        <button type="button" className="cd-ic" disabled={iSec === sections.length - 1} title="Descendre la section" onClick={() => deplacerSection(ctx, sections, src.id, 1)}><Icon name="chevD" size={14} /></button>
+                        <BellButton on={rappels} onToggle={() => ctx.setSourceRappels(src.id, !rappels)} />
+                      </span>
                     </div>
                     {srcOuverte && (
-                    <div className="card-body" style={{ paddingTop: 0 }}>
+                      <div className="lt-enfants lt-enfants-sec">
                         {mats.map((mat) => {
                           const mm = matiereMeta(mat);
                           const allFiches = db.fiches.filter((f) => f.matiereId === mat.id && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
                           const rootFiches = allFiches.filter((f) => !f.dossierId);
                           const unites = unitesOf(mat.id);
+                          const matOuverte = !matFermee[mat.id];
                           return (
-                            <div key={mat.id} style={{ marginTop: 14 }} className={fd.dropClass('mat:' + mat.id).trim()}
+                            <div key={mat.id} className={fd.dropClass('mat:' + mat.id).trim()}
                               {...fd.dropProps({ key: 'mat:' + mat.id, matiereId: mat.id })}>
-                              {isRen('matiere', mat.id)
-                                ? <div style={{ marginBottom: 8 }}><RenameInput /></div>
-                                : (
-                                  /* LIGNE DE MATIÈRE : nom (double-clic = renommer) · « + Dossier »,
-                                     l'action la plus fréquente, en clair · ⋯ (renommer, dossier,
-                                     supprimer la matière). */
-                                  <DropCible matiereId={mat.id} dossierId={null} className="lib-mat-cible">
-                                  <div className="lib-mat-ligne">
-                                    <div className="cat-badge" style={{ background: `color-mix(in srgb, ${mm.tint} 14%, transparent)`, color: mm.tint, borderColor: `color-mix(in srgb, ${mm.tint} 30%, transparent)`, cursor: 'pointer' }} onDoubleClick={() => startRename('matiere', mat.id, mm.label)} title="Double-clic pour renommer"><Icon name={mm.icon} size={12} /> {mm.label}</div>
-                                    <button type="button" className="btn sm lib-add-dossier" onClick={() => createUnite(mat.id)} title={`Créer un dossier dans ${mm.label}`}>
-                                      <Icon name="folder" size={13} /> + Dossier
-                                    </button>
+                              {/* toute la ligne de la matière reçoit une fiche lâchée dessus (racine) */}
+                              <DropCible matiereId={mat.id} dossierId={null} onSurvolProlonge={() => setMatFermee((o) => (o[mat.id] ? { ...o, [mat.id]: false } : o))}>
+                                <div className="lt-rangee lt-mat" role="button" title={(matOuverte ? 'Replier' : 'Déplier') + ' la matière · double-clic = renommer'}
+                                  onClick={() => setMatFermee((o) => ({ ...o, [mat.id]: matOuverte }))}
+                                  onDoubleClick={(e) => { e.stopPropagation(); startRename('matiere', mat.id, mm.label); }}>
+                                  <Icon name={matOuverte ? 'chevD' : 'chevR'} size={13} className="lt-pli" />
+                                  <span className="lt-point" style={{ background: mm.tint }} />
+                                  {isRen('matiere', mat.id) ? <RenameInput /> : <span className="lt-nom">{mm.label}</span>}
+                                  {allFiches.length > 0 && <span className="lt-compte" title={`${allFiches.length} fiche${allFiches.length > 1 ? 's' : ''}`}>{allFiches.length}</span>}
+                                  <span className="lt-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                                    <button type="button" className="cd-ic" title={`Nouveau dossier dans « ${mm.label} »`} onClick={() => { setMatFermee((o) => ({ ...o, [mat.id]: false })); createUnite(mat.id); }}><Icon name="plus" size={14} /></button>
                                     <button type="button" className="cd-ic" title="Actions sur la matière" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMatMenu({ x: Math.min(r.left, window.innerWidth - 250), y: r.bottom + 4, matiereId: mat.id }); }}>
-                                      <Icon name="more" size={15} stroke={2.6} />
+                                      <Icon name="more" size={14} stroke={2.6} />
                                     </button>
-                                  </div>
-                                  </DropCible>
-                                )}
+                                  </span>
+                                </div>
+                              </DropCible>
 
-                              {rootFiches.map(renderFiche)}
-                              <DropSlot matiereId={mat.id} dossierId={null} beforeId={null} variant={rootFiches.length ? 'line' : 'zone'} label={unites.length ? 'Déposer ici (racine)' : 'Déposer ici'} />
-                              {rootFiches.length === 0 && unites.length === 0 && <div className="hint">Aucune fiche.</div>}
+                              {matOuverte && (
+                                <div className="lt-enfants">
+                                  {rootFiches.map(renderFiche)}
+                                  <DropSlot matiereId={mat.id} dossierId={null} beforeId={null} variant={rootFiches.length ? 'line' : 'zone'} label={unites.length ? 'Déposer ici (racine)' : 'Déposer ici'} />
 
-                              {/* dossiers sur DEUX niveaux (Unité → Chapitre, voir parentId) : rangement
-                                 d'affichage pur (fiche.dossierId), jamais lus par le planning/J. Le
-                                 chapitre réutilise le MÊME DossierRow et la MÊME indentation
-                                 (DOSSIER_INDENT) que l'unité, appliqués un cran plus bas. */}
-                              {unites.map((u) => {
-                                const chapitres = chapitresOf(u.id);
-                                const uniteFiches = allFiches.filter((f) => f.dossierId === u.id);
-                                const uOpen = !!openDossier[u.id];
-                                return (
-                                  <div key={u.id} className={fd.dropClass('dos:' + u.id).trim()}
-                                    {...fd.dropProps({ key: 'dos:' + u.id, matiereId: mat.id, dossierId: u.id, spring: { type: 'dossier', id: u.id } })}>
-                                    {/* toute la LIGNE du dossier reçoit une fiche lâchée dessus, même
-                                       fermé ; un survol prolongé l'ouvre (voir DropCible). */}
-                                    <DropCible matiereId={mat.id} dossierId={u.id} onSurvolProlonge={() => setOpenDossier((o) => (o[u.id] ? o : { ...o, [u.id]: true }))}>
-                                    <DossierRow dossier={u} isOpen={uOpen}
-                                      fichesCount={fichesCountRecursif(allFiches, u.id)} sousDossiersCount={chapitres.length}
-                                      isRenaming={isRen('dossier', u.id)} renameInput={<RenameInput />}
-                                      onToggle={() => setOpenDossier((o) => ({ ...o, [u.id]: !uOpen }))}
-                                      onRename={() => startRename('dossier', u.id, u.nom)}
-                                      onMenu={(e) => openDossierMenu(e, u.id)} />
-                                    </DropCible>
-                                    {uOpen && (
-                                      <div style={DOSSIER_INDENT}>
-                                        {/* création EN HAUT, juste sous l'en-tête de l'unité. Le chapitre
-                                           est le DERNIER niveau : aucun bouton de création à l'intérieur
-                                           d'un chapitre (limite 2 niveaux côté UI, doublée par la garde de
-                                           MedReviseApp.jsx#addDossier). */}
-                                        <DossierAddButton onClick={() => createChapitre(mat.id, u.id)} label="Nouveau dossier" style={DOSSIER_ADD_TOP} />
-
-                                        {uniteFiches.map(renderFiche)}
-                                        <DropSlot matiereId={mat.id} dossierId={u.id} beforeId={null} variant={uniteFiches.length ? 'line' : 'zone'} label={chapitres.length ? "Déposer ici (dossier)" : 'Déposer ici'} />
-                                        {uniteFiches.length === 0 && chapitres.length === 0 && <div className="hint">Dossier vide.</div>}
-
-                                        {chapitres.map((c) => {
-                                          const chapFiches = allFiches.filter((f) => f.dossierId === c.id);
-                                          const cOpen = !!openDossier[c.id];
-                                          return (
-                                            <div key={c.id} className={fd.dropClass('dos:' + c.id).trim()}
-                                              {...fd.dropProps({ key: 'dos:' + c.id, matiereId: mat.id, dossierId: c.id, spring: { type: 'dossier', id: c.id } })}>
-                                              <DropCible matiereId={mat.id} dossierId={c.id} onSurvolProlonge={() => setOpenDossier((o) => (o[c.id] ? o : { ...o, [c.id]: true }))}>
-                                              <DossierRow dossier={c} isOpen={cOpen} fichesCount={chapFiches.length}
-                                                isRenaming={isRen('dossier', c.id)} renameInput={<RenameInput />}
-                                                onToggle={() => setOpenDossier((o) => ({ ...o, [c.id]: !cOpen }))}
-                                                onRename={() => startRename('dossier', c.id, c.nom)}
-                                                onMenu={(e) => openDossierMenu(e, c.id)} />
-                                              </DropCible>
-                                              {cOpen && (
-                                                <div style={DOSSIER_INDENT}>
-                                                  {chapFiches.map(renderFiche)}
-                                                  <DropSlot matiereId={mat.id} dossierId={c.id} beforeId={null} variant={chapFiches.length ? 'line' : 'zone'} />
-                                                  {chapFiches.length === 0 && <div className="hint">Dossier vide.</div>}
+                                  {/* dossiers sur DEUX niveaux (parentId) : rangement d'affichage pur. */}
+                                  {unites.map((u) => {
+                                    const chapitres = chapitresOf(u.id);
+                                    const uniteFiches = allFiches.filter((f) => f.dossierId === u.id);
+                                    return (
+                                      <div key={u.id} className={fd.dropClass('dos:' + u.id).trim()}
+                                        {...fd.dropProps({ key: 'dos:' + u.id, matiereId: mat.id, dossierId: u.id, spring: { type: 'dossier', id: u.id } })}>
+                                        <DropCible matiereId={mat.id} dossierId={u.id} onSurvolProlonge={() => setOpenDossier((o) => (o[u.id] ? o : { ...o, [u.id]: true }))}>
+                                          {ligneDossier(u, fichesCountRecursif(allFiches, u.id), () => createChapitre(mat.id, u.id))}
+                                        </DropCible>
+                                        {openDossier[u.id] && (
+                                          <div className="lt-enfants">
+                                            {uniteFiches.map(renderFiche)}
+                                            <DropSlot matiereId={mat.id} dossierId={u.id} beforeId={null} variant={uniteFiches.length ? 'line' : 'zone'} label={chapitres.length ? 'Déposer ici (dossier)' : 'Déposer ici'} />
+                                            {chapitres.map((c) => {
+                                              const chapFiches = allFiches.filter((f) => f.dossierId === c.id);
+                                              return (
+                                                <div key={c.id} className={fd.dropClass('dos:' + c.id).trim()}
+                                                  {...fd.dropProps({ key: 'dos:' + c.id, matiereId: mat.id, dossierId: c.id, spring: { type: 'dossier', id: c.id } })}>
+                                                  <DropCible matiereId={mat.id} dossierId={c.id} onSurvolProlonge={() => setOpenDossier((o) => (o[c.id] ? o : { ...o, [c.id]: true }))}>
+                                                    {ligneDossier(c, chapFiches.length, null)}
+                                                  </DropCible>
+                                                  {openDossier[c.id] && (
+                                                    <div className="lt-enfants">
+                                                      {chapFiches.map(renderFiche)}
+                                                      <DropSlot matiereId={mat.id} dossierId={c.id} beforeId={null} variant={chapFiches.length ? 'line' : 'zone'} />
+                                                      {chapFiches.length === 0 && <div className="lt-vide">Vide — glisse une fiche ou un fichier ici</div>}
+                                                    </div>
+                                                  )}
                                                 </div>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
+                                              );
+                                            })}
+                                            {uniteFiches.length === 0 && chapitres.length === 0 && <div className="lt-vide">Vide — glisse une fiche ou un fichier ici</div>}
+                                          </div>
+                                        )}
                                       </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
+                                    );
+                                  })}
+                                  {rootFiches.length === 0 && unites.length === 0 && <div className="lt-vide">Vide — glisse une fiche ou un fichier ici</div>}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
-                    </div>
+                        <button type="button" className="lt-rangee lt-ajout" onClick={() => createMatiere(src.id)} title={`Créer une matière dans « ${src.nom} »`}>
+                          <Icon name="plus" size={13} className="lt-pli" /> <span className="lt-nom">Nouvelle matière</span>
+                        </button>
+                      </div>
                     )}
                   </div>
                 );
