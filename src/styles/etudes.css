@@ -1008,7 +1008,10 @@
 .pdfr-page canvas { display: block; }
 .pdfr-textlayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; cursor: text; user-select: text; }
 .pdfr-textlayer span { color: transparent; }
-.pdfr-textlayer ::selection { background: rgba(56, 132, 255, .35); }
+/* sélection de texte (avant de surligner) : BIEN VISIBLE — violet soutenu à 65 %, texte noir toujours lisible (contraste ≈ 7:1)
+   (était un bleu à 35 %, à peine perceptible sur la page blanche) ; le texte noir
+   du PDF reste parfaitement lisible dessous. Même teinte dans la vue HTML. */
+.pdfr-textlayer ::selection { background: rgba(124, 77, 255, .65); }
 .pdfr-hlayer { position: absolute; inset: 0; pointer-events: none; }
 .pdfr-hl-rect { position: absolute; mix-blend-mode: multiply; border-radius: 2px; }
 .pdfr-match-rect { position: absolute; background: color-mix(in srgb, #FFB020 55%, transparent); border-radius: 2px; pointer-events: none; }
