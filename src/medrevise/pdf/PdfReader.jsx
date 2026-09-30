@@ -460,9 +460,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     await hist.appliquer(cmdCreer('highlights', rec, 'Surlignage'));
   };
   const commitHighlight = (couleur) => { if (pending) { setCouleurActive(couleur); commitHighlightAvec(pending, couleur); } };
-  const gommer = async (h) => { await hist.appliquer(cmdSupprimer('highlights', h, 'Suppression du surlignage')); };
   const handleHighlightClick = (h, e) => {
-    if (outil === 'gomme') { gommer(h); return; }
     setPending(null);
     setEditingHl({ id: h.id, couleur: h.couleur, note: h.note || '', texte: h.texte || '', x: e.clientX, y: e.clientY });
   };
@@ -730,8 +728,15 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       aimant: !surligneur && aimant });
     await hist.appliquer(cmdCreer('annotations', rec, surligneur ? 'Surligneur à main levée' : 'Trait au crayon'));
   };
-  const supprimerTrait = async (t) => {
-    if (t) await hist.appliquer(cmdSupprimer('annotations', t, 'Suppression du trait'));
+  // gomme : UN geste = UNE entrée d'historique, même s'il a traversé plusieurs traits
+  const supprimerTraits = async (liste) => {
+    const cmds = (liste || []).filter(Boolean).map((t) => cmdSupprimer('annotations', t, 'Gomme'));
+    if (!cmds.length) return;
+    await hist.appliquer(cmds.length === 1 ? cmds[0] : {
+      libelle: `Gomme (${cmds.length} traits)`,
+      faire: async () => { for (const c of cmds) await c.faire(); },
+      defaire: async () => { for (const c of [...cmds].reverse()) await c.defaire(); },
+    });
   };
 
   const supprimerBoite = async (b) => {
@@ -932,7 +937,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       boites={boitesByPage[n] || EMPTY_ARRAY}
                       traits={traitsByPage[n] || EMPTY_ARRAY}
                       onCreerTrait={creerTrait}
-                      onSupprimerTrait={supprimerTrait}
+                      onSupprimerTraits={supprimerTraits}
                       couleurTrait={couleurActive}
                       epaisseurTrait={(EPAISSEURS.find((e) => e.id === epaisseur) || EPAISSEURS[1]).v}
                       aimantActif={aimant}

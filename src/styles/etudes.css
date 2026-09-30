@@ -1433,10 +1433,13 @@
 
 /* Curseurs : l'outil actif doit se lire sans regarder la barre. */
 .pdfr-textlayer.outil-surligneur { cursor: text; }
-.pdfr-textlayer.outil-gomme { cursor: not-allowed; user-select: none; }
-.pdfr-page.outil-gomme .pdfr-hl-rect { outline-color: var(--crit); }
-.note-box.gomme { cursor: not-allowed; outline: 2px solid transparent; }
-.note-box.gomme:hover { outline-color: var(--crit); }
+/* GOMME : couche de capture au-dessus de tout (boîtes comprises) — elle n'efface
+   que les traits de crayon. Curseur = un rond de 18 px (le rayon de gomme, voir
+   RAYON_GOMME dans PdfPage.jsx), point chaud EXACTEMENT au centre (10 10) : ce
+   qu'on voit sous le rond est ce qui s'efface. Remplace l'ancien « not-allowed »
+   (🚫), qui ressemblait à une interdiction à côté du pointeur. */
+.pdfr-gommecapture { position: absolute; inset: 0; user-select: none; touch-action: none;
+  cursor: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Ccircle cx='10' cy='10' r='8.5' fill='rgba(255,255,255,0.35)' stroke='%23222' stroke-width='1.5'/%3E%3Ccircle cx='10' cy='10' r='7' fill='none' stroke='%23fff' stroke-width='1'/%3E%3C/svg%3E") 10 10, cell; }
 
 /* ---- CRAYON (étape 6) ----
    Une seule couche SVG par page, transparente à la souris : on doit pouvoir

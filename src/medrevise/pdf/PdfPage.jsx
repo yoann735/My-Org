@@ -34,7 +34,7 @@ import {
 export function PdfPageContent({
   pdfDoc, pageNum, scale, pageHeight, dpr, highlights, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
   onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite,
-  onCreerTrait, onSupprimerTrait, cibleHlId,
+  onCreerTrait, onSupprimerTraits, cibleHlId,
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, aimantActif = true, modeCrayon = 'dessin',
 }) {
   const canvasRef = useRef(null);
@@ -232,6 +232,52 @@ export function PdfPageContent({
     window.addEventListener('pointerup', up);
   };
 
+  /* GOMME (nuit du 30/09). Elle n'efface QUE les traits de crayon (dessin et
+     surligneur à main levée) — jamais un surlignage de texte ni une boîte, qui ont
+     leur propre bouton Supprimer. Tant qu'elle est active, une couche de capture
+     couvre toute la page (boîtes comprises) : rien d'autre ne peut réagir.
+     Précision : la position est mesurée sur CETTE couche, qui a exactement la
+     taille de la page, et le curseur est un rond dont le point chaud est au centre
+     — ce qu'on voit sous le rond est ce qui s'efface. On peut cliquer (un trait)
+     ou glisser (tous ceux qu'on traverse) ; un geste = UNE entrée d'annulation. */
+  const [masques, setMasques] = useState(null); // traits déjà gommés pendant le geste en cours
+  const RAYON_GOMME = 9; // px à l'écran : le rayon du curseur rond (voir etudes.css)
+  const demarrerGomme = (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const r = e.currentTarget.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const seuil = RAYON_GOMME / Math.min(r.width, r.height);
+    const touches = new Map();
+    let prec = null;
+    const tester = (cx, cy) => {
+      // échantillonne le segment depuis la position précédente : un glisser rapide
+      // ne « saute » aucun trait fin entre deux événements
+      const pas = prec ? Math.max(1, Math.ceil(Math.hypot(cx - prec[0], cy - prec[1]) / 3)) : 1;
+      for (let k = 1; k <= pas; k++) {
+        const x = prec ? prec[0] + ((cx - prec[0]) * k) / pas : cx;
+        const y = prec ? prec[1] + ((cy - prec[1]) * k) / pas : cy;
+        const px = (x - r.left) / r.width, py = (y - r.top) / r.height;
+        for (const t of traits || []) if (!touches.has(t.id) && traitTouche(t, px, py, seuil)) touches.set(t.id, t);
+      }
+      prec = [cx, cy];
+      if (touches.size) setMasques(new Set(touches.keys()));
+    };
+    tester(e.clientX, e.clientY);
+    const move = (ev) => {
+      const lot = typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : [];
+      (lot.length ? lot : [ev]).forEach((x) => tester(x.clientX, x.clientY));
+    };
+    const up = async () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (touches.size) await onSupprimerTraits([...touches.values()]);
+      setMasques(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   // Cmd+C : le texte copié garde ses retours à la ligne (issus des <br>), caractères
   // de compatibilité normalisés. Sélection vide → copie native, on ne touche à rien.
   const handleCopy = (e) => {
@@ -258,18 +304,6 @@ export function PdfPageContent({
   const gesteBoite = useRef(false);
   const handleMouseUp = (e) => {
     if (gesteBoite.current) { gesteBoite.current = false; return; }
-    // GOMME sur un trait : la couche SVG est transparente à la souris (on doit
-    // pouvoir sélectionner le texte dessous), donc test de position, comme pour
-    // les surlignages. Le trait l'emporte : il est dessiné au-dessus.
-    if (outil === 'gomme') {
-      const c = textLayerRef.current;
-      const cr = c && c.getBoundingClientRect();
-      if (cr && cr.width && cr.height) {
-        const px = (e.clientX - cr.left) / cr.width, py = (e.clientY - cr.top) / cr.height;
-        const t = [...(traits || [])].reverse().find((x) => traitTouche(x, px, py));
-        if (t) { onSupprimerTrait(t); return; }
-      }
-    }
     const sel = window.getSelection();
     const container = textLayerRef.current;
     if (!container || !sel) return;
@@ -313,7 +347,7 @@ export function PdfPageContent({
       <canvas ref={canvasRef} />
       <div ref={textLayerRef} className={'pdfr-textlayer outil-' + outil} onMouseUp={handleMouseUp} onCopy={handleCopy}
         onMouseMove={handleMouseMove} onMouseLeave={() => setSurvolId(null)}
-        style={survolId && outil !== 'gomme' ? { cursor: 'pointer' } : undefined} />
+        style={survolId ? { cursor: 'pointer' } : undefined} />
       <div className="pdfr-hlayer">
         {highlights.flatMap((h) => (shownRects[h.id] || h.rects).map((r, i) => (
           <div key={h.id + ':' + i}
@@ -351,8 +385,9 @@ export function PdfPageContent({
         };
         const enCours = traitEnCours && { points: traitEnCours, couleur: couleurTrait, mode: modeCrayon,
           epaisseur: modeCrayon === 'surligneur' ? EPAISSEUR_SURLIGNEUR : epaisseurTrait };
-        const surl = traits.filter((t) => modeDuTrait(t) === 'surligneur');
-        const dess = traits.filter((t) => modeDuTrait(t) !== 'surligneur');
+        const visibles = masques ? traits.filter((t) => !masques.has(t.id)) : traits;
+        const surl = visibles.filter((t) => modeDuTrait(t) === 'surligneur');
+        const dess = visibles.filter((t) => modeDuTrait(t) !== 'surligneur');
         return (
           <>
             <svg className="pdfr-inklayer surligneur" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -386,12 +421,15 @@ export function PdfPageContent({
       {/* rendues APRÈS la couche de tracé : une boîte existante reste toujours
           atteignable, même l'outil « Boîte de texte » actif. */}
       {boites.map((b) => (
-        <NoteBox key={b.id} boite={b} active={b.id === activeEditId} gomme={outil === 'gomme'}
+        <NoteBox key={b.id} boite={b} active={b.id === activeEditId}
           editor={b.id === activeEditId ? activeEditor : null}
           onActivate={onActivateEdit}
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
           onMaj={onMajBoite} onSupprimer={onSupprimerBoite} />
       ))}
+
+      {/* GOMME : posée en DERNIER, au-dessus des boîtes — elle ne touche qu'aux traits. */}
+      {outil === 'gomme' && <div className="pdfr-gommecapture" onPointerDown={demarrerGomme} />}
     </>
   );
 }
@@ -422,7 +460,7 @@ export function PdfPageContent({
    Une seule entrée d'historique par geste : l'état d'avant est capturé au
    pointerdown, la commande empilée au pointerup, et seulement si ça a bougé.
    ============================================================ */
-function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, gomme = false }) {
+function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer }) {
   const [apercu, setApercu] = useState(null); // géométrie pendant le geste (état local, non persisté)
   const b = apercu || boite;
   const html = useMemo(() => richToHTML(boite.content), [boite.content]);
@@ -468,8 +506,6 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   }, [active, editor]);
 
   const activer = (e) => {
-    // GOMME : un clic n'ouvre pas la boîte, il l'efface (annulable par Cmd+Z).
-    if (gomme) { onSupprimer(boite); return; }
     if (e) clicRef.current = { x: e.clientX, y: e.clientY };
     onActivate(boite.id);
   };
@@ -517,13 +553,13 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   };
 
   return (
-    <div ref={boiteRef} className={'note-box' + (active ? ' active' : '') + (gomme ? ' gomme' : '')} style={style}>
+    <div ref={boiteRef} className={'note-box' + (active ? ' active' : '')} style={style}>
       {/* CORRECTIF (défaut 4) : le bandeau est focusable, et c'est LUI qui porte la
           suppression au clavier — plus aucun écouteur global ne peut effacer la
           boîte pendant que le curseur est ailleurs. */}
       <div className="nb-bar" ref={barreRef} tabIndex={0}
-        title={gomme ? 'Cliquer pour effacer cette boîte' : 'Glisser pour déplacer · Suppr pour effacer'}
-        onPointerDown={(e) => { if (gomme) { e.preventDefault(); onSupprimer(boite); return; } demarrer(e, 'move'); if (barreRef.current) barreRef.current.focus(); }}
+        title="Glisser pour déplacer · Suppr pour effacer"
+        onPointerDown={(e) => { demarrer(e, 'move'); if (barreRef.current) barreRef.current.focus(); }}
         onKeyDown={(e) => {
           if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onSupprimer(boite); }
           if (e.key === 'Enter') { e.preventDefault(); activer(null); }

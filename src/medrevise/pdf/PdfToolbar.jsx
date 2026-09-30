@@ -33,7 +33,7 @@ export const OUTILS = [
   { id: 'surligneur', label: 'Surligneur', icon: 'edit', aide: 'Sélectionner du texte le surligne aussitôt, dans la couleur active' },
   { id: 'boite', label: 'Boîte', icon: 'list', aide: 'Tracer une boîte de texte n’importe où sur la page' },
   { id: 'crayon', label: 'Crayon', icon: 'sparkle', aide: 'Dessiner à main levée' },
-  { id: 'gomme', label: 'Gomme', icon: 'ban', aide: 'Cliquer une annotation la supprime' },
+  { id: 'gomme', label: 'Gomme', icon: 'ban', aide: 'Efface les traits de crayon — cliquer, ou glisser pour en effacer plusieurs' },
 ];
 /** Outils dont la couleur se règle dans la barre contextuelle. */
 const OUTILS_COLORES = new Set(['surligneur', 'boite', 'crayon']);
