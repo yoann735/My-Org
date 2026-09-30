@@ -29,6 +29,8 @@ import { ImportJsonField } from './ImportFlow.jsx';
 import { OPTION_LETTERS } from '../lib/schema.js';
 import { parseCloze } from '../lib/cloze.js';
 import { OcclusionEditorModal } from './OcclusionImage.jsx';
+import { ChampImageFlashcard } from './FlashcardImage.jsx';
+import { putBlob } from '../lib/storage.js';
 
 export const TYPES = [
   { id: 'qcm', label: 'QCM', icon: 'list' },
@@ -311,6 +313,9 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel }) {
   const [verso, setVerso] = useState(initial?.verso || '');
   const [indice, setIndice] = useState(initial?.indice || '');
   const [aRetenir, setARetenir] = useState(initial?.a_retenir || '');
+  // image facultative (components/FlashcardImage.jsx) : le fichier n'est écrit
+  // qu'à l'enregistrement ; place absente sur une carte d'avant = recto.
+  const [image, setImage] = useState({ imageId: initial?.imageId || null, fichier: null, place: initial?.imagePlace || 'recto' });
   const [holeHint, setHoleHint] = useState(null);
   const rectoRef = useRef(null);
   const ready = !!recto.trim() && !!verso.trim();
@@ -348,13 +353,17 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel }) {
 
   const submit = async () => {
     if (!ready) return;
+    // l'image choisie est stockée comme les PDF (blob synchronisé) ; retirée → null
+    // (le fichier lui-même n'est jamais effacé, même règle que partout).
+    const imageId = image.fichier ? await putBlob(image.fichier) : (image.imageId || null);
     await onAdd({
       type: 'flashcard', theme: theme.trim(), difficulte: initial?.difficulte || 'intermediaire',
       recto: recto.trim(), verso: verso.trim(),
       indice: indice.trim() || null, a_retenir: aRetenir.trim(),
       cloze: blanks.map((b) => b.expected),
+      imageId, imagePlace: imageId ? image.place : null,
     });
-    if (!initial) { setRecto(''); setVerso(''); setIndice(''); setARetenir(''); setHoleHint(null); }
+    if (!initial) { setRecto(''); setVerso(''); setIndice(''); setARetenir(''); setHoleHint(null); setImage({ imageId: null, fichier: null, place: 'recto' }); }
   };
 
   return (
@@ -400,6 +409,7 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel }) {
         <label>Verso</label>
         <textarea className="imp-title" style={{ minHeight: 60, resize: 'vertical', fontFamily: 'inherit' }} value={verso} onChange={(e) => setVerso(e.target.value)} placeholder="Réponse…" />
       </div>
+      <ChampImageFlashcard valeur={image} onChange={setImage} />
       <div className="imp-field">
         <label>Indice <span className="imp-opt">(optionnel)</span></label>
         <input className="imp-title" value={indice} onChange={(e) => setIndice(e.target.value)} />

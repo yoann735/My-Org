@@ -30,6 +30,7 @@ import { ItemForm, PasteJsonForm, TYPES } from './AddItemForm.jsx';
 import { appendItemsToFiche } from '../lib/import.js';
 import { toInternalItem } from '../lib/adapter.js';
 import { OcclusionEditorModal, OcclusionView, estOcclusion } from './OcclusionImage.jsx';
+import { ImageFlashcard, imageAuRecto, imageAuVerso } from './FlashcardImage.jsx';
 
 export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null }) {
   const avecItems = !!ficheId;
@@ -242,8 +243,8 @@ function QcmReadBody({ item }) {
 function FlashcardReadBody({ item }) {
   return (
     <>
-      <div className="pis-face"><span className="pis-face-tag">Recto</span><Tex>{item.recto}</Tex></div>
-      <div className="pis-face"><span className="pis-face-tag">Verso</span><Tex>{item.verso}</Tex></div>
+      <div className="pis-face"><span className="pis-face-tag">Recto</span>{imageAuRecto(item) && <ImageFlashcard imageId={item.imageId} maxH={110} />}<Tex>{item.recto}</Tex></div>
+      <div className="pis-face"><span className="pis-face-tag">Verso</span>{imageAuVerso(item) && <ImageFlashcard imageId={item.imageId} maxH={110} />}<Tex>{item.verso}</Tex></div>
       {item.a_retenir && <div className="hint" style={{ marginTop: 6 }}><strong>À retenir : </strong><Tex>{item.a_retenir}</Tex></div>}
     </>
   );

@@ -12,6 +12,7 @@ import { advanceQuestion, recordRelearnAttempt, QUALITY, QUALITY_TO_RATING, qual
 import { index } from '../lib/planning.js';
 import { Tex } from '../components/Tex.jsx';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
+import { ImageFlashcard, imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
 import { SessionTrendCard, EtiquetteIconButton, etiquetteMenuItems, ContextMenu } from '../components/ui.jsx';
 
@@ -293,6 +294,7 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
           {!flipped ? (
             <>
               {estOcclusion(item) && <OcclusionView occ={item.occlusion} maxH={280} />}
+              {imageAuRecto(item) && <ImageFlashcard imageId={item.imageId} maxH={220} className="mrm" />}
               <div className="mrm-flash-text">{cloze ? <MobileClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div>
               {item.indice && (showIndice
                 ? <div className="mrm-indice" onClick={(e) => e.stopPropagation()}><Tex>{item.indice}</Tex></div>
@@ -302,6 +304,7 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
           ) : (
             <>
               {estOcclusion(item) && <OcclusionView occ={item.occlusion} revele maxH={280} />}
+              {imageAuVerso(item) && <ImageFlashcard imageId={item.imageId} maxH={220} className="mrm" />}
               {!(estOcclusion(item) && item.versoAuto) && <div className="mrm-flash-back">{cloze ? <MobileClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>}
               {item.a_retenir && <div className="mrm-indice"><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></div>}
             </>

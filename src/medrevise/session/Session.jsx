@@ -6,6 +6,7 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
+import { imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta, EtiquetteQuickSet, SessionTrendCard } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
@@ -441,12 +442,12 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
   return (
     <div>
       <div className="flash-scene">
-        <div className={'flash-card' + (flipped ? ' flipped' : '') + (occ ? ' occ' : '')} onClick={() => setFlipped((f) => !f)}>
+        <div className={'flash-card' + (flipped ? ' flipped' : '') + (occ ? ' occ' : '') + (!occ && (imageAuRecto(item) || imageAuVerso(item)) ? ' img' : '')} onClick={() => setFlipped((f) => !f)}>
           <div className="flash-face front">
             <span className="ff-tag" style={{ color: meta.tint }}>{erreurMode ? "Flashcard d'erreur" : `${meta.label} · ${item.theme}`}</span>
             {occ
               ? <div className="ff-occ"><OcclusionView occ={occ} /><div className="ff-imgq"><Tex>{item.recto}</Tex></div></div>
-              : item.imageId
+              : imageAuRecto(item)
               ? <div className="ff-imgwrap"><AnatImage imageId={item.imageId} compact /><div className="ff-imgq">{cloze ? <ClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div></div>
               : <div className="ff-text">{cloze ? <ClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div>}
             {item.indice && (showIndice
@@ -460,6 +461,9 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
             <span className="ff-tag">Réponse</span>
             {occ
               ? <div className="ff-occ"><OcclusionView occ={occ} revele />{!item.versoAuto && <div className="ff-imgq"><Tex>{item.verso}</Tex></div>}</div>
+              : imageAuVerso(item)
+              // image au verso (ou aux deux faces) : flashcard texte avec image, voir components/FlashcardImage.jsx
+              ? <div className="ff-imgwrap"><AnatImage imageId={item.imageId} compact /><div className="ff-imgq">{cloze ? <ClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div></div>
               : <div className="ff-text">{cloze ? <ClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>}
             {item.a_retenir && (
               <div className="ff-aretenir" style={{ marginTop: 10, padding: '8px 12px', borderRadius: 10, background: 'var(--accent-soft)', border: '1px solid var(--accent)', fontSize: 13.5, display: 'flex', gap: 7, alignItems: 'baseline' }}>
