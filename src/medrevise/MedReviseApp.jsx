@@ -143,7 +143,17 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // A — synchro cloud (no-op silencieux si non configurée/hors-ligne, voir sync.js).
   // Plus de seed de démo (retiré — voir docs/diag-reseed-mobile.md) : un appareil
   // vierge démarre simplement vide, réconcilié avec le cloud s'il y en a un.
+  /* DÉMARRAGE NON BLOQUANT (nuit du 30/09). Avant, rien ne s'affichait tant que
+     forceSync() n'avait pas rendu la main : avec le projet Supabase en pause (DNS
+     disparu), l'écran « Chargement » restait ~7,5 s, le temps des échecs réseau.
+     Désormais on AFFICHE D'ABORD ce qui est sur l'appareil (une lecture, aucune
+     écriture), puis la séquence d'origine suit, inchangée et dans le même ordre :
+     synchro → migrations → rechargement. La synchro échoue alors en arrière-plan
+     (indicateur « cloud injoignable »), sans jamais bloquer l'usage — et le
+     garde-fou C2 de syncNow (« ne jamais pousser après un tirage raté ») reste
+     seul juge de ce qui part au cloud. */
   useEffect(() => { (async () => {
+    try { await reload(); } catch (e) { /* lecture locale impossible : la séquence ci-dessous réessaie */ }
     await forceSync();
     await runMigrations(); await reload();
   })(); }, [forceSync, reload]);
