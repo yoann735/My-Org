@@ -1897,3 +1897,10 @@
 .mf-item.principal { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .mf-item.principal:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .mf-item.principal .mf-ic, .mf-item.principal .mf-label { color: var(--accent); font-weight: 600; }
+
+/* ---- Lien boîte ↔ surlignage (02/10) ---- */
+.pdfr-hl-rect.lie { outline: 2px solid color-mix(in srgb, var(--accent) 80%, transparent); outline-offset: 1px; border-radius: 3px; }
+.hl-lier { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border-radius: 7px; border: 1px solid transparent;
+  background: none; color: var(--text); font-size: 12px; cursor: pointer; }
+.hl-lier:hover { background: var(--accent-soft); color: var(--accent); }
+.pdfr-ancrage-aide.ratee { background: var(--crit) !important; color: #fff !important; }

@@ -66,7 +66,7 @@ import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
   COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI,
   useDevicePixelRatio, compareHighlights, computePageTextMap, EPAISSEURS,
-  MODES_CRAYON, EPAISSEUR_SURLIGNEUR, couleurHex,
+  MODES_CRAYON, EPAISSEUR_SURLIGNEUR, couleurHex, BOITE_DEFAUT,
 } from './pdfShared.js';
 import { PdfPageContent, EditToolbar } from './PdfPage.jsx';
 import { PdfToolbar, PaletteCrayon } from './PdfToolbar.jsx';
@@ -936,7 +936,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [ancrage, setAncrage] = useState(null); // { id, fleche } — la boîte qui attend son épingle
   const ancrageBoiteId = ancrage ? ancrage.id : null;
   const ancrageRef = useRef(ancrage); ancrageRef.current = ancrage;
-  const setAncrageBoiteId = (id, opts) => setAncrage(id ? { id, fleche: !!(opts && opts.fleche) } : null);
+  // opts.surlignage : la visée attend un SURLIGNAGE (lien boîte ↔ surlignage, 02/10)
+  const setAncrageBoiteId = (id, opts) => setAncrage(id ? { id, fleche: !!(opts && (opts.fleche || opts.surlignage)), surlignage: !!(opts && opts.surlignage) } : null);
   useEffect(() => {
     if (!ancrageBoiteId) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') setAncrage(null); };
@@ -1126,6 +1127,31 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setCouleurTexte(couleur);
     const actuel = boiteFraiche(t.id, t);
     if (actuel && actuel.couleur !== couleur) await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, couleur }, 'Couleur du texte'));
+  };
+
+  /* BOÎTE LIÉE À UN SURLIGNAGE (02/10) : depuis la bulle d'un surlignage, « Ajouter
+     une boîte » la pose à côté (à droite s'il y a la place, sinon à gauche), déjà
+     épinglée sur le bord du surlignage avec sa flèche, prête à écrire. Le lien est
+     porté par la boîte : `surlignageId` + l'épingle et la flèche habituelles — rien à
+     migrer, l'export dessine déjà flèche et épingle. */
+  const creerBoiteLiee = (hId) => {
+    const h = highlights.find((x) => x.id === hId);
+    if (!h || !(h.rects || []).length) return;
+    setEditingHl(null);
+    const rs = h.rects;
+    const x0 = Math.min(...rs.map((r) => r.x)), x1 = Math.max(...rs.map((r) => r.x + r.width));
+    const y0 = Math.min(...rs.map((r) => r.y));
+    const W = BOITE_DEFAUT.width, Hb = BOITE_DEFAUT.height;
+    const aDroite = x1 + 0.03 + W <= 0.99;
+    const x = aDroite ? x1 + 0.03 : Math.max(0.01, x0 - 0.03 - W);
+    const y = Math.max(0, Math.min(1 - Hb, y0 - 0.006));
+    const r0 = aDroite ? rs.reduce((a, r) => (r.x + r.width > a.x + a.width ? r : a), rs[0]) : rs.reduce((a, r) => (r.x < a.x ? r : a), rs[0]);
+    const ancre = { x: aDroite ? r0.x + r0.width : r0.x, y: r0.y + r0.height / 2, texte: (h.texte || '').slice(0, 90) || null };
+    const couleur = COLOR_HEX[h.couleur] ? h.couleur : couleurActive;
+    const rec = { ...newNoteBox({ ficheId, page: h.page, x, y, width: W, height: Hb, couleur }), ancre, fleche: true, surlignageId: h.id };
+    hist.appliquer(cmdCreer('annotations', rec, 'Boîte liée au surlignage'));
+    videsFraiches.current.add(rec.id);
+    setActiveEditId(rec.id);
   };
 
   const supprimerBoite = async (b) => {
@@ -1429,7 +1455,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onMajBoite={majBoite}
                       onSupprimerBoite={supprimerBoite}
                       onModifierBoite={modifierBoite}
-                      ancrageBoiteId={ancrageBoiteId} ancrageFleche={!!(ancrage && ancrage.fleche)} onDemanderAncrage={setAncrageBoiteId}
+                      ancrageBoiteId={ancrageBoiteId} ancrageFleche={!!(ancrage && ancrage.fleche)} ancrageSurlignage={!!(ancrage && ancrage.surlignage)} onDemanderAncrage={setAncrageBoiteId}
                       pageWidth={w}
                       activeEditId={activeEditId}
                       matches={matchesByPage[n] || EMPTY_ARRAY}
@@ -1459,13 +1485,17 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
       {/* BULLE d'un surlignage : sa couleur, ou le supprimer. Rien d'autre. */}
       {editingHl && createPortal(
-        <div className="hl-picker hl-bulle" style={{ left: Math.min(editingHl.x, window.innerWidth - 280), top: Math.min(editingHl.y + 10, window.innerHeight - 60) }}>
+        <div className="hl-picker hl-bulle" style={{ left: Math.max(8, Math.min(editingHl.x, window.innerWidth - 420)), top: Math.min(editingHl.y + 10, window.innerHeight - 60) }}>
           {[...COLORS.map((c) => ({ id: c.id, hex: c.hex, label: c.label })), ...couleursPerso.map((h) => ({ id: h, hex: h, label: `Ma couleur ${h}` }))].map((c) => (
             <button key={c.id} type="button" className="hl-swatch-col" title={c.label} onClick={() => changeHighlightColor(c.id)}>
               <span className={'hl-swatch' + (editingHl.couleur === c.id ? ' selected' : '')} style={{ background: c.hex }} />
             </button>
           ))}
           <span className="hl-picker-sep" />
+          <button type="button" className="hl-lier" onClick={() => creerBoiteLiee(editingHl.id)}
+            title="Ajouter une boîte de note reliée à ce surlignage (flèche)">
+            <Icon name="list" size={13} /> Ajouter une boîte
+          </button>
           <button type="button" className="hl-delete" onClick={deleteHighlightConfirmed}
             title={`Supprimer ce surlignage (annulable par ${RACCOURCI}Z)`}>
             <Icon name="trash" size={13} /> Supprimer

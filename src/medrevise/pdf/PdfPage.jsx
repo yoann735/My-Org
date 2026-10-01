@@ -60,7 +60,7 @@ function positionTexteProche(container, x, y) {
     de texte édités (Chantier 1). */
 export function PdfPageContent({
   pdfDoc, pageNum, vierge = false, scale, pageHeight, dpr, highlights, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
-  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, onDemanderAncrage = () => {},
+  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, ancrageSurlignage = false, onDemanderAncrage = () => {},
   onCreerTrait, onSupprimerTraits, cibleHlId,
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, aimantActif = true, modeCrayon = 'dessin',
   textes = [], questions = [], onPoser = () => {},
@@ -347,11 +347,33 @@ export function PdfPageContent({
     const t = cleanSelectedText(pos.node.nodeValue || '', { inline: true });
     return t ? (t.length > 90 ? t.slice(0, 90) + '…' : t) : null;
   };
+  const [viseeRatee, setViseeRatee] = useState(false);
   const poserAncre = (e) => {
     if (e.button !== 0 || !boiteEnAncrage) return;
     e.preventDefault(); e.stopPropagation();
+    /* VERROU 3 étendu : la couche de visée disparaît dès l'appui ; le RELÂCHEMENT
+       tombait alors sur la couche de texte et ouvrait la bulle du surlignage visé.
+       On le neutralise (le drapeau est consommé par handleMouseUp, ou levé juste après). */
+    gesteBoite.current = true;
+    window.addEventListener('mouseup', () => setTimeout(() => { gesteBoite.current = false; }, 0), { once: true });
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return;
+    if (ancrageSurlignage) {
+      // RELIER À UN SURLIGNAGE : le clic doit tomber sur un surlignage ; l'épingle va
+      // sur son bord le plus proche de la boîte, la flèche suit
+      const hit = positionSurlignage(e.clientX, e.clientY);
+      if (!hit) { setViseeRatee(true); setTimeout(() => setViseeRatee(false), 1400); return; }
+      const rs = shownRects[hit.id] || hit.rects || [];
+      const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+      const rc = rs.find((q) => px >= q.x && px <= q.x + q.width && py >= q.y && py <= q.y + q.height) || rs[0];
+      const boiteADroite = boiteEnAncrage.x + boiteEnAncrage.width / 2 > rc.x + rc.width / 2;
+      onDemanderAncrage(null);
+      onModifierBoite(boiteEnAncrage, {
+        ancre: { x: boiteADroite ? rc.x + rc.width : rc.x, y: rc.y + rc.height / 2, texte: (hit.texte || '').slice(0, 90) || null },
+        fleche: true, surlignageId: hit.id,
+      }, 'Boîte reliée au surlignage');
+      return;
+    }
     const x = clamp01((e.clientX - r.left) / r.width), y = clamp01((e.clientY - r.top) / r.height);
     const texte = texteProche(e.clientX, e.clientY);
     const avecFleche = ancrageFleche; // « Flèche » cliquée sans épingle : on trace la flèche dans la foulée
@@ -454,6 +476,9 @@ export function PdfPageContent({
     onCreateHighlight({ page: pageNum, texte, rects, anchor, segments, x: last.right, y: last.bottom, fontSizeRel, fontFamily });
   };
 
+  // surlignage relié à la boîte en cours d'écriture : il s'entoure (le lien se voit)
+  const liesActifs = new Set((boites || []).filter((b) => b.id === activeEditId && b.surlignageId).map((b) => b.surlignageId));
+
   return (
     <>
       <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
@@ -477,7 +502,7 @@ export function PdfPageContent({
       <div className="pdfr-hlayer">
         {highlights.flatMap((h) => (shownRects[h.id] || h.rects).map((r, i) => (
           <div key={h.id + ':' + i}
-            className={'pdfr-hl-rect' + (h.id === survolId ? ' survol' : '') + (h.id === cibleHlId ? ' cible' : '')}
+            className={'pdfr-hl-rect' + (h.id === survolId ? ' survol' : '') + (h.id === cibleHlId ? ' cible' : '') + (liesActifs.has(h.id) ? ' lie' : '')}
             style={{ left: r.x * 100 + '%', top: r.y * 100 + '%', width: r.width * 100 + '%', height: r.height * 100 + '%', background: couleurHex(h.couleur),
               // couleur perso (hex) : translucide comme un vrai surligneur — un violet ou un
               // bleu foncé en pleine teinte rendrait le texte illisible (les 4 couleurs
@@ -584,7 +609,7 @@ export function PdfPageContent({
           onActivate={onActivateEdit}
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
           onMaj={onMajBoite} onSupprimer={onSupprimerBoite} onModifier={onModifierBoite}
-          enAncrage={b.id === ancrageBoiteId} onDemanderAncrage={onDemanderAncrage}
+          enAncrage={b.id === ancrageBoiteId} viseSurlignage={ancrageSurlignage} onDemanderAncrage={onDemanderAncrage}
           pageWidth={pageWidth} pageHeight={pageHeight} texteProche={texteProche} />
       ))}
 
@@ -592,7 +617,9 @@ export function PdfPageContent({
           Un clic = l'endroit visé (point exact + le passage de texte le plus proche). */}
       {boiteEnAncrage && (
         <div className="pdfr-ancrage" onPointerDown={poserAncre}>
-          <div className="pdfr-ancrage-aide">{ancrageFleche ? 'Clique l’endroit que la flèche doit viser' : 'Clique l’endroit de la fiche où épingler cette boîte'} · Échap pour annuler</div>
+          <div className={'pdfr-ancrage-aide' + (viseeRatee ? ' ratee' : '')}>{ancrageSurlignage
+            ? (viseeRatee ? 'Ce n’est pas un surlignage — clique sur un passage surligné' : 'Clique le surlignage à relier à cette boîte')
+            : ancrageFleche ? 'Clique l’endroit que la flèche doit viser' : 'Clique l’endroit de la fiche où épingler cette boîte'} · Échap pour annuler</div>
         </div>
       )}
 
@@ -628,7 +655,7 @@ export function PdfPageContent({
    Une seule entrée d'historique par geste : l'état d'avant est capturé au
    pointerdown, la commande empilée au pointerup, et seulement si ça a bougé.
    ============================================================ */
-function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite' }) {
+function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, viseSurlignage = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite' }) {
   const texteLibre = variante === 'texte'; // TEXTE LIBRE (01/10) : même mécanique, sans cadre ni fond
   const [apercu, setApercu] = useState(null); // géométrie pendant le geste (état local, non persisté)
   const b = apercu || boite;
@@ -885,11 +912,11 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
           </button>
         ) : enAncrage ? (
           <button type="button" className="nb-act vise" {...stop(() => onDemanderAncrage(null))} title="Annuler (Échap)">
-            <IconeEpingle size={13} /> Clique l’endroit à épingler… <span className="nb-act-x">Annuler</span>
+            <IconeEpingle size={13} /> {viseSurlignage ? 'Clique le surlignage à relier…' : 'Clique l’endroit à épingler…'} <span className="nb-act-x">Annuler</span>
           </button>
         ) : (<>
           {ancre ? (
-            <button type="button" className="nb-act actif" {...stop(() => onModifier(boite, { ancre: null, fleche: false }, 'Retrait de l’épingle'))}
+            <button type="button" className="nb-act actif" {...stop(() => onModifier(boite, { ancre: null, fleche: false, surlignageId: null }, 'Retrait de l’épingle'))}
               title={`${titreAncre}. Pour la déplacer : glisse l’épingle sur la page. Cliquer ici la retire (et la flèche avec).`}>
               <IconeEpingle size={13} /> Retirer l’épingle
             </button>
@@ -897,6 +924,17 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
             <button type="button" className="nb-act" {...stop(() => onDemanderAncrage(boite.id))}
               title="Épingler la boîte à un endroit précis de la fiche : clique ensuite sur le passage visé.">
               <IconeEpingle size={13} /> Épingler
+            </button>
+          )}
+          {boite.surlignageId ? (
+            <button type="button" className="nb-act actif" {...stop(() => onModifier(boite, { ancre: null, fleche: false, surlignageId: null }, 'Lien au surlignage retiré'))}
+              title={`Reliée au surlignage${ancre && ancre.texte ? ` « ${ancre.texte} »` : ''}. Cliquer pour retirer le lien.`}>
+              <Icon name="edit" size={13} /> Délier
+            </button>
+          ) : (
+            <button type="button" className="nb-act" {...stop(() => onDemanderAncrage(boite.id, { surlignage: true }))}
+              title="Relier cette boîte à un surlignage : clique ensuite le passage surligné, une flèche les relie.">
+              <Icon name="edit" size={13} /> Relier
             </button>
           )}
           <button type="button" className={'nb-act' + (ancre && boite.fleche ? ' actif' : '')}
