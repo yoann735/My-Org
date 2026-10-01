@@ -20,7 +20,7 @@
    Tout ce qui est rare ou propre à une fiche (exports, prompts, items) part
    dans le menu « ⋯ Document » : huit boutons de moins sur la barre.
    ============================================================ */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { ContextMenu } from '../components/ui.jsx';
 import { COLORS, RACCOURCI, PALETTE_CRAYON } from './pdfShared.js';
@@ -72,6 +72,7 @@ export function PdfToolbar({
   sansPages = false, sansRecherche = false, outilsDisponibles = null, statut = null,
   // INSÉRER (01/10) : une page blanche, une image — absents = boutons masqués
   onAjouterPage = null, onAjouterImage = null,
+  avantPanneau = null, // bascule de disposition PDF / Les deux / Tableau (04/10)
 }) {
   const [menu, setMenu] = useState(null);
   /* LARGEUR RÉELLE de la barre (01/10) : dans un panneau étroit (Apprentissage,
@@ -80,17 +81,25 @@ export function PdfToolbar({
      on mesure donc la barre elle-même : d'abord les libellés des outils
      disparaissent, puis la barre passe sur deux lignes. */
   const barreRef = useRef(null);
-  const [largeur, setLargeur] = useState(0);
+  /* 03-04/10 : ce n'est plus un seuil de largeur fixe (il a suffi d'ajouter un outil
+     pour que la barre déborde à 1 262 px) mais le DÉBORDEMENT RÉEL qui décide :
+     niveau 1 = libellés des outils masqués, niveau 2 = deux lignes. Remis à zéro à
+     chaque changement de largeur, puis remonté tant que ça déborde. */
+  const [niveau, setNiveau] = useState(0);
+  const [, setMesure] = useState(0); // force une nouvelle mesure même si le niveau était déjà 0
   useEffect(() => {
     const el = barreRef.current;
-    if (!el) return undefined;
-    setLargeur(el.clientWidth); // mesure immédiate : juste au premier affichage
-    if (typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(() => setLargeur(el.clientWidth));
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    let dernier = el.clientWidth;
+    const ro = new ResizeObserver(() => { if (Math.abs(el.clientWidth - dernier) > 2) { dernier = el.clientWidth; setNiveau(0); setMesure((m) => m + 1); } });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const classeLargeur = !largeur ? '' : largeur < 900 ? ' etroite repliee' : largeur < 1200 ? ' etroite' : '';
+  useLayoutEffect(() => {
+    const el = barreRef.current;
+    if (el && niveau < 2 && el.scrollWidth > el.clientWidth + 1) setNiveau((n) => Math.min(2, n + 1));
+  });
+  const classeLargeur = niveau >= 2 ? ' etroite repliee' : niveau === 1 ? ' etroite' : '';
   const actions = (actionsDocument || []).filter(Boolean);
   const outils = outilsDisponibles ? OUTILS.filter((o) => outilsDisponibles.includes(o.id)) : OUTILS;
   const outilActif = outils.find((o) => o.id === outil) || outils[0];
@@ -202,6 +211,7 @@ export function PdfToolbar({
             </div>
           )}
           </>)}
+          {avantPanneau}
           {/* le panneau de droite est le MÊME sur PDF et HTML : items de la fiche
               (QCM, flashcards, exercices, Feynman) + notions surlignées */}
           <button className="btn ghost sm" onClick={() => setPanelOpen((v) => !v)} title={panelOpen ? 'Replier le panneau' : 'Ouvrir le panneau : items de la fiche et notions surlignées'}>
