@@ -1803,3 +1803,10 @@
 .lecteur-plein:has(.pdfr-contexte):has(.pdfr-edit-toolbar) .pdfr-scroll { max-height: calc(100vh - 256px); }
 }
 @media (min-width: 761px) { .lecteur-plein { padding-bottom: 14px; } } /* comme .lib-screen (ordinateur seulement : sur mobile, la barre du bas garde sa marge) */
+/* barre du lecteur mesurée (PdfToolbar) : libellés repliés, puis deux lignes */
+.pdfr-barre.etroite .ptb-outil-lbl { display: none; }
+.pdfr-barre.etroite .ptb-outil { padding: 0 8px; }
+.pdfr-barre.repliee { flex-wrap: wrap; row-gap: 6px; }
+.pdfr-barre.repliee .ptb-droite { margin-left: auto; }
+.pdfr-barre.repliee .ptb-recherche { max-width: 150px; width: 150px; min-width: 0; flex: 0 1 150px; }
+.pdfr-barre.repliee .ptb-droite { gap: 6px; }

@@ -73,6 +73,23 @@ export function PdfToolbar({
   onAjouterPage = null, onAjouterImage = null,
 }) {
   const [menu, setMenu] = useState(null);
+  /* LARGEUR RÉELLE de la barre (01/10) : dans un panneau étroit (Apprentissage,
+     liste de la Bibliothèque ouverte), la fin de la barre — annuler, recherche,
+     panneau, menu ⋯ — sortait de l'écran. Les @media ne voient que la fenêtre ;
+     on mesure donc la barre elle-même : d'abord les libellés des outils
+     disparaissent, puis la barre passe sur deux lignes. */
+  const barreRef = useRef(null);
+  const [largeur, setLargeur] = useState(0);
+  useEffect(() => {
+    const el = barreRef.current;
+    if (!el) return undefined;
+    setLargeur(el.clientWidth); // mesure immédiate : juste au premier affichage
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => setLargeur(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const classeLargeur = !largeur ? '' : largeur < 900 ? ' etroite repliee' : largeur < 1200 ? ' etroite' : '';
   const actions = (actionsDocument || []).filter(Boolean);
   const outils = outilsDisponibles ? OUTILS.filter((o) => outilsDisponibles.includes(o.id)) : OUTILS;
   const outilActif = outils.find((o) => o.id === outil) || outils[0];
@@ -108,7 +125,7 @@ export function PdfToolbar({
 
   return (
     <>
-      <div className="pdfr-toolbar pdfr-barre">
+      <div ref={barreRef} className={'pdfr-toolbar pdfr-barre' + classeLargeur}>
         {/* ---- ZONE GAUCHE : naviguer dans le document ---- */}
         <div className="ptb-zone">
           <button className="btn ghost sm" onClick={onClose} title="Revenir à la liste"><Icon name="chevL" size={14} /> Retour</button>
