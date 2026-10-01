@@ -1858,3 +1858,9 @@
   letter-spacing: .04em; color: var(--text); background: var(--bg-2, rgba(0,0,0,.25)); border: 1px solid var(--border-2, rgba(255,255,255,.1)); outline: none; }
 .sc-hex:focus { border-color: var(--accent); }
 .sc-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* « + » à côté du nom d'une section : ajouter une matière (02/10) */
+.lt-sec-plus { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin: 0 4px 0 6px; flex: 0 0 auto;
+  padding: 0; border-radius: 6px; border: 1px solid var(--border-2); background: transparent; color: var(--text-2); cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s; }
+.lt-sec-plus:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }

@@ -594,7 +594,25 @@ export function Bibliotheque({ ctx }) {
                       onClick={() => setOpenSrc((o) => ({ ...o, [src.id]: !srcOuverte }))}
                       onDoubleClick={(e) => { e.stopPropagation(); startRename('source', src.id, src.nom); }}>
                       <Icon name={srcOuverte ? 'chevD' : 'chevR'} size={13} className="lt-pli" />
-                      {isRen('source', src.id) ? <RenameInput /> : <span className="lt-nom">{src.nom}</span>}
+                      {/* « + » COLLÉ AU NOM (02/10) : ajouter une matière à cette section d'un clic.
+                          Il vit DANS le nom (avant son trait décoratif) : les actions qui
+                          apparaissent à droite au survol ne peuvent pas le recouvrir. La ligne
+                          « Nouvelle matière » du bas reste aussi. */}
+                      {isRen('source', src.id) ? <RenameInput /> : (
+                        <span className="lt-nom">{src.nom}
+                          <button type="button" className="lt-sec-plus" title={`Ajouter une matière dans « ${src.nom} »`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // le bouton rend le focus : sinon Entrée (pour valider le nom, si on
+                              // tape avant que le champ n'apparaisse) recrée une matière
+                              e.currentTarget.blur();
+                              setOpenSrc((o) => ({ ...o, [src.id]: true })); createMatiere(src.id);
+                            }}
+                            onDoubleClick={(e) => e.stopPropagation()}>
+                            <Icon name="plus" size={12} />
+                          </button>
+                        </span>
+                      )}
                       {!rappels && <span className="lt-etat" title="Rappels J en pause pour cette section"><Icon name="bellOff" size={12} /></span>}
                       <span className="lt-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
                         <button type="button" className="cd-ic" disabled={iSec === 0} title="Monter la section" onClick={() => deplacerSection(ctx, sections, src.id, -1)}><Icon name="chevU" size={14} /></button>
