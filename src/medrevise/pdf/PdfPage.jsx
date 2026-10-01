@@ -478,7 +478,11 @@ export function PdfPageContent({
         {highlights.flatMap((h) => (shownRects[h.id] || h.rects).map((r, i) => (
           <div key={h.id + ':' + i}
             className={'pdfr-hl-rect' + (h.id === survolId ? ' survol' : '') + (h.id === cibleHlId ? ' cible' : '')}
-            style={{ left: r.x * 100 + '%', top: r.y * 100 + '%', width: r.width * 100 + '%', height: r.height * 100 + '%', background: COLOR_HEX[h.couleur] || COLOR_HEX.jaune }} />
+            style={{ left: r.x * 100 + '%', top: r.y * 100 + '%', width: r.width * 100 + '%', height: r.height * 100 + '%', background: couleurHex(h.couleur),
+              // couleur perso (hex) : translucide comme un vrai surligneur — un violet ou un
+              // bleu foncé en pleine teinte rendrait le texte illisible (les 4 couleurs
+              // « cours » sont déjà des pastels). Même rendu qu'à l'export (opacité 0,4).
+              ...(String(h.couleur).startsWith('#') ? { opacity: 0.45 } : {}) }} />
         )))}
         {matchRects.map((m) => (
           <div key={'m' + m.idx + ':' + m.ri} className={'pdfr-match-rect' + (m.idx === activeMatchIdx ? ' active' : '')}

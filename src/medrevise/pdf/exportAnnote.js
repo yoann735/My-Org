@@ -188,7 +188,7 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const { W, H } = dims(page);
     for (const r of h.rects || []) {
       page.drawRectangle({ x: r.x * W, y: H - (r.y + r.height) * H, width: r.width * W, height: r.height * H,
-        color: COLOR_RGB[h.couleur] || COLOR_RGB.jaune, opacity: 0.4, blendMode: BlendMode.Multiply });
+        color: COLOR_RGB[h.couleur] || hexVersRgb(couleurHex(h.couleur)), opacity: 0.4, blendMode: BlendMode.Multiply });
     }
     bilan.surlignages += 1;
   }

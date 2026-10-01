@@ -66,10 +66,12 @@ import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
   COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI,
   useDevicePixelRatio, compareHighlights, computePageTextMap, EPAISSEURS,
-  MODES_CRAYON, EPAISSEUR_SURLIGNEUR,
+  MODES_CRAYON, EPAISSEUR_SURLIGNEUR, couleurHex,
 } from './pdfShared.js';
 import { PdfPageContent, EditToolbar } from './PdfPage.jsx';
 import { PdfToolbar, PaletteCrayon } from './PdfToolbar.jsx';
+import { SelecteurCouleurs } from './Couleurs.jsx';
+import { useCouleursPerso } from '../lib/couleursPerso.js';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
@@ -159,10 +161,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // ni le test de position des surlignages ne peuvent se déclencher — c'est
   // structurel, pas une suite de conditions à ne pas oublier.
   const [outil, setOutil] = useState('main'); // main | surligneur | boite | crayon | gomme — actif sur TOUS les écrans depuis l'étape 7
-  const [couleurActive, setCouleurActive] = useState('jaune'); // partagée par surligneur et boîte
-  // le crayon a sa propre couleur, prise dans une palette plus large (PALETTE_CRAYON)
-  const [couleurCrayon, setCouleurCrayon] = useState('rouge');
+  const [couleurActive, setCouleurActive] = useState('jaune'); // couleur des BOÎTES (4 pastels)
+  /* surligneur et crayon : chacun sa couleur, prise parmi les 4 couleurs « cours »,
+     mes couleurs, ou la roue (pdf/Couleurs.jsx). Un id de COLORS ou un hex. */
+  const [couleurSurligneur, setCouleurSurligneur] = useState('jaune');
+  const [couleurCrayon, setCouleurCrayon] = useState('bleu');
   const [couleurTexte, setCouleurTexte] = useState('noir'); // couleur du prochain TEXTE LIBRE
+  const [couleursPerso] = useCouleursPerso(); // proposées aussi dans la bulle d'un surlignage
   const [epaisseur, setEpaisseur] = useState(EPAISSEURS[0].id); // mode dessin : trait FIN par défaut
   const [aimant, setAimant] = useState(true); // le lissage est utile par défaut ; décochable (mode dessin seulement)
   const [modeCrayon, setModeCrayon] = useState('dessin'); // dessin (fin, doux) | surligneur (épais, translucide)
@@ -172,7 +177,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const id = idDemande === outil && idDemande !== 'main' ? 'main' : idDemande;
     // comme dans Word : du texte est sélectionné, on prend le surligneur → il est surligné
     if (id === 'surligneur' && pending && window.getSelection && !window.getSelection().isCollapsed) {
-      commitHighlightAvec(pending, couleurActive);
+      commitHighlightAvec(pending, couleurSurligneur);
     }
     setOutil(id); setPending(null); setEditingHl(null); setAncrage(null); if (id !== 'main') setActiveEditId(null);
   };
@@ -570,7 +575,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      copier, ou pour surligner ensuite en prenant le Surligneur (voir choisirOutil). */
   const handleCreateHighlightRequest = (payload) => {
     setEditingHl(null);
-    if (outil === 'surligneur') { commitHighlightAvec(payload, couleurActive); return; }
+    if (outil === 'surligneur') { commitHighlightAvec(payload, couleurSurligneur); return; }
     setPending(payload);
   };
   const commitHighlightAvec = async (p, couleur) => {
@@ -1155,7 +1160,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       {highlights.length === 0 && <div className="hint">Prends le Surligneur et sélectionne du texte : il est surligné. Clique un surlignage pour changer sa couleur ou le supprimer.</div>}
       {highlights.map((h) => (
         <div className="hl-entry" key={h.id} onClick={() => scrollToPageFraction(h.page, (h.rects[0] && h.rects[0].y) || 0)}>
-          <span className="hl-dot" style={{ background: COLOR_HEX[h.couleur] || COLOR_HEX.jaune }} />
+          <span className="hl-dot" style={{ background: couleurHex(h.couleur) }} />
           <div>
             <div className="hl-entry-page">p.{h.page}{COLOR_TAG[h.couleur] && <span className="hl-entry-tag">{COLOR_TAG[h.couleur]}</span>}</div>
             <div className="hl-entry-txt">« {h.texte.length > 140 ? h.texte.slice(0, 140) + '…' : h.texte} »</div>
@@ -1249,11 +1254,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         actionsDocument={actionsDocument}
         onAjouterPage={pdfDoc ? () => setAjoutPage({ apresIdx: pageCourante - 1 }) : null}
         onAjouterImage={pdfDoc ? () => entreeImageRef.current && entreeImageRef.current.click() : null}
-        contexteSupplementaire={outil === 'texte' ? (
+        contexteSupplementaire={outil === 'surligneur' ? (
+          <SelecteurCouleurs couleur={couleurSurligneur} onCouleur={setCouleurSurligneur} titre="Couleur du surligneur" />
+        ) : outil === 'texte' ? (
           <PaletteCrayon couleur={couleurTexte} onCouleur={setCouleurTexte} />
         ) : outil === 'question' ? <span /> : outil === 'crayon' ? (
           <>
-            <PaletteCrayon couleur={couleurCrayon} onCouleur={setCouleurCrayon} />
+            <SelecteurCouleurs couleur={couleurCrayon} onCouleur={setCouleurCrayon} titre="Couleur du crayon" />
             <span className="ptb-sep" />
             <div className="ptb-segment" role="group" aria-label="Mode du crayon">
               {MODES_CRAYON.map((m) => (
@@ -1401,7 +1408,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       {/* BULLE d'un surlignage : sa couleur, ou le supprimer. Rien d'autre. */}
       {editingHl && createPortal(
         <div className="hl-picker hl-bulle" style={{ left: Math.min(editingHl.x, window.innerWidth - 280), top: Math.min(editingHl.y + 10, window.innerHeight - 60) }}>
-          {COLORS.map((c) => (
+          {[...COLORS.map((c) => ({ id: c.id, hex: c.hex, label: c.label })), ...couleursPerso.map((h) => ({ id: h, hex: h, label: `Ma couleur ${h}` }))].map((c) => (
             <button key={c.id} type="button" className="hl-swatch-col" title={c.label} onClick={() => changeHighlightColor(c.id)}>
               <span className={'hl-swatch' + (editingHl.couleur === c.id ? ' selected' : '')} style={{ background: c.hex }} />
             </button>

@@ -1817,3 +1817,44 @@
 .note-box.ajustee { min-width: 56px; }
 .note-box.ajustee .nb-body { padding-right: 14px; }
 .note-box .nb-body { cursor: text; }
+
+/* ---- Sélecteur de couleurs du surligneur et du crayon (02/10) ---- */
+.sc-couleurs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sc-pastille { width: 20px; height: 20px; border-radius: 50%; padding: 0; cursor: pointer; flex: 0 0 auto;
+  border: 1px solid rgba(255,255,255,.14); box-shadow: inset 0 0 0 1px rgba(0,0,0,.18); transition: transform .12s, box-shadow .12s; }
+.sc-pastille:hover { transform: scale(1.12); }
+.sc-pastille.actif { box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px var(--text); }
+.sc-sep { width: 1px; height: 16px; background: var(--border-2, rgba(255,255,255,.12)); margin: 0 2px; }
+.sc-perso { position: relative; display: inline-flex; }
+.sc-retirer { position: absolute; top: -5px; right: -5px; width: 13px; height: 13px; border-radius: 50%; padding: 0; border: 0;
+  background: var(--card-2, #222); color: var(--text-2); display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; opacity: 0; transition: opacity .12s; box-shadow: 0 0 0 1px var(--border-2, rgba(255,255,255,.15)); }
+.sc-perso:hover .sc-retirer { opacity: 1; }
+.sc-retirer:hover { color: var(--crit, #e5484d); }
+.sc-roue-btn { display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 7px 0 3px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border-2, rgba(255,255,255,.14)); background: var(--card-2, transparent); color: var(--text-2); transition: border-color .12s; }
+.sc-roue-btn:hover, .sc-roue-btn.actif { border-color: var(--accent); color: var(--text); }
+.sc-roue-mini { width: 16px; height: 16px; border-radius: 50%;
+  background: conic-gradient(from 90deg, #ff3b30, #ffcc00, #34c759, #00c7be, #007aff, #af52de, #ff2d55, #ff3b30); }
+.sc-fenetre { position: fixed; z-index: 1000; width: 214px; padding: 16px 16px 14px; border-radius: 16px;
+  background: color-mix(in srgb, var(--card, #151518) 92%, transparent); backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid var(--border-2, rgba(255,255,255,.1)); box-shadow: 0 18px 50px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.25);
+  display: flex; flex-direction: column; gap: 12px; animation: sc-entree .14s ease-out; }
+@keyframes sc-entree { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+.sc-roue { position: relative; margin: 2px auto 0; cursor: crosshair; touch-action: none; border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 6px 22px rgba(0,0,0,.35); }
+.sc-roue canvas { display: block; border-radius: 50%; }
+.sc-repere { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; pointer-events: none;
+  border: 2.5px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.4); }
+.sc-lum input { width: 100%; height: 10px; border-radius: 999px; -webkit-appearance: none; appearance: none; outline: none; cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); }
+.sc-lum input::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 2px 6px rgba(0,0,0,.4); }
+.sc-lum input::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 0; }
+.sc-ligne { display: flex; align-items: center; gap: 10px; }
+.sc-apercu { display: inline-flex; border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 1px rgba(255,255,255,.12); flex: 0 0 auto; }
+.sc-apercu i { width: 22px; height: 26px; display: block; }
+.sc-hex { flex: 1; min-width: 0; height: 28px; padding: 0 9px; border-radius: 8px; font: 500 12.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .04em; color: var(--text); background: var(--bg-2, rgba(0,0,0,.25)); border: 1px solid var(--border-2, rgba(255,255,255,.1)); outline: none; }
+.sc-hex:focus { border-color: var(--accent); }
+.sc-actions { display: flex; justify-content: flex-end; gap: 6px; }

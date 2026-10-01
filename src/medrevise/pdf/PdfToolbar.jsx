@@ -38,7 +38,7 @@ export const OUTILS = [
   { id: 'gomme', label: 'Gomme', icon: 'ban', aide: 'Efface les traits de crayon — cliquer, ou glisser pour en effacer plusieurs' },
 ];
 /** Outils dont la couleur se règle dans la barre contextuelle. */
-const OUTILS_COLORES = new Set(['surligneur', 'boite']); // le crayon a sa PROPRE palette, plus large (voir PaletteCrayon)
+const OUTILS_COLORES = new Set(['boite']); // surligneur et crayon ont leur propre sélecteur (pdf/Couleurs.jsx)
 
 /** Palette du crayon (et du texte libre) : 12 couleurs + une couleur au choix. */
 export function PaletteCrayon({ couleur, onCouleur }) {
