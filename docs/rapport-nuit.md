@@ -1,180 +1,146 @@
-# Rapport de nuit — 2 octobre 2026 : corrections et finitions du lecteur PDF
+# Rapport de nuit — 3 octobre 2026 : finitions du lecteur PDF (15 points)
 
-Les 11 points sont faits, testés à la main et poussés. Les tests ont tourné sur un serveur
-local sans cloud (synchro désactivée), avec deux navigateurs :
-- **ton Chrome** : manipulations et captures ;
-- **un Chrome isolé** : mesures image par image, plus fiables (ton onglet était en
-  arrière-plan, où les animations et les minuteries sont gelées ou bridées).
+Les 15 points sont faits et testés en vrai. Les tests ont tourné sur un serveur local sans
+cloud, dans **ton Chrome** et dans un **Chrome isolé**, plus fiable pour mesurer
+fluidité et zoom (ton onglet était en arrière-plan, où les animations sont gelées).
 
 **Garanties :**
-- aucune donnée réelle touchée ;
 - **MealWeek : 0 fichier modifié** ;
-- PDF d'origine identique octet pour octet (SHA-256 `d3a2155d…`, vérifié en fin de nuit).
+- PDF d'origine identique octet pour octet (SHA-256 `d3a2155d…`, vérifié en fin de
+  nuit) ;
+- aucune donnée réelle touchée.
 
-## Bug 5 « hallucinations » : la cause racine
+Sept points étaient déjà livrés la nuit dernière : 1, 2, 3, 9, 10, 14, 15, plus la roue
+et les couleurs du 7. Je les ai **revérifiés** avec le nouveau code. Les huit autres
+sont neufs.
 
-**Symptôme.** Après un geste (déplacer une image, une boîte, un « ? », réduire ou fermer
-une boîte), l'élément réapparaissait une fraction de seconde à son ancienne place.
+## Bug 9 « hallucinations » : la cause racine (rappel, corrigée le 02/10, revérifiée)
 
-**Cause.** À la fin de chaque geste, le composant effaçait **tout de suite** son aperçu
-local (la position pendant le glisser). L'état React des annotations, lui, n'était mis à
-jour qu'**après** deux étapes :
-1. l'écriture dans IndexedDB ;
-2. une relecture complète des deux stores (`hist.appliquer` → `faire()` → `rechargerAnnotations()`).
+**Cause.** À la fin d'un geste, l'aperçu local de l'élément était effacé tout de suite,
+alors que l'état React des annotations n'était mis à jour qu'après l'écriture IndexedDB
+**et** une relecture complète des stores. Pendant ce délai, l'ancien enregistrement
+était redessiné à son ancienne place.
 
-Entre les deux, React redessinait l'**ancien** enregistrement. C'est une seule cause pour
-tous les symptômes, parce que toutes les annotations passent par le même historique.
-
-**Correctif global**, dans `src/medrevise/lib/annotHistory.js` (cœur de l'historique) et
-`pdf/PdfReader.jsx` (`appliquerLocal`) :
-- chaque commande décrit maintenant ses **effets** (avant/après de chaque enregistrement) ;
-- ces effets sont appliqués **à l'écran de façon synchrone**, dans le même rendu que la fin
+**Correctif global**, dans `src/medrevise/lib/annotHistory.js` (et `appliquerLocal`
+dans `pdf/PdfReader.jsx`) :
+- chaque commande décrit ses effets, appliqués à l'écran dans le même rendu que la fin
   du geste, puis écrits en base ;
-- la relecture finale ne fait plus que confirmer, et seulement quand plus rien n'attend.
+- les actions rapides sont mises en file au lieu d'être perdues.
 
-**Défaut caché découvert au passage.** Une action arrivée pendant l'écriture de la
-précédente était **ignorée** (verrou `occupe`), donc perdue au rechargement. Les actions
-sont maintenant mises en file.
+**Revérifié cette nuit**, avec un enregistreur de chaque état affiché : aucun retour en
+arrière pour 6 gestes réels à la souris :
+- déplacer une image ;
+- déplacer une boîte ;
+- déplacer un « ? » ;
+- réduire une boîte ;
+- tracer un trait ;
+- déplacer une forme (nouveau).
 
-**Même famille :**
-- une boîte refermée montrait son ancien texte (sauvegarde différée de 400 ms). Le texte
-  en attente part maintenant à l'écran dans le rendu qui la referme (`setActiveEditId`
-  centralisé) ;
-- une image collée dont la page revient à l'écran affichait « … » le temps de relire son
-  fichier. Les adresses sont maintenant en cache.
+Refermer une boîte juste après avoir tapé : elle passe directement au nouveau texte.
 
-**Mesures**, faites avec un enregistreur (MutationObserver) de chaque état affiché :
-- **ancien code** : l'image revient **89 ms** à sa position de départ avant d'atteindre la
-  bonne ;
-- **nouveau code** : aucun retour en arrière, et 0 erreur console, pour 5 gestes testés à
-  la souris :
-  - déplacer une image ;
-  - déplacer une boîte ;
-  - déplacer un « ? » ;
-  - réduire une boîte ;
-  - tracer un trait.
-- **refermer une boîte juste après avoir tapé** : elle passe directement au nouveau texte.
-
-## Ce qui est fait (commits)
+## Ce qui est fait
 
 | Commit | Point |
 |---|---|
-| `d31f31e` | 5 · 7 bug « hallucinations » (cause racine) + 3 boîtes enchaînées |
-| `d45c1d4` · `8a1cc69` | 1 clic n'importe où dans une boîte · 2 largeur qui épouse le texte (aussi à l'export) |
-| `c57b217` | 5 même famille : image qui clignotait au retour à l'écran |
-| `9464937` | 6 zoom fluide |
-| `873be12` | 4 couleurs : 4 « cours » + mes couleurs + roue chromatique |
-| `75cf6b2` | 9 « + » matière dans la Bibliothèque |
-| `2167ccf` | 10 ajout de page contextuel |
-| `d55f42c` | 11 menu Fichier (export en tête) |
-| `8846ac9` | 8 lien boîte ↔ surlignage |
+| `fb9393b` | 11 gros bouton d'insertion entre les pages · 12 « Retirer la page » réparé |
+| `2372906` | 13 menu Fichier épuré |
+| `ac47ddd` | 5 barre de paramètres des boîtes compacte |
+| `5621f5e` | 4 boîtes à taille fixe au zoom |
+| `021d7a0` | 8 crayon : taille + opacité |
+| `33181a8` | 7 couleurs perso synchronisées |
+| `e9a67df` | 6 formes + légende |
+| (02/10) | 1 · 2 · 3 · 9 · 10 · 14 · 15 revérifiés |
 
 ### Détail
 
-1. **Clic n'importe où.** Un clic dans le vide d'une boîte (marge, bas, à droite d'une
-   ligne courte) place le curseur au point le plus proche : fin de la ligne visée, ou son
-   début si l'on clique à gauche. Testé au clic réel : coin bas-droit → fin du texte ;
-   à droite de la ligne 2 → fin de la ligne 2.
-2. **Largeur qui épouse le texte.** La largeur enregistrée devient un maximum. La boîte se
-   resserre sur sa ligne la plus longue, plus 14 px de marge à droite pour replacer le
-   curseur ; la boîte « Alpha » ne fait plus que 59 px. Exceptions :
-   - une boîte vide garde sa taille ;
-   - une boîte redimensionnée à la main garde la largeur choisie.
+- **1. Clic n'importe où** dans une boîte : le curseur se place au point le plus proche.
+  Revérifié : un clic dans la marge droite donne « Première! ».
+- **2. Taille qui s'adapte au texte**, en largeur aussi, avec une marge à droite.
+  Revérifié : 79 px pour « Première ».
+- **3. Boîtes enchaînées**. Revérifié : deux boîtes à la suite, la troisième laissée vide
+  est retirée, le 1er Échap garde l'outil, le 2e en sort.
+- **4. Taille fixe au zoom.** Une boîte (et un texte libre) a désormais une taille
+  constante à l'écran ; sa position, elle, reste accrochée au document. **Mesuré :**
+  126 × 47 px à 105 %, 160 % et 243 %, toujours au même endroit du cours.
+  Redimensionner à 243 % : +60 px au coin donne +60 px.
+- **5. Barre de paramètres compacte** : une pilule fine de 22 px, aux libellés courts
+  (Épingle · Relier · Flèche · Réduire · corbeille). Elle n'apparaît qu'après 300 ms de
+  survol, ou quand la boîte est active. La barre de mise en forme du haut est aussi plus
+  fine.
+- **6. Formes** :
+  - **tracer** : outil « Forme », glisser pour tracer un cadre, couleur au sélecteur,
+    l'outil reste actif ;
+  - **sélectionner** : par le **bord** seulement, l'intérieur laisse sélectionner le
+    texte encadré ;
+  - **modifier** : déplacer, redimensionner par les coins, Suppr ;
+  - **légende** : une boîte posée à côté, reliée par une flèche. « Relier » depuis une
+    boîte vise aussi les formes ;
+  - **supprimer** : la forme part, ses légendes restent mais déliées, et Cmd+Z rend
+    tout ;
+  - **export** : il dessine le cadre.
 
-   L'export PDF fait pareil.
-3. **Boîtes enchaînées.** L'outil Boîte reste actif. Pour en sortir :
-   - un 1er Échap referme la boîte en cours ;
-   - un 2e Échap, ou un re-clic sur l'outil, revient à la Sélection.
+  Testé de bout en bout : un cadre autour du titre, sa légende « Titre de la fiche »,
+  l'export, la suppression puis Cmd+Z.
+- **7. Couleurs.** Les 4 couleurs « cours », tes couleurs perso et la roue datent de la
+  nuit dernière. **Nouveau :** les couleurs perso se **synchronisent entre appareils**
+  par le canal existant :
+  - un petit enregistrement `couleursPerso` dans le store `prompts`, déjà synchronisé,
+    comme tes prompts perso (aucune nouvelle table) ;
+  - la couleur que tu avais ajoutée hier y a été versée automatiquement ;
+  - **testé** : ajout et retrait mettent l'enregistrement à jour, et une liste « arrivée
+    d'un autre appareil » apparaît dans le sélecteur.
+- **8. Crayon.** Deux curseurs fins, **Taille** et **Opacité**, avec l'aperçu du trait.
+  Chaque mode (dessin, surligneur) garde ses réglages, mémorisés. **Testé :** le trait
+  posé a exactement l'épaisseur et l'opacité réglées (50 %) ; l'export les reprend.
+- **9 · 10. Zéro flash** : voir plus haut.
+- **11. Insérer une page** : tout l'espace entre deux pages est un bouton, sur toute la
+  largeur de la page (979 px), avec un trait pointillé et « Insérer une page ici » au
+  survol.
+- **12. « Retirer la page »** : voir la cause dans « Bugs trouvés ». Le bouton est
+  maintenant dans la page ajoutée, en haut à droite, grand et lisible. **Testé :** clic
+  réel, la page est retirée, et elle reste retirée après rechargement.
+- **13. Menu Fichier épuré.** Plus de titres de section ni de phrases d'aide. Quatre
+  blocs séparés par un trait :
+  - Exporter en PDF annoté (mis en avant) ;
+  - Renommer · Insérer une page · Insérer une image ;
+  - Copier les notions · Exporter en JSON · Ajouter un item · Importer des items ·
+    Prompts ;
+  - Détacher le PDF.
+- **14. « + » matière** à côté du nom de la section : présent, inchangé depuis hier.
+- **15. Surlignage ↔ boîte.** Revérifié au vrai clic : bulle du surlignage → « Ajouter
+  une boîte ». La boîte est reliée, flèche visible, surlignage entouré.
 
-   Une boîte neuve laissée vide est retirée, ce qui est annulable. Testé : « Alpha »
-   gardée, la boîte vide retirée.
-4. **Couleurs** (surligneur et crayon) :
-   - les 4 couleurs « cours » sont toujours là ;
-   - « mes couleurs » s'ajoutent depuis une roue chromatique (teinte × saturation,
-     curseur de luminosité, code hex, aperçu avant/après) et se retirent d'un clic sur
-     leur croix ;
-   - elles restent après rechargement et sont proposées aussi dans la bulle d'un
-     surlignage ;
-   - un surlignage de couleur perso est translucide, sinon un violet foncé rendait le
-     texte illisible (constaté).
-5. Voir la cause racine plus haut.
-6. **Zoom fluide.** Avant, chaque cran vidait la page (image blanche) puis la redessinait,
-   et un pincement de trackpad faisait +10 % par événement. Maintenant :
-   - l'ancienne image s'étire aussitôt ;
-   - le rendu net, calculé hors écran, la remplace d'un coup quand le zoom se pose ;
-   - le facteur suit l'amplitude du geste ;
-   - les boutons sont animés (180 ms).
+## Bugs trouvés et corrigés
 
-   **Mesuré** sur un pincement simulé :
-
-   | | Ancien code | Nouveau code |
-   |---|---|---|
-   | Images blanches | 25 | **0** |
-   | Image la plus lente (95e centile) | 25 ms | 18 ms |
-   | Pincement | s'emballe jusqu'à 400 % | progressif |
-7. Voir le point 5 : même cause, même correctif (image : aucun retour, mesuré).
-8. **Boîte ↔ surlignage :**
-   - **depuis le surlignage** : sa bulle propose « Ajouter une boîte ». La boîte se pose à
-     côté, épinglée sur son bord avec une flèche, prête à écrire ;
-   - **depuis une boîte** : « Relier », puis clic sur un surlignage. Un clic à côté
-     affiche un message, et on attend. « Délier » retire le lien ;
-   - le surlignage s'entoure quand sa boîte est en cours d'écriture ;
-   - un surlignage neuf se lie en le cliquant, puis « Ajouter une boîte ».
-
-   Testé dans les deux sens.
-9. **« + » collé au nom de la section** (Bibliothèque). Il ouvre la section, crée la
-   matière, et son nom est prêt à être tapé. Testé : « Physiologie test » créée.
-10. **Ajout de page** :
-    - un « + Page » dans chaque espace entre deux pages (il ressort au survol) ;
-    - le bouton « Page » de la barre insère directement après la page affichée ;
-    - l'insertion à une position précise reste possible dans le menu Fichier.
-11. **Menu « Fichier »** sous le nom du document, avec trois groupes :
-    - **Exporter**, mis en avant : PDF annoté (avec une description), notions, JSON ;
-    - **Document** : renommer, insérer une page (ici ou à une position), insérer une
-      image ;
-    - **Fiche** : items, prompts, détacher le PDF.
-
-    Il remplace le « ⋯ » de la barre. **Testé** : l'export depuis le menu produit
-    `Macromolécules — renommée-annote.pdf` (1,1 Mo), intercepté dans la page sans rien
-    écrire sur ton disque. « Renommer… » ouvre le champ du nom.
-
-## Autres bugs trouvés et corrigés pendant les tests
-
-- **« + » matière masqué** au survol par les actions de la section : il est maintenant
-  collé au nom.
-- **Entrée recréait une matière** : si l'on tapait avant l'apparition du champ, Entrée
-  retombait sur le « + » encore sélectionné et créait une seconde matière.
-- **Lien boîte ↔ surlignage** : le clic qui pose le lien ouvrait aussi la bulle du
-  surlignage.
-- **Menu Fichier** caché sous la barre d'outils dans la vue HTML.
-- **Libellé de visée** « Clique l'endroit à épingler » au lieu de « Clique le
-  surlignage à relier ».
-- **Roue chromatique** : le bouton « Annuler » débordait de la fenêtre.
+- **« Retirer la page » impossible à cliquer.** Cause : la zone « + Page » ajoutée le
+  02/10 dans l'espace entre les pages recouvrait l'étiquette, qui y était posée.
+  Constaté : l'élément sous le clic était la zone d'insertion, pas le bouton.
+- **Page « revenue » après suppression** : faux bug. C'était mon propre script de test
+  d'hier, qui cliquait tous les boutons d'outils, y compris « Page ». La suppression
+  tient bien après rechargement, vérifié.
 
 ## Non-régression
 
-Check-list passée après le dernier commit :
-- Accueil, Réviser (avec le lecteur plein écran ouvert depuis « Voir le cours »),
-  Bibliothèque PDF et HTML, Carnet, Apprentissage, Prise de notes (anciennes boîtes et
-  traits intacts), Réglages : OK ;
-- Apprentissage garde son menu « ⋯ » et aucun bouton hors de l'écran ;
+- Accueil, Réviser, Bibliothèque PDF et HTML, Carnet, Apprentissage, Prise de notes (ses
+  4 anciennes boîtes intactes), Réglages : OK ;
 - MealWeek s'ouvre normalement ;
 - `npm run build` vert à chaque commit ;
 - 0 erreur console sur un parcours complet après rechargement.
 
 ## Pas fait, ou laissé de côté par prudence
 
-- **Couleurs perso** : rangées sur l'appareil (localStorage), pas au cloud. C'est voulu,
-  pour n'ajouter aucune écriture cloud ; elles ne passent donc pas d'un appareil à
-  l'autre. Les surlignages, eux, gardent leur couleur exacte partout.
-- **Surlignage en couleur perso** : il compte comme « surlignage simple » dans les exports
-  JSON (pas prioritaire, pas cloze), seules les 4 couleurs « cours » ayant un sens.
-- **Mesures du zoom** : faites sur un pincement simulé dans le Chrome isolé. Ton vrai
-  trackpad peut émettre des amplitudes un peu différentes ; le facteur est réglable en
-  une ligne (`0.01` dans `PdfReader.jsx`, molette du zoom).
-- **Une boîte neuve laissée vide est retirée**, ce qui ajoute une entrée « Boîte vide
-  retirée » à l'historique d'annulation.
-- **Supprimer un surlignage relié** : la boîte garde son épingle et sa flèche vers
-  l'endroit.
-- **Téléchargement réel de l'export** : intercepté dans la page, pas écrit dans tes
-  Téléchargements.
+- **Taille fixe au zoom.** Les boîtes gardent la taille qu'elles ont à 160 % (le zoom par
+  défaut). Dans l'écran Apprentissage, où le zoom est souvent plus petit, elles paraissent
+  donc plus grandes par rapport à la page qu'avant. C'est l'effet demandé.
+- **Formes** : seulement le **rectangle**. Ellipse et flèche libre ne sont pas faites
+  (« au moins un rectangle »). Pas de changement de couleur après le tracé : on choisit
+  la couleur avant, ou on retrace.
+- **Synchro des couleurs perso** : testée en local, en simulant l'arrivée d'un autre
+  appareil. Le vrai aller-retour entre deux appareils passe par le cloud, que je n'ai pas
+  touché la nuit. Il utilise le même mécanisme que tes prompts perso, déjà synchronisés.
+- **Réglages du crayon** (taille, opacité) : mémorisés sur l'appareil seulement. Ce sont
+  des préférences de geste, pas des données.
+- **Couleur perso sur un surlignage** : elle compte comme « surlignage simple » dans les
+  exports JSON (ni prioritaire, ni cloze).
+- **Export** : vérifié dans la page (bilan des éléments dessinés), pas téléchargé dans
+  ton dossier Téléchargements.
