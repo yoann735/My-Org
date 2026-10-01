@@ -168,7 +168,7 @@ export function PdfToolbar({
             )}
             {onAjouterPage && (
               <button type="button" className="ptb-outil" onClick={onAjouterPage}
-                title="Page — insérer une page blanche après la page de ton choix">
+                title="Page — insérer une page blanche juste après la page affichée (ou avec le « + Page » entre deux pages)">
                 <Icon name="plus" size={15} /><span className="ptb-outil-lbl">Page</span>
               </button>
             )}

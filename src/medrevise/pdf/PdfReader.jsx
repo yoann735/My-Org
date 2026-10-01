@@ -1252,7 +1252,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         onPrecedent={gotoPrevMatch} onSuivant={gotoNextMatch} onFermerRecherche={closeSearch}
         panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={highlights.length}
         actionsDocument={actionsDocument}
-        onAjouterPage={pdfDoc ? () => setAjoutPage({ apresIdx: pageCourante - 1 }) : null}
+        onAjouterPage={pdfDoc ? () => insererPageApres(pageCourante - 1) : null}
         onAjouterImage={pdfDoc ? () => entreeImageRef.current && entreeImageRef.current.click() : null}
         contexteSupplementaire={outil === 'surligneur' ? (
           <SelecteurCouleurs couleur={couleurSurligneur} onCouleur={setCouleurSurligneur} titre="Couleur du surligneur" />
@@ -1343,11 +1343,22 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 const active = idx >= visibleRange.start && idx <= visibleRange.end;
                 const style = { position: 'absolute', top, left: '50%', transform: 'translateX(-50%)', width: w, height: h };
                 if (!active) return <div key={n} className="pdfr-placeholder" style={style} />;
-                return (
+                /* « + PAGE » ENTRE DEUX PAGES (02/10) : dans l'espace sous chaque page, un
+                   bouton qui insère une page blanche JUSTE ICI — plus de liste de 17 pages
+                   à parcourir. Discret, il ressort au survol de l'espace. */
+                const inter = (
+                  <div key={n + ':inter'} className="pdfr-inter" style={{ top: top + h, height: Math.max(14, GAP * scale), width: w }}>
+                    <button type="button" className="pdfr-inter-btn" onClick={() => insererPageApres(idx)}
+                      title={`Insérer une page blanche après la page ${idx + 1}`}>
+                      <Icon name="plus" size={11} /> Page
+                    </button>
+                  </div>
+                );
+                return [inter, (
                   <div key={n} data-cle={String(n)} className={'pdfr-page' + (sz.ajout ? ' pdfr-page-ajoutee' : '')} style={style}>
                     {sz.ajout && (
                       <div className="pdfr-ajout-etiquette">
-                        <span><Icon name="plus" size={11} /> Page ajoutée</span>
+                        <span>Page ajoutée</span>
                         <button type="button" onClick={() => demanderSuppressionPage(sz.ajout)} title={`Retirer cette page (annulable par ${RACCOURCI}Z)`}>
                           <Icon name="trash" size={11} /> Retirer
                         </button>
@@ -1389,7 +1400,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       activeEditor={editor}
                     />
                   </div>
-                );
+                )];
               })}
             </div>
           )}
