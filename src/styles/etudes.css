@@ -1796,13 +1796,13 @@
    Les barres qui n'apparaissent qu'avec un outil (réglages, mise en forme) sont
    décomptées quand elles sont là, pour ne jamais faire défiler l'écran entier. */
 @media (min-width: 761px) { /* ordinateur : sur mobile, la règle d'avant (et la barre du bas) restent */
-.lib-screen.doc-ouvert :is(.pdfr-scroll, .pis), .lecteur-plein :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 168px); }
-.lib-screen.doc-ouvert .pdfr-html-frame { height: calc(100vh - 186px); }
+.lib-screen.doc-ouvert :is(.pdfr-scroll, .pis), .lecteur-plein :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 188px); }
+.lib-screen.doc-ouvert .pdfr-html-frame { height: calc(100vh - 206px); }
 .lib-screen.doc-ouvert:has(.pdfr-contexte) :is(.pdfr-scroll, .pis), .lecteur-plein:has(.pdfr-contexte) :is(.pdfr-scroll, .pis),
-.lib-screen.doc-ouvert:has(.pdfr-edit-toolbar) :is(.pdfr-scroll, .pis), .lecteur-plein:has(.pdfr-edit-toolbar) :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 212px); }
-.lib-screen.doc-ouvert:has(.pdfr-contexte) .pdfr-html-frame { height: calc(100vh - 230px); }
+.lib-screen.doc-ouvert:has(.pdfr-edit-toolbar) :is(.pdfr-scroll, .pis), .lecteur-plein:has(.pdfr-edit-toolbar) :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 232px); }
+.lib-screen.doc-ouvert:has(.pdfr-contexte) .pdfr-html-frame { height: calc(100vh - 250px); }
 .lib-screen.doc-ouvert:has(.pdfr-contexte):has(.pdfr-edit-toolbar) :is(.pdfr-scroll, .pis),
-.lecteur-plein:has(.pdfr-contexte):has(.pdfr-edit-toolbar) :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 256px); }
+.lecteur-plein:has(.pdfr-contexte):has(.pdfr-edit-toolbar) :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 276px); }
 }
 @media (min-width: 761px) { .lecteur-plein { padding-bottom: 14px; } } /* comme .lib-screen (ordinateur seulement : sur mobile, la barre du bas garde sa marge) */
 /* barre du lecteur mesurée (PdfToolbar) : libellés repliés, puis deux lignes */
@@ -1872,3 +1872,28 @@
   transition: opacity .14s, transform .14s, color .12s, border-color .12s; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
 .pdfr-inter:hover .pdfr-inter-btn, .pdfr-inter-btn:focus-visible { opacity: 1; transform: none; }
 .pdfr-inter-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ---- En-tête du document : nom + menu « Fichier » (02/10) ---- */
+.lecteur-entete.doc { align-items: flex-start; position: relative; z-index: 60; } /* son menu Fichier passe au-dessus des barres d’outils (PDF et HTML) */
+.doc-bloc { display: flex; flex-direction: column; align-items: flex-start; gap: 0; min-width: 0; }
+.mf { position: relative; margin-left: -7px; }
+.mf-bouton { height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid transparent; background: none; cursor: pointer;
+  font-size: 12.5px; color: var(--text-2); transition: background .12s, color .12s; }
+.mf-bouton:hover, .mf-bouton.ouvert { background: var(--card); color: var(--text); border-color: var(--border-2); }
+.mf-menu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 900; min-width: 300px; max-width: 360px; padding: 6px;
+  border-radius: 14px; background: color-mix(in srgb, var(--card, #151518) 94%, transparent); backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid var(--border-2); box-shadow: 0 18px 50px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.25); animation: sc-entree .12s ease-out; }
+.mf-groupe + .mf-groupe { border-top: 1px solid var(--border); margin-top: 5px; padding-top: 5px; }
+.mf-titre { padding: 4px 10px 3px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.mf-item { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 7px 10px; border: 0; border-radius: 9px; background: none;
+  color: var(--text); text-align: left; cursor: pointer; font-size: 13px; }
+.mf-item:hover { background: var(--bg-2, rgba(255,255,255,.05)); }
+.mf-item.danger { color: var(--crit); }
+.mf-ic { flex: 0 0 18px; display: inline-flex; justify-content: center; padding-top: 1px; color: var(--text-2); }
+.mf-item.danger .mf-ic { color: var(--crit); }
+.mf-texte { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mf-aide { font-size: 11.5px; color: var(--text-3); line-height: 1.35; }
+/* l'export, l'action la plus importante, ressort */
+.mf-item.principal { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.mf-item.principal:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.mf-item.principal .mf-ic, .mf-item.principal .mf-label { color: var(--accent); font-weight: 600; }

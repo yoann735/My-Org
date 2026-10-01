@@ -519,7 +519,9 @@ export function Bibliotheque({ ctx }) {
           NOM DE LA FICHE, en petit et renommable d'un clic — l'espace gagné va au
           document. Les modes d'affichage et « Nouveau transcript » concernent la
           liste : ils reviennent dès qu'on ferme le document. */}
-      {ficheOuverte ? (
+      {/* fiche (PDF/HTML) : c'est le lecteur qui affiche le nom ET le menu Fichier
+          (avecEntete) ; schéma et transcript gardent cet en-tête compact */}
+      {ficheOuverte && selected.kind === 'fiche' ? null : ficheOuverte ? (
         <div className="lecteur-entete">
           <TitreRenommable titre={ficheOuverte.titre} onRenommer={(t) => ctx.renameFiche(ficheOuverte.id, t)} />
           <div className="topbar-actions"><EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} /></div>
@@ -721,7 +723,7 @@ export function Bibliotheque({ ctx }) {
               <div className="hint" style={{ marginTop: 6 }}>Clique une fiche avec PDF, schéma ou transcript pour l'ouvrir ici.</div>
             </div>
           ) : selected.kind === 'fiche' ? (
-            <PdfReader key={selected.ficheId + ':' + (selected.srcTab || '')} ctx={ctx} source={{ id: selected.ficheId, ficheId: selected.ficheId }} initialSrcTab={selected.srcTab} embedded onClose={closeDoc} />
+            <PdfReader key={selected.ficheId + ':' + (selected.srcTab || '')} ctx={ctx} source={{ id: selected.ficheId, ficheId: selected.ficheId }} initialSrcTab={selected.srcTab} embedded avecEntete onClose={closeDoc} />
           ) : selected.kind === 'schema' ? (
             <SchemaEditorScreen key={selected.ficheId} ctx={ctx} ficheId={selected.ficheId} embedded onClose={closeDoc} />
           ) : selected.kind === 'transcript' ? (

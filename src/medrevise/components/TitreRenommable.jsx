@@ -9,8 +9,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 
-export function TitreRenommable({ titre, onRenommer, sousTitre = null }) {
+export function TitreRenommable({ titre, onRenommer, sousTitre = null, demandeEdition = 0 }) {
   const [edition, setEdition] = useState(false);
+  // « Renommer… » d'un menu (Fichier) : un compteur qui change = ouvrir l'édition
+  useEffect(() => { if (demandeEdition && onRenommer) setEdition(true); }, [demandeEdition]); // eslint-disable-line react-hooks/exhaustive-deps
   const [brouillon, setBrouillon] = useState(titre || '');
   const champ = useRef(null);
   useEffect(() => { if (!edition) setBrouillon(titre || ''); }, [titre, edition]);

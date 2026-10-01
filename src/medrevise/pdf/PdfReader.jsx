@@ -75,6 +75,7 @@ import { useCouleursPerso } from '../lib/couleursPerso.js';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
+import { MenuFichier } from './MenuFichier.jsx';
 
 
 /* C — bi-mode : route plein-écran (déclenchée par Réviser, via ctx.pdfView /
@@ -103,7 +104,7 @@ import { TitreRenommable } from '../components/TitreRenommable.jsx';
    Les anciennes props (`ficheId`, `doc`, `initialSrcTab`) restent acceptées : le
    mode plein écran passe encore par ctx.pdfView, et les rétirer d'un coup aurait
    été le seul changement risqué de cette étape. */
-export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: srcTabProp, doc: docProp, onSetPdf, onSetHtml, embedded, onClose, ajusterLargeur = false, panneauNotionsOuvert = true }) {
+export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: srcTabProp, doc: docProp, onSetPdf, onSetHtml, embedded, onClose, ajusterLargeur = false, panneauNotionsOuvert = true, avecEntete = false }) {
   const { pdfView, db } = ctx;
   const ficheId = (source && source.id) ?? ficheIdProp ?? (pdfView && pdfView.ficheId);
   const initialSrcTab = srcTabProp ?? (pdfView && pdfView.srcTab);
@@ -697,6 +698,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      deux boutons « Voir les prompts » identiques côte à côte deviennent deux
      entrées nommées. « Tout exporter » et « Copier les notions » se retrouvent
      voisines, là où leur parenté se voit. */
+  const [demandeRenommer, setDemandeRenommer] = useState(0); // « Renommer… » du menu Fichier
   const actionsDocument = [
     { label: exporting ? 'Export en cours…' : 'Exporter le PDF annoté', icon: 'filePdf',
       onClick: () => { if (!exporting) exportAnnotated(); } },
@@ -715,6 +717,48 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     canAddItem && { label: 'Détacher le PDF…', icon: 'x', onClick: () => setDetacherPdf(true) },
   ];
 
+
+  /* MENU « FICHIER » (02/10, pdf/MenuFichier.jsx) : sous le nom du document, les
+     actions sur le DOCUMENT, groupées — l'export en tête. Il remplace le menu « ⋯ »
+     de la barre d'outils, qui en contenait la moitié. */
+  const groupesFichier = [
+    { titre: 'Exporter', items: [
+      { label: exporting ? 'Export en cours…' : 'Exporter le PDF annoté', icon: 'filePdf', principal: true,
+        aide: 'Nouveau fichier avec tout : surlignages, boîtes ouvertes, flèches, images, pages ajoutées. L’original n’est pas modifié.',
+        onClick: () => { if (!exporting) exportAnnotated(); } },
+      { label: copiedCount ? 'Notions copiées ✓' : 'Copier les notions', icon: 'copy', aide: 'Texte structuré pour un prompt', onClick: copyPriority },
+      canAddItem && { label: courseExportOk ? 'Copié ✓' : 'Tout exporter (JSON)', icon: 'copy', onClick: exportAllPdfCourse },
+    ] },
+    { titre: 'Document', items: [
+      ficheReelle && { label: 'Renommer…', icon: 'edit', onClick: () => setDemandeRenommer((n) => n + 1) },
+      !!pdfDoc && { label: 'Insérer une page après la page affichée', icon: 'plus', onClick: () => insererPageApres(pageCourante - 1) },
+      !!pdfDoc && { label: 'Insérer une page à une position…', icon: 'plus', onClick: () => setAjoutPage({ apresIdx: pageCourante - 1 }) },
+      !!pdfDoc && { label: 'Insérer une image…', icon: 'image', onClick: () => entreeImageRef.current && entreeImageRef.current.click() },
+      !!pending && { label: 'Remplacer le texte sélectionné', icon: 'edit', onClick: () => startEditFromSelection() },
+      !!fiche.htmlId && { label: 'Voir la fiche HTML', icon: 'fileHtml', onClick: () => setSrcTab('html') },
+    ] },
+    { titre: 'Fiche', items: [
+      canAddItem && { label: 'Ajouter un item', icon: 'plus', onClick: () => setShowAddItem(true) },
+      canAddItem && { label: 'Importer des items', icon: 'upload', onClick: () => { setImportedCount(0); setShowImportItems(true); } },
+      canAddItem && { label: 'Prompts (théorie et exercices)', icon: 'layers', onClick: () => setPromptsOuverts(true) },
+      canAddItem && { label: 'Détacher le PDF…', icon: 'x', danger: true, onClick: () => setDetacherPdf(true) },
+    ] },
+  ];
+  const entete = (
+    <div className="lecteur-entete doc">
+      <div className="doc-bloc">
+        <TitreRenommable titre={fiche && fiche.titre} demandeEdition={demandeRenommer}
+          onRenommer={ficheReelle ? (t) => ctx.renameFiche(ficheReelle.id, t) : null}
+          sousTitre={nbPagesAffichees ? `${nbPagesAffichees} page${nbPagesAffichees > 1 ? 's' : ''}` : null} />
+        <MenuFichier groupes={srcTab === 'html'
+          ? [{ items: [ficheReelle && { label: 'Renommer…', icon: 'edit', onClick: () => setDemandeRenommer((n) => n + 1) },
+            !!(fiche && fiche.pdfId) && { label: 'Voir le PDF', icon: 'filePdf', onClick: () => setSrcTab('pdf') }] }]
+          : groupesFichier} />
+      </div>
+      <div className="topbar-actions"><EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} /></div>
+    </div>
+  );
+  const afficherEntete = !embedded || avecEntete;
 
   /* EXPORT DU PDF ANNOTÉ COMPLET (01/10, voir pdf/exportAnnote.js) : surlignages,
      boîtes OUVERTES avec leurs flèches, traits, images, textes, « ? », pages
@@ -1204,6 +1248,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
           </div>
         )}
+        {embedded && avecEntete && entete}
         <div className="card" style={{ maxWidth: 480, margin: '30px auto', textAlign: 'center', padding: '30px 20px' }}>
           <Icon name="filePdf" size={30} />
           <div style={{ marginTop: 10, fontWeight: 600 }}>Attacher le cours</div>
@@ -1223,23 +1268,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // La branche HTML est un AUTRE produit (iframe de cours éditable + sidebar
   // d'items) : elle vit dans son propre fichier depuis l'étape 4 du refactor.
   if (srcTab === 'html') {
-    return (
+    const vueHtml = (
       <CourseHtmlView ctx={ctx} fiche={fiche} ficheId={ficheId} canAddItem={canAddItem}
         embedded={embedded} close={close} onVoirPdf={() => setSrcTab('pdf')} onRattacher={attachDoc} />
     );
+    // la vue HTML plein écran a son propre en-tête ; embarquée (Bibliothèque), elle
+    // reçoit le même nom renommable + menu Fichier que le PDF
+    return embedded && avecEntete ? <div className="fadein">{entete}{vueHtml}</div> : vueHtml;
   }
 
   return (
     <div className={embedded ? 'fadein' : 'screen scroll fadein lecteur-plein'}>
-      {!embedded && (
-        // plein écran (Réviser) : même en-tête compact que la Bibliothèque — le nom de la
-        // fiche en petit, renommable d'un clic (vraie fiche seulement), la place au document
-        <div className="lecteur-entete">
-          <TitreRenommable titre={fiche.titre} onRenommer={ficheReelle ? (t) => ctx.renameFiche(ficheReelle.id, t) : null}
-            sousTitre={nbPagesAffichees ? `${nbPagesAffichees} page${nbPagesAffichees > 1 ? 's' : ''}` : null} />
-          <div className="topbar-actions"><EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} /></div>
-        </div>
-      )}
+      {/* en-tête : nom renommable + menu Fichier (plein écran, ou Bibliothèque) */}
+      {afficherEntete && entete}
 
       <PdfToolbar
         onClose={close}
@@ -1251,7 +1292,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         search={search} setSearch={setSearch} matches={matches} activeMatch={activeMatch} searching={searching}
         onPrecedent={gotoPrevMatch} onSuivant={gotoNextMatch} onFermerRecherche={closeSearch}
         panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={highlights.length}
-        actionsDocument={actionsDocument}
+        actionsDocument={afficherEntete ? [] : actionsDocument /* avec l'en-tête, tout est dans « Fichier » */}
         onAjouterPage={pdfDoc ? () => insererPageApres(pageCourante - 1) : null}
         onAjouterImage={pdfDoc ? () => entreeImageRef.current && entreeImageRef.current.click() : null}
         contexteSupplementaire={outil === 'surligneur' ? (
