@@ -254,8 +254,14 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     if (!page) { bilan.ignores += 1; continue; }
     const { W, H } = dims(page);
     const pad = 4;
-    const x = b.x * W, w = Math.max(24, b.width * W);
+    const x = b.x * W;
+    let w = Math.max(24, b.width * W);
     const lignes = couperLignes(paragraphesDe(b.content).map(propre), font, TAILLE_BOITE, w - 2 * pad);
+    // comme à l'écran : la boîte épouse sa ligne la plus longue (+ marge), sauf largeur fixée à la main
+    if (!b.largeurFixe && lignes.some((l) => l.trim())) {
+      const plusLongue = Math.max(...lignes.map((l) => font.widthOfTextAtSize(l, TAILLE_BOITE)));
+      w = Math.max(24, Math.min(w, plusLongue + 2 * pad + 6));
+    }
     const lh = TAILLE_BOITE * 1.35;
     const h = Math.max(b.height * H, 2 * pad + Math.max(1, lignes.length) * lh);
     let top = H - b.y * H;
