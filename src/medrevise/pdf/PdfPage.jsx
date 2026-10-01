@@ -642,7 +642,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       try {
         const pt = clicRef.current;
         clicRef.current = null;
-        const at = pt && editor.view.posAtCoords({ left: pt.x, top: pt.y });
+        const at = pt && posDansEditeur(editor, pt.x, pt.y);
         const pos = at && Number.isFinite(at.pos) ? at.pos : editor.state.doc.content.size;
         editor.commands.setTextSelection(pos);
         editor.view.focus();
@@ -655,10 +655,13 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   // hauteur RÉELLEMENT affichée (px) : la boîte grandit avec son texte, la flèche et
   // la barre d'actions doivent partir de ce qu'on voit, pas du minimum enregistré
   const [hautVue, setHautVue] = useState(0);
+  const [largVue, setLargVue] = useState(0);
   useEffect(() => {
     const el = boiteRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(() => setHautVue(el.offsetHeight));
+    const mesurer = () => { setHautVue(el.offsetHeight); setLargVue(el.offsetWidth); };
+    mesurer();
+    const ro = new ResizeObserver(mesurer);
     ro.observe(el);
     return () => ro.disconnect();
   }, [boite.reduite]);
@@ -679,8 +682,11 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     const avant = boite;
     // la hauteur AFFICHÉE peut dépasser la hauteur enregistrée (la boîte grandit avec
     // son texte) : la redimension part de ce qu'on voit, sinon le coin « sauterait »
-    const hVue = boiteRef.current ? boiteRef.current.getBoundingClientRect().height / r.height : 0;
-    const base = type === 'resize' && hVue > avant.height ? { ...avant, height: hVue } : avant;
+    const vue = boiteRef.current ? boiteRef.current.getBoundingClientRect() : null;
+    const hVue = vue ? vue.height / r.height : 0, lVue = vue ? vue.width / r.width : 0;
+    // la redimension part de la taille AFFICHÉE (la boîte épouse son texte : elle peut
+    // être plus étroite que sa largeur enregistrée, ou plus haute)
+    const base = type === 'resize' ? { ...avant, height: Math.max(hVue, avant.height), width: lVue || avant.width } : avant;
     let courant = null;
     let bouge = false;
     onGeste(true);
@@ -692,7 +698,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       const dy = (ev.clientY - depart.y) / r.height;
       courant = type === 'move'
         ? { ...avant, x: clamp(avant.x + dx, 0, 1 - avant.width), y: clamp(avant.y + dy, 0, 1 - avant.height) }
-        : { ...avant,
+        : { ...avant, largeurFixe: true, // redimensionnée à la main : sa largeur ne s'ajuste plus au texte
             width: clamp(base.width + dx, BOITE_MIN.width, 1 - avant.x),
             height: clamp(base.height + dy, BOITE_MIN.height, 1 - avant.y) };
       setApercu(courant);
@@ -712,8 +718,16 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   /* HAUTEUR = UN MINIMUM (01/10) : la boîte grandit avec son texte au lieu de
      le cacher derrière un ascenseur — c'est ce qui permet de la créer compacte
      (BOITE_DEFAUT) sans jamais rien perdre. La poignée l'agrandit toujours. */
+  /* LARGEUR QUI ÉPOUSE LE TEXTE (02/10) : la largeur enregistrée devient un MAXIMUM ;
+     la boîte se resserre sur sa ligne la plus longue (+ une marge à droite pour
+     replacer le curseur). Exceptions : une boîte vide garde sa taille (sinon elle
+     deviendrait minuscule), une boîte redimensionnée à la main (`largeurFixe`)
+     garde la largeur choisie, et pendant un geste on montre la largeur exacte. */
+  const extraitBrut = boite.content ? richToHTML(boite.content).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+  const ajustee = !apercu && !boite.largeurFixe && !!extraitBrut;
   const style = {
-    left: b.x * 100 + '%', top: b.y * 100 + '%', width: b.width * 100 + '%', minHeight: b.height * 100 + '%',
+    left: b.x * 100 + '%', top: b.y * 100 + '%', minHeight: b.height * 100 + '%',
+    ...(ajustee ? { width: 'max-content', maxWidth: b.width * 100 + '%' } : { width: b.width * 100 + '%' }),
     ...(texteLibre
       ? { color: couleurHex(boite.couleur, '#1F1F24') }
       : { background: avecAlpha(COLOR_HEX[boite.couleur] || COLOR_HEX.jaune, 0.92) }),
@@ -722,7 +736,6 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   /* ÉPINGLE (ancre) : le point de la fiche auquel la boîte se rapporte. Un repère
      rond à cet endroit ; une boîte épinglée ET réduite devient une pastille posée
      SUR ce passage. Une boîte d'avant n'a ni ancre, ni `reduite` : ouverte, libre. */
-  const extraitBrut = boite.content ? richToHTML(boite.content).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
   const extrait = extraitBrut || 'Boîte vide';
   const [pointApercu, setPointApercu] = useState(null); // position pendant le glisser d'une épingle / pastille
   const ancreBrute = boite.ancre && Number.isFinite(boite.ancre.x) && Number.isFinite(boite.ancre.y) ? boite.ancre : null;
@@ -796,7 +809,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const fleche = (() => {
     if (!ancre || !boite.fleche || !pageWidth || !pageHeight) return null;
     const W = pageWidth, H = pageHeight;
-    const bx = b.x * W, by = b.y * H, bw = b.width * W, bh = Math.max(b.height * H, hautVue || 0);
+    const bx = b.x * W, by = b.y * H, bw = ajustee && largVue ? largVue : b.width * W, bh = Math.max(b.height * H, hautVue || 0);
     const cx = bx + bw / 2, cy = by + bh / 2, ax = ancre.x * W, ay = ancre.y * H;
     const dx = ax - cx, dy = ay - cy;
     if (ax >= bx && ax <= bx + bw && ay >= by && ay <= by + bh) return null; // point sous la boîte : rien à relier
@@ -818,6 +831,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   // barre SOUS l'élément : boîte collée en haut de page, ou texte libre (sa poignée
   // de déplacement occupe déjà le dessus)
   const dessous = texteLibre || (pageHeight && b.y * pageHeight < 42);
+  const bLarg = ajustee && largVue && pageWidth ? largVue / pageWidth : b.width; // largeur affichée (fraction de page)
   const stop = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onClick: (e) => { e.stopPropagation(); fn(); } });
 
   return (
@@ -840,7 +854,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     )}
     {actionsVisibles && (
       <div className={'nb-actions' + (dessous ? ' dessous' : '')}
-        style={{ ...(b.x + b.width / 2 > 0.5 ? { right: (1 - b.x - b.width) * 100 + '%' } : { left: b.x * 100 + '%' }), top: (dessous ? b.y + Math.max(b.height, hautVue / (pageHeight || 1)) : b.y) * 100 + '%' }}
+        style={{ ...(b.x + bLarg / 2 > 0.5 ? { right: (1 - b.x - bLarg) * 100 + '%' } : { left: b.x * 100 + '%' }), top: (dessous ? b.y + Math.max(b.height, hautVue / (pageHeight || 1)) : b.y) * 100 + '%' }}
         onMouseEnter={entrer} onMouseLeave={sortir}
         onPointerDown={(e) => e.stopPropagation()}>
         {texteLibre ? (
@@ -878,7 +892,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         </>)}
       </div>
     )}
-    <div ref={boiteRef} className={'note-box' + (texteLibre ? ' texte-libre' : '') + (active ? ' active' : '') + (enAncrage ? ' en-ancrage' : '') + (texteLibre && !extraitBrut ? ' vide' : '')} style={style}
+    <div ref={boiteRef} className={'note-box' + (ajustee ? ' ajustee' : '') + (texteLibre ? ' texte-libre' : '') + (active ? ' active' : '') + (enAncrage ? ' en-ancrage' : '') + (texteLibre && !extraitBrut ? ' vide' : '')} style={style}
       onMouseEnter={entrer} onMouseLeave={sortir}>
       {/* CORRECTIF (défaut 4) : le bandeau est focusable, et c'est LUI qui porte la
           suppression au clavier — plus aucun écouteur global ne peut effacer la
@@ -896,7 +910,17 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
 
       {/* VERROU 4 : le corps est du TEXTE, pas une poignée. */}
       {active && editor
-        ? <div className="nb-body"><EditorContent editor={editor} /></div>
+        ? <div className="nb-body" onMouseDown={(e) => {
+            // CLIC N'IMPORTE OÙ (02/10) : hors des lignes de texte (marge, bas de la
+            // boîte, à droite d'une ligne courte), le curseur va au point le plus proche
+            if (!editor || (e.target.closest && e.target.closest('.ProseMirror p, .ProseMirror li, .ProseMirror h1, .ProseMirror h2, .ProseMirror h3'))) return;
+            e.preventDefault();
+            try {
+              const at = posDansEditeur(editor, e.clientX, e.clientY);
+              editor.commands.setTextSelection(at ? at.pos : editor.state.doc.content.size);
+              editor.view.focus();
+            } catch (err) { /* ignore */ }
+          }}><EditorContent editor={editor} /></div>
         : <div className="nb-body" onClick={activer} data-vide={texteLibre ? 'Texte…' : undefined} dangerouslySetInnerHTML={{ __html: html }} />}
 
       <div className="nb-corner" title="Glisser pour redimensionner" onPointerDown={(e) => demarrer(e, 'resize')} />
@@ -1035,6 +1059,47 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
       )}
     </div>
   );
+}
+
+/** position dans l'éditeur la plus proche d'un point écran, même hors des lignes de
+    texte : le point est d'abord ramené dans le rectangle du texte. */
+function posDansEditeur(editor, x, y) {
+  const dom = editor && editor.view && editor.view.dom;
+  if (!dom) return null;
+  // les LIGNES de texte réellement affichées : dans le vide à droite d'une ligne,
+  // posAtCoords répond le début du paragraphe — on vise donc la ligne la plus
+  // proche verticalement, puis un point DANS cette ligne (sa fin si on est au-delà)
+  // rectangles des NŒUDS DE TEXTE seulement : ceux d'un paragraphe entier couvriraient
+  // toutes ses lignes à la fois
+  const lignes = [];
+  const parcours = document.createTreeWalker(dom, NodeFilter.SHOW_TEXT);
+  for (let n = parcours.nextNode(); n; n = parcours.nextNode()) {
+    const rg = document.createRange();
+    rg.selectNodeContents(n);
+    for (const r of rg.getClientRects()) if (r.width > 0 && r.height > 0) lignes.push(r);
+  }
+  if (!lignes.length) return { pos: editor.state.doc.content.size };
+  let best = lignes[0], dBest = Infinity;
+  for (const r of lignes) {
+    const d = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+    if (d < dBest || (d === dBest && Math.abs(x - (r.left + r.right) / 2) < Math.abs(x - (best.left + best.right) / 2))) { dBest = d; best = r; }
+  }
+  // fusionne les morceaux d'une même ligne (gras, italique…) pour connaître sa vraie fin
+  const memeLigne = lignes.filter((r) => Math.abs((r.top + r.bottom) / 2 - (best.top + best.bottom) / 2) < best.height / 2);
+  const gauche = Math.min(...memeLigne.map((r) => r.left)), droite = Math.max(...memeLigne.map((r) => r.right));
+  const cy = (best.top + best.bottom) / 2;
+  if (x >= droite) {
+    const fin = editor.view.posAtCoords({ left: droite - 1, top: cy });
+    if (!fin) return null;
+    // avance tant que la position suivante reste sur CETTE ligne : on finit après son dernier caractère
+    let p = fin.pos;
+    const max = editor.state.doc.content.size;
+    for (let i = 0; i < 3 && p < max; i++) {
+      try { const c = editor.view.coordsAtPos(p + 1, -1); /* côté gauche : à une coupure de ligne, la FIN de cette ligne */ if (Math.abs((c.top + c.bottom) / 2 - cy) < best.height / 2 && c.left >= editor.view.coordsAtPos(p).left) p += 1; else break; } catch (e) { break; }
+    }
+    return { pos: p };
+  }
+  return editor.view.posAtCoords({ left: Math.max(gauche + 1, x), top: cy });
 }
 
 /** l'épingle : une icône qui dit ce qu'elle est (l'icône « cible » ne le disait pas). */

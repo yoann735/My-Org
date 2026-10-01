@@ -831,7 +831,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!avant || !apres) return;
     const actuel = boiteFraiche(avant.id, avant);
     if (!actuel) return;
-    await hist.appliquer(cmdModifier('annotations', { ...actuel, ...GEO(avant) }, { ...actuel, ...GEO(apres) }, libelle));
+    const fixe = apres.largeurFixe && !actuel.largeurFixe ? { largeurFixe: true } : {};
+    await hist.appliquer(cmdModifier('annotations', { ...actuel, ...GEO(avant) }, { ...actuel, ...GEO(apres), ...fixe }, libelle));
   };
   /* Modification générique d'une boîte (repli, ancre, flèche…) : repart de la
      version la plus fraîche (texte en attente compris) et passe par l'historique —

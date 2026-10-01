@@ -1812,3 +1812,8 @@
 .pdfr-barre.repliee .ptb-droite { margin-left: auto; }
 .pdfr-barre.repliee .ptb-recherche { max-width: 150px; width: 150px; min-width: 0; flex: 0 1 150px; }
 .pdfr-barre.repliee .ptb-droite { gap: 6px; }
+
+/* ---- Boîte qui épouse son texte (02/10) : une marge à droite pour replacer le curseur ---- */
+.note-box.ajustee { min-width: 56px; }
+.note-box.ajustee .nb-body { padding-right: 14px; }
+.note-box .nb-body { cursor: text; }
