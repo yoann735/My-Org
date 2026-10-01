@@ -437,19 +437,43 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     return () => { ro.disconnect(); if (raf) cancelAnimationFrame(raf); };
   }, [ajusterLargeur, pageSizes]);
 
+  /* ZOOM FLUIDE (02/10) : plusieurs crans peuvent arriver AVANT le rendu suivant
+     (animation des boutons, rafale de molette). On part donc de la DERNIÈRE échelle
+     demandée (scaleRef) et du défilement déjà prévu (pendingScroll), pas de l'état
+     du dernier rendu — sinon le point visé glissait sous le curseur. */
+  const scaleRef = useRef(scale);
   const zoomAt = (clientY, newScaleRaw) => {
     zoomManuel.current = true;
     const el = scrollRef.current;
     const newScale = Math.max(0.4, Math.min(4, +newScaleRaw.toFixed(3)));
+    const s0 = scaleRef.current || scale;
+    scaleRef.current = newScale;
     if (!el) { setScale(newScale); return; }
     const rect = el.getBoundingClientRect();
     const cursorViewportY = clientY - rect.top;
-    const contentYOld = el.scrollTop + cursorViewportY;
-    const contentYNew = contentYOld * (newScale / scale);
-    pendingScroll.current = contentYNew - cursorViewportY;
+    const base = pendingScroll.current != null ? pendingScroll.current : el.scrollTop;
+    const contentYOld = base + cursorViewportY;
+    pendingScroll.current = contentYOld * (newScale / s0) - cursorViewportY;
     setScale(newScale);
   };
+  const zoomAtRef = useRef(zoomAt); zoomAtRef.current = zoomAt;
+  // boutons : une courte animation (180 ms) au lieu d'un saut de 15 %
+  const animZoom = useRef(null);
+  const animerZoom = (clientY, cible) => {
+    if (animZoom.current) cancelAnimationFrame(animZoom.current);
+    const depart = scaleRef.current || scale, t0 = performance.now(), duree = 180;
+    const pas = (t) => {
+      const k = Math.min(1, (t - t0) / duree);
+      const e = 1 - (1 - k) ** 3; // décélère en arrivant
+      zoomAtRef.current(clientY, depart * Math.pow(cible / depart, e));
+      animZoom.current = k < 1 ? requestAnimationFrame(pas) : null;
+    };
+    animZoom.current = requestAnimationFrame(pas);
+  };
   useLayoutEffect(() => {
+    // l'échelle rendue est la dernière demandée (setScale garde la plus récente) :
+    // on resynchronise la référence, y compris après l'ajustement automatique à la largeur
+    scaleRef.current = scale;
     if (pendingScroll.current != null && scrollRef.current) {
       scrollRef.current.scrollTop = Math.max(0, pendingScroll.current);
       pendingScroll.current = null;
@@ -460,25 +484,38 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const zoomButtons = (factor) => {
     const el = scrollRef.current;
     const clientY = el ? el.getBoundingClientRect().top + el.clientHeight / 2 : 0;
-    zoomAt(clientY, scale * factor);
+    animerZoom(clientY, Math.max(0.4, Math.min(4, (scaleRef.current || scale) * factor)));
   };
 
   // Ctrl/Cmd + molette : écouteur natif non-passif (nécessaire pour que preventDefault
   // bloque bien le zoom natif du navigateur — un onWheel React seul n'y suffit pas
   // de façon fiable selon les versions/navigateurs).
+  /* Molette / pincement : le facteur suit l'AMPLITUDE du geste (avant : ±10 % par
+     événement, or un pincement de trackpad en émet des dizaines par seconde → zoom
+     brutal et saccadé), et les événements d'une même image sont regroupés en un
+     seul changement d'échelle. */
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el) return undefined;
+    let cumul = 0, y = 0, raf = null;
+    const appliquer = () => {
+      raf = null;
+      const f = Math.exp(Math.max(-0.5, Math.min(0.5, cumul)));
+      cumul = 0;
+      zoomAtRef.current(y, (scaleRef.current || 1) * f);
+    };
     const onWheel = (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-      zoomAt(e.clientY, scale * factor);
+      if (animZoom.current) { cancelAnimationFrame(animZoom.current); animZoom.current = null; }
+      const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; // lignes → pixels
+      cumul += -d * (Math.abs(d) < 25 ? 0.01 : 0.0018); // pincement (petits deltas) ou molette (crans)
+      y = e.clientY;
+      if (!raf) raf = requestAnimationFrame(appliquer);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scale]);
+    return () => { el.removeEventListener('wheel', onWheel); if (raf) cancelAnimationFrame(raf); };
+  }, [pdfDoc]);
 
   /* SURLIGNAGE « COMME WORD » (nuit du 30/09) : plus de note au clic. La bulle
      d'un surlignage existant ne propose que sa couleur et « Supprimer ». Les notes

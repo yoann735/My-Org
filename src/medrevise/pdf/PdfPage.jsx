@@ -96,9 +96,17 @@ export function PdfPageContent({
   // scroll suivant, qui force un rendu propre). On repart aussi d'une matrice identité
   // (setTransform) avant chaque rendu, en garde défensive — pdf.js gère lui-même son
   // save()/restore() interne, mais on ne laisse rien d'hypothétiquement résiduel s'accumuler.
+  /* ZOOM FLUIDE (02/10). Avant, chaque cran de zoom remettait le canvas à zéro
+     (changer sa largeur l'efface) puis faisait redessiner la page par pdf.js : page
+     blanche, puis page nette, à chaque événement de molette — d'où les à-coups.
+     Désormais : le canvas est affiché à 100 % de la page (l'ancienne image s'étire
+     AUSSITÔT à la nouvelle taille), la page est redessinée HORS ÉCRAN puis recopiée
+     d'un coup, et ce rendu attend que le zoom se pose (140 ms sans nouveau cran). */
+  const dejaRendu = useRef(false);
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let minuterie = null;
+    const rendre = async () => {
       if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (e) { /* ignore */ } }
       if (vierge) {
         // PAGE AJOUTÉE : rien à demander à pdf.js — une page blanche, sans texte
@@ -118,9 +126,10 @@ export function PdfPageContent({
       // reste AFFICHÉ à la taille du viewport — la couche de texte et les surlignages,
       // positionnés en px CSS, ne voient aucune différence.
       const os = outputScaleFor(viewport.width, viewport.height, dpr);
-      canvas.width = Math.floor(viewport.width * os); canvas.height = Math.floor(viewport.height * os);
-      canvas.style.width = `${viewport.width}px`; canvas.style.height = `${viewport.height}px`;
-      const c2d = canvas.getContext('2d');
+      // rendu HORS ÉCRAN : le canvas affiché garde l'image précédente jusqu'au bout
+      const horsEcran = document.createElement('canvas');
+      horsEcran.width = Math.floor(viewport.width * os); horsEcran.height = Math.floor(viewport.height * os);
+      const c2d = horsEcran.getContext('2d');
       c2d.setTransform(1, 0, 0, 1, 0, 0);
       const task = page.render({ canvasContext: c2d, viewport, transform: os !== 1 ? [os, 0, 0, os, 0, 0] : undefined });
       renderTaskRef.current = task;
@@ -133,15 +142,24 @@ export function PdfPageContent({
         if (renderTaskRef.current === task) renderTaskRef.current = null;
       }
       if (cancelled) return;
+      // recopie d'un seul coup (redimensionner puis dessiner dans la même tâche : aucune
+      // image blanche n'est jamais affichée)
+      canvas.width = horsEcran.width; canvas.height = horsEcran.height;
+      canvas.style.width = '100%'; canvas.style.height = '100%';
+      canvas.getContext('2d').drawImage(horsEcran, 0, 0);
+      dejaRendu.current = true;
       await buildTextLayer(page, viewport, textLayerRef.current);
       if (cancelled) return;
       setLayerVersion((v) => v + 1); // couche de texte prête : les ancres peuvent être résolues
       // Chantier 2 : la textLayer réelle vient d'être (re)construite pour ce scale —
       // c'est le bon moment pour mesurer les rects exacts des occurrences via Range.
       setMatchRects(computeMatchRectsFromDom(textLayerRef.current, matches));
-    })();
+    };
+    // premier rendu tout de suite ; ensuite (zoom, recherche) on laisse le geste se poser
+    minuterie = setTimeout(rendre, dejaRendu.current && !vierge ? 140 : 0);
     return () => {
       cancelled = true;
+      clearTimeout(minuterie);
       if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (e) { /* ignore */ } }
     };
   }, [pdfDoc, pageNum, vierge, scale, dpr, matches]);
@@ -438,7 +456,7 @@ export function PdfPageContent({
 
   return (
     <>
-      <canvas ref={canvasRef} />
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
       <div ref={textLayerRef} className={'pdfr-textlayer outil-' + outil} onMouseUp={handleMouseUp} onCopy={handleCopy}
         onMouseMove={handleMouseMove} onMouseLeave={() => setSurvolId(null)}
         style={survolId ? { cursor: 'pointer' } : undefined} />
