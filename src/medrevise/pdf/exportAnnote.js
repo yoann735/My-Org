@@ -217,7 +217,7 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const ep = (surl ? (t.epaisseur || EPAISSEUR_SURLIGNEUR) : (t.epaisseur || 0.0042)) * H;
     page.drawSvgPath(cheminPoints(t.points, W, H), {
       x: 0, y: H, borderColor: hexVersRgb(couleurHex(t.couleur)), borderWidth: Math.max(surl ? 2.5 : 0.6, ep),
-      borderOpacity: surl ? OPACITE_SURLIGNEUR : 1, borderLineCap: 1 /* rond */, ...(surl ? { blendMode: BlendMode.Multiply } : {}),
+      borderOpacity: Number.isFinite(t.opacite) ? t.opacite : (surl ? OPACITE_SURLIGNEUR : 1), borderLineCap: 1 /* rond */, ...(surl ? { blendMode: BlendMode.Multiply } : {}),
     });
     bilan.traits += 1;
   }

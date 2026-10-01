@@ -144,3 +144,35 @@ function FenetreRoue({ x, y, depart, onFermer, onValider }) {
     </div>
   );
 }
+
+/* ============================================================
+   RÉGLAGES DU TRAIT (crayon, 03/10) : deux curseurs fins, TAILLE et OPACITÉ, et
+   un aperçu du trait tel qu'il sera posé (couleur, épaisseur réelle à ce zoom,
+   transparence). Bornes propres à chaque mode : un surligneur est plus épais.
+   ============================================================ */
+const BORNES = { dessin: { min: 0.001, max: 0.016 }, surligneur: { min: 0.006, max: 0.04 } };
+export function ReglagesTrait({ mode, reglage, couleur, hauteurPage = 1000, onChange }) {
+  const b = BORNES[mode] || BORNES.dessin;
+  const pct = Math.round(((reglage.taille - b.min) / (b.max - b.min)) * 100);
+  const px = Math.max(1, Math.min(22, reglage.taille * hauteurPage));
+  return (
+    <div className="rt" aria-label="Réglages du trait">
+      <span className="rt-apercu" title="Aperçu du trait">
+        <svg width="34" height="24" viewBox="0 0 34 24" aria-hidden="true">
+          <path d="M3 17 C 10 4, 20 22, 31 7" fill="none" stroke={couleur} strokeOpacity={reglage.opacite} strokeWidth={px} strokeLinecap="round" />
+        </svg>
+      </span>
+      <label className="rt-curseur" title="Taille du trait">
+        <span>Taille</span>
+        <input type="range" min="0" max="100" value={Math.max(0, Math.min(100, pct))}
+          onChange={(e) => onChange({ taille: b.min + ((b.max - b.min) * Number(e.target.value)) / 100 })} />
+      </label>
+      <label className="rt-curseur" title="Opacité du trait">
+        <span>Opacité</span>
+        <input type="range" min="10" max="100" value={Math.round(reglage.opacite * 100)}
+          onChange={(e) => onChange({ opacite: Number(e.target.value) / 100 })} />
+        <i className="rt-valeur">{Math.round(reglage.opacite * 100)} %</i>
+      </label>
+    </div>
+  );
+}

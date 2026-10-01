@@ -1923,3 +1923,15 @@
 .pdfr-edit-toolbar .et-select { height: 26px; font-size: 11.5px; }
 .pdfr-edit-toolbar .et-color { width: 26px; height: 26px; }
 .pdfr-edit-toolbar .btn.sm { height: 26px; padding: 0 10px; font-size: 12px; }
+
+/* ---- Réglages du crayon : taille + opacité (03/10) ---- */
+.rt { display: flex; align-items: center; gap: 12px; }
+.rt-apercu { display: inline-flex; width: 38px; height: 26px; align-items: center; justify-content: center; border-radius: 7px;
+  background: #fff; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+.rt-curseur { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-3); }
+.rt-curseur input { width: 86px; height: 4px; -webkit-appearance: none; appearance: none; border-radius: 999px; outline: none; cursor: pointer;
+  background: var(--border-2, rgba(255,255,255,.15)); }
+.rt-curseur input::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: var(--text);
+  box-shadow: 0 0 0 3px var(--card), 0 1px 4px rgba(0,0,0,.35); }
+.rt-curseur input::-moz-range-thumb { width: 13px; height: 13px; border-radius: 50%; background: var(--text); border: 0; }
+.rt-valeur { font-style: normal; min-width: 32px; font-variant-numeric: tabular-nums; color: var(--text-2); }

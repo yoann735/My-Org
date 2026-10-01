@@ -66,11 +66,11 @@ import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
   COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI,
   useDevicePixelRatio, compareHighlights, computePageTextMap, EPAISSEURS,
-  MODES_CRAYON, EPAISSEUR_SURLIGNEUR, couleurHex, BOITE_DEFAUT,
+  MODES_CRAYON, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, couleurHex, BOITE_DEFAUT,
 } from './pdfShared.js';
 import { PdfPageContent, EditToolbar } from './PdfPage.jsx';
 import { PdfToolbar, PaletteCrayon } from './PdfToolbar.jsx';
-import { SelecteurCouleurs } from './Couleurs.jsx';
+import { SelecteurCouleurs, ReglagesTrait } from './Couleurs.jsx';
 import { useCouleursPerso } from '../lib/couleursPerso.js';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
@@ -169,7 +169,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [couleurCrayon, setCouleurCrayon] = useState('bleu');
   const [couleurTexte, setCouleurTexte] = useState('noir'); // couleur du prochain TEXTE LIBRE
   const [couleursPerso] = useCouleursPerso(); // proposées aussi dans la bulle d'un surlignage
-  const [epaisseur, setEpaisseur] = useState(EPAISSEURS[0].id); // mode dessin : trait FIN par défaut
+  /* RÉGLAGES DU CRAYON (03/10) : TAILLE et OPACITÉ, deux curseurs, réglés séparément
+     pour chaque mode (dessin / surligneur à main levée) et mémorisés sur l'appareil
+     (préférence d'affichage, rien au cloud). Remplacent les 3 boutons d'épaisseur. */
+  const REGLAGES_DEFAUT = { dessin: { taille: 0.0042, opacite: 1 }, surligneur: { taille: EPAISSEUR_SURLIGNEUR, opacite: OPACITE_SURLIGNEUR } };
+  const [reglagesCrayon, setReglagesCrayon] = useState(() => {
+    try { const v = JSON.parse(localStorage.getItem('medrevise.reglagesCrayon') || 'null'); if (v && v.dessin && v.surligneur) return v; } catch (e) { /* ignore */ }
+    return REGLAGES_DEFAUT;
+  });
   const [aimant, setAimant] = useState(true); // le lissage est utile par défaut ; décochable (mode dessin seulement)
   const [modeCrayon, setModeCrayon] = useState('dessin'); // dessin (fin, doux) | surligneur (épais, translucide)
   // changer d'outil ferme ce qui appartenait au précédent
@@ -961,7 +968,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!points || points.length < 2) return;
     const surligneur = mode === 'surligneur';
     const rec = newTrait({ ficheId, page, points, couleur: couleurCrayon, mode,
-      epaisseur: surligneur ? EPAISSEUR_SURLIGNEUR : (EPAISSEURS.find((e) => e.id === epaisseur) || EPAISSEURS[0]).v,
+      epaisseur: (reglagesCrayon[mode] || REGLAGES_DEFAUT.dessin).taille,
+      opacite: (reglagesCrayon[mode] || REGLAGES_DEFAUT.dessin).opacite,
       aimant: !surligneur && aimant });
     await hist.appliquer(cmdCreer('annotations', rec, surligneur ? 'Surligneur à main levée' : 'Trait au crayon'));
   };
@@ -1339,15 +1347,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 </button>
               ))}
             </div>
+            <span className="ptb-sep" />
+            <ReglagesTrait mode={modeCrayon} reglage={reglagesCrayon[modeCrayon]} couleur={couleurHex(couleurCrayon)}
+              hauteurPage={(pageSizes[Math.max(0, pageCourante - 1)] || { height: 792 }).height * scale}
+              onChange={(patch) => setReglagesCrayon((r) => {
+                const n = { ...r, [modeCrayon]: { ...r[modeCrayon], ...patch } };
+                try { localStorage.setItem('medrevise.reglagesCrayon', JSON.stringify(n)); } catch (e) { /* ignore */ }
+                return n;
+              })} />
             {modeCrayon === 'dessin' && (
               <>
-                <span className="ptb-sep" />
-                {EPAISSEURS.map((e) => (
-                  <button key={e.id} type="button" title={`Épaisseur ${e.label.toLowerCase()}`}
-                    className={'ptb-epaisseur' + (epaisseur === e.id ? ' actif' : '')} onClick={() => setEpaisseur(e.id)}>
-                    <span style={{ height: Math.max(2, e.v * 900), width: 22, borderRadius: 3, background: 'currentColor', display: 'block' }} />
-                  </button>
-                ))}
                 <span className="ptb-sep" />
                 <button type="button" className={'ptb-bascule' + (aimant ? ' actif' : '')} onClick={() => setAimant((v) => !v)}
                   title="Lisse le tremblement et redresse les traits presque droits. Décoché, le trait est conservé tel qu'il a été tracé.">
@@ -1453,7 +1462,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onCreerTrait={creerTrait}
                       onSupprimerTraits={supprimerTraits}
                       couleurTrait={couleurCrayon}
-                      epaisseurTrait={(EPAISSEURS.find((e) => e.id === epaisseur) || EPAISSEURS[1]).v}
+                      epaisseurTrait={reglagesCrayon[modeCrayon].taille}
+                      opaciteTrait={reglagesCrayon[modeCrayon].opacite}
                       aimantActif={aimant}
                       modeCrayon={modeCrayon}
                       outil={outil}

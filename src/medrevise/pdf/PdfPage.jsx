@@ -62,7 +62,7 @@ export function PdfPageContent({
   pdfDoc, pageNum, vierge = false, scale, pageHeight, dpr, highlights, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
   onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, ancrageSurlignage = false, onDemanderAncrage = () => {},
   onCreerTrait, onSupprimerTraits, cibleHlId,
-  couleurTrait = 'jaune', epaisseurTrait = 0.0042, aimantActif = true, modeCrayon = 'dessin',
+  couleurTrait = 'jaune', epaisseurTrait = 0.0042, opaciteTrait = 1, aimantActif = true, modeCrayon = 'dessin',
   textes = [], questions = [], onPoser = () => {},
   images = [], imageActiveId = null, onImageActiver = () => {}, onImageMaj = () => {}, onImageCalque = () => {}, onImageSupprimer = () => {},
 }) {
@@ -536,13 +536,13 @@ export function PdfPageContent({
           return (
             <path key={cle} d={cheminLisse(t.points)} fill="none"
               stroke={couleurHex(t.couleur)}
-              strokeOpacity={surl ? OPACITE_SURLIGNEUR : (apercu ? 0.9 : 1)}
+              strokeOpacity={Number.isFinite(t.opacite) ? t.opacite : (surl ? OPACITE_SURLIGNEUR : (apercu ? 0.9 : 1))}
               strokeWidth={Math.max(surl ? 4 : 1, ep * H)}
               strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
           );
         };
         const enCours = traitEnCours && { points: traitEnCours, couleur: couleurTrait, mode: modeCrayon,
-          epaisseur: modeCrayon === 'surligneur' ? EPAISSEUR_SURLIGNEUR : epaisseurTrait };
+          epaisseur: epaisseurTrait, opacite: opaciteTrait };
         const visibles = masques ? traits.filter((t) => !masques.has(t.id)) : traits;
         const surl = visibles.filter((t) => modeDuTrait(t) === 'surligneur');
         const dess = visibles.filter((t) => modeDuTrait(t) !== 'surligneur');
