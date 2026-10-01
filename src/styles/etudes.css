@@ -1907,3 +1907,19 @@
   background: none; color: var(--text); font-size: 12px; cursor: pointer; }
 .hl-lier:hover { background: var(--accent-soft); color: var(--accent); }
 .pdfr-ancrage-aide.ratee { background: var(--crit) !important; color: #fff !important; }
+
+/* ---- Barre de paramètres d'une boîte, COMPACTE (03/10) : pilule fine, libellés courts ---- */
+.nb-actions { gap: 1px; padding: 2px; border-radius: 999px; transform: translateY(calc(-100% - 4px));
+  background: color-mix(in srgb, var(--card) 94%, transparent); backdrop-filter: blur(10px);
+  border-color: var(--border-2); box-shadow: 0 3px 10px rgba(0,0,0,.22); }
+.nb-actions.dessous { transform: translateY(4px); }
+.nb-act { height: 22px; padding: 0 8px; gap: 4px; border-radius: 999px; font-size: 11px; font-weight: 500; color: var(--text-2); border: 0; }
+.nb-act:hover { color: var(--text); background: var(--bg-2); border: 0; }
+.nb-act.danger { padding: 0 7px; }
+.nb-act .nb-act-x { margin-left: 4px; padding: 0 6px; font-size: 10.5px; }
+/* barre de mise en forme (texte d'une boîte) : un cran plus fine */
+.pdfr-edit-toolbar { gap: 4px; padding: 4px 8px; margin-bottom: 10px; }
+.pdfr-edit-toolbar .et-btn { min-width: 26px; height: 26px; padding: 0 6px; font-size: 12.5px; }
+.pdfr-edit-toolbar .et-select { height: 26px; font-size: 11.5px; }
+.pdfr-edit-toolbar .et-color { width: 26px; height: 26px; }
+.pdfr-edit-toolbar .btn.sm { height: 26px; padding: 0 10px; font-size: 12px; }

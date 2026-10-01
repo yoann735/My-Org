@@ -829,7 +829,9 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   // nombre de hooks que la boîte soit ouverte ou réduite.
   const [survol, setSurvol] = useState(false);
   const timerSurvol = useRef(null);
-  const entrer = () => { clearTimeout(timerSurvol.current); setSurvol(true); };
+  // la barre n'apparaît qu'après un court survol (300 ms) : passer la souris sur une
+  // boîte ne la fait plus surgir par-dessus le cours (03/10)
+  const entrer = () => { clearTimeout(timerSurvol.current); timerSurvol.current = setTimeout(() => setSurvol(true), 300); };
   const sortir = () => { clearTimeout(timerSurvol.current); timerSurvol.current = setTimeout(() => setSurvol(false), 250); };
   useEffect(() => () => clearTimeout(timerSurvol.current), []);
   const rouvrir = () => onModifier(boite, { reduite: false }, 'Réouverture de la boîte');
@@ -908,7 +910,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         onPointerDown={(e) => e.stopPropagation()}>
         {texteLibre ? (
           <button type="button" className="nb-act danger" {...stop(() => onSupprimer(boite))} title={`Supprimer ce texte (annulable par ${RACCOURCI_Z})`}>
-            <Icon name="trash" size={13} /> Supprimer
+            <Icon name="trash" size={12} />
           </button>
         ) : enAncrage ? (
           <button type="button" className="nb-act vise" {...stop(() => onDemanderAncrage(null))} title="Annuler (Échap)">
@@ -918,36 +920,36 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
           {ancre ? (
             <button type="button" className="nb-act actif" {...stop(() => onModifier(boite, { ancre: null, fleche: false, surlignageId: null }, 'Retrait de l’épingle'))}
               title={`${titreAncre}. Pour la déplacer : glisse l’épingle sur la page. Cliquer ici la retire (et la flèche avec).`}>
-              <IconeEpingle size={13} /> Retirer l’épingle
+              <IconeEpingle size={11} /> Épingle
             </button>
           ) : (
             <button type="button" className="nb-act" {...stop(() => onDemanderAncrage(boite.id))}
               title="Épingler la boîte à un endroit précis de la fiche : clique ensuite sur le passage visé.">
-              <IconeEpingle size={13} /> Épingler
+              <IconeEpingle size={11} /> Épingler
             </button>
           )}
           {boite.surlignageId ? (
             <button type="button" className="nb-act actif" {...stop(() => onModifier(boite, { ancre: null, fleche: false, surlignageId: null }, 'Lien au surlignage retiré'))}
               title={`Reliée au surlignage${ancre && ancre.texte ? ` « ${ancre.texte} »` : ''}. Cliquer pour retirer le lien.`}>
-              <Icon name="edit" size={13} /> Délier
+              <Icon name="edit" size={11} /> Délier
             </button>
           ) : (
             <button type="button" className="nb-act" {...stop(() => onDemanderAncrage(boite.id, { surlignage: true }))}
               title="Relier cette boîte à un surlignage : clique ensuite le passage surligné, une flèche les relie.">
-              <Icon name="edit" size={13} /> Relier
+              <Icon name="edit" size={11} /> Relier
             </button>
           )}
           <button type="button" className={'nb-act' + (ancre && boite.fleche ? ' actif' : '')}
             {...stop(() => (ancre ? onModifier(boite, { fleche: !boite.fleche }, boite.fleche ? 'Retrait de la flèche' : 'Ajout de la flèche') : onDemanderAncrage(boite.id, { fleche: true })))}
             title={!ancre ? 'Flèche vers un endroit de la fiche : clique ensuite sur le passage visé, la flèche se trace toute seule.' : boite.fleche ? 'Retirer la flèche' : 'Tracer une flèche de la boîte vers son épingle'}>
-            <Icon name="arrowR" size={13} /> {ancre && boite.fleche ? 'Retirer la flèche' : 'Flèche'}
+            <Icon name="arrowR" size={11} /> Flèche
           </button>
           <button type="button" className="nb-act" {...stop(() => onModifier(boite, { reduite: true }, 'Réduction de la boîte'))}
             title="Réduire en pastille : un clic sur la pastille rouvre la boîte, un glisser la déplace.">
-            <Icon name="minus" size={13} /> Réduire
+            <Icon name="minus" size={11} /> Réduire
           </button>
           <button type="button" className="nb-act danger" {...stop(() => onSupprimer(boite))} title={`Supprimer la boîte (annulable par ${RACCOURCI_Z})`}>
-            <Icon name="trash" size={13} /> Supprimer
+            <Icon name="trash" size={12} />
           </button>
         </>)}
       </div>
