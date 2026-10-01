@@ -192,10 +192,13 @@ export function PdfPageContent({
       // la boîte ne sort jamais de la page
       const x = clamp(rect.x, 0, 1 - BOITE_MIN.width);
       const y = clamp(rect.y, 0, 1 - BOITE_MIN.height);
+      // taille TRACÉE (à ce zoom) → taille enregistrée à l'échelle de référence : la boîte
+      // garde à l'écran la taille dessinée, et ne bougera plus avec le zoom (03/10)
+      const k = rect === courant ? (scale || ECHELLE_REF) / ECHELLE_REF : 1;
       onCreerBoite({
         page: pageNum, x, y,
-        width: clamp(rect.width, BOITE_MIN.width, 1 - x),
-        height: clamp(rect.height, BOITE_MIN.height, 1 - y),
+        width: clamp(rect.width * k, BOITE_MIN.width, 1 - x),
+        height: clamp(rect.height * k, BOITE_MIN.height, 1 - y),
       });
     };
     window.addEventListener('pointermove', move);
@@ -589,7 +592,7 @@ export function PdfPageContent({
       {/* textes libres et « ? » : des ANNOTATIONS, donc au-dessus des images et
           des traits, comme les boîtes (règle fixe des calques). */}
       {textes.map((t) => (
-        <NoteBox key={t.id} boite={t} variante="texte" active={t.id === activeEditId}
+        <NoteBox key={t.id} boite={t} variante="texte" echelle={scale} active={t.id === activeEditId}
           editor={t.id === activeEditId ? activeEditor : null}
           onActivate={onActivateEdit}
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
@@ -604,7 +607,7 @@ export function PdfPageContent({
       {/* rendues APRÈS la couche de tracé : une boîte existante reste toujours
           atteignable, même l'outil « Boîte de texte » actif. */}
       {boites.map((b) => (
-        <NoteBox key={b.id} boite={b} active={b.id === activeEditId}
+        <NoteBox key={b.id} boite={b} echelle={scale} active={b.id === activeEditId}
           editor={b.id === activeEditId ? activeEditor : null}
           onActivate={onActivateEdit}
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
@@ -655,7 +658,13 @@ export function PdfPageContent({
    Une seule entrée d'historique par geste : l'état d'avant est capturé au
    pointerdown, la commande empilée au pointerup, et seulement si ça a bougé.
    ============================================================ */
-function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, viseSurlignage = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite' }) {
+function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, viseSurlignage = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF }) {
+  /* TAILLE FIXE AU ZOOM (03/10) : la largeur/hauteur enregistrées sont des fractions
+     de page À L'ÉCHELLE DE RÉFÉRENCE (160 %, le zoom par défaut). Affichées en px
+     constants : zoomer déplace la boîte avec le document, sans la grossir ni la
+     rétrécir (son texte, lui, a toujours été en px fixes). */
+  const refW = ((pageWidth || 0) / (echelle || ECHELLE_REF)) * ECHELLE_REF;
+  const refH = ((pageHeight || 0) / (echelle || ECHELLE_REF)) * ECHELLE_REF;
   const texteLibre = variante === 'texte'; // TEXTE LIBRE (01/10) : même mécanique, sans cadre ni fond
   const [apercu, setApercu] = useState(null); // géométrie pendant le geste (état local, non persisté)
   const b = apercu || boite;
@@ -732,7 +741,8 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     // la hauteur AFFICHÉE peut dépasser la hauteur enregistrée (la boîte grandit avec
     // son texte) : la redimension part de ce qu'on voit, sinon le coin « sauterait »
     const vue = boiteRef.current ? boiteRef.current.getBoundingClientRect() : null;
-    const hVue = vue ? vue.height / r.height : 0, lVue = vue ? vue.width / r.width : 0;
+    // mesures en unités de RÉFÉRENCE (taille fixe au zoom) : px affichés ÷ px de référence
+    const hVue = vue ? vue.height / refH : 0, lVue = vue ? vue.width / refW : 0;
     // la redimension part de la taille AFFICHÉE (la boîte épouse son texte : elle peut
     // être plus étroite que sa largeur enregistrée, ou plus haute)
     const base = type === 'resize' ? { ...avant, height: Math.max(hVue, avant.height), width: lVue || avant.width } : avant;
@@ -743,10 +753,12 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     const move = (ev) => {
       if (!bouge && Math.abs(ev.clientX - depart.x) + Math.abs(ev.clientY - depart.y) <= 4) return;
       bouge = true;
-      const dx = (ev.clientX - depart.x) / r.width;
-      const dy = (ev.clientY - depart.y) / r.height;
+      // déplacer : en fraction de la page (la position suit le document) ;
+      // redimensionner : en unités de référence (la taille, elle, est fixe à l'écran)
+      const dx = (ev.clientX - depart.x) / (type === 'move' ? r.width : refW);
+      const dy = (ev.clientY - depart.y) / (type === 'move' ? r.height : refH);
       courant = type === 'move'
-        ? { ...avant, x: clamp(avant.x + dx, 0, 1 - avant.width), y: clamp(avant.y + dy, 0, 1 - avant.height) }
+        ? { ...avant, x: clamp(avant.x + dx, 0, 0.98), y: clamp(avant.y + dy, 0, 0.98) }
         : { ...avant, largeurFixe: true, // redimensionnée à la main : sa largeur ne s'ajuste plus au texte
             width: clamp(base.width + dx, BOITE_MIN.width, 1 - avant.x),
             height: clamp(base.height + dy, BOITE_MIN.height, 1 - avant.y) };
@@ -775,8 +787,8 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const extraitBrut = boite.content ? richToHTML(boite.content).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
   const ajustee = !apercu && !boite.largeurFixe && !!extraitBrut;
   const style = {
-    left: b.x * 100 + '%', top: b.y * 100 + '%', minHeight: b.height * 100 + '%',
-    ...(ajustee ? { width: 'max-content', maxWidth: b.width * 100 + '%' } : { width: b.width * 100 + '%' }),
+    left: b.x * 100 + '%', top: b.y * 100 + '%', minHeight: b.height * refH,
+    ...(ajustee ? { width: 'max-content', maxWidth: b.width * refW } : { width: b.width * refW }),
     ...(texteLibre
       ? { color: couleurHex(boite.couleur, '#1F1F24') }
       : { background: avecAlpha(COLOR_HEX[boite.couleur] || COLOR_HEX.jaune, 0.92) }),
@@ -860,7 +872,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const fleche = (() => {
     if (!ancre || !boite.fleche || !pageWidth || !pageHeight) return null;
     const W = pageWidth, H = pageHeight;
-    const bx = b.x * W, by = b.y * H, bw = ajustee && largVue ? largVue : b.width * W, bh = Math.max(b.height * H, hautVue || 0);
+    const bx = b.x * W, by = b.y * H, bw = ajustee && largVue ? largVue : b.width * refW, bh = Math.max(b.height * refH, hautVue || 0);
     const cx = bx + bw / 2, cy = by + bh / 2, ax = ancre.x * W, ay = ancre.y * H;
     const dx = ax - cx, dy = ay - cy;
     if (ax >= bx && ax <= bx + bw && ay >= by && ay <= by + bh) return null; // point sous la boîte : rien à relier
@@ -882,7 +894,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   // barre SOUS l'élément : boîte collée en haut de page, ou texte libre (sa poignée
   // de déplacement occupe déjà le dessus)
   const dessous = texteLibre || (pageHeight && b.y * pageHeight < 42);
-  const bLarg = ajustee && largVue && pageWidth ? largVue / pageWidth : b.width; // largeur affichée (fraction de page)
+  const bLarg = pageWidth ? (ajustee && largVue ? largVue : b.width * refW) / pageWidth : b.width; // largeur affichée (fraction de page)
   const stop = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onClick: (e) => { e.stopPropagation(); fn(); } });
 
   return (
@@ -1131,6 +1143,9 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
     </div>
   );
 }
+
+/** zoom de référence des boîtes (le zoom par défaut du lecteur) : voir NoteBox. */
+const ECHELLE_REF = 1.6;
 
 /** position dans l'éditeur la plus proche d'un point écran, même hors des lignes de
     texte : le point est d'abord ramené dans le rectangle du texte. */
