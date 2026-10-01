@@ -1752,13 +1752,14 @@
    sur la page — et, outil « ? » actif, posait un nouveau « ? » au lieu de supprimer */
 .pdfr-question:hover .pq-x, .pdfr-question:focus-within .pq-x, .pdfr-question .pq-x:hover { opacity: 1; }
 
-/* ---- Pages ajoutées (01/10) ---- */
+/* ---- Pages ajoutées (01/10, étiquette refaite 03/10) ---- */
 .pdfr-page-ajoutee { outline: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 3px; }
-.pdfr-ajout-etiquette { position: absolute; top: -22px; right: 0; display: flex; align-items: center; gap: 8px; z-index: 6;
-  font-size: 11px; color: var(--text-2); }
-.pdfr-ajout-etiquette span { display: inline-flex; align-items: center; gap: 4px; }
-.pdfr-ajout-etiquette button { display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 7px; border-radius: 6px;
-  border: 1px solid var(--border-2); background: var(--card); color: var(--crit); font-size: 11px; cursor: pointer; }
+.pdfr-ajout-etiquette { position: absolute; top: 10px; right: 10px; z-index: 30; display: flex; align-items: center; gap: 8px; }
+.pdfr-ajout-nom { font-size: 11px; font-weight: 600; letter-spacing: .02em; color: #8a8a99; }
+.pdfr-ajout-retirer { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 8px; cursor: pointer;
+  font-size: 12.5px; font-weight: 600; color: #c0353a; background: #fff; border: 1px solid #f0c9ca; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  transition: background .12s, border-color .12s; }
+.pdfr-ajout-retirer:hover { background: #fdeeee; border-color: #e3a3a5; }
 .pdfr-ajout-choix { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; }
 .pdfr-ajout-choix select { height: 34px; border-radius: 8px; border: 1px solid var(--border-2); background: var(--card-2); color: var(--text); padding: 0 8px; font-weight: 400; }
 
@@ -1865,13 +1866,15 @@
   transition: background .12s, color .12s, border-color .12s; }
 .lt-sec-plus:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 
-/* « + Page » entre deux pages (02/10) : discret, ressort au survol de l'espace */
-.pdfr-inter { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; z-index: 4; }
-.pdfr-inter-btn { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 9px; border-radius: 999px; cursor: pointer;
-  font-size: 11px; color: var(--text-2); background: var(--card); border: 1px solid var(--border-2); opacity: 0; transform: scale(.92);
-  transition: opacity .14s, transform .14s, color .12s, border-color .12s; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
-.pdfr-inter:hover .pdfr-inter-btn, .pdfr-inter-btn:focus-visible { opacity: 1; transform: none; }
-.pdfr-inter-btn:hover { color: var(--accent); border-color: var(--accent); }
+/* Insérer une page : TOUT l'espace entre deux pages est le bouton (03/10) */
+.pdfr-inter { position: absolute; left: 50%; transform: translateX(-50%); z-index: 3; display: flex; align-items: center; justify-content: center;
+  padding: 0; border: 0; background: transparent; cursor: pointer; color: var(--text-3); }
+.pdfr-inter-trait { position: absolute; left: 0; right: 0; top: 50%; border-top: 1.5px dashed transparent; transition: border-color .14s; }
+.pdfr-inter-lbl { position: relative; display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 11px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; background: var(--card); border: 1px solid var(--border-2); opacity: .35; transition: opacity .14s, color .14s, border-color .14s; }
+.pdfr-inter:hover .pdfr-inter-trait, .pdfr-inter:focus-visible .pdfr-inter-trait { border-color: var(--accent); }
+.pdfr-inter:hover .pdfr-inter-lbl, .pdfr-inter:focus-visible .pdfr-inter-lbl { opacity: 1; color: var(--accent); border-color: var(--accent); }
+
 
 /* ---- En-tête du document : nom + menu « Fichier » (02/10) ---- */
 .lecteur-entete.doc { align-items: flex-start; position: relative; z-index: 60; } /* son menu Fichier passe au-dessus des barres d’outils (PDF et HTML) */

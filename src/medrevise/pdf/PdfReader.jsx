@@ -1410,24 +1410,28 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 const active = idx >= visibleRange.start && idx <= visibleRange.end;
                 const style = { position: 'absolute', top, left: '50%', transform: 'translateX(-50%)', width: w, height: h };
                 if (!active) return <div key={n} className="pdfr-placeholder" style={style} />;
-                /* « + PAGE » ENTRE DEUX PAGES (02/10) : dans l'espace sous chaque page, un
-                   bouton qui insère une page blanche JUSTE ICI — plus de liste de 17 pages
-                   à parcourir. Discret, il ressort au survol de l'espace. */
+                /* INSÉRER UNE PAGE ICI (03/10) : TOUT l'espace entre deux pages est un
+                   bouton, sur toute la largeur de la page — on vise large, on voit où la
+                   page arrivera (trait pointillé + libellé au survol). */
                 const inter = (
-                  <div key={n + ':inter'} className="pdfr-inter" style={{ top: top + h, height: Math.max(14, GAP * scale), width: w }}>
-                    <button type="button" className="pdfr-inter-btn" onClick={() => insererPageApres(idx)}
-                      title={`Insérer une page blanche après la page ${idx + 1}`}>
-                      <Icon name="plus" size={11} /> Page
-                    </button>
-                  </div>
+                  <button key={n + ':inter'} type="button" className="pdfr-inter"
+                    style={{ top: top + h, height: Math.max(16, GAP * scale), width: w }}
+                    onClick={() => insererPageApres(idx)} title={`Insérer une page blanche ici (après la page ${idx + 1})`}>
+                    <span className="pdfr-inter-trait" aria-hidden="true" />
+                    <span className="pdfr-inter-lbl"><Icon name="plus" size={12} /> Insérer une page ici</span>
+                  </button>
                 );
                 return [inter, (
                   <div key={n} data-cle={String(n)} className={'pdfr-page' + (sz.ajout ? ' pdfr-page-ajoutee' : '')} style={style}>
+                    {/* PAGE AJOUTÉE (03/10) : son étiquette et « Retirer » vivent DANS la page,
+                        en haut à droite, au-dessus de toutes ses couches. Avant, posées dans
+                        l'espace entre les pages, elles étaient recouvertes par la zone
+                        d'insertion : on ne pouvait plus cliquer « Retirer ». */}
                     {sz.ajout && (
                       <div className="pdfr-ajout-etiquette">
-                        <span>Page ajoutée</span>
-                        <button type="button" onClick={() => demanderSuppressionPage(sz.ajout)} title={`Retirer cette page (annulable par ${RACCOURCI}Z)`}>
-                          <Icon name="trash" size={11} /> Retirer
+                        <span className="pdfr-ajout-nom">Page ajoutée</span>
+                        <button type="button" className="pdfr-ajout-retirer" onClick={() => demanderSuppressionPage(sz.ajout)} title={`Retirer cette page (annulable par ${RACCOURCI}Z)`}>
+                          <Icon name="trash" size={13} /> Retirer la page
                         </button>
                       </div>
                     )}
