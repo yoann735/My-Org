@@ -40,6 +40,11 @@ const S = {
   // Leurs annotations ne sont PAS ici : elles vivent dans `highlights`/`annotations`
   // avec `ficheId = note.id` (clé de namespace, pas clé étrangère).
   notes: store('notes'),
+  // TABLEAU type Miro (04/10, docs/mecanique-miro.md) : UN enregistrement par élément
+  // (carte de texte, lien entre cartes), filtré par `ficheId` comme `annotations`.
+  // Store NEUF : aucune donnée existante n'est réécrite ; un client qui ne le connaît
+  // pas encore ignore ces lignes (reconcileAll ne parcourt que SES stores).
+  tableau: store('tableau'),
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
@@ -49,7 +54,7 @@ const S = {
 // `sessionsLog` est syncable pour la même raison que `questions`/`stats` : la
 // tendance affichée en fin de série doit refléter l'activité desktop ET mobile,
 // pas seulement cet appareil.
-const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes'];
+const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau'];
 
 export function genId(prefix = 'x') {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -613,8 +618,9 @@ export async function wipeAll() {
    de la confirmation utilisateur.
    ============================================================ */
 export async function purgeFiche(ficheId) {
-  const [questions, highlights, annotations] = await Promise.all([getAll('questions'), getAll('highlights'), getAll('annotations')]);
+  const [questions, highlights, annotations, tableau] = await Promise.all([getAll('questions'), getAll('highlights'), getAll('annotations'), getAll('tableau')]);
   await Promise.all([
+    ...(tableau || []).filter((t) => t.ficheId === ficheId).map((t) => remove('tableau', t.id)),
     ...(questions || []).filter((q) => q.ficheId === ficheId).map((q) => Promise.all([remove('questions', q.id), remove('exos', q.id)])),
     ...(highlights || []).filter((h) => h.ficheId === ficheId).map((h) => remove('highlights', h.id)),
     ...(annotations || []).filter((a) => a.ficheId === ficheId).map((a) => remove('annotations', a.id)),
