@@ -1,146 +1,162 @@
-# Rapport de nuit — 3 octobre 2026 : finitions du lecteur PDF (15 points)
+# Rapport de nuit — 4 octobre 2026 : tableau type Miro dans le lecteur PDF
 
-Les 15 points sont faits et testés en vrai. Les tests ont tourné sur un serveur local sans
-cloud, dans **ton Chrome** et dans un **Chrome isolé**, plus fiable pour mesurer
-fluidité et zoom (ton onglet était en arrière-plan, où les animations sont gelées).
+**La v1 est faite, testée en vrai et poussée.** La mécanique est écrite d'abord dans
+`docs/mecanique-miro.md`. Aucun point ne présentait de risque d'architecture : j'ai donc
+enchaîné sur le code, étape par étape.
+
+Tests sur un serveur local sans cloud :
+- **dans ton Chrome** : sélection de texte du PDF, disposition, non-régression ;
+- **dans un Chrome isolé** : gestes de souris réels et mesures image par image.
 
 **Garanties :**
 - **MealWeek : 0 fichier modifié** ;
-- PDF d'origine identique octet pour octet (SHA-256 `d3a2155d…`, vérifié en fin de
-  nuit) ;
-- aucune donnée réelle touchée.
+- PDF d'origine intact (SHA-256 vérifié) ;
+- 0 erreur console.
 
-Sept points étaient déjà livrés la nuit dernière : 1, 2, 3, 9, 10, 14, 15, plus la roue
-et les couleurs du 7. Je les ai **revérifiés** avec le nouveau code. Les huit autres
-sont neufs.
+## La mécanique choisie (détail : `docs/mecanique-miro.md`)
 
-## Bug 9 « hallucinations » : la cause racine (rappel, corrigée le 02/10, revérifiée)
+- **Stockage.** Un nouveau store `tableau`, synchronisé comme le reste, avec **un
+  enregistrement par carte et par flèche**, filtré par fiche. Il n'y a pas de gros
+  document « tableau » unique :
+  - déplacer une carte n'envoie qu'elle ;
+  - deux appareils ne s'écrasent pas sur deux cartes différentes.
 
-**Cause.** À la fin d'un geste, l'aperçu local de l'élément était effacé tout de suite,
-alors que l'état React des annotations n'était mis à jour qu'après l'écriture IndexedDB
-**et** une relecture complète des stores. Pendant ce délai, l'ancien enregistrement
-était redessiné à son ancienne place.
+  **Vérifié dans le code :**
+  - un appareil qui n'aurait pas encore la nouvelle version **ignore** ces lignes ;
+  - la limite cloud de 200 000 lignes est très loin (environ 1 200 aujourd'hui).
 
-**Correctif global**, dans `src/medrevise/lib/annotHistory.js` (et `appliquerLocal`
-dans `pdf/PdfReader.jsx`) :
-- chaque commande décrit ses effets, appliqués à l'écran dans le même rendu que la fin
-  du geste, puis écrits en base ;
-- les actions rapides sont mises en file au lieu d'être perdues.
+  C'est réversible : un store en plus, aucune migration, aucune donnée existante
+  réécrite. Le tableau est purgé avec sa fiche. La caméra et la disposition sont des
+  préférences de l'appareil.
+- **Canvas.** C'est du DOM transformé : un seul `transform` (translate + scale) déplace
+  tout le « monde » du tableau, et un seul SVG porte les flèches.
+  - **Pendant un pan ou un zoom**, la caméra est écrite directement sur le style, sans
+    rendu React ; React ne reprend la main qu'au repos.
+  - **La grille** est un fond CSS.
+  - **Au-delà de 150 cartes**, celles hors de la vue ne sont pas affichées (culling).
+- **Flèches.** Ancrées au milieu d'un côté (n/e/s/o), et recalculées à chaque rendu
+  depuis la position **affichée** des cartes : elles suivent une carte pendant qu'on la
+  déplace. Trois tracés :
+  - **droite** ;
+  - **coudée** (dure, angulaire, orthogonale) ;
+  - **courbe** (souple, une Bézier qui prolonge les côtés).
+- **Annuler** : une pile dédiée au tableau, avec la même mécanique que les annotations
+  (affichage immédiat, donc aucun flash). La cible du clavier départage les deux
+  historiques :
+  - Cmd+Z dans le tableau n'annule rien du PDF ;
+  - Cmd+Z hors du tableau n'annule rien du tableau.
 
-**Revérifié cette nuit**, avec un enregistreur de chaque état affiché : aucun retour en
-arrière pour 6 gestes réels à la souris :
-- déplacer une image ;
-- déplacer une boîte ;
-- déplacer un « ? » ;
-- réduire une boîte ;
-- tracer un trait ;
-- déplacer une forme (nouveau).
+  Vérifié dans les deux sens.
 
-Refermer une boîte juste après avoir tapé : elle passe directement au nouveau texte.
+## Ce qui est codé et testé
 
-## Ce qui est fait
-
-| Commit | Point |
+| Commit | Étape |
 |---|---|
-| `fb9393b` | 11 gros bouton d'insertion entre les pages · 12 « Retirer la page » réparé |
-| `2372906` | 13 menu Fichier épuré |
-| `ac47ddd` | 5 barre de paramètres des boîtes compacte |
-| `5621f5e` | 4 boîtes à taille fixe au zoom |
-| `021d7a0` | 8 crayon : taille + opacité |
-| `33181a8` | 7 couleurs perso synchronisées |
-| `e9a67df` | 6 formes + légende |
-| (02/10) | 1 · 2 · 3 · 9 · 10 · 14 · 15 revérifiés |
+| `7ddd452` | mécanique (`docs/mecanique-miro.md`) |
+| `255f94e` | données : store `tableau` synchronisé, purge avec la fiche |
+| `2ab547e` | canvas + cartes + flèches + disposition (étapes 3 et 4 regroupées : les flèches partagent les gestes des cartes) |
+| `47d5f53` | création d'une carte depuis une sélection du PDF |
+| `5a2b202` | confort et charge |
+| `3839285` | correctif : barre du lecteur qui débordait (voir Bugs) |
 
-### Détail
+**1. Canvas infini**
 
-- **1. Clic n'importe où** dans une boîte : le curseur se place au point le plus proche.
-  Revérifié : un clic dans la marge droite donne « Première! ».
-- **2. Taille qui s'adapte au texte**, en largeur aussi, avec une marge à droite.
-  Revérifié : 79 px pour « Première ».
-- **3. Boîtes enchaînées**. Revérifié : deux boîtes à la suite, la troisième laissée vide
-  est retirée, le 1er Échap garde l'outil, le 2e en sort.
-- **4. Taille fixe au zoom.** Une boîte (et un texte libre) a désormais une taille
-  constante à l'écran ; sa position, elle, reste accrochée au document. **Mesuré :**
-  126 × 47 px à 105 %, 160 % et 243 %, toujours au même endroit du cours.
-  Redimensionner à 243 % : +60 px au coin donne +60 px.
-- **5. Barre de paramètres compacte** : une pilule fine de 22 px, aux libellés courts
-  (Épingle · Relier · Flèche · Réduire · corbeille). Elle n'apparaît qu'après 300 ms de
-  survol, ou quand la boîte est active. La barre de mise en forme du haut est aussi plus
-  fine.
-- **6. Formes** :
-  - **tracer** : outil « Forme », glisser pour tracer un cadre, couleur au sélecteur,
-    l'outil reste actif ;
-  - **sélectionner** : par le **bord** seulement, l'intérieur laisse sélectionner le
-    texte encadré ;
-  - **modifier** : déplacer, redimensionner par les coins, Suppr ;
-  - **légende** : une boîte posée à côté, reliée par une flèche. « Relier » depuis une
-    boîte vise aussi les formes ;
-  - **supprimer** : la forme part, ses légendes restent mais déliées, et Cmd+Z rend
-    tout ;
-  - **export** : il dessine le cadre.
+| Geste | Effet |
+|---|---|
+| molette ou deux doigts | se déplacer (pan) |
+| Cmd/Ctrl + molette, ou pincement | zoomer, centré sur le curseur |
+| Espace + glisser, outil Main (H), clic du milieu | se déplacer |
+| « Tout afficher », − / + | régler le zoom |
 
-  Testé de bout en bout : un cadre autour du titre, sa légende « Titre de la fiche »,
-  l'export, la suppression puis Cmd+Z.
-- **7. Couleurs.** Les 4 couleurs « cours », tes couleurs perso et la roue datent de la
-  nuit dernière. **Nouveau :** les couleurs perso se **synchronisent entre appareils**
-  par le canal existant :
-  - un petit enregistrement `couleursPerso` dans le store `prompts`, déjà synchronisé,
-    comme tes prompts perso (aucune nouvelle table) ;
-  - la couleur que tu avais ajoutée hier y a été versée automatiquement ;
-  - **testé** : ajout et retrait mettent l'enregistrement à jour, et une liste « arrivée
-    d'un autre appareil » apparaît dans le sélecteur.
-- **8. Crayon.** Deux curseurs fins, **Taille** et **Opacité**, avec l'aperçu du trait.
-  Chaque mode (dessin, surligneur) garde ses réglages, mémorisés. **Testé :** le trait
-  posé a exactement l'épaisseur et l'opacité réglées (50 %) ; l'export les reprend.
-- **9 · 10. Zéro flash** : voir plus haut.
-- **11. Insérer une page** : tout l'espace entre deux pages est un bouton, sur toute la
-  largeur de la page (979 px), avec un trait pointillé et « Insérer une page ici » au
-  survol.
-- **12. « Retirer la page »** : voir la cause dans « Bugs trouvés ». Le bouton est
-  maintenant dans la page ajoutée, en haut à droite, grand et lisible. **Testé :** clic
-  réel, la page est retirée, et elle reste retirée après rechargement.
-- **13. Menu Fichier épuré.** Plus de titres de section ni de phrases d'aide. Quatre
-  blocs séparés par un trait :
-  - Exporter en PDF annoté (mis en avant) ;
-  - Renommer · Insérer une page · Insérer une image ;
-  - Copier les notions · Exporter en JSON · Ajouter un item · Importer des items ·
-    Prompts ;
-  - Détacher le PDF.
-- **14. « + » matière** à côté du nom de la section : présent, inchangé depuis hier.
-- **15. Surlignage ↔ boîte.** Revérifié au vrai clic : bulle du surlignage → « Ajouter
-  une boîte ». La boîte est reliée, flèche visible, surlignage entouré.
+La caméra est mémorisée par fiche.
+
+**Mesuré avec 300 cartes et 150 flèches** : pan, zoom, pan dézoomé sur tout le tableau
+et glisser d'une carte tournent à environ 60 images par seconde (médiane 17 ms, 95e
+centile ≤ 19 ms). Seules 40 cartes sont affichées à la vue par défaut.
+
+**2. Cartes de texte**
+- **Créer** : double-clic sur le fond, touche N, ou bouton « + Carte ».
+- **Écrire** : double-clic ou Entrée. Cmd+Entrée ou Échap pour terminer ; la carte
+  grandit avec son texte.
+- **Modifier** : déplacer, redimensionner (coin), couleur (4 couleurs « cours », blanc,
+  et tes couleurs perso).
+- **Autres actions** : dupliquer (Cmd+D), premier plan, supprimer (Suppr).
+- **Sélection** : clic, Maj+clic, rectangle sur le fond, Cmd+A. Déplacement groupé,
+  flèches du clavier (Maj = ×10).
+- **Guides d'alignement** roses : aimantation sur les bords et centres des autres cartes,
+  Alt pour s'en passer.
+
+**Testé :**
+- 2 cartes créées au double-clic avec leur texte ;
+- sélection rectangle puis déplacement des deux ;
+- couleur, redimensionnement, Cmd+Z puis Maj+Cmd+Z ;
+- Suppr d'une carte, qui emporte sa flèche, puis Cmd+Z qui rend les deux ;
+- texte gardé après un clic ailleurs, un clic sur une autre carte, et même quand le
+  tableau est fermé **pendant** la frappe (brouillon sauvé, corrigé et vérifié).
+
+**3. Flèches**
+- **Créer** : au survol d'une carte, 4 points d'ancrage. On glisse l'un d'eux vers une
+  autre carte : le côté le plus proche est choisi.
+- **Style** : la barre de la flèche sélectionnée propose Droite / Coudée / Courbe, et
+  la pointe (→ ↔ —).
+- **Rediriger** : glisser un des deux bouts vers une autre carte.
+- **Supprimer** : Suppr.
+
+**Testé :** création, suivi pendant le déplacement d'une carte, passage en coudée,
+redirection vers une 3e carte.
+
+**4. Carte depuis une sélection du PDF.** En mode « Les deux », avec l'outil
+**Sélection** : on sélectionne du texte, une bulle « ＋ Carte sur le tableau » apparaît
+au bout de la sélection, et un clic crée la carte avec le texte copié (aucun lien retour
+vers le PDF).
+
+**Testé dans ton Chrome :**
+- la carte est créée avec le passage sélectionné ;
+- **aucun** surlignage n'est ajouté ;
+- avec le **Surligneur**, la sélection surligne comme avant, et aucune bulle
+  n'apparaît.
+
+**5. Disposition.** La bascule **PDF · Les deux · Tableau** est dans l'en-tête, en haut
+à droite.
+- « Les deux » : poignée réglable, double-clic pour revenir à 50/50.
+- « Tableau » : le PDF reste en mémoire ; on retrouve sa page (vérifié : 2/16 avant et
+  après), et la barre ne garde que Retour et Panneau.
+- La disposition est mémorisée par fiche.
+- Proposé dans la Bibliothèque et dans le lecteur plein écran (Réviser, Prise de
+  notes). L'Apprentissage et l'Anatomie, qui ont leur propre disposition, ne changent
+  pas.
+
+**6. Confort.** Annuler/rétablir, sélection multiple, guides d'alignement et raccourcis
+(N, H, Espace, Cmd+A/D/Z, Suppr, Entrée, Échap, flèches).
 
 ## Bugs trouvés et corrigés
 
-- **« Retirer la page » impossible à cliquer.** Cause : la zone « + Page » ajoutée le
-  02/10 dans l'espace entre les pages recouvrait l'étiquette, qui y était posée.
-  Constaté : l'élément sous le clic était la zone d'insertion, pas le bouton.
-- **Page « revenue » après suppression** : faux bug. C'était mon propre script de test
-  d'hier, qui cliquait tous les boutons d'outils, y compris « Page ». La suppression
-  tient bien après rechargement, vérifié.
+- **Barre du lecteur qui débordait dès 1 262 px** depuis l'outil Forme (la recherche et
+  « Panneau » sortaient de l'écran). Elle se replie maintenant selon son débordement
+  réel. Vérifié à 1 000, 1 200, 1 440 et 1 700 px.
+- **Bascule de disposition poussée hors de l'écran** dans la barre d'outils : déplacée
+  dans l'en-tête.
+- **Texte d'une carte perdu** si le tableau se fermait pendant la frappe : brouillon
+  sauvé au démontage.
 
-## Non-régression
+## Non-régression du lecteur PDF
 
-- Accueil, Réviser, Bibliothèque PDF et HTML, Carnet, Apprentissage, Prise de notes (ses
-  4 anciennes boîtes intactes), Réglages : OK ;
-- MealWeek s'ouvre normalement ;
-- `npm run build` vert à chaque commit ;
-- 0 erreur console sur un parcours complet après rechargement.
+- Gestes d'annotation rejoués avec l'enregistreur de flashs : aucun retour en arrière
+  (image, boîte, « ? », réduction, trait).
+- Zoom du PDF inchangé : 0 image blanche.
+- Surligneur, Cmd+Z des annotations : inchangés.
+- Écrans : Accueil, Réviser, Bibliothèque, Carnet, Apprentissage, Prise de notes,
+  Réglages, tous OK ; MealWeek OK.
 
-## Pas fait, ou laissé de côté par prudence
+## Ce qui reste, ou n'est pas fait par sécurité
 
-- **Taille fixe au zoom.** Les boîtes gardent la taille qu'elles ont à 160 % (le zoom par
-  défaut). Dans l'écran Apprentissage, où le zoom est souvent plus petit, elles paraissent
-  donc plus grandes par rapport à la page qu'avant. C'est l'effet demandé.
-- **Formes** : seulement le **rectangle**. Ellipse et flèche libre ne sont pas faites
-  (« au moins un rectangle »). Pas de changement de couleur après le tracé : on choisit
-  la couleur avant, ou on retrace.
-- **Synchro des couleurs perso** : testée en local, en simulant l'arrivée d'un autre
-  appareil. Le vrai aller-retour entre deux appareils passe par le cloud, que je n'ai pas
-  touché la nuit. Il utilise le même mécanisme que tes prompts perso, déjà synchronisés.
-- **Réglages du crayon** (taille, opacité) : mémorisés sur l'appareil seulement. Ce sont
-  des préférences de geste, pas des données.
-- **Couleur perso sur un surlignage** : elle compte comme « surlignage simple » dans les
-  exports JSON (ni prioritaire, ni cloze).
-- **Export** : vérifié dans la page (bilan des éléments dessinés), pas téléchargé dans
-  ton dossier Téléchargements.
+- **Synchro du tableau** : testée hors cloud seulement, comme toujours la nuit. Elle
+  emprunte le canal existant (un store de plus), mais **le premier vrai aller-retour
+  entre deux appareils est à observer** quand tu l'utiliseras.
+- **Texte des cartes** : texte simple, sans gras ni listes (v1). La flèche d'une carte
+  vers un point vide n'existe pas : une flèche relie toujours deux cartes.
+- **Pas de copier/coller** de cartes entre tableaux, ni de minicarte (vue d'ensemble).
+- **Pas d'export** du tableau en image ou en PDF.
+- **Mobile** : non testé, et les gestes tactiles du tableau ne sont pas travaillés.
+- Les données de test (fiche « Charge tableau (test) », 300 cartes) ne sont que dans le
+  Chrome isolé de test, pas dans ton app.
