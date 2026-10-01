@@ -1883,16 +1883,16 @@
 .mf-bouton { height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid transparent; background: none; cursor: pointer;
   font-size: 12.5px; color: var(--text-2); transition: background .12s, color .12s; }
 .mf-bouton:hover, .mf-bouton.ouvert { background: var(--card); color: var(--text); border-color: var(--border-2); }
-.mf-menu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 900; min-width: 300px; max-width: 360px; padding: 6px;
+.mf-menu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 900; min-width: 220px; max-width: 280px; padding: 5px;
   border-radius: 14px; background: color-mix(in srgb, var(--card, #151518) 94%, transparent); backdrop-filter: blur(18px) saturate(1.4);
   border: 1px solid var(--border-2); box-shadow: 0 18px 50px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.25); animation: sc-entree .12s ease-out; }
-.mf-groupe + .mf-groupe { border-top: 1px solid var(--border); margin-top: 5px; padding-top: 5px; }
+.mf-groupe + .mf-groupe { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; }
 .mf-titre { padding: 4px 10px 3px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
-.mf-item { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 7px 10px; border: 0; border-radius: 9px; background: none;
+.mf-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 10px; border: 0; border-radius: 8px; background: none;
   color: var(--text); text-align: left; cursor: pointer; font-size: 13px; }
 .mf-item:hover { background: var(--bg-2, rgba(255,255,255,.05)); }
 .mf-item.danger { color: var(--crit); }
-.mf-ic { flex: 0 0 18px; display: inline-flex; justify-content: center; padding-top: 1px; color: var(--text-2); }
+.mf-ic { flex: 0 0 18px; display: inline-flex; justify-content: center; color: var(--text-2); }
 .mf-item.danger .mf-ic { color: var(--crit); }
 .mf-texte { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .mf-aide { font-size: 11.5px; color: var(--text-3); line-height: 1.35; }

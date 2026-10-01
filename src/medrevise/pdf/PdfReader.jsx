@@ -721,27 +721,29 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   /* MENU « FICHIER » (02/10, pdf/MenuFichier.jsx) : sous le nom du document, les
      actions sur le DOCUMENT, groupées — l'export en tête. Il remplace le menu « ⋯ »
      de la barre d'outils, qui en contenait la moitié. */
+  // ÉPURÉ (03/10) : des titres courts, pas de phrases d'aide, l'essentiel seulement —
+  // l'export en tête. Groupes séparés par un simple trait.
   const groupesFichier = [
-    { titre: 'Exporter', items: [
-      { label: exporting ? 'Export en cours…' : 'Exporter le PDF annoté', icon: 'filePdf', principal: true,
-        aide: 'Nouveau fichier avec tout : surlignages, boîtes ouvertes, flèches, images, pages ajoutées. L’original n’est pas modifié.',
+    { items: [
+      { label: exporting ? 'Export en cours…' : 'Exporter en PDF annoté', icon: 'filePdf', principal: true,
         onClick: () => { if (!exporting) exportAnnotated(); } },
-      { label: copiedCount ? 'Notions copiées ✓' : 'Copier les notions', icon: 'copy', aide: 'Texte structuré pour un prompt', onClick: copyPriority },
-      canAddItem && { label: courseExportOk ? 'Copié ✓' : 'Tout exporter (JSON)', icon: 'copy', onClick: exportAllPdfCourse },
     ] },
-    { titre: 'Document', items: [
-      ficheReelle && { label: 'Renommer…', icon: 'edit', onClick: () => setDemandeRenommer((n) => n + 1) },
-      !!pdfDoc && { label: 'Insérer une page après la page affichée', icon: 'plus', onClick: () => insererPageApres(pageCourante - 1) },
-      !!pdfDoc && { label: 'Insérer une page à une position…', icon: 'plus', onClick: () => setAjoutPage({ apresIdx: pageCourante - 1 }) },
-      !!pdfDoc && { label: 'Insérer une image…', icon: 'image', onClick: () => entreeImageRef.current && entreeImageRef.current.click() },
-      !!pending && { label: 'Remplacer le texte sélectionné', icon: 'edit', onClick: () => startEditFromSelection() },
+    { items: [
+      ficheReelle && { label: 'Renommer', icon: 'edit', onClick: () => setDemandeRenommer((n) => n + 1) },
+      !!pdfDoc && { label: 'Insérer une page', icon: 'plus', onClick: () => insererPageApres(pageCourante - 1) },
+      !!pdfDoc && { label: 'Insérer une image', icon: 'image', onClick: () => entreeImageRef.current && entreeImageRef.current.click() },
+      !!pending && { label: 'Remplacer la sélection', icon: 'edit', onClick: () => startEditFromSelection() },
       !!fiche.htmlId && { label: 'Voir la fiche HTML', icon: 'fileHtml', onClick: () => setSrcTab('html') },
     ] },
-    { titre: 'Fiche', items: [
+    { items: [
+      { label: copiedCount ? 'Notions copiées ✓' : 'Copier les notions', icon: 'copy', onClick: copyPriority },
+      canAddItem && { label: courseExportOk ? 'Copié ✓' : 'Exporter en JSON', icon: 'copy', onClick: exportAllPdfCourse },
       canAddItem && { label: 'Ajouter un item', icon: 'plus', onClick: () => setShowAddItem(true) },
       canAddItem && { label: 'Importer des items', icon: 'upload', onClick: () => { setImportedCount(0); setShowImportItems(true); } },
-      canAddItem && { label: 'Prompts (théorie et exercices)', icon: 'layers', onClick: () => setPromptsOuverts(true) },
-      canAddItem && { label: 'Détacher le PDF…', icon: 'x', danger: true, onClick: () => setDetacherPdf(true) },
+      canAddItem && { label: 'Prompts', icon: 'layers', onClick: () => setPromptsOuverts(true) },
+    ] },
+    { items: [
+      canAddItem && { label: 'Détacher le PDF', icon: 'x', danger: true, onClick: () => setDetacherPdf(true) },
     ] },
   ];
   const entete = (
@@ -751,7 +753,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           onRenommer={ficheReelle ? (t) => ctx.renameFiche(ficheReelle.id, t) : null}
           sousTitre={nbPagesAffichees ? `${nbPagesAffichees} page${nbPagesAffichees > 1 ? 's' : ''}` : null} />
         <MenuFichier groupes={srcTab === 'html'
-          ? [{ items: [ficheReelle && { label: 'Renommer…', icon: 'edit', onClick: () => setDemandeRenommer((n) => n + 1) },
+          ? [{ items: [ficheReelle && { label: 'Renommer', icon: 'edit', onClick: () => setDemandeRenommer((n) => n + 1) },
             !!(fiche && fiche.pdfId) && { label: 'Voir le PDF', icon: 'filePdf', onClick: () => setSrcTab('pdf') }] }]
           : groupesFichier} />
       </div>
