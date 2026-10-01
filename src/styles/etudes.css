@@ -1751,3 +1751,13 @@
 /* la croix est TOUJOURS là (juste transparente) : sinon le clic qui la vise tombait
    sur la page — et, outil « ? » actif, posait un nouveau « ? » au lieu de supprimer */
 .pdfr-question:hover .pq-x, .pdfr-question:focus-within .pq-x, .pdfr-question .pq-x:hover { opacity: 1; }
+
+/* ---- Pages ajoutées (01/10) ---- */
+.pdfr-page-ajoutee { outline: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 3px; }
+.pdfr-ajout-etiquette { position: absolute; top: -22px; right: 0; display: flex; align-items: center; gap: 8px; z-index: 6;
+  font-size: 11px; color: var(--text-2); }
+.pdfr-ajout-etiquette span { display: inline-flex; align-items: center; gap: 4px; }
+.pdfr-ajout-etiquette button { display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 7px; border-radius: 6px;
+  border: 1px solid var(--border-2); background: var(--card); color: var(--crit); font-size: 11px; cursor: pointer; }
+.pdfr-ajout-choix { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; }
+.pdfr-ajout-choix select { height: 34px; border-radius: 8px; border: 1px solid var(--border-2); background: var(--card-2); color: var(--text); padding: 0 8px; font-weight: 400; }

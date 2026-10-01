@@ -69,6 +69,8 @@ export function PdfToolbar({
   // MÊME BARRE pour les fiches HTML (nuit du 30/09) : un document HTML n'a ni pages
   // ni zoom propre, et seuls les outils qui ont un sens sur lui y sont proposés.
   sansPages = false, sansRecherche = false, outilsDisponibles = null, statut = null,
+  // INSÉRER (01/10) : une page blanche, une image — absents = boutons masqués
+  onAjouterPage = null, onAjouterImage = null,
 }) {
   const [menu, setMenu] = useState(null);
   const actions = (actionsDocument || []).filter(Boolean);
@@ -140,6 +142,19 @@ export function PdfToolbar({
                 {o.id !== 'question' && <span className="ptb-outil-lbl">{o.label}</span>}
               </button>
             ))}
+            {(onAjouterImage || onAjouterPage) && <span className="ptb-sep" />}
+            {onAjouterImage && (
+              <button type="button" className="ptb-outil" onClick={onAjouterImage}
+                title="Image — importer une image et la placer sur la page (ou la coller avec Cmd/Ctrl+V)">
+                <Icon name="image" size={15} /><span className="ptb-outil-lbl">Image</span>
+              </button>
+            )}
+            {onAjouterPage && (
+              <button type="button" className="ptb-outil" onClick={onAjouterPage}
+                title="Page — insérer une page blanche après la page de ton choix">
+                <Icon name="plus" size={15} /><span className="ptb-outil-lbl">Page</span>
+              </button>
+            )}
             <span className="ptb-sep" />
             <button className="icon-btn sm" onClick={hist.annuler} disabled={!hist.peutAnnuler}
               title={hist.peutAnnuler ? `Annuler — ${hist.libelleAnnuler} (${RACCOURCI}Z)` : `Annuler (${RACCOURCI}Z)`}>

@@ -56,7 +56,7 @@ import { useEditor } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, detectDocKind, Modal, LoaderL6, ConfirmModal } from '../components/ui.jsx';
-import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque } from '../lib/storage.js';
+import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque, newPageAjoutee } from '../lib/storage.js';
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cibleEditable } from '../lib/annotHistory.js';
 import { RICH_EXTENSIONS } from '../documents/lib/richtext.js';
 import { AddItemModal, PasteJsonForm } from '../components/AddItemForm.jsx';
@@ -134,7 +134,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [pdfDoc, setPdfDoc] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [numPages, setNumPages] = useState(0);
-  const [pageSizes, setPageSizes] = useState([]); // [{width,height}] à scale=1
+  const [pdfPageSizes, setPageSizes] = useState([]); // [{width,height}] à scale=1 — pages du PDF seulement
   const [scale, setScale] = useState(1.6); // B3 : 160% par défaut
   /* `mode` ('read' | 'edit') a été RETIRÉ (étapes 5 puis 7). Il ne commandait
      qu'une chose — si un bloc de remplacement de texte était cliquable — tout en
@@ -276,6 +276,33 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // la réouverture du lecteur.
   useEffect(() => { reloadHighlights(); }, [db]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* PAGES AFFICHÉES (01/10, docs/archi-edition-pdf.md) : les pages du PDF, dans
+     l'ordre, et après la page n les PAGES AJOUTÉES (kind 'page', apres = n) triées
+     par rang. `cle` = numéro de page du PDF, ou id de la page ajoutée — c'est la
+     valeur de `page` des annotations posées dessus. Le PDF n'est jamais réécrit :
+     sans page ajoutée, cette liste est exactement celle d'avant. */
+  const pagesAjoutees = useMemo(() => separerParType([], edits).page, [edits]);
+  const pageSizes = useMemo(() => {
+    if (!pdfPageSizes.length) return [];
+    const parApres = {};
+    for (const a of pagesAjoutees) {
+      const k = Math.max(0, Math.min(pdfPageSizes.length, Math.floor(Number(a.apres) || 0)));
+      (parApres[k] || (parApres[k] = [])).push(a);
+    }
+    const tri = (a, b) => (a.rang - b.rang) || String(a.createdAt).localeCompare(String(b.createdAt));
+    const liste = [];
+    const ajouter = (k) => (parApres[k] || []).sort(tri).forEach((a) => liste.push({
+      cle: a.id, pdf: null, ajout: a,
+      width: a.width || pdfPageSizes[Math.max(0, k - 1)].width, height: a.height || pdfPageSizes[Math.max(0, k - 1)].height,
+    }));
+    ajouter(0);
+    pdfPageSizes.forEach((sz, i) => { liste.push({ cle: i + 1, pdf: i + 1, width: sz.width, height: sz.height }); ajouter(i + 1); });
+    return liste;
+  }, [pdfPageSizes, pagesAjoutees]);
+  const nbPagesAffichees = pageSizes.length;
+  // index (0…) dans les pages affichées d'une clé de page (numéro du PDF ou id)
+  const indexDePage = (cle) => pageSizes.findIndex((p) => p.cle === cle);
+
   // B2 : offsets cumulés (px, à l'échelle courante) — le contenu scale strictement
   // linéairement (le gap scale aussi), ce qui rend le zoom centré sur le curseur trivial.
   const layout = useMemo(() => {
@@ -320,6 +347,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setPageLue(lue + 1);
   };
   useEffect(() => { computeVisibleRange(); }, [layout]);
+  // pour les callbacks différés (insertion d'une page) : toujours la dernière mise en page
+  const layoutRef = useRef(layout); layoutRef.current = layout;
+  const computeVisibleRangeRef = useRef(computeVisibleRange); computeVisibleRangeRef.current = computeVisibleRange;
   const onScroll = () => {
     if (scrollRaf.current) return;
     scrollRaf.current = requestAnimationFrame(() => { scrollRaf.current = null; computeVisibleRange(); });
@@ -327,11 +357,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
   // page affichée = celle qui passe sous la ligne de lecture (voir computeVisibleRange),
   // tenue à jour par le même défilement que le rendu virtualisé.
-  const pageCourante = Math.min(numPages || 1, Math.max(1, pageLue));
+  const pageCourante = Math.min(nbPagesAffichees || 1, Math.max(1, pageLue));
   // aller à une page : son bord haut juste sous la barre, sans la marge de 70 px
   // qu'utilisent recherche et notions (qui visent une LIGNE, pas une page).
   const allerALaPage = (n) => {
-    const idx = Math.max(0, Math.min(numPages - 1, n - 1));
+    const idx = Math.max(0, Math.min(nbPagesAffichees - 1, n - 1));
     const el = scrollRef.current;
     if (!el || layout.offsets[idx] == null) return;
     el.scrollTop = Math.max(0, layout.offsets[idx] - 8 * scale);
@@ -350,8 +380,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   };
 
   const scrollToPageFraction = (pageNum, fracY = 0) => {
-    const idx = pageNum - 1;
-    if (!layout.offsets.length || !pageSizes[idx] || !scrollRef.current) return;
+    const idx = indexDePage(pageNum); // numéro du PDF → position parmi les pages affichées
+    if (idx < 0 || !layout.offsets.length || !pageSizes[idx] || !scrollRef.current) return;
     const target = layout.offsets[idx] + fracY * (pageSizes[idx].height * scale) - 70;
     scrollRef.current.scrollTop = Math.max(0, target);
   };
@@ -789,6 +819,51 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     });
   };
 
+  /* ---- PAGES AJOUTÉES (01/10) ----
+     Une page blanche intercalée après n'importe quelle page affichée. Rien n'est
+     renuméroté : les annotations des pages du PDF gardent leur `page`, celles d'une
+     page ajoutée portent son id. Supprimer une page ajoutée emporte ses annotations,
+     en UNE entrée d'annulation (Cmd+Z rend la page ET son contenu). */
+  const [ajoutPage, setAjoutPage] = useState(null); // { apresIdx } — la fenêtre « Ajouter une page »
+  const [pageASupprimer, setPageASupprimer] = useState(null);
+  const insererPageApres = async (idx) => {
+    // idx = index (0…) de la page affichée après laquelle insérer ; -1 = tout au début
+    const ref = idx >= 0 ? pageSizes[idx] : null;
+    let apres, rang;
+    const memeEndroit = (k) => pagesAjoutees.filter((a) => Math.floor(Number(a.apres) || 0) === k);
+    if (!ref) { apres = 0; const r = memeEndroit(0).map((a) => a.rang); rang = r.length ? Math.min(...r) - 1 : 0; }
+    else if (ref.pdf) { apres = ref.pdf; const r = memeEndroit(apres).map((a) => a.rang); rang = r.length ? Math.min(...r) - 1 : 0; }
+    else {
+      apres = Math.floor(Number(ref.ajout.apres) || 0);
+      const suiv = pageSizes[idx + 1];
+      rang = suiv && suiv.ajout && Math.floor(Number(suiv.ajout.apres) || 0) === apres ? (ref.ajout.rang + suiv.ajout.rang) / 2 : ref.ajout.rang + 1;
+    }
+    const modele = ref || pageSizes[0] || { width: 595, height: 842 };
+    const rec = newPageAjoutee({ ficheId, apres, rang, width: modele.width, height: modele.height });
+    await hist.appliquer(cmdCreer('annotations', rec, 'Page ajoutée'));
+    setAjoutPage(null);
+    // aller sur la nouvelle page une fois la mise en page recalculée
+    setTimeout(() => {
+      const el = scrollRef.current; if (!el) return;
+      const i = idx + 1, offs = layoutRef.current.offsets;
+      if (offs[i] != null) { el.scrollTop = Math.max(0, offs[i] - 8 * scale); computeVisibleRangeRef.current(); }
+    }, 60);
+  };
+  const contenuDePage = (id) => edits.filter((a) => a.page === id);
+  const supprimerPageAjoutee = async (pageRec) => {
+    setPageASupprimer(null);
+    const cmds = [...contenuDePage(pageRec.id), pageRec].map((a) => cmdSupprimer('annotations', a, 'Retrait de la page'));
+    if (activeEditId && contenuDePage(pageRec.id).some((a) => a.id === activeEditId)) setActiveEditId(null);
+    await hist.appliquer(cmds.length === 1 ? cmds[0] : {
+      libelle: 'Retrait de la page ajoutée',
+      faire: async () => { for (const c of cmds) await c.faire(); },
+      defaire: async () => { for (const c of [...cmds].reverse()) await c.defaire(); },
+    });
+  };
+  // page vide : on retire tout de suite (annulable) ; page annotée : on confirme d'abord
+  const demanderSuppressionPage = (pageRec) => (contenuDePage(pageRec.id).length ? setPageASupprimer(pageRec) : supprimerPageAjoutee(pageRec));
+  const libellePage = (p, i) => (p.pdf ? `Page ${i + 1}` : `Page ${i + 1} (ajoutée)`);
+
   /* ---- TEXTE LIBRE et « ? » (01/10) : un clic = un élément posé ----
      Le texte libre est une boîte sans cadre (même NoteBox, même éditeur) : on le
      pose, on écrit tout de suite. Le « ? » se pose et l'outil reste actif — on en
@@ -964,7 +1039,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
       <PdfToolbar
         onClose={close}
-        pageCourante={pageCourante} numPages={numPages} onAllerPage={allerALaPage}
+        pageCourante={pageCourante} numPages={nbPagesAffichees} onAllerPage={allerALaPage}
         scale={scale} onZoom={zoomButtons} onAjuster={ajusterALaLargeur}
         outil={outil} setOutil={choisirOutil}
         couleurActive={couleurActive} setCouleurActive={setCouleurActive}
@@ -973,6 +1048,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         onPrecedent={gotoPrevMatch} onSuivant={gotoNextMatch} onFermerRecherche={closeSearch}
         panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={highlights.length}
         actionsDocument={actionsDocument}
+        onAjouterPage={pdfDoc ? () => setAjoutPage({ apresIdx: pageCourante - 1 }) : null}
         contexteSupplementaire={outil === 'texte' ? (
           <PaletteCrayon couleur={couleurTexte} onCouleur={setCouleurTexte} />
         ) : outil === 'question' ? <span /> : outil === 'crayon' ? (
@@ -1043,16 +1119,24 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           {pdfDoc && (
             <div className="pdfr-pages" style={{ height: layout.totalHeight, width: layout.maxWidth, minWidth: '100%' }}>
               {pageSizes.map((sz, idx) => {
-                const n = idx + 1;
+                const n = sz.cle; // numéro de page du PDF, ou id d'une page ajoutée
                 const top = layout.offsets[idx];
                 const w = sz.width * scale, h = sz.height * scale;
                 const active = idx >= visibleRange.start && idx <= visibleRange.end;
                 const style = { position: 'absolute', top, left: '50%', transform: 'translateX(-50%)', width: w, height: h };
                 if (!active) return <div key={n} className="pdfr-placeholder" style={style} />;
                 return (
-                  <div key={n} className="pdfr-page" style={style}>
+                  <div key={n} className={'pdfr-page' + (sz.ajout ? ' pdfr-page-ajoutee' : '')} style={style}>
+                    {sz.ajout && (
+                      <div className="pdfr-ajout-etiquette">
+                        <span><Icon name="plus" size={11} /> Page ajoutée</span>
+                        <button type="button" onClick={() => demanderSuppressionPage(sz.ajout)} title={`Retirer cette page (annulable par ${RACCOURCI}Z)`}>
+                          <Icon name="trash" size={11} /> Retirer
+                        </button>
+                      </div>
+                    )}
                     <PdfPageContent
-                      pdfDoc={pdfDoc} pageNum={n} scale={scale} dpr={dpr} pageHeight={h}
+                      pdfDoc={pdfDoc} pageNum={n} vierge={!!sz.ajout} scale={scale} dpr={dpr} pageHeight={h}
                       highlights={highlightsByPage[n] || EMPTY_ARRAY}
                       edits={blocsByPage[n] || EMPTY_ARRAY}
                       boites={boitesByPage[n] || EMPTY_ARRAY}
@@ -1116,6 +1200,32 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         document.body,
       )}
 
+      {ajoutPage && (
+        <Modal title="Ajouter une page" onClose={() => setAjoutPage(null)} width="min(420px, 94vw)">
+          <div className="hint" style={{ marginBottom: 10 }}>
+            Une page blanche, pour écrire, dessiner ou coller une image. Le PDF d'origine n'est pas modifié :
+            la page s'ajoute par-dessus, comme une annotation, et se retire à tout moment.
+          </div>
+          <label className="pdfr-ajout-choix">
+            Insérer après
+            <select value={ajoutPage.apresIdx} onChange={(e) => setAjoutPage({ apresIdx: Number(e.target.value) })}>
+              <option value={-1}>— au tout début (avant la page 1)</option>
+              {pageSizes.map((p, i) => <option key={String(p.cle)} value={i}>{libellePage(p, i)}</option>)}
+            </select>
+          </label>
+          <div className="row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+            <button className="btn ghost sm" onClick={() => setAjoutPage(null)}>Annuler</button>
+            <button className="btn primary sm" onClick={() => insererPageApres(ajoutPage.apresIdx)}><Icon name="plus" size={13} /> Ajouter la page</button>
+          </div>
+        </Modal>
+      )}
+      {pageASupprimer && (
+        <ConfirmModal title="Retirer cette page ajoutée ?"
+          body={`Elle contient ${contenuDePage(pageASupprimer.id).length} élément(s) (texte, dessin, image…), retirés avec elle. Annulable par ${RACCOURCI}Z.`}
+          confirmLabel="Retirer la page"
+          onConfirm={() => supprimerPageAjoutee(pageASupprimer)}
+          onCancel={() => setPageASupprimer(null)} />
+      )}
       {promptsOuverts && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOuverts(false)} />}
       {detacherPdf && (
         <ConfirmModal title="Détacher le PDF ?"

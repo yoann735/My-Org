@@ -58,7 +58,7 @@ function positionTexteProche(container, x, y) {
     texte + surlignages + surlignage de recherche (géométrie exacte, Chantier 2) + blocs
     de texte édités (Chantier 1). */
 export function PdfPageContent({
-  pdfDoc, pageNum, scale, pageHeight, dpr, highlights, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
+  pdfDoc, pageNum, vierge = false, scale, pageHeight, dpr, highlights, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
   onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, onDemanderAncrage = () => {},
   onCreerTrait, onSupprimerTraits, cibleHlId,
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, aimantActif = true, modeCrayon = 'dessin',
@@ -98,6 +98,16 @@ export function PdfPageContent({
     let cancelled = false;
     (async () => {
       if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (e) { /* ignore */ } }
+      if (vierge) {
+        // PAGE AJOUTÉE : rien à demander à pdf.js — une page blanche, sans texte
+        const canvas = canvasRef.current;
+        canvas.width = 1; canvas.height = 1; canvas.style.width = '100%'; canvas.style.height = '100%';
+        const c2d = canvas.getContext('2d'); c2d.fillStyle = '#fff'; c2d.fillRect(0, 0, 1, 1);
+        if (textLayerRef.current) textLayerRef.current.replaceChildren();
+        setLayerVersion((v) => v + 1);
+        setMatchRects([]);
+        return;
+      }
       const page = await pdfDoc.getPage(pageNum);
       if (cancelled) return;
       const viewport = page.getViewport({ scale });
@@ -132,7 +142,7 @@ export function PdfPageContent({
       cancelled = true;
       if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (e) { /* ignore */ } }
     };
-  }, [pdfDoc, pageNum, scale, dpr, matches]);
+  }, [pdfDoc, pageNum, vierge, scale, dpr, matches]);
 
   /* tracé d'une NOUVELLE boîte : cliquer-glisser dessine le rectangle, un simple
      clic pose une boîte de taille par défaut au point visé. Tout est normalisé
