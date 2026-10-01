@@ -72,6 +72,7 @@ import { PdfPageContent, EditToolbar } from './PdfPage.jsx';
 import { PdfToolbar, PaletteCrayon } from './PdfToolbar.jsx';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
+import { TitreRenommable } from '../components/TitreRenommable.jsx';
 
 
 /* C — bi-mode : route plein-écran (déclenchée par Réviser, via ctx.pdfView /
@@ -1129,12 +1130,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   return (
     <div className={embedded ? 'fadein' : 'screen scroll fadein'}>
       {!embedded && (
-        <div className="topbar">
-          <div>
-            <h1 className="serif">{fiche.titre}</h1>
-            <div className="sub">Lecteur PDF{numPages ? ` · ${numPages} page${numPages > 1 ? 's' : ''}` : ''}</div>
-          </div>
-          <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
+        // plein écran (Réviser) : même en-tête compact que la Bibliothèque — le nom de la
+        // fiche en petit, renommable d'un clic (vraie fiche seulement), la place au document
+        <div className="lecteur-entete">
+          <TitreRenommable titre={fiche.titre} onRenommer={ficheReelle ? (t) => ctx.renameFiche(ficheReelle.id, t) : null}
+            sousTitre={nbPagesAffichees ? `${nbPagesAffichees} page${nbPagesAffichees > 1 ? 's' : ''}` : null} />
+          <div className="topbar-actions"><EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} /></div>
         </div>
       )}
 

@@ -1777,3 +1777,25 @@
 .pi-actions { left: 0; top: 0; white-space: nowrap; z-index: 20; }
 .pi-actions.dessous { top: 100%; }
 .nb-act:disabled { opacity: .4; cursor: default; }
+
+/* ---- Nom de la fiche, en petit, renommable (01/10) — remplace le grand en-tête quand un document est ouvert ---- */
+.lecteur-entete { display: flex; align-items: center; gap: 12px; min-height: 30px; margin: -4px 0 8px; }
+.lecteur-entete .topbar-actions { margin-left: auto; transform: scale(.85); transform-origin: right center; }
+.titre-fiche { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.titre-fiche-nom { display: inline-flex; align-items: center; gap: 6px; max-width: 60vw; padding: 3px 7px; margin-left: -7px;
+  border: 1px solid transparent; border-radius: 7px; background: none; color: var(--text); font-size: 14px; font-weight: 600; cursor: text; }
+.titre-fiche-nom:hover:not(:disabled) { border-color: var(--border-2); background: var(--card); }
+.titre-fiche-nom:disabled { cursor: default; }
+.titre-fiche-texte { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.titre-fiche-crayon { opacity: 0; color: var(--text-3); transition: opacity .12s; flex: 0 0 auto; }
+.titre-fiche-nom:hover .titre-fiche-crayon { opacity: 1; }
+.titre-fiche-champ { font: 600 14px/1.2 inherit; color: var(--text); background: var(--card); border: 1px solid var(--accent);
+  border-radius: 7px; padding: 3px 7px; margin-left: -7px; outline: none; box-shadow: 0 0 0 3px var(--accent-soft); max-width: 60vw; }
+.titre-fiche-sous { font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+/* l'espace gagné va au document : la zone de lecture descend jusqu'en bas de l'écran.
+   Les barres qui n'apparaissent qu'avec un outil (réglages, mise en forme) sont
+   décomptées quand elles sont là, pour ne jamais faire défiler l'écran entier. */
+.lib-screen.doc-ouvert .pdfr-scroll { max-height: calc(100vh - 168px); }
+.lib-screen.doc-ouvert:has(.pdfr-contexte) .pdfr-scroll,
+.lib-screen.doc-ouvert:has(.pdfr-edit-toolbar) .pdfr-scroll { max-height: calc(100vh - 212px); }
+.lib-screen.doc-ouvert:has(.pdfr-contexte):has(.pdfr-edit-toolbar) .pdfr-scroll { max-height: calc(100vh - 256px); }

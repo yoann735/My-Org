@@ -18,6 +18,7 @@ import { ficheImages, totalCoches } from '../lib/anatSchema.js';
 import { docKind, DOC_META, createTranscript, deleteTranscript } from '../documents/lib/documents.js';
 import { cleanTranscript, textToDoc } from '../documents/lib/transcript.js';
 import { PdfReader } from '../pdf/PdfReader.jsx';
+import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { TranscriptEditor } from '../documents/TranscriptEditor.jsx';
 import { SchemaEditorScreen } from '../documents/SchemaEditorScreen.jsx';
 
@@ -511,8 +512,19 @@ export function Bibliotheque({ ctx }) {
     );
   };
 
+  const ficheOuverte = selected ? db.fiches.find((f) => f.id === selected.ficheId) || null : null;
   return (
-    <div className="screen scroll fadein lib-screen">
+    <div className={'screen scroll fadein lib-screen' + (ficheOuverte ? ' doc-ouvert' : '')}>
+      {/* DOCUMENT OUVERT (01/10) : le grand titre « Bibliothèque » cède la place au
+          NOM DE LA FICHE, en petit et renommable d'un clic — l'espace gagné va au
+          document. Les modes d'affichage et « Nouveau transcript » concernent la
+          liste : ils reviennent dès qu'on ferme le document. */}
+      {ficheOuverte ? (
+        <div className="lecteur-entete">
+          <TitreRenommable titre={ficheOuverte.titre} onRenommer={(t) => ctx.renameFiche(ficheOuverte.id, t)} />
+          <div className="topbar-actions"><EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} /></div>
+        </div>
+      ) : (
       <div className="topbar">
         <div>
           <h1 className="serif">Bibliothèque</h1>
@@ -539,6 +551,7 @@ export function Bibliotheque({ ctx }) {
           <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
         </div>
       </div>
+      )}
 
       {/* input fichier PARTAGÉ (menu « … » → Attacher un document) — un seul pour
          toute la liste, jamais affiché ; voir requestAttach/onAttachInputChange. */}
