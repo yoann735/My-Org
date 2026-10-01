@@ -51,7 +51,7 @@ import { separerParType } from '../lib/annotationTypes.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { pdfjsLib, openPdf } from './pdfjsSetup.js';
-import { PDFDocument, BlendMode } from 'pdf-lib';
+import { exporterDepuisBlob } from './exportAnnote.js';
 import { useEditor } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
@@ -623,7 +623,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      voisines, là où leur parenté se voit. */
   const actionsDocument = [
     { label: exporting ? 'Export en cours…' : 'Exporter le PDF annoté', icon: 'filePdf',
-      onClick: () => { if (highlights.length && !exporting) exportAnnotated(); } },
+      onClick: () => { if (!exporting) exportAnnotated(); } },
     { label: copiedCount ? 'Notions copiées ✓' : 'Copier les notions', icon: 'copy', onClick: copyPriority },
     canAddItem && { label: courseExportOk ? 'Copié ✓' : 'Tout exporter (JSON)', icon: 'copy', onClick: exportAllPdfCourse },
     canAddItem && { label: 'Ajouter un item', icon: 'plus', onClick: () => setShowAddItem(true) },
@@ -640,34 +640,27 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   ];
 
 
-  // export secondaire — PDF avec les surlignages incrustés (confort de lecture hors app ;
-  // suppose des pages non pivotées — limite acceptée, cas rare pour un cours scanné/exporté normal)
+  /* EXPORT DU PDF ANNOTÉ COMPLET (01/10, voir pdf/exportAnnote.js) : surlignages,
+     boîtes OUVERTES avec leurs flèches, traits, images, textes, « ? », pages
+     ajoutées. Un NOUVEAU fichier téléchargé ; le blob d'origine n'est que LU.
+     Avant : surlignages seulement, et l'entrée ne faisait rien sans surlignage. */
+  const [exportErreur, setExportErreur] = useState(null);
   const exportAnnotated = async () => {
-    if (!fiche || !fiche.pdfId || !highlights.length || exporting) return;
-    setExporting(true);
+    if (!fiche || !fiche.pdfId || exporting) return;
+    setExporting(true); setExportErreur(null);
     try {
-      const blob = await getBlob(fiche.pdfId);
-      const bytes = await blob.arrayBuffer();
-      const outDoc = await PDFDocument.load(bytes);
-      const pages = outDoc.getPages();
-      for (const h of highlights) {
-        const page = pages[h.page - 1];
-        if (!page) continue;
-        const { width, height } = page.getSize();
-        for (const r of h.rects) {
-          page.drawRectangle({
-            x: r.x * width, y: height - (r.y + r.height) * height, width: r.width * width, height: r.height * height,
-            color: COLOR_RGB[h.couleur] || COLOR_RGB.jaune, opacity: 0.4, blendMode: BlendMode.Multiply,
-          });
-        }
-      }
-      const outBytes = await outDoc.save();
-      const outBlob = new Blob([outBytes], { type: 'application/pdf' });
+      // le texte en cours de frappe dans une boîte n'est sauvegardé qu'après 400 ms :
+      // on part de la version la plus fraîche pour ne rien laisser derrière
+      const annots = edits.map((a) => (a.id === activeEditId && editLastJson.current ? { ...a, content: editLastJson.current } : a));
+      const { octets } = await exporterDepuisBlob(fiche.pdfId, highlights, annots);
+      const outBlob = new Blob([octets], { type: 'application/pdf' });
       const url = URL.createObjectURL(outBlob);
       const a = document.createElement('a');
       a.href = url; a.download = `${(fiche.titre || 'cours').replace(/[\\/:*?"<>|]/g, '')}-annote.pdf`;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (e) {
+      setExportErreur("L'export a échoué : " + ((e && e.message) || 'PDF illisible par l’outil d’export') + '. Le cours n’a pas été modifié.');
     } finally {
       setExporting(false);
     }
@@ -1195,6 +1188,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           onClose={() => setActiveEditId(null)} />
       )}
 
+      {exportErreur && (
+        <div className="err-mini" style={{ marginBottom: 12 }}>
+          <div className="em-ic crit"><Icon name="alert" size={16} /></div>
+          <div className="em-body"><div className="em-title">{exportErreur}</div></div>
+          <button className="btn sm" onClick={() => setExportErreur(null)}><Icon name="x" size={13} /></button>
+        </div>
+      )}
       {loadError && (
         <div className="err-mini" style={{ marginBottom: 12 }}>
           <div className="em-ic crit"><Icon name="alert" size={16} /></div>
