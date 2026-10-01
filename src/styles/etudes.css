@@ -2025,3 +2025,8 @@ textarea.tb-texte { display: block; resize: none; border: 0; outline: none; back
 .tb-vide-titre { font-size: 17px; font-weight: 700; color: #4a4a56; margin-bottom: 4px; }
 .lecteur-entete-droite { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .lecteur-entete-droite .topbar-actions { margin-left: 0; }
+/* bulle « Carte sur le tableau » au bout d'une sélection de texte du PDF (04/10) */
+.pdfr-vers-carte { position: fixed; z-index: 950; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
+  border-radius: 999px; border: 0; cursor: pointer; font-size: 12.5px; font-weight: 600; color: #fff; background: var(--accent, #7c5cff);
+  box-shadow: 0 6px 18px rgba(0,0,0,.3); animation: sc-entree .12s ease-out; }
+.pdfr-vers-carte:hover { filter: brightness(1.08); }

@@ -1619,6 +1619,26 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           replie={!panelOpen} onReplier={(v) => setPanelOpen(!v)} />
       </div>
 
+      {/* CARTE DEPUIS LA SÉLECTION (04/10) : tableau affiché à côté + outil Sélection
+          (qui ne surligne JAMAIS rien) + du texte sélectionné → une bulle propose d'en
+          faire une carte. Le texte est COPIÉ, sans lien retour vers le PDF. Le
+          mousedown est neutralisé : cliquer la bulle ne perd pas la sélection. */}
+      {tableauDispo && disposition === 'deux' && outil === 'main' && pending && pending.texte && createPortal(
+        <button type="button" className="pdfr-vers-carte"
+          style={{ left: Math.min(pending.x + 6, window.innerWidth - 230), top: Math.min(pending.y + 8, window.innerHeight - 44) }}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            const t = pending.texte;
+            if (tableauRef.current) tableauRef.current.creerCarteTexte(t);
+            setPending(null);
+            if (window.getSelection) window.getSelection().removeAllRanges();
+          }}
+          title="Copier ce passage sur une nouvelle carte du tableau">
+          <Icon name="plus" size={13} /> Carte sur le tableau
+        </button>,
+        document.body,
+      )}
+
       {/* BULLE d'un surlignage : sa couleur, ou le supprimer. Rien d'autre. */}
       {editingHl && createPortal(
         <div className="hl-picker hl-bulle" style={{ left: Math.max(8, Math.min(editingHl.x, window.innerWidth - 420)), top: Math.min(editingHl.y + 10, window.innerHeight - 60) }}>
