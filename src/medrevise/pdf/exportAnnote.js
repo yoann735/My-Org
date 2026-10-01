@@ -222,6 +222,17 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     bilan.traits += 1;
   }
 
+  /* 5 bis. FORMES (03/10) : le cadre seul, sans fond */
+  bilan.formes = 0;
+  for (const f of par.forme) {
+    const page = pageDe(f.page);
+    if (!page) { bilan.ignores += 1; continue; }
+    const { W, H } = dims(page);
+    page.drawRectangle({ x: f.x * W, y: H - (f.y + f.height) * H, width: f.width * W, height: f.height * H,
+      borderColor: hexVersRgb(couleurHex(f.couleur, '#e5383b')), borderWidth: Math.max(0.8, (f.epaisseur || 0.0025) * H) });
+    bilan.formes += 1;
+  }
+
   /* 6. TEXTES LIBRES : sans cadre, dans leur couleur */
   for (const t of par.texte) {
     const page = pageDe(t.page);

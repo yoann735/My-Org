@@ -33,6 +33,7 @@ export const OUTILS = [
   { id: 'surligneur', label: 'Surligneur', icon: 'edit', aide: 'Sélectionner du texte le surligne aussitôt, dans la couleur active' },
   { id: 'boite', label: 'Boîte', icon: 'list', aide: 'Cliquer ou tracer pour poser une boîte — l’outil reste actif pour enchaîner · Échap ou re-clic sur l’outil pour arrêter' },
   { id: 'texte', label: 'Texte', glyphe: 'T', aide: 'Cliquer sur la page pour y écrire du texte libre, sans cadre' },
+  { id: 'forme', label: 'Forme', glyphe: '▭', aide: 'Tracer un cadre sur la page — puis « Légende » pour y rattacher un texte · Échap pour arrêter' },
   { id: 'question', label: '?', glyphe: '?', aide: 'Un clic pose un « ? » : « je n’ai pas compris ce passage »' },
   { id: 'crayon', label: 'Crayon', icon: 'sparkle', aide: 'Dessiner à main levée' },
   { id: 'gomme', label: 'Gomme', icon: 'ban', aide: 'Efface les traits de crayon — cliquer, ou glisser pour en effacer plusieurs' },

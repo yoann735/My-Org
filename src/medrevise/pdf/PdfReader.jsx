@@ -56,7 +56,7 @@ import { useEditor } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, detectDocKind, Modal, LoaderL6, ConfirmModal } from '../components/ui.jsx';
-import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque, newPageAjoutee, newImageCollee } from '../lib/storage.js';
+import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque, newPageAjoutee, newImageCollee, newForme } from '../lib/storage.js';
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cmdGroupe, cibleEditable } from '../lib/annotHistory.js';
 import { RICH_EXTENSIONS } from '../documents/lib/richtext.js';
 import { AddItemModal, PasteJsonForm } from '../components/AddItemForm.jsx';
@@ -167,6 +167,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      mes couleurs, ou la roue (pdf/Couleurs.jsx). Un id de COLORS ou un hex. */
   const [couleurSurligneur, setCouleurSurligneur] = useState('jaune');
   const [couleurCrayon, setCouleurCrayon] = useState('bleu');
+  const [couleurForme, setCouleurForme] = useState('#e5383b'); // cadre rouge par défaut : il se voit sur la page
   const [couleurTexte, setCouleurTexte] = useState('noir'); // couleur du prochain TEXTE LIBRE
   const [couleursPerso] = useCouleursPerso(); // proposées aussi dans la bulle d'un surlignage
   /* RÉGLAGES DU CRAYON (03/10) : TAILLE et OPACITÉ, deux curseurs, réglés séparément
@@ -1021,6 +1022,49 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const demanderSuppressionPage = (pageRec) => (contenuDePage(pageRec.id).length ? setPageASupprimer(pageRec) : supprimerPageAjoutee(pageRec));
   const libellePage = (p, i) => (p.pdf ? `Page ${i + 1}` : `Page ${i + 1} (ajoutée)`);
 
+  /* ---- FORMES (03/10) ----
+     Un cadre tracé (outil « Forme », qui reste actif pour enchaîner) ; « Légende »
+     pose une boîte reliée par une flèche (formeId côté boîte, comme surlignageId). */
+  const [formeActiveId, setFormeActiveId] = useState(null);
+  const creerForme = ({ page, x, y, width, height }) => {
+    const rec = newForme({ ficheId, page, x, y, width, height, couleur: couleurForme });
+    hist.appliquer(cmdCreer('annotations', rec, 'Forme'));
+  };
+  const majForme = (avant, apres, libelle) => {
+    const actuel = edits.find((a) => a.id === avant.id) || avant;
+    hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, ...GEO(apres) }, libelle));
+  };
+  // supprimer une forme DÉLIE ses légendes (elles restent, sans flèche dans le vide) —
+  // une seule entrée d'annulation
+  const supprimerForme = (f) => {
+    if (formeActiveId === f.id) setFormeActiveId(null);
+    const legendes = edits.filter((a) => a.formeId === f.id);
+    hist.appliquer(cmdGroupe('Suppression de la forme', [
+      ...legendes.map((b) => cmdModifier('annotations', b, { ...b, formeId: null, ancre: null, fleche: false }, 'Légende déliée')),
+      cmdSupprimer('annotations', f, 'Suppression de la forme'),
+    ]));
+  };
+  const creerLegende = (f) => {
+    const W = BOITE_DEFAUT.width, Hb = BOITE_DEFAUT.height;
+    const aDroite = f.x + f.width + 0.03 + W <= 0.99;
+    const x = aDroite ? f.x + f.width + 0.03 : Math.max(0.01, f.x - 0.03 - W);
+    const y = Math.max(0, Math.min(1 - Hb, f.y + f.height / 2 - Hb / 2));
+    const ancre = { x: aDroite ? f.x + f.width : f.x, y: f.y + f.height / 2, texte: null };
+    const rec = { ...newNoteBox({ ficheId, page: f.page, x, y, width: W, height: Hb, couleur: couleurActive }), ancre, fleche: true, formeId: f.id };
+    hist.appliquer(cmdCreer('annotations', rec, 'Légende de la forme'));
+    videsFraiches.current.add(rec.id);
+    setFormeActiveId(null);
+    setActiveEditId(rec.id);
+  };
+  useEffect(() => {
+    if (!formeActiveId) return undefined;
+    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.pdfr-forme'))) setFormeActiveId(null); };
+    const onKey = (e) => { if (e.key === 'Escape') setFormeActiveId(null); };
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); };
+  }, [formeActiveId]);
+
   /* ---- IMAGES COLLÉES (01/10) ----
      Importées (bouton « Image »), collées (Cmd/Ctrl+V) ou glissées sur une page.
      Le fichier devient un blob ordinaire (même canal que les images de
@@ -1217,6 +1261,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // traits de crayon ET de surligneur : même calque d'encre (le mode règle le rendu)
   const traitsByPage = useMemo(() => groupByPage([...parType.trait, ...parType.surligneur]), [parType]);
   const textesByPage = useMemo(() => groupByPage(parType.texte), [parType]);
+  const formesByPage = useMemo(() => groupByPage(parType.forme), [parType]);
   // images d'une page, du FOND vers le DEVANT (ordre de rendu = ordre des calques)
   const imagesByPage = useMemo(() => {
     const m = groupByPage(parType.image);
@@ -1331,7 +1376,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         actionsDocument={afficherEntete ? [] : actionsDocument /* avec l'en-tête, tout est dans « Fichier » */}
         onAjouterPage={pdfDoc ? () => insererPageApres(pageCourante - 1) : null}
         onAjouterImage={pdfDoc ? () => entreeImageRef.current && entreeImageRef.current.click() : null}
-        contexteSupplementaire={outil === 'surligneur' ? (
+        contexteSupplementaire={outil === 'forme' ? (
+          <SelecteurCouleurs couleur={couleurForme} onCouleur={setCouleurForme} titre="Couleur du cadre" />
+        ) : outil === 'surligneur' ? (
           <SelecteurCouleurs couleur={couleurSurligneur} onCouleur={setCouleurSurligneur} titre="Couleur du surligneur" />
         ) : outil === 'texte' ? (
           <PaletteCrayon couleur={couleurTexte} onCouleur={setCouleurTexte} />
@@ -1455,6 +1502,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       textes={textesByPage[n] || EMPTY_ARRAY}
                       questions={questionsByPage[n] || EMPTY_ARRAY}
                       images={imagesByPage[n] || EMPTY_ARRAY}
+                      formes={formesByPage[n] || EMPTY_ARRAY}
+                      formeActiveId={formeActiveId}
+                      onFormeActiver={(id) => { setFormeActiveId(id); setImageActiveId(null); setActiveEditId(null); }}
+                      onCreerForme={creerForme} onFormeMaj={majForme} onFormeSupprimer={supprimerForme} onFormeLegende={creerLegende}
+                      couleurForme={couleurForme}
                       imageActiveId={imageActiveId}
                       onImageActiver={(id) => { setImageActiveId(id); setActiveEditId(null); }}
                       onImageMaj={majImage} onImageCalque={changerCalque} onImageSupprimer={supprimerImage}

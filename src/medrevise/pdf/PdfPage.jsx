@@ -65,6 +65,8 @@ export function PdfPageContent({
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, opaciteTrait = 1, aimantActif = true, modeCrayon = 'dessin',
   textes = [], questions = [], onPoser = () => {},
   images = [], imageActiveId = null, onImageActiver = () => {}, onImageMaj = () => {}, onImageCalque = () => {}, onImageSupprimer = () => {},
+  formes = [], formeActiveId = null, onFormeActiver = () => {}, onCreerForme = () => {}, onFormeMaj = () => {}, onFormeSupprimer = () => {}, onFormeLegende = () => {},
+  couleurForme = '#e5383b',
 }) {
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
@@ -200,6 +202,33 @@ export function PdfPageContent({
         width: clamp(rect.width * k, BOITE_MIN.width, 1 - x),
         height: clamp(rect.height * k, BOITE_MIN.height, 1 - y),
       });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  /* TRACÉ D'UNE FORME (03/10) : glisser = le rectangle ; un simple clic pose un cadre
+     de taille par défaut au point visé. L'outil reste actif pour en tracer d'autres. */
+  const [traceForme, setTraceForme] = useState(null);
+  const demarrerForme = (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const r = e.currentTarget.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const x0 = clamp01((e.clientX - r.left) / r.width), y0 = clamp01((e.clientY - r.top) / r.height);
+    let courant = null;
+    const move = (ev) => {
+      const x1 = clamp01((ev.clientX - r.left) / r.width), y1 = clamp01((ev.clientY - r.top) / r.height);
+      courant = { x: Math.min(x0, x1), y: Math.min(y0, y1), width: Math.abs(x1 - x0), height: Math.abs(y1 - y0) };
+      setTraceForme(courant);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setTraceForme(null);
+      let rect = courant;
+      if (!rect || rect.width < 0.015 || rect.height < 0.01) rect = { x: clamp(x0 - 0.1, 0, 0.8), y: clamp(y0 - 0.03, 0, 0.94), width: 0.2, height: 0.06 };
+      onCreerForme({ page: pageNum, ...rect });
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -365,7 +394,18 @@ export function PdfPageContent({
       // RELIER À UN SURLIGNAGE : le clic doit tomber sur un surlignage ; l'épingle va
       // sur son bord le plus proche de la boîte, la flèche suit
       const hit = positionSurlignage(e.clientX, e.clientY);
-      if (!hit) { setViseeRatee(true); setTimeout(() => setViseeRatee(false), 1400); return; }
+      if (!hit) {
+        // pas un surlignage : une FORME, peut-être (03/10) — l'épingle va sur son bord
+        const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height, m = 0.012;
+        const f = [...(formes || [])].reverse().find((q) => px >= q.x - m && px <= q.x + q.width + m && py >= q.y - m && py <= q.y + q.height + m);
+        if (f) {
+          const aDroite = boiteEnAncrage.x > f.x + f.width / 2;
+          onDemanderAncrage(null);
+          onModifierBoite(boiteEnAncrage, { ancre: { x: aDroite ? f.x + f.width : f.x, y: f.y + f.height / 2, texte: null }, fleche: true, formeId: f.id, surlignageId: null }, 'Boîte reliée à la forme');
+          return;
+        }
+        setViseeRatee(true); setTimeout(() => setViseeRatee(false), 1400); return;
+      }
       const rs = shownRects[hit.id] || hit.rects || [];
       const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
       const rc = rs.find((q) => px >= q.x && px <= q.x + q.width && py >= q.y && py <= q.y + q.height) || rs[0];
@@ -481,6 +521,7 @@ export function PdfPageContent({
 
   // surlignage relié à la boîte en cours d'écriture : il s'entoure (le lien se voit)
   const liesActifs = new Set((boites || []).filter((b) => b.id === activeEditId && b.surlignageId).map((b) => b.surlignageId));
+  const liesFormes = new Set((boites || []).filter((b) => b.id === activeEditId && b.formeId).map((b) => b.formeId));
 
   return (
     <>
@@ -560,6 +601,22 @@ export function PdfPageContent({
         );
       })()}
 
+      {/* FORMES (03/10) : des annotations, donc au-dessus des images ; sélectionnables
+          par leur BORD seulement (l'intérieur laisse passer les clics vers le texte). */}
+      {formes.map((f) => (
+        <FormeRect key={f.id} forme={f} active={f.id === formeActiveId} interactive={outil === 'main'}
+          liee={liesFormes.has(f.id)} pageHeight={pageHeight}
+          onActiver={onFormeActiver} onMaj={onFormeMaj} onSupprimer={onFormeSupprimer} onLegende={onFormeLegende}
+          onGeste={(enCours) => { gesteBoite.current = enCours; }} />
+      ))}
+      {outil === 'forme' && (
+        <div className="pdfr-drawlayer pdfr-formelayer" onPointerDown={demarrerForme}>
+          {traceForme && (
+            <div className="pdfr-forme-apercu" style={{ left: traceForme.x * 100 + '%', top: traceForme.y * 100 + '%', width: traceForme.width * 100 + '%', height: traceForme.height * 100 + '%', borderColor: couleurHex(couleurForme, '#e5383b') }} />
+          )}
+        </div>
+      )}
+
       {outil === 'crayon' && (
         <div className="pdfr-inkcapture" onPointerDown={demarrerTrait} />
       )}
@@ -621,7 +678,7 @@ export function PdfPageContent({
       {boiteEnAncrage && (
         <div className="pdfr-ancrage" onPointerDown={poserAncre}>
           <div className={'pdfr-ancrage-aide' + (viseeRatee ? ' ratee' : '')}>{ancrageSurlignage
-            ? (viseeRatee ? 'Ce n’est pas un surlignage — clique sur un passage surligné' : 'Clique le surlignage à relier à cette boîte')
+            ? (viseeRatee ? 'Ni un surlignage ni une forme — clique sur l’un des deux' : 'Clique le surlignage ou la forme à relier à cette boîte')
             : ancrageFleche ? 'Clique l’endroit que la flèche doit viser' : 'Clique l’endroit de la fiche où épingler cette boîte'} · Échap pour annuler</div>
         </div>
       )}
@@ -926,11 +983,11 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
           </button>
         ) : enAncrage ? (
           <button type="button" className="nb-act vise" {...stop(() => onDemanderAncrage(null))} title="Annuler (Échap)">
-            <IconeEpingle size={13} /> {viseSurlignage ? 'Clique le surlignage à relier…' : 'Clique l’endroit à épingler…'} <span className="nb-act-x">Annuler</span>
+            <IconeEpingle size={13} /> {viseSurlignage ? 'Clique un surlignage ou une forme…' : 'Clique l’endroit à épingler…'} <span className="nb-act-x">Annuler</span>
           </button>
         ) : (<>
           {ancre ? (
-            <button type="button" className="nb-act actif" {...stop(() => onModifier(boite, { ancre: null, fleche: false, surlignageId: null }, 'Retrait de l’épingle'))}
+            <button type="button" className="nb-act actif" {...stop(() => onModifier(boite, { ancre: null, fleche: false, surlignageId: null, formeId: null }, 'Retrait de l’épingle'))}
               title={`${titreAncre}. Pour la déplacer : glisse l’épingle sur la page. Cliquer ici la retire (et la flèche avec).`}>
               <IconeEpingle size={11} /> Épingle
             </button>
@@ -940,8 +997,8 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
               <IconeEpingle size={11} /> Épingler
             </button>
           )}
-          {boite.surlignageId ? (
-            <button type="button" className="nb-act actif" {...stop(() => onModifier(boite, { ancre: null, fleche: false, surlignageId: null }, 'Lien au surlignage retiré'))}
+          {boite.surlignageId || boite.formeId ? (
+            <button type="button" className="nb-act actif" {...stop(() => onModifier(boite, { ancre: null, fleche: false, surlignageId: null, formeId: null }, 'Lien retiré'))}
               title={`Reliée au surlignage${ancre && ancre.texte ? ` « ${ancre.texte} »` : ''}. Cliquer pour retirer le lien.`}>
               <Icon name="edit" size={11} /> Délier
             </button>
@@ -1138,6 +1195,81 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
           <button type="button" className="nb-act" disabled={dernier} {...stop(() => onCalque(img, 'reculer'))} title="Reculer d'un calque">Reculer</button>
           <button type="button" className="nb-act" disabled={dernier} {...stop(() => onCalque(img, 'arriere'))} title="Mettre derrière toutes les autres images">Arrière-plan</button>
           <button type="button" className="nb-act danger" {...stop(() => onSupprimer(img))} title={`Supprimer l'image (annulable par ${RACCOURCI_Z})`}><Icon name="trash" size={13} /> Supprimer</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   FORME — RECTANGLE (03/10). Un cadre tracé sur la page. Sélection par son BORD
+   (quatre bandes de 8 px, seules sensibles à la souris : l'intérieur reste
+   transparent aux clics, on peut toujours sélectionner le texte encadré). Glisser
+   le bord = déplacer ; coins = redimensionner. Barre compacte : Légende (une boîte
+   reliée par une flèche) et Supprimer. Une entrée d'annulation par geste.
+   ============================================================ */
+function FormeRect({ forme, active, interactive, liee, pageHeight, onActiver, onMaj, onSupprimer, onLegende, onGeste }) {
+  const [apercu, setApercu] = useState(null);
+  const g = apercu || forme;
+  const geste = (e, type) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const page = e.currentTarget.closest('.pdfr-page');
+    const r = page && page.getBoundingClientRect();
+    if (!r || !r.width || !r.height) return;
+    const d0 = { x: e.clientX, y: e.clientY };
+    const avant = forme;
+    let bouge = false, courant = null;
+    onGeste(true);
+    onActiver(forme.id);
+    const move = (ev) => {
+      if (!bouge && Math.abs(ev.clientX - d0.x) + Math.abs(ev.clientY - d0.y) <= 3) return;
+      bouge = true;
+      const dx = (ev.clientX - d0.x) / r.width, dy = (ev.clientY - d0.y) / r.height;
+      if (type === 'move') {
+        courant = { ...avant, x: clamp(avant.x + dx, 0, 1 - avant.width), y: clamp(avant.y + dy, 0, 1 - avant.height) };
+      } else {
+        let { x, y, width: w, height: h } = avant;
+        if (type.includes('e')) w = clamp(avant.width + dx, 0.015, 1 - avant.x);
+        if (type.includes('s')) h = clamp(avant.height + dy, 0.01, 1 - avant.y);
+        if (type.includes('w')) { const nx = clamp(avant.x + dx, 0, avant.x + avant.width - 0.015); w = avant.width + (avant.x - nx); x = nx; }
+        if (type.includes('n')) { const ny = clamp(avant.y + dy, 0, avant.y + avant.height - 0.01); h = avant.height + (avant.y - ny); y = ny; }
+        courant = { ...avant, x, y, width: w, height: h };
+      }
+      setApercu(courant);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      onGeste(false);
+      setApercu(null);
+      if (bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de la forme' : 'Redimension de la forme');
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  const ep = Math.max(1.5, (forme.epaisseur || 0.0025) * (pageHeight || 800));
+  const coul = couleurHex(forme.couleur, '#e5383b');
+  const stop = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onClick: (e) => { e.stopPropagation(); fn(); } });
+  return (
+    <div className={'pdfr-forme' + (active ? ' active' : '') + (liee ? ' liee' : '') + (interactive ? ' interactive' : '') + (apercu ? ' glisse' : '')}
+      style={{ left: g.x * 100 + '%', top: g.y * 100 + '%', width: g.width * 100 + '%', height: g.height * 100 + '%', borderWidth: ep, borderColor: coul }}
+      tabIndex={-1} onKeyDown={(e) => { if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onSupprimer(forme); } }}>
+      {interactive && ['n', 's', 'e', 'w'].map((c) => (
+        <span key={c} className={'pf-bord pf-' + c} onPointerDown={(e) => { e.currentTarget.parentElement.focus({ preventScroll: true }); geste(e, 'move'); }}
+          title="Forme · glisser le bord pour déplacer · Suppr pour retirer" />
+      ))}
+      {interactive && active && ['nw', 'ne', 'sw', 'se'].map((c) => (
+        <span key={c} className={'pi-coin pi-' + c} onPointerDown={(e) => geste(e, c)} />
+      ))}
+      {interactive && active && (
+        <div className={'nb-actions pf-actions' + (g.y < 0.05 ? ' dessous' : '')} onPointerDown={(e) => e.stopPropagation()}>
+          <button type="button" className="nb-act" {...stop(() => onLegende(forme))} title="Ajouter une légende : une boîte de texte reliée à cette forme par une flèche">
+            <Icon name="list" size={11} /> Légende
+          </button>
+          <button type="button" className="nb-act danger" {...stop(() => onSupprimer(forme))} title={`Supprimer la forme (annulable par ${RACCOURCI_Z})`}>
+            <Icon name="trash" size={12} />
+          </button>
         </div>
       )}
     </div>

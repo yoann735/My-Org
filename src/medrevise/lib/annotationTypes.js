@@ -42,10 +42,11 @@ export const TYPES_ANNOTATION = {
   question: { store: 'annotations', libelle: 'point d’interrogation', pluriel: 'points d’interrogation' },
   image: { store: 'annotations', libelle: 'image', pluriel: 'images' },
   page: { store: 'annotations', libelle: 'page ajoutée', pluriel: 'pages ajoutées' },
+  forme: { store: 'annotations', libelle: 'forme', pluriel: 'formes' }, // 03/10
 };
-export const ORDRE_TYPES = ['surlignage', 'boite', 'trait', 'surligneur', 'bloc', 'texte', 'question', 'image', 'page'];
+export const ORDRE_TYPES = ['surlignage', 'boite', 'trait', 'surligneur', 'bloc', 'texte', 'question', 'image', 'page', 'forme'];
 /** kinds des ajouts du 01/10 : leur type est leur kind. */
-const KINDS_AJOUTS = new Set(['texte', 'question', 'image', 'page']);
+const KINDS_AJOUTS = new Set(['texte', 'question', 'image', 'page', 'forme']);
 
 /** Type d'un enregistrement. `store` = store d'où il vient ('highlights' |
     'annotations'). Le `type` écrit fait foi ; à défaut (enregistrement

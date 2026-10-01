@@ -380,6 +380,19 @@ export function newImageCollee({ ficheId, page, x, y, width, height, blobId, z, 
   };
 }
 
+/** FORME (03/10) : un cadre rectangulaire tracé sur la page, auquel on peut
+    rattacher une légende (une boîte reliée : `formeId` côté boîte). Normalisée
+    [0,1] par rapport à la page : elle encadre du contenu, elle suit donc le zoom.
+    `epaisseur` en fraction de hauteur de page, comme un trait. */
+export function newForme({ ficheId, page, x, y, width, height, couleur, epaisseur }) {
+  return {
+    id: genId('an'), ficheId, page, x, y, width, height,
+    kind: 'forme', type: 'forme', forme: 'rectangle',
+    couleur: couleur || '#e5383b', epaisseur: epaisseur || 0.0025,
+    createdAt: new Date().toISOString(),
+  };
+}
+
 /** PAGE AJOUTÉE : une page blanche intercalée APRÈS la page `apres` du PDF
     (0 = avant la première). `rang` ordonne plusieurs pages ajoutées au même
     endroit. `width`/`height` : taille en points, copiée sur la page voisine. */

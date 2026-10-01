@@ -1935,3 +1935,16 @@
   box-shadow: 0 0 0 3px var(--card), 0 1px 4px rgba(0,0,0,.35); }
 .rt-curseur input::-moz-range-thumb { width: 13px; height: 13px; border-radius: 50%; background: var(--text); border: 0; }
 .rt-valeur { font-style: normal; min-width: 32px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+
+/* ---- Formes (03/10) : un cadre ; seul son bord est sensible à la souris ---- */
+.pdfr-forme { position: absolute; box-sizing: border-box; border-style: solid; border-radius: 3px; pointer-events: none; outline: none; }
+.pdfr-forme.active { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
+.pdfr-forme.liee { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 70%, transparent); }
+.pf-bord { position: absolute; pointer-events: auto; cursor: move; }
+.pf-n { left: -6px; right: -6px; top: -6px; height: 10px; } .pf-s { left: -6px; right: -6px; bottom: -6px; height: 10px; }
+.pf-e { top: -6px; bottom: -6px; right: -6px; width: 10px; } .pf-w { top: -6px; bottom: -6px; left: -6px; width: 10px; }
+.pdfr-forme .pi-coin { pointer-events: auto; }
+.pdfr-forme .pf-actions { left: 0; top: 0; pointer-events: auto; z-index: 20; }
+.pdfr-forme .pf-actions.dessous { top: 100%; }
+.pdfr-formelayer { cursor: crosshair; }
+.pdfr-forme-apercu { position: absolute; border: 2px dashed; border-radius: 3px; pointer-events: none; }
