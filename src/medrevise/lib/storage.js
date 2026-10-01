@@ -447,6 +447,19 @@ export async function setCoursePrompts(overrides) {
   queuePush('prompts', 'prompts', rec, updatedAt);
   return rec;
 }
+/* ---- COULEURS PERSONNELLES du surligneur et du crayon (03/10) : même mécanique
+   que les prompts ci-dessus — MÊME store `S.prompts` (déjà SYNCABLE), clé DISTINCTE
+   'couleursPerso'. Un seul petit enregistrement { couleurs: ['#rrggbb', …] }, en
+   last-write-wins comme le reste : les couleurs suivent d'un appareil à l'autre. */
+export async function getCouleursPersoSync() { return (await get('couleursPerso', S.prompts)) || null; }
+export async function setCouleursPersoSync(couleurs) {
+  const updatedAt = new Date().toISOString();
+  const rec = { id: 'couleursPerso', couleurs: [...couleurs], updatedAt };
+  await set('couleursPerso', rec, S.prompts);
+  queuePush('prompts', 'couleursPerso', rec, updatedAt);
+  return rec;
+}
+
 /* ---- surcharges des 4 prompts PRATIQUE (exercices), même mécanique que
    ci-dessus — MÊME store `S.prompts` (déjà SYNCABLE), clé DISTINCTE
    ('exoPrompts' vs 'prompts') : deux enregistrements indépendants dans la

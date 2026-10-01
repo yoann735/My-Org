@@ -117,6 +117,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
     setPromptOverrides(pr);
     setExoPromptOverrides(epr);
     setChapExoPromptOverrides(cepr);
+    // signal aux préférences synchronisées hors de `db` (couleurs perso du lecteur)
+    try { window.dispatchEvent(new Event('medrevise:recharge')); } catch (e) { /* ignore */ }
   }, []);
 
   // syncNow() (lib/storage.js) fait, dans l'ordre : rejoue l'outbox → réconcilie

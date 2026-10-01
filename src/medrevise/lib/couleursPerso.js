@@ -5,14 +5,18 @@
    là ; l'utilisateur y AJOUTE les siennes (roue chromatique) et les retrouve
    à chaque ouverture.
 
-   Rangées dans le localStorage de CET appareil, et c'est voulu : c'est une
-   préférence d'affichage, pas une donnée de cours. Rien ne part au cloud
-   (aucune nouvelle table, aucun nouvel enregistrement synchronisé). Les
-   annotations, elles, gardent leur couleur exacte (hex) partout.
+   SYNCHRONISÉES entre appareils depuis le 03/10 (demande explicite) : un petit
+   enregistrement 'couleursPerso' du store `prompts`, déjà synchronisé (voir
+   storage.js#setCouleursPersoSync) — aucune nouvelle table, même canal, même
+   last-write-wins. Le localStorage sert de cache immédiat (affichage sans attendre
+   IndexedDB) ; la version synchronisée fait foi et est relue au montage, après
+   chaque rechargement des données (événement 'medrevise:recharge', émis par
+   MedReviseApp après une synchro) et au retour sur l'onglet.
    Toute lecture/écriture est protégée : navigation privée ou stockage bloqué
    = liste vide, jamais d'erreur.
    ============================================================ */
 import { useEffect, useState } from 'react';
+import { getCouleursPersoSync, setCouleursPersoSync } from './storage.js';
 
 const CLE = 'medrevise.couleursPerso';
 const MAX = 12;
@@ -27,9 +31,29 @@ export function lireCouleursPerso() {
   } catch (e) { return []; }
 }
 
-function ecrire(liste) {
+function ecrireLocal(liste) {
   try { localStorage.setItem(CLE, JSON.stringify(liste)); } catch (e) { /* stockage indisponible : la couleur reste utilisable, juste pas mémorisée */ }
   try { window.dispatchEvent(new CustomEvent(EVENEMENT, { detail: liste })); } catch (e) { /* ignore */ }
+}
+function ecrire(liste) {
+  ecrireLocal(liste);
+  setCouleursPersoSync(liste).catch(() => { /* hors ligne : l'outbox de la synchro s'en charge */ });
+}
+const normaliser = (v) => (Array.isArray(v) ? v.filter(estHex).map((c) => c.toLowerCase()).slice(0, MAX) : []);
+/** relit la version SYNCHRONISÉE ; la première fois, y verse les couleurs qui
+    n'existaient encore que sur cet appareil (avant la synchro du 03/10). */
+let migrationFaite = false;
+async function relireSync() {
+  try {
+    const rec = await getCouleursPersoSync();
+    if (rec && Array.isArray(rec.couleurs)) {
+      const v = normaliser(rec.couleurs);
+      if (JSON.stringify(v) !== JSON.stringify(lireCouleursPerso())) ecrireLocal(v);
+      return;
+    }
+    const locales = lireCouleursPerso();
+    if (!migrationFaite && locales.length) { migrationFaite = true; await setCouleursPersoSync(locales); }
+  } catch (e) { /* IndexedDB indisponible : on garde le cache local */ }
 }
 
 /** [liste, ajouter(hex), retirer(hex)] — partagé par tous les sélecteurs ouverts. */
@@ -37,9 +61,17 @@ export function useCouleursPerso() {
   const [liste, setListe] = useState(lireCouleursPerso);
   useEffect(() => {
     const maj = () => setListe(lireCouleursPerso());
+    const relire = () => { relireSync(); };
+    const visible = () => { if (document.visibilityState === 'visible') relireSync(); };
     window.addEventListener(EVENEMENT, maj);
     window.addEventListener('storage', maj); // autre onglet
-    return () => { window.removeEventListener(EVENEMENT, maj); window.removeEventListener('storage', maj); };
+    window.addEventListener('medrevise:recharge', relire); // après une synchro
+    document.addEventListener('visibilitychange', visible);
+    relireSync();
+    return () => {
+      window.removeEventListener(EVENEMENT, maj); window.removeEventListener('storage', maj);
+      window.removeEventListener('medrevise:recharge', relire); document.removeEventListener('visibilitychange', visible);
+    };
   }, []);
   const ajouter = (hex) => {
     if (!estHex(hex)) return;
