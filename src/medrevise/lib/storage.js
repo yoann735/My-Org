@@ -345,6 +345,50 @@ export function newTrait({ ficheId, page, points, couleur, epaisseur, aimant, mo
   };
 }
 
+/* ---- ÉDITION « À LA APERÇU » (01/10, voir docs/archi-edition-pdf.md) ----
+   Quatre nouveaux `kind` du MÊME store `annotations` : le PDF d'origine n'est
+   jamais réécrit, ces ajouts sont dessinés par-dessus comme une boîte. Même
+   synchro, même historique d'annulation, aucune migration.
+   `page` : numéro de page du PDF, OU id d'une page ajoutée (kind 'page'). */
+
+/** TEXTE LIBRE : du texte posé sur la page, sans cadre ni fond. */
+export function newTexteLibre({ ficheId, page, x, y, width, height, couleur, content }) {
+  return {
+    id: genId('an'), ficheId, page, x, y, width, height,
+    kind: 'texte', type: 'texte',
+    couleur: couleur || 'noir', // couleur du TEXTE (palette du crayon, ou hex)
+    content: content || { type: 'doc', content: [{ type: 'paragraph' }] },
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/** « ? » : « je n'ai pas compris ce passage ». Un point (x, y) = son centre. */
+export function newQuestionMarque({ ficheId, page, x, y }) {
+  return { id: genId('an'), ficheId, page, x, y, kind: 'question', type: 'question', createdAt: new Date().toISOString() };
+}
+
+/** IMAGE COLLÉE : un blob ordinaire (même canal que les images de flashcards),
+    posé sur la page. `z` = calque ENTRE IMAGES seulement : les annotations restent
+    toujours au-dessus (ordre des couches, voir pdf/PdfPage.jsx). */
+export function newImageCollee({ ficheId, page, x, y, width, height, blobId, z, nom }) {
+  return {
+    id: genId('an'), ficheId, page, x, y, width, height,
+    kind: 'image', type: 'image', blobId, z: Number.isFinite(z) ? z : 0, nom: nom || null,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/** PAGE AJOUTÉE : une page blanche intercalée APRÈS la page `apres` du PDF
+    (0 = avant la première). `rang` ordonne plusieurs pages ajoutées au même
+    endroit. `width`/`height` : taille en points, copiée sur la page voisine. */
+export function newPageAjoutee({ ficheId, apres, rang, width, height }) {
+  return {
+    id: genId('an'), ficheId, kind: 'page', type: 'page',
+    apres, rang: Number.isFinite(rang) ? rang : 0, width, height,
+    createdAt: new Date().toISOString(),
+  };
+}
+
 /* ---- meta (migrations) + backups (sauvegardes pré-migration) ---- */
 export const getMeta = (key) => get(key, S.meta);
 export const setMeta = (key, val) => set(key, val, S.meta);

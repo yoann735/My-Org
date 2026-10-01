@@ -1722,3 +1722,32 @@
 .ptb-perso { position: relative; display: inline-flex; align-items: center; justify-content: center;
   background: conic-gradient(#e5383b, #f28c28, #ffd84d, #1e9e5a, #2563eb, #8b5cf6, #e5383b); color: #fff; overflow: hidden; }
 .ptb-perso input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; border: 0; padding: 0; }
+
+/* ---- Outils Texte et « ? » (01/10) ---- */
+.ptb-glyphe { display: inline-flex; align-items: center; justify-content: center; width: 15px; font-weight: 800; font-size: 14px; line-height: 1; font-family: Georgia, serif; }
+.pdfr-poselayer { position: absolute; inset: 0; user-select: none; touch-action: none; }
+.pdfr-poselayer.outil-texte { cursor: text; }
+.pdfr-poselayer.outil-question { cursor: copy; }
+/* texte libre : une boîte sans cadre ni fond ; sa poignée n'apparaît qu'au survol */
+.note-box.texte-libre { border: 1px dashed transparent; box-shadow: none; overflow: visible; background: transparent; }
+.note-box.texte-libre:hover, .note-box.texte-libre.active { border-color: color-mix(in srgb, var(--accent) 70%, transparent); }
+.note-box.texte-libre .nb-bar { position: absolute; left: -1px; top: -17px; height: 16px; padding: 0 4px; border-radius: 4px 4px 0 0;
+  background: var(--accent); color: #fff; opacity: 0; transition: opacity .12s; }
+.note-box.texte-libre:hover .nb-bar, .note-box.texte-libre.active .nb-bar, .note-box.texte-libre .nb-bar:focus { opacity: 1; }
+.note-box.texte-libre .nb-body { padding: 1px 3px; font-size: 15px; overflow: visible; }
+.note-box.texte-libre.vide:not(.active) .nb-body:empty::before, .note-box.texte-libre.vide:not(.active) .nb-body p:only-child:empty::before { content: "Texte…"; color: rgba(0,0,0,.35); font-style: italic; }
+.note-box.texte-libre .nb-corner { opacity: 0; }
+.note-box.texte-libre:hover .nb-corner, .note-box.texte-libre.active .nb-corner { opacity: 1; }
+/* « ? » */
+.pdfr-question { position: absolute; transform: translate(-50%, -50%); z-index: 2; }
+.pdfr-question .pq-rond { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; background: #F28C28; color: #fff;
+  font: 800 16px/1 Georgia, serif; display: inline-flex; align-items: center; justify-content: center; cursor: grab; padding: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,.3); transition: transform .1s; }
+.pdfr-question .pq-rond:hover { transform: scale(1.12); }
+.pdfr-question.glisse .pq-rond { cursor: grabbing; transform: scale(1.2); }
+.pdfr-question .pq-x { position: absolute; top: -7px; right: -9px; width: 16px; height: 16px; border-radius: 50%; padding: 0; border: 0;
+  background: var(--crit, #d33); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  opacity: 0; transition: opacity .1s; }
+/* la croix est TOUJOURS là (juste transparente) : sinon le clic qui la vise tombait
+   sur la page — et, outil « ? » actif, posait un nouveau « ? » au lieu de supprimer */
+.pdfr-question:hover .pq-x, .pdfr-question:focus-within .pq-x, .pdfr-question .pq-x:hover { opacity: 1; }

@@ -62,6 +62,7 @@ export function PdfPageContent({
   onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, onDemanderAncrage = () => {},
   onCreerTrait, onSupprimerTraits, cibleHlId,
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, aimantActif = true, modeCrayon = 'dessin',
+  textes = [], questions = [], onPoser = () => {},
 }) {
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
@@ -499,6 +500,34 @@ export function PdfPageContent({
         </div>
       )}
 
+      {/* OUTILS « UN CLIC = UN ÉLÉMENT » (01/10) : Texte et « ? ». Même principe
+          que la couche de tracé (VERROU 1) : posée au-dessus de la couche de texte,
+          elle seule reçoit le clic — ni sélection ni surlignage possibles. */}
+      {(outil === 'texte' || outil === 'question') && (
+        <div className={'pdfr-poselayer outil-' + outil} onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          const r = e.currentTarget.getBoundingClientRect();
+          if (!r.width || !r.height) return;
+          onPoser(outil, { page: pageNum, x: clamp01((e.clientX - r.left) / r.width), y: clamp01((e.clientY - r.top) / r.height) });
+        }} />
+      )}
+
+      {/* textes libres et « ? » : des ANNOTATIONS, donc au-dessus des images et
+          des traits, comme les boîtes (règle fixe des calques). */}
+      {textes.map((t) => (
+        <NoteBox key={t.id} boite={t} variante="texte" active={t.id === activeEditId}
+          editor={t.id === activeEditId ? activeEditor : null}
+          onActivate={onActivateEdit}
+          onGeste={(enCours) => { gesteBoite.current = enCours; }}
+          onMaj={onMajBoite} onSupprimer={onSupprimerBoite} onModifier={onModifierBoite}
+          pageWidth={pageWidth} pageHeight={pageHeight} texteProche={texteProche} />
+      ))}
+      {questions.map((q) => (
+        <QuestionMarque key={q.id} q={q} onModifier={onModifierBoite} onSupprimer={onSupprimerBoite}
+          onGeste={(enCours) => { gesteBoite.current = enCours; }} />
+      ))}
+
       {/* rendues APRÈS la couche de tracé : une boîte existante reste toujours
           atteignable, même l'outil « Boîte de texte » actif. */}
       {boites.map((b) => (
@@ -551,7 +580,8 @@ export function PdfPageContent({
    Une seule entrée d'historique par geste : l'état d'avant est capturé au
    pointerdown, la commande empilée au pointerup, et seulement si ça a bougé.
    ============================================================ */
-function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, onDemanderAncrage, pageWidth, pageHeight, texteProche }) {
+function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite' }) {
+  const texteLibre = variante === 'texte'; // TEXTE LIBRE (01/10) : même mécanique, sans cadre ni fond
   const [apercu, setApercu] = useState(null); // géométrie pendant le geste (état local, non persisté)
   const b = apercu || boite;
   const html = useMemo(() => richToHTML(boite.content), [boite.content]);
@@ -658,13 +688,16 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      (BOITE_DEFAUT) sans jamais rien perdre. La poignée l'agrandit toujours. */
   const style = {
     left: b.x * 100 + '%', top: b.y * 100 + '%', width: b.width * 100 + '%', minHeight: b.height * 100 + '%',
-    background: avecAlpha(COLOR_HEX[boite.couleur] || COLOR_HEX.jaune, 0.92),
+    ...(texteLibre
+      ? { color: couleurHex(boite.couleur, '#1F1F24') }
+      : { background: avecAlpha(COLOR_HEX[boite.couleur] || COLOR_HEX.jaune, 0.92) }),
   };
 
   /* ÉPINGLE (ancre) : le point de la fiche auquel la boîte se rapporte. Un repère
      rond à cet endroit ; une boîte épinglée ET réduite devient une pastille posée
      SUR ce passage. Une boîte d'avant n'a ni ancre, ni `reduite` : ouverte, libre. */
-  const extrait = (boite.content ? richToHTML(boite.content).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '') || 'Boîte vide';
+  const extraitBrut = boite.content ? richToHTML(boite.content).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+  const extrait = extraitBrut || 'Boîte vide';
   const [pointApercu, setPointApercu] = useState(null); // position pendant le glisser d'une épingle / pastille
   const ancreBrute = boite.ancre && Number.isFinite(boite.ancre.x) && Number.isFinite(boite.ancre.y) ? boite.ancre : null;
   const ancre = ancreBrute && pointApercu && pointApercu.cible === 'ancre' ? { ...ancreBrute, ...pointApercu } : ancreBrute;
@@ -716,7 +749,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
 
   /* RÉDUITE : une pastille. Glisser = la déplacer (épinglée : l'épingle suit, le
      passage visé est recalculé ; libre : la boîte rouvrira là). Clic = rouvrir. */
-  if (boite.reduite) {
+  if (boite.reduite && !texteLibre) {
     const pos = pointApercu && pointApercu.cible === 'pastille' ? pointApercu : (ancre || { x: b.x, y: b.y });
     const cible = ancre ? 'ancre' : 'pastille';
     return (
@@ -756,6 +789,9 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      qu'il fait ; l'infobulle dit comment. La « Flèche » n'est jamais grisée : sans
      épingle, elle commence par la faire poser, puis se trace toute seule. */
   const actionsVisibles = active || survol || enAncrage;
+  // barre SOUS l'élément : boîte collée en haut de page, ou texte libre (sa poignée
+  // de déplacement occupe déjà le dessus)
+  const dessous = texteLibre || (pageHeight && b.y * pageHeight < 42);
   const stop = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onClick: (e) => { e.stopPropagation(); fn(); } });
 
   return (
@@ -777,11 +813,15 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         onPointerDown={(e) => glisserPoint(e, { cible: 'ancre', depart: { x: ancreBrute.x, y: ancreBrute.y } })} />
     )}
     {actionsVisibles && (
-      <div className={'nb-actions' + (pageHeight && b.y * pageHeight < 42 ? ' dessous' : '')}
-        style={{ ...(b.x + b.width / 2 > 0.5 ? { right: (1 - b.x - b.width) * 100 + '%' } : { left: b.x * 100 + '%' }), top: (pageHeight && b.y * pageHeight < 42 ? b.y + Math.max(b.height, hautVue / pageHeight) : b.y) * 100 + '%' }}
+      <div className={'nb-actions' + (dessous ? ' dessous' : '')}
+        style={{ ...(b.x + b.width / 2 > 0.5 ? { right: (1 - b.x - b.width) * 100 + '%' } : { left: b.x * 100 + '%' }), top: (dessous ? b.y + Math.max(b.height, hautVue / (pageHeight || 1)) : b.y) * 100 + '%' }}
         onMouseEnter={entrer} onMouseLeave={sortir}
         onPointerDown={(e) => e.stopPropagation()}>
-        {enAncrage ? (
+        {texteLibre ? (
+          <button type="button" className="nb-act danger" {...stop(() => onSupprimer(boite))} title={`Supprimer ce texte (annulable par ${RACCOURCI_Z})`}>
+            <Icon name="trash" size={13} /> Supprimer
+          </button>
+        ) : enAncrage ? (
           <button type="button" className="nb-act vise" {...stop(() => onDemanderAncrage(null))} title="Annuler (Échap)">
             <IconeEpingle size={13} /> Clique l’endroit à épingler… <span className="nb-act-x">Annuler</span>
           </button>
@@ -812,7 +852,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         </>)}
       </div>
     )}
-    <div ref={boiteRef} className={'note-box' + (active ? ' active' : '') + (enAncrage ? ' en-ancrage' : '')} style={style}
+    <div ref={boiteRef} className={'note-box' + (texteLibre ? ' texte-libre' : '') + (active ? ' active' : '') + (enAncrage ? ' en-ancrage' : '') + (texteLibre && !extraitBrut ? ' vide' : '')} style={style}
       onMouseEnter={entrer} onMouseLeave={sortir}>
       {/* CORRECTIF (défaut 4) : le bandeau est focusable, et c'est LUI qui porte la
           suppression au clavier — plus aucun écouteur global ne peut effacer la
@@ -831,11 +871,57 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       {/* VERROU 4 : le corps est du TEXTE, pas une poignée. */}
       {active && editor
         ? <div className="nb-body"><EditorContent editor={editor} /></div>
-        : <div className="nb-body" onClick={activer} dangerouslySetInnerHTML={{ __html: html }} />}
+        : <div className="nb-body" onClick={activer} data-vide={texteLibre ? 'Texte…' : undefined} dangerouslySetInnerHTML={{ __html: html }} />}
 
       <div className="nb-corner" title="Glisser pour redimensionner" onPointerDown={(e) => demarrer(e, 'resize')} />
     </div>
     </>
+  );
+}
+
+/* ============================================================
+   « ? » — « je n'ai pas compris ce passage » (01/10). Un rond, posé d'un clic
+   avec l'outil « ? ». Glisser = déplacer ; survol ou focus = une petite croix
+   pour le retirer (Suppr aussi). Une entrée d'annulation par geste.
+   ============================================================ */
+function QuestionMarque({ q, onModifier, onSupprimer, onGeste }) {
+  const [apercu, setApercu] = useState(null);
+  const pos = apercu || q;
+  const glisser = (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const btn = e.currentTarget;
+    const page = btn.closest('.pdfr-page');
+    const r = page && page.getBoundingClientRect();
+    if (!r || !r.width || !r.height) return;
+    const d0 = { x: e.clientX, y: e.clientY };
+    let bouge = false, dernier = null;
+    onGeste(true);
+    const move = (ev) => {
+      if (!bouge && Math.abs(ev.clientX - d0.x) + Math.abs(ev.clientY - d0.y) <= 4) return;
+      bouge = true;
+      dernier = { x: clamp01(q.x + (ev.clientX - d0.x) / r.width), y: clamp01(q.y + (ev.clientY - d0.y) / r.height) };
+      setApercu(dernier);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      onGeste(false);
+      setApercu(null);
+      if (bouge && dernier) onModifier(q, dernier, 'Déplacement du « ? »');
+      else btn.focus();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <span className={'pdfr-question' + (apercu ? ' glisse' : '')} style={{ left: pos.x * 100 + '%', top: pos.y * 100 + '%' }}>
+      <button type="button" className="pq-rond" title="Je n'ai pas compris ce passage · Glisser : déplacer · Suppr : retirer"
+        onPointerDown={glisser} onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onSupprimer(q); } }}>?</button>
+      <button type="button" className="pq-x" title={`Retirer ce « ? » (annulable par ${RACCOURCI_Z})`}
+        onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onSupprimer(q); }}><Icon name="x" size={10} /></button>
+    </span>
   );
 }
 
@@ -888,7 +974,7 @@ function TextEditBlock({ edit, active, editable, onActivate, editor, pageHeight 
     plutôt qu'une popover flottante ancrée sur le bloc, pour rester fiable pendant le
     scroll/zoom (un bloc édité peut sortir du viewport pendant qu'on le rédige). Pilote
     la MÊME instance `editor` que celle rendue dans le bloc (passée par PdfReader). */
-export function EditToolbar({ editor, onReset, onClose, libre = false, couleur = null, onCouleur = null }) {
+export function EditToolbar({ editor, onReset, onClose, libre = false, couleur = null, onCouleur = null, palette = null, libelleSupprimer = null }) {
   const [, force] = useState(0);
   useEffect(() => {
     const rerender = () => force((v) => v + 1);
@@ -922,6 +1008,7 @@ export function EditToolbar({ editor, onReset, onClose, libre = false, couleur =
           <span className="et-sep" />
         </>
       )}
+      {palette && <><span className="et-sep" />{palette}<span className="et-sep" /></>}
       <button type="button" className={'et-btn' + (active('bold') ? ' active' : '')} title="Gras" onClick={() => run((c) => c.toggleBold())}><b>G</b></button>
       <button type="button" className={'et-btn' + (active('italic') ? ' active' : '')} title="Italique" onClick={() => run((c) => c.toggleItalic())}><i>I</i></button>
       <button type="button" className={'et-btn' + (active('underline') ? ' active' : '')} title="Souligné" onClick={() => run((c) => c.toggleUnderline())}><u>U</u></button>
@@ -951,7 +1038,7 @@ export function EditToolbar({ editor, onReset, onClose, libre = false, couleur =
       <button type="button" className="et-btn" title="Rétablir" onClick={() => editor.chain().focus().redo().run()}><Icon name="refresh" size={13} /></button>
       <span style={{ flex: 1 }} />
       <button type="button" className="btn ghost sm" onClick={onReset}>
-        {libre ? <><Icon name="trash" size={13} /> Supprimer la boîte</> : <><Icon name="refresh" size={13} /> Réinitialiser (texte d'origine)</>}
+        {libelleSupprimer ? <><Icon name="trash" size={13} /> {libelleSupprimer}</> : libre ? <><Icon name="trash" size={13} /> Supprimer la boîte</> : <><Icon name="refresh" size={13} /> Réinitialiser (texte d'origine)</>}
       </button>
       <button type="button" className="btn sm" onClick={onClose}><Icon name="check" size={13} /> Terminé</button>
     </div>

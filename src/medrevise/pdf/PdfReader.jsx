@@ -56,7 +56,7 @@ import { useEditor } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, detectDocKind, Modal, LoaderL6, ConfirmModal } from '../components/ui.jsx';
-import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait } from '../lib/storage.js';
+import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque } from '../lib/storage.js';
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cibleEditable } from '../lib/annotHistory.js';
 import { RICH_EXTENSIONS } from '../documents/lib/richtext.js';
 import { AddItemModal, PasteJsonForm } from '../components/AddItemForm.jsx';
@@ -161,6 +161,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [couleurActive, setCouleurActive] = useState('jaune'); // partagée par surligneur et boîte
   // le crayon a sa propre couleur, prise dans une palette plus large (PALETTE_CRAYON)
   const [couleurCrayon, setCouleurCrayon] = useState('rouge');
+  const [couleurTexte, setCouleurTexte] = useState('noir'); // couleur du prochain TEXTE LIBRE
   const [epaisseur, setEpaisseur] = useState(EPAISSEURS[0].id); // mode dessin : trait FIN par défaut
   const [aimant, setAimant] = useState(true); // le lissage est utile par défaut ; décochable (mode dessin seulement)
   const [modeCrayon, setModeCrayon] = useState('dessin'); // dessin (fin, doux) | surligneur (épais, translucide)
@@ -788,6 +789,28 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     });
   };
 
+  /* ---- TEXTE LIBRE et « ? » (01/10) : un clic = un élément posé ----
+     Le texte libre est une boîte sans cadre (même NoteBox, même éditeur) : on le
+     pose, on écrit tout de suite. Le « ? » se pose et l'outil reste actif — on en
+     marque souvent plusieurs d'affilée en relisant. */
+  const poserElement = async (quoi, { page, x, y }) => {
+    if (quoi === 'texte') {
+      const ligne = 0.022; // le clic vise le milieu de la première ligne
+      const rec = newTexteLibre({ ficheId, page, x: Math.min(x, 0.75), y: Math.max(0, Math.min(y - ligne / 2, 1 - ligne)),
+        width: 0.25, height: ligne, couleur: couleurTexte });
+      await hist.appliquer(cmdCreer('annotations', rec, 'Texte libre'));
+      setActiveEditId(rec.id);
+      setOutil('main');
+    } else if (quoi === 'question') {
+      await hist.appliquer(cmdCreer('annotations', newQuestionMarque({ ficheId, page, x, y }), 'Point d’interrogation'));
+    }
+  };
+  const changerCouleurTexte = async (t, couleur) => {
+    setCouleurTexte(couleur);
+    const actuel = boiteFraiche(t.id, t);
+    if (actuel && actuel.couleur !== couleur) await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, couleur }, 'Couleur du texte'));
+  };
+
   const supprimerBoite = async (b) => {
     if (!b) return;
     const actuel = boiteFraiche(b.id, b); // restaurer la boîte AVEC son texte le plus récent
@@ -840,6 +863,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const boitesByPage = useMemo(() => groupByPage(parType.boite), [parType]);
   // traits de crayon ET de surligneur : même calque d'encre (le mode règle le rendu)
   const traitsByPage = useMemo(() => groupByPage([...parType.trait, ...parType.surligneur]), [parType]);
+  const textesByPage = useMemo(() => groupByPage(parType.texte), [parType]);
+  const questionsByPage = useMemo(() => groupByPage(parType.question), [parType]);
   const matchesByPage = useMemo(() => groupByPage(matches), [matches]);
 
   // contenu de l'onglet « Notions » du panneau commun (voir CourseItemsSidebar)
@@ -948,7 +973,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         onPrecedent={gotoPrevMatch} onSuivant={gotoNextMatch} onFermerRecherche={closeSearch}
         panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={highlights.length}
         actionsDocument={actionsDocument}
-        contexteSupplementaire={outil === 'crayon' ? (
+        contexteSupplementaire={outil === 'texte' ? (
+          <PaletteCrayon couleur={couleurTexte} onCouleur={setCouleurTexte} />
+        ) : outil === 'question' ? <span /> : outil === 'crayon' ? (
           <>
             <PaletteCrayon couleur={couleurCrayon} onCouleur={setCouleurCrayon} />
             <span className="ptb-sep" />
@@ -983,7 +1010,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <EditToolbar editor={editor} libre={activeEdit.kind === 'libre'}
           couleur={activeEdit.couleur}
           onCouleur={(c) => changerCouleurBoite(activeEdit, c)}
-          onReset={() => (activeEdit.kind === 'libre' ? supprimerBoite(activeEdit) : resetEdit(activeEdit.id))}
+          palette={activeEdit.kind === 'texte' ? <PaletteCrayon couleur={activeEdit.couleur} onCouleur={(c) => changerCouleurTexte(activeEdit, c)} /> : null}
+          libelleSupprimer={activeEdit.kind === 'texte' ? 'Supprimer le texte' : null}
+          onReset={() => (activeEdit.kind === 'libre' || activeEdit.kind === 'texte' ? supprimerBoite(activeEdit) : resetEdit(activeEdit.id))}
           onClose={() => setActiveEditId(null)} />
       )}
 
@@ -1028,6 +1057,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       edits={blocsByPage[n] || EMPTY_ARRAY}
                       boites={boitesByPage[n] || EMPTY_ARRAY}
                       traits={traitsByPage[n] || EMPTY_ARRAY}
+                      textes={textesByPage[n] || EMPTY_ARRAY}
+                      questions={questionsByPage[n] || EMPTY_ARRAY}
+                      onPoser={poserElement}
                       onCreerTrait={creerTrait}
                       onSupprimerTraits={supprimerTraits}
                       couleurTrait={couleurCrayon}

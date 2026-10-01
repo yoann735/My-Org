@@ -37,8 +37,15 @@ export const TYPES_ANNOTATION = {
   trait: { store: 'annotations', libelle: 'trait', pluriel: 'traits' },
   surligneur: { store: 'annotations', libelle: 'trait de surligneur', pluriel: 'traits de surligneur' },
   bloc: { store: 'annotations', libelle: 'bloc remplacé', pluriel: 'blocs remplacés' },
+  // édition « à la Aperçu » (01/10, docs/archi-edition-pdf.md)
+  texte: { store: 'annotations', libelle: 'texte', pluriel: 'textes' },
+  question: { store: 'annotations', libelle: 'point d’interrogation', pluriel: 'points d’interrogation' },
+  image: { store: 'annotations', libelle: 'image', pluriel: 'images' },
+  page: { store: 'annotations', libelle: 'page ajoutée', pluriel: 'pages ajoutées' },
 };
-export const ORDRE_TYPES = ['surlignage', 'boite', 'trait', 'surligneur', 'bloc'];
+export const ORDRE_TYPES = ['surlignage', 'boite', 'trait', 'surligneur', 'bloc', 'texte', 'question', 'image', 'page'];
+/** kinds des ajouts du 01/10 : leur type est leur kind. */
+const KINDS_AJOUTS = new Set(['texte', 'question', 'image', 'page']);
 
 /** Type d'un enregistrement. `store` = store d'où il vient ('highlights' |
     'annotations'). Le `type` écrit fait foi ; à défaut (enregistrement
@@ -49,6 +56,7 @@ export function typeAnnotation(rec, store = 'annotations') {
   if (store === 'highlights') return 'surlignage';
   if (rec.kind === 'libre') return 'boite';
   if (rec.kind === 'trait') return rec.mode === 'surligneur' ? 'surligneur' : 'trait';
+  if (KINDS_AJOUTS.has(rec.kind)) return rec.kind;
   if (!rec.kind) return 'bloc';
   return null; // kind inconnu (version future) : ignoré, jamais mal classé
 }

@@ -32,6 +32,8 @@ export const OUTILS = [
   { id: 'main', label: 'Sélection', icon: 'grip', aide: 'Sélectionner du texte, ouvrir une annotation, déplacer une boîte' },
   { id: 'surligneur', label: 'Surligneur', icon: 'edit', aide: 'Sélectionner du texte le surligne aussitôt, dans la couleur active' },
   { id: 'boite', label: 'Boîte', icon: 'list', aide: 'Tracer une boîte de texte n’importe où sur la page' },
+  { id: 'texte', label: 'Texte', glyphe: 'T', aide: 'Cliquer sur la page pour y écrire du texte libre, sans cadre' },
+  { id: 'question', label: '?', glyphe: '?', aide: 'Un clic pose un « ? » : « je n’ai pas compris ce passage »' },
   { id: 'crayon', label: 'Crayon', icon: 'sparkle', aide: 'Dessiner à main levée' },
   { id: 'gomme', label: 'Gomme', icon: 'ban', aide: 'Efface les traits de crayon — cliquer, ou glisser pour en effacer plusieurs' },
 ];
@@ -134,7 +136,8 @@ export function PdfToolbar({
                 className={'ptb-outil' + (outil === o.id ? ' actif' : '')}
                 onMouseDown={(e) => e.preventDefault()} /* garde la sélection de texte : Surligneur la surligne */
                 onClick={() => setOutil(o.id)}>
-                <Icon name={o.icon} size={15} /><span className="ptb-outil-lbl">{o.label}</span>
+                {o.glyphe ? <span className="ptb-glyphe" aria-hidden="true">{o.glyphe}</span> : <Icon name={o.icon} size={15} />}
+                {o.id !== 'question' && <span className="ptb-outil-lbl">{o.label}</span>}
               </button>
             ))}
             <span className="ptb-sep" />
