@@ -1948,3 +1948,80 @@
 .pdfr-forme .pf-actions.dessous { top: 100%; }
 .pdfr-formelayer { cursor: crosshair; }
 .pdfr-forme-apercu { position: absolute; border: 2px dashed; border-radius: 3px; pointer-events: none; }
+
+/* ============================================================
+   TABLEAU type Miro (04/10) — disposition dans le lecteur + le canvas
+   ============================================================ */
+.pdfr-dispo { margin-right: 4px; }
+.pdfr-dispo .seg-btn { height: 28px; font-size: 12px; }
+.avec-tableau.dispo-deux .pdfr-scroll { flex: 0 0 calc(var(--ratio-pdf, .5) * 100% - 6px); }
+.avec-tableau.dispo-tableau .pdfr-scroll { display: none; }
+.pdfr-tableau { flex: 1 1 auto; min-width: 0; display: flex; }
+.pdfr-poignee { flex: 0 0 8px; margin: 0 -2px; cursor: col-resize; border-radius: 4px; position: relative; touch-action: none; }
+.pdfr-poignee::after { content: ''; position: absolute; left: 3px; top: 50%; width: 2px; height: 40px; margin-top: -20px; border-radius: 2px;
+  background: var(--border-2); transition: background .12s, height .12s; }
+.pdfr-poignee:hover::after { background: var(--accent); height: 64px; margin-top: -32px; }
+@media (min-width: 761px) {
+  .lib-screen.doc-ouvert .pdfr-tableau, .lecteur-plein .pdfr-tableau { height: calc(100vh - 188px); }
+  .lib-screen.doc-ouvert:has(.pdfr-contexte) .pdfr-tableau, .lecteur-plein:has(.pdfr-contexte) .pdfr-tableau,
+  .lib-screen.doc-ouvert:has(.pdfr-edit-toolbar) .pdfr-tableau, .lecteur-plein:has(.pdfr-edit-toolbar) .pdfr-tableau { height: calc(100vh - 232px); }
+}
+
+.tb { position: relative; flex: 1 1 auto; min-width: 0; height: 100%; min-height: 320px; border-radius: var(--r, 14px); overflow: hidden;
+  outline: none; border: 1px solid var(--border); background: var(--card-2, #121216); }
+.tb:focus-visible { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.tb-vue { position: absolute; inset: 0; overflow: hidden; cursor: default; touch-action: none;
+  background-color: #f7f7f5; background-image: radial-gradient(circle, rgba(0,0,0,.13) 1.1px, transparent 1.3px); }
+.tb-vue.pan, .tb-vue.pan * { cursor: grab !important; }
+.tb-monde { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; will-change: transform; }
+.tb-liens { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.tb-lien-zone { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; vector-effect: non-scaling-stroke; }
+.tb-lien-trait { fill: none; stroke: #5b5b6b; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; }
+.tb-lien.sel .tb-lien-trait, .tb-lien-trait.fantome { stroke: var(--accent, #7c5cff); }
+.tb-lien-trait.fantome { stroke-dasharray: 6 5; }
+.tb-lien:hover .tb-lien-trait { stroke: #34343f; }
+.tb-marquee { fill: color-mix(in srgb, var(--accent, #7c5cff) 10%, transparent); stroke: var(--accent, #7c5cff); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.tb-guide { stroke: #ff3b8d; stroke-width: 1; vector-effect: non-scaling-stroke; }
+
+.tb-carte { position: absolute; box-sizing: border-box; border-radius: 10px; padding: 10px 12px; color: #1d1d26;
+  box-shadow: 0 1px 2px rgba(0,0,0,.12), 0 4px 14px rgba(0,0,0,.08); border: 1px solid rgba(0,0,0,.08); cursor: move; user-select: none; }
+.tb-carte:hover { box-shadow: 0 1px 2px rgba(0,0,0,.14), 0 6px 18px rgba(0,0,0,.12); }
+.tb-carte.sel { outline: 2px solid var(--accent, #7c5cff); outline-offset: 2px; }
+.tb-carte.edition { cursor: text; outline: 2px solid var(--accent, #7c5cff); }
+.tb-texte { width: 100%; height: 100%; font: 500 14px/1.4 inherit; font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere; overflow: hidden; color: inherit; }
+.tb-texte.vide { color: rgba(0,0,0,.35); font-style: italic; font-weight: 400; }
+textarea.tb-texte { display: block; resize: none; border: 0; outline: none; background: transparent; padding: 0; margin: 0; overflow: auto; user-select: text; }
+.tb-mesure { position: absolute; left: -9999px; top: 0; visibility: hidden; height: auto; padding: 10px 12px; box-sizing: border-box; }
+.tb-redim { position: absolute; right: -5px; bottom: -5px; width: 12px; height: 12px; border-radius: 3px; background: #fff;
+  border: 2px solid var(--accent, #7c5cff); cursor: nwse-resize; }
+.tb-ancre { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #fff;
+  border: 2px solid var(--accent, #7c5cff); cursor: crosshair; opacity: 0; transition: opacity .12s, transform .12s; z-index: 2; }
+.tb-carte:hover .tb-ancre, .tb-carte.sel .tb-ancre { opacity: 1; }
+.tb-ancre:hover { transform: scale(1.35); }
+.tb-ancre-n { left: 50%; top: 0; } .tb-ancre-s { left: 50%; top: 100%; } .tb-ancre-e { left: 100%; top: 50%; } .tb-ancre-o { left: 0; top: 50%; }
+.tb-bout { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--accent, #7c5cff);
+  border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3); cursor: grab; z-index: 100000; }
+
+.tb-barre, .tb-contexte { position: absolute; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 12px; z-index: 5;
+  background: color-mix(in srgb, var(--card, #151518) 94%, transparent); backdrop-filter: blur(12px); border: 1px solid var(--border-2);
+  box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+.tb-barre { left: 10px; bottom: 10px; }
+.tb-contexte { left: 50%; top: 10px; transform: translateX(-50%); }
+.tb-btn { display: inline-flex; align-items: center; gap: 5px; height: 28px; min-width: 28px; justify-content: center; padding: 0 8px; border-radius: 8px;
+  border: 0; background: none; color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; }
+.tb-btn:hover { background: var(--bg-2); color: var(--text); }
+.tb-btn.actif { background: var(--accent-soft); color: var(--accent); }
+.tb-btn.principal { color: var(--accent); }
+.tb-btn.danger { color: var(--crit); }
+.tb-btn:disabled { opacity: .35; cursor: default; }
+.tb-btn.texte { font-weight: 500; }
+.tb-sep { width: 1px; height: 18px; background: var(--border-2); margin: 0 3px; }
+.tb-zoom { min-width: 44px; text-align: center; font-size: 11.5px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.tb-ctx-titre { font-size: 11px; font-weight: 700; color: var(--text-3); padding: 0 6px; }
+.tb-pastille { width: 18px; height: 18px; border-radius: 50%; padding: 0; margin: 0 1px; cursor: pointer; border: 1px solid rgba(0,0,0,.18); }
+.tb-pastille.actif { box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px var(--text); }
+.tb-vide { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); text-align: center; color: #8a8a96; font-size: 13px;
+  line-height: 1.7; pointer-events: none; }
+.tb-vide-titre { font-size: 17px; font-weight: 700; color: #4a4a56; margin-bottom: 4px; }
+.lecteur-entete-droite { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.lecteur-entete-droite .topbar-actions { margin-left: 0; }

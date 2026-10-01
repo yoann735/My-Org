@@ -76,6 +76,9 @@ import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { MenuFichier } from './MenuFichier.jsx';
+import { Tableau } from '../tableau/Tableau.jsx';
+// un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
+const dansLeTableau = (el) => !!(el && el.closest && el.closest('.tb'));
 
 
 /* C — bi-mode : route plein-écran (déclenchée par Réviser, via ctx.pdfView /
@@ -200,6 +203,22 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [searching, setSearching] = useState(false);
 
   const [panelOpen, setPanelOpen] = useState(panneauNotionsOuvert);
+
+  /* TABLEAU type Miro (04/10, docs/mecanique-miro.md) — DISPOSITION : « pdf » (comme
+     avant), « deux » (PDF | tableau, poignée réglable), « tableau » (plein, le PDF reste
+     MONTÉ mais masqué : on retrouve sa page et son zoom). Mémorisée par fiche, ratio
+     commun (préférences d'affichage, localStorage). Proposé seulement là où le lecteur
+     a son en-tête (Bibliothèque, plein écran) : Apprentissage et Anatomie, qui ont leur
+     propre disposition, ne changent pas. */
+  const cleDispo = 'medrevise.disposition.' + ficheId;
+  const [disposition, setDispositionBrut] = useState(() => { try { return localStorage.getItem(cleDispo) || 'pdf'; } catch (e) { return 'pdf'; } });
+  const [ratioSplit, setRatioSplit] = useState(() => { try { const v = parseFloat(localStorage.getItem('medrevise.disposition.ratio')); return v > 0.15 && v < 0.85 ? v : 0.5; } catch (e) { return 0.5; } });
+  const setDisposition = (d) => {
+    setDispositionBrut(d);
+    try { localStorage.setItem(cleDispo, d); } catch (e) { /* ignore */ }
+    if (d !== 'pdf') setPanelOpen(false); // la place va au tableau ; le panneau se rouvre d'un clic
+  };
+  const tableauRef = useRef(null);
   const [copiedCount, setCopiedCount] = useState(0); // >0 → confirmation « N notions copiées »
   const [exporting, setExporting] = useState(false);
 
@@ -295,6 +314,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   useEffect(() => {
     const onKey = (e) => {
       if (cibleEditable(e.target) || cibleEditable(document.activeElement)) return;
+      if (dansLeTableau(e.target) || dansLeTableau(document.activeElement)) return; // le tableau a ses propres raccourcis
       /* CORRECTIF (défaut 4) : PLUS de suppression au clavier ici. Un écouteur
          global sur Suppr/Retour arrière effaçait la boîte active dès que le curseur
          n'était pas dans son texte — par exemple juste après un clic sur son
@@ -552,6 +572,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (outil === 'main') return undefined;
     const onKey = (e) => {
       if (e.key !== 'Escape' || e.boiteRefermee || activeEditIdRef.current || ancrageRef.current) return;
+      if (dansLeTableau(e.target)) return;
       if (cibleEditable(e.target)) return;
       choisirOutilRef.current('main');
     };
@@ -754,7 +775,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       canAddItem && { label: 'Détacher le PDF', icon: 'x', danger: true, onClick: () => setDetacherPdf(true) },
     ] },
   ];
-  const entete = (
+  const entete = () => (
     <div className="lecteur-entete doc">
       <div className="doc-bloc">
         <TitreRenommable titre={fiche && fiche.titre} demandeEdition={demandeRenommer}
@@ -765,10 +786,44 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             !!(fiche && fiche.pdfId) && { label: 'Voir le PDF', icon: 'filePdf', onClick: () => setSrcTab('pdf') }] }]
           : groupesFichier} />
       </div>
-      <div className="topbar-actions"><EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} /></div>
+      <div className="lecteur-entete-droite">
+        {selecteurDispo}
+        <div className="topbar-actions"><EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} /></div>
+      </div>
     </div>
   );
   const afficherEntete = !embedded || avecEntete;
+  const tableauDispo = afficherEntete && srcTab === 'pdf' && !!fiche;
+  // POIGNÉE du partage (même patron que apprentissage/UniteSplit.jsx : capture du
+  // pointeur, ratio mémorisé, double-clic = moitié-moitié)
+  const corpsRef = useRef(null);
+  const majRatio = (r) => {
+    const v = Math.max(0.2, Math.min(0.8, r));
+    setRatioSplit(v);
+    try { localStorage.setItem('medrevise.disposition.ratio', String(+v.toFixed(3))); } catch (e) { /* ignore */ }
+  };
+  const debutPoignee = (e) => {
+    if (e.button !== 0 || !corpsRef.current) return;
+    e.preventDefault();
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    const r = corpsRef.current.getBoundingClientRect();
+    const move = (ev) => majRatio((ev.clientX - r.left) / r.width);
+    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+  };
+  const selecteurDispo = tableauDispo ? (
+    <div className="seg pdfr-dispo" role="tablist" aria-label="Disposition">
+      {[['pdf', 'filePdf', 'PDF'], ['deux', 'panel', 'Les deux'], ['tableau', 'grid', 'Tableau']].map(([id, ic, lbl]) => (
+        <button key={id} type="button" role="tab" aria-selected={disposition === id} className={'seg-btn' + (disposition === id ? ' active' : '')}
+          onClick={() => setDisposition(id)} title={id === 'pdf' ? 'Le PDF seul' : id === 'deux' ? 'PDF et tableau côte à côte' : 'Le tableau en plein'}>
+          <Icon name={ic} size={12} /> {lbl}
+        </button>
+      ))}
+    </div>
+  ) : null;
 
   /* EXPORT DU PDF ANNOTÉ COMPLET (01/10, voir pdf/exportAnnote.js) : surlignages,
      boîtes OUVERTES avec leurs flèches, traits, images, textes, « ? », pages
@@ -1138,6 +1193,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!pdfDoc || srcTab !== 'pdf') return undefined;
     const onPaste = (e) => {
       if (cibleEditable(e.target) || cibleEditable(document.activeElement)) return;
+      if (dansLeTableau(e.target) || dansLeTableau(document.activeElement)) return; // le tableau a ses propres raccourcis
       const items = [...((e.clipboardData && e.clipboardData.items) || [])];
       const it = items.find((x) => x.kind === 'file' && /^image\//.test(x.type));
       const f = it && it.getAsFile();
@@ -1329,7 +1385,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
           </div>
         )}
-        {embedded && avecEntete && entete}
+        {embedded && avecEntete && entete()}
         <div className="card" style={{ maxWidth: 480, margin: '30px auto', textAlign: 'center', padding: '30px 20px' }}>
           <Icon name="filePdf" size={30} />
           <div style={{ marginTop: 10, fontWeight: 600 }}>Attacher le cours</div>
@@ -1355,13 +1411,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     );
     // la vue HTML plein écran a son propre en-tête ; embarquée (Bibliothèque), elle
     // reçoit le même nom renommable + menu Fichier que le PDF
-    return embedded && avecEntete ? <div className="fadein">{entete}{vueHtml}</div> : vueHtml;
+    return embedded && avecEntete ? <div className="fadein">{entete()}{vueHtml}</div> : vueHtml;
   }
 
   return (
     <div className={embedded ? 'fadein' : 'screen scroll fadein lecteur-plein'}>
       {/* en-tête : nom renommable + menu Fichier (plein écran, ou Bibliothèque) */}
-      {afficherEntete && entete}
+      {afficherEntete && entete()}
 
       <PdfToolbar
         onClose={close}
@@ -1374,6 +1430,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         onPrecedent={gotoPrevMatch} onSuivant={gotoNextMatch} onFermerRecherche={closeSearch}
         panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={highlights.length}
         actionsDocument={afficherEntete ? [] : actionsDocument /* avec l'en-tête, tout est dans « Fichier » */}
+
         onAjouterPage={pdfDoc ? () => insererPageApres(pageCourante - 1) : null}
         onAjouterImage={pdfDoc ? () => entreeImageRef.current && entreeImageRef.current.click() : null}
         contexteSupplementaire={outil === 'forme' ? (
@@ -1452,7 +1509,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <button type="button" className={'seg-btn' + (mobileView === 'course' ? ' active' : '')} onClick={() => setMobileView('course')}><Icon name="filePdf" size={13} /> Cours</button>
         <button type="button" className={'seg-btn' + (mobileView === 'items' ? ' active' : '')} onClick={() => { setMobileView('items'); setPanelOpen(true); }}><Icon name="cards" size={13} /> Panneau</button>
       </div>
-      <div className="pdfr-body pdfr-workshop" data-mobile-view={mobileView}>
+      <div className={'pdfr-body pdfr-workshop' + (tableauDispo && disposition !== 'pdf' ? ' avec-tableau dispo-' + disposition : '')} data-mobile-view={mobileView}
+        ref={corpsRef} style={tableauDispo && disposition === 'deux' ? { '--ratio-pdf': ratioSplit } : undefined}>
         <div className="pdfr-scroll pdfr-workshop-course" ref={scrollRef} onScroll={onScroll}
           onDragOver={(e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); }}
           onDrop={deposerImage}>
@@ -1540,6 +1598,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             </div>
           )}
         </div>
+
+        {tableauDispo && disposition !== 'pdf' && (<>
+          {disposition === 'deux' && (
+            <div className="pdfr-poignee" role="separator" aria-orientation="vertical" title="Glisser pour régler la répartition · double-clic : moitié-moitié"
+              onPointerDown={debutPoignee} onDoubleClick={() => majRatio(0.5)} />
+          )}
+          <div className="pdfr-tableau">
+            <Tableau ref={tableauRef} ficheId={ficheId} />
+          </div>
+        </>)}
 
         {/* PANNEAU DE DROITE — le MÊME que sur une fiche HTML (CourseItemsSidebar) :
             QCM / Flashcard / Exercice / Feynman pour une vraie fiche, plus l'onglet
