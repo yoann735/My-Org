@@ -20,6 +20,7 @@ import { EditorContent } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
 import { outputScaleFor } from './pdfjsSetup.js';
 import { richToHTML } from '../documents/lib/richtext.js';
+import { blobURL } from '../lib/storage.js';
 import {
   COLORS, COLOR_HEX, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT,
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
@@ -63,6 +64,7 @@ export function PdfPageContent({
   onCreerTrait, onSupprimerTraits, cibleHlId,
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, aimantActif = true, modeCrayon = 'dessin',
   textes = [], questions = [], onPoser = () => {},
+  images = [], imageActiveId = null, onImageActiver = () => {}, onImageMaj = () => {}, onImageCalque = () => {}, onImageSupprimer = () => {},
 }) {
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
@@ -440,6 +442,20 @@ export function PdfPageContent({
       <div ref={textLayerRef} className={'pdfr-textlayer outil-' + outil} onMouseUp={handleMouseUp} onCopy={handleCopy}
         onMouseMove={handleMouseMove} onMouseLeave={() => setSurvolId(null)}
         style={survolId ? { cursor: 'pointer' } : undefined} />
+      {/* IMAGES COLLÉES (01/10) : JUSTE au-dessus du PDF, SOUS toutes les annotations
+          (surlignages, blocs, traits, textes, « ? », boîtes — rendus après). Leur
+          profondeur (`z`) ne les classe qu'entre elles : c'est l'ordre du DOM, sans
+          z-index, donc une image ne peut jamais passer devant une annotation. */}
+      {images.length > 0 && (
+        <div className={'pdfr-imglayer' + (outil === 'main' ? ' interactif' : '')}>
+          {images.map((img, i) => (
+            <ImageCollee key={img.id} img={img} active={img.id === imageActiveId}
+              premier={i === images.length - 1} dernier={i === 0}
+              onActiver={onImageActiver} onMaj={onImageMaj} onCalque={onImageCalque} onSupprimer={onImageSupprimer}
+              onGeste={(enCours) => { gesteBoite.current = enCours; }} />
+          ))}
+        </div>
+      )}
       <div className="pdfr-hlayer">
         {highlights.flatMap((h) => (shownRects[h.id] || h.rects).map((r, i) => (
           <div key={h.id + ':' + i}
@@ -932,6 +948,92 @@ function QuestionMarque({ q, onModifier, onSupprimer, onGeste }) {
       <button type="button" className="pq-x" title={`Retirer ce « ? » (annulable par ${RACCOURCI_Z})`}
         onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onSupprimer(q); }}><Icon name="x" size={10} /></button>
     </span>
+  );
+}
+
+/* ============================================================
+   IMAGE COLLÉE (01/10) — comme dans Aperçu : cliquer la sélectionne, glisser la
+   déplace, les coins la redimensionnent (proportions gardées). Sa barre règle le
+   CALQUE (devant / derrière les AUTRES images) et la supprime. Une entrée
+   d'annulation par geste ; le blob d'origine de l'image n'est jamais modifié.
+   ============================================================ */
+function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque, onSupprimer, onGeste }) {
+  const [url, setUrl] = useState(null);
+  const [manquante, setManquante] = useState(false);
+  useEffect(() => {
+    let annule = false, u = null;
+    blobURL(img.blobId).then((x) => { if (annule) { if (x) URL.revokeObjectURL(x); return; } u = x; setUrl(x); setManquante(!x); })
+      .catch(() => { if (!annule) setManquante(true); });
+    return () => { annule = true; if (u) URL.revokeObjectURL(u); };
+  }, [img.blobId]);
+
+  const [apercu, setApercu] = useState(null);
+  const g = apercu || img;
+  const cadreRef = useRef(null);
+  const geste = (e, type) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const page = e.currentTarget.closest('.pdfr-page');
+    const r = page && page.getBoundingClientRect();
+    if (!r || !r.width || !r.height) return;
+    const d0 = { x: e.clientX, y: e.clientY };
+    const avant = img;
+    const ratio = avant.width ? avant.height / avant.width : 1; // proportions en coordonnées normalisées
+    let bouge = false, courant = null;
+    onGeste(true);
+    onActiver(img.id);
+    if (cadreRef.current) cadreRef.current.focus({ preventScroll: true });
+    const move = (ev) => {
+      if (!bouge && Math.abs(ev.clientX - d0.x) + Math.abs(ev.clientY - d0.y) <= 3) return;
+      bouge = true;
+      const dx = (ev.clientX - d0.x) / r.width, dy = (ev.clientY - d0.y) / r.height;
+      if (type === 'move') {
+        courant = { ...avant, x: clamp(avant.x + dx, -avant.width * 0.8, 1 - avant.width * 0.2), y: clamp(avant.y + dy, -avant.height * 0.8, 1 - avant.height * 0.2) };
+      } else {
+        // coin tiré : le coin OPPOSÉ reste fixe, la largeur suit le plus grand des deux déplacements
+        const sx = type.includes('e') ? 1 : -1, sy = type.includes('s') ? 1 : -1;
+        // h = w × ratio en coordonnées normalisées : un déplacement vertical dh vaut dh / ratio en largeur
+        const dW = Math.max(sx * dx, (sy * dy) / (ratio || 1));
+        const w = clamp(avant.width + dW, 0.03, 2);
+        const h = w * ratio;
+        courant = { ...avant, width: w, height: h,
+          x: sx > 0 ? avant.x : avant.x + avant.width - w,
+          y: sy > 0 ? avant.y : avant.y + avant.height - h };
+      }
+      setApercu(courant);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      onGeste(false);
+      setApercu(null);
+      if (bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de l’image' : 'Redimension de l’image');
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  const stop = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onClick: (e) => { e.stopPropagation(); fn(); } });
+  return (
+    <div ref={cadreRef} tabIndex={0} className={'pdfr-image' + (active ? ' active' : '') + (apercu ? ' glisse' : '')}
+      style={{ left: g.x * 100 + '%', top: g.y * 100 + '%', width: g.width * 100 + '%', height: g.height * 100 + '%' }}
+      onPointerDown={(e) => geste(e, 'move')}
+      onKeyDown={(e) => { if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onSupprimer(img); } }}
+      title="Image collée · glisser pour déplacer · coins pour redimensionner · Suppr pour retirer">
+      {url ? <img src={url} alt={img.nom || 'Image collée'} draggable={false} />
+        : <div className="pdfr-image-vide">{manquante ? 'Image indisponible sur cet appareil' : '…'}</div>}
+      {active && ['nw', 'ne', 'sw', 'se'].map((c) => (
+        <span key={c} className={'pi-coin pi-' + c} onPointerDown={(e) => geste(e, c)} />
+      ))}
+      {active && (
+        <div className={'nb-actions pi-actions' + (g.y < 0.06 ? ' dessous' : '')} onPointerDown={(e) => e.stopPropagation()}>
+          <button type="button" className="nb-act" disabled={premier} {...stop(() => onCalque(img, 'premier'))} title="Mettre devant toutes les autres images">Premier plan</button>
+          <button type="button" className="nb-act" disabled={premier} {...stop(() => onCalque(img, 'avancer'))} title="Avancer d'un calque">Avancer</button>
+          <button type="button" className="nb-act" disabled={dernier} {...stop(() => onCalque(img, 'reculer'))} title="Reculer d'un calque">Reculer</button>
+          <button type="button" className="nb-act" disabled={dernier} {...stop(() => onCalque(img, 'arriere'))} title="Mettre derrière toutes les autres images">Arrière-plan</button>
+          <button type="button" className="nb-act danger" {...stop(() => onSupprimer(img))} title={`Supprimer l'image (annulable par ${RACCOURCI_Z})`}><Icon name="trash" size={13} /> Supprimer</button>
+        </div>
+      )}
+    </div>
   );
 }
 

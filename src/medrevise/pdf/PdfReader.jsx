@@ -56,7 +56,7 @@ import { useEditor } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, detectDocKind, Modal, LoaderL6, ConfirmModal } from '../components/ui.jsx';
-import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque, newPageAjoutee } from '../lib/storage.js';
+import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque, newPageAjoutee, newImageCollee } from '../lib/storage.js';
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cibleEditable } from '../lib/annotHistory.js';
 import { RICH_EXTENSIONS } from '../documents/lib/richtext.js';
 import { AddItemModal, PasteJsonForm } from '../components/AddItemForm.jsx';
@@ -864,6 +864,101 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const demanderSuppressionPage = (pageRec) => (contenuDePage(pageRec.id).length ? setPageASupprimer(pageRec) : supprimerPageAjoutee(pageRec));
   const libellePage = (p, i) => (p.pdf ? `Page ${i + 1}` : `Page ${i + 1} (ajoutée)`);
 
+  /* ---- IMAGES COLLÉES (01/10) ----
+     Importées (bouton « Image »), collées (Cmd/Ctrl+V) ou glissées sur une page.
+     Le fichier devient un blob ordinaire (même canal que les images de
+     flashcards) ; l'annotation ne porte que sa place, sa taille et son calque. */
+  const [imageActiveId, setImageActiveId] = useState(null);
+  const entreeImageRef = useRef(null);
+  const ajouterImage = async (file, cible = null) => {
+    if (!file || !/^image\//.test(file.type || '')) return;
+    let w = 0, h = 0;
+    try { const bm = await createImageBitmap(file); w = bm.width; h = bm.height; if (bm.close) bm.close(); } catch (e) { return; } // pas une image lisible
+    if (!w || !h || !pageSizes.length) return;
+    // page visée : celle du dépôt, sinon la page affichée
+    const idx = cible ? indexDePage(cible.page) : pageCourante - 1;
+    const ps = pageSizes[Math.max(0, idx)];
+    if (!ps) return;
+    // taille de départ : la taille naturelle (à 160 %), bornée entre 15 % et 55 % de la largeur
+    let wn = Math.max(0.15, Math.min(0.55, w / (ps.width * 1.6)));
+    let hn = wn * (h / w) * (ps.width / ps.height);
+    if (hn > 0.6) { wn *= 0.6 / hn; hn = 0.6; }
+    // position : le point de dépôt, sinon le centre de la partie visible de la page
+    let cx = 0.5, cy = 0.5;
+    if (cible) { cx = cible.x; cy = cible.y; } else {
+      const el = scrollRef.current, top = layout.offsets[idx];
+      if (el && top != null) cy = Math.max(hn / 2, Math.min(1 - hn / 2, (el.scrollTop + el.clientHeight / 2 - top) / (ps.height * scale)));
+    }
+    const blobId = await putBlob(file);
+    const surPage = (imagesByPage[ps.cle] || []);
+    const rec = newImageCollee({ ficheId, page: ps.cle, blobId, nom: file.name || null,
+      x: Math.max(0, Math.min(1 - wn, cx - wn / 2)), y: Math.max(0, Math.min(1 - hn, cy - hn / 2)), width: wn, height: hn,
+      z: surPage.length ? Math.max(...surPage.map((i) => i.z || 0)) + 1 : 0 });
+    await hist.appliquer(cmdCreer('annotations', rec, 'Image collée'));
+    setOutil('main'); setActiveEditId(null);
+    setImageActiveId(rec.id);
+  };
+  const majImage = async (avant, apres, libelle) => {
+    const actuel = edits.find((a) => a.id === avant.id) || avant;
+    await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, ...GEO(apres) }, libelle));
+  };
+  const supprimerImage = async (img) => {
+    if (imageActiveId === img.id) setImageActiveId(null);
+    await hist.appliquer(cmdSupprimer('annotations', img, 'Suppression de l’image'));
+  };
+  // CALQUES : `z` ne classe que les images d'une même page entre elles. Une seule
+  // écriture par geste (la nouvelle valeur s'intercale), donc une entrée d'annulation.
+  const changerCalque = async (img, action) => {
+    const liste = imagesByPage[img.page] || [];
+    const i = liste.findIndex((x) => x.id === img.id);
+    if (i < 0 || liste.length < 2) return;
+    const zs = liste.map((x) => x.z || 0);
+    let z = img.z || 0;
+    if (action === 'premier') { if (i === liste.length - 1) return; z = Math.max(...zs) + 1; }
+    else if (action === 'arriere') { if (i === 0) return; z = Math.min(...zs) - 1; }
+    else if (action === 'avancer') { if (i === liste.length - 1) return; z = i + 2 < liste.length ? (zs[i + 1] + zs[i + 2]) / 2 : zs[i + 1] + 1; }
+    else if (action === 'reculer') { if (i === 0) return; z = i - 2 >= 0 ? (zs[i - 1] + zs[i - 2]) / 2 : zs[i - 1] - 1; }
+    const libelles = { premier: 'Image au premier plan', arriere: 'Image à l’arrière-plan', avancer: 'Image avancée', reculer: 'Image reculée' };
+    await hist.appliquer(cmdModifier('annotations', img, { ...img, z }, libelles[action]));
+  };
+  // désélection : clic ailleurs que sur l'image ou sa barre ; Échap
+  useEffect(() => {
+    if (!imageActiveId) return undefined;
+    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.pdfr-image'))) setImageActiveId(null); };
+    const onKey = (e) => { if (e.key === 'Escape') setImageActiveId(null); };
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); };
+  }, [imageActiveId]);
+  // Cmd/Ctrl+V d'une image (capture d'écran, image copiée d'une page web…) : posée
+  // sur la page affichée. Jamais quand on colle DANS un texte (boîte, champ…).
+  const ajouterImageRef = useRef(ajouterImage); ajouterImageRef.current = ajouterImage;
+  useEffect(() => {
+    if (!pdfDoc || srcTab !== 'pdf') return undefined;
+    const onPaste = (e) => {
+      if (cibleEditable(e.target) || cibleEditable(document.activeElement)) return;
+      const items = [...((e.clipboardData && e.clipboardData.items) || [])];
+      const it = items.find((x) => x.kind === 'file' && /^image\//.test(x.type));
+      const f = it && it.getAsFile();
+      if (!f) return;
+      e.preventDefault();
+      ajouterImageRef.current(f);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [pdfDoc, srcTab]);
+  // glisser-déposer un fichier image sur une page : posée au point de dépôt
+  const deposerImage = (e) => {
+    const f = [...((e.dataTransfer && e.dataTransfer.files) || [])].find((x) => /^image\//.test(x.type));
+    if (!f) return;
+    e.preventDefault();
+    const pageEl = e.target.closest && e.target.closest('.pdfr-page');
+    const sz = pageEl && pageSizes.find((p) => String(p.cle) === pageEl.dataset.cle);
+    if (!sz) { ajouterImage(f); return; }
+    const r = pageEl.getBoundingClientRect();
+    ajouterImage(f, { page: sz.cle, x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
+  };
+
   /* ---- TEXTE LIBRE et « ? » (01/10) : un clic = un élément posé ----
      Le texte libre est une boîte sans cadre (même NoteBox, même éditeur) : on le
      pose, on écrit tout de suite. Le « ? » se pose et l'outil reste actif — on en
@@ -939,6 +1034,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // traits de crayon ET de surligneur : même calque d'encre (le mode règle le rendu)
   const traitsByPage = useMemo(() => groupByPage([...parType.trait, ...parType.surligneur]), [parType]);
   const textesByPage = useMemo(() => groupByPage(parType.texte), [parType]);
+  // images d'une page, du FOND vers le DEVANT (ordre de rendu = ordre des calques)
+  const imagesByPage = useMemo(() => {
+    const m = groupByPage(parType.image);
+    Object.values(m).forEach((l) => l.sort((a, b) => (a.z - b.z) || String(a.createdAt).localeCompare(String(b.createdAt))));
+    return m;
+  }, [parType]);
   const questionsByPage = useMemo(() => groupByPage(parType.question), [parType]);
   const matchesByPage = useMemo(() => groupByPage(matches), [matches]);
 
@@ -1049,6 +1150,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={highlights.length}
         actionsDocument={actionsDocument}
         onAjouterPage={pdfDoc ? () => setAjoutPage({ apresIdx: pageCourante - 1 }) : null}
+        onAjouterImage={pdfDoc ? () => entreeImageRef.current && entreeImageRef.current.click() : null}
         contexteSupplementaire={outil === 'texte' ? (
           <PaletteCrayon couleur={couleurTexte} onCouleur={setCouleurTexte} />
         ) : outil === 'question' ? <span /> : outil === 'crayon' ? (
@@ -1114,7 +1216,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <button type="button" className={'seg-btn' + (mobileView === 'items' ? ' active' : '')} onClick={() => { setMobileView('items'); setPanelOpen(true); }}><Icon name="cards" size={13} /> Panneau</button>
       </div>
       <div className="pdfr-body pdfr-workshop" data-mobile-view={mobileView}>
-        <div className="pdfr-scroll pdfr-workshop-course" ref={scrollRef} onScroll={onScroll}>
+        <div className="pdfr-scroll pdfr-workshop-course" ref={scrollRef} onScroll={onScroll}
+          onDragOver={(e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); }}
+          onDrop={deposerImage}>
+          <input ref={entreeImageRef} type="file" accept="image/*" style={{ display: 'none' }}
+            onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) ajouterImage(f); }} />
           {!pdfDoc && !loadError && <div className="gen-spinner" style={{ width: 40, height: 40, margin: '60px auto' }} />}
           {pdfDoc && (
             <div className="pdfr-pages" style={{ height: layout.totalHeight, width: layout.maxWidth, minWidth: '100%' }}>
@@ -1126,7 +1232,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 const style = { position: 'absolute', top, left: '50%', transform: 'translateX(-50%)', width: w, height: h };
                 if (!active) return <div key={n} className="pdfr-placeholder" style={style} />;
                 return (
-                  <div key={n} className={'pdfr-page' + (sz.ajout ? ' pdfr-page-ajoutee' : '')} style={style}>
+                  <div key={n} data-cle={String(n)} className={'pdfr-page' + (sz.ajout ? ' pdfr-page-ajoutee' : '')} style={style}>
                     {sz.ajout && (
                       <div className="pdfr-ajout-etiquette">
                         <span><Icon name="plus" size={11} /> Page ajoutée</span>
@@ -1143,6 +1249,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       traits={traitsByPage[n] || EMPTY_ARRAY}
                       textes={textesByPage[n] || EMPTY_ARRAY}
                       questions={questionsByPage[n] || EMPTY_ARRAY}
+                      images={imagesByPage[n] || EMPTY_ARRAY}
+                      imageActiveId={imageActiveId}
+                      onImageActiver={(id) => { setImageActiveId(id); setActiveEditId(null); }}
+                      onImageMaj={majImage} onImageCalque={changerCalque} onImageSupprimer={supprimerImage}
                       onPoser={poserElement}
                       onCreerTrait={creerTrait}
                       onSupprimerTraits={supprimerTraits}
