@@ -1121,7 +1121,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   }
 
   return (
-    <div className={embedded ? 'fadein' : 'screen scroll fadein'}>
+    <div className={embedded ? 'fadein' : 'screen scroll fadein lecteur-plein'}>
       {!embedded && (
         // plein écran (Réviser) : même en-tête compact que la Bibliothèque — le nom de la
         // fiche en petit, renommable d'un clic (vraie fiche seulement), la place au document

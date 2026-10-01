@@ -1795,7 +1795,11 @@
 /* l'espace gagné va au document : la zone de lecture descend jusqu'en bas de l'écran.
    Les barres qui n'apparaissent qu'avec un outil (réglages, mise en forme) sont
    décomptées quand elles sont là, pour ne jamais faire défiler l'écran entier. */
-.lib-screen.doc-ouvert .pdfr-scroll { max-height: calc(100vh - 168px); }
-.lib-screen.doc-ouvert:has(.pdfr-contexte) .pdfr-scroll,
-.lib-screen.doc-ouvert:has(.pdfr-edit-toolbar) .pdfr-scroll { max-height: calc(100vh - 212px); }
-.lib-screen.doc-ouvert:has(.pdfr-contexte):has(.pdfr-edit-toolbar) .pdfr-scroll { max-height: calc(100vh - 256px); }
+@media (min-width: 761px) { /* ordinateur : sur mobile, la règle d'avant (et la barre du bas) restent */
+.lib-screen.doc-ouvert .pdfr-scroll, .lecteur-plein .pdfr-scroll { max-height: calc(100vh - 168px); }
+.lib-screen.doc-ouvert:has(.pdfr-contexte) .pdfr-scroll, .lecteur-plein:has(.pdfr-contexte) .pdfr-scroll,
+.lib-screen.doc-ouvert:has(.pdfr-edit-toolbar) .pdfr-scroll, .lecteur-plein:has(.pdfr-edit-toolbar) .pdfr-scroll { max-height: calc(100vh - 212px); }
+.lib-screen.doc-ouvert:has(.pdfr-contexte):has(.pdfr-edit-toolbar) .pdfr-scroll,
+.lecteur-plein:has(.pdfr-contexte):has(.pdfr-edit-toolbar) .pdfr-scroll { max-height: calc(100vh - 256px); }
+}
+@media (min-width: 761px) { .lecteur-plein { padding-bottom: 14px; } } /* comme .lib-screen (ordinateur seulement : sur mobile, la barre du bas garde sa marge) */
