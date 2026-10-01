@@ -46,9 +46,38 @@ export const avecAlpha = (hex, a) => {
   const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 };
-/** taille par défaut d'une boîte posée d'un simple clic (fraction de page). */
-export const BOITE_DEFAUT = { width: 0.30, height: 0.075 };
+/** taille par défaut d'une boîte posée d'un simple clic (fraction de page).
+    COMPACTE depuis le 01/10 (avant : 0.30 × 0.075, « trop grande ») : une ligne de
+    texte et sa poignée. Elle n'a plus besoin d'être grande d'avance : la HAUTEUR
+    d'une boîte est un minimum, la boîte grandit avec son texte (voir NoteBox). */
+export const BOITE_DEFAUT = { width: 0.2, height: 0.036 };
 export const BOITE_MIN = { width: 0.04, height: 0.022 };
+
+/* PALETTE DU CRAYON (et du texte libre) — 01/10. Les 4 couleurs des surlignages
+   ont un SENS (prioritaire, cloze…) et restent seules pour eux ; le crayon, lui,
+   dessine : il a droit à une vraie palette. Mêmes ids que COLORS pour les 4
+   premières, donc un trait d'avant garde exactement sa couleur. Une couleur
+   PERSONNALISÉE est enregistrée telle quelle, en hexadécimal (« #12ab34 »). */
+export const PALETTE_CRAYON = [
+  { id: 'noir', hex: '#1F1F24', label: 'Noir' },
+  { id: 'gris', hex: '#7A7A85', label: 'Gris' },
+  { id: 'rouge', hex: '#E5383B', label: 'Rouge' },
+  { id: 'orange', hex: '#F28C28', label: 'Orange' },
+  { id: 'jaune', hex: '#FFD84D', label: 'Jaune' },
+  { id: 'vert', hex: '#8BE38B', label: 'Vert clair' },
+  { id: 'vertfonce', hex: '#1E9E5A', label: 'Vert' },
+  { id: 'bleu', hex: '#7EC8FF', label: 'Bleu clair' },
+  { id: 'bleufonce', hex: '#2563EB', label: 'Bleu' },
+  { id: 'violet', hex: '#8B5CF6', label: 'Violet' },
+  { id: 'rose', hex: '#FF9FD1', label: 'Rose' },
+  { id: 'marron', hex: '#8B5A2B', label: 'Marron' },
+];
+const PALETTE_HEX = Object.fromEntries(PALETTE_CRAYON.map((c) => [c.id, c.hex]));
+/** couleur affichable d'un id de palette (surlignage, crayon) ou d'un hex libre. */
+export function couleurHex(c, repli = '#FFD84D') {
+  if (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)) return c;
+  return PALETTE_HEX[c] || repli;
+}
 
 export const FONT_SIZES = ['10px', '11px', '12px', '13px', '14px', '16px', '18px', '20px', '24px', '28px', '32px'];
 export const FONT_FAMILIES = ['inherit', 'serif', 'sans-serif', 'monospace', 'Georgia', 'Arial', 'Times New Roman'];

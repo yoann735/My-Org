@@ -69,7 +69,7 @@ import {
   MODES_CRAYON, EPAISSEUR_SURLIGNEUR,
 } from './pdfShared.js';
 import { PdfPageContent, EditToolbar } from './PdfPage.jsx';
-import { PdfToolbar } from './PdfToolbar.jsx';
+import { PdfToolbar, PaletteCrayon } from './PdfToolbar.jsx';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 
@@ -158,7 +158,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // ni le test de position des surlignages ne peuvent se déclencher — c'est
   // structurel, pas une suite de conditions à ne pas oublier.
   const [outil, setOutil] = useState('main'); // main | surligneur | boite | crayon | gomme — actif sur TOUS les écrans depuis l'étape 7
-  const [couleurActive, setCouleurActive] = useState('jaune'); // partagée par surligneur, boîte et crayon
+  const [couleurActive, setCouleurActive] = useState('jaune'); // partagée par surligneur et boîte
+  // le crayon a sa propre couleur, prise dans une palette plus large (PALETTE_CRAYON)
+  const [couleurCrayon, setCouleurCrayon] = useState('rouge');
   const [epaisseur, setEpaisseur] = useState(EPAISSEURS[0].id); // mode dessin : trait FIN par défaut
   const [aimant, setAimant] = useState(true); // le lissage est utile par défaut ; décochable (mode dessin seulement)
   const [modeCrayon, setModeCrayon] = useState('dessin'); // dessin (fin, doux) | surligneur (épais, translucide)
@@ -770,7 +772,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const creerTrait = async ({ page, points, mode = 'dessin' }) => {
     if (!points || points.length < 2) return;
     const surligneur = mode === 'surligneur';
-    const rec = newTrait({ ficheId, page, points, couleur: couleurActive, mode,
+    const rec = newTrait({ ficheId, page, points, couleur: couleurCrayon, mode,
       epaisseur: surligneur ? EPAISSEUR_SURLIGNEUR : (EPAISSEURS.find((e) => e.id === epaisseur) || EPAISSEURS[0]).v,
       aimant: !surligneur && aimant });
     await hist.appliquer(cmdCreer('annotations', rec, surligneur ? 'Surligneur à main levée' : 'Trait au crayon'));
@@ -948,6 +950,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         actionsDocument={actionsDocument}
         contexteSupplementaire={outil === 'crayon' ? (
           <>
+            <PaletteCrayon couleur={couleurCrayon} onCouleur={setCouleurCrayon} />
             <span className="ptb-sep" />
             <div className="ptb-segment" role="group" aria-label="Mode du crayon">
               {MODES_CRAYON.map((m) => (
@@ -1027,7 +1030,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       traits={traitsByPage[n] || EMPTY_ARRAY}
                       onCreerTrait={creerTrait}
                       onSupprimerTraits={supprimerTraits}
-                      couleurTrait={couleurActive}
+                      couleurTrait={couleurCrayon}
                       epaisseurTrait={(EPAISSEURS.find((e) => e.id === epaisseur) || EPAISSEURS[1]).v}
                       aimantActif={aimant}
                       modeCrayon={modeCrayon}

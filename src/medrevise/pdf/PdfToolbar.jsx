@@ -23,7 +23,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { ContextMenu } from '../components/ui.jsx';
-import { COLORS, RACCOURCI } from './pdfShared.js';
+import { COLORS, RACCOURCI, PALETTE_CRAYON } from './pdfShared.js';
 
 /** Les outils, dans l'ordre d'apparition. `main` est le défaut et remplace à lui
     seul l'ancien couple « Lecture / Édition » : il sélectionne du texte, ouvre
@@ -36,7 +36,25 @@ export const OUTILS = [
   { id: 'gomme', label: 'Gomme', icon: 'ban', aide: 'Efface les traits de crayon — cliquer, ou glisser pour en effacer plusieurs' },
 ];
 /** Outils dont la couleur se règle dans la barre contextuelle. */
-const OUTILS_COLORES = new Set(['surligneur', 'boite', 'crayon']);
+const OUTILS_COLORES = new Set(['surligneur', 'boite']); // le crayon a sa PROPRE palette, plus large (voir PaletteCrayon)
+
+/** Palette du crayon (et du texte libre) : 12 couleurs + une couleur au choix. */
+export function PaletteCrayon({ couleur, onCouleur }) {
+  const perso = typeof couleur === 'string' && couleur.startsWith('#');
+  return (
+    <div className="ptb-palette" role="group" aria-label="Couleur">
+      {PALETTE_CRAYON.map((c) => (
+        <button key={c.id} type="button" title={c.label} onClick={() => onCouleur(c.id)}
+          className={'ptb-pastille' + (couleur === c.id ? ' actif' : '')} style={{ background: c.hex }} />
+      ))}
+      <label className={'ptb-pastille ptb-perso' + (perso ? ' actif' : '')} title="Autre couleur…"
+        style={perso ? { background: couleur } : undefined}>
+        {!perso && <Icon name="plus" size={11} />}
+        <input type="color" value={perso ? couleur : '#e5383b'} onChange={(e) => onCouleur(e.target.value.toLowerCase())} />
+      </label>
+    </div>
+  );
+}
 
 export function PdfToolbar({
   onClose, pageCourante, numPages, onAllerPage,

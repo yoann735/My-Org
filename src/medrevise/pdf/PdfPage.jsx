@@ -24,7 +24,7 @@ import {
   COLORS, COLOR_HEX, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT,
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
-  soustraireAncres, partCouverte,
+  soustraireAncres, partCouverte, couleurHex,
   lisserTrait, traitTouche, cheminLisse, suivreEnDouceur, modeDuTrait,
   EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR,
 } from './pdfShared.js';
@@ -458,7 +458,7 @@ export function PdfPageContent({
           const ep = surl ? (t.epaisseur || EPAISSEUR_SURLIGNEUR) : (t.epaisseur || 0.0042);
           return (
             <path key={cle} d={cheminLisse(t.points)} fill="none"
-              stroke={COLOR_HEX[t.couleur] || COLOR_HEX.jaune}
+              stroke={couleurHex(t.couleur)}
               strokeOpacity={surl ? OPACITE_SURLIGNEUR : (apercu ? 0.9 : 1)}
               strokeWidth={Math.max(surl ? 4 : 1, ep * H)}
               strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
@@ -596,6 +596,17 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     return () => clearTimeout(t);
   }, [active, editor]);
 
+  // hauteur RÉELLEMENT affichée (px) : la boîte grandit avec son texte, la flèche et
+  // la barre d'actions doivent partir de ce qu'on voit, pas du minimum enregistré
+  const [hautVue, setHautVue] = useState(0);
+  useEffect(() => {
+    const el = boiteRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => setHautVue(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [boite.reduite]);
+
   const activer = (e) => {
     if (e) clicRef.current = { x: e.clientX, y: e.clientY };
     onActivate(boite.id);
@@ -610,6 +621,10 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     if (!r || !r.width || !r.height) return;
     const depart = { x: e.clientX, y: e.clientY };
     const avant = boite;
+    // la hauteur AFFICHÉE peut dépasser la hauteur enregistrée (la boîte grandit avec
+    // son texte) : la redimension part de ce qu'on voit, sinon le coin « sauterait »
+    const hVue = boiteRef.current ? boiteRef.current.getBoundingClientRect().height / r.height : 0;
+    const base = type === 'resize' && hVue > avant.height ? { ...avant, height: hVue } : avant;
     let courant = null;
     let bouge = false;
     onGeste(true);
@@ -622,8 +637,8 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       courant = type === 'move'
         ? { ...avant, x: clamp(avant.x + dx, 0, 1 - avant.width), y: clamp(avant.y + dy, 0, 1 - avant.height) }
         : { ...avant,
-            width: clamp(avant.width + dx, BOITE_MIN.width, 1 - avant.x),
-            height: clamp(avant.height + dy, BOITE_MIN.height, 1 - avant.y) };
+            width: clamp(base.width + dx, BOITE_MIN.width, 1 - avant.x),
+            height: clamp(base.height + dy, BOITE_MIN.height, 1 - avant.y) };
       setApercu(courant);
     };
     const up = () => {
@@ -638,8 +653,11 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     window.addEventListener('pointerup', up);
   };
 
+  /* HAUTEUR = UN MINIMUM (01/10) : la boîte grandit avec son texte au lieu de
+     le cacher derrière un ascenseur — c'est ce qui permet de la créer compacte
+     (BOITE_DEFAUT) sans jamais rien perdre. La poignée l'agrandit toujours. */
   const style = {
-    left: b.x * 100 + '%', top: b.y * 100 + '%', width: b.width * 100 + '%', height: b.height * 100 + '%',
+    left: b.x * 100 + '%', top: b.y * 100 + '%', width: b.width * 100 + '%', minHeight: b.height * 100 + '%',
     background: avecAlpha(COLOR_HEX[boite.couleur] || COLOR_HEX.jaune, 0.92),
   };
 
@@ -719,7 +737,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const fleche = (() => {
     if (!ancre || !boite.fleche || !pageWidth || !pageHeight) return null;
     const W = pageWidth, H = pageHeight;
-    const bx = b.x * W, by = b.y * H, bw = b.width * W, bh = b.height * H;
+    const bx = b.x * W, by = b.y * H, bw = b.width * W, bh = Math.max(b.height * H, hautVue || 0);
     const cx = bx + bw / 2, cy = by + bh / 2, ax = ancre.x * W, ay = ancre.y * H;
     const dx = ax - cx, dy = ay - cy;
     if (ax >= bx && ax <= bx + bw && ay >= by && ay <= by + bh) return null; // point sous la boîte : rien à relier
@@ -760,7 +778,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     )}
     {actionsVisibles && (
       <div className={'nb-actions' + (pageHeight && b.y * pageHeight < 42 ? ' dessous' : '')}
-        style={{ left: b.x * 100 + '%', top: (pageHeight && b.y * pageHeight < 42 ? b.y + b.height : b.y) * 100 + '%' }}
+        style={{ ...(b.x + b.width / 2 > 0.5 ? { right: (1 - b.x - b.width) * 100 + '%' } : { left: b.x * 100 + '%' }), top: (pageHeight && b.y * pageHeight < 42 ? b.y + Math.max(b.height, hautVue / pageHeight) : b.y) * 100 + '%' }}
         onMouseEnter={entrer} onMouseLeave={sortir}
         onPointerDown={(e) => e.stopPropagation()}>
         {enAncrage ? (

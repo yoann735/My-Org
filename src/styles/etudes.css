@@ -1715,3 +1715,10 @@
    flashcard image à masques — sinon le texte passait sous « Clique pour révéler ». */
 .flash-card.img { min-height: 440px; }
 .flash-card.img .flash-face { padding: 48px 28px 52px; }
+
+/* ---- Palette du crayon (01/10) : 12 couleurs + une au choix ---- */
+.ptb-palette { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.ptb-palette .ptb-pastille { width: 18px; height: 18px; border-radius: 50%; }
+.ptb-perso { position: relative; display: inline-flex; align-items: center; justify-content: center;
+  background: conic-gradient(#e5383b, #f28c28, #ffd84d, #1e9e5a, #2563eb, #8b5cf6, #e5383b); color: #fff; overflow: hidden; }
+.ptb-perso input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; border: 0; padding: 0; }
