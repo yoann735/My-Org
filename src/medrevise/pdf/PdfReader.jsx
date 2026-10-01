@@ -57,7 +57,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, detectDocKind, Modal, LoaderL6, ConfirmModal } from '../components/ui.jsx';
 import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque, newPageAjoutee, newImageCollee } from '../lib/storage.js';
-import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cibleEditable } from '../lib/annotHistory.js';
+import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cmdGroupe, cibleEditable } from '../lib/annotHistory.js';
 import { RICH_EXTENSIONS } from '../documents/lib/richtext.js';
 import { AddItemModal, PasteJsonForm } from '../components/AddItemForm.jsx';
 import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
@@ -153,7 +153,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [editingHl, setEditingHl] = useState(null); // bulle d'un surlignage existant { id, couleur, texte, x, y }
 
   const [edits, setEdits] = useState([]); // blocs de texte : remplacement (Chantier 1) ET boîtes libres (kind:'libre')
-  const [activeEditId, setActiveEditId] = useState(null);
+  const [activeEditId, setActiveEditIdBrut] = useState(null); // à changer via setActiveEditId (plus bas), jamais en direct
   // outil actif de la Prise de notes. 'boite' monte une couche de tracé AU-DESSUS de
   // la couche de texte (voir PdfPageContent) : tant qu'il est actif, ni la sélection
   // ni le test de position des surlignages ne peuvent se déclencher — c'est
@@ -167,13 +167,17 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [aimant, setAimant] = useState(true); // le lissage est utile par défaut ; décochable (mode dessin seulement)
   const [modeCrayon, setModeCrayon] = useState('dessin'); // dessin (fin, doux) | surligneur (épais, translucide)
   // changer d'outil ferme ce qui appartenait au précédent
-  const choisirOutil = (id) => {
+  const choisirOutil = (idDemande) => {
+    // re-cliquer l'outil actif = en sortir (retour à la Sélection), comme dans Aperçu
+    const id = idDemande === outil && idDemande !== 'main' ? 'main' : idDemande;
     // comme dans Word : du texte est sélectionné, on prend le surligneur → il est surligné
     if (id === 'surligneur' && pending && window.getSelection && !window.getSelection().isCollapsed) {
       commitHighlightAvec(pending, couleurActive);
     }
     setOutil(id); setPending(null); setEditingHl(null); setAncrage(null); if (id !== 'main') setActiveEditId(null);
   };
+  const choisirOutilRef = useRef(choisirOutil); choisirOutilRef.current = choisirOutil;
+
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -247,7 +251,26 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      action ne puisse échapper à l'historique, aujourd'hui comme demain.
      Boutons et raccourcis sont actifs sur tous les écrans depuis l'étape 7. */
   const rechargerAnnotations = async () => { await reloadHighlights(); await reloadEdits(); };
-  const hist = useAnnotHistorique(rechargerAnnotations);
+  /* EFFETS LOCAUX (correctif « hallucinations », voir lib/annotHistory.js) : chaque
+     commande est appliquée À L'ÉCRAN de façon synchrone, dans le même rendu que la
+     fin du geste qui l'a produite — plus d'aller-retour par IndexedDB entre les
+     deux, donc plus d'ancien état qui réapparaît une fraction de seconde. */
+  const appliquerLocal = (effets) => {
+    const maj = (arr, store) => {
+      let res = arr;
+      for (const e of effets) {
+        if (e.store !== store) continue;
+        const id = (e.apres || e.avant || {}).id;
+        if (!id) continue;
+        const sans = res.filter((x) => x.id !== id);
+        res = e.apres ? (res.some((x) => x.id === id) ? res.map((x) => (x.id === id ? e.apres : x)) : [...sans, e.apres]) : sans;
+      }
+      return res;
+    };
+    if (effets.some((e) => e.store === 'annotations')) setEdits((arr) => maj(arr, 'annotations'));
+    if (effets.some((e) => e.store === 'highlights')) setHighlights((arr) => maj(arr, 'highlights').sort(compareHighlights));
+  };
+  const hist = useAnnotHistorique(rechargerAnnotations, appliquerLocal);
 
   useEffect(() => { reloadHighlights(); reloadEdits(); setActiveEditId(null); hist.vider(); }, [ficheId]);
 
@@ -470,11 +493,26 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     return () => document.removeEventListener('selectionchange', onSel);
   }, [pending]);
 
+  /* Échap quitte l'outil en cours (Boîte, Texte, « ? », Crayon…) pour revenir à la
+     Sélection. Si une boîte est en cours d'écriture, le PREMIER Échap la referme
+     seulement (effet ci-dessous) : l'outil reste prêt pour la suivante. */
+  const outilRef = useRef(outil); outilRef.current = outil;
+  useEffect(() => {
+    if (outil === 'main') return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || e.boiteRefermee || activeEditIdRef.current || ancrageRef.current) return;
+      if (cibleEditable(e.target)) return;
+      choisirOutilRef.current('main');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [outil]);
   // Échap : désélectionner la boîte / le bloc actif (avant, seul « Terminé » le
   // permettait). Posé À PART des popovers ci-dessous, qui ont leur propre Échap.
   useEffect(() => {
     if (!activeEditId) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') setActiveEditId(null); };
+    // marque l'événement : l'Échap qui referme une boîte ne quitte PAS aussi l'outil
+    const onKey = (e) => { if (e.key === 'Escape') { e.boiteRefermee = true; setActiveEditId(null); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [activeEditId]);
@@ -507,11 +545,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const cmds = morceaux.map((m) => cmdCreer('highlights',
       newHighlight({ ficheId, page: p.page, texte: m.texte, couleur, rects: m.rects, anchor: m.anchor }), 'Surlignage'));
     if (!cmds.length) return;
-    await hist.appliquer(cmds.length === 1 ? cmds[0] : {
-      libelle: 'Surlignage',
-      faire: async () => { for (const c of cmds) await c.faire(); },
-      defaire: async () => { for (const c of [...cmds].reverse()) await c.defaire(); },
-    });
+    await hist.appliquer(cmdGroupe('Surlignage', cmds));
   };
   const handleHighlightClick = (h, e) => {
     setPending(null);
@@ -700,8 +734,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const base = (editsRef.current || []).find((a) => a.id === id);
     if (!base) return;
     const updated = { ...base, content: json };
+    // l'écran d'abord (sinon la boîte refermée montre son ANCIEN texte le temps de
+    // l'écriture — même famille que le bug « hallucinations »), la base ensuite
+    setEdits((arr) => arr.map((a) => (a.id === id ? { ...a, content: json } : a)));
     await put('annotations', updated);
-    setEdits((arr) => arr.map((a) => (a.id === id ? updated : a)));
   };
   const resetEdit = async (id) => {
     const a = edits.find((x) => x.id === id);
@@ -724,6 +760,38 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const activeEditIdRef = useRef(activeEditId);
   activeEditIdRef.current = activeEditId;
 
+  /* CHANGER DE BOÎTE ACTIVE — un seul point de passage (02/10).
+     1. Le texte tapé dans la boîte qu'on quitte n'était écrit qu'après 400 ms, et
+        seulement APRÈS le rendu qui la refermait : la boîte refermée montrait une
+        fraction de seconde son ANCIEN texte. On pousse ce texte à l'écran dans le
+        MÊME rendu que la fermeture.
+     2. Une boîte (ou un texte libre) créée puis quittée sans rien écrire est
+        retirée — indispensable pour enchaîner les boîtes sans semer de boîtes
+        vides. Retrait annulable (Cmd+Z la rend). */
+  const videsFraiches = useRef(new Set()); // ids créés dans cette ouverture, encore jamais écrits
+  const contenuVide = (c) => !c || !JSON.stringify(c).includes('"text"');
+  const setActiveEditId = (id) => {
+    const prec = activeEditIdRef.current;
+    if (prec && prec !== id) {
+      let contenu = null;
+      if (editSaveTimer.current && editLastJson.current) {
+        clearTimeout(editSaveTimer.current); editSaveTimer.current = null;
+        contenu = editLastJson.current; editLastJson.current = null;
+        saveEditContent(prec, contenu);
+      }
+      if (videsFraiches.current.has(prec)) {
+        const rec = (editsRef.current || []).find((a) => a.id === prec);
+        const final = contenu || (rec && rec.content);
+        if (contenuVide(final)) {
+          videsFraiches.current.delete(prec);
+          if (rec) hist.appliquer(cmdSupprimer('annotations', rec, rec.kind === 'texte' ? 'Texte vide retiré' : 'Boîte vide retirée'));
+        } else videsFraiches.current.delete(prec);
+      }
+    }
+    activeEditIdRef.current = id;
+    setActiveEditIdBrut(id);
+  };
+
   /* ---- BOÎTE DE TEXTE LIBRE ----
      Posée n'importe où sur une page (pas forcément sur du texte), déplaçable,
      redimensionnable, supprimable. Même store et même géométrie normalisée [0,1]
@@ -735,9 +803,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // rien à l'écran : l'outil « ne créait rien ». La couleur est celle de la barre
     // contextuelle, partagée par tous les outils colorés.
     const rec = newNoteBox({ ficheId, page, x, y, width, height, couleur: couleurActive });
-    await hist.appliquer(cmdCreer('annotations', rec, 'Boîte de texte'));
+    const cmd = cmdCreer('annotations', rec, 'Boîte de texte');
+    hist.appliquer(cmd); // visible tout de suite (effet local), écrite ensuite
+    videsFraiches.current.add(rec.id);
     setActiveEditId(rec.id);
-    setOutil('main'); // on vient de la poser : on veut écrire dedans, pas en tracer une autre ('selection' n'était pas un outil)
+    /* ENCHAÎNER (02/10) : l'outil Boîte RESTE actif — on écrit dans celle-ci, un clic
+       ailleurs sur la page en pose une autre. Échap (deux fois si une boîte est en
+       cours d'écriture) ou un re-clic sur l'outil pour en sortir. */
   };
   /* Version LA PLUS FRAÎCHE d'une boîte. Indispensable : un geste part d'un instantané
      pris au pointerdown, or l'utilisateur a pu taper dans la boîte juste avant, et la
@@ -776,6 +848,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      changer d'outil, annule. */
   const [ancrage, setAncrage] = useState(null); // { id, fleche } — la boîte qui attend son épingle
   const ancrageBoiteId = ancrage ? ancrage.id : null;
+  const ancrageRef = useRef(ancrage); ancrageRef.current = ancrage;
   const setAncrageBoiteId = (id, opts) => setAncrage(id ? { id, fleche: !!(opts && opts.fleche) } : null);
   useEffect(() => {
     if (!ancrageBoiteId) return undefined;
@@ -806,11 +879,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const supprimerTraits = async (liste) => {
     const cmds = (liste || []).filter(Boolean).map((t) => cmdSupprimer('annotations', t, 'Gomme'));
     if (!cmds.length) return;
-    await hist.appliquer(cmds.length === 1 ? cmds[0] : {
-      libelle: `Gomme (${cmds.length} traits)`,
-      faire: async () => { for (const c of cmds) await c.faire(); },
-      defaire: async () => { for (const c of [...cmds].reverse()) await c.defaire(); },
-    });
+    await hist.appliquer(cmdGroupe(`Gomme (${cmds.length} traits)`, cmds));
   };
 
   /* ---- PAGES AJOUTÉES (01/10) ----
@@ -848,11 +917,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setPageASupprimer(null);
     const cmds = [...contenuDePage(pageRec.id), pageRec].map((a) => cmdSupprimer('annotations', a, 'Retrait de la page'));
     if (activeEditId && contenuDePage(pageRec.id).some((a) => a.id === activeEditId)) setActiveEditId(null);
-    await hist.appliquer(cmds.length === 1 ? cmds[0] : {
-      libelle: 'Retrait de la page ajoutée',
-      faire: async () => { for (const c of cmds) await c.faire(); },
-      defaire: async () => { for (const c of [...cmds].reverse()) await c.defaire(); },
-    });
+    await hist.appliquer(cmdGroupe('Retrait de la page ajoutée', cmds));
   };
   // page vide : on retire tout de suite (annulable) ; page annotée : on confirme d'abord
   const demanderSuppressionPage = (pageRec) => (contenuDePage(pageRec.id).length ? setPageASupprimer(pageRec) : supprimerPageAjoutee(pageRec));
@@ -962,7 +1027,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const ligne = 0.022; // le clic vise le milieu de la première ligne
       const rec = newTexteLibre({ ficheId, page, x: Math.min(x, 0.75), y: Math.max(0, Math.min(y - ligne / 2, 1 - ligne)),
         width: 0.25, height: ligne, couleur: couleurTexte });
-      await hist.appliquer(cmdCreer('annotations', rec, 'Texte libre'));
+      hist.appliquer(cmdCreer('annotations', rec, 'Texte libre'));
+      videsFraiches.current.add(rec.id);
       setActiveEditId(rec.id);
       setOutil('main');
     } else if (quoi === 'question') {

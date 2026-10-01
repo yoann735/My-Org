@@ -31,7 +31,7 @@ import { COLORS, RACCOURCI, PALETTE_CRAYON } from './pdfShared.js';
 export const OUTILS = [
   { id: 'main', label: 'Sélection', icon: 'grip', aide: 'Sélectionner du texte, ouvrir une annotation, déplacer une boîte' },
   { id: 'surligneur', label: 'Surligneur', icon: 'edit', aide: 'Sélectionner du texte le surligne aussitôt, dans la couleur active' },
-  { id: 'boite', label: 'Boîte', icon: 'list', aide: 'Tracer une boîte de texte n’importe où sur la page' },
+  { id: 'boite', label: 'Boîte', icon: 'list', aide: 'Cliquer ou tracer pour poser une boîte — l’outil reste actif pour enchaîner · Échap ou re-clic sur l’outil pour arrêter' },
   { id: 'texte', label: 'Texte', glyphe: 'T', aide: 'Cliquer sur la page pour y écrire du texte libre, sans cadre' },
   { id: 'question', label: '?', glyphe: '?', aide: 'Un clic pose un « ? » : « je n’ai pas compris ce passage »' },
   { id: 'crayon', label: 'Crayon', icon: 'sparkle', aide: 'Dessiner à main levée' },
