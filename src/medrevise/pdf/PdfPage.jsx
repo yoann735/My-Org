@@ -981,14 +981,23 @@ function QuestionMarque({ q, onModifier, onSupprimer, onGeste }) {
    CALQUE (devant / derrière les AUTRES images) et la supprime. Une entrée
    d'annulation par geste ; le blob d'origine de l'image n'est jamais modifié.
    ============================================================ */
+/* Adresses des images collées, gardées le temps de la session : une page qui sort
+   de l'écran puis y revient (lecteur virtualisé) remonte ses images — sans ce cache,
+   chacune affichait « … » une fraction de seconde le temps de relire son fichier
+   (même famille de flash que le bug « hallucinations »). Un blob ne change jamais
+   de contenu pour un même id : l'adresse reste valable. */
+const URLS_IMAGES = new Map();
 function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque, onSupprimer, onGeste }) {
-  const [url, setUrl] = useState(null);
+  const [url, setUrl] = useState(() => URLS_IMAGES.get(img.blobId) || null);
   const [manquante, setManquante] = useState(false);
   useEffect(() => {
-    let annule = false, u = null;
-    blobURL(img.blobId).then((x) => { if (annule) { if (x) URL.revokeObjectURL(x); return; } u = x; setUrl(x); setManquante(!x); })
-      .catch(() => { if (!annule) setManquante(true); });
-    return () => { annule = true; if (u) URL.revokeObjectURL(u); };
+    if (URLS_IMAGES.has(img.blobId)) { setUrl(URLS_IMAGES.get(img.blobId)); return undefined; }
+    let annule = false;
+    blobURL(img.blobId).then((x) => {
+      if (x) URLS_IMAGES.set(img.blobId, x);
+      if (!annule) { setUrl(x); setManquante(!x); }
+    }).catch(() => { if (!annule) setManquante(true); });
+    return () => { annule = true; };
   }, [img.blobId]);
 
   const [apercu, setApercu] = useState(null);
