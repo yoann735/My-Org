@@ -1421,6 +1421,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
       <PdfToolbar
         onClose={close}
+        // TABLEAU SEUL : les outils du PDF (pages, zoom, annotations, recherche) ne servent
+        // à rien — il reste Retour et Panneau ; le tableau a sa propre barre
+        {...(tableauDispo && disposition === 'tableau' ? { outilsAnnotation: false, sansPages: true, sansRecherche: true } : {})}
         pageCourante={pageCourante} numPages={nbPagesAffichees} onAllerPage={allerALaPage}
         scale={scale} onZoom={zoomButtons} onAjuster={ajusterALaLargeur}
         outil={outil} setOutil={choisirOutil}

@@ -386,13 +386,26 @@ export const Tableau = forwardRef(function Tableau({ ficheId }, ref) {
 
   /* ---------- édition du texte d'une carte ---------- */
   const zoneRef = useRef(null);
-  const terminerEdition = (carte, texte) => {
+  /* BROUILLON : le texte en cours de frappe, gardé à chaque touche. Si le tableau est
+     démonté PENDANT l'édition (lecteur fermé, disposition changée), le blur de la zone
+     n'est pas garanti — on écrit ce brouillon au démontage, rien n'est perdu. */
+  const brouillon = useRef(null); // { carte, texte }
+  const terminerRef = useRef(null);
+  useEffect(() => () => { const b = brouillon.current; if (b && terminerRef.current) terminerRef.current(b.carte, b.texte, true); }, []);
+  const terminerEdition = (carte, texte, auDemontage = false) => {
+    brouillon.current = null;
+    if (auDemontage) {
+      if (texte !== carte.texte) hist.appliquer(cmdModifier('tableau', carte, { ...carte, texte, h: Math.max(carte.h, hauteurPourTexte(texte, carte.w)) }, 'Texte de la carte'));
+      return;
+    }
     setEditId(null);
     const t = texte;
     const h = Math.max(carte.h, hauteurPourTexte(t, carte.w));
     if (t !== carte.texte || h !== carte.h) modifier(carte, { texte: t, h }, 'Texte de la carte');
     if (tbRef.current) tbRef.current.focus({ preventScroll: true });
   };
+
+  terminerRef.current = terminerEdition;
 
   /* ---------- zoom : boutons, tout afficher ---------- */
   const zoomBoutons = (f) => { const r = vueRef.current.getBoundingClientRect(); zoomerEn(r.left + r.width / 2, r.top + r.height / 2, cam.current.z * f); };
@@ -479,6 +492,7 @@ export const Tableau = forwardRef(function Tableau({ ficheId }, ref) {
                 {edition ? (
                   <textarea ref={zoneRef} className="tb-texte" defaultValue={c0.texte} autoFocus spellCheck={false}
                     onFocus={(e) => { const t = e.target; t.selectionStart = t.selectionEnd = t.value.length; }}
+                    onInput={(e) => { brouillon.current = { carte: c0, texte: e.target.value }; }}
                     onBlur={(e) => terminerEdition(c0, e.target.value)}
                     onKeyDown={(e) => {
                       e.stopPropagation();
