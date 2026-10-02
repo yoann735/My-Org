@@ -363,7 +363,27 @@
 .md-paysage .md-dock .md-outils { flex-direction: column; padding: 5px; gap: 2px; border-radius: 20px; max-height: 100%; overflow-y: auto; scrollbar-width: none; }
 .md-paysage .md-dock .md-outil { width: 44px; height: 44px; padding: 0; justify-content: center; flex: 0 0 auto; }
 .md-paysage .md-dock .md-outil span { display: none; }
-.md-paysage .md-carte { width: min(320px, 46vw); max-height: 100%; overflow-y: auto; padding: 10px 12px; gap: 10px; }
+/* RÉGLAGES D'OUTIL EN VERTICAL (03/10) : en paysage, la carte est un panneau étroit le
+   long de la colonne d'outils ; chaque réglage est une COLONNE (couleurs, épaisseurs,
+   formes…) qui passe sur une 2e colonne si la hauteur manque. La largeur reste au dessin. */
+.md-col { display: contents; }
+.md-paysage .md-carte { width: auto; max-height: 100%; flex-direction: row; align-items: flex-start; padding: 8px; gap: 8px; overflow: visible;
+  animation-name: md-carte-in-cote; }
+@keyframes md-carte-in-cote { from { opacity: 0; transform: translateX(8px) scale(.98); } to { opacity: 1; transform: none; } }
+.md-paysage .md-carte .md-rang { margin: 0; overflow: visible; display: grid; grid-auto-flow: column; justify-items: center; align-items: center;
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+.md-paysage .md-carte .md-palette { grid-template-rows: repeat(auto-fit, 42px); gap: 0 10px; padding: 0 6px; }
+.md-paysage .md-pastille-cel { flex-direction: column; justify-content: center; gap: 0; height: 42px; }
+.md-paysage .md-pastille-sep { display: none; }
+.md-paysage .md-carte .md-formes { grid-template-rows: repeat(auto-fit, 48px); gap: 0 6px; padding: 0; }
+.md-paysage .md-carte .md-tailles { display: flex; flex-direction: column; padding: 4px; gap: 2px; }
+.md-paysage .md-taille { flex: none; width: 44px; height: 40px; }
+.md-paysage .md-col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.md-paysage .md-carte .md-bascule { width: 52px; flex-direction: column; justify-content: center; gap: 6px; padding: 4px 0; }
+.md-paysage .md-bascule-txt { align-items: center; }
+.md-paysage .md-bascule-txt b { font-size: 11px; }
+.md-paysage .md-bascule-txt small { display: none; }
+.md-paysage .md-retirer { bottom: auto; left: auto; right: calc(100% + 8px); top: 50%; transform: translateY(-50%); }
 .md-paysage .md-carte .md-aide { display: none; }
 .md-paysage .md-format { left: 64px; right: 70px; }
 .md-paysage .md-vide { top: 44%; }

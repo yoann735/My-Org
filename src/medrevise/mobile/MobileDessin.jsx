@@ -896,7 +896,10 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
           actif replie / déplie la carte. */}
       <div className="md-dock">
         {/* zone de texte sélectionnée : sa barre de mise en forme remplace la carte (place libre) */}
-        {carteOuverte && !(outil === 'texte' && selId) && (
+        {/* PAYSAGE (03/10) : la carte devient un panneau VERTICAL le long de la colonne
+            d'outils (chaque réglage en colonne) — la largeur reste au dessin. La gomme et
+            la main n'y ont pas de réglage : pas de carte. */}
+        {carteOuverte && !(outil === 'texte' && selId) && !(paysage && (outil === 'gomme' || outil === 'main')) && (
           <div className="md-carte" role="group" aria-label="Réglages de l’outil">
             {outil === 'forme' && (
               <div className="md-rang md-formes">
@@ -929,6 +932,8 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
                 ))}
               </div>
             )}
+            {/* épaisseur + lissage : une seule colonne en paysage (sans effet en portrait) */}
+            <div className="md-col">
             {outil !== 'gomme' && outil !== 'main' && outil !== 'texte' && (
               <div className="md-rang md-tailles" role="group" aria-label="Épaisseur">
                 {EPAISSEURS.map((p, i) => {
@@ -947,6 +952,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
                 <span className="md-interrupteur"><i /></span>
               </button>
             )}
+            </div>
             {outil === 'gomme' && <div className="md-aide">Touche ou glisse sur un trait, une forme ou un texte pour l’effacer.</div>}
             {outil === 'texte' && <div className="md-aide">Trace une zone au doigt pour écrire · touche une zone pour la sélectionner (poignées, mise en forme), glisse-la pour la déplacer.</div>}
             {outil === 'main' && <div className="md-aide">Glisse pour déplacer le dessin · pince pour zoomer.</div>}
