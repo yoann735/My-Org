@@ -121,7 +121,7 @@ export function EcranDessin({ ctx, onQuit }) {
     setEnvoi({ etat: 'en-cours' });
     try {
       const { png, largeur, hauteur } = await svgVersPng(exp.svg, exp.w, exp.h);
-      const { statut } = await envoyerDessin(png, { ficheId: cible.id, titre: cible.titre, largeur, hauteur });
+      const { statut } = await envoyerDessin(png, { ficheId: cible.id, titre: cible.titre, largeur, hauteur, textes: exp.textes || [] });
       setEnvoi({ etat: 'fini', statut, titre: cible.titre });
     } catch (e) {
       setEnvoi({ etat: 'erreur', message: 'Envoi impossible : ' + ((e && e.message) || e) });

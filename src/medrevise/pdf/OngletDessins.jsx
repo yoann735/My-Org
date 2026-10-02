@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { blobURL } from '../lib/storage.js';
 import { IconeOutil } from './IconesOutils.jsx';
+import { couleurHex } from './pdfShared.js';
 
 export const TYPE_GLISSER = 'application/x-medrevise-dessin';
 
@@ -34,9 +35,26 @@ function Vignette({ dessin, essai }) {
     return () => { vivant = false; };
   }, [dessin.blobId, essai]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
-  return url
-    ? <img className="od-img" src={url} alt="Dessin envoyé du téléphone" draggable={false} />
-    : <div className="od-attente"><Icon name="clock" size={14} /> Image en route…</div>;
+  if (!url) return <div className="od-attente"><Icon name="clock" size={14} /> Image en route…</div>;
+  // les zones de texte ne sont pas dans le PNG (elles deviennent des textes libres
+  // éditables à la pose) : la vignette les superpose pour montrer le dessin complet
+  const textes = dessin.textes || [];
+  const H = dessin.largeur && dessin.hauteur ? (1000 * dessin.hauteur) / dessin.largeur : 1000;
+  return (
+    <span className="od-pile">
+      <img className="od-img" src={url} alt="Dessin envoyé du téléphone" draggable={false} />
+      {textes.length > 0 && (
+        <svg className="od-textes" viewBox={`0 0 1000 ${H}`} preserveAspectRatio="none" aria-hidden="true">
+          {textes.map((t, i) => (
+            <text key={i} x={t.x * 1000} y={t.y * H} fontSize={t.taille * 1000} fill={couleurHex(t.couleur, '#1F1F24')} fontWeight="500" dominantBaseline="hanging"
+              fontFamily='system-ui, -apple-system, "Segoe UI", sans-serif' style={{ whiteSpace: 'pre' }}>
+              {String(t.texte).split('\n').map((l, j) => <tspan key={j} x={t.x * 1000} dy={j ? t.taille * 1000 * 1.25 : 0}>{l || ' '}</tspan>)}
+            </text>
+          ))}
+        </svg>
+      )}
+    </span>
+  );
 }
 
 export function OngletDessins({ dessins, posesBlobIds, essai, onPoser, onRetirer, pdfPret }) {

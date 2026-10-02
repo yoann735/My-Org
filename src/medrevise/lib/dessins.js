@@ -66,7 +66,7 @@ export const retirerDessin = (d) => remove('dessins', d.id);
  * localement et les deux outbox existantes enverront au retour du réseau.
  * @returns {Promise<{ dessin, statut: 'envoye'|'attente'|'local' }>}
  */
-export async function envoyerDessin(png, { ficheId, titre, largeur, hauteur }) {
+export async function envoyerDessin(png, { ficheId, titre, largeur, hauteur, textes = [] }) {
   const blobId = await putBlob(png);
   let statut = 'local';
   if (SYNC_ENABLED) {
@@ -76,6 +76,9 @@ export async function envoyerDessin(png, { ficheId, titre, largeur, hauteur }) {
   }
   const dessin = {
     id: genId('ds'), ficheId, blobId, largeur, hauteur, titre: titre || null,
+    // zones de texte (02/10 soir) : PAS dans le PNG — reposées sur l'ordi en textes libres
+    // éditables. Positions et tailles en fractions de l'image : [{ texte, x, y, taille, largeur, couleur }]
+    ...(textes && textes.length ? { textes } : {}),
     envoyeLe: new Date().toISOString(), appareil: 'mobile', createdAt: new Date().toISOString(),
   };
   await put('dessins', dessin);

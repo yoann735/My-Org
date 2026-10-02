@@ -27,10 +27,29 @@ const OUTILS = [
   { id: 'crayon', label: 'Crayon' },
   { id: 'surligneur', label: 'Surligneur' },
   { id: 'forme', label: 'Formes' },
+  { id: 'texte', label: 'Texte' },
   { id: 'gomme', label: 'Gomme' },
   { id: 'main', label: 'Main' },
 ];
 const ZMIN = 0.2, ZMAX = 8;
+/* ZONES DE TEXTE (02/10 soir) : des légendes écrites au clavier du téléphone. Elles ne
+   sont PAS aplaties dans le PNG : elles voyagent à part (texte, position, taille,
+   couleur) et deviennent, posées sur l'ordi, des TEXTES LIBRES du lecteur au-dessus de
+   l'image — déplaçables et modifiables comme les autres. */
+export const TAILLES_TEXTE = [14, 18, 24, 32, 44]; // px à zoom 1
+export const POLICE_TEXTE = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+let ctxMesure = null;
+/** largeur/hauteur (monde) d'une zone de texte. */
+export function mesurerTexte(e) {
+  const lignes = String(e.texte || '').split('\n');
+  let w = 0;
+  try {
+    if (!ctxMesure) ctxMesure = document.createElement('canvas').getContext('2d');
+    ctxMesure.font = `500 ${e.taille}px ${POLICE_TEXTE}`;
+    for (const l of lignes) w = Math.max(w, ctxMesure.measureText(l || ' ').width);
+  } catch (err) { w = Math.max(...lignes.map((l) => l.length)) * e.taille * 0.55; }
+  return { w: Math.max(e.taille, w), h: lignes.length * e.taille * 1.25 };
+}
 const nouvelId = () => 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 /** chemin lissé (courbes quadratiques entre les milieux) en coordonnées monde. */
@@ -60,6 +79,7 @@ function alleger(points) {
 
 /** boîte englobante (monde) d'un élément, épaisseur comprise. */
 export function boiteElement(e) {
+  if (e.type === 'texte') { const t = mesurerTexte(e); return { x: e.x - 2, y: e.y - 2, w: t.w + 4, h: t.h + 4 }; }
   if (e.type === 'trait') {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [x, y] of e.points) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
@@ -95,6 +115,18 @@ export function couleurSurFond(c, fond = 'noir') {
     (canvas du téléphone, export sur fond noir) ou 'clair' (PDF, fond blanc). */
 export function ElementDessin({ e, gommeLarg = 0, fond = 'noir' }) {
   const coul = couleurSurFond(e.couleur, fond);
+  if (e.type === 'texte') {
+    const lignes = String(e.texte || '').split('\n');
+    const t = mesurerTexte(e);
+    return (
+      <g data-id={e.id} data-type="texte" transform={`translate(${e.x} ${e.y})`}>
+        <text fontSize={e.taille} fill={coul} fontFamily={POLICE_TEXTE} fontWeight="500" dominantBaseline="hanging" style={{ whiteSpace: 'pre' }}>
+          {lignes.map((l, i) => <tspan key={i} x={0} y={i * e.taille * 1.25}>{l || ' '}</tspan>)}
+        </text>
+        {gommeLarg > 0 && <rect className="md-gomme" data-id={e.id} data-plein="1" x={-6} y={-6} width={t.w + 12} height={t.h + 12} fill="transparent" />}
+      </g>
+    );
+  }
   if (e.type === 'trait') {
     const d = cheminTrait(e.points);
     return (
@@ -143,6 +175,51 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
   const [masques, setMasques] = useState(null); // éléments touchés par la gomme pendant le geste
 
   const svgRef = useRef(null), mondeRef = useRef(null), traitRef = useRef(null);
+  const [tailleIdx, setTailleIdx] = useState(1);
+  /* SAISIE D'UN TEXTE : un <textarea> TOUJOURS monté, placé et focalisé DANS le geste
+     (pointerup) — iOS n'ouvre le clavier que sur un focus synchrone à un toucher. */
+  const saisieRef = useRef(null);
+  const [edition, setEdition] = useState(null); // { id|null, x, y, taille, couleur }
+  const editionRef = useRef(null); editionRef.current = edition;
+  const [glisseTexte, setGlisseTexte] = useState(null); // { id, dx, dy } pendant un déplacement
+  const ouvrirSaisie = (ed, texteInitial) => {
+    const ta = saisieRef.current;
+    if (ta) {
+      const c = camRef.current;
+      // la surface est sous la barre du haut : le champ se place par rapport à elle
+      const r = svgRef.current.getBoundingClientRect(), base = svgRef.current.parentElement.getBoundingClientRect();
+      ta.value = texteInitial || '';
+      ta.style.left = `${r.left - base.left + ed.x * c.z + c.x - 2}px`;
+      ta.style.top = `${r.top - base.top + ed.y * c.z + c.y - c.z * ed.taille * 0.12}px`;
+      ta.style.fontSize = `${ed.taille * c.z}px`;
+      ta.style.color = couleurSurFond(ed.couleur, 'noir');
+      ta.style.display = 'block';
+      try { ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (err) { /* ignore */ }
+    }
+    setEdition(ed);
+  };
+  const terminerSaisie = () => {
+    const ed = editionRef.current;
+    if (!ed) return;
+    const ta = saisieRef.current;
+    const texte = ta ? ta.value.replace(/\s+$/, '') : '';
+    if (ta) { ta.style.display = 'none'; ta.blur(); }
+    setEdition(null);
+    const els = elementsRef.current;
+    if (ed.id) {
+      const avant = els.find((x) => x.id === ed.id);
+      if (!avant) return;
+      if (!texte.trim()) valider(els.filter((x) => x.id !== ed.id));
+      else if (texte !== avant.texte) valider(els.map((x) => (x.id === ed.id ? { ...x, texte } : x)));
+    } else if (texte.trim()) {
+      valider([...els, { id: nouvelId(), type: 'texte', x: ed.x, y: ed.y, texte, couleur: ed.couleur, taille: ed.taille }]);
+    }
+  };
+  const texteSous = (wx, wy) => [...elementsRef.current].reverse().find((x) => {
+    if (x.type !== 'texte') return false;
+    const b = boiteElement(x), m = 10 / camRef.current.z;
+    return wx >= b.x - m && wx <= b.x + b.w + m && wy >= b.y - m && wy <= b.y + b.h + m;
+  });
 
   // ---- historique ----
   // L'état courant est CAPTURÉ avant les setters : une fonction de mise à jour est
@@ -182,7 +259,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       const b = boiteDessin(elementsRef.current);
       if (!b || !mondeRef.current) return null;
       const m = 16, w = Math.ceil(b.w + 2 * m), h = Math.ceil(b.h + 2 * m);
-      const morceaux = [...mondeRef.current.querySelectorAll(':scope > g[data-id]')].map((g) => {
+      const morceaux = [...mondeRef.current.querySelectorAll(':scope > g[data-id]:not([data-type="texte"])')].map((g) => {
         const c = g.cloneNode(true);
         c.querySelectorAll('.md-gomme').forEach((x) => x.remove());
         let html = c.outerHTML;
@@ -191,7 +268,13 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       }).join('');
       const fond = fondExport === 'blanc' ? `<rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff"/>`
         : fondExport === 'noir' ? `<rect x="0" y="0" width="${w}" height="${h}" fill="#111114"/>` : '';
-      return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${fond}<g transform="translate(${m - b.x} ${m - b.y})">${morceaux}</g></svg>`, w, h };
+      // zones de texte : en FRACTIONS de l'image, pour être reposées par-dessus sur l'ordi
+      const textes = elementsRef.current.filter((x) => x.type === 'texte' && String(x.texte || '').trim()).map((x) => {
+        const t = mesurerTexte(x);
+        return { texte: x.texte, x: (x.x - b.x + m) / w, y: (x.y - b.y + m) / h, taille: x.taille / w, largeur: t.w / w,
+          couleur: couleurSurFond(x.couleur, fondExport === 'noir' ? 'noir' : 'clair') };
+      });
+      return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${fond}<g transform="translate(${m - b.x} ${m - b.y})">${morceaux}</g></svg>`, w, h, textes };
     },
     vider: () => { valider([]); try { localStorage.removeItem(CLE_BROUILLON); } catch (e) { /* ignore */ } },
   }), [valider]);
@@ -263,7 +346,9 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     doigts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (doigts.current.size === 2) { abandonner(); debutPince(); return; }
     if (doigts.current.size > 2) return;
+    if (editionRef.current) { terminerSaisie(); geste.current = null; return; } // toucher ailleurs = fin de la saisie
     const [wx, wy] = versMonde(e.clientX, e.clientY);
+    if (outil === 'texte') { geste.current = { type: 'texte', cible: texteSous(wx, wy) || null, p0: [wx, wy], c0: [e.clientX, e.clientY], bouge: false }; return; }
     if (outil === 'main') { geste.current = { type: 'pan', x0: e.clientX, y0: e.clientY, cam0: { ...camRef.current } }; return; }
     if (outil === 'gomme') { geste.current = { type: 'gomme', touches: new Set() }; toucheGomme(e.clientX, e.clientY); return; }
     if (outil === 'forme') { geste.current = { type: 'forme', p0: [wx, wy], courant: null }; return; }
@@ -271,7 +356,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     geste.current = { type: 'trait', points: [[wx, wy]], dernier: [wx, wy], surl };
     if (traitRef.current) {
       traitRef.current.setAttribute('d', cheminTrait([[wx, wy]]));
-      traitRef.current.setAttribute('stroke', couleurHex(surl ? couleurSurl : couleur, '#1F1F24'));
+      traitRef.current.setAttribute('stroke', couleurSurFond(surl ? couleurSurl : couleur, 'noir'));
       traitRef.current.setAttribute('stroke-width', String(EPAISSEURS[epIdx] * (surl ? 3 : 1)));
       traitRef.current.setAttribute('stroke-opacity', surl ? '0.4' : '1');
     }
@@ -292,6 +377,14 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       return;
     }
     if (g.type === 'pan') { appliquerCam({ ...g.cam0, x: g.cam0.x + e.clientX - g.x0, y: g.cam0.y + e.clientY - g.y0 }); return; }
+    if (g.type === 'texte') {
+      if (!g.cible) return;
+      if (!g.bouge && Math.hypot(e.clientX - g.c0[0], e.clientY - g.c0[1]) < 8) return;
+      g.bouge = true;
+      const z = camRef.current.z;
+      setGlisseTexte({ id: g.cible.id, dx: (e.clientX - g.c0[0]) / z, dy: (e.clientY - g.c0[1]) / z });
+      return;
+    }
     const lot = typeof e.getCoalescedEvents === 'function' && e.getCoalescedEvents().length ? e.getCoalescedEvents() : [e];
     if (g.type === 'gomme') { lot.forEach((q) => toucheGomme(q.clientX, q.clientY)); return; }
     if (g.type === 'forme') {
@@ -317,6 +410,18 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     if (doigts.current.size > 0) return;
     geste.current = null;
     if (g.type === 'pan') { setCam({ ...camRef.current }); return; }
+    if (g.type === 'texte') {
+      if (g.cible && g.bouge) {
+        const z = camRef.current.z, dx = (e.clientX - g.c0[0]) / z, dy = (e.clientY - g.c0[1]) / z;
+        setGlisseTexte(null);
+        valider(elementsRef.current.map((x) => (x.id === g.cible.id ? { ...x, x: x.x + dx, y: x.y + dy } : x)));
+        return;
+      }
+      if (g.cible) { ouvrirSaisie({ id: g.cible.id, x: g.cible.x, y: g.cible.y, taille: g.cible.taille, couleur: g.cible.couleur }, g.cible.texte); return; }
+      const taille = TAILLES_TEXTE[tailleIdx];
+      ouvrirSaisie({ id: null, x: g.p0[0], y: g.p0[1] - taille * 0.6, taille, couleur }, '');
+      return;
+    }
     if (g.type === 'gomme') {
       setMasques(null);
       if (g.touches.size) valider(elementsRef.current.filter((x) => !g.touches.has(x.id)));
@@ -343,7 +448,11 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
   // le monde suit l'état React de la caméra hors geste
   useEffect(() => { camRef.current = cam; ecrireCam(cam); }, [cam]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const visibles = masques ? elements.filter((x) => !masques.has(x.id)) : elements;
+  // le texte en cours d'écriture est masqué (le champ de saisie le remplace) ; celui
+  // qu'on glisse suit le doigt
+  const visibles = elements
+    .filter((x) => !(masques && masques.has(x.id)) && !(edition && edition.id === x.id))
+    .map((x) => (glisseTexte && glisseTexte.id === x.id ? { ...x, x: x.x + glisseTexte.dx, y: x.y + glisseTexte.dy } : x));
   const ep = EPAISSEURS[epIdx];
   const couleurActive = outil === 'surligneur' ? couleurSurl : couleur;
 
@@ -356,7 +465,9 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
         <button type="button" className="md-btn" onClick={recentrer} aria-label="Recentrer" title="Recentrer sur le dessin"><Icon name="maximize" size={17} /></button>
         <button type="button" className="md-btn" onClick={toutEffacer} disabled={!elements.length} aria-label="Tout effacer" title="Tout effacer (annulable)"><Icon name="trash" size={17} /></button>
         <span style={{ flex: 1 }} />
-        {barreHaut}
+        {edition ? (
+          <button type="button" className="md-exporter" onPointerDown={(e) => e.preventDefault()} onClick={terminerSaisie}><Icon name="check" size={16} /> OK</button>
+        ) : barreHaut}
       </div>
 
       <svg ref={svgRef} className={'md-surface outil-' + outil}
@@ -369,7 +480,11 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
         </g>
       </svg>
 
-      {!elements.length && <div className="md-vide">Dessine au doigt · deux doigts pour déplacer et zoomer</div>}
+      {!elements.length && !edition && <div className="md-vide">Dessine au doigt · deux doigts pour déplacer et zoomer</div>}
+      <textarea ref={saisieRef} className="md-saisie" rows={1} spellCheck={false} aria-label="Texte"
+        style={{ display: 'none', fontFamily: POLICE_TEXTE }}
+        onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; t.style.width = 'auto'; t.style.width = `${Math.max(80, t.scrollWidth + 8)}px`; }}
+        onBlur={() => { if (editionRef.current) terminerSaisie(); }} />
 
       <div className="md-bas">
         <div className="md-reglages">
@@ -393,7 +508,16 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
                 enTete={[{ id: 'blanc', hex: '#F2F2F5', label: 'Encre — blanche ici, noire sur la page' }]} />
             </div>
           )}
-          {outil !== 'gomme' && outil !== 'main' && (
+          {outil === 'texte' && (
+            <div className="md-ligne md-epaisseurs" role="group" aria-label="Taille du texte">
+              {TAILLES_TEXTE.map((t, i) => (
+                <button key={t} type="button" className={'md-ep' + (tailleIdx === i ? ' actif' : '')} onClick={() => setTailleIdx(i)} aria-label={`Taille ${i + 1}`}>
+                  <span className="md-ep-a" style={{ fontSize: 11 + i * 3.5, color: couleurSurFond(couleur, 'noir') }}>A</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {outil !== 'gomme' && outil !== 'main' && outil !== 'texte' && (
             <div className="md-ligne md-epaisseurs" role="group" aria-label="Épaisseur">
               {EPAISSEURS.map((p, i) => (
                 <button key={p} type="button" className={'md-ep' + (epIdx === i ? ' actif' : '')} onClick={() => setEpIdx(i)} aria-label={`Épaisseur ${i + 1}`}>
@@ -402,13 +526,14 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
               ))}
             </div>
           )}
-          {outil === 'gomme' && <div className="md-aide">Touche ou glisse sur un trait ou une forme pour l’effacer</div>}
+          {outil === 'gomme' && <div className="md-aide">Touche ou glisse sur un trait, une forme ou un texte pour l’effacer</div>}
+          {outil === 'texte' && <div className="md-aide">Touche le dessin pour écrire · touche un texte pour le modifier, glisse-le pour le déplacer</div>}
           {outil === 'main' && <div className="md-aide">Glisse pour déplacer le dessin · pince pour zoomer</div>}
         </div>
         <div className="md-outils" role="group" aria-label="Outils">
           {OUTILS.map((o) => (
-            <button key={o.id} type="button" className={'md-outil' + (outil === o.id ? ' actif' : '')} onClick={() => setOutil(o.id)}>
-              <IconeOutil nom={o.id === 'crayon' ? 'crayon' : o.id === 'surligneur' ? 'surligneur' : o.id === 'forme' ? 'forme' : o.id === 'gomme' ? 'gomme' : 'main'} size={22} />
+            <button key={o.id} type="button" className={'md-outil' + (outil === o.id ? ' actif' : '')} onClick={() => { if (editionRef.current) terminerSaisie(); setOutil(o.id); }}>
+              <IconeOutil nom={o.id} size={22} />
               <span>{o.label}</span>
             </button>
           ))}

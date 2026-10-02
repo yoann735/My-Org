@@ -1175,7 +1175,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // (et au cloud) — l'image posée le réutilise, sans copie.
   // `echelle` : un dessin est rendu en ×2 (net à l'écran) — sa taille de départ est
   // celle du dessin, pas celle de ses pixels.
-  const ajouterImage = async (file, cible = null, blobIdExistant = null, echelle = 1) => {
+  const ajouterImage = async (file, cible = null, blobIdExistant = null, echelle = 1, textes = null) => {
     if (!file || !/^image\//.test(file.type || '')) return;
     let w = 0, h = 0;
     try { const bm = await createImageBitmap(file); w = bm.width; h = bm.height; if (bm.close) bm.close(); } catch (e) { return; } // pas une image lisible
@@ -1199,7 +1199,24 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const rec = newImageCollee({ ficheId, page: ps.cle, blobId, nom: file.name || null,
       x: Math.max(0, Math.min(1 - wn, cx - wn / 2)), y: Math.max(0, Math.min(1 - hn, cy - hn / 2)), width: wn, height: hn,
       z: surPage.length ? Math.max(...surPage.map((i) => i.z || 0)) + 1 : 0 });
-    await hist.appliquer(cmdCreer('annotations', rec, 'Image collée'));
+    /* DESSIN DU TÉLÉPHONE AVEC SES ZONES DE TEXTE (02/10 soir) : chaque zone devient un
+       TEXTE LIBRE ordinaire, posé à sa place au-dessus de l'image — on le déplace, le
+       modifie, le supprime comme n'importe quel texte libre. Image et textes : UNE
+       seule entrée d'annulation. Taille : celle du téléphone rapportée à l'image, au
+       zoom de référence (160 %) ; comme tout texte libre, elle reste fixe à l'écran. */
+    const refPx = ps.width * 1.6; // largeur de la page en px au zoom de référence
+    const textesRecs = (textes || []).filter((t) => t && String(t.texte || '').trim()).map((t) => {
+      const px = Math.max(8, Math.min(72, Math.round(t.taille * rec.width * refPx)));
+      const lignes = String(t.texte).split('\n');
+      const content = { type: 'doc', content: lignes.map((l) => ({ type: 'paragraph', content: l ? [{ type: 'text', text: l, marks: [{ type: 'textStyle', attrs: { fontSize: `${px}px` } }] }] : [] })) };
+      return newTexteLibre({ ficheId, page: ps.cle, couleur: t.couleur || 'noir', content,
+        x: Math.max(0, Math.min(0.98, rec.x + t.x * rec.width - 4 / refPx)),
+        y: Math.max(0, Math.min(0.98, rec.y + t.y * rec.height - 2 / (ps.height * 1.6))),
+        width: Math.min(0.9, Math.max(0.05, t.largeur * rec.width * 1.2 + 12 / refPx)), height: 0.02 });
+    });
+    await hist.appliquer(textesRecs.length
+      ? cmdGroupe(`Dessin posé (avec ${textesRecs.length} texte${textesRecs.length > 1 ? 's' : ''})`, [cmdCreer('annotations', rec, 'Image collée'), ...textesRecs.map((t) => cmdCreer('annotations', t, 'Texte du dessin'))])
+      : cmdCreer('annotations', rec, 'Image collée'));
     setOutil('main'); setActiveEditId(null);
     setImageActiveId(rec.id);
   };
@@ -1267,7 +1284,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!blob) { setExportErreur('L’image de ce dessin n’est pas encore arrivée — réessaie dans quelques secondes.'); return; }
     const f = blob.type ? blob : new Blob([blob], { type: 'image/png' });
     try { f.name = 'Dessin du téléphone'; } catch (err) { /* Blob : nom en lecture seule, sans importance */ }
-    await ajouterImage(f, cible, d.blobId, 0.5); // PNG rendu en ×2 sur le téléphone
+    await ajouterImage(f, cible, d.blobId, 0.5, d.textes || null); // PNG rendu en ×2 sur le téléphone ; ses zones de texte en textes libres
   };
   const retirerUnDessin = async (d) => { await retirerDessin(d); setDessins(await dessinsDeFiche(ficheId)); };
 
