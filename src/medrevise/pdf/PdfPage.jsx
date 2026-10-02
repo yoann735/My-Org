@@ -31,33 +31,8 @@ import {
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
   soustraireAncres, partCouverte, couleurHex,
   lisserTrait, traitTouche, cheminLisse, suivreEnDouceur, modeDuTrait,
-  EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR,
+  EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, positionTexteProche,
 } from './pdfShared.js';
-
-/** position dans le TEXTE la plus proche d'un point écran : la ligne (span) la
-    plus proche verticalement, puis le caractère à la hauteur du point, borné aux
-    extrémités de la ligne. null si la couche ne contient aucun texte. */
-function positionTexteProche(container, x, y) {
-  let best = null, dBest = Infinity;
-  for (const sp of container.querySelectorAll('span')) {
-    const t = sp.firstChild;
-    if (!t || t.nodeType !== Node.TEXT_NODE || !t.length) continue;
-    const r = sp.getBoundingClientRect();
-    if (!r.width || !r.height) continue;
-    const dy = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
-    const dx = x < r.left ? r.left - x : x > r.right ? x - r.right : 0;
-    const d = dy * 1000 + dx; // la LIGNE d'abord, puis la plus proche horizontalement
-    if (d < dBest) { dBest = d; best = { sp, t, r }; }
-  }
-  if (!best) return null;
-  const { t, r } = best;
-  if (x <= r.left) return { node: t, offset: 0 };
-  if (x >= r.right) return { node: t, offset: t.length };
-  const c = document.caretRangeFromPoint ? document.caretRangeFromPoint(x, r.top + r.height / 2) : null;
-  if (c && c.startContainer === t) return { node: t, offset: c.startOffset };
-  // repli : proportion de la largeur (spans étirés à la largeur exacte du texte)
-  return { node: t, offset: Math.max(0, Math.min(t.length, Math.round(((x - r.left) / r.width) * t.length))) };
-}
 
 /** rendu d'une seule page (montée uniquement si proche du viewport) : canvas + couche de
     texte + surlignages + surlignage de recherche (géométrie exacte, Chantier 2) + blocs
@@ -71,9 +46,65 @@ export function PdfPageContent({
   images = [], imageActiveId = null, onImageActiver = () => {}, onImageMaj = () => {}, onImageCalque = () => {}, onImageSupprimer = () => {},
   formes = [], formeActiveId = null, onFormeActiver = () => {}, onCreerForme = () => {}, onFormeMaj = () => {}, onFormeSupprimer = () => {}, onFormeLegende = () => {},
   couleurForme = '#e5383b', typeFormeActif = 'rectangle', formeRemplie = false, onFormeModifier = () => {},
+  couleurApercuSelection = null,
 }) {
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
+  /* ============================================================
+     SÉLECTION DESSINÉE PAR L'APP (02/10 nuit). Le navigateur garde la sélection
+     (précise au caractère) mais elle est INVISIBLE sur la couche de texte ; ce calque
+     la dessine : un aplat UNIFORME (les spans qui se chevauchent ne s'additionnent pas,
+     un surlignage dessous ne la fait pas foncer), puis le texte de la page ré-imprimé
+     par-dessus en « multiply » — net et noir. Redessinée à chaque changement de
+     sélection, une fois par image. `couleurApercuSelection` : avec le surligneur, la
+     sélection prend la couleur du surlignage à venir (aperçu fidèle pendant le geste).
+     ============================================================ */
+  const selCanvasRef = useRef(null);
+  const couleurSelRef = useRef(null); couleurSelRef.current = couleurApercuSelection;
+  const dessinerSelRef = useRef(null);
+  useEffect(() => {
+    let raf = 0;
+    const dessiner = () => {
+      raf = 0;
+      const cv = selCanvasRef.current, couche = textLayerRef.current, src = canvasRef.current;
+      if (!cv || !couche) return;
+      const pr = couche.getBoundingClientRect();
+      const W = pr.width, H = pr.height, k = window.devicePixelRatio || 1;
+      const rects = [];
+      const sel = document.getSelection();
+      if (sel && sel.rangeCount && !sel.isCollapsed) {
+        const range = sel.getRangeAt(0);
+        if (range.intersectsNode(couche)) {
+          for (const sp of couche.querySelectorAll('span')) {
+            const t = sp.firstChild;
+            if (!t || t.nodeType !== 3 || !t.length || !range.intersectsNode(t)) continue;
+            const r = document.createRange();
+            r.setStart(t, t === range.startContainer ? range.startOffset : 0);
+            r.setEnd(t, t === range.endContainer ? range.endOffset : t.length);
+            // même hauteur qu'un surlignage (un peu plus haute que la boîte du span) :
+            // un surlignage sous la sélection est entièrement recouvert, sans liseré
+            for (const q of r.getClientRects()) if (q.width > 0.5 && q.height > 0.5) rects.push([q.left - pr.left, q.top - pr.top - q.height * 0.1, q.width, q.height * 1.16]);
+          }
+        }
+      }
+      const pw = Math.max(1, Math.round(W * k)), ph = Math.max(1, Math.round(H * k));
+      if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+      const g = cv.getContext('2d');
+      g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, pw, ph);
+      if (!rects.length) return;
+      g.setTransform(k, 0, 0, k, 0, 0);
+      g.beginPath(); rects.forEach(([x, y, w, h]) => g.rect(x, y, w, h)); // UNION des morceaux : un seul aplat
+      g.fillStyle = couleurSelRef.current || getComputedStyle(document.documentElement).getPropertyValue('--mr-selection-page').trim() || 'rgb(197, 216, 246)';
+      g.fill();
+      if (src && src.width) { g.save(); g.clip(); g.globalCompositeOperation = 'multiply'; g.drawImage(src, 0, 0, W, H); g.restore(); }
+    };
+    const planifier = () => { if (!raf) raf = requestAnimationFrame(dessiner); };
+    dessinerSelRef.current = planifier;
+    document.addEventListener('selectionchange', planifier);
+    return () => { document.removeEventListener('selectionchange', planifier); if (raf) cancelAnimationFrame(raf); };
+  }, []);
+  useEffect(() => { if (dessinerSelRef.current) dessinerSelRef.current(); }, [couleurApercuSelection]);
+
   // image en cours de geste : ses textes attachés la suivent EN DIRECT (02/10 nuit)
   const [apercuImage, setApercuImage] = useState(null);
   const renderTaskRef = useRef(null);
@@ -280,6 +311,9 @@ export function PdfPageContent({
     return hit || null;
   };
   const handleMouseMove = (e) => {
+    // FLUIDITÉ (02/10 nuit) : pendant un glisser (sélection, surlignage), aucun calcul de
+    // survol — il recalculait la position de chaque surlignage à chaque image du geste
+    if (e.buttons & 1) return;
     if (rafSurvol.current) return;
     const { clientX, clientY } = e; // capturé avant la frame suivante
     rafSurvol.current = requestAnimationFrame(() => {
@@ -622,6 +656,7 @@ export function PdfPageContent({
             style={{ left: m.rect.x * 100 + '%', top: m.rect.y * 100 + '%', width: m.rect.width * 100 + '%', height: m.rect.height * 100 + '%' }} />
         ))}
       </div>
+      <canvas ref={selCanvasRef} className="pdfr-selcanvas" aria-hidden="true" />
       {edits.map((a) => (
         <TextEditBlock key={a.id} edit={a} active={a.id === activeEditId} editable={outil === 'main'} onActivate={onActivateEdit} editor={a.id === activeEditId ? activeEditor : null} pageHeight={pageHeight} />
       ))}

@@ -1011,7 +1011,14 @@
 /* sélection de texte (avant de surligner) : BIEN VISIBLE — violet soutenu à 65 %, texte noir toujours lisible (contraste ≈ 7:1)
    (était un bleu à 35 %, à peine perceptible sur la page blanche) ; le texte noir
    du PDF reste parfaitement lisible dessous. Même teinte dans la vue HTML. */
-.pdfr-textlayer ::selection { background: rgba(124, 77, 255, .65); }
+/* 02/10 nuit : dans le lecteur, la sélection native est INVISIBLE — c'est le calque
+   .pdfr-selcanvas qui la dessine (aplat uniforme + texte ré-imprimé, voir PdfPage). */
+.pdfr-textlayer span { z-index: 1; }
+.pdfr-textlayer ::selection { background: transparent; color: transparent; }
+.pdfr-selcanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.pdfr-fin-texte { position: absolute; left: 0; right: 0; top: 100%; bottom: 0; z-index: 0; cursor: default; -webkit-user-select: none; user-select: none; }
+.pdfr-textlayer.en-selection .pdfr-fin-texte { top: 0; }
+.pdfr-fin-texte::selection { background: transparent; }
 .pdfr-hlayer { position: absolute; inset: 0; pointer-events: none; }
 .pdfr-hl-rect { position: absolute; mix-blend-mode: multiply; border-radius: 2px; }
 .pdfr-match-rect { position: absolute; background: color-mix(in srgb, #FFB020 55%, transparent); border-radius: 2px; pointer-events: none; }
@@ -2142,3 +2149,15 @@ textarea.tb-texte { display: block; resize: none; border: 0; outline: none; back
 .ad-tranche { position: fixed; margin: 0; transition: none !important; animation: none !important; will-change: transform, opacity; border-color: transparent !important; box-shadow: none !important; border-radius: 0 !important;
   -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card); }
 .ad-tranche .od-pile { animation: none !important; }
+
+/* ============================================================
+   SÉLECTION DE TEXTE — UNE SEULE pour tout MedRevise (02/10 nuit) : fiches, champs,
+   éditeurs, fenêtres, mobile. Bleu ardoise sobre, bien visible sur le sombre comme sur
+   le clair, texte inchangé dessous. Posée seulement quand MedRevise est ouverte
+   (<html data-app-actif="medrevise">) : MealWeek et le hub gardent la leur.
+   ============================================================ */
+html[data-app-actif="medrevise"] { --mr-selection: rgba(84, 140, 230, .34); --mr-selection-page: rgb(197, 216, 246); }
+html[data-app-actif="medrevise"] ::selection { background: var(--mr-selection); color: inherit; }
+html[data-app-actif="medrevise"] input::selection, html[data-app-actif="medrevise"] textarea::selection,
+html[data-app-actif="medrevise"] [contenteditable]::selection, html[data-app-actif="medrevise"] [contenteditable] *::selection { background: var(--mr-selection); color: inherit; }
+html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-actif="medrevise"] .pdfr-textlayer *::selection { background: transparent; color: transparent; }

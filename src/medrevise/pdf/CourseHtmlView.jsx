@@ -198,7 +198,7 @@ export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, clos
      barre commune n'a pas (Mode lecture, G, I, Titre, Image, Enregistrer) reste. */
   const CSS_CADRE = `.bar .grp:has(.swatch), .bar .grp:has(#bUndo), .bar .sep, #bCopyTxt { display: none !important; }
     mark.hl { cursor: pointer; }
-    ::selection { background: rgba(124, 77, 255, .65); color: inherit; }`;
+    ::selection { background: rgb(197, 216, 246) !important; color: inherit !important; }`; /* même sélection que tout MedRevise (02/10 nuit) */
   const brancherOutils = (d) => {
     if (!d || d.__medreviseOutils) return;
     d.__medreviseOutils = true;

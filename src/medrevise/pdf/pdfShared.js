@@ -159,6 +159,7 @@ export async function buildTextLayer(page, viewport, container) {
     if (item.hasEOL) frag.appendChild(document.createElement('br'));
   }
   container.appendChild(frag);
+  installerFinDeTexte(container);
   // toutes les lectures de largeur PUIS toutes les écritures : un seul calcul de mise
   // en page pour la page entière, au lieu d'un par span. Mesure faite AVANT toute
   // transformation (largeur naturelle, non pivotée).
@@ -168,6 +169,115 @@ export async function buildTextLayer(page, viewport, container) {
     if (angle) parts.push(`rotate(${angle}rad)`);
     if (!blank && natural[k] > 0 && target > 0) parts.push(`scaleX(${target / natural[k]})`);
     if (parts.length) span.style.transform = parts.join(' ');
+  });
+}
+
+/** position dans le TEXTE la plus proche d'un point écran : la ligne (span) la
+    plus proche verticalement, puis le caractère à la hauteur du point, borné aux
+    extrémités de la ligne. null si la couche ne contient aucun texte. */
+export function positionTexteProche(container, x, y) {
+  let best = null, dBest = Infinity;
+  for (const sp of container.querySelectorAll('span')) {
+    const t = sp.firstChild;
+    if (!t || t.nodeType !== Node.TEXT_NODE || !t.length) continue;
+    const r = sp.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    const dy = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+    const dx = x < r.left ? r.left - x : x > r.right ? x - r.right : 0;
+    const d = dy * 1000 + dx; // la LIGNE d'abord, puis la plus proche horizontalement
+    if (d < dBest) { dBest = d; best = { sp, t, r }; }
+  }
+  if (!best) return null;
+  const { t, r } = best;
+  if (x <= r.left) return { node: t, offset: 0 };
+  if (x >= r.right) return { node: t, offset: t.length };
+  const c = document.caretRangeFromPoint ? document.caretRangeFromPoint(x, r.top + r.height / 2) : null;
+  if (c && c.startContainer === t) return { node: t, offset: c.startOffset };
+  // repli : proportion de la largeur (spans étirés à la largeur exacte du texte)
+  return { node: t, offset: Math.max(0, Math.min(t.length, Math.round(((x - r.left) / r.width) * t.length))) };
+}
+
+/* ============================================================
+   SÉLECTION QUI NE « SAUTE » PLUS (02/10 nuit) — la parade de pdf.js (élément
+   « endOfContent »). Sur une couche de spans en position absolue, quand le curseur
+   passe dans un BLANC (entre deux lignes, dans une marge), le navigateur pose la
+   borne de la sélection sur le conteneur lui-même — souvent sa FIN : la sélection
+   englobait alors tout le reste de la page (mesuré : 13 → 167 caractères d'un coup).
+   1. Un élément « fin de texte », non sélectionnable, couvre toute la couche PENDANT
+      le glisser, sous les spans : les blancs ne touchent plus le conteneur.
+   2. À chaque changement de sélection, cet élément est déplacé JUSTE APRÈS le span
+      de la borne mobile : si le navigateur retombe malgré tout sur lui, la borne reste
+      au bout de la ligne en cours, pas au bout de la page.
+   À la fin du geste, il retourne à la fin de la couche.
+   ============================================================ */
+function installerFinDeTexte(container) {
+  const fin = document.createElement('div');
+  fin.className = 'pdfr-fin-texte';
+  container.appendChild(fin);
+  container.__finDeTexte = fin;
+  ecouterSelectionTexte();
+}
+let ecouteSelection = false;
+function ecouterSelectionTexte() {
+  if (ecouteSelection || typeof document === 'undefined') return;
+  ecouteSelection = true;
+  let precedente = null;
+  const finDuGeste = () => {
+    document.querySelectorAll('.pdfr-textlayer.en-selection').forEach((tl) => {
+      tl.classList.remove('en-selection');
+      if (tl.__finDeTexte && tl.lastChild !== tl.__finDeTexte) tl.appendChild(tl.__finDeTexte);
+    });
+    precedente = null;
+  };
+  document.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const tl = e.target && e.target.closest ? e.target.closest('.pdfr-textlayer') : null;
+    if (!tl) return;
+    tl.classList.add('en-selection');
+    precedente = null; // nouvelle sélection : c'est la FIN qui bougera (référence remise à zéro, comme pdf.js)
+    // appuyer DANS une sélection existante puis glisser déplaçait le texte sélectionné
+    // (glisser-déposer natif) au lieu de sélectionner : chaque appui repart à neuf
+    // (Maj+clic garde l'extension de la sélection)
+    if (!e.shiftKey) { const s = document.getSelection(); if (s && !s.isCollapsed) s.removeAllRanges(); }
+  }, true);
+  document.addEventListener('pointerup', finDuGeste, true);
+  document.addEventListener('pointercancel', finDuGeste, true);
+  window.addEventListener('blur', finDuGeste);
+  /* 3. Le curseur est dans un BLANC (entre deux lignes, dans une marge) : la borne
+     mobile va au caractère le plus proche du curseur — ligne la plus proche, puis la
+     position sur cette ligne, bornée à ses extrémités. La sélection suit exactement
+     le curseur, comme dans un document ordinaire (marge droite = bout de la ligne). */
+  let rafBlanc = 0, dernier = null;
+  document.addEventListener('pointermove', (e) => {
+    if (!(e.buttons & 1)) return;
+    const tl = document.querySelector('.pdfr-textlayer.en-selection');
+    if (!tl) return;
+    const cible = e.target;
+    if (cible && cible.tagName === 'SPAN' && tl.contains(cible)) return; // sur le texte : le navigateur fait déjà juste
+    dernier = { x: e.clientX, y: e.clientY, tl };
+    if (rafBlanc) return;
+    rafBlanc = requestAnimationFrame(() => {
+      rafBlanc = 0;
+      const sel = document.getSelection();
+      if (!dernier || !sel || !sel.rangeCount || !dernier.tl.contains(sel.anchorNode)) return;
+      const pos = positionTexteProche(dernier.tl, dernier.x, dernier.y);
+      if (pos && (sel.focusNode !== pos.node || sel.focusOffset !== pos.offset)) { try { sel.extend(pos.node, pos.offset); } catch (err) { /* ignore */ } }
+    });
+  }, true);
+  document.addEventListener('selectionchange', () => {
+    const sel = document.getSelection();
+    if (!sel || !sel.rangeCount) { precedente = null; return; }
+    const range = sel.getRangeAt(0);
+    if (range.collapsed) { precedente = range.cloneRange(); return; } // simple curseur : rien à déplacer
+    if (!document.querySelector('.pdfr-textlayer.en-selection')) { precedente = range.cloneRange(); return; }
+    // quelle borne bouge ? (le début si la fin n'a pas changé)
+    const debutBouge = !!precedente && (range.compareBoundaryPoints(Range.END_TO_END, precedente) === 0 || range.compareBoundaryPoints(Range.START_TO_END, precedente) === 0);
+    let ancre = debutBouge ? range.startContainer : range.endContainer;
+    if (ancre && ancre.nodeType === 3) ancre = ancre.parentNode;
+    const tl = ancre && ancre.parentElement ? ancre.parentElement.closest('.pdfr-textlayer') : null;
+    const fin = tl && tl.__finDeTexte;
+    if (fin && ancre !== fin && ancre.parentElement === tl) tl.insertBefore(fin, debutBouge ? ancre : ancre.nextSibling);
+    precedente = range.cloneRange();
   });
 }
 

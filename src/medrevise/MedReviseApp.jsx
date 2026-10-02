@@ -71,6 +71,13 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // L'HORIZONTALE (écran tactile de moins de 500 px de haut) : plus large que 760 px, il
   // basculait sur l'interface d'ordinateur — et démontait le dessin en pleine rotation.
   const isMobile = useMediaQuery('(max-width: 760px), (max-height: 500px) and (pointer: coarse)');
+  /* SÉLECTION DE TEXTE (02/10 nuit) : MedRevise a SA sélection (styles/etudes.css), posée
+     sur <html> tant que l'app est ouverte — elle couvre ainsi aussi ce qui s'affiche
+     par-dessus (fenêtres, menus). MealWeek et le hub gardent la leur. */
+  useEffect(() => {
+    document.documentElement.setAttribute('data-app-actif', 'medrevise');
+    return () => document.documentElement.removeAttribute('data-app-actif');
+  }, []);
   // MODE FOCUS (lib/focusMode.js) : lu AVANT le premier rendu, ce qui fait toute la
   // persistance — au rechargement on repart directement sur Prise de notes.
   const [focusNotes, setFocusNotesState] = useState(() => estFocusNotes());
