@@ -19,7 +19,8 @@ import { Icon } from '../../shared/Icon.jsx';
 import { IconeOutil, IconeForme } from '../pdf/IconesOutils.jsx';
 import { SelecteurCouleurs } from '../pdf/Couleurs.jsx';
 import { TYPES_FORMES, cheminForme, estTrait, estFermee } from '../pdf/formes.js';
-import { couleurHex, avecAlpha, suivreEnDouceur } from '../pdf/pdfShared.js';
+import { getStroke } from 'perfect-freehand';
+import { couleurHex, avecAlpha } from '../pdf/pdfShared.js';
 
 export const EPAISSEURS = [2, 4, 7, 12, 20]; // px à zoom 1
 const CLE_BROUILLON = 'medrevise.dessinMobile';
@@ -65,6 +66,49 @@ export function cheminTrait(points) {
   }
   const z = p[p.length - 1];
   return `${d} L${f(z[0])} ${f(z[1])}`;
+}
+
+/* LISSAGE « FAÇON APPLE » EN DIRECT (02/10 nuit) — perfect-freehand (MIT), l'algorithme
+   des outils de dessin à main levée (tldraw, Excalidraw) : stabilisation du point
+   (streamline), lissage du contour, PRESSION simulée d'après la vitesse du doigt (ou
+   la vraie pression d'un stylet), fin de trait effilée. Calculé à CHAQUE point pendant
+   le geste, pas seulement au relâchement. Le trait est alors un CONTOUR rempli.
+   Désactivable : le tracé brut suit exactement le doigt, en épaisseur constante. */
+export function optionsLissage(ep, surligneur, avecPression = false) {
+  return surligneur
+    ? { size: ep, thinning: 0, smoothing: 0.85, streamline: 0.7, simulatePressure: false, start: { cap: true }, end: { cap: true } }
+    : { size: ep * 1.35, thinning: 0.5, smoothing: 0.85, streamline: 0.7, simulatePressure: !avecPression,
+        easing: (t) => Math.sin((t * Math.PI) / 2), start: { cap: true, taper: 0 }, end: { cap: true, taper: Math.min(ep * 6, 48) } };
+}
+/** contour (perfect-freehand) → chemin SVG en courbes (milieux + quadratiques). */
+export function cheminContour(contour) {
+  if (!contour || contour.length < 2) return '';
+  const f = (v) => (Math.round(v * 100) / 100).toString();
+  let d = `M${f(contour[0][0])} ${f(contour[0][1])} Q`;
+  for (let i = 0; i < contour.length; i++) {
+    const [x0, y0] = contour[i], [x1, y1] = contour[(i + 1) % contour.length];
+    d += `${f(x0)} ${f(y0)} ${f((x0 + x1) / 2)} ${f((y0 + y1) / 2)} `;
+  }
+  return d + 'Z';
+}
+/** pré-lissage gaussien des points du doigt (fenêtre centrée de 7, extrémités gardées :
+    le bout du trait reste sous le doigt, sans retard). Retire le tremblement fin que
+    la stabilisation seule laisse en petits angles. */
+const NOYAU = [1, 3, 6, 7, 6, 3, 1];
+function preLisser(points) {
+  const n = points.length;
+  if (n < 5) return points;
+  const r = (NOYAU.length - 1) / 2;
+  return points.map((p, i) => {
+    if (i === 0 || i === n - 1) return p;
+    const k = Math.min(r, i, n - 1 - i); // fenêtre réduite près des bouts
+    let sx = 0, sy = 0, sw = 0;
+    for (let j = -k; j <= k; j++) { const w = NOYAU[j + r], q = points[i + j]; sx += q[0] * w; sy += q[1] * w; sw += w; }
+    return p.length > 2 ? [sx / sw, sy / sw, p[2]] : [sx / sw, sy / sw];
+  });
+}
+export function cheminLisse(e, fini = true) {
+  return cheminContour(getStroke(preLisser(e.points), { ...optionsLissage(e.ep, e.opacite < 1, e.pression), last: fini }));
 }
 
 /** simplification légère (on retire les points à moins de 0,6 px du précédent). */
@@ -131,7 +175,9 @@ export function ElementDessin({ e, gommeLarg = 0, fond = 'noir' }) {
     const d = cheminTrait(e.points);
     return (
       <g data-id={e.id}>
-        <path d={d} fill="none" stroke={coul} strokeWidth={e.ep} strokeOpacity={e.opacite ?? 1} strokeLinecap="round" strokeLinejoin="round" />
+        {e.lisse
+          ? <path d={cheminLisse(e)} fill={coul} fillOpacity={e.opacite ?? 1} stroke="none" />
+          : <path d={d} fill="none" stroke={coul} strokeWidth={e.ep} strokeOpacity={e.opacite ?? 1} strokeLinecap="round" strokeLinejoin="round" />}
         {gommeLarg > 0 && <path className="md-gomme" data-id={e.id} d={d} fill="none" stroke="transparent" strokeWidth={e.ep + gommeLarg} strokeLinecap="round" />}
       </g>
     );
@@ -176,6 +222,8 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
 
   const svgRef = useRef(null), mondeRef = useRef(null), traitRef = useRef(null);
   const [tailleIdx, setTailleIdx] = useState(1);
+  const [lisse, setLisseBrut] = useState(() => { try { return localStorage.getItem('medrevise.dessinLisse') !== '0'; } catch (e) { return true; } });
+  const setLisse = (v) => { setLisseBrut(v); try { localStorage.setItem('medrevise.dessinLisse', v ? '1' : '0'); } catch (e) { /* ignore */ } };
   /* SAISIE D'UN TEXTE : un <textarea> TOUJOURS monté, placé et focalisé DANS le geste
      (pointerup) — iOS n'ouvre le clavier que sur un focus synchrone à un toucher. */
   const saisieRef = useRef(null);
@@ -359,12 +407,21 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     if (outil === 'gomme') { geste.current = { type: 'gomme', touches: new Set() }; toucheGomme(e.clientX, e.clientY); return; }
     if (outil === 'forme') { geste.current = { type: 'forme', p0: [wx, wy], courant: null }; return; }
     const surl = outil === 'surligneur';
-    geste.current = { type: 'trait', points: [[wx, wy]], dernier: [wx, wy], surl };
-    if (traitRef.current) {
-      traitRef.current.setAttribute('d', cheminTrait([[wx, wy]]));
-      traitRef.current.setAttribute('stroke', couleurSurFond(surl ? couleurSurl : couleur, 'noir'));
-      traitRef.current.setAttribute('stroke-width', String(EPAISSEURS[epIdx] * (surl ? 3 : 1)));
-      traitRef.current.setAttribute('stroke-opacity', surl ? '0.4' : '1');
+    const stylet = e.pointerType === 'pen' && e.pressure > 0;
+    const p0 = stylet ? [wx, wy, e.pressure] : [wx, wy];
+    geste.current = { type: 'trait', points: [p0], dernier: [wx, wy], surl, lisse, stylet, ep: EPAISSEURS[epIdx] * (surl ? 3 : 1) };
+    const tr = traitRef.current;
+    if (tr) {
+      const coulT = couleurSurFond(surl ? couleurSurl : couleur, 'noir');
+      if (lisse) {
+        tr.setAttribute('d', cheminLisse({ points: [p0], ep: geste.current.ep, opacite: surl ? 0.4 : 1, pression: stylet }, false));
+        tr.setAttribute('fill', coulT); tr.setAttribute('fill-opacity', surl ? '0.4' : '1'); tr.setAttribute('stroke', 'none');
+      } else {
+        tr.setAttribute('d', cheminTrait([[wx, wy]]));
+        tr.setAttribute('fill', 'none'); tr.setAttribute('stroke', coulT);
+        tr.setAttribute('stroke-width', String(geste.current.ep));
+        tr.setAttribute('stroke-opacity', surl ? '0.4' : '1');
+      }
     }
   };
 
@@ -401,9 +458,15 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       return;
     }
     if (g.type === 'trait') {
-      for (const q of lot) g.dernier = suivreEnDouceur(g.dernier, versMonde(q.clientX, q.clientY), 0.35);
-      g.points.push(g.dernier);
-      if (traitRef.current) traitRef.current.setAttribute('d', cheminTrait(g.points));
+      if (g.lisse) {
+        // TOUS les points du doigt (événements regroupés compris) : le lissage les traite
+        for (const q of lot) { const [x, y] = versMonde(q.clientX, q.clientY); g.points.push(g.stylet ? [x, y, q.pressure || 0.5] : [x, y]); }
+        if (traitRef.current) traitRef.current.setAttribute('d', cheminLisse({ points: g.points, ep: g.ep, opacite: g.surl ? 0.4 : 1, pression: g.stylet }, false));
+      } else {
+        // tracé BRUT : chaque point du doigt, sans filtre
+        for (const q of lot) { g.dernier = versMonde(q.clientX, q.clientY); g.points.push(g.dernier); }
+        if (traitRef.current) traitRef.current.setAttribute('d', cheminTrait(g.points));
+      }
     }
   };
 
@@ -445,9 +508,10 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       return;
     }
     if (g.type === 'trait') {
-      const pts = alleger(g.points);
+      const pts = g.lisse ? g.points.map((q) => q.map((v) => Math.round(v * 100) / 100)) : alleger(g.points);
       if (traitRef.current) traitRef.current.setAttribute('d', '');
-      valider([...elementsRef.current, { id: nouvelId(), type: 'trait', points: pts, couleur: g.surl ? couleurSurl : couleur, ep: ep * (g.surl ? 3 : 1), opacite: g.surl ? 0.4 : 1 }]);
+      valider([...elementsRef.current, { id: nouvelId(), type: 'trait', points: pts, couleur: g.surl ? couleurSurl : couleur, ep: g.ep, opacite: g.surl ? 0.4 : 1,
+        ...(g.lisse ? { lisse: true } : {}), ...(g.stylet ? { pression: true } : {}) }]);
     }
   };
 
@@ -536,6 +600,13 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
                   <span style={{ width: Math.min(26, p * (outil === 'surligneur' ? 1.6 : 1) + 2), height: Math.min(26, p * (outil === 'surligneur' ? 1.6 : 1) + 2), background: couleurHex(couleurActive, '#1F1F24'), opacity: outil === 'surligneur' ? 0.5 : 1 }} />
                 </button>
               ))}
+            </div>
+          )}
+          {(outil === 'crayon' || outil === 'surligneur') && (
+            <div className="md-ligne">
+              <button type="button" className={'md-bascule' + (lisse ? ' actif' : '')} onClick={() => setLisse(!lisse)} aria-pressed={lisse}>
+                <span className="md-interrupteur"><i /></span> Lissage {lisse ? 'activé' : 'désactivé (tracé brut)'}
+              </button>
             </div>
           )}
           {outil === 'gomme' && <div className="md-aide">Touche ou glisse sur un trait, une forme ou un texte pour l’effacer</div>}
