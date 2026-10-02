@@ -93,7 +93,10 @@ export function cheminTrait(points) {
    y « coupe les virages » et déforme les lettres. Petit geste (f ≈ 0) : stabilisation
    légère, peu de variation d'épaisseur, pas de fin effilée → lettres fidèles et nettes.
    Grand trait ample (f ≈ 1) : le lissage fort, doux et élégant. Entre les deux, dosage
-   continu. */
+   continu.
+   03/10 : UN CRAN DE PLUS, surtout sur les traits amples (lissage jusqu'à 0,9,
+   stabilisation jusqu'à 0,76, fenêtre de pré-lissage élargie plus tôt) ; côté écriture
+   à peine plus (lettres aussi fidèles, mesuré). Même dosage adaptatif. */
 const mix = (a, b, f) => a + (b - a) * f;
 export function facteurLissage(points, zoom = 1) {
   if (!points || points.length < 2) return 0;
@@ -104,11 +107,11 @@ export function facteurLissage(points, zoom = 1) {
 }
 export function optionsLissage(ep, surligneur, avecPression = false, f = 1) {
   return surligneur
-    ? { size: ep, thinning: 0, smoothing: mix(0.55, 0.85, f), streamline: mix(0.3, 0.7, f), simulatePressure: false, start: { cap: true }, end: { cap: true } }
+    ? { size: ep, thinning: 0, smoothing: mix(0.6, 0.9, f), streamline: mix(0.36, 0.76, f), simulatePressure: false, start: { cap: true }, end: { cap: true } }
     // CALIBRÉ par la mesure (02/10 nuit) : avec size = 0,86 × épaisseur, un trait lissé
     // régulier mesure l'ÉPAISSEUR CHOISIE (avant : 1,35 × → nettement trop épais, ce qui
     // empâtait l'écriture). La pression simulée l'affine ou l'épaissit autour de cette valeur.
-    : { size: ep * 0.86, thinning: mix(0.15, 0.4, f), smoothing: mix(0.5, 0.85, f), streamline: mix(0.22, 0.7, f), simulatePressure: !avecPression,
+    : { size: ep * 0.86, thinning: mix(0.15, 0.4, f), smoothing: mix(0.52, 0.9, f), streamline: mix(0.23, 0.76, f), simulatePressure: !avecPression,
         easing: (t) => Math.sin((t * Math.PI) / 2), start: { cap: true, taper: 0 }, end: { cap: true, taper: mix(0, Math.min(ep * 4, 32), f) } };
 }
 /** contour (perfect-freehand) → chemin SVG en courbes (milieux + quadratiques). */
@@ -129,8 +132,9 @@ const NOYAU = [1, 3, 6, 7, 6, 3, 1];
 function preLisser(points, f = 1) {
   const n = points.length;
   if (n < 5) return points;
-  // fenêtre adaptative : 1 (écriture) → 3 (grand trait) de rayon
-  const r = Math.max(1, Math.round(mix(1, 3, f)));
+  // fenêtre adaptative : 1 (écriture) → 3 (grand trait) de rayon ; un cran plus large
+  // depuis le 03/10 (le rayon 2 arrive plus tôt : traits moyens plus doux)
+  const r = Math.max(1, Math.min(3, Math.round(mix(1.3, 3.4, f))));
   return points.map((p, i) => {
     if (i === 0 || i === n - 1) return p;
     const k = Math.min(r, i, n - 1 - i); // fenêtre réduite près des bouts
@@ -968,8 +972,12 @@ export function MobileDessin({ onQuit, barreHaut = null, canvasRef = null }) {
 }
 
 /* outil de mesure (tests) : écart moyen entre les points du doigt et la ligne lissée */
+/** ligne centrale lissée d'un trait (mesures). */
+export function pointsLisses(points, ep, f) {
+  return getStrokePoints(preLisser(points, f), { ...optionsLissage(ep, false, false, f), last: true }).map((p) => p.point);
+}
 export function ecartLissage(points, ep, f) {
-  const lisses = getStrokePoints(preLisser(points, f), { ...optionsLissage(ep, false, false, f), last: true }).map((p) => p.point);
+  const lisses = pointsLisses(points, ep, f);
   let somme = 0, max = 0;
   for (const q of points) { let m = Infinity; for (const p of lisses) m = Math.min(m, Math.hypot(p[0] - q[0], p[1] - q[1])); somme += m; max = Math.max(max, m); }
   return { moyen: somme / points.length, max };
