@@ -73,7 +73,8 @@ import { PdfToolbar } from './PdfToolbar.jsx';
 import { SelecteurCouleurs, ReglagesTrait, dansSelecteurFlottant } from './Couleurs.jsx';
 import { IconeOutil, IconeForme } from './IconesOutils.jsx';
 import { TYPES_FORMES, estTrait, estFermee, ancreSurForme } from './formes.js';
-import { publierFicheActive } from '../lib/dessins.js';
+import { publierFicheActive, useSondage, dessinsDeFiche, retirerDessin } from '../lib/dessins.js';
+import { OngletDessins, TYPE_GLISSER } from './OngletDessins.jsx';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
@@ -1170,7 +1171,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      flashcards) ; l'annotation ne porte que sa place, sa taille et son calque. */
   const [imageActiveId, setImageActiveId] = useState(null);
   const entreeImageRef = useRef(null);
-  const ajouterImage = async (file, cible = null) => {
+  // `blobIdExistant` (02/10) : un dessin reçu du téléphone est DÉJÀ un blob stocké
+  // (et au cloud) — l'image posée le réutilise, sans copie.
+  // `echelle` : un dessin est rendu en ×2 (net à l'écran) — sa taille de départ est
+  // celle du dessin, pas celle de ses pixels.
+  const ajouterImage = async (file, cible = null, blobIdExistant = null, echelle = 1) => {
     if (!file || !/^image\//.test(file.type || '')) return;
     let w = 0, h = 0;
     try { const bm = await createImageBitmap(file); w = bm.width; h = bm.height; if (bm.close) bm.close(); } catch (e) { return; } // pas une image lisible
@@ -1180,7 +1185,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const ps = pageSizes[Math.max(0, idx)];
     if (!ps) return;
     // taille de départ : la taille naturelle (à 160 %), bornée entre 15 % et 55 % de la largeur
-    let wn = Math.max(0.15, Math.min(0.55, w / (ps.width * 1.6)));
+    let wn = Math.max(0.15, Math.min(0.55, (w * echelle) / (ps.width * 1.6)));
     let hn = wn * (h / w) * (ps.width / ps.height);
     if (hn > 0.6) { wn *= 0.6 / hn; hn = 0.6; }
     // position : le point de dépôt, sinon le centre de la partie visible de la page
@@ -1189,7 +1194,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const el = scrollRef.current, top = layout.offsets[idx];
       if (el && top != null) cy = Math.max(hn / 2, Math.min(1 - hn / 2, (el.scrollTop + el.clientHeight / 2 - top) / (ps.height * scale)));
     }
-    const blobId = await putBlob(file);
+    const blobId = blobIdExistant || await putBlob(file);
     const surPage = (imagesByPage[ps.cle] || []);
     const rec = newImageCollee({ ficheId, page: ps.cle, blobId, nom: file.name || null,
       x: Math.max(0, Math.min(1 - wn, cx - wn / 2)), y: Math.max(0, Math.min(1 - hn, cy - hn / 2)), width: wn, height: hn,
@@ -1248,8 +1253,38 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
   }, [pdfDoc, srcTab]);
+  /* ---- DESSINS REÇUS DU TÉLÉPHONE (02/10, docs/mecanique-dessin-mobile.md §5) ----
+     Sondés au cloud (lecture ciblée du store `dessins`) toutes les 10 s tant que
+     l'onglet est visible ; un dessin se pose comme une image collée. */
+  const [dessins, setDessins] = useState([]);
+  const [essaiDessins, setEssaiDessins] = useState(0);
+  useSondage('dessins', async () => {
+    setDessins(await dessinsDeFiche(ficheId));
+    setEssaiDessins((n) => n + 1); // les vignettes sans image réessaient
+  }, { actif: !!ficheId });
+  const poserDessin = async (d, cible = null) => {
+    const blob = await getBlob(d.blobId);
+    if (!blob) { setExportErreur('L’image de ce dessin n’est pas encore arrivée — réessaie dans quelques secondes.'); return; }
+    const f = blob.type ? blob : new Blob([blob], { type: 'image/png' });
+    try { f.name = 'Dessin du téléphone'; } catch (err) { /* Blob : nom en lecture seule, sans importance */ }
+    await ajouterImage(f, cible, d.blobId, 0.5); // PNG rendu en ×2 sur le téléphone
+  };
+  const retirerUnDessin = async (d) => { await retirerDessin(d); setDessins(await dessinsDeFiche(ficheId)); };
+
   // glisser-déposer un fichier image sur une page : posée au point de dépôt
   const deposerImage = (e) => {
+    const idDessin = e.dataTransfer && e.dataTransfer.getData(TYPE_GLISSER);
+    if (idDessin) {
+      e.preventDefault();
+      const d = dessins.find((x) => x.id === idDessin);
+      if (!d) return;
+      const pageEl = e.target.closest && e.target.closest('.pdfr-page');
+      const sz = pageEl && pageSizes.find((p) => String(p.cle) === pageEl.dataset.cle);
+      if (!sz) { poserDessin(d); return; }
+      const r = pageEl.getBoundingClientRect();
+      poserDessin(d, { page: sz.cle, x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
+      return;
+    }
     const f = [...((e.dataTransfer && e.dataTransfer.files) || [])].find((x) => /^image\//.test(x.type));
     if (!f) return;
     e.preventDefault();
@@ -1580,7 +1615,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       <div className={'pdfr-body pdfr-workshop' + (tableauDispo && disposition !== 'pdf' ? ' avec-tableau dispo-' + disposition : '')} data-mobile-view={mobileView}
         ref={corpsRef} style={tableauDispo && disposition === 'deux' ? { '--ratio-pdf': ratioSplit } : undefined}>
         <div className="pdfr-scroll pdfr-workshop-course" ref={scrollRef} onScroll={onScroll}
-          onDragOver={(e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); }}
+          onDragOver={(e) => { if (e.dataTransfer && [...e.dataTransfer.types].some((t) => t === 'Files' || t === TYPE_GLISSER)) { e.preventDefault(); if ([...e.dataTransfer.types].includes(TYPE_GLISSER)) e.dataTransfer.dropEffect = 'copy'; } }}
           onDrop={deposerImage}>
           <input ref={entreeImageRef} type="file" accept="image/*" style={{ display: 'none' }}
             onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) ajouterImage(f); }} />
@@ -1683,7 +1718,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             « Notions » (les passages surlignés de CE PDF). Pour un document sans
             fiche (Prise de notes, anatomie), seul l'onglet Notions existe. */}
         <CourseItemsSidebar ctx={ctx} ficheId={ficheReelle ? ficheReelle.id : null}
-          ongletsEnPlus={[{ id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length, contenu: notionsPdf }]}
+          ongletsEnPlus={[
+            { id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length, contenu: notionsPdf },
+            // dessins envoyés du téléphone : seulement sur un PDF (là où ils se posent)
+            pdfDoc && srcTab === 'pdf' ? { id: 'dessins', label: 'Dessins', icon: 'image', n: dessins.length,
+              contenu: <OngletDessins dessins={dessins} essai={essaiDessins} pdfPret={!!pageSizes.length}
+                posesBlobIds={new Set(edits.filter((a) => a.kind === 'image').map((a) => a.blobId))}
+                onPoser={(d) => poserDessin(d)} onRetirer={retirerUnDessin} /> } : null,
+          ]}
           ongletInitial={ficheReelle ? null : 'notions'}
           replie={!panelOpen} onReplier={(v) => setPanelOpen(!v)} />
       </div>

@@ -2064,3 +2064,19 @@ textarea.tb-texte { display: block; resize: none; border: 0; outline: none; back
   border-radius: 999px; border: 0; cursor: pointer; font-size: 12.5px; font-weight: 600; color: #fff; background: var(--accent, #7c5cff);
   box-shadow: 0 6px 18px rgba(0,0,0,.3); animation: sc-entree .12s ease-out; }
 .pdfr-vers-carte:hover { filter: brightness(1.08); }
+
+/* ---- Onglet « Dessins » du lecteur : dessins reçus du téléphone (02/10) ---- */
+.od { display: flex; flex-direction: column; gap: 12px; }
+.od-aide { font-size: 12px; color: var(--text-3); }
+.od-carte { border: 1px solid var(--border-2, rgba(255,255,255,.12)); border-radius: 12px; overflow: hidden; background: var(--card-2, rgba(255,255,255,.03)); cursor: grab; }
+.od-carte:active { cursor: grabbing; }
+.od-vignette { height: 150px; display: grid; place-items: center; padding: 8px;
+  background-color: #fbfbf8; background-image: radial-gradient(circle, rgba(0,0,0,.1) 1px, transparent 1.3px); background-size: 16px 16px; }
+.od-img { max-width: 100%; max-height: 134px; object-fit: contain; pointer-events: none; }
+.od-attente { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #7a7a85; }
+.od-pied { display: flex; align-items: center; gap: 6px; padding: 8px 10px; }
+.od-date { font-size: 12px; color: var(--text-2); }
+.od-nouveau { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--accent); color: #fff; }
+.od-pose { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border-2); color: var(--text-3); }
+.od-vide { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 26px 10px; color: var(--text-2); font-size: 13px; line-height: 1.45; }
+.od-vide-titre { font-weight: 700; color: var(--text); font-size: 14px; }
