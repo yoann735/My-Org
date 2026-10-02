@@ -1,112 +1,119 @@
-# Rapport de nuit — 2 octobre 2026 (6e chantier) : sélection de texte et surligneur
+# Rapport de nuit — 3 octobre 2026 (7e chantier) : trois retouches du dessin mobile
 
-> Rapports précédents de la soirée : `git show 5e37d32:docs/rapport-nuit.md` (zones de
-> texte mobile, génie, rotation, paysage), puis `b484d7e`, `978bce9`, `70196d7`, `b56ca58`.
+> Rapports précédents : `git show 3320eb7:docs/rapport-nuit.md` (sélection de texte et
+> surligneur), puis `5e37d32`, `b484d7e`, `978bce9`, `70196d7`, `b56ca58`.
 
-**Les 2 sous-tâches sont faites, mesurées et testées en vrai** (un commit chacune, build
+**Les 3 sous-tâches sont faites, mesurées et testées en vrai** (un commit chacune, build
 vert).
 
 **Tests :**
-- un Chrome isolé, avec de vrais gestes de souris ;
-- une page de PDF dont je relis les **pixels** pour mesurer les couleurs ;
-- un faux cloud local : **aucune écriture dans ton cloud**.
+- un téléphone simulé, avec de vrais gestes au doigt (portrait et paysage) ;
+- l'ordi qui reçoit le dessin par un faux cloud local : **aucune écriture dans ton
+  cloud** ;
+- un réseau lent simulé, pour reproduire l'animation vide.
 
-**Garanties :**
-- **MealWeek : 0 fichier modifié**, et **sa sélection n'a pas changé** (vérifié) ;
-- `src/shared` n'est pas touché ;
-- les **couleurs des surlignages ne changent pas**.
+**Garanties :** MealWeek et `src/shared` : 0 fichier modifié.
 
 | Commit | Sous-tâche |
 |---|---|
-| `dfedaaf` | 1. Sélection de texte refaite partout |
-| `71a956e` | 2. Surligneur plus fluide (couleurs inchangées) |
+| `f3f7a80` | 1. Lissage du crayon un cran plus fort (adaptatif conservé) |
+| `234de0d` | 2. Arrivée d'un dessin : l'image est chargée avant l'animation |
+| `9e5dfd0` | 3. Paysage : réglages d'outil en vertical (surligneur compris) |
 
 ---
 
-## 1. Sélection de texte refaite partout
+## 1. Lissage du crayon : un cran de plus
 
-**Une seule sélection pour tout MedRevise** : fiches PDF et HTML, champs de saisie,
-éditeurs, fenêtres et menus, mobile.
-- Couleur : un **bleu ardoise sobre**, `rgba(84, 140, 230, .34)`. Sur la page blanche
-  d'un PDF, c'est son équivalent opaque `rgb(197, 216, 246)`. Il est bien visible sur le
-  sombre comme sur le clair, et le texte reste inchangé dessous.
-- Il remplace le violet à 65 % du lecteur et le violet à 10 % presque invisible des
-  champs.
-- Il est posé sur la racine de la page **tant que MedRevise est ouverte** : MealWeek et
-  le hub gardent leur sélection (vérifié).
+Le cran est surtout appliqué aux **traits amples** :
+- lissage jusqu'à 0,9 (avant 0,85) ;
+- stabilisation jusqu'à 0,76 (avant 0,7) ;
+- pré-lissage des points du doigt élargi plus tôt.
 
-**Les défauts trouvés dans le lecteur PDF, et leurs corrections :**
+Le surligneur gagne aussi un cran. Le **dosage adaptatif** est conservé : l'écriture
+n'est qu'à peine plus lissée.
 
-1. **La sélection « sautait » à tout le texte.** C'était le défaut classique des couches
-   de texte de pdf.js : dans un blanc (entre deux lignes, dans une marge), le navigateur
-   rattache la sélection à la fin de la page.
-   - **Mesuré avant** : en glissant sur une ligne, puis dans le blanc dessous, on passait
-     de **13 à 167 caractères** d'un coup.
-   - **Correction** : un élément de fin de contenu couvre la couche pendant le geste et
-     suit la borne mobile (la parade de pdf.js). Dans un blanc, la borne va au
-     **caractère le plus proche du curseur**.
-   - **Mesuré après** : 13 → 27 → 27 (dans le blanc) → **46 = bout de la ligne** (dans
-     la marge droite) → 51 (ligne suivante).
-2. **La précision au caractère**, mesurée en glissant le long d'une ligne par pas de
-   4 px : la sélection grandit d'**au plus 1 caractère** par mouvement, sans jamais
-   reculer.
-3. **La teinte foncée par superposition.**
-   - **Cause** : les morceaux de texte invisibles du PDF se chevauchent, et la sélection
-     translucide s'additionnait là où ils se recouvrent. Sur un surlignage, le mélange
-     donnait un olive foncé.
-   - **Correction : la sélection est dessinée par l'app.**
-     - Le navigateur gère toujours la sélection, précise au caractère, mais elle est
-       invisible.
-     - Un calque dessine **un seul aplat** pour l'ensemble des morceaux, puis
-       **ré-imprime le texte de la page** par-dessus. Le texte reste noir et net.
-   - **Mesuré** : une seule couleur de sélection à l'écran, `rgb(197, 216, 246)`, y
-     compris **par-dessus un surlignage**, entièrement recouvert, sans liseré (capture).
-4. **Appuyer dans une sélection existante puis glisser** déplaçait le texte (glisser-
-   déposer du navigateur) au lieu de sélectionner. Corrigé : la sélection repart du point
-   d'appui, et Maj+clic étend toujours la sélection.
-5. **La fluidité** : le survol des surlignages était recalculé à chaque mouvement, même
-   pendant le glisser. Il est coupé pendant le geste. Le calque de sélection est redessiné
-   une seule fois par image.
+**Pourquoi l'écriture est moins lissée que le reste :** mon premier essai, le même cran
+partout, éloignait les lettres de leur forme (0,75 → 0,95 px d'écart). Je l'ai écarté.
 
-**Vue HTML du cours** : même couleur. Les champs de saisie suivent aussi : couleur
-mesurée sur un champ de la barre du lecteur et sur mobile.
+**Mesuré sur un tracé tremblé**, en écart à la courbe voulue :
 
-## 2. Surligneur plus fluide (couleurs inchangées)
+| Trait | Avant | Après |
+|---|---|---|
+| Grand trait (320 px) | 1,21 px, rugosité 2,64° | **0,80 px**, rugosité 2,45° |
+| Trait moyen (180 px) | rugosité 4,32° | 4,19° |
+| Écriture (90 px) | 0,75 px | 0,78 px (inchangé à l'œil) |
 
-Avec l'outil Surligneur, la sélection dessinée prend **pendant le geste la couleur exacte
-du surlignage à venir**. C'est le même calcul que son rendu : couleur pleine pour les 4
-couleurs « cours », une couleur perso posée à 45 %. On voit le surlignage se poser au fil
-du curseur. Au relâchement, il prend la place **sans aucun changement visible**.
+**Au doigt :**
+- trait lissé en direct, à comparer avec le tracé brut ;
+- écriture cursive toujours nette.
+
+## 2. Arrivée d'un dessin sur l'ordi : l'image d'abord, l'animation ensuite
+
+**Cause, reproduite avec un réseau lent :**
+- l'effet partait au plus tard 700 ms après l'arrivée du dessin, même si l'image
+  n'était pas encore descendue du cloud ;
+- la carte s'animait donc avec « Image en route… » (effet à 0,7 s, image à 1,4 s).
+
+**Correction :**
+- l'image est téléchargée, avec de nouveaux essais si elle arrive après la fiche du
+  dessin (20 s au plus), puis **décodée**, c'est-à-dire prête à s'afficher ;
+- la carte reste invisible pendant ce temps ;
+- l'effet part à l'image d'écran suivante, et ses 36 tranches attendent que leurs
+  copies de l'image soient prêtes (une image d'écran en pratique).
+
+**En plus :** à la fin de l'effet, l'image rejouait un fondu flou, ce qui la faisait
+disparaître puis réapparaître. Ce second fondu est supprimé.
 
 **Mesuré :**
-- même pixel, `rgb(255, 216, 77)`, pendant le geste et après le relâchement ;
-- surlignage enregistré en `jaune`, la couleur de son rectangle est inchangée ;
-- au plus 18 ms par mouvement.
+- réseau lent : l'effet part à 1,9 s, avec le dessin dans chaque tranche du début à la
+  fin (captures) ;
+- réseau normal : il part au bout d'environ 50 ms ;
+- la sortie (« Plus tard », la carte aspirée dans le bouton) marche toujours, avec
+  l'image.
 
-## Fausses pistes écartées pendant les tests (à savoir)
+## 3. Paysage : réglages d'outil en vertical
 
-À deux reprises, la sélection de mes tests repartait du début de la page. J'ai trouvé
-qu'à chaque fois, **la page était reconstruite au milieu du geste par mon banc de
-test** :
-- soit le rechargement à chaud de Vite, juste après une modification de fichier ;
-- soit un changement de densité d'écran fait par mon script pour des captures nettes.
+**Avant :** les réglages s'ouvraient en largeur (320 px, **41 %** de l'écran).
 
-Avec des fichiers stables et sans ce changement, **aucune** reconstruction ; je l'ai
-vérifié en observant la couche de texte pendant chaque étape. Un utilisateur ne
-rencontre pas ces deux situations, sauf en déplaçant la fenêtre vers un écran de densité
-différente **pendant** un glisser.
+**Maintenant :** un panneau étroit le long de la colonne d'outils, avec chaque réglage
+en colonne :
+- **couleurs** : une colonne, qui passe sur une 2e ou 3e colonne s'il y a beaucoup de
+  couleurs perso ;
+- **épaisseurs et lissage** dans la même colonne, avec un interrupteur compact ;
+- **formes** sur 2 colonnes ;
+- **tailles du texte**.
+
+**Tous les outils à réglages sont concernés : crayon, surligneur, formes, texte.** La
+gomme et la main n'ont pas de réglages en paysage : elles n'ouvrent plus de carte vide.
+
+**Mesuré à 844 × 390 :**
+- crayon et surligneur : 118 px (**15 %**) ;
+- texte : 126 px ;
+- formes : 220 px.
+
+**Testé au doigt en paysage :**
+- surligneur : couleur, 4e épaisseur, lissage coupé puis remis, puis un trait
+  enregistré en vert à la bonne épaisseur ;
+- formes : choix de l'étoile ;
+- 10 couleurs perso de test, affichées sur le téléphone simulé seulement (rien
+  d'enregistré), puis remises comme avant : palette sur 2 colonnes, toutes visibles ;
+- appui long : la bulle « Retirer / Garder » s'ouvre sur le côté, entière et
+  touchable.
+
+**Portrait inchangé** (capture).
 
 ## Non-régression
 
-- **Lecteur** : crayon, texte libre, « ? », boîte et sa flèche principale, comme avant.
+- **Lecteur** : crayon, gomme, texte libre, « ? », boîte et flèche, comme avant.
 - **Écrans** : Accueil, Réviser, Bibliothèque, Carnet, Apprentissage, Prise de notes,
   sans erreur.
-- **MealWeek** s'ouvre normalement, avec sa sélection d'origine.
+- **MealWeek** s'ouvre normalement.
 - **Accueil du téléphone** intact.
 
-## Ce que je n'ai pas fait, ou à savoir
+## À savoir
 
-- **Vue HTML du cours** : le surligneur y passe par les boutons du gabarit (un autre
-  mécanisme). Je n'ai changé que la couleur de sélection, pas son geste.
-- **Sélection sur plusieurs pages** : chaque page dessine sa part, testé sur une page.
-- **Rien n'a touché ton cloud**, et rien de neuf côté serveur.
+- **Si l'image n'arrive pas dans les 20 s**, par exemple hors ligne, la carte s'ouvre
+  sans animation, avec « Image en route… » comme avant.
+- **Écriture :** je n'ai pas augmenté son lissage de plus d'un souffle, pour garder les
+  lettres fidèles. Si tu veux plus de douceur aussi en écrivant, c'est un réglage à
+  monter.
