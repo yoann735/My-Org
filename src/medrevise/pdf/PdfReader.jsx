@@ -183,6 +183,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   /* surligneur et crayon : chacun sa couleur, prise parmi les 4 couleurs « cours »,
      mes couleurs, ou la roue (pdf/Couleurs.jsx). Un id de COLORS ou un hex. */
   const [couleurSurligneur, setCouleurSurligneur] = useState('jaune');
+  /* SURLIGNEUR FLUIDE (02/10 nuit) : pendant le geste, la sélection est dessinée dans la
+     couleur EXACTE du surlignage à venir — même calcul que son rendu (couleur pleine en
+     « multiply » ; une couleur perso est posée à 45 %, d'où son mélange avec le blanc).
+     On peint en direct ; au relâchement, le surlignage prend la place sans aucun saut. */
+  const couleurApercuSurligneur = useMemo(() => {
+    const hex = couleurHex(couleurSurligneur);
+    if (!String(couleurSurligneur).startsWith('#')) return hex;
+    const n = parseInt(hex.slice(1), 16), a = 0.45, m = (v) => Math.round(255 * (1 - a) + v * a);
+    return `rgb(${m((n >> 16) & 255)}, ${m((n >> 8) & 255)}, ${m(n & 255)})`;
+  }, [couleurSurligneur]);
   const [couleurCrayon, setCouleurCrayon] = useState('bleu');
   const [couleurForme, setCouleurForme] = useState('#e5383b'); // cadre rouge par défaut : il se voit sur la page
   /* FORMES (02/10 soir) : la forme à poser et son remplissage, mémorisés sur l'appareil
@@ -1731,6 +1741,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onFormeActiver={(id) => { setFormeActiveId(id); setImageActiveId(null); setActiveEditId(null); }}
                       onCreerForme={creerForme} onFormeMaj={majForme} onFormeSupprimer={supprimerForme} onFormeLegende={creerLegende}
                       onFormeModifier={modifierForme}
+                      couleurApercuSelection={outil === 'surligneur' ? couleurApercuSurligneur : null}
                       couleurForme={couleurForme} typeFormeActif={typeFormeActif} formeRemplie={formeRemplie}
                       imageActiveId={imageActiveId}
                       onImageActiver={(id) => { setImageActiveId(id); setActiveEditId(null); }}
