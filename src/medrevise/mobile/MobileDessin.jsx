@@ -158,6 +158,20 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
 
   useImperativeHandle(ref, () => ({
     elements: () => elementsRef.current,
+    /* SVG autonome du dessin, cadré sur sa boîte englobante (+ 16 px de marge) :
+       les éléments tels qu'affichés, sans les zones invisibles de la gomme. */
+    svgExport: ({ fondBlanc = false } = {}) => {
+      const b = boiteDessin(elementsRef.current);
+      if (!b || !mondeRef.current) return null;
+      const m = 16, w = Math.ceil(b.w + 2 * m), h = Math.ceil(b.h + 2 * m);
+      const morceaux = [...mondeRef.current.querySelectorAll(':scope > g[data-id]')].map((g) => {
+        const c = g.cloneNode(true);
+        c.querySelectorAll('.md-gomme').forEach((x) => x.remove());
+        return c.outerHTML;
+      }).join('');
+      const fond = fondBlanc ? `<rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff"/>` : '';
+      return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${fond}<g transform="translate(${m - b.x} ${m - b.y})">${morceaux}</g></svg>`, w, h };
+    },
     vider: () => { valider([]); try { localStorage.removeItem(CLE_BROUILLON); } catch (e) { /* ignore */ } },
   }), [valider]);
 

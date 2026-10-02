@@ -207,3 +207,26 @@
 .md-outils { display: flex; justify-content: space-around; padding: 4px 6px 8px; }
 .md-outil { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; border-radius: 12px; border: 0; background: transparent; color: var(--text-2); font-size: 11px; font-weight: 600; }
 .md-outil.actif { color: var(--accent); background: var(--accent-soft, rgba(124,92,255,.15)); }
+/* feuille d'export du dessin */
+.mde-fond { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.45); display: flex; align-items: flex-end; }
+.mde-feuille { width: 100%; max-height: 86dvh; display: flex; flex-direction: column; gap: 10px; padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  background: var(--card); border-radius: 20px 20px 0 0; border-top: 1px solid var(--border-2); }
+.mde-titre { font-weight: 700; font-size: 17px; }
+.mde-recherche { height: 42px; border-radius: 12px; border: 1px solid var(--border-2); background: var(--bg); color: var(--text); padding: 0 12px; font-size: 15px; }
+.mde-liste { overflow-y: auto; display: flex; flex-direction: column; gap: 6px; min-height: 80px; max-height: 38dvh; }
+.mde-cible { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border-2); background: var(--bg); color: var(--text); }
+.mde-cible.actif { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft, rgba(124,92,255,.25)); }
+.mde-cible-titre { font-weight: 650; font-size: 15px; }
+.mde-cible-sous { font-size: 12px; color: var(--text-2); }
+.mde-ordi { border-style: dashed; }
+.mde-vide { font-size: 13px; color: var(--text-2); padding: 8px; }
+.mde-fond-choix { display: flex; gap: 6px; }
+.mde-fond-choix button { flex: 1; height: 38px; border-radius: 10px; border: 1px solid var(--border-2); background: var(--bg); color: var(--text-2); font-weight: 600; }
+.mde-fond-choix button.actif { border-color: var(--accent); color: var(--accent); }
+.mde-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.mde-sec { height: 42px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--border-2); background: transparent; color: var(--text); font-weight: 600; }
+.mde-fin { align-items: stretch; }
+.mde-statut { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
+.mde-statut.ok { color: #2fbf71; }
+.mde-statut.erreur { color: var(--crit, #e5484d); }
+.mde-detail { font-size: 14px; color: var(--text-2); line-height: 1.4; }
