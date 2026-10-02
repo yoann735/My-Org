@@ -2118,6 +2118,8 @@ textarea.tb-texte { display: block; resize: none; border: 0; outline: none; back
   background-color: #fbfbf8; background-image: radial-gradient(circle, rgba(0,0,0,.08) 1px, transparent 1.3px); background-size: 16px 16px; }
 .ad-vignette .od-img { max-height: 134px; }
 .ad-la .ad-vignette .od-pile { animation: ad-devoile .7s .08s cubic-bezier(.2,.8,.2,1) both; }
+/* arrivée par l'effet génie : l'image est déjà visible pendant l'effet — pas de second dévoilement (03/10) */
+.ad-sans-devoile.ad-la .ad-vignette .od-pile { animation: none; }
 @keyframes ad-devoile { from { opacity: 0; filter: blur(8px); transform: scale(.97); } to { opacity: 1; filter: none; transform: none; } }
 .ad-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 .ad-actions button { height: 32px; padding: 0 14px; border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer; border: 0; }

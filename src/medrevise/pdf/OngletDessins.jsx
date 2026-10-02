@@ -27,15 +27,18 @@ function quand(iso) {
 
 /** vignette : l'image peut arriver après l'entrée (téléphone hors ligne) → on
     réessaie à chaque nouvel essai demandé par le parent (`essai`). */
-function Vignette({ dessin, essai }) {
-  const [url, setUrl] = useState(null);
+function Vignette({ dessin, essai, urlPrete = null }) {
+  // `urlPrete` : image déjà téléchargée ET décodée par l'appelant (carte d'arrivée) —
+  // affichée tout de suite ; c'est l'appelant qui la libère
+  const [urlPropre, setUrl] = useState(null);
+  const url = urlPrete || urlPropre;
   useEffect(() => {
     let vivant = true;
     if (url) return undefined;
     blobURL(dessin.blobId).then((x) => { if (vivant) setUrl(x); else if (x) URL.revokeObjectURL(x); }).catch(() => {});
     return () => { vivant = false; };
   }, [dessin.blobId, essai]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  useEffect(() => () => { if (urlPropre) URL.revokeObjectURL(urlPropre); }, [urlPropre]);
   if (!url) return <div className="od-attente"><Icon name="clock" size={14} /> Image en route…</div>;
   // les zones de texte ne sont pas dans le PNG (elles deviennent des textes libres
   // éditables à la pose) : la vignette les superpose pour montrer le dessin complet
@@ -202,10 +205,14 @@ function genie(carte, bouton, sens, duree, fin) {
     scene.appendChild(copie);
     tranches.push(copie);
   }
+  // les 36 copies contiennent chacune l'image : la scène reste INVISIBLE jusqu'à ce
+  // qu'elles soient décodées (prêtes à peindre), sinon les premières images d'écran
+  // montreraient des tranches vides (au plus 250 ms d'attente, en pratique ~0)
+  scene.style.visibility = 'hidden';
   document.body.appendChild(scene);
-  const debut = performance.now();
-  let raf = 0;
+  let debut = 0, raf = 0, arrete = false;
   const image = (maintenant) => {
+    if (!debut) { debut = maintenant; scene.style.visibility = ''; }
     const brut = Math.min(1, (maintenant - debut) / duree);
     const t = sens === 'entree' ? brut : 1 - brut; // 1 = carte à sa place, 0 = dans le bouton
     tranches.forEach((tr, i) => {
@@ -224,13 +231,22 @@ function genie(carte, bouton, sens, duree, fin) {
     if (brut < 1) raf = requestAnimationFrame(image);
     else { scene.remove(); fin(); }
   };
-  raf = requestAnimationFrame(image);
-  return () => { cancelAnimationFrame(raf); scene.remove(); };
+  const imgs = [...scene.querySelectorAll('img')];
+  const prets = imgs.length ? Promise.race([Promise.all(imgs.map((i) => (i.decode ? i.decode().catch(() => {}) : null))), new Promise((r) => setTimeout(r, 250))]) : Promise.resolve();
+  prets.then(() => { if (!arrete) raf = requestAnimationFrame(image); });
+  return () => { arrete = true; cancelAnimationFrame(raf); scene.remove(); };
 }
 const mouvementReduit = () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function ArriveeDessin({ dessin, autres = 0, cible, onPoser, onFermer, pdfPret }) {
   const [phase, setPhase] = useState('genie'); // genie (entrée) | la | aspire (sortie génie) | sortie (fondu)
+  /* IMAGE D'ABORD, ANIMATION ENSUITE (03/10) : avant, l'effet partait au bout de 700 ms
+     au plus, même si l'image n'était pas arrivée du cloud — la carte s'ouvrait vide
+     (« Image en route… ») et le dessin n'apparaissait qu'après. Désormais l'image est
+     téléchargée PUIS décodée (prête à peindre) ; la carte reste invisible pendant ce
+     temps, et l'effet part avec le dessin déjà dedans. */
+  const [image, setImage] = useState({ pret: false, url: null });
+  const [apresGenie, setApresGenie] = useState(false); // pas de second « dévoilement » de l'image
   const carteRef = useRef(null), survol = useRef(false), minuteur = useRef(null), stopAnim = useRef(() => {});
   const partir = (versBouton) => {
     clearTimeout(minuteur.current);
@@ -241,27 +257,43 @@ export function ArriveeDessin({ dessin, autres = 0, cible, onPoser, onFermer, pd
     } else { setPhase('sortie'); setTimeout(onFermer, 260); }
   };
   const armer = () => { clearTimeout(minuteur.current); minuteur.current = setTimeout(() => { if (!survol.current) partir(true); else armer(); }, 8000); };
+  // 1. l'image : téléchargée (le PNG peut arriver du cloud quelques secondes après la
+  //    fiche du dessin : on réessaie) puis DÉCODÉE. Au-delà de 20 s, on ouvre sans elle.
   useEffect(() => {
-    let annule = false;
-    // la vignette d'abord (au plus 700 ms) : les tranches sont des copies de la carte
+    let annule = false, url = null;
     const debut = performance.now();
-    const lancer = () => {
-      if (annule) return;
-      const img = carteRef.current && carteRef.current.querySelector('img');
-      if ((!img || !img.complete) && performance.now() - debut < 700) { setTimeout(lancer, 40); return; }
-      if (mouvementReduit() || !cible || !cible.current || !carteRef.current) { setPhase('la'); armer(); return; }
-      stopAnim.current = genie(carteRef.current, cible.current, 'entree', 640, () => { if (!annule) { setPhase('la'); armer(); } });
-    };
-    lancer();
-    return () => { annule = true; clearTimeout(minuteur.current); stopAnim.current(); };
+    (async () => {
+      while (!annule && performance.now() - debut < 20000) {
+        try { url = await blobURL(dessin.blobId); } catch (e) { url = null; }
+        if (url || annule) break;
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+      if (url && !annule) { try { const im = new Image(); im.src = url; await im.decode(); } catch (e) { /* on l'affiche quand même */ } }
+      if (annule) { if (url) URL.revokeObjectURL(url); return; }
+      setImage({ pret: true, url });
+    })();
+    return () => { annule = true; };
   }, [dessin.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { if (image.url) URL.revokeObjectURL(image.url); }, [image.url]);
+  // 2. l'animation, une fois la carte rendue AVEC son image (image d'écran suivante)
+  useEffect(() => {
+    if (!image.pret) return undefined;
+    let annule = false;
+    const raf = requestAnimationFrame(() => {
+      if (annule) return;
+      if (mouvementReduit() || !cible || !cible.current || !carteRef.current) { setPhase('la'); armer(); return; }
+      setApresGenie(true);
+      stopAnim.current = genie(carteRef.current, cible.current, 'entree', 640, () => { if (!annule) { setPhase('la'); armer(); } });
+    });
+    return () => { annule = true; cancelAnimationFrame(raf); clearTimeout(minuteur.current); stopAnim.current(); };
+  }, [image.pret]); // eslint-disable-line react-hooks/exhaustive-deps
   const pos = (() => {
     const b = cible && cible.current ? cible.current.getBoundingClientRect() : null;
     const W = 320;
     return b ? { left: Math.max(12, Math.min(b.left + b.width / 2 - W / 2, window.innerWidth - W - 12)), top: b.bottom + 12 } : { right: 24, top: 120 };
   })();
   return createPortal(
-    <div ref={carteRef} className={'ad ad-' + phase} role="status" aria-live="polite" style={pos}
+    <div ref={carteRef} className={'ad ad-' + phase + (apresGenie ? ' ad-sans-devoile' : '')} role="status" aria-live="polite" style={pos}
       onMouseEnter={() => { survol.current = true; }} onMouseLeave={() => { survol.current = false; }}>
       <div className="ad-tete">
         <span className="ad-ic"><IconeOutil nom="dessins" size={15} /></span>
@@ -275,7 +307,7 @@ export function ArriveeDessin({ dessin, autres = 0, cible, onPoser, onFermer, pd
         onDragStart={(e) => { e.dataTransfer.setData(TYPE_GLISSER, dessin.id); e.dataTransfer.effectAllowed = 'copy'; const img = e.currentTarget.querySelector('img'); if (img) e.dataTransfer.setDragImage(img, img.width / 2, img.height / 2); }}
         onDragEnd={(e) => { if (e.dataTransfer.dropEffect !== 'none') partir(false); }}
         title={pdfPret ? 'Glisser sur une page du PDF' : ''}>
-        <Vignette dessin={dessin} essai={0} />
+        <Vignette dessin={dessin} essai={0} urlPrete={image.url} />
       </div>
       <div className="ad-actions">
         <button type="button" className="ad-sec" onClick={() => partir(true)}>Plus tard</button>
