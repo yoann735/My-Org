@@ -13,13 +13,14 @@ import { todayISO } from '../lib/sm2.js';
 import { matiereMeta, syncStatusLabel, DateActionModal, ConfirmModal, SyncIndicator } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { exportBackup } from '../lib/backupExport.js';
+import { CarteDessin } from './CarteDessin.jsx';
 
 // carnet d'erreurs v2 : aperçu LISTE (pas la carte de révision interactive) —
 // déplie les {{mots}} de cloze en texte normal avant rendu <Tex> (LaTeX), même
 // traitement que CarnetDashboard.jsx desktop (voir là-bas pour le détail).
 const stripCloze = (s) => (s || '').replace(/\{\{([^{}]+)\}\}/g, '$1');
 
-export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman }) {
+export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman, onOpenDessin = null }) {
   const { db } = ctx;
   const ix = useMemo(() => index(db), [db]);
   const due = useMemo(() => dueToday(db, ix), [db, ix]);
@@ -147,6 +148,9 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
             <Icon name="play" size={20} fill /> Commencer la série
           </button>
         </div>
+
+        {/* DESSIN AU DOIGT (02/10) : envoyé ensuite sur une fiche, posé sur le PDF depuis l'ordi */}
+        {onOpenDessin && <CarteDessin onOuvrir={onOpenDessin} />}
 
         {overdue.length > 0 && (
           <div className="mrm-section">

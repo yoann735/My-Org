@@ -164,3 +164,46 @@
 .mrm-calc-row { display: flex; gap: 8px; margin-top: 8px; }
 .mrm-calc-row .mrm-input { flex: 1; font-family: ui-monospace, monospace; }
 .mrm-calc-eq { min-width: 48px; border-radius: 12px; border: none; background: var(--bg-2); color: var(--text); font-weight: 700; font-size: 16px; }
+
+/* ============================================================
+   DESSIN AU DOIGT (02/10, docs/mecanique-dessin-mobile.md)
+   ============================================================ */
+.mrm-dessin { display: flex; flex-direction: column; gap: 14px; }
+.mrm-dessin-tete { display: flex; align-items: center; gap: 12px; }
+.mrm-dessin-ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--accent-soft, rgba(124,92,255,.15)); color: var(--accent); flex: 0 0 auto; }
+.mrm-dessin-titre { font-weight: 700; font-size: 16px; }
+.mrm-dessin-sous { font-size: 13px; color: var(--text-2); margin-top: 2px; line-height: 1.35; }
+.mrm-dessin-sous b { color: var(--text); font-weight: 650; }
+.mrm-point-vert { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #2fbf71; margin-right: 6px; vertical-align: 1px; box-shadow: 0 0 0 3px rgba(47,191,113,.2); }
+.mrm-cta-dessin { margin-top: 0; }
+
+/* l'écran de dessin : plein écran, surface tactile + barres */
+.md { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--text); z-index: 50;
+  padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+.md-haut { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border-2); }
+.md-btn { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--border-2); background: var(--card); color: var(--text); }
+.md-btn:disabled { opacity: .35; }
+.md-exporter { height: 42px; padding: 0 16px; border-radius: 12px; border: 0; background: var(--accent); color: #fff; font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; gap: 7px; }
+.md-exporter:disabled { opacity: .45; }
+.md-surface { flex: 1; width: 100%; min-height: 0; display: block; touch-action: none; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none; background-color: #fbfbf8;
+  background-image: radial-gradient(circle, rgba(0,0,0,.13) 1px, transparent 1.3px); }
+.md-surface.outil-main { cursor: grab; }
+.md-vide { position: absolute; left: 0; right: 0; top: 46%; text-align: center; color: #8a8a94; font-size: 14px; pointer-events: none; padding: 0 30px; }
+.md-bas { border-top: 1px solid var(--border-2); background: var(--card); }
+.md-reglages { padding: 8px 10px 4px; display: flex; flex-direction: column; gap: 8px; }
+.md-ligne { display: flex; align-items: center; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.md-ligne .sc-couleurs { flex-wrap: nowrap; gap: 10px; }
+.md-ligne .sc-pastille { width: 30px; height: 30px; }
+.md-ligne .sc-roue-btn { height: 32px; }
+.md-epaisseurs { gap: 6px; }
+.md-ep { width: 46px; height: 40px; display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--border-2); background: var(--bg); }
+.md-ep span { display: block; border-radius: 50%; }
+.md-ep.actif { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft, rgba(124,92,255,.25)); }
+.md-formes { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.md-forme { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; border: 1px solid transparent; background: var(--bg); color: var(--text-2); }
+.md-forme.actif { border-color: var(--accent); color: var(--accent); background: var(--accent-soft, rgba(124,92,255,.15)); }
+.md-aide { font-size: 13px; color: var(--text-2); padding: 6px 2px 8px; }
+.md-outils { display: flex; justify-content: space-around; padding: 4px 6px 8px; }
+.md-outil { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; border-radius: 12px; border: 0; background: transparent; color: var(--text-2); font-size: 11px; font-weight: 600; }
+.md-outil.actif { color: var(--accent); background: var(--accent-soft, rgba(124,92,255,.15)); }
