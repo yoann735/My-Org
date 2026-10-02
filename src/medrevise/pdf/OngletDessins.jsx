@@ -175,28 +175,93 @@ export function MenuDessins({ dessins, posesBlobIds, essai, onPoser, onRetirer, 
    vers la page. Ignorée, elle s'en va au bout de 8 s (pause au survol) en
    S'ENVOLANT dans le bouton Dessins : on voit où le dessin est rangé.
    ============================================================ */
+/* ============================================================
+   EFFET « GÉNIE » (02/10 nuit), celui de macOS quand une fenêtre se range dans le Dock.
+   La carte est découpée en N tranches horizontales (des copies de la carte, chacune
+   découpée par clip-path) ; chaque tranche se resserre vers le bouton Dessins avec un
+   léger RETARD qui croît avec la distance au bouton → l'entonnoir courbe caractéristique.
+   Entrée : la carte jaillit du bouton. Sortie : elle s'y aspire (même calcul, inversé).
+   Tout est animé par requestAnimationFrame, sur `transform` seulement (GPU).
+   ============================================================ */
+const lisse = (t) => t * t * (3 - 2 * t);
+const sortieDouce = (t) => 1 - Math.pow(1 - t, 3);
+function genie(carte, bouton, sens, duree, fin) {
+  const C = carte.getBoundingClientRect(), B = bouton.getBoundingClientRect();
+  if (!C.width || !B.width) { fin(); return () => {}; }
+  const N = 36, RETARD = 0.55; // 36 tranches : un contour lisse (18 faisait des marches)
+  const scene = document.createElement('div');
+  scene.className = 'ad-genie-scene';
+  const tranches = [];
+  for (let i = 0; i < N; i++) {
+    const t0 = (i / N) * 100, t1 = 100 - ((i + 1) / N) * 100;
+    const copie = carte.cloneNode(true);
+    copie.removeAttribute('id');
+    copie.className = 'ad ad-la ad-tranche';
+    Object.assign(copie.style, { left: `${C.left}px`, top: `${C.top}px`, right: 'auto', width: `${C.width}px`, height: `${C.height}px`, visibility: 'visible',
+      clipPath: `inset(calc(${t0}% - 0.5px) 0 calc(${t1}% - 0.5px) 0)`, transformOrigin: `${C.width / 2}px ${((i + 0.5) / N) * C.height}px` });
+    scene.appendChild(copie);
+    tranches.push(copie);
+  }
+  document.body.appendChild(scene);
+  const debut = performance.now();
+  let raf = 0;
+  const image = (maintenant) => {
+    const brut = Math.min(1, (maintenant - debut) / duree);
+    const t = sens === 'entree' ? brut : 1 - brut; // 1 = carte à sa place, 0 = dans le bouton
+    tranches.forEach((tr, i) => {
+      const f = (i + 0.5) / N; // 0 = bord proche du bouton (haut), 1 = bas
+      // les tranches éloignées du bouton suivent avec retard (entrée) / partent en dernier (sortie)
+      const p = Math.max(0, Math.min(1, (t * (1 + RETARD) - RETARD * f)));
+      const pe = lisse(p), py = sortieDouce(p);
+      const sx = (B.width / C.width) + (1 - B.width / C.width) * pe;
+      const cx = (B.left + B.width / 2) + ((C.left + C.width / 2) - (B.left + B.width / 2)) * pe;
+      const yCible = C.top + f * C.height, yDepart = B.top + B.height / 2;
+      const y = yDepart + (yCible - yDepart) * py;
+      const sy = 0.15 + 0.85 * pe;
+      tr.style.transform = `translate(${cx - (C.left + C.width / 2)}px, ${y - yCible}px) scale(${sx}, ${sy})`;
+      tr.style.opacity = String(Math.min(1, 0.25 + p * 1.2));
+    });
+    if (brut < 1) raf = requestAnimationFrame(image);
+    else { scene.remove(); fin(); }
+  };
+  raf = requestAnimationFrame(image);
+  return () => { cancelAnimationFrame(raf); scene.remove(); };
+}
+const mouvementReduit = () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 export function ArriveeDessin({ dessin, autres = 0, cible, onPoser, onFermer, pdfPret }) {
-  const [phase, setPhase] = useState('entree'); // entree | la | envol | sortie
-  const [vol, setVol] = useState(null);
-  const carteRef = useRef(null), survol = useRef(false), minuteur = useRef(null);
+  const [phase, setPhase] = useState('genie'); // genie (entrée) | la | aspire (sortie génie) | sortie (fondu)
+  const carteRef = useRef(null), survol = useRef(false), minuteur = useRef(null), stopAnim = useRef(() => {});
   const partir = (versBouton) => {
     clearTimeout(minuteur.current);
-    if (versBouton && cible && cible.current && carteRef.current) {
-      const a = carteRef.current.getBoundingClientRect(), b = cible.current.getBoundingClientRect();
-      setVol({ x: b.left + b.width / 2 - (a.left + a.width / 2), y: b.top + b.height / 2 - (a.top + a.height / 2) });
-      setPhase('envol');
-    } else setPhase('sortie');
-    setTimeout(onFermer, versBouton ? 520 : 260);
+    stopAnim.current();
+    if (versBouton && !mouvementReduit() && cible && cible.current && carteRef.current) {
+      setPhase('aspire');
+      stopAnim.current = genie(carteRef.current, cible.current, 'sortie', 560, onFermer);
+    } else { setPhase('sortie'); setTimeout(onFermer, 260); }
   };
   const armer = () => { clearTimeout(minuteur.current); minuteur.current = setTimeout(() => { if (!survol.current) partir(true); else armer(); }, 8000); };
-  useEffect(() => { const t = setTimeout(() => setPhase('la'), 20); armer(); return () => { clearTimeout(t); clearTimeout(minuteur.current); }; }, [dessin.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    let annule = false;
+    // la vignette d'abord (au plus 700 ms) : les tranches sont des copies de la carte
+    const debut = performance.now();
+    const lancer = () => {
+      if (annule) return;
+      const img = carteRef.current && carteRef.current.querySelector('img');
+      if ((!img || !img.complete) && performance.now() - debut < 700) { setTimeout(lancer, 40); return; }
+      if (mouvementReduit() || !cible || !cible.current || !carteRef.current) { setPhase('la'); armer(); return; }
+      stopAnim.current = genie(carteRef.current, cible.current, 'entree', 640, () => { if (!annule) { setPhase('la'); armer(); } });
+    };
+    lancer();
+    return () => { annule = true; clearTimeout(minuteur.current); stopAnim.current(); };
+  }, [dessin.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const pos = (() => {
     const b = cible && cible.current ? cible.current.getBoundingClientRect() : null;
     const W = 320;
     return b ? { left: Math.max(12, Math.min(b.left + b.width / 2 - W / 2, window.innerWidth - W - 12)), top: b.bottom + 12 } : { right: 24, top: 120 };
   })();
   return createPortal(
-    <div ref={carteRef} className={'ad ad-' + phase} role="status" aria-live="polite" style={{ ...pos, ...(vol ? { '--vx': `${vol.x}px`, '--vy': `${vol.y}px` } : {}) }}
+    <div ref={carteRef} className={'ad ad-' + phase} role="status" aria-live="polite" style={pos}
       onMouseEnter={() => { survol.current = true; }} onMouseLeave={() => { survol.current = false; }}>
       <div className="ad-tete">
         <span className="ad-ic"><IconeOutil nom="dessins" size={15} /></span>
