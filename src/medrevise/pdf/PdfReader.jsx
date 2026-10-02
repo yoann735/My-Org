@@ -75,6 +75,7 @@ import { IconeOutil, IconeForme } from './IconesOutils.jsx';
 import { TYPES_FORMES, estTrait, estFermee, ancreSurForme } from './formes.js';
 import { publierFicheActive, useSondage, dessinsDeFiche, retirerDessin } from '../lib/dessins.js';
 import { suivreImage } from './attaches.js';
+import { htmlVersTiptap } from './htmlVersTiptap.js';
 import { MenuDessins, ArriveeDessin, TYPE_GLISSER } from './OngletDessins.jsx';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
@@ -1208,13 +1209,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const refPx = ps.width * 1.6; // largeur de la page en px au zoom de référence
     const textesRecs = (textes || []).filter((t) => t && String(t.texte || '').trim()).map((t) => {
       const px = Math.max(8, Math.min(72, Math.round(t.taille * rec.width * refPx)));
+      // zone riche (02/10 nuit) : son HTML (gras, tailles, couleurs, sur la zone ou sur un
+      // mot) devient le document du texte libre ; zone d'avant : texte brut
       const lignes = String(t.texte).split('\n');
-      const content = { type: 'doc', content: lignes.map((l) => ({ type: 'paragraph', content: l ? [{ type: 'text', text: l, marks: [{ type: 'textStyle', attrs: { fontSize: `${px}px` } }] }] : [] })) };
+      const content = t.html
+        ? htmlVersTiptap(t.html, { k: (t.k || 0) * rec.width * refPx, taille: px, gras: t.gras, italique: t.italique, souligne: t.souligne, align: t.align })
+        : { type: 'doc', content: lignes.map((l) => ({ type: 'paragraph', content: l ? [{ type: 'text', text: l, marks: [{ type: 'textStyle', attrs: { fontSize: `${px}px` } }] }] : [] })) };
       const enr = newTexteLibre({ ficheId, page: ps.cle, couleur: t.couleur || 'noir', content,
         x: Math.max(0, Math.min(0.98, rec.x + t.x * rec.width - 4 / refPx)),
         y: Math.max(0, Math.min(0.98, rec.y + t.y * rec.height - 2 / (ps.height * 1.6))),
         // zone TRACÉE au téléphone : même largeur, retour à la ligne identique (largeur fixée)
-        width: Math.min(0.9, Math.max(0.05, t.boite ? t.largeur * rec.width + 10 / refPx : t.largeur * rec.width * 1.2 + 12 / refPx)), height: 0.02 });
+        width: Math.min(0.9, Math.max(0.05, t.boite ? t.largeur * rec.width + 10 / refPx : t.largeur * rec.width * 1.2 + 12 / refPx)),
+        // hauteur TRACÉE au téléphone (minimum ; la zone s'allonge si le texte la dépasse)
+        height: t.hauteur ? Math.max(0.02, t.hauteur * rec.height) : 0.02 });
       // ATTACHÉ à l'image du dessin (02/10 nuit) : il la suit quand elle bouge
       return { ...enr, imageId: rec.id, ...(t.boite ? { largeurFixe: true } : {}) };
     });

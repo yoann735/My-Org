@@ -14,7 +14,8 @@
    FLUIDITÉ : pendant un geste, on écrit directement dans le DOM (le `d` du trait en
    cours, le `transform` du monde), sans rendu React ; React reprend au lever du doigt.
    ============================================================ */
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { POLICE_TEXTE, nettoyerHtml, htmlZone, texteBrut, convertirCouleurs, envelopperSelection, selectionDans, tailleSelection } from './zonesTexte.js';
 import { Icon } from '../../shared/Icon.jsx';
 import { IconeOutil, IconeForme } from '../pdf/IconesOutils.jsx';
 import { FenetreRoue } from '../pdf/Couleurs.jsx';
@@ -39,40 +40,31 @@ const ZMIN = 0.2, ZMAX = 8;
    sont PAS aplaties dans le PNG : elles voyagent à part (texte, position, taille,
    couleur) et deviennent, posées sur l'ordi, des TEXTES LIBRES du lecteur au-dessus de
    l'image — déplaçables et modifiables comme les autres. */
-export const TAILLES_TEXTE = [14, 18, 24, 32, 44]; // px à zoom 1
-export const POLICE_TEXTE = 'system-ui, -apple-system, "Segoe UI", sans-serif';
-let ctxMesure = null;
-/** largeur/hauteur (monde) d'une zone de texte. */
-const largeurMot = (txt, taille) => {
-  try {
-    if (!ctxMesure) ctxMesure = document.createElement('canvas').getContext('2d');
-    ctxMesure.font = `500 ${taille}px ${POLICE_TEXTE}`;
-    return ctxMesure.measureText(txt).width;
-  } catch (err) { return txt.length * taille * 0.55; }
-};
-/** lignes AFFICHÉES d'une zone de texte : retour à la ligne aux mots dans sa largeur
-    (zone tracée au doigt), ou lignes du texte telles quelles (zone sans largeur). */
-export function lignesTexte(e) {
-  const brutes = String(e.texte || '').split('\n');
-  if (!e.largeur) return brutes;
-  const out = [];
-  for (const ligne of brutes) {
-    let cur = '';
-    for (const mot of ligne.split(' ')) {
-      const essai = cur ? cur + ' ' + mot : mot;
-      if (cur && largeurMot(essai, e.taille) > e.largeur) { out.push(cur); cur = mot; } else cur = essai;
-    }
-    out.push(cur);
-  }
-  return out;
-}
-export function mesurerTexte(e) {
-  const lignes = lignesTexte(e);
-  let w = 0;
-  for (const l of lignes) w = Math.max(w, largeurMot(l || ' ', e.taille));
-  return { w: e.largeur ? Math.max(e.largeur, e.taille) : Math.max(e.taille, w), h: Math.max(1, lignes.length) * e.taille * 1.25 };
-}
+export const TAILLES_TEXTE = [14, 18, 24, 32, 44]; // px à zoom 1 (taille de base d'une NOUVELLE zone)
+export { POLICE_TEXTE };
 const TAILLE_MIN = 10, TAILLE_MAX = 72;
+/* tailles RÉELLES des zones (monde), mesurées sur le DOM après chaque rendu : une zone
+   fait au moins la hauteur tracée et s'allonge proprement si son texte la dépasse */
+const MESURES = new Map();
+export const largeurZone = (e) => e.largeur || (MESURES.get(e.id) || {}).w || 220;
+export const hauteurZone = (e) => Math.max(e.hauteur || 0, (MESURES.get(e.id) || {}).h || 0, (e.taille || 18) * 1.35);
+const clampTaille = (v) => Math.max(TAILLE_MIN, Math.min(TAILLE_MAX, Math.round(v)));
+const ALIGNS = ['left', 'center', 'right'];
+/** style CSS d'une zone (affichée ou en écriture : LE MÊME, d'où l'absence de décalage) */
+export function styleZone(z) {
+  return {
+    left: `${z.x}px`, top: `${z.y}px`,
+    width: z.largeur ? `${z.largeur}px` : 'max-content', maxWidth: z.largeur ? '' : '600px',
+    minHeight: z.hauteur ? `${z.hauteur}px` : '', fontSize: `${z.taille || 18}px`,
+    color: couleurSurFond(z.couleur, 'noir'), fontWeight: z.gras ? '700' : '500',
+    fontStyle: z.italique ? 'italic' : 'normal', textDecorationLine: z.souligne ? 'underline' : 'none',
+    textAlign: z.align || 'left',
+  };
+}
+const rgbVersHex = (c) => {
+  const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c || '');
+  return m ? '#' + [m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, '0')).join('') : c;
+};
 const nouvelId = () => 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 /** chemin lissé (courbes quadratiques entre les milieux) en coordonnées monde. */
@@ -164,7 +156,7 @@ function alleger(points) {
 
 /** boîte englobante (monde) d'un élément, épaisseur comprise. */
 export function boiteElement(e) {
-  if (e.type === 'texte') { const t = mesurerTexte(e); return { x: e.x - 2, y: e.y - 2, w: t.w + 4, h: t.h + 4 }; }
+  if (e.type === 'texte') return { x: e.x - 2, y: e.y - 2, w: largeurZone(e) + 4, h: hauteurZone(e) + 4 };
   if (e.type === 'trait') {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [x, y] of e.points) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
@@ -200,18 +192,7 @@ export function couleurSurFond(c, fond = 'noir') {
     (canvas du téléphone, export sur fond noir) ou 'clair' (PDF, fond blanc). */
 export function ElementDessin({ e, gommeLarg = 0, fond = 'noir' }) {
   const coul = couleurSurFond(e.couleur, fond);
-  if (e.type === 'texte') {
-    const lignes = lignesTexte(e);
-    const t = mesurerTexte(e);
-    return (
-      <g data-id={e.id} data-type="texte" transform={`translate(${e.x} ${e.y})`}>
-        <text fontSize={e.taille} fill={coul} fontFamily={POLICE_TEXTE} fontWeight="500" dominantBaseline="hanging" style={{ whiteSpace: 'pre' }}>
-          {lignes.map((l, i) => <tspan key={i} x={0} y={i * e.taille * 1.25}>{l || ' '}</tspan>)}
-        </text>
-        {gommeLarg > 0 && <rect className="md-gomme" data-id={e.id} data-plein="1" x={-6} y={-6} width={t.w + 12} height={t.h + 12} fill="transparent" />}
-      </g>
-    );
-  }
+  if (e.type === 'texte') return null; // zones de texte : couche HTML (voir CanvasDessin)
   if (e.type === 'trait') {
     const d = cheminTrait(e.points);
     return (
@@ -311,92 +292,155 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
   const [carteOuverte, setCarteOuverte] = useState(true);
   const [lisse, setLisseBrut] = useState(() => { try { return localStorage.getItem('medrevise.dessinLisse') !== '0'; } catch (e) { return true; } });
   const setLisse = (v) => { setLisseBrut(v); try { localStorage.setItem('medrevise.dessinLisse', v ? '1' : '0'); } catch (e) { /* ignore */ } };
-  /* SAISIE D'UN TEXTE : un <textarea> TOUJOURS monté, placé et focalisé DANS le geste
-     (pointerup) — iOS n'ouvre le clavier que sur un focus synchrone à un toucher. */
-  const saisieRef = useRef(null);
-  const [edition, setEdition] = useState(null); // { id|null, x, y, taille, couleur }
+  /* ============================================================
+     ZONES DE TEXTE (refaites le 02/10 nuit). Du HTML posé sur le canvas, dans une couche
+     transformée EXACTEMENT comme le dessin : la zone affichée et la zone en écriture ont
+     la même mise en page (plus de texte qui déborde, plus de boîte qui ne fait pas sa
+     taille). Écriture en place (contentEditable), mise en forme sur la zone entière ou
+     sur la SÉLECTION (un mot), poignées, déplacer, dupliquer, supprimer, et une barre
+     qui se colle au-dessus du clavier.
+     ============================================================ */
+  const racineRef = useRef(null), sceneRef = useRef(null), coucheRef = useRef(null), editeurRef = useRef(null);
+  const [selId, setSelId] = useState(null);
+  const [edition, setEdition] = useState(null); // zone en cours d'écriture { ...zone, nouvelle? }
   const editionRef = useRef(null); editionRef.current = edition;
-  const [glisseTexte, setGlisseTexte] = useState(null); // { id, dx, dy, dl } pendant un déplacement / un redimensionnement
-  const [selId, setSelId] = useState(null); // zone de texte sélectionnée (barre flottante)
+  const [glisseZone, setGlisseZone] = useState(null); // { id, dx, dy, dw, dh } pendant un geste
   const [zoneApercu, setZoneApercu] = useState(null); // zone en train d'être tracée
-  const placerSaisie = (ed) => {
-    const ta = saisieRef.current; if (!ta || !svgRef.current) return;
-    const c = camRef.current;
-    const r = svgRef.current.getBoundingClientRect(), base = svgRef.current.parentElement.getBoundingClientRect();
-    ta.style.left = `${r.left - base.left + ed.x * c.z + c.x - 3}px`;
-    ta.style.top = `${r.top - base.top + ed.y * c.z + c.y - c.z * ed.taille * 0.12 - 2}px`;
-    ta.style.fontSize = `${ed.taille * c.z}px`;
-    ta.style.color = couleurSurFond(ed.couleur, 'noir');
-    if (ed.largeur) { ta.style.width = `${ed.largeur * c.z + 8}px`; ta.style.whiteSpace = 'pre-wrap'; } else { ta.style.whiteSpace = 'pre'; }
-    ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight}px`;
-  };
-  const ouvrirSaisie = (ed, texteInitial) => {
-    const ta = saisieRef.current;
-    if (ta) {
-      ta.value = texteInitial || '';
-      ta.style.display = 'block';
-      placerSaisie(ed);
-      try { ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (err) { /* ignore */ }
-    }
-    setEdition(ed);
-  };
-  const terminerSaisie = () => {
-    const ed = editionRef.current;
+  const [clavier, setClavier] = useState(0); // hauteur du clavier à l'écran
+  const [vueH, setVueH] = useState(0); // hauteur visible (visualViewport)
+  const [paletteZone, setPaletteZone] = useState(false);
+  const barreFormatRef = useRef(null);
+  const [, setVersion] = useState(0);
+  const rafraichir = () => setVersion((v) => v + 1);
+
+  const appliquerStyleEditeur = (z) => { const ed = editeurRef.current; if (ed) Object.assign(ed.style, styleZone(z)); };
+  const ouvrirEdition = (z, point = null) => {
+    const ed = editeurRef.current;
     if (!ed) return;
-    const ta = saisieRef.current;
-    const texte = ta ? ta.value.replace(/\s+$/, '') : '';
-    if (ta) { ta.style.display = 'none'; ta.blur(); }
-    setEdition(null);
-    const els = elementsRef.current;
-    if (ed.id) {
-      const avant = els.find((x) => x.id === ed.id);
-      if (!avant) return;
-      if (!texte.trim()) { valider(els.filter((x) => x.id !== ed.id)); setSelId(null); }
-      else if (texte !== avant.texte || ed.taille !== avant.taille || ed.couleur !== avant.couleur) valider(els.map((x) => (x.id === ed.id ? { ...x, texte, taille: ed.taille, couleur: ed.couleur } : x)));
-    } else if (texte.trim()) {
-      const id = nouvelId();
-      valider([...els, { id, type: 'texte', x: ed.x, y: ed.y, texte, couleur: ed.couleur, taille: ed.taille, ...(ed.largeur ? { largeur: ed.largeur } : {}) }]);
-      setSelId(id); // la zone reste sélectionnée : sa barre (taille, supprimer) est sous la main
-    }
+    ed.innerHTML = htmlZone(z);
+    appliquerStyleEditeur(z);
+    ed.style.display = 'block';
+    try {
+      ed.focus({ preventScroll: true }); // focus DANS le geste : iOS ouvre le clavier
+      const sel = window.getSelection();
+      let r = null;
+      if (point && document.caretRangeFromPoint) { r = document.caretRangeFromPoint(point[0], point[1]); if (r && !ed.contains(r.startContainer)) r = null; }
+      if (!r) { r = document.createRange(); r.selectNodeContents(ed); r.collapse(false); }
+      sel.removeAllRanges(); sel.addRange(r);
+    } catch (err) { /* ignore */ }
+    setEdition({ ...z }); setSelId(z.id); setPaletteZone(false);
   };
-  /* ACTIONS DE LA ZONE SÉLECTIONNÉE (ou en cours d'écriture) */
+  const terminerEdition = () => {
+    const z = editionRef.current;
+    if (!z) return;
+    const ed = editeurRef.current;
+    const html = nettoyerHtml(ed ? ed.innerHTML : '');
+    const texte = texteBrut(html);
+    editionRef.current = null; // tout de suite : le blur qui suit ne relance pas la fin d'écriture
+    if (ed) { ed.style.display = 'none'; ed.blur(); ed.innerHTML = ''; }
+    setEdition(null); setPaletteZone(false);
+    const { nouvelle, ...propre } = z;
+    const els = elementsRef.current;
+    if (!texte.trim()) { if (!nouvelle) valider(els.filter((x) => x.id !== z.id)); setSelId(null); return; }
+    if (nouvelle) { valider([...els, { ...propre, html, texte }]); return; }
+    const avant = els.find((x) => x.id === z.id);
+    const apres = { ...avant, ...propre, html, texte };
+    if (JSON.stringify(avant) !== JSON.stringify(apres)) valider(els.map((x) => (x.id === z.id ? apres : x)));
+  };
   const modifierZone = (id, patch) => valider(elementsRef.current.map((x) => (x.id === id ? { ...x, ...patch } : x)));
-  const changerTaille = (delta) => {
-    const ed = editionRef.current;
-    if (ed) { const t = Math.max(TAILLE_MIN, Math.min(TAILLE_MAX, ed.taille + delta)); const n = { ...ed, taille: t }; setEdition(n); placerSaisie(n); return; }
-    const z = elementsRef.current.find((x) => x.id === selId); if (!z) return;
-    modifierZone(z.id, { taille: Math.max(TAILLE_MIN, Math.min(TAILLE_MAX, z.taille + delta)) });
+  const zoneCourante = () => editionRef.current || elementsRef.current.find((x) => x.id === selId) || null;
+  /* MISE EN FORME : sur la SÉLECTION si un morceau de texte est sélectionné pendant
+     l'écriture, sinon sur TOUTE la zone. */
+  const appliquer = (action, val) => {
+    const ed = editeurRef.current, z = zoneCourante();
+    if (!z) return;
+    if (editionRef.current && ed && selectionDans(ed)) {
+      if (action === 'gras') document.execCommand('bold');
+      else if (action === 'italique') document.execCommand('italic');
+      else if (action === 'souligne') document.execCommand('underline');
+      else if (action === 'taille') envelopperSelection(ed, { fontSize: `${clampTaille(tailleSelection(ed, z.taille) + val)}px` });
+      else if (action === 'couleur') envelopperSelection(ed, { color: couleurSurFond(val, 'noir') });
+      if (action !== 'align') { rafraichir(); return; }
+    }
+    const patch = action === 'gras' ? { gras: !z.gras } : action === 'italique' ? { italique: !z.italique } : action === 'souligne' ? { souligne: !z.souligne }
+      : action === 'taille' ? { taille: clampTaille((z.taille || 18) + val) } : action === 'couleur' ? { couleur: val }
+        : action === 'align' ? { align: ALIGNS[(ALIGNS.indexOf(z.align || 'left') + 1) % ALIGNS.length] } : {};
+    if (editionRef.current) { const n = { ...editionRef.current, ...patch }; setEdition(n); appliquerStyleEditeur(n); }
+    else modifierZone(z.id, patch);
+  };
+  const etatFormat = (cmd, champ) => {
+    const ed = editeurRef.current, z = zoneCourante();
+    if (editionRef.current && ed && selectionDans(ed)) { try { return document.queryCommandState(cmd); } catch (e) { return false; } }
+    return !!(z && z[champ]);
   };
   const supprimerZone = () => {
-    const ed = editionRef.current;
-    const id = ed ? ed.id : selId;
-    if (ed) { const ta = saisieRef.current; if (ta) { ta.value = ''; ta.style.display = 'none'; ta.blur(); } setEdition(null); }
-    if (id) valider(elementsRef.current.filter((x) => x.id !== id));
-    setSelId(null);
+    const z = zoneCourante();
+    if (editionRef.current) { const ed = editeurRef.current; if (ed) { ed.style.display = 'none'; ed.innerHTML = ''; ed.blur(); } setEdition(null); }
+    if (z && !z.nouvelle) valider(elementsRef.current.filter((x) => x.id !== z.id));
+    setSelId(null); setPaletteZone(false);
   };
-  const modifierTexteSel = () => {
-    const z = elementsRef.current.find((x) => x.id === selId); if (!z) return;
-    ouvrirSaisie({ id: z.id, x: z.x, y: z.y, taille: z.taille, couleur: z.couleur, largeur: z.largeur }, z.texte);
+  const dupliquerZone = () => {
+    const id = editionRef.current ? editionRef.current.id : selId;
+    if (editionRef.current) terminerEdition();
+    const z = elementsRef.current.find((x) => x.id === id);
+    if (!z) return;
+    const k = 18 / camRef.current.z;
+    const copie = { ...z, id: nouvelId(), x: z.x + k, y: z.y + k };
+    valider([...elementsRef.current, copie]);
+    setSelId(copie.id); // la copie est sélectionnée : on la glisse où on veut
   };
-  // poignée de largeur (bord droit de la zone sélectionnée)
-  const debutLargeur = (e) => {
+  // zone sous un point d'écran (rectangles réels du DOM, marge pour le doigt)
+  const zoneSous = (cx, cy, marge = 10) => {
+    const couche = coucheRef.current; if (!couche) return null;
+    const els = [...couche.querySelectorAll('.md-zone[data-id]')].reverse();
+    for (const el of els) {
+      const r = el.getBoundingClientRect();
+      if (cx >= r.left - marge && cx <= r.right + marge && cy >= r.top - marge && cy <= r.bottom + marge) return elementsRef.current.find((x) => x.id === el.dataset.id) || null;
+    }
+    return null;
+  };
+  // POIGNÉES (coins) : redimensionner la zone, le texte se replie dans sa nouvelle largeur
+  const debutPoignee = (e, coin) => {
     e.preventDefault(); e.stopPropagation();
     const z = elementsRef.current.find((x) => x.id === selId); if (!z) return;
-    const l0 = z.largeur || mesurerTexte(z).w, x0 = e.clientX, zoom = camRef.current.z;
+    const zoom = camRef.current.z, x0 = e.clientX, y0 = e.clientY;
+    const l0 = largeurZone(z), h0 = z.hauteur || hauteurZone(z);
+    const calc = (ev) => {
+      const dx = (ev.clientX - x0) / zoom, dy = (ev.clientY - y0) / zoom;
+      const gauche = coin.includes('o'), haut = coin.includes('n');
+      const dw = Math.max(48 / zoom - l0, gauche ? -dx : dx), dh = Math.max((z.taille || 18) * 1.35 - h0, haut ? -dy : dy);
+      return { id: z.id, dx: gauche ? -dw : 0, dy: haut ? -dh : 0, dw, dh };
+    };
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-    const move = (ev) => setGlisseTexte({ id: z.id, dx: 0, dy: 0, largeur: Math.max(40 / zoom, l0 + (ev.clientX - x0) / zoom) });
+    const move = (ev) => setGlisseZone(calc(ev));
     const up = (ev) => {
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
-      setGlisseTexte(null);
-      modifierZone(z.id, { largeur: Math.max(40 / zoom, l0 + (ev.clientX - x0) / zoom) });
+      const g = calc(ev); setGlisseZone(null);
+      modifierZone(z.id, { x: z.x + g.dx, y: z.y + g.dy, largeur: l0 + g.dw, hauteur: h0 + g.dh });
     };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
-  const texteSous = (wx, wy) => [...elementsRef.current].reverse().find((x) => {
-    if (x.type !== 'texte') return false;
-    const b = boiteElement(x), m = 10 / camRef.current.z;
-    return wx >= b.x - m && wx <= b.x + b.w + m && wy >= b.y - m && wy <= b.y + b.h + m;
-  });
+  // le CLAVIER : sa hauteur (visualViewport), et la zone en écriture toujours AU-DESSUS
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return undefined;
+    // iOS : la page garde sa hauteur, la partie VISIBLE rétrécit (clavier = la différence) ;
+    // Android : toute la page rétrécit. On suit les deux.
+    const maj = () => { setClavier(Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))); setVueH(Math.round(vv.height)); };
+    vv.addEventListener('resize', maj); vv.addEventListener('scroll', maj); maj();
+    return () => { vv.removeEventListener('resize', maj); vv.removeEventListener('scroll', maj); };
+  }, []);
+  useEffect(() => {
+    if (!edition || !editeurRef.current || !sceneRef.current) return;
+    const r = editeurRef.current.getBoundingClientRect(), sc = sceneRef.current.getBoundingClientRect();
+    const vv = window.visualViewport;
+    const hb = (barreFormatRef.current && barreFormatRef.current.offsetHeight) || 124;
+    const basVisible = (vv ? vv.offsetTop + vv.height : window.innerHeight) - hb - 16; // place de la barre de mise en forme
+    let dy = 0;
+    if (r.bottom > basVisible) dy = basVisible - r.bottom - 12;
+    if (r.top + dy < sc.top + 12) dy = sc.top + 12 - r.top;
+    if (Math.abs(dy) > 1) { const c = camRef.current; setCam({ ...c, y: c.y + dy }); }
+  }, [clavier, vueH, edition && edition.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- historique ----
   // L'état courant est CAPTURÉ avant les setters : une fonction de mise à jour est
@@ -407,16 +451,19 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     setPasse((p) => [...p.slice(-99), avant]);
     setFutur([]);
     setElements(suivant);
+    // tout de suite (pas au prochain rendu) : deux validations enchaînées dans le même
+    // geste (finir l'écriture PUIS dupliquer) partent ainsi chacune du bon état
+    elementsRef.current = suivant;
   }, []);
   const annuler = () => {
     if (!passe.length) return;
     const courant = elementsRef.current, precedent = passe[passe.length - 1];
-    setFutur((f) => [courant, ...f]); setElements(precedent); setPasse((p) => p.slice(0, -1));
+    setFutur((f) => [courant, ...f]); setElements(precedent); setPasse((p) => p.slice(0, -1)); elementsRef.current = precedent;
   };
   const retablir = () => {
     if (!futur.length) return;
     const courant = elementsRef.current, suivant = futur[0];
-    setPasse((p) => [...p, courant]); setElements(suivant); setFutur((f) => f.slice(1));
+    setPasse((p) => [...p, courant]); setElements(suivant); setFutur((f) => f.slice(1)); elementsRef.current = suivant;
   };
   const toutEffacer = () => { if (elementsRef.current.length) valider([]); };
 
@@ -436,7 +483,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       const b = boiteDessin(elementsRef.current);
       if (!b || !mondeRef.current) return null;
       const m = 16, w = Math.ceil(b.w + 2 * m), h = Math.ceil(b.h + 2 * m);
-      const morceaux = [...mondeRef.current.querySelectorAll(':scope > g[data-id]:not([data-type="texte"])')].map((g) => {
+      const morceaux = [...mondeRef.current.querySelectorAll(':scope > g[data-id]')].map((g) => {
         const c = g.cloneNode(true);
         c.querySelectorAll('.md-gomme').forEach((x) => x.remove());
         let html = c.outerHTML;
@@ -445,12 +492,16 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       }).join('');
       const fond = fondExport === 'blanc' ? `<rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff"/>`
         : fondExport === 'noir' ? `<rect x="0" y="0" width="${w}" height="${h}" fill="#111114"/>` : '';
-      // zones de texte : en FRACTIONS de l'image, pour être reposées par-dessus sur l'ordi
-      const textes = elementsRef.current.filter((x) => x.type === 'texte' && String(x.texte || '').trim()).map((x) => {
-        const t = mesurerTexte(x);
-        return { texte: x.texte, x: (x.x - b.x + m) / w, y: (x.y - b.y + m) / h, taille: x.taille / w, largeur: t.w / w, ...(x.largeur ? { boite: true } : {}),
-          couleur: couleurSurFond(x.couleur, fondExport === 'noir' ? 'noir' : 'clair') };
-      });
+      // zones de texte : en FRACTIONS de l'image, avec leur HTML riche, pour être reposées
+      // par-dessus sur l'ordi en textes libres éditables
+      const encre = (c) => couleurSurFond(rgbVersHex(c), fondExport === 'noir' ? 'noir' : 'clair');
+      const textes = elementsRef.current.filter((x) => x.type === 'texte' && String(x.texte || texteBrut(x.html || '')).trim()).map((x) => ({
+        texte: x.texte || texteBrut(x.html), html: convertirCouleurs(htmlZone(x), encre), k: 1 / w,
+        x: (x.x - b.x + m) / w, y: (x.y - b.y + m) / h, taille: (x.taille || 18) / w,
+        largeur: largeurZone(x) / w, hauteur: hauteurZone(x) / h, boite: true,
+        gras: !!x.gras, italique: !!x.italique, souligne: !!x.souligne, align: x.align || 'left',
+        couleur: encre(x.couleur),
+      }));
       return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${fond}<g transform="translate(${m - b.x} ${m - b.y})">${morceaux}</g></svg>`, w, h, textes };
     },
     vider: () => { valider([]); try { localStorage.removeItem(CLE_BROUILLON); } catch (e) { /* ignore */ } },
@@ -469,6 +520,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
   const motifRef = useRef(null), pointRef = useRef(null), grilleRef = useRef(null);
   const ecrireCam = (c) => {
     if (mondeRef.current) mondeRef.current.setAttribute('transform', `translate(${c.x} ${c.y}) scale(${c.z})`);
+    if (coucheRef.current) coucheRef.current.style.transform = `translate(${c.x}px, ${c.y}px) scale(${c.z})`;
     if (motifRef.current) motifRef.current.setAttribute('patternTransform', `translate(${c.x} ${c.y}) scale(${c.z})`);
     if (pointRef.current) pointRef.current.setAttribute('r', String(1.15 / Math.sqrt(c.z)));
     if (grilleRef.current) grilleRef.current.setAttribute('opacity', String(Math.max(0, Math.min(1, (24 * c.z - 5) / 9))));
@@ -502,7 +554,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     if (g && g.type === 'gomme') setMasques(null);
     geste.current = null;
   };
-  const marquerGeste = (v) => { const el = svgRef.current && svgRef.current.parentElement; if (el) el.classList.toggle('md-en-geste', v); };
+  const marquerGeste = (v) => { const el = racineRef.current; if (el) el.classList.toggle('md-en-geste', v); };
   const debutPince = () => {
     marquerGeste(true);
     const [a, b] = [...doigts.current.values()];
@@ -521,6 +573,8 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
         if (el.isPointInStroke(p) || (el.getAttribute('data-plein') === '1' && el.isPointInFill(p))) touches.add(id);
       } catch (e) { /* ignore */ }
     }
+    const z = zoneSous(cx, cy, 0);
+    if (z) touches.add(z.id);
     setMasques(new Set(touches));
   };
 
@@ -531,12 +585,12 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     doigts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (doigts.current.size === 2) { abandonner(); debutPince(); return; }
     if (doigts.current.size > 2) return;
-    if (editionRef.current) { terminerSaisie(); geste.current = null; return; } // toucher ailleurs = fin de la saisie
+    if (editionRef.current) { terminerEdition(); geste.current = null; return; } // toucher ailleurs = fin de l'écriture
     const [wx, wy] = versMonde(e.clientX, e.clientY);
     if (outil === 'texte') {
-      const cible = texteSous(wx, wy) || null;
-      if (cible) { geste.current = { type: 'texte', cible, c0: [e.clientX, e.clientY], bouge: false, dejaSel: selId === cible.id }; setSelId(cible.id); return; }
-      if (selId) { setSelId(null); geste.current = null; return; } // toucher le vide = désélectionner d'abord
+      const cible = zoneSous(e.clientX, e.clientY);
+      if (cible) { geste.current = { type: 'texte', cible, c0: [e.clientX, e.clientY], bouge: false, dejaSel: selId === cible.id }; setSelId(cible.id); setPaletteZone(false); return; }
+      if (selId) { setSelId(null); setPaletteZone(false); geste.current = null; return; } // toucher le vide = désélectionner d'abord
       geste.current = { type: 'texte-zone', p0: [wx, wy], c0: [e.clientX, e.clientY] };
       return;
     }
@@ -588,7 +642,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       if (!g.bouge && Math.hypot(e.clientX - g.c0[0], e.clientY - g.c0[1]) < 6) return;
       g.bouge = true;
       const z = camRef.current.z;
-      setGlisseTexte({ id: g.cible.id, dx: (e.clientX - g.c0[0]) / z, dy: (e.clientY - g.c0[1]) / z });
+      setGlisseZone({ id: g.cible.id, dx: (e.clientX - g.c0[0]) / z, dy: (e.clientY - g.c0[1]) / z, dw: 0, dh: 0 });
       return;
     }
     const lot = typeof e.getCoalescedEvents === 'function' && e.getCoalescedEvents().length ? e.getCoalescedEvents() : [e];
@@ -626,12 +680,12 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     if (g.type === 'texte') {
       if (g.cible && g.bouge) {
         const z = camRef.current.z, dx = (e.clientX - g.c0[0]) / z, dy = (e.clientY - g.c0[1]) / z;
-        setGlisseTexte(null);
-        valider(elementsRef.current.map((x) => (x.id === g.cible.id ? { ...x, x: x.x + dx, y: x.y + dy } : x)));
+        setGlisseZone(null);
+        modifierZone(g.cible.id, { x: g.cible.x + dx, y: g.cible.y + dy });
         return;
       }
-      // toucher une zone DÉJÀ sélectionnée = l'écrire ; sinon le toucher l'a juste sélectionnée
-      if (g.cible && g.dejaSel) ouvrirSaisie({ id: g.cible.id, x: g.cible.x, y: g.cible.y, taille: g.cible.taille, couleur: g.cible.couleur, largeur: g.cible.largeur }, g.cible.texte);
+      // toucher une zone DÉJÀ sélectionnée = l'écrire, curseur à l'endroit touché
+      if (g.cible && g.dejaSel) ouvrirEdition(g.cible, [e.clientX, e.clientY]);
       return;
     }
     if (g.type === 'texte-zone') {
@@ -641,15 +695,16 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       const taille = TAILLES_TEXTE[tailleIdx], z = camRef.current.z;
       const [x1, y1] = versMonde(e.clientX, e.clientY);
       const trace = Math.hypot(e.clientX - g.c0[0], e.clientY - g.c0[1]) >= 10 && Math.abs(x1 - g.p0[0]) * z >= 40;
+      // ZONE TRACÉE : largeur ET hauteur du geste ; un simple toucher : zone d'une ligne
       const zone = trace
-        ? { x: Math.min(g.p0[0], x1), y: Math.min(g.p0[1], y1), largeur: Math.abs(x1 - g.p0[0]) }
+        ? { x: Math.min(g.p0[0], x1), y: Math.min(g.p0[1], y1), largeur: Math.abs(x1 - g.p0[0]), hauteur: Math.max(Math.abs(y1 - g.p0[1]), taille * 1.35) }
         : (() => {
           // zone par défaut : elle tient TOUJOURS dans la vue (recalée vers la gauche près du bord)
           const vueW = svgRef.current.getBoundingClientRect().width, l = Math.min(240, vueW - 40);
           const xEcran = Math.max(12, Math.min(g.c0[0] - svgRef.current.getBoundingClientRect().left, vueW - l - 12));
-          return { x: (xEcran - camRef.current.x) / z, y: g.p0[1] - taille * 0.6, largeur: l / z };
+          return { x: (xEcran - camRef.current.x) / z, y: g.p0[1] - taille * 0.6, largeur: l / z, hauteur: taille * 1.35 };
         })();
-      ouvrirSaisie({ id: null, ...zone, taille, couleur }, '');
+      ouvrirEdition({ id: nouvelId(), type: 'texte', ...zone, taille, couleur, html: '', texte: '', nouvelle: true });
       return;
     }
     if (g.type === 'gomme') {
@@ -676,24 +731,35 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     }
   };
 
+  // mesure des zones (largeur/hauteur réelles, monde) après chaque rendu
+  useLayoutEffect(() => {
+    const couche = coucheRef.current; if (!couche) return;
+    let change = false;
+    couche.querySelectorAll('.md-zone[data-id]').forEach((el) => {
+      const m = { w: el.offsetWidth, h: el.offsetHeight }, avant = MESURES.get(el.dataset.id);
+      if (!avant || avant.w !== m.w || avant.h !== m.h) { MESURES.set(el.dataset.id, m); change = true; }
+    });
+    if (change) rafraichir();
+  });
   // le monde suit l'état React de la caméra hors geste
   useEffect(() => { camRef.current = cam; ecrireCam(cam); }, [cam]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // le texte en cours d'écriture est masqué (le champ de saisie le remplace) ; celui
-  // qu'on glisse suit le doigt
-  const visibles = elements
-    .filter((x) => !(masques && masques.has(x.id)) && !(edition && edition.id === x.id))
-    .map((x) => (glisseTexte && glisseTexte.id === x.id ? { ...x, x: x.x + glisseTexte.dx, y: x.y + glisseTexte.dy, ...(glisseTexte.largeur ? { largeur: glisseTexte.largeur } : {}) } : x));
-  // zone sélectionnée (ou en écriture) : sa boîte à l'écran, pour la barre flottante
-  const zoneSel = outil === 'texte' && !edition && selId ? visibles.find((x) => x.id === selId) : null;
-  const boiteEcran = (b) => (b ? { x: b.x * cam.z + cam.x, y: b.y * cam.z + cam.y, w: b.w * cam.z, h: b.h * cam.z } : null);
-  const selEcran = zoneSel ? boiteEcran(boiteElement(zoneSel)) : edition ? boiteEcran({ x: edition.x, y: edition.y, w: edition.largeur || 160, h: edition.taille * 1.25 }) : null;
-  const tailleCourante = edition ? edition.taille : zoneSel ? zoneSel.taille : null;
+  const visibles = elements.filter((x) => !(masques && masques.has(x.id)));
+  // zones de texte (couche HTML) : celle qu'on glisse / redimensionne suit le doigt ;
+  // celle en écriture est remplacée par l'éditeur (même style, même place)
+  const zones = visibles.filter((x) => x.type === 'texte').map((x) => (glisseZone && glisseZone.id === x.id
+    ? { ...x, x: x.x + glisseZone.dx, y: x.y + glisseZone.dy, ...(glisseZone.dw || glisseZone.dh ? { largeur: largeurZone(x) + glisseZone.dw, hauteur: (x.hauteur || hauteurZone(x)) + glisseZone.dh } : {}) } : x));
+  const zoneSel = outil === 'texte' && selId ? (edition && edition.id === selId ? edition : zones.find((x) => x.id === selId)) : null;
+  const selEcran = zoneSel ? (() => {
+    const g = glisseZone && glisseZone.id === zoneSel.id ? zones.find((x) => x.id === zoneSel.id) || zoneSel : zoneSel;
+    return { x: g.x * cam.z + cam.x, y: g.y * cam.z + cam.y, w: largeurZone(g) * cam.z, h: hauteurZone(g) * cam.z };
+  })() : null;
+  const tailleCourante = zoneSel ? zoneSel.taille : null;
   const ep = EPAISSEURS[epIdx];
   const couleurActive = outil === 'surligneur' ? couleurSurl : couleur;
 
   return (
-    <div className="md">
+    <div className={'md' + (edition ? ' md-ecriture' : '')} ref={racineRef}>
       <div className="md-haut">
         <button type="button" className="md-btn" onClick={onRetour} aria-label="Retour"><Icon name="chevL" size={18} /></button>
         <button type="button" className="md-btn" onClick={annuler} disabled={!passe.length} aria-label="Annuler"><IconeOutil nom="annuler" size={19} /></button>
@@ -702,10 +768,11 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
         <button type="button" className="md-btn" onClick={toutEffacer} disabled={!elements.length} aria-label="Tout effacer" title="Tout effacer (annulable)"><Icon name="trash" size={17} /></button>
         <span style={{ flex: 1 }} />
         {edition ? (
-          <button type="button" className="md-exporter" onPointerDown={(e) => e.preventDefault()} onClick={terminerSaisie}><Icon name="check" size={16} /> OK</button>
+          <button type="button" className="md-exporter" onPointerDown={(e) => e.preventDefault()} onClick={terminerEdition}><Icon name="check" size={16} /> OK</button>
         ) : barreHaut}
       </div>
 
+      <div className="md-scene" ref={sceneRef}>
       <svg ref={svgRef} className={'md-surface outil-' + outil}
         onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
         onContextMenu={(e) => e.preventDefault()}>
@@ -719,51 +786,101 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
           {visibles.map((x) => <ElementDessin key={x.id} e={x} gommeLarg={outil === 'gomme' ? 22 / cam.z : 0} />)}
           {apercu && <g opacity="0.75"><ElementDessin e={{ id: 'apercu', type: 'forme', forme: typeForme, ...apercu, couleur, ep, remplie: remplie && estFermee(typeForme) }} /></g>}
           <path ref={traitRef} d="" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          {zoneApercu && <rect x={zoneApercu.x} y={zoneApercu.y} width={zoneApercu.w} height={Math.max(zoneApercu.h, TAILLES_TEXTE[tailleIdx] * 1.25)} rx={6 / cam.z}
-            fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.7)" strokeDasharray="6 5" vectorEffect="non-scaling-stroke" strokeWidth="1.5" />}
-          {zoneSel && (() => { const b = boiteElement(zoneSel); return (
-            <rect x={b.x - 6 / cam.z} y={b.y - 6 / cam.z} width={b.w + 12 / cam.z} height={b.h + 12 / cam.z} rx={8 / cam.z}
-              fill="none" stroke="#0a84ff" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-          ); })()}
+          {zoneApercu && <rect x={zoneApercu.x} y={zoneApercu.y} width={zoneApercu.w} height={Math.max(zoneApercu.h, TAILLES_TEXTE[tailleIdx] * 1.35)} rx={6 / cam.z}
+            fill="rgba(10,132,255,0.08)" stroke="#0a84ff" strokeDasharray="6 5" vectorEffect="non-scaling-stroke" strokeWidth="1.5" />}
         </g>
       </svg>
 
-      {!elements.length && !edition && <div className="md-vide">Dessine au doigt · deux doigts pour déplacer et zoomer</div>}
-      <textarea ref={saisieRef} className="md-saisie" rows={1} spellCheck={false} aria-label="Texte"
-        style={{ display: 'none', fontFamily: POLICE_TEXTE }}
-        onInput={(e) => {
-          const t = e.currentTarget; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`;
-          if (!(editionRef.current && editionRef.current.largeur)) { t.style.width = 'auto'; t.style.width = `${Math.max(80, t.scrollWidth + 8)}px`; } // zone tracée : largeur fixe, retour à la ligne
-        }}
-        onBlur={() => { if (editionRef.current) terminerSaisie(); }} />
+      {/* COUCHE DES ZONES DE TEXTE : transformée comme le dessin (caméra) */}
+      <div className={'md-couche' + (outil === 'texte' ? ' outil-texte' : '')} ref={coucheRef}>
+        {zones.map((z) => (
+          <div key={z.id} data-id={z.id} className={'md-zone' + (z.id === selId ? ' sel' : '') + (edition && edition.id === z.id ? ' cachee' : '')}
+            style={styleZone(z)} dangerouslySetInnerHTML={{ __html: htmlZone(z) }} />
+        ))}
+        <div ref={editeurRef} className="md-zone md-editeur" contentEditable suppressContentEditableWarning spellCheck={false}
+          style={{ display: 'none' }} onInput={rafraichir} onKeyUp={rafraichir} onMouseUp={rafraichir}
+          onBlur={(e) => { if (editionRef.current && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.md-format'))) terminerEdition(); }} />
+      </div>
 
-      {/* BARRE FLOTTANTE de la zone de texte : gros boutons, au-dessus de la zone */}
-      {selEcran && (() => {
-        const haut = svgRef.current ? svgRef.current.getBoundingClientRect().top - svgRef.current.parentElement.getBoundingClientRect().top : 0;
-        const W = 300, gauche = Math.max(8, Math.min(selEcran.x + selEcran.w / 2 - W / 2, (svgRef.current ? svgRef.current.clientWidth : 390) - W - 8));
-        const dessus = haut + selEcran.y - 64 > haut + 4;
-        return (<>
-          <div className="md-texte-barre" style={{ left: gauche, top: dessus ? haut + selEcran.y - 64 : haut + selEcran.y + selEcran.h + 14, width: W }}
-            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-            <button type="button" aria-label="Texte plus petit" onClick={() => changerTaille(-2)}><span className="md-a-petit">A</span>−</button>
-            <span className="md-texte-taille">{tailleCourante}</span>
-            <button type="button" aria-label="Texte plus grand" onClick={() => changerTaille(2)}><span className="md-a-grand">A</span>+</button>
-            <span className="md-texte-sep" />
-            {!edition && <button type="button" aria-label="Modifier le texte" onClick={modifierTexteSel}><IconeOutil nom="texte" size={18} /></button>}
-            <button type="button" className="md-texte-suppr" aria-label="Supprimer la zone" onClick={supprimerZone}><Icon name="trash" size={17} /> Supprimer</button>
+      {/* POIGNÉES de la zone sélectionnée (taille constante à l'écran, gros pour le doigt) */}
+      {selEcran && !edition && (
+        <div className="md-poignees" style={{ left: selEcran.x, top: selEcran.y, width: selEcran.w, height: selEcran.h }}>
+          {['no', 'ne', 'so', 'se'].map((c) => (
+            <span key={c} className={'md-poignee md-poignee-' + c} onPointerDown={(e) => debutPoignee(e, c)} aria-label="Redimensionner la zone"><i /></span>
+          ))}
+        </div>
+      )}
+      </div>
+
+      {!elements.length && !edition && <div className="md-vide">Dessine au doigt · deux doigts pour déplacer et zoomer</div>}
+
+      {/* BARRE DE MISE EN FORME : au-dessus de la zone sélectionnée, ou collée au-dessus du
+          CLAVIER pendant l'écriture. Gros boutons ; un toucher ne retire pas le clavier. */}
+      {zoneSel && (() => {
+        const enEcriture = !!edition;
+        const sc = sceneRef.current ? sceneRef.current.getBoundingClientRect() : { top: 60, width: 390 };
+        const racine = racineRef.current ? racineRef.current.getBoundingClientRect() : { top: 0 };
+        const hautSc = sc.top - racine.top;
+        // hors écriture : AU-DESSUS de la zone (poignées comprises), sinon EN DESSOUS, sinon
+        // en haut de l'écran — jamais par-dessus la zone. En écriture : collée au clavier.
+        const HB = (barreFormatRef.current && barreFormatRef.current.offsetHeight) || 124;
+        const style = enEcriture
+          ? { bottom: clavier + 8 }
+          : (() => {
+            const dessus = hautSc + selEcran.y - HB - 26, dessous = hautSc + selEcran.y + selEcran.h + 26;
+            if (dessus >= hautSc + 6) return { top: dessus };
+            if (dessous + HB <= hautSc + sc.height - 90) return { top: dessous };
+            return { top: hautSc + 6 };
+          })();
+        const selMot = enEcriture && selectionDans(editeurRef.current);
+        const B = ({ action, val, label, actif, children, className = '' }) => (
+          <button type="button" aria-label={label} title={label} className={'md-fbtn ' + className + (actif ? ' actif' : '')}
+            onPointerDown={(e) => e.preventDefault()} onClick={() => appliquer(action, val)}>{children}</button>
+        );
+        return (
+          <div ref={barreFormatRef} className={'md-format' + (enEcriture ? ' sur-clavier' : '')} style={style} onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+            {paletteZone && (
+              <div className="md-format-couleurs">
+                {[ENCRE_PASTILLE, ...COLORS].map((c) => (
+                  <button key={c.id} type="button" className="md-pastille" style={{ '--c': c.hex }} aria-label={c.label}
+                    onPointerDown={(e) => e.preventDefault()} onClick={() => { appliquer('couleur', c.id); setPaletteZone(false); }} />
+                ))}
+              </div>
+            )}
+            {/* rangée 1 : la mise en forme (tient en largeur, boutons de 40 px) */}
+            <div className="md-format-rang">
+              <B action="taille" val={-2} label="Texte plus petit"><span className="md-a-petit">A</span>−</B>
+              <span className="md-texte-taille">{selMot ? Math.round(tailleSelection(editeurRef.current, tailleCourante)) : tailleCourante}</span>
+              <B action="taille" val={2} label="Texte plus grand"><span className="md-a-grand">A</span>+</B>
+              <span className="md-format-sep" />
+              <B action="gras" label="Gras" actif={etatFormat('bold', 'gras')}><b>G</b></B>
+              <B action="italique" label="Italique" actif={etatFormat('italic', 'italique')}><i style={{ fontFamily: 'Georgia, serif' }}>I</i></B>
+              <B action="souligne" label="Souligné" actif={etatFormat('underline', 'souligne')}><u>S</u></B>
+              <button type="button" className="md-fbtn" aria-label="Couleur" onPointerDown={(e) => e.preventDefault()} onClick={() => setPaletteZone((v) => !v)}>
+                <span className="md-fcouleur" style={{ background: couleurSurFond(zoneSel.couleur, 'noir') }} />
+              </button>
+              {!selMot && <B action="align" label="Alignement"><span className={'md-align md-align-' + (zoneSel.align || 'left')}><i /><i /><i /></span></B>}
+            </div>
+            {/* rangée 2 : à quoi s'applique la mise en forme, et les actions (avec libellés) */}
+            <div className="md-format-rang md-format-actions">
+              <span className={'md-format-cible' + (selMot ? ' mot' : '')}>{selMot ? 'Mot sélectionné' : 'Toute la zone'}</span>
+              <span style={{ flex: 1 }} />
+              <button type="button" className="md-fbtn md-flabel" aria-label="Dupliquer la zone" onPointerDown={(e) => e.preventDefault()} onClick={dupliquerZone}><Icon name="copy" size={16} /> Dupliquer</button>
+              <button type="button" className="md-fbtn md-flabel md-fsuppr" aria-label="Supprimer la zone" onPointerDown={(e) => e.preventDefault()} onClick={supprimerZone}><Icon name="trash" size={16} /> Supprimer</button>
+              {enEcriture
+                ? <button type="button" className="md-fbtn md-fok" aria-label="Terminer" onPointerDown={(e) => e.preventDefault()} onClick={terminerEdition}><Icon name="check" size={17} /></button>
+                : <button type="button" className="md-fbtn md-fok" aria-label="Écrire dans la zone" onClick={() => ouvrirEdition(zoneSel)}><IconeOutil nom="texte" size={17} /></button>}
+            </div>
           </div>
-          {zoneSel && (
-            <span className="md-texte-poignee" style={{ left: selEcran.x + selEcran.w + 6, top: haut + selEcran.y + selEcran.h / 2 }}
-              onPointerDown={debutLargeur} aria-label="Largeur de la zone" />
-          )}
-        </>);
+        );
       })()}
 
       {/* DOCK FLOTTANT (02/10 nuit) : la carte des réglages de l'outil (couleurs, taille,
           lissage, formes) au-dessus de la barre d'outils, en verre sombre. Toucher l'outil
           actif replie / déplie la carte. */}
       <div className="md-dock">
-        {carteOuverte && (
+        {/* zone de texte sélectionnée : sa barre de mise en forme remplace la carte (place libre) */}
+        {carteOuverte && !(outil === 'texte' && selId) && (
           <div className="md-carte" role="group" aria-label="Réglages de l’outil">
             {outil === 'forme' && (
               <div className="md-rang md-formes">
@@ -780,12 +897,11 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
               </div>
             )}
             {outil !== 'gomme' && outil !== 'main' && (
-              <PaletteMobile couleur={outil === 'texte' && (edition || zoneSel) ? (edition ? edition.couleur : zoneSel.couleur) : couleurActive}
+              <PaletteMobile couleur={outil === 'texte' && zoneSel ? zoneSel.couleur : couleurActive}
                 onCouleur={(c) => {
                   if (outil === 'surligneur') { setCouleurSurl(c); return; }
                   setCouleur(c);
-                  if (outil === 'texte' && editionRef.current) { const n = { ...editionRef.current, couleur: c }; setEdition(n); placerSaisie(n); }
-                  else if (outil === 'texte' && selId) modifierZone(selId, { couleur: c });
+                  if (outil === 'texte' && (editionRef.current || selId)) appliquer('couleur', c);
                 }} />
             )}
             {outil === 'texte' && (
@@ -816,14 +932,14 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
               </button>
             )}
             {outil === 'gomme' && <div className="md-aide">Touche ou glisse sur un trait, une forme ou un texte pour l’effacer.</div>}
-            {outil === 'texte' && <div className="md-aide">Trace une zone au doigt (ou touche) pour écrire · touche une zone pour la sélectionner, glisse-la pour la déplacer.</div>}
+            {outil === 'texte' && <div className="md-aide">Trace une zone au doigt pour écrire · touche une zone pour la sélectionner (poignées, mise en forme), glisse-la pour la déplacer.</div>}
             {outil === 'main' && <div className="md-aide">Glisse pour déplacer le dessin · pince pour zoomer.</div>}
           </div>
         )}
         <div className="md-outils" role="group" aria-label="Outils">
           {OUTILS.map((o) => (
             <button key={o.id} type="button" className={'md-outil' + (outil === o.id ? ' actif' : '')}
-              onClick={() => { if (editionRef.current) terminerSaisie(); if (o.id === outil) setCarteOuverte((v) => !v); else { setOutil(o.id); setSelId(null); setCarteOuverte(true); } }}>
+              onClick={() => { if (editionRef.current) terminerEdition(); if (o.id === outil) setCarteOuverte((v) => !v); else { setOutil(o.id); setSelId(null); setCarteOuverte(true); } }}>
               <IconeOutil nom={o.id} size={22} />
               <span>{o.label}</span>
             </button>
