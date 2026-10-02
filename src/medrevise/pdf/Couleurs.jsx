@@ -12,7 +12,7 @@
      hex éditable, aperçu « avant / après ». Fenêtre posée par-dessus tout
      (portail), fermée par Échap ou un clic à l'extérieur.
 
-   UN SEUL SYSTÈME POUR TOUS LES OUTILS (05/10) : surligneur, crayon, formes, boîtes,
+   UN SEUL SYSTÈME POUR TOUS LES OUTILS (02/10 soir) : surligneur, crayon, formes, boîtes,
    texte libre, bulle d'un surlignage, cartes du tableau, couleur du texte dans une
    boîte — tous passent par CE sélecteur (avant : 4 sélecteurs différents, dont une
    palette de 12 couleurs propre au crayon et l'input couleur du navigateur).
@@ -71,7 +71,7 @@ export function SelecteurCouleurs({ couleur, onCouleur, titre = 'Couleur' }) {
   );
 }
 
-/* BOUTON COULEUR COMPACT (05/10) : une pastille de la couleur courante ; un clic
+/* BOUTON COULEUR COMPACT (02/10 soir) : une pastille de la couleur courante ; un clic
    ouvre, dans un petit panneau flottant, LE MÊME sélecteur (4 couleurs « cours »,
    mes couleurs, roue). Pour les barres où la place manque (mise en forme du texte
    d'une boîte). `onMouseDown` empêché : la sélection de texte de l'éditeur reste. */

@@ -40,7 +40,7 @@ export const OUTILS = [
   { id: 'gomme', label: 'Gomme', icone: 'gomme', aide: 'Efface les traits de crayon et les formes — cliquer, ou glisser pour en effacer plusieurs' },
 ];
 /* Les couleurs de TOUS les outils (boîte comprise) se règlent par le même sélecteur
-   (pdf/Couleurs.jsx), fourni par le lecteur dans `contexteSupplementaire` (05/10). */
+   (pdf/Couleurs.jsx), fourni par le lecteur dans `contexteSupplementaire` (02/10 soir). */
 
 export function PdfToolbar({
   onClose, pageCourante, numPages, onAllerPage,

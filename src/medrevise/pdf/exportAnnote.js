@@ -221,7 +221,7 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     bilan.traits += 1;
   }
 
-  /* 5 bis. FORMES (03/10 ; douze formes depuis le 05/10) : LE MÊME tracé qu'à
+  /* 5 bis. FORMES (03/10 ; douze formes depuis le 02/10 soir) : LE MÊME tracé qu'à
         l'écran (pdf/formes.js#cheminForme), fond translucide si remplie, pointes
         pleines, étiquette de texte au centre. */
   bilan.formes = 0;
@@ -319,7 +319,7 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
       bilan.fleches += 1;
     };
     if (ancre && b.fleche) dessinerFleche(ancre);
-    // flèches supplémentaires (05/10) : chacune vers son point, avec son petit rond
+    // flèches supplémentaires (02/10 soir) : chacune vers son point, avec son petit rond
     const autres = (b.fleches || []).filter((fl) => fl && Number.isFinite(fl.x) && Number.isFinite(fl.y)).map((fl) => ({ x: fl.x * W, y: H - fl.y * H }));
     autres.forEach(dessinerFleche);
     page.drawRectangle({ x, y: top - h, width: w, height: h, color: fond, opacity: opaciteFondBoite(b.couleur), borderColor: rgb(0, 0, 0), borderOpacity: 0.28, borderWidth: 0.8 });

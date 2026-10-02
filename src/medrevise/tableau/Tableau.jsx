@@ -517,7 +517,7 @@ export const Tableau = forwardRef(function Tableau({ ficheId }, ref) {
             if (!a || !b) return null;
             const ca = l.de.cote === 'auto' ? coteAuto(a, b) : l.de.cote;
             const cb = l.vers.cote === 'auto' ? coteAuto(b, a) : l.vers.cote;
-            /* PLUSIEURS FLÈCHES PAR CARTE (05/10) : ces poignées étaient posées PILE sur
+            /* PLUSIEURS FLÈCHES PAR CARTE (02/10 soir) : ces poignées étaient posées PILE sur
                l'ancre de la carte. Une flèche juste créée restant sélectionnée, le glisser
                suivant depuis la même ancre attrapait sa poignée et REDIRIGEAIT la flèche
                au lieu d'en créer une deuxième. Elles sont maintenant décalées le long de
@@ -558,7 +558,7 @@ export const Tableau = forwardRef(function Tableau({ ficheId }, ref) {
         <div className="tb-contexte" onPointerDown={(e) => e.stopPropagation()}>
           {selCartes.length > 0 && (<>
             <span className="tb-ctx-titre">{selCartes.length > 1 ? `${selCartes.length} cartes` : 'Carte'}</span>
-            {/* même sélecteur que tous les outils du lecteur (05/10) */}
+            {/* même sélecteur que tous les outils du lecteur (02/10 soir) */}
             <SelecteurCouleurs couleur={selCartes.every((c) => c.couleur === selCartes[0].couleur) ? selCartes[0].couleur : null}
               onCouleur={colorer} titre="Couleur de la carte" />
             <span className="tb-sep" />

@@ -172,7 +172,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [couleurSurligneur, setCouleurSurligneur] = useState('jaune');
   const [couleurCrayon, setCouleurCrayon] = useState('bleu');
   const [couleurForme, setCouleurForme] = useState('#e5383b'); // cadre rouge par défaut : il se voit sur la page
-  /* FORMES (05/10) : la forme à poser et son remplissage, mémorisés sur l'appareil
+  /* FORMES (02/10 soir) : la forme à poser et son remplissage, mémorisés sur l'appareil
      (préférence d'affichage) — on retrouve sa dernière forme en un clic. */
   const [typeFormeActif, setTypeFormeActifBrut] = useState(() => { try { return localStorage.getItem('medrevise.typeForme') || 'rectangle'; } catch (e) { return 'rectangle'; } });
   const setTypeFormeActif = (t) => { setTypeFormeActifBrut(t); try { localStorage.setItem('medrevise.typeForme', t); } catch (e) { /* ignore */ } };
@@ -1035,7 +1035,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     await hist.appliquer(cmdCreer('annotations', rec, surligneur ? 'Surligneur à main levée' : 'Trait au crayon'));
   };
   // gomme : UN geste = UNE entrée d'historique, même s'il a traversé plusieurs traits
-  // (05/10) la gomme efface aussi les FORMES : leurs légendes sont déliées, comme à la suppression
+  // (02/10 soir) la gomme efface aussi les FORMES : leurs légendes sont déliées, comme à la suppression
   const supprimerTraits = async (liste) => {
     const elems = (liste || []).filter(Boolean);
     const cmds = elems.flatMap((t) => (t.kind === 'forme' ? cmdsSuppressionForme(t, 'Gomme') : [cmdSupprimer('annotations', t, 'Gomme')]));
@@ -1095,7 +1095,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const rec = newForme({ ficheId, page, x, y, width, height, couleur: couleurForme, forme, fx, fy, remplie: formeRemplie && estFermee(forme) });
     hist.appliquer(cmdCreer('annotations', rec, 'Forme'));
   };
-  /* déplacer / redimensionner une forme : ses LÉGENDES suivent (05/10) — l'épingle
+  /* déplacer / redimensionner une forme : ses LÉGENDES suivent (02/10 soir) — l'épingle
      de chaque boîte reliée est recalculée sur la nouvelle position, dans la même
      entrée d'annulation (avant : la flèche restait pointée sur l'ancienne place). */
   const majForme = (avant, apres, libelle) => {

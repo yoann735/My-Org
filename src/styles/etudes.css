@@ -1521,7 +1521,7 @@
 /* épingle et pastille : on les attrape pour les déplacer */
 .nb-ancre { cursor: grab; }
 .nb-ancre.glisse, .nb-pastille.glisse { cursor: grabbing; transform: scale(1.2); }
-/* flèches supplémentaires d'une boîte (05/10) : un rond plus petit au bout, et sa croix */
+/* flèches supplémentaires d'une boîte (02/10 soir) : un rond plus petit au bout, et sa croix */
 .nb-ancre-fl { width: 10px; height: 10px; margin: -5px 0 0 -5px; border-width: 2.5px; }
 .nb-fl-x { position: absolute; left: 8px; top: -12px; width: 15px; height: 15px; border-radius: 50%; padding: 0; border: 0; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center; background: var(--text); color: var(--card); box-shadow: 0 1px 4px rgba(0,0,0,.3); }
@@ -1864,7 +1864,7 @@
   letter-spacing: .04em; color: var(--text); background: var(--bg-2, rgba(0,0,0,.25)); border: 1px solid var(--border-2, rgba(255,255,255,.1)); outline: none; }
 .sc-hex:focus { border-color: var(--accent); }
 .sc-actions { display: flex; justify-content: flex-end; gap: 6px; }
-/* bouton couleur compact (05/10) + son panneau */
+/* bouton couleur compact (02/10 soir) + son panneau */
 .sc-bouton { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 6px; border-radius: 8px; cursor: pointer;
   border: 1px solid var(--border-2, rgba(255,255,255,.12)); background: transparent; color: var(--text-2); }
 .sc-bouton:hover, .sc-bouton.actif { border-color: var(--accent); color: var(--text); }
@@ -1951,7 +1951,7 @@
 
 /* ---- Formes (03/10) : un cadre ; seul son bord est sensible à la souris ---- */
 .pdfr-forme { position: absolute; box-sizing: border-box; border: 0; border-radius: 3px; pointer-events: none; outline: none; }
-/* 05/10 : douze formes dessinées en SVG ; seul le TRACÉ (bande invisible .pf-hit) est sensible */
+/* 02/10 soir : douze formes dessinées en SVG ; seul le TRACÉ (bande invisible .pf-hit) est sensible */
 .pf-svg { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 .pf-hit { pointer-events: stroke; cursor: move; }
 .pf-gomme { pointer-events: none; }

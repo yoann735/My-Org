@@ -72,7 +72,7 @@ export const PALETTE_CRAYON = [
   { id: 'rose', hex: '#FF9FD1', label: 'Rose' },
   { id: 'marron', hex: '#8B5A2B', label: 'Marron' },
 ];
-const PALETTE_HEX = { ...Object.fromEntries(PALETTE_CRAYON.map((c) => [c.id, c.hex])), blanc: '#FFFFFF' }; // blanc : cartes du tableau d'avant le 05/10
+const PALETTE_HEX = { ...Object.fromEntries(PALETTE_CRAYON.map((c) => [c.id, c.hex])), blanc: '#FFFFFF' }; // blanc : cartes du tableau d'avant le 02/10 soir
 /** couleur affichable d'un id de palette (surlignage, crayon) ou d'un hex libre. */
 export function couleurHex(c, repli = '#FFD84D') {
   if (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)) return c;

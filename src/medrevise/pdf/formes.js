@@ -1,5 +1,5 @@
 /* ============================================================
-   MedRevise — FORMES PRÊTES À POSER (05/10).
+   MedRevise — FORMES PRÊTES À POSER (02/10 soir).
 
    « Ma solution pour dessiner vite sans tablette » : on choisit une forme, on la
    pose d'un clic ou on l'étire d'un glisser, nette et instantanée. Puis on peut la
@@ -8,7 +8,7 @@
    STOCKAGE — inchangé dans son principe : un enregistrement `kind: 'forme'` du
    store `annotations` (même canal, même synchro), boîte englobante en fractions de
    page { x, y, width, height }. Champs ajoutés, tous FACULTATIFS (une forme d'avant
-   le 05/10 n'a que `forme: 'rectangle'` et reste un rectangle) :
+   le 02/10 soir n'a que `forme: 'rectangle'` et reste un rectangle) :
      - forme   : l'un des TYPES_FORMES ci-dessous ;
      - fx, fy  : retournements. Pour un trait (ligne, flèche), ils disent dans quel
                  coin de la boîte il COMMENCE (fx : à droite, fy : en bas) — la

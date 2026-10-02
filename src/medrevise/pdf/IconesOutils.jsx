@@ -1,5 +1,5 @@
 /* ============================================================
-   MedRevise — ICÔNES DES OUTILS DU LECTEUR (05/10).
+   MedRevise — ICÔNES DES OUTILS DU LECTEUR (02/10 soir).
 
    Retour de l'utilisateur : « la gomme n'a pas d'icône de gomme, le crayon
    pareil ». Les outils empruntaient des icônes génériques du jeu partagé

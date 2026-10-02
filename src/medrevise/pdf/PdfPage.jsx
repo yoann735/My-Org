@@ -210,7 +210,7 @@ export function PdfPageContent({
     window.addEventListener('pointerup', up);
   };
 
-  /* TRACÉ D'UNE FORME (03/10, enrichi le 05/10) : glisser = la forme étirée du point
+  /* TRACÉ D'UNE FORME (03/10, enrichi le 02/10 soir) : glisser = la forme étirée du point
      d'appui au pointeur ; un simple clic pose la forme à sa taille par défaut, centrée
      sur le point visé. Maj = proportions gardées (carré, cercle) ou trait aimanté à
      45°. Un trait (ligne, flèche) garde son SENS : il part du point d'appui. L'outil
@@ -375,7 +375,7 @@ export function PdfPageContent({
         const y = prec ? prec[1] + ((cy - prec[1]) * k) / pas : cy;
         const px = (x - r.left) / r.width, py = (y - r.top) / r.height;
         for (const t of traits || []) if (!touches.has(t.id) && traitTouche(t, px, py, seuil)) touches.set(t.id, t);
-        // FORMES (05/10) : la gomme les efface aussi — test exact sur leur tracé SVG
+        // FORMES (02/10 soir) : la gomme les efface aussi — test exact sur leur tracé SVG
         // (isPointInStroke, élargi du rayon de la gomme), intérieur compris si remplie
         if (formes && formes.length) {
           for (const el of pageRef().querySelectorAll('path.pf-gomme')) {
@@ -427,7 +427,7 @@ export function PdfPageContent({
     window.addEventListener('mouseup', () => setTimeout(() => { gesteBoite.current = false; }, 0), { once: true });
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    /* FLÈCHE SUPPLÉMENTAIRE (05/10) : une boîte peut viser PLUSIEURS endroits. Le
+    /* FLÈCHE SUPPLÉMENTAIRE (02/10 soir) : une boîte peut viser PLUSIEURS endroits. Le
        clic choisit la cible : un surlignage (la flèche va à son bord), une forme
        (son côté, ou le milieu d'un trait), sinon le point cliqué. Elle s'ajoute à
        `fleches` sans toucher à l'épingle ni à la flèche principale. */
@@ -1006,7 +1006,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     const recul = 7 / L;
     return { sx, sy, ex: ax - (ax - sx) * recul, ey: ay - (ay - sy) * recul };
   };
-  /* FLÈCHES SUPPLÉMENTAIRES (05/10) : `fleches`, chacune vers son point ; le bout
+  /* FLÈCHES SUPPLÉMENTAIRES (02/10 soir) : `fleches`, chacune vers son point ; le bout
      qu'on glisse suit le pointeur (pointApercu). */
   const autres = (boite.fleches || []).filter((fl) => fl && Number.isFinite(fl.x) && Number.isFinite(fl.y))
     .map((fl) => (pointApercu && pointApercu.cible === 'fl:' + fl.id ? { ...fl, x: pointApercu.x, y: pointApercu.y } : fl));
@@ -1313,7 +1313,7 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
 }
 
 /* ============================================================
-   FORME (03/10 ; douze formes depuis le 05/10, voir formes.js). Dessinée en SVG,
+   FORME (03/10 ; douze formes depuis le 02/10 soir, voir formes.js). Dessinée en SVG,
    dans sa boîte englobante, en pixels (trait net, pointes non déformées).
    - Sélection par son TRACÉ seulement (une bande invisible de 14 px autour du
      trait) : l'intérieur reste transparent aux clics, on peut toujours
@@ -1601,7 +1601,7 @@ export function EditToolbar({ editor, onReset, onClose, libre = false, couleur =
         <option value="" disabled>Police</option>
         {FONT_FAMILIES.map((f) => <option key={f} value={f}>{f}</option>)}
       </select>
-      {/* même système de couleurs que tous les outils (05/10), en version compacte */}
+      {/* même système de couleurs que tous les outils (02/10 soir), en version compacte */}
       <BoutonCouleur titre="Couleur du texte sélectionné" couleur={editor.getAttributes('textStyle').color || null}
         icone={<span className="et-lettre" aria-hidden="true">A</span>}
         onCouleur={(c) => run((ch) => ch.setColor(couleurHex(c, '#1F1F24')))} />

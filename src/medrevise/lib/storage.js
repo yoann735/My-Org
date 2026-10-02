@@ -392,7 +392,7 @@ export function newImageCollee({ ficheId, page, x, y, width, height, blobId, z, 
 export function newForme({ ficheId, page, x, y, width, height, couleur, epaisseur, forme, fx, fy, remplie }) {
   return {
     id: genId('an'), ficheId, page, x, y, width, height,
-    // 05/10 : douze formes (pdf/formes.js) ; fx/fy/remplie seulement s'ils servent
+    // 02/10 soir : douze formes (pdf/formes.js) ; fx/fy/remplie seulement s'ils servent
     kind: 'forme', type: 'forme', forme: forme || 'rectangle',
     ...(fx ? { fx: true } : {}), ...(fy ? { fy: true } : {}), ...(remplie ? { remplie: true } : {}),
     couleur: couleur || '#e5383b', epaisseur: epaisseur || 0.0025,
