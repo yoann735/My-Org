@@ -389,10 +389,12 @@ export function newImageCollee({ ficheId, page, x, y, width, height, blobId, z, 
     rattacher une légende (une boîte reliée : `formeId` côté boîte). Normalisée
     [0,1] par rapport à la page : elle encadre du contenu, elle suit donc le zoom.
     `epaisseur` en fraction de hauteur de page, comme un trait. */
-export function newForme({ ficheId, page, x, y, width, height, couleur, epaisseur }) {
+export function newForme({ ficheId, page, x, y, width, height, couleur, epaisseur, forme, fx, fy, remplie }) {
   return {
     id: genId('an'), ficheId, page, x, y, width, height,
-    kind: 'forme', type: 'forme', forme: 'rectangle',
+    // 05/10 : douze formes (pdf/formes.js) ; fx/fy/remplie seulement s'ils servent
+    kind: 'forme', type: 'forme', forme: forme || 'rectangle',
+    ...(fx ? { fx: true } : {}), ...(fy ? { fy: true } : {}), ...(remplie ? { remplie: true } : {}),
     couleur: couleur || '#e5383b', epaisseur: epaisseur || 0.0025,
     createdAt: new Date().toISOString(),
   };

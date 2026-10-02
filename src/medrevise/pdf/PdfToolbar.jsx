@@ -34,7 +34,7 @@ export const OUTILS = [
   { id: 'surligneur', label: 'Surligneur', icone: 'surligneur', aide: 'Sélectionner du texte le surligne aussitôt, dans la couleur active' },
   { id: 'boite', label: 'Boîte', icone: 'boite', aide: 'Cliquer ou tracer pour poser une boîte — l’outil reste actif pour enchaîner · Échap ou re-clic sur l’outil pour arrêter' },
   { id: 'texte', label: 'Texte', icone: 'texte', aide: 'Cliquer sur la page pour y écrire du texte libre, sans cadre' },
-  { id: 'forme', label: 'Forme', icone: 'forme', aide: 'Tracer un cadre sur la page — puis « Légende » pour y rattacher un texte · Échap pour arrêter' },
+  { id: 'forme', label: 'Forme', icone: 'forme', aide: 'Choisir une forme, puis cliquer pour la poser ou glisser pour l’étirer · Maj : proportions · Échap pour arrêter' },
   { id: 'question', label: '?', icone: 'question', aide: 'Un clic pose un « ? » : « je n’ai pas compris ce passage »' },
   { id: 'crayon', label: 'Crayon', icone: 'crayon', aide: 'Dessiner à main levée' },
   { id: 'gomme', label: 'Gomme', icone: 'gomme', aide: 'Efface les traits de crayon et les formes — cliquer, ou glisser pour en effacer plusieurs' },

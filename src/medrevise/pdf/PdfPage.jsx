@@ -19,6 +19,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { EditorContent } from '@tiptap/react';
 import { IconeOutil } from './IconesOutils.jsx';
 import { SelecteurCouleurs, BoutonCouleur } from './Couleurs.jsx';
+import { cheminForme, extremites, typeForme, estTrait, estFermee, tailleParDefaut, ancreSurForme } from './formes.js';
 import { Icon } from '../../shared/Icon.jsx';
 import { outputScaleFor } from './pdfjsSetup.js';
 import { richToHTML } from '../documents/lib/richtext.js';
@@ -68,7 +69,7 @@ export function PdfPageContent({
   textes = [], questions = [], onPoser = () => {},
   images = [], imageActiveId = null, onImageActiver = () => {}, onImageMaj = () => {}, onImageCalque = () => {}, onImageSupprimer = () => {},
   formes = [], formeActiveId = null, onFormeActiver = () => {}, onCreerForme = () => {}, onFormeMaj = () => {}, onFormeSupprimer = () => {}, onFormeLegende = () => {},
-  couleurForme = '#e5383b',
+  couleurForme = '#e5383b', typeFormeActif = 'rectangle', formeRemplie = false, onFormeModifier = () => {},
 }) {
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
@@ -209,28 +210,51 @@ export function PdfPageContent({
     window.addEventListener('pointerup', up);
   };
 
-  /* TRACÉ D'UNE FORME (03/10) : glisser = le rectangle ; un simple clic pose un cadre
-     de taille par défaut au point visé. L'outil reste actif pour en tracer d'autres. */
+  /* TRACÉ D'UNE FORME (03/10, enrichi le 05/10) : glisser = la forme étirée du point
+     d'appui au pointeur ; un simple clic pose la forme à sa taille par défaut, centrée
+     sur le point visé. Maj = proportions gardées (carré, cercle) ou trait aimanté à
+     45°. Un trait (ligne, flèche) garde son SENS : il part du point d'appui. L'outil
+     reste actif pour en poser d'autres. */
   const [traceForme, setTraceForme] = useState(null);
   const demarrerForme = (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return;
+    const type = typeFormeActif;
+    const trait = estTrait(type);
     const x0 = clamp01((e.clientX - r.left) / r.width), y0 = clamp01((e.clientY - r.top) / r.height);
     let courant = null;
-    const move = (ev) => {
-      const x1 = clamp01((ev.clientX - r.left) / r.width), y1 = clamp01((ev.clientY - r.top) / r.height);
-      courant = { x: Math.min(x0, x1), y: Math.min(y0, y1), width: Math.abs(x1 - x0), height: Math.abs(y1 - y0) };
-      setTraceForme(courant);
+    const calculer = (ev) => {
+      let x1 = clamp01((ev.clientX - r.left) / r.width), y1 = clamp01((ev.clientY - r.top) / r.height);
+      if (ev.shiftKey) {
+        const dxp = (x1 - x0) * r.width, dyp = (y1 - y0) * r.height;
+        if (trait) { // aimanté à 45°
+          const a = Math.round(Math.atan2(dyp, dxp) / (Math.PI / 4)) * (Math.PI / 4), L = Math.hypot(dxp, dyp);
+          x1 = clamp01(x0 + (Math.cos(a) * L) / r.width); y1 = clamp01(y0 + (Math.sin(a) * L) / r.height);
+        } else { // carré / cercle
+          const c = Math.max(Math.abs(dxp), Math.abs(dyp));
+          x1 = clamp01(x0 + (Math.sign(dxp || 1) * c) / r.width); y1 = clamp01(y0 + (Math.sign(dyp || 1) * c) / r.height);
+        }
+      }
+      return { x: Math.min(x0, x1), y: Math.min(y0, y1), width: Math.abs(x1 - x0), height: Math.abs(y1 - y0),
+        // sens du tracé : un trait part du point d'appui ; une accolade / un crochet / un
+        // triangle s'ouvrent vers là où on a tiré (vers la gauche ou le haut = retourné)
+        fx: x1 < x0, fy: y1 < y0 };
     };
+    const move = (ev) => { courant = calculer(ev); setTraceForme({ ...courant, type }); };
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       setTraceForme(null);
       let rect = courant;
-      if (!rect || rect.width < 0.015 || rect.height < 0.01) rect = { x: clamp(x0 - 0.1, 0, 0.8), y: clamp(y0 - 0.03, 0, 0.94), width: 0.2, height: 0.06 };
-      onCreerForme({ page: pageNum, ...rect });
+      const longueurPx = rect ? Math.hypot(rect.width * r.width, rect.height * r.height) : 0;
+      const tropPetit = !rect || (trait ? longueurPx < 8 : rect.width * r.width < 8 || rect.height * r.height < 8);
+      if (tropPetit) {
+        const t = tailleParDefaut(type, r.width / r.height);
+        rect = { x: clamp(x0 - t.width / 2, 0, 1 - t.width), y: clamp(y0 - t.height / 2, 0, 1 - t.height), width: t.width, height: t.height, fx: false, fy: false };
+      }
+      onCreerForme({ page: pageNum, ...rect, forme: type });
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -331,7 +355,8 @@ export function PdfPageContent({
      taille de la page, et le curseur est un rond dont le point chaud est au centre
      — ce qu'on voit sous le rond est ce qui s'efface. On peut cliquer (un trait)
      ou glisser (tous ceux qu'on traverse) ; un geste = UNE entrée d'annulation. */
-  const [masques, setMasques] = useState(null); // traits déjà gommés pendant le geste en cours
+  const [masques, setMasques] = useState(null); // traits (et formes) déjà gommés pendant le geste en cours
+  const pageRef = () => (canvasRef.current && canvasRef.current.closest('.pdfr-page')) || document;
   const RAYON_GOMME = 9; // px à l'écran : le rayon du curseur rond (voir etudes.css)
   const demarrerGomme = (e) => {
     if (e.button !== 0) return;
@@ -350,6 +375,16 @@ export function PdfPageContent({
         const y = prec ? prec[1] + ((cy - prec[1]) * k) / pas : cy;
         const px = (x - r.left) / r.width, py = (y - r.top) / r.height;
         for (const t of traits || []) if (!touches.has(t.id) && traitTouche(t, px, py, seuil)) touches.set(t.id, t);
+        // FORMES (05/10) : la gomme les efface aussi — test exact sur leur tracé SVG
+        // (isPointInStroke, élargi du rayon de la gomme), intérieur compris si remplie
+        if (formes && formes.length) {
+          for (const el of pageRef().querySelectorAll('path.pf-gomme')) {
+            const id = el.getAttribute('data-id');
+            if (touches.has(id)) continue;
+            const f = formes.find((q) => q.id === id);
+            if (f && formeSousPoint(el, x, y)) touches.set(id, f);
+          }
+        }
       }
       prec = [cx, cy];
       if (touches.size) setMasques(new Set(touches.keys()));
@@ -401,9 +436,8 @@ export function PdfPageContent({
         const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height, m = 0.012;
         const f = [...(formes || [])].reverse().find((q) => px >= q.x - m && px <= q.x + q.width + m && py >= q.y - m && py <= q.y + q.height + m);
         if (f) {
-          const aDroite = boiteEnAncrage.x > f.x + f.width / 2;
           onDemanderAncrage(null);
-          onModifierBoite(boiteEnAncrage, { ancre: { x: aDroite ? f.x + f.width : f.x, y: f.y + f.height / 2, texte: null }, fleche: true, formeId: f.id, surlignageId: null }, 'Boîte reliée à la forme');
+          onModifierBoite(boiteEnAncrage, { ancre: ancreSurForme(f, boiteEnAncrage), fleche: true, formeId: f.id, surlignageId: null }, 'Boîte reliée à la forme');
           return;
         }
         setViseeRatee(true); setTimeout(() => setViseeRatee(false), 1400); return;
@@ -605,16 +639,17 @@ export function PdfPageContent({
 
       {/* FORMES (03/10) : des annotations, donc au-dessus des images ; sélectionnables
           par leur BORD seulement (l'intérieur laisse passer les clics vers le texte). */}
-      {formes.map((f) => (
-        <FormeRect key={f.id} forme={f} active={f.id === formeActiveId} interactive={outil === 'main'}
-          liee={liesFormes.has(f.id)} pageHeight={pageHeight}
-          onActiver={onFormeActiver} onMaj={onFormeMaj} onSupprimer={onFormeSupprimer} onLegende={onFormeLegende}
+      {formes.map((f) => (masques && masques.has(f.id) ? null : (
+        <Forme key={f.id} forme={f} active={f.id === formeActiveId} interactive={outil === 'main'}
+          liee={liesFormes.has(f.id)} pageWidth={pageWidth} pageHeight={pageHeight}
+          onActiver={onFormeActiver} onMaj={onFormeMaj} onModifier={onFormeModifier} onSupprimer={onFormeSupprimer} onLegende={onFormeLegende}
           onGeste={(enCours) => { gesteBoite.current = enCours; }} />
-      ))}
+      )))}
       {outil === 'forme' && (
         <div className="pdfr-drawlayer pdfr-formelayer" onPointerDown={demarrerForme}>
           {traceForme && (
-            <div className="pdfr-forme-apercu" style={{ left: traceForme.x * 100 + '%', top: traceForme.y * 100 + '%', width: traceForme.width * 100 + '%', height: traceForme.height * 100 + '%', borderColor: couleurHex(couleurForme, '#e5383b') }} />
+            <Forme apercu forme={{ ...traceForme, forme: traceForme.type, couleur: couleurForme, remplie: formeRemplie, epaisseur: 0.0025 }}
+              pageWidth={pageWidth} pageHeight={pageHeight} />
           )}
         </div>
       )}
@@ -1204,16 +1239,41 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
 }
 
 /* ============================================================
-   FORME — RECTANGLE (03/10). Un cadre tracé sur la page. Sélection par son BORD
-   (quatre bandes de 8 px, seules sensibles à la souris : l'intérieur reste
-   transparent aux clics, on peut toujours sélectionner le texte encadré). Glisser
-   le bord = déplacer ; coins = redimensionner. Barre compacte : Légende (une boîte
-   reliée par une flèche) et Supprimer. Une entrée d'annulation par geste.
+   FORME (03/10 ; douze formes depuis le 05/10, voir formes.js). Dessinée en SVG,
+   dans sa boîte englobante, en pixels (trait net, pointes non déformées).
+   - Sélection par son TRACÉ seulement (une bande invisible de 14 px autour du
+     trait) : l'intérieur reste transparent aux clics, on peut toujours
+     sélectionner le texte encadré.
+   - Glisser le tracé = déplacer ; coins = redimensionner ; pour un trait (ligne,
+     flèche), ses deux BOUTS se glissent.
+   - Double-clic sur le tracé ou « Texte » = écrire une étiquette au centre.
+   - Barre compacte : Texte, Légende, couleur, remplissage, supprimer.
+   Une entrée d'annulation par geste.
    ============================================================ */
-function FormeRect({ forme, active, interactive, liee, pageHeight, onActiver, onMaj, onSupprimer, onLegende, onGeste }) {
-  const [apercu, setApercu] = useState(null);
-  const g = apercu || forme;
-  const geste = (e, type) => {
+function formeSousPoint(el, cx, cy) {
+  try {
+    const svg = el.ownerSVGElement;
+    const m = svg && svg.getScreenCTM();
+    if (!m) return false;
+    const pt = svg.createSVGPoint(); pt.x = cx; pt.y = cy;
+    const p = pt.matrixTransform(m.inverse());
+    return el.isPointInStroke(p) || (el.getAttribute('data-remplie') === '1' && el.isPointInFill(p));
+  } catch (e) { return false; }
+}
+
+function Forme({ forme, active = false, interactive = false, liee = false, apercu = false, pageWidth, pageHeight, onActiver, onMaj, onModifier, onSupprimer, onLegende, onGeste }) {
+  const [geste, setGeste] = useState(null);
+  const [ecrit, setEcrit] = useState(null); // texte en cours d'écriture (null = pas d'édition)
+  const g = geste || forme;
+  const type = typeForme(forme);
+  const trait = estTrait(type);
+  const W = pageWidth || 600, H = pageHeight || 800;
+  const ep = Math.max(1.5, (forme.epaisseur || 0.0025) * H);
+  const coul = couleurHex(forme.couleur, '#e5383b');
+  const wpx = g.width * W, hpx = g.height * H;
+  const { d, pointes } = cheminForme(type, wpx, hpx, { fx: !!g.fx, fy: !!g.fy, epaisseur: ep });
+
+  const demarrer = (e, typeGeste) => {
     if (e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
     const page = e.currentTarget.closest('.pdfr-page');
@@ -1224,52 +1284,107 @@ function FormeRect({ forme, active, interactive, liee, pageHeight, onActiver, on
     let bouge = false, courant = null;
     onGeste(true);
     onActiver(forme.id);
+    // extrémités d'un trait en fractions de page : [départ, arrivée]
+    const [a0, b0] = extremites(avant.width, avant.height, avant.fx, avant.fy).map((p) => ({ x: avant.x + p.x, y: avant.y + p.y }));
     const move = (ev) => {
       if (!bouge && Math.abs(ev.clientX - d0.x) + Math.abs(ev.clientY - d0.y) <= 3) return;
       bouge = true;
       const dx = (ev.clientX - d0.x) / r.width, dy = (ev.clientY - d0.y) / r.height;
-      if (type === 'move') {
+      if (typeGeste === 'move') {
         courant = { ...avant, x: clamp(avant.x + dx, 0, 1 - avant.width), y: clamp(avant.y + dy, 0, 1 - avant.height) };
+      } else if (typeGeste === 'debut' || typeGeste === 'fin') {
+        const a = typeGeste === 'debut' ? { x: clamp01(a0.x + dx), y: clamp01(a0.y + dy) } : a0;
+        const b = typeGeste === 'fin' ? { x: clamp01(b0.x + dx), y: clamp01(b0.y + dy) } : b0;
+        courant = { ...avant, x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y), fx: a.x > b.x, fy: a.y > b.y };
       } else {
         let { x, y, width: w, height: h } = avant;
-        if (type.includes('e')) w = clamp(avant.width + dx, 0.015, 1 - avant.x);
-        if (type.includes('s')) h = clamp(avant.height + dy, 0.01, 1 - avant.y);
-        if (type.includes('w')) { const nx = clamp(avant.x + dx, 0, avant.x + avant.width - 0.015); w = avant.width + (avant.x - nx); x = nx; }
-        if (type.includes('n')) { const ny = clamp(avant.y + dy, 0, avant.y + avant.height - 0.01); h = avant.height + (avant.y - ny); y = ny; }
+        if (typeGeste.includes('e')) w = clamp(avant.width + dx, 0.015, 1 - avant.x);
+        if (typeGeste.includes('s')) h = clamp(avant.height + dy, 0.01, 1 - avant.y);
+        if (typeGeste.includes('w')) { const nx = clamp(avant.x + dx, 0, avant.x + avant.width - 0.015); w = avant.width + (avant.x - nx); x = nx; }
+        if (typeGeste.includes('n')) { const ny = clamp(avant.y + dy, 0, avant.y + avant.height - 0.01); h = avant.height + (avant.y - ny); y = ny; }
         courant = { ...avant, x, y, width: w, height: h };
       }
-      setApercu(courant);
+      setGeste(courant);
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       onGeste(false);
-      setApercu(null);
-      if (bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de la forme' : 'Redimension de la forme');
+      setGeste(null);
+      if (bouge && courant) onMaj(avant, courant, typeGeste === 'move' ? 'Déplacement de la forme' : 'Redimension de la forme');
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
-  const ep = Math.max(1.5, (forme.epaisseur || 0.0025) * (pageHeight || 800));
-  const coul = couleurHex(forme.couleur, '#e5383b');
+
+  const finirTexte = (valider) => {
+    if (ecrit === null) return;
+    const t = ecrit.trim();
+    setEcrit(null);
+    if (valider && t !== (forme.texte || '')) onModifier(forme, { texte: t || null }, t ? 'Texte de la forme' : 'Texte de la forme retiré');
+  };
   const stop = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onClick: (e) => { e.stopPropagation(); fn(); } });
+  const couleurTexte = couleurFoncee(forme.couleur);
+
   return (
-    <div className={'pdfr-forme' + (active ? ' active' : '') + (liee ? ' liee' : '') + (interactive ? ' interactive' : '') + (apercu ? ' glisse' : '')}
-      style={{ left: g.x * 100 + '%', top: g.y * 100 + '%', width: g.width * 100 + '%', height: g.height * 100 + '%', borderWidth: ep, borderColor: coul }}
-      tabIndex={-1} onKeyDown={(e) => { if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onSupprimer(forme); } }}>
-      {interactive && ['n', 's', 'e', 'w'].map((c) => (
-        <span key={c} className={'pf-bord pf-' + c} onPointerDown={(e) => { e.currentTarget.parentElement.focus({ preventScroll: true }); geste(e, 'move'); }}
-          title="Forme · glisser le bord pour déplacer · Suppr pour retirer" />
+    <div className={'pdfr-forme' + (active ? ' active' : '') + (liee ? ' liee' : '') + (interactive ? ' interactive' : '') + (geste || apercu ? ' glisse' : '')}
+      data-forme={type}
+      style={{ left: g.x * 100 + '%', top: g.y * 100 + '%', width: g.width * 100 + '%', height: g.height * 100 + '%' }}
+      tabIndex={-1} onKeyDown={(e) => { if (ecrit === null && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); onSupprimer(forme); } }}>
+      <svg className="pf-svg" width="100%" height="100%" overflow="visible" aria-hidden="true">
+        <path className="pf-trace" d={d} fill={forme.remplie && estFermee(type) ? avecAlpha(coul, 0.18) : 'none'} stroke={coul} strokeWidth={ep}
+          strokeLinecap="round" strokeLinejoin="round" />
+        {pointes.map((p, i) => <path key={i} d={p} fill={coul} stroke={coul} strokeWidth={Math.min(ep, 2)} strokeLinejoin="round" />)}
+        {!apercu && (
+          <path className="pf-gomme" data-id={forme.id} data-remplie={forme.remplie && estFermee(type) ? '1' : '0'} d={d}
+            fill="transparent" stroke="transparent" strokeWidth={ep + 18} strokeLinecap="round" />
+        )}
+        {interactive && (
+          <path className="pf-hit" d={d} fill="none" stroke="transparent" strokeWidth={Math.max(14, ep + 10)} strokeLinecap="round"
+            onPointerDown={(e) => { e.currentTarget.closest('.pdfr-forme').focus({ preventScroll: true }); demarrer(e, 'move'); }}
+            onDoubleClick={(e) => { e.stopPropagation(); setEcrit(forme.texte || ''); }}>
+            <title>Forme · glisser pour déplacer · double-clic pour écrire · Suppr pour retirer</title>
+          </path>
+        )}
+      </svg>
+      {(forme.texte || ecrit !== null) && (
+        <div className={'pf-texte' + (trait ? ' sur-trait' : '')} style={{ color: couleurTexte }}>
+          {ecrit !== null ? (
+            <textarea autoFocus value={ecrit} rows={Math.max(1, ecrit.split('\n').length)} placeholder="Texte…"
+              onChange={(e) => setEcrit(e.target.value)}
+              onPointerDown={(e) => e.stopPropagation()}
+              onBlur={() => finirTexte(true)}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Escape') { e.preventDefault(); finirTexte(false); }
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); finirTexte(true); }
+              }} />
+          ) : <span>{forme.texte}</span>}
+        </div>
+      )}
+      {interactive && active && !trait && ['nw', 'ne', 'sw', 'se'].map((c) => (
+        <span key={c} className={'pi-coin pi-' + c} onPointerDown={(e) => demarrer(e, c)} />
       ))}
-      {interactive && active && ['nw', 'ne', 'sw', 'se'].map((c) => (
-        <span key={c} className={'pi-coin pi-' + c} onPointerDown={(e) => geste(e, c)} />
+      {interactive && active && trait && extremites(100, 100, !!g.fx, !!g.fy).map((p, i) => (
+        <span key={i} className="pf-bout" style={{ left: p.x + '%', top: p.y + '%' }} title={i ? 'Glisser la pointe' : 'Glisser le départ'}
+          onPointerDown={(e) => demarrer(e, i ? 'fin' : 'debut')} />
       ))}
-      {interactive && active && (
-        <div className={'nb-actions pf-actions' + (g.y < 0.05 ? ' dessous' : '')} onPointerDown={(e) => e.stopPropagation()}>
+      {interactive && active && !geste && (
+        <div className={'nb-actions pf-actions' + (g.y < 0.05 ? ' dessous' : '') + (g.x + g.width / 2 > 0.5 ? ' a-droite' : '')} onPointerDown={(e) => e.stopPropagation()}>
+          <button type="button" className={'nb-act' + (forme.texte ? ' actif' : '')} {...stop(() => setEcrit(forme.texte || ''))} title="Écrire un texte dans la forme (ou double-clic sur la forme)">
+            <IconeOutil nom="etiquette" size={12} /> Texte
+          </button>
           <button type="button" className="nb-act" {...stop(() => onLegende(forme))} title="Ajouter une légende : une boîte de texte reliée à cette forme par une flèche">
             <IconeOutil nom="legende" size={12} /> Légende
           </button>
-          <button type="button" className="nb-act danger" {...stop(() => onSupprimer(forme))} title={`Supprimer la forme (annulable par ${RACCOURCI_Z})`}>
+          <BoutonCouleur couleur={forme.couleur} titre="Couleur de la forme" onCouleur={(c) => onModifier(forme, { couleur: c }, 'Couleur de la forme')} />
+          {estFermee(type) && (
+            <button type="button" className={'nb-act' + (forme.remplie ? ' actif' : '')} {...stop(() => onModifier(forme, { remplie: !forme.remplie }, forme.remplie ? 'Forme vidée' : 'Forme remplie'))}
+              title={forme.remplie ? 'Retirer le fond' : 'Remplir d’une teinte légère de sa couleur'}>
+              <IconeOutil nom="remplir" size={12} />
+            </button>
+          )}
+          <button type="button" className="nb-act danger" {...stop(() => onSupprimer(forme))} title={`Supprimer la forme (annulable par ${RACCOURCI_Z}, ou à la gomme)`}>
             <Icon name="trash" size={12} />
           </button>
         </div>

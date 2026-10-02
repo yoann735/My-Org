@@ -71,7 +71,8 @@ import {
 import { PdfPageContent, EditToolbar } from './PdfPage.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
 import { SelecteurCouleurs, ReglagesTrait, dansSelecteurFlottant } from './Couleurs.jsx';
-import { IconeOutil } from './IconesOutils.jsx';
+import { IconeOutil, IconeForme } from './IconesOutils.jsx';
+import { TYPES_FORMES, estTrait, estFermee, ancreSurForme } from './formes.js';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
@@ -171,6 +172,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [couleurSurligneur, setCouleurSurligneur] = useState('jaune');
   const [couleurCrayon, setCouleurCrayon] = useState('bleu');
   const [couleurForme, setCouleurForme] = useState('#e5383b'); // cadre rouge par défaut : il se voit sur la page
+  /* FORMES (05/10) : la forme à poser et son remplissage, mémorisés sur l'appareil
+     (préférence d'affichage) — on retrouve sa dernière forme en un clic. */
+  const [typeFormeActif, setTypeFormeActifBrut] = useState(() => { try { return localStorage.getItem('medrevise.typeForme') || 'rectangle'; } catch (e) { return 'rectangle'; } });
+  const setTypeFormeActif = (t) => { setTypeFormeActifBrut(t); try { localStorage.setItem('medrevise.typeForme', t); } catch (e) { /* ignore */ } };
+  const [formeRemplie, setFormeRemplie] = useState(false);
   const [couleurTexte, setCouleurTexte] = useState('noir'); // couleur du prochain TEXTE LIBRE
   /* RÉGLAGES DU CRAYON (03/10) : TAILLE et OPACITÉ, deux curseurs, réglés séparément
      pour chaque mode (dessin / surligneur à main levée) et mémorisés sur l'appareil
@@ -1029,10 +1035,15 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     await hist.appliquer(cmdCreer('annotations', rec, surligneur ? 'Surligneur à main levée' : 'Trait au crayon'));
   };
   // gomme : UN geste = UNE entrée d'historique, même s'il a traversé plusieurs traits
+  // (05/10) la gomme efface aussi les FORMES : leurs légendes sont déliées, comme à la suppression
   const supprimerTraits = async (liste) => {
-    const cmds = (liste || []).filter(Boolean).map((t) => cmdSupprimer('annotations', t, 'Gomme'));
+    const elems = (liste || []).filter(Boolean);
+    const cmds = elems.flatMap((t) => (t.kind === 'forme' ? cmdsSuppressionForme(t, 'Gomme') : [cmdSupprimer('annotations', t, 'Gomme')]));
     if (!cmds.length) return;
-    await hist.appliquer(cmdGroupe(`Gomme (${cmds.length} traits)`, cmds));
+    const nf = elems.filter((t) => t.kind === 'forme').length, nt = elems.length - nf;
+    if (nf && formeActiveId && elems.some((t) => t.id === formeActiveId)) setFormeActiveId(null);
+    const detail = [nt ? `${nt} trait${nt > 1 ? 's' : ''}` : '', nf ? `${nf} forme${nf > 1 ? 's' : ''}` : ''].filter(Boolean).join(', ');
+    await hist.appliquer(cmdGroupe(`Gomme (${detail})`, cmds));
   };
 
   /* ---- PAGES AJOUTÉES (01/10) ----
@@ -1080,30 +1091,54 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      Un cadre tracé (outil « Forme », qui reste actif pour enchaîner) ; « Légende »
      pose une boîte reliée par une flèche (formeId côté boîte, comme surlignageId). */
   const [formeActiveId, setFormeActiveId] = useState(null);
-  const creerForme = ({ page, x, y, width, height }) => {
-    const rec = newForme({ ficheId, page, x, y, width, height, couleur: couleurForme });
+  const creerForme = ({ page, x, y, width, height, forme, fx, fy }) => {
+    const rec = newForme({ ficheId, page, x, y, width, height, couleur: couleurForme, forme, fx, fy, remplie: formeRemplie && estFermee(forme) });
     hist.appliquer(cmdCreer('annotations', rec, 'Forme'));
   };
+  /* déplacer / redimensionner une forme : ses LÉGENDES suivent (05/10) — l'épingle
+     de chaque boîte reliée est recalculée sur la nouvelle position, dans la même
+     entrée d'annulation (avant : la flèche restait pointée sur l'ancienne place). */
   const majForme = (avant, apres, libelle) => {
     const actuel = edits.find((a) => a.id === avant.id) || avant;
-    hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, ...GEO(apres) }, libelle));
+    const nouvelle = { ...actuel, ...GEO(apres), ...(apres.fx !== undefined ? { fx: !!apres.fx, fy: !!apres.fy } : {}) };
+    const suivent = edits.filter((b) => b.kind === 'libre' && (b.formeId === actuel.id || (b.fleches || []).some((fl) => fl.formeId === actuel.id)));
+    const cmds = suivent.map((b) => cmdModifier('annotations', b, {
+      ...b,
+      ...(b.formeId === actuel.id && b.ancre ? { ancre: ancreSurForme(nouvelle, b) } : {}),
+      ...(b.fleches ? { fleches: b.fleches.map((fl) => (fl.formeId === actuel.id ? { ...fl, ...ancreSurForme(nouvelle, b) } : fl)) } : {}),
+    }, 'Légende déplacée avec sa forme'));
+    const cmd = cmdModifier('annotations', actuel, nouvelle, libelle);
+    hist.appliquer(cmds.length ? cmdGroupe(libelle, [cmd, ...cmds]) : cmd);
+  };
+  // texte, couleur, remplissage d'une forme
+  const modifierForme = (f, patch, libelle) => {
+    const actuel = edits.find((a) => a.id === f.id) || f;
+    if (patch.couleur) setCouleurForme(patch.couleur); // la prochaine forme hérite du dernier choix
+    hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, ...patch }, libelle));
   };
   // supprimer une forme DÉLIE ses légendes (elles restent, sans flèche dans le vide) —
   // une seule entrée d'annulation
+  const cmdsSuppressionForme = (f, libelle) => {
+    const legendes = edits.filter((a) => a.formeId === f.id || (a.fleches || []).some((fl) => fl.formeId === f.id));
+    return [
+      ...legendes.map((b) => cmdModifier('annotations', b, {
+        ...b,
+        ...(b.formeId === f.id ? { formeId: null, ancre: null, fleche: false } : {}),
+        ...(b.fleches ? { fleches: b.fleches.filter((fl) => fl.formeId !== f.id) } : {}),
+      }, 'Légende déliée')),
+      cmdSupprimer('annotations', f, libelle),
+    ];
+  };
   const supprimerForme = (f) => {
     if (formeActiveId === f.id) setFormeActiveId(null);
-    const legendes = edits.filter((a) => a.formeId === f.id);
-    hist.appliquer(cmdGroupe('Suppression de la forme', [
-      ...legendes.map((b) => cmdModifier('annotations', b, { ...b, formeId: null, ancre: null, fleche: false }, 'Légende déliée')),
-      cmdSupprimer('annotations', f, 'Suppression de la forme'),
-    ]));
+    hist.appliquer(cmdGroupe('Suppression de la forme', cmdsSuppressionForme(f, 'Suppression de la forme')));
   };
   const creerLegende = (f) => {
     const W = BOITE_DEFAUT.width, Hb = BOITE_DEFAUT.height;
     const aDroite = f.x + f.width + 0.03 + W <= 0.99;
     const x = aDroite ? f.x + f.width + 0.03 : Math.max(0.01, f.x - 0.03 - W);
     const y = Math.max(0, Math.min(1 - Hb, f.y + f.height / 2 - Hb / 2));
-    const ancre = { x: aDroite ? f.x + f.width : f.x, y: f.y + f.height / 2, texte: null };
+    const ancre = ancreSurForme(f, { x });
     const rec = { ...newNoteBox({ ficheId, page: f.page, x, y, width: W, height: Hb, couleur: couleurActive }), ancre, fleche: true, formeId: f.id };
     hist.appliquer(cmdCreer('annotations', rec, 'Légende de la forme'));
     videsFraiches.current.add(rec.id);
@@ -1112,7 +1147,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   };
   useEffect(() => {
     if (!formeActiveId) return undefined;
-    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.pdfr-forme'))) setFormeActiveId(null); };
+    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.pdfr-forme')) && !dansSelecteurFlottant(e.target)) setFormeActiveId(null); };
     const onKey = (e) => { if (e.key === 'Escape') setFormeActiveId(null); };
     window.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey);
@@ -1438,7 +1473,26 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         contexteSupplementaire={outil === 'boite' ? (
           <SelecteurCouleurs couleur={couleurActive} onCouleur={setCouleurActive} titre="Couleur de la boîte" />
         ) : outil === 'forme' ? (
-          <SelecteurCouleurs couleur={couleurForme} onCouleur={setCouleurForme} titre="Couleur du cadre" />
+          <>
+            <div className="ptb-formes" role="group" aria-label="Forme à poser">
+              {TYPES_FORMES.map((t) => (
+                <button key={t.id} type="button" className={'ptb-forme' + (typeFormeActif === t.id ? ' actif' : '')}
+                  title={`${t.label} — clic sur la page pour la poser, glisser pour l’étirer (Maj : ${estTrait(t.id) ? 'angle de 45°' : 'proportions gardées'})`}
+                  onClick={() => setTypeFormeActif(t.id)}>
+                  <IconeForme type={t.id} size={17} />
+                </button>
+              ))}
+            </div>
+            <span className="ptb-sep" />
+            <SelecteurCouleurs couleur={couleurForme} onCouleur={setCouleurForme} titre="Couleur de la forme" />
+            {estFermee(typeFormeActif) && (<>
+              <span className="ptb-sep" />
+              <button type="button" className={'ptb-bascule' + (formeRemplie ? ' actif' : '')} onClick={() => setFormeRemplie((v) => !v)}
+                title="Remplir la forme d’une teinte légère de sa couleur">
+                <IconeOutil nom="remplir" size={14} /> {formeRemplie ? 'Remplie' : 'Vide'}
+              </button>
+            </>)}
+          </>
         ) : outil === 'surligneur' ? (
           <SelecteurCouleurs couleur={couleurSurligneur} onCouleur={setCouleurSurligneur} titre="Couleur du surligneur" />
         ) : outil === 'texte' ? (
@@ -1568,7 +1622,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       formeActiveId={formeActiveId}
                       onFormeActiver={(id) => { setFormeActiveId(id); setImageActiveId(null); setActiveEditId(null); }}
                       onCreerForme={creerForme} onFormeMaj={majForme} onFormeSupprimer={supprimerForme} onFormeLegende={creerLegende}
-                      couleurForme={couleurForme}
+                      onFormeModifier={modifierForme}
+                      couleurForme={couleurForme} typeFormeActif={typeFormeActif} formeRemplie={formeRemplie}
                       imageActiveId={imageActiveId}
                       onImageActiver={(id) => { setImageActiveId(id); setActiveEditId(null); }}
                       onImageMaj={majImage} onImageCalque={changerCalque} onImageSupprimer={supprimerImage}

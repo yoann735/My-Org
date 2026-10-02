@@ -20,6 +20,7 @@
    ============================================================ */
 import { PDFDocument, BlendMode, StandardFonts, rgb } from 'pdf-lib';
 import { getBlob } from '../lib/storage.js';
+import { cheminForme, typeForme, estFermee, estTrait } from './formes.js';
 import { separerParType } from '../lib/annotationTypes.js';
 import { COLOR_RGB, couleurHex, couleurFoncee, opaciteFondBoite, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, modeDuTrait } from './pdfShared.js';
 
@@ -220,14 +221,33 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     bilan.traits += 1;
   }
 
-  /* 5 bis. FORMES (03/10) : le cadre seul, sans fond */
+  /* 5 bis. FORMES (03/10 ; douze formes depuis le 05/10) : LE MÊME tracé qu'à
+        l'écran (pdf/formes.js#cheminForme), fond translucide si remplie, pointes
+        pleines, étiquette de texte au centre. */
   bilan.formes = 0;
   for (const f of par.forme) {
     const page = pageDe(f.page);
     if (!page) { bilan.ignores += 1; continue; }
     const { W, H } = dims(page);
-    page.drawRectangle({ x: f.x * W, y: H - (f.y + f.height) * H, width: f.width * W, height: f.height * H,
-      borderColor: hexVersRgb(couleurHex(f.couleur, '#e5383b')), borderWidth: Math.max(0.8, (f.epaisseur || 0.0025) * H) });
+    const type = typeForme(f);
+    const ep = Math.max(0.8, (f.epaisseur || 0.0025) * H);
+    const coul = hexVersRgb(couleurHex(f.couleur, '#e5383b'));
+    const { d, pointes } = cheminForme(type, f.width * W, f.height * H, { fx: !!f.fx, fy: !!f.fy, epaisseur: ep });
+    const origine = { x: f.x * W, y: H - f.y * H };
+    page.drawSvgPath(d, { ...origine, borderColor: coul, borderWidth: ep, borderLineCap: 1,
+      ...(f.remplie && estFermee(type) ? { color: coul, opacity: 0.18 } : {}) });
+    pointes.forEach((pd) => page.drawSvgPath(pd, { ...origine, color: coul }));
+    if (f.texte && String(f.texte).trim()) {
+      const taille = TAILLE_BOITE;
+      const lignes = String(f.texte).split('\n').map(propre);
+      const lh = taille * 1.25;
+      const cx = (f.x + f.width / 2) * W;
+      const cy = H - (f.y + f.height / 2) * H + (estTrait(type) ? lh : 0);
+      lignes.forEach((l, i) => {
+        const tw = font.widthOfTextAtSize(l, taille);
+        page.drawText(l, { x: cx - tw / 2, y: cy + ((lignes.length - 1) / 2 - i) * lh - taille * 0.35, size: taille, font, color: hexVersRgb(couleurFoncee(f.couleur)) });
+      });
+    }
     bilan.formes += 1;
   }
 

@@ -11,6 +11,7 @@
    même grille 24×24, même trait (currentColor, 1.8, bouts ronds) pour rester
    cohérent avec le reste de l'interface.
    ============================================================ */
+import { cheminForme, estTrait } from './formes.js';
 
 const DESSINS = {
   // flèche de sélection (curseur)
@@ -86,6 +87,11 @@ const DESSINS = {
     <path d="M10 13 14 9" />
     <rect x="13" y="3" width="8" height="6" rx="1" />
   </>),
+  // étiquette de texte dans une forme
+  etiquette: (<>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M9 9.5h6M12 9.5v5.5" />
+  </>),
   // aimant (lissage du trait)
   aimant: <path d="M6 3h4v8a2 2 0 0 0 4 0V3h4v8a6 6 0 0 1-12 0V3Zm0 4h4m4 0h4" />,
   // remplissage (pot de peinture simplifié : forme pleine)
@@ -95,6 +101,23 @@ const DESSINS = {
     <path d="M20 15.5s1.5 1.8 1.5 3a1.5 1.5 0 0 1-3 0c0-1.2 1.5-3 1.5-3Z" />
   </>),
 };
+
+/** <IconeForme type="ellipse" /> — dessinée avec LE MÊME tracé que la forme posée
+    (formes.js) : ce que montre le bouton est exactement ce qui sera posé. */
+export function IconeForme({ type, size = 16 }) {
+  const trait = estTrait(type);
+  const box = type === 'accolade' || type === 'crochet' ? { w: 8, h: 17 } : trait ? { w: 16, h: 16 } : type === 'rectangle' || type === 'arrondi' ? { w: 18, h: 13 } : { w: 17, h: 17 };
+  const { d, pointes } = cheminForme(type, box.w, box.h, { fy: trait, tete: 6 });
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <g transform={`translate(${(24 - box.w) / 2} ${(24 - box.h) / 2})`}>
+        <path d={d} />
+        {pointes.map((p, i) => <path key={i} d={p} fill="currentColor" stroke="none" />)}
+      </g>
+    </svg>
+  );
+}
 
 /** <IconeOutil nom="gomme" size={15} /> — repli sur un carré si le nom est inconnu. */
 export function IconeOutil({ nom, size = 16, className, style }) {
