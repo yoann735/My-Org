@@ -131,7 +131,7 @@ export function EcranDessin({ ctx, onQuit }) {
   return (
     <>
       <MobileDessin onQuit={onQuit} canvasRef={canvasRef}
-        barreHaut={<button type="button" className="md-exporter" onClick={() => setFeuille(true)}><Icon name="upload" size={16} /> Exporter</button>} />
+        barreHaut={<button type="button" className="md-exporter" onClick={() => setFeuille(true)} aria-label="Exporter"><Icon name="upload" size={16} /><span className="md-lbl">Exporter</span></button>} />
       {(feuille || envoi) && (
         <FeuilleExport ctx={ctx} active={active} envoi={envoi}
           onEnvoyer={envoyer}

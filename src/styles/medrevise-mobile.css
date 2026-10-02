@@ -350,3 +350,20 @@
 .md-format-actions { gap: 6px; }
 .md-format-cible { font-size: 11px; color: rgba(235,235,245,.6); text-transform: none; letter-spacing: 0; padding-left: 6px; font-weight: 600; }
 .md-format-cible.mot { color: #0a84ff; }
+
+/* ---- PAYSAGE (02/10 nuit) : commandes sur les côtés, canvas maximal ---- */
+.md.md-paysage { flex-direction: row; padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.md-paysage .md-haut { flex-direction: column; width: 56px; padding: 8px 6px; gap: 6px; border: 0; justify-content: flex-start; }
+.md-paysage .md-haut > span { flex: 1; }
+.md-paysage .md-btn { width: 44px; height: 40px; }
+.md-paysage .md-exporter { width: 44px; height: 44px; padding: 0; justify-content: center; }
+.md-paysage .md-exporter .md-lbl { display: none; }
+.md-paysage .md-scene { height: 100%; }
+.md-paysage .md-dock { left: auto; right: calc(8px + env(safe-area-inset-right)); top: 8px; bottom: 8px; flex-direction: row; justify-content: flex-end; align-items: flex-start; gap: 8px; }
+.md-paysage .md-dock .md-outils { flex-direction: column; padding: 5px; gap: 2px; border-radius: 20px; max-height: 100%; overflow-y: auto; scrollbar-width: none; }
+.md-paysage .md-dock .md-outil { width: 44px; height: 44px; padding: 0; justify-content: center; flex: 0 0 auto; }
+.md-paysage .md-dock .md-outil span { display: none; }
+.md-paysage .md-carte { width: min(320px, 46vw); max-height: 100%; overflow-y: auto; padding: 10px 12px; gap: 10px; }
+.md-paysage .md-carte .md-aide { display: none; }
+.md-paysage .md-format { left: 64px; right: 70px; }
+.md-paysage .md-vide { top: 44%; }

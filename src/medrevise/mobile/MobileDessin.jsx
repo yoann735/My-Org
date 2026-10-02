@@ -289,7 +289,19 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
 
   const svgRef = useRef(null), mondeRef = useRef(null), traitRef = useRef(null);
   const [tailleIdx, setTailleIdx] = useState(1);
-  const [carteOuverte, setCarteOuverte] = useState(true);
+  /* PAYSAGE (02/10 nuit) : téléphone à l'horizontale → les commandes passent sur les
+     CÔTÉS (rail à gauche, outils à droite) et la carte des réglages ne s'ouvre qu'à la
+     demande (toucher l'outil actif) : le canvas prend toute la place. */
+  const requetePaysage = '(orientation: landscape) and (max-height: 500px)';
+  const [paysage, setPaysage] = useState(() => typeof window !== 'undefined' && window.matchMedia && window.matchMedia(requetePaysage).matches);
+  const [carteOuverte, setCarteOuverte] = useState(() => !(typeof window !== 'undefined' && window.matchMedia && window.matchMedia(requetePaysage).matches));
+  useEffect(() => {
+    if (!window.matchMedia) return undefined;
+    const mq = window.matchMedia(requetePaysage);
+    const maj = () => { setPaysage(mq.matches); setCarteOuverte(!mq.matches); };
+    mq.addEventListener('change', maj);
+    return () => mq.removeEventListener('change', maj);
+  }, []);
   const [lisse, setLisseBrut] = useState(() => { try { return localStorage.getItem('medrevise.dessinLisse') !== '0'; } catch (e) { return true; } });
   const setLisse = (v) => { setLisseBrut(v); try { localStorage.setItem('medrevise.dessinLisse', v ? '1' : '0'); } catch (e) { /* ignore */ } };
   /* ============================================================
@@ -759,7 +771,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
   const couleurActive = outil === 'surligneur' ? couleurSurl : couleur;
 
   return (
-    <div className={'md' + (edition ? ' md-ecriture' : '')} ref={racineRef}>
+    <div className={'md' + (edition ? ' md-ecriture' : '') + (paysage ? ' md-paysage' : '')} ref={racineRef}>
       <div className="md-haut">
         <button type="button" className="md-btn" onClick={onRetour} aria-label="Retour"><Icon name="chevL" size={18} /></button>
         <button type="button" className="md-btn" onClick={annuler} disabled={!passe.length} aria-label="Annuler"><IconeOutil nom="annuler" size={19} /></button>

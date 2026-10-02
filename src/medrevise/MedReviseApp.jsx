@@ -32,7 +32,7 @@ import { runMigrations } from './lib/migrate.js';
 import { marquerSyncReussie } from './lib/syncStatus.js';
 import { todayISO, startAdaptive } from './lib/sm2.js';
 import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor, linkedV2Questions } from './lib/planning.js';
-import { useIsMobile } from '../shared/hooks/useMediaQuery.js';
+import { useMediaQuery } from '../shared/hooks/useMediaQuery.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
 
 // C — 'documents'/'pdflist'/'transcript' ont disparu : Bibliothèque absorbe la liste
@@ -67,7 +67,10 @@ function MedBottomNav({ current, onNav, focus }) {
 
 export default function MedReviseApp({ themeApi, goHub }) {
   const { theme, toggleTheme } = themeApi;
-  const isMobile = useIsMobile(); // petit écran → shell mobile dédié (voir mobile/MobileApp.jsx)
+  // petit écran → shell mobile dédié (voir mobile/MobileApp.jsx). Aussi un TÉLÉPHONE À
+  // L'HORIZONTALE (écran tactile de moins de 500 px de haut) : plus large que 760 px, il
+  // basculait sur l'interface d'ordinateur — et démontait le dessin en pleine rotation.
+  const isMobile = useMediaQuery('(max-width: 760px), (max-height: 500px) and (pointer: coarse)');
   // MODE FOCUS (lib/focusMode.js) : lu AVANT le premier rendu, ce qui fait toute la
   // persistance — au rechargement on repart directement sur Prise de notes.
   const [focusNotes, setFocusNotesState] = useState(() => estFocusNotes());
