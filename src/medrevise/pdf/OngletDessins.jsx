@@ -117,10 +117,11 @@ export function OngletDessins({ dessins, posesBlobIds, essai, onPoser, onRetirer
    Pendant un glisser, le menu devient transparent aux clics : on peut déposer sur la
    partie de la page qu'il recouvre. Il se referme au dépôt, à Échap, au clic dehors.
    ============================================================ */
-export function MenuDessins({ dessins, posesBlobIds, essai, onPoser, onRetirer, pdfPret }) {
+export function MenuDessins({ dessins, posesBlobIds, essai, onPoser, onRetirer, pdfPret, boutonRef = null, pulse = 0 }) {
   const [ouvert, setOuvert] = useState(null); // { x, y } sous le bouton
   const [glisse, setGlisse] = useState(false);
-  const btnRef = useRef(null), menuRef = useRef(null);
+  const btnInterne = useRef(null), menuRef = useRef(null);
+  const btnRef = boutonRef || btnInterne;
   const nouveaux = dessins.filter((d) => !posesBlobIds.has(d.blobId)).length;
   useEffect(() => {
     if (!ouvert) return undefined;
@@ -140,7 +141,7 @@ export function MenuDessins({ dessins, posesBlobIds, essai, onPoser, onRetirer, 
   };
   return (
     <>
-      <button ref={btnRef} type="button" className={'ptb-outil ptb-dessins' + (ouvert ? ' actif' : '')}
+      <button ref={btnRef} key={'pulse' + pulse} type="button" className={'ptb-outil ptb-dessins' + (ouvert ? ' actif' : '') + (pulse ? ' pulse' : '')}
         title="Dessins reçus du téléphone — les glisser sur une page du PDF"
         onClick={() => (ouvert ? setOuvert(null) : ouvrir())}>
         <IconeOutil nom="dessins" size={16} /><span className="ptb-outil-lbl">Dessins</span>
@@ -164,5 +165,58 @@ export function MenuDessins({ dessins, posesBlobIds, essai, onPoser, onRetirer, 
         document.body,
       )}
     </>
+  );
+}
+
+/* ============================================================
+   ARRIVÉE D'UN DESSIN (02/10 nuit) — sans aucun clic : dès que le sondage voit un
+   dessin nouveau pour CETTE fiche, une carte en verre arrive sous la barre (ressort
+   doux, la vignette se dévoile), avec « Poser » et la vignette elle-même glissable
+   vers la page. Ignorée, elle s'en va au bout de 8 s (pause au survol) en
+   S'ENVOLANT dans le bouton Dessins : on voit où le dessin est rangé.
+   ============================================================ */
+export function ArriveeDessin({ dessin, autres = 0, cible, onPoser, onFermer, pdfPret }) {
+  const [phase, setPhase] = useState('entree'); // entree | la | envol | sortie
+  const [vol, setVol] = useState(null);
+  const carteRef = useRef(null), survol = useRef(false), minuteur = useRef(null);
+  const partir = (versBouton) => {
+    clearTimeout(minuteur.current);
+    if (versBouton && cible && cible.current && carteRef.current) {
+      const a = carteRef.current.getBoundingClientRect(), b = cible.current.getBoundingClientRect();
+      setVol({ x: b.left + b.width / 2 - (a.left + a.width / 2), y: b.top + b.height / 2 - (a.top + a.height / 2) });
+      setPhase('envol');
+    } else setPhase('sortie');
+    setTimeout(onFermer, versBouton ? 520 : 260);
+  };
+  const armer = () => { clearTimeout(minuteur.current); minuteur.current = setTimeout(() => { if (!survol.current) partir(true); else armer(); }, 8000); };
+  useEffect(() => { const t = setTimeout(() => setPhase('la'), 20); armer(); return () => { clearTimeout(t); clearTimeout(minuteur.current); }; }, [dessin.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pos = (() => {
+    const b = cible && cible.current ? cible.current.getBoundingClientRect() : null;
+    const W = 320;
+    return b ? { left: Math.max(12, Math.min(b.left + b.width / 2 - W / 2, window.innerWidth - W - 12)), top: b.bottom + 12 } : { right: 24, top: 120 };
+  })();
+  return createPortal(
+    <div ref={carteRef} className={'ad ad-' + phase} role="status" aria-live="polite" style={{ ...pos, ...(vol ? { '--vx': `${vol.x}px`, '--vy': `${vol.y}px` } : {}) }}
+      onMouseEnter={() => { survol.current = true; }} onMouseLeave={() => { survol.current = false; }}>
+      <div className="ad-tete">
+        <span className="ad-ic"><IconeOutil nom="dessins" size={15} /></span>
+        <div className="ad-titres">
+          <b>Nouveau dessin{autres > 0 ? ` (+${autres})` : ''}</b>
+          <small>Depuis ton téléphone · à l’instant</small>
+        </div>
+        <button type="button" className="ad-x" onClick={() => partir(true)} title="Ranger dans Dessins"><Icon name="x" size={13} /></button>
+      </div>
+      <div className="ad-vignette" draggable={pdfPret}
+        onDragStart={(e) => { e.dataTransfer.setData(TYPE_GLISSER, dessin.id); e.dataTransfer.effectAllowed = 'copy'; const img = e.currentTarget.querySelector('img'); if (img) e.dataTransfer.setDragImage(img, img.width / 2, img.height / 2); }}
+        onDragEnd={(e) => { if (e.dataTransfer.dropEffect !== 'none') partir(false); }}
+        title={pdfPret ? 'Glisser sur une page du PDF' : ''}>
+        <Vignette dessin={dessin} essai={0} />
+      </div>
+      <div className="ad-actions">
+        <button type="button" className="ad-sec" onClick={() => partir(true)}>Plus tard</button>
+        <button type="button" className="ad-pri" disabled={!pdfPret} onClick={() => { partir(false); onPoser(dessin); }}>Poser sur la page</button>
+      </div>
+    </div>,
+    document.body,
   );
 }

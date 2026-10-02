@@ -11,7 +11,7 @@
    ============================================================ */
 import { useEffect, useRef } from 'react';
 import { getOne, getAll, put, remove, putBlob, genId, synchroCiblee } from './storage.js';
-import { flushBlobOutbox, blobOutboxEntries } from '../data/sync.js';
+import { flushBlobOutbox, blobOutboxEntries, flushOutbox } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
 export const SYNCHRO_ACTIVE = SYNC_ENABLED;
@@ -82,6 +82,8 @@ export async function envoyerDessin(png, { ficheId, titre, largeur, hauteur, tex
     envoyeLe: new Date().toISOString(), appareil: 'mobile', createdAt: new Date().toISOString(),
   };
   await put('dessins', dessin);
+  // l'ordi le guette : on n'attend pas le regroupement des envois (~800 ms), on pousse
+  if (statut === 'envoye') { try { await flushOutbox(); } catch (e) { /* l'outbox réessaiera */ } }
   return { dessin, statut };
 }
 

@@ -74,7 +74,7 @@ import { SelecteurCouleurs, ReglagesTrait, dansSelecteurFlottant } from './Coule
 import { IconeOutil, IconeForme } from './IconesOutils.jsx';
 import { TYPES_FORMES, estTrait, estFermee, ancreSurForme } from './formes.js';
 import { publierFicheActive, useSondage, dessinsDeFiche, retirerDessin } from '../lib/dessins.js';
-import { MenuDessins, TYPE_GLISSER } from './OngletDessins.jsx';
+import { MenuDessins, ArriveeDessin, TYPE_GLISSER } from './OngletDessins.jsx';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
@@ -1277,10 +1277,31 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      l'onglet est visible ; un dessin se pose comme une image collée. */
   const [dessins, setDessins] = useState([]);
   const [essaiDessins, setEssaiDessins] = useState(0);
+  /* DÉTECTION AUTOMATIQUE (02/10 nuit) : sondage toutes les 2 s tant que l'onglet est
+     visible (une lecture filtrée sur un petit store). Le lecteur ne se re-rend que si
+     la liste a CHANGÉ. Un dessin jamais vu sur cet appareil (mémoire locale des « vus »)
+     déclenche l'animation d'arrivée ; au tout premier passage, l'existant est marqué vu. */
+  const signatureDessins = useRef('');
+  const [arrivee, setArrivee] = useState(null); // { dessin, autres }
+  const [pulseDessins, setPulseDessins] = useState(0);
+  const boutonDessinsRef = useRef(null);
   useSondage('dessins', async () => {
-    setDessins(await dessinsDeFiche(ficheId));
-    setEssaiDessins((n) => n + 1); // les vignettes sans image réessaient
-  }, { actif: !!ficheId });
+    const liste = await dessinsDeFiche(ficheId);
+    const sig = liste.map((d) => d.id).join(',');
+    if (sig !== signatureDessins.current) {
+      signatureDessins.current = sig;
+      setDessins(liste);
+      setEssaiDessins((n) => n + 1); // les vignettes sans image réessaient
+      let vus = null;
+      try { vus = JSON.parse(localStorage.getItem('medrevise.dessinsVus') || 'null'); } catch (e) { vus = null; }
+      const premier = !Array.isArray(vus);
+      const set = new Set(premier ? [] : vus);
+      const nouveaux = premier ? [] : liste.filter((d) => !set.has(d.id));
+      liste.forEach((d) => set.add(d.id));
+      try { localStorage.setItem('medrevise.dessinsVus', JSON.stringify([...set].slice(-500))); } catch (e) { /* ignore */ }
+      if (nouveaux.length) { setArrivee({ dessin: nouveaux[0], autres: nouveaux.length - 1 }); setPulseDessins((n) => n + 1); }
+    }
+  }, { actif: !!ficheId, ms: 2000 });
   const poserDessin = async (d, cible = null) => {
     const blob = await getBlob(d.blobId);
     if (!blob) { setExportErreur('L’image de ce dessin n’est pas encore arrivée — réessaie dans quelques secondes.'); return; }
@@ -1536,7 +1557,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         boutonDessins={pdfDoc && srcTab === 'pdf' && ficheId ? (
           <MenuDessins dessins={dessins} essai={essaiDessins} pdfPret={!!pageSizes.length}
             posesBlobIds={new Set(edits.filter((a) => a.kind === 'image').map((a) => a.blobId))}
-            onPoser={(d) => poserDessin(d)} onRetirer={retirerUnDessin} />
+            onPoser={(d) => poserDessin(d)} onRetirer={retirerUnDessin} boutonRef={boutonDessinsRef} pulse={pulseDessins} />
         ) : null}
         onAjouterImage={pdfDoc ? () => entreeImageRef.current && entreeImageRef.current.click() : null}
         contexteSupplementaire={outil === 'boite' ? (
@@ -1767,6 +1788,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           <Icon name="plus" size={13} /> Carte sur le tableau
         </button>,
         document.body,
+      )}
+
+      {arrivee && pdfDoc && srcTab === 'pdf' && (!tableauDispo || disposition !== 'tableau') && (
+        <ArriveeDessin key={arrivee.dessin.id} dessin={arrivee.dessin} autres={arrivee.autres} cible={boutonDessinsRef}
+          pdfPret={!!pageSizes.length} onPoser={(d) => poserDessin(d)} onFermer={() => setArrivee(null)} />
       )}
 
       {/* BULLE d'un surlignage : sa couleur, ou le supprimer. Rien d'autre. */}
