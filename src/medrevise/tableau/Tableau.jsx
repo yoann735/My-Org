@@ -515,8 +515,17 @@ export const Tableau = forwardRef(function Tableau({ ficheId }, ref) {
             const l = selLiens[0];
             const a = geo(parId.get(l.de.id)), b = geo(parId.get(l.vers.id));
             if (!a || !b) return null;
-            const pa = ancreDe(a, l.de.cote === 'auto' ? coteAuto(a, b) : l.de.cote);
-            const pb = ancreDe(b, l.vers.cote === 'auto' ? coteAuto(b, a) : l.vers.cote);
+            const ca = l.de.cote === 'auto' ? coteAuto(a, b) : l.de.cote;
+            const cb = l.vers.cote === 'auto' ? coteAuto(b, a) : l.vers.cote;
+            /* PLUSIEURS FLÈCHES PAR CARTE (05/10) : ces poignées étaient posées PILE sur
+               l'ancre de la carte. Une flèche juste créée restant sélectionnée, le glisser
+               suivant depuis la même ancre attrapait sa poignée et REDIRIGEAIT la flèche
+               au lieu d'en créer une deuxième. Elles sont maintenant décalées le long de
+               la flèche (22 px à l'écran) : l'ancre reste libre pour une nouvelle flèche. */
+            const NORMALE = { n: [0, -1], s: [0, 1], e: [1, 0], o: [-1, 0] };
+            const decaler = (p, cote) => { const v = NORMALE[cote] || [0, 0], k = 22 / (camEtat.z || 1); return { x: p.x + v[0] * k, y: p.y + v[1] * k }; };
+            const pa = decaler(ancreDe(a, ca), ca);
+            const pb = decaler(ancreDe(b, cb), cb);
             return (<>
               <span className="tb-bout" style={{ left: pa.x, top: pa.y }} onPointerDown={(e) => debutLien(e, null, null, l, 'de')} title="Glisser pour changer le départ" />
               <span className="tb-bout" style={{ left: pb.x, top: pb.y }} onPointerDown={(e) => debutLien(e, null, null, l, 'vers')} title="Glisser pour changer l’arrivée" />
