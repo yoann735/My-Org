@@ -20,6 +20,7 @@ import { EditorContent } from '@tiptap/react';
 import { IconeOutil } from './IconesOutils.jsx';
 import { SelecteurCouleurs, BoutonCouleur } from './Couleurs.jsx';
 import { cheminForme, extremites, typeForme, estTrait, estFermee, tailleParDefaut, ancreSurForme } from './formes.js';
+import { suivreImage } from './attaches.js';
 import { Icon } from '../../shared/Icon.jsx';
 import { outputScaleFor } from './pdfjsSetup.js';
 import { richToHTML } from '../documents/lib/richtext.js';
@@ -73,6 +74,8 @@ export function PdfPageContent({
 }) {
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
+  // image en cours de geste : ses textes attachés la suivent EN DIRECT (02/10 nuit)
+  const [apercuImage, setApercuImage] = useState(null);
   const renderTaskRef = useRef(null);
   const [matchRects, setMatchRects] = useState([]);
   const [layerVersion, setLayerVersion] = useState(0); // +1 à chaque (re)construction de la couche de texte
@@ -598,6 +601,7 @@ export function PdfPageContent({
             <ImageCollee key={img.id} img={img} active={img.id === imageActiveId}
               premier={i === images.length - 1} dernier={i === 0}
               onActiver={onImageActiver} onMaj={onImageMaj} onCalque={onImageCalque} onSupprimer={onImageSupprimer}
+              onApercu={(geo) => setApercuImage(geo ? { id: img.id, avant: img, geo } : null)}
               onGeste={(enCours) => { gesteBoite.current = enCours; }} />
           ))}
         </div>
@@ -708,7 +712,8 @@ export function PdfPageContent({
 
       {/* textes libres et « ? » : des ANNOTATIONS, donc au-dessus des images et
           des traits, comme les boîtes (règle fixe des calques). */}
-      {textes.map((t) => (
+      {textes.map((t0) => (apercuImage && t0.imageId === apercuImage.id
+        ? { ...t0, ...suivreImage(apercuImage.avant, apercuImage.geo, t0, pageHeight && pageWidth ? pageHeight / pageWidth : 1.414) } : t0)).map((t) => (
         <NoteBox key={t.id} boite={t} variante="texte" echelle={scale} active={t.id === activeEditId}
           editor={t.id === activeEditId ? activeEditor : null}
           onActivate={onActivateEdit}
@@ -1229,7 +1234,7 @@ function QuestionMarque({ q, onModifier, onSupprimer, onGeste }) {
    (même famille de flash que le bug « hallucinations »). Un blob ne change jamais
    de contenu pour un même id : l'adresse reste valable. */
 const URLS_IMAGES = new Map();
-function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque, onSupprimer, onGeste }) {
+function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque, onSupprimer, onGeste, onApercu = () => {} }) {
   const [url, setUrl] = useState(() => URLS_IMAGES.get(img.blobId) || null);
   const [manquante, setManquante] = useState(false);
   useEffect(() => {
@@ -1276,12 +1281,14 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
           y: sy > 0 ? avant.y : avant.y + avant.height - h };
       }
       setApercu(courant);
+      onApercu(courant);
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       onGeste(false);
       setApercu(null);
+      onApercu(null);
       if (bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de l’image' : 'Redimension de l’image');
     };
     window.addEventListener('pointermove', move);

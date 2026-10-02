@@ -74,6 +74,7 @@ import { SelecteurCouleurs, ReglagesTrait, dansSelecteurFlottant } from './Coule
 import { IconeOutil, IconeForme } from './IconesOutils.jsx';
 import { TYPES_FORMES, estTrait, estFermee, ancreSurForme } from './formes.js';
 import { publierFicheActive, useSondage, dessinsDeFiche, retirerDessin } from '../lib/dessins.js';
+import { suivreImage } from './attaches.js';
 import { MenuDessins, ArriveeDessin, TYPE_GLISSER } from './OngletDessins.jsx';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
@@ -1214,7 +1215,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         y: Math.max(0, Math.min(0.98, rec.y + t.y * rec.height - 2 / (ps.height * 1.6))),
         // zone TRACÉE au téléphone : même largeur, retour à la ligne identique (largeur fixée)
         width: Math.min(0.9, Math.max(0.05, t.boite ? t.largeur * rec.width + 10 / refPx : t.largeur * rec.width * 1.2 + 12 / refPx)), height: 0.02 });
-      return t.boite ? { ...enr, largeurFixe: true } : enr;
+      // ATTACHÉ à l'image du dessin (02/10 nuit) : il la suit quand elle bouge
+      return { ...enr, imageId: rec.id, ...(t.boite ? { largeurFixe: true } : {}) };
     });
     await hist.appliquer(textesRecs.length
       ? cmdGroupe(`Dessin posé (avec ${textesRecs.length} texte${textesRecs.length > 1 ? 's' : ''})`, [cmdCreer('annotations', rec, 'Image collée'), ...textesRecs.map((t) => cmdCreer('annotations', t, 'Texte du dessin'))])
@@ -1222,13 +1224,22 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setOutil('main'); setActiveEditId(null);
     setImageActiveId(rec.id);
   };
+  /* les TEXTES ATTACHÉS (dessin du téléphone) suivent l'image : même entrée d'annulation */
+  const ratioPage = (cle) => { const ps = pageSizes.find((p) => p.cle === cle); return ps && ps.width ? ps.height / ps.width : 1.414; };
+  const textesAttaches = (img) => edits.filter((a) => a.kind === 'texte' && a.imageId === img.id);
   const majImage = async (avant, apres, libelle) => {
     const actuel = edits.find((a) => a.id === avant.id) || avant;
-    await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, ...GEO(apres) }, libelle));
+    const nouvelle = { ...actuel, ...GEO(apres), ...(apres.rotation !== undefined ? { rotation: apres.rotation } : {}) };
+    const suivent = textesAttaches(actuel).map((t) => cmdModifier('annotations', t, { ...t, ...suivreImage(actuel, nouvelle, t, ratioPage(actuel.page)) }, 'Texte du dessin'));
+    const cmd = cmdModifier('annotations', actuel, nouvelle, libelle);
+    await hist.appliquer(suivent.length ? cmdGroupe(libelle, [cmd, ...suivent]) : cmd);
   };
   const supprimerImage = async (img) => {
     if (imageActiveId === img.id) setImageActiveId(null);
-    await hist.appliquer(cmdSupprimer('annotations', img, 'Suppression de l’image'));
+    const textes = textesAttaches(img);
+    await hist.appliquer(textes.length
+      ? cmdGroupe('Suppression du dessin et de ses textes', [cmdSupprimer('annotations', img, 'Suppression de l’image'), ...textes.map((t) => cmdSupprimer('annotations', t, 'Texte du dessin'))])
+      : cmdSupprimer('annotations', img, 'Suppression de l’image'));
   };
   // CALQUES : `z` ne classe que les images d'une même page entre elles. Une seule
   // écriture par geste (la nouvelle valeur s'intercale), donc une entrée d'annulation.
