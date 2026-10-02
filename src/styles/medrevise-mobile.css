@@ -239,3 +239,55 @@
 .md-bascule.actif { color: var(--text); }
 .md-bascule.actif .md-interrupteur { background: #34c759; }
 .md-bascule.actif .md-interrupteur i { transform: translateX(14px); }
+
+/* ---- DOCK FLOTTANT du dessin (02/10 nuit) : verre sombre, quel que soit le thème ---- */
+.md-dock { position: absolute; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 4;
+  display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.md-dock > * { pointer-events: auto; }
+.md-carte, .md-dock .md-outils { background: rgba(32, 32, 38, .78); -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,.09); box-shadow: 0 12px 32px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.05); color: #f2f2f5; }
+.md-carte { border-radius: 22px; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; animation: md-carte-in .24s cubic-bezier(.2,.85,.25,1); }
+@keyframes md-carte-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+.md-rang { display: flex; align-items: center; gap: 10px; overflow-x: auto; scrollbar-width: none; padding: 6px 5px; margin: -6px -5px; }
+.md-rang::-webkit-scrollbar { display: none; }
+.md-pastille-cel { position: relative; display: inline-flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.md-pastille { width: 32px; height: 32px; border-radius: 50%; border: 0; padding: 0; flex: 0 0 auto; background: var(--c);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); transition: transform .16s cubic-bezier(.3,.7,.2,1), box-shadow .16s; -webkit-tap-highlight-color: transparent; }
+.md-pastille.actif { box-shadow: 0 0 0 2.5px rgba(32,32,38,1), 0 0 0 4.5px #fff; }
+.md-pastille:active { transform: scale(.88); }
+.md-pastille-sep { width: 1px; height: 22px; background: rgba(255,255,255,.14); flex: 0 0 auto; }
+.md-pastille-roue { display: grid; place-items: center; color: #fff;
+  background: conic-gradient(from 90deg, #ff4d4d, #ffcf33, #4cd964, #33c9ff, #5a5bff, #ff4dd2, #ff4d4d); }
+.md-pastille-roue svg { filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+.md-retirer { position: absolute; bottom: 42px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; padding: 4px; border-radius: 12px; z-index: 2;
+  background: rgba(20,20,24,.95); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 8px 20px rgba(0,0,0,.5); }
+.md-retirer button { height: 32px; padding: 0 12px; border-radius: 9px; border: 0; background: rgba(255,255,255,.08); color: #f2f2f5; font-weight: 600; font-size: 13px; }
+.md-retirer button:first-child { background: #ff453a; }
+.md-tailles { gap: 4px; padding: 4px; margin: 0; border-radius: 14px; background: rgba(255,255,255,.06); overflow: visible; }
+.md-taille { flex: 1; height: 40px; display: grid; place-items: center; border-radius: 10px; border: 0; background: transparent; color: #f2f2f5; transition: background .15s; }
+.md-taille.actif { background: rgba(255,255,255,.16); }
+.md-taille-pt { display: block; border-radius: 50%; }
+.md-taille-a { font-weight: 700; line-height: 1; }
+.md-carte .md-formes { gap: 6px; }
+.md-carte .md-forme { width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,.06); color: rgba(235,235,245,.75); border: 1.5px solid transparent; }
+.md-carte .md-forme.actif { border-color: #fff; color: #fff; background: rgba(255,255,255,.14); }
+.md-carte .md-bascule { width: 100%; height: auto; padding: 2px 2px; justify-content: space-between; border: 0; border-radius: 0; color: #f2f2f5; }
+.md-bascule-txt { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; }
+.md-bascule-txt b { font-size: 14px; font-weight: 650; }
+.md-bascule-txt small { font-size: 12px; color: rgba(235,235,245,.55); }
+.md-interrupteur { width: 51px; height: 31px; flex: 0 0 auto; }
+.md-interrupteur i { width: 27px; height: 27px; }
+.md-bascule.actif .md-interrupteur i { transform: translateX(20px); }
+.md-carte .md-aide { padding: 0 2px; color: rgba(235,235,245,.6); font-size: 13px; line-height: 1.4; }
+.md-dock .md-outils { border-radius: 22px; padding: 6px; display: flex; gap: 2px; }
+.md-dock .md-outil { color: rgba(235,235,245,.6); border-radius: 16px; padding: 7px 0 6px; font-size: 10.5px; }
+.md-dock .md-outil.actif { color: #fff; background: rgba(255,255,255,.13); }
+.md-dock .md-outil:active { transform: scale(.94); }
+/* roue et barre du haut : même verre sombre que le dock */
+.sc-fenetre.md-roue { background: rgba(32,32,38,.9); -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,.1); border-radius: 22px; box-shadow: 0 20px 50px rgba(0,0,0,.55); color: #f2f2f5; width: 240px; }
+.sc-fenetre.md-roue .btn.primary { background: #fff; color: #111; border: 0; }
+.md-haut { background: #0f0f13; border-bottom: 0; gap: 8px; padding: 10px 12px; }
+.md-btn { width: 44px; height: 44px; border-radius: 14px; border: 0; background: rgba(255,255,255,.08); color: #f2f2f5; }
+.md-btn:active { transform: scale(.94); background: rgba(255,255,255,.14); }
+.md-exporter { border-radius: 14px; height: 44px; }

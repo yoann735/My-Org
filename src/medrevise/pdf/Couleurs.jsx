@@ -122,7 +122,7 @@ export function BoutonCouleur({ couleur, onCouleur, titre = 'Couleur', icone = n
 }
 
 /** la roue elle-même, dans une petite fenêtre flottante */
-function FenetreRoue({ x, y, depart, onFermer, onValider }) {
+export function FenetreRoue({ x, y, depart, onFermer, onValider, classe = '' }) {
   const [hsv, setHsv] = useState(() => hexVersHsv(depart));
   const [saisie, setSaisie] = useState(depart);
   const hex = hsvVersHex(hsv.h, hsv.s, hsv.v);
@@ -182,7 +182,7 @@ function FenetreRoue({ x, y, depart, onFermer, onValider }) {
   const hexVif = hsvVersHex(hsv.h, hsv.s, 1);
 
   return (
-    <div ref={boiteRef} className="sc-fenetre" style={{ left: x, top: y }} role="dialog" aria-label="Roue chromatique">
+    <div ref={boiteRef} className={'sc-fenetre' + (classe ? ' ' + classe : '')} style={{ left: x, top: y }} role="dialog" aria-label="Roue chromatique">
       <div className="sc-roue" style={{ width: TAILLE, height: TAILLE }} onPointerDown={glisser}>
         <canvas ref={canvasRef} style={{ width: TAILLE, height: TAILLE }} />
         <span className="sc-repere" style={{ left: repere.left, top: repere.top, background: hex }} />

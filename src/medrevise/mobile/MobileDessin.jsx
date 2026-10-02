@@ -17,10 +17,12 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { IconeOutil, IconeForme } from '../pdf/IconesOutils.jsx';
-import { SelecteurCouleurs } from '../pdf/Couleurs.jsx';
+import { FenetreRoue } from '../pdf/Couleurs.jsx';
+import { useCouleursPerso } from '../lib/couleursPerso.js';
+import { createPortal } from 'react-dom';
 import { TYPES_FORMES, cheminForme, estTrait, estFermee } from '../pdf/formes.js';
 import { getStroke } from 'perfect-freehand';
-import { couleurHex, avecAlpha } from '../pdf/pdfShared.js';
+import { couleurHex, avecAlpha, COLORS } from '../pdf/pdfShared.js';
 
 export const EPAISSEURS = [2, 4, 7, 12, 20]; // px à zoom 1
 const CLE_BROUILLON = 'medrevise.dessinMobile';
@@ -77,8 +79,8 @@ export function cheminTrait(points) {
 export function optionsLissage(ep, surligneur, avecPression = false) {
   return surligneur
     ? { size: ep, thinning: 0, smoothing: 0.85, streamline: 0.7, simulatePressure: false, start: { cap: true }, end: { cap: true } }
-    : { size: ep * 1.35, thinning: 0.5, smoothing: 0.85, streamline: 0.7, simulatePressure: !avecPression,
-        easing: (t) => Math.sin((t * Math.PI) / 2), start: { cap: true, taper: 0 }, end: { cap: true, taper: Math.min(ep * 6, 48) } };
+    : { size: ep * 1.35, thinning: 0.4, smoothing: 0.85, streamline: 0.7, simulatePressure: !avecPression,
+        easing: (t) => Math.sin((t * Math.PI) / 2), start: { cap: true, taper: 0 }, end: { cap: true, taper: Math.min(ep * 4, 32) } };
 }
 /** contour (perfect-freehand) → chemin SVG en courbes (milieux + quadratiques). */
 export function cheminContour(contour) {
@@ -194,6 +196,51 @@ export function ElementDessin({ e, gommeLarg = 0, fond = 'noir' }) {
   );
 }
 
+/* ============================================================
+   PALETTE DU TÉLÉPHONE (02/10 nuit) — même système que partout (encre, 4 couleurs
+   « cours », mes couleurs synchronisées, roue), dessiné pour le doigt : pastilles de
+   32 px, alignées, l'anneau de sélection À L'INTÉRIEUR de la rangée (il n'est plus
+   rogné). Appui long sur une de MES couleurs : la retirer.
+   ============================================================ */
+const ENCRE_PASTILLE = { id: 'blanc', hex: '#F2F2F5', label: 'Encre' };
+function PaletteMobile({ couleur, onCouleur }) {
+  const [perso, ajouter, retirer] = useCouleursPerso();
+  const [roue, setRoue] = useState(null);
+  const [aRetirer, setARetirer] = useState(null);
+  const appui = useRef(null);
+  const pastilles = [ENCRE_PASTILLE, ...COLORS, ...perso.map((h) => ({ id: h, hex: h, label: h, perso: true }))];
+  const actif = (id) => couleur === id || (id === 'blanc' && couleurSurFond(couleur, 'noir') === ENCRE.noir && !COLORS.some((c) => c.id === couleur) && !perso.includes(couleur));
+  return (
+    <div className="md-rang md-palette" role="group" aria-label="Couleur">
+      {pastilles.map((c, i) => (
+        <span key={c.id} className="md-pastille-cel">
+          {i === 1 && <span className="md-pastille-sep" aria-hidden="true" />}
+          <button type="button" className={'md-pastille' + (actif(c.id) ? ' actif' : '')} style={{ '--c': c.hex }} aria-label={c.label}
+            onPointerDown={() => { if (c.perso) { clearTimeout(appui.current); appui.current = setTimeout(() => setARetirer(c.id), 520); } }}
+            onPointerUp={() => clearTimeout(appui.current)} onPointerLeave={() => clearTimeout(appui.current)}
+            onClick={() => { if (aRetirer) return; onCouleur(c.id); }} />
+          {aRetirer === c.id && (
+            <span className="md-retirer">
+              <button type="button" onClick={() => { retirer(c.id); setARetirer(null); }}>Retirer</button>
+              <button type="button" onClick={() => setARetirer(null)}>Garder</button>
+            </span>
+          )}
+        </span>
+      ))}
+      <button type="button" className={'md-pastille md-pastille-roue sc-roue-btn' + (roue ? ' actif' : '')} aria-label="Nouvelle couleur"
+        onClick={() => setRoue(roue ? null : { x: Math.max(8, (window.innerWidth - 240) / 2), y: Math.max(8, window.innerHeight * 0.16) })}>
+        <Icon name="plus" size={14} />
+      </button>
+      {roue && createPortal(
+        <FenetreRoue classe="md-roue" x={roue.x} y={roue.y} depart={couleurHex(couleur, '#e5383b')}
+          onFermer={() => setRoue(null)}
+          onValider={(hex) => { ajouter(hex); onCouleur(hex); setRoue(null); }} />,
+        document.body,
+      )}
+    </div>
+  );
+}
+
 function lireBrouillon() {
   try { const v = JSON.parse(localStorage.getItem(CLE_BROUILLON) || 'null'); if (v && Array.isArray(v.elements)) return v; } catch (e) { /* ignore */ }
   return null;
@@ -222,6 +269,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
 
   const svgRef = useRef(null), mondeRef = useRef(null), traitRef = useRef(null);
   const [tailleIdx, setTailleIdx] = useState(1);
+  const [carteOuverte, setCarteOuverte] = useState(true);
   const [lisse, setLisseBrut] = useState(() => { try { return localStorage.getItem('medrevise.dessinLisse') !== '0'; } catch (e) { return true; } });
   const setLisse = (v) => { setLisseBrut(v); try { localStorage.setItem('medrevise.dessinLisse', v ? '1' : '0'); } catch (e) { /* ignore */ } };
   /* SAISIE D'UN TEXTE : un <textarea> TOUJOURS monté, placé et focalisé DANS le geste
@@ -562,60 +610,65 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
         onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; t.style.width = 'auto'; t.style.width = `${Math.max(80, t.scrollWidth + 8)}px`; }}
         onBlur={() => { if (editionRef.current) terminerSaisie(); }} />
 
-      <div className="md-bas">
-        <div className="md-reglages">
-          {outil === 'forme' && (
-            <div className="md-formes">
-              {TYPES_FORMES.map((t) => (
-                <button key={t.id} type="button" className={'md-forme' + (typeForme === t.id ? ' actif' : '')} onClick={() => setTypeForme(t.id)} aria-label={t.label} title={t.label}>
-                  <IconeForme type={t.id} size={22} />
-                </button>
-              ))}
-              {estFermee(typeForme) && (
-                <button type="button" className={'md-forme' + (remplie ? ' actif' : '')} onClick={() => setRemplie((v) => !v)} aria-label="Remplir" title="Remplir">
-                  <IconeOutil nom="remplir" size={20} />
-                </button>
-              )}
-            </div>
-          )}
-          {outil !== 'gomme' && outil !== 'main' && (
-            <div className="md-ligne">
-              <SelecteurCouleurs couleur={couleurActive} onCouleur={outil === 'surligneur' ? setCouleurSurl : setCouleur} titre="Couleur"
-                enTete={[{ id: 'blanc', hex: '#F2F2F5', label: 'Encre — blanche ici, noire sur la page' }]} />
-            </div>
-          )}
-          {outil === 'texte' && (
-            <div className="md-ligne md-epaisseurs" role="group" aria-label="Taille du texte">
-              {TAILLES_TEXTE.map((t, i) => (
-                <button key={t} type="button" className={'md-ep' + (tailleIdx === i ? ' actif' : '')} onClick={() => setTailleIdx(i)} aria-label={`Taille ${i + 1}`}>
-                  <span className="md-ep-a" style={{ fontSize: 11 + i * 3.5, color: couleurSurFond(couleur, 'noir') }}>A</span>
-                </button>
-              ))}
-            </div>
-          )}
-          {outil !== 'gomme' && outil !== 'main' && outil !== 'texte' && (
-            <div className="md-ligne md-epaisseurs" role="group" aria-label="Épaisseur">
-              {EPAISSEURS.map((p, i) => (
-                <button key={p} type="button" className={'md-ep' + (epIdx === i ? ' actif' : '')} onClick={() => setEpIdx(i)} aria-label={`Épaisseur ${i + 1}`}>
-                  <span style={{ width: Math.min(26, p * (outil === 'surligneur' ? 1.6 : 1) + 2), height: Math.min(26, p * (outil === 'surligneur' ? 1.6 : 1) + 2), background: couleurHex(couleurActive, '#1F1F24'), opacity: outil === 'surligneur' ? 0.5 : 1 }} />
-                </button>
-              ))}
-            </div>
-          )}
-          {(outil === 'crayon' || outil === 'surligneur') && (
-            <div className="md-ligne">
+      {/* DOCK FLOTTANT (02/10 nuit) : la carte des réglages de l'outil (couleurs, taille,
+          lissage, formes) au-dessus de la barre d'outils, en verre sombre. Toucher l'outil
+          actif replie / déplie la carte. */}
+      <div className="md-dock">
+        {carteOuverte && (
+          <div className="md-carte" role="group" aria-label="Réglages de l’outil">
+            {outil === 'forme' && (
+              <div className="md-rang md-formes">
+                {TYPES_FORMES.map((t) => (
+                  <button key={t.id} type="button" className={'md-forme' + (typeForme === t.id ? ' actif' : '')} onClick={() => setTypeForme(t.id)} aria-label={t.label} title={t.label}>
+                    <IconeForme type={t.id} size={22} />
+                  </button>
+                ))}
+                {estFermee(typeForme) && (
+                  <button type="button" className={'md-forme' + (remplie ? ' actif' : '')} onClick={() => setRemplie((v) => !v)} aria-label="Remplir" title="Remplir">
+                    <IconeOutil nom="remplir" size={20} />
+                  </button>
+                )}
+              </div>
+            )}
+            {outil !== 'gomme' && outil !== 'main' && (
+              <PaletteMobile couleur={couleurActive} onCouleur={outil === 'surligneur' ? setCouleurSurl : setCouleur} />
+            )}
+            {outil === 'texte' && (
+              <div className="md-rang md-tailles" role="group" aria-label="Taille du texte">
+                {TAILLES_TEXTE.map((t, i) => (
+                  <button key={t} type="button" className={'md-taille' + (tailleIdx === i ? ' actif' : '')} onClick={() => setTailleIdx(i)} aria-label={`Taille ${i + 1}`}>
+                    <span className="md-taille-a" style={{ fontSize: 12 + i * 3.5 }}>A</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {outil !== 'gomme' && outil !== 'main' && outil !== 'texte' && (
+              <div className="md-rang md-tailles" role="group" aria-label="Épaisseur">
+                {EPAISSEURS.map((p, i) => {
+                  const d = Math.min(24, p * (outil === 'surligneur' ? 1.4 : 1) + 3);
+                  return (
+                    <button key={p} type="button" className={'md-taille' + (epIdx === i ? ' actif' : '')} onClick={() => setEpIdx(i)} aria-label={`Épaisseur ${i + 1}`}>
+                      <span className="md-taille-pt" style={{ width: d, height: d, background: couleurSurFond(couleurActive, 'noir'), opacity: outil === 'surligneur' ? 0.55 : 1 }} />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {(outil === 'crayon' || outil === 'surligneur') && (
               <button type="button" className={'md-bascule' + (lisse ? ' actif' : '')} onClick={() => setLisse(!lisse)} aria-pressed={lisse}>
-                <span className="md-interrupteur"><i /></span> Lissage {lisse ? 'activé' : 'désactivé (tracé brut)'}
+                <span className="md-bascule-txt"><b>Lissage</b><small>{lisse ? 'Trait doux, comme au stylet' : 'Tracé brut, exactement le doigt'}</small></span>
+                <span className="md-interrupteur"><i /></span>
               </button>
-            </div>
-          )}
-          {outil === 'gomme' && <div className="md-aide">Touche ou glisse sur un trait, une forme ou un texte pour l’effacer</div>}
-          {outil === 'texte' && <div className="md-aide">Touche le dessin pour écrire · touche un texte pour le modifier, glisse-le pour le déplacer</div>}
-          {outil === 'main' && <div className="md-aide">Glisse pour déplacer le dessin · pince pour zoomer</div>}
-        </div>
+            )}
+            {outil === 'gomme' && <div className="md-aide">Touche ou glisse sur un trait, une forme ou un texte pour l’effacer.</div>}
+            {outil === 'texte' && <div className="md-aide">Touche le dessin pour écrire · touche un texte pour le modifier, glisse-le pour le déplacer.</div>}
+            {outil === 'main' && <div className="md-aide">Glisse pour déplacer le dessin · pince pour zoomer.</div>}
+          </div>
+        )}
         <div className="md-outils" role="group" aria-label="Outils">
           {OUTILS.map((o) => (
-            <button key={o.id} type="button" className={'md-outil' + (outil === o.id ? ' actif' : '')} onClick={() => { if (editionRef.current) terminerSaisie(); setOutil(o.id); }}>
+            <button key={o.id} type="button" className={'md-outil' + (outil === o.id ? ' actif' : '')}
+              onClick={() => { if (editionRef.current) terminerSaisie(); if (o.id === outil) setCarteOuverte((v) => !v); else { setOutil(o.id); setCarteOuverte(true); } }}>
               <IconeOutil nom={o.id} size={22} />
               <span>{o.label}</span>
             </button>
