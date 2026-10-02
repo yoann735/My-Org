@@ -1,171 +1,153 @@
-# Rapport de nuit — 2 octobre 2026 (2e chantier) : dessiner sur le téléphone, poser sur le PDF
+# Rapport de nuit — 2 octobre 2026 (3e chantier) : retouches du dessin depuis le téléphone
 
-> Le rapport du 1er chantier de la soirée (icônes, formes, couleurs, flèches) est dans le
-> commit `b56ca58` (`git show b56ca58:docs/rapport-nuit.md`).
+> Rapports précédents de la soirée :
+> - « dessin depuis le téléphone » : `git show 70196d7:docs/rapport-nuit.md` ;
+> - icônes / formes / couleurs : `git show b56ca58:docs/rapport-nuit.md`.
 
-**Le flux complet marche, testé en vrai sur deux appareils simulés :**
-1. l'ordi ouvre une fiche ;
-2. le téléphone affiche « Sur l'ordi : *fiche* » ;
-3. on dessine au doigt ;
-4. Exporter : la fiche de l'ordi est proposée par défaut ;
-5. le dessin arrive dans l'onglet **Dessins** du lecteur de l'ordi, **7,4 s** après
-   « Envoyer » ;
-6. un glisser-déposer le pose sur la page, en image collée.
+**Les 4 retouches sont faites, testées en vrai et poussées**, un commit par
+sous-tâche, build vert à chaque fois.
 
-La mécanique est écrite d'abord dans **`docs/mecanique-dessin-mobile.md`**. Aucun point
-de la liaison cloud n'était risqué : tout passe par le canal existant, sans SQL ni
-nouvelle table. J'ai donc enchaîné sur le code, étape par étape.
+**Tests :**
+- deux Chrome isolés : un « ordi » 1 440 × 900, un « téléphone » 390 × 844 avec
+  émulation tactile ;
+- de vrais gestes au doigt, pincement compris, et le vrai glisser-déposer de Chrome ;
+- **un faux Supabase local** (`scripts/faux-supabase.mjs`) : **ton cloud n'a pas été
+  touché**.
 
 **Garanties :**
-- **Ton cloud n'a jamais été touché**, ni en lecture ni en écriture. Tous les tests
-  passent par un **faux Supabase local**, qui reproduit l'API utilisée (RPC
-  conditionnelle, lecture, bucket). Il est gardé dans `scripts/faux-supabase.mjs` pour
-  de futurs tests.
-- **Deux Chrome isolés** :
-  - un « ordi » en 1 440 × 900 ;
-  - un « téléphone » en 390 × 844, avec émulation tactile et de vrais gestes au doigt
-    (pincement compris).
-- **MealWeek : 0 fichier modifié.** `src/shared` n'est pas touché.
-- **Aucune donnée existante réécrite** : deux stores neufs seulement, aucune migration.
+- **MealWeek : 0 fichier modifié** ;
+- `src/shared` n'est pas touché ;
+- aucune donnée existante n'est réécrite ;
 - 0 erreur console.
 
-| Commit | Étape |
+| Commit | Sous-tâche |
 |---|---|
-| `dd45bd7` | 1. Mécanique (`docs/mecanique-dessin-mobile.md`) |
-| `76ee3e3` | 2. Données + liaison ordi ↔ téléphone par le cloud |
-| `13137a4` | 3. Canvas tactile du téléphone |
-| `e374ce3` | 4. Export PNG vers une fiche |
-| `90bff7d` | 5. Onglet « Dessins » de l'ordi + glisser-déposer sur le PDF |
+| `fef381e` | 1. Fond noir sur le téléphone, et une « encre » qui s'adapte au fond |
+| `2e32cdc` | 3. Zoom fluide en temps réel pendant le pincement |
+| `8264b81` | 2. Zones de texte sur le téléphone, éditables sur l'ordi après import |
+| `fcffddd` | 4. Menu « Dessins » dans la barre du lecteur, séparé des notions |
 
 ---
 
-## La mécanique choisie, en bref
+## 1. Fond noir sur le téléphone
 
-- **Liaison (« quelle fiche est ouverte sur l'ordi »)** : un enregistrement unique,
-  `liaison/ficheActive`.
-  - L'ordi l'écrit à l'ouverture et à la fermeture d'une fiche dans le lecteur, rien à
-    chaque page.
-  - Le téléphone le lit par une **lecture ciblée** de ce seul store, sans relire toute
-    la table : au montage, au retour sur l'app, puis toutes les 10 s tant que l'écran
-    est visible.
-- **Dessins** : un enregistrement `dessins/<id>` par dessin envoyé (fiche, taille, date).
-  - Le PNG voyage par le **canal des blobs existant** (outbox + bucket, avec
-    retentatives).
-  - **Ordre garanti** : l'image est confirmée au cloud **avant** que l'entrée soit
-    écrite. L'ordi ne voit donc jamais une entrée sans son image (vérifié dans le
-    journal du faux cloud).
-- **Ce qui ne peut pas casser** :
-  - `reconcileAll`, la réconciliation critique, **n'est pas modifié** ;
-  - la synchro ciblée est une fonction à part, limitée par liste blanche aux deux
-    nouveaux stores ;
-  - les écritures passent par la RPC conditionnelle existante, une ligne à la fois ;
-  - les anciens clients ignorent les nouveaux stores.
-- **Réversible** : retirer la fonctionnalité laisse deux stores inutilisés et quelques
-  PNG dans le bucket.
+- Le canvas est **noir**, avec une grille de points discrète, quel que soit le thème.
+- **L'encre par défaut est blanche.** Une pastille fixe **« Encre »** est toujours en
+  tête des couleurs, pour la reprendre après une autre couleur.
+- **Le noir et le blanc sont une seule « encre » qui s'adapte au fond** : blanche sur le
+  canvas noir, **noire sur la page** du PDF. Sans ça, ce qui se voit sur le noir
+  disparaîtrait une fois posé sur le PDF blanc. Les autres couleurs (les 4 de base, tes
+  couleurs perso) ne changent jamais.
+- **Export** : fond **transparent** (par défaut), **blanc** ou **noir**. Avec un fond
+  noir, l'encre reste blanche.
 
-## Ce qui est codé et testé
+**Testé :**
+- fond `rgb(15, 15, 19)`, encre par défaut blanche ;
+- jaune, vert, bleu et rose bien visibles (capture) ;
+- dans le PNG exporté (téléchargé du faux cloud), **le trait blanc est sorti noir** et
+  les couleurs sont restées identiques.
 
-**1. Liaison** : l'ordi ouvre la fiche, et le cloud reçoit
-`{ ficheId: 'fi_test', ouverte: true }`. Le téléphone affiche ● « Sur l'ordi : Fiche de
-test formes ». Quand l'ordi a quitté la fiche, il affiche « Dernière fiche ouverte sur
-l'ordi : … ».
+## 2. Zones de texte (téléphone), éditables sur l'ordi
 
-**2. Canvas tactile** (téléphone : accueil → carte **Dessin** → **Dessiner**) :
-- **un doigt** dessine avec l'outil actif :
-  - crayon, surligneur (translucide) ;
-  - **12 formes** (les mêmes que dans le lecteur) ;
-  - **gomme** (efface l'élément touché) ;
-  - main ;
-- **deux doigts** : déplacer et zoomer en pinçant. Un 2e doigt posé abandonne le trait en
-  cours ;
-- **couleurs** : le même système que partout (4 couleurs de base, tes couleurs
-  synchronisées, roue) ;
-- **5 épaisseurs**, annuler / rétablir, tout effacer (annulable), recentrer ;
-- **brouillon** gardé sur le téléphone si on quitte l'écran.
+**Sur le téléphone**, un nouvel outil **Texte** :
+- toucher le dessin ouvre le clavier : le champ est focalisé dans le geste même, sinon
+  iOS n'ouvre pas le clavier ;
+- on écrit, sur plusieurs lignes, puis **OK**, ou on touche ailleurs ;
+- **toucher un texte** le modifie, **le glisser** le déplace ;
+- 5 tailles, les couleurs et l'encre ;
+- la gomme l'efface ; annuler / rétablir.
 
-Testé au doigt :
-- 2 traits + ellipse + flèche ;
-- pincement : `scale(2.5)`, **aucun trait parasite** ;
-- gomme : `3 → 2` ;
-- annuler / rétablir : `3 → 2 → 1 → 0 → 1 → 2 → 3`.
+**Mécanique choisie** : les textes ne sont **pas aplatis** dans le PNG.
+- Ils voyagent à côté de l'image : texte, position et taille en fractions de l'image,
+  couleur.
+- **À la pose sur l'ordi**, chaque zone devient un **texte libre** du lecteur, posé à sa
+  place au-dessus de l'image. C'est exactement le même élément que l'outil Texte du
+  lecteur : on le déplace par sa poignée, on clique dedans pour le modifier, on le
+  supprime.
+- Image et textes = **une seule entrée d'annulation**.
+- **La vignette** du menu superpose les textes, pour voir le dessin complet avant de le
+  poser.
 
-**3. Export** : la feuille propose **la fiche ouverte sur l'ordi en tête**, avec une
-recherche dans les fiches et les documents de Prise de notes, et un fond transparent (par
-défaut) ou blanc. Le dessin est rendu en PNG net (×2, côté le plus long plafonné à
-2 400 px).
+**Testé :**
+- **Téléphone** :
+  - « Aorte » créé au clavier (focus : oui) ;
+  - « Ventricule ↵ gauche » en rose, taille 4, fini en touchant ailleurs ;
+  - « Aorte » glissé (+40, +20 px), puis modifié en « Aorte ascendante » ;
+  - annuler le rend « Aorte », rétablir le refait.
+- **Ordi**, après envoi et pose :
+  - **1 image + 2 textes libres** : « Aorte ascendante » (encre devenue `#1F1F24`, 18 px)
+    et « Ventricule / gauche » (rose, 32 px, deux lignes) ;
+  - **modifié au clavier** sur l'ordi (« (VG) » ajouté, enregistré) ;
+  - **déplacé** par sa poignée (+60, +40 px) ;
+  - un seul **Cmd+Z** après la pose retire l'image **et** ses textes.
 
-Testé : PNG de 27 Ko envoyé au bucket, **puis** l'entrée, « Envoyé » en 1,2 s.
-**Hors ligne** : « Prêt — en attente de réseau ». Rien n'arrive sur l'ordi pendant la
-coupure ; **le dessin arrive tout seul 8 s après le retour du réseau**.
+## 3. Zoom fluide au pincement
 
-**4. Ordi** : un onglet **Dessins** (avec son nombre) dans le panneau de droite du
-lecteur PDF :
-- vignettes datées, avec un badge **Nouveau** / **Posé** ;
-- **glisser** une vignette sur une page la pose au point de dépôt ; **« Poser »** la pose
-  au centre de la page affichée ;
-- l'image posée est une image collée ordinaire (déplacer, redimensionner, calques,
-  Cmd+Z, export PDF annoté). Elle **réutilise le blob du dessin**, sans copie ;
-- **« Retirer »** ne retire que l'entrée de la liste : l'image déjà posée reste, le
-  fichier n'est pas supprimé.
+**Cause** : pendant le geste, le dessin suivait déjà les doigts, mais **la grille du
+fond** n'était mise à jour qu'au relâchement. D'où le « saut » à la fin.
 
-Testé :
-- glisser-déposer natif (intercepté par Chrome) : `images 0 → 1`, même blob que le
-  dessin ;
-- « Poser » : `1 → 2` ;
-- Cmd+Z : `→ 1` ;
-- Retirer : `dessins 2 → 1`, image posée intacte, au cloud seule l'entrée est marquée
-  supprimée.
+**Correctif** : la caméra est écrite dans le DOM **à chaque image**
+(`requestAnimationFrame`), pour le dessin et la grille ensemble. Il n'y a aucun rendu
+React pendant le geste. Le dessin est vectoriel (SVG) : net à tout zoom.
 
-## Bugs trouvés en route (corrigés)
+**Testé** au milieu du geste, doigts encore posés : le zoom passe à ×1,71, puis ×2,43,
+puis ×3,16, et la grille suit à chaque étape (41 px, 58 px, 76 px). Au relâchement, les
+valeurs sont **identiques** : plus de saut. Aucun trait parasite. La capture en plein
+geste est nette.
 
-1. **Liaison fausse après un remontage rapide du lecteur.** Trois écritures
-   asynchrones se croisaient, et la fiche pouvait être ouverte avec `ouverte: false` au
-   cloud. Les publications sont maintenant mises en file.
-2. **Annuler sur le téléphone** : le 1er « annuler » ne faisait rien, le 3e en sautait
-   deux. L'état était relu trop tard par React. Il est maintenant capturé avant la mise à
-   jour.
-3. **Pointe de flèche énorme** avec un trait épais sur le téléphone : elle est plafonnée.
-4. **Dessin posé deux fois trop grand** (PNG rendu en ×2) : la taille de départ tient
-   compte de l'échelle.
-5. **Faux bug écarté** : le lecteur se refermait entre deux de mes scripts. C'était le
-   Chrome de test qui reprenait sa taille par défaut à la déconnexion. L'app n'est pas en
-   cause.
+## 4. Menu « Dessins » séparé des notions
+
+- L'onglet Dessins a **quitté le panneau de droite**, qui garde QCM, Flashcard,
+  Exercice, Feynman et Notions.
+- Un **bouton « Dessins »** dans la barre, près des outils (icône téléphone), porte une
+  **pastille** : le nombre de dessins pas encore posés.
+- Un clic **déroule le menu** de tous les dessins reçus, **avec ascenseur**. On y
+  **glisse-dépose** un dessin sur la page.
+  - Pendant le glisser, le menu devient transparent aux clics : on peut déposer **aussi
+    sur la partie de la page qu'il recouvre**.
+  - Il se referme au dépôt, à Échap, ou au clic dehors.
+  - « Poser » et « Retirer » marchent comme avant.
+
+**Testé :**
+- panneau sans onglet Dessins ;
+- menu de 4 dessins (558 px visibles pour 887), défilé de 329 px à la molette ;
+- glisser du dernier dessin vers un point **sous le menu** : image posée, menu fermé ;
+- bout à bout : dessin + texte envoyé du téléphone, **pastille du menu 4 → 5 en 5,8 s**.
+
+## Bugs trouvés (corrigés)
+
+1. **Le blanc disparaissait du sélecteur** dès qu'on choisissait une autre couleur sur
+   le téléphone : il n'y figurait qu'en « couleur actuelle ». D'où la pastille fixe
+   « Encre ».
+2. **La grille du fond ne suivait pas le pincement** (point 3).
+3. **Un trait noir d'un ancien brouillon aurait été invisible** sur le nouveau fond noir.
+   C'est prévenu par l'encre adaptative, qui l'affiche en clair. Vérifié dans le code,
+   pas avec un vrai ancien brouillon.
 
 ## Non-régression
 
-**Lecteur** (avec la synchro active, sur le faux cloud), comme avant :
-- crayon, texte libre, « ? » ;
-- boîte et sa flèche principale ;
-- export PDF annoté : le dessin posé y sort (`images: 1`), avec le reste, et le PDF
-  d'origine est identique (SHA-256 `ed13189d…` avant et après).
+- **Lecteur** : crayon, texte libre, « ? », boîte et sa flèche principale, comme avant.
+- **Écrans** : Accueil, Réviser, Bibliothèque, Carnet, Apprentissage, Prise de notes,
+  tous sans erreur.
+- **MealWeek** s'ouvre normalement.
+- **Accueil du téléphone** : la série du jour et la carte Dessin (« Sur l'ordi : … »)
+  sont intactes.
 
-Les formes, les couleurs et le tableau ne sont pas retestés dans ce chantier ; leur code
-n'est pas modifié.
+## Ce que je n'ai pas fait, ou à savoir
 
-**Écrans** : Accueil, Réviser, Bibliothèque, Carnet, Apprentissage, Prise de notes, tous
-sans erreur. **MealWeek** s'ouvre normalement. L'accueil du téléphone garde la série du
-jour et la synchro ; la carte Dessin s'ajoute sous la série.
-
-## Ce qui reste, ou que je n'ai pas fait par sécurité
-
-- **Le premier vrai aller-retour avec ton cloud n'a pas été fait** : il aurait fallu
-  écrire dans tes données réelles. Tout est prouvé sur un faux Supabase qui imite l'API.
-  Rien ne demande de SQL : la table accepte déjà tout nom de store. **À faire en premier
-  au réveil** :
-  1. ouvre une fiche sur l'ordi (version déployée) ;
-  2. sur le téléphone, vérifie la carte « Sur l'ordi : … » ;
-  3. envoie un petit dessin ;
-  4. il doit apparaître dans l'onglet Dessins en une dizaine de secondes.
-- **Le téléphone ne réagit pas instantanément** : sondage toutes les 10 s, donc 5 à 10 s
-  de latence typique. Le temps réel (Supabase Realtime) serait possible, mais il demande
-  d'activer la réplication sur la table, côté serveur. Je ne l'ai pas touché.
-- **Pas fait** :
-  - texte dans le dessin mobile ;
-  - sélection et déplacement d'un élément déjà dessiné sur le téléphone (on annule, on
-    gomme, ou on redessine) ;
-  - export de plusieurs pages ;
-  - envoi vers une page précise : on choisit la page en déposant.
-- **Pas d'onglet Dessins sur les fiches HTML** (ni dans le mode Tableau) : un dessin ne
-  se pose que sur un PDF, d'où l'onglet seulement là.
-- **Données de test** : uniquement dans les deux Chrome isolés et le faux cloud (en
-  mémoire), rien dans ton app.
+- **Le vrai cloud n'a pas été touché** cette nuit. Les nouveautés passent par le même
+  canal que le chantier précédent, sans rien de neuf côté serveur. Les textes sont un
+  champ facultatif de l'entrée `dessins`. Un dessin envoyé par une version précédente
+  se pose sans textes, comme avant.
+- **Taille des textes sur l'ordi** : ils sont réglés pour coller au dessin **au zoom par
+  défaut (160 %)**. Comme tout texte libre du lecteur, leur taille reste fixe à l'écran
+  quand on zoome, alors que l'image, elle, grandit. À un autre zoom, ils restent à leur
+  place mais n'ont plus exactement la proportion du dessin.
+- **Le PNG ne contient pas les textes**, et c'est voulu, pour qu'ils restent éditables.
+  Ils n'apparaissent donc pas si l'on réutilise l'image seule ailleurs. Dans le lecteur,
+  ils sont bien là, en textes libres. Dans l'export PDF annoté, ils sortent comme tout
+  texte libre, en police standard : la taille choisie sur le téléphone n'y est pas
+  reproduite. C'est une limite déjà connue de l'export.
+- **Clavier iOS réel** : le focus dans le geste est la technique qui ouvre le clavier sur
+  iPhone. Elle est vérifiée en émulation tactile, **pas sur un vrai iPhone**. À
+  confirmer à ta première zone de texte.
