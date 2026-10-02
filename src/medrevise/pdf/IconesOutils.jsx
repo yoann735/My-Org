@@ -87,6 +87,12 @@ const DESSINS = {
     <path d="M10 13 14 9" />
     <rect x="13" y="3" width="8" height="6" rx="1" />
   </>),
+  // dessins reçus du téléphone : un téléphone et un trait
+  dessins: (<>
+    <rect x="6" y="2.5" width="12" height="19" rx="2.5" />
+    <path d="M9 14c1.2-2.5 2.2-2.6 3-1s1.8 1.5 3-1" />
+    <path d="M11 18.5h2" />
+  </>),
   // étiquette de texte dans une forme
   etiquette: (<>
     <rect x="3" y="5" width="18" height="14" rx="2" />

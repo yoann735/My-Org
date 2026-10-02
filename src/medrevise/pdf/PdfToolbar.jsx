@@ -56,6 +56,7 @@ export function PdfToolbar({
   // INSÉRER (01/10) : une page blanche, une image — absents = boutons masqués
   onAjouterPage = null, onAjouterImage = null,
   avantPanneau = null, // bascule de disposition PDF / Les deux / Tableau (04/10)
+  boutonDessins = null, // menu des dessins reçus du téléphone (02/10 soir)
 }) {
   const [menu, setMenu] = useState(null);
   /* LARGEUR RÉELLE de la barre (01/10) : dans un panneau étroit (Apprentissage,
@@ -152,7 +153,7 @@ export function PdfToolbar({
                 {o.id !== 'question' && <span className="ptb-outil-lbl">{o.label}</span>}
               </button>
             ))}
-            {(onAjouterImage || onAjouterPage) && <span className="ptb-sep" />}
+            {(onAjouterImage || onAjouterPage || boutonDessins) && <span className="ptb-sep" />}
             {onAjouterImage && (
               <button type="button" className="ptb-outil" onClick={onAjouterImage}
                 title="Image — importer une image et la placer sur la page (ou la coller avec Cmd/Ctrl+V)">
@@ -165,6 +166,7 @@ export function PdfToolbar({
                 <IconeOutil nom="page" size={16} /><span className="ptb-outil-lbl">Page</span>
               </button>
             )}
+            {boutonDessins}
             <span className="ptb-sep" />
             <button className="icon-btn sm" onClick={hist.annuler} disabled={!hist.peutAnnuler}
               title={hist.peutAnnuler ? `Annuler — ${hist.libelleAnnuler} (${RACCOURCI}Z)` : `Annuler (${RACCOURCI}Z)`}>

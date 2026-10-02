@@ -9,7 +9,8 @@
    - « Retirer » : retire le dessin de CETTE liste (une image déjà posée reste).
    Le type de glisser est maison (TYPE_GLISSER) : rien d'autre ne le reconnaît.
    ============================================================ */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { blobURL } from '../lib/storage.js';
 import { IconeOutil } from './IconesOutils.jsx';
@@ -57,7 +58,7 @@ function Vignette({ dessin, essai }) {
   );
 }
 
-export function OngletDessins({ dessins, posesBlobIds, essai, onPoser, onRetirer, pdfPret }) {
+export function OngletDessins({ dessins, posesBlobIds, essai, onPoser, onRetirer, pdfPret, onGlisse = () => {} }) {
   const [aRetirer, setARetirer] = useState(null);
   if (!dessins.length) {
     return (
@@ -80,7 +81,10 @@ export function OngletDessins({ dessins, posesBlobIds, essai, onPoser, onRetirer
               e.dataTransfer.effectAllowed = 'copy';
               const img = e.currentTarget.querySelector('img');
               if (img) e.dataTransfer.setDragImage(img, img.width / 2, img.height / 2);
+              // pas de changement du DOM DANS dragstart (Chrome annulerait le glisser)
+              setTimeout(() => onGlisse(true), 0);
             }}
+            onDragEnd={() => onGlisse(false)}
             title={pdfPret ? 'Glisser sur une page du PDF pour poser ce dessin' : ''}>
             <div className="od-vignette"><Vignette dessin={d} essai={essai} /></div>
             <div className="od-pied">
@@ -103,5 +107,62 @@ export function OngletDessins({ dessins, posesBlobIds, essai, onPoser, onRetirer
         );
       })}
     </div>
+  );
+}
+
+/* ============================================================
+   MENU « DESSINS » de la barre du lecteur (02/10 soir) — remplace l'onglet du panneau
+   de droite (les dessins n'ont rien à faire avec les notions). Un bouton près des
+   outils ; un clic déroule la liste de TOUS les dessins reçus, avec ascenseur.
+   Pendant un glisser, le menu devient transparent aux clics : on peut déposer sur la
+   partie de la page qu'il recouvre. Il se referme au dépôt, à Échap, au clic dehors.
+   ============================================================ */
+export function MenuDessins({ dessins, posesBlobIds, essai, onPoser, onRetirer, pdfPret }) {
+  const [ouvert, setOuvert] = useState(null); // { x, y } sous le bouton
+  const [glisse, setGlisse] = useState(false);
+  const btnRef = useRef(null), menuRef = useRef(null);
+  const nouveaux = dessins.filter((d) => !posesBlobIds.has(d.blobId)).length;
+  useEffect(() => {
+    if (!ouvert) return undefined;
+    const dehors = (e) => {
+      if (menuRef.current && menuRef.current.contains(e.target)) return;
+      if (btnRef.current && btnRef.current.contains(e.target)) return;
+      setOuvert(null);
+    };
+    const touche = (e) => { if (e.key === 'Escape') setOuvert(null); };
+    window.addEventListener('pointerdown', dehors);
+    window.addEventListener('keydown', touche);
+    return () => { window.removeEventListener('pointerdown', dehors); window.removeEventListener('keydown', touche); };
+  }, [ouvert]);
+  const ouvrir = () => {
+    const r = btnRef.current.getBoundingClientRect();
+    setOuvert({ x: Math.max(8, Math.min(r.left + r.width / 2 - 170, window.innerWidth - 348)), y: r.bottom + 8 });
+  };
+  return (
+    <>
+      <button ref={btnRef} type="button" className={'ptb-outil ptb-dessins' + (ouvert ? ' actif' : '')}
+        title="Dessins reçus du téléphone — les glisser sur une page du PDF"
+        onClick={() => (ouvert ? setOuvert(null) : ouvrir())}>
+        <IconeOutil nom="dessins" size={16} /><span className="ptb-outil-lbl">Dessins</span>
+        {nouveaux > 0 && <span className="ptb-pastille-n">{nouveaux}</span>}
+      </button>
+      {ouvert && createPortal(
+        <div ref={menuRef} className={'md-menu' + (glisse ? ' en-glisse' : '')} style={{ left: ouvert.x, top: ouvert.y }} role="dialog" aria-label="Dessins reçus">
+          <div className="md-menu-tete">
+            <IconeOutil nom="dessins" size={15} />
+            <span>Dessins reçus</span>
+            <span className="md-menu-n">{dessins.length}</span>
+            <span style={{ flex: 1 }} />
+            <button type="button" className="icon-btn sm" onClick={() => setOuvert(null)} title="Fermer (Échap)"><Icon name="x" size={13} /></button>
+          </div>
+          <div className="md-menu-liste scroll">
+            <OngletDessins dessins={dessins} posesBlobIds={posesBlobIds} essai={essai} pdfPret={pdfPret}
+              onPoser={(d) => { setOuvert(null); onPoser(d); }} onRetirer={onRetirer}
+              onGlisse={(v) => { setGlisse(v); if (!v) setOuvert(null); }} />
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }

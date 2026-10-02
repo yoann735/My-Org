@@ -74,7 +74,7 @@ import { SelecteurCouleurs, ReglagesTrait, dansSelecteurFlottant } from './Coule
 import { IconeOutil, IconeForme } from './IconesOutils.jsx';
 import { TYPES_FORMES, estTrait, estFermee, ancreSurForme } from './formes.js';
 import { publierFicheActive, useSondage, dessinsDeFiche, retirerDessin } from '../lib/dessins.js';
-import { OngletDessins, TYPE_GLISSER } from './OngletDessins.jsx';
+import { MenuDessins, TYPE_GLISSER } from './OngletDessins.jsx';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
@@ -1531,6 +1531,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         actionsDocument={afficherEntete ? [] : actionsDocument /* avec l'en-tête, tout est dans « Fichier » */}
 
         onAjouterPage={pdfDoc ? () => insererPageApres(pageCourante - 1) : null}
+        boutonDessins={pdfDoc && srcTab === 'pdf' && ficheId ? (
+          <MenuDessins dessins={dessins} essai={essaiDessins} pdfPret={!!pageSizes.length}
+            posesBlobIds={new Set(edits.filter((a) => a.kind === 'image').map((a) => a.blobId))}
+            onPoser={(d) => poserDessin(d)} onRetirer={retirerUnDessin} />
+        ) : null}
         onAjouterImage={pdfDoc ? () => entreeImageRef.current && entreeImageRef.current.click() : null}
         contexteSupplementaire={outil === 'boite' ? (
           <SelecteurCouleurs couleur={couleurActive} onCouleur={setCouleurActive} titre="Couleur de la boîte" />
@@ -1737,11 +1742,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <CourseItemsSidebar ctx={ctx} ficheId={ficheReelle ? ficheReelle.id : null}
           ongletsEnPlus={[
             { id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length, contenu: notionsPdf },
-            // dessins envoyés du téléphone : seulement sur un PDF (là où ils se posent)
-            pdfDoc && srcTab === 'pdf' ? { id: 'dessins', label: 'Dessins', icon: 'image', n: dessins.length,
-              contenu: <OngletDessins dessins={dessins} essai={essaiDessins} pdfPret={!!pageSizes.length}
-                posesBlobIds={new Set(edits.filter((a) => a.kind === 'image').map((a) => a.blobId))}
-                onPoser={(d) => poserDessin(d)} onRetirer={retirerUnDessin} /> } : null,
           ]}
           ongletInitial={ficheReelle ? null : 'notions'}
           replie={!panelOpen} onReplier={(v) => setPanelOpen(!v)} />
