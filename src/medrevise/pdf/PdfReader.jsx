@@ -1209,10 +1209,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const px = Math.max(8, Math.min(72, Math.round(t.taille * rec.width * refPx)));
       const lignes = String(t.texte).split('\n');
       const content = { type: 'doc', content: lignes.map((l) => ({ type: 'paragraph', content: l ? [{ type: 'text', text: l, marks: [{ type: 'textStyle', attrs: { fontSize: `${px}px` } }] }] : [] })) };
-      return newTexteLibre({ ficheId, page: ps.cle, couleur: t.couleur || 'noir', content,
+      const enr = newTexteLibre({ ficheId, page: ps.cle, couleur: t.couleur || 'noir', content,
         x: Math.max(0, Math.min(0.98, rec.x + t.x * rec.width - 4 / refPx)),
         y: Math.max(0, Math.min(0.98, rec.y + t.y * rec.height - 2 / (ps.height * 1.6))),
-        width: Math.min(0.9, Math.max(0.05, t.largeur * rec.width * 1.2 + 12 / refPx)), height: 0.02 });
+        // zone TRACÉE au téléphone : même largeur, retour à la ligne identique (largeur fixée)
+        width: Math.min(0.9, Math.max(0.05, t.boite ? t.largeur * rec.width + 10 / refPx : t.largeur * rec.width * 1.2 + 12 / refPx)), height: 0.02 });
+      return t.boite ? { ...enr, largeurFixe: true } : enr;
     });
     await hist.appliquer(textesRecs.length
       ? cmdGroupe(`Dessin posé (avec ${textesRecs.length} texte${textesRecs.length > 1 ? 's' : ''})`, [cmdCreer('annotations', rec, 'Image collée'), ...textesRecs.map((t) => cmdCreer('annotations', t, 'Texte du dessin'))])

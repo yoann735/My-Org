@@ -43,16 +43,36 @@ export const TAILLES_TEXTE = [14, 18, 24, 32, 44]; // px à zoom 1
 export const POLICE_TEXTE = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 let ctxMesure = null;
 /** largeur/hauteur (monde) d'une zone de texte. */
-export function mesurerTexte(e) {
-  const lignes = String(e.texte || '').split('\n');
-  let w = 0;
+const largeurMot = (txt, taille) => {
   try {
     if (!ctxMesure) ctxMesure = document.createElement('canvas').getContext('2d');
-    ctxMesure.font = `500 ${e.taille}px ${POLICE_TEXTE}`;
-    for (const l of lignes) w = Math.max(w, ctxMesure.measureText(l || ' ').width);
-  } catch (err) { w = Math.max(...lignes.map((l) => l.length)) * e.taille * 0.55; }
-  return { w: Math.max(e.taille, w), h: lignes.length * e.taille * 1.25 };
+    ctxMesure.font = `500 ${taille}px ${POLICE_TEXTE}`;
+    return ctxMesure.measureText(txt).width;
+  } catch (err) { return txt.length * taille * 0.55; }
+};
+/** lignes AFFICHÉES d'une zone de texte : retour à la ligne aux mots dans sa largeur
+    (zone tracée au doigt), ou lignes du texte telles quelles (zone sans largeur). */
+export function lignesTexte(e) {
+  const brutes = String(e.texte || '').split('\n');
+  if (!e.largeur) return brutes;
+  const out = [];
+  for (const ligne of brutes) {
+    let cur = '';
+    for (const mot of ligne.split(' ')) {
+      const essai = cur ? cur + ' ' + mot : mot;
+      if (cur && largeurMot(essai, e.taille) > e.largeur) { out.push(cur); cur = mot; } else cur = essai;
+    }
+    out.push(cur);
+  }
+  return out;
 }
+export function mesurerTexte(e) {
+  const lignes = lignesTexte(e);
+  let w = 0;
+  for (const l of lignes) w = Math.max(w, largeurMot(l || ' ', e.taille));
+  return { w: e.largeur ? Math.max(e.largeur, e.taille) : Math.max(e.taille, w), h: Math.max(1, lignes.length) * e.taille * 1.25 };
+}
+const TAILLE_MIN = 10, TAILLE_MAX = 72;
 const nouvelId = () => 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 /** chemin lissé (courbes quadratiques entre les milieux) en coordonnées monde. */
@@ -162,7 +182,7 @@ export function couleurSurFond(c, fond = 'noir') {
 export function ElementDessin({ e, gommeLarg = 0, fond = 'noir' }) {
   const coul = couleurSurFond(e.couleur, fond);
   if (e.type === 'texte') {
-    const lignes = String(e.texte || '').split('\n');
+    const lignes = lignesTexte(e);
     const t = mesurerTexte(e);
     return (
       <g data-id={e.id} data-type="texte" transform={`translate(${e.x} ${e.y})`}>
@@ -277,19 +297,26 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
   const saisieRef = useRef(null);
   const [edition, setEdition] = useState(null); // { id|null, x, y, taille, couleur }
   const editionRef = useRef(null); editionRef.current = edition;
-  const [glisseTexte, setGlisseTexte] = useState(null); // { id, dx, dy } pendant un déplacement
+  const [glisseTexte, setGlisseTexte] = useState(null); // { id, dx, dy, dl } pendant un déplacement / un redimensionnement
+  const [selId, setSelId] = useState(null); // zone de texte sélectionnée (barre flottante)
+  const [zoneApercu, setZoneApercu] = useState(null); // zone en train d'être tracée
+  const placerSaisie = (ed) => {
+    const ta = saisieRef.current; if (!ta || !svgRef.current) return;
+    const c = camRef.current;
+    const r = svgRef.current.getBoundingClientRect(), base = svgRef.current.parentElement.getBoundingClientRect();
+    ta.style.left = `${r.left - base.left + ed.x * c.z + c.x - 3}px`;
+    ta.style.top = `${r.top - base.top + ed.y * c.z + c.y - c.z * ed.taille * 0.12 - 2}px`;
+    ta.style.fontSize = `${ed.taille * c.z}px`;
+    ta.style.color = couleurSurFond(ed.couleur, 'noir');
+    if (ed.largeur) { ta.style.width = `${ed.largeur * c.z + 8}px`; ta.style.whiteSpace = 'pre-wrap'; } else { ta.style.whiteSpace = 'pre'; }
+    ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight}px`;
+  };
   const ouvrirSaisie = (ed, texteInitial) => {
     const ta = saisieRef.current;
     if (ta) {
-      const c = camRef.current;
-      // la surface est sous la barre du haut : le champ se place par rapport à elle
-      const r = svgRef.current.getBoundingClientRect(), base = svgRef.current.parentElement.getBoundingClientRect();
       ta.value = texteInitial || '';
-      ta.style.left = `${r.left - base.left + ed.x * c.z + c.x - 2}px`;
-      ta.style.top = `${r.top - base.top + ed.y * c.z + c.y - c.z * ed.taille * 0.12}px`;
-      ta.style.fontSize = `${ed.taille * c.z}px`;
-      ta.style.color = couleurSurFond(ed.couleur, 'noir');
       ta.style.display = 'block';
+      placerSaisie(ed);
       try { ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (err) { /* ignore */ }
     }
     setEdition(ed);
@@ -305,11 +332,46 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     if (ed.id) {
       const avant = els.find((x) => x.id === ed.id);
       if (!avant) return;
-      if (!texte.trim()) valider(els.filter((x) => x.id !== ed.id));
-      else if (texte !== avant.texte) valider(els.map((x) => (x.id === ed.id ? { ...x, texte } : x)));
+      if (!texte.trim()) { valider(els.filter((x) => x.id !== ed.id)); setSelId(null); }
+      else if (texte !== avant.texte || ed.taille !== avant.taille || ed.couleur !== avant.couleur) valider(els.map((x) => (x.id === ed.id ? { ...x, texte, taille: ed.taille, couleur: ed.couleur } : x)));
     } else if (texte.trim()) {
-      valider([...els, { id: nouvelId(), type: 'texte', x: ed.x, y: ed.y, texte, couleur: ed.couleur, taille: ed.taille }]);
+      const id = nouvelId();
+      valider([...els, { id, type: 'texte', x: ed.x, y: ed.y, texte, couleur: ed.couleur, taille: ed.taille, ...(ed.largeur ? { largeur: ed.largeur } : {}) }]);
+      setSelId(id); // la zone reste sélectionnée : sa barre (taille, supprimer) est sous la main
     }
+  };
+  /* ACTIONS DE LA ZONE SÉLECTIONNÉE (ou en cours d'écriture) */
+  const modifierZone = (id, patch) => valider(elementsRef.current.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  const changerTaille = (delta) => {
+    const ed = editionRef.current;
+    if (ed) { const t = Math.max(TAILLE_MIN, Math.min(TAILLE_MAX, ed.taille + delta)); const n = { ...ed, taille: t }; setEdition(n); placerSaisie(n); return; }
+    const z = elementsRef.current.find((x) => x.id === selId); if (!z) return;
+    modifierZone(z.id, { taille: Math.max(TAILLE_MIN, Math.min(TAILLE_MAX, z.taille + delta)) });
+  };
+  const supprimerZone = () => {
+    const ed = editionRef.current;
+    const id = ed ? ed.id : selId;
+    if (ed) { const ta = saisieRef.current; if (ta) { ta.value = ''; ta.style.display = 'none'; ta.blur(); } setEdition(null); }
+    if (id) valider(elementsRef.current.filter((x) => x.id !== id));
+    setSelId(null);
+  };
+  const modifierTexteSel = () => {
+    const z = elementsRef.current.find((x) => x.id === selId); if (!z) return;
+    ouvrirSaisie({ id: z.id, x: z.x, y: z.y, taille: z.taille, couleur: z.couleur, largeur: z.largeur }, z.texte);
+  };
+  // poignée de largeur (bord droit de la zone sélectionnée)
+  const debutLargeur = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const z = elementsRef.current.find((x) => x.id === selId); if (!z) return;
+    const l0 = z.largeur || mesurerTexte(z).w, x0 = e.clientX, zoom = camRef.current.z;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    const move = (ev) => setGlisseTexte({ id: z.id, dx: 0, dy: 0, largeur: Math.max(40 / zoom, l0 + (ev.clientX - x0) / zoom) });
+    const up = (ev) => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      setGlisseTexte(null);
+      modifierZone(z.id, { largeur: Math.max(40 / zoom, l0 + (ev.clientX - x0) / zoom) });
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
   const texteSous = (wx, wy) => [...elementsRef.current].reverse().find((x) => {
     if (x.type !== 'texte') return false;
@@ -367,7 +429,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       // zones de texte : en FRACTIONS de l'image, pour être reposées par-dessus sur l'ordi
       const textes = elementsRef.current.filter((x) => x.type === 'texte' && String(x.texte || '').trim()).map((x) => {
         const t = mesurerTexte(x);
-        return { texte: x.texte, x: (x.x - b.x + m) / w, y: (x.y - b.y + m) / h, taille: x.taille / w, largeur: t.w / w,
+        return { texte: x.texte, x: (x.x - b.x + m) / w, y: (x.y - b.y + m) / h, taille: x.taille / w, largeur: t.w / w, ...(x.largeur ? { boite: true } : {}),
           couleur: couleurSurFond(x.couleur, fondExport === 'noir' ? 'noir' : 'clair') };
       });
       return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${fond}<g transform="translate(${m - b.x} ${m - b.y})">${morceaux}</g></svg>`, w, h, textes };
@@ -413,7 +475,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
   const doigts = useRef(new Map());
   const geste = useRef(null); // { type: 'trait'|'forme'|'gomme'|'pan'|'pince', … }
 
-  const finPince = () => { setCam({ ...camRef.current }); };
+  const finPince = () => { marquerGeste(false); setCam({ ...camRef.current }); };
   const abandonner = () => {
     const g = geste.current;
     if (g && g.type === 'trait' && traitRef.current) traitRef.current.setAttribute('d', '');
@@ -421,7 +483,9 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     if (g && g.type === 'gomme') setMasques(null);
     geste.current = null;
   };
+  const marquerGeste = (v) => { const el = svgRef.current && svgRef.current.parentElement; if (el) el.classList.toggle('md-en-geste', v); };
   const debutPince = () => {
+    marquerGeste(true);
     const [a, b] = [...doigts.current.values()];
     geste.current = { type: 'pince', d0: Math.hypot(b.x - a.x, b.y - a.y) || 1, m0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, cam0: { ...camRef.current } };
   };
@@ -450,8 +514,14 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     if (doigts.current.size > 2) return;
     if (editionRef.current) { terminerSaisie(); geste.current = null; return; } // toucher ailleurs = fin de la saisie
     const [wx, wy] = versMonde(e.clientX, e.clientY);
-    if (outil === 'texte') { geste.current = { type: 'texte', cible: texteSous(wx, wy) || null, p0: [wx, wy], c0: [e.clientX, e.clientY], bouge: false }; return; }
-    if (outil === 'main') { geste.current = { type: 'pan', x0: e.clientX, y0: e.clientY, cam0: { ...camRef.current } }; return; }
+    if (outil === 'texte') {
+      const cible = texteSous(wx, wy) || null;
+      if (cible) { geste.current = { type: 'texte', cible, c0: [e.clientX, e.clientY], bouge: false, dejaSel: selId === cible.id }; setSelId(cible.id); return; }
+      if (selId) { setSelId(null); geste.current = null; return; } // toucher le vide = désélectionner d'abord
+      geste.current = { type: 'texte-zone', p0: [wx, wy], c0: [e.clientX, e.clientY] };
+      return;
+    }
+    if (outil === 'main') { marquerGeste(true); geste.current = { type: 'pan', x0: e.clientX, y0: e.clientY, cam0: { ...camRef.current } }; return; }
     if (outil === 'gomme') { geste.current = { type: 'gomme', touches: new Set() }; toucheGomme(e.clientX, e.clientY); return; }
     if (outil === 'forme') { geste.current = { type: 'forme', p0: [wx, wy], courant: null }; return; }
     const surl = outil === 'surligneur';
@@ -488,9 +558,15 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       return;
     }
     if (g.type === 'pan') { appliquerCam({ ...g.cam0, x: g.cam0.x + e.clientX - g.x0, y: g.cam0.y + e.clientY - g.y0 }); return; }
+    if (g.type === 'texte-zone') {
+      const [x1, y1] = versMonde(e.clientX, e.clientY);
+      if (Math.hypot(e.clientX - g.c0[0], e.clientY - g.c0[1]) < 10) return;
+      setZoneApercu({ x: Math.min(g.p0[0], x1), y: Math.min(g.p0[1], y1), w: Math.abs(x1 - g.p0[0]), h: Math.abs(y1 - g.p0[1]) });
+      return;
+    }
     if (g.type === 'texte') {
       if (!g.cible) return;
-      if (!g.bouge && Math.hypot(e.clientX - g.c0[0], e.clientY - g.c0[1]) < 8) return;
+      if (!g.bouge && Math.hypot(e.clientX - g.c0[0], e.clientY - g.c0[1]) < 6) return;
       g.bouge = true;
       const z = camRef.current.z;
       setGlisseTexte({ id: g.cible.id, dx: (e.clientX - g.c0[0]) / z, dy: (e.clientY - g.c0[1]) / z });
@@ -526,7 +602,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     if (g.type === 'pince') { if (doigts.current.size < 2) { geste.current = null; finPince(); } return; }
     if (doigts.current.size > 0) return;
     geste.current = null;
-    if (g.type === 'pan') { setCam({ ...camRef.current }); return; }
+    if (g.type === 'pan') { marquerGeste(false); setCam({ ...camRef.current }); return; }
     if (g.type === 'texte') {
       if (g.cible && g.bouge) {
         const z = camRef.current.z, dx = (e.clientX - g.c0[0]) / z, dy = (e.clientY - g.c0[1]) / z;
@@ -534,9 +610,26 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
         valider(elementsRef.current.map((x) => (x.id === g.cible.id ? { ...x, x: x.x + dx, y: x.y + dy } : x)));
         return;
       }
-      if (g.cible) { ouvrirSaisie({ id: g.cible.id, x: g.cible.x, y: g.cible.y, taille: g.cible.taille, couleur: g.cible.couleur }, g.cible.texte); return; }
-      const taille = TAILLES_TEXTE[tailleIdx];
-      ouvrirSaisie({ id: null, x: g.p0[0], y: g.p0[1] - taille * 0.6, taille, couleur }, '');
+      // toucher une zone DÉJÀ sélectionnée = l'écrire ; sinon le toucher l'a juste sélectionnée
+      if (g.cible && g.dejaSel) ouvrirSaisie({ id: g.cible.id, x: g.cible.x, y: g.cible.y, taille: g.cible.taille, couleur: g.cible.couleur, largeur: g.cible.largeur }, g.cible.texte);
+      return;
+    }
+    if (g.type === 'texte-zone') {
+      // ZONE TRACÉE AU DOIGT : sa largeur règle le retour à la ligne ; un simple toucher
+      // crée une zone de largeur par défaut
+      setZoneApercu(null);
+      const taille = TAILLES_TEXTE[tailleIdx], z = camRef.current.z;
+      const [x1, y1] = versMonde(e.clientX, e.clientY);
+      const trace = Math.hypot(e.clientX - g.c0[0], e.clientY - g.c0[1]) >= 10 && Math.abs(x1 - g.p0[0]) * z >= 40;
+      const zone = trace
+        ? { x: Math.min(g.p0[0], x1), y: Math.min(g.p0[1], y1), largeur: Math.abs(x1 - g.p0[0]) }
+        : (() => {
+          // zone par défaut : elle tient TOUJOURS dans la vue (recalée vers la gauche près du bord)
+          const vueW = svgRef.current.getBoundingClientRect().width, l = Math.min(240, vueW - 40);
+          const xEcran = Math.max(12, Math.min(g.c0[0] - svgRef.current.getBoundingClientRect().left, vueW - l - 12));
+          return { x: (xEcran - camRef.current.x) / z, y: g.p0[1] - taille * 0.6, largeur: l / z };
+        })();
+      ouvrirSaisie({ id: null, ...zone, taille, couleur }, '');
       return;
     }
     if (g.type === 'gomme') {
@@ -570,7 +663,12 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
   // qu'on glisse suit le doigt
   const visibles = elements
     .filter((x) => !(masques && masques.has(x.id)) && !(edition && edition.id === x.id))
-    .map((x) => (glisseTexte && glisseTexte.id === x.id ? { ...x, x: x.x + glisseTexte.dx, y: x.y + glisseTexte.dy } : x));
+    .map((x) => (glisseTexte && glisseTexte.id === x.id ? { ...x, x: x.x + glisseTexte.dx, y: x.y + glisseTexte.dy, ...(glisseTexte.largeur ? { largeur: glisseTexte.largeur } : {}) } : x));
+  // zone sélectionnée (ou en écriture) : sa boîte à l'écran, pour la barre flottante
+  const zoneSel = outil === 'texte' && !edition && selId ? visibles.find((x) => x.id === selId) : null;
+  const boiteEcran = (b) => (b ? { x: b.x * cam.z + cam.x, y: b.y * cam.z + cam.y, w: b.w * cam.z, h: b.h * cam.z } : null);
+  const selEcran = zoneSel ? boiteEcran(boiteElement(zoneSel)) : edition ? boiteEcran({ x: edition.x, y: edition.y, w: edition.largeur || 160, h: edition.taille * 1.25 }) : null;
+  const tailleCourante = edition ? edition.taille : zoneSel ? zoneSel.taille : null;
   const ep = EPAISSEURS[epIdx];
   const couleurActive = outil === 'surligneur' ? couleurSurl : couleur;
 
@@ -601,14 +699,45 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
           {visibles.map((x) => <ElementDessin key={x.id} e={x} gommeLarg={outil === 'gomme' ? 22 / cam.z : 0} />)}
           {apercu && <g opacity="0.75"><ElementDessin e={{ id: 'apercu', type: 'forme', forme: typeForme, ...apercu, couleur, ep, remplie: remplie && estFermee(typeForme) }} /></g>}
           <path ref={traitRef} d="" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          {zoneApercu && <rect x={zoneApercu.x} y={zoneApercu.y} width={zoneApercu.w} height={Math.max(zoneApercu.h, TAILLES_TEXTE[tailleIdx] * 1.25)} rx={6 / cam.z}
+            fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.7)" strokeDasharray="6 5" vectorEffect="non-scaling-stroke" strokeWidth="1.5" />}
+          {zoneSel && (() => { const b = boiteElement(zoneSel); return (
+            <rect x={b.x - 6 / cam.z} y={b.y - 6 / cam.z} width={b.w + 12 / cam.z} height={b.h + 12 / cam.z} rx={8 / cam.z}
+              fill="none" stroke="#0a84ff" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+          ); })()}
         </g>
       </svg>
 
       {!elements.length && !edition && <div className="md-vide">Dessine au doigt · deux doigts pour déplacer et zoomer</div>}
       <textarea ref={saisieRef} className="md-saisie" rows={1} spellCheck={false} aria-label="Texte"
         style={{ display: 'none', fontFamily: POLICE_TEXTE }}
-        onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; t.style.width = 'auto'; t.style.width = `${Math.max(80, t.scrollWidth + 8)}px`; }}
+        onInput={(e) => {
+          const t = e.currentTarget; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`;
+          if (!(editionRef.current && editionRef.current.largeur)) { t.style.width = 'auto'; t.style.width = `${Math.max(80, t.scrollWidth + 8)}px`; } // zone tracée : largeur fixe, retour à la ligne
+        }}
         onBlur={() => { if (editionRef.current) terminerSaisie(); }} />
+
+      {/* BARRE FLOTTANTE de la zone de texte : gros boutons, au-dessus de la zone */}
+      {selEcran && (() => {
+        const haut = svgRef.current ? svgRef.current.getBoundingClientRect().top - svgRef.current.parentElement.getBoundingClientRect().top : 0;
+        const W = 300, gauche = Math.max(8, Math.min(selEcran.x + selEcran.w / 2 - W / 2, (svgRef.current ? svgRef.current.clientWidth : 390) - W - 8));
+        const dessus = haut + selEcran.y - 64 > haut + 4;
+        return (<>
+          <div className="md-texte-barre" style={{ left: gauche, top: dessus ? haut + selEcran.y - 64 : haut + selEcran.y + selEcran.h + 14, width: W }}
+            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+            <button type="button" aria-label="Texte plus petit" onClick={() => changerTaille(-2)}><span className="md-a-petit">A</span>−</button>
+            <span className="md-texte-taille">{tailleCourante}</span>
+            <button type="button" aria-label="Texte plus grand" onClick={() => changerTaille(2)}><span className="md-a-grand">A</span>+</button>
+            <span className="md-texte-sep" />
+            {!edition && <button type="button" aria-label="Modifier le texte" onClick={modifierTexteSel}><IconeOutil nom="texte" size={18} /></button>}
+            <button type="button" className="md-texte-suppr" aria-label="Supprimer la zone" onClick={supprimerZone}><Icon name="trash" size={17} /> Supprimer</button>
+          </div>
+          {zoneSel && (
+            <span className="md-texte-poignee" style={{ left: selEcran.x + selEcran.w + 6, top: haut + selEcran.y + selEcran.h / 2 }}
+              onPointerDown={debutLargeur} aria-label="Largeur de la zone" />
+          )}
+        </>);
+      })()}
 
       {/* DOCK FLOTTANT (02/10 nuit) : la carte des réglages de l'outil (couleurs, taille,
           lissage, formes) au-dessus de la barre d'outils, en verre sombre. Toucher l'outil
@@ -631,7 +760,13 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
               </div>
             )}
             {outil !== 'gomme' && outil !== 'main' && (
-              <PaletteMobile couleur={couleurActive} onCouleur={outil === 'surligneur' ? setCouleurSurl : setCouleur} />
+              <PaletteMobile couleur={outil === 'texte' && (edition || zoneSel) ? (edition ? edition.couleur : zoneSel.couleur) : couleurActive}
+                onCouleur={(c) => {
+                  if (outil === 'surligneur') { setCouleurSurl(c); return; }
+                  setCouleur(c);
+                  if (outil === 'texte' && editionRef.current) { const n = { ...editionRef.current, couleur: c }; setEdition(n); placerSaisie(n); }
+                  else if (outil === 'texte' && selId) modifierZone(selId, { couleur: c });
+                }} />
             )}
             {outil === 'texte' && (
               <div className="md-rang md-tailles" role="group" aria-label="Taille du texte">
@@ -661,14 +796,14 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
               </button>
             )}
             {outil === 'gomme' && <div className="md-aide">Touche ou glisse sur un trait, une forme ou un texte pour l’effacer.</div>}
-            {outil === 'texte' && <div className="md-aide">Touche le dessin pour écrire · touche un texte pour le modifier, glisse-le pour le déplacer.</div>}
+            {outil === 'texte' && <div className="md-aide">Trace une zone au doigt (ou touche) pour écrire · touche une zone pour la sélectionner, glisse-la pour la déplacer.</div>}
             {outil === 'main' && <div className="md-aide">Glisse pour déplacer le dessin · pince pour zoomer.</div>}
           </div>
         )}
         <div className="md-outils" role="group" aria-label="Outils">
           {OUTILS.map((o) => (
             <button key={o.id} type="button" className={'md-outil' + (outil === o.id ? ' actif' : '')}
-              onClick={() => { if (editionRef.current) terminerSaisie(); if (o.id === outil) setCarteOuverte((v) => !v); else { setOutil(o.id); setCarteOuverte(true); } }}>
+              onClick={() => { if (editionRef.current) terminerSaisie(); if (o.id === outil) setCarteOuverte((v) => !v); else { setOutil(o.id); setSelId(null); setCarteOuverte(true); } }}>
               <IconeOutil nom={o.id} size={22} />
               <span>{o.label}</span>
             </button>
