@@ -11,23 +11,40 @@
    - La roue : teinte autour, saturation vers le bord, luminosité au curseur, code
      hex éditable, aperçu « avant / après ». Fenêtre posée par-dessus tout
      (portail), fermée par Échap ou un clic à l'extérieur.
+
+   UN SEUL SYSTÈME POUR TOUS LES OUTILS (05/10) : surligneur, crayon, formes, boîtes,
+   texte libre, bulle d'un surlignage, cartes du tableau, couleur du texte dans une
+   boîte — tous passent par CE sélecteur (avant : 4 sélecteurs différents, dont une
+   palette de 12 couleurs propre au crayon et l'input couleur du navigateur).
+   Une couleur d'avant qui n'est ni « cours » ni perso (noir d'un texte libre, carte
+   blanche…) reste affichée, sélectionnée, en tête : rien ne change sur la page.
    ============================================================ */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { COLORS, couleurHex } from './pdfShared.js';
+
+/** éléments flottants du sélecteur : un « clic dehors » d'une bulle ou d'un panneau
+    ne doit pas les compter comme extérieurs (sinon la roue fermerait sa bulle). */
+export const SELECTEUR_FLOTTANT = '.sc-fenetre, .sc-pop';
+export const dansSelecteurFlottant = (el) => !!(el && el.closest && el.closest(SELECTEUR_FLOTTANT));
 import { useCouleursPerso, hsvVersHex, hexVersHsv } from '../lib/couleursPerso.js';
 
 export function SelecteurCouleurs({ couleur, onCouleur, titre = 'Couleur' }) {
   const [perso, ajouter, retirer] = useCouleursPerso();
   const [roue, setRoue] = useState(null); // { x, y } : position de la fenêtre
   const plusRef = useRef(null);
+  const actuelleHorsListe = !!couleur && couleur !== 'off' && !COLORS.some((c) => c.id === couleur) && !perso.includes(String(couleur).toLowerCase());
   const ouvrir = () => {
     const r = plusRef.current.getBoundingClientRect();
     setRoue({ x: Math.min(r.left, window.innerWidth - 300), y: r.bottom + 8 });
   };
   return (
     <div className="sc-couleurs" role="group" aria-label={titre}>
+      {actuelleHorsListe && (<>
+        <button type="button" title="Couleur actuelle" className="sc-pastille actif" style={{ background: couleurHex(couleur, '#888888') }} onClick={() => onCouleur(couleur)} />
+        <span className="sc-sep" aria-hidden="true" />
+      </>)}
       {COLORS.map((c) => (
         <button key={c.id} type="button" title={`${c.label} — couleur « cours »`} onClick={() => onCouleur(c.id)}
           className={'sc-pastille' + (couleur === c.id ? ' actif' : '')} style={{ background: c.hex }} />
@@ -51,6 +68,49 @@ export function SelecteurCouleurs({ couleur, onCouleur, titre = 'Couleur' }) {
         document.body,
       )}
     </div>
+  );
+}
+
+/* BOUTON COULEUR COMPACT (05/10) : une pastille de la couleur courante ; un clic
+   ouvre, dans un petit panneau flottant, LE MÊME sélecteur (4 couleurs « cours »,
+   mes couleurs, roue). Pour les barres où la place manque (mise en forme du texte
+   d'une boîte). `onMouseDown` empêché : la sélection de texte de l'éditeur reste. */
+export function BoutonCouleur({ couleur, onCouleur, titre = 'Couleur', icone = null }) {
+  const [pop, setPop] = useState(null);
+  const btnRef = useRef(null);
+  const popRef = useRef(null);
+  useEffect(() => {
+    if (!pop) return undefined;
+    const dehors = (e) => {
+      if (popRef.current && popRef.current.contains(e.target)) return;
+      if (btnRef.current && btnRef.current.contains(e.target)) return;
+      if (e.target.closest && e.target.closest('.sc-fenetre')) return;
+      setPop(null);
+    };
+    const touche = (e) => { if (e.key === 'Escape') setPop(null); };
+    window.addEventListener('pointerdown', dehors);
+    window.addEventListener('keydown', touche);
+    return () => { window.removeEventListener('pointerdown', dehors); window.removeEventListener('keydown', touche); };
+  }, [pop]);
+  return (
+    <>
+      <button ref={btnRef} type="button" className={'sc-bouton' + (pop ? ' actif' : '')} title={titre}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => {
+          if (pop) { setPop(null); return; }
+          const r = btnRef.current.getBoundingClientRect();
+          setPop({ x: Math.max(8, Math.min(r.left, window.innerWidth - 330)), y: r.bottom + 6 });
+        }}>
+        {icone}
+        <span className="sc-bouton-pastille" style={{ background: couleur ? couleurHex(couleur, '#888888') : 'transparent' }} />
+      </button>
+      {pop && createPortal(
+        <div ref={popRef} className="sc-pop" style={{ left: pop.x, top: pop.y }} onMouseDown={(e) => e.preventDefault()}>
+          <SelecteurCouleurs couleur={couleur} titre={titre} onCouleur={(c) => { onCouleur(c); setPop(null); }} />
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 

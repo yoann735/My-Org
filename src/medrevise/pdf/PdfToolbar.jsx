@@ -24,7 +24,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { ContextMenu } from '../components/ui.jsx';
 import { IconeOutil } from './IconesOutils.jsx';
-import { COLORS, RACCOURCI, PALETTE_CRAYON } from './pdfShared.js';
+import { RACCOURCI } from './pdfShared.js';
 
 /** Les outils, dans l'ordre d'apparition. `main` est le défaut et remplace à lui
     seul l'ancien couple « Lecture / Édition » : il sélectionne du texte, ouvre
@@ -39,26 +39,8 @@ export const OUTILS = [
   { id: 'crayon', label: 'Crayon', icone: 'crayon', aide: 'Dessiner à main levée' },
   { id: 'gomme', label: 'Gomme', icone: 'gomme', aide: 'Efface les traits de crayon et les formes — cliquer, ou glisser pour en effacer plusieurs' },
 ];
-/** Outils dont la couleur se règle dans la barre contextuelle. */
-const OUTILS_COLORES = new Set(['boite']); // surligneur et crayon ont leur propre sélecteur (pdf/Couleurs.jsx)
-
-/** Palette du crayon (et du texte libre) : 12 couleurs + une couleur au choix. */
-export function PaletteCrayon({ couleur, onCouleur }) {
-  const perso = typeof couleur === 'string' && couleur.startsWith('#');
-  return (
-    <div className="ptb-palette" role="group" aria-label="Couleur">
-      {PALETTE_CRAYON.map((c) => (
-        <button key={c.id} type="button" title={c.label} onClick={() => onCouleur(c.id)}
-          className={'ptb-pastille' + (couleur === c.id ? ' actif' : '')} style={{ background: c.hex }} />
-      ))}
-      <label className={'ptb-pastille ptb-perso' + (perso ? ' actif' : '')} title="Autre couleur…"
-        style={perso ? { background: couleur } : undefined}>
-        {!perso && <Icon name="plus" size={11} />}
-        <input type="color" value={perso ? couleur : '#e5383b'} onChange={(e) => onCouleur(e.target.value.toLowerCase())} />
-      </label>
-    </div>
-  );
-}
+/* Les couleurs de TOUS les outils (boîte comprise) se règlent par le même sélecteur
+   (pdf/Couleurs.jsx), fourni par le lecteur dans `contexteSupplementaire` (05/10). */
 
 export function PdfToolbar({
   onClose, pageCourante, numPages, onAllerPage,
@@ -228,13 +210,9 @@ export function PdfToolbar({
       </div>
 
       {/* ---- BARRE CONTEXTUELLE : seulement si l'outil actif a des réglages ---- */}
-      {outilsAnnotation && (OUTILS_COLORES.has(outil) || contexteSupplementaire) && (
+      {outilsAnnotation && contexteSupplementaire && (
         <div className="pdfr-contexte">
           <span className="ptb-contexte-titre">{outilActif.label}</span>
-          {OUTILS_COLORES.has(outil) && COLORS.map((c) => (
-            <button key={c.id} type="button" title={c.label} onClick={() => setCouleurActive(c.id)}
-              className={'ptb-pastille' + (couleurActive === c.id ? ' actif' : '')} style={{ background: c.hex }} />
-          ))}
           {contexteSupplementaire}
           <span style={{ flex: 1 }} />
           <span className="hint" style={{ fontSize: 11.5 }}>{outilActif.aide}</span>

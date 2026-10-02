@@ -72,11 +72,38 @@ export const PALETTE_CRAYON = [
   { id: 'rose', hex: '#FF9FD1', label: 'Rose' },
   { id: 'marron', hex: '#8B5A2B', label: 'Marron' },
 ];
-const PALETTE_HEX = Object.fromEntries(PALETTE_CRAYON.map((c) => [c.id, c.hex]));
+const PALETTE_HEX = { ...Object.fromEntries(PALETTE_CRAYON.map((c) => [c.id, c.hex])), blanc: '#FFFFFF' }; // blanc : cartes du tableau d'avant le 05/10
 /** couleur affichable d'un id de palette (surlignage, crayon) ou d'un hex libre. */
 export function couleurHex(c, repli = '#FFD84D') {
   if (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)) return c;
   return PALETTE_HEX[c] || repli;
+}
+
+/** teinte FONCÉE d'une couleur de boîte, pour que sa flèche reste lisible sur le
+    blanc de la page (les couleurs « cours » sont des pastels). Table fixe pour les 4
+    couleurs « cours » (rendu d'avant inchangé) ; une couleur perso claire est
+    assombrie, une couleur déjà foncée est gardée telle quelle. */
+export const COULEUR_FLECHE = { jaune: '#B8920A', vert: '#2F8F3A', bleu: '#2A72B8', rose: '#C2457F' };
+export function couleurFoncee(c) {
+  if (COULEUR_FLECHE[c]) return COULEUR_FLECHE[c];
+  const hex = couleurHex(c, '#FFD84D');
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  if (lum < 0.55) return hex;
+  const k = 0.62; // assombrit vers ~la même luminosité que la table fixe
+  const h = (v) => Math.round(v * k).toString(16).padStart(2, '0');
+  return `#${h(r)}${h(g)}${h(b)}`;
+}
+
+/** opacité du FOND d'une boîte : les pastels « cours » restent pleins (0,92, rendu
+    d'avant) ; une couleur perso foncée devient une teinte légère, sinon le texte
+    noir de la boîte serait illisible (même idée que les surlignages perso). */
+export function opaciteFondBoite(c) {
+  const hex = couleurHex(c);
+  const n = parseInt(hex.slice(1), 16);
+  const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return lum >= 0.6 ? 0.92 : 0.3;
 }
 
 export const FONT_SIZES = ['10px', '11px', '12px', '13px', '14px', '16px', '18px', '20px', '24px', '28px', '32px'];

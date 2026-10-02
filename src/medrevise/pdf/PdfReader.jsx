@@ -69,10 +69,9 @@ import {
   MODES_CRAYON, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, couleurHex, BOITE_DEFAUT,
 } from './pdfShared.js';
 import { PdfPageContent, EditToolbar } from './PdfPage.jsx';
-import { PdfToolbar, PaletteCrayon } from './PdfToolbar.jsx';
-import { SelecteurCouleurs, ReglagesTrait } from './Couleurs.jsx';
+import { PdfToolbar } from './PdfToolbar.jsx';
+import { SelecteurCouleurs, ReglagesTrait, dansSelecteurFlottant } from './Couleurs.jsx';
 import { IconeOutil } from './IconesOutils.jsx';
-import { useCouleursPerso } from '../lib/couleursPerso.js';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
@@ -173,7 +172,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [couleurCrayon, setCouleurCrayon] = useState('bleu');
   const [couleurForme, setCouleurForme] = useState('#e5383b'); // cadre rouge par défaut : il se voit sur la page
   const [couleurTexte, setCouleurTexte] = useState('noir'); // couleur du prochain TEXTE LIBRE
-  const [couleursPerso] = useCouleursPerso(); // proposées aussi dans la bulle d'un surlignage
   /* RÉGLAGES DU CRAYON (03/10) : TAILLE et OPACITÉ, deux curseurs, réglés séparément
      pour chaque mode (dessin / surligneur à main levée) et mémorisés sur l'appareil
      (préférence d'affichage, rien au cloud). Remplacent les 3 boutons d'épaisseur. */
@@ -593,7 +591,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // ferme la bulle d'un surlignage au clic extérieur / Échap
   useEffect(() => {
     if (!editingHl) return;
-    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.hl-picker'))) closeEditingHl(); };
+    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.hl-picker')) && !dansSelecteurFlottant(e.target)) closeEditingHl(); };
     const onKey = (e) => { if (e.key === 'Escape') closeEditingHl(); };
     window.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey);
@@ -1258,7 +1256,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const y = Math.max(0, Math.min(1 - Hb, y0 - 0.006));
     const r0 = aDroite ? rs.reduce((a, r) => (r.x + r.width > a.x + a.width ? r : a), rs[0]) : rs.reduce((a, r) => (r.x < a.x ? r : a), rs[0]);
     const ancre = { x: aDroite ? r0.x + r0.width : r0.x, y: r0.y + r0.height / 2, texte: (h.texte || '').slice(0, 90) || null };
-    const couleur = COLOR_HEX[h.couleur] ? h.couleur : couleurActive;
+    const couleur = h.couleur || couleurActive;
     const rec = { ...newNoteBox({ ficheId, page: h.page, x, y, width: W, height: Hb, couleur }), ancre, fleche: true, surlignageId: h.id };
     hist.appliquer(cmdCreer('annotations', rec, 'Boîte liée au surlignage'));
     videsFraiches.current.add(rec.id);
@@ -1437,12 +1435,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
         onAjouterPage={pdfDoc ? () => insererPageApres(pageCourante - 1) : null}
         onAjouterImage={pdfDoc ? () => entreeImageRef.current && entreeImageRef.current.click() : null}
-        contexteSupplementaire={outil === 'forme' ? (
+        contexteSupplementaire={outil === 'boite' ? (
+          <SelecteurCouleurs couleur={couleurActive} onCouleur={setCouleurActive} titre="Couleur de la boîte" />
+        ) : outil === 'forme' ? (
           <SelecteurCouleurs couleur={couleurForme} onCouleur={setCouleurForme} titre="Couleur du cadre" />
         ) : outil === 'surligneur' ? (
           <SelecteurCouleurs couleur={couleurSurligneur} onCouleur={setCouleurSurligneur} titre="Couleur du surligneur" />
         ) : outil === 'texte' ? (
-          <PaletteCrayon couleur={couleurTexte} onCouleur={setCouleurTexte} />
+          <SelecteurCouleurs couleur={couleurTexte} onCouleur={setCouleurTexte} titre="Couleur du texte" />
         ) : outil === 'question' ? <span /> : outil === 'crayon' ? (
           <>
             <SelecteurCouleurs couleur={couleurCrayon} onCouleur={setCouleurCrayon} titre="Couleur du crayon" />
@@ -1479,7 +1479,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <EditToolbar editor={editor} libre={activeEdit.kind === 'libre'}
           couleur={activeEdit.couleur}
           onCouleur={(c) => changerCouleurBoite(activeEdit, c)}
-          palette={activeEdit.kind === 'texte' ? <PaletteCrayon couleur={activeEdit.couleur} onCouleur={(c) => changerCouleurTexte(activeEdit, c)} /> : null}
+          palette={activeEdit.kind === 'texte' ? <SelecteurCouleurs couleur={activeEdit.couleur} onCouleur={(c) => changerCouleurTexte(activeEdit, c)} titre="Couleur du texte" /> : null}
           libelleSupprimer={activeEdit.kind === 'texte' ? 'Supprimer le texte' : null}
           onReset={() => (activeEdit.kind === 'libre' || activeEdit.kind === 'texte' ? supprimerBoite(activeEdit) : resetEdit(activeEdit.id))}
           onClose={() => setActiveEditId(null)} />
@@ -1646,11 +1646,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       {/* BULLE d'un surlignage : sa couleur, ou le supprimer. Rien d'autre. */}
       {editingHl && createPortal(
         <div className="hl-picker hl-bulle" style={{ left: Math.max(8, Math.min(editingHl.x, window.innerWidth - 420)), top: Math.min(editingHl.y + 10, window.innerHeight - 60) }}>
-          {[...COLORS.map((c) => ({ id: c.id, hex: c.hex, label: c.label })), ...couleursPerso.map((h) => ({ id: h, hex: h, label: `Ma couleur ${h}` }))].map((c) => (
-            <button key={c.id} type="button" className="hl-swatch-col" title={c.label} onClick={() => changeHighlightColor(c.id)}>
-              <span className={'hl-swatch' + (editingHl.couleur === c.id ? ' selected' : '')} style={{ background: c.hex }} />
-            </button>
-          ))}
+          <SelecteurCouleurs couleur={editingHl.couleur} onCouleur={changeHighlightColor} titre="Couleur du surlignage" />
           <span className="hl-picker-sep" />
           <button type="button" className="hl-lier" onClick={() => creerBoiteLiee(editingHl.id)}
             title="Ajouter une boîte de note reliée à ce surlignage (flèche)">

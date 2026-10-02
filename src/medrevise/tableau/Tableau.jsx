@@ -23,9 +23,9 @@ import { Icon } from '../../shared/Icon.jsx';
 import { getAll } from '../lib/storage.js';
 import { useAnnotHistorique, cmdCreer, cmdModifier, cmdSupprimer, cmdGroupe } from '../lib/annotHistory.js';
 import { newCarte, newLien, CARTE_DEFAUT, CARTE_MIN, STYLES_LIEN } from '../lib/tableau.js';
-import { COLORS, couleurHex, avecAlpha } from '../pdf/pdfShared.js';
+import { couleurHex, avecAlpha, opaciteFondBoite } from '../pdf/pdfShared.js';
 import { IconeOutil } from '../pdf/IconesOutils.jsx';
-import { useCouleursPerso } from '../lib/couleursPerso.js';
+import { SelecteurCouleurs } from '../pdf/Couleurs.jsx';
 import { cheminLien, ancreDe, coteAuto, coteLePlusProche } from './geometrie.js';
 
 const ZMIN = 0.1, ZMAX = 4;
@@ -432,9 +432,7 @@ export const Tableau = forwardRef(function Tableau({ ficheId }, ref) {
   /* ---------- rendu ---------- */
   const selCartes = cartes.filter((c) => selection.has(c.id));
   const selLiens = liens.filter((l) => selection.has(l.id));
-  const [perso] = useCouleursPerso();
-  const palette = [...COLORS.map((c) => c.id), 'blanc', ...perso];
-  const fondCarte = (c) => (c === 'blanc' ? '#FFFFFF' : avecAlpha(couleurCarte(c), 0.88));
+  const fondCarte = (c) => (c === 'blanc' ? '#FFFFFF' : avecAlpha(couleurCarte(c), opaciteFondBoite(c) < 0.9 ? 0.3 : 0.88)); // couleur foncée : teinte légère, texte lisible
 
   const fantome = lienEnCours && (() => {
     const a = parId.get(lienEnCours.fixe.id);
@@ -551,10 +549,9 @@ export const Tableau = forwardRef(function Tableau({ ficheId }, ref) {
         <div className="tb-contexte" onPointerDown={(e) => e.stopPropagation()}>
           {selCartes.length > 0 && (<>
             <span className="tb-ctx-titre">{selCartes.length > 1 ? `${selCartes.length} cartes` : 'Carte'}</span>
-            {palette.map((p) => (
-              <button key={p} type="button" className={'tb-pastille' + (selCartes.every((c) => c.couleur === p) ? ' actif' : '')}
-                style={{ background: p === 'blanc' ? '#fff' : couleurCarte(p) }} onClick={() => colorer(p)} title={p === 'blanc' ? 'Blanc' : p} />
-            ))}
+            {/* même sélecteur que tous les outils du lecteur (05/10) */}
+            <SelecteurCouleurs couleur={selCartes.every((c) => c.couleur === selCartes[0].couleur) ? selCartes[0].couleur : null}
+              onCouleur={colorer} titre="Couleur de la carte" />
             <span className="tb-sep" />
             {selCartes.length === 1 && <button type="button" className="tb-btn" onClick={() => setEditId(selCartes[0].id)} title="Écrire (Entrée)"><IconeOutil nom="texte" size={13} /></button>}
             <button type="button" className="tb-btn" onClick={dupliquer} title="Dupliquer (Cmd+D)"><Icon name="copy" size={12} /></button>

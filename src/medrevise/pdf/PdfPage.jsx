@@ -18,12 +18,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { EditorContent } from '@tiptap/react';
 import { IconeOutil } from './IconesOutils.jsx';
+import { SelecteurCouleurs, BoutonCouleur } from './Couleurs.jsx';
 import { Icon } from '../../shared/Icon.jsx';
 import { outputScaleFor } from './pdfjsSetup.js';
 import { richToHTML } from '../documents/lib/richtext.js';
 import { blobURL } from '../lib/storage.js';
 import {
-  COLORS, COLOR_HEX, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT,
+  couleurFoncee, opaciteFondBoite, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT,
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
   soustraireAncres, partCouverte, couleurHex,
@@ -849,7 +850,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     ...(ajustee ? { width: 'max-content', maxWidth: b.width * refW } : { width: b.width * refW }),
     ...(texteLibre
       ? { color: couleurHex(boite.couleur, '#1F1F24') }
-      : { background: avecAlpha(COLOR_HEX[boite.couleur] || COLOR_HEX.jaune, 0.92) }),
+      : { background: avecAlpha(couleurHex(boite.couleur), opaciteFondBoite(boite.couleur)), ...(!active && opaciteFondBoite(boite.couleur) < 0.9 ? { borderColor: couleurHex(boite.couleur) } : {}) }),
   };
 
   /* ÉPINGLE (ancre) : le point de la fiche auquel la boîte se rapporte. Un repère
@@ -905,7 +906,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const sortir = () => { clearTimeout(timerSurvol.current); timerSurvol.current = setTimeout(() => setSurvol(false), 250); };
   useEffect(() => () => clearTimeout(timerSurvol.current), []);
   const rouvrir = () => onModifier(boite, { reduite: false }, 'Réouverture de la boîte');
-  const couleurBoite = COLOR_HEX[boite.couleur] || COLOR_HEX.jaune;
+  const couleurBoite = couleurHex(boite.couleur);
 
   /* RÉDUITE : une pastille. Glisser = la déplacer (épinglée : l'épingle suit, le
      passage visé est recalculé ; libre : la boîte rouvrira là). Clic = rouvrir. */
@@ -941,7 +942,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     const recul = 7 / L; // la pointe s'arrête au bord du repère rond (rayon 6)
     return { W, H, sx, sy, ex: ax - (ax - sx) * recul, ey: ay - (ay - sy) * recul };
   })();
-  const couleurFleche = COULEUR_FLECHE[boite.couleur] || COULEUR_FLECHE.jaune;
+  const couleurFleche = couleurFoncee(boite.couleur);
 
   /* LES ACTIONS DE LA BOÎTE — une barre À LIBELLÉS, au-dessus de la boîte, visible
      quand la boîte est active ou survolée (retour de l'utilisateur : cinq icônes de
@@ -1331,9 +1332,6 @@ function IconeEpingle({ size = 13 }) {
 }
 const RACCOURCI_Z = (typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '') ? 'Cmd' : 'Ctrl') + '+Z';
 
-/** teinte FONCÉE de chaque couleur de boîte, pour que la flèche reste lisible sur
-    le blanc de la page (les couleurs de boîte sont des pastels). */
-const COULEUR_FLECHE = { jaune: '#B8920A', vert: '#2F8F3A', bleu: '#2A72B8', rose: '#C2457F' };
 
 /** Chantier 1 : rendu d'un bloc de texte édité. Masque le rendu original (fond opaque
     calé sur la boîte englobante d'origine) et affiche le contenu riche par-dessus —
@@ -1396,11 +1394,7 @@ export function EditToolbar({ editor, onReset, onClose, libre = false, couleur =
       {libre && onCouleur && (
         <>
           <span className="et-sep" />
-          {COLORS.map((c) => (
-            <button key={c.id} type="button" title={`Fond ${c.label.toLowerCase()}`} onClick={() => onCouleur(c.id)}
-              style={{ width: 17, height: 17, borderRadius: 5, background: c.hex, cursor: 'pointer', flex: '0 0 auto',
-                border: couleur === c.id ? '2px solid var(--text)' : '1px solid rgba(0,0,0,.25)' }} />
-          ))}
+          <SelecteurCouleurs couleur={couleur} onCouleur={onCouleur} titre="Couleur de la boîte" />
           <span className="et-sep" />
         </>
       )}
@@ -1418,8 +1412,13 @@ export function EditToolbar({ editor, onReset, onClose, libre = false, couleur =
         <option value="" disabled>Police</option>
         {FONT_FAMILIES.map((f) => <option key={f} value={f}>{f}</option>)}
       </select>
-      <input type="color" className="et-color" title="Couleur du texte" onChange={(e) => run((c) => c.setColor(e.target.value))} />
-      <input type="color" className="et-color" title="Surligneur de fond" defaultValue="#fff59d" onChange={(e) => run((c) => c.setBackgroundColor(e.target.value))} />
+      {/* même système de couleurs que tous les outils (05/10), en version compacte */}
+      <BoutonCouleur titre="Couleur du texte sélectionné" couleur={editor.getAttributes('textStyle').color || null}
+        icone={<span className="et-lettre" aria-hidden="true">A</span>}
+        onCouleur={(c) => run((ch) => ch.setColor(couleurHex(c, '#1F1F24')))} />
+      <BoutonCouleur titre="Surligneur de fond du texte sélectionné" couleur={editor.getAttributes('textStyle').backgroundColor || null}
+        icone={<IconeOutil nom="surligneur" size={13} />}
+        onCouleur={(c) => run((ch) => ch.setBackgroundColor(couleurHex(c)))} />
       <span className="et-sep" />
       <button type="button" className={'et-btn' + (active('bulletList') ? ' active' : '')} title="Liste à puces" onClick={() => run((c) => c.toggleBulletList())}><Icon name="list" size={13} /></button>
       <button type="button" className={'et-btn' + (active('orderedList') ? ' active' : '')} title="Liste numérotée" onClick={() => run((c) => c.toggleOrderedList())}>1.</button>

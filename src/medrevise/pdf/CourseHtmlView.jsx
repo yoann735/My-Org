@@ -39,7 +39,7 @@ import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, Modal, ConfirmModal } from '../components/ui.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
-import { COLORS, COLOR_HEX, COLOR_TAG, RACCOURCI } from './pdfShared.js';
+import { COLORS, COLOR_TAG, RACCOURCI, couleurHex } from './pdfShared.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
 import { getBlob, putBlob, putBlobAt } from '../lib/storage.js';
@@ -302,7 +302,7 @@ export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, clos
       {marques.length === 0 && <div className="hint">Prends le Surligneur et sélectionne du texte dans le cours : il est surligné.</div>}
       {marques.map((m) => (
         <div className="hl-entry" key={m.i} onClick={() => allerA(m)}>
-          <span className="hl-dot" style={{ background: COLOR_HEX[m.couleur] || COLOR_HEX.jaune }} />
+          <span className="hl-dot" style={{ background: couleurHex(m.couleur) }} />
           <div>
             {COLOR_TAG[m.couleur] && <div className="hl-entry-page"><span className="hl-entry-tag">{COLOR_TAG[m.couleur]}</span></div>}
             <div className="hl-entry-txt">« {m.texte.length > 140 ? m.texte.slice(0, 140) + '…' : m.texte} »</div>

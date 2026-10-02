@@ -21,7 +21,7 @@
 import { PDFDocument, BlendMode, StandardFonts, rgb } from 'pdf-lib';
 import { getBlob } from '../lib/storage.js';
 import { separerParType } from '../lib/annotationTypes.js';
-import { COLOR_HEX, COLOR_RGB, couleurHex, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, modeDuTrait } from './pdfShared.js';
+import { COLOR_RGB, couleurHex, couleurFoncee, opaciteFondBoite, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, modeDuTrait } from './pdfShared.js';
 
 /* Le texte des boîtes s'affiche en px FIXES dans le lecteur (13 px boîte, 15 px
    texte libre), lus au zoom par défaut de 160 % : on reprend cette taille relative
@@ -29,8 +29,6 @@ import { COLOR_HEX, COLOR_RGB, couleurHex, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGN
 const ZOOM_REFERENCE = 1.6;
 const TAILLE_BOITE = 13 / ZOOM_REFERENCE;
 const TAILLE_TEXTE = 15 / ZOOM_REFERENCE;
-// teinte FONCÉE des flèches (même table que pdf/PdfPage.jsx#COULEUR_FLECHE)
-const COULEUR_FLECHE = { jaune: '#B8920A', vert: '#2F8F3A', bleu: '#2A72B8', rose: '#C2457F' };
 
 const hexVersRgb = (hex) => {
   const h = String(hex || '#000000').replace('#', '');
@@ -277,9 +275,9 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const h = Math.max(b.height * H, 2 * pad + Math.max(1, lignes.length) * lh);
     let top = H - b.y * H;
     if (top - h < 0) top = Math.min(H, h); // une boîte qui déborderait en bas remonte dans la page
-    const fond = hexVersRgb(COLOR_HEX[b.couleur] || COLOR_HEX.jaune);
+    const fond = hexVersRgb(couleurHex(b.couleur));
     const ancre = b.ancre && Number.isFinite(b.ancre.x) && Number.isFinite(b.ancre.y) ? { x: b.ancre.x * W, y: H - b.ancre.y * H } : null;
-    const coulFleche = hexVersRgb(COULEUR_FLECHE[b.couleur] || COULEUR_FLECHE.jaune);
+    const coulFleche = hexVersRgb(couleurFoncee(b.couleur)); // teinte foncée, même règle qu'à l'écran
 
     // flèche d'abord (sous la boîte et l'épingle) : du BORD de la boîte au point visé
     if (ancre && b.fleche) {
@@ -302,7 +300,7 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
         }
       }
     }
-    page.drawRectangle({ x, y: top - h, width: w, height: h, color: fond, opacity: 0.92, borderColor: rgb(0, 0, 0), borderOpacity: 0.28, borderWidth: 0.8 });
+    page.drawRectangle({ x, y: top - h, width: w, height: h, color: fond, opacity: opaciteFondBoite(b.couleur), borderColor: rgb(0, 0, 0), borderOpacity: 0.28, borderWidth: 0.8 });
     lignes.forEach((l, i) => { if (l) page.drawText(l, { x: x + pad, y: top - pad - TAILLE_BOITE * 0.95 - i * lh, size: TAILLE_BOITE, font, color: rgb(0.09, 0.09, 0.16) }); });
     if (ancre) page.drawCircle({ x: ancre.x, y: ancre.y, size: 3.5, color: rgb(1, 1, 1), borderColor: coulFleche, borderWidth: 1.8 });
     bilan.boites += 1;
