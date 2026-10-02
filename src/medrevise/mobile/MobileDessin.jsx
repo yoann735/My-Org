@@ -197,7 +197,21 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
   }), [valider]);
 
   // ---- caméra ----
-  const appliquerCam = (c) => { camRef.current = c; if (mondeRef.current) mondeRef.current.setAttribute('transform', `translate(${c.x} ${c.y}) scale(${c.z})`); };
+  /* ZOOM FLUIDE (02/10 soir) : pendant un pincement ou un déplacement, la caméra est
+     écrite directement dans le DOM à chaque image — le monde (vectoriel, donc net à
+     tout zoom) ET la grille du fond. Avant, la grille ne suivait qu'au relâchement :
+     le fond « sautait » à la fin du geste. Un seul requestAnimationFrame par image. */
+  const rafCam = useRef(0);
+  const ecrireCam = (c) => {
+    if (mondeRef.current) mondeRef.current.setAttribute('transform', `translate(${c.x} ${c.y}) scale(${c.z})`);
+    const sv = svgRef.current;
+    if (sv) { const g = 24 * c.z; sv.style.backgroundSize = `${g}px ${g}px`; sv.style.backgroundPosition = `${c.x}px ${c.y}px`; }
+  };
+  const appliquerCam = (c) => {
+    camRef.current = c;
+    if (rafCam.current) return;
+    rafCam.current = requestAnimationFrame(() => { rafCam.current = 0; ecrireCam(camRef.current); });
+  };
   const versMonde = (cx, cy) => {
     const r = svgRef.current.getBoundingClientRect(), c = camRef.current;
     return [(cx - r.left - c.x) / c.z, (cy - r.top - c.y) / c.z];
@@ -327,12 +341,11 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
   };
 
   // le monde suit l'état React de la caméra hors geste
-  useEffect(() => { appliquerCam(cam); }, [cam]);
+  useEffect(() => { camRef.current = cam; ecrireCam(cam); }, [cam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const visibles = masques ? elements.filter((x) => !masques.has(x.id)) : elements;
   const ep = EPAISSEURS[epIdx];
   const couleurActive = outil === 'surligneur' ? couleurSurl : couleur;
-  const grille = 24 * cam.z;
 
   return (
     <div className="md">
@@ -347,7 +360,6 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       </div>
 
       <svg ref={svgRef} className={'md-surface outil-' + outil}
-        style={{ backgroundSize: `${grille}px ${grille}px`, backgroundPosition: `${cam.x}px ${cam.y}px` }}
         onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
         onContextMenu={(e) => e.preventDefault()}>
         <g ref={mondeRef}>
