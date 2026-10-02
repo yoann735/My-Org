@@ -21,7 +21,7 @@ import { FenetreRoue } from '../pdf/Couleurs.jsx';
 import { useCouleursPerso } from '../lib/couleursPerso.js';
 import { createPortal } from 'react-dom';
 import { TYPES_FORMES, cheminForme, estTrait, estFermee } from '../pdf/formes.js';
-import { getStroke } from 'perfect-freehand';
+import { getStroke, getStrokePoints } from 'perfect-freehand';
 import { couleurHex, avecAlpha, COLORS } from '../pdf/pdfShared.js';
 
 export const EPAISSEURS = [2, 4, 7, 12, 20]; // px à zoom 1
@@ -96,11 +96,28 @@ export function cheminTrait(points) {
    la vraie pression d'un stylet), fin de trait effilée. Calculé à CHAQUE point pendant
    le geste, pas seulement au relâchement. Le trait est alors un CONTOUR rempli.
    Désactivable : le tracé brut suit exactement le doigt, en épaisseur constante. */
-export function optionsLissage(ep, surligneur, avecPression = false) {
+/* LISSAGE ADAPTATIF (02/10 nuit) : `f` ∈ [0, 1] dose le lissage selon la TAILLE du
+   geste à l'écran. Écrire = petits traits rapides aux courbes serrées : un lissage fort
+   y « coupe les virages » et déforme les lettres. Petit geste (f ≈ 0) : stabilisation
+   légère, peu de variation d'épaisseur, pas de fin effilée → lettres fidèles et nettes.
+   Grand trait ample (f ≈ 1) : le lissage fort, doux et élégant. Entre les deux, dosage
+   continu. */
+const mix = (a, b, f) => a + (b - a) * f;
+export function facteurLissage(points, zoom = 1) {
+  if (!points || points.length < 2) return 0;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of points) { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); }
+  const diag = Math.hypot(x1 - x0, y1 - y0) * zoom; // taille du geste EN PIXELS D'ÉCRAN
+  return Math.max(0, Math.min(1, (diag - 80) / 220)); // ≤ 80 px (lettres, mots) : écriture ; ≥ 300 px : dessin
+}
+export function optionsLissage(ep, surligneur, avecPression = false, f = 1) {
   return surligneur
-    ? { size: ep, thinning: 0, smoothing: 0.85, streamline: 0.7, simulatePressure: false, start: { cap: true }, end: { cap: true } }
-    : { size: ep * 1.35, thinning: 0.4, smoothing: 0.85, streamline: 0.7, simulatePressure: !avecPression,
-        easing: (t) => Math.sin((t * Math.PI) / 2), start: { cap: true, taper: 0 }, end: { cap: true, taper: Math.min(ep * 4, 32) } };
+    ? { size: ep, thinning: 0, smoothing: mix(0.55, 0.85, f), streamline: mix(0.3, 0.7, f), simulatePressure: false, start: { cap: true }, end: { cap: true } }
+    // CALIBRÉ par la mesure (02/10 nuit) : avec size = 0,86 × épaisseur, un trait lissé
+    // régulier mesure l'ÉPAISSEUR CHOISIE (avant : 1,35 × → nettement trop épais, ce qui
+    // empâtait l'écriture). La pression simulée l'affine ou l'épaissit autour de cette valeur.
+    : { size: ep * 0.86, thinning: mix(0.15, 0.4, f), smoothing: mix(0.5, 0.85, f), streamline: mix(0.22, 0.7, f), simulatePressure: !avecPression,
+        easing: (t) => Math.sin((t * Math.PI) / 2), start: { cap: true, taper: 0 }, end: { cap: true, taper: mix(0, Math.min(ep * 4, 32), f) } };
 }
 /** contour (perfect-freehand) → chemin SVG en courbes (milieux + quadratiques). */
 export function cheminContour(contour) {
@@ -117,20 +134,22 @@ export function cheminContour(contour) {
     le bout du trait reste sous le doigt, sans retard). Retire le tremblement fin que
     la stabilisation seule laisse en petits angles. */
 const NOYAU = [1, 3, 6, 7, 6, 3, 1];
-function preLisser(points) {
+function preLisser(points, f = 1) {
   const n = points.length;
   if (n < 5) return points;
-  const r = (NOYAU.length - 1) / 2;
+  // fenêtre adaptative : 1 (écriture) → 3 (grand trait) de rayon
+  const r = Math.max(1, Math.round(mix(1, 3, f)));
   return points.map((p, i) => {
     if (i === 0 || i === n - 1) return p;
     const k = Math.min(r, i, n - 1 - i); // fenêtre réduite près des bouts
     let sx = 0, sy = 0, sw = 0;
-    for (let j = -k; j <= k; j++) { const w = NOYAU[j + r], q = points[i + j]; sx += q[0] * w; sy += q[1] * w; sw += w; }
+    for (let j = -k; j <= k; j++) { const w = NOYAU[j + 3], q = points[i + j]; sx += q[0] * w; sy += q[1] * w; sw += w; }
     return p.length > 2 ? [sx / sw, sy / sw, p[2]] : [sx / sw, sy / sw];
   });
 }
 export function cheminLisse(e, fini = true) {
-  return cheminContour(getStroke(preLisser(e.points), { ...optionsLissage(e.ep, e.opacite < 1, e.pression), last: fini }));
+  const f = e.fl ?? 1; // trait d'avant le lissage adaptatif : lissage fort, comme avant
+  return cheminContour(getStroke(preLisser(e.points, f), { ...optionsLissage(e.ep, e.opacite < 1, e.pression, f), last: fini }));
 }
 
 /** simplification légère (on retire les points à moins de 0,6 px du précédent). */
@@ -532,7 +551,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     if (tr) {
       const coulT = couleurSurFond(surl ? couleurSurl : couleur, 'noir');
       if (lisse) {
-        tr.setAttribute('d', cheminLisse({ points: [p0], ep: geste.current.ep, opacite: surl ? 0.4 : 1, pression: stylet }, false));
+        tr.setAttribute('d', cheminLisse({ points: [p0], ep: geste.current.ep, opacite: surl ? 0.4 : 1, pression: stylet, fl: 0 }, false));
         tr.setAttribute('fill', coulT); tr.setAttribute('fill-opacity', surl ? '0.4' : '1'); tr.setAttribute('stroke', 'none');
       } else {
         tr.setAttribute('d', cheminTrait([[wx, wy]]));
@@ -585,7 +604,8 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       if (g.lisse) {
         // TOUS les points du doigt (événements regroupés compris) : le lissage les traite
         for (const q of lot) { const [x, y] = versMonde(q.clientX, q.clientY); g.points.push(g.stylet ? [x, y, q.pressure || 0.5] : [x, y]); }
-        if (traitRef.current) traitRef.current.setAttribute('d', cheminLisse({ points: g.points, ep: g.ep, opacite: g.surl ? 0.4 : 1, pression: g.stylet }, false));
+        g.fl = facteurLissage(g.points, camRef.current.z);
+        if (traitRef.current) traitRef.current.setAttribute('d', cheminLisse({ points: g.points, ep: g.ep, opacite: g.surl ? 0.4 : 1, pression: g.stylet, fl: g.fl }, false));
       } else {
         // tracé BRUT : chaque point du doigt, sans filtre
         for (const q of lot) { g.dernier = versMonde(q.clientX, q.clientY); g.points.push(g.dernier); }
@@ -652,7 +672,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       const pts = g.lisse ? g.points.map((q) => q.map((v) => Math.round(v * 100) / 100)) : alleger(g.points);
       if (traitRef.current) traitRef.current.setAttribute('d', '');
       valider([...elementsRef.current, { id: nouvelId(), type: 'trait', points: pts, couleur: g.surl ? couleurSurl : couleur, ep: g.ep, opacite: g.surl ? 0.4 : 1,
-        ...(g.lisse ? { lisse: true } : {}), ...(g.stylet ? { pression: true } : {}) }]);
+        ...(g.lisse ? { lisse: true, fl: Math.round(facteurLissage(g.points, camRef.current.z) * 100) / 100 } : {}), ...(g.stylet ? { pression: true } : {}) }]);
     }
   };
 
@@ -791,7 +811,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
             )}
             {(outil === 'crayon' || outil === 'surligneur') && (
               <button type="button" className={'md-bascule' + (lisse ? ' actif' : '')} onClick={() => setLisse(!lisse)} aria-pressed={lisse}>
-                <span className="md-bascule-txt"><b>Lissage</b><small>{lisse ? 'Trait doux, comme au stylet' : 'Tracé brut, exactement le doigt'}</small></span>
+                <span className="md-bascule-txt"><b>Lissage</b><small>{lisse ? 'Adaptatif : léger pour écrire, doux pour dessiner' : 'Tracé brut, exactement le doigt'}</small></span>
                 <span className="md-interrupteur"><i /></span>
               </button>
             )}
@@ -817,4 +837,12 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
 /** L'écran complet (la barre du haut reçoit le bouton Exporter, voir étape 4). */
 export function MobileDessin({ onQuit, barreHaut = null, canvasRef = null }) {
   return <CanvasDessin ref={canvasRef} onRetour={onQuit} barreHaut={barreHaut} />;
+}
+
+/* outil de mesure (tests) : écart moyen entre les points du doigt et la ligne lissée */
+export function ecartLissage(points, ep, f) {
+  const lisses = getStrokePoints(preLisser(points, f), { ...optionsLissage(ep, false, false, f), last: true }).map((p) => p.point);
+  let somme = 0, max = 0;
+  for (const q of points) { let m = Infinity; for (const p of lisses) m = Math.min(m, Math.hypot(p[0] - q[0], p[1] - q[1])); somme += m; max = Math.max(max, m); }
+  return { moyen: somme / points.length, max };
 }
