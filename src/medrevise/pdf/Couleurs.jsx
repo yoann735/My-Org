@@ -30,11 +30,14 @@ export const SELECTEUR_FLOTTANT = '.sc-fenetre, .sc-pop';
 export const dansSelecteurFlottant = (el) => !!(el && el.closest && el.closest(SELECTEUR_FLOTTANT));
 import { useCouleursPerso, hsvVersHex, hexVersHsv } from '../lib/couleursPerso.js';
 
-export function SelecteurCouleurs({ couleur, onCouleur, titre = 'Couleur' }) {
+/** `enTete` (facultatif) : pastilles fixes placées AVANT les 4 couleurs « cours » —
+    sert au dessin du téléphone, sur fond noir, pour l'ENCRE (blanc à l'écran, noir
+    sur la page). Partout ailleurs le sélecteur est inchangé. */
+export function SelecteurCouleurs({ couleur, onCouleur, titre = 'Couleur', enTete = [] }) {
   const [perso, ajouter, retirer] = useCouleursPerso();
   const [roue, setRoue] = useState(null); // { x, y } : position de la fenêtre
   const plusRef = useRef(null);
-  const actuelleHorsListe = !!couleur && couleur !== 'off' && !COLORS.some((c) => c.id === couleur) && !perso.includes(String(couleur).toLowerCase());
+  const actuelleHorsListe = !!couleur && couleur !== 'off' && !COLORS.some((c) => c.id === couleur) && !perso.includes(String(couleur).toLowerCase()) && !enTete.some((c) => c.id === couleur);
   const ouvrir = () => {
     const r = plusRef.current.getBoundingClientRect();
     setRoue({ x: Math.min(r.left, window.innerWidth - 300), y: r.bottom + 8 });
@@ -45,6 +48,10 @@ export function SelecteurCouleurs({ couleur, onCouleur, titre = 'Couleur' }) {
         <button type="button" title="Couleur actuelle" className="sc-pastille actif" style={{ background: couleurHex(couleur, '#888888') }} onClick={() => onCouleur(couleur)} />
         <span className="sc-sep" aria-hidden="true" />
       </>)}
+      {enTete.map((c) => (
+        <button key={c.id} type="button" title={c.label} onClick={() => onCouleur(c.id)}
+          className={'sc-pastille' + (couleur === c.id ? ' actif' : '')} style={{ background: c.hex }} />
+      ))}
       {COLORS.map((c) => (
         <button key={c.id} type="button" title={`${c.label} — couleur « cours »`} onClick={() => onCouleur(c.id)}
           className={'sc-pastille' + (couleur === c.id ? ' actif' : '')} style={{ background: c.hex }} />

@@ -76,9 +76,25 @@ export function boiteDessin(elements) {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
-/** rendu SVG d'un élément (sert à l'écran ET à l'export PNG). */
-export function ElementDessin({ e, gommeLarg = 0 }) {
-  const coul = couleurHex(e.couleur, '#1F1F24');
+/* ENCRE (02/10 soir) : le canvas du téléphone est NOIR, la page du PDF est BLANCHE.
+   Le noir et le blanc (et les gris extrêmes) y sont donc une même « encre » qui
+   s'adapte au fond : claire à l'écran, foncée sur le papier — sinon un trait blanc
+   (la couleur par défaut, visible sur noir) disparaîtrait une fois posé sur la page,
+   et un ancien trait noir serait invisible sur le canvas. Les autres couleurs ne
+   changent jamais. */
+const ENCRE = { noir: '#F2F2F5', clair: '#1F1F24' };
+export function couleurSurFond(c, fond = 'noir') {
+  const hex = couleurHex(c, '#1F1F24');
+  const n = parseInt(hex.slice(1), 16);
+  const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  if (lum < 0.2 || lum > 0.88) return ENCRE[fond] || hex;
+  return hex;
+}
+
+/** rendu SVG d'un élément (sert à l'écran ET à l'export PNG). `fond` : 'noir'
+    (canvas du téléphone, export sur fond noir) ou 'clair' (PDF, fond blanc). */
+export function ElementDessin({ e, gommeLarg = 0, fond = 'noir' }) {
+  const coul = couleurSurFond(e.couleur, fond);
   if (e.type === 'trait') {
     const d = cheminTrait(e.points);
     return (
@@ -118,7 +134,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
   const [cam, setCam] = useState(() => (brouillon && brouillon.cam) || { x: 0, y: 0, z: 1 });
   const camRef = useRef(cam); camRef.current = cam;
   const [outil, setOutil] = useState('crayon');
-  const [couleur, setCouleur] = useState('noir');
+  const [couleur, setCouleur] = useState('blanc'); // fond noir : l'encre par défaut est claire (sur le PDF elle sortira noire)
   const [couleurSurl, setCouleurSurl] = useState('jaune');
   const [epIdx, setEpIdx] = useState(1);
   const [typeForme, setTypeForme] = useState('rectangle');
@@ -160,16 +176,21 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     elements: () => elementsRef.current,
     /* SVG autonome du dessin, cadré sur sa boîte englobante (+ 16 px de marge) :
        les éléments tels qu'affichés, sans les zones invisibles de la gomme. */
-    svgExport: ({ fondBlanc = false } = {}) => {
+    /* `fond` : 'transparent' (posé sur le PDF, défaut), 'blanc' ou 'noir'. Sur un fond
+       clair, l'encre claire de l'écran devient foncée (voir ENCRE). */
+    svgExport: ({ fond: fondExport = 'transparent' } = {}) => {
       const b = boiteDessin(elementsRef.current);
       if (!b || !mondeRef.current) return null;
       const m = 16, w = Math.ceil(b.w + 2 * m), h = Math.ceil(b.h + 2 * m);
       const morceaux = [...mondeRef.current.querySelectorAll(':scope > g[data-id]')].map((g) => {
         const c = g.cloneNode(true);
         c.querySelectorAll('.md-gomme').forEach((x) => x.remove());
-        return c.outerHTML;
+        let html = c.outerHTML;
+        if (fondExport !== 'noir') html = html.split(ENCRE.noir).join(ENCRE.clair).split(avecAlpha(ENCRE.noir, 0.2)).join(avecAlpha(ENCRE.clair, 0.2));
+        return html;
       }).join('');
-      const fond = fondBlanc ? `<rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff"/>` : '';
+      const fond = fondExport === 'blanc' ? `<rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff"/>`
+        : fondExport === 'noir' ? `<rect x="0" y="0" width="${w}" height="${h}" fill="#111114"/>` : '';
       return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${fond}<g transform="translate(${m - b.x} ${m - b.y})">${morceaux}</g></svg>`, w, h };
     },
     vider: () => { valider([]); try { localStorage.removeItem(CLE_BROUILLON); } catch (e) { /* ignore */ } },
@@ -356,7 +377,8 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
           )}
           {outil !== 'gomme' && outil !== 'main' && (
             <div className="md-ligne">
-              <SelecteurCouleurs couleur={couleurActive} onCouleur={outil === 'surligneur' ? setCouleurSurl : setCouleur} titre="Couleur" />
+              <SelecteurCouleurs couleur={couleurActive} onCouleur={outil === 'surligneur' ? setCouleurSurl : setCouleur} titre="Couleur"
+                enTete={[{ id: 'blanc', hex: '#F2F2F5', label: 'Encre — blanche ici, noire sur la page' }]} />
             </div>
           )}
           {outil !== 'gomme' && outil !== 'main' && (

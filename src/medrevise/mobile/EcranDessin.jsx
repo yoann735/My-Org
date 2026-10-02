@@ -42,7 +42,7 @@ function FeuilleExport({ ctx, active, onFermer, onEnvoyer, envoi }) {
   }, [ctx.db]);
   const [choix, setChoix] = useState(() => (active && active.ficheId) || null);
   const [q, setQ] = useState('');
-  const [fondBlanc, setFondBlanc] = useState(false);
+  const [fondExport, setFondExport] = useState('transparent');
   const filtre = q.trim().toLowerCase();
   // la fiche de l'ordi est déjà proposée en tête : pas de doublon dans la liste
   const liste = cibles.filter((c) => (!active || c.id !== active.ficheId) && (!filtre || c.titre.toLowerCase().includes(filtre)));
@@ -92,12 +92,14 @@ function FeuilleExport({ ctx, active, onFermer, onEnvoyer, envoi }) {
           {!liste.length && <div className="mde-vide">Aucune fiche</div>}
         </div>
         <div className="mde-fond-choix" role="group" aria-label="Fond">
-          <button type="button" className={!fondBlanc ? 'actif' : ''} onClick={() => setFondBlanc(false)}>Fond transparent</button>
-          <button type="button" className={fondBlanc ? 'actif' : ''} onClick={() => setFondBlanc(true)}>Fond blanc</button>
+          {[['transparent', 'Transparent'], ['blanc', 'Blanc'], ['noir', 'Noir']].map(([id, l]) => (
+            <button key={id} type="button" className={fondExport === id ? 'actif' : ''} onClick={() => setFondExport(id)}>{l}</button>
+          ))}
         </div>
+        {fondExport !== 'noir' && <div className="mde-detail">Sur la page, le blanc de ton dessin sort en noir (encre lisible sur le papier).</div>}
         <div className="mde-actions">
           <button type="button" className="mde-sec" onClick={() => onFermer()}>Annuler</button>
-          <button type="button" className="md-exporter" disabled={!choisie} onClick={() => onEnvoyer(choisie, { fondBlanc })}>
+          <button type="button" className="md-exporter" disabled={!choisie} onClick={() => onEnvoyer(choisie, { fond: fondExport })}>
             <Icon name="upload" size={16} /> Envoyer
           </button>
         </div>
@@ -113,8 +115,8 @@ export function EcranDessin({ ctx, onQuit }) {
   const [feuille, setFeuille] = useState(false);
   const [envoi, setEnvoi] = useState(null); // { etat, statut, titre, message }
 
-  const envoyer = async (cible, { fondBlanc }) => {
-    const exp = canvasRef.current && canvasRef.current.svgExport({ fondBlanc });
+  const envoyer = async (cible, { fond }) => {
+    const exp = canvasRef.current && canvasRef.current.svgExport({ fond });
     if (!exp) { setEnvoi({ etat: 'erreur', message: 'Le dessin est vide.' }); return; }
     setEnvoi({ etat: 'en-cours' });
     try {

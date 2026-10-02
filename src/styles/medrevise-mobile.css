@@ -186,10 +186,10 @@
 .md-exporter { height: 42px; padding: 0 16px; border-radius: 12px; border: 0; background: var(--accent); color: #fff; font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; gap: 7px; }
 .md-exporter:disabled { opacity: .45; }
 .md-surface { flex: 1; width: 100%; min-height: 0; display: block; touch-action: none; user-select: none; -webkit-user-select: none;
-  -webkit-touch-callout: none; background-color: #fbfbf8;
-  background-image: radial-gradient(circle, rgba(0,0,0,.13) 1px, transparent 1.3px); }
+  -webkit-touch-callout: none; background-color: #0f0f13; /* fond NOIR (02/10 soir), quel que soit le thème */
+  background-image: radial-gradient(circle, rgba(255,255,255,.13) 1px, transparent 1.3px); }
 .md-surface.outil-main { cursor: grab; }
-.md-vide { position: absolute; left: 0; right: 0; top: 46%; text-align: center; color: #8a8a94; font-size: 14px; pointer-events: none; padding: 0 30px; }
+.md-vide { position: absolute; left: 0; right: 0; top: 46%; text-align: center; color: #7d7d88; font-size: 14px; pointer-events: none; padding: 0 30px; }
 .md-bas { border-top: 1px solid var(--border-2); background: var(--card); }
 .md-reglages { padding: 8px 10px 4px; display: flex; flex-direction: column; gap: 8px; }
 .md-ligne { display: flex; align-items: center; gap: 8px; overflow-x: auto; scrollbar-width: none; }
