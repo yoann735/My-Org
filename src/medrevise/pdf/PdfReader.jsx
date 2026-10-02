@@ -73,6 +73,7 @@ import { PdfToolbar } from './PdfToolbar.jsx';
 import { SelecteurCouleurs, ReglagesTrait, dansSelecteurFlottant } from './Couleurs.jsx';
 import { IconeOutil, IconeForme } from './IconesOutils.jsx';
 import { TYPES_FORMES, estTrait, estFermee, ancreSurForme } from './formes.js';
+import { publierFicheActive } from '../lib/dessins.js';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
@@ -117,6 +118,15 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const idFiche = source ? source.ficheId : (docProp ? null : ficheId);
   const ficheReelle = idFiche ? db.fiches.find((f) => f.id === idFiche) : null;
   const fiche = ficheReelle || source || docProp;
+  /* LIAISON AVEC LE TÉLÉPHONE (02/10, docs/mecanique-dessin-mobile.md) : l'ordi publie
+     la fiche qu'il ouvre — le téléphone la propose par défaut pour y envoyer un dessin.
+     Une écriture à l'ouverture, une à la fermeture (rien à chaque page). */
+  const titreFiche = (fiche && (fiche.titre || fiche.nom || fiche.pdfName)) || null;
+  useEffect(() => {
+    if (!ficheId) return undefined;
+    publierFicheActive({ ficheId, titre: titreFiche, ouverte: true });
+    return () => { publierFicheActive({ ficheId, titre: titreFiche, ouverte: false }); };
+  }, [ficheId, titreFiche]);
   // Actions propres à une fiche (items, prompts, export JSON) : elles n'ont aucun
   // sens pour un document de notes ou une structure d'anatomie.
   const canAddItem = !!ficheReelle;

@@ -278,6 +278,35 @@ export async function pullAllRecords() {
 }
 
 /**
+ * LECTURE CIBLÉE d'UN store (02/10, docs/mecanique-dessin-mobile.md) : même
+ * lecture paginée que pullAllRecords, filtrée sur `store`. Sert à sonder vite deux
+ * petits stores (`liaison`, `dessins`) sans relire toute la table toutes les 10 s.
+ * LECTURE SEULE, et mêmes règles : ordre total stable, tout ou rien (`null` si une
+ * seule page échoue, jamais un résultat partiel).
+ * @returns {Promise<Array|null>}
+ */
+export async function pullStore(store) {
+  if (!SYNC_ENABLED || !store) return null;
+  try {
+    const tout = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE;
+      const { data, error } = await supabase
+        .from(RECORDS_TABLE)
+        .select('store,record_id,data,updated_at,deleted')
+        .eq('store', store)
+        .order('record_id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) return noterEchec(error);
+      const lot = data || [];
+      tout.push(...lot);
+      if (lot.length < PAGE) return tout;
+    }
+    return noterEchec(new Error('trop de pages'));
+  } catch (e) { return noterEchec(e); }
+}
+
+/**
  * Pousse un lot d'enregistrements IMMÉDIATEMENT (awaited), en dehors de l'outbox/
  * debounce habituel — réservé aux migrations de nettoyage ponctuelles et critiques
  * (lib/migrate.js) où il faut savoir si le push a RÉELLEMENT abouti avant de marquer

@@ -6,7 +6,7 @@
    ============================================================ */
 import { get, set, del, clear, keys, values, entries, setMany, createStore } from 'idb-keyval';
 import { isoDate, startAdaptive } from './sm2.js';
-import { queuePush, pullAllRecords, queueBlobPush, flushBlobOutbox, blobOutboxEntries, listCloudBlobs, pullBlob, flushOutbox, isPushDegraded } from '../data/sync.js';
+import { queuePush, pullAllRecords, pullStore, queueBlobPush, flushBlobOutbox, blobOutboxEntries, listCloudBlobs, pullBlob, flushOutbox, isPushDegraded } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
 const store = (name) => createStore('medrevise-' + name, 'v1');
@@ -45,6 +45,14 @@ const S = {
   // Store NEUF : aucune donnée existante n'est réécrite ; un client qui ne le connaît
   // pas encore ignore ces lignes (reconcileAll ne parcourt que SES stores).
   tableau: store('tableau'),
+  // DESSIN DEPUIS LE TÉLÉPHONE (02/10, docs/mecanique-dessin-mobile.md) — deux stores
+  // NEUFS, même principe que `tableau` (rien d'existant réécrit, ignorés des anciens
+  // clients) :
+  // - `liaison` : UN enregistrement, 'ficheActive' — la fiche ouverte sur l'ordi ;
+  // - `dessins` : un enregistrement par dessin envoyé du téléphone ({ ficheId, blobId… }),
+  //   l'image elle-même voyage par le canal des blobs.
+  liaison: store('liaison'),
+  dessins: store('dessins'),
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
@@ -54,7 +62,7 @@ const S = {
 // `sessionsLog` est syncable pour la même raison que `questions`/`stats` : la
 // tendance affichée en fin de série doit refléter l'activité desktop ET mobile,
 // pas seulement cet appareil.
-const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau'];
+const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau', 'liaison', 'dessins'];
 
 export function genId(prefix = 'x') {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -620,9 +628,10 @@ export async function wipeAll() {
    de la confirmation utilisateur.
    ============================================================ */
 export async function purgeFiche(ficheId) {
-  const [questions, highlights, annotations, tableau] = await Promise.all([getAll('questions'), getAll('highlights'), getAll('annotations'), getAll('tableau')]);
+  const [questions, highlights, annotations, tableau, dessins] = await Promise.all([getAll('questions'), getAll('highlights'), getAll('annotations'), getAll('tableau'), getAll('dessins')]);
   await Promise.all([
     ...(tableau || []).filter((t) => t.ficheId === ficheId).map((t) => remove('tableau', t.id)),
+    ...(dessins || []).filter((d) => d.ficheId === ficheId).map((d) => remove('dessins', d.id)), // le blob reste (règle des blobs)
     ...(questions || []).filter((q) => q.ficheId === ficheId).map((q) => Promise.all([remove('questions', q.id), remove('exos', q.id)])),
     ...(highlights || []).filter((h) => h.ficheId === ficheId).map((h) => remove('highlights', h.id)),
     ...(annotations || []).filter((a) => a.ficheId === ficheId).map((a) => remove('annotations', a.id)),
@@ -705,6 +714,42 @@ export async function reconcileAll() {
     }
   }
   return { ok: true, cloudEmpty: cloudRows.length === 0 };
+}
+
+/* ============================================================
+   SYNCHRO CIBLÉE (02/10, docs/mecanique-dessin-mobile.md) : le même last-write-wins
+   que reconcileAll ci-dessus, pour UN seul store, lu par une requête filtrée
+   (pullStore). Sert à sonder vite la fiche active de l'ordi et les dessins reçus.
+   LISTE BLANCHE : seulement les deux petits stores neufs de cette fonctionnalité —
+   reconcileAll, critique, n'est pas touché et reste la seule réconciliation des
+   autres stores. Lecture impossible (hors ligne…) → { ok: false }, rien n'est fait.
+   ============================================================ */
+const STORES_CIBLABLES = new Set(['liaison', 'dessins']);
+export async function synchroCiblee(name) {
+  if (!STORES_CIBLABLES.has(name) || !SYNC_ENABLED || syncPaused) return { ok: false, changes: 0 };
+  const rows = await pullStore(name);
+  if (rows === null) return { ok: false, changes: 0 };
+  const cloudMap = new Map(rows.map((r) => [r.record_id, r]));
+  const localRecs = (await values(S[name])) || [];
+  const localIds = new Set();
+  let changes = 0;
+  for (const rec of localRecs) {
+    if (!rec || !rec.id) continue;
+    localIds.add(rec.id);
+    const localTs = rec.updatedAt ? Date.parse(rec.updatedAt) : 0;
+    const cloud = cloudMap.get(rec.id);
+    if (!cloud) { queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString()); continue; }
+    const cloudTs = cloud.updated_at ? Date.parse(cloud.updated_at) : 0;
+    if (cloud.deleted) {
+      if (cloudTs >= localTs) { await del(rec.id, S[name]); changes++; } else queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString());
+    } else if (cloudTs > localTs) { await set(rec.id, cloud.data, S[name]); changes++; }
+    else if (localTs > cloudTs) queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString());
+  }
+  for (const [id, cloud] of cloudMap) {
+    if (localIds.has(id) || cloud.deleted) continue;
+    await set(id, cloud.data, S[name]); changes++;
+  }
+  return { ok: true, changes };
 }
 
 /* ============================================================
