@@ -2125,3 +2125,14 @@ textarea.tb-texte { display: block; resize: none; border: 0; outline: none; back
   .ad-la, .ad-envol, .ad-sortie { transition: opacity .2s ease; transform: none; }
   .ad-la .ad-vignette .od-pile, .ptb-dessins.pulse, .ptb-dessins.pulse .ptb-pastille-n { animation: none; }
 }
+/* rotation d'une image collée (02/10 nuit) */
+.pdfr-image { transform-origin: 50% 50%; }
+.pi-rotation { position: absolute; left: 50%; top: -34px; width: 22px; height: 22px; margin-left: -11px; border-radius: 50%; display: grid; place-items: center;
+  background: #fff; color: var(--accent); border: 2px solid var(--accent); cursor: grab; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+.pi-rotation::after { content: ''; position: absolute; left: 50%; top: 100%; width: 2px; height: 12px; margin-left: -1px; background: var(--accent); }
+.pi-rotation:active { cursor: grabbing; }
+.pi-angle { position: absolute; left: 50%; top: 50%; translate: -50% -50%; padding: 3px 8px; border-radius: 8px; background: rgba(0,0,0,.72); color: #fff; font-size: 12px; font-weight: 700; pointer-events: none; }
+.pdfr-image-corps { position: absolute; inset: 0; transform-origin: 50% 50%; }
+.pdfr-image.active { box-shadow: none !important; }
+.pdfr-image.active .pdfr-image-corps { box-shadow: 0 0 0 2px var(--accent); }
+.pdfr-image .pi-actions { top: -30px; }

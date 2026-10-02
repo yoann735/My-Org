@@ -602,6 +602,7 @@ export function PdfPageContent({
               premier={i === images.length - 1} dernier={i === 0}
               onActiver={onImageActiver} onMaj={onImageMaj} onCalque={onImageCalque} onSupprimer={onImageSupprimer}
               onApercu={(geo) => setApercuImage(geo ? { id: img.id, avant: img, geo } : null)}
+              pageWidth={pageWidth} pageHeight={pageHeight}
               onGeste={(enCours) => { gesteBoite.current = enCours; }} />
           ))}
         </div>
@@ -1234,7 +1235,7 @@ function QuestionMarque({ q, onModifier, onSupprimer, onGeste }) {
    (même famille de flash que le bug « hallucinations »). Un blob ne change jamais
    de contenu pour un même id : l'adresse reste valable. */
 const URLS_IMAGES = new Map();
-function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque, onSupprimer, onGeste, onApercu = () => {} }) {
+function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque, onSupprimer, onGeste, onApercu = () => {}, pageWidth = 0, pageHeight = 0 }) {
   const [url, setUrl] = useState(() => URLS_IMAGES.get(img.blobId) || null);
   const [manquante, setManquante] = useState(false);
   useEffect(() => {
@@ -1259,6 +1260,11 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
     const d0 = { x: e.clientX, y: e.clientY };
     const avant = img;
     const ratio = avant.width ? avant.height / avant.width : 1; // proportions en coordonnées normalisées
+    /* ROTATION (02/10 nuit) : l'image pivote autour de son centre. Les coins travaillent
+       dans le REPÈRE TOURNÉ de l'image (le coin opposé reste fixe), en pixels de page. */
+    const rot = avant.rotation || 0, th = (rot * Math.PI) / 180, cosT = Math.cos(th), sinT = Math.sin(th);
+    const centre = { x: r.left + (avant.x + avant.width / 2) * r.width, y: r.top + (avant.y + avant.height / 2) * r.height };
+    const a0 = Math.atan2(e.clientY - centre.y, e.clientX - centre.x);
     let bouge = false, courant = null;
     onGeste(true);
     onActiver(img.id);
@@ -1267,18 +1273,37 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
       if (!bouge && Math.abs(ev.clientX - d0.x) + Math.abs(ev.clientY - d0.y) <= 3) return;
       bouge = true;
       const dx = (ev.clientX - d0.x) / r.width, dy = (ev.clientY - d0.y) / r.height;
-      if (type === 'move') {
+      if (type === 'rotation') {
+        let deg = rot + ((Math.atan2(ev.clientY - centre.y, ev.clientX - centre.x) - a0) * 180) / Math.PI;
+        deg = ((deg % 360) + 540) % 360 - 180; // ]-180, 180]
+        if (ev.shiftKey) deg = Math.round(deg / 15) * 15;
+        else { const droit = Math.round(deg / 90) * 90; if (Math.abs(deg - droit) < 4) deg = droit; } // aimant aux angles droits
+        courant = { ...avant, rotation: deg === -180 ? 180 : deg };
+      } else if (type === 'move') {
         courant = { ...avant, x: clamp(avant.x + dx, -avant.width * 0.8, 1 - avant.width * 0.2), y: clamp(avant.y + dy, -avant.height * 0.8, 1 - avant.height * 0.2) };
       } else {
         // coin tiré : le coin OPPOSÉ reste fixe, la largeur suit le plus grand des deux déplacements
         const sx = type.includes('e') ? 1 : -1, sy = type.includes('s') ? 1 : -1;
+        // déplacement ramené dans le repère de l'image (rotation annulée), en fractions
+        const px = ev.clientX - d0.x, py = ev.clientY - d0.y;
+        const lx = (px * cosT + py * sinT) / r.width, ly = (-px * sinT + py * cosT) / r.height;
         // h = w × ratio en coordonnées normalisées : un déplacement vertical dh vaut dh / ratio en largeur
-        const dW = Math.max(sx * dx, (sy * dy) / (ratio || 1));
+        const dW = Math.max(sx * lx, (sy * ly) / (ratio || 1));
         const w = clamp(avant.width + dW, 0.03, 2);
         const h = w * ratio;
-        courant = { ...avant, width: w, height: h,
-          x: sx > 0 ? avant.x : avant.x + avant.width - w,
-          y: sy > 0 ? avant.y : avant.y + avant.height - h };
+        if (!rot) {
+          courant = { ...avant, width: w, height: h,
+            x: sx > 0 ? avant.x : avant.x + avant.width - w,
+            y: sy > 0 ? avant.y : avant.y + avant.height - h };
+        } else {
+          // coin OPPOSÉ fixe, en pixels de page : O = C + R·(−sx·w/2, −sy·h/2) ; C' = O + R·(sx·w'/2, sy·h'/2)
+          const W = r.width, H = r.height, R = (vx, vy) => [vx * cosT - vy * sinT, vx * sinT + vy * cosT];
+          const C = [(avant.x + avant.width / 2) * W, (avant.y + avant.height / 2) * H];
+          const o = R(-sx * avant.width * W / 2, -sy * avant.height * H / 2);
+          const n = R(sx * w * W / 2, sy * h * H / 2);
+          const cx = C[0] + o[0] + n[0], cy = C[1] + o[1] + n[1];
+          courant = { ...avant, width: w, height: h, x: cx / W - w / 2, y: cy / H - h / 2 };
+        }
       }
       setApercu(courant);
       onApercu(courant);
@@ -1289,7 +1314,7 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
       onGeste(false);
       setApercu(null);
       onApercu(null);
-      if (bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de l’image' : 'Redimension de l’image');
+      if (bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de l’image' : type === 'rotation' ? 'Rotation de l’image' : 'Redimension de l’image');
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -1301,20 +1326,37 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
       onPointerDown={(e) => geste(e, 'move')}
       onKeyDown={(e) => { if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onSupprimer(img); } }}
       title="Image collée · glisser pour déplacer · coins pour redimensionner · Suppr pour retirer">
+      {/* le CORPS pivote (image, coins, poignée) ; la barre d'actions reste horizontale */}
+      <div className="pdfr-image-corps" style={g.rotation ? { transform: `rotate(${g.rotation}deg)` } : undefined}>
       {url ? <img src={url} alt={img.nom || 'Image collée'} draggable={false} />
         : <div className="pdfr-image-vide">{manquante ? 'Image indisponible sur cet appareil' : '…'}</div>}
       {active && ['nw', 'ne', 'sw', 'se'].map((c) => (
         <span key={c} className={'pi-coin pi-' + c} onPointerDown={(e) => geste(e, c)} />
       ))}
       {active && (
-        <div className={'nb-actions pi-actions' + (g.y < 0.06 ? ' dessous' : '')} onPointerDown={(e) => e.stopPropagation()}>
+        <span className="pi-rotation" onPointerDown={(e) => geste(e, 'rotation')}
+          title={`Pivoter — glisser autour de l’image (aimant aux angles droits, Maj : pas de 15°)${g.rotation ? ` · ${Math.round(g.rotation)}°` : ''}`}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" /></svg>
+        </span>
+      )}
+      </div>
+      {apercu && apercu.rotation !== undefined && apercu.rotation !== img.rotation && <span className="pi-angle">{Math.round(g.rotation || 0)}°</span>}
+      {active && (() => {
+        // haut de la boîte TOURNÉE (en px), pour poser la barre au-dessus sans la faire pivoter
+        const w = g.width * pageWidth, h = g.height * pageHeight, t = ((g.rotation || 0) * Math.PI) / 180;
+        const demiH = pageWidth && pageHeight ? (Math.abs(w * Math.sin(t)) + Math.abs(h * Math.cos(t))) / 2 : h / 2;
+        const decal = g.rotation ? h / 2 - demiH - 30 : 0; // + la place de la poignée de rotation
+        return (
+        <div className={'nb-actions pi-actions' + (g.y < 0.06 ? ' dessous' : '')} style={decal ? { top: decal } : undefined} onPointerDown={(e) => e.stopPropagation()}>
+          <button type="button" className="nb-act" {...stop(() => onMaj(img, { ...img, rotation: ((((img.rotation || 0) + 90) % 360) + 540) % 360 - 180 }, 'Rotation de l’image'))} title="Pivoter d'un quart de tour (ou glisser la poignée ronde)">↻ 90°</button>
           <button type="button" className="nb-act" disabled={premier} {...stop(() => onCalque(img, 'premier'))} title="Mettre devant toutes les autres images">Premier plan</button>
           <button type="button" className="nb-act" disabled={premier} {...stop(() => onCalque(img, 'avancer'))} title="Avancer d'un calque">Avancer</button>
           <button type="button" className="nb-act" disabled={dernier} {...stop(() => onCalque(img, 'reculer'))} title="Reculer d'un calque">Reculer</button>
           <button type="button" className="nb-act" disabled={dernier} {...stop(() => onCalque(img, 'arriere'))} title="Mettre derrière toutes les autres images">Arrière-plan</button>
           <button type="button" className="nb-act danger" {...stop(() => onSupprimer(img))} title={`Supprimer l'image (annulable par ${RACCOURCI_Z})`}><Icon name="trash" size={13} /> Supprimer</button>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

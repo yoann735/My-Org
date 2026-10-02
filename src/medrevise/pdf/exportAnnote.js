@@ -18,7 +18,7 @@
    de l'encodage standard des PDF (WinAnsi : flèches unicode, lettres grecques,
    emoji…) remplacés par un équivalent lisible ou « ? ».
    ============================================================ */
-import { PDFDocument, BlendMode, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, BlendMode, StandardFonts, rgb, degrees } from 'pdf-lib';
 import { getBlob } from '../lib/storage.js';
 import { cheminForme, typeForme, estFermee, estTrait } from './formes.js';
 import { separerParType } from '../lib/annotationTypes.js';
@@ -175,7 +175,16 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     try {
       const emb = await embarquerImage(outDoc, blob);
       const { W, H } = dims(page);
-      page.drawImage(emb, { x: im.x * W, y: H - (im.y + im.height) * H, width: im.width * W, height: im.height * H });
+      if (im.rotation) {
+        // ROTATION (02/10 nuit) : à l'écran, horaire autour du centre ; pdf-lib tourne
+        // autour du coin bas-gauche, dans le sens trigonométrique (y vers le haut)
+        const w = im.width * W, h = im.height * H, cx = (im.x + im.width / 2) * W, cy = H - (im.y + im.height / 2) * H;
+        const phi = (-im.rotation * Math.PI) / 180, c = Math.cos(phi), s = Math.sin(phi);
+        const bx = cx + (-w / 2) * c - (-h / 2) * s, by = cy + (-w / 2) * s + (-h / 2) * c;
+        page.drawImage(emb, { x: bx, y: by, width: w, height: h, rotate: degrees(-im.rotation) });
+      } else {
+        page.drawImage(emb, { x: im.x * W, y: H - (im.y + im.height) * H, width: im.width * W, height: im.height * H });
+      }
       bilan.images += 1;
     } catch (e) { bilan.ignores += 1; }
   }
