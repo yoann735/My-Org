@@ -23,20 +23,21 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { ContextMenu } from '../components/ui.jsx';
+import { IconeOutil } from './IconesOutils.jsx';
 import { COLORS, RACCOURCI, PALETTE_CRAYON } from './pdfShared.js';
 
 /** Les outils, dans l'ordre d'apparition. `main` est le défaut et remplace à lui
     seul l'ancien couple « Lecture / Édition » : il sélectionne du texte, ouvre
     une annotation, déplace une boîte. Plus de mode global. */
 export const OUTILS = [
-  { id: 'main', label: 'Sélection', icon: 'grip', aide: 'Sélectionner du texte, ouvrir une annotation, déplacer une boîte' },
-  { id: 'surligneur', label: 'Surligneur', icon: 'edit', aide: 'Sélectionner du texte le surligne aussitôt, dans la couleur active' },
-  { id: 'boite', label: 'Boîte', icon: 'list', aide: 'Cliquer ou tracer pour poser une boîte — l’outil reste actif pour enchaîner · Échap ou re-clic sur l’outil pour arrêter' },
-  { id: 'texte', label: 'Texte', glyphe: 'T', aide: 'Cliquer sur la page pour y écrire du texte libre, sans cadre' },
-  { id: 'forme', label: 'Forme', glyphe: '▭', aide: 'Tracer un cadre sur la page — puis « Légende » pour y rattacher un texte · Échap pour arrêter' },
-  { id: 'question', label: '?', glyphe: '?', aide: 'Un clic pose un « ? » : « je n’ai pas compris ce passage »' },
-  { id: 'crayon', label: 'Crayon', icon: 'sparkle', aide: 'Dessiner à main levée' },
-  { id: 'gomme', label: 'Gomme', icon: 'ban', aide: 'Efface les traits de crayon — cliquer, ou glisser pour en effacer plusieurs' },
+  { id: 'main', label: 'Sélection', icone: 'selection', aide: 'Sélectionner du texte, ouvrir une annotation, déplacer une boîte' },
+  { id: 'surligneur', label: 'Surligneur', icone: 'surligneur', aide: 'Sélectionner du texte le surligne aussitôt, dans la couleur active' },
+  { id: 'boite', label: 'Boîte', icone: 'boite', aide: 'Cliquer ou tracer pour poser une boîte — l’outil reste actif pour enchaîner · Échap ou re-clic sur l’outil pour arrêter' },
+  { id: 'texte', label: 'Texte', icone: 'texte', aide: 'Cliquer sur la page pour y écrire du texte libre, sans cadre' },
+  { id: 'forme', label: 'Forme', icone: 'forme', aide: 'Tracer un cadre sur la page — puis « Légende » pour y rattacher un texte · Échap pour arrêter' },
+  { id: 'question', label: '?', icone: 'question', aide: 'Un clic pose un « ? » : « je n’ai pas compris ce passage »' },
+  { id: 'crayon', label: 'Crayon', icone: 'crayon', aide: 'Dessiner à main levée' },
+  { id: 'gomme', label: 'Gomme', icone: 'gomme', aide: 'Efface les traits de crayon et les formes — cliquer, ou glisser pour en effacer plusieurs' },
 ];
 /** Outils dont la couleur se règle dans la barre contextuelle. */
 const OUTILS_COLORES = new Set(['boite']); // surligneur et crayon ont leur propre sélecteur (pdf/Couleurs.jsx)
@@ -165,7 +166,7 @@ export function PdfToolbar({
                 className={'ptb-outil' + (outil === o.id ? ' actif' : '')}
                 onMouseDown={(e) => e.preventDefault()} /* garde la sélection de texte : Surligneur la surligne */
                 onClick={() => setOutil(o.id)}>
-                {o.glyphe ? <span className="ptb-glyphe" aria-hidden="true">{o.glyphe}</span> : <Icon name={o.icon} size={15} />}
+                <IconeOutil nom={o.icone} size={16} />
                 {o.id !== 'question' && <span className="ptb-outil-lbl">{o.label}</span>}
               </button>
             ))}
@@ -173,23 +174,23 @@ export function PdfToolbar({
             {onAjouterImage && (
               <button type="button" className="ptb-outil" onClick={onAjouterImage}
                 title="Image — importer une image et la placer sur la page (ou la coller avec Cmd/Ctrl+V)">
-                <Icon name="image" size={15} /><span className="ptb-outil-lbl">Image</span>
+                <IconeOutil nom="image" size={16} /><span className="ptb-outil-lbl">Image</span>
               </button>
             )}
             {onAjouterPage && (
               <button type="button" className="ptb-outil" onClick={onAjouterPage}
                 title="Page — insérer une page blanche juste après la page affichée (ou avec le « + Page » entre deux pages)">
-                <Icon name="plus" size={15} /><span className="ptb-outil-lbl">Page</span>
+                <IconeOutil nom="page" size={16} /><span className="ptb-outil-lbl">Page</span>
               </button>
             )}
             <span className="ptb-sep" />
             <button className="icon-btn sm" onClick={hist.annuler} disabled={!hist.peutAnnuler}
               title={hist.peutAnnuler ? `Annuler — ${hist.libelleAnnuler} (${RACCOURCI}Z)` : `Annuler (${RACCOURCI}Z)`}>
-              <Icon name="refresh" size={14} style={{ transform: 'scaleX(-1)' }} />
+              <IconeOutil nom="annuler" size={15} />
             </button>
             <button className="icon-btn sm" onClick={hist.retablir} disabled={!hist.peutRetablir}
               title={hist.peutRetablir ? `Rétablir — ${hist.libelleRetablir} (${RACCOURCI}Maj+Z)` : `Rétablir (${RACCOURCI}Maj+Z)`}>
-              <Icon name="refresh" size={14} />
+              <IconeOutil nom="retablir" size={15} />
             </button>
           </div>
         )}

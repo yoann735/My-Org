@@ -24,6 +24,7 @@ import { getAll } from '../lib/storage.js';
 import { useAnnotHistorique, cmdCreer, cmdModifier, cmdSupprimer, cmdGroupe } from '../lib/annotHistory.js';
 import { newCarte, newLien, CARTE_DEFAUT, CARTE_MIN, STYLES_LIEN } from '../lib/tableau.js';
 import { COLORS, couleurHex, avecAlpha } from '../pdf/pdfShared.js';
+import { IconeOutil } from '../pdf/IconesOutils.jsx';
 import { useCouleursPerso } from '../lib/couleursPerso.js';
 import { cheminLien, ancreDe, coteAuto, coteLePlusProche } from './geometrie.js';
 
@@ -529,11 +530,11 @@ export const Tableau = forwardRef(function Tableau({ ficheId }, ref) {
       {/* barre du tableau : créer, zoom, main */}
       <div className="tb-barre" onPointerDown={(e) => e.stopPropagation()}>
         <button type="button" className="tb-btn principal" onClick={() => { const p = centreVue(); creerCarte(p.x, p.y); }} title="Nouvelle carte (N, ou double-clic sur le fond)">
-          <Icon name="plus" size={13} /> Carte
+          <IconeOutil nom="carte" size={14} /> Carte
         </button>
         <span className="tb-sep" />
         <button type="button" className={'tb-btn' + (outilMain ? ' actif' : '')} onClick={() => setOutilMain((v) => !v)} title="Main : glisser pour se déplacer (H, ou maintenir Espace)">
-          <Icon name="grip" size={13} />
+          <IconeOutil nom="main" size={15} />
         </button>
         <span className="tb-sep" />
         <button type="button" className="tb-btn" onClick={() => zoomBoutons(1 / 1.2)} title="Dézoomer (Cmd/Ctrl + molette)"><Icon name="minus" size={13} /></button>
@@ -541,8 +542,8 @@ export const Tableau = forwardRef(function Tableau({ ficheId }, ref) {
         <button type="button" className="tb-btn" onClick={() => zoomBoutons(1.2)} title="Zoomer"><Icon name="plus" size={13} /></button>
         <button type="button" className="tb-btn" onClick={toutAfficher} title="Tout afficher"><Icon name="maximize" size={13} /></button>
         <span className="tb-sep" />
-        <button type="button" className="tb-btn" onClick={hist.annuler} disabled={!hist.peutAnnuler} title={hist.peutAnnuler ? `Annuler — ${hist.libelleAnnuler} (Cmd+Z)` : 'Annuler (Cmd+Z)'}><Icon name="refresh" size={13} style={{ transform: 'scaleX(-1)' }} /></button>
-        <button type="button" className="tb-btn" onClick={hist.retablir} disabled={!hist.peutRetablir} title="Rétablir (Cmd+Maj+Z)"><Icon name="refresh" size={13} /></button>
+        <button type="button" className="tb-btn" onClick={hist.annuler} disabled={!hist.peutAnnuler} title={hist.peutAnnuler ? `Annuler — ${hist.libelleAnnuler} (Cmd+Z)` : 'Annuler (Cmd+Z)'}><IconeOutil nom="annuler" size={14} /></button>
+        <button type="button" className="tb-btn" onClick={hist.retablir} disabled={!hist.peutRetablir} title="Rétablir (Cmd+Maj+Z)"><IconeOutil nom="retablir" size={14} /></button>
       </div>
 
       {/* barre contextuelle : cartes ou flèches sélectionnées */}
@@ -555,7 +556,7 @@ export const Tableau = forwardRef(function Tableau({ ficheId }, ref) {
                 style={{ background: p === 'blanc' ? '#fff' : couleurCarte(p) }} onClick={() => colorer(p)} title={p === 'blanc' ? 'Blanc' : p} />
             ))}
             <span className="tb-sep" />
-            {selCartes.length === 1 && <button type="button" className="tb-btn" onClick={() => setEditId(selCartes[0].id)} title="Écrire (Entrée)"><Icon name="edit" size={12} /></button>}
+            {selCartes.length === 1 && <button type="button" className="tb-btn" onClick={() => setEditId(selCartes[0].id)} title="Écrire (Entrée)"><IconeOutil nom="texte" size={13} /></button>}
             <button type="button" className="tb-btn" onClick={dupliquer} title="Dupliquer (Cmd+D)"><Icon name="copy" size={12} /></button>
             <button type="button" className="tb-btn" onClick={auPremierPlan} title="Premier plan"><Icon name="layers" size={12} /></button>
           </>)}

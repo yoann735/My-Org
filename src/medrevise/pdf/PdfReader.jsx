@@ -71,6 +71,7 @@ import {
 import { PdfPageContent, EditToolbar } from './PdfPage.jsx';
 import { PdfToolbar, PaletteCrayon } from './PdfToolbar.jsx';
 import { SelecteurCouleurs, ReglagesTrait } from './Couleurs.jsx';
+import { IconeOutil } from './IconesOutils.jsx';
 import { useCouleursPerso } from '../lib/couleursPerso.js';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
@@ -1467,7 +1468,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 <span className="ptb-sep" />
                 <button type="button" className={'ptb-bascule' + (aimant ? ' actif' : '')} onClick={() => setAimant((v) => !v)}
                   title="Lisse le tremblement et redresse les traits presque droits. Décoché, le trait est conservé tel qu'il a été tracé.">
-                  <Icon name="sparkle" size={13} /> Aimant {aimant ? 'activé' : 'désactivé'}
+                  <IconeOutil nom="aimant" size={14} /> Aimant {aimant ? 'activé' : 'désactivé'}
                 </button>
               </>
             )}

@@ -17,6 +17,7 @@
    ============================================================ */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { EditorContent } from '@tiptap/react';
+import { IconeOutil } from './IconesOutils.jsx';
 import { Icon } from '../../shared/Icon.jsx';
 import { outputScaleFor } from './pdfjsSetup.js';
 import { richToHTML } from '../documents/lib/richtext.js';
@@ -1000,12 +1001,12 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
           {boite.surlignageId || boite.formeId ? (
             <button type="button" className="nb-act actif" {...stop(() => onModifier(boite, { ancre: null, fleche: false, surlignageId: null, formeId: null }, 'Lien retiré'))}
               title={`Reliée au surlignage${ancre && ancre.texte ? ` « ${ancre.texte} »` : ''}. Cliquer pour retirer le lien.`}>
-              <Icon name="edit" size={11} /> Délier
+              <IconeOutil nom="fleche" size={11} /> Délier
             </button>
           ) : (
             <button type="button" className="nb-act" {...stop(() => onDemanderAncrage(boite.id, { surlignage: true }))}
               title="Relier cette boîte à un surlignage : clique ensuite le passage surligné, une flèche les relie.">
-              <Icon name="edit" size={11} /> Relier
+              <IconeOutil nom="fleche" size={11} /> Relier
             </button>
           )}
           <button type="button" className={'nb-act' + (ancre && boite.fleche ? ' actif' : '')}
@@ -1265,7 +1266,7 @@ function FormeRect({ forme, active, interactive, liee, pageHeight, onActiver, on
       {interactive && active && (
         <div className={'nb-actions pf-actions' + (g.y < 0.05 ? ' dessous' : '')} onPointerDown={(e) => e.stopPropagation()}>
           <button type="button" className="nb-act" {...stop(() => onLegende(forme))} title="Ajouter une légende : une boîte de texte reliée à cette forme par une flèche">
-            <Icon name="list" size={11} /> Légende
+            <IconeOutil nom="legende" size={12} /> Légende
           </button>
           <button type="button" className="nb-act danger" {...stop(() => onSupprimer(forme))} title={`Supprimer la forme (annulable par ${RACCOURCI_Z})`}>
             <Icon name="trash" size={12} />
