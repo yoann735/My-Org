@@ -1007,7 +1007,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const ancrageBoiteId = ancrage ? ancrage.id : null;
   const ancrageRef = useRef(ancrage); ancrageRef.current = ancrage;
   // opts.surlignage : la visée attend un SURLIGNAGE (lien boîte ↔ surlignage, 02/10)
-  const setAncrageBoiteId = (id, opts) => setAncrage(id ? { id, fleche: !!(opts && (opts.fleche || opts.surlignage)), surlignage: !!(opts && opts.surlignage) } : null);
+  const setAncrageBoiteId = (id, opts) => setAncrage(id ? { id, fleche: !!(opts && (opts.fleche || opts.surlignage)), surlignage: !!(opts && opts.surlignage), ajout: !!(opts && opts.ajout) } : null);
   useEffect(() => {
     if (!ancrageBoiteId) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') setAncrage(null); };
@@ -1640,7 +1640,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onMajBoite={majBoite}
                       onSupprimerBoite={supprimerBoite}
                       onModifierBoite={modifierBoite}
-                      ancrageBoiteId={ancrageBoiteId} ancrageFleche={!!(ancrage && ancrage.fleche)} ancrageSurlignage={!!(ancrage && ancrage.surlignage)} onDemanderAncrage={setAncrageBoiteId}
+                      ancrageBoiteId={ancrageBoiteId} ancrageFleche={!!(ancrage && ancrage.fleche)} ancrageSurlignage={!!(ancrage && ancrage.surlignage)} ancrageAjout={!!(ancrage && ancrage.ajout)} onDemanderAncrage={setAncrageBoiteId}
                       pageWidth={w}
                       activeEditId={activeEditId}
                       matches={matchesByPage[n] || EMPTY_ARRAY}

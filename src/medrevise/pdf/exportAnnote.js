@@ -299,30 +299,33 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const ancre = b.ancre && Number.isFinite(b.ancre.x) && Number.isFinite(b.ancre.y) ? { x: b.ancre.x * W, y: H - b.ancre.y * H } : null;
     const coulFleche = hexVersRgb(couleurFoncee(b.couleur)); // teinte foncée, même règle qu'à l'écran
 
-    // flèche d'abord (sous la boîte et l'épingle) : du BORD de la boîte au point visé
-    if (ancre && b.fleche) {
-      const cx = x + w / 2, cy = top - h / 2, dx = ancre.x - cx, dy = ancre.y - cy;
-      const dedans = ancre.x >= x && ancre.x <= x + w && ancre.y <= top && ancre.y >= top - h;
-      if (!dedans) {
-        const t = Math.min(dx ? (w / 2) / Math.abs(dx) : Infinity, dy ? (h / 2) / Math.abs(dy) : Infinity);
-        const sx = cx + dx * t, sy = cy + dy * t;
-        const L = Math.hypot(ancre.x - sx, ancre.y - sy);
-        if (L > 8) {
-          const ux = (ancre.x - sx) / L, uy = (ancre.y - sy) / L;
-          const ex = ancre.x - ux * 5, ey = ancre.y - uy * 5; // la pointe s'arrête au bord de l'épingle
-          const tete = 7;
-          const bx = ex - ux * tete, by = ey - uy * tete;
-          page.drawLine({ start: { x: sx, y: sy }, end: { x: bx, y: by }, thickness: 1.5, color: coulFleche });
-          // pointe : triangle plein (coordonnées SVG, y vers le bas depuis le haut de la page)
-          const P = (px, py) => `${px.toFixed(2)} ${(H - py).toFixed(2)}`;
-          page.drawSvgPath(`M${P(ex, ey)} L${P(bx - uy * tete * 0.5, by + ux * tete * 0.5)} L${P(bx + uy * tete * 0.5, by - ux * tete * 0.5)} Z`, { x: 0, y: H, color: coulFleche });
-          bilan.fleches += 1;
-        }
-      }
-    }
+    // flèches d'abord (sous la boîte et les épingles) : du BORD de la boîte au point visé
+    const dessinerFleche = (cible) => {
+      const cx = x + w / 2, cy = top - h / 2, dx = cible.x - cx, dy = cible.y - cy;
+      const dedans = cible.x >= x && cible.x <= x + w && cible.y <= top && cible.y >= top - h;
+      if (dedans) return;
+      const t = Math.min(dx ? (w / 2) / Math.abs(dx) : Infinity, dy ? (h / 2) / Math.abs(dy) : Infinity);
+      const sx = cx + dx * t, sy = cy + dy * t;
+      const L = Math.hypot(cible.x - sx, cible.y - sy);
+      if (L <= 8) return;
+      const ux = (cible.x - sx) / L, uy = (cible.y - sy) / L;
+      const ex = cible.x - ux * 5, ey = cible.y - uy * 5; // la pointe s'arrête au bord de l'épingle
+      const tete = 7;
+      const bx = ex - ux * tete, by = ey - uy * tete;
+      page.drawLine({ start: { x: sx, y: sy }, end: { x: bx, y: by }, thickness: 1.5, color: coulFleche });
+      // pointe : triangle plein (coordonnées SVG, y vers le bas depuis le haut de la page)
+      const P = (px, py) => `${px.toFixed(2)} ${(H - py).toFixed(2)}`;
+      page.drawSvgPath(`M${P(ex, ey)} L${P(bx - uy * tete * 0.5, by + ux * tete * 0.5)} L${P(bx + uy * tete * 0.5, by - ux * tete * 0.5)} Z`, { x: 0, y: H, color: coulFleche });
+      bilan.fleches += 1;
+    };
+    if (ancre && b.fleche) dessinerFleche(ancre);
+    // flèches supplémentaires (05/10) : chacune vers son point, avec son petit rond
+    const autres = (b.fleches || []).filter((fl) => fl && Number.isFinite(fl.x) && Number.isFinite(fl.y)).map((fl) => ({ x: fl.x * W, y: H - fl.y * H }));
+    autres.forEach(dessinerFleche);
     page.drawRectangle({ x, y: top - h, width: w, height: h, color: fond, opacity: opaciteFondBoite(b.couleur), borderColor: rgb(0, 0, 0), borderOpacity: 0.28, borderWidth: 0.8 });
     lignes.forEach((l, i) => { if (l) page.drawText(l, { x: x + pad, y: top - pad - TAILLE_BOITE * 0.95 - i * lh, size: TAILLE_BOITE, font, color: rgb(0.09, 0.09, 0.16) }); });
     if (ancre) page.drawCircle({ x: ancre.x, y: ancre.y, size: 3.5, color: rgb(1, 1, 1), borderColor: coulFleche, borderWidth: 1.8 });
+    autres.forEach((a) => page.drawCircle({ x: a.x, y: a.y, size: 3, color: rgb(1, 1, 1), borderColor: coulFleche, borderWidth: 1.5 }));
     bilan.boites += 1;
   }
 

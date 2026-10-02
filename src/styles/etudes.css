@@ -1521,6 +1521,11 @@
 /* épingle et pastille : on les attrape pour les déplacer */
 .nb-ancre { cursor: grab; }
 .nb-ancre.glisse, .nb-pastille.glisse { cursor: grabbing; transform: scale(1.2); }
+/* flèches supplémentaires d'une boîte (05/10) : un rond plus petit au bout, et sa croix */
+.nb-ancre-fl { width: 10px; height: 10px; margin: -5px 0 0 -5px; border-width: 2.5px; }
+.nb-fl-x { position: absolute; left: 8px; top: -12px; width: 15px; height: 15px; border-radius: 50%; padding: 0; border: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; background: var(--text); color: var(--card); box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+.nb-fl-x:hover { background: var(--crit, #e5484d); color: #fff; }
 .nb-pastille { cursor: grab; margin: 0; transform: translate(-50%, -50%); }
 .nb-pastille:hover { transform: translate(-50%, -50%) scale(1.15); }
 .nb-pastille.glisse { transform: translate(-50%, -50%) scale(1.2); }
