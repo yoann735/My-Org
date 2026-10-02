@@ -281,14 +281,20 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
 
   // ---- caméra ----
   /* ZOOM FLUIDE (02/10 soir) : pendant un pincement ou un déplacement, la caméra est
-     écrite directement dans le DOM à chaque image — le monde (vectoriel, donc net à
-     tout zoom) ET la grille du fond. Avant, la grille ne suivait qu'au relâchement :
-     le fond « sautait » à la fin du geste. Un seul requestAnimationFrame par image. */
+     écrite directement dans le DOM à chaque image — le monde ET la grille du fond.
+     LA GRILLE EST UN MOTIF SVG (02/10 nuit), plus un fond CSS : un fond CSS répété est
+     recalé par le navigateur sur les pixels PHYSIQUES de l'écran — mesuré : pour un pas
+     de 24,25 px, les écarts réels alternaient 24,5 / 24,0, la grille avançait par
+     crans (les « paliers »). Le motif SVG suit la même transformation que le dessin,
+     au sous-pixel près : il grandit en continu. Les points grossissent doucement avec
+     le zoom (rayon ∝ √zoom) et la grille s'efface quand elle devient trop serrée. */
   const rafCam = useRef(0);
+  const motifRef = useRef(null), pointRef = useRef(null), grilleRef = useRef(null);
   const ecrireCam = (c) => {
     if (mondeRef.current) mondeRef.current.setAttribute('transform', `translate(${c.x} ${c.y}) scale(${c.z})`);
-    const sv = svgRef.current;
-    if (sv) { const g = 24 * c.z; sv.style.backgroundSize = `${g}px ${g}px`; sv.style.backgroundPosition = `${c.x}px ${c.y}px`; }
+    if (motifRef.current) motifRef.current.setAttribute('patternTransform', `translate(${c.x} ${c.y}) scale(${c.z})`);
+    if (pointRef.current) pointRef.current.setAttribute('r', String(1.15 / Math.sqrt(c.z)));
+    if (grilleRef.current) grilleRef.current.setAttribute('opacity', String(Math.max(0, Math.min(1, (24 * c.z - 5) / 9))));
   };
   const appliquerCam = (c) => {
     camRef.current = c;
@@ -473,6 +479,12 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       <svg ref={svgRef} className={'md-surface outil-' + outil}
         onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
         onContextMenu={(e) => e.preventDefault()}>
+        <defs>
+          <pattern ref={motifRef} id="md-grille" patternUnits="userSpaceOnUse" width="24" height="24">
+            <circle ref={pointRef} cx="12" cy="12" r="1.15" fill="rgba(255,255,255,0.17)" />
+          </pattern>
+        </defs>
+        <rect ref={grilleRef} x="0" y="0" width="100%" height="100%" fill="url(#md-grille)" pointerEvents="none" />
         <g ref={mondeRef}>
           {visibles.map((x) => <ElementDessin key={x.id} e={x} gommeLarg={outil === 'gomme' ? 22 / cam.z : 0} />)}
           {apercu && <g opacity="0.75"><ElementDessin e={{ id: 'apercu', type: 'forme', forme: typeForme, ...apercu, couleur, ep, remplie: remplie && estFermee(typeForme) }} /></g>}
