@@ -67,7 +67,7 @@ export function ChampImageFlashcard({ valeur, onChange }) {
       {!aUneImage ? (
         <button type="button" className="fc-ajout" onClick={() => input.current && input.current.click()}
           onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); choisir(e.dataTransfer.files[0]); }}>
-          <Icon name="image" size={15} /> Ajouter une image <span className="imp-opt">— ou glisse-la ici</span>
+          <Icon name="image" size={15} /> Ajouter une image <span className="imp-opt">— ou colle-la (<kbd>⌘V</kbd> / <kbd>Ctrl+V</kbd>), ou glisse-la ici</span>
         </button>
       ) : (
         <div className="fc-choisie">

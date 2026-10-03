@@ -1704,6 +1704,10 @@
 .fc-ajout { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 14px; border-radius: var(--r, 10px);
   border: 1px dashed var(--border); background: transparent; color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
 .fc-ajout:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+/* image glissée au-dessus du formulaire de flashcard (03/10) */
+.aif-champs.fc-depot { outline: 2px dashed var(--accent); outline-offset: 6px; border-radius: 8px; }
+.aif-champs.fc-depot .fc-ajout { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.fc-ajout kbd { font: inherit; font-size: .92em; }
 .fc-choisie { display: flex; gap: 14px; align-items: center; padding: 10px; border-radius: var(--r, 10px); border: 1px solid var(--border-2); }
 .fc-vignette { flex: 0 0 76px; width: 76px; height: 64px; display: grid; place-items: center; overflow: hidden; border-radius: 8px; background: var(--bg-2); }
 .fc-vignette img { max-width: 100%; max-height: 64px; object-fit: contain; }

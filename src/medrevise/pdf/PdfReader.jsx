@@ -58,6 +58,7 @@ import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, detectDocKind, Modal, LoaderL6, ConfirmModal } from '../components/ui.jsx';
 import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque, newPageAjoutee, newImageCollee, newForme } from '../lib/storage.js';
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cmdGroupe, cibleEditable } from '../lib/annotHistory.js';
+import { imageDuPressePapier } from '../lib/collerImage.js';
 import { RICH_EXTENSIONS } from '../documents/lib/richtext.js';
 import { AddItemModal, PasteJsonForm } from '../components/AddItemForm.jsx';
 import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
@@ -1288,11 +1289,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   useEffect(() => {
     if (!pdfDoc || srcTab !== 'pdf') return undefined;
     const onPaste = (e) => {
+      if (e.defaultPrevented) return; // déjà pris (formulaire de flashcard ouvert : lib/collerImage.js)
       if (cibleEditable(e.target) || cibleEditable(document.activeElement)) return;
       if (dansLeTableau(e.target) || dansLeTableau(document.activeElement)) return; // le tableau a ses propres raccourcis
-      const items = [...((e.clipboardData && e.clipboardData.items) || [])];
-      const it = items.find((x) => x.kind === 'file' && /^image\//.test(x.type));
-      const f = it && it.getAsFile();
+      const f = imageDuPressePapier(e.clipboardData);
       if (!f) return;
       e.preventDefault();
       ajouterImageRef.current(f);

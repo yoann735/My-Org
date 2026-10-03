@@ -31,6 +31,7 @@ import { parseCloze } from '../lib/cloze.js';
 import { OcclusionEditorModal } from './OcclusionImage.jsx';
 import { ChampImageFlashcard } from './FlashcardImage.jsx';
 import { putBlob } from '../lib/storage.js';
+import { useCollerImage, imageDuDepot, glisseDesFichiers } from '../lib/collerImage.js';
 
 export const TYPES = [
   { id: 'qcm', label: 'QCM', icon: 'list' },
@@ -319,6 +320,13 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel }) {
   const [holeHint, setHoleHint] = useState(null);
   const rectoRef = useRef(null);
   const ready = !!recto.trim() && !!verso.trim();
+  /* COLLER UNE IMAGE (03/10) : Cmd/Ctrl+V d'une capture ou d'une image copiée sur le
+     web l'ajoute à la carte (comme « Ajouter une image ») ; on peut aussi la DÉPOSER
+     n'importe où sur le formulaire. Choisir un fichier reste possible. */
+  const racineRef = useRef(null);
+  const [depot, setDepot] = useState(false);
+  const prendreImage = (f) => setImage((v) => ({ ...v, fichier: f }));
+  useCollerImage(racineRef, prendreImage);
 
   // segments texte/trou dérivés du recto tel quel — aucun état séparé à
   // maintenir en phase : le {{...}} DANS le texte fait foi (voir cloze.js).
@@ -367,7 +375,10 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel }) {
   };
 
   return (
-    <div className="aif-champs">
+    <div className={'aif-champs' + (depot ? ' fc-depot' : '')} ref={racineRef}
+      onDragOver={(e) => { if (!glisseDesFichiers(e.dataTransfer)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; if (!depot) setDepot(true); }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDepot(false); }}
+      onDrop={(e) => { if (!glisseDesFichiers(e.dataTransfer)) return; e.preventDefault(); e.stopPropagation(); setDepot(false); const f = imageDuDepot(e.dataTransfer); if (f) prendreImage(f); }}>
       <div className="imp-field">
         <label>Thème <span className="imp-opt">(optionnel)</span></label>
         <input className="imp-title" placeholder="ex : Surfactant" value={theme} onChange={(e) => setTheme(e.target.value)} />

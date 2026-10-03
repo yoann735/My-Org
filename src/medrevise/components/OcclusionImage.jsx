@@ -27,6 +27,7 @@ import { SchemaEditor, ZonesLayer, centroidOf } from '../pages/ImportAnatomieVis
 import { blobURL, putBlob } from '../lib/storage.js';
 import { cleanCoche, appendItemsToFiche } from '../lib/import.js';
 import { toInternalItem } from '../lib/adapter.js';
+import { imageDuPressePapier, texteDuPressePapier } from '../lib/collerImage.js';
 
 export const RECTO_DEFAUT = 'Que cachent les masques ?';
 const COULEUR_MASQUE = '#8B6FE8';
@@ -131,19 +132,22 @@ export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, on
     probe.src = url;
   };
 
-  // COLLER une capture d'écran (Cmd/Ctrl+V) : n'importe où dans la fenêtre, sauf
-  // pendant qu'on tape dans un champ (on y colle alors du texte, normalement).
+  // COLLER une capture d'écran (Cmd/Ctrl+V) : n'importe où dans la fenêtre. Dans un
+  // champ (recto, verso, thème), seulement si le presse-papier n'a pas de texte —
+  // sinon on y colle le texte, normalement (03/10 : avant, jamais dans un champ).
+  // Phase de capture : la fenêtre passe avant le lecteur PDF, qui ne pose donc pas
+  // l'image en plus sur la page.
   useEffect(() => {
     const onPaste = (e) => {
       const t = e.target;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      const items = (e.clipboardData && e.clipboardData.items) || [];
-      for (const it of items) {
-        if (it.type && it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) { e.preventDefault(); choisirImage(f); return; } }
-      }
+      const f = imageDuPressePapier(e.clipboardData);
+      if (!f) return;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable) && texteDuPressePapier(e.clipboardData)) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      choisirImage(f);
     };
-    window.addEventListener('paste', onPaste);
-    return () => window.removeEventListener('paste', onPaste);
+    window.addEventListener('paste', onPaste, true);
+    return () => window.removeEventListener('paste', onPaste, true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* NE RIEN PERDRE : Échap, la croix ou un clic à côté fermaient la fenêtre sans
