@@ -1983,8 +1983,8 @@
 .pdfr-forme.glisse .pf-trace { opacity: .85; }
 .pf-bout { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #fff; border: 2px solid var(--accent);
   pointer-events: auto; cursor: grab; z-index: 2; }
-.pf-texte { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: max(100%, 120px); text-align: center;
-  font: 600 13px/1.25 var(--font, inherit); white-space: pre-wrap; pointer-events: none; z-index: 1; }
+.pf-texte { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: max(100%, calc(120px * var(--k, 1))); text-align: center;
+  font: 600 calc(13px * var(--k, 1))/1.25 var(--font, inherit); white-space: pre-wrap; pointer-events: none; z-index: 1; } /* texte d'une forme : suit la page (04/10) */
 .pf-texte.sur-trait { transform: translate(-50%, calc(-100% - 6px)); }
 .pf-texte span { background: rgba(255,255,255,.82); border-radius: 4px; padding: 0 3px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .pf-texte textarea { pointer-events: auto; font: inherit; color: inherit; text-align: center; min-width: 120px; resize: none; border: 1.5px solid var(--accent);
