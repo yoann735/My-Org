@@ -2193,3 +2193,10 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .tf-champ { display: flex; gap: 6px; align-items: center; }
 .tf-champ .imp-title { flex: 1; min-width: 0; height: 32px; }
 .tf-aide { font-size: 11.5px; }
+
+/* REPÈRES COLLÉS À LA PAGE (04/10, docs/compte-rendu-zoom-annotations.md) : épingles,
+   bouts de flèche, pastilles de boîte réduite, « ? » grossissent avec la page (--k =
+   zoom ÷ 160 %, posé sur .pdfr-page). La propriété `scale` se cumule avec leurs
+   transformations (centrage, survol) ; origine = le point d'ancrage. */
+.pdfr-page .nb-ancre { scale: var(--k, 1); }
+.pdfr-page .nb-pastille, .pdfr-page .pdfr-question { scale: var(--k, 1); transform-origin: 0 0; }

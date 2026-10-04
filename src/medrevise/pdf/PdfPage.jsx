@@ -233,9 +233,8 @@ export function PdfPageContent({
       // la boîte ne sort jamais de la page
       const x = clamp(rect.x, 0, 1 - BOITE_MIN.width);
       const y = clamp(rect.y, 0, 1 - BOITE_MIN.height);
-      // taille TRACÉE (à ce zoom) → taille enregistrée à l'échelle de référence : la boîte
-      // garde à l'écran la taille dessinée, et ne bougera plus avec le zoom (03/10)
-      const k = rect === courant ? (scale || ECHELLE_REF) / ECHELLE_REF : 1;
+      // taille TRACÉE = fraction de la page, telle quelle (04/10 : la boîte suit la page au zoom)
+      const k = 1;
       onCreerBoite({
         page: pageNum, x, y,
         width: clamp(rect.width * k, BOITE_MIN.width, 1 - x),
@@ -827,12 +826,17 @@ export function PdfPageContent({
    pointerdown, la commande empilée au pointerup, et seulement si ça a bougé.
    ============================================================ */
 function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, viseSurlignage = false, viseAjout = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF }) {
-  /* TAILLE FIXE AU ZOOM (03/10) : la largeur/hauteur enregistrées sont des fractions
-     de page À L'ÉCHELLE DE RÉFÉRENCE (160 %, le zoom par défaut). Affichées en px
-     constants : zoomer déplace la boîte avec le document, sans la grossir ni la
-     rétrécir (son texte, lui, a toujours été en px fixes). */
+  /* UN SEUL REPÈRE : LA PAGE (04/10, docs/compte-rendu-zoom-annotations.md). Position,
+     épingle, connecteurs ET taille sont des fractions de page. La boîte est mise en page
+     à l'échelle de RÉFÉRENCE (160 % : refW × refH, police 13 px…) puis mise à l'échelle
+     de la page par UN SEUL `scale: k` (k = zoom ÷ 160 %) : cadre, texte, barre, flèches
+     grossissent et rapetissent exactement comme la page. Avant (03/10), la taille restait
+     en px d'écran alors que la position et les connecteurs suivaient la page : deux
+     repères — au dézoom, les boîtes débordaient et l'épingle se détachait. Stockage
+     inchangé : une largeur enregistrée est une fraction de la page à 160 %. */
   const refW = ((pageWidth || 0) / (echelle || ECHELLE_REF)) * ECHELLE_REF;
   const refH = ((pageHeight || 0) / (echelle || ECHELLE_REF)) * ECHELLE_REF;
+  const k = (echelle || ECHELLE_REF) / ECHELLE_REF;
   const texteLibre = variante === 'texte'; // TEXTE LIBRE (01/10) : même mécanique, sans cadre ni fond
   const [apercu, setApercu] = useState(null); // géométrie pendant le geste (état local, non persisté)
   const b = apercu || boite;
@@ -922,8 +926,8 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     // la hauteur AFFICHÉE peut dépasser la hauteur enregistrée (la boîte grandit avec
     // son texte) : la redimension part de ce qu'on voit, sinon le coin « sauterait »
     const vue = boiteRef.current ? boiteRef.current.getBoundingClientRect() : null;
-    // mesures en unités de RÉFÉRENCE (taille fixe au zoom) : px affichés ÷ px de référence
-    const hVue = vue ? vue.height / refH : 0, lVue = vue ? vue.width / refW : 0;
+    // taille AFFICHÉE en fraction de page (le rectangle à l'écran inclut déjà le scale)
+    const hVue = vue ? vue.height / r.height : 0, lVue = vue ? vue.width / r.width : 0;
     // la redimension part de la taille AFFICHÉE (la boîte épouse son texte : elle peut
     // être plus étroite que sa largeur enregistrée, ou plus haute)
     const base = type === 'resize' ? { ...avant, height: Math.max(hVue, avant.height), width: lVue || avant.width } : avant;
@@ -934,10 +938,9 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     const move = (ev) => {
       if (!bouge && Math.abs(ev.clientX - depart.x) + Math.abs(ev.clientY - depart.y) <= 4) return;
       bouge = true;
-      // déplacer : en fraction de la page (la position suit le document) ;
-      // redimensionner : en unités de référence (la taille, elle, est fixe à l'écran)
-      const dx = (ev.clientX - depart.x) / (type === 'move' ? r.width : refW);
-      const dy = (ev.clientY - depart.y) / (type === 'move' ? r.height : refH);
+      // déplacer comme redimensionner : en fraction de la page (un seul repère)
+      const dx = (ev.clientX - depart.x) / r.width;
+      const dy = (ev.clientY - depart.y) / r.height;
       courant = type === 'move'
         ? { ...avant, x: clamp(avant.x + dx, 0, 0.98), y: clamp(avant.y + dy, 0, 0.98) }
         : { ...avant, largeurFixe: true, // redimensionnée à la main : sa largeur ne s'ajuste plus au texte
@@ -969,6 +972,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const ajustee = !apercu && !boite.largeurFixe && !!extraitBrut;
   const style = {
     left: b.x * 100 + '%', top: b.y * 100 + '%', minHeight: b.height * refH,
+    ...(k !== 1 ? { scale: String(k), transformOrigin: '0 0' } : {}),
     ...(ajustee ? { width: 'max-content', maxWidth: b.width * refW } : { width: b.width * refW }),
     ...(texteLibre
       ? { color: couleurHex(boite.couleur, '#1F1F24') }
@@ -1057,15 +1061,16 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const flecheVers = (cible) => {
     if (!cible || !pageWidth || !pageHeight) return null;
     const W = pageWidth, H = pageHeight;
-    const bx = b.x * W, by = b.y * H, bw = ajustee && largVue ? largVue : b.width * refW, bh = Math.max(b.height * refH, hautVue || 0);
+    // taille mise en page (px de référence) × k = taille à l'écran, dans le repère de la page
+    const bx = b.x * W, by = b.y * H, bw = (ajustee && largVue ? largVue : b.width * refW) * k, bh = Math.max(b.height * refH, hautVue || 0) * k;
     const cx = bx + bw / 2, cy = by + bh / 2, ax = cible.x * W, ay = cible.y * H;
     const dx = ax - cx, dy = ay - cy;
     if (ax >= bx && ax <= bx + bw && ay >= by && ay <= by + bh) return null;
     const t = Math.min(dx ? (bw / 2) / Math.abs(dx) : Infinity, dy ? (bh / 2) / Math.abs(dy) : Infinity);
     const sx = cx + dx * t, sy = cy + dy * t;
     const L = Math.hypot(ax - sx, ay - sy);
-    if (L < 14) return null;
-    const recul = 7 / L;
+    if (L < 14 * k) return null;
+    const recul = (7 * k) / L;
     return { sx, sy, ex: ax - (ax - sx) * recul, ey: ay - (ay - sy) * recul };
   };
   /* FLÈCHES SUPPLÉMENTAIRES (02/10 soir) : `fleches`, chacune vers son point ; le bout
@@ -1076,15 +1081,15 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const fleche = (() => {
     if (!ancre || !boite.fleche || !pageWidth || !pageHeight) return null;
     const W = pageWidth, H = pageHeight;
-    const bx = b.x * W, by = b.y * H, bw = ajustee && largVue ? largVue : b.width * refW, bh = Math.max(b.height * refH, hautVue || 0);
+    const bx = b.x * W, by = b.y * H, bw = (ajustee && largVue ? largVue : b.width * refW) * k, bh = Math.max(b.height * refH, hautVue || 0) * k;
     const cx = bx + bw / 2, cy = by + bh / 2, ax = ancre.x * W, ay = ancre.y * H;
     const dx = ax - cx, dy = ay - cy;
     if (ax >= bx && ax <= bx + bw && ay >= by && ay <= by + bh) return null; // point sous la boîte : rien à relier
     const t = Math.min(dx ? (bw / 2) / Math.abs(dx) : Infinity, dy ? (bh / 2) / Math.abs(dy) : Infinity);
     const sx = cx + dx * t, sy = cy + dy * t;
     const L = Math.hypot(ax - sx, ay - sy);
-    if (L < 14) return null;
-    const recul = 7 / L; // la pointe s'arrête au bord du repère rond (rayon 6)
+    if (L < 14 * k) return null;
+    const recul = (7 * k) / L; // la pointe s'arrête au bord du repère rond (rayon 6, à l'échelle de la page)
     return { W, H, sx, sy, ex: ax - (ax - sx) * recul, ey: ay - (ay - sy) * recul };
   })();
   const couleurFleche = couleurFoncee(boite.couleur);
@@ -1098,7 +1103,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   // barre SOUS l'élément : boîte collée en haut de page, ou texte libre (sa poignée
   // de déplacement occupe déjà le dessus)
   const dessous = texteLibre || (pageHeight && b.y * pageHeight < 42);
-  const bLarg = pageWidth ? (ajustee && largVue ? largVue : b.width * refW) / pageWidth : b.width; // largeur affichée (fraction de page)
+  const bLarg = refW ? (ajustee && largVue ? largVue : b.width * refW) / refW : b.width; // largeur affichée (fraction de page)
   const stop = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onClick: (e) => { e.stopPropagation(); fn(); } });
 
   return (
@@ -1106,16 +1111,16 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     {(fleche || tracesAutres.some((t) => t.tr)) && (
       <svg className="nb-fleche" viewBox={`0 0 ${pageWidth} ${pageHeight}`} preserveAspectRatio="none" aria-hidden="true">
         <defs>
-          <marker id={'pointe-' + boite.id} viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+          <marker id={'pointe-' + boite.id} viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth={9 * k} markerHeight={9 * k} markerUnits="userSpaceOnUse" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill={couleurFleche} />
           </marker>
         </defs>
         {fleche && (
-          <line x1={fleche.sx} y1={fleche.sy} x2={fleche.ex} y2={fleche.ey} stroke={couleurFleche} strokeWidth="2" strokeLinecap="round"
+          <line x1={fleche.sx} y1={fleche.sy} x2={fleche.ex} y2={fleche.ey} stroke={couleurFleche} strokeWidth={2 * k} strokeLinecap="round"
             markerEnd={`url(#pointe-${boite.id})`} />
         )}
         {tracesAutres.map(({ fl, tr }) => tr && (
-          <line key={fl.id} x1={tr.sx} y1={tr.sy} x2={tr.ex} y2={tr.ey} stroke={couleurFleche} strokeWidth="2" strokeLinecap="round"
+          <line key={fl.id} x1={tr.sx} y1={tr.sy} x2={tr.ex} y2={tr.ey} stroke={couleurFleche} strokeWidth={2 * k} strokeLinecap="round"
             markerEnd={`url(#pointe-${boite.id})`} />
         ))}
       </svg>
@@ -1142,7 +1147,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     )}
     {actionsVisibles && (
       <div className={'nb-actions' + (dessous ? ' dessous' : '')}
-        style={{ ...(b.x + bLarg / 2 > 0.5 ? { right: (1 - b.x - bLarg) * 100 + '%' } : { left: b.x * 100 + '%' }), top: (dessous ? b.y + Math.max(b.height, hautVue / (pageHeight || 1)) : b.y) * 100 + '%' }}
+        style={{ ...(b.x + bLarg / 2 > 0.5 ? { right: (1 - b.x - bLarg) * 100 + '%' } : { left: b.x * 100 + '%' }), top: (dessous ? b.y + Math.max(b.height, (hautVue * k) / (pageHeight || 1)) : b.y) * 100 + '%' }}
         onMouseEnter={entrer} onMouseLeave={sortir}
         onPointerDown={(e) => e.stopPropagation()}>
         {texteLibre ? (
@@ -1208,7 +1213,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
           if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onSupprimer(boite); }
           if (e.key === 'Enter') { e.preventDefault(); activer(null); }
         }}>
-        <span className="nb-grip"><Icon name="grip" size={12} /></span>
+        <span className="nb-grip" style={active && k !== 1 ? { scale: String(1 / k) } : undefined}><Icon name="grip" size={12} /></span>
         {ancre && <span className="nb-etat" title={titreAncre}><IconeEpingle size={11} /></span>}
       </div>
 
@@ -1237,7 +1242,8 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
           }}><EditorContent editor={editor} /></div>
         : <div className="nb-body" onMouseDown={(e) => { if (e.button === 0) appuiRef.current = { x: e.clientX, y: e.clientY }; }} onClick={activer} data-vide={texteLibre ? 'Texte…' : undefined} dangerouslySetInnerHTML={{ __html: html }} />}
 
-      <div className="nb-corner" title="Glisser pour redimensionner" onPointerDown={(e) => demarrer(e, 'resize')} />
+      <div className="nb-corner" title="Glisser pour redimensionner" onPointerDown={(e) => demarrer(e, 'resize')}
+        style={active && k !== 1 ? { scale: String(1 / k), transformOrigin: '100% 100%' } : undefined} />
     </div>
     </>
   );
@@ -1584,7 +1590,7 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
 }
 
 /** zoom de référence des boîtes (le zoom par défaut du lecteur) : voir NoteBox. */
-const ECHELLE_REF = 1.6;
+export const ECHELLE_REF = 1.6;
 
 /** position dans l'éditeur la plus proche d'un point écran, même hors des lignes de
     texte : le point est d'abord ramené dans le rectangle du texte. */

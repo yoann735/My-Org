@@ -69,7 +69,7 @@ import {
   useDevicePixelRatio, compareHighlights, computePageTextMap, EPAISSEURS,
   MODES_CRAYON, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, couleurHex, BOITE_DEFAUT,
 } from './pdfShared.js';
-import { PdfPageContent, EditToolbar } from './PdfPage.jsx';
+import { PdfPageContent, EditToolbar, ECHELLE_REF } from './PdfPage.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
 import { SelecteurCouleurs, ReglagesTrait, dansSelecteurFlottant } from './Couleurs.jsx';
 import { IconeOutil, IconeForme } from './IconesOutils.jsx';
@@ -1768,7 +1768,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 const top = layout.offsets[idx];
                 const w = sz.width * scale, h = sz.height * scale;
                 const active = idx >= visibleRange.start && idx <= visibleRange.end;
-                const style = { position: 'absolute', top, left: '50%', transform: 'translateX(-50%)', width: w, height: h };
+                // --k : échelle des annotations (zoom ÷ 160 %), lue par le CSS des repères (épingles, « ? »…)
+                const style = { position: 'absolute', top, left: '50%', transform: 'translateX(-50%)', width: w, height: h, '--k': scale / ECHELLE_REF };
                 if (!active) return <div key={n} className="pdfr-placeholder" style={style} />;
                 /* INSÉRER UNE PAGE ICI (03/10) : TOUT l'espace entre deux pages est un
                    bouton, sur toute la largeur de la page — on vise large, on voit où la
