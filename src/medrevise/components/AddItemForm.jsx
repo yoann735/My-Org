@@ -30,6 +30,7 @@ import { OPTION_LETTERS } from '../lib/schema.js';
 import { parseCloze } from '../lib/cloze.js';
 import { OcclusionEditorModal } from './OcclusionImage.jsx';
 import { ChampImageFlashcard } from './FlashcardImage.jsx';
+import { AmorcesRecto } from './AmorcesRecto.jsx';
 import { putBlob } from '../lib/storage.js';
 import { useCollerImage, imageDuDepot, glisseDesFichiers } from '../lib/collerImage.js';
 
@@ -335,6 +336,18 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefau
   const segments = parseCloze(recto, []);
   const blanks = segments.filter((s) => s.type === 'blank');
 
+  /* AMORCE (04/10, components/AmorcesRecto.jsx) : insérée AU CURSEUR si le recto a le
+     focus (sélection remplacée), sinon EN TÊTE du recto ; le curseur va juste après. */
+  const insererAmorce = (a) => {
+    const el = rectoRef.current;
+    const focus = el && document.activeElement === el;
+    const d = focus ? el.selectionStart : 0, f = focus ? el.selectionEnd : 0;
+    const next = recto.slice(0, d) + a + recto.slice(f);
+    setRecto(next); setHoleHint(null);
+    const pos = d + a.length;
+    requestAnimationFrame(() => { if (!rectoRef.current) return; rectoRef.current.focus(); rectoRef.current.setSelectionRange(pos, pos); });
+  };
+
   const addHole = () => {
     const el = rectoRef.current;
     if (!el) return;
@@ -392,6 +405,7 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefau
             <Icon name="box" size={13} /> Ajouter un trou
           </button>
         </div>
+        <AmorcesRecto onInserer={insererAmorce} />
         <textarea ref={rectoRef} className="imp-title" style={{ minHeight: 78, resize: 'vertical', fontFamily: 'inherit', marginTop: 6 }}
           value={recto} onChange={(e) => { setRecto(e.target.value); setHoleHint(null); }} placeholder="Question / terme… (pour une carte à trou : sélectionne un mot, puis « Ajouter un trou »)" />
         {holeHint && <div className="hint" style={{ marginTop: 6, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {holeHint}</div>}

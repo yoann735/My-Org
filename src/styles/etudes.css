@@ -2200,3 +2200,16 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
    transformations (centrage, survol) ; origine = le point d'ancrage. */
 .pdfr-page .nb-ancre { scale: var(--k, 1); }
 .pdfr-page .nb-pastille, .pdfr-page .pdfr-question { scale: var(--k, 1); transform-origin: 0 0; }
+
+/* AMORCES DU RECTO (04/10, components/AmorcesRecto.jsx) : petites puces discrètes */
+.amr { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 6px; }
+.amr-puce { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 999px; background: var(--card-2, rgba(255,255,255,.04)); max-width: 100%; }
+.amr-puce:hover { border-color: var(--accent); }
+.amr-puce.perso { border-style: dashed; }
+.amr-txt { border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: 11.5px; padding: 2px 8px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.amr-puce:hover .amr-txt { color: var(--accent); }
+.amr-x { border: 0; background: transparent; color: var(--text-3, var(--text-2)); padding: 0 6px 0 0; cursor: pointer; display: inline-flex; }
+.amr-x:hover { color: var(--crit, #e5484d); }
+.amr-lien { border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 11.5px; padding: 2px 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; }
+.amr-ajout { display: inline-flex; gap: 4px; align-items: center; }
+.amr-ajout input { height: 24px; font-size: 12px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--accent); background: var(--bg); color: var(--text); width: 180px; outline: none; }
