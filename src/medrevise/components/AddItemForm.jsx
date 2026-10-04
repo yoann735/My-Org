@@ -23,7 +23,7 @@ import { useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { Modal, LoaderL6 } from './ui.jsx';
-import { appendItemsToFiche, appendExosToChapitre } from '../lib/import.js';
+import { appendItemsToFiche, appendExosToChapitre, themeFlashcardsDeFiche } from '../lib/import.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { ImportJsonField } from './ImportFlow.jsx';
 import { OPTION_LETTERS } from '../lib/schema.js';
@@ -45,9 +45,9 @@ const lines = (s) => (s || '').split('\n').map((l) => l.trim()).filter(Boolean);
 
 /** dispatcher par type — seul point qui connaît les 4 formulaires, réutilisé
     par la modale (ajout) et la sidebar de l'atelier (ajout + édition). */
-export function ItemForm({ type, initial, submitLabel, onSubmit, onCancel, busy }) {
+export function ItemForm({ type, initial, submitLabel, onSubmit, onCancel, busy, themeDefaut = '' }) {
   if (type === 'qcm') return <QcmForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;
-  if (type === 'flashcard') return <FlashcardForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;
+  if (type === 'flashcard') return <FlashcardForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} themeDefaut={themeDefaut} />;
   if (type === 'exercice') return <ExerciceForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;
   if (type === 'feynman') return <FeynmanForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;
   return null;
@@ -105,7 +105,7 @@ export function AddItemModal({ ctx, ficheId, ficheTitre, chapitreId, chapitreNom
               <Icon name="image" size={13} /> Ou une flashcard image (masques sur une image)…
             </button>
           )}
-          <ItemForm type={type} onSubmit={add} busy={busy} />
+          <ItemForm type={type} onSubmit={add} busy={busy} themeDefaut={themeFlashcardsDeFiche((ctx.db.fiches || []).find((f) => f.id === ficheId))} />
           {occ && <OcclusionEditorModal ctx={ctx} ficheId={ficheId} onClose={() => setOcc(false)} onSaved={() => setDone((n) => n + 1)} />}
         </>
       ) : (
@@ -308,8 +308,10 @@ function QcmForm({ onAdd, busy, initial, submitLabel, onCancel }) {
    de sortie (recto avec {{mot}} + tableau `cloze`) EST le format existant
    (lib/cloze.js#parseCloze/isCloze) — aucun nouveau format, aucune saisie de
    {{ }} à la main. Une flashcard sans aucun {{ }} reste une carte classique. */
-function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel }) {
-  const [theme, setTheme] = useState(initial?.theme || '');
+function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefaut = '' }) {
+  // nouvelle carte : PRÉ-REMPLI avec le thème par défaut de la fiche (components/ThemeFiche.jsx)
+  // — on le change si l'on veut ; une carte modifiée garde le sien.
+  const [theme, setTheme] = useState(initial ? (initial.theme || '') : themeDefaut);
   const [recto, setRecto] = useState(initial?.recto || '');
   const [verso, setVerso] = useState(initial?.verso || '');
   const [indice, setIndice] = useState(initial?.indice || '');
@@ -365,7 +367,7 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel }) {
     // (le fichier lui-même n'est jamais effacé, même règle que partout).
     const imageId = image.fichier ? await putBlob(image.fichier) : (image.imageId || null);
     await onAdd({
-      type: 'flashcard', theme: theme.trim(), difficulte: initial?.difficulte || 'intermediaire',
+      type: 'flashcard', theme: theme.trim(), concept: theme.trim(), difficulte: initial?.difficulte || 'intermediaire', // concept = alias legacy du thème : sans lui, vider le thème d'une carte modifiée laissait l'ancien
       recto: recto.trim(), verso: verso.trim(),
       indice: indice.trim() || null, a_retenir: aRetenir.trim(),
       cloze: blanks.map((b) => b.expected),

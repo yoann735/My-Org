@@ -25,7 +25,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Modal, ConfirmModal } from './ui.jsx';
 import { SchemaEditor, ZonesLayer, centroidOf } from '../pages/ImportAnatomieVisuel.jsx';
 import { blobURL, putBlob } from '../lib/storage.js';
-import { cleanCoche, appendItemsToFiche } from '../lib/import.js';
+import { cleanCoche, appendItemsToFiche, themeFlashcardsDeFiche } from '../lib/import.js';
 import { toInternalItem } from '../lib/adapter.js';
 import { imageDuPressePapier, texteDuPressePapier } from '../lib/collerImage.js';
 
@@ -100,7 +100,8 @@ export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, on
   const occ0 = initial && initial.occlusion;
   const [image, setImageState] = useState(null); // { url, w, h, blobId, newFile }
   const [coches, setCoches] = useState(() => (occ0 && occ0.coches) || []);
-  const [theme, setTheme] = useState((initial && initial.theme) || '');
+  // nouvelle carte : pré-remplie avec le thème par défaut de la fiche (components/ThemeFiche.jsx)
+  const [theme, setTheme] = useState(() => (initial ? (initial.theme || '') : themeFlashcardsDeFiche((ctx.db.fiches || []).find((f) => f.id === ficheId))));
   const [recto, setRecto] = useState((initial && initial.recto) || RECTO_DEFAUT);
   const [verso, setVerso] = useState(() => (initial && initial.verso && !initial.versoAuto ? initial.verso : ''));
   const [occupe, setOccupe] = useState(false);
@@ -173,7 +174,7 @@ export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, on
       const reponses = propres.filter((c) => c.kind === 'zone' && c.texte).map((c) => c.texte);
       const versoAuto = !verso.trim();
       const raw = {
-        type: 'flashcard', theme: theme.trim(), difficulte: (initial && initial.difficulte) || 'intermediaire',
+        type: 'flashcard', theme: theme.trim(), concept: theme.trim(), difficulte: (initial && initial.difficulte) || 'intermediaire', // concept = alias legacy du thème : sans lui, vider le thème d'une carte modifiée laissait l'ancien
         recto: recto.trim() || RECTO_DEFAUT,
         // le verso textuel est facultatif : sinon, les réponses des masques (ou un repli)
         verso: verso.trim() || (reponses.length ? reponses.join(' · ') : 'Voir l’image'),

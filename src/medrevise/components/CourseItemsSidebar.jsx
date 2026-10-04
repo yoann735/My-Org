@@ -27,7 +27,8 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Tex } from './Tex.jsx';
 import { ConfirmModal, SplitHandle } from './ui.jsx';
 import { ItemForm, PasteJsonForm, TYPES } from './AddItemForm.jsx';
-import { appendItemsToFiche } from '../lib/import.js';
+import { appendItemsToFiche, themeFlashcardsDeFiche } from '../lib/import.js';
+import { ThemeFicheFlashcards } from './ThemeFiche.jsx';
 import { toInternalItem } from '../lib/adapter.js';
 import { OcclusionEditorModal, OcclusionView, estOcclusion } from './OcclusionImage.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from './FlashcardImage.jsx';
@@ -117,6 +118,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         <div className="pis-scroll scroll pis-extra">{extraActif.contenu}</div>
       ) : (
       <div className="pis-scroll scroll">
+        {activeType === 'flashcard' && avecItems && <ThemeFicheFlashcards ctx={ctx} ficheId={ficheId} />}
         {!adding ? (activeType === 'flashcard' ? (
           /* deux sortes de flashcards, côte à côte : on voit tout de suite qu'on
              peut en faire une à partir d'une IMAGE (masques à deviner). */
@@ -151,7 +153,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
                       <div className="em-body"><div className="em-title">{addedCount} item{addedCount > 1 ? 's' : ''} ajouté{addedCount > 1 ? 's' : ''} ✓</div></div>
                     </div>
                   )}
-                  <ItemForm type={activeType} onSubmit={submitAdd} busy={busyAdd} onCancel={closeAdd} submitLabel="Ajouter" />
+                  <ItemForm type={activeType} onSubmit={submitAdd} busy={busyAdd} onCancel={closeAdd} submitLabel="Ajouter"
+                    themeDefaut={themeFlashcardsDeFiche((ctx.db.fiches || []).find((f) => f.id === ficheId))} />
                 </>
               ) : (
                 <PasteJsonForm ctx={ctx} ficheId={ficheId} done={addedCount} setDone={setAddedCount} />

@@ -76,9 +76,22 @@ export async function createFicheFromQuestions({ matiereId, titre, items, synthe
  * clés déjà posées par la moitié "Théorie" du même flux).
  * @returns {{fiche, count, duplicates}} | {ok:false}
  */
+/* THÈME PAR DÉFAUT DES FLASHCARDS D'UNE FICHE (04/10, components/ThemeFiche.jsx) :
+   `fiche.themeFlashcards`. Une flashcard créée ici SANS thème reçoit celui de sa
+   fiche — dans le champ thème EXISTANT (`theme`, alias legacy `concept`). Un thème
+   déjà présent n'est jamais remplacé (surcharge carte par carte). */
+export const themeFlashcardsDeFiche = (fiche) => String((fiche && fiche.themeFlashcards) || '').trim();
+export const carteSansTheme = (q) => !String((q && (q.theme || q.concept)) || '').trim();
+function avecThemeDeFiche(raw, theme) {
+  if (!theme || !raw || typeof raw !== 'object') return raw;
+  if (raw.type !== 'flashcard' && raw.type !== 'flash') return raw;
+  return carteSansTheme(raw) ? { ...raw, theme, concept: theme } : raw;
+}
+
 export async function appendItemsToFiche({ ficheId, items, startDate, meta }) {
   const fiche = await getOne('fiches', ficheId);
   if (!fiche) return { ok: false };
+  const themeFiche = themeFlashcardsDeFiche(fiche);
   const all = await getAll('questions');
   const existingSrc = new Set(all.filter((q) => q.ficheId === ficheId).map((q) => q.srcId).filter(Boolean));
   const start = startDate || todayISO();
@@ -88,7 +101,7 @@ export async function appendItemsToFiche({ ficheId, items, startDate, meta }) {
   for (const raw of (items || [])) {
     const srcId = raw && raw.id;
     if (srcId && existingSrc.has(srcId)) { duplicates++; continue; }
-    const rec = toInternalItem(raw, (it) => newItem(ficheId, it, start));
+    const rec = toInternalItem(avecThemeDeFiche(raw, themeFiche), (it) => newItem(ficheId, it, start));
     if (!rec) continue;
     fresh.push(rec);
     if (srcId) existingSrc.add(srcId); // évite les doublons intra-collage

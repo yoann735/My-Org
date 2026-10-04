@@ -2167,3 +2167,17 @@ html[data-app-actif="medrevise"] ::selection { background: var(--mr-selection); 
 html[data-app-actif="medrevise"] input::selection, html[data-app-actif="medrevise"] textarea::selection,
 html[data-app-actif="medrevise"] [contenteditable]::selection, html[data-app-actif="medrevise"] [contenteditable] *::selection { background: var(--mr-selection); color: inherit; }
 html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-actif="medrevise"] .pdfr-textlayer *::selection { background: transparent; color: transparent; }
+
+/* THÈME PAR DÉFAUT DES FLASHCARDS D'UNE FICHE (04/10, components/ThemeFiche.jsx) */
+.tf { margin: 12px 0 0; padding: 8px 10px; border-radius: 10px; background: var(--card-2, rgba(255,255,255,.04)); border: 1px solid var(--border); font-size: 12.5px; display: flex; flex-direction: column; gap: 6px; }
+.tf-ligne { display: flex; align-items: center; gap: 6px; color: var(--text-2); min-width: 0; }
+.tf-txt { flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.35; }
+.tf-txt b { color: var(--text); font-weight: 650; }
+.tf-vide { color: var(--text-3, var(--text-2)); }
+.tf-modif { flex: 0 0 auto; font-size: 12.5px; }
+.tf-propose { padding-top: 6px; border-top: 1px dashed var(--border); }
+.tf-edition { display: flex; flex-direction: column; gap: 6px; }
+.tf-label { font-weight: 650; color: var(--text); }
+.tf-champ { display: flex; gap: 6px; align-items: center; }
+.tf-champ .imp-title { flex: 1; min-width: 0; height: 32px; }
+.tf-aide { font-size: 11.5px; }
