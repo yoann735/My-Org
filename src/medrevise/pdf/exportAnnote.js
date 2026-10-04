@@ -24,9 +24,9 @@ import { cheminForme, typeForme, estFermee, estTrait } from './formes.js';
 import { separerParType } from '../lib/annotationTypes.js';
 import { COLOR_RGB, couleurHex, couleurFoncee, opaciteFondBoite, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, modeDuTrait } from './pdfShared.js';
 
-/* Le texte des boîtes s'affiche en px FIXES dans le lecteur (13 px boîte, 15 px
-   texte libre), lus au zoom par défaut de 160 % : on reprend cette taille relative
-   à la page, pour que l'export ressemble à ce qu'on voit en lisant. */
+/* Le texte des boîtes est collé à la page dans le lecteur (13 px boîte, 15 px texte
+   libre À 160 %, mis à l'échelle de la page avec elle — 04/10) : même taille relative
+   à la page ici, l'export est identique à l'écran à tout zoom. */
 const ZOOM_REFERENCE = 1.6;
 const TAILLE_BOITE = 13 / ZOOM_REFERENCE;
 const TAILLE_TEXTE = 15 / ZOOM_REFERENCE;
