@@ -1014,6 +1014,13 @@
 /* 02/10 nuit : dans le lecteur, la sélection native est INVISIBLE — c'est le calque
    .pdfr-selcanvas qui la dessine (aplat uniforme + texte ré-imprimé, voir PdfPage). */
 .pdfr-textlayer span { z-index: 1; }
+/* PRIORITÉ DES CALQUES (04/10) : la couche de texte forme SON PROPRE contexte
+   d'empilement (z-index: 0). Ses mots (z-index 1, au-dessus de l'élément de fin de
+   texte .pdfr-fin-texte) restent rangés DANS la couche — sans cela, ils passaient
+   au-dessus des calques suivants (boîtes, formes, images…) : un clic sur une boîte
+   posée sur du texte atteignait le texte de la fiche (sélection au lieu du
+   déplacement ou de la sélection du texte de la boîte). */
+.pdfr-textlayer { z-index: 0; }
 .pdfr-textlayer ::selection { background: transparent; color: transparent; }
 .pdfr-selcanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .pdfr-fin-texte { position: absolute; left: 0; right: 0; top: 100%; bottom: 0; z-index: 0; cursor: default; -webkit-user-select: none; user-select: none; }

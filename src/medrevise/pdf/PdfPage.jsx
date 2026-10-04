@@ -831,6 +831,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const html = useMemo(() => richToHTML(boite.content), [boite.content]);
   const barreRef = useRef(null);
   const clicRef = useRef(null); // coordonnées du clic d'activation, pour y poser le curseur
+  const appuiRef = useRef(null); // point d'appui sur le texte AFFICHÉ (boîte inactive) : début d'une sélection
 
   /* CORRECTIF (défaut 1) : à l'activation, personne ne donnait le focus à
      l'éditeur. Le curseur restait sur <body> : la frappe n'arrivait nulle part, et
@@ -862,7 +863,13 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         clicRef.current = null;
         const at = pt && posDansEditeur(editor, pt.x, pt.y);
         const pos = at && Number.isFinite(at.pos) ? at.pos : editor.state.doc.content.size;
-        editor.commands.setTextSelection(pos);
+        // SÉLECTION FAITE AVANT L'ACTIVATION (04/10) : glisser sur le texte affiché d'une
+        // boîte inactive sélectionnait, puis le clic l'activait et l'éditeur remplaçait
+        // ce texte — la sélection disparaissait. On la recrée dans l'éditeur, du point
+        // d'appui au point de relâchement (même mise en page : mêmes positions).
+        const de = pt && pt.depuis ? posDansEditeur(editor, pt.depuis.x, pt.depuis.y) : null;
+        if (de && Number.isFinite(de.pos) && de.pos !== pos) editor.commands.setTextSelection({ from: Math.min(de.pos, pos), to: Math.max(de.pos, pos) });
+        else editor.commands.setTextSelection(pos);
         editor.view.focus();
       } catch (err) { try { editor.view.focus(); } catch (e2) { /* ignore */ } }
     };
@@ -885,7 +892,13 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   }, [boite.reduite]);
 
   const activer = (e) => {
-    if (e) clicRef.current = { x: e.clientX, y: e.clientY };
+    if (e) {
+      const a = appuiRef.current;
+      appuiRef.current = null;
+      const sel = typeof document !== 'undefined' ? document.getSelection() : null;
+      const glisse = a && Math.abs(e.clientX - a.x) + Math.abs(e.clientY - a.y) > 3 && sel && !sel.isCollapsed;
+      clicRef.current = { x: e.clientX, y: e.clientY, depuis: glisse ? a : null };
+    }
     onActivate(boite.id);
   };
 
@@ -1200,11 +1213,21 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
             e.preventDefault();
             try {
               const at = posDansEditeur(editor, e.clientX, e.clientY);
-              editor.commands.setTextSelection(at ? at.pos : editor.state.doc.content.size);
+              const ancre = at ? at.pos : editor.state.doc.content.size;
+              editor.commands.setTextSelection(ancre);
               editor.view.focus();
+              // et GLISSER depuis la marge sélectionne (04/10) : la sélection suit le pointeur
+              const bouger = (ev) => {
+                if (!(ev.buttons & 1) || editor.isDestroyed) return;
+                const ici = posDansEditeur(editor, ev.clientX, ev.clientY);
+                if (ici && Number.isFinite(ici.pos)) editor.commands.setTextSelection({ from: Math.min(ancre, ici.pos), to: Math.max(ancre, ici.pos) });
+              };
+              const lacher = () => { window.removeEventListener('mousemove', bouger); window.removeEventListener('mouseup', lacher); };
+              window.addEventListener('mousemove', bouger);
+              window.addEventListener('mouseup', lacher);
             } catch (err) { /* ignore */ }
           }}><EditorContent editor={editor} /></div>
-        : <div className="nb-body" onClick={activer} data-vide={texteLibre ? 'Texte…' : undefined} dangerouslySetInnerHTML={{ __html: html }} />}
+        : <div className="nb-body" onMouseDown={(e) => { if (e.button === 0) appuiRef.current = { x: e.clientX, y: e.clientY }; }} onClick={activer} data-vide={texteLibre ? 'Texte…' : undefined} dangerouslySetInnerHTML={{ __html: html }} />}
 
       <div className="nb-corner" title="Glisser pour redimensionner" onPointerDown={(e) => demarrer(e, 'resize')} />
     </div>
