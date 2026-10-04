@@ -1002,6 +1002,8 @@
 .pdfr-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--border-2); margin-bottom: 16px; }
 .pdfr-body { display: flex; gap: 18px; align-items: flex-start; }
 .pdfr-scroll { flex: 1 1 auto; min-width: 0; overflow: auto; max-height: calc(100vh - 230px); background: var(--bg-2); border-radius: var(--r, 14px); padding: 22px 0; overscroll-behavior: contain; }
+/* écran tactile : le pincement à deux doigts zoome le PDF (PdfReader), jamais la page entière */
+.pdfr-scroll { touch-action: pan-x pan-y; }
 .pdfr-pages { position: relative; width: 100%; }
 .pdfr-page, .pdfr-placeholder { background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,.2); }
 .pdfr-placeholder { background: color-mix(in srgb, #fff 70%, var(--bg-2)); box-shadow: none; }
@@ -1523,6 +1525,9 @@
   background: var(--card); border: 1px solid var(--border); border-radius: 9px; box-shadow: 0 4px 14px rgba(0,0,0,.28);
   z-index: 6; white-space: nowrap; }
 .nb-actions.dessous { transform: translateY(5px); } /* boîte collée en haut de page : la barre passe dessous */
+/* taille FIXE même quand la page est petite (zoom 50 %) : sans cela, positionnée dans la page, la barre
+   (boîtes, formes, images) était comprimée à la largeur restante et ses boutons rétrécissaient (04/10) */
+.nb-actions { width: max-content; }
 .nb-act { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border: 1px solid transparent;
   border-radius: 7px; background: transparent; color: var(--text); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .nb-act:hover { background: var(--bg-2); border-color: var(--border-2); }

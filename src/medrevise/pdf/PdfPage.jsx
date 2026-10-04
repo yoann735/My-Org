@@ -48,6 +48,8 @@ export function PdfPageContent({
   couleurForme = '#e5383b', typeFormeActif = 'rectangle', formeRemplie = false, onFormeModifier = () => {},
   couleurApercuSelection = null,
 }) {
+  // hauteur de page de RÉFÉRENCE (taille d'écran fixe au zoom, voir ECHELLE_REF) : épaisseurs des traits et des formes
+  const hauteurRef = pageHeight && scale ? (pageHeight / scale) * ECHELLE_REF : (pageHeight || 800);
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
   /* ============================================================
@@ -670,6 +672,12 @@ export function PdfPageContent({
           fonce pas sur lui-même, comme un vrai surligneur. */}
       {(traits.length > 0 || traitEnCours) && (() => {
         const H = pageHeight || 800;
+        /* ÉPAISSEUR FIXE À L'ÉCRAN (04/10) : `epaisseur × hauteur de page` grossissait
+           avec le zoom (la hauteur affichée suit l'échelle). Le CRAYON prend la hauteur
+           de RÉFÉRENCE (hauteur ÷ échelle × ECHELLE_REF, comme les boîtes) : même
+           épaisseur à 50 % qu'à 400 %, le tracé, lui, suit la page. Le SURLIGNEUR à main
+           levée suit le PDF : il recouvre des lignes du texte. */
+        const Href = hauteurRef;
         const rendu = (t, cle, apercu = false) => {
           const surl = modeDuTrait(t) === 'surligneur';
           const ep = surl ? (t.epaisseur || EPAISSEUR_SURLIGNEUR) : (t.epaisseur || 0.0042);
@@ -677,7 +685,7 @@ export function PdfPageContent({
             <path key={cle} d={cheminLisse(t.points)} fill="none"
               stroke={couleurHex(t.couleur)}
               strokeOpacity={Number.isFinite(t.opacite) ? t.opacite : (surl ? OPACITE_SURLIGNEUR : (apercu ? 0.9 : 1))}
-              strokeWidth={Math.max(surl ? 4 : 1, ep * H)}
+              strokeWidth={Math.max(surl ? 4 : 1, ep * (surl ? H : Href))}
               strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
           );
         };
@@ -704,7 +712,7 @@ export function PdfPageContent({
           par leur BORD seulement (l'intérieur laisse passer les clics vers le texte). */}
       {formes.map((f) => (masques && masques.has(f.id) ? null : (
         <Forme key={f.id} forme={f} active={f.id === formeActiveId} interactive={outil === 'main'}
-          liee={liesFormes.has(f.id)} pageWidth={pageWidth} pageHeight={pageHeight}
+          liee={liesFormes.has(f.id)} pageWidth={pageWidth} pageHeight={pageHeight} hauteurRef={hauteurRef}
           onActiver={onFormeActiver} onMaj={onFormeMaj} onModifier={onFormeModifier} onSupprimer={onFormeSupprimer} onLegende={onFormeLegende}
           onGeste={(enCours) => { gesteBoite.current = enCours; }} />
       )))}
@@ -712,7 +720,7 @@ export function PdfPageContent({
         <div className="pdfr-drawlayer pdfr-formelayer" onPointerDown={demarrerForme}>
           {traceForme && (
             <Forme apercu forme={{ ...traceForme, forme: traceForme.type, couleur: couleurForme, remplie: formeRemplie, epaisseur: 0.0025 }}
-              pageWidth={pageWidth} pageHeight={pageHeight} />
+              pageWidth={pageWidth} pageHeight={pageHeight} hauteurRef={hauteurRef} />
           )}
         </div>
       )}
@@ -1442,14 +1450,15 @@ function formeSousPoint(el, cx, cy) {
   } catch (e) { return false; }
 }
 
-function Forme({ forme, active = false, interactive = false, liee = false, apercu = false, pageWidth, pageHeight, onActiver, onMaj, onModifier, onSupprimer, onLegende, onGeste }) {
+function Forme({ forme, active = false, interactive = false, liee = false, apercu = false, pageWidth, pageHeight, hauteurRef = null, onActiver, onMaj, onModifier, onSupprimer, onLegende, onGeste }) {
   const [geste, setGeste] = useState(null);
   const [ecrit, setEcrit] = useState(null); // texte en cours d'écriture (null = pas d'édition)
   const g = geste || forme;
   const type = typeForme(forme);
   const trait = estTrait(type);
   const W = pageWidth || 600, H = pageHeight || 800;
-  const ep = Math.max(1.5, (forme.epaisseur || 0.0025) * H);
+  // épaisseur du cadre FIXE à l'écran (hauteur de référence, voir les traits) ; le cadre, lui, suit la page
+  const ep = Math.max(1.5, (forme.epaisseur || 0.0025) * (hauteurRef || H));
   const coul = couleurHex(forme.couleur, '#e5383b');
   const wpx = g.width * W, hpx = g.height * H;
   const { d, pointes } = cheminForme(type, wpx, hpx, { fx: !!g.fx, fy: !!g.fy, epaisseur: ep });

@@ -549,6 +549,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const clientY = el ? el.getBoundingClientRect().top + el.clientHeight / 2 : 0;
     animerZoom(clientY, Math.max(0.4, Math.min(4, (scaleRef.current || scale) * factor)));
   };
+  const zoomButtonsRef = useRef(zoomButtons); zoomButtonsRef.current = zoomButtons;
+  const ajusterRef = useRef(null); ajusterRef.current = () => ajusterALaLargeur();
+  const racineRef = useRef(null);
 
   // Ctrl/Cmd + molette : écouteur natif non-passif (nécessaire pour que preventDefault
   // bloque bien le zoom natif du navigateur — un onWheel React seul n'y suffit pas
@@ -557,9 +560,21 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      événement, or un pincement de trackpad en émet des dizaines par seconde → zoom
      brutal et saccadé), et les événements d'une même image sont regroupés en un
      seul changement d'échelle. */
+  /* TOUS LES ZOOMS PASSENT PAR LE LECTEUR (04/10) — cause racine des annotations
+     qui « grandissaient au zoom » : seuls les ÉCHAPPÉS au lecteur faisaient zoomer
+     le NAVIGATEUR (toute la page, boîtes, textes et barres compris). Le lecteur,
+     lui, garde déjà boîtes / zones de texte / « ? » / poignées à taille d'écran fixe
+     (unités de référence ÷ échelle). Échappaient : le pincement ou Ctrl+molette
+     hors du conteneur de défilement (barre d'outils, panneau), l'écouteur resté
+     accroché à un ancien conteneur après un changement d'affichage, ⌘+ / ⌘− / ⌘0,
+     le pincement de Safari (événements « gesture », pas de molette) et le
+     pincement à deux doigts sur écran tactile. Désormais, dans le lecteur, chacun
+     est intercepté (preventDefault) et devient un zoom du PDF. Le tableau garde
+     ses propres gestes. */
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return undefined;
+    if (!pdfDoc) return undefined;
+    const dansLecteur = (t) => { const r = racineRef.current; return !!(r && t && t.nodeType === 1 ? r.contains(t) : r && t && r.contains(t.parentNode)); };
+    const centreY = () => { const el = scrollRef.current; return el ? el.getBoundingClientRect().top + el.clientHeight / 2 : window.innerHeight / 2; };
     let cumul = 0, y = 0, raf = null;
     const appliquer = () => {
       raf = null;
@@ -567,17 +582,70 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       cumul = 0;
       zoomAtRef.current(y, (scaleRef.current || 1) * f);
     };
+    // 1. Ctrl/⌘ + molette, et pincement de trackpad (Chrome, Edge, Firefox)
     const onWheel = (e) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
+      if (!(e.ctrlKey || e.metaKey) || !dansLecteur(e.target) || dansLeTableau(e.target)) return;
       e.preventDefault();
       if (animZoom.current) { cancelAnimationFrame(animZoom.current); animZoom.current = null; }
       const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; // lignes → pixels
       cumul += -d * (Math.abs(d) < 25 ? 0.01 : 0.0018); // pincement (petits deltas) ou molette (crans)
-      y = e.clientY;
+      const el = scrollRef.current;
+      y = el && el.contains(e.target) ? e.clientY : centreY();
       if (!raf) raf = requestAnimationFrame(appliquer);
     };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => { el.removeEventListener('wheel', onWheel); if (raf) cancelAnimationFrame(raf); };
+    // 2. pincement de trackpad dans Safari : événements « gesture » (e.scale cumulé)
+    let depart = null;
+    const onGesteDebut = (e) => { if (!dansLecteur(e.target) || dansLeTableau(e.target)) { depart = null; return; } e.preventDefault(); depart = scaleRef.current || 1; };
+    const onGeste = (e) => { if (depart == null) return; e.preventDefault(); const el = scrollRef.current; zoomAtRef.current(el && el.contains(e.target) && Number.isFinite(e.clientY) ? e.clientY : centreY(), depart * (e.scale || 1)); };
+    const onGesteFin = (e) => { if (depart == null) return; e.preventDefault(); depart = null; };
+    // 3. ⌘+ / ⌘− / ⌘0 (zoom du navigateur au clavier)
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const k = e.key;
+      if (!['+', '=', '-', '_', '0'].includes(k)) return;
+      if (dansLeTableau(e.target) || dansLeTableau(document.activeElement)) return;
+      if (!racineRef.current || !racineRef.current.isConnected) return;
+      const t = e.target;
+      if (!(dansLecteur(t) || t === document.body || t === document.documentElement)) return; // ailleurs dans l'écran (Bibliothèque) : zoom normal
+      e.preventDefault();
+      if (k === '0') ajusterRef.current();
+      else zoomButtonsRef.current(k === '-' || k === '_' ? 1 / 1.15 : 1.15);
+    };
+    // 4. pincement à DEUX DOIGTS sur écran tactile (le navigateur zoomait la page)
+    let pince = null;
+    const ecart = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const onTouchStart = (e) => {
+      if (e.touches.length !== 2 || !dansLecteur(e.target) || dansLeTableau(e.target)) { pince = null; return; }
+      pince = { d0: ecart(e.touches) || 1, s0: scaleRef.current || 1 };
+    };
+    const onTouchMove = (e) => {
+      if (!pince || e.touches.length !== 2) return;
+      e.preventDefault();
+      zoomAtRef.current((e.touches[0].clientY + e.touches[1].clientY) / 2, pince.s0 * (ecart(e.touches) / pince.d0));
+    };
+    const onTouchEnd = (e) => { if (e.touches.length < 2) pince = null; };
+    const opts = { passive: false, capture: true };
+    window.addEventListener('wheel', onWheel, opts);
+    window.addEventListener('gesturestart', onGesteDebut, opts);
+    window.addEventListener('gesturechange', onGeste, opts);
+    window.addEventListener('gestureend', onGesteFin, opts);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('touchstart', onTouchStart, opts);
+    window.addEventListener('touchmove', onTouchMove, opts);
+    window.addEventListener('touchend', onTouchEnd, opts);
+    window.addEventListener('touchcancel', onTouchEnd, opts);
+    return () => {
+      window.removeEventListener('wheel', onWheel, opts);
+      window.removeEventListener('gesturestart', onGesteDebut, opts);
+      window.removeEventListener('gesturechange', onGeste, opts);
+      window.removeEventListener('gestureend', onGesteFin, opts);
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('touchstart', onTouchStart, opts);
+      window.removeEventListener('touchmove', onTouchMove, opts);
+      window.removeEventListener('touchend', onTouchEnd, opts);
+      window.removeEventListener('touchcancel', onTouchEnd, opts);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, [pdfDoc]);
 
   /* SURLIGNAGE « COMME WORD » (nuit du 30/09) : plus de note au clic. La bulle
@@ -1562,7 +1630,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   }
 
   return (
-    <div className={embedded ? 'fadein' : 'screen scroll fadein lecteur-plein'}>
+    <div ref={racineRef} className={embedded ? 'fadein' : 'screen scroll fadein lecteur-plein'}>
       {/* en-tête : nom renommable + menu Fichier (plein écran, ou Bibliothèque) */}
       {afficherEntete && entete()}
 
