@@ -483,6 +483,13 @@ export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = 
     setSelectedId(c.id);
   };
 
+  /* ENCHAÎNER LES MASQUES (04/10, flashcard image) : après une zone posée, l'outil
+     RESTE actif — on trace la suivante tout de suite (la zone posée est sélectionnée :
+     son panneau s'ouvre pour écrire la réponse). Sortie : Échap, re-clic sur l'outil,
+     ou un autre outil. L'import d'anatomie garde l'ancien comportement (retour à
+     Sélection). Les zones posées se modifient en « Sélection », comme avant. */
+  const enchainer = compact;
+  const apresZone = () => { if (!enchainer) setMode('select'); };
   // choisit un outil ; nudge le style courant (pinceau/trait = sans remplissage par défaut).
   const selectTool = (t) => {
     setMode(t);
@@ -500,7 +507,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = 
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
       const b = boxOf(relFromEvent(ev.clientX, ev.clientY));
       setDraftBox(null);
-      if (b.w > 0.02 && b.h > 0.02) { addZone({ shape, rect: { x: b.x, y: b.y, w: b.w, h: b.h }, closed: true, ...styleZone() }); setMode('select'); }
+      if (b.w > 0.02 && b.h > 0.02) { addZone({ shape, rect: { x: b.x, y: b.y, w: b.w, h: b.h }, closed: true, ...styleZone() }); apresZone(); }
     };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
@@ -518,7 +525,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = 
     const up = () => {
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
       setDraftPath(null);
-      if (pts.length >= 2) { addZone({ shape: 'path', points: smoothPath(pts), closed: style.fill != null, ...styleZone() }); setMode('select'); }
+      if (pts.length >= 2) { addZone({ shape: 'path', points: smoothPath(pts), closed: style.fill != null, ...styleZone() }); apresZone(); }
     };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
@@ -532,7 +539,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = 
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
       const b = relFromEvent(ev.clientX, ev.clientY);
       setDraftLine(null);
-      if (dist(a, b) > 0.02) { addZone({ shape: 'line', points: [a, b], closed: false, ...styleZone(), fill: null }); setMode('select'); }
+      if (dist(a, b) > 0.02) { addZone({ shape: 'line', points: [a, b], closed: false, ...styleZone(), fill: null }); apresZone(); }
     };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
@@ -545,7 +552,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = 
       return [...cur, p];
     });
   };
-  const finishPoly = (pts) => { if (pts && pts.length >= 3) { addZone({ shape: 'poly', points: pts, closed: true, ...styleZone() }); setMode('select'); } setDraftPoly(null); };
+  const finishPoly = (pts) => { if (pts && pts.length >= 3) { addZone({ shape: 'poly', points: pts, closed: true, ...styleZone() }); apresZone(); } setDraftPoly(null); };
 
   // déplacement d'une zone entière (translation géométrie + libellé + ancre).
   const startZoneDrag = (e, coche) => {
@@ -610,6 +617,19 @@ export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = 
     else if (mode === 'line') startLineDraw(e);
   };
 
+  // ÉCHAP quitte l'outil de tracé enchaîné (sauf pendant la saisie d'une réponse : le
+  // panneau de la zone garde son Échap) ; le polygone a son propre Échap ci-dessous.
+  useEffect(() => {
+    if (!enchainer || !['rect', 'ellipse', 'line', 'brush'].includes(mode)) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      e.preventDefault(); setMode('select');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [enchainer, mode]);
   // Échap / Entrée pendant un tracé polygone : annuler / fermer.
   useEffect(() => {
     if (mode !== 'poly') return;
@@ -708,7 +728,8 @@ export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = 
           </div>
           <div className="seg sc-seg">
             {DRAW_TOOLS.map((t) => (
-              <button key={t.key} type="button" className={'seg-btn' + (mode === t.key ? ' active' : '')} onClick={() => selectTool(t.key)} title={`${t.label} — ${TOOL_HINT[t.key]} (= un MASQUE à deviner)`}><Icon name={t.icon} size={13} /> {t.label}</button>
+              <button key={t.key} type="button" className={'seg-btn' + (mode === t.key ? ' active' : '')} onClick={() => (mode === t.key ? setMode('select') : selectTool(t.key))}
+                title={`${t.label} — ${TOOL_HINT[t.key]} (= un MASQUE à deviner). Les masques s'enchaînent ; re-clic ou Échap pour arrêter.`}><Icon name={t.icon} size={13} /> {t.label}</button>
             ))}
           </div>
           <div style={{ flex: 1 }} />
@@ -727,6 +748,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = 
             </div>
           )}
           {mode === 'point' && <div className="sc-aide">Clique un endroit de l'image pour y poser un texte. Repasse en « Sélection » pour le modifier.</div>}
+          {DRAW_TOOLS.some((t) => t.key === mode) && <div className="sc-aide">Trace les masques à la suite, sans re-cliquer l'outil · Échap ou re-clic sur l'outil pour arrêter · « Sélection » pour déplacer ou modifier une zone.</div>}
         </div>
       ) : (<>
       <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
