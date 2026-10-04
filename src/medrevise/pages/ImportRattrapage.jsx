@@ -12,7 +12,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { DestPicker, CourseDocField, detectDocKind } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
-import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
+import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche, doublonsRedatables } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
 import { isoDate } from '../lib/sm2.js';
 
@@ -45,6 +45,7 @@ export function ImportRattrapage({ ctx }) {
   const [doc, setDoc] = useState(null); // document du cours (optionnel, PDF OU HTML) à rattacher
   const [forceNew, setForceNew] = useState(false); // override : créer quand même une nouvelle fiche malgré le titre identique
   const [startDate, setStartDate] = useState(isoDate()); // date du palier J0 (méthode des J), modifiable à l'aperçu
+  const [j0Doublons, setJ0Doublons] = useState(false); // appliquer le J0 aux doublons jamais révisés (opt-in)
 
   // fiches candidates pour l'ajout (fiches v1.0 "standard", non archivées)
   const srcById = useMemo(() => Object.fromEntries(db.sources.map((s) => [s.id, s])), [db.sources]);
@@ -148,10 +149,10 @@ export function ImportRattrapage({ ctx }) {
       // meta (ex. difficulte_chapitre, v1.1) : sans ce paramètre, un paste "Pratique"
       // (exercices) qui porte cette info la perdait silencieusement — voir
       // appendItemsToFiche (lib/import.js), merge non destructif dans le meta existant.
-      const r = await appendItemsToFiche({ ficheId: effFicheId, items: preview.res.items, startDate, meta: preview.res.meta });
+      const r = await appendItemsToFiche({ ficheId: effFicheId, items: preview.res.items, startDate, meta: preview.res.meta, j0PourDoublons: j0Doublons });
       if (pdfId) await ctx.setFichePdf(effFicheId, pdfId, pdfName);
       if (htmlId) await ctx.setFicheHtml(effFicheId, htmlId, htmlName);
-      res = { fiche: r.fiche, count: r.count, duplicates: r.duplicates, appended: true };
+      res = { fiche: r.fiche, count: r.count, duplicates: r.duplicates, redatees: r.redatees || 0, appended: true };
     } else {
       const r = await createFicheFromQuestions({
         matiereId: matId, titre: title, items: preview.res.items,
@@ -191,7 +192,8 @@ export function ImportRattrapage({ ctx }) {
         title={result.appended ? 'Items ajoutés !' : 'Fiche prête !'}
         message={<>
           ✓ {result.count} item{result.count > 1 ? 's' : ''} {result.appended ? 'ajouté' + (result.count > 1 ? 's' : '') : 'importé' + (result.count > 1 ? 's' : '')}
-          {result.duplicates > 0 && ` · ${result.duplicates} doublon${result.duplicates > 1 ? 's' : ''} ignoré${result.duplicates > 1 ? 's' : ''}`}.
+          {result.duplicates > 0 && ` · ${result.duplicates} doublon${result.duplicates > 1 ? 's' : ''} ignoré${result.duplicates > 1 ? 's' : ''}`}
+          {result.redatees > 0 && ` · ${result.redatees} carte${result.redatees > 1 ? 's' : ''} déjà présente${result.redatees > 1 ? 's' : ''} redatée${result.redatees > 1 ? 's' : ''} au J0`}.
         </>}
         resetLabel="Coller un autre JSON" onReset={reset} ctx={ctx} ficheId={result.fiche.id} />
     );
@@ -215,6 +217,8 @@ export function ImportRattrapage({ ctx }) {
         ]}
         warnings={preview.warnings}
         startDate={startDate} onStartDateChange={setStartDate}
+        redatables={effAppend ? doublonsRedatables(ctx.db.questions, effFicheId, preview.res.items, startDate).length : 0}
+        j0Doublons={j0Doublons} onJ0Doublons={setJ0Doublons}
         onBack={() => setState('edit')} onConfirm={confirmImport} busy={busy} />
     );
   }

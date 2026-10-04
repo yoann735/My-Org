@@ -23,10 +23,24 @@ export function ImportJsonField({ label, placeholder, value, onChange, error }) 
   );
 }
 
+/* ---- J0 ET CARTES DÉJÀ PRÉSENTES (04/10) : un JSON réimporté avec une autre date ne
+   redatait pas ses cartes déjà dans la fiche (doublons ignorés) — elles restaient dues
+   à leur ancienne date. Opt-in explicite, jamais coché par défaut : appliquer ce J0
+   aux N doublons JAMAIS RÉVISÉS (voir lib/import.js doublonsRedatables). ---- */
+export function ChoixJ0Doublons({ n, actif, onChange }) {
+  if (!n || !onChange) return null;
+  return (
+    <label className="hint imp-j0-doublons" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8, cursor: 'pointer', color: 'var(--text-2)' }}>
+      <input type="checkbox" checked={actif} onChange={(e) => onChange(e.target.checked)} style={{ marginTop: 2 }} />
+      <span>Appliquer aussi ce J0 aux <b>{n}</b> carte{n > 1 ? 's' : ''} de ce collage <b>déjà dans la fiche</b>, jamais révisée{n > 1 ? 's' : ''} (sinon elle{n > 1 ? 's gardent leur' : ' garde sa'} date actuelle).</span>
+    </label>
+  );
+}
+
 /* ---- carte « aperçu avant import » : compteurs + destination + lignes
    d'info spécifiques au mode (PDF joint, doublons, synthèse…) + avertissements
    non bloquants (Rattrapage) ---- */
-export function ImportPreviewCard({ counts, destLabel, infoLines = [], warnings = [], errors = [], startDate, onStartDateChange, onBack, onConfirm, busy }) {
+export function ImportPreviewCard({ counts, destLabel, infoLines = [], warnings = [], errors = [], startDate, onStartDateChange, onBack, onConfirm, busy, redatables = 0, j0Doublons = false, onJ0Doublons = null }) {
   const total = counts.qcm + counts.flashcard + counts.feynman + counts.exercice;
   return (
     <div className="fadein imp-dest">
@@ -58,6 +72,7 @@ export function ImportPreviewCard({ counts, destLabel, infoLines = [], warnings 
           <label>Premier passage (J0)</label>
           <input type="date" className="imp-title" style={{ maxWidth: 190 }} value={startDate} onChange={(e) => onStartDateChange(e.target.value)} />
           <div className="hint" style={{ marginTop: 4 }}>Par défaut aujourd'hui — change-la pour démarrer ce paquet plus tard.</div>
+          <ChoixJ0Doublons n={redatables} actif={j0Doublons} onChange={onJ0Doublons} />
         </div>
       )}
       {warnings.map((w, i) => (

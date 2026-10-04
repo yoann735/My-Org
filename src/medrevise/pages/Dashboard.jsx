@@ -10,7 +10,7 @@ import { ImportApprentissage } from '../components/ImportApprentissage.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, exosARevoirCetteSemaine, fmtDay, carnetV1Questions, carnetV2Questions, strugglingByFiche } from '../lib/planning.js';
 import { isoDate, isDueBecauseStruggled } from '../lib/sm2.js';
-import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche } from '../lib/import.js';
+import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche, doublonsRedatables } from '../lib/import.js';
 import { putBlob } from '../lib/storage.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { emptyCounts } from '../lib/schema.js';
@@ -688,8 +688,10 @@ function ImportPanel({ ctx }) {
   const [pasteDoc, setPasteDoc] = useState(null); // document du cours (optionnel, PDF OU HTML) rattaché à la fiche créée
   const [forceNew, setForceNew] = useState(false); // override : créer quand même une nouvelle fiche malgré le titre identique
   const [startDate, setStartDate] = useState(isoDate()); // date du palier J0 (méthode des J), modifiable à l'aperçu
+  const [j0Doublons, setJ0Doublons] = useState(false); // appliquer le J0 aux doublons jamais révisés (opt-in)
 
   const reset = () => {
+    setJ0Doublons(false);
     setState('form'); setTitle(''); setResult(null);
     setJsonText(''); setParseError(null); setParsed(null); setPasteDoc(null); setForceNew(false); setStartDate(isoDate());
   };
@@ -748,10 +750,10 @@ function ImportPanel({ ctx }) {
       // meta (ex. difficulte_chapitre) : même correctif que ImportRattrapage.jsx —
       // sans ce paramètre, un ajout à une fiche existante perdait silencieusement
       // le meta du paste (voir appendItemsToFiche, lib/import.js).
-      const r = await appendItemsToFiche({ ficheId: matchedFiche.id, items: parsed.items, startDate, meta: parsed.meta });
+      const r = await appendItemsToFiche({ ficheId: matchedFiche.id, items: parsed.items, startDate, meta: parsed.meta, j0PourDoublons: j0Doublons });
       if (pdfId) await ctx.setFichePdf(matchedFiche.id, pdfId, pdfName);
       if (htmlId) await ctx.setFicheHtml(matchedFiche.id, htmlId, htmlName);
-      res = { fiche: r.fiche, count: r.count, duplicates: r.duplicates, appended: true };
+      res = { fiche: r.fiche, count: r.count, duplicates: r.duplicates, redatees: r.redatees || 0, appended: true };
     } else {
       const r = await createFicheFromQuestions({
         matiereId: matId, titre: title, items: parsed.items, synthese: parsed.synthese, meta: parsed.meta,
@@ -877,6 +879,8 @@ function ImportPanel({ ctx }) {
             willAppend && previewDuplicates > 0 && { text: `${previewDuplicates} doublon${previewDuplicates > 1 ? 's' : ''} ignoré${previewDuplicates > 1 ? 's' : ''} (déjà dans la fiche)`, icon: 'alert', accent: true },
           ]}
           startDate={startDate} onStartDateChange={setStartDate}
+          redatables={willAppend && parsed ? doublonsRedatables(db.questions, matchedFiche.id, parsed.items, startDate).length : 0}
+          j0Doublons={j0Doublons} onJ0Doublons={setJ0Doublons}
           onBack={() => setState('form')} onConfirm={confirmImport} busy={busy} />
       )}
 
@@ -886,7 +890,8 @@ function ImportPanel({ ctx }) {
             ? <>✓ Fiche créée, sans question pour l’instant — ajoute des cartes depuis « Voir le cours ».</>
             : <>
               ✓ {result.count} question{result.count > 1 ? 's' : ''} {result.appended ? 'ajoutée' + (result.count > 1 ? 's' : '') : 'importée' + (result.count > 1 ? 's' : '')}
-              {result.duplicates > 0 && ` · ${result.duplicates} doublon${result.duplicates > 1 ? 's' : ''} ignoré${result.duplicates > 1 ? 's' : ''}`}.
+              {result.duplicates > 0 && ` · ${result.duplicates} doublon${result.duplicates > 1 ? 's' : ''} ignoré${result.duplicates > 1 ? 's' : ''}`}
+              {result.redatees > 0 && ` · ${result.redatees} carte${result.redatees > 1 ? 's' : ''} déjà présente${result.redatees > 1 ? 's' : ''} redatée${result.redatees > 1 ? 's' : ''} au J0`}.
             </>}
           onReset={reset} ctx={ctx} ficheId={result.fiche.id} />
       )}

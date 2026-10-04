@@ -7,7 +7,7 @@
    choisie (aujourd'hui par défaut, ou une date passée — `dueDate` posée
    directement, immédiatement "en retard" si passée).
    ============================================================ */
-import { genId, put, putMany, getOne, getAll, newItem, newChapitreExo } from './storage.js';
+import { genId, put, putMany, getOne, getAll, newItem, newChapitreExo, putBackup } from './storage.js';
 import { toInternalItem } from './adapter.js';
 import { todayISO, startAdaptive } from './sm2.js';
 
@@ -88,7 +88,21 @@ function avecThemeDeFiche(raw, theme) {
   return carteSansTheme(raw) ? { ...raw, theme, concept: theme } : raw;
 }
 
-export async function appendItemsToFiche({ ficheId, items, startDate, meta }) {
+/* J0 ET DOUBLONS (04/10) : réimporter un JSON déjà importé, avec une autre date de
+   départ, ne changeait RIEN (les items déjà présents sont ignorés — dédoublonnage
+   sur srcId) : les cartes restaient dues à leur ancienne date. Ce n'est jamais fait
+   en silence : `j0PourDoublons` (case cochée par l'utilisateur dans l'aperçu)
+   applique le J0 choisi aux doublons JAMAIS RÉVISÉS (QCM/flashcards, exactement la
+   cible de « Décaler le départ »), après une sauvegarde (putBackup). Les cartes
+   entamées ne sont jamais touchées. */
+const jamaisRevisee = (q) => (q.type === 'qcm' || q.type === 'flashcard') && (q.intervalDays == null || !(q.historique && q.historique.length));
+/** doublons d'un collage dans une fiche, jamais révisés et dont le J0 diffère de `startDate` */
+export function doublonsRedatables(questions, ficheId, items, startDate) {
+  const ids = new Set((items || []).map((it) => it && it.id).filter(Boolean));
+  return (questions || []).filter((q) => q.ficheId === ficheId && q.srcId && ids.has(q.srcId) && jamaisRevisee(q) && (q.j0Date || q.dueDate) !== startDate);
+}
+
+export async function appendItemsToFiche({ ficheId, items, startDate, meta, j0PourDoublons = false }) {
   const fiche = await getOne('fiches', ficheId);
   if (!fiche) return { ok: false };
   const themeFiche = themeFlashcardsDeFiche(fiche);
@@ -107,12 +121,21 @@ export async function appendItemsToFiche({ ficheId, items, startDate, meta }) {
     if (srcId) existingSrc.add(srcId); // évite les doublons intra-collage
   }
   if (fresh.length) await putMany('questions', fresh);
+  let redatees = 0;
+  if (j0PourDoublons && startDate) {
+    const cibles = doublonsRedatables(all, ficheId, items, startDate);
+    if (cibles.length) {
+      await putBackup('pre-j0-reimport-' + ficheId + '-' + Date.now(), { questions: cibles });
+      await putMany('questions', cibles.map((q) => ({ ...q, ...startAdaptive(startDate), j0Date: startDate })));
+      redatees = cibles.length;
+    }
+  }
   let updatedFiche = fiche;
   if (meta && typeof meta === 'object') {
     updatedFiche = { ...fiche, meta: { ...(fiche.meta || {}), ...meta } };
     await put('fiches', updatedFiche);
   }
-  return { fiche: updatedFiche, count: fresh.length, duplicates };
+  return { fiche: updatedFiche, count: fresh.length, duplicates, redatees };
 }
 
 /**

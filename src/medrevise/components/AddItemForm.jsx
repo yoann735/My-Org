@@ -23,7 +23,9 @@ import { useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { Modal, LoaderL6 } from './ui.jsx';
-import { appendItemsToFiche, appendExosToChapitre, themeFlashcardsDeFiche } from '../lib/import.js';
+import { appendItemsToFiche, appendExosToChapitre, themeFlashcardsDeFiche, doublonsRedatables } from '../lib/import.js';
+import { isoDate } from '../lib/sm2.js';
+import { ChoixJ0Doublons } from './ImportFlow.jsx';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { ImportJsonField } from './ImportFlow.jsx';
 import { OPTION_LETTERS } from '../lib/schema.js';
@@ -132,6 +134,13 @@ export function PasteJsonForm({ ctx, ficheId, chapitreId, done, setDone }) {
   const [parseError, setParseError] = useState(null);
   const [preview, setPreview] = useState(null); // { items, counts, duplicates, errors, nonExo }
   const [busy, setBusy] = useState(false);
+  /* PREMIER PASSAGE (J0) — 04/10 : ce collage n'avait AUCUN choix de date (toujours
+     dû aujourd'hui), contrairement à l'import de l'Accueil. Même champ, même effet
+     (appendItemsToFiche → newItem → startAdaptive) ; inutile pour un dossier
+     d'exercices (jamais planifiés). */
+  const [startDate, setStartDate] = useState(isoDate());
+  const [j0Doublons, setJ0Doublons] = useState(false);
+  const [redatees, setRedatees] = useState(0);
 
   const doPreview = () => {
     const res = parsePastedJson(jsonText);
@@ -159,10 +168,11 @@ export function PasteJsonForm({ ctx, ficheId, chapitreId, done, setDone }) {
     try {
       const res = isChapitre
         ? await appendExosToChapitre({ chapitreId, items: preview.items })
-        : await appendItemsToFiche({ ficheId, items: preview.items });
+        : await appendItemsToFiche({ ficheId, items: preview.items, startDate, j0PourDoublons: j0Doublons });
       await ctx.reload();
       setDone((n) => n + res.count);
-      setJsonText(''); setPreview(null);
+      setRedatees(res.redatees || 0);
+      setJsonText(''); setPreview(null); setJ0Doublons(false);
     } finally {
       setBusy(false);
     }
@@ -197,6 +207,14 @@ export function PasteJsonForm({ ctx, ficheId, chapitreId, done, setDone }) {
             {preview.duplicates > 0 && <div className="hint" style={{ marginTop: 4, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {preview.duplicates} doublon{preview.duplicates > 1 ? 's' : ''} ignoré{preview.duplicates > 1 ? 's' : ''} (déjà dans {isChapitre ? 'ce dossier' : 'cette fiche'})</div>}
           </div>
         </div>
+        {!isChapitre && (preview.counts.qcm + preview.counts.flashcard) > 0 && (
+          <div className="imp-field" style={{ marginBottom: 12 }}>
+            <label>Premier passage (J0)</label>
+            <input type="date" className="imp-title" style={{ maxWidth: 190 }} value={startDate} onChange={(e) => setStartDate(e.target.value || isoDate())} />
+            <div className="hint" style={{ marginTop: 4 }}>Par défaut aujourd'hui — change-la pour démarrer ces cartes plus tard (une date passée est acceptée).</div>
+            <ChoixJ0Doublons n={doublonsRedatables(ctx.db.questions, ficheId, preview.items, startDate).length} actif={j0Doublons} onChange={setJ0Doublons} />
+          </div>
+        )}
         <div className="imp-actions">
           <button className="btn ghost" onClick={() => setPreview(null)}>Retour</button>
           <button className="btn primary" onClick={confirm} disabled={busy}>
@@ -210,10 +228,10 @@ export function PasteJsonForm({ ctx, ficheId, chapitreId, done, setDone }) {
 
   return (
     <div className="fadein">
-      {done > 0 && (
+      {(done > 0 || redatees > 0) && (
         <div className="err-mini ok" style={{ marginBottom: 12 }}>
           <div className="em-ic"><Icon name="check" size={16} stroke={2.5} /></div>
-          <div className="em-body"><div className="em-title">{done} item{done > 1 ? 's' : ''} ajouté{done > 1 ? 's' : ''} ✓</div><div className="hint">Révisable immédiatement (SM-2, cloze, rotation…), comme un item importé.</div></div>
+          <div className="em-body"><div className="em-title">{done} item{done > 1 ? 's' : ''} ajouté{done > 1 ? 's' : ''} ✓{redatees > 0 ? ` · ${redatees} déjà présent${redatees > 1 ? 's' : ''} redaté${redatees > 1 ? 's' : ''}` : ''}</div><div className="hint">{startDate !== isoDate() ? `Premier passage le ${startDate.split('-').reverse().join('/')}.` : 'Révisable immédiatement (SM-2, cloze, rotation…), comme un item importé.'}</div></div>
         </div>
       )}
       <ImportJsonField label={'JSON (un item seul, ou {"items":[...]})'} placeholder={'Colle ici un item v1.1 ({"type":"qcm", ...}) ou {"items":[...]}.'}
