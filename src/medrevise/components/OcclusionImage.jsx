@@ -96,7 +96,8 @@ export function OcclusionView({ occ, revele = false, maxH = 340, onClickImage })
  * Coller (Cmd/Ctrl+V), glisser ou choisir une image ; dessiner les masques ; poser
  * des textes ; question et réponse facultatives.
  */
-export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, onSaved }) {
+// `imageInitiale` (05/10) : un fichier déjà choisi dans la carte d'ajout du panneau
+export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, onSaved, imageInitiale = null }) {
   const occ0 = initial && initial.occlusion;
   const [image, setImageState] = useState(null); // { url, w, h, blobId, newFile }
   const [coches, setCoches] = useState(() => (occ0 && occ0.coches) || []);
@@ -132,6 +133,8 @@ export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, on
     probe.onerror = () => setErreur('Image illisible.');
     probe.src = url;
   };
+
+  useEffect(() => { if (imageInitiale && !initial) choisirImage(imageInitiale); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // COLLER une capture d'écran (Cmd/Ctrl+V) : n'importe où dans la fenêtre. Dans un
   // champ (recto, verso, thème), seulement si le presse-papier n'a pas de texte —

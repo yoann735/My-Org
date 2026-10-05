@@ -327,7 +327,12 @@ function QcmForm({ onAdd, busy, initial, submitLabel, onCancel }) {
    de sortie (recto avec {{mot}} + tableau `cloze`) EST le format existant
    (lib/cloze.js#parseCloze/isCloze) — aucun nouveau format, aucune saisie de
    {{ }} à la main. Une flashcard sans aucun {{ }} reste une carte classique. */
-function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefaut = '' }) {
+/* Options de la CARTE D'AJOUT du panneau (05/10, components/CarteAjoutFlashcard.jsx) :
+   - `sansImage` : pas de champ image ni de collage d'image ici (le volet Image s'en charge) ;
+   - `apercu`    : aperçu recto / verso sous les champs ;
+   - `clavier`   : Entrée = valider (Maj+Entrée = retour à la ligne), Échap = annuler,
+                   Tab passe du recto au verso (et Maj+Tab revient). */
+export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefaut = '', sansImage = false, apercu = false, clavier = false }) {
   // nouvelle carte : PRÉ-REMPLI avec le thème par défaut de la fiche (components/ThemeFiche.jsx)
   // — on le change si l'on veut ; une carte modifiée garde le sien.
   const [theme, setTheme] = useState(initial ? (initial.theme || '') : themeDefaut);
@@ -340,6 +345,7 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefau
   const [image, setImage] = useState({ imageId: initial?.imageId || null, fichier: null, place: initial?.imagePlace || 'recto' });
   const [holeHint, setHoleHint] = useState(null);
   const rectoRef = useRef(null);
+  const versoRef = useRef(null);
   const ready = !!recto.trim() && !!verso.trim();
   /* COLLER UNE IMAGE (03/10) : Cmd/Ctrl+V d'une capture ou d'une image copiée sur le
      web l'ajoute à la carte (comme « Ajouter une image ») ; on peut aussi la DÉPOSER
@@ -347,7 +353,8 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefau
   const racineRef = useRef(null);
   const [depot, setDepot] = useState(false);
   const prendreImage = (f) => setImage((v) => ({ ...v, fichier: f }));
-  useCollerImage(racineRef, prendreImage);
+  const refNulle = useRef(null);
+  useCollerImage(sansImage ? refNulle : racineRef, prendreImage);
 
   // segments texte/trou dérivés du recto tel quel — aucun état séparé à
   // maintenir en phase : le {{...}} DANS le texte fait foi (voir cloze.js).
@@ -405,13 +412,22 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefau
       imageId, imagePlace: imageId ? image.place : null,
     });
     if (!initial) { setRecto(''); setVerso(''); setIndice(''); setARetenir(''); setHoleHint(null); setImage({ imageId: null, fichier: null, place: 'recto' }); }
+    if (clavier) requestAnimationFrame(() => rectoRef.current && rectoRef.current.focus()); // enchaîner la carte suivante
+  };
+  const auClavier = !clavier ? undefined : (e) => {
+    if (e.key === 'Escape' && onCancel) { e.preventDefault(); e.stopPropagation(); onCancel(); return; }
+    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT')) {
+      e.preventDefault(); if (ready && !busy) submit(); return;
+    }
+    if (e.key === 'Tab' && !e.shiftKey && e.target === rectoRef.current) { e.preventDefault(); versoRef.current && versoRef.current.focus(); return; }
+    if (e.key === 'Tab' && e.shiftKey && e.target === versoRef.current) { e.preventDefault(); rectoRef.current && rectoRef.current.focus(); }
   };
 
   return (
-    <div className={'aif-champs' + (depot ? ' fc-depot' : '')} ref={racineRef}
-      onDragOver={(e) => { if (!glisseDesFichiers(e.dataTransfer)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; if (!depot) setDepot(true); }}
+    <div className={'aif-champs' + (depot ? ' fc-depot' : '')} ref={racineRef} onKeyDown={auClavier}
+      onDragOver={(e) => { if (sansImage || !glisseDesFichiers(e.dataTransfer)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; if (!depot) setDepot(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDepot(false); }}
-      onDrop={(e) => { if (!glisseDesFichiers(e.dataTransfer)) return; e.preventDefault(); e.stopPropagation(); setDepot(false); const f = imageDuDepot(e.dataTransfer); if (f) prendreImage(f); }}>
+      onDrop={(e) => { if (sansImage || !glisseDesFichiers(e.dataTransfer)) return; e.preventDefault(); e.stopPropagation(); setDepot(false); const f = imageDuDepot(e.dataTransfer); if (f) prendreImage(f); }}>
       <div className="imp-field">
         <label>Thème <span className="imp-opt">(optionnel)</span></label>
         <input className="imp-title" placeholder="ex : Surfactant" value={theme} onChange={(e) => setTheme(e.target.value)} />
@@ -452,9 +468,15 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefau
       </div>
       <div className="imp-field">
         <label>Verso</label>
-        <textarea className="imp-title" style={{ minHeight: 60, resize: 'vertical', fontFamily: 'inherit' }} value={verso} onChange={(e) => setVerso(e.target.value)} placeholder="Réponse…" />
+        <textarea ref={versoRef} className="imp-title" style={{ minHeight: 60, resize: 'vertical', fontFamily: 'inherit' }} value={verso} onChange={(e) => setVerso(e.target.value)} placeholder="Réponse…" />
       </div>
-      <ChampImageFlashcard valeur={image} onChange={setImage} />
+      {apercu && (recto.trim() || verso.trim()) && (
+        <div className="fc-apercu">
+          <div className="pis-face"><span className="pis-face-tag">Aperçu · recto</span>{segments.map((sg, i) => (sg.type === 'text' ? <span key={i}>{sg.value}</span> : <span key={i} className="fc-trou">[ … ]</span>))}</div>
+          <div className="pis-face"><span className="pis-face-tag">Verso</span>{verso || <span className="hint">—</span>}</div>
+        </div>
+      )}
+      {!sansImage && <ChampImageFlashcard valeur={image} onChange={setImage} />}
       <div className="imp-field">
         <label>Indice <span className="imp-opt">(optionnel)</span></label>
         <input className="imp-title" value={indice} onChange={(e) => setIndice(e.target.value)} />
@@ -467,7 +489,7 @@ function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefau
         {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
         <button className="btn primary" onClick={submit} disabled={!ready || busy}><Icon name="check" size={15} /> {submitLabel || 'Ajouter cette flashcard'}</button>
       </div>
-      {!ready && <div className="hint" style={{ marginTop: 8 }}>Recto et verso requis.</div>}
+      {!ready && <div className="hint" style={{ marginTop: 8 }}>Recto et verso requis.{clavier ? ' Entrée pour ajouter · Maj+Entrée : retour à la ligne · Échap : fermer.' : ''}</div>}
     </div>
   );
 }
