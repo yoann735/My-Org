@@ -553,3 +553,12 @@ CRÉDITS DEEPGRAM
 | (ce commit) | docs(medrevise): compte-rendu v1.2 — carte crédits |
 
 Aucune variable d'environnement ajoutée ; aucune migration.
+
+---
+
+## Refonte du 05/10 (panneau en 3 modes)
+
+Le bouton « Transcrire » a quitté la barre du PDF (il vit en tête du mode Transcript du
+panneau), la carte crédits est devenue une ligne dépliable en bas de ce mode, et la feuille
+Transcrire a une source **Automatique**, une sonde de 3 s, un guide et la bascule de micro à
+chaud. Détails, tests et captures : `docs/compte-rendu-panneau-lateral.md`.
