@@ -33,7 +33,7 @@ let refusJusqua = 0;
 let creditsZero = false;
 let secondesTotales = 0;
 let motGlobal = 0;
-const compte = { heures: '0.2', depense: '0.08', solde: '199.92', soldes: '200', facturation: '200', panne: '0' }; // le « cours » continue d'une connexion à l'autre : un trou ou un doublon se voit à la lecture
+const compte = { heures: '0.2', depense: '0.08', solde: '199.92', soldes: '200', facturation: '200', panne: '0', latence: '0' }; // le « cours » continue d'une connexion à l'autre : un trou ou un doublon se voit à la lecture
 const log = (m) => { journal.push({ t: new Date().toISOString(), m }); if (journal.length > 500) journal.shift(); };
 
 const SCRIPT = ("L'os est un tissu conjonctif spécialisé. Le tissu osseux compact est organisé en ostéons. "
@@ -174,7 +174,7 @@ function session(socket, query) {
 
 /* ---------------- HTTP + upgrade ---------------- */
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
-const serveur = http.createServer((req, res) => {
+const serveur = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
   const out = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', ...cors }); res.end(JSON.stringify(obj)); };
   if (u.pathname === '/__etat') return out(200, { connexions: connexions.size, secondesAudio: +secondesTotales.toFixed(1), keyterms: [...connexions].map((c) => c.keyterms), journal: journal.slice(-120) });
@@ -186,6 +186,7 @@ const serveur = http.createServer((req, res) => {
   if (u.pathname.startsWith('/v1/projects')) {
     log('gestion ' + u.pathname + u.search);
     if (compte.panne === '1') { req.socket.destroy(); return undefined; }
+    if (+compte.latence > 0) await new Promise((r) => setTimeout(r, +compte.latence)); // ?latence=ms (voir la rotation d'« Actualiser »)
     if (req.headers.authorization !== 'Token ' + CLE) return out(401, { err_code: 'INVALID_AUTH' });
     if (u.pathname === '/v1/projects') return out(200, { projects: [{ project_id: 'proj-faux-1', name: 'Projet de test' }] });
     if (u.pathname === '/v1/projects/proj-faux-1/balances') return compte.soldes === '403' ? out(403, { err_code: 'FORBIDDEN' }) : out(200, { balances: [{ balance_id: 'b1', amount: +compte.solde, units: 'usd' }] });
