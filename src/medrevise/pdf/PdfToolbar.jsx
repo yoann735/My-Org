@@ -70,7 +70,11 @@ export function PdfToolbar({
      pour que la barre déborde à 1 262 px) mais le DÉBORDEMENT RÉEL qui décide :
      niveau 1 = libellés des outils masqués, niveau 2 = deux lignes. Remis à zéro à
      chaque changement de largeur, puis remonté tant que ça déborde. */
+  /* 05/10 (refonte du panneau) : niveau 2 = insertions dans « ⋯ » et recherche en
+     loupe dépliable, AVANT de passer sur deux lignes (niveau 3). */
   const [niveau, setNiveau] = useState(0);
+  const [rechercheOuverte, setRechercheOuverte] = useState(false);
+  const [menuInserer, setMenuInserer] = useState(null);
   const [, setMesure] = useState(0); // force une nouvelle mesure même si le niveau était déjà 0
   useEffect(() => {
     const el = barreRef.current;
@@ -82,9 +86,11 @@ export function PdfToolbar({
   }, []);
   useLayoutEffect(() => {
     const el = barreRef.current;
-    if (el && niveau < 2 && el.scrollWidth > el.clientWidth + 1) setNiveau((n) => Math.min(2, n + 1));
+    if (el && niveau < 3 && el.scrollWidth > el.clientWidth + 1) setNiveau((n) => Math.min(3, n + 1));
   });
-  const classeLargeur = niveau >= 2 ? ' etroite repliee' : niveau === 1 ? ' etroite' : '';
+  const classeLargeur = niveau >= 3 ? ' etroite compacte repliee' : niveau === 2 ? ' etroite compacte' : niveau === 1 ? ' etroite' : '';
+  const compacte = niveau >= 2;
+  const rechercheVisible = !compacte || rechercheOuverte || !!search;
   const actions = (actionsDocument || []).filter(Boolean);
   const outils = outilsDisponibles ? OUTILS.filter((o) => outilsDisponibles.includes(o.id)) : OUTILS;
   const outilActif = outils.find((o) => o.id === outil) || outils[0];
@@ -104,9 +110,9 @@ export function PdfToolbar({
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
       const k = String(e.key).toLowerCase();
       if (k === 'f' && !e.shiftKey) {
-        const champ = champRecherche.current;
-        if (!champ) return;
         e.preventDefault();
+        const champ = champRecherche.current;
+        if (!champ) { setRechercheOuverte(true); setTimeout(() => champRecherche.current && champRecherche.current.focus(), 0); return; }
         champ.focus(); champ.select();
       } else if (k === 'g' && champRecherche.current && champRecherche.current.value) {
         e.preventDefault();
@@ -155,13 +161,19 @@ export function PdfToolbar({
               </button>
             ))}
             {(onAjouterImage || onAjouterPage || boutonDessins) && <span className="ptb-sep" />}
-            {onAjouterImage && (
+            {compacte && (onAjouterImage || onAjouterPage) && (
+              <button type="button" className="ptb-outil" title="Insérer une image ou une page"
+                onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuInserer({ x: Math.min(r.left, window.innerWidth - 260), y: r.bottom + 6 }); }}>
+                <Icon name="plus" size={16} />
+              </button>
+            )}
+            {!compacte && onAjouterImage && (
               <button type="button" className="ptb-outil" onClick={onAjouterImage}
                 title="Image — importer une image et la placer sur la page (ou la coller avec Cmd/Ctrl+V)">
                 <IconeOutil nom="image" size={16} /><span className="ptb-outil-lbl">Image</span>
               </button>
             )}
-            {onAjouterPage && (
+            {!compacte && onAjouterPage && (
               <button type="button" className="ptb-outil" onClick={onAjouterPage}
                 title="Page — insérer une page blanche juste après la page affichée (ou avec le « + Page » entre deux pages)">
                 <IconeOutil nom="page" size={16} /><span className="ptb-outil-lbl">Page</span>
@@ -182,10 +194,15 @@ export function PdfToolbar({
 
         {/* ---- ZONE DROITE : chercher, lire ses notions, agir sur le document ---- */}
         <div className="ptb-zone ptb-droite">
-          {!sansRecherche && (<>
+          {!sansRecherche && !rechercheVisible && (
+            <button type="button" className="icon-btn sm" title={`Rechercher dans le document (${raccourciF})`} onClick={() => { setRechercheOuverte(true); setTimeout(() => champRecherche.current && champRecherche.current.focus(), 0); }}>
+              <Icon name="search" size={15} />
+            </button>
+          )}
+          {!sansRecherche && rechercheVisible && (<>
           <div className="search ptb-recherche">
             <Icon name="search" size={14} className="ic" />
-            <input ref={champRecherche} placeholder={`Rechercher… (${raccourciF})`} title={`Rechercher dans le document (${raccourciF}) · Entrée : suivant · Maj+Entrée : précédent`} value={search} onChange={(e) => setSearch(e.target.value)}
+            <input ref={champRecherche} placeholder="Rechercher" onBlur={() => { if (!search) setRechercheOuverte(false); }} title={`Rechercher dans le document (${raccourciF}) · Entrée : suivant · Maj+Entrée : précédent`} value={search} onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (e.shiftKey) onPrecedent(); else onSuivant(); } if (e.key === 'Escape') onFermerRecherche(); }} />
             {search && <button className="icon-btn sm" onClick={onFermerRecherche} title="Fermer la recherche"><Icon name="x" size={13} /></button>}
           </div>
@@ -198,12 +215,8 @@ export function PdfToolbar({
           )}
           </>)}
           {avantPanneau}
-          {boutonTranscrire}
-          {/* le panneau de droite est le MÊME sur PDF et HTML : items de la fiche
-              (QCM, flashcards, exercices, Feynman) + notions surlignées */}
-          <button className="btn ghost sm" onClick={() => setPanelOpen((v) => !v)} title={panelOpen ? 'Replier le panneau' : 'Ouvrir le panneau : items de la fiche et notions surlignées'}>
-            <Icon name={panelOpen ? 'chevR' : 'chevL'} size={13} /> Panneau {nbNotions ? `· ${nbNotions} notion${nbNotions > 1 ? 's' : ''}` : ''}
-          </button>
+          {/* (05/10) plus de bouton « Panneau » ni « Transcrire » ici : la poignée du
+              panneau l'ouvre et le replie (audit M4), la transcription vit dans son mode */}
           {!!actions.length && (
             <button className="icon-btn sm" title="Actions sur le document"
               onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: Math.min(r.left, window.innerWidth - 260), y: r.bottom + 6 }); }}>
@@ -224,6 +237,10 @@ export function PdfToolbar({
       )}
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={actions} onClose={() => setMenu(null)} />}
+      {menuInserer && <ContextMenu x={menuInserer.x} y={menuInserer.y} onClose={() => setMenuInserer(null)} items={[
+        onAjouterImage && { label: 'Image — importer et placer', icon: 'image', onClick: onAjouterImage },
+        onAjouterPage && { label: 'Page blanche après la page affichée', icon: 'plus', onClick: onAjouterPage },
+      ].filter(Boolean)} />}
     </>
   );
 }
