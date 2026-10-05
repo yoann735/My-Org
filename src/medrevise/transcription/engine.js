@@ -378,7 +378,13 @@ function recevoir(data) {
   }
   const texte = (alt.transcript || '').trim();
   if (!texte || t1 <= couvertJusqua + 0.02) return;
-  publier({ interim: { id: (etat.interim && etat.interim.id) || nouvelIdSegment(), text: texte, t0, t1 } });
+  /* fin du DERNIER MOT reconnu, et non fin de la fenêtre audio (t1) : la fenêtre
+     contient souvent le début du mot suivant, encore non reconnu. Si la connexion
+     tombe, c'est de là que l'audio sera rejoué — sinon ce mot serait perdu
+     (constaté sur Deepgram réel : « La maladie de | [Paget] associe… »). */
+  const mots = alt.words || [];
+  const finMots = mots.length ? connOffset + (mots[mots.length - 1].end || 0) : t1;
+  publier({ interim: { id: (etat.interim && etat.interim.id) || nouvelIdSegment(), text: texte, t0, t1: Math.min(t1, finMots) } });
 }
 
 /* ---------------- commandes ---------------- */
