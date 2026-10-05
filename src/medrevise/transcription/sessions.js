@@ -90,13 +90,36 @@ export async function supprimerSession(rec) {
   pousser(rec.id, { supprime: true }).catch(() => {}); // tombstone : ne ressuscite pas via un autre appareil
 }
 
-/* ---- mots-clés du cours ---- */
-export async function lireMotsCles(courseId) {
+/* ---- mots-clés du cours ----
+   Enregistrement 'kt:' + courseId : { terms (liste envoyée), manuels, decoches, connus }
+   (v1.1, voir keyterms.js#selectionner). Un enregistrement v1 n'a que `terms` :
+   ces termes, choisis à la main, deviennent les « manuels ». */
+export async function lireMotsClesMemo(courseId) {
   const r = await getOne(STORE, 'kt:' + courseId);
-  return (r && Array.isArray(r.terms)) ? r.terms : [];
+  if (!r) return { manuels: [], decoches: [], connus: [], terms: [] };
+  if (!Array.isArray(r.manuels)) return { manuels: r.terms || [], decoches: [], connus: [], terms: r.terms || [] };
+  return { manuels: r.manuels, decoches: r.decoches || [], connus: r.connus || [], terms: r.terms || [] };
 }
-export async function ecrireMotsCles(courseId, terms) {
-  const r = await put(STORE, { id: 'kt:' + courseId, kind: 'keyterms', courseId, terms: terms || [], updatedAt: new Date().toISOString() });
+export async function lireMotsCles(courseId) {
+  return (await lireMotsClesMemo(courseId)).terms;
+}
+/** @param {{terms, manuels, decoches, connus}} memo */
+export async function ecrireMotsCles(courseId, memo) {
+  const r = await put(STORE, {
+    id: 'kt:' + courseId, kind: 'keyterms', courseId,
+    terms: memo.terms || [], manuels: memo.manuels || [], decoches: memo.decoches || [], connus: memo.connus || [],
+    updatedAt: new Date().toISOString(),
+  });
   pousser(r.id).catch(() => {});
   return r;
+}
+/** Modification EN SESSION (liste complète envoyée) : un terme ajouté devient manuel,
+ *  un terme retiré quitte les manuels ou passe dans les décochés. */
+export async function ecrireMotsClesSession(courseId, termes) {
+  const memo = await lireMotsClesMemo(courseId);
+  const k = (t) => String(t).replace(/\s+/g, ' ').trim().toLocaleLowerCase('fr');
+  const avant = new Set(memo.terms.map(k)), apres = new Set(termes.map(k));
+  const manuels = [...memo.manuels.filter((t) => apres.has(k(t))), ...termes.filter((t) => !avant.has(k(t)) && !memo.manuels.some((m) => k(m) === k(t)))];
+  const decoches = [...new Set([...memo.decoches.map(k), ...memo.terms.filter((t) => !apres.has(k(t))).map(k)])].filter((x) => !apres.has(x));
+  return ecrireMotsCles(courseId, { ...memo, terms: termes, manuels, decoches });
 }

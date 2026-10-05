@@ -94,7 +94,7 @@ const MOTS_VIDES = new Set(('alors aussi autre autres avec avoir beaucoup cette 
 const SUFFIXES = /(ite|ites|ose|oses|algie|algies|ectomie|tomie|plastie|scopie|graphie|gramme|logie|pathie|émie|cyte|cytes|blaste|blastes|claste|clastes|ome|omes|aire|aires|ique|iques|ale|aux|ienne|iens|oïde|oïdes|ase|ases|ine|ines|rrhée|plégie|trophie|sclérose|osis)$/i;
 const PREFIXES = /^(hypo|hyper|endo|péri|épi|intra|inter|extra|sous|sus|myo|ostéo|chondro|neuro|cardio|hémo|lipo|gluco|glyco|tendin|ligament|arthr|leuco|érythro|thrombo|fibro|kinési|proprio|vaso|broncho|gastro|hépat|néphro)/i;
 
-export async function proposerTermes(pdfDoc, { maxPages = 80, max = 40 } = {}) {
+export async function proposerTermes(pdfDoc, { maxPages = 80, max = 150 } = {}) {
   if (!pdfDoc) return [];
   const n = Math.min(pdfDoc.numPages || 0, maxPages);
   const compte = new Map(); // forme normalisée → { forme, n, maj }
@@ -141,11 +141,121 @@ export async function proposerTermes(pdfDoc, { maxPages = 80, max = 40 } = {}) {
     if (e.maj && e.maj >= e.n / 2) s += 2; // nom propre (Havers)
     if (/[-]/.test(k)) s += 0.5;
     if (s < 2) continue;
-    s += Math.min(3, Math.log2(e.n + 1)); // revient dans le cours
-    if (e.n === 1 && s < 4) continue;
+    if (e.n === 1 && s < 3) continue;
+    // PERTINENCE = rareté (indices de vocabulaire technique ci-dessus) × fréquence dans
+    // le PDF (amortie : un terme cité 8 fois ne pèse pas 8 fois plus qu'un terme cité 1 fois)
+    s *= 1 + Math.log2(e.n);
     scores.push({ terme: e.maj >= e.n / 2 ? e.forme.replace(/^\p{Ll}/u, (c) => c.toUpperCase()) : e.forme, s });
   }
-  for (const [, b] of bigrammes) if (b.n >= 1) scores.push({ terme: b.forme, s: 5 + b.n });
+  for (const [, b] of bigrammes) if (b.n >= 1) scores.push({ terme: b.forme, s: 6 * (1 + Math.log2(b.n)) });
   scores.sort((a, b) => b.s - a.s);
   return decouperTermes(scores.map((x) => x.terme).join('\n')).slice(0, max);
+}
+
+/* ---------- sélection dans la limite (v1.1) ----------
+   État mémorisé avec le cours : { manuels, decoches, connus } (voir sessions.js).
+   - manuels  : termes saisis à la main — toujours en tête, cochés tant qu'ils tiennent ;
+   - decoches : termes proposés que l'étudiant a décochés (ou laissés hors limite) ;
+   - connus   : termes proposés déjà présentés une fois.
+   Un terme proposé NOUVEAU est coché s'il tient dans les 100 mots, sinon il entre
+   dans `decoches` (hors limite) : on ne dépasse jamais la limite, et décocher un
+   terme ne recoche pas un autre terme dans le dos de l'étudiant. */
+const cle = (t) => norm(t).toLocaleLowerCase('fr');
+const nbMots = (t) => norm(t).split(' ').filter(Boolean).length;
+
+/** Intègre les candidats du PDF à l'état mémorisé (nouveaux : cochés si la place le permet). */
+export function integrerCandidats(memo, candidats) {
+  const manuels = memo.manuels || [];
+  const decoches = new Set((memo.decoches || []).map(cle));
+  const connus = new Set((memo.connus || []).map(cle));
+  const kManuels = new Set(manuels.map(cle));
+  let mots = compterMots(manuels);
+  // place déjà prise par les proposés connus et cochés
+  for (const c of candidats) { const k = cle(c); if (!kManuels.has(k) && connus.has(k) && !decoches.has(k)) mots += nbMots(c); }
+  for (const c of candidats) {
+    const k = cle(c);
+    if (kManuels.has(k) || connus.has(k)) continue;
+    connus.add(k);
+    if (mots + nbMots(c) <= MAX_MOTS) mots += nbMots(c); else decoches.add(k);
+  }
+  return { manuels, decoches: [...decoches], connus: [...connus] };
+}
+
+/**
+ * Liste affichée et liste envoyée.
+ * @returns {{ lignes: {terme, manuel, coche, horsLimite}[], envoyes: string[], mots: number, plein: boolean }}
+ */
+export function selectionner(memo, candidats) {
+  const decoches = new Set((memo.decoches || []).map(cle));
+  const vus = new Set();
+  const lignes = [];
+  let mots = 0;
+  const ajouter = (t, manuel) => {
+    const k = cle(t);
+    if (!k || vus.has(k)) return;
+    vus.add(k);
+    const voulu = manuel || !decoches.has(k);
+    const tient = mots + nbMots(t) <= MAX_MOTS;
+    const coche = voulu && tient;
+    if (coche) mots += nbMots(t);
+    lignes.push({ terme: norm(t), manuel, coche, horsLimite: voulu && !tient });
+  };
+  (memo.manuels || []).forEach((t) => ajouter(t, true));
+  (candidats || []).forEach((t) => ajouter(t, false));
+  const envoyes = lignes.filter((l) => l.coche).map((l) => l.terme);
+  const restants = lignes.filter((l) => !l.coche && !l.manuel);
+  const plein = restants.some((l) => mots + nbMots(l.terme) > MAX_MOTS);
+  return { lignes, envoyes, mots, plein };
+}
+
+/** Coche/décoche un terme proposé. Refuse (renvoie null) si le cocher dépasserait la limite. */
+export function basculerTerme(memo, candidats, terme) {
+  const k = cle(terme);
+  const decoches = new Set((memo.decoches || []).map(cle));
+  if (decoches.has(k)) {
+    const { mots } = selectionner(memo, candidats);
+    if (mots + nbMots(terme) > MAX_MOTS) return null;
+    decoches.delete(k);
+  } else decoches.add(k);
+  return { ...memo, decoches: [...decoches] };
+}
+
+export function toutDecocher(memo, candidats) {
+  const kManuels = new Set((memo.manuels || []).map(cle));
+  return { ...memo, decoches: candidats.map(cle).filter((k) => !kManuels.has(k)) };
+}
+
+/** Tout cocher… dans la limite : les plus pertinents d'abord, le reste hors limite. */
+export function toutCocher(memo, candidats) {
+  const kManuels = new Set((memo.manuels || []).map(cle));
+  let mots = compterMots(memo.manuels || []);
+  const decoches = [];
+  for (const c of candidats) {
+    const k = cle(c);
+    if (kManuels.has(k)) continue;
+    if (mots + nbMots(c) <= MAX_MOTS) mots += nbMots(c); else decoches.push(k);
+  }
+  return { ...memo, decoches };
+}
+
+/** Ajoute des termes saisis à la main (en tête). Refuse ceux qui dépasseraient la limite. */
+export function ajouterManuels(memo, candidats, nouveaux) {
+  const kExist = new Set((memo.manuels || []).map(cle));
+  const manuels = [...(memo.manuels || [])];
+  const refuses = [];
+  for (const t of nouveaux) {
+    const k = cle(t);
+    if (kExist.has(k)) continue;
+    const essai = { ...memo, manuels: [...manuels, norm(t)] };
+    // un manuel passe AVANT les proposés : il peut repousser le dernier proposé hors limite
+    const { lignes } = selectionner(essai, candidats);
+    const l = lignes.find((x) => cle(x.terme) === k);
+    if (l && l.coche) { manuels.push(norm(t)); kExist.add(k); } else refuses.push(norm(t));
+  }
+  return { memo: { ...memo, manuels }, refuses };
+}
+
+export function retirerManuel(memo, terme) {
+  const k = cle(terme);
+  return { ...memo, manuels: (memo.manuels || []).filter((t) => cle(t) !== k) };
 }
