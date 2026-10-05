@@ -53,6 +53,14 @@ const S = {
   //   l'image elle-même voyage par le canal des blobs.
   liaison: store('liaison'),
   dessins: store('dessins'),
+  // TRANSCRIPTION EN DIRECT (05/10, docs/compte-rendu-transcription-directe.md) :
+  // une session de cours transcrite = UN enregistrement { kind:'session', courseId,
+  // segments[], notes[]… } ; plus UN enregistrement { kind:'keyterms' } par cours
+  // (id 'kt:' + courseId) pour la liste de mots-clés. Store NEUF, rien d'existant
+  // réécrit. Volontairement HORS de SYNCABLE : une session pèse jusqu'à ~300 Ko et
+  // reconcileAll retélécharge toute la table à chaque retour sur l'onglet — elle a
+  // son propre chemin de synchro, ciblé (transcription/sessions.js).
+  transcript_session: store('transcript_session'),
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
