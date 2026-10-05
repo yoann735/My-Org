@@ -74,3 +74,28 @@
 }
 .pdfr-barre.compacte .ptb-outils { gap: 1px; }
 .pdfr-barre.compacte .ptb-zone { gap: 4px; }
+
+/* ---- v1.1 : le contenu suit le geste (trackpad / doigt) ---- */
+.pm-corps { overscroll-behavior-x: contain; } /* pas de « page précédente » de Chrome au trackpad */
+.pm-vue { transition: transform .22s cubic-bezier(.3, .7, .2, 1), opacity .22s; will-change: transform; }
+.pm-vue.en-geste { transition: none; animation: none; }
+.pm-seg.en-geste .pm-seg-indic { transition: none; }
+
+/* ---- v1.1 : carte d'ajout de flashcard (Texte / Image) ---- */
+.fc-carte-tete { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.fc-carte-seg { flex: 0 0 auto; }
+.fc-carte-nb { font-size: 12px; color: var(--ok); font-weight: 600; margin: -4px 0 10px; }
+.fc-carte .card-body { padding: 12px; }
+.fc-carte-seg .seg-btn { padding-left: 10px; padding-right: 10px; }
+.fc-depot-zone {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 100%;
+  min-height: 120px; padding: 16px; border: 1.5px dashed var(--border); border-radius: var(--r-5, 10px);
+  background: var(--bg-2); color: var(--text-2); font: inherit; font-size: 12.5px; text-align: center; cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.fc-depot-zone:hover, .fc-depot-zone.survol { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.fc-depot-zone svg { color: var(--text-3); }
+.fc-image-choisie { display: flex; flex-direction: column; gap: 6px; }
+.fc-image-choisie img { max-width: 100%; max-height: 180px; object-fit: contain; border-radius: var(--r, 8px); border: 1px solid var(--border-2); background: var(--bg-2); align-self: flex-start; }
+.fc-apercu { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; padding: 8px; border-radius: var(--r, 8px); background: var(--bg-2); border: 1px solid var(--border-2); }
+.fc-trou { display: inline-block; padding: 0 6px; margin: 0 2px; border: 1px dashed var(--accent); border-radius: 5px; color: var(--accent); font-size: .9em; }

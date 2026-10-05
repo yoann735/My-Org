@@ -36,6 +36,7 @@ import { ThemeFicheFlashcards } from './ThemeFiche.jsx';
 import { toInternalItem } from '../lib/adapter.js';
 import { OcclusionEditorModal, OcclusionView, estOcclusion } from './OcclusionImage.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from './FlashcardImage.jsx';
+import { CarteAjoutFlashcard } from './CarteAjoutFlashcard.jsx';
 import '../../styles/panneau-modes.css';
 
 /* ============================================================
@@ -114,27 +115,92 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   const collapsed = replie == null ? collapsedLocal : replie;
   const setCollapsed = (fn) => { const v = typeof fn === 'function' ? fn(collapsed) : fn; if (onReplier) onReplier(v); else setCollapsedLocal(v); };
 
-  /* ---- glissement horizontal entre modes : doigt/stylet (pointeur), trackpad (roue X) ---- */
-  const voisin = (d) => { const i = modes.findIndex((m) => m.id === modeActif); const m = modes[i + d]; if (m) setMode(m.id); };
-  const geste = useRef(null);
-  const roue = useRef({ x: 0, t: 0, bloque: 0 });
+  /* ---- GLISSEMENT ENTRE MODES (v1.1, 05/10) ----
+     Trackpad (roue horizontale) et doigt/stylet (pointeurs) : le contenu SUIT le geste
+     (translation réelle), l'indicateur du sélecteur aussi ; au relâchement, aimantation :
+     mode voisin si le geste dépasse 80 px, sinon retour. Élastique aux extrémités.
+     Jamais pendant un défilement vertical, dans une zone qui défile horizontalement
+     (tableau large, canvas…), ni quand du texte est sélectionné dans le panneau.
+     Après un changement : bloqué ≥ 400 ms et tant que l'élan (inertie de macOS) continue. */
+  const corpsRef = useRef(null);
+  const [decalage, setDecalage] = useState(0);
+  const [enGeste, setEnGeste] = useState(false);
+  const geste = useRef({ actif: false, offset: 0, minuteur: null, bloqueJusqua: 0, dernierVertical: 0, pointeur: null });
+  const indexActif = Math.max(0, modes.findIndex((m) => m.id === modeActif));
+  const largeur = () => (corpsRef.current && corpsRef.current.clientWidth) || 360;
+  const elastique = (off) => {
+    const aGauche = indexActif > 0, aDroite = indexActif < modes.length - 1;
+    if ((off > 0 && !aGauche) || (off < 0 && !aDroite)) return Math.sign(off) * Math.min(56, Math.abs(off) * 0.3);
+    return Math.max(-largeur(), Math.min(largeur(), off));
+  };
+  const relacher = () => {
+    const g = geste.current;
+    const off = g.offset;
+    g.actif = false; g.offset = 0;
+    setEnGeste(false); setDecalage(0);
+    if (Math.abs(off) >= 80) {
+      const cible = modes[indexActif + (off < 0 ? 1 : -1)];
+      if (cible) { setMode(cible.id); g.bloqueJusqua = performance.now() + 400; }
+    }
+  };
+  const suivre = (off) => { geste.current.offset = off; setEnGeste(true); setDecalage(elastique(off)); };
+  const defileHorizontalement = (el) => {
+    const corps = corpsRef.current;
+    for (let n = el; n && n !== corps; n = n.parentElement) {
+      if (n.tagName === 'CANVAS') return true;
+      if (n.scrollWidth > n.clientWidth + 1) {
+        const ox = getComputedStyle(n).overflowX;
+        if (ox === 'auto' || ox === 'scroll') return true;
+      }
+    }
+    return false;
+  };
+  const texteSelectionne = () => {
+    const sel = window.getSelection && window.getSelection();
+    return !!(sel && !sel.isCollapsed && corpsRef.current && corpsRef.current.contains(sel.anchorNode));
+  };
+  // la roue doit être « non passive » pour empêcher le geste « page précédente » de Chrome
+  const roueRef = useRef(null);
+  roueRef.current = (e) => {
+    const g = geste.current, now = performance.now();
+    const ax = Math.abs(e.deltaX), ay = Math.abs(e.deltaY);
+    if (ay > ax) { g.dernierVertical = now; return; } // défilement vertical : jamais
+    if (ax <= ay * 1.5 || ax < 1) return;
+    if (now - g.dernierVertical < 250) return; // encore dans l'élan d'un défilement vertical
+    // inertie après un changement : bloqué au moins 400 ms, et TANT QUE le flux de l'élan
+    // continue (événements à moins de 150 ms d'intervalle) — un nouveau geste volontaire
+    // commence après une vraie pause
+    if (now < g.bloqueJusqua) { g.bloqueJusqua = Math.max(g.bloqueJusqua, now + 150); e.preventDefault(); return; }
+    if (!g.actif && (defileHorizontalement(e.target) || texteSelectionne())) return;
+    e.preventDefault();
+    g.actif = true;
+    suivre(g.offset - e.deltaX);
+    clearTimeout(g.minuteur);
+    g.minuteur = setTimeout(relacher, 140); // plus d'événement = doigts levés
+  };
+  useEffect(() => {
+    const el = corpsRef.current;
+    if (!el) return undefined;
+    const h = (e) => roueRef.current(e);
+    el.addEventListener('wheel', h, { passive: false });
+    return () => el.removeEventListener('wheel', h);
+  }, [collapsed]);
   const onPointerDown = (e) => {
     if (e.pointerType === 'mouse') return; // à la souris, glisser sert à sélectionner du texte
-    geste.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    if (defileHorizontalement(e.target)) return;
+    geste.current.pointeur = { x: e.clientX, y: e.clientY, id: e.pointerId, horizontal: null };
+  };
+  const onPointerMove = (e) => {
+    const p = geste.current.pointeur;
+    if (!p || p.id !== e.pointerId) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    if (p.horizontal === null && Math.hypot(dx, dy) > 8) p.horizontal = Math.abs(dx) > Math.abs(dy) * 1.5 && !texteSelectionne();
+    if (p.horizontal) { geste.current.actif = true; suivre(dx); }
   };
   const onPointerUp = (e) => {
-    const g = geste.current; geste.current = null;
-    if (!g || g.id !== e.pointerId) return;
-    const dx = e.clientX - g.x, dy = e.clientY - g.y;
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) voisin(dx < 0 ? 1 : -1);
-  };
-  const onWheel = (e) => {
-    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
-    const r = roue.current, now = Date.now();
-    if (now < r.bloque) return;
-    if (now - r.t > 250) r.x = 0;
-    r.x += e.deltaX; r.t = now;
-    if (Math.abs(r.x) > 120) { voisin(r.x > 0 ? 1 : -1); r.x = 0; r.bloque = now + 600; }
+    const p = geste.current.pointeur; geste.current.pointeur = null;
+    if (!p || p.id !== e.pointerId) return;
+    if (p.horizontal) relacher();
   };
 
   // ---- ajout (réutilise ItemForm/PasteJsonForm, même flux que AddItemModal) ----
@@ -179,7 +245,6 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   const choisirType = (t) => { setActiveType(t); setAdding(false); setEditingId(null); setVoirTheme(false); };
   const actions = [
     { label: 'Coller du JSON', icon: 'upload', onClick: () => { setAdding(true); setAddSource('json'); setAddedCount(0); } },
-    activeType === 'flashcard' && { label: 'Flashcard image (masques)', icon: 'image', onClick: () => setOccEdition(true) },
     activeType === 'flashcard' && { label: 'Thème automatique des flashcards', icon: 'tag', onClick: () => setVoirTheme((v) => !v) },
   ].filter(Boolean);
 
@@ -194,10 +259,11 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         ))}
       </div>
       <div className="pm-actions">
-        <button type="button" className={'btn sm' + (adding && addSource === 'form' ? ' actif' : '')}
+        {/* carte flashcard ouverte : elle a son propre « Terminer » — pas de doublon ici */}
+        {!(adding && addSource === 'form' && activeType === 'flashcard') && <button type="button" className={'btn sm' + (adding && addSource === 'form' ? ' actif' : '')}
           onClick={() => { if (adding && addSource === 'form') closeAdd(); else { setAdding(true); setAddSource('form'); setAddedCount(0); setEditingId(null); } }}>
           <Icon name={adding && addSource === 'form' ? 'x' : 'plus'} size={13} /> {adding && addSource === 'form' ? 'Fermer' : 'Ajouter'}
-        </button>
+        </button>}
         <span style={{ flex: 1 }} />
         <button type="button" className="icon-btn sm" title="Plus d’actions : coller du JSON, flashcard image, thème"
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuActions({ x: Math.min(r.right - 250, window.innerWidth - 260), y: r.bottom + 6 }); }}>
@@ -205,7 +271,11 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         </button>
       </div>
       {voirTheme && activeType === 'flashcard' && <ThemeFicheFlashcards ctx={ctx} ficheId={ficheId} />}
-      {adding && (
+      {adding && addSource === 'form' && activeType === 'flashcard' && (
+        <CarteAjoutFlashcard ctx={ctx} ficheId={ficheId} busy={busyAdd} onAjouter={submitAdd} onTerminer={closeAdd}
+          themeDefaut={themeFlashcardsDeFiche((ctx.db.fiches || []).find((f) => f.id === ficheId))} />
+      )}
+      {adding && !(addSource === 'form' && activeType === 'flashcard') && (
         <div className="pis-add card" style={{ margin: '4px 0 12px' }}>
           <div className="card-body">
             {addSource === 'form' ? (
@@ -266,7 +336,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
       {!collapsed && (
       <div className="pis-body">
         {modes.length > 1 && (
-          <div className="pm-seg" role="tablist" aria-label="Mode du panneau" style={{ '--n': modes.length, '--i': indexMode }}>
+          <div className={'pm-seg' + (enGeste ? ' en-geste' : '')} role="tablist" aria-label="Mode du panneau"
+            style={{ '--n': modes.length, '--i': Math.max(0, Math.min(modes.length - 1, indexMode - decalage / largeur())) }}>
             <span className="pm-seg-indic" aria-hidden="true" />
             {modes.map((m) => (
               <button key={m.id} type="button" role="tab" aria-selected={modeActif === m.id}
@@ -277,8 +348,10 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
             ))}
           </div>
         )}
-        <div className="pm-corps" onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={() => { geste.current = null; }} onWheel={onWheel}>
-          <div key={modeActif} className={'pm-vue' + (sens > 0 ? ' depuis-droite' : sens < 0 ? ' depuis-gauche' : '')}>
+        <div className="pm-corps" ref={corpsRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+          onPointerCancel={() => { if (geste.current.pointeur && geste.current.pointeur.horizontal) relacher(); geste.current.pointeur = null; }}>
+          <div key={modeActif} className={'pm-vue' + (sens > 0 ? ' depuis-droite' : sens < 0 ? ' depuis-gauche' : '') + (enGeste ? ' en-geste' : '')}
+            style={decalage ? { transform: `translateX(${decalage}px)`, opacity: 1 - Math.min(0.5, Math.abs(decalage) / largeur() * 0.6) } : undefined}>
             {modeActif === 'exercices' ? exercices : extraActif ? (
               extraActif.plein
                 ? <div className="pis-extra-plein">{extraActif.contenu}</div>
