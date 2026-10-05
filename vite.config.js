@@ -94,9 +94,9 @@ function lienTheme() {
   };
 }
 
-/* /api/deepgram-token en DEV (transcription en direct, MedRevise). Vercel sert les
+/* /api/deepgram-token et /api/deepgram-credits en DEV (transcription en direct, MedRevise). Vercel sert les
    fonctions de /api en production ; `vite` ne les connaît pas. Ce middleware
-   exécute le MÊME fichier api/deepgram-token.js (via ssrLoadModule) avec un petit
+   exécute les MÊMES fichiers api/deepgram-*.js (via ssrLoadModule) avec un petit
    adaptateur res.status().json(). Les variables SERVEUR (DEEPGRAM_*, sans préfixe
    VITE_) sont lues dans .env / .env.local et ne vont JAMAIS au bundle client.
    `apply: 'serve'` : rien de tout ça n'existe au build. */
@@ -107,9 +107,12 @@ function apiDeepgramDev() {
     configureServer(server) {
       const env = loadEnv(server.config.mode, process.cwd(), 'DEEPGRAM_');
       for (const [k, v] of Object.entries(env)) if (process.env[k] === undefined) process.env[k] = v;
-      server.middlewares.use('/api/deepgram-token', async (req, res) => {
+      // /api/deepgram-token et /api/deepgram-credits (transcription en direct)
+      server.middlewares.use(async (req, res, next) => {
+        const m = /^\/api\/(deepgram-(?:token|credits))(?:\?|$)/.exec(req.url || '');
+        if (!m) return next();
         try {
-          const mod = await server.ssrLoadModule('/api/deepgram-token.js');
+          const mod = await server.ssrLoadModule(`/api/${m[1]}.js`);
           const r = {
             setHeader: (k, v) => res.setHeader(k, v),
             status(code) { res.statusCode = code; return r; },

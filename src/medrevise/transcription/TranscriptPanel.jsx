@@ -23,14 +23,17 @@ import {
 import { listerMicros } from './audio.js';
 import {
   decouperTermes, fusionnerTermes, compterMots, proposerTermes, regexTermes, decouperSurlignage,
-  MAX_MOTS, SEUIL_CONSEIL,
+  MAX_MOTS, SEUIL_CONSEIL, integrerCandidats, selectionner, basculerTerme, toutCocher, toutDecocher,
+  ajouterManuels, retirerManuel, termesEnvoyables,
 } from './keyterms.js';
 import {
-  sessionsDuCours, lireSession, sessionInterrompue, cloreSession, supprimerSession, lireMotsCles, ecrireMotsCles,
+  sessionsDuCours, lireSession, cloreSession, supprimerSession, lireMotsClesMemo, ecrireMotsCles,
 } from './sessions.js';
 import { mmss, dureeLisible, lignesSession, texteSession, markdownSession, telecharger, nomFichier, copierTexte } from './exporter.js';
 import { enregistrerLecteur } from './IndicateurGlobal.jsx';
 import { synchroTranscripts } from './synchro.js';
+import { actualiserCredits, tarifEffectif, fmtUsd } from './credits.js';
+import { CreditsFeuille, CreditsPastille } from './Credits.jsx';
 import '../../styles/transcription.css';
 
 const CLE_MICRO = 'medrevise.transcription.micro';
@@ -65,50 +68,76 @@ export function FeuilleDemarrage({ courseId, pdfDoc, reprendre = null, onClose, 
   const [source, setSource] = useState(() => lireLS(CLE_SOURCE, 'micro'));
   const [micros, setMicros] = useState([]);
   const [micro, setMicro] = useState(() => lireLS(CLE_MICRO, 'default'));
-  const [termes, setTermes] = useState(reprendre ? (reprendre.keyterms || []) : []);
-  const [saisie, setSaisie] = useState('');
+  /* MOTS-CLÉS (v1.1) : `memo` = { manuels, decoches, connus } mémorisé avec le cours ;
+     en reprise, la liste vient de la session reprise (manuels) et n'est pas mémorisée. */
+  const [memo, setMemo] = useState(reprendre ? { manuels: reprendre.keyterms || [], decoches: [], connus: [] } : null);
   const [candidats, setCandidats] = useState(null); // null = calcul en cours
+  const [saisie, setSaisie] = useState('');
+  const [refus, setRefus] = useState(null); // message bref (limite atteinte)
   const [demarrage, setDemarrage] = useState(false);
   const [erreur, setErreur] = useState(null);
-  const chargeRef = useRef(false);
 
   useEffect(() => {
     let vivant = true;
-    if (!reprendre) lireMotsCles(courseId).then((t) => { if (vivant && t.length) setTermes(t); chargeRef.current = true; });
-    else chargeRef.current = true;
-    proposerTermes(pdfDoc).then((c) => { if (vivant) setCandidats(c); }).catch(() => vivant && setCandidats([]));
+    const memoP = reprendre ? Promise.resolve({ manuels: reprendre.keyterms || [], decoches: [], connus: [] }) : lireMotsClesMemo(courseId);
+    const candP = reprendre ? Promise.resolve([]) : proposerTermes(pdfDoc).catch(() => []);
+    Promise.all([memoP, candP]).then(([m, c]) => {
+      if (!vivant) return;
+      setCandidats(c);
+      setMemo(reprendre ? m : integrerCandidats(m, c)); // nouveaux proposés : cochés dans la limite
+    });
     listerMicros({ demanderAutorisation: true }).then((l) => { if (vivant) setMicros(l); });
     const surChangement = () => listerMicros().then((l) => vivant && setMicros(l));
     navigator.mediaDevices && navigator.mediaDevices.addEventListener && navigator.mediaDevices.addEventListener('devicechange', surChangement);
+    actualiserCredits(); // « avant démarrage » : valeur fraîche si la dernière a plus d'une minute
     return () => { vivant = false; navigator.mediaDevices && navigator.mediaDevices.removeEventListener && navigator.mediaDevices.removeEventListener('devicechange', surChangement); };
   }, [courseId, pdfDoc, reprendre]);
 
-  // mots-clés : persistés avec le cours dès qu'ils changent — sauf en reprise, où la
-  // liste vient de la SESSION reprise et ne doit pas écraser celle du cours
-  useEffect(() => { if (chargeRef.current && !reprendre) ecrireMotsCles(courseId, termes).catch(() => {}); }, [courseId, termes, reprendre]);
+  const sel = useMemo(() => (memo ? selectionner(memo, candidats || []) : { lignes: [], envoyes: [], mots: 0, plein: false }), [memo, candidats]);
 
+  // mémorisé avec le cours à chaque changement (pas en reprise)
+  useEffect(() => {
+    if (!memo || reprendre || candidats === null) return;
+    ecrireMotsCles(courseId, { ...memo, terms: sel.envoyes }).catch(() => {});
+  }, [memo, sel.envoyes, courseId, reprendre, candidats]);
+
+  const signaler = (m) => { setRefus(m); setTimeout(() => setRefus(null), 3200); };
   const ajouterSaisie = () => {
     const n = decouperTermes(saisie);
-    if (n.length) setTermes((t) => fusionnerTermes(t, n));
     setSaisie('');
+    if (!n.length || !memo) return memo;
+    const { memo: m, refuses } = ajouterManuels(memo, candidats || [], n);
+    setMemo(m);
+    if (refuses.length) signaler(`Limite de ${MAX_MOTS} mots atteinte : « ${refuses.join(' », « ')} » non ajouté${refuses.length > 1 ? 's' : ''}. Décoche des termes pour faire de la place.`);
+    return m;
   };
-  const basculer = (c) => setTermes((t) => (t.some((x) => x.toLowerCase() === c.toLowerCase()) ? t.filter((x) => x.toLowerCase() !== c.toLowerCase()) : [...t, c]));
-  const tousTermes = fusionnerTermes(termes, decouperTermes(saisie));
-  const mots = compterMots(tousTermes);
+  const basculer = (l) => {
+    if (l.manuel) { setMemo((m) => retirerManuel(m, l.terme)); return; }
+    // hors limite (voulu mais sans place) : cliquer = vouloir le cocher → refusé, on le dit
+    if (l.horsLimite) { signaler(`${MAX_MOTS}/${MAX_MOTS} — décoche un terme pour en ajouter un autre.`); return; }
+    const m = basculerTerme(memo, candidats || [], l.terme);
+    if (!m) { signaler(`${MAX_MOTS}/${MAX_MOTS} — décoche un terme pour en ajouter un autre.`); return; }
+    setMemo(m);
+  };
 
   const lancer = async () => {
     setDemarrage(true); setErreur(null);
     ecrireLS(CLE_SOURCE, source);
     if (source === 'micro') ecrireLS(CLE_MICRO, micro);
-    setTermes(tousTermes); setSaisie('');
+    const m = saisie.trim() ? ajouterSaisie() : memo;
+    const termes = m ? selectionner(m, candidats || []).envoyes : [];
     const ok = await demarrer({
-      courseId, source, deviceId: source === 'micro' ? micro : null, keyterms: tousTermes,
+      courseId, source, deviceId: source === 'micro' ? micro : null, keyterms: termes,
       fontSize: lireLS(CLE_TAILLE, 'm'), reprendre,
     });
     setDemarrage(false);
     if (ok) { onDemarre && onDemarre(); onClose(); }
     else { setErreur(lireEtat().erreur); effacerErreur(); }
   };
+
+  const manuels = sel.lignes.filter((l) => l.manuel);
+  const proposes = sel.lignes.filter((l) => !l.manuel);
+  const nbCoches = proposes.filter((l) => l.coche).length;
 
   return (
     <Modal title={reprendre ? 'Reprendre la transcription' : 'Transcrire le cours'} onClose={onClose} width="min(560px, 94vw)">
@@ -132,41 +161,56 @@ export function FeuilleDemarrage({ courseId, pdfDoc, reprendre = null, onClose, 
         <div className="trx-champ">
           <div className="trx-etiquette row spread">
             <span>Mots-clés du cours</span>
-            <span className={'trx-compteur tnum' + (mots > MAX_MOTS ? ' trop' : tousTermes.length > SEUIL_CONSEIL ? ' alerte' : '')}>{mots}/{MAX_MOTS}</span>
+            <span className={'trx-compteur tnum' + (sel.mots >= MAX_MOTS ? ' alerte' : '')}>{sel.mots}/{MAX_MOTS}</span>
           </div>
-          <textarea className="trx-saisie" rows={3} value={saisie} onChange={(e) => setSaisie(e.target.value)}
+          <textarea className="trx-saisie" rows={2} value={saisie} onChange={(e) => setSaisie(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ajouterSaisie(); } }}
-            placeholder={'Un terme par ligne ou séparés par des virgules\nex. ostéon, canal de Havers, ostéoclaste'} />
-          {tousTermes.length > SEUIL_CONSEIL && (
+            placeholder={'Ajouter un terme : un par ligne ou séparés par des virgules (Entrée)\nex. canal de Havers, ostéoclaste'} />
+          {sel.plein && <div className="trx-conseil plein"><Icon name="info" size={13} /> {MAX_MOTS}/{MAX_MOTS} — décoche pour en ajouter d’autres.</div>}
+          {!sel.plein && sel.envoyes.length > SEUIL_CONSEIL && (
             <div className="trx-conseil"><Icon name="info" size={13} /> Deepgram conseille 20 à 50 termes bien choisis : au-delà, chaque terme pèse moins.</div>
           )}
-          {mots > MAX_MOTS && <div className="trx-conseil trop"><Icon name="alert" size={13} /> Limite de 100 mots : les derniers termes ne seront pas envoyés.</div>}
-          {termes.length > 0 && (
+          {refus && <div className="trx-conseil trop" role="status"><Icon name="alert" size={13} /> {refus}</div>}
+          {manuels.length > 0 && (
             <div className="trx-puces">
-              {termes.map((t) => (
-                <button key={t} type="button" className="trx-puce on" onClick={() => basculer(t)} title="Retirer">{t} <Icon name="x" size={10} /></button>
+              {manuels.map((l) => (
+                <button key={l.terme} type="button" className={'trx-puce on' + (l.horsLimite ? ' limite' : '')} onClick={() => basculer(l)}
+                  title={l.horsLimite ? 'Hors limite : ne sera pas envoyé' : 'Ajouté à la main — cliquer pour retirer'}>{l.terme} <Icon name="x" size={10} /></button>
               ))}
             </div>
           )}
-          {candidats === null && pdfDoc && <div className="hint trx-aide">Lecture du PDF pour proposer des termes…</div>}
-          {candidats && candidats.length > 0 && (
+          {candidats === null && pdfDoc && !reprendre && <div className="hint trx-aide">Lecture du PDF pour proposer des termes…</div>}
+          {proposes.length > 0 && (
             <>
-              <div className="trx-sous-etiquette">Proposés d’après le PDF — coche ceux à garder</div>
+              <div className="trx-sous-etiquette row spread">
+                <span>Proposés d’après le PDF · {nbCoches}/{proposes.length} cochés</span>
+                <span className="row" style={{ gap: 4 }}>
+                  <button type="button" className="trx-lien" onClick={() => setMemo((m) => toutCocher(m, candidats || []))}>Tout cocher</button>
+                  <span className="hint">·</span>
+                  <button type="button" className="trx-lien" onClick={() => setMemo((m) => toutDecocher(m, candidats || []))}>Tout décocher</button>
+                </span>
+              </div>
               <div className="trx-puces">
-                {candidats.filter((c) => !termes.some((t) => t.toLowerCase() === c.toLowerCase())).map((c) => (
-                  <button key={c} type="button" className="trx-puce" onClick={() => basculer(c)}><Icon name="plus" size={10} /> {c}</button>
+                {proposes.map((l) => (
+                  <button key={l.terme} type="button" aria-pressed={l.coche}
+                    className={'trx-puce' + (l.coche ? ' on' : '') + (!l.coche && sel.plein ? ' grise' : '')} onClick={() => basculer(l)}
+                    title={l.coche ? 'Coché : envoyé à Deepgram — cliquer pour décocher' : 'Décoché — cliquer pour cocher'}>
+                    <Icon name={l.coche ? 'check' : 'plus'} size={10} /> {l.terme}
+                  </button>
                 ))}
               </div>
             </>
           )}
-          {candidats && candidats.length === 0 && pdfDoc && <div className="hint trx-aide">Pas de couche texte exploitable dans ce PDF : saisis les termes à la main.</div>}
+          {candidats && candidats.length === 0 && pdfDoc && !reprendre && <div className="hint trx-aide">Pas de couche texte exploitable dans ce PDF : saisis les termes à la main.</div>}
         </div>
+
+        <CreditsFeuille />
 
         {erreur && <div className="trx-erreur"><Icon name="alert" size={14} /> {erreur}</div>}
 
         <div className="row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
           <button type="button" className="btn ghost sm" onClick={onClose}>Annuler</button>
-          <button type="button" className="btn primary" onClick={lancer} disabled={demarrage}>
+          <button type="button" className="btn primary" onClick={lancer} disabled={demarrage || !memo}>
             {demarrage ? <span className="gen-spinner" style={{ width: 14, height: 14 }} /> : <Icon name="play" size={13} />} {reprendre ? 'Reprendre' : 'Démarrer'}
           </button>
         </div>
@@ -343,7 +387,17 @@ function ChoixTaille({ taille, onTaille }) {
 function EditeurMotsCles({ termes, onChange, onFermer }) {
   const [saisie, setSaisie] = useState('');
   const mots = compterMots(termes);
-  const ajouter = () => { const n = decouperTermes(saisie); if (n.length) onChange(fusionnerTermes(termes, n)); setSaisie(''); };
+  const [refus, setRefus] = useState(null);
+  const ajouter = () => {
+    const n = decouperTermes(saisie);
+    if (!n.length) return;
+    const fusion = fusionnerTermes(termes, n);
+    // jamais au-delà de la limite Deepgram : on n'envoie que ce qui tient, et on le dit
+    const tient = termesEnvoyables(fusion);
+    if (tient.length < fusion.length) { setRefus(`${MAX_MOTS}/${MAX_MOTS} — retire un terme pour en ajouter un autre.`); setTimeout(() => setRefus(null), 3200); }
+    if (tient.length > termes.length) onChange(tient);
+    setSaisie('');
+  };
   return (
     <div className="trx-mc">
       <div className="row spread" style={{ marginBottom: 6 }}>
@@ -355,11 +409,29 @@ function EditeurMotsCles({ termes, onChange, onFermer }) {
           onChange={(e) => setSaisie(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ajouter(); } if (e.key === 'Escape') onFermer(); }} />
         <button type="button" className="btn sm primary" onClick={ajouter} disabled={!saisie.trim()}><Icon name="plus" size={12} /></button>
       </div>
-      {termes.length > SEUIL_CONSEIL && <div className="trx-conseil"><Icon name="info" size={12} /> Deepgram conseille 20 à 50 termes.</div>}
+      {refus && <div className="trx-conseil trop" role="status"><Icon name="alert" size={12} /> {refus}</div>}
+      {!refus && termes.length > SEUIL_CONSEIL && <div className="trx-conseil"><Icon name="info" size={12} /> Deepgram conseille 20 à 50 termes.</div>}
       <div className="trx-puces">
         {termes.map((t) => <button key={t} type="button" className="trx-puce on" onClick={() => onChange(termes.filter((x) => x !== t))} title="Retirer">{t} <Icon name="x" size={10} /></button>)}
       </div>
       <div className="hint" style={{ fontSize: 11.5, marginTop: 6 }}>Pris en compte immédiatement, sans couper la transcription.</div>
+    </div>
+  );
+}
+
+/* en-tête discret du panneau : la pastille des crédits, à droite */
+function EnteteCredits() {
+  return <div className="trx-entete"><CreditsPastille /></div>;
+}
+
+/* résumé de session : « Cette session : 1 h 48 ≈ 0,52 $ » (calcul local : durée ×
+   tarif effectif connu à la fin de la session — voir engine.js#arreter) */
+function ResumeCout({ session }) {
+  if (!session || !session.endedAt) return null;
+  const cout = session.coutUsd != null ? session.coutUsd : ((session.durationS || 0) / 3600) * tarifEffectif();
+  return (
+    <div className="trx-resume tnum" title="Durée transcrite × tarif effectif (estimation locale)">
+      Cette session : {dureeLisible(session.durationS)} ≈ {fmtUsd(cout)}
     </div>
   );
 }
@@ -395,6 +467,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
     setInterrompue(sessionActive() && lireEtat().courseId === courseId ? null : (l.find((s) => !s.endedAt) || null));
   }, [courseId]);
   useEffect(() => { recharger(); }, [recharger, e.phase]);
+  useEffect(() => { actualiserCredits(); }, [courseId]); // ouverture du cours (jamais pendant une session : voir credits.js)
   // synchro ciblée à l'ouverture du panneau : les sessions faites sur un autre appareil
   useEffect(() => {
     let vivant = true;
@@ -429,6 +502,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
   if (ici && e.phase === 'error') {
     return (
       <div className="trx-panneau">
+        <EnteteCredits />
         <div className="trx-erreur">
           <Icon name="alert" size={14} /> <span style={{ flex: 1 }}>{e.erreur}</span>
           <button type="button" className="btn sm" onClick={effacerErreur}>Fermer</button>
@@ -448,6 +522,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
     const lignes = lignesSession(e.session, e.interim);
     const corps = (
       <div className={'trx-panneau' + (plein ? ' plein' : '')}>
+        <EnteteCredits />
         <div className="trx-barre">
           <Pastille e={e} />
           <span className="trx-chrono tnum">{mmss(e.secondes)}</span>
@@ -481,6 +556,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
   if (lecture) {
     const corps = (
       <div className={'trx-panneau' + (plein ? ' plein' : '')}>
+        <EnteteCredits />
         <div className="trx-barre">
           <button type="button" className="btn ghost sm" onClick={() => { setLecture(null); setPlein(false); }}><Icon name="chevL" size={13} /> Sessions</button>
           <span className="trx-titre-lecture">{dateCourte(lecture.startedAt)} · {dureeLisible(lecture.durationS)}</span>
@@ -491,6 +567,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
           <ChoixTaille taille={taille} onTaille={choisirTaille} />
           <button type="button" className="icon-btn sm" onClick={() => setPlein((v) => !v)} title={plein ? 'Quitter le plein écran (Échap)' : 'Plein écran'}><Icon name={plein ? 'x' : 'maximize'} size={13} /></button>
         </div>
+        <ResumeCout session={lecture} />
         <ListeTranscript lignes={lignesSession(lecture)} keyterms={lecture.keyterms || []} taille={taille} live={false} plein={plein} />
         <PiedSession session={lecture} titre={titre} />
       </div>
@@ -502,6 +579,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
   const ailleurs = sessionActive() && e.courseId !== courseId;
   return (
     <div className="trx-accueil">
+      <EnteteCredits />
       {ailleurs ? (
         <div className="trx-info"><Icon name="mic" size={13} /> Une transcription tourne sur un autre cours ({mmss(e.secondes)}).
           <button type="button" className="btn sm" onClick={() => arreter()}>Arrêter</button></div>

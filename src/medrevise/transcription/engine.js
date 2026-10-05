@@ -34,9 +34,10 @@
 import { demarrerCapture, SAMPLE_RATE } from './audio.js';
 import { parametresKeyterms, termesEnvoyables } from './keyterms.js';
 import {
-  nouvelleSession, nouvelIdSegment, nouvelIdNote, ecrireSession, viderEcritures, ecrireMotsCles,
+  nouvelleSession, nouvelIdSegment, nouvelIdNote, ecrireSession, viderEcritures, ecrireMotsClesSession,
 } from './sessions.js';
 import { marquerVivante, pousserMaintenant } from './synchro.js';
+import { tarifEffectif, actualiserCredits } from './credits.js';
 
 const DUREE_BLOC = 0.1; // s
 const TAMPON_MAX_S = 120;
@@ -431,7 +432,9 @@ export async function arreter() {
   if (capture) capture.arreter();
   capture = null;
   tampon = [];
-  const fini = { ...etat.session, endedAt: new Date().toISOString(), durationS: Math.round(maintenantCours() * 10) / 10 };
+  const duree = Math.round(maintenantCours() * 10) / 10;
+  // coût estimé localement : durée × tarif effectif connu (v1.1) — figé dans la session
+  const fini = { ...etat.session, endedAt: new Date().toISOString(), durationS: duree, coutUsd: Math.round((duree / 3600) * tarifEffectif() * 1000) / 1000 };
   publier({ session: fini });
   if (persistee || fini.segments.length || fini.notes.length) {
     persistee = true;
@@ -444,6 +447,7 @@ export async function arreter() {
   publier({ ...ETAT_INITIAL, derniereFinie: id, courseId: fini.courseId });
   // synchro cloud : la session terminée part maintenant (conditionnelle, updated_at)
   if (id) pousserMaintenant(id).catch(() => {});
+  actualiserCredits({ force: true }).catch(() => {}); // fin de session : crédits rafraîchis
   return id;
 }
 
@@ -473,7 +477,7 @@ export function changerMotsCles(termes) {
   if (!etat.session) return;
   majSession((s) => ({ ...s, keyterms: termes }));
   envoyerJson({ type: 'Configure', keyterms: termesEnvoyables(termes) });
-  ecrireMotsCles(etat.session.courseId, termes).catch(() => {});
+  ecrireMotsClesSession(etat.session.courseId, termes).catch(() => {});
 }
 
 export function changerTaille(taille) {
