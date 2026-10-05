@@ -64,6 +64,62 @@ function processeurURL() {
   return urlProcesseur;
 }
 
+/* ---------- périphériques virtuels de bouclage (05/10) ----------
+   BlackHole, Loopback, Soundflower, VB-Cable, périphérique agrégé / multi-sortie :
+   ils transportent le son de l'ordinateur (Teams, Zoom…), déjà propre. Le traitement
+   du navigateur (annulation d'écho, réduction de bruit, gain automatique) le
+   DÉGRADE : il est coupé pour eux, et laissé actif pour un vrai micro. */
+const RX_VIRTUEL = /blackhole|loopback|soundflower|vb[- ]?cable|aggregate|multi[- ]?output|agr[ée]g|multi[- ]?sortie/i;
+export const estVirtuel = (label) => RX_VIRTUEL.test(String(label || ''));
+
+const CLE_VALIDE = 'medrevise.transcription.micro.valide';
+export function memoriserMicroValide(deviceId) { try { if (deviceId) localStorage.setItem(CLE_VALIDE, deviceId); } catch (e) { /* bloqué */ } }
+const microValide = () => { try { return localStorage.getItem(CLE_VALIDE); } catch (e) { return null; } };
+
+/** Mode « Automatique » : 1) bouclage virtuel ; 2) dernier micro validé sur cet appareil ;
+ *  3) entrée par défaut du système. @returns {{ deviceId, label, raison }} */
+export function choisirAutomatique(micros) {
+  const virtuel = micros.find((m) => estVirtuel(m.label));
+  if (virtuel) return { ...virtuel, raison: 'bouclage' };
+  const v = microValide();
+  const valide = v && micros.find((m) => m.deviceId === v);
+  if (valide) return { ...valide, raison: 'dernier' };
+  const defaut = micros.find((m) => m.deviceId === 'default') || micros[0];
+  return defaut ? { ...defaut, raison: 'defaut' } : { deviceId: 'default', label: 'Micro par défaut', raison: 'defaut' };
+}
+
+/** Contraintes getUserMedia pour une entrée. */
+export function contraintesMicro(deviceId, label) {
+  const traitement = !estVirtuel(label);
+  return {
+    deviceId: deviceId && deviceId !== 'default' ? { exact: deviceId } : undefined,
+    channelCount: 1,
+    echoCancellation: traitement, noiseSuppression: traitement, autoGainControl: traitement,
+  };
+}
+
+/** SONDE DE NIVEAU (feuille Transcrire, avant démarrage) : écoute une entrée et appelle
+ *  `onNiveau(rms)` à chaque image. @returns {Promise<{ arreter }>} */
+export async function sonderNiveau({ deviceId, label, onNiveau }) {
+  const flux = await navigator.mediaDevices.getUserMedia({ audio: contraintesMicro(deviceId, label) });
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AC();
+  if (ctx.state === 'suspended') { try { await ctx.resume(); } catch (e) { /* geste requis */ } }
+  const an = ctx.createAnalyser(); an.fftSize = 2048;
+  ctx.createMediaStreamSource(flux).connect(an);
+  const buf = new Float32Array(an.fftSize);
+  let fini = false;
+  const tic = () => {
+    if (fini) return;
+    an.getFloatTimeDomainData(buf);
+    let sq = 0; for (let i = 0; i < buf.length; i++) sq += buf[i] * buf[i];
+    onNiveau(Math.sqrt(sq / buf.length));
+    setTimeout(tic, 60); // pas de rAF : continue même si la feuille est dans un onglet caché
+  };
+  tic();
+  return { arreter() { fini = true; flux.getTracks().forEach((t) => t.stop()); ctx.close().catch(() => {}); } };
+}
+
 /** Liste des entrées audio. Les libellés ne sont remplis qu'après une première
  *  autorisation du micro : on la demande au besoin (flux aussitôt arrêté). */
 export async function listerMicros({ demanderAutorisation = false } = {}) {
@@ -107,14 +163,10 @@ async function ouvrirFlux({ source, deviceId }) {
     return flux;
   }
   try {
-    return await navigator.mediaDevices.getUserMedia({
-      audio: {
-        deviceId: deviceId && deviceId !== 'default' ? { exact: deviceId } : undefined,
-        channelCount: 1,
-        // un périphérique virtuel (BlackHole) porte un mixage propre : on n'y touche pas
-        echoCancellation: false, noiseSuppression: false, autoGainControl: true,
-      },
-    });
+    // libellé de l'entrée choisie : décide du traitement (coupé pour un bouclage virtuel)
+    let label = '';
+    try { label = ((await navigator.mediaDevices.enumerateDevices()).find((d) => d.kind === 'audioinput' && d.deviceId === (deviceId || 'default')) || {}).label || ''; } catch (e) { /* sans libellé : vrai micro */ }
+    return await navigator.mediaDevices.getUserMedia({ audio: contraintesMicro(deviceId, label) });
   } catch (e) {
     if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) throw new ErreurCapture('Accès au micro refusé : autorise-le dans la barre d’adresse de Chrome (icône 🔒).', 'denied');
     if (e && (e.name === 'NotFoundError' || e.name === 'OverconstrainedError')) throw new ErreurCapture('Micro introuvable : il a peut-être été débranché. Choisis-en un autre.', 'notfound');

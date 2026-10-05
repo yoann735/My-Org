@@ -762,7 +762,9 @@ export function BellButton({ on, onToggle, onText, offText }) {
    portal vers document.body (position: fixed, z-index élevé) pour ne
    jamais être clippé/masqué par un conteneur scrollable ancêtre (ex. la
    sidebar). Se ferme au clic ailleurs, au scroll ou à Échap. ---- */
-export function ContextMenu({ x, y, items, onClose }) {
+/* `fermerAuDefilement` (défaut true) : false pour un menu ouvert au-dessus d'une liste
+   qui défile toute seule (transcript en direct) — sinon il se refermerait à chaque ligne. */
+export function ContextMenu({ x, y, items, onClose, fermerAuDefilement = true }) {
   useEffect(() => {
     const close = () => onClose();
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -772,7 +774,7 @@ export function ContextMenu({ x, y, items, onClose }) {
       window.addEventListener('pointerdown', close);
       window.addEventListener('contextmenu', close);
     });
-    window.addEventListener('scroll', close, true);
+    if (fermerAuDefilement) window.addEventListener('scroll', close, true);
     window.addEventListener('keydown', onKey);
     return () => {
       cancelAnimationFrame(raf);

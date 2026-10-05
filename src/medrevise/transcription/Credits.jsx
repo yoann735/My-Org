@@ -17,8 +17,10 @@
    reste affichée et « hors ligne » remplace la date. Jamais relu pendant une
    session (le bouton est alors inactif).
 
-   `compact` : une seule ligne « 38,42 $ · ≈ 132 h 27 min · ⟳ » — pendant une
-   session et à la lecture d'une session, pour ne pas empiéter sur le transcript.
+   05/10 (refonte du panneau) : REPLIÉE par défaut — une petite ligne grise
+   « 38,42 $ · ≈ 132 h 27 min » en bas du mode Transcript ; un clic la déplie en
+   la carte complète, un clic sur son titre la replie. Les Réglages la montrent
+   dépliée (`deplieeParDefaut`). Même composant partout.
    ============================================================ */
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -33,10 +35,11 @@ function useHorloge(ms) {
   useEffect(() => { const id = setInterval(() => setT((t) => t + 1), ms); return () => clearInterval(id); }, [ms]);
 }
 
-export function CarteCredits({ compact = false }) {
+export function CarteCredits({ deplieeParDefaut = false }) {
   const { donnees: d, erreur, chargement } = useCredits();
   useSyncExternalStore(abonnerMoteur, lireEtat); // le bouton suit le début/fin de session
-  useHorloge(compact ? 60000 : 15000);
+  const [ouverte, setOuverte] = useState(deplieeParDefaut);
+  useHorloge(ouverte ? 15000 : 60000);
   const enSession = sessionActive();
   const attente = attenteActualiser();
   // le bouton redevient actif pile à la fin des 30 s (pas au prochain tic de l'horloge)
@@ -50,36 +53,29 @@ export function CarteCredits({ compact = false }) {
   const heures = heuresRestantes(d);
   const niveau = niveauCredits(heures);
 
-  const bouton = (
-    <button type="button" className={'trx-cc-actualiser' + (compact ? ' icone' : '') + (chargement ? ' tourne' : '')}
-      disabled={chargement || enSession || attente > 0}
-      title={enSession ? 'Pas de relecture pendant une transcription' : attente > 0 ? `Patiente ${Math.ceil(attente / 1000)} s avant d’actualiser à nouveau` : 'Relire les crédits sur Deepgram maintenant'}
-      onClick={() => actualiserCredits({ force: true })}>
-      <Icon name="refresh" size={compact ? 12 : 13} />{!compact && ' Actualiser'}
-    </button>
-  );
-
-  if (compact) {
+  /* REPLIÉE (défaut) : une petite ligne grise « 38,42 $ · ≈ 132 h 27 min » — un clic déplie. */
+  if (!ouverte) {
     return (
-      <div className="trx-carte-credits compacte" aria-label="Crédits Deepgram">
+      <button type="button" className="trx-credits-ligne-repliee" onClick={() => setOuverte(true)}
+        title="Crédits Deepgram — cliquer pour le détail et Actualiser" aria-expanded="false">
         {d ? (
           <>
             <span className="tnum">{fmtUsd(d.remainingUsd)}</span>
             <span className="trx-cc-sep">·</span>
             <span className={'tnum trx-cc-temps ' + niveau}>≈ {fmtDuree(heures)}</span>
+            {horsLigne && <span>· hors ligne</span>}
           </>
-        ) : <span className="trx-cc-gris">{erreur ? 'Crédits indisponibles' : 'Crédits…'}</span>}
-        {horsLigne && <span className="trx-cc-gris">· hors ligne</span>}
-        <span style={{ flex: 1 }} />
-        {bouton}
-      </div>
+        ) : <span>{erreur ? 'Crédits Deepgram indisponibles' : 'Crédits Deepgram…'}</span>}
+      </button>
     );
   }
 
   return (
     <div className="card trx-carte-credits">
       <div className="card-body">
-        <div className="trx-cc-titre">Crédits Deepgram</div>
+        <button type="button" className="trx-cc-titre" onClick={() => setOuverte(false)} aria-expanded="true" title="Replier">
+          Crédits Deepgram <Icon name="chevU" size={11} />
+        </button>
         {d ? (
           <>
             <div className="trx-cc-montant tnum">{fmtUsd(d.remainingUsd)} <span>restants</span></div>
@@ -91,7 +87,12 @@ export function CarteCredits({ compact = false }) {
           </div>
         )}
         <div className="trx-cc-pied">
-          {bouton}
+          <button type="button" className={'trx-cc-actualiser' + (chargement ? ' tourne' : '')}
+            disabled={chargement || enSession || attente > 0}
+            title={enSession ? 'Pas de relecture pendant une transcription' : attente > 0 ? `Patiente ${Math.ceil(attente / 1000)} s avant d’actualiser à nouveau` : 'Relire les crédits sur Deepgram maintenant'}
+            onClick={() => actualiserCredits({ force: true })}>
+            <Icon name="refresh" size={13} /> Actualiser
+          </button>
           <span className={'trx-cc-quand' + (horsLigne ? ' trx-cc-gris' : '')}>
             {horsLigne ? 'hors ligne' : d ? 'mis à jour ' + fmtQuand(d.updatedAt) : ''}
           </span>

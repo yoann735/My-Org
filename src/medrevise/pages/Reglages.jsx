@@ -395,7 +395,7 @@ export function Reglages({ ctx }) {
           <button type="button" className="btn" style={{ color: 'var(--crit)' }} onClick={resetData}><Icon name="trash" size={15} /> Réinitialiser MedRevise</button>
         </Card>
         {/* Crédits de transcription : la MÊME carte que le panneau Transcript (v1.2) */}
-        <div className="reglages-credits"><CarteCredits /></div>
+        <div className="reglages-credits"><CarteCredits deplieeParDefaut /></div>
         <Card title="Synchronisation" icon="refresh">
           <div className="hint" style={{ marginBottom: 12 }}>{syncStatusLabel(ctx.syncState)}</div>
           <button type="button" className="btn" disabled={ctx.syncState?.status === 'syncing'} onClick={async () => { await ctx.forceSync({ complet: true }); setSyncTick((t) => t + 1); }}>

@@ -1,8 +1,9 @@
 /* ============================================================
    MedRevise — TRANSCRIPTION EN DIRECT : interface.
 
-   - BoutonTranscrire : le bouton de la barre d'outils du lecteur (devient un
-     chrono rouge pendant la session) ;
+   - BadgeTranscript : point rouge + chrono sur le segment « Transcript » du
+     panneau pendant une session (le bouton « Transcrire » a quitté la barre du
+     PDF le 05/10 : il vit en tête du mode Transcript) ;
    - FeuilleDemarrage : source audio + mots-clés + « Démarrer », rien d'autre ;
    - TranscriptPanel : l'onglet « Transcript » du panneau de droite (même
      emplacement que « Notions ») — session en direct, sessions passées en
@@ -18,9 +19,9 @@ import { ConfirmModal, ContextMenu, Modal } from '../components/ui.jsx';
 import { useNiveauAudio, useTranscription } from './useTranscription.js';
 import {
   demarrer, arreter, pause, reprendreApresPause, ajouterNote, modifierNote, supprimerNote,
-  changerMotsCles, changerTaille, effacerErreur, sessionActive, lireEtat,
+  changerMotsCles, changerTaille, effacerErreur, sessionActive, lireEtat, changerSource,
 } from './engine.js';
-import { listerMicros } from './audio.js';
+import { listerMicros, choisirAutomatique, estVirtuel, sonderNiveau, memoriserMicroValide } from './audio.js';
 import {
   decouperTermes, fusionnerTermes, compterMots, proposerTermes, regexTermes, decouperSurlignage,
   MAX_MOTS, SEUIL_CONSEIL, integrerCandidats, selectionner, basculerTerme, toutCocher, toutDecocher,
@@ -30,13 +31,18 @@ import {
   sessionsDuCours, lireSession, cloreSession, supprimerSession, lireMotsClesMemo, ecrireMotsCles,
 } from './sessions.js';
 import { mmss, dureeLisible, lignesSession, texteSession, markdownSession, telecharger, nomFichier, copierTexte } from './exporter.js';
-import { enregistrerLecteur } from './IndicateurGlobal.jsx';
 import { synchroTranscripts } from './synchro.js';
 import { actualiserCredits, tarifEffectif, fmtUsd } from './credits.js';
 import { CarteCredits } from './Credits.jsx';
 import '../../styles/transcription.css';
 
-const CLE_MICRO = 'medrevise.transcription.micro';
+const CLE_CHOIX = 'medrevise.transcription.source.choix'; // 'auto' | 'onglet' | deviceId (05/10)
+const RAISONS = {
+  bouclage: 'périphérique de bouclage détecté',
+  dernier: 'dernière entrée utilisée avec du son',
+  defaut: 'entrée par défaut du système',
+  absent: 'débranchée',
+};
 const CLE_SOURCE = 'medrevise.transcription.source';
 const CLE_TAILLE = 'medrevise.transcription.taille';
 const TAILLES = [['s', 'A', 'Petit'], ['m', 'A', 'Moyen'], ['l', 'A', 'Grand']];
@@ -46,28 +52,34 @@ const ecrireLS = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* 
 /* ============================================================
    BOUTON DE LA BARRE D'OUTILS
    ============================================================ */
-export function BoutonTranscrire({ courseId, onClick }) {
+/** Badge du segment « Transcript » du panneau : point rouge + chrono pendant une
+ *  session de CE cours (gris en pause). Rien sinon. */
+export function BadgeTranscript({ courseId }) {
   const e = useTranscription();
-  const ici = sessionActive() && e.courseId === courseId;
-  const ailleurs = sessionActive() && e.courseId !== courseId;
-  useEffect(() => enregistrerLecteur(courseId), [courseId]); // l'indicateur global s'efface
-  return (
-    <button type="button" className={'btn ghost sm trx-bouton' + (ici ? ' actif' : '') + (e.phase === 'paused' && ici ? ' pause' : '')}
-      onClick={onClick}
-      title={ici ? 'Transcription en cours — ouvrir le transcript' : ailleurs ? 'Une transcription tourne sur un autre cours' : 'Transcrire le cours en direct (Deepgram, français)'}>
-      {ici ? <span className="trx-point" /> : <Icon name="mic" size={14} />}
-      <span className="trx-bouton-lbl">{ici ? mmss(e.secondes) : 'Transcrire'}</span>
-    </button>
-  );
+  if (!(sessionActive() && e.courseId === courseId)) return null;
+  return <span className={'pm-live' + (e.phase === 'paused' ? ' pause' : '')}><i />{mmss(e.secondes)}</span>;
 }
 
 /* ============================================================
    FEUILLE DE DÉMARRAGE
    ============================================================ */
 export function FeuilleDemarrage({ courseId, pdfDoc, reprendre = null, onClose, onDemarre }) {
-  const [source, setSource] = useState(() => lireLS(CLE_SOURCE, 'micro'));
+  /* SOURCE (05/10) : 'auto' (défaut) | 'onglet' | deviceId — mémorisée par appareil.
+     Reprise de l'ancien réglage (source + micro) au premier passage. */
+  const [choix, setChoixBrut] = useState(() => {
+    const c = lireLS(CLE_CHOIX, null);
+    if (c) return c;
+    return lireLS(CLE_SOURCE, 'micro') === 'onglet' ? 'onglet' : 'auto';
+  });
+  const setChoix = (c) => { setChoixBrut(c); ecrireLS(CLE_CHOIX, c); };
   const [micros, setMicros] = useState([]);
-  const [micro, setMicro] = useState(() => lireLS(CLE_MICRO, 'default'));
+  const [guide, setGuide] = useState(false);
+  const selectRef = useRef(null);
+  const source = choix === 'onglet' ? 'onglet' : 'micro';
+  const retenu = choix === 'onglet' ? null
+    : choix === 'auto' ? choisirAutomatique(micros)
+    : (micros.find((m) => m.deviceId === choix) || { deviceId: choix, label: 'Entrée débranchée', raison: 'absent' });
+  const sonde = useSonde(source === 'micro' && micros.length ? retenu : null);
   /* MOTS-CLÉS (v1.1) : `memo` = { manuels, decoches, connus } mémorisé avec le cours ;
      en reprise, la liste vient de la session reprise (manuels) et n'est pas mémorisée. */
   const [memo, setMemo] = useState(reprendre ? { manuels: reprendre.keyterms || [], decoches: [], connus: [] } : null);
@@ -86,7 +98,7 @@ export function FeuilleDemarrage({ courseId, pdfDoc, reprendre = null, onClose, 
       setCandidats(c);
       setMemo(reprendre ? m : integrerCandidats(m, c)); // nouveaux proposés : cochés dans la limite
     });
-    listerMicros({ demanderAutorisation: true }).then((l) => { if (vivant) setMicros(l); });
+    listerMicros({ demanderAutorisation: true }).then((l) => { if (vivant) setMicros(l.length ? l : [{ deviceId: 'default', label: 'Micro par défaut' }]); });
     const surChangement = () => listerMicros().then((l) => vivant && setMicros(l));
     navigator.mediaDevices && navigator.mediaDevices.addEventListener && navigator.mediaDevices.addEventListener('devicechange', surChangement);
     actualiserCredits(); // « avant démarrage » : valeur fraîche si la dernière a plus d'une minute
@@ -122,16 +134,17 @@ export function FeuilleDemarrage({ courseId, pdfDoc, reprendre = null, onClose, 
 
   const lancer = async () => {
     setDemarrage(true); setErreur(null);
-    ecrireLS(CLE_SOURCE, source);
-    if (source === 'micro') ecrireLS(CLE_MICRO, micro);
+    const deviceId = retenu ? retenu.deviceId : null;
+    const avecSon = sonde.verdict === 'son';
+    sonde.arreter(); // libère l'entrée avant que le moteur ne l'ouvre
     const m = saisie.trim() ? ajouterSaisie() : memo;
     const termes = m ? selectionner(m, candidats || []).envoyes : [];
     const ok = await demarrer({
-      courseId, source, deviceId: source === 'micro' ? micro : null, keyterms: termes,
+      courseId, source, deviceId: source === 'micro' ? deviceId : null, keyterms: termes,
       fontSize: lireLS(CLE_TAILLE, 'm'), reprendre,
     });
     setDemarrage(false);
-    if (ok) { onDemarre && onDemarre(); onClose(); }
+    if (ok) { if (source === 'micro' && avecSon) memoriserMicroValide(deviceId); onDemarre && onDemarre(); onClose(); }
     else { setErreur(lireEtat().erreur); effacerErreur(); }
   };
 
@@ -142,22 +155,49 @@ export function FeuilleDemarrage({ courseId, pdfDoc, reprendre = null, onClose, 
   return (
     <Modal title={reprendre ? 'Reprendre la transcription' : 'Transcrire le cours'} onClose={onClose} width="min(560px, 94vw)">
       <div className="trx-feuille">
+        {guide ? <GuideAudio onFermer={() => setGuide(false)} /> : (
         <div className="trx-champ">
           <div className="trx-etiquette">Source audio</div>
-          <div className="seg">
-            <button type="button" className={'seg-btn' + (source === 'micro' ? ' active' : '')} onClick={() => setSource('micro')}><Icon name="mic" size={13} /> Micro</button>
-            <button type="button" className={'seg-btn' + (source === 'onglet' ? ' active' : '')} onClick={() => setSource('onglet')}><Icon name="ext" size={13} /> Onglet Chrome</button>
-          </div>
+          <select ref={selectRef} className="trx-select" value={choix} onChange={(e) => setChoix(e.target.value)} aria-label="Source audio">
+            <option value="auto">Automatique{choix === 'auto' && retenu ? ` — ${retenu.label}` : ''}</option>
+            <optgroup label="Entrées audio">
+              {micros.map((m) => <option key={m.deviceId} value={m.deviceId}>{m.label}{estVirtuel(m.label) ? ' (bouclage)' : ''}</option>)}
+              {choix !== 'auto' && choix !== 'onglet' && !micros.some((m) => m.deviceId === choix) && <option value={choix}>Entrée débranchée</option>}
+            </optgroup>
+            <optgroup label="Navigateur">
+              <option value="onglet">Onglet Chrome (Teams, Zoom ou YouTube dans Chrome)</option>
+            </optgroup>
+          </select>
+          {choix === 'auto' && retenu && (
+            <div className="trx-retenue">
+              <span>Retenue : <b>{retenu.label}</b> · {RAISONS[retenu.raison]}</span>
+              <button type="button" className="trx-lien" onClick={() => selectRef.current && (selectRef.current.focus(), selectRef.current.showPicker && selectRef.current.showPicker())}>Changer</button>
+            </div>
+          )}
           {source === 'micro' ? (
-            <select className="trx-select" value={micros.some((m) => m.deviceId === micro) ? micro : (micros[0] && micros[0].deviceId) || ''} onChange={(e) => setMicro(e.target.value)}>
-              {micros.length === 0 && <option value="default">Micro par défaut</option>}
-              {micros.map((m) => <option key={m.deviceId} value={m.deviceId}>{m.label}</option>)}
-            </select>
+            <div className="trx-sonde">
+              <span className="trx-vu large" aria-label="Niveau du son"><i style={{ transform: `scaleX(${Math.max(0.02, Math.min(1, sonde.niveau * 6))})` }} /></span>
+              <span className="trx-sonde-etat">{sonde.verdict === 'ecoute' ? 'Écoute… (3 s)' : sonde.verdict === 'son' ? 'Son détecté ✓' : sonde.verdict === 'muet' ? 'Aucun son' : sonde.verdict === 'erreur' ? 'Entrée inaccessible' : ''}</span>
+            </div>
           ) : (
-            <div className="hint trx-aide">Chrome va te demander quel onglet partager : choisis l’onglet du cours (YouTube, Teams web…) et laisse cochée « Partager aussi le son de l’onglet ». Pour Teams/Zoom en application, prends « Micro » avec un périphérique virtuel (BlackHole).</div>
+            <div className="hint trx-aide">Chrome va te demander quel onglet partager : choisis l’onglet du cours et laisse cochée « Partager aussi le son de l’onglet ».</div>
+          )}
+          {source === 'micro' && (sonde.verdict === 'muet' || sonde.verdict === 'erreur') && (
+            <div className="trx-alerte-son">
+              <div><Icon name="alert" size={13} /> {sonde.verdict === 'erreur' ? `Impossible d’écouter ${retenu ? retenu.label : 'cette entrée'} : ${sonde.message}` : <>Aucun son détecté sur <b>{retenu ? retenu.label : 'cette entrée'}</b>. Tu écoutes le cours en AirPods/casque ? Le micro ne peut pas entendre ce qui joue dans tes oreilles.</>}</div>
+              <div className="row" style={{ gap: 6, marginTop: 8 }}>
+                <button type="button" className="btn sm" onClick={() => setGuide(true)}><Icon name="info" size={12} /> Ouvrir le guide</button>
+                <button type="button" className="btn sm" onClick={() => selectRef.current && (selectRef.current.focus(), selectRef.current.showPicker && selectRef.current.showPicker())}>Choisir une autre source</button>
+              </div>
+            </div>
+          )}
+          {source === 'micro' && sonde.verdict !== 'muet' && sonde.verdict !== 'erreur' && (
+            <button type="button" className="trx-lien" style={{ alignSelf: 'flex-start' }} onClick={() => setGuide(true)}>Cours en AirPods, Teams ou Zoom ? Le guide</button>
           )}
         </div>
+        )}
 
+        {!guide && (<>
         <div className="trx-champ">
           <div className="trx-etiquette row spread">
             <span>Mots-clés du cours</span>
@@ -204,6 +244,7 @@ export function FeuilleDemarrage({ courseId, pdfDoc, reprendre = null, onClose, 
           {candidats && candidats.length === 0 && pdfDoc && !reprendre && <div className="hint trx-aide">Pas de couche texte exploitable dans ce PDF : saisis les termes à la main.</div>}
         </div>
 
+        </>)}
         {erreur && <div className="trx-erreur"><Icon name="alert" size={14} /> {erreur}</div>}
 
         <div className="row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
@@ -214,6 +255,66 @@ export function FeuilleDemarrage({ courseId, pdfDoc, reprendre = null, onClose, 
         </div>
       </div>
     </Modal>
+  );
+}
+
+/* SONDE AVANT DÉMARRAGE : écoute l'entrée retenue tant que la feuille est ouverte ;
+   verdict après 3 s (« son » / « muet »). Relancée si l'entrée change. */
+function useSonde(entree) {
+  const [niveau, setNiveau] = useState(0);
+  const [verdict, setVerdict] = useState(null); // null | ecoute | son | muet | erreur
+  const [message, setMessage] = useState('');
+  const sondeRef = useRef(null);
+  const id = entree ? entree.deviceId : null;
+  const label = entree ? entree.label : '';
+  useEffect(() => {
+    if (!id) { setVerdict(null); return undefined; }
+    let vivant = true, max = 0, dernierAffichage = 0;
+    setVerdict('ecoute'); setNiveau(0);
+    sonderNiveau({ deviceId: id, label, onNiveau: (rms) => {
+      if (!vivant) return;
+      max = Math.max(max, rms);
+      const now = Date.now();
+      if (now - dernierAffichage > 80) { dernierAffichage = now; setNiveau(rms); }
+    } }).then((s) => {
+      if (!vivant) { s.arreter(); return; }
+      sondeRef.current = s;
+      setTimeout(() => { if (vivant) setVerdict((v) => (v === 'ecoute' ? (max > 0.006 ? 'son' : 'muet') : v)); }, 3000);
+    }).catch((e) => { if (vivant) { setVerdict('erreur'); setMessage((e && e.message) || 'accès refusé'); } });
+    return () => { vivant = false; if (sondeRef.current) { sondeRef.current.arreter(); sondeRef.current = null; } };
+  }, [id, label]);
+  // une entrée muette qui se met à capter du son (casque retiré…) repasse au vert
+  useEffect(() => { if (verdict === 'muet' && niveau > 0.006) setVerdict('son'); }, [niveau, verdict]);
+  return { niveau, verdict, message, arreter: () => { if (sondeRef.current) { sondeRef.current.arreter(); sondeRef.current = null; } } };
+}
+
+/* GUIDE (petite feuille dans la feuille) : 3 façons de faire entendre le cours. */
+function GuideAudio({ onFermer }) {
+  return (
+    <div className="trx-guide">
+      <button type="button" className="trx-lien" onClick={onFermer}><Icon name="chevL" size={11} /> Retour</button>
+      <div className="trx-guide-titre">Faire entendre le cours à MedRevise</div>
+      <ol className="trx-guide-liste">
+        <li>
+          <b>Teams ou Zoom dans Chrome</b> — le plus simple. Ouvre la réunion dans un onglet Chrome
+          (pas l’application), puis choisis la source <b>« Onglet Chrome »</b> et coche « Partager
+          aussi le son de l’onglet ». Tu peux garder tes AirPods.
+        </li>
+        <li>
+          <b>Haut-parleurs + micro du Mac</b> — retire le casque, laisse le son sortir des
+          haut-parleurs : le micro du Mac l’entend. Source : <b>Automatique</b> ou « Micro MacBook ».
+        </li>
+        <li>
+          <b>BlackHole</b> — pour l’application Teams/Zoom avec AirPods :
+          <ol>
+            <li>installe BlackHole 2ch (gratuit, existential.audio) ;</li>
+            <li>ouvre <i>Configuration audio et MIDI</i> › « + » › <i>Créer un périphérique à sorties multiples</i>, coche tes AirPods <b>et</b> BlackHole ;</li>
+            <li>dans Teams/Zoom, choisis ce périphérique multi-sortie comme <b>haut-parleur</b> ;</li>
+            <li>MedRevise détecte BlackHole tout seul en source <b>Automatique</b>.</li>
+          </ol>
+        </li>
+      </ol>
+    </div>
   );
 }
 
@@ -362,7 +463,7 @@ function MenuCopie({ session, titre }) {
         </button>
       </div>
       {menu && (
-        <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={[
+        <ContextMenu fermerAuDefilement={false} x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={[
           { label: 'Copier sans horodatage', icon: 'copy', onClick: () => copier(false) },
           { label: 'Télécharger en .txt', icon: 'upload', onClick: () => telecharger(nomFichier(titre, session, 'txt'), texteSession(session), 'text/plain;charset=utf-8') },
           { label: 'Télécharger en .md', icon: 'upload', onClick: () => telecharger(nomFichier(titre, session, 'md'), markdownSession(session, titre), 'text/markdown;charset=utf-8') },
@@ -451,6 +552,8 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
   const [aSupprimer, setASupprimer] = useState(null);
   const [plein, setPlein] = useState(false);
   const [mcOuvert, setMcOuvert] = useState(false);
+  const [menuSource, setMenuSource] = useState(null);
+  const [infoSource, setInfoSource] = useState(null);
   const [focusNote, setFocusNote] = useState(null);
   const [taille, setTailleLocale] = useState(() => lireLS(CLE_TAILLE, 'm'));
 
@@ -495,7 +598,6 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
   if (ici && e.phase === 'error') {
     return (
       <div className="trx-panneau">
-        <CarteCredits compact />
         <div className="trx-erreur">
           <Icon name="alert" size={14} /> <span style={{ flex: 1 }}>{e.erreur}</span>
           <button type="button" className="btn sm" onClick={effacerErreur}>Fermer</button>
@@ -506,6 +608,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
             <ListeTranscript lignes={lignesSession(e.session)} keyterms={e.session.keyterms} taille={taille} live={false} plein={false} />
           </>
         )}
+        <CarteCredits />
       </div>
     );
   }
@@ -515,7 +618,6 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
     const lignes = lignesSession(e.session, e.interim);
     const corps = (
       <div className={'trx-panneau' + (plein ? ' plein' : '')}>
-        <CarteCredits compact />
         <div className="trx-barre">
           <Pastille e={e} />
           <span className="trx-chrono tnum">{mmss(e.secondes)}</span>
@@ -532,14 +634,28 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
           <button type="button" className={'btn sm' + (mcOuvert ? ' actif' : '')} onClick={() => setMcOuvert((v) => !v)} title="Mots-clés envoyés à Deepgram">
             <Icon name="tag" size={12} /> {e.session.keyterms.length}
           </button>
+          <button type="button" className="btn sm" title={`Source : ${e.sourceLibelle || '—'} — changer sans arrêter`}
+            onClick={async (ev) => {
+              const r = ev.currentTarget.getBoundingClientRect();
+              const l = await listerMicros();
+              setMenuSource({ x: Math.min(r.left, window.innerWidth - 280), y: r.bottom + 6, micros: l });
+            }}>
+            <Icon name="mic" size={12} />
+          </button>
           <span style={{ flex: 1 }} />
           <ChoixTaille taille={taille} onTaille={choisirTaille} />
           <button type="button" className="icon-btn sm" onClick={() => setPlein((v) => !v)} title={plein ? 'Quitter le plein écran (Échap)' : 'Plein écran (lecture à distance)'}><Icon name={plein ? 'x' : 'maximize'} size={13} /></button>
         </div>
+        {menuSource && <ContextMenu fermerAuDefilement={false} x={menuSource.x} y={menuSource.y} onClose={() => setMenuSource(null)} items={[
+          ...menuSource.micros.map((m) => ({ label: (m.label === e.sourceLibelle ? '✓ ' : '') + m.label, icon: 'mic', onClick: async () => { const r = await changerSource({ source: 'micro', deviceId: m.deviceId }); if (!r.ok) setInfoSource(r.message); } })),
+          { label: 'Onglet Chrome…', icon: 'ext', onClick: async () => { const r = await changerSource({ source: 'onglet' }); if (!r.ok) setInfoSource(r.message); } },
+        ]} />}
+        {infoSource && <div className="trx-info"><Icon name="alert" size={12} /> {infoSource} <button type="button" className="cd-ic" onClick={() => setInfoSource(null)}><Icon name="x" size={10} /></button></div>}
         {mcOuvert && <EditeurMotsCles termes={e.session.keyterms} onChange={changerMotsCles} onFermer={() => setMcOuvert(false)} />}
         <ListeTranscript lignes={lignes} keyterms={e.session.keyterms} taille={taille} live plein={plein}
           onNote={modifierNote} onSupprNote={supprimerNote} focusNoteId={focusNote} />
         <PiedSession session={e.session} titre={titre} />
+        {!plein && <CarteCredits />}
       </div>
     );
     return plein ? createPortal(corps, document.body) : corps;
@@ -549,7 +665,6 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
   if (lecture) {
     const corps = (
       <div className={'trx-panneau' + (plein ? ' plein' : '')}>
-        <CarteCredits compact />
         <div className="trx-barre">
           <button type="button" className="btn ghost sm" onClick={() => { setLecture(null); setPlein(false); }}><Icon name="chevL" size={13} /> Sessions</button>
           <span className="trx-titre-lecture">{dateCourte(lecture.startedAt)} · {dureeLisible(lecture.durationS)}</span>
@@ -563,6 +678,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
         <ResumeCout session={lecture} />
         <ListeTranscript lignes={lignesSession(lecture)} keyterms={lecture.keyterms || []} taille={taille} live={false} plein={plein} />
         <PiedSession session={lecture} titre={titre} />
+        {!plein && <CarteCredits />}
       </div>
     );
     return plein ? createPortal(corps, document.body) : corps;
@@ -572,13 +688,13 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
   const ailleurs = sessionActive() && e.courseId !== courseId;
   return (
     <div className="trx-accueil">
-      <CarteCredits />
+      <div className="trx-accueil-defile">
       {ailleurs ? (
         <div className="trx-info"><Icon name="mic" size={13} /> Une transcription tourne sur un autre cours ({mmss(e.secondes)}).
           <button type="button" className="btn sm" onClick={() => arreter()}>Arrêter</button></div>
       ) : (
         <button type="button" className="btn primary" style={{ width: '100%', justifyContent: 'center' }} onClick={onDemarrer}>
-          <Icon name="mic" size={14} /> Démarrer une transcription
+          <Icon name="mic" size={14} /> Transcrire le cours
         </button>
       )}
       {interrompue && !ailleurs && (
@@ -610,6 +726,8 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
           onConfirm={async () => { await supprimerSession(aSupprimer); setASupprimer(null); recharger(); }}
           onCancel={() => setASupprimer(null)} />
       )}
+      </div>
+      <CarteCredits />
     </div>
   );
 }

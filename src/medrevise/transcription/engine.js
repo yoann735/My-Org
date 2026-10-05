@@ -81,6 +81,7 @@ export const lireNiveau = () => ({ niveau, silencieux: etat.phase === 'live' && 
 
 /* ---------------- variables de session ---------------- */
 let capture = null;
+let generation = 0; // la capture en service ; les blocs d'une capture remplacée sont ignorés
 let ws = null;
 let connOffset = 0;
 let tampon = []; // [{ t0, pcm }]
@@ -148,7 +149,8 @@ export async function demarrer({ courseId, source = 'micro', deviceId = null, ke
   }
   jetonPret = premier.ok ? premier : null;
   try {
-    capture = await demarrerCapture({ source, deviceId, onBloc, onFin: (raison) => echec(raison, { garderSession: true }) });
+    const gen = ++generation;
+    capture = await demarrerCapture({ source, deviceId, onBloc: (d) => { if (gen === generation) onBloc(d); }, onFin: (raison) => { if (gen === generation) echec(raison, { garderSession: true }); } });
   } catch (e) {
     publier({ phase: 'error', conn: 'closed', erreur: (e && e.message) || 'Capture audio impossible.' });
     marquerVivante(null);
@@ -501,6 +503,33 @@ export function supprimerNote(id) {
   majSession((s) => ({ ...s, notes: s.notes.filter((n) => n.id !== id) }));
 }
 
+/**
+ * BASCULE DE SOURCE À CHAUD (05/10) : la nouvelle capture démarre AVANT l'arrêt de
+ * l'ancienne ; la bascule est atomique (compteur `generation`) — l'horloge du cours,
+ * le tampon et le WebSocket ne bougent pas, Deepgram reçoit un flux continu.
+ * @returns {Promise<{ ok: boolean, message?: string }>}
+ */
+export async function changerSource({ source = 'micro', deviceId = null }) {
+  if (!capture || (etat.phase !== 'live' && etat.phase !== 'paused')) return { ok: false, message: 'Aucune session en cours.' };
+  const gen = generation + 1;
+  let nouvelle;
+  try {
+    nouvelle = await demarrerCapture({ source, deviceId, onBloc: (d) => { if (gen === generation) onBloc(d); }, onFin: (raison) => { if (gen === generation) echec(raison, { garderSession: true }); } });
+  } catch (e) {
+    return { ok: false, message: (e && e.message) || 'Source indisponible.' };
+  }
+  if (!capture) { nouvelle.arreter(); return { ok: false, message: 'La session s’est arrêtée entre-temps.' }; }
+  const ancienne = capture;
+  generation = gen;
+  capture = nouvelle;
+  ancienne.arreter();
+  dernierSon = Date.now();
+  noter('source → ' + nouvelle.libelle);
+  publier({ sourceLibelle: nouvelle.libelle });
+  majSession((s) => ({ ...s, source }));
+  return { ok: true };
+}
+
 export const sessionActive = () => etat.phase === 'live' || etat.phase === 'paused' || etat.phase === 'starting' || etat.phase === 'stopping';
 
 /* ---------------- événements de la page ---------------- */
@@ -519,4 +548,4 @@ if (typeof window !== 'undefined') {
 }
 
 /* accès de test (console, banc CDP) — sans effet sur l'app */
-if (typeof window !== 'undefined') window.__transcription = { lireEtat, lireNiveau, journal };
+if (typeof window !== 'undefined') window.__transcription = { lireEtat, lireNiveau, journal, changerSource };
