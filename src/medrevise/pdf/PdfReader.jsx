@@ -84,6 +84,9 @@ import { FeuilleDemarrage, TranscriptPanel, BadgeTranscript } from '../transcrip
 import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
 import { sessionActive as transcriptionActive, lireEtat as etatTranscription } from '../transcription/engine.js';
 import { actualiserCredits } from '../transcription/credits.js';
+import { useCoucheOcr, useEtatOcr } from '../ocr/useOcr.js';
+import { relancer as relancerOcr } from '../ocr/service.js';
+import { statsCouche } from '../ocr/couches.js';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { MenuFichier } from './MenuFichier.jsx';
 import { Tableau } from '../tableau/Tableau.jsx';
@@ -469,6 +472,20 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // page affichée = celle qui passe sous la ligne de lecture (voir computeVisibleRange),
   // tenue à jour par le même défilement que le rendu virtualisé.
   const pageCourante = Math.min(nbPagesAffichees || 1, Math.max(1, pageLue));
+  /* OCR (05/10, docs/compte-rendu-ocr.md) : couche de texte reconnue des pages IMAGE,
+     tenue à jour page par page pendant le traitement (la page affichée passe d'abord).
+     Rien n'est visible par défaut : elle sert la sélection, le surlignage, la recherche
+     et les mots-clés comme une vraie couche texte. */
+  const szCourant = pageSizes[pageCourante - 1];
+  const coucheOcr = useCoucheOcr(fiche && fiche.pdfId, {
+    courseId: ficheId, titre: titreFiche, pret: !!pdfDoc,
+    page: szCourant && typeof szCourant.cle === 'number' ? szCourant.cle : pageCourante,
+  });
+  const etatOcr = useEtatOcr();
+  const ocrPagePour = (n) => (coucheOcr && typeof n === 'number' && coucheOcr.pages[n - 1]) || null;
+  const [ocrDebug, setOcrDebug] = useState(false);
+  const [detailOcr, setDetailOcr] = useState(false);
+  useEffect(() => { textMapCache.current = {}; }, [coucheOcr]); // nouvelle page reconnue : la recherche la voit
   // aller à une page : son bord haut juste sous la barre, sans la marge de 70 px
   // qu'utilisent recherche et notions (qui visent une LIGNE, pas une page).
   const allerALaPage = (n) => {
@@ -774,7 +791,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const found = [];
       for (let n = 1; n <= numPages; n++) {
         if (cancelled) return;
-        if (!textMapCache.current[n]) textMapCache.current[n] = await computePageTextMap(pdfDoc, n);
+        if (!textMapCache.current[n]) textMapCache.current[n] = await computePageTextMap(pdfDoc, n, ocrPagePour(n));
         const items = textMapCache.current[n];
         items.forEach((it, itemIdx) => {
           const s = it.str.toLowerCase();
@@ -792,7 +809,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       setSearching(false);
     })();
     return () => { cancelled = true; };
-  }, [debouncedSearch, pdfDoc, numPages]);
+  }, [debouncedSearch, pdfDoc, numPages, coucheOcr]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!matches.length) return;
@@ -884,6 +901,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       !!pending && { label: 'Remplacer la sélection', icon: 'edit', onClick: () => startEditFromSelection() },
       !!fiche.htmlId && { label: 'Voir la fiche HTML', icon: 'fileHtml', onClick: () => setSrcTab('html') },
     ] },
+    !!(fiche && fiche.pdfId) && { items: [
+      { label: libelleOcr(), icon: 'search', onClick: () => setDetailOcr(true) },
+      { label: ocrDebug ? 'Masquer la couche OCR' : 'Afficher la couche OCR', icon: 'layers', onClick: () => setOcrDebug((v) => !v) },
+    ] },
     { items: [
       { label: copiedCount ? 'Notions copiées ✓' : 'Copier les notions', icon: 'copy', onClick: copyPriority },
       canAddItem && { label: courseExportOk ? 'Copié ✓' : 'Exporter en JSON', icon: 'copy', onClick: exportAllPdfCourse },
@@ -893,6 +914,15 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       canAddItem && { label: 'Détacher le PDF', icon: 'x', danger: true, onClick: () => setDetacherPdf(true) },
     ] },
   ];
+  /* état de la reconnaissance de texte, en une ligne (menu Fichier) */
+  function libelleOcr() {
+    const enCours = etatOcr.courant && fiche && etatOcr.courant.pdfId === fiche.pdfId;
+    if (!coucheOcr) return enCours ? 'Reconnaissance de texte : en cours…' : 'Reconnaissance de texte : non lancée';
+    const st = statsCouche(coucheOcr);
+    if (coucheOcr.status !== 'complete') return `Reconnaissance de texte : en cours ${st.faites}/${coucheOcr.pageCount} pages`;
+    if (!st.ocr) return 'Reconnaissance de texte : inutile (PDF déjà en texte)';
+    return `Reconnaissance de texte : terminée · ${st.confiance} %${st.faibles.length ? ` · ${st.faibles.length} page${st.faibles.length > 1 ? 's' : ''} peu sûre${st.faibles.length > 1 ? 's' : ''}` : ''}`;
+  }
   const entete = () => (
     <div className="lecteur-entete doc">
       <div className="doc-bloc">
@@ -1874,6 +1904,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onCreateHighlight={handleCreateHighlightRequest}
                       onHighlightClick={handleHighlightClick}
                       cibleHlId={editingHl ? editingHl.id : flashHlId}
+                      ocrPage={sz.ajout ? null : ocrPagePour(n)} ocrDebug={ocrDebug}
                       onActivateEdit={setActiveEditId}
                       activeEditor={editor}
                     />
@@ -1981,8 +2012,28 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           onCancel={() => setPageASupprimer(null)} />
       )}
       {feuilleTrx && ficheId && (
-        <FeuilleDemarrage courseId={ficheId} pdfDoc={pdfDoc} reprendre={feuilleTrx.reprendre || null}
+        <FeuilleDemarrage courseId={ficheId} pdfDoc={pdfDoc} ocrPages={coucheOcr ? coucheOcr.pages : null} reprendre={feuilleTrx.reprendre || null}
           onClose={() => setFeuilleTrx(null)} onDemarre={ouvrirTranscript} />
+      )}
+      {detailOcr && fiche && fiche.pdfId && (
+        <Modal title="Reconnaissance de texte" onClose={() => setDetailOcr(false)} width="min(460px, 94vw)">
+          {(() => {
+            const st = coucheOcr ? statsCouche(coucheOcr) : null;
+            return (
+              <div className="ocr-detail">
+                <div className="ocr-detail-ligne"><span>État</span><b>{libelleOcr().replace('Reconnaissance de texte : ', '')}</b></div>
+                {st && <div className="ocr-detail-ligne"><span>Pages</span><b className="tnum">{st.ocr} reconnues · {st.natives} déjà en texte · {coucheOcr.pageCount} au total</b></div>}
+                {st && st.confiance != null && <div className="ocr-detail-ligne"><span>Confiance moyenne</span><b className="tnum">{st.confiance} %</b></div>}
+                {st && st.faibles.length > 0 && <div className="hint">Confiance faible (&lt; 70 %) : page{st.faibles.length > 1 ? 's' : ''} {st.faibles.join(', ')} — la sélection y est moins sûre (écriture manuscrite, schéma chargé, formule…).</div>}
+                <div className="hint">La reconnaissance tourne en tâche de fond et n’ajoute qu’une couche de texte invisible : le PDF et l’image ne changent pas.</div>
+                <div className="row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+                  <button type="button" className="btn sm" onClick={() => setOcrDebug((v) => !v)}><Icon name="layers" size={13} /> {ocrDebug ? 'Masquer la couche OCR' : 'Afficher la couche OCR'}</button>
+                  <button type="button" className="btn sm primary" onClick={() => { relancerOcr(fiche.pdfId, { courseId: ficheId, titre: titreFiche }); setDetailOcr(false); }}><Icon name="refresh" size={13} /> Relancer sur ce cours</button>
+                </div>
+              </div>
+            );
+          })()}
+        </Modal>
       )}
       {promptsOuverts && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOuverts(false)} />}
       {detacherPdf && (

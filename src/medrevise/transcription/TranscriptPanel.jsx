@@ -63,7 +63,7 @@ export function BadgeTranscript({ courseId }) {
 /* ============================================================
    FEUILLE DE DÉMARRAGE
    ============================================================ */
-export function FeuilleDemarrage({ courseId, pdfDoc, reprendre = null, onClose, onDemarre }) {
+export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, reprendre = null, onClose, onDemarre }) {
   /* SOURCE (05/10) : 'auto' (défaut) | 'onglet' | deviceId — mémorisée par appareil.
      Reprise de l'ancien réglage (source + micro) au premier passage. */
   const [choix, setChoixBrut] = useState(() => {
@@ -92,7 +92,7 @@ export function FeuilleDemarrage({ courseId, pdfDoc, reprendre = null, onClose, 
   useEffect(() => {
     let vivant = true;
     const memoP = reprendre ? Promise.resolve({ manuels: reprendre.keyterms || [], decoches: [], connus: [] }) : lireMotsClesMemo(courseId);
-    const candP = reprendre ? Promise.resolve([]) : proposerTermes(pdfDoc).catch(() => []);
+    const candP = reprendre ? Promise.resolve([]) : proposerTermes(pdfDoc, { ocrPages }).catch(() => []);
     Promise.all([memoP, candP]).then(([m, c]) => {
       if (!vivant) return;
       setCandidats(c);

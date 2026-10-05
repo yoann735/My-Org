@@ -35,6 +35,9 @@ import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor, linkedV2
 import { useMediaQuery } from '../shared/hooks/useMediaQuery.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
 import { IndicateurTranscription } from './transcription/IndicateurGlobal.jsx';
+import { demarrerOcr } from './ocr/service.js';
+
+let ocrDemarre = false; // démarrage unique du service OCR (voir plus bas)
 
 // C — 'documents'/'pdflist'/'transcript' ont disparu : Bibliothèque absorbe la liste
 // de documents ET rend PdfReader/SchemaEditorScreen/TranscriptEditor EMBARQUÉS dans
@@ -745,6 +748,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // monté ni modifié pendant qu'on est en mode mobile.
   // (transcription en direct : la pastille flottante suit la session dans les deux shells)
   if (isMobile) return <><MobileApp ctx={ctx} /><IndicateurTranscription /></>;
+
+  // OCR des PDF image (docs/compte-rendu-ocr.md) : démarré avec le shell bureau,
+  // une seule fois (reprise des couches incomplètes, traitement en masse initial)
+  if (!ocrDemarre) { ocrDemarre = true; setTimeout(() => { demarrerOcr(); }, 1500); }
 
   const Current = SCREENS[screen] || Dashboard;
   return (

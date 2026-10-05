@@ -30,6 +30,8 @@ const MODES_AFFICHAGE = [
 const schemaViews = (f) => ficheImages(f).length;
 const schemaCoches = (f) => totalCoches(f);
 
+import { PanneauOcrBibliotheque } from '../ocr/PanneauOcr.jsx';
+
 export function Bibliotheque({ ctx }) {
   const { db } = ctx;
   const [openFiche, setOpenFiche] = useState({});
@@ -531,6 +533,8 @@ export function Bibliotheque({ ctx }) {
         <div>
           <h1 className="serif">Bibliothèque</h1>
           <div className="sub">Tous tes cours, fiches et documents.</div>
+          {/* OCR des PDF image : progression du traitement en tâche de fond (repliable) */}
+          <PanneauOcrBibliotheque />
         </div>
         {/* « Rechercher une notion » retiré (30/09) : pas utile ici — chercher une
            notion DANS un cours se fait dans le lecteur (Ctrl/Cmd+F). Le seul bouton

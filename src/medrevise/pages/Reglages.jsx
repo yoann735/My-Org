@@ -9,6 +9,7 @@ import { isClassicUI, setClassicUI } from '../../shared/uiMode.js';
 import { wipeAll } from '../lib/storage.js';
 import { exportBackup, formatOctets } from '../lib/backupExport.js';
 import { CarteCredits } from '../transcription/Credits.jsx';
+import { CarteOcrReglages } from '../ocr/PanneauOcr.jsx';
 import { validateBackup, currentCounts, importBackup, computeCloudDiff, applyCloudTombstones } from '../lib/backupImport.js';
 
 export function Reglages({ ctx }) {
@@ -396,6 +397,7 @@ export function Reglages({ ctx }) {
         </Card>
         {/* Crédits de transcription : la MÊME carte que le panneau Transcript (v1.2) */}
         <div className="reglages-credits"><CarteCredits deplieeParDefaut /></div>
+        <CarteOcrReglages />
         <Card title="Synchronisation" icon="refresh">
           <div className="hint" style={{ marginBottom: 12 }}>{syncStatusLabel(ctx.syncState)}</div>
           <button type="button" className="btn" disabled={ctx.syncState?.status === 'syncing'} onClick={async () => { await ctx.forceSync({ complet: true }); setSyncTick((t) => t + 1); }}>

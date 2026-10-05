@@ -131,7 +131,37 @@ export const EMPTY_ARRAY = []; // référence stable pour les pages sans highlig
       un titre), et la sélection/les surlignages débordaient. On l'étire (scaleX) à la
       largeur exacte donnée par pdf.js. Les items faits d'espaces seuls ne sont PAS
       étirés : entre deux cellules de tableau, ils couvriraient toute la case vide. */
-export async function buildTextLayer(page, viewport, container) {
+/* ============================================================
+   COUCHE OCR (05/10, docs/compte-rendu-ocr.md) — une page IMAGE reçoit les mots
+   reconnus par l'OCR (ocr/pipeline.js), en unités PDF. Ils deviennent des « items »
+   au MÊME contrat que ceux de getTextContent : un par mot, dans l'ordre de lecture
+   (ligne par ligne), avec l'espace qui le suit sur la ligne et une fin de ligne
+   après le dernier. Chaque item couvre son mot ET l'espace jusqu'au mot suivant :
+   la sélection est continue, la copie rend « mot mot\nmot ». buildTextLayer (couche
+   sélectionnable) et computePageTextMap (recherche) les construisent à l'identique :
+   les ancres des surlignages (index de span) restent valables.
+   Une page qui a un vrai texte PDF garde son texte natif (ocrPage.natif).
+   ============================================================ */
+export function itemsDepuisOcr(ocrPage) {
+  const mots = (ocrPage && ocrPage.words) || [];
+  const tries = [...mots].sort((a, b) => (a.line - b.line) || (a.x - b.x));
+  const items = [];
+  for (let i = 0; i < tries.length; i++) {
+    const m = tries[i], suivant = tries[i + 1];
+    const memeLigne = suivant && suivant.line === m.line && suivant.x > m.x;
+    items.push({
+      str: m.t + (memeLigne ? ' ' : ''),
+      x: m.x, y: m.y, h: m.h,
+      w: memeLigne ? Math.max(m.w, suivant.x - m.x) : m.w,
+      eol: !memeLigne,
+    });
+  }
+  return items;
+}
+export const pageOcrUtile = (ocrPage) => !!(ocrPage && !ocrPage.natif && ocrPage.words && ocrPage.words.length);
+
+export async function buildTextLayer(page, viewport, container, ocrPage = null) {
+  if (pageOcrUtile(ocrPage)) { construireCoucheOcr(viewport, container, ocrPage); return; }
   const textContent = await page.getTextContent();
   container.replaceChildren();
   const frag = document.createDocumentFragment();
@@ -170,6 +200,33 @@ export async function buildTextLayer(page, viewport, container) {
     if (!blank && natural[k] > 0 && target > 0) parts.push(`scaleX(${target / natural[k]})`);
     if (parts.length) span.style.transform = parts.join(' ');
   });
+}
+
+function construireCoucheOcr(viewport, container, ocrPage) {
+  const k = viewport.scale;
+  container.replaceChildren();
+  const frag = document.createDocumentFragment();
+  const toFit = [];
+  for (const it of itemsDepuisOcr(ocrPage)) {
+    const span = document.createElement('span');
+    span.textContent = it.str;
+    span.className = 'pdfr-ocr-mot';
+    span.style.position = 'absolute';
+    span.style.whiteSpace = 'pre';
+    span.style.left = `${it.x * k}px`;
+    span.style.top = `${it.y * k}px`;
+    span.style.fontSize = `${Math.max(1, it.h * k)}px`;
+    span.style.fontFamily = 'sans-serif';
+    span.style.lineHeight = '1';
+    span.style.transformOrigin = '0% 0%';
+    frag.appendChild(span);
+    toFit.push([span, it.w * k]);
+    if (it.eol) frag.appendChild(document.createElement('br'));
+  }
+  container.appendChild(frag);
+  installerFinDeTexte(container);
+  const naturel = toFit.map(([span]) => span.getBoundingClientRect().width);
+  toFit.forEach(([span, cible], i) => { if (naturel[i] > 0 && cible > 0) span.style.transform = `scaleX(${cible / naturel[i]})`; });
 }
 
 /** position dans le TEXTE la plus proche d'un point écran : la ligne (span) la
@@ -434,7 +491,14 @@ export function compareHighlights(a, b) {
     du DOM) — pour la recherche (matching textuel) et la détection du bloc cliqué en
     mode édition. L'ORDRE et le FILTRE (!item.str) doivent rester identiques à
     buildTextLayer : itemIdx ici == index du <span> réel dans la textLayer. */
-export async function computePageTextMap(pdfDoc, n) {
+export async function computePageTextMap(pdfDoc, n, ocrPage = null) {
+  if (pageOcrUtile(ocrPage)) {
+    const W = ocrPage.width || 1, H = ocrPage.height || 1;
+    return itemsDepuisOcr(ocrPage).map((it) => ({
+      str: it.str, x0: it.x / W, y0: it.y / H, x1: (it.x + it.w) / W, y1: (it.y + it.h) / H,
+      fontSize: it.h / H, fontFamily: 'sans-serif', ocr: true,
+    }));
+  }
   const page = await pdfDoc.getPage(n);
   const vp = page.getViewport({ scale: 1 });
   const tc = await page.getTextContent();

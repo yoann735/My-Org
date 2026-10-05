@@ -94,7 +94,7 @@ const MOTS_VIDES = new Set(('alors aussi autre autres avec avoir beaucoup cette 
 const SUFFIXES = /(ite|ites|ose|oses|algie|algies|ectomie|tomie|plastie|scopie|graphie|gramme|logie|pathie|émie|cyte|cytes|blaste|blastes|claste|clastes|ome|omes|aire|aires|ique|iques|ale|aux|ienne|iens|oïde|oïdes|ase|ases|ine|ines|rrhée|plégie|trophie|sclérose|osis)$/i;
 const PREFIXES = /^(hypo|hyper|endo|péri|épi|intra|inter|extra|sous|sus|myo|ostéo|chondro|neuro|cardio|hémo|lipo|gluco|glyco|tendin|ligament|arthr|leuco|érythro|thrombo|fibro|kinési|proprio|vaso|broncho|gastro|hépat|néphro)/i;
 
-export async function proposerTermes(pdfDoc, { maxPages = 80, max = 150 } = {}) {
+export async function proposerTermes(pdfDoc, { maxPages = 80, max = 150, ocrPages = null } = {}) {
   if (!pdfDoc) return [];
   const n = Math.min(pdfDoc.numPages || 0, maxPages);
   const compte = new Map(); // forme normalisée → { forme, n, maj }
@@ -102,11 +102,19 @@ export async function proposerTermes(pdfDoc, { maxPages = 80, max = 150 } = {}) 
   let nbMots = 0;
   for (let p = 1; p <= n; p++) {
     let texte = '';
-    try {
-      const page = await pdfDoc.getPage(p);
-      const tc = await page.getTextContent();
-      texte = tc.items.map((it) => it.str + (it.hasEOL ? '\n' : ' ')).join('');
-    } catch (e) { continue; }
+    const ocr = ocrPages && ocrPages[p - 1];
+    if (ocr && !ocr.natif && ocr.words && ocr.words.length) {
+      // page IMAGE : les mots reconnus par l'OCR (docs/compte-rendu-ocr.md), ligne par ligne
+      const parLigne = new Map();
+      ocr.words.forEach((m) => { if (!parLigne.has(m.line)) parLigne.set(m.line, []); parLigne.get(m.line).push(m); });
+      texte = [...parLigne.values()].map((l) => l.sort((a, b) => a.x - b.x).map((m) => m.t).join(' ')).join('\n');
+    } else {
+      try {
+        const page = await pdfDoc.getPage(p);
+        const tc = await page.getTextContent();
+        texte = tc.items.map((it) => it.str + (it.hasEOL ? '\n' : ' ')).join('');
+      } catch (e) { continue; }
+    }
     const phrases = texte.split(/[.!?:\n•·–—]+/);
     for (const ph of phrases) {
       const mots = ph.match(/[\p{L}][\p{L}'’-]*[\p{L}]/gu) || [];

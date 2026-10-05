@@ -41,6 +41,7 @@ export function PdfPageContent({
   pdfDoc, pageNum, vierge = false, scale, pageHeight, dpr, highlights, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
   onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, ancrageSurlignage = false, ancrageAjout = false, onDemanderAncrage = () => {},
   onCreerTrait, onSupprimerTraits, cibleHlId,
+  ocrPage = null, ocrDebug = false, // couche OCR de cette page (docs/compte-rendu-ocr.md)
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, opaciteTrait = 1, aimantActif = true, modeCrayon = 'dessin',
   textes = [], questions = [], onPoser = () => {},
   images = [], imageActiveId = null, onImageActiver = () => {}, onImageMaj = () => {}, onImageCalque = () => {}, onImageSupprimer = () => {},
@@ -187,7 +188,7 @@ export function PdfPageContent({
       canvas.style.width = '100%'; canvas.style.height = '100%';
       canvas.getContext('2d').drawImage(horsEcran, 0, 0);
       dejaRendu.current = true;
-      await buildTextLayer(page, viewport, textLayerRef.current);
+      await buildTextLayer(page, viewport, textLayerRef.current, ocrPage);
       if (cancelled) return;
       setLayerVersion((v) => v + 1); // couche de texte prête : les ancres peuvent être résolues
       // Chantier 2 : la textLayer réelle vient d'être (re)construite pour ce scale —
@@ -201,7 +202,7 @@ export function PdfPageContent({
       clearTimeout(minuterie);
       if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (e) { /* ignore */ } }
     };
-  }, [pdfDoc, pageNum, vierge, scale, dpr, matches]);
+  }, [pdfDoc, pageNum, vierge, scale, dpr, matches, ocrPage]);
 
   /* tracé d'une NOUVELLE boîte : cliquer-glisser dessine le rectangle, un simple
      clic pose une boîte de taille par défaut au point visé. Tout est normalisé
@@ -621,6 +622,16 @@ export function PdfPageContent({
   return (
     <>
       <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
+      {/* DÉBOGAGE OCR (menu Fichier › « Afficher la couche OCR ») : les boîtes des mots,
+          en unités PDF ramenées à la page — vérifie l'alignement avec l'image */}
+      {ocrDebug && ocrPage && !ocrPage.natif && ocrPage.width > 0 && (
+        <div className="pdfr-ocr-debug" aria-hidden="true">
+          {(ocrPage.words || []).map((m, i) => (
+            <span key={i} className={m.c < 70 ? 'faible' : ''} title={`${m.t} · ${m.c} %`}
+              style={{ left: `${(m.x / ocrPage.width) * 100}%`, top: `${(m.y / ocrPage.height) * 100}%`, width: `${(m.w / ocrPage.width) * 100}%`, height: `${(m.h / ocrPage.height) * 100}%` }} />
+          ))}
+        </div>
+      )}
       <div ref={textLayerRef} className={'pdfr-textlayer outil-' + outil} onMouseUp={handleMouseUp} onCopy={handleCopy}
         onMouseMove={handleMouseMove} onMouseLeave={() => setSurvolId(null)}
         style={survolId ? { cursor: 'pointer' } : undefined} />
