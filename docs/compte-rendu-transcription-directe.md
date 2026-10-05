@@ -112,7 +112,7 @@ avant ce point est écarté.
 11. **Mots-clés du cours** : un enregistrement `kt:<id du cours>` dans le même store (synchronisé
     avec lui). Surlignage insensible à la casse et aux accents, pluriel en -s/-x toléré.
     Propositions depuis la couche texte du PDF par heuristique (suffixes/préfixes médicaux, mots
-    longs, noms propres, « canal de Havers »), 40 au plus, **non cochées** par défaut. Au-delà de
+    longs, noms propres, « canal de Havers »), 40 au plus, **non cochées** par défaut (v1 — **remplacé en v1.1** : tout coché, voir en fin de document). Au-delà de
     100 mots, les derniers termes ne sont pas envoyés (et l'UI le dit).
 12. **Id du cours** = l'id du document ouvert dans le lecteur (`ficheId`) : marche aussi pour un
     document de Prise de notes.
@@ -333,3 +333,132 @@ DEEPGRAM_LISTEN_URL=ws://localhost:54400/v1/listen npx vite --port 5199
 ```
 Piège de dev : modifier `engine.js`, `keyterms.js`, `api/…` ou `scripts/…` recharge la page
 (Vite) — c'est un rechargement en pleine session, la reprise le gère.
+
+---
+
+## v1.1 — crédits et mots-clés (05/10/2026)
+
+### Mots-clés : tout coché par défaut
+
+- **Pertinence** des termes proposés = **rareté × fréquence** : rareté = indices de
+  vocabulaire technique (suffixes/préfixes médicaux, mots longs, noms propres, « canal de
+  Havers »), fréquence amortie `1 + log2(n)` dans le PDF. Jusqu'à 150 propositions.
+- **Mémorisé avec le cours** (enregistrement `kt:<cours>`, synchronisé comme en v1) :
+  `{ terms, manuels, decoches, connus }`. Un enregistrement v1 (`terms` seul) est relu comme
+  « manuels ».
+  - les termes **saisis à la main** restent **en tête** ;
+  - un terme proposé **nouveau** est **coché** s'il tient dans la limite, sinon laissé
+    décoché (hors limite) ;
+  - un terme **décoché** reste décoché aux ouvertures suivantes (testé : 3 décochés →
+    fermeture → rechargement → toujours décochés) ;
+  - **Tout cocher** (dans la limite, les plus pertinents d'abord) / **Tout décocher**.
+- **Limite** : 100 mots (≈ 500 jetons). Compteur « N/100 » ; à 100 :
+  « 100/100 — décoche pour en ajouter d'autres ». Cocher, ajouter à la main ou ajouter en
+  session au-delà de la limite est **refusé avec un message** ; décocher un terme **ne recoche
+  rien en douce**. Garde-fou final à l'envoi (`termesEnvoyables`) : jamais plus de 100 mots,
+  ni dans l'URL ni dans `Configure`.
+- En session : un terme ajouté devient « manuel » du cours, un terme retiré passe en décoché.
+
+Tests (Chrome) : cours 28 propositions → 28/28 cochés ; décocher 3 → persistant après
+rechargement ; 130 propositions synthétiques → 100 premiers cochés, 101ᵉ refusé, décocher puis
+cocher un autre OK, Tout cocher → 100/100, Tout décocher → 0 ; dépassement réel dans
+l'interface (glossaire de myologie + termes manuels) → bandeau 100/100, refus affiché.
+
+| | |
+|---|---|
+| Tout coché par défaut, manuels en tête | ![](img/transcription-directe/12-v11-mots-cles-tout-coche.png) |
+| Limite atteinte (Tout cocher → 62/68, 100/100) | ![](img/transcription-directe/13-v11-limite-100-mots.png) |
+
+### Crédits Deepgram : méthode de calcul retenue
+
+`POST /api/deepgram-credits` — même protection que le jeton (origine + débit, code commun
+dans `api/_protection.js`, que Vercel ne publie pas comme route), **cache serveur 10 min**,
+réponse `{ remainingUsd, spentUsd, hoursUsed, effectiveRateUsdPerHour, estimatedHoursLeft,
+source, spentSource, updatedAt, stale }`.
+
+1. **Projet** : `GET /v1/projects` → le premier (jamais codé en dur).
+2. **Solde** : `GET /v1/projects/{id}/balances` → somme des montants USD → `source = "balance"`.
+3. Sinon (403) : **heures** = somme des `hours` de `GET /v1/projects/{id}/usage/breakdown?endpoint=listen`
+   depuis 2020 (repli `/usage`) ; **dépense** = somme des `dollars` de
+   `GET /v1/projects/{id}/billing/breakdown` si la clé y a droit (`spentSource = "billing"`),
+   sinon **heures × 0,0048 $/min** (`spentSource = "hours"`) ;
+   **solde = DEEPGRAM_INITIAL_CREDIT_USD (200) − dépense** → `source = "usage-estimate"`.
+4. **Tarif effectif** = dépense ÷ heures dès 0,5 h transcrite (capte le surcoût réel des
+   mots-clés quand la dépense vient du solde ou de la facturation), sinon 0,29 $/h.
+   **Heures restantes** = solde ÷ tarif effectif.
+5. Erreur Deepgram/réseau → dernière valeur connue avec `stale: true` ; clé absente →
+   `{ ok:false, code:"missing_key" }` (HTTP 200) : jamais d'erreur bloquante.
+
+**Côté app** (`transcription/credits.js`) : cache `localStorage` (affichage instantané au
+rechargement et hors ligne), rafraîchi à l'ouverture d'un cours, à l'ouverture de la feuille
+(« avant démarrage »), à la fin d'une session et par « Actualiser » — **jamais pendant une
+session** (vérifié : 0 requête de crédits pendant une session de 5 min, une seule lecture à
+l'arrêt).
+
+- Pastille « ≈ 689 h restantes » en tête du panneau Transcript, détail au survol (solde,
+  consommé, tarif effectif, « estimation », mise à jour, « dernière valeur connue ») ;
+  ambre sous 20 h, rouge sous 5 h avec « Pense à recharger Deepgram ».
+- Feuille Transcrire : « Il te reste ≈ 689 h (≈ 344 cours de 2 h). »
+- Fin de session : « Cette session : 5 min ≈ 0,03 $ » (durée × tarif effectif connu à
+  l'arrêt, figé dans la session : champ `coutUsd`).
+- Réglages → carte « Crédits de transcription » + « Actualiser ».
+
+| | |
+|---|---|
+| Pastille et détail | ![](img/transcription-directe/14-v11-pastille-credits.png) |
+| Sous 5 h | ![](img/transcription-directe/15-v11-credits-critique.png) |
+| Coût de la session | ![](img/transcription-directe/16-v11-cout-de-session.png) |
+| Réglages | ![](img/transcription-directe/17-v11-reglages-credits.png) |
+
+### Écart constaté avec la console Deepgram (compte réel, production, 05/10 16 h 30)
+
+| | `/api/deepgram-credits` (prod) | console.deepgram.com |
+|---|---|---|
+| Source | `usage-estimate`, `spentSource: hours` — la clé (rôle de base) ne lit ni le solde ni la facturation | — |
+| Heures transcrites | **0,226 h** (13,56 min) | **13,6 min** ✅ identique |
+| Dépense | 0,065 $ | 200 − 199,92 = **0,08 $** |
+| Solde | 199,93 $ | **199,92 $** |
+| Heures restantes | ≈ 689 h | ≈ 199,92 / 0,354 ≈ 565 h au tarif réel constaté |
+
+**Écart de dépense : −0,015 $ (−19 %)** : l'estimation applique 0,0048 $/min alors que le
+tarif réellement facturé ressort à ≈ 0,0059 $/min (≈ 0,354 $/h), surcoût du *keyterm
+prompting* compris. Sur le solde, l'écart reste d'un centime, mais l'estimation des **heures
+restantes est optimiste d'environ 20 %** tant que la clé ne lit pas le solde.
+**Pour un calcul exact** : donner à `DEEPGRAM_API_KEY` le rôle *Admin* (ou créer une clé
+dédiée lisant `balances`/`billing`) — la fonction bascule alors d'elle-même sur
+`source: "balance"` ou `spentSource: "billing"`, et le tarif effectif intègre le surcoût réel.
+Alternative sans changer de clé : ajuster `DEEPGRAM_INITIAL_CREDIT_USD` si le crédit initial
+n'est pas de 200 $.
+
+Tests (faux Deepgram réglable, `scripts/faux-deepgram.mjs` → `/__compte`) : solde lisible ;
+solde 403 + facturation ; solde 403 + facturation 403 (heures × tarif) ; 12 h → tarif
+effectif 0,317 $/h ; panne → `stale` ; mauvaise origine → 403 ; clé absente → pastille
+masquée, message calme dans la feuille et les Réglages ; seuils 14 h (ambre) et 3,4 h (rouge).
+
+### Variables d'environnement ajoutées
+
+| Variable | Où | Rôle |
+|---|---|---|
+| `DEEPGRAM_INITIAL_CREDIT_USD` | Vercel (facultatif) | crédit initial du compte, défaut **200** ; sert au solde estimé quand la clé ne lit pas `balances` |
+| `DEEPGRAM_CREDITS_CACHE_S` | **tests uniquement**, ne pas définir sur Vercel | durée du cache serveur (défaut 600 s) |
+
+Aucune variable obligatoire en plus ; aucun Redeploy nécessaire.
+
+### Non-régression v1.1
+
+Direct, reconnexion (coupure franche pendant la session de 5 min), note, Copier tout, sessions
+en lecture : ✅. Console : aucune erreur nouvelle. MealWeek : aucun fichier MealWeek/partagé
+modifié ; builds avant (`bcde064`) / après comparés — accueil et liste de courses
+**identiques au pixel près**.
+
+### Commits v1.1
+
+| Commit | Message |
+|---|---|
+| `9490c43` | feat(medrevise): mots-clés proposés tous cochés, décochés mémorisés par cours, limite 100 mots |
+| `75a8094` | feat(medrevise): crédits Deepgram en direct (/api/deepgram-credits) et affichage |
+| `9e90379` | test(medrevise): faux Deepgram — API de gestion réglable |
+| (ce commit) | docs(medrevise): compte-rendu v1.1 — crédits et mots-clés |
+
+Note : `9490c43` seul n'est pas cohérent (l'appel en session du nouveau format arrive dans
+`75a8094`) ; l'état livré est celui de la tête de `main`.
