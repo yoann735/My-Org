@@ -33,7 +33,7 @@ import { mmss, dureeLisible, lignesSession, texteSession, markdownSession, telec
 import { enregistrerLecteur } from './IndicateurGlobal.jsx';
 import { synchroTranscripts } from './synchro.js';
 import { actualiserCredits, tarifEffectif, fmtUsd } from './credits.js';
-import { CreditsFeuille, CreditsPastille } from './Credits.jsx';
+import { CarteCredits } from './Credits.jsx';
 import '../../styles/transcription.css';
 
 const CLE_MICRO = 'medrevise.transcription.micro';
@@ -203,8 +203,6 @@ export function FeuilleDemarrage({ courseId, pdfDoc, reprendre = null, onClose, 
           )}
           {candidats && candidats.length === 0 && pdfDoc && !reprendre && <div className="hint trx-aide">Pas de couche texte exploitable dans ce PDF : saisis les termes à la main.</div>}
         </div>
-
-        <CreditsFeuille />
 
         {erreur && <div className="trx-erreur"><Icon name="alert" size={14} /> {erreur}</div>}
 
@@ -419,11 +417,6 @@ function EditeurMotsCles({ termes, onChange, onFermer }) {
   );
 }
 
-/* en-tête discret du panneau : la pastille des crédits, à droite */
-function EnteteCredits() {
-  return <div className="trx-entete"><CreditsPastille /></div>;
-}
-
 /* résumé de session : « Cette session : 1 h 48 ≈ 0,52 $ » (calcul local : durée ×
    tarif effectif connu à la fin de la session — voir engine.js#arreter) */
 function ResumeCout({ session }) {
@@ -502,7 +495,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
   if (ici && e.phase === 'error') {
     return (
       <div className="trx-panneau">
-        <EnteteCredits />
+        <CarteCredits compact />
         <div className="trx-erreur">
           <Icon name="alert" size={14} /> <span style={{ flex: 1 }}>{e.erreur}</span>
           <button type="button" className="btn sm" onClick={effacerErreur}>Fermer</button>
@@ -522,7 +515,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
     const lignes = lignesSession(e.session, e.interim);
     const corps = (
       <div className={'trx-panneau' + (plein ? ' plein' : '')}>
-        <EnteteCredits />
+        <CarteCredits compact />
         <div className="trx-barre">
           <Pastille e={e} />
           <span className="trx-chrono tnum">{mmss(e.secondes)}</span>
@@ -556,7 +549,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
   if (lecture) {
     const corps = (
       <div className={'trx-panneau' + (plein ? ' plein' : '')}>
-        <EnteteCredits />
+        <CarteCredits compact />
         <div className="trx-barre">
           <button type="button" className="btn ghost sm" onClick={() => { setLecture(null); setPlein(false); }}><Icon name="chevL" size={13} /> Sessions</button>
           <span className="trx-titre-lecture">{dateCourte(lecture.startedAt)} · {dureeLisible(lecture.durationS)}</span>
@@ -579,7 +572,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
   const ailleurs = sessionActive() && e.courseId !== courseId;
   return (
     <div className="trx-accueil">
-      <EnteteCredits />
+      <CarteCredits />
       {ailleurs ? (
         <div className="trx-info"><Icon name="mic" size={13} /> Une transcription tourne sur un autre cours ({mmss(e.secondes)}).
           <button type="button" className="btn sm" onClick={() => arreter()}>Arrêter</button></div>

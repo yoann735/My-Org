@@ -1,112 +1,102 @@
 /* ============================================================
-   MedRevise — TRANSCRIPTION EN DIRECT : affichage des crédits Deepgram (v1.1).
-   - CreditsPastille : « ≈ 612 h restantes » dans l'en-tête du panneau Transcript,
-     détail au survol / focus (solde, consommé, tarif effectif, source, mise à jour) ;
-   - CreditsFeuille  : ligne de la feuille « Transcrire » ;
-   - CarteCreditsTranscription : carte des Réglages, avec « Actualiser ».
-   Tons neutres ; ambre sous 20 h, rouge sous 5 h (« Pense à recharger Deepgram »).
-   Aucune donnée → rien d'affiché (pastille) ou un message calme (feuille, réglages).
+   MedRevise — TRANSCRIPTION EN DIRECT : carte « Crédits Deepgram » (v1.2).
+
+   UN SEUL composant, réutilisé tel quel en haut du panneau Transcript et dans les
+   Réglages — l'information n'est plus éparpillée (la pastille à survoler et la
+   ligne de la feuille « Transcrire » de la v1.1 ont été retirées).
+
+       Crédits Deepgram
+       38,42 $ restants
+       ≈ 132 h 27 min de cours
+       [⟳ Actualiser]   mis à jour il y a 12 min
+
+   Valeurs brutes de /api/deepgram-credits : solde en $ (2 décimales), temps restant
+   = solde ÷ tarif effectif, arrondi à la minute. Seul signal : la ligne de temps
+   passe en ambre sous 5 h, en rouge sous 1 h. « Actualiser » force une relecture
+   (cache serveur ignoré), au plus une fois toutes les 30 s ; échec → la valeur
+   reste affichée et « hors ligne » remplace la date. Jamais relu pendant une
+   session (le bouton est alors inactif).
+
+   `compact` : une seule ligne « 38,42 $ · ≈ 132 h 27 min · ⟳ » — pendant une
+   session et à la lecture d'une session, pour ne pas empiéter sur le transcript.
    ============================================================ */
-import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Card } from '../components/ui.jsx';
-import { abonnerCredits, lireCredits, actualiserCredits, niveauCredits, fmtUsd, fmtHeures, fmtQuand } from './credits.js';
+import { abonnerCredits, lireCredits, actualiserCredits, attenteActualiser, niveauCredits, heuresRestantes, fmtUsd, fmtDuree, fmtQuand } from './credits.js';
+import { abonner as abonnerMoteur, lireEtat, sessionActive } from './engine.js';
 
 export const useCredits = () => useSyncExternalStore(abonnerCredits, lireCredits);
 
-function Detail({ d }) {
-  const estimation = d.source !== 'balance';
-  return (
-    <div className="trx-credits-detail">
-      <div className="trx-cd-ligne"><span>Solde{estimation ? ' (estimation)' : ''}</span><b className="tnum">{fmtUsd(d.remainingUsd)}</b></div>
-      <div className="trx-cd-ligne"><span>Consommé</span><b className="tnum">{fmtUsd(d.spentUsd)}{d.hoursUsed != null ? ` · ${fmtHeures(d.hoursUsed)}` : ''}</b></div>
-      <div className="trx-cd-ligne"><span>Tarif effectif</span><b className="tnum">{fmtUsd(d.effectiveRateUsdPerHour)} / h</b></div>
-      <div className="trx-cd-ligne"><span>Restant</span><b className="tnum">≈ {fmtHeures(d.estimatedHoursLeft)}</b></div>
-      <div className="trx-cd-note">
-        {estimation
-          ? `Estimation : solde initial − ${d.spentSource === 'billing' ? 'dépense facturée' : 'heures × 0,0048 $/min'} (la clé ne permet pas de lire le solde).`
-          : 'Solde lu sur le compte Deepgram.'}
-        {d.hoursUsed != null && d.hoursUsed < 0.5 ? ' Tarif par défaut (0,29 $/h) tant que moins de 30 min ont été transcrites.' : ''}
-      </div>
-      <div className="trx-cd-note">Mis à jour {fmtQuand(d.updatedAt)}{d.stale ? ' — dernière valeur connue (Deepgram injoignable)' : ''}.</div>
-    </div>
-  );
+/* re-rendu lent : « il y a N min » et la fin du délai de 30 s avancent seuls */
+function useHorloge(ms) {
+  const [, setT] = useState(0);
+  useEffect(() => { const id = setInterval(() => setT((t) => t + 1), ms); return () => clearInterval(id); }, [ms]);
 }
 
-/** Pastille de l'en-tête du panneau. */
-export function CreditsPastille() {
-  const { donnees: d } = useCredits();
-  const ref = useRef(null);
-  const [pos, setPos] = useState(null);
-  if (!d) return null;
-  const niveau = niveauCredits(d.estimatedHoursLeft);
-  const ouvrir = () => {
-    const r = ref.current && ref.current.getBoundingClientRect();
-    if (r) setPos({ x: Math.max(8, Math.min(r.right - 280, window.innerWidth - 288)), y: r.bottom + 6 });
-  };
-  return (
-    <>
-      <span ref={ref} className={'trx-credits ' + niveau + (d.stale ? ' stale' : '')} tabIndex={0}
-        onMouseEnter={ouvrir} onMouseLeave={() => setPos(null)} onFocus={ouvrir} onBlur={() => setPos(null)}
-        aria-label={`Crédits Deepgram : environ ${fmtHeures(d.estimatedHoursLeft)} restantes`}>
-        {niveau !== 'ok' && <Icon name="alert" size={11} />}≈ {fmtHeures(d.estimatedHoursLeft)} restantes
-      </span>
-      {pos && createPortal(
-        <div className="trx-credits-pop" style={{ left: pos.x, top: pos.y }} role="tooltip">
-          {niveau === 'critique' && <div className="trx-cd-alerte">Pense à recharger Deepgram.</div>}
-          <Detail d={d} />
-        </div>,
-        document.body,
-      )}
-    </>
-  );
-}
-
-/** Ligne « Il te reste ≈ … » de la feuille de démarrage. */
-export function CreditsFeuille() {
-  const { donnees: d, erreur } = useCredits();
-  if (!d) {
-    if (!erreur) return null;
-    return <div className="trx-credits-ligne"><Icon name="info" size={13} /> Crédits Deepgram indisponibles ({erreur.message.replace(/\.$/, '')}).</div>;
-  }
-  const niveau = niveauCredits(d.estimatedHoursLeft);
-  const cours = Math.floor((d.estimatedHoursLeft || 0) / 2);
-  return (
-    <div className={'trx-credits-ligne ' + niveau}>
-      <Icon name={niveau === 'ok' ? 'clock' : 'alert'} size={13} />
-      <span>
-        Il te reste ≈ <b>{fmtHeures(d.estimatedHoursLeft)}</b> ({cours > 0 ? `≈ ${cours.toLocaleString('fr-FR')} cours de 2 h` : 'moins d’un cours de 2 h'})
-        {d.stale ? ' — dernière valeur connue' : ''}.
-        {niveau === 'critique' && <b> Pense à recharger Deepgram.</b>}
-      </span>
-    </div>
-  );
-}
-
-/** Carte des Réglages. */
-export function CarteCreditsTranscription() {
+export function CarteCredits({ compact = false }) {
   const { donnees: d, erreur, chargement } = useCredits();
-  const premier = useRef(false);
-  useLayoutEffect(() => { if (!premier.current) { premier.current = true; actualiserCredits(); } }, []);
+  useSyncExternalStore(abonnerMoteur, lireEtat); // le bouton suit le début/fin de session
+  useHorloge(compact ? 60000 : 15000);
+  const enSession = sessionActive();
+  const attente = attenteActualiser();
+  // le bouton redevient actif pile à la fin des 30 s (pas au prochain tic de l'horloge)
+  const [, setReveil] = useState(0);
+  useEffect(() => {
+    if (attente <= 0) return undefined;
+    const id = setTimeout(() => setReveil((n) => n + 1), attente + 50);
+    return () => clearTimeout(id);
+  }, [attente > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  const horsLigne = !!erreur && erreur.code !== 'missing_key';
+  const heures = heuresRestantes(d);
+  const niveau = niveauCredits(heures);
+
+  const bouton = (
+    <button type="button" className={'trx-cc-actualiser' + (compact ? ' icone' : '') + (chargement ? ' tourne' : '')}
+      disabled={chargement || enSession || attente > 0}
+      title={enSession ? 'Pas de relecture pendant une transcription' : attente > 0 ? `Patiente ${Math.ceil(attente / 1000)} s avant d’actualiser à nouveau` : 'Relire les crédits sur Deepgram maintenant'}
+      onClick={() => actualiserCredits({ force: true })}>
+      <Icon name="refresh" size={compact ? 12 : 13} />{!compact && ' Actualiser'}
+    </button>
+  );
+
+  if (compact) {
+    return (
+      <div className="trx-carte-credits compacte" aria-label="Crédits Deepgram">
+        {d ? (
+          <>
+            <span className="tnum">{fmtUsd(d.remainingUsd)}</span>
+            <span className="trx-cc-sep">·</span>
+            <span className={'tnum trx-cc-temps ' + niveau}>≈ {fmtDuree(heures)}</span>
+          </>
+        ) : <span className="trx-cc-gris">{erreur ? 'Crédits indisponibles' : 'Crédits…'}</span>}
+        {horsLigne && <span className="trx-cc-gris">· hors ligne</span>}
+        <span style={{ flex: 1 }} />
+        {bouton}
+      </div>
+    );
+  }
+
   return (
-    <Card title="Crédits de transcription" icon="mic">
-      {d ? (
-        <>
-          <div className={'trx-credits-grand ' + niveauCredits(d.estimatedHoursLeft)}>≈ {fmtHeures(d.estimatedHoursLeft)} <span>de transcription restantes</span></div>
-          {niveauCredits(d.estimatedHoursLeft) === 'critique' && <div className="trx-cd-alerte">Pense à recharger Deepgram (console.deepgram.com).</div>}
-          <Detail d={d} />
-        </>
-      ) : (
-        <div className="hint" style={{ marginBottom: 10 }}>
-          {erreur ? erreur.message : chargement ? 'Lecture des crédits Deepgram…' : 'Aucune donnée pour l’instant.'}
+    <div className="card trx-carte-credits">
+      <div className="card-body">
+        <div className="trx-cc-titre">Crédits Deepgram</div>
+        {d ? (
+          <>
+            <div className="trx-cc-montant tnum">{fmtUsd(d.remainingUsd)} <span>restants</span></div>
+            <div className={'trx-cc-temps tnum ' + niveau}>≈ {fmtDuree(heures)} <span>de cours</span></div>
+          </>
+        ) : (
+          <div className="trx-cc-gris" style={{ margin: '4px 0 2px' }}>
+            {erreur ? erreur.message : chargement ? 'Lecture des crédits…' : 'Pas encore de valeur.'}
+          </div>
+        )}
+        <div className="trx-cc-pied">
+          {bouton}
+          <span className={'trx-cc-quand' + (horsLigne ? ' trx-cc-gris' : '')}>
+            {horsLigne ? 'hors ligne' : d ? 'mis à jour ' + fmtQuand(d.updatedAt) : ''}
+          </span>
         </div>
-      )}
-      {d && erreur && <div className="hint" style={{ marginTop: 8 }}>Dernier essai : {erreur.message}</div>}
-      <button type="button" className="btn" style={{ marginTop: 12 }} disabled={chargement} onClick={() => actualiserCredits({ force: true })}>
-        <Icon name="refresh" size={15} /> {chargement ? 'Actualisation…' : 'Actualiser'}
-      </button>
-      <div className="hint" style={{ marginTop: 8, fontSize: 11.5 }}>Les crédits ne sont jamais relus pendant une transcription. Côté serveur, la valeur est mise en cache 10 min.</div>
-    </Card>
+      </div>
+    </div>
   );
 }

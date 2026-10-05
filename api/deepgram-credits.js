@@ -20,7 +20,7 @@
       mots-clés quand la dépense vient du solde ou de la facturation), sinon
       0,29 $/h ; heures restantes = solde / tarif effectif.
 
-   CACHE : 10 min en mémoire (par instance). Erreur Deepgram/réseau → dernière
+   CACHE : 10 min en mémoire (par instance), sauf ?force=1. Erreur Deepgram/réseau → dernière
    valeur connue avec stale: true ; jamais rien d'autre qu'un JSON lisible.
    ============================================================ */
 import { refuser, creerLimiteur, baseDeepgram } from './_protection.js';
@@ -122,7 +122,10 @@ export default async function handler(req, res) {
   const cle = process.env.DEEPGRAM_API_KEY;
   if (!cle) return res.status(200).json({ ok: false, code: 'missing_key', message: 'Clé Deepgram manquante côté serveur.' });
 
-  if (derniere && Date.now() - derniere.t < CACHE_MS) {
+  // ?force=1 (bouton « Actualiser », v1.2) : ignore le cache — le client s'y limite à
+  // un appel / 30 s, et le limiteur par IP ci-dessus borne l'abus côté serveur
+  const force = /(?:^|[?&])force=1(?:&|$)/.test(String(req.url || '').split('?')[1] || '');
+  if (!force && derniere && Date.now() - derniere.t < CACHE_MS) {
     return res.status(200).json({ ...derniere.valeur, cached: true });
   }
   try {

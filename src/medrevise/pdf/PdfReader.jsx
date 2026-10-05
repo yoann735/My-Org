@@ -82,6 +82,7 @@ import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { BoutonTranscrire, FeuilleDemarrage, TranscriptPanel } from '../transcription/TranscriptPanel.jsx';
 import { sessionActive as transcriptionActive, lireEtat as etatTranscription } from '../transcription/engine.js';
+import { actualiserCredits } from '../transcription/credits.js';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { MenuFichier } from './MenuFichier.jsx';
 import { Tableau } from '../tableau/Tableau.jsx';
@@ -244,6 +245,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (window.matchMedia('(max-width: 900px)').matches) setMobileView('items'); // même seuil que .pdfr-mobile-toggle (etudes.css)
     setOngletDemande((o) => ({ id: 'transcript', n: (o ? o.n : 0) + 1 }));
   };
+  // crédits Deepgram lus dès l'ouverture du cours (v1.2), quel que soit l'onglet affiché :
+  // la carte du panneau Transcript a déjà sa valeur quand on y arrive
+  useEffect(() => { if (ficheId) actualiserCredits(); }, [ficheId]);
   const clicTranscrire = () => {
     ouvrirTranscript();
     if (!(transcriptionActive() && etatTranscription().courseId === ficheId)) setFeuilleTrx({});

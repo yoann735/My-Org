@@ -8,7 +8,7 @@ import { Card, EdTop, Switch, matiereMeta, syncStatusLabel, SyncIndicator } from
 import { isClassicUI, setClassicUI } from '../../shared/uiMode.js';
 import { wipeAll } from '../lib/storage.js';
 import { exportBackup, formatOctets } from '../lib/backupExport.js';
-import { CarteCreditsTranscription } from '../transcription/Credits.jsx';
+import { CarteCredits } from '../transcription/Credits.jsx';
 import { validateBackup, currentCounts, importBackup, computeCloudDiff, applyCloudTombstones } from '../lib/backupImport.js';
 
 export function Reglages({ ctx }) {
@@ -394,7 +394,8 @@ export function Reglages({ ctx }) {
           <div className="hint" style={{ marginBottom: 12 }}>100 % local : fiches, images et PDF sont stockés sur cet appareil (IndexedDB).</div>
           <button type="button" className="btn" style={{ color: 'var(--crit)' }} onClick={resetData}><Icon name="trash" size={15} /> Réinitialiser MedRevise</button>
         </Card>
-        <CarteCreditsTranscription />
+        {/* Crédits de transcription : la MÊME carte que le panneau Transcript (v1.2) */}
+        <div className="reglages-credits"><CarteCredits /></div>
         <Card title="Synchronisation" icon="refresh">
           <div className="hint" style={{ marginBottom: 12 }}>{syncStatusLabel(ctx.syncState)}</div>
           <button type="button" className="btn" disabled={ctx.syncState?.status === 'syncing'} onClick={async () => { await ctx.forceSync({ complet: true }); setSyncTick((t) => t + 1); }}>
