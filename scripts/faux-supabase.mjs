@@ -11,6 +11,7 @@ import fs from 'fs';
 const rows = new Map(); // store:id → row
 const blobs = new Map(); // id → { type, buf }
 const journal = [];
+let refuses = new Set((process.env.REFUSER_STORES || '').split(',').filter(Boolean));
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS', 'Access-Control-Expose-Headers': 'Content-Range' };
 const lire = (req) => new Promise((r) => { const c = []; req.on('data', (d) => c.push(d)); req.on('end', () => r(Buffer.concat(c))); });
 function multipart(buf, ct) {
@@ -36,8 +37,12 @@ http.createServer(async (req, res) => {
   const out = (code, obj, extra = {}) => { res.writeHead(code, { 'Content-Type': 'application/json', ...cors, ...extra }); res.end(JSON.stringify(obj)); };
   journal.push({ t: new Date().toISOString(), m: req.method, p: u.pathname, q: u.search.slice(0, 160) });
   if (u.pathname === '/__etat') return out(200, { rows: [...rows.values()], blobs: [...blobs.keys()].map((k) => ({ id: k, taille: blobs.get(k).buf.length, type: blobs.get(k).type })), journal: journal.slice(-200) });
+  // PANNE INJECTABLE (05/10, transcription) : POST /__refuser?stores=a,b → la RPC refuse
+  // tout lot contenant ces stores (comme une contrainte CHECK côté base) ; ?stores= rétablit.
+  if (u.pathname === '/__refuser') { refuses = new Set((u.searchParams.get('stores') || '').split(',').filter(Boolean)); return out(200, { refuses: [...refuses] }); }
   if (u.pathname === '/rest/v1/rpc/medrevise_push') {
     const { records } = JSON.parse(body.toString() || '{}'); let n = 0;
+    if ((records || []).some((r) => refuses.has(r.store))) return out(400, { code: '23514', message: 'new row violates check constraint (panne simulée)' });
     for (const r of records || []) {
       const k = r.store + ':' + r.record_id, cur = rows.get(k);
       if (!cur || Date.parse(r.updated_at) > Date.parse(cur.updated_at)) { rows.set(k, { store: r.store, record_id: r.record_id, data: r.data || {}, updated_at: r.updated_at, deleted: !!r.deleted }); n++; }
@@ -46,7 +51,12 @@ http.createServer(async (req, res) => {
   }
   if (u.pathname === '/rest/v1/medrevise_records' && req.method === 'GET') {
     let liste = [...rows.values()];
-    for (const [k, v] of u.searchParams) if (!['select', 'order', 'offset', 'limit'].includes(k) && v.startsWith('eq.')) liste = liste.filter((r) => String(r[k]) === v.slice(3));
+    for (const [k, v] of u.searchParams) {
+      if (['select', 'order', 'offset', 'limit'].includes(k)) continue;
+      if (v.startsWith('eq.')) liste = liste.filter((r) => String(r[k]) === v.slice(3));
+      const mIn = /^(not\.)?in\.\((.*)\)$/.exec(v);
+      if (mIn) { const vals = mIn[2].split(',').map((x) => x.replace(/^"|"$/g, '')); liste = liste.filter((r) => (mIn[1] ? !vals.includes(String(r[k])) : vals.includes(String(r[k])))); }
+    }
     liste.sort((a, b) => (a.store + '\u0000' + a.record_id).localeCompare(b.store + '\u0000' + b.record_id));
     let off = Number(u.searchParams.get('offset') || 0), lim = Number(u.searchParams.get('limit') || 1e9);
     const rg = /(\d+)-(\d+)/.exec(req.headers['range'] || ''); if (rg) { off = +rg[1]; lim = +rg[2] - off + 1; }
