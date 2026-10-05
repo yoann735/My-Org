@@ -43,6 +43,9 @@ SPA Vite + React 18 + Tailwind, déployée sur **Vercel** (auto-deploy au push s
 - `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` — optionnelles (sync MealWeek **et**
   MedRevise, même projet). Absentes →
   app 100 % locale. Fichier `.env` local (gitignored), `.env.example` fourni.
+- `DEEPGRAM_API_KEY` — SERVEUR uniquement (`api/deepgram-token.js`, transcription en direct de
+  MedRevise). Absente → l'UI affiche « Clé Deepgram manquante côté serveur ». Voir
+  `docs/compte-rendu-transcription-directe.md` (tests locaux : `scripts/faux-deepgram.mjs`).
 
 ## Conventions (importantes)
 - **UI et réponses en français.**
