@@ -57,6 +57,7 @@ export function PdfToolbar({
   onAjouterPage = null, onAjouterImage = null,
   avantPanneau = null, // bascule de disposition PDF / Les deux / Tableau (04/10)
   boutonDessins = null, // menu des dessins reçus du téléphone (02/10 soir)
+  boutonTranscrire = null, // transcription en direct du cours (05/10)
 }) {
   const [menu, setMenu] = useState(null);
   /* LARGEUR RÉELLE de la barre (01/10) : dans un panneau étroit (Apprentissage,
@@ -197,6 +198,7 @@ export function PdfToolbar({
           )}
           </>)}
           {avantPanneau}
+          {boutonTranscrire}
           {/* le panneau de droite est le MÊME sur PDF et HTML : items de la fiche
               (QCM, flashcards, exercices, Feynman) + notions surlignées */}
           <button className="btn ghost sm" onClick={() => setPanelOpen((v) => !v)} title={panelOpen ? 'Replier le panneau' : 'Ouvrir le panneau : items de la fiche et notions surlignées'}>

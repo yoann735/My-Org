@@ -80,6 +80,8 @@ import { htmlVersTiptap } from './htmlVersTiptap.js';
 import { MenuDessins, ArriveeDessin, TYPE_GLISSER } from './OngletDessins.jsx';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
+import { BoutonTranscrire, FeuilleDemarrage, TranscriptPanel } from '../transcription/TranscriptPanel.jsx';
+import { sessionActive as transcriptionActive, lireEtat as etatTranscription } from '../transcription/engine.js';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { MenuFichier } from './MenuFichier.jsx';
 import { Tableau } from '../tableau/Tableau.jsx';
@@ -232,6 +234,20 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [searching, setSearching] = useState(false);
 
   const [panelOpen, setPanelOpen] = useState(panneauNotionsOuvert);
+  /* TRANSCRIPTION EN DIRECT (05/10, docs/compte-rendu-transcription-directe.md) :
+     onglet « Transcript » du panneau de droite + feuille de démarrage. La session
+     elle-même vit dans transcription/engine.js, hors de ce composant. */
+  const [feuilleTrx, setFeuilleTrx] = useState(null); // null | { reprendre }
+  const [ongletDemande, setOngletDemande] = useState(null);
+  const ouvrirTranscript = () => {
+    setPanelOpen(true);
+    if (window.matchMedia('(max-width: 900px)').matches) setMobileView('items'); // même seuil que .pdfr-mobile-toggle (etudes.css)
+    setOngletDemande((o) => ({ id: 'transcript', n: (o ? o.n : 0) + 1 }));
+  };
+  const clicTranscrire = () => {
+    ouvrirTranscript();
+    if (!(transcriptionActive() && etatTranscription().courseId === ficheId)) setFeuilleTrx({});
+  };
 
   /* TABLEAU type Miro (04/10, docs/mecanique-miro.md) — DISPOSITION : « pdf » (comme
      avant), « deux » (PDF | tableau, poignée réglable), « tableau » (plein, le PDF reste
@@ -1649,6 +1665,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={highlights.length}
         actionsDocument={afficherEntete ? [] : actionsDocument /* avec l'en-tête, tout est dans « Fichier » */}
 
+        boutonTranscrire={ficheId ? <BoutonTranscrire courseId={ficheId} onClick={clicTranscrire} /> : null}
         onAjouterPage={pdfDoc ? () => insererPageApres(pageCourante - 1) : null}
         boutonDessins={pdfDoc && srcTab === 'pdf' && ficheId ? (
           <MenuDessins dessins={dessins} essai={essaiDessins} pdfPret={!!pageSizes.length}
@@ -1863,7 +1880,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <CourseItemsSidebar ctx={ctx} ficheId={ficheReelle ? ficheReelle.id : null}
           ongletsEnPlus={[
             { id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length, contenu: notionsPdf },
+            ficheId && {
+              id: 'transcript', label: 'Transcript', icon: 'mic', plein: true,
+              contenu: <TranscriptPanel courseId={ficheId} titre={titreFiche}
+                onDemarrer={() => setFeuilleTrx({})} onReprendre={(s) => setFeuilleTrx({ reprendre: s })} />,
+            },
           ]}
+          ongletDemande={ongletDemande}
           ongletInitial={ficheReelle ? null : 'notions'}
           replie={!panelOpen} onReplier={(v) => setPanelOpen(!v)} />
       </div>
@@ -1935,6 +1958,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           confirmLabel="Retirer la page"
           onConfirm={() => supprimerPageAjoutee(pageASupprimer)}
           onCancel={() => setPageASupprimer(null)} />
+      )}
+      {feuilleTrx && ficheId && (
+        <FeuilleDemarrage courseId={ficheId} pdfDoc={pdfDoc} reprendre={feuilleTrx.reprendre || null}
+          onClose={() => setFeuilleTrx(null)} onDemarre={ouvrirTranscript} />
       )}
       {promptsOuverts && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOuverts(false)} />}
       {detacherPdf && (

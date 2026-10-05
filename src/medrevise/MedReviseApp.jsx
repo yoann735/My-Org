@@ -34,6 +34,7 @@ import { todayISO, startAdaptive } from './lib/sm2.js';
 import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor, linkedV2Questions } from './lib/planning.js';
 import { useMediaQuery } from '../shared/hooks/useMediaQuery.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
+import { IndicateurTranscription } from './transcription/IndicateurGlobal.jsx';
 
 // C — 'documents'/'pdflist'/'transcript' ont disparu : Bibliothèque absorbe la liste
 // de documents ET rend PdfReader/SchemaEditorScreen/TranscriptEditor EMBARQUÉS dans
@@ -742,7 +743,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // petit écran : shell mobile dédié (révision uniquement) — même ctx, mêmes
   // données, aucune logique dupliquée. Le shell desktop ci-dessous n'est ni
   // monté ni modifié pendant qu'on est en mode mobile.
-  if (isMobile) return <MobileApp ctx={ctx} />;
+  // (transcription en direct : la pastille flottante suit la session dans les deux shells)
+  if (isMobile) return <><MobileApp ctx={ctx} /><IndicateurTranscription /></>;
 
   const Current = SCREENS[screen] || Dashboard;
   return (
@@ -759,6 +761,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
         <Current ctx={ctx} key={screen} />
       </div>
       <MedBottomNav current={screen} onNav={setScreen} focus={focusNotes} />
+      <IndicateurTranscription />
     </div>
   );
 }

@@ -21,8 +21,12 @@
    - `ficheId` absent (document de notes, structure d'anatomie) : pas d'items
      possibles, seuls les onglets en plus s'affichent ;
    - `replie` / `onReplier` : repli piloté de l'extérieur (bouton de la barre).
+   - `ongletDemande` ({ id, n }) : bascule vers l'onglet `id` à chaque nouveau `n`
+     (bouton « Transcrire » de la barre → onglet Transcript) ;
+   - un onglet en plus marqué `plein` gère lui-même son défilement (Transcript :
+     auto-défilement collé en bas) — pas de conteneur défilant autour.
    ============================================================ */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Tex } from './Tex.jsx';
 import { ConfirmModal, SplitHandle } from './ui.jsx';
@@ -33,7 +37,7 @@ import { toInternalItem } from '../lib/adapter.js';
 import { OcclusionEditorModal, OcclusionView, estOcclusion } from './OcclusionImage.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from './FlashcardImage.jsx';
 
-export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null }) {
+export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null }) {
   const avecItems = !!ficheId;
   const extras = (ongletsEnPlus || []).filter(Boolean);
   const ficheItems = useMemo(() => (avecItems ? (ctx.db.questions || []).filter((q) => q.ficheId === ficheId) : []), [ctx.db, ficheId, avecItems]);
@@ -45,6 +49,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
 
   const [activeType, setActiveType] = useState(() => ongletInitial || (avecItems ? 'qcm' : (extras[0] && extras[0].id) || 'qcm'));
   const extraActif = extras.find((o) => o.id === activeType) || null;
+  const nDemande = ongletDemande ? ongletDemande.n : 0;
+  useEffect(() => { if (ongletDemande && ongletDemande.id) setActiveType(ongletDemande.id); }, [nDemande]); // eslint-disable-line react-hooks/exhaustive-deps
   const items = useMemo(() => ficheItems.filter((q) => q.type === activeType), [ficheItems, activeType]);
   const activeLabel = (TYPES.find((t) => t.id === activeType) || {}).label || '';
   // repli HORIZONTAL uniquement, via la même poignée que la liste de gauche
@@ -115,7 +121,9 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
       </div>
 
       {extraActif ? (
-        <div className="pis-scroll scroll pis-extra">{extraActif.contenu}</div>
+        extraActif.plein
+          ? <div className="pis-extra-plein">{extraActif.contenu}</div>
+          : <div className="pis-scroll scroll pis-extra">{extraActif.contenu}</div>
       ) : (
       <div className="pis-scroll scroll">
         {activeType === 'flashcard' && avecItems && <ThemeFicheFlashcards ctx={ctx} ficheId={ficheId} />}
