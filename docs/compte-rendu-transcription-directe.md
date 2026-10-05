@@ -462,3 +462,94 @@ modifié ; builds avant (`bcde064`) / après comparés — accueil et liste de c
 
 Note : `9490c43` seul n'est pas cohérent (l'appel en session du nouveau format arrive dans
 `75a8094`) ; l'état livré est celui de la tête de `main`.
+
+---
+
+## v1.2 — carte crédits (05/10/2026)
+
+**Ce qui change** : la pastille « ≈ N h restantes » (et son détail au survol) et la ligne de
+la feuille « Transcrire » sont **supprimées**. À la place, **un seul bloc**, une carte de la DA
+(`card`, comme les cartes du panneau) **en haut du panneau Transcript**, juste sous les onglets,
+au-dessus du bouton Démarrer et de la liste des sessions — lisible sans survol ni clic :
+
+```
+CRÉDITS DEEPGRAM
+199,93 $ restants
+≈ 689 h 25 min de cours
+[⟳ Actualiser]   mis à jour il y a 12 min
+```
+
+- **Valeurs brutes** de `/api/deepgram-credits` (logique inchangée) : solde en $ à 2 décimales ;
+  temps restant = **solde ÷ tarif effectif**, en heures et minutes, arrondi à la minute. Pas de
+  pourcentage, pas de barre, pas de « ≈ N cours ».
+- **Seul signal** : la ligne de temps passe en **ambre sous 5 h**, en **rouge sous 1 h** (aucun
+  autre message).
+- **Actualiser** : relecture immédiate avec `?force=1` (le cache serveur de 10 min est ignoré —
+  le limiteur par IP du serveur reste actif), **au plus un appel toutes les 30 s côté client**
+  (bouton inactif, info-bulle « Patiente N s », réactivé pile à la fin du délai) ; l'icône
+  tourne pendant la requête. Échec → la valeur reste affichée et **« hors ligne »** (gris)
+  remplace « mis à jour il y a… ».
+- **Composant unique** `CarteCredits` (`transcription/Credits.jsx`) : le même dans le panneau et
+  dans les **Réglages** (aucune copie). Variante `compact` = une ligne
+  « 199,93 $ · ≈ 689 h 25 min · ⟳ » **pendant une session et à la lecture d'une session**, pour
+  ne pas empiéter sur le transcript ; le bouton y est inactif pendant une session (les crédits ne
+  sont jamais relus pendant une transcription).
+- **Lecture des crédits dès l'ouverture du cours** (depuis le lecteur, quel que soit l'onglet
+  affiché) : en arrivant sur Transcript, la carte a déjà sa valeur. Le dernier résultat reste en
+  cache local (affichage instantané au rechargement).
+- Inchangé : la ligne de fin de session « Cette session : … ≈ … $ ».
+
+### Décisions prises seul (v1.2)
+
+1. **« Visible dès l'ouverture d'un cours »** interprété comme : aucune action pour *voir* ou
+   *charger* la valeur une fois sur l'onglet Transcript. Le panneau de droite continue de
+   s'ouvrir sur l'onglet QCM (changer l'onglet par défaut de tous les cours aurait été un effet
+   de bord) ; la lecture, elle, part dès l'ouverture du cours.
+2. **Où la carte apparaît** : complète sur l'accueil du panneau (au-dessus des sessions) ;
+   compacte (une ligne de 32 px) en direct, en lecture et sur l'écran d'erreur.
+3. **Réglages** : la carte porte son propre titre « Crédits Deepgram » plutôt que d'être placée
+   dans une seconde carte titrée « Crédits de transcription » (carte dans une carte).
+4. **Fin de session** : le rafraîchissement automatique utilise aussi `force=1` (pour voir la
+   consommation de la session) et partage la limite de 30 s du bouton.
+5. **Téléphone** : le shell mobile n'a pas de lecteur PDF (voir § 2, décision 16) — donc pas de
+   carte ; sur tablette / fenêtre étroite (≤ 900 px), carte complète 116 px à l'accueil, une
+   ligne en session.
+
+### Tests (Chrome, CDP — faux Deepgram réglé sur les valeurs réelles du compte)
+
+| Test | Résultat |
+|---|---|
+| Cache local vidé, ouverture du cours (onglet QCM affiché) | ✅ crédits déjà lus ; onglet Transcript → carte « 199,93 $ restants · ≈ 689 h 25 min de cours · mis à jour à l'instant » |
+| Cohérence console Deepgram (prod, `/api/deepgram-credits`) | ✅ 199,93 $ / 0,226 h ; console : 199,92 $ / 13,6 min — même écart d'1 centime qu'en v1.1 (estimation, voir § v1.1) |
+| `force=1` | ✅ local et prod : `cached:true` sans, `cached:false` avec |
+| Actualiser | ✅ icône en rotation pendant la requête (latence simulée 1,5 s) ; 2ᵉ clic et appel programmatique dans les 30 s → **aucune** requête ; bouton réactivé au bout de 31 s |
+| Hors ligne (navigateur coupé) | ✅ valeur conservée, « hors ligne » en gris |
+| Seuils | ✅ 1,20 $ → « ≈ 4 h 08 min » ambre ; 0,20 $ → « ≈ 41 min » rouge ; 12 $ → « ≈ 41 h 23 min » neutre |
+| Reliquats | ✅ feuille Transcrire : aucune mention de crédits ; aucun élément `.trx-credits*` dans le DOM ; plus aucune référence dans `src/` |
+| En session | ✅ ligne compacte seule, bouton inactif (« Pas de relecture pendant une transcription ») |
+| Fin de session | ✅ « Cette session : 28 s ≈ 0,00 $ » + crédits relus |
+| Tablette 820 px / téléphone 390 px | ✅ carte 594 × 116 px (accueil), 32 px en session, sans débordement / shell mobile sans lecteur |
+| Réglages | ✅ même composant, Actualiser fonctionnel |
+| Non-régression module | ✅ session, coupure + reconnexion, note, Copier tout (note incluse), arrêt, liste des sessions ; console : rien de nouveau (seulement les pannes injectées et l'avertissement GoTrue préexistant) |
+| MealWeek | ✅ aucun fichier MealWeek/partagé modifié ; builds `7b8900f` / v1.2 **identiques au pixel près sur une même origine** (un écart de 7 px sur la liste de courses suivait le *port*, pas le build : état MealWeek propre à chaque origine — vérifié en inversant les builds) |
+
+| | |
+|---|---|
+| Carte en haut du panneau | ![](img/transcription-directe/18-v12-carte-credits.png) |
+| Actualiser en cours | ![](img/transcription-directe/19-v12-actualiser-en-cours.png) |
+| Hors ligne | ![](img/transcription-directe/20-v12-hors-ligne.png) |
+| Sous 5 h (ambre) | ![](img/transcription-directe/21-v12-moins-de-5h.png) |
+| Sous 1 h (rouge) | ![](img/transcription-directe/22-v12-moins-de-1h.png) |
+| Une ligne pendant la session | ![](img/transcription-directe/23-v12-compacte-en-session.png) |
+| Tablette | ![](img/transcription-directe/24-v12-tablette.png) |
+| Réglages | ![](img/transcription-directe/25-v12-reglages.png) |
+
+### Commits v1.2
+
+| Commit | Message |
+|---|---|
+| `684ce41` | feat(medrevise): une seule carte « Crédits Deepgram » en haut du panneau Transcript |
+| `189624f` | test(medrevise): faux Deepgram — latence réglable de l'API de gestion |
+| (ce commit) | docs(medrevise): compte-rendu v1.2 — carte crédits |
+
+Aucune variable d'environnement ajoutée ; aucune migration.
