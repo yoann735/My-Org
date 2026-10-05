@@ -32,7 +32,8 @@ const connexions = new Set();
 let refusJusqua = 0;
 let creditsZero = false;
 let secondesTotales = 0;
-let motGlobal = 0; // le « cours » continue d'une connexion à l'autre : un trou ou un doublon se voit à la lecture
+let motGlobal = 0;
+const compte = { heures: '0.2', depense: '0.08', solde: '199.92', soldes: '200', facturation: '200', panne: '0' }; // le « cours » continue d'une connexion à l'autre : un trou ou un doublon se voit à la lecture
 const log = (m) => { journal.push({ t: new Date().toISOString(), m }); if (journal.length > 500) journal.shift(); };
 
 const SCRIPT = ("L'os est un tissu conjonctif spécialisé. Le tissu osseux compact est organisé en ostéons. "
@@ -180,6 +181,18 @@ const serveur = http.createServer((req, res) => {
   if (u.pathname === '/__couper') { refusJusqua = Date.now() + Number(u.searchParams.get('refus') || 0) * 1000; [...connexions].forEach((c) => c.couper()); return out(200, { ok: true }); }
   if (u.pathname === '/__geler') { refusJusqua = Date.now() + Number(u.searchParams.get('s') || 20) * 1000; [...connexions].forEach((c) => c.geler()); return out(200, { ok: true }); }
   if (u.pathname === '/__credits') { creditsZero = u.searchParams.get('zero') === '1'; return out(200, { creditsZero }); }
+  // API de gestion (crédits, 05/10 v1.1) — réglable : POST /__compte?heures=0.2&depense=0.08&solde=199.92&soldes=403&facturation=403&panne=1
+  if (u.pathname === '/__compte') { for (const [k, v] of u.searchParams) compte[k] = v; return out(200, compte); }
+  if (u.pathname.startsWith('/v1/projects')) {
+    log('gestion ' + u.pathname + u.search);
+    if (compte.panne === '1') { req.socket.destroy(); return undefined; }
+    if (req.headers.authorization !== 'Token ' + CLE) return out(401, { err_code: 'INVALID_AUTH' });
+    if (u.pathname === '/v1/projects') return out(200, { projects: [{ project_id: 'proj-faux-1', name: 'Projet de test' }] });
+    if (u.pathname === '/v1/projects/proj-faux-1/balances') return compte.soldes === '403' ? out(403, { err_code: 'FORBIDDEN' }) : out(200, { balances: [{ balance_id: 'b1', amount: +compte.solde, units: 'usd' }] });
+    if (u.pathname === '/v1/projects/proj-faux-1/usage/breakdown') return out(200, { start: u.searchParams.get('start'), end: u.searchParams.get('end'), resolution: { units: 'day', amount: 1 }, results: [{ hours: +compte.heures * 0.6, total_hours: +compte.heures * 0.6, requests: 3 }, { hours: +compte.heures * 0.4, total_hours: +compte.heures * 0.4, requests: 2 }] });
+    if (u.pathname === '/v1/projects/proj-faux-1/billing/breakdown') return compte.facturation === '403' ? out(403, { err_code: 'FORBIDDEN' }) : out(200, { results: [{ dollars: +compte.depense }] });
+    return out(404, {});
+  }
   if (u.pathname === '/v1/auth/grant' && req.method === 'POST') {
     if (Date.now() < refusJusqua) { req.socket.destroy(); return undefined; }
     if (req.headers.authorization !== 'Token ' + CLE) { log('grant 401'); return out(401, { err_code: 'INVALID_AUTH', err_msg: 'Invalid credentials.' }); }
