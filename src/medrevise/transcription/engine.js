@@ -36,6 +36,7 @@ import { parametresKeyterms, termesEnvoyables } from './keyterms.js';
 import {
   nouvelleSession, nouvelIdSegment, nouvelIdNote, ecrireSession, viderEcritures, ecrireMotsCles,
 } from './sessions.js';
+import { marquerVivante, pousserMaintenant } from './synchro.js';
 
 const DUREE_BLOC = 0.1; // s
 const TAMPON_MAX_S = 120;
@@ -132,6 +133,7 @@ export async function demarrer({ courseId, source = 'micro', deviceId = null, ke
   base = reprendre ? Math.max(reprendre.durationS || 0, ...(reprendre.segments || []).map((s) => s.t1 || 0), ...(reprendre.notes || []).map((n) => n.t || 0)) : 0;
   couvertJusqua = base;
   persistee = !!reprendre;
+  marquerVivante(session.id); // pas d'envoi cloud tant qu'elle tourne
   publier({ ...ETAT_INITIAL, phase: 'starting', conn: 'connecting', courseId, session, secondes: Math.floor(base), derniereFinie: etat.derniereFinie });
   /* Jeton demandé AVANT d'ouvrir le micro : une clé absente/invalide ou des crédits
      épuisés s'affichent dans la feuille de démarrage, sans rien lancer. Un simple
@@ -140,6 +142,7 @@ export async function demarrer({ courseId, source = 'micro', deviceId = null, ke
   noter('jeton initial ' + (premier.ok ? 'ok' : 'échec ' + (premier.code || '')));
   if (!premier.ok && (!premier.reseau || premier.code === 'no_api')) {
     publier({ phase: 'error', conn: 'closed', erreur: premier.message });
+    marquerVivante(null);
     return false;
   }
   jetonPret = premier.ok ? premier : null;
@@ -147,6 +150,7 @@ export async function demarrer({ courseId, source = 'micro', deviceId = null, ke
     capture = await demarrerCapture({ source, deviceId, onBloc, onFin: (raison) => echec(raison, { garderSession: true }) });
   } catch (e) {
     publier({ phase: 'error', conn: 'closed', erreur: (e && e.message) || 'Capture audio impossible.' });
+    marquerVivante(null);
     return false;
   }
   dernierSon = Date.now();
@@ -430,15 +434,12 @@ export async function arreter() {
   }
   const id = persistee ? fini.id : null;
   reinitialiser();
+  marquerVivante(null);
   publier({ ...ETAT_INITIAL, derniereFinie: id, courseId: fini.courseId });
-  if (id) apresFin(fini);
+  // synchro cloud : la session terminée part maintenant (conditionnelle, updated_at)
+  if (id) pousserMaintenant(id).catch(() => {});
   return id;
 }
-
-/** Point d'accroche du palier 2 (synchro cloud de la session terminée). */
-let surFin = null;
-export function definirSurFin(fn) { surFin = fn; }
-function apresFin(rec) { if (surFin) Promise.resolve().then(() => surFin(rec)).catch(() => {}); }
 
 function echec(message, { garderSession = true } = {}) {
   clearTimeout(minuteurReco);
@@ -450,6 +451,7 @@ function echec(message, { garderSession = true } = {}) {
   capture = null;
   tampon = [];
   if (garderSession && persistee) enregistrer(); // endedAt reste null : proposée en reprise
+  marquerVivante(null);
   publier({ phase: 'error', conn: 'closed', erreur: message, interim: null });
 }
 

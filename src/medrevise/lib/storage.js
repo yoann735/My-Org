@@ -153,6 +153,20 @@ export async function putMany(name, recs) {
   if (syncable) stamped.forEach((r) => queuePush(name, r.id, r, r.updatedAt));
   return stamped;
 }
+/* TRANSCRIPTION (05/10) : écriture/suppression LOCALES sans horodatage ni file
+   d'envoi — pour adopter une version venue du cloud telle quelle (la réhorodater
+   la rendrait « plus récente » et la renverrait aussitôt). Liste blanche : le
+   seul store qui a sa propre synchro ciblée (transcription/synchro.js). */
+const STORES_SYNCHRO_CIBLEE = ['transcript_session'];
+export async function ecrireDepuisCloud(name, rec) {
+  if (!STORES_SYNCHRO_CIBLEE.includes(name)) throw new Error('store non autorisé : ' + name);
+  await set(rec.id, rec, S[name]);
+}
+export async function supprimerDepuisCloud(name, id) {
+  if (!STORES_SYNCHRO_CIBLEE.includes(name)) throw new Error('store non autorisé : ' + name);
+  await del(id, S[name]);
+}
+
 export async function remove(name, id) {
   await del(id, S[name]);
   if (SYNCABLE.includes(name)) queuePush(name, id, {}, new Date().toISOString(), true); // tombstone (data vide, deleted=true)
@@ -810,6 +824,10 @@ export async function syncNow(opts = {}) {
   if (!rec.ok) { flushBlobOutbox(); return { status: 'offline', cloudEmpty: false, degraded: isPushDegraded() }; }
   await queueAllLocalForPush();
   await flushOutbox();
+  // transcription en direct : synchro CIBLÉE de son store, à part et sans attendre —
+  // un échec de ce type ne change rien au statut des autres (import dynamique : le
+  // module importe storage.js, pas de cycle au chargement)
+  import('../transcription/synchro.js').then((m) => m.synchroTranscripts()).catch(() => {});
   const blobs = await syncBlobs(opts);
   return { status: 'ok', cloudEmpty: rec.cloudEmpty, degraded: isPushDegraded(), blobs };
 }

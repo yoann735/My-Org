@@ -29,6 +29,16 @@ import { supabase, SYNC_ENABLED, RECORDS_TABLE, BLOBS_BUCKET } from './supabaseC
 const outboxStore = createStore('medrevise-outbox', 'v1');
 
 const PUSH_DEBOUNCE_MS = 800;
+
+/* STORES ISOLÉS (05/10, transcription en direct) : leurs enregistrements sont gros
+   (une session de cours ≈ 100–400 Ko) et d'un type que le cloud peut ne pas encore
+   accepter (migration supabase/migrations/… non appliquée). Ils partent donc UN PAR
+   APPEL, après le lot commun : un échec les concerne seuls (ils restent dans
+   l'outbox, retentés au prochain vidage) et ne retient jamais les autres types.
+   Ils sont aussi exclus de la lecture générale (pullAllRecords) : reconcileAll ne
+   les connaît pas, et retélécharger des centaines de Ko à chaque retour sur
+   l'onglet n'aurait servi à rien — voir pullStoreMeta / pullStoreIds plus bas. */
+export const STORES_ISOLES = ['transcript_session'];
 let pushTimer = null;
 let flushing = null; // Promise en vol — évite deux flush concurrents lisant le même snapshot
 
@@ -128,9 +138,12 @@ async function flushPending({ depuisFermeture = false } = {}) {
   if (flushing) return flushing; // un flush déjà en vol suffit — l'outbox reste la source de vérité
   flushing = (async () => {
     try {
-      const snapshot = await entries(outboxStore); // [[clé, valeur], ...] — pris AVANT l'appel réseau
+      const tout = await entries(outboxStore); // [[clé, valeur], ...] — pris AVANT l'appel réseau
       outboxOuvert = true;
-      if (!snapshot.length) return;
+      if (!tout.length) return;
+      const snapshot = tout.filter(([, v]) => !STORES_ISOLES.includes(v && v.store));
+      const isoles = tout.filter(([, v]) => STORES_ISOLES.includes(v && v.store));
+      if (!snapshot.length) { await flushIsoles(isoles); return; }
       const batch = snapshot.map(([, v]) => v);
       // pushRecords (ci-dessus) passe par la RPC conditionnelle et vérifie `error`
       // explicitement — supabase-js NE REJETTE PAS sur un échec réseau (DNS,
@@ -144,10 +157,20 @@ async function flushPending({ depuisFermeture = false } = {}) {
       // examinée par la base et volontairement écartée ; la garder dans l'outbox
       // la ferait rejouer indéfiniment sans jamais pouvoir gagner.
       await delMany(snapshot.map(([k]) => k), outboxStore); // retire SEULEMENT ce qui a été envoyé
+      await flushIsoles(isoles);
     } catch (e) { /* hors-ligne : tout reste dans l'outbox, repoussé au prochain déclencheur */ }
     finally { flushing = null; }
   })();
   return flushing;
+}
+
+/** Stores isolés : un appel par enregistrement ; seul ce qui est confirmé quitte l'outbox. */
+async function flushIsoles(isoles) {
+  for (const [k, v] of isoles) {
+    try {
+      if (await pushRecords([v])) await del(k, outboxStore);
+    } catch (e) { /* reste dans l'outbox */ }
+  }
 }
 
 /** Nombre d'écritures locales encore EN ATTENTE d'envoi. Lecture seule, sert à
@@ -265,6 +288,7 @@ export async function pullAllRecords() {
       const { data, error } = await supabase
         .from(RECORDS_TABLE)
         .select('store,record_id,data,updated_at,deleted')
+        .not('store', 'in', `(${STORES_ISOLES.join(',')})`) // stores isolés : lecture ciblée à part
         .order('store', { ascending: true })
         .order('record_id', { ascending: true })
         .range(from, from + PAGE - 1);
@@ -303,6 +327,54 @@ export async function pullStore(store) {
       if (lot.length < PAGE) return tout;
     }
     return noterEchec(new Error('trop de pages'));
+  } catch (e) { return noterEchec(e); }
+}
+
+/**
+ * MÉTADONNÉES d'un store (05/10, transcription) : record_id, updated_at, deleted —
+ * SANS `data`. Sert à comparer local et cloud sans télécharger les sessions de
+ * cours. Mêmes règles que pullAllRecords : ordre stable, tout ou rien.
+ * @returns {Promise<Array|null>}
+ */
+export async function pullStoreMeta(store) {
+  if (!SYNC_ENABLED || !store) return null;
+  try {
+    const tout = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE;
+      const { data, error } = await supabase
+        .from(RECORDS_TABLE)
+        .select('record_id,updated_at,deleted')
+        .eq('store', store)
+        .order('record_id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) return noterEchec(error);
+      const lot = data || [];
+      tout.push(...lot);
+      if (lot.length < PAGE) return tout;
+    }
+    return noterEchec(new Error('trop de pages'));
+  } catch (e) { return noterEchec(e); }
+}
+
+/** Enregistrements COMPLETS de quelques ids d'un store (par paquets de 20).
+ *  @returns {Promise<Array|null>} null si un paquet échoue (rien de partiel). */
+export async function pullStoreIds(store, ids) {
+  if (!SYNC_ENABLED || !store) return null;
+  const tout = [];
+  try {
+    for (let i = 0; i < ids.length; i += 20) {
+      const paquet = ids.slice(i, i + 20);
+      const { data, error } = await supabase
+        .from(RECORDS_TABLE)
+        .select('store,record_id,data,updated_at,deleted')
+        .eq('store', store)
+        .in('record_id', paquet);
+      if (error) return noterEchec(error);
+      // filtre défensif : ne garder que ce qui a été demandé
+      tout.push(...(data || []).filter((r) => paquet.includes(r.record_id)));
+    }
+    return tout;
   } catch (e) { return noterEchec(e); }
 }
 

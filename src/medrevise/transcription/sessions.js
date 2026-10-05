@@ -16,6 +16,7 @@
    se doubleraient dans le désordre, et jamais de retard qui s'accumule.
    ============================================================ */
 import { genId, getAll, getOne, put, remove, putBackup } from '../lib/storage.js';
+import { pousser } from './synchro.js';
 
 const STORE = 'transcript_session';
 
@@ -72,7 +73,9 @@ export async function sessionInterrompue(courseId) {
 export async function cloreSession(rec) {
   await viderEcritures();
   const fin = rec.endedAt || dateFinEstimee(rec);
-  return ecrireMaintenant({ ...rec, endedAt: fin });
+  const r = await ecrireMaintenant({ ...rec, endedAt: fin });
+  pousser(r.id).catch(() => {});
+  return r;
 }
 function dateFinEstimee(rec) {
   const debut = Date.parse(rec.startedAt || rec.createdAt || '') || Date.now();
@@ -84,6 +87,7 @@ function dateFinEstimee(rec) {
 export async function supprimerSession(rec) {
   await putBackup(`pre-delete-transcript-${rec.id}-${Date.now()}`, rec);
   await remove(STORE, rec.id);
+  pousser(rec.id, { supprime: true }).catch(() => {}); // tombstone : ne ressuscite pas via un autre appareil
 }
 
 /* ---- mots-clés du cours ---- */
@@ -92,5 +96,7 @@ export async function lireMotsCles(courseId) {
   return (r && Array.isArray(r.terms)) ? r.terms : [];
 }
 export async function ecrireMotsCles(courseId, terms) {
-  return put(STORE, { id: 'kt:' + courseId, kind: 'keyterms', courseId, terms: terms || [], updatedAt: new Date().toISOString() });
+  const r = await put(STORE, { id: 'kt:' + courseId, kind: 'keyterms', courseId, terms: terms || [], updatedAt: new Date().toISOString() });
+  pousser(r.id).catch(() => {});
+  return r;
 }

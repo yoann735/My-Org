@@ -30,6 +30,7 @@ import {
 } from './sessions.js';
 import { mmss, dureeLisible, lignesSession, texteSession, markdownSession, telecharger, nomFichier, copierTexte } from './exporter.js';
 import { enregistrerLecteur } from './IndicateurGlobal.jsx';
+import { synchroTranscripts } from './synchro.js';
 import '../../styles/transcription.css';
 
 const CLE_MICRO = 'medrevise.transcription.micro';
@@ -394,6 +395,17 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
     setInterrompue(sessionActive() && lireEtat().courseId === courseId ? null : (l.find((s) => !s.endedAt) || null));
   }, [courseId]);
   useEffect(() => { recharger(); }, [recharger, e.phase]);
+  // synchro ciblée à l'ouverture du panneau : les sessions faites sur un autre appareil
+  useEffect(() => {
+    let vivant = true;
+    synchroTranscripts().then((r) => {
+      if (!vivant || !r || !(r.recus || r.supprimes)) return;
+      recharger();
+      // la session ouverte en lecture a pu être modifiée ou supprimée sur un autre appareil
+      setLecture((l) => { if (l) lireSession(l.id).then((s) => { if (vivant) setLecture(s || null); }); return l; });
+    });
+    return () => { vivant = false; };
+  }, [recharger]);
   // fin de session : on l'ouvre aussitôt en lecture
   useEffect(() => {
     if (e.phase === 'idle' && e.derniereFinie && e.courseId === courseId) {
