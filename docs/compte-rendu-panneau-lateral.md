@@ -152,3 +152,108 @@ est à considérer comme compilable (le build a été vérifié à chaque push).
   conservé).
 - **Vue HTML** : son mode Notions garde son contenu propre (marques du cours HTML), sans la
   recherche ajoutée au PDF.
+
+---
+
+## v1.1 — glissement trackpad et carte flashcard (05/10/2026)
+
+### Pourquoi le choix Texte / Image avait disparu
+
+**Régression introduite par `2d62bcc`** (« panneau latéral du lecteur en 3 modes », même jour),
+c'est-à-dire par la refonte elle-même — pas un composant non monté ni une condition d'affichage.
+Avant (`7bcac0c`), le sous-onglet Flashcard affichait deux boutons côte à côte
+(`.pis-ajout-duo` : « Flashcard texte » / « Flashcard image », ajoutés par `deda3ca` et
+`50aec11` le 30/09). En appliquant la règle « une seule barre d'actions », `2d62bcc` a remplacé
+la paire par un « Ajouter » unique qui ouvrait **le formulaire texte**, et a relégué la flashcard
+image dans le menu « ⋯ » (« Flashcard image (masques) ») : le choix existait encore, mais n'était
+plus visible là où on le cherche. Erreur de jugement de la refonte, corrigée ici.
+
+### Carte d'ajout de flashcard (`components/CarteAjoutFlashcard.jsx`)
+
+- « + Ajouter » dans Exercices › Flashcards ouvre une **carte en place** (pas de modale) avec en
+  tête un **sélecteur Texte / Image** et « Terminer ». Les deux volets restent **montés** (l'un
+  masqué) : changer de mode ne perd rien — vérifié dans les deux sens (recto en cours de saisie
+  conservé, image collée conservée).
+- **Texte** : le formulaire existant (`FlashcardForm` : thème automatique de la fiche, recto avec
+  amorces et trous, verso, indice, à retenir) + **aperçu** recto/verso. Son champ image et son
+  collage sont désactivés dans la carte (`sansImage`) : l'image appartient au volet Image.
+- **Image** : zone de dépôt / **⌘V, Ctrl+V** / parcourir, aperçu, Remplacer / Retirer, puis :
+  « **Image + texte** » (recto, verso, image au recto / verso / les deux — thème automatique
+  pré-rempli) ou « **Masques à deviner** » → l'éditeur d'occlusion existant, ouvert **avec
+  l'image déjà chargée** (décision : cet éditeur a besoin de toute la largeur de l'écran, il
+  reste une fenêtre).
+- **Clavier** : Entrée = ajouter (Maj+Entrée = retour à la ligne), Échap = fermer la carte, Tab
+  recto → verso (Maj+Tab retour). Après un ajout, la carte reste ouverte et vide, curseur sur le
+  recto, compteur « N flashcards ajoutées ✓ ».
+- **Schéma inchangé** : les deux chemins passent par `appendItemsToFiche` comme avant ; une carte
+  texte et une carte image + texte ont **exactement les mêmes champs** qu'une carte créée avant la
+  refonte (`_schema, a_retenir, capped, cloze, concept, difficulte, dueDate, ficheId, historique,
+  id, imageId, imagePlace, indice, intervalDays, j0Date, missed, recto, srcId, tags, termine,
+  theme, type, updatedAt, verso` — comparaison faite sur les objets stockés).
+- Le doublon « Fermer » de la barre d'actions est masqué tant que la carte est ouverte, et
+  l'entrée « Flashcard image » quitte le menu « ⋯ ».
+- Défaut trouvé en test et corrigé : **Échap dans l'éditeur de masques fermait toute la carte**
+  (l'éditeur est rendu dans la carte, l'événement remontait) — il demande maintenant « Fermer
+  sans enregistrer ? » et la carte reste ouverte.
+
+| Texte (aperçu) | Image (fichier choisi) | Masques, image préchargée | Révision d'une carte image |
+|---|---|---|---|
+| ![](img/panneau-lateral/v11-carte-flashcard-texte.png) | ![](img/panneau-lateral/v11-carte-flashcard-image.png) | ![](img/panneau-lateral/v11-masques-image-prechargee.png) | ![](img/panneau-lateral/v11-revision-carte-image.png) |
+
+### Glissement qui suit le geste
+
+- **Trackpad** : roue avec **|deltaX| > 1,5 × |deltaY|**, écouteur **non passif** (sinon Chrome
+  déclenche « page précédente » ; plus `overscroll-behavior-x: contain`). Le contenu se
+  **translate avec les doigts** et l'indicateur du sélecteur glisse en continu (`--i`
+  fractionnaire) ; plus d'événement pendant 140 ms = doigts levés → **aimantation** : mode voisin
+  si le geste dépasse **80 px**, sinon retour animé. **Élastique** aux extrémités (30 % du geste,
+  56 px max).
+- **Jamais** : défilement vertical (et 250 ms après lui), dominante horizontale trop faible, zone
+  qui défile horizontalement (tout ancêtre `overflow-x: auto|scroll` qui déborde, ou un canvas),
+  texte sélectionné dans le panneau.
+- **Inertie macOS** : après un changement, blocage **≥ 400 ms et tant que l'élan continue**
+  (événements à < 150 ms d'intervalle). Le premier réglage (400 ms fixes) laissait un second saut
+  pendant l'élan — constaté en test, corrigé.
+- **Doigt / stylet** : même sensation (suivi en temps réel, mêmes seuils, même aimantation).
+
+### Tests (Chrome, CDP — vrais événements roue, tactiles, souris, clavier, presse-papier, sélecteur de fichiers)
+
+| Test | Résultat |
+|---|---|
+| Trackpad, droite→gauche depuis Exercices / Notions | ✅ pendant : contenu à −120 px, indicateur 0,34 / 1,34 → Notions / Transcript |
+| Trackpad, gauche→droite depuis Transcript / Notions | ✅ +120 px, indicateur 1,66 / 0,66 → Notions / Exercices |
+| Extrémités | ✅ élastique 36 px, pas de changement |
+| Geste court (45 px) | ✅ retour au mode de départ |
+| Défilement vertical / diagonal / dominante < 1,5× | ✅ aucun mouvement |
+| Inertie macOS simulée (geste puis 30 événements décroissants) | ✅ un seul saut (deux avant le correctif) ; geste volontaire juste après : accepté |
+| Texte sélectionné dans un transcript | ✅ aucun changement, sélection conservée ; même geste sans sélection → mode précédent |
+| Zone à défilement horizontal | ✅ elle défile (scrollLeft 120 px), le mode ne change pas |
+| Doigt (tactile) | ✅ suivi −100 px / +100 px, indicateur 1,28 / 1,72, changement au relâchement |
+| 3 cartes texte enchaînées au clavier | ✅ Tab → verso, Entrée → ajoutée, carte vidée, focus sur le recto, compteur 1 → 3 |
+| Bascule Texte ↔ Image en cours de saisie | ✅ recto et image conservés dans les deux sens |
+| Carte image collée (⌘V, vrai événement `paste`) | ✅ enregistrée avec `imageId`, `imagePlace: recto` |
+| Carte image depuis fichier (vrai `input file`) | ✅ « Image + texte », `imagePlace: deux` ; « Masques à deviner » → éditeur avec l'image |
+| Schéma / anciennes cartes | ✅ mêmes champs qu'avant ; l'ancienne carte inchangée ; édition d'une ancienne carte : formulaire complet (champ image compris) |
+| Révision | ✅ série du jour : 1 QCM + 7 flashcards (dont les 5 nouvelles) ; la carte image s'affiche en révision avec ses images |
+| Synchro | ✅ faux Supabase : les 6 flashcards du cours au cloud, les 2 images des nouvelles cartes dans le stockage |
+| Non-régression panneau | ✅ QCM / Exercices / Feynman : formulaire habituel ; Notions ; Transcript (9 sessions, ligne de crédits) ; console : rien de nouveau |
+| MealWeek | ✅ aucun fichier modifié ; builds `85856bb` / HEAD sur la même origine : identiques au pixel près |
+
+### Commits v1.1
+
+| Commit | Message |
+|---|---|
+| `aa9e915` | feat(medrevise): carte d'ajout de flashcard Texte / Image, en place dans le panneau |
+| `aa35070` | feat(medrevise): glissement trackpad / doigt qui suit le geste entre les 3 modes |
+| (ce commit) | docs(medrevise): compte-rendu v1.1 — glissement trackpad et carte flashcard |
+
+### Limites (v1.1)
+
+- Pendant le geste, seul le mode **courant** se translate (et s'estompe) ; le mode voisin entre
+  par la transition latérale au relâchement — il n'est pas rendu à côté pendant le geste (rendre
+  deux modes à la fois, dont un transcript en direct, coûterait plus qu'il n'apporte).
+- Trackpad réel : testé avec des événements roue synthétiques reproduisant un geste et l'inertie de
+  macOS ; les seuils (80 px, 140 ms, 150 ms) sont à valider au doigt sur le Mac.
+- Observé pendant une série de révision (composant `ImageFlashcard`, non modifié ici) : deux
+  « ERR_FILE_NOT_FOUND » sur des URL `blob:` quand on enchaîne vite les cartes à image — sans effet
+  visible ; non reproduit par la carte d'ajout.
