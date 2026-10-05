@@ -128,9 +128,44 @@ function apiDeepgramDev() {
   };
 }
 
+/* Ressources de Tesseract.js (OCR des PDF image, MedRevise — src/medrevise/ocr/) servies
+   par l'app elle-même, sous /tesseract/… : AUCUN CDN, aucun service externe. Même
+   principe que pdfjsAssets ci-dessus : copiées depuis node_modules au build (jamais
+   commitées), servies en dev par un middleware, chargées seulement quand l'OCR tourne.
+   - worker.min.js            : le worker de tesseract.js ;
+   - core/…-lstm.wasm.js      : le moteur (variantes LSTM seules : simd, relaxed-simd, base) ;
+   - lang/{fra,eng}.traineddata.gz : modèles « best_int » (ceux que tesseract.js prend par défaut). */
+const TESS = {
+  'worker.min.js': 'node_modules/tesseract.js/dist/worker.min.js',
+  'core/tesseract-core-lstm.wasm.js': 'node_modules/tesseract.js-core/tesseract-core-lstm.wasm.js',
+  'core/tesseract-core-simd-lstm.wasm.js': 'node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm.js',
+  'core/tesseract-core-relaxedsimd-lstm.wasm.js': 'node_modules/tesseract.js-core/tesseract-core-relaxedsimd-lstm.wasm.js',
+  'lang/fra.traineddata.gz': 'node_modules/@tesseract.js-data/fra/4.0.0_best_int/fra.traineddata.gz',
+  'lang/eng.traineddata.gz': 'node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz',
+};
+function tesseractAssets() {
+  return {
+    name: 'tesseract-assets',
+    configureServer(server) {
+      server.middlewares.use('/tesseract', (req, res, next) => {
+        const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '');
+        const src = TESS[rel];
+        if (!src || !fs.existsSync(src)) return next();
+        res.setHeader('Content-Type', rel.endsWith('.js') ? 'text/javascript' : 'application/octet-stream');
+        fs.createReadStream(src).pipe(res);
+      });
+    },
+    generateBundle() {
+      for (const [rel, src] of Object.entries(TESS)) {
+        this.emitFile({ type: 'asset', fileName: `tesseract/${rel}`, source: fs.readFileSync(src) });
+      }
+    },
+  };
+}
+
 // Zero-config Vercel deploy: build -> `dist`. No env, no backend.
 export default defineConfig({
-  plugins: [react(), lienTheme(), pdfjsAssets(), apiDeepgramDev()],
+  plugins: [react(), lienTheme(), pdfjsAssets(), tesseractAssets(), apiDeepgramDev()],
   // Honor the PORT env var when provided (lets tooling assign a free port);
   // falls back to Vite's default for plain `npm run dev`.
   server: process.env.PORT ? { port: Number(process.env.PORT) } : undefined,

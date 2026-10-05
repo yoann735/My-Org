@@ -61,6 +61,11 @@ const S = {
   // reconcileAll retélécharge toute la table à chaque retour sur l'onglet — elle a
   // son propre chemin de synchro, ciblé (transcription/sessions.js).
   transcript_session: store('transcript_session'),
+  // OCR DES PDF IMAGE (05/10, docs/compte-rendu-ocr.md) : UNE couche par fichier PDF
+  // (id tiré de son empreinte SHA-256 + version du moteur), pages compressées. Store
+  // NEUF, hors SYNCABLE pour la même raison que les transcripts (gros enregistrements) :
+  // synchro ciblée, lib/synchroIsolee.js. Le PDF lui-même n'est jamais modifié.
+  ocr_layer: store('ocr_layer'),
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
@@ -157,7 +162,7 @@ export async function putMany(name, recs) {
    d'envoi — pour adopter une version venue du cloud telle quelle (la réhorodater
    la rendrait « plus récente » et la renverrait aussitôt). Liste blanche : le
    seul store qui a sa propre synchro ciblée (transcription/synchro.js). */
-const STORES_SYNCHRO_CIBLEE = ['transcript_session'];
+const STORES_SYNCHRO_CIBLEE = ['transcript_session', 'ocr_layer'];
 export async function ecrireDepuisCloud(name, rec) {
   if (!STORES_SYNCHRO_CIBLEE.includes(name)) throw new Error('store non autorisé : ' + name);
   await set(rec.id, rec, S[name]);
@@ -182,6 +187,11 @@ export async function putBlob(blob) {
   const id = genId('b');
   await set(id, blob, S.blobs);
   await queueBlobPush(id);
+  // OCR automatique à l'import (ocr/service.js écoute) : un simple événement, pour ne
+  // pas créer de dépendance de ce module vers l'OCR. Tous les imports de PDF passent ici.
+  if (blob && (blob.type === 'application/pdf' || /\.pdf$/i.test(blob.name || '')) && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('medrevise:pdf-ajoute', { detail: { id } }));
+  }
   return id;
 }
 // écrase le contenu d'un blob EXISTANT, MÊME id (contrairement à putBlob) — sert
@@ -828,6 +838,8 @@ export async function syncNow(opts = {}) {
   // un échec de ce type ne change rien au statut des autres (import dynamique : le
   // module importe storage.js, pas de cycle au chargement)
   import('../transcription/synchro.js').then((m) => m.synchroTranscripts()).catch(() => {});
+  import('../ocr/couches.js').then((m) => m.synchroOcr()).catch(() => {}); // couches OCR, même principe
+  
   const blobs = await syncBlobs(opts);
   return { status: 'ok', cloudEmpty: rec.cloudEmpty, degraded: isPushDegraded(), blobs };
 }

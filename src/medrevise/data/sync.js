@@ -38,7 +38,7 @@ const PUSH_DEBOUNCE_MS = 800;
    Ils sont aussi exclus de la lecture générale (pullAllRecords) : reconcileAll ne
    les connaît pas, et retélécharger des centaines de Ko à chaque retour sur
    l'onglet n'aurait servi à rien — voir pullStoreMeta / pullStoreIds plus bas. */
-export const STORES_ISOLES = ['transcript_session'];
+export const STORES_ISOLES = ['transcript_session', 'ocr_layer'];
 let pushTimer = null;
 let flushing = null; // Promise en vol — évite deux flush concurrents lisant le même snapshot
 
