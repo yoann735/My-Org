@@ -26,20 +26,45 @@
    - un onglet en plus marqué `plein` gère lui-même son défilement (Transcript :
      auto-défilement collé en bas) — pas de conteneur défilant autour.
    ============================================================ */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Tex } from './Tex.jsx';
-import { ConfirmModal, SplitHandle } from './ui.jsx';
+import { ConfirmModal, ContextMenu, SplitHandle } from './ui.jsx';
 import { ItemForm, PasteJsonForm, TYPES } from './AddItemForm.jsx';
 import { appendItemsToFiche, themeFlashcardsDeFiche } from '../lib/import.js';
 import { ThemeFicheFlashcards } from './ThemeFiche.jsx';
 import { toInternalItem } from '../lib/adapter.js';
 import { OcclusionEditorModal, OcclusionView, estOcclusion } from './OcclusionImage.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from './FlashcardImage.jsx';
+import '../../styles/panneau-modes.css';
 
-export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null }) {
+/* ============================================================
+   PANNEAU EN 3 MODES (refonte du 05/10, docs/compte-rendu-panneau-lateral.md)
+   Exercices (QCM, Flashcards, Exercices, Feynman) · Notions · Transcript.
+   - sélecteur segmenté avec indicateur glissant ; glissement horizontal (doigt,
+     stylet ou trackpad) pour passer au mode voisin ; transition animée ;
+   - mode ET sous-onglet d'Exercices mémorisés PAR COURS (`cleMemo`) ;
+   - `ongletsEnPlus` garde son interface : l'entrée `notions` devient le mode
+     Notions, l'entrée `transcript` le mode Transcript (badge facultatif) ;
+   - Exercices : UNE barre d'actions — « + Ajouter » qui suit le sous-onglet,
+     et « ⋯ » pour le reste (coller du JSON, flashcard image, thème automatique).
+   ============================================================ */
+const LIBELLES = { qcm: 'QCM', flashcard: 'Flashcards', exercice: 'Exercices', feynman: 'Feynman' };
+const VIDES = {
+  qcm: 'Aucun QCM pour ce cours.',
+  flashcard: 'Aucune flashcard pour ce cours.',
+  exercice: 'Aucun exercice pour ce cours.',
+  feynman: 'Aucun Feynman pour ce cours.',
+};
+const lireLS = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const ecrireLS = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* stockage bloqué */ } };
+const TYPES_IDS = ['qcm', 'flashcard', 'exercice', 'feynman'];
+
+export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null, cleMemo = null }) {
   const avecItems = !!ficheId;
   const extras = (ongletsEnPlus || []).filter(Boolean);
+  const extraNotions = extras.find((o) => o.id === 'notions') || null;
+  const extraTranscript = extras.find((o) => o.id === 'transcript') || null;
   const ficheItems = useMemo(() => (avecItems ? (ctx.db.questions || []).filter((q) => q.ficheId === ficheId) : []), [ctx.db, ficheId, avecItems]);
   const countByType = useMemo(() => {
     const c = { qcm: 0, flashcard: 0, exercice: 0, feynman: 0 };
@@ -47,25 +72,78 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     return c;
   }, [ficheItems]);
 
-  const [activeType, setActiveType] = useState(() => ongletInitial || (avecItems ? 'qcm' : (extras[0] && extras[0].id) || 'qcm'));
-  const extraActif = extras.find((o) => o.id === activeType) || null;
+  const modes = [
+    avecItems && { id: 'exercices', label: 'Exercices', n: ficheItems.length },
+    extraNotions && { id: 'notions', label: 'Notions', n: extraNotions.n },
+    extraTranscript && { id: 'transcript', label: 'Transcript', badge: extraTranscript.badge },
+  ].filter(Boolean);
+  const cle = cleMemo || ficheId || 'doc';
+  const versMode = (id) => (TYPES_IDS.includes(id) ? 'exercices' : id);
+
+  const [mode, setModeBrut] = useState(() => {
+    const memo = lireLS('medrevise.panneau.mode.' + cle);
+    if (memo && modes.some((m) => m.id === memo)) return memo;
+    const init = ongletInitial && versMode(ongletInitial);
+    if (init && modes.some((m) => m.id === init)) return init;
+    return (modes[0] && modes[0].id) || 'exercices';
+  });
+  const [activeType, setActiveTypeBrut] = useState(() => {
+    const memo = lireLS('medrevise.panneau.sous.' + cle);
+    if (TYPES_IDS.includes(memo)) return memo;
+    return TYPES_IDS.includes(ongletInitial) ? ongletInitial : 'qcm';
+  });
+  const [sens, setSens] = useState(0); // -1 / +1 : direction de la transition
+  const setMode = (id) => {
+    if (id === mode || !modes.some((m) => m.id === id)) return;
+    setSens(modes.findIndex((m) => m.id === id) > modes.findIndex((m) => m.id === mode) ? 1 : -1);
+    setModeBrut(id); ecrireLS('medrevise.panneau.mode.' + cle, id);
+  };
+  const setActiveType = (t) => { setActiveTypeBrut(t); ecrireLS('medrevise.panneau.sous.' + cle, t); };
+  // un mode disparu (document sans fiche…) → premier mode disponible
+  const modeActif = modes.some((m) => m.id === mode) ? mode : (modes[0] && modes[0].id);
+
   const nDemande = ongletDemande ? ongletDemande.n : 0;
-  useEffect(() => { if (ongletDemande && ongletDemande.id) setActiveType(ongletDemande.id); }, [nDemande]); // eslint-disable-line react-hooks/exhaustive-deps
-  const items = useMemo(() => ficheItems.filter((q) => q.type === activeType), [ficheItems, activeType]);
-  const activeLabel = (TYPES.find((t) => t.id === activeType) || {}).label || '';
-  // repli HORIZONTAL uniquement, via la même poignée que la liste de gauche
-  // (SplitHandle, ui.jsx) — INTÉGRÉE dans `.pis` (bord GAUCHE, côté cours), pas un
-  // élément séparé posé à côté. `.pis` reste monté, seule sa flex-basis anime
-  // (voir etudes.css) ; le contenu (tabs+liste) est démonté pendant le repli.
+  useEffect(() => {
+    if (!ongletDemande || !ongletDemande.id) return;
+    if (TYPES_IDS.includes(ongletDemande.id)) setActiveType(ongletDemande.id);
+    setMode(versMode(ongletDemande.id));
+  }, [nDemande]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // repli HORIZONTAL (poignée SplitHandle intégrée au bord gauche du panneau)
   const [collapsedLocal, setCollapsedLocal] = useState(false);
   const collapsed = replie == null ? collapsedLocal : replie;
   const setCollapsed = (fn) => { const v = typeof fn === 'function' ? fn(collapsed) : fn; if (onReplier) onReplier(v); else setCollapsedLocal(v); };
+
+  /* ---- glissement horizontal entre modes : doigt/stylet (pointeur), trackpad (roue X) ---- */
+  const voisin = (d) => { const i = modes.findIndex((m) => m.id === modeActif); const m = modes[i + d]; if (m) setMode(m.id); };
+  const geste = useRef(null);
+  const roue = useRef({ x: 0, t: 0, bloque: 0 });
+  const onPointerDown = (e) => {
+    if (e.pointerType === 'mouse') return; // à la souris, glisser sert à sélectionner du texte
+    geste.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
+  };
+  const onPointerUp = (e) => {
+    const g = geste.current; geste.current = null;
+    if (!g || g.id !== e.pointerId) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) voisin(dx < 0 ? 1 : -1);
+  };
+  const onWheel = (e) => {
+    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    const r = roue.current, now = Date.now();
+    if (now < r.bloque) return;
+    if (now - r.t > 250) r.x = 0;
+    r.x += e.deltaX; r.t = now;
+    if (Math.abs(r.x) > 120) { voisin(r.x > 0 ? 1 : -1); r.x = 0; r.bloque = now + 600; }
+  };
 
   // ---- ajout (réutilise ItemForm/PasteJsonForm, même flux que AddItemModal) ----
   const [adding, setAdding] = useState(false);
   const [addSource, setAddSource] = useState('form');
   const [busyAdd, setBusyAdd] = useState(false);
   const [addedCount, setAddedCount] = useState(0);
+  const [menuActions, setMenuActions] = useState(null);
+  const [voirTheme, setVoirTheme] = useState(false);
   const submitAdd = async (raw) => {
     setBusyAdd(true);
     try {
@@ -76,8 +154,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   };
   const closeAdd = () => { setAdding(false); setAddedCount(0); setAddSource('form'); };
 
-  // ---- édition inline (même ItemForm, préremplie ; toInternalItem fusionne
-  //      le patch dans l'item EXISTANT sans réinitialiser son état SM-2) ----
+  // ---- édition inline ----
   const [editingId, setEditingId] = useState(null);
   const [busyEdit, setBusyEdit] = useState(false);
   const submitEdit = async (item, raw) => {
@@ -89,10 +166,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     } finally { setBusyEdit(false); }
   };
 
-  // ---- suppression (même canal durable que partout ailleurs) ----
+  // ---- suppression ----
   const [confirmDel, setConfirmDel] = useState(null);
-  // FLASHCARD IMAGE : création / modification dans une grande fenêtre (l'éditeur de
-  // schéma ne tient pas dans un panneau de 380 px). `true` = nouvelle, objet = modifier.
   const [occEdition, setOccEdition] = useState(null);
   const doDelete = async () => {
     if (!confirmDel) return;
@@ -100,112 +175,133 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     setConfirmDel(null);
   };
 
+  const items = useMemo(() => ficheItems.filter((q) => q.type === activeType), [ficheItems, activeType]);
+  const choisirType = (t) => { setActiveType(t); setAdding(false); setEditingId(null); setVoirTheme(false); };
+  const actions = [
+    { label: 'Coller du JSON', icon: 'upload', onClick: () => { setAdding(true); setAddSource('json'); setAddedCount(0); } },
+    activeType === 'flashcard' && { label: 'Flashcard image (masques)', icon: 'image', onClick: () => setOccEdition(true) },
+    activeType === 'flashcard' && { label: 'Thème automatique des flashcards', icon: 'tag', onClick: () => setVoirTheme((v) => !v) },
+  ].filter(Boolean);
+
+  const exercices = (
+    <div className="pis-scroll scroll pm-exos">
+      <div className="pm-sous" role="tablist" aria-label="Type d’exercice">
+        {TYPES.map((t) => (
+          <button key={t.id} type="button" role="tab" aria-selected={activeType === t.id}
+            className={'pm-sous-btn' + (activeType === t.id ? ' actif' : '')} onClick={() => choisirType(t.id)}>
+            {LIBELLES[t.id]} <span className={'tnum pm-n' + (countByType[t.id] ? '' : ' zero')}>{countByType[t.id]}</span>
+          </button>
+        ))}
+      </div>
+      <div className="pm-actions">
+        <button type="button" className={'btn sm' + (adding && addSource === 'form' ? ' actif' : '')}
+          onClick={() => { if (adding && addSource === 'form') closeAdd(); else { setAdding(true); setAddSource('form'); setAddedCount(0); setEditingId(null); } }}>
+          <Icon name={adding && addSource === 'form' ? 'x' : 'plus'} size={13} /> {adding && addSource === 'form' ? 'Fermer' : 'Ajouter'}
+        </button>
+        <span style={{ flex: 1 }} />
+        <button type="button" className="icon-btn sm" title="Plus d’actions : coller du JSON, flashcard image, thème"
+          onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuActions({ x: Math.min(r.right - 250, window.innerWidth - 260), y: r.bottom + 6 }); }}>
+          <Icon name="more" size={16} />
+        </button>
+      </div>
+      {voirTheme && activeType === 'flashcard' && <ThemeFicheFlashcards ctx={ctx} ficheId={ficheId} />}
+      {adding && (
+        <div className="pis-add card" style={{ margin: '4px 0 12px' }}>
+          <div className="card-body">
+            {addSource === 'form' ? (
+              <>
+                {addedCount > 0 && (
+                  <div className="err-mini ok" style={{ marginBottom: 12 }}>
+                    <div className="em-ic"><Icon name="check" size={16} stroke={2.5} /></div>
+                    <div className="em-body"><div className="em-title">{addedCount} item{addedCount > 1 ? 's' : ''} ajouté{addedCount > 1 ? 's' : ''} ✓</div></div>
+                  </div>
+                )}
+                <ItemForm type={activeType} onSubmit={submitAdd} busy={busyAdd} onCancel={closeAdd} submitLabel="Ajouter"
+                  themeDefaut={themeFlashcardsDeFiche((ctx.db.fiches || []).find((f) => f.id === ficheId))} />
+              </>
+            ) : (
+              <>
+                <div className="row spread" style={{ marginBottom: 10 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>Coller du JSON</span>
+                  <button type="button" className="cd-ic" onClick={closeAdd} title="Fermer"><Icon name="x" size={12} /></button>
+                </div>
+                <PasteJsonForm ctx={ctx} ficheId={ficheId} done={addedCount} setDone={setAddedCount} />
+              </>
+            )}
+          </div>
+        </div>
+      )}
+      <div className="pis-list">
+        {items.length === 0 && !adding && (
+          <div className="pm-vide">
+            <Icon name={(TYPES.find((t) => t.id === activeType) || {}).icon || 'cards'} size={22} />
+            <div>{VIDES[activeType]}</div>
+            <div className="hint">« Ajouter » pour en créer un, ou « ⋯ » pour coller le JSON d’un prompt.</div>
+          </div>
+        )}
+        {items.map((item) => (
+          editingId === item.id ? (
+            <div key={item.id} className="pis-item card fadein">
+              <div className="card-body">
+                <ItemForm type={item.type} initial={item} submitLabel="Enregistrer" busy={busyEdit}
+                  onCancel={() => setEditingId(null)} onSubmit={(raw) => submitEdit(item, raw)} />
+              </div>
+            </div>
+          ) : (
+            <ItemReadCard key={item.id} item={item}
+              onEdit={() => { if (estOcclusion(item)) { setOccEdition(item); return; } setEditingId(item.id); setAdding(false); }}
+              onDelete={() => setConfirmDel(item)} />
+          )
+        ))}
+      </div>
+    </div>
+  );
+
+  const indexMode = Math.max(0, modes.findIndex((m) => m.id === modeActif));
+  const extraActif = modeActif === 'notions' ? extraNotions : modeActif === 'transcript' ? extraTranscript : null;
+
   return (
     <div className={'pis' + (collapsed ? ' collapsed' : '')}>
       <SplitHandle side="right" collapsed={collapsed} onClick={() => setCollapsed((v) => !v)} />
       {!collapsed && (
       <div className="pis-body">
-      <div className="pis-tabs">
-        {avecItems && TYPES.map((t) => (
-          <button key={t.id} type="button" className={'pis-tab' + (activeType === t.id ? ' active' : '')}
-            onClick={() => { setActiveType(t.id); setAdding(false); setEditingId(null); }}>
-            <Icon name={t.icon} size={13} /> {t.label} <span className="pis-tab-n tnum">{countByType[t.id]}</span>
-          </button>
-        ))}
-        {extras.map((o) => (
-          <button key={o.id} type="button" className={'pis-tab' + (activeType === o.id ? ' active' : '')}
-            onClick={() => { setActiveType(o.id); setAdding(false); setEditingId(null); }}>
-            <Icon name={o.icon || 'edit'} size={13} /> {o.label} {o.n != null && <span className="pis-tab-n tnum">{o.n}</span>}
-          </button>
-        ))}
-      </div>
-
-      {extraActif ? (
-        extraActif.plein
-          ? <div className="pis-extra-plein">{extraActif.contenu}</div>
-          : <div className="pis-scroll scroll pis-extra">{extraActif.contenu}</div>
-      ) : (
-      <div className="pis-scroll scroll">
-        {activeType === 'flashcard' && avecItems && <ThemeFicheFlashcards ctx={ctx} ficheId={ficheId} />}
-        {!adding ? (activeType === 'flashcard' ? (
-          /* deux sortes de flashcards, côte à côte : on voit tout de suite qu'on
-             peut en faire une à partir d'une IMAGE (masques à deviner). */
-          <div className="pis-ajout-duo">
-            <button type="button" className="btn primary sm" onClick={() => setAdding(true)} title="Recto / verso, carte à trous…">
-              <Icon name="plus" size={13} /> Flashcard texte
-            </button>
-            <button type="button" className="btn primary sm" onClick={() => setOccEdition(true)} title="Colle une image, dessine des masques à deviner et pose des textes">
-              <Icon name="image" size={13} /> Flashcard image
-            </button>
-          </div>
-        ) : (
-          <button type="button" className="btn primary sm" style={{ width: '100%', justifyContent: 'center', margin: '12px 0' }} onClick={() => setAdding(true)}>
-            <Icon name="plus" size={13} /> Ajouter — {activeLabel}
-          </button>
-        )) : (
-          <div className="pis-add card" style={{ margin: '12px 0' }}>
-            <div className="card-body">
-              <div className="row spread" style={{ marginBottom: 10 }}>
-                <span style={{ fontWeight: 700, fontSize: 13 }}>Nouvel item — {activeLabel}</span>
-                <button type="button" className="cd-ic" onClick={closeAdd} title="Fermer"><Icon name="x" size={12} /></button>
-              </div>
-              <div className="seg" style={{ marginBottom: 12 }}>
-                <button type="button" className={'seg-btn' + (addSource === 'form' ? ' active' : '')} onClick={() => { setAddSource('form'); setAddedCount(0); }}><Icon name="edit" size={12} /> Formulaire</button>
-                <button type="button" className={'seg-btn' + (addSource === 'json' ? ' active' : '')} onClick={() => { setAddSource('json'); setAddedCount(0); }}><Icon name="upload" size={12} /> Coller du JSON</button>
-              </div>
-              {addSource === 'form' ? (
-                <>
-                  {addedCount > 0 && (
-                    <div className="err-mini ok" style={{ marginBottom: 12 }}>
-                      <div className="em-ic"><Icon name="check" size={16} stroke={2.5} /></div>
-                      <div className="em-body"><div className="em-title">{addedCount} item{addedCount > 1 ? 's' : ''} ajouté{addedCount > 1 ? 's' : ''} ✓</div></div>
-                    </div>
-                  )}
-                  <ItemForm type={activeType} onSubmit={submitAdd} busy={busyAdd} onCancel={closeAdd} submitLabel="Ajouter"
-                    themeDefaut={themeFlashcardsDeFiche((ctx.db.fiches || []).find((f) => f.id === ficheId))} />
-                </>
-              ) : (
-                <PasteJsonForm ctx={ctx} ficheId={ficheId} done={addedCount} setDone={setAddedCount} />
-              )}
-            </div>
+        {modes.length > 1 && (
+          <div className="pm-seg" role="tablist" aria-label="Mode du panneau" style={{ '--n': modes.length, '--i': indexMode }}>
+            <span className="pm-seg-indic" aria-hidden="true" />
+            {modes.map((m) => (
+              <button key={m.id} type="button" role="tab" aria-selected={modeActif === m.id}
+                className={'pm-seg-btn' + (modeActif === m.id ? ' actif' : '')} onClick={() => setMode(m.id)}>
+                {m.label}
+                {m.badge || (m.n ? <span className="tnum pm-n">{m.n}</span> : null)}
+              </button>
+            ))}
           </div>
         )}
-
-        <div className="pis-list">
-          {items.length === 0 && !adding && (
-            <div className="hint" style={{ padding: '14px 4px' }}>Aucun item « {activeLabel} » pour ce cours.</div>
-          )}
-          {items.map((item) => (
-            editingId === item.id ? (
-              <div key={item.id} className="pis-item card fadein">
-                <div className="card-body">
-                  <ItemForm type={item.type} initial={item} submitLabel="Enregistrer" busy={busyEdit}
-                    onCancel={() => setEditingId(null)} onSubmit={(raw) => submitEdit(item, raw)} />
-                </div>
-              </div>
-            ) : (
-              <ItemReadCard key={item.id} item={item}
-                onEdit={() => { if (estOcclusion(item)) { setOccEdition(item); return; } setEditingId(item.id); setAdding(false); }}
-                onDelete={() => setConfirmDel(item)} />
-            )
-          ))}
+        <div className="pm-corps" onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={() => { geste.current = null; }} onWheel={onWheel}>
+          <div key={modeActif} className={'pm-vue' + (sens > 0 ? ' depuis-droite' : sens < 0 ? ' depuis-gauche' : '')}>
+            {modeActif === 'exercices' ? exercices : extraActif ? (
+              extraActif.plein
+                ? <div className="pis-extra-plein">{extraActif.contenu}</div>
+                : <div className="pis-scroll scroll pis-extra">{extraActif.contenu}</div>
+            ) : null}
+          </div>
         </div>
-      </div>
-      )}
 
-      {occEdition && (
-        <OcclusionEditorModal ctx={ctx} ficheId={ficheId} initial={occEdition === true ? null : occEdition}
-          onClose={() => setOccEdition(null)} />
-      )}
+        {menuActions && <ContextMenu x={menuActions.x} y={menuActions.y} items={actions} onClose={() => setMenuActions(null)} />}
 
-      {confirmDel && (
-        <ConfirmModal
-          title="Supprimer cet item ?"
-          body="Sera supprimé définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible."
-          confirmLabel="Supprimer" danger
-          onConfirm={doDelete} onCancel={() => setConfirmDel(null)}
-        />
-      )}
+        {occEdition && (
+          <OcclusionEditorModal ctx={ctx} ficheId={ficheId} initial={occEdition === true ? null : occEdition}
+            onClose={() => setOccEdition(null)} />
+        )}
+
+        {confirmDel && (
+          <ConfirmModal
+            title="Supprimer cet item ?"
+            body="Sera supprimé définitivement (sur tous tes appareils, dès la prochaine synchro). Cette action est irréversible."
+            confirmLabel="Supprimer" danger
+            onConfirm={doDelete} onCancel={() => setConfirmDel(null)}
+          />
+        )}
       </div>
       )}
     </div>

@@ -1,0 +1,76 @@
+/* ============================================================
+   MedRevise — panneau latéral du lecteur en 3 modes (05/10).
+   Exercices · Notions · Transcript. Tokens du thème uniquement.
+   ============================================================ */
+
+/* sélecteur segmenté, indicateur glissant (--i = index actif, --n = nombre de modes) */
+.pm-seg {
+  position: relative; display: grid; grid-template-columns: repeat(var(--n), 1fr);
+  margin: 10px 10px 0; padding: 3px; border-radius: var(--r-5, 10px);
+  background: var(--bg-2); border: 1px solid var(--border-2); flex: 0 0 auto;
+}
+.pm-seg-indic {
+  position: absolute; top: 3px; bottom: 3px; left: 3px;
+  width: calc((100% - 6px) / var(--n)); transform: translateX(calc(var(--i) * 100%));
+  border-radius: calc(var(--r-5, 10px) - 3px); background: var(--card-2, var(--card));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .35), inset 0 0 0 1px var(--border);
+  transition: transform .28s cubic-bezier(.3, .7, .2, 1);
+}
+.pm-seg-btn {
+  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 6px 4px; border: none; background: transparent; color: var(--text-3);
+  font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: color .2s;
+}
+.pm-seg-btn:hover { color: var(--text-2); }
+.pm-seg-btn.actif { color: var(--text); }
+.pm-seg-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-soft); border-radius: 7px; }
+.pm-n { font-size: 11px; font-weight: 600; color: var(--text-3); }
+.pm-n.zero { opacity: .45; }
+/* badge « en direct » du segment Transcript */
+.pm-live { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--crit); font-variant-numeric: tabular-nums; }
+.pm-live i { width: 6px; height: 6px; border-radius: 50%; background: var(--crit); }
+.pm-live.pause { color: var(--text-3); } .pm-live.pause i { background: var(--text-3); }
+
+/* corps : la vue du mode, avec transition latérale */
+.pm-corps { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* le défilement vertical reste au navigateur, le glissement horizontal change de mode */
+.pm-corps, .pm-corps * { touch-action: pan-y; }
+.pm-vue { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.pm-vue.depuis-droite { animation: pm-droite .26s cubic-bezier(.3, .7, .2, 1); }
+.pm-vue.depuis-gauche { animation: pm-gauche .26s cubic-bezier(.3, .7, .2, 1); }
+@keyframes pm-droite { from { opacity: 0; transform: translateX(18px); } }
+@keyframes pm-gauche { from { opacity: 0; transform: translateX(-18px); } }
+@media (prefers-reduced-motion: reduce) { .pm-vue { animation: none !important; } .pm-seg-indic { transition: none; } }
+
+/* Exercices : sous-navigation soulignée + une barre d'actions */
+.pm-exos { padding-top: 6px; }
+.pm-sous { display: flex; gap: 2px; border-bottom: 1px solid var(--border-2); margin: 0 -2px 8px; overflow-x: auto; scrollbar-width: none; }
+.pm-sous::-webkit-scrollbar { display: none; }
+.pm-sous-btn {
+  display: inline-flex; align-items: center; gap: 5px; padding: 8px 8px 9px; border: none; background: none;
+  color: var(--text-3); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s, border-color .15s;
+}
+.pm-sous-btn:hover { color: var(--text-2); }
+.pm-sous-btn.actif { color: var(--text); border-bottom-color: var(--accent); }
+.pm-actions { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.pm-actions .btn.actif { border-color: var(--accent); color: var(--accent); }
+.pm-vide { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 28px 12px; color: var(--text-2); font-size: 13px; }
+.pm-vide svg { color: var(--text-3); margin-bottom: 2px; }
+.pm-vide .hint { font-size: 12px; max-width: 260px; }
+
+/* Notions : recherche + liste */
+.pm-recherche { display: flex; align-items: center; gap: 6px; padding: 6px 9px; margin: 0 0 8px; border-radius: var(--r, 8px); background: var(--bg-2); border: 1px solid var(--border-2); color: var(--text-3); }
+.pm-recherche input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13px; }
+.pm-recherche:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* Barre d'outils du lecteur (05/10) : sous 1 050 px, la barre se COMPACTE d'abord
+   (libellés masqués, puis insertions dans « ⋯ » et recherche en loupe) et ne passe
+   sur deux lignes qu'au dernier palier (.repliee) — avant, elle passait à la ligne
+   d'emblée et montait à 3 lignes (audit M3). */
+@media (max-width: 1050px) {
+  .pdfr-barre:not(.repliee) { flex-wrap: nowrap; }
+  .pdfr-barre:not(.repliee) .ptb-droite { margin-left: auto; }
+}
+.pdfr-barre.compacte .ptb-outils { gap: 1px; }
+.pdfr-barre.compacte .ptb-zone { gap: 4px; }

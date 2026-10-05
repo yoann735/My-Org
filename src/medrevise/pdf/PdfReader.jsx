@@ -80,7 +80,8 @@ import { htmlVersTiptap } from './htmlVersTiptap.js';
 import { MenuDessins, ArriveeDessin, TYPE_GLISSER } from './OngletDessins.jsx';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
-import { BoutonTranscrire, FeuilleDemarrage, TranscriptPanel } from '../transcription/TranscriptPanel.jsx';
+import { FeuilleDemarrage, TranscriptPanel, BadgeTranscript } from '../transcription/TranscriptPanel.jsx';
+import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
 import { sessionActive as transcriptionActive, lireEtat as etatTranscription } from '../transcription/engine.js';
 import { actualiserCredits } from '../transcription/credits.js';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
@@ -248,10 +249,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // crédits Deepgram lus dès l'ouverture du cours (v1.2), quel que soit l'onglet affiché :
   // la carte du panneau Transcript a déjà sa valeur quand on y arrive
   useEffect(() => { if (ficheId) actualiserCredits(); }, [ficheId]);
-  const clicTranscrire = () => {
-    ouvrirTranscript();
-    if (!(transcriptionActive() && etatTranscription().courseId === ficheId)) setFeuilleTrx({});
-  };
+  // la session de CE cours se voit sur le segment « Transcript » : pas de pastille flottante
+  useEffect(() => (ficheId ? enregistrerLecteur(ficheId) : undefined), [ficheId]);
+  /* NOTIONS (05/10) : recherche dans MES notions, et mise en évidence du surlignage
+     visé (classe « cible » du rectangle, 1,6 s) après le défilement vers sa page. */
+  const [filtreNotions, setFiltreNotions] = useState('');
+  const [flashHlId, setFlashHlId] = useState(null);
+  const flashMinuteur = useRef(null);
 
   /* TABLEAU type Miro (04/10, docs/mecanique-miro.md) — DISPOSITION : « pdf » (comme
      avant), « deux » (PDF | tableau, poignée réglable), « tableau » (plein, le PDF reste
@@ -850,8 +854,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       onClick: () => { if (!exporting) exportAnnotated(); } },
     { label: copiedCount ? 'Notions copiées ✓' : 'Copier les notions', icon: 'copy', onClick: copyPriority },
     canAddItem && { label: courseExportOk ? 'Copié ✓' : 'Tout exporter (JSON)', icon: 'copy', onClick: exportAllPdfCourse },
-    canAddItem && { label: 'Ajouter un item', icon: 'plus', onClick: () => setShowAddItem(true) },
-    canAddItem && { label: 'Importer des items', icon: 'upload', onClick: () => { setImportedCount(0); setShowImportItems(true); } },
+    // (05/10) « Ajouter un item » / « Importer des items » retirés : le mode Exercices du
+    // panneau les porte (« Ajouter », « ⋯ › Coller du JSON ») — audit UX M5
     // UNE entrée au lieu de deux boutons identiques côte à côte : AllPromptsModal
     // réunit déjà les 8 prompts (4 théorie + 4 exercices), et c'est le même
     // stockage que les anciens boutons — rien ne change pour le contenu.
@@ -876,16 +880,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     ] },
     { items: [
       ficheReelle && { label: 'Renommer', icon: 'edit', onClick: () => setDemandeRenommer((n) => n + 1) },
-      !!pdfDoc && { label: 'Insérer une page', icon: 'plus', onClick: () => insererPageApres(pageCourante - 1) },
-      !!pdfDoc && { label: 'Insérer une image', icon: 'image', onClick: () => entreeImageRef.current && entreeImageRef.current.click() },
+      // (05/10) « Insérer une page / une image » retirés : déjà dans la barre d'outils (audit M5)
       !!pending && { label: 'Remplacer la sélection', icon: 'edit', onClick: () => startEditFromSelection() },
       !!fiche.htmlId && { label: 'Voir la fiche HTML', icon: 'fileHtml', onClick: () => setSrcTab('html') },
     ] },
     { items: [
       { label: copiedCount ? 'Notions copiées ✓' : 'Copier les notions', icon: 'copy', onClick: copyPriority },
       canAddItem && { label: courseExportOk ? 'Copié ✓' : 'Exporter en JSON', icon: 'copy', onClick: exportAllPdfCourse },
-      canAddItem && { label: 'Ajouter un item', icon: 'plus', onClick: () => setShowAddItem(true) },
-      canAddItem && { label: 'Importer des items', icon: 'upload', onClick: () => { setImportedCount(0); setShowImportItems(true); } },
       canAddItem && { label: 'Prompts', icon: 'layers', onClick: () => setPromptsOuverts(true) },
     ] },
     { items: [
@@ -1562,20 +1563,37 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const questionsByPage = useMemo(() => groupByPage(parType.question), [parType]);
   const matchesByPage = useMemo(() => groupByPage(matches), [matches]);
 
-  // contenu de l'onglet « Notions » du panneau commun (voir CourseItemsSidebar)
+  // mode « Notions » du panneau (05/10) : MES passages surlignés, recherche, et c'est tout
+  // (« Copier les notions » et la légende des couleurs vivent dans le menu Fichier / l'aide)
+  const aller = (h) => {
+    scrollToPageFraction(h.page, (h.rects[0] && h.rects[0].y) || 0);
+    setFlashHlId(h.id);
+    clearTimeout(flashMinuteur.current);
+    flashMinuteur.current = setTimeout(() => setFlashHlId(null), 1600);
+  };
+  const qNotions = filtreNotions.trim().toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const notionsFiltrees = qNotions
+    ? highlights.filter((h) => `${h.texte} ${h.note || ''} ${COLOR_TAG[h.couleur] || ''}`.toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(qNotions))
+    : highlights;
   const notionsPdf = (
     <div className="pis-notions">
-      <span title={copyTitle} style={{ display: 'block' }}>
-        <button className="btn sm" onClick={copyPriority} disabled={!pdfDoc} style={{ width: '100%', justifyContent: 'center', marginBottom: 12 }}>
-          <Icon name={copiedCount ? 'check' : 'copy'} size={13} /> {copyLabel}
-        </button>
-      </span>
-      <div className="hl-legend">
-        {COLORS.map((c) => <span key={c.id}><i style={{ background: c.hex }} />{COLOR_TAG[c.id] || c.short}</span>)}
-      </div>
-      {highlights.length === 0 && <div className="hint">Prends le Surligneur et sélectionne du texte : il est surligné. Clique un surlignage pour changer sa couleur ou le supprimer.</div>}
-      {highlights.map((h) => (
-        <div className="hl-entry" key={h.id} onClick={() => scrollToPageFraction(h.page, (h.rects[0] && h.rects[0].y) || 0)}>
+      {highlights.length > 0 && (
+        <label className="pm-recherche">
+          <Icon name="search" size={13} />
+          <input value={filtreNotions} onChange={(e) => setFiltreNotions(e.target.value)} placeholder={`Chercher dans ${highlights.length} notion${highlights.length > 1 ? 's' : ''}`} />
+          {filtreNotions && <button type="button" className="cd-ic" onClick={() => setFiltreNotions('')} title="Effacer"><Icon name="x" size={11} /></button>}
+        </label>
+      )}
+      {highlights.length === 0 && (
+        <div className="pm-vide">
+          <Icon name="edit" size={22} />
+          <div>Aucune notion surlignée.</div>
+          <div className="hint">Prends le Surligneur et sélectionne du texte : il apparaît ici. Un clic sur une notion t’y ramène.</div>
+        </div>
+      )}
+      {highlights.length > 0 && notionsFiltrees.length === 0 && <div className="hint" style={{ padding: '10px 4px' }}>Aucune notion ne contient « {filtreNotions} ».</div>}
+      {notionsFiltrees.map((h) => (
+        <div className="hl-entry" key={h.id} role="button" tabIndex={0} onClick={() => aller(h)} onKeyDown={(e) => { if (e.key === 'Enter') aller(h); }}>
           <span className="hl-dot" style={{ background: couleurHex(h.couleur) }} />
           <div>
             <div className="hl-entry-page">p.{h.page}{COLOR_TAG[h.couleur] && <span className="hl-entry-tag">{COLOR_TAG[h.couleur]}</span>}</div>
@@ -1669,7 +1687,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={highlights.length}
         actionsDocument={afficherEntete ? [] : actionsDocument /* avec l'en-tête, tout est dans « Fichier » */}
 
-        boutonTranscrire={ficheId ? <BoutonTranscrire courseId={ficheId} onClick={clicTranscrire} /> : null}
         onAjouterPage={pdfDoc ? () => insererPageApres(pageCourante - 1) : null}
         boutonDessins={pdfDoc && srcTab === 'pdf' && ficheId ? (
           <MenuDessins dessins={dessins} essai={essaiDessins} pdfPret={!!pageSizes.length}
@@ -1856,7 +1873,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       activeMatchIdx={activeMatch}
                       onCreateHighlight={handleCreateHighlightRequest}
                       onHighlightClick={handleHighlightClick}
-                      cibleHlId={editingHl ? editingHl.id : null}
+                      cibleHlId={editingHl ? editingHl.id : flashHlId}
                       onActivateEdit={setActiveEditId}
                       activeEditor={editor}
                     />
@@ -1885,12 +1902,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           ongletsEnPlus={[
             { id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length, contenu: notionsPdf },
             ficheId && {
-              id: 'transcript', label: 'Transcript', icon: 'mic', plein: true,
+              id: 'transcript', label: 'Transcript', icon: 'mic', plein: true, badge: <BadgeTranscript courseId={ficheId} />,
               contenu: <TranscriptPanel courseId={ficheId} titre={titreFiche}
                 onDemarrer={() => setFeuilleTrx({})} onReprendre={(s) => setFeuilleTrx({ reprendre: s })} />,
             },
           ]}
-          ongletDemande={ongletDemande}
+          ongletDemande={ongletDemande} cleMemo={ficheId}
           ongletInitial={ficheReelle ? null : 'notions'}
           replie={!panelOpen} onReplier={(v) => setPanelOpen(!v)} />
       </div>

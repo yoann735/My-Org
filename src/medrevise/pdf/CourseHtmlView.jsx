@@ -45,12 +45,18 @@ import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
 import { getBlob, putBlob, putBlobAt } from '../lib/storage.js';
 import { PasteJsonForm } from '../components/AddItemForm.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
+import { FeuilleDemarrage, TranscriptPanel, BadgeTranscript } from '../transcription/TranscriptPanel.jsx';
+import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
 import { buildCourseExport } from '../lib/courseExport.js';
 import { serializeCourseHtml } from '../lib/courseHtmlSave.js';
 
 export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, close, onVoirPdf, onRattacher = null }) {
   const { db } = ctx;
   const [mobileView, setMobileView] = useState('course');
+  // TRANSCRIPTION (05/10) : même mode « Transcript » que sur un cours PDF
+  const [feuilleTrx, setFeuilleTrx] = useState(null);
+  const [ongletDemande, setOngletDemande] = useState(null);
+  useEffect(() => (ficheId ? enregistrerLecteur(ficheId) : undefined), [ficheId]);
   const [showImportItems, setShowImportItems] = useState(false);
   const [importedCount, setImportedCount] = useState(0);
 
@@ -397,11 +403,21 @@ export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, clos
         </div>
         {/* PANNEAU DE DROITE — le MÊME que sur une fiche PDF */}
         <CourseItemsSidebar ctx={ctx} ficheId={canAddItem ? ficheId : null}
-          ongletsEnPlus={[{ id: 'notions', label: 'Notions', icon: 'edit', n: marques.length, contenu: notionsHtml }]}
+          ongletsEnPlus={[
+            { id: 'notions', label: 'Notions', icon: 'edit', n: marques.length, contenu: notionsHtml },
+            ficheId && { id: 'transcript', label: 'Transcript', plein: true, badge: <BadgeTranscript courseId={ficheId} />,
+              contenu: <TranscriptPanel courseId={ficheId} titre={fiche && fiche.titre} onDemarrer={() => setFeuilleTrx({})} onReprendre={(s) => setFeuilleTrx({ reprendre: s })} /> },
+          ]}
+          ongletDemande={ongletDemande} cleMemo={ficheId}
           ongletInitial={canAddItem ? null : 'notions'}
           replie={!panelOpen} onReplier={(v) => setPanelOpen(!v)} />
       </div>
 
+      {feuilleTrx && ficheId && (
+        <FeuilleDemarrage courseId={ficheId} pdfDoc={null} reprendre={feuilleTrx.reprendre || null}
+          onClose={() => setFeuilleTrx(null)}
+          onDemarre={() => { setPanelOpen(true); setOngletDemande((o) => ({ id: 'transcript', n: (o ? o.n : 0) + 1 })); }} />
+      )}
       {showImportItems && (
         <Modal title="Importer des items" onClose={() => setShowImportItems(false)} width="min(640px, 94vw)">
           <div className="hint" style={{ marginBottom: 12 }}>
