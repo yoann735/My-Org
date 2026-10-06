@@ -14,13 +14,14 @@ import { matiereMeta, syncStatusLabel, DateActionModal, ConfirmModal, SyncIndica
 import { Tex } from '../components/Tex.jsx';
 import { exportBackup } from '../lib/backupExport.js';
 import { CarteDessin } from './CarteDessin.jsx';
+import { SeanceAujourdhui } from '../components/SeanceAujourdhui.jsx';
 
 // carnet d'erreurs v2 : aperçu LISTE (pas la carte de révision interactive) —
 // déplie les {{mots}} de cloze en texte normal avant rendu <Tex> (LaTeX), même
 // traitement que CarnetDashboard.jsx desktop (voir là-bas pour le détail).
 const stripCloze = (s) => (s || '').replace(/\{\{([^{}]+)\}\}/g, '$1');
 
-export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman, onOpenDessin = null }) {
+export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman, onOpenDessin = null, onStartSeanceFC = null }) {
   const { db } = ctx;
   const ix = useMemo(() => index(db), [db]);
   const due = useMemo(() => dueToday(db, ix), [db, ix]);
@@ -138,6 +139,9 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
       </div>
 
       <div className="mrm-scroll">
+        {/* séance quotidienne des flashcards (révisions + apprentissage), un seul bouton */}
+        {onStartSeanceFC && <SeanceAujourdhui ctx={ctx} onDemarrer={onStartSeanceFC} />}
+
         <div className="mrm-card mrm-hero">
           <div className="mrm-hero-n">{due.length}</div>
           <div className="mrm-hero-label">carte{due.length > 1 ? 's' : ''} due{due.length > 1 ? 's' : ''} aujourd'hui</div>

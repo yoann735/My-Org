@@ -10,6 +10,7 @@ import { wipeAll } from '../lib/storage.js';
 import { exportBackup, formatOctets } from '../lib/backupExport.js';
 import { CarteCredits } from '../transcription/Credits.jsx';
 import { CarteOcrReglages } from '../ocr/PanneauOcr.jsx';
+import { reglagesFC, BORNES_FC } from '../lib/apprentissageFC.js';
 import { validateBackup, currentCounts, importBackup, computeCloudDiff, applyCloudTombstones } from '../lib/backupImport.js';
 
 export function Reglages({ ctx }) {
@@ -287,6 +288,9 @@ export function Reglages({ ctx }) {
           <div className="hint" style={{ marginTop: 10, marginBottom: 12 }}>Moteur adaptatif : chaque carte porte son propre intervalle (en jours), qui démarre à 1 et se multiplie à chaque révision. Un Raté le remet à 1 jour (reprise le jour même, puis due à J+1). Au-delà de 90 jours, l'intervalle est plafonné à J+90 pile ; après cette dernière révision, Facile/Difficile termine la carte, Raté relance un cycle complet.</div>
           <button type="button" className="btn" style={{ color: 'var(--crit)' }} onClick={resetAllJ}><Icon name="calendar" size={15} /> Réinitialiser les dates</button>
         </Card>
+        <Card title="Apprentissage des flashcards" icon="cards">
+          <ReglagesApprentissageFC ctx={ctx} />
+        </Card>
         <Card title="Sauvegarde" icon="archive">
           <div className="hint" style={{ marginBottom: 12 }}>
             Enregistre TOUT ce que contient cet appareil dans un seul fichier JSON
@@ -409,6 +413,27 @@ export function Reglages({ ctx }) {
           <SyncIndicator refreshKey={syncTick} />
         </Card>
       </div>
+    </div>
+  );
+}
+
+/* apprentissage des flashcards (lib/apprentissageFC.js) : trois réglages, synchronisés
+   entre appareils (storage.js setReglagesFC). Rien d'autre. */
+function ReglagesApprentissageFC({ ctx }) {
+  const r = reglagesFC(ctx.reglagesFC);
+  const champ = (cle, libelle, aide) => (
+    <label className="rfc-champ">
+      <span className="rfc-libelle">{libelle}<span className="hint">{aide}</span></span>
+      <input type="number" className="rfc-nombre" min={BORNES_FC[cle][0]} max={BORNES_FC[cle][1]} step={1} defaultValue={r[cle]} key={cle + r[cle]}
+        onBlur={(e) => { const v = reglagesFC({ ...r, [cle]: e.target.value }); e.target.value = v[cle]; if (v[cle] !== r[cle]) ctx.saveReglagesFC(v); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
+    </label>
+  );
+  return (
+    <div className="rfc">
+      {champ('quotaNouvelles', 'Nouvelles cartes par jour', `${BORNES_FC.quotaNouvelles[0]} à ${BORNES_FC.quotaNouvelles[1]} — au-delà, elles passent au lendemain`)}
+      {champ('critere', 'Critère de succès', 'succès consécutifs pour sortir de l’apprentissage (2 à 5)')}
+      {champ('critereApresRate', 'Critère après un raté', 'pour une carte ratée en révision (1 à 5)')}
     </div>
   );
 }

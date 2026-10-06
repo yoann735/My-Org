@@ -37,6 +37,7 @@ import { toInternalItem } from '../lib/adapter.js';
 import { OcclusionEditorModal, OcclusionView, estOcclusion } from './OcclusionImage.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from './FlashcardImage.jsx';
 import { CarteAjoutFlashcard } from './CarteAjoutFlashcard.jsx';
+import { SeanceAujourdhui } from './SeanceAujourdhui.jsx';
 import { ModeVisibleCtx } from './modeVisible.js';
 import '../../styles/panneau-modes.css';
 
@@ -334,6 +335,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
           </button>
         ))}
       </div>
+      {/* séance quotidienne des flashcards (toutes matières) : un en-tête, un bouton */}
+      {activeType === 'flashcard' && ctx.startSeanceFC && <SeanceAujourdhui ctx={ctx} compact onDemarrer={ctx.startSeanceFC} />}
       <div className="pm-actions">
         {/* carte flashcard ouverte : elle a son propre « Terminer » — pas de doublon ici */}
         {!(adding && addSource === 'form' && activeType === 'flashcard') && <button type="button" className={'btn sm' + (adding && addSource === 'form' ? ' actif' : '')}

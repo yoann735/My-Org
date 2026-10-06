@@ -16,9 +16,10 @@ import { MobileSession } from './MobileSession.jsx';
 import { MobileExercice } from './MobileExercice.jsx';
 import { MobileFeynman } from './MobileFeynman.jsx';
 import { EcranDessin } from './EcranDessin.jsx';
+import { SeanceFC } from '../session/SeanceFC.jsx';
 
 export function MobileApp({ ctx }) {
-  const [screen, setScreen] = useState('home'); // home | session | exercice | feynman | dessin
+  const [screen, setScreen] = useState('home'); // home | session | exercice | feynman | dessin | seancefc
   const goHome = () => setScreen('home');
 
   if (screen === 'session' && ctx.session) {
@@ -30,11 +31,15 @@ export function MobileApp({ ctx }) {
   if (screen === 'feynman' && ctx.feynman) {
     return <MobileFeynman ctx={ctx} onQuit={goHome} />;
   }
+  if (screen === 'seancefc') {
+    // séance quotidienne des flashcards (apprentissage + révisions, session/SeanceFC.jsx)
+    return <SeanceFC ctx={ctx} onQuit={goHome} pleinEcran />;
+  }
   if (screen === 'dessin') {
     return <EcranDessin ctx={ctx} onQuit={goHome} />;
   }
   return (
-    <MobileHome ctx={ctx} onOpenDessin={() => setScreen('dessin')}
+    <MobileHome ctx={ctx} onOpenDessin={() => setScreen('dessin')} onStartSeanceFC={() => setScreen('seancefc')}
       onStartSession={(items, title, meta) => { ctx.startSession(items, title, meta); setScreen('session'); }}
       onStartExercice={(items, title) => { ctx.startExercice(items, title); setScreen('exercice'); }}
       onStartFeynman={(payload) => { ctx.startFeynman(payload); setScreen('feynman'); }}

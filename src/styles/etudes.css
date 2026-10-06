@@ -2257,3 +2257,90 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .flash-face.back .ff-zone.lg-long .ff-text { font-size: 17px; }
 .flash-face .ff-zone.lg-long .zd-contenu { align-items: stretch; }
 .flash-face .zd-contenu { gap: 0; } /* espacements d'origine (marges des éléments) */
+
+/* ============================================================
+   APPRENTISSAGE DES FLASHCARDS (06/10, docs/compte-rendu-apprentissage-flashcards.md)
+   .sfa = en-tête « Aujourd'hui » (accueil mobile, panneau Exercices → Flashcards)
+   .sfc = écran de séance (plein écran mobile ; colonne centrée dans .main au bureau)
+   .rfc = réglages
+   ============================================================ */
+.sfa { display: flex; flex-direction: column; gap: 8px; padding: 18px; border-radius: 18px; background: var(--card); border: 1px solid var(--border); }
+.sfa-titre { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); }
+.sfa-ligne { font-size: 15px; font-weight: 600; color: var(--text); }
+.sfa-note { font-size: 12.5px; color: var(--text-3); line-height: 1.4; }
+.sfa-rien { font-size: 18px; font-weight: 700; color: var(--text); }
+.sfa.vide .sfa-ligne { font-size: 13.5px; font-weight: 500; color: var(--text-2); }
+.sfa-btn {
+  margin-top: 6px; min-height: 52px; border: none; border-radius: 14px; background: var(--accent); color: #fff;
+  font: inherit; font-size: 16px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+}
+.sfa-btn:active { transform: scale(.985); }
+.sfa.compact { padding: 12px; gap: 6px; border-radius: var(--r-5, 12px); margin: 2px 0 10px; }
+.sfa.compact .sfa-ligne { font-size: 13px; }
+.sfa.compact .sfa-rien { font-size: 14px; }
+.sfa.compact .sfa-btn { min-height: 38px; font-size: 13.5px; border-radius: 10px; margin-top: 2px; }
+
+.sfc { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--text); }
+.sfc.plein-ecran { flex: none; height: 100vh; height: 100dvh; } /* shell mobile */
+.sfc-tete { display: flex; align-items: center; gap: 12px; padding: 12px 16px; padding-top: calc(12px + env(safe-area-inset-top)); border-bottom: 1px solid var(--border-2); }
+.sfc-quitter { width: 40px; height: 40px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--border-2); background: var(--card); color: var(--text-2); cursor: pointer; }
+.sfc-barre { flex: 1 1 auto; height: 6px; border-radius: 3px; background: var(--bg-2); overflow: hidden; }
+.sfc-barre span { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s ease; }
+.sfc-prog { font-size: 12.5px; font-weight: 700; color: var(--text-2); white-space: nowrap; }
+.sfc-corps {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 680px; margin: 0 auto;
+  padding: 14px calc(16px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+}
+.sfc-etiquette { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); }
+.sfc-points { display: inline-flex; gap: 5px; }
+.sfc-points i { width: 8px; height: 8px; border-radius: 50%; background: var(--bg-2); border: 1px solid var(--border); }
+.sfc-points i.on { background: var(--ok); border-color: var(--ok); }
+.sfc-carte {
+  flex: 1 1 auto; min-height: 140px; display: flex; flex-direction: column; overflow: hidden; padding: 0; cursor: pointer;
+  border-radius: 20px; border: 1px solid var(--border); background: var(--card); color: var(--text); font: inherit; text-align: center;
+}
+.sfc-carte > .fc-image { flex: 0 0 auto; margin: 18px 18px 0; align-self: center; }
+.sfc-carte > .fc-image img { object-fit: contain; max-width: 100%; }
+.sfc-zone .zd-defil { padding: 26px 22px 20px; }
+.sfc-recto { font-size: 21px; font-weight: 600; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sfc-verso { font-size: 18px; line-height: 1.5; color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sfc-zone.long .sfc-recto { font-size: 17px; font-weight: 500; line-height: 1.5; }
+.sfc-zone.long .sfc-verso { font-size: 16px; }
+.sfc-zone.long .zd-contenu { align-items: stretch; text-align: left; }
+.sfc-sep { width: 56px; height: 2px; border-radius: 1px; background: var(--border); align-self: center; }
+.sfc-retenir { font-size: 15px; line-height: 1.5; padding: 10px 12px; border-radius: 12px; background: var(--accent-soft); white-space: pre-wrap; text-align: left; }
+.sfc-indication { flex: 0 0 auto; padding: 8px 16px 14px; font-size: 12.5px; color: var(--text-3); }
+.sfc-bas { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; }
+.sfc-notes { display: grid; gap: 10px; }
+.sfc-notes.trois { grid-template-columns: repeat(3, 1fr); }
+.sfc-notes.deux { grid-template-columns: 1fr 1fr; }
+.sfc-btn {
+  min-height: 56px; border-radius: 14px; border: none; font: inherit; font-size: 16px; font-weight: 700; color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; padding: 0 14px;
+}
+.sfc-btn:active { transform: scale(.985); }
+.sfc-btn.principal { background: var(--accent); }
+.sfc-btn.neutre { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+.sfc-btn.rate { background: var(--crit); }
+.sfc-btn.difficile { background: var(--warn); }
+.sfc-btn.facile { background: var(--ok); }
+.sfc-aide { text-align: center; font-size: 12.5px; color: var(--text-3); }
+.sfc-centre { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; padding: 30px 22px calc(30px + env(safe-area-inset-bottom)); }
+.sfc-centre .sfc-btn { min-width: 240px; margin-top: 8px; }
+.sfc-titre { font-size: 22px; font-weight: 700; }
+.sfc-ok { color: var(--ok); }
+.sfc-sous { font-size: 16px; font-weight: 600; color: var(--text); }
+.sfc-chiffres { display: flex; flex-direction: column; gap: 8px; font-size: 15px; color: var(--text-2); }
+.sfc-chiffres .tnum { font-size: 20px; font-weight: 800; color: var(--text); margin-right: 4px; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .sfc-tete { padding-top: 8px; padding-bottom: 8px; }
+  .sfc-corps { padding-top: 8px; gap: 8px; }
+  .sfc-btn { min-height: 46px; }
+  .sfc-carte { min-height: 100px; }
+}
+
+.rfc { display: flex; flex-direction: column; gap: 12px; }
+.rfc-champ { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.rfc-libelle { display: flex; flex-direction: column; gap: 2px; font-size: 14px; font-weight: 600; }
+.rfc-nombre { width: 72px; padding: 8px 10px; border-radius: var(--r, 10px); border: 1px solid var(--border); background: var(--bg-2); color: var(--text); font: inherit; font-size: 15px; text-align: center; }
+.rfc-nombre:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }

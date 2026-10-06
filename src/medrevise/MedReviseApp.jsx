@@ -21,12 +21,13 @@ import { Feynman } from './session/Feynman.jsx';
 import { Exercice } from './session/Exercice.jsx';
 import { AnatQuiz } from './session/AnatQuiz.jsx';
 import { PdfReader } from './pdf/PdfReader.jsx';
+import { SeanceFC } from './session/SeanceFC.jsx';
 import { SchemaEditorScreen } from './documents/SchemaEditorScreen.jsx';
 import {
   getAll, put, putMany, remove, getStats, setStats as saveStats, genId, syncNow,
   purgeSource, purgeMatiere, purgeFiche, putBackup, newErrorCard,
   getCoursePrompts, setCoursePrompts, getExoPrompts, setExoPrompts,
-  getChapExoPrompts, setChapExoPrompts,
+  getChapExoPrompts, setChapExoPrompts, getReglagesFC, setReglagesFC,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 import { marquerSyncReussie } from './lib/syncStatus.js';
@@ -43,7 +44,7 @@ let ocrDemarre = false; // démarrage unique du service OCR (voir plus bas)
 // de documents ET rend PdfReader/SchemaEditorScreen/TranscriptEditor EMBARQUÉS dans
 // son panneau de droite. 'pdf'/'schemaedit' restent des routes plein-écran, mais ne
 // sont plus atteignables QUE depuis Réviser (« Voir le cours » / « Éditer le schéma »).
-const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard, apprentissage: Apprentissage, notes: PriseDeNotes };
+const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard, apprentissage: Apprentissage, notes: PriseDeNotes, seancefc: SeanceFC };
 
 function MedBottomNav({ current, onNav, focus }) {
   const items = focus ? [{ id: ECRAN_FOCUS, label: 'Prise de notes', icon: 'edit' }] : [
@@ -108,6 +109,9 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // stockage { clé → texte } que les deux au-dessus.
   const [chapExoPromptOverrides, setChapExoPromptOverrides] = useState({});
   const [session, setSession] = useState(null);
+  // apprentissage des flashcards (lib/apprentissageFC.js) : réglages synchronisés + écran de retour
+  const [reglagesFC, setReglagesFCState] = useState(null);
+  const [retourSeanceFC, setRetourSeanceFC] = useState(null);
   const [feynman, setFeynman] = useState(null);
   const [exercice, setExercice] = useState(null); // { items:[exercice], title }
   const [anatQuiz, setAnatQuiz] = useState(null); // { fiche, mode:'total'|'random', proportion }
@@ -122,6 +126,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     const [sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, apprentissage, notes, st, pr, epr, cepr] = await Promise.all([
       getAll('sources'), getAll('matieres'), getAll('dossiers'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getAll('apprentissage'), getAll('notes'), getStats(), getCoursePrompts(), getExoPrompts(), getChapExoPrompts(),
     ]);
+    setReglagesFCState(await getReglagesFC());
     // `apprentissage` : unités du mode Apprentissage (lib/apprentissage.js). Clé AJOUTÉE
     // à db, lue par le seul écran Apprentissage — aucun calcul existant ne la parcourt.
     // `notes` : documents de l'onglet Prise de notes (lib/notes.js). Clé AJOUTÉE à db,
@@ -228,6 +233,12 @@ export default function MedReviseApp({ themeApi, goHub }) {
     syncState, forceSync,
     focusFiche, setFocusFiche,
     session, feynman, exercice, anatQuiz, pdfView, schemaView,
+
+    // ---- apprentissage des flashcards : séance quotidienne (session/SeanceFC.jsx) ----
+    reglagesFC,
+    saveReglagesFC: async (r) => { setReglagesFCState(await setReglagesFC(r)); },
+    startSeanceFC: () => { setRetourSeanceFC(screen === 'seancefc' ? retourSeanceFC : screen); setScreen('seancefc'); },
+    endSeanceFC: () => { setScreen(retourSeanceFC || 'dashboard'); setRetourSeanceFC(null); },
 
     // ---- session lifecycle ----
     startSession: (items, title, meta = {}) => {
@@ -503,7 +514,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
       if (!targets.length && !schemaTargets.length) return;
       await putBackup('pre-reset-j-' + Date.now(), { questions: targets, schemas: schemaTargets });
       const strip = (rec) => { const { intervalDays, dueDate, capped, termine, j0Date, ...rest } = rec; return rest; };
-      if (targets.length) await putMany('questions', targets.map(strip));
+      // apprentissage des flashcards (lib/apprentissageFC.js) : l'état est effacé lui aussi —
+      // la carte attend son nouveau J0 comme les autres, puis repart selon son historique
+      const stripFC = (rec) => { const { learnState, learningStreak, learningCriterion, learningPresented, learningIntroducedOn, learningDue, learningSource, ...rest } = strip(rec); return rest; };
+      if (targets.length) await putMany('questions', targets.map(stripFC));
       if (schemaTargets.length) await putMany('fiches', schemaTargets.map(strip));
       await reload();
     },
