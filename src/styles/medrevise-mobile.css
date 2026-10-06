@@ -387,3 +387,52 @@
 .md-paysage .md-carte .md-aide { display: none; }
 .md-paysage .md-format { left: 64px; right: 70px; }
 .md-paysage .md-vide { top: 44%; }
+
+/* ============================================================
+   FLASHCARD À TEXTE LONG (06/10, docs/compte-rendu-flashcards-mobile.md)
+   Écran « carte » : l'app fait exactement la hauteur visible (dvh, pas 100vh) ;
+   la carte occupe l'espace entre l'en-tête et la barre de notation, son texte
+   défile À L'INTÉRIEUR (dégradé en bas tant qu'il reste à lire) ; la barre de
+   notation reste toujours visible, marge basse = zone de sécurité.
+   ============================================================ */
+.mrm-app.mrm-ecran-carte { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
+.mrm-ecran-carte .mrm-body {
+  display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right));
+}
+.mrm-ecran-carte .mrm-fc, .mrm-ecran-carte .mrm-fc-classique { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.mrm-ecran-carte .mrm-flash-scene { flex: 1 1 auto; min-height: 120px; }
+.mrm-ecran-carte .mrm-flash-card { min-height: 0; padding: 0; gap: 0; overflow: hidden; justify-content: flex-start; align-items: stretch; }
+.mrm-ecran-carte .mrm-flash-card > .fc-image { flex: 0 0 auto; margin: 18px 18px 0; align-self: center; }
+.mrm-ecran-carte .mrm-flash-card > .fc-image img { object-fit: contain; max-width: 100%; }
+.mrm-flash-pied { flex: 0 0 auto; padding: 8px 16px 14px; }
+.mrm-fc-bas { flex: 0 0 auto; max-height: 62%; overflow-y: auto; overscroll-behavior: contain; }
+.mrm-fc-bas .mrm-rate { margin-top: 12px; }
+
+.mrm-flash-zone .zd-defil { padding: 24px 20px 18px; }
+
+/* sauts de ligne et paragraphes tels que saisis (les cartes stockent des \n) */
+.mrm-flash-text, .mrm-flash-back, .mrm-indice { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* taille adaptative légère : court → grand ; long → 16-17 px (jamais moins), aligné à gauche */
+.mrm-flash-zone.lg-court .mrm-flash-text { font-size: 22px; }
+.mrm-flash-zone.lg-moyen .mrm-flash-text { font-size: 19px; }
+.mrm-flash-zone.lg-long .mrm-flash-text { font-size: 17px; font-weight: 500; line-height: 1.5; }
+.mrm-flash-zone .mrm-flash-back { font-size: 17px; }
+.mrm-flash-zone.lg-court .mrm-flash-back { font-size: 19px; }
+.mrm-flash-zone.lg-long .mrm-flash-back { font-size: 16px; }
+.mrm-flash-zone .mrm-indice { font-size: 16px; text-align: left; }
+.mrm-flash-zone.lg-long .zd-contenu { align-items: stretch; text-align: left; }
+
+/* téléphone en paysage (≤ 500 px de haut) : notation sur une ligne, image à côté du texte */
+@media (orientation: landscape) and (max-height: 500px) {
+  .mrm-ecran-carte .mrm-header { padding-top: 8px; padding-bottom: 8px; }
+  .mrm-ecran-carte .mrm-body { padding-top: 10px; }
+  .mrm-ecran-carte .mrm-concept { margin-bottom: 6px; }
+  .mrm-ecran-carte .mrm-rate:not(.mrm-erreur-rate) { flex-direction: row; }
+  .mrm-ecran-carte .mrm-rate .mrm-rate-btn { flex: 1; min-height: 48px; }
+  .mrm-ecran-carte .mrm-flash-card.avec-image { flex-direction: row; }
+  .mrm-ecran-carte .mrm-flash-card.avec-image > .fc-image { margin: 14px 0 14px 14px; max-width: 42%; align-self: center; }
+  .mrm-ecran-carte .mrm-flash-card.avec-image > .fc-image, .mrm-ecran-carte .mrm-flash-card.avec-image > .fc-image img { max-height: calc(100dvh - 190px) !important; }
+  .mrm-ecran-carte .mrm-flash-card.avec-image .mrm-flash-pied { display: none; }
+}

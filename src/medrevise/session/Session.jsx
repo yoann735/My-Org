@@ -10,6 +10,7 @@ import { imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta, EtiquetteQuickSet, SessionTrendCard } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
+import { ZoneDefilante, classeLongueur } from '../components/ZoneDefilante.jsx';
 import { advanceQuestion, recordRelearnAttempt, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, labelForCursor, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
 import { index } from '../lib/planning.js';
 import { blobURL } from '../lib/storage.js';
@@ -445,6 +446,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
         <div className={'flash-card' + (flipped ? ' flipped' : '') + (occ ? ' occ' : '') + (!occ && (imageAuRecto(item) || imageAuVerso(item)) ? ' img' : '')} onClick={() => setFlipped((f) => !f)}>
           <div className="flash-face front">
             <span className="ff-tag" style={{ color: meta.tint }}>{erreurMode ? "Flashcard d'erreur" : `${meta.label} · ${item.theme}`}</span>
+            <ZoneDefilante className={'ff-zone ' + classeLongueur(item.recto)}>
             {occ
               ? <div className="ff-occ"><OcclusionView occ={occ} /><div className="ff-imgq"><Tex>{item.recto}</Tex></div></div>
               : imageAuRecto(item)
@@ -455,10 +457,12 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
                   <Icon name="lightbulb" size={13} style={{ color: 'var(--accent)', flex: '0 0 auto' }} /> <span><Tex>{item.indice}</Tex></span>
                 </div>
               : <button className="btn ghost sm" style={{ marginTop: 10 }} onClick={revealIndice}><Icon name="lightbulb" size={13} /> Indice</button>)}
+            </ZoneDefilante>
             <span className="ff-hint"><Icon name="refresh" size={13} /> Clique pour révéler</span>
           </div>
           <div className="flash-face back">
             <span className="ff-tag">Réponse</span>
+            <ZoneDefilante className={'ff-zone ' + classeLongueur(item.verso, item.a_retenir)}>
             {occ
               ? <div className="ff-occ"><OcclusionView occ={occ} revele />{!item.versoAuto && <div className="ff-imgq"><Tex>{item.verso}</Tex></div>}</div>
               : imageAuVerso(item)
@@ -470,6 +474,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
                 <Icon name="star" size={13} style={{ color: 'var(--accent)', flex: '0 0 auto' }} /> <span><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></span>
               </div>
             )}
+            </ZoneDefilante>
             <span className="ff-hint"><Icon name="check" size={13} /> Comment t'en es-tu sorti ?</span>
           </div>
         </div>

@@ -13,6 +13,7 @@ import { index } from '../lib/planning.js';
 import { Tex } from '../components/Tex.jsx';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
+import { ZoneDefilante, classeLongueur } from '../components/ZoneDefilante.jsx';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
 import { SessionTrendCard, EtiquetteIconButton, etiquetteMenuItems, ContextMenu } from '../components/ui.jsx';
 
@@ -181,8 +182,12 @@ export function MobileSession({ ctx, onQuit }) {
 
   if (finished) return <MobileSessionDone items={allItems} results={results} title={session.title} ctx={ctx} onQuit={onQuit} erreurMode={erreurMode} />;
 
+  // écran « carte » (flashcard à retourner) : hauteur = écran, la carte prend l'espace entre
+  // l'en-tête et la barre de notation, son texte défile à l'intérieur (compte-rendu-flashcards-mobile.md).
+  // QCM et cloze en saisie (champs + clavier virtuel) gardent le défilement de page.
+  const ecranCarte = item.type !== 'qcm' && !(isCloze(item) && clozeMode === 'actif' && !erreurMode);
   return (
-    <div className="mrm-app">
+    <div className={'mrm-app' + (ecranCarte ? ' mrm-ecran-carte' : '')}>
       <div className="mrm-header">
         <button type="button" className="mrm-quit" onClick={onQuit} aria-label="Quitter"><Icon name="x" size={18} /></button>
         <div className="mrm-progress"><span style={{ width: (idx / allItems.length) * 100 + '%' }} /></div>
@@ -190,8 +195,10 @@ export function MobileSession({ ctx, onQuit }) {
       </div>
       <div className="mrm-body">
         {item.type === 'qcm'
-          ? <MobileQcmCard key={item.id} item={item} onRate={advance} ctx={ctx} />
-          : <MobileFlashCard key={item.id} item={item} onRate={advance} clozeMode={clozeMode} setClozeMode={setClozeMode} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={submitCarnetRaison} onCarnetSkip={skipCarnetRaison} erreurMode={erreurMode} />}
+          ? <MobileQcmCard key={idx + ':' + item.id} item={item} onRate={advance} ctx={ctx} />
+          // clé = position dans la série + id : une carte ratée qui revient en fin de série (même id)
+          // doit repartir côté recto — avec key={item.id}, elle réapparaissait déjà retournée
+          : <MobileFlashCard key={idx + ':' + item.id} item={item} onRate={advance} clozeMode={clozeMode} setClozeMode={setClozeMode} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={submitCarnetRaison} onCarnetSkip={skipCarnetRaison} erreurMode={erreurMode} />}
       </div>
     </div>
   );
@@ -256,7 +263,7 @@ function MobileFlashCard({ item, onRate, clozeMode, setClozeMode, ctx, carnetPro
   // pas 'resolu'/'a_revoir' (voir même choix, Session.jsx desktop).
   const clozeActive = cloze && clozeMode === 'actif' && !erreurMode;
   return (
-    <div>
+    <div className="mrm-fc">
       <div className="mrm-concept">{erreurMode ? "Flashcard d'erreur" : (item.theme || item.concept)}</div>
       {cloze && !erreurMode && (
         <div className="mrm-cloze-toggle">
@@ -287,33 +294,43 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
   const [showIndice, setShowIndice] = useState(false);
   const rectoSegments = useMemo(() => (cloze ? parseCloze(item.recto, item.cloze) : null), [item.id, cloze]);
   const versoParts = useMemo(() => (cloze ? highlightClozeWords(item.verso, item.cloze) : null), [item.id, cloze]);
+  const occ = estOcclusion(item);
+  // l'image reste dans sa zone (contenue, hauteur bornée à l'écran) ; le texte défile en dessous
+  const image = !occ && (flipped ? imageAuVerso(item) : imageAuRecto(item));
+  const lgRecto = classeLongueur(item.recto, showIndice ? item.indice : '');
+  const lgVerso = classeLongueur(item.verso, item.a_retenir);
   return (
-    <div>
+    <div className="mrm-fc-classique">
       <div className="mrm-flash-scene">
-        <button type="button" className="mrm-flash-card" onClick={() => setFlipped((f) => !f)}>
+        <button type="button" className={'mrm-flash-card' + (image ? ' avec-image' : '')} onClick={() => setFlipped((f) => !f)}>
+          {image && <ImageFlashcard imageId={item.imageId} maxH="min(220px, 30dvh)" className="mrm" />}
           {!flipped ? (
             <>
-              {estOcclusion(item) && <OcclusionView occ={item.occlusion} maxH={280} />}
-              {imageAuRecto(item) && <ImageFlashcard imageId={item.imageId} maxH={220} className="mrm" />}
-              <div className="mrm-flash-text">{cloze ? <MobileClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div>
-              {item.indice && (showIndice
-                ? <div className="mrm-indice" onClick={(e) => e.stopPropagation()}><Tex>{item.indice}</Tex></div>
-                : <span className="mrm-flash-hint" onClick={(e) => { e.stopPropagation(); setShowIndice(true); }}><Icon name="lightbulb" size={13} /> Voir l'indice</span>)}
-              <span className="mrm-flash-hint">Tape pour révéler la réponse</span>
+              <ZoneDefilante className={'mrm-flash-zone ' + lgRecto}>
+                {occ && <OcclusionView occ={item.occlusion} maxH={280} />}
+                <div className="mrm-flash-text">{cloze ? <MobileClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div>
+                {item.indice && (showIndice
+                  ? <div className="mrm-indice" onClick={(e) => e.stopPropagation()}><Tex>{item.indice}</Tex></div>
+                  : <span className="mrm-flash-hint" onClick={(e) => { e.stopPropagation(); setShowIndice(true); }}><Icon name="lightbulb" size={13} /> Voir l'indice</span>)}
+              </ZoneDefilante>
+              <span className="mrm-flash-hint mrm-flash-pied">Tape pour révéler la réponse</span>
             </>
           ) : (
-            <>
-              {estOcclusion(item) && <OcclusionView occ={item.occlusion} revele maxH={280} />}
-              {imageAuVerso(item) && <ImageFlashcard imageId={item.imageId} maxH={220} className="mrm" />}
-              {!(estOcclusion(item) && item.versoAuto) && <div className="mrm-flash-back">{cloze ? <MobileClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>}
+            <ZoneDefilante className={'mrm-flash-zone ' + lgVerso}>
+              {occ && <OcclusionView occ={item.occlusion} revele maxH={280} />}
+              {!(occ && item.versoAuto) && <div className="mrm-flash-back">{cloze ? <MobileClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>}
               {item.a_retenir && <div className="mrm-indice"><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></div>}
-            </>
+            </ZoneDefilante>
           )}
         </button>
       </div>
-      {flipped && (erreurMode
-        ? <MobileErreurRateButtons onRate={onRate} />
-        : <MobileRateButtons onRate={onRate} item={item} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} />)}
+      {flipped && (
+        <div className="mrm-fc-bas">
+          {erreurMode
+            ? <MobileErreurRateButtons onRate={onRate} />
+            : <MobileRateButtons onRate={onRate} item={item} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={onCarnetSubmit} onCarnetSkip={onCarnetSkip} />}
+        </div>
+      )}
     </div>
   );
 }

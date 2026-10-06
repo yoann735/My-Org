@@ -2228,3 +2228,32 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .ocr-detail { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
 .ocr-detail-ligne { display: flex; justify-content: space-between; gap: 12px; color: var(--text-2); }
 .ocr-detail-ligne b { color: var(--text); font-weight: 600; text-align: right; }
+
+/* zone défilante d'une flashcard (components/ZoneDefilante.jsx) — bureau ET mobile */
+.zd { position: relative; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.zd-defil { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+/* marges automatiques = centré s'il y a la place, sinon départ en haut (jamais rogné au-dessus) */
+.zd-contenu { margin: auto 0; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.zd::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 38px; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--zd-fond, var(--card)));
+  opacity: 0; transition: opacity .2s;
+}
+.zd.zd-plus::after { opacity: 1; }
+
+/* ---- flashcard à texte long (06/10, docs/compte-rendu-flashcards-mobile.md) ----
+   Avant : faces en position absolue dans une carte de 300 px, contenu centré →
+   un texte long débordait AU-DESSUS (premières lignes rognées) et en dessous de la
+   carte. Maintenant : faces superposées dans une même cellule de grille (la carte
+   prend la hauteur de la plus haute, plafonnée à l'écran), contenu dans une zone qui
+   défile à l'intérieur de la face (components/ZoneDefilante.jsx). Contenu court :
+   rendu inchangé. */
+.flash-card { display: grid; grid-template-rows: minmax(0, 1fr); max-height: max(300px, calc(100dvh - 420px)); }
+.flash-face { position: relative; inset: auto; grid-area: 1 / 1; min-height: 0; overflow: hidden; }
+.flash-face .ff-zone { width: 100%; --zd-fond: var(--card); }
+.flash-face.back .ff-zone { --zd-fond: var(--card-2); }
+.flash-face .ff-text, .flash-face .ff-imgq, .flash-face .ff-indice, .flash-face .ff-aretenir { white-space: pre-wrap; overflow-wrap: anywhere; }
+.flash-face .ff-zone.lg-long .ff-text { font-size: 21px; line-height: 1.45; text-align: left; }
+.flash-face.back .ff-zone.lg-long .ff-text { font-size: 17px; }
+.flash-face .ff-zone.lg-long .zd-contenu { align-items: stretch; }
+.flash-face .zd-contenu { gap: 0; } /* espacements d'origine (marges des éléments) */
