@@ -257,3 +257,114 @@ plus visible là où on le cherche. Erreur de jugement de la refonte, corrigée 
 - Observé pendant une série de révision (composant `ImageFlashcard`, non modifié ici) : deux
   « ERR_FILE_NOT_FOUND » sur des URL `blob:` quand on enchaîne vite les cartes à image — sans effet
   visible ; non reproduit par la carte d'ajout.
+
+---
+
+## v1.2 — glissement physique (06/10/2026)
+
+### Le défaut
+
+En v1.1, seul le mode **courant** était rendu : pendant le geste il se translatait (et
+s'estompait) sur un fond vide, et le mode voisin n'était **monté qu'au relâchement**, puis
+entrait par une animation de 0,26 s. D'où la zone noire pendant le geste et le délai à la fin.
+De plus, chaque événement de roue ou de doigt passait par un `setState` : tout le panneau
+(200 items dans le cours de test) se re-rendait à chaque image du geste.
+
+### Ce qui change
+
+- **Les modes sont tous montés en permanence**, côte à côte. Le volet *k* est décalé de
+  `(k − p) × 100 %` de la largeur, `p` étant la position (fractionnaire pendant le geste) : à
+  mi-geste on voit la moitié du mode courant et la moitié du voisin, **déjà rendu**.
+- **Transform uniquement** (`translate3d`, jamais `width`/`left`), écrit **directement dans
+  le DOM** par une fonction `appliquer(p)` : **aucun rendu React pendant le geste**. React ne
+  rend qu'une fois, au changement de mode (aria, `inert`).
+- **Aimantation** au mode le plus proche au relâchement — ou au voisin si le geste est vif
+  (> 0,45 px/ms sur les 100 dernières ms et > 24 px), jamais plus d'un mode d'écart — en
+  **220 ms**, courbe ease-out `cubic-bezier(.22, .8, .3, 1)`. Élastique conservé aux extrémités.
+- **Le sélecteur suit la même valeur** : `--i = p`, même durée, même courbe ; pas de
+  transition pendant le geste.
+- **Modes hors écran** : `inert` + `aria-hidden` + `tabIndex=-1` (clavier et lecteurs d'écran
+  ne s'y perdent pas) ; `overflow: hidden` sur le corps du panneau. La bascule de `inert` est
+  faite **à la fin de l'aimantation** (240 ms) : retirer `inert` d'un mode de 200 items coûte
+  ~26 ms de recalcul de style, on ne le paie pas pendant le mouvement.
+- **Volets superposés dans une même cellule de grille** (pas de position absolue) : la hauteur
+  du panneau est celle du plus haut des modes, plafonnée comme avant par `.pis` ; elle ne change
+  plus d'un mode à l'autre et changer de mode ne provoque aucun relayout. (Premier essai en
+  position absolue : en vue étroite « Panneau », où `.pis` n'a qu'une hauteur maximale, le corps
+  tombait à **0 px** — défaut trouvé au test tablette, corrigé ainsi.)
+- **Défilement vertical** : chaque mode garde son propre conteneur défilant, indépendant (le
+  défilement d'Exercices est conservé quand on va et revient de Notions). Détection du geste
+  horizontal inchangée (deltaX dominant 1,5×, rien pendant un défilement vertical, une
+  sélection de texte ou dans une zone qui défile horizontalement ; souris exclue).
+- **Passivité des modes cachés** : un contexte `ModeVisibleCtx` (`components/modeVisible.js`)
+  dit à chaque mode s'il est affiché. Le panneau Transcript **ne lance ses requêtes réseau
+  (crédits, synchro ciblée des sessions) qu'à la première apparition du mode** ; sa lecture
+  locale (IndexedDB) et le direct ne dépendent pas de la visibilité. La transcription est
+  portée par le moteur (`engine.js`), hors du panneau : elle n'a jamais dépendu du mode affiché.
+- **Écart assumé à la consigne « piste de 300 % translatée »** : chaque volet porte sa propre
+  translation plutôt qu'une piste transformée d'un bloc. Rendu identique, même chemin GPU ;
+  mais au repos le volet affiché n'a **aucune** transformation. Raison : un ancêtre transformé
+  devient le repère des `position: fixed` — les modales rendues dans un mode (éditeur de
+  masques de la carte flashcard, confirmation de suppression d'une session) auraient été
+  enfermées dans le panneau au lieu de couvrir l'écran. (Même raison pour ne pas mettre de
+  `contain` sur le corps.)
+- **Premier rendu lourd** : rien à virtualiser — les 3 modes sont rendus à l'ouverture du cours
+  (200 items : 120 QCM avec formule KaTeX, 80 flashcards ; 40 notions ; un transcript), plus
+  jamais pendant un glissement. Le contenu du mode Exercices est **mémoïsé** : changer de mode ne
+  re-rend plus la liste (mesuré avant : 1 à 3 images perdues à chaque changement, au moment
+  précis de l'aimantation).
+
+### Tests (Chrome headless piloté en CDP — vrais événements roue, tactiles, souris ; faux Supabase et faux Deepgram locaux, jamais le cloud)
+
+Extension Chrome non connectée ce jour-là : tout en Chrome headless (1440 × 757 utiles ; tablette 820 × 1180).
+Cours de test : PDF 4 pages, 120 QCM, 80 flashcards, 40 notions.
+
+| Test | Résultat |
+|---|---|
+| Doigt : glisser 176 px (moitié de 352) et **tenir** 400 ms | ✅ Exercices à −50 %, Notions à +50 %, indicateur `--i = 0,5` ; les deux contenus rendus (19 383 et 2 430 caractères), aucune zone noire — capture ci-dessous |
+| Relâcher | ✅ 60 ms après : cible posée (Notions à 0 %), transition en cours ; 460 ms après : volet au repos `transform: none`, Exercices `inert` |
+| Trackpad (roue) pendant le flux d'événements | ✅ le voisin (Exercices) visible et rendu pendant le geste — capture ci-dessous |
+| **20 allers-retours rapides** au trackpad | ✅ chaque geste vers un voisin change de mode (vers l'extrémité : élastique, pas de changement) ; **59 images/s** sur ~22 s (1 297 images), **0 tâche longue** ; 18 images à 33 ms (une image sautée) : 2 pendant les 10 aimantations, 7 juste après l'immobilisation (bascule `inert`), 9 au **début** d'un geste (promotion du volet en calque GPU, voir limites) |
+| Transcription lancée, **2 min sur Exercices**, retour | ✅ (code final) lignes finales écrites dans le mode caché : 8 → 18 → 28 → 41 → 53 (à 0/30/60/90/120 s), badge chrono à jour dans le sélecteur ; retour : **54 lignes**, collé en bas ; arrêt : session enregistrée (54 lignes). Premier passage (code intermédiaire) : 12 → 56, **une seule connexion** au faux Deepgram |
+| Réseau des modes cachés | ✅ cours rouvert sur Exercices : aucune requête `transcript_session` ; elle part au premier affichage du mode Transcript (crédits : demandés par le lecteur à l'ouverture du cours, comportement antérieur) |
+| Défilement vertical | ✅ Exercices défilé à 1 500 px → Notions → retour : 1 500 px ; chaque mode garde le sien ; un défilement vertical au doigt ne change jamais de mode |
+| Modales `position: fixed` | ✅ suppression d'un item (Exercices, 1er volet) et d'une session (Transcript, 3e volet) : voile plein écran 1440 × 757 |
+| Mémoire : 50 allers-retours (Exercices → Notions → Transcript → retour) étalés sur 10 min, GC forcé avant chaque mesure | ✅ (code final) tas JS 22,86 → 22,34 → 22,35 → 22,44 → 22,45 → 22,45 Mo ; **nœuds DOM 11 439 et écouteurs 679 constants** du début à la fin. Premier passage (code intermédiaire) : 25,69 → 26,28 Mo, nœuds et écouteurs constants. Pas de fuite |
+| Clavier / lecteurs d'écran | ✅ Tab × 60 : focus 58 fois dans le mode affiché, **0 fois** dans un mode caché ; arbre d'accessibilité de Chrome : aucun nœud des modes cachés exposé ; aucun débordement horizontal de la page |
+| Tablette tactile (820 px, vue Panneau) | ✅ doigt tenu à mi-chemin : moitié Exercices / moitié Notions sur toute la hauteur ; Notions → Exercices, extrémité (élastique), retour Notions ; défilement vertical au doigt : la liste défile (268 px), le mode ne change pas |
+| Cours HTML | ✅ 3 modes montés ; glissement à 43 % puis relâché → retour au mode de départ (le plus proche) |
+| Non-régression | ✅ clic sur les segments ; mode mémorisé par cours (rouvert sur le dernier mode) ; Exercices : sous-onglets (120 QCM, 80 flashcards, Feynman vide avec son message), « Ajouter » ouvre/ferme le formulaire, confirmation de suppression ; Notions : recherche (« Notion 38 » → 1), clic → page 1 / 4 → 2 / 4 ; Transcript : lancer, direct, arrêter, liste des sessions ; **0 erreur console** |
+| MealWeek / `src/shared/` | ✅ aucun fichier modifié (`git status` : `CourseItemsSidebar.jsx`, `TranscriptPanel.jsx`, `panneau-modes.css`, `modeVisible.js` — tous MedRevise ; les classes `.pm-*` n'existent pas dans MealWeek) ; MealWeek ouverte : accueil et recettes normaux, 0 erreur console |
+
+| Mi-chemin au doigt (tenu) | Pendant un geste trackpad | Exercices pendant le direct | Retour sur Transcript |
+|---|---|---|---|
+| ![](img/panneau-lateral/v12-mi-chemin-doigt.png) | ![](img/panneau-lateral/v12-pendant-geste-trackpad.png) | ![](img/panneau-lateral/v12-exercices-pendant-direct.png) | ![](img/panneau-lateral/v12-retour-transcript.png) |
+
+Tablette 820 px, doigt tenu à mi-chemin : ![](img/panneau-lateral/v12-tablette-mi-chemin.png)
+
+### Limites (v1.2)
+
+- **Trackpad et « tenir à mi-chemin »** : macOS n'envoie aucun événement quand les doigts sont
+  posés immobiles, et Chrome n'expose pas la levée des doigts. Après 140 ms sans événement, le
+  geste est considéré terminé et s'aimante. Au doigt (tactile), on peut tenir indéfiniment.
+- **60 fps mesurés en headless** (rAF, intervalle entre images), pas dans l'onglet Performance
+  d'un Chrome à l'écran : à confirmer sur le Mac avec un vrai trackpad.
+- **Une image sautée au début d'un geste** (33 ms en headless) : au repos, le volet affiché n'a
+  aucune transformation (pour les modales fixes) ; au premier événement il devient un calque GPU
+  et doit être rastérisé. Vérifié : volets promus en permanence → cette image disparaît. Non
+  retenu, car une transformation permanente enfermerait dans le panneau toute modale fixe rendue
+  dans un mode (une vingtaine de classes `position: fixed` dans l'app). Headless rastérise en
+  logiciel : sur le GPU du Mac le coût devrait tenir dans une image — à vérifier dans l'onglet
+  Performance.
+- **Interactivité après l'aimantation** : le mode d'arrivée devient cliquable 240 ms après le
+  relâchement (fin du mouvement), pas avant.
+- Les crédits Deepgram restent demandés à l'ouverture d'un cours par le lecteur lui-même
+  (`PdfReader`, comportement antérieur, limité à une fois par minute) — ce n'est pas le
+  panneau monté qui les déclenche.
+
+### Commits v1.2
+
+| Commit | Message |
+|---|---|
+| `8a748ac` | fix(medrevise): glissement physique entre les 3 modes du panneau — modes montés, piste en translateX, aimantation 220 ms |
+| (ce commit) | docs(medrevise): compte-rendu v1.2 — glissement physique |
