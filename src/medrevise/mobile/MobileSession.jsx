@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { advanceQuestion, recordRelearnAttempt, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
+import { apresNotationJ } from '../lib/apprentissageFC.js';
 import { index } from '../lib/planning.js';
 import { Tex } from '../components/Tex.jsx';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
@@ -122,6 +123,10 @@ export function MobileSession({ ctx, onQuit }) {
       // le détail du bug historique évité.
       let updated = item._relearn ? recordRelearnAttempt(item, quality, applyExtra) : advanceQuestion(item, quality, applyExtra);
       delete updated._fiche; delete updated._relearn;
+      // apprentissage des flashcards (lib/apprentissageFC.js) : un Raté — intervalles déjà
+      // calculés par advanceQuestion, inchangés — fait d'abord repasser la flashcard par le
+      // bloc Apprendre de la séance de demain (critère « après un raté »)
+      if (!item._relearn) updated = apresNotationJ(updated, quality, ctx.reglagesFC);
       // rotation QCM (Étape 4, lib/planning.js pickQcmSubset) : suivi de la
       // dernière présentation + du dernier résultat (correction directe, pas
       // la notation 3 boutons) — voir même logique en desktop Session.jsx.

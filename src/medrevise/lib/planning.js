@@ -5,6 +5,7 @@
    questions }.
    ============================================================ */
 import { labelForCursor, todayISO, isoDate, trueDaysSinceJ0, isDueBecauseStruggled } from './sm2.js';
+import { horsMethodeJ } from './apprentissageFC.js';
 
 const SCHEDULED_TYPES = new Set(['qcm', 'flashcard']);
 // exercices : HORS méthode des J (comme le Feynman). Ils ne sont plus programmés,
@@ -91,9 +92,12 @@ export function isWeekend(d = new Date()) {
 }
 
 /* ---- due questions ---- */
+/* APPRENTISSAGE DES FLASHCARDS (06/10, lib/apprentissageFC.js) : une flashcard pas
+   encore « en révision » (nouvelle, ou en apprentissage) n'est PAS dans la méthode des J
+   — filtrée ici, en amont ; le planning lui-même est inchangé. */
 export function scheduledQuestions(db, idx) {
   const ix = idx || index(db);
-  return (db.questions || []).filter((q) => SCHEDULED_TYPES.has(q.type) && isFicheScheduled(db, ix.fById[q.ficheId], ix));
+  return (db.questions || []).filter((q) => SCHEDULED_TYPES.has(q.type) && !horsMethodeJ(q) && isFicheScheduled(db, ix.fById[q.ficheId], ix));
 }
 
 /** questions dues à une date (par défaut aujourd'hui) — STRICTEMENT ce jour-là,
@@ -280,7 +284,8 @@ export function ficheJ(db, ficheId, idx) {
   if (f && f.type === 'anat_schema') {
     return { ...labelForCursor(f), jTrueDays: trueDaysSinceJ0(f), aRevoirCount: isDueBecauseStruggled(f) ? 1 : 0 };
   }
-  const qs = (db.questions || []).filter((q) => q.ficheId === ficheId && J_TYPES.has(q.type));
+  // flashcards en apprentissage : pas encore dans les J (lib/apprentissageFC.js)
+  const qs = (db.questions || []).filter((q) => q.ficheId === ficheId && J_TYPES.has(q.type) && !horsMethodeJ(q));
   return soonestLabel(qs);
 }
 

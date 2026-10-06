@@ -14,6 +14,7 @@ import { getAll, putMany, getMeta, setMeta, putBackup } from './storage.js';
 import { toInternalItem } from './adapter.js';
 import { addDays } from './planning.js';
 import { palierFromInterval, todayISO, INTERVAL_START, INTERVAL_CAP } from './sm2.js';
+import { estFlashcardJ, aEteNoteeJ, REGLAGES_FC_DEFAUT } from './apprentissageFC.js';
 
 const MIGRATIONS_KEY = 'migrations';
 const MIG_V1 = 'items-v1.0';
@@ -25,6 +26,7 @@ const MIG_CADENCE_FIXE = 'cadence-fixe-v1';
 const MIG_CHRONO_FIXE = 'chronologie-fixe-v1';
 const MIG_RESET_MISSED = 'reset-ancien-carnet-erreurs-v1';
 const MIG_ADAPTATIF = 'moteur-adaptatif-v1';
+const MIG_APPRENTISSAGE_FC = 'apprentissage-flashcards-v1';
 // ancienne cadence à 5 paliers (avant CETTE refonte), FIGÉE : usage UNIQUE
 // des deux migrations ci-dessous (jamais le moteur courant). Ancien palier
 // (0..4) → nouvel index plan (0..6, J0/J+1/J+3/J+7/J+14/J+30/J+90) :
@@ -408,6 +410,56 @@ export async function migrateResetMissedV1() {
   return { ran: true, reset: targets.length };
 }
 
+/**
+ * APPRENTISSAGE DES FLASHCARDS (06/10/2026, docs/compte-rendu-apprentissage-flashcards.md) :
+ * pose `learnState` sur chaque flashcard qui n'en a pas encore.
+ *  - déjà notée au moins une fois dans les J (ou cycle terminé) → review, rien ne change ;
+ *  - jamais notée, départ passé ou aujourd'hui → learning, critère 3, non présentée,
+ *    pas encore introduite (bloc Apprendre, soumise au quota, plus anciennes d'abord) ;
+ *  - jamais notée, départ futur — ou sans départ (« en attente d'un J0 ») → new.
+ * AJOUT de champs uniquement (recto, verso, historique, intervalDays, dueDate… intacts).
+ * Idempotente : liste des migrations appliquées + les cartes déjà classées sont sautées
+ * (un autre appareil a pu migrer avant et synchroniser). putBackup avant écriture.
+ */
+export function classerFlashcardPourMigration(q, today = todayISO()) {
+  if (!estFlashcardJ(q)) return null;
+  if (aEteNoteeJ(q) || q.termine) return 'review';
+  if (!q.dueDate || q.dueDate > today) return 'new';
+  return 'learning';
+}
+// un seul passage à la fois (le démarrage peut appeler runMigrations deux fois d'affilée,
+// ex. effets doublés du mode développement de React) : le second attend le premier
+let migrationFCEnCours = null;
+export function migrateApprentissageFCV1() {
+  if (!migrationFCEnCours) migrationFCEnCours = executerMigrationFC().finally(() => { migrationFCEnCours = null; });
+  return migrationFCEnCours;
+}
+async function executerMigrationFC() {
+  const applied = await appliedList();
+  if (applied.includes(MIG_APPRENTISSAGE_FC)) return { ran: false };
+  const today = todayISO();
+  const questions = (await getAll('questions')) || [];
+  const flashcards = questions.filter(estFlashcardJ);
+  const cibles = flashcards.filter((q) => !q.learnState);
+  const comptes = { flashcards: flashcards.length, dejaClassees: flashcards.length - cibles.length, review: 0, learning: 0, new: 0 };
+  if (cibles.length) {
+    await putBackup('pre-' + MIG_APPRENTISSAGE_FC, flashcards);
+    const maj = cibles.map((q) => {
+      const etat = classerFlashcardPourMigration(q, today);
+      comptes[etat]++;
+      if (etat === 'learning') return { ...q, learnState: 'learning', learningCriterion: REGLAGES_FC_DEFAUT.critere, learningStreak: 0, learningPresented: false };
+      return { ...q, learnState: etat };
+    });
+    for (let i = 0; i < maj.length; i += 200) await putMany('questions', maj.slice(i, i + 200));
+  }
+  const rapport = { date: new Date().toISOString(), ...comptes, total: questions.length };
+  // eslint-disable-next-line no-console
+  console.info('[MedRevise] migration ' + MIG_APPRENTISSAGE_FC + ' :', rapport);
+  await setMeta('migration.' + MIG_APPRENTISSAGE_FC, rapport);
+  await setMeta(MIGRATIONS_KEY, [...applied, MIG_APPRENTISSAGE_FC]);
+  return { ran: true, ...rapport };
+}
+
 /** point d'entrée bootstrap : applique toutes les migrations en attente */
 export async function runMigrations() {
   const items = await migrateItemsToV1();
@@ -419,5 +471,6 @@ export async function runMigrations() {
   const chronologieFixe = await migrateChronologieFixeV1();
   const adaptatif = await migrateAdaptatifV1();
   const resetMissed = await migrateResetMissedV1();
-  return { items, documents, anatImages, orphans, demoZombies, cadenceFixe, chronologieFixe, adaptatif, resetMissed };
+  const apprentissageFC = await migrateApprentissageFCV1();
+  return { items, documents, anatImages, orphans, demoZombies, cadenceFixe, chronologieFixe, adaptatif, resetMissed, apprentissageFC };
 }

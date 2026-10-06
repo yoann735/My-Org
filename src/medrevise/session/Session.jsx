@@ -12,6 +12,7 @@ import { Breadcrumb, matiereMeta, EtiquetteQuickSet, SessionTrendCard } from '..
 import { Tex } from '../components/Tex.jsx';
 import { ZoneDefilante, classeLongueur } from '../components/ZoneDefilante.jsx';
 import { advanceQuestion, recordRelearnAttempt, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, labelForCursor, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
+import { apresNotationJ } from '../lib/apprentissageFC.js';
 import { index } from '../lib/planning.js';
 import { blobURL } from '../lib/storage.js';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
@@ -174,6 +175,10 @@ export function Session({ ctx }) {
       // Raté initial et reproduirait le bug historique (voir sm2.js header).
       let updated = item._relearn ? recordRelearnAttempt(item, quality, applyExtra) : advanceQuestion(item, quality, applyExtra);
       delete updated._fiche; delete updated._matiere; delete updated._j; delete updated._relearn;
+      // apprentissage des flashcards (lib/apprentissageFC.js) : un Raté — intervalles déjà
+      // calculés par advanceQuestion, inchangés — fait d'abord repasser la flashcard par le
+      // bloc Apprendre de la séance de demain (critère « après un raté »)
+      if (!item._relearn) updated = apresNotationJ(updated, quality, ctx.reglagesFC);
       // rotation QCM (Étape 4, lib/planning.js pickQcmSubset) : suivi de la
       // dernière présentation + du dernier résultat, DISTINCT de la notation
       // 3 boutons — correction directe (cochées == reponses_correctes),

@@ -520,6 +520,19 @@ export async function setCouleursPersoSync(couleurs) {
   return rec;
 }
 
+/* ---- réglages de l'APPRENTISSAGE DES FLASHCARDS (06/10, lib/apprentissageFC.js) :
+   quota de nouvelles par jour, critère de succès, critère après un raté. Même mécanique
+   que couleursPerso ci-dessus — store `S.prompts` (SYNCABLE), clé DISTINCTE. Absent →
+   valeurs par défaut (REGLAGES_FC_DEFAUT, lib/apprentissageFC.js). */
+export async function getReglagesFC() { return (await get('reglagesFC', S.prompts)) || null; }
+export async function setReglagesFC(reglages) {
+  const updatedAt = new Date().toISOString();
+  const rec = { ...reglages, id: 'reglagesFC', updatedAt };
+  await set('reglagesFC', rec, S.prompts);
+  queuePush('prompts', 'reglagesFC', rec, updatedAt);
+  return rec;
+}
+
 /* ---- surcharges des 4 prompts PRATIQUE (exercices), même mécanique que
    ci-dessus — MÊME store `S.prompts` (déjà SYNCABLE), clé DISTINCTE
    ('exoPrompts' vs 'prompts') : deux enregistrements indépendants dans la
