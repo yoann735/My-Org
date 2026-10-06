@@ -31,16 +31,24 @@
 .pm-live i { width: 6px; height: 6px; border-radius: 50%; background: var(--crit); }
 .pm-live.pause { color: var(--text-3); } .pm-live.pause i { background: var(--text-3); }
 
-/* corps : la vue du mode, avec transition latérale */
-.pm-corps { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* corps : piste des modes (v1.2 — glissement physique). Les modes sont TOUS montés,
+   chacun dans un volet plein cadre décalé de (k − position) × 100 % ; translations
+   posées en JS (transform uniquement). Rien ne déborde du corps. Pas de `contain` ni de
+   transformation sur le corps : une modale `position: fixed` du mode affiché doit rester
+   pleine page. */
+.pm-corps { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 /* le défilement vertical reste au navigateur, le glissement horizontal change de mode */
 .pm-corps, .pm-corps * { touch-action: pan-y; }
-.pm-vue { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.pm-vue.depuis-droite { animation: pm-droite .26s cubic-bezier(.3, .7, .2, 1); }
-.pm-vue.depuis-gauche { animation: pm-gauche .26s cubic-bezier(.3, .7, .2, 1); }
-@keyframes pm-droite { from { opacity: 0; transform: translateX(18px); } }
-@keyframes pm-gauche { from { opacity: 0; transform: translateX(-18px); } }
-@media (prefers-reduced-motion: reduce) { .pm-vue { animation: none !important; } .pm-seg-indic { transition: none; } }
+.pm-piste {
+  flex: 1 1 auto; min-height: 0; display: grid;
+  grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr);
+}
+/* les volets sont SUPERPOSÉS dans la même cellule de grille (pas de position absolue) :
+   la hauteur du panneau = celle du plus haut des modes, plafonnée par `.pis` — elle ne
+   change pas d'un mode à l'autre (en vue étroite, un mode court ne rogne plus son voisin
+   pendant le geste), et changer de mode ne déclenche aucun relayout */
+.pm-vue { grid-area: 1 / 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; backface-visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { .pm-vue { transition: none !important; } .pm-seg-indic { transition: none !important; } }
 
 /* Exercices : sous-navigation soulignée + une barre d'actions */
 .pm-exos { padding-top: 6px; }
@@ -75,11 +83,11 @@
 .pdfr-barre.compacte .ptb-outils { gap: 1px; }
 .pdfr-barre.compacte .ptb-zone { gap: 4px; }
 
-/* ---- v1.1 : le contenu suit le geste (trackpad / doigt) ---- */
+/* ---- v1.1 / v1.2 : le contenu suit le geste (trackpad / doigt) ---- */
 .pm-corps { overscroll-behavior-x: contain; } /* pas de « page précédente » de Chrome au trackpad */
-.pm-vue { transition: transform .22s cubic-bezier(.3, .7, .2, 1), opacity .22s; will-change: transform; }
-.pm-vue.en-geste { transition: none; animation: none; }
-.pm-seg.en-geste .pm-seg-indic { transition: none; }
+/* indicateur lié à la même position que la piste : même courbe, même durée */
+.pm-seg .pm-seg-indic { transition: transform .22s cubic-bezier(.22, .8, .3, 1); will-change: transform; }
+.pm-seg.en-geste .pm-seg-indic, .pm-seg.sans-anim .pm-seg-indic { transition: none; }
 
 /* ---- v1.1 : carte d'ajout de flashcard (Texte / Image) ---- */
 .fc-carte-tete { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }

@@ -14,6 +14,7 @@
    ============================================================ */
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useDejaVisible } from '../components/modeVisible.js';
 import { Icon } from '../../shared/Icon.jsx';
 import { ConfirmModal, ContextMenu, Modal } from '../components/ui.jsx';
 import { useNiveauAudio, useTranscription } from './useTranscription.js';
@@ -563,9 +564,14 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
     setInterrompue(sessionActive() && lireEtat().courseId === courseId ? null : (l.find((s) => !s.endedAt) || null));
   }, [courseId]);
   useEffect(() => { recharger(); }, [recharger, e.phase]);
-  useEffect(() => { actualiserCredits(); }, [courseId]); // ouverture du cours (jamais pendant une session : voir credits.js)
+  /* v1.2 : le panneau reste monté même quand le mode Transcript n'est pas affiché
+     (glissement physique). La lecture locale et le direct continuent ; les REQUÊTES
+     réseau (crédits, synchro ciblée) attendent la première apparition du mode. */
+  const dejaVisible = useDejaVisible();
+  useEffect(() => { if (dejaVisible) actualiserCredits(); }, [courseId, dejaVisible]); // ouverture du mode (jamais pendant une session : voir credits.js)
   // synchro ciblée à l'ouverture du panneau : les sessions faites sur un autre appareil
   useEffect(() => {
+    if (!dejaVisible) return undefined;
     let vivant = true;
     synchroTranscripts().then((r) => {
       if (!vivant || !r || !(r.recus || r.supprimes)) return;
@@ -574,7 +580,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
       setLecture((l) => { if (l) lireSession(l.id).then((s) => { if (vivant) setLecture(s || null); }); return l; });
     });
     return () => { vivant = false; };
-  }, [recharger]);
+  }, [recharger, dejaVisible]);
   // fin de session : on l'ouvre aussitôt en lecture
   useEffect(() => {
     if (e.phase === 'idle' && e.derniereFinie && e.courseId === courseId) {
