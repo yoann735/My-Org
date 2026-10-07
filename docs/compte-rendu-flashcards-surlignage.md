@@ -220,4 +220,4 @@ Les retours à la ligne sont conservés tels quels : seuls les bords du texte so
 | `4c8d9e2` | fix : zone image de l'éditeur de flashcard superposée aux champs en modification (point 1) |
 | `01f5344` | fix : mode Sélection sans gestion des surlignages ; le surligneur retire ou recolore (point 4) |
 | `c3ac465` | fix : thème auto de la fiche rétabli ; Entrée = retour à la ligne dans l'éditeur de flashcard (points 2 et 3, mêmes fichiers) |
-| (ce document) | docs : compte-rendu + captures |
+| `5d9765a` | docs : ce compte-rendu + captures avant/après |
