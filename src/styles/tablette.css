@@ -1,8 +1,12 @@
 /* ============================================================
-   MedRevise — MODE TABLETTE du lecteur PDF (07/10, docs/compte-rendu-tablette.md).
-   Actif seulement sur `.lecteur-tab` (761–1 199 px, lecteur avec en-tête : Bibliothèque
-   et plein écran) — posé par PdfReader. Desktop ≥ 1 200 px et shell mobile : aucun effet.
-   Tokens du thème uniquement (DA existante). Cibles tactiles ≥ 44 px.
+   MedRevise — MODE TABLETTE du lecteur PDF (07/10, refait l'après-midi —
+   docs/compte-rendu-position-document-tablette.md).
+   Actif seulement sur `.lecteur-tab` (761–1 199 px, lecteur avec en-tête : Bibliothèque,
+   plein écran, Prise de notes) — posé par PdfReader. Desktop ≥ 1 200 px et shell mobile :
+   aucun effet. Tokens du thème uniquement (DA existante).
+   - PDF et panneau en VOLET LATÉRAL (side-screen), paysage comme portrait ;
+   - TOUS les outils visibles, sans menu ni défilement : les barres passent sur deux rangées
+     compactes si la largeur manque ; cibles ≥ 40 px partout.
    ============================================================ */
 
 /* ---- l'écran qui porte le lecteur : plus de défilement global, marges réduites ---- */
@@ -17,8 +21,7 @@
 .lecteur-tab { display: flex; flex-direction: column; height: var(--tab-h, calc(100dvh - 16px)); min-height: 0; }
 .lecteur-tab > * { flex: 0 0 auto; }
 .lecteur-tab > .pdfr-body { flex: 1 1 auto; min-height: 0; position: relative; }
-.lecteur-tab .pdfr-mobile-toggle { display: none !important; }
-.lecteur-tab .pdfr-workshop { gap: 0; align-items: stretch; }
+.lecteur-tab .pdfr-mobile-toggle { display: none !important; } /* plus de bascule Cours / Panneau */
 .lecteur-tab :is(.pdfr-scroll, .pis) { max-height: none !important; }
 .lecteur-tab .pdfr-scroll { min-height: 0; height: auto; padding: 12px 0; }
 .lecteur-tab .pdfr-tableau { height: auto !important; min-height: 0; }
@@ -27,9 +30,12 @@
 .lecteur-tab .pis-body { margin-left: 0; }
 
 /* ---- boutons tactiles communs ---- */
+/* 40 px partout (cible tactile minimale) : quand la place manque, ce sont les espacements
+   qui se resserrent et la barre qui passe sur deux rangées — jamais la cible */
+.lecteur-tab { --tab-bt: 40px; }
 .lecteur-tab .tab-bt {
-  flex: 0 0 auto; min-width: 44px; height: 44px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
-  border: none; border-radius: 11px; background: transparent; color: var(--text-2); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  flex: 0 0 auto; min-width: var(--tab-bt); height: var(--tab-bt); padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  border: none; border-radius: 10px; background: transparent; color: var(--text-2); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
   -webkit-tap-highlight-color: transparent; transition: background .15s, color .15s;
 }
 .lecteur-tab .tab-bt:hover { background: var(--bg-2); color: var(--text); }
@@ -38,132 +44,100 @@
 .lecteur-tab .tab-bt:disabled { opacity: .35; cursor: default; background: transparent; }
 .lecteur-tab .tab-bt:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-soft), inset 0 0 0 1px var(--accent); }
 
-/* ---- en-tête : UNE ligne compacte (retour, titre tronqué, panneau, « … ») ---- */
-.lecteur-tab .tab-entete { display: flex; align-items: center; gap: 4px; height: 48px; min-height: 48px; margin: 0; flex-wrap: nowrap; }
-.lecteur-tab .tab-titre { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+/* ---- en-tête : UNE ligne compacte, tout visible ---- */
+.lecteur-tab .tab-entete { display: flex; align-items: center; gap: 2px; min-height: var(--tab-bt); margin: 0 0 2px; flex-wrap: nowrap; }
+.lecteur-tab .tab-titre { flex: 1 1 auto; min-width: 60px; overflow: hidden; }
 .lecteur-tab .tab-titre .titre-fiche { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.lecteur-tab .tab-titre .titre-fiche-nom { min-width: 0; max-width: 100%; font-size: 15px; min-height: 44px; }
+.lecteur-tab .tab-titre .titre-fiche-nom { min-width: 0; max-width: 100%; font-size: 15px; min-height: var(--tab-bt); }
 .lecteur-tab .tab-titre .titre-fiche-texte { min-width: 0; }
 .lecteur-tab .tab-titre .titre-fiche-sous { flex: 0 0 auto; font-size: 12.5px; }
-.lecteur-tab .mf-bouton.mf-compact { min-width: 44px; height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 11px; }
-.lecteur-tab .mf-menu { right: 0; left: auto; max-height: calc(var(--tab-h, 80vh) - 60px); overflow-y: auto; }
-.lecteur-tab .mf-item { min-height: 44px; }
-.lecteur-tab .mf-item.actif .mf-label { color: var(--accent); }
+.lecteur-tab .tab-entete .mf-bouton { min-height: var(--tab-bt); padding: 0 10px; border-radius: 10px; }
+.lecteur-tab .tab-dispo { display: flex; gap: 1px; padding: 2px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--border-2); margin: 0 4px; }
+.lecteur-tab .tab-dispo .tab-bt { min-width: var(--tab-bt); height: var(--tab-bt); }
+.lecteur-tab .mf-menu { max-height: calc(var(--tab-h, 80vh) - 60px); overflow-y: auto; }
+.lecteur-tab .mf-item { min-height: 40px; }
 
-/* ---- barre fusionnée : 48 px, pages + zoom | outils | annuler + recherche ---- */
-.lecteur-tab .tab-barres { display: block; max-height: 120px; transition: max-height .2s cubic-bezier(.22, .8, .3, 1), opacity .16s ease; }
-.lecteur-tab.barre-masquee .tab-barres { max-height: 0; opacity: 0; overflow: hidden; pointer-events: none; }
+/* ---- barre PDF + outils : une rangée si possible, deux sinon — jamais de défilement ---- */
 .tab-barres { display: contents; } /* hors tablette : transparent */
+.lecteur-tab .tab-barres { display: block; }
 .lecteur-tab .tab-barre {
-  position: relative; display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 52px;
-  padding: 4px 0; margin: 0; flex-wrap: nowrap; border-bottom: 1px solid var(--border-2);
+  position: relative; display: flex; align-items: center; justify-content: space-between; gap: 2px 4px; flex-wrap: wrap;
+  min-height: calc(var(--tab-bt) + 8px); height: auto; padding: 4px 0; margin: 0; border-bottom: 1px solid var(--border-2); overflow: visible;
 }
-.lecteur-tab .tab-zone { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; min-width: 0; }
-.lecteur-tab .tab-outils { gap: 4px; padding: 0 4px; }
+.lecteur-tab .tab-zone { display: flex; align-items: center; gap: 1px; flex: 0 0 auto; min-width: 0; flex-wrap: nowrap; }
+.lecteur-tab .tab-outils { gap: 2px; padding: 0 2px; flex-wrap: wrap; justify-content: center; }
 .lecteur-tab .tab-outil.actif { background: var(--accent); color: #fff; box-shadow: var(--shadow); }
-.lecteur-tab .tab-plus { position: relative; }
-.lecteur-tab .tab-plus-chevron { position: absolute; right: 3px; bottom: 5px; opacity: .7; }
-.lecteur-tab .tab-pages { min-width: 42px; text-align: center; font-size: 13px; font-weight: 600; color: var(--text-2); }
-.lecteur-tab .tab-zoom { min-width: 54px; font-size: 13px; }
-.lecteur-tab .tab-barre .ptb-sep { height: 24px; margin: 0 4px; }
-.lecteur-tab .tab-barre .od-bouton, .lecteur-tab .tab-barre .ptb-outil { min-width: 44px; height: 44px; }
+.lecteur-tab .tab-pages { min-width: 40px; text-align: center; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.lecteur-tab .tab-zoom { min-width: 40px; text-align: center; font-size: 12.5px; color: var(--text-2); }
+.lecteur-tab .tab-barre .ptb-sep { height: 22px; margin: 0 3px; }
+.lecteur-tab .tab-barre .ptb-dessins, .lecteur-tab .tab-barre .od-bouton, .lecteur-tab .tab-barre .ptb-outil { min-width: var(--tab-bt); height: var(--tab-bt); }
 .lecteur-tab .tab-recherche {
   position: absolute; inset: 4px 0; z-index: 4; display: flex; align-items: center; gap: 2px; padding: 0 2px 0 14px;
   background: var(--bg); border: 1px solid var(--accent); border-radius: 12px; box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .lecteur-tab .tab-recherche .ic { color: var(--text-3); flex: 0 0 auto; }
-.lecteur-tab .tab-recherche input { flex: 1 1 auto; min-width: 0; height: 42px; border: none; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 16px; padding: 0 8px; }
-/* barre de réglages de l'outil : une seule ligne, défilable, sans la ligne d'aide */
-.lecteur-tab .tab-contexte { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; min-height: 52px; padding: 4px 10px; gap: 10px; margin: 6px 0 0; }
-.lecteur-tab .tab-contexte::-webkit-scrollbar { display: none; }
+.lecteur-tab .tab-recherche input { flex: 1 1 auto; min-width: 0; height: 40px; border: none; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 16px; padding: 0 8px; }
+/* réglages de l'outil : tout visible, retour à la ligne plutôt que défilement */
+.lecteur-tab .tab-contexte { flex-wrap: wrap; overflow: visible; min-height: calc(var(--tab-bt) + 4px); padding: 4px 10px; gap: 6px 10px; margin: 4px 0 0; }
 .lecteur-tab .tab-contexte > * { flex: 0 0 auto; }
-.lecteur-tab .tab-contexte :is(button, .sc-pastille) { min-height: 36px; }
-/* barre masquée : bande invisible en haut de la zone de lecture, un tap la ramène */
-.lecteur-tab .tab-revele { position: absolute; top: 0; left: 0; right: 0; height: 28px; z-index: 6; }
 
-/* ---- côte à côte (≥ 900 px) : PDF | séparateur | panneau ---- */
-.lecteur-tab.tab-cote .pdfr-workshop { flex-direction: row; }
-.lecteur-tab.tab-cote .pdfr-workshop .pdfr-workshop-course { display: block; flex: 1 1 auto; width: auto; }
-.lecteur-tab.tab-cote .pdfr-workshop .pis { display: flex; flex: 0 0 var(--tab-pis, 380px); width: var(--tab-pis, 380px); transition: none; }
-.lecteur-tab.tab-cote .pdfr-workshop .pis.collapsed { flex: 0 0 60px; width: 60px; }
-.lecteur-tab .tab-sep { flex: 0 0 18px; position: relative; display: flex; align-items: center; justify-content: center; cursor: col-resize; touch-action: none; outline: none; }
-.lecteur-tab .tab-sep::before { content: ''; position: absolute; top: 0; bottom: 0; left: -13px; right: -13px; } /* zone de prise de 44 px */
+/* ---- PDF | séparateur | VOLET (paysage et portrait) ---- */
+.lecteur-tab .pdfr-workshop { display: flex; flex-direction: row; gap: 0; align-items: stretch; }
+.lecteur-tab .pdfr-workshop .pdfr-workshop-course { display: block; flex: 1 1 auto; width: auto; min-width: 0; }
+.lecteur-tab .pdfr-workshop .pis { display: flex; flex: 0 0 var(--tab-pis, 40%); width: var(--tab-pis, 40%); transition: flex-basis .22s cubic-bezier(.2, 0, 0, 1), width .22s cubic-bezier(.2, 0, 0, 1); }
+.lecteur-tab .pdfr-workshop .pis.collapsed { flex: 0 0 48px; width: 48px; }
+.lecteur-tab .pdfr-workshop.volet-fermeture .pis { opacity: .55; }
+.lecteur-tab .tab-sep { flex: 0 0 16px; position: relative; display: flex; align-items: center; justify-content: center; cursor: col-resize; touch-action: none; outline: none; }
+.lecteur-tab .tab-sep::before { content: ''; position: absolute; top: 0; bottom: 0; left: -12px; right: -12px; } /* zone de prise de 40 px */
 .lecteur-tab .tab-sep-trait { width: 4px; height: 56px; border-radius: 2px; background: var(--border); transition: background .15s, height .15s; }
 .lecteur-tab .tab-sep:hover .tab-sep-trait, .lecteur-tab .tab-sep.actif .tab-sep-trait, .lecteur-tab .tab-sep:focus-visible .tab-sep-trait { background: var(--accent); height: 80px; }
 .lecteur-tab .tab-sep-replier { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); z-index: 2; background: var(--card); border: 1px solid var(--border-2); box-shadow: var(--shadow); cursor: pointer; }
+/* volet fermé : POIGNÉE sur le bord droit, toujours visible (tap ou glisser vers la gauche) */
 .lecteur-tab .pis-replie {
-  flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 8px 0;
-  background: var(--card); border: 1px solid var(--border); border-radius: var(--r, 14px); margin-left: 6px;
+  flex: 1 1 auto; display: flex; flex-direction: column; align-items: stretch; padding: 0;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--r, 14px); margin-left: 6px; overflow: hidden;
 }
+.lecteur-tab .tab-poignee { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 6px 0; touch-action: none; cursor: pointer; }
 .tab-resume { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .tab-resume .pm-live i { width: 9px; height: 9px; }
 .tab-resume-n { font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 2px 7px; }
 
-/* ---- portrait (< 900 px) : empilé, onglets en bas ---- */
-.lecteur-tab.tab-portrait .pdfr-workshop { flex-direction: column; }
-.lecteur-tab.tab-portrait .pdfr-workshop .pdfr-workshop-course, .lecteur-tab.tab-portrait .pdfr-workshop .pis { flex: 1 1 auto; width: 100%; }
-.lecteur-tab.tab-portrait .pdfr-workshop[data-mobile-view="course"] .pis { display: none; }
-.lecteur-tab.tab-portrait .pdfr-workshop[data-mobile-view="items"] .pdfr-workshop-course { display: none; }
-/* la barre du PDF ne sert à rien sur l'onglet Panneau */
-.lecteur-tab.tab-portrait[data-vue="items"] .tab-barres { display: none; }
-.lecteur-tab .tab-bas { display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom, 0px); }
-.lecteur-tab .tab-onglets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 6px 0 8px; border-top: 1px solid var(--border-2); margin-top: 6px; }
-.lecteur-tab .tab-onglet {
-  height: 52px; display: flex; align-items: center; justify-content: center; gap: 8px; border: none; border-radius: 14px;
-  background: transparent; color: var(--text-3); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; -webkit-tap-highlight-color: transparent;
-}
-.lecteur-tab .tab-onglet.actif { background: var(--bg-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--border-2); }
-.lecteur-tab .tab-onglet .pm-live { margin-left: 2px; }
-/* bande « transcript en direct » : 2 lignes, la fin du texte (le plus récent) reste visible */
-.lecteur-tab .tab-bande {
-  display: flex; align-items: flex-start; gap: 12px; margin-top: 8px; padding: 10px 14px; min-height: 64px;
-  border-radius: 14px; background: var(--card); border: 1px solid var(--border); cursor: pointer; touch-action: none;
-  transition: transform .18s ease, opacity .18s ease; -webkit-tap-highlight-color: transparent;
-}
-.lecteur-tab .tab-bande:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
-.lecteur-tab .tab-bande-tete { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 4px; font-size: 12px; color: var(--text-3); font-weight: 600; }
-.lecteur-tab .tab-bande-texte {
-  flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end;
-  height: calc(2 * 1.4em); overflow: hidden; font-size: 16px; line-height: 1.4; color: var(--text);
-}
-.lecteur-tab .tab-bande-flux { display: block; flex: 0 0 auto; } /* plus haut que le cadre : le haut est rogné, la fin reste */
-.lecteur-tab .tab-bande-provisoire { color: var(--text-3); }
-.lecteur-tab .tab-bande-attente { color: var(--text-3); }
-
-/* ---- panneau en tablette : cibles 44 px, deux lignes de contrôles de session ---- */
-.lecteur-tab .pm-seg-btn { min-height: 44px; font-size: 14px; }
-.lecteur-tab .pm-sous-btn { min-height: 44px; font-size: 14px; }
-.lecteur-tab .pis :is(.btn.sm, .icon-btn.sm, .icon-btn, .cd-ic) { min-height: 44px; min-width: 44px; }
-.lecteur-tab .pis .btn.sm { font-size: 14px; padding: 0 12px; }
-.lecteur-tab .trx-barre { flex-wrap: nowrap; gap: 6px; }
+/* ---- panneau en tablette : cibles ≥ 40 px, aucune barre qui défile ---- */
+.lecteur-tab .pm-seg-btn { min-height: 40px; font-size: 13.5px; padding-left: 2px; padding-right: 2px; }
+.lecteur-tab .pm-sous-btn { min-height: 40px; font-size: 13.5px; }
+.lecteur-tab .pm-sous { overflow-x: visible; flex-wrap: wrap; }
+.lecteur-tab .pis :is(.btn, .icon-btn, .cd-ic) { min-height: 40px; min-width: 40px; }
+.lecteur-tab .pis .btn.sm { font-size: 14px; padding: 0 11px; }
+.lecteur-tab .trx-barre { flex-wrap: wrap; gap: 6px; }
+.lecteur-tab .trx-barre :is(.btn, .icon-btn) { flex-shrink: 0; }
+.lecteur-tab .trx-barre :is(.trx-ic-pause, .trx-ic-stop) { flex: 0 0 auto; }
 .lecteur-tab .trx-barre .trx-vu { width: 28px; }
-.lecteur-tab .trx-aa { font-weight: 700; font-size: 15px; }
+.lecteur-tab .trx-taille { min-width: 40px; min-height: 40px; }
 .lecteur-tab .trx-pastille { font-size: 13px; }
 .lecteur-tab .trx-chrono { font-size: 15px; }
-/* transcript : jamais sous 16 px ; horodatages lisibles */
 .lecteur-tab .trx-liste.taille-s { --trx-fs: 16px; }
 .lecteur-tab .trx-liste .trx-t { font-size: 13px; }
 .lecteur-tab .trx-liste textarea, .lecteur-tab .trx-liste .trx-note { font-size: max(16px, calc(var(--trx-fs) * .85)); }
 .lecteur-tab .pis input:not([type="range"]):not([type="checkbox"]):not([type="radio"]), .lecteur-tab .pis textarea { font-size: 16px; } /* iOS : pas de zoom au focus */
-.lecteur-tab .pis :is(.trx-cc-actualiser, .trx-credits-ligne-repliee) { min-height: 44px; }
+.lecteur-tab .pis :is(.trx-cc-actualiser, .trx-credits-ligne-repliee) { min-height: 40px; }
+.lecteur-tab .pis .nd-barre .nd-bt { min-width: 40px; height: 40px; }
+/* panneau étroit : la 1re ligne de session tient sans rogner Pause / Arrêter */
+.lecteur-tab .pis-body { container-type: inline-size; container-name: panneau-tab; }
+/* 4 modes dans un volet étroit : les compteurs s'effacent, les libellés restent lisibles */
+@container panneau-tab (max-width: 420px) {
+  .lecteur-tab .pm-seg-btn .pm-n { display: none; }
+  .lecteur-tab .pm-seg-btn { font-size: 13px; gap: 3px; }
+}
+@container panneau-tab (max-width: 380px) {
+  .lecteur-tab .trx-barre .trx-pastille { font-size: 0; gap: 0; }
+  .lecteur-tab .trx-barre .trx-vu { width: 22px; }
+  .lecteur-tab .trx-barre .btn.sm { padding: 0 9px; }
+}
 
 /* menus contextuels ouverts depuis le lecteur tablette (rendus dans <body>) */
-body:has(.lecteur-tab) .ctx-menu-item { min-height: 44px; font-size: 14.5px; }
+body:has(.lecteur-tab) .ctx-menu-item { min-height: 40px; font-size: 14.5px; }
 
 /* ---- stylet (Apple Pencil) : le doigt fait défiler, seul le stylet annote ---- */
 .stylet-actif :is(.pdfr-inkcapture, .pdfr-gommecapture, .pdfr-poselayer, .pdfr-drawlayer) { touch-action: pan-x pan-y; }
 
-@media (prefers-reduced-motion: reduce) {
-  .lecteur-tab .tab-barres, .lecteur-tab .tab-bande { transition: none; }
-}
-
-/* panneau étroit (320–380 px) : la 1re ligne de session doit tenir sans rogner Pause /
-   Arrêter — le libellé « En direct » laisse sa place (le point coloré et le chrono restent) */
-.lecteur-tab .pis-body { container-type: inline-size; container-name: panneau-tab; }
-@container panneau-tab (max-width: 380px) {
-  .lecteur-tab .trx-barre .trx-pastille { font-size: 0; gap: 0; }
-  .lecteur-tab .trx-barre .trx-vu { width: 22px; }
-  .lecteur-tab .trx-barre .btn.sm { padding: 0 10px; }
-}
-.lecteur-tab .trx-barre :is(.btn, .icon-btn) { flex-shrink: 0; }
-.lecteur-tab .trx-barre :is(.trx-ic-pause, .trx-ic-stop) { flex: 0 0 auto; }
+@media (prefers-reduced-motion: reduce) { .lecteur-tab .pdfr-workshop .pis { transition: none; } }

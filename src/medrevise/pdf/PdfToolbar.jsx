@@ -58,9 +58,10 @@ export function PdfToolbar({
   avantPanneau = null, // bascule de disposition PDF / Les deux / Tableau (04/10)
   boutonDessins = null, // menu des dessins reçus du téléphone (02/10 soir)
   boutonTranscrire = null, // transcription en direct du cours (05/10)
-  // TABLETTE (07/10, docs/compte-rendu-tablette.md) : UNE barre de 48 px, cibles ≥ 44 px ;
-  // `nbPrincipaux` outils visibles, les autres dans « Plus d'outils »
-  tablette = false, nbPrincipaux = 4,
+  // TABLETTE (07/10, refaite l'après-midi — docs/compte-rendu-position-document-tablette.md) :
+  // TOUS les outils visibles en permanence, rien dans un menu ; la barre passe sur deux
+  // rangées compactes si la largeur manque, jamais de défilement
+  tablette = false,
 }) {
   const [menu, setMenu] = useState(null);
   /* LARGEUR RÉELLE de la barre (01/10) : dans un panneau étroit (Apprentissage,
@@ -125,19 +126,13 @@ export function PdfToolbar({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [sansRecherche]);
-  const [menuOutils, setMenuOutils] = useState(null);
   const raccourciF = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘F' : 'Ctrl+F';
 
   if (tablette) {
     /* Ordre de priorité des outils en cours : lire/sélectionner, surligner, écrire à la
        main, gommer, puis le reste. L'outil actif reste visible : s'il est secondaire, il
        prend la place du bouton « Plus d'outils » (icône de l'outil, état actif). */
-    const PRIORITE = ['main', 'surligneur', 'crayon', 'gomme', 'texte', 'boite', 'forme', 'question'];
-    const tries = [...outils].sort((a, b) => PRIORITE.indexOf(a.id) - PRIORITE.indexOf(b.id));
-    const principaux = tries.slice(0, nbPrincipaux);
-    const secondaires = tries.slice(nbPrincipaux);
-    const actifSecondaire = secondaires.find((o) => o.id === outil) || null;
-    const ouvrirOutils = (e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuOutils({ x: Math.max(8, Math.min(r.left - 60, window.innerWidth - 268)), y: r.bottom + 6 }); };
+    const principaux = outils;
     const rechercheOuv = !sansRecherche && (rechercheOuverte || !!search);
     return (
       <>
@@ -149,8 +144,9 @@ export function PdfToolbar({
               <button type="button" className="tab-bt" disabled={!numPages || pageCourante >= numPages} onClick={() => onAllerPage(pageCourante + 1)} title="Page suivante" aria-label="Page suivante"><Icon name="chevD" size={16} /></button>
               <span className="ptb-sep" />
               <button type="button" className="tab-bt" onClick={() => onZoom(1 / 1.15)} title="Dézoomer" aria-label="Dézoomer"><Icon name="minus" size={16} /></button>
-              <button type="button" className="tab-bt tab-zoom tnum" onClick={onAjuster} title="Ajuster à la largeur">{Math.round(scale * 100)}%</button>
+              <span className="tab-zoom tnum" title="Zoom">{Math.round(scale * 100)}%</span>
               <button type="button" className="tab-bt" onClick={() => onZoom(1.15)} title="Zoomer" aria-label="Zoomer"><Icon name="plus" size={16} /></button>
+              <button type="button" className="tab-bt" onClick={onAjuster} title="Ajuster à la largeur" aria-label="Ajuster à la largeur"><Icon name="maximize" size={15} /></button>
             </div>
           )}
           {statut}
@@ -163,13 +159,13 @@ export function PdfToolbar({
                   <IconeOutil nom={o.icone} size={18} />
                 </button>
               ))}
-              {(secondaires.length > 0 || onAjouterImage || onAjouterPage) && (
-                <button type="button" className={'tab-bt tab-outil tab-plus' + (actifSecondaire ? ' actif' : '')} aria-haspopup="menu"
-                  title={actifSecondaire ? `${actifSecondaire.label} — autres outils` : 'Plus d’outils : boîte, forme, « ? », insérer'}
-                  aria-label="Plus d’outils" onMouseDown={(e) => e.preventDefault()} onClick={ouvrirOutils}>
-                  {actifSecondaire ? <IconeOutil nom={actifSecondaire.icone} size={18} /> : <Icon name="more" size={18} />}
-                  <Icon name="chevD" size={10} className="tab-plus-chevron" />
-                </button>
+              {onAjouterImage && (
+                <button type="button" className="tab-bt tab-outil" onClick={onAjouterImage} aria-label="Insérer une image"
+                  title="Image — importer une image et la placer sur la page (ou la coller avec Cmd/Ctrl+V)"><IconeOutil nom="image" size={18} /></button>
+              )}
+              {onAjouterPage && (
+                <button type="button" className="tab-bt tab-outil" onClick={onAjouterPage} aria-label="Insérer une page blanche"
+                  title="Page — insérer une page blanche juste après la page affichée"><IconeOutil nom="page" size={18} /></button>
               )}
               {boutonDessins}
             </div>
@@ -220,11 +216,7 @@ export function PdfToolbar({
           </div>
         )}
         {menu && <ContextMenu x={menu.x} y={menu.y} items={actions} onClose={() => setMenu(null)} />}
-        {menuOutils && <ContextMenu x={menuOutils.x} y={menuOutils.y} onClose={() => setMenuOutils(null)} items={[
-          ...secondaires.map((o) => ({ label: (outil === o.id ? '✓ ' : '') + (o.id === 'question' ? '« ? » — passage pas compris' : o.label), onClick: () => setOutil(o.id) })),
-          onAjouterImage && { label: 'Insérer une image', icon: 'image', onClick: onAjouterImage },
-          onAjouterPage && { label: 'Insérer une page blanche', icon: 'plus', onClick: onAjouterPage },
-        ].filter(Boolean)} />}
+
       </>
     );
   }
