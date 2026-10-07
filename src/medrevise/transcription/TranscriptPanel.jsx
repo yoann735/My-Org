@@ -15,6 +15,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDejaVisible } from '../components/modeVisible.js';
+import { useTablette } from '../lib/tablette.js';
 import { Icon } from '../../shared/Icon.jsx';
 import { ConfirmModal, ContextMenu, Modal } from '../components/ui.jsx';
 import { useNiveauAudio, useTranscription } from './useTranscription.js';
@@ -62,6 +63,70 @@ export function BadgeTranscript({ courseId }) {
      « En direct » du mode Transcript. Rouge pulsant en direct, gris fixe en pause. */
   const pause = e.phase === 'paused';
   return <span className={'pm-live' + (pause ? ' pause' : '')} role="img" aria-label={pause ? 'Transcription en pause' : 'Transcription en cours'} title={pause ? 'Transcription en pause' : 'Transcription en cours'}><i /></span>;
+}
+
+/** Nombre de lignes validées de la session en cours sur CE cours (null hors session). */
+export function useLignesDirect(courseId) {
+  const e = useTranscription();
+  if (!(sessionActive() && e.courseId === courseId && e.session)) return null;
+  return e.session.segments.filter((x) => x.status !== 'gap').length;
+}
+
+/** TABLETTE (07/10) : colonne fine du panneau replié — point rouge de session et nombre
+ *  de lignes arrivées depuis le repli. `depuis` = nombre de lignes au moment du repli. */
+export function ResumeReplie({ courseId, depuis }) {
+  const e = useTranscription();
+  const n = useLignesDirect(courseId);
+  if (n == null) return null;
+  const nouvelles = Math.max(0, n - (depuis || 0));
+  return (
+    <span className="tab-resume" aria-live="polite">
+      <span className={'pm-live' + (e.phase === 'paused' ? ' pause' : '')} aria-hidden="true"><i /></span>
+      {nouvelles > 0 && <span className="tab-resume-n tnum" title={`${nouvelles} nouvelle${nouvelles > 1 ? 's' : ''} ligne${nouvelles > 1 ? 's' : ''} depuis le repli`}>+{nouvelles}</span>}
+    </span>
+  );
+}
+
+/** TABLETTE PORTRAIT (07/10) : bande « transcript en direct » de 2 lignes au-dessus des
+ *  onglets, sur l'onglet Cours — dernière ligne validée + provisoire en grisé. Un tap ouvre
+ *  le panneau ; glisser vers le bas la masque (jusqu'au prochain passage par le panneau). */
+export function BandeDirect({ courseId, onOuvrir, onMasquer }) {
+  const e = useTranscription();
+  const geste = useRef(null);
+  const [decal, setDecal] = useState(0);
+  if (!(sessionActive() && e.courseId === courseId && e.session)) return null;
+  const segs = e.session.segments.filter((x) => x.status !== 'gap');
+  const dernier = segs[segs.length - 1];
+  const interim = e.interim && e.interim.text;
+  const pause = e.phase === 'paused';
+  const fin = (ev) => {
+    const g = geste.current; geste.current = null;
+    if (!g) return;
+    const dy = ev.clientY - g.y;
+    setDecal(0);
+    if (dy > 36) onMasquer(); // glissé vers le bas
+    else if (Math.abs(dy) < 8 && Math.abs(ev.clientX - g.x) < 8) onOuvrir(); // tap
+  };
+  return (
+    <div className="tab-bande" role="button" tabIndex={0} aria-label="Transcript en direct — ouvrir le panneau (glisser vers le bas pour masquer)"
+      style={decal ? { transform: `translateY(${decal}px)`, opacity: Math.max(0.3, 1 - decal / 80) } : undefined}
+      onPointerDown={(ev) => { geste.current = { x: ev.clientX, y: ev.clientY, id: ev.pointerId }; try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch (x) { /* ignore */ } }}
+      onPointerMove={(ev) => { const g = geste.current; if (g && g.id === ev.pointerId) setDecal(Math.max(0, ev.clientY - g.y)); }}
+      onPointerUp={fin} onPointerCancel={() => { geste.current = null; setDecal(0); }}
+      onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onOuvrir(); } }}>
+      <span className="tab-bande-tete">
+        <span className={'pm-live' + (pause ? ' pause' : '')} aria-hidden="true"><i /></span>
+        <span className="tnum">{mmss(e.secondes)}</span>
+      </span>
+      <span className="tab-bande-texte">
+        <span className="tab-bande-flux">
+          {!dernier && !interim && <span className="tab-bande-attente">{pause ? 'En pause' : 'En écoute…'}</span>}
+          {dernier && <span>{dernier.text} </span>}
+          {interim && <span className="tab-bande-provisoire">{interim}</span>}
+        </span>
+      </span>
+    </div>
+  );
 }
 
 /* ============================================================
@@ -560,6 +625,8 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
   const [infoSource, setInfoSource] = useState(null);
   const [focusNote, setFocusNote] = useState(null);
   const [taille, setTailleLocale] = useState(() => lireLS(CLE_TAILLE, 'm'));
+  const { tablette } = useTablette();
+  const [menuAffichage, setMenuAffichage] = useState(null);
 
   const recharger = useCallback(async () => {
     const l = await sessionsDuCours(courseId);
@@ -652,9 +719,21 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
             <Icon name="mic" size={12} />
           </button>
           <span style={{ flex: 1 }} />
-          <ChoixTaille taille={taille} onTaille={choisirTaille} />
-          <button type="button" className="icon-btn sm" onClick={() => setPlein((v) => !v)} title={plein ? 'Quitter le plein écran (Échap)' : 'Plein écran (lecture à distance)'}><Icon name={plein ? 'x' : 'maximize'} size={13} /></button>
+          {/* tablette : taille du texte et plein écran regroupés dans un menu « Aa » (deux lignes de contrôles au plus) */}
+          {tablette && !plein ? (
+            <button type="button" className="btn sm trx-aa" title="Taille du texte, plein écran"
+              onClick={(ev) => { const r = ev.currentTarget.getBoundingClientRect(); setMenuAffichage({ x: Math.max(8, Math.min(r.right - 240, window.innerWidth - 248)), y: r.bottom + 6 }); }}>
+              Aa
+            </button>
+          ) : (<>
+            <ChoixTaille taille={taille} onTaille={choisirTaille} />
+            <button type="button" className="icon-btn sm" onClick={() => setPlein((v) => !v)} title={plein ? 'Quitter le plein écran (Échap)' : 'Plein écran (lecture à distance)'}><Icon name={plein ? 'x' : 'maximize'} size={13} /></button>
+          </>)}
         </div>
+        {menuAffichage && <ContextMenu x={menuAffichage.x} y={menuAffichage.y} onClose={() => setMenuAffichage(null)} items={[
+          ...TAILLES.map(([id, , aide]) => ({ label: (taille === id ? '✓ ' : '') + 'Texte ' + aide.toLowerCase(), onClick: () => choisirTaille(id) })),
+          { label: 'Plein écran (lecture à distance)', icon: 'maximize', onClick: () => setPlein(true) },
+        ]} />}
         {menuSource && <ContextMenu fermerAuDefilement={false} x={menuSource.x} y={menuSource.y} onClose={() => setMenuSource(null)} items={[
           ...menuSource.micros.map((m) => ({ label: (m.label === e.sourceLibelle ? '✓ ' : '') + m.label, icon: 'mic', onClick: async () => { const r = await changerSource({ source: 'micro', deviceId: m.deviceId }); if (!r.ok) setInfoSource(r.message); } })),
           { label: 'Onglet Chrome…', icon: 'ext', onClick: async () => { const r = await changerSource({ source: 'onglet' }); if (!r.ok) setInfoSource(r.message); } },

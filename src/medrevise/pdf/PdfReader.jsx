@@ -80,7 +80,9 @@ import { htmlVersTiptap } from './htmlVersTiptap.js';
 import { MenuDessins, ArriveeDessin, TYPE_GLISSER } from './OngletDessins.jsx';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
-import { FeuilleDemarrage, TranscriptPanel, BadgeTranscript } from '../transcription/TranscriptPanel.jsx';
+import { FeuilleDemarrage, TranscriptPanel, BadgeTranscript, BandeDirect, ResumeReplie } from '../transcription/TranscriptPanel.jsx';
+import { useTablette, abonnerStylet, styletActif, lireLargeurPanneau, ecrireLargeurPanneau, bornerLargeur, largeurParDefaut } from '../lib/tablette.js';
+import '../../styles/tablette.css';
 import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
 import { sessionActive as transcriptionActive, lireEtat as etatTranscription } from '../transcription/engine.js';
 import { actualiserCredits } from '../transcription/credits.js';
@@ -154,10 +156,25 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // deux colonnes s'affichent toujours ensemble.
   const [mobileView, setMobileView] = useState('course');
 
+  /* MODE TABLETTE (07/10, docs/compte-rendu-tablette.md) — 761 à 1 199 px. `cote` (≥ 900 px) :
+     PDF | séparateur | panneau ; `portrait` : empilé, onglets Cours / Panneau en bas.
+     Desktop (≥ 1 200 px) et shell mobile : rien ne change. */
+  const { tablette, cote: tabCote, portrait: tabPortrait } = useTablette();
+  const [stylet, setStylet] = useState(styletActif);
+  useEffect(() => abonnerStylet(() => setStylet(true)), []);
+  const [barreMasquee, setBarreMasquee] = useState(false);
+  const [largeurPanneau, setLargeurPanneau] = useState(lireLargeurPanneau);
+  const [bandeMasquee, setBandeMasquee] = useState(false);
+  const [depuisRepli, setDepuisRepli] = useState(0);
+  const [largeurRacine, setLargeurRacine] = useState(0);
+
   // source affichée quand la fiche porte À LA FOIS un PDF et une fiche HTML —
   // indépendant du mode Lecture/Édition (qui ne s'applique qu'au PDF).
   const [srcTab, setSrcTab] = useState(() => initialSrcTab || (fiche && fiche.pdfId ? 'pdf' : 'html'));
   useEffect(() => { setSrcTab(initialSrcTab || (fiche && fiche.pdfId ? 'pdf' : 'html')); }, [ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // tablette : seulement là où le lecteur a son en-tête (Bibliothèque, plein écran) —
+  // Apprentissage et Anatomie gardent leur propre disposition
+  const modeTab = tablette && (!embedded || avecEntete) && srcTab === 'pdf';
 
 
   const [pdfDoc, setPdfDoc] = useState(null);
@@ -520,7 +537,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const zoomManuel = useRef(false);
   useEffect(() => {
     const el = scrollRef.current;
-    if (!ajusterLargeur || !el || !pageSizes.length || typeof ResizeObserver === 'undefined') return undefined;
+    // tablette : ajusté à la largeur tant qu'on n'a pas zoomé à la main (page jamais rognée,
+    // et suivie à la rotation) — un zoom manuel est gardé tel quel
+    if (!(ajusterLargeur || modeTab) || !el || !pageSizes.length || typeof ResizeObserver === 'undefined') return undefined;
     const largeurPage = pageSizes.reduce((m, sz) => Math.max(m, sz.width), 0);
     let raf = null;
     const ajuster = () => {
@@ -539,7 +558,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     ro.observe(el);
     ajuster();
     return () => { ro.disconnect(); if (raf) cancelAnimationFrame(raf); };
-  }, [ajusterLargeur, pageSizes]);
+  }, [ajusterLargeur, pageSizes, modeTab]);
 
   /* ZOOM FLUIDE (02/10) : plusieurs crans peuvent arriver AVANT le rendu suivant
      (animation des boutons, rafale de molette). On part donc de la DERNIÈRE échelle
@@ -942,6 +961,130 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   );
   const afficherEntete = !embedded || avecEntete;
   const tableauDispo = afficherEntete && srcTab === 'pdf' && !!fiche;
+
+  /* ---- TABLETTE (07/10) ---- */
+  const nbLignesDirect = () => {
+    const e = etatTranscription();
+    return e && e.session && e.courseId === ficheId ? e.session.segments.filter((x) => x.status !== 'gap').length : 0;
+  };
+  // repli du panneau : on retient le nombre de lignes, la colonne fine affiche les nouvelles
+  const replierPanneau = (replier) => { if (replier) setDepuisRepli(nbLignesDirect()); setPanelOpen(!replier); };
+  const allerOnglet = (vue) => {
+    setMobileView(vue);
+    if (vue === 'items') { setPanelOpen(true); setBandeMasquee(false); }
+  };
+  /* HAUTEUR : le lecteur occupe exactement la hauteur visible restante (plus de défilement
+     de l'écran entier, barres comprises). Suit la hauteur VISIBLE (visualViewport) : clavier
+     virtuel ouvert, le lecteur rétrécit et le champ en cours est ramené au centre. */
+  useLayoutEffect(() => {
+    const r = racineRef.current;
+    if (!modeTab || !r) return undefined;
+    const vv = window.visualViewport;
+    let raf = null;
+    const maj = () => {
+      raf = null;
+      const h = vv ? vv.height + vv.offsetTop : window.innerHeight;
+      const top = r.getBoundingClientRect().top;
+      r.style.setProperty('--tab-h', Math.max(320, Math.round(h - Math.max(0, top) - 8)) + 'px');
+      setLargeurRacine(r.clientWidth);
+    };
+    const plan = () => { if (!raf) raf = requestAnimationFrame(maj); };
+    const clavier = () => {
+      plan();
+      const a = document.activeElement;
+      if (a && r.contains(a) && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) {
+        setTimeout(() => { try { a.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { /* ignore */ } }, 60);
+      }
+    };
+    maj();
+    window.addEventListener('resize', plan);
+    if (vv) vv.addEventListener('resize', clavier);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(plan) : null;
+    if (ro) ro.observe(r);
+    // un champ qui prend le focus (note, flashcard) : visible même si le clavier était déjà ouvert
+    const focus = (ev) => { const t = ev.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA)$/.test(t.tagName))) setTimeout(() => { try { t.scrollIntoView({ block: 'nearest' }); } catch (e) { /* ignore */ } }, 300); };
+    r.addEventListener('focusin', focus);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener('resize', plan);
+      if (vv) vv.removeEventListener('resize', clavier);
+      if (ro) ro.disconnect();
+      r.removeEventListener('focusin', focus);
+      r.style.removeProperty('--tab-h');
+    };
+  }, [modeTab]);
+  /* BARRE AUTO-MASQUÉE : elle se retire quand on descend dans le cours, revient quand on
+     remonte, ou au tap sur la bande en haut de la zone de lecture. */
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!modeTab || !el) { setBarreMasquee(false); return undefined; }
+    let dernier = el.scrollTop;
+    const f = () => {
+      const y = el.scrollTop, d = y - dernier;
+      if (Math.abs(d) < 8) return;
+      dernier = y;
+      if (d > 0 && y > 120) setBarreMasquee(true);
+      else if (d < 0) setBarreMasquee(false);
+    };
+    el.addEventListener('scroll', f, { passive: true });
+    return () => el.removeEventListener('scroll', f);
+  }, [modeTab, !!pdfDoc]); // eslint-disable-line react-hooks/exhaustive-deps
+  // la barre revient dès qu'un outil a des réglages ouverts ou qu'on cherche
+  useEffect(() => { if (search) setBarreMasquee(false); }, [search]);
+  /* SÉPARATEUR glissable (côte à côte) : largeur du panneau 320–560 px, mémorisée par
+     appareil. Écrite dans le DOM pendant le geste (aucun rendu React), enregistrée au relâcher. */
+  const debutSeparateur = (e) => {
+    if ((e.button && e.button !== 0) || !corpsRef.current) return;
+    e.preventDefault();
+    const el = e.currentTarget, corps = corpsRef.current;
+    try { el.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
+    const droite = corps.getBoundingClientRect().right;
+    let w = largeurPanneauEff;
+    el.classList.add('actif');
+    const move = (ev) => { if (ev.pointerId !== e.pointerId) return; w = bornerLargeur(droite - ev.clientX); corps.style.setProperty('--tab-pis', w + 'px'); };
+    const up = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      el.classList.remove('actif');
+      el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up);
+      setLargeurPanneau(w); ecrireLargeurPanneau(w);
+    };
+    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  };
+  const clavierSeparateur = (e) => {
+    const pas = e.key === 'ArrowLeft' ? 20 : e.key === 'ArrowRight' ? -20 : 0;
+    if (!pas) return;
+    e.preventDefault();
+    const w = bornerLargeur(largeurPanneauEff + pas);
+    setLargeurPanneau(w); ecrireLargeurPanneau(w);
+  };
+  // outils visibles dans la barre fusionnée, selon la largeur réelle du lecteur
+  const nbPrincipaux = largeurRacine >= 1000 ? 6 : largeurRacine >= 800 ? 5 : 4;
+  const largeurPanneauEff = largeurPanneau || largeurParDefaut(largeurRacine);
+  const enteteTablette = () => (
+    <div className="lecteur-entete doc tab-entete">
+      <button type="button" className="tab-bt" onClick={close} title="Revenir à la liste" aria-label="Retour"><Icon name="chevL" size={18} /></button>
+      <div className="tab-titre">
+        <TitreRenommable titre={fiche && fiche.titre} demandeEdition={demandeRenommer}
+          onRenommer={ficheReelle ? (t) => ctx.renameFiche(ficheReelle.id, t) : null}
+          sousTitre={nbPagesAffichees ? `${nbPagesAffichees} p.` : null} />
+      </div>
+      {tabCote && (
+        <button type="button" className={'tab-bt' + (panelOpen ? ' actif' : '')} onClick={() => replierPanneau(panelOpen)}
+          title={panelOpen ? 'Replier le panneau' : 'Afficher le panneau'} aria-label={panelOpen ? 'Replier le panneau' : 'Afficher le panneau'} aria-pressed={panelOpen}>
+          <Icon name="panel" size={18} />
+        </button>
+      )}
+      <MenuFichier compact groupes={[
+        ...groupesFichier,
+        tableauDispo && { titre: 'Disposition', items: [['pdf', 'filePdf', 'Le PDF seul'], ['deux', 'panel', 'PDF et tableau côte à côte'], ['tableau', 'grid', 'Le tableau en plein']]
+          .map(([id, ic, lbl]) => ({ label: (disposition === id ? '✓ ' : '') + lbl, icon: ic, actif: disposition === id, onClick: () => setDisposition(id) })) },
+        { titre: 'Affichage', items: [
+          { label: ctx.theme === 'dark' ? 'Mode clair' : 'Mode sombre', icon: ctx.theme === 'dark' ? 'sun' : 'moon', onClick: ctx.toggleTheme },
+          ctx.goHub && { label: 'Changer d’app', icon: 'grid', onClick: ctx.goHub },
+        ] },
+      ].filter(Boolean)} />
+    </div>
+  );
   // POIGNÉE du partage (même patron que apprentissage/UniteSplit.jsx : capture du
   // pointeur, ratio mémorisé, double-clic = moitié-moitié)
   const corpsRef = useRef(null);
@@ -1698,11 +1841,18 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   }
 
   return (
-    <div ref={racineRef} className={embedded ? 'fadein' : 'screen scroll fadein lecteur-plein'}>
-      {/* en-tête : nom renommable + menu Fichier (plein écran, ou Bibliothèque) */}
-      {afficherEntete && entete()}
+    <div ref={racineRef} className={(embedded ? 'fadein' : 'screen scroll fadein lecteur-plein')
+      + (modeTab ? ' lecteur-tab ' + (tabCote ? 'tab-cote' : 'tab-portrait') + (barreMasquee ? ' barre-masquee' : '') : '') + (stylet ? ' stylet-actif' : '')}
+      data-vue={modeTab && tabPortrait ? mobileView : undefined}>
+      {/* en-tête : nom renommable + menu Fichier (plein écran, ou Bibliothèque) —
+          en tablette, une seule ligne compacte (titre tronqué, « … » pour le reste) */}
+      {afficherEntete && (modeTab ? enteteTablette() : entete())}
 
+      {/* tablette : barre fusionnée (48 px) dans un conteneur qui se replie au défilement ;
+          ailleurs ce conteneur est transparent (display: contents) */}
+      <div className="tab-barres">
       <PdfToolbar
+        tablette={modeTab} nbPrincipaux={nbPrincipaux}
         onClose={close}
         // TABLEAU SEUL : les outils du PDF (pages, zoom, annotations, recherche) ne servent
         // à rien — il reste Retour et Panneau ; le tableau a sa propre barre
@@ -1783,6 +1933,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           </>
         ) : null}
       />
+      </div>
       {activeEdit && editor && (
         <EditToolbar editor={editor} libre={activeEdit.kind === 'libre'}
           couleur={activeEdit.couleur}
@@ -1822,7 +1973,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <button type="button" className={'seg-btn' + (mobileView === 'items' ? ' active' : '')} onClick={() => { setMobileView('items'); setPanelOpen(true); }}><Icon name="cards" size={13} /> Panneau</button>
       </div>
       <div className={'pdfr-body pdfr-workshop' + (tableauDispo && disposition !== 'pdf' ? ' avec-tableau dispo-' + disposition : '')} data-mobile-view={mobileView}
-        ref={corpsRef} style={tableauDispo && disposition === 'deux' ? { '--ratio-pdf': ratioSplit } : undefined}>
+        ref={corpsRef} style={{ ...(tableauDispo && disposition === 'deux' ? { '--ratio-pdf': ratioSplit } : {}), ...(modeTab ? { '--tab-pis': largeurPanneauEff + 'px' } : {}) }}>
+        {/* barre masquée : un tap tout en haut de la zone de lecture la fait revenir */}
+        {modeTab && barreMasquee && <div className="tab-revele" onPointerDown={() => setBarreMasquee(false)} aria-hidden="true" />}
         <div className="pdfr-scroll pdfr-workshop-course" ref={scrollRef} onScroll={onScroll}
           onDragOver={(e) => { if (e.dataTransfer && [...e.dataTransfer.types].some((t) => t === 'Files' || t === TYPE_GLISSER)) { e.preventDefault(); if ([...e.dataTransfer.types].includes(TYPE_GLISSER)) e.dataTransfer.dropEffect = 'copy'; } }}
           onDrop={deposerImage}>
@@ -1925,6 +2078,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           </div>
         </>)}
 
+        {/* tablette côte à côte : séparateur glissable (et bouton de repli) */}
+        {modeTab && tabCote && panelOpen && (!tableauDispo || disposition === 'pdf') && (
+          <div className="tab-sep" role="separator" aria-orientation="vertical" aria-label="Largeur du panneau"
+            aria-valuemin={320} aria-valuemax={560} aria-valuenow={largeurPanneauEff} tabIndex={0}
+            title="Glisser pour régler la largeur du panneau" onPointerDown={debutSeparateur} onKeyDown={clavierSeparateur}>
+            <span className="tab-sep-trait" aria-hidden="true" />
+            <button type="button" className="tab-bt tab-sep-replier" onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => replierPanneau(true)} title="Replier le panneau" aria-label="Replier le panneau">
+              <Icon name="chevR" size={16} />
+            </button>
+          </div>
+        )}
+
         {/* PANNEAU DE DROITE — le MÊME que sur une fiche HTML (CourseItemsSidebar) :
             QCM / Flashcard / Exercice / Feynman pour une vraie fiche, plus l'onglet
             « Notions » (les passages surlignés de CE PDF). Pour un document sans
@@ -1940,8 +2106,33 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           ]}
           ongletDemande={ongletDemande} cleMemo={ficheId}
           ongletInitial={ficheReelle ? null : 'notions'}
-          replie={!panelOpen} onReplier={(v) => setPanelOpen(!v)} />
+          replie={!panelOpen} onReplier={(v) => replierPanneau(v)}
+          contenuReplie={modeTab && tabCote ? (
+            <>
+              <button type="button" className="tab-bt" onClick={() => replierPanneau(false)} title="Afficher le panneau" aria-label="Afficher le panneau"><Icon name="chevL" size={18} /></button>
+              {ficheId && <ResumeReplie courseId={ficheId} depuis={depuisRepli} />}
+            </>
+          ) : null} />
       </div>
+
+      {/* tablette portrait : onglets Cours / Panneau EN BAS (zone du pouce), et la bande
+          « transcript en direct » au-dessus quand on regarde le cours */}
+      {modeTab && tabPortrait && (
+        <div className="tab-bas">
+          {mobileView === 'course' && !bandeMasquee && ficheId && (
+            <BandeDirect courseId={ficheId} onMasquer={() => setBandeMasquee(true)}
+              onOuvrir={() => { allerOnglet('items'); setOngletDemande((o) => ({ id: 'transcript', n: (o ? o.n : 0) + 1 })); }} />
+          )}
+          <div className="tab-onglets" role="tablist" aria-label="Vue">
+            <button type="button" role="tab" aria-selected={mobileView === 'course'} className={'tab-onglet' + (mobileView === 'course' ? ' actif' : '')} onClick={() => allerOnglet('course')}>
+              <Icon name="filePdf" size={18} /> Cours
+            </button>
+            <button type="button" role="tab" aria-selected={mobileView === 'items'} className={'tab-onglet' + (mobileView === 'items' ? ' actif' : '')} onClick={() => allerOnglet('items')}>
+              <Icon name="cards" size={18} /> Panneau {ficheId && <BadgeTranscript courseId={ficheId} />}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* CARTE DEPUIS LA SÉLECTION (04/10) : tableau affiché à côté + outil Sélection
           (qui ne surligne JAMAIS rien) + du texte sélectionné → une bulle propose d'en

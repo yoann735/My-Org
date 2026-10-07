@@ -63,7 +63,7 @@ const lireLS = (k) => { try { return localStorage.getItem(k); } catch (e) { retu
 const ecrireLS = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* stockage bloqué */ } };
 const TYPES_IDS = ['qcm', 'flashcard', 'exercice', 'feynman'];
 
-export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null, cleMemo = null }) {
+export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null, cleMemo = null, contenuReplie = null }) {
   const avecItems = !!ficheId;
   const extras = (ongletsEnPlus || []).filter(Boolean);
   const extraNotions = extras.find((o) => o.id === 'notions') || null;
@@ -468,6 +468,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   return (
     <div className={'pis' + (collapsed ? ' collapsed' : '')} ref={panneauRef}>
       <SplitHandle side="right" collapsed={collapsed} onClick={() => setCollapsed((v) => !v)} />
+      {/* tablette (07/10) : panneau replié = colonne fine (ouvrir, session en cours, lignes arrivées) */}
+      {collapsed && contenuReplie && <div className="pis-replie">{contenuReplie}</div>}
       {!collapsed && (
       <div className="pis-body">
         {modes.length > 1 && (

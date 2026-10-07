@@ -16,6 +16,7 @@
             → boîtes libres
    ============================================================ */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { noterPointeur, pointeurIgnore, prendreTrace, rendreTrace } from '../lib/tablette.js';
 import { EditorContent } from '@tiptap/react';
 import { IconeOutil } from './IconesOutils.jsx';
 import { SelecteurCouleurs, BoutonCouleur } from './Couleurs.jsx';
@@ -209,6 +210,9 @@ export function PdfPageContent({
      [0,1] par rapport à la page, donc indépendant du zoom. */
   const [trace, setTrace] = useState(null);
   const demarrerTrace = (e) => {
+    noterPointeur(e); // stylet : le doigt et la paume ne dessinent plus (lib/tablette.js)
+    if (pointeurIgnore(e)) return;
+    const pid = e.pointerId; // un tracé ne suit QUE son pointeur (2e doigt, paume)
     e.preventDefault(); // pas de sélection native pendant le tracé
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return;
@@ -216,12 +220,14 @@ export function PdfPageContent({
     const y0 = clamp01((e.clientY - r.top) / r.height);
     let courant = null;
     const move = (ev) => {
+      if (ev.pointerId !== pid) return;
       const x1 = clamp01((ev.clientX - r.left) / r.width);
       const y1 = clamp01((ev.clientY - r.top) / r.height);
       courant = { x: Math.min(x0, x1), y: Math.min(y0, y1), width: Math.abs(x1 - x0), height: Math.abs(y1 - y0) };
       setTrace(courant);
     };
-    const up = () => {
+    const up = (ev) => {
+      if (ev && ev.pointerId !== pid) return;
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       setTrace(null);
@@ -251,6 +257,9 @@ export function PdfPageContent({
      reste actif pour en poser d'autres. */
   const [traceForme, setTraceForme] = useState(null);
   const demarrerForme = (e) => {
+    noterPointeur(e); // stylet : le doigt et la paume ne dessinent plus (lib/tablette.js)
+    if (pointeurIgnore(e)) return;
+    const pid = e.pointerId; // un tracé ne suit QUE son pointeur (2e doigt, paume)
     if (e.button !== 0) return;
     e.preventDefault();
     const r = e.currentTarget.getBoundingClientRect();
@@ -276,8 +285,9 @@ export function PdfPageContent({
         // triangle s'ouvrent vers là où on a tiré (vers la gauche ou le haut = retourné)
         fx: x1 < x0, fy: y1 < y0 };
     };
-    const move = (ev) => { courant = calculer(ev); setTraceForme({ ...courant, type }); };
-    const up = () => {
+    const move = (ev) => { if (ev.pointerId !== pid) return; courant = calculer(ev); setTraceForme({ ...courant, type }); };
+    const up = (ev) => {
+      if (ev && ev.pointerId !== pid) return;
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       setTraceForme(null);
@@ -343,7 +353,13 @@ export function PdfPageContent({
   const [traitEnCours, setTraitEnCours] = useState(null);
   const PAS_MIN = 0.0007;
   const demarrerTrait = (e) => {
+    noterPointeur(e); // stylet : le doigt et la paume ne dessinent plus (lib/tablette.js)
+    if (pointeurIgnore(e)) return;
+    const pid = e.pointerId; // un tracé ne suit QUE son pointeur (2e doigt, paume)
     if (e.button !== 0) return;
+    // un seul tracé à la fois ; 2e doigt aussitôt posé = geste à deux doigts → tracé annulé
+    if (!prendreTrace(e, () => { annule = true; finir(); })) return;
+    let annule = false;
     e.preventDefault();
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return;
@@ -363,15 +379,23 @@ export function PdfPageContent({
       points = [...points, lisse];
     };
     const move = (ev) => {
+      if (ev.pointerId !== pid) return;
       const lot = typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : [];
       (lot.length ? lot : [ev]).forEach((x) => ajouter(pt(x)));
       if (!raf) raf = requestAnimationFrame(peindre);
     };
-    const up = (ev) => {
+    const finir = () => {
+      rendreTrace(pid);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
       if (raf) cancelAnimationFrame(raf);
       setTraitEnCours(null);
+    };
+    const up = (ev) => {
+      if (ev && ev.pointerId !== pid) return;
+      finir();
+      if (annule || (ev && ev.type === 'pointercancel')) return;
       const fin = ev && Number.isFinite(ev.clientX) ? pt(ev) : brut;
       const der = points[points.length - 1];
       if (Math.hypot(fin[0] - der[0], fin[1] - der[1]) > 1e-6) points = [...points, fin];
@@ -380,6 +404,7 @@ export function PdfPageContent({
           points: lisserTrait(points, { aimant: !surligneur && aimantActif, ratio }) });
       }
     };
+    window.addEventListener('pointercancel', up);
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
@@ -396,6 +421,9 @@ export function PdfPageContent({
   const pageRef = () => (canvasRef.current && canvasRef.current.closest('.pdfr-page')) || document;
   const RAYON_GOMME = 9; // px à l'écran : le rayon du curseur rond (voir etudes.css)
   const demarrerGomme = (e) => {
+    noterPointeur(e); // stylet : le doigt et la paume ne dessinent plus (lib/tablette.js)
+    if (pointeurIgnore(e)) return;
+    const pid = e.pointerId; // un tracé ne suit QUE son pointeur (2e doigt, paume)
     if (e.button !== 0) return;
     e.preventDefault();
     const r = e.currentTarget.getBoundingClientRect();
@@ -428,10 +456,12 @@ export function PdfPageContent({
     };
     tester(e.clientX, e.clientY);
     const move = (ev) => {
+      if (ev.pointerId !== pid) return;
       const lot = typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : [];
       (lot.length ? lot : [ev]).forEach((x) => tester(x.clientX, x.clientY));
     };
-    const up = async () => {
+    const up = async (ev) => {
+      if (ev && ev.pointerId !== pid) return;
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       if (touches.size) await onSupprimerTraits([...touches.values()]);
@@ -750,7 +780,8 @@ export function PdfPageContent({
           elle seule reçoit le clic — ni sélection ni surlignage possibles. */}
       {(outil === 'texte' || outil === 'question') && (
         <div className={'pdfr-poselayer outil-' + outil} onPointerDown={(e) => {
-          if (e.button !== 0) return;
+          noterPointeur(e);
+          if (e.button !== 0 || pointeurIgnore(e)) return;
           e.preventDefault();
           const r = e.currentTarget.getBoundingClientRect();
           if (!r.width || !r.height) return;

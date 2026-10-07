@@ -58,6 +58,9 @@ export function PdfToolbar({
   avantPanneau = null, // bascule de disposition PDF / Les deux / Tableau (04/10)
   boutonDessins = null, // menu des dessins reçus du téléphone (02/10 soir)
   boutonTranscrire = null, // transcription en direct du cours (05/10)
+  // TABLETTE (07/10, docs/compte-rendu-tablette.md) : UNE barre de 48 px, cibles ≥ 44 px ;
+  // `nbPrincipaux` outils visibles, les autres dans « Plus d'outils »
+  tablette = false, nbPrincipaux = 4,
 }) {
   const [menu, setMenu] = useState(null);
   /* LARGEUR RÉELLE de la barre (01/10) : dans un panneau étroit (Apprentissage,
@@ -122,7 +125,109 @@ export function PdfToolbar({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [sansRecherche]);
+  const [menuOutils, setMenuOutils] = useState(null);
   const raccourciF = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘F' : 'Ctrl+F';
+
+  if (tablette) {
+    /* Ordre de priorité des outils en cours : lire/sélectionner, surligner, écrire à la
+       main, gommer, puis le reste. L'outil actif reste visible : s'il est secondaire, il
+       prend la place du bouton « Plus d'outils » (icône de l'outil, état actif). */
+    const PRIORITE = ['main', 'surligneur', 'crayon', 'gomme', 'texte', 'boite', 'forme', 'question'];
+    const tries = [...outils].sort((a, b) => PRIORITE.indexOf(a.id) - PRIORITE.indexOf(b.id));
+    const principaux = tries.slice(0, nbPrincipaux);
+    const secondaires = tries.slice(nbPrincipaux);
+    const actifSecondaire = secondaires.find((o) => o.id === outil) || null;
+    const ouvrirOutils = (e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuOutils({ x: Math.max(8, Math.min(r.left - 60, window.innerWidth - 268)), y: r.bottom + 6 }); };
+    const rechercheOuv = !sansRecherche && (rechercheOuverte || !!search);
+    return (
+      <>
+        <div ref={barreRef} className="pdfr-toolbar pdfr-barre tab-barre">
+          {!sansPages && (
+            <div className="tab-zone">
+              <button type="button" className="tab-bt" disabled={pageCourante <= 1} onClick={() => onAllerPage(pageCourante - 1)} title="Page précédente" aria-label="Page précédente"><Icon name="chevU" size={16} /></button>
+              <span className="tab-pages tnum" title="Page affichée">{numPages ? `${pageCourante}/${numPages}` : '—'}</span>
+              <button type="button" className="tab-bt" disabled={!numPages || pageCourante >= numPages} onClick={() => onAllerPage(pageCourante + 1)} title="Page suivante" aria-label="Page suivante"><Icon name="chevD" size={16} /></button>
+              <span className="ptb-sep" />
+              <button type="button" className="tab-bt" onClick={() => onZoom(1 / 1.15)} title="Dézoomer" aria-label="Dézoomer"><Icon name="minus" size={16} /></button>
+              <button type="button" className="tab-bt tab-zoom tnum" onClick={onAjuster} title="Ajuster à la largeur">{Math.round(scale * 100)}%</button>
+              <button type="button" className="tab-bt" onClick={() => onZoom(1.15)} title="Zoomer" aria-label="Zoomer"><Icon name="plus" size={16} /></button>
+            </div>
+          )}
+          {statut}
+          {outilsAnnotation && (
+            <div className="tab-zone tab-outils" role="group" aria-label="Outils d'annotation">
+              {principaux.map((o) => (
+                <button key={o.id} type="button" title={`${o.label} — ${o.aide}`} aria-label={o.label} aria-pressed={outil === o.id}
+                  className={'tab-bt tab-outil' + (outil === o.id ? ' actif' : '')}
+                  onMouseDown={(e) => e.preventDefault()} onClick={() => setOutil(o.id)}>
+                  <IconeOutil nom={o.icone} size={18} />
+                </button>
+              ))}
+              {(secondaires.length > 0 || onAjouterImage || onAjouterPage) && (
+                <button type="button" className={'tab-bt tab-outil tab-plus' + (actifSecondaire ? ' actif' : '')} aria-haspopup="menu"
+                  title={actifSecondaire ? `${actifSecondaire.label} — autres outils` : 'Plus d’outils : boîte, forme, « ? », insérer'}
+                  aria-label="Plus d’outils" onMouseDown={(e) => e.preventDefault()} onClick={ouvrirOutils}>
+                  {actifSecondaire ? <IconeOutil nom={actifSecondaire.icone} size={18} /> : <Icon name="more" size={18} />}
+                  <Icon name="chevD" size={10} className="tab-plus-chevron" />
+                </button>
+              )}
+              {boutonDessins}
+            </div>
+          )}
+          <div className="tab-zone tab-droite">
+            {outilsAnnotation && hist && (<>
+              <button type="button" className="tab-bt" onClick={hist.annuler} disabled={!hist.peutAnnuler} aria-label="Annuler"
+                title={hist.peutAnnuler ? `Annuler — ${hist.libelleAnnuler} (${RACCOURCI}Z)` : `Annuler (${RACCOURCI}Z)`}>
+                <IconeOutil nom="annuler" size={17} />
+              </button>
+              <button type="button" className="tab-bt" onClick={hist.retablir} disabled={!hist.peutRetablir} aria-label="Rétablir"
+                title={hist.peutRetablir ? `Rétablir — ${hist.libelleRetablir} (${RACCOURCI}Maj+Z)` : `Rétablir (${RACCOURCI}Maj+Z)`}>
+                <IconeOutil nom="retablir" size={17} />
+              </button>
+            </>)}
+            {!sansRecherche && (
+              <button type="button" className={'tab-bt' + (rechercheOuv ? ' actif' : '')} title={`Rechercher dans le document (${raccourciF})`} aria-label="Rechercher"
+                onClick={() => { setRechercheOuverte(true); setTimeout(() => champRecherche.current && champRecherche.current.focus(), 0); }}>
+                <Icon name="search" size={17} />
+              </button>
+            )}
+            {avantPanneau}
+            {!!actions.length && (
+              <button type="button" className="tab-bt" title="Actions sur le document" aria-label="Actions sur le document"
+                onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: Math.min(r.left, window.innerWidth - 260), y: r.bottom + 6 }); }}>
+                <Icon name="more" size={18} />
+              </button>
+            )}
+          </div>
+          {/* recherche : un champ qui recouvre la barre (la place manque pour le garder ouvert) */}
+          {rechercheOuv && (
+            <div className="tab-recherche">
+              <Icon name="search" size={16} className="ic" />
+              <input ref={champRecherche} placeholder="Rechercher dans le cours" value={search} enterKeyHint="search"
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (e.shiftKey) onPrecedent(); else onSuivant(); } if (e.key === 'Escape') { onFermerRecherche(); setRechercheOuverte(false); } }} />
+              {!!search && <span className="hint tnum">{searching ? '…' : matches.length ? `${activeMatch + 1}/${matches.length}` : '0'}</span>}
+              <button type="button" className="tab-bt" disabled={!matches.length} onClick={onPrecedent} aria-label="Résultat précédent"><Icon name="chevU" size={16} /></button>
+              <button type="button" className="tab-bt" disabled={!matches.length} onClick={onSuivant} aria-label="Résultat suivant"><Icon name="chevD" size={16} /></button>
+              <button type="button" className="tab-bt" onClick={() => { onFermerRecherche(); setRechercheOuverte(false); }} aria-label="Fermer la recherche"><Icon name="x" size={16} /></button>
+            </div>
+          )}
+        </div>
+        {outilsAnnotation && contexteSupplementaire && (
+          <div className="pdfr-contexte tab-contexte">
+            <span className="ptb-contexte-titre">{outilActif.label}</span>
+            {contexteSupplementaire}
+          </div>
+        )}
+        {menu && <ContextMenu x={menu.x} y={menu.y} items={actions} onClose={() => setMenu(null)} />}
+        {menuOutils && <ContextMenu x={menuOutils.x} y={menuOutils.y} onClose={() => setMenuOutils(null)} items={[
+          ...secondaires.map((o) => ({ label: (outil === o.id ? '✓ ' : '') + (o.id === 'question' ? '« ? » — passage pas compris' : o.label), onClick: () => setOutil(o.id) })),
+          onAjouterImage && { label: 'Insérer une image', icon: 'image', onClick: onAjouterImage },
+          onAjouterPage && { label: 'Insérer une page blanche', icon: 'plus', onClick: onAjouterPage },
+        ].filter(Boolean)} />}
+      </>
+    );
+  }
 
   return (
     <>

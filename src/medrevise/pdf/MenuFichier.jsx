@@ -13,7 +13,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 
-export function MenuFichier({ groupes }) {
+/* `compact` (tablette, 07/10) : le déclencheur est un bouton « … » de 44 px, et le menu
+   regroupe aussi ce que l'en-tête compact n'affiche plus (disposition, thème, apps). */
+export function MenuFichier({ groupes, compact = false }) {
   const [ouvert, setOuvert] = useState(false);
   const racine = useRef(null);
   useEffect(() => {
@@ -28,9 +30,10 @@ export function MenuFichier({ groupes }) {
   if (!visibles.length) return null;
   return (
     <div className="mf" ref={racine}>
-      <button type="button" className={'mf-bouton' + (ouvert ? ' ouvert' : '')} aria-haspopup="menu" aria-expanded={ouvert}
-        onClick={() => setOuvert((v) => !v)} title="Fichier — exporter, renommer, insérer…">
-        Fichier
+      <button type="button" className={'mf-bouton' + (compact ? ' mf-compact' : '') + (ouvert ? ' ouvert' : '')} aria-haspopup="menu" aria-expanded={ouvert}
+        aria-label={compact ? 'Plus — fichier, disposition, affichage' : undefined}
+        onClick={() => setOuvert((v) => !v)} title={compact ? 'Fichier, disposition, affichage…' : 'Fichier — exporter, renommer, insérer…'}>
+        {compact ? <Icon name="more" size={18} /> : 'Fichier'}
       </button>
       {ouvert && (
         <div className="mf-menu" role="menu">
@@ -39,7 +42,7 @@ export function MenuFichier({ groupes }) {
               {g.titre && <div className="mf-titre">{g.titre}</div>}
               {g.items.map((it, i) => (
                 <button key={i} type="button" role="menuitem"
-                  className={'mf-item' + (it.principal ? ' principal' : '') + (it.danger ? ' danger' : '')}
+                  className={'mf-item' + (it.principal ? ' principal' : '') + (it.danger ? ' danger' : '') + (it.actif ? ' actif' : '')}
                   onClick={() => { setOuvert(false); it.onClick(); }}>
                   <span className="mf-ic">{it.icon && <Icon name={it.icon} size={14} />}</span>
                   <span className="mf-texte">
