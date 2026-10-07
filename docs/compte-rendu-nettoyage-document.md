@@ -249,5 +249,6 @@ Quatre points livrés ensemble.
 
 | Commit | Message |
 |---|---|
-| (code) | feat(medrevise): document = le lecteur PDF avec des pages blanches · fenêtre de création commune · Bibliothèque épurée · séance du jour dans Réviser |
-| (ce compte-rendu) | docs(medrevise): compte-rendu nettoyage & document (captures avant/après, décisions, limites) |
+| `afab594` | feat(medrevise): document = le lecteur PDF avec des pages blanches · fenêtre de création commune · Bibliothèque épurée · séance du jour dans Réviser |
+| `d6f75f5` | docs(medrevise): compte-rendu nettoyage & document (captures avant/après, décisions, limites) |
+| (ce commit) | docs(medrevise): compte-rendu — liste des commits |
