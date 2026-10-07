@@ -1038,10 +1038,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     e.preventDefault();
     const el = e.currentTarget, corps = corpsRef.current;
     try { el.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
-    const droite = corps.getBoundingClientRect().right;
-    let w = largeurPanneauEff;
+    // ancré sur la largeur de départ : le panneau suit le doigt sans sauter à la prise
+    const x0 = e.clientX, w0 = largeurPanneauEff;
+    let w = w0;
     el.classList.add('actif');
-    const move = (ev) => { if (ev.pointerId !== e.pointerId) return; w = bornerLargeur(droite - ev.clientX); corps.style.setProperty('--tab-pis', w + 'px'); };
+    const move = (ev) => { if (ev.pointerId !== e.pointerId) return; w = bornerLargeur(w0 + (x0 - ev.clientX)); corps.style.setProperty('--tab-pis', w + 'px'); };
     const up = (ev) => {
       if (ev.pointerId !== e.pointerId) return;
       el.classList.remove('actif');

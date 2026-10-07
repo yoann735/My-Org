@@ -774,16 +774,25 @@ export function ContextMenu({ x, y, items, onClose, fermerAuDefilement = true })
       window.addEventListener('pointerdown', close);
       window.addEventListener('contextmenu', close);
     });
-    if (fermerAuDefilement) window.addEventListener('scroll', close, true);
+    /* défilement : seulement celui qui emporte l'endroit d'où le menu a été ouvert (juste
+       au-dessus de lui). Avant, TOUT défilement le fermait — pendant une transcription, chaque
+       nouvelle ligne fait défiler le transcript et refermait aussitôt un menu de la barre. */
+    const auDefilement = (e) => {
+      const t = e.target;
+      if (!t || t === document || t === document.documentElement || t === document.body || !t.getBoundingClientRect) { onClose(); return; }
+      const r = t.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y - 8 >= r.top && y - 8 <= r.bottom) onClose();
+    };
+    if (fermerAuDefilement) window.addEventListener('scroll', auDefilement, true);
     window.addEventListener('keydown', onKey);
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('pointerdown', close);
       window.removeEventListener('contextmenu', close);
-      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('scroll', auDefilement, true);
       window.removeEventListener('keydown', onKey);
     };
-  }, [onClose]);
+  }, [onClose, x, y]); // eslint-disable-line react-hooks/exhaustive-deps
   return createPortal(
     <div className="ctx-menu" style={{ left: x, top: y }} onPointerDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
       {items.map((it, i) => (
