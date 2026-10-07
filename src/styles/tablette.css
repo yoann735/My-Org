@@ -156,3 +156,14 @@ body:has(.lecteur-tab) .ctx-menu-item { min-height: 44px; font-size: 14.5px; }
 @media (prefers-reduced-motion: reduce) {
   .lecteur-tab .tab-barres, .lecteur-tab .tab-bande { transition: none; }
 }
+
+/* panneau étroit (320–380 px) : la 1re ligne de session doit tenir sans rogner Pause /
+   Arrêter — le libellé « En direct » laisse sa place (le point coloré et le chrono restent) */
+.lecteur-tab .pis-body { container-type: inline-size; container-name: panneau-tab; }
+@container panneau-tab (max-width: 380px) {
+  .lecteur-tab .trx-barre .trx-pastille { font-size: 0; gap: 0; }
+  .lecteur-tab .trx-barre .trx-vu { width: 22px; }
+  .lecteur-tab .trx-barre .btn.sm { padding: 0 10px; }
+}
+.lecteur-tab .trx-barre :is(.btn, .icon-btn) { flex-shrink: 0; }
+.lecteur-tab .trx-barre :is(.trx-ic-pause, .trx-ic-stop) { flex: 0 0 auto; }
