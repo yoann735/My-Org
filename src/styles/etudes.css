@@ -1733,7 +1733,8 @@
 .fc-reglages { flex: 1 1 170px; }
 .fc-seg { max-width: 100%; }
 .fc-seg .seg-btn { padding: 4px 10px; font-size: 12px; white-space: nowrap; }
-.fc-champ { container-type: inline-size; }
+/* « fci-champ » et non « fc-champ » : ce nom-là est le champ de la fenêtre de création (fenetre-creation.css, height: 40px) — la zone image s’y retrouvait écrasée sur 40 px et débordait sur « Indice » (08/10). */
+.fci-champ { container-type: inline-size; }
 @container (max-width: 400px) {
   .fc-choisie { flex-direction: column; align-items: stretch; }
   .fc-vignette { flex-basis: auto; width: 100%; height: 90px; }

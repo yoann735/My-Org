@@ -60,7 +60,7 @@ export function ChampImageFlashcard({ valeur, onChange }) {
   const aUneImage = !!(fichier || imageId);
   const choisir = (f) => { if (f && /^image\//.test(f.type || '')) onChange({ ...valeur, fichier: f }); };
   return (
-    <div className="imp-field fc-champ">
+    <div className="imp-field fci-champ">
       <label>Image <span className="imp-opt">(optionnelle)</span></label>
       <input ref={input} type="file" accept="image/*" style={{ display: 'none' }}
         onChange={(e) => { choisir(e.target.files[0]); e.target.value = ''; }} />
