@@ -194,7 +194,7 @@ export function creerGlissement({ corps, piste, indicateur, nbModes, index, onAr
       if (ax > 3 && ax > prec * 1.5) franc += -dx;
       else if (ax <= prec) franc = 0;
       if (Math.abs(franc) > SEUIL_FRANC) { const f = franc; franc = 0; commencer(f, t); return; }
-      if (t < finTraine || (ecart < 60 && ax <= prec * 1.15 + 0.5)) return; // traîne d'inertie : ignorée
+      if (t < finTraine || (ecart < SILENCE && ax <= prec * 1.15 + 0.5)) return; // traîne d'inertie : ignorée
       etat = 'repos';
     }
     if (etat === 'vertical') { if (ecart < 90) return; etat = 'repos'; }
@@ -208,7 +208,8 @@ export function creerGlissement({ corps, piste, indicateur, nbModes, index, onAr
         return;
       }
       // début d'inertie : deltas qui décroissent régulièrement (≥ 3 de suite, −8 %) → doigts levés
-      if (ax >= pic) { pic = ax; decroit = 0; } else if (ax <= prec * 0.92 && ecart < 50) decroit += 1; else if (ax > prec) decroit = 0;
+      // indépendant de la cadence des événements (60 Hz, 120 Hz, ou plus lente) : seul compte le silence
+      if (ax >= pic) { pic = ax; decroit = 0; } else if (ax <= prec * 0.92 && ecart < SILENCE) decroit += 1; else if (ax > prec) decroit = 0;
       suivre(-dx, t);
       if (pic >= 8 && decroit >= 3) { relacher(t); etat = 'traine'; franc = 0; return; }
       minuteurSilence = setTimeout(() => relacher(performance.now()), SILENCE);
