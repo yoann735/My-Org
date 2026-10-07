@@ -1,7 +1,7 @@
 /* ============================================================
    MedRevise — TRANSCRIPTION EN DIRECT : interface.
 
-   - BadgeTranscript : point rouge + chrono sur le segment « Transcript » du
+   - BadgeTranscript : point rouge pulsant (v1.3 : sans chrono) sur le segment « Transcript » du
      panneau pendant une session (le bouton « Transcrire » a quitté la barre du
      PDF le 05/10 : il vit en tête du mode Transcript) ;
    - FeuilleDemarrage : source audio + mots-clés + « Démarrer », rien d'autre ;
@@ -53,12 +53,15 @@ const ecrireLS = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* 
 /* ============================================================
    BOUTON DE LA BARRE D'OUTILS
    ============================================================ */
-/** Badge du segment « Transcript » du panneau : point rouge + chrono pendant une
- *  session de CE cours (gris en pause). Rien sinon. */
+/** Badge du segment « Transcript » du panneau : point rouge pulsant pendant une
+ *  session de CE cours (gris fixe en pause). Rien sinon. */
 export function BadgeTranscript({ courseId }) {
   const e = useTranscription();
   if (!(sessionActive() && e.courseId === courseId)) return null;
-  return <span className={'pm-live' + (e.phase === 'paused' ? ' pause' : '')}><i />{mmss(e.secondes)}</span>;
+  /* v1.3 : point seul, sans chiffre — le chrono n'est affiché qu'une fois, dans la ligne
+     « En direct » du mode Transcript. Rouge pulsant en direct, gris fixe en pause. */
+  const pause = e.phase === 'paused';
+  return <span className={'pm-live' + (pause ? ' pause' : '')} role="img" aria-label={pause ? 'Transcription en pause' : 'Transcription en cours'} title={pause ? 'Transcription en pause' : 'Transcription en cours'}><i /></span>;
 }
 
 /* ============================================================

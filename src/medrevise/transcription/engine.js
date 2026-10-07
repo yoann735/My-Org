@@ -37,7 +37,7 @@ import {
   nouvelleSession, nouvelIdSegment, nouvelIdNote, ecrireSession, viderEcritures, ecrireMotsClesSession,
 } from './sessions.js';
 import { marquerVivante, pousserMaintenant } from './synchro.js';
-import { tarifEffectif, actualiserCredits } from './credits.js';
+import { tarifEffectif, noterDebutSession, finSessionCredits } from './credits.js';
 
 const DUREE_BLOC = 0.1; // s
 const TAMPON_MAX_S = 120;
@@ -64,6 +64,7 @@ const ETAT_INITIAL = {
   erreur: null,
   sourceLibelle: null,
   secondes: 0,
+  secondesDepart: 0, // v1.3 : secondes déjà facturées avant cette reprise (crédits en direct)
   derniereFinie: null, // id de la dernière session terminée (le panneau l'affiche)
 };
 let etat = ETAT_INITIAL;
@@ -136,7 +137,7 @@ export async function demarrer({ courseId, source = 'micro', deviceId = null, ke
   couvertJusqua = base;
   persistee = !!reprendre;
   marquerVivante(session.id); // pas d'envoi cloud tant qu'elle tourne
-  publier({ ...ETAT_INITIAL, phase: 'starting', conn: 'connecting', courseId, session, secondes: Math.floor(base), derniereFinie: etat.derniereFinie });
+  publier({ ...ETAT_INITIAL, phase: 'starting', conn: 'connecting', courseId, session, secondes: Math.floor(base), secondesDepart: Math.floor(base), derniereFinie: etat.derniereFinie });
   /* Jeton demandé AVANT d'ouvrir le micro : une clé absente/invalide ou des crédits
      épuisés s'affichent dans la feuille de démarrage, sans rien lancer. Un simple
      échec réseau, lui, n'empêche pas de démarrer (l'audio attend dans le tampon). */
@@ -157,6 +158,7 @@ export async function demarrer({ courseId, source = 'micro', deviceId = null, ke
     return false;
   }
   dernierSon = Date.now();
+  noterDebutSession(); // crédits : solde de départ (décompte local, aucun appel réseau)
   publier({ phase: 'live', sourceLibelle: capture.libelle });
   if (reprendre && (reprendre.segments || []).length) {
     // repère visible de la reprise (onglet rechargé, plantage)
@@ -435,6 +437,7 @@ export async function arreter() {
   capture = null;
   tampon = [];
   const duree = Math.round(maintenantCours() * 10) / 10;
+  const envoyees = Math.max(0, maintenantCours() - base); // crédits : secondes de cette session
   // coût estimé localement : durée × tarif effectif connu (v1.1) — figé dans la session
   const fini = { ...etat.session, endedAt: new Date().toISOString(), durationS: duree, coutUsd: Math.round((duree / 3600) * tarifEffectif() * 1000) / 1000 };
   publier({ session: fini });
@@ -449,7 +452,8 @@ export async function arreter() {
   publier({ ...ETAT_INITIAL, derniereFinie: id, courseId: fini.courseId });
   // synchro cloud : la session terminée part maintenant (conditionnelle, updated_at)
   if (id) pousserMaintenant(id).catch(() => {});
-  actualiserCredits({ force: true }).catch(() => {}); // fin de session : crédits rafraîchis
+  // fin de session : l'estimation reste affichée jusqu'à la vraie valeur serveur (v1.3)
+  finSessionCredits(envoyees).catch(() => {});
   return id;
 }
 
@@ -464,7 +468,9 @@ function echec(message, { garderSession = true } = {}) {
   tampon = [];
   if (garderSession && persistee) enregistrer(); // endedAt reste null : proposée en reprise
   marquerVivante(null);
+  const envoyees = etat.phase === 'live' || etat.phase === 'paused' ? Math.max(0, maintenantCours() - base) : 0;
   publier({ phase: 'error', conn: 'closed', erreur: message, interim: null });
+  if (envoyees > 0) finSessionCredits(envoyees).catch(() => {}); // crédits : consommation de la session interrompue
 }
 
 /** Ferme l'erreur affichée (retour à l'état de repos). */

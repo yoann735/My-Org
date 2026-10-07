@@ -21,10 +21,14 @@
    « 38,42 $ · ≈ 132 h 27 min » en bas du mode Transcript ; un clic la déplie en
    la carte complète, un clic sur son titre la replie. Les Réglages la montrent
    dépliée (`deplieeParDefaut`). Même composant partout.
+
+   v1.3 (07/10) : pendant une session, les deux versions DÉCOMPTENT localement (dernière
+   valeur serveur − secondes envoyées × tarif effectif), par paliers de 10 s, figées en
+   pause ; à l'arrêt, la vraie valeur serveur remplace l'estimation. Voir credits.js.
    ============================================================ */
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { abonnerCredits, lireCredits, actualiserCredits, attenteActualiser, niveauCredits, heuresRestantes, fmtUsd, fmtDuree, fmtQuand } from './credits.js';
+import { abonnerCredits, lireCredits, actualiserCredits, attenteActualiser, niveauCredits, creditsEstimes, consoNonFactureeS, fmtUsd, fmtDuree, fmtQuand } from './credits.js';
 import { abonner as abonnerMoteur, lireEtat, sessionActive } from './engine.js';
 
 export const useCredits = () => useSyncExternalStore(abonnerCredits, lireCredits);
@@ -38,6 +42,9 @@ function useHorloge(ms) {
 export function CarteCredits({ deplieeParDefaut = false }) {
   const { donnees: d, erreur, chargement } = useCredits();
   useSyncExternalStore(abonnerMoteur, lireEtat); // le bouton suit le début/fin de session
+  /* décompte en direct (v1.3) : un nombre de secondes par paliers de 10 s — la carte ne se
+     re-rend que lorsqu'il change, jamais d'appel réseau */
+  const conso = useSyncExternalStore(abonnerMoteur, consoNonFactureeS);
   const [ouverte, setOuverte] = useState(deplieeParDefaut);
   useHorloge(ouverte ? 15000 : 60000);
   const enSession = sessionActive();
@@ -50,17 +57,18 @@ export function CarteCredits({ deplieeParDefaut = false }) {
     return () => clearTimeout(id);
   }, [attente > 0]); // eslint-disable-line react-hooks/exhaustive-deps
   const horsLigne = !!erreur && erreur.code !== 'missing_key';
-  const heures = heuresRestantes(d);
+  const { remainingUsd: solde, heures, estime } = creditsEstimes(d, conso);
   const niveau = niveauCredits(heures);
+  const titreEstime = 'Estimation en direct (dernière valeur Deepgram − durée de la session × tarif effectif) ; la vraie valeur est relue à l’arrêt';
 
   /* REPLIÉE (défaut) : une petite ligne grise « 38,42 $ · ≈ 132 h 27 min » — un clic déplie. */
   if (!ouverte) {
     return (
       <button type="button" className="trx-credits-ligne-repliee" onClick={() => setOuverte(true)}
-        title="Crédits Deepgram — cliquer pour le détail et Actualiser" aria-expanded="false">
+        title={estime ? titreEstime : 'Crédits Deepgram — cliquer pour le détail et Actualiser'} aria-expanded="false">
         {d ? (
           <>
-            <span className="tnum">{fmtUsd(d.remainingUsd)}</span>
+            <span className="tnum">{fmtUsd(solde)}</span>
             <span className="trx-cc-sep">·</span>
             <span className={'tnum trx-cc-temps ' + niveau}>≈ {fmtDuree(heures)}</span>
             {horsLigne && <span>· hors ligne</span>}
@@ -78,7 +86,7 @@ export function CarteCredits({ deplieeParDefaut = false }) {
         </button>
         {d ? (
           <>
-            <div className="trx-cc-montant tnum">{fmtUsd(d.remainingUsd)} <span>restants</span></div>
+            <div className="trx-cc-montant tnum" title={estime ? titreEstime : undefined}>{fmtUsd(solde)} <span>restants</span></div>
             <div className={'trx-cc-temps tnum ' + niveau}>≈ {fmtDuree(heures)} <span>de cours</span></div>
           </>
         ) : (
@@ -94,7 +102,7 @@ export function CarteCredits({ deplieeParDefaut = false }) {
             <Icon name="refresh" size={13} /> Actualiser
           </button>
           <span className={'trx-cc-quand' + (horsLigne ? ' trx-cc-gris' : '')}>
-            {horsLigne ? 'hors ligne' : d ? 'mis à jour ' + fmtQuand(d.updatedAt) : ''}
+            {estime ? (enSession ? 'estimation en direct' : horsLigne ? 'estimation · hors ligne' : 'estimation, relecture…') : horsLigne ? 'hors ligne' : d ? 'mis à jour ' + fmtQuand(d.updatedAt) : ''}
           </span>
         </div>
       </div>

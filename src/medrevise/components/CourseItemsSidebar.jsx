@@ -129,7 +129,17 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
      Détection inchangée : trackpad (roue, deltaX dominant, écouteur non passif) et
      doigt/stylet (pointeurs) ; jamais pendant un défilement vertical, dans une zone qui
      défile horizontalement, ni quand du texte est sélectionné dans le panneau.
-     Après un relâchement : bloqué ≥ 400 ms et tant que l'élan (inertie de macOS) continue. */
+     Les écouteurs vivent sur le CONTENEUR (`.pm-corps`), jamais sur un mode.
+
+     v1.3 (07/10) — enchaîner les modes sans clic (docs/compte-rendu-panneau-lateral.md) :
+     - plus de verrou « tant que l'élan continue » : l'inertie de macOS fait déjà partie du
+       geste (il ne se termine qu'après 140 ms sans événement), et ce verrou avalait un geste
+       neuf commencé dans les ~550 ms suivantes. Un nouveau geste est accepté à la fin de
+       l'aimantation (220 ms) ; ce qui arrive pendant l'aimantation est REPORTÉ, pas perdu ;
+     - un geste neuf posé pendant l'inertie du précédent (élan retombé puis delta qui
+       remonte, ou sens inversé) clôt le premier et en commence un autre ;
+     - le mode d'arrivée perd `inert` DÈS le début de l'aimantation (un clic n'y est plus
+       perdu) et reçoit le focus (sans défilement) si le changement vient du panneau. */
   const corpsRef = useRef(null);
   const segRef = useRef(null);
   const voletsRef = useRef([]);
@@ -144,7 +154,9 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
      FIN de l'aimantation : retirer `inert` d'un mode de 200 items coûte ~26 ms de style,
      on ne le paie pas pendant le mouvement. */
   const [indexRepos, setIndexRepos] = useState(indexActif);
-  const geste = useRef({ actif: false, base: 0, offset: 0, minuteur: null, bloqueJusqua: 0, dernierVertical: 0, pointeur: null, traces: [] });
+  const geste = useRef({ actif: false, base: 0, offset: 0, minuteur: null, bloqueJusqua: 0, dernierVertical: 0, pointeur: null, traces: [], pic: 0, dernierAbs: 0, dernierT: 0, report: 0, reportA: 0 });
+  // focus à donner au mode d'arrivée (changement venu du panneau : geste ou segment)
+  const focusApres = useRef(false);
   const largeur = () => (corpsRef.current && corpsRef.current.clientWidth) || 360;
   const reduit = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
@@ -170,7 +182,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     // fin de l'aimantation : retour au repos (volet affiché sans transformation)
     if (anime) finAnim.current = setTimeout(() => { if (pos.current === p) appliquer(p, 'net'); }, 240);
     else if (quoi === 'anime') appliquer(p, 'net');
-    if (quoi === 'net') setIndexRepos(p);
+    // v1.3 : le mode d'arrivée devient interactif tout de suite (plus à la fin du mouvement)
+    if (quoi === 'anime' || quoi === 'net') setIndexRepos(p);
   };
   // placement à chaque changement de mode (clic, demande extérieure, montage) ;
   // après un glissement, `pos` vaut déjà la cible : rien à refaire
@@ -180,6 +193,22 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     else if (!geste.current.actif && !animEnCours.current) appliquer(indexActif, 'net');
   }, [indexActif, modes.length, collapsed]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { clearTimeout(finAnim.current); clearTimeout(geste.current.minuteur); }, []);
+  /* focus programmatique du mode arrivé (v1.3) : son conteneur défilant (le clavier —
+     flèches, Page↓, espace — agit aussitôt dessus), sans défilement. Seulement si le focus
+     est dans le panneau ou nulle part : jamais volé au lecteur ni à un champ ailleurs. */
+  const panneauRef = useRef(null);
+  useLayoutEffect(() => {
+    if (!focusApres.current) return;
+    focusApres.current = false;
+    const el = voletsRef.current[indexRepos];
+    if (!el) return;
+    const ae = document.activeElement;
+    if (ae && ae !== document.body && !(panneauRef.current && panneauRef.current.contains(ae))) return;
+    const cible = el.querySelector('.pis-scroll, .trx-liste, .trx-accueil-defile') || el;
+    if (!cible.hasAttribute('tabindex')) cible.setAttribute('tabindex', '-1');
+    cible.setAttribute('data-focus-mode', '');
+    try { cible.focus({ preventScroll: true }); } catch (e) { /* navigateur ancien */ }
+  }, [indexRepos]);
 
   // élastique aux extrémités (30 % du geste, 56 px max) ; jamais plus d'un mode d'écart
   const elastique = (off, base) => {
@@ -189,7 +218,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   };
   const commencer = () => {
     const g = geste.current;
-    g.actif = true; g.base = indexRef.current; g.offset = 0; g.traces = [];
+    g.actif = true; g.base = indexRef.current; g.offset = 0; g.traces = []; g.pic = 0; g.dernierAbs = 0;
   };
   const suivre = (off) => {
     const g = geste.current, now = performance.now();
@@ -210,10 +239,12 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     let cible = Math.round(g.base - off / w);
     if (Math.abs(v) > 0.45 && Math.abs(off) > 24 && Math.sign(v) === Math.sign(off)) cible = g.base + (off < 0 ? 1 : -1);
     cible = Math.max(0, Math.min(n - 1, Math.max(g.base - 1, Math.min(g.base + 1, cible))));
-    g.bloqueJusqua = performance.now() + 400;
+    // nouveau geste accepté dès la fin de l'aimantation (pas de verrou prolongé par l'élan)
+    g.bloqueJusqua = performance.now() + (reduit() ? 0 : 220);
+    g.report = 0;
     appliquer(cible, 'anime');
     const m = modesRef.current[cible];
-    if (cible !== indexRef.current && m) { setModeBrut(m.id); ecrireLS('medrevise.panneau.mode.' + cle, m.id); }
+    if (cible !== indexRef.current && m) { focusApres.current = true; setModeBrut(m.id); ecrireLS('medrevise.panneau.mode.' + cle, m.id); }
   };
   const defileHorizontalement = (el) => {
     const corps = corpsRef.current;
@@ -235,17 +266,34 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   roueRef.current = (e) => {
     const g = geste.current, now = performance.now();
     const ax = Math.abs(e.deltaX), ay = Math.abs(e.deltaY);
+    /* geste neuf posé pendant l'inertie du précédent : l'élan de macOS décroît sans
+       remonter ; un delta qui repart nettement à la hausse après que l'élan est retombé
+       sous la moitié de son pic, ou qui change de sens, ce sont des doigts reposés.
+       (×3 sans pause : deux événements d'élan fusionnés par Chrome font < ×2.) */
+    const ecart = now - g.dernierT;
+    if (g.actif && ax > ay && g.pic > 0 && g.dernierAbs <= g.pic * 0.5
+      && ((ax >= 8 && ax >= g.dernierAbs * 3) || (ecart >= 50 && ax >= 6 && ax >= g.dernierAbs * 2)
+        || (ax >= 3 && g.offset !== 0 && Math.sign(-e.deltaX) !== Math.sign(g.offset)))) {
+      clearTimeout(g.minuteur);
+      relacher();
+    }
     if (!g.actif) {
       if (ay > ax) { g.dernierVertical = now; return; } // défilement vertical : jamais
       if (ax <= ay * 1.5 || ax < 1) return;
       if (now - g.dernierVertical < 250) return; // encore dans l'élan d'un défilement vertical
-      // inertie après un relâchement : bloqué au moins 400 ms, et TANT QUE le flux de
-      // l'élan continue (événements à moins de 150 ms d'intervalle)
-      if (now < g.bloqueJusqua) { g.bloqueJusqua = Math.max(g.bloqueJusqua, now + 150); e.preventDefault(); return; }
       if (defileHorizontalement(e.target) || texteSelectionne()) return;
+      // pendant l'aimantation (220 ms) : le geste neuf est REPORTÉ, appliqué à la fin
+      if (now < g.bloqueJusqua) {
+        e.preventDefault();
+        g.report = (now - g.reportA < 150 ? g.report : 0) - e.deltaX; g.reportA = now;
+        return;
+      }
+      const report = now - g.reportA < 150 ? g.report : 0;
       commencer();
+      g.offset = report; g.report = 0;
     }
     e.preventDefault();
+    g.pic = Math.max(g.pic, ax); g.dernierAbs = ax; g.dernierT = now;
     suivre(g.offset - e.deltaX);
     clearTimeout(g.minuteur);
     g.minuteur = setTimeout(relacher, 140); // plus d'événement = doigts levés
@@ -277,6 +325,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     if (!p || p.id !== e.pointerId) return;
     if (p.horizontal) relacher();
   };
+  // clic sur un segment : même focus du mode arrivé qu'après un glissement
+  const choisirMode = (id) => { if (id !== modeActif) focusApres.current = true; setMode(id); };
 
   // ---- ajout (réutilise ItemForm/PasteJsonForm, même flux que AddItemModal) ----
   const [adding, setAdding] = useState(false);
@@ -416,7 +466,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   };
 
   return (
-    <div className={'pis' + (collapsed ? ' collapsed' : '')}>
+    <div className={'pis' + (collapsed ? ' collapsed' : '')} ref={panneauRef}>
       <SplitHandle side="right" collapsed={collapsed} onClick={() => setCollapsed((v) => !v)} />
       {!collapsed && (
       <div className="pis-body">
@@ -425,7 +475,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
             <span className="pm-seg-indic" aria-hidden="true" />
             {modes.map((m) => (
               <button key={m.id} type="button" role="tab" aria-selected={modeActif === m.id}
-                className={'pm-seg-btn' + (modeActif === m.id ? ' actif' : '')} onClick={() => setMode(m.id)}>
+                className={'pm-seg-btn' + (modeActif === m.id ? ' actif' : '')} onClick={() => choisirMode(m.id)}>
                 {m.label}
                 {m.badge || (m.n ? <span className="tnum pm-n">{m.n}</span> : null)}
               </button>

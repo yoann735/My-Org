@@ -368,3 +368,133 @@ Tablette 820 px, doigt tenu à mi-chemin : ![](img/panneau-lateral/v12-tablette-
 |---|---|
 | `8a748ac` | fix(medrevise): glissement physique entre les 3 modes du panneau — modes montés, piste en translateX, aimantation 220 ms |
 | (ce commit) | docs(medrevise): compte-rendu v1.2 — glissement physique |
+
+## v1.3 — chrono unique, focus des modes, crédits en direct (07/10/2026)
+
+### 1. Un seul chrono
+
+Le temps de session s'affichait deux fois : dans le segment « Transcript • 01:44 » du
+sélecteur et dans la ligne « En direct 01:44 ». Le segment ne montre plus qu'un **point**
+(`BadgeTranscript`, `TranscriptPanel.jsx`) : rouge et **pulsant** (anneau qui s'élargit et
+s'efface, 1,6 s, coupé si « réduire les animations ») pendant une session de ce cours, gris
+fixe en pause, absent sinon. Il reste visible depuis Exercices et Notions. Le seul chrono est
+celui de la ligne « En direct ». Libellé accessible : « Transcription en cours / en pause ».
+
+### 2. Changer de mode sans clic de « focus »
+
+**Cause exacte** (reproduite dans Chrome avant correction, vrais événements roue/clavier/souris) :
+les quatre pistes de l'énoncé ont été vérifiées.
+
+- *Écouteur attaché au mode monté ?* **Non** — la roue et les pointeurs étaient déjà sur
+  `.pm-corps`, le conteneur de la piste. Pas la cause (inchangé).
+- *État de progression non remis à zéro après l'aimantation ?* **Oui, c'est la cause au
+  trackpad** : le **verrou anti-inertie** (`bloqueJusqua`). Après un relâchement, le geste était
+  bloqué 400 ms **et prolongé de 150 ms à chaque événement de roue reçu**. Or l'inertie de
+  macOS fait déjà partie du geste (il ne se termine qu'après 140 ms sans événement) : ce verrou
+  ne filtrait plus rien d'utile, mais il **avalait entièrement un geste neuf** commencé dans les
+  ~550 ms suivantes — chacun de ses propres événements repoussant l'échéance. Mesuré avant
+  correction (geste réaliste : 8 événements « doigts » + 45 d'inertie décroissante) :
+
+  | Pause entre deux gestes | 0 ms | 150 ms | 300 ms | 500 ms | 700 ms |
+  |---|---|---|---|---|---|
+  | Exercices → ? → ? | Notions (les deux gestes fusionnés en un) | Notions, Notions | Notions, Notions | Notions, Notions | Notions → Transcript |
+
+  Le « clic dedans » ne faisait que laisser passer le temps.
+- *`inert` / `aria-hidden` mal levés ?* **Oui, cause au clic et au doigt** : `inert` n'était
+  retiré du mode d'arrivée qu'à la **fin** de l'aimantation (240 ms). Un clic ou un tap dans ce
+  délai tombait sur un sous-arbre inerte et était perdu — mesuré : clic sur « Flashcards » 100 ms
+  après le changement → le sous-onglet restait sur QCM.
+- *Focus clavier resté sur l'ancien mode ?* **Oui, cause au clavier** : le focus restait sur le
+  segment cliqué (ou retombait sur `<body>` quand l'ancien mode devenait inerte) ; Page↓ ne
+  faisait rien (mesuré : `scrollTop` 0 → 0) tant qu'on n'avait pas cliqué dans le mode.
+
+**Correctif** (`CourseItemsSidebar.jsx`, `panneau-modes.css`) :
+- verrou ramené à la **durée de l'aimantation (220 ms), sans prolongation** ; ce qui arrive
+  pendant ces 220 ms est **reporté** (cumulé puis appliqué au premier événement suivant), pas perdu ;
+- **geste neuf pendant l'inertie** du précédent : l'élan de macOS décroît sans remonter ; un delta
+  qui repart à la hausse (×3, ou ×2 après une pause de 50 ms, ≥ 6–8 px) une fois l'élan retombé
+  sous la moitié de son pic, ou qui change de sens, clôt le premier geste et en commence un
+  autre. Le seuil ×3 évite les faux départs quand Chrome fusionne deux événements d'élan (< ×2) ;
+- `inert`, `aria-hidden` et `tabIndex` du mode d'arrivée sont levés **dès le début** de
+  l'aimantation (le coût de style, ~26 ms sur 200 items, est payé pendant une transition de
+  transform composée par le GPU) ;
+- le mode arrivé **reçoit le focus** programmatiquement, sans défilement (`preventScroll`), sur
+  son conteneur défilant (`.pis-scroll`, `.trx-liste`, `.trx-accueil-defile`) — seulement si le
+  changement vient du panneau (geste ou segment) et si le focus est dans le panneau ou nulle
+  part : jamais volé au lecteur ni à un champ. Anneau de focus seulement au clavier.
+
+### 3. Crédits et temps restant en direct
+
+`credits.js`, `Credits.jsx`, `engine.js`. Pendant une session, la ligne « 199,93 $ · ≈ 689 h
+25 min » (et la carte dépliée, même composant) **décompte localement** à partir de la dernière
+valeur serveur connue : coût = secondes envoyées × tarif effectif / 3600, temps restant = solde
+estimé ÷ tarif effectif. **Aucun appel réseau** pendant la session (inchangé : `actualiserCredits`
+refuse tant qu'une session tourne).
+- **Lissage** : la carte lit un nombre de secondes par **paliers de 10 s**
+  (`consoNonFactureeS`) via `useSyncExternalStore` — elle ne se re-rend que lorsqu'il change.
+- **Pause** : le moteur n'avance plus son horloge de cours → le décompte se fige.
+- **Reprise d'une session interrompue** : seules les secondes de cette reprise comptent
+  (`secondesDepart` dans l'état du moteur).
+- **Arrêt** (ou erreur fatale en cours de session) : l'estimation reste affichée (`attente`)
+  jusqu'à la relecture serveur forcée, lancée aussitôt (la limite de 30 s du bouton ne s'applique
+  pas), qui la **remplace**. Si la relecture échoue, l'estimation reste, marquée « hors ligne ».
+- **Recalage du tarif** : coût réel = solde avant − solde après. Écart > 5 % avec l'estimation →
+  tarif réel stocké (`localStorage medrevise.transcription.tarif`), utilisé ensuite partout
+  (décompte, temps restant, coût figé des sessions). Garde-fous : session ≥ 60 s, solde de départ
+  frais (< 30 min), valeurs non périmées, coût réel entre 0,5× et 2× l'estimation (au-delà :
+  solde Deepgram pas encore à jour ou consommation d'un autre appareil), et **coût estimé
+  ≥ 0,20 $ (~40 min)** : le solde renvoyé est arrondi au centime, une session de 3 min
+  (~1,5 centime) ne permet pas de mesurer un écart de 5 %.
+- Carte dépliée : « estimation en direct » remplace « mis à jour il y a… » pendant la session.
+
+### Tests (Chrome headless piloté en CDP — vrais événements roue, souris, clavier, tactiles ; faux Supabase vide et faux Deepgram locaux, jamais le cloud)
+
+| Test | Résultat |
+|---|---|
+| Trackpad : Exercices → Notions → Transcript → Notions → Exercices, **pause 0 ms** entre gestes, lecture 160 ms après chacun | ✅ Exercices → Notions → Transcript → Notions → Exercices (avant : 2e geste avalé) |
+| Trackpad : deux gestes collés (le 2e pendant l'inertie du 1er), puis deux retours collés | ✅ Exercices → Transcript → Exercices |
+| Trackpad : pause de 150 / 300 / 500 ms entre deux gestes | ✅ Notions → Transcript dans les trois cas (avant : bloqué) |
+| Un seul geste, inertie longue (90 événements), dont 4 avec événements fusionnés au hasard | ✅ 6 × exactement un mode d'écart, aucun faux départ |
+| Segments cliqués à 120 ms d'intervalle | ✅ Exercices → Notions → Transcript → Notions → Exercices |
+| Clic dans le mode arrivé 100 ms après le changement | ✅ « Flashcards » pris (avant : perdu) |
+| Clavier sans clic : segment Notions puis Exercices, Page↓ | ✅ focus sur la liste d'Exercices, `scrollTop` 0 → 481 (avant : 0 → 0) |
+| Tablette tactile 820 px (vue Panneau) : la même séquence au doigt (250 ms entre gestes) puis aux segments (taps à 120 ms) ; tap « QCM » 100 ms après l'arrivée | ✅ les deux séquences complètes ; sous-onglet QCM pris |
+| Téléphone (< 760 px) | sans objet : le shell mobile n'a pas de lecteur, donc pas ce panneau |
+| Session en direct de 3 min 30 (voix de synthèse, faux Deepgram réglé sur le compte réel : 199,93 $, 0,29 $/h) | ✅ un seul chrono visible (ligne « En direct ») ; point rouge pulsant dans le segment depuis Notions et Exercices ; disparu à l'arrêt |
+| Changement de mode **pendant** la session (Transcript → Notions → Exercices → Transcript au trackpad) | ✅ le transcript continue d'arriver (chrono 00:38 → 00:47, lignes ajoutées pendant l'absence) |
+| Décompte des crédits | ✅ 199,93 $ · 689 h 25 → 689 h 24 (25 s) → 199,92 $ (1:15) → 689 h 23 (1:30) → 689 h 22 (2:30) |
+| Pause de 30 s | ✅ figé : 199,92 $ · 689 h 23 min aux 4 relevés ; chrono 01:30, point gris |
+| Arrêt (solde « réel » simulé à 199,91 $) | ✅ +150 ms : 199,91 $ · 689 h 21 min (valeur serveur), point disparu |
+| Réseau pendant la session | ✅ **0** requête `/api/deepgram-credits` ; une seule après l'arrêt (`?force=1`) |
+| Recalage (module de l'app, sessions synthétiques d'1 h) | ✅ coût réel +20,7 % → tarif 0,29 → 0,35 $/h ; −11,4 % → 0,31 $/h (ligne : 199,25 $ · ≈ 642 h 45 min) ; écart 3 % → inchangé ; session de 3 min → jamais recalé (garde-fou) |
+| Non-régression | ✅ défilement d'Exercices conservé (1 500 px) ; défilement vertical ne change pas de mode ; « Ajouter » ; confirmation de suppression plein écran (1 440 × 757) ; Tab × 40 : 0 fois dans un mode caché ; **0 erreur console** |
+| MealWeek / `src/shared/` | ✅ aucun fichier modifié (`git status` : 5 fichiers sous `src/medrevise/` + `src/styles/panneau-modes.css`, classes `.pm-*` propres à MedRevise) ; MealWeek ouverte depuis le hub : accueil normal, 0 erreur console |
+| Build | ✅ `npm run build` vert |
+
+| Transcript en direct | Notions : point seul | Exercices : point seul | En pause | Après l'arrêt |
+|---|---|---|---|---|
+| ![](img/panneau-lateral/v13-transcript-direct.png) | ![](img/panneau-lateral/v13-notions-point.png) | ![](img/panneau-lateral/v13-exercices-point.png) | ![](img/panneau-lateral/v13-pause.png) | ![](img/panneau-lateral/v13-apres-arret.png) |
+
+Tablette 820 px après la séquence tactile : ![](img/panneau-lateral/v13-tactile-820.png)
+
+### Limites (v1.3)
+
+- **Comparaison avec la console Deepgram : non faite.** L'extension Chrome n'était pas connectée
+  (console illisible), et le test réel par relais local vers la fonction de prod a été refusé
+  par le garde-fou de permissions de la session. La session de 3 min a donc tourné sur le faux
+  Deepgram ; à refaire sur le Mac : une session réelle de 3 min, puis comparer la ligne
+  après l'arrêt avec le solde de console.deepgram.com. Attendu : ~1,5 centime à 0,29 $/h
+  (~1,8 centime au tarif réellement facturé de 0,354 $/h constaté le 05/10).
+- **Trackpad réel** : gestes reproduits par des événements roue synthétiques (doigts + inertie
+  décroissante, événements fusionnés) ; Chrome n'expose ni la pose ni la levée des doigts, d'où
+  l'heuristique « l'élan remonte = nouveau geste ». À confirmer avec un vrai trackpad.
+- **Recalage** : effectif seulement pour les sessions d'au moins ~40 min (précision du centime).
+  Pour les sessions courtes, le tarif du serveur (ou le dernier recalé) reste utilisé.
+- **Estimation en mémoire** : si la relecture de fin échoue et que l'onglet est rechargé,
+  l'estimation est perdue et l'ancienne valeur serveur réapparaît jusqu'à la relecture suivante.
+
+### Commits v1.3
+
+| Commit | Message |
+|---|---|
+| (ce commit) | fix(medrevise): panneau — chrono unique, modes enchaînés sans clic, crédits en direct (v1.3) |
