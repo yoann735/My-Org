@@ -30,8 +30,12 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { abonnerCredits, lireCredits, actualiserCredits, attenteActualiser, niveauCredits, creditsEstimes, consoNonFactureeS, fmtUsd, fmtDuree, fmtQuand } from './credits.js';
 import { abonner as abonnerMoteur, lireEtat, sessionActive } from './engine.js';
+import { abonnementDiffere } from '../lib/gesteEnCours.js';
 
-export const useCredits = () => useSyncExternalStore(abonnerCredits, lireCredits);
+// v1.4 : rendus différés pendant un glissement du panneau (lib/gesteEnCours.js)
+const abonnerCreditsDiffere = abonnementDiffere(abonnerCredits);
+const abonnerMoteurDiffere = abonnementDiffere(abonnerMoteur);
+export const useCredits = () => useSyncExternalStore(abonnerCreditsDiffere, lireCredits);
 
 /* re-rendu lent : « il y a N min » et la fin du délai de 30 s avancent seuls */
 function useHorloge(ms) {
@@ -41,10 +45,10 @@ function useHorloge(ms) {
 
 export function CarteCredits({ deplieeParDefaut = false }) {
   const { donnees: d, erreur, chargement } = useCredits();
-  useSyncExternalStore(abonnerMoteur, lireEtat); // le bouton suit le début/fin de session
+  useSyncExternalStore(abonnerMoteurDiffere, lireEtat); // le bouton suit le début/fin de session
   /* décompte en direct (v1.3) : un nombre de secondes par paliers de 10 s — la carte ne se
      re-rend que lorsqu'il change, jamais d'appel réseau */
-  const conso = useSyncExternalStore(abonnerMoteur, consoNonFactureeS);
+  const conso = useSyncExternalStore(abonnerMoteurDiffere, consoNonFactureeS);
   const [ouverte, setOuverte] = useState(deplieeParDefaut);
   useHorloge(ouverte ? 15000 : 60000);
   const enSession = sessionActive();

@@ -26,10 +26,11 @@
    - un onglet en plus marqué `plein` gère lui-même son défilement (Transcript :
      auto-défilement collé en bas) — pas de conteneur défilant autour.
    ============================================================ */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Tex } from './Tex.jsx';
-import { ConfirmModal, ContextMenu, SplitHandle } from './ui.jsx';
+import { ConfirmModal, ContextMenu, SplitHandle, ModalesHorsPanneauCtx } from './ui.jsx';
+import { creerGlissement } from './glissementModes.js';
 import { ItemForm, PasteJsonForm, TYPES } from './AddItemForm.jsx';
 import { appendItemsToFiche, themeFlashcardsDeFiche } from '../lib/import.js';
 import { ThemeFicheFlashcards } from './ThemeFiche.jsx';
@@ -107,7 +108,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   useEffect(() => {
     if (!ongletDemande || !ongletDemande.id) return;
     if (TYPES_IDS.includes(ongletDemande.id)) setActiveType(ongletDemande.id);
-    setMode(versMode(ongletDemande.id));
+    allerMode(versMode(ongletDemande.id));
   }, [nDemande]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // repli HORIZONTAL (poignée SplitHandle intégrée au bord gauche du panneau)
@@ -115,84 +116,60 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   const collapsed = replie == null ? collapsedLocal : replie;
   const setCollapsed = (fn) => { const v = typeof fn === 'function' ? fn(collapsed) : fn; if (onReplier) onReplier(v); else setCollapsedLocal(v); };
 
-  /* ---- GLISSEMENT PHYSIQUE ENTRE MODES (v1.2, 06/10) ----
-     Les modes sont TOUS montés, côte à côte dans une piste : le volet k est décalé de
-     (k − p) × 100 % de la largeur, p étant la position (fractionnaire pendant le geste).
-     Glisser à moitié montre donc la moitié du mode courant et la moitié du voisin, déjà
-     rendu. Les transformations sont écrites DIRECTEMENT dans le DOM (aucun rendu React
-     pendant le geste) et l'indicateur du sélecteur lit la même position (--i).
-     Au relâchement : aimantation au mode le plus proche (ou au voisin si le geste est
-     vif), 220 ms ease-out. Au repos, le volet affiché n'a AUCUNE transformation : une
-     modale `position: fixed` rendue dans un mode (éditeur de masques, confirmations)
-     reste pleine page — c'est pourquoi chaque volet porte sa propre translation plutôt
-     qu'une piste de 300 % transformée en bloc (même rendu, même chemin GPU).
-     Détection inchangée : trackpad (roue, deltaX dominant, écouteur non passif) et
-     doigt/stylet (pointeurs) ; jamais pendant un défilement vertical, dans une zone qui
-     défile horizontalement, ni quand du texte est sélectionné dans le panneau.
-     Les écouteurs vivent sur le CONTENEUR (`.pm-corps`), jamais sur un mode.
-
-     v1.3 (07/10) — enchaîner les modes sans clic (docs/compte-rendu-panneau-lateral.md) :
-     - plus de verrou « tant que l'élan continue » : l'inertie de macOS fait déjà partie du
-       geste (il ne se termine qu'après 140 ms sans événement), et ce verrou avalait un geste
-       neuf commencé dans les ~550 ms suivantes. Un nouveau geste est accepté à la fin de
-       l'aimantation (220 ms) ; ce qui arrive pendant l'aimantation est REPORTÉ, pas perdu ;
-     - un geste neuf posé pendant l'inertie du précédent (élan retombé puis delta qui
-       remonte, ou sens inversé) clôt le premier et en commence un autre ;
-     - le mode d'arrivée perd `inert` DÈS le début de l'aimantation (un clic n'y est plus
-       perdu) et reçoit le focus (sans défilement) si le changement vient du panneau. */
+  /* ---- GLISSEMENT ENTRE MODES (v1.4, 07/10 — docs/compte-rendu-panneau-lateral.md) ----
+     Les 3 modes sont montés en permanence dans une PISTE (chaque volet décalé de k × 100 %).
+     Le geste vit hors de React (components/glissementModes.js) : il écrit le transform de
+     la piste et de l'indicateur, une fois par image, et ne prévient React qu'à la fin de
+     l'aimantation (`arrivee`) : un seul rendu — mode actif, `inert` retiré du mode arrivé,
+     focus. Les modales des modes sortent par un portail (ModalesHorsPanneauCtx) : la piste
+     transformée ne les enferme pas. */
   const corpsRef = useRef(null);
-  const segRef = useRef(null);
-  const voletsRef = useRef([]);
-  voletsRef.current.length = modes.length;
+  const pisteRef = useRef(null);
+  const indicRef = useRef(null);
+  const glisseRef = useRef(null);
   const indexActif = Math.max(0, modes.findIndex((m) => m.id === modeActif));
-  const indexRef = useRef(indexActif); indexRef.current = indexActif;
   const modesRef = useRef(modes); modesRef.current = modes;
-  const pos = useRef(indexActif); // position affichée (index fractionnaire)
-  const finAnim = useRef(null);
-  const animEnCours = useRef(false);
-  /* mode « au repos » : celui qui est interactif (les autres `inert`). Il ne change qu'à la
-     FIN de l'aimantation : retirer `inert` d'un mode de 200 items coûte ~26 ms de style,
-     on ne le paie pas pendant le mouvement. */
+  const modeActifRef = useRef(modeActif); modeActifRef.current = modeActif;
+  /* mode « au repos » : celui qui est interactif (les autres `inert`) — mis à jour à la
+     FIN de l'aimantation, dans le même rendu que le mode actif */
   const [indexRepos, setIndexRepos] = useState(indexActif);
-  const geste = useRef({ actif: false, base: 0, offset: 0, minuteur: null, bloqueJusqua: 0, dernierVertical: 0, pointeur: null, traces: [], pic: 0, dernierAbs: 0, dernierT: 0, report: 0, reportA: 0 });
+  const [arrivees, setArrivees] = useState(0); // une arrivée = un geste ou un clic terminé
   // focus à donner au mode d'arrivée (changement venu du panneau : geste ou segment)
   const focusApres = useRef(false);
-  const largeur = () => (corpsRef.current && corpsRef.current.clientWidth) || 360;
   const reduit = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-
-  /* `quoi` : 'geste' (suit le doigt, sans transition) · 'anime' (aimantation 220 ms) ·
-     'net' (placement immédiat). */
-  const appliquer = (p, quoi) => {
-    pos.current = p;
-    clearTimeout(finAnim.current);
-    const anime = quoi === 'anime' && !reduit();
-    animEnCours.current = anime;
-    voletsRef.current.forEach((el, k) => {
-      if (!el) return;
-      el.style.transition = anime ? 'transform .22s cubic-bezier(.22, .8, .3, 1)' : 'none';
-      el.style.willChange = quoi === 'net' ? '' : 'transform';
-      el.style.transform = quoi === 'net' && k === p ? 'none' : `translate3d(${(k - p) * 100}%, 0, 0)`;
-    });
-    const seg = segRef.current;
-    if (seg) {
-      seg.style.setProperty('--i', String(Math.max(0, Math.min(voletsRef.current.length - 1, p))));
-      seg.classList.toggle('en-geste', quoi === 'geste');
-      seg.classList.toggle('sans-anim', quoi === 'net');
-    }
-    // fin de l'aimantation : retour au repos (volet affiché sans transformation)
-    if (anime) finAnim.current = setTimeout(() => { if (pos.current === p) appliquer(p, 'net'); }, 240);
-    else if (quoi === 'anime') appliquer(p, 'net');
-    // v1.3 : le mode d'arrivée devient interactif tout de suite (plus à la fin du mouvement)
-    if (quoi === 'anime' || quoi === 'net') setIndexRepos(p);
+  const arriveeRef = useRef(null);
+  arriveeRef.current = (k) => {
+    const m = modesRef.current[k];
+    if (!m) return;
+    if (m.id !== modeActifRef.current) { setModeBrut(m.id); ecrireLS('medrevise.panneau.mode.' + cle, m.id); }
+    // le mode arrivé reçoit le focus après TOUT geste ou clic — même une rafale qui revient
+    // au mode de départ (l'état React, lui, n'a pas bougé)
+    focusApres.current = true;
+    setIndexRepos(k); setArrivees((n) => n + 1);
   };
-  // placement à chaque changement de mode (clic, demande extérieure, montage) ;
-  // après un glissement, `pos` vaut déjà la cible : rien à refaire
   useLayoutEffect(() => {
-    if (collapsed) return;
-    if (pos.current !== indexActif) appliquer(indexActif, 'anime');
-    else if (!geste.current.actif && !animEnCours.current) appliquer(indexActif, 'net');
-  }, [indexActif, modes.length, collapsed]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => { clearTimeout(finAnim.current); clearTimeout(geste.current.minuteur); }, []);
+    if (collapsed || !corpsRef.current || !pisteRef.current) return undefined;
+    const g = creerGlissement({
+      corps: corpsRef.current, piste: pisteRef.current, indicateur: indicRef.current,
+      nbModes: modesRef.current.length, index: indexActif, reduit,
+      onArrivee: (k) => arriveeRef.current(k),
+    });
+    glisseRef.current = g;
+    return () => { g.detacher(); glisseRef.current = null; };
+  }, [collapsed]); // eslint-disable-line react-hooks/exhaustive-deps
+  // changement de mode venu d'ailleurs (mémoire, modes qui changent) : placé sans animation
+  useLayoutEffect(() => {
+    const g = glisseRef.current;
+    if (g && !g.enMouvement()) g.placer(indexActif, modes.length);
+    setIndexRepos(indexActif);
+  }, [indexActif, modes.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // aller à un mode, animé (segment cliqué, demande extérieure)
+  const allerMode = (id) => {
+    const k = modesRef.current.findIndex((m) => m.id === id);
+    if (k < 0) return;
+    const g = glisseRef.current;
+    if (g) g.allerA(k); else setMode(id);
+  };
   /* focus programmatique du mode arrivé (v1.3) : son conteneur défilant (le clavier —
      flèches, Page↓, espace — agit aussitôt dessus), sans défilement. Seulement si le focus
      est dans le panneau ou nulle part : jamais volé au lecteur ni à un champ ailleurs. */
@@ -200,7 +177,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   useLayoutEffect(() => {
     if (!focusApres.current) return;
     focusApres.current = false;
-    const el = voletsRef.current[indexRepos];
+    const el = pisteRef.current && pisteRef.current.children[indexRepos];
     if (!el) return;
     const ae = document.activeElement;
     if (ae && ae !== document.body && !(panneauRef.current && panneauRef.current.contains(ae))) return;
@@ -208,125 +185,11 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     if (!cible.hasAttribute('tabindex')) cible.setAttribute('tabindex', '-1');
     cible.setAttribute('data-focus-mode', '');
     try { cible.focus({ preventScroll: true }); } catch (e) { /* navigateur ancien */ }
-  }, [indexRepos]);
-
-  // élastique aux extrémités (30 % du geste, 56 px max) ; jamais plus d'un mode d'écart
-  const elastique = (off, base) => {
-    const n = modesRef.current.length, w = largeur();
-    if ((off > 0 && base <= 0) || (off < 0 && base >= n - 1)) return Math.sign(off) * Math.min(56, Math.abs(off) * 0.3);
-    return Math.max(-w, Math.min(w, off));
-  };
-  const commencer = () => {
-    const g = geste.current;
-    g.actif = true; g.base = indexRef.current; g.offset = 0; g.traces = []; g.pic = 0; g.dernierAbs = 0;
-  };
-  const suivre = (off) => {
-    const g = geste.current, now = performance.now();
-    g.offset = off;
-    g.traces.push({ t: now, off });
-    while (g.traces.length > 2 && now - g.traces[0].t > 100) g.traces.shift();
-    appliquer(g.base - elastique(off, g.base) / largeur(), 'geste');
-  };
-  const relacher = () => {
-    const g = geste.current;
-    if (!g.actif) return;
-    g.actif = false;
-    const w = largeur(), n = modesRef.current.length;
-    const off = elastique(g.offset, g.base);
-    // vitesse sur les ~100 dernières ms (px/ms) : un geste vif passe au voisin même court
-    const tr = g.traces, a = tr[0], z = tr[tr.length - 1];
-    const v = a && z && z.t > a.t ? (z.off - a.off) / (z.t - a.t) : 0;
-    let cible = Math.round(g.base - off / w);
-    if (Math.abs(v) > 0.45 && Math.abs(off) > 24 && Math.sign(v) === Math.sign(off)) cible = g.base + (off < 0 ? 1 : -1);
-    cible = Math.max(0, Math.min(n - 1, Math.max(g.base - 1, Math.min(g.base + 1, cible))));
-    // nouveau geste accepté dès la fin de l'aimantation (pas de verrou prolongé par l'élan)
-    g.bloqueJusqua = performance.now() + (reduit() ? 0 : 220);
-    g.report = 0;
-    appliquer(cible, 'anime');
-    const m = modesRef.current[cible];
-    if (cible !== indexRef.current && m) { focusApres.current = true; setModeBrut(m.id); ecrireLS('medrevise.panneau.mode.' + cle, m.id); }
-  };
-  const defileHorizontalement = (el) => {
-    const corps = corpsRef.current;
-    for (let n = el; n && n !== corps; n = n.parentElement) {
-      if (n.tagName === 'CANVAS') return true;
-      if (n.scrollWidth > n.clientWidth + 1) {
-        const ox = getComputedStyle(n).overflowX;
-        if (ox === 'auto' || ox === 'scroll') return true;
-      }
-    }
-    return false;
-  };
-  const texteSelectionne = () => {
-    const sel = window.getSelection && window.getSelection();
-    return !!(sel && !sel.isCollapsed && corpsRef.current && corpsRef.current.contains(sel.anchorNode));
-  };
-  // la roue doit être « non passive » pour empêcher le geste « page précédente » de Chrome
-  const roueRef = useRef(null);
-  roueRef.current = (e) => {
-    const g = geste.current, now = performance.now();
-    const ax = Math.abs(e.deltaX), ay = Math.abs(e.deltaY);
-    /* geste neuf posé pendant l'inertie du précédent : l'élan de macOS décroît sans
-       remonter ; un delta qui repart nettement à la hausse après que l'élan est retombé
-       sous la moitié de son pic, ou qui change de sens, ce sont des doigts reposés.
-       (×3 sans pause : deux événements d'élan fusionnés par Chrome font < ×2.) */
-    const ecart = now - g.dernierT;
-    if (g.actif && ax > ay && g.pic > 0 && g.dernierAbs <= g.pic * 0.5
-      && ((ax >= 8 && ax >= g.dernierAbs * 3) || (ecart >= 50 && ax >= 6 && ax >= g.dernierAbs * 2)
-        || (ax >= 3 && g.offset !== 0 && Math.sign(-e.deltaX) !== Math.sign(g.offset)))) {
-      clearTimeout(g.minuteur);
-      relacher();
-    }
-    if (!g.actif) {
-      if (ay > ax) { g.dernierVertical = now; return; } // défilement vertical : jamais
-      if (ax <= ay * 1.5 || ax < 1) return;
-      if (now - g.dernierVertical < 250) return; // encore dans l'élan d'un défilement vertical
-      if (defileHorizontalement(e.target) || texteSelectionne()) return;
-      // pendant l'aimantation (220 ms) : le geste neuf est REPORTÉ, appliqué à la fin
-      if (now < g.bloqueJusqua) {
-        e.preventDefault();
-        g.report = (now - g.reportA < 150 ? g.report : 0) - e.deltaX; g.reportA = now;
-        return;
-      }
-      const report = now - g.reportA < 150 ? g.report : 0;
-      commencer();
-      g.offset = report; g.report = 0;
-    }
-    e.preventDefault();
-    g.pic = Math.max(g.pic, ax); g.dernierAbs = ax; g.dernierT = now;
-    suivre(g.offset - e.deltaX);
-    clearTimeout(g.minuteur);
-    g.minuteur = setTimeout(relacher, 140); // plus d'événement = doigts levés
-  };
-  useEffect(() => {
-    const el = corpsRef.current;
-    if (!el) return undefined;
-    const h = (e) => roueRef.current(e);
-    el.addEventListener('wheel', h, { passive: false });
-    return () => el.removeEventListener('wheel', h);
-  }, [collapsed]);
-  const onPointerDown = (e) => {
-    if (e.pointerType === 'mouse') return; // à la souris, glisser sert à sélectionner du texte
-    if (defileHorizontalement(e.target)) return;
-    geste.current.pointeur = { x: e.clientX, y: e.clientY, id: e.pointerId, horizontal: null };
-  };
-  const onPointerMove = (e) => {
-    const g = geste.current, p = g.pointeur;
-    if (!p || p.id !== e.pointerId) return;
-    const dx = e.clientX - p.x, dy = e.clientY - p.y;
-    if (p.horizontal === null && Math.hypot(dx, dy) > 8) {
-      p.horizontal = Math.abs(dx) > Math.abs(dy) * 1.5 && !texteSelectionne();
-      if (p.horizontal) commencer();
-    }
-    if (p.horizontal && g.actif) suivre(dx);
-  };
-  const onPointerUp = (e) => {
-    const p = geste.current.pointeur; geste.current.pointeur = null;
-    if (!p || p.id !== e.pointerId) return;
-    if (p.horizontal) relacher();
-  };
-  // clic sur un segment : même focus du mode arrivé qu'après un glissement
-  const choisirMode = (id) => { if (id !== modeActif) focusApres.current = true; setMode(id); };
+  }, [indexRepos, arrivees]);
+  /* clic sur un segment : même chemin qu'un glissement (animé, focus du mode arrivé). Pas de
+     comparaison avec l'état React : pendant une rafale, il n'est mis à jour qu'à la fin de
+     l'aimantation — c'est la position VISÉE par la piste qui compte (allerA gère « déjà là »). */
+  const choisirMode = (id) => allerMode(id);
 
   // ---- ajout (réutilise ItemForm/PasteJsonForm, même flux que AddItemModal) ----
   const [adding, setAdding] = useState(false);
@@ -456,16 +319,19 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     </div>
   ), [activeType, countByType, adding, addSource, busyAdd, addedCount, voirTheme, items, editingId, busyEdit, ctx, ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const contenuMode = (m) => {
-    if (m.id === 'exercices') return exercices;
-    const x = m.id === 'notions' ? extraNotions : extraTranscript;
-    if (!x) return null;
-    return x.plein
-      ? <div className="pis-extra-plein">{x.contenu}</div>
-      : <div className="pis-scroll scroll pis-extra">{x.contenu}</div>;
-  };
+  /* contenus des modes : des éléments STABLES (mêmes objets d'un rendu à l'autre tant que
+     leur contenu ne change pas) — le volet mémoïsé (Volet) ne se re-rend alors jamais
+     pour rien, ni au changement de mode, ni pendant un geste */
+  const contenuNotions = useMemo(() => (extraNotions ? (extraNotions.plein
+    ? <div className="pis-extra-plein">{extraNotions.contenu}</div>
+    : <div className="pis-scroll scroll pis-extra">{extraNotions.contenu}</div>) : null), [extraNotions && extraNotions.contenu, extraNotions && extraNotions.plein]); // eslint-disable-line react-hooks/exhaustive-deps
+  const contenuTranscript = useMemo(() => (extraTranscript ? (extraTranscript.plein
+    ? <div className="pis-extra-plein">{extraTranscript.contenu}</div>
+    : <div className="pis-scroll scroll pis-extra">{extraTranscript.contenu}</div>) : null), [extraTranscript && extraTranscript.contenu, extraTranscript && extraTranscript.plein]); // eslint-disable-line react-hooks/exhaustive-deps
+  const contenuMode = (m) => (m.id === 'exercices' ? exercices : m.id === 'notions' ? contenuNotions : contenuTranscript);
 
   return (
+    <ModalesHorsPanneauCtx.Provider value>
     <div className={'pis' + (collapsed ? ' collapsed' : '')} ref={panneauRef}>
       <SplitHandle side="right" collapsed={collapsed} onClick={() => setCollapsed((v) => !v)} />
       {/* tablette (07/10) : panneau replié = colonne fine (ouvrir, session en cours, lignes arrivées) */}
@@ -473,8 +339,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
       {!collapsed && (
       <div className="pis-body">
         {modes.length > 1 && (
-          <div className="pm-seg" ref={segRef} role="tablist" aria-label="Mode du panneau" style={{ '--n': modes.length }}>
-            <span className="pm-seg-indic" aria-hidden="true" />
+          <div className="pm-seg" role="tablist" aria-label="Mode du panneau" style={{ '--n': modes.length }}>
+            <span className="pm-seg-indic" ref={indicRef} aria-hidden="true" />
             {modes.map((m) => (
               <button key={m.id} type="button" role="tab" aria-selected={modeActif === m.id}
                 className={'pm-seg-btn' + (modeActif === m.id ? ' actif' : '')} onClick={() => choisirMode(m.id)}>
@@ -484,21 +350,13 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
             ))}
           </div>
         )}
-        <div className="pm-corps" ref={corpsRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-          onPointerCancel={() => { if (geste.current.pointeur && geste.current.pointeur.horizontal) relacher(); geste.current.pointeur = null; }}>
-          {/* piste : les modes TOUS montés côte à côte (translations posées par `appliquer`) ;
-              hors écran = inertes, masqués aux lecteurs d'écran, hors tabulation */}
-          <div className="pm-piste">
-            {modes.map((m, k) => {
-              const cache = k !== indexRepos;
-              return (
-                <div key={m.id} ref={(el) => { voletsRef.current[k] = el; }} className="pm-vue" data-mode={m.id}
-                  role="tabpanel" aria-label={m.label} aria-hidden={cache || undefined} tabIndex={cache ? -1 : undefined}
-                  {...(cache ? { inert: '' } : {})}>
-                  <ModeVisibleCtx.Provider value={!cache}>{contenuMode(m)}</ModeVisibleCtx.Provider>
-                </div>
-              );
-            })}
+        <div className="pm-corps" ref={corpsRef}>
+          {/* piste : les modes TOUS montés côte à côte ; SEULE la piste est déplacée (transform
+              écrit par glissementModes.js). Hors écran = inertes, masqués aux lecteurs d'écran */}
+          <div className="pm-piste" ref={pisteRef}>
+            {modes.map((m, k) => (
+              <Volet key={m.id} id={m.id} label={m.label} k={k} cache={k !== indexRepos} contenu={contenuMode(m)} />
+            ))}
           </div>
         </div>
 
@@ -520,8 +378,22 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
       </div>
       )}
     </div>
+    </ModalesHorsPanneauCtx.Provider>
   );
 }
+
+/* ---- un volet de la piste (v1.4) : mémoïsé — props stables (contenu mémoïsé, `cache`
+   ne change qu'à la fin d'une aimantation). Sa translation (k × 100 %) est fixe ; c'est la
+   piste qui bouge. Hors écran : inerte, masqué aux lecteurs d'écran, hors tabulation. ---- */
+const Volet = memo(function Volet({ id, label, k, cache, contenu }) {
+  return (
+    <div className="pm-vue" data-mode={id} style={{ transform: `translate3d(${k * 100}%, 0, 0)` }}
+      role="tabpanel" aria-label={label} aria-hidden={cache || undefined} tabIndex={cache ? -1 : undefined}
+      {...(cache ? { inert: '' } : {})}>
+      <ModeVisibleCtx.Provider value={!cache}>{contenu}</ModeVisibleCtx.Provider>
+    </div>
+  );
+});
 
 /* ---- carte de lecture (réponse toujours visible) + Éditer/Supprimer ---- */
 function ItemReadCard({ item, onEdit, onDelete }) {

@@ -3,8 +3,11 @@
    ============================================================ */
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { abonnerOcr, lireEtatOcr, ecouterCouche, coucheDuPdf, prioriser, enfiler, ocrAutoActif } from './service.js';
+import { abonnementDiffere } from '../lib/gesteEnCours.js';
 
-export const useEtatOcr = () => useSyncExternalStore(abonnerOcr, lireEtatOcr);
+// v1.4 : l'avancement de l'OCR re-rend le lecteur entier — différé pendant un glissement du panneau
+const abonnerOcrDiffere = abonnementDiffere(abonnerOcr);
+export const useEtatOcr = () => useSyncExternalStore(abonnerOcrDiffere, lireEtatOcr);
 
 /**
  * Couche OCR du PDF ouvert dans le lecteur, tenue à jour page par page.

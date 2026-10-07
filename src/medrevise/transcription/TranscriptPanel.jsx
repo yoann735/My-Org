@@ -426,6 +426,8 @@ function LigneNote({ l, onNote, onSuppr, focus, lecture }) {
 }
 
 /** Liste défilante avec auto-défilement « collé en bas » et reprise. */
+const VIRTUEL_DES = 150; // lignes
+const MARGE_VIRTUELLE = 800; // px rendus au-dessus et au-dessous de la zone visible
 function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, focusNoteId, plein }) {
   const ref = useRef(null);
   // en direct : collé en bas ; une session passée s'ouvre en haut, pour la relire
@@ -437,6 +439,57 @@ function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, 
   const nbValidees = lignes.filter((l) => l.status !== 'interim').length;
   const dernierTexte = lignes.length ? lignes[lignes.length - 1].text : '';
 
+  /* VIRTUALISATION (v1.4, 07/10) : au-delà de 150 lignes, seules celles autour de la zone
+     visible (± 800 px) sont rendues ; deux cales gardent la hauteur totale. Hauteurs
+     MESURÉES après rendu (cache par ligne), estimées sinon. Collé en bas : la fenêtre suit
+     la fin. Une session de 500 lignes ne rend plus que ~40 lignes à chaque publication. */
+  const virtuel = lignes.length > VIRTUEL_DES;
+  const hauteurs = useRef(new Map());
+  const [, setVersion] = useState(0);
+  const [vue, setVue] = useState({ haut: 0, h: 700 });
+  const vueRef = useRef(vue); vueRef.current = vue;
+  const est = taille === 's' ? 46 : taille === 'l' ? 80 : 60;
+  let debut = 0, fin = lignes.length, cale1 = 0, cale2 = 0;
+  if (virtuel) {
+    const H = lignes.map((l) => hauteurs.current.get(l.id) || est);
+    const total = H.reduce((a, b) => a + b, 0);
+    const st = enBasRef.current ? Math.max(0, total - vue.h) : vue.haut;
+    let acc = 0, i = 0;
+    while (i < H.length && acc + H[i] < st - MARGE_VIRTUELLE) { acc += H[i]; i += 1; }
+    debut = i; cale1 = acc;
+    while (i < H.length && acc < st + vue.h + MARGE_VIRTUELLE) { acc += H[i]; i += 1; }
+    fin = i; cale2 = total - acc;
+    // la note en cours d'écriture reste toujours rendue
+    const k = focusNoteId ? lignes.findIndex((l) => l.id === focusNoteId) : -1;
+    if (k >= 0 && k < debut) { for (let j = k; j < debut; j += 1) cale1 -= H[j]; debut = k; }
+    if (k >= fin) { for (let j = fin; j <= k; j += 1) cale2 -= H[j]; fin = k + 1; }
+  }
+  const visibles = virtuel ? lignes.slice(debut, fin) : lignes;
+  // mesure des lignes rendues → cache ; un écart relance UN rendu (cales justes)
+  useLayoutEffect(() => {
+    if (!virtuel || !ref.current) return;
+    let change = false;
+    for (const el of ref.current.children) {
+      const id = el.dataset && el.dataset.id;
+      if (!id) continue;
+      const h = el.offsetHeight;
+      if (h && Math.abs((hauteurs.current.get(id) || 0) - h) > 1) { hauteurs.current.set(id, h); change = true; }
+    }
+    if (change) setVersion((v) => v + 1);
+  });
+  const rafVue = useRef(null);
+  const suivreVue = () => {
+    if (!virtuel || rafVue.current) return;
+    rafVue.current = requestAnimationFrame(() => {
+      rafVue.current = null;
+      const el = ref.current;
+      if (!el) return;
+      const v = vueRef.current;
+      if (Math.abs(el.scrollTop - v.haut) > MARGE_VIRTUELLE / 3 || Math.abs(el.clientHeight - v.h) > 4) setVue({ haut: el.scrollTop, h: el.clientHeight });
+    });
+  };
+  useEffect(() => () => { if (rafVue.current) cancelAnimationFrame(rafVue.current); }, []);
+
   /* Seul un défilement VERS LE HAUT met l'auto-défilement en pause. Un panneau qui
      rétrécit (éditeur de mots-clés, note, fenêtre) éloigne aussi le bas sans que
      scrollTop ne bouge : ce n'est pas un geste de l'étudiant, on reste collé en bas. */
@@ -444,6 +497,7 @@ function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, 
   const surDefilement = () => {
     const el = ref.current;
     if (!el) return;
+    suivreVue();
     const bas = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
     const monte = el.scrollTop < dernierHaut.current - 2;
     dernierHaut.current = el.scrollTop;
@@ -455,7 +509,10 @@ function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, 
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(() => { if (enBasRef.current) el.scrollTop = el.scrollHeight; });
+    const ro = new ResizeObserver(() => {
+      if (enBasRef.current) el.scrollTop = el.scrollHeight;
+      if (Math.abs(el.clientHeight - vueRef.current.h) > 4) setVue({ haut: el.scrollTop, h: el.clientHeight });
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -477,9 +534,11 @@ function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, 
         {lignes.length === 0 && (
           <div className="trx-vide">{live ? 'À l’écoute… le texte apparaît ici dès que le prof parle.' : 'Cette session ne contient aucun texte.'}</div>
         )}
-        {lignes.map((l) => (
+        {cale1 > 0 && <div className="trx-cale" style={{ height: cale1 }} aria-hidden="true" />}
+        {visibles.map((l) => (
           <Ligne key={l.id} l={l} rx={rx} onNote={onNote} onSupprNote={onSupprNote} focusNoteId={focusNoteId} lecture={!live} />
         ))}
+        {cale2 > 0 && <div className="trx-cale" style={{ height: cale2 }} aria-hidden="true" />}
       </div>
       {live && !enBas && (
         <button type="button" className="trx-reprendre" onClick={reprendreDefilement}>

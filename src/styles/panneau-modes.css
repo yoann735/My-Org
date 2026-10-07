@@ -123,3 +123,17 @@
 }
 @keyframes pm-live-pouls { 0% { transform: scale(1); opacity: .55; } 70%, 100% { transform: scale(2.6); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .pm-live i::after { animation: none !important; opacity: 0; } }
+
+/* ---- v1.4 : geste fluide (components/glissementModes.js) ----
+   Seule la PISTE bouge (transform écrit une fois par image), toujours sur son propre
+   calque ; chaque mode est isolé (contain) : un changement dans un mode ne relayout ni
+   ne repeint jamais les autres. Pas de transition CSS permanente : le moteur pose
+   `transform 200ms cubic-bezier(0.2, 0, 0, 1)` à l'aimantation seulement. */
+.pm-piste { will-change: transform; transform: translate3d(0, 0, 0); }
+.pm-vue { contain: layout paint; }
+.pm-seg .pm-seg-indic { transition: none; will-change: transform; transform: translate3d(calc(var(--i, 0) * 100%), 0, 0); }
+/* les cartes hors de la zone visible ne sont ni stylées, ni mises en page, ni peintes :
+   basculer `inert` sur un mode (fin d'aimantation) ne recalcule plus que ce qui se voit
+   (mesuré : 3 094 éléments / 7 à 12 ms → voir le compte-rendu v1.4) */
+.pm-vue :is(.pis-item, .hl-entry) { content-visibility: auto; contain-intrinsic-size: auto 150px; }
+.pm-vue .hl-entry { contain-intrinsic-size: auto 52px; }

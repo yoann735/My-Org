@@ -805,6 +805,17 @@ export function ContextMenu({ x, y, items, onClose, fermerAuDefilement = true })
   );
 }
 
+/* MODALES SORTIES DU PANNEAU (v1.4, 07/10) : la piste des modes du panneau latéral est
+   transformée en permanence (glissement fluide) et chaque mode est « contenu » (contain) —
+   deux choses qui enferment un `position: fixed`. Le panneau pose ce contexte : ses
+   modales passent alors par un portail vers la racine de l'app (styles MedRevise gardés). */
+export const ModalesHorsPanneauCtx = createContext(false);
+function useSortieModale(el) {
+  const hors = useContext(ModalesHorsPanneauCtx);
+  if (!hors || typeof document === 'undefined') return el;
+  return createPortal(el, document.querySelector('[data-app="medrevise"]') || document.body);
+}
+
 /* ---- modale de confirmation générique (suppression → corbeille, etc.) ---- */
 /* ---- overlay générique (fond scrim + carte centrée), même pattern visuel que
    DayPopup/ConfirmModal — croix, clic sur le fond, Échap ferment tous les trois. ---- */
@@ -814,7 +825,7 @@ export function Modal({ title, onClose, width = 'min(560px, 94vw)', children }) 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-  return (
+  return useSortieModale(
     <div className="day-pop-scrim" onClick={onClose}>
       <div className="day-pop" style={{ width, maxHeight: '86vh', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
         <div className="day-pop-head">
@@ -825,12 +836,12 @@ export function Modal({ title, onClose, width = 'min(560px, 94vw)', children }) 
         </div>
         <div className="day-pop-body scroll">{children}</div>
       </div>
-    </div>
+    </div>,
   );
 }
 
 export function ConfirmModal({ title, body, confirmLabel = 'Confirmer', danger, onConfirm, onCancel }) {
-  return (
+  return useSortieModale(
     <div className="day-pop-scrim" onClick={onCancel}>
       <div className="day-pop" style={{ width: 'min(420px, 92vw)' }} onClick={(e) => e.stopPropagation()}>
         <div className="day-pop-head"><div className="serif" style={{ fontSize: 19 }}>{title}</div></div>
@@ -840,7 +851,7 @@ export function ConfirmModal({ title, body, confirmLabel = 'Confirmer', danger, 
           <button className={'btn' + (danger ? ' danger' : ' primary')} style={{ flex: 1 }} onClick={onConfirm}>{confirmLabel}</button>
         </div>
       </div>
-    </div>
+    </div>,
   );
 }
 

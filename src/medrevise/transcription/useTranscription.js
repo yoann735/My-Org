@@ -3,9 +3,14 @@
    ============================================================ */
 import { useSyncExternalStore } from 'react';
 import { abonner, lireEtat, abonnerNiveau, lireNiveau } from './engine.js';
+import { abonnementDiffere } from '../lib/gesteEnCours.js';
+
+// v1.4 : pendant un glissement du panneau, les rendus attendent la fin du geste (lib/gesteEnCours.js)
+const abonnerDiffere = abonnementDiffere(abonner);
+const abonnerNiveauDiffere = abonnementDiffere(abonnerNiveau);
 
 export function useTranscription() {
-  return useSyncExternalStore(abonner, lireEtat);
+  return useSyncExternalStore(abonnerDiffere, lireEtat);
 }
 
 /* Niveau audio : on ne renvoie qu'une valeur ARRONDIE (20 crans) pour que React
@@ -18,5 +23,5 @@ function instantane() {
   return cache;
 }
 export function useNiveauAudio() {
-  return useSyncExternalStore(abonnerNiveau, instantane);
+  return useSyncExternalStore(abonnerNiveauDiffere, instantane);
 }

@@ -498,3 +498,167 @@ Tablette 820 px après la séquence tactile : ![](img/panneau-lateral/v13-tactil
 | Commit | Message |
 |---|---|
 | (ce commit) | fix(medrevise): panneau — chrono unique, modes enchaînés sans clic, crédits en direct (v1.3) |
+
+## v1.4 — geste fluide (07/10/2026)
+
+Demande : glissement entre Exercices · Notions · Transcript instantané et parfaitement fluide —
+il marchait mais accrochait (latence au début du geste, saccades, ratés en enchaînant vite).
+
+### Méthode de mesure (identique avant et après)
+
+Chrome headless piloté en CDP, 1 440 × 900, **transcription active** (micro simulé, faux Deepgram
+local, jamais le cloud), session reprise de **320 → 866 lignes** de transcript. Scénario : **10 s de
+glissements rapides aller-retour** (Exercices → Notions → Transcript → Notions → Exercices…),
+une fois au **trackpad** (événements roue à 60 Hz : 8 « doigts » + 24 d'inertie décroissante,
+120 ms entre deux gestes), une fois au **doigt** (événements tactiles).
+- **Performance** : trace Chrome (catégories `devtools.timeline` — celles de l'onglet Performance),
+  analysée sur les seules **fenêtres de mouvement** (repères posés au premier changement de
+  `transform` et au `transitionend` de l'aimantation). Image perdue = rapport de pipeline
+  `DROPPED` ou présenté partiellement ; « sans changement » (aucune nouvelle position reçue
+  pendant l'image) n'est pas une saccade.
+- **Rendus React** : crochet DevTools injecté avant le chargement (même principe que le
+  Profiler) — un composant compte s'il a réellement été ré-exécuté dans un commit
+  (fibre retravaillée + `PerformedWork`), et chaque commit est daté pour savoir s'il tombe
+  pendant un mouvement.
+- **Délai du premier mouvement** : de l'horodatage du premier événement d'un geste à l'écriture
+  du `transform` dans l'image, décomposé en « navigateur » (horodatage → exécution du
+  gestionnaire) et « notre code » (gestionnaire → transform écrit).
+- **Avant** = code de `d77a1a4`, remis temporairement sur le même serveur de dev, mêmes données.
+
+### Mesures
+
+| | Avant — trackpad | Après — trackpad | Avant — doigt | Après — doigt |
+|---|---|---|---|---|
+| Rendus React **pendant le mouvement** | **89 commits** (transcript, pastille, VU-mètre, crédits, 80 cartes d'Exercices + 164 formules) | **0** | **147 commits** | **0** |
+| Délai du premier mouvement, part de notre code (médiane) | **205 ms** (jusqu'à 660) | **0 ms** (0–2) | 0 ms | **1 ms** (0–3) |
+| … total, horodatage → transform écrit (médiane) | 244 ms | 27 ms | 22 ms | 25 ms |
+| Images perdues ou partielles pendant le mouvement | **125** | **0** | **238** | **0** |
+| Écarts entre images > 20 ms (pire) | 7 (50 ms) | 0 (16,7 ms) | 0 | 1 (33 ms, « sans changement ») |
+| Tâche la plus longue (≈ frame la plus longue) | 19,2 ms | **10,9 ms** | 19,8 ms | **10,4 ms** |
+| Tâches > 16 ms | 10 | **0** | 8 | **0** |
+| Tâches > 8 ms | 72 | 8 | 90 | 16 |
+| Recalcul de style le plus gros | 3 110 éléments (13,1 ms) | 377 éléments (4,1 ms) | 3 123 éléments | 144 éléments (2,9 ms) |
+| Recalculs de style / image | 1,03 | 1,01 (celui du `transform` de la piste) | 0,96 | 1,66 |
+| Mises en page / image | 0,08 | 0,09 | 0,08 | 0,06 |
+| Script pendant le mouvement | 450 ms | **57 ms** | 1 735 ms | 307 ms |
+| Images par seconde (intervalle médian / p95) | 16,7 / 16,7 ms | 16,7 / 16,7 ms → **60 i/s** | 16,7 / 16,7 ms | 16,7 / 16,7 ms → **60 i/s** |
+| Propriété animée | `transform` de chaque volet + `--i` de l'indicateur | `transform` de la **piste** et de l'indicateur, seuls | idem | idem |
+| Lignes de transcript rendues | 866 (toutes) | ~20 (virtualisé) | 866 | ~20 |
+
+Délai visible : avec le code final, le gestionnaire s'exécute **dans l'image en cours** (Chrome
+aligne les entrées sur les images : l'horodatage de cette image précède la réception) et le
+`transform` est écrit 0 à 3 ms après — il est peint dans cette même image, **sous une image**
+de délai. Les ~25 ms « navigateur » séparent l'horodatage de l'événement de son arrivée dans la
+page : c'est la chaîne d'entrée de Chrome headless piloté en CDP, identique avant et après.
+
+### Causes racines
+
+1. **La latence au début du geste et les ratés en enchaînant** venaient du **verrou de
+   l'aimantation** : tout geste neuf était retenu 220 ms (« reporté »), et la fin d'un geste
+   n'était détectée qu'après 140 ms de silence — l'inertie de macOS faisant partie du geste.
+   Résultat mesuré : 205 ms (jusqu'à 660 ms) entre l'événement et le premier mouvement dès qu'on
+   enchaîne. Avec des événements d'inertie espacés de plus de 30 ms, l'inertie puis le geste
+   suivant étaient même suivis comme un seul geste (piste à −133 %, un seul changement).
+2. **Les saccades** venaient des **rendus React pendant le mouvement** : la transcription en
+   direct publie plusieurs fois par seconde (lignes, chrono, niveau audio), et chaque
+   publication re-rendait le transcript (866 lignes), la pastille, le VU-mètre, les crédits ;
+   le changement de mode re-rendait la liste d'Exercices (80 cartes, formules KaTeX) ; et la
+   bascule de `inert` en fin d'aimantation recalculait le style de ~3 100 éléments (jusqu'à 13 ms).
+3. **Les images partielles au trackpad** (seule source restante après les deux premiers
+   correctifs : 13 à 21 par scénario) venaient de l'**écouteur de roue passif** : le compositeur
+   ne savait pas que la page prenait le geste et n'attendait plus l'image du fil principal.
+
+### Ce qui change
+
+- **Le geste vit hors de React** (`components/glissementModes.js`) : un gestionnaire unique sur
+  le conteneur de la piste — roue (non passive, `preventDefault()` seulement une fois le geste
+  horizontal pris en charge ; un défilement vertical n'est jamais retenu) et pointeurs (passifs,
+  souris exclue). Il écrit `transform: translate3d(x, 0, 0)` sur la **piste** et sur l'indicateur
+  du sélecteur, **une seule fois par image** dans `requestAnimationFrame` (la dernière valeur
+  gagne). Aucun `setState`, aucun contexte pendant le mouvement : React est prévenu **une fois**, à
+  la fin de l'aimantation, dans une tâche à part (après l'image qui termine le mouvement).
+- **Axe décidé une fois par geste**, dès 8 px cumulés (horizontal si |dx| > |dy|, sinon on laisse
+  défiler) ; jamais pris en charge sur une zone qui défile horizontalement, un canvas, ou avec du
+  texte sélectionné. Pour ne pas attendre les 8 px, un début nettement horizontal déplace déjà la
+  piste à titre provisoire (elle revient si l'axe est vertical).
+- **Aimantation** : `transform 200ms cubic-bezier(0.2, 0, 0, 1)`, aucune transition pendant le
+  suivi. Un geste lancé pendant l'aimantation la **fige à sa position réelle** et repart de là,
+  sans attente. Pendant le suivi, la piste reste à un mode d'écart au plus (élastique au-delà).
+- **Inertie macOS** : fin du geste détectée dès le **début de l'inertie** (deltas qui décroissent
+  régulièrement) ou après 120 ms de silence ; la traîne est ensuite **ignorée** (250 ms au moins,
+  et tant qu'elle décroît) — sauf un geste franc (delta qui remonte, 24 px cumulés), qui repart
+  immédiatement. Un delta qui remonte pendant le suivi (doigts reposés) clôt le geste et en ouvre
+  un nouveau.
+- **Rendus différés pendant un geste** (`lib/gesteEnCours.js`) : les abonnements React aux stores
+  vivants (transcription, niveau audio, crédits, indicateur global, OCR) mettent leurs
+  notifications de côté et les rejouent à la fin du geste. Le **moteur ne s'arrête jamais** : l'audio
+  part, les lignes s'enregistrent ; seul l'affichage attend (< 1 s).
+- **Volets** : `React.memo` (`Volet`), contenus mémoïsés (props stables) ; translation fixe
+  (k × 100 %), `contain: layout paint` ; `will-change: transform` sur la piste ; `overflow: hidden`
+  sur le conteneur (inchangé). `inert` + `aria-hidden` sur les modes cachés, retirés du mode arrivé
+  **à la fin de l'animation**, dans le même rendu que le mode actif ; le mode arrivé reçoit le focus
+  (sans défilement) après **tout** geste ou clic — un geste peut repartir sans clic.
+- **Cartes hors de la zone visible** (`.pis-item`, notions) en `content-visibility: auto` : la
+  bascule de `inert` ne recalcule plus que ce qui se voit (3 110 → 377 éléments).
+- **Transcript virtualisé au-delà de 150 lignes** : seules les lignes autour de la zone visible
+  (± 800 px) sont rendues, deux cales gardent la hauteur ; hauteurs mesurées, collé en bas. Une
+  session de 1 400 lignes ne rend plus qu'une vingtaine de lignes.
+- **Modales des modes sorties de la piste** : la piste est désormais transformée en permanence,
+  ce qui enfermerait un `position: fixed`. Le panneau pose `ModalesHorsPanneauCtx` : ses `Modal` /
+  `ConfirmModal` passent par un portail vers la racine de l'app (`[data-app="medrevise"]`, styles
+  gardés). Ça corrige au passage un piège du mode tablette (le `container-type` du panneau
+  enfermait déjà ces modales).
+- Clic sur un segment : même chemin qu'un glissement (animé), comparé à la position **visée** par
+  la piste — avant, un clic sur le mode de départ pendant une rafale était ignoré.
+
+### Tests (Chrome, CDP — vrais événements roue, tactiles, souris, clavier ; transcription active, 300+ lignes)
+
+| Test | Trackpad | Doigt |
+|---|---|---|
+| Glisser lentement (20 pas) : la piste suit chaque pas | ✅ 0,02 → 0,40, sans retard | ✅ |
+| À 40 % : 60 % Exercices + 40 % Notions visibles, contenus rendus, pas de zone noire | ✅ (capture) | ✅ (capture) |
+| Relâché lentement à 40 % → retour au mode de départ | ✅ | ✅ |
+| Glisser rapidement → mode voisin | ✅ | ✅ |
+| 5 changements enchaînés | ✅ en 3,09 s* | ✅ en 1,66 s |
+| Aller à mi-chemin puis revenir dans le même geste (doigt tenu 240 ms) → reste | ✅ | ✅ |
+| Geste lancé pendant l'aimantation du précédent → repart aussitôt (deux changements) | ✅ | ✅ |
+| Un geste avec inertie longue (70 événements) → **un seul** changement | ✅ | ✅ |
+| Événements d'inertie espacés de 30 ms et plus : Exercices → Notions → Transcript → Notions → Exercices | ✅ (avant : −133 %, un seul changement) | — |
+| **50 allers-retours** pendant le direct : transcript intact | ✅ 1 371 → 1 394 lignes, 0 doublon, collé en bas | ✅ 1 399 → 1 411, 0 doublon |
+| Segments cliqués à 120 ms d'intervalle (rafale qui revient au départ) | ✅ Exercices → Notions → Transcript → Notions → Exercices ; état React et focus sur Exercices | — |
+| Mode arrivé : `inert` retiré et focus à la fin de l'animation ; clic et Page↓ sans clic préalable | ✅ à 250 ms : inerte → non, focus sur le mode ; Page↓ 0 → 624 px | — |
+| Défilement vertical interne gardé (1 500 px) ; un défilement vertical ne change jamais de mode | ✅ | ✅ (liste défilée de 387 px, piste immobile) |
+| Sélection de texte à la souris dans le transcript ; geste horizontal ignoré tant que du texte est sélectionné | ✅ | — |
+| Modale d'un mode (supprimer une carte) : plein écran, rendue hors de la piste | ✅ 1 440 × 900, dans `[data-app]` | — |
+| Clavier : Tab × 40 → 0 fois dans un mode caché | ✅ | — |
+| Mode tablette (iPad mini portrait, iPad paysage, rotations) : batteries de la refonte tablette | ✅ 30/31 (le ❌ : le test supposait un départ en page 1) | ✅ |
+| Erreurs console | 0 | 0 |
+
+\* Le banc envoie 32 événements de 16 ms par geste (≈ 0,5 s chacun) : la durée est celle du banc.
+
+| À 40 % au trackpad | À 40 % au doigt |
+|---|---|
+| ![](img/panneau-lateral/v14-mi-course-trackpad.png) | ![](img/panneau-lateral/v14-mi-course-doigt.png) |
+
+### Limites (v1.4)
+
+- **Mesures en headless** (rendu logiciel, entrées injectées en CDP), pas sur le Mac avec un vrai
+  trackpad : l'ordre de grandeur avant/après est fiable, les valeurs absolues dépendent de la
+  machine. À confirmer dans l'onglet Performance de Chrome DevTools sur le Mac.
+- **Rafale au doigt** plus rapide que l'aimantation (gestes à moins de 200 ms d'écart) : l'état
+  React (segment actif, `aria-selected`, focus) n'est mis à jour qu'à la fin de la rafale ;
+  l'indicateur, lui, suit en direct.
+- Un clic dans le mode d'arrivée **pendant** les 200 ms de l'aimantation est ignoré (`inert` retiré
+  à la fin de l'animation, comme demandé) — la v1.3 le levait dès le début.
+- **Trackpad et « s'arrêter à moitié »** : macOS n'envoie rien quand les doigts sont immobiles ; au
+  bout de 120 ms sans événement, le geste s'aimante (au doigt, on peut tenir indéfiniment).
+- Le chrono et la dernière ligne du transcript se figent pendant un geste (< 1 s) puis rattrapent
+  d'un coup ; l'enregistrement, lui, ne s'interrompt jamais.
+- Le crochet DevTools et `window.__medreviseGeste` ne servent qu'aux mesures (le second n'existe
+  qu'en développement).
+
+### Commits v1.4
+
+| Commit | Message |
+|---|---|
+| (ce commit) | perf(medrevise): glissement des modes hors de React, rendus différés pendant le geste, transcript virtualisé (v1.4) |

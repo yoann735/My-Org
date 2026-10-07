@@ -12,6 +12,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { useTranscription } from './useTranscription.js';
 import { arreter, pause, reprendreApresPause, sessionActive } from './engine.js';
 import { mmss } from './exporter.js';
+import { abonnementDiffere } from '../lib/gesteEnCours.js';
 
 /* registre des boutons « Transcrire » montés (un par lecteur ouvert) */
 const montes = new Map(); // courseId → nombre
@@ -25,7 +26,7 @@ export function enregistrerLecteur(courseId) {
     version++; abonnes.forEach((f) => f());
   };
 }
-const abonner = (f) => { abonnes.add(f); return () => abonnes.delete(f); };
+const abonner = abonnementDiffere((f) => { abonnes.add(f); return () => abonnes.delete(f); }); // v1.4 : différé pendant un geste
 
 export function IndicateurTranscription() {
   const e = useTranscription();
