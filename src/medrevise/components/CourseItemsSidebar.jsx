@@ -38,7 +38,9 @@ import { toInternalItem } from '../lib/adapter.js';
 import { OcclusionEditorModal, OcclusionView, estOcclusion } from './OcclusionImage.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from './FlashcardImage.jsx';
 import { CarteAjoutFlashcard } from './CarteAjoutFlashcard.jsx';
-import { SeanceAujourdhui } from './SeanceAujourdhui.jsx';
+import { planDuJour, etatFC } from '../lib/apprentissageFC.js';
+import { nextDate } from '../lib/planning.js';
+import { todayISO } from '../lib/sm2.js';
 import { ModeVisibleCtx } from './modeVisible.js';
 import '../../styles/panneau-modes.css';
 
@@ -244,6 +246,15 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   };
 
   const items = useMemo(() => ficheItems.filter((q) => q.type === activeType), [ficheItems, activeType]);
+  // les flashcards de CE cours : combien, combien de nouvelles, combien à revoir aujourd'hui
+  const resumeFC = useMemo(() => {
+    const fc = ficheItems.filter((q) => q.type === 'flashcard');
+    if (!fc.length) return null;
+    const today = todayISO();
+    const plan = planDuJour(fc, ctx.reglagesFC, today, nextDate);
+    const nouvelles = fc.filter((q) => { const e = etatFC(q, today); return (e === 'new' || e === 'learning') && !q.learningIntroducedOn; }).length;
+    return { total: fc.length, nouvelles, aRevoir: plan.revisions.length + plan.enCours.length };
+  }, [ficheItems, ctx.reglagesFC]);
   const choisirType = (t) => { setActiveType(t); setAdding(false); setEditingId(null); setVoirTheme(false); };
   const actions = [
     { label: 'Coller du JSON', icon: 'upload', onClick: () => { setAdding(true); setAddSource('json'); setAddedCount(0); } },
@@ -262,8 +273,16 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
           </button>
         ))}
       </div>
-      {/* séance quotidienne des flashcards (toutes matières) : un en-tête, un bouton */}
-      {activeType === 'flashcard' && ctx.startSeanceFC && <SeanceAujourdhui ctx={ctx} compact onDemarrer={ctx.startSeanceFC} />}
+      {/* (08/10) la séance quotidienne (toutes matières) vit dans l'espace Réviser : ici, une
+          ligne discrète sur les cartes de CE cours, cliquable vers Réviser */}
+      {activeType === 'flashcard' && resumeFC && resumeFC.total > 0 && (
+        <button type="button" className="pm-resume-fc" onClick={() => ctx.go && ctx.go('revise')} title="Ouvrir l’espace Réviser (séance du jour)">
+          <span className="tnum">{resumeFC.total} carte{resumeFC.total > 1 ? 's' : ''}</span>
+          {resumeFC.nouvelles > 0 && <> · <span className="tnum">{resumeFC.nouvelles} nouvelle{resumeFC.nouvelles > 1 ? 's' : ''}</span></>}
+          {resumeFC.aRevoir > 0 && <> · <span className="tnum">{resumeFC.aRevoir} à revoir aujourd’hui</span></>}
+          <Icon name="chevR" size={12} />
+        </button>
+      )}
       <div className="pm-actions">
         {/* carte flashcard ouverte : elle a son propre « Terminer » — pas de doublon ici */}
         {!(adding && addSource === 'form' && activeType === 'flashcard') && <button type="button" className={'btn sm' + (adding && addSource === 'form' ? ' actif' : '')}
@@ -332,7 +351,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         ))}
       </div>
     </div>
-  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, voirTheme, items, editingId, busyEdit, ctx, ficheId, rectoInitial]); // eslint-disable-line react-hooks/exhaustive-deps
+  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, voirTheme, items, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* contenus des modes : des éléments STABLES (mêmes objets d'un rendu à l'autre tant que
      leur contenu ne change pas) — le volet mémoïsé (Volet) ne se re-rend alors jamais

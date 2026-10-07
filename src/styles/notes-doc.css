@@ -54,7 +54,7 @@
 .nd-prose img { max-width: 100%; height: auto; border-radius: 8px; display: block; margin: .6em 0; }
 .nd-prose img.ProseMirror-selectednode { outline: 2px solid var(--accent); }
 .nd-prose mark { border-radius: 3px; padding: 0 .1em; color: inherit; }
-.nd-prose mark.rt-notion { background: color-mix(in srgb, #FFE066 55%, transparent); box-shadow: inset 0 -2px 0 #e6b800; }
+.nd-prose mark.rt-notion { background: color-mix(in srgb, var(--nc, #FFE066) 55%, transparent); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--nc, #FFE066) 70%, #000); }
 .nd-prose mark.rt-notion.cible { animation: nd-cible 1.6s ease-out; }
 @keyframes nd-cible { 0%, 40% { box-shadow: 0 0 0 4px var(--accent-soft), inset 0 -2px 0 #e6b800; } 100% { box-shadow: inset 0 -2px 0 #e6b800; } }
 .nd-prose table { border-collapse: collapse; width: 100%; margin: .6em 0 1em; table-layout: fixed; }
@@ -99,3 +99,89 @@
 }
 .nd-impression-page { display: none; }
 .ndc-doc.nd-attente .nd-defile { visibility: hidden; } /* position du document en cours de restauration */
+
+/* ============================================================
+   DOCUMENT DANS LE LECTEUR (08/10, docs/compte-rendu-nettoyage-document.md) : des pages A4
+   blanches comme celles d'un PDF. Le texte est mis en page à l'échelle 1 (unités de page)
+   puis agrandi par transform — couleurs de PAPIER fixes, comme un PDF, quel que soit le thème.
+   ============================================================ */
+.pt-zone { position: absolute; left: 0; top: 0; transform-origin: 0 0; box-sizing: border-box; cursor: text; }
+.pt-zone.outil-surligneur { cursor: text; }
+.pt-corps { overflow: hidden; }
+.pt-prose { position: relative; outline: none; color: #1F1F24; font-size: 12.5px; line-height: 1.6; min-height: 100%; caret-color: #1F1F24; -webkit-user-select: text; user-select: text; }
+.pt-prose ::selection, .pt-prose::selection { background: rgba(80, 130, 230, .28); }
+.pt-prose > *:first-child { margin-top: 0; }
+.pt-prose p { margin: 0 0 .55em; }
+.pt-prose h1 { font-size: 1.9em; line-height: 1.2; margin: .9em 0 .4em; font-weight: 750; letter-spacing: -.01em; }
+.pt-prose h2 { font-size: 1.45em; line-height: 1.25; margin: .85em 0 .35em; font-weight: 700; }
+.pt-prose h3 { font-size: 1.18em; margin: .8em 0 .3em; font-weight: 700; }
+.pt-prose ul, .pt-prose ol { padding-left: 1.4em; margin: 0 0 .55em; }
+.pt-prose li > p { margin: 0 0 .15em; }
+.pt-prose ul[data-type="taskList"] { list-style: none; padding-left: .2em; }
+.pt-prose ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: .5em; }
+.pt-prose ul[data-type="taskList"] li > label { flex: 0 0 auto; margin-top: .25em; }
+.pt-prose ul[data-type="taskList"] li > label input { width: 13px; height: 13px; accent-color: #6b5cff; cursor: pointer; }
+.pt-prose ul[data-type="taskList"] li > div { flex: 1 1 auto; min-width: 0; }
+.pt-prose ul[data-type="taskList"] li[data-checked="true"] > div { color: #8a8a99; text-decoration: line-through; }
+.pt-prose blockquote { margin: 0 0 .7em; padding: .15em 0 .15em .9em; border-left: 3px solid #b9b3f5; color: #4a4a55; }
+.pt-prose hr { border: none; border-top: 1px solid #d9d9e0; margin: 1.1em 0; }
+.pt-prose a { color: #2f55c9; text-decoration: underline; text-underline-offset: 2px; }
+.pt-prose code { background: #f1f1f4; border-radius: 3px; padding: .05em .3em; font-size: .9em; }
+.pt-prose img { max-width: 100%; height: auto; border-radius: 4px; display: block; margin: .5em 0; }
+.pt-prose img.ProseMirror-selectednode { outline: 2px solid #6b5cff; }
+.pt-prose mark { border-radius: 2px; padding: 0 .08em; color: inherit; }
+.pt-prose mark.rt-notion { background: color-mix(in srgb, var(--nc, #FFD84D) 75%, transparent); }
+.pt-prose mark.rt-notion.cible { animation: pt-cible 1.6s ease-out; }
+@keyframes pt-cible { 0%, 40% { box-shadow: 0 0 0 3px rgba(107, 92, 255, .45); } 100% { box-shadow: 0 0 0 0 rgba(107, 92, 255, 0); } }
+.pt-prose table { border-collapse: collapse; width: 100%; margin: .5em 0 .8em; table-layout: fixed; }
+.pt-prose td, .pt-prose th { border: 1px solid #d0d0d8; padding: .3em .45em; vertical-align: top; }
+.pt-prose th { background: #f3f3f6; font-weight: 650; text-align: left; }
+.pt-prose td > p, .pt-prose th > p { margin: 0; }
+.pt-prose .selectedCell { background: rgba(107, 92, 255, .12); }
+.pt-prose:has(> p:only-child > br.ProseMirror-trailingBreak:only-child)::before { content: 'Écris ici… « # » titre, « - » liste, « [] » case à cocher'; position: absolute; left: 0; top: 0; color: #a0a0ad; pointer-events: none; }
+.pt-bulle { position: fixed; transform: translate(-50%, -100%); }
+/* lien (barre de mise en forme) */
+.et-lien { height: 26px; width: 180px; border-radius: 7px; border: 1px solid var(--accent); background: var(--bg); color: var(--text); padding: 0 8px; font: inherit; font-size: 12.5px; outline: none; }
+/* étiquette d'une page de document : « Retirer la page » seulement au survol */
+.pdfr-ajout-etiquette.doc { opacity: 0; transition: opacity .15s; }
+.pdfr-page-doc:hover .pdfr-ajout-etiquette.doc, .pdfr-ajout-etiquette.doc:focus-within { opacity: 1; }
+
+/* FOND DE PAGE NOIR (par document). Le papier devient noir et le TEXTE s'inverse (noir →
+   blanc, couleurs gardées) ; les ANNOTATIONS gardent leurs couleurs — un bleu clair reste
+   clair, donc lisible sur noir — sauf une encre SOMBRE (traits, formes), rendue claire dans
+   la même teinte (pdfShared.js#lisibleSurNoir), et le texte libre, inversé comme le texte.
+   Les images restent telles quelles. */
+.pdfr-page.fond-noir { background: #0d0d10; }
+.pdfr-page.fond-noir > canvas { opacity: 0; }
+.pdfr-page.fond-noir .pt-zone { filter: invert(1) hue-rotate(180deg); }
+.pdfr-page.fond-noir .pt-zone :is(img, mark) { filter: invert(1) hue-rotate(180deg); }
+.pdfr-page.fond-noir .note-box.texte-libre .nb-body, .pdfr-page.fond-noir .note-box.texte-libre .ProseMirror { filter: invert(1) hue-rotate(180deg); }
+/* surligneur à main levée : en « multiply » il disparaîtrait sur le noir */
+.pdfr-page.fond-noir .pdfr-inklayer.surligneur { mix-blend-mode: screen; }
+
+/* PDF d'un document (impression) : les pages recopiées, une par feuille A4, sur fond blanc */
+.pdfr-impression-pages { display: none; }
+@media print {
+  /* page NOMMÉE : seul l'export d'un document est en A4 sans marge (les autres impressions
+     de l'app gardent leur mise en page) */
+  @page document-a4 { size: A4; margin: 0; }
+  html:has(body.pdfr-impression), body.pdfr-impression { background: #fff !important; padding: 0 !important; margin: 0 !important; }
+  body.pdfr-impression > *:not(.pdfr-impression-pages) { display: none !important; }
+  body.pdfr-impression .pdfr-impression-pages { display: block !important; }
+  .pdfr-impression-pages .pdfr-page { position: relative !important; left: auto !important; top: auto !important; transform: none !important;
+    margin: 0 !important; box-shadow: none !important; outline: none !important; filter: none !important; background: #fff !important;
+    break-after: page; page-break-after: always; overflow: hidden; page: document-a4; }
+  .pdfr-impression-pages .pdfr-page:last-child { break-after: auto; page-break-after: auto; }
+  .pdfr-impression-pages .pt-prose::before { content: none !important; }
+}
+
+/* barre de mise en forme du texte d'une page : flottante, collée au bas de la zone de lecture
+   (sticky dans le conteneur qui défile) — rien ne bouge quand elle apparaît */
+.pt-barre { position: sticky; bottom: 12px; z-index: 60; display: flex; justify-content: center; height: 0; overflow: visible; pointer-events: none; }
+.pt-barre .pdfr-edit-toolbar { position: absolute; bottom: 0; pointer-events: auto; margin: 0; max-width: calc(100% - 24px);
+  background: var(--card-2, var(--card)); box-shadow: 0 10px 30px rgba(0, 0, 0, .35); }
+/* tablette : pas de survol au doigt — « Retirer la page » reste visible, en cible de 40 px */
+.lecteur-tab .pdfr-ajout-etiquette.doc { opacity: .92; }
+.lecteur-tab .pdfr-ajout-retirer { min-height: 40px; padding: 0 14px; }
+/* recherche dans un document : l'occurrence affichée */
+::highlight(recherche-doc) { background-color: rgba(255, 196, 0, .55); color: inherit; }

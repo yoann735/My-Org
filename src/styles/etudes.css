@@ -1828,10 +1828,10 @@
 .lib-screen.doc-ouvert :is(.pdfr-scroll, .pis), .lecteur-plein :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 188px); }
 .lib-screen.doc-ouvert .pdfr-html-frame { height: calc(100vh - 206px); }
 .lib-screen.doc-ouvert:has(.pdfr-contexte) :is(.pdfr-scroll, .pis), .lecteur-plein:has(.pdfr-contexte) :is(.pdfr-scroll, .pis),
-.lib-screen.doc-ouvert:has(.pdfr-edit-toolbar) :is(.pdfr-scroll, .pis), .lecteur-plein:has(.pdfr-edit-toolbar) :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 232px); }
+.lib-screen.doc-ouvert:has(.pdfr-edit-toolbar:not(.flottante)) :is(.pdfr-scroll, .pis), .lecteur-plein:has(.pdfr-edit-toolbar:not(.flottante)) :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 232px); }
 .lib-screen.doc-ouvert:has(.pdfr-contexte) .pdfr-html-frame { height: calc(100vh - 250px); }
-.lib-screen.doc-ouvert:has(.pdfr-contexte):has(.pdfr-edit-toolbar) :is(.pdfr-scroll, .pis),
-.lecteur-plein:has(.pdfr-contexte):has(.pdfr-edit-toolbar) :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 276px); }
+.lib-screen.doc-ouvert:has(.pdfr-contexte):has(.pdfr-edit-toolbar:not(.flottante)) :is(.pdfr-scroll, .pis),
+.lecteur-plein:has(.pdfr-contexte):has(.pdfr-edit-toolbar:not(.flottante)) :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 276px); }
 }
 @media (min-width: 761px) { .lecteur-plein { padding-bottom: 14px; } } /* comme .lib-screen (ordinateur seulement : sur mobile, la barre du bas garde sa marge) */
 /* barre du lecteur mesurée (PdfToolbar) : libellés repliés, puis deux lignes */
@@ -2021,7 +2021,7 @@
 @media (min-width: 761px) {
   .lib-screen.doc-ouvert .pdfr-tableau, .lecteur-plein .pdfr-tableau { height: calc(100vh - 188px); }
   .lib-screen.doc-ouvert:has(.pdfr-contexte) .pdfr-tableau, .lecteur-plein:has(.pdfr-contexte) .pdfr-tableau,
-  .lib-screen.doc-ouvert:has(.pdfr-edit-toolbar) .pdfr-tableau, .lecteur-plein:has(.pdfr-edit-toolbar) .pdfr-tableau { height: calc(100vh - 232px); }
+  .lib-screen.doc-ouvert:has(.pdfr-edit-toolbar:not(.flottante)) .pdfr-tableau, .lecteur-plein:has(.pdfr-edit-toolbar:not(.flottante)) .pdfr-tableau { height: calc(100vh - 232px); }
 }
 
 .tb { position: relative; flex: 1 1 auto; min-width: 0; height: 100%; min-height: 320px; border-radius: var(--r, 14px); overflow: hidden;
@@ -2344,3 +2344,28 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .rfc-libelle { display: flex; flex-direction: column; gap: 2px; font-size: 14px; font-weight: 600; }
 .rfc-nombre { width: 72px; padding: 8px 10px; border-radius: var(--r, 10px); border: 1px solid var(--border); background: var(--bg-2); color: var(--text); font: inherit; font-size: 15px; text-align: center; }
 .rfc-nombre:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* ---- MENU DE L'AVATAR (08/10) : en bas de la barre de navigation — thème, réglages, synchro ---- */
+.sb-avatar { position: relative; margin-top: 4px; }
+.sb-avatar-bt { width: 100%; background: none; font: inherit; text-align: left; }
+.sb-avatar-rond { width: 32px; height: 32px; font-size: 12px; border-radius: 50%; box-shadow: none; }
+.sb-item.sb-avatar-bt.active .sb-icon { background: transparent; box-shadow: none; }
+.sb-item.sb-avatar-bt.active .sb-avatar-rond { box-shadow: 0 0 0 2px var(--sidebar, var(--card)), 0 0 0 4px var(--accent); }
+.sb-avatar-menu {
+  position: absolute; left: calc(100% + 12px); bottom: 0; z-index: 900; width: 248px; padding: 5px;
+  background: var(--card-2, var(--card)); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg, 0 12px 32px rgba(0,0,0,.35));
+  animation: fc-entree .14s ease-out;
+}
+.sb-avatar-tete { padding: 8px 10px 6px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.sb-avatar-menu .mf-item { min-height: 38px; color: var(--text); font: inherit; font-size: 13.5px; cursor: pointer; text-align: left; }
+.sb-avatar-menu .mf-item:disabled { opacity: .6; cursor: default; }
+.sb-avatar-menu .mf-texte { display: flex; flex-direction: column; min-width: 0; }
+.sb-avatar-menu .mf-aide { font-size: 11.5px; color: var(--text-3); white-space: normal; }
+@keyframes fc-entree { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+/* (08/10) séance du jour des flashcards en tête de l'espace Réviser : une bande compacte */
+.revise-seance .sfa { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 14px 18px; }
+.revise-seance .sfa-titre { flex: 0 0 auto; }
+.revise-seance .sfa-ligne { flex: 1 1 260px; min-width: 0; }
+.revise-seance .sfa-note { flex: 1 1 100%; order: 3; }
+.revise-seance .sfa-btn { margin-left: auto; width: auto; }
+.ocr-etat { padding: 10px 12px; border: 1px solid var(--border-2); border-radius: 10px; background: var(--bg); }

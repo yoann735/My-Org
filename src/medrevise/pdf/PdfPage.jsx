@@ -33,6 +33,7 @@ import {
   soustraireAncres, partCouverte, couleurHex,
   lisserTrait, traitTouche, cheminLisse, suivreEnDouceur, modeDuTrait,
   EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, positionTexteProche,
+  lisibleSurNoir,
 } from './pdfShared.js';
 
 /** rendu d'une seule page (montée uniquement si proche du viewport) : canvas + couche de
@@ -49,7 +50,10 @@ export function PdfPageContent({
   formes = [], formeActiveId = null, onFormeActiver = () => {}, onCreerForme = () => {}, onFormeMaj = () => {}, onFormeSupprimer = () => {}, onFormeLegende = () => {},
   couleurForme = '#e5383b', typeFormeActif = 'rectangle', formeRemplie = false, onFormeModifier = () => {},
   couleurApercuSelection = null,
+  corps = null, // TEXTE D'UNE PAGE DE DOCUMENT (08/10, pdf/PageTexte.jsx) : juste au-dessus de la page, sous les annotations
+  fondNoir = false, // fond de page noir (document) : une encre sombre est rendue claire (lisibleSurNoir)
 }) {
+  const encre = (c, repli) => (fondNoir ? lisibleSurNoir(couleurHex(c, repli)) : couleurHex(c, repli));
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
   /* ============================================================
@@ -667,6 +671,7 @@ export function PdfPageContent({
       <div ref={textLayerRef} className={'pdfr-textlayer outil-' + outil} onMouseUp={handleMouseUp} onCopy={handleCopy}
         onMouseMove={handleMouseMove} onMouseLeave={() => setSurvolId(null)}
         style={survolId ? { cursor: 'pointer' } : undefined} />
+      {corps}
       {/* IMAGES COLLÉES (01/10) : JUSTE au-dessus du PDF, SOUS toutes les annotations
           (surlignages, blocs, traits, textes, « ? », boîtes — rendus après). Leur
           profondeur (`z`) ne les classe qu'entre elles : c'est l'ordre du DOM, sans
@@ -719,7 +724,7 @@ export function PdfPageContent({
           const ep = surl ? (t.epaisseur || EPAISSEUR_SURLIGNEUR) : (t.epaisseur || 0.0042);
           return (
             <path key={cle} d={cheminLisse(t.points)} fill="none"
-              stroke={couleurHex(t.couleur)}
+              stroke={encre(t.couleur)}
               strokeOpacity={Number.isFinite(t.opacite) ? t.opacite : (surl ? OPACITE_SURLIGNEUR : (apercu ? 0.9 : 1))}
               strokeWidth={Math.max(surl ? 4 : 1, ep * H)}
               strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
@@ -747,7 +752,7 @@ export function PdfPageContent({
       {/* FORMES (03/10) : des annotations, donc au-dessus des images ; sélectionnables
           par leur BORD seulement (l'intérieur laisse passer les clics vers le texte). */}
       {formes.map((f) => (masques && masques.has(f.id) ? null : (
-        <Forme key={f.id} forme={f} active={f.id === formeActiveId} interactive={outil === 'main'}
+        <Forme key={f.id} forme={f} active={f.id === formeActiveId} interactive={outil === 'main'} fondNoir={fondNoir}
           liee={liesFormes.has(f.id)} pageWidth={pageWidth} pageHeight={pageHeight}
           onActiver={onFormeActiver} onMaj={onFormeMaj} onModifier={onFormeModifier} onSupprimer={onFormeSupprimer} onLegende={onFormeLegende}
           onGeste={(enCours) => { gesteBoite.current = enCours; }} />
@@ -1494,7 +1499,7 @@ function formeSousPoint(el, cx, cy) {
   } catch (e) { return false; }
 }
 
-function Forme({ forme, active = false, interactive = false, liee = false, apercu = false, pageWidth, pageHeight, onActiver, onMaj, onModifier, onSupprimer, onLegende, onGeste }) {
+function Forme({ forme, active = false, interactive = false, liee = false, apercu = false, fondNoir = false, pageWidth, pageHeight, onActiver, onMaj, onModifier, onSupprimer, onLegende, onGeste }) {
   const [geste, setGeste] = useState(null);
   const [ecrit, setEcrit] = useState(null); // texte en cours d'écriture (null = pas d'édition)
   const g = geste || forme;
@@ -1503,7 +1508,7 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
   const W = pageWidth || 600, H = pageHeight || 800;
   // épaisseur du cadre : fraction de la page affichée — elle suit le zoom avec le cadre (04/10)
   const ep = Math.max(1, (forme.epaisseur || 0.0025) * H);
-  const coul = couleurHex(forme.couleur, '#e5383b');
+  const coul = fondNoir ? lisibleSurNoir(couleurHex(forme.couleur, '#e5383b')) : couleurHex(forme.couleur, '#e5383b');
   const wpx = g.width * W, hpx = g.height * H;
   const { d, pointes } = cheminForme(type, wpx, hpx, { fx: !!g.fx, fy: !!g.fy, epaisseur: ep });
 
@@ -1717,7 +1722,9 @@ function TextEditBlock({ edit, active, editable, onActivate, editor, pageHeight 
     plutôt qu'une popover flottante ancrée sur le bloc, pour rester fiable pendant le
     scroll/zoom (un bloc édité peut sortir du viewport pendant qu'on le rédige). Pilote
     la MÊME instance `editor` que celle rendue dans le bloc (passée par PdfReader). */
-export function EditToolbar({ editor, onReset, onClose, libre = false, couleur = null, onCouleur = null, palette = null, libelleSupprimer = null }) {
+// `sansSupprimer` / `extras` (08/10) : texte d'une page de document — rien à supprimer, et ses
+// réglages propres (titres, cases, citation, tableau, lien) à côté des listes
+export function EditToolbar({ editor, onReset, onClose, libre = false, couleur = null, onCouleur = null, palette = null, libelleSupprimer = null, sansSupprimer = false, extras = null, flottante = false }) {
   const [, force] = useState(0);
   useEffect(() => {
     const rerender = () => force((v) => v + 1);
@@ -1739,7 +1746,7 @@ export function EditToolbar({ editor, onReset, onClose, libre = false, couleur =
   };
 
   return (
-    <div className="pdfr-edit-toolbar" onMouseDown={garderLeCurseur}>
+    <div className={'pdfr-edit-toolbar' + (flottante ? ' flottante' : '')} onMouseDown={garderLeCurseur}>
       {libre && onCouleur && (
         <>
           <span className="et-sep" />
@@ -1777,13 +1784,14 @@ export function EditToolbar({ editor, onReset, onClose, libre = false, couleur =
         <option value="center">Centre</option>
         <option value="right">Droite</option>
       </select>
+      {extras && <><span className="et-sep" />{extras}</>}
       <span className="et-sep" />
       <button type="button" className="et-btn" title="Annuler" onClick={() => editor.chain().focus().undo().run()}><Icon name="refresh" size={13} style={{ transform: 'scaleX(-1)' }} /></button>
       <button type="button" className="et-btn" title="Rétablir" onClick={() => editor.chain().focus().redo().run()}><Icon name="refresh" size={13} /></button>
       <span style={{ flex: 1 }} />
-      <button type="button" className="btn ghost sm" onClick={onReset}>
+      {!sansSupprimer && <button type="button" className="btn ghost sm" onClick={onReset}>
         {libelleSupprimer ? <><Icon name="trash" size={13} /> {libelleSupprimer}</> : libre ? <><Icon name="trash" size={13} /> Supprimer la boîte</> : <><Icon name="refresh" size={13} /> Réinitialiser (texte d'origine)</>}
-      </button>
+      </button>}
       <button type="button" className="btn sm" onClick={onClose}><Icon name="check" size={13} /> Terminé</button>
     </div>
   );

@@ -22,6 +22,7 @@ import { buildCourseExport, buildCourseExportFromParts, buildChapitreExport, doc
 import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import { openPdf, pdfjsLib } from '../pdf/pdfjsSetup.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
+import { SeanceAujourdhui } from '../components/SeanceAujourdhui.jsx';
 import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
 import { useImportParDepot } from '../components/TreeFileDrop.jsx';
 import { useTreeOpenState, ancestorDossierIds, trierSections, deplacerSection } from '../components/useTreeOpenState.js';
@@ -935,6 +936,10 @@ export function Reviser({ ctx }) {
         <h1 className="serif">Réviser</h1>
         <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
       </div>
+
+      {/* SÉANCE DU JOUR des flashcards (révisions + apprentissage, toutes matières) — 08/10 :
+         elle vit ICI, et plus dans le panneau d'un cours (qui sert à gérer SES cartes). */}
+      {ctx.startSeanceFC && <div className="revise-seance"><SeanceAujourdhui ctx={ctx} onDemarrer={ctx.startSeanceFC} /></div>}
 
       {/* ÉTAPE 1 — « Série du jour » (TodaySeriesCard) et « À rattraper » (OverdueBox)
          ont été retirés d'ici : tous deux vivent déjà sur l'Accueil (Dashboard.jsx),

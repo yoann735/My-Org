@@ -23,6 +23,7 @@
     "@tiptap/extension-table": "3.27.3",
     "@tiptap/extension-text-align": "^3.27.3",
     "@tiptap/extension-text-style": "^3.27.3",
+    "@tiptap/pm": "3.27.3",
     "@tiptap/react": "^3.27.3",
     "@tiptap/starter-kit": "^3.27.3",
     "idb-keyval": "^6.2.5",

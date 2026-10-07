@@ -137,3 +137,9 @@
    (mesuré : 3 094 éléments / 7 à 12 ms → voir le compte-rendu v1.4) */
 .pm-vue :is(.pis-item, .hl-entry) { content-visibility: auto; contain-intrinsic-size: auto 150px; }
 .pm-vue .hl-entry { contain-intrinsic-size: auto 52px; }
+
+/* (08/10) ligne d'information des flashcards du cours, cliquable vers l'espace Réviser */
+.pm-resume-fc { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; width: 100%; margin: 2px 0 8px; padding: 6px 10px;
+  border: none; border-radius: 8px; background: transparent; color: var(--text-3); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.pm-resume-fc:hover { background: var(--bg-2); color: var(--text-2); }
+.pm-resume-fc svg { margin-left: auto; opacity: .7; }

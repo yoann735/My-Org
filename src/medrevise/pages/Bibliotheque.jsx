@@ -8,16 +8,15 @@
    (props embedded/onClose, voir ces fichiers). Layout master-detail
    responsive (`.lib-split`, voir etudes.css).
    ============================================================ */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { EdTop, matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DropCible, LigneDossierArbre, dossierDeleteTexts, DestPicker, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
+import { matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DropCible, LigneDossierArbre, dossierDeleteTexts, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
 import { useTreeOpenState, trierSections, deplacerSection } from '../components/useTreeOpenState.js';
 import { useImportParDepot } from '../components/TreeFileDrop.jsx';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
-import { docKind, DOC_META, createTranscript, deleteTranscript, createDocumentNotes } from '../documents/lib/documents.js';
-import { DocumentCours } from '../documents/DocumentCours.jsx';
-import { cleanTranscript, textToDoc } from '../documents/lib/transcript.js';
+import { docKind, DOC_META, deleteTranscript, createDocumentNotes } from '../documents/lib/documents.js';
+import { FenetreCreation } from '../components/FenetreCreation.jsx';
 import { PdfReader } from '../pdf/PdfReader.jsx';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { TranscriptEditor } from '../documents/TranscriptEditor.jsx';
@@ -31,8 +30,6 @@ const MODES_AFFICHAGE = [
 const schemaViews = (f) => ficheImages(f).length;
 const schemaCoches = (f) => totalCoches(f);
 
-import { PanneauOcrBibliotheque } from '../ocr/PanneauOcr.jsx';
-
 export function Bibliotheque({ ctx }) {
   const { db } = ctx;
   const [openFiche, setOpenFiche] = useState({});
@@ -41,8 +38,20 @@ export function Bibliotheque({ ctx }) {
   // C — panneau de droite : quelle fiche-document est ouverte (jamais de
   // navigation d'écran — on reste sur 'library' tout du long).
   const [selected, setSelected] = useState(null); // { ficheId, kind: 'fiche'|'schema'|'transcript', mode? }
-  const [creatingTranscript, setCreatingTranscript] = useState(false);
-  const [creatingDocument, setCreatingDocument] = useState(false); // 07/10 : « Nouveau document »
+  /* « NOUVEAU DOCUMENT » (08/10) : la fenêtre de création, pré-remplie avec la matière
+     d'où l'on vient (menu d'une matière, ou cours ouvert). Les sessions de transcript se
+     créent dans le mode Transcript d'un cours : plus de « Nouveau transcript » ici. */
+  const [nouveauDoc, setNouveauDoc] = useState(null); // null | { matiereId }
+  const [creationEnCours, setCreationEnCours] = useState(false);
+  const creerDocument = async ({ titre, matiereId }) => {
+    setCreationEnCours(true);
+    try {
+      const fiche = await createDocumentNotes({ matiereId, titre: titre || 'Nouveau document' });
+      await ctx.reload();
+      setNouveauDoc(null);
+      setSelected({ ficheId: fiche.id, kind: 'document' }); setListCollapsed(true);
+    } finally { setCreationEnCours(false); }
+  };
   const [etqMenu, setEtqMenu] = useState(null); // { x, y, ficheId } — menu compact de l'étiquette
   const [replacingHtmlId, setReplacingHtmlId] = useState(null); // ficheId — modale « Remplacer le fichier HTML »
   // refonte UX (repli HORIZONTAL, pas un démontage) : la liste reste TOUJOURS
@@ -529,15 +538,14 @@ export function Bibliotheque({ ctx }) {
       {ficheOuverte && (selected.kind === 'fiche' || selected.kind === 'document') ? null : ficheOuverte ? (
         <div className="lecteur-entete">
           <TitreRenommable titre={ficheOuverte.titre} onRenommer={(t) => ctx.renameFiche(ficheOuverte.id, t)} />
-          <div className="topbar-actions"><EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} /></div>
         </div>
       ) : (
       <div className="topbar">
         <div>
           <h1 className="serif">Bibliothèque</h1>
           <div className="sub">Tous tes cours, fiches et documents.</div>
-          {/* OCR des PDF image : progression du traitement en tâche de fond (repliable) */}
-          <PanneauOcrBibliotheque />
+          {/* (08/10) l'OCR tourne en silence : son état vit dans Réglages → Reconnaissance de
+             texte et dans le menu Fichier de chaque cours, plus ici */}
         </div>
         {/* « Rechercher une notion » retiré (30/09) : pas utile ici — chercher une
            notion DANS un cours se fait dans le lecteur (Ctrl/Cmd+F). Le seul bouton
@@ -552,16 +560,11 @@ export function Bibliotheque({ ctx }) {
               </button>
             ))}
           </div>
-          {affichage === 'arbre' && (<>
-          <button className="btn ghost sm" onClick={() => { setCreatingDocument((v) => !v); setCreatingTranscript(false); }}
-            title="Un cours sans diapos : un document de notes riche, avec le même panneau (exercices, notions, transcription)">
-            <Icon name={creatingDocument ? 'x' : 'plus'} size={13} /> {creatingDocument ? 'Fermer' : 'Nouveau document'}
+          <button className="btn ghost sm" onClick={() => setNouveauDoc({ matiereId: null })}
+            title="Un cours sans diapos : des pages blanches où écrire et annoter, avec le même panneau (exercices, notions, transcription)">
+            <Icon name="plus" size={13} /> Nouveau document
           </button>
-          <button className="btn ghost sm" onClick={() => { setCreatingTranscript((v) => !v); setCreatingDocument(false); }}>
-            <Icon name={creatingTranscript ? 'x' : 'plus'} size={13} /> {creatingTranscript ? 'Fermer' : 'Nouveau transcript'}
-          </button>
-          </>)}
-          <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
+          {/* (08/10) thème, réglages et synchro : menu de l'avatar, en bas de la barre de navigation */}
         </div>
       </div>
       )}
@@ -577,14 +580,6 @@ export function Bibliotheque({ ctx }) {
         <div className={'lib-master' + (listCollapsed ? ' collapsed' : '')}>
         {!listCollapsed && (
         <div className="lib-master-body">
-          {creatingDocument && (
-            <NewDocument ctx={ctx} onDone={() => setCreatingDocument(false)}
-              onCreated={(fiche) => { setSelected({ ficheId: fiche.id, kind: 'document' }); setListCollapsed(true); }} />
-          )}
-          {creatingTranscript && (
-            <NewTranscript ctx={ctx} onDone={() => setCreatingTranscript(false)}
-              onCreated={(fiche) => { setSelected({ ficheId: fiche.id, kind: 'transcript' }); setListCollapsed(true); }} />
-          )}
 
             <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
             <div className="lib-tree" {...fd.dropProps({ key: 'tree' })}>
@@ -737,21 +732,24 @@ export function Bibliotheque({ ctx }) {
               <div style={{ fontWeight: 600, marginTop: 10 }}>Aucun document sélectionné</div>
               <div className="hint" style={{ marginTop: 6 }}>Clique une fiche avec PDF, schéma ou transcript pour l'ouvrir ici.</div>
             </div>
-          ) : selected.kind === 'fiche' ? (
+          ) : selected.kind === 'fiche' || selected.kind === 'document' ? (
+            // (08/10) un document s'ouvre dans le lecteur, exactement comme un PDF
             <PdfReader key={selected.ficheId + ':' + (selected.srcTab || '')} ctx={ctx} source={{ id: selected.ficheId, ficheId: selected.ficheId }} initialSrcTab={selected.srcTab} embedded avecEntete onClose={closeDoc} />
           ) : selected.kind === 'schema' ? (
             <SchemaEditorScreen key={selected.ficheId} ctx={ctx} ficheId={selected.ficheId} embedded onClose={closeDoc} />
           ) : selected.kind === 'transcript' ? (
             <TranscriptEditor key={selected.ficheId} ctx={ctx} ficheId={selected.ficheId} onClose={closeDoc} />
-          ) : selected.kind === 'document' ? (
-            <DocumentCours key={selected.ficheId} ctx={ctx} ficheId={selected.ficheId} onClose={closeDoc}
-              onConvertir={() => setSelected({ ficheId: selected.ficheId, kind: 'fiche', srcTab: 'pdf' })} />
           ) : null}
         </div>
       </div>
       )}
 
       {modaleDepot}
+      {nouveauDoc && (
+        <FenetreCreation ctx={ctx} titreFenetre="Nouveau document" placeholderTitre="Titre du document"
+          matiereInitiale={nouveauDoc.matiereId || (ficheOuverte && ficheOuverte.matiereId) || null}
+          libelleCreer="Créer" occupe={creationEnCours} onAnnuler={() => setNouveauDoc(null)} onCreer={creerDocument} />
+      )}
 
       {etqMenu && (
         <ContextMenu x={etqMenu.x} y={etqMenu.y} onClose={() => setEtqMenu(null)}
@@ -783,6 +781,7 @@ export function Bibliotheque({ ctx }) {
         return (
           <ContextMenu x={matMenu.x} y={matMenu.y} onClose={() => setMatMenu(null)} items={[
             { label: 'Renommer', icon: 'edit', onClick: () => startRename('matiere', m.id, matiereMeta(m).label) },
+            { label: 'Nouveau document', icon: 'edit', onClick: () => setNouveauDoc({ matiereId: m.id }) },
             { label: 'Nouveau dossier', icon: 'folder', onClick: () => createUnite(m.id) },
             { label: 'Supprimer la matière…', icon: 'trash', danger: true, onClick: () => askDeleteMatiere(m.id) },
           ]} />
@@ -898,121 +897,3 @@ function ReplaceHtmlModal({ ctx, fiche, onClose }) {
 
 /* création d'un cours « document » (07/10) : destination + titre, et c'est tout — le
    document s'ouvre aussitôt, prêt à écrire. */
-function NewDocument({ ctx, onDone, onCreated }) {
-  const { db } = ctx;
-  const sources = db.sources.filter((s) => !s.archive);
-  const matieresFor = (sid) => db.matieres.filter((m) => m.sourceId === sid && !m.archive);
-  const [srcId, setSrcId] = useState(() => (sources[0] || {}).id);
-  const [matId, setMatId] = useState(() => (matieresFor((sources[0] || {}).id)[0] || {}).id || null);
-  const [titre, setTitre] = useState('');
-  const [busy, setBusy] = useState(false);
-  const pret = !!matId && !busy;
-  const creer = async () => {
-    if (!pret) return;
-    setBusy(true);
-    const fiche = await createDocumentNotes({ matiereId: matId, titre: titre.trim() || 'Nouveau document' });
-    await ctx.reload();
-    setBusy(false);
-    onDone && onDone();
-    onCreated && onCreated(fiche);
-  };
-  return (
-    <div className="card" style={{ marginBottom: 16 }}>
-      <div className="card-body">
-        <div className="imp-dest-head"><Icon name="edit" size={15} /> Nouveau document</div>
-        <div className="hint" style={{ margin: '4px 0 10px' }}>Un cours sans diapos : un document de notes (titres, listes, cases, tableaux, images), avec exercices, notions et transcription à côté.</div>
-        <DestPicker ctx={ctx} srcId={srcId} setSrcId={setSrcId} matId={matId} setMatId={setMatId} />
-        <label className="field" style={{ display: 'block', marginTop: 10 }}>
-          <span className="hint">Titre</span>
-          <input className="input" value={titre} placeholder="Nouveau document" onChange={(e) => setTitre(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') creer(); }} style={{ width: '100%', marginTop: 4 }} />
-        </label>
-        <div className="row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
-          <button className="btn ghost sm" onClick={onDone}>Annuler</button>
-          <button className="btn primary sm" disabled={!pret} onClick={creer}><Icon name="plus" size={13} /> Créer le document</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* création d'un transcript : destination + titre + collage + APERÇU nettoyage
-   réversible (repris de l'ex-onglet Documents, absorbé ici). `onCreated` ouvre
-   le transcript fraîchement créé dans le panneau de droite. */
-function NewTranscript({ ctx, onDone, onCreated }) {
-  const { db } = ctx;
-  const sources = db.sources.filter((s) => !s.archive);
-  const matieresFor = (sid) => db.matieres.filter((m) => m.sourceId === sid && !m.archive);
-  const [srcId, setSrcId] = useState(() => (sources[0] || {}).id);
-  const [matId, setMatId] = useState(() => (matieresFor((sources[0] || {}).id)[0] || {}).id || null);
-  const [titre, setTitre] = useState('');
-  const [raw, setRaw] = useState('');
-  const [version, setVersion] = useState('clean'); // clean | raw
-  const [step, setStep] = useState('edit'); // edit | preview
-  const [busy, setBusy] = useState(false);
-
-  const cleaned = useMemo(() => cleanTranscript(raw).cleaned, [raw]);
-  const ready = !!matId && !!titre.trim() && !!raw.trim();
-
-  const create = async () => {
-    if (!ready || busy) return;
-    setBusy(true);
-    const chosen = version === 'clean' && cleaned ? cleaned : raw;
-    const fiche = await createTranscript({ matiereId: matId, titre, originalText: raw, doc: textToDoc(chosen) });
-    await ctx.reload();
-    setBusy(false);
-    onDone && onDone();
-    onCreated && onCreated(fiche);
-  };
-
-  return (
-    <div className="card" style={{ marginBottom: 16 }}>
-      <div className="card-body">
-        <div className="imp-dest-head"><Icon name="edit" size={15} /> Nouveau transcript</div>
-
-        {step === 'edit' && (
-          <div className="fadein">
-            <DestPicker ctx={ctx} srcId={srcId} setSrcId={setSrcId} matId={matId} setMatId={setMatId} />
-            <div className="imp-field">
-              <label>Titre</label>
-              <input className="imp-title" placeholder="ex : Cardio — cours 3 (transcript vidéo)" value={titre} onChange={(e) => setTitre(e.target.value)} />
-            </div>
-            <div className="imp-field">
-              <label>Transcript brut (collé)</label>
-              <textarea className="imp-title" style={{ minHeight: 150, resize: 'vertical', fontFamily: 'inherit', fontSize: 13 }}
-                placeholder="Colle ici le transcript du cours vidéo (avec horodatages, hésitations… ils seront nettoyés)." value={raw} onChange={(e) => setRaw(e.target.value)} />
-            </div>
-            <div className="imp-actions">
-              <button className="btn ghost" onClick={onDone}>Annuler</button>
-              <button className="btn primary" disabled={!ready} onClick={() => setStep('preview')}><Icon name="sparkle" size={15} /> Nettoyer & prévisualiser</button>
-            </div>
-          </div>
-        )}
-
-        {step === 'preview' && (
-          <div className="fadein">
-            <div className="hint" style={{ marginBottom: 10 }}>Le nettoyage est réversible : le transcript brut est conservé (bouton « Rétablir le texte d'origine » dans l'éditeur).</div>
-            <div className="seg" style={{ marginBottom: 12 }}>
-              <button type="button" className={'seg-btn' + (version === 'clean' ? ' active' : '')} onClick={() => setVersion('clean')}><Icon name="sparkle" size={13} /> Version nettoyée</button>
-              <button type="button" className={'seg-btn' + (version === 'raw' ? ' active' : '')} onClick={() => setVersion('raw')}><Icon name="edit" size={13} /> Texte brut</button>
-            </div>
-            <div className="row" style={{ gap: 12, alignItems: 'stretch', flexWrap: 'wrap' }}>
-              <div style={{ flex: '1 1 260px', minWidth: 0 }}>
-                <div className="hint" style={{ fontWeight: 700, marginBottom: 4 }}>Avant</div>
-                <pre className="rt-diff">{raw.slice(0, 4000) || '(vide)'}</pre>
-              </div>
-              <div style={{ flex: '1 1 260px', minWidth: 0 }}>
-                <div className="hint" style={{ fontWeight: 700, marginBottom: 4 }}>Après (nettoyé)</div>
-                <pre className="rt-diff">{cleaned.slice(0, 4000) || '(le nettoyage n\'a rien laissé — garde le texte brut)'}</pre>
-              </div>
-            </div>
-            <div className="imp-actions" style={{ marginTop: 12 }}>
-              <button className="btn ghost" onClick={() => setStep('edit')}>Retour</button>
-              <button className="btn primary" disabled={busy} onClick={create}><Icon name="check" size={15} /> Créer le transcript ({version === 'clean' ? 'nettoyé' : 'brut'})</button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}

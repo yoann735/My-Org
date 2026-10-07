@@ -84,6 +84,10 @@ import { FeuilleDemarrage, TranscriptPanel, BadgeTranscript, ResumeReplie } from
 import { lirePosition, ecrirePosition, empreintePdf, positionDepuisDefilement } from '../lib/positionLecture.js';
 import { NotesEditor } from '../documents/NotesEditor.jsx';
 import { estNotionDoc, creerNotionDoc, synchroniserNotionsDoc } from '../documents/lib/notionsDoc.js';
+import { lireNotesDoc, ecrirePageDoc, majNotesDoc, attendreNotesDoc, contenuGlobal, docNonVide } from '../documents/lib/notesDoc.js';
+import { dehydrateDoc, EMPTY_DOC } from '../documents/lib/richtext.js';
+import { exporterMarkdownDoc } from '../documents/lib/exportDoc.js';
+import { PageTexte, PAGE_A4, OutilsTexteDocument, effacerSurlignageRecherche } from './PageTexte.jsx';
 import { useTablette, abonnerStylet, styletActif, lireFractionVolet, ecrireFractionVolet, largeurVolet, VOLET_MIN_PX, VOLET_MAX } from '../lib/tablette.js';
 import '../../styles/tablette.css';
 import '../../styles/notes-doc.css';
@@ -135,6 +139,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const idFiche = source ? source.ficheId : (docProp ? null : ficheId);
   const ficheReelle = idFiche ? db.fiches.find((f) => f.id === idFiche) : null;
   const fiche = ficheReelle || source || docProp;
+  /* DOCUMENT (08/10, docs/compte-rendu-nettoyage-document.md) : un cours sans PDF s'ouvre
+     ICI, comme un PDF — des pages A4 blanches (pages ajoutées, kind 'page') sur lesquelles on
+     écrit (pdf/PageTexte.jsx) et on annote avec tous les outils. */
+  const modeDoc = !!(fiche && fiche.docNotes && !fiche.pdfId && !fiche.htmlId);
   /* LIAISON AVEC LE TÉLÉPHONE (02/10, docs/mecanique-dessin-mobile.md) : l'ordi publie
      la fiche qu'il ouvre — le téléphone la propose par défaut pour y envoyer un dessin.
      Une écriture à l'ouverture, une à la fermeture (rien à chaque page). */
@@ -173,8 +181,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
   // source affichée quand la fiche porte À LA FOIS un PDF et une fiche HTML —
   // indépendant du mode Lecture/Édition (qui ne s'applique qu'au PDF).
-  const [srcTab, setSrcTab] = useState(() => initialSrcTab || (fiche && fiche.pdfId ? 'pdf' : 'html'));
-  useEffect(() => { setSrcTab(initialSrcTab || (fiche && fiche.pdfId ? 'pdf' : 'html')); }, [ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [srcTab, setSrcTab] = useState(() => initialSrcTab || (fiche && (fiche.pdfId || modeDoc) ? 'pdf' : 'html'));
+  useEffect(() => { setSrcTab(initialSrcTab || (fiche && (fiche.pdfId || modeDoc) ? 'pdf' : 'html')); }, [ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
   // tablette : seulement là où le lecteur a son en-tête (Bibliothèque, plein écran) —
   // Apprentissage et Anatomie gardent leur propre disposition
   const modeTab = tablette && (!embedded || avecEntete) && srcTab === 'pdf';
@@ -355,9 +363,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [notionsNotes, setNotionsNotes] = useState([]);
   const notesRef = useRef(null);
   const [flashcardNotes, setFlashcardNotes] = useState(null); // { texte, n } — flashcard depuis une sélection des notes
+  const [editsCharges, setEditsCharges] = useState(false);
   const reloadEdits = async () => {
     const all = await getAll('annotations');
     setEdits(all.filter((a) => a.ficheId === ficheId));
+    setEditsCharges(true);
   };
 
   /* ---- ANNULER / RÉTABLIR (lib/annotHistory.js) ----
@@ -387,7 +397,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   };
   const hist = useAnnotHistorique(rechargerAnnotations, appliquerLocal);
 
-  useEffect(() => { reloadHighlights(); reloadEdits(); setActiveEditId(null); hist.vider(); }, [ficheId]);
+  useEffect(() => { setEditsCharges(false); reloadHighlights(); reloadEdits(); setActiveEditId(null); hist.vider(); }, [ficheId]);
 
   // Cmd/Ctrl+Z et Cmd/Ctrl+Maj+Z. IGNORÉS dès que la frappe vise un champ de saisie
   // ou du contenu éditable : le texte a son propre historique (TipTap dans une boîte,
@@ -423,6 +433,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      sans page ajoutée, cette liste est exactement celle d'avant. */
   const pagesAjoutees = useMemo(() => separerParType([], edits).page, [edits]);
   const pageSizes = useMemo(() => {
+    if (modeDoc) {
+      // document : ses pages, dans l'ordre (toutes « au début », triées par rang) — A4 par défaut
+      const tri = (a, b) => (a.rang - b.rang) || String(a.createdAt).localeCompare(String(b.createdAt));
+      return [...pagesAjoutees].sort(tri).map((a) => ({ cle: a.id, pdf: null, ajout: a, width: a.width || PAGE_A4.width, height: a.height || PAGE_A4.height }));
+    }
     if (!pdfPageSizes.length) return [];
     const parApres = {};
     for (const a of pagesAjoutees) {
@@ -438,8 +453,54 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     ajouter(0);
     pdfPageSizes.forEach((sz, i) => { liste.push({ cle: i + 1, pdf: i + 1, width: sz.width, height: sz.height }); ajouter(i + 1); });
     return liste;
-  }, [pdfPageSizes, pagesAjoutees]);
+  }, [pdfPageSizes, pagesAjoutees, modeDoc]);
   const nbPagesAffichees = pageSizes.length;
+  const pageSizesRef = useRef(pageSizes); pageSizesRef.current = pageSizes;
+
+  /* ---- TEXTE DES PAGES D'UN DOCUMENT (08/10) ----
+     `corpsPages` : JSON du texte de chaque page (store notes_doc, champ `pages`), lu à
+     l'ouverture et tenu à jour à chaque enregistrement — une page démontée par le rendu
+     virtualisé repart toujours de la dernière version. */
+  const corpsPages = useRef({});
+  const ancienDoc = useRef(null);
+  const [docCharge, setDocCharge] = useState(false);
+  const [fondNoir, setFondNoir] = useState(false);
+  const pagesTexte = useRef(new Map()); // id de page → API de son PageTexte monté
+  const focusPages = useRef({}); // id de page → position du curseur à poser à son montage
+  const [editeurPage, setEditeurPage] = useState(null); // { pageId, ed } — texte de page en cours d'écriture
+  const creationPage = useRef(false);
+  useEffect(() => {
+    let vivant = true;
+    setDocCharge(false); corpsPages.current = {}; ancienDoc.current = null; setFondNoir(false); setEditeurPage(null); creationPage.current = false;
+    if (!ficheReelle) return undefined;
+    lireNotesDoc(ficheId).then((r) => {
+      if (!vivant) return;
+      corpsPages.current = { ...((r && r.pages) || {}) };
+      ancienDoc.current = r || null;
+      setFondNoir(!!(r && r.fond === 'noir'));
+      setDocCharge(true);
+    });
+    return () => { vivant = false; };
+  }, [ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // un document a toujours au moins une page ; celui d'avant le 08/10 (texte dans `content`)
+  // voit ce texte DÉPLACÉ sur sa première page — la suite déborde sur les pages suivantes
+  useEffect(() => {
+    if (!modeDoc || !docCharge || !editsCharges || pagesAjoutees.length || creationPage.current) return;
+    creationPage.current = true;
+    (async () => {
+      const rec = newPageAjoutee({ ficheId, apres: 0, rang: 0, width: PAGE_A4.width, height: PAGE_A4.height });
+      const ancien = ancienDoc.current;
+      if (ancien && ancien.content && docNonVide(ancien.content) && !Object.keys(ancien.pages || {}).length) {
+        corpsPages.current[rec.id] = ancien.content;
+        await majNotesDoc(ficheId, (r) => ({ pages: { ...(r.pages || {}), [rec.id]: ancien.content }, content: EMPTY_DOC }));
+      }
+      await put('annotations', rec);
+      appliquerLocal([{ store: 'annotations', apres: rec }]);
+      creationPage.current = false;
+    })();
+  }, [modeDoc, docCharge, editsCharges, pagesAjoutees.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // le lecteur peut afficher ses pages : PDF chargé, ou document prêt
+  const pret = !!pdfDoc || (modeDoc && docCharge && pageSizes.length > 0);
   // index (0…) dans les pages affichées d'une clé de page (numéro du PDF ou id)
   const indexDePage = (cle) => pageSizes.findIndex((p) => p.cle === cle);
 
@@ -556,6 +617,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [restaure, setRestaure] = useState(false); // la zone de lecture peut s'afficher
   const restaureRef = useRef(false); restaureRef.current = restaure;
   const aRestaurer = useRef(null); // position en cours de restauration
+  // CORRECTIF (08/10) : la décision ne change parfois aucun état (zoom et disposition déjà
+  // les bons) — ce compteur relance quand même la pose du défilement ci-dessous. Sans lui,
+  // la zone de lecture restait masquée (même zoom que celui mémorisé = aucun rendu de plus).
+  const [tourRestauration, setTourRestauration] = useState(0);
   useEffect(() => {
     let vivant = true;
     setPosLue(false); setRestaure(false); posRef.current = null; aRestaurer.current = null;
@@ -564,11 +629,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   }, [ficheId]);
   // décision : position valable (même PDF, même nombre de pages) → zoom et disposition d'abord
   useEffect(() => {
-    if (restaure || !posLue || !pdfDoc || !pageSizes.length || aRestaurer.current) return;
+    if (restaure || !posLue || !pret || !pageSizes.length || aRestaurer.current) return;
     const p = posRef.current;
-    const valable = p && p.kind === 'pdf' && p.empreinte && p.empreinte === empreintePdf(fiche && fiche.pdfId, pdfDoc.numPages);
+    // document : la page mémorisée existe encore ; PDF : même fichier, même nombre de pages
+    const valable = modeDoc ? !!(p && p.kind === 'doc' && pageSizes.some((sz) => String(sz.cle) === String(p.cle)))
+      : !!(p && p.kind === 'pdf' && p.empreinte && p.empreinte === empreintePdf(fiche && fiche.pdfId, pdfDoc.numPages));
     if (!valable) { setRestaure(true); return; } // rien, ou PDF changé : page 1, sans erreur
     aRestaurer.current = p;
+    setTourRestauration((n) => n + 1);
     if (p.disposition && ['pdf', 'deux', 'tableau'].includes(p.disposition) && p.disposition !== disposition) {
       setDispositionBrut(p.disposition);
       try { localStorage.setItem(cleDispo, p.disposition); } catch (e) { /* ignore */ }
@@ -579,7 +647,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const z = Math.max(0.4, Math.min(4, Number(p.scale) || scale));
       if (Math.abs(z - scale) > 0.001) { scaleRef.current = z; setScale(z); }
     }
-  }, [posLue, pdfDoc, pageSizes, restaure]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [posLue, pret, pageSizes, restaure]); // eslint-disable-line react-hooks/exhaustive-deps
   // défilement : posé à chaque mise en page tant que la restauration n'est pas finie (le zoom
   // ajusté à la largeur peut encore changer), puis on attend que la page visée soit dessinée
   useLayoutEffect(() => {
@@ -603,10 +671,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     };
     raf = requestAnimationFrame(verifier);
     return () => { fini = true; if (raf) cancelAnimationFrame(raf); };
-  }, [layout, restaure]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [layout, restaure, tourRestauration]); // eslint-disable-line react-hooks/exhaustive-deps
   // enregistrement
   const etatPosition = useRef({});
-  etatPosition.current = { layout, pageSizes, scale, disposition, pdfId: fiche && fiche.pdfId, nb: pdfDoc && pdfDoc.numPages };
+  etatPosition.current = { layout, pageSizes, scale, disposition, pdfId: fiche && fiche.pdfId, nb: modeDoc ? pageSizes.length : pdfDoc && pdfDoc.numPages, modeDoc };
   const sauverPosition = () => {
     if (!restaureRef.current || !ficheId) return;
     const el = scrollRef.current;
@@ -615,9 +683,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const pos = positionDepuisDefilement(el.scrollTop, st.layout.offsets, st.pageSizes.map((sz) => sz.height * st.scale));
     if (!pos) return;
     ecrirePosition(ficheId, {
-      kind: 'pdf', cle: st.pageSizes[pos.index].cle, index: pos.index, fraction: +pos.fraction.toFixed(4),
+      kind: st.modeDoc ? 'doc' : 'pdf', cle: st.pageSizes[pos.index].cle, index: pos.index, fraction: +pos.fraction.toFixed(4),
       scale: +st.scale.toFixed(3), zoomManuel: !!zoomManuel.current, disposition: st.disposition,
-      empreinte: empreintePdf(st.pdfId, st.nb),
+      empreinte: st.modeDoc ? 'doc' : empreintePdf(st.pdfId, st.nb),
     });
   };
   const sauverRef = useRef(sauverPosition); sauverRef.current = sauverPosition;
@@ -628,7 +696,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!restaure || !el) return undefined;
     el.addEventListener('scroll', planifierPosition, { passive: true });
     return () => el.removeEventListener('scroll', planifierPosition);
-  }, [restaure, !!pdfDoc]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [restaure, pret]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (restaure) planifierPosition(); }, [scale, disposition]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const cache = () => { if (document.visibilityState === 'hidden') { clearTimeout(minuteurPosition.current); sauverRef.current(); } };
@@ -738,7 +806,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      est intercepté (preventDefault) et devient un zoom du PDF. Le tableau garde
      ses propres gestes. */
   useEffect(() => {
-    if (!pdfDoc) return undefined;
+    if (!pret) return undefined;
     const dansLecteur = (t) => { const r = racineRef.current; return !!(r && t && t.nodeType === 1 ? r.contains(t) : r && t && r.contains(t.parentNode)); };
     const centreY = () => { const el = scrollRef.current; return el ? el.getBoundingClientRect().top + el.clientHeight / 2 : window.innerHeight / 2; };
     let cumul = 0, y = 0, raf = null;
@@ -812,7 +880,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       window.removeEventListener('touchcancel', onTouchEnd, opts);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [pdfDoc]);
+  }, [pret]);
 
   /* SURLIGNAGE « COMME WORD » (nuit du 30/09) : plus de note au clic. La bulle
      d'un surlignage existant ne propose que sa couleur et « Supprimer ». Les notes
@@ -910,6 +978,30 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   useEffect(() => {
     let cancelled = false;
     const q = debouncedSearch.trim().toLowerCase();
+    if (q && modeDoc) {
+      // DOCUMENT (08/10) : on cherche dans le texte des pages (nœuds texte du JSON, dans l'ordre)
+      const found = [];
+      pageSizesRef.current.forEach((sz) => {
+        const corps = corpsPages.current[sz.cle];
+        if (!corps) return;
+        const blocs = (corps.content || []).length || 1;
+        let rang = 0;
+        (corps.content || []).forEach((bloc, iBloc) => {
+          const w = (n) => {
+            if (n.type === 'text' && n.text) {
+              const t = n.text.toLowerCase();
+              let i = t.indexOf(q);
+              while (i !== -1) { found.push({ page: sz.cle, doc: true, rang: rang++, approxY: Math.min(0.9, 0.07 + (iBloc / blocs) * 0.86) }); i = t.indexOf(q, i + 1); }
+            }
+            (n.content || []).forEach(w);
+          };
+          w(bloc);
+        });
+      });
+      found.forEach((m, i) => { m.idx = i; });
+      setMatches(found); setActiveMatch(0); setSearching(false);
+      return;
+    }
     if (!q || !pdfDoc) { setMatches([]); setActiveMatch(0); return; }
     setSearching(true);
     (async () => {
@@ -934,12 +1026,20 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       setSearching(false);
     })();
     return () => { cancelled = true; };
-  }, [debouncedSearch, pdfDoc, numPages, coucheOcr]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, pdfDoc, numPages, coucheOcr, modeDoc]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!matches.length) return;
+    if (!matches.length) { if (modeDoc) effacerSurlignageRecherche(); return; }
     const m = matches[Math.max(0, Math.min(activeMatch, matches.length - 1))];
     if (m) scrollToPageFraction(m.page, m.approxY);
+    // document : la page affichée surligne l'occurrence et la centre (sans prendre le focus)
+    if (m && m.doc) {
+      const viser = (essai) => setTimeout(() => {
+        const api = pagesTexte.current.get(m.page);
+        if (!(api && api.montrerOccurrence(debouncedSearch.trim(), m.rang)) && essai < 8) viser(essai + 1);
+      }, 90);
+      viser(0);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMatch, matches]);
 
@@ -1015,7 +1115,20 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      de la barre d'outils, qui en contenait la moitié. */
   // ÉPURÉ (03/10) : des titres courts, pas de phrases d'aide, l'essentiel seulement —
   // l'export en tête. Groupes séparés par un simple trait.
-  const groupesFichier = [
+  const groupesFichier = modeDoc ? [
+    { items: [
+      { label: 'Exporter en PDF', icon: 'filePdf', principal: true, onClick: () => imprimerDocument() },
+      { label: 'Exporter en Markdown (.md)', icon: 'upload', onClick: () => exporterMdDocument() },
+    ] },
+    { items: [
+      { label: fondNoir ? 'Fond de page : noir' : 'Fond de page : blanc', icon: fondNoir ? 'moon' : 'sun', actif: fondNoir, onClick: () => basculerFond() },
+      ficheReelle && { label: 'Renommer', icon: 'edit', onClick: () => setDemandeRenommer((n) => n + 1) },
+    ] },
+    { items: [
+      canAddItem && { label: 'Prompts', icon: 'layers', onClick: () => setPromptsOuverts(true) },
+      { label: 'Importer un PDF…', icon: 'upload', onClick: () => entreePdfDoc.current && entreePdfDoc.current.click() },
+    ] },
+  ] : [
     { items: [
       { label: exporting ? 'Export en cours…' : 'Exporter en PDF annoté', icon: 'filePdf', principal: true,
         onClick: () => { if (!exporting) exportAnnotated(); } },
@@ -1061,7 +1174,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       </div>
       <div className="lecteur-entete-droite">
         {selecteurDispo}
-        <div className="topbar-actions"><EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} /></div>
+        {/* (08/10) thème, réglages et synchro : menu de l'avatar, en bas de la barre de navigation */}
       </div>
     </div>
   );
@@ -1219,7 +1332,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   };
   const selecteurDispo = tableauDispo ? (
     <div className="seg pdfr-dispo" role="tablist" aria-label="Disposition">
-      {[['pdf', 'filePdf', 'PDF'], ['deux', 'panel', 'Les deux'], ['tableau', 'grid', 'Tableau']].map(([id, ic, lbl]) => (
+      {[['pdf', 'filePdf', modeDoc ? 'Document' : 'PDF'], ['deux', 'panel', 'Les deux'], ['tableau', 'grid', 'Tableau']].map(([id, ic, lbl]) => (
         <button key={id} type="button" role="tab" aria-selected={disposition === id} className={'seg-btn' + (disposition === id ? ' active' : '')}
           onClick={() => setDisposition(id)} title={id === 'pdf' ? 'Le PDF seul' : id === 'deux' ? 'PDF et tableau côte à côte' : 'Le tableau en plein'}>
           <Icon name={ic} size={12} /> {lbl}
@@ -1451,8 +1564,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      en UNE entrée d'annulation (Cmd+Z rend la page ET son contenu). */
   const [ajoutPage, setAjoutPage] = useState(null); // { apresIdx } — la fenêtre « Ajouter une page »
   const [pageASupprimer, setPageASupprimer] = useState(null);
-  const insererPageApres = async (idx) => {
-    // idx = index (0…) de la page affichée après laquelle insérer ; -1 = tout au début
+  // la page blanche à créer après la page affichée n° idx (0…) ; -1 = tout au début
+  const nouvellePageApres = (idx) => {
+    const pageSizes = pageSizesRef.current;
     const ref = idx >= 0 ? pageSizes[idx] : null;
     let apres, rang;
     const memeEndroit = (k) => pagesAjoutees.filter((a) => Math.floor(Number(a.apres) || 0) === k);
@@ -1463,8 +1577,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const suiv = pageSizes[idx + 1];
       rang = suiv && suiv.ajout && Math.floor(Number(suiv.ajout.apres) || 0) === apres ? (ref.ajout.rang + suiv.ajout.rang) / 2 : ref.ajout.rang + 1;
     }
-    const modele = ref || pageSizes[0] || { width: 595, height: 842 };
-    const rec = newPageAjoutee({ ficheId, apres, rang, width: modele.width, height: modele.height });
+    // un document : toujours A4 ; un PDF : la taille de la page voisine
+    const modele = modeDoc ? PAGE_A4 : (ref || pageSizes[0] || PAGE_A4);
+    return newPageAjoutee({ ficheId, apres, rang, width: modele.width, height: modele.height });
+  };
+  const insererPageApres = async (idx) => {
+    const rec = nouvellePageApres(idx);
     await hist.appliquer(cmdCreer('annotations', rec, 'Page ajoutée'));
     setAjoutPage(null);
     // aller sur la nouvelle page une fois la mise en page recalculée
@@ -1475,6 +1593,151 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     }, 60);
   };
   const contenuDePage = (id) => edits.filter((a) => a.page === id);
+
+  /* ---- TEXTE DES PAGES (08/10, pdf/PageTexte.jsx) ---- */
+  const minuteurNotions = useRef(null);
+  const planifierNotions = () => {
+    clearTimeout(minuteurNotions.current);
+    minuteurNotions.current = setTimeout(() => { synchroniserNotionsDoc(ficheId).then((ch) => { if (ch) reloadHighlights(); }); }, 900);
+  };
+  const sauverPageTexte = (pageId, json) => {
+    corpsPages.current[pageId] = json;
+    ecrirePageDoc(ficheId, pageId, json).then(planifierNotions).catch(() => {});
+  };
+  const faireVoirPage = (i) => {
+    const el = scrollRef.current, offs = layoutRef.current.offsets;
+    if (el && offs[i] != null) { el.scrollTop = Math.max(0, offs[i] - 8 * (scaleRef.current || scale)); computeVisibleRangeRef.current(); }
+  };
+  // le texte d'une page déborde : ses derniers blocs partent en tête de la page suivante
+  const pagesCreeesApres = useRef({}); // id de page → page créée juste après elle, pas encore affichée
+  const relaisPages = useRef(null); // { source, cible } : frappe en relais pendant le passage d'une page à l'autre
+  // la page qui reçoit le curseur est prête : elle rejoue ce qui a été tapé pendant le passage
+  const pagePrete = (id) => {
+    delete focusPages.current[id];
+    const r = relaisPages.current;
+    if (!r || r.cible !== id) return;
+    relaisPages.current = null;
+    const src = pagesTexte.current.get(r.source), cible = pagesTexte.current.get(id);
+    const items = src ? src.prendreRelais() : [];
+    if (cible) cible.rejouer(items);
+  };
+  const deborderPage = async (pageId, nodes, decal) => {
+    const liste = pageSizesRef.current;
+    const idx = liste.findIndex((p) => p.cle === pageId);
+    if (idx < 0) return;
+    const cree = pagesCreeesApres.current[pageId];
+    const suiv = cree && !liste.some((p) => p.cle === cree.id) ? { cle: cree.id, ajout: cree } : liste[idx + 1];
+    if (suiv && suiv.ajout) {
+      const api = pagesTexte.current.get(suiv.cle);
+      if (api) {
+        api.prefixer(nodes, decal);
+        if (decal != null) { const src = pagesTexte.current.get(pageId); if (src) api.rejouer(src.prendreRelais()); }
+        return;
+      }
+      const avant = corpsPages.current[suiv.cle];
+      const base = avant && docNonVide(avant) ? avant.content : [];
+      if (decal != null) { focusPages.current[suiv.cle] = decal; relaisPages.current = { source: pageId, cible: suiv.cle }; }
+      sauverPageTexte(suiv.cle, { type: 'doc', content: [...dehydrateDoc({ type: 'doc', content: nodes }).content, ...base] });
+      if (decal != null) faireVoirPage(idx + 1);
+      return;
+    }
+    // pas de page après : on la crée (une seule, même si le texte déborde encore avant qu'elle s'affiche)
+    const rec = nouvellePageApres(idx);
+    pagesCreeesApres.current[pageId] = rec;
+    if (decal != null) { focusPages.current[rec.id] = decal; relaisPages.current = { source: pageId, cible: rec.id }; }
+    sauverPageTexte(rec.id, dehydrateDoc({ type: 'doc', content: nodes }));
+    appliquerLocal([{ store: 'annotations', apres: rec }]);
+    await put('annotations', rec);
+    if (decal != null) setTimeout(() => faireVoirPage(idx + 1), 60);
+  };
+  // retour arrière au début d'une page : son premier bloc remonte à la fin de la précédente
+  const remonterPage = (pageId, node) => {
+    const liste = pageSizesRef.current;
+    const idx = liste.findIndex((p) => p.cle === pageId);
+    const prec = idx > 0 ? liste[idx - 1] : null;
+    const api = prec && prec.ajout ? pagesTexte.current.get(prec.cle) : null;
+    if (!api) return false;
+    setTimeout(() => api.suffixer(node), 0);
+    return true;
+  };
+  const activerPageTexte = (pageId, ed) => { setActiveEditId(null); setEditeurPage({ pageId, ed }); };
+  const notionDePage = async (n) => { await creerNotionDoc(ficheId, n); reloadHighlights(); };
+  const flashcardDePage = (texte) => { setPanelOpen(true); setFlashcardNotes((f) => ({ texte, n: (f ? f.n : 0) + 1 })); };
+  // la barre de mise en forme du texte se referme quand on clique ailleurs que dans le texte
+  useEffect(() => {
+    if (!editeurPage) return undefined;
+    const dehors = (e) => {
+      const t = e.target;
+      if (t && t.closest && t.closest('.pt-zone, .pdfr-edit-toolbar, .pt-bulle, .sc-pop, .ptb-pop')) return;
+      setEditeurPage(null);
+    };
+    window.addEventListener('pointerdown', dehors, true);
+    return () => window.removeEventListener('pointerdown', dehors, true);
+  }, [editeurPage]);
+  useEffect(() => { if (outil !== 'main' && outil !== 'surligneur') setEditeurPage(null); }, [outil]);
+  const basculerFond = () => {
+    const v = !fondNoir;
+    setFondNoir(v);
+    majNotesDoc(ficheId, { fond: v ? 'noir' : 'blanc' });
+  };
+  const ordrePages = () => pageSizesRef.current.map((p) => p.cle);
+  const texteDocument = async () => {
+    pagesTexte.current.forEach((api) => api.vider());
+    await attendreNotesDoc();
+    const r = await lireNotesDoc(ficheId);
+    return contenuGlobal({ pages: (r && r.pages) || {} }, ordrePages());
+  };
+  const exporterMdDocument = async () => exporterMarkdownDoc(await texteDocument(), fiche && fiche.titre);
+  /* PDF D'UN DOCUMENT : les pages telles qu'à l'écran (texte, dessins, images, boîtes),
+     rendues TOUTES à l'échelle de l'A4 imprimé (96 ppp), recopiées dans un conteneur
+     d'impression, puis le lecteur reprend son zoom. Toujours sur fond blanc. */
+  const [impression, setImpression] = useState(false);
+  const imprimerDocument = async () => {
+    const el = scrollRef.current;
+    if (!el || impression) return;
+    pagesTexte.current.forEach((api) => api.vider());
+    const s0 = scaleRef.current || scale, haut0 = el.scrollTop;
+    const k = 793.7 / PAGE_A4.width; // largeur de l'A4 en px CSS
+    setImpression(true); scaleRef.current = k; setScale(k);
+    const nbTextes = () => pageSizesRef.current.filter((sz) => sz.ajout && (modeDoc || docNonVide(corpsPages.current[sz.cle]))).length;
+    const t0 = performance.now();
+    await new Promise((ok) => {
+      const tour = () => {
+        const pages = el.querySelectorAll('.pdfr-page').length;
+        const textes = el.querySelectorAll('.pt-zone .ProseMirror[contenteditable="true"]').length;
+        const images = [...el.querySelectorAll('.pdfr-page img')].every((i) => i.complete);
+        if ((pages >= pageSizesRef.current.length && textes >= nbTextes() && images) || performance.now() - t0 > 4000) setTimeout(ok, 120);
+        else requestAnimationFrame(tour);
+      };
+      requestAnimationFrame(tour);
+    });
+    const cont = document.createElement('div');
+    cont.className = 'pdfr-impression-pages';
+    el.querySelectorAll('.pdfr-page').forEach((pg) => {
+      const c = pg.cloneNode(true);
+      c.classList.remove('fond-noir');
+      c.querySelectorAll('.pdfr-ajout-etiquette, .pdfr-selcanvas, canvas').forEach((x) => x.remove());
+      c.querySelectorAll('[contenteditable]').forEach((x) => x.removeAttribute('contenteditable'));
+      cont.appendChild(c);
+    });
+    setImpression(false); scaleRef.current = s0; pendingScroll.current = haut0; setScale(s0);
+    document.body.appendChild(cont);
+    document.body.classList.add('pdfr-impression');
+    const nettoyer = () => { cont.remove(); document.body.classList.remove('pdfr-impression'); window.removeEventListener('afterprint', nettoyer); };
+    window.addEventListener('afterprint', nettoyer);
+    const titre0 = document.title;
+    document.title = (fiche && fiche.titre) || 'Document'; // nom proposé pour le PDF enregistré
+    window.print();
+    document.title = titre0;
+    setTimeout(nettoyer, 60000); // filet : navigateurs sans afterprint
+  };
+  const entreePdfDoc = useRef(null);
+  const importerPdfDansDocument = async (fichier) => {
+    if (!fichier || !/pdf$/i.test(fichier.type || fichier.name)) return;
+    pagesTexte.current.forEach((api) => api.vider());
+    const blobId = await putBlob(fichier);
+    await ctx.setFichePdf(ficheId, blobId, fichier.name);
+  };
   const supprimerPageAjoutee = async (pageRec) => {
     setPageASupprimer(null);
     const cmds = [...contenuDePage(pageRec.id), pageRec].map((a) => cmdSupprimer('annotations', a, 'Retrait de la page'));
@@ -1661,7 +1924,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // sur la page affichée. Jamais quand on colle DANS un texte (boîte, champ…).
   const ajouterImageRef = useRef(ajouterImage); ajouterImageRef.current = ajouterImage;
   useEffect(() => {
-    if (!pdfDoc || srcTab !== 'pdf') return undefined;
+    if (!pret || srcTab !== 'pdf') return undefined;
     const onPaste = (e) => {
       if (e.defaultPrevented) return; // déjà pris (formulaire de flashcard ouvert : lib/collerImage.js)
       if (cibleEditable(e.target) || cibleEditable(document.activeElement)) return;
@@ -1673,7 +1936,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, [pdfDoc, srcTab]);
+  }, [pret, srcTab]);
   /* ---- DESSINS REÇUS DU TÉLÉPHONE (02/10, docs/mecanique-dessin-mobile.md §5) ----
      Sondés au cloud (lecture ciblée du store `dessins`) toutes les 10 s tant que
      l'onglet est visible ; un dessin se pose comme une image collée. */
@@ -1727,6 +1990,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       poserDessin(d, { page: sz.cle, x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
       return;
     }
+    if (e.defaultPrevented) return; // déposée DANS le texte d'une page de document : déjà insérée
     const f = [...((e.dataTransfer && e.dataTransfer.files) || [])].find((x) => /^image\//.test(x.type));
     if (!f) return;
     e.preventDefault();
@@ -1866,7 +2130,26 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       onCreerNotion={async (n) => { await creerNotionDoc(ficheReelle.id, n); reloadHighlights(); }}
       onCreerFlashcard={(texte) => setFlashcardNotes((f) => ({ texte, n: (f ? f.n : 0) + 1 }))} />
   ) : null), [ficheReelle && ficheReelle.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // page (index) du texte qui porte une notion — null si elle est dans l'onglet « Notes »
+  const pageDeNotion = (id) => {
+    const liste = pageSizesRef.current;
+    for (let i = 0; i < liste.length; i++) {
+      const c = corpsPages.current[liste[i].cle];
+      if (c && JSON.stringify(c).includes(id)) return i;
+    }
+    return null;
+  };
   const allerNotionNotes = (h) => {
+    const i = pageDeNotion(h.docNotionId);
+    if (i != null) {
+      allerALaPage(i + 1);
+      const viser = (essai) => setTimeout(() => {
+        const api = pagesTexte.current.get(pageSizesRef.current[i] && pageSizesRef.current[i].cle);
+        if (!(api && api.allerANotion(h.docNotionId)) && essai < 8) viser(essai + 1);
+      }, 120);
+      viser(0);
+      return;
+    }
     setOngletDemande((o) => ({ id: 'notes', n: (o ? o.n : 0) + 1 }));
     setTimeout(() => { if (notesRef.current) notesRef.current.allerANotion(h.docNotionId); }, 320);
   };
@@ -1876,9 +2159,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <div className="hl-notes">
           {notionsNotes.map((h) => (
             <div className="hl-entry" key={h.id} role="button" tabIndex={0} onClick={() => allerNotionNotes(h)} onKeyDown={(e) => { if (e.key === 'Enter') allerNotionNotes(h); }}>
-              <span className="hl-dot" style={{ background: '#FFE066' }} />
+              <span className="hl-dot" style={{ background: couleurHex(h.couleur) }} />
               <div>
-                <div className="hl-entry-page">Notes</div>
+                <div className="hl-entry-page">{(() => { const i = pageDeNotion(h.docNotionId); return i != null ? 'p.' + (i + 1) : 'Notes'; })()}</div>
                 <div className="hl-entry-txt">« {h.texte.length > 140 ? h.texte.slice(0, 140) + '…' : h.texte} »</div>
               </div>
             </div>
@@ -1937,7 +2220,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     );
   }
 
-  if (!fiche.pdfId && !fiche.htmlId) {
+  if (!fiche.pdfId && !fiche.htmlId && !modeDoc) {
     return (
       <div className={embedded ? 'fadein' : 'screen scroll fadein'}>
         {!embedded && (
@@ -2001,13 +2284,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={highlights.length}
         actionsDocument={afficherEntete ? [] : actionsDocument /* avec l'en-tête, tout est dans « Fichier » */}
 
-        onAjouterPage={pdfDoc ? () => insererPageApres(pageCourante - 1) : null}
-        boutonDessins={pdfDoc && srcTab === 'pdf' && ficheId ? (
+        onAjouterPage={pret ? () => insererPageApres(pageCourante - 1) : null}
+        boutonDessins={pret && srcTab === 'pdf' && ficheId ? (
           <MenuDessins dessins={dessins} essai={essaiDessins} pdfPret={!!pageSizes.length}
             posesBlobIds={new Set(edits.filter((a) => a.kind === 'image').map((a) => a.blobId))}
             onPoser={(d) => poserDessin(d)} onRetirer={retirerUnDessin} boutonRef={boutonDessinsRef} pulse={pulseDessins} />
         ) : null}
-        onAjouterImage={pdfDoc ? () => entreeImageRef.current && entreeImageRef.current.click() : null}
+        onAjouterImage={pret ? () => entreeImageRef.current && entreeImageRef.current.click() : null}
         contexteSupplementaire={outil === 'boite' ? (
           <SelecteurCouleurs couleur={couleurActive} onCouleur={setCouleurActive} titre="Couleur de la boîte" />
         ) : outil === 'forme' ? (
@@ -2078,6 +2361,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           onClose={() => setActiveEditId(null)} />
       )}
 
+      {modeDoc && <input ref={entreePdfDoc} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
+        onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) importerPdfDansDocument(f); }} />}
       {exportErreur && (
         <div className="err-mini" style={{ marginBottom: 12 }}>
           <div className="em-ic crit"><Icon name="alert" size={16} /></div>
@@ -2109,19 +2394,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       <div className={'pdfr-body pdfr-workshop' + (tableauDispo && disposition !== 'pdf' ? ' avec-tableau dispo-' + disposition : '')} data-mobile-view={modeTab ? undefined : mobileView}
         ref={corpsRef} style={{ ...(tableauDispo && disposition === 'deux' ? { '--ratio-pdf': ratioSplit } : {}), ...(modeTab ? { '--tab-pis': largeurPanneauEff + 'px' } : {}) }}>
         {/* barre masquée : un tap tout en haut de la zone de lecture la fait revenir */}
-        <div className={'pdfr-scroll pdfr-workshop-course' + (pdfDoc && !restaure ? ' pdfr-attente' : '')} ref={scrollRef} onScroll={onScroll}
+        <div className={'pdfr-scroll pdfr-workshop-course' + (pret && !restaure ? ' pdfr-attente' : '')} ref={scrollRef} onScroll={onScroll}
           onDragOver={(e) => { if (e.dataTransfer && [...e.dataTransfer.types].some((t) => t === 'Files' || t === TYPE_GLISSER)) { e.preventDefault(); if ([...e.dataTransfer.types].includes(TYPE_GLISSER)) e.dataTransfer.dropEffect = 'copy'; } }}
           onDrop={deposerImage}>
           <input ref={entreeImageRef} type="file" accept="image/*" style={{ display: 'none' }}
             onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) ajouterImage(f); }} />
-          {!pdfDoc && !loadError && <div className="gen-spinner" style={{ width: 40, height: 40, margin: '60px auto' }} />}
-          {pdfDoc && (
+          {!pret && !loadError && <div className="gen-spinner" style={{ width: 40, height: 40, margin: '60px auto' }} />}
+          {pret && (
             <div className="pdfr-pages" style={{ height: layout.totalHeight, width: layout.maxWidth, minWidth: '100%' }}>
               {pageSizes.map((sz, idx) => {
                 const n = sz.cle; // numéro de page du PDF, ou id d'une page ajoutée
                 const top = layout.offsets[idx];
                 const w = sz.width * scale, h = sz.height * scale;
-                const active = idx >= visibleRange.start && idx <= visibleRange.end;
+                const active = impression || (idx >= visibleRange.start && idx <= visibleRange.end);
                 // --k : échelle des annotations (zoom ÷ 160 %), lue par le CSS des repères (épingles, « ? »…)
                 const style = { position: 'absolute', top, left: '50%', transform: 'translateX(-50%)', width: w, height: h, '--k': scale / ECHELLE_REF };
                 if (!active) return <div key={n} className="pdfr-placeholder" style={style} />;
@@ -2137,14 +2422,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                   </button>
                 );
                 return [inter, (
-                  <div key={n} data-cle={String(n)} className={'pdfr-page' + (sz.ajout ? ' pdfr-page-ajoutee' : '')} style={style}>
+                  <div key={n} data-cle={String(n)} className={'pdfr-page' + (sz.ajout && !modeDoc ? ' pdfr-page-ajoutee' : '') + (modeDoc ? ' pdfr-page-doc' : '') + (modeDoc && fondNoir ? ' fond-noir' : '')} style={style}>
                     {/* PAGE AJOUTÉE (03/10) : son étiquette et « Retirer » vivent DANS la page,
                         en haut à droite, au-dessus de toutes ses couches. Avant, posées dans
                         l'espace entre les pages, elles étaient recouvertes par la zone
                         d'insertion : on ne pouvait plus cliquer « Retirer ». */}
-                    {sz.ajout && (
-                      <div className="pdfr-ajout-etiquette">
-                        <span className="pdfr-ajout-nom">Page ajoutée</span>
+                    {sz.ajout && (!modeDoc || pageSizes.length > 1) && (
+                      <div className={'pdfr-ajout-etiquette' + (modeDoc ? ' doc' : '')}>
+                        {!modeDoc && <span className="pdfr-ajout-nom">Page ajoutée</span>}
                         <button type="button" className="pdfr-ajout-retirer" onClick={() => demanderSuppressionPage(sz.ajout)} title={`Retirer cette page (annulable par ${RACCOURCI}Z)`}>
                           <Icon name="trash" size={13} /> Retirer la page
                         </button>
@@ -2193,10 +2478,27 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       ocrPage={sz.ajout ? null : ocrPagePour(n)} ocrDebug={ocrDebug}
                       onActivateEdit={setActiveEditId}
                       activeEditor={editor}
+                      fondNoir={modeDoc && fondNoir}
+                      corps={sz.ajout && docCharge && (modeDoc || docNonVide(corpsPages.current[n])) ? (
+                        <PageTexte key={'t:' + n} ref={(api) => { if (api) pagesTexte.current.set(n, api); else pagesTexte.current.delete(n); }}
+                          pageId={n} initial={corpsPages.current[n] || null} largeur={sz.width} hauteur={sz.height} echelle={scale}
+                          outil={outil} couleurSurligneur={couleurSurligneur} focusDemande={focusPages.current[n] ?? null}
+                          onSauver={sauverPageTexte} onDebordement={deborderPage} onRemonter={remonterPage} onActiver={activerPageTexte}
+                          onNotion={notionDePage} onFlashcard={flashcardDePage} onPret={pagePrete} />
+                      ) : null}
                     />
                   </div>
                 )];
               })}
+            </div>
+          )}
+          {/* barre de mise en forme du TEXTE D'UNE PAGE (la même que celle des boîtes de texte) :
+              FLOTTANTE en bas de la zone de lecture — l'afficher en haut décalait toute la page
+              au premier clic dans le texte */}
+          {editeurPage && !(activeEdit && editor) && (
+            <div className="pt-barre">
+              <EditToolbar editor={editeurPage.ed} sansSupprimer flottante extras={<OutilsTexteDocument editor={editeurPage.ed} />}
+                onClose={() => { try { editeurPage.ed.commands.blur(); } catch (e) { /* ignore */ } setEditeurPage(null); }} />
             </div>
           )}
         </div>
@@ -2232,7 +2534,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           ongletsEnPlus={[
             { id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length, contenu: notionsPdf },
             ficheReelle && {
-              // 07/10 : document de notes du cours (vide par défaut) — même éditeur que les cours « document »
+              // 07/10 : notes du cours (vide par défaut) — aussi dans un document (08/10) : même panneau qu'un PDF
               id: 'notes', label: 'Notes', icon: 'edit', plein: true,
               contenu: notesPanneau,
             },
@@ -2273,7 +2575,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         document.body,
       )}
 
-      {arrivee && pdfDoc && srcTab === 'pdf' && (!tableauDispo || disposition !== 'tableau') && (
+      {arrivee && pret && srcTab === 'pdf' && (!tableauDispo || disposition !== 'tableau') && (
         <ArriveeDessin key={arrivee.dessin.id} dessin={arrivee.dessin} autres={arrivee.autres} cible={boutonDessinsRef}
           pdfPret={!!pageSizes.length} onPoser={(d) => poserDessin(d)} onFermer={() => setArrivee(null)} />
       )}

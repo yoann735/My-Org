@@ -11,6 +11,7 @@
    ============================================================ */
 import { getAll, put, remove, newHighlight } from '../../lib/storage.js';
 import { collectNotions } from './richtext.js';
+import { lireNotesDoc, attendreNotesDoc, contenuGlobal } from './notesDoc.js';
 
 export const estNotionDoc = (h) => !!(h && h.source === 'doc');
 
@@ -24,10 +25,13 @@ export async function creerNotionDoc(ficheId, { id, texte, couleur = 'jaune' }) 
   return rec;
 }
 
-/** Aligne les notions enregistrées sur les marks présentes dans le document. Renvoie true si
- *  quelque chose a changé. */
-export async function synchroniserNotionsDoc(ficheId, contenu) {
-  const presentes = collectNotions(contenu);
+/** Aligne les notions enregistrées sur les marks présentes dans le cours — onglet « Notes »
+ *  ET texte des pages (08/10) : on relit l'enregistrement une fois les écritures en file
+ *  terminées, jamais un seul morceau (une notion déplacée d'une page à l'autre n'est pas
+ *  perdue). Renvoie true si quelque chose a changé. */
+export async function synchroniserNotionsDoc(ficheId) {
+  await attendreNotesDoc();
+  const presentes = collectNotions(contenuGlobal(await lireNotesDoc(ficheId)));
   const parId = new Map(presentes.map((n) => [n.id, n]));
   const recs = await notionsDuDoc(ficheId);
   let change = false;

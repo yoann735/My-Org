@@ -8,14 +8,32 @@
    Le basculement (rotation de l'iPad) ne démonte rien : seules des classes et
    quelques éléments optionnels changent, l'état du lecteur reste en place.
    ============================================================ */
+import { useRef } from 'react';
 import { useMediaQuery } from '../../shared/hooks/useMediaQuery.js';
+
+/* IMPRESSION (08/10) : pendant qu'on imprime, la page est mise en page à la largeur du
+   papier (≈ 740–800 px) — les requêtes de largeur basculaient alors l'app en mobile ou en
+   tablette, ce qui DÉMONTAIT le document ouvert (on le retrouvait fermé après l'impression).
+   Une valeur suivie par ce crochet reste celle d'avant l'impression tant qu'elle dure. */
+let figeJusqua = 0; // de « beforeprint » à 1 s après « afterprint » (les rendus arrivent après coup)
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeprint', () => { figeJusqua = Infinity; });
+  window.addEventListener('afterprint', () => { figeJusqua = Date.now() + 1000; });
+}
+export const enImpression = () => typeof window !== 'undefined' && (Date.now() < figeJusqua || (!!window.matchMedia && window.matchMedia('print').matches));
+export function useHorsImpression(valeur) {
+  const derniere = useRef(valeur);
+  if (enImpression()) return derniere.current;
+  derniere.current = valeur;
+  return valeur;
+}
 
 export const REQUETE_TABLETTE = '(min-width: 761px) and (max-width: 1199px)';
 export const REQUETE_COTE = '(min-width: 900px)';
 
 export function useTablette() {
-  const tablette = useMediaQuery(REQUETE_TABLETTE);
-  const large = useMediaQuery(REQUETE_COTE);
+  const tablette = useHorsImpression(useMediaQuery(REQUETE_TABLETTE));
+  const large = useHorsImpression(useMediaQuery(REQUETE_COTE));
   return { tablette, cote: tablette && large, portrait: tablette && !large };
 }
 

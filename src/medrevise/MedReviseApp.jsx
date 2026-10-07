@@ -34,6 +34,7 @@ import { marquerSyncReussie } from './lib/syncStatus.js';
 import { todayISO, startAdaptive } from './lib/sm2.js';
 import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor, linkedV2Questions } from './lib/planning.js';
 import { useMediaQuery } from '../shared/hooks/useMediaQuery.js';
+import { useHorsImpression } from './lib/tablette.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
 import { IndicateurTranscription } from './transcription/IndicateurGlobal.jsx';
 import { demarrerOcr } from './ocr/service.js';
@@ -75,7 +76,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // petit écran → shell mobile dédié (voir mobile/MobileApp.jsx). Aussi un TÉLÉPHONE À
   // L'HORIZONTALE (écran tactile de moins de 500 px de haut) : plus large que 760 px, il
   // basculait sur l'interface d'ordinateur — et démontait le dessin en pleine rotation.
-  const isMobile = useMediaQuery('(max-width: 760px), (max-height: 500px) and (pointer: coarse)');
+  // (08/10) figé pendant une impression : la largeur du papier ne doit jamais changer de shell
+  const isMobile = useHorsImpression(useMediaQuery('(max-width: 760px), (max-height: 500px) and (pointer: coarse)'));
   /* SÉLECTION DE TEXTE (02/10 nuit) : MedRevise a SA sélection (styles/etudes.css), posée
      sur <html> tant que l'app est ouverte — elle couvre ainsi aussi ce qui s'affiche
      par-dessus (fenêtres, menus). MealWeek et le hub gardent la leur. */

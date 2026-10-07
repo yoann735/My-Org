@@ -79,6 +79,29 @@ export function couleurHex(c, repli = '#FFD84D') {
   return PALETTE_HEX[c] || repli;
 }
 
+/** FOND DE PAGE NOIR (08/10) : une encre sombre devient claire (même teinte, luminosité
+    inversée) ; une couleur déjà claire est gardée telle quelle. */
+export function lisibleSurNoir(c) {
+  const hex = couleurHex(c, '#FFD84D');
+  const n = parseInt(hex.slice(1), 16);
+  let r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let L = (max + min) / 2;
+  if (0.299 * r + 0.587 * g + 0.114 * b >= 0.45) return hex;
+  const d = max - min;
+  let h = 0, s = 0;
+  if (d) {
+    s = d / (1 - Math.abs(2 * L - 1));
+    h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h *= 60; if (h < 0) h += 360;
+  }
+  L = Math.max(0.72, 1 - L);
+  const C = (1 - Math.abs(2 * L - 1)) * s, X = C * (1 - Math.abs(((h / 60) % 2) - 1)), m = L - C / 2;
+  [r, g, b] = h < 60 ? [C, X, 0] : h < 120 ? [X, C, 0] : h < 180 ? [0, C, X] : h < 240 ? [0, X, C] : h < 300 ? [X, 0, C] : [C, 0, X];
+  const v = (x) => Math.round((x + m) * 255).toString(16).padStart(2, '0');
+  return '#' + v(r) + v(g) + v(b);
+}
+
 /** teinte FONCÉE d'une couleur de boîte, pour que sa flèche reste lisible sur le
     blanc de la page (les couleurs « cours » sont des pastels). Table fixe pour les 4
     couleurs « cours » (rendu d'avant inchangé) ; une couleur perso claire est

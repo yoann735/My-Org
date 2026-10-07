@@ -20,7 +20,8 @@
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { Modal, detectDocKind, matiereMeta } from './ui.jsx';
+import { detectDocKind } from './ui.jsx';
+import { FenetreCreation } from './FenetreCreation.jsx';
 import { putBlob } from '../lib/storage.js';
 import { todayISO } from '../lib/sm2.js';
 import { titreFromFile, titreFromFilename } from '../lib/fileTitre.js';
@@ -120,54 +121,9 @@ export function useTreeFileDrop({ onSpring, onFiles }) {
   return { dropProps, dropClass, overKey };
 }
 
-/* ---- pop-up MINIMAL du dépôt : titre pré-rempli (modifiable) + date de J0, rien
-   d'autre. Réutilise Modal (ui.jsx) et les champs `.imp-field`/`.imp-title` des
-   écrans d'import — un date-picker identique à celui de l'aperçu d'import
-   (components/ImportFlow.jsx). RIEN n'est écrit tant qu'« Importer » n'est pas
-   cliqué : annuler laisse la base exactement dans son état d'avant. ---- */
-export function FileDropModal({ file, kind, destLabel, titre, onTitre, date, onDate, ignored = 0, nbImages = 0, busy, onCancel, onConfirm }) {
-  const canImport = !busy && !!titre.trim();
-  return (
-    <Modal title="Importer cette fiche" width="min(460px, 94vw)" onClose={onCancel}>
-      <div className="row" style={{ gap: 8, alignItems: 'center', minWidth: 0, marginBottom: 10 }}>
-        <Icon name={kind === 'html' ? 'fileHtml' : 'filePdf'} size={16} />
-        <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
-      </div>
-      {nbImages > 0 && (
-        <div className="hint" style={{ marginBottom: 8 }}>
-          {nbImages > 1 ? `${nbImages} images → un PDF de ${nbImages} pages (ordre des noms de fichier).` : 'Image → un PDF d’une page.'}
-        </div>
-      )}
-      <div className="hint" style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <Icon name="folder" size={12} /> {destLabel}
-      </div>
-
-      <div className="imp-field">
-        <label>Titre de la fiche</label>
-        <input className="imp-title" autoFocus value={titre} onChange={(e) => onTitre(e.target.value)}
-          onFocus={(e) => e.target.select()}
-          onKeyDown={(e) => { if (e.key === 'Enter' && canImport) onConfirm(); }} />
-      </div>
-
-      <div className="imp-field">
-        <label>Premier passage (J0)</label>
-        <input type="date" className="imp-title" style={{ maxWidth: 190 }} value={date} onChange={(e) => onDate(e.target.value)} />
-        <div className="hint" style={{ marginTop: 4 }}>Par défaut aujourd'hui — change-la pour démarrer cette fiche plus tard.</div>
-      </div>
-
-      {ignored > 0 && (
-        <div className="hint" style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Icon name="alert" size={12} /> {ignored} autre{ignored > 1 ? 's' : ''} fichier{ignored > 1 ? 's' : ''} ignoré{ignored > 1 ? 's' : ''} — un seul par dépôt.
-        </div>
-      )}
-
-      <div className="imp-actions">
-        <button className="btn ghost" onClick={onCancel} disabled={busy}>Annuler</button>
-        <button className="btn primary" onClick={onConfirm} disabled={!canImport}><Icon name="check" size={15} /> {busy ? 'Import…' : 'Importer'}</button>
-      </div>
-    </Modal>
-  );
-}
+/* ---- FENÊTRE DU DÉPÔT (08/10) : la MÊME que « Nouveau document » (FenetreCreation.jsx) —
+   titre pré-rempli, cours et matière pré-sélectionnés là où le fichier a été lâché, plus
+   la date de J0. Rien n'est écrit tant qu'« Importer » n'est pas cliqué. ---- */
 
 /* ============================================================
    IMPORT PAR DÉPÔT SUR UN ARBRE — la logique COMPLÈTE, partagée par Réviser et la
@@ -219,19 +175,20 @@ export function useImportParDepot(ctx, { onSpring, annoncer, onImporte }) {
 
   const fd = useTreeFileDrop({ onSpring, onFiles });
 
-  // destination affichée : Section / Matière / Dossier / Sous-dossier
-  const destination = () => {
-    if (!depot) return '';
-    const mat = (db.matieres || []).find((m) => m.id === depot.matiereId) || null;
-    const src = mat ? db.sources.find((x) => x.id === mat.sourceId) : null;
-    const dos = depot.dossierId ? db.dossiers.find((d) => d.id === depot.dossierId) : null;
+  // dossier visé par le dépôt (Dossier / Sous-dossier), affiché sous le nom du fichier
+  const dossierVise = () => {
+    const dos = depot && depot.dossierId ? db.dossiers.find((d) => d.id === depot.dossierId) : null;
     const parent = dos && dos.parentId ? db.dossiers.find((d) => d.id === dos.parentId) : null;
-    return [src && src.nom, mat && matiereMeta(mat).label, parent && parent.nom, dos && dos.nom].filter(Boolean).join(' / ');
+    return [parent && parent.nom, dos && dos.nom].filter(Boolean).join(' / ');
   };
 
-  const confirmer = async () => {
+  // `choix` : titre et matière de la fenêtre ; une autre matière que celle du dépôt → à sa racine
+  const confirmer = async (choix) => {
     if (!depot || occupe) return;
-    const { file, fichiers, kind, matiereId, dossierId, titre, date } = depot;
+    const { file, fichiers, kind, date } = depot;
+    const titre = choix.titre;
+    const matiereId = choix.matiereId;
+    const dossierId = choix.matiereId === depot.matiereId ? depot.dossierId : null;
     setOccupe(true);
     try {
       const estImages = kind === 'images';
@@ -262,14 +219,25 @@ export function useImportParDepot(ctx, { onSpring, annoncer, onImporte }) {
     }
   };
 
+  const nbImages = depot && depot.kind === 'images' ? depot.fichiers.length : 0;
+  const dossier = depot ? dossierVise() : '';
   const modale = depot ? (
-    <FileDropModal
-      file={depot.file} kind={depot.kind === 'html' ? 'html' : 'pdf'} destLabel={destination()}
-      titre={depot.titre} onTitre={(v) => setDepot((d) => ({ ...d, titre: v }))}
-      date={depot.date} onDate={(v) => setDepot((d) => ({ ...d, date: v }))}
-      ignored={depot.ignored} nbImages={depot.kind === 'images' ? depot.fichiers.length : 0} busy={occupe}
-      onCancel={() => { if (!occupe) setDepot(null); }}
-      onConfirm={confirmer} />
+    <FenetreCreation ctx={ctx} titreFenetre={depot.kind === 'html' ? 'Importer une fiche HTML' : 'Importer un PDF'}
+      sousTitre={<><Icon name={depot.kind === 'html' ? 'fileHtml' : 'filePdf'} size={13} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{depot.file.name}{nbImages > 1 ? ` + ${nbImages - 1} image${nbImages > 2 ? 's' : ''}` : ''}{dossier ? ` · dans « ${dossier} »` : ''}</span></>}
+      placeholderTitre="Titre du cours" titreInitial={depot.titre} selectionnerTitre
+      matiereInitiale={depot.matiereId} libelleCreer="Importer" iconeCreer="check" occupe={occupe}
+      supplement={(<>
+        <label className="fc-ligne">
+          <span className="fc-etiquette">Premier passage (J0)</span>
+          <input type="date" className="fc-champ" value={depot.date} onChange={(e) => setDepot((d) => ({ ...d, date: e.target.value }))} />
+          <span className="hint">Par défaut aujourd'hui — change-la pour démarrer ce cours plus tard.</span>
+        </label>
+        {nbImages > 0 && <div className="hint">{nbImages > 1 ? `${nbImages} images → un PDF de ${nbImages} pages (ordre des noms de fichier).` : 'Image → un PDF d’une page.'}</div>}
+        {depot.ignored > 0 && <div className="hint" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="alert" size={12} /> {depot.ignored} autre{depot.ignored > 1 ? 's' : ''} fichier{depot.ignored > 1 ? 's' : ''} ignoré{depot.ignored > 1 ? 's' : ''} — un seul par dépôt.</div>}
+      </>)}
+      onAnnuler={() => { if (!occupe) setDepot(null); }}
+      onCreer={confirmer} />
   ) : null;
 
   return { fd, modale };

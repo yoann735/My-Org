@@ -430,9 +430,57 @@ export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx, f
           <span className="sb-icon"><Icon name="panel" size={19} /></span>
           <span className="sb-label">Réduire</span>
         </button>
+        <MenuAvatar ctx={ctx} onReglages={() => onNav('settings')} />
       </div>
       {promptsOpen && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOpen(false)} />}
     </nav>
+  );
+}
+
+/* MENU UTILISATEUR (08/10) : l'avatar, en bas de la barre de navigation — thème, réglages,
+   synchro, en un seul endroit discret (ils encombraient la barre du haut de la Bibliothèque). */
+function MenuAvatar({ ctx, onReglages }) {
+  const [ouvert, setOuvert] = useState(false);
+  const racine = useRef(null);
+  useEffect(() => {
+    if (!ouvert) return undefined;
+    const dehors = (e) => { if (racine.current && !racine.current.contains(e.target)) setOuvert(false); };
+    const touche = (e) => { if (e.key === 'Escape') setOuvert(false); };
+    window.addEventListener('pointerdown', dehors, true);
+    window.addEventListener('keydown', touche);
+    return () => { window.removeEventListener('pointerdown', dehors, true); window.removeEventListener('keydown', touche); };
+  }, [ouvert]);
+  const sombre = ctx && ctx.theme === 'dark';
+  const sync = (ctx && ctx.syncState) || {};
+  const enSync = sync.status === 'syncing';
+  return (
+    <div className="sb-avatar" ref={racine}>
+      <button type="button" className={'sb-item sb-avatar-bt' + (ouvert ? ' active' : '')} onClick={() => setOuvert((v) => !v)}
+        aria-haspopup="menu" aria-expanded={ouvert} title="Mon espace — thème, réglages, synchro">
+        <span className="sb-icon"><span className="avatar sb-avatar-rond">MR</span></span>
+        <span className="sb-label">Mon espace</span>
+      </button>
+      {ouvert && (
+        <div className="sb-avatar-menu" role="menu">
+          <div className="sb-avatar-tete">Mon espace</div>
+          <button type="button" role="menuitem" className="mf-item" onClick={() => { ctx.toggleTheme(); }}>
+            <span className="mf-ic"><Icon name={sombre ? 'sun' : 'moon'} size={14} /></span>
+            <span className="mf-texte"><span className="mf-label">{sombre ? 'Passer en mode clair' : 'Passer en mode sombre'}</span></span>
+          </button>
+          <button type="button" role="menuitem" className="mf-item" onClick={() => { setOuvert(false); onReglages(); }}>
+            <span className="mf-ic"><Icon name="settings" size={14} /></span>
+            <span className="mf-texte"><span className="mf-label">Réglages</span></span>
+          </button>
+          <button type="button" role="menuitem" className="mf-item" disabled={enSync || !ctx.forceSync} onClick={() => ctx.forceSync({ complet: true })}>
+            <span className="mf-ic"><Icon name="refresh" size={14} /></span>
+            <span className="mf-texte">
+              <span className="mf-label">{enSync ? 'Synchronisation…' : 'Synchroniser maintenant'}</span>
+              <span className="mf-aide">{syncStatusLabel(sync)}</span>
+            </span>
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
