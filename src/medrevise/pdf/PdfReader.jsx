@@ -82,6 +82,8 @@ import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { FeuilleDemarrage, TranscriptPanel, BadgeTranscript, BandeDirect, ResumeReplie } from '../transcription/TranscriptPanel.jsx';
 import { lirePosition, ecrirePosition, empreintePdf, positionDepuisDefilement } from '../lib/positionLecture.js';
+import { NotesEditor } from '../documents/NotesEditor.jsx';
+import { estNotionDoc, creerNotionDoc, synchroniserNotionsDoc } from '../documents/lib/notionsDoc.js';
 import { useTablette, abonnerStylet, styletActif, lireLargeurPanneau, ecrireLargeurPanneau, bornerLargeur, largeurParDefaut } from '../lib/tablette.js';
 import '../../styles/tablette.css';
 import '../../styles/notes-doc.css';
@@ -346,8 +348,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
   const reloadHighlights = async () => {
     const all = await getAll('highlights');
-    setHighlights(all.filter((h) => h.ficheId === ficheId).sort(compareHighlights));
+    // 07/10 : les notions de l'onglet « Notes » (source 'doc') n'ont ni page ni rectangles —
+    // jamais mêlées aux surlignages du PDF, listées à part dans le mode Notions
+    setHighlights(all.filter((h) => h.ficheId === ficheId && !estNotionDoc(h)).sort(compareHighlights));
+    setNotionsNotes(all.filter((h) => h.ficheId === ficheId && estNotionDoc(h)));
   };
+  const [notionsNotes, setNotionsNotes] = useState([]);
+  const notesRef = useRef(null);
+  const [flashcardNotes, setFlashcardNotes] = useState(null); // { texte, n } — flashcard depuis une sélection des notes
   const reloadEdits = async () => {
     const all = await getAll('annotations');
     setEdits(all.filter((a) => a.ficheId === ficheId));
@@ -1848,8 +1856,31 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const notionsFiltrees = qNotions
     ? highlights.filter((h) => `${h.texte} ${h.note || ''} ${COLOR_TAG[h.couleur] || ''}`.toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(qNotions))
     : highlights;
+  const notesPanneau = useMemo(() => (ficheReelle ? (
+    <NotesEditor ref={notesRef} ficheId={ficheReelle.id} compact placeholder="Tes notes sur ce cours… « # » titre, « - » liste, « [] » case"
+      onChange={(contenu) => { synchroniserNotionsDoc(ficheReelle.id, contenu).then((ch) => { if (ch) reloadHighlights(); }); }}
+      onCreerNotion={async (n) => { await creerNotionDoc(ficheReelle.id, n); reloadHighlights(); }}
+      onCreerFlashcard={(texte) => setFlashcardNotes((f) => ({ texte, n: (f ? f.n : 0) + 1 }))} />
+  ) : null), [ficheReelle && ficheReelle.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const allerNotionNotes = (h) => {
+    setOngletDemande((o) => ({ id: 'notes', n: (o ? o.n : 0) + 1 }));
+    setTimeout(() => { if (notesRef.current) notesRef.current.allerANotion(h.docNotionId); }, 320);
+  };
   const notionsPdf = (
     <div className="pis-notions">
+      {notionsNotes.length > 0 && (
+        <div className="hl-notes">
+          {notionsNotes.map((h) => (
+            <div className="hl-entry" key={h.id} role="button" tabIndex={0} onClick={() => allerNotionNotes(h)} onKeyDown={(e) => { if (e.key === 'Enter') allerNotionNotes(h); }}>
+              <span className="hl-dot" style={{ background: '#FFE066' }} />
+              <div>
+                <div className="hl-entry-page">Notes</div>
+                <div className="hl-entry-txt">« {h.texte.length > 140 ? h.texte.slice(0, 140) + '…' : h.texte} »</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {highlights.length > 0 && (
         <label className="pm-recherche">
           <Icon name="search" size={13} />
@@ -1857,7 +1888,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           {filtreNotions && <button type="button" className="cd-ic" onClick={() => setFiltreNotions('')} title="Effacer"><Icon name="x" size={11} /></button>}
         </label>
       )}
-      {highlights.length === 0 && (
+      {highlights.length === 0 && notionsNotes.length === 0 && (
         <div className="pm-vide">
           <Icon name="edit" size={22} />
           <div>Aucune notion surlignée.</div>
@@ -2198,13 +2229,18 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <CourseItemsSidebar ctx={ctx} ficheId={ficheReelle ? ficheReelle.id : null}
           ongletsEnPlus={[
             { id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length, contenu: notionsPdf },
+            ficheReelle && {
+              // 07/10 : document de notes du cours (vide par défaut) — même éditeur que les cours « document »
+              id: 'notes', label: 'Notes', icon: 'edit', plein: true,
+              contenu: notesPanneau,
+            },
             ficheId && {
               id: 'transcript', label: 'Transcript', icon: 'mic', plein: true, badge: <BadgeTranscript courseId={ficheId} />,
               contenu: <TranscriptPanel courseId={ficheId} titre={titreFiche}
                 onDemarrer={() => setFeuilleTrx({})} onReprendre={(s) => setFeuilleTrx({ reprendre: s })} />,
             },
           ]}
-          ongletDemande={ongletDemande} cleMemo={ficheId}
+          ongletDemande={ongletDemande} cleMemo={ficheId} flashcardDemandee={flashcardNotes}
           ongletInitial={ficheReelle ? null : 'notions'}
           replie={!panelOpen} onReplier={(v) => replierPanneau(v)}
           contenuReplie={modeTab && tabCote ? (

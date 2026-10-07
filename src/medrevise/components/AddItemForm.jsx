@@ -332,11 +332,12 @@ function QcmForm({ onAdd, busy, initial, submitLabel, onCancel }) {
    - `apercu`    : aperçu recto / verso sous les champs ;
    - `clavier`   : Entrée = valider (Maj+Entrée = retour à la ligne), Échap = annuler,
                    Tab passe du recto au verso (et Maj+Tab revient). */
-export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefaut = '', sansImage = false, apercu = false, clavier = false }) {
+export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefaut = '', sansImage = false, apercu = false, clavier = false, rectoInitial = '' }) {
   // nouvelle carte : PRÉ-REMPLI avec le thème par défaut de la fiche (components/ThemeFiche.jsx)
   // — on le change si l'on veut ; une carte modifiée garde le sien.
   const [theme, setTheme] = useState(initial ? (initial.theme || '') : themeDefaut);
-  const [recto, setRecto] = useState(initial?.recto || '');
+  // rectoInitial (07/10) : carte NEUVE pré-remplie depuis une sélection (document de notes)
+  const [recto, setRecto] = useState(initial?.recto || rectoInitial || '');
   const [verso, setVerso] = useState(initial?.verso || '');
   const [indice, setIndice] = useState(initial?.indice || '');
   const [aRetenir, setARetenir] = useState(initial?.a_retenir || '');

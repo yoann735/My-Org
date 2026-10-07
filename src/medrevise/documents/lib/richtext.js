@@ -8,12 +8,14 @@
      - la liste « mes questions » (mark maison studentQuestion) avec contexte ;
      - l'export texte brut.
    ============================================================ */
-import { Mark, generateHTML } from '@tiptap/core';
+import { Mark, Extension, generateHTML } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
 import { TextStyleKit } from '@tiptap/extension-text-style';
 import { TextAlign } from '@tiptap/extension-text-align';
 import { Highlight } from '@tiptap/extension-highlight';
 import { Image } from '@tiptap/extension-image';
+import { TaskList, TaskItem } from '@tiptap/extension-list';
+import { TableKit } from '@tiptap/extension-table';
 import { getBlob } from '../../lib/storage.js';
 
 /* Mark maison « mes questions » : l'étudiant sélectionne sa question (souvent notée
@@ -96,6 +98,123 @@ export const richToHTML = (doc) => {
 };
 
 export const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] };
+
+/* ============================================================
+   DOCUMENT DE NOTES (07/10, docs/compte-rendu-position-document-tablette.md) — MÊME
+   moteur, étendu : cases à cocher, tableaux simples, et la mark « notion » (un passage
+   du document devenu notion : il apparaît dans le mode Notions du panneau, un clic y
+   ramène). Rien ne change pour les autres usages de RICH_EXTENSIONS.
+   ============================================================ */
+export const NotionMark = Mark.create({
+  name: 'notion',
+  inclusive: false,
+  excludes: '',
+  addAttributes() {
+    return {
+      id: { default: null, parseHTML: (el) => el.getAttribute('data-notion'), renderHTML: (a) => (a.id ? { 'data-notion': a.id } : {}) },
+      couleur: { default: 'jaune', parseHTML: (el) => el.getAttribute('data-couleur') || 'jaune', renderHTML: (a) => ({ 'data-couleur': a.couleur || 'jaune' }) },
+    };
+  },
+  parseHTML() { return [{ tag: 'mark[data-notion]' }]; },
+  renderHTML({ HTMLAttributes }) { return ['mark', { ...HTMLAttributes, class: 'rt-notion' }, 0]; },
+});
+/* Entrée sur une ligne VIDE d'une citation : on en sort (comme Notion, Docs) — sans ça,
+   tout ce qu'on tape ensuite restait dans la citation. */
+const SortieCitation = Extension.create({
+  name: 'sortieCitation',
+  addKeyboardShortcuts() {
+    return {
+      Enter: ({ editor }) => {
+        const { $from, empty } = editor.state.selection;
+        if (!empty || $from.parent.type.name !== 'paragraph' || $from.parent.content.size !== 0) return false;
+        for (let d = $from.depth - 1; d > 0; d--) {
+          const n = $from.node(d).type.name;
+          if (n === 'blockquote') return editor.commands.lift('blockquote');
+          if (n === 'listItem' || n === 'taskItem' || n === 'tableCell' || n === 'tableHeader') return false;
+        }
+        return false;
+      },
+    };
+  },
+});
+export const NOTES_EXTENSIONS = [
+  StarterKit.configure({ link: { openOnClick: false, autolink: true, linkOnPaste: true, defaultProtocol: 'https' } }),
+  TextStyleKit,
+  TextAlign.configure({ types: ['heading', 'paragraph'] }),
+  Highlight.configure({ multicolor: true }),
+  BlobImage.configure({ inline: false, allowBase64: false }),
+  StudentQuestion,
+  TaskList,
+  TaskItem.configure({ nested: true }),
+  TableKit.configure({ table: { resizable: false } }),
+  NotionMark,
+  SortieCitation,
+];
+export const notesToHTML = (doc) => {
+  try { return doc ? generateHTML(doc, NOTES_EXTENSIONS) : ''; } catch (e) { return ''; }
+};
+
+/** Les notions d'un document : [{ id, texte, couleur }] dans l'ordre du document. */
+export function collectNotions(doc) {
+  const par = new Map();
+  const w = (n) => {
+    if (!n) return;
+    if (n.type === 'text' && n.marks) {
+      const m = n.marks.find((x) => x.type === 'notion' && x.attrs && x.attrs.id);
+      if (m) { const r = par.get(m.attrs.id) || { id: m.attrs.id, texte: '', couleur: m.attrs.couleur || 'jaune' }; r.texte += n.text || ''; par.set(m.attrs.id, r); }
+    }
+    (n.content || []).forEach(w);
+  };
+  w(doc);
+  return [...par.values()].map((r) => ({ ...r, texte: r.texte.trim() })).filter((r) => r.texte);
+}
+
+/* ---------- export Markdown (titres, listes, cases, tableaux, citations, liens, images) ---------- */
+export function docToMarkdown(doc, { titre = '', images = null } = {}) {
+  const srcImage = (a) => { const id = a && a.blobId; return id ? ((images && images.get(id)) || 'image-' + id) : ((a && a.src) || ''); };
+  const marques = (n) => {
+    let t = (n.text || '').replace(/([*_`\\])/g, '\\$1');
+    const ms = n.marks || [];
+    if (ms.some((m) => m.type === 'code')) t = '`' + (n.text || '') + '`';
+    if (ms.some((m) => m.type === 'bold')) t = '**' + t + '**';
+    if (ms.some((m) => m.type === 'italic')) t = '*' + t + '*';
+    if (ms.some((m) => m.type === 'strike')) t = '~~' + t + '~~';
+    if (ms.some((m) => m.type === 'underline')) t = '<u>' + t + '</u>';
+    if (ms.some((m) => m.type === 'highlight' || m.type === 'notion')) t = '==' + t + '==';
+    const lien = ms.find((m) => m.type === 'link');
+    if (lien) t = '[' + t + '](' + lien.attrs.href + ')';
+    return t;
+  };
+  const inline = (n) => (n.content || []).map((c) => (c.type === 'text' ? marques(c) : c.type === 'hardBreak' ? '  \n' : c.type === 'image' ? `![image](${srcImage(c.attrs)})` : inline(c))).join('');
+  const bloc = (n, ind = '') => {
+    switch (n.type) {
+      case 'heading': return '#'.repeat((n.attrs && n.attrs.level) || 1) + ' ' + inline(n);
+      case 'paragraph': return ind + inline(n);
+      case 'blockquote': return (n.content || []).map((c) => bloc(c)).join('\n\n').split('\n').map((l) => '> ' + l).join('\n');
+      case 'horizontalRule': return '---';
+      case 'codeBlock': return '```\n' + (n.content || []).map((c) => c.text || '').join('') + '\n```';
+      case 'image': return `![image](${srcImage(n.attrs)})`;
+      case 'bulletList': case 'orderedList': case 'taskList':
+        return (n.content || []).map((li, i) => {
+          const puce = n.type === 'orderedList' ? `${((n.attrs && n.attrs.start) || 1) + i}. ` : n.type === 'taskList' ? `- [${li.attrs && li.attrs.checked ? 'x' : ' '}] ` : '- ';
+          const [premier, ...reste] = li.content || [];
+          const tete = ind + puce + (premier ? inline(premier) : '');
+          const suite = reste.map((c) => bloc(c, ind + '  ')).join('\n');
+          return suite ? tete + '\n' + suite : tete;
+        }).join('\n');
+      case 'table': {
+        const lignes = (n.content || []).map((tr) => (tr.content || []).map((td) => (td.content || []).map((p) => inline(p)).join(' ').replace(/\|/g, '\\|')));
+        if (!lignes.length) return '';
+        const larg = Math.max(...lignes.map((l) => l.length));
+        const ligne = (l) => '| ' + Array.from({ length: larg }, (_, i) => l[i] || '').join(' | ') + ' |';
+        return [ligne(lignes[0]), '| ' + Array.from({ length: larg }, () => '---').join(' | ') + ' |', ...lignes.slice(1).map(ligne)].join('\n');
+      }
+      default: return (n.content || []).map((c) => bloc(c, ind)).join('\n');
+    }
+  };
+  const corps = ((doc && doc.content) || []).map((n) => bloc(n)).filter((x) => x !== undefined).join('\n\n');
+  return (titre ? '# ' + titre + '\n\n' : '') + corps.replace(/\n{3,}/g, '\n\n').trim() + '\n';
+}
 
 /* ---------- walkers purs sur le JSON ProseMirror ---------- */
 const isBlock = (t) => t === 'paragraph' || t === 'heading';

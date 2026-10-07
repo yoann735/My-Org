@@ -64,11 +64,13 @@ const lireLS = (k) => { try { return localStorage.getItem(k); } catch (e) { retu
 const ecrireLS = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* stockage bloqué */ } };
 const TYPES_IDS = ['qcm', 'flashcard', 'exercice', 'feynman'];
 
-export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null, cleMemo = null, contenuReplie = null }) {
+export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null, cleMemo = null, contenuReplie = null, flashcardDemandee = null }) {
   const avecItems = !!ficheId;
   const extras = (ongletsEnPlus || []).filter(Boolean);
   const extraNotions = extras.find((o) => o.id === 'notions') || null;
   const extraTranscript = extras.find((o) => o.id === 'transcript') || null;
+  // 07/10 : « Notes » — le document de notes du cours (documents/NotesEditor.jsx)
+  const extraNotes = extras.find((o) => o.id === 'notes') || null;
   const ficheItems = useMemo(() => (avecItems ? (ctx.db.questions || []).filter((q) => q.ficheId === ficheId) : []), [ctx.db, ficheId, avecItems]);
   const countByType = useMemo(() => {
     const c = { qcm: 0, flashcard: 0, exercice: 0, feynman: 0 };
@@ -80,6 +82,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     avecItems && { id: 'exercices', label: 'Exercices', n: ficheItems.length },
     extraNotions && { id: 'notions', label: 'Notions', n: extraNotions.n },
     extraTranscript && { id: 'transcript', label: 'Transcript', badge: extraTranscript.badge },
+    extraNotes && { id: 'notes', label: 'Notes' },
   ].filter(Boolean);
   const cle = cleMemo || ficheId || 'doc';
   const versMode = (id) => (TYPES_IDS.includes(id) ? 'exercices' : id);
@@ -206,7 +209,18 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
       setAddedCount((n) => n + 1);
     } finally { setBusyAdd(false); }
   };
-  const closeAdd = () => { setAdding(false); setAddedCount(0); setAddSource('form'); };
+  const closeAdd = () => { setAdding(false); setAddedCount(0); setAddSource('form'); setRectoInitial(null); };
+  /* FLASHCARD DEPUIS UNE SÉLECTION (07/10) : { texte, n } — le mode Exercices s'ouvre sur
+     les flashcards, carte d'ajout ouverte, recto pré-rempli (on n'a plus qu'à écrire le verso) */
+  const [rectoInitial, setRectoInitial] = useState(null); // { texte, n }
+  const nFlash = flashcardDemandee ? flashcardDemandee.n : 0;
+  useEffect(() => {
+    if (!flashcardDemandee || !flashcardDemandee.texte || !avecItems) return;
+    setActiveType('flashcard'); setEditingId(null); setVoirTheme(false);
+    setAddSource('form'); setAdding(true); setAddedCount(0);
+    setRectoInitial({ texte: flashcardDemandee.texte, n: flashcardDemandee.n });
+    allerMode('exercices');
+  }, [nFlash]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- édition inline ----
   const [editingId, setEditingId] = useState(null);
@@ -264,7 +278,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
       </div>
       {voirTheme && activeType === 'flashcard' && <ThemeFicheFlashcards ctx={ctx} ficheId={ficheId} />}
       {adding && addSource === 'form' && activeType === 'flashcard' && (
-        <CarteAjoutFlashcard ctx={ctx} ficheId={ficheId} busy={busyAdd} onAjouter={submitAdd} onTerminer={closeAdd}
+        <CarteAjoutFlashcard key={rectoInitial ? 'r' + rectoInitial.n : 'carte'} ctx={ctx} ficheId={ficheId} busy={busyAdd} onAjouter={submitAdd} onTerminer={closeAdd}
+          rectoInitial={rectoInitial ? rectoInitial.texte : null}
           themeDefaut={themeFlashcardsDeFiche((ctx.db.fiches || []).find((f) => f.id === ficheId))} />
       )}
       {adding && !(addSource === 'form' && activeType === 'flashcard') && (
@@ -317,7 +332,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         ))}
       </div>
     </div>
-  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, voirTheme, items, editingId, busyEdit, ctx, ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
+  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, voirTheme, items, editingId, busyEdit, ctx, ficheId, rectoInitial]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* contenus des modes : des éléments STABLES (mêmes objets d'un rendu à l'autre tant que
      leur contenu ne change pas) — le volet mémoïsé (Volet) ne se re-rend alors jamais
@@ -328,7 +343,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   const contenuTranscript = useMemo(() => (extraTranscript ? (extraTranscript.plein
     ? <div className="pis-extra-plein">{extraTranscript.contenu}</div>
     : <div className="pis-scroll scroll pis-extra">{extraTranscript.contenu}</div>) : null), [extraTranscript && extraTranscript.contenu, extraTranscript && extraTranscript.plein]); // eslint-disable-line react-hooks/exhaustive-deps
-  const contenuMode = (m) => (m.id === 'exercices' ? exercices : m.id === 'notions' ? contenuNotions : contenuTranscript);
+  const contenuNotes = useMemo(() => (extraNotes ? <div className="pis-extra-plein">{extraNotes.contenu}</div> : null), [extraNotes && extraNotes.contenu]); // eslint-disable-line react-hooks/exhaustive-deps
+  const contenuMode = (m) => (m.id === 'exercices' ? exercices : m.id === 'notions' ? contenuNotions : m.id === 'notes' ? contenuNotes : contenuTranscript);
 
   return (
     <ModalesHorsPanneauCtx.Provider value>

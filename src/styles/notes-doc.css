@@ -80,5 +80,22 @@
   .nd-impression-page table { border-collapse: collapse; width: 100%; } .nd-impression-page td, .nd-impression-page th { border: 1px solid #999; padding: 4px 6px; }
   .nd-impression-page img { max-width: 100%; } .nd-impression-page mark { background: #fff2a8; }
   .nd-impression-page h1, .nd-impression-page h2, .nd-impression-page h3 { break-after: avoid; } .nd-impression-page img, .nd-impression-page table { break-inside: avoid; }
+  @page { margin: 16mm 18mm; }
+  html:has(body.nd-impression), body.nd-impression { background: #fff !important; color: #111 !important; padding: 0 !important; margin: 0 !important; border: none !important; box-shadow: none !important; }
+  .nd-impression-page h1:first-child { margin-top: 0; padding-bottom: 6pt; border-bottom: 1px solid #ccc; }
+  .nd-impression-page p { margin: 0 0 6pt; }
+  .nd-impression-page ul, .nd-impression-page ol { margin: 0 0 6pt; padding-left: 18pt; }
+  .nd-impression-page li > p { margin: 0 0 2pt; }
+  .nd-impression-page ul[data-type="taskList"] { list-style: none; padding-left: 2pt; }
+  .nd-impression-page ul[data-type="taskList"] li { display: flex; align-items: baseline; gap: 6pt; }
+  .nd-impression-page ul[data-type="taskList"] li > label { flex: 0 0 auto; }
+  .nd-impression-page ul[data-type="taskList"] li > div { flex: 1 1 auto; }
+  .nd-impression-page ul[data-type="taskList"] li[data-checked="true"] > div { text-decoration: line-through; color: #666; }
+  .nd-impression-page blockquote { margin: 0 0 8pt; padding: 2pt 0 2pt 10pt; border-left: 3pt solid #888; color: #333; }
+  .nd-impression-page hr { border: none; border-top: 1px solid #aaa; margin: 12pt 0; }
+  .nd-impression-page td > p, .nd-impression-page th > p { margin: 0; }
+  .nd-impression-page th { background: #f0f0f0; text-align: left; }
+  .nd-impression-page a { color: #1a4fb5; }
 }
 .nd-impression-page { display: none; }
+.ndc-doc.nd-attente .nd-defile { visibility: hidden; } /* position du document en cours de restauration */

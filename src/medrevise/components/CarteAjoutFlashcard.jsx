@@ -25,7 +25,7 @@ import { PLACES_IMAGE } from './FlashcardImage.jsx';
 import { putBlob } from '../lib/storage.js';
 import { imageDuPressePapier, texteDuPressePapier, imageDuDepot, glisseDesFichiers } from '../lib/collerImage.js';
 
-export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter, onTerminer, busy }) {
+export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter, onTerminer, busy, rectoInitial = null }) {
   const [mode, setMode] = useState('texte');
   const [nb, setNb] = useState(0);
   const racine = useRef(null);
@@ -45,7 +45,8 @@ export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter,
         {nb > 0 && <div className="fc-carte-nb tnum">{nb} flashcard{nb > 1 ? 's' : ''} ajoutée{nb > 1 ? 's' : ''} ✓ — continue, ou « Terminer »</div>}
         <div hidden={mode !== 'texte'}>
           <FlashcardForm sansImage apercu clavier themeDefaut={themeDefaut} onAdd={ajouter} busy={busy}
-            onCancel={onTerminer} submitLabel="Ajouter" />
+            onCancel={onTerminer} submitLabel="Ajouter"
+            rectoInitial={rectoInitial || ''} />
         </div>
         <div hidden={mode !== 'image'}>
           <VoletImage ctx={ctx} ficheId={ficheId} themeDefaut={themeDefaut} actif={mode === 'image'} racine={racine}

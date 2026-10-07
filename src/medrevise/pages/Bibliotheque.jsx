@@ -15,7 +15,8 @@ import { useTreeOpenState, trierSections, deplacerSection } from '../components/
 import { useImportParDepot } from '../components/TreeFileDrop.jsx';
 import { putBlob } from '../lib/storage.js';
 import { ficheImages, totalCoches } from '../lib/anatSchema.js';
-import { docKind, DOC_META, createTranscript, deleteTranscript } from '../documents/lib/documents.js';
+import { docKind, DOC_META, createTranscript, deleteTranscript, createDocumentNotes } from '../documents/lib/documents.js';
+import { DocumentCours } from '../documents/DocumentCours.jsx';
 import { cleanTranscript, textToDoc } from '../documents/lib/transcript.js';
 import { PdfReader } from '../pdf/PdfReader.jsx';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
@@ -41,6 +42,7 @@ export function Bibliotheque({ ctx }) {
   // navigation d'écran — on reste sur 'library' tout du long).
   const [selected, setSelected] = useState(null); // { ficheId, kind: 'fiche'|'schema'|'transcript', mode? }
   const [creatingTranscript, setCreatingTranscript] = useState(false);
+  const [creatingDocument, setCreatingDocument] = useState(false); // 07/10 : « Nouveau document »
   const [etqMenu, setEtqMenu] = useState(null); // { x, y, ficheId } — menu compact de l'étiquette
   const [replacingHtmlId, setReplacingHtmlId] = useState(null); // ficheId — modale « Remplacer le fichier HTML »
   // refonte UX (repli HORIZONTAL, pas un démontage) : la liste reste TOUJOURS
@@ -166,6 +168,7 @@ export function Bibliotheque({ ctx }) {
     if (kind === 'fiche') setSelected({ ficheId: f.id, kind: 'fiche', srcTab });
     else if (kind === 'schema') setSelected({ ficheId: f.id, kind: 'schema' });
     else if (kind === 'transcript') setSelected({ ficheId: f.id, kind: 'transcript' });
+    else if (kind === 'document') setSelected({ ficheId: f.id, kind: 'document' });
     if (kind) setListCollapsed(true);
   };
   const closeDoc = () => { setSelected(null); setListCollapsed(false); };
@@ -523,7 +526,7 @@ export function Bibliotheque({ ctx }) {
           liste : ils reviennent dès qu'on ferme le document. */}
       {/* fiche (PDF/HTML) : c'est le lecteur qui affiche le nom ET le menu Fichier
           (avecEntete) ; schéma et transcript gardent cet en-tête compact */}
-      {ficheOuverte && selected.kind === 'fiche' ? null : ficheOuverte ? (
+      {ficheOuverte && (selected.kind === 'fiche' || selected.kind === 'document') ? null : ficheOuverte ? (
         <div className="lecteur-entete">
           <TitreRenommable titre={ficheOuverte.titre} onRenommer={(t) => ctx.renameFiche(ficheOuverte.id, t)} />
           <div className="topbar-actions"><EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} /></div>
@@ -549,11 +552,15 @@ export function Bibliotheque({ ctx }) {
               </button>
             ))}
           </div>
-          {affichage === 'arbre' && (
-          <button className="btn ghost sm" onClick={() => setCreatingTranscript((v) => !v)}>
+          {affichage === 'arbre' && (<>
+          <button className="btn ghost sm" onClick={() => { setCreatingDocument((v) => !v); setCreatingTranscript(false); }}
+            title="Un cours sans diapos : un document de notes riche, avec le même panneau (exercices, notions, transcription)">
+            <Icon name={creatingDocument ? 'x' : 'plus'} size={13} /> {creatingDocument ? 'Fermer' : 'Nouveau document'}
+          </button>
+          <button className="btn ghost sm" onClick={() => { setCreatingTranscript((v) => !v); setCreatingDocument(false); }}>
             <Icon name={creatingTranscript ? 'x' : 'plus'} size={13} /> {creatingTranscript ? 'Fermer' : 'Nouveau transcript'}
           </button>
-          )}
+          </>)}
           <EdTop theme={ctx.theme} onTheme={ctx.toggleTheme} onHub={ctx.goHub} />
         </div>
       </div>
@@ -570,6 +577,10 @@ export function Bibliotheque({ ctx }) {
         <div className={'lib-master' + (listCollapsed ? ' collapsed' : '')}>
         {!listCollapsed && (
         <div className="lib-master-body">
+          {creatingDocument && (
+            <NewDocument ctx={ctx} onDone={() => setCreatingDocument(false)}
+              onCreated={(fiche) => { setSelected({ ficheId: fiche.id, kind: 'document' }); setListCollapsed(true); }} />
+          )}
           {creatingTranscript && (
             <NewTranscript ctx={ctx} onDone={() => setCreatingTranscript(false)}
               onCreated={(fiche) => { setSelected({ ficheId: fiche.id, kind: 'transcript' }); setListCollapsed(true); }} />
@@ -732,6 +743,9 @@ export function Bibliotheque({ ctx }) {
             <SchemaEditorScreen key={selected.ficheId} ctx={ctx} ficheId={selected.ficheId} embedded onClose={closeDoc} />
           ) : selected.kind === 'transcript' ? (
             <TranscriptEditor key={selected.ficheId} ctx={ctx} ficheId={selected.ficheId} onClose={closeDoc} />
+          ) : selected.kind === 'document' ? (
+            <DocumentCours key={selected.ficheId} ctx={ctx} ficheId={selected.ficheId} onClose={closeDoc}
+              onConvertir={() => setSelected({ ficheId: selected.ficheId, kind: 'fiche', srcTab: 'pdf' })} />
           ) : null}
         </div>
       </div>
@@ -879,6 +893,46 @@ function ReplaceHtmlModal({ ctx, fiche, onClose }) {
         <button className="btn danger" disabled={!ready || busy} onClick={confirm}><Icon name="refresh" size={14} /> Remplacer (écrase l'ancien fichier)</button>
       </div>
     </Modal>
+  );
+}
+
+/* création d'un cours « document » (07/10) : destination + titre, et c'est tout — le
+   document s'ouvre aussitôt, prêt à écrire. */
+function NewDocument({ ctx, onDone, onCreated }) {
+  const { db } = ctx;
+  const sources = db.sources.filter((s) => !s.archive);
+  const matieresFor = (sid) => db.matieres.filter((m) => m.sourceId === sid && !m.archive);
+  const [srcId, setSrcId] = useState(() => (sources[0] || {}).id);
+  const [matId, setMatId] = useState(() => (matieresFor((sources[0] || {}).id)[0] || {}).id || null);
+  const [titre, setTitre] = useState('');
+  const [busy, setBusy] = useState(false);
+  const pret = !!matId && !busy;
+  const creer = async () => {
+    if (!pret) return;
+    setBusy(true);
+    const fiche = await createDocumentNotes({ matiereId: matId, titre: titre.trim() || 'Nouveau document' });
+    await ctx.reload();
+    setBusy(false);
+    onDone && onDone();
+    onCreated && onCreated(fiche);
+  };
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-body">
+        <div className="imp-dest-head"><Icon name="edit" size={15} /> Nouveau document</div>
+        <div className="hint" style={{ margin: '4px 0 10px' }}>Un cours sans diapos : un document de notes (titres, listes, cases, tableaux, images), avec exercices, notions et transcription à côté.</div>
+        <DestPicker ctx={ctx} srcId={srcId} setSrcId={setSrcId} matId={matId} setMatId={setMatId} />
+        <label className="field" style={{ display: 'block', marginTop: 10 }}>
+          <span className="hint">Titre</span>
+          <input className="input" value={titre} placeholder="Nouveau document" onChange={(e) => setTitre(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') creer(); }} style={{ width: '100%', marginTop: 4 }} />
+        </label>
+        <div className="row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+          <button className="btn ghost sm" onClick={onDone}>Annuler</button>
+          <button className="btn primary sm" disabled={!pret} onClick={creer}><Icon name="plus" size={13} /> Créer le document</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

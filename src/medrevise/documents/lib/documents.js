@@ -17,6 +17,9 @@ export function docKind(fiche) {
   if (fiche.type === 'anat_schema') return 'schema';
   if (fiche.type === 'transcript') return 'transcript';
   if (fiche.pdfId || fiche.htmlId) return 'fiche';
+  // 07/10 : cours « document » sans PDF (documents/DocumentCours.jsx). Une fois un PDF
+  // importé, il redevient une 'fiche' (le document devient son onglet « Notes »).
+  if (fiche.docNotes) return 'document';
   return null;
 }
 
@@ -24,7 +27,19 @@ export const DOC_META = {
   fiche: { label: 'Fiche', icon: 'filePdf' },
   schema: { label: 'Schema', icon: 'image' },
   transcript: { label: 'Transcript', icon: 'edit' },
+  document: { label: 'Document', icon: 'edit' },
 };
+
+/** crée un cours « document » (07/10) : une fiche standard sans PDF, marquée docNotes ;
+ *  son contenu vit dans le store `notes_doc` (créé à la première frappe). */
+export async function createDocumentNotes({ matiereId, titre }) {
+  const fiche = {
+    id: genId('f'), matiereId, dossierId: null, titre: (titre || 'Nouveau document').trim(),
+    sousTitre: 'Document', type: 'standard', docNotes: true, dateImport: todayISO(),
+  };
+  await put('fiches', fiche);
+  return fiche;
+}
 
 /** liste des fiches ouvrables comme documents (tous modes), non archivees. */
 export function listDocuments(db) {
