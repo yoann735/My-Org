@@ -19,11 +19,11 @@
    formulaire simple ne doit jamais faire régresser un item plus riche
    (importé via JSON).
    ============================================================ */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { Modal, LoaderL6 } from './ui.jsx';
-import { appendItemsToFiche, appendExosToChapitre, themeFlashcardsDeFiche, doublonsRedatables } from '../lib/import.js';
+import { appendItemsToFiche, appendExosToChapitre, themeFlashcardsDeFiche, doublonsRedatables, adopterThemeDeCarte } from '../lib/import.js';
 import { isoDate } from '../lib/sm2.js';
 import { ChoixJ0Doublons } from './ImportFlow.jsx';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
@@ -72,7 +72,7 @@ export function AddItemModal({ ctx, ficheId, ficheTitre, chapitreId, chapitreNom
     setBusy(true);
     try {
       if (isChapitre) await appendExosToChapitre({ chapitreId, items: [raw] });
-      else await appendItemsToFiche({ ficheId, items: [raw] });
+      else { await appendItemsToFiche({ ficheId, items: [raw] }); await adopterThemeDeCarte(ficheId, raw); }
       await ctx.reload();
       setDone((n) => n + 1);
     } finally {
@@ -330,12 +330,24 @@ function QcmForm({ onAdd, busy, initial, submitLabel, onCancel }) {
 /* Options de la CARTE D'AJOUT du panneau (05/10, components/CarteAjoutFlashcard.jsx) :
    - `sansImage` : pas de champ image ni de collage d'image ici (le volet Image s'en charge) ;
    - `apercu`    : aperçu recto / verso sous les champs ;
-   - `clavier`   : Entrée = valider (Maj+Entrée = retour à la ligne), Échap = annuler,
-                   Tab passe du recto au verso (et Maj+Tab revient). */
+   - `clavier`   : Tab passe du recto au verso (et Maj+Tab revient), focus rendu au recto
+                   après chaque ajout.
+   CLAVIER DE TOUS LES FORMULAIRES FLASHCARD (08/10) : Entrée = retour à la ligne (jamais
+   « enregistrer » : on tape des paragraphes), ⌘Entrée / Ctrl+Entrée = enregistrer,
+   Échap = annuler. Les retours à la ligne sont gardés tels quels (trim aux bords seulement)
+   et rendus en pre-wrap à la révision. */
+export const RACCOURCI_ENREGISTRER = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? '⌘↵' : 'Ctrl+↵';
+export const estEnregistrer = (e) => e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.isComposing;
 export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefaut = '', sansImage = false, apercu = false, clavier = false, rectoInitial = '' }) {
-  // nouvelle carte : PRÉ-REMPLI avec le thème par défaut de la fiche (components/ThemeFiche.jsx)
-  // — on le change si l'on veut ; une carte modifiée garde le sien.
+  // nouvelle carte : PRÉ-REMPLI avec le thème de la fiche (components/ThemeFiche.jsx). Le
+  // changer ne vaut que pour CETTE carte : la suivante repart du thème de la fiche, qui ne
+  // bouge pas. Si le thème de la fiche change pendant que le formulaire est ouvert (carte
+  // d'ajout toujours montée), le champ suit — sauf s'il a été retouché à la main.
   const [theme, setTheme] = useState(initial ? (initial.theme || '') : themeDefaut);
+  const themeRetouche = useRef(false);
+  useEffect(() => {
+    if (!initial && !themeRetouche.current) setTheme(themeDefaut);
+  }, [themeDefaut]); // eslint-disable-line react-hooks/exhaustive-deps
   // rectoInitial (07/10) : carte NEUVE pré-remplie depuis une sélection (document de notes)
   const [recto, setRecto] = useState(initial?.recto || rectoInitial || '');
   const [verso, setVerso] = useState(initial?.verso || '');
@@ -412,17 +424,21 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
       cloze: blanks.map((b) => b.expected),
       imageId, imagePlace: imageId ? image.place : null,
     });
-    if (!initial) { setRecto(''); setVerso(''); setIndice(''); setARetenir(''); setHoleHint(null); setImage({ imageId: null, fichier: null, place: 'recto' }); }
+    if (!initial) {
+      setRecto(''); setVerso(''); setIndice(''); setARetenir(''); setHoleHint(null); setImage({ imageId: null, fichier: null, place: 'recto' });
+      setTheme(themeDefaut); themeRetouche.current = false; // thème retouché = pour cette carte seulement
+    }
     if (clavier) requestAnimationFrame(() => rectoRef.current && rectoRef.current.focus()); // enchaîner la carte suivante
   };
-  const auClavier = !clavier ? undefined : (e) => {
+  const auClavier = (e) => {
     if (e.key === 'Escape' && onCancel) { e.preventDefault(); e.stopPropagation(); onCancel(); return; }
-    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT')) {
-      e.preventDefault(); if (ready && !busy) submit(); return;
-    }
+    // Entrée seule : comportement natif (retour à la ligne dans les zones de texte)
+    if (estEnregistrer(e)) { e.preventDefault(); e.stopPropagation(); if (ready && !busy) submit(); return; }
+    if (!clavier) return;
     if (e.key === 'Tab' && !e.shiftKey && e.target === rectoRef.current) { e.preventDefault(); versoRef.current && versoRef.current.focus(); return; }
     if (e.key === 'Tab' && e.shiftKey && e.target === versoRef.current) { e.preventDefault(); rectoRef.current && rectoRef.current.focus(); }
   };
+  const themePropre = !initial && themeDefaut && theme.trim() !== themeDefaut;
 
   return (
     <div className={'aif-champs' + (depot ? ' fc-depot' : '')} ref={racineRef} onKeyDown={auClavier}
@@ -431,7 +447,14 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
       onDrop={(e) => { if (sansImage || !glisseDesFichiers(e.dataTransfer)) return; e.preventDefault(); e.stopPropagation(); setDepot(false); const f = imageDuDepot(e.dataTransfer); if (f) prendreImage(f); }}>
       <div className="imp-field">
         <label>Thème <span className="imp-opt">(optionnel)</span></label>
-        <input className="imp-title" placeholder="ex : Surfactant" value={theme} onChange={(e) => setTheme(e.target.value)} />
+        <input className="imp-title" placeholder="ex : Surfactant" value={theme} onChange={(e) => { themeRetouche.current = true; setTheme(e.target.value); }} />
+        {!initial && (themeDefaut ? (
+          <div className="hint fc-theme-aide">
+            {themePropre
+              ? <>Pour cette carte seulement — la fiche garde « {themeDefaut} ». <button type="button" className="linklike" onClick={() => { setTheme(themeDefaut); themeRetouche.current = false; }}>Remettre</button></>
+              : <>Thème de la fiche, donné à chaque nouvelle carte.</>}
+          </div>
+        ) : theme.trim() ? <div className="hint fc-theme-aide">La fiche n’a pas encore de thème : celui-ci deviendra le sien (pré-rempli sur les cartes suivantes).</div> : null)}
       </div>
       <div className="imp-field">
         <div className="row spread" style={{ alignItems: 'center' }}>
@@ -480,17 +503,18 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
       {!sansImage && <ChampImageFlashcard valeur={image} onChange={setImage} />}
       <div className="imp-field">
         <label>Indice <span className="imp-opt">(optionnel)</span></label>
-        <input className="imp-title" value={indice} onChange={(e) => setIndice(e.target.value)} />
+        <textarea className="imp-title fc-txt-court" rows={1} value={indice} onChange={(e) => setIndice(e.target.value)} />
       </div>
       <div className="imp-field">
         <label>À retenir <span className="imp-opt">(optionnel)</span></label>
-        <input className="imp-title" value={aRetenir} onChange={(e) => setARetenir(e.target.value)} />
+        <textarea className="imp-title fc-txt-court" rows={1} value={aRetenir} onChange={(e) => setARetenir(e.target.value)} />
       </div>
       <div className="imp-actions">
+        <span className="fc-raccourci" title="Entrée = retour à la ligne · Échap = annuler">{RACCOURCI_ENREGISTRER} pour enregistrer</span>
         {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
         <button className="btn primary" onClick={submit} disabled={!ready || busy}><Icon name="check" size={15} /> {submitLabel || 'Ajouter cette flashcard'}</button>
       </div>
-      {!ready && <div className="hint" style={{ marginTop: 8 }}>Recto et verso requis.{clavier ? ' Entrée pour ajouter · Maj+Entrée : retour à la ligne · Échap : fermer.' : ''}</div>}
+      {!ready && <div className="hint" style={{ marginTop: 8 }}>Recto et verso requis.</div>}
     </div>
   );
 }

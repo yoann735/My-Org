@@ -32,7 +32,7 @@ import { Tex } from './Tex.jsx';
 import { ConfirmModal, ContextMenu, SplitHandle, ModalesHorsPanneauCtx } from './ui.jsx';
 import { creerGlissement } from './glissementModes.js';
 import { ItemForm, PasteJsonForm, TYPES } from './AddItemForm.jsx';
-import { appendItemsToFiche, themeFlashcardsDeFiche } from '../lib/import.js';
+import { appendItemsToFiche, themeFlashcardsDeFiche, adopterThemeDeCarte } from '../lib/import.js';
 import { ThemeFicheFlashcards } from './ThemeFiche.jsx';
 import { toInternalItem } from '../lib/adapter.js';
 import { OcclusionEditorModal, OcclusionView, estOcclusion } from './OcclusionImage.jsx';
@@ -202,11 +202,11 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   const [busyAdd, setBusyAdd] = useState(false);
   const [addedCount, setAddedCount] = useState(0);
   const [menuActions, setMenuActions] = useState(null);
-  const [voirTheme, setVoirTheme] = useState(false);
   const submitAdd = async (raw) => {
     setBusyAdd(true);
     try {
       await appendItemsToFiche({ ficheId, items: [raw] });
+      await adopterThemeDeCarte(ficheId, raw);
       await ctx.reload();
       setAddedCount((n) => n + 1);
     } finally { setBusyAdd(false); }
@@ -218,7 +218,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   const nFlash = flashcardDemandee ? flashcardDemandee.n : 0;
   useEffect(() => {
     if (!flashcardDemandee || !flashcardDemandee.texte || !avecItems) return;
-    setActiveType('flashcard'); setEditingId(null); setVoirTheme(false);
+    setActiveType('flashcard'); setEditingId(null);
     setAddSource('form'); setAdding(true); setAddedCount(0);
     setRectoInitial({ texte: flashcardDemandee.texte, n: flashcardDemandee.n });
     allerMode('exercices');
@@ -255,10 +255,9 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     const nouvelles = fc.filter((q) => { const e = etatFC(q, today); return (e === 'new' || e === 'learning') && !q.learningIntroducedOn; }).length;
     return { total: fc.length, nouvelles, aRevoir: plan.revisions.length + plan.enCours.length };
   }, [ficheItems, ctx.reglagesFC]);
-  const choisirType = (t) => { setActiveType(t); setAdding(false); setEditingId(null); setVoirTheme(false); };
+  const choisirType = (t) => { setActiveType(t); setAdding(false); setEditingId(null); };
   const actions = [
     { label: 'Coller du JSON', icon: 'upload', onClick: () => { setAdding(true); setAddSource('json'); setAddedCount(0); } },
-    activeType === 'flashcard' && { label: 'Thème automatique des flashcards', icon: 'tag', onClick: () => setVoirTheme((v) => !v) },
   ].filter(Boolean);
 
   /* mémoïsé (v1.2) : changer de mode ne re-rend plus la liste (200 items = 1 à 3 images
@@ -290,12 +289,13 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
           <Icon name={adding && addSource === 'form' ? 'x' : 'plus'} size={13} /> {adding && addSource === 'form' ? 'Fermer' : 'Ajouter'}
         </button>}
         <span style={{ flex: 1 }} />
-        <button type="button" className="icon-btn sm" title="Plus d’actions : coller du JSON, flashcard image, thème"
+        <button type="button" className="icon-btn sm" title="Plus d’actions : coller du JSON"
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuActions({ x: Math.min(r.right - 250, window.innerWidth - 260), y: r.bottom + 6 }); }}>
           <Icon name="more" size={16} />
         </button>
       </div>
-      {voirTheme && activeType === 'flashcard' && <ThemeFicheFlashcards ctx={ctx} ficheId={ficheId} />}
+      {/* thème de la fiche : TOUJOURS visible (08/10) — derrière « ⋯ », on ne le trouvait plus */}
+      {activeType === 'flashcard' && <ThemeFicheFlashcards ctx={ctx} ficheId={ficheId} />}
       {adding && addSource === 'form' && activeType === 'flashcard' && (
         <CarteAjoutFlashcard key={rectoInitial ? 'r' + rectoInitial.n : 'carte'} ctx={ctx} ficheId={ficheId} busy={busyAdd} onAjouter={submitAdd} onTerminer={closeAdd}
           rectoInitial={rectoInitial ? rectoInitial.texte : null}
@@ -351,7 +351,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         ))}
       </div>
     </div>
-  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, voirTheme, items, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC]); // eslint-disable-line react-hooks/exhaustive-deps
+  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* contenus des modes : des éléments STABLES (mêmes objets d'un rendu à l'autre tant que
      leur contenu ne change pas) — le volet mémoïsé (Volet) ne se re-rend alors jamais

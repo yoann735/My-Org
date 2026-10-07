@@ -82,6 +82,18 @@ export async function createFicheFromQuestions({ matiereId, titre, items, synthe
    déjà présent n'est jamais remplacé (surcharge carte par carte). */
 export const themeFlashcardsDeFiche = (fiche) => String((fiche && fiche.themeFlashcards) || '').trim();
 export const carteSansTheme = (q) => !String((q && (q.theme || q.concept)) || '').trim();
+/* (08/10) Une flashcard SAISIE À LA MAIN avec un thème, dans une fiche qui n'en a pas
+   encore : ce thème devient celui de la fiche (pré-rempli sur les cartes suivantes). Un
+   thème de fiche déjà posé n'est JAMAIS remplacé ainsi — il se change dans le panneau.
+   Ne touche à aucune carte. @returns true si la fiche a reçu le thème. */
+export async function adopterThemeDeCarte(ficheId, raw) {
+  const t = String((raw && (raw.theme || raw.concept)) || '').trim();
+  if (!t || !raw || (raw.type !== 'flashcard' && raw.type !== 'flash')) return false;
+  const fiche = await getOne('fiches', ficheId);
+  if (!fiche || themeFlashcardsDeFiche(fiche)) return false;
+  await put('fiches', { ...fiche, themeFlashcards: t });
+  return true;
+}
 function avecThemeDeFiche(raw, theme) {
   if (!theme || !raw || typeof raw !== 'object') return raw;
   if (raw.type !== 'flashcard' && raw.type !== 'flash') return raw;

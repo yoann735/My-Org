@@ -11,6 +11,15 @@
    Cartes DÉJÀ créées sans thème : rien n'est modifié tout seul. Le panneau propose
    « Appliquer à N cartes sans thème », avec confirmation, et « Annuler » ensuite
    (les cartes reprennent leur thème vide).
+
+   CHANGER LE THÈME DE LA FICHE (08/10) : les cartes qui portaient l'ANCIEN thème de la
+   fiche ne changent pas toutes seules — « Appliquer aux N cartes qui avaient l'ancien
+   thème » est proposé juste après, avec confirmation et « Annuler ». Une carte dont on a
+   choisi un autre thème n'est jamais concernée.
+
+   Toujours visible en tête de l'onglet Flashcards du panneau (08/10) : caché derrière
+   le menu « ⋯ » depuis le panneau à 3 modes (2d62bcc), il n'était plus trouvé — et le
+   champ « Thème » des cartes, seul visible, ne vaut que pour la carte.
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -26,9 +35,12 @@ export function ThemeFicheFlashcards({ ctx, ficheId }) {
   const [saisie, setSaisie] = useState('');
   const [confirmer, setConfirmer] = useState(false);
   const [annulable, setAnnulable] = useState(null); // { theme, avant: [items] }
+  const [ancien, setAncien] = useState(null); // thème remplacé, tant que la proposition tient
+  const [confirmerAncien, setConfirmerAncien] = useState(false);
   const [occupe, setOccupe] = useState(false);
 
   const sansTheme = useMemo(() => (ctx.db.questions || []).filter((q) => q.ficheId === ficheId && q.type === 'flashcard' && carteSansTheme(q)), [ctx.db, ficheId]);
+  const avecAncien = useMemo(() => (!ancien ? [] : (ctx.db.questions || []).filter((q) => q.ficheId === ficheId && q.type === 'flashcard' && String(q.theme || q.concept || '').trim() === ancien)), [ctx.db, ficheId, ancien]);
   // thèmes déjà utilisés (suggestions), le plus fréquent d'abord
   const suggestions = useMemo(() => {
     const n = new Map();
@@ -41,13 +53,15 @@ export function ThemeFicheFlashcards({ ctx, ficheId }) {
   const enregistrer = async () => {
     const v = saisie.trim();
     setOccupe(true);
-    try { await ctx.saveFiche({ ...fiche, themeFlashcards: v || null }); setEdition(false); setAnnulable(null); }
-    finally { setOccupe(false); }
-  };
-  const appliquer = async () => {
-    setConfirmer(false); setOccupe(true);
     try {
-      const avant = sansTheme.map((q) => ({ ...q }));
+      await ctx.saveFiche({ ...fiche, themeFlashcards: v || null }); setEdition(false); setAnnulable(null);
+      setAncien(theme && v && v !== theme ? theme : null); // proposer de suivre aux cartes de l'ancien thème
+    } finally { setOccupe(false); }
+  };
+  const appliquer = async (cibles = sansTheme) => {
+    setConfirmer(false); setConfirmerAncien(false); setAncien(null); setOccupe(true);
+    try {
+      const avant = cibles.map((q) => ({ ...q }));
       const maj = avant.map((q) => toInternalItem({ ...q, theme, concept: theme })).filter(Boolean);
       if (maj.length) { await putMany('questions', maj); await ctx.reload(); }
       setAnnulable({ theme, avant });
@@ -92,7 +106,14 @@ export function ThemeFicheFlashcards({ ctx, ficheId }) {
           <div className="hint tf-aide">Chaque nouvelle flashcard le reçoit (modifiable carte par carte). Vide = pas de thème par défaut.</div>
         </form>
       )}
-      {theme && !edition && sansTheme.length > 0 && !annulable && (
+      {theme && !edition && ancien && avecAncien.length > 0 && !annulable && (
+        <div className="tf-ligne tf-propose">
+          <span className="tf-txt">{avecAncien.length} carte{avecAncien.length > 1 ? 's' : ''} avai{avecAncien.length > 1 ? 'en' : ''}t l’ancien thème « {ancien} »</span>
+          <button type="button" className="linklike tf-modif" disabled={occupe} onClick={() => setConfirmerAncien(true)}>Appliquer aux {avecAncien.length} carte{avecAncien.length > 1 ? 's' : ''}…</button>
+          <button type="button" className="icon-btn sm" title="Laisser ces cartes telles quelles" aria-label="Ignorer" onClick={() => setAncien(null)}><Icon name="x" size={12} /></button>
+        </div>
+      )}
+      {theme && !edition && sansTheme.length > 0 && !annulable && !(ancien && avecAncien.length > 0) && (
         <div className="tf-ligne tf-propose">
           <span className="tf-txt">{sansTheme.length} carte{sansTheme.length > 1 ? 's' : ''} sans thème</span>
           <button type="button" className="linklike tf-modif" disabled={occupe} onClick={() => setConfirmer(true)}>Leur appliquer…</button>
@@ -109,7 +130,13 @@ export function ThemeFicheFlashcards({ ctx, ficheId }) {
         <ConfirmModal title="Appliquer le thème de la fiche ?"
           body={<>Les <b>{sansTheme.length}</b> flashcard{sansTheme.length > 1 ? 's' : ''} de cette fiche qui n’ont <b>pas encore de thème</b> recevront « <b>{theme}</b> ». Les cartes qui ont déjà un thème ne changent pas. Leur progression (méthode des J) est conservée. Tu pourras annuler juste après.</>}
           confirmLabel={`Appliquer à ${sansTheme.length} carte${sansTheme.length > 1 ? 's' : ''}`}
-          onConfirm={appliquer} onCancel={() => setConfirmer(false)} />
+          onConfirm={() => appliquer(sansTheme)} onCancel={() => setConfirmer(false)} />
+      )}
+      {confirmerAncien && (
+        <ConfirmModal title="Appliquer le nouveau thème ?"
+          body={<>Les <b>{avecAncien.length}</b> flashcard{avecAncien.length > 1 ? 's' : ''} de cette fiche qui avai{avecAncien.length > 1 ? 'en' : ''}t l’ancien thème « <b>{ancien}</b> » passeront à « <b>{theme}</b> ». Les cartes d’un autre thème ne changent pas. Leur progression (méthode des J) est conservée. Tu pourras annuler juste après.</>}
+          confirmLabel={`Appliquer aux ${avecAncien.length} carte${avecAncien.length > 1 ? 's' : ''}`}
+          onConfirm={() => appliquer(avecAncien)} onCancel={() => setConfirmerAncien(false)} />
       )}
     </div>
   );

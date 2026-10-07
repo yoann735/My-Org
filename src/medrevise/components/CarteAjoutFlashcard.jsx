@@ -7,8 +7,8 @@
 
    - Texte : le formulaire flashcard existant (FlashcardForm : thème auto de la
      fiche, recto avec amorces et trous, verso, indice, à retenir) + aperçu +
-     clavier (Entrée valide, Maj+Entrée = retour à la ligne, Échap ferme, Tab
-     recto → verso).
+     clavier (Entrée = retour à la ligne, ⌘Entrée / Ctrl+Entrée valide, Échap
+     ferme, Tab recto → verso).
    - Image : déposer / coller (⌘V, Ctrl+V) / parcourir, puis
        · « Image + texte »  → même schéma qu'une flashcard texte avec image
          ({ recto, verso, imageId, imagePlace }) ;
@@ -19,7 +19,7 @@
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { FlashcardForm } from './AddItemForm.jsx';
+import { FlashcardForm, RACCOURCI_ENREGISTRER, estEnregistrer } from './AddItemForm.jsx';
 import { OcclusionEditorModal } from './OcclusionImage.jsx';
 import { PLACES_IMAGE } from './FlashcardImage.jsx';
 import { putBlob } from '../lib/storage.js';
@@ -62,6 +62,9 @@ function VoletImage({ ctx, ficheId, themeDefaut, actif, racine, onAjouter, onTer
   const [apercu, setApercu] = useState(null);
   const [option, setOption] = useState('texte'); // 'texte' (image + recto/verso) | 'masques'
   const [theme, setTheme] = useState(themeDefaut);
+  // même règle que FlashcardForm : le thème de la fiche, retouchable pour CETTE carte seulement
+  const themeRetouche = useRef(false);
+  useEffect(() => { if (!themeRetouche.current) setTheme(themeDefaut); }, [themeDefaut]);
   const [recto, setRecto] = useState('');
   const [verso, setVerso] = useState('');
   const [place, setPlace] = useState('recto');
@@ -116,13 +119,14 @@ function VoletImage({ ctx, ficheId, themeDefaut, actif, racine, onAjouter, onTer
       recto: recto.trim(), verso: verso.trim(), indice: null, a_retenir: '', cloze: [],
       imageId, imagePlace: place,
     });
-    setFichier(null); setRecto(''); setVerso('');
+    setFichier(null); setRecto(''); setVerso(''); setTheme(themeDefaut); themeRetouche.current = false;
   };
   const clavier = (e) => {
     // l'éditeur de masques (fenêtre) est rendu DANS la carte : ses touches ne la concernent pas
     if (masques || (e.target.closest && e.target.closest('.day-pop'))) return;
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onTerminer(); return; }
-    if (e.key === 'Enter' && !e.shiftKey && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT')) { e.preventDefault(); valider(); return; }
+    // Entrée seule = retour à la ligne (comportement natif) ; ⌘Entrée / Ctrl+Entrée = ajouter
+    if (estEnregistrer(e)) { e.preventDefault(); e.stopPropagation(); valider(); return; }
     if (e.key === 'Tab' && !e.shiftKey && e.target === rectoRef.current) { e.preventDefault(); versoRef.current && versoRef.current.focus(); return; }
     if (e.key === 'Tab' && e.shiftKey && e.target === versoRef.current) { e.preventDefault(); rectoRef.current && rectoRef.current.focus(); }
   };
@@ -160,7 +164,7 @@ function VoletImage({ ctx, ficheId, themeDefaut, actif, racine, onAjouter, onTer
         <>
           <div className="imp-field">
             <label>Thème <span className="imp-opt">(optionnel)</span></label>
-            <input className="imp-title" value={theme} onChange={(e) => setTheme(e.target.value)} placeholder="ex : Anatomie du cœur" />
+            <input className="imp-title" value={theme} onChange={(e) => { themeRetouche.current = true; setTheme(e.target.value); }} placeholder="ex : Anatomie du cœur" />
           </div>
           <div className="imp-field">
             <label>Recto</label>
@@ -179,10 +183,11 @@ function VoletImage({ ctx, ficheId, themeDefaut, actif, racine, onAjouter, onTer
             </div>
           </div>
           <div className="imp-actions">
+            <span className="fc-raccourci" title="Entrée = retour à la ligne · Échap = annuler">{RACCOURCI_ENREGISTRER} pour enregistrer</span>
             <button type="button" className="btn ghost" onClick={onTerminer}>Annuler</button>
             <button type="button" className="btn primary" onClick={valider} disabled={!pret || busy}><Icon name="check" size={15} /> Ajouter</button>
           </div>
-          {!pret && <div className="hint">Image, recto et verso requis. Entrée pour ajouter · Échap : fermer.</div>}
+          {!pret && <div className="hint">Image, recto et verso requis.</div>}
         </>
       ) : (
         <>

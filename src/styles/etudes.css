@@ -2360,3 +2360,13 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .revise-seance .sfa-note { flex: 1 1 100%; order: 3; }
 .revise-seance .sfa-btn { margin-left: auto; width: auto; }
 .ocr-etat { padding: 10px 12px; border: 1px solid var(--border-2); border-radius: 10px; background: var(--bg); }
+
+/* ---- éditeur de flashcard (08/10) ---- */
+/* sur sa propre ligne, sous les boutons, calée à droite : le panneau peut ne faire que 270 px */
+.imp-actions:has(.fc-raccourci) { flex-wrap: wrap; row-gap: 4px; }
+.imp-actions .fc-raccourci { order: 3; flex: 1 0 100%; text-align: right; font-size: 11.5px; color: var(--text-3); }
+/* Indice / À retenir : zones de texte (Entrée = retour à la ligne) qui démarrent sur une ligne */
+.fc-txt-court { min-height: 38px; resize: vertical; font-family: inherit; field-sizing: content; max-height: 220px; }
+.fc-theme-aide { margin-top: 5px; }
+/* les retours à la ligne saisis se voient aussi dans la liste du panneau et l'aperçu */
+.pis-face { white-space: pre-wrap; overflow-wrap: anywhere; }
