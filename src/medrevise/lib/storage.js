@@ -66,6 +66,15 @@ const S = {
   // NEUF, hors SYNCABLE pour la même raison que les transcripts (gros enregistrements) :
   // synchro ciblée, lib/synchroIsolee.js. Le PDF lui-même n'est jamais modifié.
   ocr_layer: store('ocr_layer'),
+  // POSITION DE LECTURE et DOCUMENT DE NOTES (07/10,
+  // docs/compte-rendu-position-document-tablette.md) — types ADDITIONNELS, synchronisés :
+  // `reading_position` : UN enregistrement par cours (id 'rp:' + ficheId) — page, décalage
+  //   dans la page (fraction 0–1), zoom, disposition, empreinte du PDF. Écrit souvent :
+  //   jamais via put() (qui pousse 800 ms après), mais via ecrireRegroupe() — local
+  //   aussitôt, cloud au plus une fois toutes les 30 s.
+  // `notes_doc` : le document de notes d'un cours (id = ficheId, JSON ProseMirror).
+  reading_position: store('reading_position'),
+  notes_doc: store('notes_doc'),
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
@@ -75,7 +84,7 @@ const S = {
 // `sessionsLog` est syncable pour la même raison que `questions`/`stats` : la
 // tendance affichée en fin de série doit refléter l'activité desktop ET mobile,
 // pas seulement cet appareil.
-const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau', 'liaison', 'dessins'];
+const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau', 'liaison', 'dessins', 'reading_position', 'notes_doc'];
 
 export function genId(prefix = 'x') {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -170,6 +179,42 @@ export async function ecrireDepuisCloud(name, rec) {
 export async function supprimerDepuisCloud(name, id) {
   if (!STORES_SYNCHRO_CIBLEE.includes(name)) throw new Error('store non autorisé : ' + name);
   await del(id, S[name]);
+}
+
+/* ÉCRITURE REGROUPÉE (07/10) — pour un enregistrement réécrit très souvent (position de
+   lecture : à chaque arrêt du défilement). IndexedDB est écrit TOUT DE SUITE (horodaté,
+   il fait foi en local) ; la file d'envoi cloud, elle, ne reçoit l'enregistrement qu'au
+   plus une fois toutes les `intervalleMs` (30 s par défaut) par store — la dernière
+   version gagne. Une version qui n'aurait pas eu le temps de partir (onglet fermé) part
+   au prochain démarrage : reconcileAll pousse tout enregistrement local plus récent. */
+const regroupes = new Map(); // name → { dernierEnvoi, enAttente: Map(id → rec), minuteur }
+function envoyerRegroupes(name) {
+  const g = regroupes.get(name);
+  if (!g || !g.enAttente.size) return;
+  g.dernierEnvoi = Date.now();
+  clearTimeout(g.minuteur); g.minuteur = null;
+  for (const rec of g.enAttente.values()) queuePush(name, rec.id, rec, rec.updatedAt);
+  g.enAttente.clear();
+}
+export async function ecrireRegroupe(name, rec, intervalleMs = 30000) {
+  const stamped = { ...rec, updatedAt: new Date().toISOString() };
+  await set(stamped.id, stamped, S[name]);
+  if (!SYNCABLE.includes(name)) return stamped;
+  let g = regroupes.get(name);
+  if (!g) { g = { dernierEnvoi: 0, enAttente: new Map(), minuteur: null, intervalleMs }; regroupes.set(name, g); }
+  g.enAttente.set(stamped.id, stamped);
+  const reste = g.dernierEnvoi + intervalleMs - Date.now();
+  if (reste <= 0) envoyerRegroupes(name);
+  else if (!g.minuteur) g.minuteur = setTimeout(() => envoyerRegroupes(name), reste);
+  return stamped;
+}
+/** Nombre d'envois cloud regroupés en attente (tests, état de synchro). */
+export const regroupesEnAttente = (name) => (regroupes.get(name) ? regroupes.get(name).enAttente.size : 0);
+// onglet caché / fermeture : ce qui attend part, si les 30 s sont écoulées (sinon : démarrage suivant)
+if (typeof document !== 'undefined') {
+  const auRepli = () => { for (const [name, g] of regroupes) if (Date.now() - g.dernierEnvoi >= g.intervalleMs) envoyerRegroupes(name); };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') auRepli(); });
+  window.addEventListener('pagehide', auRepli);
 }
 
 export async function remove(name, id) {
@@ -681,6 +726,9 @@ export async function purgeFiche(ficheId) {
     ...(highlights || []).filter((h) => h.ficheId === ficheId).map((h) => remove('highlights', h.id)),
     ...(annotations || []).filter((a) => a.ficheId === ficheId).map((a) => remove('annotations', a.id)),
     removeDoc(ficheId),
+    // 07/10 : position de lecture et document de notes du cours
+    get('rp:' + ficheId, S.reading_position).then((r) => (r ? remove('reading_position', 'rp:' + ficheId) : null)),
+    get(ficheId, S.notes_doc).then((r) => (r ? remove('notes_doc', ficheId) : null)),
   ]);
   await remove('fiches', ficheId);
 }

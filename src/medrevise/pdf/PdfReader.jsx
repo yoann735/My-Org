@@ -81,8 +81,10 @@ import { MenuDessins, ArriveeDessin, TYPE_GLISSER } from './OngletDessins.jsx';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { FeuilleDemarrage, TranscriptPanel, BadgeTranscript, BandeDirect, ResumeReplie } from '../transcription/TranscriptPanel.jsx';
+import { lirePosition, ecrirePosition, empreintePdf, positionDepuisDefilement } from '../lib/positionLecture.js';
 import { useTablette, abonnerStylet, styletActif, lireLargeurPanneau, ecrireLargeurPanneau, bornerLargeur, largeurParDefaut } from '../lib/tablette.js';
 import '../../styles/tablette.css';
+import '../../styles/notes-doc.css';
 import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
 import { sessionActive as transcriptionActive, lireEtat as etatTranscription } from '../transcription/engine.js';
 import { actualiserCredits } from '../transcription/credits.js';
@@ -535,6 +537,103 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // zoom « ajusté à la largeur » (voir la prop ajusterLargeur) : observé en continu, pour
   // suivre la poignée de l'écran splitté ; abandonné dès le premier zoom manuel.
   const zoomManuel = useRef(false);
+
+  /* ---- POSITION DE LECTURE (07/10, lib/positionLecture.js) ----
+     À l'ouverture : la position mémorisée (cet appareil ou un autre, via la synchro) est lue
+     EN PARALLÈLE du PDF ; la zone de lecture reste INVISIBLE (aucun flash de la page 1)
+     jusqu'à ce que zoom, disposition et défilement soient posés ET que la page visée soit
+     dessinée. Ensuite, la position est enregistrée à chaque arrêt du défilement (500 ms), au
+     changement de page, de zoom ou de disposition, quand l'onglet est caché et à la fermeture. */
+  const [posLue, setPosLue] = useState(false);
+  const posRef = useRef(null); // position mémorisée (ou null)
+  const [restaure, setRestaure] = useState(false); // la zone de lecture peut s'afficher
+  const restaureRef = useRef(false); restaureRef.current = restaure;
+  const aRestaurer = useRef(null); // position en cours de restauration
+  useEffect(() => {
+    let vivant = true;
+    setPosLue(false); setRestaure(false); posRef.current = null; aRestaurer.current = null;
+    lirePosition(ficheId).then((p) => { if (vivant) { posRef.current = p; setPosLue(true); } });
+    return () => { vivant = false; };
+  }, [ficheId]);
+  // décision : position valable (même PDF, même nombre de pages) → zoom et disposition d'abord
+  useEffect(() => {
+    if (restaure || !posLue || !pdfDoc || !pageSizes.length || aRestaurer.current) return;
+    const p = posRef.current;
+    const valable = p && p.kind === 'pdf' && p.empreinte && p.empreinte === empreintePdf(fiche && fiche.pdfId, pdfDoc.numPages);
+    if (!valable) { setRestaure(true); return; } // rien, ou PDF changé : page 1, sans erreur
+    aRestaurer.current = p;
+    if (p.disposition && ['pdf', 'deux', 'tableau'].includes(p.disposition) && p.disposition !== disposition) {
+      setDispositionBrut(p.disposition);
+      try { localStorage.setItem(cleDispo, p.disposition); } catch (e) { /* ignore */ }
+    }
+    // zoom : celui de la lecture, sauf en tablette ajustée à la largeur (le zoom suit l'écran)
+    if (p.zoomManuel || !modeTab) {
+      zoomManuel.current = !!p.zoomManuel || zoomManuel.current;
+      const z = Math.max(0.4, Math.min(4, Number(p.scale) || scale));
+      if (Math.abs(z - scale) > 0.001) { scaleRef.current = z; setScale(z); }
+    }
+  }, [posLue, pdfDoc, pageSizes, restaure]); // eslint-disable-line react-hooks/exhaustive-deps
+  // défilement : posé à chaque mise en page tant que la restauration n'est pas finie (le zoom
+  // ajusté à la largeur peut encore changer), puis on attend que la page visée soit dessinée
+  useLayoutEffect(() => {
+    const p = aRestaurer.current;
+    const el = scrollRef.current;
+    if (!p || restaure || !el || !layout.offsets.length) return undefined;
+    let idx = pageSizes.findIndex((sz) => String(sz.cle) === String(p.cle));
+    if (idx < 0) idx = Math.max(0, Math.min(pageSizes.length - 1, Number(p.index) || 0));
+    const h = pageSizes[idx].height * scale;
+    el.scrollTop = Math.max(0, layout.offsets[idx] + Math.max(0, Math.min(1, Number(p.fraction) || 0)) * h);
+    pendingScroll.current = null;
+    computeVisibleRange();
+    let raf = null, fini = false;
+    const t0 = performance.now();
+    const verifier = () => {
+      raf = null;
+      if (fini) return;
+      const page = el.querySelector(`.pdfr-page[data-cle="${CSS.escape(String(pageSizes[idx].cle))}"] canvas[data-rendu]`);
+      if (page || performance.now() - t0 > 2500) { fini = true; aRestaurer.current = null; setRestaure(true); return; }
+      raf = requestAnimationFrame(verifier);
+    };
+    raf = requestAnimationFrame(verifier);
+    return () => { fini = true; if (raf) cancelAnimationFrame(raf); };
+  }, [layout, restaure]); // eslint-disable-line react-hooks/exhaustive-deps
+  // enregistrement
+  const etatPosition = useRef({});
+  etatPosition.current = { layout, pageSizes, scale, disposition, pdfId: fiche && fiche.pdfId, nb: pdfDoc && pdfDoc.numPages };
+  const sauverPosition = () => {
+    if (!restaureRef.current || !ficheId) return;
+    const el = scrollRef.current;
+    const st = etatPosition.current;
+    if (!el || !st.layout.offsets.length || !st.nb) return;
+    const pos = positionDepuisDefilement(el.scrollTop, st.layout.offsets, st.pageSizes.map((sz) => sz.height * st.scale));
+    if (!pos) return;
+    ecrirePosition(ficheId, {
+      kind: 'pdf', cle: st.pageSizes[pos.index].cle, index: pos.index, fraction: +pos.fraction.toFixed(4),
+      scale: +st.scale.toFixed(3), zoomManuel: !!zoomManuel.current, disposition: st.disposition,
+      empreinte: empreintePdf(st.pdfId, st.nb),
+    });
+  };
+  const sauverRef = useRef(sauverPosition); sauverRef.current = sauverPosition;
+  const minuteurPosition = useRef(null);
+  const planifierPosition = () => { clearTimeout(minuteurPosition.current); minuteurPosition.current = setTimeout(() => sauverRef.current(), 500); };
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!restaure || !el) return undefined;
+    el.addEventListener('scroll', planifierPosition, { passive: true });
+    return () => el.removeEventListener('scroll', planifierPosition);
+  }, [restaure, !!pdfDoc]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (restaure) planifierPosition(); }, [scale, disposition]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const cache = () => { if (document.visibilityState === 'hidden') { clearTimeout(minuteurPosition.current); sauverRef.current(); } };
+    document.addEventListener('visibilitychange', cache);
+    window.addEventListener('pagehide', cache);
+    return () => {
+      document.removeEventListener('visibilitychange', cache);
+      window.removeEventListener('pagehide', cache);
+      clearTimeout(minuteurPosition.current);
+      sauverRef.current(); // fermeture du cours
+    };
+  }, [ficheId]);
   useEffect(() => {
     const el = scrollRef.current;
     // tablette : ajusté à la largeur tant qu'on n'a pas zoomé à la main (page jamais rognée,
@@ -1977,7 +2076,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         ref={corpsRef} style={{ ...(tableauDispo && disposition === 'deux' ? { '--ratio-pdf': ratioSplit } : {}), ...(modeTab ? { '--tab-pis': largeurPanneauEff + 'px' } : {}) }}>
         {/* barre masquée : un tap tout en haut de la zone de lecture la fait revenir */}
         {modeTab && barreMasquee && <div className="tab-revele" onPointerDown={() => setBarreMasquee(false)} aria-hidden="true" />}
-        <div className="pdfr-scroll pdfr-workshop-course" ref={scrollRef} onScroll={onScroll}
+        <div className={'pdfr-scroll pdfr-workshop-course' + (pdfDoc && !restaure ? ' pdfr-attente' : '')} ref={scrollRef} onScroll={onScroll}
           onDragOver={(e) => { if (e.dataTransfer && [...e.dataTransfer.types].some((t) => t === 'Files' || t === TYPE_GLISSER)) { e.preventDefault(); if ([...e.dataTransfer.types].includes(TYPE_GLISSER)) e.dataTransfer.dropEffect = 'copy'; } }}
           onDrop={deposerImage}>
           <input ref={entreeImageRef} type="file" accept="image/*" style={{ display: 'none' }}

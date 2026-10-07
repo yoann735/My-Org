@@ -154,6 +154,7 @@ export function PdfPageContent({
         const canvas = canvasRef.current;
         canvas.width = 1; canvas.height = 1; canvas.style.width = '100%'; canvas.style.height = '100%';
         const c2d = canvas.getContext('2d'); c2d.fillStyle = '#fff'; c2d.fillRect(0, 0, 1, 1);
+        canvas.dataset.rendu = '1';
         if (textLayerRef.current) textLayerRef.current.replaceChildren();
         setLayerVersion((v) => v + 1);
         setMatchRects([]);
@@ -188,6 +189,7 @@ export function PdfPageContent({
       canvas.width = horsEcran.width; canvas.height = horsEcran.height;
       canvas.style.width = '100%'; canvas.style.height = '100%';
       canvas.getContext('2d').drawImage(horsEcran, 0, 0);
+      canvas.dataset.rendu = '1'; // page réellement dessinée (reprise de la position de lecture)
       dejaRendu.current = true;
       await buildTextLayer(page, viewport, textLayerRef.current, ocrPage);
       if (cancelled) return;

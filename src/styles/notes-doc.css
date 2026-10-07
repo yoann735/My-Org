@@ -1,0 +1,84 @@
+/* ============================================================
+   MedRevise — position de lecture + DOCUMENT DE NOTES (07/10,
+   docs/compte-rendu-position-document-tablette.md). Tokens du thème uniquement.
+   ============================================================ */
+
+/* reprise de la position : la zone de lecture reste invisible tant que la page visée
+   n'est pas posée et dessinée — jamais de flash de la page 1 */
+.pdfr-scroll.pdfr-attente { visibility: hidden; }
+
+/* ---- éditeur ---- */
+.nd { display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--card); border: 1px solid var(--border); border-radius: var(--r, 14px); overflow: hidden; }
+.nd.compact { border: none; border-radius: 0; background: transparent; }
+.nd-barre { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px 8px; border-bottom: 1px solid var(--border-2); flex: 0 0 auto; }
+.nd-bt {
+  min-width: 32px; height: 32px; padding: 0 7px; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  border: none; border-radius: 8px; background: transparent; color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer;
+}
+.nd-bt:hover { background: var(--bg-2); color: var(--text); }
+.nd-bt.actif { background: var(--accent-soft); color: var(--accent); }
+.nd-bt:disabled { opacity: .4; cursor: default; }
+.nd-bt-txt { font-weight: 600; font-size: 12.5px; }
+.nd-txt { font-weight: 700; font-size: 13px; }
+.nd-hl { background: #FFE066; color: #1a1a1a; border-radius: 3px; padding: 0 3px; font-weight: 700; }
+.nd-sep { width: 1px; height: 20px; background: var(--border-2); margin: 0 4px; }
+.nd-etat { font-size: 11.5px; color: var(--text-3); padding: 0 4px; white-space: nowrap; }
+.nd-etat.modifie { color: var(--text-2); }
+.nd-lien { display: flex; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border-2); }
+.nd-lien input { flex: 1; min-width: 0; height: 32px; border-radius: 8px; border: 1px solid var(--accent); background: var(--bg); color: var(--text); padding: 0 10px; font: inherit; font-size: 14px; outline: none; }
+.nd-defile { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; position: relative; }
+.nd-page { max-width: 820px; margin: 0 auto; padding: 28px 40px 120px; }
+.nd.compact .nd-page { padding: 14px 12px 80px; }
+.nd-bulle { display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 12px; background: var(--card-2, var(--card)); border: 1px solid var(--border); box-shadow: 0 8px 28px rgba(0, 0, 0, .35); z-index: 60; }
+
+/* ---- contenu (prose) ---- */
+.nd-prose { outline: none; color: var(--text); font-size: 16px; line-height: 1.65; min-height: 50vh; }
+.nd-prose.compact { font-size: 15px; min-height: 30vh; }
+.nd-prose > *:first-child { margin-top: 0; }
+.nd-prose p { margin: 0 0 .7em; }
+.nd-prose h1 { font-size: 1.85em; line-height: 1.2; margin: 1.1em 0 .45em; font-weight: 750; letter-spacing: -.01em; }
+.nd-prose h2 { font-size: 1.4em; line-height: 1.25; margin: 1em 0 .4em; font-weight: 700; }
+.nd-prose h3 { font-size: 1.15em; margin: .9em 0 .35em; font-weight: 700; }
+.nd-prose ul, .nd-prose ol { padding-left: 1.4em; margin: 0 0 .7em; }
+.nd-prose li > p { margin: 0 0 .2em; }
+.nd-prose ul[data-type="taskList"] { list-style: none; padding-left: .2em; }
+.nd-prose ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: .5em; }
+.nd-prose ul[data-type="taskList"] li > label { flex: 0 0 auto; margin-top: .28em; }
+.nd-prose ul[data-type="taskList"] li > label input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.nd-prose ul[data-type="taskList"] li > div { flex: 1 1 auto; min-width: 0; }
+.nd-prose ul[data-type="taskList"] li[data-checked="true"] > div { color: var(--text-3); text-decoration: line-through; }
+.nd-prose blockquote { margin: 0 0 .8em; padding: .2em 0 .2em 1em; border-left: 3px solid var(--accent); color: var(--text-2); }
+.nd-prose hr { border: none; border-top: 1px solid var(--border); margin: 1.4em 0; }
+.nd-prose a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.nd-prose code { background: var(--bg-2); border-radius: 4px; padding: .1em .35em; font-size: .9em; }
+.nd-prose img { max-width: 100%; height: auto; border-radius: 8px; display: block; margin: .6em 0; }
+.nd-prose img.ProseMirror-selectednode { outline: 2px solid var(--accent); }
+.nd-prose mark { border-radius: 3px; padding: 0 .1em; color: inherit; }
+.nd-prose mark.rt-notion { background: color-mix(in srgb, #FFE066 55%, transparent); box-shadow: inset 0 -2px 0 #e6b800; }
+.nd-prose mark.rt-notion.cible { animation: nd-cible 1.6s ease-out; }
+@keyframes nd-cible { 0%, 40% { box-shadow: 0 0 0 4px var(--accent-soft), inset 0 -2px 0 #e6b800; } 100% { box-shadow: inset 0 -2px 0 #e6b800; } }
+.nd-prose table { border-collapse: collapse; width: 100%; margin: .6em 0 1em; table-layout: fixed; }
+.nd-prose th, .nd-prose td { border: 1px solid var(--border); padding: 6px 9px; vertical-align: top; }
+.nd-prose th { background: var(--bg-2); font-weight: 650; text-align: left; }
+.nd-prose td > p, .nd-prose th > p { margin: 0; }
+.nd-prose .selectedCell { background: var(--accent-soft); }
+.nd-prose p.is-editor-empty:first-child::before { content: attr(data-placeholder); }
+.nd-prose:has(> p.is-editor-empty:only-child)::before { content: attr(data-placeholder); position: absolute; color: var(--text-3); pointer-events: none; }
+
+/* ---- cours « document » (sans PDF) : éditeur + panneau latéral ---- */
+.ndc { display: flex; flex-direction: column; min-height: 0; }
+.ndc-corps { display: flex; gap: 0; align-items: stretch; min-height: 0; height: calc(100vh - 150px); }
+.ndc-doc { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.ndc .pis { max-height: none; }
+@media (max-width: 760px) { .ndc-corps { height: auto; flex-direction: column; } .nd-page { padding: 18px 16px 80px; } }
+
+/* ---- impression (export PDF propre du document) ---- */
+@media print {
+  body.nd-impression > *:not(.nd-impression-page) { display: none !important; }
+  .nd-impression-page { display: block !important; color: #111; background: #fff; font: 12pt/1.55 Georgia, 'Times New Roman', serif; }
+  .nd-impression-page h1 { font-size: 22pt; } .nd-impression-page h2 { font-size: 16pt; } .nd-impression-page h3 { font-size: 13pt; }
+  .nd-impression-page table { border-collapse: collapse; width: 100%; } .nd-impression-page td, .nd-impression-page th { border: 1px solid #999; padding: 4px 6px; }
+  .nd-impression-page img { max-width: 100%; } .nd-impression-page mark { background: #fff2a8; }
+  .nd-impression-page h1, .nd-impression-page h2, .nd-impression-page h3 { break-after: avoid; } .nd-impression-page img, .nd-impression-page table { break-inside: avoid; }
+}
+.nd-impression-page { display: none; }
