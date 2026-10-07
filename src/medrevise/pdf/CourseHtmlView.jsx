@@ -35,11 +35,10 @@
    L'auto-sauvegarde (MutationObserver → blob) est INCHANGÉE.
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, Modal, ConfirmModal } from '../components/ui.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
-import { COLORS, COLOR_TAG, RACCOURCI, couleurHex } from './pdfShared.js';
+import { COLORS, COLOR_TAG, couleurHex } from './pdfShared.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
 import { getBlob, putBlob, putBlobAt } from '../lib/storage.js';
@@ -176,13 +175,28 @@ export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, clos
     if (!sel || sel.isCollapsed || !docEl || !docEl.contains(sel.anchorNode)) return false;
     const sw = d.querySelector(`.swatch[data-hl="${couleur}"]`);
     if (!sw) return false;
-    // Déjà entièrement surligné dans cette couleur : on ne fait RIEN. Le gabarit,
-    // lui, empilerait un instantané d'annulation identique — le premier Annuler
-    // semblerait alors ne rien faire. Même règle que sur le PDF.
-    if (dejaSurligne(d, sel.getRangeAt(0), couleur)) { try { sel.removeAllRanges(); } catch (e) { /* ignore */ } return false; }
+    // (08/10) Déjà entièrement surligné dans CETTE couleur : repasser le RETIRE (pastille
+    // « off » du gabarit, sur tout le passage surligné touché) — même règle que sur le PDF.
+    // Une autre couleur : la pastille du gabarit recolore le passage au lieu d'empiler.
+    if (dejaSurligne(d, sel.getRangeAt(0), couleur)) {
+      const off = d.querySelector('.swatch[data-hl="off"]');
+      if (off) { etendreAuxMarques(d, sel); off.click(); }
+      try { sel.removeAllRanges(); } catch (e) { /* ignore */ }
+      planifierLecture();
+      return !!off;
+    }
     sw.click();
     try { sel.removeAllRanges(); } catch (e) { /* ignore */ }
     return true;
+  };
+  // la sélection s'étend aux surlignages entiers qu'elle touche : retirer = tout le passage
+  const etendreAuxMarques = (d, sel) => {
+    const r = sel.getRangeAt(0).cloneRange();
+    const marque = (n) => { const e = n && (n.nodeType === 3 ? n.parentNode : n); return e && e.closest ? e.closest('mark.hl') : null; };
+    const m0 = marque(r.startContainer), m1 = marque(r.endContainer);
+    if (m0) r.setStartBefore(m0);
+    if (m1) r.setEndAfter(m1);
+    sel.removeAllRanges(); sel.addRange(r);
   };
   const dejaSurligne = (d, range, couleur) => {
     const racine = range.commonAncestorContainer.nodeType === 3 ? range.commonAncestorContainer.parentNode : range.commonAncestorContainer;
@@ -203,7 +217,6 @@ export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, clos
      fait pas partie du DOM, donc n'entre JAMAIS dans le HTML sauvegardé. Ce que la
      barre commune n'a pas (Mode lecture, G, I, Titre, Image, Enregistrer) reste. */
   const CSS_CADRE = `.bar .grp:has(.swatch), .bar .grp:has(#bUndo), .bar .sep, #bCopyTxt { display: none !important; }
-    mark.hl { cursor: pointer; }
     ::selection { background: rgb(197, 216, 246) !important; color: inherit !important; }`; /* même sélection que tout MedRevise (02/10 nuit) */
   const brancherOutils = (d) => {
     if (!d || d.__medreviseOutils) return;
@@ -220,37 +233,9 @@ export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, clos
       if (outilRef.current !== 'surligneur') return;
       setTimeout(() => surlignerSelection(d, couleurRef.current), 0); // après la fin de la sélection native
     });
-    // Sélection : un clic sur un surlignage ouvre la MÊME bulle que sur le PDF
-    d.addEventListener('click', (ev) => {
-      const m = ev.target && ev.target.closest ? ev.target.closest('mark.hl') : null;
-      const sel = d.getSelection();
-      if (!m || outilRef.current !== 'main' || (sel && !sel.isCollapsed)) { setBulle(null); return; }
-      const fr = courseIframeRef.current.getBoundingClientRect();
-      setBulle({ mark: m, couleur: m.dataset.hl || 'jaune', x: fr.left + ev.clientX, y: fr.top + ev.clientY });
-    });
-    d.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') setBulle(null); });
+    // (08/10) Sélection : un clic sur un surlignage ne fait rien de particulier (plus de
+    // bulle) — le texte se sélectionne normalement, comme sur le PDF.
   };
-  /* BULLE d'un surlignage du cours : sa couleur, ou le supprimer — via les pastilles
-     du gabarit (couleur ou « off »), appliquées à tout le passage surligné. */
-  const [bulle, setBulle] = useState(null);
-  const agirSurMarque = (couleur) => {
-    const b = bulle; setBulle(null);
-    const d = idoc();
-    if (!b || !d || !b.mark.isConnected) return;
-    const r = d.createRange(); r.selectNodeContents(b.mark);
-    const sel = d.getSelection(); sel.removeAllRanges(); sel.addRange(r);
-    const sw = d.querySelector(`.swatch[data-hl="${couleur}"]`);
-    if (sw) sw.click();
-    try { sel.removeAllRanges(); } catch (e) { /* ignore */ }
-    planifierLecture();
-  };
-  useEffect(() => {
-    if (!bulle) return undefined;
-    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.hl-picker'))) setBulle(null); };
-    const onKey = (e) => { if (e.key === 'Escape') setBulle(null); };
-    window.addEventListener('pointerdown', onDown); window.addEventListener('keydown', onKey);
-    return () => { window.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); };
-  }, [bulle]);
   const choisirOutil = (id) => {
     // comme sur le PDF (et dans Word) : du texte sélectionné + Surligneur → surligné
     if (id === 'surligneur') surlignerSelection(idoc(), couleurActive);
@@ -439,21 +424,6 @@ export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, clos
           onCancel={() => setDetacher(false)} />
       )}
 
-      {bulle && createPortal(
-        <div className="hl-picker hl-bulle" style={{ left: Math.min(bulle.x, window.innerWidth - 280), top: Math.min(bulle.y + 10, window.innerHeight - 60) }}>
-          {COLORS.map((c) => (
-            <button key={c.id} type="button" className="hl-swatch-col" title={c.label} onClick={() => agirSurMarque(c.id)}>
-              <span className={'hl-swatch' + (bulle.couleur === c.id ? ' selected' : '')} style={{ background: c.hex }} />
-            </button>
-          ))}
-          <span className="hl-picker-sep" />
-          <button type="button" className="hl-delete" onClick={() => agirSurMarque('off')}
-            title={`Supprimer ce surlignage (annulable par ${RACCOURCI}Z)`}>
-            <Icon name="trash" size={13} /> Supprimer
-          </button>
-        </div>,
-        document.body,
-      )}
     </div>
   );
 }

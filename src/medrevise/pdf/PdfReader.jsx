@@ -206,7 +206,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // l'outil Surligneur la surligne ; « Remplacer le texte sélectionné » (menu ⋯)
   // la réécrit. Elle s'efface dès que la sélection du navigateur disparaît.
   const [pending, setPending] = useState(null); // { page, texte, rects, anchor, … }
-  const [editingHl, setEditingHl] = useState(null); // bulle d'un surlignage existant { id, couleur, texte, x, y }
 
   const [edits, setEdits] = useState([]); // blocs de texte : remplacement (Chantier 1) ET boîtes libres (kind:'libre')
   const [activeEditId, setActiveEditIdBrut] = useState(null); // à changer via setActiveEditId (plus bas), jamais en direct
@@ -255,7 +254,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (id === 'surligneur' && pending && window.getSelection && !window.getSelection().isCollapsed) {
       commitHighlightAvec(pending, couleurSurligneur);
     }
-    setOutil(id); setPending(null); setEditingHl(null); setAncrage(null); if (id !== 'main') setActiveEditId(null);
+    setOutil(id); setPending(null); setAncrage(null); if (id !== 'main') setActiveEditId(null);
   };
   const choisirOutilRef = useRef(choisirOutil); choisirOutilRef.current = choisirOutil;
 
@@ -882,11 +881,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     };
   }, [pret]);
 
-  /* SURLIGNAGE « COMME WORD » (nuit du 30/09) : plus de note au clic. La bulle
-     d'un surlignage existant ne propose que sa couleur et « Supprimer ». Les notes
-     déjà écrites ne sont pas perdues : elles restent affichées dans le panneau et
-     exportées comme avant — on ne peut simplement plus en créer depuis la bulle. */
-  const closeEditingHl = () => { setEditingHl(null); };
+  /* SURLIGNAGE (08/10) : plus AUCUNE bulle sur un surlignage. En mode Sélection, un clic
+     sur un passage surligné sélectionne le texte comme s'il n'y avait rien. Tout se fait
+     au surligneur : repasser dans la même couleur retire, dans une autre recolore
+     (commitHighlightAvec). Couleur et suppression restent aussi dans le mode Notions. */
   // la sélection en attente meurt avec la sélection du navigateur
   useEffect(() => {
     if (!pending) return undefined;
@@ -920,51 +918,35 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     return () => window.removeEventListener('keydown', onKey);
   }, [activeEditId]);
 
-  // ferme la bulle d'un surlignage au clic extérieur / Échap
-  useEffect(() => {
-    if (!editingHl) return;
-    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.hl-picker')) && !dansSelecteurFlottant(e.target)) closeEditingHl(); };
-    const onKey = (e) => { if (e.key === 'Escape') closeEditingHl(); };
-    window.addEventListener('pointerdown', onDown);
-    window.addEventListener('keydown', onKey);
-    return () => { window.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingHl, highlights]);
 
   /* Avec l'outil SURLIGNEUR, une sélection surligne AUSSITÔT dans la couleur
      active. Avec l'outil SÉLECTION, rien ne s'affiche : on sélectionne pour
      copier, ou pour surligner ensuite en prenant le Surligneur (voir choisirOutil). */
   const handleCreateHighlightRequest = (payload) => {
-    setEditingHl(null);
     if (outil === 'surligneur') { commitHighlightAvec(payload, couleurSurligneur); return; }
     setPending(payload);
   };
+  /* SURLIGNEUR SUR DU DÉJÀ SURLIGNÉ (08/10) — `p.touches` = ids des surlignages que la
+     sélection recouvre, `p.segments` = les morceaux encore libres (soustraireAncres) :
+     - rien de libre et tout ce qui est touché est DÉJÀ de cette couleur → on le RETIRE ;
+     - sinon les surlignages touchés d'une AUTRE couleur prennent la couleur active, et
+       les morceaux libres sont surlignés. Un seul geste = une seule entrée d'annulation. */
   const commitHighlightAvec = async (p, couleur) => {
     setPending(null);
     window.getSelection && window.getSelection().removeAllRanges();
-    // `segments` = les morceaux encore libres (voir soustraireAncres). Vide : tout
-    // était déjà surligné, on ne crée RIEN — pas de ré-accentuation, pas de doublon.
     const morceaux = Array.isArray(p.segments) ? p.segments : [{ texte: p.texte, rects: p.rects, anchor: p.anchor }];
-    const cmds = morceaux.map((m) => cmdCreer('highlights',
-      newHighlight({ ficheId, page: p.page, texte: m.texte, couleur, rects: m.rects, anchor: m.anchor }), 'Surlignage'));
+    const touches = (p.touches || []).map((id) => highlights.find((h) => h.id === id)).filter(Boolean);
+    if (!morceaux.length && touches.length && touches.every((h) => h.couleur === couleur)) {
+      await hist.appliquer(cmdGroupe('Surlignage retiré', touches.map((h) => cmdSupprimer('highlights', h, 'Surlignage retiré'))));
+      return;
+    }
+    const cmds = [
+      ...touches.filter((h) => h.couleur !== couleur).map((h) => cmdModifier('highlights', h, { ...h, couleur }, 'Couleur du surlignage')),
+      ...morceaux.map((m) => cmdCreer('highlights',
+        newHighlight({ ficheId, page: p.page, texte: m.texte, couleur, rects: m.rects, anchor: m.anchor }), 'Surlignage')),
+    ];
     if (!cmds.length) return;
     await hist.appliquer(cmdGroupe('Surlignage', cmds));
-  };
-  const handleHighlightClick = (h, e) => {
-    setPending(null);
-    setEditingHl({ id: h.id, couleur: h.couleur, texte: h.texte || '', x: e.clientX, y: e.clientY });
-  };
-  const changeHighlightColor = async (couleur) => {
-    if (!editingHl) return;
-    const h = highlights.find((x) => x.id === editingHl.id); if (!h) { setEditingHl(null); return; }
-    setEditingHl(null); // un choix, un geste : la bulle se referme
-    if (h.couleur !== couleur) await hist.appliquer(cmdModifier('highlights', h, { ...h, couleur }, 'Couleur du surlignage'));
-  };
-  const deleteHighlightConfirmed = async () => {
-    if (!editingHl) return;
-    const h = highlights.find((x) => x.id === editingHl.id);
-    setEditingHl(null);
-    if (h) await hist.appliquer(cmdSupprimer('highlights', h, 'Suppression du surlignage'));
   };
 
   // recherche temps réel (debounce léger) : matching textuel sur une carte de position
@@ -2024,31 +2006,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (actuel && actuel.couleur !== couleur) await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, couleur }, 'Couleur du texte'));
   };
 
-  /* BOÎTE LIÉE À UN SURLIGNAGE (02/10) : depuis la bulle d'un surlignage, « Ajouter
-     une boîte » la pose à côté (à droite s'il y a la place, sinon à gauche), déjà
-     épinglée sur le bord du surlignage avec sa flèche, prête à écrire. Le lien est
-     porté par la boîte : `surlignageId` + l'épingle et la flèche habituelles — rien à
-     migrer, l'export dessine déjà flèche et épingle. */
-  const creerBoiteLiee = (hId) => {
-    const h = highlights.find((x) => x.id === hId);
-    if (!h || !(h.rects || []).length) return;
-    setEditingHl(null);
-    const rs = h.rects;
-    const x0 = Math.min(...rs.map((r) => r.x)), x1 = Math.max(...rs.map((r) => r.x + r.width));
-    const y0 = Math.min(...rs.map((r) => r.y));
-    const W = BOITE_DEFAUT.width, Hb = BOITE_DEFAUT.height;
-    const aDroite = x1 + 0.03 + W <= 0.99;
-    const x = aDroite ? x1 + 0.03 : Math.max(0.01, x0 - 0.03 - W);
-    const y = Math.max(0, Math.min(1 - Hb, y0 - 0.006));
-    const r0 = aDroite ? rs.reduce((a, r) => (r.x + r.width > a.x + a.width ? r : a), rs[0]) : rs.reduce((a, r) => (r.x < a.x ? r : a), rs[0]);
-    const ancre = { x: aDroite ? r0.x + r0.width : r0.x, y: r0.y + r0.height / 2, texte: (h.texte || '').slice(0, 90) || null };
-    const couleur = h.couleur || couleurActive;
-    const rec = { ...newNoteBox({ ficheId, page: h.page, x, y, width: W, height: Hb, couleur }), ancre, fleche: true, surlignageId: h.id };
-    hist.appliquer(cmdCreer('annotations', rec, 'Boîte liée au surlignage'));
-    videsFraiches.current.add(rec.id);
-    setActiveEditId(rec.id);
-  };
-
   const supprimerBoite = async (b) => {
     if (!b) return;
     const actuel = boiteFraiche(b.id, b); // restaurer la boîte AVEC son texte le plus récent
@@ -2473,8 +2430,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       matches={matchesByPage[n] || EMPTY_ARRAY}
                       activeMatchIdx={activeMatch}
                       onCreateHighlight={handleCreateHighlightRequest}
-                      onHighlightClick={handleHighlightClick}
-                      cibleHlId={editingHl ? editingHl.id : flashHlId}
+                      cibleHlId={flashHlId}
                       ocrPage={sz.ajout ? null : ocrPagePour(n)} ocrDebug={ocrDebug}
                       onActivateEdit={setActiveEditId}
                       activeEditor={editor}
@@ -2578,23 +2534,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       {arrivee && pret && srcTab === 'pdf' && (!tableauDispo || disposition !== 'tableau') && (
         <ArriveeDessin key={arrivee.dessin.id} dessin={arrivee.dessin} autres={arrivee.autres} cible={boutonDessinsRef}
           pdfPret={!!pageSizes.length} onPoser={(d) => poserDessin(d)} onFermer={() => setArrivee(null)} />
-      )}
-
-      {/* BULLE d'un surlignage : sa couleur, ou le supprimer. Rien d'autre. */}
-      {editingHl && createPortal(
-        <div className="hl-picker hl-bulle" style={{ left: Math.max(8, Math.min(editingHl.x, window.innerWidth - 420)), top: Math.min(editingHl.y + 10, window.innerHeight - 60) }}>
-          <SelecteurCouleurs couleur={editingHl.couleur} onCouleur={changeHighlightColor} titre="Couleur du surlignage" />
-          <span className="hl-picker-sep" />
-          <button type="button" className="hl-lier" onClick={() => creerBoiteLiee(editingHl.id)}
-            title="Ajouter une boîte de note reliée à ce surlignage (flèche)">
-            <Icon name="list" size={13} /> Ajouter une boîte
-          </button>
-          <button type="button" className="hl-delete" onClick={deleteHighlightConfirmed}
-            title={`Supprimer ce surlignage (annulable par ${RACCOURCI}Z)`}>
-            <Icon name="trash" size={13} /> Supprimer
-          </button>
-        </div>,
-        document.body,
       )}
 
       {ajoutPage && (

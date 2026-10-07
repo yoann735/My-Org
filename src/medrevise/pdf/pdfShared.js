@@ -483,6 +483,20 @@ export function soustraireAncres(anchor, existantes) {
   return libres;
 }
 
+/** (08/10) surlignages qu'une sélection RECOUVRE (repasser au surligneur : retirer ou
+    recolorer) : ancre contre ancre quand les deux en ont une (intersection non vide du
+    texte), sinon géométriquement (la moitié d'un rectangle du surlignage sous la
+    sélection — anciens surlignages sans ancre). @returns [id] */
+export function surlignagesTouches(anchor, rects, highlights, shownRects = {}) {
+  const ids = [];
+  for (const h of highlights || []) {
+    if (anchor && anchor.start && h.anchor && h.anchor.start && h.anchor.end) {
+      if (cmpPos(h.anchor.end, anchor.start) > 0 && cmpPos(h.anchor.start, anchor.end) < 0) ids.push(h.id);
+    } else if ((shownRects[h.id] || h.rects || []).some((r) => partCouverte(r, rects) >= 0.5)) ids.push(h.id);
+  }
+  return ids;
+}
+
 /** part de la surface de `r` couverte par au moins un rectangle de `autres`
     (approximation : le plus grand recouvrement unitaire). Sert aux anciens
     surlignages SANS ancre, qu'on ne peut comparer que géométriquement. */

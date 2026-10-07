@@ -1079,11 +1079,9 @@
 .hl-dot { width: 10px; height: 10px; border-radius: 3px; margin-top: 4px; flex: 0 0 auto; }
 .hl-entry-page { font-size: 10.5px; color: var(--text-3); font-weight: 700; text-transform: uppercase; }
 .hl-entry-txt { font-size: 12.5px; color: var(--text-2); margin-top: 2px; line-height: 1.4; transition: color .12s; }
-.hl-picker { position: fixed; z-index: 400; display: flex; gap: 7px; align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: var(--r, 13px); padding: 8px; box-shadow: var(--shadow-lg); animation: fade .12s ease; }
 .hl-swatch { width: 26px; height: 26px; border-radius: var(--r, 8px); border: 2px solid rgba(0,0,0,.08); cursor: pointer; transition: transform .1s; }
 .hl-swatch:hover { transform: scale(1.12); }
 .hl-swatch.selected { border-color: var(--text); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--text); }
-.hl-picker-sep { width: 1px; align-self: stretch; background: var(--border-2); margin: 0 2px; }
 
 /* ---------- "Voir les prompts" (vue cours) : popover ancrée + modale lecture/édition ---------- */
 .cpm-pop { position: fixed; z-index: 400; width: 280px; display: flex; flex-direction: column; gap: 4px; background: var(--card); border: 1px solid var(--border); border-radius: var(--r, 13px); padding: 10px; box-shadow: var(--shadow-lg); animation: fade .12s ease; }
@@ -1096,8 +1094,6 @@
 
 /* ---------- accès central "Prompts" (sidebar nav) : regroupe théorie + pratique dans une seule modale ---------- */
 .apm-group + .apm-group { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
-.hl-delete { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: var(--r, 8px); border: none; background: color-mix(in srgb, var(--crit) 12%, transparent); color: var(--crit); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
-.hl-delete:hover { background: color-mix(in srgb, var(--crit) 20%, transparent); }
 .hl-edit-btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: var(--r, 8px); border: none; background: var(--accent-soft); color: var(--accent); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .hl-edit-btn:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
 .hl-cancel { width: 26px; height: 26px; border-radius: var(--r, 8px); border: none; background: var(--bg-2); color: var(--text-3); display: grid; place-items: center; cursor: pointer; }
@@ -1235,8 +1231,6 @@
 .tree-drop-hint.ok { background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); }
 
 /* ---------- lecteur PDF : sens des couleurs + note (étape 3) ---------- */
-.hl-swatch-col { display: inline-flex; flex-direction: column; align-items: center; gap: 3px; padding: 0; border: none; background: none; cursor: pointer; font-family: inherit; }
-.hl-swatch-col .hl-swatch { display: block; }
 .hl-swatch-lbl { font-size: 9.5px; font-weight: 700; color: var(--text-3); letter-spacing: .02em; }
 .hl-picker-col { flex-direction: column; align-items: stretch; gap: 8px; width: 270px; }
 .hl-note { width: 100%; box-sizing: border-box; resize: vertical; min-height: 44px; font-family: inherit; font-size: 12.5px; line-height: 1.4; color: var(--text); background: var(--bg-2); border: 1px solid var(--border-2); border-radius: var(--r, 8px); padding: 7px 9px; }
@@ -1416,7 +1410,6 @@
    texte dessous) : le survol est donc détecté par test de position, comme le clic,
    et rendu ici. `mix-blend-mode: multiply` s'applique au fond ; le contour, lui,
    doit rester net, d'où `outline` (hors flux, non multiplié) plutôt qu'une bordure. */
-.pdfr-hl-rect.survol { outline: 1.5px solid color-mix(in srgb, var(--text) 55%, transparent); outline-offset: 1px; border-radius: 3px; }
 .pdfr-hl-rect.cible  { outline: 2px solid var(--crit); outline-offset: 2px; border-radius: 3px; }
 
 .hl-tete { display: flex; align-items: center; gap: 8px; }
@@ -1940,9 +1933,6 @@
 
 /* ---- Lien boîte ↔ surlignage (02/10) ---- */
 .pdfr-hl-rect.lie { outline: 2px solid color-mix(in srgb, var(--accent) 80%, transparent); outline-offset: 1px; border-radius: 3px; }
-.hl-lier { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border-radius: 7px; border: 1px solid transparent;
-  background: none; color: var(--text); font-size: 12px; cursor: pointer; }
-.hl-lier:hover { background: var(--accent-soft); color: var(--accent); }
 .pdfr-ancrage-aide.ratee { background: var(--crit) !important; color: #fff !important; }
 
 /* ---- Barre de paramètres d'une boîte, COMPACTE (03/10) : pilule fine, libellés courts ---- */

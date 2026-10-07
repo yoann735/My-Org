@@ -342,10 +342,39 @@ export const PageTexte = memo(forwardRef(function PageTexte({
     e.preventDefault();
     editor.chain().focus('end').run();
   };
+  /* (08/10) même règle que sur le PDF : repasser le surligneur sur des notions DÉJÀ de
+     cette couleur (et rien d'autre) les retire ; d'une autre couleur, les recolore (même
+     id : la notion reste la même). Du texte libre dans la sélection → nouvelle notion. */
   const surRelache = () => {
     if (outilRef.current !== 'surligneur') return;
     const ed = editorRef.current;
-    if (ed && !ed.state.selection.empty) marquerNotion(rappels.current.couleurSurligneur);
+    if (!ed || ed.state.selection.empty) return;
+    const couleur = rappels.current.couleurSurligneur || 'jaune';
+    const { from, to } = ed.state.selection;
+    const ids = new Map(); // id → couleur
+    let libre = false;
+    ed.state.doc.nodesBetween(from, to, (n, pos) => {
+      if (!n.isText) return;
+      const a = Math.max(from, pos), b = Math.min(to, pos + n.nodeSize);
+      if (b <= a) return;
+      const m = n.marks.find((x) => x.type.name === 'notion' && x.attrs && x.attrs.id);
+      if (m) ids.set(m.attrs.id, m.attrs.couleur || 'jaune');
+      else if (/[\p{L}\p{N}]/u.test(n.text.slice(a - pos, b - pos))) libre = true;
+    });
+    if (!ids.size || libre) { marquerNotion(couleur); return; }
+    const retirer = [...ids.values()].every((c) => c === couleur);
+    const type = ed.schema.marks.notion;
+    const tr = ed.state.tr;
+    ed.state.doc.descendants((n, pos) => {
+      if (!n.isText) return;
+      const m = n.marks.find((x) => x.type === type && ids.has(x.attrs.id));
+      if (!m) return;
+      tr.removeMark(pos, pos + n.nodeSize, type);
+      if (!retirer) tr.addMark(pos, pos + n.nodeSize, type.create({ ...m.attrs, couleur }));
+    });
+    tr.setSelection(TextSelection.create(tr.doc, to));
+    ed.view.dispatch(tr);
+    setBulle(null);
   };
 
   return (

@@ -40,7 +40,8 @@ export async function synchroniserNotionsDoc(ficheId) {
     const n = parId.get(r.docNotionId);
     if (!n) { await remove('highlights', r.id); change = true; continue; }
     vus.add(r.docNotionId);
-    if (n.texte !== r.texte) { await put('highlights', { ...r, texte: n.texte }); change = true; }
+    // (08/10) la couleur suit aussi la mark (surligneur repassé dans une autre couleur)
+    if (n.texte !== r.texte || (n.couleur || 'jaune') !== (r.couleur || 'jaune')) { await put('highlights', { ...r, texte: n.texte, couleur: n.couleur || 'jaune' }); change = true; }
   }
   for (const n of presentes) if (!vus.has(n.id)) { await creerNotionDoc(ficheId, n); change = true; }
   return change;

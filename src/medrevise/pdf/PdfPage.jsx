@@ -30,7 +30,7 @@ import {
   couleurFoncee, opaciteFondBoite, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT,
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
-  soustraireAncres, partCouverte, couleurHex,
+  soustraireAncres, partCouverte, surlignagesTouches, couleurHex,
   lisserTrait, traitTouche, cheminLisse, suivreEnDouceur, modeDuTrait,
   EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, positionTexteProche,
   lisibleSurNoir,
@@ -41,7 +41,7 @@ import {
     de texte édités (Chantier 1). */
 export function PdfPageContent({
   pdfDoc, pageNum, vierge = false, scale, pageHeight, dpr, highlights, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
-  onCreateHighlight, onHighlightClick, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, ancrageSurlignage = false, ancrageAjout = false, onDemanderAncrage = () => {},
+  onCreateHighlight, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, ancrageSurlignage = false, ancrageAjout = false, onDemanderAncrage = () => {},
   onCreerTrait, onSupprimerTraits, cibleHlId,
   ocrPage = null, ocrDebug = false, // couche OCR de cette page (docs/compte-rendu-ocr.md)
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, opaciteTrait = 1, aimantActif = true, modeCrayon = 'dessin',
@@ -310,13 +310,8 @@ export function PdfPageContent({
     window.addEventListener('pointerup', up);
   };
 
-  /* CONTOUR AU SURVOL : le surlignage sous le curseur s'entoure, et le curseur passe
-     en « main ». Sans ça, rien n'indiquait qu'un surlignage était cliquable — c'est
-     la première raison pour laquelle le supprimer n'était pas évident.
-     MÊME test de position que le clic (les rectangles sont transparents à la souris,
-     pour qu'on puisse toujours sélectionner le texte dessous), limité à une frame. */
-  const [survolId, setSurvolId] = useState(null);
-  const rafSurvol = useRef(null);
+  /* (08/10) Plus de contour ni de main au survol d'un surlignage : il n'est plus
+     cliquable (aucune bulle). Le test de position sert encore à RELIER une boîte. */
   const positionSurlignage = (clientX, clientY) => {
     const container = textLayerRef.current;
     if (!container) return null;
@@ -326,19 +321,6 @@ export function PdfPageContent({
     const hit = [...highlights].reverse().find((h) => (shownRects[h.id] || h.rects).some((r) => px >= r.x && px <= r.x + r.width && py >= r.y && py <= r.y + r.height));
     return hit || null;
   };
-  const handleMouseMove = (e) => {
-    // FLUIDITÉ (02/10 nuit) : pendant un glisser (sélection, surlignage), aucun calcul de
-    // survol — il recalculait la position de chaque surlignage à chaque image du geste
-    if (e.buttons & 1) return;
-    if (rafSurvol.current) return;
-    const { clientX, clientY } = e; // capturé avant la frame suivante
-    rafSurvol.current = requestAnimationFrame(() => {
-      rafSurvol.current = null;
-      const hit = positionSurlignage(clientX, clientY);
-      setSurvolId((cur) => (hit ? (cur === hit.id ? cur : hit.id) : (cur === null ? cur : null)));
-    });
-  };
-  useEffect(() => () => { if (rafSurvol.current) cancelAnimationFrame(rafSurvol.current); }, []);
 
   /* CRAYON. Même principe de couche que la boîte (VERROU 1) : tant que l'outil
      est actif, une couche posée au-dessus de la couche de texte intercepte tout,
@@ -572,10 +554,9 @@ export function PdfPageContent({
   // popover (voir `pending` / commitHighlight / startEditFromSelection dans PdfReader) —
   // les deux actions partagent donc exactement la même géométrie de sélection.
   //
-  // Étape 3 : actif en Lecture comme en Édition. Un simple clic (sélection vide) sur un
-  // surlignage l'ouvre (couleur, note, suppression) — par test de position plutôt que
-  // par un clic sur le rectangle : les rectangles restent transparents à la souris, on
-  // peut donc toujours sélectionner du texte déjà surligné.
+  // (08/10) Un simple clic sur un surlignage ne fait plus RIEN de particulier (plus de
+  // bulle) : les rectangles restent transparents à la souris, le texte dessous se
+  // sélectionne normalement.
   // VERROU 3 (voir l'en-tête de fichier) : un geste de boîte qui vient de se
   // terminer ne doit RIEN déclencher ici, même si le pointeur a fini sa course
   // hors de la boîte — auquel cas le mouseup atteint bien cette couche.
@@ -585,14 +566,7 @@ export function PdfPageContent({
     const sel = window.getSelection();
     const container = textLayerRef.current;
     if (!container || !sel) return;
-    if (sel.isCollapsed) {
-      const cr = container.getBoundingClientRect();
-      if (!cr.width || !cr.height) return;
-      const px = (e.clientX - cr.left) / cr.width, py = (e.clientY - cr.top) / cr.height;
-      const hit = [...highlights].reverse().find((h) => (shownRects[h.id] || h.rects).some((r) => px >= r.x && px <= r.x + r.width && py >= r.y && py <= r.y + r.height));
-      if (hit) onHighlightClick(hit, e);
-      return;
-    }
+    if (sel.isCollapsed) return;
     if (!container.contains(sel.anchorNode)) return;
     /* CORRECTIF (nuit du 30/09) : sur une couche de texte faite de spans en position
        absolue, quand le glisser se termine ENTRE deux lignes (ou dans une marge),
@@ -648,7 +622,9 @@ export function PdfPageContent({
       const rs = rects.filter((x) => partCouverte(x, toutes) < 0.5);
       if (rs.length) segments.push({ texte, rects: rs, anchor: null });
     }
-    onCreateHighlight({ page: pageNum, texte, rects, anchor, segments, x: last.right, y: last.bottom, fontSizeRel, fontFamily });
+    // surlignages que la sélection RECOUVRE (repasser dessus : retirer / recolorer, PdfReader)
+    const touches = surlignagesTouches(anchor, rects, highlights, shownRects);
+    onCreateHighlight({ page: pageNum, texte, rects, anchor, segments, touches, x: last.right, y: last.bottom, fontSizeRel, fontFamily });
   };
 
   // surlignage relié à la boîte en cours d'écriture : il s'entoure (le lien se voit)
@@ -668,9 +644,7 @@ export function PdfPageContent({
           ))}
         </div>
       )}
-      <div ref={textLayerRef} className={'pdfr-textlayer outil-' + outil} onMouseUp={handleMouseUp} onCopy={handleCopy}
-        onMouseMove={handleMouseMove} onMouseLeave={() => setSurvolId(null)}
-        style={survolId ? { cursor: 'pointer' } : undefined} />
+      <div ref={textLayerRef} className={'pdfr-textlayer outil-' + outil} onMouseUp={handleMouseUp} onCopy={handleCopy} />
       {corps}
       {/* IMAGES COLLÉES (01/10) : JUSTE au-dessus du PDF, SOUS toutes les annotations
           (surlignages, blocs, traits, textes, « ? », boîtes — rendus après). Leur
@@ -691,7 +665,7 @@ export function PdfPageContent({
       <div className="pdfr-hlayer">
         {highlights.flatMap((h) => (shownRects[h.id] || h.rects).map((r, i) => (
           <div key={h.id + ':' + i}
-            className={'pdfr-hl-rect' + (h.id === survolId ? ' survol' : '') + (h.id === cibleHlId ? ' cible' : '') + (liesActifs.has(h.id) ? ' lie' : '')}
+            className={'pdfr-hl-rect' + (h.id === cibleHlId ? ' cible' : '') + (liesActifs.has(h.id) ? ' lie' : '')}
             style={{ left: r.x * 100 + '%', top: r.y * 100 + '%', width: r.width * 100 + '%', height: r.height * 100 + '%', background: couleurHex(h.couleur),
               // couleur perso (hex) : translucide comme un vrai surligneur — un violet ou un
               // bleu foncé en pleine teinte rendrait le texte illisible (les 4 couleurs
