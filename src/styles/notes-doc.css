@@ -173,6 +173,15 @@
     break-after: page; page-break-after: always; overflow: hidden; page: document-a4; }
   .pdfr-impression-pages .pdfr-page:last-child { break-after: auto; page-break-after: auto; }
   .pdfr-impression-pages .pt-prose::before { content: none !important; }
+  /* (08/10) FIDÈLE À L'ÉCRAN : Chrome n'imprime pas les couleurs de FOND par défaut
+     (« Graphiques d'arrière-plan » décoché) — surlignages du texte, rectangles de surlignage,
+     remplissage des formes, fond noir disparaissaient. On les impose. */
+  .pdfr-impression-pages, .pdfr-impression-pages * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  /* une page de document fait 595 × 842 (rapport 1,4151) et l'A4 210 × 297 mm (1,4142) : à la
+     largeur exacte de l'A4, la page dépassait de 0,7 px → une feuille BLANCHE après chaque page */
+  .pdfr-impression-pages .pdfr-page { width: 210mm !important; height: 297mm !important; }
+  /* fond noir du document : gardé tel quel (même rendu qu'à l'écran) */
+  .pdfr-impression-pages .pdfr-page.fond-noir { background: #0d0d10 !important; }
 }
 
 /* barre de mise en forme du texte d'une page : flottante, collée au bas de la zone de lecture

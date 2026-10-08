@@ -1729,9 +1729,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     return contenuGlobal({ pages: (r && r.pages) || {} }, ordrePages());
   };
   const exporterMdDocument = async () => exporterMarkdownDoc(await texteDocument(), fiche && fiche.titre);
-  /* PDF D'UN DOCUMENT : les pages telles qu'à l'écran (texte, dessins, images, boîtes),
-     rendues TOUTES à l'échelle de l'A4 imprimé (96 ppp), recopiées dans un conteneur
-     d'impression, puis le lecteur reprend son zoom. Toujours sur fond blanc. */
+  /* PDF D'UN DOCUMENT : les pages telles qu'à l'écran (texte, surlignages, dessins, formes,
+     images, boîtes), rendues TOUTES à l'échelle de l'A4 imprimé (96 ppp), recopiées dans un
+     conteneur d'impression, puis le lecteur reprend son zoom. Fond blanc ou noir selon le
+     réglage du document (08/10 : le fond noir était retiré, et les couleurs de fond —
+     surlignages compris — ne s'imprimaient pas : voir notes-doc.css). */
   const [impression, setImpression] = useState(false);
   const imprimerDocument = async () => {
     const el = scrollRef.current;
@@ -1756,7 +1758,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     cont.className = 'pdfr-impression-pages';
     el.querySelectorAll('.pdfr-page').forEach((pg) => {
       const c = pg.cloneNode(true);
-      c.classList.remove('fond-noir');
       c.querySelectorAll('.pdfr-ajout-etiquette, .pdfr-selcanvas, canvas').forEach((x) => x.remove());
       c.querySelectorAll('[contenteditable]').forEach((x) => x.removeAttribute('contenteditable'));
       cont.appendChild(c);
