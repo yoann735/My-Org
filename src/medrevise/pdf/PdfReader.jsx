@@ -450,11 +450,22 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      valeur de `page` des annotations posées dessus. Le PDF n'est jamais réécrit :
      sans page ajoutée, cette liste est exactement celle d'avant. */
   const pagesAjoutees = useMemo(() => separerParType([], edits).page, [edits]);
+  const [nbPagesCalculees, setNbPagesCalculees] = useState(null); // document : résultat de la pagination
   const pageSizes = useMemo(() => {
     if (modeDoc) {
-      // document : ses pages, dans l'ordre (toutes « au début », triées par rang) — A4 par défaut
+      /* document : ses pages, dans l'ordre (triées par rang), A4 — autant que la pagination en
+         calcule. Les enregistrements en trop (texte raccourci) ne sont PAS supprimés (aucune
+         écriture destructive) : masqués, ils resservent quand le texte s'allonge. Une page qui
+         porte des annotations reste toujours affichée. */
       const tri = (a, b) => (a.rang - b.rang) || String(a.createdAt).localeCompare(String(b.createdAt));
-      return [...pagesAjoutees].sort(tri).map((a) => ({ cle: a.id, pdf: null, ajout: a, width: a.width || PAGE_A4.width, height: a.height || PAGE_A4.height }));
+      const recs = [...pagesAjoutees].sort(tri);
+      let n = recs.length;
+      if (nbPagesCalculees != null) {
+        let annotee = 0;
+        recs.forEach((r, i) => { if (edits.some((a) => a.page === r.id)) annotee = i + 1; });
+        n = Math.min(recs.length, Math.max(1, nbPagesCalculees, annotee));
+      }
+      return recs.slice(0, n).map((a) => ({ cle: a.id, pdf: null, ajout: a, width: a.width || PAGE_A4.width, height: a.height || PAGE_A4.height }));
     }
     if (!pdfPageSizes.length) return [];
     const parApres = {};
@@ -471,7 +482,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     ajouter(0);
     pdfPageSizes.forEach((sz, i) => { liste.push({ cle: i + 1, pdf: i + 1, width: sz.width, height: sz.height }); ajouter(i + 1); });
     return liste;
-  }, [pdfPageSizes, pagesAjoutees, modeDoc]);
+  }, [pdfPageSizes, pagesAjoutees, modeDoc, nbPagesCalculees, edits]);
   const nbPagesAffichees = pageSizes.length;
   const pageSizesRef = useRef(pageSizes); pageSizesRef.current = pageSizes;
 
@@ -499,7 +510,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   useEffect(() => {
     let vivant = true;
     setDocCharge(false); corpsPages.current = {}; ancienDoc.current = null; setFondNoir(false); setEditeurPage(null); creationPage.current = false;
-    setFluxInitial(null); setPagination(null); fluxEcrit.current = 0;
+    setFluxInitial(null); setPagination(null); setNbPagesCalculees(null); fluxEcrit.current = 0;
     if (!ficheReelle) return undefined;
     lireNotesDoc(ficheId).then((r) => {
       if (!vivant) return;
@@ -510,18 +521,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     });
     return () => { vivant = false; };
   }, [ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
-  // un document a toujours au moins une page ; celui d'avant le 08/10 (texte dans `content`)
-  // voit ce texte DÉPLACÉ sur sa première page — la suite déborde sur les pages suivantes
+  // un document a toujours au moins une page. (Le texte d'un document d'avant le 08/10, dans
+  // `content`, n'est plus déplacé ici : la conversion vers le flux le lit tel quel.)
   useEffect(() => {
     if (!modeDoc || !docCharge || !editsCharges || pagesAjoutees.length || creationPage.current) return;
     creationPage.current = true;
     (async () => {
       const rec = newPageAjoutee({ ficheId, apres: 0, rang: 0, width: PAGE_A4.width, height: PAGE_A4.height });
-      const ancien = ancienDoc.current;
-      if (ancien && ancien.content && docNonVide(ancien.content) && !Object.keys(ancien.pages || {}).length) {
-        corpsPages.current[rec.id] = ancien.content;
-        await majNotesDoc(ficheId, (r) => ({ pages: { ...(r.pages || {}), [rec.id]: ancien.content }, content: EMPTY_DOC }));
-      }
       await put('annotations', rec);
       appliquerLocal([{ store: 'annotations', apres: rec }]);
       creationPage.current = false;
@@ -567,8 +573,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     return () => { vivant = false; clearTimeout(t); };
   }, [db]); // eslint-disable-line react-hooks/exhaustive-deps
   /* PAGES = RÉSULTAT DE LA PAGINATION : autant d'enregistrements « page » que de pages
-     calculées (les annotations s'y accrochent) ; en trop à la fin et vides d'annotations :
-     retirées. Hors historique (conséquence du texte, qui, lui, s'annule). */
+     calculées (les annotations s'y accrochent) ; créés au besoin, jamais supprimés (en trop :
+     masqués, voir pageSizes). Hors historique (conséquence du texte, qui, lui, s'annule). */
   const synchroPages = useRef(null);
   useEffect(() => {
     if (!modeDoc || !pagination || !editsCharges) return undefined;
@@ -583,15 +589,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         for (let i = recs.length; i < n; i++) { rang += 1; nouveaux.push(newPageAjoutee({ ficheId, apres: 0, rang, width: PAGE_A4.width, height: PAGE_A4.height })); }
         appliquerLocal(nouveaux.map((rec) => ({ store: 'annotations', apres: rec })));
         for (const rec of nouveaux) await put('annotations', rec);
-      } else if (recs.length > n) {
-        const enTrop = recs.slice(n).reverse();
-        const retirer = [];
-        for (const rec of enTrop) { if (edits.some((a) => a.page === rec.id)) break; retirer.push(rec); }
-        if (retirer.length) {
-          appliquerLocal(retirer.map((rec) => ({ store: 'annotations', avant: rec })));
-          for (const rec of retirer) await remove('annotations', rec.id);
-        }
       }
+      setNbPagesCalculees(n); // les enregistrements en trop sont masqués, jamais supprimés
     }, 350);
     return () => clearTimeout(synchroPages.current);
   }, [pagination && pagination.nbPages, pagesAjoutees.length, editsCharges]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -315,7 +315,14 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
     <div ref={cadreRef} className={'pt-flux-cadre outil-' + outil + (fondNoir ? ' fond-noir' : '') + (actifTexte ? '' : ' inerte')}
       style={{ width: largeurPage * echelle, height: hauteurTotale, '--pt-inv': 1 / (echelle || 1) }}
       onMouseUp={surRelache}>
-      <div className="pt-flux-echelle" style={{ width: largeurPage, transform: `scale(${echelle})`, padding: `${MARGE_DOC}px ${MARGE_DOC}px 0` }}>
+      {/* jusqu'au bas de la zone d'écriture de la DERNIÈRE page : son espace libre appartient
+          au document (clic = curseur à la fin, dépôt d'image = à la fin) */}
+      <div className="pt-flux-echelle" style={{ width: largeurPage, minHeight: Math.max(0, hauteurTotale / (echelle || 1) - MARGE_DOC), transform: `scale(${echelle})`, padding: `${MARGE_DOC}px ${MARGE_DOC}px 0` }}
+        onMouseDown={(e) => {
+          const ed = editorRef.current;
+          if (!ed || e.target !== e.currentTarget || e.button !== 0) return;
+          if (e.clientY > ed.view.dom.getBoundingClientRect().bottom) { e.preventDefault(); ed.chain().focus('end').run(); }
+        }}>
         <EditorContent editor={editor} />
       </div>
       {bulle && createPortal(
