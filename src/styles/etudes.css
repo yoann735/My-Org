@@ -2462,3 +2462,103 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .mm-mot { position: absolute; padding: 0; border: 1.5px solid color-mix(in srgb, var(--accent) 70%, transparent); border-radius: 3px; background: color-mix(in srgb, var(--accent) 10%, transparent); cursor: pointer; }
 .mm-mot:hover { background: color-mix(in srgb, var(--accent) 25%, transparent); }
 .mm-mot.choisi { background: #8B6FE8; border-color: #2b2250; }
+
+/* ============================================================
+   CARTES MOLÉCULE (08/10, src/medrevise/molecule/) — préfixe mol-*.
+   Thème sombre : la toile de l'éditeur et les SVG sont inversés (fond sombre, traits clairs)
+   avec une rotation de teinte qui garde O en rouge et N en bleu.
+   ============================================================ */
+.mol-editeur { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mol-barre { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding: 4px; border: 1px solid var(--border); border-radius: var(--r, 10px); background: var(--bg-2); }
+.mol-groupe { display: flex; gap: 2px; align-items: center; }
+.mol-groupe + .mol-groupe { padding-left: 8px; border-left: 1px solid var(--border); }
+.mol-outil { display: inline-grid; place-items: center; min-width: 34px; height: 34px; padding: 0 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-2); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; touch-action: manipulation; }
+.mol-outil:hover:not(:disabled) { background: var(--card); color: var(--text); }
+.mol-outil.actif { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.mol-outil:disabled { opacity: .35; cursor: default; }
+.mol-el { font-size: 14px; font-weight: 700; }
+.mol-el.el-O { color: #e5484d; } .mol-el.el-N { color: #5b8def; } .mol-el.el-S { color: #d9a531; } .mol-el.el-P { color: #e08a3c; }
+.mol-palette-ancre { position: relative; display: inline-flex; }
+.mol-palette { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; display: flex; gap: 2px; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); box-shadow: var(--shadow-lg); }
+.mol-zone { position: relative; overflow: hidden; border: 1px solid var(--border); border-radius: var(--r, 10px); background: #fff; touch-action: none; overscroll-behavior: contain; }
+[data-theme="dark"] .mol-zone { background: #141418; }
+.mol-hote { position: absolute; inset: 0; transform-origin: 0 0; }
+[data-theme="dark"] .mol-hote, [data-theme="dark"] .mol-vue svg { filter: invert(0.93) hue-rotate(180deg); }
+.mol-attente { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--text-3); font-size: 13px; text-align: center; padding: 16px; }
+.mol-attente-ligne { display: inline-flex; align-items: center; gap: 8px; color: var(--text-3); font-size: 13px; padding: 10px 0; }
+.mol-infos { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-2); margin-top: -2px; }
+.mol-options { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+.mol-option { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+/* recherche + autocomplétion */
+.mol-recherche { position: relative; }
+.mol-suggestions { position: absolute; top: 62px; left: 0; right: 0; z-index: 40; display: flex; flex-direction: column; max-height: 300px; overflow-y: auto; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); box-shadow: var(--shadow-lg); }
+.mol-sugg { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.mol-sugg.actif, .mol-sugg:hover { background: var(--accent-soft); }
+.mol-sugg-nom { font-size: 13.5px; font-weight: 600; }
+.mol-sugg-meta { font-size: 11.5px; color: var(--text-3); }
+/* rendu SVG */
+.mol-vue { display: flex; justify-content: center; align-items: center; width: 100%; overflow: hidden; }
+.mol-vue svg { max-width: 100%; max-height: inherit; height: auto; }
+.mol-vue.petite svg { max-height: 150px; }
+/* faces de révision */
+.mol-face { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+.mol-face-nom { font-family: 'DM Serif Display', serif; font-size: 22px; line-height: 1.25; text-align: center; color: var(--text); }
+.mol-face-nom.grand { font-size: 28px; }
+.mol-face-question { font-size: 15px; font-weight: 600; color: var(--text-2); }
+.mol-verso { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; cursor: default; }
+.mol-verso-titre { font-family: 'DM Serif Display', serif; font-size: 21px; color: var(--text); text-align: center; }
+.mol-verso-etat { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; padding: 5px 12px; border-radius: 999px; }
+.mol-verso-etat.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.mol-verso-etat.ko { color: var(--crit); background: color-mix(in srgb, var(--crit) 12%, transparent); }
+.mol-verso-cote { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: 100%; }
+.mol-verso-cote figure { margin: 0; flex: 1 1 200px; max-width: 320px; display: flex; flex-direction: column; gap: 4px; }
+.mol-verso-cote figcaption { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); text-align: center; }
+.mol-redessiner { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.flash-card.molecule { min-height: 460px; }
+.flash-card.molecule .flash-face { justify-content: flex-start; padding: 46px 24px 44px; }
+.flash-face .ff-zone .mol-face, .flash-face .ff-zone .mol-verso { margin: auto 0; }
+.sfc-molecule .zd-contenu { align-items: stretch; }
+/* atelier plein écran (révision) */
+.mol-atelier { position: fixed; inset: 0; z-index: 5000; display: flex; flex-direction: column; background: var(--bg); color: var(--text); }
+.mol-atelier-tete { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--card); padding-top: max(10px, env(safe-area-inset-top)); }
+.mol-atelier-titre { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; flex: 1 1 auto; min-width: 0; }
+.mol-atelier-titre b { font-family: 'DM Serif Display', serif; font-size: 20px; font-weight: 400; }
+.mol-atelier-sur { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+.mol-niveau { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--bg-2); color: var(--text-2); }
+.mol-atelier-corps { flex: 1 1 auto; min-height: 0; display: flex; gap: 12px; padding: 10px; }
+.mol-atelier-dessin { flex: 1 1 60%; min-width: 0; display: flex; }
+.mol-atelier-dessin .mol-editeur { flex: 1; }
+.mol-atelier-dessin .mol-zone { flex: 1 1 auto; min-height: 260px; }
+.mol-editeur.plein { height: 100%; }
+.mol-editeur.plein .mol-zone { height: auto !important; }
+.mol-atelier-resultat { flex: 1 1 40%; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.mol-verdict { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+.mol-verdict.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent); }
+.mol-verdict.ko { color: var(--crit); background: color-mix(in srgb, var(--crit) 11%, transparent); border: 1px solid color-mix(in srgb, var(--crit) 40%, transparent); }
+.mol-verdict.neutre { color: var(--text-2); background: var(--bg-2); }
+.mol-note { font-weight: 500; color: var(--text-2); }
+.mol-cote { display: flex; flex-wrap: wrap; gap: 10px; }
+.mol-panneau { margin: 0; flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+.mol-panneau.ok { border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
+.mol-panneau figcaption { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); }
+.mol-details { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--text-2); width: 100%; }
+.mol-details li { display: block; padding-left: 17px; text-indent: -17px; }
+.mol-details li .mol-pastille { display: inline-block; margin-right: 7px; text-indent: 0; }
+.mol-pastille { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; background: color-mix(in srgb, #e5484d 45%, transparent); border: 2px solid #e5484d; transform: translateY(1px); }
+@media (max-width: 900px), (pointer: coarse) {
+  .mol-atelier-corps { flex-direction: column; padding: 6px; gap: 8px; }
+  .mol-atelier-dessin { flex: 1 1 auto; min-height: 55vh; }
+  .mol-atelier-resultat { flex: 0 0 auto; max-height: 45vh; }
+  .mol-outil { min-width: 40px; height: 40px; }
+}
+/* téléphone : une seule ligne d'outils, qui défile au doigt (le dessin garde toute la hauteur) */
+@media (max-width: 600px) {
+  .mol-barre { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .mol-barre::-webkit-scrollbar { display: none; }
+  .mol-groupe { flex: 0 0 auto; }
+  .mol-atelier-tete .btn { padding-left: 10px; padding-right: 10px; }
+}
+/* éditeur dans le panneau étroit : barre resserrée (3 lignes au lieu de 5) */
+.pis .mol-barre { gap: 2px 4px; padding: 3px; }
+.pis .mol-groupe + .mol-groupe { padding-left: 0; border-left: 0; }
+.pis .mol-outil { min-width: 30px; height: 30px; padding: 0 4px; }

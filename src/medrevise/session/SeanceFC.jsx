@@ -28,6 +28,8 @@ import { ZoneDefilante } from '../components/ZoneDefilante.jsx';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
 import { TableauMuscle, ligneParLigne } from '../components/FlashcardMuscle.jsx';
 import { estMuscle } from '../lib/muscle.js';
+import { estMolecule } from '../molecule/carte.js';
+import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { isCloze, parseCloze, highlightClozeWords } from '../lib/cloze.js';
 import { put, putMany, getMeta, setMeta } from '../lib/storage.js';
@@ -329,6 +331,14 @@ function FaceFC({ carte, cote, masquable = false }) {
   const montrerVerso = cote !== 'recto';
   const image = !occ && ((montrerRecto && imageAuRecto(carte)) || (montrerVerso && imageAuVerso(carte)));
   const long = ((montrerRecto ? carte.recto || '' : '') + (montrerVerso ? carte.verso || '' : '')).length > 260;
+  if (estMolecule(carte)) {
+    return (
+      <ZoneDefilante className="sfc-zone sfc-molecule">
+        <FaceMoleculeParesseuse carte={carte} cote={cote} />
+        {cote !== 'recto' && carte.a_retenir && <div className="sfc-retenir"><strong>À retenir :</strong> <Tex>{carte.a_retenir}</Tex></div>}
+      </ZoneDefilante>
+    );
+  }
   if (estMuscle(carte)) {
     // carte Muscle : le nom au recto, le tableau au verso (révélé d'emblée à la présentation)
     return (

@@ -28,6 +28,7 @@
     "@tiptap/starter-kit": "^3.27.3",
     "idb-keyval": "^6.2.5",
     "katex": "^0.17.0",
+    "openchemlib": "^9.25.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.0.227",
     "perfect-freehand": "^1.2.3",

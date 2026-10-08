@@ -15,6 +15,8 @@ import { Tex } from '../components/Tex.jsx';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
 import { TableauMuscle, ligneParLigne } from '../components/FlashcardMuscle.jsx';
 import { estMuscle } from '../lib/muscle.js';
+import { estMolecule } from '../molecule/carte.js';
+import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { ZoneDefilante, classeLongueur } from '../components/ZoneDefilante.jsx';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
@@ -303,6 +305,7 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
   const versoParts = useMemo(() => (cloze ? highlightClozeWords(item.verso, item.cloze) : null), [item.id, cloze]);
   const occ = estOcclusion(item);
   const muscle = estMuscle(item);
+  const molecule = estMolecule(item);
   // l'image reste dans sa zone (contenue, hauteur bornée à l'écran) ; le texte défile en dessous
   const image = !occ && (flipped ? imageAuVerso(item) : imageAuRecto(item));
   const lgRecto = classeLongueur(item.recto, showIndice ? item.indice : '');
@@ -316,7 +319,7 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
             <>
               <ZoneDefilante className={'mrm-flash-zone ' + lgRecto}>
                 {occ && <OcclusionView occ={item.occlusion} maxH={280} />}
-                <div className="mrm-flash-text">{cloze ? <MobileClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div>
+                {molecule ? <FaceMoleculeParesseuse carte={item} cote="recto" /> : <div className="mrm-flash-text">{cloze ? <MobileClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div>}
                 {item.indice && (showIndice
                   ? <div className="mrm-indice" onClick={(e) => e.stopPropagation()}><Tex>{item.indice}</Tex></div>
                   : <span className="mrm-flash-hint" onClick={(e) => { e.stopPropagation(); setShowIndice(true); }}><Icon name="lightbulb" size={13} /> Voir l'indice</span>)}
@@ -326,8 +329,9 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
           ) : (
             <ZoneDefilante className={'mrm-flash-zone ' + (muscle ? 'mrm-muscle' : lgVerso)}>
               {occ && <OcclusionView occ={item.occlusion} revele maxH={280} />}
+              {molecule && <FaceMoleculeParesseuse carte={item} cote="verso" />}
               {muscle && <><div className="mu-titre"><Tex>{item.recto}</Tex></div><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>}
-              {!muscle && !(occ && item.versoAuto) && <div className="mrm-flash-back">{cloze ? <MobileClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>}
+              {!muscle && !molecule && !(occ && item.versoAuto) && <div className="mrm-flash-back">{cloze ? <MobileClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>}
               {item.a_retenir && <div className="mrm-indice"><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></div>}
             </ZoneDefilante>
           )}

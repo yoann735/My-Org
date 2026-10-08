@@ -22,7 +22,6 @@ import { FormulaireMuscle } from './FlashcardMuscle.jsx';
 const FormulaireMolecule = lazy(() => import('../molecule/FormulaireMolecule.jsx'));
 
 const SORTES = { muscle: 'Tableau muscle', molecule: 'Molécule' };
-const MOLECULE_PRETE = false; // le choix « + Molécule » s'affiche quand l'éditeur est livré
 
 export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter, onTerminer, busy, rectoInitial = null }) {
   const [sorte, setSorte] = useState('standard'); // standard | muscle | molecule
@@ -41,7 +40,7 @@ export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter,
           {sorte === 'standard' ? (
             <div className="fc-sortes" role="group" aria-label="Autres sortes de carte">
               <button type="button" className="fc-sorte" onClick={() => choisir('muscle')}><Icon name="plus" size={12} /> Tableau muscle</button>
-              {MOLECULE_PRETE && <button type="button" className="fc-sorte" onClick={() => choisir('molecule')}><Icon name="plus" size={12} /> Molécule</button>}
+              <button type="button" className="fc-sorte" onClick={() => choisir('molecule')}><Icon name="plus" size={12} /> Molécule</button>
             </div>
           ) : (
             <div className="fc-sortes">
