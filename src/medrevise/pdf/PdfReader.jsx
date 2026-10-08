@@ -1169,6 +1169,31 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   };
   // repli du panneau : on retient le nombre de lignes, la colonne fine affiche les nouvelles
   const replierPanneau = (replier) => { if (replier) setDepuisRepli(nbLignesDirect()); setPanelOpen(!replier); };
+  /* CURSEUR « TÉLÉPORTÉ » (08/10, docs/compte-rendu-tablette-document-transcript.md) : ces deux
+     gestionnaires (focus d'un champ, clavier virtuel) faisaient `scrollIntoView` sur l'élément
+     focalisé. Pour une page de document, c'est l'ÉDITEUR DE LA PAGE ENTIÈRE (plus haut que la
+     zone visible) : « nearest » réalignait le haut de la page, « center » centrait une page
+     A4 → la vue sautait vers une autre page à chaque tap. On ne vise plus que le CURSEUR, et
+     seulement s'il est caché : décalage minimal du conteneur qui défile, rien sinon. */
+  const montrerSaisie = (el, mode) => {
+    try {
+      if (!el || !el.isConnected) return;
+      if (!el.isContentEditable) { el.scrollIntoView({ block: mode }); return; } // petit champ : comme avant
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount || !el.contains(sel.focusNode)) return;
+      const rg = sel.getRangeAt(0).cloneRange(); rg.collapse(false);
+      let rc = rg.getClientRects()[0] || rg.getBoundingClientRect();
+      if (!rc || (!rc.height && !rc.top)) { const n = sel.focusNode && (sel.focusNode.nodeType === 1 ? sel.focusNode : sel.focusNode.parentElement); if (n) rc = n.getBoundingClientRect(); }
+      if (!rc) return;
+      let sc = el.parentElement;
+      while (sc && !(sc.scrollHeight > sc.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;
+      if (!sc) return;
+      const v = sc.getBoundingClientRect(), vv = window.visualViewport;
+      const haut = v.top + 24, bas = Math.min(v.bottom, vv ? vv.height + vv.offsetTop : window.innerHeight) - 24;
+      if (rc.top >= haut && rc.bottom <= bas) return; // déjà visible : on ne bouge pas
+      sc.scrollTop += rc.bottom > bas ? (mode === 'center' ? rc.bottom - (haut + bas) / 2 : rc.bottom - bas) : rc.top - haut;
+    } catch (e) { /* ignore */ }
+  };
   /* HAUTEUR : le lecteur occupe exactement la hauteur visible restante (plus de défilement
      de l'écran entier, barres comprises). Suit la hauteur VISIBLE (visualViewport) : clavier
      virtuel ouvert, le lecteur rétrécit et le champ en cours est ramené au centre. */
@@ -1188,7 +1213,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       plan();
       const a = document.activeElement;
       if (a && r.contains(a) && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) {
-        setTimeout(() => { try { a.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { /* ignore */ } }, 60);
+        setTimeout(() => montrerSaisie(a, 'center'), 60);
       }
     };
     maj();
@@ -1197,7 +1222,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(plan) : null;
     if (ro) ro.observe(r);
     // un champ qui prend le focus (note, flashcard) : visible même si le clavier était déjà ouvert
-    const focus = (ev) => { const t = ev.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA)$/.test(t.tagName))) setTimeout(() => { try { t.scrollIntoView({ block: 'nearest' }); } catch (e) { /* ignore */ } }, 300); };
+    const focus = (ev) => { const t = ev.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA)$/.test(t.tagName))) setTimeout(() => montrerSaisie(t, 'nearest'), 300); };
     r.addEventListener('focusin', focus);
     return () => {
       if (raf) cancelAnimationFrame(raf);
