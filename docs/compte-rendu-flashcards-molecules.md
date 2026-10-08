@@ -320,4 +320,4 @@ Dessins de référence de la bibliothèque (Haworth, disaccharides, motif de gly
 | a0f168e | `feat(medrevise)` : formulaire de flashcard unifié, « Masquer des mots » par OCR |
 | 633be09 | `feat(medrevise)` : cartes Molécule (éditeur, bibliothèque, révision, comparaison) |
 | 66788c6 | `test(medrevise)` : bibliothèque de molécules et comparaison chimique |
-| (ce commit) | `docs(medrevise)` : ce compte-rendu et ses captures |
+| 484a53c | `docs(medrevise)` : ce compte-rendu et ses captures (la ligne de ce hash est ajoutée par le commit suivant) |
