@@ -9,6 +9,7 @@ Outils de test, jamais chargés par l'app. Voir `docs/compte-rendu-document-engi
      DOM de l'écran contre DOM imprimé ;
   2. visuel : profil d'encre de chaque page, capture de l'écran contre le PDF exporté (vrai bouton
      « Exporter en PDF » puis `Page.printToPDF`) rendu par pdf.js — bords des zones à ≤ 2 px.
-  `node scripts/tests-document/conformite.mjs "Titre du document" prefixe` (captures dans `../cap/`).
+  `cd scripts/tests-document && node conformite.mjs "Titre du document" prefixe` (captures, PDF et
+  verdict dans `$CAP_DIR`, par défaut le dossier temporaire).
 - `verif-flux.mjs` — relevé « rien ne déborde » : chaque ligne / élément / image dans la zone
   d'écriture de sa page, blocs par page.

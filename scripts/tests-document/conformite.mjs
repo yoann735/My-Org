@@ -4,6 +4,8 @@
 import { banc } from './commun-doc.mjs';
 import fs from 'fs';
 import { execSync } from 'child_process';
+import os from 'os';
+const CAP = process.env.CAP_DIR || os.tmpdir(); // captures et PDF (hors du dépôt)
 const [TITRE, pref = 'conf'] = process.argv.slice(2);
 execSync(`node ouvrir-cours.mjs ${JSON.stringify(TITRE)} --recharger`, { stdio: 'ignore' });
 const B = await banc(1440, 1400);
@@ -54,7 +56,7 @@ for (let k = 0; k < nb; k++) {
   const r = JSON.parse(await ev(`(()=>{const p=${PAGEK}.getBoundingClientRect();return JSON.stringify([p.x,p.y,p.width,p.height])})()`));
   W = Math.round(r[2]);
   const s = await c.send('Page.captureScreenshot', { format: 'png', clip: { x: r[0], y: r[1], width: r[2], height: r[3], scale: 1 } });
-  fs.writeFileSync(`../../../cap-tests-document/${pref}-ecran-p${k + 1}.png`, Buffer.from(s.data, 'base64'));
+  fs.writeFileSync(`${CAP}/${pref}-ecran-p${k + 1}.png`, Buffer.from(s.data, 'base64'));
   await ev(`(async()=>{${PROFIL};const b=await (await fetch('data:image/png;base64,${s.data}')).blob();window.__prof.ecran[${k}]=await profil(b,${W});return 1})()`);
 }
 // export : le vrai bouton « Exporter en PDF »
@@ -65,10 +67,10 @@ await c.send('Emulation.setEmulatedMedia', { media: 'print' }); await dormir(500
 const imprime = JSON.parse(await ev(STRUCT('impression')));
 const pdf = await c.send('Page.printToPDF', { printBackground: false, preferCSSPageSize: true });
 await c.send('Emulation.setEmulatedMedia', { media: '' });
-fs.writeFileSync(`../../../cap-tests-document/${pref}-export.pdf`, Buffer.from(pdf.data, 'base64'));
+fs.writeFileSync(`${CAP}/${pref}-export.pdf`, Buffer.from(pdf.data, 'base64'));
 // visuel, PDF : rendu pdf.js à la même largeur que la page à l'écran
 const nPdf = await ev(`(async()=>{${PROFIL};const pj=await import('/node_modules/pdfjs-dist/build/pdf.mjs');pj.GlobalWorkerOptions.workerSrc='/node_modules/pdfjs-dist/build/pdf.worker.mjs';const bin=Uint8Array.from(atob('${pdf.data}'),c=>c.charCodeAt(0));const d=await pj.getDocument({data:bin}).promise;for(let i=1;i<=d.numPages;i++){const p=await d.getPage(i);const v1=p.getViewport({scale:1});const v=p.getViewport({scale:${W}/v1.width});const cv=document.createElement('canvas');cv.width=Math.round(v.width);cv.height=Math.round(v.height);await p.render({canvasContext:cv.getContext('2d'),viewport:v}).promise;window.__prof.pdf[i-1]=await profil(cv,${W});if(i<=12){const u=cv.toDataURL('image/png');window.__png=window.__png||[];window.__png[i-1]=u}}return d.numPages})()`);
-for (let k = 0; k < Math.min(nPdf, 12); k++) { const u = await ev(`window.__png[${k}]`); fs.writeFileSync(`../../../cap-tests-document/${pref}-pdf-p${k + 1}.png`, Buffer.from(u.split(',')[1], 'base64')); }
+for (let k = 0; k < Math.min(nPdf, 12); k++) { const u = await ev(`window.__png[${k}]`); fs.writeFileSync(`${CAP}/${pref}-pdf-p${k + 1}.png`, Buffer.from(u.split(',')[1], 'base64')); }
 const prof = JSON.parse(await ev(`JSON.stringify(window.__prof)`));
 // verdict
 const u = W / 595; // px écran par unité de page
@@ -94,7 +96,7 @@ for (let k = 0; k < nb; k++) {
   if (!runsOk && pe && pp) console.log('   zones écran', JSON.stringify(pe.runs).slice(0, 300), '\n   zones PDF  ', JSON.stringify(pp.runs).slice(0, 300));
 }
 console.log(ok ? '✅ CONFORMITÉ : export identique à l’écran' : '❌ CONFORMITÉ : écarts');
-fs.writeFileSync(`../../../cap-tests-document/${pref}-conformite.txt`, [`${TITRE} — ${nb} pages`, ...lignes, ok ? 'CONFORME' : 'ÉCARTS'].join('\n'));
+fs.writeFileSync(`${CAP}/${pref}-conformite.txt`, [`${TITRE} — ${nb} pages`, ...lignes, ok ? 'CONFORME' : 'ÉCARTS'].join('\n'));
 console.log('erreurs JS :', B.erreurs.length ? B.erreurs : 'aucune');
 await c.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
 c.fermer();
