@@ -57,6 +57,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, detectDocKind, Modal, LoaderL6, ConfirmModal } from '../components/ui.jsx';
 import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque, newPageAjoutee, newImageCollee, newForme } from '../lib/storage.js';
+import { useJournalAnnuler, raccourciAnnuler } from '../lib/journalAnnuler.js';
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cmdGroupe, cibleEditable } from '../lib/annotHistory.js';
 import { imageDuPressePapier } from '../lib/collerImage.js';
 import { RICH_EXTENSIONS } from '../documents/lib/richtext.js';
@@ -393,31 +394,48 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (effets.some((e) => e.store === 'annotations')) setEdits((arr) => maj(arr, 'annotations'));
     if (effets.some((e) => e.store === 'highlights')) setHighlights((arr) => maj(arr, 'highlights').sort(compareHighlights));
   };
-  const hist = useAnnotHistorique(rechargerAnnotations, appliquerLocal);
+  const histAnnot = useAnnotHistorique(rechargerAnnotations, appliquerLocal);
+  // UN SEUL journal (08/10, lib/journalAnnuler.js) : annotations ET texte des pages d'un document,
+  // dans l'ordre où on les a faits — `hist` garde l'interface de la pile des annotations
+  const restaurerPageRef = useRef(null);
+  const hist = useJournalAnnuler(histAnnot, (id, json) => (restaurerPageRef.current ? restaurerPageRef.current(id, json) : undefined));
 
   useEffect(() => { setEditsCharges(false); reloadHighlights(); reloadEdits(); setActiveEditId(null); hist.vider(); }, [ficheId]);
 
-  // Cmd/Ctrl+Z et Cmd/Ctrl+Maj+Z. IGNORÉS dès que la frappe vise un champ de saisie
-  // ou du contenu éditable : le texte a son propre historique (TipTap dans une boîte,
-  // la zone de note d'un surlignage). C'est la cible du clavier qui départage les deux
-  // historiques — pas un mode, pas un réglage.
+  /* RACCOURCIS ANNULER / RÉTABLIR — un seul gestionnaire, en CAPTURE (avant ProseMirror) :
+     ⌘Z annule ; ⌘⇧Z et ⌘Y rétablissent. Routage (lib/journalAnnuler.js#raccourciAnnuler) :
+     texte d'une PAGE de document, image, annotation ou rien de focalisé → le journal ;
+     champ de formulaire → historique natif ; autre texte éditable (boîte de texte, notes,
+     transcript) → son propre éditeur ; tableau → ses propres raccourcis. */
+  useEffect(() => {
+    const onKey = (e) => {
+      const action = raccourciAnnuler(e);
+      if (!action) return;
+      const t = e.target, a = document.activeElement;
+      if (dansLeTableau(t) || dansLeTableau(a)) return; // le tableau a ses propres raccourcis
+      const pageDoc = (el) => !!(el && el.closest && el.closest('.pt-zone'));
+      if ((cibleEditable(t) || cibleEditable(a)) && !pageDoc(t) && !pageDoc(a)) return;
+      e.preventDefault(); e.stopPropagation();
+      if (action === 'retablir') hist.retablir(); else hist.annuler();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [hist.annuler, hist.retablir]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (ancien gestionnaire, gardé pour la seule suppression documentée ci-dessous)
   useEffect(() => {
     const onKey = (e) => {
       if (cibleEditable(e.target) || cibleEditable(document.activeElement)) return;
-      if (dansLeTableau(e.target) || dansLeTableau(document.activeElement)) return; // le tableau a ses propres raccourcis
+      if (dansLeTableau(e.target) || dansLeTableau(document.activeElement)) return;
       /* CORRECTIF (défaut 4) : PLUS de suppression au clavier ici. Un écouteur
          global sur Suppr/Retour arrière effaçait la boîte active dès que le curseur
          n'était pas dans son texte — par exemple juste après un clic sur son
          bandeau. La suppression au clavier vit désormais SUR la boîte elle-même
          (voir NoteBox#onKeyDown), donc elle ne peut se déclencher que si le
          bandeau de CETTE boîte a réellement le focus. */
-      if (!(e.metaKey || e.ctrlKey) || String(e.key).toLowerCase() !== 'z') return;
-      e.preventDefault();
-      if (e.shiftKey) hist.retablir(); else hist.annuler();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [hist.annuler, hist.retablir]);
+  }, []);
   // les surlignages ne vivent pas dans `db` (lus à part, ci-dessus) : sans ceci, ceux
   // qu'une synchro rapatrie d'un autre appareil (retour sur l'onglet, reconnexion —
   // MedReviseApp.jsx appelle alors reload(), qui remplace `db`) n'apparaîtraient qu'à
@@ -1616,6 +1634,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     corpsPages.current[pageId] = json;
     ecrirePageDoc(ficheId, pageId, json).then(planifierNotions).catch(() => {});
   };
+  /* journal (annuler / rétablir) : remet une page de texte dans un état donné — page affichée :
+     dans son éditeur (qui enregistre) ; page démontée : directement dans le document */
+  restaurerPageRef.current = (pageId, json) => {
+    const api = pagesTexte.current.get(pageId);
+    if (api && api.remplacer) return api.remplacer(json);
+    sauverPageTexte(pageId, dehydrateDoc(json || EMPTY_DOC));
+    return undefined;
+  };
   const faireVoirPage = (i) => {
     const el = scrollRef.current, offs = layoutRef.current.offsets;
     if (el && offs[i] != null) { el.scrollTop = Math.max(0, offs[i] - 8 * (scaleRef.current || scale)); computeVisibleRangeRef.current(); }
@@ -1649,7 +1675,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const avant = corpsPages.current[suiv.cle];
       const base = avant && docNonVide(avant) ? avant.content : [];
       if (decal != null) { focusPages.current[suiv.cle] = decal; relaisPages.current = { source: pageId, cible: suiv.cle }; }
-      sauverPageTexte(suiv.cle, { type: 'doc', content: [...dehydrateDoc({ type: 'doc', content: nodes }).content, ...base] });
+      const nouveau = { type: 'doc', content: [...dehydrateDoc({ type: 'doc', content: nodes }).content, ...base] };
+      hist.noterPage(suiv.cle, avant || EMPTY_DOC, nouveau, { systeme: true }); // défait avec l'action qui a débordé
+      sauverPageTexte(suiv.cle, nouveau);
       if (decal != null) faireVoirPage(idx + 1);
       return;
     }
@@ -1657,6 +1685,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const rec = nouvellePageApres(idx);
     pagesCreeesApres.current[pageId] = rec;
     if (decal != null) { focusPages.current[rec.id] = decal; relaisPages.current = { source: pageId, cible: rec.id }; }
+    hist.noterPage(rec.id, EMPTY_DOC, dehydrateDoc({ type: 'doc', content: nodes }), { systeme: true });
     sauverPageTexte(rec.id, dehydrateDoc({ type: 'doc', content: nodes }));
     appliquerLocal([{ store: 'annotations', apres: rec }]);
     await put('annotations', rec);
@@ -2470,7 +2499,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                           pageId={n} initial={corpsPages.current[n] || null} largeur={sz.width} hauteur={sz.height} echelle={scale}
                           outil={outil} couleurSurligneur={couleurSurligneur} focusDemande={focusPages.current[n] ?? null}
                           onSauver={sauverPageTexte} onDebordement={deborderPage} onRemonter={remonterPage} onActiver={activerPageTexte}
-                          onNotion={notionDePage} onFlashcard={flashcardDePage} onPret={pagePrete} />
+                          onNotion={notionDePage} onFlashcard={flashcardDePage} onPret={pagePrete} onJournal={hist.noterPage} />
                       ) : null}
                     />
                   </div>
@@ -2484,6 +2513,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           {editeurPage && !(activeEdit && editor) && (
             <div className="pt-barre">
               <EditToolbar editor={editeurPage.ed} sansSupprimer flottante extras={<OutilsTexteDocument editor={editeurPage.ed} />}
+                onAnnuler={hist.annuler} onRetablir={hist.retablir} peutAnnuler={hist.peutAnnuler} peutRetablir={hist.peutRetablir}
                 onClose={() => { try { editeurPage.ed.commands.blur(); } catch (e) { /* ignore */ } setEditeurPage(null); }} />
             </div>
           )}

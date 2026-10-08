@@ -376,14 +376,25 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
 
   /* AMORCE (04/10, components/AmorcesRecto.jsx) : insérée AU CURSEUR si le recto a le
      focus (sélection remplacée), sinon EN TÊTE du recto ; le curseur va juste après. */
+  /* ANNULABLE (08/10) : amorce, trou ajouté ou retiré passent par la saisie NATIVE du champ
+     (execCommand insertText) — ⌘Z / ⌘⇧Z / ⌘Y les défont comme une frappe. Remplacer la valeur
+     par programme (setRecto) les sortait de l'historique du navigateur. */
+  const remplacerDansRecto = (d, f, texte) => {
+    const el = rectoRef.current;
+    if (!el) return false;
+    el.focus();
+    el.setSelectionRange(d, f);
+    let ok = false;
+    try { ok = document.execCommand('insertText', false, texte); } catch (e) { ok = false; }
+    if (!ok) { const v = el.value; setRecto(v.slice(0, d) + texte + v.slice(f)); requestAnimationFrame(() => { el.focus(); el.setSelectionRange(d + texte.length, d + texte.length); }); }
+    return true;
+  };
   const insererAmorce = (a) => {
     const el = rectoRef.current;
     const focus = el && document.activeElement === el;
     const d = focus ? el.selectionStart : 0, f = focus ? el.selectionEnd : 0;
-    const next = recto.slice(0, d) + a + recto.slice(f);
-    setRecto(next); setHoleHint(null);
-    const pos = d + a.length;
-    requestAnimationFrame(() => { if (!rectoRef.current) return; rectoRef.current.focus(); rectoRef.current.setSelectionRange(pos, pos); });
+    setHoleHint(null);
+    remplacerDansRecto(d, f, a);
   };
 
   const addHole = () => {
@@ -399,17 +410,18 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
       setHoleHint('La sélection chevauche déjà un trou existant.');
       return;
     }
-    const next = recto.slice(0, start) + '{{' + selected + '}}' + recto.slice(end);
-    setRecto(next);
+    remplacerDansRecto(start, end, '{{' + selected + '}}');
     setHoleHint(null);
   };
 
   // retire le N-ième trou (index d'apparition, voir parseCloze) : remet son
   // contenu en texte normal, sans toucher au reste du recto.
   const removeHole = (blankIndex) => {
-    let i = 0;
-    const next = recto.replace(/\{\{([^{}]+)\}\}/g, (m, word) => (i++ === blankIndex ? word : m));
-    setRecto(next);
+    let i = 0, cible = null;
+    const re = /\{\{([^{}]+)\}\}/g;
+    let m;
+    while ((m = re.exec(recto))) { if (i++ === blankIndex) { cible = m; break; } }
+    if (cible) remplacerDansRecto(cible.index, cible.index + cible[0].length, cible[1]);
   };
 
   const submit = async () => {

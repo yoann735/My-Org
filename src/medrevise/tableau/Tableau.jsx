@@ -363,6 +363,7 @@ export const Tableau = forwardRef(function Tableau({ ficheId }, ref) {
     const mod = e.metaKey || e.ctrlKey;
     const k = String(e.key).toLowerCase();
     if (mod && k === 'z') { e.preventDefault(); e.stopPropagation(); if (e.shiftKey) hist.retablir(); else hist.annuler(); return; }
+    if (mod && k === 'y' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); hist.retablir(); return; } // ⌘Y = rétablir (08/10)
     if (mod && k === 'a') { e.preventDefault(); setSelection(new Set(cartes.map((c) => c.id))); return; }
     if (mod && k === 'd') { e.preventDefault(); dupliquer(); return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); supprimerSelection(); return; }

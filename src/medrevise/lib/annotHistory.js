@@ -152,8 +152,11 @@ export function creerPile({ max = MAX_HISTORIQUE, apres = null, onChange = null,
 
   /** changement de document : la pile de l'ancien n'a plus de sens. */
   function vider() { pileAnnuler.length = 0; pileRetablir.length = 0; signaler(); }
+  /** une action NEUVE ailleurs (texte d'un document, lib/journalAnnuler.js) rend caduc ce
+      qui attendait d'être rétabli ici — comme `appliquer` le fait pour ses propres actions */
+  function oublierRetablir() { if (pileRetablir.length) { pileRetablir.length = 0; signaler(); } }
 
-  return { appliquer, annuler, retablir, vider, etat };
+  return { appliquer, annuler, retablir, vider, oublierRetablir, etat };
 }
 
 const ETAT_VIDE = { peutAnnuler: false, peutRetablir: false, libelleAnnuler: null, libelleRetablir: null, profondeur: 0 };
@@ -185,6 +188,7 @@ export function useAnnotHistorique(onApres, onLocal) {
     annuler: useCallback(() => p.annuler(), [p]),
     retablir: useCallback(() => p.retablir(), [p]),
     vider: useCallback(() => p.vider(), [p]),
+    oublierRetablir: useCallback(() => p.oublierRetablir(), [p]),
     ...etat,
   };
 }

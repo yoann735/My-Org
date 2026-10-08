@@ -239,10 +239,11 @@ export function vueImageDoc({ node, getPos, editor }) {
     }
     // vers une AUTRE page : on l'y pose, puis on la retire d'ici (une page ne reste jamais sans bloc)
     const copie = vB.state.schema.nodes.image.create(courant.attrs);
-    const trB = vB.state.tr.insert(posCible, copie);
+    const groupe = 'img-' + Date.now(); // une seule étape d'annulation pour les deux pages (lib/journalAnnuler.js)
+    const trB = vB.state.tr.insert(posCible, copie).setMeta('groupeJournal', groupe);
     trB.setSelection(NodeSelection.create(trB.doc, posCible));
     vB.dispatch(trB);
-    const trA = view.state.tr;
+    const trA = view.state.tr.setMeta('groupeJournal', groupe);
     if (view.state.doc.childCount === 1) trA.replaceWith(p, p + taille, view.state.schema.nodes.paragraph.create());
     else trA.delete(p, p + taille);
     view.dispatch(trA);

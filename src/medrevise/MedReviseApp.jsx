@@ -5,6 +5,10 @@
    ============================================================ */
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../shared/Icon.jsx';
+import { installerRetablirChamps } from './lib/journalAnnuler.js';
+
+// ⌘Y / Ctrl+Y = rétablir aussi dans les champs de saisie (flashcards, formulaires) — 08/10
+installerRetablirChamps();
 import { StudySidebar, LoaderL6 } from './components/ui.jsx';
 import { Dashboard } from './pages/Dashboard.jsx';
 import { Reviser } from './pages/Reviser.jsx';

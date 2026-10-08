@@ -40,7 +40,7 @@ const estVide = (doc) => doc.childCount === 1 && doc.firstChild.isTextblock && d
 
 export const PageTexte = memo(forwardRef(function PageTexte({
   pageId, initial, largeur, hauteur, echelle, outil, couleurSurligneur, focusDemande = null,
-  onSauver, onDebordement, onRemonter, onActiver, onNotion, onFlashcard, onPret,
+  onSauver, onDebordement, onRemonter, onActiver, onNotion, onFlashcard, onPret, onJournal = null,
 }, ref) {
   const urls = useRef([]);
   const charge = useRef(false);
@@ -49,7 +49,8 @@ export const PageTexte = memo(forwardRef(function PageTexte({
   const editorRef = useRef(null);
   const zoneRef = useRef(null);
   const outilRef = useRef(outil); outilRef.current = outil;
-  const rappels = useRef({}); rappels.current = { onSauver, onDebordement, onRemonter, onActiver, onNotion, onFlashcard, couleurSurligneur };
+  const rappels = useRef({}); rappels.current = { onSauver, onDebordement, onRemonter, onActiver, onNotion, onFlashcard, couleurSurligneur, onJournal };
+  const dernierJSON = useRef(null); // état de la page après la dernière transaction (journal annuler / rétablir)
   const [bulle, setBulle] = useState(null); // { x, y, notion }
   /* RELAIS : le curseur vient de partir sur une page qui s'affiche à peine. Pendant ce court
      instant, ce qui est tapé ici est mis de côté (jamais écrit sur CETTE page), puis rejoué
@@ -159,6 +160,7 @@ export const PageTexte = memo(forwardRef(function PageTexte({
             if (rappels.current.onRemonter(pageId, premier)) {
               event.preventDefault();
               tr.setMeta('addToHistory', false);
+              tr.setMeta('journalAction', true); // geste de l'utilisateur (la page précédente suit, en « système »)
               view.dispatch(tr);
               return true;
             }
@@ -202,6 +204,7 @@ export const PageTexte = memo(forwardRef(function PageTexte({
       urls.current.push(...u);
       editor.commands.setContent(doc, { emitUpdate: false });
       editor.setEditable(true);
+      dernierJSON.current = editor.getJSON();
       charge.current = true;
       if (focusDemande != null) {
         const pos = Math.max(0, Math.min(Number(focusDemande) || 0, editor.state.doc.content.size));
@@ -212,6 +215,31 @@ export const PageTexte = memo(forwardRef(function PageTexte({
       if (onPret) onPret(pageId);
     })();
     return () => { vivant = false; };
+  }, [editor, pageId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* JOURNAL ANNULER / RÉTABLIR (08/10, lib/journalAnnuler.js) : chaque transaction qui change
+     la page est signalée avec l'état d'AVANT et d'APRÈS. Frappe simple = « saisie » (regroupée) ;
+     débordement / remontée automatiques (addToHistory: false) = « système », joints à l'action
+     qui les a causés ; `groupeJournal` = une même action sur deux pages (image déplacée). */
+  useEffect(() => {
+    if (!editor) return undefined;
+    const surTr = ({ transaction: tr }) => {
+      if (!tr.docChanged) return;
+      const avant = dernierJSON.current;
+      const apres = editor.getJSON();
+      dernierJSON.current = apres;
+      if (!charge.current || !avant || !rappels.current.onJournal) return;
+      const systeme = tr.getMeta('addToHistory') === false && !tr.getMeta('journalAction');
+      const saisie = !tr.getMeta('uiEvent') && tr.steps.every((st) => {
+        const j = st.toJSON();
+        if (j.stepType !== 'replace') return false;
+        const c = (j.slice && j.slice.content) || [];
+        return c.every((n) => n.type === 'text');
+      });
+      rappels.current.onJournal(pageId, avant, apres, { systeme, saisie, groupe: tr.getMeta('groupeJournal') || null });
+    };
+    editor.on('transaction', surTr);
+    return () => editor.off('transaction', surTr);
   }, [editor, pageId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* (08/10) la hauteur du texte change SANS transaction (image qui finit de se charger,
@@ -244,6 +272,20 @@ export const PageTexte = memo(forwardRef(function PageTexte({
   useImperativeHandle(ref, () => ({
     editor,
     vider,
+    /** journal (annuler / rétablir) : la page reprend cet état, curseur au plus près, puis enregistrée */
+    async remplacer(json) {
+      if (!editor || editor.isDestroyed) return;
+      // images : l'instantané peut porter une adresse d'image déjà libérée (page démontée entre-temps)
+      // → on repart du document « sec » (blobId) et on réhydrate
+      const { doc, urls: u } = await hydrateDoc(dehydrateDoc(json || EMPTY_DOC));
+      urls.current.push(...u);
+      if (editor.isDestroyed) return;
+      const from = editor.state.selection.from;
+      editor.commands.setContent(doc, { emitUpdate: true });
+      try { editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(Math.min(from, editor.state.doc.content.size)))).setMeta('addToHistory', false)); } catch (e) { /* ignore */ }
+      enAttente.current = editor.getJSON(); vider();
+      requestAnimationFrame(verifierDebordement);
+    },
     /** fin du relais : rend ce qui a été tapé pendant le passage, et lâche le curseur */
     prendreRelais() {
       const r = relais.current || [];

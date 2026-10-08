@@ -1698,7 +1698,7 @@ function TextEditBlock({ edit, active, editable, onActivate, editor, pageHeight 
     la MÊME instance `editor` que celle rendue dans le bloc (passée par PdfReader). */
 // `sansSupprimer` / `extras` (08/10) : texte d'une page de document — rien à supprimer, et ses
 // réglages propres (titres, cases, citation, tableau, lien) à côté des listes
-export function EditToolbar({ editor, onReset, onClose, libre = false, couleur = null, onCouleur = null, palette = null, libelleSupprimer = null, sansSupprimer = false, extras = null, flottante = false }) {
+export function EditToolbar({ editor, onReset, onClose, libre = false, couleur = null, onCouleur = null, palette = null, libelleSupprimer = null, sansSupprimer = false, extras = null, flottante = false, onAnnuler = null, onRetablir = null, peutAnnuler = true, peutRetablir = true }) {
   const [, force] = useState(0);
   useEffect(() => {
     const rerender = () => force((v) => v + 1);
@@ -1760,8 +1760,11 @@ export function EditToolbar({ editor, onReset, onClose, libre = false, couleur =
       </select>
       {extras && <><span className="et-sep" />{extras}</>}
       <span className="et-sep" />
-      <button type="button" className="et-btn" title="Annuler" onClick={() => editor.chain().focus().undo().run()}><Icon name="refresh" size={13} style={{ transform: 'scaleX(-1)' }} /></button>
-      <button type="button" className="et-btn" title="Rétablir" onClick={() => editor.chain().focus().redo().run()}><Icon name="refresh" size={13} /></button>
+      {/* page d'un document : le journal du document (lib/journalAnnuler.js) ; boîte : son éditeur */}
+      <button type="button" className="et-btn" title="Annuler (⌘Z)" disabled={!!onAnnuler && !peutAnnuler} onMouseDown={(e) => e.preventDefault()}
+        onClick={() => (onAnnuler ? onAnnuler() : editor.chain().focus().undo().run())}><Icon name="refresh" size={13} style={{ transform: 'scaleX(-1)' }} /></button>
+      <button type="button" className="et-btn" title="Rétablir (⌘⇧Z ou ⌘Y)" disabled={!!onRetablir && !peutRetablir} onMouseDown={(e) => e.preventDefault()}
+        onClick={() => (onRetablir ? onRetablir() : editor.chain().focus().redo().run())}><Icon name="refresh" size={13} /></button>
       <span style={{ flex: 1 }} />
       {!sansSupprimer && <button type="button" className="btn ghost sm" onClick={onReset}>
         {libelleSupprimer ? <><Icon name="trash" size={13} /> {libelleSupprimer}</> : libre ? <><Icon name="trash" size={13} /> Supprimer la boîte</> : <><Icon name="refresh" size={13} /> Réinitialiser (texte d'origine)</>}
