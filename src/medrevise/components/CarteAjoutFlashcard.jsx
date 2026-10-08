@@ -14,6 +14,7 @@
          ({ recto, verso, imageId, imagePlace }) ;
        · « Masques à deviner » → l'éditeur d'occlusion existant, ouvert avec
          l'image (il lui faut toute la largeur de l'écran).
+   - Muscle (08/10) : nom + tableau à 5 lignes fixes (components/FlashcardMuscle.jsx).
    Après chaque ajout, la carte reste ouverte et vide pour enchaîner ;
    « Terminer » la ferme.
    ============================================================ */
@@ -22,6 +23,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { FlashcardForm, RACCOURCI_ENREGISTRER, estEnregistrer } from './AddItemForm.jsx';
 import { OcclusionEditorModal } from './OcclusionImage.jsx';
 import { PLACES_IMAGE } from './FlashcardImage.jsx';
+import { FormulaireMuscle } from './FlashcardMuscle.jsx';
 import { putBlob } from '../lib/storage.js';
 import { imageDuPressePapier, texteDuPressePapier, imageDuDepot, glisseDesFichiers } from '../lib/collerImage.js';
 
@@ -38,6 +40,7 @@ export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter,
           <div className="seg fc-carte-seg" role="tablist" aria-label="Sorte de flashcard">
             <button type="button" role="tab" aria-selected={mode === 'texte'} className={'seg-btn' + (mode === 'texte' ? ' active' : '')} onClick={() => setMode('texte')}><Icon name="edit" size={12} /> Texte</button>
             <button type="button" role="tab" aria-selected={mode === 'image'} className={'seg-btn' + (mode === 'image' ? ' active' : '')} onClick={() => setMode('image')}><Icon name="image" size={12} /> Image</button>
+            <button type="button" role="tab" aria-selected={mode === 'muscle'} className={'seg-btn' + (mode === 'muscle' ? ' active' : '')} onClick={() => setMode('muscle')}><Icon name="list" size={12} /> Muscle</button>
           </div>
           <span style={{ flex: 1 }} />
           <button type="button" className="btn sm" onClick={onTerminer}>Terminer</button>
@@ -51,6 +54,10 @@ export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter,
         <div hidden={mode !== 'image'}>
           <VoletImage ctx={ctx} ficheId={ficheId} themeDefaut={themeDefaut} actif={mode === 'image'} racine={racine}
             onAjouter={ajouter} onTerminer={onTerminer} busy={busy} onMasquesCrees={() => setNb((n) => n + 1)} />
+        </div>
+        <div hidden={mode !== 'muscle'}>
+          <FormulaireMuscle themeDefaut={themeDefaut} onAdd={ajouter} onCancel={onTerminer} busy={busy}
+            actif={mode === 'muscle'} racine={racine} />
         </div>
       </div>
     </div>

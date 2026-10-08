@@ -41,7 +41,11 @@ export const DISTANCE = { pasSu: [3, 4], su: [8, 10], presentation: [3, 4] };
 export function reglagesFC(brut) {
   const r = { ...REGLAGES_FC_DEFAUT, ...(brut || {}) };
   const borne = (k) => Math.min(BORNES_FC[k][1], Math.max(BORNES_FC[k][0], Math.round(Number(r[k]) || REGLAGES_FC_DEFAUT[k])));
-  return { quotaNouvelles: borne('quotaNouvelles'), critere: borne('critere'), critereApresRate: borne('critereApresRate') };
+  return {
+    quotaNouvelles: borne('quotaNouvelles'), critere: borne('critere'), critereApresRate: borne('critereApresRate'),
+    // carte Muscle (lib/muscle.js) : verso révélé ligne par ligne — actif sauf choix contraire
+    muscleLigneParLigne: r.muscleLigneParLigne !== false,
+  };
 }
 
 function ajouterJours(dateISO, n) {

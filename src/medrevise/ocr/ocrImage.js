@@ -19,7 +19,7 @@ const PIXELS_MAX = 12e6;
 const enCours = new Map(); // clé → promesse (deux vues de la même image : un seul OCR)
 const cleCache = (blobId) => 'ocrImage:' + blobId;
 
-async function preparer(blob) {
+export async function preparer(blob) {
   const src = await createImageBitmap(blob);
   const W = src.width, H = src.height;
   // ~2 400 px sur le grand côté (petites captures agrandies, grandes réduites), ≤ 12 Mpx

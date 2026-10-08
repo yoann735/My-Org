@@ -2381,3 +2381,65 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .sfc-basculer:hover { color: var(--text); background: var(--bg-2); }
 @media (max-width: 600px) { .sfc-tete { flex-wrap: wrap; } .sfc-basculer { order: 3; width: 100%; } }
 .lv-renommer { width: 100%; box-sizing: border-box; font: inherit; }
+
+/* ============================================================
+   CARTE MUSCLE (08/10, components/FlashcardMuscle.jsx) — mu-* : préfixe propre
+   (les fc-* sont partagés avec fenetre-creation.css, voir compte-rendu surlignage).
+   ============================================================ */
+/* tableau de révision : 2 colonnes, étiquette grise en petites capitales, filets fins */
+.mu-tableau { width: 100%; align-self: stretch; text-align: left; border-top: 1px solid var(--border); font-family: 'Inter', sans-serif; }
+.mu-ligne { display: grid; grid-template-columns: minmax(96px, 30%) 1fr; gap: 14px; padding: 11px 4px; border-bottom: 1px solid var(--border); align-items: baseline; }
+.mu-etiquette { font-size: 14.5px; font-weight: 600; font-variant-caps: all-small-caps; letter-spacing: .05em; color: var(--text-3); line-height: 1.35; overflow-wrap: anywhere; }
+.mu-contenu { min-width: 0; font-size: 15px; line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
+.mu-par { margin: 0; }
+.mu-par + .mu-par, .mu-par + .mu-puces, .mu-puces + .mu-par { margin-top: 4px; }
+.mu-puces { margin: 0; padding-left: 17px; list-style: disc; }
+.mu-puces li { margin: 1px 0; padding-left: 2px; }
+.mu-puces li::marker { color: var(--text-3); }
+.mu-puces li.n1 { margin-left: 16px; list-style: circle; }
+.mu-vide { color: var(--text-3); }
+.mu-ligne.cachee { cursor: pointer; }
+.mu-masque { display: inline-flex; align-items: center; min-height: 26px; padding: 0 12px; border-radius: 999px; background: var(--bg-2); border: 1px dashed var(--border-2, var(--border)); color: var(--text-3); font-size: 12.5px; font-weight: 500; transition: background .15s, color .15s; }
+.mu-ligne.cachee:hover .mu-masque, .mu-ligne.cachee:focus-visible .mu-masque { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.mu-ligne.cachee:focus-visible { outline: none; }
+.mu-tout { display: flex; justify-content: center; padding-top: 12px; }
+.mu-tout-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; }
+.mu-tout-btn:hover, .mu-tout-btn:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
+.mu-tableau.compact .mu-ligne { grid-template-columns: minmax(78px, 32%) 1fr; gap: 10px; padding: 7px 2px; }
+.mu-tableau.compact .mu-contenu { font-size: 13px; }
+.mu-tableau.compact .mu-etiquette { font-size: 13px; }
+.mu-nom-lu { font-weight: 600; }
+.mu-titre { align-self: stretch; text-align: left; font-family: 'DM Serif Display', serif; font-size: 20px; line-height: 1.25; color: var(--text); margin: 0 4px 10px; }
+
+/* révision bureau : carte plus haute, contenu en haut, le tableau défile dans la carte */
+.flash-card.muscle { min-height: 520px; }
+.flash-card.muscle .flash-face.back { padding: 46px 28px 44px; justify-content: flex-start; }
+.flash-face .ff-zone.ff-muscle .zd-contenu { align-items: stretch; }
+.flash-face .ff-zone.ff-muscle { flex: 1 1 auto; min-height: 0; }
+/* séance du jour (SeanceFC) */
+.sfc-muscle .zd-contenu { align-items: stretch; }
+.sfc-recto.mu-nom { text-align: center; font-family: 'DM Serif Display', serif; font-size: 28px; font-weight: 400; line-height: 1.25; }
+.sfc-recto.mu-nom-petit { text-align: center; font-size: 19px; margin-bottom: 4px; }
+
+/* formulaire : tableau de saisie, mêmes étiquettes, zones qui grandissent */
+.mu-saisie { border: 1px solid var(--border); border-radius: var(--r, 10px); background: var(--card); overflow: hidden; }
+.mu-saisie-ligne { display: grid; grid-template-columns: minmax(92px, 31%) 1fr; align-items: stretch; border-bottom: 1px solid var(--border); }
+.mu-saisie-ligne:last-child { border-bottom: 0; }
+.mu-saisie-ligne > .mu-etiquette { padding: 10px 10px 10px 12px; background: var(--bg-2); border-right: 1px solid var(--border); cursor: text; }
+.mu-zone { display: block; width: 100%; box-sizing: border-box; min-height: 38px; border: 0; border-radius: 0; padding: 9px 12px; resize: none; overflow: hidden; font: inherit; font-size: 13.5px; line-height: 1.5; background: transparent; color: var(--text); outline: none; }
+.mu-zone:focus { background: color-mix(in srgb, var(--accent) 6%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
+.mu-zone::placeholder { color: var(--text-3); }
+.mu-nom-champ { font-weight: 600; }
+.mu-ocr { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.mu-ocr-etat { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12.5px; color: var(--text-2); padding: 8px 10px; border-radius: var(--r, 8px); background: var(--bg-2); }
+.mu-ocr-etat.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 9%, transparent); }
+.mu-ocr-etat img { flex-basis: 100%; max-height: 120px; object-fit: contain; object-position: left; border-radius: 6px; margin-top: 4px; }
+.mu-sablier { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent); animation: mu-tourne .8s linear infinite; }
+@keyframes mu-tourne { to { transform: rotate(360deg); } }
+.rfc-bascule input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); flex: 0 0 auto; }
+.cd-ic.mu-copie { color: var(--ok); }
+@media (max-width: 600px) {
+  .mu-ligne { grid-template-columns: 86px 1fr; gap: 10px; padding: 10px 0; }
+  .mu-saisie-ligne { grid-template-columns: 1fr; }
+  .mu-saisie-ligne > .mu-etiquette { border-right: 0; border-bottom: 1px solid var(--border); padding: 6px 12px; }
+}

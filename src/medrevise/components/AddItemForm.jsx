@@ -33,6 +33,8 @@ import { parseCloze } from '../lib/cloze.js';
 import { OcclusionEditorModal } from './OcclusionImage.jsx';
 import { ChampImageFlashcard } from './FlashcardImage.jsx';
 import { AmorcesRecto } from './AmorcesRecto.jsx';
+import { FormulaireMuscle } from './FlashcardMuscle.jsx';
+import { estMuscle } from '../lib/muscle.js';
 import { putBlob } from '../lib/storage.js';
 import { useCollerImage, imageDuDepot, glisseDesFichiers } from '../lib/collerImage.js';
 
@@ -50,6 +52,7 @@ const lines = (s) => (s || '').split('\n').map((l) => l.trim()).filter(Boolean);
     par la modale (ajout) et la sidebar de l'atelier (ajout + édition). */
 export function ItemForm({ type, initial, submitLabel, onSubmit, onCancel, busy, themeDefaut = '' }) {
   if (type === 'qcm') return <QcmForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;
+  if (type === 'flashcard' && estMuscle(initial)) return <FormulaireMuscle initial={initial} onAdd={onSubmit} busy={busy} submitLabel={submitLabel} onCancel={onCancel} />;
   if (type === 'flashcard') return <FlashcardForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} themeDefaut={themeDefaut} />;
   if (type === 'exercice') return <ExerciceForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;
   if (type === 'feynman') return <FeynmanForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;

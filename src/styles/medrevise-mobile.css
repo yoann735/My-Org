@@ -436,3 +436,9 @@
   .mrm-ecran-carte .mrm-flash-card.avec-image > .fc-image, .mrm-ecran-carte .mrm-flash-card.avec-image > .fc-image img { max-height: calc(100dvh - 190px) !important; }
   .mrm-ecran-carte .mrm-flash-card.avec-image .mrm-flash-pied { display: none; }
 }
+
+/* carte Muscle (08/10, components/FlashcardMuscle.jsx) : tableau pleine largeur, défile dans la carte */
+.mrm-flash-zone.mrm-muscle .zd-contenu { align-items: stretch; text-align: left; }
+.mrm-flash-zone.mrm-muscle .zd-defil { padding: 18px 14px 16px; }
+.mrm-flash-zone.mrm-muscle .mu-contenu { font-size: 16px; }
+.mrm-flash-zone.mrm-muscle .mu-etiquette { font-size: 13.5px; }

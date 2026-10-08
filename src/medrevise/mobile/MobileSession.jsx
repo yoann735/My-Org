@@ -13,6 +13,8 @@ import { apresNotationJ } from '../lib/apprentissageFC.js';
 import { index } from '../lib/planning.js';
 import { Tex } from '../components/Tex.jsx';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
+import { TableauMuscle, ligneParLigne } from '../components/FlashcardMuscle.jsx';
+import { estMuscle } from '../lib/muscle.js';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { ZoneDefilante, classeLongueur } from '../components/ZoneDefilante.jsx';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
@@ -300,6 +302,7 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
   const rectoSegments = useMemo(() => (cloze ? parseCloze(item.recto, item.cloze) : null), [item.id, cloze]);
   const versoParts = useMemo(() => (cloze ? highlightClozeWords(item.verso, item.cloze) : null), [item.id, cloze]);
   const occ = estOcclusion(item);
+  const muscle = estMuscle(item);
   // l'image reste dans sa zone (contenue, hauteur bornée à l'écran) ; le texte défile en dessous
   const image = !occ && (flipped ? imageAuVerso(item) : imageAuRecto(item));
   const lgRecto = classeLongueur(item.recto, showIndice ? item.indice : '');
@@ -321,9 +324,10 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
               <span className="mrm-flash-hint mrm-flash-pied">Tape pour révéler la réponse</span>
             </>
           ) : (
-            <ZoneDefilante className={'mrm-flash-zone ' + lgVerso}>
+            <ZoneDefilante className={'mrm-flash-zone ' + (muscle ? 'mrm-muscle' : lgVerso)}>
               {occ && <OcclusionView occ={item.occlusion} revele maxH={280} />}
-              {!(occ && item.versoAuto) && <div className="mrm-flash-back">{cloze ? <MobileClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>}
+              {muscle && <><div className="mu-titre"><Tex>{item.recto}</Tex></div><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>}
+              {!muscle && !(occ && item.versoAuto) && <div className="mrm-flash-back">{cloze ? <MobileClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>}
               {item.a_retenir && <div className="mrm-indice"><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></div>}
             </ZoneDefilante>
           )}

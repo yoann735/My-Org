@@ -36,6 +36,8 @@ import { appendItemsToFiche, themeFlashcardsDeFiche, adopterThemeDeCarte } from 
 import { ThemeFicheFlashcards } from './ThemeFiche.jsx';
 import { toInternalItem } from '../lib/adapter.js';
 import { OcclusionEditorModal, OcclusionView, estOcclusion } from './OcclusionImage.jsx';
+import { TableauMuscle } from './FlashcardMuscle.jsx';
+import { estMuscle, texteMuscle } from '../lib/muscle.js';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from './FlashcardImage.jsx';
 import { CarteAjoutFlashcard } from './CarteAjoutFlashcard.jsx';
 import { planDuJour, etatFC } from '../lib/apprentissageFC.js';
@@ -438,12 +440,13 @@ function ItemReadCard({ item, onEdit, onDelete }) {
         <div className="row spread" style={{ marginBottom: 8, alignItems: 'flex-start', gap: 8 }}>
           <span className="hint" style={{ fontWeight: 700, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.theme || 'Sans thème'}</span>
           <div className="row" style={{ gap: 4, flex: '0 0 auto' }}>
+            {estMuscle(item) && <BoutonCopier texte={() => texteMuscle(item)} />}
             <button type="button" className="cd-ic" title="Éditer" onClick={onEdit}><Icon name="edit" size={12} /></button>
             <button type="button" className="cd-ic" title="Supprimer" onClick={onDelete}><Icon name="trash" size={12} /></button>
           </div>
         </div>
         {item.type === 'qcm' && <QcmReadBody item={item} />}
-        {item.type === 'flashcard' && (estOcclusion(item) ? <OcclusionReadBody item={item} /> : <FlashcardReadBody item={item} />)}
+        {item.type === 'flashcard' && (estOcclusion(item) ? <OcclusionReadBody item={item} /> : estMuscle(item) ? <MuscleReadBody item={item} /> : <FlashcardReadBody item={item} />)}
         {item.type === 'feynman' && <FeynmanReadBody item={item} />}
         {item.type === 'exercice' && <ExerciceReadBody item={item} />}
       </div>
@@ -477,6 +480,26 @@ function FlashcardReadBody({ item }) {
       {item.a_retenir && <div className="hint" style={{ marginTop: 6 }}><strong>À retenir : </strong><Tex>{item.a_retenir}</Tex></div>}
     </>
   );
+}
+
+/* carte Muscle (lib/muscle.js) : le nom, puis le tableau complet */
+function MuscleReadBody({ item }) {
+  return (
+    <>
+      <div className="pis-face"><span className="pis-face-tag">Muscle</span><span className="mu-nom-lu"><Tex>{item.recto}</Tex></span></div>
+      <TableauMuscle item={item} compact />
+      {item.a_retenir && <div className="hint" style={{ marginTop: 6 }}><strong>À retenir : </strong><Tex>{item.a_retenir}</Tex></div>}
+    </>
+  );
+}
+
+/* Copier : le texte structuré de la carte (Nom, puis « Origine : … ») */
+function BoutonCopier({ texte }) {
+  const [ok, setOk] = useState(false);
+  const copier = async () => {
+    try { await navigator.clipboard.writeText(texte()); setOk(true); setTimeout(() => setOk(false), 1400); } catch (e) { /* presse-papier refusé */ }
+  };
+  return <button type="button" className={'cd-ic' + (ok ? ' mu-copie' : '')} title={ok ? 'Copié' : 'Copier (texte structuré)'} onClick={copier}><Icon name={ok ? 'check' : 'copy'} size={12} /></button>;
 }
 
 /* flashcard image : l'image en mode « réponse » (masques en contour + réponses),

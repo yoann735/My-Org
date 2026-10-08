@@ -26,6 +26,8 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { ZoneDefilante } from '../components/ZoneDefilante.jsx';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
+import { TableauMuscle, ligneParLigne } from '../components/FlashcardMuscle.jsx';
+import { estMuscle } from '../lib/muscle.js';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { isCloze, parseCloze, highlightClozeWords } from '../lib/cloze.js';
 import { put, putMany, getMeta, setMeta } from '../lib/storage.js';
@@ -266,7 +268,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false, bloc: blocPro
           <button type="button" className="sfc-carte" key={carte.id + ':' + (presentation ? 'p' : retournee ? 'v' : 'r')}
             data-carte={carte.id} data-serie={carte.learningStreak || 0}
             onClick={() => { if (!presentation) setRetournee((r) => !r); }}>
-            <FaceFC carte={carte} cote={presentation ? 'deux' : retournee ? 'verso' : 'recto'} />
+            <FaceFC carte={carte} cote={presentation ? 'deux' : retournee ? 'verso' : 'recto'} masquable={ligneParLigne(ctx)} />
             {!presentation && !retournee && <span className="sfc-indication">Touche pour voir la réponse</span>}
           </button>
           <div className="sfc-bas">
@@ -314,7 +316,7 @@ function Transition({ nRev, nApp, nNouvelles, onSuite }) {
 }
 
 /** une face (recto, verso, ou les deux pour la présentation) — texte, trous, image, masques */
-function FaceFC({ carte, cote }) {
+function FaceFC({ carte, cote, masquable = false }) {
   const cloze = isCloze(carte);
   const occ = estOcclusion(carte) ? carte.occlusion : null;
   const recto = cloze
@@ -327,6 +329,17 @@ function FaceFC({ carte, cote }) {
   const montrerVerso = cote !== 'recto';
   const image = !occ && ((montrerRecto && imageAuRecto(carte)) || (montrerVerso && imageAuVerso(carte)));
   const long = ((montrerRecto ? carte.recto || '' : '') + (montrerVerso ? carte.verso || '' : '')).length > 260;
+  if (estMuscle(carte)) {
+    // carte Muscle : le nom au recto, le tableau au verso (révélé d'emblée à la présentation)
+    return (
+      <ZoneDefilante className={'sfc-zone sfc-muscle' + (montrerVerso ? ' long' : '')}>
+        {montrerRecto && <div className={'sfc-recto' + (montrerVerso ? ' mu-nom-petit' : ' mu-nom')}><Tex>{carte.recto}</Tex></div>}
+        {!montrerRecto && <div className="mu-titre"><Tex>{carte.recto}</Tex></div>}
+        {montrerVerso && <TableauMuscle item={carte} masquable={masquable && cote === 'verso'} />}
+        {montrerVerso && carte.a_retenir && <div className="sfc-retenir"><strong>À retenir :</strong> <Tex>{carte.a_retenir}</Tex></div>}
+      </ZoneDefilante>
+    );
+  }
   return (
     <>
       {image && <ImageFlashcard imageId={carte.imageId} maxH="min(220px, 28dvh)" className="mrm" />}

@@ -6,6 +6,8 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
+import { TableauMuscle, ligneParLigne } from '../components/FlashcardMuscle.jsx';
+import { estMuscle } from '../lib/muscle.js';
 import { imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { Icon } from '../../shared/Icon.jsx';
 import { Breadcrumb, matiereMeta, EtiquetteQuickSet, SessionTrendCard } from '../components/ui.jsx';
@@ -441,6 +443,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
   // FLASHCARD IMAGE (components/OcclusionImage.jsx) : même carte, même notation
   // méthode des J — seules les faces changent (masques opaques → révélés).
   const occ = estOcclusion(item) ? item.occlusion : null;
+  const muscle = estMuscle(item); // carte Muscle : le verso est un tableau (components/FlashcardMuscle.jsx)
   const [showIndice, setShowIndice] = useState(false); // réinitialisé au changement de carte (remount via key={idx})
   const revealIndice = (e) => { e.stopPropagation(); setShowIndice(true); };
   const rectoSegments = useMemo(() => (cloze ? parseCloze(item.recto, item.cloze) : null), [item.id, cloze]);
@@ -448,7 +451,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
   return (
     <div>
       <div className="flash-scene">
-        <div className={'flash-card' + (flipped ? ' flipped' : '') + (occ ? ' occ' : '') + (!occ && (imageAuRecto(item) || imageAuVerso(item)) ? ' img' : '')} onClick={() => setFlipped((f) => !f)}>
+        <div className={'flash-card' + (flipped ? ' flipped' : '') + (occ ? ' occ' : '') + (muscle ? ' muscle' : '') + (!occ && (imageAuRecto(item) || imageAuVerso(item)) ? ' img' : '')} onClick={() => setFlipped((f) => !f)}>
           <div className="flash-face front">
             <span className="ff-tag" style={{ color: meta.tint }}>{erreurMode ? "Flashcard d'erreur" : `${meta.label} · ${item.theme}`}</span>
             <ZoneDefilante className={'ff-zone ' + classeLongueur(item.recto)}>
@@ -467,8 +470,10 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
           </div>
           <div className="flash-face back">
             <span className="ff-tag">Réponse</span>
-            <ZoneDefilante className={'ff-zone ' + classeLongueur(item.verso, item.a_retenir)}>
-            {occ
+            <ZoneDefilante className={'ff-zone ' + (muscle ? 'ff-muscle' : classeLongueur(item.verso, item.a_retenir))}>
+            {muscle
+              ? <><div className="mu-titre"><Tex>{item.recto}</Tex></div><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>
+              : occ
               ? <div className="ff-occ"><OcclusionView occ={occ} revele />{!item.versoAuto && <div className="ff-imgq"><Tex>{item.verso}</Tex></div>}</div>
               : imageAuVerso(item)
               // image au verso (ou aux deux faces) : flashcard texte avec image, voir components/FlashcardImage.jsx

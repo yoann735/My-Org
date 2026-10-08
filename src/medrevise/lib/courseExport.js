@@ -60,7 +60,7 @@ export function extractHighlights(docEl) {
 // de l'adaptateur (concept/question/choix/bonneReponse/_schema) : un enregistrement
 // db.questions brut n'est PAS le contrat de sortie, juste sa source.
 const CARTE_FIELDS = {
-  flashcard: ['theme', 'type', 'recto', 'verso', 'cloze', 'indice', 'a_retenir', 'difficulte', 'tags'],
+  flashcard: ['theme', 'type', 'recto', 'verso', 'cloze', 'indice', 'a_retenir', 'difficulte', 'tags', 'muscle'], // muscle : carte Muscle (lib/muscle.js), verso déjà mis à plat
   qcm: ['theme', 'type', 'enonce', 'options', 'reponses_correctes', 'explication', 'explication_distracteurs', 'difficulte', 'tags'],
 };
 

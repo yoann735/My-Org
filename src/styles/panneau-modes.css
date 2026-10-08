@@ -90,11 +90,11 @@
 .pm-seg.en-geste .pm-seg-indic, .pm-seg.sans-anim .pm-seg-indic { transition: none; }
 
 /* ---- v1.1 : carte d'ajout de flashcard (Texte / Image) ---- */
-.fc-carte-tete { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.fc-carte-tete { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 6px; margin-bottom: 12px; } /* 3 sortes (Texte · Image · Muscle) : tient dans le panneau étroit, passe à la ligne sinon */
 .fc-carte-seg { flex: 0 0 auto; }
 .fc-carte-nb { font-size: 12px; color: var(--ok); font-weight: 600; margin: -4px 0 10px; }
 .fc-carte .card-body { padding: 12px; }
-.fc-carte-seg .seg-btn { padding-left: 10px; padding-right: 10px; }
+.fc-carte-seg .seg-btn { padding-left: 7px; padding-right: 7px; }
 .fc-depot-zone {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 100%;
   min-height: 120px; padding: 16px; border: 1.5px dashed var(--border); border-radius: var(--r-5, 10px);

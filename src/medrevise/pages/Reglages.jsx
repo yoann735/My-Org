@@ -434,6 +434,10 @@ function ReglagesApprentissageFC({ ctx }) {
       {champ('quotaNouvelles', 'Nouvelles cartes par jour', `${BORNES_FC.quotaNouvelles[0]} à ${BORNES_FC.quotaNouvelles[1]} — au-delà, elles passent au lendemain`)}
       {champ('critere', 'Critère de succès', 'succès consécutifs pour sortir de l’apprentissage (2 à 5)')}
       {champ('critereApresRate', 'Critère après un raté', 'pour une carte ratée en révision (1 à 5)')}
+      <label className="rfc-champ rfc-bascule">
+        <span className="rfc-libelle">Carte Muscle : révéler ligne par ligne<span className="hint">au retournement, les 5 lignes sont masquées ; touche une ligne pour la voir, ou « Tout révéler »</span></span>
+        <input type="checkbox" checked={r.muscleLigneParLigne} onChange={(e) => ctx.saveReglagesFC({ ...r, muscleLigneParLigne: e.target.checked })} />
+      </label>
     </div>
   );
 }
