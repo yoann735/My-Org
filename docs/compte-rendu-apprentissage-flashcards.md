@@ -243,3 +243,96 @@ dans Supabase → SQL Editor si tu veux pouvoir compter les états côté cloud.
 | `731153e` | feat(medrevise): séance quotidienne des flashcards — un bouton, révisions puis apprentissage |
 | `da09bdb` | chore(supabase): migration additive apprentissage des flashcards (index partiel, non appliquée) |
 | (ce commit) | docs(medrevise): compte-rendu apprentissage des flashcards |
+
+---
+
+## v1.1 — critère 2, sans quota (08/10/2026)
+
+### Ce qui change
+
+| | Avant (v1) | Maintenant (v1.1) |
+|---|---|---|
+| Critère de sortie d'Apprendre | 3 succès consécutifs (2 après un raté en révision), deux réglages | **2 succès consécutifs**, **un seul réglage** (plage 1–5), le même après un raté |
+| Carte déjà en apprentissage | gardait son critère d'entrée (`learningCriterion: 3`) | c'est le **réglage courant** qui décide pour toutes les cartes ; une carte qui a **déjà 2 succès** sort au démarrage de la séance suivante (révision J+1) **sans repasser** |
+| Après « Su » du premier coup, juste après la présentation | revenait 8–10 cartes plus loin | **2ᵉ vérification en fin de paquet** (pas revue trop tôt) ; « Pas su » : 3–4 cartes plus loin, comme avant |
+| Nouvelles cartes | **quota de 15/jour** (réglable 5–50) ; les suivantes « glissaient » au lendemain, avec une alerte dans l'en-tête | **aucun quota** : une carte entre dans Apprendre **le jour de sa date de départ**, comme une carte entre dans les J à sa date. C'est toi qui gères, par les dates de départ. |
+| En-tête de séance | « 6 à réviser · 15 nouvelles · 1 à reprendre · ≈ 19 min » + « N nouvelles au-delà du quota… » | « **23 à réviser · 41 à apprendre · ≈ 35 min** » |
+| Estimation | 70 s par nouvelle (critère 3) | **45 s par carte à apprendre** (critère 2). Les mesures de séance prises au critère 3 sont ignorées pour l'apprentissage ; la recalibration reprend dès 3 séances au critère 2. |
+
+Ce qui ne change pas :
+- la méthode des J : intervalles, notation Raté / Difficile / Facile, « Raté → réapprentissage demain » ;
+- la bascule Révisions / Apprentissage en cours de séance ;
+- la synchro et le schéma des cartes (champs ajoutés seulement).
+
+**Retiré partout :**
+- le réglage « Nouvelles cartes par jour » ;
+- le réglage « Critère après un raté » ;
+- le glissement au lendemain (`glissent`, `quotaNouvelles`) ;
+- l'alerte « au-delà du quota » ;
+- le « demain » forcé de « Prochaine séance ».
+
+### Rattrapage des cartes repoussées par l'ancien quota
+
+**L'ancien quota n'a jamais réécrit de date de départ.** Le glissement était *calculé* à chaque séance (planDuJour, v1 § 2) ; la date d'une carte reportée restait sa date d'origine. Les cartes qu'il retenait sont donc reconnaissables : en apprentissage, jamais entrées dans le bloc Apprendre, avec une date de départ **passée**.
+
+Il n'y a **aucune date à restaurer**. Sans quota, ces cartes entrent dans Apprendre **dès la prochaine séance**, avec leur date d'origine intacte.
+
+La migration `apprentissage-flashcards-v1.1` (lib/migrate.js) ne réécrit **aucune carte**. Une fois par appareil, au démarrage :
+- elle **compte** ces cartes (« rattrapées ») et celles qui ont déjà 2 succès (« sorties sans repasser ») ;
+- elle passe le réglage synchronisé de 3 à 2 et retire les champs du quota (sauvegarde `pre-apprentissage-flashcards-v1.1-reglages`) ;
+- elle enregistre ce bilan.
+
+Le bilan s'affiche dans **Réglages → Apprentissage des flashcards** et dans la console (`[MedRevise] migration apprentissage-flashcards-v1.1`).
+
+**Nombre de cartes rattrapées :**
+- **Jeu de test : 5 cartes rattrapées** (départs du 03 au 07/10, jamais entrées) et **2 cartes à série 2 sorties sans repasser**.
+  - Les 5 sont entrées dans Apprendre à la séance suivante, date d'origine conservée.
+  - Les 2 sont passées en révision J+1 au démarrage de la séance.
+  - Les 30 nouvelles du jour sont toutes entrées, aucune repoussée.
+- **Tes données réelles :** je n'y ai pas accès (tests jamais sur le cloud). Le nombre exact s'affichera dans Réglages → Apprentissage des flashcards au premier démarrage de cette version sur chaque appareil (« N cartes retenues par l'ancien quota sont revenues dans Apprendre »).
+
+### Tests (Chrome headless, Vite local, faux Supabase — jamais le cloud)
+
+Le jeu de test a été créé par le chemin normal de l'app (`appendItemsToFiche`, date de départ du jour) :
+- 30 nouvelles cartes sur 2 cours ;
+- 5 cartes « retenues par l'ancien quota » (départ passé, jamais entrées) ;
+- 2 cartes à série 2 et 1 à série 1 (critère d'entrée 3) ;
+- 3 révisions dues ;
+- l'ancien réglage { quota 15, critère 3, critère après raté 2 }.
+
+La migration a été rejouée au rechargement, comme chez toi.
+
+| Scénario | Résultat |
+|---|---|
+| Moteur (`node scripts/tests-apprentissage/test-v11.mjs`) : critère 2 et plage 1–5, anciens champs ignorés, 30 (et 60) nouvelles toutes dans Apprendre, départ demain → demain, sortie au 2ᵉ succès, raté puis 2 succès, critère d'entrée 3 → sort à 2, série 2 → sortie sans repasser, raté en révision → réapprentissage demain (critère 2), fin de paquet / 3–4 cartes, estimation, prochaine séance | ✅ 17/17 |
+| Migration : rapport { rattrapées 5 (dès le 03/10), sorties sans repasser 2 } ; réglage 3 → 2, quota retiré | ✅ |
+| En-tête (bureau) : « **3 à réviser · 36 à apprendre · ≈ 28 min** » (30 nouvelles + 5 rattrapées + 1 en cours) ; boutons « Révisions (3) · Apprentissage (36) » ; aucune trace du quota | ✅ |
+| Réglages : un seul critère (2, plage 1–5) ; plus de « Nouvelles cartes par jour » ni de « Critère après un raté » ; bilan du passage | ✅ |
+| Démarrage de séance : les 2 cartes à série 2 → révision J+1, absentes de la file (36 cartes) | ✅ |
+| Révisions J : Facile / Raté / Difficile comme avant (intervalles 3 → 8 et 3 → 4) ; Raté → réapprentissage demain, critère 2 ; bascule vers Apprendre puis retour « Révisions · 2 / 3 » | ✅ |
+| Bloc Apprendre : **les 36 cartes sortent à 2 succès consécutifs** (la série 1 existante au 1er), y compris 3 cartes ratées une fois puis réussies 2 fois | ✅ |
+| Réussie du premier coup après présentation → **2ᵉ vérification en fin de paquet** | ✅ 33/33 |
+| 38 cartes sorties, toutes en révision le lendemain | ✅ |
+| **Lendemain** (horloge +1 j) bureau : « 38 à réviser · 1 à apprendre · ≈ 10 min » ; les 38 dans les révisions, notées comme avant | ✅ |
+| **Synchro → téléphone** (390 px, profil neuf) : lendemain « 35 à réviser · 1 à apprendre · ≈ 10 min » (les 3 révisions faites sur l'ordinateur sont arrivées) ; aujourd'hui « Rien à faire · Prochaine séance : vendredi 9 octobre » ; aucune trace du quota | ✅ |
+| **Téléphone, séance au doigt** : 3 nouvelles cartes → « 3 à apprendre · ≈ 2 min » ; apprises en 6 « Su » (2 chacune), retour en fin de paquet après un premier coup, révision demain | ✅ |
+| MealWeek : accueil avant / après identique octet pour octet ; rien dans `src/mealweek/` ni `src/shared/` | ✅ |
+| Erreurs console | aucune |
+| `npm run build` | ✅ |
+
+**Limite :** un appareil pas encore mis à jour qui réenregistre ses réglages renverrait l'ancien objet (critère 3). La v1.1 ignore les champs du quota, mais un critère 3 ainsi revenu serait respecté. Remets 2 dans les Réglages si cela arrive.
+
+| En-tête (bureau) | Réglages | Lendemain (bureau) |
+|---|---|---|
+| ![](img/apprentissage-flashcards/v11-entete.png) | ![](img/apprentissage-flashcards/v11-reglages.png) | ![](img/apprentissage-flashcards/v11-jplus1-bureau.png) |
+
+| Téléphone : 3 à apprendre | Téléphone : lendemain |
+|---|---|
+| ![](img/apprentissage-flashcards/v11-mobile-entete.png) | ![](img/apprentissage-flashcards/v11-mobile-jplus1.png) |
+
+### Commits v1.1
+
+| Commit | Message |
+|---|---|
+| `0a25988` | feat(medrevise): apprentissage des flashcards v1.1 — critère 2, plus aucun quota de nouvelles cartes |
+| (ce commit) | docs(medrevise): compte-rendu v1.1 — critère 2, sans quota |
