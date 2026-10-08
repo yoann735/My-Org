@@ -14,6 +14,7 @@ import { TextStyleKit } from '@tiptap/extension-text-style';
 import { TextAlign } from '@tiptap/extension-text-align';
 import { Highlight } from '@tiptap/extension-highlight';
 import { Image } from '@tiptap/extension-image';
+import { vueImageDoc } from './imageVue.js';
 import { TaskList, TaskItem } from '@tiptap/extension-list';
 import { TableKit } from '@tiptap/extension-table';
 import { getBlob } from '../../lib/storage.js';
@@ -52,6 +53,32 @@ const BlobImage = Image.extend({
         renderHTML: (attrs) => (attrs.width ? { width: attrs.width } : {}),
       },
     };
+  },
+});
+
+/* IMAGE D'UN DOCUMENT / DES NOTES (08/10) : même nœud « image » (mêmes données, blobId),
+   plus `align` et `height` (hauteur gardée seulement après un redimensionnement libre),
+   et une vue avec poignées, barre d'alignement et déplacement (imageVue.js). Pas de
+   glisser natif : le déplacement est fait à la main, au doigt comme à la souris. */
+const ImageDoc = BlobImage.extend({
+  draggable: false,
+  addAttributes() {
+    return {
+      ...this.parent(),
+      height: {
+        default: null,
+        parseHTML: (el) => (el.getAttribute('height') ? Number(el.getAttribute('height')) || null : null),
+        renderHTML: (attrs) => (attrs.height ? { height: attrs.height } : {}),
+      },
+      align: {
+        default: 'center',
+        parseHTML: (el) => el.getAttribute('data-align') || 'center',
+        renderHTML: (attrs) => ({ 'data-align': attrs.align || 'center' }),
+      },
+    };
+  },
+  addNodeView() {
+    return (props) => vueImageDoc(props);
   },
 });
 
@@ -149,7 +176,7 @@ export const NOTES_EXTENSIONS = [
   TextStyleKit,
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   Highlight.configure({ multicolor: true }),
-  BlobImage.configure({ inline: false, allowBase64: false }),
+  ImageDoc.configure({ inline: false, allowBase64: false }),
   StudentQuestion,
   TaskList,
   TaskItem.configure({ nested: true }),

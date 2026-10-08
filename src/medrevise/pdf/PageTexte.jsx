@@ -17,10 +17,11 @@ import { memo, useEffect, useImperativeHandle, useRef, useState, forwardRef } fr
 import { createPortal } from 'react-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Fragment } from '@tiptap/pm/model';
-import { TextSelection } from '@tiptap/pm/state';
+import { TextSelection, NodeSelection } from '@tiptap/pm/state';
 import { Icon } from '../../shared/Icon.jsx';
 import { putBlob, genId } from '../lib/storage.js';
 import { NOTES_EXTENSIONS, EMPTY_DOC, hydrateDoc, dehydrateDoc } from '../documents/lib/richtext.js';
+import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
 
 export const PAGE_A4 = { width: 595, height: 842 };
 
@@ -65,10 +66,8 @@ export const PageTexte = memo(forwardRef(function PageTexte({
     if (!f || !/^image\//.test(f.type)) return false;
     const blobId = await putBlob(f);
     const url = URL.createObjectURL(f); urls.current.push(url);
-    const ch = ed.chain().focus();
-    if (pos != null) ch.insertContentAt(pos, { type: 'image', attrs: { src: url, blobId } }).run();
-    else ch.setImage({ src: url, blobId }).run();
-    return true;
+    // (08/10) un BLOC entre deux paragraphes : ne coupe jamais le texte (documents/lib/imageVue.js)
+    return insererImageBloc(ed, { src: url, blobId }, pos);
   };
 
   /* le texte dépasse le bas de la zone d'écriture : les blocs qui débordent partent sur la
@@ -88,6 +87,10 @@ export const PageTexte = memo(forwardRef(function PageTexte({
     });
     if (coupe == null) { let der = 0; doc.forEach((n, o) => { der = o; }); coupe = der; }
     const fin = doc.content.size;
+    // (08/10) jamais un paragraphe VIDE final tout seul : l'éditeur en remet toujours un en fin de
+    // page (TrailingNode) — le déplacer relancerait le débordement sans fin
+    const reste = doc.slice(coupe, fin).content;
+    if (reste.childCount === 1 && reste.firstChild.isTextblock && reste.firstChild.content.size === 0) return;
     const nodes = doc.slice(coupe, fin).content.toJSON();
     const { from } = ed.state.selection;
     const decal = ed.isFocused && from >= coupe ? from - coupe : null;
@@ -128,8 +131,8 @@ export const PageTexte = memo(forwardRef(function PageTexte({
         const f = [...((event.dataTransfer && event.dataTransfer.files) || [])].find((x) => /^image\//.test(x.type));
         if (!f || !editorRef.current) return false;
         event.preventDefault();
-        const p = view.posAtCoords({ left: event.clientX, top: event.clientY });
-        insererImage(editorRef.current, f, p ? p.pos : null);
+        // dépôt : à la limite de bloc la plus proche du pointeur (jamais au milieu d'une ligne)
+        insererImage(editorRef.current, f, limiteSous(editorRef.current, event.clientX, event.clientY).pos);
         return true;
       },
       handleTextInput: (view, from, to, texte) => {
@@ -180,7 +183,8 @@ export const PageTexte = memo(forwardRef(function PageTexte({
   // bulle de sélection (Notion, Flashcard) — rendue dans <body> : la page est agrandie par transform
   function majBulle(ed) {
     const { from, to, empty } = ed.state.selection;
-    if (empty || !ed.isFocused || outilRef.current !== 'main') { setBulle(null); return; }
+    // une IMAGE sélectionnée a sa propre barre (imageVue.js) : pas de « Notion / Flashcard »
+    if (empty || !ed.isFocused || outilRef.current !== 'main' || ed.state.selection instanceof NodeSelection) { setBulle(null); return; }
     try {
       const a = ed.view.coordsAtPos(from), b = ed.view.coordsAtPos(to);
       setBulle({ x: (a.left + b.right) / 2, y: Math.min(a.top, b.top), notion: ed.isActive('notion') });
@@ -209,6 +213,20 @@ export const PageTexte = memo(forwardRef(function PageTexte({
     })();
     return () => { vivant = false; };
   }, [editor, pageId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* (08/10) la hauteur du texte change SANS transaction (image qui finit de se charger,
+     redimensionnée, police chargée) : on revérifie le débordement — une image qui ne tient
+     plus part sur la page suivante, jamais coupée en bas de page. */
+  useEffect(() => {
+    if (!editor) return undefined;
+    const dom = editor.view.dom;
+    let raf = null;
+    const plan = () => { if (!raf) raf = requestAnimationFrame(() => { raf = null; verifierDebordement(); }); };
+    dom.addEventListener('pti-taille', plan);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(plan) : null;
+    if (ro) ro.observe(dom);
+    return () => { dom.removeEventListener('pti-taille', plan); if (ro) ro.disconnect(); if (raf) cancelAnimationFrame(raf); };
+  }, [editor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const cache = () => { if (document.visibilityState === 'hidden') vider(); };
@@ -379,7 +397,7 @@ export const PageTexte = memo(forwardRef(function PageTexte({
 
   return (
     <div ref={zoneRef} className={'pt-zone outil-' + outil}
-      style={{ width: largeur, height: hauteur, transform: `scale(${echelle})`, padding: MARGE_PAGE }}
+      style={{ width: largeur, height: hauteur, transform: `scale(${echelle})`, padding: MARGE_PAGE, '--pt-inv': 1 / (echelle || 1) }}
       onMouseDown={surAppui} onMouseUp={surRelache}>
       <EditorContent editor={editor} className="pt-corps" style={{ height: hUtile }} />
       {bulle && createPortal(
@@ -419,7 +437,7 @@ export function OutilsTexteDocument({ editor }) {
       const f = i.files && i.files[0];
       if (!f) return;
       const blobId = await putBlob(f);
-      editor.chain().focus().setImage({ src: URL.createObjectURL(f), blobId }).run();
+      insererImageBloc(editor, { src: URL.createObjectURL(f), blobId });
     };
     i.click();
   };

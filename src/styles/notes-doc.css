@@ -185,3 +185,47 @@
 .lecteur-tab .pdfr-ajout-retirer { min-height: 40px; padding: 0 14px; }
 /* recherche dans un document : l'occurrence affichée */
 ::highlight(recherche-doc) { background-color: rgba(255, 196, 0, .55); color: inherit; }
+
+/* ---- IMAGE d'un document / des notes : bloc à part entière (08/10, documents/lib/imageVue.js) ---- */
+.pti { display: block; margin: .5em 0; line-height: 0; text-align: center; user-select: none; -webkit-user-select: none; }
+.pti[data-align="left"] { text-align: left; }
+.pti[data-align="right"] { text-align: right; }
+.pti-cadre { position: relative; display: inline-block; max-width: 100%; vertical-align: top; }
+.pti-cadre > img { display: block; width: 100%; max-width: none; margin: 0; border-radius: 4px; object-fit: fill; outline: none; } /* Maj = libre : l’image suit le cadre */
+.pti.sel .pti-cadre > img { outline: 2px solid #6b5cff; outline-offset: 1px; cursor: grab; touch-action: none; }
+.pti.deplace .pti-cadre > img { opacity: .45; cursor: grabbing; }
+/* poignées d'angle : 14 px écran à la souris, 40 px au doigt (contre-échelle : la page est zoomée) */
+.pti { --pti-inv: var(--pt-inv, 1); --pti-p: 14px; } /* --pt-inv = 1 / zoom de la page (PageTexte) */
+@media (pointer: coarse) { .pti { --pti-p: 40px; } }
+.pti-poignee {
+  display: none; position: absolute; z-index: 2; width: calc(var(--pti-p) * var(--pti-inv)); height: calc(var(--pti-p) * var(--pti-inv));
+  touch-action: none;
+}
+.pti-poignee::after { content: ''; position: absolute; inset: 25%; border-radius: 50%; background: #fff; border: calc(2px * var(--pti-inv)) solid #6b5cff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); }
+.pti.sel .pti-poignee { display: block; }
+/* DANS l'image : la zone d'écriture (.pt-corps) rogne ce qui dépasse */
+.pti-poignee.hg { left: 0; top: 0; cursor: nwse-resize; }
+.pti-poignee.hd { right: 0; top: 0; cursor: nesw-resize; }
+.pti-poignee.bg { left: 0; bottom: 0; cursor: nesw-resize; }
+.pti-poignee.bd { right: 0; bottom: 0; cursor: nwse-resize; }
+/* mini barre flottante (en haut, dans l'image) : alignement + supprimer */
+.pti-barre {
+  display: none; position: absolute; left: 50%; top: calc(8px * var(--pti-inv)); z-index: 3; gap: 2px; padding: 3px; white-space: nowrap; line-height: 1;
+  transform: translateX(-50%) scale(var(--pti-inv)); transform-origin: 50% 0;
+  background: var(--card, #fff); border: 1px solid var(--border, #ddd); border-radius: 10px; box-shadow: var(--shadow, 0 4px 14px rgba(0,0,0,.18));
+}
+.pti.sel:not(.redim):not(.deplace) .pti-barre { display: inline-flex; }
+.pti[data-barre="dessus"] .pti-barre { top: auto; bottom: 100%; transform: translate(-50%, calc(-6px * var(--pti-inv))) scale(var(--pti-inv)); transform-origin: 50% 100%; }
+.pti[data-barre="dessous"] .pti-barre { top: 100%; transform: translate(-50%, calc(6px * var(--pti-inv))) scale(var(--pti-inv)); transform-origin: 50% 0; }
+.pti-barre button { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 7px; background: transparent; color: var(--text-2, #555); cursor: pointer; }
+@media (pointer: coarse) { .pti-barre button { width: 40px; height: 40px; } }
+.pti-barre button:hover { background: var(--bg-2, #eee); color: var(--text, #222); }
+.pti-barre button.actif { background: var(--accent-soft, #e9e6ff); color: var(--accent, #6b5cff); }
+.pti-barre button.pti-suppr { color: var(--crit, #d33); }
+/* trait de dépôt pendant le déplacement */
+.pti-depot { position: fixed; z-index: 500; height: 4px; border-radius: 2px; background: var(--accent, #6b5cff); box-shadow: 0 0 0 2px var(--accent-soft, rgba(107,92,255,.25)); pointer-events: none; display: none; }
+/* chaque page est un éditeur : une image reste « sélectionnée » dans une page qu'on a quittée —
+   seule celle de la page qui a le focus montre son cadre, ses poignées et sa barre */
+.ProseMirror:not(.ProseMirror-focused) .pti.sel .pti-poignee,
+.ProseMirror:not(.ProseMirror-focused) .pti.sel .pti-barre { display: none !important; }
+.ProseMirror:not(.ProseMirror-focused) .pti.sel .pti-cadre > img { outline: none; }
