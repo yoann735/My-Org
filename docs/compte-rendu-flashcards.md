@@ -180,4 +180,5 @@ Ce banc est simulé : ce n'est pas une capture de ton cours. Le jour où tu coll
 |---|---|
 | fde61e1 | `feat(medrevise)` : flashcard « Muscle » (création, OCR, révision ligne par ligne, réglage, copie, export) |
 | c005f2d | `test(medrevise)` : décodeur du tableau Muscle (vrais mots OCR + cas simulés) |
-| (ce commit) | `docs(medrevise)` : ce compte-rendu et ses captures |
+| 3766856 | `docs(medrevise)` : ce compte-rendu et ses captures |
+| (suivant) | `docs(medrevise)` : liste des commits |
