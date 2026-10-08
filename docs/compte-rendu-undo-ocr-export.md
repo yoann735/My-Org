@@ -220,4 +220,4 @@ Le texte, les images, les surlignages, le crayon, les formes et les boîtes sort
 | `8c9a13b` | fix : renommage dans la Bibliothèque — le curseur ne saute plus en fin de texte |
 | `a97f1cf` | fix : export PDF d'un document fidèle à l'écran (surlignages, fond noir, pages) |
 | `ed1a5b7` | feat : Texte en direct sur les images d'un document (OCR à l'insertion) |
-| (ce document) | docs : compte-rendu + captures |
+| `db7b353` | docs : ce compte-rendu + captures |
