@@ -833,9 +833,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       cumul = 0;
       zoomAtRef.current(y, (scaleRef.current || 1) * f);
     };
-    // 1. Ctrl/⌘ + molette, et pincement de trackpad (Chrome, Edge, Firefox)
+    /* 1. pincement de trackpad (Chrome, Edge, Firefox : molette + ctrlKey) et Ctrl + molette.
+       PAS ⌘ + molette (08/10, docs/audit-document-engine.md B9) : sur Mac ce n'est pas un
+       geste de zoom, et l'INERTIE d'un défilement au trackpad continue d'émettre des
+       événements de molette — appuyer sur ⌘ pendant ce temps (⌘Tab, ⌘A, ⌘C…) les
+       transformait en zoom. ⌘ seul, ⌘Tab, ⌘A, ⌘C/V ne touchent jamais au zoom. */
     const onWheel = (e) => {
-      if (!(e.ctrlKey || e.metaKey) || !dansLecteur(e.target) || dansLeTableau(e.target)) return;
+      if (!e.ctrlKey || !dansLecteur(e.target) || dansLeTableau(e.target)) return;
       e.preventDefault();
       if (animZoom.current) { cancelAnimationFrame(animZoom.current); animZoom.current = null; }
       const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; // lignes → pixels
