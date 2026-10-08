@@ -28,6 +28,7 @@ import { blobURL, putBlob } from '../lib/storage.js';
 import { cleanCoche, appendItemsToFiche, themeFlashcardsDeFiche } from '../lib/import.js';
 import { toInternalItem } from '../lib/adapter.js';
 import { imageDuPressePapier, texteDuPressePapier } from '../lib/collerImage.js';
+import { MasquerMots } from './MasquerMots.jsx';
 
 export const RECTO_DEFAUT = 'Que cachent les masques ?';
 const COULEUR_MASQUE = '#8B6FE8';
@@ -97,14 +98,16 @@ export function OcclusionView({ occ, revele = false, maxH = 340, onClickImage })
  * des textes ; question et réponse facultatives.
  */
 // `imageInitiale` (05/10) : un fichier déjà choisi dans la carte d'ajout du panneau
-export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, onSaved, imageInitiale = null }) {
+// `rectoInitial` / `versoInitial` / `themeInitial` (08/10) : repris du formulaire unifié quand on y choisit « Masques à deviner »
+export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, onSaved, imageInitiale = null, rectoInitial = '', versoInitial = '', themeInitial = null }) {
   const occ0 = initial && initial.occlusion;
   const [image, setImageState] = useState(null); // { url, w, h, blobId, newFile }
   const [coches, setCoches] = useState(() => (occ0 && occ0.coches) || []);
   // nouvelle carte : pré-remplie avec le thème par défaut de la fiche (components/ThemeFiche.jsx)
-  const [theme, setTheme] = useState(() => (initial ? (initial.theme || '') : themeFlashcardsDeFiche((ctx.db.fiches || []).find((f) => f.id === ficheId))));
-  const [recto, setRecto] = useState((initial && initial.recto) || RECTO_DEFAUT);
-  const [verso, setVerso] = useState(() => (initial && initial.verso && !initial.versoAuto ? initial.verso : ''));
+  const [theme, setTheme] = useState(() => (initial ? (initial.theme || '') : themeInitial != null ? themeInitial : themeFlashcardsDeFiche((ctx.db.fiches || []).find((f) => f.id === ficheId))));
+  const [recto, setRecto] = useState((initial && initial.recto) || (rectoInitial && rectoInitial.trim()) || RECTO_DEFAUT);
+  const [verso, setVerso] = useState(() => (initial && initial.verso && !initial.versoAuto ? initial.verso : (versoInitial || '')));
+  const [masquerMots, setMasquerMots] = useState(false);
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState(null);
   const urls = useRef(new Set());
@@ -129,7 +132,8 @@ export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, on
     const url = URL.createObjectURL(file);
     urls.current.add(url);
     const probe = new Image();
-    probe.onload = () => setImageState({ url, w: probe.naturalWidth, h: probe.naturalHeight, blobId: null, newFile: file });
+    // (08/10) une image chargée efface l'erreur d'un essai précédent (double montage React en dev)
+    probe.onload = () => { setErreur(null); setImageState({ url, w: probe.naturalWidth, h: probe.naturalHeight, blobId: null, newFile: file }); };
     probe.onerror = () => setErreur('Image illisible.');
     probe.src = url;
   };
@@ -207,7 +211,13 @@ export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, on
         <span><kbd>⌘V</kbd> colle une capture (ou glisse / choisis une image)</span>
         <span><span className="occ-puce masque" /> <b>Zone</b> (Rectangle, Ellipse…) = <b>masque à deviner</b> — écris sa réponse</span>
         <span><span className="occ-puce texte" /> <b>Texte</b> = visible sur l’image</span>
+        <button type="button" className="btn sm occ-mots-btn" disabled={!image} onClick={() => setMasquerMots(true)}
+          title="L’OCR lit l’image : touche les mots à cacher"><Icon name="search" size={13} /> Masquer des mots</button>
       </div>
+      {masquerMots && image && (
+        <MasquerMots image={image} onFermer={() => setMasquerMots(false)}
+          onAjouter={(nouveaux) => { setCoches((c) => [...c, ...nouveaux.map((k, i) => ({ ...k, numero: c.length + i + 1 }))]); setMasquerMots(false); }} />
+      )}
 
       <SchemaEditor image={image} setImage={choisirImage} coches={coches} setCoches={setCoches} sansExport variante="flashcard"
         imageMaxH="max(220px, calc(86vh - 350px))" />

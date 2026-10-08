@@ -53,7 +53,8 @@ const lines = (s) => (s || '').split('\n').map((l) => l.trim()).filter(Boolean);
 export function ItemForm({ type, initial, submitLabel, onSubmit, onCancel, busy, themeDefaut = '' }) {
   if (type === 'qcm') return <QcmForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;
   if (type === 'flashcard' && estMuscle(initial)) return <FormulaireMuscle initial={initial} onAdd={onSubmit} busy={busy} submitLabel={submitLabel} onCancel={onCancel} />;
-  if (type === 'flashcard') return <FlashcardForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} themeDefaut={themeDefaut} />;
+  // création et modification : le MÊME formulaire unifié, mêmes aides (aperçu, clavier)
+  if (type === 'flashcard') return <FlashcardForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} themeDefaut={themeDefaut} apercu clavier />;
   if (type === 'exercice') return <ExerciceForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;
   if (type === 'feynman') return <FeynmanForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;
   return null;
@@ -341,7 +342,7 @@ function QcmForm({ onAdd, busy, initial, submitLabel, onCancel }) {
    et rendus en pre-wrap à la révision. */
 export const RACCOURCI_ENREGISTRER = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? '⌘↵' : 'Ctrl+↵';
 export const estEnregistrer = (e) => e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.isComposing;
-export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefaut = '', sansImage = false, apercu = false, clavier = false, rectoInitial = '' }) {
+export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefaut = '', sansImage = false, apercu = false, clavier = false, rectoInitial = '', onOcclusion = null }) {
   // nouvelle carte : PRÉ-REMPLI avec le thème de la fiche (components/ThemeFiche.jsx). Le
   // changer ne vaut que pour CETTE carte : la suivante repart du thème de la fiche, qui ne
   // bouge pas. Si le thème de la fiche change pendant que le formulaire est ouvert (carte
@@ -376,6 +377,13 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
   // maintenir en phase : le {{...}} DANS le texte fait foi (voir cloze.js).
   const segments = parseCloze(recto, []);
   const blanks = segments.filter((s) => s.type === 'blank');
+  /* FORMULAIRE UNIFIÉ (08/10) : plus de choix « Texte · Image ». Dès qu'une image est
+     ajoutée, la carte devient une carte image : ses options apparaissent (où l'afficher,
+     masques à deviner) et les options purement texte (amorces, trous) s'effacent —
+     sauf si la carte en a déjà. Retirer l'image ramène aux options texte. Même schéma
+     d'enregistrement qu'avant (imageId / imagePlace), rien n'est converti. */
+  const avecImage = !!(image.fichier || image.imageId);
+  const optionsTexte = !avecImage || blanks.length > 0;
 
   /* AMORCE (04/10, components/AmorcesRecto.jsx) : insérée AU CURSEUR si le recto a le
      focus (sélection remplacée), sinon EN TÊTE du recto ; le curseur va juste après. */
@@ -474,11 +482,13 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
       <div className="imp-field">
         <div className="row spread" style={{ alignItems: 'center' }}>
           <label style={{ marginBottom: 0 }}>Recto</label>
-          <button type="button" className="btn ghost sm" onClick={addHole} title="Sélectionne un mot dans le recto, puis clique ici pour le transformer en trou (cloze)">
-            <Icon name="box" size={13} /> Ajouter un trou
-          </button>
+          {optionsTexte && (
+            <button type="button" className="btn ghost sm" onClick={addHole} title="Sélectionne un mot dans le recto, puis clique ici pour le transformer en trou (cloze)">
+              <Icon name="box" size={13} /> Ajouter un trou
+            </button>
+          )}
         </div>
-        <AmorcesRecto onInserer={insererAmorce} />
+        {optionsTexte && <AmorcesRecto onInserer={insererAmorce} />}
         <textarea ref={rectoRef} className="imp-title" style={{ minHeight: 78, resize: 'vertical', fontFamily: 'inherit', marginTop: 6 }}
           value={recto} onChange={(e) => { setRecto(e.target.value); setHoleHint(null); }} placeholder="Question / terme… (pour une carte à trou : sélectionne un mot, puis « Ajouter un trou »)" />
         {holeHint && <div className="hint" style={{ marginTop: 6, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {holeHint}</div>}
@@ -516,6 +526,14 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
         </div>
       )}
       {!sansImage && <ChampImageFlashcard valeur={image} onChange={setImage} />}
+      {!sansImage && avecImage && onOcclusion && !initial && (
+        <div className="fc-occ-option">
+          <button type="button" className="btn sm" onClick={() => onOcclusion({ fichier: image.fichier, imageId: image.imageId, recto, verso, theme })}>
+            <Icon name="image" size={13} /> Masques à deviner…
+          </button>
+          <span className="hint">dessine des zones ou <b>masque des mots</b> reconnus sur l’image (OCR)</span>
+        </div>
+      )}
       <div className="imp-field">
         <label>Indice <span className="imp-opt">(optionnel)</span></label>
         <textarea className="imp-title fc-txt-court" rows={1} value={indice} onChange={(e) => setIndice(e.target.value)} />

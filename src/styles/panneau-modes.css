@@ -143,3 +143,12 @@
   border: none; border-radius: 8px; background: transparent; color: var(--text-3); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
 .pm-resume-fc:hover { background: var(--bg-2); color: var(--text-2); }
 .pm-resume-fc svg { margin-left: auto; opacity: .7; }
+
+/* formulaire unifié (08/10) : « + Tableau muscle » / « + Molécule » à côté du formulaire standard */
+.fc-sortes { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.fc-sorte { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 10px; border-radius: 999px; border: 1px dashed var(--border-2, var(--border)); background: transparent; color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.fc-sorte:hover, .fc-sorte:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
+.fc-sorte.retour { border-style: solid; }
+.fc-sorte-titre { font-size: 13px; font-weight: 700; color: var(--text); }
+.fc-occ-option { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: -4px; }
+.mol-chargement { display: flex; align-items: center; gap: 8px; padding: 18px 4px; }
