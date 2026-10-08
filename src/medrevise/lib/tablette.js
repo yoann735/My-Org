@@ -3,8 +3,7 @@
 
    Entre le shell mobile (≤ 760 px, voir MedReviseApp) et l'ordinateur (≥ 1 200 px,
    inchangé) : iPad portrait et paysage, fenêtre Mac étroite.
-   - `cote`     : ≥ 900 px — PDF et panneau côte à côte, séparateur glissable ;
-   - `portrait` : < 900 px — empilé, onglets Cours / Panneau en bas (zone du pouce).
+   Le panneau est un volet qui monte depuis le bas (08/10), en portrait comme en paysage.
    Le basculement (rotation de l'iPad) ne démonte rien : seules des classes et
    quelques éléments optionnels changent, l'état du lecteur reste en place.
    ============================================================ */
@@ -37,37 +36,23 @@ export function useTablette() {
   return { tablette, cote: tablette && large, portrait: tablette && !large };
 }
 
-/* Largeur du panneau en tablette côte à côte : mémorisée PAR APPAREIL (localStorage). */
-export const PANNEAU_MIN = 320;
-export const PANNEAU_MAX = 560;
-const CLE_LARGEUR = 'medrevise.tablette.panneau';
-export const bornerLargeur = (w) => Math.round(Math.max(PANNEAU_MIN, Math.min(PANNEAU_MAX, w)));
-/** Largeur mémorisée, ou null (premier passage : le lecteur la calcule d'après sa largeur). */
-export function lireLargeurPanneau() {
-  try { const v = Number(localStorage.getItem(CLE_LARGEUR)); return v ? bornerLargeur(v) : null; } catch (e) { return null; }
+/* VOLET DU BAS (08/10, docs/compte-rendu-tablette-document-transcript.md) — remplace le
+   volet latéral : en tablette (portrait comme paysage), le panneau monte depuis le BAS et
+   le PDF reste visible AU-DESSUS, sur toute la largeur. Hauteur = FRACTION de la zone de
+   lecture, mémorisée par appareil (une seule valeur, ~45 % par défaut). Au-delà de
+   VOLET_PLEIN au relâcher : plein écran (PDF masqué). */
+export const VOLET_DEFAUT = 0.45;
+export const VOLET_MIN = 0.22;
+export const VOLET_MAX = 0.8;
+export const VOLET_PLEIN = 0.9;
+const CLE_VOLET = 'medrevise.tablette.voletBas';
+export const bornerVolet = (f) => Math.max(VOLET_MIN, Math.min(VOLET_MAX, f));
+export function lireFractionVolet() {
+  try { const v = Number(localStorage.getItem(CLE_VOLET)); return v >= VOLET_MIN && v <= VOLET_MAX ? v : VOLET_DEFAUT; } catch (e) { return VOLET_DEFAUT; }
 }
-/** Par défaut : 42 % de la largeur du lecteur, entre 320 et 380 px (le PDF garde la main). */
-export const largeurParDefaut = (largeurLecteur) => bornerLargeur(Math.min(380, (largeurLecteur || 900) * 0.42));
-export function ecrireLargeurPanneau(w) {
-  try { localStorage.setItem(CLE_LARGEUR, String(bornerLargeur(w))); } catch (e) { /* stockage bloqué */ }
+export function ecrireFractionVolet(f) {
+  try { localStorage.setItem(CLE_VOLET, String(+bornerVolet(f).toFixed(4))); } catch (e) { /* stockage bloqué */ }
 }
-
-/* VOLET LATÉRAL (07/10 après-midi, docs/compte-rendu-position-document-tablette.md) — la
-   largeur du panneau est une FRACTION de la largeur du lecteur, mémorisée par appareil et
-   PAR ORIENTATION (paysage ~40 %, portrait ~45 % par défaut). Le PDF garde toujours au
-   moins ~38 % : le volet ne le recouvre jamais. */
-export const VOLET_DEFAUT = { paysage: 0.40, portrait: 0.45 };
-export const VOLET_MIN_PX = 280;
-export const VOLET_MAX = 0.6;
-const CLE_VOLET = 'medrevise.tablette.volet.';
-export function lireFractionVolet(orientation) {
-  try { const v = Number(localStorage.getItem(CLE_VOLET + orientation)); return v > 0.15 && v <= VOLET_MAX ? v : VOLET_DEFAUT[orientation]; } catch (e) { return VOLET_DEFAUT[orientation]; }
-}
-export function ecrireFractionVolet(orientation, f) {
-  try { localStorage.setItem(CLE_VOLET + orientation, String(+f.toFixed(4))); } catch (e) { /* stockage bloqué */ }
-}
-/** largeur du volet en px, bornée (≥ 280 px, ≤ 62 % du lecteur) */
-export const largeurVolet = (fraction, largeurLecteur) => Math.round(Math.max(Math.min(VOLET_MIN_PX, largeurLecteur * 0.5), Math.min(largeurLecteur * VOLET_MAX, largeurLecteur * fraction)));
 
 /* STYLET (Apple Pencil, pointerType « pen ») : dès qu'un stylet a touché une page du
    lecteur, le doigt ne dessine plus — il fait défiler, et la paume posée pendant qu'on

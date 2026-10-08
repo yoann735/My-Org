@@ -88,7 +88,7 @@ import { lireNotesDoc, ecrirePageDoc, majNotesDoc, attendreNotesDoc, contenuGlob
 import { dehydrateDoc, EMPTY_DOC } from '../documents/lib/richtext.js';
 import { exporterMarkdownDoc } from '../documents/lib/exportDoc.js';
 import { PageTexte, PAGE_A4, OutilsTexteDocument, effacerSurlignageRecherche } from './PageTexte.jsx';
-import { useTablette, abonnerStylet, styletActif, lireFractionVolet, ecrireFractionVolet, largeurVolet, VOLET_MIN_PX, VOLET_MAX } from '../lib/tablette.js';
+import { useTablette, abonnerStylet, styletActif, lireFractionVolet, ecrireFractionVolet, bornerVolet, VOLET_MIN, VOLET_MAX, VOLET_PLEIN } from '../lib/tablette.js';
 import '../../styles/tablette.css';
 import '../../styles/notes-doc.css';
 import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
@@ -168,16 +168,15 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // deux colonnes s'affichent toujours ensemble.
   const [mobileView, setMobileView] = useState('course');
 
-  /* MODE TABLETTE (07/10, docs/compte-rendu-tablette.md) — 761 à 1 199 px. `cote` (≥ 900 px) :
-     PDF | séparateur | panneau ; `portrait` : empilé, onglets Cours / Panneau en bas.
-     Desktop (≥ 1 200 px) et shell mobile : rien ne change. */
-  const { tablette, cote: tabCote, portrait: tabPortrait } = useTablette();
+  /* MODE TABLETTE (761 à 1 199 px) : le PDF en haut, le panneau en volet qui monte depuis
+     le bas (08/10, portrait comme paysage). Desktop (≥ 1 200 px) et shell mobile : rien ne change. */
+  const { tablette } = useTablette();
   const [stylet, setStylet] = useState(styletActif);
   useEffect(() => abonnerStylet(() => setStylet(true)), []);
-  // v2 tablette (07/10 après-midi) : volet latéral, plus de barre auto-masquée
-  const [fractionsVolet, setFractionsVolet] = useState(() => ({ paysage: lireFractionVolet('paysage'), portrait: lireFractionVolet('portrait') }));
+  // v3 tablette (08/10) : volet qui monte depuis le BAS — hauteur mémorisée, plein écran par geste
+  const [fractionVolet, setFractionVolet] = useState(lireFractionVolet);
+  const [voletPlein, setVoletPlein] = useState(false);
   const [depuisRepli, setDepuisRepli] = useState(0);
-  const [largeurRacine, setLargeurRacine] = useState(0);
 
   // source affichée quand la fiche porte À LA FOIS un PDF et une fiche HTML —
   // indépendant du mode Lecture/Édition (qui ne s'applique qu'au PDF).
@@ -1183,7 +1182,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const h = vv ? vv.height + vv.offsetTop : window.innerHeight;
       const top = r.getBoundingClientRect().top;
       r.style.setProperty('--tab-h', Math.max(320, Math.round(h - Math.max(0, top) - 8)) + 'px');
-      setLargeurRacine(r.clientWidth);
     };
     const plan = () => { if (!raf) raf = requestAnimationFrame(maj); };
     const clavier = () => {
@@ -1210,51 +1208,56 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       r.style.removeProperty('--tab-h');
     };
   }, [modeTab]);
-  /* VOLET LATÉRAL (tablette, paysage et portrait) : le panneau s'ouvre depuis le bord droit
-     et le PDF se redimensionne à côté — jamais recouvert. Largeur = fraction du lecteur,
-     mémorisée par orientation (lib/tablette.js). SÉPARATEUR glissable : écrit dans le DOM
-     pendant le geste (aucun rendu React), enregistré au relâcher ; glissé vers la droite
-     au-delà du minimum, il FERME le volet. Poignée du bord (volet fermé) : un tap ou un
-     glissement vers la gauche l'ouvre. */
-  const orientationVolet = tabPortrait ? 'portrait' : 'paysage';
-  const largeurPanneauEff = largeurVolet(fractionsVolet[orientationVolet], largeurRacine || 900);
-  const minVolet = Math.min(VOLET_MIN_PX, (largeurRacine || 900) * 0.5);
+  /* VOLET DU BAS (tablette, portrait comme paysage — 08/10) : le panneau monte depuis le
+     bas, le PDF reste visible AU-DESSUS sur toute sa largeur (zoom inchangé, page gardée).
+     SÉPARATEUR horizontal glissable : écrit dans le DOM pendant le geste (aucun rendu
+     React), enregistré au relâcher (fraction de la hauteur, mémorisée par appareil) ;
+     - relâché tout en haut (≥ 90 %) → PLEIN ÉCRAN (PDF masqué) ;
+     - depuis le plein écran, un geste vers le bas → retour à la hauteur mémorisée ;
+     - glissé sous le minimum → volet FERMÉ (poignée en bas).
+     Poignée (volet fermé) : un tap ou un glissement vers le haut l'ouvre. */
+  const fixerVolet = (f) => { const c = corpsRef.current; if (c) c.style.setProperty('--tab-volet-f', String(f)); };
   const debutSeparateur = (e) => {
     if ((e.button && e.button !== 0) || !corpsRef.current) return;
     e.preventDefault();
     const el = e.currentTarget, corps = corpsRef.current;
     try { el.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
-    // ancré sur la largeur de départ : le panneau suit le doigt sans sauter à la prise
-    const x0 = e.clientX, w0 = largeurPanneauEff, L = largeurRacine || corps.clientWidth;
-    const maxi = L * VOLET_MAX;
-    let w = w0, brut = w0;
-    el.classList.add('actif');
+    // ancré sur la hauteur de départ : le volet suit le doigt sans sauter à la prise
+    const H = Math.max(1, corps.clientHeight), y0 = e.clientY;
+    const f0 = voletPlein ? 1 : fractionVolet, depuisPlein = voletPlein;
+    let brut = f0;
+    el.classList.add('actif'); corps.classList.add('volet-geste');
     const move = (ev) => {
       if (ev.pointerId !== e.pointerId) return;
-      brut = w0 + (x0 - ev.clientX);
-      w = Math.round(Math.max(minVolet, Math.min(maxi, brut)));
-      corps.style.setProperty('--tab-pis', w + 'px');
-      corps.classList.toggle('volet-fermeture', brut < minVolet - 48);
+      brut = f0 + (y0 - ev.clientY) / H;
+      corps.style.setProperty('--tab-volet-f', String(Math.max(VOLET_MIN * 0.6, Math.min(1, brut))));
+      corps.classList.toggle('volet-fermeture', brut < VOLET_MIN - 48 / H);
+      corps.classList.toggle('volet-vers-plein', brut >= VOLET_PLEIN);
     };
     const up = (ev) => {
       if (ev.pointerId !== e.pointerId) return;
-      el.classList.remove('actif'); corps.classList.remove('volet-fermeture');
+      el.classList.remove('actif'); corps.classList.remove('volet-geste', 'volet-fermeture', 'volet-vers-plein');
       el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up);
-      if (brut < minVolet - 48) { corps.style.setProperty('--tab-pis', largeurPanneauEff + 'px'); replierPanneau(true); return; } // glissé vers la droite : fermé
-      const f = w / L;
-      setFractionsVolet((fr) => ({ ...fr, [orientationVolet]: f })); ecrireFractionVolet(orientationVolet, f);
+      if (brut < VOLET_MIN - 48 / H) { fixerVolet(fractionVolet); setVoletPlein(false); replierPanneau(true); return; } // glissé vers le bas : fermé
+      if (brut >= VOLET_PLEIN) { fixerVolet(1); setVoletPlein(true); return; } // tout en haut : plein écran
+      if (depuisPlein) { // depuis le plein écran : un geste vers le bas → hauteur mémorisée
+        if (f0 - brut > 40 / H) { fixerVolet(fractionVolet); setVoletPlein(false); } else fixerVolet(1);
+        return;
+      }
+      const f = bornerVolet(brut);
+      fixerVolet(f); setFractionVolet(f); ecrireFractionVolet(f);
     };
     el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
   };
   const clavierSeparateur = (e) => {
-    const pas = e.key === 'ArrowLeft' ? 20 : e.key === 'ArrowRight' ? -20 : 0;
+    const pas = e.key === 'ArrowUp' ? 0.05 : e.key === 'ArrowDown' ? -0.05 : 0;
     if (!pas) return;
     e.preventDefault();
-    const L = largeurRacine || 900;
-    const f = Math.max(minVolet, Math.min(L * VOLET_MAX, largeurPanneauEff + pas)) / L;
-    setFractionsVolet((fr) => ({ ...fr, [orientationVolet]: f })); ecrireFractionVolet(orientationVolet, f);
+    if (voletPlein) { if (pas < 0) setVoletPlein(false); return; }
+    const f = bornerVolet(fractionVolet + pas);
+    setFractionVolet(f); ecrireFractionVolet(f);
   };
-  // poignée du bord (volet fermé) : glisser vers la gauche ou taper → ouvrir
+  // poignée du bas (volet fermé) : taper ou glisser vers le haut → ouvrir ; tout en haut → plein écran
   const gestePoignee = useRef(null);
   const poigneeProps = {
     onPointerDown: (e) => { gestePoignee.current = { x: e.clientX, y: e.clientY, id: e.pointerId }; try { e.currentTarget.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ } },
@@ -1262,7 +1265,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const g = gestePoignee.current; gestePoignee.current = null;
       if (!g || g.id !== e.pointerId) return;
       const dx = e.clientX - g.x, dy = e.clientY - g.y;
-      if (dx < -24 || (Math.abs(dx) < 10 && Math.abs(dy) < 10)) replierPanneau(false);
+      const H = corpsRef.current ? corpsRef.current.clientHeight : 600;
+      if (-dy >= H * VOLET_PLEIN) { setVoletPlein(true); replierPanneau(false); return; }
+      if (dy < -24 || (Math.abs(dx) < 10 && Math.abs(dy) < 10)) { setVoletPlein(false); replierPanneau(false); }
     },
     onPointerCancel: () => { gestePoignee.current = null; },
   };
@@ -2217,7 +2222,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
   return (
     <div ref={racineRef} className={(embedded ? 'fadein' : 'screen scroll fadein lecteur-plein')
-      + (modeTab ? ' lecteur-tab tab-cote' + (tabPortrait ? ' tab-vertical' : '') + (panelOpen ? ' volet-ouvert' : ' volet-ferme') : '') + (stylet ? ' stylet-actif' : '')}>
+      + (modeTab ? ' lecteur-tab tab-bas' + (panelOpen ? (voletPlein ? ' volet-ouvert volet-plein' : ' volet-ouvert') : ' volet-ferme') : '') + (stylet ? ' stylet-actif' : '')}>
       {/* en-tête : nom renommable + menu Fichier (plein écran, ou Bibliothèque) —
           en tablette, une seule ligne compacte (titre tronqué, « … » pour le reste) */}
       {afficherEntete && (modeTab ? enteteTablette() : entete())}
@@ -2349,7 +2354,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <button type="button" className={'seg-btn' + (mobileView === 'items' ? ' active' : '')} onClick={() => { setMobileView('items'); setPanelOpen(true); }}><Icon name="cards" size={13} /> Panneau</button>
       </div>
       <div className={'pdfr-body pdfr-workshop' + (tableauDispo && disposition !== 'pdf' ? ' avec-tableau dispo-' + disposition : '')} data-mobile-view={modeTab ? undefined : mobileView}
-        ref={corpsRef} style={{ ...(tableauDispo && disposition === 'deux' ? { '--ratio-pdf': ratioSplit } : {}), ...(modeTab ? { '--tab-pis': largeurPanneauEff + 'px' } : {}) }}>
+        ref={corpsRef} style={{ ...(tableauDispo && disposition === 'deux' ? { '--ratio-pdf': ratioSplit } : {}), ...(modeTab ? { '--tab-volet-f': voletPlein ? 1 : fractionVolet } : {}) }}>
         {/* barre masquée : un tap tout en haut de la zone de lecture la fait revenir */}
         <div className={'pdfr-scroll pdfr-workshop-course' + (pret && !restaure ? ' pdfr-attente' : '')} ref={scrollRef} onScroll={onScroll}
           onDragOver={(e) => { if (e.dataTransfer && [...e.dataTransfer.types].some((t) => t === 'Files' || t === TYPE_GLISSER)) { e.preventDefault(); if ([...e.dataTransfer.types].includes(TYPE_GLISSER)) e.dataTransfer.dropEffect = 'copy'; } }}
@@ -2469,15 +2474,15 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           </div>
         </>)}
 
-        {/* tablette côte à côte : séparateur glissable (et bouton de repli) */}
-        {modeTab && panelOpen && (!tableauDispo || disposition === 'pdf') && (
-          <div className="tab-sep" role="separator" aria-orientation="vertical" aria-label="Largeur du panneau"
-            aria-valuemin={Math.round(minVolet)} aria-valuemax={Math.round((largeurRacine || 900) * VOLET_MAX)} aria-valuenow={largeurPanneauEff} tabIndex={0}
-            title="Glisser pour régler la largeur du panneau" onPointerDown={debutSeparateur} onKeyDown={clavierSeparateur}>
+        {/* tablette : séparateur HORIZONTAL entre le PDF (au-dessus) et le volet (en bas) */}
+        {modeTab && panelOpen && (
+          <div className="tab-sep" role="separator" aria-orientation="horizontal" aria-label="Hauteur du panneau"
+            aria-valuemin={Math.round(VOLET_MIN * 100)} aria-valuemax={100} aria-valuenow={Math.round((voletPlein ? 1 : fractionVolet) * 100)} tabIndex={0}
+            title="Glisser pour régler la hauteur du panneau — tout en haut : plein écran, vers le bas : fermer" onPointerDown={debutSeparateur} onKeyDown={clavierSeparateur}>
             <span className="tab-sep-trait" aria-hidden="true" />
             <button type="button" className="tab-bt tab-sep-replier" onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => replierPanneau(true)} title="Replier le panneau" aria-label="Replier le panneau">
-              <Icon name="chevR" size={16} />
+              onClick={() => { setVoletPlein(false); replierPanneau(true); }} title="Replier le panneau" aria-label="Replier le panneau">
+              <Icon name="chevD" size={16} />
             </button>
           </div>
         )}
@@ -2504,8 +2509,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           ongletInitial={ficheReelle ? null : 'notions'}
           replie={!panelOpen} onReplier={(v) => replierPanneau(v)}
           contenuReplie={modeTab ? (
-            <div className="tab-poignee" {...poigneeProps} title="Ouvrir le panneau (tap ou glisser vers la gauche)">
-              <button type="button" className="tab-bt" onClick={() => replierPanneau(false)} title="Afficher le panneau" aria-label="Afficher le panneau"><Icon name="chevL" size={18} /></button>
+            <div className="tab-poignee" {...poigneeProps} title="Ouvrir le panneau (taper ou glisser vers le haut)">
+              <span className="tab-poignee-trait" aria-hidden="true" />
+              <button type="button" className="tab-bt" onClick={() => { setVoletPlein(false); replierPanneau(false); }} title="Afficher le panneau" aria-label="Afficher le panneau"><Icon name="chevU" size={18} /></button>
               {ficheId && <ResumeReplie courseId={ficheId} depuis={depuisRepli} />}
             </div>
           ) : null} />

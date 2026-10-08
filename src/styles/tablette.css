@@ -4,7 +4,7 @@
    Actif seulement sur `.lecteur-tab` (761–1 199 px, lecteur avec en-tête : Bibliothèque,
    plein écran, Prise de notes) — posé par PdfReader. Desktop ≥ 1 200 px et shell mobile :
    aucun effet. Tokens du thème uniquement (DA existante).
-   - PDF et panneau en VOLET LATÉRAL (side-screen), paysage comme portrait ;
+   - PDF en haut, panneau en VOLET qui monte depuis le bas (08/10), paysage comme portrait ;
    - TOUS les outils visibles, sans menu ni défilement : les barres passent sur deux rangées
      compactes si la largeur manque ; cibles ≥ 40 px partout.
    ============================================================ */
@@ -81,23 +81,51 @@
 .lecteur-tab .tab-contexte { flex-wrap: wrap; overflow: visible; min-height: calc(var(--tab-bt) + 4px); padding: 4px 10px; gap: 6px 10px; margin: 4px 0 0; }
 .lecteur-tab .tab-contexte > * { flex: 0 0 auto; }
 
-/* ---- PDF | séparateur | VOLET (paysage et portrait) ---- */
-.lecteur-tab .pdfr-workshop { display: flex; flex-direction: row; gap: 0; align-items: stretch; }
-.lecteur-tab .pdfr-workshop .pdfr-workshop-course { display: block; flex: 1 1 auto; width: auto; min-width: 0; }
-.lecteur-tab .pdfr-workshop .pis { display: flex; flex: 0 0 var(--tab-pis, 40%); width: var(--tab-pis, 40%); transition: flex-basis .22s cubic-bezier(.2, 0, 0, 1), width .22s cubic-bezier(.2, 0, 0, 1); }
-.lecteur-tab .pdfr-workshop .pis.collapsed { flex: 0 0 48px; width: 48px; }
-.lecteur-tab .pdfr-workshop.volet-fermeture .pis { opacity: .55; }
-.lecteur-tab .tab-sep { flex: 0 0 16px; position: relative; display: flex; align-items: center; justify-content: center; cursor: col-resize; touch-action: none; outline: none; }
-.lecteur-tab .tab-sep::before { content: ''; position: absolute; top: 0; bottom: 0; left: -12px; right: -12px; } /* zone de prise de 40 px */
-.lecteur-tab .tab-sep-trait { width: 4px; height: 56px; border-radius: 2px; background: var(--border); transition: background .15s, height .15s; }
-.lecteur-tab .tab-sep:hover .tab-sep-trait, .lecteur-tab .tab-sep.actif .tab-sep-trait, .lecteur-tab .tab-sep:focus-visible .tab-sep-trait { background: var(--accent); height: 80px; }
-.lecteur-tab .tab-sep-replier { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); z-index: 2; background: var(--card); border: 1px solid var(--border-2); box-shadow: var(--shadow); cursor: pointer; }
-/* volet fermé : POIGNÉE sur le bord droit, toujours visible (tap ou glisser vers la gauche) */
-.lecteur-tab .pis-replie {
-  flex: 1 1 auto; display: flex; flex-direction: column; align-items: stretch; padding: 0;
-  background: var(--card); border: 1px solid var(--border); border-radius: var(--r, 14px); margin-left: 6px; overflow: hidden;
+/* ---- PDF en haut | séparateur horizontal | VOLET qui monte depuis le bas (08/10) ----
+   Grille de 3 rangées : la zone de lecture (PDF, et tableau éventuel) garde TOUTE la
+   largeur — son zoom « à la largeur » ne bouge pas quand le volet change de hauteur.
+   --tab-volet-f = fraction de la hauteur donnée au volet (écrite en direct pendant le geste). */
+.lecteur-tab .pdfr-workshop {
+  display: grid; gap: 0; align-items: stretch;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "haut" "sep" "volet";
+  grid-template-rows: minmax(0, 1fr) 16px calc(var(--tab-volet-f, .45) * (100% - 16px));
+  transition: grid-template-rows .24s cubic-bezier(.2, 0, 0, 1);
 }
-.lecteur-tab .tab-poignee { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 6px 0; touch-action: none; cursor: pointer; }
+.lecteur-tab .pdfr-workshop.volet-geste { transition: none; }
+.lecteur-tab .pdfr-workshop > .pdfr-workshop-course { grid-area: haut; display: block; width: auto; min-width: 0; min-height: 0; }
+.lecteur-tab .pdfr-workshop > .tab-sep { grid-area: sep; }
+.lecteur-tab .pdfr-workshop > .pis { grid-area: volet; display: flex; width: auto; min-width: 0; min-height: 0; }
+/* tableau à côté du PDF (disposition « Les deux » / « Tableau ») : dans la rangée du haut */
+.lecteur-tab .pdfr-workshop.dispo-deux {
+  grid-template-columns: minmax(0, calc(var(--ratio-pdf, .5) * 100%)) auto minmax(0, 1fr);
+  grid-template-areas: "haut poignee tableau" "sep sep sep" "volet volet volet";
+}
+.lecteur-tab .pdfr-workshop.dispo-deux > .pdfr-poignee { grid-area: poignee; }
+.lecteur-tab .pdfr-workshop.dispo-deux > .pdfr-tableau, .lecteur-tab .pdfr-workshop.dispo-tableau > .pdfr-tableau { grid-area: haut; min-height: 0; }
+.lecteur-tab .pdfr-workshop.dispo-deux > .pdfr-tableau { grid-area: tableau; }
+/* volet fermé : la rangée du bas ne garde que la POIGNÉE */
+.lecteur-tab.volet-ferme .pdfr-workshop { grid-template-rows: minmax(0, 1fr) 0 56px; }
+.lecteur-tab .pdfr-workshop .pis.collapsed { width: auto; flex: none; }
+/* plein écran : le PDF se replie à 0 de haut (même largeur : ni zoom ni page ne bougent) */
+.lecteur-tab.volet-plein .pdfr-workshop { grid-template-rows: 0 16px minmax(0, 1fr); }
+.lecteur-tab.volet-plein .pdfr-workshop > :is(.pdfr-workshop-course, .pdfr-tableau, .pdfr-poignee) { visibility: hidden; overflow: hidden; }
+.lecteur-tab.volet-plein .pdfr-workshop > .pdfr-workshop-course { padding-top: 0; padding-bottom: 0; }
+.lecteur-tab .pdfr-workshop.volet-fermeture .pis { opacity: .55; }
+.lecteur-tab .pdfr-workshop.volet-vers-plein .pdfr-workshop-course { opacity: .35; }
+.lecteur-tab .tab-sep { position: relative; display: flex; align-items: center; justify-content: center; cursor: row-resize; touch-action: none; outline: none; }
+.lecteur-tab .tab-sep::before { content: ''; position: absolute; left: 0; right: 0; top: -12px; bottom: -12px; } /* zone de prise de 40 px */
+.lecteur-tab .tab-sep-trait { width: 56px; height: 4px; border-radius: 2px; background: var(--border); transition: background .15s, width .15s; }
+.lecteur-tab .tab-sep:hover .tab-sep-trait, .lecteur-tab .tab-sep.actif .tab-sep-trait, .lecteur-tab .tab-sep:focus-visible .tab-sep-trait { background: var(--accent); width: 88px; }
+.lecteur-tab .tab-sep-replier { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 2; background: var(--card); border: 1px solid var(--border-2); box-shadow: var(--shadow); cursor: pointer; }
+/* volet fermé : POIGNÉE en bas, toujours visible (taper ou glisser vers le haut) */
+.lecteur-tab .pis-replie {
+  flex: 1 1 auto; display: flex; flex-direction: row; align-items: stretch; padding: 0;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--r, 14px); margin-top: 6px; overflow: hidden;
+}
+.lecteur-tab .tab-poignee { position: relative; flex: 1 1 auto; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 14px; padding: 0 8px; touch-action: none; cursor: pointer; }
+.lecteur-tab .tab-poignee-trait { position: absolute; top: 5px; left: 50%; transform: translateX(-50%); width: 44px; height: 4px; border-radius: 2px; background: var(--border); }
+.lecteur-tab .tab-poignee .tab-resume { flex-direction: row; }
 .tab-resume { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .tab-resume .pm-live i { width: 9px; height: 9px; }
 .tab-resume-n { font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 2px 7px; }
@@ -140,4 +168,4 @@ body:has(.lecteur-tab) .ctx-menu-item { min-height: 40px; font-size: 14.5px; }
 /* ---- stylet (Apple Pencil) : le doigt fait défiler, seul le stylet annote ---- */
 .stylet-actif :is(.pdfr-inkcapture, .pdfr-gommecapture, .pdfr-poselayer, .pdfr-drawlayer) { touch-action: pan-x pan-y; }
 
-@media (prefers-reduced-motion: reduce) { .lecteur-tab .pdfr-workshop .pis { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .lecteur-tab .pdfr-workshop { transition: none; } }
