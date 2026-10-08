@@ -20,7 +20,7 @@ import { ConfirmModal, ContextMenu, Modal } from '../components/ui.jsx';
 import { useNiveauAudio, useTranscription } from './useTranscription.js';
 import {
   demarrer, arreter, pause, reprendreApresPause, ajouterNote, modifierNote, supprimerNote,
-  changerMotsCles, changerTaille, effacerErreur, sessionActive, lireEtat, changerSource,
+  changerMotsCles, changerTaille, effacerErreur, sessionActive, lireEtat, changerSource, renommerIntervenantDirect,
 } from './engine.js';
 import { listerMicros, choisirAutomatique, estVirtuel, sonderNiveau, memoriserMicroValide } from './audio.js';
 import {
@@ -29,11 +29,14 @@ import {
   ajouterManuels, retirerManuel, termesEnvoyables,
 } from './keyterms.js';
 import {
-  sessionsDuCours, lireSession, cloreSession, supprimerSession, lireMotsClesMemo, ecrireMotsCles,
+  sessionsDuCours, lireSession, cloreSession, supprimerSession, lireMotsClesMemo, ecrireMotsCles, ecrireSession,
 } from './sessions.js';
-import { mmss, dureeLisible, lignesSession, texteSession, markdownSession, telecharger, nomFichier, copierTexte } from './exporter.js';
+import {
+  mmss, dureeLisible, lignesSession, texteSession, markdownSession, telecharger, nomFichier, copierTexte,
+  avecIntervenants, nomIntervenant, intervenantsDe, passeFiltre,
+} from './exporter.js';
 import { synchroTranscripts } from './synchro.js';
-import { actualiserCredits, tarifEffectif, fmtUsd } from './credits.js';
+import { actualiserCredits, tarifEffectif, fmtUsd, SURCOUT_DIARISATION_H } from './credits.js';
 import { CarteCredits } from './Credits.jsx';
 import '../../styles/transcription.css';
 
@@ -114,6 +117,8 @@ export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, reprendre 
   const [refus, setRefus] = useState(null); // message bref (limite atteinte)
   const [demarrage, setDemarrage] = useState(false);
   const [erreur, setErreur] = useState(null);
+  // DIARISATION (08/10) : option payante de Deepgram, OFF par défaut (jamais mémorisée)
+  const [diarize, setDiarize] = useState(() => !!(reprendre && reprendre.diarize));
 
   useEffect(() => {
     let vivant = true;
@@ -167,7 +172,7 @@ export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, reprendre 
     const termes = m ? selectionner(m, candidats || []).envoyes : [];
     const ok = await demarrer({
       courseId, source, deviceId: source === 'micro' ? deviceId : null, keyterms: termes,
-      fontSize: lireLS(CLE_TAILLE, 'm'), reprendre,
+      fontSize: lireLS(CLE_TAILLE, 'm'), reprendre, diarize,
     });
     setDemarrage(false);
     if (ok) { if (source === 'micro' && avecSon) memoriserMicroValide(deviceId); onDemarre && onDemarre(); onClose(); }
@@ -270,6 +275,14 @@ export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, reprendre 
           {candidats && candidats.length === 0 && pdfDoc && !reprendre && <div className="hint trx-aide">Pas de couche texte exploitable dans ce PDF : saisis les termes à la main.</div>}
         </div>
 
+        <label className="trx-interrupteur" title={`Option payante de Deepgram (diarisation) : +${SURCOUT_DIARISATION_H.toFixed(2).replace('.', ',')} $/h, soit +0,0020 $/min (≈ +42 % sur le tarif Nova-3 de 0,29 $/h). Utile pour une visio Teams / Zoom à plusieurs voix.`}>
+          <input type="checkbox" role="switch" checked={diarize} disabled={!!reprendre} onChange={(e) => setDiarize(e.target.checked)} />
+          <span className="trx-interrupteur-piste" aria-hidden="true"><i /></span>
+          <span className="trx-interrupteur-texte">
+            <b>Distinguer les intervenants</b>
+            <span className="hint">Prof, étudiants… chaque ligne porte sa voix — +{SURCOUT_DIARISATION_H.toFixed(2).replace('.', ',')} $/h (≈ +42 %)</span>
+          </span>
+        </label>
         </>)}
         {erreur && <div className="trx-erreur"><Icon name="alert" size={14} /> {erreur}</div>}
 
@@ -347,7 +360,19 @@ function GuideAudio({ onFermer }) {
 /* ============================================================
    LIGNES DU TRANSCRIPT
    ============================================================ */
-const Ligne = memo(function Ligne({ l, rx, onNote, onSupprNote, focusNoteId, lecture }) {
+/* couleur d'un intervenant : 6 teintes qui tournent, lisibles en clair comme en sombre */
+const TEINTES_INTERVENANTS = [262, 199, 152, 32, 338, 88];
+export const couleurIntervenant = (n) => `hsl(${TEINTES_INTERVENANTS[Number(n) % TEINTES_INTERVENANTS.length]} 70% 58%)`;
+function PastilleIntervenant({ n, nom, onRenommer }) {
+  return (
+    <button type="button" className="trx-qui" style={{ '--qui': couleurIntervenant(n) }} title={`${nom} — taper pour renommer`}
+      onClick={onRenommer ? (e) => { const r = e.currentTarget.getBoundingClientRect(); onRenommer(n, r); } : undefined}>
+      <i aria-hidden="true" /><span>{nom}</span>
+    </button>
+  );
+}
+
+const Ligne = memo(function Ligne({ l, rx, onNote, onSupprNote, focusNoteId, lecture, nom, onRenommer }) {
   if (l.note) return <LigneNote l={l} onNote={onNote} onSuppr={onSupprNote} focus={focusNoteId === l.id} lecture={lecture} />;
   if (l.status === 'gap') return <div className="trx-coupure" data-id={l.id}><span>{mmss(l.t0)} · {l.text}</span></div>;
   const morceaux = decouperSurlignage(l.text, rx);
@@ -355,6 +380,7 @@ const Ligne = memo(function Ligne({ l, rx, onNote, onSupprNote, focusNoteId, lec
     <div className={'trx-ligne ' + l.status} data-id={l.id}>
       <span className="trx-t tnum" aria-hidden="true">{mmss(l.t0)}</span>
       <span className="trx-texte">
+        {nom && l.speaker != null && <PastilleIntervenant n={l.speaker} nom={nom} onRenommer={onRenommer} />}
         {morceaux.map((m, i) => (m.cle ? <mark key={i} className="trx-cle">{m.t}</mark> : m.t))}
         {l.status === 'uncertain' && <span className="trx-incertain" title="Texte provisoire figé au moment d’une coupure : non validé par Deepgram"> incertain</span>}
       </span>
@@ -385,7 +411,7 @@ function LigneNote({ l, onNote, onSuppr, focus, lecture }) {
 /** Liste défilante avec auto-défilement « collé en bas » et reprise. */
 const VIRTUEL_DES = 150; // lignes
 const MARGE_VIRTUELLE = 800; // px rendus au-dessus et au-dessous de la zone visible
-function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, focusNoteId, plein }) {
+function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, focusNoteId, plein, noms = null, onRenommer = null }) {
   const ref = useRef(null);
   // en direct : collé en bas ; une session passée s'ouvre en haut, pour la relire
   const enBasRef = useRef(live);
@@ -493,7 +519,8 @@ function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, 
         )}
         {cale1 > 0 && <div className="trx-cale" style={{ height: cale1 }} aria-hidden="true" />}
         {visibles.map((l) => (
-          <Ligne key={l.id} l={l} rx={rx} onNote={onNote} onSupprNote={onSupprNote} focusNoteId={focusNoteId} lecture={!live} />
+          <Ligne key={l.id} l={l} rx={rx} onNote={onNote} onSupprNote={onSupprNote} focusNoteId={focusNoteId} lecture={!live}
+            nom={noms && l.speaker != null ? noms(l.speaker) : null} onRenommer={onRenommer} />
         ))}
         {cale2 > 0 && <div className="trx-cale" style={{ height: cale2 }} aria-hidden="true" />}
       </div>
@@ -530,16 +557,19 @@ function Pastille({ e }) {
   );
 }
 
-function MenuCopie({ session, titre }) {
+function MenuCopie({ session, titre, filtre = null }) {
   const [menu, setMenu] = useState(null);
+  const [choixCopie, setChoixCopie] = useState(null); // filtre actif : « tous » ou « filtrés » ?
   const [copie, setCopie] = useState(false);
-  const copier = async (horodatage) => {
-    if (await copierTexte(texteSession(session, { horodatage }))) { setCopie(true); setTimeout(() => setCopie(false), 1600); }
+  const copier = async (horodatage, f = null) => {
+    if (await copierTexte(texteSession(session, { horodatage, filtre: f }))) { setCopie(true); setTimeout(() => setCopie(false), 1600); }
   };
+  const nomsFiltre = filtre ? [...filtre].sort((a, b) => a - b).map((n) => nomIntervenant(session, n)).join(', ') : '';
   return (
     <>
       <div className="trx-groupe">
-        <button type="button" className="btn sm" onClick={() => copier(true)} title="Copier tout le transcript (texte brut, lignes horodatées)">
+        <button type="button" className="btn sm" title="Copier tout le transcript (texte brut, lignes horodatées)"
+          onClick={(ev) => { if (!filtre) { copier(true); return; } const r = ev.currentTarget.getBoundingClientRect(); setChoixCopie({ x: Math.min(r.left, window.innerWidth - 280), y: r.bottom + 6 }); }}>
           <Icon name={copie ? 'check' : 'copy'} size={13} /> {copie ? 'Copié' : 'Copier tout'}
         </button>
         <button type="button" className="btn sm trx-chevron" title="Autres formats"
@@ -547,12 +577,19 @@ function MenuCopie({ session, titre }) {
           <Icon name="chevD" size={12} />
         </button>
       </div>
+      {choixCopie && (
+        <ContextMenu fermerAuDefilement={false} x={choixCopie.x} y={choixCopie.y} onClose={() => setChoixCopie(null)} items={[
+          { label: 'Tous les intervenants', icon: 'copy', onClick: () => copier(true) },
+          { label: `Filtrés : ${nomsFiltre}`, icon: 'copy', onClick: () => copier(true, filtre) },
+        ]} />
+      )}
       {menu && (
         <ContextMenu fermerAuDefilement={false} x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={[
           { label: 'Copier sans horodatage', icon: 'copy', onClick: () => copier(false) },
           { label: 'Télécharger en .txt', icon: 'upload', onClick: () => telecharger(nomFichier(titre, session, 'txt'), texteSession(session), 'text/plain;charset=utf-8') },
           { label: 'Télécharger en .md', icon: 'upload', onClick: () => telecharger(nomFichier(titre, session, 'md'), markdownSession(session, titre), 'text/markdown;charset=utf-8') },
-        ]} />
+          filtre && { label: `Copier les filtrés sans horodatage`, icon: 'copy', onClick: () => copier(false, filtre) },
+        ].filter(Boolean)} />
       )}
     </>
   );
@@ -615,13 +652,59 @@ function ResumeCout({ session }) {
   );
 }
 
-function PiedSession({ session, titre }) {
+function PiedSession({ session, titre, filtre = null }) {
   const n = session.segments.filter((s) => s.status !== 'gap').length;
   return (
     <div className="trx-pied">
-      <MenuCopie session={session} titre={titre} />
+      <MenuCopie session={session} titre={titre} filtre={filtre} />
       <span className="hint tnum" style={{ fontSize: 11.5 }}>{n} ligne{n > 1 ? 's' : ''}{session.notes.length ? ` · ${session.notes.length} note${session.notes.length > 1 ? 's' : ''}` : ''}</span>
     </div>
+  );
+}
+
+/* FILTRE PAR INTERVENANT (diarisation, 08/10) : puces en haut du transcript ; « Tous » ou
+   une sélection multiple. N'affecte que l'AFFICHAGE (et la copie « filtrés ») : rien n'est
+   retiré de la session. */
+function FiltreIntervenants({ session, filtre, setFiltre, onRenommer }) {
+  const liste = intervenantsDe(session);
+  if (!liste.length) return null;
+  // depuis « Tous », taper une puce n'affiche QUE cet intervenant ; ensuite on ajoute / retire
+  const basculer = (n) => {
+    if (!filtre) { setFiltre(liste.length > 1 ? new Set([n]) : null); return; }
+    const f = new Set(filtre);
+    if (f.has(n)) f.delete(n); else f.add(n);
+    setFiltre(!f.size || f.size === liste.length ? null : f);
+  };
+  return (
+    <div className="trx-filtre" role="group" aria-label="Filtrer par intervenant">
+      <button type="button" className={'trx-filtre-puce' + (!filtre ? ' on' : '')} aria-pressed={!filtre} onClick={() => setFiltre(null)}>Tous</button>
+      {liste.map(({ speaker, lignes }) => {
+        const on = !!filtre && filtre.has(speaker);
+        return (
+          <button key={speaker} type="button" className={'trx-filtre-puce' + (on ? ' on' : '')} aria-pressed={on} style={{ '--qui': couleurIntervenant(speaker) }}
+            onClick={() => basculer(speaker)} onDoubleClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onRenommer(speaker, r); }}
+            title={`${nomIntervenant(session, speaker)} — ${lignes} ligne${lignes > 1 ? 's' : ''} · double-clic pour renommer`}>
+            <i aria-hidden="true" />{nomIntervenant(session, speaker)} <span className="tnum">{lignes}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+/* renommer un intervenant : petite bulle sous la pastille tapée (mémorisé dans la session) */
+function BulleRenommer({ n, rect, nom, onValider, onFermer }) {
+  const [v, setV] = useState(nom);
+  return createPortal(
+    <div className="trx-renommer" style={{ left: Math.max(8, Math.min(rect.left, window.innerWidth - 268)), top: Math.min(rect.bottom + 6, window.innerHeight - 120) }}
+      onPointerDown={(e) => e.stopPropagation()}>
+      <span className="trx-qui-point" style={{ '--qui': couleurIntervenant(n) }} aria-hidden="true" />
+      <input autoFocus value={v} placeholder={`Intervenant ${n + 1} (ex. Prof)`} maxLength={30}
+        onChange={(e) => setV(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onValider(v); } if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onFermer(); } }} />
+      <button type="button" className="btn sm primary" onClick={() => onValider(v)}>OK</button>
+      <button type="button" className="icon-btn sm" onClick={onFermer} title="Annuler" aria-label="Annuler"><Icon name="x" size={12} /></button>
+    </div>,
+    document.body,
   );
 }
 
@@ -641,6 +724,25 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
   const [infoSource, setInfoSource] = useState(null);
   const [focusNote, setFocusNote] = useState(null);
   const [taille, setTailleLocale] = useState(() => lireLS(CLE_TAILLE, 'm'));
+  // intervenants (diarisation) : filtre d'affichage (Set | null = tous), bulle de renommage
+  const [filtre, setFiltre] = useState(null);
+  const [renommage, setRenommage] = useState(null); // { n, rect, sessionId }
+  const idVue = ici && e.session ? e.session.id : lecture ? lecture.id : null;
+  useEffect(() => { setFiltre(null); setRenommage(null); }, [idVue]);
+  const ouvrirRenommage = useCallback((n, rect) => setRenommage({ n, rect }), []);
+  const sessionVue = ici && e.session ? e.session : lecture;
+  const validerRenommage = async (nom) => {
+    const r = renommage; setRenommage(null);
+    if (!r || !sessionVue) return;
+    if (ici && e.session && e.session.id === sessionVue.id) { renommerIntervenantDirect(r.n, nom); return; }
+    const s2 = { ...sessionVue, intervenants: { ...(sessionVue.intervenants || {}), [r.n]: (nom || '').trim() } };
+    setLecture(s2);
+    await ecrireSession(s2);
+  };
+  const bulleRenommer = renommage && sessionVue ? (
+    <BulleRenommer n={renommage.n} rect={renommage.rect} nom={(sessionVue.intervenants && sessionVue.intervenants[renommage.n]) || ''}
+      onValider={validerRenommage} onFermer={() => setRenommage(null)} />
+  ) : null;
 
 
   const recharger = useCallback(async () => {
@@ -706,7 +808,9 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
 
   /* ---- session EN DIRECT sur CE cours ---- */
   if (ici && e.session) {
-    const lignes = lignesSession(e.session, e.interim);
+    const diar = !!e.session.diarize;
+    const lignes = lignesSession(e.session, e.interim).filter((l) => passeFiltre(l, filtre));
+    const nomsDirect = diar ? (n) => nomIntervenant(e.session, n) : null;
     const corps = (
       <div className={'trx-panneau' + (plein ? ' plein' : '')}>
         <div className="trx-barre">
@@ -744,10 +848,12 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
         ]} />}
         {infoSource && <div className="trx-info"><Icon name="alert" size={12} /> {infoSource} <button type="button" className="cd-ic" onClick={() => setInfoSource(null)}><Icon name="x" size={10} /></button></div>}
         {mcOuvert && <EditeurMotsCles termes={e.session.keyterms} onChange={changerMotsCles} onFermer={() => setMcOuvert(false)} />}
+        {diar && <FiltreIntervenants session={e.session} filtre={filtre} setFiltre={setFiltre} onRenommer={ouvrirRenommage} />}
         <ListeTranscript lignes={lignes} keyterms={e.session.keyterms} taille={taille} live plein={plein}
-          onNote={modifierNote} onSupprNote={supprimerNote} focusNoteId={focusNote} />
-        <PiedSession session={e.session} titre={titre} />
+          onNote={modifierNote} onSupprNote={supprimerNote} focusNoteId={focusNote} noms={nomsDirect} onRenommer={diar ? ouvrirRenommage : null} />
+        <PiedSession session={e.session} titre={titre} filtre={filtre} />
         {!plein && <CarteCredits />}
+        {bulleRenommer}
       </div>
     );
     return plein ? createPortal(corps, document.body) : corps;
@@ -768,9 +874,12 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
           <button type="button" className="icon-btn sm" onClick={() => setPlein((v) => !v)} title={plein ? 'Quitter le plein écran (Échap)' : 'Plein écran'}><Icon name={plein ? 'x' : 'maximize'} size={13} /></button>
         </div>
         <ResumeCout session={lecture} />
-        <ListeTranscript lignes={lignesSession(lecture)} keyterms={lecture.keyterms || []} taille={taille} live={false} plein={plein} />
-        <PiedSession session={lecture} titre={titre} />
+        {avecIntervenants(lecture) && <FiltreIntervenants session={lecture} filtre={filtre} setFiltre={setFiltre} onRenommer={ouvrirRenommage} />}
+        <ListeTranscript lignes={lignesSession(lecture).filter((l) => passeFiltre(l, filtre))} keyterms={lecture.keyterms || []} taille={taille} live={false} plein={plein}
+          noms={avecIntervenants(lecture) ? (n) => nomIntervenant(lecture, n) : null} onRenommer={avecIntervenants(lecture) ? ouvrirRenommage : null} />
+        <PiedSession session={lecture} titre={titre} filtre={filtre} />
         {!plein && <CarteCredits />}
+        {bulleRenommer}
       </div>
     );
     return plein ? createPortal(corps, document.body) : corps;

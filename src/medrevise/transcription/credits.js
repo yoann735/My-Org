@@ -92,6 +92,13 @@ export function tarifEffectif(d = etat.donnees) {
   return (r && Number(r.tarif)) || (d && Number(d.effectiveRateUsdPerHour)) || TARIF_DEFAUT_H;
 }
 
+/* DIARISATION (08/10) : « Distinguer les intervenants » (diarize=true) est une option payante
+   de Deepgram — 0,0020 $/min en paiement à l'usage (deepgram.com/pricing, relevé le 08/10/2026),
+   soit +0,12 $/h en plus du modèle (Nova-3 en direct : 0,0048 $/min = 0,29 $/h) : ≈ +42 %.
+   Une seconde diarisée compte donc pour `facteurDiarisation()` seconde ordinaire. */
+export const SURCOUT_DIARISATION_H = 0.12;
+export const facteurDiarisation = (d = etat.donnees) => 1 + SURCOUT_DIARISATION_H / tarifEffectif(d);
+
 /* ---- v1.3 : décompte local pendant la session ---- */
 
 /** Début d'une session (moteur) : mémorise le solde de départ pour le recalage. */
@@ -120,7 +127,7 @@ export function consoNonFactureeS(lisse = true) {
   let s = etat.attente ? etat.attente.secondes : 0;
   const e = lireMoteur();
   if (sessionActive() && e.phase !== 'starting') {
-    const direct = Math.max(0, (e.secondes || 0) - (e.secondesDepart || 0));
+    const direct = Math.max(0, (e.secondes || 0) - (e.secondesDepart || 0)) * (e.session && e.session.diarize ? facteurDiarisation() : 1);
     s += lisse ? Math.floor(direct / 10) * 10 : direct;
   }
   return s;

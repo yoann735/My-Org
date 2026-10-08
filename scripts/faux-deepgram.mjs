@@ -17,6 +17,9 @@
 // « ostéo classe » tant que le mot-clé « ostéoclaste » n'est pas actif — de quoi vérifier
 // qu'un Configure envoyé en pleine session est bien pris en compte.
 //
+// Diarisation (08/10) : avec diarize=true, chaque mot porte `speaker` — deux « voix » qui
+// alternent tous les 7 mots du script (un résultat final peut donc mêler les deux).
+//
 // Pannes injectables : POST /__couper?refus=20 (coupe net toutes les connexions et refuse
 // les nouvelles 20 s), POST /__geler?s=20 (connexion qui ne répond plus, sans fermer — le
 // « wifi coupé » vu du navigateur), POST /__credits?zero=1 (grant → 402).
@@ -77,12 +80,12 @@ function lecteurTrames(onTrame) {
 /* ---------------- une session de « transcription » ---------------- */
 function session(socket, query) {
   const etat = {
-    keyterms: query.getAll('keyterm'), echantillons: 0, parole: 0,
+    keyterms: query.getAll('keyterm'), echantillons: 0, parole: 0, diarize: query.get('diarize') === 'true',
     enCours: [], // mots pas encore validés [{ word, start, end }]
     dernierInterim: 0, derniereActivite: Date.now(), gele: false, ferme: false, silence: 0, dernierFinalVide: 0,
   };
   connexions.add(etat);
-  log(`ouverture — keyterms=${JSON.stringify(etat.keyterms)}`);
+  log(`ouverture — keyterms=${JSON.stringify(etat.keyterms)}${etat.diarize ? ' diarize=true' : ''}`);
   const envoyer = (obj) => { if (!etat.ferme && !etat.gele) socket.write(trame(1, Buffer.from(JSON.stringify(obj)))); };
   const fermer = (code, raison) => {
     if (etat.ferme) return;
@@ -105,7 +108,7 @@ function session(socket, query) {
     envoyer({
       type: 'Results', channel_index: [0, 1], duration: +(end - start).toFixed(3), start: +start.toFixed(3),
       is_final: isFinal, speech_final: !!extra.speech_final, from_finalize: !!extra.from_finalize,
-      channel: { alternatives: [{ transcript: mots.map((m) => m.word).join(' '), confidence: 0.97, words: mots.map((m) => ({ word: m.word.toLowerCase().replace(/[.,]/g, ''), punctuated_word: m.word, start: +m.start.toFixed(3), end: +m.end.toFixed(3), confidence: 0.97 })) }] },
+      channel: { alternatives: [{ transcript: mots.map((m) => m.word).join(' '), confidence: 0.97, words: mots.map((m) => ({ word: m.word.toLowerCase().replace(/[.,]/g, ''), punctuated_word: m.word, start: +m.start.toFixed(3), end: +m.end.toFixed(3), confidence: 0.97, ...(etat.diarize ? { speaker: Math.floor(m.idx / 7) % 2, speaker_confidence: 0.9 } : {}) })) }] },
       metadata: { request_id: 'faux', model_info: { name: 'nova-3' } },
     });
   };

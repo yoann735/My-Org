@@ -38,22 +38,38 @@ export function lignesSession(session, interim = null) {
   return out;
 }
 
-export function texteSession(session, { horodatage = true } = {}) {
-  return lignesSession(session).filter((l) => l.status !== 'gap' || l.perte).map((l) => {
+/* INTERVENANTS (diarisation, 08/10) : `speaker` (0, 1, 2…) sur chaque segment d'une session
+   `diarize` ; noms donnés par l'étudiant dans `session.intervenants` ({ 0: 'Prof' }). */
+export const avecIntervenants = (session) => !!(session && session.diarize && (session.segments || []).some((s) => s.speaker != null));
+export const nomIntervenant = (session, n) => ((session && session.intervenants && String(session.intervenants[n] || '').trim()) || `Intervenant ${Number(n) + 1}`);
+export function intervenantsDe(session) {
+  const n = new Map();
+  for (const s of (session && session.segments) || []) if (s.speaker != null && s.status !== 'gap') n.set(s.speaker, (n.get(s.speaker) || 0) + 1);
+  return [...n.entries()].sort((a, b) => a[0] - b[0]).map(([speaker, lignes]) => ({ speaker, lignes }));
+}
+/** lignes gardées par un filtre d'intervenants (Set) ; notes et coupures restent */
+export const passeFiltre = (l, filtre) => !filtre || l.note || l.status === 'gap' || l.speaker == null || filtre.has(l.speaker);
+
+export function texteSession(session, { horodatage = true, filtre = null } = {}) {
+  const noms = avecIntervenants(session);
+  return lignesSession(session).filter((l) => (l.status !== 'gap' || l.perte) && passeFiltre(l, filtre)).map((l) => {
     const h = horodatage ? `[${mmss(l.t0)}] ` : '';
     if (l.note) return `${h}NOTE — ${l.text || ''}`.trimEnd();
     if (l.status === 'gap') return `${h}[${l.text}]`;
-    return `${h}${l.status === 'uncertain' ? '(incertain) ' : ''}${l.text}`;
+    const qui = noms && l.speaker != null ? `${nomIntervenant(session, l.speaker)} : ` : '';
+    return `${h}${qui}${l.status === 'uncertain' ? '(incertain) ' : ''}${l.text}`;
   }).join('\n');
 }
 
-export function markdownSession(session, titre) {
+export function markdownSession(session, titre, { filtre = null } = {}) {
+  const noms = avecIntervenants(session);
   const d = session.startedAt ? new Date(session.startedAt) : new Date();
   const tete = `# ${titre || 'Transcript'}\n\n_${d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} · ${dureeLisible(session.durationS)}_\n\n`;
-  const corps = lignesSession(session).filter((l) => l.status !== 'gap' || l.perte).map((l) => {
+  const corps = lignesSession(session).filter((l) => (l.status !== 'gap' || l.perte) && passeFiltre(l, filtre)).map((l) => {
     if (l.note) return `> **Note ${mmss(l.t0)}** — ${l.text || ''}`;
     if (l.status === 'gap') return `_[${mmss(l.t0)}] ${l.text}_`;
-    return `**${mmss(l.t0)}** ${l.status === 'uncertain' ? '_(incertain)_ ' : ''}${l.text}`;
+    const qui = noms && l.speaker != null ? `**${nomIntervenant(session, l.speaker)}** : ` : '';
+    return `**${mmss(l.t0)}** ${qui}${l.status === 'uncertain' ? '_(incertain)_ ' : ''}${l.text}`;
   }).join('\n\n');
   return tete + corps + '\n';
 }

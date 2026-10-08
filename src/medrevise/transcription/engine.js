@@ -37,7 +37,7 @@ import {
   nouvelleSession, nouvelIdSegment, nouvelIdNote, ecrireSession, viderEcritures, ecrireMotsClesSession,
 } from './sessions.js';
 import { marquerVivante, pousserMaintenant } from './synchro.js';
-import { tarifEffectif, noterDebutSession, finSessionCredits } from './credits.js';
+import { tarifEffectif, noterDebutSession, finSessionCredits, facteurDiarisation } from './credits.js';
 
 const DUREE_BLOC = 0.1; // s
 const TAMPON_MAX_S = 120;
@@ -127,12 +127,12 @@ function majSession(fn, { ecrire = true } = {}) {
  * @param {string} [o.fontSize]
  * @param {object} [o.reprendre] session interrompue à continuer
  */
-export async function demarrer({ courseId, source = 'micro', deviceId = null, keyterms = [], fontSize = 'm', reprendre = null }) {
+export async function demarrer({ courseId, source = 'micro', deviceId = null, keyterms = [], fontSize = 'm', reprendre = null, diarize = false }) {
   if (etat.phase !== 'idle' && etat.phase !== 'error') throw new Error('Une transcription est déjà en cours.');
   reinitialiser();
   const session = reprendre
     ? { ...reprendre, endedAt: null, source, keyterms: keyterms.length ? keyterms : (reprendre.keyterms || []) }
-    : nouvelleSession({ courseId, source, keyterms, fontSize });
+    : { ...nouvelleSession({ courseId, source, keyterms, fontSize }), ...(diarize ? { diarize: true, intervenants: {} } : {}) };
   base = reprendre ? Math.max(reprendre.durationS || 0, ...(reprendre.segments || []).map((s) => s.t1 || 0), ...(reprendre.notes || []).map((n) => n.t || 0)) : 0;
   couvertJusqua = base;
   persistee = !!reprendre;
@@ -279,7 +279,8 @@ async function connecterUneFois() {
     return;
   }
   const url = (jeton.listen_url || 'wss://api.deepgram.com/v1/listen') + '?' + PARAMS_DEEPGRAM
-    + (etat.session.keyterms.length ? '&' + parametresKeyterms(etat.session.keyterms) : '');
+    + (etat.session.keyterms.length ? '&' + parametresKeyterms(etat.session.keyterms) : '')
+    + (etat.session.diarize ? '&diarize=true' : ''); // intervenants (08/10) : option payante, OFF par défaut
   let sock;
   try { sock = new WebSocket(url, ['bearer', jeton.access_token]); } catch (e) { programmerReconnexion(); return; }
   sock.binaryType = 'arraybuffer';
@@ -370,11 +371,30 @@ function recevoir(data) {
       if (gardes.length !== mots.length) texte = gardes.map((w) => w.punctuated_word || w.word).join(' ');
       if (gardes.length) debut = connOffset + gardes[0].start;
     } else if (t1 <= couvertJusqua + 0.02) texte = '';
+    const ancienCouvert = couvertJusqua;
     const fin = Math.max(couvertJusqua, t1);
     couvertJusqua = fin;
     const idProvisoire = etat.interim && etat.interim.id;
     publier({ interim: null });
-    if (texte) {
+    /* DIARISATION (08/10) : chaque mot porte `speaker` ; un résultat final peut mêler deux
+       voix → un segment par suite de mots du même intervenant (champ `speaker`). */
+    if (texte && etat.session.diarize && mots.length && mots.some((w) => w.speaker != null)) {
+      const retenus = mots.filter((w) => connOffset + (w.end || 0) > ancienCouvert + 0.02); // mêmes mots que `gardes`
+      const groupes = [];
+      for (const w of retenus) {
+        const g = groupes[groupes.length - 1];
+        if (g && g.speaker === (w.speaker ?? null)) g.mots.push(w); else groupes.push({ speaker: w.speaker ?? null, mots: [w] });
+      }
+      const r2 = (x) => Math.round(x * 100) / 100;
+      const nouveaux = groupes.map((g, i) => ({
+        id: i === 0 && idProvisoire ? idProvisoire : nouvelIdSegment(),
+        t0: r2(i === 0 ? debut : connOffset + g.mots[0].start),
+        t1: r2(i === groupes.length - 1 ? fin : connOffset + g.mots[g.mots.length - 1].end),
+        text: g.mots.map((w) => w.punctuated_word || w.word).join(' '),
+        status: 'final', speaker: g.speaker,
+      }));
+      majSession((s) => ({ ...s, segments: [...s.segments, ...nouveaux] }));
+    } else if (texte) {
       majSession((s) => ({ ...s, segments: [...s.segments, { id: idProvisoire || nouvelIdSegment(), t0: Math.round(debut * 100) / 100, t1: Math.round(fin * 100) / 100, text: texte, status: 'final' }] }));
     }
     rognerTampon();
@@ -389,7 +409,8 @@ function recevoir(data) {
      (constaté sur Deepgram réel : « La maladie de | [Paget] associe… »). */
   const mots = alt.words || [];
   const finMots = mots.length ? connOffset + (mots[mots.length - 1].end || 0) : t1;
-  publier({ interim: { id: (etat.interim && etat.interim.id) || nouvelIdSegment(), text: texte, t0, t1: Math.min(t1, finMots) } });
+  const parle = etat.session && etat.session.diarize && mots.length ? (mots[mots.length - 1].speaker ?? null) : null;
+  publier({ interim: { id: (etat.interim && etat.interim.id) || nouvelIdSegment(), text: texte, t0, t1: Math.min(t1, finMots), speaker: parle } });
 }
 
 /* ---------------- commandes ---------------- */
@@ -439,7 +460,7 @@ export async function arreter() {
   const duree = Math.round(maintenantCours() * 10) / 10;
   const envoyees = Math.max(0, maintenantCours() - base); // crédits : secondes de cette session
   // coût estimé localement : durée × tarif effectif connu (v1.1) — figé dans la session
-  const fini = { ...etat.session, endedAt: new Date().toISOString(), durationS: duree, coutUsd: Math.round((duree / 3600) * tarifEffectif() * 1000) / 1000 };
+  const fini = { ...etat.session, endedAt: new Date().toISOString(), durationS: duree, coutUsd: Math.round((duree / 3600) * tarifEffectif() * (etat.session.diarize ? facteurDiarisation() : 1) * 1000) / 1000 };
   publier({ session: fini });
   if (persistee || fini.segments.length || fini.notes.length) {
     persistee = true;
@@ -453,7 +474,7 @@ export async function arreter() {
   // synchro cloud : la session terminée part maintenant (conditionnelle, updated_at)
   if (id) pousserMaintenant(id).catch(() => {});
   // fin de session : l'estimation reste affichée jusqu'à la vraie valeur serveur (v1.3)
-  finSessionCredits(envoyees).catch(() => {});
+  finSessionCredits(envoyees * (fini.diarize ? facteurDiarisation() : 1)).catch(() => {});
   return id;
 }
 
@@ -470,7 +491,7 @@ function echec(message, { garderSession = true } = {}) {
   marquerVivante(null);
   const envoyees = etat.phase === 'live' || etat.phase === 'paused' ? Math.max(0, maintenantCours() - base) : 0;
   publier({ phase: 'error', conn: 'closed', erreur: message, interim: null });
-  if (envoyees > 0) finSessionCredits(envoyees).catch(() => {}); // crédits : consommation de la session interrompue
+  if (envoyees > 0) finSessionCredits(envoyees * (etat.session && etat.session.diarize ? facteurDiarisation() : 1)).catch(() => {}); // crédits : consommation de la session interrompue
 }
 
 /** Ferme l'erreur affichée (retour à l'état de repos). */
@@ -491,6 +512,12 @@ export function changerMotsCles(termes) {
 export function changerTaille(taille) {
   if (!etat.session) return;
   majSession((s) => ({ ...s, fontSize: taille }));
+}
+
+/** Nom d'un intervenant (diarisation) dans la session EN COURS ; vide = « Intervenant n ». */
+export function renommerIntervenantDirect(n, nom) {
+  if (!etat.session) return;
+  majSession((s) => ({ ...s, intervenants: { ...(s.intervenants || {}), [n]: (nom || '').trim() } }));
 }
 
 export function ajouterNote() {
