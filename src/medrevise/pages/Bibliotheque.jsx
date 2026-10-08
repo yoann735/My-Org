@@ -19,6 +19,7 @@ import { docKind, DOC_META, deleteTranscript, createDocumentNotes } from '../doc
 import { FenetreCreation } from '../components/FenetreCreation.jsx';
 import { PdfReader } from '../pdf/PdfReader.jsx';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
+import { ChampRenommer } from '../components/ChampRenommer.jsx';
 import { TranscriptEditor } from '../documents/TranscriptEditor.jsx';
 import { SchemaEditorScreen } from '../documents/SchemaEditorScreen.jsx';
 
@@ -34,7 +35,6 @@ export function Bibliotheque({ ctx }) {
   const { db } = ctx;
   const [openFiche, setOpenFiche] = useState({});
   const [renaming, setRenaming] = useState(null); // { type, id }
-  const [draft, setDraft] = useState('');
   // C — panneau de droite : quelle fiche-document est ouverte (jamais de
   // navigation d'écran — on reste sur 'library' tout du long).
   const [selected, setSelected] = useState(null); // { ficheId, kind: 'fiche'|'schema'|'transcript', mode? }
@@ -127,29 +127,24 @@ export function Bibliotheque({ ctx }) {
     });
   };
 
-  // NOM PROVISOIRE SÉLECTIONNÉ à l'ouverture du renommage (comme le Finder) : on
-  // tape directement le vrai nom. Le champ est remonté à chaque rendu (composant
-  // recréé), donc on re-sélectionne au focus TANT QUE le texte est encore le nom de
-  // départ — dès la première frappe il diffère, et plus rien n'est re-sélectionné.
-  const renommageFrais = useRef(null); // nom de départ du renommage en cours
-  const startRename = (type, id, current) => { renommageFrais.current = current; setDraft(current); setRenaming({ type, id }); };
+  /* RENOMMAGE (08/10, components/ChampRenommer.jsx) : un champ à état LOCAL, le même dans
+     l'arbre, la grille et la liste ; le nom n'est écrit qu'à la validation. */
+  const startRename = (type, id, current) => { setRenaming({ type, id, initial: current }); };
   const isRen = (type, id) => renaming && renaming.type === type && renaming.id === id;
-  const commitRename = () => {
-    if (renaming && draft.trim()) {
-      if (renaming.type === 'source') ctx.renameSource(renaming.id, draft);
-      else if (renaming.type === 'matiere') ctx.renameMatiere(renaming.id, draft);
-      else if (renaming.type === 'dossier') ctx.renameDossier(renaming.id, draft);
-      else ctx.renameFiche(renaming.id, draft);
-    }
+  const commitRename = (nom) => {
+    const r = renaming;
     setRenaming(null);
+    if (!r || !nom) return;
+    if (r.type === 'source') ctx.renameSource(r.id, nom);
+    else if (r.type === 'matiere') ctx.renameMatiere(r.id, nom);
+    else if (r.type === 'dossier') ctx.renameDossier(r.id, nom);
+    else ctx.renameFiche(r.id, nom);
   };
-  const RenameInput = () => (
-    <input className="srcmgr-input" autoFocus value={draft} onClick={(e) => e.stopPropagation()}
-      onFocus={(e) => { if (e.target.value === renommageFrais.current) e.target.select(); }}
-      onChange={(e) => setDraft(e.target.value)}
-      onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }}
-      onBlur={commitRename} />
-  );
+  // un ÉLÉMENT (pas un composant défini ici) : son identité reste stable d'un rendu à l'autre
+  const champRenommer = (className) => (renaming ? (
+    <ChampRenommer key={renaming.type + ':' + renaming.id} initial={renaming.initial || ''} className={className}
+      onValider={commitRename} onAnnuler={() => setRenaming(null)} />
+  ) : null);
 
   const qById = (fId) => db.questions.filter((x) => x.ficheId === fId);
   const count = (fId, t) => qById(fId).filter((x) => x.type === t).length;
@@ -306,7 +301,7 @@ export function Bibliotheque({ ctx }) {
         <DropSlot matiereId={f.matiereId} dossierId={f.dossierId || null} beforeId={f.id} />
         <DraggableFiche id={f.id} disabled={isRen('fiche', f.id)} className={'lt-ligne lt-fiche' + (isSel ? ' selected' : '')}>
           {isRen('fiche', f.id) ? (
-            <div className="lt-rangee"><span className="lt-pli" /><RenameInput /></div>
+            <div className="lt-rangee"><span className="lt-pli" />{champRenommer()}</div>
           ) : (
             <div role="button" className="lt-rangee"
               onClick={() => { if (kind) openDoc(f); else setOpenFiche((o) => ({ ...o, [f.id]: !fo })); }}
@@ -380,7 +375,7 @@ export function Bibliotheque({ ctx }) {
   // Composant partagé avec Réviser : ui.jsx#LigneDossierArbre.
   const ligneDossier = (d, nFiches, onAjout) => (
     <LigneDossierArbre dossier={d} ouvert={!!openDossier[d.id]} nFiches={nFiches}
-      renameInput={isRen('dossier', d.id) ? <RenameInput /> : null}
+      renameInput={isRen('dossier', d.id) ? champRenommer() : null}
       onToggle={() => setOpenDossier((o) => ({ ...o, [d.id]: !o[d.id] }))}
       onRename={() => startRename('dossier', d.id, d.nom)}
       onAjout={onAjout} onMenu={(e) => openDossierMenu(e, d.id)} />
@@ -466,7 +461,7 @@ export function Bibliotheque({ ctx }) {
                       title={l.kind ? 'Ouvrir le document' : 'Fiche sans document — ▷ pour réviser'}>
                       <div className="lv-carte-bandeau"><Icon name={iconeFiche(l)} size={22} /></div>
                       <div className="lv-carte-corps">
-                        <div className="lv-carte-titre">{l.f.titre}</div>
+                        <div className="lv-carte-titre">{isRen('fiche', l.f.id) ? champRenommer('srcmgr-input lv-renommer') : l.f.titre}</div>
                         <div className="lv-carte-lieu">{l.dossier || 'Racine de la matière'}</div>
                         <div className="lv-carte-pied">
                           <span>{libelleType(l)}{l.nCartes ? ` · ${l.nCartes} carte${l.nCartes > 1 ? 's' : ''}` : ''}</span>
@@ -513,7 +508,7 @@ export function Bibliotheque({ ctx }) {
           <div key={l.f.id} role="row" tabIndex={0} className={'lv-ligne' + (l.kind ? '' : ' sans-doc')}
             onClick={() => { if (l.kind) openDoc(l.f); }} onKeyDown={(e) => { if (e.key === 'Enter' && l.kind) openDoc(l.f); }}
             title={l.kind ? 'Ouvrir le document' : 'Fiche sans document — ▷ pour réviser'}>
-            <span className="lv-col lv-col-titre"><Icon name={iconeFiche(l)} size={14} className="lt-ic" /> <span className="lv-texte">{l.f.titre}</span></span>
+            <span className="lv-col lv-col-titre"><Icon name={iconeFiche(l)} size={14} className="lt-ic" /> {isRen('fiche', l.f.id) ? champRenommer('srcmgr-input lv-renommer') : <span className="lv-texte">{l.f.titre}</span>}</span>
             <span className="lv-col lv-col-section"><span className="lt-point" style={{ background: l.mm.tint }} /> <span className="lv-texte">{l.src.nom} › {l.mm.label}</span></span>
             <span className="lv-col lv-col-dossier"><span className="lv-texte">{l.dossier || '—'}</span></span>
             <span className="lv-col lv-col-cartes">{l.nCartes || '—'}</span>
@@ -610,7 +605,7 @@ export function Bibliotheque({ ctx }) {
                           Il vit DANS le nom (avant son trait décoratif) : les actions qui
                           apparaissent à droite au survol ne peuvent pas le recouvrir. La ligne
                           « Nouvelle matière » du bas reste aussi. */}
-                      {isRen('source', src.id) ? <RenameInput /> : (
+                      {isRen('source', src.id) ? champRenommer() : (
                         <span className="lt-nom">{src.nom}
                           <button type="button" className="lt-sec-plus" title={`Ajouter une matière dans « ${src.nom} »`}
                             onClick={(e) => {
@@ -650,7 +645,7 @@ export function Bibliotheque({ ctx }) {
                                   onDoubleClick={(e) => { e.stopPropagation(); startRename('matiere', mat.id, mm.label); }}>
                                   <Icon name={matOuverte ? 'chevD' : 'chevR'} size={13} className="lt-pli" />
                                   <span className="lt-point" style={{ background: mm.tint }} />
-                                  {isRen('matiere', mat.id) ? <RenameInput /> : <span className="lt-nom">{mm.label}</span>}
+                                  {isRen('matiere', mat.id) ? champRenommer() : <span className="lt-nom">{mm.label}</span>}
                                   {allFiches.length > 0 && <span className="lt-compte" title={`${allFiches.length} fiche${allFiches.length > 1 ? 's' : ''}`}>{allFiches.length}</span>}
                                   <span className="lt-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
                                     <button type="button" className="cd-ic" title={`Nouveau dossier dans « ${mm.label} »`} onClick={() => { setMatFermee((o) => ({ ...o, [mat.id]: false })); createUnite(mat.id); }}><Icon name="plus" size={14} /></button>
