@@ -182,6 +182,10 @@ export function itemsDepuisOcr(ocrPage) {
   return items;
 }
 export const pageOcrUtile = (ocrPage) => !!(ocrPage && !ocrPage.natif && ocrPage.words && ocrPage.words.length);
+/* page MIXTE (08/10) : texte natif du PDF + mots reconnus dans les zones image (schémas).
+   Les spans OCR sont ajoutés APRÈS les spans natifs : les index des spans natifs (ancres
+   des surlignages existants) ne bougent pas. */
+export const pageMixteUtile = (ocrPage) => !!(ocrPage && ocrPage.natif && ocrPage.mixte && ocrPage.words && ocrPage.words.length);
 
 export async function buildTextLayer(page, viewport, container, ocrPage = null) {
   if (pageOcrUtile(ocrPage)) { construireCoucheOcr(viewport, container, ocrPage); return; }
@@ -212,6 +216,7 @@ export async function buildTextLayer(page, viewport, container, ocrPage = null) 
     if (item.hasEOL) frag.appendChild(document.createElement('br'));
   }
   container.appendChild(frag);
+  if (pageMixteUtile(ocrPage)) ajouterMotsOcr(viewport, container, ocrPage);
   installerFinDeTexte(container);
   // toutes les lectures de largeur PUIS toutes les écritures : un seul calcul de mise
   // en page pour la page entière, au lieu d'un par span. Mesure faite AVANT toute
@@ -226,8 +231,13 @@ export async function buildTextLayer(page, viewport, container, ocrPage = null) 
 }
 
 function construireCoucheOcr(viewport, container, ocrPage) {
-  const k = viewport.scale;
   container.replaceChildren();
+  ajouterMotsOcr(viewport, container, ocrPage);
+  installerFinDeTexte(container);
+}
+
+function ajouterMotsOcr(viewport, container, ocrPage) {
+  const k = viewport.scale;
   const frag = document.createDocumentFragment();
   const toFit = [];
   for (const it of itemsDepuisOcr(ocrPage)) {
@@ -247,7 +257,6 @@ function construireCoucheOcr(viewport, container, ocrPage) {
     if (it.eol) frag.appendChild(document.createElement('br'));
   }
   container.appendChild(frag);
-  installerFinDeTexte(container);
   const naturel = toFit.map(([span]) => span.getBoundingClientRect().width);
   toFit.forEach(([span, cible], i) => { if (naturel[i] > 0 && cible > 0) span.style.transform = `scaleX(${cible / naturel[i]})`; });
 }
@@ -540,6 +549,12 @@ export async function computePageTextMap(pdfDoc, n, ocrPage = null) {
   const vp = page.getViewport({ scale: 1 });
   const tc = await page.getTextContent();
   const items = [];
+  const ajouterOcr = () => {
+    if (!pageMixteUtile(ocrPage)) return items;
+    const W = ocrPage.width || vp.width, H = ocrPage.height || vp.height;
+    for (const it of itemsDepuisOcr(ocrPage)) items.push({ str: it.str, x0: it.x / W, y0: it.y / H, x1: (it.x + it.w) / W, y1: (it.y + it.h) / H, fontSize: it.h / H, fontFamily: 'sans-serif', ocr: true });
+    return items;
+  };
   for (const item of tc.items) {
     if (!item.str) continue;
     const tx = pdfjsLib.Util.transform(vp.transform, item.transform);
@@ -553,7 +568,7 @@ export async function computePageTextMap(pdfDoc, n, ocrPage = null) {
       fontSize: fontHeight / vp.height, fontFamily: (style && style.fontFamily) || 'sans-serif',
     });
   }
-  return items;
+  return ajouterOcr();
 }
 
 /** Chantier 2 : géométrie EXACTE d'une liste de matches (page courante, réellement

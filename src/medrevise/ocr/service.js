@@ -20,7 +20,7 @@
 import { getAll, getBlob, putBackup } from '../lib/storage.js';
 import { moteurOcr, libererMoteur, MOTEUR_PAR_DEFAUT } from './moteur.js';
 import { traiterPage, ouvrirPdfOcr } from './pipeline.js';
-import { idCouche, empreinteDe, lireCouche, ecrireCouche, pousserCouche, statsCouche } from './couches.js';
+import { idCouche, empreinteDe, lireCouche, ecrireCouche, pousserCouche, statsCouche, pageAFaire, aMettreANiveau, toutesLesCouches } from './couches.js';
 
 /* ---------------- réglages ---------------- */
 const CLE_AUTO = 'medrevise.ocr.auto';
@@ -119,7 +119,7 @@ async function preparer(job) {
   const hash = await empreinteDe(job.pdfId, blob);
   const id = idCouche(hash);
   let couche = await lireCouche(id);
-  if (couche && couche.status === 'complete') { ouverts.set(job.pdfId, { hash, id, couche, doc: null, fini: true }); return ouverts.get(job.pdfId); }
+  if (couche && couche.status === 'complete' && !aMettreANiveau(couche)) { ouverts.set(job.pdfId, { hash, id, couche, doc: null, fini: true }); return ouverts.get(job.pdfId); }
   const doc = await ouvrirPdfOcr(blob);
   if (!couche) couche = nouvelleCouche(id, hash, job.courseId || null, doc.numPages);
   couche = { ...couche, pageCount: doc.numPages, courseId: couche.courseId || job.courseId || null };
@@ -136,7 +136,7 @@ function fermer(pdfId) {
 
 /** Prochaine page à traiter d'une couche : la plus proche de `autour` (1-based), sinon la première restante. */
 function pageSuivante(couche, autour) {
-  const faites = new Set(couche.pages.filter(Boolean).map((p) => p.pageIndex));
+  const faites = new Set(couche.pages.filter((p) => p && !pageAFaire(p)).map((p) => p.pageIndex));
   const n = couche.pageCount;
   if (autour) {
     const c = autour - 1;
@@ -170,16 +170,19 @@ async function boucle() {
       const res = await traiterPage(o.doc, i, moteurOcr());
       const pages = [...o.couche.pages];
       pages[i] = res;
-      const faites = pages.filter(Boolean).length;
+      const faites = pages.filter((p) => p && !pageAFaire(p)).length;
       o.couche = await ecrireCouche({ ...o.couche, pages, pagesDone: faites });
       notifierCouche(job.pdfId, o.couche);
       if (etat.masse) publier({ masse: { ...etat.masse, pages: etat.masse.pages + 1 } });
     } catch (e) {
-      // page illisible : marquée vide plutôt que de bloquer toute la file
+      // page illisible : réessayée UNE fois (au tour suivant), puis marquée en échec et
+      // signalée dans Réglages → Reconnaissance de texte — sans bloquer la file
       const pages = [...o.couche.pages];
-      pages[i] = { pageIndex: i, width: 0, height: 0, confidence: 0, words: [], erreur: true };
-      o.couche = await ecrireCouche({ ...o.couche, pages, pagesDone: pages.filter(Boolean).length });
-      publier({ derniereErreur: 'Page ' + (i + 1) + ' : ' + ((e && e.message) || 'erreur') });
+      const avant = pages[i];
+      const essais = (avant && avant.erreur ? (avant.essais || 1) : 0) + 1;
+      pages[i] = { pageIndex: i, width: 0, height: 0, confidence: 0, words: [], erreur: true, essais, message: String((e && e.message) || 'erreur').slice(0, 200) };
+      o.couche = await ecrireCouche({ ...o.couche, pages, pagesDone: pages.filter((p) => p && !pageAFaire(p)).length });
+      publier({ derniereErreur: 'Page ' + (i + 1) + ' : ' + ((e && e.message) || 'erreur') + (essais < 2 ? ' — nouvel essai' : '') });
     }
     await new Promise((r) => setTimeout(r, 25)); // laisse respirer l'interface entre deux pages
   }
@@ -289,11 +292,38 @@ export async function demarrerOcr() {
   for (const c of (await getAll('ocr_layer')) || []) {
     if (c.status === 'en_cours' && c.fileHash && parHash[c.fileHash]) enfiler({ pdfId: parHash[c.fileHash], courseId: c.courseId, origine: 'reprise' });
   }
+  // (08/10) couches faites avec l'ancien traitement « page entière » : leurs pages « natives »
+  // sont revérifiées par zone (seules les pages mixtes repassent par l'OCR) — en fond, après le reste
+  if (ocrAutoActif()) {
+    for (const r of await toutesLesCouches()) {
+      if (!r || r.status !== 'complete' || !r.fileHash || !parHash[r.fileHash]) continue;
+      const c = await lireCouche(r.id).catch(() => null);
+      if (aMettreANiveau(c)) enfiler({ pdfId: parHash[r.fileHash], courseId: r.courseId, origine: 'mise-a-niveau' });
+    }
+  }
   // traitement en masse initial « HELHa kiné » (une fois ; tant qu'il n'est pas fini, il reprend)
   if (ocrAutoActif()) {
     const m = lireMasse();
     if (!m || !m.fait) await lancerMasseHelha();
   }
+}
+
+/** Pages en échec (après le nouvel essai), par cours — Réglages → Reconnaissance de texte. */
+export async function pagesEnEchec() {
+  const fiches = (await getAll('fiches')) || [];
+  const empreintes = (() => { try { return JSON.parse(localStorage.getItem('medrevise.ocr.empreintes') || '{}'); } catch (e) { return {}; } })();
+  const out = [];
+  for (const r of await toutesLesCouches()) {
+    const c = await lireCouche(r.id).catch(() => null);
+    const st = c ? statsCouche(c) : null;
+    if (!st || !st.echecs.length) continue;
+    // la couche d'un PDF importé ne connaît pas toujours son cours : on le retrouve par l'empreinte
+    const pdfConnu = Object.entries(empreintes).find(([, h]) => h === c.fileHash);
+    const f = fiches.find((x) => x && x.id === c.courseId) || (pdfConnu && fiches.find((x) => x && x.pdfId === pdfConnu[0] && !x.deleted));
+    const pdfId = (f && f.pdfId) || (pdfConnu && pdfConnu[0]) || null;
+    out.push({ coucheId: c.id, courseId: (f && f.id) || c.courseId, pdfId, titre: (f && f.titre) || 'Cours', pages: st.echecs, message: (c.pages.find((p) => p && p.erreur) || {}).message || '' });
+  }
+  return out;
 }
 
 /* accès de test (banc CDP) */

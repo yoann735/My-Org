@@ -118,6 +118,8 @@ export async function proposerTermes(pdfDoc, { maxPages = 80, max = 150, ocrPage
         const tc = await page.getTextContent();
         texte = tc.items.map((it) => it.str + (it.hasEOL ? '\n' : ' ')).join('');
       } catch (e) { continue; }
+      // page mixte (08/10) : + les étiquettes reconnues dans ses schémas
+      if (ocr && ocr.mixte && ocr.words && ocr.words.length) texte += '\n' + ocr.words.map((m) => m.t).join(' ');
     }
     }
     const phrases = texte.split(/[.!?:\n•·–—]+/);

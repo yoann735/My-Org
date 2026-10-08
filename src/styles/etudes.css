@@ -2443,3 +2443,10 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
   .mu-saisie-ligne { grid-template-columns: 1fr; }
   .mu-saisie-ligne > .mu-etiquette { border-right: 0; border-bottom: 1px solid var(--border); padding: 6px 12px; }
 }
+
+/* OCR — pages en échec (08/10, ocr/PanneauOcr.jsx) */
+.ocr-echecs { display: flex; flex-direction: column; gap: 6px; }
+.ocr-echec { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border-2); border-radius: 10px; background: var(--bg); color: var(--text); font-size: 13px; }
+.ocr-echec > svg { color: var(--crit); flex: 0 0 auto; }
+.ocr-echec-txt { flex: 1; min-width: 0; }
+.ocr-echecs-vide { display: flex; align-items: center; gap: 6px; }

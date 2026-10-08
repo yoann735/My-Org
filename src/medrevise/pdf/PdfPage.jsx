@@ -636,7 +636,7 @@ export function PdfPageContent({
       <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
       {/* DÉBOGAGE OCR (menu Fichier › « Afficher la couche OCR ») : les boîtes des mots,
           en unités PDF ramenées à la page — vérifie l'alignement avec l'image */}
-      {ocrDebug && ocrPage && !ocrPage.natif && ocrPage.width > 0 && (
+      {ocrDebug && ocrPage && (!ocrPage.natif || ocrPage.mixte) && ocrPage.width > 0 && (
         <div className="pdfr-ocr-debug" aria-hidden="true">
           {(ocrPage.words || []).map((m, i) => (
             <span key={i} className={m.c < 70 ? 'faible' : ''} title={`${m.t} · ${m.c} %`}

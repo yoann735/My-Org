@@ -76,14 +76,29 @@ export async function toutesLesCouches() {
   return ((await getAll(STORE)) || []).filter((r) => r && r.id);
 }
 
-/** Statistiques d'une couche (pages OCR, natives, faible confiance). */
+/** Statistiques d'une couche (pages OCR — dont mixtes —, natives, faible confiance, échecs). */
 export function statsCouche(c) {
   const pages = (c && c.pages) || [];
-  const ocr = pages.filter((p) => p && !p.natif);
-  const faibles = ocr.filter((p) => p.confidence < 70).map((p) => p.pageIndex + 1);
-  const conf = ocr.length ? Math.round(ocr.reduce((s, p) => s + (p.confidence || 0), 0) / ocr.length) : null;
-  return { faites: pages.filter(Boolean).length, ocr: ocr.length, natives: pages.filter((p) => p && p.natif).length, faibles, confiance: conf };
+  const ocr = pages.filter((p) => p && !p.erreur && (!p.natif || p.mixte));
+  const faibles = ocr.filter((p) => p.confidence < 70 && (p.words || []).length).map((p) => p.pageIndex + 1);
+  const avecMots = ocr.filter((p) => (p.words || []).length);
+  const conf = avecMots.length ? Math.round(avecMots.reduce((s, p) => s + (p.confidence || 0), 0) / avecMots.length) : null;
+  return {
+    faites: pages.filter((p) => p && !pageAFaire(p)).length, ocr: ocr.length,
+    mixtes: pages.filter((p) => p && p.mixte).length,
+    natives: pages.filter((p) => p && p.natif && !p.mixte).length, faibles, confiance: conf,
+    echecs: pages.filter((p) => p && p.erreur && !pageAFaire(p)).map((p) => p.pageIndex + 1),
+  };
 }
+
+/* (08/10) Traitement par zone (pipeline.js#PIPELINE = 2). Une page est à (re)faire si :
+   - absente ;
+   - classée « natif » par l'ancien traitement (page entière, v1) : on revérifie ses zones
+     image — sans OCR si la page est vraiment « tout texte » ;
+   - en échec une seule fois (réessayée une fois, puis signalée dans les Réglages). */
+export const pageAFaire = (p) => !p || (p.natif && !p.mixte && (p.pv || 1) < 2) || (!!p.erreur && (p.essais || 1) < 2);
+/** couche complète mais faite avec l'ancien traitement (ou avec un échec à réessayer) ? */
+export const aMettreANiveau = (c) => !!(c && c.status === 'complete' && (c.pages || []).some((p) => p && pageAFaire(p)));
 
 /* ---- synchro : seules les couches COMPLÈTES voyagent (une couche partielle reste
    locale ; l'appareil qui la calcule la poussera une fois finie) ---- */
