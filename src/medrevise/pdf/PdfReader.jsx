@@ -1939,7 +1939,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setImpression(false); scaleRef.current = s0; pendingScroll.current = haut0; setScale(s0);
     document.body.appendChild(cont);
     document.body.classList.add('pdfr-impression');
-    const nettoyer = () => { cont.remove(); document.body.classList.remove('pdfr-impression'); window.removeEventListener('afterprint', nettoyer); };
+    if (modeDoc && fondNoir) document.body.classList.add('pdfr-impression-noir'); // le papier aussi : pas de liseré blanc au bas des pages
+    const nettoyer = () => { cont.remove(); document.body.classList.remove('pdfr-impression', 'pdfr-impression-noir'); window.removeEventListener('afterprint', nettoyer); };
     window.addEventListener('afterprint', nettoyer);
     const titre0 = document.title;
     document.title = (fiche && fiche.titre) || 'Document'; // nom proposé pour le PDF enregistré

@@ -50,3 +50,15 @@ const doc2 = doc1.map((b, i) => (i === 7 ? { h: 260 } : b)); // le bloc 7 grandi
 const rep = pointDeReprise(r1, 7);
 const inc = paginer(doc2, geo, rep), full = paginer(doc2, geo);
 ok(rep && JSON.stringify(inc) === JSON.stringify(full), `reprise incrémentale au bloc ${rep && rep.bloc} (page ${rep && rep.page + 1}) = calcul complet`);
+// 12. paragraphe de 2 ou 3 lignes en bas de page : jamais coupé (2 lignes minimum de chaque côté)
+{
+  const geoP = { haut: (k) => 56 + k * (842 + 18), zone: 730 };
+  for (const n of [2, 3]) {
+    const r = paginer([{ h: 730 - 20 * (n - 1) - 5 }, para(n)], geoP);
+    ok(r.espaceurs.length === 1 && r.espaceurs[0].bloc === 1 && r.espaceurs[0].pos === null && r.pages[1] === 1, `paragraphe de ${n} lignes avec la place pour ${n - 1} : passe ENTIER à la page suivante`);
+  }
+  const r4 = paginer([{ h: 705 }, para(4)], geoP);
+  ok(r4.espaceurs.length === 1 && r4.espaceurs[0].bloc === 1 && r4.espaceurs[0].pos === null, 'paragraphe de 4 lignes, 1 seule ligne tient en bas : entier à la page suivante (pas d’orpheline)');
+  const r4b = paginer([{ h: 690 }, para(4)], geoP);
+  ok(r4b.espaceurs.length === 1 && r4b.espaceurs[0].pos !== null, 'paragraphe de 4 lignes avec la place pour 2 : coupé 2 + 2');
+}

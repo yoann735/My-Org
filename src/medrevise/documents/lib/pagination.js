@@ -22,7 +22,8 @@
    RÈGLES (non négociables, comme un traitement de texte) :
    - un bloc qui ne tient pas dans l'espace restant passe ENTIER à la page suivante ;
    - un bloc coupable (paragraphe, liste…) se coupe entre deux lignes / éléments, avec
-     au moins 2 lignes de chaque côté (veuves / orphelines) quand il en a 4 ou plus ;
+     au moins 2 lignes de chaque côté (veuves / orphelines) : un bloc de moins de 4 lignes
+     ne se coupe donc pas (il passe entier), sauf s'il est plus haut qu'une page ;
    - « garder avec le suivant » (titres) : le titre passe à la page suivante si le début
      du bloc suivant n'y tient pas avec lui ;
    - rien n'est jamais coupé par le bas d'une page : un bloc insécable plus haut qu'une
@@ -72,7 +73,9 @@ export function paginer(blocs, geo, depuis = null) {
       if (y + besoin > bas() + EPS) pageSuivante(i);
     }
     if (y + b.h <= bas() + EPS) { pages[i] = page; y += b.h; continue; }
-    const coupes = b.coupes || [];
+    // moins de 2 × 2 lignes : impossible de laisser 2 lignes de chaque côté → insécable
+    // (sauf plus haut qu'une page : il faut bien le couper)
+    const coupes = b.coupes && (b.coupes.length + 1 >= 2 * MIN_LIGNES || b.h > zone + EPS) ? b.coupes : [];
     if (!coupes.length) { // insécable : entier à la page suivante
       if (!enHaut()) pageSuivante(i);
       pages[i] = page;

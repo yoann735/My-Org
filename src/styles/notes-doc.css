@@ -182,6 +182,7 @@
   .pdfr-impression-pages .pdfr-page { width: 210mm !important; height: 297mm !important; }
   /* fond noir du document : gardé tel quel (même rendu qu'à l'écran) */
   .pdfr-impression-pages .pdfr-page.fond-noir { background: #0d0d10 !important; }
+  html:has(body.pdfr-impression-noir), body.pdfr-impression-noir { background: #0d0d10 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 }
 
 /* barre de mise en forme du texte d'une page : flottante, collée au bas de la zone de lecture
