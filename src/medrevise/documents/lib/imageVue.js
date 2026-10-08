@@ -17,7 +17,10 @@
    pointeur sont divisés par l'échelle mesurée.
    ============================================================ */
 import { NodeSelection } from '@tiptap/pm/state';
+import { ocrImage } from '../../ocr/ocrImage.js';
+import { genId } from '../../lib/storage.js';
 
+const COULEURS_NOTION = { jaune: '#FFD84D', vert: '#8BE38B', bleu: '#7EC8FF', rose: '#FF9FD1' };
 const SEUIL_GLISSER = 6; // px écran avant qu'un appui devienne un déplacement
 const LARGEUR_MIN = 40;
 
@@ -94,6 +97,28 @@ export function vueImageDoc({ node, getPos, editor }) {
   };
   bouton('Supprimer l’image (Suppr)', trait('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>'), () => supprimer()).classList.add('pti-suppr');
   cadre.appendChild(barre);
+  /* TEXTE EN DIRECT (08/10) : calque des mots reconnus (transparent ; visible et sélectionnable
+     en « mode texte »), boîtes des notions prises sur l'image, et le badge en bas à droite :
+     petit spinner pendant l'OCR, puis icône « texte détecté » s'il y a du texte. */
+  const calque = document.createElement('span');
+  calque.className = 'pti-texte';
+  const notionsCalque = document.createElement('span');
+  notionsCalque.className = 'pti-notions';
+  const badge = document.createElement('button');
+  badge.type = 'button';
+  badge.className = 'pti-ocr';
+  badge.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
+  badge.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (!badge.classList.contains('pret')) return;
+    const on = !dom.classList.contains('texte-actif');
+    dom.classList.toggle('texte-actif', on);
+    badge.setAttribute('aria-pressed', on ? 'true' : 'false');
+    if (!on) fermerBulle();
+  });
+  cadre.insertBefore(notionsCalque, barre);
+  cadre.insertBefore(calque, barre);
+  cadre.appendChild(badge);
   dom.appendChild(cadre);
 
   const pos = () => (typeof getPos === 'function' ? getPos() : null);
@@ -126,6 +151,7 @@ export function vueImageDoc({ node, getPos, editor }) {
     if (h > maxH) { h = maxH; w = h / r; }
     cadre.style.width = Math.round(w) + 'px';
     img.style.height = Math.round(h) + 'px';
+    if (typeof ajusterMots === 'function') ajusterMots();
   };
   const appliquer = () => {
     const a = courant.attrs;
@@ -133,8 +159,126 @@ export function vueImageDoc({ node, getPos, editor }) {
     dom.dataset.align = a.align || 'center';
     Object.entries(bAlign).forEach(([k, b]) => b.classList.toggle('actif', (a.align || 'center') === k));
     majTaille();
+    majOcr();
   };
-  img.addEventListener('load', () => { majTaille(); dom.dispatchEvent(new CustomEvent('pti-taille', { bubbles: true })); });
+  /* ---- TEXTE EN DIRECT : OCR, calque, notions, bulle ---- */
+  let rendu = { ocr: null, notions: null }; // ce qui est dessiné (évite de tout refaire à chaque mise à jour)
+  let ocrLance = false;
+  const ICONE_TEXTE = '<svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M8 9.5h8M8 12h8M8 14.5h5"/></svg>';
+  const mesure = document.createElement('canvas').getContext('2d');
+  const ajusterMots = () => {
+    // taille de police de chaque mot : la hauteur de sa boîte, étirée à sa largeur (sélection juste)
+    const H = img.offsetHeight || 0, W = cadre.offsetWidth || 0;
+    if (!H || !W) return;
+    for (const sp of calque.children) {
+      const m = (courant.attrs.ocr && courant.attrs.ocr.mots[Number(sp.dataset.i)]) || null;
+      if (!m) continue;
+      const fs = Math.max(4, m.h * H * 0.86);
+      mesure.font = `${fs}px sans-serif`;
+      const larg = mesure.measureText(m.t).width || 1; // le séparateur final ne compte pas
+      sp.style.fontSize = fs + 'px';
+      sp.style.transform = `scaleX(${(m.w * W) / larg})`;
+    }
+  };
+  const dessinerMots = (ocr) => {
+    calque.textContent = '';
+    (ocr ? ocr.mots : []).forEach((m, i) => {
+      const sp = document.createElement('span');
+      sp.className = 'pti-mot';
+      sp.dataset.i = String(i);
+      // l'espace (ou le retour à la ligne) qui suit est DANS le mot : la copie native garde les
+      // séparateurs ; la largeur n'est pas imposée — le mot est étiré à sa boîte par scaleX
+      sp.textContent = m.t + (i + 1 < ocr.mots.length ? (ocr.mots[i + 1].line !== m.line ? '\n' : ' ') : '');
+      Object.assign(sp.style, { left: m.x * 100 + '%', top: m.y * 100 + '%', height: m.h * 100 + '%' });
+      calque.appendChild(sp);
+    });
+    ajusterMots();
+  };
+  const dessinerNotions = (ocr, notions) => {
+    notionsCalque.textContent = '';
+    if (!ocr) return;
+    for (const n of notions || []) {
+      for (const i of n.mots || []) {
+        const m = ocr.mots[i];
+        if (!m) continue;
+        const b = document.createElement('span');
+        b.className = 'pti-notion';
+        b.dataset.notion = n.id;
+        b.style.setProperty('--nc', COULEURS_NOTION[n.couleur] || n.couleur || COULEURS_NOTION.jaune);
+        Object.assign(b.style, { left: m.x * 100 + '%', top: m.y * 100 + '%', width: m.w * 100 + '%', height: m.h * 100 + '%' });
+        notionsCalque.appendChild(b);
+      }
+    }
+  };
+  function majOcr() {
+    const a = courant.attrs;
+    if (a.ocr !== rendu.ocr) { dessinerMots(a.ocr); rendu.ocr = a.ocr; }
+    if (a.notions !== rendu.notions || a.ocr !== rendu.ocr) { dessinerNotions(a.ocr, a.notions); rendu.notions = a.notions; }
+    const n = a.ocr && a.ocr.mots ? a.ocr.mots.length : 0;
+    if (a.ocr) {
+      badge.className = 'pti-ocr' + (n ? ' pret' : ' vide');
+      badge.innerHTML = n ? ICONE_TEXTE : '';
+      badge.title = n ? 'Texte détecté — afficher et sélectionner le texte de l’image' : '';
+      badge.setAttribute('aria-label', n ? 'Texte détecté dans l’image' : '');
+      if (!n) dom.classList.remove('texte-actif');
+      return;
+    }
+    if (ocrLance || !a.src) return;
+    // pas encore reconnue : OCR en arrière-plan (moteur partagé, Web Worker)
+    ocrLance = true;
+    badge.className = 'pti-ocr en-cours';
+    badge.innerHTML = '<span class="pti-ocr-spin" aria-hidden="true"></span>';
+    badge.title = 'Recherche de texte dans l’image…';
+    ocrImage({ blobId: a.blobId || null, src: a.blobId ? null : a.src }).then((r) => {
+      const p = pos();
+      if (p == null || !r || courant.attrs.ocr) { if (!r) { badge.className = 'pti-ocr vide'; badge.innerHTML = ''; } return; }
+      // résultat posé sur le nœud : enregistré et synchronisé avec le document, hors historique
+      const tr = view.state.tr.setNodeMarkup(p, undefined, { ...courant.attrs, ocr: r });
+      tr.setMeta('addToHistory', false).setMeta('journalIgnorer', true);
+      view.dispatch(tr);
+    }).catch(() => { badge.className = 'pti-ocr vide'; badge.innerHTML = ''; });
+  }
+
+  // bulle de sélection sur le texte de l'image : Notion · Flashcard · Copier (comme sur le texte)
+  let bulle = null;
+  const fermerBulle = () => { if (bulle) { bulle.remove(); bulle = null; } };
+  const motsSelectionnes = () => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount || !calque.contains(sel.anchorNode)) return [];
+    const r = sel.getRangeAt(0);
+    return [...calque.children].filter((sp) => sp.firstChild && r.intersectsNode(sp.firstChild) && !(r.endContainer === sp.firstChild && r.endOffset === 0) && !(r.startContainer === sp.firstChild && r.startOffset >= sp.firstChild.length - 1 && sp.firstChild.length > 1)).map((sp) => Number(sp.dataset.i));
+  };
+  const texteDe = (ids) => ids.map((i) => courant.attrs.ocr.mots[i].t).join(' ');
+  const ouvrirBulle = () => {
+    fermerBulle();
+    const ids = motsSelectionnes();
+    if (!ids.length) return;
+    const r = window.getSelection().getRangeAt(0).getBoundingClientRect();
+    bulle = document.createElement('div');
+    bulle.className = 'nd-bulle pt-bulle pti-bulle';
+    Object.assign(bulle.style, { left: (r.left + r.right) / 2 + 'px', top: (r.top - 8) + 'px' });
+    const act = (libelle, f) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'nd-bt nd-bt-txt'; b.textContent = libelle;
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); f(); fermerBulle(); });
+      bulle.appendChild(b);
+    };
+    act('Notion', () => {
+      const n = { id: genId('nd'), couleur: 'jaune', mots: ids };
+      changer({ notions: [...(courant.attrs.notions || []), n] });
+      window.getSelection().removeAllRanges();
+    });
+    act('Flashcard', () => dom.dispatchEvent(new CustomEvent('pti-flashcard', { bubbles: true, detail: { texte: texteDe(ids) } })));
+    act('Copier', () => { try { navigator.clipboard.writeText(texteDe(ids)); } catch (e) { /* refus */ } });
+    document.body.appendChild(bulle);
+  };
+  calque.addEventListener('mouseup', () => setTimeout(ouvrirBulle, 0));
+  calque.addEventListener('keyup', () => setTimeout(ouvrirBulle, 0));
+  const dehors = (e) => { if (bulle && !bulle.contains(e.target) && !calque.contains(e.target)) fermerBulle(); };
+  document.addEventListener('pointerdown', dehors, true);
+
+  img.addEventListener('load', () => { majTaille(); ajusterMots(); dom.dispatchEvent(new CustomEvent('pti-taille', { bubbles: true })); });
   appliquer();
 
 
@@ -278,12 +422,14 @@ export function vueImageDoc({ node, getPos, editor }) {
     // poignées, barre et déplacement : gérés ici, pas par ProseMirror
     stopEvent(e) {
       const t = e.target;
-      if (t && t.closest && (t.closest('.pti-poignee') || t.closest('.pti-barre'))) return true;
+      if (t && t.closest && (t.closest('.pti-poignee') || t.closest('.pti-barre') || t.closest('.pti-ocr'))) return true;
+      // texte de l'image (mode texte) : sélection et copie natives, ProseMirror n'y touche pas
+      if (t && (t === calque || (calque.contains && calque.contains(t)))) return true;
       if (dom.classList.contains('sel') && t === img && /^(pointer|mouse|touch)/.test(e.type)) return true;
       return false;
     },
     ignoreMutation() { return true; },
-    destroy() { if (ligne) ligne.remove(); },
+    destroy() { if (ligne) ligne.remove(); fermerBulle(); document.removeEventListener('pointerdown', dehors, true); },
   };
 }
 

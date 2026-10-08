@@ -120,6 +120,10 @@ export const PageTexte = memo(forwardRef(function PageTexte({
     editable: false,
     editorProps: {
       attributes: { class: 'pt-prose', spellcheck: 'true' },
+      // copie / coupe du TEXTE D'UNE IMAGE (Texte en direct) : celle du navigateur, pas celle de l'éditeur
+      handleDOMEvents: {
+        copy: () => { const sel = window.getSelection(); const n = sel && sel.anchorNode; const el = n && (n.nodeType === 1 ? n : n.parentElement); return !!(el && el.closest && el.closest('.pti-texte')); },
+      },
       handlePaste: (view, event) => {
         const f = [...((event.clipboardData && event.clipboardData.files) || [])].find((x) => /^image\//.test(x.type));
         if (!f || !editorRef.current) return false;
@@ -228,7 +232,7 @@ export const PageTexte = memo(forwardRef(function PageTexte({
       const avant = dernierJSON.current;
       const apres = editor.getJSON();
       dernierJSON.current = apres;
-      if (!charge.current || !avant || !rappels.current.onJournal) return;
+      if (!charge.current || !avant || !rappels.current.onJournal || tr.getMeta('journalIgnorer')) return;
       const systeme = tr.getMeta('addToHistory') === false && !tr.getMeta('journalAction');
       const saisie = !tr.getMeta('uiEvent') && tr.steps.every((st) => {
         const j = st.toJSON();
@@ -241,6 +245,15 @@ export const PageTexte = memo(forwardRef(function PageTexte({
     editor.on('transaction', surTr);
     return () => editor.off('transaction', surTr);
   }, [editor, pageId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // « Flashcard » depuis le texte d'une image (bulle de imageVue.js)
+  useEffect(() => {
+    const z = zoneRef.current;
+    if (!z) return undefined;
+    const f = (e) => { if (e.detail && e.detail.texte) rappels.current.onFlashcard(e.detail.texte); };
+    z.addEventListener('pti-flashcard', f);
+    return () => z.removeEventListener('pti-flashcard', f);
+  }, []);
 
   /* (08/10) la hauteur du texte change SANS transaction (image qui finit de se charger,
      redimensionnée, police chargée) : on revérifie le débordement — une image qui ne tient

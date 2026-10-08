@@ -92,7 +92,7 @@ export function ResumeReplie({ courseId, depuis }) {
 /* ============================================================
    FEUILLE DE DÉMARRAGE
    ============================================================ */
-export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, reprendre = null, onClose, onDemarre }) {
+export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, texteEnPlus = '', reprendre = null, onClose, onDemarre }) {
   /* SOURCE (05/10) : 'auto' (défaut) | 'onglet' | deviceId — mémorisée par appareil.
      Reprise de l'ancien réglage (source + micro) au premier passage. */
   const [choix, setChoixBrut] = useState(() => {
@@ -123,7 +123,7 @@ export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, reprendre 
   useEffect(() => {
     let vivant = true;
     const memoP = reprendre ? Promise.resolve({ manuels: reprendre.keyterms || [], decoches: [], connus: [] }) : lireMotsClesMemo(courseId);
-    const candP = reprendre ? Promise.resolve([]) : proposerTermes(pdfDoc, { ocrPages }).catch(() => []);
+    const candP = reprendre ? Promise.resolve([]) : proposerTermes(pdfDoc, { ocrPages, texteEnPlus }).catch(() => []);
     Promise.all([memoP, candP]).then(([m, c]) => {
       if (!vivant) return;
       setCandidats(c);
@@ -134,7 +134,7 @@ export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, reprendre 
     navigator.mediaDevices && navigator.mediaDevices.addEventListener && navigator.mediaDevices.addEventListener('devicechange', surChangement);
     actualiserCredits(); // « avant démarrage » : valeur fraîche si la dernière a plus d'une minute
     return () => { vivant = false; navigator.mediaDevices && navigator.mediaDevices.removeEventListener && navigator.mediaDevices.removeEventListener('devicechange', surChangement); };
-  }, [courseId, pdfDoc, reprendre]);
+  }, [courseId, pdfDoc, reprendre, texteEnPlus]);
 
   const sel = useMemo(() => (memo ? selectionner(memo, candidats || []) : { lignes: [], envoyes: [], mots: 0, plein: false }), [memo, candidats]);
 
@@ -250,7 +250,7 @@ export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, reprendre 
               ))}
             </div>
           )}
-          {candidats === null && pdfDoc && !reprendre && <div className="hint trx-aide">Lecture du PDF pour proposer des termes…</div>}
+          {candidats === null && (pdfDoc || texteEnPlus) && !reprendre && <div className="hint trx-aide">Lecture du PDF pour proposer des termes…</div>}
           {proposes.length > 0 && (
             <>
               <div className="trx-sous-etiquette row spread">

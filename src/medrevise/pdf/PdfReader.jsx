@@ -58,6 +58,7 @@ import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, detectDocKind, Modal, LoaderL6, ConfirmModal } from '../components/ui.jsx';
 import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque, newPageAjoutee, newImageCollee, newForme } from '../lib/storage.js';
 import { useJournalAnnuler, raccourciAnnuler } from '../lib/journalAnnuler.js';
+import { texteOcr } from '../ocr/ocrImage.js';
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cmdGroupe, cibleEditable } from '../lib/annotHistory.js';
 import { imageDuPressePapier } from '../lib/collerImage.js';
 import { RICH_EXTENSIONS } from '../documents/lib/richtext.js';
@@ -992,6 +993,15 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
               let i = t.indexOf(q);
               while (i !== -1) { found.push({ page: sz.cle, doc: true, rang: rang++, approxY: Math.min(0.9, 0.07 + (iBloc / blocs) * 0.86) }); i = t.indexOf(q, i + 1); }
             }
+            // texte reconnu dans une IMAGE (Texte en direct) : un mot = un nœud texte du calque,
+            // dans le même ordre qu'à l'écran — la n-ième occurrence est la même des deux côtés
+            if (n.type === 'image' && n.attrs && n.attrs.ocr && n.attrs.ocr.mots) {
+              for (const m of n.attrs.ocr.mots) {
+                const t = String(m.t || '').toLowerCase();
+                let i = t.indexOf(q);
+                while (i !== -1) { found.push({ page: sz.cle, doc: true, rang: rang++, approxY: Math.min(0.9, 0.07 + (iBloc / blocs) * 0.86) }); i = t.indexOf(q, i + 1); }
+              }
+            }
             (n.content || []).forEach(w);
           };
           w(bloc);
@@ -1729,6 +1739,20 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     return contenuGlobal({ pages: (r && r.pages) || {} }, ordrePages());
   };
   const exporterMdDocument = async () => exporterMarkdownDoc(await texteDocument(), fiche && fiche.titre);
+  /* texte brut d'un document pour les mots-clés de la transcription : texte des pages ET texte
+     reconnu dans ses images (Texte en direct, 08/10) */
+  const texteBrutDocument = () => {
+    const out = [];
+    const w = (n) => {
+      if (!n) return;
+      if (n.type === 'text' && n.text) out.push(n.text);
+      if (n.type === 'image' && n.attrs && n.attrs.ocr) out.push('\n' + texteOcr(n.attrs.ocr) + '\n');
+      if (n.type === 'paragraph' || n.type === 'heading') out.push('\n');
+      (n.content || []).forEach(w);
+    };
+    ordrePages().forEach((k) => w(corpsPages.current[k]));
+    return out.join(' ');
+  };
   /* PDF D'UN DOCUMENT : les pages telles qu'à l'écran (texte, surlignages, dessins, formes,
      images, boîtes), rendues TOUTES à l'échelle de l'A4 imprimé (96 ppp), recopiées dans un
      conteneur d'impression, puis le lecteur reprend son zoom. Fond blanc ou noir selon le
@@ -2625,7 +2649,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           onCancel={() => setPageASupprimer(null)} />
       )}
       {feuilleTrx && ficheId && (
-        <FeuilleDemarrage courseId={ficheId} pdfDoc={pdfDoc} ocrPages={coucheOcr ? coucheOcr.pages : null} reprendre={feuilleTrx.reprendre || null}
+        <FeuilleDemarrage courseId={ficheId} pdfDoc={pdfDoc} ocrPages={coucheOcr ? coucheOcr.pages : null} texteEnPlus={modeDoc ? texteBrutDocument() : ''} reprendre={feuilleTrx.reprendre || null}
           onClose={() => setFeuilleTrx(null)} onDemarre={ouvrirTranscript} />
       )}
       {detailOcr && fiche && fiche.pdfId && (

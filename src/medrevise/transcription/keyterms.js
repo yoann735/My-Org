@@ -94,14 +94,18 @@ const MOTS_VIDES = new Set(('alors aussi autre autres avec avoir beaucoup cette 
 const SUFFIXES = /(ite|ites|ose|oses|algie|algies|ectomie|tomie|plastie|scopie|graphie|gramme|logie|pathie|émie|cyte|cytes|blaste|blastes|claste|clastes|ome|omes|aire|aires|ique|iques|ale|aux|ienne|iens|oïde|oïdes|ase|ases|ine|ines|rrhée|plégie|trophie|sclérose|osis)$/i;
 const PREFIXES = /^(hypo|hyper|endo|péri|épi|intra|inter|extra|sous|sus|myo|ostéo|chondro|neuro|cardio|hémo|lipo|gluco|glyco|tendin|ligament|arthr|leuco|érythro|thrombo|fibro|kinési|proprio|vaso|broncho|gastro|hépat|néphro)/i;
 
-export async function proposerTermes(pdfDoc, { maxPages = 80, max = 150, ocrPages = null } = {}) {
-  if (!pdfDoc) return [];
-  const n = Math.min(pdfDoc.numPages || 0, maxPages);
+export async function proposerTermes(pdfDoc, { maxPages = 80, max = 150, ocrPages = null, texteEnPlus = '' } = {}) {
+  // (08/10) `texteEnPlus` : le texte d'un DOCUMENT et celui reconnu dans ses images (Texte en
+  // direct) — un document n'a pas de PDF, il n'avait donc jamais de mots-clés proposés
+  if (!pdfDoc && !texteEnPlus) return [];
+  const n = pdfDoc ? Math.min(pdfDoc.numPages || 0, maxPages) : 0;
   const compte = new Map(); // forme normalisée → { forme, n, maj }
   const bigrammes = new Map();
   let nbMots = 0;
-  for (let p = 1; p <= n; p++) {
+  for (let p = 1; p <= n + (texteEnPlus ? 1 : 0); p++) {
     let texte = '';
+    if (p > n) texte = String(texteEnPlus);
+    else {
     const ocr = ocrPages && ocrPages[p - 1];
     if (ocr && !ocr.natif && ocr.words && ocr.words.length) {
       // page IMAGE : les mots reconnus par l'OCR (docs/compte-rendu-ocr.md), ligne par ligne
@@ -114,6 +118,7 @@ export async function proposerTermes(pdfDoc, { maxPages = 80, max = 150, ocrPage
         const tc = await page.getTextContent();
         texte = tc.items.map((it) => it.str + (it.hasEOL ? '\n' : ' ')).join('');
       } catch (e) { continue; }
+    }
     }
     const phrases = texte.split(/[.!?:\n•·–—]+/);
     for (const ph of phrases) {

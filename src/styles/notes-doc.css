@@ -238,3 +238,33 @@
 .ProseMirror:not(.ProseMirror-focused) .pti.sel .pti-poignee,
 .ProseMirror:not(.ProseMirror-focused) .pti.sel .pti-barre { display: none !important; }
 .ProseMirror:not(.ProseMirror-focused) .pti.sel .pti-cadre > img { outline: none; }
+
+/* ---- TEXTE EN DIRECT sur une image de document (08/10, imageVue.js + ocr/ocrImage.js) ---- */
+/* badge en bas à droite : 18 px à l'écran (contre-échelle du zoom de page) */
+.pti-ocr {
+  position: absolute; z-index: 4; right: calc(6px * var(--pti-inv)); bottom: calc(6px * var(--pti-inv));
+  width: calc(18px * var(--pti-inv)); height: calc(18px * var(--pti-inv)); padding: calc(2px * var(--pti-inv)); box-sizing: border-box;
+  display: none; align-items: center; justify-content: center; border: none; border-radius: calc(5px * var(--pti-inv));
+  background: rgba(20, 20, 26, .55); color: #fff; cursor: default; line-height: 0;
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+.pti-ocr.en-cours, .pti-ocr.pret { display: inline-flex; }
+.pti-ocr.pret { cursor: pointer; }
+.pti-ocr.pret:hover { background: rgba(20, 20, 26, .75); }
+.pti.texte-actif .pti-ocr.pret { background: var(--accent, #6b5cff); }
+@media (pointer: coarse) { .pti-ocr.pret::before { content: ''; position: absolute; inset: calc(-11px * var(--pti-inv)); } } /* cible tactile de 40 px */
+.pti-ocr-spin { width: 70%; height: 70%; border-radius: 50%; border: calc(1.6px * var(--pti-inv)) solid rgba(255, 255, 255, .35); border-top-color: #fff; animation: pti-tourne .8s linear infinite; }
+@keyframes pti-tourne { to { transform: rotate(360deg); } }
+/* calque des mots : invisible (mais présent pour ⌘F) ; en mode texte, boîtes semi-transparentes, sélectionnables */
+.pti-texte { position: absolute; inset: 0; z-index: 2; pointer-events: none; line-height: 1; white-space: pre; overflow: hidden; }
+.pti-mot { position: absolute; color: transparent; transform-origin: 0 50%; display: inline-flex; align-items: center; white-space: pre; font-family: sans-serif; user-select: none; -webkit-user-select: none; }
+.pti.texte-actif .pti-texte { pointer-events: auto; cursor: text; }
+.pti.texte-actif .pti-mot { user-select: text; -webkit-user-select: text; background: rgba(255, 255, 255, .28); box-shadow: 0 0 0 1px rgba(107, 92, 255, .55); border-radius: 2px; }
+.pti.texte-actif .pti-cadre > img { filter: brightness(.82); }
+.pti-mot::selection { background: rgba(80, 130, 230, .5); color: transparent; }
+/* notions prises sur l'image */
+.pti-notions { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.pti-notion { position: absolute; border-radius: 2px; background: color-mix(in srgb, var(--nc, #FFD84D) 55%, transparent); mix-blend-mode: multiply; }
+.pti-notion.cible { animation: pt-cible 1.6s ease-out; }
+/* résultat de recherche ⌘F dans le texte d'une image */
+.pti-mot::highlight(recherche-doc) { background: rgba(255, 200, 0, .55); }

@@ -75,6 +75,10 @@ const ImageDoc = BlobImage.extend({
         parseHTML: (el) => el.getAttribute('data-align') || 'center',
         renderHTML: (attrs) => ({ 'data-align': attrs.align || 'center' }),
       },
+      // TEXTE EN DIRECT (08/10, ocr/ocrImage.js) : mots reconnus (coordonnées relatives à
+      // l'image) et notions prises sur l'image — gardés dans le document, jamais dans le HTML
+      ocr: { default: null, rendered: false },
+      notions: { default: null, rendered: false },
     };
   },
   addNodeView() {
@@ -200,6 +204,18 @@ export function collectNotions(doc) {
     (n.content || []).forEach(w);
   };
   w(doc);
+  // notions prises sur le TEXTE D'UNE IMAGE (Texte en direct, 08/10) : rangées sur le nœud image
+  const wi = (n) => {
+    if (!n) return;
+    if (n.type === 'image' && n.attrs && n.attrs.ocr && Array.isArray(n.attrs.notions)) {
+      for (const k of n.attrs.notions) {
+        const texte = (k.mots || []).map((i) => (n.attrs.ocr.mots[i] || {}).t || '').join(' ');
+        if (k.id && !par.has(k.id)) par.set(k.id, { id: k.id, texte, couleur: k.couleur || 'jaune', image: true });
+      }
+    }
+    (n.content || []).forEach(wi);
+  };
+  wi(doc);
   return [...par.values()].map((r) => ({ ...r, texte: r.texte.trim() })).filter((r) => r.texte);
 }
 
