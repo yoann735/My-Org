@@ -19,6 +19,7 @@
 import { NodeSelection } from '@tiptap/pm/state';
 import { ocrImage } from '../../ocr/ocrImage.js';
 import { genId } from '../../lib/storage.js';
+import { gesteDocument } from './paginationExt.js';
 
 const COULEURS_NOTION = { jaune: '#FFD84D', vert: '#8BE38B', bleu: '#7EC8FF', rose: '#FF9FD1' };
 const SEUIL_GLISSER = 6; // px écran avant qu'un appui devienne un déplacement
@@ -26,6 +27,13 @@ const LARGEUR_MIN = 40;
 
 const echelleDe = (el) => { const r = el.getBoundingClientRect(); return el.offsetWidth ? r.width / el.offsetWidth : 1; };
 const bornes = (view, dom) => {
+  // DOCUMENT (un seul flux paginé, 08/10) : une image ne dépasse jamais la zone utile d'une
+  // page — elle est réduite pour tenir (marges du bloc déduites), puis la pagination la place
+  const flux = dom.closest('.pt-flux');
+  if (flux) {
+    const zone = Number(flux.dataset.zone) || 730;
+    return { maxW: Math.max(LARGEUR_MIN, view.dom.clientWidth || 483), maxH: Math.max(60, zone - 14) };
+  }
   const corps = dom.closest('.pt-corps');
   const maxW = Math.max(LARGEUR_MIN, view.dom.clientWidth || 400);
   // une ligne reste libre sous une image pleine page : le paragraphe qui la suit (toujours là, pour
@@ -37,7 +45,9 @@ const bornes = (view, dom) => {
 /** l'éditeur (TipTap) d'une page sous un point de l'écran, ou null */
 function editeurSous(x, y) {
   const el = document.elementFromPoint(x, y);
-  const pm = el && el.closest ? el.closest('.ProseMirror') : null;
+  // flux paginé : les marges et l'écart entre deux pages appartiennent aussi au document
+  const flux = el && el.closest ? el.closest('.pt-flux-echelle') : null;
+  const pm = el && el.closest ? (el.closest('.ProseMirror') || (flux && flux.querySelector('.ProseMirror'))) : null;
   return pm && pm.editor && !pm.editor.isDestroyed ? pm.editor : null;
 }
 /** limite de bloc (niveau 1) la plus proche de y dans cet éditeur → { pos, y (écran), x, w } */
@@ -296,6 +306,7 @@ export function vueImageDoc({ node, getPos, editor }) {
     const facteur = (courant.attrs.align || 'center') === 'center' ? 2 : 1; // centrée : elle grandit des deux côtés
     let w = w0, h = h0, libre = false;
     dom.classList.add('redim');
+    gesteDocument.debut(); // pas de pagination pendant le geste
     const move = (ev) => {
       if (ev.pointerId !== e.pointerId) return;
       libre = ev.shiftKey;
@@ -309,6 +320,7 @@ export function vueImageDoc({ node, getPos, editor }) {
       if (ev.pointerId !== e.pointerId) return;
       p.removeEventListener('pointermove', move); p.removeEventListener('pointerup', up); p.removeEventListener('pointercancel', up);
       dom.classList.remove('redim');
+      gesteDocument.fin();
       const garderH = libre || !!courant.attrs.height;
       changer({ width: Math.round(w), height: garderH ? Math.round(h) : null });
     };
@@ -348,6 +360,7 @@ export function vueImageDoc({ node, getPos, editor }) {
       if (!actif && Math.hypot(ev.clientX - x0, ev.clientY - y0) < SEUIL_GLISSER) return;
       if (!actif) {
         actif = true;
+        gesteDocument.debut();
         dom.classList.add('deplace');
         ligne = document.createElement('div');
         ligne.className = 'pti-depot';
@@ -361,6 +374,7 @@ export function vueImageDoc({ node, getPos, editor }) {
       if (raf) { cancelAnimationFrame(raf); raf = null; }
       img.removeEventListener('pointermove', move); img.removeEventListener('pointerup', fin); img.removeEventListener('pointercancel', fin);
       dom.classList.remove('deplace');
+      if (actif) gesteDocument.fin();
       if (ligne) { ligne.remove(); ligne = null; }
       if (!actif || !cible || ev.type === 'pointercancel') return;
       deposer(cible.ed, cible.pos);

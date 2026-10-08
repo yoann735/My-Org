@@ -56,7 +56,7 @@ import { useEditor } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, detectDocKind, Modal, LoaderL6, ConfirmModal } from '../components/ui.jsx';
-import { getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque, newPageAjoutee, newImageCollee, newForme } from '../lib/storage.js';
+import { putBackup, getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque, newPageAjoutee, newImageCollee, newForme } from '../lib/storage.js';
 import { useJournalAnnuler, raccourciAnnuler } from '../lib/journalAnnuler.js';
 import { texteOcr } from '../ocr/ocrImage.js';
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cmdGroupe, cibleEditable } from '../lib/annotHistory.js';
@@ -86,7 +86,8 @@ import { FeuilleDemarrage, TranscriptPanel, BadgeTranscript, ResumeReplie } from
 import { lirePosition, ecrirePosition, empreintePdf, positionDepuisDefilement } from '../lib/positionLecture.js';
 import { NotesEditor } from '../documents/NotesEditor.jsx';
 import { estNotionDoc, creerNotionDoc, synchroniserNotionsDoc } from '../documents/lib/notionsDoc.js';
-import { lireNotesDoc, ecrirePageDoc, majNotesDoc, attendreNotesDoc, contenuGlobal, docNonVide } from '../documents/lib/notesDoc.js';
+import { lireNotesDoc, ecrirePageDoc, majNotesDoc, attendreNotesDoc, contenuGlobal, docNonVide, idAppareil, fluxDepuisPages } from '../documents/lib/notesDoc.js';
+import { DocumentFlux } from './DocumentFlux.jsx';
 import { dehydrateDoc, EMPTY_DOC } from '../documents/lib/richtext.js';
 import { exporterMarkdownDoc } from '../documents/lib/exportDoc.js';
 import { PageTexte, PAGE_A4, OutilsTexteDocument, effacerSurlignageRecherche } from './PageTexte.jsx';
@@ -486,9 +487,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const focusPages = useRef({}); // id de page → position du curseur à poser à son montage
   const [editeurPage, setEditeurPage] = useState(null); // { pageId, ed } — texte de page en cours d'écriture
   const creationPage = useRef(false);
+  /* MOTEUR PAGINÉ (08/10, docs/compte-rendu-document-engine.md) : le texte d'un DOCUMENT est
+     UN flux (`notes_doc.flux`, un seul éditeur — DocumentFlux) ; ses pages sont CALCULÉES
+     par la pagination. `fluxInitial` : le flux lu à l'ouverture (converti depuis l'ancien
+     format au besoin) ; ensuite, la seule source de vérité est l'état de l'éditeur. */
+  const fluxRef = useRef(null);
+  const [fluxInitial, setFluxInitial] = useState(null);
+  const [pagination, setPagination] = useState(null); // { nbPages, blocs: [{ page, pos, type }] }
+  const fluxEcrit = useRef(0); // fluxMaj de la dernière écriture locale
+  const planifierNotionsRef = useRef(() => {});
   useEffect(() => {
     let vivant = true;
     setDocCharge(false); corpsPages.current = {}; ancienDoc.current = null; setFondNoir(false); setEditeurPage(null); creationPage.current = false;
+    setFluxInitial(null); setPagination(null); fluxEcrit.current = 0;
     if (!ficheReelle) return undefined;
     lireNotesDoc(ficheId).then((r) => {
       if (!vivant) return;
@@ -516,6 +527,75 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       creationPage.current = false;
     })();
   }, [modeDoc, docCharge, editsCharges, pagesAjoutees.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // flux du document : lu tel quel, ou CONVERTI une fois depuis l'ancien format (une page = un
+  // JSON) — sauvegarde putBackup avant, `pages` laissé intact : conversion idempotente
+  useEffect(() => {
+    if (!modeDoc || !docCharge || !editsCharges || fluxInitial || !pagesAjoutees.length) return;
+    const r = ancienDoc.current || {};
+    if (r.flux) { setFluxInitial(r.flux); fluxEcrit.current = r.fluxMaj || 0; return; }
+    const tri = (a, b) => (a.rang - b.rang) || String(a.createdAt).localeCompare(String(b.createdAt));
+    const ordre = [...pagesAjoutees].sort(tri).map((a) => a.id);
+    const flux = fluxDepuisPages(r, ordre);
+    setFluxInitial(flux);
+    (async () => {
+      await putBackup('pre-flux-' + ficheId + '-' + Date.now(), { notes_doc: r, pages: ordre });
+      const maj = Date.now();
+      fluxEcrit.current = maj;
+      await majNotesDoc(ficheId, (rec) => (rec.flux ? null : { flux, fluxMaj: maj, fluxAppareil: idAppareil(), fluxV: 1 }));
+    })();
+  }, [modeDoc, docCharge, editsCharges, pagesAjoutees.length, fluxInitial]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sauverFlux = (json) => {
+    const maj = Date.now();
+    fluxEcrit.current = maj;
+    majNotesDoc(ficheId, { flux: json, fluxMaj: maj, fluxAppareil: idAppareil() }).then(planifierNotionsRef.current).catch(() => {});
+  };
+  /* SYNCHRO : une version du flux venue d'un AUTRE appareil (relue quand la base change) ne
+     remplace l'état local que si elle est plus récente, et seulement après 2 s sans frappe */
+  useEffect(() => {
+    if (!modeDoc || !fluxInitial) return undefined;
+    let vivant = true, t = null;
+    const essayer = async () => {
+      const r = await lireNotesDoc(ficheId);
+      if (!vivant || !r || !r.flux || !(r.fluxMaj > fluxEcrit.current) || r.fluxAppareil === idAppareil()) return;
+      const api = fluxRef.current;
+      if (!api) return;
+      if (api.inactifDepuis() < 2000) { t = setTimeout(essayer, 2000); return; }
+      fluxEcrit.current = r.fluxMaj;
+      api.remplacerDistant(r.flux);
+    };
+    essayer();
+    return () => { vivant = false; clearTimeout(t); };
+  }, [db]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* PAGES = RÉSULTAT DE LA PAGINATION : autant d'enregistrements « page » que de pages
+     calculées (les annotations s'y accrochent) ; en trop à la fin et vides d'annotations :
+     retirées. Hors historique (conséquence du texte, qui, lui, s'annule). */
+  const synchroPages = useRef(null);
+  useEffect(() => {
+    if (!modeDoc || !pagination || !editsCharges) return undefined;
+    clearTimeout(synchroPages.current);
+    synchroPages.current = setTimeout(async () => {
+      const tri = (a, b) => (a.rang - b.rang) || String(a.createdAt).localeCompare(String(b.createdAt));
+      const recs = [...pagesAjoutees].sort(tri);
+      const n = Math.max(1, pagination.nbPages);
+      if (recs.length < n) {
+        let rang = recs.length ? recs[recs.length - 1].rang : 0;
+        const nouveaux = [];
+        for (let i = recs.length; i < n; i++) { rang += 1; nouveaux.push(newPageAjoutee({ ficheId, apres: 0, rang, width: PAGE_A4.width, height: PAGE_A4.height })); }
+        appliquerLocal(nouveaux.map((rec) => ({ store: 'annotations', apres: rec })));
+        for (const rec of nouveaux) await put('annotations', rec);
+      } else if (recs.length > n) {
+        const enTrop = recs.slice(n).reverse();
+        const retirer = [];
+        for (const rec of enTrop) { if (edits.some((a) => a.page === rec.id)) break; retirer.push(rec); }
+        if (retirer.length) {
+          appliquerLocal(retirer.map((rec) => ({ store: 'annotations', avant: rec })));
+          for (const rec of retirer) await remove('annotations', rec.id);
+        }
+      }
+    }, 350);
+    return () => clearTimeout(synchroPages.current);
+  }, [pagination && pagination.nbPages, pagesAjoutees.length, editsCharges]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // le lecteur peut afficher ses pages : PDF chargé, ou document prêt
   const pret = !!pdfDoc || (modeDoc && docCharge && pageSizes.length > 0);
   // index (0…) dans les pages affichées d'une clé de page (numéro du PDF ou id)
@@ -982,6 +1062,20 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   useEffect(() => {
     let cancelled = false;
     const q = debouncedSearch.trim().toLowerCase();
+    if (q && modeDoc && fluxRef.current && fluxRef.current.editor) {
+      /* DOCUMENT, moteur paginé : on cherche dans le FLUX (état de l'éditeur, la seule source),
+         dans l'ordre du DOM — la n-ième occurrence est montrée par l'éditeur lui-même */
+      const found = [];
+      let rang = 0;
+      const w = (n) => {
+        if (n.type === 'text' && n.text) { const t = n.text.toLowerCase(); let i = t.indexOf(q); while (i !== -1) { found.push({ page: null, doc: true, flux: true, rang: rang++, idx: found.length }); i = t.indexOf(q, i + 1); } }
+        if (n.type === 'image' && n.attrs && n.attrs.ocr && n.attrs.ocr.mots) for (const m of n.attrs.ocr.mots) { const t = String(m.t || '').toLowerCase(); let i = t.indexOf(q); while (i !== -1) { found.push({ page: null, doc: true, flux: true, rang: rang++, idx: found.length }); i = t.indexOf(q, i + 1); } }
+        (n.content || []).forEach(w);
+      };
+      w(fluxRef.current.editor.getJSON());
+      setMatches(found); setActiveMatch(0); setSearching(false);
+      return;
+    }
     if (q && modeDoc) {
       // DOCUMENT (08/10) : on cherche dans le texte des pages (nœuds texte du JSON, dans l'ordre)
       const found = [];
@@ -1044,6 +1138,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   useEffect(() => {
     if (!matches.length) { if (modeDoc) effacerSurlignageRecherche(); return; }
     const m = matches[Math.max(0, Math.min(activeMatch, matches.length - 1))];
+    if (m && m.flux) { // flux : jamais virtualisé, l'occurrence est toujours dans le DOM
+      const r = fluxRef.current && fluxRef.current.montrerOccurrence(debouncedSearch.trim(), m.rang);
+      centrerRect(r);
+      return;
+    }
     if (m) scrollToPageFraction(m.page, m.approxY);
     // document : la page affichée surligne l'occurrence et la centre (sans prendre le focus)
     if (m && m.doc) {
@@ -1056,6 +1155,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMatch, matches]);
 
+  // amène un rectangle (coordonnées écran) au milieu de la zone de lecture — geste explicite
+  // de l'utilisateur (recherche, notion) : jamais pendant la frappe
+  const centrerRect = (r) => {
+    const el = scrollRef.current;
+    if (!el || !r) return;
+    const z = el.getBoundingClientRect();
+    if (r.top >= z.top + 40 && r.bottom <= z.bottom - 40) return;
+    el.scrollTop = Math.max(0, el.scrollTop + (r.top + r.height / 2) - (z.top + el.clientHeight / 2));
+    computeVisibleRangeRef.current();
+  };
   const gotoNextMatch = () => { if (matches.length) setActiveMatch((i) => (i + 1) % matches.length); };
   const gotoPrevMatch = () => { if (matches.length) setActiveMatch((i) => (i - 1 + matches.length) % matches.length); };
   const closeSearch = () => { setSearch(''); setDebouncedSearch(''); setMatches([]); };
@@ -1625,7 +1734,26 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const modele = modeDoc ? PAGE_A4 : (ref || pageSizes[0] || PAGE_A4);
     return newPageAjoutee({ ficheId, apres, rang, width: modele.width, height: modele.height });
   };
+  /* DOCUMENT : les pages sont calculées — « insérer une page » insère dans le FLUX une page
+     blanche (saut de page, paragraphe vide, saut de page) avant le premier bloc de la page
+     suivante ; « retirer une page » retire les blocs qui y commencent (et ses annotations) */
+  const blocsDePage = (k) => {
+    const b = (pagination && pagination.blocs) || [];
+    const i = b.findIndex((x) => x.page >= k);
+    const j = b.findIndex((x) => x.page > k);
+    const fin = fluxRef.current && fluxRef.current.editor ? fluxRef.current.editor.state.doc.content.size : 0;
+    return { de: i < 0 ? fin : b[i].pos, a: j < 0 ? fin : b[j].pos, vide: i < 0 || b[i].page !== k };
+  };
   const insererPageApres = async (idx) => {
+    if (modeDoc && fluxRef.current && pagination) {
+      setAjoutPage(null);
+      fluxRef.current.insererPageAvant(blocsDePage(idx + 1).de);
+      setTimeout(() => {
+        const el = scrollRef.current, offs = layoutRef.current.offsets;
+        if (el && offs[idx + 1] != null) { el.scrollTop = Math.max(0, offs[idx + 1] - 8 * scale); computeVisibleRangeRef.current(); }
+      }, 250);
+      return;
+    }
     const rec = nouvellePageApres(idx);
     await hist.appliquer(cmdCreer('annotations', rec, 'Page ajoutée'));
     setAjoutPage(null);
@@ -1640,6 +1768,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
   /* ---- TEXTE DES PAGES (08/10, pdf/PageTexte.jsx) ---- */
   const minuteurNotions = useRef(null);
+  planifierNotionsRef.current = () => planifierNotions();
   const planifierNotions = () => {
     clearTimeout(minuteurNotions.current);
     minuteurNotions.current = setTimeout(() => { synchroniserNotionsDoc(ficheId).then((ch) => { if (ch) reloadHighlights(); }); }, 900);
@@ -1651,6 +1780,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   /* journal (annuler / rétablir) : remet une page de texte dans un état donné — page affichée :
      dans son éditeur (qui enregistre) ; page démontée : directement dans le document */
   restaurerPageRef.current = (pageId, json) => {
+    if (pageId === 'flux') return fluxRef.current ? fluxRef.current.remplacer(json) : undefined;
     const api = pagesTexte.current.get(pageId);
     if (api && api.remplacer) return api.remplacer(json);
     sauverPageTexte(pageId, dehydrateDoc(json || EMPTY_DOC));
@@ -1737,6 +1867,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   };
   const ordrePages = () => pageSizesRef.current.map((p) => p.cle);
   const texteDocument = async () => {
+    if (modeDoc && fluxRef.current && fluxRef.current.editor) { fluxRef.current.vider(); return contenuGlobal({ flux: fluxRef.current.editor.getJSON() }); }
     pagesTexte.current.forEach((api) => api.vider());
     await attendreNotesDoc();
     const r = await lireNotesDoc(ficheId);
@@ -1754,7 +1885,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       if (n.type === 'paragraph' || n.type === 'heading') out.push('\n');
       (n.content || []).forEach(w);
     };
-    ordrePages().forEach((k) => w(corpsPages.current[k]));
+    if (modeDoc && fluxRef.current && fluxRef.current.editor) w(fluxRef.current.editor.getJSON());
+    else ordrePages().forEach((k) => w(corpsPages.current[k]));
     return out.join(' ');
   };
   /* PDF D'UN DOCUMENT : les pages telles qu'à l'écran (texte, surlignages, dessins, formes,
@@ -1770,7 +1902,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const s0 = scaleRef.current || scale, haut0 = el.scrollTop;
     const k = 793.7 / PAGE_A4.width; // largeur de l'A4 en px CSS
     setImpression(true); scaleRef.current = k; setScale(k);
-    const nbTextes = () => pageSizesRef.current.filter((sz) => sz.ajout && (modeDoc || docNonVide(corpsPages.current[sz.cle]))).length;
+    const nbTextes = () => (modeDoc ? 0 : pageSizesRef.current.filter((sz) => sz.ajout && docNonVide(corpsPages.current[sz.cle])).length);
+    if (fluxRef.current) fluxRef.current.vider();
     const t0 = performance.now();
     await new Promise((ok) => {
       const tour = () => {
@@ -1784,9 +1917,23 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     });
     const cont = document.createElement('div');
     cont.className = 'pdfr-impression-pages';
-    el.querySelectorAll('.pdfr-page').forEach((pg) => {
+    /* DOCUMENT : l'export EST l'écran — chaque page reçoit une copie du flux paginé (même DOM,
+       même CSS, mêmes polices, mêmes espaceurs) décalée de la position de la page et rognée
+       à ses bords, sous le calque d'annotations de cette page. Pas de second moteur. */
+    const cadre = modeDoc ? el.querySelector('.pdfr-pages > .pt-flux-cadre') : null;
+    const rc = cadre && cadre.getBoundingClientRect();
+    [...el.querySelectorAll('.pdfr-page')].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top).forEach((pg) => {
       const c = pg.cloneNode(true);
       c.querySelectorAll('.pdfr-ajout-etiquette, .pdfr-selcanvas, canvas').forEach((x) => x.remove());
+      if (cadre) {
+        const rp = pg.getBoundingClientRect();
+        const f = cadre.cloneNode(true);
+        f.classList.add('pt-flux-impression');
+        f.style.top = (rc.top - rp.top) + 'px';
+        f.style.left = (rc.left - rp.left) + 'px';
+        f.style.height = '';
+        c.insertBefore(f, c.firstChild);
+      }
       c.querySelectorAll('[contenteditable]').forEach((x) => x.removeAttribute('contenteditable'));
       cont.appendChild(c);
     });
@@ -1810,12 +1957,24 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   };
   const supprimerPageAjoutee = async (pageRec) => {
     setPageASupprimer(null);
+    if (modeDoc && fluxRef.current) {
+      const k = pageSizesRef.current.findIndex((p) => p.cle === pageRec.id);
+      const { de, a, vide } = blocsDePage(k);
+      if (!vide) fluxRef.current.retirerBlocs(de, a);
+      const cmds = contenuDePage(pageRec.id).map((x) => cmdSupprimer('annotations', x, 'Retrait de la page'));
+      if (cmds.length) await hist.appliquer(cmdGroupe('Annotations de la page retirée', cmds));
+      return;
+    }
     const cmds = [...contenuDePage(pageRec.id), pageRec].map((a) => cmdSupprimer('annotations', a, 'Retrait de la page'));
     if (activeEditId && contenuDePage(pageRec.id).some((a) => a.id === activeEditId)) setActiveEditId(null);
     await hist.appliquer(cmdGroupe('Retrait de la page ajoutée', cmds));
   };
   // page vide : on retire tout de suite (annulable) ; page annotée : on confirme d'abord
-  const demanderSuppressionPage = (pageRec) => (contenuDePage(pageRec.id).length ? setPageASupprimer(pageRec) : supprimerPageAjoutee(pageRec));
+  const demanderSuppressionPage = (pageRec) => {
+    const k = pageSizesRef.current.findIndex((p) => p.cle === pageRec.id);
+    const texte = modeDoc && fluxRef.current && !blocsDePage(k).vide;
+    return contenuDePage(pageRec.id).length || texte ? setPageASupprimer(pageRec) : supprimerPageAjoutee(pageRec);
+  };
   const libellePage = (p, i) => (p.pdf ? `Page ${i + 1}` : `Page ${i + 1} (ajoutée)`);
 
   /* ---- FORMES (03/10) ----
@@ -2177,6 +2336,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   ) : null), [ficheReelle && ficheReelle.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // page (index) du texte qui porte une notion — null si elle est dans l'onglet « Notes »
   const pageDeNotion = (id) => {
+    if (modeDoc && pagination && fluxRef.current && fluxRef.current.editor) {
+      const json = fluxRef.current.editor.getJSON();
+      const i = (json.content || []).findIndex((b) => JSON.stringify(b).includes(id));
+      return i >= 0 && pagination.blocs[i] ? pagination.blocs[i].page : null;
+    }
     const liste = pageSizesRef.current;
     for (let i = 0; i < liste.length; i++) {
       const c = corpsPages.current[liste[i].cle];
@@ -2185,6 +2349,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     return null;
   };
   const allerNotionNotes = (h) => {
+    if (modeDoc && fluxRef.current) {
+      const el = fluxRef.current.allerANotion(h.docNotionId);
+      if (el) { centrerRect(el.getBoundingClientRect()); return; }
+    }
     const i = pageDeNotion(h.docNotionId);
     if (i != null) {
       allerALaPage(i + 1);
@@ -2446,14 +2614,27 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) ajouterImage(f); }} />
           {!pret && !loadError && <div className="gen-spinner" style={{ width: 40, height: 40, margin: '60px auto' }} />}
           {pret && (
-            <div className="pdfr-pages" style={{ height: layout.totalHeight, width: layout.maxWidth, minWidth: '100%' }}>
+            <div className={'pdfr-pages' + (modeDoc ? ' pdfr-pages-doc' : '')} style={{ height: layout.totalHeight, width: layout.maxWidth, minWidth: '100%' }}>
+              {/* DOCUMENT : le texte, UN flux paginé posé sur toutes les pages (jamais virtualisé) */}
+              {modeDoc && fluxInitial && pageSizes.length > 0 && (
+                <DocumentFlux key={'flux:' + ficheId} ref={fluxRef} initial={fluxInitial}
+                  largeurPage={PAGE_A4.width} hauteurPage={PAGE_A4.height} ecart={GAP} echelle={scale}
+                  hauteurTotale={layout.totalHeight} outil={outil} couleurSurligneur={couleurSurligneur} fondNoir={fondNoir}
+                  onSauver={sauverFlux} onActiver={(ed) => { setActiveEditId(null); setEditeurPage({ pageId: 'flux', ed }); }}
+                  onNotion={notionDePage} onFlashcard={flashcardDePage} onJournal={hist.noterPage}
+                  onPagination={(r) => setPagination((p) => (p && p.nbPages === r.nbPages && JSON.stringify(p.blocs) === JSON.stringify(r.blocs) ? p : r))} />
+              )}
               {pageSizes.map((sz, idx) => {
                 const n = sz.cle; // numéro de page du PDF, ou id d'une page ajoutée
                 const top = layout.offsets[idx];
                 const w = sz.width * scale, h = sz.height * scale;
                 const active = impression || (idx >= visibleRange.start && idx <= visibleRange.end);
                 // --k : échelle des annotations (zoom ÷ 160 %), lue par le CSS des repères (épingles, « ? »…)
-                const style = { position: 'absolute', top, left: '50%', transform: 'translateX(-50%)', width: w, height: h, '--k': scale / ECHELLE_REF };
+                // document : PAS de transform sur la page (il en ferait un contexte d'empilement et le
+                // texte du flux, posé dessus, ne pourrait plus passer SOUS les annotations de la page)
+                const style = modeDoc
+                  ? { position: 'absolute', top, left: `calc(50% - ${w / 2}px)`, width: w, height: h, '--k': scale / ECHELLE_REF }
+                  : { position: 'absolute', top, left: '50%', transform: 'translateX(-50%)', width: w, height: h, '--k': scale / ECHELLE_REF };
                 if (!active) return <div key={n} className="pdfr-placeholder" style={style} />;
                 /* INSÉRER UNE PAGE ICI (03/10) : TOUT l'espace entre deux pages est un
                    bouton, sur toute la largeur de la page — on vise large, on voit où la
@@ -2523,7 +2704,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onActivateEdit={setActiveEditId}
                       activeEditor={editor}
                       fondNoir={modeDoc && fondNoir}
-                      corps={sz.ajout && docCharge && (modeDoc || docNonVide(corpsPages.current[n])) ? (
+                      corps={sz.ajout && docCharge && !modeDoc && docNonVide(corpsPages.current[n]) ? (
                         <PageTexte key={'t:' + n} ref={(api) => { if (api) pagesTexte.current.set(n, api); else pagesTexte.current.delete(n); }}
                           pageId={n} initial={corpsPages.current[n] || null} largeur={sz.width} hauteur={sz.height} echelle={scale}
                           outil={outil} couleurSurligneur={couleurSurligneur} focusDemande={focusPages.current[n] ?? null}

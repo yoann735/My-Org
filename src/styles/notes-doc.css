@@ -268,3 +268,50 @@
 .pti-notion.cible { animation: pt-cible 1.6s ease-out; }
 /* résultat de recherche ⌘F dans le texte d'une image */
 .pti-mot::highlight(recherche-doc) { background: rgba(255, 200, 0, .55); }
+
+/* ============================================================
+   MOTEUR PAGINÉ (08/10, pdf/DocumentFlux.jsx + documents/lib/paginationExt.js)
+   Couches d'un document, de bas en haut : fond des pages (.pdfr-page, SANS transform : pas
+   de contexte d'empilement) → le TEXTE, un seul flux (z 1) → annotations de chaque page (z 2).
+   ============================================================ */
+.pdfr-pages > .pt-flux-cadre { position: absolute; top: 0; left: 50%; transform: translateX(-50%); z-index: 1; pointer-events: none; }
+.pt-flux-echelle { box-sizing: border-box; transform-origin: 0 0; pointer-events: auto; cursor: text; }
+.pt-flux-cadre.inerte .pt-flux-echelle { pointer-events: none; }
+.pdfr-page-doc > :not(canvas):not(.pdfr-textlayer):not(.pdfr-hlayer):not(.pdfr-selcanvas) { z-index: 2; }
+.pdfr-pages-doc > .pdfr-inter { z-index: 3; } /* « insérer une page ici », entre deux pages */
+.pdfr-page-doc > canvas { visibility: hidden; } /* page blanche : le fond de .pdfr-page suffit */
+/* blocs du flux : AUCUNE marge (pas de fusion de marges entre blocs) — l'espacement est en
+   padding, compté dans offsetHeight : hauteur mesurée = place réellement occupée */
+.pt-flux { min-height: 0; }
+.pt-flux > * { margin-top: 0 !important; margin-bottom: 0 !important; }
+.pt-flux > p { padding-bottom: .55em; }
+.pt-flux > h1 { padding: .9em 0 .4em; }
+.pt-flux > h2 { padding: .85em 0 .35em; }
+.pt-flux > h3 { padding: .8em 0 .3em; }
+.pt-flux > :is(ul, ol) { padding-bottom: .55em; }
+.pt-flux > blockquote { padding-bottom: .15em; border-bottom: .55em solid transparent; background-clip: padding-box; }
+.pt-flux > hr { border: none; height: 2.2em; background: linear-gradient(#d9d9e0, #d9d9e0) center / 100% 1px no-repeat; }
+.pt-flux > .tableWrapper { padding: .5em 0 .8em; }
+.pt-flux > .tableWrapper table { margin: 0; }
+.pt-flux > .pti { padding: 6px 0; }
+.pt-flux > pre { padding-bottom: .55em; }
+/* espaceurs de pagination : de la place, rien d'autre */
+.pt-saut, .pt-saut-ligne { display: block; pointer-events: none; user-select: none; -webkit-user-select: none; }
+/* saut de page (⌘Entrée, « Insérer une page ») : un trait discret, jamais imprimé */
+.pt-saut-page { position: relative; height: 0; border-top: 1px dashed rgba(107, 92, 255, .45); }
+.pt-saut-page > span { position: absolute; right: 0; top: 2px; font-size: 9px; line-height: 1; color: rgba(107, 92, 255, .7); user-select: none; }
+.pt-saut-page.ProseMirror-selectednode { border-top-color: #6b5cff; }
+/* fond noir du document */
+.pt-flux-cadre.fond-noir .pt-flux { filter: invert(1) hue-rotate(180deg); }
+.pt-flux-cadre.fond-noir .pt-flux :is(img, mark, .pti-notion) { filter: invert(1) hue-rotate(180deg); }
+/* impression (export PDF) : aucun élément d'interface */
+@media print {
+  .pti-ocr, .pti-poignee, .pti-barre, .pti-depot, .pt-saut-page > span { display: none !important; }
+  .pt-saut-page { border-top-color: transparent !important; }
+  .pti.sel .pti-cadre > img { outline: none !important; }
+  .pti.texte-actif .pti-mot { background: none !important; box-shadow: none !important; }
+  .pti.texte-actif .pti-cadre > img { filter: none !important; }
+}
+/* export : la copie du flux posée dans chaque page (voir imprimerDocument) */
+.pdfr-impression-pages .pt-flux-impression { position: absolute !important; transform: none !important; z-index: 1; pointer-events: none; }
+.pdfr-impression-pages .pdfr-page-doc { overflow: hidden !important; }
