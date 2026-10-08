@@ -37,7 +37,7 @@ import { advanceQuestion, QUALITY, todayISO } from '../lib/sm2.js';
 import { index, isFicheScheduled, nextDate } from '../lib/planning.js';
 import {
   planDuJour, introduire, presenter, repondre, apresNotationJ, entrelacer, reinserer, DISTANCE,
-  estFlashcardJ, etatFC, reglagesFC,
+  estFlashcardJ, etatFC, reglagesFC, sortir, VERSION_MESURES,
 } from '../lib/apprentissageFC.js';
 
 export const CLE_SEANCE = 'seanceFC';
@@ -70,8 +70,10 @@ function nouvelEtat(db, reglages, today) {
       date: today, phase: revisions.length ? 'revisions' : apprendre.length ? 'apprendre' : 'fin',
       revisions, revIdx: 0, file: apprendre, nApprendre: apprendre.length, nNouvelles: plan.nouvelles.length,
       faites: { revisions: 0, apprises: 0, rates: 0 }, ms: { revisions: 0, apprendre: 0 }, testsFaits: 0, debut: new Date().toISOString(),
+      presentees: [], echecs: [], // v1.1 : retour en fin de paquet d'une carte réussie du premier coup après sa présentation
     },
     aIntroduire: plan.nouvelles,
+    aSortir: plan.aSortir, // v1.1 : déjà au critère (2 succès) → sortent sans repasser
   };
 }
 
@@ -132,8 +134,12 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false, bloc: blocPro
         if (vivant) { depuis.current = Date.now(); await ecrire(e); }
         return;
       }
-      const { etat: e0, aIntroduire } = nouvelEtat(ctx.db, ctx.reglagesFC, today);
+      const { etat: e0, aIntroduire, aSortir } = nouvelEtat(ctx.db, ctx.reglagesFC, today);
       const e = { ...e0, bloc, phase: phaseDepart(e0, bloc) };
+      if (aSortir.length) {
+        const maj = await putMany('questions', aSortir.map((q) => sortir(q, today)));
+        if (vivant) setCartes((c) => ({ ...c, ...Object.fromEntries(maj.map((q) => [q.id, q])) }));
+      }
       if (aIntroduire.length) {
         const maj = await putMany('questions', aIntroduire.map((q) => introduire(q, reglages, today)));
         if (vivant) setCartes((c) => ({ ...c, ...Object.fromEntries(maj.map((q) => [q.id, q])) }));
@@ -148,7 +154,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false, bloc: blocPro
     if (!etat || etat.phase !== 'fin' || etat.mesuree) return;
     (async () => {
       const m = (await getMeta(CLE_MESURES)) || [];
-      m.push({ date: today, nRevisions: etat.faites.revisions, msRevisions: etat.ms.revisions, nApprendre: etat.nApprendre, msApprendre: etat.ms.apprendre });
+      m.push({ v: VERSION_MESURES, date: today, nRevisions: etat.faites.revisions, msRevisions: etat.ms.revisions, nApprendre: etat.nApprendre, msApprendre: etat.ms.apprendre });
       await setMeta(CLE_MESURES, m.slice(-20));
       await ecrire({ ...etat, mesuree: true });
     })();
@@ -189,12 +195,18 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false, bloc: blocPro
   };
   const compris = async () => {
     const maj = await enregistrerCarte(presenter(cartes[appId]));
-    await ecrire(await avancerFile(maj, DISTANCE.presentation));
+    const e = await avancerFile(maj, DISTANCE.presentation);
+    await ecrire({ ...e, presentees: [...(e.presentees || []), maj.id] });
   };
   const reponse = async (su) => {
-    const { carte: maj, sortie } = repondre(cartes[appId], su, ctx.reglagesFC, today);
+    const avant = cartes[appId];
+    const e0 = etatRef.current;
+    // réussie du PREMIER coup juste après sa présentation : la 2e vérification se fait en fin de paquet
+    const premierCoup = su && (avant.learningStreak || 0) === 0 && (e0.presentees || []).includes(appId) && !(e0.echecs || []).includes(appId);
+    const { carte: maj, sortie } = repondre(avant, su, ctx.reglagesFC, today);
     const s = await enregistrerCarte(maj);
-    let e = await avancerFile(s, sortie ? null : (su ? DISTANCE.su : DISTANCE.pasSu));
+    let e = await avancerFile(s, sortie ? null : !su ? DISTANCE.pasSu : premierCoup ? DISTANCE.finDePaquet : DISTANCE.su);
+    if (!su) e = { ...e, echecs: [...(e.echecs || []), appId] };
     e = { ...e, testsFaits: (e.testsFaits || 0) + 1, faites: { ...e.faites, apprises: e.faites.apprises + (sortie ? 1 : 0) } };
     await ecrire(e);
   };

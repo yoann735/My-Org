@@ -2,11 +2,11 @@
    MedRevise — Réglages : gestion des cours (sources) + matières,
    rappels J, archivage ; profil ; méthode des J ; objectif ; reset.
    ============================================================ */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, Switch, matiereMeta, syncStatusLabel, SyncIndicator } from '../components/ui.jsx';
 import { isClassicUI, setClassicUI } from '../../shared/uiMode.js';
-import { wipeAll } from '../lib/storage.js';
+import { wipeAll, getMeta } from '../lib/storage.js';
 import { exportBackup, formatOctets } from '../lib/backupExport.js';
 import { CarteCredits } from '../transcription/Credits.jsx';
 import { CarteOcrReglages } from '../ocr/PanneauOcr.jsx';
@@ -417,10 +417,13 @@ export function Reglages({ ctx }) {
   );
 }
 
-/* apprentissage des flashcards (lib/apprentissageFC.js) : trois réglages, synchronisés
-   entre appareils (storage.js setReglagesFC). Rien d'autre. */
+/* apprentissage des flashcards (lib/apprentissageFC.js) : UN critère (v1.1 : 2 par défaut, le même
+   après un raté ; plus de quota de nouvelles), synchronisé entre appareils (storage.js setReglagesFC). */
 function ReglagesApprentissageFC({ ctx }) {
   const r = reglagesFC(ctx.reglagesFC);
+  // bilan du passage à la v1.1 (lib/migrate.js) : cartes rattrapées, cartes sorties sans repasser
+  const [v11, setV11] = useState(null);
+  useEffect(() => { getMeta('migration.apprentissage-flashcards-v1.1').then((x) => setV11(x || null)).catch(() => {}); }, []);
   const champ = (cle, libelle, aide) => (
     <label className="rfc-champ">
       <span className="rfc-libelle">{libelle}<span className="hint">{aide}</span></span>
@@ -431,13 +434,14 @@ function ReglagesApprentissageFC({ ctx }) {
   );
   return (
     <div className="rfc">
-      {champ('quotaNouvelles', 'Nouvelles cartes par jour', `${BORNES_FC.quotaNouvelles[0]} à ${BORNES_FC.quotaNouvelles[1]} — au-delà, elles passent au lendemain`)}
-      {champ('critere', 'Critère de succès', 'succès consécutifs pour sortir de l’apprentissage (2 à 5)')}
-      {champ('critereApresRate', 'Critère après un raté', 'pour une carte ratée en révision (1 à 5)')}
+      {champ('critere', 'Critère de succès', `succès consécutifs pour sortir de l’apprentissage — aussi après un raté en révision (${BORNES_FC.critere[0]} à ${BORNES_FC.critere[1]})`)}
       <label className="rfc-champ rfc-bascule">
         <span className="rfc-libelle">Carte Muscle : révéler ligne par ligne<span className="hint">au retournement, les 5 lignes sont masquées ; touche une ligne pour la voir, ou « Tout révéler »</span></span>
         <input type="checkbox" checked={r.muscleLigneParLigne} onChange={(e) => ctx.saveReglagesFC({ ...r, muscleLigneParLigne: e.target.checked })} />
       </label>
+      <div className="hint rfc-v11">Plus de quota : une carte entre dans « Apprendre » le jour de sa date de départ.
+        {v11 && <> Passage à cette règle sur cet appareil : <b className="tnum">{v11.rattrapees}</b> carte{v11.rattrapees > 1 ? 's' : ''} retenue{v11.rattrapees > 1 ? 's' : ''} par l’ancien quota {v11.rattrapees > 1 ? 'sont revenues' : 'est revenue'} dans Apprendre (date de départ d’origine conservée) · <b className="tnum">{v11.sortiesSansRepasser}</b> déjà à 2 succès sortie{v11.sortiesSansRepasser > 1 ? 's' : ''} sans repasser.</>}
+      </div>
     </div>
   );
 }

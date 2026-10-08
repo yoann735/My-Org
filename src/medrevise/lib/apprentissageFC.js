@@ -10,39 +10,45 @@
    Cycle de vie d'une flashcard (`learnState`) :
      new       créée, date de départ (`dueDate` posé par startAdaptive) pas encore
                atteinte — n'apparaît nulle part ;
-     learning  le jour venu, entre dans le bloc « Apprendre » de la séance du jour ;
-               y reste jusqu'à `learningCriterion` succès consécutifs ;
+     learning  le jour venu (sa date de départ), entre dans le bloc « Apprendre » de la
+               séance du jour — SANS quota (v1.1, 08/10) : toutes les cartes du jour ;
+               y reste jusqu'à `critere` succès consécutifs (2 par défaut, un seul réglage) ;
      review    dans la méthode des J (inchangée), première échéance à J+1.
      Retour    un « Raté » en révision → advanceQuestion (intervalles inchangés)
-               PUIS learning, critère 2, à partir du lendemain ; à sa sortie, J+1.
+               PUIS learning, même critère, à partir du lendemain ; à sa sortie, J+1.
 
    Champs ajoutés aux cartes (ajouts purs, jamais de contenu modifié) :
      learnState            'new' | 'learning' | 'review'
      learningStreak        succès consécutifs actuels
-     learningCriterion     succès consécutifs requis (3 par défaut, 2 après un raté)
+     learningCriterion     critère au moment de l'entrée (informatif : depuis la v1.1, c'est le
+                           réglage courant qui décide, pour toutes les cartes)
      learningPresented     la carte a déjà été montrée recto + verso
      lastSeenAt            ISO de la dernière vue dans la séance
      learningIntroducedOn  jour où la carte est entrée dans le bloc Apprendre
      learningDue           jour à partir duquel elle y est attendue (raté → demain)
-     learningSource        'nouvelle' (compte dans le quota) | 'rate' (hors quota)
+     learningSource        'nouvelle' | 'rate' (redescendue après un raté en révision)
 
    Une carte SANS `learnState` (créée par un appareil pas encore à jour, ou pas
    encore migrée) est classée à la volée par les MÊMES règles que la migration.
    ============================================================ */
 import { todayISO, isoDate, INTERVAL_START, QUALITY } from './sm2.js';
 
-export const REGLAGES_FC_DEFAUT = { quotaNouvelles: 15, critere: 3, critereApresRate: 2 };
-export const BORNES_FC = { quotaNouvelles: [5, 50], critere: [2, 5], critereApresRate: [1, 5] };
-// estimation du temps de séance tant qu'il n'y a pas assez de mesures réelles
-export const TEMPS_DEFAUT_MS = { revision: 15000, nouvelle: 70000 };
-// distances de réinsertion dans la file du bloc Apprendre (nombre de cartes vues avant le retour)
-export const DISTANCE = { pasSu: [3, 4], su: [8, 10], presentation: [3, 4] };
+/* v1.1 (08/10) : critère 2 (plage 1–5), un seul réglage (le même après un raté) ; plus AUCUN
+   quota de nouvelles cartes — une carte entre dans Apprendre le jour de sa date de départ. */
+export const REGLAGES_FC_DEFAUT = { critere: 2 };
+export const BORNES_FC = { critere: [1, 5] };
+// estimation du temps de séance tant qu'il n'y a pas assez de mesures réelles (critère 2 : ≈ 45 s par nouvelle)
+export const TEMPS_DEFAUT_MS = { revision: 15000, nouvelle: 45000 };
+export const VERSION_MESURES = 2; // mesures de séance prises avec le critère 2 (les anciennes, critère 3, sont ignorées)
+// distances de réinsertion dans la file du bloc Apprendre (nombre de cartes vues avant le retour) ;
+// une carte réussie du PREMIER coup après sa présentation repasse en FIN de paquet (v1.1)
+export const DISTANCE = { pasSu: [3, 4], su: [8, 10], presentation: [3, 4], finDePaquet: [Infinity, Infinity] };
 
 export function reglagesFC(brut) {
   const r = { ...REGLAGES_FC_DEFAUT, ...(brut || {}) };
   const borne = (k) => Math.min(BORNES_FC[k][1], Math.max(BORNES_FC[k][0], Math.round(Number(r[k]) || REGLAGES_FC_DEFAUT[k])));
   return {
-    quotaNouvelles: borne('quotaNouvelles'), critere: borne('critere'), critereApresRate: borne('critereApresRate'),
+    critere: borne('critere'),
     // carte Muscle (lib/muscle.js) : verso révélé ligne par ligne — actif sauf choix contraire
     muscleLigneParLigne: r.muscleLigneParLigne !== false,
   };
@@ -92,21 +98,19 @@ export function planDuJour(cartes, reglagesBruts, today = todayISO(), dateDue = 
     return d != null && d <= today && q.skippedOn !== today;
   });
   const learning = fc.filter((q) => etatFC(q, today) === 'learning');
-  // déjà entrées dans la séance (non terminées la veille, ou redescendues après un raté) : hors quota
-  const enCours = learning.filter((q) => commencee(q) && (q.learningDue || q.learningIntroducedOn) <= today);
-  // nouvelles du jour : plus anciennes d'abord, plafonnées par ce qui reste du quota
-  const fraiches = learning.filter((q) => !commencee(q))
+  // déjà entrées dans Apprendre (non terminées la veille, ou redescendues après un raté)
+  const attendues = learning.filter((q) => commencee(q) && (q.learningDue || q.learningIntroducedOn) <= today);
+  // v1.1 : une carte qui a DÉJÀ le nombre de succès requis (critère abaissé de 3 à 2) sort sans repasser
+  const aSortir = attendues.filter((q) => (q.learningStreak || 0) >= reg.critere);
+  const enCours = attendues.filter((q) => (q.learningStreak || 0) < reg.critere);
+  // nouvelles du jour : TOUTES celles dont la date de départ est arrivée (plus de quota), plus anciennes d'abord
+  const nouvelles = learning.filter((q) => !commencee(q))
     .sort((a, b) => ((a.dueDate || '') < (b.dueDate || '') ? -1 : (a.dueDate || '') > (b.dueDate || '') ? 1 : String(a.id) < String(b.id) ? -1 : 1));
-  const dejaIntroduites = fc.filter((q) => q.learningIntroducedOn === today && q.learningSource === 'nouvelle').length;
-  const place = Math.max(0, reg.quotaNouvelles - dejaIntroduites);
-  const nouvelles = fraiches.slice(0, place);
-  const glissent = fraiches.length - nouvelles.length;
-  return { revisions, enCours, nouvelles, glissent, reglages: reg };
+  return { revisions, enCours, nouvelles, aSortir, reglages: reg };
 }
 
 /** prochaine date où il y aura quelque chose à faire (écran « Rien à faire aujourd'hui »). */
 export function prochaineSeance(cartes, plan, today = todayISO(), dateDue = (q) => q.dueDate) {
-  if (plan && plan.glissent > 0) return ajouterJours(today, 1);
   let min = null;
   const garder = (d) => { if (d && d > today && (!min || d < min)) min = d; };
   (cartes || []).filter(estFlashcardJ).forEach((q) => {
@@ -121,11 +125,11 @@ export function prochaineSeance(cartes, plan, today = todayISO(), dateDue = (q) 
 /* ============================================================
    TRANSITIONS (pures) — renvoient la carte modifiée, à enregistrer par l'appelant.
    ============================================================ */
-/** la carte entre dans le bloc Apprendre de la séance du jour (nouvelle, quota). */
+/** la carte entre dans le bloc Apprendre de la séance du jour (nouvelle, le jour de sa date de départ). */
 export function introduire(q, reg, today = todayISO()) {
   return {
     ...q, learnState: 'learning', learningIntroducedOn: today, learningDue: today, learningSource: 'nouvelle',
-    learningCriterion: q.learningCriterion || reglagesFC(reg).critere,
+    learningCriterion: reglagesFC(reg).critere,
     learningStreak: q.learningStreak || 0, learningPresented: !!q.learningPresented,
   };
 }
@@ -137,17 +141,19 @@ export function presenter(q, maintenant = new Date().toISOString()) {
 
 /** réponse à un test du bloc Apprendre. `{ carte, sortie }` — sortie = critère atteint → J+1. */
 export function repondre(q, su, reg, today = todayISO(), maintenant = new Date().toISOString()) {
-  const critere = q.learningCriterion || reglagesFC(reg).critere;
+  // v1.1 : le RÉGLAGE courant décide pour toutes les cartes (un critère 3 posé avant n'oblige plus à 3)
+  const critere = reglagesFC(reg).critere;
   if (!su) return { carte: { ...q, learningStreak: 0, learningPresented: true, lastSeenAt: maintenant }, sortie: false };
   const streak = (q.learningStreak || 0) + 1;
   if (streak < critere) return { carte: { ...q, learningStreak: streak, learningPresented: true, lastSeenAt: maintenant }, sortie: false };
-  // sortie : la méthode des J prend le relais, première échéance au lendemain
+  return { carte: sortir({ ...q, lastSeenAt: maintenant }, today), sortie: true };
+}
+
+/** sortie d'apprentissage : la méthode des J prend le relais, première échéance au lendemain */
+export function sortir(q, today = todayISO()) {
   return {
-    carte: {
-      ...q, learnState: 'review', learningStreak: 0, learningPresented: true, lastSeenAt: maintenant, learningDoneOn: today,
-      intervalDays: INTERVAL_START, dueDate: ajouterJours(today, 1), capped: false, termine: false,
-    },
-    sortie: true,
+    ...q, learnState: 'review', learningStreak: 0, learningPresented: true, learningDoneOn: today,
+    intervalDays: INTERVAL_START, dueDate: ajouterJours(today, 1), capped: false, termine: false,
   };
 }
 
@@ -157,7 +163,7 @@ export function apresNotationJ(apres, quality, reg, today = todayISO()) {
   if (!estFlashcardJ(apres) || quality !== QUALITY.rate) return apres;
   return {
     ...apres, learnState: 'learning', learningStreak: 0, learningPresented: true,
-    learningCriterion: reglagesFC(reg).critereApresRate, learningSource: 'rate',
+    learningCriterion: reglagesFC(reg).critere, learningSource: 'rate',
     learningIntroducedOn: today, learningDue: ajouterJours(today, 1),
   };
 }
@@ -189,12 +195,14 @@ export function entrelacer(ids, coursDe, rand = Math.random) {
 }
 
 /** remet `id` dans `file` (cartes restantes, sans elle) à la position `k` tirée dans
-   la plage — k autres cartes passent avant son retour. File trop courte → en fin de file.
+   la plage — k autres cartes passent avant son retour. File trop courte → en fin de file
+   (plage DISTANCE.finDePaquet : toujours en fin de file).
    Parmi les positions de la plage, préfère celle qui évite de coller deux cartes du même
    cours. L'écart réellement vécu vaut k, ou PLUS si d'autres cartes sont ensuite
    réinsérées devant elle (jamais moins : seule la tête de file sort de la file). */
 export function reinserer(file, id, plage, coursDe, rand = Math.random) {
   const f = file.slice();
+  if (!Number.isFinite(plage[0])) { f.push(id); return f; }
   const k = hasard(rand, plage);
   if (f.length < k) { f.push(id); return f; }
   const c = coursDe(id);
@@ -210,14 +218,16 @@ export function reinserer(file, id, plage, coursDe, rand = Math.random) {
    TEMPS : estimation, recalibrée sur les séances réelles
    ============================================================ */
 export function estimationMs(nRevisions, nApprendre, mesures) {
-  const m = (mesures || []).slice(-10);
-  const moy = (champN, champMs, defaut) => {
+  const toutes = (mesures || []).slice(-10);
+  // apprentissage : seules les séances au critère actuel (v1.1) comptent — celles au critère 3 surestiment
+  const recentes = (mesures || []).filter((x) => (x.v || 1) >= VERSION_MESURES).slice(-10);
+  const moy = (m, champN, champMs, defaut) => {
     const util = m.filter((x) => x[champN] > 0);
     if (util.length < 3) return defaut; // « après quelques séances »
     const n = util.reduce((s, x) => s + x[champN], 0);
     const ms = util.reduce((s, x) => s + x[champMs], 0);
     return n ? ms / n : defaut;
   };
-  return nRevisions * moy('nRevisions', 'msRevisions', TEMPS_DEFAUT_MS.revision)
-    + nApprendre * moy('nApprendre', 'msApprendre', TEMPS_DEFAUT_MS.nouvelle);
+  return nRevisions * moy(toutes, 'nRevisions', 'msRevisions', TEMPS_DEFAUT_MS.revision)
+    + nApprendre * moy(recentes, 'nApprendre', 'msApprendre', TEMPS_DEFAUT_MS.nouvelle);
 }

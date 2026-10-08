@@ -1,7 +1,7 @@
 /* ============================================================
    MedRevise — en-tête « Aujourd'hui » de la séance de flashcards (06/10/2026,
-   docs/compte-rendu-apprentissage-flashcards.md) : « 23 à réviser · 15 nouvelles
-   · ≈ 22 min » et UN bouton. Reprise le même jour ; « Rien à faire aujourd'hui »
+   docs/compte-rendu-apprentissage-flashcards.md) : « 23 à réviser · 41 à apprendre
+   · ≈ 35 min » (v1.1 : plus de quota de nouvelles) et UN bouton. Reprise le même jour ; « Rien à faire aujourd'hui »
    avec la date de la prochaine séance sinon. Accueil mobile + panneau du lecteur
    (Exercices → Flashcards).
    ============================================================ */
@@ -72,16 +72,12 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
   }
   const morceaux = [
     nRev > 0 && `${nRev} à réviser`,
-    nNouv > 0 && `${nNouv} nouvelle${nNouv > 1 ? 's' : ''}`,
-    nEnCours > 0 && `${nEnCours} à reprendre`,
+    nNouv + nEnCours > 0 && `${nNouv + nEnCours} à apprendre`,
   ].filter(Boolean);
   return (
     <div className={cls}>
       <div className="sfa-titre">Aujourd'hui</div>
       <div className="sfa-ligne"><span className="tnum">{morceaux.join(' · ')} · ≈ {minutes} min</span></div>
-      {plan.glissent > 0 && (
-        <div className="sfa-note">{plan.glissent} nouvelle{plan.glissent > 1 ? 's' : ''} au-delà du quota ({plan.reglages.quotaNouvelles}/jour) : {plan.glissent > 1 ? 'elles passent' : 'elle passe'} à demain.</div>
-      )}
       <button type="button" className="sfa-btn" onClick={() => onDemarrer('tout')} title="Révisions puis apprentissage"><Icon name="play" size={16} fill /> Démarrer la séance</button>
       {choixBloc(nRev, nNouv + nEnCours)}
     </div>
