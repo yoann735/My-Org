@@ -335,4 +335,4 @@ La migration a été rejouée au rechargement, comme chez toi.
 | Commit | Message |
 |---|---|
 | `0a25988` | feat(medrevise): apprentissage des flashcards v1.1 — critère 2, plus aucun quota de nouvelles cartes |
-| (ce commit) | docs(medrevise): compte-rendu v1.1 — critère 2, sans quota |
+| `c51e7f1` | docs(medrevise): compte-rendu v1.1 — critère 2, sans quota |
