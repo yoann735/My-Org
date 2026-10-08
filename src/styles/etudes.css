@@ -2370,3 +2370,13 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .fc-theme-aide { margin-top: 5px; }
 /* les retours à la ligne saisis se voient aussi dans la liste du panneau et l'aperçu */
 .pis-face { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---- séance des J : un bloc seul / basculer (08/10) ---- */
+.sfa-blocs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 3px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--border-2); }
+.sfa-bloc { min-height: 40px; border: none; border-radius: 9px; background: transparent; color: var(--text-2); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.sfa-bloc .tnum { color: var(--text-3); font-weight: 500; }
+.sfa-bloc:hover:not(:disabled) { background: var(--card); color: var(--text); }
+.sfa-bloc:disabled { opacity: .45; cursor: default; }
+.sfc-basculer { flex: 0 0 auto; min-height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border-2); background: transparent; color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.sfc-basculer:hover { color: var(--text); background: var(--bg-2); }
+@media (max-width: 600px) { .sfc-tete { flex-wrap: wrap; } .sfc-basculer { order: 3; width: 100%; } }

@@ -12,6 +12,14 @@
    la progression de chaque carte (streak, présentée, état) est écrite sur la carte
    elle-même, donc synchronisée.
    Partagé bureau / mobile : `onQuit` (mobile) ou ctx.endSeanceFC (bureau).
+
+   UN BLOC SEUL, OU BASCULER (08/10, docs/compte-rendu-tablette-document-transcript.md) :
+   `bloc` = 'tout' (révisions puis apprentissage, comme avant) | 'revisions' | 'apprendre'.
+   Les deux blocs vivent dans le MÊME état (révisions + position, file d'apprentissage) :
+   « Passer à l'apprentissage » / « Revenir aux révisions » ne fait que changer de phase —
+   rien n'est perdu ni recompté, la notation, le paquet à 3 succès et la réinsertion ne
+   changent pas. Un bloc fini alors que l'autre a encore des cartes → écran « bloc
+   terminé » (phase 'pause-bloc') : la séance n'est PAS close, elle se reprend plus tard.
    ============================================================ */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -63,8 +71,20 @@ function nouvelEtat(db, reglages, today) {
   };
 }
 
-export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
+/** cartes encore à faire dans chaque bloc */
+const resteRevisions = (e) => (e.revisions || []).length - (e.revIdx || 0);
+const resteApprendre = (e) => (e.file || []).length;
+/** phase d'entrée selon le bloc choisi (si ce bloc est vide, l'autre ; rien → fin) */
+function phaseDepart(e, bloc) {
+  const r = resteRevisions(e) > 0, a = resteApprendre(e) > 0;
+  if (bloc === 'apprendre') return a ? 'apprendre' : r ? 'revisions' : 'fin';
+  if (bloc === 'revisions') return r ? 'revisions' : a ? 'apprendre' : 'fin';
+  return r ? 'revisions' : a ? 'apprendre' : 'fin';
+}
+
+export function SeanceFC({ ctx, onQuit = null, pleinEcran = false, bloc: blocProp = null }) {
   const quitter = onQuit || ctx.endSeanceFC;
+  const bloc = blocProp || ctx.blocSeanceFC || 'tout';
   const today = useMemo(() => todayISO(), []);
   const reglages = reglagesFC(ctx.reglagesFC);
   const [etat, setEtat] = useState(null); // null = chargement
@@ -102,10 +122,14 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
         const c = cartesRef.current;
         const e = { ...sauve, file: (sauve.file || []).filter((id) => c[id] && etatFC(c[id], today) === 'learning') };
         if ((e.revisions || []).slice(e.revIdx).filter((id) => c[id]).length === 0 && e.phase === 'revisions') e.phase = e.file.length ? 'apprendre' : 'fin';
+        e.bloc = bloc;
+        // reprise : on entre par le bloc demandé (« Reprendre » = là où l'on s'était arrêté)
+        if (bloc !== 'tout' || e.phase === 'pause-bloc' || e.phase === 'transition') e.phase = bloc === 'tout' ? phaseDepart(e, e.phase === 'transition' ? 'apprendre' : 'tout') : phaseDepart(e, bloc);
         if (vivant) { depuis.current = Date.now(); await ecrire(e); }
         return;
       }
-      const { etat: e, aIntroduire } = nouvelEtat(ctx.db, ctx.reglagesFC, today);
+      const { etat: e0, aIntroduire } = nouvelEtat(ctx.db, ctx.reglagesFC, today);
+      const e = { ...e0, bloc, phase: phaseDepart(e0, bloc) };
       if (aIntroduire.length) {
         const maj = await putMany('questions', aIntroduire.map((q) => introduire(q, reglages, today)));
         if (vivant) setCartes((c) => ({ ...c, ...Object.fromEntries(maj.map((q) => [q.id, q])) }));
@@ -145,7 +169,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
     maj = apresNotationJ(maj, quality, ctx.reglagesFC, today);
     await enregistrerCarte(maj);
     e = { ...e, revIdx: e.revIdx + 1, faites: { ...e.faites, revisions: e.faites.revisions + 1, rates: e.faites.rates + (rating === 'fail' ? 1 : 0) } };
-    if (e.revIdx >= e.revisions.length) e = { ...e, phase: e.file.length ? 'transition' : 'fin' };
+    if (e.revIdx >= e.revisions.length) e = { ...e, phase: !e.file.length ? 'fin' : e.bloc === 'revisions' ? 'pause-bloc' : 'transition' };
     setRetournee(false);
     await ecrire(e);
   };
@@ -155,7 +179,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
     let e = tick();
     const reste = e.file.slice(1);
     const file = plage ? reinserer(reste, maj.id, plage, coursDe) : reste;
-    e = { ...e, file, phase: file.length ? 'apprendre' : 'fin' };
+    e = { ...e, file, phase: file.length ? 'apprendre' : resteRevisions(e) > 0 ? 'pause-bloc' : 'fin' };
     setRetournee(false);
     return e;
   };
@@ -171,8 +195,18 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
     await ecrire(e);
   };
 
+  /* basculer d'un bloc à l'autre en cours de séance : l'état du bloc quitté est gardé tel quel */
+  const basculer = async (vers) => {
+    const e = tick() || etatRef.current;
+    setRetournee(false);
+    depuis.current = Date.now();
+    await ecrire({ ...e, phase: vers });
+  };
+
   const nRev = etat.revisions.length;
   const enApprendre = etat.phase === 'apprendre';
+  const autreBloc = etat.phase === 'revisions' && resteApprendre(etat) > 0 ? { vers: 'apprendre', label: `Passer à l’apprentissage (${resteApprendre(etat)})` }
+    : enApprendre && resteRevisions(etat) > 0 ? { vers: 'revisions', label: `Revenir aux révisions (${resteRevisions(etat)})` } : null;
   const presentation = enApprendre && carte && !carte.learningPresented;
   const progression = etat.phase === 'revisions' ? `Révisions · ${etat.revIdx + 1} / ${nRev}`
     : enApprendre ? `Apprendre · ${etat.file.length} restante${etat.file.length > 1 ? 's' : ''}` : '';
@@ -185,7 +219,24 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
         <button type="button" className="sfc-quitter" onClick={terminer} aria-label="Quitter la séance" title="Quitter (la séance reprend où tu t'es arrêté)"><Icon name="x" size={18} /></button>
         <div className="sfc-barre"><span style={{ width: Math.max(0, Math.min(100, pct)) + '%' }} /></div>
         <span className="sfc-prog tnum">{progression}</span>
+        {autreBloc && <button type="button" className="sfc-basculer" onClick={() => basculer(autreBloc.vers)}
+          title="L’état du bloc en cours est gardé : tu le reprends où tu l’as laissé">{autreBloc.label}</button>}
       </div>
+
+      {etat.phase === 'pause-bloc' && (
+        <div className="sfc-centre sfc-transition">
+          <div className="sfc-titre">{resteRevisions(etat) > 0 ? 'Apprentissage terminé' : 'Révisions terminées'} <span className="sfc-ok">✓</span></div>
+          <div className="hint">
+            {resteRevisions(etat) > 0
+              ? `Il reste ${resteRevisions(etat)} révision${resteRevisions(etat) > 1 ? 's' : ''} aujourd’hui.`
+              : `Il reste ${resteApprendre(etat)} carte${resteApprendre(etat) > 1 ? 's' : ''} à apprendre aujourd’hui.`}
+          </div>
+          <button type="button" className="sfc-btn principal" onClick={() => basculer(resteRevisions(etat) > 0 ? 'revisions' : 'apprendre')}>
+            {resteRevisions(etat) > 0 ? 'Faire les révisions' : 'Commencer l’apprentissage'}
+          </button>
+          <button type="button" className="sfc-btn neutre" onClick={terminer}>Plus tard</button>
+        </div>
+      )}
 
       {etat.phase === 'fin' && (
         <div className="sfc-centre sfc-synthese">

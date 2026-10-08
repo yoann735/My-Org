@@ -114,6 +114,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // apprentissage des flashcards (lib/apprentissageFC.js) : réglages synchronisés + écran de retour
   const [reglagesFC, setReglagesFCState] = useState(null);
   const [retourSeanceFC, setRetourSeanceFC] = useState(null);
+  const [blocSeanceFC, setBlocSeanceFC] = useState('tout'); // 'tout' | 'revisions' | 'apprendre' (08/10)
   const [feynman, setFeynman] = useState(null);
   const [exercice, setExercice] = useState(null); // { items:[exercice], title }
   const [anatQuiz, setAnatQuiz] = useState(null); // { fiche, mode:'total'|'random', proportion }
@@ -239,7 +240,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // ---- apprentissage des flashcards : séance quotidienne (session/SeanceFC.jsx) ----
     reglagesFC,
     saveReglagesFC: async (r) => { setReglagesFCState(await setReglagesFC(r)); },
-    startSeanceFC: () => { setRetourSeanceFC(screen === 'seancefc' ? retourSeanceFC : screen); setScreen('seancefc'); },
+    blocSeanceFC,
+    startSeanceFC: (bloc = 'tout') => { setBlocSeanceFC(typeof bloc === 'string' ? bloc : 'tout'); setRetourSeanceFC(screen === 'seancefc' ? retourSeanceFC : screen); setScreen('seancefc'); },
     endSeanceFC: () => { setScreen(retourSeanceFC || 'dashboard'); setRetourSeanceFC(null); },
 
     // ---- session lifecycle ----

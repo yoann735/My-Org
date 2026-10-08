@@ -38,13 +38,25 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
 
   if (sauve === undefined) return null;
   const cls = 'sfa' + (compact ? ' compact' : '');
+  /* (08/10) à côté du bouton : lancer UN bloc seul — « Révisions (23) · Apprentissage (15) » */
+  const choixBloc = (nR, nA) => (
+    <div className="sfa-blocs" role="group" aria-label="Lancer un seul bloc">
+      <button type="button" className="sfa-bloc" disabled={!nR} onClick={() => onDemarrer('revisions')} title="Seulement les révisions du jour (méthode des J)">
+        Révisions <span className="tnum">({nR})</span>
+      </button>
+      <button type="button" className="sfa-bloc" disabled={!nA} onClick={() => onDemarrer('apprendre')} title="Seulement l’apprentissage (nouvelles et cartes en cours)">
+        Apprentissage <span className="tnum">({nA})</span>
+      </button>
+    </div>
+  );
 
   if (reprise) {
     return (
       <div className={cls}>
         <div className="sfa-titre">Aujourd'hui</div>
         <div className="sfa-ligne">Séance commencée · {reprise.restantes} carte{reprise.restantes > 1 ? 's' : ''} restante{reprise.restantes > 1 ? 's' : ''}</div>
-        <button type="button" className="sfa-btn" onClick={onDemarrer}><Icon name="play" size={16} fill /> Reprendre la séance ({reprise.restantes} restante{reprise.restantes > 1 ? 's' : ''})</button>
+        <button type="button" className="sfa-btn" onClick={() => onDemarrer('tout')}><Icon name="play" size={16} fill /> Reprendre la séance ({reprise.restantes} restante{reprise.restantes > 1 ? 's' : ''})</button>
+        {choixBloc(reprise.revRestantes, reprise.appRestantes)}
       </div>
     );
   }
@@ -70,7 +82,8 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
       {plan.glissent > 0 && (
         <div className="sfa-note">{plan.glissent} nouvelle{plan.glissent > 1 ? 's' : ''} au-delà du quota ({plan.reglages.quotaNouvelles}/jour) : {plan.glissent > 1 ? 'elles passent' : 'elle passe'} à demain.</div>
       )}
-      <button type="button" className="sfa-btn" onClick={onDemarrer}><Icon name="play" size={16} fill /> Démarrer la séance</button>
+      <button type="button" className="sfa-btn" onClick={() => onDemarrer('tout')} title="Révisions puis apprentissage"><Icon name="play" size={16} fill /> Démarrer la séance</button>
+      {choixBloc(nRev, nNouv + nEnCours)}
     </div>
   );
 }
