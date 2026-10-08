@@ -264,4 +264,4 @@ Hypothèses écartées par les mesures :
 | `3e007ba` | feat : images des documents — un bloc qu'on redimensionne, aligne et déplace |
 | `0cf05d5` | feat : transcript — distinguer les intervenants (diarisation Deepgram) et filtrer |
 | `0fc8289` | feat : séance des J — lancer Révisions ou Apprentissage seul, basculer en cours de séance |
-| (ce document) | docs : compte-rendu + captures |
+| `5980e67` | docs : ce compte-rendu + captures |
