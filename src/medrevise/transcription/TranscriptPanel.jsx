@@ -74,17 +74,25 @@ export function useLignesDirect(courseId) {
   return e.session.segments.filter((x) => x.status !== 'gap').length;
 }
 
-/** TABLETTE (07/10) : colonne fine du panneau replié — point rouge de session et nombre
- *  de lignes arrivées depuis le repli. `depuis` = nombre de lignes au moment du repli. */
-export function ResumeReplie({ courseId, depuis }) {
+/** TABLETTE (07/10) : poignée du panneau replié — point rouge de session.
+ *  09/10 (docs/compte-rendu-pdfreader-v2.md) : plus de compteur « +N » ; à côté du point, les
+ *  3 derniers mots VALIDÉS (segments « final »), en gris discret, tronqués à ~24 caractères par
+ *  la gauche, qui glissent quand de nouveaux mots arrivent. */
+export const derniersMots = (segments, n = 3, max = 24) => {
+  const fin = [...(segments || [])].reverse().find((x) => x.status === 'final' && x.text && x.text.trim());
+  if (!fin) return '';
+  const t = fin.text.trim().split(/\s+/).slice(-n).join(' ');
+  return t.length > max ? '…' + t.slice(t.length - max + 1).replace(/^\S*\s/, '') : t;
+};
+export function ResumeReplie({ courseId }) {
   const e = useTranscription();
   const n = useLignesDirect(courseId);
   if (n == null) return null;
-  const nouvelles = Math.max(0, n - (depuis || 0));
+  const mots = derniersMots(e.session && e.session.segments);
   return (
-    <span className="tab-resume" aria-live="polite">
+    <span className="tab-resume" aria-live="off">
       <span className={'pm-live' + (e.phase === 'paused' ? ' pause' : '')} aria-hidden="true"><i /></span>
-      {nouvelles > 0 && <span className="tab-resume-n tnum" title={`${nouvelles} nouvelle${nouvelles > 1 ? 's' : ''} ligne${nouvelles > 1 ? 's' : ''} depuis le repli`}>+{nouvelles}</span>}
+      {mots && <span className="tab-resume-mots" title="Derniers mots transcrits"><span key={mots}>{mots}</span></span>}
     </span>
   );
 }

@@ -128,7 +128,11 @@
 .lecteur-tab .tab-poignee .tab-resume { flex-direction: row; }
 .tab-resume { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .tab-resume .pm-live i { width: 9px; height: 9px; }
-.tab-resume-n { font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 2px 7px; }
+/* 09/10 : les derniers mots validés, très discrets, qui glissent à chaque arrivée (plus de « +N ») */
+.tab-resume-mots { display: inline-block; max-width: 24ch; overflow: hidden; white-space: nowrap; font-size: 11.5px; color: var(--text-3, var(--text-2)); opacity: .75; }
+.tab-resume-mots > span { display: inline-block; animation: tab-mots-glisse .18s ease-out both; }
+@keyframes tab-mots-glisse { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tab-resume-mots > span { animation: none; } }
 
 /* ---- panneau en tablette : cibles ≥ 40 px, aucune barre qui défile ---- */
 .lecteur-tab .pm-seg-btn { min-height: 40px; font-size: 13.5px; padding-left: 2px; padding-right: 2px; }
