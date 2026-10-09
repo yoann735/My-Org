@@ -1698,7 +1698,8 @@ function TextEditBlock({ edit, active, editable, onActivate, editor, pageHeight 
     la MÊME instance `editor` que celle rendue dans le bloc (passée par PdfReader). */
 // `sansSupprimer` / `extras` (08/10) : texte d'une page de document — rien à supprimer, et ses
 // réglages propres (titres, cases, citation, tableau, lien) à côté des listes
-export function EditToolbar({ editor, onReset, onClose, libre = false, couleur = null, onCouleur = null, palette = null, libelleSupprimer = null, sansSupprimer = false, extras = null, flottante = false, onAnnuler = null, onRetablir = null, peutAnnuler = true, peutRetablir = true }) {
+// 09/10 : plus de bouton « Terminé » — cliquer hors du texte, Échap ou choisir un outil suffit
+export function EditToolbar({ editor, onReset, libre = false, couleur = null, onCouleur = null, palette = null, libelleSupprimer = null, sansSupprimer = false, extras = null, flottante = false, onAnnuler = null, onRetablir = null, peutAnnuler = true, peutRetablir = true }) {
   const [, force] = useState(0);
   useEffect(() => {
     const rerender = () => force((v) => v + 1);
@@ -1769,7 +1770,6 @@ export function EditToolbar({ editor, onReset, onClose, libre = false, couleur =
       {!sansSupprimer && <button type="button" className="btn ghost sm" onClick={onReset}>
         {libelleSupprimer ? <><Icon name="trash" size={13} /> {libelleSupprimer}</> : libre ? <><Icon name="trash" size={13} /> Supprimer la boîte</> : <><Icon name="refresh" size={13} /> Réinitialiser (texte d'origine)</>}
       </button>}
-      <button type="button" className="btn sm" onClick={onClose}><Icon name="check" size={13} /> Terminé</button>
     </div>
   );
 }

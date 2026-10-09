@@ -62,6 +62,11 @@ export function PdfToolbar({
   // TOUS les outils visibles en permanence, rien dans un menu ; la barre passe sur deux
   // rangées compactes si la largeur manque, jamais de défilement
   tablette = false,
+  /* RANGÉE TEXTE (09/10, docs/compte-rendu-pdfreader-v2.md) : la barre de mise en forme du texte
+     (boîte active ou texte du document) prend la place de la barre contextuelle, sous les outils.
+     `reserverRangee` (document) : la rangée garde sa hauteur même vide — rien ne saute quand la
+     barre apparaît ou disparaît, seul son contenu passe en fondu. */
+  rangeeTexte = null, reserverRangee = false,
 }) {
   const [menu, setMenu] = useState(null);
   /* LARGEUR RÉELLE de la barre (01/10) : dans un panneau étroit (Apprentissage,
@@ -127,6 +132,20 @@ export function PdfToolbar({
     return () => window.removeEventListener('keydown', onKey);
   }, [sansRecherche]);
   const raccourciF = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘F' : 'Ctrl+F';
+
+  const contenuRangee = rangeeTexte ? { cle: 'texte', el: <div className="pdfr-rangee-texte">{rangeeTexte}</div> }
+    : outilsAnnotation && contexteSupplementaire ? { cle: 'outil:' + outilActif.id, el: (<>
+      <span className="ptb-contexte-titre">{outilActif.label}</span>
+      {contexteSupplementaire}
+      {!tablette && <><span style={{ flex: 1 }} /><span className="hint ptb-contexte-aide">{outilActif.aide}</span></>}
+    </>) }
+    : outilsAnnotation && reserverRangee ? { cle: 'vide', el: <span className="hint ptb-contexte-aide">{outil === 'main' ? 'Cliquez dans le texte pour le mettre en forme' : outilActif.aide}</span> }
+    : null;
+  const rangee = contenuRangee && (
+    <div className={'pdfr-contexte' + (tablette ? ' tab-contexte' : '') + (reserverRangee ? ' reservee' : '') + (contenuRangee.cle === 'texte' ? ' mode-texte' : '')}>
+      <div key={contenuRangee.cle} className="pdfr-rangee-contenu">{contenuRangee.el}</div>
+    </div>
+  );
 
   if (tablette) {
     /* Ordre de priorité des outils en cours : lire/sélectionner, surligner, écrire à la
@@ -209,12 +228,7 @@ export function PdfToolbar({
             </div>
           )}
         </div>
-        {outilsAnnotation && contexteSupplementaire && (
-          <div className="pdfr-contexte tab-contexte">
-            <span className="ptb-contexte-titre">{outilActif.label}</span>
-            {contexteSupplementaire}
-          </div>
-        )}
+        {rangee}
         {menu && <ContextMenu x={menu.x} y={menu.y} items={actions} onClose={() => setMenu(null)} />}
 
       </>
@@ -324,14 +338,7 @@ export function PdfToolbar({
       </div>
 
       {/* ---- BARRE CONTEXTUELLE : seulement si l'outil actif a des réglages ---- */}
-      {outilsAnnotation && contexteSupplementaire && (
-        <div className="pdfr-contexte">
-          <span className="ptb-contexte-titre">{outilActif.label}</span>
-          {contexteSupplementaire}
-          <span style={{ flex: 1 }} />
-          <span className="hint" style={{ fontSize: 11.5 }}>{outilActif.aide}</span>
-        </div>
-      )}
+      {rangee}
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={actions} onClose={() => setMenu(null)} />}
       {menuInserer && <ContextMenu x={menuInserer.x} y={menuInserer.y} onClose={() => setMenuInserer(null)} items={[

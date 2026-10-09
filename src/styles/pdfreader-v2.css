@@ -1,0 +1,36 @@
+/* ============================================================
+   MedRevise — LECTEUR v2 (09/10, docs/compte-rendu-pdfreader-v2.md).
+   Rangée « texte » sous la barre d'outils, et (plus bas) la refonte visuelle légère.
+   Chargé par PdfReader.jsx après tablette.css / notes-doc.css.
+   ============================================================ */
+
+/* ---- RANGÉE CONTEXTUELLE : réglages de l'outil OU mise en forme du texte ----
+   Une seule ligne, hauteur FIXE : son contenu peut changer (outil → texte → vide) sans que
+   la page ne bouge. Trop longue pour la largeur : elle défile horizontalement. */
+.pdfr-v2 .pdfr-contexte { height: 40px; flex-wrap: nowrap; padding: 0 6px 0 12px; margin: -6px 0 10px; overflow: hidden; }
+.pdfr-v2 .pdfr-rangee-contenu { display: flex; align-items: center; gap: 7px; flex: 1 1 auto; min-width: 0; height: 100%;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none; animation: rangee-entree .15s ease-out both; }
+.pdfr-v2 .pdfr-rangee-contenu::-webkit-scrollbar { display: none; }
+.pdfr-v2 .pdfr-rangee-contenu > * { flex: 0 0 auto; }
+.pdfr-v2 .ptb-contexte-aide { font-size: 11.5px; white-space: nowrap; }
+@keyframes rangee-entree { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+/* hors document (PDF) : la rangée n'existe que le temps d'un outil — elle se déplie en hauteur */
+.pdfr-v2 .pdfr-contexte:not(.reservee) { animation: rangee-deplie .15s ease-out both; }
+@keyframes rangee-deplie { from { height: 0; opacity: 0; margin-bottom: 0; } to { height: 40px; opacity: 1; } }
+
+/* la barre de mise en forme dans la rangée : plus de carte à elle */
+.pdfr-v2 .pdfr-rangee-texte { display: flex; align-items: center; min-width: 0; }
+.pdfr-v2 .pdfr-contexte .pdfr-edit-toolbar { flex-wrap: nowrap; border: 0; background: none; box-shadow: none; padding: 0; margin: 0; gap: 3px; }
+.pdfr-v2 .pdfr-contexte .pdfr-edit-toolbar > * { flex: 0 0 auto; }
+.pdfr-v2 .pdfr-contexte .pdfr-edit-toolbar > span[style*="flex: 1"] { flex: 1 1 auto; min-width: 8px; }
+
+/* tablette : même rangée, cibles plus grandes */
+.pdfr-v2.lecteur-tab .pdfr-contexte.tab-contexte { height: calc(var(--tab-bt, 40px) + 8px); min-height: 0; flex-wrap: nowrap; padding: 0 8px; margin: 4px 0 0; overflow: hidden; }
+.pdfr-v2.lecteur-tab .pdfr-contexte:not(.reservee) { animation-name: rangee-deplie-tab; }
+@keyframes rangee-deplie-tab { from { height: 0; opacity: 0; } to { height: calc(var(--tab-bt, 40px) + 8px); opacity: 1; } }
+.pdfr-v2.lecteur-tab .pdfr-contexte .et-btn { min-width: 36px; height: 36px; }
+.pdfr-v2.lecteur-tab .pdfr-contexte .et-select { height: 36px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pdfr-v2 .pdfr-rangee-contenu, .pdfr-v2 .pdfr-contexte:not(.reservee) { animation: none; }
+}

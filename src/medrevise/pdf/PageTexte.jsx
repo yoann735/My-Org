@@ -181,7 +181,7 @@ export const PageTexte = memo(forwardRef(function PageTexte({
       requestAnimationFrame(verifierDebordement);
     },
     onFocus: ({ editor: ed }) => { rappels.current.onActiver(pageId, ed); },
-    onSelectionUpdate: ({ editor: ed }) => majBulle(ed),
+    onSelectionUpdate: ({ editor: ed }) => { majBulle(ed); if (ed.isFocused) rappels.current.onActiver(pageId, ed); },
     onBlur: () => setTimeout(() => { const ed = editorRef.current; if (ed && !ed.isFocused) setBulle(null); }, 120),
   });
   editorRef.current = editor;
@@ -453,7 +453,8 @@ export const PageTexte = memo(forwardRef(function PageTexte({
   return (
     <div ref={zoneRef} className={'pt-zone outil-' + outil}
       style={{ width: largeur, height: hauteur, transform: `scale(${echelle})`, padding: MARGE_PAGE, '--pt-inv': 1 / (echelle || 1) }}
-      onMouseDown={surAppui} onMouseUp={surRelache}>
+      onMouseDown={surAppui} onMouseUp={surRelache}
+      onPointerDown={() => { const ed = editorRef.current; if (ed && outilRef.current === 'main') rappels.current.onActiver(pageId, ed); }}>
       <EditorContent editor={editor} className="pt-corps" style={{ height: hUtile }} />
       {bulle && createPortal(
         <div className="nd-bulle pt-bulle" style={{ left: bulle.x, top: bulle.y - 8 }} onMouseDown={(e) => e.preventDefault()}>

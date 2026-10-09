@@ -1822,11 +1822,9 @@
 @media (min-width: 761px) { /* ordinateur : sur mobile, la règle d'avant (et la barre du bas) restent */
 .lib-screen.doc-ouvert :is(.pdfr-scroll, .pis), .lecteur-plein :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 188px); }
 .lib-screen.doc-ouvert .pdfr-html-frame { height: calc(100vh - 206px); }
-.lib-screen.doc-ouvert:has(.pdfr-contexte) :is(.pdfr-scroll, .pis), .lecteur-plein:has(.pdfr-contexte) :is(.pdfr-scroll, .pis),
-.lib-screen.doc-ouvert:has(.pdfr-edit-toolbar:not(.flottante)) :is(.pdfr-scroll, .pis), .lecteur-plein:has(.pdfr-edit-toolbar:not(.flottante)) :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 232px); }
+/* 09/10 : la mise en forme du texte vit DANS la rangée contextuelle (une seule rangée en plus) */
+.lib-screen.doc-ouvert:has(.pdfr-contexte) :is(.pdfr-scroll, .pis), .lecteur-plein:has(.pdfr-contexte) :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 232px); }
 .lib-screen.doc-ouvert:has(.pdfr-contexte) .pdfr-html-frame { height: calc(100vh - 250px); }
-.lib-screen.doc-ouvert:has(.pdfr-contexte):has(.pdfr-edit-toolbar:not(.flottante)) :is(.pdfr-scroll, .pis),
-.lecteur-plein:has(.pdfr-contexte):has(.pdfr-edit-toolbar:not(.flottante)) :is(.pdfr-scroll, .pis) { max-height: calc(100vh - 276px); }
 }
 @media (min-width: 761px) { .lecteur-plein { padding-bottom: 14px; } } /* comme .lib-screen (ordinateur seulement : sur mobile, la barre du bas garde sa marge) */
 /* barre du lecteur mesurée (PdfToolbar) : libellés repliés, puis deux lignes */
@@ -2012,8 +2010,7 @@
 .pdfr-poignee:hover::after { background: var(--accent); height: 64px; margin-top: -32px; }
 @media (min-width: 761px) {
   .lib-screen.doc-ouvert .pdfr-tableau, .lecteur-plein .pdfr-tableau { height: calc(100vh - 188px); }
-  .lib-screen.doc-ouvert:has(.pdfr-contexte) .pdfr-tableau, .lecteur-plein:has(.pdfr-contexte) .pdfr-tableau,
-  .lib-screen.doc-ouvert:has(.pdfr-edit-toolbar:not(.flottante)) .pdfr-tableau, .lecteur-plein:has(.pdfr-edit-toolbar:not(.flottante)) .pdfr-tableau { height: calc(100vh - 232px); }
+  .lib-screen.doc-ouvert:has(.pdfr-contexte) .pdfr-tableau, .lecteur-plein:has(.pdfr-contexte) .pdfr-tableau { height: calc(100vh - 232px); }
 }
 
 .tb { position: relative; flex: 1 1 auto; min-width: 0; height: 100%; min-height: 320px; border-radius: var(--r, 14px); overflow: hidden;

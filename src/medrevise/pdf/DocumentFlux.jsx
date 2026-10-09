@@ -106,7 +106,7 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
       minuteur.current = setTimeout(vider, DELAI_SAUVEGARDE);
     },
     onFocus: ({ editor: ed }) => { rappels.current.onActiver(ed); },
-    onSelectionUpdate: ({ editor: ed }) => majBulle(ed),
+    onSelectionUpdate: ({ editor: ed }) => { majBulle(ed); if (ed.isFocused) rappels.current.onActiver(ed); },
     onBlur: () => setTimeout(() => { const ed = editorRef.current; if (ed && !ed.isFocused) setBulle(null); }, 120),
   });
   editorRef.current = editor;
@@ -314,7 +314,9 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
   return (
     <div ref={cadreRef} className={'pt-flux-cadre outil-' + outil + (fondNoir ? ' fond-noir' : '') + (actifTexte ? '' : ' inerte')}
       style={{ width: largeurPage * echelle, height: hauteurTotale, '--pt-inv': 1 / (echelle || 1) }}
-      onMouseUp={surRelache}>
+      onMouseUp={surRelache}
+      // un clic dans le texte (curseur déjà là ou non) : la barre de mise en forme revient
+      onPointerDown={() => { const ed = editorRef.current; if (ed && outilRef.current === 'main') rappels.current.onActiver(ed); }}>
       {/* jusqu'au bas de la zone d'écriture de la DERNIÈRE page : son espace libre appartient
           au document (clic = curseur à la fin, dépôt d'image = à la fin) */}
       <div className="pt-flux-echelle" style={{ width: largeurPage, minHeight: Math.max(0, hauteurTotale / (echelle || 1) - MARGE_DOC), transform: `scale(${echelle})`, padding: `${MARGE_DOC}px ${MARGE_DOC}px 0` }}

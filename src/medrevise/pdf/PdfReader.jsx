@@ -94,6 +94,7 @@ import { PageTexte, PAGE_A4, OutilsTexteDocument, effacerSurlignageRecherche } f
 import { useTablette, abonnerStylet, styletActif, lireFractionVolet, ecrireFractionVolet, bornerVolet, VOLET_MIN, VOLET_MAX, VOLET_PLEIN } from '../lib/tablette.js';
 import '../../styles/tablette.css';
 import '../../styles/notes-doc.css';
+import '../../styles/pdfreader-v2.css';
 import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
 import { sessionActive as transcriptionActive, lireEtat as etatTranscription } from '../transcription/engine.js';
 import { actualiserCredits } from '../transcription/credits.js';
@@ -1844,7 +1845,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setTimeout(() => api.suffixer(node), 0);
     return true;
   };
-  const activerPageTexte = (pageId, ed) => { setActiveEditId(null); setEditeurPage({ pageId, ed }); };
+  /* BARRE DE MISE EN FORME (09/10, docs/compte-rendu-pdfreader-v2.md) : elle suit l'éditeur qui a
+     le curseur. Appelée au focus, à chaque clic dans le texte et à chaque déplacement du curseur —
+     plus seulement au `focus` : l'éditeur GARDE le focus quand on prend un outil (ses boutons ne le
+     lui retirent pas), donc revenir dans le texte ne redéclenchait aucun `focus` et la barre ne
+     revenait jamais. Même éditeur ⇒ même objet d'état : aucun rendu de plus. */
+  const activerPageTexte = (pageId, ed) => {
+    if (outilRef.current !== 'main') return;
+    setActiveEditId(null);
+    setEditeurPage((e) => (e && e.ed === ed && e.pageId === pageId ? e : { pageId, ed }));
+  };
   const notionDePage = async (n) => { await creerNotionDoc(ficheId, n); reloadHighlights(); };
   const flashcardDePage = (texte) => { setPanelOpen(true); setFlashcardNotes((f) => ({ texte, n: (f ? f.n : 0) + 1 })); };
   // la barre de mise en forme du texte se referme quand on clique ailleurs que dans le texte
@@ -1852,13 +1862,28 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!editeurPage) return undefined;
     const dehors = (e) => {
       const t = e.target;
-      if (t && t.closest && t.closest('.pt-zone, .pdfr-edit-toolbar, .pt-bulle, .sc-pop, .ptb-pop')) return;
+      // `.pt-flux-cadre` : le texte d'un document à flux (oublié jusqu'ici : chaque clic DANS le
+      // texte refermait la barre — 2ᵉ cause du « parfois elle ne s'affiche pas »)
+      if (t && t.closest && t.closest('.pt-zone, .pt-flux-cadre, .pdfr-edit-toolbar, .pdfr-rangee-texte, .pt-bulle, .sc-pop, .sc-fenetre, .ptb-pop')) return;
       setEditeurPage(null);
     };
     window.addEventListener('pointerdown', dehors, true);
     return () => window.removeEventListener('pointerdown', dehors, true);
   }, [editeurPage]);
-  useEffect(() => { if (outil !== 'main' && outil !== 'surligneur') setEditeurPage(null); }, [outil]);
+  // un outil d'annotation (surligneur compris) : la barre s'efface
+  useEffect(() => { if (outil !== 'main') setEditeurPage(null); }, [outil]);
+  /* boîte de texte active : un clic hors de la boîte et de sa barre la referme (remplace
+     l'ancien bouton « Terminé ») */
+  useEffect(() => {
+    if (!activeEditId) return undefined;
+    const dehors = (e) => {
+      const t = e.target;
+      if (!t || !t.closest || t.closest('.note-box, .nb-actions, .edit-block-active, .pdfr-edit-toolbar, .pdfr-rangee-texte, .sc-pop, .sc-fenetre, .ptb-pop, .ctx-menu, .mf-menu, .ptb-outils, .tab-outils')) return;
+      setActiveEditId(null);
+    };
+    window.addEventListener('pointerdown', dehors, true);
+    return () => window.removeEventListener('pointerdown', dehors, true);
+  }, [activeEditId]);
   const basculerFond = () => {
     const v = !fondNoir;
     setFondNoir(v);
@@ -2472,7 +2497,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   }
 
   return (
-    <div ref={racineRef} className={(embedded ? 'fadein' : 'screen scroll fadein lecteur-plein')
+    <div ref={racineRef} className={'pdfr-v2 ' + (embedded ? 'fadein' : 'screen scroll fadein lecteur-plein')
       + (modeTab ? ' lecteur-tab tab-bas' + (panelOpen ? (voletPlein ? ' volet-ouvert volet-plein' : ' volet-ouvert') : ' volet-ferme') : '') + (stylet ? ' stylet-actif' : '')}>
       {/* en-tête : nom renommable + menu Fichier (plein écran, ou Bibliothèque) —
           en tablette, une seule ligne compacte (titre tronqué, « … » pour le reste) */}
@@ -2504,6 +2529,20 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             onPoser={(d) => poserDessin(d)} onRetirer={retirerUnDessin} boutonRef={boutonDessinsRef} pulse={pulseDessins} />
         ) : null}
         onAjouterImage={pret ? () => entreeImageRef.current && entreeImageRef.current.click() : null}
+        /* rangée « texte » sous la barre d'outils (09/10) : mise en forme de la boîte active, ou
+           du texte du document qui a le curseur — jamais avec un outil d'annotation */
+        rangeeTexte={activeEdit && editor ? (
+          <EditToolbar key={'b:' + activeEdit.id} editor={editor} libre={activeEdit.kind === 'libre'}
+            couleur={activeEdit.couleur}
+            onCouleur={(c) => changerCouleurBoite(activeEdit, c)}
+            palette={activeEdit.kind === 'texte' ? <SelecteurCouleurs couleur={activeEdit.couleur} onCouleur={(c) => changerCouleurTexte(activeEdit, c)} titre="Couleur du texte" /> : null}
+            libelleSupprimer={activeEdit.kind === 'texte' ? 'Supprimer le texte' : null}
+            onReset={() => (activeEdit.kind === 'libre' || activeEdit.kind === 'texte' ? supprimerBoite(activeEdit) : resetEdit(activeEdit.id))} />
+        ) : editeurPage && outil === 'main' && !editeurPage.ed.isDestroyed ? (
+          <EditToolbar key="t" editor={editeurPage.ed} sansSupprimer extras={<OutilsTexteDocument editor={editeurPage.ed} />}
+            onAnnuler={hist.annuler} onRetablir={hist.retablir} peutAnnuler={hist.peutAnnuler} peutRetablir={hist.peutRetablir} />
+        ) : null}
+        reserverRangee={modeDoc}
         contexteSupplementaire={outil === 'boite' ? (
           <SelecteurCouleurs couleur={couleurActive} onCouleur={setCouleurActive} titre="Couleur de la boîte" />
         ) : outil === 'forme' ? (
@@ -2564,15 +2603,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         ) : null}
       />
       </div>
-      {activeEdit && editor && (
-        <EditToolbar editor={editor} libre={activeEdit.kind === 'libre'}
-          couleur={activeEdit.couleur}
-          onCouleur={(c) => changerCouleurBoite(activeEdit, c)}
-          palette={activeEdit.kind === 'texte' ? <SelecteurCouleurs couleur={activeEdit.couleur} onCouleur={(c) => changerCouleurTexte(activeEdit, c)} titre="Couleur du texte" /> : null}
-          libelleSupprimer={activeEdit.kind === 'texte' ? 'Supprimer le texte' : null}
-          onReset={() => (activeEdit.kind === 'libre' || activeEdit.kind === 'texte' ? supprimerBoite(activeEdit) : resetEdit(activeEdit.id))}
-          onClose={() => setActiveEditId(null)} />
-      )}
 
       {modeDoc && <input ref={entreePdfDoc} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
         onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) importerPdfDansDocument(f); }} />}
@@ -2620,7 +2650,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 <DocumentFlux key={'flux:' + ficheId} ref={fluxRef} initial={fluxInitial}
                   largeurPage={PAGE_A4.width} hauteurPage={PAGE_A4.height} ecart={GAP} echelle={scale}
                   hauteurTotale={layout.totalHeight} outil={outil} couleurSurligneur={couleurSurligneur} fondNoir={fondNoir}
-                  onSauver={sauverFlux} onActiver={(ed) => { setActiveEditId(null); setEditeurPage({ pageId: 'flux', ed }); }}
+                  onSauver={sauverFlux} onActiver={(ed) => activerPageTexte('flux', ed)}
                   onNotion={notionDePage} onFlashcard={flashcardDePage} onJournal={hist.noterPage}
                   onPagination={(r) => setPagination((p) => (p && p.nbPages === r.nbPages && JSON.stringify(p.blocs) === JSON.stringify(r.blocs) ? p : r))} />
               )}
@@ -2715,16 +2745,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                   </div>
                 )];
               })}
-            </div>
-          )}
-          {/* barre de mise en forme du TEXTE D'UNE PAGE (la même que celle des boîtes de texte) :
-              FLOTTANTE en bas de la zone de lecture — l'afficher en haut décalait toute la page
-              au premier clic dans le texte */}
-          {editeurPage && !(activeEdit && editor) && (
-            <div className="pt-barre">
-              <EditToolbar editor={editeurPage.ed} sansSupprimer flottante extras={<OutilsTexteDocument editor={editeurPage.ed} />}
-                onAnnuler={hist.annuler} onRetablir={hist.retablir} peutAnnuler={hist.peutAnnuler} peutRetablir={hist.peutRetablir}
-                onClose={() => { try { editeurPage.ed.commands.blur(); } catch (e) { /* ignore */ } setEditeurPage(null); }} />
             </div>
           )}
         </div>
