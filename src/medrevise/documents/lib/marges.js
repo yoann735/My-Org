@@ -35,7 +35,9 @@ export function margesDe(rec) {
 /** marges en unités de page pour le flux (null → défaut d'avant, à l'unité près) */
 export function margesUnites(margesMm) {
   if (!margesMm) return { haut: MARGE_DEFAUT_UNITES, bas: MARGE_DEFAUT_UNITES, gauche: MARGE_DEFAUT_UNITES, droite: MARGE_DEFAUT_UNITES };
-  return Object.fromEntries(COTES.map(({ id }) => [id, margesMm[id] * UNITES_PAR_MM]));
+  // arrondi à l'unité de page (≤ 0,18 mm) : pas de position fractionnaire, l'export imprimé
+  // retombe exactement sur l'écran (test de conformité)
+  return Object.fromEntries(COTES.map(({ id }) => [id, Math.round(margesMm[id] * UNITES_PAR_MM)]));
 }
 
 /** préréglage correspondant (ou null : marges personnalisées) */
