@@ -399,3 +399,4 @@ avec des marges personnalisées.
 | `385aa84` | marges de page réglables (Mise en page, règles, repagination, export) |
 | `7768f3f` | refonte visuelle légère du lecteur |
 | `375a307` | marges arrondies à l'unité de page (export conforme avec marges personnalisées) |
+| `d587a1d` | ce compte rendu, captures, journal et scripts de test (`scripts/tests-pdfreader-v2/`) |
