@@ -1,0 +1,23 @@
+import { banc } from './commun-doc.mjs';
+const b = await banc(1440, 900);
+const c = b.c;
+await c.send('Emulation.setDeviceMetricsOverride', { width: 820, height: 1180, deviceScaleFactor: 1, mobile: true });
+await c.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+await b.dormir(1500);
+const tap = async (p, att = 500) => { await c.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: p[0], y: p[1] }] }); await b.dormir(60); await c.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await b.dormir(att); };
+await tap(await b.ev(`(()=>{const p=document.querySelector('.pt-flux p');const r=p.getBoundingClientRect();return [r.x+40,r.y+8]})()`), 700);
+const cls = () => b.ev(`document.querySelector('.pdfr-rangee-contenu').className`);
+b.ok((await cls()).includes('deborde-d'), 'rangée trop longue : fondu à droite', await cls());
+await b.capture('apres-tablette-rangee-debut', { x: 0, y: 140, width: 820, height: 70 });
+const r = await b.ev(`(()=>{const r=document.querySelector('.pdfr-rangee-contenu').getBoundingClientRect();return [r.x,r.y,r.width,r.height]})()`);
+const y = r[1] + r[3] / 2;
+await c.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: r[0] + r[2] - 40, y }] });
+for (let i = 1; i <= 12; i++) { await c.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: r[0] + r[2] - 40 - i * 50, y }] }); await b.dormir(16); }
+await c.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+await b.dormir(800);
+b.ok((await cls()).includes('deborde-g'), 'glisser au doigt : la rangée défile, fondu à gauche', await cls());
+const vis = await b.ev(`(()=>{const z=document.querySelector('.pdfr-rangee-contenu').getBoundingClientRect();const a=[...document.querySelectorAll('.pdfr-rangee-contenu .et-btn')].find(x=>x.title.startsWith('Rétablir'));const r=a.getBoundingClientRect();return r.right<=z.right+1&&r.left>=z.left})()`);
+b.ok(vis, 'les dernières commandes (Rétablir) deviennent visibles');
+await b.capture('apres-tablette-rangee-fin', { x: 0, y: 140, width: 820, height: 70 });
+b.ok(!b.erreurs.length, '0 erreur JS', b.erreurs.join(' | '));
+c.fermer();

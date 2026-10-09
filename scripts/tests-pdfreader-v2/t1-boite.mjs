@@ -1,0 +1,22 @@
+import { banc } from './commun-doc.mjs';
+const b = await banc();
+await b.dormir(1500);
+const page = await b.ev(`(()=>{const r=document.querySelector('.pdfr-page').getBoundingClientRect();return [r.x,r.y,r.width,r.height]})()`);
+await b.clic(await b.bouton('Boîte'));
+await b.clic([page[0] + page[2] * 0.6, page[1] + 120], { att: 700 });
+await b.ecrire('Note boîte');
+const enTexte = await b.ev(`!!document.querySelector('.pdfr-contexte.mode-texte .pdfr-edit-toolbar')`);
+b.ok(enTexte, 'boîte active : sa mise en forme est dans la rangée du haut');
+await b.capture('apres-boite-active');
+// gras sur tout le texte
+await b.touche('a', { meta: true });
+const gras0 = await b.ev(`!!document.querySelector('.note-box.active strong, .note-box.active b')`);
+await b.clic(await b.pos(`[...document.querySelectorAll('.pdfr-contexte .et-btn')].find(x=>x.title==='Gras')`));
+const gras1 = await b.ev(`!!document.querySelector('.note-box.active strong, .note-box.active b')`);
+b.ok(gras0 !== gras1 && gras1, 'Gras appliqué dans la boîte', `${gras0} → ${gras1}`);
+await b.clic(await b.bouton('Sélection'));
+await b.clic([page[0] + 60, page[1] + 400], { att: 400 });
+b.ok(!(await b.ev(`!!document.querySelector('.note-box.active')`)), 'clic hors de la boîte : elle se referme (plus de « Terminé »)');
+b.ok(!(await b.ev(`!!document.querySelector('.pdfr-contexte.mode-texte')`)), 'la rangée texte disparaît');
+b.ok(!b.erreurs.length, '0 erreur JS', b.erreurs.join(' | '));
+b.c.fermer();

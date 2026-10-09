@@ -1,0 +1,162 @@
+### t1-barre.mjs
+✅ 20 bascules : barre présente à chaque clic dans le texte — 0 manquée(s) 
+✅ aucun saut du contenu — 0 saut(s)
+✅ 0 erreur JS
+### t-annuler.mjs doc
+✅ document : « Annuler » de la rangée de mise en forme retire la frappe — 3456 → 3473 → 3456
+✅ document : « Rétablir » la remet
+✅ 0 erreur JS
+### t3-docimage.mjs
+✅ image collée dans le document, texte reconnu
+✅ icône « texte » NON activée
+outil Surligneur — SURLIGNEUR
+Sélectionner du texte le surl
+✅ surligneur sur les mots de l’image : notion posée — #F5A524,#F5A524,#F5A524,#F5A524
+✅ notion alignée sur le mot — 0 px
+✅ repasser dans une autre couleur : recolorée — #9B8AFB
+✅ repasser dans la même couleur : retirée
+✅ sélection → bulle habituelle — Notion · Flashcard · Copier
+✅ Notion depuis la sélection
+✅ alignement après Zoomer (zoom 121%) — 0 px
+✅ alignement après Dézoomer (zoom 105%) — 0 px
+✅ alignement après Dézoomer (zoom 92%) — 0 px
+✅ notion de l’image listée dans le panneau Notions
+✅ 0 erreur JS
+### t5-marges.mjs
+✅ hors édition : pas de règles
+✅ en édition : règles en haut et à gauche de la page
+   départ {"gauche":56,"droite":56,"pages":"1 / 4","k":0.9149947478991597}
+✅ Fichier › Mise en page : panneau ouvert
+✅ Étroites : marge gauche 12,7 mm (36 unités) — {"gauche":36,"droite":36,"pages":"1 / 3","k":0.9149947478991597}
+✅ Larges : marge gauche 50,8 mm (144 unités) — {"gauche":144,"droite":144,"pages":"1 / 4","k":0.9149947478991597}
+✅ repagination : plus de pages avec des marges larges — 1 / 3 → 1 / 4
+✅ Normales : marge d’avant (56 unités) — {"gauche":56,"droite":56,"pages":"1 / 4","k":0.9149947478991597}
+✅ champ « Haut » à 30 mm : le texte descend (85 unités + interligne du titre) — 85 unités
+✅ Échap ferme le panneau
+✅ glisser la poignée : la marge suit en direct (avant le relâchement) — 56 → 122 unités · bulle « 43 mm »
+✅ mémorisé avec le document — {"haut":30,"bas":19.8,"gauche":43,"droite":19.8}
+✅ règles toujours là après le geste (édition conservée)
+✅ 0 erreur JS
+### t5-export.mjs
+✅ PDF : marge gauche 43 mm — encre à 123 unités, attendu 122
+✅ PDF : marge du haut 30 mm (titre juste dessous) — encre à 112 unités, marge 85
+✅ PDF : rien au-delà de la marge droite 19.8 mm — encre jusqu'à 513, limite 539
+✅ autant de pages dans le PDF qu’à l’écran — 4 / écran 1 / 4
+✅ 0 erreur JS
+### t6-animations.mjs
+✅ animations et transitions du lecteur ≤ 200 ms — max 200 ms (icon-btn sm trans border-color, color, background) sur 105 éléments animés
+✅ prefers-reduced-motion : aucune animation ni transition — max 0 ms ()
+✅ 0 erreur JS
+### t1-boite.mjs
+✅ boîte active : sa mise en forme est dans la rangée du haut
+❌ Gras appliqué dans la boîte
+✅ clic hors de la boîte : elle se referme (plus de « Terminé »)
+✅ la rangée texte disparaît
+✅ 0 erreur JS
+### t3-pdfimage.mjs
+pastilles Ambre — prioritaire — couleur « cours » | Corail — couleur « cours » | Violet doux — couleur « cours » | Bleu ardoise — couleur « cours » | Vert sauge — couleur « cours » | Rose poudré — cloze — couleur « cours »
+❌ surlignage posé sur des mots OCR — 8 → 8 rectangles
+✅ alignement à 160 % — {"gauche":0,"haut":2,"bas":0.8}
+✅ alignement à 100 % — {"gauche":0,"haut":2,"bas":0.1}
+✅ alignement à 250 % — {"gauche":0,"haut":3,"bas":1.7}
+❌ repasser dans une autre couleur : recoloré — rgb(126, 200, 255) → rgb(126, 200, 255)
+❌ repasser dans la même couleur : retiré
+✅ 0 erreur JS
+### t3-imgcollee.mjs
+✅ image collée sur la page du PDF
+✅ texte de l’image reconnu — Le foie synthétise l'aloumine. La bile émulsionne les lipides.
+✅ surligneur sur l’image collée : mots surlignés — rgb(245, 165, 36),rgb(245, 165, 36),rgb(245, 165, 36),rgb(245, 165, 36)
+✅ aligné sur les mots — 0 px
+✅ repasser dans une autre couleur : recoloré — rgb(155, 138, 251)
+❌ repasser dans la même couleur : retiré
+✅ sélection → bulle Notion · Flashcard · Copier — Notion · Flashcard · Copier
+✅ Notion depuis la sélection : surlignée — 4 mots
+   en base : [{"c":"ambre","t":"bile émulsionne","m":[5,6]},{"c":"violet","t":"foie synthétise","m":[1,2]}]
+✅ alignement après Zoomer — 0 px
+✅ alignement après Dézoomer — 0 px
+✅ alignement après Dézoomer — 0 px
+✅ image pivotée : surlignages toujours sur les mots — 0 px
+✅ 0 erreur JS
+### t-annuler.mjs pdf
+❌ image collée : surligner, annuler, rétablir — 4 → 4 → 4 → 4
+✅ 0 erreur JS
+### t4-palette.mjs
+✅ sélecteur « Surligneur » : les 6 couleurs de base — Ambre — prioritaire,Corail,Violet doux,Bleu ardoise,Vert sauge,Rose poudré — cloze
+✅ sélecteur « Boîte » : les 6 couleurs de base — Ambre — prioritaire,Corail,Violet doux,Bleu ardoise,Vert sauge,Rose poudré — cloze
+✅ sélecteur « Texte » : les 6 couleurs de base — Ambre — prioritaire,Corail,Violet doux,Bleu ardoise,Vert sauge,Rose poudré — cloze
+✅ sélecteur « Forme » : les 6 couleurs de base — Ambre — prioritaire,Corail,Violet doux,Bleu ardoise,Vert sauge,Rose poudré — cloze
+✅ sélecteur « Crayon » : les 6 couleurs de base — Ambre — prioritaire,Corail,Violet doux,Bleu ardoise,Vert sauge,Rose poudré — cloze
+✅ nouvelle boîte : fond transparent, bordure ambre — {"bg":"rgba(0, 0, 0, 0)","bord":"rgb(245, 165, 36)","texte":"rgb(22, 22, 42)","classe":"note-box ajustee fond-transparent"}
+❌ option Fond → teinté — rgba(0, 0, 0, 0)
+❌ option Fond → plein — rgba(0, 0, 0, 0)
+✅ option Fond → transparent — rgba(0, 0, 0, 0)
+✅ ancienne boîte : rendu d’origine — {"c":"note-box ajustee","bg":"rgba(255, 216, 77, 0.92)"}
+✅ 0 erreur JS
+### t3-pdfimage.mjs
+pastilles Ambre — prioritaire — couleur « cours » | Corail — couleur « cours » | Violet doux — couleur « cours » | Bleu ardoise — couleur « cours » | Vert sauge — couleur « cours » | Rose poudré — cloze — couleur « cours »
+✅ surlignage posé sur des mots OCR — 0 → 4 rectangles
+✅ alignement à 160 % — {"gauche":0,"haut":2,"bas":1.2}
+✅ alignement à 100 % — {"gauche":0,"haut":2,"bas":0.3}
+✅ alignement à 250 % — {"gauche":0,"haut":3,"bas":1.4}
+✅ repasser dans une autre couleur : recoloré — rgb(245, 165, 36) → rgb(242, 112, 106)
+✅ repasser dans la même couleur : retiré
+✅ 0 erreur JS
+### t1-boite.mjs
+✅ boîte active : sa mise en forme est dans la rangée du haut
+✅ Gras appliqué dans la boîte — false → true
+✅ clic hors de la boîte : elle se referme (plus de « Terminé »)
+✅ la rangée texte disparaît
+✅ 0 erreur JS
+### t3-imgcollee.mjs
+✅ image collée sur la page du PDF
+✅ texte de l’image reconnu — Le foie synthétise l'aloumine. La bile émulsionne les lipides.
+✅ surligneur sur l’image collée : mots surlignés — rgb(245, 165, 36),rgb(245, 165, 36)
+✅ aligné sur les mots — 0 px
+✅ repasser dans une autre couleur : recoloré — rgb(155, 138, 251)
+✅ repasser dans la même couleur : retiré
+✅ sélection → bulle Notion · Flashcard · Copier — Notion · Flashcard · Copier
+✅ Notion depuis la sélection : surlignée — 4 mots
+   en base : [{"c":"ambre","t":"bile émulsionne","m":[5,6]},{"c":"violet","t":"foie synthétise","m":[1,2]},{"c":"violet","t":"foie synthétise","m":[1,2]},{"c":"ambre","t":"bile émulsionne","m":[5,6]}]
+✅ alignement après Zoomer — 0 px
+✅ alignement après Dézoomer — 0 px
+✅ alignement après Dézoomer — 0 px
+✅ 0 erreur JS
+### t-annuler.mjs pdf
+✅ image collée : surligner, annuler, rétablir — 4 → 5 → 4 → 5
+✅ 0 erreur JS
+### t4-palette.mjs
+✅ sélecteur « Surligneur » : les 6 couleurs de base — Ambre — prioritaire,Corail,Violet doux,Bleu ardoise,Vert sauge,Rose poudré — cloze
+✅ sélecteur « Boîte » : les 6 couleurs de base — Ambre — prioritaire,Corail,Violet doux,Bleu ardoise,Vert sauge,Rose poudré — cloze
+✅ sélecteur « Texte » : les 6 couleurs de base — Ambre — prioritaire,Corail,Violet doux,Bleu ardoise,Vert sauge,Rose poudré — cloze
+✅ sélecteur « Forme » : les 6 couleurs de base — Ambre — prioritaire,Corail,Violet doux,Bleu ardoise,Vert sauge,Rose poudré — cloze
+✅ sélecteur « Crayon » : les 6 couleurs de base — Ambre — prioritaire,Corail,Violet doux,Bleu ardoise,Vert sauge,Rose poudré — cloze
+✅ nouvelle boîte : fond transparent, bordure ambre — {"bg":"rgba(0, 0, 0, 0)","bord":"rgb(245, 165, 36)","texte":"rgb(22, 22, 42)","classe":"note-box fond-transparent active"}
+✅ option Fond → teinté — rgba(245, 165, 36, 0.15)
+✅ option Fond → plein — rgba(245, 165, 36, 0.92)
+✅ option Fond → transparent — rgba(0, 0, 0, 0)
+❌ ancienne boîte : rendu d’origine — {"c":"note-box ajustee fond-transparent","bg":"rgba(0, 0, 0, 0)"}
+✅ 0 erreur JS
+### t3-rotation.mjs
+✅ image pivotée : surlignages toujours sur les mots — 0 px
+✅ 0 erreur JS
+### t-tablette.mjs
+✅ mode tablette
+✅ tablette : 20 bascules au doigt, barre toujours juste — 0 écart(s)
+✅ tablette : aucun saut du contenu — 0 saut(s)
+✅ règles en tablette : cible tactile élargie — 22 px
+✅ tablette : toutes les commandes de mise en forme dans la rangée — 17 boutons
+✅ tablette : plus de barre en bas
+✅ 0 erreur JS
+### t-tablette-defil.mjs
+✅ rangée trop longue : fondu à droite — pdfr-rangee-contenu deborde-d
+✅ glisser au doigt : la rangée défile, fondu à gauche — pdfr-rangee-contenu deborde-g
+✅ les dernières commandes (Rétablir) deviennent visibles
+✅ 0 erreur JS
+### t2-poignee.mjs
+boutons [ 'Transcrire le cours' ]
+boutons feuille [ 'Démarrer' ]
+modeTab true volet pdfr-v2 fadein lecteur-tab tab-bas volet-ouvert
+[{"texte":"un canal de","point":true,"badge":false},{"texte":"nerfs.","point":true,"badge":false},{"texte":"relient les canaux","point":true,"badge":false},{"texte":"périoste.","point":true,"badge":false},{"texte":"périoste.","point":true,"badge":false},{"texte":"matrice osseuse, les","point":true,"badge":false}]
+✅ point rouge présent, aucun badge +N
+✅ derniers mots qui défilent, ≤ 24 caractères — un canal de | nerfs. | relient les canaux | périoste. | périoste. | matrice osseuse, les
+✅ 0 erreur JS
