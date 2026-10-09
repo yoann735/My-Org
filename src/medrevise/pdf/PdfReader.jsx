@@ -513,6 +513,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [marges, setMarges] = useState(null);
   const margesEcrites = useRef(null);
   const [miseEnPage, setMiseEnPage] = useState(false);
+  /* la page « se pose » à l'ouverture (09/10) : classe posée le temps de l'animation (≤ 200 ms),
+     puis retirée — une page montée plus tard au défilement apparaît sans effet */
+  const [pose, setPose] = useState(false);
   const margesFlux = useMemo(() => margesUnites(marges), [marges]);
   const minuteurMarges = useRef(null);
   const changerMarges = (m, fin = true) => {
@@ -620,6 +623,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
   // le lecteur peut afficher ses pages : PDF chargé, ou document prêt
   const pret = !!pdfDoc || (modeDoc && docCharge && pageSizes.length > 0);
+  useEffect(() => {
+    if (!pret) return undefined;
+    setPose(true);
+    const t = setTimeout(() => setPose(false), 260);
+    return () => clearTimeout(t);
+  }, [pret, ficheId]);
   // index (0…) dans les pages affichées d'une clé de page (numéro du PDF ou id)
   const indexDePage = (cle) => pageSizes.findIndex((p) => p.cle === cle);
 
@@ -2695,7 +2704,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) ajouterImage(f); }} />
           {!pret && !loadError && <div className="gen-spinner" style={{ width: 40, height: 40, margin: '60px auto' }} />}
           {pret && (
-            <div className={'pdfr-pages' + (modeDoc ? ' pdfr-pages-doc' : '')} style={{ height: layout.totalHeight, width: layout.maxWidth, minWidth: '100%' }}>
+            <div className={'pdfr-pages' + (modeDoc ? ' pdfr-pages-doc' : '') + (pose ? ' pose' : '')} style={{ height: layout.totalHeight, width: layout.maxWidth, minWidth: '100%' }}>
               {/* DOCUMENT : le texte, UN flux paginé posé sur toutes les pages (jamais virtualisé) */}
               {modeDoc && fluxInitial && pageSizes.length > 0 && (
                 <DocumentFlux key={'flux:' + ficheId} ref={fluxRef} initial={fluxInitial}

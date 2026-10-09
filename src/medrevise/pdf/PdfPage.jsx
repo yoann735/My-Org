@@ -1895,9 +1895,9 @@ export function EditToolbar({ editor, onReset, libre = false, couleur = null, on
       <span className="et-sep" />
       {/* page d'un document : le journal du document (lib/journalAnnuler.js) ; boîte : son éditeur */}
       <button type="button" className="et-btn" title="Annuler (⌘Z)" disabled={!!onAnnuler && !peutAnnuler} onMouseDown={(e) => e.preventDefault()}
-        onClick={() => (onAnnuler ? onAnnuler() : editor.chain().focus().undo().run())}><Icon name="refresh" size={13} style={{ transform: 'scaleX(-1)' }} /></button>
+        onClick={() => (onAnnuler ? onAnnuler() : editor.chain().focus().undo().run())}><IconeOutil nom="annuler" size={15} /></button>
       <button type="button" className="et-btn" title="Rétablir (⌘⇧Z ou ⌘Y)" disabled={!!onRetablir && !peutRetablir} onMouseDown={(e) => e.preventDefault()}
-        onClick={() => (onRetablir ? onRetablir() : editor.chain().focus().redo().run())}><Icon name="refresh" size={13} /></button>
+        onClick={() => (onRetablir ? onRetablir() : editor.chain().focus().redo().run())}><IconeOutil nom="retablir" size={15} /></button>
       <span style={{ flex: 1 }} />
       {!sansSupprimer && <button type="button" className="btn ghost sm" onClick={onReset}>
         {libelleSupprimer ? <><Icon name="trash" size={13} /> {libelleSupprimer}</> : libre ? <><Icon name="trash" size={13} /> Supprimer la boîte</> : <><Icon name="refresh" size={13} /> Réinitialiser (texte d'origine)</>}

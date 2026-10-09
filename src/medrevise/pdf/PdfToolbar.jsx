@@ -133,6 +133,22 @@ export function PdfToolbar({
   }, [sansRecherche]);
   const raccourciF = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘F' : 'Ctrl+F';
 
+  /* rangée trop longue pour la largeur (tablette, fenêtre étroite) : elle défile à l'horizontale ;
+     un fondu sur le bord qui déborde le signale (classes deborde-g / deborde-d) */
+  const rangeeRef = useRef(null);
+  const majDebord = () => {
+    const el = rangeeRef.current;
+    if (!el) return;
+    const g = el.scrollLeft > 2, d = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+    el.classList.toggle('deborde-g', g); el.classList.toggle('deborde-d', d);
+  };
+  useLayoutEffect(majDebord);
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => majDebord());
+    if (rangeeRef.current) ro.observe(rangeeRef.current);
+    return () => ro.disconnect();
+  });
   const contenuRangee = rangeeTexte ? { cle: 'texte', el: <div className="pdfr-rangee-texte">{rangeeTexte}</div> }
     : outilsAnnotation && contexteSupplementaire ? { cle: 'outil:' + outilActif.id, el: (<>
       <span className="ptb-contexte-titre">{outilActif.label}</span>
@@ -143,7 +159,7 @@ export function PdfToolbar({
     : null;
   const rangee = contenuRangee && (
     <div className={'pdfr-contexte' + (tablette ? ' tab-contexte' : '') + (reserverRangee ? ' reservee' : '') + (contenuRangee.cle === 'texte' ? ' mode-texte' : '')}>
-      <div key={contenuRangee.cle} className="pdfr-rangee-contenu">{contenuRangee.el}</div>
+      <div key={contenuRangee.cle} ref={rangeeRef} className="pdfr-rangee-contenu" onScroll={majDebord}>{contenuRangee.el}</div>
     </div>
   );
 
