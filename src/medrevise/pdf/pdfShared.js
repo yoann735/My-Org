@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import { pdfjsLib } from './pdfjsSetup.js';
 import { rgb } from 'pdf-lib';
+import { PALETTE_BASE, ALPHA_SURLIGNEUR } from '../lib/palette.js';
 
 /** densité réelle de l'écran, suivie en direct : elle change quand la fenêtre passe
     d'un écran Retina à un écran externe, ou au zoom navigateur (Cmd +/−). Une page
@@ -28,15 +29,32 @@ export function useDevicePixelRatio() {
 // Sens des couleurs = celui du gabarit HTML (voir SENS_PAR_COULEUR, lib/courseExport.js) :
 // jaune = notion PRIORITAIRE, rose = CLOZE, vert/bleu = surlignage simple. Mêmes ids
 // que data-hl du gabarit, pour que l'export des deux sources parle la même langue.
-export const COLORS = [
+// Les 4 couleurs du GABARIT HTML (fiches HTML : leurs <mark data-hl> gardent ce sens et ces teintes)
+export const COLORS_GABARIT = [
   { id: 'jaune', hex: '#FFD84D', short: 'Prio', label: 'Prioritaire' },
   { id: 'vert', hex: '#8BE38B', short: 'Vert', label: 'Surlignage simple' },
   { id: 'bleu', hex: '#7EC8FF', short: 'Bleu', label: 'Surlignage simple' },
   { id: 'rose', hex: '#FF9FD1', short: 'Cloze', label: 'Cloze' },
 ];
-export const COLOR_HEX = Object.fromEntries(COLORS.map((c) => [c.id, c.hex]));
-export const COLOR_TAG = { jaune: 'Prioritaire', rose: 'Cloze' }; // étiquette affichée dans le panneau
-export const COLOR_RGB = { jaune: rgb(1, 0.85, 0.3), vert: rgb(0.55, 0.89, 0.55), bleu: rgb(0.5, 0.78, 1), rose: rgb(1, 0.62, 0.82) };
+/* PALETTE DE BASE DES ANNOTATIONS (09/10, lib/palette.js) : six couleurs pour TOUS les outils
+   (surligneur, crayon, boîtes, formes, texte). Ambre = prioritaire, rose poudré = cloze.
+   Les ids d'avant (jaune, vert, bleu, rose) restent rendus à l'identique (COLOR_HEX / RGB). */
+export const COLORS = PALETTE_BASE.map((c) => ({
+  id: c.id, hex: c.hex, short: c.label,
+  label: c.sens === 'prioritaire' ? `${c.label} — prioritaire` : c.sens === 'cloze' ? `${c.label} — cloze` : c.label,
+}));
+const hexVersRgbPdf = (hex) => { const n = parseInt(hex.slice(1), 16); return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
+export const COLOR_HEX = { ...Object.fromEntries(COLORS_GABARIT.map((c) => [c.id, c.hex])), ...Object.fromEntries(COLORS.map((c) => [c.id, c.hex])) };
+export const COLOR_TAG = { jaune: 'Prioritaire', rose: 'Cloze', ambre: 'Prioritaire', poudre: 'Cloze' }; // étiquette affichée dans le panneau
+export const COLOR_RGB = {
+  jaune: rgb(1, 0.85, 0.3), vert: rgb(0.55, 0.89, 0.55), bleu: rgb(0.5, 0.78, 1), rose: rgb(1, 0.62, 0.82),
+  ...Object.fromEntries(COLORS.map((c) => [c.id, hexVersRgbPdf(c.hex)])),
+};
+/** une des six couleurs de base (09/10) ? Elles s'affichent en variante « surligneur ». */
+export const estCouleurBase = (c) => PALETTE_BASE.some((x) => x.id === c);
+/** opacité d'un surlignage à l'écran : pastels d'avant pleins (multiply), couleurs de base en
+    variante surligneur (ALPHA_SURLIGNEUR), couleur perso à 45 % — l'export pose 0,4 partout */
+export const opaciteSurlignage = (c) => (String(c).startsWith('#') ? 0.45 : estCouleurBase(c) ? ALPHA_SURLIGNEUR : 1);
 
 export const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 export const clamp01 = (v) => clamp(v, 0, 1);
@@ -72,7 +90,7 @@ export const PALETTE_CRAYON = [
   { id: 'rose', hex: '#FF9FD1', label: 'Rose' },
   { id: 'marron', hex: '#8B5A2B', label: 'Marron' },
 ];
-const PALETTE_HEX = { ...Object.fromEntries(PALETTE_CRAYON.map((c) => [c.id, c.hex])), blanc: '#FFFFFF' }; // blanc : cartes du tableau d'avant le 02/10 soir
+const PALETTE_HEX = { ...Object.fromEntries(PALETTE_CRAYON.map((c) => [c.id, c.hex])), ...Object.fromEntries(PALETTE_BASE.map((c) => [c.id, c.hex])), blanc: '#FFFFFF' }; // blanc : cartes du tableau d'avant le 02/10 soir
 /** couleur affichable d'un id de palette (surlignage, crayon) ou d'un hex libre. */
 export function couleurHex(c, repli = '#FFD84D') {
   if (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)) return c;

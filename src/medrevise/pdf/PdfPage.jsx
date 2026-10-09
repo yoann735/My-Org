@@ -36,7 +36,7 @@ import {
   soustraireAncres, partCouverte, surlignagesTouches, couleurHex,
   lisserTrait, traitTouche, cheminLisse, suivreEnDouceur, modeDuTrait,
   EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, positionTexteProche,
-  lisibleSurNoir, EMPTY_ARRAY,
+  lisibleSurNoir, EMPTY_ARRAY, opaciteSurlignage,
 } from './pdfShared.js';
 
 /** rendu d'une seule page (montée uniquement si proche du viewport) : canvas + couche de
@@ -682,7 +682,7 @@ export function PdfPageContent({
               // couleur perso (hex) : translucide comme un vrai surligneur — un violet ou un
               // bleu foncé en pleine teinte rendrait le texte illisible (les 4 couleurs
               // « cours » sont déjà des pastels). Même rendu qu'à l'export (opacité 0,4).
-              ...(String(h.couleur).startsWith('#') ? { opacity: 0.45 } : {}) }} />
+              ...(opaciteSurlignage(h.couleur) < 1 ? { opacity: opaciteSurlignage(h.couleur) } : {}) }} />
         )))}
         {matchRects.map((m) => (
           <div key={'m' + m.idx + ':' + m.ri} className={'pdfr-match-rect' + (m.idx === activeMatchIdx ? ' active' : '')}
@@ -791,7 +791,7 @@ export function PdfPageContent({
           onActivate={onActivateEdit}
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
           onMaj={onMajBoite} onSupprimer={onSupprimerBoite} onModifier={onModifierBoite}
-          pageWidth={pageWidth} pageHeight={pageHeight} texteProche={texteProche} />
+          pageWidth={pageWidth} pageHeight={pageHeight} texteProche={texteProche} fondNoir={fondNoir} />
       ))}
       {questions.map((q) => (
         <QuestionMarque key={q.id} q={q} onModifier={onModifierBoite} onSupprimer={onSupprimerBoite}
@@ -854,7 +854,24 @@ export function PdfPageContent({
    Une seule entrée d'historique par geste : l'état d'avant est capturé au
    pointerdown, la commande empilée au pointerup, et seulement si ça a bougé.
    ============================================================ */
-function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, viseSurlignage = false, viseAjout = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF }) {
+/* FOND D'UNE BOÎTE (09/10, docs/compte-rendu-pdfreader-v2.md) : transparent (défaut des nouvelles
+   boîtes : fine bordure de sa couleur, texte à l'encre de la page), teinté 15 %, ou plein. Une
+   boîte d'avant (sans `fond`) garde exactement son rendu d'origine. */
+export const FONDS_BOITE = [
+  { id: 'transparent', label: 'Transparent' },
+  { id: 'teinte', label: 'Teinté' },
+  { id: 'plein', label: 'Plein' },
+];
+export function styleFondBoite(boite, fondNoir = false) {
+  const hex = couleurHex(boite.couleur);
+  if (!boite.fond) return { background: avecAlpha(hex, opaciteFondBoite(boite.couleur)), ...(opaciteFondBoite(boite.couleur) < 0.9 ? { borderColor: hex } : {}) };
+  const n = parseInt(hex.slice(1), 16);
+  const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  const encrePage = fondNoir ? '#ECECF1' : '#16162a';
+  if (boite.fond === 'plein') return { background: avecAlpha(hex, 0.92), borderColor: hex, color: lum < 0.5 ? '#FFFFFF' : '#16162a' };
+  return { background: boite.fond === 'teinte' ? avecAlpha(hex, 0.15) : 'transparent', borderColor: hex, color: encrePage };
+}
+function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, viseSurlignage = false, viseAjout = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF, fondNoir = false }) {
   /* UN SEUL REPÈRE : LA PAGE (04/10, docs/compte-rendu-zoom-annotations.md). Position,
      épingle, connecteurs ET taille sont des fractions de page. La boîte est mise en page
      à l'échelle de RÉFÉRENCE (160 % : refW × refH, police 13 px…) puis mise à l'échelle
@@ -1005,7 +1022,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     ...(ajustee ? { width: 'max-content', maxWidth: b.width * refW } : { width: b.width * refW }),
     ...(texteLibre
       ? { color: couleurHex(boite.couleur, '#1F1F24') }
-      : { background: avecAlpha(couleurHex(boite.couleur), opaciteFondBoite(boite.couleur)), ...(!active && opaciteFondBoite(boite.couleur) < 0.9 ? { borderColor: couleurHex(boite.couleur) } : {}) }),
+      : (() => { const f = styleFondBoite(boite, fondNoir); if (active && !boite.fond) delete f.borderColor; return f; })()),
   };
 
   /* ÉPINGLE (ancre) : le point de la fiche auquel la boîte se rapporte. Un repère
@@ -1220,6 +1237,16 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
             title={`Ajouter une autre flèche, vers un endroit, un surlignage ou une forme${(boite.fleches || []).length ? ` (${boite.fleches.length} déjà)` : ''}. Le petit rond au bout se glisse ; sa croix la retire.`}>
             <Icon name="plus" size={10} /><IconeOutil nom="fleche" size={11} />{(boite.fleches || []).length ? ` ${boite.fleches.length}` : ''}
           </button>
+          {(() => {
+            const i = Math.max(0, FONDS_BOITE.findIndex((f) => f.id === (boite.fond || 'plein')));
+            const suivant = FONDS_BOITE[(i + 1) % FONDS_BOITE.length];
+            return (
+              <button type="button" className="nb-act nb-fond" {...stop(() => onModifier(boite, { fond: suivant.id }, 'Fond de la boîte'))}
+                title={`Fond : ${FONDS_BOITE[i].label.toLowerCase()} — cliquer pour « ${suivant.label.toLowerCase()} » (transparent → teinté 15 % → plein)`}>
+                <span className={'nb-fond-ic ' + FONDS_BOITE[i].id} style={{ '--c': couleurBoite }} aria-hidden="true" /> Fond
+              </button>
+            );
+          })()}
           <button type="button" className="nb-act" {...stop(() => onModifier(boite, { reduite: true }, 'Réduction de la boîte'))}
             title="Réduire en pastille : un clic sur la pastille rouvre la boîte, un glisser la déplace.">
             <Icon name="minus" size={11} /> Réduire
@@ -1230,7 +1257,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         </>)}
       </div>
     )}
-    <div ref={boiteRef} className={'note-box' + (ajustee ? ' ajustee' : '') + (texteLibre ? ' texte-libre' : '') + (active ? ' active' : '') + (enAncrage ? ' en-ancrage' : '') + (texteLibre && !extraitBrut ? ' vide' : '')} style={style}
+    <div ref={boiteRef} className={'note-box' + (ajustee ? ' ajustee' : '') + (!texteLibre && boite.fond ? ' fond-' + boite.fond : '') + (texteLibre ? ' texte-libre' : '') + (active ? ' active' : '') + (enAncrage ? ' en-ancrage' : '') + (texteLibre && !extraitBrut ? ' vide' : '')} style={style}
       onMouseEnter={entrer} onMouseLeave={sortir}>
       {/* CORRECTIF (défaut 4) : le bandeau est focusable, et c'est LUI qui porte la
           suppression au clavier — plus aucun écouteur global ne peut effacer la
@@ -1458,7 +1485,7 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
   };
   const rectsPage = (ids) => ids.map((i) => ocr.mots[i]).filter(Boolean).map((m) => ({ x: img.x + m.x * img.width, y: img.y + m.y * img.height, width: m.w * img.width, height: m.h * img.height }));
   const texteDe = (ids) => ids.map((i) => ocr.mots[i] && ocr.mots[i].t).filter(Boolean).join(' ');
-  const surligner = (ids, couleur) => onSurligner({ img, page: img.page, mots: ids, texte: texteDe(ids), rects: rectsPage(ids) }, couleur);
+  const surligner = (ids, couleur, opts) => onSurligner({ img, page: img.page, mots: ids, texte: texteDe(ids), rects: rectsPage(ids) }, couleur, opts);
   const appuiMots = (e) => {
     if (!motsVivants || (e.button && e.button !== 0) || !(e.target.classList && e.target.classList.contains('pi-mot'))) return;
     e.stopPropagation(); // pas de déplacement de l'image : on sélectionne son texte
@@ -1499,7 +1526,7 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
           {motsSurlignes.map(({ h, m, i }) => (
             <span key={h.id + ':' + i} className="pdfr-hl-rect pi-hl" data-hl={h.id}
               style={{ left: m.x * 100 + '%', top: m.y * 100 + '%', width: m.w * 100 + '%', height: m.h * 100 + '%', background: couleurHex(h.couleur),
-                ...(String(h.couleur).startsWith('#') ? { opacity: 0.45 } : {}) }} />
+                ...(opaciteSurlignage(h.couleur) < 1 ? { opacity: opaciteSurlignage(h.couleur) } : {}) }} />
           ))}
         </div>
       )}
@@ -1542,7 +1569,7 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
       })()}
       {bulle && createPortal(
         <div className="nd-bulle pt-bulle pi-bulle" style={{ left: bulle.x, top: bulle.y }} onMouseDown={(e) => e.preventDefault()}>
-          <button type="button" className="nd-bt nd-bt-txt" onClick={() => { surligner(bulle.ids, COULEUR_DEFAUT); window.getSelection().removeAllRanges(); setBulle(null); }}
+          <button type="button" className="nd-bt nd-bt-txt" onClick={() => { surligner(bulle.ids, COULEUR_DEFAUT, { ajouter: true }); window.getSelection().removeAllRanges(); setBulle(null); }}
             title="Faire de ces mots une notion (surlignage prioritaire)"><Icon name="edit" size={13} /> Notion</button>
           <button type="button" className="nd-bt nd-bt-txt" onClick={() => { onFlashcard(texteDe(bulle.ids)); setBulle(null); }}
             title="Créer une flashcard à partir de ces mots"><Icon name="cards" size={13} /> Flashcard</button>

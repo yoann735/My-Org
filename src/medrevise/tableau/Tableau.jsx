@@ -147,7 +147,7 @@ export const Tableau = forwardRef(function Tableau({ ficheId }, ref) {
   };
 
   /* ---------- créer / modifier ---------- */
-  const [couleurNouvelle, setCouleurNouvelle] = useState('jaune');
+  const [couleurNouvelle, setCouleurNouvelle] = useState('ambre');
   const zMax = () => cartes.reduce((m, c) => Math.max(m, c.z || 0), 0);
   const creerCarte = (x, y, texte = '', editer = true) => {
     const c = newCarte({ ficheId, x: x - CARTE_DEFAUT.w / 2, y: y - CARTE_DEFAUT.h / 2, texte, couleur: couleurNouvelle, z: zMax() + 1 });

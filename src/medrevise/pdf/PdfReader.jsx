@@ -67,7 +67,7 @@ import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
 import { buildCourseExportFromParts } from '../lib/courseExport.js';
 import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
-  COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI,
+  COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI, opaciteSurlignage,
   useDevicePixelRatio, compareHighlights, computePageTextMap, EPAISSEURS,
   MODES_CRAYON, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, couleurHex, BOITE_DEFAUT,
 } from './pdfShared.js';
@@ -217,22 +217,23 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // ni le test de position des surlignages ne peuvent se déclencher — c'est
   // structurel, pas une suite de conditions à ne pas oublier.
   const [outil, setOutil] = useState('main'); // main | surligneur | boite | crayon | gomme — actif sur TOUS les écrans depuis l'étape 7
-  const [couleurActive, setCouleurActive] = useState('jaune'); // couleur des BOÎTES (4 pastels)
+  const [couleurActive, setCouleurActive] = useState('ambre'); // couleur des BOÎTES (palette de base, 09/10)
   /* surligneur et crayon : chacun sa couleur, prise parmi les 4 couleurs « cours »,
      mes couleurs, ou la roue (pdf/Couleurs.jsx). Un id de COLORS ou un hex. */
-  const [couleurSurligneur, setCouleurSurligneur] = useState('jaune');
+  const [couleurSurligneur, setCouleurSurligneur] = useState('ambre');
   /* SURLIGNEUR FLUIDE (02/10 nuit) : pendant le geste, la sélection est dessinée dans la
      couleur EXACTE du surlignage à venir — même calcul que son rendu (couleur pleine en
      « multiply » ; une couleur perso est posée à 45 %, d'où son mélange avec le blanc).
      On peint en direct ; au relâchement, le surlignage prend la place sans aucun saut. */
   const couleurApercuSurligneur = useMemo(() => {
     const hex = couleurHex(couleurSurligneur);
-    if (!String(couleurSurligneur).startsWith('#')) return hex;
-    const n = parseInt(hex.slice(1), 16), a = 0.45, m = (v) => Math.round(255 * (1 - a) + v * a);
+    const a = opaciteSurlignage(couleurSurligneur);
+    if (a >= 1) return hex;
+    const n = parseInt(hex.slice(1), 16), m = (v) => Math.round(255 * (1 - a) + v * a);
     return `rgb(${m((n >> 16) & 255)}, ${m((n >> 8) & 255)}, ${m(n & 255)})`;
   }, [couleurSurligneur]);
-  const [couleurCrayon, setCouleurCrayon] = useState('bleu');
-  const [couleurForme, setCouleurForme] = useState('#e5383b'); // cadre rouge par défaut : il se voit sur la page
+  const [couleurCrayon, setCouleurCrayon] = useState('ardoise');
+  const [couleurForme, setCouleurForme] = useState('corail'); // cadre corail par défaut : il se voit sur la page
   /* FORMES (02/10 soir) : la forme à poser et son remplissage, mémorisés sur l'appareil
      (préférence d'affichage) — on retrouve sa dernière forme en un clic. */
   const [typeFormeActif, setTypeFormeActifBrut] = useState(() => { try { return localStorage.getItem('medrevise.typeForme') || 'rectangle'; } catch (e) { return 'rectangle'; } });
@@ -1056,10 +1057,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      `imageId` + `mots` (indices des mots OCR de l'image) — dessiné par l'image, il la suit.
      `rects` = position approximative sur la page au moment de la pose (tri, défilement).
      Même règle que sur le texte : même couleur sans mot neuf → retiré, sinon recoloré + posé. */
-  const surlignerMotsImage = async (p, couleur) => {
+  // `ajouter` (bulle « Notion ») : ne fait que poser les mots encore libres — jamais de retrait
+  const surlignerMotsImage = async (p, couleur, { ajouter = false } = {}) => {
     const choisis = new Set(p.mots);
-    const touches = highlights.filter((h) => h.imageId === p.img.id && (h.mots || []).some((i) => choisis.has(i)));
-    const pris = new Set(touches.flatMap((h) => h.mots || []));
+    const touches = ajouter ? [] : highlights.filter((h) => h.imageId === p.img.id && (h.mots || []).some((i) => choisis.has(i)));
+    const pris = new Set((ajouter ? highlights.filter((h) => h.imageId === p.img.id) : touches).flatMap((h) => h.mots || []));
     const libres = p.mots.filter((i) => !pris.has(i));
     if (!libres.length && touches.length && touches.every((h) => h.couleur === couleur)) {
       await hist.appliquer(cmdGroupe('Surlignage retiré', touches.map((h) => cmdSupprimer('highlights', h, 'Surlignage retiré'))));
@@ -1647,7 +1649,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // dans une fonction async appelée depuis un écouteur pointerup — promesse rejetée,
     // rien à l'écran : l'outil « ne créait rien ». La couleur est celle de la barre
     // contextuelle, partagée par tous les outils colorés.
-    const rec = newNoteBox({ ficheId, page, x, y, width, height, couleur: couleurActive });
+    const rec = newNoteBox({ ficheId, page, x, y, width, height, couleur: couleurActive, fond: 'transparent' });
     const cmd = cmdCreer('annotations', rec, 'Boîte de texte');
     hist.appliquer(cmd); // visible tout de suite (effet local), écrite ensuite
     videsFraiches.current.add(rec.id);
@@ -2079,7 +2081,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const x = aDroite ? f.x + f.width + 0.03 : Math.max(0.01, f.x - 0.03 - W);
     const y = Math.max(0, Math.min(1 - Hb, f.y + f.height / 2 - Hb / 2));
     const ancre = ancreSurForme(f, { x });
-    const rec = { ...newNoteBox({ ficheId, page: f.page, x, y, width: W, height: Hb, couleur: couleurActive }), ancre, fleche: true, formeId: f.id };
+    const rec = { ...newNoteBox({ ficheId, page: f.page, x, y, width: W, height: Hb, couleur: couleurActive, fond: 'transparent' }), ancre, fleche: true, formeId: f.id };
     hist.appliquer(cmdCreer('annotations', rec, 'Légende de la forme'));
     videsFraiches.current.add(rec.id);
     setFormeActiveId(null);

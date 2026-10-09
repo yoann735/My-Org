@@ -275,8 +275,10 @@ export function vueImageDoc({ node, getPos, editor }) {
       bulle.appendChild(b);
     };
     act('Notion', () => {
-      const n = { id: genId('nd'), couleur: COULEUR_DEFAUT, mots: ids };
-      changer({ notions: [...(courant.attrs.notions || []), n] });
+      // seulement les mots pas encore pris par une notion (jamais de doublon)
+      const pris = new Set((courant.attrs.notions || []).flatMap((x) => x.mots || []));
+      const libres = ids.filter((i) => !pris.has(i));
+      if (libres.length) changer({ notions: [...(courant.attrs.notions || []), { id: genId('nd'), couleur: COULEUR_DEFAUT, mots: libres }] });
       window.getSelection().removeAllRanges();
     });
     act('Flashcard', () => dom.dispatchEvent(new CustomEvent('pti-flashcard', { bubbles: true, detail: { texte: texteDe(ids) } })));

@@ -38,7 +38,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { EdTop, Modal, ConfirmModal } from '../components/ui.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
-import { COLORS, COLOR_TAG, couleurHex } from './pdfShared.js';
+import { COLORS_GABARIT as COLORS, COLOR_TAG, couleurHex } from './pdfShared.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
 import { getBlob, putBlob, putBlobAt } from '../lib/storage.js';

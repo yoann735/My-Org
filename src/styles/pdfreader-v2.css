@@ -42,3 +42,26 @@
 .pi-texte.vivant .pi-mot { pointer-events: auto; user-select: text; -webkit-user-select: text; cursor: text; }
 .pi-mot::selection { background: rgba(80, 130, 230, .45); color: transparent; }
 .pi-surlignages { position: absolute; inset: 0; pointer-events: none; }
+
+/* ---- BOÎTES : fond transparent / teinté / plein (09/10). Sans `fond` : rendu d'origine ---- */
+.note-box:is(.fond-transparent, .fond-teinte) { border-width: 1.5px; box-shadow: none; }
+.note-box:is(.fond-transparent, .fond-teinte) .nb-bar { background: transparent; border-bottom-color: transparent; opacity: 0; transition: opacity .15s; }
+.note-box:is(.fond-transparent, .fond-teinte):is(:hover, .active) .nb-bar { opacity: 1; }
+.note-box:is(.fond-transparent, .fond-teinte).active { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.note-box.fond-plein { box-shadow: 0 1px 4px rgba(0, 0, 0, .12); }
+.nb-fond-ic { display: inline-block; width: 11px; height: 11px; border-radius: 3px; border: 1.5px solid var(--c, currentColor); vertical-align: -1px; }
+.nb-fond-ic.teinte { background: color-mix(in srgb, var(--c) 30%, transparent); }
+.nb-fond-ic.plein { background: var(--c); }
+@media (prefers-reduced-motion: reduce) { .note-box .nb-bar { transition: none; } }
+
+/* ---- PALETTE DES ANNOTATIONS (09/10, lib/palette.js) : tokens de la DA ----
+   Six teintes de luminance moyenne, lisibles sur une page blanche comme sur fond noir ;
+   variante « surligneur » à 42 %. */
+:root {
+  --annot-ambre: #F5A524;   --annot-ambre-hl: rgba(245, 165, 36, .42);
+  --annot-corail: #F2706A;  --annot-corail-hl: rgba(242, 112, 106, .42);
+  --annot-violet: #9B8AFB;  --annot-violet-hl: rgba(155, 138, 251, .42);
+  --annot-ardoise: #5E8BEA; --annot-ardoise-hl: rgba(94, 139, 234, .42);
+  --annot-sauge: #5DBB8A;   --annot-sauge-hl: rgba(93, 187, 138, .42);
+  --annot-poudre: #EE8FC0;  --annot-poudre-hl: rgba(238, 143, 192, .42);
+}

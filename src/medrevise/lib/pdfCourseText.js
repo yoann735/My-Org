@@ -24,6 +24,7 @@
    ============================================================ */
 import { legendeFiche, tableCellsToText } from './ficheToText.js';
 import { SENS_PAR_COULEUR } from './courseExport.js';
+import { sensCouleur } from './palette.js';
 
 const collapse = (s) => s.replace(/\s+/g, ' ').trim();
 
@@ -212,22 +213,23 @@ function highlightEntries(nodes, normalize) {
   const out = [];
   nodes.forEach((n, i) => {
     if (!n.mark) return;
+    // 09/10 : ambre = prioritaire (comme jaune), rose poudré = cloze (comme rose) — lib/palette.js
     const couleur = n.mark.h.couleur || 'jaune';
     const texte = collapse(normalize(n.mark.text));
-    if (couleur !== 'rose') { out.push({ couleur, sens: SENS_PAR_COULEUR[couleur] || 'surligne', texte }); return; }
+    if (sensCouleur(couleur) !== 'rose') { out.push({ couleur, sens: SENS_PAR_COULEUR[sensCouleur(couleur)] || 'surligne', texte }); return; }
     const touching = (step) => {
       const texts = [];
       for (let j = i + step; j >= 0 && j < nodes.length; j += step) {
         const m = nodes[j];
         if (m.gap !== undefined) { if (/^\s*$/.test(m.gap)) continue; break; }
-        if ((m.mark.h.couleur || 'jaune') !== 'jaune') break;
+        if (sensCouleur(m.mark.h.couleur || 'jaune') !== 'jaune') break;
         texts.push(normalize(m.mark.text));
       }
       return step < 0 ? texts.reverse() : texts;
     };
     const before = touching(-1), after = touching(1);
     const dans_notion = (before.length || after.length) ? collapse([...before, texte, ...after].join(' ')) : null;
-    out.push({ couleur: 'rose', sens: 'cloze', texte, dans_notion });
+    out.push({ couleur, sens: 'cloze', texte, dans_notion });
   });
   return out;
 }
@@ -283,7 +285,7 @@ export async function pdfCourseParts(pdfDoc, highlights, { normalize = (s) => s 
     unplaced.forEach((h) => {
       const couleur = h.couleur || 'jaune';
       const texte = collapse(normalize(h.texte || ''));
-      surlignages.push(couleur === 'rose' ? { couleur, sens: 'cloze', texte, dans_notion: null } : { couleur, sens: SENS_PAR_COULEUR[couleur] || 'surligne', texte });
+      surlignages.push(sensCouleur(couleur) === 'rose' ? { couleur, sens: 'cloze', texte, dans_notion: null } : { couleur, sens: SENS_PAR_COULEUR[sensCouleur(couleur)] || 'surligne', texte });
       if (h.note) out.push(noteBlock(h, normalize));
     });
   }

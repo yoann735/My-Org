@@ -169,7 +169,7 @@ export const NotesEditor = forwardRef(function NotesEditor({
     const texte = editor.state.doc.textBetween(from, to, ' ').trim();
     if (!texte) return;
     const id = genId('nd');
-    editor.chain().focus().setMark('notion', { id, couleur: 'jaune' }).run();
+    editor.chain().focus().setMark('notion', { id, couleur: 'ambre' }).run();
     if (onCreerNotion) onCreerNotion({ id, texte });
   };
   const versFlashcard = () => {

@@ -400,11 +400,14 @@ export function newTextEdit({ ficheId, page, x, y, width, height, originalText, 
    donc lu comme un bloc de remplacement — aucune migration, rien à convertir.
    `couleur` : un id de la palette des surlignages (voir COLORS, pdf/PdfReader.jsx),
    pour que la boîte se voie comme un ajout et non comme un morceau du PDF. ---- */
-export function newNoteBox({ ficheId, page, x, y, width, height, couleur, content }) {
+export function newNoteBox({ ficheId, page, x, y, width, height, couleur, content, fond }) {
   return {
     id: genId('an'), ficheId, page, x, y, width, height,
     kind: 'libre', type: 'boite',
-    couleur: couleur || 'jaune',
+    couleur: couleur || 'ambre',
+    // 09/10 : fond de la boîte — 'transparent' (défaut des nouvelles) | 'teinte' | 'plein' ;
+    // absent = boîte d'avant : rendu d'origine (fond plein), rien n'est réécrit
+    ...(fond ? { fond } : {}),
     content: content || { type: 'doc', content: [{ type: 'paragraph' }] },
     createdAt: new Date().toISOString(),
   };

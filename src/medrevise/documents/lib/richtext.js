@@ -18,6 +18,7 @@ import { vueImageDoc } from './imageVue.js';
 import { TaskList, TaskItem } from '@tiptap/extension-list';
 import { TableKit } from '@tiptap/extension-table';
 import { getBlob } from '../../lib/storage.js';
+import { hexPalette, COULEURS_HISTORIQUES } from '../../lib/palette.js';
 
 /* Mark maison « mes questions » : l'étudiant sélectionne sa question (souvent notée
    entre parenthèses) à l'endroit exact du cours. Rendu inline distinct + data-attr,
@@ -150,12 +151,11 @@ export const NotionMark = Mark.create({
   // 08/10 : la couleur du surligneur (4 couleurs « cours » ou hex libre) — variable CSS --nc
   renderHTML({ HTMLAttributes }) {
     const c = HTMLAttributes['data-couleur'];
-    const hex = /^#[0-9a-f]{6}$/i.test(c || '') ? c : (COULEURS_NOTION[c] || COULEURS_NOTION.jaune);
+    const hex = hexPalette(c || 'jaune', COULEURS_HISTORIQUES.jaune);
     return ['mark', { ...HTMLAttributes, class: 'rt-notion', style: `--nc: ${hex}` }, 0];
   },
 });
-// mêmes teintes que COLORS (pdf/pdfShared.js), sans importer pdf.js ici
-const COULEURS_NOTION = { jaune: '#FFD84D', vert: '#8BE38B', bleu: '#7EC8FF', rose: '#FF9FD1' };
+// teintes : lib/palette.js (sans pdf.js) — anciennes et nouvelles couleurs
 /* Entrée sur une ligne VIDE d'une citation : on en sort (comme Notion, Docs) — sans ça,
    tout ce qu'on tape ensuite restait dans la citation. */
 const SortieCitation = Extension.create({

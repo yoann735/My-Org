@@ -21,6 +21,7 @@ import { createPortal } from 'react-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { TextSelection, NodeSelection } from '@tiptap/pm/state';
 import { Icon } from '../../shared/Icon.jsx';
+import { COULEUR_DEFAUT } from '../lib/palette.js';
 import { putBlob, genId } from '../lib/storage.js';
 import { NOTES_EXTENSIONS, EMPTY_DOC, hydrateDoc, dehydrateDoc } from '../documents/lib/richtext.js';
 import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
@@ -334,7 +335,7 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
         <div className="nd-bulle pt-bulle" style={{ left: bulle.x, top: bulle.y - 8 }} onMouseDown={(e) => e.preventDefault()}>
           {bulle.notion
             ? <button type="button" className="nd-bt nd-bt-txt" onClick={retirerNotion} title="Ce passage n’est plus une notion"><Icon name="x" size={13} /> Retirer la notion</button>
-            : <button type="button" className="nd-bt nd-bt-txt" onClick={() => marquerNotion('jaune')} title="Faire de ce passage une notion (mode Notions du panneau)"><Icon name="edit" size={13} /> Notion</button>}
+            : <button type="button" className="nd-bt nd-bt-txt" onClick={() => marquerNotion(COULEUR_DEFAUT)} title="Faire de ce passage une notion (mode Notions du panneau)"><Icon name="edit" size={13} /> Notion</button>}
           <button type="button" className="nd-bt nd-bt-txt" onClick={versFlashcard} title="Créer une flashcard à partir de ce passage"><Icon name="cards" size={13} /> Flashcard</button>
         </div>,
         document.body,
