@@ -420,6 +420,7 @@ export const PageTexte = memo(forwardRef(function PageTexte({
      id : la notion reste la même). Du texte libre dans la sélection → nouvelle notion. */
   const surRelache = () => {
     if (outilRef.current !== 'surligneur') return;
+    { const sel = window.getSelection(); const n = sel && sel.anchorNode; const el = n && (n.nodeType === 1 ? n : n.parentElement); if (el && el.closest && el.closest('.pti-texte')) return; }
     const ed = editorRef.current;
     if (!ed || ed.state.selection.empty) return;
     const couleur = rappels.current.couleurSurligneur || 'jaune';
@@ -451,7 +452,7 @@ export const PageTexte = memo(forwardRef(function PageTexte({
   };
 
   return (
-    <div ref={zoneRef} className={'pt-zone outil-' + outil}
+    <div ref={zoneRef} className={'pt-zone outil-' + outil} data-outil={outil} data-couleur-surligneur={couleurSurligneur || undefined}
       style={{ width: largeur, height: hauteur, transform: `scale(${echelle})`, padding: MARGE_PAGE, '--pt-inv': 1 / (echelle || 1) }}
       onMouseDown={surAppui} onMouseUp={surRelache}
       onPointerDown={() => { const ed = editorRef.current; if (ed && outilRef.current === 'main') rappels.current.onActiver(pageId, ed); }}>

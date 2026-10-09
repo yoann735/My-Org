@@ -1051,6 +1051,31 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     await hist.appliquer(cmdGroupe('Surlignage', cmds));
   };
 
+  /* MOTS D'UNE IMAGE COLLÉE (09/10, docs/compte-rendu-pdfreader-v2.md) : un surlignage = un
+     enregistrement `highlights` ordinaire (panneau Notions, exports, synchro) qui porte en plus
+     `imageId` + `mots` (indices des mots OCR de l'image) — dessiné par l'image, il la suit.
+     `rects` = position approximative sur la page au moment de la pose (tri, défilement).
+     Même règle que sur le texte : même couleur sans mot neuf → retiré, sinon recoloré + posé. */
+  const surlignerMotsImage = async (p, couleur) => {
+    const choisis = new Set(p.mots);
+    const touches = highlights.filter((h) => h.imageId === p.img.id && (h.mots || []).some((i) => choisis.has(i)));
+    const pris = new Set(touches.flatMap((h) => h.mots || []));
+    const libres = p.mots.filter((i) => !pris.has(i));
+    if (!libres.length && touches.length && touches.every((h) => h.couleur === couleur)) {
+      await hist.appliquer(cmdGroupe('Surlignage retiré', touches.map((h) => cmdSupprimer('highlights', h, 'Surlignage retiré'))));
+      return;
+    }
+    const idx = p.mots.map((i, k) => (libres.includes(i) ? k : -1)).filter((k) => k >= 0);
+    const cmds = [
+      ...touches.filter((h) => h.couleur !== couleur).map((h) => cmdModifier('highlights', h, { ...h, couleur }, 'Couleur du surlignage')),
+      ...(libres.length ? [cmdCreer('highlights', {
+        ...newHighlight({ ficheId, page: p.page, texte: idx.length === p.mots.length ? p.texte : libres.map((i) => p.texte.split(' ')[p.mots.indexOf(i)]).join(' '), couleur, rects: idx.map((k) => p.rects[k]).filter(Boolean) }),
+        imageId: p.img.id, mots: libres,
+      }, 'Surlignage')] : []),
+    ];
+    if (cmds.length) await hist.appliquer(cmdGroupe('Surlignage', cmds));
+  };
+
   // recherche temps réel (debounce léger) : matching textuel sur une carte de position
   // indépendante du DOM (toutes pages) — la géométrie exacte est calculée séparément,
   // par page montée, via computeMatchRectsFromDom (Chantier 2).
@@ -2146,8 +2171,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const supprimerImage = async (img) => {
     if (imageActiveId === img.id) setImageActiveId(null);
     const textes = textesAttaches(img);
-    await hist.appliquer(textes.length
-      ? cmdGroupe('Suppression du dessin et de ses textes', [cmdSupprimer('annotations', img, 'Suppression de l’image'), ...textes.map((t) => cmdSupprimer('annotations', t, 'Texte du dessin'))])
+    const surl = highlights.filter((h) => h.imageId === img.id); // ses mots surlignés partent avec elle (annulable ensemble)
+    await hist.appliquer(textes.length || surl.length
+      ? cmdGroupe(textes.length ? 'Suppression du dessin et de ses textes' : 'Suppression de l’image', [cmdSupprimer('annotations', img, 'Suppression de l’image'),
+        ...textes.map((t) => cmdSupprimer('annotations', t, 'Texte du dessin')), ...surl.map((h) => cmdSupprimer('highlights', h, 'Surlignage de l’image'))])
       : cmdSupprimer('annotations', img, 'Suppression de l’image'));
   };
   // CALQUES : `z` ne classe que les images d'une même page entre elles. Une seule
@@ -2729,6 +2756,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       matches={matchesByPage[n] || EMPTY_ARRAY}
                       activeMatchIdx={activeMatch}
                       onCreateHighlight={handleCreateHighlightRequest}
+                      onSurlignerImage={surlignerMotsImage} onFlashcardTexte={flashcardDePage} couleurSurligneur={couleurSurligneur}
                       cibleHlId={flashHlId}
                       ocrPage={sz.ajout ? null : ocrPagePour(n)} ocrDebug={ocrDebug}
                       onActivateEdit={setActiveEditId}

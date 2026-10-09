@@ -260,6 +260,10 @@
 .pti-texte { position: absolute; inset: 0; z-index: 2; pointer-events: none; line-height: 1; white-space: pre; overflow: hidden; }
 .pti-mot { position: absolute; color: transparent; transform-origin: 0 50%; display: inline-flex; align-items: center; white-space: pre; font-family: sans-serif; user-select: none; -webkit-user-select: none; }
 .pti.texte-actif .pti-texte { pointer-events: auto; cursor: text; }
+/* 09/10 : avec Sélection ou Surligneur, les mots reconnus se sélectionnent directement (sans
+   activer l'icône) — seuls les MOTS captent le pointeur : ailleurs, l'image se saisit comme avant */
+[data-outil="main"] .pti-mot, [data-outil="surligneur"] .pti-mot { pointer-events: auto; user-select: text; -webkit-user-select: text; -webkit-user-drag: none; cursor: text; }
+[data-outil="surligneur"] .pti-mot { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Cpath d='M3 17l4-1 9-9-3-3-9 9z' fill='%23F5A524' stroke='%23333' stroke-width='1'/%3E%3C/svg%3E") 3 17, text; }
 .pti.texte-actif .pti-mot { user-select: text; -webkit-user-select: text; background: rgba(255, 255, 255, .28); box-shadow: 0 0 0 1px rgba(107, 92, 255, .55); border-radius: 2px; }
 .pti.texte-actif .pti-cadre > img { filter: brightness(.82); }
 .pti-mot::selection { background: rgba(80, 130, 230, .5); color: transparent; }

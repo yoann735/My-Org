@@ -27,6 +27,7 @@ import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
 import { PaginationDocument, SautDePage } from '../documents/lib/paginationExt.js';
 import { surlignerRecherche } from './PageTexte.jsx';
 
+const dansTexteImage = () => { const sel = window.getSelection(); const n = sel && sel.anchorNode; const el = n && (n.nodeType === 1 ? n : n.parentElement); return !!(el && el.closest && el.closest('.pti-texte')); };
 export const MARGE_DOC = 56; // ≈ 20 mm sur l'A4 (595 × 842)
 const DELAI_SAUVEGARDE = 600;
 
@@ -280,6 +281,7 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
   };
   const surRelache = () => {
     if (outilRef.current !== 'surligneur') return;
+    if (dansTexteImage()) return; // mots d'une image : surlignés par la vue image (imageVue.js)
     const ed = editorRef.current;
     if (!ed || ed.state.selection.empty) return;
     const couleur = rappels.current.couleurSurligneur || 'jaune';
@@ -313,6 +315,7 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
   const actifTexte = outil === 'main' || outil === 'surligneur';
   return (
     <div ref={cadreRef} className={'pt-flux-cadre outil-' + outil + (fondNoir ? ' fond-noir' : '') + (actifTexte ? '' : ' inerte')}
+      data-outil={outil} data-couleur-surligneur={couleurSurligneur || undefined}
       style={{ width: largeurPage * echelle, height: hauteurTotale, '--pt-inv': 1 / (echelle || 1) }}
       onMouseUp={surRelache}
       // un clic dans le texte (curseur déjà là ou non) : la barre de mise en forme revient

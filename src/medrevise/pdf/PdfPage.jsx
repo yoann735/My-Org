@@ -26,6 +26,9 @@ import { Icon } from '../../shared/Icon.jsx';
 import { outputScaleFor } from './pdfjsSetup.js';
 import { richToHTML } from '../documents/lib/richtext.js';
 import { blobURL } from '../lib/storage.js';
+import { createPortal } from 'react-dom';
+import { ocrImage } from '../ocr/ocrImage.js';
+import { COULEUR_DEFAUT } from '../lib/palette.js';
 import {
   couleurFoncee, opaciteFondBoite, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT,
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
@@ -33,14 +36,14 @@ import {
   soustraireAncres, partCouverte, surlignagesTouches, couleurHex,
   lisserTrait, traitTouche, cheminLisse, suivreEnDouceur, modeDuTrait,
   EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, positionTexteProche,
-  lisibleSurNoir,
+  lisibleSurNoir, EMPTY_ARRAY,
 } from './pdfShared.js';
 
 /** rendu d'une seule page (montée uniquement si proche du viewport) : canvas + couche de
     texte + surlignages + surlignage de recherche (géométrie exacte, Chantier 2) + blocs
     de texte édités (Chantier 1). */
 export function PdfPageContent({
-  pdfDoc, pageNum, vierge = false, scale, pageHeight, dpr, highlights, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
+  pdfDoc, pageNum, vierge = false, scale, pageHeight, dpr, highlights: tousSurlignages, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
   onCreateHighlight, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, ancrageSurlignage = false, ancrageAjout = false, onDemanderAncrage = () => {},
   onCreerTrait, onSupprimerTraits, cibleHlId,
   ocrPage = null, ocrDebug = false, // couche OCR de cette page (docs/compte-rendu-ocr.md)
@@ -52,7 +55,14 @@ export function PdfPageContent({
   couleurApercuSelection = null,
   corps = null, // TEXTE D'UNE PAGE DE DOCUMENT (08/10, pdf/PageTexte.jsx) : juste au-dessus de la page, sous les annotations
   fondNoir = false, // fond de page noir (document) : une encre sombre est rendue claire (lisibleSurNoir)
+  // SURLIGNER LE TEXTE D'UNE IMAGE COLLÉE (09/10, docs/compte-rendu-pdfreader-v2.md)
+  onSurlignerImage = () => {}, onFlashcardTexte = () => {}, couleurSurligneur = 'ambre',
 }) {
+  /* surlignages posés sur les MOTS d'une image collée (`imageId` + `mots`) : dessinés par
+     l'image elle-même (ils la suivent : déplacement, taille, rotation) — tout le reste de la
+     page (couche de texte, liens, recouvrements) ne voit que les surlignages du texte */
+  const highlights = useMemo(() => (tousSurlignages || []).filter((h) => !h.imageId), [tousSurlignages]);
+  const surlignagesImages = useMemo(() => (tousSurlignages || []).filter((h) => h.imageId), [tousSurlignages]);
   const encre = (c, repli) => (fondNoir ? lisibleSurNoir(couleurHex(c, repli)) : couleurHex(c, repli));
   const canvasRef = useRef(null);
   const textLayerRef = useRef(null);
@@ -654,6 +664,8 @@ export function PdfPageContent({
         <div className={'pdfr-imglayer' + (outil === 'main' ? ' interactif' : '')}>
           {images.map((img, i) => (
             <ImageCollee key={img.id} img={img} active={img.id === imageActiveId}
+              outil={outil} surlignages={surlignagesImages.filter((h) => h.imageId === img.id)} couleurSurligneur={couleurSurligneur}
+              onSurligner={onSurlignerImage} onFlashcard={onFlashcardTexte}
               premier={i === images.length - 1} dernier={i === 0}
               onActiver={onImageActiver} onMaj={onImageMaj} onCalque={onImageCalque} onSupprimer={onImageSupprimer}
               onApercu={(geo) => setApercuImage(geo ? { id: img.id, avant: img, geo } : null)}
@@ -1324,7 +1336,9 @@ function QuestionMarque({ q, onModifier, onSupprimer, onGeste }) {
    (même famille de flash que le bug « hallucinations »). Un blob ne change jamais
    de contenu pour un même id : l'adresse reste valable. */
 const URLS_IMAGES = new Map();
-function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque, onSupprimer, onGeste, onApercu = () => {}, pageWidth = 0, pageHeight = 0 }) {
+const mesureMots = typeof document !== 'undefined' ? document.createElement('canvas').getContext('2d') : null;
+function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque, onSupprimer, onGeste, onApercu = () => {}, pageWidth = 0, pageHeight = 0,
+  outil = 'main', surlignages = EMPTY_ARRAY, couleurSurligneur = 'ambre', onSurligner = () => {}, onFlashcard = () => {} }) {
   const [url, setUrl] = useState(() => URLS_IMAGES.get(img.blobId) || null);
   const [manquante, setManquante] = useState(false);
   useEffect(() => {
@@ -1409,6 +1423,67 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
     window.addEventListener('pointerup', up);
   };
   const stop = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onClick: (e) => { e.stopPropagation(); fn(); } });
+
+  /* TEXTE DE L'IMAGE (09/10) : OCR en arrière-plan (ocr/ocrImage.js, mis en cache par blob),
+     mots posés en calque transparent EN FRACTIONS DE L'IMAGE — ils suivent zoom, taille et
+     rotation. Surligneur : balayer les mots les surligne (repasser : retirer / recolorer).
+     Sélection : sur une image non sélectionnée, glisser sur les mots sélectionne le texte
+     (bulle Notion · Flashcard · Copier) ; ailleurs — ou image sélectionnée — on la déplace. */
+  const [ocr, setOcr] = useState(null);
+  useEffect(() => {
+    if (!img.blobId) return undefined;
+    let vivant = true;
+    ocrImage({ blobId: img.blobId }).then((r) => { if (vivant && r && r.mots && r.mots.length) setOcr(r); }).catch(() => {});
+    return () => { vivant = false; };
+  }, [img.blobId]);
+  const motsVivants = !!ocr && (outil === 'surligneur' || (outil === 'main' && !active));
+  const calqueRef = useRef(null);
+  const [bulle, setBulle] = useState(null); // { x, y, ids }
+  const Wpx = g.width * pageWidth, Hpx = g.height * pageHeight;
+  const tailles = useMemo(() => {
+    if (!ocr || !mesureMots || !Wpx || !Hpx) return [];
+    return ocr.mots.map((m) => {
+      const fs = Math.max(3, m.h * Hpx * 0.86);
+      mesureMots.font = `${fs}px sans-serif`;
+      const l = mesureMots.measureText(m.t).width || 1;
+      return { fs, sx: (m.w * Wpx) / l };
+    });
+  }, [ocr, Wpx, Hpx]);
+  const motsSelectionnes = () => {
+    const sel = window.getSelection();
+    const cal = calqueRef.current;
+    if (!sel || sel.isCollapsed || !sel.rangeCount || !cal || !cal.contains(sel.anchorNode)) return [];
+    const r = sel.getRangeAt(0);
+    return [...cal.children].filter((sp) => sp.firstChild && r.intersectsNode(sp.firstChild) && !(r.endContainer === sp.firstChild && r.endOffset === 0) && !(r.startContainer === sp.firstChild && r.startOffset >= sp.firstChild.length - 1 && sp.firstChild.length > 1)).map((sp) => Number(sp.dataset.i));
+  };
+  const rectsPage = (ids) => ids.map((i) => ocr.mots[i]).filter(Boolean).map((m) => ({ x: img.x + m.x * img.width, y: img.y + m.y * img.height, width: m.w * img.width, height: m.h * img.height }));
+  const texteDe = (ids) => ids.map((i) => ocr.mots[i] && ocr.mots[i].t).filter(Boolean).join(' ');
+  const surligner = (ids, couleur) => onSurligner({ img, page: img.page, mots: ids, texte: texteDe(ids), rects: rectsPage(ids) }, couleur);
+  const appuiMots = (e) => {
+    if (!motsVivants || (e.button && e.button !== 0) || !(e.target.classList && e.target.classList.contains('pi-mot'))) return;
+    e.stopPropagation(); // pas de déplacement de l'image : on sélectionne son texte
+    setBulle(null);
+    try { window.getSelection().removeAllRanges(); } catch (x) { /* ignore */ }
+    const fin = () => {
+      window.removeEventListener('pointerup', fin, true);
+      setTimeout(() => {
+        const ids = motsSelectionnes();
+        if (!ids.length) return;
+        if (outil === 'surligneur') { surligner(ids, couleurSurligneur); window.getSelection().removeAllRanges(); return; }
+        const r = window.getSelection().getRangeAt(0).getBoundingClientRect();
+        setBulle({ x: (r.left + r.right) / 2, y: r.top - 8, ids });
+      }, 0);
+    };
+    window.addEventListener('pointerup', fin, true);
+  };
+  useEffect(() => {
+    if (!bulle) return undefined;
+    const dehors = (e) => { if (!(e.target.closest && e.target.closest('.pi-bulle'))) setBulle(null); };
+    window.addEventListener('pointerdown', dehors, true);
+    return () => window.removeEventListener('pointerdown', dehors, true);
+  }, [bulle]);
+  const motsSurlignes = surlignages.flatMap((h) => (h.mots || []).map((i) => ({ h, m: ocr && ocr.mots[i], i }))).filter((x) => x.m);
+
   return (
     <div ref={cadreRef} tabIndex={0} className={'pdfr-image' + (active ? ' active' : '') + (apercu ? ' glisse' : '')}
       style={{ left: g.x * 100 + '%', top: g.y * 100 + '%', width: g.width * 100 + '%', height: g.height * 100 + '%' }}
@@ -1419,6 +1494,25 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
       <div className="pdfr-image-corps" style={g.rotation ? { transform: `rotate(${g.rotation}deg)` } : undefined}>
       {url ? <img src={url} alt={img.nom || 'Image collée'} draggable={false} />
         : <div className="pdfr-image-vide">{manquante ? 'Image indisponible sur cet appareil' : '…'}</div>}
+      {motsSurlignes.length > 0 && (
+        <div className="pi-surlignages" aria-hidden="true">
+          {motsSurlignes.map(({ h, m, i }) => (
+            <span key={h.id + ':' + i} className="pdfr-hl-rect pi-hl" data-hl={h.id}
+              style={{ left: m.x * 100 + '%', top: m.y * 100 + '%', width: m.w * 100 + '%', height: m.h * 100 + '%', background: couleurHex(h.couleur),
+                ...(String(h.couleur).startsWith('#') ? { opacity: 0.45 } : {}) }} />
+          ))}
+        </div>
+      )}
+      {ocr && (
+        <div ref={calqueRef} className={'pi-texte' + (motsVivants ? ' vivant' : '')} onPointerDown={appuiMots}>
+          {ocr.mots.map((m, i) => (
+            <span key={i} className="pi-mot" data-i={i}
+              style={{ left: m.x * 100 + '%', top: m.y * 100 + '%', height: m.h * 100 + '%', fontSize: tailles[i] ? tailles[i].fs : undefined, transform: tailles[i] ? `scaleX(${tailles[i].sx})` : undefined }}>
+              {m.t + (i + 1 < ocr.mots.length ? (ocr.mots[i + 1].line !== m.line ? '\n' : ' ') : '')}
+            </span>
+          ))}
+        </div>
+      )}
       {active && ['nw', 'ne', 'sw', 'se'].map((c) => (
         <span key={c} className={'pi-coin pi-' + c} onPointerDown={(e) => geste(e, c)} />
       ))}
@@ -1446,6 +1540,17 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
         </div>
         );
       })()}
+      {bulle && createPortal(
+        <div className="nd-bulle pt-bulle pi-bulle" style={{ left: bulle.x, top: bulle.y }} onMouseDown={(e) => e.preventDefault()}>
+          <button type="button" className="nd-bt nd-bt-txt" onClick={() => { surligner(bulle.ids, COULEUR_DEFAUT); window.getSelection().removeAllRanges(); setBulle(null); }}
+            title="Faire de ces mots une notion (surlignage prioritaire)"><Icon name="edit" size={13} /> Notion</button>
+          <button type="button" className="nd-bt nd-bt-txt" onClick={() => { onFlashcard(texteDe(bulle.ids)); setBulle(null); }}
+            title="Créer une flashcard à partir de ces mots"><Icon name="cards" size={13} /> Flashcard</button>
+          <button type="button" className="nd-bt nd-bt-txt" onClick={() => { try { navigator.clipboard.writeText(texteDe(bulle.ids)); } catch (x) { /* refus */ } setBulle(null); }}
+            title="Copier le texte"><Icon name="copy" size={13} /> Copier</button>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

@@ -22,6 +22,7 @@ import { PDFDocument, BlendMode, StandardFonts, rgb, degrees } from 'pdf-lib';
 import { getBlob } from '../lib/storage.js';
 import { cheminForme, typeForme, estFermee, estTrait } from './formes.js';
 import { separerParType } from '../lib/annotationTypes.js';
+import { ocrImage } from '../ocr/ocrImage.js';
 import { COLOR_RGB, couleurHex, couleurFoncee, opaciteFondBoite, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, modeDuTrait } from './pdfShared.js';
 
 /* Le texte des boîtes est collé à la page dans le lecteur (13 px boîte, 15 px texte
@@ -194,6 +195,25 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const page = pageDe(h.page);
     if (!page) { bilan.ignores += 1; continue; }
     const { W, H } = dims(page);
+    if (h.imageId) {
+      /* MOTS D'UNE IMAGE COLLÉE (09/10) : la géométrie vient de l'image (position, taille,
+         rotation ACTUELLES) et des boîtes OCR de ses mots, comme à l'écran */
+      const im = par.image.find((x) => x.id === h.imageId);
+      const ocr = im && im.blobId ? await ocrImage({ blobId: im.blobId }).catch(() => null) : null;
+      if (!im || !ocr || !ocr.mots) { bilan.ignores += 1; continue; }
+      const w = im.width * W, hh = im.height * H, cx = (im.x + im.width / 2) * W, cy = H - (im.y + im.height / 2) * H;
+      const phi = (-(im.rotation || 0) * Math.PI) / 180, c = Math.cos(phi), s = Math.sin(phi);
+      for (const i of h.mots || []) {
+        const m = ocr.mots[i];
+        if (!m) continue;
+        // coin bas-gauche du mot, repère de l'image centré (y vers le haut), puis rotation
+        const xr = m.x * w - w / 2, yr = hh / 2 - (m.y + m.h) * hh;
+        page.drawRectangle({ x: cx + xr * c - yr * s, y: cy + xr * s + yr * c, width: m.w * w, height: m.h * hh, ...(im.rotation ? { rotate: degrees(-im.rotation) } : {}),
+          color: COLOR_RGB[h.couleur] || hexVersRgb(couleurHex(h.couleur)), opacity: 0.4, blendMode: BlendMode.Multiply });
+      }
+      bilan.surlignages += 1;
+      continue;
+    }
     for (const r of h.rects || []) {
       page.drawRectangle({ x: r.x * W, y: H - (r.y + r.height) * H, width: r.width * W, height: r.height * H,
         color: COLOR_RGB[h.couleur] || hexVersRgb(couleurHex(h.couleur)), opacity: 0.4, blendMode: BlendMode.Multiply });

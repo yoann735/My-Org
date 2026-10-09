@@ -20,8 +20,8 @@ import { NodeSelection } from '@tiptap/pm/state';
 import { ocrImage } from '../../ocr/ocrImage.js';
 import { genId } from '../../lib/storage.js';
 import { gesteDocument } from './paginationExt.js';
+import { hexPalette, COULEUR_DEFAUT } from '../../lib/palette.js';
 
-const COULEURS_NOTION = { jaune: '#FFD84D', vert: '#8BE38B', bleu: '#7EC8FF', rose: '#FF9FD1' };
 const SEUIL_GLISSER = 6; // px écran avant qu'un appui devienne un déplacement
 const LARGEUR_MIN = 40;
 
@@ -214,7 +214,7 @@ export function vueImageDoc({ node, getPos, editor }) {
         const b = document.createElement('span');
         b.className = 'pti-notion';
         b.dataset.notion = n.id;
-        b.style.setProperty('--nc', COULEURS_NOTION[n.couleur] || n.couleur || COULEURS_NOTION.jaune);
+        b.style.setProperty('--nc', hexPalette(n.couleur || 'jaune'));
         Object.assign(b.style, { left: m.x * 100 + '%', top: m.y * 100 + '%', width: m.w * 100 + '%', height: m.h * 100 + '%' });
         notionsCalque.appendChild(b);
       }
@@ -275,7 +275,7 @@ export function vueImageDoc({ node, getPos, editor }) {
       bulle.appendChild(b);
     };
     act('Notion', () => {
-      const n = { id: genId('nd'), couleur: 'jaune', mots: ids };
+      const n = { id: genId('nd'), couleur: COULEUR_DEFAUT, mots: ids };
       changer({ notions: [...(courant.attrs.notions || []), n] });
       window.getSelection().removeAllRanges();
     });
@@ -283,7 +283,46 @@ export function vueImageDoc({ node, getPos, editor }) {
     act('Copier', () => { try { navigator.clipboard.writeText(texteDe(ids)); } catch (e) { /* refus */ } });
     document.body.appendChild(bulle);
   };
-  calque.addEventListener('mouseup', () => setTimeout(ouvrirBulle, 0));
+  /* SURLIGNEUR SUR L'IMAGE (09/10, docs/compte-rendu-pdfreader-v2.md) : comme sur le texte —
+     les mots balayés deviennent une notion de la couleur courante (indices de mots OCR : la
+     notion suit l'image, à toute taille) ; repasser dans la même couleur la retire, dans une
+     autre la recolore. Plus besoin d'activer l'icône « texte » : elle sert à VOIR le texte. */
+  const outilCourant = () => { const z = dom.closest('[data-outil]'); return z ? z.dataset.outil : 'main'; };
+  const couleurCourante = () => { const z = dom.closest('[data-couleur-surligneur]'); return (z && z.dataset.couleurSurligneur) || COULEUR_DEFAUT; };
+  const surligner = () => {
+    const ids = motsSelectionnes();
+    if (!ids.length) return;
+    const couleur = couleurCourante();
+    const choisis = new Set(ids);
+    const notions = courant.attrs.notions || [];
+    const touchees = notions.filter((n) => (n.mots || []).some((i) => choisis.has(i)));
+    const dejaPris = new Set(touchees.flatMap((n) => n.mots || []));
+    const libres = ids.filter((i) => !dejaPris.has(i));
+    let suite;
+    if (!libres.length && touchees.length && touchees.every((n) => (n.couleur || 'jaune') === couleur)) {
+      suite = notions.filter((n) => !touchees.includes(n)); // même couleur, rien de neuf : on retire
+    } else {
+      suite = notions.map((n) => (touchees.includes(n) ? { ...n, couleur } : n));
+      if (libres.length) suite.push({ id: genId('nd'), couleur, mots: libres });
+    }
+    changer({ notions: suite });
+    window.getSelection().removeAllRanges();
+  };
+  const finSelection = () => {
+    const o = outilCourant();
+    if (o === 'surligneur') surligner();
+    else if (o === 'main' || dom.classList.contains('texte-actif')) ouvrirBulle();
+  };
+  // fin du geste : même relâché HORS des mots (balayage qui dépasse l'image)
+  calque.addEventListener('pointerdown', (e) => {
+    if (e.button && e.button !== 0) return;
+    fermerBulle();
+    // appui sur des mots DÉJÀ sélectionnés : le navigateur lancerait un glisser-déposer du texte
+    // au lieu d'une nouvelle sélection — on repart d'une sélection vide
+    try { window.getSelection().removeAllRanges(); } catch (x) { /* ignore */ }
+    const fin = () => { window.removeEventListener('pointerup', fin, true); setTimeout(finSelection, 0); };
+    window.addEventListener('pointerup', fin, true);
+  });
   calque.addEventListener('keyup', () => setTimeout(ouvrirBulle, 0));
   const dehors = (e) => { if (bulle && !bulle.contains(e.target) && !calque.contains(e.target)) fermerBulle(); };
   document.addEventListener('pointerdown', dehors, true);

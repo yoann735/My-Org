@@ -34,3 +34,11 @@
 @media (prefers-reduced-motion: reduce) {
   .pdfr-v2 .pdfr-rangee-contenu, .pdfr-v2 .pdfr-contexte:not(.reservee) { animation: none; }
 }
+
+/* ---- TEXTE D'UNE IMAGE COLLÉE SUR UNE PAGE (09/10) : mots OCR transparents, surlignages ---- */
+.pi-texte { position: absolute; inset: 0; z-index: 1; pointer-events: none; line-height: 1; white-space: pre; overflow: hidden; }
+.pi-mot { position: absolute; color: transparent; transform-origin: 0 50%; display: inline-flex; align-items: center; white-space: pre;
+  font-family: sans-serif; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
+.pi-texte.vivant .pi-mot { pointer-events: auto; user-select: text; -webkit-user-select: text; cursor: text; }
+.pi-mot::selection { background: rgba(80, 130, 230, .45); color: transparent; }
+.pi-surlignages { position: absolute; inset: 0; pointer-events: none; }
