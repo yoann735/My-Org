@@ -34,6 +34,7 @@ const DELAI_SAUVEGARDE = 600;
 
 export const DocumentFlux = memo(forwardRef(function DocumentFlux({
   initial, largeurPage, hauteurPage, ecart, echelle, hauteurTotale, outil, couleurSurligneur, fondNoir = false,
+  marges = null, // 09/10 : { haut, bas, gauche, droite } en unités de page (documents/lib/marges.js) ; null = 56 partout
   onSauver, onActiver, onNotion, onFlashcard, onJournal = null, onPagination = null,
 }, ref) {
   const urls = useRef([]);
@@ -46,9 +47,15 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
   const outilRef = useRef(outil); outilRef.current = outil;
   const rappels = useRef({}); rappels.current = { onSauver, onActiver, onNotion, onFlashcard, onJournal, onPagination, couleurSurligneur };
   const [bulle, setBulle] = useState(null);
-  const zone = hauteurPage - 2 * MARGE_DOC;
-  // géométrie des pages, dans le repère du flux (unités de page) — lue par la pagination
-  const geo = useMemo(() => ({ haut: (k) => k * (hauteurPage + ecart) + MARGE_DOC, zone }), [hauteurPage, ecart, zone]);
+  const M = marges || { haut: MARGE_DOC, bas: MARGE_DOC, gauche: MARGE_DOC, droite: MARGE_DOC };
+  const zone = hauteurPage - M.haut - M.bas;
+  /* géométrie des pages, dans le repère du flux (unités de page) — lue par la pagination à
+     chaque passage : un SEUL objet, mis à jour en place, pour que changer les marges repagine
+     aussitôt (le plugin compare sa signature haut(0)/haut(1)/zone) */
+  const geoRef = useRef({});
+  geoRef.current.haut = (k) => k * (hauteurPage + ecart) + M.haut;
+  geoRef.current.zone = zone;
+  const geo = geoRef.current;
 
   const vider = () => {
     if (minuteur.current) { clearTimeout(minuteur.current); minuteur.current = null; }
@@ -138,6 +145,17 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
     })();
     return () => { vivant = false; };
   }, [editor]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* MARGES (09/10) : zone utile changée → la vue image relit `data-zone`, et la pagination
+     repart de zéro (même événement que le redimensionnement d'une image) */
+  const sigMarges = `${M.haut}/${M.bas}/${M.gauche}/${M.droite}`;
+  useEffect(() => {
+    let dom = null;
+    try { dom = editor && !editor.isDestroyed ? editor.view.dom : null; } catch (e) { dom = null; }
+    if (!dom) return;
+    dom.dataset.zone = String(zone);
+    dom.dispatchEvent(new Event('pti-taille'));
+  }, [editor, sigMarges]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // journal ANNULER / RÉTABLIR (lib/journalAnnuler.js) : une entrée « flux » par action
   useEffect(() => {
@@ -323,7 +341,7 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
       onPointerDown={() => { const ed = editorRef.current; if (ed && outilRef.current === 'main') rappels.current.onActiver(ed); }}>
       {/* jusqu'au bas de la zone d'écriture de la DERNIÈRE page : son espace libre appartient
           au document (clic = curseur à la fin, dépôt d'image = à la fin) */}
-      <div className="pt-flux-echelle" style={{ width: largeurPage, minHeight: Math.max(0, hauteurTotale / (echelle || 1) - MARGE_DOC), transform: `scale(${echelle})`, padding: `${MARGE_DOC}px ${MARGE_DOC}px 0` }}
+      <div className="pt-flux-echelle" style={{ width: largeurPage, minHeight: Math.max(0, hauteurTotale / (echelle || 1) - M.haut), transform: `scale(${echelle})`, padding: `${M.haut}px ${M.droite}px 0 ${M.gauche}px` }}
         onMouseDown={(e) => {
           const ed = editorRef.current;
           if (!ed || e.target !== e.currentTarget || e.button !== 0) return;

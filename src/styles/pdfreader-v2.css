@@ -65,3 +65,52 @@
   --annot-sauge: #5DBB8A;   --annot-sauge-hl: rgba(93, 187, 138, .42);
   --annot-poudre: #EE8FC0;  --annot-poudre-hl: rgba(238, 143, 192, .42);
 }
+
+/* ---- MARGES : règles de la page en écriture (09/10) ---- */
+.rg-regles { position: absolute; inset: 0; z-index: 6; pointer-events: none; animation: rg-entree .15s ease-out both; }
+@keyframes rg-entree { from { opacity: 0; } to { opacity: 1; } }
+.rg-regle { position: absolute; pointer-events: auto; background-color: rgba(120, 120, 140, .07); }
+.rg-h { left: 0; right: 0; top: 0; height: 14px; border-bottom: 1px solid rgba(120, 120, 140, .22);
+  background-image: linear-gradient(90deg, rgba(90, 90, 110, .35) 1px, transparent 1px); background-position: 0 100%; background-repeat: repeat-x; }
+.rg-v { left: 0; top: 0; bottom: 0; width: 14px; border-right: 1px solid rgba(120, 120, 140, .22);
+  background-image: linear-gradient(180deg, rgba(90, 90, 110, .35) 1px, transparent 1px); background-position: 100% 0; background-repeat: repeat-y; }
+.rg-h { background-size: var(--pas, 28px) 5px; }
+.rg-v { background-size: 5px var(--pas, 28px); }
+.rg-marge { position: absolute; background: rgba(120, 120, 140, .16); pointer-events: none; }
+.rg-h .rg-marge { top: 0; bottom: 0; }
+.rg-v .rg-marge { left: 0; right: 0; }
+.rg-poignee { position: absolute; display: block; background: var(--accent, #7c5cff); border-radius: 2px; touch-action: none; opacity: .85;
+  transition: opacity .15s, transform .15s; }
+.rg-h .rg-poignee { top: 1px; width: 8px; height: 12px; margin-left: -4px; cursor: ew-resize; clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%); }
+.rg-v .rg-poignee { left: 1px; width: 12px; height: 8px; margin-top: -4px; cursor: ns-resize; clip-path: polygon(0 0, 55% 0, 100% 50%, 55% 100%, 0 100%); }
+.rg-poignee:hover, .rg-poignee.active { opacity: 1; transform: scale(1.15); }
+@media (pointer: coarse) { .rg-h { height: 22px; } .rg-v { width: 22px; } .rg-h .rg-poignee { width: 14px; height: 20px; margin-left: -7px; } .rg-v .rg-poignee { width: 20px; height: 14px; margin-top: -7px; } }
+.rg-valeur { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); white-space: nowrap; font: 600 11px/1 inherit; padding: 3px 6px; border-radius: 6px;
+  color: #fff; background: rgba(20, 20, 28, .88); clip-path: none; pointer-events: none; }
+.rg-v .rg-valeur { left: 16px; top: 50%; transform: translateY(-50%); }
+.rg-poignee:has(.rg-valeur) { clip-path: none; }
+
+/* ---- MARGES : panneau « Mise en page » (sans voile : la page se repagine derrière) ---- */
+.mep-panneau { position: fixed; z-index: 400; top: 96px; right: 24px; width: min(320px, calc(100vw - 32px)); padding: 12px 14px 12px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: 0 12px 32px rgba(0, 0, 0, .28);
+  animation: menu-entree .15s ease-out both; transform-origin: 100% 0; }
+.mep-tete { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.mep-titre { font-weight: 700; font-size: 13.5px; }
+.mep-prereglages { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
+.mep-pre { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 4px; border: 1px solid var(--border); border-radius: 9px;
+  background: transparent; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
+.mep-pre:hover { background: var(--bg-2); color: var(--text); }
+.mep-pre.actif { border-color: color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text); }
+.mep-pre-ic { position: relative; width: 22px; height: 30px; border: 1px solid currentColor; border-radius: 2px; opacity: .8; }
+.mep-pre-ic i { position: absolute; border: 1px dashed currentColor; opacity: .7; }
+.mep-pre-ic.etroites i { inset: 2px; } .mep-pre-ic.normales i { inset: 4px; } .mep-pre-ic.larges i { inset: 4px 7px; }
+.mep-cotes { display: grid; gap: 8px; }
+.mep-cote { display: grid; grid-template-columns: 52px 1fr auto; align-items: center; gap: 10px; font-size: 12.5px; }
+.mep-cote-nom { color: var(--text-2); }
+.mep-cote input[type="range"] { width: 100%; accent-color: var(--accent); }
+.mep-champ { display: inline-flex; align-items: center; gap: 4px; }
+.mep-champ input { width: 58px; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-2); color: var(--text); font: inherit; font-size: 12.5px; text-align: right; }
+.mep-champ i { font-style: normal; font-size: 11.5px; color: var(--text-3, var(--text-2)); }
+.mep-pied { margin-top: 12px; font-size: 11px; color: var(--text-3, var(--text-2)); }
+@keyframes menu-entree { from { opacity: 0; transform: scale(.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .rg-regles, .mep-panneau { animation: none; } .rg-poignee, .mep-pre { transition: none; } }

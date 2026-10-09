@@ -95,6 +95,8 @@ import { useTablette, abonnerStylet, styletActif, lireFractionVolet, ecrireFract
 import '../../styles/tablette.css';
 import '../../styles/notes-doc.css';
 import '../../styles/pdfreader-v2.css';
+import { PanneauMiseEnPage, ReglesMarges } from './MiseEnPage.jsx';
+import { margesDe, margesUnites } from '../documents/lib/marges.js';
 import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
 import { sessionActive as transcriptionActive, lireEtat as etatTranscription } from '../transcription/engine.js';
 import { actualiserCredits } from '../transcription/credits.js';
@@ -506,6 +508,22 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      format au besoin) ; ensuite, la seule source de vérité est l'état de l'éditeur. */
   const fluxRef = useRef(null);
   const [fluxInitial, setFluxInitial] = useState(null);
+  /* MARGES (09/10, documents/lib/marges.js) : en mm, mémorisées dans notes_doc.marges ;
+     null = marges d'avant (56 unités). `margesEcrites` : dernière valeur enregistrée ici. */
+  const [marges, setMarges] = useState(null);
+  const margesEcrites = useRef(null);
+  const [miseEnPage, setMiseEnPage] = useState(false);
+  const margesFlux = useMemo(() => margesUnites(marges), [marges]);
+  const minuteurMarges = useRef(null);
+  const changerMarges = (m, fin = true) => {
+    setMarges(m);
+    clearTimeout(minuteurMarges.current);
+    if (!fin) return;
+    minuteurMarges.current = setTimeout(() => {
+      margesEcrites.current = JSON.stringify(m);
+      majNotesDoc(ficheId, { marges: m }).catch(() => {});
+    }, 250);
+  };
   const [pagination, setPagination] = useState(null); // { nbPages, blocs: [{ page, pos, type }] }
   const fluxEcrit = useRef(0); // fluxMaj de la dernière écriture locale
   const planifierNotionsRef = useRef(() => {});
@@ -519,6 +537,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       corpsPages.current = { ...((r && r.pages) || {}) };
       ancienDoc.current = r || null;
       setFondNoir(!!(r && r.fond === 'noir'));
+      setMarges(margesDe(r)); margesEcrites.current = JSON.stringify(margesDe(r));
       setDocCharge(true);
     });
     return () => { vivant = false; };
@@ -564,6 +583,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     let vivant = true, t = null;
     const essayer = async () => {
       const r = await lireNotesDoc(ficheId);
+      // marges changées sur un autre appareil
+      if (vivant && r && JSON.stringify(margesDe(r)) !== margesEcrites.current) { margesEcrites.current = JSON.stringify(margesDe(r)); setMarges(margesDe(r)); }
       if (!vivant || !r || !r.flux || !(r.fluxMaj > fluxEcrit.current) || r.fluxAppareil === idAppareil()) return;
       const api = fluxRef.current;
       if (!api) return;
@@ -1270,6 +1291,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       { label: 'Exporter en Markdown (.md)', icon: 'upload', onClick: () => exporterMdDocument() },
     ] },
     { items: [
+      { label: 'Mise en page…', icon: 'maximize', onClick: () => setMiseEnPage(true) },
       { label: fondNoir ? 'Fond de page : noir' : 'Fond de page : blanc', icon: fondNoir ? 'moon' : 'sun', actif: fondNoir, onClick: () => basculerFond() },
       ficheReelle && { label: 'Renommer', icon: 'edit', onClick: () => setDemandeRenommer((n) => n + 1) },
     ] },
@@ -1891,7 +1913,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const t = e.target;
       // `.pt-flux-cadre` : le texte d'un document à flux (oublié jusqu'ici : chaque clic DANS le
       // texte refermait la barre — 2ᵉ cause du « parfois elle ne s'affiche pas »)
-      if (t && t.closest && t.closest('.pt-zone, .pt-flux-cadre, .pdfr-edit-toolbar, .pdfr-rangee-texte, .pt-bulle, .sc-pop, .sc-fenetre, .ptb-pop')) return;
+      if (t && t.closest && t.closest('.pt-zone, .pt-flux-cadre, .pdfr-edit-toolbar, .pdfr-rangee-texte, .pt-bulle, .sc-pop, .sc-fenetre, .ptb-pop, .rg-regles, .mep-panneau')) return;
       setEditeurPage(null);
     };
     window.addEventListener('pointerdown', dehors, true);
@@ -2678,7 +2700,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
               {modeDoc && fluxInitial && pageSizes.length > 0 && (
                 <DocumentFlux key={'flux:' + ficheId} ref={fluxRef} initial={fluxInitial}
                   largeurPage={PAGE_A4.width} hauteurPage={PAGE_A4.height} ecart={GAP} echelle={scale}
-                  hauteurTotale={layout.totalHeight} outil={outil} couleurSurligneur={couleurSurligneur} fondNoir={fondNoir}
+                  hauteurTotale={layout.totalHeight} outil={outil} couleurSurligneur={couleurSurligneur} fondNoir={fondNoir} marges={margesFlux}
                   onSauver={sauverFlux} onActiver={(ed) => activerPageTexte('flux', ed)}
                   onNotion={notionDePage} onFlashcard={flashcardDePage} onJournal={hist.noterPage}
                   onPagination={(r) => setPagination((p) => (p && p.nbPages === r.nbPages && JSON.stringify(p.blocs) === JSON.stringify(r.blocs) ? p : r))} />
@@ -2712,6 +2734,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                         en haut à droite, au-dessus de toutes ses couches. Avant, posées dans
                         l'espace entre les pages, elles étaient recouvertes par la zone
                         d'insertion : on ne pouvait plus cliquer « Retirer ». */}
+                    {/* RÈGLES (09/10) : marges de la page courante, seulement en écriture */}
+                    {modeDoc && !impression && editeurPage && outil === 'main' && idx === pageCourante - 1 && (
+                      <ReglesMarges marges={marges} largeur={w} hauteur={h} echelle={scale} onChange={changerMarges} />
+                    )}
                     {sz.ajout && (!modeDoc || pageSizes.length > 1) && (
                       <div className={'pdfr-ajout-etiquette' + (modeDoc ? ' doc' : '')}>
                         {!modeDoc && <span className="pdfr-ajout-nom">Page ajoutée</span>}
@@ -2856,6 +2882,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <ArriveeDessin key={arrivee.dessin.id} dessin={arrivee.dessin} autres={arrivee.autres} cible={boutonDessinsRef}
           pdfPret={!!pageSizes.length} onPoser={(d) => poserDessin(d)} onFermer={() => setArrivee(null)} />
       )}
+
+      {miseEnPage && modeDoc && <PanneauMiseEnPage marges={marges} onChange={changerMarges} onFermer={() => setMiseEnPage(false)} />}
 
       {ajoutPage && (
         <Modal title="Ajouter une page" onClose={() => setAjoutPage(null)} width="min(420px, 94vw)">
