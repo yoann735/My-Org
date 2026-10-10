@@ -434,7 +434,7 @@ comptait les images en absolu alors que les notes en gardaient une d'un passage 
 | `430b9b4` | feat(medrevise): aller-retour JSON des textes d'annotations, avec version d'origine et version IA |
 | `7cf315e` | fix(medrevise): lecteur ouvert — les boîtes changées sur un autre appareil s'affichent après la synchro |
 | `756fb00` | style(medrevise): badge IA / orig. décalé pour ne pas couvrir l'épingle de la boîte |
-| *(ce commit)* | docs(medrevise): compte rendu images / surlignage / JSON, tests et requête SQL en lecture seule |
+| `f7adaea` | docs(medrevise): compte rendu images / surlignage / JSON, tests et requête SQL en lecture seule |
 
 Fichiers nouveaux :
 
