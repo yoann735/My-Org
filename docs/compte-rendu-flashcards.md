@@ -295,4 +295,4 @@ Autres captures :
 | Commit | Contenu |
 |---|---|
 | ae23efe | `feat(medrevise)` : coller une image (⌘V) dans la zone survolée — cartes Muscle et carte standard |
-| (celui-ci) | `docs(medrevise)` : section « Collage d'image au survol », captures, banc `scripts/tests-collage/` |
+| bb490e5 | `docs(medrevise)` : section « Collage d'image au survol », captures, banc `scripts/tests-collage/` |
