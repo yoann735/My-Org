@@ -107,6 +107,8 @@ import { relancer as relancerOcr } from '../ocr/service.js';
 import { statsCouche } from '../ocr/couches.js';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { MenuFichier } from './MenuFichier.jsx';
+import { PanneauTextesAnnotations } from './TextesAnnotations.jsx';
+import { estBoiteTexte, aDeuxVersions, versionAffichee, boitesOrdonnees, construireExport, lireImport, planImport, resumeImport, basculerVersion, avecContenuEdite } from '../lib/textesAnnotations.js';
 import { Tableau } from '../tableau/Tableau.jsx';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
 const dansLeTableau = (el) => !!(el && el.closest && el.closest('.tb'));
@@ -1327,6 +1329,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      de la barre d'outils, qui en contenait la moitié. */
   // ÉPURÉ (03/10) : des titres courts, pas de phrases d'aide, l'essentiel seulement —
   // l'export en tête. Groupes séparés par un simple trait.
+  // (10/10) textes des boîtes : aller-retour JSON, version IA / originale
+  const groupeTextes = { items: [
+    { label: 'Exporter les textes d’annotations…', icon: 'upload', onClick: () => setPanneauTextes('exporter') },
+    { label: 'Importer des textes d’annotations…', icon: 'copy', onClick: () => setPanneauTextes('importer') },
+    edits.some((a) => estBoiteTexte(a) && aDeuxVersions(a)) && { label: 'Version des textes (IA / originale)…', icon: 'refresh', onClick: () => setPanneauTextes('affichage') },
+  ] };
   const groupesFichier = modeDoc ? [
     { items: [
       { label: 'Exporter en PDF', icon: 'filePdf', principal: true, onClick: () => imprimerDocument() },
@@ -1341,6 +1349,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       canAddItem && { label: 'Prompts', icon: 'layers', onClick: () => setPromptsOuverts(true) },
       { label: 'Importer un PDF…', icon: 'upload', onClick: () => entreePdfDoc.current && entreePdfDoc.current.click() },
     ] },
+    groupeTextes,
   ] : [
     { items: [
       { label: exporting ? 'Export en cours…' : 'Exporter en PDF annoté', icon: 'filePdf', principal: true,
@@ -1356,6 +1365,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       { label: libelleOcr(), icon: 'search', onClick: () => setDetailOcr(true) },
       { label: ocrDebug ? 'Masquer la couche OCR' : 'Afficher la couche OCR', icon: 'layers', onClick: () => setOcrDebug((v) => !v) },
     ] },
+    groupeTextes,
     { items: [
       { label: copiedCount ? 'Notions copiées ✓' : 'Copier les notions', icon: 'copy', onClick: copyPriority },
       canAddItem && { label: courseExportOk ? 'Copié ✓' : 'Exporter en JSON', icon: 'copy', onClick: exportAllPdfCourse },
@@ -1644,10 +1654,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const saveEditContent = async (id, json) => {
     const base = (editsRef.current || []).find((a) => a.id === id);
     if (!base) return;
-    const updated = { ...base, content: json };
+    // (10/10) boîte à deux versions : l'édition s'applique à la version AFFICHÉE
+    const updated = avecContenuEdite(base, json);
     // l'écran d'abord (sinon la boîte refermée montre son ANCIEN texte le temps de
     // l'écriture — même famille que le bug « hallucinations »), la base ensuite
-    setEdits((arr) => arr.map((a) => (a.id === id ? { ...a, content: json } : a)));
+    setEdits((arr) => arr.map((a) => (a.id === id ? avecContenuEdite(a, json) : a)));
     await put('annotations', updated);
   };
   const resetEdit = async (id) => {
@@ -1749,6 +1760,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      version la plus fraîche (texte en attente compris) et passe par l'historique —
      une entrée par geste, annulable par Cmd+Z comme tout le reste. */
   const modifierBoite = async (b, patch, libelle) => {
+    if (patch && patch.versionTexte) { await basculerBoites([b], patch.versionTexte, libelle); return; }
     const actuel = boiteFraiche(b.id, b);
     if (!actuel) return;
     if (patch.reduite && activeEditId === b.id) setActiveEditId(null); // on replie : on quitte l'édition
@@ -2509,6 +2521,76 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (actuel && actuel.couleur !== couleur) await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, couleur }, 'Couleur du texte'));
   };
 
+  /* ---- TEXTES DES BOÎTES : ALLER-RETOUR JSON ET DOUBLE VERSION (10/10, lib/textesAnnotations.js) ----
+     Toutes les écritures passent par l'historique (une entrée par import / par bascule) et ne
+     changent QUE le texte : géométrie, couleur, flèches, page et ordre sont recopiés tels quels. */
+  const [panneauTextes, setPanneauTextes] = useState(null); // null | 'exporter' | 'importer' | 'affichage'
+  // annotations à jour, texte en cours de frappe compris ; la boîte ouverte est refermée
+  // (son texte est enregistré dans la version affichée) avant toute réécriture
+  const editsFraisFermes = () => {
+    const id = activeEditIdRef.current;
+    const enAttente = id && editSaveTimer.current ? editLastJson.current : null;
+    if (id) setActiveEditId(null);
+    return (editsRef.current || []).map((a) => (a.id === id && enAttente ? avecContenuEdite(a, enAttente) : a));
+  };
+  const basculerBoites = async (liste, version, libelle) => {
+    const frais = editsFraisFermes();
+    const cmds = [];
+    for (const b of liste) {
+      const base = frais.find((a) => a.id === b.id);
+      const apres = base && basculerVersion(base, version);
+      if (apres) cmds.push(cmdModifier('annotations', base, apres, libelle || 'Version du texte'));
+    }
+    if (cmds.length) await hist.appliquer(cmdGroupe(version === 'alt' ? 'Version IA affichée' : 'Version originale affichée', cmds));
+    return cmds.length;
+  };
+  const clesPortee = (portee) => (portee === 'page'
+    ? [pageSizes[pageCourante - 1] && pageSizes[pageCourante - 1].cle].filter((c) => c != null)
+    : pageSizes.map((p) => p.cle));
+  const compterTextes = (portee) => {
+    const bs = boitesOrdonnees(edits, clesPortee(portee));
+    const doubles = bs.filter(aDeuxVersions);
+    return { boites: bs.length, doubles: doubles.length, alt: doubles.filter((b) => versionAffichee(b) === 'alt').length };
+  };
+  const exporterTextes = async (portee, mode) => {
+    const frais = (editsRef.current || []).map((a) => (a.id === activeEditIdRef.current && editLastJson.current ? avecContenuEdite(a, editLastJson.current) : a));
+    const boites = boitesOrdonnees(frais, clesPortee(portee));
+    const obj = construireExport({ cours: (fiche && (fiche.titre || fiche.nom)) || '', page: portee === 'page' ? pageCourante : null, boites });
+    const json = JSON.stringify(obj, null, 2);
+    const n = boites.length;
+    if (mode === 'copier') {
+      try { await navigator.clipboard.writeText(json); } catch (e) { return { ok: false, texte: 'Copie refusée par le navigateur.' }; }
+      return { ok: true, texte: `JSON copié : ${n} boîte${n > 1 ? 's' : ''}.` };
+    }
+    const nom = String((fiche && fiche.titre) || 'cours').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'cours';
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `${nom}-textes-annotations${portee === 'page' ? '-p' + pageCourante : ''}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    return { ok: true, texte: `Fichier exporté : ${n} boîte${n > 1 ? 's' : ''}.` };
+  };
+  const importerTextes = async (brut) => {
+    const lu = lireImport(brut);
+    if (lu.erreur) return { ok: false, texte: lu.erreur };
+    const frais = editsFraisFermes();
+    const plan = planImport(lu.boxes, frais);
+    if (plan.maj.length) {
+      await hist.appliquer(cmdGroupe(`Import des textes d’annotations (${plan.maj.length})`,
+        plan.maj.map(({ avant, apres }) => cmdModifier('annotations', avant, apres, 'Texte importé'))));
+    }
+    return {
+      ok: true, texte: resumeImport(plan, lu.invalides),
+      details: plan.inconnus.length ? `Id${plan.inconnus.length > 1 ? 's' : ''} ignoré${plan.inconnus.length > 1 ? 's' : ''} : ${plan.inconnus.join(', ')}` : null,
+    };
+  };
+  const basculerTextes = async (portee, version) => {
+    const liste = boitesOrdonnees(editsRef.current, clesPortee(portee)).filter(aDeuxVersions);
+    const n = await basculerBoites(liste, version);
+    const v = version === 'alt' ? 'version IA' : 'version originale';
+    return { ok: true, texte: n ? `${n} boîte${n > 1 ? 's' : ''} en ${v}.` : `Tout est déjà en ${v}.` };
+  };
+
   const supprimerBoite = async (b) => {
     if (!b) return;
     const actuel = boiteFraiche(b.id, b); // restaurer la boîte AVEC son texte le plus récent
@@ -3064,6 +3146,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           pdfPret={!!pageSizes.length} onPoser={(d) => poserDessin(d)} onFermer={() => setArrivee(null)} />
       )}
 
+      {panneauTextes && (
+        <PanneauTextesAnnotations volet={panneauTextes} pageCourante={pageCourante} nbPages={nbPagesAffichees}
+          compter={compterTextes} onExporter={exporterTextes} onImporter={importerTextes} onBasculer={basculerTextes}
+          onFermer={() => setPanneauTextes(null)} />
+      )}
       {miseEnPage && modeDoc && <PanneauMiseEnPage marges={marges} onChange={changerMarges} onFermer={() => setMiseEnPage(false)} />}
 
       {ajoutPage && (

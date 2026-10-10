@@ -15,6 +15,7 @@
             → blocs de remplacement → couche de tracé (outil Boîte seulement)
             → boîtes libres
    ============================================================ */
+import { aDeuxVersions, versionAffichee } from '../lib/textesAnnotations.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { noterPointeur, pointeurIgnore, prendreTrace, rendreTrace } from '../lib/tablette.js';
 import { EditorContent } from '@tiptap/react';
@@ -1196,6 +1197,16 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const dessous = texteLibre || (pageHeight && b.y * pageHeight < 42);
   const bLarg = refW ? (ajustee && largVue ? largVue : b.width * refW) / refW : b.width; // largeur affichée (fraction de page)
   const stop = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onClick: (e) => { e.stopPropagation(); fn(); } });
+  /* DEUX VERSIONS DU TEXTE (10/10, lib/textesAnnotations.js) : bascule « IA ⇄ orig. »,
+     seulement quand la boîte a reçu un texte importé — un affichage, rien n'est supprimé */
+  const deuxVersions = aDeuxVersions(boite);
+  const version = versionAffichee(boite);
+  const boutonVersion = deuxVersions ? (
+    <button type="button" className="nb-act nb-bascule" {...stop(() => onModifier(boite, { versionTexte: version === 'alt' ? 'original' : 'alt' }, 'Version du texte'))}
+      title={version === 'alt' ? 'Version IA affichée — cliquer pour revenir au texte d’origine' : 'Texte d’origine affiché — cliquer pour la version IA'}>
+      <Icon name="refresh" size={11} /> {version === 'alt' ? 'Voir l’original' : 'Voir la version IA'}
+    </button>
+  ) : null;
 
   return (
     <>
@@ -1241,11 +1252,12 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         style={{ ...(b.x + bLarg / 2 > 0.5 ? { right: (1 - b.x - bLarg) * 100 + '%' } : { left: b.x * 100 + '%' }), top: (dessous ? b.y + Math.max(b.height, (hautVue * k) / (pageHeight || 1)) : b.y) * 100 + '%' }}
         onMouseEnter={entrer} onMouseLeave={sortir}
         onPointerDown={(e) => e.stopPropagation()}>
-        {texteLibre ? (
+        {texteLibre ? (<>
+          {boutonVersion}
           <button type="button" className="nb-act danger" {...stop(() => onSupprimer(boite))} title={`Supprimer ce texte (annulable par ${RACCOURCI_Z})`}>
             <Icon name="trash" size={12} />
           </button>
-        ) : enAncrage ? (
+        </>) : enAncrage ? (
           <button type="button" className="nb-act vise" {...stop(() => onDemanderAncrage(null))} title="Annuler (Échap)">
             <IconeEpingle size={13} /> {viseAjout ? 'Clique ce que la nouvelle flèche vise…' : viseSurlignage ? 'Clique un surlignage ou une forme…' : 'Clique l’endroit à épingler…'} <span className="nb-act-x">Annuler</span>
           </button>
@@ -1292,6 +1304,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
               </button>
             );
           })()}
+          {boutonVersion}
           <button type="button" className="nb-act" {...stop(() => onModifier(boite, { reduite: true }, 'Réduction de la boîte'))}
             title="Réduire en pastille : un clic sur la pastille rouvre la boîte, un glisser la déplace.">
             <Icon name="minus" size={11} /> Réduire
@@ -1317,6 +1330,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         <span className="nb-grip" style={active && k !== 1 ? { scale: String(1 / k) } : undefined}><Icon name="grip" size={12} /></span>
         {ancre && <span className="nb-etat" title={titreAncre}><IconeEpingle size={11} /></span>}
       </div>
+      {deuxVersions && <span className={'nb-version' + (version === 'alt' ? '' : ' orig')} aria-label={version === 'alt' ? 'Version IA affichée' : 'Texte d’origine affiché'}>{version === 'alt' ? 'IA' : 'orig.'}</span>}
 
       {/* VERROU 4 : le corps est du TEXTE, pas une poignée. */}
       {active && editor
