@@ -38,7 +38,9 @@ import { estMuscle } from '../lib/muscle.js';
 import { estMolecule } from '../molecule/carte.js';
 import { FormulaireMoleculeParesseux } from '../molecule/Paresseux.jsx';
 import { putBlob } from '../lib/storage.js';
-import { useCollerImage, imageDuDepot, glisseDesFichiers } from '../lib/collerImage.js';
+import { glisseDesFichiers } from '../lib/collerImage.js';
+import { useCollageAuSurvol } from '../lib/collerAuSurvol.js';
+import { MessageCollage } from './CollageImage.jsx';
 
 export const TYPES = [
   { id: 'qcm', label: 'QCM', icon: 'list' },
@@ -367,14 +369,24 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
   const rectoRef = useRef(null);
   const versoRef = useRef(null);
   const ready = !!recto.trim() && !!verso.trim();
-  /* COLLER UNE IMAGE (03/10) : Cmd/Ctrl+V d'une capture ou d'une image copiée sur le
-     web l'ajoute à la carte (comme « Ajouter une image ») ; on peut aussi la DÉPOSER
-     n'importe où sur le formulaire. Choisir un fichier reste possible. */
+  /* COLLER UNE IMAGE (03/10 ; au survol depuis le 11/10, lib/collerAuSurvol.js) : ⌘V d'une image
+     → la zone SURVOLÉE décide : Recto → image affichée au recto, Verso → au verso, champ Image →
+     l'image (place inchangée) ; sans survol : le champ qui a le focus (recto / verso), sinon le champ
+     Image. Même règle pour un fichier déposé. Remplacer une image est annulable (⌘Z). */
   const racineRef = useRef(null);
   const [depot, setDepot] = useState(false);
-  const prendreImage = (f) => setImage((v) => ({ ...v, fichier: f }));
-  const refNulle = useRef(null);
-  useCollerImage(sansImage ? refNulle : racineRef, prendreImage);
+  const imageRef = useRef(image); imageRef.current = image;
+  const collage = useCollageAuSurvol(racineRef, {
+    actif: !sansImage,
+    defaut: () => 'image',
+    libelle: (cle) => ({ recto: 'Recto', verso: 'Verso', image: 'Image' })[cle] || cle,
+    appliquer: (cle, f) => {
+      const avant = imageRef.current;
+      setImage((v) => ({ ...v, imageId: null, fichier: f, place: cle === 'recto' || cle === 'verso' ? cle : v.place }));
+      return avant.fichier || avant.imageId ? avant : null;
+    },
+    restaurer: (cle, ancienne) => setImage(ancienne),
+  });
 
   // segments texte/trou dérivés du recto tel quel — aucun état séparé à
   // maintenir en phase : le {{...}} DANS le texte fait foi (voir cloze.js).
@@ -470,7 +482,7 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
     <div className={'aif-champs' + (depot ? ' fc-depot' : '')} ref={racineRef} onKeyDown={auClavier}
       onDragOver={(e) => { if (sansImage || !glisseDesFichiers(e.dataTransfer)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; if (!depot) setDepot(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDepot(false); }}
-      onDrop={(e) => { if (sansImage || !glisseDesFichiers(e.dataTransfer)) return; e.preventDefault(); e.stopPropagation(); setDepot(false); const f = imageDuDepot(e.dataTransfer); if (f) prendreImage(f); }}>
+      onDrop={() => setDepot(false)}>
       <div className="imp-field">
         <label>Thème <span className="imp-opt">(optionnel)</span></label>
         <input className="imp-title" placeholder="ex : Surfactant" value={theme} onChange={(e) => { themeRetouche.current = true; setTheme(e.target.value); }} />
@@ -482,7 +494,7 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
           </div>
         ) : theme.trim() ? <div className="hint fc-theme-aide">La fiche n’a pas encore de thème : celui-ci deviendra le sien (pré-rempli sur les cartes suivantes).</div> : null)}
       </div>
-      <div className="imp-field">
+      <div className="imp-field" {...(sansImage ? {} : { 'data-zone-image': 'recto', 'data-zone-focus': 'recto' })}>
         <div className="row spread" style={{ alignItems: 'center' }}>
           <label style={{ marginBottom: 0 }}>Recto</label>
           {optionsTexte && (
@@ -518,7 +530,7 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
           </div>
         )}
       </div>
-      <div className="imp-field">
+      <div className="imp-field" {...(sansImage ? {} : { 'data-zone-image': 'verso', 'data-zone-focus': 'verso' })}>
         <label>Verso</label>
         <textarea ref={versoRef} className="imp-title" style={{ minHeight: 60, resize: 'vertical', fontFamily: 'inherit' }} value={verso} onChange={(e) => setVerso(e.target.value)} placeholder="Réponse…" />
       </div>
@@ -528,7 +540,7 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
           <div className="pis-face"><span className="pis-face-tag">Verso</span>{verso || <span className="hint">—</span>}</div>
         </div>
       )}
-      {!sansImage && <ChampImageFlashcard valeur={image} onChange={setImage} />}
+      {!sansImage && <ChampImageFlashcard valeur={image} onChange={setImage} onColler={(f) => collage.colleDans('image', f)} />}
       {!sansImage && avecImage && onOcclusion && !initial && (
         <div className="fc-occ-option">
           <button type="button" className="btn sm" onClick={() => onOcclusion({ fichier: image.fichier, imageId: image.imageId, recto, verso, theme })}>
@@ -550,6 +562,7 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
         {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
         <button className="btn primary" onClick={submit} disabled={!ready || busy}><Icon name="check" size={15} /> {submitLabel || 'Ajouter cette flashcard'}</button>
       </div>
+      <MessageCollage message={collage.message} onAnnuler={collage.annuler} onFermer={collage.fermer} />
       {!ready && <div className="hint" style={{ marginTop: 8 }}>Recto et verso requis.</div>}
     </div>
   );

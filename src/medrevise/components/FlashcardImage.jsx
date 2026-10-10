@@ -14,6 +14,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { blobURL } from '../lib/storage.js';
+import { BoutonColler } from './CollageImage.jsx';
+import { useOcrDirect, EtatOcr } from './ImagesMuscle.jsx';
 
 export const PLACES_IMAGE = [
   { id: 'recto', label: 'Recto' },
@@ -47,8 +49,9 @@ export function ImageFlashcard({ imageId, maxH = 240, className = '' }) {
 
 /** Champ du formulaire : ajouter / remplacer / retirer l'image + où l'afficher.
     Contrôlé : { imageId, fichier, place } — le fichier n'est écrit (putBlob)
-    qu'à l'enregistrement de la carte, jamais avant. */
-export function ChampImageFlashcard({ valeur, onChange }) {
+    qu'à l'enregistrement de la carte, jamais avant. Zone de collage « image » (survol, ⌘V,
+    lib/collerAuSurvol.js) ; `onColler(fichier)` : bouton « Coller » des écrans tactiles. */
+export function ChampImageFlashcard({ valeur, onChange, onColler = null }) {
   const { imageId, fichier, place } = valeur;
   const input = useRef(null);
   const [apercu, setApercu] = useState(null);
@@ -58,9 +61,10 @@ export function ChampImageFlashcard({ valeur, onChange }) {
     return () => URL.revokeObjectURL(u);
   }, [fichier]);
   const aUneImage = !!(fichier || imageId);
+  const ocr = useOcrDirect(fichier, apercu);
   const choisir = (f) => { if (f && /^image\//.test(f.type || '')) onChange({ ...valeur, fichier: f }); };
   return (
-    <div className="imp-field fci-champ">
+    <div className="imp-field fci-champ" data-zone-image="image" data-zone-visuel="">
       <label>Image <span className="imp-opt">(optionnelle)</span></label>
       <input ref={input} type="file" accept="image/*" style={{ display: 'none' }}
         onChange={(e) => { choisir(e.target.files[0]); e.target.value = ''; }} />
@@ -85,10 +89,12 @@ export function ChampImageFlashcard({ valeur, onChange }) {
             <div className="fc-liens">
               <button type="button" className="linklike" onClick={() => input.current && input.current.click()}>Remplacer</button>
               <button type="button" className="linklike fc-retirer" onClick={() => onChange({ imageId: null, fichier: null, place })}>Retirer l'image</button>
+              <EtatOcr ocr={ocr} />
             </div>
           </div>
         </div>
       )}
+      <BoutonColler onFichier={(f) => (onColler ? onColler(f) : choisir(f))} />
     </div>
   );
 }

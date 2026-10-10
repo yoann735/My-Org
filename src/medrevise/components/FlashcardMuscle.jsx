@@ -19,7 +19,9 @@ import { RACCOURCI_ENREGISTRER, estEnregistrer } from './AddItemForm.jsx';
 import { LIGNES_MUSCLE, lignesDe, lignesVides, blocsContenu, normaliserPuces, carteMuscle, imagesDe, imageGeneraleDe } from '../lib/muscle.js';
 import { ImageMuscle, ChampImageMuscle } from './ImagesMuscle.jsx';
 import { putBlob } from '../lib/storage.js';
-import { imageDuPressePapier, imageDuDepot, glisseDesFichiers } from '../lib/collerImage.js';
+import { glisseDesFichiers } from '../lib/collerImage.js';
+import { useCollageAuSurvol } from '../lib/collerAuSurvol.js';
+import { MessageCollage } from './CollageImage.jsx';
 import { lireTableauMuscle } from '../ocr/ocrMuscle.js';
 
 /** réglage « ligne par ligne » (synchronisé avec les réglages d'apprentissage) */
@@ -139,6 +141,7 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
   const [generale, setGenerale] = useState(() => { const g = initial ? imageGeneraleDe(initial) : null; return g ? { imageId: g.imageId } : {}; });
   const [auRecto, setAuRecto] = useState(() => !!(initial && imageGeneraleDe(initial) && imageGeneraleDe(initial).auRecto));
   const imagesRef = useRef(images); imagesRef.current = images;
+  const generaleRef = useRef(generale); generaleRef.current = generale;
   const ecrireImage = async (v) => (v && v.fichier ? putBlob(v.fichier) : v && v.imageId) || null;
   const nomRef = useRef(null);
   const refs = useRef({});
@@ -196,26 +199,32 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
     setOcr({ etat: 'fait', trouvees: r.trouvees });
   };
 
-  // ⌘V d'une IMAGE pendant que ce formulaire est affiché (focus dedans ou nulle part) → pré-remplir
-  useEffect(() => {
-    if (!actif) return undefined;
-    const coller = (e) => {
-      const r = (racine && racine.current) || moi.current;
-      const a = document.activeElement;
-      const dedans = !!(r && a && r.contains(a));
-      const nullePart = !a || a === document.body || a === document.documentElement;
-      if (!dedans && !nullePart) return;
-      const f = imageDuPressePapier(e.clipboardData);
-      if (!f) return;
-      e.preventDefault(); e.stopImmediatePropagation();
-      // (10/10 soir) curseur dans une LIGNE du tableau : l'image va à cette ligne ; sinon, pré-remplissage
-      const ligne = LIGNES_MUSCLE.find((l) => refs.current[l.id] && refs.current[l.id] === a);
-      if (ligne) { setImages((s) => ({ ...s, [ligne.id]: { imageId: null, fichier: f, masques: null } })); return; }
-      lire(f);
-    };
-    window.addEventListener('paste', coller, true);
-    return () => window.removeEventListener('paste', coller, true);
-  }, [actif, racine]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* COLLAGE D'IMAGE AU SURVOL (11/10, lib/collerAuSurvol.js) : ⌘V d'une image → la zone survolée
+     (ligne du tableau, image du muscle, ou bloc « Pré-remplir » = OCR du tableau), sinon la ligne
+     dont le texte a le focus, sinon l'image du muscle. Remplacer est annulable (⌘Z). Même règle
+     pour un fichier déposé. (Avant : sans ligne focalisée, une image collée pré-remplissait le
+     tableau par OCR ; ce pré-remplissage reste au survol du bloc « Pré-remplir » et par son bouton.) */
+  const aImage = (v) => !!(v && (v.imageId || v.fichier));
+  const collage = useCollageAuSurvol(racine || moi, {
+    actif,
+    defaut: () => 'generale',
+    libelle: (cle) => (cle === 'generale' ? 'Image du muscle' : cle === 'ocr' ? 'Pré-remplir' : (LIGNES_MUSCLE.find((l) => l.id === cle) || {}).label),
+    appliquer: (cle, f) => {
+      if (cle === 'ocr') { lire(f); return null; }
+      if (cle === 'generale') {
+        const avant = generaleRef.current;
+        setGenerale({ imageId: null, fichier: f });
+        return aImage(avant) ? avant : null;
+      }
+      const avant = imagesRef.current[cle];
+      setImages((st) => ({ ...st, [cle]: { imageId: null, fichier: f, masques: null } }));
+      return aImage(avant) ? avant : null;
+    },
+    restaurer: (cle, ancienne) => {
+      if (cle === 'generale') setGenerale(ancienne);
+      else setImages((st) => ({ ...st, [cle]: ancienne }));
+    },
+  });
 
   const libelleTrouvees = (ids) => LIGNES_MUSCLE.filter((l) => !ids.includes(l.id)).map((l) => l.label);
 
@@ -223,7 +232,7 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
     <div className={'aif-champs mu-form' + (depot ? ' fc-depot' : '')} ref={moi} onKeyDown={clavier}
       onDragOver={(e) => { if (!glisseDesFichiers(e.dataTransfer)) return; e.preventDefault(); e.stopPropagation(); if (!depot) setDepot(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDepot(false); }}
-      onDrop={(e) => { if (!glisseDesFichiers(e.dataTransfer)) return; e.preventDefault(); e.stopPropagation(); setDepot(false); lire(imageDuDepot(e.dataTransfer)); }}>
+      onDrop={() => setDepot(false)}>
       <input ref={entree} type="file" accept="image/*" style={{ display: 'none' }}
         onChange={(e) => { lire(e.target.files[0]); e.target.value = ''; }} />
       <div className="imp-field">
@@ -235,11 +244,11 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
         <input ref={nomRef} className="imp-title mu-nom-champ" value={nom} onChange={(e) => setNom(e.target.value)} placeholder="ex : m. Grand glutéal (fessier)" />
       </div>
 
-      <div className="mu-ocr">
+      <div className="mu-ocr" data-zone-image="ocr">
         <button type="button" className="btn ghost sm" onClick={() => entree.current && entree.current.click()} disabled={ocr && ocr.etat === 'lecture'}>
           <Icon name="image" size={13} /> Pré-remplir depuis une image
         </button>
-        <span className="hint">ou colle la capture du tableau (⌘V / Ctrl+V)</span>
+        <span className="hint">ou colle la capture du tableau ici (survole ce bloc, ⌘V / Ctrl+V)</span>
       </div>
       {ocr && ocr.etat === 'lecture' && (
         <div className="mu-ocr-etat"><span className="mu-sablier" aria-hidden="true" /> Lecture de la capture…{ocr.apercu && <img src={ocr.apercu} alt="" />}</div>
@@ -252,9 +261,9 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
         <div className="mu-ocr-etat"><Icon name="alert" size={13} /> Aucune étiquette (Origine, Trajet, Insertion, Action, Innervation) lue sur cette image — remplis à la main.</div>
       )}
 
-      <div className="mu-generale">
+      <div className="mu-generale" data-zone-image="generale">
         <span className="mu-generale-titre">Image du muscle <span className="imp-opt">(optionnelle)</span></span>
-        <ChampImageMuscle valeur={generale} libelle="Image du muscle" onChange={(v) => setGenerale(v)} />
+        <ChampImageMuscle valeur={generale} libelle="Image du muscle" onChange={(v) => setGenerale(v)} onColler={(f) => collage.colleDans('generale', f)} />
         {(generale.imageId || generale.fichier) && (
           <label className="mu-recto-opt"><input type="checkbox" checked={auRecto} onChange={(e) => setAuRecto(e.target.checked)} /> Montrer l’image au recto <span className="imp-opt">(sinon : au verso)</span></label>
         )}
@@ -262,16 +271,14 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
 
       <div className="mu-saisie" role="group" aria-label="Tableau du muscle">
         {LIGNES_MUSCLE.map((l) => (
-          <div key={l.id} className="mu-saisie-ligne"
-            // une image glissée SUR une ligne va à cette ligne (ailleurs dans le formulaire : pré-remplissage)
-            onDragOver={(e) => { if (!glisseDesFichiers(e.dataTransfer)) return; e.preventDefault(); e.stopPropagation(); }}
-            onDrop={(e) => { const f = glisseDesFichiers(e.dataTransfer) && imageDuDepot(e.dataTransfer); if (!f) return; e.preventDefault(); e.stopPropagation(); setDepot(false); setImages((st) => ({ ...st, [l.id]: { imageId: null, fichier: f, masques: null } })); }}>
+          // zone image de la ligne : survol (⌘V, dépôt d'un fichier) et focus de son texte (lib/collerAuSurvol.js)
+          <div key={l.id} className="mu-saisie-ligne" data-zone-image={l.id} data-zone-focus={l.id}>
             <label className="mu-etiquette" htmlFor={'mu-' + l.id}>{l.label}</label>
             <div className="mu-saisie-cellule">
               <ZoneAuto id={'mu-' + l.id} className="mu-zone" value={lignes[l.id]}
                 inputRef={(el) => { refs.current[l.id] = el; }}
                 onChange={(v) => setLignes((s) => ({ ...s, [l.id]: v }))} placeholder="—" />
-              <ChampImageMuscle compact valeur={images[l.id]} libelle={l.label}
+              <ChampImageMuscle compact valeur={images[l.id]} libelle={l.label} onColler={(f) => collage.colleDans(l.id, f)}
                 onChange={(v) => setImages((s) => { const n = { ...s }; if (v && (v.imageId || v.fichier)) n[l.id] = v; else delete n[l.id]; return n; })} />
             </div>
           </div>
@@ -291,6 +298,7 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
         {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
         <button type="button" className="btn primary" onClick={valider} disabled={!pret || busy}><Icon name="check" size={15} /> {submitLabel}</button>
       </div>
+      <MessageCollage message={collage.message} onAnnuler={collage.annuler} onFermer={collage.fermer} />
       {!pret && <div className="hint">Nom du muscle requis — une ligne vide s’affichera « — ».</div>}
     </div>
   );

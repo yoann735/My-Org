@@ -17,6 +17,10 @@ import { getBlob, getMeta, setMeta } from '../lib/storage.js';
 const VERSION = 1;
 const PIXELS_MAX = 12e6;
 const enCours = new Map(); // clé → promesse (deux vues de la même image : un seul OCR)
+// image pas encore enregistrée (adresse objet d'un fichier collé / choisi, 11/10) : résultat gardé en
+// mémoire pour la durée de la page — « Masquer des mots » ou la visionneuse le retrouvent sans relire
+const parAdresse = new Map();
+const PAR_ADRESSE_MAX = 40;
 const cleCache = (blobId) => 'ocrImage:' + blobId;
 
 export async function preparer(blob) {
@@ -40,6 +44,7 @@ export function ocrImage({ blobId = null, src = null }) {
   const cle = blobId || src;
   if (!cle) return Promise.resolve(null);
   if (enCours.has(cle)) return enCours.get(cle);
+  if (!blobId && parAdresse.has(src)) return Promise.resolve(parAdresse.get(src));
   const p = (async () => {
     if (blobId) { const c = await getMeta(cleCache(blobId)).catch(() => null); if (c && c.v === VERSION) return c; }
     const blob = blobId ? await getBlob(blobId) : await (await fetch(src)).blob();
@@ -54,6 +59,7 @@ export function ocrImage({ blobId = null, src = null }) {
       } catch (e) { if (essai) throw e; }
     }
     if (blobId) await setMeta(cleCache(blobId), res).catch(() => {});
+    else if (res) { parAdresse.set(src, res); if (parAdresse.size > PAR_ADRESSE_MAX) parAdresse.delete(parAdresse.keys().next().value); }
     return res;
   })();
   enCours.set(cle, p);
