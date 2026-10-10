@@ -16,7 +16,10 @@ import { Breadcrumb, matiereMeta, EtiquetteQuickSet, SessionTrendCard } from '..
 import { Tex } from '../components/Tex.jsx';
 import { ZoneDefilante, classeLongueur } from '../components/ZoneDefilante.jsx';
 import { advanceQuestion, recordRelearnAttempt, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, labelForCursor, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
-import { apresNotationJ } from '../lib/apprentissageFC.js';
+import { BoutonsFlashcard } from '../components/BoutonsFlashcard.jsx';
+import { repondreFlashcard } from '../scheduler/repondre.js';
+import { NOTE_DEPUIS_QUALITE_SCORE, NOTE_DEPUIS_ETIQUETTE } from '../scheduler/noter.js';
+import { planificateurActif } from '../scheduler/config.js';
 import { index } from '../lib/planning.js';
 import { blobURL } from '../lib/storage.js';
 import { isCloze, parseCloze, clozeBlanks, matchClozeBlank, highlightClozeWords } from '../lib/cloze.js';
@@ -33,6 +36,10 @@ const RATING_QUALITY = { fail: QUALITY.rate, hard: QUALITY.difficile, easy: QUAL
 // trous justes) — on la ramène systématiquement à une étiquette pour ne garder
 // qu'UN SEUL chemin de calcul de qualité (RATING_QUALITY ci-dessus).
 const resolveRating = (r) => (typeof r === 'number' ? (QUALITY_TO_RATING[r] || 'hard') : r);
+// FLASHCARDS (étape 2 FSRS) : 4 notes — étiquette ('fail'|'hard'|'good'|'easy') ou qualité de score
+// du cloze en saisie (5 → Correct, 3 → Difficile, 1 → À revoir), voir scheduler/noter.js.
+const ETIQUETTE_DE_NOTE = { 1: 'fail', 2: 'hard', 3: 'good', 4: 'easy' };
+const noteFlashcard = (r) => (typeof r === 'number' ? (NOTE_DEPUIS_QUALITE_SCORE[r] || 2) : NOTE_DEPUIS_ETIQUETTE[r]);
 
 export function Session({ ctx }) {
   const session = ctx.session || { items: [], title: 'Révision' };
@@ -164,7 +171,8 @@ export function Session({ ctx }) {
       proceedToNext(ratingIn === 'resolu' ? 'easy' : 'fail', item.id, item.type);
       return;
     }
-    const rating = resolveRating(ratingIn);
+    const estFlashcard = !!item && item.type === 'flashcard' && !item.ephemeral;
+    const rating = estFlashcard ? ETIQUETTE_DE_NOTE[noteFlashcard(ratingIn)] : resolveRating(ratingIn);
     let addedRelearn = false;
     // persist — SAUF pour les items ÉPHÉMÈRES (théorie de schéma générée à la
     // volée) : ils ne sont jamais planifiés ni écrits en base (aucun impact méthode des J).
@@ -177,12 +185,17 @@ export function Session({ ctx }) {
       // rejoue JAMAIS le calcul d'intervalle (recordRelearnAttempt,
       // historique-only) — sinon on écraserait le dueDate déjà posé par le
       // Raté initial et reproduirait le bug historique (voir sm2.js header).
-      let updated = item._relearn ? recordRelearnAttempt(item, quality, applyExtra) : advanceQuestion(item, quality, applyExtra);
-      delete updated._fiche; delete updated._matiere; delete updated._j; delete updated._relearn;
-      // apprentissage des flashcards (lib/apprentissageFC.js) : un Raté — intervalles déjà
-      // calculés par advanceQuestion, inchangés — fait d'abord repasser la flashcard par le
-      // bloc Apprendre de la séance de demain (critère « après un raté »)
-      if (!item._relearn) updated = apresNotationJ(updated, quality, ctx.reglagesFC);
+      let updated;
+      if (estFlashcard) {
+        // flashcard : planificateur unique (maison si FSRS OFF, FSRS si ON) + mode ombre + journal
+        updated = await repondreFlashcard(item, noteFlashcard(ratingIn), {
+          reglages: ctx.reglagesFC, relearn: !!item._relearn, tempsMs: applyExtra.tempsMs,
+          sauver: async (c) => { await ctx.saveQuestion(c); return c; },
+        });
+      } else {
+        updated = item._relearn ? recordRelearnAttempt(item, quality, applyExtra) : advanceQuestion(item, quality, applyExtra);
+        delete updated._fiche; delete updated._matiere; delete updated._j; delete updated._relearn;
+      }
       // rotation QCM (Étape 4, lib/planning.js pickQcmSubset) : suivi de la
       // dernière présentation + du dernier résultat, DISTINCT de la notation
       // 3 boutons — correction directe (cochées == reponses_correctes),
@@ -192,14 +205,15 @@ export function Session({ ctx }) {
         const ok = selectedIds.length === correct.size && selectedIds.every((id) => correct.has(id));
         updated = { ...updated, lastSeenAt: todayISO(), lastResult: ok ? 'ok' : 'ko' };
       }
-      await ctx.saveQuestion(updated);
+      if (!estFlashcard) await ctx.saveQuestion(updated);
       // relearning step (Raté, moteur adaptatif) : la carte revient EN
       // MÉMOIRE DE SESSION en fin de série (voir extraItems ci-dessus) — une
       // seule fois par Raté, jamais si `item` est déjà une répétition
       // (`item._relearn`, pas de récursion, confirmé). S'applique à QCM ET
       // flashcard (la règle 1 ne restreint pas aux flashcards, contrairement
       // au carnet d'erreurs ci-dessous).
-      if (!item._relearn && rating === 'fail') {
+      // FSRS ON : pas de réapprentissage dans la série pour les flashcards (relearning_steps vides)
+      if (!item._relearn && rating === 'fail' && !(estFlashcard && planificateurActif(ctx.reglagesFC) === 'fsrs')) {
         const f = ix.fById[updated.ficheId];
         const m = f && ix.mById[f.matiereId];
         setExtraItems((prev) => [...prev, { ...updated, _fiche: f, _matiere: m, _j: 'Reprise', _relearn: true }]);
@@ -593,11 +607,15 @@ function RatingButtons({ onRate, canPrev, onPrev, item, ctx, carnetPrompt, onCar
   const awaitingCarnet = !!carnetPrompt;
   return (
     <div>
-      <div className="rev-rate">
-        <button className="rate-btn fail" disabled={awaitingCarnet} onClick={() => onRate('fail')}>Raté<span className="rb-sub">à revoir vite</span></button>
-        <button className="rate-btn hard" disabled={awaitingCarnet} onClick={() => onRate('hard')}>Difficile<span className="rb-sub">bientôt</span></button>
-        <button className="rate-btn easy" disabled={awaitingCarnet} onClick={() => onRate('easy')}>Facile<span className="rb-sub">dans longtemps</span></button>
-      </div>
+      {item && item.type === 'flashcard' && !item.ephemeral
+        ? <BoutonsFlashcard carte={item} reglages={ctx.reglagesFC} disabled={awaitingCarnet} onNoter={(note, cle) => onRate(cle === 'again' ? 'fail' : cle)} variante="bureau" />
+        : (
+          <div className="rev-rate">
+            <button className="rate-btn fail" disabled={awaitingCarnet} onClick={() => onRate('fail')}>Raté<span className="rb-sub">à revoir vite</span></button>
+            <button className="rate-btn hard" disabled={awaitingCarnet} onClick={() => onRate('hard')}>Difficile<span className="rb-sub">bientôt</span></button>
+            <button className="rate-btn easy" disabled={awaitingCarnet} onClick={() => onRate('easy')}>Facile<span className="rb-sub">dans longtemps</span></button>
+          </div>
+        )}
       {awaitingCarnet && <CarnetPrompt onSubmit={onCarnetSubmit} onSkip={onCarnetSkip} />}
       {!awaitingCarnet && <CardEtiquetteControl item={item} ctx={ctx} />}
       {!awaitingCarnet && canPrev && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><button className="btn ghost sm" onClick={onPrev}><Icon name="chevL" size={14} /> Revenir à la carte précédente</button></div>}

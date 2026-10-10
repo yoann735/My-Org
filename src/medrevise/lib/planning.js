@@ -5,7 +5,7 @@
    questions }.
    ============================================================ */
 import { labelForCursor, todayISO, isoDate, trueDaysSinceJ0, isDueBecauseStruggled } from './sm2.js';
-import { horsMethodeJ } from './apprentissageFC.js';
+import { dateApresConversion } from './conversionApprentissage.js';
 
 const SCHEDULED_TYPES = new Set(['qcm', 'flashcard']);
 // exercices : HORS méthode des J (comme le Feynman). Ils ne sont plus programmés,
@@ -39,9 +39,14 @@ const J_TYPES = new Set(['qcm', 'flashcard']);
    affiche la prochaine échéance d'une fiche : elle DOIT lire la date par ce même
    chemin (report d'un jour après un `skippedOn`), sinon elle annoncerait une date
    que le planning ne retiendrait pas. */
+/* CONVERSION DU MODE APPRENTISSAGE (étape 2 FSRS, lib/conversionApprentissage.js) : tant que la
+   migration n'a pas écrit la date convertie d'une ancienne carte « en apprentissage » (premier
+   démarrage, avant la fin de la synchro), on lit déjà cette date-là — la carte n'apparaît donc
+   jamais dans le rattrapage. Toute autre carte : `dueDate` tel quel. */
 export function nextDate(record) {
   if (!record || record.termine) return null;
-  const due = record.dueDate || null;
+  const conv = dateApresConversion(record, todayISO());
+  const due = (conv !== undefined ? conv : record.dueDate) || null;
   if (due != null && record.skippedOn && record.skippedOn >= due) return addDays(record.skippedOn, 1);
   return due;
 }
@@ -92,12 +97,11 @@ export function isWeekend(d = new Date()) {
 }
 
 /* ---- due questions ---- */
-/* APPRENTISSAGE DES FLASHCARDS (06/10, lib/apprentissageFC.js) : une flashcard pas
-   encore « en révision » (nouvelle, ou en apprentissage) n'est PAS dans la méthode des J
-   — filtrée ici, en amont ; le planning lui-même est inchangé. */
+/* Étape 2 FSRS : le mode Apprentissage est supprimé — toutes les flashcards planifiées sont dans
+   la méthode des J (les anciennes cartes « en apprentissage » ont été converties). */
 export function scheduledQuestions(db, idx) {
   const ix = idx || index(db);
-  return (db.questions || []).filter((q) => SCHEDULED_TYPES.has(q.type) && !horsMethodeJ(q) && isFicheScheduled(db, ix.fById[q.ficheId], ix));
+  return (db.questions || []).filter((q) => SCHEDULED_TYPES.has(q.type) && isFicheScheduled(db, ix.fById[q.ficheId], ix));
 }
 
 /** questions dues à une date (par défaut aujourd'hui) — STRICTEMENT ce jour-là,
@@ -284,8 +288,7 @@ export function ficheJ(db, ficheId, idx) {
   if (f && f.type === 'anat_schema') {
     return { ...labelForCursor(f), jTrueDays: trueDaysSinceJ0(f), aRevoirCount: isDueBecauseStruggled(f) ? 1 : 0 };
   }
-  // flashcards en apprentissage : pas encore dans les J (lib/apprentissageFC.js)
-  const qs = (db.questions || []).filter((q) => q.ficheId === ficheId && J_TYPES.has(q.type) && !horsMethodeJ(q));
+  const qs = (db.questions || []).filter((q) => q.ficheId === ficheId && J_TYPES.has(q.type));
   return soonestLabel(qs);
 }
 

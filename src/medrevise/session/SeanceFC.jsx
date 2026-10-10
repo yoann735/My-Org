@@ -1,25 +1,16 @@
 /* ============================================================
-   MedRevise — SÉANCE QUOTIDIENNE DES FLASHCARDS (06/10/2026,
-   docs/compte-rendu-apprentissage-flashcards.md). Un seul bouton, aucun choix de mode.
-   Bloc 1 Révisions : flashcards « en révision » échues, une vue chacune, notation
-     Raté / Difficile / Facile de la méthode des J (advanceQuestion, inchangé).
-   Bloc 2 Apprendre : nouvelles du jour (quota) + cartes en cours / redescendues.
-     Première vue = présentation recto + verso ; ensuite tests Pas su / Su, réinsertion
-     dans la file (lib/apprentissageFC.js reinserer) — jamais d'attente : tant que la
-     file n'est pas vide, il y a une carte à montrer.
-   L'état (file, position, compteurs, temps) est écrit dans IndexedDB (store `meta`,
-   local à l'appareil) après chaque réponse et quand l'onglet passe en arrière-plan ;
-   la progression de chaque carte (streak, présentée, état) est écrite sur la carte
-   elle-même, donc synchronisée.
-   Partagé bureau / mobile : `onQuit` (mobile) ou ctx.endSeanceFC (bureau).
-
-   UN BLOC SEUL, OU BASCULER (08/10, docs/compte-rendu-tablette-document-transcript.md) :
-   `bloc` = 'tout' (révisions puis apprentissage, comme avant) | 'revisions' | 'apprendre'.
-   Les deux blocs vivent dans le MÊME état (révisions + position, file d'apprentissage) :
-   « Passer à l'apprentissage » / « Revenir aux révisions » ne fait que changer de phase —
-   rien n'est perdu ni recompté, la notation, le paquet à 3 succès et la réinsertion ne
-   changent pas. Un bloc fini alors que l'autre a encore des cartes → écran « bloc
-   terminé » (phase 'pause-bloc') : la séance n'est PAS close, elle se reprend plus tard.
+   MedRevise — SÉANCE QUOTIDIENNE DES FLASHCARDS (étape 2 FSRS, 10/10/2026,
+   docs/fsrs-etape2-compte-rendu.md). Un seul bouton, aucun mode.
+   La séance = toutes les flashcards planifiées dues aujourd'hui ou avant (révisions + nouvelles
+   arrivées à leur date de départ), une vue chacune, cours mélangés, 4 boutons (À revoir /
+   Difficile / Correct / Facile) avec l'intervalle prévu. Pas de re-présentation dans la séance.
+   Le mode Apprentissage (paquet, présentation, Pas su / Su, réinsertion, bascule) est supprimé.
+   L'état (liste, position, compteurs, temps) est écrit dans IndexedDB (store `meta`, local à
+   l'appareil) après chaque réponse et quand l'onglet passe en arrière-plan. REPRISE : la séance
+   est remise d'accord avec le plan du jour (cartes entrées entre-temps ajoutées en fin, cartes
+   notées ou supprimées ailleurs retirées — lib/apprentissageFC.js reprendreSeance).
+   Notation : scheduler/repondre.js (planificateur maison si FSRS OFF, FSRS si ON ; mode ombre et
+   journal des révisions toujours actifs). Partagé bureau / mobile.
    ============================================================ */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -27,22 +18,21 @@ import { Tex } from '../components/Tex.jsx';
 import { ZoneDefilante } from '../components/ZoneDefilante.jsx';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
 import { TableauMuscle, ligneParLigne, ImageGeneraleMuscle } from '../components/FlashcardMuscle.jsx';
+import { BoutonsFlashcard } from '../components/BoutonsFlashcard.jsx';
 import { estMuscle } from '../lib/muscle.js';
 import { estMolecule } from '../molecule/carte.js';
 import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { isCloze, parseCloze, highlightClozeWords } from '../lib/cloze.js';
-import { put, putMany, getMeta, setMeta } from '../lib/storage.js';
-import { advanceQuestion, QUALITY, todayISO } from '../lib/sm2.js';
+import { put, getMeta, setMeta } from '../lib/storage.js';
+import { todayISO } from '../lib/sm2.js';
 import { index, isFicheScheduled, nextDate } from '../lib/planning.js';
-import {
-  planDuJour, introduire, presenter, repondre, apresNotationJ, entrelacer, reinserer, DISTANCE,
-  estFlashcardJ, etatFC, reglagesFC, sortir, VERSION_MESURES, reprendreSeance,
-} from '../lib/apprentissageFC.js';
+import { planDuJour, entrelacer, estFlashcardJ, VERSION_MESURES, reprendreSeance } from '../lib/apprentissageFC.js';
+import { repondreFlashcard } from '../scheduler/repondre.js';
 
 export const CLE_SEANCE = 'seanceFC';
 export const CLE_MESURES = 'seanceFC.mesures';
-const QUAL = { fail: QUALITY.rate, hard: QUALITY.difficile, easy: QUALITY.facile };
+const VERSION_SEANCE = 2; // v1 (avant le 10/10) : blocs Révisions / Apprendre — une séance v1 n'est pas reprise
 
 /** flashcards des fiches planifiées (la pause d'un cours s'applique comme dans les J) */
 export function flashcardsPlanifiees(db) {
@@ -50,84 +40,52 @@ export function flashcardsPlanifiees(db) {
   return (db.questions || []).filter((q) => estFlashcardJ(q) && isFicheScheduled(db, ix.fById[q.ficheId], ix));
 }
 
-/** plan du jour calculé sur un jeu de cartes donné (`db` fournit sources / matières / fiches :
-   la pause d'un cours s'applique) — sert à la reprise, où la séance a ses propres cartes à jour. */
-export function planSurCartes(db, cartesParId, reglages, today = todayISO()) {
+/** plan du jour calculé sur un jeu de cartes donné (`db` fournit sources / matières / fiches) */
+export function planSurCartes(db, cartesParId, today = todayISO()) {
   const ix = index(db);
   const cartes = Object.values(cartesParId).filter((q) => estFlashcardJ(q) && isFicheScheduled(db, ix.fById[q.ficheId], ix));
-  return { plan: planDuJour(cartes, reglages, today, nextDate), coursDe: (id) => (cartesParId[id] || {}).ficheId };
+  return { plan: planDuJour(cartes, today, nextDate), coursDe: (id) => (cartesParId[id] || {}).ficheId };
 }
 
-/** séance du jour encore en cours (reprise) — null sinon. v1.2 : avec `db`, les restantes sont
-   celles de la séance REMISE D'ACCORD avec le plan du jour (lib/apprentissageFC.js reprendreSeance),
-   donc les mêmes nombres que le plan — plus de compteur figé à l'ouverture de la séance. */
-export function seanceEnCours(etat, cartesParId, today = todayISO(), db = null, reglages = null) {
-  if (!etat || etat.date !== today || etat.phase === 'fin') return null;
-  let revRestantes, appRestantes;
-  if (db) {
-    const { plan } = planSurCartes(db, cartesParId, reglages, today);
-    const e = reprendreSeance(etat, plan, () => '', () => 0).etat;
-    revRestantes = e.revisions.length - e.revIdx;
-    appRestantes = e.file.length;
-  } else {
-    revRestantes = (etat.revisions || []).slice(etat.revIdx || 0).filter((id) => cartesParId[id]).length;
-    appRestantes = (etat.file || []).filter((id) => cartesParId[id] && etatFC(cartesParId[id], today) === 'learning').length;
-  }
-  const restantes = revRestantes + appRestantes;
-  return restantes > 0 ? { restantes, revRestantes, appRestantes } : null;
+/** séance du jour encore en cours (reprise) — null sinon ; restantes = celles de la séance remise d'accord */
+export function seanceEnCours(etat, cartesParId, today = todayISO(), db = null) {
+  if (!etat || etat.v !== VERSION_SEANCE || etat.date !== today || etat.phase === 'fin' || !db) return null;
+  const { plan } = planSurCartes(db, cartesParId, today);
+  const e = reprendreSeance(etat, plan, () => '', () => 0).etat;
+  const restantes = e.cartes.length - e.idx;
+  return restantes > 0 ? { restantes, faites: e.idx } : null;
 }
 
-function nouvelEtat(db, reglages, today) {
+function nouvelEtat(db, today) {
   const cartes = flashcardsPlanifiees(db);
-  const plan = planDuJour(cartes, reglages, today, nextDate);
-  const coursDe = (id) => (cartes.find((q) => q.id === id) || {}).ficheId;
-  const revisions = entrelacer(plan.revisions.map((q) => q.id), coursDe);
-  const apprendre = [...entrelacer(plan.enCours.map((q) => q.id), coursDe), ...entrelacer(plan.nouvelles.map((q) => q.id), coursDe)];
+  const { dues } = planDuJour(cartes, today, nextDate);
+  const parId = Object.fromEntries(cartes.map((q) => [q.id, q]));
+  const ids = entrelacer(dues.map((q) => q.id), (id) => (parId[id] || {}).ficheId);
   return {
-    etat: {
-      date: today, phase: revisions.length ? 'revisions' : apprendre.length ? 'apprendre' : 'fin',
-      revisions, revIdx: 0, file: apprendre, nApprendre: apprendre.length, nNouvelles: plan.nouvelles.length,
-      faites: { revisions: 0, apprises: 0, rates: 0 }, ms: { revisions: 0, apprendre: 0 }, testsFaits: 0, debut: new Date().toISOString(),
-      presentees: [], echecs: [], // v1.1 : retour en fin de paquet d'une carte réussie du premier coup après sa présentation
-    },
-    aIntroduire: plan.nouvelles,
-    aSortir: plan.aSortir, // v1.1 : déjà au critère (2 succès) → sortent sans repasser
+    v: VERSION_SEANCE, date: today, phase: ids.length ? 'cartes' : 'fin', cartes: ids, idx: 0, nTotal: ids.length,
+    faites: { revisions: 0, rates: 0 }, ms: { revisions: 0 }, debut: new Date().toISOString(),
   };
 }
 
-/** cartes encore à faire dans chaque bloc */
-const resteRevisions = (e) => (e.revisions || []).length - (e.revIdx || 0);
-const resteApprendre = (e) => (e.file || []).length;
-/** phase d'entrée selon le bloc choisi (si ce bloc est vide, l'autre ; rien → fin) */
-function phaseDepart(e, bloc) {
-  const r = resteRevisions(e) > 0, a = resteApprendre(e) > 0;
-  if (bloc === 'apprendre') return a ? 'apprendre' : r ? 'revisions' : 'fin';
-  if (bloc === 'revisions') return r ? 'revisions' : a ? 'apprendre' : 'fin';
-  return r ? 'revisions' : a ? 'apprendre' : 'fin';
-}
-
-export function SeanceFC({ ctx, onQuit = null, pleinEcran = false, bloc: blocProp = null }) {
+export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
   const quitter = onQuit || ctx.endSeanceFC;
-  const bloc = blocProp || ctx.blocSeanceFC || 'tout';
   const today = useMemo(() => todayISO(), []);
-  const reglages = reglagesFC(ctx.reglagesFC);
   const [etat, setEtat] = useState(null); // null = chargement
   const [cartes, setCartes] = useState(() => Object.fromEntries((ctx.db.questions || []).map((q) => [q.id, q])));
   const [retournee, setRetournee] = useState(false);
+  const [enCours, setEnCours] = useState(false); // une réponse est en train d'être enregistrée
   const etatRef = useRef(null); etatRef.current = etat;
   const cartesRef = useRef(cartes); cartesRef.current = cartes;
 
-  /* ---- chrono ACTIF (pause quand l'onglet est caché), par bloc ---- */
+  /* ---- chrono ACTIF (pause quand l'onglet est caché) ---- */
   const depuis = useRef(null);
   const tick = () => {
     const e = etatRef.current;
-    if (!e || depuis.current == null || (e.phase !== 'revisions' && e.phase !== 'apprendre')) { depuis.current = document.hidden ? null : Date.now(); return e; }
+    if (!e || depuis.current == null || e.phase !== 'cartes') { depuis.current = document.hidden ? null : Date.now(); return e; }
     const now = Date.now(); const delta = now - depuis.current; depuis.current = document.hidden ? null : now;
-    const bloc = e.phase === 'revisions' ? 'revisions' : 'apprendre';
-    return { ...e, ms: { ...e.ms, [bloc]: e.ms[bloc] + delta } };
+    return { ...e, ms: { ...e.ms, revisions: (e.ms.revisions || 0) + delta } };
   };
   const ecrire = useCallback(async (e) => { setEtat(e); await setMeta(CLE_SEANCE, e); }, []);
-  // arrêt : onglet caché / fermeture → état sauvegardé tout de suite
   useEffect(() => {
     const sauver = () => { const e = tick(); if (e) { etatRef.current = e; setMeta(CLE_SEANCE, e); } };
     const onVis = () => { if (document.hidden) sauver(); else depuis.current = Date.now(); };
@@ -136,43 +94,27 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false, bloc: blocPro
     return () => { document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pagehide', sauver); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ---- REPRISE v1.2 : remettre la séance d'accord avec le plan du jour ----
-     Écritures d'abord (introduction des nouvelles, sortie des cartes déjà au critère : les mêmes
-     qu'une séance neuve), puis calcul pur sur l'état COURANT (etatRef) — une réponse donnée
-     pendant les écritures n'est donc jamais écrasée. */
-  const fusionnerCartes = (maj) => {
-    const c = { ...cartesRef.current, ...Object.fromEntries(maj.map((q) => [q.id, q])) };
-    cartesRef.current = c; setCartes(c);
+  /* ---- reprise : séance remise d'accord avec le plan du jour ---- */
+  const remettreDAccord = (base = null) => {
+    const { plan, coursDe } = planSurCartes(ctx.db, cartesRef.current, today);
+    return reprendreSeance(base || tick() || etatRef.current, plan, coursDe).etat;
   };
-  const remettreDAccord = async (base = null) => {
-    const { plan } = planSurCartes(ctx.db, cartesRef.current, ctx.reglagesFC, today);
-    if (plan.aSortir.length) fusionnerCartes(await putMany('questions', plan.aSortir.map((q) => sortir(q, today))));
-    if (plan.nouvelles.length) fusionnerCartes(await putMany('questions', plan.nouvelles.map((q) => introduire(q, reglages, today))));
-    const { plan: apres, coursDe } = planSurCartes(ctx.db, cartesRef.current, ctx.reglagesFC, today);
-    return reprendreSeance(base || tick() || etatRef.current, apres, coursDe).etat;
-  };
-  // fin de synchro / retour d'arrière-plan (forceSync → reload → nouveau ctx.db) : cartes
-  // rafraîchies (la version la plus récente gagne : la séance a pu écrire depuis le rechargement ;
-  // une carte absente a été supprimée), puis séance remise d'accord avec le plan du jour.
+  // fin de synchro / retour d'arrière-plan (nouveau ctx.db) : cartes rafraîchies (la plus récente gagne)
   const premierDb = useRef(true);
   const monte = useRef(true);
-  // remis à vrai dans le corps : le mode strict de React (dev) démonte/remonte une fois au montage
   useEffect(() => { monte.current = true; return () => { monte.current = false; }; }, []);
   useEffect(() => {
     if (premierDb.current) { premierDb.current = false; return; }
     const avant = etatRef.current;
     if (!avant || avant.phase === 'fin') return;
-    (async () => {
-      const prec = cartesRef.current;
-      const frais = {};
-      (ctx.db.questions || []).forEach((q) => { const p = prec[q.id]; frais[q.id] = p && (p.updatedAt || '') > (q.updatedAt || '') ? p : q; });
-      cartesRef.current = frais; setCartes(frais);
-      const e = await remettreDAccord();
-      if (!monte.current) return;
-      const vue = (x) => (x.phase === 'revisions' ? x.revisions[x.revIdx] : x.phase === 'apprendre' ? x.file[0] : null);
-      if (vue(e) !== vue(etatRef.current)) setRetournee(false);
-      await ecrire(e);
-    })();
+    const prec = cartesRef.current;
+    const frais = {};
+    (ctx.db.questions || []).forEach((q) => { const p = prec[q.id]; frais[q.id] = p && (p.updatedAt || '') > (q.updatedAt || '') ? p : q; });
+    cartesRef.current = frais; setCartes(frais);
+    const e = remettreDAccord();
+    if (!monte.current) return;
+    if (e.cartes[e.idx] !== avant.cartes[avant.idx]) setRetournee(false);
+    ecrire(e);
   }, [ctx.db]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---- chargement : reprise du jour, ou nouvelle séance ---- */
@@ -180,27 +122,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false, bloc: blocPro
     let vivant = true;
     (async () => {
       const sauve = await getMeta(CLE_SEANCE);
-      if (seanceEnCours(sauve, cartesRef.current, today, ctx.db, ctx.reglagesFC)) {
-        // reprise (v1.2) : séance remise d'accord avec le plan du jour — cartes arrivées depuis
-        // ajoutées en fin de file, cartes supprimées ou sorties ailleurs retirées
-        const e = await remettreDAccord(sauve);
-        if (!vivant) return;
-        e.bloc = bloc;
-        // reprise : on entre par le bloc demandé (« Reprendre » = là où l'on s'était arrêté)
-        if (bloc !== 'tout' || e.phase === 'pause-bloc' || e.phase === 'transition') e.phase = bloc === 'tout' ? phaseDepart(e, e.phase === 'transition' ? 'apprendre' : 'tout') : phaseDepart(e, bloc);
-        if (vivant) { depuis.current = Date.now(); await ecrire(e); }
-        return;
-      }
-      const { etat: e0, aIntroduire, aSortir } = nouvelEtat(ctx.db, ctx.reglagesFC, today);
-      const e = { ...e0, bloc, phase: phaseDepart(e0, bloc) };
-      if (aSortir.length) {
-        const maj = await putMany('questions', aSortir.map((q) => sortir(q, today)));
-        if (vivant) setCartes((c) => ({ ...c, ...Object.fromEntries(maj.map((q) => [q.id, q])) }));
-      }
-      if (aIntroduire.length) {
-        const maj = await putMany('questions', aIntroduire.map((q) => introduire(q, reglages, today)));
-        if (vivant) setCartes((c) => ({ ...c, ...Object.fromEntries(maj.map((q) => [q.id, q])) }));
-      }
+      const e = seanceEnCours(sauve, cartesRef.current, today, ctx.db) ? remettreDAccord(sauve) : nouvelEtat(ctx.db, today);
       if (vivant) { depuis.current = Date.now(); await ecrire(e); }
     })();
     return () => { vivant = false; };
@@ -208,180 +130,79 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false, bloc: blocPro
 
   /* ---- fin de séance : mesure enregistrée une fois (recalibre l'estimation du temps) ---- */
   useEffect(() => {
-    if (!etat || etat.phase !== 'fin' || etat.mesuree) return;
+    if (!etat || etat.phase !== 'fin' || etat.mesuree || !etat.faites.revisions) return;
     (async () => {
       const m = (await getMeta(CLE_MESURES)) || [];
-      m.push({ v: VERSION_MESURES, date: today, nRevisions: etat.faites.revisions, msRevisions: etat.ms.revisions, nApprendre: etat.nApprendre, msApprendre: etat.ms.apprendre });
+      m.push({ v: VERSION_MESURES, date: today, nRevisions: etat.faites.revisions, msRevisions: etat.ms.revisions });
       await setMeta(CLE_MESURES, m.slice(-20));
       await ecrire({ ...etat, mesuree: true });
     })();
   }, [etat && etat.phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const coursDe = (id) => (cartesRef.current[id] || {}).ficheId;
-  const enregistrerCarte = async (q) => { const s = await put('questions', q); setCartes((c) => ({ ...c, [s.id]: s })); return s; };
   const terminer = async () => { const e = tick() || etatRef.current; if (e) await setMeta(CLE_SEANCE, e); await ctx.reload(); quitter(); };
 
   if (!etat) return <div className={'sfc' + (pleinEcran ? ' plein-ecran' : '')}><div className="sfc-centre"><span className="hint">Préparation de la séance…</span></div></div>;
 
-  const revId = etat.phase === 'revisions' ? etat.revisions[etat.revIdx] : null;
-  const appId = etat.phase === 'apprendre' ? etat.file[0] : null;
-  const carte = cartes[revId || appId] || null;
+  const id = etat.phase === 'cartes' ? etat.cartes[etat.idx] : null;
+  const carte = id ? cartes[id] || null : null;
+  const total = etat.cartes.length;
 
-  /* ---- bloc Révisions : une vue, notation de la méthode des J ---- */
-  const noter = async (rating) => {
-    const q = cartes[revId];
-    let e = tick();
-    const quality = QUAL[rating];
-    let maj = advanceQuestion(q, quality);
-    maj = apresNotationJ(maj, quality, ctx.reglagesFC, today);
-    await enregistrerCarte(maj);
-    e = { ...e, revIdx: e.revIdx + 1, faites: { ...e.faites, revisions: e.faites.revisions + 1, rates: e.faites.rates + (rating === 'fail' ? 1 : 0) } };
-    if (e.revIdx >= e.revisions.length) e = { ...e, phase: !e.file.length ? 'fin' : e.bloc === 'revisions' ? 'pause-bloc' : 'transition' };
-    setRetournee(false);
-    await ecrire(e);
-  };
-
-  /* ---- bloc Apprendre ---- */
-  const avancerFile = async (maj, plage) => {
-    let e = tick();
-    const reste = e.file.slice(1);
-    const file = plage ? reinserer(reste, maj.id, plage, coursDe) : reste;
-    e = { ...e, file, phase: file.length ? 'apprendre' : resteRevisions(e) > 0 ? 'pause-bloc' : 'fin' };
-    setRetournee(false);
-    return e;
-  };
-  const compris = async () => {
-    const maj = await enregistrerCarte(presenter(cartes[appId]));
-    const e = await avancerFile(maj, DISTANCE.presentation);
-    await ecrire({ ...e, presentees: [...(e.presentees || []), maj.id] });
-  };
-  const reponse = async (su) => {
-    const avant = cartes[appId];
-    const e0 = etatRef.current;
-    // réussie du PREMIER coup juste après sa présentation : la 2e vérification se fait en fin de paquet
-    const premierCoup = su && (avant.learningStreak || 0) === 0 && (e0.presentees || []).includes(appId) && !(e0.echecs || []).includes(appId);
-    const { carte: maj, sortie } = repondre(avant, su, ctx.reglagesFC, today);
-    const s = await enregistrerCarte(maj);
-    let e = await avancerFile(s, sortie ? null : !su ? DISTANCE.pasSu : premierCoup ? DISTANCE.finDePaquet : DISTANCE.su);
-    if (!su) e = { ...e, echecs: [...(e.echecs || []), appId] };
-    e = { ...e, testsFaits: (e.testsFaits || 0) + 1, faites: { ...e.faites, apprises: e.faites.apprises + (sortie ? 1 : 0) } };
-    await ecrire(e);
+  const noter = async (note) => {
+    if (!carte || enCours) return;
+    setEnCours(true);
+    try {
+      let e = tick();
+      const s = await repondreFlashcard(carte, note, {
+        reglages: ctx.reglagesFC,
+        sauver: async (c) => { const r = await put('questions', c); setCartes((x) => ({ ...x, [r.id]: r })); return r; },
+      });
+      e = { ...e, idx: e.idx + 1, faites: { revisions: e.faites.revisions + 1, rates: e.faites.rates + (note === 1 ? 1 : 0) } };
+      // cartes devenues dues entre-temps : la séance se remet d'accord à chaque réponse
+      const { plan, coursDe } = planSurCartes(ctx.db, { ...cartesRef.current, [s.id]: s }, today);
+      e = reprendreSeance(e, plan, coursDe).etat;
+      setRetournee(false);
+      await ecrire(e);
+    } finally { setEnCours(false); }
   };
 
-  /* basculer d'un bloc à l'autre en cours de séance : l'état du bloc quitté est gardé tel quel */
-  const basculer = async (vers) => {
-    const e = tick() || etatRef.current;
-    setRetournee(false);
-    depuis.current = Date.now();
-    await ecrire({ ...e, phase: vers });
-  };
-
-  const nRev = etat.revisions.length;
-  const enApprendre = etat.phase === 'apprendre';
-  const autreBloc = etat.phase === 'revisions' && resteApprendre(etat) > 0 ? { vers: 'apprendre', label: `Passer à l’apprentissage (${resteApprendre(etat)})` }
-    : enApprendre && resteRevisions(etat) > 0 ? { vers: 'revisions', label: `Revenir aux révisions (${resteRevisions(etat)})` } : null;
-  const presentation = enApprendre && carte && !carte.learningPresented;
-  const progression = etat.phase === 'revisions' ? `Révisions · ${etat.revIdx + 1} / ${nRev}`
-    : enApprendre ? `Apprendre · ${etat.file.length} restante${etat.file.length > 1 ? 's' : ''}` : '';
-  const pct = etat.phase === 'revisions' ? (etat.revIdx / Math.max(1, nRev)) * 100
-    : enApprendre ? ((etat.nApprendre - etat.file.length) / Math.max(1, etat.nApprendre)) * 100 : 100;
+  const pct = total ? (etat.idx / total) * 100 : 100;
 
   return (
     <div className={'sfc' + (pleinEcran ? ' plein-ecran' : '')}>
       <div className="sfc-tete">
         <button type="button" className="sfc-quitter" onClick={terminer} aria-label="Quitter la séance" title="Quitter (la séance reprend où tu t'es arrêté)"><Icon name="x" size={18} /></button>
         <div className="sfc-barre"><span style={{ width: Math.max(0, Math.min(100, pct)) + '%' }} /></div>
-        <span className="sfc-prog tnum">{progression}</span>
-        {autreBloc && <button type="button" className="sfc-basculer" onClick={() => basculer(autreBloc.vers)}
-          title="L’état du bloc en cours est gardé : tu le reprends où tu l’as laissé">{autreBloc.label}</button>}
+        <span className="sfc-prog tnum">{etat.phase === 'cartes' ? `${Math.min(etat.idx + 1, total)} / ${total}` : ''}</span>
       </div>
-
-      {etat.phase === 'pause-bloc' && (
-        <div className="sfc-centre sfc-transition">
-          <div className="sfc-titre">{resteRevisions(etat) > 0 ? 'Apprentissage terminé' : 'Révisions terminées'} <span className="sfc-ok">✓</span></div>
-          <div className="hint">
-            {resteRevisions(etat) > 0
-              ? `Il reste ${resteRevisions(etat)} révision${resteRevisions(etat) > 1 ? 's' : ''} aujourd’hui.`
-              : `Il reste ${resteApprendre(etat)} carte${resteApprendre(etat) > 1 ? 's' : ''} à apprendre aujourd’hui.`}
-          </div>
-          <button type="button" className="sfc-btn principal" onClick={() => basculer(resteRevisions(etat) > 0 ? 'revisions' : 'apprendre')}>
-            {resteRevisions(etat) > 0 ? 'Faire les révisions' : 'Commencer l’apprentissage'}
-          </button>
-          <button type="button" className="sfc-btn neutre" onClick={terminer}>Plus tard</button>
-        </div>
-      )}
 
       {etat.phase === 'fin' && (
         <div className="sfc-centre sfc-synthese">
-          <div className="sfc-titre">Séance terminée</div>
-          <div className="sfc-chiffres">
-            <div><span className="tnum">{etat.faites.apprises}</span> carte{etat.faites.apprises > 1 ? 's' : ''} apprise{etat.faites.apprises > 1 ? 's' : ''} aujourd'hui</div>
-            <div><span className="tnum">{etat.faites.revisions}</span> révision{etat.faites.revisions > 1 ? 's' : ''} faite{etat.faites.revisions > 1 ? 's' : ''}</div>
-            <div><span className="tnum">{Math.max(1, Math.round((etat.ms.revisions + etat.ms.apprendre) / 60000))}</span> min de travail réel</div>
-          </div>
+          <div className="sfc-titre">{etat.faites.revisions ? 'Séance terminée' : 'Rien à faire aujourd’hui'}</div>
+          {etat.faites.revisions > 0 && (
+            <div className="sfc-chiffres">
+              <div><span className="tnum">{etat.faites.revisions}</span> carte{etat.faites.revisions > 1 ? 's' : ''} revue{etat.faites.revisions > 1 ? 's' : ''}</div>
+              {etat.faites.rates > 0 && <div><span className="tnum">{etat.faites.rates}</span> à revoir</div>}
+              <div><span className="tnum">{Math.max(1, Math.round((etat.ms.revisions || 0) / 60000))}</span> min de travail réel</div>
+            </div>
+          )}
           <button type="button" className="sfc-btn principal" onClick={terminer}>Terminer</button>
         </div>
       )}
 
-      {etat.phase === 'transition' && (
-        <Transition nRev={etat.faites.revisions} nApp={etat.file.length} nNouvelles={etat.nNouvelles}
-          onSuite={async () => { depuis.current = Date.now(); await ecrire({ ...etatRef.current, phase: 'apprendre' }); }} />
-      )}
-
-      {(etat.phase === 'revisions' || enApprendre) && carte && (
+      {etat.phase === 'cartes' && carte && (
         <div className="sfc-corps">
-          <div className="sfc-etiquette">
-            {etat.phase === 'revisions' ? 'Révision' : presentation ? 'Nouvelle carte' : carte.learningSource === 'rate' ? 'À réapprendre' : 'Apprendre'}
-            {enApprendre && !presentation && <span className="sfc-points" aria-label={`${carte.learningStreak || 0} sur ${carte.learningCriterion || reglages.critere}`}>
-              {Array.from({ length: carte.learningCriterion || reglages.critere }).map((_, i) => <i key={i} className={i < (carte.learningStreak || 0) ? 'on' : ''} />)}
-            </span>}
-          </div>
-          <button type="button" className="sfc-carte" key={carte.id + ':' + (presentation ? 'p' : retournee ? 'v' : 'r')}
-            data-carte={carte.id} data-serie={carte.learningStreak || 0}
-            onClick={() => { if (!presentation) setRetournee((r) => !r); }}>
-            <FaceFC carte={carte} cote={presentation ? 'deux' : retournee ? 'verso' : 'recto'} masquable={ligneParLigne(ctx)} />
-            {!presentation && !retournee && <span className="sfc-indication">Touche pour voir la réponse</span>}
+          <div className="sfc-etiquette">{(carte.historique || []).some((h) => h && h.qualite != null) ? 'Révision' : 'Nouvelle carte'}</div>
+          <button type="button" className="sfc-carte" key={carte.id + ':' + (retournee ? 'v' : 'r')} data-carte={carte.id}
+            onClick={() => setRetournee((r) => !r)}>
+            <FaceFC carte={carte} cote={retournee ? 'verso' : 'recto'} masquable={ligneParLigne(ctx)} />
+            {!retournee && <span className="sfc-indication">Touche pour voir la réponse</span>}
           </button>
           <div className="sfc-bas">
-            {presentation && <button type="button" className="sfc-btn principal" onClick={compris}>Compris, suivante</button>}
-            {!presentation && !retournee && <button type="button" className="sfc-btn neutre" onClick={() => setRetournee(true)}>Voir la réponse</button>}
-            {!presentation && retournee && etat.phase === 'revisions' && (
-              <div className="sfc-notes trois">
-                <button type="button" className="sfc-btn rate" onClick={() => noter('fail')}>Raté</button>
-                <button type="button" className="sfc-btn difficile" onClick={() => noter('hard')}>Difficile</button>
-                <button type="button" className="sfc-btn facile" onClick={() => noter('easy')}>Facile</button>
-              </div>
-            )}
-            {!presentation && retournee && enApprendre && (
-              <>
-                <div className="sfc-notes deux">
-                  <button type="button" className="sfc-btn rate" onClick={() => reponse(false)}>Pas su</button>
-                  <button type="button" className="sfc-btn facile" onClick={() => reponse(true)}>Su</button>
-                </div>
-                {!etat.testsFaits && <div className="sfc-aide">Une hésitation compte comme « Pas su ».</div>}
-              </>
-            )}
+            {!retournee && <button type="button" className="sfc-btn neutre" onClick={() => setRetournee(true)}>Voir la réponse</button>}
+            {retournee && <BoutonsFlashcard carte={carte} reglages={ctx.reglagesFC} onNoter={noter} disabled={enCours} variante="seance" />}
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function Transition({ nRev, nApp, nNouvelles, onSuite }) {
-  // enchaîne tout seul ; le bouton permet de ne pas attendre
-  useEffect(() => { const t = setTimeout(onSuite, 2200); return () => clearTimeout(t); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const reprises = nApp - nNouvelles;
-  return (
-    <div className="sfc-centre sfc-transition">
-      <div className="sfc-titre">Révisions terminées <span className="sfc-ok">✓</span></div>
-      <div className="hint">{nRev} révision{nRev > 1 ? 's' : ''} faite{nRev > 1 ? 's' : ''}</div>
-      <div className="sfc-sous">
-        {nNouvelles > 0 && <>{nNouvelles} nouvelle{nNouvelles > 1 ? 's' : ''} à apprendre</>}
-        {nNouvelles > 0 && reprises > 0 && ' · '}
-        {reprises > 0 && <>{reprises} à reprendre</>}
-      </div>
-      <button type="button" className="sfc-btn principal" onClick={onSuite}>Commencer l'apprentissage</button>
     </div>
   );
 }

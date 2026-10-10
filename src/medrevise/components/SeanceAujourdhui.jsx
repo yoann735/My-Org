@@ -1,9 +1,9 @@
 /* ============================================================
-   MedRevise — en-tête « Aujourd'hui » de la séance de flashcards (06/10/2026,
-   docs/compte-rendu-apprentissage-flashcards.md) : « 23 à réviser · 41 à apprendre
-   · ≈ 35 min » (v1.1 : plus de quota de nouvelles) et UN bouton. Reprise le même jour ; « Rien à faire aujourd'hui »
-   avec la date de la prochaine séance sinon. Accueil mobile + panneau du lecteur
-   (Exercices → Flashcards).
+   MedRevise — en-tête « Aujourd'hui » de la séance de flashcards (étape 2 FSRS, 10/10/2026) :
+   « 52 cartes · ≈ 13 min » et UN bouton « Démarrer ». Reprise le même jour (« Reprendre »,
+   cartes entrées entre-temps comprises) ; « Rien à faire aujourd'hui » avec la date de la
+   prochaine séance sinon. Plus de compteur « à apprendre » ni de choix de bloc (mode
+   Apprentissage supprimé). Accueil mobile + Réviser + panneau du lecteur.
    ============================================================ */
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -27,42 +27,26 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
 
   const cartes = useMemo(() => flashcardsPlanifiees(ctx.db), [ctx.db]);
   const parId = useMemo(() => Object.fromEntries((ctx.db.questions || []).map((q) => [q.id, q])), [ctx.db]);
-  const plan = useMemo(() => planDuJour(cartes, ctx.reglagesFC, today, nextDate), [cartes, ctx.reglagesFC, today]);
-  // v1.2 : la séance commencée est remise d'accord avec le plan du jour → mêmes nombres que le plan
-  const reprise = sauve === undefined ? null : seanceEnCours(sauve, parId, today, ctx.db, ctx.reglagesFC);
+  const plan = useMemo(() => planDuJour(cartes, today, nextDate), [cartes, today]);
+  const reprise = sauve === undefined ? null : seanceEnCours(sauve, parId, today, ctx.db);
 
-  const nRev = plan.revisions.length;
-  const nNouv = plan.nouvelles.length;
-  const nEnCours = plan.enCours.length;
-  const total = nRev + nNouv + nEnCours;
-  const minutes = Math.max(1, Math.round(estimationMs(nRev, nNouv + nEnCours, mesures) / 60000));
+  const n = plan.dues.length;
+  const minutes = (k) => Math.max(1, Math.round(estimationMs(k, mesures) / 60000));
+  const pluriel = (k) => `${k} carte${k > 1 ? 's' : ''}`;
 
   if (sauve === undefined) return null;
   const cls = 'sfa' + (compact ? ' compact' : '');
-  /* (08/10) à côté du bouton : lancer UN bloc seul — « Révisions (23) · Apprentissage (15) » */
-  const choixBloc = (nR, nA) => (
-    <div className="sfa-blocs" role="group" aria-label="Lancer un seul bloc">
-      <button type="button" className="sfa-bloc" disabled={!nR} onClick={() => onDemarrer('revisions')} title="Seulement les révisions du jour (méthode des J)">
-        Révisions <span className="tnum">({nR})</span>
-      </button>
-      <button type="button" className="sfa-bloc" disabled={!nA} onClick={() => onDemarrer('apprendre')} title="Seulement l’apprentissage (nouvelles et cartes en cours)">
-        Apprentissage <span className="tnum">({nA})</span>
-      </button>
-    </div>
-  );
-
   if (reprise) {
     return (
       <div className={cls}>
         <div className="sfa-titre">Aujourd'hui</div>
-        <div className="sfa-ligne">Séance commencée · {reprise.restantes} carte{reprise.restantes > 1 ? 's' : ''} restante{reprise.restantes > 1 ? 's' : ''}</div>
-        <button type="button" className="sfa-btn" onClick={() => onDemarrer('tout')}><Icon name="play" size={16} fill /> Reprendre la séance ({reprise.restantes} restante{reprise.restantes > 1 ? 's' : ''})</button>
-        {choixBloc(reprise.revRestantes, reprise.appRestantes)}
+        <div className="sfa-ligne"><span className="tnum">Séance commencée · {pluriel(reprise.restantes)} restante{reprise.restantes > 1 ? 's' : ''} · ≈ {minutes(reprise.restantes)} min</span></div>
+        <button type="button" className="sfa-btn" onClick={() => onDemarrer('tout')}><Icon name="play" size={16} fill /> Reprendre la séance</button>
       </div>
     );
   }
-  if (!total) {
-    const proch = prochaineSeance(cartes, plan, today, nextDate);
+  if (!n) {
+    const proch = prochaineSeance(cartes, today, nextDate);
     return (
       <div className={cls + ' vide'}>
         <div className="sfa-titre">Aujourd'hui</div>
@@ -71,16 +55,11 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
       </div>
     );
   }
-  const morceaux = [
-    nRev > 0 && `${nRev} à réviser`,
-    nNouv + nEnCours > 0 && `${nNouv + nEnCours} à apprendre`,
-  ].filter(Boolean);
   return (
     <div className={cls}>
       <div className="sfa-titre">Aujourd'hui</div>
-      <div className="sfa-ligne"><span className="tnum">{morceaux.join(' · ')} · ≈ {minutes} min</span></div>
-      <button type="button" className="sfa-btn" onClick={() => onDemarrer('tout')} title="Révisions puis apprentissage"><Icon name="play" size={16} fill /> Démarrer la séance</button>
-      {choixBloc(nRev, nNouv + nEnCours)}
+      <div className="sfa-ligne"><span className="tnum">{pluriel(n)} · ≈ {minutes(n)} min</span></div>
+      <button type="button" className="sfa-btn" onClick={() => onDemarrer('tout')}><Icon name="play" size={16} fill /> Démarrer</button>
     </div>
   );
 }

@@ -9,7 +9,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { advanceQuestion, recordRelearnAttempt, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
-import { apresNotationJ } from '../lib/apprentissageFC.js';
+import { BoutonsFlashcard } from '../components/BoutonsFlashcard.jsx';
+import { repondreFlashcard } from '../scheduler/repondre.js';
+import { NOTE_DEPUIS_QUALITE_SCORE, NOTE_DEPUIS_ETIQUETTE } from '../scheduler/noter.js';
+import { planificateurActif } from '../scheduler/config.js';
 import { index } from '../lib/planning.js';
 import { Tex } from '../components/Tex.jsx';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
@@ -28,6 +31,9 @@ import { SessionTrendCard, EtiquetteIconButton, etiquetteMenuItems, ContextMenu 
 const isFlash = (t) => t === 'flashcard' || t === 'flash' || t === 'flashcard_erreur';
 const RATING_QUALITY = { fail: QUALITY.rate, hard: QUALITY.difficile, easy: QUALITY.facile };
 const resolveRating = (r) => (typeof r === 'number' ? (QUALITY_TO_RATING[r] || 'hard') : r);
+// FLASHCARDS (étape 2 FSRS) : 4 notes, même aiguillage que desktop Session.jsx (scheduler/noter.js)
+const ETIQUETTE_DE_NOTE = { 1: 'fail', 2: 'hard', 3: 'good', 4: 'easy' };
+const noteFlashcard = (r) => (typeof r === 'number' ? (NOTE_DEPUIS_QUALITE_SCORE[r] || 2) : NOTE_DEPUIS_ETIQUETTE[r]);
 
 export function MobileSession({ ctx, onQuit }) {
   const session = ctx.session || { items: [], title: 'Révision' };
@@ -117,7 +123,8 @@ export function MobileSession({ ctx, onQuit }) {
       proceedToNext(ratingIn === 'resolu' ? 'easy' : 'fail');
       return;
     }
-    const rating = resolveRating(ratingIn);
+    const estFlashcard = !!item && item.type === 'flashcard' && !item.ephemeral;
+    const rating = estFlashcard ? ETIQUETTE_DE_NOTE[noteFlashcard(ratingIn)] : resolveRating(ratingIn);
     let addedRelearn = false;
     if (item && !item.ephemeral) {
       const quality = RATING_QUALITY[rating];
@@ -125,23 +132,28 @@ export function MobileSession({ ctx, onQuit }) {
       // relearning (moteur adaptatif) : une répétition (`item._relearn`) ne
       // rejoue jamais le calcul d'intervalle — voir desktop Session.jsx pour
       // le détail du bug historique évité.
-      let updated = item._relearn ? recordRelearnAttempt(item, quality, applyExtra) : advanceQuestion(item, quality, applyExtra);
-      delete updated._fiche; delete updated._relearn;
-      // apprentissage des flashcards (lib/apprentissageFC.js) : un Raté — intervalles déjà
-      // calculés par advanceQuestion, inchangés — fait d'abord repasser la flashcard par le
-      // bloc Apprendre de la séance de demain (critère « après un raté »)
-      if (!item._relearn) updated = apresNotationJ(updated, quality, ctx.reglagesFC);
+      let updated;
+      if (estFlashcard) {
+        // flashcard : planificateur unique (maison si FSRS OFF, FSRS si ON) + mode ombre + journal
+        updated = await repondreFlashcard(item, noteFlashcard(ratingIn), {
+          reglages: ctx.reglagesFC, relearn: !!item._relearn, tempsMs: applyExtra.tempsMs,
+          sauver: async (c) => { await ctx.saveQuestion(c); return c; },
+        });
+      } else {
+        updated = item._relearn ? recordRelearnAttempt(item, quality, applyExtra) : advanceQuestion(item, quality, applyExtra);
+        delete updated._fiche; delete updated._relearn;
+      }
       // rotation QCM (Étape 4, lib/planning.js pickQcmSubset) : suivi de la
       // dernière présentation + du dernier résultat (correction directe, pas
       // la notation 3 boutons) — voir même logique en desktop Session.jsx.
       if (item.type === 'qcm' && extra) {
         updated = { ...updated, lastSeenAt: todayISO(), lastResult: extra.qcmOk ? 'ok' : 'ko' };
       }
-      await ctx.saveQuestion(updated);
+      if (!estFlashcard) await ctx.saveQuestion(updated);
       // relearning step (Raté) : la carte revient EN MÉMOIRE DE SESSION en
       // fin de série (même mécanique que desktop Session.jsx) — une seule
-      // fois par Raté, jamais si `item` est déjà une répétition.
-      if (!item._relearn && rating === 'fail') {
+      // fois par Raté, jamais si `item` est déjà une répétition. FSRS ON : pas pour les flashcards.
+      if (!item._relearn && rating === 'fail' && !(estFlashcard && planificateurActif(ctx.reglagesFC) === 'fsrs')) {
         const f = ix.fById[updated.ficheId];
         setExtraItems((prev) => [...prev, { ...updated, _fiche: f, _relearn: true }]);
         addedRelearn = true;
@@ -416,11 +428,15 @@ function MobileRateButtons({ onRate, item, ctx, carnetPrompt, onCarnetSubmit, on
   const awaitingCarnet = !!carnetPrompt;
   return (
     <div>
-      <div className="mrm-rate">
-        <button type="button" className="mrm-rate-btn fail" disabled={awaitingCarnet} onClick={() => onRate('fail')}>Raté <span className="sub">à revoir vite</span></button>
-        <button type="button" className="mrm-rate-btn hard" disabled={awaitingCarnet} onClick={() => onRate('hard')}>Difficile <span className="sub">bientôt</span></button>
-        <button type="button" className="mrm-rate-btn easy" disabled={awaitingCarnet} onClick={() => onRate('easy')}>Facile <span className="sub">dans longtemps</span></button>
-      </div>
+      {item && item.type === 'flashcard' && !item.ephemeral
+        ? <BoutonsFlashcard carte={item} reglages={ctx.reglagesFC} disabled={awaitingCarnet} onNoter={(note, cle) => onRate(cle === 'again' ? 'fail' : cle)} variante="mobile" />
+        : (
+          <div className="mrm-rate">
+            <button type="button" className="mrm-rate-btn fail" disabled={awaitingCarnet} onClick={() => onRate('fail')}>Raté <span className="sub">à revoir vite</span></button>
+            <button type="button" className="mrm-rate-btn hard" disabled={awaitingCarnet} onClick={() => onRate('hard')}>Difficile <span className="sub">bientôt</span></button>
+            <button type="button" className="mrm-rate-btn easy" disabled={awaitingCarnet} onClick={() => onRate('easy')}>Facile <span className="sub">dans longtemps</span></button>
+          </div>
+        )}
       {awaitingCarnet && <MobileCarnetPrompt onSubmit={onCarnetSubmit} onSkip={onCarnetSkip} />}
       {!awaitingCarnet && <MobileEtiquetteControl item={item} ctx={ctx} />}
     </div>

@@ -647,6 +647,17 @@
 .rate-btn.fail { color: color-mix(in srgb, var(--crit) 74%, var(--text)); }
 .rate-btn.fail:hover { border-color: var(--crit); background: color-mix(in srgb, var(--crit) 10%, transparent); }
 .rate-btn:disabled { opacity: .45; cursor: default; transform: none; }
+/* 4 boutons des flashcards (étape 2 FSRS) : À revoir / Difficile / Correct / Facile */
+.rev-rate.quatre { grid-template-columns: repeat(4, 1fr); }
+.rate-btn.good { color: color-mix(in srgb, var(--accent) 78%, var(--text)); }
+.rate-btn.good:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+@media (max-width: 560px) { .rev-rate.quatre { grid-template-columns: repeat(2, 1fr); } }
+.bf-zone { position: relative; }
+.bf-astuce {
+  position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); z-index: 3; white-space: nowrap;
+  padding: 6px 12px; border-radius: 10px; background: var(--text); color: var(--bg); font-size: 12.5px; font-weight: 600;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .18); animation: fadeup .3s ease; pointer-events: none;
+}
 
 /* carnet d'erreurs v2 (étape 2) : notation d'une V2 (Résolu/À revoir), 2 colonnes au lieu de 3 */
 .rev-rate.erreur-rate { grid-template-columns: repeat(2, 1fr); }
@@ -2248,15 +2259,14 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .flash-face .zd-contenu { gap: 0; } /* espacements d'origine (marges des éléments) */
 
 /* ============================================================
-   APPRENTISSAGE DES FLASHCARDS (06/10, docs/compte-rendu-apprentissage-flashcards.md)
-   .sfa = en-tête « Aujourd'hui » (accueil mobile, panneau Exercices → Flashcards)
+   SÉANCE QUOTIDIENNE DES FLASHCARDS (06/10 ; étape 2 FSRS 10/10 : mode Apprentissage retiré)
+   .sfa = en-tête « Aujourd'hui » (accueil mobile, Réviser, panneau Exercices → Flashcards)
    .sfc = écran de séance (plein écran mobile ; colonne centrée dans .main au bureau)
    .rfc = réglages
    ============================================================ */
 .sfa { display: flex; flex-direction: column; gap: 8px; padding: 18px; border-radius: 18px; background: var(--card); border: 1px solid var(--border); }
 .sfa-titre { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); }
 .sfa-ligne { font-size: 15px; font-weight: 600; color: var(--text); }
-.sfa-note { font-size: 12.5px; color: var(--text-3); line-height: 1.4; }
 .sfa-rien { font-size: 18px; font-weight: 700; color: var(--text); }
 .sfa.vide .sfa-ligne { font-size: 13.5px; font-weight: 500; color: var(--text-2); }
 .sfa-btn {
@@ -2281,9 +2291,6 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
   padding: 14px calc(16px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
 }
 .sfc-etiquette { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); }
-.sfc-points { display: inline-flex; gap: 5px; }
-.sfc-points i { width: 8px; height: 8px; border-radius: 50%; background: var(--bg-2); border: 1px solid var(--border); }
-.sfc-points i.on { background: var(--ok); border-color: var(--ok); }
 .sfc-carte {
   flex: 1 1 auto; min-height: 140px; display: flex; flex-direction: column; overflow: hidden; padding: 0; cursor: pointer;
   border-radius: 20px; border: 1px solid var(--border); background: var(--card); color: var(--text); font: inherit; text-align: center;
@@ -2301,8 +2308,6 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .sfc-indication { flex: 0 0 auto; padding: 8px 16px 14px; font-size: 12.5px; color: var(--text-3); }
 .sfc-bas { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; }
 .sfc-notes { display: grid; gap: 10px; }
-.sfc-notes.trois { grid-template-columns: repeat(3, 1fr); }
-.sfc-notes.deux { grid-template-columns: 1fr 1fr; }
 .sfc-btn {
   min-height: 56px; border-radius: 14px; border: none; font: inherit; font-size: 16px; font-weight: 700; color: #fff; cursor: pointer;
   display: flex; align-items: center; justify-content: center; padding: 0 14px;
@@ -2313,12 +2318,15 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .sfc-btn.rate { background: var(--crit); }
 .sfc-btn.difficile { background: var(--warn); }
 .sfc-btn.facile { background: var(--ok); }
-.sfc-aide { text-align: center; font-size: 12.5px; color: var(--text-3); }
+.sfc-btn.correct { background: var(--accent); }
+.sfc-notes.quatre { grid-template-columns: repeat(4, 1fr); }
+.sfc-btn:has(.sfc-btn-sous) { flex-direction: column; gap: 1px; line-height: 1.15; }
+.sfc-btn-sous { font-size: 11.5px; font-weight: 500; opacity: .88; }
+@media (max-width: 480px) { .sfc-notes.quatre { grid-template-columns: repeat(2, 1fr); } }
 .sfc-centre { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; padding: 30px 22px calc(30px + env(safe-area-inset-bottom)); }
 .sfc-centre .sfc-btn { min-width: 240px; margin-top: 8px; }
 .sfc-titre { font-size: 22px; font-weight: 700; }
 .sfc-ok { color: var(--ok); }
-.sfc-sous { font-size: 16px; font-weight: 600; color: var(--text); }
 .sfc-chiffres { display: flex; flex-direction: column; gap: 8px; font-size: 15px; color: var(--text-2); }
 .sfc-chiffres .tnum { font-size: 20px; font-weight: 800; color: var(--text); margin-right: 4px; }
 @media (orientation: landscape) and (max-height: 500px) {
@@ -2355,7 +2363,6 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .revise-seance .sfa { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 14px 18px; }
 .revise-seance .sfa-titre { flex: 0 0 auto; }
 .revise-seance .sfa-ligne { flex: 1 1 260px; min-width: 0; }
-.revise-seance .sfa-note { flex: 1 1 100%; order: 3; }
 .revise-seance .sfa-btn { margin-left: auto; width: auto; }
 .ocr-etat { padding: 10px 12px; border: 1px solid var(--border-2); border-radius: 10px; background: var(--bg); }
 
@@ -2369,15 +2376,6 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 /* les retours à la ligne saisis se voient aussi dans la liste du panneau et l'aperçu */
 .pis-face { white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* ---- séance des J : un bloc seul / basculer (08/10) ---- */
-.sfa-blocs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 3px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--border-2); }
-.sfa-bloc { min-height: 40px; border: none; border-radius: 9px; background: transparent; color: var(--text-2); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
-.sfa-bloc .tnum { color: var(--text-3); font-weight: 500; }
-.sfa-bloc:hover:not(:disabled) { background: var(--card); color: var(--text); }
-.sfa-bloc:disabled { opacity: .45; cursor: default; }
-.sfc-basculer { flex: 0 0 auto; min-height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border-2); background: transparent; color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-.sfc-basculer:hover { color: var(--text); background: var(--bg-2); }
-@media (max-width: 600px) { .sfc-tete { flex-wrap: wrap; } .sfc-basculer { order: 3; width: 100%; } }
 .lv-renommer { width: 100%; box-sizing: border-box; font: inherit; }
 
 /* ============================================================
@@ -2559,3 +2557,21 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .pis .mol-barre { gap: 2px 4px; padding: 3px; }
 .pis .mol-groupe + .mol-groupe { padding-left: 0; border-left: 0; }
 .pis .mol-outil { min-width: 30px; height: 30px; padding: 0 4px; }
+
+/* ============================================================
+   FSRS (étape 2, docs/fsrs-etape2-compte-rendu.md) — Réglages → FSRS (ombre), journal
+   ============================================================ */
+.fsrs-reg { display: flex; flex-direction: column; gap: 6px; }
+.fsrs-titre { margin-top: 16px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); }
+.fsrs-sous { font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
+.fsrs-tableau { margin-top: 8px; max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; }
+.fsrs-ligne { display: grid; grid-template-columns: 1fr 80px 80px; gap: 8px; padding: 4px 10px; border-bottom: 1px solid var(--border-2); }
+.fsrs-ligne span:not(:first-child) { text-align: right; }
+.fsrs-ligne.tete { position: sticky; top: 0; background: var(--card); font-weight: 600; color: var(--text-2); }
+.fsrs-ligne.diff span:last-child { color: var(--accent); font-weight: 700; }
+.fsrs-ex { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; font-size: 12.5px; padding: 3px 0; border-bottom: 1px dashed var(--border-2); }
+.fsrs-ex-recto { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fsrs-prep { margin-top: 8px; padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-2); }
+.fsrs-prep ul { margin: 6px 0 10px; padding-left: 18px; }
+.sj { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.sj-titre { font-weight: 600; margin-bottom: 4px; }

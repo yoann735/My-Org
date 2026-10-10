@@ -2,16 +2,18 @@
    MedRevise — Réglages : gestion des cours (sources) + matières,
    rappels J, archivage ; profil ; méthode des J ; objectif ; reset.
    ============================================================ */
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, Switch, matiereMeta, syncStatusLabel, SyncIndicator } from '../components/ui.jsx';
 import { isClassicUI, setClassicUI } from '../../shared/uiMode.js';
-import { wipeAll, getMeta } from '../lib/storage.js';
+import { wipeAll } from '../lib/storage.js';
 import { exportBackup, formatOctets } from '../lib/backupExport.js';
 import { BoutonDiagnostic } from '../components/BoutonDiagnostic.jsx';
 import { CarteCredits } from '../transcription/Credits.jsx';
 import { CarteOcrReglages } from '../ocr/PanneauOcr.jsx';
-import { reglagesFC, BORNES_FC } from '../lib/apprentissageFC.js';
+import { reglagesFC } from '../lib/apprentissageFC.js';
+import { ReglagesFSRS } from '../components/ReglagesFSRS.jsx';
+import { SynchroJournal } from '../components/SynchroJournal.jsx';
 import { validateBackup, currentCounts, importBackup, computeCloudDiff, applyCloudTombstones } from '../lib/backupImport.js';
 
 export function Reglages({ ctx }) {
@@ -287,11 +289,13 @@ export function Reglages({ ctx }) {
             <span className="j-tag">Plafond J+90</span>
           </div>
           <div className="hint" style={{ marginTop: 10, marginBottom: 12 }}>Moteur adaptatif : chaque carte porte son propre intervalle (en jours), qui démarre à 1 et se multiplie à chaque révision. Un Raté le remet à 1 jour (reprise le jour même, puis due à J+1). Au-delà de 90 jours, l'intervalle est plafonné à J+90 pile ; après cette dernière révision, Facile/Difficile termine la carte, Raté relance un cycle complet.</div>
+          <div className="hint" style={{ marginBottom: 12 }}>Flashcards (4 boutons) avec ce moteur : À revoir → Raté · Difficile → Difficile · Correct et Facile → Facile. Avec « Utiliser FSRS pour les dates » (carte FSRS), FSRS décide à la place.</div>
           <button type="button" className="btn" style={{ color: 'var(--crit)' }} onClick={resetAllJ}><Icon name="calendar" size={15} /> Réinitialiser les dates</button>
         </Card>
-        <Card title="Apprentissage des flashcards" icon="cards">
-          <ReglagesApprentissageFC ctx={ctx} />
+        <Card title="Flashcards" icon="cards">
+          <ReglagesFlashcards ctx={ctx} />
         </Card>
+        <ReglagesFSRS ctx={ctx} />
         <Card title="Sauvegarde" icon="archive">
           <div className="hint" style={{ marginBottom: 12 }}>
             Enregistre TOUT ce que contient cet appareil dans un seul fichier JSON
@@ -412,6 +416,8 @@ export function Reglages({ ctx }) {
               appareils (voir lib/syncStatus.js). Recalculee apres chaque synchro
               forcee via syncTick. */}
           <SyncIndicator refreshKey={syncTick} />
+          {/* étape 2 FSRS : journal des révisions (dernière synchro, en attente, Synchroniser maintenant) */}
+          <SynchroJournal ctx={ctx} />
           {/* v1.2 : diagnostic lecture seule (cartes, séance en cours, empreinte, fuseau) */}
           <BoutonDiagnostic />
         </Card>
@@ -420,31 +426,18 @@ export function Reglages({ ctx }) {
   );
 }
 
-/* apprentissage des flashcards (lib/apprentissageFC.js) : UN critère (v1.1 : 2 par défaut, le même
-   après un raté ; plus de quota de nouvelles), synchronisé entre appareils (storage.js setReglagesFC). */
-function ReglagesApprentissageFC({ ctx }) {
+/* flashcards : réglage d'affichage de la carte Muscle (synchronisé, storage.js setReglagesFC).
+   Étape 2 FSRS : le critère du mode Apprentissage est retiré avec ce mode ; les réglages FSRS
+   vivent dans leur propre carte (components/ReglagesFSRS.jsx). */
+function ReglagesFlashcards({ ctx }) {
   const r = reglagesFC(ctx.reglagesFC);
-  // bilan du passage à la v1.1 (lib/migrate.js) : cartes rattrapées, cartes sorties sans repasser
-  const [v11, setV11] = useState(null);
-  useEffect(() => { getMeta('migration.apprentissage-flashcards-v1.1').then((x) => setV11(x || null)).catch(() => {}); }, []);
-  const champ = (cle, libelle, aide) => (
-    <label className="rfc-champ">
-      <span className="rfc-libelle">{libelle}<span className="hint">{aide}</span></span>
-      <input type="number" className="rfc-nombre" min={BORNES_FC[cle][0]} max={BORNES_FC[cle][1]} step={1} defaultValue={r[cle]} key={cle + r[cle]}
-        onBlur={(e) => { const v = reglagesFC({ ...r, [cle]: e.target.value }); e.target.value = v[cle]; if (v[cle] !== r[cle]) ctx.saveReglagesFC(v); }}
-        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
-    </label>
-  );
   return (
     <div className="rfc">
-      {champ('critere', 'Critère de succès', `succès consécutifs pour sortir de l’apprentissage — aussi après un raté en révision (${BORNES_FC.critere[0]} à ${BORNES_FC.critere[1]})`)}
       <label className="rfc-champ rfc-bascule">
         <span className="rfc-libelle">Carte Muscle : révéler ligne par ligne<span className="hint">au retournement, les 5 lignes sont masquées ; touche une ligne pour la voir, ou « Tout révéler »</span></span>
-        <input type="checkbox" checked={r.muscleLigneParLigne} onChange={(e) => ctx.saveReglagesFC({ ...r, muscleLigneParLigne: e.target.checked })} />
+        <input type="checkbox" checked={r.muscleLigneParLigne} onChange={(e) => ctx.saveReglagesFC({ ...(ctx.reglagesFC || {}), muscleLigneParLigne: e.target.checked })} />
       </label>
-      <div className="hint rfc-v11">Plus de quota : une carte entre dans « Apprendre » le jour de sa date de départ.
-        {v11 && <> Passage à cette règle sur cet appareil : <b className="tnum">{v11.rattrapees}</b> carte{v11.rattrapees > 1 ? 's' : ''} retenue{v11.rattrapees > 1 ? 's' : ''} par l’ancien quota {v11.rattrapees > 1 ? 'sont revenues' : 'est revenue'} dans Apprendre (date de départ d’origine conservée) · <b className="tnum">{v11.sortiesSansRepasser}</b> déjà à 2 succès sortie{v11.sortiesSansRepasser > 1 ? 's' : ''} sans repasser.</>}
-      </div>
+      <div className="hint">Séance du jour : toutes les cartes dues, une vue chacune, 4 boutons (À revoir · Difficile · Correct · Facile).</div>
     </div>
   );
 }

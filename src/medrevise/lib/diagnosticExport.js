@@ -18,7 +18,8 @@ import { getAll, getMeta, getReglagesFC } from './storage.js';
 import { comparerAuCloud } from './syncStatus.js';
 import { todayISO } from './sm2.js';
 import { index, isFicheScheduled, nextDate } from './planning.js';
-import { estFlashcardJ, etatFC, planDuJour, reglagesFC } from './apprentissageFC.js';
+import { estFlashcardJ, planDuJour, reglagesFC } from './apprentissageFC.js';
+import { compteJournal, idsEnAttente } from '../journal/journal.js';
 import { deliverFile, formatOctets } from './backupExport.js';
 
 export const DIAGNOSTIC_SCHEMA = 'medrevise-diagnostic/1';
@@ -46,11 +47,9 @@ export async function construireDiagnostic() {
       cours: f.titre || f.title || f.nom || null, matiere: m.nom || m.name || null,
       recto: texte(q.recto || q.question),
       planifiee: planifiee(q),
-      etatEffectif: estFlashcardJ(q) ? etatFC(q, today) : null,
-      learnState: q.learnState ?? null, learningStreak: q.learningStreak ?? null,
-      learningCriterion: q.learningCriterion ?? null, learningPresented: q.learningPresented ?? null,
-      learningIntroducedOn: q.learningIntroducedOn ?? null, learningDue: q.learningDue ?? null,
-      learningSource: q.learningSource ?? null, learningDoneOn: q.learningDoneOn ?? null,
+      // champs de l'ancien mode Apprentissage (plus lus depuis l'étape 2 FSRS) + trace de conversion
+      learnState: q.learnState ?? null, conversionApprentissage: q.conversionApprentissage ?? null,
+      fsrs: estFlashcardJ(q) ? (q.fsrs ? { ...q.fsrs, base: undefined } : null) : undefined,
       lastSeenAt: q.lastSeenAt ?? null,
       dueDate: q.dueDate ?? null, prochaineDate: nextDate(q), intervalDays: q.intervalDays ?? null,
       skippedOn: q.skippedOn ?? null, termine: !!q.termine,
@@ -60,12 +59,13 @@ export async function construireDiagnostic() {
   });
 
   const fc = db.questions.filter((q) => estFlashcardJ(q) && planifiee(q));
-  const plan = planDuJour(fc, reglages, today, nextDate);
+  const plan = planDuJour(fc, today, nextDate);
   const ids = (l) => l.map((q) => q.id);
 
-  const [seance, mesures, migrations, migV1, migV11] = await Promise.all([
+  const [seance, mesures, migrations, migV1, migV11, conversion, journalN, journalAttente] = await Promise.all([
     getMeta('seanceFC'), getMeta('seanceFC.mesures'), getMeta('migrations'),
     getMeta('migration.apprentissage-flashcards-v1'), getMeta('migration.apprentissage-flashcards-v1.1'),
+    getMeta('migration.conversion-apprentissage-v1'), compteJournal().catch(() => null), idsEnAttente().catch(() => []),
   ]);
 
   let cloud;
@@ -92,13 +92,11 @@ export async function construireDiagnostic() {
       build: typeof document !== 'undefined' ? [...document.querySelectorAll('script[src]')].map((s) => s.getAttribute('src')).filter((s) => /assets\//.test(s)) : [],
     },
     reglagesFC: { brut: reglages, effectifs: reglagesFC(reglages) },
-    planDuJour: {
-      compteurs: { revisions: plan.revisions.length, enCours: plan.enCours.length, nouvelles: plan.nouvelles.length, aSortir: plan.aSortir.length, aApprendre: plan.enCours.length + plan.nouvelles.length },
-      revisions: ids(plan.revisions), enCours: ids(plan.enCours), nouvelles: ids(plan.nouvelles), aSortir: ids(plan.aSortir),
-    },
+    planDuJour: { compteurs: { dues: plan.dues.length }, dues: ids(plan.dues) },
+    journal: { entrees: journalN, enAttente: journalAttente.length },
     seanceEnregistree: seance || null,
     mesuresSeance: mesures || [],
-    migrations: { appliquees: migrations || [], apprentissageV1: migV1 || null, apprentissageV11: migV11 || null },
+    migrations: { appliquees: migrations || [], apprentissageV1: migV1 || null, apprentissageV11: migV11 || null, conversionApprentissage: conversion || null },
     cloud,
     compteurs: { cartes: cartes.length, flashcards: cartes.filter((c) => c.type === 'flashcard').length },
     cartes,
@@ -116,7 +114,7 @@ export async function exporterDiagnostic() {
     const via = await deliverFile(blob, nom);
     if (via === 'annule') return { ok: false, message: 'Enregistrement annulé — rien n’a été modifié.' };
     const p = d.planDuJour.compteurs;
-    return { ok: true, nom, message: `Diagnostic exporté (${formatOctets(blob.size)}) : ${d.compteurs.cartes} cartes · plan du jour ${p.revisions} à réviser, ${p.aApprendre} à apprendre · empreinte ${d.cloud.empreinteCloud || d.cloud.statut}. Fichier : ${nom}` };
+    return { ok: true, nom, message: `Diagnostic exporté (${formatOctets(blob.size)}) : ${d.compteurs.cartes} cartes · plan du jour ${p.dues} carte${p.dues > 1 ? 's' : ''} · empreinte ${d.cloud.empreinteCloud || d.cloud.statut}. Fichier : ${nom}` };
   } catch (e) {
     return { ok: false, message: 'Export impossible : ' + String((e && e.message) || e) + '. Aucune donnée n’a été modifiée.' };
   }

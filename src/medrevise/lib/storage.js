@@ -6,7 +6,6 @@
    ============================================================ */
 import { get, set, del, clear, keys, values, entries, setMany, createStore } from 'idb-keyval';
 import { isoDate, startAdaptive } from './sm2.js';
-import { fusionApprentissage } from './apprentissageFC.js';
 import { queuePush, pullAllRecords, pullStore, queueBlobPush, flushBlobOutbox, blobOutboxEntries, listCloudBlobs, pullBlob, flushOutbox, isPushDegraded } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
@@ -569,10 +568,10 @@ export async function setCouleursPersoSync(couleurs) {
   return rec;
 }
 
-/* ---- réglages de l'APPRENTISSAGE DES FLASHCARDS (06/10, lib/apprentissageFC.js) :
-   quota de nouvelles par jour, critère de succès, critère après un raté. Même mécanique
-   que couleursPerso ci-dessus — store `S.prompts` (SYNCABLE), clé DISTINCTE. Absent →
-   valeurs par défaut (REGLAGES_FC_DEFAUT, lib/apprentissageFC.js). */
+/* ---- réglages des FLASHCARDS (lib/apprentissageFC.js reglagesFC) : carte Muscle ligne par ligne,
+   FSRS (« Intervalle maximum », interrupteur « Utiliser FSRS pour les dates », migration appliquée).
+   Même mécanique que couleursPerso ci-dessus — store `S.prompts` (SYNCABLE), clé DISTINCTE.
+   Absent → valeurs par défaut (interrupteur OFF). */
 export async function getReglagesFC() { return (await get('reglagesFC', S.prompts)) || null; }
 export async function setReglagesFC(reglages) {
   const updatedAt = new Date().toISOString();
@@ -768,16 +767,10 @@ export async function purgeSource(sourceId) {
    Sans réseau / non configuré (pullAllRecords → null) : no-op, IndexedDB
    reste seul juge — jamais de plantage, jamais de perte locale.
    ============================================================ */
-/* FUSION D'APPRENTISSAGE (v1.2, lib/apprentissageFC.js fusionApprentissage) : deux séances en
-   parallèle sur la même carte — le streak le plus élevé (ou la sortie) gagne, jamais le plus bas.
-   La version fusionnée est NOUVELLE : réhorodatée, écrite ici et poussée, pour que l'autre
-   appareil la reçoive à son tour (max idempotent : les deux convergent). Cas général : aucune. */
-async function ecrireFusion(name, rec) {
-  const stamped = { ...rec, updatedAt: new Date().toISOString() };
-  await set(stamped.id, stamped, S[name]);
-  queuePush(name, stamped.id, stamped, stamped.updatedAt);
-}
-
+/* (Étape 2 FSRS) La fusion d'apprentissage v1.2 (streak le plus élevé gagne) est retirée avec le
+   mode Apprentissage : retour au last-write-wins simple pour toutes les cartes. Les réponses faites
+   en parallèle sur deux appareils sont désormais toutes gardées dans le journal des révisions
+   (journal/), qui reconstruit l'état FSRS quel que soit l'ordre. */
 export async function reconcileAll() {
   const cloudRows = await pullAllRecords();
   if (cloudRows === null) return { ok: false, cloudEmpty: false };
@@ -808,14 +801,9 @@ export async function reconcileAll() {
         if (cloudTs >= localTs) await del(rec.id, S[name]); // tombstone plus récent → supprimer localement
         else queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → réhabiliter
       } else if (cloudTs > localTs) {
-        // v1.2 : flashcard en apprentissage des deux côtés → la progression la plus avancée gagne
-        const fus = name === 'questions' ? fusionApprentissage(cloud.data, rec) : null;
-        if (fus) await ecrireFusion(name, fus);
-        else await set(rec.id, cloud.data, S[name]); // cloud plus récent → adopter
+        await set(rec.id, cloud.data, S[name]); // cloud plus récent → adopter
       } else if (localTs > cloudTs) {
-        const fus = name === 'questions' ? fusionApprentissage(rec, cloud.data) : null;
-        if (fus) await ecrireFusion(name, fus);
-        else queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → pousser
+        queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → pousser
       }
     }
 

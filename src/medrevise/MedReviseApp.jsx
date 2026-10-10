@@ -34,6 +34,7 @@ import {
   getChapExoPrompts, setChapExoPrompts, getReglagesFC, setReglagesFC,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
+import { synchroniserJournal } from './journal/synchro.js';
 import { marquerSyncReussie } from './lib/syncStatus.js';
 import { todayISO, startAdaptive } from './lib/sm2.js';
 import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor, linkedV2Questions } from './lib/planning.js';
@@ -115,10 +116,9 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // stockage { clé → texte } que les deux au-dessus.
   const [chapExoPromptOverrides, setChapExoPromptOverrides] = useState({});
   const [session, setSession] = useState(null);
-  // apprentissage des flashcards (lib/apprentissageFC.js) : réglages synchronisés + écran de retour
+  // flashcards : réglages synchronisés (Muscle, FSRS — lib/apprentissageFC.js reglagesFC) + écran de retour
   const [reglagesFC, setReglagesFCState] = useState(null);
   const [retourSeanceFC, setRetourSeanceFC] = useState(null);
-  const [blocSeanceFC, setBlocSeanceFC] = useState('tout'); // 'tout' | 'revisions' | 'apprendre' (08/10)
   const [feynman, setFeynman] = useState(null);
   const [exercice, setExercice] = useState(null); // { items:[exercice], title }
   const [anatQuiz, setAnatQuiz] = useState(null); // { fiche, mode:'total'|'random', proportion }
@@ -165,6 +165,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // (script SQL pas encore exécuté) et l'envoi est retombé sur l'ancien upsert
     // non protégé — remonté tel quel à l'UI, voir ui.jsx#syncStatusLabel.
     setSyncState({ status: r.status, at: new Date().toISOString(), degraded: !!r.degraded, blobs: r.blobs || null });
+    // journal des révisions (étape 2 FSRS) : son propre canal, après la synchro générale, sans la modifier
+    if (r.status === 'ok') synchroniserJournal().then((j) => { if (j && j.cartesMaj) reload(); }).catch(() => {});
     return r;
   }, [reload]);
 
@@ -241,11 +243,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
     focusFiche, setFocusFiche,
     session, feynman, exercice, anatQuiz, pdfView, schemaView,
 
-    // ---- apprentissage des flashcards : séance quotidienne (session/SeanceFC.jsx) ----
+    // ---- flashcards : séance quotidienne (session/SeanceFC.jsx — étape 2 FSRS : une seule liste) ----
     reglagesFC,
     saveReglagesFC: async (r) => { setReglagesFCState(await setReglagesFC(r)); },
-    blocSeanceFC,
-    startSeanceFC: (bloc = 'tout') => { setBlocSeanceFC(typeof bloc === 'string' ? bloc : 'tout'); setRetourSeanceFC(screen === 'seancefc' ? retourSeanceFC : screen); setScreen('seancefc'); },
+    startSeanceFC: () => { setRetourSeanceFC(screen === 'seancefc' ? retourSeanceFC : screen); setScreen('seancefc'); },
     endSeanceFC: () => { setScreen(retourSeanceFC || 'dashboard'); setRetourSeanceFC(null); },
 
     // ---- session lifecycle ----
@@ -522,9 +523,9 @@ export default function MedReviseApp({ themeApi, goHub }) {
       if (!targets.length && !schemaTargets.length) return;
       await putBackup('pre-reset-j-' + Date.now(), { questions: targets, schemas: schemaTargets });
       const strip = (rec) => { const { intervalDays, dueDate, capped, termine, j0Date, ...rest } = rec; return rest; };
-      // apprentissage des flashcards (lib/apprentissageFC.js) : l'état est effacé lui aussi —
+      // flashcards : l'ancien état d'apprentissage et le bloc FSRS (ombre) sont effacés eux aussi —
       // la carte attend son nouveau J0 comme les autres, puis repart selon son historique
-      const stripFC = (rec) => { const { learnState, learningStreak, learningCriterion, learningPresented, learningIntroducedOn, learningDue, learningSource, ...rest } = strip(rec); return rest; };
+      const stripFC = (rec) => { const { learnState, learningStreak, learningCriterion, learningPresented, learningIntroducedOn, learningDue, learningSource, fsrs, ...rest } = strip(rec); return rest; };
       if (targets.length) await putMany('questions', targets.map(stripFC));
       if (schemaTargets.length) await putMany('fiches', schemaTargets.map(strip));
       await reload();

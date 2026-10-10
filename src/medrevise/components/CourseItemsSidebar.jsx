@@ -42,7 +42,7 @@ import { estMolecule, texteMolecule, SENS, NIVEAUX } from '../molecule/carte.js'
 import { VueMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from './FlashcardImage.jsx';
 import { CarteAjoutFlashcard } from './CarteAjoutFlashcard.jsx';
-import { planDuJour, etatFC } from '../lib/apprentissageFC.js';
+import { planDuJour } from '../lib/apprentissageFC.js';
 import { nextDate } from '../lib/planning.js';
 import { todayISO } from '../lib/sm2.js';
 import { ModeVisibleCtx } from './modeVisible.js';
@@ -250,15 +250,13 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   };
 
   const items = useMemo(() => ficheItems.filter((q) => q.type === activeType), [ficheItems, activeType]);
-  // les flashcards de CE cours : combien, combien de nouvelles, combien à revoir aujourd'hui
+  // les flashcards de CE cours : combien, combien à revoir aujourd'hui (étape 2 FSRS : plus de
+  // compteur « nouvelles / à apprendre », le mode Apprentissage est supprimé)
   const resumeFC = useMemo(() => {
     const fc = ficheItems.filter((q) => q.type === 'flashcard');
     if (!fc.length) return null;
-    const today = todayISO();
-    const plan = planDuJour(fc, ctx.reglagesFC, today, nextDate);
-    const nouvelles = fc.filter((q) => { const e = etatFC(q, today); return (e === 'new' || e === 'learning') && !q.learningIntroducedOn; }).length;
-    return { total: fc.length, nouvelles, aRevoir: plan.revisions.length + plan.enCours.length };
-  }, [ficheItems, ctx.reglagesFC]);
+    return { total: fc.length, aRevoir: planDuJour(fc, todayISO(), nextDate).dues.length };
+  }, [ficheItems]);
   const choisirType = (t) => { setActiveType(t); setAdding(false); setEditingId(null); };
   const actions = [
     { label: 'Coller du JSON', icon: 'upload', onClick: () => { setAdding(true); setAddSource('json'); setAddedCount(0); } },
@@ -281,7 +279,6 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
       {activeType === 'flashcard' && resumeFC && resumeFC.total > 0 && (
         <button type="button" className="pm-resume-fc" onClick={() => ctx.go && ctx.go('revise')} title="Ouvrir l’espace Réviser (séance du jour)">
           <span className="tnum">{resumeFC.total} carte{resumeFC.total > 1 ? 's' : ''}</span>
-          {resumeFC.nouvelles > 0 && <> · <span className="tnum">{resumeFC.nouvelles} nouvelle{resumeFC.nouvelles > 1 ? 's' : ''}</span></>}
           {resumeFC.aRevoir > 0 && <> · <span className="tnum">{resumeFC.aRevoir} à revoir aujourd’hui</span></>}
           <Icon name="chevR" size={12} />
         </button>
