@@ -26,7 +26,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { ZoneDefilante } from '../components/ZoneDefilante.jsx';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
-import { TableauMuscle, ligneParLigne } from '../components/FlashcardMuscle.jsx';
+import { TableauMuscle, ligneParLigne, ImageGeneraleMuscle } from '../components/FlashcardMuscle.jsx';
 import { estMuscle } from '../lib/muscle.js';
 import { estMolecule } from '../molecule/carte.js';
 import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
@@ -357,6 +357,7 @@ function FaceFC({ carte, cote, masquable = false }) {
       <ZoneDefilante className={'sfc-zone sfc-muscle' + (montrerVerso ? ' long' : '')}>
         {montrerRecto && <div className={'sfc-recto' + (montrerVerso ? ' mu-nom-petit' : ' mu-nom')}><Tex>{carte.recto}</Tex></div>}
         {!montrerRecto && <div className="mu-titre"><Tex>{carte.recto}</Tex></div>}
+        <ImageGeneraleMuscle item={carte} face={montrerVerso ? 'verso' : 'recto'} />
         {montrerVerso && <TableauMuscle item={carte} masquable={masquable && cote === 'verso'} />}
         {montrerVerso && carte.a_retenir && <div className="sfc-retenir"><strong>À retenir :</strong> <Tex>{carte.a_retenir}</Tex></div>}
       </ZoneDefilante>

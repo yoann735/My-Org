@@ -16,7 +16,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Tex } from './Tex.jsx';
 import { RACCOURCI_ENREGISTRER, estEnregistrer } from './AddItemForm.jsx';
-import { LIGNES_MUSCLE, lignesDe, lignesVides, blocsContenu, normaliserPuces, carteMuscle } from '../lib/muscle.js';
+import { LIGNES_MUSCLE, lignesDe, lignesVides, blocsContenu, normaliserPuces, carteMuscle, imagesDe, imageGeneraleDe } from '../lib/muscle.js';
+import { ImageMuscle, ChampImageMuscle } from './ImagesMuscle.jsx';
+import { putBlob } from '../lib/storage.js';
 import { imageDuPressePapier, imageDuDepot, glisseDesFichiers } from '../lib/collerImage.js';
 import { lireTableauMuscle } from '../ocr/ocrMuscle.js';
 
@@ -32,10 +34,18 @@ export function ContenuMuscle({ texte }) {
     : <p key={i} className="mu-par"><Tex>{b.texte}</Tex></p>));
 }
 
+/* ---- image générale du muscle (10/10 soir) : au verso toujours, au recto si l'option est cochée ---- */
+export function ImageGeneraleMuscle({ item, face = 'verso' }) {
+  const g = imageGeneraleDe(item);
+  if (!g || (face === 'recto' && !g.auRecto)) return null;
+  return <div className="mu-image-generale"><ImageMuscle imageId={g.imageId} titre={`${(item.recto || 'Muscle').trim()} — image`} grande /></div>;
+}
+
 /* ---- le tableau (verso) ---- */
 export function TableauMuscle({ item, masquable = false, compact = false }) {
   const lignes = lignesDe(item);
-  const pleines = LIGNES_MUSCLE.filter((l) => lignes[l.id].trim()).map((l) => l.id);
+  const images = imagesDe(item); // (10/10 soir) une image par ligne, révélée avec sa ligne
+  const pleines = LIGNES_MUSCLE.filter((l) => lignes[l.id].trim() || images[l.id]).map((l) => l.id);
   const [vues, setVues] = useState(() => new Set());
   const cachee = (id) => masquable && pleines.includes(id) && !vues.has(id);
   const reste = masquable ? pleines.filter((id) => !vues.has(id)).length : 0;
@@ -53,7 +63,12 @@ export function TableauMuscle({ item, masquable = false, compact = false }) {
             {...(c ? { role: 'button', tabIndex: 0, 'aria-label': `Révéler : ${l.label}`, onClick: voir(l.id), onKeyDown: auClavier(l.id) } : {})}>
             <div className="mu-etiquette">{l.label}</div>
             <div className="mu-contenu">
-              {c ? <span className="mu-masque" aria-hidden="true">Toucher pour révéler</span> : <ContenuMuscle texte={lignes[l.id]} />}
+              {c ? <span className="mu-masque" aria-hidden="true">Toucher pour révéler</span> : (
+                <>
+                  {(lignes[l.id].trim() || !images[l.id]) && <ContenuMuscle texte={lignes[l.id]} />}
+                  {images[l.id] && <ImageMuscle imageId={images[l.id].imageId} masques={images[l.id].masques} titre={l.label} className="mu-ligne-image" />}
+                </>
+              )}
             </div>
           </div>
         );
@@ -118,6 +133,13 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
   const [lignes, setLignes] = useState(() => (initial ? lignesDe(initial) : lignesVides()));
   const [indice, setIndice] = useState(initial?.indice || '');
   const [aRetenir, setARetenir] = useState(initial?.a_retenir || '');
+  /* IMAGES (10/10 soir) : par ligne { imageId, fichier, masques } et image générale (+ « au recto ») ;
+     les fichiers ne sont écrits qu'à l'enregistrement */
+  const [images, setImages] = useState(() => (initial ? imagesDe(initial) : {}));
+  const [generale, setGenerale] = useState(() => { const g = initial ? imageGeneraleDe(initial) : null; return g ? { imageId: g.imageId } : {}; });
+  const [auRecto, setAuRecto] = useState(() => !!(initial && imageGeneraleDe(initial) && imageGeneraleDe(initial).auRecto));
+  const imagesRef = useRef(images); imagesRef.current = images;
+  const ecrireImage = async (v) => (v && v.fichier ? putBlob(v.fichier) : v && v.imageId) || null;
   const nomRef = useRef(null);
   const refs = useRef({});
   const entree = useRef(null);
@@ -128,9 +150,18 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
   const pret = !!nom.trim();
   const valider = async () => {
     if (!pret || busy) return;
-    await onAdd(carteMuscle({ nom, lignes, theme, indice, aRetenir, difficulte: initial?.difficulte || 'intermediaire' }));
+    const ims = {};
+    for (const l of LIGNES_MUSCLE) {
+      const v = images[l.id];
+      const id = await ecrireImage(v);
+      if (id) ims[l.id] = { imageId: id, ...(v.masques && v.masques.length ? { masques: v.masques } : {}) };
+    }
+    const idGen = await ecrireImage(generale);
+    await onAdd(carteMuscle({ nom, lignes, theme, indice, aRetenir, difficulte: initial?.difficulte || 'intermediaire',
+      images: ims, imageGenerale: idGen ? { imageId: idGen, auRecto } : null }));
     if (!initial) {
       setNom(''); setLignes(lignesVides()); setIndice(''); setARetenir(''); setOcr(null);
+      setImages({}); setGenerale({}); setAuRecto(false);
       setTheme(themeDefaut); themeRetouche.current = false;
       requestAnimationFrame(() => nomRef.current && nomRef.current.focus()); // enchaîner la carte suivante
     }
@@ -177,6 +208,9 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
       const f = imageDuPressePapier(e.clipboardData);
       if (!f) return;
       e.preventDefault(); e.stopImmediatePropagation();
+      // (10/10 soir) curseur dans une LIGNE du tableau : l'image va à cette ligne ; sinon, pré-remplissage
+      const ligne = LIGNES_MUSCLE.find((l) => refs.current[l.id] && refs.current[l.id] === a);
+      if (ligne) { setImages((s) => ({ ...s, [ligne.id]: { imageId: null, fichier: f, masques: null } })); return; }
       lire(f);
     };
     window.addEventListener('paste', coller, true);
@@ -218,13 +252,28 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
         <div className="mu-ocr-etat"><Icon name="alert" size={13} /> Aucune étiquette (Origine, Trajet, Insertion, Action, Innervation) lue sur cette image — remplis à la main.</div>
       )}
 
+      <div className="mu-generale">
+        <span className="mu-generale-titre">Image du muscle <span className="imp-opt">(optionnelle)</span></span>
+        <ChampImageMuscle valeur={generale} libelle="Image du muscle" onChange={(v) => setGenerale(v)} />
+        {(generale.imageId || generale.fichier) && (
+          <label className="mu-recto-opt"><input type="checkbox" checked={auRecto} onChange={(e) => setAuRecto(e.target.checked)} /> Montrer l’image au recto <span className="imp-opt">(sinon : au verso)</span></label>
+        )}
+      </div>
+
       <div className="mu-saisie" role="group" aria-label="Tableau du muscle">
         {LIGNES_MUSCLE.map((l) => (
-          <div key={l.id} className="mu-saisie-ligne">
+          <div key={l.id} className="mu-saisie-ligne"
+            // une image glissée SUR une ligne va à cette ligne (ailleurs dans le formulaire : pré-remplissage)
+            onDragOver={(e) => { if (!glisseDesFichiers(e.dataTransfer)) return; e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => { const f = glisseDesFichiers(e.dataTransfer) && imageDuDepot(e.dataTransfer); if (!f) return; e.preventDefault(); e.stopPropagation(); setDepot(false); setImages((st) => ({ ...st, [l.id]: { imageId: null, fichier: f, masques: null } })); }}>
             <label className="mu-etiquette" htmlFor={'mu-' + l.id}>{l.label}</label>
-            <ZoneAuto id={'mu-' + l.id} className="mu-zone" value={lignes[l.id]}
-              inputRef={(el) => { refs.current[l.id] = el; }}
-              onChange={(v) => setLignes((s) => ({ ...s, [l.id]: v }))} placeholder="—" />
+            <div className="mu-saisie-cellule">
+              <ZoneAuto id={'mu-' + l.id} className="mu-zone" value={lignes[l.id]}
+                inputRef={(el) => { refs.current[l.id] = el; }}
+                onChange={(v) => setLignes((s) => ({ ...s, [l.id]: v }))} placeholder="—" />
+              <ChampImageMuscle compact valeur={images[l.id]} libelle={l.label}
+                onChange={(v) => setImages((s) => { const n = { ...s }; if (v && (v.imageId || v.fichier)) n[l.id] = v; else delete n[l.id]; return n; })} />
+            </div>
           </div>
         ))}
       </div>

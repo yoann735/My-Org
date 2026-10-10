@@ -68,29 +68,55 @@ export function blocsContenu(texte) {
   return blocs;
 }
 
-/** le tableau mis à plat (verso texte, copie, export) */
-export function versoMuscle(lignes) {
-  return LIGNES_MUSCLE.map((l) => {
+/* ---- IMAGES (10/10 soir) — champs AJOUTÉS, une carte sans image reste identique :
+     muscle.images        { [ligne]: { imageId, masques?: [zones « Masquer des mots »] } }
+     muscle.imageGenerale { imageId, auRecto: bool }  (auRecto absent/false : au verso)
+   `imageId` = blob (putBlob : même stockage et même synchro que les autres images ; la clé
+   en « …Id » est reconnue par l'audit des fichiers). ---- */
+const blobValide = (v) => typeof v === 'string' && !!v;
+export function imagesDe(item) {
+  const src = (item && item.muscle && item.muscle.images) || {};
+  const out = {};
+  LIGNES_MUSCLE.forEach((l) => {
+    const im = src[l.id];
+    if (im && blobValide(im.imageId)) out[l.id] = { imageId: im.imageId, ...(Array.isArray(im.masques) && im.masques.length ? { masques: im.masques } : {}) };
+  });
+  return out;
+}
+export function imageGeneraleDe(item) {
+  const g = item && item.muscle && item.muscle.imageGenerale;
+  return g && blobValide(g.imageId) ? { imageId: g.imageId, auRecto: !!g.auRecto } : null;
+}
+/** nom de pièce d'une image dans les exports texte */
+export const pieceImage = (imageId) => `image-${imageId}.png`;
+
+/** le tableau mis à plat (verso texte, copie, export) — les images sont listées en pièces */
+export function versoMuscle(lignes, { images = {}, imageGenerale = null } = {}) {
+  const corps = LIGNES_MUSCLE.map((l) => {
     const v = normaliserPuces(lignes[l.id] || '').trim();
-    if (!v) return `${l.label} : —`;
-    return v.includes('\n') ? `${l.label} :\n${v.split('\n').map((x) => '  ' + x.trim()).join('\n')}` : `${l.label} : ${v}`;
+    const im = images[l.id] ? `\n  [image : ${pieceImage(images[l.id].imageId)}]` : '';
+    if (!v) return `${l.label} : —${im}`;
+    return (v.includes('\n') ? `${l.label} :\n${v.split('\n').map((x) => '  ' + x.trim()).join('\n')}` : `${l.label} : ${v}`) + im;
   }).join('\n');
+  return imageGenerale ? `[image du muscle : ${pieceImage(imageGenerale.imageId)}]\n${corps}` : corps;
 }
 
 /** texte structuré complet d'une carte (Copier) : le nom, puis chaque ligne */
 export function texteMuscle(item) {
-  return `${(item.recto || '').trim()}\n${versoMuscle(lignesDe(item))}`;
+  return `${(item.recto || '').trim()}\n${versoMuscle(lignesDe(item), { images: imagesDe(item), imageGenerale: imageGeneraleDe(item) })}`;
 }
 
 /** enregistrement d'une carte Muscle à partir du formulaire */
-export function carteMuscle({ nom, lignes, theme = '', indice = '', aRetenir = '', difficulte = 'intermediaire' }) {
+export function carteMuscle({ nom, lignes, theme = '', indice = '', aRetenir = '', difficulte = 'intermediaire', images = {}, imageGenerale = null }) {
   const propres = Object.fromEntries(LIGNES_MUSCLE.map((l) => [l.id, normaliserPuces(lignes[l.id] || '').trim()]));
+  const ims = imagesDe({ muscle: { images } });
+  const gen = imageGeneraleDe({ muscle: { imageGenerale } });
   return {
     type: 'flashcard', theme: theme.trim(), concept: theme.trim(), difficulte,
-    recto: nom.trim(), verso: versoMuscle(propres),
+    recto: nom.trim(), verso: versoMuscle(propres, { images: ims, imageGenerale: gen }),
     indice: indice.trim() || null, a_retenir: aRetenir.trim(), cloze: [],
     imageId: null, imagePlace: null,
-    muscle: { v: 1, lignes: propres },
+    muscle: { v: 1, lignes: propres, ...(Object.keys(ims).length ? { images: ims } : {}), ...(gen ? { imageGenerale: gen } : {}) },
   };
 }
 

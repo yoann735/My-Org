@@ -13,7 +13,7 @@ import { apresNotationJ } from '../lib/apprentissageFC.js';
 import { index } from '../lib/planning.js';
 import { Tex } from '../components/Tex.jsx';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
-import { TableauMuscle, ligneParLigne } from '../components/FlashcardMuscle.jsx';
+import { TableauMuscle, ligneParLigne, ImageGeneraleMuscle } from '../components/FlashcardMuscle.jsx';
 import { estMuscle } from '../lib/muscle.js';
 import { estMolecule } from '../molecule/carte.js';
 import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
@@ -320,6 +320,7 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
               <ZoneDefilante className={'mrm-flash-zone ' + lgRecto}>
                 {occ && <OcclusionView occ={item.occlusion} maxH={280} />}
                 {molecule ? <FaceMoleculeParesseuse carte={item} cote="recto" /> : <div className="mrm-flash-text">{cloze ? <MobileClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div>}
+                {muscle && <ImageGeneraleMuscle item={item} face="recto" />}
                 {item.indice && (showIndice
                   ? <div className="mrm-indice" onClick={(e) => e.stopPropagation()}><Tex>{item.indice}</Tex></div>
                   : <span className="mrm-flash-hint" onClick={(e) => { e.stopPropagation(); setShowIndice(true); }}><Icon name="lightbulb" size={13} /> Voir l'indice</span>)}
@@ -330,7 +331,7 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
             <ZoneDefilante className={'mrm-flash-zone ' + (muscle ? 'mrm-muscle' : lgVerso)}>
               {occ && <OcclusionView occ={item.occlusion} revele maxH={280} />}
               {molecule && <FaceMoleculeParesseuse carte={item} cote="verso" />}
-              {muscle && <><div className="mu-titre"><Tex>{item.recto}</Tex></div><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>}
+              {muscle && <><div className="mu-titre"><Tex>{item.recto}</Tex></div><ImageGeneraleMuscle item={item} face="verso" /><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>}
               {!muscle && !molecule && !(occ && item.versoAuto) && <div className="mrm-flash-back">{cloze ? <MobileClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>}
               {item.a_retenir && <div className="mrm-indice"><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></div>}
             </ZoneDefilante>

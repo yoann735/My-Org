@@ -6,7 +6,7 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
-import { TableauMuscle, ligneParLigne } from '../components/FlashcardMuscle.jsx';
+import { TableauMuscle, ligneParLigne, ImageGeneraleMuscle } from '../components/FlashcardMuscle.jsx';
 import { estMuscle } from '../lib/muscle.js';
 import { estMolecule } from '../molecule/carte.js';
 import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
@@ -465,6 +465,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
               : imageAuRecto(item)
               ? <div className="ff-imgwrap"><AnatImage imageId={item.imageId} compact /><div className="ff-imgq">{cloze ? <ClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div></div>
               : <div className="ff-text">{cloze ? <ClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div>}
+            {muscle && <ImageGeneraleMuscle item={item} face="recto" />}
             {item.indice && (showIndice
               ? <div className="ff-indice" onClick={(e) => e.stopPropagation()} style={{ marginTop: 10, padding: '8px 12px', borderRadius: 10, background: 'var(--accent-soft)', color: 'var(--text)', fontSize: 13.5, display: 'flex', gap: 7, alignItems: 'baseline' }}>
                   <Icon name="lightbulb" size={13} style={{ color: 'var(--accent)', flex: '0 0 auto' }} /> <span><Tex>{item.indice}</Tex></span>
@@ -479,7 +480,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
             {molecule
               ? (flipped ? <FaceMoleculeParesseuse carte={item} cote="verso" /> : null) /* monté au retournement : l'atelier s'ouvre à ce moment-là */
               : muscle
-              ? <><div className="mu-titre"><Tex>{item.recto}</Tex></div><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>
+              ? <><div className="mu-titre"><Tex>{item.recto}</Tex></div><ImageGeneraleMuscle item={item} face="verso" /><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>
               : occ
               ? <div className="ff-occ"><OcclusionView occ={occ} revele />{!item.versoAuto && <div className="ff-imgq"><Tex>{item.verso}</Tex></div>}</div>
               : imageAuVerso(item)

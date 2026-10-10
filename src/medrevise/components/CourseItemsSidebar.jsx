@@ -36,7 +36,7 @@ import { appendItemsToFiche, themeFlashcardsDeFiche, adopterThemeDeCarte } from 
 import { ThemeFicheFlashcards } from './ThemeFiche.jsx';
 import { toInternalItem } from '../lib/adapter.js';
 import { OcclusionEditorModal, OcclusionView, estOcclusion } from './OcclusionImage.jsx';
-import { TableauMuscle } from './FlashcardMuscle.jsx';
+import { TableauMuscle, ImageGeneraleMuscle } from './FlashcardMuscle.jsx';
 import { estMuscle, texteMuscle } from '../lib/muscle.js';
 import { estMolecule, texteMolecule, SENS, NIVEAUX } from '../molecule/carte.js';
 import { VueMoleculeParesseuse } from '../molecule/Paresseux.jsx';
@@ -490,6 +490,7 @@ function MuscleReadBody({ item }) {
   return (
     <>
       <div className="pis-face"><span className="pis-face-tag">Muscle</span><span className="mu-nom-lu"><Tex>{item.recto}</Tex></span></div>
+      <ImageGeneraleMuscle item={item} face="verso" />
       <TableauMuscle item={item} compact />
       {item.a_retenir && <div className="hint" style={{ marginTop: 6 }}><strong>À retenir : </strong><Tex>{item.a_retenir}</Tex></div>}
     </>
