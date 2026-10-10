@@ -182,3 +182,117 @@ Ce banc est simulé : ce n'est pas une capture de ton cours. Le jour où tu coll
 | c005f2d | `test(medrevise)` : décodeur du tableau Muscle (vrais mots OCR + cas simulés) |
 | 3766856 | `docs(medrevise)` : ce compte-rendu et ses captures |
 | 2ca4b1a | `docs(medrevise)` : liste des commits (dernier hash complété dans le commit qui suit) |
+
+## Collage d'image au survol (11/10/2026)
+
+**Le but** : coller une image (⌘V / Ctrl+V) **là où se trouve la souris**, sans passer par le
+sélecteur de fichier. Ça vaut pour les cartes Muscle et pour la carte standard.
+
+### Comportement
+
+**Un seul écouteur de collage par formulaire** (`src/medrevise/lib/collerAuSurvol.js`). Quand le
+presse-papiers porte une image, la cible est, dans cet ordre :
+
+1. **La zone image survolée par la souris.**
+   - Carte Muscle : une ligne du tableau, l'image du muscle, ou le bloc « Pré-remplir ». Coller sur
+     ce bloc lance l'OCR du tableau, comme son bouton.
+   - Carte standard : Recto → image affichée au recto, Verso → au verso, champ Image → image (place
+     inchangée).
+2. **Sinon, la zone du champ qui a le focus** : le texte d'une ligne Muscle, ou le recto / verso
+   d'une carte standard.
+3. **Sinon, la zone par défaut** : l'image du muscle, ou le champ Image de la carte standard.
+
+**Autres règles :**
+- **Traitement de l'image** : la zone la reçoit exactement comme par le bouton (même champ, même
+  vignette, même enregistrement à la validation). L'**OCR « Texte en direct » démarre aussitôt**,
+  affiché « Lecture du texte… » puis « Texte lu · N mots ». Le résultat est réutilisé par « Masquer
+  des mots » et la visionneuse.
+- **Remplacer** une image existante est **annulable** :
+  - par ⌘Z / Ctrl+Z ;
+  - ou par « Annuler » dans le message « Image remplacée dans … ».
+  - Si l'on a retapé du texte dans un champ depuis le collage, ⌘Z dans ce champ annule le texte,
+    comme d'habitude, et l'image reste.
+- **Texte seul dans le presse-papiers** : aucune interception, collage normal dans le champ.
+  - **Image + texte** (une image copiée sur le web arrive souvent avec du texte), focus dans un champ
+    et aucune zone survolée : le texte est collé, comme avant.
+  - Si une zone est survolée, c'est l'image qui y va.
+- **Indication visuelle** (ordinateur à souris seulement) :
+  - au survol, la zone prend un léger contour de la couleur d'accent et un libellé « ⌘V pour coller » ;
+  - pendant le collage, un spinner court (au moins 300 ms) ;
+  - puis la vignette apparaît.
+- **Glisser-déposer** : même règle. L'image va dans la zone au-dessus de laquelle on la lâche ; hors
+  de toute zone, règles 2 puis 3.
+
+  **Ce qui change** : avant, une image lâchée ou collée sans ligne focalisée pré-remplissait le
+  tableau par OCR. Ce pré-remplissage se fait désormais au survol du bloc « Pré-remplir » et par son
+  bouton.
+- **Tablette** (pas de survol) : règles 2 puis 3 au clavier externe, et un bouton **« Coller »** dans
+  chaque zone, visible seulement sur écran tactile.
+  - Il lit le presse-papiers avec `navigator.clipboard.read`.
+  - Si le navigateur refuse : « Le navigateur a refusé l'accès au presse-papiers. Autorise-le dans
+    les réglages du site, ou utilise « Image ». »
+  - Si le presse-papiers n'a pas d'image : « Le presse-papiers ne contient pas d'image. »
+- **Téléphone** : le shell mobile (< 760 px) n'a **pas de formulaire de carte**, il n'y avait donc
+  rien à adapter.
+- **Carte Molécule** : son formulaire **n'a pas de zone image** (seul l'éditeur de structure), il
+  n'y avait rien à brancher.
+- **Garde-fous** :
+  - un formulaire masqué (la carte standard reste montée derrière la carte Muscle) ne prend jamais
+    le collage ;
+  - une zone survolée dans un autre formulaire non plus ;
+  - le lecteur PDF ne pose pas l'image en plus sur la page.
+
+**Fichiers :**
+- `lib/collerAuSurvol.js` (nouveau) ;
+- `components/CollageImage.jsx` (nouveau : bouton « Coller », message) ;
+- `FlashcardMuscle.jsx` (zones `data-zone-image` / `data-zone-focus`) ;
+- `ImagesMuscle.jsx` (bouton « Coller », OCR direct) ;
+- `AddItemForm.jsx` et `FlashcardImage.jsx` (carte standard) ;
+- `ocr/ocrImage.js` (résultat gardé pour une image pas encore enregistrée) ;
+- `styles/muscle-images.css`.
+
+Ni FSRS, ni le journal, ni la synchro, ni MealWeek, ni `src/shared/` n'ont été touchés : le contrôle
+`git diff --name-only -- src/mealweek src/shared` ne renvoie rien. Aucune carte existante n'est
+modifiée.
+
+### Tests dans Chrome
+
+Le banc est dans `scripts/tests-collage/`. Il tourne sur un **profil de test** restauré depuis la
+sauvegarde, avec le faux Supabase local, jamais le vrai cloud. Il envoie de vrais événements
+souris, toucher et clavier, et un vrai ⌘V (presse-papiers autorisé).
+
+| Test | Résultat |
+|---|---|
+| **Ordinateur** (`t-bureau.mjs`, 17/17) : survol d'Insertion → contour + « ⌘V pour coller » ; ⌘V → image dans Insertion seulement, alors que le focus est dans le nom | ✅ (capture 01 → 02) |
+| Survol de l'image du muscle, ⌘V → image générale | ✅ |
+| Curseur dans le texte d'Origine, souris hors de toute zone, ⌘V → image d'Origine | ✅ |
+| Texte seul collé dans Action → texte dans le champ, aucune image | ✅ |
+| Remplacer l'image d'Insertion → message « Image remplacée… Annuler », puis ⌘Z → l'ancienne revient ; texte tapé après coup → ⌘Z annule le texte, l'image reste | ✅ (capture 03) |
+| OCR démarré sur l'image collée (« Texte lu · 5 mots ») ; spinner pendant le collage | ✅ |
+| Fichier déposé sur la ligne Trajet → image de Trajet | ✅ |
+| Enregistrer → en base : Insertion, Origine, Trajet et image générale aux bonnes lignes (tailles vérifiées), Action sans image | ✅ |
+| Carte standard : survol du recto → image au recto ; survol du verso → au verso (remplace) ; ⌘Z → image et place d'avant | ✅ (captures 04, 05) |
+| **Rouvrir et réviser** (`t-relecture.mjs`, 6/6) : carte rouverte avec les images aux bonnes lignes ; bouton « Image » toujours là ; en séance, verso : images sur Origine, Direction des fibres / trajet, Insertion, plus l'image générale | ✅ (captures 06, 07) |
+| **Tablette tactile** 820 px (`t-tactile.mjs`, 9/9) : un « Coller » par zone (6), pas de contour au doigt ; « Coller » d'Insertion → image d'Insertion ; clavier externe : focus Action → Action, rien de focalisé → image générale ; refus du navigateur → message clair ; presse-papiers sans image → message | ✅ (captures 08, 09) |
+| **Synchro vers un 2ᵉ appareil** (`t-synchro.mjs`, 2/2) : profil vide, carte reçue, images aux mêmes lignes, fichiers identiques au SHA-256 | ✅ |
+| Non-régression : `npm test` 26/26, build vert, 0 erreur JavaScript ; MealWeek s'ouvre (capture 10), 0 fichier MealWeek / `src/shared/` modifié | ✅ |
+
+**Captures** (`docs/img/collage-survol/`) :
+
+![Survol de la ligne Insertion : contour d'accent et « ⌘V pour coller »](img/collage-survol/01-survol-insertion.png)
+
+![Image collée dans la ligne Insertion, OCR « Texte lu · 5 mots »](img/collage-survol/02-image-collee-insertion.png)
+
+Autres captures :
+- `03-remplacement-message.png` : message « Image remplacée… Annuler ⌘Z » ;
+- `04-standard-survol-recto.png` et `05-standard-verso.png` : carte standard ;
+- `06-carte-rouverte.png` et `07-revision-images.png` : carte rouverte, puis révision ;
+- `08-tablette-coller.png` et `09-tablette-refus.png` : tablette ;
+- `10-mealweek.png`.
+
+### Commits
+
+| Commit | Contenu |
+|---|---|
+| ae23efe | `feat(medrevise)` : coller une image (⌘V) dans la zone survolée — cartes Muscle et carte standard |
+| (celui-ci) | `docs(medrevise)` : section « Collage d'image au survol », captures, banc `scripts/tests-collage/` |
