@@ -320,3 +320,6 @@
 /* export : la copie du flux posée dans chaque page (voir imprimerDocument) */
 .pdfr-impression-pages .pt-flux-impression { position: absolute !important; transform: none !important; z-index: 1; pointer-events: none; }
 .pdfr-impression-pages .pdfr-page-doc { overflow: hidden !important; }
+/* (10/10 soir) surligneur sur le texte d'un document : le glisser est géré par DocumentFlux (au doigt
+   aussi) — pas de défilement tactile ni de sélection native sur le texte pendant ce mode */
+.pt-flux-cadre.outil-surligneur .pt-flux { touch-action: none; -webkit-user-select: text; }

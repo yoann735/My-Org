@@ -26,7 +26,7 @@ import { putBlob, genId } from '../lib/storage.js';
 import { NOTES_EXTENSIONS, EMPTY_DOC, hydrateDoc, dehydrateDoc } from '../documents/lib/richtext.js';
 import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
 import { surlignerNotions } from '../documents/lib/notionMarks.js';
-import { PaginationDocument, SautDePage } from '../documents/lib/paginationExt.js';
+import { PaginationDocument, SautDePage, gesteDocument } from '../documents/lib/paginationExt.js';
 import { surlignerRecherche } from './PageTexte.jsx';
 
 const dansTexteImage = () => { const sel = window.getSelection(); const n = sel && sel.anchorNode; const el = n && (n.nodeType === 1 ? n : n.parentElement); return !!(el && el.closest && el.closest('.pti-texte')); };
@@ -316,12 +316,100 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
     setBulle(null);
   };
 
+  /* ---- SURLIGNEUR : GLISSER GÉRÉ PAR PROSEMIRROR, LIMITÉ AU TEXTE (10/10 soir) ----
+     CAUSE du bug « la sélection s'étend à toute la page en dessous / flashs » : le texte (z 1)
+     est SOUS les calques d'annotations des pages (z 2) et le bouton « Insérer une page ici »
+     (z 3, dans l'écart entre deux pages). Pendant un glisser natif, dès que le pointeur
+     passait dans une marge ou entre deux pages, ProseMirror cherchait la position sous le
+     pointeur avec elementFromPoint, tombait sur ces éléments HORS de l'éditeur et retombait
+     sur une position fausse (fin du document) : la sélection sautait de 86 à 708 caractères
+     puis revenait — un flash à chaque passage.
+     Désormais, avec le surligneur : appui → la sélection native n'est jamais lancée ; la
+     position est calculée par la GÉOMÉTRIE DU TEXTE seul (blocs du flux, coordsAtPos), le
+     blanc après un bloc lui appartient (marge, écart entre pages) ; seule la sélection
+     ProseMirror change pendant le geste (aucune modification du document, donc aucune
+     repagination — la pagination est de plus suspendue pendant le geste) ; au relâchement,
+     la notion est posée (surRelache, même règle de re-surlignage). Souris, stylet et doigt. */
+  const posTexte = (x, y) => {
+    const ed = editorRef.current;
+    const view = ed.view, doc = view.state.doc;
+    const blocs = [];
+    doc.forEach((n, off) => { const d = view.nodeDOM(off); if (d && d.getBoundingClientRect) blocs.push({ n, off, r: d.getBoundingClientRect() }); });
+    if (!blocs.length) return 0;
+    if (y < blocs[0].r.top) return blocs[0].n.isTextblock ? blocs[0].off + 1 : blocs[0].off;
+    let b = blocs[0];
+    for (const x2 of blocs) { if (x2.r.top <= y) b = x2; else break; }
+    const fin = b.off + b.n.nodeSize;
+    if (y > b.r.bottom) return b.n.isLeaf || b.n.isAtom ? fin : fin - 1; // blanc après le bloc : il lui appartient
+    if (b.n.isLeaf || b.n.isAtom) return y < (b.r.top + b.r.bottom) / 2 ? b.off : fin;
+    // dans le bloc : dernière position dont le curseur est avant le point (ordre de lecture)
+    let lo = b.off + 1, hi = fin - 1;
+    const avant = (pos) => { let c; try { c = view.coordsAtPos(pos); } catch (e) { return true; } if (c.top > y) return false; if (c.bottom < y) return true; return c.left <= x; };
+    if (!avant(lo)) return lo;
+    while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (avant(mid)) lo = mid; else hi = mid - 1; }
+    // le curseur le plus proche du point : avant ou après le caractère sous le pointeur
+    if (lo + 1 <= fin - 1) {
+      try {
+        const a = view.coordsAtPos(lo), b2 = view.coordsAtPos(lo + 1);
+        if (Math.abs(b2.top - a.top) < 2 && Math.abs(b2.left - x) < Math.abs(a.left - x)) return lo + 1;
+      } catch (e) { /* ignore */ }
+    }
+    return lo;
+  };
+  const gesteSurl = useRef(null);
+  const debutSurligneur = (e) => {
+    const ed = editorRef.current;
+    if (outilRef.current !== 'surligneur' || !ed || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const t = e.target;
+    if (!(t && t.closest && t.closest('.pt-flux')) || t.closest('.pti')) return; // mots d'une image : imageVue.js
+    e.preventDefault(); e.stopPropagation(); // ni sélection native, ni glisser de ProseMirror
+    const view = ed.view;
+    const anc = posTexte(e.clientX, e.clientY);
+    const scroller = view.dom.closest('.pdfr-scroll');
+    const g = { anc, x: e.clientX, y: e.clientY, id: e.pointerId, minuteur: null };
+    gesteSurl.current = g;
+    gesteDocument.debut();
+    try { view.focus(); } catch (x) { /* ignore */ }
+    const poser = () => {
+      const st = view.state;
+      const tete = posTexte(g.x, g.y);
+      const sel = TextSelection.between(st.doc.resolve(Math.min(g.anc, st.doc.content.size)), st.doc.resolve(Math.min(tete, st.doc.content.size)));
+      if (!sel.eq(st.selection)) view.dispatch(st.tr.setSelection(sel).setMeta('addToHistory', false));
+    };
+    poser();
+    // défilement automatique près des bords de la zone de lecture
+    const defiler = () => {
+      if (!scroller) return;
+      const r = scroller.getBoundingClientRect();
+      const d = g.y < r.top + 40 ? -Math.ceil((r.top + 40 - g.y) / 3) : g.y > r.bottom - 40 ? Math.ceil((g.y - r.bottom + 40) / 3) : 0;
+      if (d) { scroller.scrollTop += d; poser(); }
+    };
+    g.minuteur = setInterval(defiler, 30);
+    const bouger = (ev) => { if (ev.pointerId !== g.id) return; ev.preventDefault(); g.x = ev.clientX; g.y = ev.clientY; poser(); };
+    const lacher = (ev) => {
+      if (ev.pointerId !== g.id) return;
+      window.removeEventListener('pointermove', bouger, true);
+      window.removeEventListener('pointerup', lacher, true);
+      window.removeEventListener('pointercancel', lacher, true);
+      clearInterval(g.minuteur);
+      gesteSurl.current = null;
+      gesteDocument.fin();
+      surRelache();
+    };
+    window.addEventListener('pointermove', bouger, true);
+    window.addEventListener('pointerup', lacher, true);
+    window.addEventListener('pointercancel', lacher, true);
+  };
+
   const actifTexte = outil === 'main' || outil === 'surligneur';
   return (
     <div ref={cadreRef} className={'pt-flux-cadre outil-' + outil + (fondNoir ? ' fond-noir' : '') + (actifTexte ? '' : ' inerte')}
       data-outil={outil} data-couleur-surligneur={couleurSurligneur || undefined}
       style={{ width: largeurPage * echelle, height: hauteurTotale, '--pt-inv': 1 / (echelle || 1) }}
-      onMouseUp={surRelache}
+      onPointerDownCapture={debutSurligneur}
+      // la souris « de compatibilité » d'un geste du surligneur ne doit jamais atteindre ProseMirror
+      onMouseDownCapture={(e) => { if (outilRef.current === 'surligneur' && e.target.closest && e.target.closest('.pt-flux') && !e.target.closest('.pti')) { e.preventDefault(); e.stopPropagation(); } }}
+      onMouseUp={() => { if (!gesteSurl.current && outilRef.current !== 'surligneur') surRelache(); }}
       // un clic dans le texte (curseur déjà là ou non) : la barre de mise en forme revient
       onPointerDown={() => { const ed = editorRef.current; if (ed && outilRef.current === 'main') rappels.current.onActiver(ed); }}>
       {/* jusqu'au bas de la zone d'écriture de la DERNIÈRE page : son espace libre appartient
