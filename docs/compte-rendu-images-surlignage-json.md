@@ -745,4 +745,4 @@ composants (image générale au recto / verso, tableau avec vignettes), mais auc
 | `ccf2f83` | feat(medrevise): export spécial IA — visuel des pages avec le repère de chaque boîte + JSON { id, ref, text } |
 | `be8e2cd` | fix(medrevise): surligneur dans un document — sélection limitée au texte, sans flash ni extension à la page |
 | `a2ce4f2` | feat(medrevise): images dans les cartes Muscle — une par ligne du tableau + image générale du muscle |
-| *(ce commit)* | docs(medrevise): compte rendu — export spécial IA, surlignage document, images Muscle |
+| `70e8811` | docs(medrevise): compte rendu — export spécial IA, surlignage document, images Muscle |
