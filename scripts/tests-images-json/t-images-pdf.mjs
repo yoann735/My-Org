@@ -1,0 +1,45 @@
+// Chantier 1 : sur un PDF IMPORTÉ, le bouton Image et ⌘V posent toujours une image-annotation ;
+// l'onglet Notes du cours insère, lui, un bloc du flux. Pré-requis : « PDF texte J » ouvert.
+import { banc } from './commun-doc.mjs';
+import path from 'path';
+const B = await banc();
+const { c, ev, ok, clic, dormir } = B;
+const PHOTO = path.resolve('../fx/photo.png');
+await c.send('Page.enable'); await c.send('DOM.enable');
+await c.send('Browser.grantPermissions', { permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'], origin: 'http://localhost:5199' }).catch(() => {});
+await c.send('Page.setInterceptFileChooserDialog', { enabled: true });
+let choix = null;
+c.on((m) => { if (m.method === 'Page.fileChooserOpened') choix = m.params; });
+const n0 = await ev(`document.querySelectorAll('.pdfr-image').length`);
+await clic(await B.pos(`document.querySelector('button.ptb-outil[title^="Image"]')`, false), { att: 500 });
+for (let i = 0; i < 20 && !choix; i++) await dormir(100);
+await c.send('DOM.setFileInputFiles', { files: [PHOTO], backendNodeId: choix.backendNodeId }); choix = null;
+await dormir(1500);
+const n1 = await ev(`document.querySelectorAll('.pdfr-image').length`);
+const titre = await ev(`(document.querySelector('button.ptb-outil[title^="Image"]')||{}).title`);
+ok(n1 === n0 + 1, 'PDF : le bouton Image pose une image-annotation flottante', `${n0} → ${n1} · infobulle « ${titre} »`);
+await B.capture('pdf-image-annotation');
+await B.touche('Escape', { vk: 27 });
+// ⌘V hors texte sur le PDF
+await ev(`(async()=>{const cv=document.createElement('canvas');cv.width=200;cv.height=80;const g=cv.getContext('2d');g.fillStyle='#fd8';g.fillRect(0,0,200,80);const b=await new Promise(o=>cv.toBlob(o,'image/png'));await navigator.clipboard.write([new ClipboardItem({'image/png':b})]);return 1})()`);
+await ev(`document.activeElement&&document.activeElement.blur&&document.activeElement.blur(),1`);
+await c.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'v', code: 'KeyV', windowsVirtualKeyCode: 86, modifiers: 4, commands: ['paste'] });
+await c.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'v', code: 'KeyV', windowsVirtualKeyCode: 86, modifiers: 4 });
+await dormir(1500);
+const n2 = await ev(`document.querySelectorAll('.pdfr-image').length`);
+ok(n2 === n1 + 1, 'PDF : ⌘V pose une image-annotation', `${n1} → ${n2}`);
+// onglet Notes du cours : ⌘V dans les notes → bloc du flux des notes
+await clic(await B.pos(`[...document.querySelectorAll('button')].find(b=>b.innerText.trim()==='Notes')`, false), { att: 900 });
+const zone = await B.pos(`document.querySelector('.nd-prose')`);
+const pti0 = await ev(`document.querySelectorAll('.nd-prose .pti').length`);
+await clic(zone, { att: 400 });
+await B.ecrire('Mes notes');
+await c.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'v', code: 'KeyV', windowsVirtualKeyCode: 86, modifiers: 4, commands: ['paste'] });
+await c.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'v', code: 'KeyV', windowsVirtualKeyCode: 86, modifiers: 4 });
+await dormir(1500);
+const notes = await ev(`(()=>{const ed=document.querySelector('.nd-prose').editor;const out=[];ed.state.doc.forEach(n=>out.push(n.type.name==='image'?'IMG':n.textContent.slice(0,12)||n.type.name));return {out,pti:document.querySelectorAll('.nd-prose .pti').length}})()`);
+const n3 = await ev(`document.querySelectorAll('.pdfr-image').length`);
+ok(notes.out.includes('IMG') && notes.pti === pti0 + 1 && n3 === n2, 'Notes du cours : ⌘V → bloc image du flux des notes (pas d’annotation)', JSON.stringify(notes));
+await B.capture('notes-image-bloc');
+ok(!B.erreurs.length, 'aucune exception JS', B.erreurs.join(' | '));
+c.fermer();

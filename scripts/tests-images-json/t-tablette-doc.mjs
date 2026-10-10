@@ -1,0 +1,41 @@
+// Tablette : image dans un document (bouton + ⌘V) et surligneur au stylet. « Document neuf J » ouvert (remis à zéro).
+import { banc } from './commun-doc.mjs';
+import { tablette } from './tab-commun.mjs';
+import { outilsSurl } from './surl-commun.mjs';
+import path from 'path';
+const B = await banc(820, 1180);
+const { c, ev, ok, dormir } = B;
+const T = await tablette(B);
+const U = outilsSurl(B);
+await c.send('Page.enable'); await c.send('DOM.enable');
+await c.send('Page.setInterceptFileChooserDialog', { enabled: true });
+let choix = null;
+c.on((m) => { if (m.method === 'Page.fileChooserOpened') choix = m.params; });
+const etat = () => ev(`(()=>{const ed=document.querySelector('.pt-flux').editor;const out=[];ed.state.doc.forEach(n=>out.push(n.type.name==='image'?'IMG':n.type.name==='paragraph'?(n.textContent.slice(0,14)||'¶vide'):n.type.name));return {blocs:out,flottantes:document.querySelectorAll('.pdfr-image').length}})()`);
+const finPara = (d) => ev(`(()=>{const el=[...document.querySelectorAll('.pt-flux > p')].find(x=>x.textContent.startsWith(${JSON.stringify(d)}));el.scrollIntoView({block:'center'});const r=document.createRange();r.selectNodeContents(el);const rs=r.getClientRects();const x=rs[rs.length-1];return [x.right-3,x.top+x.height/2]})()`);
+// 1. tap dans le paragraphe 2, tap sur « Insérer une image »
+await T.tap(await finPara('Paragraphe 2.'));
+await T.tap(await B.pos(`document.querySelector('button[aria-label="Insérer une image"]')`, false));
+for (let i = 0; i < 20 && !choix; i++) await dormir(100);
+ok(!!choix, 'sélecteur de fichier ouvert par le bouton de la barre (tablette)');
+if (choix) await c.send('DOM.setFileInputFiles', { files: [path.resolve('../fx/photo.png')], backendNodeId: choix.backendNodeId });
+await dormir(1500);
+let e = await etat();
+ok(e.blocs[e.blocs.indexOf('Paragraphe 2. ') + 1] === 'IMG' && !e.flottantes, 'tablette : bouton Image → bloc du flux sous le paragraphe touché', JSON.stringify(e.blocs));
+await B.capture('tab-doc-image');
+// 2. surligneur au stylet sur le texte : même couleur → retiré sur la portion ; autre → remplacé
+const notions = () => ev(`(()=>{const ed=document.querySelector('.pt-flux').editor;const runs=[];ed.state.doc.descendants((n,pos)=>{if(!n.isText)return;const m=n.marks.find(x=>x.type.name==='notion');if(!m)return;const d=runs[runs.length-1];if(d&&d.id===m.attrs.id&&d.to===pos){d.to=pos+n.nodeSize;d.t+=n.text}else runs.push({id:m.attrs.id,c:m.attrs.couleur,to:pos+n.nodeSize,t:n.text})});return runs.map(r=>r.c+':«'+r.t+'»')})()`);
+await T.tap(await B.pos(`document.querySelector('button.tab-outil[aria-label="Surligneur"], button[aria-label="Surligneur"]')`, false));
+await U.couleur('Ambre');
+const flux = `document.querySelector('.pt-flux')`;
+await T.stylet(await U.coords(flux, 'Paragraphe 3. Le cycle', 'cycle', 'matrice'));
+let n = await notions();
+await T.stylet(await U.coords(flux, 'Paragraphe 3. Le cycle', 'Krebs', 'Krebs'));
+let n2 = await notions();
+await U.couleur('Vert sauge');
+await T.stylet(await U.coords(flux, 'Paragraphe 3. Le cycle', 'déroule', 'matrice'));
+let n3 = await notions();
+ok(n.length === 1 && n2.length === 2 && n3.length === 3 && !n3.some((x) => x.includes('Krebs')), 'tablette (stylet) : surligné → milieu retiré (scindé) → portion recolorée', `${JSON.stringify(n)} → ${JSON.stringify(n2)} → ${JSON.stringify(n3)}`);
+await B.capture('tab-doc-surligne');
+ok(!B.erreurs.length, 'aucune exception JS', B.erreurs.join(' | '));
+c.fermer();
