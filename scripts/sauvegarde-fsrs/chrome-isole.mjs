@@ -6,7 +6,8 @@
 // - profil dédié (--user-data-dir) : jamais le profil réel d'Aside ou de Chrome.
 import { spawn } from 'node:child_process';
 
-export const ORIGINE = 'https://my-org-blue.vercel.app';
+// origine restaurée : l'app déployée par défaut ; ORIGINE=http://localhost:5199 pour un banc de test local
+export const ORIGINE = process.env.ORIGINE || 'https://my-org-blue.vercel.app';
 const CHROME = process.env.CHROME_BIN || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 

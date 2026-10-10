@@ -11,6 +11,12 @@ import fs from 'fs';
 const rows = new Map(); // store:id → row
 const blobs = new Map(); // id → { type, buf }
 const journal = [];
+// JOURNAL DES RÉVISIONS (étape 2 FSRS) : table medrevise_review_log. ABSENTE par défaut, comme au vrai
+// cloud tant que supabase/migrations/20261011_medrevise_review_log.sql n'est pas appliqué ;
+// JOURNAL=1 (ou POST /__journal?actif=1) la crée. Insert « on conflict (id) do nothing ».
+const revues = new Map(); // id → ligne
+let journalActif = process.env.JOURNAL === '1';
+let seqInsert = 0;
 let refuses = new Set((process.env.REFUSER_STORES || '').split(',').filter(Boolean));
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS', 'Access-Control-Expose-Headers': 'Content-Range' };
 const lire = (req) => new Promise((r) => { const c = []; req.on('data', (d) => c.push(d)); req.on('end', () => r(Buffer.concat(c))); });
@@ -36,7 +42,30 @@ http.createServer(async (req, res) => {
   const body = await lire(req);
   const out = (code, obj, extra = {}) => { res.writeHead(code, { 'Content-Type': 'application/json', ...cors, ...extra }); res.end(JSON.stringify(obj)); };
   journal.push({ t: new Date().toISOString(), m: req.method, p: u.pathname, q: u.search.slice(0, 160) });
-  if (u.pathname === '/__etat') return out(200, { rows: [...rows.values()], blobs: [...blobs.keys()].map((k) => ({ id: k, taille: blobs.get(k).buf.length, type: blobs.get(k).type })), journal: journal.slice(-200) });
+  if (u.pathname === '/__journal') { if (u.searchParams.has('actif')) journalActif = u.searchParams.get('actif') === '1'; return out(200, { actif: journalActif, lignes: [...revues.values()] }); }
+  if (u.pathname === '/rest/v1/medrevise_review_log') {
+    if (!journalActif) return out(404, { code: 'PGRST205', message: "Could not find the table 'public.medrevise_review_log' in the schema cache" });
+    if (req.method === 'POST') {
+      const lignes = [].concat(JSON.parse(body.toString() || '[]'));
+      const ignorer = /ignore-duplicates/.test(req.headers['prefer'] || '');
+      let n = 0;
+      for (const l of lignes) {
+        if (revues.has(l.id) && ignorer) continue;
+        if (revues.has(l.id)) return out(409, { code: '23505', message: 'duplicate key value violates unique constraint' });
+        revues.set(l.id, { ...l, inserted_at: new Date(Date.now() + (seqInsert++)).toISOString() }); n++;
+      }
+      return out(201, [], { 'X-Inseres': String(n) });
+    }
+    if (req.method === 'GET') {
+      let liste = [...revues.values()];
+      for (const [k, v] of u.searchParams) { if (v.startsWith('gt.')) liste = liste.filter((r) => String(r[k]) > v.slice(3)); }
+      liste.sort((a, b) => (a.inserted_at < b.inserted_at ? -1 : a.inserted_at > b.inserted_at ? 1 : a.id < b.id ? -1 : 1));
+      let off = Number(u.searchParams.get('offset') || 0), lim = Number(u.searchParams.get('limit') || 1e9);
+      const rg = /(\d+)-(\d+)/.exec(req.headers['range'] || ''); if (rg) { off = +rg[1]; lim = +rg[2] - off + 1; }
+      return out(200, liste.slice(off, off + lim));
+    }
+  }
+  if (u.pathname === '/__etat') return out(200, { journalRevisions: { actif: journalActif, n: revues.size }, rows: [...rows.values()], blobs: [...blobs.keys()].map((k) => ({ id: k, taille: blobs.get(k).buf.length, type: blobs.get(k).type })), journal: journal.slice(-200) });
   // PANNE INJECTABLE (05/10, transcription) : POST /__refuser?stores=a,b → la RPC refuse
   // tout lot contenant ces stores (comme une contrainte CHECK côté base) ; ?stores= rétablit.
   if (u.pathname === '/__refuser') { refuses = new Set((u.searchParams.get('stores') || '').split(',').filter(Boolean)); return out(200, { refuses: [...refuses] }); }
