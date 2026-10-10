@@ -238,7 +238,7 @@
 .ta-details { margin-top: 4px; font-size: 11px; color: var(--text-2); word-break: break-all; }
 @media (prefers-reduced-motion: reduce) { .ta-volet { transition: none; } }
 /* badge discret de la version affichée (boîte qui a un texte « IA » ET un texte d'origine) */
-.note-box .nb-version { position: absolute; top: -7px; right: 6px; z-index: 2; padding: 0 5px; height: 14px; line-height: 14px; border-radius: 7px;
+.note-box .nb-version { position: absolute; top: -7px; right: 26px; z-index: 2; padding: 0 5px; height: 14px; line-height: 14px; border-radius: 7px;
   font-size: 9.5px; font-weight: 700; letter-spacing: .02em; pointer-events: none;
   background: color-mix(in srgb, var(--accent) 22%, var(--card)); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .note-box .nb-version.orig { background: var(--card); color: var(--text-2); border-color: var(--border); }
