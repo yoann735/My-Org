@@ -1,0 +1,23 @@
+copie du 2026-10-10 — 2860 enregistrements, 894 flashcards, 1583 questions
+empreintes SHA-256 : 3/3 conformes au manifeste
+✅ medrevise-annotations : 487/487 enregistrements · empreinte identique
+✅ medrevise-apprentissage : 1/1 enregistrements · empreinte identique
+✅ medrevise-dessins : 2/2 enregistrements · empreinte identique
+✅ medrevise-dossiers : 29/29 enregistrements · empreinte identique
+✅ medrevise-exos : 1/1 enregistrements · empreinte identique
+✅ medrevise-fiches : 95/95 enregistrements · empreinte identique
+✅ medrevise-highlights : 537/537 enregistrements · empreinte identique
+✅ medrevise-liaison : 1/1 enregistrements · empreinte identique
+✅ medrevise-matieres : 12/12 enregistrements · empreinte identique
+✅ medrevise-notes_doc : 6/6 enregistrements · empreinte identique
+✅ medrevise-ocr_layer : 16/16 enregistrements · empreinte identique
+✅ medrevise-prompts : 2/2 enregistrements · empreinte identique
+✅ medrevise-questions : 1583/1583 enregistrements · empreinte identique
+✅ medrevise-reading_position : 17/17 enregistrements · empreinte identique
+✅ medrevise-sessionsLog : 44/44 enregistrements · empreinte identique
+✅ medrevise-sources : 2/2 enregistrements · empreinte identique
+✅ medrevise-stats : 1/1 enregistrements · empreinte identique
+✅ medrevise-tableau : 7/7 enregistrements · empreinte identique
+✅ medrevise-transcript_session : 17/17 enregistrements · empreinte identique
+RESTAURATION CONFORME : 19 stores, comptes et empreintes identiques
+Fichiers (PDF, images) : non contenus dans la copie GitHub (index seulement) — ils restent dans le bucket Supabase et dans le dossier local de sauvegarde.

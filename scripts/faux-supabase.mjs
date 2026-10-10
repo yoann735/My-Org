@@ -8,6 +8,7 @@
 // (upload / download / list) du bucket medrevise-blobs. Journal des requêtes.
 import http from 'http';
 import fs from 'fs';
+import { createHash } from 'crypto';
 const rows = new Map(); // store:id → row
 const blobs = new Map(); // id → { type, buf }
 const journal = [];
@@ -93,7 +94,10 @@ http.createServer(async (req, res) => {
     return out(200, page, { 'Content-Range': `${off}-${off + page.length - 1}/${liste.length}` });
   }
   let m = /^\/storage\/v1\/object\/list\/medrevise-blobs$/.exec(u.pathname);
-  if (m) return out(200, [...blobs.keys()].map((name) => ({ name })));
+  // (11/10, filet de sécurité) métadonnées comme le vrai Storage : id, taille, eTag (md5), type ; dossier vide pour un préfixe
+  if (m) { const b = JSON.parse(body.toString() || '{}'); if (b.prefix) return out(200, []);
+    return out(200, [...blobs.keys()].sort().slice(b.offset || 0, (b.offset || 0) + (b.limit || 1000)).map((name) => ({ name, id: 'obj-' + name, updated_at: '2026-10-11T08:00:00Z',
+      metadata: { size: blobs.get(name).buf.length, eTag: '"' + createHash('md5').update(blobs.get(name).buf).digest('hex') + '"', mimetype: blobs.get(name).type } }))); }
   m = /^\/storage\/v1\/object\/(?:authenticated\/)?medrevise-blobs\/(.+)$/.exec(u.pathname);
   if (m && (req.method === 'POST' || req.method === 'PUT')) {
     const mp = multipart(body, req.headers['content-type']);

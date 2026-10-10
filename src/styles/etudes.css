@@ -2614,3 +2614,5 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .filet-a-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .filet-apercu { margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: var(--bg-2); font-size: 13px; display: flex; flex-direction: column; gap: 4px; white-space: pre-wrap; }
 .mrm-app .filet-ecran { padding: 16px; }
+.main > .filet-bandeau { margin: 14px 28px 0; width: auto; }
+@media (max-width: 759px) { .filet-bandeau { margin: 8px 12px 0; width: auto; } }
