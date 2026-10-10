@@ -444,3 +444,305 @@ Fichiers nouveaux :
 - `src/medrevise/pdf/TextesAnnotations.jsx`
 - `scripts/tests-images-json/`
 - `supabase/compte-images-textes-annotations.sql`
+
+---
+
+# Export spécial IA · surlignage document · images Muscle (10/10/2026, soir)
+
+Mêmes conditions de test que plus haut :
+
+- Chrome isolé piloté en CDP, devant Vite local **sans Supabase** ;
+- synchro testée avec le faux Supabase du dépôt, deux Chrome à profils séparés ;
+- le vrai cloud n'a jamais été touché.
+
+Règles vérifiées en fin de chantier :
+
+- `git diff 928f6c0 -- src/mealweek src/shared` est **vide**.
+- MealWeek est **identique au pixel près** : builds de production avant / après servis sur la même origine,
+  ordinateur et téléphone.
+- L'**export PDF annoté normal** est inchangé : pages 1 et 2 de « Cours 12 pages IA » rendues avant / après,
+  **PNG identiques octet pour octet**.
+- L'**import JSON** existant est inchangé : `t-json` est rejoué, 16/16.
+- **Aucune annotation ni carte n'est modifiée.**
+  - L'export ne fait que lire.
+  - Une carte Muscle sans image a un **HTML rendu identique octet pour octet** avant / après. La capture de
+    pixels de ce panneau n'est pas stable : l'ancienne version diffère d'elle-même de 38 pixels, et l'écart
+    avant / après est exactement le même.
+
+## A. Export spécial IA
+
+### Ce que c'est
+
+L'entrée **Fichier › « Export spécial IA… »** existe sur un PDF importé. Elle est distincte de « Exporter en PDF
+annoté », qui ne change pas. Portée : page courante ou cours entier.
+
+| Action | Résultat |
+|---|---|
+| **Aperçu** | Le visuel exactement tel qu'il sera exporté, page par page, pour vérifier les repères avant de télécharger |
+| **Télécharger (.zip)** | `<cours>-export-IA[-pNN].zip` (contenu ci-dessous) |
+| **Copier le JSON** | `annotations.json` dans le presse-papiers |
+| **Copier l'image** (portée page) | Le PNG de la page dans le presse-papiers, à coller dans un chat |
+
+Contenu du `.zip` :
+
+- `annotations.json`
+- `LISEZMOI.txt` : le format de retour attendu, et le rôle des flèches
+- `visuel.pdf`
+- `page-01.png`, …, `page-12.png` : **2 × la taille de page**, soit 1 190 × 1 684 px pour l'A4
+
+### Format exact de `annotations.json`
+
+```json
+{
+  "course": "Cours 12 pages IA",
+  "page": 1,
+  "instructions": "Corrige et raccourcis le texte de chaque boîte (champ \"text\"). Rends EXACTEMENT ce même JSON : mêmes \"id\" et \"ref\", même ordre, seuls les \"text\" modifiés, rien d'autre (ni champ ajouté, ni commentaire). Sur le visuel, chaque boîte porte son repère (ref) dans un coin ; la flèche d'une boîte désigne la zone de l'image du cours dont parle son texte.",
+  "boxes": [
+    { "id": "anmv3a0k1a7q", "ref": "#a7q", "text": "Krebs" },
+    { "id": "anmv3a0k7j4u", "ref": "#j4u", "text": "GTP x1\npar tour" },
+    { "id": "anmv3a0k2c9w", "ref": "#c9w", "text": "x" }
+  ]
+}
+```
+
+- `page` est absent pour le cours entier.
+- `instructions` est le seul champ ajouté par rapport à l'export JSON existant ; l'import l'ignore.
+
+**Repère (`ref`)** : `#` + la fin de l'id, en lettres et chiffres.
+
+- Il fait 3 caractères au moins, et s'allonge jusqu'à être unique dans tout le cours.
+- Il est donc stable, puisqu'il dérive de l'id (attribué à la création).
+- Il est le même dans l'export d'une page et dans l'export du cours.
+
+**Import** (le même menu qu'avant) :
+
+- Une entrée peut donner son `id` **ou** seulement sa `ref`.
+- Une ref qui désigne plusieurs boîtes est ignorée et signalée, par exemple : « 1 ref ambiguë ignorée · Ref
+  ambiguë : #xyz ».
+
+### Le visuel avec les repères
+
+![Visuel de la page 1 avec les repères](img/images-surlignage-json/ia-visuel-page1.png)
+
+Le visuel est le **même rendu** que l'export PDF annoté : même code (`pdf/exportAnnote.js`), page, annotations et
+flèches comprises. Seule l'étiquette de chaque boîte s'y ajoute (option `reperes`).
+
+Mesure sur la page de test (8 boîtes) :
+
+- **0 pixel différent de l'export normal en dehors des étiquettes** ;
+- 9 859 pixels différents, tous à l'intérieur des étiquettes.
+
+Règles de placement de l'étiquette :
+
+- **Toujours à l'intérieur du cadre de la boîte** : jamais sur l'image du cours, jamais dehors.
+  - Mesure : 8 / 8 étiquettes dans leur boîte.
+  - Pour un texte libre (sans cadre visible), le cadre est l'étendue de son texte.
+- **Coin haut droit par défaut**, sinon le premier coin où elle ne recouvre aucune ligne de texte : bas droit,
+  bas gauche, haut gauche. La boîte n'est ni agrandie ni décalée.
+- Corps **10,5 → 8 pt** (pas de 0,5) tant qu'aucun coin n'est libre.
+- Sinon, corps 8, **en superposition sur le texte de la boîte uniquement**, au coin qui en masque le moins.
+- Style : Courier gras blanc sur fond sombre opaque, liseré blanc fin, lisible sur toute couleur de boîte.
+
+Résultat sur la page de test :
+
+| Boîte | Placement |
+|---|---|
+| 5 boîtes | Dans une marge, en 10,5 pt (haut droit ou bas droit) |
+| Boîte minuscule (24 × 19 pt) | Superposition en 8 pt |
+| Boîte longue sans place libre | Superposition en 8 pt, au coin bas droit |
+| Texte libre | Superposition en 8 pt |
+
+**Chaque ref du visuel = ref du JSON = bon id.** Le texte du PDF exporté, lu par pdf.js, contient chaque ref, et
+sa position tombe dans l'étiquette de la bonne boîte : 8 / 8.
+
+| Panneau | Aperçu (ordinateur) | Aperçu (tablette) |
+|---|---|---|
+| ![](img/images-surlignage-json/ia-panneau.png) | ![](img/images-surlignage-json/ia-apercu.png) | ![](img/images-surlignage-json/ia-apercu-tablette.png) |
+
+### Tests (`scripts/tests-images-json/t-export-ia.mjs`, `t-export-ia-tablette.mjs`, `ia-labo.mjs`)
+
+Jeu de test : « Cours 12 pages IA ».
+
+- La page 1 porte 8 boîtes de tailles variées, dont :
+  - une minuscule ;
+  - une au bord du schéma ;
+  - une posée sur le schéma ;
+  - un texte libre.
+- Les pages 2, 5 et 12 portent aussi des boîtes, dont deux « jumelles » dont les ids finissent pareil.
+
+| Test | Résultat |
+|---|---|
+| Menu Fichier | ✅ « Export spécial IA… » à côté de « Exporter en PDF annoté » |
+| Aperçu | ✅ PNG 1 190 × 1 684 avec les repères |
+| `.zip` de la page | ✅ `Cours-12-pages-IA-export-IA-p01.zip` → `LISEZMOI.txt`, `annotations.json`, `page-01.png`, `visuel.pdf` |
+| `annotations.json` | ✅ 8 boîtes `{ id, ref, text }`, ref = fin de l'id, consignes incluses |
+| Copier le JSON | ✅ identique au fichier du `.zip` |
+| Copier l'image | ✅ PNG 1 190 × 1 684 dans le presse-papiers |
+| Cours entier | ✅ `Cours-12-pages-IA-export-IA.zip` : `page-01.png` … `page-12.png`, `visuel.pdf` de 12 pages, 13 boîtes, mêmes repères que l'export de la page |
+| Réimport avec la **seule ref** | ✅ seule cette boîte change (version IA, original gardé) ; ref ambiguë et ref inconnue ignorées et signalées |
+| Bascule de version | ✅ conservée (« Tout afficher en version originale » → la version IA reste) |
+| Tablette | ✅ panneau entièrement à l'écran, aperçu ajusté à la largeur |
+| Téléphone | Le lecteur PDF n'existe pas sous 760 px (shell mobile de révision) : pas d'export spécial sur téléphone, comme pour l'export PDF annoté |
+
+Limite : l'export spécial concerne les **PDF importés**. Un document créé dans l'app n'a pas de PDF de fond. Son
+export reste le JSON (Fichier › Exporter les textes d'annotations) et l'impression PDF.
+
+## B. Surlignage dans un document : cause et correction
+
+### Mesure du bug
+
+Sonde : glisser au surligneur de « cytosol » (paragraphe 14, bas de la page 1) à « glucose » (paragraphe 15,
+haut de la page 2). La longueur de la sélection est relevée à chaque pas de souris.
+
+| | Pendant la traversée de la marge du bas, de l'écart entre pages et de la marge du haut |
+|---|---|
+| **Avant** | 86 … 86 → **708** → 708 → 708 → **86** … 86 → 129 : la sélection saute jusqu'à la fin du document (« toute la page en dessous »), puis revient (le « flash ») |
+| **Après** | 84 … 84 (constant, sans aucun saut) → 128, la valeur attendue |
+
+### Cause exacte
+
+Dans un document, les couches sont superposées ainsi :
+
+1. le **texte** (un seul flux ProseMirror, z 1) ;
+2. au-dessus, les **calques d'annotations des pages** (z 2) ;
+3. au-dessus encore, le bouton « **Insérer une page ici** », qui occupe l'écart entre deux pages (z 3).
+
+Pendant un glisser natif, ProseMirror cherche la position sous le pointeur avec `elementFromPoint`. Dès que le
+pointeur passe dans une marge ou entre deux pages, il tombe sur ces éléments, qui sont **hors de l'éditeur**. Il
+retombe alors sur une position fausse : la fin du document. La sélection native et celle de ProseMirror sautent
+jusque-là, puis reviennent au pas suivant.
+
+Les autres pistes envisagées ont été vérifiées et écartées :
+
+- **Repagination pendant le geste** : aucune. Seule la sélection change, et le document ne bouge pas.
+- **`user-select`** : les deux extrémités de la sélection restaient dans le texte.
+
+### Correction (`pdf/DocumentFlux.jsx`)
+
+Avec le surligneur, le geste est désormais géré par le document lui-même, à la souris, au stylet et au doigt
+(Pointer Events).
+
+- Pas de sélection native, pas de glisser ProseMirror.
+- La position est calculée par la **géométrie du texte seul** : blocs du flux et `coordsAtPos`, sans jamais
+  interroger ce qui est sous le pointeur.
+  - Le blanc après un bloc lui appartient (marge, écart entre deux pages).
+  - Le caractère le plus proche est retenu.
+- Seule la sélection ProseMirror change pendant le geste. Le document n'est pas modifié, et la pagination est
+  suspendue (`gesteDocument`).
+- Défilement automatique près des bords de la zone de lecture.
+- Au relâchement, la notion est posée avec la règle de re-surlignage déjà en place : même couleur → retirée,
+  autre couleur → remplacée, adjacents fusionnés. Ce sont des **marques du texte**, qui suivent le texte quand
+  il se repagine.
+
+### Tests (`t-surl-doc2.mjs` sur « Document long J », 18 paragraphes sur 2 pages ; ordinateur puis tablette au doigt)
+
+| Test | Ordinateur | Tablette (doigt) |
+|---|---|---|
+| Un mot (« glucose ») | ✅ 0 flash | ✅ |
+| Une phrase sur deux lignes | ✅ max = fin = 125 car., 0 flash | ✅ |
+| Passage à cheval sur deux pages (paragraphes 14 → 15) | ✅ max 136 / fin 135, 0 flash, sélection toujours dans le texte | ✅ |
+| Même couleur au milieu → retiré, scindé | ✅ | ✅ |
+| Autre couleur → remplacée (une couche) | ✅ | ✅ |
+| ⌘Z / ⇧⌘Z | ✅ | ✅ |
+| Texte inséré au début (le paragraphe 14 passe en page 2) → les surlignages suivent leurs mots | ✅ | ✅ |
+| Panneau Notions : une notion par passage | ✅ 6 / 6 | ✅ |
+
+Non-régression des tests de surlignage précédents : `t-surl-doc`, `t-surl-mots doc` (mots d'une image, qui gardent
+leur propre geste) et `t-tablette-doc` (stylet). Tous passent.
+
+| Phrase sur deux lignes | À cheval sur deux pages | Tablette |
+|---|---|---|
+| ![](img/images-surlignage-json/surl-doc-2lignes.png) | ![](img/images-surlignage-json/surl-doc-2pages.png) | ![](img/images-surlignage-json/surl-doc-2pages-tab.png) |
+
+## C. Images dans les cartes Muscle
+
+### Ce qui change
+
+**Formulaire**
+
+- **Image par ligne** (Origine, Trajet, Insertion, Action, Innervation), avec trois façons de l'ajouter :
+  - parcourir (bouton « Image » de la ligne) ;
+  - ⌘V **avec le curseur dans la ligne** ;
+  - glisser sur la ligne.
+- ⌘V ailleurs dans le formulaire garde le **pré-remplissage OCR** du tableau.
+- **Image générale** du muscle en haut (optionnelle), avec la case « Montrer l'image au recto », **décochée par
+  défaut** : l'image est alors au verso.
+- **« Masquer des mots »** sur l'image d'une ligne : la même fenêtre OCR que pour une flashcard image. Les mots
+  choisis sont couverts en révision jusqu'à « Révéler ».
+- Remplacer, retirer, ôter les masques.
+- Les fichiers ne sont écrits qu'à l'enregistrement.
+
+**Révision** (séance Apprendre / J, séance classique, téléphone, panneau du cours)
+
+- La vignette est dans la ligne. En **ligne par ligne**, elle est cachée avec sa ligne et révélée avec elle.
+- Un toucher l'agrandit dans la **visionneuse**, sans retourner la carte ni révéler une autre ligne. La
+  visionneuse propose :
+  - **Texte** : texte reconnu, sélectionnable ;
+  - **Copier le texte** ;
+  - **Révéler** les mots masqués.
+- L'icône « T » sur la vignette signale le texte reconnu.
+
+**Stockage** (champs ajoutés ; une carte sans image reste identique)
+
+| Champ | Contenu |
+|---|---|
+| `muscle.images[ligne]` | `{ imageId, masques? }` |
+| `muscle.imageGenerale` | `{ imageId, auRecto }` |
+
+- Ce sont des blobs ordinaires, avec la même synchro que les autres images.
+- Le verso texte, « Copier » et les exports listent les images en pièces : `[image du muscle : image-<id>.png]`,
+  `[image : image-<id>.png]` sous la ligne.
+
+### Tests
+
+**Création** (`t-muscle-form.mjs`)
+
+| Test | Résultat |
+|---|---|
+| ⌘V dans la ligne Origine | ✅ image de cette ligne, sans pré-remplissage |
+| Parcourir sur la ligne Action | ✅ |
+| Glisser sur « Image du muscle » | ✅ ; option « au recto » décochée par défaut |
+| Masquer des mots | ✅ 72 mots lus, 2 choisis → 2 masques |
+| Enregistrement | ✅ images Origine (2 masques) et Action, image générale ; verso texte avec les pièces ; 3 blobs |
+
+**Révision** (`t-muscle-seance.mjs`)
+
+| Test | Ordinateur | Tablette | Téléphone |
+|---|---|---|---|
+| Recto | ✅ nom seul (image générale au verso) | ✅ nom + image générale (option cochée) | ✅ nom + image générale (option cochée) |
+| Verso, ligne par ligne | ✅ image générale ; 3 lignes cachées avec leurs images | ✅ | ✅ |
+| Toucher Origine | ✅ texte + image (2 mots masqués), les autres lignes restent cachées | ✅ | ✅ |
+| Visionneuse | ✅ OCR, 72 mots sélectionnables ; sélection « Grand glutéal (fessier) » ; Révéler ; la carte reste au verso | ✅ | ✅ |
+| Tout révéler | ✅ image de la ligne Action | ✅ | ✅ |
+| Rien de coupé | — | — | ✅ pas de défilement horizontal (390 / 390), aucune image coupée |
+
+**Modification et synchro**
+
+| Test | Résultat |
+|---|---|
+| Modification (`t-muscle-edit.mjs`) : cocher « au recto » | ✅ mêmes blobs, mêmes masques |
+| Synchro vers un 2ᵉ appareil (`t-muscle-synchro.mjs`) | ✅ la carte arrive au faux cloud avec ses 3 blobs ; sur le 2ᵉ appareil, masques présents, blobs rapatriés (92 242 / 20 350 / 20 350 octets), image générale et 2 vignettes affichées |
+
+| Formulaire | Masquer des mots | Présentation |
+|---|---|---|
+| ![](img/images-surlignage-json/muscle-formulaire.png) | ![](img/images-surlignage-json/muscle-masquer-mots.png) | ![](img/images-surlignage-json/muscle-presentation.png) |
+
+| Verso ligne par ligne | Origine révélée | Visionneuse (texte reconnu) | Tout révélé |
+|---|---|---|---|
+| ![](img/images-surlignage-json/muscle-verso-masque.png) | ![](img/images-surlignage-json/muscle-ligne-origine.png) | ![](img/images-surlignage-json/muscle-visionneuse-ocr.png) | ![](img/images-surlignage-json/muscle-verso-tout.png) |
+
+| Téléphone : recto (image au recto) | Téléphone : verso | Tablette | 2ᵉ appareil | Panneau du cours |
+|---|---|---|---|---|
+| ![](img/images-surlignage-json/muscle-recto-mobile-aurecto.png) | ![](img/images-surlignage-json/muscle-verso-tout-mobile-aurecto.png) | ![](img/images-surlignage-json/muscle-verso-masque-tablette-aurecto.png) | ![](img/images-surlignage-json/muscle-appareil2.png) | ![](img/images-surlignage-json/panneau-muscle.png) |
+
+Ce qui n'a pas été testé à part : la séance « classique » de l'ordinateur (`Session.jsx`). Elle reçoit les mêmes
+composants (image générale au recto / verso, tableau avec vignettes), mais aucun scénario dédié n'a été joué.
+
+## Commits de cette partie
+
+| Hash | Message |
+|---|---|
+| `ccf2f83` | feat(medrevise): export spécial IA — visuel des pages avec le repère de chaque boîte + JSON { id, ref, text } |
+| `be8e2cd` | fix(medrevise): surligneur dans un document — sélection limitée au texte, sans flash ni extension à la page |
+| `a2ce4f2` | feat(medrevise): images dans les cartes Muscle — une par ligne du tableau + image générale du muscle |
+| *(ce commit)* | docs(medrevise): compte rendu — export spécial IA, surlignage document, images Muscle |
