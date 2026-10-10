@@ -336,3 +336,74 @@ La migration a été rejouée au rechargement, comme chez toi.
 |---|---|
 | `0a25988` | feat(medrevise): apprentissage des flashcards v1.1 — critère 2, plus aucun quota de nouvelles cartes |
 | `c51e7f1` | docs(medrevise): compte-rendu v1.1 — critère 2, sans quota |
+
+## v1.2 — reprise de séance (10/10/2026)
+
+**Le bug** (cause et preuves : `docs/diagnostic-divergence-apprentissage.md`). Une séance commencée
+garde sa file dans un `meta` local (`seanceFC`). À la reprise, cette file était seulement
+**filtrée**. Les cartes entrées dans le plan du jour après l'ouverture n'y entraient donc jamais,
+qu'elles aient été créées ensuite ou soient arrivées d'un autre appareil. Le Mac restait ainsi à
+62 « à apprendre » pendant que le téléphone, qui calcule le plan, en affichait 77.
+
+### Ce qui change
+
+| Où | Quoi |
+|---|---|
+| `lib/apprentissageFC.js` `reprendreSeance` (pur) | Remet la séance sauvegardée d'accord avec le plan du jour. **Révisions** : les cartes déjà notées restent ; celles qui restent à faire doivent être encore échues (une carte notée ou supprimée sur un autre appareil disparaît) ; les nouvelles échues s'ajoutent en fin. **Apprentissage** : la file garde son ordre ; en sortent les cartes supprimées, les cartes sorties ailleurs (passées en révision) et celles qui ne sont plus au plan (fiche mise en pause) ; les cartes du plan absentes s'ajoutent **en fin de file**, cartes en cours d'abord puis nouvelles, cours entrelacés. Tout passe par des ensembles, donc aucun doublon possible, et une file sauvegardée qui en contiendrait est dédoublonnée. |
+| `session/SeanceFC.jsx` | La reprise s'applique **à l'ouverture** de la séance, **et pendant qu'elle est ouverte** dès que `ctx.db` est rechargé, c'est-à-dire à la fin de chaque synchro, au retour d'arrière-plan ou à la reconnexion (`forceSync` → `reload`). Côté cartes, la version la plus récente l'emporte : la séance a pu écrire depuis. Les nouvelles cartes sont introduites et celles déjà au critère sont sorties, comme au démarrage d'une séance neuve. Les écritures sont faites d'abord ; le calcul pur se fait ensuite sur l'état courant, si bien qu'une réponse donnée entre-temps n'est jamais écrasée. |
+| `seanceEnCours` + `SeanceAujourdhui.jsx` | Les compteurs de l'encart « Aujourd'hui » viennent de la séance remise d'accord, donc **les mêmes nombres que le plan du jour**, sur tous les appareils. |
+| `lib/apprentissageFC.js` `fusionApprentissage` + `storage.js` `reconcileAll` | Séances en parallèle sur deux appareils : pour une carte dans le **même cycle d'apprentissage** des deux côtés, c'est le **streak le plus élevé** qui gagne (« présentée » si elle l'a été d'un côté), jamais le plus bas. Si la carte est sortie d'un côté pendant que le cycle restait ouvert de l'autre, la sortie gagne. La version fusionnée est réhorodatée et poussée, et les deux appareils convergent. Dans tous les autres cas, le dernier écrit gagne comme avant : la méthode des J n'est pas touchée. |
+| `lib/diagnosticExport.js` + `components/BoutonDiagnostic.jsx` | Bouton **« Exporter un diagnostic »** dans Réglages → Synchronisation (ordinateur) et dans la section Synchronisation de l'accueil (téléphone). Il produit un JSON **en lecture seule** : chaque carte avec ses champs d'état (recto tronqué), la séance en cours, les migrations, le plan du jour (ids et compteurs), l'empreinte cloud, et la date, l'heure, le fuseau, l'écran et le build de l'appareil. Aucune écriture : le seul appel réseau est le GET de l'empreinte. |
+
+**Choix fait sans demander.** Une carte qui n'est plus au plan du jour parce que sa fiche a été
+mise en pause sort aussi de la file. Sans cela, les compteurs ne pourraient pas rester identiques
+au plan. Une carte « Ratée » aujourd'hui en révision n'entre pas dans la file du jour : elle est
+attendue demain, comme avant.
+
+### Tests
+
+Banc : `scripts/tests-apprentissage/`. Il réunit :
+- deux Chrome headless isolés pilotés en CDP : **A ordinateur 1 440 px**, **B téléphone** (shell
+  mobile < 760 px) ;
+- un **faux Supabase local** (`scripts/faux-supabase.mjs`) ;
+- Vite avec `VITE_SUPABASE_URL=http://localhost:54399`, et `*.supabase.co` bloqué au niveau DNS.
+
+**Aucune écriture vers le vrai cloud.** L'extension Chrome n'était pas connectée. Les cartes de
+test sont créées avec le même enregistrement que l'app (`put('questions')`, date de départ du
+jour), pas en remplissant le formulaire.
+
+| Test | Résultat |
+|---|---|
+| `test-v12.mjs` (pur, 21 vérifications). Il **rejoue le cas réel du Mac** à partir de la copie IndexedDB du 10/10 : séance figée à 62, **77 après reprise** (+15), et les mêmes 39 révisions. | ✅ |
+| `test-v11.mjs` (non-régression v1.1) | ✅ |
+| **S1 ordinateur** : séance démarrée, 2 révisions, apprentissage commencé, séance quittée à mi-chemin, 5 cartes créées, retour. L'encart passe de Apprentissage 8 à **13** (révisions inchangées). La file passe de 8 à **13** : les 8 premières restent dans le même ordre, les 5 nouvelles sont en fin et introduites. Les cartes déjà vues gardent leur streak (1, 1, 1, 1). | ✅ |
+| **S1 téléphone** : même scénario. Apprentissage passe de 18 à **23** ; les 9 cartes à streak 1 restent à 1. | ✅ |
+| **S2** : séance **ouverte** sur A, 5 cartes créées sur B et synchronisées. Après la synchro, A passe de « Apprendre · 26 restantes » à **31** ; les 5 cartes sont en fin de file et le reste est intact. | ✅ |
+| **S3** : une carte de la file de A **sortie sur B** (2ᵉ « Su »). À la synchro suivante, A la retire (31 → **30**) sans erreur ; elle est « en révision » sur A aussi et la séance continue. L'encart de A est égal au plan du jour recalculé (0/30). | ✅ |
+| **10 reprises** successives (quitter puis reprendre) et **10 synchros** séance ouverte : aucun doublon, mêmes cartes restantes. | ✅ |
+| **Méthode des J** : deux révisions devenues échues pendant la séance sont ajoutées. « Facile » donne exactement le résultat de `advanceQuestion` (J+18). « Raté » donne `advanceQuestion` puis le réapprentissage **demain**, et la carte n'est pas ajoutée à la file du jour. | ✅ |
+| **Export de diagnostic**, ordinateur et téléphone. Le vrai bouton est cliqué et le téléchargement intercepté. Le JSON contient : schéma, 41 cartes sur 41 avec leurs champs d'état, la séance en cours, l'empreinte « à jour » `9cc1ccaa070e` (**identique sur les deux appareils**) et le fuseau Europe/Paris (+120). IndexedDB et lignes du cloud sont **identiques avant et après l'export**. | ✅ |
+| **MealWeek** : s'affiche sans erreur ; rien dans `src/mealweek/` ni `src/shared/`. | ✅ |
+| Erreurs console (A et B, tous scénarios) | aucune |
+| `npm run build` | ✅ |
+
+**Non testé dans le navigateur.** La fusion « streak le plus élevé » entre deux séances en
+parallèle sur la même carte est couverte par `test-v12.mjs` (5 cas), pas par un scénario à deux
+appareils.
+
+**Incident de banc corrigé en route.** En mode développement, React (StrictMode) démonte puis
+remonte au montage. Un drapeau « monté » posé une seule fois restait à faux et bloquait la mise à
+jour de la séance ouverte : le scénario S2 l'a révélé. Le drapeau est maintenant remis à vrai dans
+l'effet. La production n'était pas concernée, mais le code est juste dans les deux modes.
+
+| Encart après avoir quitté | Après 5 cartes créées | Séance reprise |
+|---|---|---|
+| ![](img/apprentissage-flashcards/v12-encart-avant.png) | ![](img/apprentissage-flashcards/v12-encart-apres.png) | ![](img/apprentissage-flashcards/v12-seance-reprise.png) |
+
+| Séance ouverte, après synchro (S2) | Téléphone : 23 après création | Diagnostic (ordinateur) | Diagnostic (téléphone) |
+|---|---|---|---|
+| ![](img/apprentissage-flashcards/v12-seance-ouverte-synchro.png) | ![](img/apprentissage-flashcards/v12-mobile-encart-apres.png) | ![](img/apprentissage-flashcards/v12-diagnostic-ordi.png) | ![](img/apprentissage-flashcards/v12-diagnostic-mobile.png) |
+
+**Sur tes appareils.** Aucune réparation de données n'est nécessaire. Au prochain chargement de la
+nouvelle version, la séance commencée sur le Mac sera remise d'accord avec le plan du jour, et
+l'encart affichera les mêmes nombres que le téléphone.
