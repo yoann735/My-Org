@@ -452,6 +452,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // MedReviseApp.jsx appelle alors reload(), qui remplace `db`) n'apparaîtraient qu'à
   // la réouverture du lecteur.
   useEffect(() => { reloadHighlights(); }, [db]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (10/10) idem pour les boîtes et autres annotations : un texte importé ou une bascule de
+  // version faits sur un autre appareil s'affichent sans rouvrir le cours
+  const premiereLecture = useRef(true);
+  useEffect(() => { if (premiereLecture.current) { premiereLecture.current = false; return; } reloadEdits(); }, [db]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* PAGES AFFICHÉES (01/10, docs/archi-edition-pdf.md) : les pages du PDF, dans
      l'ordre, et après la page n les PAGES AJOUTÉES (kind 'page', apres = n) triées
