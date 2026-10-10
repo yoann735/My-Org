@@ -35,6 +35,9 @@ import {
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 import { synchroniserJournal } from './journal/synchro.js';
+import { BandeauFilet, EcranIntegrite, rafraichirStatutServeur } from './components/FiletSecurite.jsx';
+import { lancerControle } from './integrite/executer.js';
+import { copierDansDossier } from './sauvegarde/dossierLocal.js';
 import { marquerSyncReussie } from './lib/syncStatus.js';
 import { todayISO, startAdaptive } from './lib/sm2.js';
 import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor, linkedV2Questions } from './lib/planning.js';
@@ -50,7 +53,7 @@ let ocrDemarre = false; // démarrage unique du service OCR (voir plus bas)
 // de documents ET rend PdfReader/SchemaEditorScreen/TranscriptEditor EMBARQUÉS dans
 // son panneau de droite. 'pdf'/'schemaedit' restent des routes plein-écran, mais ne
 // sont plus atteignables QUE depuis Réviser (« Voir le cours » / « Éditer le schéma »).
-const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard, apprentissage: Apprentissage, notes: PriseDeNotes, seancefc: SeanceFC };
+const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard, apprentissage: Apprentissage, notes: PriseDeNotes, seancefc: SeanceFC, integrite: EcranIntegrite };
 
 function MedBottomNav({ current, onNav, focus }) {
   const items = focus ? [{ id: ECRAN_FOCUS, label: 'Prise de notes', icon: 'edit' }] : [
@@ -186,6 +189,14 @@ export default function MedReviseApp({ themeApi, goHub }) {
     try { await reload(); } catch (e) { /* lecture locale impossible : la séquence ci-dessous réessaie */ }
     await forceSync();
     await runMigrations(); await reload();
+    /* FILET DE SÉCURITÉ (11/10, docs/compte-rendu-filet-securite.md) — en tâche de fond, après la
+       synchro de démarrage, sans rien bloquer : contrôle d'intégrité (lecture seule), état de la copie
+       serveur (GitHub, via /api/backup-status), copie hebdomadaire dans le dossier local si autorisé. */
+    setTimeout(() => {
+      lancerControle().catch(() => {});
+      rafraichirStatutServeur().catch(() => {});
+      copierDansDossier().catch(() => {});
+    }, 800);
   })(); }, [forceSync, reload]);
 
   // reconcile à la reconnexion réseau et quand l'onglet redevient visible (retour d'un
@@ -788,6 +799,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
         {/* MODE FOCUS : une seule commande, l'icône « Focus » de la barre latérale
             (ui.jsx#StudySidebar) — elle active ET désactive. Repli sans interface :
             voir lib/focusMode.js (une lecture qui échoue renvoie « pas de focus »). */}
+        <BandeauFilet ctx={ctx} onOuvrirIntegrite={() => setScreen('integrite')} onOuvrirReglages={() => setScreen('settings')} />
         <Current ctx={ctx} key={screen} />
       </div>
       <MedBottomNav current={screen} onNav={setScreen} focus={focusNotes} />

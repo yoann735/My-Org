@@ -1,5 +1,13 @@
 {
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
-  ]
+  ],
+  "crons": [
+    { "path": "/api/backup-daily", "schedule": "30 1 * * *" },
+    { "path": "/api/backup-daily", "schedule": "30 2 * * *" }
+  ],
+  "functions": {
+    "api/backup-daily.js": { "maxDuration": 120 },
+    "api/backup-now.js": { "maxDuration": 120 }
+  }
 }

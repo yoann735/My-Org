@@ -14,6 +14,7 @@ import { CarteOcrReglages } from '../ocr/PanneauOcr.jsx';
 import { reglagesFC } from '../lib/apprentissageFC.js';
 import { ReglagesFSRS } from '../components/ReglagesFSRS.jsx';
 import { SynchroJournal } from '../components/SynchroJournal.jsx';
+import { CarteSauvegardes } from '../components/FiletSecurite.jsx';
 import { validateBackup, currentCounts, importBackup, computeCloudDiff, applyCloudTombstones } from '../lib/backupImport.js';
 
 export function Reglages({ ctx }) {
@@ -296,6 +297,7 @@ export function Reglages({ ctx }) {
           <ReglagesFlashcards ctx={ctx} />
         </Card>
         <ReglagesFSRS ctx={ctx} />
+        <CarteSauvegardes ctx={ctx} />
         <Card title="Sauvegarde" icon="archive">
           <div className="hint" style={{ marginBottom: 12 }}>
             Enregistre TOUT ce que contient cet appareil dans un seul fichier JSON

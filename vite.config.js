@@ -105,11 +105,12 @@ function apiDeepgramDev() {
     name: 'api-deepgram-dev',
     apply: 'serve',
     configureServer(server) {
-      const env = loadEnv(server.config.mode, process.cwd(), 'DEEPGRAM_');
+      const env = loadEnv(server.config.mode, process.cwd(), ['DEEPGRAM_', 'GITHUB_BACKUP_', 'CRON_SECRET', 'BACKUP_', 'GITHUB_API_URL']);
       for (const [k, v] of Object.entries(env)) if (process.env[k] === undefined) process.env[k] = v;
       // /api/deepgram-token et /api/deepgram-credits (transcription en direct)
       server.middlewares.use(async (req, res, next) => {
-        const m = /^\/api\/(deepgram-(?:token|credits))(?:\?|$)/.exec(req.url || '');
+        // + filet de sécurité (11/10) : /api/backup-daily, /api/backup-now, /api/backup-status
+        const m = /^\/api\/(deepgram-(?:token|credits)|backup-(?:daily|now|status))(?:\?|$)/.exec(req.url || '');
         if (!m) return next();
         try {
           const mod = await server.ssrLoadModule(`/api/${m[1]}.js`);

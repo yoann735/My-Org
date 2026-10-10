@@ -2575,3 +2575,42 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .fsrs-prep ul { margin: 6px 0 10px; padding-left: 18px; }
 .sj { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
 .sj-titre { font-weight: 600; margin-bottom: 4px; }
+
+/* ============================================================
+   FILET DE SÉCURITÉ (11/10, docs/compte-rendu-filet-securite.md) — bandeau, Réglages → Sauvegardes,
+   écran Intégrité. Rien n'est visible tant que tout va bien (sauf le point vert de Réglages).
+   ============================================================ */
+.filet-bandeau {
+  display: flex; align-items: center; gap: 8px; width: 100%; margin: 0 0 10px; padding: 7px 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--card); color: var(--text-2); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.filet-bandeau.discret { color: var(--text-2); }
+.filet-bandeau.orange { border-color: color-mix(in srgb, var(--warn) 55%, transparent); background: color-mix(in srgb, var(--warn) 12%, var(--card)); color: var(--text); }
+.filet-bandeau.rouge { border-color: color-mix(in srgb, var(--crit) 60%, transparent); background: color-mix(in srgb, var(--crit) 14%, var(--card)); color: var(--text); font-weight: 600; }
+.mrm-app ~ .filet-bandeau, .filet-bandeau + .mrm-app { margin-top: 0; }
+.filet-point { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; background: var(--text-3); margin-top: 5px; }
+.filet-point.vert { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
+.filet-point.orange { background: var(--warn); }
+.filet-point.rouge { background: var(--crit); }
+.filet-reg { display: flex; flex-direction: column; gap: 14px; }
+.filet-ligne { display: flex; align-items: flex-start; gap: 12px; }
+.filet-titre { font-weight: 600; font-size: 14px; }
+.filet-retour { margin-top: 4px; }
+.filet-autoriser { margin-top: 6px; font-size: 12.5px; color: var(--warn); display: flex; gap: 8px; align-items: center; }
+.filet-ecran { display: flex; flex-direction: column; gap: 14px; max-width: 860px; }
+.filet-entete { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.filet-entete h1 { margin: 0; font-size: 26px; }
+.filet-ok { display: flex; gap: 10px; align-items: center; font-weight: 600; }
+.filet-ok .filet-point { margin-top: 0; }
+.filet-bloc { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; gap: 6px; }
+.filet-bloc.rouge { border-color: color-mix(in srgb, var(--crit) 55%, transparent); background: color-mix(in srgb, var(--crit) 10%, var(--card)); }
+.filet-ids { font-size: 12px; color: var(--text-2); word-break: break-all; }
+.filet-liste { display: flex; flex-direction: column; gap: 8px; }
+.filet-anomalie { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; gap: 4px; }
+.filet-a-tete { display: flex; gap: 10px; align-items: baseline; }
+.filet-type { flex: 0 0 auto; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--warn); }
+.filet-type.orpheline, .filet-type.doublon { color: var(--crit); }
+.filet-a-recto { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filet-a-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.filet-apercu { margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: var(--bg-2); font-size: 13px; display: flex; flex-direction: column; gap: 4px; white-space: pre-wrap; }
+.mrm-app .filet-ecran { padding: 16px; }
