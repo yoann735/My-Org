@@ -250,4 +250,4 @@ Autres captures :
 | Commit | Contenu |
 |---|---|
 | 3733efc | `feat(medrevise)` : filet de sécurité — copie quotidienne vers GitHub, copie dans un dossier local, contrôle d'intégrité à l'ouverture |
-| (suivant) | `docs/test(medrevise)` : compte rendu, procédure de restauration, banc `scripts/tests-filet/`, faux Supabase (métadonnées du bucket), marge du bandeau |
+| 9ba8bf7 | `docs(medrevise)` : compte rendu, procédure de restauration, banc `scripts/tests-filet/`, faux Supabase (métadonnées du bucket), marge du bandeau |
