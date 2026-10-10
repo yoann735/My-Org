@@ -40,9 +40,11 @@ export function depuisLigne(l) {
   };
 }
 
-/** compare deux blocs FSRS en ignorant la date de mise à jour (évite les réécritures inutiles) */
+/** compare deux ÉTATS FSRS en ignorant la date de mise à jour et l'origine du calcul (`source` :
+   « reponse » sur l'appareil qui a noté, « journal » sur celui qui a recalculé — même état) : évite
+   les réécritures inutiles d'un appareil à l'autre. */
 export function memeBloc(a, b) {
-  const sans = (x) => { if (!x) return null; const { majLe, ...r } = x; return r; }; // eslint-disable-line no-unused-vars
+  const sans = (x) => { if (!x) return null; const { majLe, source, ...r } = x; return r; }; // eslint-disable-line no-unused-vars
   const tri = (v) => (Array.isArray(v) ? v.map(tri) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, tri(v[k])])) : v);
   return JSON.stringify(tri(sans(a))) === JSON.stringify(tri(sans(b)));
 }

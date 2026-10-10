@@ -29,7 +29,8 @@ export function BoutonsFlashcard({ carte, reglages, onNoter, disabled = false, v
   };
   return (
     <div className="bf-zone">
-      {!astuceVue && <div className="bf-astuce" role="note">{ASTUCE}</div>}
+      {/* au-dessus du bouton Difficile : 2e colonne sur 4 (bureau, séance), en haut à droite de la grille 2 × 2 (mobile) */}
+      {!astuceVue && <div className="bf-astuce" role="note" style={{ left: variante === 'mobile' || (variante === 'seance' && typeof window !== 'undefined' && window.innerWidth <= 480) ? '75%' : '37.5%' }}>{ASTUCE}</div>}
       <div className={c.conteneur}>
         {BOUTONS.map((b) => (
           <button key={b.cle} type="button" className={c.bouton(b)} disabled={disabled} onClick={() => noter(b)}
