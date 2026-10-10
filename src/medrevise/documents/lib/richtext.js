@@ -80,6 +80,8 @@ const ImageDoc = BlobImage.extend({
       // l'image) et notions prises sur l'image — gardés dans le document, jamais dans le HTML
       ocr: { default: null, rendered: false },
       notions: { default: null, rendered: false },
+      // (10/10) id de l'image flottante d'origine quand le bloc vient de sa conversion
+      deAnnotation: { default: null, rendered: false },
     };
   },
   addNodeView() {

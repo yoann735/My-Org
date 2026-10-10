@@ -18,7 +18,8 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { useEditor, EditorContent } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import { Icon } from '../../shared/Icon.jsx';
-import { putBlob, genId } from '../lib/storage.js';
+import { putBlob, genId, getBlob, getOne } from '../lib/storage.js';
+import { insererImageBloc, limiteSous } from './lib/imageVue.js';
 import { NOTES_EXTENSIONS, EMPTY_DOC, hydrateDoc, dehydrateDoc } from './lib/richtext.js';
 import { lireNotesDoc, ecrireNotesDoc } from './lib/notesDoc.js';
 import '../../styles/notes-doc.css';
@@ -50,14 +51,20 @@ export const NotesEditor = forwardRef(function NotesEditor({
   };
 
   /* images : collées ou glissées → blob IndexedDB (id dans le nœud), src = URL transitoire */
-  const insererImage = async (editeur, fichier, pos = null) => {
-    if (!fichier || !/^image\//.test(fichier.type)) return false;
-    const blobId = await putBlob(fichier);
+  /* (10/10) toujours un BLOC du flux, comme dans un document (documents/lib/imageVue.js) :
+     au curseur, ou à la limite de bloc la plus proche du point de dépôt */
+  const insererImage = async (editeur, fichier, pos = null, blobIdExistant = null) => {
+    if (!fichier || !/^image\//.test(fichier.type || 'image/png')) return false;
+    const blobId = blobIdExistant || await putBlob(fichier);
     const url = URL.createObjectURL(fichier); urls.current.push(url);
-    const ch = editeur.chain().focus();
-    if (pos != null) ch.insertContentAt(pos, { type: 'image', attrs: { src: url, blobId } }).run();
-    else ch.setImage({ src: url, blobId }).run();
-    return true;
+    return insererImageBloc(editeur, { src: url, blobId }, pos);
+  };
+  // un DESSIN du téléphone glissé depuis « Dessins » (pdf/OngletDessins.jsx) : son blob, réutilisé
+  const deposerDessin = async (editeur, id, pos) => {
+    const d = await getOne('dessins', id);
+    const blob = d && d.blobId ? await getBlob(d.blobId) : null;
+    if (!blob) return false;
+    return insererImage(editeur, blob.type ? blob : new Blob([blob], { type: 'image/png' }), pos, d.blobId);
   };
   const editorRef = useRef(null);
 
@@ -75,12 +82,17 @@ export const NotesEditor = forwardRef(function NotesEditor({
         return true;
       },
       handleDrop: (view, event, slice, moved) => {
-        if (moved) return false;
+        if (moved || !editorRef.current) return false;
+        const idDessin = event.dataTransfer && event.dataTransfer.getData('application/x-medrevise-dessin');
+        if (idDessin) {
+          event.preventDefault();
+          deposerDessin(editorRef.current, idDessin, limiteSous(editorRef.current, event.clientX, event.clientY).pos);
+          return true;
+        }
         const f = [...((event.dataTransfer && event.dataTransfer.files) || [])].find((x) => /^image\//.test(x.type));
-        if (!f || !editorRef.current) return false;
+        if (!f) return false;
         event.preventDefault();
-        const p = view.posAtCoords({ left: event.clientX, top: event.clientY });
-        insererImage(editorRef.current, f, p ? p.pos : null);
+        insererImage(editorRef.current, f, limiteSous(editorRef.current, event.clientX, event.clientY).pos);
         return true;
       },
       handleKeyDown: (view, event) => {

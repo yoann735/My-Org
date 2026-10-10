@@ -55,6 +55,7 @@ export function PdfToolbar({
   sansPages = false, sansRecherche = false, outilsDisponibles = null, statut = null,
   // INSÉRER (01/10) : une page blanche, une image — absents = boutons masqués
   onAjouterPage = null, onAjouterImage = null,
+  imageDansTexte = false, // document (10/10) : l'image s'insère dans le texte, jamais flottante
   avantPanneau = null, // bascule de disposition PDF / Les deux / Tableau (04/10)
   boutonDessins = null, // menu des dessins reçus du téléphone (02/10 soir)
   boutonTranscrire = null, // transcription en direct du cours (05/10)
@@ -196,7 +197,7 @@ export function PdfToolbar({
               ))}
               {onAjouterImage && (
                 <button type="button" className="tab-bt tab-outil" onClick={onAjouterImage} aria-label="Insérer une image"
-                  title="Image — importer une image et la placer sur la page (ou la coller avec Cmd/Ctrl+V)"><IconeOutil nom="image" size={18} /></button>
+                  title={imageDansTexte ? 'Image — l’insérer dans le texte, au curseur (ou la coller avec Cmd/Ctrl+V)' : 'Image — importer une image et la placer sur la page (ou la coller avec Cmd/Ctrl+V)'}><IconeOutil nom="image" size={18} /></button>
               )}
               {onAjouterPage && (
                 <button type="button" className="tab-bt tab-outil" onClick={onAjouterPage} aria-label="Insérer une page blanche"
@@ -296,7 +297,7 @@ export function PdfToolbar({
             )}
             {!compacte && onAjouterImage && (
               <button type="button" className="ptb-outil" onClick={onAjouterImage}
-                title="Image — importer une image et la placer sur la page (ou la coller avec Cmd/Ctrl+V)">
+                title={imageDansTexte ? 'Image — l’insérer dans le texte, au curseur (ou la coller avec Cmd/Ctrl+V)' : 'Image — importer une image et la placer sur la page (ou la coller avec Cmd/Ctrl+V)'}>
                 <IconeOutil nom="image" size={16} /><span className="ptb-outil-lbl">Image</span>
               </button>
             )}

@@ -56,7 +56,7 @@ import { useEditor } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, detectDocKind, Modal, LoaderL6, ConfirmModal } from '../components/ui.jsx';
-import { putBackup, getBlob, putBlob, getAll, put, remove, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque, newPageAjoutee, newImageCollee, newForme } from '../lib/storage.js';
+import { putBackup, getBlob, putBlob, getAll, put, remove, genId, getMeta, setMeta, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque, newPageAjoutee, newImageCollee, newForme } from '../lib/storage.js';
 import { useJournalAnnuler, raccourciAnnuler } from '../lib/journalAnnuler.js';
 import { texteOcr } from '../ocr/ocrImage.js';
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cmdGroupe, cibleEditable } from '../lib/annotHistory.js';
@@ -88,6 +88,7 @@ import { NotesEditor } from '../documents/NotesEditor.jsx';
 import { estNotionDoc, creerNotionDoc, synchroniserNotionsDoc } from '../documents/lib/notionsDoc.js';
 import { lireNotesDoc, ecrirePageDoc, majNotesDoc, attendreNotesDoc, contenuGlobal, docNonVide, idAppareil, fluxDepuisPages } from '../documents/lib/notesDoc.js';
 import { DocumentFlux } from './DocumentFlux.jsx';
+import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
 import { dehydrateDoc, EMPTY_DOC } from '../documents/lib/richtext.js';
 import { exporterMarkdownDoc } from '../documents/lib/exportDoc.js';
 import { PageTexte, PAGE_A4, OutilsTexteDocument, effacerSurlignageRecherche } from './PageTexte.jsx';
@@ -362,7 +363,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const all = await getAll('highlights');
     // 07/10 : les notions de l'onglet « Notes » (source 'doc') n'ont ni page ni rectangles —
     // jamais mêlées aux surlignages du PDF, listées à part dans le mode Notions
-    setHighlights(all.filter((h) => h.ficheId === ficheId && !estNotionDoc(h)).sort(compareHighlights));
+    setHighlights(all.filter((h) => h.ficheId === ficheId && !estNotionDoc(h) && !h.convertieEnFlux).sort(compareHighlights));
     setNotionsNotes(all.filter((h) => h.ficheId === ficheId && estNotionDoc(h)));
   };
   const [notionsNotes, setNotionsNotes] = useState([]);
@@ -371,7 +372,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [editsCharges, setEditsCharges] = useState(false);
   const reloadEdits = async () => {
     const all = await getAll('annotations');
-    setEdits(all.filter((a) => a.ficheId === ficheId));
+    // (10/10) image flottante d'un document déjà convertie en bloc du flux : plus affichée
+    setEdits(all.filter((a) => a.ficheId === ficheId && !a.convertieEnFlux));
     setEditsCharges(true);
   };
 
@@ -2139,6 +2141,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // celle du dessin, pas celle de ses pixels.
   const ajouterImage = async (file, cible = null, blobIdExistant = null, echelle = 1, textes = null) => {
     if (!file || !/^image\//.test(file.type || '')) return;
+    // DOCUMENT (10/10) : jamais d'image flottante — un bloc du flux, quel que soit le chemin
+    if (modeDoc) { await insererImageFlux(file, { ecran: cible && cible.ecran, blobIdExistant, echelle, textes }); return; }
     let w = 0, h = 0;
     try { const bm = await createImageBitmap(file); w = bm.width; h = bm.height; if (bm.close) bm.close(); } catch (e) { return; } // pas une image lisible
     if (!w || !h || !pageSizes.length) return;
@@ -2191,6 +2195,140 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setOutil('main'); setActiveEditId(null);
     setImageActiveId(rec.id);
   };
+  /* ---- DOCUMENT : UNE IMAGE S'INSÈRE TOUJOURS DANS LE FLUX (10/10,
+     docs/compte-rendu-images-surlignage-json.md) ----
+     Bouton Image de la barre, ⌘V, glisser-déposer, Dessins : dans un document, l'image
+     devient un BLOC du texte (documents/lib/imageVue.js : déplaçable entre blocs,
+     redimensionnable, paginée, texte reconnu) — à la position du curseur s'il est sur la
+     page visée, sinon à la fin de cette page ; au point de dépôt pour un glisser.
+     L'image-annotation flottante n'existe que sur un PDF importé. */
+  const curseurFluxPose = useRef(false); // le curseur a été posé dans le texte du document
+  const pageDePos = (pos) => {
+    const b = (pagination && pagination.blocs) || [];
+    let k = null;
+    for (const x of b) { if (x.pos <= pos) k = x.page; else break; }
+    return k;
+  };
+  const finDePage = (k) => {
+    const ed = fluxRef.current.editor;
+    const b = (pagination && pagination.blocs) || [];
+    const surK = b.filter((x) => x.page === k);
+    while (surK.length && surK[surK.length - 1].type === 'sautDePage') surK.pop();
+    if (!surK.length) { const i = b.findIndex((x) => x.page > k); return i < 0 ? ed.state.doc.content.size : b[i].pos; }
+    const der = surK[surK.length - 1];
+    const n = ed.state.doc.nodeAt(der.pos);
+    if (n && n.type.name === 'paragraph' && n.content.size === 0 && surK.length > 1) return der.pos; // avant la ligne vide finale
+    return der.pos + (n ? n.nodeSize : 0);
+  };
+  const insererImageFlux = async (file, { ecran = null, blobIdExistant = null, echelle = 1, textes = null } = {}) => {
+    const api = fluxRef.current;
+    const ed = api && api.editor;
+    if (!ed || ed.isDestroyed) return false;
+    let w = 0;
+    try { const bm = await createImageBitmap(file); w = bm.width; if (bm.close) bm.close(); } catch (e) { return false; }
+    const blobId = blobIdExistant || await putBlob(file);
+    let pos = null;
+    if (ecran) pos = limiteSous(ed, ecran.x, ecran.y).pos;
+    else {
+      const k = pageCourante - 1;
+      if (!(curseurFluxPose.current && pageDePos(ed.state.selection.from) === k)) pos = finDePage(k);
+    }
+    // un dessin du téléphone est rendu en ×2 : sa taille de départ est celle du dessin
+    const attrs = { src: URL.createObjectURL(file), blobId, ...(echelle !== 1 && w ? { width: Math.max(40, Math.round(w * echelle)) } : {}) };
+    insererImageBloc(ed, attrs, pos);
+    // ses zones de texte : des paragraphes sous l'image (dans un document, rien ne flotte)
+    const lignes = (textes || []).map((t) => String((t && t.texte) || '').trim()).filter(Boolean);
+    if (lignes.length) {
+      const { state } = ed;
+      const P = state.schema.nodes.paragraph;
+      const apres = state.selection.to;
+      ed.view.dispatch(state.tr.insert(apres, lignes.flatMap((l) => l.split('\n')).map((l) => P.create(null, l ? state.schema.text(l) : null))));
+    }
+    setOutil('main'); setActiveEditId(null);
+    return true;
+  };
+  /* CONVERSION UNIQUE des images flottantes d'un DOCUMENT en blocs du flux (10/10) : à
+     l'ouverture, une fois le flux chargé et paginé. Sauvegarde putBackup d'abord ; chaque
+     image est insérée à la limite de bloc la plus proche de son centre, à sa taille (et
+     dans son orientation : une rotation est appliquée aux pixels) ; ses mots surlignés
+     deviennent des notions de l'image. L'annotation n'est PAS supprimée (aucune écriture
+     destructive) : elle reçoit `convertieEnFlux` (champ ajouté) et n'est plus affichée.
+     Idempotent : le bloc porte l'id de l'annotation d'origine (`deAnnotation`). */
+  const conversionImages = useRef(null);
+  useEffect(() => {
+    if (!modeDoc || !pagination || !editsCharges || conversionImages.current === ficheId) return;
+    const api = fluxRef.current;
+    const ed = api && api.editor;
+    if (!ed || ed.isDestroyed || !api.estCharge || !api.estCharge()) return;
+    const images = edits.filter((a) => a.kind === 'image' && indexDePage(a.page) >= 0);
+    if (!images.length) { conversionImages.current = ficheId; return; }
+    conversionImages.current = ficheId;
+    (async () => {
+      const surl = highlights.filter((h) => images.some((i) => i.id === h.imageId));
+      await putBackup('pre-images-flux-' + ficheId + '-' + Date.now(), { annotations: images, highlights: surl, flux: ed.getJSON() });
+      const deja = new Set();
+      ed.state.doc.descendants((n) => { if (n.type.name === 'image' && n.attrs.deAnnotation) deja.add(n.attrs.deAnnotation); });
+      const pagesEl = scrollRef.current && scrollRef.current.querySelector('.pdfr-pages');
+      const pr = pagesEl ? pagesEl.getBoundingClientRect() : null;
+      const aInserer = [];
+      for (const img of images) {
+        if (deja.has(img.id)) continue;
+        const idx = indexDePage(img.page), ps = pageSizes[idx];
+        let blob = await getBlob(img.blobId);
+        if (!blob || !ps || !pr) continue;
+        let blobId = img.blobId;
+        const rot = ((Number(img.rotation) || 0) % 360 + 360) % 360;
+        let wPage = img.width * ps.width, hPage = img.height * ps.height;
+        if (rot) {
+          // l'orientation affichée passe dans les pixels (un bloc du flux ne pivote pas)
+          try {
+            const bm = await createImageBitmap(blob);
+            const th = (rot * Math.PI) / 180, c = Math.abs(Math.cos(th)), sn = Math.abs(Math.sin(th));
+            const cv = document.createElement('canvas');
+            cv.width = Math.round(bm.width * c + bm.height * sn); cv.height = Math.round(bm.width * sn + bm.height * c);
+            const g = cv.getContext('2d');
+            g.translate(cv.width / 2, cv.height / 2); g.rotate(th); g.drawImage(bm, -bm.width / 2, -bm.height / 2);
+            if (bm.close) bm.close();
+            blob = await new Promise((ok) => cv.toBlob(ok, 'image/png'));
+            blobId = await putBlob(blob);
+            [wPage, hPage] = [wPage * c + hPage * sn, wPage * sn + hPage * c];
+          } catch (e) { /* orientation d'origine */ }
+        }
+        let naturel = null;
+        try { const bm = await createImageBitmap(blob); naturel = bm.width / bm.height; if (bm.close) bm.close(); } catch (e) { naturel = null; }
+        const y = pr.top + layout.offsets[idx] + (img.y + img.height / 2) * ps.height * scale;
+        const pos = limiteSous(ed, pr.left + pr.width / 2, y).pos;
+        const ratio = wPage / (hPage || 1);
+        const notions = surl.filter((h) => h.imageId === img.id && Array.isArray(h.mots) && h.mots.length)
+          .map((h) => ({ id: genId('nd'), couleur: h.couleur || 'jaune', mots: h.mots }));
+        aInserer.push({ img, pos, y, attrs: {
+          src: URL.createObjectURL(blob), blobId, align: 'center', deAnnotation: img.id,
+          width: Math.max(40, Math.round(wPage)),
+          ...(naturel && Math.abs(ratio / naturel - 1) > 0.02 ? { height: Math.round(hPage) } : {}),
+          ...(notions.length ? { notions } : {}),
+        } });
+      }
+      if (ed.isDestroyed) return;
+      // du bas vers le haut : chaque insertion laisse les positions au-dessus intactes
+      aInserer.sort((a, b) => (b.pos - a.pos) || (b.y - a.y));
+      if (aInserer.length) {
+        const tr = ed.state.tr.setMeta('journalIgnorer', true).setMeta('addToHistory', false);
+        const T = ed.state.schema.nodes.image;
+        for (const x of aInserer) tr.insert(Math.min(x.pos, tr.doc.content.size), T.create(x.attrs));
+        if (tr.doc.lastChild && tr.doc.lastChild.type === T) tr.insert(tr.doc.content.size, ed.state.schema.nodes.paragraph.create());
+        ed.view.dispatch(tr);
+        api.vider();
+      }
+      // les annotations d'origine : marquées (champ ajouté), retirées de l'affichage
+      const marques = images.map((a) => ({ ...a, convertieEnFlux: new Date().toISOString() }));
+      for (const a of marques) await put('annotations', a);
+      for (const h of surl) await put('highlights', { ...h, convertieEnFlux: new Date().toISOString() });
+      appliquerLocal([...images.map((a) => ({ store: 'annotations', avant: a, apres: null })), ...surl.map((h) => ({ store: 'highlights', avant: h, apres: null }))]);
+      // compte gardé sur l'appareil (meta, local) : { ficheId: n } — repris dans le compte-rendu
+      try { const m = (await getMeta('images-flux-converties')) || {}; m[ficheId] = (m[ficheId] || 0) + images.length; await setMeta('images-flux-converties', m); } catch (e) { /* ignore */ }
+      try { console.info(`[MedRevise] ${images.length} image(s) flottante(s) convertie(s) en blocs du flux (document ${ficheId})`); } catch (e) { /* ignore */ }
+    })();
+  }, [modeDoc, pagination, editsCharges, ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
   /* les TEXTES ATTACHÉS (dessin du téléphone) suivent l'image : même entrée d'annulation */
   const ratioPage = (cle) => { const ps = pageSizes.find((p) => p.cle === cle); return ps && ps.width ? ps.height / ps.width : 1.414; };
   const textesAttaches = (img) => edits.filter((a) => a.kind === 'texte' && a.imageId === img.id);
@@ -2297,6 +2435,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       e.preventDefault();
       const d = dessins.find((x) => x.id === idDessin);
       if (!d) return;
+      if (modeDoc) { poserDessin(d, { ecran: { x: e.clientX, y: e.clientY } }); return; }
       const pageEl = e.target.closest && e.target.closest('.pdfr-page');
       const sz = pageEl && pageSizes.find((p) => String(p.cle) === pageEl.dataset.cle);
       if (!sz) { poserDessin(d); return; }
@@ -2308,6 +2447,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const f = [...((e.dataTransfer && e.dataTransfer.files) || [])].find((x) => /^image\//.test(x.type));
     if (!f) return;
     e.preventDefault();
+    if (modeDoc) { ajouterImage(f, { ecran: { x: e.clientX, y: e.clientY } }); return; }
     const pageEl = e.target.closest && e.target.closest('.pdfr-page');
     const sz = pageEl && pageSizes.find((p) => String(p.cle) === pageEl.dataset.cle);
     if (!sz) { ajouterImage(f); return; }
@@ -2589,6 +2729,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             onPoser={(d) => poserDessin(d)} onRetirer={retirerUnDessin} boutonRef={boutonDessinsRef} pulse={pulseDessins} />
         ) : null}
         onAjouterImage={pret ? () => entreeImageRef.current && entreeImageRef.current.click() : null}
+        imageDansTexte={modeDoc}
         /* rangée « texte » sous la barre d'outils (09/10) : mise en forme de la boîte active, ou
            du texte du document qui a le curseur — jamais avec un outil d'annotation */
         rangeeTexte={activeEdit && editor ? (
@@ -2710,7 +2851,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 <DocumentFlux key={'flux:' + ficheId} ref={fluxRef} initial={fluxInitial}
                   largeurPage={PAGE_A4.width} hauteurPage={PAGE_A4.height} ecart={GAP} echelle={scale}
                   hauteurTotale={layout.totalHeight} outil={outil} couleurSurligneur={couleurSurligneur} fondNoir={fondNoir} marges={margesFlux}
-                  onSauver={sauverFlux} onActiver={(ed) => activerPageTexte('flux', ed)}
+                  onSauver={sauverFlux} onActiver={(ed) => { curseurFluxPose.current = true; activerPageTexte('flux', ed); }}
                   onNotion={notionDePage} onFlashcard={flashcardDePage} onJournal={hist.noterPage}
                   onPagination={(r) => setPagination((p) => (p && p.nbPages === r.nbPages && JSON.stringify(p.blocs) === JSON.stringify(r.blocs) ? p : r))} />
               )}

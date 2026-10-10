@@ -215,6 +215,8 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
   useImperativeHandle(ref, () => ({
     editor,
     vider,
+    /** le flux du document est chargé dans l'éditeur (conversion des images, 10/10) */
+    estCharge: () => charge.current,
     /** journal (annuler / rétablir) : le flux reprend cet état, puis est enregistré */
     remplacer: (json) => remplacerContenu(json),
     /** synchro : version plus récente venue d'un AUTRE appareil — seulement si l'on n'écrit pas */
