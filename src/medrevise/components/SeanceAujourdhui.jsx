@@ -28,7 +28,8 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
   const cartes = useMemo(() => flashcardsPlanifiees(ctx.db), [ctx.db]);
   const parId = useMemo(() => Object.fromEntries((ctx.db.questions || []).map((q) => [q.id, q])), [ctx.db]);
   const plan = useMemo(() => planDuJour(cartes, ctx.reglagesFC, today, nextDate), [cartes, ctx.reglagesFC, today]);
-  const reprise = sauve === undefined ? null : seanceEnCours(sauve, parId, today);
+  // v1.2 : la séance commencée est remise d'accord avec le plan du jour → mêmes nombres que le plan
+  const reprise = sauve === undefined ? null : seanceEnCours(sauve, parId, today, ctx.db, ctx.reglagesFC);
 
   const nRev = plan.revisions.length;
   const nNouv = plan.nouvelles.length;

@@ -6,6 +6,7 @@
    ============================================================ */
 import { get, set, del, clear, keys, values, entries, setMany, createStore } from 'idb-keyval';
 import { isoDate, startAdaptive } from './sm2.js';
+import { fusionApprentissage } from './apprentissageFC.js';
 import { queuePush, pullAllRecords, pullStore, queueBlobPush, flushBlobOutbox, blobOutboxEntries, listCloudBlobs, pullBlob, flushOutbox, isPushDegraded } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
@@ -767,6 +768,16 @@ export async function purgeSource(sourceId) {
    Sans réseau / non configuré (pullAllRecords → null) : no-op, IndexedDB
    reste seul juge — jamais de plantage, jamais de perte locale.
    ============================================================ */
+/* FUSION D'APPRENTISSAGE (v1.2, lib/apprentissageFC.js fusionApprentissage) : deux séances en
+   parallèle sur la même carte — le streak le plus élevé (ou la sortie) gagne, jamais le plus bas.
+   La version fusionnée est NOUVELLE : réhorodatée, écrite ici et poussée, pour que l'autre
+   appareil la reçoive à son tour (max idempotent : les deux convergent). Cas général : aucune. */
+async function ecrireFusion(name, rec) {
+  const stamped = { ...rec, updatedAt: new Date().toISOString() };
+  await set(stamped.id, stamped, S[name]);
+  queuePush(name, stamped.id, stamped, stamped.updatedAt);
+}
+
 export async function reconcileAll() {
   const cloudRows = await pullAllRecords();
   if (cloudRows === null) return { ok: false, cloudEmpty: false };
@@ -797,9 +808,14 @@ export async function reconcileAll() {
         if (cloudTs >= localTs) await del(rec.id, S[name]); // tombstone plus récent → supprimer localement
         else queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → réhabiliter
       } else if (cloudTs > localTs) {
-        await set(rec.id, cloud.data, S[name]); // cloud plus récent → adopter
+        // v1.2 : flashcard en apprentissage des deux côtés → la progression la plus avancée gagne
+        const fus = name === 'questions' ? fusionApprentissage(cloud.data, rec) : null;
+        if (fus) await ecrireFusion(name, fus);
+        else await set(rec.id, cloud.data, S[name]); // cloud plus récent → adopter
       } else if (localTs > cloudTs) {
-        queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → pousser
+        const fus = name === 'questions' ? fusionApprentissage(rec, cloud.data) : null;
+        if (fus) await ecrireFusion(name, fus);
+        else queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → pousser
       }
     }
 

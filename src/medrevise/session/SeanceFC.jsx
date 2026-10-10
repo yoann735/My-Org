@@ -37,7 +37,7 @@ import { advanceQuestion, QUALITY, todayISO } from '../lib/sm2.js';
 import { index, isFicheScheduled, nextDate } from '../lib/planning.js';
 import {
   planDuJour, introduire, presenter, repondre, apresNotationJ, entrelacer, reinserer, DISTANCE,
-  estFlashcardJ, etatFC, reglagesFC, sortir, VERSION_MESURES,
+  estFlashcardJ, etatFC, reglagesFC, sortir, VERSION_MESURES, reprendreSeance,
 } from '../lib/apprentissageFC.js';
 
 export const CLE_SEANCE = 'seanceFC';
@@ -50,11 +50,29 @@ export function flashcardsPlanifiees(db) {
   return (db.questions || []).filter((q) => estFlashcardJ(q) && isFicheScheduled(db, ix.fById[q.ficheId], ix));
 }
 
-/** séance du jour encore en cours (reprise) — null sinon */
-export function seanceEnCours(etat, cartesParId, today = todayISO()) {
+/** plan du jour calculé sur un jeu de cartes donné (`db` fournit sources / matières / fiches :
+   la pause d'un cours s'applique) — sert à la reprise, où la séance a ses propres cartes à jour. */
+export function planSurCartes(db, cartesParId, reglages, today = todayISO()) {
+  const ix = index(db);
+  const cartes = Object.values(cartesParId).filter((q) => estFlashcardJ(q) && isFicheScheduled(db, ix.fById[q.ficheId], ix));
+  return { plan: planDuJour(cartes, reglages, today, nextDate), coursDe: (id) => (cartesParId[id] || {}).ficheId };
+}
+
+/** séance du jour encore en cours (reprise) — null sinon. v1.2 : avec `db`, les restantes sont
+   celles de la séance REMISE D'ACCORD avec le plan du jour (lib/apprentissageFC.js reprendreSeance),
+   donc les mêmes nombres que le plan — plus de compteur figé à l'ouverture de la séance. */
+export function seanceEnCours(etat, cartesParId, today = todayISO(), db = null, reglages = null) {
   if (!etat || etat.date !== today || etat.phase === 'fin') return null;
-  const revRestantes = (etat.revisions || []).slice(etat.revIdx || 0).filter((id) => cartesParId[id]).length;
-  const appRestantes = (etat.file || []).filter((id) => cartesParId[id] && etatFC(cartesParId[id], today) === 'learning').length;
+  let revRestantes, appRestantes;
+  if (db) {
+    const { plan } = planSurCartes(db, cartesParId, reglages, today);
+    const e = reprendreSeance(etat, plan, () => '', () => 0).etat;
+    revRestantes = e.revisions.length - e.revIdx;
+    appRestantes = e.file.length;
+  } else {
+    revRestantes = (etat.revisions || []).slice(etat.revIdx || 0).filter((id) => cartesParId[id]).length;
+    appRestantes = (etat.file || []).filter((id) => cartesParId[id] && etatFC(cartesParId[id], today) === 'learning').length;
+  }
   const restantes = revRestantes + appRestantes;
   return restantes > 0 ? { restantes, revRestantes, appRestantes } : null;
 }
@@ -118,16 +136,55 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false, bloc: blocPro
     return () => { document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pagehide', sauver); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ---- REPRISE v1.2 : remettre la séance d'accord avec le plan du jour ----
+     Écritures d'abord (introduction des nouvelles, sortie des cartes déjà au critère : les mêmes
+     qu'une séance neuve), puis calcul pur sur l'état COURANT (etatRef) — une réponse donnée
+     pendant les écritures n'est donc jamais écrasée. */
+  const fusionnerCartes = (maj) => {
+    const c = { ...cartesRef.current, ...Object.fromEntries(maj.map((q) => [q.id, q])) };
+    cartesRef.current = c; setCartes(c);
+  };
+  const remettreDAccord = async (base = null) => {
+    const { plan } = planSurCartes(ctx.db, cartesRef.current, ctx.reglagesFC, today);
+    if (plan.aSortir.length) fusionnerCartes(await putMany('questions', plan.aSortir.map((q) => sortir(q, today))));
+    if (plan.nouvelles.length) fusionnerCartes(await putMany('questions', plan.nouvelles.map((q) => introduire(q, reglages, today))));
+    const { plan: apres, coursDe } = planSurCartes(ctx.db, cartesRef.current, ctx.reglagesFC, today);
+    return reprendreSeance(base || tick() || etatRef.current, apres, coursDe).etat;
+  };
+  // fin de synchro / retour d'arrière-plan (forceSync → reload → nouveau ctx.db) : cartes
+  // rafraîchies (la version la plus récente gagne : la séance a pu écrire depuis le rechargement ;
+  // une carte absente a été supprimée), puis séance remise d'accord avec le plan du jour.
+  const premierDb = useRef(true);
+  const monte = useRef(true);
+  // remis à vrai dans le corps : le mode strict de React (dev) démonte/remonte une fois au montage
+  useEffect(() => { monte.current = true; return () => { monte.current = false; }; }, []);
+  useEffect(() => {
+    if (premierDb.current) { premierDb.current = false; return; }
+    const avant = etatRef.current;
+    if (!avant || avant.phase === 'fin') return;
+    (async () => {
+      const prec = cartesRef.current;
+      const frais = {};
+      (ctx.db.questions || []).forEach((q) => { const p = prec[q.id]; frais[q.id] = p && (p.updatedAt || '') > (q.updatedAt || '') ? p : q; });
+      cartesRef.current = frais; setCartes(frais);
+      const e = await remettreDAccord();
+      if (!monte.current) return;
+      const vue = (x) => (x.phase === 'revisions' ? x.revisions[x.revIdx] : x.phase === 'apprendre' ? x.file[0] : null);
+      if (vue(e) !== vue(etatRef.current)) setRetournee(false);
+      await ecrire(e);
+    })();
+  }, [ctx.db]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* ---- chargement : reprise du jour, ou nouvelle séance ---- */
   useEffect(() => {
     let vivant = true;
     (async () => {
       const sauve = await getMeta(CLE_SEANCE);
-      if (seanceEnCours(sauve, cartesRef.current, today)) {
-        // reprise : les cartes disparues ou déjà sorties ailleurs (autre appareil) sont retirées
-        const c = cartesRef.current;
-        const e = { ...sauve, file: (sauve.file || []).filter((id) => c[id] && etatFC(c[id], today) === 'learning') };
-        if ((e.revisions || []).slice(e.revIdx).filter((id) => c[id]).length === 0 && e.phase === 'revisions') e.phase = e.file.length ? 'apprendre' : 'fin';
+      if (seanceEnCours(sauve, cartesRef.current, today, ctx.db, ctx.reglagesFC)) {
+        // reprise (v1.2) : séance remise d'accord avec le plan du jour — cartes arrivées depuis
+        // ajoutées en fin de file, cartes supprimées ou sorties ailleurs retirées
+        const e = await remettreDAccord(sauve);
+        if (!vivant) return;
         e.bloc = bloc;
         // reprise : on entre par le bloc demandé (« Reprendre » = là où l'on s'était arrêté)
         if (bloc !== 'tout' || e.phase === 'pause-bloc' || e.phase === 'transition') e.phase = bloc === 'tout' ? phaseDepart(e, e.phase === 'transition' ? 'apprendre' : 'tout') : phaseDepart(e, bloc);

@@ -215,6 +215,90 @@ export function reinserer(file, id, plage, coursDe, rand = Math.random) {
 }
 
 /* ============================================================
+   REPRISE D'UNE SÉANCE COMMENCÉE (v1.2, 10/10/2026 — docs/diagnostic-divergence-apprentissage.md).
+   Avant : la reprise ne faisait que FILTRER la file sauvegardée (meta local `seanceFC`). Une carte
+   entrée dans le plan du jour après l'ouverture de la séance (créée ensuite, ou arrivée d'un autre
+   appareil) n'y entrait jamais → compteur figé (62 au lieu de 77).
+   Maintenant, à chaque reprise (ouverture, retour d'arrière-plan, fin de synchro), la séance est
+   remise d'accord avec le plan du jour (pur, mêmes règles que planDuJour) :
+     - révisions : déjà faites intactes ; restantes = encore échues (une carte notée ou supprimée
+       ailleurs disparaît) ; les nouvelles échues s'ajoutent en fin, cours entrelacés ;
+     - apprentissage : la file garde son ordre ; en sortent les cartes supprimées, sorties ailleurs
+       (passées en révision) ou qui ne sont plus au plan du jour (fiche mise en pause) ; les cartes
+       du plan absentes s'ajoutent en FIN de file (en cours d'abord, puis nouvelles), cours entrelacés.
+   Jamais de doublon (ensembles). Les compteurs restants = ceux du plan du jour.
+   `aIntroduire` / `aSortir` : écritures à faire par l'appelant (les mêmes qu'une séance neuve).
+   ============================================================ */
+export function reprendreSeance(etat, plan, coursDe = () => '', rand = Math.random) {
+  const uniques = (l) => [...new Set(l || [])];
+  // révisions
+  const faites = uniques((etat.revisions || []).slice(0, etat.revIdx || 0));
+  const dejaFaites = new Set(faites);
+  const restantesAvant = uniques((etat.revisions || []).slice(etat.revIdx || 0)).filter((id) => !dejaFaites.has(id));
+  const echues = new Set(plan.revisions.map((q) => q.id));
+  const restantes = restantesAvant.filter((id) => echues.has(id));
+  const connues = new Set([...faites, ...restantesAvant]);
+  const ajoutsRev = entrelacer(plan.revisions.map((q) => q.id).filter((id) => !connues.has(id)), coursDe, rand);
+  const revisions = [...faites, ...restantes, ...ajoutsRev];
+  const revIdx = faites.length;
+  // apprentissage
+  const droit = new Set([...plan.enCours, ...plan.nouvelles].map((q) => q.id));
+  const fileAvant = uniques(etat.file);
+  const garde = fileAvant.filter((id) => droit.has(id));
+  const dans = new Set(garde);
+  const ajEnCours = plan.enCours.map((q) => q.id).filter((id) => !dans.has(id));
+  const ajNouv = plan.nouvelles.map((q) => q.id).filter((id) => !dans.has(id));
+  const ajouts = [...entrelacer(ajEnCours, coursDe, rand), ...entrelacer(ajNouv, coursDe, rand)];
+  const file = [...garde, ...ajouts];
+  const retireesApp = fileAvant.length - garde.length;
+  // phase : un bloc vidé passe la main (mêmes règles que la séance)
+  const rR = revisions.length - revIdx, rA = file.length;
+  let phase = etat.phase;
+  if (phase === 'revisions' && !rR) phase = rA ? (etat.bloc === 'revisions' ? 'pause-bloc' : 'apprendre') : 'fin';
+  else if (phase === 'apprendre' && !rA) phase = rR ? 'pause-bloc' : 'fin';
+  else if (phase === 'pause-bloc' && !rR && !rA) phase = 'fin';
+  return {
+    etat: {
+      ...etat, revisions, revIdx, file, phase,
+      nApprendre: Math.max(file.length, (etat.nApprendre || 0) - retireesApp + ajouts.length),
+      nNouvelles: (etat.nNouvelles || 0) + ajNouv.length,
+    },
+    aIntroduire: plan.nouvelles,
+    aSortir: plan.aSortir,
+    ajouts: { revisions: ajoutsRev.length, apprendre: ajouts.length },
+    retirees: { revisions: restantesAvant.length - restantes.length, apprendre: retireesApp },
+  };
+}
+
+/* ============================================================
+   FUSION DE DEUX VERSIONS D'UNE CARTE (v1.2) — séances en parallèle sur deux appareils.
+   Le last-write-wins garde la version la plus récente ; pour l'apprentissage, la progression la
+   plus avancée doit gagner, jamais la plus faible :
+     - même cycle d'apprentissage (même `learningIntroducedOn`) des deux côtés → streak le plus
+       élevé, « présentée » si elle l'a été d'un côté ;
+     - sortie d'un côté (révision, même cycle, aucune notation J depuis) et cycle encore ouvert de
+       l'autre → la sortie gagne.
+   `gagnant` = version retenue par le LWW, `perdant` = l'autre. Renvoie la version fusionnée, ou
+   null si le gagnant n'a rien à recevoir (cas général : aucune écriture).
+   ============================================================ */
+export function fusionApprentissage(gagnant, perdant) {
+  const g = gagnant, p = perdant;
+  if (!estFlashcardJ(g) || !estFlashcardJ(p) || g.id !== p.id) return null;
+  if (!g.learningIntroducedOn || g.learningIntroducedOn !== p.learningIntroducedOn) return null;
+  const nbJ = (q) => (q.historique || []).length;
+  if (g.learnState === 'learning' && p.learnState === 'learning') {
+    const streak = Math.max(g.learningStreak || 0, p.learningStreak || 0);
+    const presentee = !!(g.learningPresented || p.learningPresented);
+    if (streak === (g.learningStreak || 0) && presentee === !!g.learningPresented) return null;
+    return { ...g, learningStreak: streak, learningPresented: presentee };
+  }
+  if (g.learnState === 'learning' && p.learnState === 'review' && p.learningDoneOn && nbJ(g) === nbJ(p)) {
+    return { ...p };
+  }
+  return null;
+}
+
+/* ============================================================
    TEMPS : estimation, recalibrée sur les séances réelles
    ============================================================ */
 export function estimationMs(nRevisions, nApprendre, mesures) {

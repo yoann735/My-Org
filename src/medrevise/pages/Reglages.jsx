@@ -8,6 +8,7 @@ import { Card, EdTop, Switch, matiereMeta, syncStatusLabel, SyncIndicator } from
 import { isClassicUI, setClassicUI } from '../../shared/uiMode.js';
 import { wipeAll, getMeta } from '../lib/storage.js';
 import { exportBackup, formatOctets } from '../lib/backupExport.js';
+import { BoutonDiagnostic } from '../components/BoutonDiagnostic.jsx';
 import { CarteCredits } from '../transcription/Credits.jsx';
 import { CarteOcrReglages } from '../ocr/PanneauOcr.jsx';
 import { reglagesFC, BORNES_FC } from '../lib/apprentissageFC.js';
@@ -411,6 +412,8 @@ export function Reglages({ ctx }) {
               appareils (voir lib/syncStatus.js). Recalculee apres chaque synchro
               forcee via syncTick. */}
           <SyncIndicator refreshKey={syncTick} />
+          {/* v1.2 : diagnostic lecture seule (cartes, séance en cours, empreinte, fuseau) */}
+          <BoutonDiagnostic />
         </Card>
       </div>
     </div>

@@ -13,6 +13,7 @@ import { todayISO } from '../lib/sm2.js';
 import { matiereMeta, syncStatusLabel, DateActionModal, ConfirmModal, SyncIndicator } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { exportBackup } from '../lib/backupExport.js';
+import { BoutonDiagnostic } from '../components/BoutonDiagnostic.jsx';
 import { CarteDessin } from './CarteDessin.jsx';
 import { SeanceAujourdhui } from '../components/SeanceAujourdhui.jsx';
 
@@ -275,6 +276,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
             {/* MEME composant que Reglages desktop : l'empreinte affichée ici doit
                 être identique à celle de l'ordi quand les deux sont à jour. */}
             <SyncIndicator compact refreshKey={syncTick} />
+            <BoutonDiagnostic mobile />
           </div>
         </div>
 
