@@ -242,3 +242,14 @@
   font-size: 9.5px; font-weight: 700; letter-spacing: .02em; pointer-events: none;
   background: color-mix(in srgb, var(--accent) 22%, var(--card)); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .note-box .nb-version.orig { background: var(--card); color: var(--text-2); border-color: var(--border); }
+
+/* ---- EXPORT SPÉCIAL IA (10/10 soir, pdf/ExportIA.jsx) : aperçu plein écran du visuel avec repères ---- */
+.eia-apercu { position: fixed; inset: 0; z-index: 450; display: flex; flex-direction: column; background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(4px); animation: menu-entree .15s ease-out both; }
+.eia-tete { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--card); flex-wrap: wrap; }
+.eia-legende { font-size: 12px; color: var(--text-2); }
+.eia-pages { flex: 1; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 18px 16px 40px; }
+.eia-page { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.eia-page img { width: min(900px, 100%); height: auto; background: #fff; border-radius: 4px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
+.eia-page figcaption { font-size: 11.5px; color: var(--text-2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+@media (prefers-reduced-motion: reduce) { .eia-apercu { animation: none; } }

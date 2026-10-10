@@ -103,7 +103,10 @@ export function lireImport(brut) {
   const boxes = [];
   let invalides = 0;
   for (const e of liste) {
-    if (e && typeof e.id === 'string' && typeof e.text === 'string') boxes.push({ id: e.id, text: e.text });
+    // (10/10 soir) l'entrée peut désigner sa boîte par `id` OU par `ref` (repère de l'export spécial IA)
+    const id = e && typeof e.id === 'string' && e.id.trim() ? e.id.trim() : null;
+    const ref = e && typeof e.ref === 'string' && e.ref.trim() ? e.ref.trim() : null;
+    if (e && (id || ref) && typeof e.text === 'string') boxes.push({ id, ref, text: e.text });
     else invalides++;
   }
   return { boxes, invalides };
@@ -116,11 +119,21 @@ const memeTexte = (x, y) => String(x).replace(/\r\n?/g, '\n').replace(/\s+$/, ''
 /** Plan d'import (sans rien écrire) : pour chaque entrée, la boîte retrouvée par id reçoit
     le texte en version IA (affichée). @returns { maj: [{ avant, apres }], inconnus: [id], inchanges, doublons } */
 export function planImport(boxes, edits) {
-  const parId = new Map((edits || []).filter(estBoiteTexte).map((a) => [a.id, a]));
+  const liste = (edits || []).filter(estBoiteTexte);
+  const parId = new Map(liste.map((a) => [a.id, a]));
   const vus = new Set();
-  const maj = [], inconnus = [];
+  const maj = [], inconnus = [], ambigus = [];
   let inchanges = 0, doublons = 0;
-  for (const { id, text } of boxes || []) {
+  for (const entree of boxes || []) {
+    const { text } = entree;
+    let id = entree.id;
+    // id inconnu ou absent : la `ref` (repère court) est résolue en id ; plusieurs boîtes possibles → ignorée
+    if ((!id || !parId.has(id)) && entree.ref) {
+      const r = resoudreRef(entree.ref, liste);
+      if (r.ambigu) { ambigus.push(entree.ref); continue; }
+      if (r.id) id = r.id;
+    }
+    if (!id) { inconnus.push(entree.ref || '?'); continue; }
     if (vus.has(id)) { doublons++; continue; }
     vus.add(id);
     const a = parId.get(id);
@@ -128,8 +141,68 @@ export function planImport(boxes, edits) {
     if (memeTexte(text, texteDeReference(a))) { inchanges++; continue; }
     maj.push({ avant: a, apres: avecTexteAlt(a, text) });
   }
-  return { maj, inconnus, inchanges, doublons };
+  return { maj, inconnus, inchanges, doublons, ambigus };
 }
+
+/* ---- REPÈRES COURTS (export spécial IA, 10/10 soir) ----
+   Un repère = « # » + la fin de l'id (lettres et chiffres seulement), 3 caractères au
+   moins, allongée jusqu'à être unique dans le cours. Dérivé de l'id (attribué à la
+   création, jamais recalculé) : il ne change pas tant qu'aucune boîte ne vient le
+   rendre ambigu. À l'import, une ref est résolue par fin d'id. */
+const normaliser = (s) => String(s || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+export function refsCourtes(boites) {
+  const ids = (boites || []).map((b) => b.id);
+  const norm = new Map(ids.map((id) => [id, normaliser(id)]));
+  const refs = new Map();
+  for (const id of ids) {
+    const n = norm.get(id);
+    let k = Math.min(3, n.length);
+    while (k < n.length && ids.some((o) => o !== id && norm.get(o).endsWith(n.slice(-k)))) k++;
+    refs.set(id, '#' + n.slice(-k));
+  }
+  return refs;
+}
+/** ref → { id } | { ambigu: true } | {} (inconnue) */
+export function resoudreRef(ref, boites) {
+  const r = normaliser(ref);
+  if (!r) return {};
+  const exact = (boites || []).filter((b) => normaliser(b.id) === r);
+  if (exact.length === 1) return { id: exact[0].id };
+  const c = (boites || []).filter((b) => normaliser(b.id).endsWith(r));
+  if (c.length === 1) return { id: c[0].id };
+  return c.length > 1 ? { ambigu: true } : {};
+}
+
+export const INSTRUCTIONS_IA = 'Corrige et raccourcis le texte de chaque boîte (champ "text"). Rends EXACTEMENT ce même JSON : '
+  + 'mêmes "id" et "ref", même ordre, seuls les "text" modifiés, rien d\'autre (ni champ ajouté, ni commentaire). '
+  + 'Sur le visuel, chaque boîte porte son repère (ref) dans un coin ; la flèche d\'une boîte désigne la zone de l\'image du cours dont parle son texte.';
+
+/** export spécial IA : { course, page?, instructions, boxes: [{ id, ref, text }] } */
+export function construireExportIA({ cours, page = null, boites, refs }) {
+  return {
+    course: cours || '',
+    ...(page != null ? { page } : {}),
+    instructions: INSTRUCTIONS_IA,
+    boxes: (boites || []).map((b) => ({ id: b.id, ref: refs.get(b.id), text: texteDeContenu(b.content) })),
+  };
+}
+
+export const LISEZMOI_IA = `EXPORT SPÉCIAL IA — MedRevise
+
+Contenu
+- annotations.json : { course, page?, instructions, boxes: [ { id, ref, text } ] }
+- visuel.pdf et page-XX.png : la page du cours avec toutes ses annotations ; chaque boîte
+  porte son repère (ref, ex. #k3f) dans un coin, à l'intérieur de la boîte.
+
+Ce qu'il faut faire
+1. Lire chaque boîte sur le visuel : sa flèche désigne la zone de l'image concernée.
+2. Corriger / raccourcir le "text" de chaque boîte dans annotations.json.
+3. Rendre le MÊME JSON : mêmes "id" et "ref", seuls les "text" modifiés, rien d'autre.
+
+Réimport : MedRevise › Fichier › « Importer des textes d'annotations ». Seul le texte change ;
+le texte d'origine est conservé (bascule « IA / orig. » sur chaque boîte). Une entrée peut
+donner son "id" ou seulement son "ref".
+`;
 
 /** la boîte avec ce texte comme version IA, affichée. L'original est figé au PREMIER import
     (le texte affiché à ce moment-là, ou la version originale si la boîte en a déjà une). */
@@ -156,11 +229,12 @@ export function avecContenuEdite(a, json) {
 }
 
 /** résumé lisible d'un import */
-export function resumeImport({ maj, inconnus, inchanges, doublons }, invalides = 0) {
+export function resumeImport({ maj, inconnus, inchanges, doublons, ambigus = [] }, invalides = 0) {
   const n = maj.length;
   const parts = [`${n} boîte${n > 1 ? 's' : ''} mise${n > 1 ? 's' : ''} à jour`];
   if (inchanges) parts.push(`${inchanges} inchangée${inchanges > 1 ? 's' : ''}`);
   if (inconnus.length) parts.push(`${inconnus.length} id inconnu${inconnus.length > 1 ? 's' : ''} ignoré${inconnus.length > 1 ? 's' : ''}`);
+  if (ambigus.length) parts.push(`${ambigus.length} ref ambiguë${ambigus.length > 1 ? 's' : ''} ignorée${ambigus.length > 1 ? 's' : ''}`);
   if (doublons) parts.push(`${doublons} doublon${doublons > 1 ? 's' : ''} ignoré${doublons > 1 ? 's' : ''}`);
   if (invalides) parts.push(`${invalides} entrée${invalides > 1 ? 's' : ''} illisible${invalides > 1 ? 's' : ''}`);
   return parts.join(', ');

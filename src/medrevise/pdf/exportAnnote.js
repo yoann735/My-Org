@@ -133,9 +133,14 @@ async function embarquerImage(outDoc, blob) {
  * @param {object[]} annotations   enregistrements du store `annotations` du document
  * @returns {Promise<{ octets: Uint8Array, bilan: object }>}
  */
-export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations = []) {
+export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations = [], { reperes = null } = {}) {
   const outDoc = await PDFDocument.load(octetsPdf);
   const font = await outDoc.embedFont(StandardFonts.Helvetica);
+  /* EXPORT SPÉCIAL IA (10/10 soir) : `reperes` (Map id → « #k3f ») ajoute, et SEULEMENT
+     dans ce cas, une étiquette par boîte (voir poserRepere). Sans `reperes`, l'export
+     est exactement celui d'avant. */
+  const mono = reperes ? await outDoc.embedFont(StandardFonts.CourierBold) : null;
+  const etiquettes = [];
   const propre = nettoyeur(font);
   const par = separerParType([], annotations);
   const bilan = { pagesAjoutees: 0, images: 0, surlignages: 0, traits: 0, textes: 0, questions: 0, boites: 0, fleches: 0, blocs: 0, ignores: 0 };
@@ -289,6 +294,13 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const lignes = couperLignes(paras.map(propre), font, TAILLE_TEXTE, Math.max(20, t.width * W - 4));
     const lh = TAILLE_TEXTE * 1.3;
     lignes.forEach((l, i) => { if (l) page.drawText(l, { x: t.x * W + 2, y: H - t.y * H - 2 - TAILLE_TEXTE * 0.9 - i * lh, size: TAILLE_TEXTE, font, color: hexVersRgb(couleurHex(t.couleur, '#1F1F24')) }); });
+    if (reperes && reperes.has(t.id)) {
+      // cadre du texte libre (sans bordure visible) : l'étendue RÉELLE de son texte — le repère reste
+      // collé au texte, jamais sur la page autour
+      const larg = Math.max(...lignes.map((l) => font.widthOfTextAtSize(l, TAILLE_TEXTE)), 0);
+      const top = H - t.y * H, w = Math.max(20, Math.min(t.width * W, larg + 4)), h = 4 + Math.max(1, lignes.length) * lh;
+      poserRepere(page, t.id, { x: t.x * W, top, w, h, lignes: lignes.map((l, i) => ({ x: t.x * W + 2, top: top - 2 - i * lh, w: font.widthOfTextAtSize(l, TAILLE_TEXTE), h: lh, vide: !l.trim() })) });
+    }
     bilan.textes += 1;
   }
 
@@ -356,19 +368,68 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     if (!b.fond) page.drawRectangle({ x, y: top - h, width: w, height: h, color: fond, opacity: opaciteFondBoite(b.couleur), borderColor: rgb(0, 0, 0), borderOpacity: 0.28, borderWidth: 0.8 });
     else page.drawRectangle({ x, y: top - h, width: w, height: h, ...(b.fond === 'transparent' ? {} : { color: fond, opacity: b.fond === 'teinte' ? 0.15 : 0.92 }), borderColor: fond, borderWidth: 1 });
     lignes.forEach((l, i) => { if (l) page.drawText(l, { x: x + pad, y: top - pad - TAILLE_BOITE * 0.95 - i * lh, size: TAILLE_BOITE, font, color: encreBoite }); });
+    if (reperes && reperes.has(b.id)) poserRepere(page, b.id, { x, top, w, h, lignes: lignes.map((l, i) => ({ x: x + pad, top: top - pad - i * lh, w: font.widthOfTextAtSize(l, TAILLE_BOITE), h: lh, vide: !l.trim() })) });
     if (ancre) page.drawCircle({ x: ancre.x, y: ancre.y, size: 3.5, color: rgb(1, 1, 1), borderColor: coulFleche, borderWidth: 1.8 });
     autres.forEach((a) => page.drawCircle({ x: a.x, y: a.y, size: 3, color: rgb(1, 1, 1), borderColor: coulFleche, borderWidth: 1.5 }));
     bilan.boites += 1;
   }
 
+  if (reperes) {
+    const toutes = outDoc.getPages();
+    bilan.reperes = etiquettes.map((e) => ({ ...e, page: toutes.indexOf(e.pageObj), pageObj: undefined }));
+  }
   const octets = await outDoc.save();
   return { octets, bilan };
+
+  /* ÉTIQUETTE DE REPÈRE (export spécial IA) — règles :
+     - TOUJOURS à l'intérieur du cadre de la boîte (jamais sur l'image du cours, jamais dehors) ;
+     - coin haut droit par défaut, sinon le premier coin libre (bas droit, bas gauche, haut gauche),
+       « libre » = ne recouvre aucune ligne de texte : la boîte n'est ni agrandie ni décalée ;
+     - corps 10,5 → 8 (pas de 0,5) tant qu'aucun coin n'est libre ;
+     - à défaut, en 8 au coin haut droit, en superposition sur le texte de la boîte (et seulement lui).
+     Fond opaque sombre, texte blanc en Courier gras, liseré blanc fin : lisible sur toute couleur. */
+  function poserRepere(page, id, cadre) {
+    const ref = reperes.get(id);
+    const m = 1; // retrait depuis le bord intérieur du cadre
+    const rectsTexte = cadre.lignes.filter((l) => !l.vide).map((l) => ({ x0: l.x, x1: l.x + l.w, y1: l.top, y0: l.top - l.h }));
+    const touche = (r) => rectsTexte.some((t) => r.x0 < t.x1 && r.x1 > t.x0 && r.y0 < t.y1 && r.y1 > t.y0);
+    const geom = (taille, coin) => {
+      const lw = mono.widthOfTextAtSize(ref, taille) + 3, lh = taille * 0.78 + 3;
+      const droite = coin === 'hd' || coin === 'bd', haut = coin === 'hd' || coin === 'hg';
+      const x0 = droite ? cadre.x + cadre.w - m - lw : cadre.x + m;
+      const y1 = haut ? cadre.top - m : cadre.top - cadre.h + m + lh;
+      return { x0, x1: x0 + lw, y0: y1 - lh, y1, lw, lh, taille };
+    };
+    const dedans = (r) => r.x0 >= cadre.x + 0.5 && r.x1 <= cadre.x + cadre.w - 0.5 && r.y0 >= cadre.top - cadre.h + 0.5 && r.y1 <= cadre.top - 0.5;
+    let choix = null;
+    for (let taille = 10.5; taille >= 8 && !choix; taille -= 0.5) {
+      for (const coin of ['hd', 'bd', 'bg', 'hg']) {
+        const r = geom(taille, coin);
+        if (dedans(r) && !touche(r)) { choix = { ...r, coin, mode: 'marge' }; break; }
+      }
+    }
+    if (!choix) {
+      // superposition sur le texte de la boîte : au plus petit corps qui tient dans le cadre (8, ou moins
+      // si la boîte est plus étroite que l'étiquette — elle reste à l'intérieur)
+      // coin qui masque le MOINS de texte (haut droit à égalité)
+      const masque = (r) => rectsTexte.reduce((n, t) => n + Math.max(0, Math.min(r.x1, t.x1) - Math.max(r.x0, t.x0)) * Math.max(0, Math.min(r.y1, t.y1) - Math.max(r.y0, t.y0)), 0);
+      let taille = 8, r = geom(taille, 'hd');
+      while (!dedans(r) && taille > 5) { taille -= 0.5; r = geom(taille, 'hd'); }
+      let coin = 'hd', meilleur = masque(r);
+      for (const c of ['bd', 'bg', 'hg']) { const r2 = geom(taille, c); const m2 = masque(r2); if (dedans(r2) && m2 < meilleur - 0.01) { r = r2; coin = c; meilleur = m2; } }
+      choix = { ...r, coin, mode: 'superpose' };
+    }
+    page.drawRectangle({ x: choix.x0, y: choix.y0, width: choix.lw, height: choix.lh, color: rgb(0.11, 0.11, 0.14), borderColor: rgb(1, 1, 1), borderWidth: 0.5 });
+    page.drawText(ref, { x: choix.x0 + 1.5, y: choix.y0 + 1.5 + choix.taille * 0.02, size: choix.taille, font: mono, color: rgb(1, 1, 1) });
+    etiquettes.push({ id, ref, pageObj: page, taille: choix.taille, coin: choix.coin, mode: choix.mode,
+      x: choix.x0, y: choix.y0, w: choix.lw, h: choix.lh, cadre: { x: cadre.x, y: cadre.top - cadre.h, w: cadre.w, h: cadre.h } });
+  }
 }
 
 /** Raccourci pour le lecteur : lit le blob du PDF (lecture seule) et exporte. */
-export async function exporterDepuisBlob(pdfId, highlights, annotations) {
+export async function exporterDepuisBlob(pdfId, highlights, annotations, options = {}) {
   const blob = await getBlob(pdfId);
   if (!blob) throw new Error('PDF introuvable sur cet appareil.');
   // arrayBuffer() rend une COPIE : pdf-lib travaille dessus, le blob ne bouge pas
-  return exporterPdfAnnote(await blob.arrayBuffer(), highlights, annotations);
+  return exporterPdfAnnote(await blob.arrayBuffer(), highlights, annotations, options);
 }

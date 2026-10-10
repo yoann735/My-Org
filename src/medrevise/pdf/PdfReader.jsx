@@ -108,7 +108,9 @@ import { statsCouche } from '../ocr/couches.js';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { MenuFichier } from './MenuFichier.jsx';
 import { PanneauTextesAnnotations } from './TextesAnnotations.jsx';
-import { estBoiteTexte, aDeuxVersions, versionAffichee, boitesOrdonnees, construireExport, lireImport, planImport, resumeImport, basculerVersion, avecContenuEdite } from '../lib/textesAnnotations.js';
+import { PanneauExportIA } from './ExportIA.jsx';
+import { preparerExportIA } from './exportIA.js';
+import { refsCourtes, construireExportIA, estBoiteTexte, aDeuxVersions, versionAffichee, boitesOrdonnees, construireExport, lireImport, planImport, resumeImport, basculerVersion, avecContenuEdite } from '../lib/textesAnnotations.js';
 import { Tableau } from '../tableau/Tableau.jsx';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
 const dansLeTableau = (el) => !!(el && el.closest && el.closest('.tb'));
@@ -1338,6 +1340,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     { label: 'Exporter les textes d’annotations…', icon: 'upload', onClick: () => setPanneauTextes('exporter') },
     { label: 'Importer des textes d’annotations…', icon: 'copy', onClick: () => setPanneauTextes('importer') },
     edits.some((a) => estBoiteTexte(a) && aDeuxVersions(a)) && { label: 'Version des textes (IA / originale)…', icon: 'refresh', onClick: () => setPanneauTextes('affichage') },
+    // (10/10 soir) visuel avec repères + JSON pour une IA — PDF importé seulement (le visuel est le PDF annoté)
+    !modeDoc && !!(fiche && fiche.pdfId) && { label: 'Export spécial IA…', icon: 'layers', onClick: () => setPanneauExportIA(true) },
   ] };
   const groupesFichier = modeDoc ? [
     { items: [
@@ -2529,6 +2533,18 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      Toutes les écritures passent par l'historique (une entrée par import / par bascule) et ne
      changent QUE le texte : géométrie, couleur, flèches, page et ordre sont recopiés tels quels. */
   const [panneauTextes, setPanneauTextes] = useState(null); // null | 'exporter' | 'importer' | 'affichage'
+  /* EXPORT SPÉCIAL IA (10/10 soir, pdf/exportIA.js) : même source que l'export PDF annoté,
+     texte en cours de frappe compris ; rien n'est écrit */
+  const [panneauExportIA, setPanneauExportIA] = useState(false);
+  const annotationsFraiches = () => (editsRef.current || []).map((a) => (a.id === activeEditIdRef.current && editLastJson.current ? avecContenuEdite(a, editLastJson.current) : a));
+  const ordrePagesIA = () => pageSizes.map((p) => p.cle);
+  const preparerIA = (portee) => preparerExportIA({ titre: (fiche && (fiche.titre || fiche.nom)) || '', pdfId: fiche.pdfId, highlights,
+    annotations: annotationsFraiches(), ordrePages: ordrePagesIA(), portee, pageIndex: pageCourante - 1 });
+  const jsonIA = (portee) => {
+    const toutes = boitesOrdonnees(annotationsFraiches(), ordrePagesIA());
+    const cles = portee === 'page' ? [ordrePagesIA()[pageCourante - 1]] : ordrePagesIA();
+    return construireExportIA({ cours: (fiche && (fiche.titre || fiche.nom)) || '', page: portee === 'page' ? pageCourante : null, boites: boitesOrdonnees(annotationsFraiches(), cles), refs: refsCourtes(toutes) });
+  };
   // annotations à jour, texte en cours de frappe compris ; la boîte ouverte est refermée
   // (son texte est enregistré dans la version affichée) avant toute réécriture
   const editsFraisFermes = () => {
@@ -2585,7 +2601,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     }
     return {
       ok: true, texte: resumeImport(plan, lu.invalides),
-      details: plan.inconnus.length ? `Id${plan.inconnus.length > 1 ? 's' : ''} ignoré${plan.inconnus.length > 1 ? 's' : ''} : ${plan.inconnus.join(', ')}` : null,
+      details: [plan.inconnus.length ? `Id${plan.inconnus.length > 1 ? 's' : ''} ignoré${plan.inconnus.length > 1 ? 's' : ''} : ${plan.inconnus.join(', ')}` : '',
+        plan.ambigus && plan.ambigus.length ? `Ref ambiguë${plan.ambigus.length > 1 ? 's' : ''} : ${plan.ambigus.join(', ')}` : ''].filter(Boolean).join(' · ') || null,
     };
   };
   const basculerTextes = async (portee, version) => {
@@ -3150,6 +3167,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           pdfPret={!!pageSizes.length} onPoser={(d) => poserDessin(d)} onFermer={() => setArrivee(null)} />
       )}
 
+      {panneauExportIA && (
+        <PanneauExportIA pageCourante={pageCourante} nbPages={nbPagesAffichees} compter={(portee) => compterTextes(portee).boites}
+          preparer={preparerIA} jsonDe={jsonIA} onFermer={() => setPanneauExportIA(false)} />
+      )}
       {panneauTextes && (
         <PanneauTextesAnnotations volet={panneauTextes} pageCourante={pageCourante} nbPages={nbPagesAffichees}
           compter={compterTextes} onExporter={exporterTextes} onImporter={importerTextes} onBasculer={basculerTextes}
