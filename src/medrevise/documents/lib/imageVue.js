@@ -19,6 +19,7 @@
 import { NodeSelection } from '@tiptap/pm/state';
 import { ocrImage } from '../../ocr/ocrImage.js';
 import { genId } from '../../lib/storage.js';
+import { planMots } from '../../lib/resurlignage.js';
 import { gesteDocument } from './paginationExt.js';
 import { hexPalette, COULEUR_DEFAUT } from '../../lib/palette.js';
 
@@ -295,18 +296,15 @@ export function vueImageDoc({ node, getPos, editor }) {
     const ids = motsSelectionnes();
     if (!ids.length) return;
     const couleur = couleurCourante();
-    const choisis = new Set(ids);
+    // (10/10) à la portion près, une seule couche (lib/resurlignage.js#planMots)
     const notions = courant.attrs.notions || [];
-    const touchees = notions.filter((n) => (n.mots || []).some((i) => choisis.has(i)));
-    const dejaPris = new Set(touchees.flatMap((n) => n.mots || []));
-    const libres = ids.filter((i) => !dejaPris.has(i));
-    let suite;
-    if (!libres.length && touchees.length && touchees.every((n) => (n.couleur || 'jaune') === couleur)) {
-      suite = notions.filter((n) => !touchees.includes(n)); // même couleur, rien de neuf : on retire
-    } else {
-      suite = notions.map((n) => (touchees.includes(n) ? { ...n, couleur } : n));
-      if (libres.length) suite.push({ id: genId('nd'), couleur, mots: libres });
-    }
+    const plan = planMots(ids, notions, couleur);
+    const retirees = new Set([...plan.supprimer, ...plan.garder.map((g) => g.id)]);
+    const suite = [
+      ...notions.filter((n) => !retirees.has(n.id)),
+      ...plan.garder.map((g) => ({ ...notions.find((n) => n.id === g.id), mots: g.mots })),
+      ...plan.creer.map((c) => ({ id: genId('nd'), couleur: c.couleur, mots: c.mots })),
+    ];
     changer({ notions: suite });
     window.getSelection().removeAllRanges();
   };

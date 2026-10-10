@@ -25,6 +25,7 @@ import { COULEUR_DEFAUT } from '../lib/palette.js';
 import { putBlob, genId } from '../lib/storage.js';
 import { NOTES_EXTENSIONS, EMPTY_DOC, hydrateDoc, dehydrateDoc } from '../documents/lib/richtext.js';
 import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
+import { surlignerNotions } from '../documents/lib/notionMarks.js';
 import { PaginationDocument, SautDePage } from '../documents/lib/paginationExt.js';
 import { surlignerRecherche } from './PageTexte.jsx';
 
@@ -306,30 +307,12 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
     const ed = editorRef.current;
     if (!ed || ed.state.selection.empty) return;
     const couleur = rappels.current.couleurSurligneur || 'jaune';
+    // (10/10) à la portion près, une seule couche (documents/lib/notionMarks.js)
     const { from, to } = ed.state.selection;
-    const ids = new Map();
-    let libre = false;
-    ed.state.doc.nodesBetween(from, to, (n, pos) => {
-      if (!n.isText) return;
-      const a = Math.max(from, pos), b = Math.min(to, pos + n.nodeSize);
-      if (b <= a) return;
-      const m = n.marks.find((x) => x.type.name === 'notion' && x.attrs && x.attrs.id);
-      if (m) ids.set(m.attrs.id, m.attrs.couleur || 'jaune');
-      else if (/[\p{L}\p{N}]/u.test(n.text.slice(a - pos, b - pos))) libre = true;
-    });
-    if (!ids.size || libre) { marquerNotion(couleur); return; }
-    const retirer = [...ids.values()].every((c) => c === couleur);
-    const type = ed.schema.marks.notion;
-    const tr = ed.state.tr;
-    ed.state.doc.descendants((n, pos) => {
-      if (!n.isText) return;
-      const m = n.marks.find((x) => x.type === type && ids.has(x.attrs.id));
-      if (!m) return;
-      tr.removeMark(pos, pos + n.nodeSize, type);
-      if (!retirer) tr.addMark(pos, pos + n.nodeSize, type.create({ ...m.attrs, couleur }));
-    });
-    tr.setSelection(TextSelection.create(tr.doc, to));
-    ed.view.dispatch(tr);
+    const r = surlignerNotions(ed.state, from, to, couleur, () => genId('nd'));
+    if (!r) return;
+    ed.view.dispatch(r.tr);
+    r.crees.forEach((n) => { if (n.texte) rappels.current.onNotion(n); });
     setBulle(null);
   };
 

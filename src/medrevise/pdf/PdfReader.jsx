@@ -61,6 +61,7 @@ import { useJournalAnnuler, raccourciAnnuler } from '../lib/journalAnnuler.js';
 import { texteOcr } from '../ocr/ocrImage.js';
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cmdGroupe, cibleEditable } from '../lib/annotHistory.js';
 import { imageDuPressePapier } from '../lib/collerImage.js';
+import { planMots } from '../lib/resurlignage.js';
 import { RICH_EXTENSIONS } from '../documents/lib/richtext.js';
 import { AddItemModal, PasteJsonForm } from '../components/AddItemForm.jsx';
 import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
@@ -1069,6 +1070,23 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const commitHighlightAvec = async (p, couleur) => {
     setPending(null);
     window.getSelection && window.getSelection().removeAllRanges();
+    /* (10/10) À LA PORTION PRÈS (pdfShared#planSurlignage, calculé par la page) : même couleur
+       sur du déjà surligné → retiré sur la portion repassée (scindé au besoin) ; autre couleur →
+       la portion change de couleur, une seule couche ; même couleur voisine → fusion. */
+    const plan = p.calculer ? p.calculer(couleur) : null;
+    if (plan) {
+      const parId = (id) => highlights.find((h) => h.id === id);
+      const anciens = plan.sansAncre.map(parId).filter(Boolean);
+      const retrait = plan.retrait && anciens.every((h) => h.couleur === couleur);
+      const cmds = [
+        ...[...plan.supprimer, ...plan.perdus].map(parId).filter(Boolean).map((h) => cmdSupprimer('highlights', h, 'Surlignage retiré')),
+        ...plan.garder.map((g) => { const h = parId(g.id); return h && cmdModifier('highlights', h, { ...h, anchor: g.anchor, texte: g.texte, rects: g.rects }, 'Surlignage ajusté'); }).filter(Boolean),
+        ...plan.creer.map((c) => cmdCreer('highlights', newHighlight({ ficheId, page: p.page, texte: c.texte, couleur: c.couleur, rects: c.rects, anchor: c.anchor }), 'Surlignage')),
+        ...anciens.map((h) => (retrait ? cmdSupprimer('highlights', h, 'Surlignage retiré') : h.couleur !== couleur ? cmdModifier('highlights', h, { ...h, couleur }, 'Couleur du surlignage') : null)).filter(Boolean),
+      ];
+      if (cmds.length) await hist.appliquer(cmdGroupe(plan.retrait ? 'Surlignage retiré' : 'Surlignage', cmds));
+      return;
+    }
     const morceaux = Array.isArray(p.segments) ? p.segments : [{ texte: p.texte, rects: p.rects, anchor: p.anchor }];
     const touches = (p.touches || []).map((id) => highlights.find((h) => h.id === id)).filter(Boolean);
     if (!morceaux.length && touches.length && touches.every((h) => h.couleur === couleur)) {
@@ -1091,6 +1109,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      Même règle que sur le texte : même couleur sans mot neuf → retiré, sinon recoloré + posé. */
   // `ajouter` (bulle « Notion ») : ne fait que poser les mots encore libres — jamais de retrait
   const surlignerMotsImage = async (p, couleur, { ajouter = false } = {}) => {
+    /* (10/10) à la portion près, une seule couche (lib/resurlignage.js#planMots) */
+    if (!ajouter && p.texteDe && p.rectsDe) {
+      const siens = highlights.filter((h) => h.imageId === p.img.id);
+      const plan = planMots(p.mots, siens, couleur);
+      const parId = (id) => siens.find((h) => h.id === id);
+      const cmds = [
+        ...plan.supprimer.map(parId).filter(Boolean).map((h) => cmdSupprimer('highlights', h, 'Surlignage retiré')),
+        ...plan.garder.map((g) => { const h = parId(g.id); return h && cmdModifier('highlights', h, { ...h, mots: g.mots, texte: p.texteDe(g.mots), rects: p.rectsDe(g.mots) }, 'Surlignage ajusté'); }).filter(Boolean),
+        ...plan.creer.map((c) => cmdCreer('highlights', { ...newHighlight({ ficheId, page: p.page, texte: p.texteDe(c.mots), couleur: c.couleur, rects: p.rectsDe(c.mots) }), imageId: p.img.id, mots: c.mots }, 'Surlignage')),
+      ];
+      if (cmds.length) await hist.appliquer(cmdGroupe(plan.retrait ? 'Surlignage retiré' : 'Surlignage', cmds));
+      return;
+    }
     const choisis = new Set(p.mots);
     const touches = ajouter ? [] : highlights.filter((h) => h.imageId === p.img.id && (h.mots || []).some((i) => choisis.has(i)));
     const pris = new Set((ajouter ? highlights.filter((h) => h.imageId === p.img.id) : touches).flatMap((h) => h.mots || []));

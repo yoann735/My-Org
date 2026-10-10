@@ -33,7 +33,7 @@ import {
   couleurFoncee, opaciteFondBoite, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT,
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
-  soustraireAncres, partCouverte, surlignagesTouches, couleurHex,
+  soustraireAncres, partCouverte, surlignagesTouches, couleurHex, planSurlignage,
   lisserTrait, traitTouche, cheminLisse, suivreEnDouceur, modeDuTrait,
   EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, positionTexteProche,
   lisibleSurNoir, EMPTY_ARRAY, opaciteSurlignage,
@@ -634,7 +634,52 @@ export function PdfPageContent({
     }
     // surlignages que la sélection RECOUVRE (repasser dessus : retirer / recolorer, PdfReader)
     const touches = surlignagesTouches(anchor, rects, highlights, shownRects);
-    onCreateHighlight({ page: pageNum, texte, rects, anchor, segments, touches, x: last.right, y: last.bottom, fontSizeRel, fontFamily });
+    /* (10/10) repasser au surligneur, à la PORTION près (pdfShared#planSurlignage) : le plan
+       est calculé à la couleur choisie (tout de suite au surligneur, plus tard depuis la bulle) ;
+       chaque ancre résultante est remise en texte + rectangles sur CETTE couche de texte. */
+    const calculer = anchor ? (couleur) => {
+      const spans = [...container.querySelectorAll('span')];
+      const txt = (a) => { const r = rangeFromAnchor(container, a); return r ? r.toString() : ''; };
+      // blancs aux bords retirés (un morceau ne commence ni ne finit par une espace)
+      const rognerBlancs = (a) => {
+        let { start, end } = a;
+        const t = (i) => (spans[i] && spans[i].textContent) || '';
+        while ((start.item < end.item || start.char < end.char)) {
+          if (start.char >= t(start.item).length) { if (start.item >= end.item) break; start = { item: start.item + 1, char: 0 }; continue; }
+          if (!/\s/.test(t(start.item)[start.char])) break;
+          start = { item: start.item, char: start.char + 1 };
+        }
+        while ((end.item > start.item || end.char > start.char)) {
+          if (end.char <= 0) { if (end.item <= start.item) break; end = { item: end.item - 1, char: t(end.item - 1).length }; continue; }
+          if (!/\s/.test(t(end.item)[end.char - 1])) break;
+          end = { item: end.item, char: end.char - 1 };
+        }
+        return { v: 1, start, end };
+      };
+      const avecAncre = highlights.filter((h) => h.anchor && !h.imageId);
+      const plan = planSurlignage(anchor, avecAncre, couleur, {
+        aDuTexte: (a) => /[\p{L}\p{N}]/u.test(txt(a)),
+        blanc: (a) => !txt(a).trim(),
+      });
+      const materialiser = (a0) => {
+        const a = rognerBlancs(a0);
+        const r = rangeFromAnchor(container, a);
+        const t = r && cleanSelectedText(r.toString(), { inline: true });
+        const rs = r ? rectsFromRange(container, r) : [];
+        return t && rs.length ? { anchor: a, texte: t, rects: rs } : null;
+      };
+      return {
+        retrait: plan.retrait,
+        supprimer: plan.supprimer,
+        garder: plan.garder.map((g) => ({ id: g.id, ...materialiser(g.anchor) })).filter((g) => g.texte),
+        // un morceau devenu illisible est simplement abandonné (supprimé s'il remplaçait un surlignage)
+        perdus: plan.garder.filter((g) => !materialiser(g.anchor)).map((g) => g.id),
+        creer: plan.creer.map((c) => ({ couleur: c.couleur, depuis: c.depuis || null, ...materialiser(c.anchor) })).filter((c) => c.texte),
+        // anciens surlignages SANS ancre recouverts : règle d'avant (retirés ou recolorés en entier)
+        sansAncre: touches.filter((id) => { const h = highlights.find((x) => x.id === id); return h && !h.anchor && !h.imageId; }),
+      };
+    } : null;
+    onCreateHighlight({ page: pageNum, texte, rects, anchor, segments, touches, calculer, x: last.right, y: last.bottom, fontSizeRel, fontFamily });
   };
 
   // surlignage relié à la boîte en cours d'écriture : il s'entoure (le lien se voit)
@@ -1485,7 +1530,7 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
   };
   const rectsPage = (ids) => ids.map((i) => ocr.mots[i]).filter(Boolean).map((m) => ({ x: img.x + m.x * img.width, y: img.y + m.y * img.height, width: m.w * img.width, height: m.h * img.height }));
   const texteDe = (ids) => ids.map((i) => ocr.mots[i] && ocr.mots[i].t).filter(Boolean).join(' ');
-  const surligner = (ids, couleur, opts) => onSurligner({ img, page: img.page, mots: ids, texte: texteDe(ids), rects: rectsPage(ids) }, couleur, opts);
+  const surligner = (ids, couleur, opts) => onSurligner({ img, page: img.page, mots: ids, texte: texteDe(ids), rects: rectsPage(ids), texteDe, rectsDe: rectsPage }, couleur, opts);
   const appuiMots = (e) => {
     if (!motsVivants || (e.button && e.button !== 0) || !(e.target.classList && e.target.classList.contains('pi-mot'))) return;
     e.stopPropagation(); // pas de déplacement de l'image : on sélectionne son texte
@@ -1841,6 +1886,20 @@ export function EditToolbar({ editor, onReset, libre = false, couleur = null, on
 
   const active = (name, attrs) => editor.isActive(name, attrs);
   const run = (fn) => fn(editor.chain().focus()).run();
+  /* (10/10) surligneur de fond : la MÊME couleur sur un passage déjà entièrement de cette
+     couleur la retire (portion sélectionnée seulement) ; une autre couleur la remplace */
+  const fondPartout = (ed, hex) => {
+    const { from, to, empty } = ed.state.selection;
+    if (empty) return false;
+    let tout = true, du = false;
+    ed.state.doc.nodesBetween(from, to, (n) => {
+      if (!n.isText || !n.text.trim()) return;
+      du = true;
+      const m = n.marks.find((x) => x.type.name === 'textStyle');
+      if (!m || String(m.attrs.backgroundColor || '').toLowerCase() !== String(hex).toLowerCase()) tout = false;
+    });
+    return du && tout;
+  };
 
   /* CORRECTIF (défaut 2) : un `mousedown` sur un bouton de cette barre RETIRE le
      curseur de l'éditeur. `chain().focus()` le rendait bien, mais sur une sélection
@@ -1881,7 +1940,7 @@ export function EditToolbar({ editor, onReset, libre = false, couleur = null, on
         onCouleur={(c) => run((ch) => ch.setColor(couleurHex(c, '#1F1F24')))} />
       <BoutonCouleur titre="Surligneur de fond du texte sélectionné" couleur={editor.getAttributes('textStyle').backgroundColor || null}
         icone={<IconeOutil nom="surligneur" size={13} />}
-        onCouleur={(c) => run((ch) => ch.setBackgroundColor(couleurHex(c)))} />
+        onCouleur={(c) => { const hex = couleurHex(c); run((ch) => (fondPartout(editor, hex) ? ch.unsetBackgroundColor() : ch.setBackgroundColor(hex))); }} />
       <span className="et-sep" />
       <button type="button" className={'et-btn' + (active('bulletList') ? ' active' : '')} title="Liste à puces" onClick={() => run((c) => c.toggleBulletList())}><Icon name="list" size={13} /></button>
       <button type="button" className={'et-btn' + (active('orderedList') ? ' active' : '')} title="Liste numérotée" onClick={() => run((c) => c.toggleOrderedList())}>1.</button>

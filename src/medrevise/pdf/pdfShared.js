@@ -492,23 +492,8 @@ export function rectsFromRange(container, range) {
    ============================================================ */
 const cmpPos = (a, b) => (a.item - b.item) || (a.char - b.char);
 
-/** [anchor] moins l'union des [existantes] → liste d'ancres disjointes, dans
-    l'ordre du texte. Fonction pure. */
-export function soustraireAncres(anchor, existantes) {
-  if (!anchor || !anchor.start || !anchor.end) return [];
-  const autres = (existantes || [])
-    .filter((a) => a && a.start && a.end && cmpPos(a.end, anchor.start) > 0 && cmpPos(a.start, anchor.end) < 0)
-    .sort((a, b) => cmpPos(a.start, b.start));
-  const libres = [];
-  let curseur = anchor.start;
-  for (const a of autres) {
-    if (cmpPos(a.start, curseur) > 0) libres.push({ v: 1, start: curseur, end: cmpPos(a.start, anchor.end) < 0 ? a.start : anchor.end });
-    if (cmpPos(a.end, curseur) > 0) curseur = a.end;
-    if (cmpPos(curseur, anchor.end) >= 0) break;
-  }
-  if (cmpPos(curseur, anchor.end) < 0) libres.push({ v: 1, start: curseur, end: anchor.end });
-  return libres;
-}
+export { soustraireAncres, planSurlignage } from '../lib/resurlignage.js';
+import { soustraireAncres } from '../lib/resurlignage.js';
 
 /** (08/10) surlignages qu'une sélection RECOUVRE (repasser au surligneur : retirer ou
     recolorer) : ancre contre ancre quand les deux en ont une (intersection non vide du
