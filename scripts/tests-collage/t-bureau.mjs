@@ -10,7 +10,7 @@ const A = await appareil(9335, { captures });
 ok(await ouvrirFormulaire(A), 'formulaire Muscle ouvert (cours « 3 1 Muscles de la fesse », panneau Flashcards)');
 const F = `document.querySelector('.mu-form')`;
 const ligne = (id) => `${F}.querySelector('[data-zone-image="${id}"]')`;
-const vignettes = () => A.ev(`Object.fromEntries([...${F}.querySelectorAll('[data-zone-image]')].map((z) => [z.getAttribute('data-zone-image'), (() => { const i = z.querySelector('.mui-vignette img'); return i && i.complete ? i.naturalWidth + 'x' + i.naturalHeight : null; })()]))`);
+const vignettes = () => A.ev(`Object.fromEntries([...${F}.querySelectorAll('[data-zone-image]')].map((z) => [z.getAttribute('data-zone-image'), (() => { const i = z.querySelector('.zim-vignette img'); return i && i.complete ? i.naturalWidth + 'x' + i.naturalHeight : null; })()]))`);
 const neutre = async () => A.survoler(await A.pos(`document.querySelector('.pdfr-scroll, .pdfr-v2, main')`)); // souris hors du formulaire
 
 // nom du muscle
@@ -20,8 +20,9 @@ await A.clic(await A.pos(`${F}.querySelector('.mu-nom-champ')`)); await A.ecrire
 await A.pressePapierImage(420, 140, '#c0392b', 'IMAGE A|Insertion grand trochanter');
 await A.clic(await A.pos(`${F}.querySelector('.mu-nom-champ')`)); // focus dans le NOM (pas une ligne)
 await A.survoler(await A.pos(ligne('insertion')));
-const contour = await A.ev(`(() => { const v = ${ligne('insertion')}.querySelector('[data-zone-visuel]'); return { classe: v.classList.contains('zi-survol'), astuce: v.dataset.astuce || null, outline: getComputedStyle(v).outlineStyle, apres: getComputedStyle(v, '::after').content }; })()`);
-ok(contour.classe && contour.outline === 'solid' && /⌘V pour coller/.test(contour.apres), 'survol de la ligne Insertion : contour d’accent + « ⌘V pour coller »', JSON.stringify(contour));
+// (Zones image v2, 11/10) survol discret : plus de contour ni de bulle, le bouton « Image » passe en trait plein
+const contour = await A.ev(`(() => { const v = ${ligne('insertion')}.querySelector('[data-zone-visuel]'); const b = v.querySelector('.zim-ajout'); return { classe: v.classList.contains('zi-survol'), outline: getComputedStyle(v).outlineStyle, apres: getComputedStyle(v, '::after').content, trait: getComputedStyle(b).borderTopStyle }; })()`);
+ok(contour.classe && contour.outline === 'none' && contour.apres === 'none' && contour.trait === 'solid', 'survol de la ligne Insertion : bouton « Image » en trait plein, ni contour ni bulle', JSON.stringify(contour));
 await A.capture('01-survol-insertion');
 await A.cmdV(); await A.dormir(120);
 const spinner = await A.ev(`!!${F}.querySelector('.zi-collage')`);
@@ -30,10 +31,11 @@ let v = await vignettes();
 ok(v.insertion === '420x140' && Object.entries(v).filter(([k, x]) => x && k !== 'insertion').length === 0, '⌘V au survol d’Insertion → image dans Insertion, nulle part ailleurs (focus pourtant dans le nom)', JSON.stringify(v));
 ok(spinner, 'spinner court pendant le collage');
 await A.capture('02-image-collee-insertion');
-const ocr0 = await A.ev(`(${ligne('insertion')}.querySelector('.zi-ocr') || {}).textContent || ''`);
+const etatOcr = () => A.ev(`(() => { const o = ${ligne('insertion')}.querySelector('.zim-ocr'); return o ? (o.classList.contains('lecture') ? 'lecture' : 'texte') : 'rien'; })()`);
+const ocr0 = await etatOcr();
 await A.dormir(9000);
-const ocr1 = await A.ev(`(${ligne('insertion')}.querySelector('.zi-ocr') || {}).textContent || ''`);
-ok(/Lecture du texte|Texte lu/.test(ocr0) && /Texte lu · \d+ mot/.test(ocr1), 'OCR démarré sur l’image collée', `${ocr0} → ${ocr1}`);
+const ocr1 = await etatOcr();
+ok(/lecture|texte/.test(ocr0) && ocr1 === 'texte', 'OCR démarré sur l’image collée (indicateur : spinner → icône texte)', `${ocr0} → ${ocr1}`);
 
 // 2. survol de l'image générale + ⌘V
 await A.pressePapierImage(300, 220, '#2471a3', 'IMAGE B|vue générale');
@@ -106,7 +108,7 @@ await A.pressePapierImage(320, 160, '#ca6f1e', 'RECTO|image');
 await A.survoler(await A.pos(`${G}.querySelector('[data-zone-image="recto"] textarea')`));
 await A.capture('04-standard-survol-recto');
 await A.cmdV(); await A.dormir(1200);
-const etat = () => A.ev(`(() => { const g = ${G}; const i = g.querySelector('.fc-vignette img'); return { image: i && i.complete ? i.naturalWidth + 'x' + i.naturalHeight : null, place: (g.querySelector('.fc-seg .seg-btn.active') || {}).textContent || null }; })()`);
+const etat = () => A.ev(`(() => { const g = ${G}; const i = g.querySelector('.zim-vignette img'); return { image: i && i.complete ? i.naturalWidth + 'x' + i.naturalHeight : null, place: (g.querySelector('.fc-seg .seg-btn.active') || {}).textContent || null }; })()`);
 let s = await etat();
 ok(s.image === '320x160' && s.place === 'Recto', 'carte standard : survol du recto + ⌘V → image affichée au recto', JSON.stringify(s));
 await A.pressePapierImage(240, 240, '#17a589', 'VERSO|image');

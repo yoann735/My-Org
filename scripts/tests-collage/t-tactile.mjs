@@ -26,7 +26,7 @@ ok(!media.survol && (media.aucunSurvol || media.grossier) && boutons >= 6, `écr
 await A.pressePapierImage(380, 150, '#af601a', 'TABLETTE|insertion');
 await A.toucher(await A.pos(`(${F}).querySelector('[data-zone-image="insertion"] .zi-coller')`));
 await A.dormir(1600);
-const img = (z) => A.ev(`(() => { const i = (${F}).querySelector('[data-zone-image="${z}"] .mui-vignette img'); return i && i.complete ? i.naturalWidth + 'x' + i.naturalHeight : null; })()`);
+const img = (z) => A.ev(`(() => { const i = (${F}).querySelector('[data-zone-image="${z}"] .zim-vignette img'); return i && i.complete ? i.naturalWidth + 'x' + i.naturalHeight : null; })()`);
 ok(await img('insertion') === '380x150', 'tablette : bouton « Coller » de la ligne Insertion → image dans Insertion', await img('insertion'));
 const survolTactile = await A.ev(`!!(${F}).querySelector('.zi-survol')`);
 ok(!survolTactile, 'aucun contour de survol au doigt');

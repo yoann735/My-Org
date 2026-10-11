@@ -31,14 +31,15 @@ export function textesCarte({ nom, formule, smiles, sens }) {
     : { recto: nom, verso: `${nom}${formule ? ` — ${formule}` : ''}${smiles ? ` · SMILES ${smiles}` : ''}` };
 }
 
-export function carteMolecule({ nom, smiles, molfile, formule, sens = 'nom-molecule', comparaison = 'constitution', biblio = null, theme = '', indice = '', aRetenir = '', difficulte = 'intermediaire' }) {
+// (11/10, Zones image v2) image facultative : mêmes champs imageId / imagePlace qu'une carte standard
+export function carteMolecule({ nom, smiles, molfile, formule, sens = 'nom-molecule', comparaison = 'constitution', biblio = null, theme = '', indice = '', aRetenir = '', difficulte = 'intermediaire', imageId = null, imagePlace = null }) {
   const n = nom.trim();
   const t = textesCarte({ nom: n, formule, smiles, sens });
   return {
     type: 'flashcard', theme: theme.trim(), concept: theme.trim(), difficulte,
     recto: t.recto, verso: t.verso,
     indice: indice.trim() || null, a_retenir: aRetenir.trim(), cloze: [],
-    imageId: null, imagePlace: null,
+    imageId: imageId || null, imagePlace: imageId ? imagePlace || 'recto' : null,
     molecule: { v: 1, nom: n, smiles, molfile, formule, sens, comparaison, biblio },
   };
 }

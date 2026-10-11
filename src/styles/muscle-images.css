@@ -2,16 +2,9 @@
    MedRevise — IMAGES DES CARTES MUSCLE (10/10 soir, components/ImagesMuscle.jsx).
    Vignette dans une ligne du tableau, image générale, visionneuse avec texte reconnu.
    ============================================================ */
-.mui-vignette { position: relative; display: inline-flex; align-items: center; justify-content: center; max-width: 100%; margin-top: 6px;
-  border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg-2); cursor: zoom-in; vertical-align: top; line-height: 0; }
-.mui-vignette img { display: block; max-width: min(160px, 100%); max-height: 96px; object-fit: contain; }
-.mui-vignette.grande img { max-width: 100%; max-height: min(220px, 28dvh); }
-.mui-vignette:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.mui-ph { display: inline-flex; width: 72px; height: 54px; align-items: center; justify-content: center; color: var(--text-3); }
-.mui-ocr-ic { position: absolute; right: 3px; bottom: 3px; width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center;
-  font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #fff; background: rgba(20, 20, 26, .62); }
 .mui-masque { position: absolute; background: #8B6FE8; border: 1px solid #2b2250; border-radius: 2px; }
-.mu-ligne-image { display: flex; width: fit-content; }
+.mu-ligne-image { display: flex; margin-top: 8px; min-width: 0; }
+.mu-contenu > .mu-ligne-image:first-child { margin-top: 0; }
 .mu-image-generale { display: flex; justify-content: center; margin: 8px 0 10px; width: 100%; }
 
 /* visionneuse plein écran */
@@ -30,34 +23,19 @@
 
 /* formulaire */
 .mu-saisie-cellule { display: flex; flex-direction: column; min-width: 0; }
-.mui-champ { padding: 0 12px 8px; }
-.mui-champ.survol { background: color-mix(in srgb, var(--accent) 8%, transparent); }
-.mui-ajout { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border: 1px dashed var(--border); border-radius: 7px;
-  background: transparent; color: var(--text-3); font: inherit; font-size: 12px; cursor: pointer; }
-.mui-ajout:hover { color: var(--text); border-color: var(--text-3); }
-.mui-choisie { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
-.mui-choisie .mui-vignette { margin-top: 0; }
-.mui-liens { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; font-size: 12px; padding-top: 2px; }
-.mu-generale { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r, 10px); background: var(--card); }
-.mu-generale .mui-champ { padding: 0; }
+.mu-saisie-cellule > .zim { padding: 0 12px 10px; }
+.mu-generale { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r, 10px); background: var(--card); }
 .mu-generale-titre { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
-.mu-recto-opt { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); cursor: pointer; }
+.mu-recto-opt { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); cursor: pointer; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .mui-visionneuse { animation: none; } }
-@media (max-width: 759px) { .mui-vignette img { max-width: min(140px, 100%); } .mui-v-zone { padding: 8px; } }
+@media (max-width: 759px) { .mui-v-zone { padding: 8px; } }
 
 /* ============================================================
    COLLAGE D'IMAGE AU SURVOL (11/10, lib/collerAuSurvol.js) — zone survolée, spinner,
    bouton « Coller » (écrans tactiles), message d'annulation, état de l'OCR.
    ============================================================ */
-.zi-survol { position: relative; outline: 1.5px solid color-mix(in srgb, var(--accent) 75%, transparent); outline-offset: 3px; border-radius: 10px; }
-/* dans une cellule du tableau Muscle (qui coupe ce qui dépasse) : contour à l'intérieur */
-.mui-champ.compact.zi-survol { outline-offset: -2px; }
-@media (hover: hover) and (pointer: fine) {
-  .zi-survol::after {
-    content: attr(data-astuce); position: absolute; top: -9px; right: 8px; z-index: 2; pointer-events: none;
-    padding: 1px 7px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 10.5px; font-weight: 600; letter-spacing: .01em; line-height: 16px;
-  }
-}
+/* (Zones image v2, 11/10) le survol ne pose plus de contour ni de bulle : seul le bouton « Image »
+   de la zone passe en trait plein (règles .zim-ajout plus bas) */
 .zi-collage { position: relative; }
 .zi-collage::before {
   content: ''; position: absolute; top: 50%; left: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; z-index: 3; pointer-events: none;
@@ -76,5 +54,66 @@
 .zi-message > span { flex: 1; }
 .zi-message kbd { font-size: 10.5px; opacity: .75; margin-left: 3px; }
 .zi-message-x { border: none; background: transparent; color: var(--text-3); cursor: pointer; padding: 2px; display: inline-flex; }
-.zi-ocr { font-size: 11.5px; color: var(--text-3); }
-.zi-ocr.lecture { color: var(--accent); }
+
+/* ============================================================
+   ZONES IMAGE v2 (11/10, components/ZoneImage.jsx) — un seul style pour ajouter / voir /
+   remplacer / retirer une image : cartes Muscle (lignes, image générale), standard, Molécule.
+   ============================================================ */
+.zim { --zim-h: 96px; container-type: inline-size; min-width: 0; }
+.zim.generale { --zim-h: 140px; }
+.zim-vide { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.zim-ajout { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 11px 0 9px; border: 1px dashed var(--border-2, var(--border)); border-radius: 8px;
+  background: transparent; color: var(--text-3); font: inherit; font-size: 12.5px; cursor: pointer; transition: border-color .12s ease, color .12s ease; }
+/* survol de la zone (collage ⌘V, dépôt d'un fichier) ou du bouton : trait plein, un peu plus clair */
+.zi-survol .zim-ajout, .zim.glisse .zim-ajout, .zim-ajout:hover, .zim-ajout:focus-visible {
+  border-style: solid; border-color: color-mix(in srgb, var(--text-3) 55%, var(--border-2, var(--border))); color: var(--text-2); outline: none; }
+.zim-pleine { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px 14px; min-width: 0; }
+/* vignette + actions : toujours côte à côte, la vignette rétrécit (hauteur réservée inchangée) */
+.zim-bloc { display: flex; align-items: flex-start; gap: 6px; min-width: 0; max-width: 100%; }
+/* vignette : hauteur fixe (réservée dès l'arrivée de l'image), largeur proportionnelle, ≤ 100 % */
+.zim-vignette { position: relative; display: inline-flex; align-items: flex-start; justify-content: flex-start; flex: 0 1 auto; max-height: var(--zim-h); max-width: 100%; min-width: 0;
+  border-radius: 8px; cursor: zoom-in; line-height: 0; vertical-align: top; }
+.zim-vignette.attente { background: var(--bg-2); height: var(--zim-h); } /* hauteur réservée pendant le chargement */
+.zim-cadre { position: relative; display: inline-block; max-width: 100%; line-height: 0; border-radius: 8px; overflow: hidden; }
+.zim-vignette img { display: block; max-height: var(--zim-h); max-width: 100%; width: auto; height: auto; object-fit: contain; }
+.zim-vignette.attente { width: min(100%, calc(var(--zim-h) * 4 / 3)); }
+.zim-vignette.attente .zim-cadre { opacity: 0; position: absolute; }
+.zim-vignette:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.zim-vignette .mui-masque { pointer-events: none; }
+.zim-ocr { position: absolute; right: 4px; bottom: 4px; width: 16px; height: 16px; border-radius: 5px; display: grid; place-items: center;
+  color: #fff; background: rgba(20, 20, 26, .62); }
+.zim-ocr.lecture { background: rgba(20, 20, 26, .45); }
+.zim-ocr.lecture::before { content: ''; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, .35); border-top-color: #fff; animation: zi-tourne .7s linear infinite; }
+.zim-actions { display: flex; flex-direction: column; gap: 2px; }
+.zim-act { position: relative; display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px;
+  background: transparent; color: var(--text-3); cursor: pointer; transition: background .12s ease, color .12s ease; }
+.zim-act:hover, .zim-act:focus-visible { background: var(--bg-2); color: var(--text); outline: none; }
+.zim-act.actif { color: var(--accent); }
+.zim-act.retirer { color: color-mix(in srgb, var(--crit) 70%, var(--text-3)); }
+.zim-act.retirer:hover, .zim-act.retirer:focus-visible { color: var(--crit); background: color-mix(in srgb, var(--crit) 10%, transparent); }
+.zim-nb { position: absolute; top: 1px; right: 0; min-width: 12px; height: 12px; padding: 0 2px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 8.5px; font-weight: 700; line-height: 12px; }
+.zim-aside { display: flex; align-items: center; min-height: 32px; min-width: 0; }
+.zim .zi-coller-zone { margin-top: 0; }
+.zim-pleine + .zi-coller-zone { margin-top: 6px; }
+/* cellule étroite : les actions passent sous la vignette, en ligne */
+@container (max-width: 150px) {
+  .zim-bloc { flex-direction: column; gap: 4px; }
+  .zim-actions { flex-direction: row; }
+}
+/* réglage « Afficher au » (carte standard, Molécule) */
+.zim-place { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.zim-place-titre { font-size: 11.5px; color: var(--text-3); }
+/* écrans tactiles : cibles de 36 px, actions en ligne */
+@media (pointer: coarse) {
+  .zim-act { width: 36px; height: 36px; }
+  .zim-actions { flex-direction: row; }
+  .zim-ajout { height: 36px; }
+}
+/* téléphone : vignettes de ligne à 72 px */
+@media (max-width: 759px) {
+  .zim.ligne, .mu-ligne-image { --zim-h: 72px; }
+}
+.mu-ligne-image { --zim-h: 96px; }
+.mu-image-generale { --zim-h: min(140px, 28dvh); }
+@media (max-width: 759px) { .mu-ligne-image { --zim-h: 72px; } }
+@media (prefers-reduced-motion: reduce) { .zim-ajout, .zim-act { transition: none; } }

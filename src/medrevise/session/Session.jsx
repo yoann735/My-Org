@@ -473,7 +473,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
             <span className="ff-tag" style={{ color: meta.tint }}>{erreurMode ? "Flashcard d'erreur" : `${meta.label} · ${item.theme}`}</span>
             <ZoneDefilante className={'ff-zone ' + classeLongueur(item.recto)}>
             {molecule
-              ? <FaceMoleculeParesseuse carte={item} cote="recto" />
+              ? <>{imageAuRecto(item) && <AnatImage imageId={item.imageId} compact />}<FaceMoleculeParesseuse carte={item} cote="recto" /></>
               : occ
               ? <div className="ff-occ"><OcclusionView occ={occ} /><div className="ff-imgq"><Tex>{item.recto}</Tex></div></div>
               : imageAuRecto(item)
@@ -492,7 +492,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
             <span className="ff-tag">Réponse</span>
             <ZoneDefilante className={'ff-zone ' + (muscle ? 'ff-muscle' : classeLongueur(item.verso, item.a_retenir))}>
             {molecule
-              ? (flipped ? <FaceMoleculeParesseuse carte={item} cote="verso" /> : null) /* monté au retournement : l'atelier s'ouvre à ce moment-là */
+              ? (flipped ? <>{imageAuVerso(item) && <AnatImage imageId={item.imageId} compact />}<FaceMoleculeParesseuse carte={item} cote="verso" /></> : null) /* monté au retournement : l'atelier s'ouvre à ce moment-là */
               : muscle
               ? <><div className="mu-titre"><Tex>{item.recto}</Tex></div><ImageGeneraleMuscle item={item} face="verso" /><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>
               : occ

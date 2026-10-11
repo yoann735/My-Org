@@ -10,28 +10,17 @@
    - ChampImageMuscle : dans le formulaire — ajouter (parcourir, coller, glisser), remplacer,
      retirer, « Masquer des mots » (components/MasquerMots.jsx, la même fenêtre que pour une
      flashcard image). Le fichier n'est écrit (putBlob) qu'à l'enregistrement de la carte.
+   (11/10, Zones image v2) ImageMuscle et ChampImageMuscle ne sont plus que des raccourcis vers
+   le composant unique components/ZoneImage.jsx (VignetteImage, ZoneImage).
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
-import { blobURL } from '../lib/storage.js';
 import { ocrImage } from '../ocr/ocrImage.js';
-import { MasquerMots } from './MasquerMots.jsx';
-import { BoutonColler } from './CollageImage.jsx';
+import { VignetteImage, ZoneImage, useUrlImage } from './ZoneImage.jsx';
 import '../../styles/muscle-images.css';
 
-/** URL objet d'un blob enregistré, ou d'un fichier pas encore enregistré */
-export function useUrlImage(imageId, fichier = null) {
-  const [url, setUrl] = useState(null);
-  useEffect(() => {
-    let vivant = true, u = null;
-    if (fichier) { u = URL.createObjectURL(fichier); setUrl(u); }
-    else if (imageId) blobURL(imageId).then((x) => { u = x; if (vivant) setUrl(x); else if (x) URL.revokeObjectURL(x); });
-    else setUrl(null);
-    return () => { vivant = false; if (u) URL.revokeObjectURL(u); };
-  }, [imageId, fichier]);
-  return url;
-}
+export { useUrlImage };
 
 const stop = (e) => e.stopPropagation();
 
@@ -45,25 +34,9 @@ function Masques({ masques, caches }) {
   });
 }
 
-/** vignette (ou image générale) — un toucher l'agrandit */
+/** vignette d'une ligne (ou image générale) — un clic l'agrandit */
 export function ImageMuscle({ imageId, fichier = null, masques = null, titre = 'Image', grande = false, className = '' }) {
-  const url = useUrlImage(imageId, fichier);
-  const [ouverte, setOuverte] = useState(false);
-  if (!imageId && !fichier) return null;
-  return (
-    <>
-      <span role="button" tabIndex={0} className={'mui-vignette' + (grande ? ' grande' : '') + (className ? ' ' + className : '')}
-        title={`${titre} — toucher pour agrandir (texte reconnu)`} aria-label={`${titre} — agrandir`}
-        onPointerDown={stop} onMouseDown={stop}
-        onClick={(e) => { e.stopPropagation(); e.preventDefault(); setOuverte(true); }}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setOuverte(true); } }}>
-        {url ? <img src={url} alt="" draggable={false} /> : <span className="mui-ph"><Icon name="image" size={18} /></span>}
-        <Masques masques={masques} caches />
-        <span className="mui-ocr-ic" aria-hidden="true" title="Texte reconnu">T</span>
-      </span>
-      {ouverte && url && <VisionneuseImage imageId={imageId} url={url} masques={masques} titre={titre} onFermer={() => setOuverte(false)} />}
-    </>
-  );
+  return <VignetteImage imageId={imageId} fichier={fichier} masques={masques} titre={titre} taille={grande ? 'generale' : 'ligne'} className={className} />;
 }
 
 /** l'image en grand, avec le texte reconnu sélectionnable */
@@ -133,76 +106,8 @@ export function VisionneuseImage({ imageId, url, masques = null, titre = 'Image'
   );
 }
 
-/** OCR « Texte en direct » lancé dès qu'une NOUVELLE image arrive (collée, déposée ou choisie) :
-   le texte est prêt quand on ouvre « Masquer des mots » ou la visionneuse. { etat, n } */
-export function useOcrDirect(fichier, url) {
-  const [ocr, setOcr] = useState(null);
-  useEffect(() => {
-    if (!fichier || !url) { setOcr(null); return undefined; }
-    let vivant = true;
-    setOcr({ etat: 'lecture' });
-    ocrImage({ src: url }).then((r) => { if (vivant) setOcr({ etat: 'fait', n: ((r && r.mots) || []).length }); })
-      .catch(() => { if (vivant) setOcr({ etat: 'erreur' }); });
-    return () => { vivant = false; };
-  }, [fichier, url]);
-  return ocr;
-}
-export function EtatOcr({ ocr }) {
-  if (!ocr) return null;
-  return (
-    <span className={'zi-ocr ' + ocr.etat} title="Texte reconnu sur l’image (OCR)">
-      {ocr.etat === 'lecture' ? 'Lecture du texte…' : ocr.etat === 'fait' ? (ocr.n ? `Texte lu · ${ocr.n} mot${ocr.n > 1 ? 's' : ''}` : 'Aucun texte') : 'OCR indisponible'}
-    </span>
-  );
-}
-
 /** champ du formulaire : { imageId, fichier, masques } — vide : { imageId: null, fichier: null }.
    `onColler(fichier)` : bouton « Coller » (écrans tactiles) — passe par la même règle que ⌘V. */
-export function ChampImageMuscle({ valeur, onChange, libelle = 'Image', compact = false, onColler = null }) {
-  const { imageId, fichier, masques } = valeur || {};
-  const url = useUrlImage(imageId, fichier);
-  const ocr = useOcrDirect(fichier, url);
-  const input = useRef(null);
-  const [masquer, setMasquer] = useState(null); // { url, w, h }
-  const [survol, setSurvol] = useState(false);
-  const choisir = (f) => { if (f && /^image\//.test(f.type || '')) onChange({ imageId: null, fichier: f, masques: null }); };
-  const deposer = {
-    onDragOver: (e) => { if (![...(e.dataTransfer.types || [])].includes('Files')) return; e.preventDefault(); e.stopPropagation(); setSurvol(true); },
-    onDragLeave: () => setSurvol(false),
-    onDrop: (e) => { const f = [...(e.dataTransfer.files || [])].find((x) => /^image\//.test(x.type)); if (!f) return; e.preventDefault(); e.stopPropagation(); setSurvol(false); choisir(f); },
-  };
-  const ouvrirMasquer = async () => {
-    if (!url) return;
-    let w = 4, h = 3;
-    try { const im = new Image(); im.src = url; await im.decode(); w = im.naturalWidth; h = im.naturalHeight; } catch (e) { /* proportions par défaut */ }
-    setMasquer({ url, w, h });
-  };
-  return (
-    <div className={'mui-champ' + (compact ? ' compact' : '') + (survol ? ' survol' : '')} data-zone-visuel="" {...deposer}>
-      <input ref={input} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { choisir(e.target.files[0]); e.target.value = ''; }} />
-      {!imageId && !fichier ? (
-        <button type="button" className="mui-ajout" onClick={() => input.current && input.current.click()} title={`${libelle} : parcourir, ou coller (⌘V) / glisser une image ici`}>
-          <Icon name="image" size={13} /> {compact ? 'Image' : `Ajouter ${libelle.toLowerCase()}`}
-        </button>
-      ) : (
-        <div className="mui-choisie">
-          <ImageMuscle imageId={imageId} fichier={fichier} masques={masques} titre={libelle} />
-          <div className="mui-liens">
-            <button type="button" className="linklike" onClick={ouvrirMasquer} title="L’OCR lit l’image : touche les mots à cacher">
-              Masquer des mots{masques && masques.length ? ` (${masques.length})` : ''}
-            </button>
-            {masques && masques.length > 0 && <button type="button" className="linklike" onClick={() => onChange({ imageId, fichier, masques: null })}>Ôter les masques</button>}
-            <button type="button" className="linklike" onClick={() => input.current && input.current.click()}>Remplacer</button>
-            <button type="button" className="linklike fc-retirer" onClick={() => onChange({ imageId: null, fichier: null, masques: null })}>Retirer</button>
-            <EtatOcr ocr={ocr} />
-          </div>
-        </div>
-      )}
-      <BoutonColler onFichier={(f) => (onColler ? onColler(f) : choisir(f))} />
-      {masquer && (
-        <MasquerMots image={masquer} onFermer={() => setMasquer(null)}
-          onAjouter={(nouveaux) => { onChange({ imageId, fichier, masques: [...(masques || []), ...nouveaux] }); setMasquer(null); }} />
-      )}
-    </div>
-  );
+export function ChampImageMuscle({ valeur, onChange, libelle = 'Image', compact = false, onColler = null, aside = null }) {
+  return <ZoneImage valeur={valeur} onChange={onChange} libelle={libelle} taille={compact ? 'ligne' : 'generale'} avecMasques onColler={onColler} aside={aside} />;
 }

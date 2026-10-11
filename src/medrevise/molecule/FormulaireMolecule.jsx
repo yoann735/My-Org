@@ -7,7 +7,10 @@
      dans l'éditeur, modifiable ; on peut aussi dessiner de zéro sans rien choisir ;
    - sens (nom → molécule, ou molécule → nom), niveau de comparaison (constitution par défaut,
      ou stéréo stricte), thème / indice / à retenir comme les autres cartes ;
-   - ⌘Entrée enregistre (hors de l'éditeur), Échap ferme.
+   - ⌘Entrée enregistre (hors de l'éditeur), Échap ferme ;
+   - (11/10, Zones image v2) image facultative (recto / verso / les deux), le même champ que les
+     cartes standard (components/FlashcardImage.jsx → ZoneImage) ; collage au survol / ⌘V comme
+     ailleurs (lib/collerAuSurvol.js, une seule zone « image »).
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -16,6 +19,10 @@ import { EditeurMolecule } from './EditeurMolecule.jsx';
 import { rechercher } from './recherche.js';
 import { carteMolecule, SENS, NIVEAUX } from './carte.js';
 import BIBLIO from './bibliotheque.json';
+import { ChampImageFlashcard } from '../components/FlashcardImage.jsx';
+import { MessageCollage } from '../components/CollageImage.jsx';
+import { useCollageAuSurvol } from '../lib/collerAuSurvol.js';
+import { putBlob } from '../lib/storage.js';
 
 export default function FormulaireMolecule({ initial = null, themeDefaut = '', onAdd, onCancel, busy, submitLabel = 'Ajouter', actif = true }) {
   const m0 = (initial && initial.molecule) || null;
@@ -34,6 +41,20 @@ export default function FormulaireMolecule({ initial = null, themeDefaut = '', o
   const [cleEditeur, setCleEditeur] = useState(0);
   const editeur = useRef(null);
   const champ = useRef(null);
+  const moi = useRef(null);
+  const [image, setImage] = useState({ imageId: initial?.imageId || null, fichier: null, place: initial?.imagePlace || 'recto' });
+  const imageRef = useRef(image); imageRef.current = image;
+  const collage = useCollageAuSurvol(moi, {
+    actif,
+    defaut: () => 'image',
+    libelle: () => 'Image',
+    appliquer: (cle, f) => {
+      const avant = imageRef.current;
+      setImage((v) => ({ ...v, imageId: null, fichier: f }));
+      return avant.fichier || avant.imageId ? avant : null;
+    },
+    restaurer: (cle, ancienne) => setImage(ancienne),
+  });
 
   const suggestions = useMemo(() => (ouvert && nom.trim() ? rechercher(BIBLIO.entrees, nom, 8) : []), [nom, ouvert]);
   useEffect(() => setSurbrillance(0), [nom]);
@@ -55,9 +76,10 @@ export default function FormulaireMolecule({ initial = null, themeDefaut = '', o
   const valider = async () => {
     if (!pret || busy) return;
     const d = (editeur.current && editeur.current.exporter()) || dessin;
-    await onAdd(carteMolecule({ nom, smiles: d.smiles, molfile: d.molfile, formule: d.formule, sens, comparaison, biblio, theme, indice, aRetenir, difficulte: initial?.difficulte || 'intermediaire' }));
+    const imageId = image.fichier ? await putBlob(image.fichier) : (image.imageId || null);
+    await onAdd(carteMolecule({ nom, smiles: d.smiles, molfile: d.molfile, formule: d.formule, sens, comparaison, biblio, theme, indice, aRetenir, difficulte: initial?.difficulte || 'intermediaire', imageId, imagePlace: image.place }));
     if (!initial) {
-      setNom(''); setBiblio(null); setIndice(''); setARetenir(''); setDessin(null);
+      setNom(''); setBiblio(null); setIndice(''); setARetenir(''); setDessin(null); setImage({ imageId: null, fichier: null, place: 'recto' });
       setTheme(themeDefaut); themeRetouche.current = false;
       if (editeur.current) editeur.current.charger(null);
       requestAnimationFrame(() => champ.current && champ.current.focus());
@@ -70,7 +92,7 @@ export default function FormulaireMolecule({ initial = null, themeDefaut = '', o
   };
 
   return (
-    <div className="aif-champs mol-form" onKeyDown={clavier}>
+    <div className="aif-champs mol-form" ref={moi} onKeyDown={clavier}>
       <div className="imp-field mol-recherche">
         <label htmlFor="mol-nom">Nom de la molécule</label>
         <input id="mol-nom" ref={champ} className="imp-title" autoComplete="off" value={nom} placeholder="ex : Alanine, glucose β, dextrose, ATP…"
@@ -113,6 +135,8 @@ export default function FormulaireMolecule({ initial = null, themeDefaut = '', o
         </div>
       </div>
 
+      <ChampImageFlashcard valeur={image} onChange={setImage} onColler={(f) => collage.colleDans('image', f)} />
+
       <div className="imp-field">
         <label>Thème <span className="imp-opt">(optionnel)</span></label>
         <input className="imp-title" placeholder="ex : Acides aminés" value={theme} onChange={(e) => { themeRetouche.current = true; setTheme(e.target.value); }} />
@@ -130,8 +154,8 @@ export default function FormulaireMolecule({ initial = null, themeDefaut = '', o
         {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
         <button type="button" className="btn primary" onClick={valider} disabled={!pret || busy}><Icon name="check" size={15} /> {submitLabel}</button>
       </div>
+      <MessageCollage message={collage.message} onAnnuler={collage.annuler} onFermer={collage.fermer} />
       {!pret && <div className="hint">{!nom.trim() ? 'Nom de la molécule requis.' : 'Dessine la molécule (ou choisis-la dans la bibliothèque).'}</div>}
-      {void actif}
     </div>
   );
 }

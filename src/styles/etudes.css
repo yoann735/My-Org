@@ -2384,8 +2384,9 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
    ============================================================ */
 /* tableau de révision : 2 colonnes, étiquette grise en petites capitales, filets fins */
 .mu-tableau { width: 100%; align-self: stretch; text-align: left; border-top: 1px solid var(--border); font-family: 'Inter', sans-serif; }
-.mu-ligne { display: grid; grid-template-columns: minmax(96px, 30%) 1fr; gap: 14px; padding: 11px 4px; border-bottom: 1px solid var(--border); align-items: baseline; }
-.mu-etiquette { font-size: 14.5px; font-weight: 600; font-variant-caps: all-small-caps; letter-spacing: .05em; color: var(--text-3); line-height: 1.35; overflow-wrap: anywhere; }
+.mu-ligne { display: grid; grid-template-columns: var(--mu-etiq, 132px) minmax(0, 1fr); gap: 14px; padding: 11px 4px; border-bottom: 1px solid var(--border); align-items: start; }
+/* (Zones image v2, 11/10) colonne des étiquettes : largeur fixe, petites capitales grises, alignées en haut — « Direction des fibres / Trajet » tient sur 2 lignes */
+.mu-etiquette { font-size: 14px; font-weight: 600; font-variant-caps: all-small-caps; letter-spacing: .04em; color: var(--text-3); line-height: 1.35; overflow-wrap: normal; hyphens: none; padding-top: 2px; }
 .mu-contenu { min-width: 0; font-size: 15px; line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
 .mu-par { margin: 0; }
 .mu-par + .mu-par, .mu-par + .mu-puces, .mu-puces + .mu-par { margin-top: 4px; }
@@ -2401,9 +2402,9 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .mu-tout { display: flex; justify-content: center; padding-top: 12px; }
 .mu-tout-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; }
 .mu-tout-btn:hover, .mu-tout-btn:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
-.mu-tableau.compact .mu-ligne { grid-template-columns: minmax(78px, 32%) 1fr; gap: 10px; padding: 7px 2px; }
+.mu-tableau.compact .mu-ligne { --mu-etiq: 116px; gap: 10px; padding: 7px 2px; }
 .mu-tableau.compact .mu-contenu { font-size: 13px; }
-.mu-tableau.compact .mu-etiquette { font-size: 13px; }
+.mu-tableau.compact .mu-etiquette { font-size: 12.5px; }
 .mu-nom-lu { font-weight: 600; }
 .mu-titre { align-self: stretch; text-align: left; font-family: 'DM Serif Display', serif; font-size: 20px; line-height: 1.25; color: var(--text); margin: 0 4px 10px; }
 
@@ -2418,10 +2419,15 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .sfc-recto.mu-nom-petit { text-align: center; font-size: 19px; margin-bottom: 4px; }
 
 /* formulaire : tableau de saisie, mêmes étiquettes, zones qui grandissent */
-.mu-saisie { border: 1px solid var(--border); border-radius: var(--r, 10px); background: var(--card); overflow: hidden; }
-.mu-saisie-ligne { display: grid; grid-template-columns: minmax(92px, 31%) 1fr; align-items: stretch; border-bottom: 1px solid var(--border); }
+.mu-saisie { border: 1px solid var(--border); border-radius: var(--r, 10px); background: var(--card); overflow: hidden; container-type: inline-size; }
+.mu-saisie-ligne { display: grid; grid-template-columns: 132px minmax(0, 1fr); align-items: stretch; border-bottom: 1px solid var(--border); }
 .mu-saisie-ligne:last-child { border-bottom: 0; }
-.mu-saisie-ligne > .mu-etiquette { padding: 10px 10px 10px 12px; background: var(--bg-2); border-right: 1px solid var(--border); cursor: text; }
+.mu-saisie-ligne > .mu-etiquette { padding: 11px 10px 10px 12px; background: var(--bg-2); border-right: 1px solid var(--border); cursor: text; }
+/* formulaire étroit (panneau replié, petit écran) : étiquette au-dessus, cellule pleine largeur */
+@container (max-width: 270px) {
+  .mu-saisie-ligne { grid-template-columns: minmax(0, 1fr); }
+  .mu-saisie-ligne > .mu-etiquette { border-right: 0; border-bottom: 1px solid var(--border); padding: 6px 12px; }
+}
 .mu-zone { display: block; width: 100%; box-sizing: border-box; min-height: 38px; border: 0; border-radius: 0; padding: 9px 12px; resize: none; overflow: hidden; font: inherit; font-size: 13.5px; line-height: 1.5; background: transparent; color: var(--text); outline: none; }
 .mu-zone:focus { background: color-mix(in srgb, var(--accent) 6%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 .mu-zone::placeholder { color: var(--text-3); }
@@ -2435,7 +2441,7 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .rfc-bascule input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); flex: 0 0 auto; }
 .cd-ic.mu-copie { color: var(--ok); }
 @media (max-width: 600px) {
-  .mu-ligne { grid-template-columns: 86px 1fr; gap: 10px; padding: 10px 0; }
+  .mu-ligne { --mu-etiq: 104px; gap: 10px; padding: 10px 0; }
   .mu-saisie-ligne { grid-template-columns: 1fr; }
   .mu-saisie-ligne > .mu-etiquette { border-right: 0; border-bottom: 1px solid var(--border); padding: 6px 12px; }
 }

@@ -68,7 +68,7 @@ export function TableauMuscle({ item, masquable = false, compact = false }) {
               {c ? <span className="mu-masque" aria-hidden="true">Toucher pour révéler</span> : (
                 <>
                   {(lignes[l.id].trim() || !images[l.id]) && <ContenuMuscle texte={lignes[l.id]} />}
-                  {images[l.id] && <ImageMuscle imageId={images[l.id].imageId} masques={images[l.id].masques} titre={l.label} className="mu-ligne-image" />}
+                  {images[l.id] && <div className="mu-ligne-image"><ImageMuscle imageId={images[l.id].imageId} masques={images[l.id].masques} titre={l.label} /></div>}
                 </>
               )}
             </div>
@@ -244,6 +244,17 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
         <input ref={nomRef} className="imp-title mu-nom-champ" value={nom} onChange={(e) => setNom(e.target.value)} placeholder="ex : m. Grand glutéal (fessier)" />
       </div>
 
+      {/* image du muscle (Zones image v2, 11/10) : en tête, même composant que les lignes, « Montrer au recto » à côté */}
+      <div className="mu-generale" data-zone-image="generale">
+        <span className="mu-generale-titre">Image du muscle <span className="imp-opt">(optionnelle)</span></span>
+        <ChampImageMuscle valeur={generale} libelle="Image du muscle" onChange={(v) => setGenerale(v)} onColler={(f) => collage.colleDans('generale', f)}
+          aside={(generale.imageId || generale.fichier) ? (
+            <label className="mu-recto-opt" title="Cochée : l’image s’affiche aussi au recto. Sinon : au verso seulement.">
+              <input type="checkbox" checked={auRecto} onChange={(e) => setAuRecto(e.target.checked)} /> Montrer au recto
+            </label>
+          ) : null} />
+      </div>
+
       <div className="mu-ocr" data-zone-image="ocr">
         <button type="button" className="btn ghost sm" onClick={() => entree.current && entree.current.click()} disabled={ocr && ocr.etat === 'lecture'}>
           <Icon name="image" size={13} /> Pré-remplir depuis une image
@@ -260,14 +271,6 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
       {ocr && ocr.etat === 'rien' && (
         <div className="mu-ocr-etat"><Icon name="alert" size={13} /> Aucune étiquette (Origine, Trajet, Insertion, Action, Innervation) lue sur cette image — remplis à la main.</div>
       )}
-
-      <div className="mu-generale" data-zone-image="generale">
-        <span className="mu-generale-titre">Image du muscle <span className="imp-opt">(optionnelle)</span></span>
-        <ChampImageMuscle valeur={generale} libelle="Image du muscle" onChange={(v) => setGenerale(v)} onColler={(f) => collage.colleDans('generale', f)} />
-        {(generale.imageId || generale.fichier) && (
-          <label className="mu-recto-opt"><input type="checkbox" checked={auRecto} onChange={(e) => setAuRecto(e.target.checked)} /> Montrer l’image au recto <span className="imp-opt">(sinon : au verso)</span></label>
-        )}
-      </div>
 
       <div className="mu-saisie" role="group" aria-label="Tableau du muscle">
         {LIGNES_MUSCLE.map((l) => (

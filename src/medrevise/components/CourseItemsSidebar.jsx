@@ -501,6 +501,7 @@ function MoleculeReadBody({ item }) {
     <>
       <div className="pis-face"><span className="pis-face-tag">Molécule · {(SENS.find((s) => s.id === m.sens) || SENS[0]).label} · {(NIVEAUX.find((n) => n.id === m.comparaison) || NIVEAUX[0]).label}</span><span className="mu-nom-lu">{m.nom}</span> <span className="hint tnum">{m.formule}</span></div>
       <VueMoleculeParesseuse molfile={m.molfile} smiles={m.smiles} hauteur={170} classe="petite" />
+      {item.imageId && <ImageFlashcard imageId={item.imageId} maxH={110} />}
       {item.a_retenir && <div className="hint" style={{ marginTop: 6 }}><strong>À retenir : </strong><Tex>{item.a_retenir}</Tex></div>}
     </>
   );

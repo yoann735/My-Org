@@ -11,11 +11,10 @@
    Les flashcards IMAGE à masques (occlusion) ne sont pas concernées : elles ont
    leur propre image (components/OcclusionImage.jsx).
    ============================================================ */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { blobURL } from '../lib/storage.js';
-import { BoutonColler } from './CollageImage.jsx';
-import { useOcrDirect, EtatOcr } from './ImagesMuscle.jsx';
+import { ZoneImage } from './ZoneImage.jsx';
 
 export const PLACES_IMAGE = [
   { id: 'recto', label: 'Recto' },
@@ -50,51 +49,27 @@ export function ImageFlashcard({ imageId, maxH = 240, className = '' }) {
 /** Champ du formulaire : ajouter / remplacer / retirer l'image + où l'afficher.
     Contrôlé : { imageId, fichier, place } — le fichier n'est écrit (putBlob)
     qu'à l'enregistrement de la carte, jamais avant. Zone de collage « image » (survol, ⌘V,
-    lib/collerAuSurvol.js) ; `onColler(fichier)` : bouton « Coller » des écrans tactiles. */
+    lib/collerAuSurvol.js) ; `onColler(fichier)` : bouton « Coller » des écrans tactiles.
+    (11/10, Zones image v2) même composant que les cartes Muscle : components/ZoneImage.jsx. */
 export function ChampImageFlashcard({ valeur, onChange, onColler = null }) {
-  const { imageId, fichier, place } = valeur;
-  const input = useRef(null);
-  const [apercu, setApercu] = useState(null);
-  useEffect(() => {
-    if (!fichier) { setApercu(null); return undefined; }
-    const u = URL.createObjectURL(fichier); setApercu(u);
-    return () => URL.revokeObjectURL(u);
-  }, [fichier]);
-  const aUneImage = !!(fichier || imageId);
-  const ocr = useOcrDirect(fichier, apercu);
-  const choisir = (f) => { if (f && /^image\//.test(f.type || '')) onChange({ ...valeur, fichier: f }); };
+  const { place } = valeur;
+  const aUneImage = !!(valeur.fichier || valeur.imageId);
+  const places = aUneImage && (
+    <div className="zim-place" role="group" aria-label="Afficher l’image au">
+      <span className="zim-place-titre" title="Face de la carte où l’image s’affiche">Afficher au</span>
+      <div className="seg fc-seg">
+        {PLACES_IMAGE.map((p) => (
+          <button key={p.id} type="button" className={'seg-btn' + (place === p.id ? ' active' : '')}
+            onClick={() => onChange({ ...valeur, place: p.id })}>{p.label}</button>
+        ))}
+      </div>
+    </div>
+  );
   return (
-    <div className="imp-field fci-champ" data-zone-image="image" data-zone-visuel="">
+    <div className="imp-field fci-champ" data-zone-image="image">
       <label>Image <span className="imp-opt">(optionnelle)</span></label>
-      <input ref={input} type="file" accept="image/*" style={{ display: 'none' }}
-        onChange={(e) => { choisir(e.target.files[0]); e.target.value = ''; }} />
-      {!aUneImage ? (
-        <button type="button" className="fc-ajout" onClick={() => input.current && input.current.click()}
-          onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); choisir(e.dataTransfer.files[0]); }}>
-          <Icon name="image" size={15} /> Ajouter une image <span className="imp-opt">— ou colle-la (<kbd>⌘V</kbd> / <kbd>Ctrl+V</kbd>), ou glisse-la ici</span>
-        </button>
-      ) : (
-        <div className="fc-choisie">
-          <div className="fc-vignette">
-            {apercu ? <img src={apercu} alt="" /> : <ImageFlashcard imageId={imageId} maxH={64} />}
-          </div>
-          <div className="fc-reglages">
-            <span className="fc-reglages-titre">Afficher au</span>
-            <div className="seg fc-seg">
-              {PLACES_IMAGE.map((p) => (
-                <button key={p.id} type="button" className={'seg-btn' + (place === p.id ? ' active' : '')}
-                  onClick={() => onChange({ ...valeur, place: p.id })}>{p.label}</button>
-              ))}
-            </div>
-            <div className="fc-liens">
-              <button type="button" className="linklike" onClick={() => input.current && input.current.click()}>Remplacer</button>
-              <button type="button" className="linklike fc-retirer" onClick={() => onChange({ imageId: null, fichier: null, place })}>Retirer l'image</button>
-              <EtatOcr ocr={ocr} />
-            </div>
-          </div>
-        </div>
-      )}
-      <BoutonColler onFichier={(f) => (onColler ? onColler(f) : choisir(f))} />
+      <ZoneImage valeur={valeur} taille="carte" libelle="Image" onColler={onColler} aside={places}
+        onChange={(v) => onChange({ imageId: v.imageId || null, fichier: v.fichier || null, place })} />
     </div>
   );
 }
