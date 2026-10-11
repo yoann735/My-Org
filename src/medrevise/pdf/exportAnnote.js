@@ -70,7 +70,7 @@ export function paragraphesDe(content) {
 const EQUIVALENTS = { '→': '->', '←': '<-', '↔': '<->', '⇒': '=>', '⇔': '<=>', '≥': '>=', '≤': '<=', '≠': '!=', '≈': '~',
   '√': 'racine ', '∞': 'infini', 'α': 'alpha', 'β': 'beta', 'γ': 'gamma', 'δ': 'delta', 'Δ': 'Delta', 'μ': 'µ', 'π': 'pi',
   ' ': ' ', ' ': ' ', '\t': '  ', '✓': 'v', '✔': 'v', '✗': 'x', '−': '-' };
-function nettoyeur(font) {
+export function nettoyeur(font) {
   const cache = new Map();
   return (s) => Array.from(String(s || '')).map((ch) => {
     if (cache.has(ch)) return cache.get(ch);

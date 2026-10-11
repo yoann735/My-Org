@@ -191,8 +191,11 @@ export const LISEZMOI_IA = `EXPORT SPÉCIAL IA — MedRevise
 
 Contenu
 - annotations.json : { course, page?, instructions, boxes: [ { id, ref, text } ] }
-- visuel.pdf et page-XX.png : la page du cours avec toutes ses annotations ; chaque boîte
-  porte son repère (ref, ex. #k3f) dans un coin, à l'intérieur de la boîte.
+- {PDF} : une page par page du cours, l'image de la page avec toutes ses annotations ;
+  chaque boîte porte son repère (ref, ex. #k3f) dans un coin, à l'intérieur de la boîte.
+  Le PDF contient aussi une couche de texte invisible : « #k3f — texte de la boîte » à
+  l'emplacement de chaque boîte, et le numéro de page en pied.
+- (option « PNG par page ») page-XX.png : la même image, une par page.
 
 Ce qu'il faut faire
 1. Lire chaque boîte sur le visuel : sa flèche désigne la zone de l'image concernée.

@@ -109,7 +109,7 @@ import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { MenuFichier } from './MenuFichier.jsx';
 import { PanneauTextesAnnotations } from './TextesAnnotations.jsx';
 import { PanneauExportIA } from './ExportIA.jsx';
-import { preparerExportIA } from './exportIA.js';
+import { preparerSourceIA } from './exportIA.js';
 import { refsCourtes, construireExportIA, estBoiteTexte, aDeuxVersions, versionAffichee, boitesOrdonnees, construireExport, lireImport, planImport, resumeImport, basculerVersion, avecContenuEdite } from '../lib/textesAnnotations.js';
 import { Tableau } from '../tableau/Tableau.jsx';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
@@ -2538,7 +2538,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [panneauExportIA, setPanneauExportIA] = useState(false);
   const annotationsFraiches = () => (editsRef.current || []).map((a) => (a.id === activeEditIdRef.current && editLastJson.current ? avecContenuEdite(a, editLastJson.current) : a));
   const ordrePagesIA = () => pageSizes.map((p) => p.cle);
-  const preparerIA = (portee) => preparerExportIA({ titre: (fiche && (fiche.titre || fiche.nom)) || '', pdfId: fiche.pdfId, highlights,
+  const preparerIA = (portee) => preparerSourceIA({ titre: (fiche && (fiche.titre || fiche.nom)) || '', pdfId: fiche.pdfId, highlights,
     annotations: annotationsFraiches(), ordrePages: ordrePagesIA(), portee, pageIndex: pageCourante - 1 });
   const jsonIA = (portee) => {
     const toutes = boitesOrdonnees(annotationsFraiches(), ordrePagesIA());

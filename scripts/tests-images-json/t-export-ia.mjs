@@ -1,4 +1,4 @@
-// Partie A : export spécial IA par l'interface. « Cours 12 pages IA » ouvert, page 1 affichée (seed-ia.mjs).
+// Partie A : export spécial IA par l'interface (11/10 : le .zip est devenu « PNG par page » ; le PDF : t-export-ia-pdf.mjs). « Cours 12 pages IA » ouvert, page 1 affichée (seed-ia.mjs).
 import { banc } from './commun-doc.mjs';
 import { outilsJson } from './json-commun.mjs';
 import fs from 'fs';
@@ -30,15 +30,15 @@ const ap = await ev(`(()=>{const i=document.querySelector('.eia-page img');retur
 ok(ap.n === 1 && ap.w === 1190 && ap.h === 1684, '1. Aperçu : la page avec ses repères, PNG 2× (1190 × 1684)', JSON.stringify(ap));
 await B.capture('ia-apercu');
 await clic(await B.pos(`document.querySelector('.eia-apercu button[aria-label="Fermer l’aperçu"]')`, false), { att: 400 });
-// 2. zip de la page 1
-await clic(await B.bouton('Télécharger (.zip)'), { att: 400 });
+// 2. zip de la page 1 (« PNG par page »)
+await clic(await B.bouton('PNG par page'), { att: 400 });
 for (let i = 0; i < 40 && !(await ev(`window.__telecharges.length`)); i++) await dormir(250);
 const z1 = await recupere('../cap/zip-p01');
-ok(z1.nom === 'Cours-12-pages-IA-export-IA-p01.zip' && z1.fichiers.join() === 'LISEZMOI.txt,annotations.json,page-01.png,visuel.pdf', '2. .zip de la page : nommage et contenu', `${z1.nom} → ${z1.fichiers.join(', ')}`);
+ok(z1.nom === 'Cours-12-pages-IA-export-ia-p01-png.zip' && z1.fichiers.join() === 'LISEZMOI.txt,annotations.json,page-01.png', '2. « PNG par page » de la page : nommage et contenu', `${z1.nom} → ${z1.fichiers.join(', ')}`);
 const j1 = JSON.parse(fs.readFileSync('../cap/zip-p01/annotations.json', 'utf8'));
 ok(j1.boxes.length === 8 && j1.boxes.every((b) => Object.keys(b).join() === 'id,ref,text' && /^#[a-z0-9]{3,}$/.test(b.ref) && b.id.endsWith(b.ref.slice(1))) && typeof j1.instructions === 'string', '2b. annotations.json : 8 boîtes { id, ref, text }, ref = fin de l’id, consignes incluses');
 const lis = fs.readFileSync('../cap/zip-p01/LISEZMOI.txt', 'utf8');
-ok(/flèche/.test(lis) && /mêmes "id" et "ref"/.test(lis), '2c. LISEZMOI : format de retour et rôle des flèches');
+ok(/flèche/.test(lis) && /mêmes "id" et "ref"/.test(lis) && lis.includes('Cours-12-pages-IA-export-ia-p01.pdf'), '2c. LISEZMOI : format de retour et rôle des flèches');
 // 3. copier le JSON / copier l'image
 await clic(await B.bouton('Copier le JSON'), { att: 800 });
 const cj = JSON.parse(await ev(`navigator.clipboard.readText()`));
@@ -50,14 +50,12 @@ ok(img[1] === 1190 && img[2] === 1684, '3b. « Copier l’image » : PNG de la p
 // 4. cours entier (12 pages)
 await clic(await B.pos(`[...document.querySelectorAll('.eia-panneau .mep-pre')].find(b=>b.innerText.startsWith('Cours'))`, false), { att: 300 });
 const avantN = await ev(`window.__telecharges.length`);
-await clic(await B.bouton('Télécharger (.zip)'), { att: 400 });
+await clic(await B.bouton('PNG par page'), { att: 400 });
 for (let i = 0; i < 120 && (await ev(`window.__telecharges.length`)) === avantN; i++) await dormir(250);
 const z2 = await recupere('../cap/zip-cours');
-const attendus = ['LISEZMOI.txt', 'annotations.json', ...Array.from({ length: 12 }, (_, i) => `page-${String(i + 1).padStart(2, '0')}.png`), 'visuel.pdf'].sort();
+const attendus = ['LISEZMOI.txt', 'annotations.json', ...Array.from({ length: 12 }, (_, i) => `page-${String(i + 1).padStart(2, '0')}.png`)].sort();
 const j2 = JSON.parse(fs.readFileSync('../cap/zip-cours/annotations.json', 'utf8'));
-const { PDFDocument } = await import('pdf-lib');
-const pagesPdf = String((await PDFDocument.load(fs.readFileSync('../cap/zip-cours/visuel.pdf'))).getPageCount());
-ok(z2.nom === 'Cours-12-pages-IA-export-IA.zip' && JSON.stringify(z2.fichiers) === JSON.stringify(attendus) && !('page' in j2) && j2.boxes.length === 13 && pagesPdf === '12', '4. cours entier : 12 PNG page-01…page-12, visuel.pdf de 12 pages, 13 boîtes', `${z2.nom} · ${z2.fichiers.length} fichiers · pdf ${pagesPdf} p.`);
+ok(z2.nom === 'Cours-12-pages-IA-export-ia-png.zip' && JSON.stringify(z2.fichiers) === JSON.stringify(attendus) && !('page' in j2) && j2.boxes.length === 13, '4. cours entier (« PNG par page ») : 12 PNG page-01…page-12, 13 boîtes', `${z2.nom} · ${z2.fichiers.length} fichiers`);
 const refsP1 = new Map(j1.boxes.map((b) => [b.id, b.ref]));
 ok(j2.boxes.filter((b) => refsP1.has(b.id)).every((b) => refsP1.get(b.id) === b.ref), '4b. mêmes repères en export page et en export cours');
 await B.touche('Escape', { vk: 27 }); await dormir(300);
