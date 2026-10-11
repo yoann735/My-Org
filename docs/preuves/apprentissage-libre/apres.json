@@ -1,0 +1,1040 @@
+{
+  "diagnostic": {
+    "cartes": [
+      {
+        "id": "qAKG",
+        "type": "flashcard",
+        "ficheId": "fKrebs",
+        "cours": "Biochimie — cycle de Krebs",
+        "matiere": "Sciences fondamentales (test)",
+        "recto": "L’alpha-cétoglutarate déshydrogénase produit du {{succinyl-CoA}}.",
+        "planifiee": true,
+        "learnState": "review",
+        "conversionApprentissage": null,
+        "fsrs": null,
+        "lastSeenAt": null,
+        "dueDate": "2026-10-12",
+        "prochaineDate": "2026-10-12",
+        "intervalDays": 2,
+        "skippedOn": null,
+        "termine": false,
+        "notationsJ": 2,
+        "derniereNotation": {
+          "date": "2026-10-07",
+          "qualite": 3
+        },
+        "updatedAt": "2026-10-11T13:32:36.553Z"
+      },
+      {
+        "id": "qBiceps",
+        "type": "flashcard",
+        "ficheId": "fMyo",
+        "cours": "Myologie — membre supérieur",
+        "matiere": "Sciences fondamentales (test)",
+        "recto": "Biceps brachial",
+        "planifiee": true,
+        "learnState": "review",
+        "conversionApprentissage": null,
+        "fsrs": {
+          "v": 1,
+          "state": 2,
+          "stability": 19.963321,
+          "difficulty": 5.090128,
+          "reps": 4,
+          "lapses": 0,
+          "derniere": "2026-10-11",
+          "due": "2026-11-01",
+          "intervalle": 21,
+          "source": "reponse",
+          "majLe": "2026-10-11T13:32:49.737Z"
+        },
+        "lastSeenAt": null,
+        "dueDate": "2026-10-29",
+        "prochaineDate": "2026-10-29",
+        "intervalDays": 18,
+        "skippedOn": null,
+        "termine": false,
+        "notationsJ": 3,
+        "derniereNotation": {
+          "date": "2026-10-11",
+          "qualite": 5
+        },
+        "updatedAt": "2026-10-11T13:32:49.740Z"
+      },
+      {
+        "id": "qCitrate",
+        "type": "flashcard",
+        "ficheId": "fKrebs",
+        "cours": "Biochimie — cycle de Krebs",
+        "matiere": "Sciences fondamentales (test)",
+        "recto": "Quelle enzyme condense l’acétyl-CoA et l’oxaloacétate ?",
+        "planifiee": true,
+        "learnState": "review",
+        "conversionApprentissage": null,
+        "fsrs": null,
+        "lastSeenAt": null,
+        "dueDate": "2026-10-11",
+        "prochaineDate": "2026-10-11",
+        "intervalDays": 3,
+        "skippedOn": null,
+        "termine": false,
+        "notationsJ": 2,
+        "derniereNotation": {
+          "date": "2026-10-07",
+          "qualite": 3
+        },
+        "updatedAt": "2026-10-11T13:32:36.553Z"
+      },
+      {
+        "id": "qCoiffe",
+        "type": "flashcard",
+        "ficheId": "fMyo",
+        "cours": "Myologie — membre supérieur",
+        "matiere": "Sciences fondamentales (test)",
+        "recto": "Quels muscles forment la coiffe des rotateurs ?",
+        "planifiee": true,
+        "learnState": null,
+        "conversionApprentissage": null,
+        "fsrs": null,
+        "lastSeenAt": null,
+        "dueDate": "2026-10-11",
+        "prochaineDate": "2026-10-11",
+        "intervalDays": 1,
+        "skippedOn": null,
+        "termine": false,
+        "notationsJ": 0,
+        "derniereNotation": null,
+        "updatedAt": "2026-10-11T13:32:36.553Z"
+      },
+      {
+        "id": "qHumerus",
+        "type": "flashcard",
+        "ficheId": "fMyo",
+        "cours": "Myologie — membre supérieur",
+        "matiere": "Sciences fondamentales (test)",
+        "recto": "Quel nerf longe le sillon du nerf radial de l’humérus ?",
+        "planifiee": true,
+        "learnState": "review",
+        "conversionApprentissage": null,
+        "fsrs": null,
+        "lastSeenAt": null,
+        "dueDate": "2026-10-16",
+        "prochaineDate": "2026-10-16",
+        "intervalDays": 9,
+        "skippedOn": null,
+        "termine": false,
+        "notationsJ": 2,
+        "derniereNotation": {
+          "date": "2026-10-07",
+          "qualite": 3
+        },
+        "updatedAt": "2026-10-11T13:32:36.553Z"
+      },
+      {
+        "id": "qNADH",
+        "type": "flashcard",
+        "ficheId": "fKrebs",
+        "cours": "Biochimie — cycle de Krebs",
+        "matiere": "Sciences fondamentales (test)",
+        "recto": "Combien de NADH un tour de cycle produit-il ?",
+        "planifiee": true,
+        "learnState": "review",
+        "conversionApprentissage": null,
+        "fsrs": {
+          "v": 1,
+          "state": 2,
+          "stability": 14.8,
+          "difficulty": 4.4,
+          "reps": 3,
+          "lapses": 0,
+          "derniere": "2026-10-07",
+          "due": "2026-10-14",
+          "intervalle": 7
+        },
+        "lastSeenAt": null,
+        "dueDate": "2026-10-19",
+        "prochaineDate": "2026-10-19",
+        "intervalDays": 12,
+        "skippedOn": null,
+        "termine": false,
+        "notationsJ": 2,
+        "derniereNotation": {
+          "date": "2026-10-07",
+          "qualite": 3
+        },
+        "updatedAt": "2026-10-11T13:32:36.553Z"
+      },
+      {
+        "id": "qTriceps",
+        "type": "flashcard",
+        "ficheId": "fMyo",
+        "cours": "Myologie — membre supérieur",
+        "matiere": "Sciences fondamentales (test)",
+        "recto": "Triceps brachial",
+        "planifiee": true,
+        "learnState": "review",
+        "conversionApprentissage": null,
+        "fsrs": {
+          "v": 1,
+          "state": 2,
+          "stability": 4.2,
+          "difficulty": 6.3,
+          "reps": 3,
+          "lapses": 0,
+          "derniere": "2026-10-07",
+          "due": "2026-10-14",
+          "intervalle": 7
+        },
+        "lastSeenAt": null,
+        "dueDate": "2026-10-13",
+        "prochaineDate": "2026-10-13",
+        "intervalDays": 4,
+        "skippedOn": null,
+        "termine": false,
+        "notationsJ": 2,
+        "derniereNotation": {
+          "date": "2026-10-07",
+          "qualite": 3
+        },
+        "updatedAt": "2026-10-11T13:32:36.553Z"
+      }
+    ],
+    "planDuJour": {
+      "compteurs": {
+        "dues": 2
+      },
+      "dues": [
+        "qCitrate",
+        "qCoiffe"
+      ]
+    },
+    "journal": {
+      "entrees": 3,
+      "enAttente": 0
+    },
+    "seanceEnregistree": {
+      "v": 2,
+      "date": "2026-10-11",
+      "phase": "fin",
+      "cartes": [
+        "qCoiffe",
+        "qCitrate",
+        "qBiceps"
+      ],
+      "idx": 3,
+      "nTotal": 3,
+      "faites": {
+        "revisions": 3,
+        "rates": 0
+      },
+      "ms": {
+        "revisions": 6422
+      },
+      "debut": "2026-10-11T13:25:13.607Z",
+      "mesuree": true
+    },
+    "mesuresSeance": [
+      {
+        "v": 2,
+        "date": "2026-10-11",
+        "nRevisions": 3,
+        "msRevisions": 6422
+      }
+    ],
+    "reglagesFC": {
+      "brut": null,
+      "effectifs": {
+        "muscleLigneParLigne": true,
+        "intervalleMax": 45,
+        "planificateur": "maison",
+        "fsrsMigration": null
+      }
+    }
+  },
+  "questions": [
+    {
+      "id": "qAKG",
+      "type": "flashcard",
+      "ficheId": "fKrebs",
+      "theme": "Cycle de Krebs",
+      "recto": "L’alpha-cétoglutarate déshydrogénase produit du {{succinyl-CoA}}.",
+      "verso": "L’alpha-cétoglutarate déshydrogénase produit du succinyl-CoA.",
+      "learnState": "review",
+      "intervalDays": 2,
+      "dueDate": "2026-10-12",
+      "capped": false,
+      "termine": false,
+      "historique": [
+        {
+          "date": "2026-09-30",
+          "qualite": 2
+        },
+        {
+          "date": "2026-10-07",
+          "qualite": 3
+        }
+      ],
+      "cloze": [
+        "succinyl-CoA"
+      ],
+      "updatedAt": "2026-10-11T13:32:36.553Z"
+    },
+    {
+      "id": "qBiceps",
+      "type": "flashcard",
+      "ficheId": "fMyo",
+      "theme": "Muscles du bras",
+      "recto": "Biceps brachial",
+      "verso": "Chef long : tubercule supra-glénoïdal ; chef court : processus coracoïde\nLoge antérieure du bras\nTubérosité radiale et aponévrose bicipitale\nFlexion du coude, supination de l’avant-bras\nNerf musculo-cutané (C5–C6)",
+      "muscle": {
+        "v": 1,
+        "lignes": {
+          "origine": "Chef long : tubercule supra-glénoïdal ; chef court : processus coracoïde",
+          "trajet": "Loge antérieure du bras",
+          "insertion": "Tubérosité radiale et aponévrose bicipitale",
+          "action": "Flexion du coude, supination de l’avant-bras",
+          "innervation": "Nerf musculo-cutané (C5–C6)"
+        }
+      },
+      "learnState": "review",
+      "intervalDays": 18,
+      "dueDate": "2026-10-29",
+      "capped": false,
+      "termine": false,
+      "historique": [
+        {
+          "date": "2026-09-30",
+          "qualite": 2
+        },
+        {
+          "date": "2026-10-07",
+          "qualite": 3
+        },
+        {
+          "date": "2026-10-11",
+          "qualite": 5
+        }
+      ],
+      "fsrs": {
+        "v": 1,
+        "state": 2,
+        "stability": 19.963321,
+        "difficulty": 5.090128,
+        "reps": 4,
+        "lapses": 0,
+        "derniere": "2026-10-11",
+        "due": "2026-11-01",
+        "intervalle": 21,
+        "source": "reponse",
+        "base": {
+          "state": 2,
+          "stability": 9.4,
+          "difficulty": 5.1,
+          "reps": 3,
+          "lapses": 0,
+          "derniere": "2026-10-07",
+          "due": "2026-10-14",
+          "intervalle": 7,
+          "source": null,
+          "depuis": "2026-10-11"
+        },
+        "majLe": "2026-10-11T13:32:49.737Z"
+      },
+      "updatedAt": "2026-10-11T13:32:49.740Z",
+      "missed": 0
+    },
+    {
+      "id": "qCitrate",
+      "type": "flashcard",
+      "ficheId": "fKrebs",
+      "theme": "Cycle de Krebs",
+      "recto": "Quelle enzyme condense l’acétyl-CoA et l’oxaloacétate ?",
+      "verso": "La citrate synthase.",
+      "learnState": "review",
+      "intervalDays": 3,
+      "dueDate": "2026-10-11",
+      "capped": false,
+      "termine": false,
+      "historique": [
+        {
+          "date": "2026-09-30",
+          "qualite": 2
+        },
+        {
+          "date": "2026-10-07",
+          "qualite": 3
+        }
+      ],
+      "updatedAt": "2026-10-11T13:32:36.553Z"
+    },
+    {
+      "id": "qCoiffe",
+      "type": "flashcard",
+      "ficheId": "fMyo",
+      "theme": "Épaule",
+      "recto": "Quels muscles forment la coiffe des rotateurs ?",
+      "verso": "Supra-épineux, infra-épineux, petit rond, subscapulaire.",
+      "intervalDays": 1,
+      "dueDate": "2026-10-11",
+      "capped": false,
+      "termine": false,
+      "historique": [],
+      "updatedAt": "2026-10-11T13:32:36.553Z"
+    },
+    {
+      "id": "qHumerus",
+      "type": "flashcard",
+      "ficheId": "fMyo",
+      "theme": "Ostéologie",
+      "recto": "Quel nerf longe le sillon du nerf radial de l’humérus ?",
+      "verso": "Le nerf radial, avec l’artère profonde du bras.",
+      "learnState": "review",
+      "intervalDays": 9,
+      "dueDate": "2026-10-16",
+      "capped": false,
+      "termine": false,
+      "historique": [
+        {
+          "date": "2026-09-30",
+          "qualite": 2
+        },
+        {
+          "date": "2026-10-07",
+          "qualite": 3
+        }
+      ],
+      "updatedAt": "2026-10-11T13:32:36.553Z"
+    },
+    {
+      "id": "qNADH",
+      "type": "flashcard",
+      "ficheId": "fKrebs",
+      "theme": "Cycle de Krebs",
+      "recto": "Combien de NADH un tour de cycle produit-il ?",
+      "verso": "Trois NADH, un FADH2 et un GTP.",
+      "learnState": "review",
+      "intervalDays": 12,
+      "dueDate": "2026-10-19",
+      "capped": false,
+      "termine": false,
+      "historique": [
+        {
+          "date": "2026-09-30",
+          "qualite": 2
+        },
+        {
+          "date": "2026-10-07",
+          "qualite": 3
+        }
+      ],
+      "fsrs": {
+        "v": 1,
+        "state": 2,
+        "stability": 14.8,
+        "difficulty": 4.4,
+        "reps": 3,
+        "lapses": 0,
+        "derniere": "2026-10-07",
+        "due": "2026-10-14",
+        "intervalle": 7
+      },
+      "updatedAt": "2026-10-11T13:32:36.553Z"
+    },
+    {
+      "id": "qTriceps",
+      "type": "flashcard",
+      "ficheId": "fMyo",
+      "theme": "Muscles du bras",
+      "recto": "Triceps brachial",
+      "verso": "Chef long : tubercule infra-glénoïdal ; vastes latéral et médial : face postérieure de l’humérus\nLoge postérieure du bras\nOlécrane\nExtension du coude\nNerf radial (C6–C8)",
+      "muscle": {
+        "v": 1,
+        "lignes": {
+          "origine": "Chef long : tubercule infra-glénoïdal ; vastes latéral et médial : face postérieure de l’humérus",
+          "trajet": "Loge postérieure du bras",
+          "insertion": "Olécrane",
+          "action": "Extension du coude",
+          "innervation": "Nerf radial (C6–C8)"
+        }
+      },
+      "learnState": "review",
+      "intervalDays": 4,
+      "dueDate": "2026-10-13",
+      "capped": false,
+      "termine": false,
+      "historique": [
+        {
+          "date": "2026-09-30",
+          "qualite": 2
+        },
+        {
+          "date": "2026-10-07",
+          "qualite": 3
+        }
+      ],
+      "fsrs": {
+        "v": 1,
+        "state": 2,
+        "stability": 4.2,
+        "difficulty": 6.3,
+        "reps": 3,
+        "lapses": 0,
+        "derniere": "2026-10-07",
+        "due": "2026-10-14",
+        "intervalle": 7
+      },
+      "updatedAt": "2026-10-11T13:32:36.553Z"
+    }
+  ],
+  "calendrier": {
+    "2026-10-11": 2,
+    "2026-10-12": 1,
+    "2026-10-13": 1,
+    "2026-10-16": 1,
+    "2026-10-19": 1,
+    "2026-10-29": 1
+  },
+  "journal": [
+    {
+      "id": "1340a753-387f-44cc-979c-4ca4cb5d0639",
+      "card_id": "qCitrate",
+      "rating": 3,
+      "reviewed_at": "2026-10-11T13:27:00.859Z",
+      "jour": "2026-10-11",
+      "device": "ordinateur:2d0d12bc",
+      "scheduler_version": "medrevise-fsrs-1+ts-fsrs@5.4.2",
+      "planificateur": "maison",
+      "state_before": {
+        "dueDate": "2026-10-11",
+        "intervalDays": 3,
+        "termine": false,
+        "fsrs": null
+      },
+      "state_after": {
+        "dueDate": "2026-10-19",
+        "intervalDays": 8,
+        "termine": false,
+        "fsrs": {
+          "v": 1,
+          "state": 2,
+          "stability": 6.658241,
+          "difficulty": 6.988228,
+          "reps": 2,
+          "lapses": 0,
+          "derniere": "2026-10-11",
+          "due": "2026-10-17",
+          "intervalle": 6,
+          "source": "reponse",
+          "majLe": "2026-10-11T13:27:00.859Z"
+        }
+      },
+      "details": {
+        "ancienneQualite": 5,
+        "relearn": false,
+        "dueFsrs": "2026-10-17",
+        "dueMaison": "2026-10-19"
+      }
+    },
+    {
+      "id": "7fed7e9b-4939-40d0-8b06-6b427d93cc4b",
+      "card_id": "qCoiffe",
+      "rating": 3,
+      "reviewed_at": "2026-10-11T13:25:14.639Z",
+      "jour": "2026-10-11",
+      "device": "ordinateur:2d0d12bc",
+      "scheduler_version": "medrevise-fsrs-1+ts-fsrs@5.4.2",
+      "planificateur": "maison",
+      "state_before": {
+        "dueDate": "2026-10-11",
+        "intervalDays": 1,
+        "termine": false,
+        "fsrs": null
+      },
+      "state_after": {
+        "dueDate": "2026-10-14",
+        "intervalDays": 3,
+        "termine": false,
+        "fsrs": {
+          "v": 1,
+          "state": 2,
+          "stability": 2.3065,
+          "difficulty": 2.118104,
+          "reps": 1,
+          "lapses": 0,
+          "derniere": "2026-10-11",
+          "due": "2026-10-14",
+          "intervalle": 3,
+          "source": "reponse",
+          "majLe": "2026-10-11T13:25:14.639Z"
+        }
+      },
+      "details": {
+        "ancienneQualite": 5,
+        "relearn": false,
+        "dueFsrs": "2026-10-14",
+        "dueMaison": "2026-10-14"
+      }
+    },
+    {
+      "id": "997aba57-d3e5-4d0e-8d12-9c6660de4a2d",
+      "card_id": "qBiceps",
+      "rating": 3,
+      "reviewed_at": "2026-10-11T13:32:49.737Z",
+      "jour": "2026-10-11",
+      "device": "ordinateur:2d0d12bc",
+      "scheduler_version": "medrevise-fsrs-1+ts-fsrs@5.4.2",
+      "planificateur": "maison",
+      "state_before": {
+        "dueDate": "2026-10-11",
+        "intervalDays": 7,
+        "termine": false,
+        "fsrs": {
+          "v": 1,
+          "state": 2,
+          "stability": 9.4,
+          "difficulty": 5.1,
+          "reps": 3,
+          "lapses": 0,
+          "derniere": "2026-10-07",
+          "due": "2026-10-14",
+          "intervalle": 7
+        }
+      },
+      "state_after": {
+        "dueDate": "2026-10-29",
+        "intervalDays": 18,
+        "termine": false,
+        "fsrs": {
+          "v": 1,
+          "state": 2,
+          "stability": 19.963321,
+          "difficulty": 5.090128,
+          "reps": 4,
+          "lapses": 0,
+          "derniere": "2026-10-11",
+          "due": "2026-11-01",
+          "intervalle": 21,
+          "source": "reponse",
+          "majLe": "2026-10-11T13:32:49.737Z"
+        }
+      },
+      "details": {
+        "ancienneQualite": 5,
+        "relearn": false,
+        "dueFsrs": "2026-11-01",
+        "dueMaison": "2026-10-29"
+      }
+    }
+  ],
+  "journalEnAttente": [],
+  "stats": {
+    "streak": 0,
+    "dernierJourRevise": null,
+    "jokerUtilise": false,
+    "best": 0,
+    "activityDays": []
+  },
+  "cloud": {
+    "questions": [
+      {
+        "id": "qAKG",
+        "updated_at": "2026-10-11T13:32:36.553Z",
+        "data": {
+          "id": "qAKG",
+          "type": "flashcard",
+          "ficheId": "fKrebs",
+          "theme": "Cycle de Krebs",
+          "recto": "L’alpha-cétoglutarate déshydrogénase produit du {{succinyl-CoA}}.",
+          "verso": "L’alpha-cétoglutarate déshydrogénase produit du succinyl-CoA.",
+          "learnState": "review",
+          "intervalDays": 2,
+          "dueDate": "2026-10-12",
+          "capped": false,
+          "termine": false,
+          "historique": [
+            {
+              "date": "2026-09-30",
+              "qualite": 2
+            },
+            {
+              "date": "2026-10-07",
+              "qualite": 3
+            }
+          ],
+          "cloze": [
+            "succinyl-CoA"
+          ],
+          "updatedAt": "2026-10-11T13:32:36.553Z"
+        }
+      },
+      {
+        "id": "qBiceps",
+        "updated_at": "2026-10-11T13:32:49.740Z",
+        "data": {
+          "id": "qBiceps",
+          "type": "flashcard",
+          "ficheId": "fMyo",
+          "theme": "Muscles du bras",
+          "recto": "Biceps brachial",
+          "verso": "Chef long : tubercule supra-glénoïdal ; chef court : processus coracoïde\nLoge antérieure du bras\nTubérosité radiale et aponévrose bicipitale\nFlexion du coude, supination de l’avant-bras\nNerf musculo-cutané (C5–C6)",
+          "muscle": {
+            "v": 1,
+            "lignes": {
+              "origine": "Chef long : tubercule supra-glénoïdal ; chef court : processus coracoïde",
+              "trajet": "Loge antérieure du bras",
+              "insertion": "Tubérosité radiale et aponévrose bicipitale",
+              "action": "Flexion du coude, supination de l’avant-bras",
+              "innervation": "Nerf musculo-cutané (C5–C6)"
+            }
+          },
+          "learnState": "review",
+          "intervalDays": 18,
+          "dueDate": "2026-10-29",
+          "capped": false,
+          "termine": false,
+          "historique": [
+            {
+              "date": "2026-09-30",
+              "qualite": 2
+            },
+            {
+              "date": "2026-10-07",
+              "qualite": 3
+            },
+            {
+              "date": "2026-10-11",
+              "qualite": 5
+            }
+          ],
+          "fsrs": {
+            "v": 1,
+            "state": 2,
+            "stability": 19.963321,
+            "difficulty": 5.090128,
+            "reps": 4,
+            "lapses": 0,
+            "derniere": "2026-10-11",
+            "due": "2026-11-01",
+            "intervalle": 21,
+            "source": "reponse",
+            "base": {
+              "state": 2,
+              "stability": 9.4,
+              "difficulty": 5.1,
+              "reps": 3,
+              "lapses": 0,
+              "derniere": "2026-10-07",
+              "due": "2026-10-14",
+              "intervalle": 7,
+              "source": null,
+              "depuis": "2026-10-11"
+            },
+            "majLe": "2026-10-11T13:32:49.737Z"
+          },
+          "updatedAt": "2026-10-11T13:32:49.740Z",
+          "missed": 0
+        }
+      },
+      {
+        "id": "qCitrate",
+        "updated_at": "2026-10-11T13:32:36.553Z",
+        "data": {
+          "id": "qCitrate",
+          "type": "flashcard",
+          "ficheId": "fKrebs",
+          "theme": "Cycle de Krebs",
+          "recto": "Quelle enzyme condense l’acétyl-CoA et l’oxaloacétate ?",
+          "verso": "La citrate synthase.",
+          "learnState": "review",
+          "intervalDays": 3,
+          "dueDate": "2026-10-11",
+          "capped": false,
+          "termine": false,
+          "historique": [
+            {
+              "date": "2026-09-30",
+              "qualite": 2
+            },
+            {
+              "date": "2026-10-07",
+              "qualite": 3
+            }
+          ],
+          "updatedAt": "2026-10-11T13:32:36.553Z"
+        }
+      },
+      {
+        "id": "qCoiffe",
+        "updated_at": "2026-10-11T13:32:36.553Z",
+        "data": {
+          "id": "qCoiffe",
+          "type": "flashcard",
+          "ficheId": "fMyo",
+          "theme": "Épaule",
+          "recto": "Quels muscles forment la coiffe des rotateurs ?",
+          "verso": "Supra-épineux, infra-épineux, petit rond, subscapulaire.",
+          "intervalDays": 1,
+          "dueDate": "2026-10-11",
+          "capped": false,
+          "termine": false,
+          "historique": [],
+          "updatedAt": "2026-10-11T13:32:36.553Z"
+        }
+      },
+      {
+        "id": "qHumerus",
+        "updated_at": "2026-10-11T13:32:36.553Z",
+        "data": {
+          "id": "qHumerus",
+          "type": "flashcard",
+          "ficheId": "fMyo",
+          "theme": "Ostéologie",
+          "recto": "Quel nerf longe le sillon du nerf radial de l’humérus ?",
+          "verso": "Le nerf radial, avec l’artère profonde du bras.",
+          "learnState": "review",
+          "intervalDays": 9,
+          "dueDate": "2026-10-16",
+          "capped": false,
+          "termine": false,
+          "historique": [
+            {
+              "date": "2026-09-30",
+              "qualite": 2
+            },
+            {
+              "date": "2026-10-07",
+              "qualite": 3
+            }
+          ],
+          "updatedAt": "2026-10-11T13:32:36.553Z"
+        }
+      },
+      {
+        "id": "qNADH",
+        "updated_at": "2026-10-11T13:32:36.553Z",
+        "data": {
+          "id": "qNADH",
+          "type": "flashcard",
+          "ficheId": "fKrebs",
+          "theme": "Cycle de Krebs",
+          "recto": "Combien de NADH un tour de cycle produit-il ?",
+          "verso": "Trois NADH, un FADH2 et un GTP.",
+          "learnState": "review",
+          "intervalDays": 12,
+          "dueDate": "2026-10-19",
+          "capped": false,
+          "termine": false,
+          "historique": [
+            {
+              "date": "2026-09-30",
+              "qualite": 2
+            },
+            {
+              "date": "2026-10-07",
+              "qualite": 3
+            }
+          ],
+          "fsrs": {
+            "v": 1,
+            "state": 2,
+            "stability": 14.8,
+            "difficulty": 4.4,
+            "reps": 3,
+            "lapses": 0,
+            "derniere": "2026-10-07",
+            "due": "2026-10-14",
+            "intervalle": 7
+          },
+          "updatedAt": "2026-10-11T13:32:36.553Z"
+        }
+      },
+      {
+        "id": "qTriceps",
+        "updated_at": "2026-10-11T13:32:36.553Z",
+        "data": {
+          "id": "qTriceps",
+          "type": "flashcard",
+          "ficheId": "fMyo",
+          "theme": "Muscles du bras",
+          "recto": "Triceps brachial",
+          "verso": "Chef long : tubercule infra-glénoïdal ; vastes latéral et médial : face postérieure de l’humérus\nLoge postérieure du bras\nOlécrane\nExtension du coude\nNerf radial (C6–C8)",
+          "muscle": {
+            "v": 1,
+            "lignes": {
+              "origine": "Chef long : tubercule infra-glénoïdal ; vastes latéral et médial : face postérieure de l’humérus",
+              "trajet": "Loge postérieure du bras",
+              "insertion": "Olécrane",
+              "action": "Extension du coude",
+              "innervation": "Nerf radial (C6–C8)"
+            }
+          },
+          "learnState": "review",
+          "intervalDays": 4,
+          "dueDate": "2026-10-13",
+          "capped": false,
+          "termine": false,
+          "historique": [
+            {
+              "date": "2026-09-30",
+              "qualite": 2
+            },
+            {
+              "date": "2026-10-07",
+              "qualite": 3
+            }
+          ],
+          "fsrs": {
+            "v": 1,
+            "state": 2,
+            "stability": 4.2,
+            "difficulty": 6.3,
+            "reps": 3,
+            "lapses": 0,
+            "derniere": "2026-10-07",
+            "due": "2026-10-14",
+            "intervalle": 7
+          },
+          "updatedAt": "2026-10-11T13:32:36.553Z"
+        }
+      }
+    ],
+    "journal": {
+      "actif": true,
+      "lignes": [
+        {
+          "id": "7fed7e9b-4939-40d0-8b06-6b427d93cc4b",
+          "card_id": "qCoiffe",
+          "rating": 3,
+          "reviewed_at": "2026-10-11T13:25:14.639Z",
+          "device": "ordinateur:2d0d12bc",
+          "scheduler_version": "medrevise-fsrs-1+ts-fsrs@5.4.2",
+          "state_before": {
+            "dueDate": "2026-10-11",
+            "intervalDays": 1,
+            "termine": false,
+            "fsrs": null
+          },
+          "state_after": {
+            "dueDate": "2026-10-14",
+            "intervalDays": 3,
+            "termine": false,
+            "fsrs": {
+              "v": 1,
+              "state": 2,
+              "stability": 2.3065,
+              "difficulty": 2.118104,
+              "reps": 1,
+              "lapses": 0,
+              "derniere": "2026-10-11",
+              "due": "2026-10-14",
+              "intervalle": 3,
+              "source": "reponse",
+              "majLe": "2026-10-11T13:25:14.639Z"
+            }
+          },
+          "details": {
+            "jour": "2026-10-11",
+            "planificateur": "maison",
+            "ancienneQualite": 5,
+            "relearn": false,
+            "dueFsrs": "2026-10-14",
+            "dueMaison": "2026-10-14"
+          },
+          "inserted_at": "2026-10-11T13:25:17.655Z"
+        },
+        {
+          "id": "1340a753-387f-44cc-979c-4ca4cb5d0639",
+          "card_id": "qCitrate",
+          "rating": 3,
+          "reviewed_at": "2026-10-11T13:27:00.859Z",
+          "device": "ordinateur:2d0d12bc",
+          "scheduler_version": "medrevise-fsrs-1+ts-fsrs@5.4.2",
+          "state_before": {
+            "dueDate": "2026-10-11",
+            "intervalDays": 3,
+            "termine": false,
+            "fsrs": null
+          },
+          "state_after": {
+            "dueDate": "2026-10-19",
+            "intervalDays": 8,
+            "termine": false,
+            "fsrs": {
+              "v": 1,
+              "state": 2,
+              "stability": 6.658241,
+              "difficulty": 6.988228,
+              "reps": 2,
+              "lapses": 0,
+              "derniere": "2026-10-11",
+              "due": "2026-10-17",
+              "intervalle": 6,
+              "source": "reponse",
+              "majLe": "2026-10-11T13:27:00.859Z"
+            }
+          },
+          "details": {
+            "jour": "2026-10-11",
+            "planificateur": "maison",
+            "ancienneQualite": 5,
+            "relearn": false,
+            "dueFsrs": "2026-10-17",
+            "dueMaison": "2026-10-19"
+          },
+          "inserted_at": "2026-10-11T13:27:03.884Z"
+        },
+        {
+          "id": "997aba57-d3e5-4d0e-8d12-9c6660de4a2d",
+          "card_id": "qBiceps",
+          "rating": 3,
+          "reviewed_at": "2026-10-11T13:32:49.737Z",
+          "device": "ordinateur:2d0d12bc",
+          "scheduler_version": "medrevise-fsrs-1+ts-fsrs@5.4.2",
+          "state_before": {
+            "dueDate": "2026-10-11",
+            "intervalDays": 7,
+            "termine": false,
+            "fsrs": {
+              "v": 1,
+              "state": 2,
+              "stability": 9.4,
+              "difficulty": 5.1,
+              "reps": 3,
+              "lapses": 0,
+              "derniere": "2026-10-07",
+              "due": "2026-10-14",
+              "intervalle": 7
+            }
+          },
+          "state_after": {
+            "dueDate": "2026-10-29",
+            "intervalDays": 18,
+            "termine": false,
+            "fsrs": {
+              "v": 1,
+              "state": 2,
+              "stability": 19.963321,
+              "difficulty": 5.090128,
+              "reps": 4,
+              "lapses": 0,
+              "derniere": "2026-10-11",
+              "due": "2026-11-01",
+              "intervalle": 21,
+              "source": "reponse",
+              "majLe": "2026-10-11T13:32:49.737Z"
+            }
+          },
+          "details": {
+            "jour": "2026-10-11",
+            "planificateur": "maison",
+            "ancienneQualite": 5,
+            "relearn": false,
+            "dueFsrs": "2026-11-01",
+            "dueMaison": "2026-10-29"
+          },
+          "inserted_at": "2026-10-11T13:32:52.766Z"
+        }
+      ]
+    }
+  }
+}
