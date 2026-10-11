@@ -811,7 +811,7 @@ Supabase local, jamais le vrai cloud, avec de vrais clics.
 - Les téléchargements sont interceptés puis analysés : avec le pdf.js de l'app, et en lisant la
   structure du fichier.
 
-**Cours de 12 pages** (`t-export-ia-pdf.mjs`, 20/20) :
+**Cours de 12 pages** (`t-export-ia-pdf.mjs`, 18/18) :
 
 | Vérification | Résultat |
 |---|---|
@@ -852,7 +852,7 @@ même recherche que ⌘F.
 | Vérification | Résultat |
 |---|---|
 | **Chrome** : le lecteur PDF intégré ouvre le fichier (« 1 / 12 », titre « Cours 12 pages IA — export IA ») ; étiquettes lisibles **à 100 %** | ✅ |
-| Non-régression de l'export IA (`t-export-ia.mjs`, 12/12, adapté au « PNG par page ») | ✅ |
+| Non-régression de l'export IA (`t-export-ia.mjs`, 13/13, adapté au « PNG par page ») | ✅ |
 | `ia-labo.mjs` : le visuel ne diffère de l'export normal **qu'à l'intérieur des étiquettes** (0 pixel dehors) | ✅ |
 | Tablette (`t-export-ia-tablette.mjs`) | 3/3 ✅ |
 | `npx vitest run` | 42/42 ✅ |
