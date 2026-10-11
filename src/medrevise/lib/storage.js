@@ -75,6 +75,12 @@ const S = {
   // `notes_doc` : le document de notes d'un cours (id = ficheId, JSON ProseMirror).
   reading_position: store('reading_position'),
   notes_doc: store('notes_doc'),
+  // MODE APPRENTISSAGE LIBRE (11/10, docs/compte-rendu-mode-apprentissage-libre.md) — type
+  // ADDITIONNEL, synchronisé : UN enregistrement 'learning_set' { cardIds[], updatedAt }, la
+  // liste des cartes mises à la main dans l'espace d'entraînement en rafale. Rien d'autre :
+  // ni compteur, ni date, ni historique. Aucun champ de planification n'y est lu ni écrit
+  // (apprentissageLibre/liste.js).
+  learning_set: store('learning_set'),
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
@@ -84,7 +90,7 @@ const S = {
 // `sessionsLog` est syncable pour la même raison que `questions`/`stats` : la
 // tendance affichée en fin de série doit refléter l'activité desktop ET mobile,
 // pas seulement cet appareil.
-const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau', 'liaison', 'dessins', 'reading_position', 'notes_doc'];
+const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau', 'liaison', 'dessins', 'reading_position', 'notes_doc', 'learning_set'];
 
 export function genId(prefix = 'x') {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);

@@ -22,7 +22,7 @@ import { SeanceAujourdhui } from '../components/SeanceAujourdhui.jsx';
 // traitement que CarnetDashboard.jsx desktop (voir là-bas pour le détail).
 const stripCloze = (s) => (s || '').replace(/\{\{([^{}]+)\}\}/g, '$1');
 
-export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman, onOpenDessin = null, onStartSeanceFC = null }) {
+export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman, onOpenDessin = null, onStartSeanceFC = null, onOuvrirApprentissage = null }) {
   const { db } = ctx;
   const ix = useMemo(() => index(db), [db]);
   const due = useMemo(() => dueToday(db, ix), [db, ix]);
@@ -153,6 +153,15 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
             <Icon name="play" size={20} fill /> Commencer la série
           </button>
         </div>
+
+        {/* MODE APPRENTISSAGE LIBRE (11/10) : l'espace d'entraînement en rafale, hors J */}
+        {onOuvrirApprentissage && (
+          <button type="button" className="mrm-card alib-entree" onClick={onOuvrirApprentissage}>
+            <span className="alib-entree-ic"><Icon name="refresh" size={18} /></span>
+            <span className="alib-entree-txt"><strong>Apprentissage</strong><span className="hint">{(ctx.db.learningSet || []).length ? `${(ctx.db.learningSet || []).length} carte${(ctx.db.learningSet || []).length > 1 ? 's' : ''} en apprentissage` : 'Aucune carte pour l’instant'}</span></span>
+            <Icon name="chevR" size={16} />
+          </button>
+        )}
 
         {/* DESSIN AU DOIGT (02/10) : envoyé ensuite sur une fiche, posé sur le PDF depuis l'ordi */}
         {onOpenDessin && <CarteDessin onOuvrir={onOpenDessin} />}

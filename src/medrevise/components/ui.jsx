@@ -369,9 +369,10 @@ export function LoaderL6({ inline = false, label }) {
 const ED_NAV = [
   { id: 'dashboard', label: 'Accueil', icon: 'home' },
   { id: 'revise', label: 'Réviser', icon: 'cards' },
+  { id: 'apprlibre', label: 'Apprentissage', icon: 'refresh' }, // entraînement en rafale, hors J et FSRS (apprentissageLibre/)
   { id: 'library', label: 'Bibliothèque', icon: 'book' },
   { id: 'carnet', label: "Carnet d'erreurs", icon: 'target' },
-  { id: 'apprentissage', label: 'Apprentissage', icon: 'brain' }, // exos + PDF du cours, sans suivi (pages/Apprentissage.jsx)
+  { id: 'apprentissage', label: 'Apprentissage (exos)', icon: 'brain' }, // exos + PDF du cours, sans suivi (pages/Apprentissage.jsx)
   { id: 'notes', label: 'Prise de notes', icon: 'edit' },       // PDF autonomes, lus et annotés, sans suivi (pages/PriseDeNotes.jsx)
 ];
 

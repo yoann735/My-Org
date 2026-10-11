@@ -17,6 +17,7 @@ import { MobileExercice } from './MobileExercice.jsx';
 import { MobileFeynman } from './MobileFeynman.jsx';
 import { EcranDessin } from './EcranDessin.jsx';
 import { SeanceFC } from '../session/SeanceFC.jsx';
+import { EcranApprentissage } from '../apprentissageLibre/EcranApprentissage.jsx';
 import { BandeauFilet, EcranIntegrite } from '../components/FiletSecurite.jsx';
 
 export function MobileApp({ ctx }) {
@@ -36,6 +37,10 @@ export function MobileApp({ ctx }) {
     // séance quotidienne des flashcards (une seule liste, 4 boutons — session/SeanceFC.jsx)
     return <SeanceFC ctx={ctx} onQuit={goHome} pleinEcran />;
   }
+  if (screen === 'apprlibre') {
+    // mode Apprentissage libre (apprentissageLibre/) : liste par cours, session plein écran
+    return <EcranApprentissage ctx={ctx} mobile onRetour={goHome} />;
+  }
   if (screen === 'integrite') {
     // filet de sécurité : liste des anomalies du contrôle du jour (même écran que sur ordinateur)
     return <div className="mrm-app"><EcranIntegrite ctx={ctx} onRetour={goHome} /></div>;
@@ -46,7 +51,7 @@ export function MobileApp({ ctx }) {
   return (
     <>
     <BandeauFilet ctx={ctx} onOuvrirIntegrite={() => setScreen('integrite')} onOuvrirReglages={() => setScreen('integrite')} />
-    <MobileHome ctx={ctx} onOpenDessin={() => setScreen('dessin')} onStartSeanceFC={() => setScreen('seancefc')}
+    <MobileHome ctx={ctx} onOpenDessin={() => setScreen('dessin')} onStartSeanceFC={() => setScreen('seancefc')} onOuvrirApprentissage={() => setScreen('apprlibre')}
       onStartSession={(items, title, meta) => { ctx.startSession(items, title, meta); setScreen('session'); }}
       onStartExercice={(items, title) => { ctx.startExercice(items, title); setScreen('exercice'); }}
       onStartFeynman={(payload) => { ctx.startFeynman(payload); setScreen('feynman'); }}

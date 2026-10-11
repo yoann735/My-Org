@@ -17,6 +17,8 @@ import { Reglages } from './pages/Reglages.jsx';
 import { CarnetDashboard } from './pages/CarnetDashboard.jsx';
 import { Apprentissage } from './pages/Apprentissage.jsx';
 import { PriseDeNotes } from './pages/PriseDeNotes.jsx';
+import { EcranApprentissage } from './apprentissageLibre/EcranApprentissage.jsx';
+import { lireListe, ecrireListe } from './apprentissageLibre/liste.js';
 import { estFocusNotes, setFocusNotes, ECRAN_FOCUS } from './lib/focusMode.js';
 import { initSpotlight } from './lib/spotlight.js';
 import { isClassicUI } from '../shared/uiMode.js';
@@ -53,12 +55,13 @@ let ocrDemarre = false; // démarrage unique du service OCR (voir plus bas)
 // de documents ET rend PdfReader/SchemaEditorScreen/TranscriptEditor EMBARQUÉS dans
 // son panneau de droite. 'pdf'/'schemaedit' restent des routes plein-écran, mais ne
 // sont plus atteignables QUE depuis Réviser (« Voir le cours » / « Éditer le schéma »).
-const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard, apprentissage: Apprentissage, notes: PriseDeNotes, seancefc: SeanceFC, integrite: EcranIntegrite };
+const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard, apprentissage: Apprentissage, notes: PriseDeNotes, apprlibre: EcranApprentissage, seancefc: SeanceFC, integrite: EcranIntegrite };
 
 function MedBottomNav({ current, onNav, focus }) {
   const items = focus ? [{ id: ECRAN_FOCUS, label: 'Prise de notes', icon: 'edit' }] : [
     { id: 'dashboard', label: 'Accueil', icon: 'home' },
     { id: 'revise', label: 'Réviser', icon: 'cards' },
+    { id: 'apprlibre', label: 'Apprendre', icon: 'refresh' }, // mode Apprentissage libre (apprentissageLibre/)
     { id: 'library', label: 'Biblio', icon: 'book' },
     { id: 'carnet', label: 'Carnet', icon: 'target' },
   ];
@@ -137,11 +140,14 @@ export default function MedReviseApp({ themeApi, goHub }) {
       getAll('sources'), getAll('matieres'), getAll('dossiers'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getAll('apprentissage'), getAll('notes'), getStats(), getCoursePrompts(), getExoPrompts(), getChapExoPrompts(),
     ]);
     setReglagesFCState(await getReglagesFC());
+    // `learningSet` : ids de la liste du mode Apprentissage libre (apprentissageLibre/liste.js).
+    // Clé AJOUTÉE à db, lue par ce seul mode — aucun calcul existant (J, FSRS, séance) ne la lit.
+    const learningSet = await lireListe();
     // `apprentissage` : unités du mode Apprentissage (lib/apprentissage.js). Clé AJOUTÉE
     // à db, lue par le seul écran Apprentissage — aucun calcul existant ne la parcourt.
     // `notes` : documents de l'onglet Prise de notes (lib/notes.js). Clé AJOUTÉE à db,
     // lue par le seul écran Prise de notes — aucun calcul existant ne la parcourt.
-    setDb({ sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, apprentissage, notes });
+    setDb({ sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, apprentissage, notes, learningSet });
     setStats(st);
     setPromptOverrides(pr);
     setExoPromptOverrides(epr);
@@ -259,6 +265,13 @@ export default function MedReviseApp({ themeApi, goHub }) {
     saveReglagesFC: async (r) => { setReglagesFCState(await setReglagesFC(r)); },
     startSeanceFC: () => { setRetourSeanceFC(screen === 'seancefc' ? retourSeanceFC : screen); setScreen('seancefc'); },
     endSeanceFC: () => { setScreen(retourSeanceFC || 'dashboard'); setRetourSeanceFC(null); },
+
+    // ---- mode Apprentissage libre : la liste `learning_set`, seule donnée écrite par ce mode ----
+    setLearningSet: async (ids) => {
+      const cardIds = await ecrireListe(ids);
+      setDb((d) => (d ? { ...d, learningSet: cardIds } : d));
+      return cardIds;
+    },
 
     // ---- session lifecycle ----
     startSession: (items, title, meta = {}) => {

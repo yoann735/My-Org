@@ -46,6 +46,8 @@ import { planDuJour } from '../lib/apprentissageFC.js';
 import { nextDate } from '../lib/planning.js';
 import { todayISO } from '../lib/sm2.js';
 import { ModeVisibleCtx } from './modeVisible.js';
+import { ajouter as ajouterApprentissage, retirer as retirerApprentissage } from '../apprentissageLibre/liste.js';
+import '../../styles/apprentissage-libre.css';
 import '../../styles/panneau-modes.css';
 
 /* ============================================================
@@ -257,7 +259,15 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     if (!fc.length) return null;
     return { total: fc.length, aRevoir: planDuJour(fc, todayISO(), nextDate).dues.length };
   }, [ficheItems]);
-  const choisirType = (t) => { setActiveType(t); setAdding(false); setEditingId(null); };
+  /* MODE APPRENTISSAGE LIBRE (11/10, apprentissageLibre/) : mettre / retirer des cartes de la
+     liste `learning_set`, une par une ou par sélection multiple. Seule la liste est écrite :
+     la carte elle-même (dates, états, FSRS) n'est jamais touchée. */
+  const listeAppr = ctx.db.learningSet || [];
+  const dansAppr = useMemo(() => new Set(listeAppr), [listeAppr]);
+  const [selection, setSelection] = useState(null); // null = pas de sélection ; Set d'ids sinon
+  const basculerAppr = (ids, mettre) => ctx.setLearningSet && ctx.setLearningSet(mettre ? ajouterApprentissage(listeAppr, ids) : retirerApprentissage(listeAppr, ids));
+  const cocher = (id) => setSelection((sel) => { const n = new Set(sel || []); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const choisirType = (t) => { setActiveType(t); setAdding(false); setEditingId(null); setSelection(null); };
   const actions = [
     { label: 'Coller du JSON', icon: 'upload', onClick: () => { setAdding(true); setAddSource('json'); setAddedCount(0); } },
   ].filter(Boolean);
@@ -290,6 +300,12 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
           <Icon name={adding && addSource === 'form' ? 'x' : 'plus'} size={13} /> {adding && addSource === 'form' ? 'Fermer' : 'Ajouter'}
         </button>}
         <span style={{ flex: 1 }} />
+        {activeType === 'flashcard' && items.length > 0 && ctx.setLearningSet && (
+          <button type="button" className={'btn sm ghost alib-selectionner' + (selection ? ' actif' : '')} onClick={() => setSelection((x) => (x ? null : new Set()))}
+            title="Cocher plusieurs cartes pour les mettre en apprentissage (ou les en retirer)">
+            {selection ? 'Fermer la sélection' : 'Sélectionner'}
+          </button>
+        )}
         <button type="button" className="icon-btn sm" title="Plus d’actions : coller du JSON"
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuActions({ x: Math.min(r.right - 250, window.innerWidth - 260), y: r.bottom + 6 }); }}>
           <Icon name="more" size={16} />
@@ -328,6 +344,27 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
           </div>
         </div>
       )}
+      {activeType === 'flashcard' && selection && (() => {
+        const choisies = items.filter((q) => selection.has(q.id)).map((q) => q.id);
+        const aMettre = choisies.filter((id) => !dansAppr.has(id));
+        const aRetirer = choisies.filter((id) => dansAppr.has(id));
+        const toutes = items.length > 0 && choisies.length === items.length;
+        return (
+          <div className="alib-selbar" role="toolbar" aria-label="Sélection de cartes">
+            <label className="alib-coche"><input type="checkbox" checked={toutes} onChange={() => setSelection(toutes ? new Set() : new Set(items.map((q) => q.id)))} /> <span>Tout <span className="hint tnum">({choisies.length}/{items.length})</span></span></label>
+            <div className="alib-selactions">
+              <button type="button" className="btn sm primary" disabled={!aMettre.length} onClick={async () => { await basculerAppr(aMettre, true); setSelection(null); }}>
+                <Icon name="refresh" size={12} /> Mettre {aMettre.length > 1 ? `les ${aMettre.length} cartes` : aMettre.length ? 'la carte' : 'les cartes'} en apprentissage
+              </button>
+              {aRetirer.length > 0 && (
+                <button type="button" className="btn sm" onClick={async () => { await basculerAppr(aRetirer, false); setSelection(null); }}>
+                  Retirer {aRetirer.length > 1 ? `les ${aRetirer.length} cartes` : 'la carte'} de l’apprentissage
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
       <div className="pis-list">
         {items.length === 0 && !adding && (
           <div className="pm-vide">
@@ -346,13 +383,15 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
             </div>
           ) : (
             <ItemReadCard key={item.id} item={item}
+              appr={item.type === 'flashcard' && ctx.setLearningSet ? { dans: dansAppr.has(item.id), basculer: () => basculerAppr([item.id], !dansAppr.has(item.id)) } : null}
+              coche={item.type === 'flashcard' && selection ? { oui: selection.has(item.id), basculer: () => cocher(item.id) } : null}
               onEdit={() => { if (estOcclusion(item)) { setOccEdition(item); return; } setEditingId(item.id); setAdding(false); }}
               onDelete={() => setConfirmDel(item)} />
           )
         ))}
       </div>
     </div>
-  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC]); // eslint-disable-line react-hooks/exhaustive-deps
+  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC, dansAppr, selection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* contenus des modes : des éléments STABLES (mêmes objets d'un rendu à l'autre tant que
      leur contenu ne change pas) — le volet mémoïsé (Volet) ne se re-rend alors jamais
@@ -432,12 +471,14 @@ const Volet = memo(function Volet({ id, label, k, cache, contenu }) {
 });
 
 /* ---- carte de lecture (réponse toujours visible) + Éditer/Supprimer ---- */
-function ItemReadCard({ item, onEdit, onDelete }) {
+function ItemReadCard({ item, onEdit, onDelete, appr = null, coche = null }) {
   return (
-    <div className="pis-item card">
+    <div className={'pis-item card' + (coche && coche.oui ? ' alib-cochee' : '')} data-item={item.id}>
       <div className="card-body">
         <div className="row spread" style={{ marginBottom: 8, alignItems: 'flex-start', gap: 8 }}>
-          <span className="hint" style={{ fontWeight: 700, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.theme || 'Sans thème'}</span>
+          {coche && <input type="checkbox" className="alib-case" checked={coche.oui} onChange={coche.basculer} aria-label="Sélectionner cette carte" />}
+          <span className="hint" style={{ fontWeight: 700, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto' }}>{item.theme || 'Sans thème'}</span>
+          {appr && appr.dans && <span className="alib-pastille" title="Cette carte est dans l’espace Apprentissage (elle suit toujours les J)">Apprentissage</span>}
           <div className="row" style={{ gap: 4, flex: '0 0 auto' }}>
             {estMuscle(item) && <BoutonCopier texte={() => texteMuscle(item)} />}
             {estMolecule(item) && <BoutonCopier texte={() => texteMolecule(item)} />}
@@ -449,6 +490,13 @@ function ItemReadCard({ item, onEdit, onDelete }) {
         {item.type === 'flashcard' && (estOcclusion(item) ? <OcclusionReadBody item={item} /> : estMuscle(item) ? <MuscleReadBody item={item} /> : estMolecule(item) ? <MoleculeReadBody item={item} /> : <FlashcardReadBody item={item} />)}
         {item.type === 'feynman' && <FeynmanReadBody item={item} />}
         {item.type === 'exercice' && <ExerciceReadBody item={item} />}
+        {appr && (
+          <div className="alib-pied">
+            <button type="button" className={'alib-btn-carte' + (appr.dans ? ' dans' : '')} onClick={appr.basculer}>
+              <Icon name={appr.dans ? 'x' : 'refresh'} size={12} /> {appr.dans ? 'Retirer de l’apprentissage' : 'Mettre en apprentissage'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
