@@ -29,16 +29,20 @@ const S = {
   sessionsLog: store('sessionsLog'), // un point par série QCM/flashcard terminée (écran de fin, graphique d'évolution)
   prompts: store('prompts'), // surcharges des 4 prompts "Voir les prompts" (vue cours), voir lib/coursePrompts.js
   // MODE APPRENTISSAGE : une « unité » = un lot d'exos (qcm/exercice v1.1) + le PDF du
-  // cours (voir lib/apprentissage.js). Store À PART, et non `questions` : planning,
+  // cours (ancien lib/apprentissage.js, supprimé le 11/10). Store À PART, et non `questions` : planning,
   // méthode des J, stats, carnet, recherche et exports ne lisent que `questions`/
   // `fiches` — ces exos restent donc hors de tout suivi PAR CONSTRUCTION.
+  // (11/10) l'écran « Apprentissage (exos) » est SUPPRIMÉ (docs/compte-rendu-finitions-boites-sidebar.md) :
+  // le store reste déclaré et synchronisé pour que ses données éventuelles restent en base ; plus rien ne les affiche.
   apprentissage: store('apprentissage'),
   // PRISE DE NOTES : un « document de notes » = un PDF autonome, sans fiche
-  // (voir lib/notes.js). Même raison d'être un store À PART que `apprentissage` :
+  // (ancien lib/notes.js, supprimé le 11/10). Même raison d'être un store À PART que `apprentissage` :
   // planning, méthode des J, stats, carnet, recherche et exports ne lisent que
   // `questions`/`fiches` — ces documents en restent donc absents PAR CONSTRUCTION.
   // Leurs annotations ne sont PAS ici : elles vivent dans `highlights`/`annotations`
   // avec `ficheId = note.id` (clé de namespace, pas clé étrangère).
+  // (11/10) l'écran « Prise de notes » est SUPPRIMÉ : le store reste (données en base, synchronisées) ;
+  // ses documents non rangés se lisent dans Réglages → Archives (components/Archives.jsx).
   notes: store('notes'),
   // TABLEAU type Miro (04/10, docs/mecanique-miro.md) : UN enregistrement par élément
   // (carte de texte, lien entre cartes), filtré par `ficheId` comme `annotations`.

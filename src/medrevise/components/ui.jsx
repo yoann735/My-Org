@@ -10,7 +10,8 @@ import { Icon } from '../../shared/Icon.jsx';
 import { comparerAuCloud, derniereSyncReussie } from '../lib/syncStatus.js';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { todayISO } from '../lib/sm2.js';
-import { AllPromptsModal } from './CoursePromptsMenu.jsx';
+import { IconeRafale } from './IconeRafale.jsx';
+import { ECRAN_FOCUS } from '../lib/focusMode.js';
 import { dernierEchecCloud } from '../data/sync.js';
 
 const FALLBACK_TINT = '#7C6FE0';
@@ -366,14 +367,14 @@ export function LoaderL6({ inline = false, label }) {
 }
 
 /* ---- left sidebar ---- */
+/* (11/10, docs/compte-rendu-finitions-boites-sidebar.md) « Apprentissage (exos) » et « Prise de notes »
+   sont supprimés ; « Prompts » est passé dans Réglages → Prompts. `Ic` : icône locale (hors shared/). */
 const ED_NAV = [
   { id: 'dashboard', label: 'Accueil', icon: 'home' },
   { id: 'revise', label: 'Réviser', icon: 'cards' },
-  { id: 'apprlibre', label: 'Apprentissage', icon: 'refresh' }, // entraînement en rafale, hors J et FSRS (apprentissageLibre/)
+  { id: 'apprlibre', label: 'Apprentissage', Ic: IconeRafale }, // entraînement en rafale, hors J et FSRS (apprentissageLibre/)
   { id: 'library', label: 'Bibliothèque', icon: 'book' },
   { id: 'carnet', label: "Carnet d'erreurs", icon: 'target' },
-  { id: 'apprentissage', label: 'Apprentissage (exos)', icon: 'brain' }, // exos + PDF du cours, sans suivi (pages/Apprentissage.jsx)
-  { id: 'notes', label: 'Prise de notes', icon: 'edit' },       // PDF autonomes, lus et annotés, sans suivi (pages/PriseDeNotes.jsx)
 ];
 
 export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx, focus = false, onBasculerFocus }) {
@@ -381,11 +382,7 @@ export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx, f
   // 'revise') — retiré de la liste ci-dessous pour ne pas allumer les DEUX
   // onglets à la fois quand on est sur l'écran carnet.
   const isActive = (id) => current === id || (id === 'revise' && ['session', 'feynman', 'exercice', 'anatquiz', 'pdf', 'schemaedit'].includes(current));
-  // Accès central "Prompts" (voir CoursePromptsMenu.jsx#AllPromptsModal) : point
-  // d'entrée SUPPLÉMENTAIRE vers les mêmes 8 prompts (4 théorie + 4 pratique),
-  // en plus des boutons "Voir les prompts" déjà présents en vue cours — ne les
-  // remplace pas, même stockage donc toute modif se reflète partout.
-  const [promptsOpen, setPromptsOpen] = useState(false);
+  // (11/10) l'accès central « Prompts » est désormais dans Réglages → Prompts (même contenu, mêmes fonctions).
   return (
     <nav className={'sidebar' + (expanded ? ' expanded' : '')}>
       <div className="sb-brand">
@@ -394,30 +391,26 @@ export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx, f
       </div>
       <div className="sb-nav">
         {/* MODE FOCUS (lib/focusMode.js) : il ne reste qu'une entrée. */}
-        {(focus ? ED_NAV.filter((n) => n.id === 'notes') : ED_NAV).map((n) => (
+        {(focus ? ED_NAV.filter((n) => n.id === ECRAN_FOCUS) : ED_NAV).map((n) => (
           <div key={n.id} className={'sb-item' + (isActive(n.id) ? ' active' : '')} onClick={() => onNav(n.id)} title={n.label}>
-            <span className="sb-icon"><Icon name={n.icon} size={20} /></span>
+            <span className="sb-icon">{n.Ic ? <n.Ic size={20} /> : <Icon name={n.icon} size={20} />}</span>
             <span className="sb-label">{n.label}</span>
           </div>
         ))}
       </div>
       <div className="sb-spacer" />
       <div className="sb-foot">
-        {/* MODE FOCUS (lib/focusMode.js) : UNE icône, ici, au-dessus de Prompts et
+        {/* MODE FOCUS (lib/focusMode.js) : UNE icône, ici, au-dessus de
             Réglages — le SEUL endroit pour l'activer comme pour le désactiver. Même
             place et même icône dans les deux états (allumée = focus actif), donc on
             sait toujours où cliquer pour en sortir. */}
         <div className={'sb-item sb-focus' + (focus ? ' active' : '')} onClick={() => onBasculerFocus(!focus)}
           role="switch" aria-checked={focus}
-          title={focus ? 'Focus actif — cliquer pour quitter et retrouver tous les onglets' : 'Mode focus : ne garder que la Prise de notes (même après un rechargement)'}>
+          title={focus ? 'Focus actif — cliquer pour quitter et retrouver tous les onglets' : 'Mode focus : ne garder que la Bibliothèque (même après un rechargement)'}>
           <span className="sb-icon"><Icon name="target" size={20} /></span>
           <span className="sb-label">{focus ? 'Focus' : 'Mode focus'}</span>
         </div>
         {!focus && (<>
-        <div className={'sb-item' + (promptsOpen ? ' active' : '')} onClick={() => setPromptsOpen(true)} title="Prompts — copier un prompt théorie ou exercices">
-          <span className="sb-icon"><Icon name="layers" size={20} /></span>
-          <span className="sb-label">Prompts</span>
-        </div>
         <div className={'sb-item' + (current === 'settings' ? ' active' : '')} onClick={() => onNav('settings')} title="Réglages">
           <span className="sb-icon"><Icon name="settings" size={20} /></span>
           <span className="sb-label">Réglages</span>
@@ -433,7 +426,6 @@ export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx, f
         </button>
         <MenuAvatar ctx={ctx} onReglages={() => onNav('settings')} />
       </div>
-      {promptsOpen && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOpen(false)} />}
     </nav>
   );
 }

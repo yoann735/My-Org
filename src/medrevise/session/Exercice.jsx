@@ -230,7 +230,7 @@ function Workstation({ item, fiche, meta, ctx, mode, isFirst, isLast, onNext, on
 
 /* ---------------- Données ---------------- */
 // exporté (comme Notepad, Calculator, NumericAnswer, OpenAnswer, CorrectionSteps, Pieges) :
-// réutilisé TEL QUEL par le mode Apprentissage (apprentissage/ExoApprentissage.jsx), qui
+// réutilisé autrefois par le mode Apprentissage exos (apprentissage/ExoApprentissage.jsx, supprimé le 11/10), qui
 // les assemble sans StatutChooser ni recordExerciceAttempt — aucun changement de rendu ici.
 export function DonneesTable({ donnees }) {
   return (

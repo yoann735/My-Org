@@ -27,7 +27,8 @@ import { todayISO } from '../lib/sm2.js';
 import { titreFromFile, titreFromFilename } from '../lib/fileTitre.js';
 import { createFicheFromQuestions } from '../lib/import.js';
 import { estImage, ordonnerImages, imagesToPdf } from '../lib/imageToPdf.js';
-import { estBureautique } from '../lib/noteImport.js';
+// fichier bureautique (Word, PowerPoint…) : refusé avec un message (on attend un PDF)
+const estBureautique = (f) => /\.(docx?|pptx?|odt|odp|pages|key)$/i.test((f && f.name) || '');
 
 /** délai d'ouverture au survol prolongé — le Finder se situe autour de 500-700 ms. */
 export const SPRING_DELAY = 600;

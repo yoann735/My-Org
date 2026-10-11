@@ -6,7 +6,6 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal, ConfirmModal } from '../components/ui.jsx';
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
-import { ImportApprentissage } from '../components/ImportApprentissage.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, exosARevoirCetteSemaine, fmtDay, carnetV1Questions, carnetV2Questions, strugglingByFiche } from '../lib/planning.js';
 import { isoDate, isDueBecauseStruggled } from '../lib/sm2.js';
@@ -643,36 +642,17 @@ function DayPopup({ day, ctx, onClose }) {
   );
 }
 
-/* ---------- fin d'import Apprentissage : même badge que ImportDoneScreen, mais les
-   actions mènent à l'écran Apprentissage (pas à Réviser : ces exos n'y sont pas). ---------- */
-function ImportDoneScreenApprentissage({ unite, onReset, ctx }) {
-  const n = (unite.items || []).length;
-  return (
-    <div className="fadein" style={{ textAlign: 'center', padding: '6px 0' }}>
-      <div className="gd-badge" style={{ width: 60, height: 60, borderRadius: 18, margin: '0 auto 14px' }}><Icon name="check" size={30} stroke={3} /></div>
-      <div className="serif" style={{ fontSize: 21 }}>Unité prête !</div>
-      <div className="hint" style={{ marginTop: 8 }}>✓ « {unite.titre} » — {n} exo{n > 1 ? 's' : ''} liés au PDF du cours.</div>
-      <div className="row" style={{ gap: 10, justifyContent: 'center', marginTop: 18, flexWrap: 'wrap' }}>
-        <button className="btn" onClick={onReset}><Icon name="refresh" size={14} /> Autre unité</button>
-        <button className="btn primary" onClick={() => ctx.go('apprentissage')}><Icon name="brain" size={14} /> Apprentissage</button>
-      </div>
-    </div>
-  );
-}
-
 const TYPES_IMPORT = [
   { id: 'standard', icon: 'filePdf', nom: 'Fiche de cours', desc: 'QCM, flashcards, Feynman + ton PDF' },
   { id: 'anat', icon: 'bone', nom: 'Anatomie', desc: 'Théorie typée ou schéma annoté' },
   { id: 'rattrapage', icon: 'grad', nom: 'Rattrapage', desc: 'Théorie et pratique d’un même cours' },
-  { id: 'apprentissage', icon: 'brain', nom: 'Apprentissage', desc: 'Exercices + PDF, sans planification' },
 ];
 
 /* ---------- import : destination → coller le JSON → aperçu → confirmer ----------
    Full JSON local (aucun appel réseau) : même flux que Rattrapage. */
 function ImportPanel({ ctx }) {
   const { db } = ctx;
-  const [mode, setMode] = useState('standard'); // standard | anat | rattrapage | apprentissage
-  const [apprDone, setApprDone] = useState(null); // unité créée par l'import Apprentissage
+  const [mode, setMode] = useState('standard'); // standard | anat | rattrapage (l'import « Apprentissage » exos + PDF est supprimé le 11/10)
   const [anatSub, setAnatSub] = useState('theorie'); // theorie (existant, inchangé) | visuel (schéma annoté → anat_schema)
   const [state, setState] = useState('form'); // form | preview | done
   const sources = db.sources.filter((s) => !s.archive);
@@ -783,13 +763,6 @@ function ImportPanel({ ctx }) {
         ))}
       </div>
       {mode === 'rattrapage' && <ImportRattrapage ctx={ctx} />}
-      {/* mode Apprentissage : composant séparé (exos + PDF → unité, sans planification),
-         les trois imports ci-dessus/ci-dessous n'en dépendent pas. */}
-      {mode === 'apprentissage' && (apprDone
-        ? (
-          <ImportDoneScreenApprentissage unite={apprDone} onReset={() => setApprDone(null)} ctx={ctx} />
-        )
-        : <ImportApprentissage ctx={ctx} onCancel={() => setMode('standard')} onDone={setApprDone} />)}
       {mode === 'anat' && (
         <div className="fadein">
           <div className="imp-field">

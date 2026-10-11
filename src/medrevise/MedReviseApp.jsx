@@ -15,10 +15,9 @@ import { Reviser } from './pages/Reviser.jsx';
 import { Bibliotheque } from './pages/Bibliotheque.jsx';
 import { Reglages } from './pages/Reglages.jsx';
 import { CarnetDashboard } from './pages/CarnetDashboard.jsx';
-import { Apprentissage } from './pages/Apprentissage.jsx';
-import { PriseDeNotes } from './pages/PriseDeNotes.jsx';
 import { EcranApprentissage } from './apprentissageLibre/EcranApprentissage.jsx';
 import { lireListe, ecrireListe } from './apprentissageLibre/liste.js';
+import { IconeRafale } from './components/IconeRafale.jsx';
 import { estFocusNotes, setFocusNotes, ECRAN_FOCUS } from './lib/focusMode.js';
 import { initSpotlight } from './lib/spotlight.js';
 import { isClassicUI } from '../shared/uiMode.js';
@@ -55,13 +54,23 @@ let ocrDemarre = false; // démarrage unique du service OCR (voir plus bas)
 // de documents ET rend PdfReader/SchemaEditorScreen/TranscriptEditor EMBARQUÉS dans
 // son panneau de droite. 'pdf'/'schemaedit' restent des routes plein-écran, mais ne
 // sont plus atteignables QUE depuis Réviser (« Voir le cours » / « Éditer le schéma »).
-const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard, apprentissage: Apprentissage, notes: PriseDeNotes, apprlibre: EcranApprentissage, seancefc: SeanceFC, integrite: EcranIntegrite };
+/* ÉCRANS RETIRÉS (11/10, docs/compte-rendu-finitions-boites-sidebar.md) : une destination
+   ancienne (lien interne oublié, adresse /medrevise/notes, #apprentissage…) mène à l'Accueil
+   avec un message discret. Leurs données restent en base. */
+const ECRANS_RETIRES = {
+  notes: '« Prise de notes » n’existe plus : tes documents se lisent dans Réglages → Archives.',
+  'prise-de-notes': '« Prise de notes » n’existe plus : tes documents se lisent dans Réglages → Archives.',
+  apprentissage: '« Apprentissage (exos) » a été retiré. Le mode Apprentissage (entraînement en rafale) est dans la barre latérale.',
+  'apprentissage-exos': '« Apprentissage (exos) » a été retiré. Le mode Apprentissage (entraînement en rafale) est dans la barre latérale.',
+  prompts: 'Les prompts sont maintenant dans Réglages → Prompts.',
+};
+const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard, apprlibre: EcranApprentissage, seancefc: SeanceFC, integrite: EcranIntegrite };
 
 function MedBottomNav({ current, onNav, focus }) {
-  const items = focus ? [{ id: ECRAN_FOCUS, label: 'Prise de notes', icon: 'edit' }] : [
+  const items = focus ? [{ id: ECRAN_FOCUS, label: 'Biblio', icon: 'book' }] : [
     { id: 'dashboard', label: 'Accueil', icon: 'home' },
     { id: 'revise', label: 'Réviser', icon: 'cards' },
-    { id: 'apprlibre', label: 'Apprendre', icon: 'refresh' }, // mode Apprentissage libre (apprentissageLibre/)
+    { id: 'apprlibre', label: 'Apprendre', Ic: IconeRafale }, // mode Apprentissage libre (apprentissageLibre/)
     { id: 'library', label: 'Biblio', icon: 'book' },
     { id: 'carnet', label: 'Carnet', icon: 'target' },
   ];
@@ -74,7 +83,7 @@ function MedBottomNav({ current, onNav, focus }) {
     <nav className="bottom-nav">
       {items.map((n) => (
         <button key={n.id} className={'bn-item' + (active(n.id) ? ' active' : '')} onClick={() => onNav(n.id)}>
-          <span className="bn-ic"><Icon name={n.icon} size={21} /></span>
+          <span className="bn-ic">{n.Ic ? <n.Ic size={21} /> : <Icon name={n.icon} size={21} />}</span>
           {n.label}
         </button>
       ))}
@@ -97,18 +106,42 @@ export default function MedReviseApp({ themeApi, goHub }) {
     return () => document.documentElement.removeAttribute('data-app-actif');
   }, []);
   // MODE FOCUS (lib/focusMode.js) : lu AVANT le premier rendu, ce qui fait toute la
-  // persistance — au rechargement on repart directement sur Prise de notes.
+  // persistance — au rechargement on repart directement sur la Bibliothèque.
   const [focusNotes, setFocusNotesState] = useState(() => estFocusNotes());
   const [screen, setScreenBrut] = useState(() => (estFocusNotes() ? ECRAN_FOCUS : 'dashboard'));
+  const [avisRetire, setAvisRetire] = useState(null); // message discret : écran retiré
   // Garde : tant que le focus est actif, AUCUNE autre destination n'est acceptée —
   // y compris venant d'un appel oublié quelque part (ctx.go, openPdfReader…).
   const setScreen = useCallback((id) => {
+    if (ECRANS_RETIRES[id]) { setAvisRetire(ECRANS_RETIRES[id]); id = estFocusNotes() ? ECRAN_FOCUS : 'dashboard'; }
     setScreenBrut((cur) => (estFocusNotes() && id !== ECRAN_FOCUS ? cur : id));
   }, []);
+  // ancienne adresse : /medrevise/<écran> ou /medrevise#<écran> — on revient sur /medrevise
+  useEffect(() => {
+    const verifier = () => {
+      try {
+        const m = /^\/medrevise\/+([^/?#]+)/.exec(window.location.pathname);
+        const cle = decodeURIComponent((m && m[1]) || (window.location.hash || '').replace(/^#\/?/, '')).toLowerCase();
+        if (!cle) return;
+        if (ECRANS_RETIRES[cle]) setScreen(cle);
+        if (m || ECRANS_RETIRES[cle]) window.history.replaceState(null, '', '/medrevise');
+      } catch (e) { /* adresse illisible : rien à faire */ }
+    };
+    verifier();
+    window.addEventListener('hashchange', verifier); // #notes tapé à la main, sans rechargement
+    return () => window.removeEventListener('hashchange', verifier);
+  }, [setScreen]);
+  useEffect(() => {
+    if (!avisRetire) return undefined;
+    const t = setTimeout(() => setAvisRetire(null), 7000);
+    return () => clearTimeout(t);
+  }, [avisRetire]);
   const basculerFocus = useCallback((actif) => {
     setFocusNotes(actif);
     setFocusNotesState(!!actif);
     setScreenBrut(actif ? ECRAN_FOCUS : 'dashboard');
+    // une boîte sélectionnée dans le lecteur se désélectionne (sa barre d'outils disparaît)
+    try { window.dispatchEvent(new Event('medrevise:focus')); } catch (e) { /* ignore */ }
   }, []);
   const [expanded, setExpanded] = useState(false);
   const [db, setDb] = useState(null);
@@ -136,18 +169,17 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [syncState, setSyncState] = useState({ status: 'idle', at: null });
 
   const reload = useCallback(async () => {
-    const [sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, apprentissage, notes, st, pr, epr, cepr] = await Promise.all([
-      getAll('sources'), getAll('matieres'), getAll('dossiers'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getAll('apprentissage'), getAll('notes'), getStats(), getCoursePrompts(), getExoPrompts(), getChapExoPrompts(),
+    const [sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, st, pr, epr, cepr] = await Promise.all([
+      getAll('sources'), getAll('matieres'), getAll('dossiers'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getStats(), getCoursePrompts(), getExoPrompts(), getChapExoPrompts(),
     ]);
     setReglagesFCState(await getReglagesFC());
     // `learningSet` : ids de la liste du mode Apprentissage libre (apprentissageLibre/liste.js).
     // Clé AJOUTÉE à db, lue par ce seul mode — aucun calcul existant (J, FSRS, séance) ne la lit.
     const learningSet = await lireListe();
-    // `apprentissage` : unités du mode Apprentissage (lib/apprentissage.js). Clé AJOUTÉE
-    // à db, lue par le seul écran Apprentissage — aucun calcul existant ne la parcourt.
-    // `notes` : documents de l'onglet Prise de notes (lib/notes.js). Clé AJOUTÉE à db,
-    // lue par le seul écran Prise de notes — aucun calcul existant ne la parcourt.
-    setDb({ sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, apprentissage, notes, learningSet });
+    // (11/10) les stores `apprentissage` (unités exos + PDF) et `notes` (documents de Prise de
+    // notes) ne sont plus chargés ici : leurs écrans sont supprimés. Les données restent en base
+    // et synchronisées ; les notes se lisent dans Réglages → Archives (components/Archives.jsx).
+    setDb({ sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, learningSet });
     setStats(st);
     setPromptOverrides(pr);
     setExoPromptOverrides(epr);
@@ -794,7 +826,14 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // données, aucune logique dupliquée. Le shell desktop ci-dessous n'est ni
   // monté ni modifié pendant qu'on est en mode mobile.
   // (transcription en direct : la pastille flottante suit la session dans les deux shells)
-  if (isMobile) return <><MobileApp ctx={ctx} /><IndicateurTranscription /></>;
+  // message discret « écran retiré » (ancienne adresse ou lien), dans les deux shells
+  const avis = avisRetire && (
+    <div className="avis-retire" role="status">
+      <Icon name="info" size={14} /> <span>{avisRetire}</span>
+      <button type="button" onClick={() => setAvisRetire(null)} aria-label="Fermer"><Icon name="x" size={12} /></button>
+    </div>
+  );
+  if (isMobile) return <><MobileApp ctx={ctx} /><IndicateurTranscription />{avis}</>;
 
   // OCR des PDF image (docs/compte-rendu-ocr.md) : démarré avec le shell bureau,
   // une seule fois (reprise des couches incomplètes, traitement en masse initial)
@@ -813,6 +852,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
             (ui.jsx#StudySidebar) — elle active ET désactive. Repli sans interface :
             voir lib/focusMode.js (une lecture qui échoue renvoie « pas de focus »). */}
         <BandeauFilet ctx={ctx} onOuvrirIntegrite={() => setScreen('integrite')} onOuvrirReglages={() => setScreen('settings')} />
+        {avis}
         <Current ctx={ctx} key={screen} />
       </div>
       <MedBottomNav current={screen} onNav={setScreen} focus={focusNotes} />

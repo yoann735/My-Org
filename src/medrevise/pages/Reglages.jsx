@@ -15,6 +15,8 @@ import { reglagesFC } from '../lib/apprentissageFC.js';
 import { ReglagesFSRS } from '../components/ReglagesFSRS.jsx';
 import { SynchroJournal } from '../components/SynchroJournal.jsx';
 import { CarteSauvegardes } from '../components/FiletSecurite.jsx';
+import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
+import { CarteArchives } from '../components/Archives.jsx';
 import { validateBackup, currentCounts, importBackup, computeCloudDiff, applyCloudTombstones } from '../lib/backupImport.js';
 
 export function Reglages({ ctx }) {
@@ -296,6 +298,11 @@ export function Reglages({ ctx }) {
         <Card title="Flashcards" icon="cards">
           <ReglagesFlashcards ctx={ctx} />
         </Card>
+        {/* PROMPTS (11/10) : l'entrée « Prompts » de la barre latérale, déplacée telle quelle */}
+        <Card title="Prompts" icon="layers">
+          <div id="reglages-prompts" className="hint" style={{ marginBottom: 10 }}>Copier, voir ou modifier les prompts (théorie, exercices, exercices du dossier). Mêmes prompts que « Voir les prompts » dans un cours.</div>
+          <AllPromptsModal ctx={ctx} inline />
+        </Card>
         <ReglagesFSRS ctx={ctx} />
         <CarteSauvegardes ctx={ctx} />
         <Card title="Sauvegarde" icon="archive">
@@ -424,6 +431,8 @@ export function Reglages({ ctx }) {
           <BoutonDiagnostic />
         </Card>
       </div>
+      {/* ARCHIVES (11/10) : documents de l'ancienne « Prise de notes », en lecture */}
+      <div style={{ marginTop: 16 }}><CarteArchives /></div>
     </div>
   );
 }

@@ -37,8 +37,8 @@ function FeuilleExport({ ctx, active, onFermer, onEnvoyer, envoi }) {
   const cibles = useMemo(() => {
     const db = ctx.db || {};
     const fiches = (db.fiches || []).filter((f) => !f.archive && (f.pdfId || f.htmlId)).map((f) => ({ id: f.id, titre: f.titre || 'Fiche sans titre', sous: 'Fiche' }));
-    const notes = (db.notes || []).map((n) => ({ id: n.id, titre: n.titre || 'Document sans titre', sous: 'Prise de notes' }));
-    return [...fiches, ...notes].sort((a, b) => a.titre.localeCompare(b.titre, 'fr'));
+    // (11/10) les documents de l'ancienne « Prise de notes » ne sont plus des cibles : plus rien ne les affiche
+    return [...fiches].sort((a, b) => a.titre.localeCompare(b.titre, 'fr'));
   }, [ctx.db]);
   const [choix, setChoix] = useState(() => (active && active.ficheId) || null);
   const [q, setQ] = useState('');

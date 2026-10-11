@@ -17,6 +17,8 @@ const PATH_TO_APP = { '/mealweek': 'mealweek', '/medrevise': 'medrevise' };
 const APP_TO_PATH = { hub: '/', mealweek: '/mealweek', medrevise: '/medrevise' };
 
 function appFromPath(pathname) {
+  // /medrevise/<écran> (ancienne adresse d'un écran) : MedRevise, qui redirige elle-même
+  if (/^\/medrevise\//.test(pathname)) return 'medrevise';
   return PATH_TO_APP[pathname] || 'hub';
 }
 

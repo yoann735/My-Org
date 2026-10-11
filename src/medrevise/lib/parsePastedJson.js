@@ -96,7 +96,7 @@ const str = (v) => (v == null ? '' : String(v));
  * "X items ignorés" (voir ImportFlow.jsx#ImportPreviewCard / AddItemForm.jsx#PasteJsonForm).
  * `opts.enrichItem(raw, item)` (facultatif) : appelé sur chaque item VALIDE avec l'item
  * brut collé, renvoie l'item à garder. Seul usage : le mode Apprentissage
- * (lib/apprentissage.js) y conserve indices + correction des QCM, que le schéma
+ * (ancien lib/apprentissage.js, supprimé le 11/10) y conservait indices + correction des QCM, que le schéma
  * classique ne garde pas. Sans option, sortie strictement identique à avant.
  * @returns {{ok:false, error:string}
  *   | {ok:true, items:Array, meta:object, counts:{qcm,flashcard,feynman,exercice,ignored}, synthese:string, errors:Array<{index,type,reason}>}}

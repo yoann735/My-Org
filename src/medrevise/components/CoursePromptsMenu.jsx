@@ -171,7 +171,10 @@ export function CoursePromptsButton({ ctx, kind = 'theorie' }) {
    temporairement la liste plutôt que de s'empiler dessus (même convention
    que CoursePromptsButton, qui referme son popover avant d'ouvrir un
    modal) ; fermer le sous-dialogue revient à la liste. */
-export function AllPromptsModal({ ctx, onClose }) {
+/* (11/10) `inline` : la même liste, sans fenêtre — c'est Réglages → Prompts (l'entrée « Prompts »
+   de la barre latérale y a été déplacée telle quelle). Les sous-fenêtres (voir / modifier / « Modifier
+   les 4 ») restent les mêmes. */
+export function AllPromptsModal({ ctx, onClose, inline = false }) {
   const cfgTheorie = buildCfg('theorie', ctx);
   const cfgPratique = buildCfg('pratique', ctx);
   const cfgChapitre = buildCfg('chapitre', ctx);
@@ -220,7 +223,14 @@ export function AllPromptsModal({ ctx, onClose }) {
 
   return (
     <>
-      {!modalState && !bulkKind && (
+      {inline && (
+        <div className="apm-inline">
+          {renderGroup(cfgTheorie, 'Théorie — QCM, flashcards, Feynman')}
+          {renderGroup(cfgPratique, 'Exercices — méthode des J')}
+          {renderGroup(cfgChapitre, 'Exercices du dossier — couverture globale')}
+        </div>
+      )}
+      {!inline && !modalState && !bulkKind && (
         <Modal title="Tous les prompts" onClose={onClose} width="min(420px, 94vw)">
           {renderGroup(cfgTheorie, 'Théorie — QCM, flashcards, Feynman')}
           {renderGroup(cfgPratique, 'Exercices — méthode des J')}

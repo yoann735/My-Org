@@ -1,7 +1,10 @@
 /* ============================================================
-   MedRevise — MODE FOCUS « Prise de notes seule ».
+   MedRevise — MODE FOCUS « Bibliothèque seule ».
 
-   Quand il est actif, l'app ne montre plus qu'un onglet : Prise de notes.
+   Quand il est actif, l'app ne montre plus qu'un onglet : la Bibliothèque (lire et annoter
+   ses cours). Jusqu'au 11/10 c'était « Prise de notes » ; cet écran a été supprimé
+   (docs/compte-rendu-finitions-boites-sidebar.md) — même clé de stockage, le réglage
+   d'un appareil déjà en focus est donc gardé et mène désormais à la Bibliothèque.
    Il PERSISTE (rechargement, fermeture de l'onglet, redémarrage du navigateur),
    parce que c'est tout l'intérêt : se mettre en condition de travail et y rester.
 
@@ -54,4 +57,4 @@ export function setFocusNotes(actif) {
 }
 
 /** Le seul écran atteignable en mode focus. */
-export const ECRAN_FOCUS = 'notes';
+export const ECRAN_FOCUS = 'library';

@@ -1,5 +1,5 @@
 // Mode Apprentissage libre (11/10) — non-régression sur l'ordinateur (A) : chaque onglet s'ouvre sans
-// erreur (dont l'ancien « Apprentissage (exos) ») ; le panneau Flashcards garde Éditer / Supprimer ;
+// erreur (11/10 : « Apprentissage (exos) » et « Prise de notes » sont retirés) ; le panneau Flashcards garde Éditer / Supprimer ;
 // la séance du jour s'ouvre et se quitte. Usage : node t-non-regression.mjs <dossier-captures>
 import { appareil, ok, bilan } from '../tests-collage/outils.mjs';
 import { ouvrirMedRevise, onglet, ouvrirFiche } from './commun.mjs';
@@ -7,7 +7,7 @@ const A = await appareil(9335, { captures: process.argv[2] || '/tmp/alib' });
 await A.send('Page.reload', { ignoreCache: true }); await A.dormir(3000);
 await ouvrirMedRevise(A); await A.dormir(1500);
 const vus = [];
-for (const [titre, preuve] of [['Accueil', '.screen, .main'], ['Réviser', '.sfa'], ['Apprentissage', '.alib'], ['Bibliothèque', '.main'], ["Carnet d'erreurs", '.main'], ['Apprentissage (exos)', '.main'], ['Prise de notes', '.main'], ['Réglages', '.main']]) {
+for (const [titre, preuve] of [['Accueil', '.screen, .main'], ['Réviser', '.sfa'], ['Apprentissage', '.alib'], ['Bibliothèque', '.main'], ["Carnet d'erreurs", '.main'], ['Réglages', '.main']]) {
   const trouve = await onglet(A, titre); await A.dormir(1200);
   const h1 = await A.ev(`(document.querySelector('.main h1') || {}).innerText || ''`);
   vus.push(`${titre}${trouve ? '' : ' (absent)'} → ${h1 || (await A.ev(`!!document.querySelector(${JSON.stringify(preuve)})`) ? 'ok' : '?')}`);
