@@ -296,3 +296,169 @@ Autres captures :
 |---|---|
 | ae23efe | `feat(medrevise)` : coller une image (⌘V) dans la zone survolée — cartes Muscle et carte standard |
 | bb490e5 | `docs(medrevise)` : section « Collage d'image au survol », captures, banc `scripts/tests-collage/` |
+
+## Zones image v2 (11/10/2026)
+
+**Le but** : un seul style pour ajouter, voir, remplacer et retirer une image dans toute l'app
+(cartes Muscle, standard et Molécule), plus discret et mieux aligné. Le **comportement du collage
+ne change pas** : la zone survolée reçoit toujours l'image (`lib/collerAuSurvol.js` n'a pas été
+modifié).
+
+### Ce qui change
+
+**1. Survol discret.** Plus de contour bleu arrondi, plus de bulle « ⌘V pour coller ». Au survol
+d'une zone, son bouton « Image » passe de pointillés à un trait plein légèrement plus clair, en
+120 ms. Rien d'autre.
+
+**2. Un seul composant** : `components/ZoneImage.jsx`.
+
+- **Zone vide** : un petit bouton « Image » en pointillés.
+  - 32 px de haut, icône + libellé, gris moyen, aligné à gauche sous le texte.
+  - Parcourir, coller et glisser restent indiqués dans le tooltip.
+- **Zone avec image** :
+  - **Vignette** : coins arrondis, sans bordure, 96 px de haut au plus, largeur proportionnelle,
+    jamais plus large que la cellule.
+  - **Actions** : à droite de la vignette, trois icônes de 28 px avec tooltip.
+    - **Remplacer**.
+    - **Masquer des mots** : visible seulement si l'OCR a trouvé du texte. Une pastille compte les
+      masques ; une icône « Ôter les masques » n'apparaît que s'il y en a.
+    - **Retirer** : rouge discret.
+  - **Supprimé** : les liens soulignés « Masquer des mots / Remplacer / Retirer » et la ligne
+    « Texte lu · N mots ».
+  - **État de l'OCR** : porté par le seul petit indicateur en bas à droite de la vignette. Spinner
+    pendant la lecture, puis icône « texte » si des mots ont été lus, rien sinon. Pour une image déjà
+    enregistrée, l'OCR relit le résultat mis en cache sur l'appareil.
+- **Clic sur la vignette** : aperçu plein écran (la visionneuse existante, avec texte reconnu et
+  masques), fermé par Échap ou par un clic sur le fond.
+- **Image générale du muscle** :
+  - même composant, placé en tête du formulaire, juste sous le nom ;
+  - vignette de 140 px au plus ;
+  - case **« Montrer au recto »** sur une seule ligne à côté. L'info « sinon : au verso » est passée
+    dans le tooltip.
+
+**3. Tableau Muscle.**
+
+- **Colonne des étiquettes** :
+  - largeur fixe (132 px), petites capitales grises, alignées en haut ;
+  - « Direction des fibres / Trajet » tient sur deux lignes.
+  - Avant, l'étiquette était alignée sur la ligne de base : « ORIGINE » tombait en bas de la cellule
+    quand la ligne n'avait qu'une image. On voit ce défaut sur la capture mobile « avant ».
+- **Cellule de contenu** : le texte, puis l'image sur sa propre ligne, environ 8 px dessous (la
+  marge basse du champ). L'image n'est jamais entre deux lignes de texte.
+- **Arrivée d'une image** : sa place (96 px) est réservée pendant le chargement, le texte ne bouge
+  jamais. Une image plus large que la cellule s'affiche ensuite un peu moins haute (par exemple 53 px
+  dans le panneau étroit) : la cellule raccourcit alors une seule fois, vers le haut, sans rien
+  déplacer au-dessus. J'ai préféré cela à une hauteur fixe de 96 px, qui laissait un grand vide entre
+  une image large et ses icônes.
+- **Formulaire très étroit** (moins de 270 px) : l'étiquette passe au-dessus et la cellule prend
+  toute la largeur.
+- **Révision (verso)** : même vignette, même taille, cliquable pour agrandir. Le toucher ne retourne
+  pas la carte.
+- **Mobile** :
+  - vignettes de ligne de 72 px au plus ;
+  - icônes d'action de 36 px sur écran tactile ;
+  - rien ne déborde.
+
+**4. Harmonisation.**
+
+- **Carte standard** : même composant, sans « Masquer des mots » (cette carte n'a pas de masques sur
+  son image). Le réglage « Afficher au Recto / Verso / Les deux » est posé à côté.
+- **Carte Molécule** : son formulaire **n'avait pas de zone image**, alors que son modèle prévoyait
+  déjà `imageId` / `imagePlace` (toujours vides).
+  - Je l'ai ajoutée avec le même champ que la carte standard, collage au survol compris.
+  - L'image s'affiche en révision (séance du jour, carte qui se retourne, mobile) et dans la liste
+    du panneau.
+  - Les cartes Molécule existantes n'ont pas d'image et ne changent pas.
+- Il ne reste qu'un seul style d'image dans l'app. **La révision des cartes standard n'est pas
+  modifiée** : leur grande image (jusqu'à 220 px) se touche pour retourner la carte, comme avant.
+
+**Fichiers :**
+- `components/ZoneImage.jsx` (nouveau) ;
+- `ImagesMuscle.jsx` : ne garde que la visionneuse et deux raccourcis vers `ZoneImage` ;
+- `FlashcardImage.jsx`, `FlashcardMuscle.jsx` ;
+- `molecule/FormulaireMolecule.jsx`, `molecule/carte.js` ;
+- `SeanceFC.jsx`, `Session.jsx`, `CourseItemsSidebar.jsx` (image des cartes Molécule) ;
+- `styles/muscle-images.css`, `styles/etudes.css`.
+
+**Vérifications** :
+- aucune écriture Supabase ajoutée ;
+- aucune carte ni image existante modifiée ;
+- `git diff --name-only -- src/mealweek src/shared` est vide.
+
+### Tests dans Chrome
+
+Banc : `scripts/tests-zones/`, plus le banc du collage `scripts/tests-collage/`, mis à jour pour les
+nouveaux sélecteurs. Il tourne sur le **profil de test** restauré et le faux Supabase local, jamais
+le vrai cloud. Il envoie de vrais événements souris, toucher et clavier, et un vrai ⌘V.
+
+**Ordinateur** (`t-zones.mjs`, 25/25) :
+
+| Vérification | Résultat |
+|---|---|
+| Survol d'une zone vide : pointillés → trait plein, ni contour (`outline: none`) ni bulle (`::after` vide), 32 px, transition 120 ms | ✅ |
+| ⌘V au survol : vignette dans Insertion, sur sa propre ligne, 9 px sous le texte, texte non déplacé ; hauteur réservée 96 px dès l'arrivée, jamais dépassée | ✅ |
+| Coins arrondis, sans bordure, aucun lien texte ni « Texte lu » ; indicateur OCR : spinner → icône texte | ✅ |
+| Trois icônes de 28 px avec tooltip | ✅ |
+| Masquer des mots → fenêtre des masques, 1 masque posé (pastille) | ✅ |
+| Remplacer → sélecteur de fichiers, nouvelle image | ✅ |
+| Retirer → bouton « Image » | ✅ |
+| Visionneuse : clic, fermée par Échap et par un clic sur le fond | ✅ |
+| Image générale : 140 px, en tête, « Montrer au recto » sur une ligne, info en tooltip | ✅ |
+| Carte enregistrée (images Insertion, Origine, générale au recto) ; liste du panneau : vignettes ≤ 96 px | ✅ |
+| **Formulaire en modification identique à la création** : mêmes zones, mêmes actions, dans le même ordre | ✅ |
+| Carte standard : même bouton, même vignette avec indicateur OCR, Remplacer / Retirer, « Afficher au » | ✅ |
+| Carte Molécule : même composant (survol, collage, vignette, icônes) ; enregistrée avec son image (« Les deux ») ; visible dans la liste | ✅ |
+| 0 erreur JavaScript | ✅ |
+
+**Révision, tablette, téléphone** (`t-revision.mjs`, 9/9) :
+
+| Appareil | Résultat |
+|---|---|
+| **Ordinateur** : séance du jour, verso → vignettes Origine / Insertion de 96 px, image générale, étiquettes alignées en haut ; vignette cliquable → aperçu, la carte reste au verso | ✅ |
+| **Tablette** 820 px tactile : « Coller » → vignette ; icônes de 36 px ; un « Coller » par zone ; rien ne déborde ; aucun survol au doigt | ✅ |
+| **Téléphone** 390 px : séance du jour, verso → vignettes de 72 px cliquables, rien ne déborde | ✅ |
+
+**Non-régression :**
+
+| Banc | Résultat |
+|---|---|
+| Collage au survol (`t-bureau.mjs`) — attente du survol mise à jour : trait plein, ni contour ni bulle | 17/17 ✅ |
+| Rouvrir et réviser (`t-relecture.mjs`) | 6/6 ✅ |
+| Tablette (`t-tactile.mjs`) | 9/9 ✅ |
+| Synchro vers un 2ᵉ appareil, fichiers identiques au SHA-256 (`t-synchro.mjs`) | 2/2 ✅ |
+| MealWeek s'ouvre (`t-mealweek.mjs`) | 2/2 ✅ |
+| `npx vitest run` | 42/42 ✅ |
+| `npm run build` | vert ✅ |
+
+Pour la séance du jour, le banc note « Correct » les cartes qui précèdent la carte de test. Cela ne
+concerne que le profil de test.
+
+### Avant / après
+
+Les captures sont dans `docs/img/zones-image-v2/`. Le panneau du bureau est celui de 342 px.
+
+| | Avant | Après |
+|---|---|---|
+| Zone vide survolée | ![](img/zones-image-v2/avant-01-zone-vide-survol.png) | ![](img/zones-image-v2/apres-01-zone-vide-survol.png) |
+| Zone avec image | ![](img/zones-image-v2/avant-02-zone-avec-image.png) | ![](img/zones-image-v2/apres-02-zone-avec-image.png) |
+| Image générale | ![](img/zones-image-v2/avant-03-image-generale.png) | ![](img/zones-image-v2/apres-03-image-generale.png) |
+| Tableau Muscle (formulaire) | ![](img/zones-image-v2/avant-04-formulaire-muscle.png) | ![](img/zones-image-v2/apres-04-formulaire-muscle.png) |
+| Carte standard | ![](img/zones-image-v2/avant-05-standard-image.png) | ![](img/zones-image-v2/apres-05-standard-image.png) |
+| Tablette | ![](img/zones-image-v2/avant-06-tablette.png) | ![](img/zones-image-v2/apres-06-tablette.png) |
+| Mobile (verso en révision) | ![](img/zones-image-v2/avant-07-mobile-verso.png) | ![](img/zones-image-v2/apres-07-mobile-verso.png) |
+
+Autres captures :
+- `08-apres-molecule.png` : carte Molécule ;
+- `09-apres-revision-verso.png` : verso au bureau ;
+- `10-apres-visionneuse.png` : aperçu plein écran ;
+- `11-mealweek.png`.
+
+**Limite** : le téléphone n'a pas de formulaire de carte (le shell mobile n'a ni lecteur ni panneau).
+Sur téléphone, seule la révision est concernée, et elle est testée.
+
+### Commits
+
+| Commit | Contenu |
+|---|---|
+| ffb7373 | `feat(medrevise)` : zones image v2 — composant unique, survol discret, actions en icônes, tableau Muscle aligné, image des cartes Molécule, bancs `scripts/tests-zones/` |
+| (ce commit) | `docs(medrevise)` : section « Zones image v2 », captures avant / après |
