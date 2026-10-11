@@ -883,4 +883,4 @@ rendu.
 | Hash | Message |
 |---|---|
 | `8f2ee1a` | feat(medrevise): export spécial IA en un seul PDF — image de chaque page annotée + couche texte invisible |
-| (ce commit) | docs(medrevise): section « Export IA en PDF » |
+| `d6e7989` | docs(medrevise): section « Export IA en PDF » |
