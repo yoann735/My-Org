@@ -16,15 +16,15 @@ const msg = await ev(`(document.querySelector('.ta-message')||{}).innerText`);
 await B.capture('tab-panneau-import');
 ok(/^1 boîte mise à jour/.test(msg || '') && (await b3()).alt === 'Citrate synthase (tablette).', 'import au doigt', msg);
 await T.tap(await B.pos(`document.querySelector('.ta-panneau .icon-btn')`, false));
-// 2. bascule par boîte au doigt : tap sur la boîte (active) → bouton de version dans sa mini barre
+// 2. bascule par boîte au doigt : tap sur le badge « IA / orig. » de la boîte (11/10)
 const pb = await ev(`(async()=>{const e=[...document.querySelectorAll('.pdfr-page[data-cle="1"] .note-box')].find(x=>x.querySelector('.nb-version'));e.scrollIntoView({block:'center'});await new Promise(r=>setTimeout(r,500));const r=e.querySelector('.nb-bar').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()`);
 await T.tap(pb, 700);
 const avant = await b3();
-const bt = await B.pos(`document.querySelector('.nb-bascule')`, false);
-ok(!!bt, 'boîte touchée : le bouton « Voir l’original / la version IA » est dans sa mini barre');
+const bt = await B.pos(`document.querySelector('.pdfr-page[data-cle="1"] .nb-version')`, false);
+ok(!!bt, 'le badge « IA / orig. » est dans la boîte');
 await T.tap(bt, 800);
 const apres = await b3();
-await T.tap(await B.pos(`document.querySelector('.nb-bascule')`, false), 800);
+await T.tap(await B.pos(`document.querySelector('.pdfr-page[data-cle="1"] .nb-version')`, false), 800);
 const retour = await b3();
 ok(avant.v === 'alt' && apres.v === 'original' && retour.v === 'alt', 'tablette : bascule au doigt dans les deux sens', `${avant.v} → ${apres.v} → ${retour.v}`);
 await B.capture('tab-bascule');

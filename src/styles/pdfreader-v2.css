@@ -45,8 +45,10 @@
 
 /* ---- BOÎTES : fond transparent / teinté / plein (09/10). Sans `fond` : rendu d'origine ---- */
 .note-box:is(.fond-transparent, .fond-teinte) { border-width: 1.5px; box-shadow: none; }
-.note-box:is(.fond-transparent, .fond-teinte) .nb-bar { background: transparent; border-bottom-color: transparent; opacity: 0; transition: opacity .15s; }
-.note-box:is(.fond-transparent, .fond-teinte):is(:hover, .active) .nb-bar { opacity: 1; }
+.note-box:is(.fond-transparent, .fond-teinte) .nb-bar { background: transparent; border-bottom-color: transparent; }
+/* (11/10) la poignée s'efface au repos, mais PAS le badge « IA / orig. » qu'elle porte */
+.note-box:is(.fond-transparent, .fond-teinte) .nb-bar > :not(.nb-version) { opacity: 0; transition: opacity .15s; }
+.note-box:is(.fond-transparent, .fond-teinte):is(:hover, .active) .nb-bar > :not(.nb-version) { opacity: 1; }
 .note-box:is(.fond-transparent, .fond-teinte).active { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
 .note-box.fond-plein { box-shadow: 0 1px 4px rgba(0, 0, 0, .12); }
 .nb-fond-ic { display: inline-block; width: 11px; height: 11px; border-radius: 3px; border: 1.5px solid var(--c, currentColor); vertical-align: -1px; }
@@ -237,11 +239,39 @@
 .ta-message.erreur { background: color-mix(in srgb, var(--crit) 12%, transparent); color: var(--text); }
 .ta-details { margin-top: 4px; font-size: 11px; color: var(--text-2); word-break: break-all; }
 @media (prefers-reduced-motion: reduce) { .ta-volet { transition: none; } }
-/* badge discret de la version affichée (boîte qui a un texte « IA » ET un texte d'origine) */
-.note-box .nb-version { position: absolute; top: -7px; right: 26px; z-index: 2; padding: 0 5px; height: 14px; line-height: 14px; border-radius: 7px;
-  font-size: 9.5px; font-weight: 700; letter-spacing: .02em; pointer-events: none;
-  background: color-mix(in srgb, var(--accent) 22%, var(--card)); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+/* BADGE « IA / orig. » (11/10, docs/compte-rendu-finitions-boites-sidebar.md) : DANS la boîte, coin
+   haut droit, sur la ligne de la poignée (le texte commence dessous) ; un clic bascule la version. */
+.note-box .nb-version { margin-left: auto; flex: 0 0 auto; height: 18px; min-width: 22px; padding: 0 6px; border-radius: 9px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; font: inherit; font-size: 10px; font-weight: 700; letter-spacing: .02em; line-height: 1;
+  background: color-mix(in srgb, var(--accent) 18%, var(--card)); color: color-mix(in srgb, var(--accent) 80%, var(--text));
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent); transition: background .12s, color .12s; }
+.note-box .nb-version:hover { background: color-mix(in srgb, var(--accent) 30%, var(--card)); }
 .note-box .nb-version.orig { background: var(--card); color: var(--text-2); border-color: var(--border); }
+.note-box .nb-version:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.note-box.texte-libre .nb-version { height: 14px; font-size: 9px; padding: 0 4px; }
+
+/* BARRE D'OUTILS D'UNE BOÎTE (11/10) : petite barre flottante d'icônes, au-dessus de la boîte
+   (dessous s'il n'y a pas la place), position calculée en px dans la page (PdfPage.jsx NoteBox) */
+.nb-actions.nb-barre { transform: none; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 2px;
+  padding: 2px 4px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text-2);
+  box-shadow: 0 6px 18px -8px rgba(0, 0, 0, .35); z-index: 30; animation: nbBarreEntree .12s ease-out both; }
+.nb-actions.nb-barre.dessous { transform: none; animation-name: nbBarreEntreeBas; }
+.nb-actions.nb-barre.sortie { animation: nbBarreSortie .12s ease-in both; pointer-events: none; }
+.nb-actions.nb-barre .nb-act { width: 28px; height: 28px; padding: 0; justify-content: center; border: 0; border-radius: 7px; color: var(--text-2); gap: 0; }
+.nb-actions.nb-barre .nb-act:hover { background: var(--bg-2); color: var(--text); }
+.nb-actions.nb-barre .nb-act.actif { background: var(--accent-soft); color: var(--accent); }
+.nb-actions.nb-barre .nb-act.danger { color: var(--crit); }
+.nb-actions.nb-barre .nb-act.danger:hover { background: color-mix(in srgb, var(--crit) 12%, transparent); }
+.nb-actions.nb-barre .sc-bouton { width: 28px; height: 28px; padding: 0; justify-content: center; border: 0; border-radius: 7px; background: transparent; }
+.nb-actions.nb-barre .sc-bouton:hover, .nb-actions.nb-barre .sc-bouton.actif { background: var(--bg-2); }
+.nb-actions.nb-barre .nb-fond-ic { width: 14px; height: 14px; border-radius: 4px; }
+.nb-actions.nb-barre.tactile .nb-act, .nb-actions.nb-barre.tactile .sc-bouton { width: 36px; height: 36px; }
+.nb-actions.nb-barre.vise { width: auto !important; justify-content: flex-start; }
+.nb-actions.nb-barre.vise .nb-act.vise { width: auto; padding: 0 10px; gap: 6px; height: 28px; color: #fff; background: var(--accent); white-space: nowrap; }
+@keyframes nbBarreEntree { from { opacity: 0; transform: translateY(4px) scale(.97); } }
+@keyframes nbBarreEntreeBas { from { opacity: 0; transform: translateY(-4px) scale(.97); } }
+@keyframes nbBarreSortie { to { opacity: 0; transform: scale(.97); } }
+@media (prefers-reduced-motion: reduce) { .nb-actions.nb-barre, .nb-actions.nb-barre.sortie { animation-duration: 1ms; } }
 
 /* ---- EXPORT SPÉCIAL IA (10/10 soir, pdf/ExportIA.jsx) : aperçu plein écran du visuel avec repères ---- */
 .eia-apercu { position: fixed; inset: 0; z-index: 450; display: flex; flex-direction: column; background: color-mix(in srgb, var(--bg) 92%, transparent);

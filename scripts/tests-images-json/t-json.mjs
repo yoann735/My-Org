@@ -56,10 +56,10 @@ const fl = await ev(`(()=>{const p=document.querySelector('.pdfr-page[data-cle="
 const U = (a, b) => (b ? { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) } : a);
 const zone = U(U(rb3, rb3Avant), fl);
 ok(d.n > 0 && d.x0 >= zone.x0 && d.y0 >= zone.y0 && d.x1 <= zone.x1 && d.y1 <= zone.y1, '3e. capture avant/après : pixels différents UNIQUEMENT dans la boîte an-b3 (et sa flèche)', `diff ${JSON.stringify(d)} ⊂ zone ${JSON.stringify(zone)}`);
-// 4. BASCULE PAR BOÎTE : « Voir l’original » dans la mini barre
+// 4. BASCULE PAR BOÎTE : clic sur le badge « IA / orig. » (11/10 : il a remplacé « Voir l’original » de la mini barre)
 const pb = await ev(`(()=>{const e=[...document.querySelectorAll('.pdfr-page[data-cle="1"] .note-box')].find(x=>x.querySelector('.nb-version'));const r=e.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2,e.querySelector('.nb-version').innerText]})()`);
 await c.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: pb[0], y: pb[1] }); await dormir(700);
-await clic(await B.pos(`document.querySelector('.nb-bascule')`, false), { att: 700 });
+await clic(await B.pos(`document.querySelector('.pdfr-page[data-cle="1"] .nb-version')`, false), { att: 700 });
 let r = (await J.boites('j-txt')).find((a) => a.id === 'an-b3');
 const badge2 = await ev(`(document.querySelector('.pdfr-page[data-cle="1"] .nb-version')||{}).innerText`);
 ok(pb[2] === 'IA' && r.displayVersion === 'original' && JSON.stringify(r.content) === JSON.stringify(b3a.content) && badge2 === 'orig.', '4a. bascule de la boîte → texte d’origine (badge « IA » → « orig. »)');
@@ -68,7 +68,7 @@ const AO = await J.capturer('json-retour-original', clip);
 const d2 = await J.diff(AV, AO);
 ok(d2.n > 0 && d2.x0 >= zone.x0 && d2.x1 <= zone.x1 && d2.y0 >= zone.y0 && d2.y1 <= zone.y1, '4b. version originale réaffichée : seul le badge « orig. » diffère de la capture d’avant', JSON.stringify(d2));
 await c.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: pb[0], y: pb[1] }); await dormir(700);
-await clic(await B.pos(`document.querySelector('.nb-bascule')`, false), { att: 700 });
+await clic(await B.pos(`document.querySelector('.pdfr-page[data-cle="1"] .nb-version')`, false), { att: 700 });
 r = (await J.boites('j-txt')).find((a) => a.id === 'an-b3');
 ok(r.displayVersion === 'alt' && r.textAlt === cible.text, '4c. et retour en version IA');
 await c.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 880 }); await dormir(400);

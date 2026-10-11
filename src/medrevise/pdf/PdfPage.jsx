@@ -46,7 +46,7 @@ import {
 export function PdfPageContent({
   pdfDoc, pageNum, vierge = false, scale, pageHeight, dpr, highlights: tousSurlignages, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
   onCreateHighlight, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, ancrageSurlignage = false, ancrageAjout = false, onDemanderAncrage = () => {},
-  onCreerTrait, onSupprimerTraits, cibleHlId,
+  onCreerTrait, onSupprimerTraits, cibleHlId, onDebutTrait = null,
   ocrPage = null, ocrDebug = false, // couche OCR de cette page (docs/compte-rendu-ocr.md)
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, opaciteTrait = 1, aimantActif = true, modeCrayon = 'dessin',
   textes = [], questions = [], onPoser = () => {},
@@ -354,6 +354,7 @@ export function PdfPageContent({
   const demarrerTrait = (e) => {
     noterPointeur(e); // stylet : le doigt et la paume ne dessinent plus (lib/tablette.js)
     if (pointeurIgnore(e)) return;
+    if (onDebutTrait) onDebutTrait(); // (11/10) un trait commence : la boîte sélectionnée se désélectionne
     const pid = e.pointerId; // un tracé ne suit QUE son pointeur (2e doigt, paume)
     if (e.button !== 0) return;
     // un seul tracé à la fois ; 2e doigt aussitôt posé = geste à deux doigts → tracé annulé
@@ -917,6 +918,20 @@ export function styleFondBoite(boite, fondNoir = false) {
   if (boite.fond === 'plein') return { background: avecAlpha(hex, 0.92), borderColor: hex, color: lum < 0.5 ? '#FFFFFF' : '#16162a' };
   return { background: boite.fond === 'teinte' ? avecAlpha(hex, 0.15) : 'transparent', borderColor: hex, color: encrePage };
 }
+/* apparition / disparition animées (120 ms) d'un élément : [monté, en train de sortir] */
+function useApparition(visible, ms = 120) {
+  const [monte, setMonte] = useState(visible);
+  const [sortie, setSortie] = useState(false);
+  useEffect(() => {
+    if (visible) { setMonte(true); setSortie(false); return undefined; }
+    if (!monte) return undefined;
+    setSortie(true);
+    const t = setTimeout(() => { setMonte(false); setSortie(false); }, ms);
+    return () => clearTimeout(t);
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+  return [monte || visible, sortie && !visible];
+}
+
 function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, viseSurlignage = false, viseAjout = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF, fondNoir = false }) {
   /* UN SEUL REPÈRE : LA PAGE (04/10, docs/compte-rendu-zoom-annotations.md). Position,
      épingle, connecteurs ET taille sont des fractions de page. La boîte est mise en page
@@ -1131,6 +1146,25 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
 
   /* RÉDUITE : une pastille. Glisser = la déplacer (épinglée : l'épingle suit, le
      passage visé est recalculé ; libre : la boîte rouvrira là). Clic = rouvrir. */
+  // barre d'outils (plus bas) : hook appelé AVANT le retour anticipé de la pastille (ordre des hooks)
+  const actionsVisibles = active || enAncrage;
+  const [barreMontee, barreSortie] = useApparition(actionsVisibles, 120);
+  // partie visible de la page (px, repère de la page) : mesurée quand la barre s'affiche
+  const [visible, setVisible] = useState(null);
+  useLayoutEffect(() => {
+    if (!barreMontee || !boiteRef.current) return undefined;
+    const mesurer = () => {
+      const page = boiteRef.current && boiteRef.current.closest('.pdfr-page');
+      const zone = page && (page.closest('.pdfr-scroll') || page.parentElement);
+      if (!page || !zone) return;
+      const rp = page.getBoundingClientRect(), rz = zone.getBoundingClientRect();
+      const l = Math.max(rz.left, 0) - rp.left, r = Math.min(rz.right, window.innerWidth) - rp.left;
+      setVisible((v) => (v && Math.abs(v.l - l) < 1 && Math.abs(v.r - r) < 1 ? v : { l, r }));
+    };
+    mesurer();
+    window.addEventListener('resize', mesurer);
+    return () => window.removeEventListener('resize', mesurer);
+  }, [barreMontee, b.x, b.y, pageWidth]); // eslint-disable-line react-hooks/exhaustive-deps
   if (boite.reduite && !texteLibre) {
     const pos = pointApercu && pointApercu.cible === 'pastille' ? pointApercu : (ancre || { x: b.x, y: b.y });
     const cible = ancre ? 'ancre' : 'pastille';
@@ -1186,27 +1220,39 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   })();
   const couleurFleche = couleurFoncee(boite.couleur);
 
-  /* LES ACTIONS DE LA BOÎTE — une barre À LIBELLÉS, au-dessus de la boîte, visible
-     quand la boîte est active ou survolée (retour de l'utilisateur : cinq icônes de
-     18 px sans texte, « on ne comprend pas quoi fait quoi »). Chaque bouton dit ce
-     qu'il fait ; l'infobulle dit comment. La « Flèche » n'est jamais grisée : sans
-     épingle, elle commence par la faire poser, puis se trace toute seule. */
-  const actionsVisibles = active || survol || enAncrage;
-  // barre SOUS l'élément : boîte collée en haut de page, ou texte libre (sa poignée
-  // de déplacement occupe déjà le dessus)
-  const dessous = texteLibre || (pageHeight && b.y * pageHeight < 42);
+  /* BARRE D'OUTILS DE LA BOÎTE (11/10, docs/compte-rendu-finitions-boites-sidebar.md) — une petite
+     barre flottante d'ICÔNES (28 px ; 36 px au doigt), visible UNIQUEMENT quand la boîte est
+     sélectionnée (`active` : clic dessus, ou juste après sa création) ou qu'elle attend sa visée.
+     Elle disparaît avec la sélection : clic ailleurs, autre outil, trait, mode focus, Échap
+     (PdfReader.jsx). Plus d'apparition au survol. Au-dessus de la boîte, dessous s'il n'y a pas
+     la place ; toujours dans la page (repositionnée si la boîte est au bord). */
+  const tactile = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
   const bLarg = refW ? (ajustee && largVue ? largVue : b.width * refW) / refW : b.width; // largeur affichée (fraction de page)
+  const bHaut = Math.max(b.height, (hautVue * k) / (pageHeight || 1)); // hauteur affichée (fraction de page)
+  const ICONE = tactile ? 36 : 28;
+  const NB_ICONES = texteLibre ? 2 : 7;
+  const barreL = enAncrage ? Math.min(330, (pageWidth || 330) - 8) : NB_ICONES * ICONE + (NB_ICONES - 1) * 2 + 8;
+  const barreH = ICONE + 4;
+  const placeBarre = (() => {
+    const W = pageWidth || 0, H = pageHeight || 0;
+    const centre = (b.x + bLarg / 2) * W;
+    // bornée à la partie VISIBLE de la page (page plus large que la zone de lecture, panneau à droite…)
+    const visL = visible ? Math.max(0, visible.l) : 0, visR = visible ? Math.min(W, visible.r) : W;
+    const left = Math.max(visL + 4, Math.min(centre - barreL / 2, visR - barreL - 4));
+    const dessus = b.y * H - barreH - 6;
+    const haut = texteLibre ? b.y * H - 17 - barreH - 6 : dessus; // texte libre : sa poignée occupe déjà le dessus
+    const dessous = haut < 4;
+    return { left, top: dessous ? (b.y + bHaut) * H + 6 : haut, dessous };
+  })();
   const stop = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onClick: (e) => { e.stopPropagation(); fn(); } });
-  /* DEUX VERSIONS DU TEXTE (10/10, lib/textesAnnotations.js) : bascule « IA ⇄ orig. »,
-     seulement quand la boîte a reçu un texte importé — un affichage, rien n'est supprimé */
+  /* DEUX VERSIONS DU TEXTE (10/10, lib/textesAnnotations.js) : badge « IA ⇄ orig. » DANS la poignée,
+     coin haut droit — un clic bascule cette boîte (annulable), seulement quand la boîte a reçu un
+     texte importé. Un affichage : rien n'est supprimé. */
   const deuxVersions = aDeuxVersions(boite);
   const version = versionAffichee(boite);
-  const boutonVersion = deuxVersions ? (
-    <button type="button" className="nb-act nb-bascule" {...stop(() => onModifier(boite, { versionTexte: version === 'alt' ? 'original' : 'alt' }, 'Version du texte'))}
-      title={version === 'alt' ? 'Version IA affichée — cliquer pour revenir au texte d’origine' : 'Texte d’origine affiché — cliquer pour la version IA'}>
-      <Icon name="refresh" size={11} /> {version === 'alt' ? 'Voir l’original' : 'Voir la version IA'}
-    </button>
-  ) : null;
+  const iFond = Math.max(0, FONDS_BOITE.findIndex((f) => f.id === (boite.fond || 'plein')));
+  const fondSuivant = FONDS_BOITE[(iFond + 1) % FONDS_BOITE.length];
+  const nbFleches = (boite.fleches || []).length;
 
   return (
     <>
@@ -1247,70 +1293,50 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         style={{ left: ancre.x * 100 + '%', top: ancre.y * 100 + '%', borderColor: couleurBoite }}
         onPointerDown={(e) => glisserPoint(e, { cible: 'ancre', depart: { x: ancreBrute.x, y: ancreBrute.y } })} />
     )}
-    {actionsVisibles && (
-      <div className={'nb-actions' + (dessous ? ' dessous' : '')}
-        style={{ ...(b.x + bLarg / 2 > 0.5 ? { right: (1 - b.x - bLarg) * 100 + '%' } : { left: b.x * 100 + '%' }), top: (dessous ? b.y + Math.max(b.height, (hautVue * k) / (pageHeight || 1)) : b.y) * 100 + '%' }}
+    {barreMontee && (
+      <div className={'nb-actions nb-barre' + (placeBarre.dessous ? ' dessous' : '') + (barreSortie ? ' sortie' : '') + (tactile ? ' tactile' : '') + (enAncrage ? ' vise' : '')}
+        role="toolbar" aria-label="Outils de la boîte"
+        style={{ left: placeBarre.left, top: placeBarre.top, width: barreL, height: barreH }}
         onMouseEnter={entrer} onMouseLeave={sortir}
         onPointerDown={(e) => e.stopPropagation()}>
-        {texteLibre ? (<>
-          {boutonVersion}
-          <button type="button" className="nb-act danger" {...stop(() => onSupprimer(boite))} title={`Supprimer ce texte (annulable par ${RACCOURCI_Z})`}>
-            <Icon name="trash" size={12} />
-          </button>
-        </>) : enAncrage ? (
+        {enAncrage ? (
           <button type="button" className="nb-act vise" {...stop(() => onDemanderAncrage(null))} title="Annuler (Échap)">
-            <IconeEpingle size={13} /> {viseAjout ? 'Clique ce que la nouvelle flèche vise…' : viseSurlignage ? 'Clique un surlignage ou une forme…' : 'Clique l’endroit à épingler…'} <span className="nb-act-x">Annuler</span>
+            <IconeEpingle size={13} /> {viseAjout ? 'Clique ce que la flèche vise…' : viseSurlignage ? 'Clique un surlignage ou une forme…' : 'Clique l’endroit à épingler…'} <span className="nb-act-x">Annuler</span>
           </button>
-        ) : (<>
-          {ancre ? (
-            <button type="button" className="nb-act actif" {...stop(() => onModifier(boite, { ancre: null, fleche: false, surlignageId: null, formeId: null }, 'Retrait de l’épingle'))}
-              title={`${titreAncre}. Pour la déplacer : glisse l’épingle sur la page. Cliquer ici la retire (et la flèche avec).`}>
-              <IconeEpingle size={11} /> Épingle
-            </button>
-          ) : (
-            <button type="button" className="nb-act" {...stop(() => onDemanderAncrage(boite.id))}
-              title="Épingler la boîte à un endroit précis de la fiche : clique ensuite sur le passage visé.">
-              <IconeEpingle size={11} /> Épingler
-            </button>
-          )}
-          {boite.surlignageId || boite.formeId ? (
-            <button type="button" className="nb-act actif" {...stop(() => onModifier(boite, { ancre: null, fleche: false, surlignageId: null, formeId: null }, 'Lien retiré'))}
-              title={`Reliée au surlignage${ancre && ancre.texte ? ` « ${ancre.texte} »` : ''}. Cliquer pour retirer le lien.`}>
-              <IconeOutil nom="fleche" size={11} /> Délier
-            </button>
-          ) : (
-            <button type="button" className="nb-act" {...stop(() => onDemanderAncrage(boite.id, { surlignage: true }))}
-              title="Relier cette boîte à un surlignage : clique ensuite le passage surligné, une flèche les relie.">
-              <IconeOutil nom="fleche" size={11} /> Relier
-            </button>
-          )}
-          <button type="button" className={'nb-act' + (ancre && boite.fleche ? ' actif' : '')}
-            {...stop(() => (ancre ? onModifier(boite, { fleche: !boite.fleche }, boite.fleche ? 'Retrait de la flèche' : 'Ajout de la flèche') : onDemanderAncrage(boite.id, { fleche: true })))}
-            title={!ancre ? 'Flèche vers un endroit de la fiche : clique ensuite sur le passage visé, la flèche se trace toute seule.' : boite.fleche ? 'Retirer la flèche' : 'Tracer une flèche de la boîte vers son épingle'}>
-            <Icon name="arrowR" size={11} /> Flèche
+        ) : texteLibre ? (<>
+          <BoutonCouleur couleur={boite.couleur} titre="Couleur du texte" onCouleur={(c) => onModifier(boite, { couleur: c }, 'Couleur du texte')} />
+          <button type="button" className="nb-act danger" {...stop(() => onSupprimer(boite))} title={`Supprimer ce texte (annulable par ${RACCOURCI_Z})`} aria-label="Supprimer">
+            <Icon name="trash" size={15} />
           </button>
-          <button type="button" className={'nb-act' + ((boite.fleches || []).length ? ' actif' : '')}
-            {...stop(() => onDemanderAncrage(boite.id, { ajout: true }))}
-            title={`Ajouter une autre flèche, vers un endroit, un surlignage ou une forme${(boite.fleches || []).length ? ` (${boite.fleches.length} déjà)` : ''}. Le petit rond au bout se glisse ; sa croix la retire.`}>
-            <Icon name="plus" size={10} /><IconeOutil nom="fleche" size={11} />{(boite.fleches || []).length ? ` ${boite.fleches.length}` : ''}
+        </>) : (<>
+          <button type="button" className={'nb-act' + (ancre ? ' actif' : '')} aria-pressed={!!ancre} aria-label="Épingle"
+            {...stop(() => (ancre ? onModifier(boite, { ancre: null, fleche: false, surlignageId: null, formeId: null }, 'Retrait de l’épingle') : onDemanderAncrage(boite.id)))}
+            title={ancre ? `Épingle : ${titreAncre}. Cliquer la retire (et la flèche avec) ; glisser l’épingle sur la page la déplace.` : 'Épingle : clique ensuite le passage de la fiche auquel la boîte se rapporte.'}>
+            <IconeEpingle size={15} />
           </button>
-          {(() => {
-            const i = Math.max(0, FONDS_BOITE.findIndex((f) => f.id === (boite.fond || 'plein')));
-            const suivant = FONDS_BOITE[(i + 1) % FONDS_BOITE.length];
-            return (
-              <button type="button" className="nb-act nb-fond" {...stop(() => onModifier(boite, { fond: suivant.id }, 'Fond de la boîte'))}
-                title={`Fond : ${FONDS_BOITE[i].label.toLowerCase()} — cliquer pour « ${suivant.label.toLowerCase()} » (transparent → teinté 15 % → plein)`}>
-                <span className={'nb-fond-ic ' + FONDS_BOITE[i].id} style={{ '--c': couleurBoite }} aria-hidden="true" /> Fond
-              </button>
-            );
-          })()}
-          {boutonVersion}
-          <button type="button" className="nb-act" {...stop(() => onModifier(boite, { reduite: true }, 'Réduction de la boîte'))}
-            title="Réduire en pastille : un clic sur la pastille rouvre la boîte, un glisser la déplace.">
-            <Icon name="minus" size={11} /> Réduire
+          <button type="button" className={'nb-act' + (boite.surlignageId || boite.formeId ? ' actif' : '')} aria-pressed={!!(boite.surlignageId || boite.formeId)} aria-label="Relier"
+            {...stop(() => (boite.surlignageId || boite.formeId ? onModifier(boite, { ancre: null, fleche: false, surlignageId: null, formeId: null }, 'Lien retiré') : onDemanderAncrage(boite.id, { surlignage: true })))}
+            title={boite.surlignageId || boite.formeId ? `Reliée${ancre && ancre.texte ? ` à « ${ancre.texte} »` : ''} — cliquer pour retirer le lien` : 'Relier à un surlignage ou une forme : clique-le ensuite, une flèche les relie.'}>
+            <IconeOutil nom="fleche" size={15} />
           </button>
-          <button type="button" className="nb-act danger" {...stop(() => onSupprimer(boite))} title={`Supprimer la boîte (annulable par ${RACCOURCI_Z})`}>
-            <Icon name="trash" size={12} />
+          <button type="button" className={'nb-act' + (ancre && boite.fleche ? ' actif' : '')} aria-pressed={!!(ancre && boite.fleche)} aria-label="Flèche"
+            {...stop(() => (!ancre ? onDemanderAncrage(boite.id, { fleche: true }) : !boite.fleche ? onModifier(boite, { fleche: true }, 'Ajout de la flèche') : onDemanderAncrage(boite.id, { ajout: true })))}
+            onContextMenu={(e) => { if (ancre && boite.fleche) { e.preventDefault(); onModifier(boite, { fleche: false }, 'Retrait de la flèche'); } }}
+            title={!ancre ? 'Flèche : clique ensuite le passage visé, la flèche se trace toute seule.' : !boite.fleche ? 'Tracer la flèche vers l’épingle' : `Ajouter une autre flèche${nbFleches ? ` (${nbFleches} en plus)` : ''} — clic droit : retirer la flèche principale ; la croix d’un rond retire sa flèche.`}>
+            <Icon name="arrowR" size={15} />
+          </button>
+          <BoutonCouleur couleur={boite.couleur} titre="Couleur de la boîte" onCouleur={(c) => onModifier(boite, { couleur: c }, 'Couleur de la boîte')} />
+          <button type="button" className="nb-act nb-fond" aria-label="Fond" {...stop(() => onModifier(boite, { fond: fondSuivant.id }, 'Fond de la boîte'))}
+            title={`Fond : ${FONDS_BOITE[iFond].label.toLowerCase()} — cliquer pour « ${fondSuivant.label.toLowerCase()} » (transparent → teinté → plein)`}>
+            <span className={'nb-fond-ic ' + FONDS_BOITE[iFond].id} style={{ '--c': couleurBoite }} aria-hidden="true" />
+          </button>
+          <button type="button" className="nb-act" aria-label={boite.reduite ? 'Déployer' : 'Réduire'}
+            {...stop(() => onModifier(boite, { reduite: !boite.reduite }, boite.reduite ? 'Déploiement de la boîte' : 'Réduction de la boîte'))}
+            title={boite.reduite ? 'Déployer la boîte' : 'Réduire en pastille : un clic sur la pastille rouvre la boîte, un glisser la déplace.'}>
+            <Icon name={boite.reduite ? 'maximize' : 'minus'} size={15} />
+          </button>
+          <button type="button" className="nb-act danger" aria-label="Supprimer" {...stop(() => onSupprimer(boite))} title={`Supprimer la boîte (annulable par ${RACCOURCI_Z})`}>
+            <Icon name="trash" size={15} />
           </button>
         </>)}
       </div>
@@ -1329,8 +1355,16 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         }}>
         <span className="nb-grip" style={active && k !== 1 ? { scale: String(1 / k) } : undefined}><Icon name="grip" size={12} /></span>
         {ancre && <span className="nb-etat" title={titreAncre}><IconeEpingle size={11} /></span>}
+        {deuxVersions && (
+          <button type="button" className={'nb-version' + (version === 'alt' ? '' : ' orig')}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); e.currentTarget.blur(); /* ⌘Z ira au journal du lecteur, pas à l'éditeur de la boîte */ onModifier(boite, { versionTexte: version === 'alt' ? 'original' : 'alt' }, 'Version du texte'); }}
+            aria-label={version === 'alt' ? 'Version IA affichée — afficher le texte d’origine' : 'Texte d’origine affiché — afficher la version IA'}
+            title={version === 'alt' ? 'Version IA affichée — cliquer pour le texte d’origine' : 'Texte d’origine affiché — cliquer pour la version IA'}>
+            {version === 'alt' ? 'IA' : 'orig.'}
+          </button>
+        )}
       </div>
-      {deuxVersions && <span className={'nb-version' + (version === 'alt' ? '' : ' orig')} aria-label={version === 'alt' ? 'Version IA affichée' : 'Texte d’origine affiché'}>{version === 'alt' ? 'IA' : 'orig.'}</span>}
 
       {/* VERROU 4 : le corps est du TEXTE, pas une poignée. */}
       {active && editor

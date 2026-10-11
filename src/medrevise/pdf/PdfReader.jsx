@@ -266,7 +266,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (id === 'surligneur' && pending && window.getSelection && !window.getSelection().isCollapsed) {
       commitHighlightAvec(pending, couleurSurligneur);
     }
-    setOutil(id); setPending(null); setAncrage(null); if (id !== 'main') setActiveEditId(null);
+    // (11/10) changer d'outil — y compris revenir à la Sélection — désélectionne la boîte : sa barre
+    // d'outils disparaît sans Échap (docs/compte-rendu-finitions-boites-sidebar.md)
+    setOutil(id); setPending(null); setAncrage(null); setActiveEditId(null);
   };
   const choisirOutilRef = useRef(choisirOutil); choisirOutilRef.current = choisirOutil;
 
@@ -1052,6 +1054,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [outil]);
+  // (11/10) passer en mode focus (barre latérale, MedReviseApp.jsx) désélectionne la boîte
+  useEffect(() => {
+    const surFocus = () => { if (activeEditIdRef.current) setActiveEditId(null); setAncrage(null); };
+    window.addEventListener('medrevise:focus', surFocus);
+    return () => window.removeEventListener('medrevise:focus', surFocus);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Échap : désélectionner la boîte / le bloc actif (avant, seul « Terminé » le
   // permettait). Posé À PART des popovers ci-dessous, qui ont leur propre Échap.
   useEffect(() => {
@@ -1772,6 +1780,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const actuel = boiteFraiche(b.id, b);
     if (!actuel) return;
     if (patch.reduite && activeEditId === b.id) setActiveEditId(null); // on replie : on quitte l'édition
+    if (patch.couleur) setCouleurActive(patch.couleur); // la prochaine boîte héritera du dernier choix (comme changerCouleurBoite)
     await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, ...patch }, libelle));
   };
   /* ANCRAGE (demande du 30/09) : « viser » l'endroit de la page auquel la boîte se
@@ -3072,6 +3081,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       cibleHlId={flashHlId}
                       ocrPage={sz.ajout ? null : ocrPagePour(n)} ocrDebug={ocrDebug}
                       onActivateEdit={setActiveEditId}
+                      onDebutTrait={() => { if (activeEditIdRef.current) setActiveEditId(null); }}
                       activeEditor={editor}
                       fondNoir={modeDoc && fondNoir}
                       corps={sz.ajout && docCharge && !modeDoc && docNonVide(corpsPages.current[n]) ? (
