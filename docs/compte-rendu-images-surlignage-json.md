@@ -746,3 +746,141 @@ composants (image générale au recto / verso, tableau avec vignettes), mais auc
 | `be8e2cd` | fix(medrevise): surligneur dans un document — sélection limitée au texte, sans flash ni extension à la page |
 | `a2ce4f2` | feat(medrevise): images dans les cartes Muscle — une par ligne du tableau + image générale du muscle |
 | `70e8811` | docs(medrevise): compte rendu — export spécial IA, surlignage document, images Muscle |
+
+## Export IA en PDF (11/10/2026)
+
+**Le but** : l'« Export spécial IA » produit **un seul fichier PDF**, facile à donner à une IA, au lieu
+d'une archive de PNG. Les PNG restent disponibles.
+
+### Ce qui change
+
+Fichier › « Export spécial IA… », pour la page courante ou le cours entier.
+
+- **Télécharger (PDF + JSON)**, le bouton principal. Un clic télécharge trois fichiers :
+  - `<cours>-export-ia.pdf` (ou `<cours>-export-ia-p03.pdf` pour la seule page 3) ;
+  - `annotations.json` (inchangé : `{ course, page?, instructions, boxes: [{ id, ref, text }] }`) ;
+  - `LISEZMOI.txt`, qui nomme le PDF et explique sa couche texte.
+- **Le PDF** : une page PDF par page de cours.
+  - Chaque page est l'**image exacte du rendu actuel** : la page, toutes les annotations, les flèches
+    et l'étiquette de repère de chaque boîte. C'est le même rendu que l'export d'avant, aux
+    étiquettes près.
+  - Format de la page d'origine ; **150 dpi** (A4 → image de 1 240 × 1 754 px) ; **JPEG qualité 85**.
+  - **Repli** : une page qui dépasse 1 Mo à 150 dpi est refaite à **120 dpi**, et un cours qui
+    dépasse 40 Mo est refait entièrement à 120 dpi. Le message le dit (« Pages 1, 2 : plus de 1 Mo
+    à 150 dpi, refaites à 120 dpi »).
+  - **Couche texte invisible**, en mode de rendu 3 (comme l'OCR d'un scan) :
+    - dans chaque boîte, son repère et son texte, par exemple « #d2e — Citrate synthase : première
+      étape… », placé à l'emplacement de la boîte ;
+    - en pied de page, « Page 5 / 12 — <cours> ».
+  - Une IA qui ne lit que le texte retrouve donc le lien repère ↔ texte, et une IA qui regarde
+    l'image voit les étiquettes. Rien de tout cela n'est visible à l'œil.
+- **PNG par page** : un `.zip` avec un `page-XX.png` par page (2× la taille de page),
+  `annotations.json` et `LISEZMOI.txt`. Aperçu, « Copier le JSON » et « Copier l'image » restent.
+- **Pas de gel de l'interface** : génération page par page, avec une barre de progression
+  (« Pages du PDF : 9 / 26 ») et un bouton **Annuler**, qui ne télécharge aucun fichier.
+- **Message de fin** : nombre de pages, poids, poids moyen par page et dpi.
+- **Inchangés** : « Exporter en PDF annoté », l'import des textes et toutes les annotations.
+
+**Fichiers :**
+- `pdf/exportIA.js` : `preparerSourceIA` (la source commune : PDF annoté vectoriel avec repères,
+  boîtes, JSON), `pdfIA`, `pngsIA`, `zipPngsIA` ;
+- `pdf/ExportIA.jsx` (le panneau) et `PdfReader.jsx` (branchement) ;
+- `pdf/exportAnnote.js` : seul changement, le nettoyeur de caractères est **exporté** (réutilisé
+  pour la couche texte), l'export normal ne bouge pas ;
+- `lib/textesAnnotations.js` : texte du LISEZMOI ;
+- `styles/pdfreader-v2.css` (barre de progression).
+
+### Poids mesurés
+
+| Export | Pages | Poids | Par page | Résolution |
+|---|---|---|---|---|
+| Page unique (`Cours-12-pages-IA-export-ia-p01.pdf`) | 1 | 182 191 octets (0,17 Mo) | 178 Ko | 150 dpi, 1 240 × 1 754 |
+| Cours de 12 pages, 13 boîtes | 12 | 1 946 580 octets (1,86 Mo) | ≈ 158 Ko | 150 dpi |
+| Cours de 26 pages, 34 boîtes | 26 | 4 421 428 octets (4,22 Mo), généré en 1,6 s | ≈ 166 Ko | 150 dpi |
+| Cours « bruit » (2 pages couvertes d'une photo de bruit aléatoire) | 2 | 1 703 921 octets (1,62 Mo) | ≈ 831 Ko | **repli à 120 dpi**, 992 × 1 403, signalé |
+
+On est loin des plafonds (1 Mo par page, 40 Mo par cours). Les pages de cours testées sont du texte
+avec un schéma coloré. Une page couverte d'une photo très détaillée pèse davantage, d'où le repli.
+
+### Tests
+
+Le banc est dans `scripts/tests-images-json/`. Il tourne sur le **profil de test** et le faux
+Supabase local, jamais le vrai cloud, avec de vrais clics.
+- Fixtures et données de test : `fixtures-ia-pdf.mjs`, `seed-ia.mjs`, `seed-ia26.mjs`,
+  `seed-ia-bruit.mjs`.
+- Les téléchargements sont interceptés puis analysés : avec le pdf.js de l'app, et en lisant la
+  structure du fichier.
+
+**Cours de 12 pages** (`t-export-ia-pdf.mjs`, 20/20) :
+
+| Vérification | Résultat |
+|---|---|
+| Panneau : « Télécharger (PDF + JSON) », « PNG par page », Aperçu, Copier le JSON | ✅ |
+| **Page unique** : un clic → `Cours-12-pages-IA-export-ia-p01.pdf` + `annotations.json` + `LISEZMOI.txt` ; PDF d'**une page**, 595 × 842 pt, une image JPEG 1 240 × 1 754 | ✅ |
+| Couche texte de la page : « #ref — texte » pour les 8 boîtes et « Page 1 / 12 » | ✅ |
+| **Cours entier** : barre de progression ; PDF de 12 pages au format d'origine, une image JPEG 1 240 × 1 754 par page ; 1,86 Mo | ✅ |
+| **JSON cohérent** : 13 boîtes, mêmes repères dans le JSON et dans le texte du PDF ; chaque repère sur sa page (#m7p → p. 5, #n2a → p. 12) ; « Copier le JSON » = fichier téléchargé | ✅ |
+| **PNG par page** : `…-export-ia-png.zip` = page-01…page-12.png + annotations.json + LISEZMOI.txt | ✅ |
+
+**Cours de 26 pages, PdfReader, réimport, export normal** (`t-export-ia-pdf-26.mjs`, 8/8) :
+
+| Vérification | Résultat |
+|---|---|
+| Progression « Pages du PDF : 6 / 26 » ; **Annuler** → arrêt en ~120 ms, « Export annulé : aucun fichier téléchargé » | ✅ |
+| Export complet : 26 pages, 4,22 Mo, 1,6 s | ✅ |
+| Interface fluide : le lecteur défile pendant la génération ; plus long blocage du fil principal **52 ms** (aucune pause de plus de 250 ms) | ✅ |
+| **PdfReader de l'app** : le PDF exporté, ajouté comme cours de test, s'ouvre (« 1 / 12 »), pages rendues, aucune erreur | ✅ |
+| **Réimport** du `annotations.json` de l'export avec un texte modifié : « 1 boîte mise à jour, 12 inchangées » ; seule la boîte #1xyz change | ✅ |
+| « Exporter en PDF annoté » : PDF vectoriel comme avant (pas d'image de page) | ✅ |
+
+**Repli** (`t-export-ia-pdf-repli.mjs`, 2/2) : pages de bruit → 120 dpi (992 × 1 403), 1,62 Mo,
+signalé ✅
+
+**Aperçu (macOS)** : vérifié avec **PDFKit**, le moteur d'Aperçu, par un script Swift qui fait la
+même recherche que ⌘F.
+
+| Vérification | Résultat |
+|---|---|
+| Le PDF de 12 pages s'ouvre, 12 pages de 595 × 842 pt | ✅ |
+| Recherche « #d2e » → p. 1 ; « #m7p » → p. 5 ; « #n2a » → p. 12 ; « #1xyz » → p. 2 ; « Citrate synthase » → p. 1 ; « Page 5 / 12 » → p. 5 | ✅ |
+| Cours de 26 pages : « #07a » → p. 7, « #09b » → p. 9, « #26a » → p. 26 | ✅ |
+| Page unique : 1 page | ✅ |
+| Rendu PDFKit de la page 1 : le texte invisible ne se voit pas, étiquettes nettes | ✅ (capture ci-dessous) |
+
+**Autres vérifications :**
+
+| Vérification | Résultat |
+|---|---|
+| **Chrome** : le lecteur PDF intégré ouvre le fichier (« 1 / 12 », titre « Cours 12 pages IA — export IA ») ; étiquettes lisibles **à 100 %** | ✅ |
+| Non-régression de l'export IA (`t-export-ia.mjs`, 12/12, adapté au « PNG par page ») | ✅ |
+| `ia-labo.mjs` : le visuel ne diffère de l'export normal **qu'à l'intérieur des étiquettes** (0 pixel dehors) | ✅ |
+| Tablette (`t-export-ia-tablette.mjs`) | 3/3 ✅ |
+| `npx vitest run` | 42/42 ✅ |
+| Build | vert ✅ |
+| MealWeek s'ouvre ; aucun fichier MealWeek ni `src/shared/` modifié | ✅ |
+
+**Ce que je n'ai pas pu faire** : ouvrir l'application Aperçu elle-même et taper ⌘F au clavier. Ce
+serait du pilotage d'interface macOS, qui demande des autorisations d'accessibilité. La vérification
+passe par PDFKit, la bibliothèque qu'Aperçu utilise pour ouvrir, rendre et chercher dans un PDF.
+
+### Captures
+
+**Page 1 du PDF, rendue par PDFKit (Aperçu) à 150 dpi** : repères visibles, texte invisible absent du
+rendu.
+
+![Page 1 du PDF de l'export IA](img/images-surlignage-json/pdf-ia-page1-apercu.png)
+
+| Le PDF dans Chrome (100 %) | Progression et Annuler (26 pages) |
+|---|---|
+| ![](img/images-surlignage-json/pdf-ia-chrome.png) | ![](img/images-surlignage-json/pdf-ia-progression.png) |
+
+| Panneau | Le PDF exporté ouvert dans le PdfReader de l'app |
+|---|---|
+| ![](img/images-surlignage-json/pdf-ia-panneau.png) | ![](img/images-surlignage-json/pdf-ia-pdfreader.png) |
+
+### Commits
+
+| Hash | Message |
+|---|---|
+| `8f2ee1a` | feat(medrevise): export spécial IA en un seul PDF — image de chaque page annotée + couche texte invisible |
+| (ce commit) | docs(medrevise): section « Export IA en PDF » |
