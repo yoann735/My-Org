@@ -461,4 +461,4 @@ Sur téléphone, seule la révision est concernée, et elle est testée.
 | Commit | Contenu |
 |---|---|
 | ffb7373 | `feat(medrevise)` : zones image v2 — composant unique, survol discret, actions en icônes, tableau Muscle aligné, image des cartes Molécule, bancs `scripts/tests-zones/` |
-| (ce commit) | `docs(medrevise)` : section « Zones image v2 », captures avant / après |
+| ac9f488 | `docs(medrevise)` : section « Zones image v2 », captures avant / après |
