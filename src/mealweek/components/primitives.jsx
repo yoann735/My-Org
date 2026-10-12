@@ -90,8 +90,8 @@ export function Stepper({ value, min = 1, max = 6, step = 1, onChange, suffix, s
   );
 }
 
-/* ---- sélecteur de semaine-type (S1 … S8) ----
-   Parcourt les 8 semaines-types du fichier V2 et affiche le total de
+/* ---- sélecteur de semaine-type (S1 … S9) ----
+   Parcourt les semaines-types du fichier (9 en V3) et affiche le total de
    celle qui est ouverte. En mode manuel, la dernière semaine parcourue
    est celle qui est retenue et persistée (voir useUserState).
 

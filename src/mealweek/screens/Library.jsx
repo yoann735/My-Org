@@ -1,6 +1,6 @@
 /* ============================================================
    Screen — Bibliothèque de recettes
-   Les 22 recettes du fichier V2, filtrables et cherchables. Ouvrir
+   Les 24 recettes du fichier V3, filtrables et cherchables. Ouvrir
    une recette affiche son détail en overlay (ingrédients livrés,
    étapes numérotées, nutrition par portion, temps, ustensiles).
 
@@ -28,7 +28,7 @@ export function Library({ ctx }) {
 
   const filtered = RECIPES.filter((r) => {
     const q = search.trim().toLowerCase();
-    if (q && !(r.nom || '').toLowerCase().includes(q)
+    if (q && !(r.nom || '').toLowerCase().includes(q) && String(r.num) !== q
         && !(r.ingredients_livres || []).some((i) => (i.nom || '').toLowerCase().includes(q))) return false;
     const t = tempsMinutes(r);
     if (fTime && (t == null || t > fTime)) return false;
@@ -124,7 +124,9 @@ function RecipeCard({ r, isBanned, isFav, onOpen, onBan, onFav }) {
       <span style={{ position: 'absolute', left: 0, top: 14, bottom: 14, width: 3, borderRadius: 3, background: t.solid }} />
       <div className="row spread" style={{ alignItems: 'flex-start' }}>
         <div style={{ minWidth: 0, paddingLeft: 6 }}>
-          <div style={{ fontWeight: 600, fontSize: 16, letterSpacing: '-.01em', lineHeight: 1.2 }}>{r.nom}</div>
+          <div style={{ fontWeight: 600, fontSize: 16, letterSpacing: '-.01em', lineHeight: 1.2 }}>
+            {r.num != null && <span className="tnum" style={{ color: 'var(--text-3)', fontWeight: 500 }}>{r.num}. </span>}{r.nom}
+          </div>
         </div>
         <button type="button" onClick={(e) => { e.stopPropagation(); onFav(); }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: isFav ? 'var(--accent-2)' : 'var(--text-3)', padding: 2, flex: '0 0 auto' }}>
           <Icon name="star" size={18} fill={isFav} />
@@ -162,7 +164,8 @@ function LibListRow({ r, isBanned, isFav, onOpen, onBan, onFav }) {
         <Icon name="star" size={17} fill={isFav} />
       </button>
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontWeight: 600, fontSize: 14.5 }}>{r.nom} {isBanned && <span className="pill crit" style={{ height: 19, fontSize: 9.5, marginLeft: 6 }}>Bannie</span>}</div>
+        <div style={{ fontWeight: 600, fontSize: 14.5 }}>
+          {r.num != null && <span className="tnum" style={{ color: 'var(--text-3)', fontWeight: 500 }}>{r.num}. </span>}{r.nom} {isBanned && <span className="pill crit" style={{ height: 19, fontSize: 9.5, marginLeft: 6 }}>Bannie</span>}</div>
       </div>
       <Meta icon="clock">{r.temps}</Meta>
       <Meta icon="flame">{kcal} kcal</Meta>

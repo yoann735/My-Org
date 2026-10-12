@@ -3,7 +3,8 @@
    Router (pas de routing d'URL pour une app perso mono-fenêtre),
    thème, et tout l'état persistant, qui descend via `ctx`.
 
-   V2 : l'utilisateur parcourt 8 semaines-types indépendantes (S1-S8).
+   V3 : l'utilisateur parcourt 9 semaines-types indépendantes (S1-S9).
+   L'écran « Méthode » expose les règles et le catalogue week-end.
    Celle sur laquelle il s'arrête est RETENUE et persistée, avec les
    recettes qu'il en a retirées. Tout l'état vit dans un unique objet
    `userState` (voir data/useUserState.js) : localStorage immédiat +
@@ -24,12 +25,13 @@ import { Dashboard } from './screens/Dashboard.jsx';
 import { Shopping } from './screens/Shopping.jsx';
 import { Library } from './screens/Library.jsx';
 import { Settings } from './screens/Settings.jsx';
+import { Methode } from './screens/Methode.jsx';
 import { useUserState } from './data/useUserState.js';
 import { DEFAULT_WEEK, WEEK_KEYS, nextWeekKey, prevWeekKey, recipeById, weekShopping } from './data/dataLayer.js';
 import { creerAncre, indexAuto, prochainBasculement } from './lib/rotation.js';
 import { RotationDialog } from './components/RotationDialog.jsx';
 
-const SCREENS = { dashboard: Dashboard, shopping: Shopping, library: Library, settings: Settings };
+const SCREENS = { dashboard: Dashboard, shopping: Shopping, library: Library, methode: Methode, settings: Settings };
 
 export default function MealWeekApp({ themeApi, goHub }) {
   /* ---- theme comes from the shared "univers" theme ---- */

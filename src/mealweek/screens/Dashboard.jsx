@@ -10,7 +10,7 @@ import { Card, Bar, HBar, WeekNav } from '../components/primitives.jsx';
 import { WeekCalendar } from '../components/WeekCalendar.jsx';
 import { TopActions, ResetRemovedButton } from './_shared.jsx';
 import {
-  weekPlan, weekKpis, weekNutrition, weekBudget, weekRaw, recipeById, money, money0,
+  weekPlan, weekKpis, weekNutrition, weekBudget, weekRaw, weekCosts, recipeById, money, money0, WEEK_KEYS,
 } from '../data/dataLayer.js';
 import { formatJour } from '../lib/rotation.js';
 
@@ -22,6 +22,7 @@ export function Dashboard({ ctx }) {
   const kpi = weekKpis(weekKey, removedInWeek);
   const nut = weekNutrition(weekKey, removedInWeek);
   const wk = weekRaw(weekKey);
+  const couts = weekCosts(weekKey);
 
   const { recipesTotal, persoTotal: persoT, total: budgetTotal } =
     weekBudget(weekKey, removedInWeek, ctx.shoppingChecked, ctx.perso);
@@ -58,7 +59,7 @@ export function Dashboard({ ctx }) {
           <h1 className="serif">
             Semaine {(weekKey || '').replace(/\D/g, '') || '—'}
             <span style={{ color: 'var(--text-3)', fontWeight: 400, fontSize: 24 }}>
-              {' '}sur {plan.days.length ? 8 : 0}
+              {' '}sur {plan.days.length ? WEEK_KEYS.length : 0}
             </span>
           </h1>
           <div className="sub">
@@ -152,7 +153,20 @@ export function Dashboard({ ctx }) {
                 <span className="tnum serif" style={{ fontSize: 22, color: over ? 'var(--crit)' : 'var(--accent)' }}>{money(budgetTotal)}</span>
               </div>
               <Bar value={budgetTotal} max={weeklyBudget} variant={over ? 'crit' : ''} />
-              {wk && wk.total_eur != null && (
+              {couts ? (
+                <div className="budget-detail" style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 2 }}>
+                  <div className="kpi-label">Détail prévu pour {weekKey} (classeur)</div>
+                  <CostRow label="Courses recettes (formats entiers)" value={couts.courses_recettes} />
+                  <CostRow label="Placard / bases (prix plein)" value={couts.placard} />
+                  <CostRow label={`Week-end${wk.plat_weekend ? ' · plat + pizza' : ''}`} value={couts.weekend} />
+                  <CostRow label="Total prévu" value={couts.total} strong />
+                  <CostRow label={`Marge vs ${wk.budget_max || weeklyBudget} €`} value={couts.marge} tone={couts.marge < 0 ? 'crit' : 'ok'} />
+                  <div className="hint">
+                    Gâchis estimé {money(couts.gachis)} · stock sec restant {money(couts.stock)}
+                    {wk.cout_par_portion != null && <> · {money(wk.cout_par_portion)} / repas</>}
+                  </div>
+                </div>
+              ) : wk && wk.total_eur != null && (
                 <div className="hint">Total annoncé pour {weekKey} dans les données : {money(wk.total_eur)}</div>
               )}
               <div className="budget-target" style={{ marginTop: 'auto' }}>
@@ -176,6 +190,19 @@ export function Dashboard({ ctx }) {
           </Card>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ligne compacte du détail des coûts prévus par le classeur */
+function CostRow({ label, value, strong, tone }) {
+  const color = tone === 'crit' ? 'var(--crit)' : tone === 'ok' ? 'var(--ok)' : undefined;
+  return (
+    <div className="row spread">
+      <span className="muted" style={{ fontSize: 12.5 }}>{label}</span>
+      <span className="tnum" style={{ fontWeight: strong ? 700 : 600, fontSize: 13, color }}>
+        {tone && value > 0 ? '+' : ''}{money(value)}
+      </span>
     </div>
   );
 }

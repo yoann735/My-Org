@@ -9,6 +9,7 @@ export const NAV = [
   { id: 'dashboard', label: 'Accueil', icon: 'home' },
   { id: 'shopping', label: 'Courses', icon: 'cart' },
   { id: 'library', label: 'Recettes', icon: 'book' },
+  { id: 'methode', label: 'Méthode', icon: 'info' },
 ];
 
 /* ---------- Desktop sidebar ---------- */

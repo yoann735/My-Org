@@ -1,20 +1,21 @@
 /* ============================================================
-   MealWeek — data layer (V2, 2026-09-02)
+   MealWeek — data layer (V3, 2026-10-12)
 
-   Adapte mealweek_data.json (V2 : 22 recettes, 8 semaines-types
-   indépendantes S1-S8, 84 produits Chronodrive) aux formes que
-   consomme l'UI.
+   Adapte mealweek_data.json (V3 : 24 recettes, 9 semaines-types
+   indépendantes S1-S9, catalogue « Options week-end ») aux formes que
+   consomme l'UI. Le JSON est GÉNÉRÉ depuis le classeur par
+   scripts/mealweek-import/importer_classeur.py (import idempotent) :
+   ne pas le modifier à la main, relancer l'import.
 
-   PRINCIPE : les données V2 sont utilisées TELLES QUELLES. Aucune
+   PRINCIPE : les données sont utilisées TELLES QUELLES. Aucune
    quantité, aucun format d'achat, aucun prix n'est recalculé ici —
    la liste de courses d'une semaine, ses formats et ses totaux
    viennent du fichier. Ce module ne fait qu'assembler et filtrer.
 
-   La seule dérivation est le RATTACHEMENT produit → recette
-   (voir « ATTRIBUTION » plus bas) : le fichier ne porte pas ce lien
-   et il est nécessaire pour retirer les ingrédients d'une recette
-   écartée. Il est volontairement PRUDENT : en cas de doute, la ligne
-   de courses est conservée.
+   Le RATTACHEMENT produit → recette (voir « ATTRIBUTION » plus bas)
+   vient du fichier depuis la V3 (colonne « Sert aux recettes ») ; la
+   déduction par les noms ne sert plus que de repli. Il reste PRUDENT :
+   en cas de doute, la ligne de courses est conservée.
    ============================================================ */
 import RAW from './mealweek_data.json';
 
@@ -31,7 +32,7 @@ export const ING_REF = RAW.ingredients_ref || {};
 export const ingRef = (name) => ING_REF[name] || null;
 
 export const WEEKS = RAW.weeks || {};
-export const WEEK_KEYS = Object.keys(WEEKS);            // ['S1' … 'S8']
+export const WEEK_KEYS = Object.keys(WEEKS);            // ['S1' … 'S9']
 export const weekRaw = (key) => WEEKS[key] || null;
 export const DEFAULT_WEEK = WEEK_KEYS[0] || '';
 
@@ -50,6 +51,26 @@ export function prevWeekKey(key) {
 export function weekRecipes(weekKey) {
   const wk = weekRaw(weekKey);
   return ((wk && wk.recettes_semaine) || []).map(recipeById).filter(Boolean);
+}
+
+/* ---------- catalogue week-end & méthode (V3) ---------- */
+export const OPTIONS_WEEKEND = RAW.options_weekend || [];
+export const optionById = (id) => OPTIONS_WEEKEND.find((o) => o.id === id) || null;
+export const METHODE = META.methode || [];
+
+/** semaines qui utilisent une option du catalogue (plat ou pizza) */
+export function weeksUsingOption(id) {
+  return WEEK_KEYS.filter((k) => {
+    const wk = WEEKS[k];
+    return (wk.plat_weekend && wk.plat_weekend.option_id === id) || (wk.pizza && wk.pizza.option_id === id);
+  });
+}
+
+/** coûts de la semaine tels que calculés par l'import (formats entiers,
+    placard au prix plein, week-end, gâchis, stock) — null si absents */
+export function weekCosts(weekKey) {
+  const wk = weekRaw(weekKey);
+  return (wk && wk.couts) || null;
 }
 
 /* ---------- helpers de formatage (purs) ---------- */
@@ -217,8 +238,13 @@ function contenuDans(libelle, produit) {
 }
 
 /** ids des recettes de la semaine auxquelles ce produit se rattache
-    avec certitude (tableau vide = non rattaché) */
-function attribuer(produit, recipes) {
+    avec certitude (tableau vide = non rattaché).
+    V3 : le fichier donne le lien (`recettes` de la ligne) → il prime. */
+function attribuer(produit, recipes, liens) {
+  if (Array.isArray(liens) && liens.length) {
+    const ids = new Set(recipes.map((r) => r.id));
+    return liens.filter((id) => ids.has(id));
+  }
   const out = [];
   recipes.forEach((r) => {
     const hit = (r.ingredients_livres || []).some((ing) =>
@@ -249,7 +275,7 @@ function libellePaquets(qte, contenu, unite) {
 }
 
 function ligneCourse(c, recipes) {
-  const recettes = attribuer(c.produit, recipes);
+  const recettes = attribuer(c.produit, recipes, c.recettes);
   const reste = c.reste || 0;
   return {
     name: c.produit,
@@ -291,6 +317,27 @@ function ligneSimple(x, kind) {
   };
 }
 
+/** ingrédient d'une recette qui correspond à un produit de courses —
+    sert UNIQUEMENT à afficher la quantité par portion dans le détail
+    « Utilisé dans », le lien recette ↔ produit étant déjà établi.
+    Correspondance exacte d'abord, sinon l'ingrédient qui partage le plus
+    de mots avec le produit (au moins un). */
+function ingredientPourProduit(rec, produit) {
+  const ings = (rec && rec.ingredients_livres) || [];
+  const exact = ings.find((x) =>
+    String(x.produit_chronodrive || '').split('/').some((alt) => contenuDans(alt, produit)));
+  if (exact) return exact;
+  const cible = new Set(tokens(produit));
+  let best = null;
+  let bestScore = 0;
+  ings.forEach((x) => {
+    const mots = new Set([...tokens(x.produit_chronodrive), ...tokens(x.nom)]);
+    const score = [...mots].filter((t) => cible.has(t)).length;
+    if (score > bestScore) { best = x; bestScore = score; }
+  });
+  return best;
+}
+
 /**
  * @param {string} weekKey
  * @param {Object} removed  { [recipeId]: true } recettes retirées de CETTE semaine
@@ -321,8 +368,7 @@ export function weekShopping(weekKey, removed = {}) {
         count: restantes.length,
         uses: restantes.map((id) => {
           const rec = recipeById(id);
-          const ing = ((rec && rec.ingredients_livres) || []).find((x) =>
-            String(x.produit_chronodrive || '').split('/').some((alt) => contenuDans(alt, r.name)));
+          const ing = ingredientPourProduit(rec, r.name);
           return { id, nom: (rec && rec.nom) || id, rep: 1, qty: ing ? ing.qty_1portion : '—' };
         }),
       };

@@ -24,7 +24,7 @@
    ============================================================ */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SYNC_ENABLED, supabase, STATE_TABLE, STATE_ROW_ID } from './supabaseClient.js';
-import { WEEK_KEYS, DEFAULT_WEEK, BUDGET_TARGET, defaultPerso } from './dataLayer.js';
+import { WEEK_KEYS, DEFAULT_WEEK, BUDGET_TARGET, defaultPerso, weekRaw } from './dataLayer.js';
 
 const LOCAL_KEY = 'mw.state.v1';
 const EPOCH = new Date(0).toISOString();
@@ -87,7 +87,25 @@ function normaliser(raw) {
   if (aPurger) d = purgeAncienContenu(d);
   if (!WEEK_KEYS.includes(d.week)) d.week = DEFAULT_WEEK;
   if (!d.removed || typeof d.removed !== 'object') d.removed = {};
+  d.removed = retraitsValides(d.removed);
   return d;
+}
+
+/* V3 (9 semaines) : les ids de recettes n'ont pas changé — favoris,
+   bannies et étapes cochées restent valables, donc PAS de purge globale.
+   Mais la composition de S2-S8 a changé : un retrait qui vise une recette
+   absente de sa semaine (ou une semaine disparue) est oublié, sinon il
+   compterait comme « recette retirée » fantôme. Sans effet sur un état propre. */
+function retraitsValides(removed) {
+  const out = {};
+  Object.entries(removed).forEach(([k, m]) => {
+    const wk = weekRaw(k);
+    if (!wk || !m || typeof m !== 'object') return;
+    const ids = new Set(wk.recettes_semaine || []);
+    const garde = Object.fromEntries(Object.entries(m).filter(([id, v]) => v && ids.has(id)));
+    if (Object.keys(garde).length) out[k] = garde;
+  });
+  return out;
 }
 
 function readJSON(key) {

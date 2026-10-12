@@ -2,7 +2,7 @@
    MealWeek — rotation automatique des semaines-types
 
    Quand le mode auto est actif, la semaine affichée avance d'un cran
-   chaque DIMANCHE (le jour du drive), en boucle sur les 8 semaines-types.
+   chaque DIMANCHE (le jour du drive), en boucle sur les semaines-types (9 en V3).
 
    Le calcul repose sur le découpage ISO (semaines lundi→dimanche), mais
    décalé d'un jour pour que la frontière tombe le dimanche : on demande
@@ -57,7 +57,7 @@ export function creerAncre(index, date = new Date()) {
 
 /** Index de la semaine-type à afficher aujourd'hui, d'après l'ancrage.
     @param {{semaine:number,index:number}} ancre
-    @param {number} total nombre de semaines-types (8)  */
+    @param {number} total nombre de semaines-types (9 en V3)  */
 export function indexAuto(ancre, total, date = new Date()) {
   if (!ancre || !total || typeof ancre.semaine !== 'number') return 0;
   const ecart = numeroSemaine(date) - ancre.semaine;

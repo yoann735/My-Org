@@ -58,7 +58,7 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
   };
 
   // lien vers la recette d'origine : `source` est du texte « Marmiton — https://… »
-  const sourceUrl = (String(recipe.source || '').match(/https?:\/\/\S+/) || [null])[0];
+  const sourceUrl = recipe.source_url || (String(recipe.source || '').match(/https?:\/\/\S+/) || [null])[0];
   const sourceNom = String(recipe.source || '').split('—')[0].trim();
 
   const steps = recipe.etapes || [];
@@ -75,6 +75,7 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
           <div className="cook-top-main">
             <h1 className="cook-title serif">{recipe.nom}</h1>
             <div className="cook-metas">
+              {recipe.num != null && <span className="pill accent" style={{ height: 25, fontSize: 11.5 }}>N° {recipe.num}</span>}
               <span className="meta"><Icon name="clock" size={14} className="ic" /> {recipe.temps}</span>
               <span className="meta"><Icon name="list" size={14} className="ic" /> {steps.length} étapes</span>
               {(recipe.ustensiles || []).map((u) => (
@@ -176,6 +177,12 @@ export function RecipeDetail({ recipe, onClose, ctx }) {
                 <span className="hint tnum">{doneCount}/{steps.length}</span>
               </div>
             </div>
+            {recipe.etapes_portions && recipe.etapes_portions !== portions && (
+              <div className="hint" style={{ margin: '2px 0 10px' }}>
+                <Icon name="info" size={12} /> Les consignes sont rédigées pour {recipe.etapes_portions} portions
+                (dîner + midi du lendemain) — les quantités à gauche sont pour {portions} pers.
+              </div>
+            )}
             <div className="cook-steps">
               {steps.map((s, k) => (
                 <div
