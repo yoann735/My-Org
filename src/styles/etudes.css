@@ -1757,22 +1757,30 @@
   border: 1px solid var(--border-2, rgba(255,255,255,.1)); box-shadow: 0 18px 50px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.25);
   display: flex; flex-direction: column; gap: 12px; animation: sc-entree .14s ease-out; }
 @keyframes sc-entree { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
-.sc-roue { position: relative; margin: 2px auto 0; cursor: crosshair; touch-action: none; border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 6px 22px rgba(0,0,0,.35); }
-.sc-roue canvas { display: block; border-radius: 50%; }
-.sc-repere { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; pointer-events: none;
+/* panneau « Personnalisée » (15/10) : carré saturation × luminosité + curseur de teinte, type Figma.
+   Zones de prise de 36 px au moins (doigt) ; `touch-action: none` : le geste ne fait pas défiler. */
+.sc-perso-panneau { width: 236px; }
+.sc-carre { position: relative; height: 150px; border-radius: 10px; cursor: crosshair; touch-action: none; outline: none;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+.sc-carre:focus-visible, .sc-teinte:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.sc-repere { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; pointer-events: none;
   border: 2.5px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.4); }
-.sc-lum input { width: 100%; height: 10px; border-radius: 999px; -webkit-appearance: none; appearance: none; outline: none; cursor: pointer;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); }
-.sc-lum input::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff;
-  box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 2px 6px rgba(0,0,0,.4); }
-.sc-lum input::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 0; }
+.sc-teinte { position: relative; height: 36px; cursor: pointer; touch-action: none; outline: none; border-radius: 999px; }
+.sc-teinte-piste { position: absolute; left: 0; right: 0; top: 11px; height: 14px; border-radius: 999px; pointer-events: none;
+  background: linear-gradient(90deg, #f00 0%, #ff0 16.66%, #0f0 33.33%, #0ff 50%, #00f 66.66%, #f0f 83.33%, #f00 100%);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.sc-repere-teinte { top: 50%; width: 24px; height: 24px; margin: -12px 0 0 -12px; }
+.sc-hex-champ { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; height: 32px; padding: 0 9px; border-radius: 8px;
+  background: var(--bg-2, rgba(0,0,0,.25)); border: 1px solid var(--border-2, rgba(255,255,255,.1)); color: var(--text-3);
+  font: 500 12.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.sc-hex-champ:focus-within { border-color: var(--accent); }
+.sc-hex-champ.invalide { border-color: var(--crit, #e5484d); }
+.sc-roue-btn.avec-libelle { padding: 0 9px 0 4px; gap: 5px; font-size: 12px; font-weight: 600; }
 .sc-ligne { display: flex; align-items: center; gap: 10px; }
 .sc-apercu { display: inline-flex; border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 1px rgba(255,255,255,.12); flex: 0 0 auto; }
 .sc-apercu i { width: 22px; height: 26px; display: block; }
-.sc-hex { flex: 1; min-width: 0; height: 28px; padding: 0 9px; border-radius: 8px; font: 500 12.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: .04em; color: var(--text); background: var(--bg-2, rgba(0,0,0,.25)); border: 1px solid var(--border-2, rgba(255,255,255,.1)); outline: none; }
-.sc-hex:focus { border-color: var(--accent); }
+.sc-hex { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; outline: none;
+  font: inherit; letter-spacing: .04em; color: var(--text); text-transform: lowercase; }
 .sc-actions { display: flex; justify-content: flex-end; gap: 6px; }
 /* bouton couleur compact (02/10 soir) + son panneau */
 .sc-bouton { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 6px; border-radius: 8px; cursor: pointer;

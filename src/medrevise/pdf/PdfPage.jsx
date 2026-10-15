@@ -59,6 +59,7 @@ export function PdfPageContent({
   fondNoir = false, // fond de page noir (document) : une encre sombre est rendue claire (lisibleSurNoir)
   // SURLIGNER LE TEXTE D'UNE IMAGE COLLÉE (09/10, docs/compte-rendu-pdfreader-v2.md)
   onSurlignerImage = () => {}, onFlashcardTexte = () => {}, couleurSurligneur = 'ambre',
+  onApercuCouleur = null, // (15/10) aperçu en direct d'une couleur personnalisée : (id, hex | null)
 }) {
   /* surlignages posés sur les MOTS d'une image collée (`imageId` + `mots`) : dessinés par
      l'image elle-même (ils la suivent : déplacement, taille, rotation) — tout le reste de la
@@ -789,6 +790,7 @@ export function PdfPageContent({
         <Forme key={f.id} forme={f} active={f.id === formeActiveId} interactive={outil === 'main'} fondNoir={fondNoir}
           liee={liesFormes.has(f.id)} pageWidth={pageWidth} pageHeight={pageHeight}
           onActiver={onFormeActiver} onMaj={onFormeMaj} onModifier={onFormeModifier} onSupprimer={onFormeSupprimer} onLegende={onFormeLegende}
+          onApercu={onApercuCouleur ? (c) => onApercuCouleur(f.id, c) : null}
           onGeste={(enCours) => { gesteBoite.current = enCours; }} />
       )))}
       {outil === 'forme' && (
@@ -839,6 +841,7 @@ export function PdfPageContent({
           onActivate={onActivateEdit}
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
           onMaj={onMajBoite} onSupprimer={onSupprimerBoite} onModifier={onModifierBoite}
+          onApercu={onApercuCouleur ? (c) => onApercuCouleur(t.id, c) : null}
           pageWidth={pageWidth} pageHeight={pageHeight} texteProche={texteProche} fondNoir={fondNoir} />
       ))}
       {questions.map((q) => (
@@ -855,6 +858,7 @@ export function PdfPageContent({
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
           onMaj={onMajBoite} onSupprimer={onSupprimerBoite} onModifier={onModifierBoite}
           enAncrage={b.id === ancrageBoiteId} viseSurlignage={ancrageSurlignage} viseAjout={ancrageAjout} onDemanderAncrage={onDemanderAncrage}
+          onApercu={onApercuCouleur ? (c) => onApercuCouleur(b.id, c) : null}
           pageWidth={pageWidth} pageHeight={pageHeight} texteProche={texteProche} />
       ))}
 
@@ -935,7 +939,7 @@ function useApparition(visible, ms = 120) {
   return [monte || visible, sortie && !visible];
 }
 
-function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, enAncrage = false, viseSurlignage = false, viseAjout = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF, fondNoir = false }) {
+function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, onApercu = null, enAncrage = false, viseSurlignage = false, viseAjout = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF, fondNoir = false }) {
   /* UN SEUL REPÈRE : LA PAGE (04/10, docs/compte-rendu-zoom-annotations.md). Position,
      épingle, connecteurs ET taille sont des fractions de page. La boîte est mise en page
      à l'échelle de RÉFÉRENCE (160 % : refW × refH, police 13 px…) puis mise à l'échelle
@@ -1162,11 +1166,17 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       if (!page || !zone) return;
       const rp = page.getBoundingClientRect(), rz = zone.getBoundingClientRect();
       const l = Math.max(rz.left, 0) - rp.left, r = Math.min(rz.right, window.innerWidth) - rp.left;
-      setVisible((v) => (v && Math.abs(v.l - l) < 1 && Math.abs(v.r - r) < 1 ? v : { l, r }));
+      const t = Math.max(rz.top, 0) - rp.top; // haut visible de la page (sous la barre du lecteur)
+      setVisible((v) => (v && Math.abs(v.l - l) < 1 && Math.abs(v.r - r) < 1 && Math.abs(v.t - t) < 1 ? v : { l, r, t }));
     };
     mesurer();
+    // défilement pendant que la barre est là : elle repasse dessus / dessous (une mesure par image)
+    const zone = boiteRef.current.closest('.pdfr-scroll');
+    let raf = null;
+    const auDefilement = () => { if (!raf) raf = requestAnimationFrame(() => { raf = null; mesurer(); }); };
     window.addEventListener('resize', mesurer);
-    return () => window.removeEventListener('resize', mesurer);
+    if (zone) zone.addEventListener('scroll', auDefilement, { passive: true });
+    return () => { window.removeEventListener('resize', mesurer); if (zone) zone.removeEventListener('scroll', auDefilement); if (raf) cancelAnimationFrame(raf); };
   }, [barreMontee, b.x, b.y, pageWidth]); // eslint-disable-line react-hooks/exhaustive-deps
   if (boite.reduite && !texteLibre) {
     const pos = pointApercu && pointApercu.cible === 'pastille' ? pointApercu : (ancre || { x: b.x, y: b.y });
@@ -1244,7 +1254,9 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     const left = Math.max(visL + 4, Math.min(centre - barreL / 2, visR - barreL - 4));
     const dessus = b.y * H - barreH - 6;
     const haut = texteLibre ? b.y * H - 17 - barreH - 6 : dessus; // texte libre : sa poignée occupe déjà le dessus
-    const dessous = haut < 4;
+    // (15/10) dessous aussi quand le haut de la zone de lecture la cacherait (boîte en haut de
+    // l'écran) : avant, la barre passait sous l'en-tête du lecteur et ses boutons étaient inaccessibles
+    const dessous = haut < Math.max(4, visible && Number.isFinite(visible.t) ? visible.t + 4 : 4);
     return { left, top: dessous ? (b.y + bHaut) * H + 6 : haut, dessous };
   })();
   const stop = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onClick: (e) => { e.stopPropagation(); fn(); } });
@@ -1307,7 +1319,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
             <IconeEpingle size={13} /> {viseAjout ? 'Clique ce que la flèche vise…' : viseSurlignage ? 'Clique un surlignage ou une forme…' : 'Clique l’endroit à épingler…'} <span className="nb-act-x">Annuler</span>
           </button>
         ) : texteLibre ? (<>
-          <BoutonCouleur couleur={boite.couleur} titre="Couleur du texte" onCouleur={(c) => onModifier(boite, { couleur: c }, 'Couleur du texte')} />
+          <BoutonCouleur couleur={boite.couleur} titre="Couleur du texte" onApercu={onApercu} onCouleur={(c) => onModifier(boite, { couleur: c }, 'Couleur du texte')} />
           <button type="button" className="nb-act danger" {...stop(() => onSupprimer(boite))} title={`Supprimer ce texte (annulable par ${RACCOURCI_Z})`} aria-label="Supprimer">
             <Icon name="trash" size={15} />
           </button>
@@ -1328,7 +1340,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
             title={!ancre ? 'Flèche : clique ensuite le passage visé, la flèche se trace toute seule.' : !boite.fleche ? 'Tracer la flèche vers l’épingle' : `Ajouter une autre flèche${nbFleches ? ` (${nbFleches} en plus)` : ''} — clic droit : retirer la flèche principale ; la croix d’un rond retire sa flèche.`}>
             <Icon name="arrowR" size={15} />
           </button>
-          <BoutonCouleur couleur={boite.couleur} titre="Couleur de la boîte" onCouleur={(c) => onModifier(boite, { couleur: c }, 'Couleur de la boîte')} />
+          <BoutonCouleur couleur={boite.couleur} titre="Couleur de la boîte" onApercu={onApercu} onCouleur={(c) => onModifier(boite, { couleur: c }, 'Couleur de la boîte')} />
           <button type="button" className="nb-act nb-fond" aria-label="Fond" {...stop(() => { ecrireFondBoiteDefaut(fondSuivant.id); onModifier(boite, { fond: fondSuivant.id }, 'Fond de la boîte'); })}
             title={`Fond : ${FONDS_BOITE[iFond].label.toLowerCase()} — cliquer pour « ${fondSuivant.label.toLowerCase()} » (transparent → teinté → plein)`}>
             <span className={'nb-fond-ic ' + FONDS_BOITE[iFond].id} style={{ '--c': couleurBoite }} aria-hidden="true" />
@@ -1701,7 +1713,7 @@ function formeSousPoint(el, cx, cy) {
   } catch (e) { return false; }
 }
 
-function Forme({ forme, active = false, interactive = false, liee = false, apercu = false, fondNoir = false, pageWidth, pageHeight, onActiver, onMaj, onModifier, onSupprimer, onLegende, onGeste }) {
+function Forme({ forme, active = false, interactive = false, liee = false, apercu = false, fondNoir = false, pageWidth, pageHeight, onActiver, onMaj, onModifier, onSupprimer, onLegende, onGeste, onApercu = null }) {
   const [geste, setGeste] = useState(null);
   const [ecrit, setEcrit] = useState(null); // texte en cours d'écriture (null = pas d'édition)
   const g = geste || forme;
@@ -1818,7 +1830,7 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
           <button type="button" className="nb-act" {...stop(() => onLegende(forme))} title="Ajouter une légende : une boîte de texte reliée à cette forme par une flèche">
             <IconeOutil nom="legende" size={12} /> Légende
           </button>
-          <BoutonCouleur couleur={forme.couleur} titre="Couleur de la forme" onCouleur={(c) => onModifier(forme, { couleur: c }, 'Couleur de la forme')} />
+          <BoutonCouleur couleur={forme.couleur} titre="Couleur de la forme" onApercu={onApercu} onCouleur={(c) => onModifier(forme, { couleur: c }, 'Couleur de la forme')} />
           {estFermee(type) && (
             <button type="button" className={'nb-act' + (forme.remplie ? ' actif' : '')} {...stop(() => onModifier(forme, { remplie: !forme.remplie }, forme.remplie ? 'Forme vidée' : 'Forme remplie'))}
               title={forme.remplie ? 'Retirer le fond' : 'Remplir d’une teinte légère de sa couleur'}>
@@ -1927,7 +1939,7 @@ function TextEditBlock({ edit, active, editable, onActivate, editor, pageHeight 
 // `sansSupprimer` / `extras` (08/10) : texte d'une page de document — rien à supprimer, et ses
 // réglages propres (titres, cases, citation, tableau, lien) à côté des listes
 // 09/10 : plus de bouton « Terminé » — cliquer hors du texte, Échap ou choisir un outil suffit
-export function EditToolbar({ editor, onReset, libre = false, couleur = null, onCouleur = null, palette = null, libelleSupprimer = null, sansSupprimer = false, extras = null, flottante = false, onAnnuler = null, onRetablir = null, peutAnnuler = true, peutRetablir = true }) {
+export function EditToolbar({ editor, onReset, libre = false, couleur = null, onCouleur = null, onApercu = null, palette = null, libelleSupprimer = null, sansSupprimer = false, extras = null, flottante = false, onAnnuler = null, onRetablir = null, peutAnnuler = true, peutRetablir = true }) {
   const [, force] = useState(0);
   useEffect(() => {
     const rerender = () => force((v) => v + 1);
@@ -1967,7 +1979,7 @@ export function EditToolbar({ editor, onReset, libre = false, couleur = null, on
       {libre && onCouleur && (
         <>
           <span className="et-sep" />
-          <SelecteurCouleurs couleur={couleur} onCouleur={onCouleur} titre="Couleur de la boîte" />
+          <SelecteurCouleurs couleur={couleur} onCouleur={onCouleur} onApercu={onApercu} titre="Couleur de la boîte" />
           <span className="et-sep" />
         </>
       )}

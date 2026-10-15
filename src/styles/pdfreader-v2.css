@@ -265,7 +265,7 @@
 .nb-actions.nb-barre .sc-bouton { width: 28px; height: 28px; padding: 0; justify-content: center; border: 0; border-radius: 7px; background: transparent; }
 .nb-actions.nb-barre .sc-bouton:hover, .nb-actions.nb-barre .sc-bouton.actif { background: var(--bg-2); }
 .nb-actions.nb-barre .nb-fond-ic { width: 14px; height: 14px; border-radius: 4px; }
-.nb-actions.nb-barre.tactile .nb-act, .nb-actions.nb-barre.tactile .sc-bouton { width: 36px; height: 36px; }
+.nb-actions.nb-barre.tactile .nb-act, .nb-actions.nb-barre.tactile .sc-bouton { width: 36px; height: 36px; flex: 0 0 auto; }
 .nb-actions.nb-barre.vise { width: auto !important; justify-content: flex-start; }
 .nb-actions.nb-barre.vise .nb-act.vise { width: auto; padding: 0 10px; gap: 6px; height: 28px; color: #fff; background: var(--accent); white-space: nowrap; }
 @keyframes nbBarreEntree { from { opacity: 0; transform: translateY(4px) scale(.97); } }

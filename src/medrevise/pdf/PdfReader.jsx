@@ -220,6 +220,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
   const [edits, setEdits] = useState([]); // blocs de texte : remplacement (Chantier 1) ET boîtes libres (kind:'libre')
   const [activeEditId, setActiveEditIdBrut] = useState(null); // à changer via setActiveEditId (plus bas), jamais en direct
+  /* APERÇU DE COULEUR (15/10, pdf/Couleurs.jsx) : pendant le réglage d'une couleur personnalisée,
+     la boîte / forme / texte visé s'affiche dans la couleur en cours — rien n'est écrit tant que
+     ce n'est pas validé (une seule entrée d'annuler), Échap rend l'ancienne. { id, couleur } | null */
+  const [apercuCouleur, setApercuCouleur] = useState(null);
+  const apercuPour = (id, c) => setApercuCouleur(c ? { id, couleur: c } : null);
   // outil actif de la Prise de notes. 'boite' monte une couche de tracé AU-DESSUS de
   // la couche de texte (voir PdfPageContent) : tant qu'il est actif, ni la sélection
   // ni le test de position des surlignages ne peuvent se déclencher — c'est
@@ -2668,7 +2673,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // composants différents, jamais mélangées.
   // annotations EN MÉMOIRE, séparées par type (lib/annotationTypes.js) : une
   // collection par catégorie, puis regroupées par page pour l'affichage.
-  const parType = useMemo(() => separerParType([], edits), [edits]);
+  const parType = useMemo(() => separerParType([], apercuCouleur ? edits.map((a) => (a.id === apercuCouleur.id ? { ...a, couleur: apercuCouleur.couleur } : a)) : edits), [edits, apercuCouleur]);
   const blocsByPage = useMemo(() => groupByPage(parType.bloc), [parType]);
   const boitesByPage = useMemo(() => groupByPage(parType.boite), [parType]);
   // traits de crayon ET de surligneur : même calque d'encre (le mode règle le rendu)
@@ -2878,8 +2883,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         rangeeTexte={activeEdit && editor ? (
           <EditToolbar key={'b:' + activeEdit.id} editor={editor} libre={activeEdit.kind === 'libre'}
             couleur={activeEdit.couleur}
-            onCouleur={(c) => changerCouleurBoite(activeEdit, c)}
-            palette={activeEdit.kind === 'texte' ? <SelecteurCouleurs couleur={activeEdit.couleur} onCouleur={(c) => changerCouleurTexte(activeEdit, c)} titre="Couleur du texte" /> : null}
+            onCouleur={(c) => changerCouleurBoite(activeEdit, c)} onApercu={(c) => apercuPour(activeEdit.id, c)}
+            palette={activeEdit.kind === 'texte' ? <SelecteurCouleurs couleur={activeEdit.couleur} onCouleur={(c) => changerCouleurTexte(activeEdit, c)} onApercu={(c) => apercuPour(activeEdit.id, c)} titre="Couleur du texte" /> : null}
             libelleSupprimer={activeEdit.kind === 'texte' ? 'Supprimer le texte' : null}
             onReset={() => (activeEdit.kind === 'libre' || activeEdit.kind === 'texte' ? supprimerBoite(activeEdit) : resetEdit(activeEdit.id))} />
         ) : editeurPage && outil === 'main' && !editeurPage.ed.isDestroyed ? (
@@ -3071,6 +3076,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onMajBoite={majBoite}
                       onSupprimerBoite={supprimerBoite}
                       onModifierBoite={modifierBoite}
+                      onApercuCouleur={apercuPour}
                       ancrageBoiteId={ancrageBoiteId} ancrageFleche={!!(ancrage && ancrage.fleche)} ancrageSurlignage={!!(ancrage && ancrage.surlignage)} ancrageAjout={!!(ancrage && ancrage.ajout)} onDemanderAncrage={setAncrageBoiteId}
                       pageWidth={w}
                       activeEditId={activeEditId}
