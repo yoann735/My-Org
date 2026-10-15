@@ -34,6 +34,14 @@
    6. FUSIONS : une page originale sans paire dont le texte se retrouve dans la page de fiche
       de sa voisine y est rattachée (deux diapositives résumées en une page).
    Sans aucun texte des deux côtés : page n ↔ page n.
+
+   COURS « DOCUMENT » (créé dans l'app, flux ProseMirror paginé — 15/10 soir) : le document reste
+   le principal. Sa pagination bouge quand on écrit : la correspondance y est donc stockée PAR
+   BLOC (`pageMap.mode = 'bloc'`, `parBloc: [{ ancre, fiche }]`), l'ancre étant l'EMPREINTE du
+   premier bloc non vide de la page au moment de l'import (type + empreinte du texte + rang parmi
+   les blocs identiques) — calculée, jamais écrite dans le document. À l'affichage, chaque ancre
+   est retrouvée dans le flux et sa page ACTUELLE lue dans la pagination (pageMapDocument) ; une
+   ancre introuvable (bloc supprimé) ne mène nulle part : sa page de fiche n'a plus d'original.
    ============================================================ */
 import { useEffect, useState } from 'react';
 import { getAll, getOne, put, putMany, putBlob, getBlob, genId } from './storage.js';
@@ -217,16 +225,23 @@ async function ouvrir(source) {
 
 /* ---------------- import / remplacement / correction ---------------- */
 /** importe la fiche d'un cours qui n'en a pas : fichier + correspondance automatique */
-export async function importerJumelle({ courseId, fichier, pdfIdOrig }) {
+/** textes des pages de l'ORIGINAL : PDF (pdfIdOrig) ou document de l'app (`instantDoc`, voir pagesDocument) */
+async function pagesOriginal({ pdfIdOrig, instantDoc }) {
+  if (instantDoc) return pagesDocument(instantDoc);
   const blobOrig = await getBlob(pdfIdOrig);
   if (!blobOrig) throw new Error('PDF original indisponible sur cet appareil');
-  const [docO, docF] = [await ouvrir(blobOrig), await ouvrir(fichier)];
-  const [tO, tF] = [await textesPages(docO, pdfIdOrig), await textesPages(docF)];
+  return textesPages(await ouvrir(blobOrig), pdfIdOrig);
+}
+export async function importerJumelle({ courseId, fichier, pdfIdOrig = null, instantDoc = null }) {
+  const tO = await pagesOriginal({ pdfIdOrig, instantDoc });
+  const docF = await ouvrir(fichier);
+  const tF = await textesPages(docF);
   const fileId = await putBlob(fichier);
   const c = correspondance(tO, tF);
+  const pageMap = instantDoc ? { ...pageMapDe(c), mode: 'bloc', parBloc: parBlocDe(c.versB, tO) } : pageMapDe(c);
   const rec = {
     id: idJumelle(courseId), courseId, fileId, fileName: fichier.name || 'fiche.pdf', version: 1, nsAnnot: nsJumelle(courseId, 1),
-    nbPagesOrig: docO.numPages, nbPagesFiche: docF.numPages, pageMap: pageMapDe(c), versions: [], nonReplacees: [],
+    nbPagesOrig: tO.length, nbPagesFiche: docF.numPages, pageMap, versions: [], nonReplacees: [],
     importeLe: new Date().toISOString(),
   };
   const ecrit = await put(STORE, rec);
@@ -235,12 +250,14 @@ export async function importerJumelle({ courseId, fichier, pdfIdOrig }) {
 }
 
 /** enregistre une correspondance corrigée à la main */
-export async function enregistrerCorrespondance(rec, versFiche) {
+export async function enregistrerCorrespondance(rec, versFiche, pagesDoc = null) {
   const nbF = rec.nbPagesFiche;
   const versOrig = Array(nbF).fill(null);
   versFiche.forEach((f, i) => { if (f != null && versOrig[f - 1] == null) versOrig[f - 1] = i + 1; });
   const scores = versOrig.map((o, j) => (o != null && rec.pageMap.versOrig[j] === o ? rec.pageMap.scores[j] : null));
-  const ecrit = await put(STORE, { ...rec, pageMap: { ...rec.pageMap, versFiche, versOrig, scores, manuel: true } });
+  // document : les ancres des pages ACTUELLES (la pagination a pu bouger depuis l'import)
+  const enPlus = rec.pageMap.mode === 'bloc' && pagesDoc ? { parBloc: parBlocDe(versFiche, pagesDoc), nbPagesOrig: pagesDoc.length } : {};
+  const ecrit = await put(STORE, { ...rec, ...(enPlus.nbPagesOrig ? { nbPagesOrig: enPlus.nbPagesOrig } : {}), pageMap: { ...rec.pageMap, versFiche, versOrig, scores, manuel: true, ...(enPlus.parBloc ? { parBloc: enPlus.parBloc } : {}) } });
   prevenir();
   return ecrit;
 }
@@ -256,21 +273,29 @@ const texteDe = (a) => {
     (nouveaux enregistrements, dans le calque de la nouvelle version) sur la page retrouvée par
     la même similarité de texte ; celles dont la page n'est pas retrouvée sont LISTÉES. Les
     anciennes restent intactes dans le calque de l'ancienne version : rien n'est supprimé. */
-export async function remplacerJumelle({ rec, fichier, pdfIdOrig }) {
-  const [blobAncien, blobOrig] = [await getBlob(rec.fileId), await getBlob(pdfIdOrig)];
-  if (!blobAncien || !blobOrig) throw new Error('fichiers indisponibles sur cet appareil');
-  const [docA, docN, docO] = [await ouvrir(blobAncien), await ouvrir(fichier), await ouvrir(blobOrig)];
-  const [tA, tN, tO] = [await textesPages(docA, rec.fileId), await textesPages(docN), await textesPages(docO, pdfIdOrig)];
+export async function remplacerJumelle({ rec, fichier, pdfIdOrig = null, instantDoc = null }) {
+  const blobAncien = await getBlob(rec.fileId);
+  if (!blobAncien) throw new Error('fichiers indisponibles sur cet appareil');
+  const tO = await pagesOriginal({ pdfIdOrig, instantDoc });
+  const [docA, docN] = [await ouvrir(blobAncien), await ouvrir(fichier)];
+  const [tA, tN] = [await textesPages(docA, rec.fileId), await textesPages(docN)];
   const versNouv = correspondance(tA, tN).versB; // ancienne page → nouvelle
   const fileId = await putBlob(fichier);
   // correspondance original ↔ nouvelle fiche : recomposée si elle avait été corrigée à la main
   let pageMap;
-  if (rec.pageMap && rec.pageMap.manuel) {
+  if (rec.pageMap && rec.pageMap.manuel && rec.pageMap.mode === 'bloc') {
+    // document corrigé à la main : chaque ancre garde sa page de fiche, suivie dans la nouvelle version
+    const parBloc = (rec.pageMap.parBloc || []).map((e) => ({ ...e, fiche: e.fiche != null ? versNouv[e.fiche - 1] ?? null : null }));
+    pageMap = { ...pageMapDe(correspondance(tO, tN), true), mode: 'bloc', parBloc };
+  } else if (rec.pageMap && rec.pageMap.manuel) {
     const versFiche = rec.pageMap.versFiche.map((f) => (f != null ? versNouv[f - 1] ?? null : null));
     const versOrig = Array(docN.numPages).fill(null);
     versFiche.forEach((f, i) => { if (f != null && versOrig[f - 1] == null) versOrig[f - 1] = i + 1; });
     pageMap = { versFiche, versOrig, scores: Array(docN.numPages).fill(null), methode: 'texte', manuel: true };
-  } else pageMap = pageMapDe(correspondance(tO, tN));
+  } else {
+    const c = correspondance(tO, tN);
+    pageMap = instantDoc ? { ...pageMapDe(c), mode: 'bloc', parBloc: parBlocDe(c.versB, tO) } : pageMapDe(c);
+  }
   // recopie des annotations de l'ancienne version
   const version = (rec.version || 1) + 1;
   const ns = nsJumelle(rec.courseId, version);
@@ -299,13 +324,58 @@ export async function remplacerJumelle({ rec, fichier, pdfIdOrig }) {
   if (copies.highlights.length) await putMany('highlights', copies.highlights);
   if (copies.annotations.length) await putMany('annotations', copies.annotations);
   const ecrit = await put(STORE, {
-    ...rec, fileId, fileName: fichier.name || 'fiche.pdf', version, nsAnnot: ns, nbPagesFiche: docN.numPages, nbPagesOrig: docO.numPages, pageMap,
+    ...rec, fileId, fileName: fichier.name || 'fiche.pdf', version, nsAnnot: ns, nbPagesFiche: docN.numPages, nbPagesOrig: tO.length, pageMap,
     versions: [...(rec.versions || []), { version: rec.version || 1, fileId: rec.fileId, fileName: rec.fileName, nsAnnot: rec.nsAnnot, remplaceeLe: new Date().toISOString() }],
     nonReplacees, replacees: copies.highlights.length + copies.annotations.length,
   });
   prevenir();
   return ecrit;
 }
+
+/* ---------------- document éditable : ancres par bloc ---------------- */
+const texteNoeud = (n) => (!n ? '' : n.type === 'text' ? n.text || '' : (n.content || []).map(texteNoeud).join(n.type === 'paragraph' || n.type === 'heading' ? '' : ' '));
+const normTexte = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+function empreinte(t) { let h = 0x811c9dc5; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36); }
+/** blocs de premier niveau du flux : [{ type, texte, cle }] — `cle` = ancre stable du bloc */
+export function blocsDuFlux(json) {
+  const vus = new Map();
+  return ((json && json.content) || []).map((n) => {
+    const texte = texteNoeud(n).trim();
+    const base = `${n.type}:${empreinte(normTexte(texte).slice(0, 300))}`;
+    const k = vus.get(base) || 0; vus.set(base, k + 1);
+    return { type: n.type, texte, cle: `${base}#${k}` };
+  });
+}
+/** pages d'un document : [{ texte, titre, ancre }] — `instant` = { blocs, pag: [{ page }], nb } */
+export function pagesDocument(instant) {
+  const nb = Math.max(1, instant.nb || 1);
+  const pages = Array.from({ length: nb }, () => ({ morceaux: [], titre: '', ancre: null }));
+  instant.blocs.forEach((b, i) => {
+    const p = pages[Math.max(0, Math.min(nb - 1, (instant.pag[i] && instant.pag[i].page) || 0))];
+    if (!b.texte) return;
+    p.morceaux.push(b.texte);
+    if (!p.ancre) p.ancre = b.cle;
+    if (!p.titre && /^heading/.test(b.type)) p.titre = b.texte;
+  });
+  return pages.map((p) => ({ texte: p.morceaux.join(' '), titre: p.titre || p.morceaux[0] || '', ancre: p.ancre }));
+}
+/** correspondance ACTUELLE d'un cours « document » : les ancres retrouvées dans le flux, leur page lue
+    dans la pagination. { versFiche (par page du document), versOrig (par page de fiche), perdues } */
+export function pageMapDocument(pm, instant, nbFiche) {
+  const nb = Math.max(1, instant.nb || 1);
+  const pageDeCle = new Map(instant.blocs.map((b, i) => [b.cle, (instant.pag[i] && instant.pag[i].page) || 0]));
+  const versFiche = Array(nb).fill(null), versOrig = Array(nbFiche).fill(null), perdues = [];
+  (pm.parBloc || []).forEach((e) => {
+    if (!e || e.fiche == null || !e.ancre) return;
+    const p = pageDeCle.get(e.ancre);
+    if (p == null) { perdues.push(e.fiche); return; } // bloc supprimé : sans équivalent, sans erreur
+    if (versFiche[p] == null) versFiche[p] = e.fiche;
+    if (versOrig[e.fiche - 1] == null) versOrig[e.fiche - 1] = p + 1;
+  });
+  return { ...pm, versFiche, versOrig, perdues };
+}
+/** parBloc depuis une correspondance « par page » du document actuel */
+export const parBlocDe = (versFiche, pages) => versFiche.map((f, i) => ({ ancre: pages[i] ? pages[i].ancre : null, fiche: f == null ? null : f })).filter((e) => e.ancre);
 
 /* ---------------- navigation ---------------- */
 /** page correspondante dans l'autre document : { page, exacte, raison }. `deFiche` : on part

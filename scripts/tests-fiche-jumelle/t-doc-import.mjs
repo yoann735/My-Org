@@ -1,0 +1,30 @@
+// Fiche jumelle sur un cours DOCUMENT : document de 6 pages, fiche PDF de 8 pages — import par le menu
+// Fichier, correspondance automatique stockée PAR BLOC.
+import { banc } from './commun.mjs';
+import fs from 'fs';
+const FX = process.argv[2];
+const verite = JSON.parse(fs.readFileSync(FX + '/verite-doc.json'));
+const b = await banc();
+b.ok(await b.ouvrir('Myologie (document)', { recharger: true }), 'document ouvert');
+await b.dormir(1500);
+const pages = await b.ev(`document.querySelector('.ptb-pages .tnum')?.innerText`);
+b.ok(pages === '1 / 6', 'le document compte 6 pages', pages);
+b.ok(await b.ev(`!!document.querySelector('.pt-flux-cadre .ProseMirror')`), 'éditeur du document (flux paginé)');
+const pris = b.fichierSuivant(FX + '/fiche-doc.pdf');
+b.ok(await b.menuFichier('Importer la fiche jumelle'), 'menu Fichier du DOCUMENT → « Importer la fiche jumelle… »');
+await pris; await b.dormir(2500);
+const resume = await b.ev(`document.querySelector('.fj-resume')?.innerText || ''`);
+b.ok(resume.includes('8 pages') && resume.includes('(6 pages)') && resume.includes('6 pages de la fiche associées') && resume.includes('2 pages ajoutées'), 'résumé : fiche 8 p. sur document 6 p., 6 associées, 2 ajoutées', resume.replace(/\n/g, ' | '));
+await b.capt('doc-import-resume');
+const id = await b.S(`return (await S.getAll('fiches')).find(f=>f.titre==='Myologie (document)').id`);
+const rec = JSON.parse(await b.S(`return JSON.stringify(await S.getOne('companion_pdf','cp:${id}'))`));
+let bons = 0; verite.forEach((att, j) => { const o = rec.pageMap.versOrig[j]; if (att.length ? att.includes(o) : o == null) bons++; });
+b.ok(bons === 8, `correspondance automatique : ${bons}/8 pages de fiche bien classées`, rec.pageMap.versOrig.map((x) => x ?? '·').join(' '));
+b.ok(rec.pageMap.mode === 'bloc' && rec.pageMap.parBloc.length === 6 && rec.pageMap.parBloc.every((e) => /^heading:/.test(e.ancre)), 'stockée PAR BLOC : 6 ancres (le titre de chaque page)', JSON.stringify(rec.pageMap.parBloc.map((e) => e.ancre + '→' + e.fiche)));
+const notesDoc = await b.S(`return JSON.stringify((await S.getOne('notes_doc','${id}')).flux).length`);
+console.log('   taille du flux du document (inchangé par l’import) :', notesDoc);
+await b.clic(await b.pos(`[...document.querySelectorAll('.fj-resume button')].find(x=>x.innerText.includes('Voir la fiche'))`, false), { att: 2000 });
+b.ok(await b.ev(`document.querySelector('.ptb-pages .tnum')?.innerText`) === '1 / 8' && !(await b.ev(`!!document.querySelector('.pt-flux-cadre')`)), 'côté Fiche : le lecteur PDF (8 p.), plus d’éditeur');
+await b.capt('doc-vue-fiche');
+b.ok(!b.erreurs.length, '0 erreur JS', b.erreurs.join(' | '));
+b.c.fermer();

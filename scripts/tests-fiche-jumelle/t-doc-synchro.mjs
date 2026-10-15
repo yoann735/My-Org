@@ -1,0 +1,40 @@
+// Fiche jumelle sur DOCUMENT — synchro vers un 2ᵉ appareil (faux Supabase :54399, Vite :5300, Chrome A 9335 /
+// B 9336, profils neufs). A : document créé, fiche importée, boîte sur la fiche. B : tout arrive.
+import { banc } from './commun.mjs';
+import fs from 'fs';
+const FX = process.argv[2];
+process.env.CDP_PORT = '9335'; process.env.CDP_FILTRE = '5300';
+const A = await banc();
+await A.c.send('Page.navigate', { url: 'http://localhost:5300/' }); await A.dormir(5000);
+const flux = fs.readFileSync(FX + '/doc-flux.json', 'utf8');
+await A.S(`const u2=performance.getEntriesByType('resource').map(e=>e.name);const D=await import(u2.find(n=>n.includes('documents/lib/documents.js'))||'/src/medrevise/documents/lib/documents.js');const N=await import(u2.find(n=>n.includes('documents/lib/notesDoc.js'))||'/src/medrevise/documents/lib/notesDoc.js');
+await S.put('sources',{id:'src-fj',nom:'Source jumelle',couleur:'#7c5cff'});await S.put('matieres',{id:'mat-fj',nom:'Physiologie test',sourceId:'src-fj'});
+const f=await D.createDocumentNotes({matiereId:'mat-fj',titre:'Myologie (document)'});await N.majNotesDoc(f.id,{flux:${flux},fluxMaj:Date.now(),fluxAppareil:'seed'});return f.id`);
+A.ok(await A.ouvrir('Myologie (document)', { recharger: true }), 'A : document ouvert');
+await A.dormir(1500);
+const pris = A.fichierSuivant(FX + '/fiche-doc.pdf');
+await A.menuFichier('Importer la fiche jumelle'); await pris; await A.dormir(2500);
+await A.clic(await A.pos(`[...document.querySelectorAll('.fj-resume button')].find(x=>x.innerText.includes('Voir la fiche'))`, false), { att: 2000 });
+const id = await A.S(`return (await S.getAll('fiches')).find(f=>f.titre==='Myologie (document)').id`);
+await A.S(`const r=await S.getOne('companion_pdf','cp:${id}');await S.put('annotations',{...S.newNoteBox({ficheId:r.nsAnnot,page:1,x:0.5,y:0.6,width:0.3,height:0.05,couleur:'ardoise',fond:'plein'}),content:{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Annotée sur A'}]}]}});return 1`);
+const pmA = await A.ev(`JSON.stringify(window.__mrJumelle.pageMapCourant().versFiche)`);
+await A.ev(`window.dispatchEvent(new Event('online'));1`); await A.dormir(6000);
+const cloud = await (await fetch('http://localhost:54399/__etat')).json();
+A.ok(cloud.rows.some((r) => r.store === 'companion_pdf' && r.record_id === 'cp:' + id) && cloud.rows.some((r) => r.store === 'notes_doc'), 'faux cloud : companion_pdf + document');
+A.c.fermer();
+process.env.CDP_PORT = '9336'; process.env.CDP_FILTRE = '';
+const B = await banc();
+await B.c.send('Page.navigate', { url: 'http://localhost:5300/' }); await B.dormir(9000);
+B.ok(await B.ouvrir('Myologie (document)'), 'B : le document est arrivé et s’ouvre');
+await B.dormir(2500);
+B.ok(await B.ev(`!!document.querySelector('.pdfr-jumelle-bascule')`), 'B : segment Original · Fiche');
+const vueB = await B.ev(`document.querySelector('.pdfr-jumelle-bascule .seg-btn.active')?.innerText`);
+if (vueB !== 'Original') { await B.clic(await B.pos(`[...document.querySelectorAll('.pdfr-jumelle-bascule .seg-btn')].find(x=>x.innerText==='Original')`, false), { att: 2500 }); }
+B.ok(await B.ev(`document.querySelector('.ptb-pages .tnum')?.innerText`) === '1 / 6' && await B.ev(`[...document.querySelectorAll('.pt-flux-cadre h1')].length`) === 6, 'B : le document (6 p., 6 sections)');
+const pmB = await B.ev(`JSON.stringify(window.__mrJumelle.pageMapCourant().versFiche)`);
+B.ok(pmA === pmB, 'B : même correspondance recalculée depuis les ancres', pmB);
+await B.clic(await B.pos(`[...document.querySelectorAll('.pdfr-jumelle-bascule .seg-btn')].find(x=>x.innerText==='Fiche')`, false), { att: 3000 });
+B.ok(await B.ev(`document.querySelector('.ptb-pages .tnum')?.innerText`) === '1 / 8' && await B.ev(`[...document.querySelectorAll('.note-box')].some(n=>n.innerText.includes('Annotée sur A'))`), 'B : la fiche (8 p.) et l’annotation de A dessus');
+await B.capt('doc-appareil-B');
+B.ok(!B.erreurs.length, '0 erreur JS', B.erreurs.join(' | '));
+B.c.fermer();

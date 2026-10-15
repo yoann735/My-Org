@@ -25,21 +25,24 @@ async function titres(pdfId, docCache) {
 }
 const court = (t, n = 60) => { const s = String(t || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s || 'Sans titre'; };
 
-export function EditeurCorrespondance({ rec, pdfIdOrig, docCache, onClose }) {
+/* `pagesDoc` (cours DOCUMENT, 15/10 soir) : les pages ACTUELLES du document [{ titre, texte, ancre }]
+   et `versFicheDoc` la correspondance actuelle (recalculée depuis les ancres) — à la place du PDF original */
+export function EditeurCorrespondance({ rec, pdfIdOrig, docCache, onClose, pagesDoc = null, versFicheDoc = null }) {
   const [pages, setPages] = useState(null); // { o: [...], f: [...] } textes et titres
-  const [versFiche, setVersFiche] = useState(() => [...rec.pageMap.versFiche]);
+  const depart = versFicheDoc || rec.pageMap.versFiche;
+  const [versFiche, setVersFiche] = useState(() => [...depart]);
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState(null);
   useEffect(() => {
     let vivant = true;
-    Promise.all([titres(pdfIdOrig, docCache), titres(rec.fileId, docCache)])
+    Promise.all([pagesDoc ? Promise.resolve(pagesDoc) : titres(pdfIdOrig, docCache), titres(rec.fileId, docCache)])
       .then(([o, f]) => { if (vivant) { if (!o || !f) setErreur('Un des deux PDF n’est pas encore sur cet appareil.'); else setPages({ o, f }); } })
       .catch(() => { if (vivant) setErreur('PDF illisible.'); });
     return () => { vivant = false; };
   }, [rec.fileId, pdfIdOrig]); // eslint-disable-line react-hooks/exhaustive-deps
   const nbF = rec.nbPagesFiche;
   const associees = new Set(versFiche.filter((x) => x != null));
-  const change = JSON.stringify(versFiche) !== JSON.stringify(rec.pageMap.versFiche);
+  const change = JSON.stringify(versFiche) !== JSON.stringify(depart);
   const associer = (o, f) => setVersFiche((v) => v.map((x, i) => (i === o - 1 ? f : x)));
   const dissocier = (f) => setVersFiche((v) => v.map((x) => (x === f ? null : x)));
 
@@ -80,7 +83,7 @@ export function EditeurCorrespondance({ rec, pdfIdOrig, docCache, onClose }) {
   const automatique = () => { if (pages) setVersFiche(correspondance(pages.o, pages.f).versB); };
   const enregistrer = async () => {
     setEnCours(true);
-    try { await enregistrerCorrespondance(rec, versFiche); onClose(); } catch (e) { setErreur('Enregistrement impossible.'); setEnCours(false); }
+    try { await enregistrerCorrespondance(rec, versFiche, pagesDoc); onClose(); } catch (e) { setErreur('Enregistrement impossible.'); setEnCours(false); }
   };
 
   return (
@@ -92,7 +95,7 @@ export function EditeurCorrespondance({ rec, pdfIdOrig, docCache, onClose }) {
         {pages && (
           <div className="fjc-colonnes">
             <div className="fjc-col">
-              <div className="fjc-entete">Original · {rec.nbPagesOrig} diapositives</div>
+              <div className="fjc-entete">{pagesDoc ? `Document · ${pages.o.length} pages` : `Original · ${rec.nbPagesOrig} diapositives`}</div>
               {pages.o.map((p, i) => {
                 const o = i + 1, f = versFiche[i];
                 const fusion = f != null && versFiche.indexOf(f) !== i;

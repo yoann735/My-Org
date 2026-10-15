@@ -113,7 +113,7 @@ import { PanneauExportIA } from './ExportIA.jsx';
 import { preparerSourceIA } from './exportIA.js';
 import { refsCourtes, construireExportIA, estBoiteTexte, aDeuxVersions, versionAffichee, boitesOrdonnees, construireExport, lireImport, planImport, resumeImport, basculerVersion, avecContenuEdite } from '../lib/textesAnnotations.js';
 import { Tableau } from '../tableau/Tableau.jsx';
-import { useFicheJumelle, lireVue, ecrireVue, pageCorrespondante, importerJumelle, remplacerJumelle } from '../lib/ficheJumelle.js';
+import { useFicheJumelle, lireVue, ecrireVue, pageCorrespondante, importerJumelle, remplacerJumelle, blocsDuFlux, pagesDocument, pageMapDocument } from '../lib/ficheJumelle.js';
 import { EditeurCorrespondance, ListeNonReplacees } from './Correspondance.jsx';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
 const dansLeTableau = (el) => !!(el && el.closest && el.closest('.tb'));
@@ -157,18 +157,22 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   /* DOCUMENT (08/10, docs/compte-rendu-nettoyage-document.md) : un cours sans PDF s'ouvre
      ICI, comme un PDF — des pages A4 blanches (pages ajoutées, kind 'page') sur lesquelles on
      écrit (pdf/PageTexte.jsx) et on annote avec tous les outils. */
-  const modeDoc = !!(fiche && fiche.docNotes && !fiche.pdfId && !fiche.htmlId);
+  // le cours EST un document de l'app (pas de PDF) ; `modeDoc` = on l'affiche (pas sa fiche jumelle)
+  const modeDocCours = !!(fiche && fiche.docNotes && !fiche.pdfId && !fiche.htmlId);
   /* FICHE JUMELLE (15/10, lib/ficheJumelle.js, docs/compte-rendu-fiche-jumelle.md) : un second PDF
      (la « fiche » résumée) rattaché au cours. On bascule Original ⇄ Fiche dans CE lecteur : le PDF
      affiché, le calque d'annotations (`nsAnnot`) et la position de lecture suivent le document ;
      outil, zoom, panneau, notions, flashcards et transcript (rattachés au COURS) restent. Sans
-     fiche importée, `surFiche` est toujours faux : rien ne change. */
-  const jumelle = useFicheJumelle(ficheReelle && !modeDoc && fiche.pdfId ? ficheReelle.id : null);
+     fiche importée, `surFiche` est toujours faux : rien ne change.
+     (15/10 soir) aussi sur un cours DOCUMENT (créé dans l'app) : côté « Original » l'éditeur paginé,
+     côté « Fiche » le lecteur PDF ; `modeDoc` n'est vrai que quand le document est affiché. */
+  const jumelle = useFicheJumelle(ficheReelle && (fiche.pdfId || modeDocCours) ? ficheReelle.id : null);
   const [vueJumelle, setVueJumelle] = useState(() => lireVue(idFiche));
   useEffect(() => { setVueJumelle(lireVue(idFiche)); }, [idFiche]);
   const surFiche = !!(jumelle && vueJumelle === 'fiche');
   const nsAnnot = surFiche ? jumelle.nsAnnot : ficheId; // espace de noms des annotations affichées
   const pdfIdActif = surFiche ? jumelle.fileId : (fiche && fiche.pdfId);
+  const modeDoc = modeDocCours && !surFiche;
   /* LIAISON AVEC LE TÉLÉPHONE (02/10, docs/mecanique-dessin-mobile.md) : l'ordi publie
      la fiche qu'il ouvre — le téléphone la propose par défaut pour y envoyer un dessin.
      Une écriture à l'ouverture, une à la fermeture (rien à chaque page). */
@@ -206,8 +210,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
   // source affichée quand la fiche porte À LA FOIS un PDF et une fiche HTML —
   // indépendant du mode Lecture/Édition (qui ne s'applique qu'au PDF).
-  const [srcTab, setSrcTab] = useState(() => initialSrcTab || (fiche && (fiche.pdfId || modeDoc) ? 'pdf' : 'html'));
-  useEffect(() => { setSrcTab(initialSrcTab || (fiche && (fiche.pdfId || modeDoc) ? 'pdf' : 'html')); }, [ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [srcTab, setSrcTab] = useState(() => initialSrcTab || (fiche && (fiche.pdfId || modeDocCours) ? 'pdf' : 'html'));
+  useEffect(() => { setSrcTab(initialSrcTab || (fiche && (fiche.pdfId || modeDocCours) ? 'pdf' : 'html')); }, [ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
   // tablette : seulement là où le lecteur a son en-tête (Bibliothèque, plein écran) —
   // Apprentissage et Anatomie gardent leur propre disposition
   const modeTab = tablette && (!embedded || avecEntete) && srcTab === 'pdf';
@@ -404,12 +408,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [notionsAutreDoc, setNotionsAutreDoc] = useState([]);
   const notesRef = useRef(null);
   const [flashcardNotes, setFlashcardNotes] = useState(null); // { texte, n } — flashcard depuis une sélection des notes
-  const [editsCharges, setEditsCharges] = useState(false);
+  const [editsChargesNs, setEditsCharges] = useState(false);
+  const editsCharges = editsChargesNs === nsAnnot;
   const reloadEdits = async () => {
     const all = await getAll('annotations');
     // (10/10) image flottante d'un document déjà convertie en bloc du flux : plus affichée
     setEdits(all.filter((a) => a.ficheId === nsAnnot && !a.convertieEnFlux));
-    setEditsCharges(true);
+    setEditsCharges(nsAnnot); // (15/10 soir) chargées pour CE calque : au retour sur le document, rien ne part avant
   };
 
   /* ---- ANNULER / RÉTABLIR (lib/annotHistory.js) ----
@@ -495,7 +500,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      par rang. `cle` = numéro de page du PDF, ou id de la page ajoutée — c'est la
      valeur de `page` des annotations posées dessus. Le PDF n'est jamais réécrit :
      sans page ajoutée, cette liste est exactement celle d'avant. */
-  const pagesAjoutees = useMemo(() => separerParType([], edits).page, [edits]);
+  // (15/10 soir) seulement le calque AFFICHÉ : à une bascule Original ⇄ Fiche, les annotations de l'autre
+  // document restent en mémoire le temps du rechargement — elles ne doivent ni s'afficher ni décaler les pages
+  const editsVus = useMemo(() => edits.filter((a) => a.ficheId === nsAnnot), [edits, nsAnnot]);
+  const pagesAjoutees = useMemo(() => separerParType([], editsVus).page, [editsVus]);
   const [nbPagesCalculees, setNbPagesCalculees] = useState(null); // document : résultat de la pagination
   const pageSizes = useMemo(() => {
     if (modeDoc) {
@@ -800,11 +808,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   }, [nsAnnot]);
   // décision : position valable (même PDF, même nombre de pages) → zoom et disposition d'abord
   useEffect(() => {
-    if (restaure || !posLue || !pret || !pageSizes.length || aRestaurer.current) return;
+    // (15/10 soir) + les annotations du calque chargées : ses pages ajoutées font partie de la mise en page
+    if (restaure || !posLue || !pret || !pageSizes.length || aRestaurer.current || !editsCharges) return;
     // (15/10) bascule Original ⇄ Fiche : la page CORRESPONDANTE, même position dans la page, même zoom
     const bascule = cibleBascule.current;
     cibleBascule.current = null;
-    if (bascule && !modeDoc && pageSizes.some((sz) => sz.cle === bascule.cle)) {
+    if (bascule && pageSizes.some((sz) => sz.cle === bascule.cle)) {
       aRestaurer.current = { ...bascule, index: pageSizes.findIndex((sz) => sz.cle === bascule.cle) };
       setTourRestauration((n) => n + 1);
       return;
@@ -826,7 +835,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const z = Math.max(0.4, Math.min(4, Number(p.scale) || scale));
       if (Math.abs(z - scale) > 0.001) { scaleRef.current = z; setScale(z); }
     }
-  }, [posLue, pret, pageSizes, restaure]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [posLue, pret, pageSizes, restaure, editsCharges]); // eslint-disable-line react-hooks/exhaustive-deps
   // défilement : posé à chaque mise en page tant que la restauration n'est pas finie (le zoom
   // ajusté à la largeur peut encore changer), puis on attend que la page visée soit dessinée
   useLayoutEffect(() => {
@@ -882,29 +891,64 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!el || !st.layout.offsets.length) return { page: 1, fraction: 0 };
     const pos = positionDepuisDefilement(el.scrollTop, st.layout.offsets, st.pageSizes.map((sz) => sz.height * st.scale));
     if (!pos) return { page: 1, fraction: 0 };
+    if (st.modeDoc) return { page: pos.index + 1, fraction: pos.fraction }; // document : n° de page affichée
     for (let i = pos.index; i >= 0; i--) if (typeof st.pageSizes[i].cle === 'number') return { page: st.pageSizes[i].cle, fraction: i === pos.index ? pos.fraction : 1 };
     return { page: 1, fraction: 0 };
   };
   const basculerJumelle = (vers = null) => {
-    if (!jumelle || modeDoc) return;
+    if (!jumelle) return;
     const cible = vers || (surFiche ? 'original' : 'fiche');
     if ((cible === 'fiche') === surFiche) return;
     sauverRef.current(); // position du document qu'on quitte
+    const pm = pageMapCourant(); // document : instantané pris ICI (texte et pagination du moment)
+    if (modeDoc && fluxRef.current && fluxRef.current.editor && !fluxRef.current.editor.isDestroyed) {
+      // le flux se démonte : il enregistre ce qui attend, et on le remontera avec CE texte
+      fluxRef.current.vider();
+      setFluxInitial(dehydrateDoc(fluxRef.current.editor.getJSON()));
+    }
     const { page, fraction } = lirePagePdf();
-    const r = pageCorrespondante(jumelle.pageMap, page, surFiche);
-    cibleBascule.current = { kind: 'pdf', cle: r.page, fraction: r.exacte ? fraction : 0, scale, zoomManuel: zoomManuel.current };
+    const r = pageCorrespondante(pm, page, surFiche);
+    // vers le document : la page n est la n-ième page affichée (sa clé = l'id de l'enregistrement « page »)
+    const cle = surFiche && modeDocCours ? ((instantDoc.current && instantDoc.current.cles[r.page - 1]) || null) : r.page;
+    cibleBascule.current = { kind: surFiche && modeDocCours ? 'doc' : 'pdf', cle, fraction: r.exacte ? fraction : 0, scale, zoomManuel: zoomManuel.current };
     if (!r.exacte) setAvisJumelle(r.raison === 'ajoutee' ? `Page ${page} : page ajoutée dans la fiche — page ${r.page} de l’original, la plus proche` : `Page ${page} : sans équivalent dans la fiche — page ${r.page} de la fiche, la plus proche`);
     setVueJumelle(cible); ecrireVue(idFiche, cible);
   };
   const basculerRef = useRef(basculerJumelle); basculerRef.current = basculerJumelle;
-  // raccourcis : Tab (hors champ de saisie) ou ⌘⇧F / Ctrl+Maj+F
+  /* COURS DOCUMENT : la correspondance est stockée PAR BLOC (lib/ficheJumelle.js#pageMapDocument) et
+     recalculée sur le texte et la pagination du moment. `instantDoc` : le dernier état connu du
+     document (blocs, page de chaque bloc, clés des pages) — gardé quand la fiche est affichée. */
+  const instantDoc = useRef(null);
+  const prendreInstantDoc = () => {
+    if (!modeDoc) return instantDoc.current;
+    const ed = fluxRef.current && fluxRef.current.editor;
+    if (ed && !ed.isDestroyed && pagination) {
+      instantDoc.current = { blocs: blocsDuFlux(ed.getJSON()), pag: pagination.blocs, nb: pagination.nbPages, cles: pageSizesRef.current.map((sz) => sz.cle) };
+    }
+    return instantDoc.current;
+  };
+  useEffect(() => { if (modeDoc) prendreInstantDoc(); }, [pagination, modeDoc, pageSizes.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // sonde des tests (développement seulement) : correspondance calculée et instantané du document
+  if (import.meta.env.DEV && typeof window !== 'undefined') window.__mrJumelle = { pageMapCourant: () => pageMapCourant(), instant: () => instantDoc.current, page: () => lirePagePdf() };
+  const pageMapCourant = () => {
+    if (!jumelle) return null;
+    if (jumelle.pageMap.mode !== 'bloc') return jumelle.pageMap;
+    const d = prendreInstantDoc();
+    return d ? pageMapDocument(jumelle.pageMap, d, jumelle.nbPagesFiche) : jumelle.pageMap;
+  };
+  // raccourcis : Tab (hors texte et champ de saisie) ou ⌘⇧F / Ctrl+Maj+F (aussi en écrivant dans le document)
   useEffect(() => {
     if (!jumelle) return undefined;
     const onKey = (e) => {
       const tab = e.key === 'Tab' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
       const cmd = (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && (e.key === 'f' || e.key === 'F' || e.code === 'KeyF');
       if (!tab && !cmd) return;
-      if (cibleEditable(e.target) || cibleEditable(document.activeElement) || dansLeTableau(e.target)) return;
+      if (dansLeTableau(e.target)) return;
+      // Tab : jamais dans un texte (il y garde son rôle) ; ⌘⇧F : aussi depuis l'éditeur du document
+      // (on y écrit presque tout le temps), mais pas dans un champ de saisie
+      const champ = (el) => !!(el && el.closest && el.closest('input, textarea, select'));
+      if (tab && (cibleEditable(e.target) || cibleEditable(document.activeElement))) return;
+      if (cmd && (champ(e.target) || champ(document.activeElement))) return;
       if (tab && e.target && e.target.closest && e.target.closest('[role=dialog], .modal, .mf-menu, .sc-pop, .sc-fenetre, .day-pop')) return;
       e.preventDefault(); e.stopPropagation();
       basculerRef.current();
@@ -919,22 +963,24 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [editeurCorresp, setEditeurCorresp] = useState(false);
   const [listeNonReplacees, setListeNonReplacees] = useState(false);
   const recevoirJumelle = async (fichier) => {
-    if (!fichier || !ficheReelle || !fiche.pdfId) return;
+    if (!fichier || !ficheReelle || !(fiche.pdfId || modeDocCours)) return;
+    const instant = modeDocCours ? prendreInstantDoc() : null;
+    if (modeDocCours && !instant) { setTravailJumelle({ etat: 'erreur', message: 'Le document n’est pas encore prêt — réessaie dans un instant' }); return; }
     if (!/pdf$/i.test(fichier.type || '') && !/\.pdf$/i.test(fichier.name || '')) { setTravailJumelle({ etat: 'erreur', message: 'Ce fichier n’est pas un PDF.' }); return; }
     const remplacement = !!jumelle;
     setTravailJumelle({ etat: 'encours', remplacement });
     try {
       sauverRef.current();
       const rec = remplacement
-        ? await remplacerJumelle({ rec: jumelle, fichier, pdfIdOrig: fiche.pdfId })
-        : await importerJumelle({ courseId: ficheReelle.id, fichier, pdfIdOrig: fiche.pdfId });
+        ? await remplacerJumelle({ rec: jumelle, fichier, pdfIdOrig: fiche.pdfId, instantDoc: instant })
+        : await importerJumelle({ courseId: ficheReelle.id, fichier, pdfIdOrig: fiche.pdfId, instantDoc: instant });
       setTravailJumelle({ etat: 'fini', remplacement, rec });
     } catch (e) {
       setTravailJumelle({ etat: 'erreur', remplacement, message: (e && e.message) || 'PDF illisible' });
     }
   };
   const resumeCorresp = (rec) => {
-    const pm = rec.pageMap;
+    const pm = rec === jumelle ? pageMapCourant() : rec.pageMap;
     return { appariees: pm.versOrig.filter((x) => x != null).length, ajoutees: pm.versOrig.filter((x) => x == null).length, sansEq: pm.versFiche.filter((x) => x == null).length,
       fusions: pm.versFiche.filter((f, i) => f != null && pm.versFiche.indexOf(f) !== i).length };
   };
@@ -1443,7 +1489,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // l'ancien bouton « Remplacer » de la popover de sélection, qui n'existe plus
     !!pending && { label: 'Remplacer le texte sélectionné', icon: 'edit', onClick: () => startEditFromSelection() },
     // retire le LIEN vers le PDF (la fiche, ses cartes et ses annotations restent) — confirmation
-    canAddItem && { label: 'Détacher le PDF…', icon: 'x', onClick: () => setDetacherPdf(true) },
+    canAddItem && !!fiche.pdfId && { label: 'Détacher le PDF…', icon: 'x', onClick: () => setDetacherPdf(true) },
   ];
 
 
@@ -1460,6 +1506,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // (10/10 soir) visuel avec repères + JSON pour une IA — PDF importé seulement (le visuel est le PDF annoté)
     !modeDoc && !!(fiche && fiche.pdfId) && { label: 'Export spécial IA…', icon: 'layers', onClick: () => setPanneauExportIA(true) },
   ] };
+  /* (15/10) FICHE JUMELLE : mêmes entrées sur un cours PDF et sur un cours document */
+  const groupeJumelle = canAddItem && !!(fiche && (fiche.pdfId || modeDocCours)) && { titre: 'Fiche jumelle', items: [
+      !jumelle && { label: 'Importer la fiche jumelle…', icon: 'upload', aide: 'Ton PDF résumé, à côté du cours : bascule page à page', onClick: () => entreeJumelle.current && entreeJumelle.current.click() },
+      jumelle && { label: 'Correspondance des pages…', icon: 'layers', onClick: () => setEditeurCorresp(true),
+        aide: (() => { const r = resumeCorresp(jumelle); return `${r.appariees} associées · ${r.ajoutees} ajoutée${r.ajoutees > 1 ? 's' : ''} dans la fiche${jumelle.pageMap.manuel ? ' · corrigée' : ''}`; })() },
+      jumelle && { label: 'Remplacer la fiche (nouvelle version)…', icon: 'refresh', aide: 'Les annotations de la fiche suivent leur page', onClick: () => entreeJumelle.current && entreeJumelle.current.click() },
+      jumelle && (jumelle.nonReplacees || []).length > 0 && { label: `Annotations non replacées (${jumelle.nonReplacees.length})`, icon: 'search', onClick: () => setListeNonReplacees(true) },
+    ] };
   const groupesFichier = modeDoc ? [
     { items: [
       { label: 'Exporter en PDF', icon: 'filePdf', principal: true, onClick: () => imprimerDocument() },
@@ -1474,6 +1528,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       canAddItem && { label: 'Prompts', icon: 'layers', onClick: () => setPromptsOuverts(true) },
       { label: 'Importer un PDF…', icon: 'upload', onClick: () => entreePdfDoc.current && entreePdfDoc.current.click() },
     ] },
+    groupeJumelle,
     groupeTextes,
   ] : [
     { items: [
@@ -1486,13 +1541,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       !!pending && { label: 'Remplacer la sélection', icon: 'edit', onClick: () => startEditFromSelection() },
       !!fiche.htmlId && { label: 'Voir la fiche HTML', icon: 'fileHtml', onClick: () => setSrcTab('html') },
     ] },
-    canAddItem && !!(fiche && fiche.pdfId) && { titre: 'Fiche jumelle', items: [
-      !jumelle && { label: 'Importer la fiche jumelle…', icon: 'upload', aide: 'Ton PDF résumé, à côté du cours : bascule page à page', onClick: () => entreeJumelle.current && entreeJumelle.current.click() },
-      jumelle && { label: 'Correspondance des pages…', icon: 'layers', onClick: () => setEditeurCorresp(true),
-        aide: (() => { const r = resumeCorresp(jumelle); return `${r.appariees} associées · ${r.ajoutees} ajoutée${r.ajoutees > 1 ? 's' : ''} dans la fiche${jumelle.pageMap.manuel ? ' · corrigée' : ''}`; })() },
-      jumelle && { label: 'Remplacer la fiche (nouvelle version)…', icon: 'refresh', aide: 'Les annotations de la fiche suivent leur page', onClick: () => entreeJumelle.current && entreeJumelle.current.click() },
-      jumelle && (jumelle.nonReplacees || []).length > 0 && { label: `Annotations non replacées (${jumelle.nonReplacees.length})`, icon: 'search', onClick: () => setListeNonReplacees(true) },
-    ] },
+    groupeJumelle,
     !!(fiche && fiche.pdfId) && { items: [
       { label: libelleOcr(), icon: 'search', onClick: () => setDetailOcr(true) },
       { label: ocrDebug ? 'Masquer la couche OCR' : 'Afficher la couche OCR', icon: 'layers', onClick: () => setOcrDebug((v) => !v) },
@@ -1504,7 +1553,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       canAddItem && { label: 'Prompts', icon: 'layers', onClick: () => setPromptsOuverts(true) },
     ] },
     { items: [
-      canAddItem && { label: 'Détacher le PDF', icon: 'x', danger: true, onClick: () => setDetacherPdf(true) },
+      canAddItem && !!fiche.pdfId && { label: 'Détacher le PDF', icon: 'x', danger: true, onClick: () => setDetacherPdf(true) },
     ] },
   ];
   /* état de la reconnaissance de texte, en une ligne (menu Fichier) */
@@ -2778,13 +2827,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // prochain scroll, qui déclenche un rendu propre). Regrouper une fois par page, mémoïsé sur
   // le tableau source réel, rend ces props stables sauf changement effectif de leur contenu.
   const groupByPage = (arr) => { const map = {}; arr.forEach((x) => { (map[x.page] || (map[x.page] = [])).push(x); }); return map; };
-  const highlightsByPage = useMemo(() => groupByPage(highlights), [highlights]);
+  const highlightsByPage = useMemo(() => groupByPage(highlights.filter((h) => h.ficheId === nsAnnot)), [highlights, nsAnnot]);
   // deux familles dans le MÊME store : les blocs de remplacement de texte (sans
   // `kind`, historiques) et les boîtes libres (`kind: 'libre'`). Rendues par des
   // composants différents, jamais mélangées.
   // annotations EN MÉMOIRE, séparées par type (lib/annotationTypes.js) : une
   // collection par catégorie, puis regroupées par page pour l'affichage.
-  const parType = useMemo(() => separerParType([], apercuCouleur ? edits.map((a) => (a.id === apercuCouleur.id ? { ...a, couleur: apercuCouleur.couleur } : a)) : edits), [edits, apercuCouleur]);
+  const parType = useMemo(() => separerParType([], apercuCouleur ? editsVus.map((a) => (a.id === apercuCouleur.id ? { ...a, couleur: apercuCouleur.couleur } : a)) : editsVus), [editsVus, apercuCouleur]);
   const blocsByPage = useMemo(() => groupByPage(parType.bloc), [parType]);
   const boitesByPage = useMemo(() => groupByPage(parType.boite), [parType]);
   // traits de crayon ET de surligneur : même calque d'encre (le mode règle le rendu)
@@ -2843,7 +2892,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     }
     return null;
   };
+  // (15/10 soir) cours document, fiche affichée : une notion du DOCUMENT ramène au document, puis sur elle
+  const notionDocVisee = useRef(null);
+  useEffect(() => {
+    const h = notionDocVisee.current;
+    if (!h || !modeDoc || !pagination || !restaure) return;
+    notionDocVisee.current = null;
+    setTimeout(() => allerNotionNotesRef.current(h), 120);
+  }, [modeDoc, pagination, restaure]); // eslint-disable-line react-hooks/exhaustive-deps
   const allerNotionNotes = (h) => {
+    if (modeDocCours && surFiche) { notionDocVisee.current = h; basculerJumelle('original'); return; }
     if (modeDoc && fluxRef.current) {
       const el = fluxRef.current.allerANotion(h.docNotionId);
       if (el) { centrerRect(el.getBoundingClientRect()); return; }
@@ -2861,6 +2919,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setOngletDemande((o) => ({ id: 'notes', n: (o ? o.n : 0) + 1 }));
     setTimeout(() => { if (notesRef.current) notesRef.current.allerANotion(h.docNotionId); }, 320);
   };
+  const allerNotionNotesRef = useRef(allerNotionNotes); allerNotionNotesRef.current = allerNotionNotes;
   const notionsPdf = (
     <div className="pis-notions">
       {notionsNotes.length > 0 && (
@@ -2869,7 +2928,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             <div className="hl-entry" key={h.id} role="button" tabIndex={0} onClick={() => allerNotionNotes(h)} onKeyDown={(e) => { if (e.key === 'Enter') allerNotionNotes(h); }}>
               <span className="hl-dot" style={{ background: couleurHex(h.couleur) }} />
               <div>
-                <div className="hl-entry-page">{(() => { const i = pageDeNotion(h.docNotionId); return i != null ? 'p.' + (i + 1) : 'Notes'; })()}</div>
+                <div className="hl-entry-page">{modeDocCours && surFiche ? <>document<span className="hl-entry-doc">original</span></> : (() => { const i = pageDeNotion(h.docNotionId); return i != null ? 'p.' + (i + 1) : 'Notes'; })()}</div>
                 <div className="hl-entry-txt">« {h.texte.length > 140 ? h.texte.slice(0, 140) + '…' : h.texte} »</div>
               </div>
             </div>
@@ -2942,7 +3001,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     );
   }
 
-  if (!fiche.pdfId && !fiche.htmlId && !modeDoc) {
+  if (!fiche.pdfId && !fiche.htmlId && !modeDocCours) {
     return (
       <div className={embedded ? 'fadein' : 'screen scroll fadein'}>
         {!embedded && (
@@ -3400,7 +3459,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         </Modal>
       )}
       {editeurCorresp && jumelle && (
-        <EditeurCorrespondance rec={jumelle} pdfIdOrig={fiche.pdfId} docCache={cacheDocs.current} onClose={() => setEditeurCorresp(false)} />
+        <EditeurCorrespondance rec={jumelle} pdfIdOrig={fiche.pdfId} docCache={cacheDocs.current} onClose={() => setEditeurCorresp(false)}
+          {...(modeDocCours && instantDoc.current ? { pagesDoc: pagesDocument(instantDoc.current), versFicheDoc: pageMapCourant().versFiche } : {})} />
       )}
       {listeNonReplacees && jumelle && <ListeNonReplacees rec={jumelle} onClose={() => setListeNonReplacees(false)} />}
       {avisJumelle && <div className="fj-avis" role="status">{avisJumelle}</div>}
