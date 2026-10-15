@@ -323,7 +323,19 @@ export function pageCorrespondante(pageMap, page, deFiche) {
 
 /* vue affichée (original / fiche) : préférence de l'appareil, par cours */
 const cleVue = (courseId) => 'medrevise.jumelle.vue.' + courseId;
-export function lireVue(courseId) { try { return localStorage.getItem(cleVue(courseId)) === 'fiche' ? 'fiche' : 'original'; } catch (e) { return 'original'; } }
+/* (15/10 soir) le mode « Les deux » (côte à côte) est RETIRÉ : son ancien réglage d'appareil
+   (`medrevise.jumelle.lesDeux`) est effacé et l'on retombe sur « Original », sans message. */
+const ANCIEN_COTE_A_COTE = 'medrevise.jumelle.lesDeux';
+function oublierCoteACote() {
+  if (localStorage.getItem(ANCIEN_COTE_A_COTE) === null) return false;
+  localStorage.removeItem(ANCIEN_COTE_A_COTE);
+  Object.keys(localStorage).filter((k) => k.startsWith('medrevise.jumelle.vue.')).forEach((k) => localStorage.removeItem(k));
+  return true;
+}
+export function lireVue(courseId) {
+  try {
+    if (oublierCoteACote()) return 'original';
+    return localStorage.getItem(cleVue(courseId)) === 'fiche' ? 'fiche' : 'original';
+  } catch (e) { return 'original'; }
+}
 export function ecrireVue(courseId, v) { try { localStorage.setItem(cleVue(courseId), v); } catch (e) { /* ignore */ } }
-export function lireCoteACote() { try { return localStorage.getItem('medrevise.jumelle.lesDeux') === '1'; } catch (e) { return false; } }
-export function ecrireCoteACote(v) { try { localStorage.setItem('medrevise.jumelle.lesDeux', v ? '1' : '0'); } catch (e) { /* ignore */ } }

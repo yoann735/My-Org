@@ -113,8 +113,7 @@ import { PanneauExportIA } from './ExportIA.jsx';
 import { preparerSourceIA } from './exportIA.js';
 import { refsCourtes, construireExportIA, estBoiteTexte, aDeuxVersions, versionAffichee, boitesOrdonnees, construireExport, lireImport, planImport, resumeImport, basculerVersion, avecContenuEdite } from '../lib/textesAnnotations.js';
 import { Tableau } from '../tableau/Tableau.jsx';
-import { useFicheJumelle, lireVue, ecrireVue, lireCoteACote, ecrireCoteACote, pageCorrespondante, importerJumelle, remplacerJumelle } from '../lib/ficheJumelle.js';
-import { VueJumelle } from './VueJumelle.jsx';
+import { useFicheJumelle, lireVue, ecrireVue, pageCorrespondante, importerJumelle, remplacerJumelle } from '../lib/ficheJumelle.js';
 import { EditeurCorrespondance, ListeNonReplacees } from './Correspondance.jsx';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
 const dansLeTableau = (el) => !!(el && el.closest && el.closest('.tb'));
@@ -334,7 +333,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setDispositionBrut(d);
     try { localStorage.setItem(cleDispo, d); } catch (e) { /* ignore */ }
     if (d !== 'pdf') setPanelOpen(false); // la place va au tableau ; le panneau se rouvre d'un clic
-    if (d !== 'pdf' && jumelle) { setCoteACoteVoulu(false); ecrireCoteACote(false); } // (15/10) le tableau prend la place de la fiche jumelle
   };
   const tableauRef = useRef(null);
   const [copiedCount, setCopiedCount] = useState(0); // >0 → confirmation « N notions copiées »
@@ -725,7 +723,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const computeVisibleRangeRef = useRef(computeVisibleRange); computeVisibleRangeRef.current = computeVisibleRange;
   const onScroll = () => {
     if (scrollRaf.current) return;
-    scrollRaf.current = requestAnimationFrame(() => { scrollRaf.current = null; computeVisibleRange(); majMiroirRef.current(); });
+    scrollRaf.current = requestAnimationFrame(() => { scrollRaf.current = null; computeVisibleRange(); });
   };
 
   // page affichée = celle qui passe sous la ligne de lecture (voir computeVisibleRange),
@@ -941,50 +939,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       fusions: pm.versFiche.filter((f, i) => f != null && pm.versFiche.indexOf(f) !== i).length };
   };
 
-  /* « LES DEUX » : l'autre document à côté (VueJumelle), synchronisé page à page — ordinateur et
-     tablette en paysage seulement (sur un écran étroit : la bascule seule) */
-  const [largeEcran, setLargeEcran] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1000 && window.innerWidth > window.innerHeight);
-  useEffect(() => {
-    const maj = () => setLargeEcran(window.innerWidth >= 1000 && window.innerWidth > window.innerHeight);
-    window.addEventListener('resize', maj);
-    return () => window.removeEventListener('resize', maj);
-  }, []);
-  const [coteACoteVoulu, setCoteACoteVoulu] = useState(lireCoteACote);
-  const coteACote = !!(jumelle && coteACoteVoulu && largeEcran && !modeDoc && srcTab === 'pdf' && disposition === 'pdf');
-  const basculerCoteACote = () => {
-    const v = !coteACoteVoulu;
-    setCoteACoteVoulu(v); ecrireCoteACote(v);
-    if (v && disposition !== 'pdf') setDisposition('pdf'); // la place à côté du PDF est prise par l'autre document
-  };
-  // page de l'autre document à montrer : suit la lecture (page correspondante, même fraction)
-  const [cibleMiroir, setCibleMiroir] = useState(null);
-  const derniereCible = useRef('');
-  const majMiroir = () => {
-    if (!coteACoteRef.current || !jumelle || !restaureRef.current) return;
-    if (performance.now() - miroirMene.current < 400) return; // c'est le miroir qui mène
-    const { page, fraction } = lirePagePdf();
-    const r = pageCorrespondante(jumelle.pageMap, page, surFiche);
-    const f = r.exacte ? +fraction.toFixed(3) : 0;
-    const cle = r.page + ':' + f;
-    if (cle === derniereCible.current) return;
-    derniereCible.current = cle;
-    setCibleMiroir((c) => ({ page: r.page, fraction: f, n: (c ? c.n : 0) + 1 }));
-  };
-  const coteACoteRef = useRef(coteACote); coteACoteRef.current = coteACote;
-  const majMiroirRef = useRef(majMiroir); majMiroirRef.current = majMiroir;
-  const miroirMene = useRef(0);
-  useEffect(() => { derniereCible.current = ''; majMiroirRef.current(); }, [coteACote, restaure, surFiche, jumelle && jumelle.pageMap]); // eslint-disable-line react-hooks/exhaustive-deps
-  // le miroir a défilé à la main : le lecteur suit (page correspondante dans l'autre sens)
-  const suivreMiroir = (pageAutre, fraction) => {
-    if (!jumelle) return;
-    const r = pageCorrespondante(jumelle.pageMap, pageAutre, !surFiche);
-    const idx = pageSizes.findIndex((sz) => sz.cle === r.page);
-    const el = scrollRef.current;
-    if (idx < 0 || !el) return;
-    miroirMene.current = performance.now();
-    el.scrollTop = Math.max(0, layout.offsets[idx] + (r.exacte ? fraction : 0) * pageSizes[idx].height * scale - 8);
-    computeVisibleRange();
-  };
   const minuteurPosition = useRef(null);
   const planifierPosition = () => { clearTimeout(minuteurPosition.current); minuteurPosition.current = setTimeout(() => sauverRef.current(), 500); };
   useEffect(() => {
@@ -3058,10 +3012,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                   onClick={() => basculerJumelle(id)} title={`${aide} — Tab ou ${RACCOURCI}Maj+F pour basculer`}>{lbl}</button>
               ))}
             </div>
-            {largeEcran && (
-              <button type="button" className={'btn ghost sm pdfr-jumelle-deux' + (coteACote ? ' actif' : '')} aria-pressed={coteACote} onClick={basculerCoteACote}
-                title="Les deux : l’original et la fiche côte à côte, synchronisés page à page"><Icon name="copy" size={13} /> Les deux</button>
-            )}
           </div>
         ) : null}
         actionsDocument={afficherEntete ? [] : actionsDocument /* avec l'en-tête, tout est dans « Fichier » */}
@@ -3179,8 +3129,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <button type="button" className={'seg-btn' + (mobileView === 'course' ? ' active' : '')} onClick={() => setMobileView('course')}><Icon name="filePdf" size={13} /> Cours</button>
         <button type="button" className={'seg-btn' + (mobileView === 'items' ? ' active' : '')} onClick={() => { setMobileView('items'); setPanelOpen(true); }}><Icon name="cards" size={13} /> Panneau</button>
       </div>
-      <div className={'pdfr-body pdfr-workshop' + (tableauDispo && disposition !== 'pdf' ? ' avec-tableau dispo-' + disposition : '') + (coteACote ? ' avec-tableau dispo-deux avec-jumelle' : '')} data-mobile-view={modeTab ? undefined : mobileView}
-        ref={corpsRef} style={{ ...((tableauDispo && disposition === 'deux') || coteACote ? { '--ratio-pdf': ratioSplit } : {}), ...(modeTab ? { '--tab-volet-f': voletPlein ? 1 : fractionVolet } : {}) }}>
+      <div className={'pdfr-body pdfr-workshop' + (tableauDispo && disposition !== 'pdf' ? ' avec-tableau dispo-' + disposition : '')} data-mobile-view={modeTab ? undefined : mobileView}
+        ref={corpsRef} style={{ ...(tableauDispo && disposition === 'deux' ? { '--ratio-pdf': ratioSplit } : {}), ...(modeTab ? { '--tab-volet-f': voletPlein ? 1 : fractionVolet } : {}) }}>
         {/* barre masquée : un tap tout en haut de la zone de lecture la fait revenir */}
         <div className={'pdfr-scroll pdfr-workshop-course' + (pret && !restaure ? ' pdfr-attente' : '')} ref={scrollRef} onScroll={onScroll}
           onDragOver={(e) => { if (e.dataTransfer && [...e.dataTransfer.types].some((t) => t === 'Files' || t === TYPE_GLISSER)) { e.preventDefault(); if ([...e.dataTransfer.types].includes(TYPE_GLISSER)) e.dataTransfer.dropEffect = 'copy'; } }}
@@ -3301,16 +3251,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           )}
         </div>
 
-        {coteACote && (<>
-          <div className="pdfr-poignee" role="separator" aria-orientation="vertical" title="Glisser pour régler la répartition · double-clic : moitié-moitié"
-            onPointerDown={debutPoignee} onDoubleClick={() => majRatio(0.5)} />
-          <div className="pdfr-tableau pdfr-jumelle">
-            <VueJumelle key={surFiche ? 'o' : 'f'} pdfId={surFiche ? fiche.pdfId : jumelle.fileId} ns={surFiche ? ficheId : jumelle.nsAnnot}
-              libelle={surFiche ? 'Original' : 'Fiche'} cible={cibleMiroir} onDefile={suivreMiroir} docCache={cacheDocs.current}
-              onAnnoterIci={() => basculerJumelle()} />
-          </div>
-        </>)}
-        {!coteACote && tableauDispo && disposition !== 'pdf' && (<>
+        {tableauDispo && disposition !== 'pdf' && (<>
           {disposition === 'deux' && (
             <div className="pdfr-poignee" role="separator" aria-orientation="vertical" title="Glisser pour régler la répartition · double-clic : moitié-moitié"
               onPointerDown={debutPoignee} onDoubleClick={() => majRatio(0.5)} />

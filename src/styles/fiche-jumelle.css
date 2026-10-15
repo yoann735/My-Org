@@ -1,6 +1,6 @@
 /* ============================================================
    MedRevise — FICHE JUMELLE (15/10, docs/compte-rendu-fiche-jumelle.md) : bascule Original ⇄
-   Fiche dans la barre du lecteur, « Les deux » côte à côte, éditeur de correspondance, marque
+   Fiche dans la barre du lecteur, éditeur de correspondance, marque
    de la Bibliothèque. Mêmes jetons que le reste (var(--accent), var(--card)…) : DA inchangée.
    Sélecteurs préfixés (.pdfr-v2, .lib-…) : ce fichier est chargé avant etudes.css.
    ============================================================ */
@@ -10,27 +10,13 @@
   border-radius: 999px; font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; vertical-align: middle;
   color: var(--accent); background: var(--accent-soft); }
 
-/* segment Original · Fiche (+ Les deux) dans la barre */
+/* segment Original · Fiche dans la barre */
 .pdfr-v2 .pdfr-jumelle-bascule { display: inline-flex; align-items: center; gap: 6px; }
 .pdfr-v2 .pdfr-jumelle-bascule .seg { flex-wrap: nowrap; }
 .pdfr-v2 .pdfr-jumelle-bascule .seg-btn { height: 28px; font-size: 12px; padding: 0 10px; white-space: nowrap; }
-.pdfr-v2 .pdfr-jumelle-deux { height: 28px; gap: 5px; white-space: nowrap; }
-.pdfr-v2 .pdfr-jumelle-deux.actif { color: var(--accent); background: var(--accent-soft); }
 @media (pointer: coarse) {
-  .pdfr-v2 .pdfr-jumelle-bascule .seg-btn, .pdfr-v2 .pdfr-jumelle-deux { height: 36px; min-width: 44px; }
+  .pdfr-v2 .pdfr-jumelle-bascule .seg-btn { height: 36px; min-width: 44px; }
 }
-
-/* « Les deux » : l'autre document à côté, en lecture */
-.pdfr-jumelle { min-height: 0; }
-.vj { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--border); }
-.vj-entete { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px;
-  border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-2); }
-.vj-titre { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text); }
-.vj-lecture { font-weight: 400; color: var(--text-3); }
-.vj-zone { flex: 1 1 auto; min-height: 0; overflow: auto; position: relative; padding: 10px 0; }
-.vj-pages { position: relative; width: 100%; }
-.vj-page { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .18), 0 6px 18px rgba(0, 0, 0, .08); border-radius: 2px; overflow: hidden; }
-.vj-page * { pointer-events: none !important; } /* lecture seule : rien ne se modifie de ce côté */
 
 /* avis d'une bascule vers une page sans équivalent */
 .fj-avis { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 1200; max-width: min(560px, 92vw);
