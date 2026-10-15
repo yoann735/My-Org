@@ -171,10 +171,17 @@ export async function mergeBlobs(pairs) {
   await setMany(pairs, S.blobs);
   return pairs.length;
 }
+/* SIGNAL D'ÉCRITURE LOCALE (15/10) : un simple événement après chaque écriture, sans
+   effet sur ce qui est écrit — la Bibliothèque (tri « Dernière modification »,
+   lib/datesFiches.js) s'y abonne pour remonter une fiche dès qu'on l'annote. */
+const signalerEcriture = (name) => {
+  try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('medrevise:ecriture', { detail: { store: name } })); } catch (e) { /* ignore */ }
+};
 export async function put(name, rec) {
   const stamped = SYNCABLE.includes(name) ? { ...rec, updatedAt: new Date().toISOString() } : rec;
   await set(stamped.id, stamped, S[name]);
   if (SYNCABLE.includes(name)) queuePush(name, stamped.id, stamped, stamped.updatedAt);
+  signalerEcriture(name);
   return stamped;
 }
 export async function putMany(name, recs) {
@@ -182,6 +189,7 @@ export async function putMany(name, recs) {
   const stamped = syncable ? recs.map((r) => ({ ...r, updatedAt: new Date().toISOString() })) : recs;
   await setMany(stamped.map((r) => [r.id, r]), S[name]);
   if (syncable) stamped.forEach((r) => queuePush(name, r.id, r, r.updatedAt));
+  signalerEcriture(name);
   return stamped;
 }
 /* TRANSCRIPTION (05/10) : écriture/suppression LOCALES sans horodatage ni file
@@ -237,6 +245,7 @@ if (typeof document !== 'undefined') {
 export async function remove(name, id) {
   await del(id, S[name]);
   if (SYNCABLE.includes(name)) queuePush(name, id, {}, new Date().toISOString(), true); // tombstone (data vide, deleted=true)
+  signalerEcriture(name);
 }
 
 /* ---- blobs (images recadrées, PDF) — Storage cloud (pas la table de records :
@@ -539,6 +548,7 @@ export async function setDoc(ficheId, content) {
   const rec = { id: ficheId, content, updatedAt };
   await set(ficheId, rec, S.docs);
   queuePush('docs', ficheId, rec, updatedAt);
+  signalerEcriture('docs');
 }
 export async function removeDoc(ficheId) {
   await del(ficheId, S.docs);

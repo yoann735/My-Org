@@ -19,7 +19,9 @@ import { docKind, DOC_META, deleteTranscript, createDocumentNotes } from '../doc
 import { FenetreCreation } from '../components/FenetreCreation.jsx';
 import { PdfReader } from '../pdf/PdfReader.jsx';
 import { useCoursAvecJumelle } from '../lib/ficheJumelle.js';
+import { useDatesModif, dateAjout, dateModif, ilYa, leJour } from '../lib/datesFiches.js';
 import '../../styles/fiche-jumelle.css';
+import '../../styles/bibliotheque-tri.css';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { ChampRenommer } from '../components/ChampRenommer.jsx';
 import { TranscriptEditor } from '../documents/TranscriptEditor.jsx';
@@ -30,6 +32,18 @@ const MODES_AFFICHAGE = [
   { id: 'grille', label: 'Grille', icon: 'grid', aide: 'Grille : une carte par fiche, par matière' },
   { id: 'liste', label: 'Liste', icon: 'list', aide: 'Liste : toutes les fiches, triables par colonne' },
 ];
+/* TRIS (15/10, docs/compte-rendu-bibliotheque-fichier.md) : l'ordre manuel est l'arbre
+   tel qu'on l'a rangé ; les deux autres sont une liste PLATE, qui ne touche jamais à
+   l'ordre manuel (aucune écriture : on ne fait que lire et trier pour l'affichage).
+   Mémorisé par appareil (localStorage), pas synchronisé. */
+const TRIS = [
+  { id: 'manuel', label: 'Ordre manuel', aide: 'L’arbre tel que tu l’as rangé (matières, dossiers, ordre)' },
+  { id: 'modif', label: 'Dernière modification', aide: 'Toutes les fiches, la plus récemment modifiée en premier' },
+  { id: 'ajout', label: 'Date d’ajout', aide: 'Toutes les fiches, la plus récemment ajoutée en premier' },
+];
+const CLE_TRI = 'medrevise.biblio.tri';
+const lireTri = () => { try { const v = localStorage.getItem(CLE_TRI); return TRIS.some((t) => t.id === v) ? v : 'manuel'; } catch (e) { return 'manuel'; } };
+const sansAccents = (x) => String(x || '').toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const schemaViews = (f) => ficheImages(f).length;
 const schemaCoches = (f) => totalCoches(f);
 
@@ -39,6 +53,21 @@ export function Bibliotheque({ ctx }) {
   const avecJumelle = useCoursAvecJumelle();
   const marqueJumelle = (id) => (avecJumelle.has(id) ? <span className="lib-marque-fiche" title="Ce cours a une fiche jumelle (PDF résumé) : Original ⇄ Fiche dans le lecteur">fiche</span> : null);
   const [openFiche, setOpenFiche] = useState({});
+  const [tri, setTriEtat] = useState(lireTri);
+  const choisirTri = (t) => { setTriEtat(t); try { localStorage.setItem(CLE_TRI, t); } catch (e) { /* ignore */ } };
+  const [triMenu, setTriMenu] = useState(null); // { x, y }
+  const [recherche, setRecherche] = useState('');
+  const q = sansAccents(recherche.trim());
+  const plat = tri !== 'manuel';
+  const { parStore } = useDatesModif(tri === 'modif');
+  // « il y a 2 h » reste juste : un tic par minute tant qu'un tri par date est affiché
+  const [maintenant, setMaintenant] = useState(() => Date.now());
+  useEffect(() => {
+    if (!plat) return undefined;
+    setMaintenant(Date.now());
+    const t = setInterval(() => setMaintenant(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, [plat]);
   const [renaming, setRenaming] = useState(null); // { type, id }
   // C — panneau de droite : quelle fiche-document est ouverte (jamais de
   // navigation d'écran — on reste sur 'library' tout du long).
@@ -380,7 +409,7 @@ export function Bibliotheque({ ctx }) {
   // au survol « + » (sous-dossier, niveau 1 seulement — 2 niveaux maximum) et ⋯.
   // Composant partagé avec Réviser : ui.jsx#LigneDossierArbre.
   const ligneDossier = (d, nFiches, onAjout) => (
-    <LigneDossierArbre dossier={d} ouvert={!!openDossier[d.id]} nFiches={nFiches}
+    <LigneDossierArbre dossier={d} ouvert={!!(q || openDossier[d.id])} nFiches={nFiches}
       renameInput={isRen('dossier', d.id) ? champRenommer() : null}
       onToggle={() => setOpenDossier((o) => ({ ...o, [d.id]: !o[d.id] }))}
       onRename={() => startRename('dossier', d.id, d.nom)}
@@ -416,17 +445,38 @@ export function Bibliotheque({ ctx }) {
         db.fiches.filter((f) => f.matiereId === mat.id && !f.archive).sort(byOrdre).forEach((f, iF) => {
           const d = f.dossierId && db.dossiers.find((x) => x.id === f.dossierId);
           const p = d && d.parentId && db.dossiers.find((x) => x.id === d.parentId);
+          const mm = matiereMeta(mat);
+          const dossier = [p && p.nom, d && d.nom].filter(Boolean).join(' › ');
           out.push({
-            f, src, mat, mm: matiereMeta(mat), kind: docKind(f),
-            dossier: [p && p.nom, d && d.nom].filter(Boolean).join(' › '),
+            f, src, mat, mm, kind: docKind(f), dossier,
             nCartes: count(f.id, 'qcm') + count(f.id, 'flashcard'),
             rang: iSec * 1e6 + iMat * 1e3 + iF,
+            ajout: dateAjout(f), modif: tri === 'modif' ? dateModif(f, parStore) : 0,
+            trouve: !q || sansAccents(`${f.titre} ${mm.label} ${dossier}`).includes(q),
           });
         });
       });
     });
     return out;
   })();
+  /* RECHERCHE (15/10) : titre, matière ou dossier, sans accents ni casse — la même dans les
+     trois tris et les trois affichages. TRI : ordre de l'arbre, ou date décroissante
+     (à égalité, l'ordre de l'arbre). */
+  const lignesTrouvees = lignesBiblio.filter((l) => l.trouve);
+  const cleTri = (l) => (tri === 'modif' ? l.modif : l.ajout);
+  const lignesTriees = plat ? [...lignesTrouvees].sort((a, b) => cleTri(b) - cleTri(a) || a.rang - b.rang) : lignesTrouvees;
+  const idsTrouves = new Set(lignesTrouvees.map((l) => l.f.id));
+  const ficheTrouvee = (f) => !q || idsTrouves.has(f.id);
+  const aucunResultat = q && !lignesTrouvees.length ? (
+    <div className="lib-detail-empty"><Icon name="search" size={26} /><div style={{ marginTop: 10 }}>Aucune fiche ne correspond à « {recherche.trim()} ».</div></div>
+  ) : null;
+  // « Modifiée il y a 2 h · Anatomie palpatoire » / « Ajoutée le 12 oct. · Psychologie »
+  const metaTri = (l) => (
+    <span className="lib-tri-meta">
+      {tri === 'modif' ? `Modifiée ${ilYa(l.modif, maintenant)}` : `Ajoutée ${leJour(l.ajout, maintenant)}`}
+      <span className="lib-tri-matiere"> · {l.mm.label}</span>
+    </span>
+  );
   const iconeFiche = (l) => (l.f.priseDeNotes ? 'edit' : l.kind ? DOC_META[l.kind].icon : 'cards');
   const libelleType = (l) => (l.f.priseDeNotes ? 'Prise de notes' : l.kind === 'schema' ? 'Schéma' : l.kind === 'transcript' ? 'Transcript' : l.f.pdfId ? 'PDF' : l.f.htmlId ? 'HTML' : 'Cartes seules');
   const reviserFiche = (f) => {
@@ -442,9 +492,31 @@ export function Bibliotheque({ ctx }) {
   const fmtDate = (iso) => (iso ? new Date(iso + (iso.length === 10 ? 'T12:00:00' : '')).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 
   // GRILLE : section › matière, une carte par fiche
+  const carteGrille = (l) => (
+    <div key={l.f.id} role="button" tabIndex={0} className={'lv-carte' + (l.kind ? '' : ' sans-doc')} style={{ '--teinte': l.mm.tint }}
+      onClick={() => { if (l.kind) openDoc(l.f); }} onKeyDown={(e) => { if (e.key === 'Enter' && l.kind) openDoc(l.f); }}
+      title={l.kind ? 'Ouvrir le document' : 'Fiche sans document — ▷ pour réviser'}>
+      <div className="lv-carte-bandeau"><Icon name={iconeFiche(l)} size={22} /></div>
+      <div className="lv-carte-corps">
+        <div className="lv-carte-titre">{isRen('fiche', l.f.id) ? champRenommer('srcmgr-input lv-renommer') : l.f.titre}{marqueJumelle(l.f.id)}</div>
+        <div className="lv-carte-lieu">{plat ? metaTri(l) : (l.dossier || 'Racine de la matière')}</div>
+        <div className="lv-carte-pied">
+          <span>{libelleType(l)}{l.nCartes ? ` · ${l.nCartes} carte${l.nCartes > 1 ? 's' : ''}` : ''}</span>
+          {actionsFiche(l)}
+        </div>
+      </div>
+    </div>
+  );
   const renderGrille = () => {
+    // tri par date : une seule grille, sans regroupement
+    if (plat) return (
+      <div className="lv-grille fadein">
+        {aucunResultat || (!lignesTriees.length && <div className="lib-detail-empty"><Icon name="book" size={28} /><div style={{ marginTop: 10 }}>Aucune fiche pour l'instant.</div></div>)}
+        {lignesTriees.length > 0 && <div className="lv-cartes lib-tri-grille">{lignesTriees.map(carteGrille)}</div>}
+      </div>
+    );
     const parSection = [];
-    lignesBiblio.forEach((l) => {
+    lignesTrouvees.forEach((l) => {
       let s = parSection.find((x) => x.src.id === l.src.id);
       if (!s) { s = { src: l.src, mats: [] }; parSection.push(s); }
       let m = s.mats.find((x) => x.mat.id === l.mat.id);
@@ -453,30 +525,14 @@ export function Bibliotheque({ ctx }) {
     });
     return (
       <div className="lv-grille fadein">
-        {!parSection.length && <div className="lib-detail-empty"><Icon name="book" size={28} /><div style={{ marginTop: 10 }}>Aucune fiche pour l'instant.</div></div>}
+        {aucunResultat || (!parSection.length && <div className="lib-detail-empty"><Icon name="book" size={28} /><div style={{ marginTop: 10 }}>Aucune fiche pour l'instant.</div></div>)}
         {parSection.map((s) => (
           <section key={s.src.id} className="lv-section">
             <h2 className="lv-section-titre">{s.src.nom}</h2>
             {s.mats.map((m) => (
               <div key={m.mat.id} className="lv-matiere">
                 <div className="lv-matiere-titre"><span className="lt-point" style={{ background: m.mm.tint }} /> {m.mm.label} <span className="lv-compte">{m.lignes.length}</span></div>
-                <div className="lv-cartes">
-                  {m.lignes.map((l) => (
-                    <div key={l.f.id} role="button" tabIndex={0} className={'lv-carte' + (l.kind ? '' : ' sans-doc')} style={{ '--teinte': l.mm.tint }}
-                      onClick={() => { if (l.kind) openDoc(l.f); }} onKeyDown={(e) => { if (e.key === 'Enter' && l.kind) openDoc(l.f); }}
-                      title={l.kind ? 'Ouvrir le document' : 'Fiche sans document — ▷ pour réviser'}>
-                      <div className="lv-carte-bandeau"><Icon name={iconeFiche(l)} size={22} /></div>
-                      <div className="lv-carte-corps">
-                        <div className="lv-carte-titre">{isRen('fiche', l.f.id) ? champRenommer('srcmgr-input lv-renommer') : l.f.titre}{marqueJumelle(l.f.id)}</div>
-                        <div className="lv-carte-lieu">{l.dossier || 'Racine de la matière'}</div>
-                        <div className="lv-carte-pied">
-                          <span>{libelleType(l)}{l.nCartes ? ` · ${l.nCartes} carte${l.nCartes > 1 ? 's' : ''}` : ''}</span>
-                          {actionsFiche(l)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <div className="lv-cartes">{m.lignes.map(carteGrille)}</div>
               </div>
             ))}
           </section>
@@ -491,41 +547,96 @@ export function Bibliotheque({ ctx }) {
     { id: 'section', label: 'Section › Matière', val: (l) => l.rang },
     { id: 'dossier', label: 'Dossier', val: (l) => (l.dossier || '').toLowerCase() },
     { id: 'cartes', label: 'Cartes', val: (l) => l.nCartes },
-    { id: 'date', label: 'Ajoutée', val: (l) => l.f.dateImport || '' },
+    { id: 'date', label: 'Ajoutée', val: (l) => l.ajout },
   ];
   const renderListe = () => {
     const col = COLONNES.find((c) => c.id === triListe.col) || COLONNES[1];
-    const lignes = [...lignesBiblio].sort((a, b) => {
+    // tri par date : il prime sur les colonnes (re-choisir « Ordre manuel » pour trier par colonne)
+    const lignes = plat ? lignesTriees : [...lignesTrouvees].sort((a, b) => {
       const x = col.val(a), y = col.val(b);
       return (x < y ? -1 : x > y ? 1 : a.rang - b.rang) * triListe.sens;
     });
     const trier = (id) => setTriListe((t) => (t.col === id ? { col: id, sens: -t.sens } : { col: id, sens: id === 'cartes' || id === 'date' ? -1 : 1 }));
+    const colonnes = COLONNES.map((c) => (c.id === 'date' && tri === 'modif' ? { ...c, label: 'Modifiée' } : c));
     return (
       <div className="lv-liste fadein">
         <div className="lv-ligne lv-entete" role="row">
-          {COLONNES.map((c) => (
+          {colonnes.map((c) => (plat ? (
+            <span key={c.id} className={'lv-col lv-col-' + c.id + (c.id === 'date' ? ' trie' : '')} title={c.id === 'date' ? `Trié par ${TRIS.find((t) => t.id === tri).label.toLowerCase()}` : 'Tri par colonne : choisir « Ordre manuel » dans Trier'}>
+              {c.label}{c.id === 'date' && <Icon name="chevU" size={12} />}
+            </span>
+          ) : (
             <button key={c.id} type="button" className={'lv-col lv-col-' + c.id + (triListe.col === c.id ? ' trie' : '')} onClick={() => trier(c.id)} title={`Trier par ${c.label.toLowerCase()}`}>
               {c.label}{triListe.col === c.id && <Icon name={triListe.sens > 0 ? 'chevD' : 'chevU'} size={12} />}
             </button>
-          ))}
+          )))}
           <span className="lv-col lv-col-actions" />
         </div>
         {lignes.map((l) => (
           <div key={l.f.id} role="row" tabIndex={0} className={'lv-ligne' + (l.kind ? '' : ' sans-doc')}
             onClick={() => { if (l.kind) openDoc(l.f); }} onKeyDown={(e) => { if (e.key === 'Enter' && l.kind) openDoc(l.f); }}
             title={l.kind ? 'Ouvrir le document' : 'Fiche sans document — ▷ pour réviser'}>
-            <span className="lv-col lv-col-titre"><Icon name={iconeFiche(l)} size={14} className="lt-ic" /> {isRen('fiche', l.f.id) ? champRenommer('srcmgr-input lv-renommer') : <span className="lv-texte">{l.f.titre}</span>}{marqueJumelle(l.f.id)}</span>
+            <span className="lv-col lv-col-titre"><Icon name={iconeFiche(l)} size={14} className="lt-ic" /> {isRen('fiche', l.f.id) ? champRenommer('srcmgr-input lv-renommer') : plat
+              ? <span className="lib-tri-deux"><span className="lv-texte">{l.f.titre}{marqueJumelle(l.f.id)}</span>{metaTri(l)}</span>
+              : <span className="lv-texte">{l.f.titre}</span>}{!plat && marqueJumelle(l.f.id)}</span>
             <span className="lv-col lv-col-section"><span className="lt-point" style={{ background: l.mm.tint }} /> <span className="lv-texte">{l.src.nom} › {l.mm.label}</span></span>
             <span className="lv-col lv-col-dossier"><span className="lv-texte">{l.dossier || '—'}</span></span>
             <span className="lv-col lv-col-cartes">{l.nCartes || '—'}</span>
-            <span className="lv-col lv-col-date">{fmtDate(l.f.dateImport)}</span>
+            <span className="lv-col lv-col-date">{tri === 'modif' ? ilYa(l.modif, maintenant) : fmtDate(l.f.dateImport)}</span>
             <span className="lv-col lv-col-actions">{actionsFiche(l)}</span>
           </div>
         ))}
-        {!lignes.length && <div className="lib-detail-empty"><Icon name="book" size={28} /><div style={{ marginTop: 10 }}>Aucune fiche pour l'instant.</div></div>}
+        {aucunResultat || (!lignes.length && <div className="lib-detail-empty"><Icon name="book" size={28} /><div style={{ marginTop: 10 }}>Aucune fiche pour l'instant.</div></div>)}
       </div>
     );
   };
+
+  /* LISTE PLATE de l'affichage Arbre (tri par date) : une ligne par fiche, sans section,
+     matière ni dossier — rien à glisser (l'ordre manuel ne se range que dans l'arbre).
+     Un PDF déposé sur une ligne est importé dans la matière de cette fiche. */
+  const renderPlat = () => (
+    <div className="lib-plat" role="list" aria-label={`Fiches — ${TRIS.find((t) => t.id === tri).label}`}>
+      {aucunResultat}
+      {!q && !lignesTriees.length && <div className="lt-vide">Aucune fiche pour l'instant.</div>}
+      {lignesTriees.map((l) => {
+        const f = l.f, isSel = !!(selected && selected.ficheId === f.id), fo = !!openFiche[f.id];
+        const ouvrir = () => { if (l.kind) openDoc(f); else setOpenFiche((o) => ({ ...o, [f.id]: !fo })); };
+        return (
+          // un fichier lâché sur une ligne rejoint la matière (et le dossier) de cette fiche
+          <div key={f.id} role="listitem" className={'lt-ligne lt-fiche lib-plat-ligne' + (isSel ? ' selected' : '') + fd.dropClass('fiche:' + f.id)}
+            {...fd.dropProps({ key: 'fiche:' + f.id, matiereId: f.matiereId, dossierId: f.dossierId || null })}>
+            {isRen('fiche', f.id) ? (
+              <div className="lt-rangee"><span className="lt-pli" />{champRenommer()}</div>
+            ) : (
+              <div role="button" tabIndex={0} className="lt-rangee lib-plat-rangee" onClick={ouvrir}
+                onKeyDown={(e) => { if (e.key === 'Enter') ouvrir(); }}
+                onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }}
+                title={`${f.titre}\n${l.src.nom} › ${l.mm.label}${l.dossier ? ' › ' + l.dossier : ''}\n${l.kind ? 'Clic = ouvrir le document' : 'Clic = voir les cartes'} · double-clic = renommer`}>
+                <Icon name={iconeFiche(l)} size={14} className="lt-ic" />
+                <span className="lib-tri-deux"><span className="lt-nom">{f.titre}{marqueJumelle(f.id)}</span>{metaTri(l)}</span>
+                {l.nCartes > 0 && <span className="lt-compte" title={`${l.nCartes} carte${l.nCartes > 1 ? 's' : ''}`}>{l.nCartes}</span>}
+                <span className="lt-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                  {f.type !== 'transcript' && <button type="button" className="cd-ic" title="Réviser cette fiche" onClick={() => reviserFiche(f)}><Icon name="play" size={12} /></button>}
+                  <button type="button" className="cd-ic" title="Autres actions" onClick={(e) => openFicheMenu(e, f.id)}><Icon name="more" size={14} stroke={2.6} /></button>
+                </span>
+              </div>
+            )}
+            {fo && !l.kind && (
+              <div className="lt-cartes">
+                {qById(f.id).map((x) => (
+                  <div className="lt-carte" key={x.id}>
+                    <Icon name={x.type === 'flashcard' ? 'cards' : x.type === 'feynman' ? 'lightbulb' : 'list'} size={11} />
+                    <span>{x.concept}</span>
+                  </div>
+                ))}
+                {!qById(f.id).length && <div className="lt-vide">Aucune carte.</div>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 
   const ficheOuverte = selected ? db.fiches.find((f) => f.id === selected.ficheId) || null : null;
   return (
@@ -552,6 +663,18 @@ export function Bibliotheque({ ctx }) {
            notion DANS un cours se fait dans le lecteur (Ctrl/Cmd+F). Le seul bouton
            qui restait dans la barre d'outils rejoint l'en-tête. */}
         <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* RECHERCHE et TRI (15/10) : à côté des modes d'affichage, valables dans les trois */}
+          <label className="search lib-recherche">
+            <Icon name="search" size={14} className="ic" />
+            <input type="search" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Rechercher une fiche"
+              aria-label="Rechercher une fiche (titre, matière ou dossier)" onKeyDown={(e) => { if (e.key === 'Escape') setRecherche(''); }} />
+            {recherche && <button type="button" className="cd-ic" onClick={() => setRecherche('')} title="Effacer" aria-label="Effacer la recherche"><Icon name="x" size={12} /></button>}
+          </label>
+          <button type="button" className={'btn ghost sm lib-tri-bouton' + (plat ? ' actif' : '')} aria-haspopup="menu" aria-expanded={!!triMenu}
+            title={`Trier : ${TRIS.find((t) => t.id === tri).aide}`}
+            onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setTriMenu(triMenu ? null : { x: Math.min(r.left, window.innerWidth - 250), y: r.bottom + 4 }); }}>
+            <Icon name="sliders" size={13} /> <span className="lib-tri-libelle">{tri === 'manuel' ? 'Trier' : TRIS.find((t) => t.id === tri).label}</span> <Icon name="chevD" size={12} />
+          </button>
           {/* MODES D'AFFICHAGE (docs/biblio-affichages.md) — l'arbre reste le défaut */}
           <div className="seg lib-modes" role="tablist" aria-label="Affichage de la Bibliothèque">
             {MODES_AFFICHAGE.map((m) => (
@@ -596,9 +719,13 @@ export function Bibliotheque({ ctx }) {
                  actions au survol (+ / ▷ / ⋯). Tout le reste (glisser-déposer des
                  fiches, dépôt de fichiers, renommage, menus, états mémorisés) est
                  inchangé. */}
-              {(() => { const sections = trierSections(db.sources.filter((s) => !s.archive), ctx.stats); return sections.map((src, iSec) => {
-                const mats = db.matieres.filter((m) => m.sourceId === src.id && !m.archive);
-                const srcOuverte = openSrc[src.id] !== false;
+              {plat ? renderPlat() : aucunResultat}
+              {!plat && (() => { const sections = trierSections(db.sources.filter((s) => !s.archive), ctx.stats); return sections.map((src, iSec) => {
+                // recherche : seules les branches qui mènent à une fiche trouvée, dépliées
+                // pour l'affichage (l'état mémorisé du repli n'est pas réécrit)
+                const mats = db.matieres.filter((m) => m.sourceId === src.id && !m.archive && (!q || db.fiches.some((f) => f.matiereId === m.id && !f.archive && ficheTrouvee(f))));
+                if (q && !mats.length) return null;
+                const srcOuverte = !!q || openSrc[src.id] !== false;
                 const rappels = src.rappelsJ !== false;
                 return (
                   <div className={'lt-section' + fd.dropClass('src:' + src.id)} key={src.id}
@@ -637,10 +764,10 @@ export function Bibliotheque({ ctx }) {
                       <div className="lt-enfants lt-enfants-sec">
                         {mats.map((mat) => {
                           const mm = matiereMeta(mat);
-                          const allFiches = db.fiches.filter((f) => f.matiereId === mat.id && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+                          const allFiches = db.fiches.filter((f) => f.matiereId === mat.id && !f.archive && ficheTrouvee(f)).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
                           const rootFiches = allFiches.filter((f) => !f.dossierId);
-                          const unites = unitesOf(mat.id);
-                          const matOuverte = !matFermee[mat.id];
+                          const unites = unitesOf(mat.id).filter((u) => !q || fichesCountRecursif(allFiches, u.id) > 0);
+                          const matOuverte = !!q || !matFermee[mat.id];
                           return (
                             <div key={mat.id} className={fd.dropClass('mat:' + mat.id).trim()}
                               {...fd.dropProps({ key: 'mat:' + mat.id, matiereId: mat.id })}>
@@ -677,19 +804,20 @@ export function Bibliotheque({ ctx }) {
                                         <DropCible matiereId={mat.id} dossierId={u.id} onSurvolProlonge={() => setOpenDossier((o) => (o[u.id] ? o : { ...o, [u.id]: true }))}>
                                           {ligneDossier(u, fichesCountRecursif(allFiches, u.id), () => createChapitre(mat.id, u.id))}
                                         </DropCible>
-                                        {openDossier[u.id] && (
+                                        {(q || openDossier[u.id]) && (
                                           <div className="lt-enfants">
                                             {uniteFiches.map(renderFiche)}
                                             <DropSlot matiereId={mat.id} dossierId={u.id} beforeId={null} variant={uniteFiches.length ? 'line' : 'zone'} label={chapitres.length ? 'Déposer ici (dossier)' : 'Déposer ici'} />
                                             {chapitres.map((c) => {
                                               const chapFiches = allFiches.filter((f) => f.dossierId === c.id);
+                                              if (q && !chapFiches.length) return null;
                                               return (
                                                 <div key={c.id} className={fd.dropClass('dos:' + c.id).trim()}
                                                   {...fd.dropProps({ key: 'dos:' + c.id, matiereId: mat.id, dossierId: c.id, spring: { type: 'dossier', id: c.id } })}>
                                                   <DropCible matiereId={mat.id} dossierId={c.id} onSurvolProlonge={() => setOpenDossier((o) => (o[c.id] ? o : { ...o, [c.id]: true }))}>
                                                     {ligneDossier(c, chapFiches.length, null)}
                                                   </DropCible>
-                                                  {openDossier[c.id] && (
+                                                  {(q || openDossier[c.id]) && (
                                                     <div className="lt-enfants">
                                                       {chapFiches.map(renderFiche)}
                                                       <DropSlot matiereId={mat.id} dossierId={c.id} beforeId={null} variant={chapFiches.length ? 'line' : 'zone'} />
@@ -711,9 +839,11 @@ export function Bibliotheque({ ctx }) {
                             </div>
                           );
                         })}
+                        {!q && (
                         <button type="button" className="lt-rangee lt-ajout" onClick={() => createMatiere(src.id)} title={`Créer une matière dans « ${src.nom} »`}>
                           <Icon name="plus" size={13} className="lt-pli" /> <span className="lt-nom">Nouvelle matière</span>
                         </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -752,6 +882,13 @@ export function Bibliotheque({ ctx }) {
           libelleCreer="Créer" occupe={creationEnCours} onAnnuler={() => setNouveauDoc(null)} onCreer={creerDocument} />
       )}
 
+      {triMenu && (
+        <ContextMenu x={triMenu.x} y={triMenu.y} onClose={() => setTriMenu(null)}
+          items={TRIS.map((t) => ({
+            label: <span className="lib-tri-choix" title={t.aide}><span className="lib-tri-coche">{tri === t.id && <Icon name="check" size={13} />}</span>{t.label}</span>,
+            onClick: () => choisirTri(t.id),
+          }))} />
+      )}
       {etqMenu && (
         <ContextMenu x={etqMenu.x} y={etqMenu.y} onClose={() => setEtqMenu(null)}
           items={etiquetteMenuItems((db.fiches.find((x) => x.id === etqMenu.ficheId) || {}).etiquette, (v) => ctx.setFicheEtiquette(etqMenu.ficheId, v))} />

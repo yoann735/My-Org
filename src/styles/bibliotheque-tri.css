@@ -1,0 +1,43 @@
+/* ============================================================
+   MedRevise — BIBLIOTHÈQUE : recherche et tris (15/10,
+   docs/compte-rendu-bibliotheque-fichier.md). Mêmes jetons que le reste
+   (var(--text-2), var(--card-2)…) : DA inchangée.
+   ============================================================ */
+
+/* en-tête : recherche + « Trier », à côté des modes d'affichage */
+.lib-recherche.search { height: 32px; min-width: 0; width: 220px; padding: 0 8px 0 11px; box-shadow: none; gap: 7px; }
+.lib-recherche input { font-size: 13px; }
+.lib-recherche input::-webkit-search-cancel-button { display: none; }
+.lib-recherche .cd-ic { width: 22px; height: 22px; flex: 0 0 auto; }
+.lib-recherche:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.lib-tri-bouton { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.btn.lib-tri-bouton.actif, .btn.lib-tri-bouton.actif .ic { color: var(--accent); }
+.lib-tri-choix { display: inline-flex; align-items: center; gap: 8px; }
+.lib-tri-coche { display: inline-flex; width: 14px; color: var(--accent); }
+
+/* ligne à deux étages : titre, puis « Modifiée il y a 2 h · Matière » */
+.lib-tri-deux { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.25; }
+.lib-tri-deux .lt-nom, .lib-tri-deux .lv-texte { display: block; }
+.lib-tri-meta { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: 400; color: var(--text-2); }
+.lib-tri-matiere { color: var(--text-3); }
+
+/* liste plate de l'affichage Arbre */
+.lib-plat { display: flex; flex-direction: column; gap: 1px; }
+.lib-plat-rangee { height: auto; min-height: 42px; padding-top: 4px; padding-bottom: 4px; }
+.lib-plat-ligne.selected > .lt-rangee .lib-tri-meta { color: var(--text-2); font-weight: 400; }
+
+/* grille plate : les cartes suivent le tri, sans titres de section ni de matière */
+.lib-tri-grille { padding-top: 4px; }
+.lv-carte-lieu .lib-tri-meta { font-size: 12px; }
+
+/* tablette en portrait : les actions passent sous le titre, la recherche prend la place libre */
+@media (max-width: 1279px) {
+  .lib-screen > .topbar { flex-wrap: wrap; row-gap: 12px; }
+  .lib-screen > .topbar .topbar-actions { flex: 1 1 100%; flex-wrap: wrap; margin-left: 0; }
+  .lib-recherche.search { width: auto; flex: 1 1 180px; }
+}
+@media (pointer: coarse) {
+  .lib-recherche.search { height: 40px; }
+  .lib-tri-bouton { min-height: 40px; }
+  .lib-plat-rangee { min-height: 48px; }
+}

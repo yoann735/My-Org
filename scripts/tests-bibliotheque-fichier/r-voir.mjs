@@ -1,0 +1,14 @@
+import { banc } from './commun.mjs';
+const b = await banc(1440, 900);
+await b.biblio({ recharger: true });
+console.log('arbre', await b.fiches());
+await b.capture('tb-arbre');
+await b.trier('Dernière modification');
+console.log('modif', await b.fiches()); console.log(await b.metas());
+await b.capture('tb-modif');
+await b.trier('Date d’ajout');
+console.log('ajout', await b.fiches()); console.log(await b.metas());
+await b.capture('tb-ajout');
+await b.trier('Ordre manuel');
+console.log('erreurs', b.erreurs);
+process.exit(0);
