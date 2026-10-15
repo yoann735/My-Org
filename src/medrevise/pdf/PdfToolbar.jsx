@@ -58,6 +58,7 @@ export function PdfToolbar({
   imageDansTexte = false, // document (10/10) : l'image s'insère dans le texte, jamais flottante
   avantPanneau = null, // bascule de disposition PDF / Les deux / Tableau (04/10)
   boutonDessins = null, // menu des dessins reçus du téléphone (02/10 soir)
+  basculeDocument = null, // segment « Original · Fiche » de la fiche jumelle (15/10) — absent sans fiche
   boutonTranscrire = null, // transcription en direct du cours (05/10)
   // TABLETTE (07/10, refaite l'après-midi — docs/compte-rendu-position-document-tablette.md) :
   // TOUS les outils visibles en permanence, rien dans un menu ; la barre passe sur deux
@@ -173,6 +174,7 @@ export function PdfToolbar({
     return (
       <>
         <div ref={barreRef} className="pdfr-toolbar pdfr-barre tab-barre">
+          {basculeDocument && <div className="tab-zone">{basculeDocument}</div>}
           {!sansPages && (
             <div className="tab-zone">
               <button type="button" className="tab-bt" disabled={pageCourante <= 1} onClick={() => onAllerPage(pageCourante - 1)} title="Page précédente" aria-label="Page précédente"><Icon name="chevU" size={16} /></button>
@@ -259,6 +261,7 @@ export function PdfToolbar({
         <div className="ptb-zone">
           <button className="btn ghost sm" onClick={onClose} title="Revenir à la liste"><Icon name="chevL" size={14} /> Retour</button>
           {statut}
+          {basculeDocument && (<><span className="ptb-sep" />{basculeDocument}</>)}
           {!sansPages && (<>
           <span className="ptb-sep" />
           <div className="ptb-pages" title="Page affichée">

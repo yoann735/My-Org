@@ -85,6 +85,13 @@ const S = {
   // ni compteur, ni date, ni historique. Aucun champ de planification n'y est lu ni écrit
   // (apprentissageLibre/liste.js).
   learning_set: store('learning_set'),
+  // FICHE JUMELLE (15/10, docs/compte-rendu-fiche-jumelle.md) — type ADDITIONNEL, synchronisé :
+  // UN enregistrement par cours (id 'cp:' + courseId) { courseId, fileId, pageMap, updatedAt… }
+  // — le PDF « fiche » rattaché à côté du PDF original. Le fichier voyage par le canal des
+  // blobs (champ `fileId`, couvert d'office par l'audit des blobs). Ses annotations vivent dans
+  // `highlights`/`annotations` avec `ficheId = <courseId>::fiche:<version>` (clé d'espace de
+  // noms, comme les documents de notes) : rien d'existant n'est réécrit.
+  companion_pdf: store('companion_pdf'),
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
@@ -94,7 +101,7 @@ const S = {
 // `sessionsLog` est syncable pour la même raison que `questions`/`stats` : la
 // tendance affichée en fin de série doit refléter l'activité desktop ET mobile,
 // pas seulement cet appareil.
-const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau', 'liaison', 'dessins', 'reading_position', 'notes_doc', 'learning_set'];
+const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau', 'liaison', 'dessins', 'reading_position', 'notes_doc', 'learning_set', 'companion_pdf'];
 
 export function genId(prefix = 'x') {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -733,6 +740,15 @@ export async function wipeAll() {
    ============================================================ */
 export async function purgeFiche(ficheId) {
   const [questions, highlights, annotations, tableau, dessins] = await Promise.all([getAll('questions'), getAll('highlights'), getAll('annotations'), getAll('tableau'), getAll('dessins')]);
+  // (15/10) la fiche jumelle du cours et ses annotations (espaces de noms '<ficheId>::fiche:<v>')
+  const deLaJumelle = (id) => typeof id === 'string' && id.startsWith(ficheId + '::fiche');
+  const nsJumelle = [...new Set([...(highlights || []), ...(annotations || [])].map((a) => a.ficheId).filter(deLaJumelle))];
+  await Promise.all([
+    ...(highlights || []).filter((h) => deLaJumelle(h.ficheId)).map((h) => remove('highlights', h.id)),
+    ...(annotations || []).filter((a) => deLaJumelle(a.ficheId)).map((a) => remove('annotations', a.id)),
+    ...nsJumelle.map((ns) => get('rp:' + ns, S.reading_position).then((r) => (r ? remove('reading_position', 'rp:' + ns) : null))),
+    get('cp:' + ficheId, S.companion_pdf).then((r) => (r ? remove('companion_pdf', 'cp:' + ficheId) : null)),
+  ]);
   await Promise.all([
     ...(tableau || []).filter((t) => t.ficheId === ficheId).map((t) => remove('tableau', t.id)),
     ...(dessins || []).filter((d) => d.ficheId === ficheId).map((d) => remove('dessins', d.id)), // le blob reste (règle des blobs)

@@ -18,6 +18,8 @@ import { ficheImages, totalCoches } from '../lib/anatSchema.js';
 import { docKind, DOC_META, deleteTranscript, createDocumentNotes } from '../documents/lib/documents.js';
 import { FenetreCreation } from '../components/FenetreCreation.jsx';
 import { PdfReader } from '../pdf/PdfReader.jsx';
+import { useCoursAvecJumelle } from '../lib/ficheJumelle.js';
+import '../../styles/fiche-jumelle.css';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { ChampRenommer } from '../components/ChampRenommer.jsx';
 import { TranscriptEditor } from '../documents/TranscriptEditor.jsx';
@@ -33,6 +35,9 @@ const schemaCoches = (f) => totalCoches(f);
 
 export function Bibliotheque({ ctx }) {
   const { db } = ctx;
+  // (15/10) petite marque « fiche » sur les cours qui ont une fiche jumelle (lib/ficheJumelle.js)
+  const avecJumelle = useCoursAvecJumelle();
+  const marqueJumelle = (id) => (avecJumelle.has(id) ? <span className="lib-marque-fiche" title="Ce cours a une fiche jumelle (PDF résumé) : Original ⇄ Fiche dans le lecteur">fiche</span> : null);
   const [openFiche, setOpenFiche] = useState({});
   const [renaming, setRenaming] = useState(null); // { type, id }
   // C — panneau de droite : quelle fiche-document est ouverte (jamais de
@@ -311,6 +316,7 @@ export function Bibliotheque({ ctx }) {
                 ? <><span className="lt-pli" /><Icon name={f.priseDeNotes ? 'edit' : DOC_META[kind].icon} size={14} className="lt-ic" /></>
                 : <><Icon name={fo ? 'chevD' : 'chevR'} size={13} className="lt-pli" /><Icon name="cards" size={14} className="lt-ic" /></>}
               <span className="lt-nom">{f.titre}</span>
+              {marqueJumelle(f.id)}
               {etq && <span className="lib-fiche-etq" style={{ background: etq.color }} title={`Étiquette : ${etq.label}`} onClick={(e) => openEtqMenu(e, f.id)} />}
               {paused && <span className="lt-etat" title="Rappels J en pause pour cette fiche"><Icon name="bellOff" size={12} /></span>}
               {nCartes > 0 && <span className="lt-compte" title={`${nCartes} carte${nCartes > 1 ? 's' : ''}`}>{nCartes}</span>}
@@ -461,7 +467,7 @@ export function Bibliotheque({ ctx }) {
                       title={l.kind ? 'Ouvrir le document' : 'Fiche sans document — ▷ pour réviser'}>
                       <div className="lv-carte-bandeau"><Icon name={iconeFiche(l)} size={22} /></div>
                       <div className="lv-carte-corps">
-                        <div className="lv-carte-titre">{isRen('fiche', l.f.id) ? champRenommer('srcmgr-input lv-renommer') : l.f.titre}</div>
+                        <div className="lv-carte-titre">{isRen('fiche', l.f.id) ? champRenommer('srcmgr-input lv-renommer') : l.f.titre}{marqueJumelle(l.f.id)}</div>
                         <div className="lv-carte-lieu">{l.dossier || 'Racine de la matière'}</div>
                         <div className="lv-carte-pied">
                           <span>{libelleType(l)}{l.nCartes ? ` · ${l.nCartes} carte${l.nCartes > 1 ? 's' : ''}` : ''}</span>
@@ -508,7 +514,7 @@ export function Bibliotheque({ ctx }) {
           <div key={l.f.id} role="row" tabIndex={0} className={'lv-ligne' + (l.kind ? '' : ' sans-doc')}
             onClick={() => { if (l.kind) openDoc(l.f); }} onKeyDown={(e) => { if (e.key === 'Enter' && l.kind) openDoc(l.f); }}
             title={l.kind ? 'Ouvrir le document' : 'Fiche sans document — ▷ pour réviser'}>
-            <span className="lv-col lv-col-titre"><Icon name={iconeFiche(l)} size={14} className="lt-ic" /> {isRen('fiche', l.f.id) ? champRenommer('srcmgr-input lv-renommer') : <span className="lv-texte">{l.f.titre}</span>}</span>
+            <span className="lv-col lv-col-titre"><Icon name={iconeFiche(l)} size={14} className="lt-ic" /> {isRen('fiche', l.f.id) ? champRenommer('srcmgr-input lv-renommer') : <span className="lv-texte">{l.f.titre}</span>}{marqueJumelle(l.f.id)}</span>
             <span className="lv-col lv-col-section"><span className="lt-point" style={{ background: l.mm.tint }} /> <span className="lv-texte">{l.src.nom} › {l.mm.label}</span></span>
             <span className="lv-col lv-col-dossier"><span className="lv-texte">{l.dossier || '—'}</span></span>
             <span className="lv-col lv-col-cartes">{l.nCartes || '—'}</span>

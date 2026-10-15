@@ -97,6 +97,7 @@ import { useTablette, abonnerStylet, styletActif, lireFractionVolet, ecrireFract
 import '../../styles/tablette.css';
 import '../../styles/notes-doc.css';
 import '../../styles/pdfreader-v2.css';
+import '../../styles/fiche-jumelle.css';
 import { PanneauMiseEnPage, ReglesMarges } from './MiseEnPage.jsx';
 import { margesDe, margesUnites } from '../documents/lib/marges.js';
 import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
@@ -112,6 +113,9 @@ import { PanneauExportIA } from './ExportIA.jsx';
 import { preparerSourceIA } from './exportIA.js';
 import { refsCourtes, construireExportIA, estBoiteTexte, aDeuxVersions, versionAffichee, boitesOrdonnees, construireExport, lireImport, planImport, resumeImport, basculerVersion, avecContenuEdite } from '../lib/textesAnnotations.js';
 import { Tableau } from '../tableau/Tableau.jsx';
+import { useFicheJumelle, lireVue, ecrireVue, lireCoteACote, ecrireCoteACote, pageCorrespondante, importerJumelle, remplacerJumelle } from '../lib/ficheJumelle.js';
+import { VueJumelle } from './VueJumelle.jsx';
+import { EditeurCorrespondance, ListeNonReplacees } from './Correspondance.jsx';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
 const dansLeTableau = (el) => !!(el && el.closest && el.closest('.tb'));
 
@@ -155,6 +159,17 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      ICI, comme un PDF — des pages A4 blanches (pages ajoutées, kind 'page') sur lesquelles on
      écrit (pdf/PageTexte.jsx) et on annote avec tous les outils. */
   const modeDoc = !!(fiche && fiche.docNotes && !fiche.pdfId && !fiche.htmlId);
+  /* FICHE JUMELLE (15/10, lib/ficheJumelle.js, docs/compte-rendu-fiche-jumelle.md) : un second PDF
+     (la « fiche » résumée) rattaché au cours. On bascule Original ⇄ Fiche dans CE lecteur : le PDF
+     affiché, le calque d'annotations (`nsAnnot`) et la position de lecture suivent le document ;
+     outil, zoom, panneau, notions, flashcards et transcript (rattachés au COURS) restent. Sans
+     fiche importée, `surFiche` est toujours faux : rien ne change. */
+  const jumelle = useFicheJumelle(ficheReelle && !modeDoc && fiche.pdfId ? ficheReelle.id : null);
+  const [vueJumelle, setVueJumelle] = useState(() => lireVue(idFiche));
+  useEffect(() => { setVueJumelle(lireVue(idFiche)); }, [idFiche]);
+  const surFiche = !!(jumelle && vueJumelle === 'fiche');
+  const nsAnnot = surFiche ? jumelle.nsAnnot : ficheId; // espace de noms des annotations affichées
+  const pdfIdActif = surFiche ? jumelle.fileId : (fiche && fiche.pdfId);
   /* LIAISON AVEC LE TÉLÉPHONE (02/10, docs/mecanique-dessin-mobile.md) : l'ordi publie
      la fiche qu'il ouvre — le téléphone la propose par défaut pour y envoyer un dessin.
      Une écriture à l'ouverture, une à la fermeture (rien à chaque page). */
@@ -319,6 +334,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setDispositionBrut(d);
     try { localStorage.setItem(cleDispo, d); } catch (e) { /* ignore */ }
     if (d !== 'pdf') setPanelOpen(false); // la place va au tableau ; le panneau se rouvre d'un clic
+    if (d !== 'pdf' && jumelle) { setCoteACoteVoulu(false); ecrireCoteACote(false); } // (15/10) le tableau prend la place de la fiche jumelle
   };
   const tableauRef = useRef(null);
   const [copiedCount, setCopiedCount] = useState(0); // >0 → confirmation « N notions copiées »
@@ -335,15 +351,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // l'appareil d'origine le renvoie tout seul) — on retente donc à chaque synchro
   // (`db` remplacé par reload()) et sur « Réessayer », sans rouvrir le cours.
   const [pdfRetry, setPdfRetry] = useState(0);
+  const cacheDocs = useRef(new Map()); // pdfId → { doc, sizes } (original et fiche jumelle)
   const [pdfManquant, setPdfManquant] = useState(false);
   useEffect(() => { if (pdfManquant) setPdfRetry((t) => t + 1); }, [db]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     let cancelled = false;
     setPdfDoc(null); setLoadError(null); setPdfManquant(false); setPageSizes([]); textMapCache.current = {};
-    if (!fiche || !fiche.pdfId) return;
+    if (!fiche || !pdfIdActif) return;
+    // (15/10) document déjà ouvert dans cette session (bascule Original ⇄ Fiche) : aucun rechargement
+    const enCache = cacheDocs.current.get(pdfIdActif);
+    if (enCache) { setPdfDoc(enCache.doc); setNumPages(enCache.doc.numPages); setPageSizes(enCache.sizes); return; }
     (async () => {
       try {
-        const blob = await getBlob(fiche.pdfId);
+        const blob = await getBlob(pdfIdActif);
         if (!blob) {
           if (!cancelled) {
             setPdfManquant(true);
@@ -363,29 +383,34 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           sizes.push({ width: vp.width, height: vp.height });
         }
         if (cancelled) return;
+        cacheDocs.current.set(pdfIdActif, { doc, sizes });
         setPdfDoc(doc); setNumPages(doc.numPages); setPageSizes(sizes);
       } catch (e) {
         if (!cancelled) setLoadError('Impossible de lire ce PDF.');
       }
     })();
     return () => { cancelled = true; };
-  }, [fiche && fiche.pdfId, pdfRetry]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pdfIdActif, pdfRetry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reloadHighlights = async () => {
     const all = await getAll('highlights');
     // 07/10 : les notions de l'onglet « Notes » (source 'doc') n'ont ni page ni rectangles —
     // jamais mêlées aux surlignages du PDF, listées à part dans le mode Notions
-    setHighlights(all.filter((h) => h.ficheId === ficheId && !estNotionDoc(h) && !h.convertieEnFlux).sort(compareHighlights));
+    setHighlights(all.filter((h) => h.ficheId === nsAnnot && !estNotionDoc(h) && !h.convertieEnFlux).sort(compareHighlights));
     setNotionsNotes(all.filter((h) => h.ficheId === ficheId && estNotionDoc(h)));
+    // fiche jumelle : les notions de L'AUTRE document restent listées dans le panneau (rattachées au cours)
+    const autreNs = jumelle ? (surFiche ? ficheId : jumelle.nsAnnot) : null;
+    setNotionsAutreDoc(autreNs ? all.filter((h) => h.ficheId === autreNs && !estNotionDoc(h) && !h.convertieEnFlux).sort(compareHighlights) : []);
   };
   const [notionsNotes, setNotionsNotes] = useState([]);
+  const [notionsAutreDoc, setNotionsAutreDoc] = useState([]);
   const notesRef = useRef(null);
   const [flashcardNotes, setFlashcardNotes] = useState(null); // { texte, n } — flashcard depuis une sélection des notes
   const [editsCharges, setEditsCharges] = useState(false);
   const reloadEdits = async () => {
     const all = await getAll('annotations');
     // (10/10) image flottante d'un document déjà convertie en bloc du flux : plus affichée
-    setEdits(all.filter((a) => a.ficheId === ficheId && !a.convertieEnFlux));
+    setEdits(all.filter((a) => a.ficheId === nsAnnot && !a.convertieEnFlux));
     setEditsCharges(true);
   };
 
@@ -420,7 +445,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const restaurerPageRef = useRef(null);
   const hist = useJournalAnnuler(histAnnot, (id, json) => (restaurerPageRef.current ? restaurerPageRef.current(id, json) : undefined));
 
-  useEffect(() => { setEditsCharges(false); reloadHighlights(); reloadEdits(); setActiveEditId(null); hist.vider(); }, [ficheId]);
+  // (15/10) changer de document (fiche jumelle) = un autre calque : l'historique d'annuler repart à zéro
+  useEffect(() => { setEditsCharges(false); reloadHighlights(); reloadEdits(); setActiveEditId(null); hist.vider(); }, [nsAnnot, jumelle && jumelle.nsAnnot]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* RACCOURCIS ANNULER / RÉTABLIR — un seul gestionnaire, en CAPTURE (avant ProseMirror) :
      ⌘Z annule ; ⌘⇧Z et ⌘Y rétablissent. Routage (lib/journalAnnuler.js#raccourciAnnuler) :
@@ -569,7 +595,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!modeDoc || !docCharge || !editsCharges || pagesAjoutees.length || creationPage.current) return;
     creationPage.current = true;
     (async () => {
-      const rec = newPageAjoutee({ ficheId, apres: 0, rang: 0, width: PAGE_A4.width, height: PAGE_A4.height });
+      const rec = newPageAjoutee({ ficheId: nsAnnot, apres: 0, rang: 0, width: PAGE_A4.width, height: PAGE_A4.height });
       await put('annotations', rec);
       appliquerLocal([{ store: 'annotations', apres: rec }]);
       creationPage.current = false;
@@ -630,7 +656,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       if (recs.length < n) {
         let rang = recs.length ? recs[recs.length - 1].rang : 0;
         const nouveaux = [];
-        for (let i = recs.length; i < n; i++) { rang += 1; nouveaux.push(newPageAjoutee({ ficheId, apres: 0, rang, width: PAGE_A4.width, height: PAGE_A4.height })); }
+        for (let i = recs.length; i < n; i++) { rang += 1; nouveaux.push(newPageAjoutee({ ficheId: nsAnnot, apres: 0, rang, width: PAGE_A4.width, height: PAGE_A4.height })); }
         appliquerLocal(nouveaux.map((rec) => ({ store: 'annotations', apres: rec })));
         for (const rec of nouveaux) await put('annotations', rec);
       }
@@ -646,7 +672,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setPose(true);
     const t = setTimeout(() => setPose(false), 260);
     return () => clearTimeout(t);
-  }, [pret, ficheId]);
+  }, [pret, ficheId, pdfIdActif]); // (15/10) + bascule Original ⇄ Fiche : même fondu court
   // index (0…) dans les pages affichées d'une clé de page (numéro du PDF ou id)
   const indexDePage = (cle) => pageSizes.findIndex((p) => p.cle === cle);
 
@@ -699,7 +725,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const computeVisibleRangeRef = useRef(computeVisibleRange); computeVisibleRangeRef.current = computeVisibleRange;
   const onScroll = () => {
     if (scrollRaf.current) return;
-    scrollRaf.current = requestAnimationFrame(() => { scrollRaf.current = null; computeVisibleRange(); });
+    scrollRaf.current = requestAnimationFrame(() => { scrollRaf.current = null; computeVisibleRange(); majMiroirRef.current(); });
   };
 
   // page affichée = celle qui passe sous la ligne de lecture (voir computeVisibleRange),
@@ -710,7 +736,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      Rien n'est visible par défaut : elle sert la sélection, le surlignage, la recherche
      et les mots-clés comme une vraie couche texte. */
   const szCourant = pageSizes[pageCourante - 1];
-  const coucheOcr = useCoucheOcr(fiche && fiche.pdfId, {
+  const coucheOcr = useCoucheOcr(pdfIdActif, {
     courseId: ficheId, titre: titreFiche, pret: !!pdfDoc,
     page: szCourant && typeof szCourant.cle === 'number' ? szCourant.cle : pageCourante,
   });
@@ -759,6 +785,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      dessinée. Ensuite, la position est enregistrée à chaque arrêt du défilement (500 ms), au
      changement de page, de zoom ou de disposition, quand l'onglet est caché et à la fermeture. */
   const [posLue, setPosLue] = useState(false);
+  const cibleBascule = useRef(null); // { cle, fraction } : page visée par une bascule Original ⇄ Fiche
   const posRef = useRef(null); // position mémorisée (ou null)
   const [restaure, setRestaure] = useState(false); // la zone de lecture peut s'afficher
   const restaureRef = useRef(false); restaureRef.current = restaure;
@@ -770,16 +797,24 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   useEffect(() => {
     let vivant = true;
     setPosLue(false); setRestaure(false); posRef.current = null; aRestaurer.current = null;
-    lirePosition(ficheId).then((p) => { if (vivant) { posRef.current = p; setPosLue(true); } });
+    lirePosition(nsAnnot).then((p) => { if (vivant) { posRef.current = p; setPosLue(true); } });
     return () => { vivant = false; };
-  }, [ficheId]);
+  }, [nsAnnot]);
   // décision : position valable (même PDF, même nombre de pages) → zoom et disposition d'abord
   useEffect(() => {
     if (restaure || !posLue || !pret || !pageSizes.length || aRestaurer.current) return;
+    // (15/10) bascule Original ⇄ Fiche : la page CORRESPONDANTE, même position dans la page, même zoom
+    const bascule = cibleBascule.current;
+    cibleBascule.current = null;
+    if (bascule && !modeDoc && pageSizes.some((sz) => sz.cle === bascule.cle)) {
+      aRestaurer.current = { ...bascule, index: pageSizes.findIndex((sz) => sz.cle === bascule.cle) };
+      setTourRestauration((n) => n + 1);
+      return;
+    }
     const p = posRef.current;
     // document : la page mémorisée existe encore ; PDF : même fichier, même nombre de pages
     const valable = modeDoc ? !!(p && p.kind === 'doc' && pageSizes.some((sz) => String(sz.cle) === String(p.cle)))
-      : !!(p && p.kind === 'pdf' && p.empreinte && p.empreinte === empreintePdf(fiche && fiche.pdfId, pdfDoc.numPages));
+      : !!(p && p.kind === 'pdf' && p.empreinte && p.empreinte === empreintePdf(pdfIdActif, pdfDoc.numPages));
     if (!valable) { setRestaure(true); return; } // rien, ou PDF changé : page 1, sans erreur
     aRestaurer.current = p;
     setTourRestauration((n) => n + 1);
@@ -820,7 +855,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   }, [layout, restaure, tourRestauration]); // eslint-disable-line react-hooks/exhaustive-deps
   // enregistrement
   const etatPosition = useRef({});
-  etatPosition.current = { layout, pageSizes, scale, disposition, pdfId: fiche && fiche.pdfId, nb: modeDoc ? pageSizes.length : pdfDoc && pdfDoc.numPages, modeDoc };
+  etatPosition.current = { layout, pageSizes, scale, disposition, pdfId: pdfIdActif, nb: modeDoc ? pageSizes.length : pdfDoc && pdfDoc.numPages, modeDoc, ns: nsAnnot };
   const sauverPosition = () => {
     if (!restaureRef.current || !ficheId) return;
     const el = scrollRef.current;
@@ -828,13 +863,128 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!el || !st.layout.offsets.length || !st.nb) return;
     const pos = positionDepuisDefilement(el.scrollTop, st.layout.offsets, st.pageSizes.map((sz) => sz.height * st.scale));
     if (!pos) return;
-    ecrirePosition(ficheId, {
+    ecrirePosition(st.ns || ficheId, { // (15/10) une position PAR DOCUMENT (original / fiche jumelle)
       kind: st.modeDoc ? 'doc' : 'pdf', cle: st.pageSizes[pos.index].cle, index: pos.index, fraction: +pos.fraction.toFixed(4),
       scale: +st.scale.toFixed(3), zoomManuel: !!zoomManuel.current, disposition: st.disposition,
       empreinte: st.modeDoc ? 'doc' : empreintePdf(st.pdfId, st.nb),
     });
   };
   const sauverRef = useRef(sauverPosition); sauverRef.current = sauverPosition;
+
+  /* ---- FICHE JUMELLE : BASCULE ORIGINAL ⇄ FICHE (15/10) ----
+     La page affichée est remplacée par sa correspondante (pageMap), à la même position relative
+     dans la page et au même zoom ; l'outil actif reste. La position du document quitté est
+     mémorisée (une par document). Une page sans équivalent mène à la plus proche qui en a un,
+     avec un avis. */
+  const [avisJumelle, setAvisJumelle] = useState(null);
+  useEffect(() => { if (!avisJumelle) return undefined; const t = setTimeout(() => setAvisJumelle(null), 3200); return () => clearTimeout(t); }, [avisJumelle]);
+  // page du PDF (numéro) et fraction sous la ligne de lecture du lecteur
+  const lirePagePdf = () => {
+    const el = scrollRef.current, st = etatPosition.current;
+    if (!el || !st.layout.offsets.length) return { page: 1, fraction: 0 };
+    const pos = positionDepuisDefilement(el.scrollTop, st.layout.offsets, st.pageSizes.map((sz) => sz.height * st.scale));
+    if (!pos) return { page: 1, fraction: 0 };
+    for (let i = pos.index; i >= 0; i--) if (typeof st.pageSizes[i].cle === 'number') return { page: st.pageSizes[i].cle, fraction: i === pos.index ? pos.fraction : 1 };
+    return { page: 1, fraction: 0 };
+  };
+  const basculerJumelle = (vers = null) => {
+    if (!jumelle || modeDoc) return;
+    const cible = vers || (surFiche ? 'original' : 'fiche');
+    if ((cible === 'fiche') === surFiche) return;
+    sauverRef.current(); // position du document qu'on quitte
+    const { page, fraction } = lirePagePdf();
+    const r = pageCorrespondante(jumelle.pageMap, page, surFiche);
+    cibleBascule.current = { kind: 'pdf', cle: r.page, fraction: r.exacte ? fraction : 0, scale, zoomManuel: zoomManuel.current };
+    if (!r.exacte) setAvisJumelle(r.raison === 'ajoutee' ? `Page ${page} : page ajoutée dans la fiche — page ${r.page} de l’original, la plus proche` : `Page ${page} : sans équivalent dans la fiche — page ${r.page} de la fiche, la plus proche`);
+    setVueJumelle(cible); ecrireVue(idFiche, cible);
+  };
+  const basculerRef = useRef(basculerJumelle); basculerRef.current = basculerJumelle;
+  // raccourcis : Tab (hors champ de saisie) ou ⌘⇧F / Ctrl+Maj+F
+  useEffect(() => {
+    if (!jumelle) return undefined;
+    const onKey = (e) => {
+      const tab = e.key === 'Tab' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+      const cmd = (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && (e.key === 'f' || e.key === 'F' || e.code === 'KeyF');
+      if (!tab && !cmd) return;
+      if (cibleEditable(e.target) || cibleEditable(document.activeElement) || dansLeTableau(e.target)) return;
+      if (tab && e.target && e.target.closest && e.target.closest('[role=dialog], .modal, .mf-menu, .sc-pop, .sc-fenetre, .day-pop')) return;
+      e.preventDefault(); e.stopPropagation();
+      basculerRef.current();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [!!jumelle]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* IMPORT / REMPLACEMENT de la fiche (menu Fichier) */
+  const entreeJumelle = useRef(null);
+  const [travailJumelle, setTravailJumelle] = useState(null); // { etat: 'encours' | 'fini' | 'erreur', remplacement, rec?, message? }
+  const [editeurCorresp, setEditeurCorresp] = useState(false);
+  const [listeNonReplacees, setListeNonReplacees] = useState(false);
+  const recevoirJumelle = async (fichier) => {
+    if (!fichier || !ficheReelle || !fiche.pdfId) return;
+    if (!/pdf$/i.test(fichier.type || '') && !/\.pdf$/i.test(fichier.name || '')) { setTravailJumelle({ etat: 'erreur', message: 'Ce fichier n’est pas un PDF.' }); return; }
+    const remplacement = !!jumelle;
+    setTravailJumelle({ etat: 'encours', remplacement });
+    try {
+      sauverRef.current();
+      const rec = remplacement
+        ? await remplacerJumelle({ rec: jumelle, fichier, pdfIdOrig: fiche.pdfId })
+        : await importerJumelle({ courseId: ficheReelle.id, fichier, pdfIdOrig: fiche.pdfId });
+      setTravailJumelle({ etat: 'fini', remplacement, rec });
+    } catch (e) {
+      setTravailJumelle({ etat: 'erreur', remplacement, message: (e && e.message) || 'PDF illisible' });
+    }
+  };
+  const resumeCorresp = (rec) => {
+    const pm = rec.pageMap;
+    return { appariees: pm.versOrig.filter((x) => x != null).length, ajoutees: pm.versOrig.filter((x) => x == null).length, sansEq: pm.versFiche.filter((x) => x == null).length,
+      fusions: pm.versFiche.filter((f, i) => f != null && pm.versFiche.indexOf(f) !== i).length };
+  };
+
+  /* « LES DEUX » : l'autre document à côté (VueJumelle), synchronisé page à page — ordinateur et
+     tablette en paysage seulement (sur un écran étroit : la bascule seule) */
+  const [largeEcran, setLargeEcran] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1000 && window.innerWidth > window.innerHeight);
+  useEffect(() => {
+    const maj = () => setLargeEcran(window.innerWidth >= 1000 && window.innerWidth > window.innerHeight);
+    window.addEventListener('resize', maj);
+    return () => window.removeEventListener('resize', maj);
+  }, []);
+  const [coteACoteVoulu, setCoteACoteVoulu] = useState(lireCoteACote);
+  const coteACote = !!(jumelle && coteACoteVoulu && largeEcran && !modeDoc && srcTab === 'pdf' && disposition === 'pdf');
+  const basculerCoteACote = () => {
+    const v = !coteACoteVoulu;
+    setCoteACoteVoulu(v); ecrireCoteACote(v);
+    if (v && disposition !== 'pdf') setDisposition('pdf'); // la place à côté du PDF est prise par l'autre document
+  };
+  // page de l'autre document à montrer : suit la lecture (page correspondante, même fraction)
+  const [cibleMiroir, setCibleMiroir] = useState(null);
+  const derniereCible = useRef('');
+  const majMiroir = () => {
+    if (!coteACoteRef.current || !jumelle || !restaureRef.current) return;
+    if (performance.now() - miroirMene.current < 400) return; // c'est le miroir qui mène
+    const { page, fraction } = lirePagePdf();
+    const r = pageCorrespondante(jumelle.pageMap, page, surFiche);
+    const f = r.exacte ? +fraction.toFixed(3) : 0;
+    const cle = r.page + ':' + f;
+    if (cle === derniereCible.current) return;
+    derniereCible.current = cle;
+    setCibleMiroir((c) => ({ page: r.page, fraction: f, n: (c ? c.n : 0) + 1 }));
+  };
+  const coteACoteRef = useRef(coteACote); coteACoteRef.current = coteACote;
+  const majMiroirRef = useRef(majMiroir); majMiroirRef.current = majMiroir;
+  const miroirMene = useRef(0);
+  useEffect(() => { derniereCible.current = ''; majMiroirRef.current(); }, [coteACote, restaure, surFiche, jumelle && jumelle.pageMap]); // eslint-disable-line react-hooks/exhaustive-deps
+  // le miroir a défilé à la main : le lecteur suit (page correspondante dans l'autre sens)
+  const suivreMiroir = (pageAutre, fraction) => {
+    if (!jumelle) return;
+    const r = pageCorrespondante(jumelle.pageMap, pageAutre, !surFiche);
+    const idx = pageSizes.findIndex((sz) => sz.cle === r.page);
+    const el = scrollRef.current;
+    if (idx < 0 || !el) return;
+    miroirMene.current = performance.now();
+    el.scrollTop = Math.max(0, layout.offsets[idx] + (r.exacte ? fraction : 0) * pageSizes[idx].height * scale - 8);
+    computeVisibleRange();
+  };
   const minuteurPosition = useRef(null);
   const planifierPosition = () => { clearTimeout(minuteurPosition.current); minuteurPosition.current = setTimeout(() => sauverRef.current(), 500); };
   useEffect(() => {
@@ -1102,7 +1252,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const cmds = [
         ...[...plan.supprimer, ...plan.perdus].map(parId).filter(Boolean).map((h) => cmdSupprimer('highlights', h, 'Surlignage retiré')),
         ...plan.garder.map((g) => { const h = parId(g.id); return h && cmdModifier('highlights', h, { ...h, anchor: g.anchor, texte: g.texte, rects: g.rects }, 'Surlignage ajusté'); }).filter(Boolean),
-        ...plan.creer.map((c) => cmdCreer('highlights', newHighlight({ ficheId, page: p.page, texte: c.texte, couleur: c.couleur, rects: c.rects, anchor: c.anchor }), 'Surlignage')),
+        ...plan.creer.map((c) => cmdCreer('highlights', newHighlight({ ficheId: nsAnnot, page: p.page, texte: c.texte, couleur: c.couleur, rects: c.rects, anchor: c.anchor }), 'Surlignage')),
         ...anciens.map((h) => (retrait ? cmdSupprimer('highlights', h, 'Surlignage retiré') : h.couleur !== couleur ? cmdModifier('highlights', h, { ...h, couleur }, 'Couleur du surlignage') : null)).filter(Boolean),
       ];
       if (cmds.length) await hist.appliquer(cmdGroupe(plan.retrait ? 'Surlignage retiré' : 'Surlignage', cmds));
@@ -1117,7 +1267,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const cmds = [
       ...touches.filter((h) => h.couleur !== couleur).map((h) => cmdModifier('highlights', h, { ...h, couleur }, 'Couleur du surlignage')),
       ...morceaux.map((m) => cmdCreer('highlights',
-        newHighlight({ ficheId, page: p.page, texte: m.texte, couleur, rects: m.rects, anchor: m.anchor }), 'Surlignage')),
+        newHighlight({ ficheId: nsAnnot, page: p.page, texte: m.texte, couleur, rects: m.rects, anchor: m.anchor }), 'Surlignage')),
     ];
     if (!cmds.length) return;
     await hist.appliquer(cmdGroupe('Surlignage', cmds));
@@ -1138,7 +1288,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const cmds = [
         ...plan.supprimer.map(parId).filter(Boolean).map((h) => cmdSupprimer('highlights', h, 'Surlignage retiré')),
         ...plan.garder.map((g) => { const h = parId(g.id); return h && cmdModifier('highlights', h, { ...h, mots: g.mots, texte: p.texteDe(g.mots), rects: p.rectsDe(g.mots) }, 'Surlignage ajusté'); }).filter(Boolean),
-        ...plan.creer.map((c) => cmdCreer('highlights', { ...newHighlight({ ficheId, page: p.page, texte: p.texteDe(c.mots), couleur: c.couleur, rects: p.rectsDe(c.mots) }), imageId: p.img.id, mots: c.mots }, 'Surlignage')),
+        ...plan.creer.map((c) => cmdCreer('highlights', { ...newHighlight({ ficheId: nsAnnot, page: p.page, texte: p.texteDe(c.mots), couleur: c.couleur, rects: p.rectsDe(c.mots) }), imageId: p.img.id, mots: c.mots }, 'Surlignage')),
       ];
       if (cmds.length) await hist.appliquer(cmdGroupe(plan.retrait ? 'Surlignage retiré' : 'Surlignage', cmds));
       return;
@@ -1155,7 +1305,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const cmds = [
       ...touches.filter((h) => h.couleur !== couleur).map((h) => cmdModifier('highlights', h, { ...h, couleur }, 'Couleur du surlignage')),
       ...(libres.length ? [cmdCreer('highlights', {
-        ...newHighlight({ ficheId, page: p.page, texte: idx.length === p.mots.length ? p.texte : libres.map((i) => p.texte.split(' ')[p.mots.indexOf(i)]).join(' '), couleur, rects: idx.map((k) => p.rects[k]).filter(Boolean) }),
+        ...newHighlight({ ficheId: nsAnnot, page: p.page, texte: idx.length === p.mots.length ? p.texte : libres.map((i) => p.texte.split(' ')[p.mots.indexOf(i)]).join(' '), couleur, rects: idx.map((k) => p.rects[k]).filter(Boolean) }),
         imageId: p.img.id, mots: libres,
       }, 'Surlignage')] : []),
     ];
@@ -1382,6 +1532,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       !!pending && { label: 'Remplacer la sélection', icon: 'edit', onClick: () => startEditFromSelection() },
       !!fiche.htmlId && { label: 'Voir la fiche HTML', icon: 'fileHtml', onClick: () => setSrcTab('html') },
     ] },
+    canAddItem && !!(fiche && fiche.pdfId) && { titre: 'Fiche jumelle', items: [
+      !jumelle && { label: 'Importer la fiche jumelle…', icon: 'upload', aide: 'Ton PDF résumé, à côté du cours : bascule page à page', onClick: () => entreeJumelle.current && entreeJumelle.current.click() },
+      jumelle && { label: 'Correspondance des pages…', icon: 'layers', onClick: () => setEditeurCorresp(true),
+        aide: (() => { const r = resumeCorresp(jumelle); return `${r.appariees} associées · ${r.ajoutees} ajoutée${r.ajoutees > 1 ? 's' : ''} dans la fiche${jumelle.pageMap.manuel ? ' · corrigée' : ''}`; })() },
+      jumelle && { label: 'Remplacer la fiche (nouvelle version)…', icon: 'refresh', aide: 'Les annotations de la fiche suivent leur page', onClick: () => entreeJumelle.current && entreeJumelle.current.click() },
+      jumelle && (jumelle.nonReplacees || []).length > 0 && { label: `Annotations non replacées (${jumelle.nonReplacees.length})`, icon: 'search', onClick: () => setListeNonReplacees(true) },
+    ] },
     !!(fiche && fiche.pdfId) && { items: [
       { label: libelleOcr(), icon: 'search', onClick: () => setDetailOcr(true) },
       { label: ocrDebug ? 'Masquer la couche OCR' : 'Afficher la couche OCR', icon: 'layers', onClick: () => setOcrDebug((v) => !v) },
@@ -1398,7 +1555,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   ];
   /* état de la reconnaissance de texte, en une ligne (menu Fichier) */
   function libelleOcr() {
-    const enCours = etatOcr.courant && fiche && etatOcr.courant.pdfId === fiche.pdfId;
+    const enCours = etatOcr.courant && fiche && etatOcr.courant.pdfId === pdfIdActif;
     if (!coucheOcr) return enCours ? 'Reconnaissance de texte : en cours…' : 'Reconnaissance de texte : non lancée';
     const st = statsCouche(coucheOcr);
     if (coucheOcr.status !== 'complete') return `Reconnaissance de texte : en cours ${st.faites}/${coucheOcr.pageCount} pages`;
@@ -1622,17 +1779,17 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      Avant : surlignages seulement, et l'entrée ne faisait rien sans surlignage. */
   const [exportErreur, setExportErreur] = useState(null);
   const exportAnnotated = async () => {
-    if (!fiche || !fiche.pdfId || exporting) return;
+    if (!fiche || !pdfIdActif || exporting) return;
     setExporting(true); setExportErreur(null);
     try {
       // le texte en cours de frappe dans une boîte n'est sauvegardé qu'après 400 ms :
       // on part de la version la plus fraîche pour ne rien laisser derrière
       const annots = edits.map((a) => (a.id === activeEditId && editLastJson.current ? { ...a, content: editLastJson.current } : a));
-      const { octets } = await exporterDepuisBlob(fiche.pdfId, highlights, annots);
+      const { octets } = await exporterDepuisBlob(pdfIdActif, highlights, annots);
       const outBlob = new Blob([octets], { type: 'application/pdf' });
       const url = URL.createObjectURL(outBlob);
       const a = document.createElement('a');
-      a.href = url; a.download = `${(fiche.titre || 'cours').replace(/[\\/:*?"<>|]/g, '')}-annote.pdf`;
+      a.href = url; a.download = `${(fiche.titre || 'cours').replace(/[\\/:*?"<>|]/g, '')}${surFiche ? '-fiche' : ''}-annote.pdf`;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
     } catch (e) {
@@ -1658,7 +1815,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const existing = edits.find((a) => a.page === pending.page && Math.abs(a.x - x0) < 0.01 && Math.abs(a.y - y0) < 0.01);
     if (existing) { setActiveEditId(existing.id); setPending(null); return; }
     const rec = newTextEdit({
-      ficheId, page: pending.page, x: x0, y: y0, width: x1 - x0, height: y1 - y0,
+      ficheId: nsAnnot, page: pending.page, x: x0, y: y0, width: x1 - x0, height: y1 - y0,
       originalText: pending.texte, fontSize: pending.fontSizeRel || null, fontFamily: pending.fontFamily || null,
     });
     await hist.appliquer(cmdCreer('annotations', rec, 'Bloc de texte'));
@@ -1745,7 +1902,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // dans une fonction async appelée depuis un écouteur pointerup — promesse rejetée,
     // rien à l'écran : l'outil « ne créait rien ». La couleur est celle de la barre
     // contextuelle, partagée par tous les outils colorés.
-    const rec = newNoteBox({ ficheId, page, x, y, width, height, couleur: couleurActive, fond: lireFondBoiteDefaut() });
+    const rec = newNoteBox({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurActive, fond: lireFondBoiteDefaut() });
     const cmd = cmdCreer('annotations', rec, 'Boîte de texte');
     hist.appliquer(cmd); // visible tout de suite (effet local), écrite ensuite
     videsFraiches.current.add(rec.id);
@@ -1817,7 +1974,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const creerTrait = async ({ page, points, mode = 'dessin' }) => {
     if (!points || points.length < 2) return;
     const surligneur = mode === 'surligneur';
-    const rec = newTrait({ ficheId, page, points, couleur: couleurCrayon, mode,
+    const rec = newTrait({ ficheId: nsAnnot, page, points, couleur: couleurCrayon, mode,
       epaisseur: (reglagesCrayon[mode] || REGLAGES_DEFAUT.dessin).taille,
       opacite: (reglagesCrayon[mode] || REGLAGES_DEFAUT.dessin).opacite,
       aimant: !surligneur && aimant });
@@ -1857,7 +2014,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     }
     // un document : toujours A4 ; un PDF : la taille de la page voisine
     const modele = modeDoc ? PAGE_A4 : (ref || pageSizes[0] || PAGE_A4);
-    return newPageAjoutee({ ficheId, apres, rang, width: modele.width, height: modele.height });
+    return newPageAjoutee({ ficheId: nsAnnot, apres, rang, width: modele.width, height: modele.height });
   };
   /* DOCUMENT : les pages sont calculées — « insérer une page » insère dans le FLUX une page
      blanche (saut de page, paragraphe vide, saut de page) avant le premier bloc de la page
@@ -2132,7 +2289,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      pose une boîte reliée par une flèche (formeId côté boîte, comme surlignageId). */
   const [formeActiveId, setFormeActiveId] = useState(null);
   const creerForme = ({ page, x, y, width, height, forme, fx, fy }) => {
-    const rec = newForme({ ficheId, page, x, y, width, height, couleur: couleurForme, forme, fx, fy, remplie: formeRemplie && estFermee(forme) });
+    const rec = newForme({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurForme, forme, fx, fy, remplie: formeRemplie && estFermee(forme) });
     hist.appliquer(cmdCreer('annotations', rec, 'Forme'));
   };
   /* déplacer / redimensionner une forme : ses LÉGENDES suivent (02/10 soir) — l'épingle
@@ -2179,7 +2336,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const x = aDroite ? f.x + f.width + 0.03 : Math.max(0.01, f.x - 0.03 - W);
     const y = Math.max(0, Math.min(1 - Hb, f.y + f.height / 2 - Hb / 2));
     const ancre = ancreSurForme(f, { x });
-    const rec = { ...newNoteBox({ ficheId, page: f.page, x, y, width: W, height: Hb, couleur: couleurActive, fond: lireFondBoiteDefaut() }), ancre, fleche: true, formeId: f.id };
+    const rec = { ...newNoteBox({ ficheId: nsAnnot, page: f.page, x, y, width: W, height: Hb, couleur: couleurActive, fond: lireFondBoiteDefaut() }), ancre, fleche: true, formeId: f.id };
     hist.appliquer(cmdCreer('annotations', rec, 'Légende de la forme'));
     videsFraiches.current.add(rec.id);
     setFormeActiveId(null);
@@ -2227,7 +2384,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     }
     const blobId = blobIdExistant || await putBlob(file);
     const surPage = (imagesByPage[ps.cle] || []);
-    const rec = newImageCollee({ ficheId, page: ps.cle, blobId, nom: file.name || null,
+    const rec = newImageCollee({ ficheId: nsAnnot, page: ps.cle, blobId, nom: file.name || null,
       x: Math.max(0, Math.min(1 - wn, cx - wn / 2)), y: Math.max(0, Math.min(1 - hn, cy - hn / 2)), width: wn, height: hn,
       z: surPage.length ? Math.max(...surPage.map((i) => i.z || 0)) + 1 : 0 });
     /* DESSIN DU TÉLÉPHONE AVEC SES ZONES DE TEXTE (02/10 soir) : chaque zone devient un
@@ -2244,7 +2401,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const content = t.html
         ? htmlVersTiptap(t.html, { k: (t.k || 0) * rec.width * refPx, taille: px, gras: t.gras, italique: t.italique, souligne: t.souligne, align: t.align })
         : { type: 'doc', content: lignes.map((l) => ({ type: 'paragraph', content: l ? [{ type: 'text', text: l, marks: [{ type: 'textStyle', attrs: { fontSize: `${px}px` } }] }] : [] })) };
-      const enr = newTexteLibre({ ficheId, page: ps.cle, couleur: t.couleur || 'noir', content,
+      const enr = newTexteLibre({ ficheId: nsAnnot, page: ps.cle, couleur: t.couleur || 'noir', content,
         x: Math.max(0, Math.min(0.98, rec.x + t.x * rec.width - 4 / refPx)),
         y: Math.max(0, Math.min(0.98, rec.y + t.y * rec.height - 2 / (ps.height * 1.6))),
         // zone TRACÉE au téléphone : même largeur, retour à la ligne identique (largeur fixée)
@@ -2527,14 +2684,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const poserElement = async (quoi, { page, x, y }) => {
     if (quoi === 'texte') {
       const ligne = 0.022; // le clic vise le milieu de la première ligne
-      const rec = newTexteLibre({ ficheId, page, x: Math.min(x, 0.75), y: Math.max(0, Math.min(y - ligne / 2, 1 - ligne)),
+      const rec = newTexteLibre({ ficheId: nsAnnot, page, x: Math.min(x, 0.75), y: Math.max(0, Math.min(y - ligne / 2, 1 - ligne)),
         width: 0.25, height: ligne, couleur: couleurTexte });
       hist.appliquer(cmdCreer('annotations', rec, 'Texte libre'));
       videsFraiches.current.add(rec.id);
       setActiveEditId(rec.id);
       setOutil('main');
     } else if (quoi === 'question') {
-      await hist.appliquer(cmdCreer('annotations', newQuestionMarque({ ficheId, page, x, y }), 'Point d’interrogation'));
+      await hist.appliquer(cmdCreer('annotations', newQuestionMarque({ ficheId: nsAnnot, page, x, y }), 'Point d’interrogation'));
     }
   };
   const changerCouleurTexte = async (t, couleur) => {
@@ -2552,7 +2709,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [panneauExportIA, setPanneauExportIA] = useState(false);
   const annotationsFraiches = () => (editsRef.current || []).map((a) => (a.id === activeEditIdRef.current && editLastJson.current ? avecContenuEdite(a, editLastJson.current) : a));
   const ordrePagesIA = () => pageSizes.map((p) => p.cle);
-  const preparerIA = (portee) => preparerSourceIA({ titre: (fiche && (fiche.titre || fiche.nom)) || '', pdfId: fiche.pdfId, highlights,
+  const preparerIA = (portee) => preparerSourceIA({ titre: (fiche && (fiche.titre || fiche.nom)) || '', pdfId: pdfIdActif, highlights,
     annotations: annotationsFraiches(), ordrePages: ordrePagesIA(), portee, pageIndex: pageCourante - 1 });
   const jsonIA = (portee) => {
     const toutes = boitesOrdonnees(annotationsFraiches(), ordrePagesIA());
@@ -2701,6 +2858,17 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const notionsFiltrees = qNotions
     ? highlights.filter((h) => `${h.texte} ${h.note || ''} ${COLOR_TAG[h.couleur] || ''}`.toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(qNotions))
     : highlights;
+  const notionsAutreFiltrees = qNotions
+    ? notionsAutreDoc.filter((h) => `${h.texte} ${h.note || ''} ${COLOR_TAG[h.couleur] || ''}`.toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(qNotions))
+    : notionsAutreDoc;
+  // une notion de l'autre document : on bascule, puis on y va dès que ses surlignages sont chargés
+  const notionVisee = useRef(null);
+  const allerNotionAutreDoc = (h) => { notionVisee.current = h.id; basculerJumelle(); };
+  useEffect(() => {
+    if (!notionVisee.current || !restaure) return;
+    const h = highlights.find((x) => x.id === notionVisee.current);
+    if (h) { notionVisee.current = null; setTimeout(() => aller(h), 60); }
+  }, [highlights, restaure]); // eslint-disable-line react-hooks/exhaustive-deps
   const notesPanneau = useMemo(() => (ficheReelle ? (
     <NotesEditor ref={notesRef} ficheId={ficheReelle.id} compact placeholder="Tes notes sur ce cours… « # » titre, « - » liste, « [] » case"
       onChange={(contenu) => { synchroniserNotionsDoc(ficheReelle.id, contenu).then((ch) => { if (ch) reloadHighlights(); }); }}
@@ -2754,31 +2922,45 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           ))}
         </div>
       )}
-      {highlights.length > 0 && (
+      {highlights.length + notionsAutreDoc.length > 0 && (
         <label className="pm-recherche">
           <Icon name="search" size={13} />
-          <input value={filtreNotions} onChange={(e) => setFiltreNotions(e.target.value)} placeholder={`Chercher dans ${highlights.length} notion${highlights.length > 1 ? 's' : ''}`} />
+          <input value={filtreNotions} onChange={(e) => setFiltreNotions(e.target.value)} placeholder={`Chercher dans ${highlights.length + notionsAutreDoc.length} notion${highlights.length + notionsAutreDoc.length > 1 ? 's' : ''}`} />
           {filtreNotions && <button type="button" className="cd-ic" onClick={() => setFiltreNotions('')} title="Effacer"><Icon name="x" size={11} /></button>}
         </label>
       )}
-      {highlights.length === 0 && notionsNotes.length === 0 && (
+      {highlights.length === 0 && notionsNotes.length === 0 && notionsAutreDoc.length === 0 && (
         <div className="pm-vide">
           <Icon name="edit" size={22} />
           <div>Aucune notion surlignée.</div>
           <div className="hint">Prends le Surligneur et sélectionne du texte : il apparaît ici. Un clic sur une notion t’y ramène.</div>
         </div>
       )}
-      {highlights.length > 0 && notionsFiltrees.length === 0 && <div className="hint" style={{ padding: '10px 4px' }}>Aucune notion ne contient « {filtreNotions} ».</div>}
+      {highlights.length + notionsAutreDoc.length > 0 && notionsFiltrees.length + notionsAutreFiltrees.length === 0 && <div className="hint" style={{ padding: '10px 4px' }}>Aucune notion ne contient « {filtreNotions} ».</div>}
       {notionsFiltrees.map((h) => (
         <div className="hl-entry" key={h.id} role="button" tabIndex={0} onClick={() => aller(h)} onKeyDown={(e) => { if (e.key === 'Enter') aller(h); }}>
           <span className="hl-dot" style={{ background: couleurHex(h.couleur) }} />
           <div>
-            <div className="hl-entry-page">p.{h.page}{COLOR_TAG[h.couleur] && <span className="hl-entry-tag">{COLOR_TAG[h.couleur]}</span>}</div>
+            <div className="hl-entry-page">p.{h.page}{jumelle && <span className="hl-entry-doc">{surFiche ? 'fiche' : 'original'}</span>}{COLOR_TAG[h.couleur] && <span className="hl-entry-tag">{COLOR_TAG[h.couleur]}</span>}</div>
             <div className="hl-entry-txt">« {h.texte.length > 140 ? h.texte.slice(0, 140) + '…' : h.texte} »</div>
             {h.note && <div className="hl-entry-note"><Icon name="edit" size={11} /> {h.note}</div>}
           </div>
         </div>
       ))}
+      {/* (15/10) FICHE JUMELLE : les notions de l'autre document restent rattachées au cours —
+          listées ici ; un clic bascule vers ce document et y amène */}
+      {jumelle && notionsAutreFiltrees.length > 0 && (<>
+        <div className="hl-autre-doc">Dans {surFiche ? 'l’original' : 'la fiche'} · {notionsAutreFiltrees.length}</div>
+        {notionsAutreFiltrees.map((h) => (
+          <div className="hl-entry" key={h.id} role="button" tabIndex={0} onClick={() => allerNotionAutreDoc(h)} onKeyDown={(e) => { if (e.key === 'Enter') allerNotionAutreDoc(h); }}>
+            <span className="hl-dot" style={{ background: couleurHex(h.couleur) }} />
+            <div>
+              <div className="hl-entry-page">p.{h.page}<span className="hl-entry-doc">{surFiche ? 'original' : 'fiche'}</span>{COLOR_TAG[h.couleur] && <span className="hl-entry-tag">{COLOR_TAG[h.couleur]}</span>}</div>
+              <div className="hl-entry-txt">« {h.texte.length > 140 ? h.texte.slice(0, 140) + '…' : h.texte} »</div>
+            </div>
+          </div>
+        ))}
+      </>)}
     </div>
   );
 
@@ -2867,7 +3049,21 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         hist={hist}
         search={search} setSearch={setSearch} matches={matches} activeMatch={activeMatch} searching={searching}
         onPrecedent={gotoPrevMatch} onSuivant={gotoNextMatch} onFermerRecherche={closeSearch}
-        panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={highlights.length}
+        panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={highlights.length + notionsAutreDoc.length}
+        basculeDocument={jumelle && srcTab === 'pdf' ? (
+          <div className="pdfr-jumelle-bascule" role="group" aria-label="Document affiché">
+            <div className="seg" role="tablist">
+              {[['original', 'Original', 'Diapositive originale du cours'], ['fiche', 'Fiche', 'Ta fiche résumée']].map(([id, lbl, aide]) => (
+                <button key={id} type="button" role="tab" aria-selected={(id === 'fiche') === surFiche} className={'seg-btn' + ((id === 'fiche') === surFiche ? ' active' : '')}
+                  onClick={() => basculerJumelle(id)} title={`${aide} — Tab ou ${RACCOURCI}Maj+F pour basculer`}>{lbl}</button>
+              ))}
+            </div>
+            {largeEcran && (
+              <button type="button" className={'btn ghost sm pdfr-jumelle-deux' + (coteACote ? ' actif' : '')} aria-pressed={coteACote} onClick={basculerCoteACote}
+                title="Les deux : l’original et la fiche côte à côte, synchronisés page à page"><Icon name="copy" size={13} /> Les deux</button>
+            )}
+          </div>
+        ) : null}
         actionsDocument={afficherEntete ? [] : actionsDocument /* avec l'en-tête, tout est dans « Fichier » */}
 
         onAjouterPage={pret ? () => insererPageApres(pageCourante - 1) : null}
@@ -2983,8 +3179,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <button type="button" className={'seg-btn' + (mobileView === 'course' ? ' active' : '')} onClick={() => setMobileView('course')}><Icon name="filePdf" size={13} /> Cours</button>
         <button type="button" className={'seg-btn' + (mobileView === 'items' ? ' active' : '')} onClick={() => { setMobileView('items'); setPanelOpen(true); }}><Icon name="cards" size={13} /> Panneau</button>
       </div>
-      <div className={'pdfr-body pdfr-workshop' + (tableauDispo && disposition !== 'pdf' ? ' avec-tableau dispo-' + disposition : '')} data-mobile-view={modeTab ? undefined : mobileView}
-        ref={corpsRef} style={{ ...(tableauDispo && disposition === 'deux' ? { '--ratio-pdf': ratioSplit } : {}), ...(modeTab ? { '--tab-volet-f': voletPlein ? 1 : fractionVolet } : {}) }}>
+      <div className={'pdfr-body pdfr-workshop' + (tableauDispo && disposition !== 'pdf' ? ' avec-tableau dispo-' + disposition : '') + (coteACote ? ' avec-tableau dispo-deux avec-jumelle' : '')} data-mobile-view={modeTab ? undefined : mobileView}
+        ref={corpsRef} style={{ ...((tableauDispo && disposition === 'deux') || coteACote ? { '--ratio-pdf': ratioSplit } : {}), ...(modeTab ? { '--tab-volet-f': voletPlein ? 1 : fractionVolet } : {}) }}>
         {/* barre masquée : un tap tout en haut de la zone de lecture la fait revenir */}
         <div className={'pdfr-scroll pdfr-workshop-course' + (pret && !restaure ? ' pdfr-attente' : '')} ref={scrollRef} onScroll={onScroll}
           onDragOver={(e) => { if (e.dataTransfer && [...e.dataTransfer.types].some((t) => t === 'Files' || t === TYPE_GLISSER)) { e.preventDefault(); if ([...e.dataTransfer.types].includes(TYPE_GLISSER)) e.dataTransfer.dropEffect = 'copy'; } }}
@@ -3105,7 +3301,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           )}
         </div>
 
-        {tableauDispo && disposition !== 'pdf' && (<>
+        {coteACote && (<>
+          <div className="pdfr-poignee" role="separator" aria-orientation="vertical" title="Glisser pour régler la répartition · double-clic : moitié-moitié"
+            onPointerDown={debutPoignee} onDoubleClick={() => majRatio(0.5)} />
+          <div className="pdfr-tableau pdfr-jumelle">
+            <VueJumelle key={surFiche ? 'o' : 'f'} pdfId={surFiche ? fiche.pdfId : jumelle.fileId} ns={surFiche ? ficheId : jumelle.nsAnnot}
+              libelle={surFiche ? 'Original' : 'Fiche'} cible={cibleMiroir} onDefile={suivreMiroir} docCache={cacheDocs.current}
+              onAnnoterIci={() => basculerJumelle()} />
+          </div>
+        </>)}
+        {!coteACote && tableauDispo && disposition !== 'pdf' && (<>
           {disposition === 'deux' && (
             <div className="pdfr-poignee" role="separator" aria-orientation="vertical" title="Glisser pour régler la répartition · double-clic : moitié-moitié"
               onPointerDown={debutPoignee} onDoubleClick={() => majRatio(0.5)} />
@@ -3134,7 +3339,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             fiche (Prise de notes, anatomie), seul l'onglet Notions existe. */}
         <CourseItemsSidebar ctx={ctx} ficheId={ficheReelle ? ficheReelle.id : null}
           ongletsEnPlus={[
-            { id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length, contenu: notionsPdf },
+            { id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length + notionsAutreDoc.length, contenu: notionsPdf },
             ficheReelle && {
               // 07/10 : notes du cours (vide par défaut) — aussi dans un document (08/10) : même panneau qu'un PDF
               id: 'notes', label: 'Notes', icon: 'edit', plein: true,
@@ -3224,6 +3429,40 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <FeuilleDemarrage courseId={ficheId} pdfDoc={pdfDoc} ocrPages={coucheOcr ? coucheOcr.pages : null} texteEnPlus={modeDoc ? texteBrutDocument() : ''} reprendre={feuilleTrx.reprendre || null}
           onClose={() => setFeuilleTrx(null)} onDemarre={ouvrirTranscript} />
       )}
+      <input ref={entreeJumelle} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
+        onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) recevoirJumelle(f); }} />
+      {travailJumelle && (
+        <Modal title={travailJumelle.remplacement ? 'Remplacer la fiche' : 'Fiche jumelle'} onClose={() => { if (travailJumelle.etat !== 'encours') setTravailJumelle(null); }} width="min(460px, 94vw)">
+          {travailJumelle.etat === 'encours' && (
+            <div className="fj-travail"><div className="gen-spinner" style={{ width: 28, height: 28 }} /><div>{travailJumelle.remplacement ? 'Nouvelle version : recherche des pages et replacement des annotations…' : 'Lecture des deux PDF et recherche des pages correspondantes…'}</div></div>
+          )}
+          {travailJumelle.etat === 'erreur' && <div className="fj-erreur">L’import a échoué : {travailJumelle.message}. Rien n’a été modifié.</div>}
+          {travailJumelle.etat === 'fini' && (() => {
+            const rec = travailJumelle.rec, r = resumeCorresp(rec);
+            return (
+              <div className="fj-resume">
+                <p><b>{rec.fileName}</b> — {rec.nbPagesFiche} pages, rattachée au cours ({rec.nbPagesOrig} pages).</p>
+                <ul>
+                  <li>{r.appariees} page{r.appariees > 1 ? 's' : ''} de la fiche associée{r.appariees > 1 ? 's' : ''} à l’original{r.fusions ? ` (dont ${r.fusions} fusion${r.fusions > 1 ? 's' : ''} de diapositives)` : ''}</li>
+                  <li>{r.ajoutees} page{r.ajoutees > 1 ? 's' : ''} ajoutée{r.ajoutees > 1 ? 's' : ''} dans la fiche</li>
+                  {r.sansEq > 0 && <li>{r.sansEq} page{r.sansEq > 1 ? 's' : ''} de l’original sans équivalent</li>}
+                  {travailJumelle.remplacement && <li>{rec.replacees || 0} annotation{rec.replacees > 1 ? 's' : ''} replacée{rec.replacees > 1 ? 's' : ''} sur la nouvelle version{(rec.nonReplacees || []).length ? `, ${rec.nonReplacees.length} non replacée${rec.nonReplacees.length > 1 ? 's' : ''} (listée${rec.nonReplacees.length > 1 ? 's' : ''}, rien de supprimé)` : ''}</li>}
+                </ul>
+                <div className="row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+                  {travailJumelle.remplacement && (rec.nonReplacees || []).length > 0 && <button type="button" className="btn ghost sm" onClick={() => { setTravailJumelle(null); setListeNonReplacees(true); }}>Voir les non replacées</button>}
+                  <button type="button" className="btn ghost sm" onClick={() => { setTravailJumelle(null); setEditeurCorresp(true); }}>Vérifier la correspondance</button>
+                  <button type="button" className="btn primary sm" onClick={() => { setTravailJumelle(null); basculerJumelle('fiche'); }}>Voir la fiche</button>
+                </div>
+              </div>
+            );
+          })()}
+        </Modal>
+      )}
+      {editeurCorresp && jumelle && (
+        <EditeurCorrespondance rec={jumelle} pdfIdOrig={fiche.pdfId} docCache={cacheDocs.current} onClose={() => setEditeurCorresp(false)} />
+      )}
+      {listeNonReplacees && jumelle && <ListeNonReplacees rec={jumelle} onClose={() => setListeNonReplacees(false)} />}
+      {avisJumelle && <div className="fj-avis" role="status">{avisJumelle}</div>}
       {detailOcr && fiche && fiche.pdfId && (
         <Modal title="Reconnaissance de texte" onClose={() => setDetailOcr(false)} width="min(460px, 94vw)">
           {(() => {
@@ -3237,7 +3476,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 <div className="hint">La reconnaissance tourne en tâche de fond et n’ajoute qu’une couche de texte invisible : le PDF et l’image ne changent pas.</div>
                 <div className="row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
                   <button type="button" className="btn sm" onClick={() => setOcrDebug((v) => !v)}><Icon name="layers" size={13} /> {ocrDebug ? 'Masquer la couche OCR' : 'Afficher la couche OCR'}</button>
-                  <button type="button" className="btn sm primary" onClick={() => { relancerOcr(fiche.pdfId, { courseId: ficheId, titre: titreFiche }); setDetailOcr(false); }}><Icon name="refresh" size={13} /> Relancer sur ce cours</button>
+                  <button type="button" className="btn sm primary" onClick={() => { relancerOcr(pdfIdActif, { courseId: ficheId, titre: titreFiche }); setDetailOcr(false); }}><Icon name="refresh" size={13} /> Relancer sur ce cours</button>
                 </div>
               </div>
             );
