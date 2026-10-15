@@ -89,7 +89,9 @@ export function EditeurCorrespondance({ rec, pdfIdOrig, docCache, onClose, pages
   return (
     <Modal title="Correspondance des pages" onClose={onClose} width="min(900px, 96vw)">
       <div className="fjc">
-        <p className="fjc-aide">Glisse une page de la fiche sur une diapositive pour les associer ; deux diapositives peuvent viser la même page (fusion). Une page de fiche qui n’est visée par aucune diapositive est une <b>page ajoutée dans la fiche</b>.</p>
+        <p className="fjc-aide">{pagesDoc
+          ? <>Glisse une page de la fiche sur une page du document pour les associer ; deux pages peuvent viser la même page de fiche. Une page de fiche visée par aucune page est une <b>page ajoutée dans la fiche</b>. La correspondance suit le texte : elle tient quand la pagination du document bouge.</>
+          : <>Glisse une page de la fiche sur une diapositive pour les associer ; deux diapositives peuvent viser la même page (fusion). Une page de fiche qui n’est visée par aucune diapositive est une <b>page ajoutée dans la fiche</b>.</>}</p>
         {erreur && <div className="fj-erreur">{erreur}</div>}
         {!pages && !erreur && <div className="gen-spinner" style={{ width: 28, height: 28, margin: '24px auto' }} />}
         {pages && (
