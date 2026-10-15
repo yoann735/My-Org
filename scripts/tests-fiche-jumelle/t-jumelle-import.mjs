@@ -1,0 +1,25 @@
+// Fiche jumelle — import (menu Fichier), correspondance automatique, marque de la Bibliothèque.
+import { banc } from './commun.mjs';
+const FX = process.argv[2];
+const b = await banc();
+console.log('nettoyage :', await b.nettoyer(['f-fj']));
+await b.ev(`localStorage.removeItem('medrevise.jumelle.vue.f-fj');localStorage.removeItem('medrevise.jumelle.lesDeux');1`);
+b.ok(await b.ouvrir('Physiologie rénale (jumelle)', { recharger: true }), 'cours ouvert');
+b.ok(!(await b.ev(`!!document.querySelector('.pdfr-jumelle-bascule')`)), 'sans fiche : pas de segment Original · Fiche (rien ne change)');
+const pris = b.fichierSuivant(FX + '/fiche.pdf');
+b.ok(await b.menuFichier('Importer la fiche jumelle'), 'menu Fichier → « Importer la fiche jumelle… »');
+await pris; await b.dormir(2500);
+const resume = await b.ev(`document.querySelector('.fj-resume')?.innerText`);
+b.ok(resume && resume.includes('30 pages') && resume.includes('25 pages de la fiche associées') && resume.includes('5 pages ajoutées'), 'résumé de l’import', resume && resume.replace(/\n/g, ' | '));
+await b.capt('jumelle-import-resume');
+const rec = JSON.parse(await b.S(`return JSON.stringify(await S.getOne('companion_pdf','cp:f-fj'))`));
+b.ok(rec && rec.courseId === 'f-fj' && /^b/.test(rec.fileId) && rec.pageMap && rec.updatedAt, 'enregistrement companion_pdf { courseId, fileId, pageMap, updatedAt }', rec && JSON.stringify({ id: rec.id, fileId: rec.fileId, nsAnnot: rec.nsAnnot, versOrig: rec.pageMap.versOrig.join(',') }));
+b.ok(JSON.stringify(rec.pageMap.versOrig) === JSON.stringify([1,2,3,4,5,null,6,7,8,9,10,11,12,null,14,15,16,17,18,19,null,20,21,22,23,24,25,26,null,null]), 'correspondance automatique = vérité terrain');
+b.ok(rec.pageMap.versFiche[12] === 13 && rec.pageMap.versFiche[11] === 13, 'diapositives 12 et 13 → fiche p.13 (fusion)');
+await b.clic(await b.pos(`[...document.querySelectorAll('.fj-resume button')].find(x=>x.innerText.includes('Voir la fiche'))`, false), { att: 1500 });
+b.ok(await b.ev(`!!document.querySelector('.pdfr-jumelle-bascule')`), 'segment Original · Fiche dans la barre');
+b.ok(await b.ev(`document.querySelector('.pdfr-jumelle-bascule .seg-btn.active')?.innerText`) === 'Fiche', 'vue Fiche active');
+b.ok(await b.ev(`document.querySelector('.ptb-pages .tnum')?.innerText`) === '1 / 30', 'la fiche (30 pages) est affichée', await b.ev(`document.querySelector('.ptb-pages .tnum')?.innerText`));
+await b.capt('jumelle-vue-fiche');
+b.ok(!b.erreurs.length, '0 erreur JS', b.erreurs.join(' | '));
+b.c.fermer();

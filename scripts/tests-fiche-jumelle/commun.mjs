@@ -23,7 +23,30 @@ export async function banc(W = 1440, H = 900, opts = {}) {
   b.fond = (sel) => b.ev(`getComputedStyle(${sel}).backgroundColor`);
   b.capt = async (nom, clip) => { await b.capture(nom, clip); };
   // base LOCALE du banc seulement : retire les annotations / surlignages d'un cours de test
-  b.nettoyer = (ficheIds) => b.S(`const ids=${JSON.stringify(ficheIds)};let n=0;for(const st of ['annotations','highlights']){for(const a of await S.getAll(st)){if(ids.includes(a.ficheId)){await S.remove(st,a.id);n++;}}}return n;`);
+  b.nettoyer = (ficheIds) => b.S(`const ids=${JSON.stringify(ficheIds)};let n=0;for(const st of ['annotations','highlights']){for(const a of await S.getAll(st)){if(ids.includes(a.ficheId)||ids.some(i=>String(a.ficheId).startsWith(i+'::fiche'))){await S.remove(st,a.id);n++;}}}
+for(const r of await S.getAll('companion_pdf')){if(ids.includes(r.courseId)){await S.remove('companion_pdf',r.id);n++;}}
+for(const r of await S.getAll('reading_position')){if(ids.some(i=>r.id==='rp:'+i||String(r.id).startsWith('rp:'+i+'::fiche'))){await S.remove('reading_position',r.id);n++;}}return n;`);
+  // sélecteur de fichier intercepté : le prochain <input type=file> ouvert reçoit `chemin`
+  b.fichierSuivant = async (chemin) => {
+    await b.c.send('Page.enable'); await b.c.send('DOM.enable');
+    await b.c.send('Page.setInterceptFileChooserDialog', { enabled: true });
+    return new Promise((ok) => {
+      b.c.on(async (m) => {
+        if (m.method !== 'Page.fileChooserOpened' || b.__fichierPris) return;
+        b.__fichierPris = true;
+        await b.c.send('DOM.setFileInputFiles', { files: [chemin], backendNodeId: m.params.backendNodeId });
+        ok(true);
+      });
+      b.__fichierPris = false;
+    });
+  };
+  // menu Fichier → entrée dont le libellé commence par `libelle`
+  b.menuFichier = async (libelle) => {
+    await b.clic(await b.pos(`document.querySelector('.mf-bouton')`, false), { att: 400 });
+    const p = await b.pos(`[...document.querySelectorAll('.mf-item')].find(x=>x.querySelector('.mf-label').innerText.startsWith(${JSON.stringify(libelle)}))`, false);
+    if (!p) { await b.T.Escape(); return false; }
+    await b.clic(p, { att: 400 }); return true;
+  };
   // ouvre un cours par son titre (recharge d'abord si demandé) — même logique qu'ouvrir-cours.mjs
   b.ouvrir = async (titre, { recharger = false } = {}) => {
     const c = b.c;
