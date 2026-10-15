@@ -166,9 +166,7 @@ résumé (« 25 associées · 5 ajoutées ») avec un bouton « Vérifier la cor
   relative dans la page** et l'**outil actif**, avec un fondu court (180 ms). Depuis une page ajoutée ou sans
   équivalent, on arrive à la plus proche qui en a une, avec un avis. Les deux documents restent en mémoire :
   revenir est instantané.
-- **Les deux** : l'autre document en lecture, à côté, avec son propre calque, synchronisé page à page dans
-  les deux sens, et « Annoter ce côté » pour échanger. Sur ordinateur et tablette en paysage ; en tablette
-  portrait ou sur un écran étroit, il n'y a que la bascule.
+- ~~**Les deux**~~ (côte à côte) : **retiré le 15/10 au soir**, voir la section 7. Il ne reste que la bascule.
 - **Bibliothèque** : petite marque **« fiche »** sur les cours qui en ont une (arbre, grille, liste). Sans
   fiche, rien ne change dans l'interface.
 
@@ -176,16 +174,13 @@ résumé (« 25 associées · 5 ajoutées ») avec un bouton « Vérifier la cor
 |---|---|
 | ![](img/fiche-jumelle/jumelle-bascule-original.png) | ![](img/fiche-jumelle/jumelle-bascule-fiche.png) |
 
-**Côte à côte** (original p.20 ↔ fiche p.22, après deux pages ajoutées) :
-![](img/fiche-jumelle/jumelle-cote-a-cote.png)
-
 **Éditeur de correspondance** : glisser une page de fiche sur une diapositive, menu « — » de secours au
 doigt, « Automatique » pour recalculer.
 ![](img/fiche-jumelle/jumelle-editeur-modifie.png)
 
-| Tablette paysage : les deux | Tablette portrait : bascule seule | Marque dans la Bibliothèque |
-|---|---|---|
-| ![](img/fiche-jumelle/jumelle-tablette-paysage.png) | ![](img/fiche-jumelle/jumelle-tablette-portrait.png) | ![](img/fiche-jumelle/jumelle-bibliotheque-marque.png) |
+| Tablette portrait : la bascule | Marque dans la Bibliothèque |
+|---|---|
+| ![](img/fiche-jumelle/jumelle-tablette-portrait.png) | ![](img/fiche-jumelle/jumelle-bibliotheque-marque.png) |
 
 ### Annotations, notions, positions
 - Une annotation posée sur la fiche reste sur la fiche, et inversement (vérifié en base : calques `f-fj` et
@@ -217,7 +212,7 @@ la page est identique. Sinon il est replacé à la même position géométrique 
 
 | Test | Résultat |
 |---|---|
-| `tout.sh` : boîtes 32, outils 18, doigt 11, téléphone 7, import 11, bascule 13, calques 15, côte à côte 13, éditeur 11, tablette 6, remplacement 16 | **153/153** |
+| `tout.sh` (premier livrable) : boîtes 32, outils 18, doigt 11, téléphone 7, import 11, bascule 13, calques 15, côte à côte 13, éditeur 11, tablette 6, remplacement 16 — à jour : voir la section 7 | **153/153** |
 | `t-jumelle-synchro.mjs` : 2ᵉ appareil (faux Supabase, profils neufs) — 1 ligne `companion_pdf` au faux cloud, PDF de la fiche dans le bucket, même `pageMap` sur B, fiche affichée sur B, **SHA-256 identique** (`0f340f19…`), annotation posée sur A visible sur la fiche de B, marque dans la Bibliothèque de B | **11/11** |
 | `t-jumelle-ocr.mjs` : cours scanné, OCR de l'app (26/26 pages, 93 %), correspondance par le texte OCR | **30/30 pages** |
 | Non-régression des boîtes (`tests-finitions/t-bureau.mjs`) — ancien code **33/34**, nouveau **33/34** : seul échec des deux côtés, le 4b, qui demande le faux cloud sur ce port | identique |
@@ -242,3 +237,105 @@ du fichier.
 - `e3248b5` feat(medrevise): fiche jumelle — PDF résumé à côté du cours, bascule Original ⇄ Fiche page à page
 - `84860ad` test(medrevise): banc de la fiche jumelle et du sélecteur de couleur
 - commit de ce compte rendu (docs + captures)
+
+---
+
+## 7. Fiche jumelle sur document éditable · retrait du mode côte à côte (15/10, soir)
+
+### 7.1 Fiche jumelle sur un cours « document »
+« Importer la fiche jumelle » est désormais proposé sur **tout cours PDF ou document** : un « Nouveau
+document » de la Bibliothèque, ou tout cours dont le texte est le document de l'app (`docNotes`, celui qui
+s'écrivait autrefois dans l'onglet Notes). La fiche (PDF) devient le second document rattaché, exactement
+comme pour un cours PDF : même enregistrement `companion_pdf`, même calque d'annotations à part, même menu.
+Le **document éditable reste le principal**. Les cours qui ne sont qu'une fiche HTML ne sont pas couverts :
+ils n'ont pas de pages.
+
+- **Côté « Original »** : l'éditeur paginé, avec écriture, mise en forme et toutes les annotations.
+  **Côté « Fiche »** : le lecteur PDF, en lecture, avec ses annotations propres. Même segment, même raccourci.
+- **Zoom, position relative dans la page et outil** sont gardés à la bascule, dans les deux sens. Le texte
+  en cours d'écriture est enregistré, puis rendu à l'éditeur au retour. Le document n'est **jamais réécrit
+  par une bascule** : son flux et sa date d'écriture sont inchangés après deux bascules (vérifié).
+- **⌘⇧F** fonctionne aussi pendant qu'on écrit dans le document. **Tab** garde son rôle dans le texte et ne
+  bascule qu'en dehors.
+- **Notions, flashcards et transcript** restent rattachés au cours. Les notions du document et celles de la
+  fiche sont listées des deux côtés, et un clic ramène au bon document. **Position de lecture par
+  document** : `rp:<id>` (kind `doc`) et `rp:<id>::fiche:1` (kind `pdf`).
+
+**Correspondance des pages.** Le texte du document (flux ProseMirror paginé, page par page) est comparé au
+texte natif ou OCR de la fiche, par la même méthode qu'en section 3 (tf-idf, alignement, fusions, pages
+ajoutées). Comme la pagination d'un document bouge quand on écrit, la correspondance est **stockée par
+bloc** :
+- `pageMap.mode = 'bloc'`, `parBloc: [{ ancre, fiche }]` ;
+- l'**ancre** est l'identifiant du premier bloc non vide de la page au moment de l'import. Les blocs du
+  document n'ayant pas d'identifiant propre, et pour ne rien écrire dans le document, c'est une
+  **empreinte** calculée : type + empreinte du texte + rang parmi les blocs identiques ;
+- à l'affichage, chaque ancre est retrouvée dans le flux, et sa **page actuelle** est lue dans la
+  pagination (`pageMapDocument`) ;
+- une ancre introuvable (bloc supprimé, ou bloc dont le texte a changé) **ne mène nulle part** : sa page est
+  « sans équivalent », sans erreur, et la bascule mène à la plus proche avec un avis.
+
+Le même éditeur de correspondance liste à gauche les pages actuelles du document (leur titre).
+L'enregistrement recalcule les ancres des pages telles qu'elles sont à ce moment.
+
+Résultat sur le jeu de test (document de 6 pages, fiche de 8 pages dont 2 ajoutées) : **8/8 pages de fiche
+bien classées**, 6 ancres (le titre de chaque section).
+
+| Import sur un document : résumé | Correspondance des pages d'un document |
+|---|---|
+| ![](img/fiche-jumelle/doc-import-resume.png) | ![](img/fiche-jumelle/doc-editeur-import.png) |
+
+| Document p.4 (éditeur, Surligneur) | → fiche p.5, même zoom et même position |
+|---|---|
+| ![](img/fiche-jumelle/doc-bascule-original.png) | ![](img/fiche-jumelle/doc-bascule-fiche.png) |
+
+**Les ancres tiennent.** Deux longs paragraphes écrits au début du document font passer la première section
+sur deux pages, et le document passe de 6 à 7 pages. La section 2, désormais en page 3, mène toujours à la
+fiche p.2, et la section 6 (p.7) à la fiche p.8. La page 1, qui ne contient plus que le texte ajouté, est
+« sans équivalent ». Après **suppression du titre ancré** de la section 4, sa page est « sans équivalent »
+(⌘⇧F depuis le texte → avis, fiche p.4 la plus proche), et l'éditeur montre la fiche p.5 sans original, sans
+erreur.
+
+| Après écriture au début : la page 1 sans ancre | Éditeur après suppression du bloc ancré |
+|---|---|
+| ![](img/fiche-jumelle/doc-ancres-apres-ecriture.png) | ![](img/fiche-jumelle/doc-editeur.png) |
+
+| Notions des deux documents | Tablette : côté Fiche | Tablette : côté Original (éditeur) |
+|---|---|---|
+| ![](img/fiche-jumelle/doc-notions-deux-cotes.png) | ![](img/fiche-jumelle/doc-tablette-fiche.png) | ![](img/fiche-jumelle/doc-tablette-original.png) |
+
+**Correctif trouvé en testant** (cours PDF comme document). Juste après une bascule, les annotations de
+l'autre document restent en mémoire le temps du rechargement. Ses « pages » étaient brièvement insérées dans
+la mise en page de la fiche, et la position était calculée sur cette liste décalée : on atterrissait à
+la fiche p.7 au lieu de la p.4, une fois sur trois. Désormais :
+- seul le calque affiché est pris en compte (`editsVus`) ;
+- la position n'est posée qu'une fois ce calque chargé ;
+- au retour sur le document, aucune page parasite n'est créée.
+
+### 7.2 Retrait du mode « Les deux »
+- Supprimés : le bouton « Les deux », le panneau côte à côte (`pdf/VueJumelle.jsx`), la synchro du miroir,
+  le réglage d'appareil et tout leur CSS. Le raccourci de bascule reste celui d'**Original · Fiche**.
+- Un ancien réglage `medrevise.jumelle.lesDeux` est effacé au premier affichage, et l'on retombe sur
+  **« Original »**, sans message (testé).
+- Non concernée : la disposition **PDF | Tableau** du 04/10, dont l'en-tête garde son propre bouton « Les
+  deux » (tableau type Miro). Elle n'a rien à voir avec la fiche jumelle.
+
+![Cours PDF : segment à deux positions, plus de côte à côte](img/fiche-jumelle/sans-les-deux.png)
+
+### 7.3 Tests (Chrome headless, banc local, jamais le vrai cloud)
+| Test | Résultat |
+|---|---|
+| `tout.sh` : boîtes 32, outils 18, doigt 11, téléphone 7, import 11, bascule 13, calques 15, éditeur 11, tablette 6, remplacement 16, **sans « Les deux » 9**, **document : import 9, éditeur manuel 8, bascule + ancres 19, panneau 10, tablette 6** | **201/201** |
+| `t-doc-synchro.mjs` : 2ᵉ appareil (faux Supabase, profils neufs) — companion_pdf et document au faux cloud ; sur B : document de 6 p., **même correspondance recalculée depuis les ancres** `[1,2,4,5,6,8]`, fiche de 8 p. avec l'annotation posée sur A | **8/8** |
+| Bascule et ancres sur document, rejouées 3 fois de suite (après le correctif) | 19/19 ×3 |
+| Non-régression des boîtes (`tests-finitions/t-bureau.mjs`) | 33/34, identique à l'ancien code (4b : faux cloud absent sur ce port) |
+| Conformité de l'export d'un document (`tests-document/conformite.mjs`) | **identique avant/après**, page par page (mêmes blocs, même ordre, écart DOM ≤ 0,33 px ; même écart d'encre déjà présent avant : la pastille « Insérer une page ici » capturée à l'écran) |
+| Pagination pure (`tests-document/test-pagination.mjs`) | vert |
+| Téléphone 390 px : shell mobile, dessin et sélecteur au doigt | 7/7 (le téléphone n'a pas de lecteur : rien d'autre ne change) |
+| MealWeek, builds de production, ordinateur et téléphone | **identique au pixel** ; `src/shared` et `src/mealweek` : 0 fichier modifié |
+| Build | vert |
+
+### 7.4 Commits de ce complément
+- `19d73f3` refactor(medrevise): fiche jumelle — retrait du mode « Les deux » (côte à côte)
+- `58843ec` feat(medrevise): fiche jumelle sur un cours DOCUMENT (créé dans l'app)
+- `df04e32` fix(medrevise): éditeur de correspondance — aide adaptée à un cours document
+- commit de cette section (docs + captures)
