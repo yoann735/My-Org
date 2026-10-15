@@ -70,7 +70,7 @@ import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
   COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI, opaciteSurlignage,
   useDevicePixelRatio, compareHighlights, computePageTextMap, EPAISSEURS,
-  MODES_CRAYON, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, couleurHex, BOITE_DEFAUT,
+  MODES_CRAYON, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, couleurHex, BOITE_DEFAUT, lireFondBoiteDefaut,
 } from './pdfShared.js';
 import { PdfPageContent, EditToolbar, ECHELLE_REF } from './PdfPage.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
@@ -1740,7 +1740,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // dans une fonction async appelée depuis un écouteur pointerup — promesse rejetée,
     // rien à l'écran : l'outil « ne créait rien ». La couleur est celle de la barre
     // contextuelle, partagée par tous les outils colorés.
-    const rec = newNoteBox({ ficheId, page, x, y, width, height, couleur: couleurActive, fond: 'transparent' });
+    const rec = newNoteBox({ ficheId, page, x, y, width, height, couleur: couleurActive, fond: lireFondBoiteDefaut() });
     const cmd = cmdCreer('annotations', rec, 'Boîte de texte');
     hist.appliquer(cmd); // visible tout de suite (effet local), écrite ensuite
     videsFraiches.current.add(rec.id);
@@ -2174,7 +2174,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const x = aDroite ? f.x + f.width + 0.03 : Math.max(0.01, f.x - 0.03 - W);
     const y = Math.max(0, Math.min(1 - Hb, f.y + f.height / 2 - Hb / 2));
     const ancre = ancreSurForme(f, { x });
-    const rec = { ...newNoteBox({ ficheId, page: f.page, x, y, width: W, height: Hb, couleur: couleurActive, fond: 'transparent' }), ancre, fleche: true, formeId: f.id };
+    const rec = { ...newNoteBox({ ficheId, page: f.page, x, y, width: W, height: Hb, couleur: couleurActive, fond: lireFondBoiteDefaut() }), ancre, fleche: true, formeId: f.id };
     hist.appliquer(cmdCreer('annotations', rec, 'Légende de la forme'));
     videsFraiches.current.add(rec.id);
     setFormeActiveId(null);

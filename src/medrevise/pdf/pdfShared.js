@@ -69,6 +69,19 @@ export const avecAlpha = (hex, a) => {
     texte et sa poignée. Elle n'a plus besoin d'être grande d'avance : la HAUTEUR
     d'une boîte est un minimum, la boîte grandit avec son texte (voir NoteBox). */
 export const BOITE_DEFAUT = { width: 0.2, height: 0.036 };
+/* FOND DES NOUVELLES BOÎTES (15/10, docs/compte-rendu-fiche-jumelle.md) : « plein » par défaut
+   (texte en contraste automatique, voir PdfPage.jsx#styleFondBoite). Le dernier fond choisi
+   dans la barre d'une boîte devient le défaut des suivantes — mémorisé sur l'appareil
+   (préférence d'affichage, rien au cloud). Les boîtes existantes gardent leur `fond`. */
+const CLE_FOND_BOITE = 'medrevise.fondBoite';
+const FONDS_VALIDES = ['transparent', 'teinte', 'plein'];
+export function lireFondBoiteDefaut() {
+  try { const v = localStorage.getItem(CLE_FOND_BOITE); return FONDS_VALIDES.includes(v) ? v : 'plein'; } catch (e) { return 'plein'; }
+}
+export function ecrireFondBoiteDefaut(v) {
+  if (!FONDS_VALIDES.includes(v)) return;
+  try { localStorage.setItem(CLE_FOND_BOITE, v); } catch (e) { /* stockage bloqué : défaut « plein » */ }
+}
 export const BOITE_MIN = { width: 0.04, height: 0.022 };
 
 /* PALETTE DU CRAYON (et du texte libre) — 01/10. Les 4 couleurs des surlignages

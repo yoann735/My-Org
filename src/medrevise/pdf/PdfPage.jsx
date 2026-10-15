@@ -38,6 +38,7 @@ import {
   lisserTrait, traitTouche, cheminLisse, suivreEnDouceur, modeDuTrait,
   EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, positionTexteProche,
   lisibleSurNoir, EMPTY_ARRAY, opaciteSurlignage,
+  ecrireFondBoiteDefaut,
 } from './pdfShared.js';
 
 /** rendu d'une seule page (montée uniquement si proche du viewport) : canvas + couche de
@@ -901,9 +902,11 @@ export function PdfPageContent({
    Une seule entrée d'historique par geste : l'état d'avant est capturé au
    pointerdown, la commande empilée au pointerup, et seulement si ça a bougé.
    ============================================================ */
-/* FOND D'UNE BOÎTE (09/10, docs/compte-rendu-pdfreader-v2.md) : transparent (défaut des nouvelles
-   boîtes : fine bordure de sa couleur, texte à l'encre de la page), teinté 15 %, ou plein. Une
-   boîte d'avant (sans `fond`) garde exactement son rendu d'origine. */
+/* FOND D'UNE BOÎTE (09/10, docs/compte-rendu-pdfreader-v2.md) : transparent (fine bordure de sa
+   couleur, texte à l'encre de la page), teinté 15 %, ou plein (texte sombre sur une couleur claire,
+   clair sur une couleur foncée). Défaut des nouvelles boîtes : « plein », puis le dernier fond choisi
+   sur l'appareil (15/10, pdfShared.js#lireFondBoiteDefaut). Une boîte d'avant (sans `fond`) garde
+   exactement son rendu d'origine. */
 export const FONDS_BOITE = [
   { id: 'transparent', label: 'Transparent' },
   { id: 'teinte', label: 'Teinté' },
@@ -1326,7 +1329,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
             <Icon name="arrowR" size={15} />
           </button>
           <BoutonCouleur couleur={boite.couleur} titre="Couleur de la boîte" onCouleur={(c) => onModifier(boite, { couleur: c }, 'Couleur de la boîte')} />
-          <button type="button" className="nb-act nb-fond" aria-label="Fond" {...stop(() => onModifier(boite, { fond: fondSuivant.id }, 'Fond de la boîte'))}
+          <button type="button" className="nb-act nb-fond" aria-label="Fond" {...stop(() => { ecrireFondBoiteDefaut(fondSuivant.id); onModifier(boite, { fond: fondSuivant.id }, 'Fond de la boîte'); })}
             title={`Fond : ${FONDS_BOITE[iFond].label.toLowerCase()} — cliquer pour « ${fondSuivant.label.toLowerCase()} » (transparent → teinté → plein)`}>
             <span className={'nb-fond-ic ' + FONDS_BOITE[iFond].id} style={{ '--c': couleurBoite }} aria-hidden="true" />
           </button>
