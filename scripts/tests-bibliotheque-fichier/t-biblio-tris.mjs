@@ -14,17 +14,21 @@ b.ok(await b.ev(`document.querySelector('.lib-tri-bouton').innerText.trim()==='T
 
 /* ---- DERNIÈRE MODIFICATION ---- */
 await b.trier('Dernière modification');
+const SEMES = ['Membre supérieur — repères', 'Membre inférieur — repères', 'Rachis et bassin', 'Psychologie du développement', 'Attachement (Bowlby)', 'Théories de l’apprentissage', 'Métabolisme glucidique', 'Enzymologie'];
+const attendu = await b.S(`const src=new Set((await S.getAll('sources')).filter(x=>!x.archive).map(x=>x.id));const mat=new Set((await S.getAll('matieres')).filter(x=>!x.archive&&src.has(x.sourceId)).map(x=>x.id));return (await S.getAll('fiches')).filter(f=>!f.archive&&mat.has(f.matiereId)).length`);
 let l = await b.fiches(), m = await b.metas();
+// ordre relatif des fiches du jeu de test (les autres fiches du banc ont pu être touchées par d'autres suites)
+const rang = (t) => l.findIndex((x) => x.startsWith(t));
 b.ok(!(await b.ev(`!!document.querySelector('.lt-mat, .lt-sec, .lt-dos')`)), 'liste plate : plus de section, de matière ni de dossier');
-b.ok(l.length === 12, '12 fiches (archivées et section archivée exclues, Rattrapage inclus)', l.length + ' : ' + l.join(' | '));
+b.ok(l.length === attendu, `${attendu} fiches = toutes celles de l’arbre (archivées et section archivée exclues, Rattrapage inclus)`, l.length + ' : ' + l.join(' | '));
 b.ok(!l.some((t) => /archivée/.test(t)), 'aucune fiche archivée');
 b.ok(l.includes('Enzymologie') && l.includes('Métabolisme glucidique'), 'les fiches de la section Rattrapage y sont');
-b.ok(m[0] === 'Modifiée il y a 2 h · Anatomie palpatoire' && l[0].startsWith('Membre supérieur'), 'en tête : la fiche surlignée il y a 2 h', m[0]);
+b.ok(m[rang('Membre supérieur')] === 'Modifiée il y a 2 h · Anatomie palpatoire' && SEMES.every((t) => rang('Membre supérieur') <= rang(t)), 'parmi les fiches du jeu : en tête, la fiche surlignée il y a 2 h', m[rang('Membre supérieur')]);
 const iMeta = l.indexOf('Métabolisme glucidique');
 b.ok(m[iMeta] === 'Modifiée il y a 6 h · Biochimie', 'carte créée il y a 6 h et révisée il y a 1 h : comptée à sa création', m[iMeta]);
 b.ok(m[l.indexOf('Psychologie du développement')] === 'Modifiée hier · Psychologie', 'annotation d’hier', m[l.indexOf('Psychologie du développement')]);
 b.ok(m[l.indexOf('Théories de l’apprentissage')] === 'Modifiée il y a 4 j · Psychologie', 'texte du document (notes_doc) il y a 4 j');
-b.ok(m[l.indexOf('Rachis et bassin')] === 'Modifiée le 3 oct. · Anatomie palpatoire', 'jamais modifiée : sa date d’ajout');
+const mRachis = m[l.indexOf('Rachis et bassin')];
 const fond = await b.ev(`getComputedStyle(document.querySelector('.lib-tri-matiere')).color + ' / ' + getComputedStyle(document.querySelector('.lib-tri-meta')).color`);
 b.ok(fond.split(' / ')[0] !== fond.split(' / ')[1], 'matière en gris (plus clair que la date)', fond);
 await b.capture('tb-2-modif');
@@ -47,7 +51,8 @@ await b.fermerLecteur();
 /* ---- DATE D'AJOUT ---- */
 await b.trier('Date d’ajout');
 l = await b.fiches(); m = await b.metas();
-b.ok(l[l.length - 1].startsWith('Membre supérieur') && m[m.length - 1] === 'Ajoutée le 20 sept. · Anatomie palpatoire', 'la plus ancienne en dernier', m[m.length - 1]);
+b.ok(l[l.length - 1].startsWith('Membre supérieur') && /^Ajoutée le .* · Anatomie palpatoire$/.test(m[m.length - 1]), 'la plus ancienne en dernier', m[m.length - 1]);
+b.ok(mRachis === m[l.indexOf('Rachis et bassin')].replace('Ajoutée', 'Modifiée'), 'jamais modifiée : « modifiée » à sa date d’ajout', mRachis);
 b.ok(l.indexOf('Membre inférieur — repères') < l.indexOf('Rachis et bassin'), 'deux ajouts le même jour : départagés à l’heure (identifiant)');
 await b.capture('tb-4-ajout');
 // importer un PDF (dépôt sur une ligne) : en tête
@@ -57,7 +62,7 @@ for (const type of ['dragEnter', 'dragOver', 'drop']) { await b.c.send('Input.di
 await b.dormir(1000);
 await b.clic(await b.bouton('Importer'), { att: 2500 });
 l = await b.fiches(); m = await b.metas();
-b.ok(/^Neurologie/.test(l[0]) && m[0] === 'Ajoutée le 15 oct. · Biochimie', 'PDF importé : en tête, dans la matière de la ligne visée', `${l[0]} — ${m[0]}`);
+b.ok(/^Neurologie/.test(l[0]) && m[0] === `Ajoutée le ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} · Biochimie`, 'PDF importé : en tête, dans la matière de la ligne visée', `${l[0]} — ${m[0]}`);
 await b.capture('tb-5-ajout-apres-import');
 
 /* ---- MÉMORISATION ---- */

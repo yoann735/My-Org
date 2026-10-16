@@ -48,7 +48,7 @@ b.ok(await b.ev(`document.body.innerText.includes('Relancer sur ce cours') && do
 await b.T.Escape(); await b.ev(`(()=>{const x=[...document.querySelectorAll('.day-pop-head button')].pop();x&&x.click();return 1})()`); await b.dormir(300);
 // 5. PDF annoté — par le menu, puis par ⌘P
 await viderDl(); await entree('pdfAnnote');
-b.ok(await attendre(async () => (await dl()).some((x) => /-annote\.pdf$/.test(x.nom) && x.taille > 1000)), 'Exporter le PDF annoté : un PDF téléchargé', JSON.stringify(await dl()));
+b.ok(await attendre(async () => (await dl()).some((x) => /-annote\.pdf$/.test(x.nom) && x.taille > 1000)), 'Exporter le PDF annoté : un PDF téléchargé', (await dl()).map((x) => x.nom + ' · ' + x.taille + ' o').join(', '));
 await viderDl();
 await b.touche('p', { meta: true, code: 'KeyP', vk: 80 });
 b.ok(await attendre(async () => (await dl()).some((x) => /-annote\.pdf$/.test(x.nom))) && (await b.ev(`window.__print`)) === 0, '⌘P : même export (pas l’impression du navigateur)');
