@@ -90,8 +90,8 @@ import { estNotionDoc, creerNotionDoc, synchroniserNotionsDoc } from '../documen
 import { lireNotesDoc, ecrirePageDoc, majNotesDoc, attendreNotesDoc, contenuGlobal, docNonVide, idAppareil, fluxDepuisPages } from '../documents/lib/notesDoc.js';
 import { DocumentFlux } from './DocumentFlux.jsx';
 import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
-import { dehydrateDoc, EMPTY_DOC } from '../documents/lib/richtext.js';
-import { exporterMarkdownDoc } from '../documents/lib/exportDoc.js';
+import { dehydrateDoc, EMPTY_DOC, docToMarkdown } from '../documents/lib/richtext.js';
+import { exporterMarkdownDoc, nomFichier, telecharger as telechargerFichier } from '../documents/lib/exportDoc.js';
 import { PageTexte, PAGE_A4, OutilsTexteDocument, effacerSurlignageRecherche } from './PageTexte.jsx';
 import { useTablette, abonnerStylet, styletActif, lireFractionVolet, ecrireFractionVolet, bornerVolet, VOLET_MIN, VOLET_MAX, VOLET_PLEIN } from '../lib/tablette.js';
 import '../../styles/tablette.css';
@@ -110,7 +110,8 @@ import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { MenuFichier } from './MenuFichier.jsx';
 import { PanneauTextesAnnotations } from './TextesAnnotations.jsx';
 import { PanneauExportIA } from './ExportIA.jsx';
-import { preparerSourceIA } from './exportIA.js';
+import { preparerSourceIA, pngsIA } from './exportIA.js';
+import { creerZip } from '../lib/zipSimple.js';
 import { refsCourtes, construireExportIA, estBoiteTexte, aDeuxVersions, versionAffichee, boitesOrdonnees, construireExport, lireImport, planImport, resumeImport, basculerVersion, avecContenuEdite } from '../lib/textesAnnotations.js';
 import { Tableau } from '../tableau/Tableau.jsx';
 import { useFicheJumelle, lireVue, ecrireVue, pageCorrespondante, importerJumelle, remplacerJumelle, blocsDuFlux, pagesDocument, pageMapDocument } from '../lib/ficheJumelle.js';
@@ -1493,69 +1494,48 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   ];
 
 
-  /* MENU « FICHIER » (02/10, pdf/MenuFichier.jsx) : sous le nom du document, les
-     actions sur le DOCUMENT, groupées — l'export en tête. Il remplace le menu « ⋯ »
-     de la barre d'outils, qui en contenait la moitié. */
-  // ÉPURÉ (03/10) : des titres courts, pas de phrases d'aide, l'essentiel seulement —
-  // l'export en tête. Groupes séparés par un simple trait.
-  // (10/10) textes des boîtes : aller-retour JSON, version IA / originale
-  const groupeTextes = { items: [
-    { label: 'Exporter les textes d’annotations…', icon: 'upload', onClick: () => setPanneauTextes('exporter') },
-    { label: 'Importer des textes d’annotations…', icon: 'copy', onClick: () => setPanneauTextes('importer') },
-    edits.some((a) => estBoiteTexte(a) && aDeuxVersions(a)) && { label: 'Version des textes (IA / originale)…', icon: 'refresh', onClick: () => setPanneauTextes('affichage') },
-    // (10/10 soir) visuel avec repères + JSON pour une IA — PDF importé seulement (le visuel est le PDF annoté)
-    !modeDoc && !!(fiche && fiche.pdfId) && { label: 'Export spécial IA…', icon: 'layers', onClick: () => setPanneauExportIA(true) },
-  ] };
-  /* (15/10) FICHE JUMELLE : mêmes entrées sur un cours PDF et sur un cours document */
-  const groupeJumelle = canAddItem && !!(fiche && (fiche.pdfId || modeDocCours)) && { titre: 'Fiche jumelle', items: [
-      !jumelle && { label: 'Importer la fiche jumelle…', icon: 'upload', aide: 'Ton PDF résumé, à côté du cours : bascule page à page', onClick: () => entreeJumelle.current && entreeJumelle.current.click() },
-      jumelle && { label: 'Correspondance des pages…', icon: 'layers', onClick: () => setEditeurCorresp(true),
-        aide: (() => { const r = resumeCorresp(jumelle); return `${r.appariees} associées · ${r.ajoutees} ajoutée${r.ajoutees > 1 ? 's' : ''} dans la fiche${jumelle.pageMap.manuel ? ' · corrigée' : ''}`; })() },
-      jumelle && { label: 'Remplacer la fiche (nouvelle version)…', icon: 'refresh', aide: 'Les annotations de la fiche suivent leur page', onClick: () => entreeJumelle.current && entreeJumelle.current.click() },
-      jumelle && (jumelle.nonReplacees || []).length > 0 && { label: `Annotations non replacées (${jumelle.nonReplacees.length})`, icon: 'search', onClick: () => setListeNonReplacees(true) },
-    ] };
-  const groupesFichier = modeDoc ? [
-    { items: [
-      { label: 'Exporter en PDF', icon: 'filePdf', principal: true, onClick: () => imprimerDocument() },
-      { label: 'Exporter en Markdown (.md)', icon: 'upload', onClick: () => exporterMdDocument() },
-    ] },
-    { items: [
-      { label: 'Mise en page…', icon: 'maximize', onClick: () => setMiseEnPage(true) },
-      { label: fondNoir ? 'Fond de page : noir' : 'Fond de page : blanc', icon: fondNoir ? 'moon' : 'sun', actif: fondNoir, onClick: () => basculerFond() },
-      ficheReelle && { label: 'Renommer', icon: 'edit', onClick: () => setDemandeRenommer((n) => n + 1) },
-    ] },
-    { items: [
-      canAddItem && { label: 'Prompts', icon: 'layers', onClick: () => setPromptsOuverts(true) },
-      { label: 'Importer un PDF…', icon: 'upload', onClick: () => entreePdfDoc.current && entreePdfDoc.current.click() },
-    ] },
-    groupeJumelle,
-    groupeTextes,
-  ] : [
-    { items: [
-      { label: exporting ? 'Export en cours…' : 'Exporter en PDF annoté', icon: 'filePdf', principal: true,
-        onClick: () => { if (!exporting) exportAnnotated(); } },
-    ] },
-    { items: [
-      ficheReelle && { label: 'Renommer', icon: 'edit', onClick: () => setDemandeRenommer((n) => n + 1) },
-      // (05/10) « Insérer une page / une image » retirés : déjà dans la barre d'outils (audit M5)
-      !!pending && { label: 'Remplacer la sélection', icon: 'edit', onClick: () => startEditFromSelection() },
-      !!fiche.htmlId && { label: 'Voir la fiche HTML', icon: 'fileHtml', onClick: () => setSrcTab('html') },
-    ] },
-    groupeJumelle,
-    !!(fiche && fiche.pdfId) && { items: [
-      { label: libelleOcr(), icon: 'search', onClick: () => setDetailOcr(true) },
-      { label: ocrDebug ? 'Masquer la couche OCR' : 'Afficher la couche OCR', icon: 'layers', onClick: () => setOcrDebug((v) => !v) },
-    ] },
-    groupeTextes,
-    { items: [
-      { label: copiedCount ? 'Notions copiées ✓' : 'Copier les notions', icon: 'copy', onClick: copyPriority },
-      canAddItem && { label: courseExportOk ? 'Copié ✓' : 'Exporter en JSON', icon: 'copy', onClick: exportAllPdfCourse },
-      canAddItem && { label: 'Prompts', icon: 'layers', onClick: () => setPromptsOuverts(true) },
-    ] },
-    { items: [
-      canAddItem && !!fiche.pdfId && { label: 'Détacher le PDF', icon: 'x', danger: true, onClick: () => setDetacherPdf(true) },
-    ] },
-  ];
+  /* MENU « FICHIER » UNIQUE (15/10, pdf/MenuFichier.jsx, docs/compte-rendu-bibliotheque-fichier.md) :
+     la MÊME liste, dans le même ordre, sur toutes les pages — cours PDF, document, fiche jumelle,
+     onglet Notes, fiche HTML. Une entrée qui ne s'applique pas est grisée avec sa raison, jamais
+     masquée. Ce qui n'est pas dans la liste a rejoint sa place naturelle :
+     correspondance des pages → pastille « Pages » de l'entrée « fiche jumelle » (et, de là,
+     les annotations non replacées) ; couche OCR → fenêtre
+     « Reconnaissance de texte » ; version des textes → panneau des textes (volet Affichage) ;
+     fond de page → « Mise en page » ; copier les notions, cours complet en JSON, prompts →
+     « Export spécial IA » (prompts aussi dans le ⋯ des Exercices) ; détacher le PDF →
+     « Supprimer… » ; voir la fiche HTML / le PDF → bascule PDF · HTML de l'en-tête ;
+     remplacer la sélection → ⋯ de la barre d'outils, quand du texte est sélectionné. */
+  const estHtml = srcTab === 'html';
+  const nomType = estHtml ? 'une fiche HTML' : modeDoc ? 'un document' : surFiche ? 'la fiche jumelle' : 'un cours PDF';
+  const NON = { indispo: `Non disponible pour ${nomType}` };
+  const pasCeDocument = { indispo: 'Non disponible pour ce document' };
+  const jumelleDispo = canAddItem && !!(fiche && (fiche.pdfId || modeDocCours));
+  const [supprimerOuvert, setSupprimerOuvert] = useState(false);
+  const actionsFichier = {
+    renommer: ficheReelle ? { onClick: () => setDemandeRenommer((n) => n + 1) } : pasCeDocument,
+    jumelle: estHtml ? NON : !jumelleDispo ? pasCeDocument : {
+      remplacer: !!jumelle,
+      title: jumelle ? `Nouvelle version de « ${jumelle.fileName} » : les annotations de la fiche suivent leur page` : 'Ton PDF résumé, à côté du cours : bascule page à page',
+      onClick: () => entreeJumelle.current && entreeJumelle.current.click(),
+      extras: jumelle ? [
+        { label: 'Pages', onClick: () => setEditeurCorresp(true),
+          title: (() => { const r = resumeCorresp(jumelle); return `Correspondance des pages — ${r.appariees} associées · ${r.ajoutees} ajoutée${r.ajoutees > 1 ? 's' : ''} dans la fiche${jumelle.pageMap.manuel ? ' · corrigée' : ''}`; })() },
+      ] : [],
+    },
+    miseEnPage: modeDoc ? { onClick: () => setMiseEnPage(true) } : NON,
+    ocr: !estHtml && !modeDoc && pdfIdActif ? { onClick: () => setDetailOcr(true), etat: libelleOcr().replace('Reconnaissance de texte : ', '').replace(/ \(PDF déjà en texte\)$/, '') } : NON,
+    pdfAnnote: estHtml ? NON : modeDoc ? { onClick: () => imprimerDocument() }
+      : { onClick: () => { if (!exporting) exportAnnotated(); }, etat: exporting ? 'en cours…' : null },
+    exporter: estHtml ? NON : { choix: {
+      md: modeDoc ? { onClick: () => exporterMdDocument() } : { onClick: () => exporterMdPdf() },
+      png: modeDoc ? NON : { onClick: () => exporterPngPages() },
+    } },
+    exportIA: estHtml || modeDoc ? NON : { onClick: () => setPanneauExportIA(true) },
+    textes: estHtml ? NON : { choix: { exporter: { onClick: () => setPanneauTextes('exporter') }, importer: { onClick: () => setPanneauTextes('importer') } } },
+    supprimer: ficheReelle ? { onClick: () => setSupprimerOuvert(true) } : pasCeDocument,
+  };
+  /* remplacer le texte sélectionné : ⋯ de la barre d'outils, seulement quand il y a une sélection */
+  const actionsSelection = [!!pending && !modeDoc && { label: 'Remplacer le texte sélectionné', icon: 'edit', onClick: () => startEditFromSelection() }];
   /* état de la reconnaissance de texte, en une ligne (menu Fichier) */
   function libelleOcr() {
     const enCours = etatOcr.courant && fiche && etatOcr.courant.pdfId === pdfIdActif;
@@ -1571,12 +1551,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <TitreRenommable titre={fiche && fiche.titre} demandeEdition={demandeRenommer}
           onRenommer={ficheReelle ? (t) => ctx.renameFiche(ficheReelle.id, t) : null}
           sousTitre={nbPagesAffichees ? `${nbPagesAffichees} page${nbPagesAffichees > 1 ? 's' : ''}` : null} />
-        <MenuFichier groupes={srcTab === 'html'
-          ? [{ items: [ficheReelle && { label: 'Renommer', icon: 'edit', onClick: () => setDemandeRenommer((n) => n + 1) },
-            !!(fiche && fiche.pdfId) && { label: 'Voir le PDF', icon: 'filePdf', onClick: () => setSrcTab('pdf') }] }]
-          : groupesFichier} />
+        <MenuFichier actions={actionsFichier} />
       </div>
       <div className="lecteur-entete-droite">
+        {selecteurSource}
         {selecteurDispo}
         {/* (08/10) thème, réglages et synchro : menu de l'avatar, en bas de la barre de navigation */}
       </div>
@@ -1728,7 +1706,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           onRenommer={ficheReelle ? (t) => ctx.renameFiche(ficheReelle.id, t) : null}
           sousTitre={nbPagesAffichees ? `${nbPagesAffichees} p.` : null} />
       </div>
-      <MenuFichier groupes={groupesFichier} />
+      <MenuFichier actions={actionsFichier} compact />
+      {selecteurSource}
       {tableauDispo && (
         <div className="tab-dispo" role="tablist" aria-label="Disposition">
           {[['pdf', 'filePdf', 'Le PDF seul'], ['deux', 'panel', 'PDF et tableau côte à côte'], ['tableau', 'grid', 'Le tableau en plein']].map(([id, ic, lbl]) => (
@@ -1776,6 +1755,17 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     </div>
   ) : null;
 
+  /* SOURCE AFFICHÉE (15/10) : un cours qui a un PDF ET une fiche HTML — bascule dans l'en-tête,
+     avec les autres modes d'affichage (avant : « Voir la fiche HTML » / « Voir le PDF » du menu Fichier) */
+  const selecteurSource = afficherEntete && fiche && fiche.pdfId && fiche.htmlId ? (
+    <div className="seg pdfr-source" role="tablist" aria-label="Source affichée">
+      {[['pdf', 'filePdf', 'PDF', 'Voir le PDF'], ['html', 'fileHtml', 'HTML', 'Voir la fiche HTML']].map(([id, ic, lbl, aide]) => (
+        <button key={id} type="button" role="tab" aria-selected={srcTab === id} className={'seg-btn' + (srcTab === id ? ' active' : '')}
+          onClick={() => setSrcTab(id)} title={aide}><Icon name={ic} size={12} /> {lbl}</button>
+      ))}
+    </div>
+  ) : null;
+
   /* EXPORT DU PDF ANNOTÉ COMPLET (01/10, voir pdf/exportAnnote.js) : surlignages,
      boîtes OUVERTES avec leurs flèches, traits, images, textes, « ? », pages
      ajoutées. Un NOUVEAU fichier téléchargé ; le blob d'origine n'est que LU.
@@ -1800,6 +1790,37 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     } finally {
       setExporting(false);
     }
+  };
+  /* EXPORTER › .md (15/10) : le texte du cours (texte structuré, passages surlignés en
+     [PRIORITAIRE], notes des surlignages — le même que « Copier les notions ») puis l'onglet Notes */
+  const exporterMdPdf = async () => {
+    if (!pdfDoc) return;
+    try {
+      const { texteStructure } = await pdfParts();
+      const titre = ((fiche && fiche.titre) || 'Cours') + (surFiche ? ' — fiche' : '');
+      let md = `# ${titre}\n\n${texteStructure.trim()}\n`;
+      const n = ficheReelle ? await lireNotesDoc(ficheReelle.id) : null;
+      if (n && n.content && docNonVide(n.content)) md += `\n## Notes\n\n${docToMarkdown(n.content, { titre: null, images: new Map() }).trim()}\n`;
+      telechargerFichier(new Blob([md], { type: 'text/markdown;charset=utf-8' }), nomFichier(titre, 'md'));
+    } catch (e) { setExportErreur('L’export .md a échoué : ' + ((e && e.message) || 'texte illisible') + '. Le cours n’a pas été modifié.'); }
+  };
+  /* EXPORTER › PNG par page (15/10) : le PDF annoté (même moteur que « Exporter le PDF annoté »),
+     une image par page à 2× la taille de page, dans un .zip. Le blob d'origine n'est que LU. */
+  const [avisExport, setAvisExport] = useState(null);
+  const exporterPngPages = async () => {
+    if (!pdfIdActif || avisExport) return;
+    setExportErreur(null); setAvisExport('PNG par page : préparation…');
+    try {
+      const annots = edits.map((a) => (a.id === activeEditId && editLastJson.current ? { ...a, content: editLastJson.current } : a));
+      const { octets } = await exporterDepuisBlob(pdfIdActif, highlights, annots);
+      const d = await openPdf(octets.slice()); const n = d.numPages; try { d.loadingTask ? d.loadingTask.destroy() : d.destroy(); } catch (x) { /* ignore */ }
+      const pngs = await pngsIA({ octets, indices: [...Array(n).keys()] }, { onProgres: (f, t) => setAvisExport(`PNG par page : ${f} / ${t}`) });
+      const fichiers = await Promise.all(pngs.map(async (p) => ({ nom: p.nom, donnees: new Uint8Array(await p.blob.arrayBuffer()) })));
+      const base = ((fiche && fiche.titre) || 'cours') + (surFiche ? ' fiche' : '') + ' png';
+      telechargerFichier(creerZip(fichiers), nomFichier(base, 'zip'));
+    } catch (e) {
+      setExportErreur('L’export PNG a échoué : ' + ((e && e.message) || 'PDF illisible') + '. Le cours n’a pas été modifié.');
+    } finally { setAvisExport(null); }
   };
 
   // BUG 2 : l'unité d'édition est la SÉLECTION de l'utilisateur (rects réels d'un
@@ -3036,7 +3057,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     );
     // la vue HTML plein écran a son propre en-tête ; embarquée (Bibliothèque), elle
     // reçoit le même nom renommable + menu Fichier que le PDF
-    return embedded && avecEntete ? <div className="fadein">{entete()}{vueHtml}</div> : vueHtml;
+    // (15/10) l'en-tête dans `.pdfr-v2` comme sur les autres pages : même titre, même bouton Fichier
+    return embedded && avecEntete ? <div className="fadein"><div className="pdfr-v2">{entete()}</div>{vueHtml}</div> : vueHtml;
   }
 
   return (
@@ -3073,7 +3095,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             </div>
           </div>
         ) : null}
-        actionsDocument={afficherEntete ? [] : actionsDocument /* avec l'en-tête, tout est dans « Fichier » */}
+        actionsDocument={afficherEntete ? actionsSelection : actionsDocument /* avec l'en-tête, tout est dans « Fichier » (sauf la sélection) */}
 
         onAjouterPage={pret ? () => insererPageApres(pageCourante - 1) : null}
         boutonDessins={pret && srcTab === 'pdf' && ficheId ? (
@@ -3390,14 +3412,20 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
       {panneauExportIA && (
         <PanneauExportIA pageCourante={pageCourante} nbPages={nbPagesAffichees} compter={(portee) => compterTextes(portee).boites}
-          preparer={preparerIA} jsonDe={jsonIA} onFermer={() => setPanneauExportIA(false)} />
+          preparer={preparerIA} jsonDe={jsonIA} onFermer={() => setPanneauExportIA(false)}
+          extras={[
+            { label: copiedCount ? 'Notions copiées ✓' : 'Copier les notions', icon: 'copy', onClick: copyPriority, title: copyTitle },
+            canAddItem && { label: courseExportOk ? 'Copié ✓' : 'Cours complet (JSON)', icon: 'copy', onClick: exportAllPdfCourse, title: 'Le cours, ses passages surlignés et ses cartes, en JSON (copié)' },
+            canAddItem && { label: 'Prompts…', icon: 'layers', onClick: () => setPromptsOuverts(true), title: 'Les prompts de théorie et d’exercices' },
+          ]} />
       )}
       {panneauTextes && (
         <PanneauTextesAnnotations volet={panneauTextes} pageCourante={pageCourante} nbPages={nbPagesAffichees}
           compter={compterTextes} onExporter={exporterTextes} onImporter={importerTextes} onBasculer={basculerTextes}
           onFermer={() => setPanneauTextes(null)} />
       )}
-      {miseEnPage && modeDoc && <PanneauMiseEnPage marges={marges} onChange={changerMarges} onFermer={() => setMiseEnPage(false)} />}
+      {miseEnPage && modeDoc && <PanneauMiseEnPage marges={marges} onChange={changerMarges} onFermer={() => setMiseEnPage(false)} fondNoir={fondNoir} onFond={basculerFond} />}
+      {avisExport && <div className="fj-avis" role="status">{avisExport}</div>}
 
       {ajoutPage && (
         <Modal title="Ajouter une page" onClose={() => setAjoutPage(null)} width="min(420px, 94vw)">
@@ -3460,11 +3488,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       )}
       {editeurCorresp && jumelle && (
         <EditeurCorrespondance rec={jumelle} pdfIdOrig={fiche.pdfId} docCache={cacheDocs.current} onClose={() => setEditeurCorresp(false)}
+          onNonReplacees={(jumelle.nonReplacees || []).length ? () => { setEditeurCorresp(false); setListeNonReplacees(true); } : null}
           {...(modeDocCours && instantDoc.current ? { pagesDoc: pagesDocument(instantDoc.current), versFicheDoc: pageMapCourant().versFiche } : {})} />
       )}
       {listeNonReplacees && jumelle && <ListeNonReplacees rec={jumelle} onClose={() => setListeNonReplacees(false)} />}
       {avisJumelle && <div className="fj-avis" role="status">{avisJumelle}</div>}
-      {detailOcr && fiche && fiche.pdfId && (
+      {detailOcr && fiche && pdfIdActif && !modeDoc && (
         <Modal title="Reconnaissance de texte" onClose={() => setDetailOcr(false)} width="min(460px, 94vw)">
           {(() => {
             const st = coucheOcr ? statsCouche(coucheOcr) : null;
@@ -3485,6 +3514,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         </Modal>
       )}
       {promptsOuverts && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOuverts(false)} />}
+      {supprimerOuvert && ficheReelle && (
+        <Modal title="Supprimer ce cours ?" onClose={() => setSupprimerOuvert(false)} width="min(460px, 94vw)">
+          <div className="hint" style={{ marginBottom: 14 }}>
+            « {ficheReelle.titre} » sera déplacé dans la corbeille (Réglages), restaurable tant qu’elle n’est pas vidée. Les cartes et le planning associés partent avec.
+            {canAddItem && !!fiche.pdfId && <> Pour garder le cours et ne retirer que le lien vers son PDF : « Détacher le PDF ».</>}
+          </div>
+          <div className="row" style={{ gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            <button type="button" className="btn ghost sm" onClick={() => setSupprimerOuvert(false)}>Annuler</button>
+            {canAddItem && !!fiche.pdfId && <button type="button" className="btn sm" onClick={() => { setSupprimerOuvert(false); setDetacherPdf(true); }}><Icon name="x" size={13} /> Détacher le PDF…</button>}
+            <button type="button" className="btn danger sm" onClick={async () => { setSupprimerOuvert(false); await ctx.setFicheArchived(ficheReelle.id, true); close(); }}><Icon name="trash" size={13} /> Supprimer le cours</button>
+          </div>
+        </Modal>
+      )}
       {detacherPdf && (
         <ConfirmModal title="Détacher le PDF ?"
           body={`La fiche « ${fiche.titre} », ses cartes et ses annotations restent. Seul le lien vers le fichier${fiche.pdfName ? ` « ${fiche.pdfName} »` : ''} est retiré ; tu pourras rattacher un PDF plus tard.`}

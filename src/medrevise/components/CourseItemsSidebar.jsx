@@ -32,6 +32,7 @@ import { Tex } from './Tex.jsx';
 import { ConfirmModal, ContextMenu, SplitHandle, ModalesHorsPanneauCtx } from './ui.jsx';
 import { creerGlissement } from './glissementModes.js';
 import { ItemForm, PasteJsonForm, TYPES } from './AddItemForm.jsx';
+import { AllPromptsModal } from './CoursePromptsMenu.jsx';
 import { appendItemsToFiche, themeFlashcardsDeFiche, adopterThemeDeCarte } from '../lib/import.js';
 import { ThemeFicheFlashcards } from './ThemeFiche.jsx';
 import { toInternalItem } from '../lib/adapter.js';
@@ -268,8 +269,11 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   const basculerAppr = (ids, mettre) => ctx.setLearningSet && ctx.setLearningSet(mettre ? ajouterApprentissage(listeAppr, ids) : retirerApprentissage(listeAppr, ids));
   const cocher = (id) => setSelection((sel) => { const n = new Set(sel || []); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const choisirType = (t) => { setActiveType(t); setAdding(false); setEditingId(null); setSelection(null); };
+  // (15/10) « Prompts » : ils produisent le JSON qu'on colle ici — l'entrée a quitté le menu Fichier
+  const [promptsOuverts, setPromptsOuverts] = useState(false);
   const actions = [
     { label: 'Coller du JSON', icon: 'upload', onClick: () => { setAdding(true); setAddSource('json'); setAddedCount(0); } },
+    { label: 'Prompts (théorie et exercices)…', icon: 'layers', onClick: () => setPromptsOuverts(true) },
   ].filter(Boolean);
 
   /* mémoïsé (v1.2) : changer de mode ne re-rend plus la liste (200 items = 1 à 3 images
@@ -436,6 +440,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         </div>
 
         {menuActions && <ContextMenu x={menuActions.x} y={menuActions.y} items={actions} onClose={() => setMenuActions(null)} />}
+        {promptsOuverts && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOuverts(false)} />}
 
         {occEdition && (
           <OcclusionEditorModal ctx={ctx} ficheId={ficheId} initial={occEdition === true ? null : occEdition}

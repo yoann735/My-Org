@@ -16,7 +16,9 @@ import {
 
 const fmt = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
 
-export function PanneauMiseEnPage({ marges, onChange, onFermer }) {
+/* `fondNoir` / `onFond` (15/10) : le fond de page (blanc / noir) rejoint la mise en page — il
+   était une entrée à part du menu Fichier, qui a désormais une liste fixe */
+export function PanneauMiseEnPage({ marges, onChange, onFermer, fondNoir = null, onFond = null }) {
   const m = marges || MARGES_DEFAUT_MM;
   const actif = prereglageDe(marges);
   const ref = useRef(null);
@@ -56,6 +58,17 @@ export function PanneauMiseEnPage({ marges, onChange, onFermer }) {
           </label>
         ))}
       </div>
+      {onFond && (
+        <div className="mep-fond" role="group" aria-label="Fond de page">
+          <span className="mep-cote-nom">Fond de page</span>
+          <div className="mep-prereglages">
+            {[[false, 'Blanc', 'sun'], [true, 'Noir', 'moon']].map(([v, lbl, ic]) => (
+              <button key={lbl} type="button" className={'mep-pre' + (!!fondNoir === v ? ' actif' : '')} aria-pressed={!!fondNoir === v}
+                onClick={() => { if (!!fondNoir !== v) onFond(); }}><Icon name={ic} size={13} /> {lbl}</button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="mep-pied">Toutes les pages · mémorisé avec le document · repris par l’export PDF</div>
     </div>
   );

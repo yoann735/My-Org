@@ -27,7 +27,9 @@ const court = (t, n = 60) => { const s = String(t || '').replace(/\s+/g, ' ').tr
 
 /* `pagesDoc` (cours DOCUMENT, 15/10 soir) : les pages ACTUELLES du document [{ titre, texte, ancre }]
    et `versFicheDoc` la correspondance actuelle (recalculée depuis les ancres) — à la place du PDF original */
-export function EditeurCorrespondance({ rec, pdfIdOrig, docCache, onClose, pagesDoc = null, versFicheDoc = null }) {
+/* `onNonReplacees` (15/10) : les annotations qu'un remplacement n'a pas pu replacer — l'entrée
+   avait sa place dans le menu Fichier, dont la liste est désormais fixe */
+export function EditeurCorrespondance({ rec, pdfIdOrig, docCache, onClose, pagesDoc = null, versFicheDoc = null, onNonReplacees = null }) {
   const [pages, setPages] = useState(null); // { o: [...], f: [...] } textes et titres
   const depart = versFicheDoc || rec.pageMap.versFiche;
   const [versFiche, setVersFiche] = useState(() => [...depart]);
@@ -134,6 +136,7 @@ export function EditeurCorrespondance({ rec, pdfIdOrig, docCache, onClose, pages
         )}
         <div className="fjc-actions">
           <button type="button" className="btn ghost sm" onClick={automatique} disabled={!pages} title="Recalculer la correspondance par similarité de texte">Automatique</button>
+          {onNonReplacees && <button type="button" className="btn ghost sm" onClick={onNonReplacees} title="Annotations que le remplacement de la fiche n’a pas pu replacer (rien n’a été supprimé)">Non replacées ({(rec.nonReplacees || []).length})</button>}
           <span style={{ flex: 1 }} />
           <button type="button" className="btn ghost sm" onClick={onClose}>Annuler</button>
           <button type="button" className="btn primary sm" onClick={enregistrer} disabled={!change || enCours}>{enCours ? 'Enregistrement…' : 'Enregistrer'}</button>

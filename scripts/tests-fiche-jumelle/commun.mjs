@@ -40,12 +40,25 @@ for(const r of await S.getAll('reading_position')){if(ids.some(i=>r.id==='rp:'+i
       b.__fichierPris = false;
     });
   };
-  // menu Fichier → entrée dont le libellé commence par `libelle`
+  // menu Fichier → entrée dont le libellé commence par `libelle`. (15/10) Menu Fichier UNIQUE
+  // (pdf/MenuFichier.jsx) : la correspondance des pages est la pastille « Pages » de l'entrée
+  // « fiche jumelle », les annotations non replacées s'ouvrent depuis l'éditeur de correspondance.
   b.menuFichier = async (libelle) => {
     await b.clic(await b.pos(`document.querySelector('.mf-bouton')`, false), { att: 400 });
-    const p = await b.pos(`[...document.querySelectorAll('.mf-item')].find(x=>x.querySelector('.mf-label').innerText.startsWith(${JSON.stringify(libelle)}))`, false);
+    let js;
+    if (/^(Importer la fiche jumelle|Remplacer la fiche)/.test(libelle)) js = `document.querySelector('button[data-entree=jumelle]:not([aria-disabled])')`;
+    else if (/^(Correspondance des pages|Annotations non replacées)/.test(libelle)) js = `[...document.querySelectorAll('.mf-extras .mf-pastille')].find(x=>x.innerText==='Pages')`;
+    else js = `[...document.querySelectorAll('.mf-item')].find(x=>(x.querySelector('.mf-label')||x).innerText.startsWith(${JSON.stringify(libelle)}))`;
+    const p = await b.pos(js, false);
     if (!p) { await b.T.Escape(); return false; }
-    await b.clic(p, { att: 400 }); return true;
+    await b.clic(p, { att: 400 });
+    if (/^Annotations non replacées/.test(libelle)) {
+      await b.dormir(800);
+      const q = await b.pos(`[...document.querySelectorAll('.fjc-actions button')].find(x=>x.innerText.startsWith('Non replacées'))`, false);
+      if (!q) return false;
+      await b.clic(q, { att: 400 });
+    }
+    return true;
   };
   // ouvre un cours par son titre (recharge d'abord si demandé) — même logique qu'ouvrir-cours.mjs
   b.ouvrir = async (titre, { recharger = false } = {}) => {

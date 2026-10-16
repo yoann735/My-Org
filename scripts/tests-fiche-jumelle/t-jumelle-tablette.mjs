@@ -15,7 +15,7 @@ await b.dormir(1500);
 b.ok((await vue()) !== v0, 'toucher : bascule ' + v0 + ' → ' + await vue());
 // éditeur, au doigt : la page « Synthèse » (fiche p.6) sur la diapositive 5, puis Annuler (rien d'écrit)
 await b.tape(await b.pos(`document.querySelector('.mf-bouton')`, false));
-await b.tape(await b.pos(`[...document.querySelectorAll('.mf-item')].find(x=>x.innerText.startsWith('Correspondance'))`, false));
+await b.tape(await b.pos(`[...document.querySelectorAll('.mf-extras .mf-pastille')].find(x=>x.innerText==='Pages')`, false)); // (15/10) menu Fichier unique
 await b.dormir(1500);
 await b.ev(`document.querySelector('.fjc-ligne[data-orig="5"]').scrollIntoView({block:'center'});[...document.querySelectorAll('.fjc-fiche .fjc-etiquette')].find(e=>e.dataset.fiche==='6').scrollIntoView({block:'center'});1`); await b.dormir(300);
 const de = await b.pos(`[...document.querySelectorAll('.fjc-fiche .fjc-etiquette')].find(e=>e.dataset.fiche==='6')`, false);

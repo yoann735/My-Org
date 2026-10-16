@@ -22,5 +22,19 @@ export async function banc(W = 1440, H = 900, opts = {}) {
   // les fiches affichées, dans l'ordre (arbre, liste plate, grille ou liste)
   b.fiches = () => b.ev(`[...document.querySelectorAll('.lt-fiche .lt-nom, .lv-carte-titre, .lv-ligne:not(.lv-entete) .lv-col-titre .lv-texte')].map(e=>e.innerText.replace(/\\s*fiche$/,'').trim())`);
   b.metas = () => b.ev(`[...document.querySelectorAll('.lib-tri-meta')].map(e=>e.innerText.trim())`);
+  // assemble des captures côte à côte (canvas dans la page du banc) → ../cap/<sortie>.png
+  b.assembler = async (noms, sortie, legendes = [], vertical = false) => {
+    const fs = await import('fs');
+    const imgs = noms.map((n) => 'data:image/png;base64,' + fs.readFileSync(`../cap/${n}.png`).toString('base64'));
+    const out = await b.ev(`(async()=>{const srcs=${JSON.stringify(imgs)},leg=${JSON.stringify(legendes)};
+      const im=await Promise.all(srcs.map(s=>new Promise(ok=>{const i=new Image();i.onload=()=>ok(i);i.src=s;})));
+      const G=16,T=leg.length?30:0,V=${JSON.stringify(vertical)};
+      const W=V?Math.max(...im.map(i=>i.width))+G*2:im.reduce((a,i)=>a+i.width,0)+G*(im.length+1);
+      const H=V?im.reduce((a,i)=>a+i.height+T,0)+G*(im.length+1):Math.max(...im.map(i=>i.height))+G*2+T;
+      const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');x.fillStyle='#0b0b0f';x.fillRect(0,0,W,H);
+      let px=G,py=G;im.forEach((i,k)=>{x.fillStyle='#c8c8d0';x.font='600 15px system-ui';if(leg[k])x.fillText(leg[k],px,py+16);x.drawImage(i,px,py+T);if(V)py+=i.height+T+G;else px+=i.width+G;});
+      return c.toDataURL('image/png').split(',')[1];})()`);
+    fs.writeFileSync(`../cap/${sortie}.png`, Buffer.from(out, 'base64'));
+  };
   return b;
 }

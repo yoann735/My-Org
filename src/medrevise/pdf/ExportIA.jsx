@@ -18,7 +18,9 @@ import { pdfIA, pngsIA, zipPngsIA, lisezmoiIA, ExportAnnule, DPI_REPLI } from '.
 const mo = (o) => (o / (1024 * 1024)).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' Mo';
 const ko = (o) => Math.round(o / 1024).toLocaleString('fr-FR') + ' Ko';
 
-export function PanneauExportIA({ pageCourante, nbPages, compter, preparer, jsonDe, onFermer }) {
+/* `extras` (15/10) : [{ label, icon, title, onClick }] — « Copier les notions », « Cours complet
+   (JSON) », « Prompts » : des sorties pour une IA qui étaient des entrées à part du menu Fichier */
+export function PanneauExportIA({ pageCourante, nbPages, compter, preparer, jsonDe, onFermer, extras = [] }) {
   const [portee, setPortee] = useState('page');
   const [message, setMessage] = useState(null);
   const [occupe, setOccupe] = useState(false);
@@ -28,7 +30,7 @@ export function PanneauExportIA({ pageCourante, nbPages, compter, preparer, json
   const annulation = useRef(null);
   useEffect(() => {
     const touche = (e) => { if (e.key === 'Escape') { if (apercu) fermerApercu(); else if (!occupe) onFermer(); } };
-    const dehors = (e) => { if (!apercu && !occupe && ref.current && !ref.current.contains(e.target) && !(e.target.closest && e.target.closest('.mf, .eia-apercu'))) onFermer(); };
+    const dehors = (e) => { if (!apercu && !occupe && ref.current && !ref.current.contains(e.target) && !(e.target.closest && e.target.closest('.mf, .eia-apercu, .day-pop-scrim'))) onFermer(); };
     window.addEventListener('keydown', touche);
     window.addEventListener('pointerdown', dehors, true);
     return () => { window.removeEventListener('keydown', touche); window.removeEventListener('pointerdown', dehors, true); };
@@ -135,6 +137,16 @@ export function PanneauExportIA({ pageCourante, nbPages, compter, preparer, json
           )}
         </div>
         {message && <div className={'ta-message' + (message.ok ? ' ok' : ' erreur')} role="status">{message.texte}</div>}
+        {extras.filter(Boolean).length > 0 && (
+          <div className="ta-corps eia-extras">
+            <p className="ta-aide">Aussi pour une IA, sur tout le cours :</p>
+            <div className="ta-actions">
+              {extras.filter(Boolean).map((x) => (
+                <button key={x.label} type="button" className="btn sm" disabled={occupe} onClick={x.onClick} title={x.title}><Icon name={x.icon || 'copy'} size={13} /> {x.label}</button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       {apercu && createPortal(
         <div className="eia-apercu" role="dialog" aria-label="Aperçu de l’export spécial IA">

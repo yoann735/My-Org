@@ -1,0 +1,39 @@
+/* ============================================================
+   MedRevise — MENU « FICHIER » unique (15/10, pdf/MenuFichier.jsx,
+   docs/compte-rendu-bibliotheque-fichier.md). Complète .mf / .mf-item (etudes.css) ;
+   tout est préfixé .mf-fixe : le menu de l'avatar, qui partage .mf-item, ne bouge pas.
+   Une ligne par entrée, hauteur fixe : chaque bouton est à la même place sur toutes les pages.
+   ============================================================ */
+.mf-menu.mf-fixe { width: 400px; max-width: min(400px, calc(100vw - 24px)); min-width: 0; }
+.mf-fixe .mf-ligne { display: flex; align-items: center; gap: 4px; }
+.mf-fixe .mf-item { min-height: 34px; padding: 0 10px; white-space: nowrap; font-family: inherit; }
+.mf-fixe .mf-ligne > .mf-item { flex: 1 1 auto; min-width: 0; }
+.mf-fixe .mf-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mf-fixe .mf-suffixe { color: var(--text-3); }
+.mf-fixe .mf-etat { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; color: var(--text-3); }
+.mf-fixe .mf-kbd { flex: 0 0 auto; font-family: inherit; font-size: 11px; color: var(--text-3); background: none; border: 0; padding: 0; letter-spacing: .02em; }
+.mf-fixe .mf-sep { height: 1px; margin: 4px 6px; background: var(--border); }
+/* entrée à choix : libellé, puis une pastille par format */
+.mf-fixe .mf-choix { cursor: default; }
+.mf-fixe .mf-choix:hover { background: none; }
+.mf-fixe .mf-pastilles { flex: 0 0 auto; display: inline-flex; gap: 4px; }
+.mf-fixe .mf-pastille { height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--border-2); background: none; color: var(--text);
+  font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; transition: background .12s, border-color .12s; }
+.mf-fixe .mf-pastille:hover, .mf-fixe .mf-pastille:focus-visible { background: var(--bg-2, rgba(255,255,255,.05)); border-color: var(--accent); outline: none; }
+.mf-fixe .mf-extras { margin-right: 4px; }
+/* GRISÉ : visible, à sa place, sans effet ; la raison au survol (title) et au doigt (ligne du bas) */
+.mf-fixe .mf-item.indispo, .mf-fixe .mf-choix.indispo .mf-label, .mf-fixe .mf-pastille.indispo { color: var(--text-3); opacity: .55; cursor: not-allowed; }
+.mf-fixe .mf-item.indispo .mf-ic { color: var(--text-3); }
+.mf-fixe .mf-item.indispo:hover { background: none; }
+.mf-fixe .mf-pastille.indispo:hover { background: none; border-color: var(--border-2); }
+.mf-fixe .mf-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.mf-fixe .mf-raison { margin: 4px 4px 2px; padding: 7px 9px; border-radius: 8px; font-size: 12px; color: var(--text-2); background: var(--bg-2, rgba(255,255,255,.05)); white-space: normal; }
+@media (pointer: coarse) {
+  .mf-fixe .mf-item { min-height: 42px; }
+  .mf-fixe .mf-pastille { height: 32px; padding: 0 12px; }
+}
+
+/* Mise en page › Fond de page (rejoint le panneau, 15/10) */
+.mep-fond { margin: 2px 0 10px; }
+.mep-fond .mep-prereglages { grid-template-columns: repeat(2, 1fr); margin: 6px 0 0; }
+.mep-fond .mep-pre { flex-direction: row; justify-content: center; }
