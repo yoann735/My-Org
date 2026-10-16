@@ -1,7 +1,7 @@
 // Menu « Fichier » en tablette (paysage + portrait, au doigt) et téléphone. Base LOCALE du banc.
 // Un seul scénario par connexion (l'émulation CDP saute à la déconnexion).
 import { banc } from './commun.mjs';
-const ORDRE = 'renommer|jumelle|miseEnPage|ocr|pdfAnnote|exporter|exportIA|textes|supprimer';
+const ORDRE = 'renommer|fichiers|miseEnPage|ocr|pdfAnnote|exporter|exportIA|textes|supprimer';
 const b = await banc(1440, 900, { tactile: true });
 await b.c.send('Runtime.evaluate', { expression: `localStorage.setItem('medrevise.biblio.tri','manuel')` });
 await b.biblio({ recharger: true });

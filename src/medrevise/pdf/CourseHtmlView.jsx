@@ -308,9 +308,8 @@ export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, clos
     canAddItem && { label: 'Ajouter un item', icon: 'plus', onClick: () => setShowAddItem(true) },
     canAddItem && { label: 'Importer des items', icon: 'upload', onClick: () => { setImportedCount(0); setShowImportItems(true); } },
     canAddItem && { label: 'Prompts (théorie et exercices)', icon: 'layers', onClick: () => setPromptsOuverts(true) },
-    !!fiche.pdfId && { label: 'Voir le PDF', icon: 'filePdf', onClick: () => onVoirPdf() },
-    // retire le LIEN vers le fichier (la fiche et ses cartes restent) — confirmation
-    canAddItem && { label: 'Détacher le cours HTML…', icon: 'x', onClick: () => setDetacher(true) },
+    // (16/10, lib/fichiersCours.js) « Voir le PDF » et « Détacher le cours HTML » retirés : un cours a UN
+    // document principal ; le remplacer : Fichier › Fichiers du cours
   ];
 
   // indicateur discret d'auto-save — voir performCourseSave/scheduleCourseSave

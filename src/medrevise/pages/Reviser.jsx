@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
+import { importerPrincipal } from '../lib/fichiersCours.js';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { EdTop, JBadge, matiereMeta, ContextMenu, ConfirmModal, DateActionModal, FicheDndProvider, DraggableFiche, DropSlot, DropCible, LigneDossierArbre, BellButton, dossierDeleteTexts, EtiquetteDot, detectDocKind, LoaderL6 } from '../components/ui.jsx';
 import { docKind, DOC_META } from '../documents/lib/documents.js';
@@ -492,13 +493,14 @@ export function Reviser({ ctx }) {
   // input UNIQUE (PDF ou HTML, même chemin que Bibliothèque/import) pour rattacher
   // un document directement depuis Réviser, sans passer par un écran d'import —
   // "Voir le cours" apparaît ensuite de lui-même (primary.pdfId/htmlId à jour).
-  const attachCoursDoc = async (file) => {
-    if (!primary || !file) return;
-    const kind = detectDocKind(file);
-    if (!kind) return;
-    const blobId = await putBlob(file);
-    if (kind === 'html') await ctx.setFicheHtml(primary.id, blobId, file.name);
-    else await ctx.setFichePdf(primary.id, blobId, file.name);
+  // (16/10, lib/fichiersCours.js) le document PRINCIPAL d'un cours qui n'en a pas : un PDF, ou des
+  // images converties en PDF ; jamais un second ; taille limitée ; un import à la fois
+  const [erreurDoc, setErreurDoc] = useState(null);
+  const attachCoursDoc = async (fichiers) => {
+    if (!primary || !fichiers || !fichiers.length) return;
+    setErreurDoc(null);
+    try { await importerPrincipal({ fiche: primary, fichiers }); await ctx.reload(); }
+    catch (e) { setErreurDoc((e && e.message) || 'Import impossible'); }
   };
   const launch = (mode) => {
     if (mode === 'qcm') {
@@ -1257,12 +1259,13 @@ export function Reviser({ ctx }) {
                      directement (input unique PDF/HTML — mêmes stockage/lecteur que
                      partout ailleurs) ; redevient "Voir le cours" dès que c'est fait. */}
                   {!multi && primary && !primary.pdfId && !primary.htmlId && (
-                    <label className="btn ghost sm" style={{ cursor: 'pointer' }} title="Rattacher le PDF ou la fiche HTML du cours">
-                      <Icon name="upload" size={14} /> Importer une fiche
-                      <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }}
-                        onChange={(e) => { attachCoursDoc(e.target.files[0]); e.target.value = ''; }} />
+                    <label className="btn ghost sm" style={{ cursor: 'pointer' }} title="Le document principal du cours : un PDF, ou des images (converties en PDF)">
+                      <Icon name="upload" size={14} /> Importer le document
+                      <input type="file" accept="application/pdf,.pdf,image/*" multiple style={{ display: 'none' }}
+                        onChange={(e) => { const l = [...(e.target.files || [])]; e.target.value = ''; attachCoursDoc(l); }} />
                     </label>
                   )}
+                  {erreurDoc && <span className="fj-erreur" role="alert">{erreurDoc}</span>}
                   {dueSel.length > 0 && <button className="btn primary sm" onClick={launchToday}><Icon name="play" size={13} fill /> Lancer aujourd'hui</button>}
                   {!multi && primary && (
                     <button type="button" className="cd-ic rb-more" title="Autres actions sur cette fiche"

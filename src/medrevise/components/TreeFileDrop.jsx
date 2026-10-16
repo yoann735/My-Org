@@ -27,6 +27,7 @@ import { todayISO } from '../lib/sm2.js';
 import { titreFromFile, titreFromFilename } from '../lib/fileTitre.js';
 import { createFicheFromQuestions } from '../lib/import.js';
 import { estImage, ordonnerImages, imagesToPdf } from '../lib/imageToPdf.js';
+import { verifierFichiers, avecVerrou } from '../lib/fichiersCours.js';
 // fichier bureautique (Word, PowerPoint…) : refusé avec un message (on attend un PDF)
 const estBureautique = (f) => /\.(docx?|pptx?|odt|odp|pages|key)$/i.test((f && f.name) || '');
 
@@ -152,15 +153,20 @@ export function useImportParDepot(ctx, { onSpring, annoncer, onImporte }) {
   const onFiles = async ({ files, matiereId, dossierId }) => {
     if (!files.length) return;
     if (!matiereId) { annoncer('Aucune destination ici — dépose le fichier sur une matière ou un dossier.'); return; }
-    const docs = files.filter((f) => detectDocKind(f));
+    // (16/10, lib/fichiersCours.js) un cours = UN document principal : un PDF, ou des images
+    // converties en PDF ; plus de fiche HTML comme nouveau document ; taille limitée
+    const docs = files.filter((f) => detectDocKind(f) === 'pdf');
     const images = files.filter((f) => !detectDocKind(f) && estImage(f));
     const bureau = files.find(estBureautique);
+    const html = files.find((f) => detectDocKind(f) === 'html');
     if (!docs.length && !images.length) {
       annoncer(bureau
         ? `« ${bureau.name} » ne se convertit pas proprement hors ligne : exporte-le en PDF (Fichier → Exporter au format PDF), puis dépose le PDF.`
-        : 'Formats acceptés : PDF, HTML ou images.');
+        : html ? 'Une fiche HTML ne devient plus un cours : dépose le PDF du cours (ou des images).' : 'Formats acceptés : PDF ou images.');
       return;
     }
+    const errTaille = verifierFichiers(docs.length ? [docs[0]] : images, { images: !docs.length });
+    if (errTaille) { annoncer(errTaille); return; }
     if (docs.length) {
       const file = docs[0];
       const kind = detectDocKind(file);
@@ -192,6 +198,7 @@ export function useImportParDepot(ctx, { onSpring, annoncer, onImporte }) {
     const dossierId = choix.matiereId === depot.matiereId ? depot.dossierId : null;
     setOccupe(true);
     try {
+      await avecVerrou('import d’un cours', async () => {
       const estImages = kind === 'images';
       const blobId = await putBlob(estImages ? await imagesToPdf(fichiers) : file);
       const nomPdf = estImages ? `${(titre.trim() || titreFromFilename(file.name))}.pdf` : file.name;
@@ -213,8 +220,9 @@ export function useImportParDepot(ctx, { onSpring, annoncer, onImporte }) {
       setDepot(null);
       annoncer(`« ${r.fiche.titre} » importée.`, true);
       if (onImporte) onImporte(r.fiche);
+      });
     } catch (e) {
-      annoncer("L'import a échoué — le fichier n'a pas pu être enregistré.");
+      annoncer(e && /import est déjà en cours/.test(e.message) ? e.message : "L'import a échoué — le fichier n'a pas pu être enregistré.");
     } finally {
       setOccupe(false);
     }

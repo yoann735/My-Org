@@ -12,6 +12,7 @@ import { Card } from './ui.jsx';
 import { getAll, getBlob } from '../lib/storage.js';
 import { texteDeContenu } from '../lib/textesAnnotations.js';
 import { deliverFile } from '../lib/backupExport.js';
+import { fichiersHorsModele } from '../lib/fichiersCours.js';
 
 const date = (iso) => { try { return new Date(iso).toLocaleDateString('fr-FR'); } catch (e) { return ''; } };
 const nomFichier = (s) => String(s || 'notes').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'notes';
@@ -94,6 +95,57 @@ export function CarteArchives() {
       )}
       {etat && etat.rangees > 0 && etat.notes.length > 0 && <div className="hint" style={{ marginTop: 10 }}>{etat.rangees} autre{etat.rangees > 1 ? 's' : ''} document{etat.rangees > 1 ? 's' : ''}, déjà rangé{etat.rangees > 1 ? 's' : ''} dans la Bibliothèque, y reste{etat.rangees > 1 ? 'nt' : ''}.</div>}
       {message && <div className="hint" style={{ marginTop: 10 }}>{message}</div>}
+    </Card>
+  );
+}
+
+/* ============================================================
+   (16/10, lib/fichiersCours.js) FICHIERS DE COURS HORS MODÈLE — en LECTURE.
+   Un cours = un document principal + au plus une fiche jumelle. Ce qui en sort n'est jamais
+   effacé : fiche HTML EN PLUS d'un PDF, principal remplacé, fiche jumelle supprimée, anciennes
+   versions de fiche jumelle. Ouvrir (nouvel onglet) ou télécharger ; rien ne s'écrit.
+   ============================================================ */
+export function CarteFichiersHorsModele() {
+  const [liste, setListe] = useState(null);
+  const [message, setMessage] = useState('');
+  useEffect(() => {
+    let vivant = true;
+    getAll('fiches').then((f) => fichiersHorsModele((f || []).filter((x) => !x.archive))).then((l) => { if (vivant) setListe(l); }).catch(() => vivant && setListe([]));
+    return () => { vivant = false; };
+  }, []);
+  const ouvrir = async (x) => {
+    const b = await getBlob(x.fileId);
+    if (!b) { setMessage(`« ${x.nom} » n’est pas sur cet appareil.`); return; }
+    const url = URL.createObjectURL(x.html ? new Blob([b], { type: 'text/html' }) : b);
+    window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 60000);
+  };
+  const telecharger = async (x) => {
+    const b = await getBlob(x.fileId);
+    if (!b) { setMessage(`« ${x.nom} » n’est pas sur cet appareil.`); return; }
+    await deliverFile(b, x.nom || 'fichier');
+  };
+  return (
+    <Card title="Archives — fichiers de cours" icon="archive" style={{ maxWidth: 820, marginBottom: 16 }}>
+      <div id="reglages-archives-fichiers" className="hint" style={{ marginBottom: 12 }}>
+        Un cours a un document principal et au plus une fiche jumelle. Les fichiers qui sortent de ce modèle (fiche HTML en plus d’un PDF, document principal remplacé, fiche jumelle supprimée, anciennes versions) restent ici, en lecture. Rien n’est effacé.
+      </div>
+      {!liste && <div className="hint">Lecture…</div>}
+      {liste && !liste.length && <div className="arch-vide">Aucun fichier hors modèle.</div>}
+      {liste && liste.length > 0 && (
+        <ul className="arch-liste">
+          {liste.map((x, i) => (
+            <li key={x.fileId + ':' + i} className="arch-doc" data-fichier={x.fileId}>
+              <div className="arch-ligne">
+                <Icon name={x.html ? 'fileHtml' : 'filePdf'} size={14} />
+                <div className="arch-titre"><strong>{x.nom}</strong><span className="hint">{x.quoi} · {x.cours}{x.le ? ` · ${new Date(x.le).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}</span></div>
+                <button type="button" className="btn sm ghost" onClick={() => ouvrir(x)}><Icon name="ext" size={12} /> Ouvrir</button>
+                <button type="button" className="btn sm" onClick={() => telecharger(x)}><Icon name="upload" size={12} /> Télécharger</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {message && <div className="hint" style={{ marginTop: 8 }}>{message}</div>}
     </Card>
   );
 }

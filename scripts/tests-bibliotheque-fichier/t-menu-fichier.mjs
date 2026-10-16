@@ -4,13 +4,13 @@ import { banc } from './commun.mjs';
 const b = await banc(1440, 900);
 await b.c.send('Runtime.evaluate', { expression: `localStorage.setItem('medrevise.biblio.tri','manuel')` });
 await b.biblio({ recharger: true });
-const ORDRE = ['renommer', 'jumelle', 'miseEnPage', 'ocr', 'pdfAnnote', 'exporter', 'exportIA', 'textes', 'supprimer'];
+const ORDRE = ['renommer', 'fichiers', 'miseEnPage', 'ocr', 'pdfAnnote', 'exporter', 'exportIA', 'textes', 'supprimer'];
 const PAGES = {
   pdf: { titre: 'Membre supérieur — repères', gris: ['miseEnPage'], raison: 'Non disponible pour un cours PDF' },
   document: { titre: 'Conformité doc', gris: ['ocr', 'exportIA', 'exporter.png'], raison: 'Non disponible pour un document' },
   jumelle: { titre: 'Physiologie rénale (jumelle)', vue: 'Fiche', gris: ['miseEnPage'], raison: 'Non disponible pour la fiche jumelle' },
   notes: { titre: 'Membre supérieur — repères', notes: true, gris: ['miseEnPage'], raison: 'Non disponible pour un cours PDF' },
-  html: { titre: 'Cours PDF + HTML (test)', html: true, gris: ['jumelle', 'miseEnPage', 'ocr', 'pdfAnnote', 'exporter.md', 'exporter.png', 'exportIA', 'textes.exporter', 'textes.importer'], raison: 'Non disponible pour une fiche HTML' },
+  html: { titre: 'Cours HTML seul (test)', html: true, gris: ['miseEnPage', 'ocr', 'pdfAnnote', 'exporter.md', 'exporter.png', 'exportIA', 'textes.exporter', 'textes.importer'], raison: 'Non disponible pour une fiche HTML' },
 };
 const ouvrirMenu = async () => { if (!(await b.ev(`!!document.querySelector('.mf-menu')`))) await b.clic(await b.pos(`document.querySelector('.mf-bouton')`, false), { att: 450 }); };
 const fermerMenu = async () => { if (await b.ev(`!!document.querySelector('.mf-menu')`)) { await b.T.Escape(); await b.dormir(200); } };
@@ -25,14 +25,14 @@ const ouvrirPage = async (nom) => {
   await b.ouvrir(P.titre);
   if (P.vue) { await b.ev(`(()=>{const x=[...document.querySelectorAll('.pdfr-jumelle-bascule .seg-btn')].find(x=>x.innerText===${JSON.stringify(P.vue)});x&&x.click();return 1})()`); await b.dormir(1800); }
   if (P.notes) { await b.ev(`(()=>{const t=[...document.querySelectorAll('[role=tab]')].find(x=>x.innerText.trim()==='Notes');t&&t.click();return 1})()`); await b.dormir(900); }
-  if (P.html) { await b.clic(await b.pos(`[...document.querySelectorAll('.pdfr-source .seg-btn')].find(x=>x.innerText.trim()==='HTML')`, false), { att: 1800 }); }
+  if (P.html) await b.dormir(1500); // (16/10) fiche HTML seule : son document principal
 };
 const res = {};
 for (const nom of Object.keys(PAGES)) {
   await ouvrirPage(nom);
   const P = PAGES[nom];
   if (P.notes) b.ok(await b.ev(`[...document.querySelectorAll('[role=tab][aria-selected=true]')].some(x=>x.innerText.trim()==='Notes')`), 'notes : l’onglet Notes est ouvert');
-  if (P.html) b.ok(await b.ev(`!!document.querySelector('.pdfr-html-frame, iframe')`), 'html : la fiche HTML est affichée (bascule PDF · HTML de l’en-tête)');
+  if (P.html) b.ok(await b.ev(`!!document.querySelector('.pdfr-html-frame, iframe')`), 'html : la fiche HTML (document principal) est affichée');
   const entete = await b.ev(`(()=>{const e=document.querySelector('.lecteur-entete');const f=e.querySelector('.mf-bouton');const r=f.getBoundingClientRect();const cs=getComputedStyle(f);
     const t=e.querySelector('.titre-fiche-nom, .tr-titre, h1, h2');const d=e.querySelector('.lecteur-entete-droite');
     const ordre=t&&(t.compareDocumentPosition(f)&4)&&(!d||(f.compareDocumentPosition(d)&4));
@@ -57,10 +57,10 @@ const ref = res.pdf;
 for (const nom of Object.keys(PAGES)) {
   const r = res[nom];
   b.ok(JSON.stringify(r.m.map((x) => [x.id, x.y, x.h])) === JSON.stringify(ref.m.map((x) => [x.id, x.y, x.h])), `${nom} : chaque entrée à la même position (y, hauteur) que sur un PDF`);
-  b.ok(JSON.stringify(r.m.map((x) => [x.id === 'jumelle' ? '' : x.label, x.ic, x.kbd, x.choix.map((c) => c.txt)])) === JSON.stringify(ref.m.map((x) => [x.id === 'jumelle' ? '' : x.label, x.ic, x.kbd, x.choix.map((c) => c.txt)])), `${nom} : mêmes libellés, icônes et raccourcis`);
+  b.ok(JSON.stringify(r.m.map((x) => [x.label, x.ic, x.kbd, x.choix.map((c) => c.txt)])) === JSON.stringify(ref.m.map((x) => [x.label, x.ic, x.kbd, x.choix.map((c) => c.txt)])), `${nom} : mêmes libellés, icônes et raccourcis`);
   b.ok(JSON.stringify(r.entete.x + ',' + r.entete.y + ',' + r.entete.w + ',' + r.entete.h + ',' + r.entete.font) === JSON.stringify(ref.entete.x + ',' + ref.entete.y + ',' + ref.entete.w + ',' + ref.entete.h + ',' + ref.entete.font), `${nom} : bouton Fichier au même endroit, même taille, même style`, `${r.entete.x},${r.entete.y} ${r.entete.w}×${r.entete.h}`);
 }
-b.ok(res.jumelle.m[1].label === 'Remplacer la fiche jumelle…' && res.pdf.m[1].label === 'Importer la fiche jumelle…', 'entrée 2 : « Importer » sans fiche jumelle, « Remplacer » avec');
+b.ok(res.jumelle.m[1].label === 'Fichiers du cours…' && res.pdf.m[1].label === 'Fichiers du cours…', 'entrée 2 (16/10) : « Fichiers du cours… » partout (principal + fiche jumelle)');
 await b.assembler(['mf-pdf', 'mf-document', 'mf-jumelle', 'mf-notes'], 'mf-4-pages', ['Cours PDF', 'Document', 'Fiche jumelle', 'Onglet Notes']);
 await b.assembler(['mf-entete-pdf', 'mf-entete-document', 'mf-entete-jumelle', 'mf-entete-notes', 'mf-entete-html'], 'mf-entetes', ['Cours PDF', 'Document', 'Fiche jumelle', 'Onglet Notes', 'Fiche HTML'], true);
 console.log(JSON.stringify(res.pdf.m.map((x) => `${x.id}@${x.y}`)));

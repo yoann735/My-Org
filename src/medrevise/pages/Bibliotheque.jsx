@@ -18,6 +18,7 @@ import { ficheImages, totalCoches } from '../lib/anatSchema.js';
 import { docKind, DOC_META, deleteTranscript, createDocumentNotes } from '../documents/lib/documents.js';
 import { FenetreCreation } from '../components/FenetreCreation.jsx';
 import { PdfReader } from '../pdf/PdfReader.jsx';
+import { FichiersCours } from '../pdf/FichiersCours.jsx';
 import { useCoursAvecJumelle } from '../lib/ficheJumelle.js';
 import { useDatesModif, dateAjout, dateModif, ilYa, leJour } from '../lib/datesFiches.js';
 import { commencerGlisse, finirGlisse } from '../apprentissageLibre/liste.js';
@@ -88,7 +89,6 @@ export function Bibliotheque({ ctx }) {
     } finally { setCreationEnCours(false); }
   };
   const [etqMenu, setEtqMenu] = useState(null); // { x, y, ficheId } — menu compact de l'étiquette
-  const [replacingHtmlId, setReplacingHtmlId] = useState(null); // ficheId — modale « Remplacer le fichier HTML »
   // refonte UX (repli HORIZONTAL, pas un démontage) : la liste reste TOUJOURS
   // montée, dans une colonne qui rétrécit en rail (voir .lib-master.collapsed,
   // etudes.css) — jamais empilée verticalement, jamais totalement invisible.
@@ -218,6 +218,13 @@ export function Bibliotheque({ ctx }) {
     if (kind) setListCollapsed(true);
   };
   const closeDoc = () => { setSelected(null); setListCollapsed(false); };
+  // « Fichiers du cours… » : le cours s'ouvre sur cet écran ; un cours à cartes seules (rien à ouvrir) l'a ici même
+  const [fichiersSansDoc, setFichiersSansDoc] = useState(null); // ficheId
+  const ouvrirFichiers = (f) => {
+    const kind = docKind(f);
+    if (kind === 'fiche' || kind === 'document') { setSelected({ ficheId: f.id, kind, fichiers: Date.now() }); setListCollapsed(true); }
+    else setFichiersSansDoc(f.id);
+  };
   // input UNIQUE (PDF ou HTML) pour rattacher un document — le type est détecté
   // à la volée, le stockage bascule sur fiche.pdfId ou fiche.htmlId en conséquence.
   const attachDoc = async (ficheId, file) => {
@@ -273,12 +280,9 @@ export function Bibliotheque({ ctx }) {
     items.push({ label: 'Déplacer vers…', icon: 'folder', onClick: () => setMoveMenu({ x, y, ficheId: f.id }) });
     if (!isSchema && !isTranscript) {
       items.push({ label: f.etiquette ? 'Changer l’étiquette' : 'Poser une étiquette', icon: 'tag', onClick: () => setEtqMenu({ x, y, ficheId: f.id }) });
-      if (f.pdfId && f.htmlId) {
-        items.push({ label: 'Ouvrir en PDF', icon: 'filePdf', onClick: () => openDoc(f, 'pdf') });
-        items.push({ label: 'Ouvrir en HTML', icon: 'fileHtml', onClick: () => openDoc(f, 'html') });
-      }
-      if (f.htmlId) items.push({ label: 'Remplacer le fichier HTML', icon: 'refresh', onClick: () => setReplacingHtmlId(f.id) });
-      if (!f.pdfId || !f.htmlId) items.push({ label: 'Attacher un document', icon: 'upload', onClick: () => requestAttach(f.id) });
+      // (16/10, lib/fichiersCours.js) UN document principal + au plus UNE fiche jumelle : plus
+      // d'« attacher », d'« ouvrir en PDF / en HTML », de « remplacer le fichier HTML » ici
+      items.push({ label: 'Fichiers du cours…', icon: 'filePdf', onClick: () => ouvrirFichiers(f) });
       items.push({
         label: f.rappelsJ === false ? 'Reprendre les rappels J' : 'Mettre les rappels J en pause', icon: 'bell',
         onClick: () => ctx.setFicheRappelsJ(f.id, f.rappelsJ === false),
@@ -701,9 +705,7 @@ export function Bibliotheque({ ctx }) {
       </div>
       )}
 
-      {/* input fichier PARTAGÉ (menu « … » → Attacher un document) — un seul pour
-         toute la liste, jamais affiché ; voir requestAttach/onAttachInputChange. */}
-      <input ref={attachInputRef} type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={onAttachInputChange} />
+      {/* (16/10) l'input « Attacher un document » est retiré : Fichiers du cours (lib/fichiersCours.js) */}
 
       {affichage !== 'arbre' && !selected ? (
         affichage === 'grille' ? renderGrille() : renderListe()
@@ -873,7 +875,7 @@ export function Bibliotheque({ ctx }) {
             </div>
           ) : selected.kind === 'fiche' || selected.kind === 'document' ? (
             // (08/10) un document s'ouvre dans le lecteur, exactement comme un PDF
-            <PdfReader key={selected.ficheId + ':' + (selected.srcTab || '')} ctx={ctx} source={{ id: selected.ficheId, ficheId: selected.ficheId }} initialSrcTab={selected.srcTab} embedded avecEntete onClose={closeDoc} />
+            <PdfReader key={selected.ficheId + ':' + (selected.srcTab || '') + ':' + (selected.fichiers || '')} ctx={ctx} source={{ id: selected.ficheId, ficheId: selected.ficheId }} initialSrcTab={selected.srcTab} embedded avecEntete onClose={closeDoc} ouvrirFichiers={!!selected.fichiers} />
           ) : selected.kind === 'schema' ? (
             <SchemaEditorScreen key={selected.ficheId} ctx={ctx} ficheId={selected.ficheId} embedded onClose={closeDoc} />
           ) : selected.kind === 'transcript' ? (
@@ -896,6 +898,10 @@ export function Bibliotheque({ ctx }) {
             label: <span className="lib-tri-choix" title={t.aide}><span className="lib-tri-coche">{tri === t.id && <Icon name="check" size={13} />}</span>{t.label}</span>,
             onClick: () => choisirTri(t.id),
           }))} />
+      )}
+      {fichiersSansDoc && db.fiches.find((x) => x.id === fichiersSansDoc) && (
+        <FichiersCours ctx={ctx} fiche={db.fiches.find((x) => x.id === fichiersSansDoc)} onFermer={() => setFichiersSansDoc(null)}
+          onRemplace={() => { const id = fichiersSansDoc; setFichiersSansDoc(null); setSelected({ ficheId: id, kind: 'fiche' }); setListCollapsed(true); }} />
       )}
       {etqMenu && (
         <ContextMenu x={etqMenu.x} y={etqMenu.y} onClose={() => setEtqMenu(null)}
@@ -974,72 +980,11 @@ export function Bibliotheque({ ctx }) {
         />
       )}
 
-      {replacingHtmlId && (
-        <ReplaceHtmlModal ctx={ctx} fiche={db.fiches.find((x) => x.id === replacingHtmlId)} onClose={() => setReplacingHtmlId(null)} />
-      )}
     </div>
   );
 }
 
-/* remplace le fichier HTML d'une fiche EXISTANTE (fichier ou HTML collé) — ne
-   touche que fiche.htmlId/htmlName (même champ que « Voir le cours »/setFicheHtml) ;
-   cartes (QCM/flashcard/Feynman/exercice), plan J et carnet d'erreurs vivent dans
-   d'autres stores (questions/highlights/annotations), jamais effleurés ici.
-   L'avertissement + le bouton « Remplacer » explicite tiennent lieu de
-   confirmation (pas de second dialogue, inutile pour un geste aussi direct). */
-function ReplaceHtmlModal({ ctx, fiche, onClose }) {
-  const [mode, setMode] = useState('file'); // file | paste
-  const [file, setFile] = useState(null);
-  const [pasted, setPasted] = useState('');
-  const [busy, setBusy] = useState(false);
-  if (!fiche) return null;
-  const ready = mode === 'file' ? !!file : !!pasted.trim();
-
-  const confirm = async () => {
-    if (!ready || busy) return;
-    setBusy(true);
-    try {
-      const blob = mode === 'file' ? file : new Blob([pasted], { type: 'text/html' });
-      const name = mode === 'file' ? file.name : (fiche.htmlName || 'fiche.html');
-      const blobId = await putBlob(blob);
-      await ctx.replaceFicheHtml(fiche.id, blobId, name);
-      onClose();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Modal title="Remplacer le fichier HTML" onClose={onClose}>
-      <div className="hint" style={{ marginBottom: 12 }}>
-        Remplace le document HTML actuel ({fiche.htmlName || 'fiche HTML'}) de « {fiche.titre} » par une
-        nouvelle version. Les cartes (QCM, flashcards, Feynman, exercices), le planning des J et le carnet
-        d'erreurs de cette fiche restent intacts — seul le cours affiché dans « Voir le cours » change.
-      </div>
-      <div className="seg" style={{ marginBottom: 12 }}>
-        <button type="button" className={'seg-btn' + (mode === 'file' ? ' active' : '')} onClick={() => setMode('file')}><Icon name="upload" size={13} /> Fichier</button>
-        <button type="button" className={'seg-btn' + (mode === 'paste' ? ' active' : '')} onClick={() => setMode('paste')}><Icon name="edit" size={13} /> Coller le HTML</button>
-      </div>
-      {mode === 'file' ? (
-        <div className="imp-field">
-          <label>Nouveau fichier HTML</label>
-          <input type="file" accept="text/html,.html" onChange={(e) => setFile(e.target.files[0] || null)} />
-          {file && <div className="hint" style={{ marginTop: 6 }}>{file.name}</div>}
-        </div>
-      ) : (
-        <div className="imp-field">
-          <label>Code HTML collé</label>
-          <textarea className="imp-title" style={{ minHeight: 160, resize: 'vertical', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12.5 }}
-            placeholder="Colle ici tout le contenu HTML de la fiche mise à jour." value={pasted} onChange={(e) => setPasted(e.target.value)} />
-        </div>
-      )}
-      <div className="imp-actions" style={{ marginTop: 14 }}>
-        <button className="btn ghost" onClick={onClose}>Annuler</button>
-        <button className="btn danger" disabled={!ready || busy} onClick={confirm}><Icon name="refresh" size={14} /> Remplacer (écrase l'ancien fichier)</button>
-      </div>
-    </Modal>
-  );
-}
+/* (16/10) « Remplacer le fichier HTML » (ReplaceHtmlModal) retiré : Fichiers du cours › Remplacer (lib/fichiersCours.js) */
 
 /* création d'un cours « document » (07/10) : destination + titre, et c'est tout — le
    document s'ouvre aussitôt, prêt à écrire. */

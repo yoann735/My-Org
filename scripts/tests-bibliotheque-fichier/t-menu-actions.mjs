@@ -25,7 +25,7 @@ b.ok(await b.ev(`document.activeElement?.dataset?.entree==='renommer'`), 'clavie
 await b.T.Bas(); await b.T.Bas();
 b.ok(await b.ev(`document.activeElement?.dataset?.entree==='miseEnPage'`), 'clavier : ↓ ↓ → « Mise en page » (les grisées restent atteignables, à leur place)');
 await b.T.Haut();
-b.ok(await b.ev(`document.activeElement?.dataset?.entree==='jumelle'`), 'clavier : ↑ → « fiche jumelle »');
+b.ok(await b.ev(`document.activeElement?.dataset?.entree==='fichiers'`), 'clavier : ↑ → « Fichiers du cours »');
 await b.T.Escape();
 b.ok(!(await menuOuvert()) && await b.ev(`document.activeElement?.classList.contains('mf-bouton')`), 'Échap : menu fermé, focus rendu au bouton Fichier');
 // grisée : rien ne se passe, la raison s'affiche, le menu reste ouvert
@@ -77,8 +77,10 @@ await b.T.Escape(); await b.dormir(200);
 // 2. Importer la fiche jumelle : ouvre le sélecteur de fichier (annulé ici)
 await b.c.send('Page.enable'); await b.c.send('Page.setInterceptFileChooserDialog', { enabled: true });
 let choisi = false; b.c.on((m) => { if (m.method === 'Page.fileChooserOpened') choisi = true; });
-await entree('jumelle'); await b.dormir(500);
-b.ok(choisi, 'Importer la fiche jumelle… : le sélecteur de PDF s’ouvre');
+await entree('fichiers'); await b.dormir(700);
+b.ok(await b.ev(`!!document.querySelector('.fcrs-ligne[data-ligne=jumelle]')`), 'Fichiers du cours… : l’écran (principal + fiche jumelle) s’ouvre');
+await b.clic(await b.pos(`[...document.querySelectorAll('.fcrs-ligne[data-ligne=jumelle] .fcrs-actions button')].find(x=>x.innerText.trim()==='Importer')`, false), { att: 500 });
+b.ok(choisi, 'ligne Fiche jumelle › Importer : le sélecteur de PDF s’ouvre');
 await b.c.send('Page.setInterceptFileChooserDialog', { enabled: false });
 // ⋯ des Exercices : « Prompts (théorie et exercices)… »
 const exo = await b.ev(`(()=>{const t=[...document.querySelectorAll('[role=tab]')].find(x=>x.innerText.trim().startsWith('Exercices'));t&&t.click();return !!t})()`); await b.dormir(700);
@@ -133,7 +135,7 @@ await b.dormir(800);
 /* ===== SUPPRIMER (cours jetable du jeu de test) ===== */
 await b.biblio(); await b.ouvrir('Cours jetable (test)');
 await entree('supprimer');
-b.ok(await b.ev(`[...document.querySelectorAll('.day-pop .row:not(.spread) button')].map(x=>x.innerText.trim()).join('|')==='Annuler|Détacher le PDF…|Supprimer le cours'`), 'Supprimer… : Annuler · Détacher le PDF… · Supprimer le cours');
+b.ok(await b.ev(`[...document.querySelectorAll('.day-pop .row:not(.spread) button')].map(x=>x.innerText.trim()).join('|')==='Annuler|Supprimer le cours'`), 'Supprimer… : Annuler · Supprimer le cours (16/10 : plus de « Détacher le PDF »)');
 await b.capture('mf-supprimer', await b.ev(`(()=>{const r=document.querySelector('.day-pop').getBoundingClientRect();return {x:r.x-8,y:r.y-8,width:r.width+16,height:r.height+16}})()`));
 await b.clic(await b.bouton('Annuler'), { att: 400 });
 b.ok(!(await b.S(`return !!(await S.getOne('fiches','f-tb-jetable')).archive`)), 'Annuler : rien de supprimé');

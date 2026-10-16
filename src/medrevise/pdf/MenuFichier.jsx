@@ -3,7 +3,7 @@
    docs/compte-rendu-bibliotheque-fichier.md) : cours PDF, document, fiche jumelle,
    onglet Notes, fiche HTML. Toujours les MÊMES entrées, dans le MÊME ordre, avec les
    mêmes libellés, icônes et raccourcis :
-     1. Renommer · 2. Importer / Remplacer la fiche jumelle · 3. Mise en page ·
+     1. Renommer · 2. Fichiers du cours (principal + fiche jumelle) · 3. Mise en page ·
      4. Reconnaissance de texte · 5. Exporter le PDF annoté · 6. Exporter (.md / PNG) ·
      7. Export spécial IA · 8. Textes d'annotations (JSON) · — · 10. Supprimer
    Une entrée qui ne s'applique pas à la page est GRISÉE, jamais masquée ni déplacée :
@@ -27,7 +27,8 @@ const cmd = (t) => (MAC ? '⌘' + t.replace('Maj+', '⇧') : 'Ctrl+' + t);
 /* la liste FIXE — l'ordre de ce tableau est l'ordre du menu partout */
 export const ENTREES_FICHIER = [
   { id: 'renommer', label: 'Renommer', icon: 'edit', raccourci: 'F2', aide: 'Renommer le cours' },
-  { id: 'jumelle', label: 'Importer la fiche jumelle…', labelRemplacer: 'Remplacer la fiche jumelle…', icon: 'filePdf', aide: 'Ton PDF résumé, à côté du cours : bascule page à page' },
+  // (16/10) « Fichiers du cours » : document principal + fiche jumelle (importer, remplacer, supprimer, exporter)
+  { id: 'fichiers', label: 'Fichiers du cours…', icon: 'filePdf', aide: 'Document principal et fiche jumelle : importer, remplacer, supprimer, exporter' },
   { id: 'miseEnPage', label: 'Mise en page…', icon: 'maximize', aide: 'Marges et fond de page' },
   { id: 'ocr', label: 'Reconnaissance de texte…', icon: 'search', aide: 'État de la reconnaissance, couche de texte, relancer' },
   { id: 'pdfAnnote', label: 'Exporter le PDF annoté', icon: 'upload', raccourci: cmd('P'), aide: 'Un PDF avec toutes tes annotations' },
@@ -113,7 +114,7 @@ export function MenuFichier({ actions = {}, compact = false, raccourcis = true }
           {ENTREES_FICHIER.map((def) => {
             if (def.id === '—') return <div key="sep" className="mf-sep" role="separator" />;
             const a = actions[def.id] || { indispo: 'Non disponible ici' };
-            const label = def.id === 'jumelle' && a.remplacer ? def.labelRemplacer : def.label;
+            const label = def.label;
             if (def.choix) {
               // entrée à choix : libellé fixe, une pastille par format (chacune peut être grisée)
               const ch = a.choix || {};

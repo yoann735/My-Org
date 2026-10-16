@@ -108,6 +108,8 @@ import { relancer as relancerOcr } from '../ocr/service.js';
 import { statsCouche } from '../ocr/couches.js';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { MenuFichier } from './MenuFichier.jsx';
+import { FichiersCours } from './FichiersCours.jsx';
+import { verifierFichiers, avecVerrou, importerPrincipal, principalDe } from '../lib/fichiersCours.js';
 import { PanneauTextesAnnotations } from './TextesAnnotations.jsx';
 import { PanneauExportIA } from './ExportIA.jsx';
 import { preparerSourceIA, pngsIA } from './exportIA.js';
@@ -146,7 +148,7 @@ const dansLeTableau = (el) => !!(el && el.closest && el.closest('.tb'));
    Les anciennes props (`ficheId`, `doc`, `initialSrcTab`) restent acceptées : le
    mode plein écran passe encore par ctx.pdfView, et les rétirer d'un coup aurait
    été le seul changement risqué de cette étape. */
-export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: srcTabProp, doc: docProp, onSetPdf, onSetHtml, embedded, onClose, ajusterLargeur = false, panneauNotionsOuvert = true, avecEntete = false }) {
+export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: srcTabProp, doc: docProp, onSetPdf, onSetHtml, embedded, onClose, ajusterLargeur = false, panneauNotionsOuvert = true, avecEntete = false, ouvrirFichiers = false }) {
   const { pdfView, db } = ctx;
   const ficheId = (source && source.id) ?? ficheIdProp ?? (pdfView && pdfView.ficheId);
   const initialSrcTab = srcTabProp ?? (pdfView && pdfView.srcTab);
@@ -967,14 +969,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!fichier || !ficheReelle || !(fiche.pdfId || modeDocCours)) return;
     const instant = modeDocCours ? prendreInstantDoc() : null;
     if (modeDocCours && !instant) { setTravailJumelle({ etat: 'erreur', message: 'Le document n’est pas encore prêt — réessaie dans un instant' }); return; }
-    if (!/pdf$/i.test(fichier.type || '') && !/\.pdf$/i.test(fichier.name || '')) { setTravailJumelle({ etat: 'erreur', message: 'Ce fichier n’est pas un PDF.' }); return; }
+    // (16/10) mêmes règles que le principal : un PDF, taille limitée, un import à la fois (lib/fichiersCours.js)
+    const errFichier = verifierFichiers([fichier], { images: false });
+    if (errFichier) { setTravailJumelle({ etat: 'erreur', message: errFichier.replace(/\.$/, '') }); return; }
     const remplacement = !!jumelle;
     setTravailJumelle({ etat: 'encours', remplacement });
     try {
       sauverRef.current();
-      const rec = remplacement
-        ? await remplacerJumelle({ rec: jumelle, fichier, pdfIdOrig: fiche.pdfId, instantDoc: instant })
-        : await importerJumelle({ courseId: ficheReelle.id, fichier, pdfIdOrig: fiche.pdfId, instantDoc: instant });
+      const rec = await avecVerrou(remplacement ? 'remplacement de la fiche jumelle' : 'import de la fiche jumelle', () => (remplacement
+        ? remplacerJumelle({ rec: jumelle, fichier, pdfIdOrig: fiche.pdfId, instantDoc: instant })
+        : importerJumelle({ courseId: ficheReelle.id, fichier, pdfIdOrig: fiche.pdfId, instantDoc: instant })));
       setTravailJumelle({ etat: 'fini', remplacement, rec });
     } catch (e) {
       setTravailJumelle({ etat: 'erreur', remplacement, message: (e && e.message) || 'PDF illisible' });
@@ -1490,7 +1494,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // l'ancien bouton « Remplacer » de la popover de sélection, qui n'existe plus
     !!pending && { label: 'Remplacer le texte sélectionné', icon: 'edit', onClick: () => startEditFromSelection() },
     // retire le LIEN vers le PDF (la fiche, ses cartes et ses annotations restent) — confirmation
-    canAddItem && !!fiche.pdfId && { label: 'Détacher le PDF…', icon: 'x', onClick: () => setDetacherPdf(true) },
+    // (16/10) « Détacher le PDF » retiré : un cours garde son document principal (le remplacer : Fichiers du cours)
   ];
 
 
@@ -1511,17 +1515,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const pasCeDocument = { indispo: 'Non disponible pour ce document' };
   const jumelleDispo = canAddItem && !!(fiche && (fiche.pdfId || modeDocCours));
   const [supprimerOuvert, setSupprimerOuvert] = useState(false);
+  const [fichiersOuvert, setFichiersOuvert] = useState(!!ouvrirFichiers); // (16/10) Bibliothèque › ⋯ › « Fichiers du cours… » ouvre le cours sur cet écran
+  const [nonReplaceesPrincipal, setNonReplaceesPrincipal] = useState(null);
   const actionsFichier = {
     renommer: ficheReelle ? { onClick: () => setDemandeRenommer((n) => n + 1) } : pasCeDocument,
-    jumelle: estHtml ? NON : !jumelleDispo ? pasCeDocument : {
-      remplacer: !!jumelle,
-      title: jumelle ? `Nouvelle version de « ${jumelle.fileName} » : les annotations de la fiche suivent leur page` : 'Ton PDF résumé, à côté du cours : bascule page à page',
-      onClick: () => entreeJumelle.current && entreeJumelle.current.click(),
-      extras: jumelle ? [
-        { label: 'Pages', onClick: () => setEditeurCorresp(true),
-          title: (() => { const r = resumeCorresp(jumelle); return `Correspondance des pages — ${r.appariees} associées · ${r.ajoutees} ajoutée${r.ajoutees > 1 ? 's' : ''} dans la fiche${jumelle.pageMap.manuel ? ' · corrigée' : ''}`; })() },
-      ] : [],
-    },
+    // (16/10) « Fichiers du cours » (pdf/FichiersCours.jsx) : principal + fiche jumelle ; pastille « Pages » = correspondance
+    fichiers: ficheReelle ? {
+      onClick: () => setFichiersOuvert(true),
+      extras: jumelle ? [{ label: 'Pages', onClick: () => setEditeurCorresp(true),
+        title: (() => { const r = resumeCorresp(jumelle); return `Correspondance des pages — ${r.appariees} associées · ${r.ajoutees} ajoutée${r.ajoutees > 1 ? 's' : ''} dans la fiche${jumelle.pageMap.manuel ? ' · corrigée' : ''}`; })() }] : [],
+    } : pasCeDocument,
     miseEnPage: modeDoc ? { onClick: () => setMiseEnPage(true) } : NON,
     ocr: !estHtml && !modeDoc && pdfIdActif ? { onClick: () => setDetailOcr(true), etat: libelleOcr().replace('Reconnaissance de texte : ', '').replace(/ \(PDF déjà en texte\)$/, '') } : NON,
     pdfAnnote: estHtml ? NON : modeDoc ? { onClick: () => imprimerDocument() }
@@ -1554,7 +1557,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <MenuFichier actions={actionsFichier} />
       </div>
       <div className="lecteur-entete-droite">
-        {selecteurSource}
         {selecteurDispo}
         {/* (08/10) thème, réglages et synchro : menu de l'avatar, en bas de la barre de navigation */}
       </div>
@@ -1707,7 +1709,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           sousTitre={nbPagesAffichees ? `${nbPagesAffichees} p.` : null} />
       </div>
       <MenuFichier actions={actionsFichier} compact />
-      {selecteurSource}
       {tableauDispo && (
         <div className="tab-dispo" role="tablist" aria-label="Disposition">
           {[['pdf', 'filePdf', 'Le PDF seul'], ['deux', 'panel', 'PDF et tableau côte à côte'], ['tableau', 'grid', 'Le tableau en plein']].map(([id, ic, lbl]) => (
@@ -1755,16 +1756,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     </div>
   ) : null;
 
-  /* SOURCE AFFICHÉE (15/10) : un cours qui a un PDF ET une fiche HTML — bascule dans l'en-tête,
-     avec les autres modes d'affichage (avant : « Voir la fiche HTML » / « Voir le PDF » du menu Fichier) */
-  const selecteurSource = afficherEntete && fiche && fiche.pdfId && fiche.htmlId ? (
-    <div className="seg pdfr-source" role="tablist" aria-label="Source affichée">
-      {[['pdf', 'filePdf', 'PDF', 'Voir le PDF'], ['html', 'fileHtml', 'HTML', 'Voir la fiche HTML']].map(([id, ic, lbl, aide]) => (
-        <button key={id} type="button" role="tab" aria-selected={srcTab === id} className={'seg-btn' + (srcTab === id ? ' active' : '')}
-          onClick={() => setSrcTab(id)} title={aide}><Icon name={ic} size={12} /> {lbl}</button>
-      ))}
-    </div>
-  ) : null;
+  /* (16/10) la bascule PDF · HTML est retirée : un cours a UN document principal ; une fiche HTML
+     en plus d'un PDF sort du modèle et se lit dans Réglages › Archives (lib/fichiersCours.js) */
 
   /* EXPORT DU PDF ANNOTÉ COMPLET (01/10, voir pdf/exportAnnote.js) : surlignages,
      boîtes OUVERTES avec leurs flèches, traits, images, textes, « ? », pages
@@ -2279,13 +2272,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     document.title = titre0;
     setTimeout(nettoyer, 60000); // filet : navigateurs sans afterprint
   };
-  const entreePdfDoc = useRef(null);
-  const importerPdfDansDocument = async (fichier) => {
-    if (!fichier || !/pdf$/i.test(fichier.type || fichier.name)) return;
-    pagesTexte.current.forEach((api) => api.vider());
-    const blobId = await putBlob(fichier);
-    await ctx.setFichePdf(ficheId, blobId, fichier.name);
-  };
+  // (16/10) « Importer un PDF » dans un document (code mort : jamais déclenché) retiré — un cours a un seul document principal
   const supprimerPageAjoutee = async (pageRec) => {
     setPageASupprimer(null);
     if (modeDoc && fluxRef.current) {
@@ -3000,7 +2987,26 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
   // input UNIQUE (PDF ou HTML) : le type est détecté à la volée, le stockage
   // bascule sur pdfId/onSetPdf ou htmlId/onSetHtml en conséquence.
-  const attachDoc = async (file) => {
+  /* (16/10, lib/fichiersCours.js) pour un COURS : un seul document principal, PDF (ou images
+     converties en PDF), taille limitée, un import à la fois. Le chemin d'origine (PDF ou HTML)
+     ne sert plus qu'aux structures d'anatomie (onSetPdf / onSetHtml), qui ne sont pas des cours. */
+  const [erreurImport, setErreurImport] = useState(null);
+  const attachDoc = async (file, fichiers = null) => {
+    if (!onSetPdf && !onSetHtml && ficheReelle) {
+      const l = fichiers || (file ? [file] : []);
+      setErreurImport(null);
+      try {
+        if (!principalDe(ficheReelle).type) { await importerPrincipal({ fiche: ficheReelle, fichiers: l }); await ctx.reload(); setSrcTab('pdf'); return; }
+        // PDF absent de cet appareil : on redonne LE fichier du cours (l'ancien identifiant reste noté)
+        const err = verifierFichiers(l, { images: false }); if (err) throw new Error(err);
+        await avecVerrou('fichier du cours', async () => {
+          const blobId = await putBlob(l[0]);
+          await put('fiches', { ...ficheReelle, pdfId: blobId, pdfName: l[0].name, fichiersRetires: [...(ficheReelle.fichiersRetires || []), { type: 'pdf', fileId: ficheReelle.pdfId, fileName: ficheReelle.pdfName, retireLe: new Date().toISOString(), raison: 'fichier absent de l’appareil, rattaché à nouveau' }] });
+        });
+        await ctx.reload(); setPdfRetry((t) => t + 1);
+      } catch (e) { setErreurImport((e && e.message) || 'Import impossible'); }
+      return;
+    }
     const kind = detectDocKind(file);
     if (!kind) return;
     const blobId = await putBlob(file);
@@ -3034,14 +3040,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         {embedded && avecEntete && entete()}
         <div className="card" style={{ maxWidth: 480, margin: '30px auto', textAlign: 'center', padding: '30px 20px' }}>
           <Icon name="filePdf" size={30} />
-          <div style={{ marginTop: 10, fontWeight: 600 }}>Attacher le cours</div>
-          <div className="hint" style={{ marginTop: 6 }}>PDF ou fiche HTML — stocké localement (IndexedDB), pour lecture (et surlignage pour le PDF) dans l'app.</div>
+          <div style={{ marginTop: 10, fontWeight: 600 }}>{onSetPdf ? 'Attacher le cours' : 'Importer le document principal'}</div>
+          <div className="hint" style={{ marginTop: 6 }}>{onSetPdf ? 'PDF ou fiche HTML — stocké localement (IndexedDB), pour lecture (et surlignage pour le PDF) dans l’app.' : 'Un PDF, ou des images (converties en un PDF). Un cours a un seul document principal.'}</div>
           <div className="row" style={{ gap: 10, justifyContent: 'center', marginTop: 16, flexWrap: 'wrap' }}>
             <label className="btn primary" style={{ cursor: 'pointer', display: 'inline-flex' }}>
-              <Icon name="upload" size={14} /> Attacher un document
-              <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={(e) => attachDoc(e.target.files[0])} />
+              <Icon name="upload" size={14} /> {onSetPdf ? 'Attacher un document' : 'Importer'}
+              <input type="file" accept={onSetPdf ? 'application/pdf,text/html,.pdf,.html' : 'application/pdf,.pdf,image/*'} multiple={!onSetPdf} style={{ display: 'none' }}
+                onChange={(e) => { const l = [...(e.target.files || [])]; e.target.value = ''; if (l.length) attachDoc(l[0], l); }} />
             </label>
           </div>
+          {erreurImport && <div className="fj-erreur" role="alert" style={{ marginTop: 12 }}>{erreurImport}</div>}
           <div style={{ marginTop: 14 }}><button className="btn ghost sm" onClick={close}>Annuler</button></div>
         </div>
       </div>
@@ -3180,8 +3188,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       />
       </div>
 
-      {modeDoc && <input ref={entreePdfDoc} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
-        onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) importerPdfDansDocument(f); }} />}
+
       {exportErreur && (
         <div className="err-mini" style={{ marginBottom: 12 }}>
           <div className="em-ic crit"><Icon name="alert" size={16} /></div>
@@ -3202,6 +3209,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) attachDoc(f); }} />
             </label>
           )}
+          {erreurImport && <div className="em-body"><div className="em-title">{erreurImport}</div></div>}
         </div>
       )}
 
@@ -3514,15 +3522,24 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         </Modal>
       )}
       {promptsOuverts && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOuverts(false)} />}
+      {fichiersOuvert && ficheReelle && (
+        <FichiersCours ctx={ctx} fiche={ficheReelle} jumelle={jumelle} onFermer={() => setFichiersOuvert(false)}
+          onImporterJumelle={jumelleDispo ? () => entreeJumelle.current && entreeJumelle.current.click() : null}
+          onExporterDocument={modeDocCours ? () => { setFichiersOuvert(false); if (surFiche) basculerJumelle('original'); setTimeout(() => imprimerDocument(), 400); } : null}
+          pagesDocument={modeDocCours && !surFiche ? nbPagesAffichees : null}
+          onRemplace={() => { cacheDocs.current.clear(); reloadHighlights(); reloadEdits(); }}
+          onNonReplacees={(r) => setNonReplaceesPrincipal(r)} />
+      )}
+      {nonReplaceesPrincipal && <ListeNonReplacees rec={{ nonReplacees: nonReplaceesPrincipal.nonReplacees, fileName: ficheReelle && ficheReelle.pdfName, versions: [{ fileName: nonReplaceesPrincipal.fileName }] }} onClose={() => setNonReplaceesPrincipal(null)} />}
       {supprimerOuvert && ficheReelle && (
         <Modal title="Supprimer ce cours ?" onClose={() => setSupprimerOuvert(false)} width="min(460px, 94vw)">
           <div className="hint" style={{ marginBottom: 14 }}>
             « {ficheReelle.titre} » sera déplacé dans la corbeille (Réglages), restaurable tant qu’elle n’est pas vidée. Les cartes et le planning associés partent avec.
-            {canAddItem && !!fiche.pdfId && <> Pour garder le cours et ne retirer que le lien vers son PDF : « Détacher le PDF ».</>}
+
           </div>
           <div className="row" style={{ gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <button type="button" className="btn ghost sm" onClick={() => setSupprimerOuvert(false)}>Annuler</button>
-            {canAddItem && !!fiche.pdfId && <button type="button" className="btn sm" onClick={() => { setSupprimerOuvert(false); setDetacherPdf(true); }}><Icon name="x" size={13} /> Détacher le PDF…</button>}
+
             <button type="button" className="btn danger sm" onClick={async () => { setSupprimerOuvert(false); await ctx.setFicheArchived(ficheReelle.id, true); close(); }}><Icon name="trash" size={13} /> Supprimer le cours</button>
           </div>
         </Modal>

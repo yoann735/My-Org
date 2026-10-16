@@ -10,7 +10,7 @@ import { Tex } from '../components/Tex.jsx';
 import { weekData, dueToday, dueSchemasToday, todayPlan, overdueByFiche, isWeekend, dueByCoursOn, exosARevoirCetteSemaine, fmtDay, carnetV1Questions, carnetV2Questions, strugglingByFiche } from '../lib/planning.js';
 import { isoDate, isDueBecauseStruggled } from '../lib/sm2.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche, doublonsRedatables } from '../lib/import.js';
-import { putBlob } from '../lib/storage.js';
+import { putBlob, getOne, put } from '../lib/storage.js';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { emptyCounts } from '../lib/schema.js';
 import { cleanTranscript } from '../documents/lib/transcript.js';
@@ -717,7 +717,7 @@ function ImportPanel({ ctx }) {
   const confirmImport = async () => {
     if (!parsed || !matId) return;
     setBusy(true);
-    let pdfId = null, pdfName = null, htmlId = null, htmlName = null;
+    let pdfId = null, pdfName = null, htmlId = null, htmlName = null, docRefuse = false;
     if (pasteDoc) {
       try {
         const blobId = await putBlob(pasteDoc);
@@ -731,9 +731,13 @@ function ImportPanel({ ctx }) {
       // sans ce paramètre, un ajout à une fiche existante perdait silencieusement
       // le meta du paste (voir appendItemsToFiche, lib/import.js).
       const r = await appendItemsToFiche({ ficheId: matchedFiche.id, items: parsed.items, startDate, meta: parsed.meta, j0PourDoublons: j0Doublons });
-      if (pdfId) await ctx.setFichePdf(matchedFiche.id, pdfId, pdfName);
-      if (htmlId) await ctx.setFicheHtml(matchedFiche.id, htmlId, htmlName);
-      res = { fiche: r.fiche, count: r.count, duplicates: r.duplicates, redatees: r.redatees || 0, appended: true };
+      // (16/10, lib/fichiersCours.js) jamais un second document principal : un cours qui en a déjà un le garde
+      const cible = ctx.db.fiches.find((x) => x.id === matchedFiche.id);
+      const dejaPrincipal = !!(cible && (cible.pdfId || cible.htmlId || cible.docNotes));
+      // fiche RELUE après l'ajout (appendItemsToFiche a pu écrire son meta : ctx.db est encore l'ancien)
+      if (pdfId && !dejaPrincipal) { const fraiche = await getOne('fiches', matchedFiche.id); await put('fiches', { ...fraiche, pdfId, pdfName, pdfImporteLe: new Date().toISOString() }); }
+      docRefuse = !!(pdfId || htmlId) && dejaPrincipal;
+      res = { fiche: r.fiche, count: r.count, duplicates: r.duplicates, redatees: r.redatees || 0, appended: true, docRefuse };
     } else {
       const r = await createFicheFromQuestions({
         matiereId: matId, titre: title, items: parsed.items, synthese: parsed.synthese, meta: parsed.meta,
@@ -864,6 +868,7 @@ function ImportPanel({ ctx }) {
             : <>
               ✓ {result.count} question{result.count > 1 ? 's' : ''} {result.appended ? 'ajoutée' + (result.count > 1 ? 's' : '') : 'importée' + (result.count > 1 ? 's' : '')}
               {result.duplicates > 0 && ` · ${result.duplicates} doublon${result.duplicates > 1 ? 's' : ''} ignoré${result.duplicates > 1 ? 's' : ''}`}
+              {result.docRefuse && <div className="fj-erreur" role="status" style={{ marginTop: 8 }}>Document non joint : ce cours a déjà un document principal. Pour le changer : ouvre le cours › Fichier › Fichiers du cours › Remplacer.</div>}
               {result.redatees > 0 && ` · ${result.redatees} carte${result.redatees > 1 ? 's' : ''} déjà présente${result.redatees > 1 ? 's' : ''} redatée${result.redatees > 1 ? 's' : ''} au J0`}.
             </>}
           onReset={reset} ctx={ctx} ficheId={result.fiche.id} />

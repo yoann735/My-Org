@@ -46,7 +46,11 @@ for(const r of await S.getAll('reading_position')){if(ids.some(i=>r.id==='rp:'+i
   b.menuFichier = async (libelle) => {
     await b.clic(await b.pos(`document.querySelector('.mf-bouton')`, false), { att: 400 });
     let js;
-    if (/^(Importer la fiche jumelle|Remplacer la fiche)/.test(libelle)) js = `document.querySelector('button[data-entree=jumelle]:not([aria-disabled])')`;
+    // (16/10) importer / remplacer la fiche jumelle : Fichier › Fichiers du cours › ligne « Fiche jumelle »
+    if (/^(Importer la fiche jumelle|Remplacer la fiche)/.test(libelle)) {
+      await b.clic(await b.pos(`document.querySelector('button[data-entree=fichiers]:not([aria-disabled])')`, false), { att: 900 });
+      js = `[...document.querySelectorAll('.fcrs-ligne[data-ligne=jumelle] .fcrs-actions button')].find(x=>/^(Importer|Remplacer)$/.test(x.innerText.trim())&&!x.disabled)`;
+    }
     else if (/^(Correspondance des pages|Annotations non replacées)/.test(libelle)) js = `[...document.querySelectorAll('.mf-extras .mf-pastille')].find(x=>x.innerText==='Pages')`;
     else js = `[...document.querySelectorAll('.mf-item')].find(x=>(x.querySelector('.mf-label')||x).innerText.startsWith(${JSON.stringify(libelle)}))`;
     const p = await b.pos(js, false);

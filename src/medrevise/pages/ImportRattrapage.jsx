@@ -13,7 +13,7 @@ import { DestPicker, CourseDocField, detectDocKind } from '../components/ui.jsx'
 import { ImportJsonField, ImportPreviewCard, ImportDoneScreen } from '../components/ImportFlow.jsx';
 import { parsePastedJson } from '../lib/parsePastedJson.js';
 import { createFicheFromQuestions, appendItemsToFiche, findMatchingFiche, doublonsRedatables } from '../lib/import.js';
-import { putBlob } from '../lib/storage.js';
+import { putBlob, getOne, put } from '../lib/storage.js';
 import { isoDate } from '../lib/sm2.js';
 
 const SUBJECTS = [
@@ -137,7 +137,7 @@ export function ImportRattrapage({ ctx }) {
     // document du cours (optionnel, PDF OU HTML) — stocké une seule fois, le
     // type détecté route vers fiche.pdfId ou fiche.htmlId ; l'autre type déjà
     // rattaché à une fiche existante n'est jamais touché.
-    let pdfId = null, pdfName = null, htmlId = null, htmlName = null;
+    let pdfId = null, pdfName = null, htmlId = null, htmlName = null, docRefuse = false;
     if (doc) {
       try {
         const blobId = await putBlob(doc);
@@ -150,9 +150,13 @@ export function ImportRattrapage({ ctx }) {
       // (exercices) qui porte cette info la perdait silencieusement — voir
       // appendItemsToFiche (lib/import.js), merge non destructif dans le meta existant.
       const r = await appendItemsToFiche({ ficheId: effFicheId, items: preview.res.items, startDate, meta: preview.res.meta, j0PourDoublons: j0Doublons });
-      if (pdfId) await ctx.setFichePdf(effFicheId, pdfId, pdfName);
-      if (htmlId) await ctx.setFicheHtml(effFicheId, htmlId, htmlName);
-      res = { fiche: r.fiche, count: r.count, duplicates: r.duplicates, redatees: r.redatees || 0, appended: true };
+      // (16/10, lib/fichiersCours.js) jamais un second document principal : un cours qui en a déjà un le garde
+      const cible = ctx.db.fiches.find((x) => x.id === effFicheId);
+      const dejaPrincipal = !!(cible && (cible.pdfId || cible.htmlId || cible.docNotes));
+      // fiche RELUE après l'ajout (appendItemsToFiche a pu écrire son meta : ctx.db est encore l'ancien)
+      if (pdfId && !dejaPrincipal) { const fraiche = await getOne('fiches', effFicheId); await put('fiches', { ...fraiche, pdfId, pdfName, pdfImporteLe: new Date().toISOString() }); }
+      docRefuse = !!(pdfId || htmlId) && dejaPrincipal;
+      res = { fiche: r.fiche, count: r.count, duplicates: r.duplicates, redatees: r.redatees || 0, appended: true, docRefuse };
     } else {
       const r = await createFicheFromQuestions({
         matiereId: matId, titre: title, items: preview.res.items,
@@ -193,6 +197,7 @@ export function ImportRattrapage({ ctx }) {
         message={<>
           ✓ {result.count} item{result.count > 1 ? 's' : ''} {result.appended ? 'ajouté' + (result.count > 1 ? 's' : '') : 'importé' + (result.count > 1 ? 's' : '')}
           {result.duplicates > 0 && ` · ${result.duplicates} doublon${result.duplicates > 1 ? 's' : ''} ignoré${result.duplicates > 1 ? 's' : ''}`}
+              {result.docRefuse && <div className="fj-erreur" role="status" style={{ marginTop: 8 }}>Document non joint : ce cours a déjà un document principal. Pour le changer : ouvre le cours › Fichier › Fichiers du cours › Remplacer.</div>}
           {result.redatees > 0 && ` · ${result.redatees} carte${result.redatees > 1 ? 's' : ''} déjà présente${result.redatees > 1 ? 's' : ''} redatée${result.redatees > 1 ? 's' : ''} au J0`}.
         </>}
         resetLabel="Coller un autre JSON" onReset={reset} ctx={ctx} ficheId={result.fiche.id} />

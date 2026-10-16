@@ -1,0 +1,10 @@
+import { banc } from '../tests-bibliotheque-fichier/commun.mjs';
+const b = await banc(1440, 900, { tactile: true });
+await b.biblio({ recharger: true }); await b.ouvrir('Membre supérieur — repères');
+await b.c.send('Emulation.setDeviceMetricsOverride', { width: 1180, height: 820, deviceScaleFactor: 1, mobile: true }); await b.dormir(1500);
+await b.ev(`(()=>{const t=[...document.querySelectorAll('[role=tab]')].find(x=>x.innerText.trim().startsWith('Transcript'));t&&t.click();return 1})()`); await b.dormir(1200);
+const ligne = await b.pos(`[...document.querySelectorAll('.pis *')].find(x=>x.children.length<4&&/12 lignes/.test(x.innerText)&&x.getBoundingClientRect().height<60)`, false);
+if (ligne) await b.tape(ligne); await b.dormir(800);
+console.log(await b.ev(`(()=>{let e=document.querySelector('.trx-groupe');const o=[];while(e&&o.length<16){const r=e.getBoundingClientRect();const cs=getComputedStyle(e);o.push((e.className||e.tagName).toString().slice(0,50)+' top='+Math.round(r.top)+' bot='+Math.round(r.bottom)+' h='+Math.round(r.height)+' ov='+cs.overflowY+' disp='+cs.display);e=e.parentElement;}return o.join('\\n')})()`));
+await b.c.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+process.exit(0);

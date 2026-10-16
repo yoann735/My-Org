@@ -16,7 +16,7 @@ import { ReglagesFSRS } from '../components/ReglagesFSRS.jsx';
 import { SynchroJournal } from '../components/SynchroJournal.jsx';
 import { CarteSauvegardes } from '../components/FiletSecurite.jsx';
 import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
-import { CarteArchives } from '../components/Archives.jsx';
+import { CarteArchives, CarteFichiersHorsModele } from '../components/Archives.jsx';
 import { ReglagesCarnet } from '../components/SaisieCarnet.jsx';
 import { validateBackup, currentCounts, importBackup, computeCloudDiff, applyCloudTombstones } from '../lib/backupImport.js';
 
@@ -437,7 +437,8 @@ export function Reglages({ ctx }) {
         </Card>
       </div>
       {/* ARCHIVES (11/10) : documents de l'ancienne « Prise de notes », en lecture */}
-      <div style={{ marginTop: 16 }}><CarteArchives /></div>
+      <div style={{ marginTop: 16 }}><CarteFichiersHorsModele />
+        <CarteArchives /></div>
     </div>
   );
 }

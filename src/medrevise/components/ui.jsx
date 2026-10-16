@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, MeasuringStrategy, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Icon } from '../../shared/Icon.jsx';
 import { EVT_GLISSE, porteCartes, cartesGlissees, ajouter as ajouterAListe } from '../apprentissageLibre/liste.js';
+import { verifierFichiers } from '../lib/fichiersCours.js';
 import { comparerAuCloud, derniereSyncReussie } from '../lib/syncStatus.js';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { todayISO } from '../lib/sm2.js';
@@ -1211,10 +1212,13 @@ export function detectDocKind(file) {
    PdfReader) — plus de deux champs séparés. Contrôlé (file / onFile) ; le type
    est détecté à la volée (detectDocKind), le stockage (putBlob → fiche.pdfId
    OU fiche.htmlId selon le type) et le lecteur restent le chemin existant. ---- */
-export function CourseDocField({ file, onFile, label = 'Document du cours (PDF ou HTML)', hint }) {
+/* (16/10, lib/fichiersCours.js) : le document PRINCIPAL d'un cours — un PDF, taille limitée ; une
+   fiche HTML n'est plus acceptée comme nouveau document (message à la place). */
+export function CourseDocField({ file, onFile, label = 'Document principal du cours (PDF)', hint }) {
   const [over, setOver] = useState(false);
+  const [erreur, setErreur] = useState(null);
   const kind = detectDocKind(file);
-  const pick = (f) => { if (f && detectDocKind(f)) onFile(f); };
+  const pick = (f) => { if (!f) return; const err = verifierFichiers([f]); setErreur(err); if (!err) onFile(f); };
   return (
     <div className="imp-field">
       <label>{label} <span className="imp-opt">(optionnel)</span></label>
@@ -1231,12 +1235,13 @@ export function CourseDocField({ file, onFile, label = 'Document du cours (PDF o
           onDragOver={(e) => { e.preventDefault(); setOver(true); }}
           onDragLeave={() => setOver(false)}
           onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files[0]); }}>
-          <input type="file" accept="application/pdf,text/html,.pdf,.html" style={{ display: 'none' }} onChange={(e) => pick(e.target.files[0])} />
+          <input type="file" accept="application/pdf,.pdf" style={{ display: 'none' }} onChange={(e) => { pick(e.target.files[0]); e.target.value = ''; }} />
           <div className="row" style={{ gap: 8, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="filePdf" size={16} /> <span style={{ fontWeight: 600 }}>Glisse le PDF ou la fiche HTML du cours, ou clique</span>
+            <Icon name="filePdf" size={16} /> <span style={{ fontWeight: 600 }}>Glisse le PDF du cours, ou clique</span>
           </div>
         </label>
       )}
+      {erreur && <div className="fj-erreur" role="alert" style={{ marginTop: 6 }}>{erreur}</div>}
       {hint && <div className="hint" style={{ marginTop: 6 }}>{hint}</div>}
     </div>
   );
