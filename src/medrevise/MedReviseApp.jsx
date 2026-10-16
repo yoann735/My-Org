@@ -16,7 +16,7 @@ import { Bibliotheque } from './pages/Bibliotheque.jsx';
 import { Reglages } from './pages/Reglages.jsx';
 import { CarnetDashboard } from './pages/CarnetDashboard.jsx';
 import { EcranApprentissage } from './apprentissageLibre/EcranApprentissage.jsx';
-import { lireListe, ecrireListe } from './apprentissageLibre/liste.js';
+import { lireListe, ecrireListe, lireNotes, ecrireNote } from './apprentissageLibre/liste.js';
 import { IconeRafale } from './components/IconeRafale.jsx';
 import { estFocusNotes, setFocusNotes, ECRAN_FOCUS } from './lib/focusMode.js';
 import { initSpotlight } from './lib/spotlight.js';
@@ -178,10 +178,11 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // `learningSet` : ids de la liste du mode Apprentissage libre (apprentissageLibre/liste.js).
     // Clé AJOUTÉE à db, lue par ce seul mode — aucun calcul existant (J, FSRS, séance) ne la lit.
     const learningSet = await lireListe();
+    const learningNotes = await lireNotes(); // (16/10) notes libres par carte, dans le même enregistrement
     // (11/10) les stores `apprentissage` (unités exos + PDF) et `notes` (documents de Prise de
     // notes) ne sont plus chargés ici : leurs écrans sont supprimés. Les données restent en base
     // et synchronisées ; les notes se lisent dans Réglages → Archives (components/Archives.jsx).
-    setDb({ sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, learningSet });
+    setDb({ sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, learningSet, learningNotes });
     setStats(st);
     setPromptOverrides(pr);
     setExoPromptOverrides(epr);
@@ -308,6 +309,12 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const cardIds = await ecrireListe(ids);
       setDb((d) => (d ? { ...d, learningSet: cardIds } : d));
       return cardIds;
+    },
+    // (16/10) note libre d'une carte de l'apprentissage — dans learning_set, jamais sur la carte
+    setLearningNote: async (cardId, texte) => {
+      const notes = await ecrireNote(cardId, texte);
+      setDb((d) => (d ? { ...d, learningNotes: notes } : d));
+      return notes;
     },
 
     // ---- session lifecycle ----

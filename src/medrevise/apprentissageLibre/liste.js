@@ -20,11 +20,46 @@ export async function lireListe() {
   return r && Array.isArray(r.cardIds) ? r.cardIds.filter((x) => typeof x === 'string') : [];
 }
 
-/** remplace la liste (un seul enregistrement, horodaté et mis en file de synchro par put) */
+/** remplace la liste (un seul enregistrement, horodaté et mis en file de synchro par put).
+ *  (16/10) les NOTES du même enregistrement sont conservées telles quelles. */
 export async function ecrireListe(ids) {
-  const rec = await put(STORE, { id: ID, cardIds: [...new Set(ids)] });
+  const avant = (await getOne(STORE, ID)) || {};
+  const rec = await put(STORE, { ...avant, id: ID, cardIds: [...new Set(ids)] });
   return rec.cardIds;
 }
+
+/* ---- NOTES (16/10, docs/compte-rendu-fichiers-cours.md) : une note libre par carte, dans CE
+   même enregistrement (`notes[cardId]`) — JAMAIS sur la carte : rien ne se mélange avec les J,
+   FSRS ou le journal. Une note vide est retirée. Une carte retirée de la liste garde sa note
+   (elle la retrouve si on la remet). ---- */
+export async function lireNotes() {
+  const r = await getOne(STORE, ID);
+  return r && r.notes && typeof r.notes === 'object' ? r.notes : {};
+}
+export async function ecrireNote(cardId, texte) {
+  const avant = (await getOne(STORE, ID)) || { id: ID, cardIds: [] };
+  const notes = { ...(avant.notes || {}) };
+  const t = String(texte || '');
+  if (t.trim()) notes[cardId] = t; else delete notes[cardId];
+  const rec = await put(STORE, { ...avant, id: ID, cardIds: avant.cardIds || [], notes });
+  return rec.notes;
+}
+
+/* ---- GLISSER-DÉPOSER (16/10) : une carte (ou une sélection) glissée depuis le panneau
+   Flashcards ou la Bibliothèque vers l'onglet « Apprentissage » de la barre latérale.
+   Glisser-déposer HTML5 (souris, trackpad ; appui long au doigt sur iPad/Chrome tactile). */
+export const MIME_CARTES = 'application/x-medrevise-cartes';
+export const EVT_GLISSE = 'medrevise:glisse-cartes';
+export function commencerGlisse(e, ids) {
+  if (!ids || !ids.length) return;
+  e.dataTransfer.setData(MIME_CARTES, JSON.stringify(ids));
+  e.dataTransfer.setData('text/plain', ids.length > 1 ? `${ids.length} cartes` : '1 carte');
+  e.dataTransfer.effectAllowed = 'copy';
+  window.dispatchEvent(new CustomEvent(EVT_GLISSE, { detail: { actif: true, n: ids.length } }));
+}
+export const finirGlisse = () => window.dispatchEvent(new CustomEvent(EVT_GLISSE, { detail: { actif: false } }));
+export const porteCartes = (e) => !!e.dataTransfer && [...(e.dataTransfer.types || [])].includes(MIME_CARTES);
+export function cartesGlissees(e) { try { const v = JSON.parse(e.dataTransfer.getData(MIME_CARTES) || '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; } catch (x) { return []; } }
 
 /* ---- opérations PURES sur une liste d'ids ---- */
 export const ajouter = (liste, ids) => [...liste, ...ids.filter((id) => !liste.includes(id))];
@@ -53,6 +88,25 @@ export function grouperParCours(db, liste) {
   // cartes dont la fiche n'est plus là (cas limite) : à la fin, sans titre
   for (const [ficheId, cartes] of parFiche) groupes.push({ fiche: { id: ficheId, titre: 'Cours introuvable' }, cartes });
   return groupes;
+}
+
+/**
+ * (16/10) TOUJOURS rangées par MATIÈRE puis par COURS, quel que soit le chemin d'ajout :
+ * [{ matiere: { id, nom }, cours: [{ fiche, cartes }] }] — matières dans l'ordre de la
+ * Bibliothèque. Une matière sans carte n'apparaît pas (elle disparaît d'elle-même).
+ */
+export function grouperParMatiere(db, liste) {
+  const cours = grouperParCours(db, liste);
+  const parMat = new Map();
+  for (const g of cours) {
+    const mid = g.fiche.matiereId || '—';
+    if (!parMat.has(mid)) parMat.set(mid, []);
+    parMat.get(mid).push(g);
+  }
+  const out = [];
+  for (const m of (db && db.matieres) || []) if (parMat.has(m.id)) { out.push({ matiere: { id: m.id, nom: m.nom }, cours: parMat.get(m.id) }); parMat.delete(m.id); }
+  for (const [mid, c] of parMat) out.push({ matiere: { id: mid, nom: 'Sans matière' }, cours: c });
+  return out;
 }
 
 /** ids à jouer pour les cours cochés : ordre des cours puis des cartes, sans mélange */

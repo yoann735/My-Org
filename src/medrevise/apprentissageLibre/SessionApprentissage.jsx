@@ -117,6 +117,10 @@ export function SessionApprentissage({ ctx, ids, onQuitter, pleinEcran = false }
             <FaceCarte carte={carte} cote={retournee ? 'verso' : 'recto'} masquable={ligneParLigne(ctx)} />
             {!retournee && <span className="sfc-indication">Touche pour voir la réponse</span>}
           </button>
+          {/* (16/10) la note libre de la carte, après retournement, sous la réponse */}
+          {retournee && ((ctx.db.learningNotes || {})[carte.id] || '').trim() && (
+            <div className="alib-note-session" data-note={carte.id}><Icon name="edit" size={12} /> <span>{ctx.db.learningNotes[carte.id]}</span></div>
+          )}
           <div className="sfc-bas alib-bas">
             {!retournee
               ? <button type="button" className="sfc-btn neutre" onClick={() => setRetournee(true)}>Voir la réponse</button>

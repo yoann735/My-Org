@@ -47,7 +47,7 @@ import { planDuJour } from '../lib/apprentissageFC.js';
 import { nextDate } from '../lib/planning.js';
 import { todayISO } from '../lib/sm2.js';
 import { ModeVisibleCtx } from './modeVisible.js';
-import { ajouter as ajouterApprentissage, retirer as retirerApprentissage } from '../apprentissageLibre/liste.js';
+import { ajouter as ajouterApprentissage, retirer as retirerApprentissage, commencerGlisse, finirGlisse } from '../apprentissageLibre/liste.js';
 import '../../styles/apprentissage-libre.css';
 import '../../styles/panneau-modes.css';
 
@@ -389,6 +389,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
             <ItemReadCard key={item.id} item={item}
               appr={item.type === 'flashcard' && ctx.setLearningSet ? { dans: dansAppr.has(item.id), basculer: () => basculerAppr([item.id], !dansAppr.has(item.id)) } : null}
               coche={item.type === 'flashcard' && selection ? { oui: selection.has(item.id), basculer: () => cocher(item.id) } : null}
+              // (16/10) glisser vers l'onglet Apprentissage : la carte, ou toute la sélection si elle en fait partie
+              glisse={item.type === 'flashcard' && ctx.setLearningSet ? () => (selection && selection.has(item.id) ? items.filter((q) => selection.has(q.id)).map((q) => q.id) : [item.id]) : null}
               onEdit={() => { if (estOcclusion(item)) { setOccEdition(item); return; } setEditingId(item.id); setAdding(false); }}
               onDelete={() => setConfirmDel(item)} />
           )
@@ -476,9 +478,11 @@ const Volet = memo(function Volet({ id, label, k, cache, contenu }) {
 });
 
 /* ---- carte de lecture (réponse toujours visible) + Éditer/Supprimer ---- */
-function ItemReadCard({ item, onEdit, onDelete, appr = null, coche = null }) {
+function ItemReadCard({ item, onEdit, onDelete, appr = null, coche = null, glisse = null }) {
   return (
-    <div className={'pis-item card' + (coche && coche.oui ? ' alib-cochee' : '')} data-item={item.id}>
+    <div className={'pis-item card' + (coche && coche.oui ? ' alib-cochee' : '') + (glisse ? ' alib-glissable' : '')} data-item={item.id}
+      draggable={!!glisse} onDragStart={glisse ? (e) => commencerGlisse(e, glisse()) : undefined} onDragEnd={glisse ? finirGlisse : undefined}
+      title={glisse ? 'Glisser sur « Apprentissage » (barre de gauche) pour l’y ajouter' : undefined}>
       <div className="card-body">
         <div className="row spread" style={{ marginBottom: 8, alignItems: 'flex-start', gap: 8 }}>
           {coche && <input type="checkbox" className="alib-case" checked={coche.oui} onChange={coche.basculer} aria-label="Sélectionner cette carte" />}
