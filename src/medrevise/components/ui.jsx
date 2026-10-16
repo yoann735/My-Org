@@ -3,7 +3,7 @@
    etudes.css classes for visual fidelity, but is wired to our real
    data model (matiere = {id,nom,couleur,icon}, fiche, questions).
    ============================================================ */
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, MeasuringStrategy, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Icon } from '../../shared/Icon.jsx';
@@ -805,8 +805,33 @@ export function BellButton({ on, onToggle, onText, offText }) {
    sidebar). Se ferme au clic ailleurs, au scroll ou à Échap. ---- */
 /* `fermerAuDefilement` (défaut true) : false pour un menu ouvert au-dessus d'une liste
    qui défile toute seule (transcript en direct) — sinon il se refermerait à chaque ligne. */
-export function ContextMenu({ x, y, items, onClose, fermerAuDefilement = true }) {
+/* (16/10, docs/compte-rendu-fichiers-cours.md) TOUJOURS DANS L'ÉCRAN ET AU-DESSUS DE TOUT : ouvert
+   sous un bouton collé au bas de l'écran (pied du transcript), le menu sortait de la fenêtre —
+   « Copier sans horodatage » à cheval sur le bord, les autres options invisibles, et le doigt qui
+   visait l'option touchait ce qu'il y avait en dessous. Le menu est mesuré avant d'être peint :
+   s'il déborde en bas, il s'ouvre AU-DESSUS du bouton (`hautAncre` = haut du bouton), sinon il est
+   ramené dans l'écran ; idem à droite. Le pointerdown est arrêté sur le menu lui-même (natif ET
+   React) : un appui sur une option ne peut jamais fermer le menu avant le clic. */
+export function ContextMenu({ x, y, items, onClose, fermerAuDefilement = true, hautAncre = null }) {
+  const menuRef = useRef(null);
+  const [pos, setPos] = useState({ left: x, top: y, pret: false });
+  useLayoutEffect(() => {
+    const el = menuRef.current; if (!el) return;
+    const w = el.offsetWidth, h = el.offsetHeight, W = window.innerWidth, H = window.innerHeight;
+    let top = y, left = x;
+    if (top + h > H - 8) top = hautAncre != null && hautAncre - 6 - h >= 8 ? hautAncre - 6 - h : Math.max(8, H - 8 - h);
+    if (left + w > W - 8) left = Math.max(8, W - 8 - w);
+    setPos({ left: Math.max(8, left), top: Math.max(8, top), pret: true });
+  }, [x, y, hautAncre, items.length]);
   useEffect(() => {
+    const el = menuRef.current; if (!el) return undefined;
+    const stop = (e) => e.stopPropagation();
+    el.addEventListener('pointerdown', stop); el.addEventListener('mousedown', stop); el.addEventListener('touchstart', stop, { passive: true });
+    return () => { el.removeEventListener('pointerdown', stop); el.removeEventListener('mousedown', stop); el.removeEventListener('touchstart', stop); };
+  }, []);
+  const onCloseRef = useRef(onClose); onCloseRef.current = onClose;
+  useEffect(() => {
+    const onClose = () => onCloseRef.current();
     const close = () => onClose();
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     // écoute posée un tick après le montage : évite que le pointerdown /
@@ -833,9 +858,10 @@ export function ContextMenu({ x, y, items, onClose, fermerAuDefilement = true })
       window.removeEventListener('scroll', auDefilement, true);
       window.removeEventListener('keydown', onKey);
     };
-  }, [onClose, x, y]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [x, y]); // eslint-disable-line react-hooks/exhaustive-deps
   return createPortal(
-    <div className="ctx-menu" style={{ left: x, top: y }} onPointerDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+    <div ref={menuRef} className="ctx-menu" role="menu" style={{ left: pos.left, top: pos.top, zIndex: 2000, visibility: pos.pret ? 'visible' : 'hidden' }}
+      onPointerDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
       {items.map((it, i) => (
         <button key={i} type="button" className={'ctx-menu-item' + (it.danger ? ' danger' : '')} onClick={() => { onClose(); it.onClick(); }}>
           {it.icon && <Icon name={it.icon} size={13} />} {it.label}

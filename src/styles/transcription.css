@@ -75,7 +75,14 @@
 .trx-mc { padding: 10px; border: 1px solid var(--border-2); border-radius: var(--r, 8px); background: var(--bg-2); margin: 6px 0 4px; display: flex; flex-direction: column; gap: 6px; }
 
 /* ---- liste ---- */
-.trx-liste-cadre { position: relative; flex: 1 1 auto; min-height: 120px; display: flex; }
+.trx-liste-cadre { position: relative; flex: 1 1 auto; min-height: min(120px, 100%); display: flex; }
+/* (16/10) le pied (Copier tout, formats) reste TOUJOURS visible : dans le volet bas de la tablette
+   (≈ 210 px), la liste rétrécit au lieu de pousser le pied hors de l'écran */
+.trx-panneau > .trx-liste-cadre { min-height: 48px; flex-basis: 0; }
+.trx-panneau > .trx-pied, .trx-panneau > :not(.trx-liste-cadre) { flex-shrink: 0; }
+/* trop bas même ainsi (en-têtes + pied > hauteur du volet) : le panneau défile, le pied reste collé en bas */
+.trx-panneau:not(.plein) { overflow-y: auto; overscroll-behavior: contain; }
+.trx-panneau:not(.plein) > .trx-pied { position: sticky; bottom: 0; z-index: 2; background: var(--card); }
 .trx-liste {
   flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding: 10px 4px 24px;
   --trx-fs: 19px; font-size: var(--trx-fs); line-height: 1.6; color: var(--text);

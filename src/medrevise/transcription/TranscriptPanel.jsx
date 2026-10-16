@@ -569,30 +569,32 @@ function MenuCopie({ session, titre, filtre = null }) {
   const [menu, setMenu] = useState(null);
   const [choixCopie, setChoixCopie] = useState(null); // filtre actif : « tous » ou « filtrés » ?
   const [copie, setCopie] = useState(false);
+  const minuteurCopie = useRef(null);
+  useEffect(() => () => clearTimeout(minuteurCopie.current), []);
   const copier = async (horodatage, f = null) => {
-    if (await copierTexte(texteSession(session, { horodatage, filtre: f }))) { setCopie(true); setTimeout(() => setCopie(false), 1600); }
+    if (await copierTexte(texteSession(session, { horodatage, filtre: f }))) { setCopie(true); clearTimeout(minuteurCopie.current); minuteurCopie.current = setTimeout(() => setCopie(false), 1500); }
   };
   const nomsFiltre = filtre ? [...filtre].sort((a, b) => a - b).map((n) => nomIntervenant(session, n)).join(', ') : '';
   return (
     <>
       <div className="trx-groupe">
         <button type="button" className="btn sm" title="Copier tout le transcript (texte brut, lignes horodatées)"
-          onClick={(ev) => { if (!filtre) { copier(true); return; } const r = ev.currentTarget.getBoundingClientRect(); setChoixCopie({ x: Math.min(r.left, window.innerWidth - 280), y: r.bottom + 6 }); }}>
-          <Icon name={copie ? 'check' : 'copy'} size={13} /> {copie ? 'Copié' : 'Copier tout'}
+          onClick={(ev) => { if (!filtre) { copier(true); return; } const r = ev.currentTarget.getBoundingClientRect(); setChoixCopie({ x: Math.min(r.left, window.innerWidth - 280), y: r.bottom + 6, haut: r.top }); }}>
+          <Icon name={copie ? 'check' : 'copy'} size={13} /> {copie ? 'Copié ✓' : 'Copier tout'}
         </button>
         <button type="button" className="btn sm trx-chevron" title="Autres formats"
-          onClick={(ev) => { const r = ev.currentTarget.getBoundingClientRect(); setMenu({ x: Math.min(r.left - 160, window.innerWidth - 240), y: r.bottom + 6 }); }}>
+          onClick={(ev) => { const r = ev.currentTarget.getBoundingClientRect(); setMenu({ x: Math.min(r.left - 160, window.innerWidth - 240), y: r.bottom + 6, haut: r.top }); }}>
           <Icon name="chevD" size={12} />
         </button>
       </div>
       {choixCopie && (
-        <ContextMenu fermerAuDefilement={false} x={choixCopie.x} y={choixCopie.y} onClose={() => setChoixCopie(null)} items={[
+        <ContextMenu fermerAuDefilement={false} x={choixCopie.x} y={choixCopie.y} hautAncre={choixCopie.haut} onClose={() => setChoixCopie(null)} items={[
           { label: 'Tous les intervenants', icon: 'copy', onClick: () => copier(true) },
           { label: `Filtrés : ${nomsFiltre}`, icon: 'copy', onClick: () => copier(true, filtre) },
         ]} />
       )}
       {menu && (
-        <ContextMenu fermerAuDefilement={false} x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={[
+        <ContextMenu fermerAuDefilement={false} x={menu.x} y={menu.y} hautAncre={menu.haut} onClose={() => setMenu(null)} items={[
           { label: 'Copier sans horodatage', icon: 'copy', onClick: () => copier(false) },
           { label: 'Télécharger en .txt', icon: 'upload', onClick: () => telecharger(nomFichier(titre, session, 'txt'), texteSession(session), 'text/plain;charset=utf-8') },
           { label: 'Télécharger en .md', icon: 'upload', onClick: () => telecharger(nomFichier(titre, session, 'md'), markdownSession(session, titre), 'text/markdown;charset=utf-8') },
@@ -841,7 +843,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
             onClick={async (ev) => {
               const r = ev.currentTarget.getBoundingClientRect();
               const l = await listerMicros();
-              setMenuSource({ x: Math.min(r.left, window.innerWidth - 280), y: r.bottom + 6, micros: l });
+              setMenuSource({ x: Math.min(r.left, window.innerWidth - 280), y: r.bottom + 6, haut: r.top, micros: l });
             }}>
             <Icon name="mic" size={12} />
           </button>
@@ -850,7 +852,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
           <ChoixTaille taille={taille} onTaille={choisirTaille} />
           <button type="button" className="icon-btn sm" onClick={() => setPlein((v) => !v)} title={plein ? 'Quitter le plein écran (Échap)' : 'Plein écran (lecture à distance)'}><Icon name={plein ? 'x' : 'maximize'} size={13} /></button>
         </div>
-        {menuSource && <ContextMenu fermerAuDefilement={false} x={menuSource.x} y={menuSource.y} onClose={() => setMenuSource(null)} items={[
+        {menuSource && <ContextMenu fermerAuDefilement={false} x={menuSource.x} y={menuSource.y} hautAncre={menuSource.haut} onClose={() => setMenuSource(null)} items={[
           ...menuSource.micros.map((m) => ({ label: (m.label === e.sourceLibelle ? '✓ ' : '') + m.label, icon: 'mic', onClick: async () => { const r = await changerSource({ source: 'micro', deviceId: m.deviceId }); if (!r.ok) setInfoSource(r.message); } })),
           { label: 'Onglet Chrome…', icon: 'ext', onClick: async () => { const r = await changerSource({ source: 'onglet' }); if (!r.ok) setInfoSource(r.message); } },
         ]} />}
