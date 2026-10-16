@@ -12,6 +12,7 @@ import { estMolecule } from '../molecule/carte.js';
 import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { Icon } from '../../shared/Icon.jsx';
+import { SaisieCarnet } from '../components/SaisieCarnet.jsx';
 import { Breadcrumb, matiereMeta, EtiquetteQuickSet, SessionTrendCard } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { ZoneDefilante, classeLongueur } from '../components/ZoneDefilante.jsx';
@@ -241,8 +242,10 @@ export function Session({ ctx }) {
   const submitCarnetRaison = async (raison) => {
     const p = carnetPrompt;
     if (!p) return;
-    const text = (raison || '').trim();
-    if (text) await ctx.saveQuestion({ ...p.updated, carnetRaison: text, carnetAt: todayISO() });
+    const text = (raison && typeof raison === 'object' ? raison.raison : raison || '').trim();
+    // (16/10) saisie à puces : { raison, type, astuce } — type et astuce AJOUTÉS (entrées existantes inchangées)
+    const extra = raison && typeof raison === 'object' ? raison : null;
+    if (text) await ctx.saveQuestion({ ...p.updated, carnetRaison: text, carnetAt: todayISO(), ...(extra && extra.type ? { carnetType: extra.type } : {}), ...(extra && extra.astuce ? { carnetAstuce: extra.astuce } : {}) });
     setCarnetPrompt(null);
     proceedToNext(p.rating, p.updated.id, p.updated.type, p.addedRelearn);
   };
@@ -616,7 +619,7 @@ function RatingButtons({ onRate, canPrev, onPrev, item, ctx, carnetPrompt, onCar
             <button className="rate-btn easy" disabled={awaitingCarnet} onClick={() => onRate('easy')}>Facile<span className="rb-sub">dans longtemps</span></button>
           </div>
         )}
-      {awaitingCarnet && <CarnetPrompt onSubmit={onCarnetSubmit} onSkip={onCarnetSkip} />}
+      {awaitingCarnet && <SaisieCarnet ctx={ctx} carte={item} onSubmit={onCarnetSubmit} onSkip={onCarnetSkip} />}
       {!awaitingCarnet && <CardEtiquetteControl item={item} ctx={ctx} />}
       {!awaitingCarnet && canPrev && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><button className="btn ghost sm" onClick={onPrev}><Icon name="chevL" size={14} /> Revenir à la carte précédente</button></div>}
     </div>
@@ -641,32 +644,7 @@ function ErreurRatingButtons({ onRate, canPrev, onPrev }) {
   );
 }
 
-/** carnet d'erreurs v2 (étape 1) : carte "pourquoi tu l'as loupée ?" — sous les
-   3 boutons de notation, au 2e raté consécutif (et chaque raté suivant tant que
-   le streak dure, voir lastTwoAreFails). "Ajouter" exige un texte non vide ;
-   "Passer" avance sans rien enregistrer de plus (la note Raté est déjà persistée
-   par advance() avant l'affichage de cette carte). */
-function CarnetPrompt({ onSubmit, onSkip }) {
-  const [raison, setRaison] = useState('');
-  return (
-    <div className="carnet-prompt">
-      <div className="carnet-prompt-title"><Icon name="edit" size={13} /> Pourquoi tu l'as loupée ?</div>
-      <textarea
-        className="imp-title"
-        style={{ width: '100%', minHeight: 56, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
-        value={raison}
-        onChange={(e) => setRaison(e.target.value)}
-        placeholder="Ta raison (confusion, pas révisé, mal compris…)"
-      />
-      <div className="carnet-prompt-actions">
-        <button type="button" className="btn ghost sm" onClick={onSkip}>Passer</button>
-        <button type="button" className="btn primary sm" disabled={!raison.trim()} onClick={() => onSubmit(raison)}>
-          <Icon name="plus" size={13} /> Ajouter au carnet d'erreurs
-        </button>
-      </div>
-    </div>
-  );
-}
+/* (16/10) la carte « Pourquoi tu l'as loupée ? » est components/SaisieCarnet.jsx (puces, gabarit, astuce) */
 
 /* ---- étiquette de statut du COURS depuis l'écran de réponse (QCM/flashcard,
    y compris cloze en saisie) : RÉUTILISE tel quel EtiquetteQuickSet + le champ

@@ -32,7 +32,7 @@ import {
   getAll, put, putMany, remove, getStats, setStats as saveStats, genId, syncNow,
   purgeSource, purgeMatiere, purgeFiche, putBackup, newErrorCard,
   getCoursePrompts, setCoursePrompts, getExoPrompts, setExoPrompts,
-  getChapExoPrompts, setChapExoPrompts, getReglagesFC, setReglagesFC,
+  getChapExoPrompts, setChapExoPrompts, getReglagesFC, setReglagesFC, getCarnetPuces, setCarnetPuces,
 } from './lib/storage.js';
 import { runMigrations } from './lib/migrate.js';
 import { synchroniserJournal } from './journal/synchro.js';
@@ -157,6 +157,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [session, setSession] = useState(null);
   // flashcards : réglages synchronisés (Muscle, FSRS — lib/apprentissageFC.js reglagesFC) + écran de retour
   const [reglagesFC, setReglagesFCState] = useState(null);
+  const [carnetPuces, setCarnetPucesState] = useState(null); // puces du carnet d'erreurs (lib/carnetPuces.js)
   const [retourSeanceFC, setRetourSeanceFC] = useState(null);
   const [feynman, setFeynman] = useState(null);
   const [exercice, setExercice] = useState(null); // { items:[exercice], title }
@@ -173,6 +174,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
       getAll('sources'), getAll('matieres'), getAll('dossiers'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getStats(), getCoursePrompts(), getExoPrompts(), getChapExoPrompts(),
     ]);
     setReglagesFCState(await getReglagesFC());
+    setCarnetPucesState(await getCarnetPuces());
     // `learningSet` : ids de la liste du mode Apprentissage libre (apprentissageLibre/liste.js).
     // Clé AJOUTÉE à db, lue par ce seul mode — aucun calcul existant (J, FSRS, séance) ne la lit.
     const learningSet = await lireListe();
@@ -295,6 +297,9 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // ---- flashcards : séance quotidienne (session/SeanceFC.jsx — étape 2 FSRS : une seule liste) ----
     reglagesFC,
     saveReglagesFC: async (r) => { setReglagesFCState(await setReglagesFC(r)); },
+    // ---- carnet d'erreurs : puces « Type d'erreur » (16/10) ----
+    carnetPuces,
+    saveCarnetPuces: async (puces) => { setCarnetPucesState(await setCarnetPuces(puces)); },
     startSeanceFC: () => { setRetourSeanceFC(screen === 'seancefc' ? retourSeanceFC : screen); setScreen('seancefc'); },
     endSeanceFC: () => { setScreen(retourSeanceFC || 'dashboard'); setRetourSeanceFC(null); },
 
@@ -729,7 +734,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const q = db.questions.find((x) => x.id === v1Id); if (!q) return;
       const linkedV2 = db.questions.filter((x) => x.type === 'flashcard_erreur' && x.sourceErrorId === v1Id);
       await Promise.all([
-        put('questions', { ...q, carnetAt: null, carnetRaison: null }),
+        put('questions', { ...q, carnetAt: null, carnetRaison: null, ...(q.carnetType ? { carnetType: null } : {}), ...(q.carnetAstuce ? { carnetAstuce: null } : {}) }),
         ...linkedV2.map((v2) => remove('questions', v2.id)),
       ]);
       await reload();

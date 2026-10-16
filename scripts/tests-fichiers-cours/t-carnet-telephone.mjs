@@ -1,0 +1,25 @@
+// Carnet d'erreurs — pré-réponses au téléphone (390 × 844, au doigt). Base LOCALE du banc. Préalable : seed-carnet.mjs
+import { banc } from '../tests-bibliotheque-fichier/commun.mjs';
+const b = await banc(390, 844, { tactile: true });
+await b.c.send('Page.reload', { ignoreCache: true }); await b.dormir(4500);
+const tape = async (js) => { const p = await b.pos(js); if (!p) throw new Error('introuvable : ' + js); await b.tape(p); await b.dormir(400); };
+await tape(`(()=>{const t=[...document.querySelectorAll('*')].find(e=>e.children.length===0&&e.innerText==='Psychologie du développement');let c=t;for(let k=0;k<5;k++){c=c.parentElement;const r=[...c.querySelectorAll('button')].find(x=>x.innerText.trim()==='Réviser');if(r)return r;}})()`);
+await b.dormir(1200);
+const carte = `(()=>{const t=[...document.querySelectorAll('*')].find(e=>e.children.length===0&&/pour révéler|Touche|Tape/.test(e.innerText||''));let c=t;for(let k=0;k<6&&c&&c.parentElement;k++){c=c.parentElement;if(c.getBoundingClientRect().height>180)break;}return c})()`;
+await tape(carte); await b.dormir(600);
+await tape(`[...document.querySelectorAll('button')].find(x=>x.offsetParent&&/^(À revoir|Raté)/.test(x.innerText.trim()))`); await b.dormir(900);
+b.ok(await b.ev(`!!document.querySelector('.cp-saisie.mobile')`), 'téléphone : « Pourquoi tu l’as loupée ? » avec les puces');
+const h = await b.ev(`Math.min(...[...document.querySelectorAll('.cp-puce')].map(x=>x.getBoundingClientRect().height))`);
+b.ok(h >= 36 && await b.ev(`document.documentElement.scrollWidth<=innerWidth`), 'téléphone : puces ≥ 36 px au doigt, pas de débordement', h + ' px');
+b.ok((await b.ev(`document.querySelector('#cp-astuce').value`)).startsWith('Retenir : « '), 'téléphone : astuce suggérée (recto + verso)');
+await tape(`[...document.querySelectorAll('.cp-puce')].find(x=>x.innerText==='Confusion origine/insertion')`);
+const v = await b.ev(`(()=>{const t=document.querySelector('#cp-raison');return t.value+' | '+t.value.slice(t.selectionStart,t.selectionEnd)})()`);
+b.ok(v === 'J’ai donné l’insertion (___) au lieu de l’origine (___) | ___', 'téléphone : gabarit pré-rempli, « ___ » sélectionné', v);
+await b.c.send('Input.insertText', { text: 'processus coracoïde' }); await b.dormir(200);
+await b.ev(`document.querySelector('.cp-saisie').scrollIntoView({block:'center'}),1`); await b.dormir(300);
+await b.capture('carnet-telephone');
+await tape(`[...document.querySelectorAll('.cp-saisie button')].find(x=>x.innerText.includes('Ajouter au carnet'))`); await b.dormir(900);
+const e = JSON.parse(await b.S(`return JSON.stringify((await S.getAll('questions')).filter(q=>/^q-tb-fc/.test(q.srcId||'')&&q.carnetType).map(q=>({t:q.carnetType,r:q.carnetRaison,a:!!q.carnetAstuce})))`));
+b.ok(e.some((x) => x.t === 'Confusion origine/insertion' && x.r.startsWith('J’ai donné l’insertion (processus coracoïde)') && x.a), 'téléphone : entrée enregistrée (type, raison, astuce)', JSON.stringify(e));
+b.ok(!b.erreurs.length, 'téléphone : aucune erreur', b.erreurs.join(' / '));
+process.exit(0);

@@ -8,6 +8,7 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { SaisieCarnet } from '../components/SaisieCarnet.jsx';
 import { advanceQuestion, recordRelearnAttempt, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
 import { BoutonsFlashcard } from '../components/BoutonsFlashcard.jsx';
 import { repondreFlashcard } from '../scheduler/repondre.js';
@@ -177,8 +178,10 @@ export function MobileSession({ ctx, onQuit }) {
   const submitCarnetRaison = async (raison) => {
     const p = carnetPrompt;
     if (!p) return;
-    const text = (raison || '').trim();
-    if (text) await ctx.saveQuestion({ ...p.updated, carnetRaison: text, carnetAt: todayISO() });
+    const text = (raison && typeof raison === 'object' ? raison.raison : raison || '').trim();
+    // (16/10) saisie à puces : { raison, type, astuce } — type et astuce AJOUTÉS (entrées existantes inchangées)
+    const extra = raison && typeof raison === 'object' ? raison : null;
+    if (text) await ctx.saveQuestion({ ...p.updated, carnetRaison: text, carnetAt: todayISO(), ...(extra && extra.type ? { carnetType: extra.type } : {}), ...(extra && extra.astuce ? { carnetAstuce: extra.astuce } : {}) });
     proceedToNext(p.rating, p.addedRelearn);
   };
 
@@ -437,7 +440,7 @@ function MobileRateButtons({ onRate, item, ctx, carnetPrompt, onCarnetSubmit, on
             <button type="button" className="mrm-rate-btn easy" disabled={awaitingCarnet} onClick={() => onRate('easy')}>Facile <span className="sub">dans longtemps</span></button>
           </div>
         )}
-      {awaitingCarnet && <MobileCarnetPrompt onSubmit={onCarnetSubmit} onSkip={onCarnetSkip} />}
+      {awaitingCarnet && <SaisieCarnet ctx={ctx} carte={item} onSubmit={onCarnetSubmit} onSkip={onCarnetSkip} mobile />}
       {!awaitingCarnet && <MobileEtiquetteControl item={item} ctx={ctx} />}
     </div>
   );
@@ -455,28 +458,7 @@ function MobileErreurRateButtons({ onRate }) {
   );
 }
 
-/** carnet d'erreurs v2 (étape 1) : carte "pourquoi tu l'as loupée ?" mobile —
-   même mécanique que desktop (Session.jsx CarnetPrompt) : "Ajouter" exige un
-   texte non vide, "Passer" avance sans rien enregistrer de plus. */
-function MobileCarnetPrompt({ onSubmit, onSkip }) {
-  const [raison, setRaison] = useState('');
-  return (
-    <div className="mrm-carnet-prompt">
-      <div className="mrm-carnet-prompt-title"><Icon name="edit" size={13} /> Pourquoi tu l'as loupée ?</div>
-      <textarea
-        className="mrm-textarea"
-        style={{ minHeight: 64 }}
-        value={raison}
-        onChange={(e) => setRaison(e.target.value)}
-        placeholder="Ta raison (confusion, pas révisé, mal compris…)"
-      />
-      <button type="button" className="mrm-primary-btn" disabled={!raison.trim()} onClick={() => onSubmit(raison)}>
-        <Icon name="plus" size={15} /> Ajouter au carnet d'erreurs
-      </button>
-      <button type="button" className="mrm-ghost-btn" onClick={onSkip}>Passer</button>
-    </div>
-  );
-}
+/* (16/10) la carte « Pourquoi tu l'as loupée ? » est components/SaisieCarnet.jsx (puces, gabarit, astuce) */
 
 /* ---- étiquette de statut du COURS depuis l'écran de réponse mobile (QCM +
    flashcard, cloze saisie compris) : RÉUTILISE tel quel EtiquetteIconButton +

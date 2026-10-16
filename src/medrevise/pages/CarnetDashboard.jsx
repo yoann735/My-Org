@@ -21,6 +21,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import '../../styles/carnet-puces.css';
 import { Card, EdTop, Modal, ConfirmModal, ContextMenu, matiereMeta } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { ImportJsonField } from '../components/ImportFlow.jsx';
@@ -130,6 +131,7 @@ function V1Row({ v1, v2Count, fiche, matiere, ctx }) {
   const json = JSON.stringify({
     type: 'erreur_source', flashcard_id: v1.id,
     recto: v1.recto, verso: v1.verso, raison_echec: v1.carnetRaison || '',
+    ...(v1.carnetType ? { type_erreur: v1.carnetType } : {}), ...(v1.carnetAstuce ? { astuce: v1.carnetAstuce } : {}),
   }, null, 2);
   const copy = async () => {
     try { await navigator.clipboard.writeText(json); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch (e) { /* ignore */ }
@@ -171,8 +173,13 @@ function V1Row({ v1, v2Count, fiche, matiere, ctx }) {
         <div className="err-v1-a lc-2"><Tex>{cleanFull(v1.verso)}</Tex></div>
 
         {/* note d'erreur — libellé discret, pas de fond coloré */}
+        {/* (16/10) type d'erreur (puce) et astuce — seulement pour les entrées créées avec les puces */}
+        {v1.carnetType && <span className="err-v1-type">{v1.carnetType}</span>}
         {v1.carnetRaison && (
           <div className="err-v1-note lc-1"><span className="err-v1-note-label">Ma note</span>{v1.carnetRaison}</div>
+        )}
+        {v1.carnetAstuce && (
+          <div className="err-v1-note lc-1"><span className="err-v1-note-label">Astuce</span>{v1.carnetAstuce}</div>
         )}
 
         {v2Count > 0 && <div className="hint" style={{ marginTop: 4, fontSize: 11 }}>{v2Count} flashcard{v2Count > 1 ? 's' : ''} d'erreur liée{v2Count > 1 ? 's' : ''}</div>}

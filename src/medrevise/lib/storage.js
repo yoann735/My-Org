@@ -609,6 +609,18 @@ export async function setReglagesFC(reglages) {
   return rec;
 }
 
+/* ---- PUCES DU CARNET D'ERREURS (16/10, lib/carnetPuces.js) : types d'erreur et leurs gabarits,
+   éditables dans Réglages. Même mécanique que reglagesFC — store `S.prompts` (SYNCABLE), clé
+   DISTINCTE, enregistrement ADDITIONNEL. Absent → liste par défaut. */
+export async function getCarnetPuces() { return (await get('carnetPuces', S.prompts)) || null; }
+export async function setCarnetPuces(puces) {
+  const updatedAt = new Date().toISOString();
+  const rec = { id: 'carnetPuces', puces, updatedAt };
+  await set('carnetPuces', rec, S.prompts);
+  queuePush('prompts', 'carnetPuces', rec, updatedAt);
+  return rec;
+}
+
 /* ---- surcharges des 4 prompts PRATIQUE (exercices), même mécanique que
    ci-dessus — MÊME store `S.prompts` (déjà SYNCABLE), clé DISTINCTE
    ('exoPrompts' vs 'prompts') : deux enregistrements indépendants dans la

@@ -17,6 +17,7 @@ import { SynchroJournal } from '../components/SynchroJournal.jsx';
 import { CarteSauvegardes } from '../components/FiletSecurite.jsx';
 import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
 import { CarteArchives } from '../components/Archives.jsx';
+import { ReglagesCarnet } from '../components/SaisieCarnet.jsx';
 import { validateBackup, currentCounts, importBackup, computeCloudDiff, applyCloudTombstones } from '../lib/backupImport.js';
 
 export function Reglages({ ctx }) {
@@ -297,6 +298,10 @@ export function Reglages({ ctx }) {
         </Card>
         <Card title="Flashcards" icon="cards">
           <ReglagesFlashcards ctx={ctx} />
+        </Card>
+        {/* (16/10) puces « Type d'erreur » du carnet d'erreurs */}
+        <Card title="Carnet d’erreurs" icon="edit">
+          <ReglagesCarnet key={ctx.carnetPuces ? ctx.carnetPuces.updatedAt : 'defaut'} ctx={ctx} />
         </Card>
         {/* PROMPTS (11/10) : l'entrée « Prompts » de la barre latérale, déplacée telle quelle */}
         <Card title="Prompts" icon="layers">
