@@ -59,7 +59,14 @@ for (let i = 0; i < 8 && !vue; i++) {
   b.ok(!(await b.ev(`!!document.querySelector('.alib-note-session')`)) || i > 0, 'avant retournement : pas de note');
   await b.clic(await b.pos(`document.querySelector('.sfc-carte')`), { att: 500 });
   const n = await b.ev(`document.querySelector('.alib-note-session')?.innerText||''`);
-  if (id === carte0) { vue = n.includes('tubérosité'); if (vue) await b.capture('appr-session-note'); }
+  if (id === carte0) {
+    // la note doit être sous la réponse de SA carte (verso enregistré de carte0)
+    const verso = await b.S(`return (await S.getAll('questions')).find(q=>q.id==='${carte0}').verso`);
+    const affiche = await b.ev(`document.querySelector('.sfc-carte')?.innerText||''`);
+    vue = n.includes('tubérosité') && affiche.includes(verso);
+    if (!vue) console.log('DIAG', JSON.stringify({ id, verso, affiche, n }));
+    if (vue) await b.capture('appr-session-note');
+  }
   else if (n && !(await g.liste()).notes[id]) sansNote = false;
   await b.clic(await b.pos(`document.querySelector('.alib-passu')`), { att: 500 });
 }
