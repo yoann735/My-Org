@@ -10,7 +10,7 @@
    Cache mémoire (par instance) de 60 min. `?force=1` relit Hyperplanning, au plus
    une fois par minute ; au-delà, le cache est servi avec `forceLimite`. Si
    Hyperplanning est injoignable, le dernier cache est servi (`stale: true`).
-   Protection (origine + 60 appels / 10 min / IP) : voir _protection.js.
+   Protection (origine + 300 appels / 10 min / IP) : voir _protection.js.
 
    Sans HELHA_ICAL_URL : 503 { code: 'not_configured' } — l'app affiche
    « Emploi du temps non configuré » dans le sélecteur, rien ne casse.
@@ -21,7 +21,9 @@ import { analyserIcs, fenetre } from './_lib/emploiDuTemps.js';
 const TTL_MS = 60 * 60 * 1000;
 const FORCE_MS = 60 * 1000;
 const TAILLE_MAX = 8 * 1024 * 1024;
-const limite = creerLimiteur(60);
+// réponses servies par le cache : la limite ne protège que la fonction ; Hyperplanning, lui, est
+// protégé par le cache de 60 min et la limite de ?force=1
+const limite = creerLimiteur(300);
 
 let cache = null; // { at, data }
 let dernierForce = 0;

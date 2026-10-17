@@ -478,7 +478,7 @@ export function ReglagesEmploiDuTemps({ ctx }) {
                 </div>
                 <select className="input edt-reg-matiere" value={valeur} aria-label={`Matière reliée à ${titre}`}
                   onChange={(ev) => { const v = ev.target.value; maj(cle, titre, { matiereId: v === '__auto' ? undefined : v === '__aucune' ? null : v }); }}>
-                  <option value="__auto">Automatique{auto ? ` (${auto.nom})` : ' (aucune)'}</option>
+                  <option value="__auto">{auto ? `Auto : ${auto.nom}` : 'Auto : aucune'}</option>
                   <option value="__aucune">Aucune matière</option>
                   {matieres.map(({ m, src }) => <option key={m.id} value={m.id}>{m.nom}{src ? ` — ${src.nom}` : ''}</option>)}
                 </select>
