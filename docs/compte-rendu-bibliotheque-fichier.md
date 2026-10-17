@@ -11,6 +11,10 @@ modifié par les tris (vérifié par test) ; DA existante (jetons et composants 
 
 ## 1. Bibliothèque : deux tris en plus de l'ordre manuel
 
+> **Mise à jour du 17/10 :** les tris ne produisent plus de liste plate, ils gardent l'arborescence ;
+> la recherche et le tri sont dans une rangée en tête du panneau. Voir le § 7 ; ce qui suit décrit
+> la version du 15/10 (le calcul des dates, lui, est inchangé).
+
 Un petit menu **« Trier »** à côté de la recherche et des modes d'affichage (Arbre · Grille · Liste) :
 
 | Tri | Affichage |
@@ -222,3 +226,166 @@ Rejouer : `./tout.sh <PDF sans espace dans le chemin>` (rejoue les jeux de test 
 - `21305ef` feat : Bibliothèque — tris « Dernière modification » et « Date d'ajout », recherche
 - `0145452` feat : menu « Fichier » unique
 - (ce compte rendu) docs
+
+---
+
+# Suite du 17/10 — raccourcis ⌘1–9 des outils · tri qui garde l'arborescence
+
+Deux finitions, testées dans Chrome (ordinateur, tablette, fenêtre étroite), en local seulement
+(Vite :5199 sans Supabase, Chrome headless). MealWeek et `src/shared/` n'ont pas bougé ;
+aucune écriture Supabase ; l'ordre manuel des matières, dossiers et fiches n'est jamais touché.
+
+## 6. Raccourcis ⌘1 … ⌘9 pour les outils (`pdf/PdfToolbar.jsx`)
+
+L'ordre est relevé dans le code (`OUTILS` de `PdfToolbar.jsx`, puis le bouton Image). C'est
+l'ordre exact de la barre, le même dans le lecteur PDF, dans l'éditeur de document et en
+tablette :
+
+| Raccourci (Mac) | Windows / Linux | Outil |
+|---|---|---|
+| `⌘1` | `Ctrl+1` | Sélection |
+| `⌘2` | `Ctrl+2` | Surligneur |
+| `⌘3` | `Ctrl+3` | Boîte (commentaire) |
+| `⌘4` | `Ctrl+4` | Texte |
+| `⌘5` | `Ctrl+5` | Forme |
+| `⌘6` | `Ctrl+6` | ? (« je n'ai pas compris ») |
+| `⌘7` | `Ctrl+7` | Crayon |
+| `⌘8` | `Ctrl+8` | Gomme |
+| `⌘9` | `Ctrl+9` | Image (ouvre le choix du fichier) |
+
+**Numérotation des barres réduites**
+- Une barre réduite (fiche HTML : Sélection et Surligneur seulement) est numérotée de façon
+  continue dans l'ordre affiché.
+- La liste est exportée pour la doc et les tests : `RACCOURCIS_OUTILS`.
+
+**Comportement**
+- **Sélectionner, jamais basculer :** un raccourci sélectionne l'outil. Taper `⌘3` deux fois
+  laisse « Boîte » active, alors qu'un re-clic sur l'outil en sort.
+- **Touche physique** (`Digit1…9` et pavé numérique) : `⌘1` marche aussi en AZERTY, où la
+  touche donne « & ».
+- **Chiffres en maintenant ⌘** (Ctrl hors Mac) : un petit chiffre apparaît sous l'icône de
+  chaque outil, en fondu de 150 ms, et disparaît au relâchement. Il disparaît aussi quand la
+  fenêtre perd le focus.
+
+**Interception (`preventDefault`) seulement quand le lecteur a le focus.** Le lecteur a le focus
+quand rien n'est focalisé, ou quand l'élément focalisé est dans le lecteur. Sinon, Chrome garde
+`⌘1–9` (changement d'onglet).
+
+**Jamais dans un champ de saisie :** formulaires, recherche du lecteur, boîte de texte, notes,
+transcript. Là, rien n'est activé, rien n'est intercepté et aucun chiffre ne s'affiche. Le
+**texte d'un document** n'est pas un champ : c'est le document lui-même, donc les raccourcis y
+marchent (comme `⌘Z`).
+
+**Infobulles** : « Surligneur · ⌘2 — Sélectionner du texte le surligne… » sur chaque outil
+(`aria-keyshortcuts` aussi). En barre compacte, le bouton « + » (insérer) rappelle « ⌘9 : image ».
+
+![Chiffres affichés en maintenant ⌘](img/bibliotheque-fichier/raccourcis-chiffres.png)
+
+## 7. Bibliothèque : le tri garde l'arborescence
+
+**Ce qui reste et ce qui bouge**
+- Les tris « Dernière modification » et « Date d'ajout » ne produisent plus de liste plate.
+- L'arbre reste **exactement** le même : sections, matières, dossiers et chapitres dans leur
+  ordre manuel, même design, mêmes pliages, mêmes compteurs.
+- Seules les **fiches** sont réordonnées à l'intérieur de chaque dossier ou matière, la plus
+  récente en premier. À égalité, l'ordre manuel départage.
+
+**Date sous chaque fiche**, en gris et petit : « il y a 17 h » en tri par modification,
+« 12 oct. » en tri par ajout, rien en ordre manuel.
+
+**Aucune écriture**
+- Le tri ne fait que lire et ordonner pour l'affichage.
+- Le glisser des fiches est suspendu tant qu'un tri par date est actif (l'infobulle dit
+  « glisser = déplacer (en ordre manuel) »). Déplacer une fiche dans une liste triée réécrirait
+  l'ordre manuel.
+- Le dépôt d'un fichier sur l'arbre reste possible.
+- Revenir à « Ordre manuel » redonne l'ordre d'origine, intact.
+
+**Grille et Liste**
+- La Grille garde ses sections et ses matières, et trie les cartes dans chaque matière.
+- La Liste reste un tableau, trié par date.
+
+### Rangée « Chercher une fiche · Trier »
+
+**Où elle est**
+- Une seule rangée compacte de **40 px**, en tête du panneau, au-dessus de la première section.
+- Elle reste collée en haut quand on fait défiler l'arbre.
+- La Grille et la Liste, qui n'ont pas de panneau, ont la même rangée en tête.
+- La recherche et le tri **ne sont plus dans l'en-tête de la page** : il n'y a plus de doublon.
+
+**À gauche, « Chercher une fiche »**
+- Icône loupe. Le champ s'étend au focus (de 190 à toute la largeur sur ordinateur).
+- Il filtre l'arbre **en place** en gardant les parents visibles (section, matière, dossier),
+  sans accents ni casse.
+- `Échap` efface la recherche.
+
+**À droite, « Trier »**
+- Une icône de tri ouvre un petit menu de 3 choix avec coche : Ordre manuel · Dernière
+  modification · Date d'ajout.
+- Le tri actif est rappelé par un libellé discret sous l'icône au survol, et l'icône passe en
+  accent quand un tri par date est actif.
+
+**Tablette** (portrait ou paysage, tactile) et **fenêtre étroite** : même rangée, recherche
+pleine largeur, Trier à droite (36 px au doigt), rien ne déborde.
+
+**Le téléphone** (moins de 760 px) n'a pas de Bibliothèque : c'est le shell mobile de révision,
+inchangé. La largeur « mobile » testée est donc la plus petite fenêtre qui affiche la
+Bibliothèque (761 px).
+
+**Mémorisation :** le tri est mémorisé par appareil (`medrevise.biblio.tri`), la recherche ne
+l'est pas.
+
+| Ordre manuel | Dernière modification | Date d'ajout |
+|---|---|---|
+| ![](img/bibliotheque-fichier/arbre-manuel.png) | ![](img/bibliotheque-fichier/arbre-modif.png) | ![](img/bibliotheque-fichier/arbre-ajout.png) |
+
+**La rangée sur ordinateur**, au repos et pendant une recherche (« reperes ») :
+
+![Rangée — ordinateur](img/bibliotheque-fichier/rangee-ordi.png)
+
+![Recherche dans l'arbre](img/bibliotheque-fichier/recherche-arbre.png)
+
+**Tablette (820 px) et fenêtre étroite (761 px, la plus petite largeur qui affiche la Bibliothèque) :**
+
+![Tablette](img/bibliotheque-fichier/rangee-tablette.png) ![Fenêtre étroite](img/bibliotheque-fichier/rangee-etroit.png)
+
+## 8. Tests du 17/10
+
+**Banc :** `scripts/tests-raccourcis-tri/` (Vite :5199 sans Supabase, Chrome headless 9333).
+
+| Test | Ce qui est vérifié | Résultat |
+|---|---|---|
+| `t-raccourcis.mjs` | **PDF, document, tablette :** infobulles « … · ⌘n », chiffres 1–9 sous les icônes en maintenant ⌘ (opacité, 150 ms), masqués au relâchement ; ⌘1–⌘8 dans l'ordre, interceptés ; ⌘9 ouvre le choix d'image ; ⌘3 répété reste sur Boîte. **Champs :** ⌘1 dans une boîte de texte et ⌘2 dans la recherche du lecteur n'activent rien et ne sont pas interceptés ; pas de chiffres dans un champ. **Focus :** hors du lecteur, ⌘2 est laissé au navigateur ; sur Mac, Ctrl+2 n'active rien ; dans le texte du document, ⌘2 active le Surligneur | **33/33** |
+| `t-biblio-tri.mjs` | **Arbre :** structure, pliages et compteurs identiques en tri modif et ajout ; fiches réordonnées dans chaque dossier ou matière, dates sous chaque fiche ; retour à l'ordre manuel identique ; aucune écriture (ordres des fiches, dossiers, matières, sections). **Rangée :** 40 px au-dessus de la 1re section, extension au focus, survol de Trier, menu à coche, un seul emplacement. **Le reste :** glisser suspendu ; tri mémorisé, recherche non ; recherche en place avec les parents, Échap ; Grille groupée. **Largeurs :** tablette 820, 1 180 et fenêtre 761 px | **33/33** |
+| `tests-bibliotheque-fichier/` (demande du 15/10, **adaptée** à l'arbre conservé) | **Tris :** dates calculées (il y a 2 h, 6 h, hier, 4 j) ; fiche annotée remontée en tête de sa matière ; PDF importé en tête de la matière visée. **Affichages :** mémorisation, Grille, Liste, recherche, aucune écriture. **Tablette :** rangée, menu au doigt. **Menu Fichier :** inchangé | **134/134** |
+| Non-régression | fiche jumelle et document (201), carnet / apprentissage / transcript / fichiers (97), emploi du temps (86) | voir § 9 |
+
+**Limite.** Chrome headless n'a pas de barre d'onglets : l'absence de changement d'onglet est
+prouvée par `defaultPrevented` (la page annule l'événement, Chrome ne l'exécute donc pas), pas
+par une bascule observée à l'écran.
+
+
+## 9. Non-régression et vérifications de fin (17/10)
+
+- **Batteries rejouées après le chantier, toutes vertes :**
+  - fiche jumelle et document : **201/201** (dont correspondance 30/30 × 3) ;
+  - carnet, apprentissage, transcript et fichiers d'un cours : **97/97** ;
+  - emploi du temps : **86/86** ;
+  - Bibliothèque et menu Fichier du 15/10 : **134/134**.
+- Le test Réglages de l'emploi du temps cherchait une fiche par un identifiant fixe, que le jeu
+  de test `seed-biblio` régénère. Il la cherche désormais par son titre ; le code de l'app n'a
+  pas changé.
+- **MealWeek** est identique au pixel (ordinateur et téléphone) avant et après le chantier, et
+  `git diff 3c2d1a1 HEAD -- src/shared src/mealweek` ne liste **aucun fichier**.
+- **Aucune écriture Supabase :**
+  - le banc tourne sans cloud ;
+  - les tris ne font que lire ;
+  - le test « aucune écriture » compare les ordres des fiches, dossiers, matières et sections.
+- `npm run build` : vert.
+
+## 10. Commits du 17/10
+
+- `7e13180` feat(medrevise) : raccourcis ⌘1–9 pour les outils du lecteur et de l'éditeur de document
+- `810ff61` feat(medrevise) : Bibliothèque — le tri garde l'arborescence ; rangée « Chercher une fiche · Trier » en tête du panneau
+- `548efb2` test(medrevise) : emploi du temps — fiche retrouvée par son titre
+- (ce commit) docs(medrevise) : compte rendu — raccourcis ⌘1–9, tri qui garde l'arborescence, captures
