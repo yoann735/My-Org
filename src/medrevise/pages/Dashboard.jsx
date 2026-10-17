@@ -17,6 +17,8 @@ import { cleanTranscript } from '../documents/lib/transcript.js';
 import { ImportAnatomieTheorie } from './ImportAnatomieTheorie.jsx';
 import { ImportAnatomieVisuel } from './ImportAnatomieVisuel.jsx';
 import { ImportRattrapage } from './ImportRattrapage.jsx';
+import { SelecteurCalendrier, CalendrierEcole } from '../components/EmploiDuTemps.jsx';
+import { useModeCalendrier } from '../lib/emploiDuTemps.js';
 
 const TYPE_LABEL = { qcm: 'QCM', flashcard: 'flashcards', feynman: 'Feynman' };
 const fmtShort = (iso) => { const d = new Date(iso + 'T00:00:00'); return `${d.getDate()} ${d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '')}`; };
@@ -25,6 +27,8 @@ export function Dashboard({ ctx }) {
   const { db } = ctx;
   const [selDay, setSelDay] = useState(null);
   const [showCleaner, setShowCleaner] = useState(false);
+  // (17/10) « Mes J · École » : même carte, même grille ; « Mes J » = le calendrier des J, inchangé
+  const [modeCal, setModeCal] = useModeCalendrier();
   const due = dueToday(db);
   const dueSchemas = dueSchemasToday(db);
   const plan = todayPlan(db);
@@ -55,8 +59,14 @@ export function Dashboard({ ctx }) {
          deux grilles séparées qui ne garantissaient pas un alignement pixel-parfait. */}
       <div className="dash-grid">
         <div className="dash-grid-col">
+          {modeCal === 'ecole' ? (
+            <Card title="Emploi du temps — École" icon="calendar" className="edt-carte"
+              action={<span className="edt-tete"><SelecteurCalendrier mode={modeCal} onMode={setModeCal} /></span>}>
+              <CalendrierEcole ctx={ctx} />
+            </Card>
+          ) : (
           <Card title="Calendrier de la semaine — méthode des J" icon="calendar"
-            action={<span className="pill accent"><Icon name="cards" size={13} /> {due.length} carte{due.length > 1 ? 's' : ''}{dueSchemas.length > 0 ? ` + ${dueSchemas.length} schéma${dueSchemas.length > 1 ? 's' : ''}` : ''} aujourd'hui</span>}>
+            action={<span className="edt-tete"><SelecteurCalendrier mode={modeCal} onMode={setModeCal} /><span className="pill accent"><Icon name="cards" size={13} /> {due.length} carte{due.length > 1 ? 's' : ''}{dueSchemas.length > 0 ? ` + ${dueSchemas.length} schéma${dueSchemas.length > 1 ? 's' : ''}` : ''} aujourd'hui</span></span>}>
             <WeekCalendar ctx={ctx} onPick={setSelDay} />
             {/* légende = matières qui PEUVENT apparaître au calendrier : section active
                (ni archivée, ni en pause de la méthode des J), matière non archivée,
@@ -65,6 +75,7 @@ export function Dashboard({ ctx }) {
               {matieresDuCalendrier(db).map((m) => { const mm = matiereMeta(m); return <span key={m.id}><i style={{ background: mm.tint }} /> {mm.label}</span>; })}
             </div>
           </Card>
+          )}
           <ImportPanel ctx={ctx} />
         </div>
 

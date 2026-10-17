@@ -33,6 +33,8 @@ const FALLBACK_TINT = '#7C6FE0';
 const MATIERE_PALETTE = isClassicUI()
   ? ['#7C6FE0', '#4FA6D9', '#4CAF7D', '#E0A63E', '#E0637C', '#8E6BB0', '#3E9CB5', '#C9873E']
   : ['#7D70E0', '#70B7E0', '#86CAA8', '#E7BA6A', '#E26E86', '#A98EC3', '#7EC1D3', '#D9AB78'];
+/** (17/10) la même palette, pour les couleurs des cours de l'emploi du temps (lib/edtCouleurs.js) */
+export const PALETTE_MATIERES = MATIERE_PALETTE;
 function hashId(s) {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;

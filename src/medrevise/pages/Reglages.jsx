@@ -18,6 +18,7 @@ import { CarteSauvegardes } from '../components/FiletSecurite.jsx';
 import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
 import { CarteArchives, CarteFichiersHorsModele } from '../components/Archives.jsx';
 import { ReglagesCarnet } from '../components/SaisieCarnet.jsx';
+import { ReglagesEmploiDuTemps } from '../components/EmploiDuTemps.jsx';
 import { validateBackup, currentCounts, importBackup, computeCloudDiff, applyCloudTombstones } from '../lib/backupImport.js';
 
 export function Reglages({ ctx }) {
@@ -217,6 +218,11 @@ export function Reglages({ ctx }) {
           </div>
         </Card>
       )}
+
+      {/* (17/10) emploi du temps HELHa : couleur fixe et matière reliée de chaque cours */}
+      <Card title="Emploi du temps" icon="calendar" className="edt-carte-reglages" style={{ maxWidth: 820, marginBottom: 16 }}>
+        <ReglagesEmploiDuTemps ctx={ctx} />
+      </Card>
 
       {trashCount > 0 && (
         <div className="row" style={{ maxWidth: 820, marginBottom: 16, justifyContent: 'space-between', alignItems: 'center' }}>

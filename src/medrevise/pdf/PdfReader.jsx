@@ -102,6 +102,7 @@ import { PanneauMiseEnPage, ReglesMarges } from './MiseEnPage.jsx';
 import { margesDe, margesUnites } from '../documents/lib/marges.js';
 import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
 import { sessionActive as transcriptionActive, lireEtat as etatTranscription } from '../transcription/engine.js';
+import { noterCoursOuvert } from '../lib/derniersCours.js';
 import { actualiserCredits } from '../transcription/credits.js';
 import { useCoucheOcr, useEtatOcr } from '../ocr/useOcr.js';
 import { relancer as relancerOcr } from '../ocr/service.js';
@@ -676,6 +677,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
   // le lecteur peut afficher ses pages : PDF chargé, ou document prêt
   const pret = !!pdfDoc || (modeDoc && docCharge && pageSizes.length > 0);
+  /* EMPLOI DU TEMPS (17/10) : dernier cours ouvert de chaque matière (bouton « Ouvrir » d'un cours
+     de l'école, lib/derniersCours.js — cet appareil seulement) ; « Transcrire » pendant un cours
+     Teams ouvre ce cours avec la feuille de démarrage pré-remplie (source Onglet Chrome). Une
+     session déjà en cours n'est jamais doublée : on montre simplement le panneau Transcript. */
+  useEffect(() => { if (ficheReelle) noterCoursOuvert(ficheReelle); }, [ficheReelle && ficheReelle.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const transcrireDemande = useRef(!embedded && pdfView && pdfView.ficheId === ficheId ? pdfView.transcrire : null);
+  useEffect(() => {
+    if (!pret || !transcrireDemande.current || !ficheId) return;
+    const source = transcrireDemande.current;
+    transcrireDemande.current = null;
+    if (transcriptionActive()) ouvrirTranscript();
+    else setFeuilleTrx({ source });
+  }, [pret, ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!pret) return undefined;
     setPose(true);
@@ -3462,7 +3476,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           onCancel={() => setPageASupprimer(null)} />
       )}
       {feuilleTrx && ficheId && (
-        <FeuilleDemarrage courseId={ficheId} pdfDoc={pdfDoc} ocrPages={coucheOcr ? coucheOcr.pages : null} texteEnPlus={modeDoc ? texteBrutDocument() : ''} reprendre={feuilleTrx.reprendre || null}
+        <FeuilleDemarrage courseId={ficheId} pdfDoc={pdfDoc} ocrPages={coucheOcr ? coucheOcr.pages : null} texteEnPlus={modeDoc ? texteBrutDocument() : ''} reprendre={feuilleTrx.reprendre || null} sourceInitiale={feuilleTrx.source || null}
           onClose={() => setFeuilleTrx(null)} onDemarre={ouvrirTranscript} />
       )}
       <input ref={entreeJumelle} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}

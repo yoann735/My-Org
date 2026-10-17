@@ -100,10 +100,13 @@ export function ResumeReplie({ courseId }) {
 /* ============================================================
    FEUILLE DE DÉMARRAGE
    ============================================================ */
-export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, texteEnPlus = '', reprendre = null, onClose, onDemarre }) {
+export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, texteEnPlus = '', reprendre = null, sourceInitiale = null, onClose, onDemarre }) {
   /* SOURCE (05/10) : 'auto' (défaut) | 'onglet' | deviceId — mémorisée par appareil.
      Reprise de l'ancien réglage (source + micro) au premier passage. */
   const [choix, setChoixBrut] = useState(() => {
+    // (17/10) « Transcrire » depuis un cours Teams de l'emploi du temps : pré-rempli, sans
+    // toucher au choix mémorisé tant que l'étudiant ne change rien lui-même
+    if (sourceInitiale === 'onglet') return 'onglet';
     const c = lireLS(CLE_CHOIX, null);
     if (c) return c;
     return lireLS(CLE_SOURCE, 'micro') === 'onglet' ? 'onglet' : 'auto';

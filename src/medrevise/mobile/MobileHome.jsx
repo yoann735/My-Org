@@ -16,6 +16,8 @@ import { exportBackup } from '../lib/backupExport.js';
 import { BoutonDiagnostic } from '../components/BoutonDiagnostic.jsx';
 import { CarteDessin } from './CarteDessin.jsx';
 import { SeanceAujourdhui } from '../components/SeanceAujourdhui.jsx';
+import { CalendrierMobile } from '../components/EmploiDuTemps.jsx';
+import { useModeCalendrier } from '../lib/emploiDuTemps.js';
 
 // carnet d'erreurs v2 : aperçu LISTE (pas la carte de révision interactive) —
 // déplie les {{mots}} de cloze en texte normal avant rendu <Tex> (LaTeX), même
@@ -29,6 +31,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
   const plan = useMemo(() => todayPlan(db, ix), [db, ix]);
   const overdue = useMemo(() => overdueByFiche(db, ix).filter((g) => !g.isSchema), [db, ix]);
   const [confirmDismiss, setConfirmDismiss] = useState(null);
+  const [modeCal, setModeCal] = useModeCalendrier(); // « Mes J · École », mémorisé (lib/emploiDuTemps.js)
   // rééquilibrage calendrier (étape 2/3) : côté mobile, source = toujours
   // "aujourd'hui" (pas de calendrier hebdo mobile) — désengorger la journée
   // qu'on regarde. moveTarget déclenche la même modale date que le desktop ;
@@ -153,6 +156,10 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
             <Icon name="play" size={20} fill /> Commencer la série
           </button>
         </div>
+
+        {/* CALENDRIER (17/10) : « Mes J » du jour, ou l'emploi du temps de l'école — vue jour,
+           glissement entre les jours (components/EmploiDuTemps.jsx) */}
+        <CalendrierMobile ctx={ctx} mode={modeCal} onMode={setModeCal} />
 
         {/* MODE APPRENTISSAGE LIBRE (11/10) : l'espace d'entraînement en rafale, hors J */}
         {onOuvrirApprentissage && (

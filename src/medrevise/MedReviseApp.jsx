@@ -32,8 +32,9 @@ import {
   getAll, put, putMany, remove, getStats, setStats as saveStats, genId, syncNow,
   purgeSource, purgeMatiere, purgeFiche, putBackup, newErrorCard,
   getCoursePrompts, setCoursePrompts, getExoPrompts, setExoPrompts,
-  getChapExoPrompts, setChapExoPrompts, getReglagesFC, setReglagesFC, getCarnetPuces, setCarnetPuces,
+  getChapExoPrompts, setChapExoPrompts, getReglagesFC, setReglagesFC, getCarnetPuces, setCarnetPuces, getEdtReglages, majEdtReglages,
 } from './lib/storage.js';
+import { demarrerEmploiDuTemps } from './lib/emploiDuTemps.js';
 import { runMigrations } from './lib/migrate.js';
 import { synchroniserJournal } from './journal/synchro.js';
 import { BandeauFilet, EcranIntegrite, rafraichirStatutServeur } from './components/FiletSecurite.jsx';
@@ -158,6 +159,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // flashcards : réglages synchronisés (Muscle, FSRS — lib/apprentissageFC.js reglagesFC) + écran de retour
   const [reglagesFC, setReglagesFCState] = useState(null);
   const [carnetPuces, setCarnetPucesState] = useState(null); // puces du carnet d'erreurs (lib/carnetPuces.js)
+  const [edtReglages, setEdtReglagesState] = useState(null); // emploi du temps : couleur / matière par cours (lib/edtCouleurs.js)
   const [retourSeanceFC, setRetourSeanceFC] = useState(null);
   const [feynman, setFeynman] = useState(null);
   const [exercice, setExercice] = useState(null); // { items:[exercice], title }
@@ -175,6 +177,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     ]);
     setReglagesFCState(await getReglagesFC());
     setCarnetPucesState(await getCarnetPuces());
+    setEdtReglagesState(await getEdtReglages());
     // `learningSet` : ids de la liste du mode Apprentissage libre (apprentissageLibre/liste.js).
     // Clé AJOUTÉE à db, lue par ce seul mode — aucun calcul existant (J, FSRS, séance) ne la lit.
     const learningSet = await lireListe();
@@ -213,6 +216,16 @@ export default function MedReviseApp({ themeApi, goHub }) {
     if (r.status === 'ok') synchroniserJournal().then((j) => { if (j && j.cartesMaj) reload(); }).catch(() => {});
     return r;
   }, [reload]);
+
+  /* EMPLOI DU TEMPS HELHa (17/10) : lecture de /api/timetable à l'ouverture puis toutes les 15 min,
+     en tâche de fond (cache LOCAL seulement, lib/emploiDuTemps.js) ; réglages par cours relus quand
+     ils changent (attribution automatique d'une couleur, Réglages → Emploi du temps). */
+  useEffect(() => {
+    const arreter = demarrerEmploiDuTemps();
+    const maj = (e) => setEdtReglagesState(e.detail || null);
+    window.addEventListener('medrevise:edt-reglages', maj);
+    return () => { arreter(); window.removeEventListener('medrevise:edt-reglages', maj); };
+  }, []);
 
   // A — synchro cloud (no-op silencieux si non configurée/hors-ligne, voir sync.js).
   // Plus de seed de démo (retiré — voir docs/diag-reseed-mobile.md) : un appareil
@@ -301,6 +314,9 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // ---- carnet d'erreurs : puces « Type d'erreur » (16/10) ----
     carnetPuces,
     saveCarnetPuces: async (puces) => { setCarnetPucesState(await setCarnetPuces(puces)); },
+    // ---- emploi du temps HELHa (17/10) : réglages par cours, seul enregistrement écrit par ce mode ----
+    edtReglages,
+    majEdtReglages: (fn) => majEdtReglages(fn),
     startSeanceFC: () => { setRetourSeanceFC(screen === 'seancefc' ? retourSeanceFC : screen); setScreen('seancefc'); },
     endSeanceFC: () => { setScreen(retourSeanceFC || 'dashboard'); setRetourSeanceFC(null); },
 
@@ -342,8 +358,10 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // écran 'pdf'), revient à l'écran d'où il a été ouvert à la fermeture.
     // `mode` ('read'|'edit') a disparu avec le faux mode Lecture/Édition du
     // lecteur (étapes 5 et 7) : la signature n'en prend plus.
-    openPdfReader: (ficheId, returnScreen, srcTab) => {
-      setPdfView({ ficheId, returnScreen: returnScreen || screen, srcTab });
+    // `opts.transcrire` (17/10, emploi du temps) : ouvre la feuille « Transcrire » pré-remplie
+    // (source Onglet Chrome) dès que le cours est prêt — voir PdfReader.jsx.
+    openPdfReader: (ficheId, returnScreen, srcTab, opts = {}) => {
+      setPdfView({ ficheId, returnScreen: returnScreen || screen, srcTab, transcrire: opts.transcrire || null });
       setScreen('pdf');
     },
     closePdfReader: () => { const back = pdfView && pdfView.returnScreen; setScreen(back || 'library'); setPdfView(null); },

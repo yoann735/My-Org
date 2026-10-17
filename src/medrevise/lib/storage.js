@@ -621,6 +621,29 @@ export async function setCarnetPuces(puces) {
   return rec;
 }
 
+/* ---- EMPLOI DU TEMPS HELHa (17/10, lib/edtCouleurs.js) : couleur fixe et matière reliée de chaque
+   cours détecté. Même mécanique que carnetPuces — store `S.prompts` (SYNCABLE), clé DISTINCTE,
+   enregistrement ADDITIONNEL : l'emploi du temps lui-même n'est JAMAIS écrit ici (cache serveur +
+   cache local, lib/emploiDuTemps.js). `majEdtReglages(fn)` relit puis réécrit, en file : une
+   attribution automatique et une modification dans Réglages ne s'écrasent jamais. */
+export async function getEdtReglages() { return (await get('edtReglages', S.prompts)) || null; }
+let fileEdt = Promise.resolve();
+export function majEdtReglages(fn) {
+  const tache = fileEdt.then(async () => {
+    const actuel = (await get('edtReglages', S.prompts)) || { id: 'edtReglages', cours: {} };
+    const suivant = fn({ ...actuel, cours: { ...(actuel.cours || {}) } });
+    if (!suivant) return actuel;
+    const updatedAt = new Date().toISOString();
+    const rec = { ...suivant, id: 'edtReglages', updatedAt };
+    await set('edtReglages', rec, S.prompts);
+    queuePush('prompts', 'edtReglages', rec, updatedAt);
+    try { window.dispatchEvent(new CustomEvent('medrevise:edt-reglages', { detail: rec })); } catch (e) { /* hors navigateur */ }
+    return rec;
+  });
+  fileEdt = tache.catch(() => {});
+  return tache;
+}
+
 /* ---- surcharges des 4 prompts PRATIQUE (exercices), même mécanique que
    ci-dessus — MÊME store `S.prompts` (déjà SYNCABLE), clé DISTINCTE
    ('exoPrompts' vs 'prompts') : deux enregistrements indépendants dans la

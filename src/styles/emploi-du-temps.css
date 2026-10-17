@@ -1,0 +1,143 @@
+/* ============================================================
+   MedRevise — emploi du temps HELHa dans le calendrier de l'Accueil (17/10).
+   Préfixe `edt-` (aucune autre classe de l'app ne le porte). La grille réutilise
+   les classes .wcal-* du calendrier des J : mêmes colonnes, mêmes filets, même
+   en-tête de jour — seules les cartes de cours sont propres à ce fichier.
+   Couleur d'un cours : variable --edt-c (bordure gauche + fond teinté à 12 %).
+   ============================================================ */
+
+/* ---------- sélecteur « Mes J · École » ---------- */
+.edt-tete { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.edt-selecteur { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.edt-seg { padding: 2px; }
+.edt-seg .seg-btn { padding: 4px 10px; font-size: 12px; }
+.edt-non-config { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+
+/* ---------- barre de navigation ---------- */
+.edt-nav { flex-wrap: wrap; row-gap: 8px; }
+.edt-fraicheur { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.edt-fraicheur.souci { color: var(--warn, var(--text-2)); }
+.edt-actualiser { display: inline-grid; place-items: center; width: 24px; height: 24px; border: none; border-radius: var(--r-2, 6px); background: none; color: var(--text-3); cursor: pointer; }
+.edt-actualiser:hover:not(:disabled) { color: var(--text); background: var(--elev-2, var(--bg-2)); }
+.edt-actualiser:disabled { cursor: default; opacity: .6; }
+.edt-tourne { animation: edt-tourne 1s linear infinite; }
+@keyframes edt-tourne { to { transform: rotate(360deg); } }
+
+/* ---------- prochain cours / cours en cours, en tête ---------- */
+.edt-avant {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: 0 0 10px; padding: 9px 12px;
+  border-left: 3px solid var(--edt-c);
+  border-radius: var(--r-2, 6px);
+  background: color-mix(in srgb, var(--edt-c) 12%, transparent);
+  position: relative;
+}
+.edt-avant-txt { flex: 1 1 260px; min-width: 0; font-size: 13px; color: var(--text-2); line-height: 1.4; }
+.edt-avant-quand { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.edt-avant-titre { color: var(--text); font-weight: 500; }
+
+/* ---------- lignes discrètes : changements, rappel du jeudi ---------- */
+.edt-lignes { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 12px; }
+.edt-lignes:empty { display: none; }
+.edt-ligne { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-3); }
+.edt-ligne.lien { border: none; background: none; padding: 0; font-family: inherit; cursor: pointer; color: var(--text-2); }
+.edt-ligne.lien:hover { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.edt-ligne.lien.nouveau { color: var(--accent); }
+.edt-changements { flex: 1 1 100%; }
+.edt-chg-liste { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.edt-chg-liste li { padding: 6px 10px; border-left: 2px solid var(--edt-c); background: color-mix(in srgb, var(--edt-c) 8%, transparent); border-radius: var(--r-2, 6px); }
+.edt-chg-t { font-size: 12.5px; color: var(--text); font-weight: 500; }
+.edt-chg-t span { color: var(--text-3); font-weight: 400; }
+.edt-chg-d { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+.edt-hors { margin: 0 0 10px; }
+
+/* ---------- grille : colonnes du calendrier des J, contenu propre ---------- */
+.edt-day { cursor: default; }
+.edt-day:hover { transform: none; box-shadow: none; }
+.edt-liste { display: flex; flex-direction: column; gap: 7px; flex: 1 1 auto; min-width: 0; }
+
+/* ---------- carte d'un cours ---------- */
+.edt-cours {
+  position: relative;
+  padding: 6px 7px 7px;
+  border-left: 3px solid var(--edt-c);
+  border-radius: 0 var(--r-2, 6px) var(--r-2, 6px) 0;
+  background: color-mix(in srgb, var(--edt-c) 12%, transparent);
+  min-width: 0;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+.edt-h { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-family: var(--font-mono, inherit); font-size: 10px; color: var(--text-2); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.edt-t { font-size: 12.5px; line-height: 1.3; color: var(--text); margin-top: 2px; font-weight: 500; }
+.edt-p, .edt-l { font-size: 11px; line-height: 1.3; color: var(--text-2); margin-top: 1px; }
+.edt-l { display: flex; align-items: center; flex-wrap: wrap; gap: 0 3px; color: var(--text-3); }
+.edt-l > span { white-space: nowrap; }
+.edt-badge { font-family: var(--font-mono, inherit); font-size: 9px; letter-spacing: .05em; text-transform: uppercase; padding: 0 4px; border-radius: 3px; border: 1px solid var(--border); color: var(--text-2); }
+.edt-badge.annule { color: var(--crit); border-color: color-mix(in srgb, var(--crit) 40%, transparent); }
+.edt-badge.direct { color: var(--edt-c); border-color: color-mix(in srgb, var(--edt-c) 50%, transparent); }
+.edt-cours.annule { opacity: .55; }
+.edt-cours.annule .edt-t { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text) 50%, transparent); }
+
+/* cours en cours : liseré pulsant discret (la bordure gauche s'éclaire et respire) */
+.edt-cours.en-cours::before, .edt-avant.en-cours::before {
+  content: ''; position: absolute; left: -3px; top: 0; bottom: 0; width: 3px;
+  background: var(--edt-c);
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--edt-c) 70%, transparent);
+  animation: edt-pouls 2.4s ease-in-out infinite;
+}
+.edt-avant.en-cours::before { border-radius: var(--r-2, 6px) 0 0 var(--r-2, 6px); }
+@keyframes edt-pouls { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .edt-cours.en-cours::before, .edt-avant.en-cours::before { animation: none; opacity: .8; }
+  .edt-tourne { animation: none; }
+}
+
+/* actions */
+.edt-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.edt-actions .btn.sm { padding: 2px 7px; font-size: 11px; min-height: 0; gap: 4px; }
+.edt-actions.grand { margin-top: 0; }
+.edt-actions.grand .btn.sm { padding: 4px 10px; font-size: 12px; }
+.edt-transcrire { border-color: color-mix(in srgb, var(--edt-c) 55%, var(--border)) !important; }
+
+/* ---------- vue jour ---------- */
+.edt-jour-liste { display: flex; flex-direction: column; gap: 8px; min-height: 96px; touch-action: pan-y; }
+.edt-jour .edt-cours { padding: 9px 12px 10px; }
+.edt-jour .edt-h { font-size: 11px; }
+.edt-jour .edt-t { font-size: 14px; }
+.edt-jour .edt-p, .edt-jour .edt-l { font-size: 12.5px; }
+.edt-rien { padding: 18px 0; text-align: center; }
+.edt-j { padding: 4px 0 4px 10px; }
+
+/* ---------- états ---------- */
+.edt-vide { display: flex; align-items: flex-start; gap: 10px; padding: 18px 4px; color: var(--text-2); font-size: 13px; }
+.edt-vide b { color: var(--text); font-weight: 600; }
+.edt-vide .hint { margin-top: 3px; }
+.edt-vide .btn { margin-left: auto; }
+
+/* ---------- téléphone ---------- */
+.edt-mobile-head { flex-wrap: wrap; }
+.edt-mobile-head .edt-selecteur { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; flex-wrap: wrap; justify-content: flex-end; }
+.edt-mobile-carte { padding: 14px; overflow: hidden; }
+.edt-mobile-carte .wcal-nav { margin-bottom: 10px; }
+.edt-mobile .edt-fraicheur { flex: 1 1 100%; margin-left: 0; }
+.edt-mobile .edt-avant { margin-bottom: 8px; }
+
+/* ---------- Réglages → Emploi du temps ---------- */
+.edt-statut { font-size: 12.5px; color: var(--text-2); }
+.edt-statut.non_configure, .edt-statut.erreur { color: var(--text-3); }
+.edt-reg-liste { display: flex; flex-direction: column; }
+.edt-reg-ligne { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto minmax(150px, 220px); align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--border-2); }
+.edt-reg-ligne:first-child { border-top: none; }
+.edt-reg-pastille { width: 14px; height: 14px; border-radius: 50%; background: var(--edt-c); }
+.edt-reg-titre { font-size: 13px; color: var(--text); font-weight: 500; }
+.edt-reg-palette { display: flex; align-items: center; gap: 4px; }
+.edt-reg-teinte { width: 16px; height: 16px; border-radius: 50%; border: 2px solid transparent; padding: 0; cursor: pointer; outline-offset: 1px; }
+.edt-reg-teinte.active { box-shadow: 0 0 0 2px var(--bg, #000), 0 0 0 3.5px var(--text); }
+.edt-reg-auto { font-size: 11px; padding: 1px 6px; margin-left: 2px; border: 1px solid var(--border); border-radius: var(--r-2, 6px); background: none; color: var(--text-3); cursor: pointer; font-family: inherit; }
+.edt-reg-auto.active { color: var(--text); border-color: var(--text-3); }
+.edt-reg-matiere { font-size: 12.5px; padding: 5px 8px; min-width: 0; width: 100%; }
+@media (max-width: 760px) {
+  .edt-reg-ligne { grid-template-columns: 14px minmax(0, 1fr); }
+  .edt-reg-palette, .edt-reg-matiere { grid-column: 2; }
+}
