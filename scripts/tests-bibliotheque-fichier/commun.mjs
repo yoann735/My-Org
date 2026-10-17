@@ -14,7 +14,8 @@ export async function banc(W = 1440, H = 900, opts = {}) {
     await c.ev(`(()=>{const r=[...document.querySelectorAll('button')].find(b=>(b.title||'')==='Revenir à la liste'||b.getAttribute('aria-label')==='Retour');r&&r.click();return 1})()`); await c.dormir(700);
   };
   b.trier = async (libelle) => {
-    await b.clic(await b.pos(`document.querySelector('.lib-tri-bouton')`, false), { att: 300 });
+    // (17/10) bouton « Trier » de la rangée en tête du panneau (.lib-barre-tri)
+    await b.clic(await b.pos(`document.querySelector('.lib-barre-tri')`, false), { att: 300 });
     const p = await b.pos(`[...document.querySelectorAll('.ctx-menu-item')].find(x=>x.innerText.trim()===${JSON.stringify(libelle)})`, false);
     await b.clic(p, { att: 500 });
   };
@@ -22,6 +23,10 @@ export async function banc(W = 1440, H = 900, opts = {}) {
   // les fiches affichées, dans l'ordre (arbre, liste plate, grille ou liste)
   b.fiches = () => b.ev(`[...document.querySelectorAll('.lt-fiche .lt-nom, .lv-carte-titre, .lv-ligne:not(.lv-entete) .lv-col-titre .lv-texte')].map(e=>e.innerText.replace(/\\s*fiche$/,'').trim())`);
   b.metas = () => b.ev(`[...document.querySelectorAll('.lib-tri-meta')].map(e=>e.innerText.trim())`);
+  // (17/10) arbre trié : { titre → date affichée sous la fiche } et fiches de chaque dossier / matière, dans l'ordre
+  b.dates = () => b.ev(`Object.fromEntries([...document.querySelectorAll('.lt-fiche')].map(e=>{const n=e.querySelector('.lt-nom');return [n.firstChild.textContent.trim(),(e.querySelector('.lt-date')||{}).textContent||'']}))`);
+  b.seaux = () => b.ev(`(()=>{const m=new Map();document.querySelectorAll('.lt-fiche').forEach(e=>{const c=e.closest('.lt-enfants');if(!m.has(c))m.set(c,[]);m.get(c).push(e.querySelector('.lt-nom').firstChild.textContent.trim())});return [...m.values()]})()`);
+  b.seauDe = async (titre) => (await b.seaux()).find((l) => l.includes(titre)) || [];
   // assemble des captures côte à côte (canvas dans la page du banc) → ../cap/<sortie>.png
   b.assembler = async (noms, sortie, legendes = [], vertical = false) => {
     const fs = await import('fs');

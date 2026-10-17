@@ -34,15 +34,23 @@ const MODES_AFFICHAGE = [
   { id: 'grille', label: 'Grille', icon: 'grid', aide: 'Grille : une carte par fiche, par matière' },
   { id: 'liste', label: 'Liste', icon: 'list', aide: 'Liste : toutes les fiches, triables par colonne' },
 ];
-/* TRIS (15/10, docs/compte-rendu-bibliotheque-fichier.md) : l'ordre manuel est l'arbre
-   tel qu'on l'a rangé ; les deux autres sont une liste PLATE, qui ne touche jamais à
-   l'ordre manuel (aucune écriture : on ne fait que lire et trier pour l'affichage).
-   Mémorisé par appareil (localStorage), pas synchronisé. */
+/* TRIS (15/10, refaits le 17/10 — docs/compte-rendu-bibliotheque-fichier.md) : l'arbre reste
+   EXACTEMENT le même (sections, matières, dossiers dans leur ordre manuel, mêmes pliages, mêmes
+   compteurs) ; seules les FICHES sont réordonnées à l'intérieur de chaque dossier / matière.
+   Aucune écriture : l'ordre manuel n'est jamais touché (le glisser des fiches est suspendu
+   tant qu'un tri par date est actif). Mémorisé par appareil (localStorage), pas synchronisé. */
 const TRIS = [
-  { id: 'manuel', label: 'Ordre manuel', aide: 'L’arbre tel que tu l’as rangé (matières, dossiers, ordre)' },
-  { id: 'modif', label: 'Dernière modification', aide: 'Toutes les fiches, la plus récemment modifiée en premier' },
-  { id: 'ajout', label: 'Date d’ajout', aide: 'Toutes les fiches, la plus récemment ajoutée en premier' },
+  { id: 'manuel', label: 'Ordre manuel', aide: 'L’arbre tel que tu l’as rangé' },
+  { id: 'modif', label: 'Dernière modification', aide: 'Dans chaque dossier, la fiche la plus récemment modifiée en premier' },
+  { id: 'ajout', label: 'Date d’ajout', aide: 'Dans chaque dossier, la fiche la plus récemment ajoutée en premier' },
 ];
+/** icône « trier » (flèches haut / bas) — le jeu d'icônes partagé n'en a pas, et src/shared ne bouge pas */
+const IconeTri = ({ size = 15 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M7 4v16M3.5 7.5 7 4l3.5 3.5M17 20V4M13.5 16.5 17 20l3.5-3.5" />
+  </svg>
+);
+const sansLe = (t) => String(t).replace(/^le /, '');
 const CLE_TRI = 'medrevise.biblio.tri';
 const lireTri = () => { try { const v = localStorage.getItem(CLE_TRI); return TRIS.some((t) => t.id === v) ? v : 'manuel'; } catch (e) { return 'manuel'; } };
 const sansAccents = (x) => String(x || '').toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -60,16 +68,28 @@ export function Bibliotheque({ ctx }) {
   const [triMenu, setTriMenu] = useState(null); // { x, y }
   const [recherche, setRecherche] = useState('');
   const q = sansAccents(recherche.trim());
-  const plat = tri !== 'manuel';
+  const parDate = tri !== 'manuel';
   const { parStore } = useDatesModif(tri === 'modif');
   // « il y a 2 h » reste juste : un tic par minute tant qu'un tri par date est affiché
   const [maintenant, setMaintenant] = useState(() => Date.now());
   useEffect(() => {
-    if (!plat) return undefined;
+    if (!parDate) return undefined;
     setMaintenant(Date.now());
     const t = setInterval(() => setMaintenant(Date.now()), 60000);
     return () => clearInterval(t);
-  }, [plat]);
+  }, [parDate]);
+  /* date d'une fiche selon le tri actif, et son libellé sous le titre : « il y a 17 h » (modif)
+     ou « 12 oct. » (ajout) ; rien en ordre manuel */
+  const dateTri = (f) => (tri === 'modif' ? dateModif(f, parStore) : dateAjout(f));
+  const libelleDate = (f) => (tri === 'modif' ? sansLe(ilYa(dateTri(f), maintenant)) : sansLe(leJour(dateTri(f), maintenant)));
+  /** fiches d'un même dossier / d'une même matière dans l'ordre affiché : manuel, ou date décroissante
+      (à égalité, l'ordre manuel) */
+  const ordonner = (fiches) => {
+    const manuel = [...fiches].sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+    if (!parDate) return manuel;
+    const rang = new Map(manuel.map((f, i) => [f.id, i]));
+    return manuel.sort((a, b) => (dateTri(b) - dateTri(a)) || (rang.get(a.id) - rang.get(b.id)));
+  };
   const [renaming, setRenaming] = useState(null); // { type, id }
   // C — panneau de droite : quelle fiche-document est ouverte (jamais de
   // navigation d'écran — on reste sur 'library' tout du long).
@@ -345,19 +365,20 @@ export function Bibliotheque({ ctx }) {
       <div key={f.id} className={fd.dropClass('fiche:' + f.id).trim()}
         {...fd.dropProps({ key: 'fiche:' + f.id, matiereId: f.matiereId, dossierId: f.dossierId || null })}>
         <DropSlot matiereId={f.matiereId} dossierId={f.dossierId || null} beforeId={f.id} />
-        <DraggableFiche id={f.id} disabled={isRen('fiche', f.id)} className={'lt-ligne lt-fiche' + (isSel ? ' selected' : '')}>
+        <DraggableFiche id={f.id} disabled={isRen('fiche', f.id) || parDate} className={'lt-ligne lt-fiche' + (isSel ? ' selected' : '') + (parDate ? ' lt-datee' : '')}>
           {isRen('fiche', f.id) ? (
             <div className="lt-rangee"><span className="lt-pli" />{champRenommer()}</div>
           ) : (
             <div role="button" className="lt-rangee"
               onClick={() => { if (kind) openDoc(f); else setOpenFiche((o) => ({ ...o, [f.id]: !fo })); }}
               onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }}
-              title={`${f.titre}\n${metaLine}\n${kind ? 'Clic = ouvrir le document' : 'Clic = voir les cartes'} · double-clic = renommer · glisser = déplacer`}>
+              title={`${f.titre}\n${metaLine}\n${kind ? 'Clic = ouvrir le document' : 'Clic = voir les cartes'} · double-clic = renommer · ${parDate ? 'glisser = déplacer (en ordre manuel)' : 'glisser = déplacer'}`}>
               {kind
                 ? <><span className="lt-pli" /><Icon name={f.priseDeNotes ? 'edit' : DOC_META[kind].icon} size={14} className="lt-ic" /></>
                 : <><Icon name={fo ? 'chevD' : 'chevR'} size={13} className="lt-pli" /><Icon name="cards" size={14} className="lt-ic" /></>}
-              <span className="lt-nom">{f.titre}</span>
-              {marqueJumelle(f.id)}
+              {parDate ? (
+                <span className="lt-deux"><span className="lt-nom">{f.titre}{marqueJumelle(f.id)}</span><span className="lt-date">{libelleDate(f)}</span></span>
+              ) : (<><span className="lt-nom">{f.titre}</span>{marqueJumelle(f.id)}</>)}
               {etq && <span className="lib-fiche-etq" style={{ background: etq.color }} title={`Étiquette : ${etq.label}`} onClick={(e) => openEtqMenu(e, f.id)} />}
               {paused && <span className="lt-etat" title="Rappels J en pause pour cette fiche"><Icon name="bellOff" size={12} /></span>}
               {nCartes > 0 && <span className="lt-compte" title={`${nCartes} carte${nCartes > 1 ? 's' : ''}`}>{nCartes}</span>}
@@ -454,7 +475,7 @@ export function Bibliotheque({ ctx }) {
     const out = [];
     trierSections(db.sources.filter((s) => !s.archive), ctx.stats).forEach((src, iSec) => {
       db.matieres.filter((m) => m.sourceId === src.id && !m.archive).forEach((mat, iMat) => {
-        db.fiches.filter((f) => f.matiereId === mat.id && !f.archive).sort(byOrdre).forEach((f, iF) => {
+        ordonner(db.fiches.filter((f) => f.matiereId === mat.id && !f.archive)).forEach((f, iF) => {
           const d = f.dossierId && db.dossiers.find((x) => x.id === f.dossierId);
           const p = d && d.parentId && db.dossiers.find((x) => x.id === d.parentId);
           const mm = matiereMeta(mat);
@@ -476,7 +497,7 @@ export function Bibliotheque({ ctx }) {
      (à égalité, l'ordre de l'arbre). */
   const lignesTrouvees = lignesBiblio.filter((l) => l.trouve);
   const cleTri = (l) => (tri === 'modif' ? l.modif : l.ajout);
-  const lignesTriees = plat ? [...lignesTrouvees].sort((a, b) => cleTri(b) - cleTri(a) || a.rang - b.rang) : lignesTrouvees;
+  const lignesTriees = parDate ? [...lignesTrouvees].sort((a, b) => cleTri(b) - cleTri(a) || a.rang - b.rang) : lignesTrouvees;
   const idsTrouves = new Set(lignesTrouvees.map((l) => l.f.id));
   const ficheTrouvee = (f) => !q || idsTrouves.has(f.id);
   const aucunResultat = q && !lignesTrouvees.length ? (
@@ -511,7 +532,7 @@ export function Bibliotheque({ ctx }) {
       <div className="lv-carte-bandeau"><Icon name={iconeFiche(l)} size={22} /></div>
       <div className="lv-carte-corps">
         <div className="lv-carte-titre">{isRen('fiche', l.f.id) ? champRenommer('srcmgr-input lv-renommer') : l.f.titre}{marqueJumelle(l.f.id)}</div>
-        <div className="lv-carte-lieu">{plat ? metaTri(l) : (l.dossier || 'Racine de la matière')}</div>
+        <div className="lv-carte-lieu">{parDate ? metaTri(l) : (l.dossier || 'Racine de la matière')}</div>
         <div className="lv-carte-pied">
           <span>{libelleType(l)}{l.nCartes ? ` · ${l.nCartes} carte${l.nCartes > 1 ? 's' : ''}` : ''}</span>
           {actionsFiche(l)}
@@ -520,13 +541,7 @@ export function Bibliotheque({ ctx }) {
     </div>
   );
   const renderGrille = () => {
-    // tri par date : une seule grille, sans regroupement
-    if (plat) return (
-      <div className="lv-grille fadein">
-        {aucunResultat || (!lignesTriees.length && <div className="lib-detail-empty"><Icon name="book" size={28} /><div style={{ marginTop: 10 }}>Aucune fiche pour l'instant.</div></div>)}
-        {lignesTriees.length > 0 && <div className="lv-cartes lib-tri-grille">{lignesTriees.map(carteGrille)}</div>}
-      </div>
-    );
+    // (17/10) tri par date : mêmes sections et matières, cartes réordonnées dans chaque matière
     const parSection = [];
     lignesTrouvees.forEach((l) => {
       let s = parSection.find((x) => x.src.id === l.src.id);
@@ -564,7 +579,7 @@ export function Bibliotheque({ ctx }) {
   const renderListe = () => {
     const col = COLONNES.find((c) => c.id === triListe.col) || COLONNES[1];
     // tri par date : il prime sur les colonnes (re-choisir « Ordre manuel » pour trier par colonne)
-    const lignes = plat ? lignesTriees : [...lignesTrouvees].sort((a, b) => {
+    const lignes = parDate ? lignesTriees : [...lignesTrouvees].sort((a, b) => {
       const x = col.val(a), y = col.val(b);
       return (x < y ? -1 : x > y ? 1 : a.rang - b.rang) * triListe.sens;
     });
@@ -573,7 +588,7 @@ export function Bibliotheque({ ctx }) {
     return (
       <div className="lv-liste fadein">
         <div className="lv-ligne lv-entete" role="row">
-          {colonnes.map((c) => (plat ? (
+          {colonnes.map((c) => (parDate ? (
             <span key={c.id} className={'lv-col lv-col-' + c.id + (c.id === 'date' ? ' trie' : '')} title={c.id === 'date' ? `Trié par ${TRIS.find((t) => t.id === tri).label.toLowerCase()}` : 'Tri par colonne : choisir « Ordre manuel » dans Trier'}>
               {c.label}{c.id === 'date' && <Icon name="chevU" size={12} />}
             </span>
@@ -588,9 +603,9 @@ export function Bibliotheque({ ctx }) {
           <div key={l.f.id} role="row" tabIndex={0} className={'lv-ligne' + (l.kind ? '' : ' sans-doc')}
             onClick={() => { if (l.kind) openDoc(l.f); }} onKeyDown={(e) => { if (e.key === 'Enter' && l.kind) openDoc(l.f); }}
             title={l.kind ? 'Ouvrir le document' : 'Fiche sans document — ▷ pour réviser'}>
-            <span className="lv-col lv-col-titre"><Icon name={iconeFiche(l)} size={14} className="lt-ic" /> {isRen('fiche', l.f.id) ? champRenommer('srcmgr-input lv-renommer') : plat
+            <span className="lv-col lv-col-titre"><Icon name={iconeFiche(l)} size={14} className="lt-ic" /> {isRen('fiche', l.f.id) ? champRenommer('srcmgr-input lv-renommer') : parDate
               ? <span className="lib-tri-deux"><span className="lv-texte">{l.f.titre}{marqueJumelle(l.f.id)}</span>{metaTri(l)}</span>
-              : <span className="lv-texte">{l.f.titre}</span>}{!plat && marqueJumelle(l.f.id)}</span>
+              : <span className="lv-texte">{l.f.titre}</span>}{!parDate && marqueJumelle(l.f.id)}</span>
             <span className="lv-col lv-col-section"><span className="lt-point" style={{ background: l.mm.tint }} /> <span className="lv-texte">{l.src.nom} › {l.mm.label}</span></span>
             <span className="lv-col lv-col-dossier"><span className="lv-texte">{l.dossier || '—'}</span></span>
             <span className="lv-col lv-col-cartes">{l.nCartes || '—'}</span>
@@ -603,50 +618,28 @@ export function Bibliotheque({ ctx }) {
     );
   };
 
-  /* LISTE PLATE de l'affichage Arbre (tri par date) : une ligne par fiche, sans section,
-     matière ni dossier — rien à glisser (l'ordre manuel ne se range que dans l'arbre).
-     Un PDF déposé sur une ligne est importé dans la matière de cette fiche. */
-  const renderPlat = () => (
-    <div className="lib-plat" role="list" aria-label={`Fiches — ${TRIS.find((t) => t.id === tri).label}`}>
-      {aucunResultat}
-      {!q && !lignesTriees.length && <div className="lt-vide">Aucune fiche pour l'instant.</div>}
-      {lignesTriees.map((l) => {
-        const f = l.f, isSel = !!(selected && selected.ficheId === f.id), fo = !!openFiche[f.id];
-        const ouvrir = () => { if (l.kind) openDoc(f); else setOpenFiche((o) => ({ ...o, [f.id]: !fo })); };
-        return (
-          // un fichier lâché sur une ligne rejoint la matière (et le dossier) de cette fiche
-          <div key={f.id} role="listitem" className={'lt-ligne lt-fiche lib-plat-ligne' + (isSel ? ' selected' : '') + fd.dropClass('fiche:' + f.id)}
-            {...fd.dropProps({ key: 'fiche:' + f.id, matiereId: f.matiereId, dossierId: f.dossierId || null })}>
-            {isRen('fiche', f.id) ? (
-              <div className="lt-rangee"><span className="lt-pli" />{champRenommer()}</div>
-            ) : (
-              <div role="button" tabIndex={0} className="lt-rangee lib-plat-rangee" onClick={ouvrir}
-                onKeyDown={(e) => { if (e.key === 'Enter') ouvrir(); }}
-                onDoubleClick={(e) => { e.stopPropagation(); startRename('fiche', f.id, f.titre); }}
-                title={`${f.titre}\n${l.src.nom} › ${l.mm.label}${l.dossier ? ' › ' + l.dossier : ''}\n${l.kind ? 'Clic = ouvrir le document' : 'Clic = voir les cartes'} · double-clic = renommer`}>
-                <Icon name={iconeFiche(l)} size={14} className="lt-ic" />
-                <span className="lib-tri-deux"><span className="lt-nom">{f.titre}{marqueJumelle(f.id)}</span>{metaTri(l)}</span>
-                {l.nCartes > 0 && <span className="lt-compte" title={`${l.nCartes} carte${l.nCartes > 1 ? 's' : ''}`}>{l.nCartes}</span>}
-                <span className="lt-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-                  {f.type !== 'transcript' && <button type="button" className="cd-ic" title="Réviser cette fiche" onClick={() => reviserFiche(f)}><Icon name="play" size={12} /></button>}
-                  <button type="button" className="cd-ic" title="Autres actions" onClick={(e) => openFicheMenu(e, f.id)}><Icon name="more" size={14} stroke={2.6} /></button>
-                </span>
-              </div>
-            )}
-            {fo && !l.kind && (
-              <div className="lt-cartes">
-                {qById(f.id).map((x) => (
-                  <div className={'lt-carte' + (x.type === 'flashcard' ? ' alib-glissable' : '')} key={x.id} data-carte={x.id} {...glisseCarte(x)}>
-                    <Icon name={x.type === 'flashcard' ? 'cards' : x.type === 'feynman' ? 'lightbulb' : 'list'} size={11} />
-                    <span>{x.concept}</span>
-                  </div>
-                ))}
-                {!qById(f.id).length && <div className="lt-vide">Aucune carte.</div>}
-              </div>
-            )}
-          </div>
-        );
-      })}
+  /* RANGÉE RECHERCHE + TRI (17/10) : UNE rangée compacte de 40 px en tête du panneau (au-dessus
+     de la première section) — et en tête de la Grille / de la Liste, qui n'ont pas de panneau.
+     À gauche « Chercher une fiche » (s'étend au focus, filtre l'arbre en place en gardant les
+     parents, Échap efface) ; à droite « Trier » (menu à 3 choix cochés ; le tri actif est rappelé
+     sous l'icône au survol). La recherche n'est pas mémorisée, le tri l'est (par appareil). */
+  const champRechercheRef = useRef(null);
+  const triActif = TRIS.find((t) => t.id === tri);
+  const barreRechercheTri = (
+    <div className={'lib-barre' + (recherche ? ' avec-texte' : '')} role="search">
+      <label className="lib-barre-recherche">
+        <Icon name="search" size={14} className="ic" />
+        <input ref={champRechercheRef} type="search" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Chercher une fiche"
+          aria-label="Chercher une fiche (titre, matière ou dossier)"
+          onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setRecherche(''); } }} />
+        {recherche && <button type="button" className="cd-ic" onClick={() => { setRecherche(''); champRechercheRef.current && champRechercheRef.current.focus(); }} title="Effacer (Échap)" aria-label="Effacer la recherche"><Icon name="x" size={12} /></button>}
+      </label>
+      <button type="button" className={'lib-barre-tri' + (parDate ? ' actif' : '')} aria-haspopup="menu" aria-expanded={!!triMenu}
+        aria-label={`Trier — ${triActif.label}`}
+        onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setTriMenu(triMenu ? null : { x: Math.max(8, Math.min(r.right - 230, window.innerWidth - 238)), y: r.bottom + 4 }); }}>
+        <IconeTri size={16} />
+        <span className="lib-barre-tri-lbl" aria-hidden="true">{triActif.label}</span>
+      </button>
     </div>
   );
 
@@ -675,18 +668,7 @@ export function Bibliotheque({ ctx }) {
            notion DANS un cours se fait dans le lecteur (Ctrl/Cmd+F). Le seul bouton
            qui restait dans la barre d'outils rejoint l'en-tête. */}
         <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* RECHERCHE et TRI (15/10) : à côté des modes d'affichage, valables dans les trois */}
-          <label className="search lib-recherche">
-            <Icon name="search" size={14} className="ic" />
-            <input type="search" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Rechercher une fiche"
-              aria-label="Rechercher une fiche (titre, matière ou dossier)" onKeyDown={(e) => { if (e.key === 'Escape') setRecherche(''); }} />
-            {recherche && <button type="button" className="cd-ic" onClick={() => setRecherche('')} title="Effacer" aria-label="Effacer la recherche"><Icon name="x" size={12} /></button>}
-          </label>
-          <button type="button" className={'btn ghost sm lib-tri-bouton' + (plat ? ' actif' : '')} aria-haspopup="menu" aria-expanded={!!triMenu}
-            title={`Trier : ${TRIS.find((t) => t.id === tri).aide}`}
-            onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setTriMenu(triMenu ? null : { x: Math.min(r.left, window.innerWidth - 250), y: r.bottom + 4 }); }}>
-            <Icon name="sliders" size={13} /> <span className="lib-tri-libelle">{tri === 'manuel' ? 'Trier' : TRIS.find((t) => t.id === tri).label}</span> <Icon name="chevD" size={12} />
-          </button>
+          {/* (17/10) recherche et tri : la rangée en tête du panneau (barreRechercheTri), plus ici */}
           {/* MODES D'AFFICHAGE (docs/biblio-affichages.md) — l'arbre reste le défaut */}
           <div className="seg lib-modes" role="tablist" aria-label="Affichage de la Bibliothèque">
             {MODES_AFFICHAGE.map((m) => (
@@ -708,12 +690,16 @@ export function Bibliotheque({ ctx }) {
       {/* (16/10) l'input « Attacher un document » est retiré : Fichiers du cours (lib/fichiersCours.js) */}
 
       {affichage !== 'arbre' && !selected ? (
-        affichage === 'grille' ? renderGrille() : renderListe()
+        <div className="lib-vue-pleine">
+          {barreRechercheTri}
+          {affichage === 'grille' ? renderGrille() : renderListe()}
+        </div>
       ) : (
       <div className={'lib-split' + (affichage !== 'arbre' ? ' lib-split-seul' : '')}>
         <div className={'lib-master' + (listCollapsed ? ' collapsed' : '')}>
         {!listCollapsed && (
         <div className="lib-master-body">
+            {barreRechercheTri}
 
             <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
             <div className="lib-tree" {...fd.dropProps({ key: 'tree' })}>
@@ -729,8 +715,8 @@ export function Bibliotheque({ ctx }) {
                  actions au survol (+ / ▷ / ⋯). Tout le reste (glisser-déposer des
                  fiches, dépôt de fichiers, renommage, menus, états mémorisés) est
                  inchangé. */}
-              {plat ? renderPlat() : aucunResultat}
-              {!plat && (() => { const sections = trierSections(db.sources.filter((s) => !s.archive), ctx.stats); return sections.map((src, iSec) => {
+              {aucunResultat}
+              {(() => { const sections = trierSections(db.sources.filter((s) => !s.archive), ctx.stats); return sections.map((src, iSec) => {
                 // recherche : seules les branches qui mènent à une fiche trouvée, dépliées
                 // pour l'affichage (l'état mémorisé du repli n'est pas réécrit)
                 const mats = db.matieres.filter((m) => m.sourceId === src.id && !m.archive && (!q || db.fiches.some((f) => f.matiereId === m.id && !f.archive && ficheTrouvee(f))));
@@ -774,7 +760,7 @@ export function Bibliotheque({ ctx }) {
                       <div className="lt-enfants lt-enfants-sec">
                         {mats.map((mat) => {
                           const mm = matiereMeta(mat);
-                          const allFiches = db.fiches.filter((f) => f.matiereId === mat.id && !f.archive && ficheTrouvee(f)).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+                          const allFiches = ordonner(db.fiches.filter((f) => f.matiereId === mat.id && !f.archive && ficheTrouvee(f)));
                           const rootFiches = allFiches.filter((f) => !f.dossierId);
                           const unites = unitesOf(mat.id).filter((u) => !q || fichesCountRecursif(allFiches, u.id) > 0);
                           const matOuverte = !!q || !matFermee[mat.id];

@@ -1,19 +1,21 @@
 // Bibliothèque — tris en tablette (paysage, portrait, tactile) et téléphone (shell mobile). Base LOCALE du banc.
+// (17/10) l'arbre est gardé ; rangée « Chercher une fiche · Trier » de 40 px en tête du panneau.
 import { banc } from './commun.mjs';
 for (const [W, H, nom] of [[1180, 820, 'paysage'], [820, 1180, 'portrait']]) {
   const b = await banc(W, H, { tactile: true });
   await b.biblio({ recharger: true });
-  await b.trier('Dernière modification');
   // sous 960 px la liste est repliée en rail au chargement (comportement existant) : on la rouvre
   if (await b.ev(`!!document.querySelector('.lib-master.collapsed')`)) await b.tape(await b.pos(`document.querySelector('.lib-split [class*=split-handle], .lib-split .split-handle')`, false));
-  const l = await b.fiches(), m = await b.metas();
-  b.ok(l.length >= 12 && m.length === l.length, `${nom} : liste plate, une ligne « Modifiée … · matière » par fiche`, `${l.length} fiches`);
-  const deb = await b.ev(`document.documentElement.scrollWidth <= innerWidth && [...document.querySelectorAll('.topbar-actions > *')].every(e=>e.getBoundingClientRect().right <= innerWidth)`);
+  await b.trier('Dernière modification');
+  const d = await b.dates();
+  b.ok(Object.keys(d).length >= 12 && Object.values(d).every((x) => x) && await b.ev(`!!document.querySelector('.lt-mat')`), `${nom} : arbre gardé, une date sous chaque fiche`, `${Object.keys(d).length} fiches`);
+  const deb = await b.ev(`document.documentElement.scrollWidth <= innerWidth && [...document.querySelectorAll('.topbar-actions > *, .lib-barre > *')].every(e=>e.getBoundingClientRect().right <= innerWidth)`);
   b.ok(deb, `${nom} : pas de défilement horizontal`);
-  const h = await b.rect(`document.querySelector('.lib-plat-rangee')`);
+  const h = await b.rect(`document.querySelector('.lt-datee > .lt-rangee')`);
   b.ok(h && h.h >= 44, `${nom} : lignes ≥ 44 px au doigt`, h && Math.round(h.h) + ' px');
-  const t = await b.rect(`document.querySelector('.lib-tri-bouton')`);
-  b.ok(t && t.h >= 40, `${nom} : bouton Trier ≥ 40 px`, t && Math.round(t.h) + ' px');
+  const bar = await b.rect(`document.querySelector('.lib-barre')`);
+  const t = await b.rect(`document.querySelector('.lib-barre-tri')`);
+  b.ok(bar && bar.h === 40 && t && t.h >= 36, `${nom} : rangée de 40 px, bouton Trier de ${t && Math.round(t.h)} px`, JSON.stringify({ bar: bar && bar.h, tri: t && t.h }));
   await b.capture(`tb-tablette-${nom}`);
   // le menu Trier s'ouvre au doigt
   await b.tape([t.cx, t.cy]);
