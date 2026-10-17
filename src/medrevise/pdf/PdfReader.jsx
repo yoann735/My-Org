@@ -110,6 +110,7 @@ import { statsCouche } from '../ocr/couches.js';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { MenuFichier } from './MenuFichier.jsx';
 import { FichiersCours } from './FichiersCours.jsx';
+import { SuppressionDocument } from './SuppressionDocument.jsx';
 import { verifierFichiers, avecVerrou, importerPrincipal, principalDe } from '../lib/fichiersCours.js';
 import { PanneauTextesAnnotations } from './TextesAnnotations.jsx';
 import { PanneauExportIA } from './ExportIA.jsx';
@@ -358,6 +359,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // (`db` remplacé par reload()) et sur « Réessayer », sans rouvrir le cours.
   const [pdfRetry, setPdfRetry] = useState(0);
   const cacheDocs = useRef(new Map()); // pdfId → { doc, sizes } (original et fiche jumelle)
+  const pdfDocDe = useRef(null); // (17/10) pdfId du `pdfDoc` affiché (menu Fichier : action différée)
+  const nsCharge = useRef({ hl: null, ed: null }); // (17/10) calque dont les annotations sont chargées
   const [pdfManquant, setPdfManquant] = useState(false);
   useEffect(() => { if (pdfManquant) setPdfRetry((t) => t + 1); }, [db]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -366,7 +369,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!fiche || !pdfIdActif) return;
     // (15/10) document déjà ouvert dans cette session (bascule Original ⇄ Fiche) : aucun rechargement
     const enCache = cacheDocs.current.get(pdfIdActif);
-    if (enCache) { setPdfDoc(enCache.doc); setNumPages(enCache.doc.numPages); setPageSizes(enCache.sizes); return; }
+    if (enCache) { pdfDocDe.current = pdfIdActif; setPdfDoc(enCache.doc); setNumPages(enCache.doc.numPages); setPageSizes(enCache.sizes); return; }
     (async () => {
       try {
         const blob = await getBlob(pdfIdActif);
@@ -390,6 +393,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         }
         if (cancelled) return;
         cacheDocs.current.set(pdfIdActif, { doc, sizes });
+        pdfDocDe.current = pdfIdActif;
         setPdfDoc(doc); setNumPages(doc.numPages); setPageSizes(sizes);
       } catch (e) {
         if (!cancelled) setLoadError('Impossible de lire ce PDF.');
@@ -403,6 +407,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // 07/10 : les notions de l'onglet « Notes » (source 'doc') n'ont ni page ni rectangles —
     // jamais mêlées aux surlignages du PDF, listées à part dans le mode Notions
     setHighlights(all.filter((h) => h.ficheId === nsAnnot && !estNotionDoc(h) && !h.convertieEnFlux).sort(compareHighlights));
+    nsCharge.current.hl = nsAnnot;
     setNotionsNotes(all.filter((h) => h.ficheId === ficheId && estNotionDoc(h)));
     // fiche jumelle : les notions de L'AUTRE document restent listées dans le panneau (rattachées au cours)
     const autreNs = jumelle ? (surFiche ? ficheId : jumelle.nsAnnot) : null;
@@ -418,6 +423,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const all = await getAll('annotations');
     // (10/10) image flottante d'un document déjà convertie en bloc du flux : plus affichée
     setEdits(all.filter((a) => a.ficheId === nsAnnot && !a.convertieEnFlux));
+    nsCharge.current.ed = nsAnnot;
     setEditsCharges(nsAnnot); // (15/10 soir) chargées pour CE calque : au retour sur le document, rien ne part avant
   };
 
@@ -1524,33 +1530,113 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      « Supprimer… » ; voir la fiche HTML / le PDF → bascule PDF · HTML de l'en-tête ;
      remplacer la sélection → ⋯ de la barre d'outils, quand du texte est sélectionné. */
   const estHtml = srcTab === 'html';
-  const nomType = estHtml ? 'une fiche HTML' : modeDoc ? 'un document' : surFiche ? 'la fiche jumelle' : 'un cours PDF';
-  const NON = { indispo: `Non disponible pour ${nomType}` };
   const pasCeDocument = { indispo: 'Non disponible pour ce document' };
   const jumelleDispo = canAddItem && !!(fiche && (fiche.pdfId || modeDocCours));
   const [supprimerOuvert, setSupprimerOuvert] = useState(false);
   const [fichiersOuvert, setFichiersOuvert] = useState(!!ouvrirFichiers); // (16/10) Bibliothèque › ⋯ › « Fichiers du cours… » ouvre le cours sur cet écran
+  const [fichiersDemarrer, setFichiersDemarrer] = useState(null); // (17/10) 'remplacer' : Fichier › Diapo › « Remplacer ce fichier… »
+  const [suppressionDoc, setSuppressionDoc] = useState(null); // (17/10) null | 'original' | 'fiche' | 'refus'
   const [nonReplaceesPrincipal, setNonReplaceesPrincipal] = useState(null);
-  const actionsFichier = {
+  /* (17/10) MENU FICHIER EN SECTIONS (pdf/MenuFichier.jsx, docs/compte-rendu-fichier-carnet-calendrier.md) :
+     « Cours », puis « Diapo originale — <nom> » et « Fiche — <nom> », mêmes actions dans les deux.
+     Une action de CONTENU (exporter, export IA, textes, reconnaissance, mise en page) de la section
+     NON affichée affiche d'abord ce document, puis part quand il est prêt (PDF chargé, annotations
+     de SON calque lues) ; remplacer, supprimer, correspondance agissent directement. */
+  const principal = principalDe(ficheReelle || fiche);
+  const typeOrig = estHtml ? 'html' : principal.type; // 'pdf' | 'document' | 'html' | null
+  const cleAffichee = surFiche ? 'fiche' : 'original';
+  const actionEnAttente = useRef(null);
+  const pretPourAction = () => (modeDoc
+    ? !!(fluxRef.current && fluxRef.current.editor && !fluxRef.current.editor.isDestroyed && pagination)
+    : !!(pdfDoc && pdfDocDe.current === pdfIdActif && nsCharge.current.hl === nsAnnot && nsCharge.current.ed === nsAnnot));
+  const pretRef = useRef(pretPourAction); pretRef.current = pretPourAction;
+  const documentsRef = useRef([]);
+  const lancerEnAttente = (q) => {
+    const d = documentsRef.current.find((x) => x.cle === q.cle);
+    const act = d && d.actions[q.id];
+    const x = q.choix ? act && act.choix && act.choix[q.choix] : act;
+    if (x && x.onClick && !x.indispo) x.onClick();
+  };
+  const differer = (q) => {
+    actionEnAttente.current = q; basculerJumelle(q.cle);
+    const t0 = Date.now();
+    const tick = () => {
+      if (actionEnAttente.current !== q) return;
+      if (Date.now() - t0 > 10000) { actionEnAttente.current = null; return; }
+      if (!pretRef.current()) { setTimeout(tick, 120); return; }
+      actionEnAttente.current = null;
+      setTimeout(() => lancerEnAttente(q), 200);
+    };
+    setTimeout(tick, 150);
+  };
+  /* les actions de contenu d'un document, selon son type ; `affiche` : directes, sinon différées */
+  const actionsContenu = (cle, type, affiche) => {
+    const viaBascule = (id, choix = null) => ({ onClick: () => differer({ cle, id, choix }) });
+    const direct = (fn, id, choix) => (affiche ? { onClick: fn } : viaBascule(id, choix));
+    if (type === 'html' || !type) {
+      const n = { indispo: type ? 'Non disponible pour une fiche HTML' : 'Ce cours n’a pas de diapo' };
+      return { pdfAnnote: n, formats: n, exportIA: n, textes: n, ocr: n };
+    }
+    const textes = { choix: { exporter: direct(() => setPanneauTextes('exporter'), 'textes', 'exporter'), importer: direct(() => setPanneauTextes('importer'), 'textes', 'importer') } };
+    if (type === 'document') {
+      return {
+        pdfAnnote: direct(() => imprimerDocument(), 'pdfAnnote'),
+        formats: { choix: { md: direct(() => exporterMdDocument(), 'formats', 'md'), png: { indispo: 'Pas de PNG pour un document créé dans l’app : « Exporter le document annoté » en PDF' } } },
+        exportIA: { indispo: 'Non disponible pour un document créé dans l’app' },
+        textes,
+        ocr: { indispo: 'Un document créé dans l’app est déjà du texte' },
+        miseEnPage: direct(() => setMiseEnPage(true), 'miseEnPage'),
+      };
+    }
+    return {
+      pdfAnnote: affiche ? { onClick: () => { if (!exporting) exportAnnotated(); }, etat: exporting ? 'en cours…' : null } : viaBascule('pdfAnnote'),
+      formats: { choix: { md: direct(() => exporterMdPdf(), 'formats', 'md'), png: direct(() => exporterPngPages(), 'formats', 'png') } },
+      exportIA: direct(() => setPanneauExportIA(true), 'exportIA'),
+      textes,
+      ocr: affiche ? (pdfIdActif ? { onClick: () => setDetailOcr(true), etat: libelleOcr().replace('Reconnaissance de texte : ', '').replace(/ \(PDF déjà en texte\)$/, '') } : { indispo: 'Diapo pas encore chargée' }) : viaBascule('ocr'),
+    };
+  };
+  const coursFichier = {
     renommer: ficheReelle ? { onClick: () => setDemandeRenommer((n) => n + 1) } : pasCeDocument,
-    // (16/10) « Fichiers du cours » (pdf/FichiersCours.jsx) : principal + fiche jumelle ; pastille « Pages » = correspondance
-    fichiers: ficheReelle ? {
-      onClick: () => setFichiersOuvert(true),
-      extras: jumelle ? [{ label: 'Pages', onClick: () => setEditeurCorresp(true),
-        title: (() => { const r = resumeCorresp(jumelle); return `Correspondance des pages — ${r.appariees} associées · ${r.ajoutees} ajoutée${r.ajoutees > 1 ? 's' : ''} dans la fiche${jumelle.pageMap.manuel ? ' · corrigée' : ''}`; })() }] : [],
-    } : pasCeDocument,
-    miseEnPage: modeDoc ? { onClick: () => setMiseEnPage(true) } : NON,
-    ocr: !estHtml && !modeDoc && pdfIdActif ? { onClick: () => setDetailOcr(true), etat: libelleOcr().replace('Reconnaissance de texte : ', '').replace(/ \(PDF déjà en texte\)$/, '') } : NON,
-    pdfAnnote: estHtml ? NON : modeDoc ? { onClick: () => imprimerDocument() }
-      : { onClick: () => { if (!exporting) exportAnnotated(); }, etat: exporting ? 'en cours…' : null },
-    exporter: estHtml ? NON : { choix: {
-      md: modeDoc ? { onClick: () => exporterMdDocument() } : { onClick: () => exporterMdPdf() },
-      png: modeDoc ? NON : { onClick: () => exporterPngPages() },
-    } },
-    exportIA: estHtml || modeDoc ? NON : { onClick: () => setPanneauExportIA(true) },
-    textes: estHtml ? NON : { choix: { exporter: { onClick: () => setPanneauTextes('exporter') }, importer: { onClick: () => setPanneauTextes('importer') } } },
+    fichiers: ficheReelle ? { onClick: () => { setFichiersDemarrer(null); setFichiersOuvert(true); } } : pasCeDocument,
     supprimer: ficheReelle ? { onClick: () => setSupprimerOuvert(true) } : pasCeDocument,
   };
+  const docOriginal = {
+    cle: 'original',
+    role: typeOrig === 'document' ? 'Document original' : typeOrig === 'html' ? 'Fiche HTML' : 'Diapo originale',
+    court: typeOrig === 'document' ? 'document' : 'diapo', genre: typeOrig === 'document' ? 'm' : 'f',
+    icone: typeOrig === 'document' ? 'edit' : typeOrig === 'html' ? 'fileHtml' : 'filePdf',
+    nom: typeOrig === 'html' ? (fiche.htmlName || fiche.titre || 'fiche.html') : typeOrig === 'document' ? (fiche.titre || 'Document') : (principal.nom || '—'),
+    affiche: cleAffichee === 'original',
+    actions: {
+      ...actionsContenu('original', typeOrig, cleAffichee === 'original'),
+      remplacer: !ficheReelle ? pasCeDocument
+        : typeOrig === 'document' ? { indispo: 'Un document créé dans l’app se modifie directement : il n’a pas de fichier à remplacer' }
+          : typeOrig === 'pdf' || principal.type === 'html' ? { onClick: () => { setFichiersDemarrer('remplacer'); setFichiersOuvert(true); } } : { indispo: 'Ce cours n’a pas de diapo' },
+      supprimer: !ficheReelle ? pasCeDocument
+        : jumelle && principal.type === 'pdf' ? { onClick: () => setSuppressionDoc('refus'), title: 'Refusé tant qu’une fiche est rattachée à cette diapo' }
+          : principal.type === 'pdf' && !estHtml ? { onClick: () => setSuppressionDoc('original') }
+            : typeOrig === 'document' ? { indispo: 'Un document créé dans l’app est le cours lui-même : « Supprimer le cours… » dans la section Cours' }
+              : { indispo: 'Non disponible pour une fiche HTML' },
+    },
+  };
+  const docFiche = jumelle ? {
+    cle: 'fiche', role: 'Fiche', court: 'fiche', genre: 'f', icone: 'filePdf', nom: jumelle.fileName || 'fiche.pdf', affiche: cleAffichee === 'fiche',
+    actions: {
+      ...actionsContenu('fiche', 'pdf', cleAffichee === 'fiche'),
+      correspondance: { onClick: () => setEditeurCorresp(true),
+        title: (() => { const r = resumeCorresp(jumelle); return `Correspondance des pages — ${r.appariees} associées · ${r.ajoutees} ajoutée${r.ajoutees > 1 ? 's' : ''} dans la fiche${jumelle.pageMap.manuel ? ' · corrigée' : ''}`; })() },
+      remplacer: { onClick: () => entreeJumelle.current && entreeJumelle.current.click(), title: 'Nouvelle version de la fiche : ses annotations suivent leur page' },
+      supprimer: { onClick: () => setSuppressionDoc('fiche') },
+    },
+  } : {
+    cle: 'fiche', role: 'Fiche', court: 'fiche', genre: 'f', icone: 'filePdf', vide: true, affiche: false,
+    actions: { importer: jumelleDispo ? { onClick: () => entreeJumelle.current && entreeJumelle.current.click() }
+      : { indispo: estHtml || principal.type === 'html' ? 'Non disponible pour une fiche HTML' : !ficheReelle ? 'Non disponible pour ce document' : 'Importe d’abord la diapo originale' } },
+  };
+  const documentsFichier = [docOriginal, docFiche];
+  documentsRef.current = documentsFichier;
+  const propsFichier = { cours: coursFichier, documents: documentsFichier };
   /* remplacer le texte sélectionné : ⋯ de la barre d'outils, seulement quand il y a une sélection */
   const actionsSelection = [!!pending && !modeDoc && { label: 'Remplacer le texte sélectionné', icon: 'edit', onClick: () => startEditFromSelection() }];
   /* état de la reconnaissance de texte, en une ligne (menu Fichier) */
@@ -1568,7 +1654,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <TitreRenommable titre={fiche && fiche.titre} demandeEdition={demandeRenommer}
           onRenommer={ficheReelle ? (t) => ctx.renameFiche(ficheReelle.id, t) : null}
           sousTitre={nbPagesAffichees ? `${nbPagesAffichees} page${nbPagesAffichees > 1 ? 's' : ''}` : null} />
-        <MenuFichier actions={actionsFichier} />
+        <MenuFichier {...propsFichier} />
       </div>
       <div className="lecteur-entete-droite">
         {selecteurDispo}
@@ -1722,7 +1808,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           onRenommer={ficheReelle ? (t) => ctx.renameFiche(ficheReelle.id, t) : null}
           sousTitre={nbPagesAffichees ? `${nbPagesAffichees} p.` : null} />
       </div>
-      <MenuFichier actions={actionsFichier} compact />
+      <MenuFichier {...propsFichier} compact />
       {tableauDispo && (
         <div className="tab-dispo" role="tablist" aria-label="Disposition">
           {[['pdf', 'filePdf', 'Le PDF seul'], ['deux', 'panel', 'PDF et tableau côte à côte'], ['tableau', 'grid', 'Le tableau en plein']].map(([id, ic, lbl]) => (
@@ -3537,7 +3623,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       )}
       {promptsOuverts && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOuverts(false)} />}
       {fichiersOuvert && ficheReelle && (
-        <FichiersCours ctx={ctx} fiche={ficheReelle} jumelle={jumelle} onFermer={() => setFichiersOuvert(false)}
+        <FichiersCours ctx={ctx} fiche={ficheReelle} jumelle={jumelle} onFermer={() => { setFichiersOuvert(false); setFichiersDemarrer(null); }} demarrer={fichiersDemarrer}
           onImporterJumelle={jumelleDispo ? () => entreeJumelle.current && entreeJumelle.current.click() : null}
           onExporterDocument={modeDocCours ? () => { setFichiersOuvert(false); if (surFiche) basculerJumelle('original'); setTimeout(() => imprimerDocument(), 400); } : null}
           pagesDocument={modeDocCours && !surFiche ? nbPagesAffichees : null}
@@ -3545,10 +3631,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           onNonReplacees={(r) => setNonReplaceesPrincipal(r)} />
       )}
       {nonReplaceesPrincipal && <ListeNonReplacees rec={{ nonReplacees: nonReplaceesPrincipal.nonReplacees, fileName: ficheReelle && ficheReelle.pdfName, versions: [{ fileName: nonReplaceesPrincipal.fileName }] }} onClose={() => setNonReplaceesPrincipal(null)} />}
+      {suppressionDoc && ficheReelle && (
+        <SuppressionDocument quoi={suppressionDoc} fiche={ficheReelle} jumelle={jumelle} db={db} onFermer={() => setSuppressionDoc(null)}
+          onRemplacer={() => { setSuppressionDoc(null); setFichiersDemarrer('remplacer'); setFichiersOuvert(true); }}
+          onFait={async (quoi) => {
+            setSuppressionDoc(null);
+            if (quoi === 'fiche') { setVueJumelle('original'); ecrireVue(idFiche, 'original'); setAvisJumelle(`Fiche « ${(jumelle && jumelle.fileName) || 'fiche'} » supprimée — la diapo originale, les flashcards et les notions sont conservées`); }
+            else { await ctx.reload(); setAvisJumelle(`Diapo originale « ${ficheReelle.pdfName || 'cours.pdf'} » supprimée — annotations, flashcards et notions conservées`); }
+          }} />
+      )}
       {supprimerOuvert && ficheReelle && (
         <Modal title="Supprimer ce cours ?" onClose={() => setSupprimerOuvert(false)} width="min(460px, 94vw)">
           <div className="hint" style={{ marginBottom: 14 }}>
-            « {ficheReelle.titre} » sera déplacé dans la corbeille (Réglages), restaurable tant qu’elle n’est pas vidée. Les cartes et le planning associés partent avec.
+            Le cours « {ficheReelle.titre} » entier{ficheReelle.pdfName ? <> — diapo « {ficheReelle.pdfName} »</> : null}{jumelle ? <>, fiche « {jumelle.fileName} »</> : null} — sera déplacé dans la corbeille (Réglages), restaurable tant qu’elle n’est pas vidée. Les cartes et le planning associés partent avec ; rien n’est effacé avant que la corbeille soit vidée.
 
           </div>
           <div className="row" style={{ gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>

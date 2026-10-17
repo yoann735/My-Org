@@ -197,6 +197,24 @@ export async function supprimerJumelle({ fiche, rec }) {
   });
 }
 
+/* ---- (17/10) SUPPRIMER LA DIAPO ORIGINALE (PDF principal) d'un cours SANS fiche jumelle :
+   putBackup de la fiche, puis la fiche ne pointe plus sur le PDF (cours « à cartes seules »,
+   « Importer » le rattache de nouveau). Le fichier n'est pas effacé : il est listé dans
+   `fichiersRetires` (Réglages › Archives). Annotations (calque du cours), flashcards, notions,
+   transcripts et sessions restent attachés au cours. Refusé s'il y a une fiche jumelle : elle
+   dépend de l'original (correspondance des pages). ---- */
+export async function supprimerPrincipal({ fiche, jumelle = null }) {
+  const p = principalDe(fiche);
+  if (jumelle) throw new Error('Une fiche est rattachée à cette diapo : importe d’abord un autre document principal ou remplace-le.');
+  if (p.type !== 'pdf') throw new Error('Seule une diapo (PDF importé) peut être supprimée ici.');
+  return avecVerrou('suppression de la diapo originale', async () => {
+    const f = (await getOne('fiches', fiche.id)) || fiche;
+    await putBackup(`pre-supprime-principal-${fiche.id}-${Date.now()}`, { fiche: f });
+    const retire = { type: 'pdf', fileId: p.fileId, fileName: p.nom, retireLe: new Date().toISOString(), importeLe: f.pdfImporteLe || f.dateImport || null, supprime: true, nsAnnot: f.id };
+    return put('fiches', { ...f, pdfId: null, pdfName: null, pdfImporteLe: null, pdfTaille: null, fichiersRetires: [...(f.fichiersRetires || []), retire] });
+  });
+}
+
 /* ---- noms éditables ---- */
 export const renommerPrincipal = (fiche, nom) => put('fiches', { ...fiche, pdfName: String(nom || '').trim() || fiche.pdfName });
 export async function renommerJumelle(rec, nom) {
@@ -222,7 +240,7 @@ export async function fichiersHorsModele(fiches) {
   for (const f of fiches || []) {
     if (htmlEnTrop(f)) out.push({ ficheId: f.id, cours: f.titre, quoi: 'Fiche HTML en plus du PDF principal', fileId: f.htmlId, nom: f.htmlName || 'fiche.html', html: true });
     for (const r of f.fichiersRetires || []) {
-      out.push({ ficheId: f.id, cours: f.titre, quoi: r.type === 'jumelle' ? 'Fiche jumelle supprimée' : 'Document principal remplacé', fileId: r.fileId, nom: r.fileName, le: r.retireLe, html: r.type === 'html' });
+      out.push({ ficheId: f.id, cours: f.titre, quoi: r.type === 'jumelle' ? 'Fiche jumelle supprimée' : r.supprime ? 'Diapo originale supprimée' : 'Document principal remplacé', fileId: r.fileId, nom: r.fileName, le: r.retireLe, html: r.type === 'html' });
       for (const v of r.versions || []) out.push({ ficheId: f.id, cours: f.titre, quoi: 'Ancienne version de fiche jumelle (supprimée)', fileId: v.fileId, nom: v.fileName });
     }
   }

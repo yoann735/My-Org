@@ -35,7 +35,7 @@ function NomEditable({ nom, onRenommer, desactive }) {
   );
 }
 
-export function FichiersCours({ ctx, fiche, jumelle = null, onFermer, onImporterJumelle = null, onExporterDocument = null, onRemplace = null, onNonReplacees = null, pagesDocument = null }) {
+export function FichiersCours({ ctx, fiche, jumelle = null, onFermer, onImporterJumelle = null, onExporterDocument = null, onRemplace = null, onNonReplacees = null, pagesDocument = null, demarrer = null }) {
   const p = principalDe(fiche);
   const [infoP, setInfoP] = useState(null);
   const [infoJ, setInfoJ] = useState(null);
@@ -45,6 +45,9 @@ export function FichiersCours({ ctx, fiche, jumelle = null, onFermer, onImporter
   useEffect(() => { let v = true; if (p.fileId) infosFichier(p.fileId).then((i) => v && setInfoP(i)); else setInfoP(null); return () => { v = false; }; }, [p.fileId]);
   useEffect(() => { let v = true; if (jumelle) infosFichier(jumelle.fileId).then((i) => v && setInfoJ(i)); else setInfoJ(null); return () => { v = false; }; }, [jumelle && jumelle.fileId]); // eslint-disable-line react-hooks/exhaustive-deps
   const occupe = !!importEnCours() || (etape && etape.quoi === 'encours');
+  // (17/10) Fichier › Diapo originale › « Remplacer ce fichier… » : le sélecteur s'ouvre aussitôt
+  // (le geste du menu vaut encore activation utilisateur), la confirmation suit comme d'habitude
+  useEffect(() => { if (demarrer === 'remplacer' && p.type && p.type !== 'document' && !occupe) choisir('principal'); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const choisir = (quoi) => { setCible(quoi); if (entree.current) { entree.current.value = ''; entree.current.click(); } };
   const recevoir = async (fichiers) => {

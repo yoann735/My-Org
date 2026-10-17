@@ -37,3 +37,35 @@
 .mep-fond { margin: 2px 0 10px; }
 .mep-fond .mep-prereglages { grid-template-columns: repeat(2, 1fr); margin: 6px 0 0; }
 .mep-fond .mep-pre { flex-direction: row; justify-content: center; }
+
+/* ---- (17/10) TROIS SECTIONS : Cours · Diapo originale · Fiche ----
+   en-tête visible (icône + rôle + nom du fichier) ; la section du document affiché est teintée
+   et marquée « affiché », l'autre est en retrait (atténuée, toujours utilisable). */
+.mf-menu.mf-fixe.mf-sections { width: 420px; max-width: min(420px, calc(100vw - 24px)); max-height: min(78vh, calc(100vh - 96px)); overflow-y: auto; overscroll-behavior: contain; }
+.mf-sections .mf-section { padding: 2px 0 4px; border-radius: 9px; }
+.mf-sections .mf-section + .mf-section { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 6px; border-top-left-radius: 0; border-top-right-radius: 0; }
+.mf-sections .mf-tete { display: flex; align-items: center; gap: 6px; min-width: 0; height: 26px; padding: 0 10px;
+  font-size: 11px; font-weight: 600; letter-spacing: .03em; color: var(--text-2); }
+.mf-sections .mf-tete-ic { display: inline-flex; color: var(--text-3); flex: 0 0 auto; }
+.mf-sections .mf-tete-role { flex: 0 0 auto; text-transform: uppercase; }
+.mf-sections .mf-tete-tiret { flex: 0 0 auto; color: var(--text-3); }
+.mf-sections .mf-tete-nom { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; letter-spacing: 0; color: var(--text); }
+.mf-sections .mf-tete-nom.aucun { color: var(--text-3); font-style: italic; }
+.mf-sections .mf-affiche { flex: 0 0 auto; margin-left: auto; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 600; letter-spacing: .02em;
+  color: var(--accent); background: var(--accent-soft, rgba(127,127,255,.14)); }
+.mf-sections .mf-doc.affiche { background: var(--accent-soft, rgba(127,127,255,.08)); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.mf-sections .mf-doc.affiche .mf-tete-ic { color: var(--accent); }
+.mf-sections .mf-doc.en-retrait .mf-tete, .mf-sections .mf-doc.en-retrait .mf-item:not(.indispo):not(:hover):not(:focus-visible) { opacity: .78; }
+.mf-sections .mf-item { min-height: 31px; }
+@media (pointer: coarse) { .mf-sections .mf-tete { height: 30px; } .mf-sections .mf-item { min-height: 42px; } }
+
+/* ---- (17/10) confirmation « Supprimer la diapo originale / la fiche » (pdf/SuppressionDocument.jsx) ---- */
+.sdoc .sdoc-titre { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 12px; font-size: 14px; line-height: 1.45; color: var(--text); }
+.sdoc .sdoc-titre > .ic, .sdoc .sdoc-titre > svg { flex: 0 0 auto; margin-top: 2px; color: var(--crit); }
+.sdoc .sdoc-nom { word-break: break-word; }
+.sdoc .sdoc-liste { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 10px; }
+.sdoc .sdoc-col { padding: 9px 11px; border-radius: 10px; border: 1px solid var(--border); background: var(--card-2, var(--card)); }
+.sdoc .sdoc-col-titre { font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--text-2); margin-bottom: 4px; }
+.sdoc .sdoc-col.part .sdoc-col-titre { color: var(--crit); }
+.sdoc .sdoc-col ul { margin: 0; padding-left: 16px; font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+@media (max-width: 560px) { .sdoc .sdoc-liste { grid-template-columns: 1fr; } }
