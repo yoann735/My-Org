@@ -46,6 +46,10 @@ SPA Vite + React 18 + Tailwind, déployée sur **Vercel** (auto-deploy au push s
 - `DEEPGRAM_API_KEY` — SERVEUR uniquement (`api/deepgram-token.js`, transcription en direct de
   MedRevise). Absente → l'UI affiche « Clé Deepgram manquante côté serveur ». Voir
   `docs/compte-rendu-transcription-directe.md` (tests locaux : `scripts/faux-deepgram.mjs`).
+- `HELHA_ICAL_URL` — SERVEUR uniquement (`api/timetable.js`, emploi du temps HELHa du mode « École »
+  de l'Accueil de MedRevise) : lien iCal privé Hyperplanning, jamais renvoyé ni loggé. Absente → l'UI
+  affiche « Emploi du temps non configuré ». Voir `docs/compte-rendu-emploi-du-temps.md`
+  (tests locaux : `scripts/tests-emploi-du-temps/faux-hyperplanning.mjs`).
 
 ## Conventions (importantes)
 - **UI et réponses en français.**
