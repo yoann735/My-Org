@@ -22,6 +22,8 @@ import { BoutonsFlashcard } from '../components/BoutonsFlashcard.jsx';
 import { ActionsCarte } from '../components/ActionsCarte.jsx';
 import { commencerGlisse, finirGlisse } from '../apprentissageLibre/liste.js';
 import { estMuscle } from '../lib/muscle.js';
+import { estTableau } from '../lib/carteTableau.js';
+import { TableauRevision } from '../components/FlashcardTableau.jsx';
 import { estMolecule } from '../molecule/carte.js';
 import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
@@ -237,6 +239,17 @@ function FaceFC({ carte, cote, masquable = false }) {
         {cote !== 'recto' && carte.a_retenir && <div className="sfc-retenir"><strong>À retenir :</strong> <Tex>{carte.a_retenir}</Tex></div>}
       </ZoneDefilante>
       </>
+    );
+  }
+  if (estTableau(carte)) {
+    // (17/10) carte Tableau : le titre au recto ; au verso les noms de colonnes, cellules révélées une par une
+    return (
+      <ZoneDefilante className={'sfc-zone sfc-muscle' + (montrerVerso ? ' long' : '')}>
+        {montrerRecto && <div className={'sfc-recto' + (montrerVerso ? ' mu-nom-petit' : ' mu-nom')}><Tex>{carte.recto}</Tex></div>}
+        {!montrerRecto && <div className="mu-titre"><Tex>{carte.recto}</Tex></div>}
+        {montrerVerso && <TableauRevision item={carte} masquable={cote === 'verso'} />}
+        {montrerVerso && carte.a_retenir && <div className="sfc-retenir"><strong>À retenir :</strong> <Tex>{carte.a_retenir}</Tex></div>}
+      </ZoneDefilante>
     );
   }
   if (estMuscle(carte)) {

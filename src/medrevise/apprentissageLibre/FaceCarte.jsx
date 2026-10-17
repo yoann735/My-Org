@@ -11,6 +11,8 @@ import { TableauMuscle, ImageGeneraleMuscle } from '../components/FlashcardMuscl
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { estMuscle } from '../lib/muscle.js';
+import { estTableau } from '../lib/carteTableau.js';
+import { TableauRevision } from '../components/FlashcardTableau.jsx';
 import { estMolecule } from '../molecule/carte.js';
 import { isCloze, parseCloze, highlightClozeWords } from '../lib/cloze.js';
 
@@ -19,6 +21,16 @@ export function FaceCarte({ carte, cote, masquable = true }) {
   const retenir = verso && carte.a_retenir
     ? <div className="sfc-retenir"><strong>À retenir :</strong> <Tex>{carte.a_retenir}</Tex></div> : null;
 
+  if (estTableau(carte)) {
+    // (17/10) carte Tableau : le titre au recto ; au verso les colonnes, cellules révélées une par une
+    return (
+      <ZoneDefilante className={'sfc-zone sfc-muscle' + (verso ? ' long' : '')}>
+        {verso ? <div className="mu-titre"><Tex>{carte.recto}</Tex></div> : <div className="sfc-recto mu-nom"><Tex>{carte.recto}</Tex></div>}
+        {verso && <TableauRevision item={carte} masquable={masquable} />}
+        {retenir}
+      </ZoneDefilante>
+    );
+  }
   if (estMuscle(carte)) {
     // le nom au recto ; au verso le tableau, champs masqués et révélés un par un au clic / tap
     return (
@@ -66,6 +78,7 @@ export function FaceCarte({ carte, cote, masquable = true }) {
 /** petite étiquette de type pour les listes */
 export function typeDeCarte(q) {
   if (estMuscle(q)) return 'Muscle';
+  if (estTableau(q)) return 'Tableau';
   if (estMolecule(q)) return 'Molécule';
   if (estOcclusion(q)) return 'Image';
   if (isCloze(q)) return 'Trous';

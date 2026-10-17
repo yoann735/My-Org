@@ -20,6 +20,8 @@ import { Tex } from '../components/Tex.jsx';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
 import { TableauMuscle, ligneParLigne, ImageGeneraleMuscle } from '../components/FlashcardMuscle.jsx';
 import { estMuscle } from '../lib/muscle.js';
+import { estTableau } from '../lib/carteTableau.js';
+import { TableauRevision } from '../components/FlashcardTableau.jsx';
 import { estMolecule } from '../molecule/carte.js';
 import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
@@ -321,6 +323,7 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
   const versoParts = useMemo(() => (cloze ? highlightClozeWords(item.verso, item.cloze) : null), [item.id, cloze]);
   const occ = estOcclusion(item);
   const muscle = estMuscle(item);
+  const tableau = estTableau(item); // (17/10) carte Tableau
   const molecule = estMolecule(item);
   // l'image reste dans sa zone (contenue, hauteur bornée à l'écran) ; le texte défile en dessous
   const image = !occ && (flipped ? imageAuVerso(item) : imageAuRecto(item));
@@ -344,11 +347,12 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
               <span className="mrm-flash-hint mrm-flash-pied">Tape pour révéler la réponse</span>
             </>
           ) : (
-            <ZoneDefilante className={'mrm-flash-zone ' + (muscle ? 'mrm-muscle' : lgVerso)}>
+            <ZoneDefilante className={'mrm-flash-zone ' + (muscle || tableau ? 'mrm-muscle' : lgVerso)}>
               {occ && <OcclusionView occ={item.occlusion} revele maxH={280} />}
               {molecule && <FaceMoleculeParesseuse carte={item} cote="verso" />}
               {muscle && <><div className="mu-titre"><Tex>{item.recto}</Tex></div><ImageGeneraleMuscle item={item} face="verso" /><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>}
-              {!muscle && !molecule && !(occ && item.versoAuto) && <div className="mrm-flash-back">{cloze ? <MobileClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>}
+              {tableau && <><div className="mu-titre"><Tex>{item.recto}</Tex></div><TableauRevision item={item} /></>}
+              {!muscle && !tableau && !molecule && !(occ && item.versoAuto) && <div className="mrm-flash-back">{cloze ? <MobileClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>}
               {item.a_retenir && <div className="mrm-indice"><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></div>}
             </ZoneDefilante>
           )}

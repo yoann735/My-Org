@@ -8,6 +8,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
 import { TableauMuscle, ligneParLigne, ImageGeneraleMuscle } from '../components/FlashcardMuscle.jsx';
 import { estMuscle } from '../lib/muscle.js';
+import { estTableau } from '../lib/carteTableau.js';
+import { TableauRevision } from '../components/FlashcardTableau.jsx';
 import { estMolecule } from '../molecule/carte.js';
 import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
@@ -466,6 +468,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
   const occ = estOcclusion(item) ? item.occlusion : null;
   const molecule = estMolecule(item); // carte Molécule : faces dessinées (molecule/RevisionMolecule.jsx)
   const muscle = estMuscle(item); // carte Muscle : le verso est un tableau (components/FlashcardMuscle.jsx)
+  const tableau = estTableau(item); // (17/10) carte Tableau : colonnes visibles, cellules révélées une par une
   const [showIndice, setShowIndice] = useState(false); // réinitialisé au changement de carte (remount via key={idx})
   const revealIndice = (e) => { e.stopPropagation(); setShowIndice(true); };
   const rectoSegments = useMemo(() => (cloze ? parseCloze(item.recto, item.cloze) : null), [item.id, cloze]);
@@ -474,7 +477,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
     <div>
       <div className="flash-scene">
         {/* (17/10) ordinateur : la carte se glisse vers l'onglet « Apprentissage » de la barre latérale */}
-        <div className={'flash-card' + (flipped ? ' flipped' : '') + (occ ? ' occ' : '') + (muscle ? ' muscle' : '') + (molecule ? ' molecule' : '') + (!occ && (imageAuRecto(item) || imageAuVerso(item)) ? ' img' : '')} onClick={() => setFlipped((f) => !f)}
+        <div className={'flash-card' + (flipped ? ' flipped' : '') + (occ ? ' occ' : '') + (muscle || tableau ? ' muscle' : '') + (molecule ? ' molecule' : '') + (!occ && (imageAuRecto(item) || imageAuVerso(item)) ? ' img' : '')} onClick={() => setFlipped((f) => !f)}
           draggable={!erreurMode && item.type === 'flashcard' && !item.ephemeral} data-carte-glissable={item.id}
           onDragStart={!erreurMode && item.type === 'flashcard' && !item.ephemeral ? (e) => commencerGlisse(e, [item.id]) : undefined} onDragEnd={finirGlisse}>
           <div className="flash-face front">
@@ -500,9 +503,11 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
             <span className="ff-tag">Réponse</span>
             {/* (17/10) carnet d'erreurs / apprentissage : icônes de CETTE carte, dans l'en-tête de la face réponse */}
             {!erreurMode && flipped && <ActionsCarte ctx={ctx} carte={item} />}
-            <ZoneDefilante className={'ff-zone ' + (muscle ? 'ff-muscle' : classeLongueur(item.verso, item.a_retenir))}>
+            <ZoneDefilante className={'ff-zone ' + (muscle || tableau ? 'ff-muscle' : classeLongueur(item.verso, item.a_retenir))}>
             {molecule
               ? (flipped ? <>{imageAuVerso(item) && <AnatImage imageId={item.imageId} compact />}<FaceMoleculeParesseuse carte={item} cote="verso" /></> : null) /* monté au retournement : l'atelier s'ouvre à ce moment-là */
+              : tableau
+              ? <><div className="mu-titre"><Tex>{item.recto}</Tex></div><TableauRevision item={item} /></>
               : muscle
               ? <><div className="mu-titre"><Tex>{item.recto}</Tex></div><ImageGeneraleMuscle item={item} face="verso" /><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>
               : occ

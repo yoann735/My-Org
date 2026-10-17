@@ -39,6 +39,8 @@ import { toInternalItem } from '../lib/adapter.js';
 import { OcclusionEditorModal, OcclusionView, estOcclusion } from './OcclusionImage.jsx';
 import { TableauMuscle, ImageGeneraleMuscle } from './FlashcardMuscle.jsx';
 import { estMuscle, texteMuscle } from '../lib/muscle.js';
+import { estTableau } from '../lib/carteTableau.js';
+import { TableauRevision } from './FlashcardTableau.jsx';
 import { estMolecule, texteMolecule, SENS, NIVEAUX } from '../molecule/carte.js';
 import { VueMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from './FlashcardImage.jsx';
@@ -498,7 +500,7 @@ function ItemReadCard({ item, onEdit, onDelete, appr = null, coche = null, gliss
           </div>
         </div>
         {item.type === 'qcm' && <QcmReadBody item={item} />}
-        {item.type === 'flashcard' && (estOcclusion(item) ? <OcclusionReadBody item={item} /> : estMuscle(item) ? <MuscleReadBody item={item} /> : estMolecule(item) ? <MoleculeReadBody item={item} /> : <FlashcardReadBody item={item} />)}
+        {item.type === 'flashcard' && (estOcclusion(item) ? <OcclusionReadBody item={item} /> : estTableau(item) ? <TableauReadBody item={item} /> : estMuscle(item) ? <MuscleReadBody item={item} /> : estMolecule(item) ? <MoleculeReadBody item={item} /> : <FlashcardReadBody item={item} />)}
         {item.type === 'feynman' && <FeynmanReadBody item={item} />}
         {item.type === 'exercice' && <ExerciceReadBody item={item} />}
         {appr && (
@@ -536,6 +538,17 @@ function FlashcardReadBody({ item }) {
     <>
       <div className="pis-face"><span className="pis-face-tag">Recto</span>{imageAuRecto(item) && <ImageFlashcard imageId={item.imageId} maxH={110} />}<Tex>{item.recto}</Tex></div>
       <div className="pis-face"><span className="pis-face-tag">Verso</span>{imageAuVerso(item) && <ImageFlashcard imageId={item.imageId} maxH={110} />}<Tex>{item.verso}</Tex></div>
+      {item.a_retenir && <div className="hint" style={{ marginTop: 6 }}><strong>À retenir : </strong><Tex>{item.a_retenir}</Tex></div>}
+    </>
+  );
+}
+
+/* (17/10) carte Tableau (lib/carteTableau.js) : le titre, puis le tableau complet (rien de masqué) */
+function TableauReadBody({ item }) {
+  return (
+    <>
+      <div className="pis-face"><span className="pis-face-tag">Tableau</span><span className="mu-nom-lu"><Tex>{item.recto}</Tex></span></div>
+      <TableauRevision item={item} masquable={false} compact />
       {item.a_retenir && <div className="hint" style={{ marginTop: 6 }}><strong>À retenir : </strong><Tex>{item.a_retenir}</Tex></div>}
     </>
   );

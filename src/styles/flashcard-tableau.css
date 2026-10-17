@@ -1,0 +1,55 @@
+/* ============================================================
+   MedRevise — FLASHCARD « TABLEAU » (17/10, components/FlashcardTableau.jsx). Même langage que le
+   tableau Muscle (.mu-*) : petites capitales grises pour les noms de colonnes, filets fins,
+   pastilles pointillées pour les cellules masquées. Préfixe tb-.
+   ============================================================ */
+.tb-rev { width: 100%; align-self: stretch; text-align: left; font-family: 'Inter', sans-serif; }
+/* défilement horizontal INTERNE si le tableau dépasse la carte (téléphone) */
+.tb-defil { width: 100%; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+.tb-table { width: 100%; border-collapse: collapse; table-layout: auto; }
+.tb-table th { position: sticky; top: 0; z-index: 1; padding: 8px 10px; text-align: left; vertical-align: bottom; background: inherit;
+  font-size: 13px; font-weight: 600; font-variant-caps: all-small-caps; letter-spacing: .04em; color: var(--text-3);
+  border-bottom: 1px solid var(--border-2, var(--border)); white-space: nowrap; }
+.tb-table td { padding: 9px 10px; vertical-align: top; border-bottom: 1px solid var(--border); font-size: 14.5px; line-height: 1.45; color: var(--text); min-width: 96px; }
+.tb-table tr:last-child td { border-bottom: 0; }
+.tb-valeur { display: block; overflow-wrap: anywhere; }
+.tb-vide { color: var(--text-3); }
+.tb-masque { display: inline-flex; align-items: center; min-height: 28px; padding: 0 12px; border-radius: 999px; background: var(--bg-2);
+  border: 1px dashed var(--border-2, var(--border)); color: var(--text-3); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s; }
+.tb-masque:hover, .tb-masque:focus-visible { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); outline: none; }
+.tb-col-act { width: 1%; white-space: nowrap; min-width: 0 !important; padding-left: 4px !important; padding-right: 4px !important; }
+.tb-ligne-btn { display: inline-flex; align-items: center; gap: 3px; height: 28px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card); color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.tb-ligne-btn:hover, .tb-ligne-btn:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
+.tb-tout { display: flex; justify-content: center; padding-top: 12px; }
+.tb-tout-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--card); color: var(--text-2); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.tb-tout-btn:hover, .tb-tout-btn:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
+.tb-rev.compact .tb-table td { padding: 6px 8px; font-size: 13px; min-width: 80px; }
+.tb-rev.compact .tb-table th { padding: 6px 8px; font-size: 12px; }
+.tb-titre { font-size: 17px; font-weight: 600; margin: 0 0 10px; text-align: left; align-self: stretch; }
+
+/* formulaire */
+.tb-form .tb-coller { border: 1px dashed var(--border-2, var(--border)); border-radius: 10px; padding: 8px 10px; }
+.tb-form .tb-coller summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.tb-form .tb-coller[open] summary { margin-bottom: 8px; }
+.tb-coller-zone { font-family: ui-monospace, monospace; font-size: 12px; min-height: 64px; margin-bottom: 6px; }
+.tb-opt { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); }
+.tb-message { font-size: 12.5px; color: var(--warn, var(--text-2)); }
+.tb-message.ok { color: var(--text-2); }
+.tb-edition th, .tb-edition td { padding: 4px; min-width: 110px; vertical-align: top; }
+.tb-th { display: flex; align-items: center; gap: 2px; }
+.tb-champ { width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 7px; background: var(--card); color: var(--text); font: inherit; font-size: 13px; padding: 6px 7px; }
+.tb-champ:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.tb-nom-col { font-weight: 600; font-variant-caps: normal; color: var(--text); }
+.tb-cellule { resize: vertical; min-height: 32px; line-height: 1.35; }
+.tb-x { flex: 0 0 auto; display: inline-grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 6px; background: none; color: var(--text-3); cursor: pointer; }
+.tb-x:hover:not(:disabled) { color: var(--crit); background: var(--bg-2); }
+.tb-x:disabled { opacity: .3; cursor: default; }
+
+@media (pointer: coarse) {
+  .tb-masque { min-height: 36px; }
+  .tb-ligne-btn { height: 36px; }
+  .tb-tout-btn { min-height: 44px; }
+}

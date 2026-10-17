@@ -35,6 +35,8 @@ import { ChampImageFlashcard } from './FlashcardImage.jsx';
 import { AmorcesRecto } from './AmorcesRecto.jsx';
 import { FormulaireMuscle } from './FlashcardMuscle.jsx';
 import { estMuscle } from '../lib/muscle.js';
+import { estTableau } from '../lib/carteTableau.js';
+import { FormulaireTableau } from './FlashcardTableau.jsx';
 import { estMolecule } from '../molecule/carte.js';
 import { FormulaireMoleculeParesseux } from '../molecule/Paresseux.jsx';
 import { putBlob } from '../lib/storage.js';
@@ -57,6 +59,7 @@ const lines = (s) => (s || '').split('\n').map((l) => l.trim()).filter(Boolean);
 export function ItemForm({ type, initial, submitLabel, onSubmit, onCancel, busy, themeDefaut = '' }) {
   if (type === 'qcm') return <QcmForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} />;
   if (type === 'flashcard' && estMolecule(initial)) return <FormulaireMoleculeParesseux initial={initial} onAdd={onSubmit} busy={busy} submitLabel={submitLabel} onCancel={onCancel} />;
+  if (type === 'flashcard' && estTableau(initial)) return <FormulaireTableau initial={initial} onAdd={onSubmit} busy={busy} submitLabel={submitLabel} onCancel={onCancel} />;
   if (type === 'flashcard' && estMuscle(initial)) return <FormulaireMuscle initial={initial} onAdd={onSubmit} busy={busy} submitLabel={submitLabel} onCancel={onCancel} />;
   // création et modification : le MÊME formulaire unifié, mêmes aides (aperçu, clavier)
   if (type === 'flashcard') return <FlashcardForm onAdd={onSubmit} busy={busy} initial={initial} submitLabel={submitLabel} onCancel={onCancel} themeDefaut={themeDefaut} apercu clavier />;

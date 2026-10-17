@@ -18,13 +18,14 @@ import { Icon } from '../../shared/Icon.jsx';
 import { FlashcardForm } from './AddItemForm.jsx';
 import { OcclusionEditorModal } from './OcclusionImage.jsx';
 import { FormulaireMuscle } from './FlashcardMuscle.jsx';
+import { FormulaireTableau } from './FlashcardTableau.jsx';
 
 const FormulaireMolecule = lazy(() => import('../molecule/FormulaireMolecule.jsx'));
 
-const SORTES = { muscle: 'Tableau muscle', molecule: 'Molécule' };
+const SORTES = { muscle: 'Tableau muscle', tableau: 'Tableau', molecule: 'Molécule' };
 
 export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter, onTerminer, busy, rectoInitial = null }) {
-  const [sorte, setSorte] = useState('standard'); // standard | muscle | molecule
+  const [sorte, setSorte] = useState('standard'); // standard | muscle | tableau | molecule
   const [moleculeVue, setMoleculeVue] = useState(false); // monté une fois ouvert (chargement à la demande)
   const [nb, setNb] = useState(0);
   const [occ, setOcc] = useState(null); // { fichier, recto, verso, theme } → éditeur de masques
@@ -40,6 +41,7 @@ export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter,
           {sorte === 'standard' ? (
             <div className="fc-sortes" role="group" aria-label="Autres sortes de carte">
               <button type="button" className="fc-sorte" onClick={() => choisir('muscle')}><Icon name="plus" size={12} /> Tableau muscle</button>
+              <button type="button" className="fc-sorte" onClick={() => choisir('tableau')}><Icon name="plus" size={12} /> Tableau</button>
               <button type="button" className="fc-sorte" onClick={() => choisir('molecule')}><Icon name="plus" size={12} /> Molécule</button>
             </div>
           ) : (
@@ -60,6 +62,9 @@ export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter,
         <div hidden={sorte !== 'muscle'}>
           <FormulaireMuscle themeDefaut={themeDefaut} onAdd={ajouter} onCancel={onTerminer} busy={busy}
             actif={sorte === 'muscle'} racine={racine} />
+        </div>
+        <div hidden={sorte !== 'tableau'}>
+          <FormulaireTableau themeDefaut={themeDefaut} onAdd={ajouter} onCancel={onTerminer} busy={busy} />
         </div>
         {moleculeVue && (
           <div hidden={sorte !== 'molecule'}>
