@@ -284,4 +284,4 @@ l'ajout du bloc, pas un changement de ces cartes.
 - `045b775` feat(medrevise): emploi du temps HELHa dans le calendrier de l'Accueil — « Mes J · École »
 - `0fbcf71` test(medrevise): banc Chrome de l'emploi du temps (faux Hyperplanning, horloge et fuseau simulés)
 - `899c77d` fix(medrevise): emploi du temps — pied de colonne « Annulé » quand tous les cours du jour le sont
-- (ce commit) docs(medrevise): compte rendu de l'emploi du temps HELHa + variable dans CLAUDE.md
+- `b904f01` docs(medrevise): compte rendu de l'emploi du temps HELHa — variable Vercel HELHA_ICAL_URL, captures, tests, commits
