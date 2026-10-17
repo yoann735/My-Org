@@ -4,5 +4,5 @@ cd "${0:A:h}"
 for t in t-ecole t-changements t-reglages t-mobile t-hors-ligne; do
   r=$(node $t.mjs 2>&1)
   echo "$t : $(echo "$r" | grep -ac '✅') ✅  $(echo "$r" | grep -ac '❌') ❌"
-  echo "$r" | grep -a '❌'
+  echo "$r" | grep -a '❌' || true
 done

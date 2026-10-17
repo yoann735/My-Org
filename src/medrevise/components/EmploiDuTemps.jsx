@@ -349,7 +349,7 @@ export function CalendrierEcole({ ctx, mobile = false }) {
             <div className="edt-liste">
               {d.cours.length === 0 ? <div className="wcal-empty">{d.isPast ? '' : '—'}</div> : d.cours.map(carte)}
             </div>
-            {d.cours.length > 0 && <div className="wcal-foot">{d.cours.filter((e) => !e.cancelled).length} cours</div>}
+            {d.cours.length > 0 && (() => { const n = d.cours.filter((e) => !e.cancelled).length; return <div className="wcal-foot">{n ? `${n} cours` : 'Annulé'}</div>; })()}
           </div>
         ))}
       </div>
