@@ -94,7 +94,7 @@ function lienTheme() {
   };
 }
 
-/* /api/deepgram-token et /api/deepgram-credits en DEV (transcription en direct, MedRevise). Vercel sert les
+/* /api/deepgram-token, /api/deepgram-credits et /api/timetable (emploi du temps HELHa, 17/10) en DEV (transcription en direct, MedRevise). Vercel sert les
    fonctions de /api en production ; `vite` ne les connaît pas. Ce middleware
    exécute les MÊMES fichiers api/deepgram-*.js (via ssrLoadModule) avec un petit
    adaptateur res.status().json(). Les variables SERVEUR (DEEPGRAM_*, sans préfixe
@@ -105,12 +105,12 @@ function apiDeepgramDev() {
     name: 'api-deepgram-dev',
     apply: 'serve',
     configureServer(server) {
-      const env = loadEnv(server.config.mode, process.cwd(), ['DEEPGRAM_', 'GITHUB_BACKUP_', 'CRON_SECRET', 'BACKUP_', 'GITHUB_API_URL']);
+      const env = loadEnv(server.config.mode, process.cwd(), ['DEEPGRAM_', 'HELHA_', 'GITHUB_BACKUP_', 'CRON_SECRET', 'BACKUP_', 'GITHUB_API_URL']);
       for (const [k, v] of Object.entries(env)) if (process.env[k] === undefined) process.env[k] = v;
       // /api/deepgram-token et /api/deepgram-credits (transcription en direct)
       server.middlewares.use(async (req, res, next) => {
         // + filet de sécurité (11/10) : /api/backup-daily, /api/backup-now, /api/backup-status
-        const m = /^\/api\/(deepgram-(?:token|credits)|backup-(?:daily|now|status))(?:\?|$)/.exec(req.url || '');
+        const m = /^\/api\/(deepgram-(?:token|credits)|backup-(?:daily|now|status)|timetable)(?:\?|$)/.exec(req.url || '');
         if (!m) return next();
         try {
           const mod = await server.ssrLoadModule(`/api/${m[1]}.js`);
