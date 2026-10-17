@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { SaisieCarnet } from '../components/SaisieCarnet.jsx';
-import { SuiteNotation } from '../components/SuiteNotation.jsx';
+import { ActionsCarte } from '../components/ActionsCarte.jsx';
 import { advanceQuestion, recordRelearnAttempt, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
 import { BoutonsFlashcard } from '../components/BoutonsFlashcard.jsx';
 import { repondreFlashcard } from '../scheduler/repondre.js';
@@ -108,11 +108,8 @@ export function MobileSession({ ctx, onQuit }) {
   // d'advance() pour être rejouable APRÈS la décision du carnet d'erreurs
   // (Ajouter/Passer), sans dupliquer la persistance SM-2 — même découpage que
   // desktop Session.jsx.
-  // (17/10) la carte qui vient d'être notée : « Carnet d'erreurs » / « Apprentissage » (components/SuiteNotation.jsx)
-  const [derniere, setDerniere] = useState(null);
   const proceedToNext = (rating, addedRelearn = false) => {
     setResults((r) => { const n = r.slice(0, idx); n[idx] = { rating }; return n; });
-    if (!erreurMode && allItems[idx]) setDerniere({ carte: allItems[idx], cle: Date.now() });
     setCarnetPrompt(null);
     const total = allItems.length + (addedRelearn ? 1 : 0);
     if (idx + 1 >= total) { setFinished(true); return; }
@@ -227,7 +224,6 @@ export function MobileSession({ ctx, onQuit }) {
           // clé = position dans la série + id : une carte ratée qui revient en fin de série (même id)
           // doit repartir côté recto — avec key={item.id}, elle réapparaissait déjà retournée
           : <MobileFlashCard key={idx + ':' + item.id} item={item} onRate={advance} clozeMode={clozeMode} setClozeMode={setClozeMode} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={submitCarnetRaison} onCarnetSkip={skipCarnetRaison} erreurMode={erreurMode} />}
-        {!erreurMode && derniere && <SuiteNotation ctx={ctx} carte={derniere.carte} cle={derniere.cle} mobile />}
       </div>
     </div>
   );
@@ -333,7 +329,7 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
   return (
     <div className="mrm-fc-classique">
       <div className="mrm-flash-scene">
-        <button type="button" className={'mrm-flash-card' + (image ? ' avec-image' : '')} onClick={() => setFlipped((f) => !f)}>
+        <button type="button" className={'mrm-flash-card' + (image ? ' avec-image' : '') + (flipped && !erreurMode ? ' avec-actions' : '')} onClick={() => setFlipped((f) => !f)}>
           {image && <ImageFlashcard imageId={item.imageId} maxH="min(220px, 30dvh)" className="mrm" />}
           {!flipped ? (
             <>
@@ -357,6 +353,8 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
             </ZoneDefilante>
           )}
         </button>
+        {/* (17/10) carnet d'erreurs / apprentissage de CETTE carte : icônes de 40 px dans l'en-tête de la carte */}
+        {flipped && !erreurMode && <ActionsCarte ctx={ctx} carte={item} mobile />}
       </div>
       {flipped && (
         <div className="mrm-fc-bas">

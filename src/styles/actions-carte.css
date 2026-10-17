@@ -1,25 +1,32 @@
 /* ============================================================
-   MedRevise — APRÈS UNE NOTE : carnet d'erreurs et apprentissage en un geste (17/10,
-   components/SuiteNotation.jsx). Jetons de la DA (var(--text-2), var(--card)…).
-   Une rangée de hauteur FIXE (36 px ; 44 px au doigt) : déplier / replier ne fait rien bouger.
+   MedRevise — carnet d'erreurs / apprentissage depuis la CARTE AFFICHÉE (17/10,
+   components/ActionsCarte.jsx). Une rangée d'icônes dans l'en-tête de la carte (coin supérieur
+   droit), HORS du flux : la face réponse garde son défilement interne en dessous.
+   Ordinateur 30 px ; téléphone 40 px. Jetons de la DA (var(--text-2), var(--card)…).
    ============================================================ */
-.sn { position: relative; display: flex; justify-content: center; align-items: center; min-height: 36px; margin-top: 10px; }
-.sn-actions { display: flex; align-items: center; justify-content: center; gap: 10px; min-width: 0; max-width: 100%; animation: sn-entree .18s ease-out both; }
-.sn-carte { min-width: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-3); }
-.sn-carte b { font-weight: 500; color: var(--text-2); }
-.sn-boutons { display: flex; gap: 6px; flex: 0 0 auto; }
-.sn-ancre { position: relative; display: inline-flex; }
-.sn-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border-radius: 999px;
-  border: 1px solid var(--border-2, var(--border)); background: var(--card); color: var(--text-2);
-  font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background .12s, border-color .12s, color .12s; }
-.sn-btn:hover:not(:disabled), .sn-btn[aria-expanded="true"] { border-color: var(--accent); color: var(--text); background: var(--bg-2, var(--card)); }
-.sn-btn:disabled { opacity: .45; cursor: not-allowed; }
-.sn-icone { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 999px; border: 1px solid transparent; background: none;
-  color: var(--text-3); cursor: pointer; transition: background .12s, color .12s; animation: sn-entree .18s ease-out both; }
-.sn-icone:hover, .sn-icone:focus-visible { background: var(--bg-2, var(--card)); color: var(--text); border-color: var(--border); outline: none; }
-@keyframes sn-entree { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.ac { position: absolute; top: 12px; right: 14px; z-index: 6; display: flex; gap: 6px; }
+.ac-icone { position: relative; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 9px;
+  border: 1px solid var(--border-2, var(--border)); background: color-mix(in srgb, var(--card) 88%, transparent); color: var(--text-2);
+  cursor: pointer; transition: background .12s, border-color .12s, color .12s; -webkit-tap-highlight-color: transparent; }
+.ac-icone:hover, .ac-icone.ouvert, .ac-icone:focus-visible { border-color: var(--accent); color: var(--text); background: var(--bg-2, var(--card)); outline: none; }
+.ac-icone.fait { color: var(--accent); }
+.ac-coche { position: absolute; right: -4px; bottom: -4px; display: grid; place-items: center; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); color: var(--on-accent, #fff); }
+.ac-mobile { top: 10px; right: 10px; gap: 8px; }
+.ac-mobile .ac-icone { width: 40px; height: 40px; border-radius: 12px; }
+.ac-mobile .ac-coche { width: 16px; height: 16px; }
 
-/* menu des pré-réponses (ordinateur) : sous le bouton, réutilise .ctx-menu */
+/* place réservée en haut du contenu quand les icônes sont là (jamais de texte dessous) */
+.flash-face.back:has(> .ac) .ff-zone { margin-top: 10px; }
+.sfc-carte-cadre { position: relative; flex: 1 1 auto; min-height: 140px; display: flex; flex-direction: column; }
+.sfc-carte-cadre > .sfc-carte { flex: 1 1 auto; }
+.sfc-carte.avec-actions .zd-defil { padding-top: 58px; }
+.mrm-flash-scene { position: relative; }
+.mrm-flash-card.avec-actions { padding-top: 58px; }
+.mrm-ecran-carte .mrm-flash-card.avec-actions { padding-top: 0; }
+.mrm-ecran-carte .mrm-flash-card.avec-actions .zd-defil { padding-top: 60px; }
+
+/* menu des pré-réponses (ordinateur) : sous l'icône, réutilise .ctx-menu */
 .sn-menu.ctx-menu { position: fixed; z-index: 460; min-width: 270px; max-width: min(340px, 92vw); }
 .sn-menu .sn-menu-item { white-space: normal; line-height: 1.3; }
 .sn-menu .sn-autre { color: var(--text-2); border-top: 1px solid var(--border); border-radius: 0 0 var(--r, 8px) var(--r, 8px); margin-top: 2px; }
@@ -27,7 +34,8 @@
 /* toast « Ajouté au carnet · Modifier » */
 .sn-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 500; display: flex; align-items: center; gap: 10px;
   max-width: min(520px, calc(100vw - 32px)); padding: 10px 12px 10px 14px; border-radius: 12px; background: var(--card); color: var(--text);
-  border: 1px solid var(--border); box-shadow: var(--shadow-lg, 0 10px 30px rgba(0,0,0,.35)); font-size: 13px; animation: sn-entree .18s ease-out both; }
+  border: 1px solid var(--border); box-shadow: var(--shadow-lg, 0 10px 30px rgba(0,0,0,.35)); font-size: 13px; animation: sn-toast-entree .18s ease-out both; }
+@keyframes sn-toast-entree { from { opacity: 0; transform: translate(-50%, 4px); } to { opacity: 1; transform: translate(-50%, 0); } }
 .sn-toast > svg, .sn-toast > .ic { color: var(--ok, var(--accent)); flex: 0 0 auto; }
 .sn-toast-texte { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sn-toast-sous { color: var(--text-3); }
@@ -37,14 +45,7 @@
 
 .sn-modif .cp-champ { min-height: 72px; }
 
-/* ---- TÉLÉPHONE : deux boutons pleine largeur ≥ 44 px, menu en feuille du bas ---- */
-.sn-mobile { min-height: 48px; margin-top: 12px; }
-.sn-mobile .sn-actions { width: 100%; flex-direction: column; align-items: stretch; gap: 6px; }
-.sn-mobile .sn-carte { max-width: 100%; text-align: center; font-size: 12px; }
-.sn-mobile .sn-boutons { width: 100%; }
-.sn-mobile .sn-boutons > * { flex: 1 1 0; min-width: 0; }
-.sn-mobile .sn-btn { flex: 1 1 0; width: 100%; justify-content: center; height: 46px; border-radius: 14px; font-size: 14px; }
-.sn-mobile .sn-icone { width: 44px; height: 44px; }
+/* ---- TÉLÉPHONE : menu en feuille du bas ---- */
 .sn-feuille-fond { position: fixed; inset: 0; z-index: 450; display: flex; align-items: flex-end; background: var(--scrim, rgba(0,0,0,.45)); animation: fade .15s ease; }
 .sn-feuille { width: 100%; max-height: 82vh; overflow-y: auto; background: var(--card); border-radius: 20px 20px 0 0;
   padding: 8px 16px calc(16px + env(safe-area-inset-bottom)); animation: sn-monte .2s ease-out both; }
@@ -58,7 +59,7 @@
 .sn-feuille-item.sn-autre { color: var(--text-2); }
 .sn-feuille-annuler { width: 100%; min-height: 48px; margin-top: 10px; border-radius: 14px; border: 0; background: none; color: var(--text-2); font: inherit; font-weight: 600; }
 
-@media (prefers-reduced-motion: reduce) { .sn-actions, .sn-icone, .sn-toast, .sn-feuille { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .sn-toast, .sn-feuille { animation: none; } }
 
 /* Réglages › Carnet d'erreurs : deux listes (pré-réponses rapides, types d'erreur du formulaire) */
 .cp-sous-titre { margin: 14px 0 6px; font-size: 11.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--text-2); }
@@ -66,3 +67,9 @@
 .sn-reglages { display: grid; gap: 8px; }
 .sn-reglage { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 6px; align-items: center; }
 .sn-reglage input { min-width: 0; }
+
+/* fenêtres « Modifier l'entrée » / « Autre… » : au-dessus de tout (document.body), mise en page propre */
+.ac-fenetre-fond { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 16px; background: var(--scrim, rgba(0,0,0,.5));
+  backdrop-filter: blur(3px); animation: fade .15s ease; text-align: left; }
+.ac-fenetre { max-height: 86vh; display: flex; flex-direction: column; }
+.ac-fenetre-corps { overflow-y: auto; }

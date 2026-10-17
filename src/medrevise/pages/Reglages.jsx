@@ -18,7 +18,7 @@ import { CarteSauvegardes } from '../components/FiletSecurite.jsx';
 import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
 import { CarteArchives, CarteFichiersHorsModele } from '../components/Archives.jsx';
 import { ReglagesCarnet } from '../components/SaisieCarnet.jsx';
-import { ReglagesPreReponses } from '../components/SuiteNotation.jsx';
+import { ReglagesPreReponses } from '../components/ActionsCarte.jsx';
 import { ReglagesEmploiDuTemps } from '../components/EmploiDuTemps.jsx';
 import { validateBackup, currentCounts, importBackup, computeCloudDiff, applyCloudTombstones } from '../lib/backupImport.js';
 

@@ -1,55 +1,66 @@
 /* ============================================================
-   MedRevise — APRÈS UNE NOTE EN RÉVISION : CARNET D'ERREURS ET APPRENTISSAGE EN UN GESTE
-   (17/10, docs/compte-rendu-fichier-carnet-calendrier.md).
-   Sous les boutons de note, pour la carte QUI VIENT D'ÊTRE NOTÉE :
-   - deux actions discrètes, visibles 2 s puis repliées dans une icône (toujours accessibles) ;
-   - « Carnet d'erreurs » : un menu de pré-réponses à UN tap (feuille du bas au téléphone) ;
+   MedRevise — CARNET D'ERREURS ET APPRENTISSAGE EN UN GESTE, depuis la CARTE AFFICHÉE en révision
+   (17/10, refait le 17/10 soir — docs/compte-rendu-import-tableau-nettete.md, point 5).
+   Une petite rangée d'ICÔNES dans l'en-tête de la carte (coin supérieur droit) : elle appartient à
+   la carte affichée, apparaît dès que la carte est RETOURNÉE (avant même de noter) et disparaît avec
+   elle quand on passe à la suivante. Hors du flux du contenu : toujours visible, quel que soit le
+   défilement interne de la carte.
+   - « Carnet d'erreurs » (icône cible) : menu de pré-réponses à UN tap (feuille du bas au téléphone) ;
      l'entrée est créée tout de suite (lib/carnetPreReponses.js) — toast « Ajouté au carnet ·
      Modifier » ; « Autre… » ouvre le formulaire complet (SaisieCarnet) ;
-   - « Apprentissage » : la carte rejoint la liste du mode Apprentissage (rangée par matière puis
-     cours à l'affichage) — toast « Ajoutée à l'apprentissage ».
+   - « Apprentissage » (icône rafale) : la carte rejoint la liste du mode Apprentissage.
    INDÉPENDANCE : « Apprentissage » n'écrit QUE `learning_set` (ctx.setLearningSet) — jamais la
    carte, ses J, son état FSRS ni le journal. Le carnet n'écrit que ses champs (carnetAt,
    carnetType, carnetRaison) sur la version enregistrée de la carte.
-
-   `carte` : { id, type, recto } de la carte notée ; `cle` : change à chaque note (relance les 2 s).
+   Les clics ne remontent jamais à la carte (qui se retourne au clic).
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
-import { Modal } from './ui.jsx';
+import { IconeRafale } from './IconeRafale.jsx';
 import { SaisieCarnet } from './SaisieCarnet.jsx';
 import { preReponsesDe, ajouterAuCarnet, admissibleCarnet } from '../lib/carnetPreReponses.js';
 import { ajouter as ajouterAListe, estAdmissible } from '../apprentissageLibre/liste.js';
 import { getOne } from '../lib/storage.js';
 import { todayISO } from '../lib/sm2.js';
-import '../../styles/suite-notation.css';
+import '../../styles/actions-carte.css';
 
-export const DUREE_VISIBLE = 2000;
 const etroit = () => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
 const apercu = (c) => String((c && (c.recto || c.concept || c.question || c.enonce)) || '')
   .replace(/<[^>]+>/g, ' ').replace(/\{\{c\d+::([^}:]*)(::[^}]*)?\}\}/g, '$1').replace(/\s+/g, ' ').trim();
 
-export function SuiteNotation({ ctx, carte, cle, mobile: mobileProp }) {
+
+/* fenêtre AU-DESSUS DE TOUT, montée sur document.body : la carte retournée (transform 3D) et les
+   boutons de notation ne peuvent ni la recouvrir ni lui imposer leur mise en page */
+function Fenetre({ titre, onFermer, largeur = 'min(480px, 94vw)', children }) {
+  useEffect(() => {
+    const k = (e) => { if (e.key === 'Escape') onFermer(); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onFermer]);
+  return createPortal(
+    <div className="ac-fenetre-fond" onClick={onFermer}>
+      <div className="day-pop ac-fenetre" role="dialog" aria-label={titre} style={{ width: largeur }} onClick={(e) => e.stopPropagation()}>
+        <div className="day-pop-head"><div className="row spread"><div className="serif" style={{ fontSize: 19 }}>{titre}</div>
+          <button type="button" className="icon-btn sm" onClick={onFermer} title="Fermer (Échap)" aria-label="Fermer"><Icon name="x" size={16} /></button></div></div>
+        <div className="day-pop-body ac-fenetre-corps">{children}</div>
+      </div>
+    </div>, document.body);
+}
+
+/* `carte` : la carte AFFICHÉE (id, type, recto) ; `mobile` : icônes de 40 px, feuille du bas */
+export function ActionsCarte({ ctx, carte, mobile: mobileProp }) {
   const mobile = mobileProp ?? etroit();
-  const [deplie, setDeplie] = useState(false);
   const [menu, setMenu] = useState(false); // menu des pré-réponses
-  const [posMenu, setPosMenu] = useState(null); // ordinateur : position FIXE (le menu ne doit pas être rogné par la zone qui défile)
+  const [posMenu, setPosMenu] = useState(null); // ordinateur : position FIXE (jamais rognée par la zone qui défile)
   const boutonCarnet = useRef(null);
   const [autre, setAutre] = useState(null); // carte (relue) pour le formulaire complet
   const [modifier, setModifier] = useState(null); // { id, type, note }
   const [toast, setToast] = useState(null); // { texte, sous, action }
-  const minuteur = useRef(null);
   const racine = useRef(null);
 
-  // nouvelle note : les actions s'affichent 2 s, puis se replient (sauf si un menu est ouvert)
-  useEffect(() => {
-    if (!carte) return undefined;
-    setDeplie(true); setMenu(false);
-    clearTimeout(minuteur.current);
-    minuteur.current = setTimeout(() => setDeplie(false), DUREE_VISIBLE);
-    return () => clearTimeout(minuteur.current);
-  }, [cle]); // eslint-disable-line react-hooks/exhaustive-deps
+  // autre carte : menu refermé (le toast de la carte précédente peut finir sa course)
+  useEffect(() => { setMenu(false); }, [carte && carte.id]);
   useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(null), 4500); return () => clearTimeout(t); }, [toast]);
   // menu (ordinateur) : se ferme au clic à l'extérieur ou sur Échap
   useEffect(() => {
@@ -63,9 +74,11 @@ export function SuiteNotation({ ctx, carte, cle, mobile: mobileProp }) {
   if (!carte) return null;
   const carnetOk = admissibleCarnet(carte);
   const apprOk = estAdmissible(carte) && !carte.ephemeral && !!ctx.setLearningSet;
+  if (!carnetOk && !apprOk) return null;
   const dejaAppr = ((ctx.db && ctx.db.learningSet) || []).includes(carte.id);
+  const dejaCarnet = !!((ctx.db && ctx.db.questions) || []).find((q) => q.id === carte.id && q.carnetAt);
   const preReponses = preReponsesDe(ctx.carnetPreReponses);
-  const garderOuvert = () => { clearTimeout(minuteur.current); setDeplie(true); };
+  const stop = (e) => e.stopPropagation();
 
   const choisir = async (pr) => {
     setMenu(false);
@@ -101,38 +114,29 @@ export function SuiteNotation({ ctx, carte, cle, mobile: mobileProp }) {
   );
 
   return (
-    <div className={'sn' + (mobile ? ' sn-mobile' : '') + (deplie ? ' deplie' : ' replie')} ref={racine} data-suite-notation="" onPointerEnter={deplie ? garderOuvert : undefined}>
-      {deplie ? (
-        <div className="sn-actions" role="group" aria-label={`Carte notée : ${titre}`}>
-          <span className="sn-carte" title={titre}>Carte notée · <b>{titre || 'sans titre'}</b></span>
-          <div className="sn-boutons">
-            <span className="sn-ancre">
-              <button type="button" className="sn-btn" data-sn="carnet" disabled={!carnetOk} aria-haspopup="menu" aria-expanded={menu}
-                title={carnetOk ? 'Ajouter cette carte au carnet d’erreurs, en un tap' : 'Le carnet d’erreurs reçoit les flashcards'}
-                ref={boutonCarnet}
-                onClick={() => {
-                  garderOuvert();
-                  if (!menu && boutonCarnet.current) {
-                    // sous le bouton s'il y a la place, sinon au-dessus
-                    const r = boutonCarnet.current.getBoundingClientRect();
-                    const haut = window.innerHeight - r.bottom < 330;
-                    setPosMenu({ left: Math.max(8, Math.min(r.left, window.innerWidth - 348)), ...(haut ? { bottom: window.innerHeight - r.top + 6 } : { top: r.bottom + 6 }) });
-                  }
-                  setMenu((v) => !v);
-                }}><Icon name="edit" size={13} /> Carnet d’erreurs</button>
-              {menu && !mobile && createPortal(listePre, document.body) /* portail : un ancêtre animé (transform) décalerait le `fixed` */}
-            </span>
-            <button type="button" className="sn-btn" data-sn="apprentissage" disabled={!apprOk}
-              title={apprOk ? (dejaAppr ? 'Déjà dans la liste du mode Apprentissage' : 'Ajouter cette carte à la liste du mode Apprentissage (indépendant des J)') : 'Le mode Apprentissage reçoit les flashcards'}
-              onClick={apprentissage}><Icon name="brain" size={13} /> Apprentissage{dejaAppr && <Icon name="check" size={12} />}</button>
-          </div>
-        </div>
-      ) : (
-        <button type="button" className="sn-icone" data-sn="deplier" title="Carte notée : carnet d’erreurs, apprentissage" aria-label="Carte notée : carnet d’erreurs, apprentissage"
-          onClick={() => { garderOuvert(); }}><Icon name="more" size={15} /></button>
+    <div className={'ac' + (mobile ? ' ac-mobile' : '')} ref={racine} data-actions-carte={carte.id} role="group" aria-label="Cette carte"
+      onClick={stop} onPointerDown={stop} onMouseDown={stop} onTouchStart={stop} onTouchEnd={stop} onKeyDown={stop}>
+      {carnetOk && (
+        <button type="button" className={'ac-icone' + (menu ? ' ouvert' : '') + (dejaCarnet ? ' fait' : '')} data-sn="carnet" ref={boutonCarnet} aria-haspopup="menu" aria-expanded={menu}
+          title={dejaCarnet ? 'Déjà dans le carnet d’erreurs — choisir une autre pré-réponse' : 'Carnet d’erreurs : ajouter cette carte en un tap'} aria-label="Carnet d’erreurs"
+          onClick={() => {
+            if (!menu && boutonCarnet.current && !mobile) {
+              // sous l'icône s'il y a la place, sinon au-dessus ; aligné à droite de l'icône
+              const r = boutonCarnet.current.getBoundingClientRect();
+              const haut = window.innerHeight - r.bottom < 330;
+              setPosMenu({ left: Math.max(8, Math.min(r.right - 300, window.innerWidth - 348)), ...(haut ? { bottom: window.innerHeight - r.top + 6 } : { top: r.bottom + 6 }) });
+            }
+            setMenu((v) => !v);
+          }}><Icon name="target" size={mobile ? 19 : 15} /></button>
+      )}
+      {menu && !mobile && createPortal(listePre, document.body) /* portail : un ancêtre animé (transform 3D de la carte) décalerait le `fixed` */}
+      {apprOk && (
+        <button type="button" className={'ac-icone' + (dejaAppr ? ' fait' : '')} data-sn="apprentissage"
+          title={dejaAppr ? 'Déjà dans la liste du mode Apprentissage' : 'Apprentissage : ajouter cette carte à la liste (indépendant des J)'} aria-label="Apprentissage"
+          onClick={apprentissage}><IconeRafale size={mobile ? 19 : 15} />{dejaAppr && <span className="ac-coche"><Icon name="check" size={9} /></span>}</button>
       )}
 
-      {menu && mobile && (
+      {menu && mobile && createPortal(
         <div className="sn-feuille-fond" onClick={() => setMenu(false)}>
           <div className="sn-feuille" role="dialog" aria-label="Carnet d’erreurs" onClick={(e) => e.stopPropagation()}>
             <div className="sn-feuille-poignee" />
@@ -141,16 +145,15 @@ export function SuiteNotation({ ctx, carte, cle, mobile: mobileProp }) {
             {listePre}
             <button type="button" className="sn-feuille-annuler" onClick={() => setMenu(false)}>Annuler</button>
           </div>
-        </div>
-      )}
+        </div>, document.body)}
 
       {autre && (
-        <Modal title="Carnet d’erreurs" onClose={() => setAutre(null)} width="min(560px, 96vw)">
+        <Fenetre titre="Carnet d’erreurs" onFermer={() => setAutre(null)} largeur="min(560px, 96vw)">
           <SaisieCarnet ctx={ctx} carte={autre} mobile={mobile} onSubmit={enregistrerAutre} onSkip={() => setAutre(null)} />
-        </Modal>
+        </Fenetre>
       )}
       {modifier && (
-        <Modal title="Modifier l’entrée du carnet" onClose={() => setModifier(null)} width="min(480px, 94vw)">
+        <Fenetre titre="Modifier l’entrée du carnet" onFermer={() => setModifier(null)}>
           <div className="sn-modif">
             <div className="cp-etiquette">Type</div>
             <div className="cp-puces" role="group" aria-label="Type d’erreur">
@@ -171,16 +174,15 @@ export function SuiteNotation({ ctx, carte, cle, mobile: mobileProp }) {
               }}><Icon name="check" size={13} /> Enregistrer</button>
             </div>
           </div>
-        </Modal>
+        </Fenetre>
       )}
 
-      {toast && (
+      {toast && createPortal(
         <div className={'sn-toast' + (mobile ? ' mobile' : '')} role="status">
           <Icon name="check" size={14} />
           <span className="sn-toast-texte">{toast.texte}{toast.sous && <span className="sn-toast-sous"> · {toast.sous}</span>}</span>
           {toast.action && <button type="button" className="sn-toast-action" onClick={() => { const a = toast.action; setToast(null); a.fn(); }}>{toast.action.label}</button>}
-        </div>
-      )}
+        </div>, document.body)}
     </div>
   );
 }

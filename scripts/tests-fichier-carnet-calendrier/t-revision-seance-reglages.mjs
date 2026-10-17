@@ -24,9 +24,8 @@ const dem = await b.pos(`[...document.querySelectorAll('.revise-seance button')]
 await b.clic(dem, { att: 1500 });
 b.ok(await b.ev(`!!document.querySelector('.sfc-carte')`), 'séance du jour ouverte');
 await b.clic(await b.pos(`document.querySelector('.sfc-carte')`, false), { att: 500 });
-await b.clic(await b.pos(`document.querySelectorAll('.bf-zone button')[2]`, false), { att: 900 });
-let s = await b.sn();
-b.ok(s && s.deplie && s.boutons.length === 2, 'séance du jour : « Carnet d’erreurs » et « Apprentissage » après la note');
+let s = await b.ac();
+b.ok(s && s.icones.length === 2 && s.id === await b.ev(`document.querySelector('.sfc-carte').dataset.carte`), 'séance du jour : carte retournée → icônes « Carnet d’erreurs » et « Apprentissage » de CETTE carte');
 await b.clic(await b.pos(`document.querySelector('[data-sn=carnet]')`, false), { att: 350 });
 const items = await b.ev(`[...document.querySelectorAll('.sn-menu [data-pre]')].map(x=>x.innerText.trim())`);
 b.ok(items[1] === 'Pas compris du tout' && items[items.length - 1] === 'Autre…', 'le menu reprend la pré-réponse éditée', items.join(' · '));
@@ -35,6 +34,8 @@ await b.clic(await b.pos(`document.querySelector('.sn-menu [data-pre=autre]')`, 
 b.ok(await b.ev(`!!document.querySelector('.day-pop .cp-saisie')`), '« Autre… » ouvre le formulaire complet (type d’erreur, note, astuce)');
 await b.capture('fcc-carnet-autre', await b.ev(`(()=>{const r=document.querySelector('.day-pop').getBoundingClientRect();return {x:r.x-10,y:r.y-10,width:r.width+20,height:r.height+20}})()`));
 await b.T.Escape(); await b.dormir(300);
+await b.clic(await b.pos(`document.querySelectorAll('.bf-zone button')[2]`, false), { att: 900 });
+b.ok(!(await b.ac()), 'notée : la carte suivante n’a pas encore d’icônes (recto)');
 // glisser la carte de la séance vers l'onglet Apprentissage (ordinateur)
 const id = await b.ev(`document.querySelector('.sfc-carte').dataset.carte`);
 const l0 = await b.listeAppr();

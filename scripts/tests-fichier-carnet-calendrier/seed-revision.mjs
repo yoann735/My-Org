@@ -19,7 +19,7 @@ console.log(await b.S(`
     fc('q-rv3','Par quel foramen sort le nerf facial ?','Le foramen stylo-mastoïdien.'),
     fc('q-rv4','Quel nerf assure la sensibilité de la cornée ?','Le nerf ophtalmique (V1), branche du trijumeau.'),
     fc('q-rv5','Quel nerf innerve le muscle trapèze ?','Le nerf accessoire (XI).'),
-    fc('q-rv6','Quel nerf innerve la langue (motricité) ?','Le nerf hypoglosse (XII).'),
+    fc('q-rv6','Quel nerf innerve la langue (motricité) ?','Le nerf hypoglosse (XII).\\n\\n'+Array.from({length:14},(_,i)=>'Repère '+(i+1)+' : il sort par le canal du nerf hypoglosse, croise l’artère carotide externe, puis gagne la langue sous le muscle mylo-hyoïdien.').join('\\n\\n')),
     fc('q-rv7','Quel nerf porte le goût des 2/3 antérieurs de la langue ?','Le nerf facial (VII), par la corde du tympan.'),
   ];
   await S.putMany('questions',cartes);

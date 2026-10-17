@@ -46,7 +46,8 @@ export async function bancRevision(b) {
   b.diagPlan = async () => { const d = JSON.parse(await b.diag()); d.cartesDiag = d.cartesDiag.map(({ updatedAt, ...r }) => r); return JSON.stringify(d); };
   b.carte = (id) => b.S(`return await S.getOne('questions',${JSON.stringify(id)})`);
   b.listeAppr = () => b.S(`const r=await S.getOne('learning_set','learning_set');return r?r.cardIds:[]`);
-  b.sn = () => b.ev(`(()=>{const s=document.querySelector('[data-suite-notation]');if(!s)return null;return {deplie:s.classList.contains('deplie'),replie:s.classList.contains('replie'),carte:(s.querySelector('.sn-carte b')||{}).textContent||'',boutons:[...s.querySelectorAll('.sn-btn')].map(x=>({sn:x.dataset.sn,txt:x.innerText.trim(),h:Math.round(x.getBoundingClientRect().height),w:Math.round(x.getBoundingClientRect().width),dis:x.disabled}))}})()`);
+  // (17/10 soir) icônes carnet / apprentissage de la CARTE AFFICHÉE (components/ActionsCarte.jsx)
+  b.ac = () => b.ev(`(()=>{const s=[...document.querySelectorAll('[data-actions-carte]')].find(e=>e.getBoundingClientRect().width>0);if(!s)return null;const r=s.getBoundingClientRect();return {id:s.dataset.actionsCarte,x:Math.round(r.x),y:Math.round(r.y),r:Math.round(r.right),b:Math.round(r.bottom),icones:[...s.querySelectorAll('.ac-icone')].map(x=>({sn:x.dataset.sn,label:x.getAttribute('aria-label'),h:Math.round(x.getBoundingClientRect().height),w:Math.round(x.getBoundingClientRect().width)}))}})()`);
   b.toast = () => b.ev(`(()=>{const t=document.querySelector('.sn-toast');return t?t.innerText.replace(/\\s+/g,' ').trim():null})()`);
   // glisser-déposer HTML5 réel (Chrome) : glisser intercepté puis déposé sur la cible
   b.glisserHTML5 = async (de, a) => {
