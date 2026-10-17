@@ -250,4 +250,4 @@ Même banc, après les six chantiers (tout rejoué) :
 - `05d1733` feat : flashcard « Tableau »
 - `dac7759` feat : importer des flashcards (JSON, .zip) depuis le panneau
 - `8d6b122` perf : netteté des PDF (pixels réels, 1 pour 1, calage, cache, file de rendu)
-- (ce commit) docs : compte rendu
+- `a83b227` docs : compte rendu
