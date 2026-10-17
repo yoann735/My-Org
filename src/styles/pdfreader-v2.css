@@ -288,3 +288,17 @@
 .eia-barre { height: 6px; border-radius: 3px; background: var(--bg-2); overflow: hidden; }
 .eia-barre > span { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width 60ms linear; }
 @media (prefers-reduced-motion: reduce) { .eia-apercu { animation: none; } .eia-barre > span { transition: none; } }
+
+/* ── RACCOURCIS ⌘1 … ⌘9 (17/10) : maintenir ⌘ (Ctrl hors Mac) affiche, en fondu de 150 ms,
+   le petit chiffre de chaque outil sous son icône (pdf/PdfToolbar.jsx). ── */
+.pdfr-barre .ptb-outil, .pdfr-barre .tab-outil { position: relative; }
+.pdfr-barre .ptb-num {
+  position: absolute; top: calc(100% + 3px); left: 16px; transform: translateX(-50%);
+  min-width: 14px; padding: 0 3px; border-radius: 4px;
+  font: 600 9.5px/14px var(--font-mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; text-align: center;
+  color: var(--text); background: var(--elev-3, var(--card)); box-shadow: 0 0 0 1px var(--border);
+  opacity: 0; pointer-events: none; transition: opacity .15s ease; z-index: 5;
+}
+.pdfr-barre .tab-outil .ptb-num { left: 50%; }
+.pdfr-barre.raccourcis-visibles .ptb-num { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .pdfr-barre .ptb-num { transition: none; } }

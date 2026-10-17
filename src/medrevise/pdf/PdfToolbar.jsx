@@ -39,6 +39,23 @@ export const OUTILS = [
   { id: 'crayon', label: 'Crayon', icone: 'crayon', aide: 'Dessiner à main levée' },
   { id: 'gomme', label: 'Gomme', icone: 'gomme', aide: 'Efface les traits de crayon et les formes — cliquer, ou glisser pour en effacer plusieurs' },
 ];
+/* RACCOURCIS ⌘1 … ⌘9 (17/10, docs/compte-rendu-bibliotheque-fichier.md) : les outils dans l'ordre
+   EXACT de la barre — 1 Sélection, 2 Surligneur, 3 Boîte, 4 Texte, 5 Forme, 6 ?, 7 Crayon,
+   8 Gomme, 9 Image (insérer). Ctrl+1 … 9 hors Mac. Touche physique (e.code Digit1…9) : marche
+   aussi en AZERTY, où ⌘1 est ⌘& pour `e.key`. */
+const SUR_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+export const MOD_OUTILS = SUR_MAC ? '⌘' : 'Ctrl+';
+export const RACCOURCIS_OUTILS = [...OUTILS.map((o) => ({ id: o.id, label: o.label })), { id: 'image', label: 'Image' }]
+  .map((o, i) => ({ ...o, touche: String(i + 1) }));
+/** champ de saisie où ⌘1–9 n'est JAMAIS intercepté : formulaire, boîte de texte, notes… Le texte
+    d'un DOCUMENT (flux continu .pt-flux-cadre, ou page .pt-zone) n'en est pas un : c'est le document
+    lui-même, où les outils servent aussi. */
+function champDeSaisie(el) {
+  if (!el || !el.tagName) return false;
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return true;
+  return !!el.isContentEditable && !(el.closest && el.closest('.pt-flux-cadre, .pt-zone'));
+}
+
 /* Les couleurs de TOUS les outils (boîte comprise) se règlent par le même sélecteur
    (pdf/Couleurs.jsx), fourni par le lecteur dans `contexteSupplementaire` (02/10 soir). */
 
@@ -105,6 +122,55 @@ export function PdfToolbar({
   const actions = (actionsDocument || []).filter(Boolean);
   const outils = outilsDisponibles ? OUTILS.filter((o) => outilsDisponibles.includes(o.id)) : OUTILS;
   const outilActif = outils.find((o) => o.id === outil) || outils[0];
+
+  /* ⌘1 … ⌘9 — numérotés dans l'ordre affiché (une barre réduite, fiche HTML, garde une
+     numérotation continue). Interceptés SEULEMENT quand le lecteur a le focus (rien de
+     focalisé, ou un élément du lecteur) et jamais dans un champ de saisie : là, le
+     navigateur garde son comportement. Maintenir ⌘ affiche les chiffres (fondu 150 ms). */
+  const entreesRaccourcis = outilsAnnotation ? [
+    ...outils.map((o) => ({ id: o.id, label: o.label })),
+    ...(onAjouterImage ? [{ id: 'image', label: 'Image' }] : []),
+  ].slice(0, 9) : [];
+  const numero = (id) => { const i = entreesRaccourcis.findIndex((e) => e.id === id); return i >= 0 ? i + 1 : null; };
+  const infobulle = (label, id, aide) => { const n = numero(id); return `${label}${n ? ` · ${MOD_OUTILS}${n}` : ''}${aide ? ` — ${aide}` : ''}`; };
+  const [chiffres, setChiffres] = useState(false);
+  const raccourcisRef = useRef(null);
+  raccourcisRef.current = { entrees: entreesRaccourcis, outil, setOutil, onAjouterImage };
+  useEffect(() => {
+    if (!outilsAnnotation) return undefined;
+    const leLecteurALeFocus = () => {
+      const a = document.activeElement;
+      if (champDeSaisie(a)) return false;
+      if (!a || a === document.body || a === document.documentElement) return true;
+      const racine = barreRef.current && (barreRef.current.closest('.pdfr-v2') || barreRef.current.parentElement);
+      return !!(racine && racine.contains(a));
+    };
+    const modifie = (e) => (SUR_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey && !e.shiftKey;
+    const bas = (e) => {
+      if (!barreRef.current || !barreRef.current.isConnected) return;
+      if (e.key === (SUR_MAC ? 'Meta' : 'Control')) { if (leLecteurALeFocus()) setChiffres(true); return; }
+      const m = /^Digit([1-9])$/.exec(e.code || '') || /^Numpad([1-9])$/.exec(e.code || '');
+      if (!m || !modifie(e)) return;
+      if (champDeSaisie(e.target) || !leLecteurALeFocus()) return;
+      const r = raccourcisRef.current;
+      const entree = r.entrees[Number(m[1]) - 1];
+      e.preventDefault(); // ⌘1–9 = changement d'onglet du navigateur : pas quand le lecteur a le focus
+      if (!entree || e.repeat) return;
+      if (entree.id === 'image') r.onAjouterImage && r.onAjouterImage();
+      else if (r.outil !== entree.id) r.setOutil(entree.id); // sélectionne, ne bascule jamais
+    };
+    const haut = (e) => { if (e.key === (SUR_MAC ? 'Meta' : 'Control') || !(SUR_MAC ? e.metaKey : e.ctrlKey)) setChiffres(false); };
+    const cacher = () => setChiffres(false);
+    window.addEventListener('keydown', bas, true);
+    window.addEventListener('keyup', haut, true);
+    window.addEventListener('blur', cacher);
+    document.addEventListener('visibilitychange', cacher);
+    return () => {
+      window.removeEventListener('keydown', bas, true); window.removeEventListener('keyup', haut, true);
+      window.removeEventListener('blur', cacher); document.removeEventListener('visibilitychange', cacher);
+    };
+  }, [outilsAnnotation]);
+  const chiffre = (id) => { const n = numero(id); return n ? <span className="ptb-num" aria-hidden="true">{n}</span> : null; };
 
   /* Cmd/Ctrl+F = la recherche DU LECTEUR, pas celle du navigateur (qui ne voit ni
      le texte des pages pdf.js hors écran, ni les occurrences numérotées) : tant que
@@ -173,7 +239,7 @@ export function PdfToolbar({
     const rechercheOuv = !sansRecherche && (rechercheOuverte || !!search);
     return (
       <>
-        <div ref={barreRef} className="pdfr-toolbar pdfr-barre tab-barre">
+        <div ref={barreRef} className={'pdfr-toolbar pdfr-barre tab-barre' + (chiffres ? ' raccourcis-visibles' : '')}>
           {basculeDocument && <div className="tab-zone">{basculeDocument}</div>}
           {!sansPages && (
             <div className="tab-zone">
@@ -191,15 +257,16 @@ export function PdfToolbar({
           {outilsAnnotation && (
             <div className="tab-zone tab-outils" role="group" aria-label="Outils d'annotation">
               {principaux.map((o) => (
-                <button key={o.id} type="button" title={`${o.label} — ${o.aide}`} aria-label={o.label} aria-pressed={outil === o.id}
+                <button key={o.id} type="button" title={infobulle(o.label, o.id, o.aide)} aria-label={o.label} aria-pressed={outil === o.id}
+                  aria-keyshortcuts={numero(o.id) ? `${SUR_MAC ? 'Meta' : 'Control'}+${numero(o.id)}` : undefined}
                   className={'tab-bt tab-outil' + (outil === o.id ? ' actif' : '')}
                   onMouseDown={(e) => e.preventDefault()} onClick={() => setOutil(o.id)}>
-                  <IconeOutil nom={o.icone} size={18} />
+                  <IconeOutil nom={o.icone} size={18} />{chiffre(o.id)}
                 </button>
               ))}
               {onAjouterImage && (
                 <button type="button" className="tab-bt tab-outil" onClick={onAjouterImage} aria-label="Insérer une image"
-                  title={imageDansTexte ? 'Image — l’insérer dans le texte, au curseur (ou la coller avec Cmd/Ctrl+V)' : 'Image — importer une image et la placer sur la page (ou la coller avec Cmd/Ctrl+V)'}><IconeOutil nom="image" size={18} /></button>
+                  title={infobulle('Image', 'image', imageDansTexte ? 'l’insérer dans le texte, au curseur (ou la coller avec Cmd/Ctrl+V)' : 'importer une image et la placer sur la page (ou la coller avec Cmd/Ctrl+V)')}><IconeOutil nom="image" size={18} />{chiffre('image')}</button>
               )}
               {onAjouterPage && (
                 <button type="button" className="tab-bt tab-outil" onClick={onAjouterPage} aria-label="Insérer une page blanche"
@@ -256,7 +323,7 @@ export function PdfToolbar({
 
   return (
     <>
-      <div ref={barreRef} className={'pdfr-toolbar pdfr-barre' + classeLargeur}>
+      <div ref={barreRef} className={'pdfr-toolbar pdfr-barre' + classeLargeur + (chiffres ? ' raccourcis-visibles' : '')}>
         {/* ---- ZONE GAUCHE : naviguer dans le document ---- */}
         <div className="ptb-zone">
           <button className="btn ghost sm" onClick={onClose} title="Revenir à la liste"><Icon name="chevL" size={14} /> Retour</button>
@@ -283,25 +350,26 @@ export function PdfToolbar({
         {outilsAnnotation && (
           <div className="ptb-outils" role="group" aria-label="Outils d'annotation">
             {outils.map((o) => (
-              <button key={o.id} type="button" title={`${o.label} — ${o.aide}`}
+              <button key={o.id} type="button" title={infobulle(o.label, o.id, o.aide)}
+                aria-keyshortcuts={numero(o.id) ? `${SUR_MAC ? 'Meta' : 'Control'}+${numero(o.id)}` : undefined}
                 className={'ptb-outil' + (outil === o.id ? ' actif' : '')}
                 onMouseDown={(e) => e.preventDefault()} /* garde la sélection de texte : Surligneur la surligne */
                 onClick={() => setOutil(o.id)}>
-                <IconeOutil nom={o.icone} size={16} />
+                <IconeOutil nom={o.icone} size={16} />{chiffre(o.id)}
                 {o.id !== 'question' && <span className="ptb-outil-lbl">{o.label}</span>}
               </button>
             ))}
             {(onAjouterImage || onAjouterPage || boutonDessins) && <span className="ptb-sep" />}
             {compacte && (onAjouterImage || onAjouterPage) && (
-              <button type="button" className="ptb-outil" title="Insérer une image ou une page"
+              <button type="button" className="ptb-outil" title={`Insérer une image ou une page${onAjouterImage && numero('image') ? ` · ${MOD_OUTILS}${numero('image')} : image` : ''}`}
                 onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuInserer({ x: Math.min(r.left, window.innerWidth - 260), y: r.bottom + 6 }); }}>
-                <Icon name="plus" size={16} />
+                <Icon name="plus" size={16} />{onAjouterImage && chiffre('image')}
               </button>
             )}
             {!compacte && onAjouterImage && (
               <button type="button" className="ptb-outil" onClick={onAjouterImage}
-                title={imageDansTexte ? 'Image — l’insérer dans le texte, au curseur (ou la coller avec Cmd/Ctrl+V)' : 'Image — importer une image et la placer sur la page (ou la coller avec Cmd/Ctrl+V)'}>
-                <IconeOutil nom="image" size={16} /><span className="ptb-outil-lbl">Image</span>
+                title={infobulle('Image', 'image', imageDansTexte ? 'l’insérer dans le texte, au curseur (ou la coller avec Cmd/Ctrl+V)' : 'importer une image et la placer sur la page (ou la coller avec Cmd/Ctrl+V)')}>
+                <IconeOutil nom="image" size={16} />{chiffre('image')}<span className="ptb-outil-lbl">Image</span>
               </button>
             )}
             {!compacte && onAjouterPage && (
