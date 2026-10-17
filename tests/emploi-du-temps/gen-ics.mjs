@@ -1,6 +1,8 @@
-/* Génère les deux .ics de test (une vraie semaine 1BKINE12, format Hyperplanning) :
-   semaine-1bkine12.ics (v1) et semaine-1bkine12-v2.ics (v2 = horaire, salle et
-   annulation changés). Lancer : node tests/emploi-du-temps/gen-ics.mjs */
+/* Génère les .ics de test (une vraie semaine 1BKINE12, format Hyperplanning) :
+   semaine-1bkine12.ics (v1), semaine-1bkine12-v2.ics (v2 = horaire, salle et annulation
+   changés) et (17/10, calendrier horaire) semaine-1bkine12-v3.ics (v3 = v1 + un cours qui
+   CHEVAUCHE les TP du mardi, un cours du SAMEDI et un cours du soir jusqu'à 20:30).
+   Lancer : node tests/emploi-du-temps/gen-ics.mjs */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +10,7 @@ const ici = path.dirname(fileURLToPath(import.meta.url));
 
 // heures en UTC (comme Hyperplanning) : 19-23/10 = CEST (UTC+2), dès le 26/10 = CET (UTC+1)
 const cours = (o) => o;
-function base(v2) {
+function base(v2, v3 = false) {
   const L = [];
   const ev = ({ uid, debut, fin, matiere, prof, salle, type = 'Cours', memo = '', statut = '', tz = null, rrule = null, exdate = null, recid = null, summary = null }) => {
     L.push('BEGIN:VEVENT', 'CATEGORIES:HYPERPLANNING', 'DTSTAMP:20261016T120000Z', `UID:${uid}`);
@@ -43,6 +45,14 @@ function base(v2) {
   ev({ uid: 'Serie-Histologie-1BKINE12', tz: 'Europe/Brussels', recid: '20261022T104500', debut: '20261022T134500', fin: '20261022T154500', matiere: 'Histologie', prof: 'PETIT M.', salle: 'B07 (Montignies)', memo: 'Cours déplacé' });
   // v2 : salle changée
   ev({ uid: 'Cours-900206-1-1BKINE12-Index-Education', debut: '20261023T063000Z', fin: '20261023T083000Z', matiere: 'Anglais médical', prof: 'SMITH Mme', salle: v2 ? 'A03 (Montignies)' : 'A01 (Montignies)' });
+  if (v3) {
+    // chevauchement : remédiation 10:00–11:00 pendant les TP de kiné 08:30–12:30 (mardi)
+    ev({ uid: 'Cours-900207-1-1BKINE12-Index-Education', debut: '20261020T080000Z', fin: '20261020T090000Z', matiere: 'Remédiation anatomie', prof: 'LEYH Mme', salle: 'C03 (Montignies)' });
+    // cours du soir (jeudi 19:00–20:30) : la grille s'étend jusqu'à 21 h
+    ev({ uid: 'Cours-900208-1-1BKINE12-Index-Education', debut: '20261022T170000Z', fin: '20261022T183000Z', matiere: 'Séminaire d’éthique', prof: 'MOREAU M.', salle: 'Teams' });
+    // samedi 24/10 09:00–11:00 : la colonne du samedi apparaît
+    ev({ uid: 'Cours-900209-1-1BKINE12-Index-Education', debut: '20261024T070000Z', fin: '20261024T090000Z', matiere: 'Journée portes ouvertes', prof: 'DIRECTION', salle: 'Hall (Montignies)', type: 'Activité' });
+  }
   // ---- après le changement d'heure (26/10, CET)
   ev({ uid: 'Cours-900301-1-1BKINE12-Index-Education', debut: '20261026T073000Z', fin: '20261026T093000Z', matiere: 'Anatomie descriptive et palpatoire', prof: 'LEYH Mme', salle: 'C02 (Montignies)' });
   ev({ uid: 'Cours-900302-1-1BKINE12-Index-Education', debut: '20261027T124500Z', fin: '20261027T144500Z', matiere: 'Physiologie humaine', prof: 'DUPONT M.', salle: 'Teams' });
@@ -50,4 +60,5 @@ function base(v2) {
 }
 fs.writeFileSync(path.join(ici, 'semaine-1bkine12.ics'), base(false));
 fs.writeFileSync(path.join(ici, 'semaine-1bkine12-v2.ics'), base(true));
+fs.writeFileSync(path.join(ici, 'semaine-1bkine12-v3.ics'), base(false, true));
 console.log('ok');
