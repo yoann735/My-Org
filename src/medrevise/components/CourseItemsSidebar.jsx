@@ -87,11 +87,13 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     return c;
   }, [ficheItems]);
 
+  /* (17/10) ORDRE des modes, de gauche à droite : Exercices · Transcript · Notes · Notions (sélecteur
+     et glissement). Le mode mémorisé par cours l'est par son ID : il reste valide quel que soit l'ordre. */
   const modes = [
     avecItems && { id: 'exercices', label: 'Exercices', n: ficheItems.length },
-    extraNotions && { id: 'notions', label: 'Notions', n: extraNotions.n },
     extraTranscript && { id: 'transcript', label: 'Transcript', badge: extraTranscript.badge },
     extraNotes && { id: 'notes', label: 'Notes' },
+    extraNotions && { id: 'notions', label: 'Notions', n: extraNotions.n },
   ].filter(Boolean);
   const cle = cleMemo || ficheId || 'doc';
   const versMode = (id) => (TYPES_IDS.includes(id) ? 'exercices' : id);

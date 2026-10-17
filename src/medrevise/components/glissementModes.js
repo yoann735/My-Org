@@ -14,21 +14,22 @@
      on laisse défiler (vertical) jusqu'à la fin du geste. Jamais pris en charge s'il
      commence sur une zone qui défile horizontalement, un canvas, ou avec du texte
      sélectionné dans le panneau. La souris est exclue (glisser = sélectionner).
-   - Pas de transition pendant le suivi ; aimantation : transform 200 ms,
-     cubic-bezier(0.2, 0, 0, 1). Un nouveau geste pendant l'aimantation la fige à sa
-     position réelle et repart de là, sans attente.
+   - Pas de transition pendant le suivi ; aimantation : transform 120 ms, ease-out SANS
+     dépassement (17/10 : ni rebond, ni élastique — on ne sent pas l'animation, on sent que
+     ça suit). Un nouveau geste pendant l'aimantation la fige à sa position réelle et repart
+     de là, sans attente. Aux extrémités, la piste s'arrête net (plus d'élastique).
    - Trackpad : la fin du geste est détectée dès le début de l'INERTIE de macOS (deltas
      qui décroissent régulièrement) ou après 120 ms sans événement. La traîne d'inertie
-     est ensuite ignorée (250 ms au moins, et tant qu'elle décroît) — la cause classique
+     est ensuite ignorée (150 ms au moins — 17/10, avant 250 —, et tant qu'elle décroît) — la cause classique
      du double changement — sauf si un geste franc repart (delta qui remonte, 24 px cumulés).
    ============================================================ */
 import { debutGeste, finGeste } from '../lib/gesteEnCours.js';
 
-const COURBE = 'cubic-bezier(0.2, 0, 0, 1)';
-const DUREE = 200; // ms
+const COURBE = 'cubic-bezier(0, 0, 0.58, 1)'; // ease-out : aucune valeur au-delà de la cible
+const DUREE = 120; // ms
 const SEUIL_AXE = 8; // px cumulés avant de décider l'axe
 const SILENCE = 120; // ms sans événement de roue = doigts levés
-const TRAINE_MIN = 250; // ms d'inertie ignorée après un relâchement
+const TRAINE_MIN = 150; // ms d'inertie ignorée après un relâchement
 const SEUIL_FRANC = 24; // px cumulés d'un delta qui remonte = nouveau geste
 
 export function creerGlissement({ corps, piste, indicateur, nbModes, index, onArrivee, reduit = () => false }) {
@@ -112,14 +113,11 @@ export function creerGlissement({ corps, piste, indicateur, nbModes, index, onAr
   };
 
   /* ---- suivi ---- */
-  /* bornes du suivi : jamais plus d'un mode d'écart avec le départ du geste, élastique
-     au-delà (et aux deux extrémités de la piste) */
+  /* bornes du suivi : jamais plus d'un mode d'écart avec le départ du geste, ni au-delà des
+     extrémités de la piste — arrêt NET (17/10 : l'élastique est retiré) */
   const elastique = (p) => {
-    const max = 56 / largeur;
     const bas = Math.max(0, Math.floor(base + 1e-4) - 1), haut = Math.min(n - 1, Math.ceil(base - 1e-4) + 1);
-    if (p < bas) return bas - Math.min(max, (bas - p) * 0.3);
-    if (p > haut) return haut + Math.min(max, (p - haut) * 0.3);
-    return p;
+    return Math.max(bas, Math.min(haut, p));
   };
   const commencer = (decalage, t) => {
     debutGeste();
