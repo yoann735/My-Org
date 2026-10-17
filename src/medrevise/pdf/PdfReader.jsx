@@ -1075,6 +1075,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setScale(newScale);
   };
   const zoomAtRef = useRef(zoomAt); zoomAtRef.current = zoomAt;
+  // sonde des tests (développement seulement) : zoom exact (1 = 100 %), centré sur la zone de lecture
+  if (import.meta.env.DEV && typeof window !== 'undefined') window.__mrZoom = (s) => { const el = scrollRef.current; const r = el && el.getBoundingClientRect(); zoomAtRef.current(r ? r.top + r.height / 2 : 0, s); };
   // boutons : une courte animation (180 ms) au lieu d'un saut de 15 %
   const animZoom = useRef(null);
   const animerZoom = (clientY, cible) => {

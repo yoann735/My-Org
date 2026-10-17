@@ -25,6 +25,7 @@ import { cheminForme, extremites, typeForme, estTrait, estFermee, tailleParDefau
 import { suivreImage } from './attaches.js';
 import { Icon } from '../../shared/Icon.jsx';
 import { outputScaleFor } from './pdfjsSetup.js';
+import { cleRendu, lireRendu, garderRendu, planifierRendu, alignerCanvas } from './rendusPages.js';
 import { richToHTML } from '../documents/lib/richtext.js';
 import { blobURL } from '../lib/storage.js';
 import { createPortal } from 'react-dom';
@@ -161,15 +162,24 @@ export function PdfPageContent({
      AUSSITÔT à la nouvelle taille), la page est redessinée HORS ÉCRAN puis recopiée
      d'un coup, et ce rendu attend que le zoom se pose (140 ms sans nouveau cran). */
   const dejaRendu = useRef(false);
+  const osRef = useRef(1);
+  /* (17/10) NETTETÉ (pdf/rendusPages.js) : canvas aux pixels réels (zoom × devicePixelRatio, plafonné),
+     affiché 1 pour 1 et calé sur la grille des pixels de l'écran ; pendant un zoom, l'image d'avant
+     s'étire (mise à l'échelle CSS) et le rendu net suit 150 ms après le dernier cran ; pages rendues
+     gardées en cache (LRU 20) ; rendus pdf.js en file, pages visibles d'abord. */
   useEffect(() => {
     let cancelled = false;
     let minuterie = null;
+    let tache = null;
+    const canvasAffiche = canvasRef.current;
+    // zoom / densité qui change : l'image en place s'étire aussitôt à la nouvelle taille de la page
+    if (canvasAffiche && dejaRendu.current) { canvasAffiche.style.width = '100%'; canvasAffiche.style.height = '100%'; canvasAffiche.style.transform = ''; }
     const rendre = async () => {
       if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (e) { /* ignore */ } }
       if (vierge) {
         // PAGE AJOUTÉE : rien à demander à pdf.js — une page blanche, sans texte
         const canvas = canvasRef.current;
-        canvas.width = 1; canvas.height = 1; canvas.style.width = '100%'; canvas.style.height = '100%';
+        canvas.width = 1; canvas.height = 1; canvas.style.width = '100%'; canvas.style.height = '100%'; canvas.style.transform = '';
         const c2d = canvas.getContext('2d'); c2d.fillStyle = '#fff'; c2d.fillRect(0, 0, 1, 1);
         canvas.dataset.rendu = '1';
         if (textLayerRef.current) textLayerRef.current.replaceChildren();
@@ -181,32 +191,41 @@ export function PdfPageContent({
       if (cancelled) return;
       const viewport = page.getViewport({ scale });
       const canvas = canvasRef.current;
-      // netteté : le canvas porte `os` pixels réels par pixel CSS (2 sur Retina) et
-      // reste AFFICHÉ à la taille du viewport — la couche de texte et les surlignages,
-      // positionnés en px CSS, ne voient aucune différence.
+      // densité : pixels réels par pixel CSS (2 sur Retina, 3 au plus) ; dimensions ENTIÈRES du canvas,
+      // et pdf.js dessine exactement dedans (facteurs W/largeur, H/hauteur)
       const os = outputScaleFor(viewport.width, viewport.height, dpr);
-      // rendu HORS ÉCRAN : le canvas affiché garde l'image précédente jusqu'au bout
-      const horsEcran = document.createElement('canvas');
-      horsEcran.width = Math.floor(viewport.width * os); horsEcran.height = Math.floor(viewport.height * os);
-      const c2d = horsEcran.getContext('2d');
-      c2d.setTransform(1, 0, 0, 1, 0, 0);
-      const task = page.render({ canvasContext: c2d, viewport, transform: os !== 1 ? [os, 0, 0, os, 0, 0] : undefined });
-      renderTaskRef.current = task;
-      try {
-        await task.promise;
-      } catch (e) {
-        if (e && e.name === 'RenderingCancelledException') return; // annulation normale (voir ci-dessus)
-        throw e;
-      } finally {
-        if (renderTaskRef.current === task) renderTaskRef.current = null;
+      const W = Math.max(1, Math.round(viewport.width * os)), H = Math.max(1, Math.round(viewport.height * os));
+      const cle = cleRendu((pdfDoc.fingerprints && pdfDoc.fingerprints[0]) || 'doc', pageNum, scale, os);
+      let source = lireRendu(cle);
+      if (!source) {
+        // rendu HORS ÉCRAN, dans la file (pages visibles d'abord) : le canvas affiché garde l'image précédente
+        const horsEcran = document.createElement('canvas');
+        horsEcran.width = W; horsEcran.height = H;
+        const c2d = horsEcran.getContext('2d');
+        let rendu = false;
+        tache = planifierRendu(canvas, async () => {
+          if (cancelled) return;
+          const task = page.render({ canvasContext: c2d, viewport, transform: [W / viewport.width, 0, 0, H / viewport.height, 0, 0] });
+          renderTaskRef.current = task;
+          try { await task.promise; rendu = true; } catch (e) {
+            if (!(e && e.name === 'RenderingCancelledException')) throw e; // annulation normale (voir ci-dessus)
+          } finally { if (renderTaskRef.current === task) renderTaskRef.current = null; }
+        });
+        await tache.promesse;
+        if (cancelled || !rendu) return;
+        garderRendu(cle, horsEcran);
+        source = { bitmap: horsEcran };
       }
-      if (cancelled) return;
       // recopie d'un seul coup (redimensionner puis dessiner dans la même tâche : aucune
-      // image blanche n'est jamais affichée)
-      canvas.width = horsEcran.width; canvas.height = horsEcran.height;
-      canvas.style.width = '100%'; canvas.style.height = '100%';
-      canvas.getContext('2d').drawImage(horsEcran, 0, 0);
+      // image blanche n'est jamais affichée), puis calage au pixel réel
+      canvas.width = W; canvas.height = H;
+      canvas.getContext('2d').drawImage(source.bitmap, 0, 0);
+      osRef.current = os;
+      alignerCanvas(canvas, os);
+      // la mise en page autour peut encore bouger juste après (position restaurée, panneau) : 2e calage
+      setTimeout(() => { if (!cancelled) alignerCanvas(canvas, os); }, 400);
       canvas.dataset.rendu = '1'; // page réellement dessinée (reprise de la position de lecture)
+      canvas.dataset.densite = String(os);
       dejaRendu.current = true;
       await buildTextLayer(page, viewport, textLayerRef.current, ocrPage);
       if (cancelled) return;
@@ -215,14 +234,31 @@ export function PdfPageContent({
       // c'est le bon moment pour mesurer les rects exacts des occurrences via Range.
       setMatchRects(computeMatchRectsFromDom(textLayerRef.current, matches));
     };
-    // premier rendu tout de suite ; ensuite (zoom, recherche) on laisse le geste se poser
-    minuterie = setTimeout(rendre, dejaRendu.current && !vierge ? 140 : 0);
+    // premier rendu tout de suite ; ensuite (zoom, recherche) on laisse le geste se poser : 150 ms
+    minuterie = setTimeout(rendre, dejaRendu.current && !vierge ? 150 : 0);
     return () => {
       cancelled = true;
       clearTimeout(minuterie);
+      if (tache) tache.annuler();
       if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (e) { /* ignore */ } }
     };
   }, [pdfDoc, pageNum, vierge, scale, dpr, matches, ocrPage]);
+  // la page bouge d'une fraction de pixel quand la zone de lecture change de largeur (centrage) ou
+  // après un défilement posé (position restaurée, défilement fractionnaire) : recalée — à la fin du
+  // défilement seulement (100 ms sans mouvement), une lecture de position par page affichée
+  useEffect(() => {
+    const f = () => { const c = canvasRef.current; if (c && c.dataset.rendu && !vierge) alignerCanvas(c, osRef.current); };
+    let minuteur = null;
+    const fin = () => { clearTimeout(minuteur); minuteur = setTimeout(f, 100); };
+    window.addEventListener('resize', fin);
+    const zone = canvasRef.current && canvasRef.current.closest('.pdfr-scroll');
+    if (zone) zone.addEventListener('scroll', fin, { passive: true });
+    // la zone de lecture (panneau ouvert / replié, en-tête qui change de hauteur) et les pages
+    const ro = typeof ResizeObserver !== 'undefined' && zone ? new ResizeObserver(fin) : null;
+    if (ro) { ro.observe(zone); if (canvasRef.current.parentElement && canvasRef.current.parentElement.parentElement) ro.observe(canvasRef.current.parentElement.parentElement); }
+    window.addEventListener('medrevise:recaler-pages', fin);
+    return () => { clearTimeout(minuteur); window.removeEventListener('resize', fin); window.removeEventListener('medrevise:recaler-pages', fin); if (zone) zone.removeEventListener('scroll', fin); if (ro) ro.disconnect(); };
+  }, [vierge]);
 
   /* tracé d'une NOUVELLE boîte : cliquer-glisser dessine le rectangle, un simple
      clic pose une boîte de taille par défaut au point visé. Tout est normalisé

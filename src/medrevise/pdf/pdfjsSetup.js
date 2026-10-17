@@ -34,7 +34,8 @@ const MAX_CANVAS_PIXELS = 2 ** 24;
     de l'écran (2 sur Retina), bornée par le plafond ci-dessus. Jamais sous 1 —
     c'était le comportement d'avant, on ne dégrade aucun cas existant. */
 export function outputScaleFor(w, h, dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1) {
-  return Math.max(1, Math.min(dpr, Math.sqrt(MAX_CANVAS_PIXELS / (w * h))));
+  // (17/10) plafonnée à 3× (téléphones à 3×, mémoire) — pdf/rendusPages.js#DENSITE_MAX
+  return Math.max(1, Math.min(dpr, 3, Math.sqrt(MAX_CANVAS_PIXELS / (w * h))));
 }
 
 export { pdfjsLib };
