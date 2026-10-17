@@ -3,9 +3,9 @@
    docs/compte-rendu-emploi-du-temps.md).
 
    - SelecteurCalendrier : les deux segments « Mes J · École » en tête du calendrier ;
-   - CalendrierEcole     : la même grille que le calendrier des J (classes .wcal-*),
-     cours de l'école à la place des cartes ; vue semaine, ou vue jour quand la place
-     manque (et sur téléphone), avec glissement entre les jours ;
+   - CalendrierEcole     : (17/10) un calendrier HORAIRE (components/GrilleEcole.jsx) —
+     Jour · 3 jours · Semaine, cours à leur hauteur exacte ; au-dessus : prochain cours,
+     changements détectés, rappel du jeudi 16 h ;
    - CalendrierMobile    : le bloc « Calendrier » de l'accueil téléphone ;
    - ReglagesEmploiDuTemps : Réglages → Emploi du temps (couleur, matière reliée).
    En mode « Mes J », rien de ce fichier n'est rendu à la place du calendrier des J :
@@ -15,15 +15,16 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Icon } from '../../shared/Icon.jsx';
 import { matiereMeta, PALETTE_MATIERES } from './ui.jsx';
 import {
-  useEmploiDuTemps, rafraichir, semaineEcole, coursEnAvant, quandLibelle, estEnCours, hm, dateCourte,
+  useEmploiDuTemps, rafraichir, coursEnAvant, quandLibelle, estEnCours, hm, dateCourte,
   nomJour, lieuDe, rappelJeudiVisible, ilYaCourt, changementsVisibles, marquerChangementsVus, debutJour, plusJours,
 } from '../lib/emploiDuTemps.js';
 import { completer, resoudreCours, titresDansLOrdre, cleCours, correspondanceAuto } from '../lib/edtCouleurs.js';
 import { dernierCoursDe } from '../lib/derniersCours.js';
 import { weekData } from '../lib/planning.js';
+import { GrilleEcole } from './GrilleEcole.jsx';
 import '../../styles/emploi-du-temps.css';
+import '../../styles/edt-grille.css';
 
-const LARGEUR_SEMAINE = 640; // en dessous : vue jour
 
 /* ---------- horloge (re-rendu toutes les 30 s : « Dans 25 min », cours en cours) ---------- */
 function useMaintenant(pas = 30000) {
@@ -68,33 +69,6 @@ export function SelecteurCalendrier({ mode, onMode }) {
           title={nonConfigure ? 'Emploi du temps non configuré' : 'Emploi du temps HELHa (Hyperplanning)'} onClick={() => onMode('ecole')}>École</button>
       </div>
       {nonConfigure && <span className="edt-non-config" role="status">Emploi du temps non configuré</span>}
-    </div>
-  );
-}
-
-/* ---------- carte d'un cours ---------- */
-function CarteCours({ e, info, maintenant, change, actions }) {
-  const enCours = estEnCours(e, maintenant);
-  const lieu = lieuDe(e);
-  return (
-    <div className={'edt-cours' + (e.cancelled ? ' annule' : '') + (enCours ? ' en-cours' : '') + (change ? ' change' : '')}
-      style={{ '--edt-c': info.couleur }} data-uid={e.uid} title={info.matiere ? `Matière : ${matiereMeta(info.matiere).label}` : undefined}>
-      <div className="edt-h">
-        <span>{e.allDay ? 'Journée' : `${hm(e.start)}–${hm(e.end)}`}</span>
-        {e.cancelled && <span className="edt-badge annule">Annulé</span>}
-        {!e.cancelled && change && <span className="edt-badge">Modifié</span>}
-        {enCours && <span className="edt-badge direct">En cours</span>}
-      </div>
-      <div className="edt-t">{e.title}</div>
-      {e.teacher && <div className="edt-p">{e.teacher}</div>}
-      {(lieu || e.modality === 'pratique') && (
-        <div className="edt-l">
-          {e.modality === 'teams' && <Icon name="ext" size={10} />}
-          {lieu.split(' · ').map((x, i) => <span key={i}>{i > 0 ? '· ' : ''}{x}</span>)}
-          {e.modality === 'pratique' && <span>{lieu ? '· ' : ''}pratique</span>}
-        </div>
-      )}
-      {actions}
     </div>
   );
 }
@@ -249,22 +223,13 @@ export function CalendrierEcole({ ctx, mobile = false }) {
   const resoudre = useCoursResolus(ctx, events);
   const actions = useActions(ctx, !mobile && !!ctx.openPdfReader);
   const [ref, largeur] = useLargeur();
-  const vueJour = mobile || (largeur > 0 && largeur < LARGEUR_SEMAINE);
-  const [wk, setWk] = useState(0);
-  const [jour, setJour] = useState(0); // décalage en jours depuis aujourd'hui (vue jour)
-  const glisse = useGlissement(() => setJour((j) => j + 1), () => setJour((j) => j - 1));
   const changements = useMemo(() => changementsVisibles(maintenant), [edt.changements, maintenant]); // eslint-disable-line react-hooks/exhaustive-deps
   const parUid = useMemo(() => new Map(changements.map((c) => [c.uid, c])), [changements]);
-
   const avant = useMemo(() => coursEnAvant(events, maintenant), [events, maintenant]);
 
   if (!edt.donnees) return <div ref={ref}><EtatVide edt={edt} /></div>;
 
-  const carte = (e) => {
-    const info = resoudre(e.title);
-    return <CarteCours key={e.uid} e={e} info={info} maintenant={maintenant} change={parUid.get(e.uid)} actions={actions(e, info, maintenant)} />;
-  };
-
+  // (17/10) au-dessus de la grille : prochain cours, changements détectés, rappel du jeudi 16 h
   const tete = (
     <>
       {avant && (() => {
@@ -292,67 +257,14 @@ export function CalendrierEcole({ ctx, mobile = false }) {
     </>
   );
 
-  if (vueJour) {
-    const debut = plusJours(debutJour(maintenant), jour);
-    const fin = plusJours(debut, 1);
-    const cours = events.filter((e) => Date.parse(e.start) < fin && Date.parse(e.end) > debut);
-    const n = nomJour(debut, true);
-    const titreJour = jour === 0 ? 'Aujourd’hui' : jour === 1 ? 'Demain' : jour === -1 ? 'Hier' : `${n[0].toUpperCase()}${n.slice(1)}`;
-    return (
-      <div ref={ref} className="edt edt-jour" lang="fr">
-        <div className="wcal-nav edt-nav">
-          <div className="weeknav">
-            <button type="button" onClick={() => setJour((j) => j - 1)} title="Jour précédent"><Icon name="chevL" size={18} /></button>
-            <span className="wk">{titreJour}</span>
-            <button type="button" onClick={() => setJour((j) => j + 1)} title="Jour suivant"><Icon name="chevR" size={18} /></button>
-          </div>
-          <span className="wcal-range" style={{ marginLeft: 4 }}><span>{nomJour(debut)} {dateCourte(debut)}</span></span>
-          {jour !== 0 && <button type="button" className="btn ghost sm" onClick={() => setJour(0)}>Aujourd'hui</button>}
-          <Fraicheur edt={edt} maintenant={maintenant} />
-        </div>
-        {tete}
-        <div className="edt-jour-liste" {...glisse} data-jour={jour}>
-          {cours.length === 0
-            ? <div className="wcal-empty edt-rien">{fin <= debutJour(maintenant) ? 'Aucun cours ce jour-là.' : 'Pas de cours.'}</div>
-            : cours.map(carte)}
-        </div>
-      </div>
-    );
-  }
-
-  const { lundi, dimanche, jours } = semaineEcole(events, wk, maintenant);
-  const rangeLabel = `${dateCourte(lundi)} – ${dateCourte(dimanche)}`;
-  const weekLabel = wk === 0 ? 'Cette semaine' : wk === 1 ? 'Semaine prochaine' : wk === -1 ? 'Semaine dernière' : rangeLabel;
-  const horsPeriode = edt.donnees.from && edt.donnees.to && (plusJours(lundi, 7) <= Date.parse(edt.donnees.from) || lundi >= Date.parse(edt.donnees.to));
+  /* (17/10) un VRAI calendrier horaire (components/GrilleEcole.jsx) : Jour · 3 jours · Semaine.
+     La largeur n'est connue qu'après la première mesure : la grille attend (sinon la vue par défaut sauterait). */
   return (
-    <div ref={ref} className="edt edt-semaine" lang="fr">
-      <div className="wcal-nav edt-nav">
-        <div className="weeknav">
-          <button type="button" onClick={() => setWk((w) => w - 1)} title="Semaine précédente"><Icon name="chevL" size={18} /></button>
-          <span className="wk">{weekLabel}</span>
-          <button type="button" onClick={() => setWk((w) => w + 1)} title="Semaine suivante"><Icon name="chevR" size={18} /></button>
-        </div>
-        <span className="wcal-range" style={{ marginLeft: 4 }}><span>{rangeLabel}</span></span>
-        {wk !== 0 && <button type="button" className="btn ghost sm" onClick={() => setWk(0)}>Aujourd'hui</button>}
-        <Fraicheur edt={edt} maintenant={maintenant} />
-      </div>
-      {tete}
-      {horsPeriode && <div className="hint edt-hors">Cette semaine n’est pas encore publiée sur Hyperplanning (période chargée : semaine passée + 8 semaines).</div>}
-      <div className="wcal-grid edt-grille">
-        {jours.map((d) => (
-          <div className={'wcal-day edt-day' + (d.isToday ? ' today' : '') + (d.isPast ? ' past' : '')} key={d.debut} role="group" aria-label={`${nomJour(d.debut, true)} ${dateCourte(d.debut)}`}>
-            <div className="wcal-dhead">
-              <span className="wcal-dow">{d.dow}</span>
-              <span className="wcal-dnum">{d.num}</span>
-              {d.isToday && <span className="wcal-today-dot">Auj.</span>}
-            </div>
-            <div className="edt-liste">
-              {d.cours.length === 0 ? <div className="wcal-empty">{d.isPast ? '' : '—'}</div> : d.cours.map(carte)}
-            </div>
-            {d.cours.length > 0 && (() => { const n = d.cours.filter((e) => !e.cancelled).length; return <div className="wcal-foot">{n ? `${n} cours` : 'Annulé'}</div>; })()}
-          </div>
-        ))}
-      </div>
+    <div ref={ref} className={'edt edt-horaire' + (mobile ? ' mobile' : '')}>
+      {(largeur > 0 || mobile) && (
+        <GrilleEcole events={events} resoudre={resoudre} maintenant={maintenant} parUid={parUid} actions={actions} largeur={largeur} mobile={mobile}
+          entete={<Fraicheur edt={edt} maintenant={maintenant} />} bandeau={tete} periode={edt.donnees} />
+      )}
     </div>
   );
 }

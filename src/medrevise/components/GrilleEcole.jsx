@@ -22,8 +22,14 @@ export const VUES = [{ id: 'jour', label: 'Jour' }, { id: '3jours', label: '3 jo
 const CLE_VUE = 'medrevise.edt.vue';
 const lireVue = () => { try { const v = localStorage.getItem(CLE_VUE); return VUES.some((x) => x.id === v) ? v : null; } catch (e) { return null; } };
 const ecrireVue = (v) => { try { localStorage.setItem(CLE_VUE, v); } catch (e) { /* stockage indisponible : la vue reste celle de la session */ } };
-/** vue par défaut selon la place : téléphone → Jour ; tablette → 3 jours ; ordinateur → Semaine */
-export const vueParDefaut = (largeur, mobile) => (mobile || (largeur > 0 && largeur < 560) ? 'jour' : largeur > 0 && largeur < 980 ? '3jours' : 'semaine');
+/** vue par défaut selon l'APPAREIL : téléphone → Jour ; tablette (< 1 200 px ou tactile) → 3 jours ; ordinateur → Semaine.
+    Un conteneur très étroit (< 420 px) passe en Jour, quel que soit l'appareil. */
+export const vueParDefaut = (largeur, mobile) => {
+  if (mobile || (largeur > 0 && largeur < 420)) return 'jour';
+  const fenetre = typeof window !== 'undefined' ? window.innerWidth : 1440;
+  const tactile = typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  return fenetre < 1200 || tactile ? '3jours' : 'semaine';
+};
 
 const minutesDuJour = (ms) => { const m = mural(ms); return m.h * 60 + m.mi; };
 const estWeekEnd = (debut) => { const m = mural(debut); const j = new Date(Date.UTC(m.y, m.mo - 1, m.d)).getUTCDay(); return j === 0 || j === 6; };
@@ -88,18 +94,18 @@ function Bloc({ x, hDebut, pxH, info, maintenant, change, onOuvrir }) {
   const top = ((x.a - hDebut * 60) / 60) * pxH;
   const h = Math.max(18, ((x.b - x.a) / 60) * pxH - 2);
   const enCours = estEnCours(e, maintenant);
-  const lieu = lieuDe(e);
-  const densite = h < 34 ? 'xs' : h < 58 ? 's' : 'm';
+  const lieu = [lieuDe(e), e.modality === 'pratique' ? 'pratique' : ''].filter(Boolean).join(' · ');
+  const densite = h < 34 ? 'xs' : h < 72 ? 's' : 'm'; // xs : titre · heure ; s : heure, titre, lieu ; m : + prof, titre sur plusieurs lignes
   const lignesTitre = densite === 'm' ? Math.max(1, Math.floor((h - 8 - 14 - (e.teacher ? 15 : 0) - (lieu ? 15 : 0)) / 15)) : 1;
   return (
     <button type="button" className={'edtg-bloc ' + densite + (e.cancelled ? ' annule' : '') + (enCours ? ' en-cours' : '') + (change ? ' change' : '')}
       style={{ '--edt-c': info.couleur, top, height: h, left: `calc(${(x.col / x.n) * 100}% + 2px)`, width: `calc(${100 / x.n}% - 4px)`, '--lignes': lignesTitre }}
-      data-uid={e.uid} aria-label={`${e.title}, ${hm(e.start)}–${hm(e.end)}${e.teacher ? ', ' + e.teacher : ''}${lieu ? ', ' + lieu : ''}${e.cancelled ? ', annulé' : ''}`}
+      data-uid={e.uid} data-titre={e.title} data-h={`${hm(e.start)}–${hm(e.end)}`} data-p={e.teacher || ''} data-l={lieu} aria-label={`${e.title}, ${hm(e.start)}–${hm(e.end)}${e.teacher ? ', ' + e.teacher : ''}${lieu ? ', ' + lieu : ''}${e.cancelled ? ', annulé' : ''}`}
       onClick={() => onOuvrir(e)}>
       {densite === 'xs'
         ? <span className="edtg-t">{e.title}<span className="edtg-heure"> · {hm(e.start)}</span></span>
         : <>
-          {densite === 'm' && <span className="edtg-heure">{hm(e.start)}–{hm(e.end)}{e.cancelled ? ' · annulé' : change ? ' · modifié' : ''}</span>}
+          {densite !== 'xs' && h >= 50 && <span className="edtg-heure">{hm(e.start)}–{hm(e.end)}{e.cancelled ? ' · annulé' : change ? ' · modifié' : ''}</span>}
           <span className="edtg-t">{e.title}</span>
           {densite === 'm' && e.teacher && <span className="edtg-p">{e.teacher}</span>}
           {lieu && <span className="edtg-l">{e.modality === 'teams' && <Icon name="ext" size={9} />}{lieu}</span>}
@@ -123,7 +129,6 @@ function FicheCours({ e, info, maintenant, change, actions, onFermer }) {
         {e.teacher && <div className="edtg-fiche-ligne"><Icon name="grad" size={14} /><span>{e.teacher}</span></div>}
         {(lieu || e.modality === 'pratique') && <div className="edtg-fiche-ligne"><Icon name={e.modality === 'teams' ? 'ext' : 'home'} size={14} /><span>{lieu}{e.modality === 'pratique' ? `${lieu ? ' · ' : ''}pratique` : ''}</span></div>}
         <div className="edtg-fiche-ligne"><Icon name="book" size={14} /><span>{info.matiere ? <>Matière reliée : <b>{matiereMeta(info.matiere).label}</b></> : <span className="hint">Aucune matière reliée (Réglages › Emploi du temps)</span>}</span></div>
-        {e.memo && <div className="edtg-fiche-ligne"><Icon name="info" size={14} /><span>{e.memo}</span></div>}
         {actions}
         <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12 }}><button type="button" className="btn ghost sm" onClick={onFermer}>Fermer</button></div>
       </div>
@@ -132,7 +137,7 @@ function FicheCours({ e, info, maintenant, change, actions, onFermer }) {
 }
 
 /* ---------- la grille ---------- */
-export function GrilleEcole({ events, resoudre, maintenant, parUid, actions, largeur, mobile = false, entete = null }) {
+export function GrilleEcole({ events, resoudre, maintenant, parUid, actions, largeur, mobile = false, entete = null, bandeau = null, periode = null }) {
   const [vueChoisie, setVueChoisie] = useState(() => (mobile ? null : lireVue()));
   const vue = vueChoisie || vueParDefaut(largeur, mobile);
   const choisirVue = (v) => { setVueChoisie(v); if (!mobile) ecrireVue(v); };
@@ -204,7 +209,7 @@ export function GrilleEcole({ events, resoudre, maintenant, parUid, actions, lar
           <button type="button" onClick={() => aller(1)} title={vue === 'semaine' ? 'Semaine suivante' : vue === 'jour' ? 'Jour suivant' : '3 jours plus tard'} aria-label="Suivant"><Icon name="chevR" size={18} /></button>
         </div>
         {!mobile && <span className="wcal-range"><span>{sousTitre}</span></span>}
-        <button type="button" className="btn ghost sm edtg-auj" disabled={surAujourdhui} onClick={() => setAncre(aujourdhui)}>Aujourd’hui</button>
+        {!(mobile && surAujourdhui) && <button type="button" className="btn ghost sm edtg-auj" disabled={surAujourdhui} onClick={() => setAncre(aujourdhui)}>Aujourd’hui</button>}
         <div className="seg edtg-vues" role="tablist" aria-label="Affichage">
           {VUES.map((v) => (
             <button key={v.id} type="button" role="tab" aria-selected={vue === v.id} className={'seg-btn' + (vue === v.id ? ' active' : '')} data-vue={v.id} onClick={() => choisirVue(v.id)}>{v.label}</button>
@@ -213,6 +218,10 @@ export function GrilleEcole({ events, resoudre, maintenant, parUid, actions, lar
         {entete}
       </div>
 
+      {bandeau}
+      {periode && periode.from && periode.to && (plusJours(dernier, 1) <= Date.parse(periode.from) || premier >= Date.parse(periode.to)) && (
+        <div className="hint edt-hors">Cette période n’est pas encore publiée sur Hyperplanning (période chargée : semaine passée + 8 semaines).</div>
+      )}
       <div className="edtg-zone" ref={zone} {...toucher} style={{ '--cols': jours.length, '--px-h': pxH + 'px' }} data-debut={hDebut} data-fin={hFin}>
         <div className="edtg-tete" role="row">
           <div className="edtg-coin" />

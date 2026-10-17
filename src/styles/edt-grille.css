@@ -1,0 +1,98 @@
+/* ============================================================
+   MedRevise — emploi du temps « École » : calendrier HORAIRE (17/10, components/GrilleEcole.jsx).
+   Préfixe `edtg-`. Mêmes jetons que le reste (var(--text-2), var(--card)…) : DA inchangée.
+   Couleur d'un cours : --edt-c (bordure gauche + fond teinté). Hauteur d'une heure : --px-h.
+   ============================================================ */
+.edtg { display: flex; flex-direction: column; min-width: 0; }
+.edtg-nav { align-items: center; gap: 8px; margin-bottom: 10px; }
+.edtg-nav .edt-fraicheur { margin-left: 0; }
+.edtg-vues { margin-left: auto; padding: 2px; }
+.edtg-vues .seg-btn { padding: 4px 10px; font-size: 12px; }
+.edtg-auj:disabled { opacity: .45; cursor: default; }
+
+/* la zone qui défile : en-tête des jours collant en haut, colonne des heures collante à gauche */
+.edtg-zone {
+  --gout: 48px;
+  position: relative; max-height: min(620px, 70vh); overflow: auto; overscroll-behavior: contain;
+  border: 1px solid var(--border); border-radius: var(--r, 12px); background: var(--card);
+  scrollbar-width: thin;
+}
+.edtg-tete, .edtg-journee, .edtg-corps { display: grid; grid-template-columns: var(--gout) repeat(var(--cols), minmax(0, 1fr)); }
+.edtg-tete { position: sticky; top: 0; z-index: 4; background: var(--card); border-bottom: 1px solid var(--border); }
+.edtg-coin { position: sticky; left: 0; z-index: 5; background: var(--card); }
+.edtg-jour-tete { display: flex; align-items: baseline; justify-content: center; gap: 6px; padding: 8px 4px 7px; min-width: 0; border-left: 1px solid var(--border); }
+.edtg-dow { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
+.edtg-num { display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 4px; border-radius: 999px; font-size: 15px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.edtg-jour-tete.past .edtg-num, .edtg-jour-tete.past .edtg-dow { color: var(--text-3); }
+.edtg-jour-tete.today .edtg-dow { color: var(--crit, #e5484d); }
+.edtg-jour-tete.today .edtg-num { background: var(--crit, #e5484d); color: #fff; }
+
+/* cours « toute la journée » */
+.edtg-journee { position: sticky; top: 42px; z-index: 3; background: var(--card); border-bottom: 1px solid var(--border); }
+.edtg-coin-j { font-size: 10px; color: var(--text-3); display: grid; place-items: center; }
+.edtg-journee-col { display: flex; flex-direction: column; gap: 3px; padding: 4px; border-left: 1px solid var(--border); min-width: 0; }
+.edtg-puce { text-align: left; border: 0; border-left: 3px solid var(--edt-c); border-radius: 5px; padding: 3px 6px; font: inherit; font-size: 11.5px;
+  color: var(--text); background: color-mix(in srgb, var(--edt-c) 16%, transparent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+
+/* corps : colonne des heures + une colonne par jour */
+.edtg-corps { position: relative; }
+.edtg-heures { position: sticky; left: 0; z-index: 2; background: var(--card); border-right: 1px solid var(--border); }
+.edtg-heure-lbl { position: absolute; right: 7px; transform: translateY(-50%); font-size: 10.5px; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.edtg-maintenant-lbl { position: absolute; right: 4px; transform: translateY(-50%); padding: 1px 4px; border-radius: 4px; font-size: 10.5px; font-weight: 600;
+  color: #fff; background: var(--crit, #e5484d); font-variant-numeric: tabular-nums; z-index: 1; }
+.edtg-col { position: relative; min-width: 0; border-left: 1px solid var(--border); }
+.edtg-col.today { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.edtg-trait { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid color-mix(in srgb, var(--border) 80%, transparent); pointer-events: none; }
+.edtg-trait.demi { border-top-style: dotted; opacity: .45; }
+
+/* ligne rouge de l'heure actuelle (colonne du jour) */
+.edtg-maintenant { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--crit, #e5484d); z-index: 3; pointer-events: none; }
+.edtg-maintenant::before { content: ''; position: absolute; left: -5px; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: var(--crit, #e5484d); }
+
+/* un cours : placé à sa hauteur exacte ; côte à côte s'il en chevauche un autre */
+.edtg-bloc {
+  position: absolute; z-index: 1; display: flex; flex-direction: column; gap: 1px; overflow: hidden;
+  padding: 3px 6px 3px 7px; text-align: left; font: inherit; cursor: pointer;
+  border: 0; border-left: 3px solid var(--edt-c); border-radius: 6px;
+  background: color-mix(in srgb, var(--edt-c) 16%, var(--card)); color: var(--text);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--edt-c) 22%, transparent) inset;
+  transition: filter .12s, box-shadow .12s;
+}
+.edtg-bloc:hover, .edtg-bloc:focus-visible { filter: brightness(1.08); outline: none; box-shadow: 0 0 0 1.5px var(--edt-c) inset; z-index: 2; }
+.edtg-heure { font-size: 10.5px; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto; }
+.edtg-t { font-size: 12px; font-weight: 600; line-height: 15px; color: var(--text);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lignes, 2); overflow: hidden; overflow-wrap: anywhere; hyphens: auto; flex: 0 0 auto; }
+.edtg-p, .edtg-l { font-size: 11px; line-height: 15px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto; }
+.edtg-l { display: flex; align-items: center; gap: 3px; }
+.edtg-bloc.xs { flex-direction: row; align-items: center; padding-top: 1px; padding-bottom: 1px; }
+.edtg-bloc.xs .edtg-t { -webkit-line-clamp: 1; display: block; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; }
+.edtg-bloc.xs .edtg-heure { display: inline; font-weight: 400; }
+.edtg-bloc.s .edtg-t { -webkit-line-clamp: 1; }
+.edtg-bloc.annule { opacity: .55; }
+.edtg-bloc.annule .edtg-t { text-decoration: line-through; }
+.edtg-bloc.change { box-shadow: 0 0 0 1px var(--accent) inset; }
+/* cours en cours : liseré qui pulse */
+.edtg-bloc.en-cours { box-shadow: 0 0 0 1.5px var(--edt-c) inset; }
+.edtg-bloc.en-cours::after { content: ''; position: absolute; left: -3px; top: 0; bottom: 0; width: 3px; background: var(--edt-c); animation: edtg-pulse 1.6s ease-in-out infinite; }
+@keyframes edtg-pulse { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--edt-c); } 50% { opacity: .35; box-shadow: 0 0 8px 2px var(--edt-c); } }
+
+.edtg-rien { position: absolute; left: var(--gout); right: 0; top: 40px; text-align: center; font-size: 13px; color: var(--text-3); pointer-events: none; }
+
+/* fiche détaillée */
+.edtg-fiche { display: flex; flex-direction: column; gap: 9px; }
+.edtg-fiche-bande { height: 4px; border-radius: 4px; background: var(--edt-c); margin-bottom: 2px; }
+.edtg-fiche-ligne { display: flex; align-items: flex-start; gap: 9px; font-size: 13.5px; color: var(--text-2); line-height: 1.45; }
+.edtg-fiche-ligne > svg, .edtg-fiche-ligne > .ic { flex: 0 0 auto; margin-top: 2px; color: var(--edt-c); }
+.edtg-fiche-ligne b { color: var(--text); font-weight: 600; }
+.edtg-fiche-ligne .edt-badge { margin-left: 6px; }
+.edtg-fiche .edt-actions { margin-top: 4px; }
+
+/* téléphone : vue Jour, cibles plus grandes, grille plus haute */
+.edtg.mobile .edtg-zone { max-height: 62vh; }
+.edtg.mobile .edtg-nav { gap: 6px; }
+.edtg.mobile .edtg-vues { margin-left: 0; }
+.edtg.mobile .edtg-vues .seg-btn, .edtg.mobile .edtg-auj { min-height: 36px; }
+.edtg.mobile .edtg-t { font-size: 13px; line-height: 16px; }
+.edtg.mobile .edtg-p, .edtg.mobile .edtg-l { font-size: 12px; }
+@media (pointer: coarse) { .edtg-vues .seg-btn { min-height: 34px; } }
+@media (prefers-reduced-motion: reduce) { .edtg-bloc.en-cours::after { animation: none; } }

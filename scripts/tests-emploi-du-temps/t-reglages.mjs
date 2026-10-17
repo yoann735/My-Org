@@ -40,13 +40,21 @@ await b.accueil(); await b.attendreEcole();
 const cc = await b.cartes();
 const coul = (t) => cc.find((x) => x.t === t);
 const physioTint = await b.S(`const m=(await S.getAll('matieres')).find(x=>x.id==='mat-fj');return m.couleur||null`);
-const rgbDe = (el) => b.ev(`getComputedStyle(document.querySelector('.edt-cours[data-uid=${JSON.stringify(el.uid)}]')).borderLeftColor`);
+const rgbDe = (el) => b.ev(`getComputedStyle(document.querySelector('.edtg-bloc[data-uid=${JSON.stringify(el.uid)}]')).borderLeftColor`);
 b.ok(await rgbDe(coul('Anglais médical')) === pal, 'Accueil : couleur choisie pour « Anglais médical »', pal);
 b.ok(coul('Physiologie humaine').c !== couleurAvant['Physiologie humaine'] || physioTint === couleurAvant['Physiologie humaine'], 'Accueil : « Physiologie humaine » prend la couleur de sa matière');
 b.ok(coul('Biochimie').c === couleurAvant['Biochimie'], 'Accueil : « Biochimie » déliée garde sa couleur fixe (stable)');
 av = await b.avant();
 b.ok(av && av.boutons.join(',') === 'Ouvrir,Transcrire', 'cours Teams en cours relié : « Ouvrir » + « Transcrire »', av && av.boutons.join(','));
-b.ok(await b.ev(`(()=>{const c=[...document.querySelectorAll('.edt-cours')].filter(e=>e.querySelector('.edt-transcrire'));return c.length===1&&c[0].querySelector('.edt-t').textContent==='Physiologie humaine'})()`), '« Transcrire » sur la seule carte du cours Teams en cours');
+// (17/10) calendrier horaire : Ouvrir / Transcrire vivent dans la FICHE DÉTAILLÉE du cours (tap sur le bloc)
+await b.ev(`[...document.querySelectorAll('.edtg-bloc')].find(e=>e.dataset.titre==='Physiologie humaine'&&/en-cours/.test(e.className)).scrollIntoView({block:'center'});1`);
+await b.clic(await b.pos(`[...document.querySelectorAll('.edtg-bloc')].find(e=>e.dataset.titre==='Physiologie humaine'&&/en-cours/.test(e.className))`, false), { att: 500 });
+b.ok(await b.ev(`(()=>{const f=document.querySelector('[data-fiche-cours]');return !!f&&[...f.querySelectorAll('.edt-actions button')].map(x=>x.innerText.trim()).join(',')==='Ouvrir,Transcrire'})()`), 'fiche détaillée du cours Teams en cours : « Ouvrir » + « Transcrire »');
+await b.T.Escape(); await b.dormir(300);
+await b.ev(`[...document.querySelectorAll('.edtg-bloc')].find(e=>e.dataset.titre==='Anglais médical').scrollIntoView({block:'center'});1`);
+await b.clic(await b.pos(`[...document.querySelectorAll('.edtg-bloc')].find(e=>e.dataset.titre==='Anglais médical')`, false), { att: 500 });
+b.ok(await b.ev(`!document.querySelector('[data-fiche-cours] .edt-transcrire')`), 'un cours qui n’est pas en cours : pas de « Transcrire »');
+await b.T.Escape(); await b.dormir(300);
 await b.recharger(); await b.accueil(); await b.attendreEcole();
 const cc2 = await b.cartes();
 b.ok(JSON.stringify(cc2.map((x) => x.c)) === JSON.stringify(cc.map((x) => x.c)), 'couleurs identiques après rechargement');
@@ -68,7 +76,9 @@ b.ok(!(await b.ev(`!!document.querySelector('.trx-feuille')`)), 'feuille referm�
 // ---- Ouvrir = dernier cours ouvert de la matière
 await b.ouvrir('Membre inférieur — repères'); // ouvert depuis la Bibliothèque
 await b.accueil(); await b.attendreEcole();
-await b.clic(await b.pos(`[...document.querySelectorAll('.edt-cours')].find(e=>e.querySelector('.edt-t').textContent.startsWith('Anatomie'))?.querySelector('.edt-actions button')`), { att: 400 });
+await b.ev(`[...document.querySelectorAll('.edtg-bloc')].find(e=>e.dataset.titre.startsWith('Anatomie')).scrollIntoView({block:'center'});1`);
+await b.clic(await b.pos(`[...document.querySelectorAll('.edtg-bloc')].find(e=>e.dataset.titre.startsWith('Anatomie'))`, false), { att: 500 });
+await b.clic(await b.pos(`document.querySelector('[data-fiche-cours] .edt-actions button')`), { att: 400 });
 await b.attendre(`document.querySelector('.pdfr-scroll')`, 10000);
 const ouvert = await b.ev(`document.body.innerText.includes('Membre inférieur — repères')`);
 const ecran = await b.ev(`JSON.parse(localStorage.getItem('medrevise.derniersCours.v1')||'{}')['mat-tb-ap']?.ficheId`);

@@ -63,3 +63,6 @@
 /* Réglages › Carnet d'erreurs : deux listes (pré-réponses rapides, types d'erreur du formulaire) */
 .cp-sous-titre { margin: 14px 0 6px; font-size: 11.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--text-2); }
 .cp-sous-titre:first-child { margin-top: 0; }
+.sn-reglages { display: grid; gap: 8px; }
+.sn-reglage { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 6px; align-items: center; }
+.sn-reglage input { min-width: 0; }

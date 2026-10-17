@@ -39,7 +39,9 @@ export async function ouvrir({ date = null, tz = null, W = 1440, H = 900, tactil
     const p = await b.pos(`[...document.querySelectorAll('.edt-seg .seg-btn')].find(x=>x.innerText.trim()===${JSON.stringify(m === 'j' ? 'Mes J' : 'École')})`, false);
     if (W < 761 || tactile) await b.tape(p); else await b.clic(p, { att: 600 });
   };
-  b.cartes = () => b.ev(`[...document.querySelectorAll('.edt-cours')].map(e=>({uid:e.dataset.uid,t:e.querySelector('.edt-t').textContent,h:e.querySelector('.edt-h').textContent,p:(e.querySelector('.edt-p')||{}).textContent||'',l:(e.querySelector('.edt-l')||{}).textContent||'',c:e.style.getPropertyValue('--edt-c'),cls:e.className,jour:(e.closest('.wcal-day')||{}).ariaLabel||null}))`);
+  // (17/10) calendrier HORAIRE : un bloc par cours (.edtg-bloc), lu par ses attributs data-* ; trié par jour puis heure
+  b.cartes = () => b.ev(`[...document.querySelectorAll('.edtg-bloc')].map(e=>({uid:e.dataset.uid,t:e.dataset.titre,h:e.dataset.h,p:e.dataset.p,l:e.dataset.l,c:e.style.getPropertyValue('--edt-c'),cls:e.className,jour:(e.closest('.edtg-col')||{}).ariaLabel||null,top:parseFloat(e.style.top),haut:parseFloat(e.style.height),x:e.getBoundingClientRect().x,w:e.getBoundingClientRect().width,col:+(e.closest('.edtg-col')||{dataset:{}}).dataset.jour})).sort((a,b)=>a.col-b.col||a.top-b.top)`);
+  b.vue = (v) => b.ev(`(()=>{const x=document.querySelector('.edtg-vues [data-vue="${'${v}'}"]');x&&x.click();return !!x})()`.replace('${v}', v));
   b.avant = () => b.ev(`(()=>{const e=document.querySelector('.edt-avant');return e?{txt:e.querySelector('.edt-avant-txt').textContent,cls:e.className,boutons:[...e.querySelectorAll('button')].map(x=>x.textContent.trim())}:null})()`);
   b.debordement = () => b.ev(`(()=>{const d=document.scrollingElement;const hors=[...document.querySelectorAll('.edt *, .edt-selecteur *')].filter(e=>{const r=e.getBoundingClientRect();return r.width&&(r.right>innerWidth+0.5||r.left<-0.5)}).map(e=>e.className||e.tagName).slice(0,5);return {sw:d.scrollWidth,iw:innerWidth,hors}})()`);
   // capture d'un élément entier : la fenêtre est agrandie le temps de la prise si l'élément dépasse

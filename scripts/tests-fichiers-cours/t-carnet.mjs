@@ -10,6 +10,7 @@ const avant = JSON.parse(await b.S(`return JSON.stringify((await S.getAll('quest
 await b.biblio({ recharger: true });
 // séance sur la fiche
 const sel = `[...document.querySelectorAll('.lt-fiche .lt-rangee')].find(e=>e.innerText.startsWith('Psychologie du développement'))`;
+await b.ev(`${sel}.scrollIntoView({block:"center"});1`); await b.dormir(200);
 const row = await b.pos(sel, false);
 await b.c.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: row[0], y: row[1] }); await b.dormir(300);
 await b.clic(await b.pos(`${sel}.querySelector('[title="Réviser cette fiche"]')`, false), { att: 1500 });

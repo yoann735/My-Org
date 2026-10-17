@@ -193,10 +193,10 @@ export function ReglagesPreReponses({ ctx }) {
   const changer = (i, v) => setListe((l) => l.map((p, k) => (k === i ? { ...p, label: v } : p)));
   const deplacer = (i, d) => { const l = [...liste]; const j = i + d; if (j < 0 || j >= l.length) return; [l[i], l[j]] = [l[j], l[i]]; enregistrer(l); };
   return (
-    <div className="cp-reglages sn-reglages" data-reglages="pre-reponses">
+    <div className="sn-reglages" data-reglages="pre-reponses">
       <div className="hint">Pré-réponses rapides : le menu à un tap « Carnet d’erreurs » qui suit une note en révision. Chacune devient le type de l’entrée ; « Autre… » ouvre toujours le formulaire complet.</div>
       {liste.map((p, i) => (
-        <div key={p.id} className="cp-reglage">
+        <div key={p.id} className="sn-reglage">
           <input className="imp-title" value={p.label} aria-label={`Pré-réponse ${i + 1}`} onChange={(e) => changer(i, e.target.value)} onBlur={() => enregistrer(liste)} />
           <button type="button" className="cd-ic" title="Monter" disabled={i === 0} onClick={() => deplacer(i, -1)}><Icon name="chevU" size={14} /></button>
           <button type="button" className="cd-ic" title="Descendre" disabled={i === liste.length - 1} onClick={() => deplacer(i, 1)}><Icon name="chevD" size={14} /></button>

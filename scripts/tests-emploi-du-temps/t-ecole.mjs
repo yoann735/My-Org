@@ -14,7 +14,7 @@ const grilleJ = async (n) => { await b.png(n, '.wcal-grid:not(.edt-grille)'); aw
 await grilleJ('edt-j-avant');
 b.ok(await b.ev(`document.querySelector('.edt-seg .seg-btn.active').innerText==='Mes J'`), 'mode par défaut : « Mes J »');
 await b.mode('ecole'); await b.dormir(1200);
-b.ok(await b.ev(`!!document.querySelector('.edt-grille') && !document.querySelector('.wcal-grid:not(.edt-grille)')`), 'École : la grille École remplace celle des J');
+b.ok(await b.ev(`!!document.querySelector('.edtg') && !document.querySelector('.wcal-grid')`), 'École : le calendrier horaire remplace la grille des J');
 await b.mode('j'); await b.dormir(900);
 await grilleJ('edt-j-apres');
 b.ok(identiques('../cap/edt-j-avant.png', '../cap/edt-j-apres.png'), 'Mes J → École → Mes J : grille des J identique au pixel');
@@ -24,26 +24,26 @@ await b.png('edt-switch-j', '.edt-tete', 6);
 // ---- 2. École mémorisé
 await b.mode('ecole'); await b.dormir(800);
 await b.recharger(); await b.accueil(); await b.dormir(800);
-b.ok(await b.ev(`document.querySelector('.edt-seg .seg-btn.active').innerText==='École' && !!document.querySelector('.edt-grille')`), 'choix « École » mémorisé après rechargement');
+b.ok(await b.ev(`document.querySelector('.edt-seg .seg-btn.active').innerText==='École' && !!document.querySelector('.edtg')`), 'choix « École » mémorisé après rechargement');
 
 // ---- 3. la semaine
 const c = await b.cartes();
 const jour = (n) => c.filter((x) => (x.jour || '').startsWith(n));
 b.ok(jour('lundi').map((x) => x.h.slice(0, 11)).join(' | ') === '08:30–10:30 | 10:45–12:45 | 13:45–15:45', 'lundi : cours sur deux créneaux + cours Teams', jour('lundi').map((x) => x.h).join(' | '));
 b.ok(jour('lundi')[2].l.trim() === 'Teams' && jour('lundi')[2].p === 'M. Dupont', 'cours Teams : « Teams » à la place de la salle');
-b.ok(jour('mardi').length === 2 && /annule/.test(jour('mardi')[1].cls) && /Annulé/.test(jour('mardi')[1].h), 'mardi : cours annulé barré, badge « Annulé »');
+b.ok(jour('mardi').length === 2 && /annule/.test(jour('mardi')[1].cls) && await b.ev(`/annulé/.test(document.querySelector('.edtg-bloc.annule').getAttribute('aria-label')) && getComputedStyle(document.querySelector('.edtg-bloc.annule .edtg-t')).textDecorationLine==='line-through'`), 'mardi : cours annulé barré, « annulé »');
 b.ok(/pratique/.test(jour('mardi')[0].l), 'mardi : cours pratique signalé');
 b.ok(jour('jeudi').length === 1 && jour('jeudi')[0].h.startsWith('13:45–15:45') && /B07/.test(jour('jeudi')[0].l), 'jeudi : cours modifié (13:45, B07) à la place de 10:45 B04');
 b.ok(jour('samedi').length === 0 && jour('dimanche').length === 0, 'week-end vide');
 b.ok(jour('lundi')[0].p === 'Mme Leyh' && /C02/.test(jour('lundi')[0].l) && /Montignies/.test(jour('lundi')[0].l), 'carte : prof, salle, campus');
-const st = await b.ev(`(()=>{const e=document.querySelector('.edt-cours');const s=getComputedStyle(e);return {bl:s.borderLeftWidth+' '+s.borderLeftStyle,bc:s.borderLeftColor,bg:s.backgroundColor,c:e.style.getPropertyValue('--edt-c')}})()`);
-b.ok(st.bl === '3px solid' && /(, 0\.12\)|\/ 0\.12\))$/.test(st.bg), 'couleur en bordure gauche (3 px) + fond teinté à 12 %', JSON.stringify(st));
+const st = await b.ev(`(()=>{const e=document.querySelector('.edtg-bloc');const s=getComputedStyle(e);return {bl:s.borderLeftWidth+' '+s.borderLeftStyle,bc:s.borderLeftColor,bg:s.backgroundColor,c:e.style.getPropertyValue('--edt-c')}})()`);
+b.ok(st.bl === '3px solid' && st.c && st.bg !== 'rgba(0, 0, 0, 0)', 'couleur en bordure gauche (3 px) + fond teinté', JSON.stringify(st));
 
 // ---- 4. en tête : cours en cours, liseré pulsant
 const a = await b.avant();
 b.ok(a && a.txt === 'En cours · jusqu’à 10:30 · Anatomie descriptive et palpatoire · Mme Leyh · C02 · Montignies', 'en tête : cours en cours', a && a.txt);
-const pouls = await b.ev(`(()=>{const e=document.querySelector('.edt-cours.en-cours');return e?[getComputedStyle(e,'::before').animationName, getComputedStyle(e,'::before').animationDuration, document.querySelectorAll('.edt-cours.en-cours').length]:null})()`);
-b.ok(pouls && pouls[0] === 'edt-pouls' && pouls[2] === 1, 'un seul cours en cours, liseré pulsant', JSON.stringify(pouls));
+const pouls = await b.ev(`(()=>{const e=document.querySelector('.edtg-bloc.en-cours');return e?[getComputedStyle(e,'::after').animationName, getComputedStyle(e,'::after').animationDuration, document.querySelectorAll('.edtg-bloc.en-cours').length]:null})()`);
+b.ok(pouls && pouls[0] === 'edtg-pulse' && pouls[2] === 1, 'un seul cours en cours, liseré pulsant', JSON.stringify(pouls));
 await b.png('edt-ecole-semaine', '.edt-carte');
 
 // ---- 5. couleurs stables (3 actualisations + 3 rechargements)
@@ -67,7 +67,7 @@ b.ok(c2.find((x) => x.jour.startsWith('lundi')).h.startsWith('08:30') && c2.find
 await clicNav('Semaine précédente'); await clicNav('Semaine précédente');
 c2 = await b.cartes();
 b.ok(c2.find((x) => x.jour.startsWith('jeudi')).h.startsWith('10:45–12:45') && c2.find((x) => x.jour.startsWith('lundi')).h.startsWith('08:30'), 'semaine passée (12/10) : mêmes heures avant le changement d’heure');
-await b.clic(await b.bouton("Aujourd'hui"), { att: 500 });
+await b.clic(await b.pos(`document.querySelector('.edtg-auj')`, false), { att: 500 });
 b.ok(await b.ev(`document.querySelector('.edt-nav .wk').innerText`) === 'Cette semaine', '« Aujourd’hui » revient à la semaine en cours');
 b.ok(b.erreurs.length === 0, '0 erreur console', b.erreurs.join(' | '));
 b.c.fermer();
@@ -85,7 +85,7 @@ for (const tz of ['America/New_York', 'Asia/Tokyo']) {
 b = await ouvrir({ date: '2026-10-19T06:05:00Z' });
 let av = await b.avant();
 b.ok(av && av.txt === 'Dans 25 min · Anatomie descriptive et palpatoire · Mme Leyh · C02 · Montignies' && !/en-cours/.test(av.cls), 'prochain cours : « Dans 25 min · … »', av && av.txt);
-b.ok(await b.ev(`document.querySelectorAll('.edt-cours.en-cours').length`) === 0, 'aucun liseré avant le début');
+b.ok(await b.ev(`document.querySelectorAll('.edtg-bloc.en-cours').length`) === 0, 'aucun liseré avant le début');
 b.c.fermer();
 b = await ouvrir({ date: '2026-10-20T11:00:00Z' }); // mardi 13:00 : biochimie (13:45) annulée
 av = await b.avant();

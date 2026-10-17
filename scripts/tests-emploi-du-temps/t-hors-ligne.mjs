@@ -15,7 +15,7 @@ b = await ouvrir({ date: new Date(Date.parse(srv.generatedAt) + 2 * 3600e3 + 60e
 await b.couperApi();
 await b.recharger(); await b.accueil();
 const t0 = Date.now();
-await b.attendre(`document.querySelector('.edt-cours')`, 5000);
+await b.attendre(`document.querySelector('.edtg-bloc')`, 5000);
 const delai = Date.now() - t0;
 await b.attendre(`/Hors ligne/.test((document.querySelector('.edt-fraicheur')||{}).textContent||'')`, 6000);
 const fr = await b.ev(`document.querySelector('.edt-fraicheur').textContent.trim()`);

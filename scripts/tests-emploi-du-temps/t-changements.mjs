@@ -22,8 +22,8 @@ b.ok(liste.some((x) => /^Psychologie de la santé · mer\. 21 oct\. \/ Annulé$/
 b.ok(liste.some((x) => /^Anglais médical · ven\. 23 oct\. \/ A01 · Montignies → A03 · Montignies$/.test(x)), 'salle : A01 → A03');
 await b.png('edt-changement', '.edt-carte');
 const cartes = await b.cartes();
-b.ok(/Modifié/.test(cartes.find((x) => x.t === 'Physiologie humaine' && x.jour.startsWith('lundi')).h) && /14:30–16:30/.test(cartes.find((x) => x.t === 'Physiologie humaine' && x.jour.startsWith('lundi')).h), 'carte : nouvel horaire + badge « Modifié »');
-b.ok(/Annulé/.test(cartes.find((x) => x.t === 'Psychologie de la santé').h), 'carte : badge « Annulé »');
+b.ok(/change/.test(cartes.find((x) => x.t === 'Physiologie humaine' && x.jour.startsWith('lundi')).cls) && /14:30–16:30/.test(cartes.find((x) => x.t === 'Physiologie humaine' && x.jour.startsWith('lundi')).h), 'bloc : nouvel horaire + marqué « modifié »');
+b.ok(/annule/.test(cartes.find((x) => x.t === 'Psychologie de la santé').cls), 'bloc : annulé (barré)');
 // ouvert une fois → plus en accent ; toujours là après rechargement
 await b.recharger(); await b.accueil(); await b.attendreEcole(); await b.dormir(400);
 b.ok(await b.ev(`(()=>{const e=document.querySelector('.edt-changements .edt-ligne');return !!e && !e.classList.contains('nouveau') && e.textContent.trim()==='3 changements cette semaine'})()`), 'après rechargement : toujours listés, marqués vus');
