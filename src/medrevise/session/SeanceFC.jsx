@@ -19,6 +19,8 @@ import { ZoneDefilante } from '../components/ZoneDefilante.jsx';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
 import { TableauMuscle, ligneParLigne, ImageGeneraleMuscle } from '../components/FlashcardMuscle.jsx';
 import { BoutonsFlashcard } from '../components/BoutonsFlashcard.jsx';
+import { SuiteNotation } from '../components/SuiteNotation.jsx';
+import { commencerGlisse, finirGlisse } from '../apprentissageLibre/liste.js';
 import { estMuscle } from '../lib/muscle.js';
 import { estMolecule } from '../molecule/carte.js';
 import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
@@ -74,6 +76,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
   const [cartes, setCartes] = useState(() => Object.fromEntries((ctx.db.questions || []).map((q) => [q.id, q])));
   const [retournee, setRetournee] = useState(false);
   const [enCours, setEnCours] = useState(false); // une réponse est en train d'être enregistrée
+  const [derniere, setDerniere] = useState(null); // (17/10) carte qui vient d'être notée (components/SuiteNotation.jsx)
   const etatRef = useRef(null); etatRef.current = etat;
   const cartesRef = useRef(cartes); cartesRef.current = cartes;
 
@@ -161,6 +164,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
       const { plan, coursDe } = planSurCartes(ctx.db, { ...cartesRef.current, [s.id]: s }, today);
       e = reprendreSeance(e, plan, coursDe).etat;
       setRetournee(false);
+      setDerniere({ carte: s, cle: Date.now() });
       await ecrire(e);
     } finally { setEnCours(false); }
   };
@@ -193,6 +197,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
         <div className="sfc-corps">
           <div className="sfc-etiquette">{(carte.historique || []).some((h) => h && h.qualite != null) ? 'Révision' : 'Nouvelle carte'}</div>
           <button type="button" className="sfc-carte" key={carte.id + ':' + (retournee ? 'v' : 'r')} data-carte={carte.id}
+            draggable onDragStart={(e) => commencerGlisse(e, [carte.id])} onDragEnd={finirGlisse}
             onClick={() => setRetournee((r) => !r)}>
             <FaceFC carte={carte} cote={retournee ? 'verso' : 'recto'} masquable={ligneParLigne(ctx)} />
             {!retournee && <span className="sfc-indication">Touche pour voir la réponse</span>}
@@ -201,6 +206,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
             {!retournee && <button type="button" className="sfc-btn neutre" onClick={() => setRetournee(true)}>Voir la réponse</button>}
             {retournee && <BoutonsFlashcard carte={carte} reglages={ctx.reglagesFC} onNoter={noter} disabled={enCours} variante="seance" />}
           </div>
+          {derniere && <SuiteNotation ctx={ctx} carte={derniere.carte} cle={derniere.cle} />}
         </div>
       )}
     </div>

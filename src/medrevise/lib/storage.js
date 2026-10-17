@@ -621,6 +621,18 @@ export async function setCarnetPuces(puces) {
   return rec;
 }
 
+/* ---- PRÉ-RÉPONSES RAPIDES DU CARNET D'ERREURS (17/10, lib/carnetPreReponses.js) : le menu à un tap
+   « Carnet d'erreurs » qui suit une note en révision. Même mécanique que carnetPuces — store
+   `S.prompts` (SYNCABLE), clé DISTINCTE, enregistrement ADDITIONNEL. Absent → liste par défaut. */
+export async function getCarnetPreReponses() { return (await get('carnetPreReponses', S.prompts)) || null; }
+export async function setCarnetPreReponses(liste) {
+  const updatedAt = new Date().toISOString();
+  const rec = { id: 'carnetPreReponses', liste, updatedAt };
+  await set('carnetPreReponses', rec, S.prompts);
+  queuePush('prompts', 'carnetPreReponses', rec, updatedAt);
+  return rec;
+}
+
 /* ---- EMPLOI DU TEMPS HELHa (17/10, lib/edtCouleurs.js) : couleur fixe et matière reliée de chaque
    cours détecté. Même mécanique que carnetPuces — store `S.prompts` (SYNCABLE), clé DISTINCTE,
    enregistrement ADDITIONNEL : l'emploi du temps lui-même n'est JAMAIS écrit ici (cache serveur +

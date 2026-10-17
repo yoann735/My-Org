@@ -18,6 +18,7 @@ import { CarteSauvegardes } from '../components/FiletSecurite.jsx';
 import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
 import { CarteArchives, CarteFichiersHorsModele } from '../components/Archives.jsx';
 import { ReglagesCarnet } from '../components/SaisieCarnet.jsx';
+import { ReglagesPreReponses } from '../components/SuiteNotation.jsx';
 import { ReglagesEmploiDuTemps } from '../components/EmploiDuTemps.jsx';
 import { validateBackup, currentCounts, importBackup, computeCloudDiff, applyCloudTombstones } from '../lib/backupImport.js';
 
@@ -307,6 +308,10 @@ export function Reglages({ ctx }) {
         </Card>
         {/* (16/10) puces « Type d'erreur » du carnet d'erreurs */}
         <Card title="Carnet d’erreurs" icon="edit">
+          {/* (17/10) pré-réponses rapides (menu à un tap après une note en révision) */}
+          <div className="cp-sous-titre">Pré-réponses rapides</div>
+          <ReglagesPreReponses key={ctx.carnetPreReponses ? ctx.carnetPreReponses.updatedAt : 'defaut-pr'} ctx={ctx} />
+          <div className="cp-sous-titre">Types d’erreur du formulaire</div>
           <ReglagesCarnet key={ctx.carnetPuces ? ctx.carnetPuces.updatedAt : 'defaut'} ctx={ctx} />
         </Card>
         {/* PROMPTS (11/10) : l'entrée « Prompts » de la barre latérale, déplacée telle quelle */}

@@ -13,6 +13,8 @@ import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { Icon } from '../../shared/Icon.jsx';
 import { SaisieCarnet } from '../components/SaisieCarnet.jsx';
+import { SuiteNotation } from '../components/SuiteNotation.jsx';
+import { commencerGlisse, finirGlisse } from '../apprentissageLibre/liste.js';
 import { Breadcrumb, matiereMeta, EtiquetteQuickSet, SessionTrendCard } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { ZoneDefilante, classeLongueur } from '../components/ZoneDefilante.jsx';
@@ -101,6 +103,9 @@ export function Session({ ctx }) {
   // quel pour y greffer carnetRaison/carnetAt sans recalculer la méthode des
   // J. `addedRelearn` : voir extraItems ci-dessous.
   const [carnetPrompt, setCarnetPrompt] = useState(null);
+  // (17/10) la carte QUI VIENT D'ÊTRE NOTÉE : « Carnet d'erreurs » / « Apprentissage » en un geste
+  // (components/SuiteNotation.jsx) — { carte, cle } ; jamais en mode 'erreur' (cartes V2)
+  const [derniere, setDerniere] = useState(null);
   // relearning step (moteur adaptatif, Raté) : file d'attente EN MÉMOIRE DE
   // SESSION uniquement, jamais persistée — une carte ratée y est ajoutée et
   // ne réapparaît qu'APRÈS toutes les cartes initialement prévues ("fin de
@@ -154,6 +159,7 @@ export function Session({ ctx }) {
   // total explicitement plutôt que de lire une valeur non encore à jour.
   const proceedToNext = (rating, itemId, itemType, addedRelearn = false) => {
     setResults((r) => { const n = r.slice(0, idx); n[idx] = { id: itemId, type: itemType, rating }; return n; });
+    if (!erreurMode) setDerniere({ carte: allItems[idx] && allItems[idx].id === itemId ? allItems[idx] : { id: itemId, type: itemType }, cle: Date.now() });
     const total = allItems.length + (addedRelearn ? 1 : 0);
     if (idx + 1 >= total) { setAnim('out'); setTimeout(() => setFinished(true), 240); return; }
     setAnim('out');
@@ -329,6 +335,7 @@ export function Session({ ctx }) {
             ? <QcmCard item={item} meta={meta} selectedIds={selectedIds} setSelectedIds={setSelectedIds} validated={validated} validate={validate} pulse={pulse} onRate={advance} canPrev={idx > 0} onPrev={goPrev} ctx={ctx} />
             : <FlashCardView item={item} meta={meta} flipped={flipped} setFlipped={setFlipped} onRate={advance} canPrev={idx > 0} onPrev={goPrev} clozeMode={clozeMode} setClozeMode={setClozeMode} ctx={ctx} carnetPrompt={carnetPrompt} onCarnetSubmit={submitCarnetRaison} onCarnetSkip={skipCarnetRaison} erreurMode={erreurMode} />}
         </div>
+        {!erreurMode && derniere && <SuiteNotation ctx={ctx} carte={derniere.carte} cle={derniere.cle} />}
       </div>
 
       <Roadmap items={allItems} idx={idx} onJump={jumpTo} />
@@ -471,7 +478,10 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
   return (
     <div>
       <div className="flash-scene">
-        <div className={'flash-card' + (flipped ? ' flipped' : '') + (occ ? ' occ' : '') + (muscle ? ' muscle' : '') + (molecule ? ' molecule' : '') + (!occ && (imageAuRecto(item) || imageAuVerso(item)) ? ' img' : '')} onClick={() => setFlipped((f) => !f)}>
+        {/* (17/10) ordinateur : la carte se glisse vers l'onglet « Apprentissage » de la barre latérale */}
+        <div className={'flash-card' + (flipped ? ' flipped' : '') + (occ ? ' occ' : '') + (muscle ? ' muscle' : '') + (molecule ? ' molecule' : '') + (!occ && (imageAuRecto(item) || imageAuVerso(item)) ? ' img' : '')} onClick={() => setFlipped((f) => !f)}
+          draggable={!erreurMode && item.type === 'flashcard' && !item.ephemeral} data-carte-glissable={item.id}
+          onDragStart={!erreurMode && item.type === 'flashcard' && !item.ephemeral ? (e) => commencerGlisse(e, [item.id]) : undefined} onDragEnd={finirGlisse}>
           <div className="flash-face front">
             <span className="ff-tag" style={{ color: meta.tint }}>{erreurMode ? "Flashcard d'erreur" : `${meta.label} · ${item.theme}`}</span>
             <ZoneDefilante className={'ff-zone ' + classeLongueur(item.recto)}>

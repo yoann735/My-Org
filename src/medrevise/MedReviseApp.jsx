@@ -32,7 +32,7 @@ import {
   getAll, put, putMany, remove, getStats, setStats as saveStats, genId, syncNow,
   purgeSource, purgeMatiere, purgeFiche, putBackup, newErrorCard,
   getCoursePrompts, setCoursePrompts, getExoPrompts, setExoPrompts,
-  getChapExoPrompts, setChapExoPrompts, getReglagesFC, setReglagesFC, getCarnetPuces, setCarnetPuces, getEdtReglages, majEdtReglages,
+  getChapExoPrompts, setChapExoPrompts, getReglagesFC, setReglagesFC, getCarnetPuces, setCarnetPuces, getCarnetPreReponses, setCarnetPreReponses, getEdtReglages, majEdtReglages,
 } from './lib/storage.js';
 import { demarrerEmploiDuTemps } from './lib/emploiDuTemps.js';
 import { runMigrations } from './lib/migrate.js';
@@ -159,6 +159,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // flashcards : réglages synchronisés (Muscle, FSRS — lib/apprentissageFC.js reglagesFC) + écran de retour
   const [reglagesFC, setReglagesFCState] = useState(null);
   const [carnetPuces, setCarnetPucesState] = useState(null); // puces du carnet d'erreurs (lib/carnetPuces.js)
+  const [carnetPreReponses, setCarnetPreReponsesState] = useState(null); // (17/10) pré-réponses rapides (lib/carnetPreReponses.js)
   const [edtReglages, setEdtReglagesState] = useState(null); // emploi du temps : couleur / matière par cours (lib/edtCouleurs.js)
   const [retourSeanceFC, setRetourSeanceFC] = useState(null);
   const [feynman, setFeynman] = useState(null);
@@ -177,6 +178,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     ]);
     setReglagesFCState(await getReglagesFC());
     setCarnetPucesState(await getCarnetPuces());
+    setCarnetPreReponsesState(await getCarnetPreReponses());
     setEdtReglagesState(await getEdtReglages());
     // `learningSet` : ids de la liste du mode Apprentissage libre (apprentissageLibre/liste.js).
     // Clé AJOUTÉE à db, lue par ce seul mode — aucun calcul existant (J, FSRS, séance) ne la lit.
@@ -314,6 +316,9 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // ---- carnet d'erreurs : puces « Type d'erreur » (16/10) ----
     carnetPuces,
     saveCarnetPuces: async (puces) => { setCarnetPucesState(await setCarnetPuces(puces)); },
+    // (17/10) pré-réponses rapides du carnet (menu à un tap après une note en révision)
+    carnetPreReponses,
+    saveCarnetPreReponses: async (liste) => { setCarnetPreReponsesState(await setCarnetPreReponses(liste)); },
     // ---- emploi du temps HELHa (17/10) : réglages par cours, seul enregistrement écrit par ce mode ----
     edtReglages,
     majEdtReglages: (fn) => majEdtReglages(fn),

@@ -28,3 +28,44 @@ export async function banc(W = 1440, H = 900, opts = {}) {
   b.basculer = async (lbl) => { await b.ev(`(()=>{const x=[...document.querySelectorAll('.pdfr-jumelle-bascule .seg-btn')].find(x=>x.innerText.trim()===${JSON.stringify(lbl)});x&&x.click();return 1})()`); await b.dormir(1800); };
   return b;
 }
+
+/* ---- révision → carnet / apprentissage (17/10) ---- */
+// diagnostic d'indépendance : ce que la méthode des J et FSRS possèdent pour les cartes q-rv*
+// (export de diagnostic lib/diagnosticExport.js + champs bruts de planification + journal local + séance du jour)
+export const DIAG = `(async()=>{const u=performance.getEntriesByType('resource').map(e=>e.name);const im=(p)=>import(u.find(n=>n.includes(p))||('/src/medrevise/'+p));
+  const S=await im('lib/storage.js');const D=await im('lib/diagnosticExport.js');const J=await im('journal/journal.js');
+  const d=await D.construireDiagnostic();
+  const cartesDiag=(d.cartes||[]).filter(c=>String(c.id||c.cardId||'').startsWith('q-rv')).sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+  const plan=(await S.getAll('questions')).filter(q=>q.id.startsWith('q-rv')).sort((a,b)=>a.id.localeCompare(b.id)).map(q=>({id:q.id,dueDate:q.dueDate,intervalDays:q.intervalDays,learnState:q.learnState,fsrs:q.fsrs||null,historique:q.historique,termine:q.termine,capped:q.capped,missed:q.missed||null}));
+  const journal=(await J.toutLeJournal()).filter(e=>String(e.card_id).startsWith('q-rv')).map(e=>e.id).sort();
+  const seance=await S.getMeta('seanceFC').catch(()=>null);
+  return JSON.stringify({cartesDiag,plan,journal,seance:seance?{idx:seance.idx,faites:seance.faites,cartes:seance.cartes}:null});})()`;
+export async function bancRevision(b) {
+  b.diag = () => b.ev(DIAG);
+  // sans `updatedAt` des cartes : le carnet ÉCRIT ses champs (carnetAt/Type/Raison) sur la carte — la planification, elle, ne doit pas bouger
+  b.diagPlan = async () => { const d = JSON.parse(await b.diag()); d.cartesDiag = d.cartesDiag.map(({ updatedAt, ...r }) => r); return JSON.stringify(d); };
+  b.carte = (id) => b.S(`return await S.getOne('questions',${JSON.stringify(id)})`);
+  b.listeAppr = () => b.S(`const r=await S.getOne('learning_set','learning_set');return r?r.cardIds:[]`);
+  b.sn = () => b.ev(`(()=>{const s=document.querySelector('[data-suite-notation]');if(!s)return null;return {deplie:s.classList.contains('deplie'),replie:s.classList.contains('replie'),carte:(s.querySelector('.sn-carte b')||{}).textContent||'',boutons:[...s.querySelectorAll('.sn-btn')].map(x=>({sn:x.dataset.sn,txt:x.innerText.trim(),h:Math.round(x.getBoundingClientRect().height),w:Math.round(x.getBoundingClientRect().width),dis:x.disabled}))}})()`);
+  b.toast = () => b.ev(`(()=>{const t=document.querySelector('.sn-toast');return t?t.innerText.replace(/\\s+/g,' ').trim():null})()`);
+  // glisser-déposer HTML5 réel (Chrome) : glisser intercepté puis déposé sur la cible
+  b.glisserHTML5 = async (de, a) => {
+    const c = b.c;
+    await c.send('Input.setInterceptDrags', { enabled: true });
+    const pris = new Promise((ok) => { c.on((m) => { if (m.method === 'Input.dragIntercepted') ok(m.params.data); }); });
+    const souris = (type, x, y, extra = {}) => c.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1, ...extra });
+    await souris('mouseMoved', de[0], de[1]); await souris('mousePressed', de[0], de[1]);
+    for (let k = 1; k <= 6; k++) { await souris('mouseMoved', de[0] + (a[0] - de[0]) * k / 6, de[1] + (a[1] - de[1]) * k / 6, { buttons: 1 }); await b.dormir(40); }
+    const data = await Promise.race([pris, b.dormir(3000).then(() => null)]);
+    if (data) {
+      for (const type of ['dragEnter', 'dragOver']) { await c.send('Input.dispatchDragEvent', { type, x: a[0], y: a[1], data }); await b.dormir(120); }
+      b.__surCible = await b.ev(`document.querySelector('.sb-appr').className`);
+      await c.send('Input.dispatchDragEvent', { type: 'drop', x: a[0], y: a[1], data });
+    }
+    await souris('mouseReleased', a[0], a[1]);
+    await c.send('Input.setInterceptDrags', { enabled: false });
+    await b.dormir(600);
+    return !!data;
+  };
+  return b;
+}
