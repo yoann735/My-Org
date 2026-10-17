@@ -72,7 +72,8 @@ await b.clic(await b.pos(`[...document.querySelectorAll('.edt-cours')].find(e=>e
 await b.attendre(`document.querySelector('.pdfr-scroll')`, 10000);
 const ouvert = await b.ev(`document.body.innerText.includes('Membre inférieur — repères')`);
 const ecran = await b.ev(`JSON.parse(localStorage.getItem('medrevise.derniersCours.v1')||'{}')['mat-tb-ap']?.ficheId`);
-b.ok(ouvert && ecran === 'fmutuyq5jtb02ap', '« Ouvrir » (Anatomie) ouvre le dernier cours ouvert : « Membre inférieur — repères »', ecran);
+const idMI = await b.S(`return (await S.getAll('fiches')).find(f=>f.titre==='Membre inférieur — repères'&&!f.archive).id`);
+b.ok(ouvert && ecran === idMI, '« Ouvrir » (Anatomie) ouvre le dernier cours ouvert : « Membre inférieur — repères »', ecran);
 
 // ---- rien d'autre n'a bougé
 const apresTout = await empreinte();
