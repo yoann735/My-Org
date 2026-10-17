@@ -1,0 +1,265 @@
+/* ============================================================
+   MedRevise — IMPORT DE FLASHCARDS (JSON) DEPUIS LE PANNEAU (17/10,
+   docs/compte-rendu-import-tableau-nettete.md). Schéma d'import v1.1 (celui des prompts de
+   génération), ÉTENDU à tous les types de cartes :
+     { "items": [ { "type": "flashcard", "theme", "recto", "verso", "cloze", "indice", "a_retenir",
+                    "image":    { "data": "data:image/png;base64,…" | "fichier": "nom.png" (dans le .zip), "place": "recto"|"verso"|"deux" },
+                    "muscle":   { "origine", "trajet", "insertion", "action", "innervation" },
+                    "molecule": { "nom", "smiles", "sens": "nom-molecule"|"molecule-nom" },
+                    "tableau":  { "colonnes": [2 à 6], "lignes": [[…], …] (1 à 12) } } ] }
+   Une carte Muscle / Molécule / Tableau a son recto (nom, titre) ; son verso est construit.
+   VALIDATION STRICTE : champ manquant, type inconnu, champ inconnu, valeur hors limites → un message
+   par carte, avec son numéro et sa LIGNE dans le JSON ; rien n'est importé tant qu'il reste une
+   erreur. Les clés qui commencent par « _ » sont des commentaires (ignorées). Les items d'un autre
+   type v1.1 (qcm, feynman, exercice) sont signalés et laissés de côté (le panneau importe des
+   flashcards).
+   Écriture : appendItemsToFiche (lib/import.js) — exactement le chemin d'une carte créée à la main
+   (mêmes J, date de départ choisie) ; les images passent par putBlob (même stockage, même synchro).
+   ============================================================ */
+import { parseLooseJson, cleanPastedJson, extractFirstJsonValue } from './parsePastedJson.js';
+import { appendItemsToFiche } from './import.js';
+import { putBlob } from './storage.js';
+import { carteMuscle, LIGNES_MUSCLE } from './muscle.js';
+import { carteMolecule, SENS } from '../molecule/carte.js';
+import { carteTableau, normaliserTableau } from './carteTableau.js';
+import { lireZip, typeImage } from './zipLecture.js';
+
+const CHAMPS = new Set(['type', 'id', 'theme', 'concept', 'recto', 'verso', 'cloze', 'indice', 'a_retenir', 'difficulte', 'tags', 'source_cours', 'image', 'muscle', 'molecule', 'tableau']);
+const AUTRES_TYPES = new Set(['qcm', 'feynman', 'exercice']);
+const CHAMPS_MUSCLE = LIGNES_MUSCLE.map((l) => l.id);
+const estTexte = (v) => typeof v === 'string' && v.trim() !== '';
+const str = (v) => (v == null ? '' : String(v)).trim();
+const sansCommentaires = (o) => Object.keys(o).filter((k) => !k.startsWith('_'));
+export const normRecto = (s) => String(s || '').replace(/\{\{c?\d*:{0,2}([^}]*)\}\}/g, '$1').replace(/<[^>]+>/g, ' ').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+
+/* ---- position (ligne) de chaque élément du tableau d'items dans le texte JSON ---- */
+function lignesDesItems(texte) {
+  const s = cleanPastedJson(texte);
+  const brut = extractFirstJsonValue(s);
+  if (!brut) return [];
+  const decal = s.indexOf(brut);
+  const lignePrefixe = (texte.slice(0, texte.indexOf(s)).match(/\n/g) || []).length;
+  // le tableau des items : `"items": [` au premier niveau, ou le tableau racine
+  let debutTab = -1;
+  if (brut.trimStart().startsWith('[')) debutTab = brut.indexOf('[');
+  else {
+    let prof = 0, chaine = false, echap = false;
+    for (let i = 0; i < brut.length; i++) {
+      const c = brut[i];
+      if (chaine) { if (echap) echap = false; else if (c === '\\') echap = true; else if (c === '"') chaine = false; continue; }
+      if (c === '"') { if (prof === 1 && /^"(items|flashcards)"\s*:\s*\[/.test(brut.slice(i, i + 40))) { debutTab = brut.indexOf('[', i); break; } chaine = true; continue; }
+      if (c === '{' || c === '[') prof++; else if (c === '}' || c === ']') prof--;
+    }
+  }
+  if (debutTab < 0) return [];
+  // chaque élément commence au premier caractère non blanc après « [ » ou après une virgule de ce niveau
+  const pos = [];
+  let prof = 0, chaine = false, echap = false, attendu = true;
+  for (let i = debutTab + 1; i < brut.length; i++) {
+    const c = brut[i];
+    if (chaine) { if (echap) echap = false; else if (c === '\\') echap = true; else if (c === '"') chaine = false; continue; }
+    if (prof === 0) {
+      if (c === ']') break;
+      if (c === ',') { attendu = true; continue; }
+      if (attendu && !/\s/.test(c)) { pos.push(i); attendu = false; }
+    }
+    if (c === '"') { chaine = true; continue; }
+    if (c === '{' || c === '[') prof++; else if (c === '}' || c === ']') prof--;
+  }
+  const ligneDe = (k) => lignePrefixe + (s.slice(0, decal + k).match(/\n/g) || []).length + 1;
+  return pos.map((k) => ligneDe(k));
+}
+
+/* ---- une image : { blob } prête à écrire, ou une erreur ---- */
+function lireImage(img, fichiers) {
+  if (img == null) return { image: null };
+  const o = typeof img === 'string' ? { data: img } : img;
+  if (typeof o !== 'object' || Array.isArray(o)) return { erreur: 'image : objet { data | fichier, place } attendu' };
+  const inconnus = sansCommentaires(o).filter((k) => !['data', 'fichier', 'place'].includes(k));
+  if (inconnus.length) return { erreur: `image.${inconnus[0]} : champ inconnu (attendus : data, fichier, place)` };
+  const place = o.place == null ? 'recto' : String(o.place);
+  if (!['recto', 'verso', 'deux'].includes(place)) return { erreur: `image.place « ${place} » : recto, verso ou deux` };
+  if (o.data != null) {
+    const m = /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/i.exec(String(o.data));
+    if (!m) return { erreur: 'image.data : URL de donnée d’image invalide (data:image/…;base64,…)' };
+    try {
+      const bin = atob(m[2].replace(/\s/g, ''));
+      const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+      return { image: { blob: new Blob([a], { type: m[1].toLowerCase() }), place } };
+    } catch (e) { return { erreur: 'image.data : base64 illisible' }; }
+  }
+  if (o.fichier != null) {
+    const nom = str(o.fichier);
+    if (!fichiers) return { erreur: `image.fichier « ${nom} » : importe un .zip qui contient ce fichier (ou utilise image.data)` };
+    const b = fichiers.get(nom) || [...fichiers.entries()].find(([k]) => k.split('/').pop() === nom)?.[1];
+    if (!b) return { erreur: `image.fichier « ${nom} » absent du .zip` };
+    const t = typeImage(nom);
+    if (!t) return { erreur: `image.fichier « ${nom} » : format d’image non reconnu` };
+    return { image: { blob: b.type ? b : new Blob([b], { type: t }), place } };
+  }
+  return { erreur: 'image : « data » ou « fichier » attendu' };
+}
+
+/* ---- une carte : { carte, sorte, image } ou { erreur } ---- */
+async function lireCarte(it, fichiers, chimie) {
+  if (!it || typeof it !== 'object' || Array.isArray(it)) return { erreur: 'n’est pas un objet' };
+  if (it.type == null) return { erreur: 'champ « type » manquant' };
+  if (typeof it.type !== 'string') return { erreur: 'champ « type » : texte attendu' };
+  if (AUTRES_TYPES.has(it.type)) return { autre: it.type };
+  if (it.type !== 'flashcard') return { erreur: `type inconnu « ${it.type} » (attendu : flashcard)` };
+  const inconnu = sansCommentaires(it).find((k) => !CHAMPS.has(k));
+  if (inconnu) return { erreur: `champ inconnu « ${inconnu} »` };
+  const sortes = ['muscle', 'molecule', 'tableau'].filter((k) => it[k] != null);
+  if (sortes.length > 1) return { erreur: `une carte est soit muscle, soit molecule, soit tableau (ici : ${sortes.join(' + ')})` };
+  const base = { theme: str(it.theme || it.concept), indice: str(it.indice), aRetenir: str(it.a_retenir), difficulte: estTexte(it.difficulte) ? it.difficulte : 'intermediaire' };
+  const im = lireImage(it.image, fichiers);
+  if (im.erreur) return { erreur: im.erreur };
+  let carte, sorte;
+  if (it.muscle != null) {
+    const m = it.muscle;
+    if (typeof m !== 'object' || Array.isArray(m)) return { erreur: 'muscle : objet { origine, trajet, insertion, action, innervation } attendu' };
+    const k = sansCommentaires(m).find((x) => !CHAMPS_MUSCLE.includes(x));
+    if (k) return { erreur: `muscle.${k} : champ inconnu (attendus : ${CHAMPS_MUSCLE.join(', ')})` };
+    if (!CHAMPS_MUSCLE.some((x) => estTexte(m[x]))) return { erreur: 'muscle : au moins un des 5 champs rempli' };
+    if (!estTexte(it.recto)) return { erreur: 'champ « recto » (nom du muscle) manquant' };
+    carte = carteMuscle({ nom: it.recto, lignes: Object.fromEntries(CHAMPS_MUSCLE.map((x) => [x, str(m[x])])), ...base });
+    sorte = 'muscle';
+  } else if (it.molecule != null) {
+    const m = it.molecule;
+    if (typeof m !== 'object' || Array.isArray(m)) return { erreur: 'molecule : objet { nom, smiles } attendu' };
+    const k = sansCommentaires(m).find((x) => !['nom', 'smiles', 'sens'].includes(x));
+    if (k) return { erreur: `molecule.${k} : champ inconnu (attendus : nom, smiles, sens)` };
+    if (!estTexte(m.smiles)) return { erreur: 'champ « molecule.smiles » manquant' };
+    const nom = str(m.nom) || str(it.recto);
+    if (!nom) return { erreur: 'champ « molecule.nom » (ou « recto ») manquant' };
+    const sens = m.sens == null ? 'nom-molecule' : String(m.sens);
+    if (!SENS.some((s) => s.id === sens)) return { erreur: `molecule.sens « ${sens} » : nom-molecule ou molecule-nom` };
+    let mol;
+    try {
+      const OCL = await chimie.charger();
+      const lu = chimie.lire(OCL, { smiles: str(m.smiles) });
+      if (!lu.getAllAtoms()) throw new Error('vide');
+      mol = chimie.exporter(OCL, lu);
+    } catch (e) { return { erreur: `molecule.smiles « ${str(m.smiles)} » : SMILES illisible` }; }
+    carte = carteMolecule({ nom, smiles: mol.smiles, molfile: mol.molfile, formule: mol.formule, sens, ...base });
+    sorte = 'molecule';
+  } else if (it.tableau != null) {
+    const r = normaliserTableau(it.tableau);
+    if (!r.ok) return { erreur: r.raison };
+    if (!estTexte(it.recto)) return { erreur: 'champ « recto » (titre du tableau) manquant' };
+    carte = carteTableau({ titre: it.recto, colonnes: r.tableau.colonnes, lignes: r.tableau.lignes, ...base });
+    sorte = 'tableau';
+  } else {
+    if (!estTexte(it.recto) && !estTexte(it.verso)) return { erreur: 'champs « recto » et « verso » manquants' };
+    if (!estTexte(it.recto)) return { erreur: 'champ « recto » manquant' };
+    if (!estTexte(it.verso)) return { erreur: 'champ « verso » manquant' };
+    if (it.cloze != null && !Array.isArray(it.cloze)) return { erreur: 'champ « cloze » : liste de mots attendue (ou null)' };
+    const cloze = (it.cloze || []).map(str).filter(Boolean);
+    carte = { type: 'flashcard', theme: base.theme, concept: base.theme, difficulte: base.difficulte, recto: str(it.recto), verso: str(it.verso),
+      indice: base.indice || null, a_retenir: base.aRetenir, ...(cloze.length ? { cloze } : {}) };
+    sorte = cloze.length || /\{\{[^}]+\}\}/.test(it.recto) ? 'trous' : im.image ? 'image' : 'texte';
+  }
+  if (Array.isArray(it.tags)) carte.tags = it.tags.map(str).filter(Boolean);
+  if (estTexte(it.id)) carte.id = str(it.id);
+  return { carte, sorte, image: im.image };
+}
+
+export const LIBELLES_SORTES = { texte: 'Texte', trous: 'Trous', image: 'Image', muscle: 'Muscle', molecule: 'Molécule', tableau: 'Tableau' };
+
+/**
+ * Analyse un import (texte JSON, ou fichier .json / .zip). Rien n'est écrit.
+ * @param {{ texte?: string, fichier?: File, existantes?: Array }} p — existantes : les cartes de la fiche (doublons)
+ * @returns {Promise<{ ok: false, erreur } | { ok: true, cartes, erreurs, autres, compte, doublons }>}
+ */
+export async function analyserImport({ texte = null, fichier = null, existantes = [] }) {
+  let fichiers = null;
+  if (fichier) {
+    if (/\.zip$/i.test(fichier.name || '') || /zip/.test(fichier.type || '')) {
+      try { fichiers = await lireZip(fichier); } catch (e) { return { ok: false, erreur: e.message }; }
+      const json = [...fichiers.keys()].find((k) => /\.json$/i.test(k) && !k.startsWith('__MACOSX'));
+      if (!json) return { ok: false, erreur: 'Le .zip ne contient aucun fichier .json.' };
+      texte = await fichiers.get(json).text();
+    } else texte = await fichier.text();
+  }
+  const p = parseLooseJson(texte || '');
+  if (!p.ok) return { ok: false, erreur: p.error };
+  const d = p.data;
+  const items = Array.isArray(d) ? d : d && Array.isArray(d.items) ? d.items : d && Array.isArray(d.flashcards) ? d.flashcards : d && typeof d === 'object' && d.type ? [d] : null;
+  if (!items) return { ok: false, erreur: 'Aucune liste de cartes : un objet { "items": [ … ] } (ou une liste [ … ]) est attendu.' };
+  if (!items.length) return { ok: false, erreur: 'La liste « items » est vide.' };
+  const lignes = lignesDesItems(texte);
+  let chimieMod = null;
+  const chimie = {
+    charger: async () => { chimieMod = chimieMod || await import('../molecule/chimie.js'); return chimieMod.chargerOCL(); },
+    lire: (...a) => chimieMod.lire(...a), exporter: (...a) => chimieMod.exporter(...a),
+  };
+  const deja = new Set((existantes || []).filter((q) => q.type === 'flashcard').map((q) => normRecto(q.recto)));
+  const cartes = [], erreurs = [], autres = [];
+  const compte = { texte: 0, trous: 0, image: 0, muscle: 0, molecule: 0, tableau: 0 };
+  for (let i = 0; i < items.length; i++) {
+    const r = await lireCarte(items[i], fichiers, chimie);
+    const ou = { index: i + 1, ligne: lignes[i] || null };
+    if (r.erreur) { erreurs.push({ ...ou, message: r.erreur }); continue; }
+    if (r.autre) { autres.push({ ...ou, type: r.autre }); continue; }
+    const cle = normRecto(r.carte.recto);
+    const doublon = deja.has(cle);
+    deja.add(cle);
+    cartes.push({ ...ou, carte: r.carte, sorte: r.sorte, image: r.image, doublon });
+    compte[r.sorte]++;
+  }
+  return { ok: true, cartes, erreurs, autres, compte, doublons: cartes.filter((c) => c.doublon).length };
+}
+
+/**
+ * Importe les cartes analysées dans la fiche (aucune s'il reste une erreur).
+ * `doublons` : 'ignorer' | 'importer'. Rend { count, ignores }.
+ */
+export async function importerCartes({ ficheId, analyse, startDate, doublons = 'ignorer' }) {
+  if (!analyse || !analyse.ok || analyse.erreurs.length) throw new Error('Corrige les erreurs avant d’importer.');
+  const garder = analyse.cartes.filter((c) => doublons === 'importer' || !c.doublon);
+  const items = [];
+  for (const c of garder) {
+    const carte = { ...c.carte };
+    if (c.image) {
+      const id = await putBlob(c.image.blob);
+      if (c.sorte === 'muscle') carte.muscle = { ...carte.muscle, imageGenerale: { imageId: id, auRecto: c.image.place !== 'verso' } };
+      else { carte.imageId = id; carte.imagePlace = c.image.place; }
+    }
+    items.push(carte);
+  }
+  const r = await appendItemsToFiche({ ficheId, items, startDate });
+  return { count: r.count || 0, ignores: analyse.cartes.length - garder.length + (r.duplicates || 0) };
+}
+
+/* ---- le format attendu : un exemple COMPLET et commenté (clés « _… »), réimportable tel quel ---- */
+const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+export const EXEMPLE_IMPORT = {
+  _commentaire: 'Import de flashcards MedRevise — schéma v1.1 étendu. Les clés qui commencent par « _ » sont des commentaires (ignorés). Un item = une carte ; « type » vaut toujours « flashcard ».',
+  items: [
+    { _sorte: 'texte', type: 'flashcard', theme: 'Nerfs crâniens', recto: 'Quel nerf innerve le muscle oblique supérieur ?', verso: 'Le nerf trochléaire (IV).', indice: 'Le plus fin des nerfs crâniens', a_retenir: 'SO4 : oblique supérieur → IV' },
+    { _sorte: 'trous (cloze)', _aide: 'le recto contient {{…}} ; « cloze » liste les mots masqués', type: 'flashcard', theme: 'Nerfs crâniens', recto: 'Le nerf {{abducens}} innerve le muscle droit latéral.', verso: 'Le nerf abducens (VI) innerve le muscle droit latéral.', cloze: ['abducens'] },
+    { _sorte: 'image', _aide: 'image.data = URL de donnée, ou image.fichier = nom d’un fichier joint dans un .zip ; place : recto, verso ou deux', type: 'flashcard', theme: 'Ostéologie', recto: 'Quel os est montré ?', verso: 'La scapula.', image: { data: PIXEL, place: 'recto' } },
+    { _sorte: 'muscle', _aide: 'recto = nom du muscle ; les 5 champs du tableau Muscle (au moins un rempli) ; verso construit', type: 'flashcard', theme: 'Muscles du bras', recto: 'Biceps brachial', muscle: { origine: 'Chef long : tubercule supra-glénoïdal ; chef court : processus coracoïde', trajet: 'Loge antérieure du bras', insertion: 'Tubérosité radiale', action: 'Flexion du coude, supination', innervation: 'Nerf musculo-cutané (C5–C6)' } },
+    { _sorte: 'molécule', _aide: 'molecule.smiles (obligatoire), nom, sens : nom-molecule (recto = nom) ou molecule-nom', type: 'flashcard', theme: 'Biochimie', molecule: { nom: 'Éthanol', smiles: 'CCO', sens: 'nom-molecule' } },
+    { _sorte: 'tableau', _aide: 'recto = titre ; 2 à 6 colonnes, 1 à 12 lignes ; en révision les cellules se révèlent une par une', type: 'flashcard', theme: 'Myologie', recto: 'Muscles de la fesse — insertions', tableau: { colonnes: ['Muscle', 'Origine', 'Insertion'], lignes: [['Grand glutéal', 'Ilium, sacrum, coccyx', 'Tubérosité glutéale'], ['Moyen glutéal', 'Face glutéale de l’ilium', 'Grand trochanter'], ['Piriforme', 'Face pelvienne du sacrum', 'Bord supérieur du grand trochanter']] } },
+  ],
+};
+export const exempleJSON = () => JSON.stringify(EXEMPLE_IMPORT, null, 2);
+
+/** complément du prompt de génération : les types de cartes que l'import accepte en plus */
+export const COMPLEMENT_PROMPT = `
+
+---
+
+## TYPES DE FLASHCARDS SUPPLÉMENTAIRES (import du panneau MedRevise)
+
+En plus des flashcards texte et à trous, tu peux produire, dans le même tableau "items" (toujours "type": "flashcard") :
+- **Muscle** : "recto" = nom du muscle, "muscle": { "origine", "trajet", "insertion", "action", "innervation" } (verso construit automatiquement) ;
+- **Molécule** : "molecule": { "nom", "smiles", "sens": "nom-molecule" | "molecule-nom" } (SMILES valide obligatoire) ;
+- **Tableau** : "recto" = titre, "tableau": { "colonnes": [2 à 6 noms], "lignes": [[…], …] (1 à 12 lignes, autant de cellules que de colonnes) } ;
+- **Image** (facultative sur une carte texte) : "image": { "data": "data:image/png;base64,…", "place": "recto" | "verso" | "deux" }.
+Aucun autre champ. Exemple complet :
+
+\`\`\`json
+${JSON.stringify(EXEMPLE_IMPORT, null, 2)}
+\`\`\``;

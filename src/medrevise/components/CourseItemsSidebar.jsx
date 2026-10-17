@@ -40,6 +40,7 @@ import { OcclusionEditorModal, OcclusionView, estOcclusion } from './OcclusionIm
 import { TableauMuscle, ImageGeneraleMuscle } from './FlashcardMuscle.jsx';
 import { estMuscle, texteMuscle } from '../lib/muscle.js';
 import { estTableau } from '../lib/carteTableau.js';
+import { ImportFlashcards } from './ImportFlashcards.jsx';
 import { TableauRevision } from './FlashcardTableau.jsx';
 import { estMolecule, texteMolecule, SENS, NIVEAUX } from '../molecule/carte.js';
 import { VueMoleculeParesseuse } from '../molecule/Paresseux.jsx';
@@ -209,6 +210,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
 
   // ---- ajout (réutilise ItemForm/PasteJsonForm, même flux que AddItemModal) ----
   const [adding, setAdding] = useState(false);
+  const [importFC, setImportFC] = useState(false); // (17/10) fenêtre « Importer des flashcards »
   const [addSource, setAddSource] = useState('form');
   const [busyAdd, setBusyAdd] = useState(false);
   const [addedCount, setAddedCount] = useState(0);
@@ -306,6 +308,10 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         {!(adding && addSource === 'form' && activeType === 'flashcard') && <button type="button" className={'btn sm' + (adding && addSource === 'form' ? ' actif' : '')}
           onClick={() => { if (adding && addSource === 'form') closeAdd(); else { setAdding(true); setAddSource('form'); setAddedCount(0); setEditingId(null); } }}>
           <Icon name={adding && addSource === 'form' ? 'x' : 'plus'} size={13} /> {adding && addSource === 'form' ? 'Fermer' : 'Ajouter'}
+        </button>}
+        {/* (17/10) importer des flashcards (fichier .json / .zip ou collage) — lib/importFlashcards.js */}
+        {activeType === 'flashcard' && <button type="button" className="btn sm" data-act="importer-fc" title="Importer des flashcards (JSON)" onClick={() => setImportFC(true)}>
+          <Icon name="upload" size={13} /> Importer
         </button>}
         <span style={{ flex: 1 }} />
         {activeType === 'flashcard' && items.length > 0 && ctx.setLearningSet && (
@@ -447,6 +453,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
 
         {menuActions && <ContextMenu x={menuActions.x} y={menuActions.y} items={actions} onClose={() => setMenuActions(null)} />}
         {promptsOuverts && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOuverts(false)} />}
+        {importFC && <ImportFlashcards ctx={ctx} ficheId={ficheId} onFermer={() => setImportFC(false)} />}
 
         {occEdition && (
           <OcclusionEditorModal ctx={ctx} ficheId={ficheId} initial={occEdition === true ? null : occEdition}

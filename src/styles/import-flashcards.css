@@ -1,0 +1,27 @@
+/* MedRevise — import de flashcards (17/10, components/ImportFlashcards.jsx). Jetons de la DA. */
+.ifc { display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.ifc-onglets { padding: 2px; }
+.ifc-onglets .seg-btn { padding: 5px 12px; font-size: 12.5px; }
+.ifc-texte { width: 100%; box-sizing: border-box; display: block; font-family: ui-monospace, monospace; font-size: 12px; min-height: 140px; }
+.ifc-depot { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 22px 14px; border: 1.5px dashed var(--border-2, var(--border)); border-radius: 12px; color: var(--text-2); font-size: 13px; text-align: center; }
+.ifc-format { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--card-2, var(--card)); }
+.ifc-format-tete { font-size: 13px; margin-bottom: 6px; }
+.ifc-pre { max-height: 240px; overflow: auto; margin: 0 0 8px; padding: 10px; border-radius: 8px; background: var(--bg, #000); border: 1px solid var(--border);
+  font-family: ui-monospace, monospace; font-size: 11.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
+.ifc-prompt { max-height: 160px; }
+.ifc-etat { display: flex; align-items: center; gap: 8px; }
+.ifc-erreurs { padding: 10px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--crit) 45%, transparent); background: color-mix(in srgb, var(--crit) 9%, transparent); font-size: 13px; color: var(--text); }
+.ifc-erreurs ul { margin: 6px 0 0; padding-left: 18px; max-height: 180px; overflow-y: auto; }
+.ifc-erreurs li { margin: 2px 0; font-variant-numeric: tabular-nums; }
+.ifc-compte { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; }
+.ifc-puce { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; color: var(--text-2); }
+.ifc-exemples { display: grid; gap: 6px; }
+.ifc-exemple { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); }
+.ifc-sorte { grid-row: span 2; align-self: start; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); padding-top: 2px; }
+.ifc-recto { font-size: 13px; font-weight: 600; color: var(--text); }
+.ifc-verso { font-size: 12.5px; color: var(--text-2); }
+.ifc-doublons { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); font-size: 13px; }
+.ifc-doublons label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.ifc-date { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+.ifc-date input { width: auto; }
+.ifc-fait { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
