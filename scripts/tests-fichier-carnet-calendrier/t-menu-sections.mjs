@@ -5,6 +5,8 @@ const b = await banc(1440, 900);
 await b.c.send('Runtime.evaluate', { expression: `localStorage.setItem('medrevise.biblio.tri','manuel')` });
 await b.S(`for(const r of await S.getAll('companion_pdf')) if(r.courseId==='f-tb-jetable') await S.remove('companion_pdf',r.id); return 1`);
 await b.biblio({ recharger: true });
+// le nom réel de la fiche jumelle de « Physiologie rénale » (une autre suite peut l'avoir remplacée : fiche-v2.pdf)
+const NOM_FICHE = await b.S(`return ((await S.getAll('companion_pdf')).find(r=>r.courseId==='f-fj')||{}).fileName||'fiche.pdf'`);
 const DOC = ['pdfAnnote', 'formats', 'exportIA', 'textes', 'ocr', 'remplacer', 'supprimer'];
 const sansPropres = (l) => l.filter((x) => !['miseEnPage', 'correspondance'].includes(x));
 
@@ -16,7 +18,7 @@ let s = await b.lireSections();
 b.ok(s.map((x) => x.cle).join() === 'cours,original,fiche', 'trois sections dans l’ordre : Cours · Diapo originale · Fiche', s.map((x) => x.cle).join());
 b.ok(s[0].entrees.map((e) => e.label).join(' · ') === 'Renommer le cours · Fichiers du cours… · Supprimer le cours…', 'section Cours : Renommer le cours · Fichiers du cours · Supprimer le cours', s[0].entrees.map((e) => e.label).join(' · '));
 b.ok(s[1].role === 'Diapo originale' && s[1].nom === 'cours.pdf', 'en-tête « Diapo originale — cours.pdf » (icône + nom du fichier)', `${s[1].role} — ${s[1].nom}`);
-b.ok(s[2].role === 'Fiche' && s[2].nom === 'fiche.pdf', 'en-tête « Fiche — fiche.pdf »', `${s[2].role} — ${s[2].nom}`);
+b.ok(s[2].role === 'Fiche' && s[2].nom === NOM_FICHE, `en-tête « Fiche — ${NOM_FICHE} »`, `${s[2].role} — ${s[2].nom}`);
 const ids1 = s[1].entrees.map((e) => e.id), ids2 = s[2].entrees.map((e) => e.id);
 b.ok(JSON.stringify(sansPropres(ids1)) === JSON.stringify(DOC) && JSON.stringify(sansPropres(ids2)) === JSON.stringify(DOC), 'mêmes actions, même ordre dans les deux sections', ids1.join(' · ') + ' | ' + ids2.join(' · '));
 b.ok(ids2.includes('correspondance') && !ids1.includes('correspondance') && ids2.indexOf('correspondance') === ids2.indexOf('remplacer') - 1, 'Correspondance des pages : propre à la section Fiche, juste avant « Remplacer ce fichier »');
@@ -51,7 +53,7 @@ b.ok(dl.length === 1 && /-fiche-annote\.pdf$/.test(dl[0]), '⌘P : exporte le do
 /* 3. refus : supprimer la diapo originale tant qu'une fiche existe */
 await b.entree('original', 'supprimer');
 const refus = await b.ev(`(()=>{const m=document.querySelector('[data-sdoc=refus]');return m?m.innerText:null})()`);
-b.ok(refus && refus.includes('« cours.pdf »') && refus.includes('« fiche.pdf »') && refus.includes('Importez d’abord un autre document principal ou remplacez-le'), 'refus expliqué : nomme la diapo et la fiche, « Importez d’abord un autre document principal ou remplacez-le »', (refus || '').slice(0, 160));
+b.ok(refus && refus.includes('« cours.pdf »') && refus.includes(`« ${NOM_FICHE} »`) && refus.includes('Importez d’abord un autre document principal ou remplacez-le'), 'refus expliqué : nomme la diapo et la fiche, « Importez d’abord un autre document principal ou remplacez-le »', (refus || '').slice(0, 160));
 await b.capture('fcc-refus', await b.ev(`(()=>{const r=document.querySelector('[data-sdoc=refus]').closest('.day-pop')||document.querySelector('[data-sdoc=refus]');const q=r.getBoundingClientRect();return {x:q.x-10,y:q.y-10,width:q.width+20,height:q.height+20}})()`));
 await b.T.Escape(); await b.dormir(300);
 
@@ -59,7 +61,7 @@ await b.T.Escape(); await b.dormir(300);
 await b.entree('fiche', 'supprimer');
 await b.dormir(500);
 const conf = await b.ev(`(()=>{const m=document.querySelector('[data-sdoc=fiche]');return m?m.innerText:null})()`);
-b.ok(conf && conf.includes('Supprimer la fiche « fiche.pdf »') && /Conservé/i.test(conf) && /flashcard/.test(conf) && /notion/.test(conf) && /annotation/.test(conf), 'confirmation : « Supprimer la fiche « fiche.pdf » » + conservé (annotations de la diapo, flashcards, notions)', (conf || '').replace(/\n/g, ' ').slice(0, 220));
+b.ok(conf && conf.includes(`Supprimer la fiche « ${NOM_FICHE} »`) && /Conservé/i.test(conf) && /flashcard/.test(conf) && /notion/.test(conf) && /annotation/.test(conf), 'confirmation : « Supprimer la fiche « fiche.pdf » » + conservé (annotations de la diapo, flashcards, notions)', (conf || '').replace(/\n/g, ' ').slice(0, 220));
 await b.capture('fcc-confirme-fiche', await b.ev(`(()=>{const r=document.querySelector('[data-sdoc=fiche]').closest('.day-pop')||document.querySelector('[data-sdoc=fiche]');const q=r.getBoundingClientRect();return {x:q.x-10,y:q.y-10,width:q.width+20,height:q.height+20}})()`));
 await b.clic(await b.pos(`[...document.querySelectorAll('[data-sdoc=fiche] button')].find(x=>x.innerText.trim()==='Annuler')`, false), { att: 400 });
 b.ok(!!(await b.S(`return !!(await S.getAll('companion_pdf')).find(r=>r.courseId==='f-fj')`)), 'Annuler : la fiche est toujours là');

@@ -142,4 +142,6 @@ classe avec celle des puces — classe distincte désormais). Les trois anciens 
 - `d44aa26` feat : menu Fichier en sections — Cours · Diapo originale · Fiche
 - `e145a59` feat : après une note, carnet d'erreurs par pré-réponse et apprentissage en un geste
 - `8bf2089` wip : grille horaire École + semaine de test v3
-- (ce commit) feat : calendrier horaire École branché, tests mis à jour, compte rendu
+- `a56be48` feat : calendrier horaire École branché, tests mis à jour, compte rendu
+
+> **17/10 soir** : les actions « Carnet d’erreurs · Apprentissage » sous les boutons (2 s, carte précédente) sont remplacées par des **icônes dans l’en-tête de la carte affichée** — voir `compte-rendu-import-tableau-nettete.md`, point 5.
