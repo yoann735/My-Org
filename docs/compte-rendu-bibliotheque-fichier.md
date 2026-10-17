@@ -388,4 +388,4 @@ par une bascule observée à l'écran.
 - `7e13180` feat(medrevise) : raccourcis ⌘1–9 pour les outils du lecteur et de l'éditeur de document
 - `810ff61` feat(medrevise) : Bibliothèque — le tri garde l'arborescence ; rangée « Chercher une fiche · Trier » en tête du panneau
 - `548efb2` test(medrevise) : emploi du temps — fiche retrouvée par son titre
-- (ce commit) docs(medrevise) : compte rendu — raccourcis ⌘1–9, tri qui garde l'arborescence, captures
+- `b285cf5` docs(medrevise) : compte rendu — raccourcis ⌘1–9, tri qui garde l'arborescence, captures
