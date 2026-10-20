@@ -22,6 +22,7 @@ import { EditorContent } from '@tiptap/react';
 import { IconeOutil } from './IconesOutils.jsx';
 import { SelecteurCouleurs, BoutonCouleur } from './Couleurs.jsx';
 import { cheminForme, extremites, typeForme, estTrait, estFermee, tailleParDefaut, ancreSurForme } from './formes.js';
+import { connecteursDe, epingleSeule, patchRetirer, patchAjouter, patchDeplacer } from './connecteurs.js';
 import { suivreImage } from './attaches.js';
 import { Icon } from '../../shared/Icon.jsx';
 import { outputScaleFor } from './pdfjsSetup.js';
@@ -521,7 +522,6 @@ export function PdfPageContent({
     const t = cleanSelectedText(pos.node.nodeValue || '', { inline: true });
     return t ? (t.length > 90 ? t.slice(0, 90) + '…' : t) : null;
   };
-  const [viseeRatee, setViseeRatee] = useState(false);
   const poserAncre = (e) => {
     if (e.button !== 0 || !boiteEnAncrage) return;
     e.preventDefault(); e.stopPropagation();
@@ -532,60 +532,24 @@ export function PdfPageContent({
     window.addEventListener('mouseup', () => setTimeout(() => { gesteBoite.current = false; }, 0), { once: true });
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    /* FLÈCHE SUPPLÉMENTAIRE (02/10 soir) : une boîte peut viser PLUSIEURS endroits. Le
-       clic choisit la cible : un surlignage (la flèche va à son bord), une forme
-       (son côté, ou le milieu d'un trait), sinon le point cliqué. Elle s'ajoute à
-       `fleches` sans toucher à l'épingle ni à la flèche principale. */
-    if (ancrageAjout) {
-      const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
-      let cible = null;
-      const hit = positionSurlignage(e.clientX, e.clientY);
-      if (hit) {
-        const rs = shownRects[hit.id] || hit.rects || [];
-        const rc = rs.find((q) => px >= q.x && px <= q.x + q.width && py >= q.y && py <= q.y + q.height) || rs[0];
-        const boiteADroite = boiteEnAncrage.x + boiteEnAncrage.width / 2 > rc.x + rc.width / 2;
-        cible = { x: boiteADroite ? rc.x + rc.width : rc.x, y: rc.y + rc.height / 2, texte: (hit.texte || '').slice(0, 90) || null, surlignageId: hit.id };
-      } else {
-        const m = 0.012;
-        const f = [...(formes || [])].reverse().find((q) => px >= q.x - m && px <= q.x + q.width + m && py >= q.y - m && py <= q.y + q.height + m);
-        cible = f ? { ...ancreSurForme(f, boiteEnAncrage), formeId: f.id } : { x: clamp01(px), y: clamp01(py), texte: texteProche(e.clientX, e.clientY) || null };
-      }
-      onDemanderAncrage(null);
-      const id = 'fl' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-      onModifierBoite(boiteEnAncrage, { fleches: [...(boiteEnAncrage.fleches || []), { id, ...cible }] }, 'Flèche ajoutée');
-      return;
-    }
-    if (ancrageSurlignage) {
-      // RELIER À UN SURLIGNAGE : le clic doit tomber sur un surlignage ; l'épingle va
-      // sur son bord le plus proche de la boîte, la flèche suit
-      const hit = positionSurlignage(e.clientX, e.clientY);
-      if (!hit) {
-        // pas un surlignage : une FORME, peut-être (03/10) — l'épingle va sur son bord
-        const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height, m = 0.012;
-        const f = [...(formes || [])].reverse().find((q) => px >= q.x - m && px <= q.x + q.width + m && py >= q.y - m && py <= q.y + q.height + m);
-        if (f) {
-          onDemanderAncrage(null);
-          onModifierBoite(boiteEnAncrage, { ancre: ancreSurForme(f, boiteEnAncrage), fleche: true, formeId: f.id, surlignageId: null }, 'Boîte reliée à la forme');
-          return;
-        }
-        setViseeRatee(true); setTimeout(() => setViseeRatee(false), 1400); return;
-      }
+    /* AJOUTER UNE FLÈCHE (02/10 soir ; seul geste depuis le 20/10, pdf/connecteurs.js) : la première
+       comme les suivantes. Le clic choisit la cible : un surlignage (la flèche va à son bord), une forme
+       (son côté, ou le milieu d'un trait), sinon le point cliqué. */
+    const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+    let cible = null;
+    const hit = positionSurlignage(e.clientX, e.clientY);
+    if (hit) {
       const rs = shownRects[hit.id] || hit.rects || [];
-      const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
       const rc = rs.find((q) => px >= q.x && px <= q.x + q.width && py >= q.y && py <= q.y + q.height) || rs[0];
       const boiteADroite = boiteEnAncrage.x + boiteEnAncrage.width / 2 > rc.x + rc.width / 2;
-      onDemanderAncrage(null);
-      onModifierBoite(boiteEnAncrage, {
-        ancre: { x: boiteADroite ? rc.x + rc.width : rc.x, y: rc.y + rc.height / 2, texte: (hit.texte || '').slice(0, 90) || null },
-        fleche: true, surlignageId: hit.id,
-      }, 'Boîte reliée au surlignage');
-      return;
+      cible = { x: boiteADroite ? rc.x + rc.width : rc.x, y: rc.y + rc.height / 2, texte: (hit.texte || '').slice(0, 90) || null, surlignageId: hit.id };
+    } else {
+      const m = 0.012;
+      const f = [...(formes || [])].reverse().find((q) => px >= q.x - m && px <= q.x + q.width + m && py >= q.y - m && py <= q.y + q.height + m);
+      cible = f ? { ...ancreSurForme(f, boiteEnAncrage), formeId: f.id } : { x: clamp01(px), y: clamp01(py), texte: texteProche(e.clientX, e.clientY) || null };
     }
-    const x = clamp01((e.clientX - r.left) / r.width), y = clamp01((e.clientY - r.top) / r.height);
-    const texte = texteProche(e.clientX, e.clientY);
-    const avecFleche = ancrageFleche; // « Flèche » cliquée sans épingle : on trace la flèche dans la foulée
     onDemanderAncrage(null);
-    onModifierBoite(boiteEnAncrage, { ancre: { x, y, texte: texte || null }, ...(avecFleche ? { fleche: true } : {}) }, avecFleche ? 'Épingle et flèche' : 'Épinglage de la boîte');
+    onModifierBoite(boiteEnAncrage, patchAjouter(boiteEnAncrage, cible), 'Flèche ajoutée');
   };
 
   // Cmd+C : le texte copié garde ses retours à la ligne (issus des <br>), caractères
@@ -893,7 +857,7 @@ export function PdfPageContent({
           onActivate={onActivateEdit}
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
           onMaj={onMajBoite} onSupprimer={onSupprimerBoite} onModifier={onModifierBoite}
-          enAncrage={b.id === ancrageBoiteId} viseSurlignage={ancrageSurlignage} viseAjout={ancrageAjout} onDemanderAncrage={onDemanderAncrage}
+          enAncrage={b.id === ancrageBoiteId} viseSurlignage={ancrageSurlignage} viseAjout={ancrageAjout} onDemanderAncrage={onDemanderAncrage} flechesInteractives={outil === 'main'}
           onApercu={onApercuCouleur ? (c) => onApercuCouleur(b.id, c) : null}
           pageWidth={pageWidth} pageHeight={pageHeight} texteProche={texteProche} />
       ))}
@@ -902,11 +866,7 @@ export function PdfPageContent({
           Un clic = l'endroit visé (point exact + le passage de texte le plus proche). */}
       {boiteEnAncrage && (
         <div className="pdfr-ancrage" onPointerDown={poserAncre}>
-          <div className={'pdfr-ancrage-aide' + (viseeRatee ? ' ratee' : '')}>{ancrageAjout
-            ? 'Clique l’endroit, le surlignage ou la forme que la nouvelle flèche doit viser'
-            : ancrageSurlignage
-            ? (viseeRatee ? 'Ni un surlignage ni une forme — clique sur l’un des deux' : 'Clique le surlignage ou la forme à relier à cette boîte')
-            : ancrageFleche ? 'Clique l’endroit que la flèche doit viser' : 'Clique l’endroit de la fiche où épingler cette boîte'} · Échap pour annuler</div>
+          <div className="pdfr-ancrage-aide">Clique l’endroit, le surlignage ou la forme que la flèche doit viser · Échap pour annuler</div>
         </div>
       )}
 
@@ -975,7 +935,7 @@ function useApparition(visible, ms = 120) {
   return [monte || visible, sortie && !visible];
 }
 
-function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, onApercu = null, enAncrage = false, viseSurlignage = false, viseAjout = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF, fondNoir = false }) {
+function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, onApercu = null, enAncrage = false, viseSurlignage = false, viseAjout = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF, fondNoir = false, flechesInteractives = true }) {
   /* UN SEUL REPÈRE : LA PAGE (04/10, docs/compte-rendu-zoom-annotations.md). Position,
      épingle, connecteurs ET taille sont des fractions de page. La boîte est mise en page
      à l'échelle de RÉFÉRENCE (160 % : refW × refH, police 13 px…) puis mise à l'échelle
@@ -1162,11 +1122,10 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       onGeste(false);
       setPointApercu(null);
       if (!bouge || !dernier) { if (surClic) surClic(); return; }
-      if (cible === 'ancre') {
+      if (cible === 'ancre') { // épingle SANS flèche (ancien modèle) : son repère se déplace comme avant
         onModifier(boite, { ancre: { x: dernier.x, y: dernier.y, texte: texteProche ? texteProche(dernier.cx, dernier.cy) : null } }, 'Déplacement de l’épingle');
-      } else if (cible.startsWith('fl:')) { // bout d'une flèche supplémentaire : déplacé à la main, il n'est plus lié
-        const idf = cible.slice(3);
-        onModifier(boite, { fleches: (boite.fleches || []).map((fl) => (fl.id === idf ? { id: fl.id, x: dernier.x, y: dernier.y, texte: texteProche ? texteProche(dernier.cx, dernier.cy) : null } : fl)) }, 'Déplacement d’une flèche');
+      } else if (cible.startsWith('fl:')) { // bout d'un connecteur (le premier comme les autres) : déplacé à la main, il n'est plus lié
+        onModifier(boite, patchDeplacer(boite, cible.slice(3), { x: dernier.x, y: dernier.y, texte: texteProche ? texteProche(dernier.cx, dernier.cy) : null }), 'Déplacement d’une flèche');
       } else { // pastille d'une boîte NON épinglée : la boîte rouvrira à cet endroit
         onModifier(boite, { x: clamp(dernier.x, 0, 1 - boite.width), y: clamp(dernier.y, 0, 1 - boite.height) }, 'Déplacement de la boîte réduite');
       }
@@ -1186,6 +1145,32 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   useEffect(() => () => clearTimeout(timerSurvol.current), []);
   const rouvrir = () => onModifier(boite, { reduite: false }, 'Réouverture de la boîte');
   const couleurBoite = couleurHex(boite.couleur);
+  /* CONNECTEUR SÉLECTIONNÉ (20/10, pdf/connecteurs.js) : un clic sur une flèche (ou sur son bout) la met en
+     évidence, avec une croix à son milieu ; Suppr / ⌫ ou la croix la retirent — la première comme les
+     autres. Clic ailleurs ou Échap : désélection. Déclaré avant le retour anticipé de la pastille. */
+  const [selConn, setSelConn] = useState(null);
+  const retirerConnecteur = (id) => { setSelConn(null); onModifier(boite, patchRetirer(boite, id), 'Flèche retirée'); };
+  const retirerRef = useRef(retirerConnecteur); retirerRef.current = retirerConnecteur;
+  useEffect(() => {
+    if (!selConn) return undefined;
+    const clavier = (e) => {
+      if (e.key === 'Escape') { setSelConn(null); return; }
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const a = document.activeElement;
+      if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+      e.preventDefault(); e.stopPropagation(); // ni la boîte (Suppr sur son bandeau) ni autre chose ne part avec
+      retirerRef.current(selConn);
+    };
+    const dehors = (e) => { if (!(e.target && e.target.closest && e.target.closest('.nb-conn-cible, .nb-conn-x, .nb-ancre'))) setSelConn(null); };
+    window.addEventListener('keydown', clavier, true);
+    window.addEventListener('pointerdown', dehors, true);
+    return () => { window.removeEventListener('keydown', clavier, true); window.removeEventListener('pointerdown', dehors, true); };
+  }, [selConn]);
+  const choisirConnecteur = (id) => {
+    const a = document.activeElement;
+    if (a && a.blur && a !== document.body && (a.isContentEditable || (boiteRef.current && boiteRef.current.contains(a)))) a.blur(); // Suppr ira à la flèche, pas au texte
+    setSelConn(id);
+  };
 
   /* RÉDUITE : une pastille. Glisser = la déplacer (épinglée : l'épingle suit, le
      passage visé est recalculé ; libre : la boîte rouvrira là). Clic = rouvrir. */
@@ -1248,25 +1233,13 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     const recul = (7 * k) / L;
     return { sx, sy, ex: ax - (ax - sx) * recul, ey: ay - (ay - sy) * recul };
   };
-  /* FLÈCHES SUPPLÉMENTAIRES (02/10 soir) : `fleches`, chacune vers son point ; le bout
-     qu'on glisse suit le pointeur (pointApercu). */
-  const autres = (boite.fleches || []).filter((fl) => fl && Number.isFinite(fl.x) && Number.isFinite(fl.y))
-    .map((fl) => (pointApercu && pointApercu.cible === 'fl:' + fl.id ? { ...fl, x: pointApercu.x, y: pointApercu.y } : fl));
-  const tracesAutres = autres.map((fl) => ({ fl, tr: flecheVers(fl) }));
-  const fleche = (() => {
-    if (!ancre || !boite.fleche || !pageWidth || !pageHeight) return null;
-    const W = pageWidth, H = pageHeight;
-    const bx = b.x * W, by = b.y * H, bw = (ajustee && largVue ? largVue : b.width * refW) * k, bh = Math.max(b.height * refH, hautVue || 0) * k;
-    const cx = bx + bw / 2, cy = by + bh / 2, ax = ancre.x * W, ay = ancre.y * H;
-    const dx = ax - cx, dy = ay - cy;
-    if (ax >= bx && ax <= bx + bw && ay >= by && ay <= by + bh) return null; // point sous la boîte : rien à relier
-    const t = Math.min(dx ? (bw / 2) / Math.abs(dx) : Infinity, dy ? (bh / 2) / Math.abs(dy) : Infinity);
-    const sx = cx + dx * t, sy = cy + dy * t;
-    const L = Math.hypot(ax - sx, ay - sy);
-    if (L < 14 * k) return null;
-    const recul = (7 * k) / L; // la pointe s'arrête au bord du repère rond (rayon 6, à l'échelle de la page)
-    return { W, H, sx, sy, ex: ax - (ax - sx) * recul, ey: ay - (ay - sy) * recul };
-  })();
+  /* CONNECTEURS (20/10, pdf/connecteurs.js) : UNE liste — la flèche « principale » d'avant (ancre + fleche)
+     convertie à la lecture en premier connecteur, puis les autres ; mêmes tracé, bout et suppression pour
+     toutes. Le bout qu'on glisse suit le pointeur (pointApercu). */
+  const connecteurs = connecteursDe(boite).map((c) => (pointApercu && pointApercu.cible === 'fl:' + c.id ? { ...c, x: pointApercu.x, y: pointApercu.y } : c));
+  const tracesConn = connecteurs.map((c) => ({ c, tr: flecheVers(c) }));
+  const selVisible = selConn && tracesConn.some((t) => t.c.id === selConn) ? selConn : null;
+  const pinSeule = epingleSeule(boite);
   const couleurFleche = couleurFoncee(boite.couleur);
 
   /* BARRE D'OUTILS DE LA BOÎTE (11/10, docs/compte-rendu-finitions-boites-sidebar.md) — une petite
@@ -1279,7 +1252,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const bLarg = refW ? (ajustee && largVue ? largVue : b.width * refW) / refW : b.width; // largeur affichée (fraction de page)
   const bHaut = Math.max(b.height, (hautVue * k) / (pageHeight || 1)); // hauteur affichée (fraction de page)
   const ICONE = tactile ? 36 : 28;
-  const NB_ICONES = texteLibre ? 2 : 7;
+  const NB_ICONES = texteLibre ? 2 : 5;
   const barreL = enAncrage ? Math.min(330, (pageWidth || 330) - 8) : NB_ICONES * ICONE + (NB_ICONES - 1) * 2 + 8;
   const barreH = ICONE + 4;
   const placeBarre = (() => {
@@ -1303,46 +1276,61 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const version = versionAffichee(boite);
   const iFond = Math.max(0, FONDS_BOITE.findIndex((f) => f.id === (boite.fond || 'plein')));
   const fondSuivant = FONDS_BOITE[(iFond + 1) % FONDS_BOITE.length];
-  const nbFleches = (boite.fleches || []).length;
 
   return (
     <>
-    {(fleche || tracesAutres.some((t) => t.tr)) && (
+    {tracesConn.some((t) => t.tr) && (
       <svg className="nb-fleche" viewBox={`0 0 ${pageWidth} ${pageHeight}`} preserveAspectRatio="none" aria-hidden="true">
         <defs>
           <marker id={'pointe-' + boite.id} viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth={9 * k} markerHeight={9 * k} markerUnits="userSpaceOnUse" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill={couleurFleche} />
           </marker>
         </defs>
-        {fleche && (
-          <line x1={fleche.sx} y1={fleche.sy} x2={fleche.ex} y2={fleche.ey} stroke={couleurFleche} strokeWidth={2 * k} strokeLinecap="round"
-            markerEnd={`url(#pointe-${boite.id})`} />
-        )}
-        {tracesAutres.map(({ fl, tr }) => tr && (
-          <line key={fl.id} x1={tr.sx} y1={tr.sy} x2={tr.ex} y2={tr.ey} stroke={couleurFleche} strokeWidth={2 * k} strokeLinecap="round"
-            markerEnd={`url(#pointe-${boite.id})`} />
+        {tracesConn.map(({ c, tr }) => tr && (
+          <g key={c.id} className={'nb-conn' + (selVisible === c.id ? ' sel' : '')} data-conn={c.id}>
+            {selVisible === c.id && <line className="nb-conn-halo" x1={tr.sx} y1={tr.sy} x2={tr.ex} y2={tr.ey} stroke={couleurFleche} strokeWidth={9 * k} strokeOpacity={0.22} strokeLinecap="round" />}
+            <line x1={tr.sx} y1={tr.sy} x2={tr.ex} y2={tr.ey} stroke={couleurFleche} strokeWidth={(selVisible === c.id ? 3 : 2) * k} strokeLinecap="round"
+              markerEnd={`url(#pointe-${boite.id})`} />
+            {/* zone de prise large et invisible (outil Sélection seulement : ne gêne ni le crayon ni la gomme) */}
+            {flechesInteractives && (
+              <line className="nb-conn-cible" x1={tr.sx} y1={tr.sy} x2={tr.ex} y2={tr.ey} stroke="transparent" strokeWidth={Math.max(14, 12 * k)} strokeLinecap="round"
+                onPointerDown={(e) => { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); choisirConnecteur(c.id); }}>
+                <title>Flèche — clic : la sélectionner (Suppr ou × pour la retirer)</title>
+              </line>
+            )}
+          </g>
         ))}
       </svg>
     )}
-    {autres.map((fl) => (
-      <span key={fl.id} className={'nb-ancre nb-ancre-fl' + (pointApercu && pointApercu.cible === 'fl:' + fl.id ? ' glisse' : '')}
-        title={`${fl.texte ? `Vise « ${fl.texte} »` : 'Flèche'}\nGlisser pour la déplacer`}
-        style={{ left: fl.x * 100 + '%', top: fl.y * 100 + '%', borderColor: couleurBoite }}
-        onMouseEnter={entrer} onMouseLeave={sortir}
-        onPointerDown={(e) => glisserPoint(e, { cible: 'fl:' + fl.id, depart: { x: (boite.fleches.find((q) => q.id === fl.id) || fl).x, y: (boite.fleches.find((q) => q.id === fl.id) || fl).y } })}>
-        {(active || survol) && (
-          <button type="button" className="nb-fl-x" title="Retirer cette flèche"
+    {selVisible && (() => {
+      const t = tracesConn.find((x) => x.c.id === selVisible);
+      if (!t || !t.tr || !pageWidth || !pageHeight) return null;
+      return (
+        <button type="button" className="nb-conn-x" title="Retirer cette flèche (Suppr)" aria-label="Retirer cette flèche"
+          style={{ left: ((t.tr.sx + t.tr.ex) / 2 / pageWidth) * 100 + '%', top: ((t.tr.sy + t.tr.ey) / 2 / pageHeight) * 100 + '%', borderColor: couleurBoite }}
+          onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); retirerConnecteur(selVisible); }}>
+          <Icon name="x" size={12} />
+        </button>
+      );
+    })()}
+    {connecteurs.map((c) => (
+      <span key={c.id} data-conn={c.id} className={'nb-ancre' + (c.principale ? '' : ' nb-ancre-fl') + (pointApercu && pointApercu.cible === 'fl:' + c.id ? ' glisse' : '') + (selVisible === c.id ? ' sel' : '')}
+        title={`${c.texte ? `Vise « ${c.texte} »` : 'Flèche'}\nClic : sélectionner · Glisser : déplacer`}
+        style={{ left: c.x * 100 + '%', top: c.y * 100 + '%', borderColor: couleurBoite }}
+        onPointerDown={(e) => { const d = connecteursDe(boite).find((q) => q.id === c.id) || c; glisserPoint(e, { cible: 'fl:' + c.id, depart: { x: d.x, y: d.y }, surClic: () => choisirConnecteur(c.id) }); }} />
+    ))}
+    {pinSeule && ancre && (
+      <span className={'nb-ancre' + (pointApercu && pointApercu.cible === 'ancre' ? ' glisse' : '')} title={`${titreAncre}\nGlisser pour déplacer l’épingle`}
+        style={{ left: ancre.x * 100 + '%', top: ancre.y * 100 + '%', borderColor: couleurBoite }}
+        onPointerDown={(e) => glisserPoint(e, { cible: 'ancre', depart: { x: ancreBrute.x, y: ancreBrute.y } })}>
+        {active && (
+          <button type="button" className="nb-fl-x" title="Retirer l’épingle" aria-label="Retirer l’épingle"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onModifier(boite, { fleches: (boite.fleches || []).filter((q) => q.id !== fl.id) }, 'Flèche retirée'); }}>
+            onClick={(e) => { e.stopPropagation(); onModifier(boite, patchRetirer(boite, 'principale'), 'Retrait de l’épingle'); }}>
             <Icon name="x" size={8} />
           </button>
         )}
       </span>
-    ))}
-    {ancre && (
-      <span className={'nb-ancre' + (pointApercu ? ' glisse' : '')} title={`${titreAncre}\nGlisser pour déplacer l’épingle`}
-        style={{ left: ancre.x * 100 + '%', top: ancre.y * 100 + '%', borderColor: couleurBoite }}
-        onPointerDown={(e) => glisserPoint(e, { cible: 'ancre', depart: { x: ancreBrute.x, y: ancreBrute.y } })} />
     )}
     {barreMontee && (
       <div className={'nb-actions nb-barre' + (placeBarre.dessous ? ' dessous' : '') + (barreSortie ? ' sortie' : '') + (tactile ? ' tactile' : '') + (enAncrage ? ' vise' : '')}
@@ -1352,7 +1340,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         onPointerDown={(e) => e.stopPropagation()}>
         {enAncrage ? (
           <button type="button" className="nb-act vise" {...stop(() => onDemanderAncrage(null))} title="Annuler (Échap)">
-            <IconeEpingle size={13} /> {viseAjout ? 'Clique ce que la flèche vise…' : viseSurlignage ? 'Clique un surlignage ou une forme…' : 'Clique l’endroit à épingler…'} <span className="nb-act-x">Annuler</span>
+            <IconeEpingle size={13} /> Clique ce que la flèche vise… <span className="nb-act-x">Annuler</span>
           </button>
         ) : texteLibre ? (<>
           <BoutonCouleur couleur={boite.couleur} titre="Couleur du texte" onApercu={onApercu} onCouleur={(c) => onModifier(boite, { couleur: c }, 'Couleur du texte')} />
@@ -1360,21 +1348,12 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
             <Icon name="trash" size={15} />
           </button>
         </>) : (<>
-          <button type="button" className={'nb-act' + (ancre ? ' actif' : '')} aria-pressed={!!ancre} aria-label="Épingle"
-            {...stop(() => (ancre ? onModifier(boite, { ancre: null, fleche: false, surlignageId: null, formeId: null }, 'Retrait de l’épingle') : onDemanderAncrage(boite.id)))}
-            title={ancre ? `Épingle : ${titreAncre}. Cliquer la retire (et la flèche avec) ; glisser l’épingle sur la page la déplace.` : 'Épingle : clique ensuite le passage de la fiche auquel la boîte se rapporte.'}>
-            <IconeEpingle size={15} />
-          </button>
-          <button type="button" className={'nb-act' + (boite.surlignageId || boite.formeId ? ' actif' : '')} aria-pressed={!!(boite.surlignageId || boite.formeId)} aria-label="Relier"
-            {...stop(() => (boite.surlignageId || boite.formeId ? onModifier(boite, { ancre: null, fleche: false, surlignageId: null, formeId: null }, 'Lien retiré') : onDemanderAncrage(boite.id, { surlignage: true })))}
-            title={boite.surlignageId || boite.formeId ? `Reliée${ancre && ancre.texte ? ` à « ${ancre.texte} »` : ''} — cliquer pour retirer le lien` : 'Relier à un surlignage ou une forme : clique-le ensuite, une flèche les relie.'}>
-            <IconeOutil nom="fleche" size={15} />
-          </button>
-          <button type="button" className={'nb-act' + (ancre && boite.fleche ? ' actif' : '')} aria-pressed={!!(ancre && boite.fleche)} aria-label="Flèche"
-            {...stop(() => (!ancre ? onDemanderAncrage(boite.id, { fleche: true }) : !boite.fleche ? onModifier(boite, { fleche: true }, 'Ajout de la flèche') : onDemanderAncrage(boite.id, { ajout: true })))}
-            onContextMenu={(e) => { if (ancre && boite.fleche) { e.preventDefault(); onModifier(boite, { fleche: false }, 'Retrait de la flèche'); } }}
-            title={!ancre ? 'Flèche : clique ensuite le passage visé, la flèche se trace toute seule.' : !boite.fleche ? 'Tracer la flèche vers l’épingle' : `Ajouter une autre flèche${nbFleches ? ` (${nbFleches} en plus)` : ''} — clic droit : retirer la flèche principale ; la croix d’un rond retire sa flèche.`}>
-            <Icon name="arrowR" size={15} />
+          {/* (20/10) l'ancienne épingle, « Relier » et « Flèche » ne font plus qu'UN geste, identique pour la
+              première flèche et les suivantes : viser un endroit, un surlignage ou une forme */}
+          <button type="button" className="nb-act nb-ajout-fleche" aria-label="Ajouter une flèche"
+            {...stop(() => onDemanderAncrage(boite.id, { ajout: true }))}
+            title={`Ajouter une flèche : clique ensuite l’endroit, le surlignage ou la forme visé${connecteurs.length ? ` (${connecteurs.length} flèche${connecteurs.length > 1 ? 's' : ''})` : ''}. Pour en retirer une : clique-la, puis × ou Suppr.`}>
+            <Icon name="arrowR" size={15} />{connecteurs.length > 0 && <span className="nb-act-n tnum">{connecteurs.length}</span>}
           </button>
           <BoutonCouleur couleur={boite.couleur} titre="Couleur de la boîte" onApercu={onApercu} onCouleur={(c) => onModifier(boite, { couleur: c }, 'Couleur de la boîte')} />
           <button type="button" className="nb-act nb-fond" aria-label="Fond" {...stop(() => { ecrireFondBoiteDefaut(fondSuivant.id); onModifier(boite, { fond: fondSuivant.id }, 'Fond de la boîte'); })}

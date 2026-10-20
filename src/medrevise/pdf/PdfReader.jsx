@@ -75,6 +75,7 @@ import {
 import { PdfPageContent, EditToolbar, ECHELLE_REF } from './PdfPage.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
 import { SelecteurCouleurs, ReglagesTrait, dansSelecteurFlottant } from './Couleurs.jsx';
+import { patchAjouter } from './connecteurs.js';
 import { IconeOutil, IconeForme } from './IconesOutils.jsx';
 import { TYPES_FORMES, estTrait, estFermee, ancreSurForme } from './formes.js';
 import { publierFicheActive, useSondage, dessinsDeFiche, retirerDessin } from '../lib/dessins.js';
@@ -2449,7 +2450,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const x = aDroite ? f.x + f.width + 0.03 : Math.max(0.01, f.x - 0.03 - W);
     const y = Math.max(0, Math.min(1 - Hb, f.y + f.height / 2 - Hb / 2));
     const ancre = ancreSurForme(f, { x });
-    const rec = { ...newNoteBox({ ficheId: nsAnnot, page: f.page, x, y, width: W, height: Hb, couleur: couleurActive, fond: lireFondBoiteDefaut() }), ancre, fleche: true, formeId: f.id };
+    // (20/10, pdf/connecteurs.js) la légende naît avec UN connecteur ordinaire, retirable comme les autres
+    const base = newNoteBox({ ficheId: nsAnnot, page: f.page, x, y, width: W, height: Hb, couleur: couleurActive, fond: lireFondBoiteDefaut() });
+    const rec = { ...base, ...patchAjouter(base, { ...ancre, formeId: f.id }) };
     hist.appliquer(cmdCreer('annotations', rec, 'Légende de la forme'));
     videsFraiches.current.add(rec.id);
     setFormeActiveId(null);

@@ -303,3 +303,16 @@
 .pdfr-barre .tab-outil .ptb-num { left: 50%; }
 .pdfr-barre.raccourcis-visibles .ptb-num { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .pdfr-barre .ptb-num { transition: none; } }
+
+/* ---- CONNECTEURS D'UNE BOÎTE (20/10, pdf/connecteurs.js, docs/compte-rendu-pdfreader-v3.md) ----
+   Toutes les flèches se sélectionnent de la même façon : clic sur le trait (zone de prise large et
+   invisible) ou sur son bout → halo + croix au milieu ; Suppr la retire. */
+.nb-fleche .nb-conn-cible { pointer-events: stroke; cursor: pointer; }
+.nb-ancre.sel { box-shadow: 0 0 0 3px rgba(124, 92, 255, .45); }
+.nb-conn-x { position: absolute; z-index: 3; width: 22px; height: 22px; margin: -11px 0 0 -11px; padding: 0; display: grid; place-items: center;
+  border-radius: 50%; border: 2px solid; background: var(--card, #1b1b22); color: var(--text, #fff); cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .35); animation: sc-entree .12s ease-out; }
+.nb-conn-x:hover { background: var(--crit, #e5484d); border-color: var(--crit, #e5484d) !important; color: #fff; }
+@media (pointer: coarse) { .nb-conn-x { width: 32px; height: 32px; margin: -16px 0 0 -16px; } }
+.nb-act .nb-act-n { min-width: 14px; height: 14px; padding: 0 3px; margin-left: -3px; border-radius: 7px; font-size: 9.5px; line-height: 14px; font-weight: 700;
+  background: var(--pv-actif, rgba(124, 92, 255, .18)); color: var(--accent, #7c5cff); }
