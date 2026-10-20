@@ -259,3 +259,19 @@ button.trx-cc-titre:hover { color: var(--text-2); }
   background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg, 0 10px 30px rgba(0,0,0,.35)); }
 .trx-renommer input { flex: 1 1 auto; min-width: 0; height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; font-size: 14px; outline: none; }
 .trx-renommer input:focus { border-color: var(--accent); }
+
+/* ---- TRANSCRIPT ↔ PAGES (20/10, transcription/pages.js, docs/compte-rendu-pdfreader-v3.md) ---- */
+/* numéro de page d'une ligne, sous son horodatage : cliquable, le lecteur va à la page */
+.trx-t-col { display: flex; flex-direction: column; align-items: flex-start; flex: 0 0 auto; }
+.trx-page { display: block; margin-top: 2px; padding: 0 5px; height: 17px; border: 0; border-radius: 6px; background: var(--bg-2, rgba(255, 255, 255, .06));
+  color: var(--text-3, var(--text-2)); font: inherit; font-size: 10.5px; line-height: 17px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.trx-page:hover { background: var(--accent-soft, rgba(124, 92, 255, .16)); color: var(--accent, #7c5cff); }
+.trx-cette-page.actif { background: var(--accent-soft, rgba(124, 92, 255, .16)); color: var(--accent, #7c5cff); border-color: transparent; }
+/* badge d'une page du lecteur : « 12 lignes », discret, en haut à droite de la page */
+.pdfr-trx-badge { position: absolute; top: 8px; right: 8px; z-index: 7; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px;
+  border: 0; border-radius: 999px; background: rgba(20, 20, 26, .72); color: #fff; font: 600 11px/22px system-ui, sans-serif; cursor: pointer;
+  opacity: .78; box-shadow: 0 1px 4px rgba(0, 0, 0, .25); transition: opacity .15s, background .15s; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.pdfr-trx-badge:hover { opacity: 1; background: rgba(20, 20, 26, .9); }
+.pdfr-trx-badge.direct::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #ff4d4f; margin-right: 1px; }
+@media (pointer: coarse) { .pdfr-trx-badge { height: 30px; padding: 0 11px; font-size: 12px; } }
+@media print { .pdfr-trx-badge { display: none !important; } }

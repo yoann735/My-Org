@@ -100,6 +100,22 @@ let finalizeAttendu = null; // resolve() quand la réponse au Finalize d'arrêt 
 let fermetureVoulue = false;
 let persistee = false;
 let jetonPret = null; // jeton obtenu au démarrage, utilisé par la première connexion
+/* PAGE AFFICHÉE (20/10, docs/compte-rendu-pdfreader-v3.md) : le lecteur du cours déclare une fonction qui
+   rend { courseId, page, cle, doc } — la page du PDF (ou de la fiche jumelle) affichée. Chaque segment validé
+   (et chaque note) enregistre celle du moment : champs `page` (n° affiché), `pageCle` (clé de la page dans le
+   lecteur) et `doc` ('original' | 'fiche'), en AJOUT seulement. Lecteur fermé ou autre cours : rien. */
+let fournisseurPage = null;
+export function definirPageCourante(fn) {
+  fournisseurPage = fn;
+  return () => { if (fournisseurPage === fn) fournisseurPage = null; };
+}
+function champsPage() {
+  try {
+    const p = fournisseurPage && fournisseurPage();
+    if (p && p.courseId === etat.courseId && Number.isFinite(p.page) && p.page >= 1) return { page: p.page, pageCle: p.cle ?? null, doc: p.doc || 'original' };
+  } catch (e) { /* lecteur en cours de démontage : pas de page */ }
+  return {};
+}
 
 const maintenantCours = () => base + echantillons / SAMPLE_RATE;
 
@@ -346,7 +362,7 @@ function figerProvisoire() {
   if (!p || !p.text) return;
   couvertJusqua = Math.max(couvertJusqua, p.t1);
   publier({ interim: null });
-  majSession((s) => ({ ...s, segments: [...s.segments, { id: p.id, t0: p.t0, t1: p.t1, text: p.text, status: 'uncertain' }] }));
+  majSession((s) => ({ ...s, segments: [...s.segments, { id: p.id, t0: p.t0, t1: p.t1, text: p.text, status: 'uncertain', ...champsPage() }] }));
 }
 
 function recevoir(data) {
@@ -378,6 +394,7 @@ function recevoir(data) {
     publier({ interim: null });
     /* DIARISATION (08/10) : chaque mot porte `speaker` ; un résultat final peut mêler deux
        voix → un segment par suite de mots du même intervenant (champ `speaker`). */
+    const pageIci = champsPage(); // la page affichée au moment où le segment est validé
     if (texte && etat.session.diarize && mots.length && mots.some((w) => w.speaker != null)) {
       const retenus = mots.filter((w) => connOffset + (w.end || 0) > ancienCouvert + 0.02); // mêmes mots que `gardes`
       const groupes = [];
@@ -391,11 +408,11 @@ function recevoir(data) {
         t0: r2(i === 0 ? debut : connOffset + g.mots[0].start),
         t1: r2(i === groupes.length - 1 ? fin : connOffset + g.mots[g.mots.length - 1].end),
         text: g.mots.map((w) => w.punctuated_word || w.word).join(' '),
-        status: 'final', speaker: g.speaker,
+        status: 'final', speaker: g.speaker, ...pageIci,
       }));
       majSession((s) => ({ ...s, segments: [...s.segments, ...nouveaux] }));
     } else if (texte) {
-      majSession((s) => ({ ...s, segments: [...s.segments, { id: idProvisoire || nouvelIdSegment(), t0: Math.round(debut * 100) / 100, t1: Math.round(fin * 100) / 100, text: texte, status: 'final' }] }));
+      majSession((s) => ({ ...s, segments: [...s.segments, { id: idProvisoire || nouvelIdSegment(), t0: Math.round(debut * 100) / 100, t1: Math.round(fin * 100) / 100, text: texte, status: 'final', ...pageIci }] }));
     }
     rognerTampon();
     if (msg.from_finalize && finalizeAttendu) finalizeAttendu();
@@ -522,7 +539,7 @@ export function renommerIntervenantDirect(n, nom) {
 
 export function ajouterNote() {
   if (!etat.session) return null;
-  const note = { id: nouvelIdNote(), t: Math.round(maintenantCours() * 10) / 10, text: '' };
+  const note = { id: nouvelIdNote(), t: Math.round(maintenantCours() * 10) / 10, text: '', ...champsPage() };
   persistee = true;
   majSession((s) => ({ ...s, notes: [...s.notes, note] }));
   return note.id;
@@ -575,7 +592,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
     if (!sessionActive() || !etat.session || !persistee) return;
     const p = etat.interim;
-    const s = p && p.text ? { ...etat.session, segments: [...etat.session.segments, { id: p.id, t0: p.t0, t1: p.t1, text: p.text, status: 'uncertain' }] } : etat.session;
+    const s = p && p.text ? { ...etat.session, segments: [...etat.session.segments, { id: p.id, t0: p.t0, t1: p.t1, text: p.text, status: 'uncertain', ...champsPage() }] } : etat.session;
     ecrireSession({ ...s, durationS: Math.round(maintenantCours() * 10) / 10 }).catch(() => {});
   });
 }

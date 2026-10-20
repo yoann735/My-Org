@@ -36,6 +36,7 @@ import {
   avecIntervenants, nomIntervenant, intervenantsDe, passeFiltre,
 } from './exporter.js';
 import { synchroTranscripts } from './synchro.js';
+import { surPage, sessionAvecPages, useSessionReference, compterLignes, docDe } from './pages.js';
 import { actualiserCredits, tarifEffectif, fmtUsd, SURCOUT_DIARISATION_H } from './credits.js';
 import { CarteCredits } from './Credits.jsx';
 import '../../styles/transcription.css';
@@ -65,6 +66,22 @@ export function BadgeTranscript({ courseId }) {
      « En direct » du mode Transcript. Rouge pulsant en direct, gris fixe en pause. */
   const pause = e.phase === 'paused';
   return <span className={'pm-live' + (pause ? ' pause' : '')} role="img" aria-label={pause ? 'Transcription en pause' : 'Transcription en cours'} title={pause ? 'Transcription en pause' : 'Transcription en cours'}><i /></span>;
+}
+
+/** BADGE D'UNE PAGE DU LECTEUR (20/10, transcription/pages.js) : « 12 lignes » en haut à droite de la page —
+ *  lignes de la session de référence (en direct, sinon la plus récente avec des pages) dites sur cette page.
+ *  Clic : le panneau Transcript s'ouvre sur cette session, filtré sur la page. Rien s'il n'y en a pas. */
+export function BadgePageTranscript({ courseId, page, doc, onOuvrir }) {
+  const { session, live } = useSessionReference(courseId);
+  const n = compterLignes(session, page, doc);
+  if (!n) return null;
+  return (
+    <button type="button" className={'pdfr-trx-badge' + (live ? ' direct' : '')} data-page={page}
+      title={`${n} ligne${n > 1 ? 's' : ''} du transcript${live ? ' en direct' : ` du ${dateCourte(session.startedAt)}`} sur cette page — ouvrir le transcript filtré sur la page`}
+      onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onOuvrir(session.id); }}>
+      <Icon name="mic" size={11} /> {n} ligne{n > 1 ? 's' : ''}
+    </button>
+  );
 }
 
 /** Nombre de lignes validées de la session en cours sur CE cours (null hors session). */
@@ -383,13 +400,23 @@ function PastilleIntervenant({ n, nom, onRenommer }) {
   );
 }
 
-const Ligne = memo(function Ligne({ l, rx, onNote, onSupprNote, focusNoteId, lecture, nom, onRenommer }) {
-  if (l.note) return <LigneNote l={l} onNote={onNote} onSuppr={onSupprNote} focus={focusNoteId === l.id} lecture={lecture} />;
+/* NUMÉRO DE PAGE d'une ligne (20/10) : « p. 14 », cliquable — le lecteur défile jusqu'à cette page
+   (celle de la fiche jumelle si la ligne a été dite sur la fiche). Absent sur une session d'avant. */
+function NumeroPage({ l, onPage }) {
+  if (!Number.isFinite(l.page) || !onPage) return null;
+  const fiche = docDe(l) === 'fiche';
+  return (
+    <button type="button" className="trx-page tnum" onClick={(e) => { e.stopPropagation(); onPage(l); }}
+      title={`Aller à la page ${l.page}${fiche ? ' de la fiche' : ''} du cours`}>{fiche ? 'fiche ' : ''}p. {l.page}</button>
+  );
+}
+const Ligne = memo(function Ligne({ l, rx, onNote, onSupprNote, focusNoteId, lecture, nom, onRenommer, onPage }) {
+  if (l.note) return <LigneNote l={l} onNote={onNote} onSuppr={onSupprNote} focus={focusNoteId === l.id} lecture={lecture} onPage={onPage} />;
   if (l.status === 'gap') return <div className="trx-coupure" data-id={l.id}><span>{mmss(l.t0)} · {l.text}</span></div>;
   const morceaux = decouperSurlignage(l.text, rx);
   return (
     <div className={'trx-ligne ' + l.status} data-id={l.id}>
-      <span className="trx-t tnum" aria-hidden="true">{mmss(l.t0)}</span>
+      <span className="trx-t-col"><span className="trx-t tnum" aria-hidden="true">{mmss(l.t0)}</span><NumeroPage l={l} onPage={onPage} /></span>
       <span className="trx-texte">
         {nom && l.speaker != null && <PastilleIntervenant n={l.speaker} nom={nom} onRenommer={onRenommer} />}
         {morceaux.map((m, i) => (m.cle ? <mark key={i} className="trx-cle">{m.t}</mark> : m.t))}
@@ -399,7 +426,7 @@ const Ligne = memo(function Ligne({ l, rx, onNote, onSupprNote, focusNoteId, lec
   );
 });
 
-function LigneNote({ l, onNote, onSuppr, focus, lecture }) {
+function LigneNote({ l, onNote, onSuppr, focus, lecture, onPage }) {
   const ref = useRef(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -409,7 +436,7 @@ function LigneNote({ l, onNote, onSuppr, focus, lecture }) {
   useEffect(() => { if (focus && ref.current) ref.current.focus(); }, [focus]);
   return (
     <div className="trx-note" data-id={l.id}>
-      <span className="trx-t tnum" aria-hidden="true">{mmss(l.t0)}</span>
+      <span className="trx-t-col"><span className="trx-t tnum" aria-hidden="true">{mmss(l.t0)}</span><NumeroPage l={l} onPage={onPage} /></span>
       {lecture ? <div className="trx-note-txt">{l.text || <span className="hint">Note vide</span>}</div> : (
         <textarea ref={ref} rows={1} className="trx-note-txt" value={l.text} placeholder="Ta note…"
           onChange={(e) => onNote(l.id, e.target.value)} />
@@ -422,7 +449,7 @@ function LigneNote({ l, onNote, onSuppr, focus, lecture }) {
 /** Liste défilante avec auto-défilement « collé en bas » et reprise. */
 const VIRTUEL_DES = 150; // lignes
 const MARGE_VIRTUELLE = 800; // px rendus au-dessus et au-dessous de la zone visible
-function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, focusNoteId, plein, noms = null, onRenommer = null }) {
+function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, focusNoteId, plein, noms = null, onRenommer = null, onPage = null, vide = null }) {
   const ref = useRef(null);
   // en direct : collé en bas ; une session passée s'ouvre en haut, pour la relire
   const enBasRef = useRef(live);
@@ -526,12 +553,12 @@ function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, 
     <div className="trx-liste-cadre">
       <div ref={ref} className={'trx-liste taille-' + taille} onScroll={surDefilement}>
         {lignes.length === 0 && (
-          <div className="trx-vide">{live ? 'À l’écoute… le texte apparaît ici dès que le prof parle.' : 'Cette session ne contient aucun texte.'}</div>
+          <div className="trx-vide">{vide || (live ? 'À l’écoute… le texte apparaît ici dès que le prof parle.' : 'Cette session ne contient aucun texte.')}</div>
         )}
         {cale1 > 0 && <div className="trx-cale" style={{ height: cale1 }} aria-hidden="true" />}
         {visibles.map((l) => (
           <Ligne key={l.id} l={l} rx={rx} onNote={onNote} onSupprNote={onSupprNote} focusNoteId={focusNoteId} lecture={!live}
-            nom={noms && l.speaker != null ? noms(l.speaker) : null} onRenommer={onRenommer} />
+            nom={noms && l.speaker != null ? noms(l.speaker) : null} onRenommer={onRenommer} onPage={onPage} />
         ))}
         {cale2 > 0 && <div className="trx-cale" style={{ height: cale2 }} aria-hidden="true" />}
       </div>
@@ -574,8 +601,8 @@ function MenuCopie({ session, titre, filtre = null }) {
   const [copie, setCopie] = useState(false);
   const minuteurCopie = useRef(null);
   useEffect(() => () => clearTimeout(minuteurCopie.current), []);
-  const copier = async (horodatage, f = null) => {
-    if (await copierTexte(texteSession(session, { horodatage, filtre: f }))) { setCopie(true); clearTimeout(minuteurCopie.current); minuteurCopie.current = setTimeout(() => setCopie(false), 1500); }
+  const copier = async (horodatage, f = null, pages = false) => {
+    if (await copierTexte(texteSession(session, { horodatage, filtre: f, pages }))) { setCopie(true); clearTimeout(minuteurCopie.current); minuteurCopie.current = setTimeout(() => setCopie(false), 1500); }
   };
   const nomsFiltre = filtre ? [...filtre].sort((a, b) => a - b).map((n) => nomIntervenant(session, n)).join(', ') : '';
   return (
@@ -598,6 +625,7 @@ function MenuCopie({ session, titre, filtre = null }) {
       )}
       {menu && (
         <ContextMenu fermerAuDefilement={false} x={menu.x} y={menu.y} hautAncre={menu.haut} onClose={() => setMenu(null)} items={[
+          sessionAvecPages(session) && { label: 'Copier tout, avec numéros de page', icon: 'copy', onClick: () => copier(true, null, true) },
           { label: 'Copier sans horodatage', icon: 'copy', onClick: () => copier(false) },
           { label: 'Télécharger en .txt', icon: 'upload', onClick: () => telecharger(nomFichier(titre, session, 'txt'), texteSession(session), 'text/plain;charset=utf-8') },
           { label: 'Télécharger en .md', icon: 'upload', onClick: () => telecharger(nomFichier(titre, session, 'md'), markdownSession(session, titre), 'text/markdown;charset=utf-8') },
@@ -724,7 +752,7 @@ function BulleRenommer({ n, rect, nom, onValider, onFermer }) {
 /* ============================================================
    PANNEAU
    ============================================================ */
-export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
+export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, pageLecteur = null, onAllerPage = null, demandePage = null }) {
   const e = useTranscription();
   const ici = e.courseId === courseId && (sessionActive() || e.phase === 'error');
   const [sessions, setSessions] = useState(null);
@@ -742,6 +770,29 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
   const [renommage, setRenommage] = useState(null); // { n, rect, sessionId }
   const idVue = ici && e.session ? e.session.id : lecture ? lecture.id : null;
   useEffect(() => { setFiltre(null); setRenommage(null); }, [idVue]);
+  /* FILTRE « CETTE PAGE » (20/10) : seules les lignes dites sur la page affichée par le lecteur ; il suit le
+     défilement (pageLecteur change). Les lignes d'une session d'avant, sans page, n'y passent pas. */
+  const [surCettePage, setSurCettePage] = useState(false);
+  const passePage = (l) => !surCettePage || !pageLecteur || surPage(l, pageLecteur.page, pageLecteur.doc);
+  const allerRef = useRef(onAllerPage); allerRef.current = onAllerPage;
+  const allerPage = useCallback((l) => { if (allerRef.current) allerRef.current(l); }, []);
+  const lienPage = onAllerPage ? allerPage : null;
+  // badge d'une page cliqué dans le lecteur : sa session, filtrée sur la page
+  const nDemande = demandePage ? demandePage.n : 0;
+  useEffect(() => {
+    if (!demandePage) return;
+    setSurCettePage(true);
+    if (sessionActive() && lireEtat().courseId === courseId && lireEtat().session && lireEtat().session.id === demandePage.sessionId) { setLecture(null); return; }
+    if (demandePage.sessionId) lireSession(demandePage.sessionId).then((s) => { if (s) setLecture(s); });
+  }, [nDemande]); // eslint-disable-line react-hooks/exhaustive-deps
+  const libellePage = pageLecteur ? `${pageLecteur.doc === 'fiche' ? 'fiche ' : ''}p. ${pageLecteur.page}` : '';
+  const boutonPage = (session) => (pageLecteur && (sessionAvecPages(session) || (ici && session === e.session)) ? (
+    <button type="button" className={'btn sm trx-cette-page' + (surCettePage ? ' actif' : '')} aria-pressed={surCettePage} onClick={() => setSurCettePage((v) => !v)}
+      title={surCettePage ? 'Afficher toutes les lignes' : 'N’afficher que les lignes dites sur la page affichée (suit le défilement)'}>
+      <Icon name="filePdf" size={12} /> Cette page{surCettePage ? ` · ${libellePage}` : ''}
+    </button>
+  ) : null);
+  const videPage = surCettePage && pageLecteur ? `Aucune ligne sur la page ${pageLecteur.page}${pageLecteur.doc === 'fiche' ? ' de la fiche' : ''}.` : null;
   const ouvrirRenommage = useCallback((n, rect) => setRenommage({ n, rect }), []);
   const sessionVue = ici && e.session ? e.session : lecture;
   const validerRenommage = async (nom) => {
@@ -822,7 +873,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
   /* ---- session EN DIRECT sur CE cours ---- */
   if (ici && e.session) {
     const diar = !!e.session.diarize;
-    const lignes = lignesSession(e.session, e.interim).filter((l) => passeFiltre(l, filtre));
+    const lignes = lignesSession(e.session, e.interim).filter((l) => passeFiltre(l, filtre) && (l.status === 'interim' ? !surCettePage : passePage(l)));
     const nomsDirect = diar ? (n) => nomIntervenant(e.session, n) : null;
     const corps = (
       <div className={'trx-panneau' + (plein ? ' plein' : '')}>
@@ -850,6 +901,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
             }}>
             <Icon name="mic" size={12} />
           </button>
+          {boutonPage(e.session)}
           <span style={{ flex: 1 }} />
           {/* tablette comprise : tout reste visible (la rangée passe à la ligne si besoin) */}
           <ChoixTaille taille={taille} onTaille={choisirTaille} />
@@ -863,7 +915,8 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
         {mcOuvert && <EditeurMotsCles termes={e.session.keyterms} onChange={changerMotsCles} onFermer={() => setMcOuvert(false)} />}
         {diar && <FiltreIntervenants session={e.session} filtre={filtre} setFiltre={setFiltre} onRenommer={ouvrirRenommage} />}
         <ListeTranscript lignes={lignes} keyterms={e.session.keyterms} taille={taille} live plein={plein}
-          onNote={modifierNote} onSupprNote={supprimerNote} focusNoteId={focusNote} noms={nomsDirect} onRenommer={diar ? ouvrirRenommage : null} />
+          onNote={modifierNote} onSupprNote={supprimerNote} focusNoteId={focusNote} noms={nomsDirect} onRenommer={diar ? ouvrirRenommage : null}
+          onPage={lienPage} vide={videPage} />
         <PiedSession session={e.session} titre={titre} filtre={filtre} />
         {!plein && <CarteCredits />}
         {bulleRenommer}
@@ -877,19 +930,21 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre }) {
     const corps = (
       <div className={'trx-panneau' + (plein ? ' plein' : '')}>
         <div className="trx-barre">
-          <button type="button" className="btn ghost sm" onClick={() => { setLecture(null); setPlein(false); }}><Icon name="chevL" size={13} /> Sessions</button>
+          <button type="button" className="btn ghost sm" onClick={() => { setLecture(null); setPlein(false); setSurCettePage(false); }}><Icon name="chevL" size={13} /> Sessions</button>
           <span className="trx-titre-lecture">{dateCourte(lecture.startedAt)} · {dureeLisible(lecture.durationS)}</span>
           <span style={{ flex: 1 }} />
         </div>
         <div className="trx-barre secondaire">
+          {boutonPage(lecture)}
           <span style={{ flex: 1 }} />
           <ChoixTaille taille={taille} onTaille={choisirTaille} />
           <button type="button" className="icon-btn sm" onClick={() => setPlein((v) => !v)} title={plein ? 'Quitter le plein écran (Échap)' : 'Plein écran'}><Icon name={plein ? 'x' : 'maximize'} size={13} /></button>
         </div>
         <ResumeCout session={lecture} />
         {avecIntervenants(lecture) && <FiltreIntervenants session={lecture} filtre={filtre} setFiltre={setFiltre} onRenommer={ouvrirRenommage} />}
-        <ListeTranscript lignes={lignesSession(lecture).filter((l) => passeFiltre(l, filtre))} keyterms={lecture.keyterms || []} taille={taille} live={false} plein={plein}
-          noms={avecIntervenants(lecture) ? (n) => nomIntervenant(lecture, n) : null} onRenommer={avecIntervenants(lecture) ? ouvrirRenommage : null} />
+        <ListeTranscript lignes={lignesSession(lecture).filter((l) => passeFiltre(l, filtre) && passePage(l))} keyterms={lecture.keyterms || []} taille={taille} live={false} plein={plein}
+          noms={avecIntervenants(lecture) ? (n) => nomIntervenant(lecture, n) : null} onRenommer={avecIntervenants(lecture) ? ouvrirRenommage : null}
+          onPage={lienPage} vide={videPage} />
         <PiedSession session={lecture} titre={titre} filtre={filtre} />
         {!plein && <CarteCredits />}
         {bulleRenommer}

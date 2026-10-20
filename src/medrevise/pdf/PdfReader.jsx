@@ -84,7 +84,7 @@ import { htmlVersTiptap } from './htmlVersTiptap.js';
 import { MenuDessins, ArriveeDessin, TYPE_GLISSER } from './OngletDessins.jsx';
 import { CourseHtmlView } from './CourseHtmlView.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
-import { FeuilleDemarrage, TranscriptPanel, BadgeTranscript, ResumeReplie } from '../transcription/TranscriptPanel.jsx';
+import { FeuilleDemarrage, TranscriptPanel, BadgeTranscript, ResumeReplie, BadgePageTranscript } from '../transcription/TranscriptPanel.jsx';
 import { lirePosition, ecrirePosition, empreintePdf, positionDepuisDefilement } from '../lib/positionLecture.js';
 import { NotesEditor } from '../documents/NotesEditor.jsx';
 import { estNotionDoc, creerNotionDoc, synchroniserNotionsDoc } from '../documents/lib/notionsDoc.js';
@@ -102,7 +102,7 @@ import '../../styles/fiche-jumelle.css';
 import { PanneauMiseEnPage, ReglesMarges } from './MiseEnPage.jsx';
 import { margesDe, margesUnites } from '../documents/lib/marges.js';
 import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
-import { sessionActive as transcriptionActive, lireEtat as etatTranscription } from '../transcription/engine.js';
+import { sessionActive as transcriptionActive, lireEtat as etatTranscription, definirPageCourante } from '../transcription/engine.js';
 import { noterCoursOuvert } from '../lib/derniersCours.js';
 import { actualiserCredits } from '../transcription/credits.js';
 import { useCoucheOcr, useEtatOcr } from '../ocr/useOcr.js';
@@ -783,6 +783,31 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!el || layout.offsets[idx] == null) return;
     el.scrollTop = Math.max(0, layout.offsets[idx] - 8 * scale);
     computeVisibleRange();
+  };
+
+  /* TRANSCRIPT ↔ PAGES (20/10, transcription/pages.js, docs/compte-rendu-pdfreader-v3.md) : le moteur de
+     transcription lit ici la page affichée à chaque segment validé ; un numéro « p. 14 » du transcript
+     ramène le lecteur à sa page (en basculant sur la fiche jumelle si la ligne y a été dite). */
+  const docAffiche = surFiche ? 'fiche' : 'original';
+  const pagePourTrx = useRef(null);
+  pagePourTrx.current = { courseId: ficheId, page: pageCourante, cle: pageSizes[pageCourante - 1] ? pageSizes[pageCourante - 1].cle : null, doc: docAffiche };
+  useEffect(() => (ficheId && pret ? definirPageCourante(() => pagePourTrx.current) : undefined), [ficheId, pret]);
+  const allerAuSegment = (l) => {
+    const doc = l.doc || 'original';
+    if (doc !== docAffiche && jumelle && !modeDocCours) {
+      sauverRef.current();
+      cibleBascule.current = { kind: 'pdf', cle: l.pageCle != null ? l.pageCle : l.page, fraction: 0, scale, zoomManuel: zoomManuel.current };
+      setVueJumelle(doc); ecrireVue(idFiche, doc);
+      return;
+    }
+    const idx = l.pageCle != null ? pageSizes.findIndex((sz) => String(sz.cle) === String(l.pageCle)) : -1;
+    allerALaPage(idx >= 0 ? idx + 1 : l.page);
+  };
+  const [demandePage, setDemandePage] = useState(null); // { page, doc, sessionId, n } : badge d'une page cliqué
+  const ouvrirTranscriptPage = (page, sessionId) => {
+    allerALaPage(page);
+    setDemandePage((d) => ({ page, doc: docAffiche, sessionId, n: (d ? d.n : 0) + 1 }));
+    ouvrirTranscript();
   };
 
   // « Ajuster à la largeur » : la même formule que l'ajustement automatique de
@@ -3387,6 +3412,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                         </button>
                       </div>
                     )}
+                    {/* (20/10) lignes du transcript dites sur cette page : badge discret, en haut à droite */}
+                    {ficheId && !impression && (
+                      <BadgePageTranscript courseId={ficheId} page={idx + 1} doc={docAffiche} onOuvrir={(sid) => ouvrirTranscriptPage(idx + 1, sid)} />
+                    )}
                     <PdfPageContent
                       pdfDoc={pdfDoc} pageNum={n} vierge={!!sz.ajout} scale={scale} dpr={dpr} pageHeight={h}
                       highlights={highlightsByPage[n] || EMPTY_ARRAY}
@@ -3486,7 +3515,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             ficheId && {
               id: 'transcript', label: 'Transcript', icon: 'mic', plein: true, badge: <BadgeTranscript courseId={ficheId} />,
               contenu: <TranscriptPanel courseId={ficheId} titre={titreFiche}
-                onDemarrer={() => setFeuilleTrx({})} onReprendre={(s) => setFeuilleTrx({ reprendre: s })} />,
+                onDemarrer={() => setFeuilleTrx({})} onReprendre={(s) => setFeuilleTrx({ reprendre: s })}
+                pageLecteur={pret ? { page: pageCourante, doc: docAffiche } : null} onAllerPage={allerAuSegment} demandePage={demandePage} />,
             },
           ]}
           ongletDemande={ongletDemande} cleMemo={ficheId} flashcardDemandee={flashcardNotes}

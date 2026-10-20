@@ -50,10 +50,11 @@ export function intervenantsDe(session) {
 /** lignes gardées par un filtre d'intervenants (Set) ; notes et coupures restent */
 export const passeFiltre = (l, filtre) => !filtre || l.note || l.status === 'gap' || l.speaker == null || filtre.has(l.speaker);
 
-export function texteSession(session, { horodatage = true, filtre = null } = {}) {
+/** `pages` (20/10) : chaque ligne commence par sa page — « [p. 14] », « [fiche p. 3] » — si elle en a une */
+export function texteSession(session, { horodatage = true, filtre = null, pages = false } = {}) {
   const noms = avecIntervenants(session);
   return lignesSession(session).filter((l) => (l.status !== 'gap' || l.perte) && passeFiltre(l, filtre)).map((l) => {
-    const h = horodatage ? `[${mmss(l.t0)}] ` : '';
+    const h = (horodatage ? `[${mmss(l.t0)}] ` : '') + (pages && Number.isFinite(l.page) ? `[${l.doc === 'fiche' ? 'fiche ' : ''}p. ${l.page}] ` : '');
     if (l.note) return `${h}NOTE — ${l.text || ''}`.trimEnd();
     if (l.status === 'gap') return `${h}[${l.text}]`;
     const qui = noms && l.speaker != null ? `${nomIntervenant(session, l.speaker)} : ` : '';
