@@ -83,6 +83,13 @@ export function ecrireFondBoiteDefaut(v) {
   try { localStorage.setItem(CLE_FOND_BOITE, v); } catch (e) { /* stockage bloqué : défaut « plein » */ }
 }
 export const BOITE_MIN = { width: 0.04, height: 0.022 };
+/* GABARIT COMPACT (20/10 soir, docs/compte-rendu-pdfreader-v4.md) — boîtes et zones de texte créées depuis le
+   20/10 (champ `compacte`) : tailles en PIXELS À 100 % (indépendantes de la taille de la page), converties en
+   fractions de page au moment voulu. Vide : une ligne d'environ 120 px ; jamais sous 48 × 24 px ; la largeur
+   grandit avec le texte jusqu'à 45 % de la page (puis le texte passe à la ligne). */
+export const COMPACT = { largeurVide: 120, largeurMin: 48, hauteurMin: 24, largeurMaxPage: 0.45 };
+/** fraction de page d'une longueur en px à 100 % (`cote100` = largeur ou hauteur de la page à 100 %) */
+export const fractionPx100 = (px, cote100) => (cote100 > 0 ? px / cote100 : 0);
 
 /* PALETTE DU CRAYON (et du texte libre) — 01/10. Les 4 couleurs des surlignages
    ont un SENS (prioritaire, cloze…) et restent seules pour eux ; le crayon, lui,

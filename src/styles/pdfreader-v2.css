@@ -328,3 +328,15 @@
 /* ---- APERÇU DU TRAIT EN COURS (20/10, pdf/PdfPage.jsx) : un canvas sur la page, peint dans l'événement ---- */
 .pdfr-apercu-trait { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
 .pdfr-apercu-trait.surligneur { mix-blend-mode: multiply; }
+
+/* ---- GABARIT COMPACT des boîtes et zones de texte (20/10 soir, pdfShared.js#COMPACT) ----
+   Mis en page à l'échelle de référence (160 %) : 24 px à 100 % = 38,4 px ici. Bandeau de prise fin, corps
+   sans marge vide : une ligne de texte remplit la boîte. Les boîtes d'avant (sans `compacte`) ne changent pas. */
+.note-box.compacte .nb-bar { padding: 0 4px; min-height: 0; height: 10px; }
+.note-box.compacte .nb-bar .nb-grip { transform: scale(.75); }
+.note-box.compacte .nb-body { padding: 3px 7px 4px; }
+.note-box.compacte.texte-libre .nb-bar { height: 14px; top: -15px; }
+.note-box.compacte.texte-libre .nb-body { padding: 1px 3px; }
+/* (20/10 soir) poignées des boîtes au doigt : le navigateur ne reprend plus le geste pour faire défiler la page
+   (avant : la boîte suivait quelques pixels puis s'arrêtait) */
+.note-box .nb-bar, .note-box .nb-corner { touch-action: none; }

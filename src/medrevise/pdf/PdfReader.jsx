@@ -68,7 +68,7 @@ import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
 import { buildCourseExportFromParts } from '../lib/courseExport.js';
 import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
-  COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI, opaciteSurlignage,
+  COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI, opaciteSurlignage, COMPACT, fractionPx100,
   useDevicePixelRatio, compareHighlights, computePageTextMap, EPAISSEURS,
   MODES_CRAYON, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, couleurHex, BOITE_DEFAUT, lireFondBoiteDefaut,
 } from './pdfShared.js';
@@ -2156,12 +2156,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      redimensionnable, supprimable. Même store et même géométrie normalisée [0,1]
      que le bloc de remplacement de texte — seul `kind: 'libre'` les distingue.
      Les trois actions passent par l'historique : la boîte naît annulable. */
-  const creerBoite = async ({ page, x, y, width, height }) => {
+  const creerBoite = async ({ page, x, y, width, height, compacte = false, largeurFixe = false }) => {
     // CORRECTIF : `couleurBoite` n'était déclaré nulle part. La ReferenceError partait
     // dans une fonction async appelée depuis un écouteur pointerup — promesse rejetée,
     // rien à l'écran : l'outil « ne créait rien ». La couleur est celle de la barre
     // contextuelle, partagée par tous les outils colorés.
-    const rec = newNoteBox({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurActive, fond: lireFondBoiteDefaut() });
+    // (20/10 soir) `compacte` : gabarit compact (pdfShared.js#COMPACT) — les boîtes d'avant n'ont pas ce champ
+    const rec = { ...newNoteBox({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurActive, fond: lireFondBoiteDefaut() }), ...(compacte ? { compacte: true } : {}), ...(largeurFixe ? { largeurFixe: true } : {}) };
     const cmd = cmdCreer('annotations', rec, 'Boîte de texte');
     hist.appliquer(cmd); // visible tout de suite (effet local), écrite ensuite
     videsFraiches.current.add(rec.id);
@@ -2939,9 +2940,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      marque souvent plusieurs d'affilée en relisant. */
   const poserElement = async (quoi, { page, x, y }) => {
     if (quoi === 'texte') {
-      const ligne = 0.022; // le clic vise le milieu de la première ligne
-      const rec = newTexteLibre({ ficheId: nsAnnot, page, x: Math.min(x, 0.75), y: Math.max(0, Math.min(y - ligne / 2, 1 - ligne)),
-        width: 0.25, height: ligne, couleur: couleurTexte });
+      // (20/10 soir) gabarit compact : une ligne de ~120 px à 100 %, qui grandit avec le texte (pdfShared.js#COMPACT)
+      const sz = pageSizes.find((p) => String(p.cle) === String(page)) || pageSizes[0] || { width: 600, height: 800 };
+      const ligne = fractionPx100(COMPACT.hauteurMin, sz.height), largeur = fractionPx100(COMPACT.largeurVide, sz.width);
+      const rec = { ...newTexteLibre({ ficheId: nsAnnot, page, x: Math.min(x, 1 - largeur), y: Math.max(0, Math.min(y - ligne / 2, 1 - ligne)),
+        width: largeur, height: ligne, couleur: couleurTexte }), compacte: true };
       hist.appliquer(cmdCreer('annotations', rec, 'Texte libre'));
       videsFraiches.current.add(rec.id);
       setActiveEditId(rec.id);

@@ -33,7 +33,7 @@ import { createPortal } from 'react-dom';
 import { ocrImage } from '../ocr/ocrImage.js';
 import { COULEUR_DEFAUT } from '../lib/palette.js';
 import {
-  couleurFoncee, opaciteFondBoite, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT,
+  couleurFoncee, opaciteFondBoite, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT, COMPACT, fractionPx100,
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
   soustraireAncres, partCouverte, surlignagesTouches, couleurHex, planSurlignage,
@@ -340,19 +340,22 @@ export function PdfPageContent({
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       setTrace(null);
+      /* (20/10 soir) GABARIT COMPACT : un clic pose une boîte d'UNE ligne (~120 × 24 px à 100 %) qui grandira avec
+         son texte ; un rectangle tracé garde sa taille, jamais sous 48 × 24 px à 100 % */
+      const l100 = r.width / (scale || 1), h100 = r.height / (scale || 1);
+      const minL = fractionPx100(COMPACT.largeurMin, l100), minH = fractionPx100(COMPACT.hauteurMin, h100);
       let rect = courant;
-      if (!rect || rect.width < BOITE_MIN.width || rect.height < BOITE_MIN.height) {
-        rect = { x: x0, y: y0, width: BOITE_DEFAUT.width, height: BOITE_DEFAUT.height };
+      if (!rect || rect.width * l100 < 16 || rect.height * h100 < 12) { // un clic (ou un tracé minuscule)
+        rect = { x: x0, y: clamp(y0 - minH / 2, 0, 1), width: fractionPx100(COMPACT.largeurVide, l100), height: minH };
       }
       // la boîte ne sort jamais de la page
-      const x = clamp(rect.x, 0, 1 - BOITE_MIN.width);
-      const y = clamp(rect.y, 0, 1 - BOITE_MIN.height);
-      // taille TRACÉE = fraction de la page, telle quelle (04/10 : la boîte suit la page au zoom)
-      const k = 1;
+      const x = clamp(rect.x, 0, 1 - minL);
+      const y = clamp(rect.y, 0, 1 - minH);
+      const trace = rect !== courant ? false : true; // rectangle tracé : sa largeur est celle voulue
       onCreerBoite({
-        page: pageNum, x, y,
-        width: clamp(rect.width * k, BOITE_MIN.width, 1 - x),
-        height: clamp(rect.height * k, BOITE_MIN.height, 1 - y),
+        page: pageNum, x, y, compacte: true, ...(trace ? { largeurFixe: true } : {}),
+        width: clamp(rect.width, minL, 1 - x),
+        height: clamp(rect.height, minH, 1 - y),
       });
     };
     window.addEventListener('pointermove', move);
@@ -1046,6 +1049,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const k = (echelle || ECHELLE_REF) / ECHELLE_REF;
   const texteLibre = variante === 'texte'; // TEXTE LIBRE (01/10) : même mécanique, sans cadre ni fond
   const [apercu, setApercu] = useState(null); // géométrie pendant le geste (état local, non persisté)
+  const [redim, setRedim] = useState(false); // (20/10 soir) une REDIMENSION est en cours (pas un déplacement)
   const b = apercu || boite;
   const html = useMemo(() => richToHTML(boite.content), [boite.content]);
   const barreRef = useRef(null);
@@ -1141,6 +1145,8 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     let courant = null;
     let bouge = false;
     onGeste(true);
+    // minimum : 48 × 24 px à 100 % pour une boîte compacte ; l'ancien minimum (fractions) sinon
+    const min = avant.compacte ? { width: fractionPx100(COMPACT.largeurMin, refW / ECHELLE_REF), height: fractionPx100(COMPACT.hauteurMin, refH / ECHELLE_REF) } : BOITE_MIN;
 
     const move = (ev) => {
       if (!bouge && Math.abs(ev.clientX - depart.x) + Math.abs(ev.clientY - depart.y) <= 4) return;
@@ -1151,14 +1157,15 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       courant = type === 'move'
         ? { ...avant, x: clamp(avant.x + dx, 0, 0.98), y: clamp(avant.y + dy, 0, 0.98) }
         : { ...avant, largeurFixe: true, // redimensionnée à la main : sa largeur ne s'ajuste plus au texte
-            width: clamp(base.width + dx, BOITE_MIN.width, 1 - avant.x),
-            height: clamp(base.height + dy, BOITE_MIN.height, 1 - avant.y) };
+            width: clamp(base.width + dx, min.width, 1 - avant.x),
+            height: clamp(base.height + dy, min.height, 1 - avant.y) };
+      if (type === 'resize') setRedim(true);
       setApercu(courant);
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
-      setApercu(null);
+      setApercu(null); setRedim(false);
       onGeste(false); // relâché ici ; handleMouseUp consommera le drapeau s'il est appelé
       if (bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de la boîte' : 'Redimension de la boîte');
       else if (type === 'move') onActivate(boite.id); // clic sans déplacement sur le bandeau → sélectionner
@@ -1176,11 +1183,22 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      deviendrait minuscule), une boîte redimensionnée à la main (`largeurFixe`)
      garde la largeur choisie, et pendant un geste on montre la largeur exacte. */
   const extraitBrut = boite.content ? richToHTML(boite.content).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
-  const ajustee = !apercu && !boite.largeurFixe && !!extraitBrut;
+  /* CAUSE DU BUG « LA BOÎTE GRANDIT PENDANT LE GLISSER » (20/10 soir, docs/compte-rendu-pdfreader-v4.md) : la
+     condition était `!apercu` — pendant TOUT geste (déplacement compris), la boîte perdait sa largeur ajustée au
+     texte et prenait sa largeur enregistrée (un maximum, souvent bien plus large), puis se resserrait au
+     relâchement. Seule une REDIMENSION montre la largeur exacte ; un déplacement ne fait que translater. */
+  /* GABARIT COMPACT (pdfShared.js#COMPACT) : sans largeur fixée, la largeur est celle du TEXTE en cours de frappe
+     (`max-content`, suivi en direct par le navigateur, sans attendre l'enregistrement) — au moins la largeur de
+     création (une ligne de ~120 px vide), au plus 45 % de la page, puis le texte passe à la ligne. Une boîte
+     tracée ou redimensionnée à la main (`largeurFixe`) garde sa largeur. Hauteur : jamais sous 24 px à 100 %. */
+  const compacteLibre = !!boite.compacte && !boite.largeurFixe && !redim;
+  const ajustee = !boite.compacte && !redim && !boite.largeurFixe && !!extraitBrut;
   const style = {
     left: b.x * 100 + '%', top: b.y * 100 + '%', minHeight: b.height * refH,
     ...(k !== 1 ? { scale: String(k), transformOrigin: '0 0' } : {}),
-    ...(ajustee ? { width: 'max-content', maxWidth: b.width * refW } : { width: b.width * refW }),
+    ...(compacteLibre ? { width: 'max-content', minWidth: Math.max(b.width * refW, COMPACT.largeurMin * ECHELLE_REF), maxWidth: Math.max(b.width, COMPACT.largeurMaxPage) * refW }
+      : ajustee ? { width: 'max-content', maxWidth: b.width * refW } : { width: b.width * refW }),
+    ...(boite.compacte ? { minHeight: Math.max(b.height * refH, COMPACT.hauteurMin * ECHELLE_REF) } : {}),
     ...(texteLibre
       ? { color: couleurHex(boite.couleur, '#1F1F24') }
       : (() => { const f = styleFondBoite(boite, fondNoir); if (active && !boite.fond) delete f.borderColor; return f; })()),
@@ -1319,7 +1337,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     if (!cible || !pageWidth || !pageHeight) return null;
     const W = pageWidth, H = pageHeight;
     // taille mise en page (px de référence) × k = taille à l'écran, dans le repère de la page
-    const bx = b.x * W, by = b.y * H, bw = (ajustee && largVue ? largVue : b.width * refW) * k, bh = Math.max(b.height * refH, hautVue || 0) * k;
+    const bx = b.x * W, by = b.y * H, bw = ((ajustee || compacteLibre) && largVue ? largVue : b.width * refW) * k, bh = Math.max(b.height * refH, hautVue || 0) * k;
     const cx = bx + bw / 2, cy = by + bh / 2, ax = cible.x * W, ay = cible.y * H;
     const dx = ax - cx, dy = ay - cy;
     if (ax >= bx && ax <= bx + bw && ay >= by && ay <= by + bh) return null;
@@ -1346,7 +1364,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      (PdfReader.jsx). Plus d'apparition au survol. Au-dessus de la boîte, dessous s'il n'y a pas
      la place ; toujours dans la page (repositionnée si la boîte est au bord). */
   const tactile = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-  const bLarg = refW ? (ajustee && largVue ? largVue : b.width * refW) / refW : b.width; // largeur affichée (fraction de page)
+  const bLarg = refW ? ((ajustee || compacteLibre) && largVue ? largVue : b.width * refW) / refW : b.width; // largeur affichée (fraction de page)
   const bHaut = Math.max(b.height, (hautVue * k) / (pageHeight || 1)); // hauteur affichée (fraction de page)
   const ICONE = tactile ? 36 : 28;
   const NB_ICONES = texteLibre ? 2 : 5;
@@ -1468,7 +1486,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         </>)}
       </div>
     )}
-    <div ref={boiteRef} className={'note-box' + (ajustee ? ' ajustee' : '') + (!texteLibre && boite.fond ? ' fond-' + boite.fond : '') + (texteLibre ? ' texte-libre' : '') + (active ? ' active' : '') + (enAncrage ? ' en-ancrage' : '') + (texteLibre && !extraitBrut ? ' vide' : '')} style={style}
+    <div ref={boiteRef} className={'note-box' + (ajustee ? ' ajustee' : '') + (boite.compacte ? ' compacte' : '') + (!texteLibre && boite.fond ? ' fond-' + boite.fond : '') + (texteLibre ? ' texte-libre' : '') + (active ? ' active' : '') + (enAncrage ? ' en-ancrage' : '') + (texteLibre && !extraitBrut ? ' vide' : '')} style={style}
       onMouseEnter={entrer} onMouseLeave={sortir}>
       {/* CORRECTIF (défaut 4) : le bandeau est focusable, et c'est LUI qui porte la
           suppression au clavier — plus aucun écouteur global ne peut effacer la
