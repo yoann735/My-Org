@@ -15,6 +15,9 @@
    une autre filtre `fleches`, et toute nouvelle flèche s'ajoute à `fleches`.
    Une `ancre` SANS `fleche` (boîte seulement épinglée, avant le 20/10) n'est pas un connecteur :
    son repère rond reste affiché comme avant (`epingleSeule`) et se retire par sa croix.
+   (20/10 soir) STYLE d'une flèche (dure / souple, points de contrôle, pointes, trait, épaisseur, couleur —
+   pdf/flechesGeo.js) : sur l'entrée de `fleches`, ou dans `flechePrincipale` pour la principale ; absent =
+   rendu d'avant à l'identique.
    ============================================================ */
 export const ID_PRINCIPALE = 'principale';
 
@@ -26,7 +29,7 @@ export function connecteursDe(boite) {
   if (!boite) return [];
   const out = [];
   if (boite.fleche && pointValide(boite.ancre)) {
-    out.push({ id: ID_PRINCIPALE, x: boite.ancre.x, y: boite.ancre.y, texte: boite.ancre.texte || null,
+    out.push({ ...(boite.flechePrincipale || {}), id: ID_PRINCIPALE, x: boite.ancre.x, y: boite.ancre.y, texte: boite.ancre.texte || null,
       surlignageId: boite.surlignageId || null, formeId: boite.formeId || null, principale: true });
   }
   (boite.fleches || []).forEach((fl, i) => { if (pointValide(fl)) out.push({ ...fl, id: idDe(fl, i), principale: false }); });
@@ -38,8 +41,13 @@ export const epingleSeule = (boite) => !!boite && !boite.fleche && pointValide(b
 
 /** retire UN connecteur (n'importe lequel, la principale comprise) */
 export function patchRetirer(boite, id) {
-  if (id === ID_PRINCIPALE) return { ancre: null, fleche: false, surlignageId: null, formeId: null };
+  if (id === ID_PRINCIPALE) return { ancre: null, fleche: false, surlignageId: null, formeId: null, ...(boite.flechePrincipale ? { flechePrincipale: null } : {}) };
   return { fleches: (boite.fleches || []).filter((fl, i) => idDe(fl, i) !== id) };
+}
+/** change le STYLE d'un connecteur (type, points, pointes, trait, epaisseur, couleur — fusionné) */
+export function patchStyle(boite, id, style) {
+  if (id === ID_PRINCIPALE) return { flechePrincipale: { ...(boite.flechePrincipale || {}), ...style } };
+  return { fleches: (boite.fleches || []).map((fl, i) => (idDe(fl, i) === id ? { ...fl, ...style } : fl)) };
 }
 
 /** ajoute un connecteur vers `cible` ({ x, y, texte, surlignageId?, formeId? }) — la 1re comme les suivantes */
@@ -51,5 +59,6 @@ export function patchAjouter(boite, cible) {
 /** déplace le bout d'un connecteur : déplacé à la main, il n'est plus lié à un surlignage ou une forme */
 export function patchDeplacer(boite, id, point) {
   if (id === ID_PRINCIPALE) return { ancre: { x: point.x, y: point.y, texte: point.texte || null }, surlignageId: null, formeId: null };
-  return { fleches: (boite.fleches || []).map((fl, i) => (idDe(fl, i) === id ? { id: fl.id || id, x: point.x, y: point.y, texte: point.texte || null } : fl)) };
+  // le style de la flèche (points de contrôle, pointes…) est gardé ; seul le lien au surlignage / à la forme part
+  return { fleches: (boite.fleches || []).map((fl, i) => { if (idDe(fl, i) !== id) return fl; const { surlignageId, formeId, ...reste } = fl; return { ...reste, id: fl.id || id, x: point.x, y: point.y, texte: point.texte || null }; }) };
 }

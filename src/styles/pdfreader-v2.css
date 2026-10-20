@@ -309,11 +309,11 @@
    invisible) ou sur son bout → halo + croix au milieu ; Suppr la retire. */
 .nb-fleche .nb-conn-cible { pointer-events: stroke; cursor: pointer; }
 .nb-ancre.sel { box-shadow: 0 0 0 3px rgba(124, 92, 255, .45); }
-.nb-conn-x { position: absolute; z-index: 3; width: 22px; height: 22px; margin: -11px 0 0 -11px; padding: 0; display: grid; place-items: center;
+.nb-conn-x { position: absolute; z-index: 3; width: 22px; height: 22px; margin: -38px 0 0 -11px; /* (20/10 soir) au-dessus du trait */ padding: 0; display: grid; place-items: center;
   border-radius: 50%; border: 2px solid; background: var(--card, #1b1b22); color: var(--text, #fff); cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, .35); animation: sc-entree .12s ease-out; }
 .nb-conn-x:hover { background: var(--crit, #e5484d); border-color: var(--crit, #e5484d) !important; color: #fff; }
-@media (pointer: coarse) { .nb-conn-x { width: 32px; height: 32px; margin: -16px 0 0 -16px; } }
+@media (pointer: coarse) { .nb-conn-x { width: 32px; height: 32px; margin: -52px 0 0 -16px; } }
 .nb-act .nb-act-n { min-width: 14px; height: 14px; padding: 0 3px; margin-left: -3px; border-radius: 7px; font-size: 9.5px; line-height: 14px; font-weight: 700;
   background: var(--pv-actif, rgba(124, 92, 255, .18)); color: var(--accent, #7c5cff); }
 
@@ -340,3 +340,14 @@
 /* (20/10 soir) poignées des boîtes au doigt : le navigateur ne reprend plus le geste pour faire défiler la page
    (avant : la boîte suivait quelques pixels puis s'arrêtait) */
 .note-box .nb-bar, .note-box .nb-corner { touch-action: none; }
+
+/* ---- FLÈCHES SOUPLES / DURES (20/10 soir, pdf/flechesGeo.js) : points de contrôle et barre de style ---- */
+.nb-ctl { position: absolute; z-index: 3; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 3px; border: 2px solid; background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .3); cursor: move; touch-action: none; }
+.nb-ctl:hover { transform: scale(1.2); }
+@media (pointer: coarse) { .nb-ctl { width: 22px; height: 22px; margin: -11px 0 0 -11px; } }
+.nb-conn-barre { position: absolute; z-index: 4; display: flex; gap: 2px; padding: 3px; border-radius: 10px;
+  background: var(--card, #1b1b22); border: 1px solid var(--border, rgba(255, 255, 255, .1)); box-shadow: 0 6px 18px rgba(0, 0, 0, .3); white-space: nowrap;
+  animation: sc-entree .12s ease-out; }
+.nb-conn-barre .nb-act { height: 26px; padding: 0 8px; font-size: 11.5px; }
+@media (pointer: coarse) { .nb-conn-barre .nb-act, .nb-conn-barre .sc-bouton { min-height: 40px; min-width: 40px; } }

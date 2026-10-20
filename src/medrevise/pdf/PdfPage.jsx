@@ -22,7 +22,8 @@ import { EditorContent } from '@tiptap/react';
 import { IconeOutil } from './IconesOutils.jsx';
 import { SelecteurCouleurs, BoutonCouleur, AUCUNE } from './Couleurs.jsx';
 import { cheminForme, extremites, typeForme, estTrait, estFermee, tailleParDefaut, ancreSurForme } from './formes.js';
-import { connecteursDe, epingleSeule, patchRetirer, patchAjouter, patchDeplacer } from './connecteurs.js';
+import { connecteursDe, epingleSeule, patchRetirer, patchAjouter, patchDeplacer, patchStyle } from './connecteurs.js';
+import { aStyle, styleFleche, cheminFleche, indexInsertion, suivant, POINTES, TRAITS, EPAISSEURS } from './flechesGeo.js';
 import { suivreImage } from './attaches.js';
 import { Icon } from '../../shared/Icon.jsx';
 import { outputScaleFor } from './pdfjsSetup.js';
@@ -48,7 +49,7 @@ import {
     de texte édités (Chantier 1). */
 export function PdfPageContent({
   pdfDoc, pageNum, vierge = false, scale, pageHeight, dpr, highlights: tousSurlignages, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
-  onCreateHighlight, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, ancrageSurlignage = false, ancrageAjout = false, onDemanderAncrage = () => {},
+  onCreateHighlight, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, ancrageSurlignage = false, ancrageAjout = false, onSelFleche = null, onDemanderAncrage = () => {},
   onCreerTrait, onSupprimerTraits, cibleHlId, onDebutTrait = null,
   ocrPage = null, ocrDebug = false, // couche OCR de cette page (docs/compte-rendu-ocr.md)
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, opaciteTrait = 1, aimantActif = true, modeCrayon = 'dessin',
@@ -957,7 +958,7 @@ export function PdfPageContent({
           onActivate={onActivateEdit}
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
           onMaj={onMajBoite} onSupprimer={onSupprimerBoite} onModifier={onModifierBoite}
-          enAncrage={b.id === ancrageBoiteId} viseSurlignage={ancrageSurlignage} viseAjout={ancrageAjout} onDemanderAncrage={onDemanderAncrage} flechesInteractives={outil === 'main'}
+          enAncrage={b.id === ancrageBoiteId} viseSurlignage={ancrageSurlignage} viseAjout={ancrageAjout} onDemanderAncrage={onDemanderAncrage} flechesInteractives={outil === 'main'} onSelFleche={onSelFleche}
           onApercu={onApercuCouleur ? (c) => onApercuCouleur(b.id, c) : null}
           pageWidth={pageWidth} pageHeight={pageHeight} texteProche={texteProche} />
       ))}
@@ -1035,7 +1036,7 @@ function useApparition(visible, ms = 120) {
   return [monte || visible, sortie && !visible];
 }
 
-function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, onApercu = null, enAncrage = false, viseSurlignage = false, viseAjout = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF, fondNoir = false, flechesInteractives = true }) {
+function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, onApercu = null, enAncrage = false, viseSurlignage = false, viseAjout = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF, fondNoir = false, flechesInteractives = true, onSelFleche = null }) {
   /* UN SEUL REPÈRE : LA PAGE (04/10, docs/compte-rendu-zoom-annotations.md). Position,
      épingle, connecteurs ET taille sont des fractions de page. La boîte est mise en page
      à l'échelle de RÉFÉRENCE (160 % : refW × refH, police 13 px…) puis mise à l'échelle
@@ -1264,6 +1265,12 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      évidence, avec une croix à son milieu ; Suppr / ⌫ ou la croix la retirent — la première comme les
      autres. Clic ailleurs ou Échap : désélection. Déclaré avant le retour anticipé de la pastille. */
   const [selConn, setSelConn] = useState(null);
+  const [ctlApercu, setCtlApercu] = useState(null); // (20/10 soir) point de contrôle en cours de glisser : { id, points }
+  // (20/10 soir) la flèche sélectionnée est signalée au lecteur : ses réglages s'affichent dans la rangée contextuelle
+  const selFlecheRef = useRef(onSelFleche); selFlecheRef.current = onSelFleche;
+  useEffect(() => { if (selFlecheRef.current) selFlecheRef.current(boite.id, selConn); }, [selConn, boite.id]);
+  useEffect(() => () => { if (selFlecheRef.current) selFlecheRef.current(boite.id, null); }, [boite.id]);
+  const appuiLong = useRef(null); // appui long au doigt sur une flèche : ajoute un point
   const retirerConnecteur = (id) => { setSelConn(null); onModifier(boite, patchRetirer(boite, id), 'Flèche retirée'); };
   const retirerRef = useRef(retirerConnecteur); retirerRef.current = retirerConnecteur;
   useEffect(() => {
@@ -1276,12 +1283,14 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       e.preventDefault(); e.stopPropagation(); // ni la boîte (Suppr sur son bandeau) ni autre chose ne part avec
       retirerRef.current(selConn);
     };
-    const dehors = (e) => { if (!(e.target && e.target.closest && e.target.closest('.nb-conn-cible, .nb-conn-x, .nb-ancre'))) setSelConn(null); };
+    const dehors = (e) => { if (!(e.target && e.target.closest && e.target.closest('.nb-conn-cible, .nb-conn-x, .nb-ancre, .nb-ctl, .nb-conn-barre, .barre-fleche, .scw-panneau, .sc-fenetre, .scw-pipette'))) setSelConn(null); };
     window.addEventListener('keydown', clavier, true);
     window.addEventListener('pointerdown', dehors, true);
     return () => { window.removeEventListener('keydown', clavier, true); window.removeEventListener('pointerdown', dehors, true); };
   }, [selConn]);
-  const choisirConnecteur = (id) => {
+  const selDepuis = useRef(0); // instant de la sélection : la croix ignore le « clic fantôme » d'un toucher (iPad)
+  const choisirConnecteur = (id, typePointeur = 'mouse') => {
+    selDepuis.current = typePointeur === 'mouse' ? 0 : performance.now();
     const a = document.activeElement;
     if (a && a.blur && a !== document.body && (a.isContentEditable || (boiteRef.current && boiteRef.current.contains(a)))) a.blur(); // Suppr ira à la flèche, pas au texte
     setSelConn(id);
@@ -1357,6 +1366,74 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const pinSeule = epingleSeule(boite);
   const couleurFleche = couleurFoncee(boite.couleur);
 
+  /* FLÈCHES SOUPLES OU DURES (20/10 soir, pdf/flechesGeo.js) : un connecteur qui a un style à lui (type, points de
+     contrôle, pointes, trait, épaisseur, couleur) est tracé par cheminFleche, du bord de la boîte (vers son 1er
+     point) jusqu'à sa cible en passant par ses points ; SANS style, l'ancien tracé (trait + marqueur) est gardé
+     à l'identique. Points de contrôle en fractions de page ; celui qu'on glisse suit le pointeur (ctlApercu). */
+  const bordVers = (cible) => {
+    const W = pageWidth, H = pageHeight;
+    const bx = b.x * W, by = b.y * H, bw = ((ajustee || compacteLibre) && largVue ? largVue : b.width * refW) * k, bh = Math.max(b.height * refH, hautVue || 0) * k;
+    const cx = bx + bw / 2, cy = by + bh / 2, dx = cible.x - cx, dy = cible.y - cy;
+    if (cible.x >= bx && cible.x <= bx + bw && cible.y >= by && cible.y <= by + bh) return null;
+    const t = Math.min(dx ? (bw / 2) / Math.abs(dx) : Infinity, dy ? (bh / 2) / Math.abs(dy) : Infinity);
+    return { x: cx + dx * t, y: cy + dy * t };
+  };
+  const geoConn = (c, sel) => {
+    if (!pageWidth || !pageHeight) return null;
+    const enGlisse = ctlApercu && ctlApercu.id === c.id;
+    const src = enGlisse ? { ...c, points: ctlApercu.points } : c;
+    if (!aStyle(src)) {
+      const tr = flecheVers(c);
+      return tr ? { style: false, tr, mid: { x: (tr.sx + tr.ex) / 2, y: (tr.sy + tr.ey) / 2 }, pts: [{ x: tr.sx, y: tr.sy }, { x: tr.ex, y: tr.ey }], st: styleFleche(c) } : null;
+    }
+    const W = pageWidth, H = pageHeight, st = styleFleche(src);
+    const cible = { x: c.x * W, y: c.y * H }, inter = st.points.map((p) => ({ x: p.x * W, y: p.y * H }));
+    const debut = bordVers(inter[0] || cible);
+    if (!debut) return null;
+    const prec = inter[inter.length - 1] || debut, L = Math.hypot(cible.x - prec.x, cible.y - prec.y) || 1;
+    const fin = { x: cible.x - ((cible.x - prec.x) * 7 * k) / L, y: cible.y - ((cible.y - prec.y) * 7 * k) / L }; // s'arrête au bord du rond
+    const pts = [debut, ...inter, fin];
+    const largeur = 2 * k * st.epaisseur * (sel ? 1.4 : 1);
+    const m = Math.floor((pts.length - 1) / 2);
+    return { style: true, st, pts, ch: cheminFleche(pts, st, largeur), largeur, couleur: st.couleur ? couleurHex(st.couleur, couleurFleche) : couleurFleche,
+      mid: pts.length % 2 ? pts[m] : { x: (pts[m].x + pts[m + 1].x) / 2, y: (pts[m].y + pts[m + 1].y) / 2 } };
+  };
+  const pageDe = (e) => { const pg = e.currentTarget.closest('.pdfr-page'); return pg && pg.getBoundingClientRect(); };
+  // double-clic (ou appui long au doigt) sur une flèche : un point de contrôle à cet endroit
+  const ajouterPoint = (c, clientX, clientY, r) => {
+    if (!r || !r.width) return;
+    const g = geoConn(c, false);
+    if (!g) return;
+    const fx = clamp01((clientX - r.left) / r.width), fy = clamp01((clientY - r.top) / r.height);
+    const i = indexInsertion(g.pts, { x: fx * pageWidth, y: fy * pageHeight });
+    const points = [...g.st.points]; points.splice(i, 0, { x: +fx.toFixed(5), y: +fy.toFixed(5) });
+    setSelConn(c.id);
+    onModifier(boite, patchStyle(boite, c.id, { points, ...(c.type ? {} : { type: 'dure' }) }), 'Point ajouté à la flèche');
+  };
+  const glisserCtl = (e, c, i) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const r = pageDe(e);
+    if (!r || !r.width) return;
+    const d0 = { x: e.clientX, y: e.clientY }, base = styleFleche(c).points;
+    let bouge = false, dernier = null;
+    onGeste(true);
+    const move = (ev) => {
+      if (!bouge && Math.abs(ev.clientX - d0.x) + Math.abs(ev.clientY - d0.y) <= 3) return;
+      bouge = true;
+      const pts = base.map((p, j) => (j === i ? { x: +clamp01(p.x + (ev.clientX - d0.x) / r.width).toFixed(5), y: +clamp01(p.y + (ev.clientY - d0.y) / r.height).toFixed(5) } : p));
+      dernier = pts; setCtlApercu({ id: c.id, points: pts });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      onGeste(false); setCtlApercu(null);
+      if (bouge && dernier) onModifier(boite, patchStyle(boite, c.id, { points: dernier }), 'Point de la flèche déplacé');
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+  const retirerPoint = (c, i) => onModifier(boite, patchStyle(boite, c.id, { points: styleFleche(c).points.filter((_, j) => j !== i) }), 'Point de la flèche retiré');
+  const styler = (c, patch, libelle) => onModifier(boite, patchStyle(boite, c.id, patch), libelle);
+
   /* BARRE D'OUTILS DE LA BOÎTE (11/10, docs/compte-rendu-finitions-boites-sidebar.md) — une petite
      barre flottante d'ICÔNES (28 px ; 36 px au doigt), visible UNIQUEMENT quand la boîte est
      sélectionnée (`active` : clic dessus, ou juste après sa création) ou qu'elle attend sa visée.
@@ -1394,39 +1471,67 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
 
   return (
     <>
-    {tracesConn.some((t) => t.tr) && (
+    {connecteurs.length > 0 && (
       <svg className="nb-fleche" viewBox={`0 0 ${pageWidth} ${pageHeight}`} preserveAspectRatio="none" aria-hidden="true">
         <defs>
           <marker id={'pointe-' + boite.id} viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth={9 * k} markerHeight={9 * k} markerUnits="userSpaceOnUse" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill={couleurFleche} />
           </marker>
         </defs>
-        {tracesConn.map(({ c, tr }) => tr && (
-          <g key={c.id} className={'nb-conn' + (selVisible === c.id ? ' sel' : '')} data-conn={c.id}>
-            {selVisible === c.id && <line className="nb-conn-halo" x1={tr.sx} y1={tr.sy} x2={tr.ex} y2={tr.ey} stroke={couleurFleche} strokeWidth={9 * k} strokeOpacity={0.22} strokeLinecap="round" />}
-            <line x1={tr.sx} y1={tr.sy} x2={tr.ex} y2={tr.ey} stroke={couleurFleche} strokeWidth={(selVisible === c.id ? 3 : 2) * k} strokeLinecap="round"
-              markerEnd={`url(#pointe-${boite.id})`} />
-            {/* zone de prise large et invisible (outil Sélection seulement : ne gêne ni le crayon ni la gomme) */}
+        {tracesConn.map(({ c }) => { const sel = selVisible === c.id; const g = geoConn(c, sel); if (!g) return null; return (
+          <g key={c.id} className={'nb-conn' + (sel ? ' sel' : '') + (g.style ? ' stylee' : '')} data-conn={c.id}>
+            {g.style ? (<>
+              {sel && <path className="nb-conn-halo" d={g.ch.d} fill="none" stroke={g.couleur} strokeWidth={9 * k} strokeOpacity={0.22} strokeLinecap="round" strokeLinejoin="round" />}
+              <path className="nb-conn-trait" d={g.ch.d} fill="none" stroke={g.couleur} strokeWidth={g.largeur} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={g.ch.dash || undefined} />
+              {g.ch.tetes.map((t, i) => (t.pleine
+                ? <path key={i} className="nb-conn-tete" d={t.d} fill={g.couleur} stroke={g.couleur} strokeWidth={Math.min(g.largeur, 1.5 * k)} strokeLinejoin="round" />
+                : <path key={i} className="nb-conn-tete" d={t.d} fill="none" stroke={g.couleur} strokeWidth={g.largeur} strokeLinecap="round" strokeLinejoin="round" />))}
+            </>) : (<>
+              {sel && <line className="nb-conn-halo" x1={g.tr.sx} y1={g.tr.sy} x2={g.tr.ex} y2={g.tr.ey} stroke={couleurFleche} strokeWidth={9 * k} strokeOpacity={0.22} strokeLinecap="round" />}
+              <line x1={g.tr.sx} y1={g.tr.sy} x2={g.tr.ex} y2={g.tr.ey} stroke={couleurFleche} strokeWidth={(sel ? 3 : 2) * k} strokeLinecap="round"
+                markerEnd={`url(#pointe-${boite.id})`} />
+            </>)}
+            {/* zone de prise large et invisible (outil Sélection seulement : ne gêne ni le crayon ni la gomme) ;
+                double-clic ou appui long : un point de contrôle à cet endroit */}
             {flechesInteractives && (
-              <line className="nb-conn-cible" x1={tr.sx} y1={tr.sy} x2={tr.ex} y2={tr.ey} stroke="transparent" strokeWidth={Math.max(14, 12 * k)} strokeLinecap="round"
-                onPointerDown={(e) => { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); choisirConnecteur(c.id); }}>
-                <title>Flèche — clic : la sélectionner (Suppr ou × pour la retirer)</title>
-              </line>
+              <path className="nb-conn-cible" d={g.style ? g.ch.d : `M${g.tr.sx} ${g.tr.sy} L${g.tr.ex} ${g.tr.ey}`} fill="none" stroke="transparent" strokeWidth={Math.max(14, 12 * k)} strokeLinecap="round" strokeLinejoin="round"
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); choisirConnecteur(c.id, e.pointerType);
+                  if (e.pointerType === 'touch') { const r = pageDe(e), x = e.clientX, y = e.clientY; clearTimeout(appuiLong.current); appuiLong.current = setTimeout(() => ajouterPoint(c, x, y, r), 550); const annuler = () => { clearTimeout(appuiLong.current); window.removeEventListener('pointerup', annuler); window.removeEventListener('pointermove', bouge); }; const bouge = (ev) => { if (Math.hypot(ev.clientX - x, ev.clientY - y) > 8) annuler(); }; window.addEventListener('pointerup', annuler); window.addEventListener('pointermove', bouge); }
+                }}
+                onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); ajouterPoint(c, e.clientX, e.clientY, pageDe(e)); }}>
+                <title>Flèche — clic : la sélectionner (Suppr ou × pour la retirer) · double-clic : ajouter un point</title>
+              </path>
             )}
           </g>
-        ))}
+        ); })}
       </svg>
     )}
     {selVisible && (() => {
-      const t = tracesConn.find((x) => x.c.id === selVisible);
-      if (!t || !t.tr || !pageWidth || !pageHeight) return null;
-      return (
+      const c = connecteurs.find((x) => x.id === selVisible);
+      const g = c && geoConn(c, true);
+      if (!g || !pageWidth || !pageHeight) return null;
+      const pc = (p) => ({ left: (p.x / pageWidth) * 100 + '%', top: (p.y / pageHeight) * 100 + '%' });
+      const st = g.st;
+      const libPointe = { aucune: 'Aucune', ouverte: 'Ouverte', pleine: 'Pleine' };
+      const libTrait = { continu: 'Continu', tirets: 'Tirets', pointilles: 'Pointillés' };
+      return (<>
+        {/* (20/10 soir) croix DÉCALÉE au-dessus du trait, et sourde 400 ms après la sélection : au doigt, le clic de
+            compatibilité qui suit le toucher tombait sur elle (apparue sous le doigt) et supprimait la flèche */}
         <button type="button" className="nb-conn-x" title="Retirer cette flèche (Suppr)" aria-label="Retirer cette flèche"
-          style={{ left: ((t.tr.sx + t.tr.ex) / 2 / pageWidth) * 100 + '%', top: ((t.tr.sy + t.tr.ey) / 2 / pageHeight) * 100 + '%', borderColor: couleurBoite }}
-          onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); retirerConnecteur(selVisible); }}>
+          style={{ ...pc(g.mid), borderColor: couleurBoite }}
+          onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); if (performance.now() - selDepuis.current < 400) return; retirerConnecteur(selVisible); }}>
           <Icon name="x" size={12} />
         </button>
-      );
+        {st.points.map((p, i) => {
+          const q = ctlApercu && ctlApercu.id === c.id ? ctlApercu.points[i] : p;
+          return (
+            <span key={i} className="nb-ctl" data-conn={c.id} data-i={i} style={{ left: q.x * 100 + '%', top: q.y * 100 + '%', borderColor: g.couleur || couleurFleche }}
+              title="Point de la flèche — glisser pour courber (souple) ou couder (dure) · double-clic : le retirer"
+              onPointerDown={(e) => glisserCtl(e, c, i)} onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); retirerPoint(c, i); }} />
+          );
+        })}
+      </>);
     })()}
     {connecteurs.map((c) => (
       <span key={c.id} data-conn={c.id} className={'nb-ancre' + (c.principale ? '' : ' nb-ancre-fl') + (pointApercu && pointApercu.cible === 'fl:' + c.id ? ' glisse' : '') + (selVisible === c.id ? ' sel' : '')}
@@ -1854,7 +1959,24 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
   const ep = Math.max(1, (forme.epaisseur || 0.0025) * H);
   const coul = fondNoir ? lisibleSurNoir(couleurHex(forme.couleur, '#e5383b')) : couleurHex(forme.couleur, '#e5383b');
   const wpx = g.width * W, hpx = g.height * H;
-  const { d, pointes } = cheminForme(type, wpx, hpx, { fx: !!g.fx, fy: !!g.fy, epaisseur: ep });
+  /* FLÈCHE LIBRE SOUPLE OU DURE (20/10 soir, pdf/flechesGeo.js) : une ligne / flèche / double flèche qui a un style
+     à elle passe par cheminFleche, dans le repère de sa boîte (les points, en fractions de page, peuvent en
+     sortir : le SVG déborde). Le style vit dans le sous-objet `fleche` de la forme ({ type, points, pointes, trait,
+     epaisseur, couleur }) : la forme a déjà `type`, `couleur` et `epaisseur` (autre sens). Sans `fleche` : tracé d'avant. */
+  const [ctl, setCtl] = useState(null); // points pendant le glisser d'un point de contrôle
+  const pointesDefaut = type === 'ligne' ? { debut: 'aucune', fin: 'aucune' } : type === 'double' ? { debut: 'pleine', fin: 'pleine' } : { debut: 'aucune', fin: 'pleine' };
+  const srcStyle = ctl ? { ...(g.fleche || {}), points: ctl } : (g.fleche || null);
+  const stylee = trait && aStyle(srcStyle);
+  const st = trait ? styleFleche(srcStyle, { pointes: pointesDefaut }) : null;
+  let d, pointes, tetes = null, dash = null, coulTrait = coul, epTrait = ep;
+  if (stylee) {
+    const [a, bb] = extremites(wpx, hpx, !!g.fx, !!g.fy);
+    const inter = st.points.map((p) => ({ x: (p.x - g.x) * W, y: (p.y - g.y) * H }));
+    epTrait = ep * st.epaisseur;
+    coulTrait = st.couleur ? (fondNoir ? lisibleSurNoir(couleurHex(st.couleur, coul)) : couleurHex(st.couleur, coul)) : coul;
+    const ch = cheminFleche([a, ...inter, bb], st, epTrait);
+    d = ch.d; pointes = []; tetes = ch.tetes; dash = ch.dash;
+  } else ({ d, pointes } = cheminForme(type, wpx, hpx, { fx: !!g.fx, fy: !!g.fy, epaisseur: ep }));
 
   const demarrer = (e, typeGeste) => {
     if (e.button !== 0) return;
@@ -1875,6 +1997,8 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
       const dx = (ev.clientX - d0.x) / r.width, dy = (ev.clientY - d0.y) / r.height;
       if (typeGeste === 'move') {
         courant = { ...avant, x: clamp(avant.x + dx, 0, 1 - avant.width), y: clamp(avant.y + dy, 0, 1 - avant.height) };
+        // une flèche libre se déplace d'un bloc : ses points de contrôle suivent
+        if (avant.fleche && Array.isArray(avant.fleche.points) && avant.fleche.points.length) { const ddx = courant.x - avant.x, ddy = courant.y - avant.y; courant.fleche = { ...avant.fleche, points: avant.fleche.points.map((p) => ({ x: +clamp01(p.x + ddx).toFixed(5), y: +clamp01(p.y + ddy).toFixed(5) })) }; }
       } else if (typeGeste === 'debut' || typeGeste === 'fin') {
         const a = typeGeste === 'debut' ? { x: clamp01(a0.x + dx), y: clamp01(a0.y + dy) } : a0;
         const b = typeGeste === 'fin' ? { x: clamp01(b0.x + dx), y: clamp01(b0.y + dy) } : b0;
@@ -1900,6 +2024,41 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
     window.addEventListener('pointerup', up);
   };
 
+  const stylerForme = (patch, libelle) => onModifier(forme, { fleche: { ...(forme.fleche || {}), ...patch } }, libelle);
+  // sommets en pixels de PAGE (pour viser le bon segment) : départ, points, pointe
+  const sommetsPage = () => {
+    const [a, bb] = extremites(forme.width, forme.height, !!forme.fx, !!forme.fy).map((p) => ({ x: (forme.x + p.x) * W, y: (forme.y + p.y) * H }));
+    return [a, ...((forme.fleche && forme.fleche.points) || []).map((p) => ({ x: p.x * W, y: p.y * H })), bb];
+  };
+  const ajouterPointForme = (e) => ajouterPointFormeA(e.clientX, e.clientY, e.currentTarget.closest('.pdfr-page').getBoundingClientRect());
+  const ajouterPointFormeA = (clientX, clientY, r) => {
+    if (!r || !r.width) return;
+    const fx = clamp01((clientX - r.left) / r.width), fy = clamp01((clientY - r.top) / r.height);
+    const i = indexInsertion(sommetsPage(), { x: fx * W, y: fy * H });
+    const points = [...((forme.fleche && forme.fleche.points) || [])]; points.splice(i, 0, { x: +fx.toFixed(5), y: +fy.toFixed(5) });
+    stylerForme({ points, ...(forme.fleche && forme.fleche.type ? {} : { type: 'dure' }) }, 'Point ajouté à la flèche');
+  };
+  const glisserCtlForme = (e, i) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const r = e.currentTarget.closest('.pdfr-page').getBoundingClientRect();
+    if (!r.width) return;
+    const d0 = { x: e.clientX, y: e.clientY }, base = (forme.fleche && forme.fleche.points) || [];
+    let bouge = false, dernier = null;
+    onGeste(true);
+    const move = (ev) => {
+      if (!bouge && Math.abs(ev.clientX - d0.x) + Math.abs(ev.clientY - d0.y) <= 3) return;
+      bouge = true;
+      dernier = base.map((p, j) => (j === i ? { x: +clamp01(p.x + (ev.clientX - d0.x) / r.width).toFixed(5), y: +clamp01(p.y + (ev.clientY - d0.y) / r.height).toFixed(5) } : p));
+      setCtl(dernier);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      onGeste(false); setCtl(null);
+      if (bouge && dernier) stylerForme({ points: dernier }, 'Point de la flèche déplacé');
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
   const finirTexte = (valider) => {
     if (ecrit === null) return;
     const t = ecrit.trim();
@@ -1915,18 +2074,32 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
       style={{ left: g.x * 100 + '%', top: g.y * 100 + '%', width: g.width * 100 + '%', height: g.height * 100 + '%' }}
       tabIndex={-1} onKeyDown={(e) => { if (ecrit === null && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); onSupprimer(forme); } }}>
       <svg className="pf-svg" width="100%" height="100%" overflow="visible" aria-hidden="true">
-        <path className="pf-trace" d={d} fill={forme.remplie && estFermee(type) ? avecAlpha(coul, 0.18) : 'none'} stroke={coul} strokeWidth={ep}
-          strokeLinecap="round" strokeLinejoin="round" />
+        <path className="pf-trace" d={d} fill={forme.remplie && estFermee(type) ? avecAlpha(coul, 0.18) : 'none'} stroke={coulTrait} strokeWidth={epTrait}
+          strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash || undefined} />
         {pointes.map((p, i) => <path key={i} d={p} fill={coul} stroke={coul} strokeWidth={Math.min(ep, 2)} strokeLinejoin="round" />)}
+        {tetes && tetes.map((t, i) => (t.pleine
+          ? <path key={'t' + i} className="pf-tete" d={t.d} fill={coulTrait} stroke={coulTrait} strokeWidth={Math.min(epTrait, 2)} strokeLinejoin="round" />
+          : <path key={'t' + i} className="pf-tete" d={t.d} fill="none" stroke={coulTrait} strokeWidth={epTrait} strokeLinecap="round" strokeLinejoin="round" />))}
         {!apercu && (
           <path className="pf-gomme" data-id={forme.id} data-remplie={forme.remplie && estFermee(type) ? '1' : '0'} d={d}
             fill="transparent" stroke="transparent" strokeWidth={ep + 18} strokeLinecap="round" />
         )}
         {interactive && (
           <path className="pf-hit" d={d} fill="none" stroke="transparent" strokeWidth={Math.max(14, ep + 10)} strokeLinecap="round"
-            onPointerDown={(e) => { e.currentTarget.closest('.pdfr-forme').focus({ preventScroll: true }); demarrer(e, 'move'); }}
-            onDoubleClick={(e) => { e.stopPropagation(); setEcrit(forme.texte || ''); }}>
-            <title>Forme · glisser pour déplacer · double-clic pour écrire · Suppr pour retirer</title>
+            onPointerDown={(e) => {
+              e.currentTarget.closest('.pdfr-forme').focus({ preventScroll: true });
+              // (20/10 soir) appui long au doigt sur une flèche libre : un point de contrôle (comme le double-clic)
+              if (trait && e.pointerType === 'touch') {
+                const r = e.currentTarget.closest('.pdfr-page').getBoundingClientRect(), x0 = e.clientX, y0 = e.clientY;
+                const minuterie = setTimeout(() => ajouterPointFormeA(x0, y0, r), 550);
+                const fin = () => { clearTimeout(minuterie); window.removeEventListener('pointerup', fin); window.removeEventListener('pointermove', bouge); };
+                const bouge = (ev) => { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 8) fin(); };
+                window.addEventListener('pointerup', fin); window.addEventListener('pointermove', bouge);
+              }
+              demarrer(e, 'move');
+            }}
+            onDoubleClick={(e) => { e.stopPropagation(); if (trait) ajouterPointForme(e); else setEcrit(forme.texte || ''); }}>
+            <title>{trait ? 'Flèche · glisser pour déplacer · double-clic : ajouter un point · Suppr pour retirer' : 'Forme · glisser pour déplacer · double-clic pour écrire · Suppr pour retirer'}</title>
           </path>
         )}
       </svg>
@@ -1952,6 +2125,12 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
         <span key={i} className="pf-bout" style={{ left: p.x + '%', top: p.y + '%' }} title={i ? 'Glisser la pointe' : 'Glisser le départ'}
           onPointerDown={(e) => demarrer(e, i ? 'fin' : 'debut')} />
       ))}
+      {interactive && active && trait && st && st.points.map((p, i) => (
+        <span key={'c' + i} className="nb-ctl pf-ctl" data-i={i} style={{ left: (p.x - g.x) * W, top: (p.y - g.y) * H, borderColor: coulTrait }}
+          title="Point de la flèche — glisser pour courber (souple) ou couder (dure) · double-clic : le retirer"
+          onPointerDown={(e) => glisserCtlForme(e, i)}
+          onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); stylerForme({ points: st.points.filter((_, j) => j !== i) }, 'Point de la flèche retiré'); }} />
+      ))}
       {interactive && active && !geste && (
         <div className={'nb-actions pf-actions' + (g.y < 0.05 ? ' dessous' : '') + (g.x + g.width / 2 > 0.5 ? ' a-droite' : '')} onPointerDown={(e) => e.stopPropagation()}>
           <button type="button" className={'nb-act' + (forme.texte ? ' actif' : '')} {...stop(() => setEcrit(forme.texte || ''))} title="Écrire un texte dans la forme (ou double-clic sur la forme)">
@@ -1960,7 +2139,15 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
           <button type="button" className="nb-act" {...stop(() => onLegende(forme))} title="Ajouter une légende : une boîte de texte reliée à cette forme par une flèche">
             <IconeOutil nom="legende" size={12} /> Légende
           </button>
-          <BoutonCouleur couleur={forme.couleur} titre="Couleur de la forme" onApercu={onApercu} onCouleur={(c) => onModifier(forme, { couleur: c }, 'Couleur de la forme')} />
+          <BoutonCouleur couleur={forme.couleur} titre="Couleur de la forme" onApercu={onApercu} onCouleur={(c) => onModifier(forme, { couleur: c, ...(forme.fleche && forme.fleche.couleur ? { fleche: { ...forme.fleche, couleur: null } } : {}) }, 'Couleur de la forme')} />
+          {trait && st && (<>
+            <button type="button" className={'nb-act' + (st.type === 'souple' ? ' actif' : '')} data-reglage="type" {...stop(() => stylerForme({ type: st.type === 'souple' ? 'dure' : 'souple' }, 'Type de la flèche'))}
+              title={st.type === 'souple' ? 'Souple (courbe) — cliquer pour dure' : 'Dure (segments droits) — cliquer pour souple'}>{st.type === 'souple' ? 'Souple' : 'Dure'}</button>
+            <button type="button" className="nb-act" data-reglage="debut" {...stop(() => stylerForme({ pointes: { ...st.pointes, debut: suivant(POINTES, st.pointes.debut) } }, 'Pointe de départ'))} title="Pointe au départ (aucune, ouverte, pleine)">◂ {st.pointes.debut}</button>
+            <button type="button" className="nb-act" data-reglage="fin" {...stop(() => stylerForme({ pointes: { ...st.pointes, fin: suivant(POINTES, st.pointes.fin) } }, 'Pointe d’arrivée'))} title="Pointe à l’arrivée (aucune, ouverte, pleine)">{st.pointes.fin} ▸</button>
+            <button type="button" className="nb-act" data-reglage="trait" {...stop(() => stylerForme({ trait: suivant(TRAITS, st.trait) }, 'Style du trait'))} title="Trait : continu, tirets, pointillés">{st.trait}</button>
+            <button type="button" className="nb-act" data-reglage="epaisseur" {...stop(() => stylerForme({ epaisseur: suivant(EPAISSEURS, st.epaisseur) }, 'Épaisseur de la flèche'))} title="Épaisseur du trait">×{String(st.epaisseur).replace('.', ',')}</button>
+          </>)}
           {estFermee(type) && (
             <button type="button" className={'nb-act' + (forme.remplie ? ' actif' : '')} {...stop(() => onModifier(forme, { remplie: !forme.remplie }, forme.remplie ? 'Forme vidée' : 'Forme remplie'))}
               title={forme.remplie ? 'Retirer le fond' : 'Remplir d’une teinte légère de sa couleur'}>

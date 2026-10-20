@@ -28,7 +28,7 @@ if (capturesSeules) process.exit(0);
 const enBase = (id) => b.S(`const a=await S.getOne('annotations',${JSON.stringify(id)});return a&&{ancre:a.ancre||null,fleche:!!a.fleche,fleches:(a.fleches||[]).map(f=>f.id)}`);
 const nbConn = (id) => b.ev(`(()=>{const n=[...document.querySelectorAll('.note-box')].find(e=>e.innerText.includes(${JSON.stringify(id)}));return document.querySelectorAll('.pdfr-page[data-cle="1"] .nb-ancre[data-conn]').length})()`);
 const connDe = (boxId) => b.ev(`(()=>{const ids=[];document.querySelectorAll('.pdfr-page[data-cle="1"] g.nb-conn').forEach(g=>ids.push(g.dataset.conn));return ids})()`);
-const milieu = (conn) => b.ev(`(()=>{const l=document.querySelector('.pdfr-page[data-cle="1"] g.nb-conn[data-conn="${conn}"] line.nb-conn-cible');if(!l)return null;const r=l.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()`);
+const milieu = (conn) => b.ev(`(()=>{const l=document.querySelector('.pdfr-page[data-cle="1"] g.nb-conn[data-conn="${conn}"] .nb-conn-cible');if(!l)return null;const r=l.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()`);
 const avant = await enBase('an-v3-A');
 b.ok(JSON.stringify(await connDe()) === JSON.stringify(['principale', 'flA2']), 'ancienne boîte A : 2 connecteurs (la principale convertie à la lecture, en premier)', JSON.stringify(await connDe()));
 b.ok(await b.ev(`document.querySelectorAll('.pdfr-page[data-cle="1"] .nb-ancre:not([data-conn])').length`) === 1, 'ancienne boîte B (épinglée sans flèche) : son repère rond, comme avant');
@@ -97,7 +97,7 @@ b.ok(!(await b.ev(`!!document.querySelector('.nb-conn-x')`)), 'Échap : déséle
 b.ok((await enBase(nouvelle)).fleches.length === 1, '… et la flèche est toujours là');
 // le crayon passe au travers d'une flèche (zone de prise inactive hors Sélection)
 await b.outil('Crayon');
-b.ok(await b.ev(`!document.querySelector('line.nb-conn-cible')`), 'outil Crayon : les flèches ne captent pas le tracé');
+b.ok(await b.ev(`!document.querySelector('.nb-conn-cible')`), 'outil Crayon : les flèches ne captent pas le tracé');
 await b.outil('Sélection');
 // conversion idempotente : les anciennes boîtes non touchées n'ont pas été réécrites
 b.ok(JSON.stringify(await b.S(`const a=await S.getOne('annotations','an-v3-B');return [a.ancre,a.fleche||false,a.fleches||null]`)) === JSON.stringify([{ x: 0.45, y: 0.82, texte: null }, false, null]), 'ancienne boîte B jamais réécrite (conversion à la lecture)');

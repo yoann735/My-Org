@@ -48,7 +48,7 @@
    - Annuler / Rétablir (lib/annotHistory.js) sur toutes les annotations.
    ============================================================ */
 import { separerParType } from '../lib/annotationTypes.js';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { pdfjsLib, openPdf } from './pdfjsSetup.js';
 import { exporterDepuisBlob } from './exportAnnote.js';
@@ -75,7 +75,8 @@ import {
 import { PdfPageContent, EditToolbar, ECHELLE_REF } from './PdfPage.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
 import { SelecteurCouleurs, ReglagesTrait, dansSelecteurFlottant } from './Couleurs.jsx';
-import { patchAjouter } from './connecteurs.js';
+import { patchAjouter, patchStyle, connecteursDe } from './connecteurs.js';
+import { BarreFleche } from './BarreFleche.jsx';
 import { IconeOutil, IconeForme } from './IconesOutils.jsx';
 import { TYPES_FORMES, estTrait, estFermee, ancreSurForme } from './formes.js';
 import { publierFicheActive, useSondage, dessinsDeFiche, retirerDessin } from '../lib/dessins.js';
@@ -2197,6 +2198,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   /* Modification générique d'une boîte (repli, ancre, flèche…) : repart de la
      version la plus fraîche (texte en attente compris) et passe par l'historique —
      une entrée par geste, annulable par Cmd+Z comme tout le reste. */
+  /* FLÈCHE SÉLECTIONNÉE (20/10 soir) : signalée par la boîte (NoteBox) ; ses réglages (BarreFleche) occupent la
+     rangée contextuelle. Dérivée des annotations à jour : chaque réglage part de la version la plus fraîche. */
+  const [flecheSel, setFlecheSel] = useState(null); // { boiteId, connId }
+  const signalerFleche = useCallback((boiteId, connId) => setFlecheSel((f) => (connId ? (f && f.boiteId === boiteId && f.connId === connId ? f : { boiteId, connId }) : (f && f.boiteId === boiteId ? null : f))), []);
+  const flecheChoisie = (() => {
+    if (!flecheSel) return null;
+    const bt = edits.find((a) => a.id === flecheSel.boiteId);
+    const c = bt && connecteursDe(bt).find((x) => x.id === flecheSel.connId);
+    return c ? { boite: bt, c } : null;
+  })();
   const modifierBoite = async (b, patch, libelle) => {
     if (patch && patch.versionTexte) { await basculerBoites([b], patch.versionTexte, libelle); return; }
     const actuel = boiteFraiche(b.id, b);
@@ -3363,7 +3374,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         imageDansTexte={modeDoc}
         /* rangée « texte » sous la barre d'outils (09/10) : mise en forme de la boîte active, ou
            du texte du document qui a le curseur — jamais avec un outil d'annotation */
-        rangeeTexte={activeEdit && editor ? (
+        rangeeTexte={flecheChoisie ? (
+          <BarreFleche key={'f:' + flecheChoisie.boite.id + ':' + flecheChoisie.c.id} connecteur={flecheChoisie.c}
+            onStyle={(patch, libelle) => modifierBoite(flecheChoisie.boite, patchStyle(flecheChoisie.boite, flecheChoisie.c.id, patch), libelle)} />
+        ) : activeEdit && editor ? (
           <EditToolbar key={'b:' + activeEdit.id} editor={editor} libre={activeEdit.kind === 'libre'}
             couleur={activeEdit.couleur}
             onCouleur={(c) => changerCouleurBoite(activeEdit, c)} onApercu={(c) => apercuPour(activeEdit.id, c)}
@@ -3580,6 +3594,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onSupprimerBoite={supprimerBoite}
                       onModifierBoite={modifierBoite}
                       onApercuCouleur={apercuPour}
+                      onSelFleche={signalerFleche}
                       ancrageBoiteId={ancrageBoiteId} ancrageFleche={!!(ancrage && ancrage.fleche)} ancrageSurlignage={!!(ancrage && ancrage.surlignage)} ancrageAjout={!!(ancrage && ancrage.ajout)} onDemanderAncrage={setAncrageBoiteId}
                       pageWidth={w}
                       activeEditId={activeEditId}
