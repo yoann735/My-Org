@@ -63,16 +63,16 @@ b.ok((await b.S(`return (await S.getOne('annotations',${JSON.stringify(boite.id)
 const activer = async () => { const r = await b.rect(`document.querySelector('.note-box')`); await b.clic([r.x + 8, r.y + 5], { att: 400 }); };
 await b.outil('Sélection'); await activer();
 await b.clic(await b.pos(`document.querySelector('.nb-barre [aria-label="Couleur de la boîte"]')`, false), { att: 400 });
-// la boîte est « ambre » (case 0,2) : → → ↓ mène à la case (1,4)
+// la boîte est « jaune vif » (défaut de la palette vive, case 0,4) : → → ↓ mène à la case (1,6)
 await b.touche('ArrowRight', { vk: 39 }); await b.touche('ArrowRight', { vk: 39 }); await b.touche('ArrowDown', { vk: 40 });
-const v12 = await valeurCellule(1, 4);
+const v12 = await valeurCellule(1, 6);
 b.ok(await b.ev(`!!document.querySelector('.scw-cellule.choisie[data-valeur="${v12}"]')`), 'flèches : la case choisie est mise en évidence', v12);
 await b.T.Enter(); await b.dormir(500);
 b.ok((await b.S(`return (await S.getOne('annotations',${JSON.stringify(boite.id)})).couleur`)) === v12, 'Entrée : valide la case choisie au clavier', v12);
 await activer();
 await b.clic(await b.pos(`document.querySelector('.nb-barre [aria-label="Couleur de la boîte"]')`, false), { att: 400 });
-await b.touche('ArrowRight', { vk: 39 }); await b.dormir(100); // depuis la couleur actuelle (1,4) → (1,5)
-const v01 = await valeurCellule(1, 5);
+await b.touche('ArrowRight', { vk: 39 }); await b.dormir(100); // depuis la couleur actuelle (1,6) → (1,7)
+const v01 = await valeurCellule(1, 7);
 await b.clic([page.x + page.w * 0.15, page.y + page.h * 0.9], { att: 500 });
 b.ok((await b.S(`return (await S.getOne('annotations',${JSON.stringify(boite.id)})).couleur`)) === v01, 'clic ailleurs : valide la case choisie au clavier', v01);
 

@@ -23,7 +23,8 @@ let boites = JSON.parse(await etat());
 const A = boites.find((x) => !avant.some((y) => y.id === x.id));
 b.ok(A && A.f === 'plein', 'nouvelle boîte créée en fond « plein »', JSON.stringify(A));
 const styleA = await b.ev(`(()=>{const e=[...document.querySelectorAll('.note-box')].find(n=>n.innerText.includes('Boîte A'));const s=getComputedStyle(e);return s.backgroundColor+' | texte '+s.color})()`);
-b.ok(styleA.startsWith('rgba(245, 165, 36, 0.92)') && styleA.includes('22, 22, 42'), 'fond ambre plein, texte SOMBRE sur couleur claire', styleA);
+// (20/10 soir) couleur par défaut des boîtes : le jaune vif de la palette vive
+b.ok(styleA.startsWith('rgba(255, 196, 0, 0.92)') && styleA.includes('22, 22, 42'), 'fond jaune vif plein, texte SOMBRE sur couleur claire', styleA);
 await b.capt('boite-A-pleine');
 // 2) sélectionner A, ouvrir sa couleur → Personnalisée
 const selA = `[...document.querySelectorAll('.note-box')].find(n=>n.innerText.includes('Boîte A'))`;
@@ -31,7 +32,7 @@ await b.clic(await b.pos(selA, false), { att: 700 });
 await b.clic(await b.pos(`document.querySelector('.nb-actions .sc-bouton')`, false), { att: 400 });
 b.ok(await b.ev(`!!document.querySelector('.scw-panneau')`), 'barre de la boîte : panneau des couleurs ouvert');
 // (20/10) panneau façon Word : grille du thème (les 6 couleurs de base y sont) + « Autres couleurs »
-b.ok(await b.ev(`document.querySelectorAll('.scw-panneau .scw-grille .scw-cellule').length===60 && ['ambre','corail','violet','ardoise','sauge','poudre'].every(c=>document.querySelector('.scw-panneau .scw-cellule[data-valeur="'+c+'"]')) && !!([...document.querySelectorAll('.scw-panneau .scw-action')].find(a=>a.innerText.includes('Autres')))`), '6 couleurs de base (dans la grille du thème) + « Autres couleurs »');
+b.ok(await b.ev(`document.querySelectorAll('.scw-panneau .scw-grille .scw-cellule').length===60 && ['noir','gris','rouge','orange-vif','jaune-vif','vertfonce','cyan','bleufonce','violet-vif','magenta'].every(c=>document.querySelector('.scw-panneau .scw-cellule[data-valeur="'+c+'"]')) && !!([...document.querySelectorAll('.scw-panneau .scw-action')].find(a=>a.innerText.includes('Autres')))`), '10 couleurs vives (dans la grille du thème) + « Autres couleurs »');
 await b.clic(await b.pos(`[...document.querySelectorAll('.scw-panneau .scw-action')].find(a=>a.innerText.includes('Autres'))`, false), { att: 500 });
 const fen = await b.rect(`document.querySelector('.sc-fenetre')`);
 b.ok(fen && fen.y >= 0 && fen.b <= 900 && fen.r <= 1440, 'panneau entièrement dans l’écran', JSON.stringify(fen));
@@ -42,7 +43,7 @@ await b.touche('a', { meta: true });
 await b.ecrire('1e88e5');
 await b.dormir(200);
 b.ok((await b.fond(selA)).includes(rgb('#1e88e5')), 'aperçu EN DIRECT sur la boîte pendant la frappe', await b.fond(selA));
-b.ok(JSON.parse(await etat()).find((x) => x.id === A.id).c === 'ambre', 'rien n’est écrit pendant l’aperçu');
+b.ok(JSON.parse(await etat()).find((x) => x.id === A.id).c === 'jaune-vif', 'rien n’est écrit pendant l’aperçu');
 b.ok(!(await b.ev(`${selA}.innerText`)).includes('1e88e5'), 'la frappe ne va PAS dans le texte de la boîte (bug d’avant)');
 const styleBleu = await b.ev(`getComputedStyle(${selA}).color`);
 b.ok(styleBleu.includes('255, 255, 255'), 'couleur foncée : texte CLAIR (contraste auto)', styleBleu);
@@ -53,7 +54,7 @@ b.ok(await b.ev(`(JSON.parse(localStorage.getItem('medrevise.couleursPerso')||'[
 // 3) annuler / rétablir
 await b.clic(await b.pos(`document.querySelector('.pdfr-page canvas')`, false), { att: 300 }); // désélectionner
 await b.touche('z', { meta: true }); await b.dormir(500);
-b.ok(JSON.parse(await etat()).find((x) => x.id === A.id).c === 'ambre', '⌘Z : une seule entrée d’annuler → ambre');
+b.ok(JSON.parse(await etat()).find((x) => x.id === A.id).c === 'jaune-vif', '⌘Z : une seule entrée d’annuler → jaune vif');
 await b.touche('z', { meta: true, shift: true }); await b.dormir(500);
 b.ok(JSON.parse(await etat()).find((x) => x.id === A.id).c === '#1e88e5', '⌘⇧Z : rétabli → #1e88e5');
 // 4) COLLER un hex puis Échap = annuler
