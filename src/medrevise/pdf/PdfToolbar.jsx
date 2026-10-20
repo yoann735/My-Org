@@ -250,7 +250,7 @@ export function PdfToolbar({
               <button type="button" className="tab-bt" disabled={!numPages || pageCourante >= numPages} onClick={() => onAllerPage(pageCourante + 1)} title="Page suivante" aria-label="Page suivante"><Icon name="chevD" size={16} /></button>
               <span className="ptb-sep" />
               <button type="button" className="tab-bt" onClick={() => onZoom(1 / 1.15)} title="Dézoomer" aria-label="Dézoomer"><Icon name="minus" size={16} /></button>
-              <span className="tab-zoom tnum" title="Zoom">{Math.round(scale * 100)}%</span>
+              <span className="tab-zoom tnum" title="Zoom" data-zoom-libelle>{Math.round(scale * 100)}%</span>
               <button type="button" className="tab-bt" onClick={() => onZoom(1.15)} title="Zoomer" aria-label="Zoomer"><Icon name="plus" size={16} /></button>
               <button type="button" className="tab-bt" onClick={onAjuster} title="Ajuster à la largeur" aria-label="Ajuster à la largeur"><Icon name="maximize" size={15} /></button>
             </div>
@@ -341,7 +341,7 @@ export function PdfToolbar({
           <span className="ptb-sep" />
           <div className="ptb-zoom">
             <button className="icon-btn sm" onClick={() => onZoom(1 / 1.15)} title="Dézoomer"><Icon name="minus" size={14} /></button>
-            <span className="hint tnum" style={{ minWidth: 42, textAlign: 'center' }}>{Math.round(scale * 100)}%</span>
+            <span className="hint tnum" style={{ minWidth: 42, textAlign: 'center' }} data-zoom-libelle>{Math.round(scale * 100)}%</span>
             <button className="icon-btn sm" onClick={() => onZoom(1.15)} title="Zoomer"><Icon name="plus" size={14} /></button>
             <button className="icon-btn sm" onClick={onAjuster} title="Ajuster à la largeur"><Icon name="maximize" size={13} /></button>
           </div>

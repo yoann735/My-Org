@@ -26,7 +26,7 @@ import { connecteursDe, epingleSeule, patchRetirer, patchAjouter, patchDeplacer 
 import { suivreImage } from './attaches.js';
 import { Icon } from '../../shared/Icon.jsx';
 import { outputScaleFor } from './pdfjsSetup.js';
-import { cleRendu, lireRendu, garderRendu, planifierRendu, alignerCanvas } from './rendusPages.js';
+import { cleRendu, lireRendu, lireRenduProche, garderRendu, planifierRendu, alignerCanvas } from './rendusPages.js';
 import { richToHTML } from '../documents/lib/richtext.js';
 import { blobURL } from '../lib/storage.js';
 import { createPortal } from 'react-dom';
@@ -69,7 +69,26 @@ export function PdfPageContent({
   const highlights = useMemo(() => (tousSurlignages || []).filter((h) => !h.imageId), [tousSurlignages]);
   const surlignagesImages = useMemo(() => (tousSurlignages || []).filter((h) => h.imageId), [tousSurlignages]);
   const encre = (c, repli) => (fondNoir ? lisibleSurNoir(couleurHex(c, repli)) : couleurHex(c, repli));
+  /* DOUBLE TAMPON (20/10, docs/compte-rendu-pdfreader-v3.md) : deux canvas superposés. `canvasRef` = celui
+     de DEVANT (affiché) ; pdf.js dessine dans celui de DERRIÈRE (masqué), puis on bascule leur visibilité
+     dans la même tâche : jamais une image vide ou à moitié dessinée à l'écran. */
   const canvasRef = useRef(null);
+  const tamponA = useRef(null), tamponB = useRef(null);
+  const derriere = () => (canvasRef.current === tamponA.current ? tamponB.current : tamponA.current);
+  const basculerTampon = (nouveau, os) => {
+    const ancien = canvasRef.current;
+    if (nouveau === ancien) { alignerCanvas(nouveau, os); return; }
+    nouveau.style.visibility = '';
+    nouveau.classList.add('devant');
+    alignerCanvas(nouveau, os);
+    nouveau.dataset.rendu = '1'; nouveau.dataset.densite = String(os);
+    if (ancien) {
+      ancien.style.visibility = 'hidden'; ancien.classList.remove('devant'); delete ancien.dataset.rendu;
+      // l'ancien tampon rend sa mémoire une image plus tard (la nouvelle est alors à l'écran)
+      requestAnimationFrame(() => requestAnimationFrame(() => { if (canvasRef.current !== ancien) { ancien.width = 1; ancien.height = 1; } }));
+    }
+    canvasRef.current = nouveau;
+  };
   const textLayerRef = useRef(null);
   /* ============================================================
      SÉLECTION DESSINÉE PAR L'APP (02/10 nuit). Le navigateur garde la sélection
@@ -168,13 +187,25 @@ export function PdfPageContent({
      affiché 1 pour 1 et calé sur la grille des pixels de l'écran ; pendant un zoom, l'image d'avant
      s'étire (mise à l'échelle CSS) et le rendu net suit 150 ms après le dernier cran ; pages rendues
      gardées en cache (LRU 20) ; rendus pdf.js en file, pages visibles d'abord. */
+  /* zoom / densité qui change : l'image en place s'étire AVANT la peinture (useLayoutEffect) à la nouvelle
+     taille de la page. Page encore jamais dessinée : un rendu d'un autre zoom en cache la remplace aussitôt,
+     étiré, plutôt qu'une page blanche (20/10). */
+  useLayoutEffect(() => {
+    const c = canvasRef.current;
+    if (!c || vierge) return;
+    if (dejaRendu.current) { c.style.width = '100%'; c.style.height = '100%'; c.style.transform = ''; return; }
+    const proche = pdfDoc && lireRenduProche((pdfDoc.fingerprints && pdfDoc.fingerprints[0]) || 'doc', pageNum);
+    if (proche) {
+      c.width = proche.w; c.height = proche.h;
+      c.getContext('2d').drawImage(proche.bitmap, 0, 0);
+      c.style.width = '100%'; c.style.height = '100%'; c.style.transform = '';
+      dejaRendu.current = true; // image provisoire : le rendu net suit, comme après un zoom
+    }
+  }, [pdfDoc, pageNum, vierge, scale, dpr]);
   useEffect(() => {
     let cancelled = false;
     let minuterie = null;
     let tache = null;
-    const canvasAffiche = canvasRef.current;
-    // zoom / densité qui change : l'image en place s'étire aussitôt à la nouvelle taille de la page
-    if (canvasAffiche && dejaRendu.current) { canvasAffiche.style.width = '100%'; canvasAffiche.style.height = '100%'; canvasAffiche.style.transform = ''; }
     const rendre = async () => {
       if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch (e) { /* ignore */ } }
       if (vierge) {
@@ -191,42 +222,43 @@ export function PdfPageContent({
       const page = await pdfDoc.getPage(pageNum);
       if (cancelled) return;
       const viewport = page.getViewport({ scale });
-      const canvas = canvasRef.current;
       // densité : pixels réels par pixel CSS (2 sur Retina, 3 au plus) ; dimensions ENTIÈRES du canvas,
       // et pdf.js dessine exactement dedans (facteurs W/largeur, H/hauteur)
       const os = outputScaleFor(viewport.width, viewport.height, dpr);
       const W = Math.max(1, Math.round(viewport.width * os)), H = Math.max(1, Math.round(viewport.height * os));
       const cle = cleRendu((pdfDoc.fingerprints && pdfDoc.fingerprints[0]) || 'doc', pageNum, scale, os);
-      let source = lireRendu(cle);
-      if (!source) {
-        // rendu HORS ÉCRAN, dans la file (pages visibles d'abord) : le canvas affiché garde l'image précédente
-        const horsEcran = document.createElement('canvas');
-        horsEcran.width = W; horsEcran.height = H;
-        const c2d = horsEcran.getContext('2d');
-        let rendu = false;
-        tache = planifierRendu(canvas, async () => {
-          if (cancelled) return;
-          const task = page.render({ canvasContext: c2d, viewport, transform: [W / viewport.width, 0, 0, H / viewport.height, 0, 0] });
-          renderTaskRef.current = task;
-          try { await task.promise; rendu = true; } catch (e) {
-            if (!(e && e.name === 'RenderingCancelledException')) throw e; // annulation normale (voir ci-dessus)
-          } finally { if (renderTaskRef.current === task) renderTaskRef.current = null; }
-        });
-        await tache.promesse;
-        if (cancelled || !rendu) return;
-        garderRendu(cle, horsEcran);
-        source = { bitmap: horsEcran };
+      const deja = canvasRef.current && canvasRef.current.dataset.rendu && canvasRef.current.dataset.cle === cle;
+      if (!deja) {
+        // le rendu se fait dans le tampon de DERRIÈRE (masqué) : celui de devant garde l'image précédente
+        const arriere = derriere();
+        const source = lireRendu(cle);
+        if (source) {
+          arriere.width = W; arriere.height = H;
+          arriere.getContext('2d').drawImage(source.bitmap, 0, 0);
+        } else {
+          let rendu = false;
+          tache = planifierRendu(canvasRef.current, async () => {
+            if (cancelled) return;
+            arriere.width = W; arriere.height = H;
+            const task = page.render({ canvasContext: arriere.getContext('2d'), viewport, transform: [W / viewport.width, 0, 0, H / viewport.height, 0, 0] });
+            renderTaskRef.current = task;
+            try { await task.promise; rendu = true; } catch (e) {
+              if (!(e && e.name === 'RenderingCancelledException')) throw e; // annulation normale (voir ci-dessus)
+            } finally { if (renderTaskRef.current === task) renderTaskRef.current = null; }
+          });
+          await tache.promesse;
+          if (cancelled || !rendu) return;
+          garderRendu(cle, arriere);
+        }
+        arriere.dataset.cle = cle;
+        // BASCULE : le tampon de derrière passe devant, d'un coup
+        basculerTampon(arriere, os);
       }
-      // recopie d'un seul coup (redimensionner puis dessiner dans la même tâche : aucune
-      // image blanche n'est jamais affichée), puis calage au pixel réel
-      canvas.width = W; canvas.height = H;
-      canvas.getContext('2d').drawImage(source.bitmap, 0, 0);
+      const canvas = canvasRef.current;
       osRef.current = os;
       alignerCanvas(canvas, os);
       // la mise en page autour peut encore bouger juste après (position restaurée, panneau) : 2e calage
-      setTimeout(() => { if (!cancelled) alignerCanvas(canvas, os); }, 400);
-      canvas.dataset.rendu = '1'; // page réellement dessinée (reprise de la position de lecture)
-      canvas.dataset.densite = String(os);
+      setTimeout(() => { if (!cancelled && canvasRef.current) alignerCanvas(canvasRef.current, os); }, 400);
       dejaRendu.current = true;
       await buildTextLayer(page, viewport, textLayerRef.current, ocrPage);
       if (cancelled) return;
@@ -692,7 +724,8 @@ export function PdfPageContent({
 
   return (
     <>
-      <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
+      <canvas ref={(el) => { tamponA.current = el; if (el && !canvasRef.current) canvasRef.current = el; }} className="pdfr-tampon devant" style={{ width: '100%', height: '100%' }} />
+      <canvas ref={tamponB} className="pdfr-tampon" style={{ width: '100%', height: '100%', visibility: 'hidden' }} aria-hidden="true" />
       {/* DÉBOGAGE OCR (menu Fichier › « Afficher la couche OCR ») : les boîtes des mots,
           en unités PDF ramenées à la page — vérifie l'alignement avec l'image */}
       {ocrDebug && ocrPage && (!ocrPage.natif || ocrPage.mixte) && ocrPage.width > 0 && (

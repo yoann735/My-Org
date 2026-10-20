@@ -1087,6 +1087,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      du dernier rendu — sinon le point visé glissait sous le curseur. */
   const scaleRef = useRef(scale);
   const zoomAt = (clientY, newScaleRaw) => {
+    abandonnerGesteZoom();
     zoomManuel.current = true;
     const el = scrollRef.current;
     const newScale = Math.max(0.4, Math.min(4, +newScaleRaw.toFixed(3)));
@@ -1105,22 +1106,124 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   if (import.meta.env.DEV && typeof window !== 'undefined') window.__mrZoom = (s) => { const el = scrollRef.current; const r = el && el.getBoundingClientRect(); zoomAtRef.current(r ? r.top + r.height / 2 : 0, s); };
   // boutons : une courte animation (180 ms) au lieu d'un saut de 15 %
   const animZoom = useRef(null);
-  const animerZoom = (clientY, cible) => {
+  const animerZoom = (clientX, clientY, cible) => {
     if (animZoom.current) cancelAnimationFrame(animZoom.current);
-    const depart = scaleRef.current || scale, t0 = performance.now(), duree = 180;
+    const depart = cibleZoom(), t0 = performance.now(), duree = 180;
     const pas = (t) => {
       const k = Math.min(1, (t - t0) / duree);
       const e = 1 - (1 - k) ** 3; // décélère en arrivant
-      zoomAtRef.current(clientY, depart * Math.pow(cible / depart, e));
+      // (20/10) au geste : mise à l'échelle CSS image par image, UN seul vrai changement de zoom à la fin
+      zoomGesteRef.current(clientX, clientY, depart * Math.pow(cible / depart, e), { fin: k >= 1 });
       animZoom.current = k < 1 ? requestAnimationFrame(pas) : null;
     };
     animZoom.current = requestAnimationFrame(pas);
   };
+
+  /* ZOOM AU GESTE SANS FLASH (20/10, docs/compte-rendu-pdfreader-v3.md). Avant, chaque événement d'un
+     pincement (des dizaines par seconde) changeait le zoom de tout le lecteur : nouveau rendu React de
+     toutes les pages et de leurs annotations, nouvelle mise en page, à chaque image. Désormais, PENDANT le
+     geste, le conteneur des pages (pages, couches de texte, annotations : tout) est mis à l'échelle par un
+     `transform` CSS autour du point visé — le compositeur s'en charge, sans rendu ni mise en page. Le vrai
+     zoom n'est posé qu'UNE fois, 140 ms après le dernier événement : la transformation est retirée et le
+     défilement recalé dans la même image (useLayoutEffect), au pixel près ; les pages, déjà étirées à la
+     bonne taille (PdfPage), se redessinent nettes en coulisse (double tampon). */
+  const pagesRef = useRef(null);
+  const gesteZoom = useRef(null); // { s0, s, ox, oy, Cw0, P, minuteur } — ox / oy : origine, dans le repère du conteneur des pages
+  const commitGeste = useRef(null);
+  const cibleZoom = () => (gesteZoom.current ? gesteZoom.current.s : (scaleRef.current || scale));
+  const libelleZoom = (z) => { const r = racineRef.current; if (r) r.querySelectorAll('[data-zoom-libelle]').forEach((e) => { e.textContent = Math.round(z * 100) + '%'; }); };
+  const abandonnerGesteZoom = () => {
+    const g = gesteZoom.current;
+    if (!g) return;
+    clearTimeout(g.minuteur); gesteZoom.current = null;
+    if (pagesRef.current) { pagesRef.current.style.transform = ''; pagesRef.current.style.willChange = ''; }
+    libelleZoom(scaleRef.current || scale);
+  };
+  const finirGesteZoom = () => {
+    const g = gesteZoom.current;
+    if (!g) return;
+    clearTimeout(g.minuteur); gesteZoom.current = null;
+    if (Math.abs(g.s - g.s0) < 0.0005) { abandonnerGesteZoomFin(); return; }
+    // défilement AVANT le rendu du nouveau zoom : la nouvelle mise en page (plus petite au dézoom) le bornerait
+    if (scrollRef.current) { g.st = scrollRef.current.scrollTop; g.sl = scrollRef.current.scrollLeft; }
+    commitGeste.current = g;
+    zoomManuel.current = true;
+    scaleRef.current = g.s;
+    setScale(g.s);
+  };
+  const abandonnerGesteZoomFin = () => { if (pagesRef.current) { pagesRef.current.style.transform = ''; pagesRef.current.style.willChange = ''; } };
+  // pages à monter pendant un dézoom au geste (la zone visible couvre plus de contenu) : jamais de trou
+  const etendrePagesMontees = (g) => {
+    const el = scrollRef.current, lay = layoutRef.current;
+    const k = g.s / g.s0;
+    if (!el || !lay || k >= 1) return;
+    const re = el.getBoundingClientRect();
+    const hautPages = re.top + g.P - el.scrollTop; // haut du conteneur des pages à l'écran (avant transformation)
+    const haut = g.oy + (re.top - (hautPages + g.oy)) / k - el.clientHeight * 0.5;
+    const bas = g.oy + (re.top + el.clientHeight - (hautPages + g.oy)) / k + el.clientHeight * 0.5;
+    const tailles = pageSizesRef.current || [];
+    let debut = 0, fin = lay.offsets.length - 1;
+    for (let i = 0; i < lay.offsets.length; i++) { if (lay.offsets[i] + (tailles[i] ? tailles[i].height * g.s0 : 0) >= haut) { debut = i; break; } }
+    for (let i = lay.offsets.length - 1; i >= 0; i--) { if (lay.offsets[i] <= bas) { fin = i; break; } }
+    setVisibleRange((v) => (debut < v.start || fin > v.end ? { start: Math.min(debut, v.start), end: Math.max(fin, v.end) } : v));
+  };
+  const zoomGeste = (clientX, clientY, sBrut, { fin = false, delai = 140 } = {}) => {
+    const el = scrollRef.current, pages = pagesRef.current;
+    const ns = Math.max(0.4, Math.min(4, +sBrut.toFixed(3)));
+    if (!el || !pages || commitGeste.current) { zoomAt(clientY, ns); return; }
+    let g = gesteZoom.current;
+    if (!g) {
+      const re = el.getBoundingClientRect(), rp = pages.getBoundingClientRect();
+      // contenu plus large que la zone de lecture : on zoome sous le pointeur ; sinon autour du centre
+      // horizontal du conteneur, là où la mise en page gardera les pages (aucun saut à la fin du geste)
+      const large = pages.offsetWidth > el.clientWidth + 1;
+      const ox = large ? clientX - rp.left : rp.width / 2, oy = clientY - rp.top;
+      g = gesteZoom.current = { s0: scaleRef.current || scale, s: scaleRef.current || scale, ox, oy, Cw0: pages.offsetWidth, P: rp.top - re.top + el.scrollTop, minuteur: null };
+      pages.style.transition = 'none'; // (un glissement de fin de geste en cours s'arrête là)
+      pages.style.transformOrigin = `${ox}px ${oy}px`;
+      pages.style.willChange = 'transform';
+    }
+    g.s = ns;
+    pages.style.transform = `scale(${(ns / g.s0).toFixed(5)})`;
+    libelleZoom(ns);
+    etendrePagesMontees(g);
+    clearTimeout(g.minuteur);
+    if (fin) finirGesteZoom(); else g.minuteur = setTimeout(finirGesteZoom, delai);
+  };
+  const zoomGesteRef = useRef(zoomGeste); zoomGesteRef.current = zoomGeste;
+  const finirGesteRef = useRef(finirGesteZoom); finirGesteRef.current = finirGesteZoom;
   useLayoutEffect(() => {
     // l'échelle rendue est la dernière demandée (setScale garde la plus récente) :
     // on resynchronise la référence, y compris après l'ajustement automatique à la largeur
     scaleRef.current = scale;
-    if (pendingScroll.current != null && scrollRef.current) {
+    const g = commitGeste.current;
+    if (g && scrollRef.current && pagesRef.current) {
+      // fin d'un geste (voir zoomGeste) : la transformation part, le défilement est recalé — même image
+      commitGeste.current = null;
+      const el = scrollRef.current, pages = pagesRef.current;
+      const k = scale / g.s0;
+      const st = g.st != null ? g.st : el.scrollTop, sl = g.sl != null ? g.sl : el.scrollLeft;
+      pages.style.transform = ''; pages.style.willChange = '';
+      const Cw1 = pages.offsetWidth;
+      const hautVoulu = st + g.oy * (k - 1), gaucheVoulue = sl + Cw1 / 2 - g.ox + k * (g.ox - g.Cw0 / 2);
+      el.scrollTop = Math.max(0, hautVoulu);
+      el.scrollLeft = Math.max(0, gaucheVoulue);
+      pendingScroll.current = null;
+      /* défilement borné (bord du document, ou contenu redevenu plus étroit que la zone : la mise en page le
+         recentre) : le reste est d'abord compensé par une translation, qui revient à zéro en glissant (160 ms) —
+         un glissement plutôt qu'un saut */
+      const dX = gaucheVoulue - el.scrollLeft, dY = hautVoulu - el.scrollTop;
+      if (Math.abs(dX) > 0.5 || Math.abs(dY) > 0.5) {
+        pages.style.transition = 'none';
+        pages.style.transform = `translate(${(-dX).toFixed(2)}px, ${(-dY).toFixed(2)}px)`;
+        requestAnimationFrame(() => {
+          if (gesteZoom.current) return; // un nouveau geste a repris la main
+          pages.style.transition = 'transform .16s ease-out'; pages.style.transform = '';
+          const fin = () => { pages.style.transition = ''; pages.removeEventListener('transitionend', fin); };
+          pages.addEventListener('transitionend', fin);
+        });
+      }
+    } else if (pendingScroll.current != null && scrollRef.current) {
       scrollRef.current.scrollTop = Math.max(0, pendingScroll.current);
       pendingScroll.current = null;
     }
@@ -1129,8 +1232,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   }, [scale]);
   const zoomButtons = (factor) => {
     const el = scrollRef.current;
-    const clientY = el ? el.getBoundingClientRect().top + el.clientHeight / 2 : 0;
-    animerZoom(clientY, Math.max(0.4, Math.min(4, (scaleRef.current || scale) * factor)));
+    const r = el ? el.getBoundingClientRect() : null;
+    animerZoom(r ? r.left + el.clientWidth / 2 : 0, r ? r.top + el.clientHeight / 2 : 0, Math.max(0.4, Math.min(4, cibleZoom() * factor)));
   };
   const zoomButtonsRef = useRef(zoomButtons); zoomButtonsRef.current = zoomButtons;
   const ajusterRef = useRef(null); ajusterRef.current = () => ajusterALaLargeur();
@@ -1158,13 +1261,15 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!pret) return undefined;
     const dansLecteur = (t) => { const r = racineRef.current; return !!(r && t && t.nodeType === 1 ? r.contains(t) : r && t && r.contains(t.parentNode)); };
     const centreY = () => { const el = scrollRef.current; return el ? el.getBoundingClientRect().top + el.clientHeight / 2 : window.innerHeight / 2; };
-    let cumul = 0, y = 0, raf = null;
+    let cumul = 0, x = 0, y = 0, raf = null;
     const appliquer = () => {
       raf = null;
       const f = Math.exp(Math.max(-0.5, Math.min(0.5, cumul)));
       cumul = 0;
-      zoomAtRef.current(y, (scaleRef.current || 1) * f);
+      const g = gesteZoom.current;
+      zoomGesteRef.current(x, y, (g ? g.s : (scaleRef.current || 1)) * f);
     };
+    const centreX = () => { const el = scrollRef.current; return el ? el.getBoundingClientRect().left + el.clientWidth / 2 : window.innerWidth / 2; };
     /* 1. pincement de trackpad (Chrome, Edge, Firefox : molette + ctrlKey) et Ctrl + molette.
        PAS ⌘ + molette (08/10, docs/audit-document-engine.md B9) : sur Mac ce n'est pas un
        geste de zoom, et l'INERTIE d'un défilement au trackpad continue d'émettre des
@@ -1178,13 +1283,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       cumul += -d * (Math.abs(d) < 25 ? 0.01 : 0.0018); // pincement (petits deltas) ou molette (crans)
       const el = scrollRef.current;
       y = el && el.contains(e.target) ? e.clientY : centreY();
+      x = el && el.contains(e.target) ? e.clientX : centreX();
       if (!raf) raf = requestAnimationFrame(appliquer);
     };
     // 2. pincement de trackpad dans Safari : événements « gesture » (e.scale cumulé)
     let depart = null;
-    const onGesteDebut = (e) => { if (!dansLecteur(e.target) || dansLeTableau(e.target)) { depart = null; return; } e.preventDefault(); depart = scaleRef.current || 1; };
-    const onGeste = (e) => { if (depart == null) return; e.preventDefault(); const el = scrollRef.current; zoomAtRef.current(el && el.contains(e.target) && Number.isFinite(e.clientY) ? e.clientY : centreY(), depart * (e.scale || 1)); };
-    const onGesteFin = (e) => { if (depart == null) return; e.preventDefault(); depart = null; };
+    const onGesteDebut = (e) => { if (!dansLecteur(e.target) || dansLeTableau(e.target)) { depart = null; return; } e.preventDefault(); depart = gesteZoom.current ? gesteZoom.current.s : (scaleRef.current || 1); };
+    const onGeste = (e) => { if (depart == null) return; e.preventDefault(); const el = scrollRef.current; const dedans = el && el.contains(e.target) && Number.isFinite(e.clientY); zoomGesteRef.current(dedans ? e.clientX : centreX(), dedans ? e.clientY : centreY(), depart * (e.scale || 1)); };
+    const onGesteFin = (e) => { if (depart == null) return; e.preventDefault(); depart = null; finirGesteRef.current(); };
     // 3. ⌘+ / ⌘− / ⌘0 (zoom du navigateur au clavier)
     const onKey = (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
@@ -1203,14 +1309,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const ecart = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     const onTouchStart = (e) => {
       if (e.touches.length !== 2 || !dansLecteur(e.target) || dansLeTableau(e.target)) { pince = null; return; }
-      pince = { d0: ecart(e.touches) || 1, s0: scaleRef.current || 1 };
+      pince = { d0: ecart(e.touches) || 1, s0: gesteZoom.current ? gesteZoom.current.s : (scaleRef.current || 1) };
     };
     const onTouchMove = (e) => {
       if (!pince || e.touches.length !== 2) return;
       e.preventDefault();
-      zoomAtRef.current((e.touches[0].clientY + e.touches[1].clientY) / 2, pince.s0 * (ecart(e.touches) / pince.d0));
+      zoomGesteRef.current((e.touches[0].clientX + e.touches[1].clientX) / 2, (e.touches[0].clientY + e.touches[1].clientY) / 2, pince.s0 * (ecart(e.touches) / pince.d0));
     };
-    const onTouchEnd = (e) => { if (e.touches.length < 2) pince = null; };
+    const onTouchEnd = (e) => { if (e.touches.length < 2) { if (pince) finirGesteRef.current(); pince = null; } };
     const opts = { passive: false, capture: true };
     window.addEventListener('wheel', onWheel, opts);
     window.addEventListener('gesturestart', onGesteDebut, opts);
@@ -3361,7 +3467,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) ajouterImage(f); }} />
           {!pret && !loadError && <div className="gen-spinner" style={{ width: 40, height: 40, margin: '60px auto' }} />}
           {pret && (
-            <div className={'pdfr-pages' + (modeDoc ? ' pdfr-pages-doc' : '') + (pose ? ' pose' : '')} style={{ height: layout.totalHeight, width: layout.maxWidth, minWidth: '100%' }}>
+            <div ref={pagesRef} className={'pdfr-pages' + (modeDoc ? ' pdfr-pages-doc' : '') + (pose ? ' pose' : '')} style={{ height: layout.totalHeight, width: layout.maxWidth, minWidth: '100%' }}>
               {/* DOCUMENT : le texte, UN flux paginé posé sur toutes les pages (jamais virtualisé) */}
               {modeDoc && fluxInitial && pageSizes.length > 0 && (
                 <DocumentFlux key={'flux:' + ficheId} ref={fluxRef} initial={fluxInitial}

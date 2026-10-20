@@ -9,7 +9,10 @@ import fs from 'node:fs';
 const etiquette = process.argv[2] || 'apres';
 const b = await banc(1440, 900);
 await b.c.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 2, mobile: false });
-await b.S(`for(const r of await S.getAll('reading_position'))if(String(r.id).startsWith('rp:f-v3-lourd'))await S.remove('reading_position',r.id);return 1`);
+await b.S(`for(const r of await S.getAll('reading_position'))if(String(r.id).startsWith('rp:f-v3-lourd'))await S.remove('reading_position',r.id);
+  for(const a of await S.getAll('annotations'))if(a.ficheId==='f-v3-lourd')await S.remove('annotations',a.id);
+  await S.put('annotations',{id:'an-zoom-1',ficheId:'f-v3-lourd',page:1,x:0.3,y:0.4,width:0.18,height:0.06,kind:'libre',type:'boite',couleur:'ambre',fond:'plein',content:{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Repère'}]}]},createdAt:'2026-10-20T10:00:00.000Z'});
+  await S.put('annotations',{id:'an-zoom-3',ficheId:'f-v3-lourd',page:3,x:0.55,y:0.25,width:0.18,height:0.06,kind:'libre',type:'boite',couleur:'sauge',fond:'plein',content:{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Repère 3'}]}]},createdAt:'2026-10-20T10:00:00.000Z'});return 1`);
 await b.biblio({ recharger: true });
 await b.ouvrir('Diapo lourde (zoom)'); await b.dormir(2500);
 await b.ev(`window.__mrZoom(1);1`); await b.dormir(1500);
@@ -31,6 +34,11 @@ await b.c.send('Tracing.start', { categories: 'devtools.timeline,disabled-by-def
 await b.c.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: 720, everyNthFrame: 1 });
 await b.dormir(400);
 const fenetres = [];
+// sonde : à chaque image, position à l'écran de la boîte « Repère » de la page visée et transformation du conteneur
+await b.ev(`(()=>{window.__sonde=[];const f=()=>{const p=document.querySelector('.pdfr-pages');const pos={};for(const bx of document.querySelectorAll('.note-box')){const m=/Repère( 3)?/.exec(bx.innerText);if(m){const r=bx.getBoundingClientRect();pos[m[1]?'b3':'b1']=[r.left,r.top]}}window.__sonde.push({t:performance.now(),pos,tr:p?p.style.transform:''});requestAnimationFrame(f)};requestAnimationFrame(f);return 1})()`);
+const alignements = [];
+const mesurerAlignement = (k) => b.ev(`(()=>{const out=[];for(const bx of document.querySelectorAll('.note-box')){const m=/Repère( 3)?/.exec(bx.innerText);if(!m)continue;const page=bx.closest('.pdfr-page');const rp=page.getBoundingClientRect(),r=bx.getBoundingClientRect();const fx=m[1]?0.55:0.3,fy=m[1]?0.25:0.4;out.push({dx:+(r.left-(rp.left+fx*rp.width)).toFixed(2),dy:+(r.top-(rp.top+fy*rp.height)).toFixed(2)})}
+  const c=document.querySelector('.pdfr-page[data-cle] canvas.devant[data-rendu]');const rc=c&&c.getBoundingClientRect();return {k:${k},boites:out,densite:c?+(c.width/rc.width).toFixed(3):null,zoom:(document.querySelector('[data-zoom-libelle]')||{}).textContent}})()`);
 const molette = (d) => b.c.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: cx, y: cy, deltaX: 0, deltaY: d, modifiers: 2 });
 const toucheZoom = async (k) => { for (const type of ['keyDown', 'keyUp']) await b.c.send('Input.dispatchKeyEvent', { type, key: k, code: k === '+' ? 'Equal' : 'Minus', modifiers: 4, windowsVirtualKeyCode: k === '+' ? 187 : 189 }); };
 for (let k = 0; k < 20; k++) {
@@ -43,6 +51,7 @@ for (let k = 0; k < 20; k++) {
   else { await toucheZoom(sens < 0 ? '+' : '-'); await b.dormir(60); await toucheZoom(sens < 0 ? '+' : '-'); }
   await b.dormir(700); // le rendu net suit
   await b.ev(`performance.mark('geste-${k}-fin');1`);
+  alignements.push(await mesurerAlignement(k));
   fenetres.push([t0, Date.now() / 1000]);
 }
 await b.c.send('Page.stopScreencast');
@@ -50,6 +59,16 @@ await b.c.send('Tracing.end');
 await traceOk;
 await b.capture(`zoom-${etiquette}-fin`, { x: zone.x, y: zone.y, width: zone.w, height: Math.min(zone.h, 600) });
 
+// --- saut à la fin d'un geste : position du repère juste avant / juste après le retrait de la transformation ---
+const sonde = await b.ev(`window.__sonde`);
+const sauts = [];
+for (let i = 1; i < sonde.length; i++) {
+  if (!(/scale/.test(sonde[i - 1].tr) && !/scale/.test(sonde[i].tr))) continue; // fin du geste : la mise à l'échelle CSS part
+  const cles = Object.keys(sonde[i].pos).filter((c) => sonde[i - 1].pos[c]);
+  if (cles.length) sauts.push(+Math.max(...cles.map((c) => Math.hypot(sonde[i].pos[c][0] - sonde[i - 1].pos[c][0], sonde[i].pos[c][1] - sonde[i - 1].pos[c][1]))).toFixed(2));
+}
+const desalignes = alignements.filter((a) => a.boites.some((q) => Math.abs(q.dx) > 1 || Math.abs(q.dy) > 1));
+const flous = alignements.filter((a) => a.densite != null && a.densite < 1.95);
 // --- analyse des images : part de pixels quasi blancs au centre ---
 const ech = 720 / 1440; // échelle du screencast (largeur max 720 px pour 1440 px CSS)
 const box = { x: Math.round((cx - 220) * ech), y: Math.round((cy - 120) * ech), w: Math.round(440 * ech), h: Math.round(240 * ech) };
@@ -74,20 +93,24 @@ const principal = new Set(traces.filter((e) => e.name === 'thread_name' && e.arg
 const actif = (ts) => debuts.some((d) => ts >= d && ts <= d + 350000);
 const aff = traces.filter((e) => e.name === 'Display::FrameDisplayed').map((e) => e.ts).sort((a, c) => a - c);
 let presentees = 0, perdues = 0;
-debuts.forEach((d) => { const l = aff.filter((t) => t >= d && t <= d + 350000); presentees += l.length; for (let i = 1; i < l.length; i++) perdues += Math.max(0, Math.round((l[i] - l[i - 1]) / 16667) - 1); });
+const fpsGestes = [];
+debuts.forEach((d) => { const l = aff.filter((t) => t >= d && t <= d + 350000); presentees += l.length; for (let i = 1; i < l.length; i++) perdues += Math.max(0, Math.round((l[i] - l[i - 1]) / 16667) - 1); if (l.length > 2) fpsGestes.push((l.length - 1) / ((l[l.length - 1] - l[0]) / 1e6)); });
 const taches = traces.filter((e) => e.ph === 'X' && e.name === 'ThreadControllerImpl::RunTask' && principal.has(e.pid + ':' + e.tid) && actif(e.ts));
 const longues = taches.filter((e) => e.dur > 16667).length;
 const tempsPrincipal = Math.round(taches.reduce((a, e) => a + e.dur, 0) / 1000 / Math.max(1, debuts.length));
 const dureeGestes = debuts.length * 0.35;
 const etat = { longuesSup16ms: longues, msFilPrincipalParGeste: tempsPrincipal, plusLongueTacheMs: Math.round(Math.max(0, ...taches.map((e) => e.dur)) / 1000) };
 console.log('');
-const res = { etiquette, images: images.length, blanches: blanches.length, partMaxBlanc: Math.max(...parts), etatsImages: etat, presentees, perdues,
-  partPerdues: +(perdues / Math.max(1, presentees + perdues)).toFixed(3), fpsMoyen: +(presentees / Math.max(0.001, dureeGestes)).toFixed(1),  zoomFinal: await b.zoomPct() };
+const res = { etiquette, finsDeGeste: sauts.length, sautMaxPx: sauts.length ? Math.max(...sauts) : null, alignementsHors1px: desalignes.length, niveauxMesures: alignements.length, canvasFlous: flous.length, images: images.length, blanches: blanches.length, partMaxBlanc: Math.max(...parts), etatsImages: etat, presentees, perdues,
+  partPerdues: +(perdues / Math.max(1, presentees + perdues)).toFixed(3), fpsMoyen: +(fpsGestes.reduce((a, c) => a + c, 0) / Math.max(1, fpsGestes.length)).toFixed(1), fpsMin: +Math.min(...fpsGestes).toFixed(1),  zoomFinal: await b.zoomPct() };
 fs.writeFileSync(`../cap/zoom-${etiquette}.json`, JSON.stringify({ ...res, parts }, null, 1));
 console.log('MESURE', JSON.stringify(res));
 if (etiquette === 'apres') {
   b.ok(blanches.length === 0, 'aucune image peinte avec la page blanche (20 zooms)', `${images.length} images, part blanche max ${res.partMaxBlanc}`);
   b.ok(res.partPerdues <= 0.05, 'images perdues ≤ 5 % pendant les gestes', JSON.stringify(etat));
+  b.ok(sauts.length >= 10 && Math.max(...sauts) <= 1, 'fin de chaque geste : aucun saut (≤ 1 px) au retrait de la transformation', `${sauts.length} fins, saut max ${Math.max(...sauts)} px`);
+  b.ok(!desalignes.length, 'annotations alignées sur la page à chaque niveau de zoom (≤ 1 px)', JSON.stringify(desalignes.slice(0, 2)));
+  b.ok(!flous.length, 'après chaque geste : canvas net (densité de l’écran ×2)', JSON.stringify(alignements.map((a) => a.densite)));
 }
 b.ok(!b.erreurs.length, 'aucune erreur', b.erreurs.join(' / '));
 await b.c.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });

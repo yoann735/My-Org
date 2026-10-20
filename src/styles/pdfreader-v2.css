@@ -317,3 +317,6 @@
 .nb-act .nb-act-n { min-width: 14px; height: 14px; padding: 0 3px; margin-left: -3px; border-radius: 7px; font-size: 9.5px; line-height: 14px; font-weight: 700;
   background: var(--pv-actif, rgba(124, 92, 255, .18)); color: var(--accent, #7c5cff); }
 
+
+/* ---- DOUBLE TAMPON des pages (20/10, pdf/PdfPage.jsx) : deux canvas superposés, un seul visible ---- */
+.pdfr-page > canvas.pdfr-tampon { position: absolute; left: 0; top: 0; }

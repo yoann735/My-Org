@@ -13,6 +13,10 @@
    ============================================================ */
 export const DENSITE_MAX = 3;
 export const TAILLE_CACHE = 20;
+/* (20/10, docs/compte-rendu-pdfreader-v3.md) BUDGET MÉMOIRE du cache, en pixels : 20 pages zoomées d'une
+   diapositive 4K pouvaient garder plus de 250 Mpx de canvas — au-delà de ce que Safari (iPad) accepte, qui
+   rend alors des canvas VIDES (pages blanches). 32 Mpx ≈ 128 Mo, et jamais un canvas affiché n'est libéré. */
+export const BUDGET_PIXELS = 32e6;
 
 /* ---- cache LRU ---- */
 const cache = new Map(); // clé → { bitmap (canvas), w, h }
@@ -29,11 +33,24 @@ export function garderRendu(cle, canvas) {
   c.width = canvas.width; c.height = canvas.height;
   c.getContext('2d').drawImage(canvas, 0, 0);
   cache.delete(cle); cache.set(cle, { bitmap: c, w: c.width, h: c.height });
-  while (cache.size > TAILLE_CACHE) {
-    const [k, v] = cache.entries().next().value;
-    cache.delete(k); v.bitmap.width = 0; v.bitmap.height = 0; // mémoire rendue tout de suite
+  let pixels = 0; cache.forEach((v) => { pixels += v.w * v.h; });
+  // les plus anciens d'abord, jusqu'à repasser sous les deux limites (nombre de pages ET pixels)
+  for (const [k, v] of [...cache.entries()]) {
+    if (cache.size <= TAILLE_CACHE && pixels <= BUDGET_PIXELS) break;
+    if (k === cle) continue; // le rendu qu'on vient de garder reste
+    cache.delete(k); pixels -= v.w * v.h;
+    v.bitmap.width = 0; v.bitmap.height = 0; // mémoire rendue tout de suite (une copie : jamais un canvas affiché)
   }
 }
+/** un rendu de cette page à N'IMPORTE QUEL zoom (le plus grand) : image provisoire d'une page qui revient
+    à l'écran à un zoom pas encore rendu — étirée, plutôt qu'une page blanche */
+export function lireRenduProche(docId, page) {
+  const debut = `${docId}|${page}|`;
+  let meilleur = null;
+  cache.forEach((v, k) => { if (k.startsWith(debut) && (!meilleur || v.w > meilleur.w)) meilleur = v; });
+  return meilleur;
+}
+export const pixelsCache = () => { let p = 0; cache.forEach((v) => { p += v.w * v.h; }); return p; };
 export const tailleCache = () => cache.size;
 export function viderCache() { cache.forEach((v) => { v.bitmap.width = 0; v.bitmap.height = 0; }); cache.clear(); }
 

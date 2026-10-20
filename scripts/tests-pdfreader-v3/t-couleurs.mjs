@@ -85,7 +85,7 @@ b.ok(await b.ev(`!!document.querySelector('.scw-pipette')`), 'pipette (sans EyeD
 const cible = [page.x + page.w * 0.8, page.y + page.h * 0.04];
 await b.c.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: cible[0], y: cible[1] }); await b.dormir(250);
 const loupe = await b.ev(`(document.querySelector('.scw-loupe')||{}).innerText||''`);
-const attendu = await b.ev(`(()=>{const c=document.querySelector('.pdfr-page[data-cle="1"] canvas');const r=c.getBoundingClientRect();const d=c.getContext('2d').getImageData(Math.floor((${cible[0]}-r.left)/r.width*c.width),Math.floor((${cible[1]}-r.top)/r.height*c.height),1,1).data;return '#'+[d[0],d[1],d[2]].map(x=>x.toString(16).padStart(2,'0')).join('')})()`);
+const attendu = await b.ev(`(()=>{const c=document.querySelector('.pdfr-page[data-cle="1"] canvas.devant');const r=c.getBoundingClientRect();const d=c.getContext('2d').getImageData(Math.floor((${cible[0]}-r.left)/r.width*c.width),Math.floor((${cible[1]}-r.top)/r.height*c.height),1,1).data;return '#'+[d[0],d[1],d[2]].map(x=>x.toString(16).padStart(2,'0')).join('')})()`);
 b.ok(loupe.trim() === attendu, 'pipette : la loupe montre la couleur du PDF sous le pointeur (aperçu)', `${loupe.trim()} / pixel ${attendu}`);
 await b.capture(`couleurs-pipette-${appareil}`, { x: Math.round(cible[0]) - 160, y: Math.max(0, Math.round(cible[1]) - 60), width: 320, height: 140 });
 await b.clic(cible, { att: 500 });
