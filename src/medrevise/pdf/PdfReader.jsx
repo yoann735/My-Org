@@ -3228,7 +3228,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           <EditToolbar key="t" editor={editeurPage.ed} sansSupprimer extras={<OutilsTexteDocument editor={editeurPage.ed} />}
             onAnnuler={hist.annuler} onRetablir={hist.retablir} peutAnnuler={hist.peutAnnuler} peutRetablir={hist.peutRetablir} />
         ) : null}
-        reserverRangee={modeDoc}
+        /* (20/10) rangée RÉSERVÉE en permanence, PDF compris : son emplacement est fixe, choisir ou
+           quitter un outil ne décale jamais le document (docs/compte-rendu-pdfreader-v3.md) */
+        reserverRangee
+        aideVide={modeDoc ? 'Cliquez dans le texte pour le mettre en forme' : 'Choisissez un outil : ses couleurs et réglages s’affichent ici'}
         contexteSupplementaire={outil === 'boite' ? (
           <SelecteurCouleurs couleur={couleurActive} onCouleur={setCouleurActive} titre="Couleur de la boîte" />
         ) : outil === 'forme' ? (

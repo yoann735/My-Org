@@ -84,8 +84,10 @@ export function PdfToolbar({
   /* RANGÉE TEXTE (09/10, docs/compte-rendu-pdfreader-v2.md) : la barre de mise en forme du texte
      (boîte active ou texte du document) prend la place de la barre contextuelle, sous les outils.
      `reserverRangee` (document) : la rangée garde sa hauteur même vide — rien ne saute quand la
-     barre apparaît ou disparaît, seul son contenu passe en fondu. */
-  rangeeTexte = null, reserverRangee = false,
+     barre apparaît ou disparaît, seul son contenu passe en fondu.
+     (20/10, docs/compte-rendu-pdfreader-v3.md) : réservée AUSSI sur un PDF — choisir un outil ne décale
+     plus le document. `aideVide` : le texte de la rangée vide avec l'outil Sélection. */
+  rangeeTexte = null, reserverRangee = false, aideVide = 'Cliquez dans le texte pour le mettre en forme',
 }) {
   const [menu, setMenu] = useState(null);
   /* LARGEUR RÉELLE de la barre (01/10) : dans un panneau étroit (Apprentissage,
@@ -223,7 +225,7 @@ export function PdfToolbar({
       {contexteSupplementaire}
       {!tablette && <><span style={{ flex: 1 }} /><span className="hint ptb-contexte-aide">{outilActif.aide}</span></>}
     </>) }
-    : outilsAnnotation && reserverRangee ? { cle: 'vide', el: <span className="hint ptb-contexte-aide">{outil === 'main' ? 'Cliquez dans le texte pour le mettre en forme' : outilActif.aide}</span> }
+    : outilsAnnotation && reserverRangee ? { cle: 'vide', el: <span className="hint ptb-contexte-aide">{outil === 'main' ? aideVide : outilActif.aide}</span> }
     : null;
   const rangee = contenuRangee && (
     <div className={'pdfr-contexte' + (tablette ? ' tab-contexte' : '') + (reserverRangee ? ' reservee' : '') + (contenuRangee.cle === 'texte' ? ' mode-texte' : '')}>

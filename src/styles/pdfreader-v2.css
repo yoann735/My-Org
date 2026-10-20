@@ -158,7 +158,8 @@
 
 /* ---- rangée contextuelle (réglages de l'outil / mise en forme) ---- */
 .pdfr-v2 .pdfr-contexte { border-radius: var(--pv-r-bar); border-color: color-mix(in srgb, var(--border) 80%, transparent); box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
-.pdfr-v2 .ptb-contexte-titre { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3, var(--text-2)); margin-right: 2px; }
+/* (20/10) largeur fixe : les pastilles de couleur commencent toujours au même endroit, quel que soit l'outil */
+.pdfr-v2 .ptb-contexte-titre { min-width: 84px; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3, var(--text-2)); margin-right: 2px; }
 .pdfr-v2 .pdfr-contexte .sc-pastille { width: 18px; height: 18px; transition: transform .15s, box-shadow .15s; }
 .pdfr-v2 .pdfr-contexte :is(.ptb-segment, .ptb-bascule) { height: 26px; border-radius: var(--pv-r-ctl); }
 .pdfr-v2 .ptb-segment { border-color: transparent; background: var(--pv-grp); padding: 2px; gap: 2px; }
