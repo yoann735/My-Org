@@ -51,7 +51,8 @@ import {
 export function PdfPageContent({
   pdfDoc, pageNum, vierge = false, scale, pageHeight, dpr, highlights: tousSurlignages, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
   onCreateHighlight, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, ancrageSurlignage = false, ancrageAjout = false, onSelFleche = null,
-  stabilisation = 0.3, surligneurDroit = true, griffonner = false, onModifierTraits = null, // crayon v4 (20/10 soir, pdf/crayon.js) onDemanderAncrage = () => {},
+  onDemanderAncrage = () => {},
+  stabilisation = 0.3, surligneurDroit = true, griffonner = false, onModifierTraits = null, // crayon v4 (20/10 soir, pdf/crayon.js)
   onCreerTrait, onSupprimerTraits, cibleHlId, onDebutTrait = null,
   ocrPage = null, ocrDebug = false, // couche OCR de cette page (docs/compte-rendu-ocr.md)
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, opaciteTrait = 1, aimantActif = true, modeCrayon = 'dessin',
