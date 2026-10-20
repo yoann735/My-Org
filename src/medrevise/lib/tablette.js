@@ -66,8 +66,78 @@ export function noterPointeur(e) {
   abonnesStylet.forEach((f) => f());
 }
 export function abonnerStylet(f) { abonnesStylet.add(f); return () => abonnesStylet.delete(f); }
-/** Un pointeur doit-il être ignoré par les couches d'annotation ? (doigt/paume quand un stylet est actif) */
-export const pointeurIgnore = (e) => styletVu && e && e.pointerType === 'touch';
+
+/* PRIORITÉ AU STYLET (20/10, docs/compte-rendu-pdfreader-v3.md) : le doigt ne dessine JAMAIS avec un outil
+   d'annotation (rejet de la paume) — il fait défiler et zoomer (pincement) — sauf réglage « Dessiner au doigt »,
+   désactivé par défaut. La souris et le stylet dessinent toujours. Les calques de dessin sont en
+   `touch-action: none` (sinon iPadOS ferait défiler la page sous le Pencil) : le défilement au doigt y est
+   donc fait ici, à la main, avec inertie (`defilerAuDoigt`). Réglages mémorisés par appareil. */
+const CLE_DOIGT = 'medrevise.dessinDoigt';
+const CLE_PRESSION = 'medrevise.pressionStylet';
+const EV_REGLAGES = 'medrevise:reglages-stylet';
+const lireLS = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+export const dessinAuDoigt = () => lireLS(CLE_DOIGT) === '1';
+/** pression du stylet → épaisseur du crayon (activée par défaut) */
+export const pressionActive = () => lireLS(CLE_PRESSION) !== '0';
+function ecrireReglage(cle, v) {
+  try { localStorage.setItem(cle, v ? '1' : '0'); } catch (e) { /* stockage bloqué : réglage de la session seulement */ }
+  try { window.dispatchEvent(new Event(EV_REGLAGES)); } catch (e) { /* ignore */ }
+}
+export const ecrireDessinAuDoigt = (v) => ecrireReglage(CLE_DOIGT, v);
+export const ecrirePressionActive = (v) => ecrireReglage(CLE_PRESSION, v);
+export function abonnerReglagesStylet(f) {
+  window.addEventListener(EV_REGLAGES, f); window.addEventListener('storage', f);
+  return () => { window.removeEventListener(EV_REGLAGES, f); window.removeEventListener('storage', f); };
+}
+/** Un pointeur doit-il être ignoré par les couches d'annotation ? Le doigt (et la paume), sauf « Dessiner au doigt ». */
+export const pointeurIgnore = (e) => !!e && e.pointerType === 'touch' && !dessinAuDoigt();
+/** facteur d'épaisseur d'un trait au stylet d'après la pression moyenne (0 → 1) : léger, 0,6 à 1,4 */
+export const facteurPression = (moyenne) => Math.max(0.6, Math.min(1.4, 0.6 + 0.8 * moyenne));
+
+/* doigts posés (pointeurs « touch » en cours), pour savoir si un 2e doigt pince */
+const doigts = new Set();
+if (typeof window !== 'undefined') {
+  window.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') doigts.add(e.pointerId); }, true);
+  const lever = (e) => { if (e.pointerType === 'touch') doigts.delete(e.pointerId); };
+  window.addEventListener('pointerup', lever, true);
+  window.addEventListener('pointercancel', lever, true);
+}
+let inertie = null;
+const arreterInertie = () => { if (inertie) { cancelAnimationFrame(inertie); inertie = null; } };
+/** Fait défiler `zone` au doigt depuis un pointerdown ignoré par un calque de dessin (inertie au relâcher).
+    Un 2e doigt posé : on s'arrête là (le pincement zoome, géré par le lecteur). */
+export function defilerAuDoigt(e, zone) {
+  if (!zone || !e || e.pointerType !== 'touch') return;
+  arreterInertie();
+  const pid = e.pointerId;
+  let x = e.clientX, y = e.clientY, t = performance.now(), vx = 0, vy = 0, fini = false;
+  const move = (ev) => {
+    if (ev.pointerId !== pid || fini) return;
+    if (doigts.size > 1) { vx = 0; vy = 0; return; }
+    const dx = ev.clientX - x, dy = ev.clientY - y, now = performance.now(), dt = Math.max(1, now - t);
+    zone.scrollLeft -= dx; zone.scrollTop -= dy;
+    vx = 0.75 * (dx / dt) + 0.25 * vx; vy = 0.75 * (dy / dt) + 0.25 * vy;
+    x = ev.clientX; y = ev.clientY; t = now;
+  };
+  const fin = (ev) => {
+    if (ev.pointerId !== pid) return;
+    fini = true;
+    window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', fin, true); window.removeEventListener('pointercancel', fin, true);
+    if (ev.type !== 'pointerup' || performance.now() - t > 90 || doigts.size > 0) return;
+    let dernier = performance.now();
+    const pas = (now) => { // inertie : vitesse qui décroît (≈ celle d'iOS), en px/ms
+      const dt = Math.min(32, now - dernier); dernier = now;
+      zone.scrollLeft -= vx * dt; zone.scrollTop -= vy * dt;
+      const f = Math.pow(0.94, dt / 16.7); vx *= f; vy *= f;
+      inertie = Math.hypot(vx, vy) > 0.02 ? requestAnimationFrame(pas) : null;
+    };
+    inertie = requestAnimationFrame(pas);
+  };
+  window.addEventListener('pointermove', move, true);
+  window.addEventListener('pointerup', fin, true);
+  window.addEventListener('pointercancel', fin, true);
+}
+if (typeof window !== 'undefined') window.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') arreterInertie(); }, true);
 
 /* UN TRACÉ À LA FOIS (doigt, stylet, souris) : un 2e pointeur posé pendant un tracé est
    ignoré ; s'il arrive dans les 250 ms qui suivent un tracé AU DOIGT, c'est un geste à deux

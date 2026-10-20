@@ -94,7 +94,7 @@ import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
 import { dehydrateDoc, EMPTY_DOC, docToMarkdown } from '../documents/lib/richtext.js';
 import { exporterMarkdownDoc, nomFichier, telecharger as telechargerFichier } from '../documents/lib/exportDoc.js';
 import { PageTexte, PAGE_A4, OutilsTexteDocument, effacerSurlignageRecherche } from './PageTexte.jsx';
-import { useTablette, abonnerStylet, styletActif, lireFractionVolet, ecrireFractionVolet, bornerVolet, VOLET_MIN, VOLET_MAX, VOLET_PLEIN } from '../lib/tablette.js';
+import { useTablette, abonnerStylet, styletActif, dessinAuDoigt, pressionActive, ecrireDessinAuDoigt, ecrirePressionActive, abonnerReglagesStylet, lireFractionVolet, ecrireFractionVolet, bornerVolet, VOLET_MIN, VOLET_MAX, VOLET_PLEIN } from '../lib/tablette.js';
 import '../../styles/tablette.css';
 import '../../styles/notes-doc.css';
 import '../../styles/pdfreader-v2.css';
@@ -208,6 +208,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      le bas (08/10, portrait comme paysage). Desktop (≥ 1 200 px) et shell mobile : rien ne change. */
   const { tablette } = useTablette();
   const [stylet, setStylet] = useState(styletActif);
+  /* RÉGLAGES DU STYLET (20/10, lib/tablette.js) : « Dessiner au doigt » (non par défaut) et « Pression »
+     (oui par défaut), dans la rangée du crayon sur un écran tactile */
+  const [reglagesStylet, setReglagesStylet] = useState(() => ({ doigt: dessinAuDoigt(), pression: pressionActive() }));
+  useEffect(() => abonnerReglagesStylet(() => setReglagesStylet({ doigt: dessinAuDoigt(), pression: pressionActive() })), []);
+  const ecranTactile = typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(any-pointer: coarse)').matches;
   useEffect(() => abonnerStylet(() => setStylet(true)), []);
   // v3 tablette (08/10) : volet qui monte depuis le BAS — hauteur mémorisée, plein écran par geste
   const [fractionVolet, setFractionVolet] = useState(lireFractionVolet);
@@ -1170,7 +1175,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const zoomGeste = (clientX, clientY, sBrut, { fin = false, delai = 140 } = {}) => {
     const el = scrollRef.current, pages = pagesRef.current;
     const ns = Math.max(0.4, Math.min(4, +sBrut.toFixed(3)));
-    if (!el || !pages || commitGeste.current) { zoomAt(clientY, ns); return; }
+    if (!el || !pages) { zoomAt(clientY, ns); return; }
+    // le zoom de la fin du geste précédent est en train d'être posé (rendu React en cours) : cet événement
+    // est ignoré — le repasser par zoomAt fausserait le recalage du défilement (saut constaté au pincement)
+    if (commitGeste.current) return;
     let g = gesteZoom.current;
     if (!g) {
       const re = el.getBoundingClientRect(), rp = pages.getBoundingClientRect();
@@ -1188,7 +1196,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     libelleZoom(ns);
     etendrePagesMontees(g);
     clearTimeout(g.minuteur);
-    if (fin) finirGesteZoom(); else g.minuteur = setTimeout(finirGesteZoom, delai);
+    if (fin) finirGesteZoom(); else if (Number.isFinite(delai)) g.minuteur = setTimeout(finirGesteZoom, delai);
   };
   const zoomGesteRef = useRef(zoomGeste); zoomGesteRef.current = zoomGeste;
   const finirGesteRef = useRef(finirGesteZoom); finirGesteRef.current = finirGesteZoom;
@@ -1289,7 +1297,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // 2. pincement de trackpad dans Safari : événements « gesture » (e.scale cumulé)
     let depart = null;
     const onGesteDebut = (e) => { if (!dansLecteur(e.target) || dansLeTableau(e.target)) { depart = null; return; } e.preventDefault(); depart = gesteZoom.current ? gesteZoom.current.s : (scaleRef.current || 1); };
-    const onGeste = (e) => { if (depart == null) return; e.preventDefault(); const el = scrollRef.current; const dedans = el && el.contains(e.target) && Number.isFinite(e.clientY); zoomGesteRef.current(dedans ? e.clientX : centreX(), dedans ? e.clientY : centreY(), depart * (e.scale || 1)); };
+    const onGeste = (e) => { if (depart == null) return; e.preventDefault(); const el = scrollRef.current; const dedans = el && el.contains(e.target) && Number.isFinite(e.clientY); zoomGesteRef.current(dedans ? e.clientX : centreX(), dedans ? e.clientY : centreY(), depart * (e.scale || 1), { delai: Infinity }); }; // fini à gestureend
     const onGesteFin = (e) => { if (depart == null) return; e.preventDefault(); depart = null; finirGesteRef.current(); };
     // 3. ⌘+ / ⌘− / ⌘0 (zoom du navigateur au clavier)
     const onKey = (e) => {
@@ -1314,7 +1322,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const onTouchMove = (e) => {
       if (!pince || e.touches.length !== 2) return;
       e.preventDefault();
-      zoomGesteRef.current((e.touches[0].clientX + e.touches[1].clientX) / 2, (e.touches[0].clientY + e.touches[1].clientY) / 2, pince.s0 * (ecart(e.touches) / pince.d0));
+      // doigts posés : le geste ne se termine qu'au lever (touchend), jamais sur une pause du pincement
+      zoomGesteRef.current((e.touches[0].clientX + e.touches[1].clientX) / 2, (e.touches[0].clientY + e.touches[1].clientY) / 2, pince.s0 * (ecart(e.touches) / pince.d0), { delai: Infinity });
     };
     const onTouchEnd = (e) => { if (e.touches.length < 2) { if (pince) finirGesteRef.current(); pince = null; } };
     const opts = { passive: false, capture: true };
@@ -2222,11 +2231,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      relâchement, voir PdfPage) : on ne relisse jamais deux fois, et un trait
      enregistré sans aimant reste brut pour toujours. Une entrée d'historique
      par trait — Cmd+Z efface le trait entier, jamais un bout. */
-  const creerTrait = async ({ page, points, mode = 'dessin' }) => {
+  const creerTrait = async ({ page, points, mode = 'dessin', pression = 1 }) => {
     if (!points || points.length < 2) return;
     const surligneur = mode === 'surligneur';
+    // (20/10) pression du stylet : facteur léger (0,6 à 1,4) sur l'épaisseur réglée — 1 à la souris / au doigt
     const rec = newTrait({ ficheId: nsAnnot, page, points, couleur: couleurCrayon, mode,
-      epaisseur: (reglagesCrayon[mode] || REGLAGES_DEFAUT.dessin).taille,
+      epaisseur: (reglagesCrayon[mode] || REGLAGES_DEFAUT.dessin).taille * (Number.isFinite(pression) && pression > 0 ? pression : 1),
       opacite: (reglagesCrayon[mode] || REGLAGES_DEFAUT.dessin).opacite,
       aimant: !surligneur && aimant });
     await hist.appliquer(cmdCreer('annotations', rec, surligneur ? 'Surligneur à main levée' : 'Trait au crayon'));
@@ -3413,6 +3423,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 try { localStorage.setItem('medrevise.reglagesCrayon', JSON.stringify(n)); } catch (e) { /* ignore */ }
                 return n;
               })} />
+            {(modeTab || ecranTactile) && (<>
+              <span className="ptb-sep" />
+              <button type="button" className={'ptb-bascule' + (reglagesStylet.pression ? ' actif' : '')} aria-pressed={reglagesStylet.pression}
+                onClick={() => ecrirePressionActive(!reglagesStylet.pression)}
+                title="Apple Pencil : appuyer plus fort épaissit légèrement le trait. Désactivé : épaisseur fixe.">
+                Pression {reglagesStylet.pression ? 'activée' : 'désactivée'}
+              </button>
+              <button type="button" className={'ptb-bascule' + (reglagesStylet.doigt ? ' actif' : '')} aria-pressed={reglagesStylet.doigt}
+                onClick={() => ecrireDessinAuDoigt(!reglagesStylet.doigt)}
+                title="Par défaut, seul le stylet (ou la souris) dessine : le doigt fait défiler et zoomer, la paume est ignorée. Activé : le doigt dessine aussi.">
+                Dessiner au doigt : {reglagesStylet.doigt ? 'oui' : 'non'}
+              </button>
+            </>)}
             {modeCrayon === 'dessin' && (
               <>
                 <span className="ptb-sep" />

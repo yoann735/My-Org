@@ -169,7 +169,17 @@
 /* menus contextuels ouverts depuis le lecteur tablette (rendus dans <body>) */
 body:has(.lecteur-tab) .ctx-menu-item { min-height: 40px; font-size: 14.5px; }
 
-/* ---- stylet (Apple Pencil) : le doigt fait défiler, seul le stylet annote ---- */
-.stylet-actif :is(.pdfr-inkcapture, .pdfr-gommecapture, .pdfr-poselayer, .pdfr-drawlayer) { touch-action: pan-x pan-y; }
+/* ---- stylet (Apple Pencil) : le doigt fait défiler, seul le stylet annote ----
+   (20/10) les calques de dessin restent en `touch-action: none` (sinon iPadOS ferait défiler la page sous le
+   Pencil) : le défilement au doigt y est fait à la main (lib/tablette.js#defilerAuDoigt). */
+.pdfr-drawlayer { touch-action: none; }
+/* barre de réglages au doigt : cibles de 40 px (les pastilles gardent un rond de 24 px au centre) */
+.pdfr-v2.lecteur-tab .pdfr-contexte button { min-height: 40px; }
+.pdfr-v2.lecteur-tab .pdfr-contexte .sc-pastille { width: 40px; height: 40px; padding: 8px; box-sizing: border-box; background-clip: content-box; border-radius: 50%; }
+.pdfr-v2.lecteur-tab .pdfr-contexte .sc-pastille.actif { box-shadow: inset 0 0 0 2px var(--text); }
+.pdfr-v2.lecteur-tab .pdfr-contexte .sc-pastille:hover { transform: none; }
+.pdfr-v2.lecteur-tab .pdfr-contexte .sc-retirer { display: none; }
+.pdfr-v2.lecteur-tab .pdfr-contexte :is(.sc-roue-btn, .ptb-forme, .ptb-segment button) { min-width: 40px; }
+.pdfr-v2.lecteur-tab .pdfr-contexte .ptb-segment { height: 40px; }
 
 @media (prefers-reduced-motion: reduce) { .lecteur-tab .pdfr-workshop { transition: none; } }

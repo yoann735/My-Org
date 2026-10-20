@@ -17,7 +17,7 @@
    ============================================================ */
 import { aDeuxVersions, versionAffichee } from '../lib/textesAnnotations.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { noterPointeur, pointeurIgnore, prendreTrace, rendreTrace } from '../lib/tablette.js';
+import { noterPointeur, pointeurIgnore, prendreTrace, rendreTrace, defilerAuDoigt, pressionActive, facteurPression } from '../lib/tablette.js';
 import { EditorContent } from '@tiptap/react';
 import { IconeOutil } from './IconesOutils.jsx';
 import { SelecteurCouleurs, BoutonCouleur, AUCUNE } from './Couleurs.jsx';
@@ -299,7 +299,7 @@ export function PdfPageContent({
   const [trace, setTrace] = useState(null);
   const demarrerTrace = (e) => {
     noterPointeur(e); // stylet : le doigt et la paume ne dessinent plus (lib/tablette.js)
-    if (pointeurIgnore(e)) return;
+    if (pointeurIgnore(e)) { defilerAuDoigt(e, e.currentTarget.closest('.pdfr-scroll')); return; } // le doigt fait défiler (lib/tablette.js)
     const pid = e.pointerId; // un tracé ne suit QUE son pointeur (2e doigt, paume)
     e.preventDefault(); // pas de sélection native pendant le tracé
     const r = e.currentTarget.getBoundingClientRect();
@@ -346,7 +346,7 @@ export function PdfPageContent({
   const [traceForme, setTraceForme] = useState(null);
   const demarrerForme = (e) => {
     noterPointeur(e); // stylet : le doigt et la paume ne dessinent plus (lib/tablette.js)
-    if (pointeurIgnore(e)) return;
+    if (pointeurIgnore(e)) { defilerAuDoigt(e, e.currentTarget.closest('.pdfr-scroll')); return; } // le doigt fait défiler (lib/tablette.js)
     const pid = e.pointerId; // un tracé ne suit QUE son pointeur (2e doigt, paume)
     if (e.button !== 0) return;
     e.preventDefault();
@@ -420,11 +420,43 @@ export function PdfPageContent({
      4. un rendu en courbes (cheminLisse), en direct comme une fois enregistré.
      Le dernier point rejoint la position réelle au relâchement : le trait finit
      exactement sous le curseur, sans le retard du lissage. */
-  const [traitEnCours, setTraitEnCours] = useState(null);
+  const [traitEnCours] = useState(null); // (20/10) l'aperçu du trait en cours est dessiné sur un canvas (apercuRef)
   const PAS_MIN = 0.0007;
+  /* APERÇU EN DIRECT (20/10, docs/compte-rendu-pdfreader-v3.md) : le trait en cours est peint sur un canvas
+     posé sur la page, DANS l'événement du pointeur (aucun rendu React, aucune attente d'image) — le stylet
+     n'a pas de retard visible. Au relâchement, le trait lissé est enregistré (même lissage qu'avant) et
+     l'aperçu s'efface quand il est à l'écran. */
+  const apercuRef = useRef(null);
+  const apercuAEffacer = useRef(false);
+  const effacerApercu = () => { const c = apercuRef.current; if (c && c.width > 1) c.getContext('2d').clearRect(0, 0, c.width, c.height); apercuAEffacer.current = false; };
+  useEffect(() => { if (apercuAEffacer.current) requestAnimationFrame(effacerApercu); }, [traits]); // eslint-disable-line react-hooks/exhaustive-deps
+  const peindreApercu = (points, r, style) => {
+    const c = apercuRef.current;
+    if (!c || points.length < 1) return;
+    const d = window.devicePixelRatio || 1;
+    const W = Math.round(r.width * d), H = Math.round(r.height * d);
+    if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+    const x = c.getContext('2d');
+    x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, W, H);
+    x.globalAlpha = style.opacite; x.strokeStyle = style.couleur; x.lineWidth = style.largeur * d; x.lineCap = 'round'; x.lineJoin = 'round';
+    x.beginPath();
+    const P = (i) => [points[i][0] * W, points[i][1] * H];
+    let [ax, ay] = P(0);
+    x.moveTo(ax, ay);
+    if (points.length === 1) x.lineTo(ax + 0.01, ay);
+    for (let i = 1; i < points.length; i++) { // courbes par les milieux (comme cheminLisse)
+      const [bx, by] = P(i);
+      x.quadraticCurveTo(ax, ay, (ax + bx) / 2, (ay + by) / 2);
+      ax = bx; ay = by;
+    }
+    x.lineTo(ax, ay);
+    x.stroke();
+  };
   const demarrerTrait = (e) => {
     noterPointeur(e); // stylet : le doigt et la paume ne dessinent plus (lib/tablette.js)
-    if (pointeurIgnore(e)) return;
+    if (pointeurIgnore(e)) { defilerAuDoigt(e, e.currentTarget.closest('.pdfr-scroll')); return; } // le doigt fait défiler (lib/tablette.js)
+    // BOUT GOMME / bouton gomme d'un stylet (bouton 5, si le navigateur l'expose) : il gomme, le crayon reste l'outil
+    if (e.pointerType === 'pen' && (e.button === 5 || (e.buttons & 32))) { demarrerGomme(e); return; }
     if (onDebutTrait) onDebutTrait(); // (11/10) un trait commence : la boîte sélectionnée se désélectionne
     const pid = e.pointerId; // un tracé ne suit QUE son pointeur (2e doigt, paume)
     if (e.button !== 0) return;
@@ -439,9 +471,17 @@ export function PdfPageContent({
     const pt = (ev) => [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)];
     let points = [pt(e)];
     let brut = points[0];
-    let raf = null;
-    const peindre = () => { raf = null; setTraitEnCours(points); };
-    setTraitEnCours(points);
+    // PRESSION du stylet (20/10) : épaisseur légèrement modulée par la pression moyenne du trait (désactivable)
+    const avecPression = e.pointerType === 'pen' && pressionActive();
+    let sommeP = 0, nP = 0;
+    const noterPression = (ev) => { if (avecPression && ev.pressure > 0) { sommeP += ev.pressure; nP += 1; } };
+    noterPression(e);
+    const facteur = () => (avecPression && nP ? facteurPression(sommeP / nP) : 1);
+    const ep = surligneur ? (epaisseurTrait || EPAISSEUR_SURLIGNEUR) : (epaisseurTrait || 0.0042);
+    const styleApercu = () => ({ couleur: encre(couleurTrait), opacite: Number.isFinite(opaciteTrait) ? opaciteTrait : (surligneur ? OPACITE_SURLIGNEUR : 0.9),
+      largeur: Math.max(surligneur ? 4 : 1, ep * facteur() * r.height) });
+    if (apercuRef.current) apercuRef.current.classList.toggle('surligneur', surligneur);
+    peindreApercu(points, r, styleApercu());
     const ajouter = (q) => {
       brut = q;
       const lisse = suivreEnDouceur(points[points.length - 1], q, surligneur ? 0.3 : 0.45);
@@ -452,28 +492,29 @@ export function PdfPageContent({
     const move = (ev) => {
       if (ev.pointerId !== pid) return;
       const lot = typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : [];
-      (lot.length ? lot : [ev]).forEach((x) => ajouter(pt(x)));
-      if (!raf) raf = requestAnimationFrame(peindre);
+      (lot.length ? lot : [ev]).forEach((x) => { ajouter(pt(x)); noterPression(x); });
+      peindreApercu(points, r, styleApercu()); // tout de suite, dans l'événement
     };
     const finir = () => {
       rendreTrace(pid);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
-      if (raf) cancelAnimationFrame(raf);
-      setTraitEnCours(null);
     };
     const up = (ev) => {
       if (ev && ev.pointerId !== pid) return;
       finir();
-      if (annule || (ev && ev.type === 'pointercancel')) return;
+      if (annule || (ev && ev.type === 'pointercancel')) { effacerApercu(); return; }
       const fin = ev && Number.isFinite(ev.clientX) ? pt(ev) : brut;
       const der = points[points.length - 1];
       if (Math.hypot(fin[0] - der[0], fin[1] - der[1]) > 1e-6) points = [...points, fin];
       if (points.length >= 2) {
-        onCreerTrait({ page: pageNum, mode: modeCrayon,
+        peindreApercu(points, r, styleApercu());
+        apercuAEffacer.current = true; // effacé quand le trait enregistré est à l'écran (ou au plus tard 1,5 s)
+        setTimeout(() => { if (apercuAEffacer.current) effacerApercu(); }, 1500);
+        onCreerTrait({ page: pageNum, mode: modeCrayon, pression: facteur(),
           points: lisserTrait(points, { aimant: !surligneur && aimantActif, ratio }) });
-      }
+      } else effacerApercu();
     };
     window.addEventListener('pointercancel', up);
     window.addEventListener('pointermove', move);
@@ -493,9 +534,9 @@ export function PdfPageContent({
   const RAYON_GOMME = 9; // px à l'écran : le rayon du curseur rond (voir etudes.css)
   const demarrerGomme = (e) => {
     noterPointeur(e); // stylet : le doigt et la paume ne dessinent plus (lib/tablette.js)
-    if (pointeurIgnore(e)) return;
+    if (pointeurIgnore(e)) { defilerAuDoigt(e, e.currentTarget.closest('.pdfr-scroll')); return; } // le doigt fait défiler (lib/tablette.js)
     const pid = e.pointerId; // un tracé ne suit QUE son pointeur (2e doigt, paume)
-    if (e.button !== 0) return;
+    if (e.button !== 0 && !(e.pointerType === 'pen' && e.button === 5)) return; // (20/10) + bout gomme du stylet
     e.preventDefault();
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return;
@@ -835,9 +876,10 @@ export function PdfPageContent({
         </div>
       )}
 
-      {outil === 'crayon' && (
+      {outil === 'crayon' && (<>
+        <canvas ref={apercuRef} className="pdfr-apercu-trait" width={1} height={1} aria-hidden="true" />
         <div className="pdfr-inkcapture" onPointerDown={demarrerTrait} />
-      )}
+      </>)}
 
       {/* VERROU 1 : la couche de tracé n'existe QUE pendant que l'outil « Boîte de
           texte » est actif, et elle est posée AU-DESSUS de la couche de texte. Tant
@@ -857,7 +899,8 @@ export function PdfPageContent({
       {(outil === 'texte' || outil === 'question') && (
         <div className={'pdfr-poselayer outil-' + outil} onPointerDown={(e) => {
           noterPointeur(e);
-          if (e.button !== 0 || pointeurIgnore(e)) return;
+          if (pointeurIgnore(e)) { defilerAuDoigt(e, e.currentTarget.closest('.pdfr-scroll')); return; }
+          if (e.button !== 0) return;
           e.preventDefault();
           const r = e.currentTarget.getBoundingClientRect();
           if (!r.width || !r.height) return;
