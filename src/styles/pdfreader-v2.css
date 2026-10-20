@@ -320,6 +320,10 @@
 
 /* ---- DOUBLE TAMPON des pages (20/10, pdf/PdfPage.jsx) : deux canvas superposés, un seul visible ---- */
 .pdfr-page > canvas.pdfr-tampon { position: absolute; left: 0; top: 0; }
+/* (20/10 soir) le calque composité du conteneur des pages existe EN PERMANENCE (PDF) : il n'est plus créé au début
+   d'un geste de zoom ni détruit au relâchement — sa destruction / recréation forçait un repeint complet (cases
+   blanches un instant sur GPU / Safari) au moment exact du relâchement */
+.pdfr-pages:not(.pdfr-pages-doc) { will-change: transform; }
 
 /* ---- APERÇU DU TRAIT EN COURS (20/10, pdf/PdfPage.jsx) : un canvas sur la page, peint dans l'événement ---- */
 .pdfr-apercu-trait { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }

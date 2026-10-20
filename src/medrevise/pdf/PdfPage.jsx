@@ -75,20 +75,41 @@ export function PdfPageContent({
   const canvasRef = useRef(null);
   const tamponA = useRef(null), tamponB = useRef(null);
   const derriere = () => (canvasRef.current === tamponA.current ? tamponB.current : tamponA.current);
+  /* FONDU CROISÉ (20/10 soir, docs/compte-rendu-pdfreader-v4.md) : le passage de l'image étirée au rendu net
+     se fait en 80 ms, les deux canvas superposés et l'un des deux TOUJOURS opaque dessous — jamais un pixel de
+     page effacé, et plus de « pop » de netteté au relâchement d'un zoom. Le tampon B est au-dessus de A (ordre
+     du DOM, sans z-index : les couches de texte et d'annotations restent au-dessus) : B apparaît en fondu sur A,
+     ou A se montre sous B qui s'efface. */
+  const fondu = useRef(null);
   const basculerTampon = (nouveau, os) => {
     const ancien = canvasRef.current;
     if (nouveau === ancien) { alignerCanvas(nouveau, os); return; }
+    if (fondu.current) fondu.current(); // un fondu en cours se termine aussitôt
     nouveau.style.visibility = '';
     nouveau.classList.add('devant');
     alignerCanvas(nouveau, os);
     nouveau.dataset.rendu = '1'; nouveau.dataset.densite = String(os);
-    if (ancien) {
-      ancien.style.visibility = 'hidden'; ancien.classList.remove('devant'); delete ancien.dataset.rendu;
-      // l'ancien tampon rend sa mémoire une image plus tard (la nouvelle est alors à l'écran)
-      requestAnimationFrame(() => requestAnimationFrame(() => { if (canvasRef.current !== ancien) { ancien.width = 1; ancien.height = 1; } }));
-    }
     canvasRef.current = nouveau;
+    if (!ancien) return;
+    ancien.classList.remove('devant'); delete ancien.dataset.rendu;
+    const dessus = nouveau === tamponB.current ? nouveau : ancien; // celui qui s'anime
+    const reduit = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let fini = false;
+    const finir = () => {
+      if (fini) return; fini = true; fondu.current = null;
+      dessus.style.transition = ''; dessus.style.opacity = '';
+      if (canvasRef.current !== ancien) { ancien.style.visibility = 'hidden'; ancien.width = 1; ancien.height = 1; } // l'ancien rend sa mémoire
+    };
+    fondu.current = finir;
+    if (reduit) { finir(); return; }
+    dessus.style.transition = 'none';
+    dessus.style.opacity = dessus === nouveau ? '0' : '1';
+    void dessus.offsetWidth; // point de départ du fondu posé avant la transition
+    dessus.style.transition = 'opacity 80ms linear';
+    dessus.style.opacity = dessus === nouveau ? '1' : '0';
+    setTimeout(finir, 110);
   };
+  useEffect(() => () => { if (fondu.current) fondu.current(); }, []);
   const textLayerRef = useRef(null);
   /* ============================================================
      SÉLECTION DESSINÉE PAR L'APP (02/10 nuit). Le navigateur garde la sélection

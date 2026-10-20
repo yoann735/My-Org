@@ -93,6 +93,14 @@ export function alignerCanvas(canvas, os) {
   const dpr = window.devicePixelRatio || 1;
   canvas.style.transform = '';
   if (Math.abs(os - dpr) > 1e-3) { canvas.style.width = '100%'; canvas.style.height = '100%'; return; } // densité plafonnée : mise à l'échelle inévitable
+  /* (20/10 soir, docs/compte-rendu-pdfreader-v4.md) — CAUSE DU CLIGNOTEMENT AU RELÂCHEMENT D'UN ZOOM : après la
+     pose du zoom, le défilement change (l'horizontal surtout, sur iPad) et le recalage différé (100 ms) appelait
+     cette fonction sur l'image ÉTIRÉE de l'ancien zoom : elle reprenait sa taille en pixels d'avant (960 px dans
+     une page de 1 800) — diapo réduite dans un coin, page blanche autour, jusqu'au rendu net. Un canvas qui n'a
+     pas été rendu pour la taille ACTUELLE de sa page reste étiré à 100 %. */
+  const page = canvas.parentElement;
+  const largeurPage = page ? page.offsetWidth : 0;
+  if (largeurPage && Math.abs(canvas.width / dpr - largeurPage) > 1.5) { canvas.style.width = '100%'; canvas.style.height = '100%'; return; }
   canvas.style.width = canvas.width / dpr + 'px';
   canvas.style.height = canvas.height / dpr + 'px';
   const r = canvas.getBoundingClientRect();

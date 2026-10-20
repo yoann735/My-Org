@@ -1141,7 +1141,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const g = gesteZoom.current;
     if (!g) return;
     clearTimeout(g.minuteur); gesteZoom.current = null;
-    if (pagesRef.current) { pagesRef.current.style.transform = ''; pagesRef.current.style.willChange = ''; }
+    if (pagesRef.current) { pagesRef.current.style.transform = ''; }
     libelleZoom(scaleRef.current || scale);
   };
   const finirGesteZoom = () => {
@@ -1156,7 +1156,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     scaleRef.current = g.s;
     setScale(g.s);
   };
-  const abandonnerGesteZoomFin = () => { if (pagesRef.current) { pagesRef.current.style.transform = ''; pagesRef.current.style.willChange = ''; } };
+  const abandonnerGesteZoomFin = () => { if (pagesRef.current) { pagesRef.current.style.transform = ''; } };
   // pages à monter pendant un dézoom au geste (la zone visible couvre plus de contenu) : jamais de trou
   const etendrePagesMontees = (g) => {
     const el = scrollRef.current, lay = layoutRef.current;
@@ -1189,7 +1189,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       g = gesteZoom.current = { s0: scaleRef.current || scale, s: scaleRef.current || scale, ox, oy, Cw0: pages.offsetWidth, P: rp.top - re.top + el.scrollTop, minuteur: null };
       pages.style.transition = 'none'; // (un glissement de fin de geste en cours s'arrête là)
       pages.style.transformOrigin = `${ox}px ${oy}px`;
-      pages.style.willChange = 'transform';
     }
     g.s = ns;
     pages.style.transform = `scale(${(ns / g.s0).toFixed(5)})`;
@@ -1211,7 +1210,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const el = scrollRef.current, pages = pagesRef.current;
       const k = scale / g.s0;
       const st = g.st != null ? g.st : el.scrollTop, sl = g.sl != null ? g.sl : el.scrollLeft;
-      pages.style.transform = ''; pages.style.willChange = '';
+      pages.style.transform = '';
       const Cw1 = pages.offsetWidth;
       const hautVoulu = st + g.oy * (k - 1), gaucheVoulue = sl + Cw1 / 2 - g.ox + k * (g.ox - g.Cw0 / 2);
       el.scrollTop = Math.max(0, hautVoulu);
