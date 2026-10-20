@@ -259,10 +259,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // ni le test de position des surlignages ne peuvent se déclencher — c'est
   // structurel, pas une suite de conditions à ne pas oublier.
   const [outil, setOutil] = useState('main'); // main | surligneur | boite | crayon | gomme — actif sur TOUS les écrans depuis l'étape 7
-  const [couleurActive, setCouleurActive] = useState('ambre'); // couleur des BOÎTES (palette de base, 09/10)
+  const [couleurActive, setCouleurActive] = useState('jaune-vif'); // couleur des BOÎTES (palette vive, 20/10 soir)
   /* surligneur et crayon : chacun sa couleur, prise parmi les 4 couleurs « cours »,
      mes couleurs, ou la roue (pdf/Couleurs.jsx). Un id de COLORS ou un hex. */
-  const [couleurSurligneur, setCouleurSurligneur] = useState('ambre');
+  const [couleurSurligneur, setCouleurSurligneur] = useState('jaune-vif');
   /* SURLIGNEUR FLUIDE (02/10 nuit) : pendant le geste, la sélection est dessinée dans la
      couleur EXACTE du surlignage à venir — même calcul que son rendu (couleur pleine en
      « multiply » ; une couleur perso est posée à 45 %, d'où son mélange avec le blanc).
@@ -274,8 +274,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const n = parseInt(hex.slice(1), 16), m = (v) => Math.round(255 * (1 - a) + v * a);
     return `rgb(${m((n >> 16) & 255)}, ${m((n >> 8) & 255)}, ${m(n & 255)})`;
   }, [couleurSurligneur]);
-  const [couleurCrayon, setCouleurCrayon] = useState('ardoise');
-  const [couleurForme, setCouleurForme] = useState('corail'); // cadre corail par défaut : il se voit sur la page
+  const [couleurCrayon, setCouleurCrayon] = useState('bleufonce');
+  const [couleurForme, setCouleurForme] = useState('rouge'); // cadre rouge par défaut : il se voit sur la page
   /* FORMES (02/10 soir) : la forme à poser et son remplissage, mémorisés sur l'appareil
      (préférence d'affichage) — on retrouve sa dernière forme en un clic. */
   const [typeFormeActif, setTypeFormeActifBrut] = useState(() => { try { return localStorage.getItem('medrevise.typeForme') || 'rectangle'; } catch (e) { return 'rectangle'; } });

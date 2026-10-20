@@ -227,12 +227,14 @@ export function ElementDessin({ e, gommeLarg = 0, fond = 'noir' }) {
    rogné). Appui long sur une de MES couleurs : la retirer.
    ============================================================ */
 const ENCRE_PASTILLE = { id: 'blanc', hex: '#F2F2F5', label: 'Encre' };
+// (20/10 soir) palette vive : ses noir et blanc font doublon avec l'encre (blanc à l'écran, noir sur la page)
+const COULEURS_TEL = COLORS.filter((c) => c.id !== 'blanc' && c.id !== 'noir');
 function PaletteMobile({ couleur, onCouleur }) {
   const [perso, ajouter, retirer] = useCouleursPerso();
   const [roue, setRoue] = useState(null);
   const [aRetirer, setARetirer] = useState(null);
   const appui = useRef(null);
-  const pastilles = [ENCRE_PASTILLE, ...COLORS, ...perso.map((h) => ({ id: h, hex: h, label: h, perso: true }))];
+  const pastilles = [ENCRE_PASTILLE, ...COULEURS_TEL, ...perso.map((h) => ({ id: h, hex: h, label: h, perso: true }))];
   const actif = (id) => couleur === id || (id === 'blanc' && couleurSurFond(couleur, 'noir') === ENCRE.noir && !COLORS.some((c) => c.id === couleur) && !perso.includes(couleur));
   return (
     <div className="md-rang md-palette" role="group" aria-label="Couleur">
@@ -284,7 +286,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
   const camRef = useRef(cam); camRef.current = cam;
   const [outil, setOutil] = useState('crayon');
   const [couleur, setCouleur] = useState('blanc'); // fond noir : l'encre par défaut est claire (sur le PDF elle sortira noire)
-  const [couleurSurl, setCouleurSurl] = useState('ambre');
+  const [couleurSurl, setCouleurSurl] = useState('jaune-vif');
   const [epIdx, setEpIdx] = useState(1);
   const [typeForme, setTypeForme] = useState('rectangle');
   const [remplie, setRemplie] = useState(false);
@@ -857,7 +859,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
           <div ref={barreFormatRef} className={'md-format' + (enEcriture ? ' sur-clavier' : '')} style={style} onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}>
             {paletteZone && (
               <div className="md-format-couleurs">
-                {[ENCRE_PASTILLE, ...COLORS].map((c) => (
+                {[ENCRE_PASTILLE, ...COULEURS_TEL].map((c) => (
                   <button key={c.id} type="button" className="md-pastille" style={{ '--c': c.hex }} aria-label={c.label}
                     onPointerDown={(e) => e.preventDefault()} onClick={() => { appliquer('couleur', c.id); setPaletteZone(false); }} />
                 ))}
