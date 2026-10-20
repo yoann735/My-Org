@@ -24,6 +24,7 @@ import { SelecteurCouleurs, BoutonCouleur, AUCUNE } from './Couleurs.jsx';
 import { cheminForme, extremites, typeForme, estTrait, estFermee, tailleParDefaut, ancreSurForme } from './formes.js';
 import { connecteursDe, epingleSeule, patchRetirer, patchAjouter, patchDeplacer, patchStyle } from './connecteurs.js';
 import { aStyle, styleFleche, cheminFleche, indexInsertion, suivant, POINTES, TRAITS, EPAISSEURS } from './flechesGeo.js';
+import { forceStabilisation, chaikin, passesLissage, cheminTrait, reconnaitreForme, estGriffonnage, traitsDansLasso } from './crayon.js';
 import { suivreImage } from './attaches.js';
 import { Icon } from '../../shared/Icon.jsx';
 import { outputScaleFor } from './pdfjsSetup.js';
@@ -38,7 +39,7 @@ import {
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
   soustraireAncres, partCouverte, surlignagesTouches, couleurHex, planSurlignage,
-  lisserTrait, traitTouche, cheminLisse, suivreEnDouceur, modeDuTrait,
+  lisserTrait, traitTouche, cheminLisse, suivreEnDouceur, modeDuTrait, accrocherAngles,
   EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, positionTexteProche,
   lisibleSurNoir, EMPTY_ARRAY, opaciteSurlignage,
   ecrireFondBoiteDefaut,
@@ -49,7 +50,8 @@ import {
     de texte édités (Chantier 1). */
 export function PdfPageContent({
   pdfDoc, pageNum, vierge = false, scale, pageHeight, dpr, highlights: tousSurlignages, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
-  onCreateHighlight, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, ancrageSurlignage = false, ancrageAjout = false, onSelFleche = null, onDemanderAncrage = () => {},
+  onCreateHighlight, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, ancrageSurlignage = false, ancrageAjout = false, onSelFleche = null,
+  stabilisation = 0.3, surligneurDroit = true, griffonner = false, onModifierTraits = null, // crayon v4 (20/10 soir, pdf/crayon.js) onDemanderAncrage = () => {},
   onCreerTrait, onSupprimerTraits, cibleHlId, onDebutTrait = null,
   ocrPage = null, ocrDebug = false, // couche OCR de cette page (docs/compte-rendu-ocr.md)
   couleurTrait = 'jaune', epaisseurTrait = 0.0042, opaciteTrait = 1, aimantActif = true, modeCrayon = 'dessin',
@@ -465,16 +467,17 @@ export function PdfPageContent({
     x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, W, H);
     x.globalAlpha = style.opacite; x.strokeStyle = style.couleur; x.lineWidth = style.largeur * d; x.lineCap = 'round'; x.lineJoin = 'round';
     x.beginPath();
+    if (style.tirets) x.setLineDash(style.tirets.map((v) => v * d)); else x.setLineDash([]);
     const P = (i) => [points[i][0] * W, points[i][1] * H];
-    let [ax, ay] = P(0);
+    const [ax, ay] = P(0);
     x.moveTo(ax, ay);
     if (points.length === 1) x.lineTo(ax + 0.01, ay);
-    for (let i = 1; i < points.length; i++) { // courbes par les milieux (comme cheminLisse)
-      const [bx, by] = P(i);
-      x.quadraticCurveTo(ax, ay, (ax + bx) / 2, (ay + by) / 2);
-      ax = bx; ay = by;
+    if (style.droit) for (let i = 1; i < points.length; i++) x.lineTo(...P(i)); // forme redressée, lasso
+    else for (let i = 0; i < points.length - 1; i++) { // (20/10 soir) Catmull-Rom, comme le trait enregistré
+      const p0 = P(Math.max(0, i - 1)), p1 = P(i), p2 = P(i + 1), p3 = P(Math.min(points.length - 1, i + 2));
+      x.bezierCurveTo(p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6, p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6, p2[0], p2[1]);
     }
-    x.lineTo(ax, ay);
+    if (style.ferme) x.closePath();
     x.stroke();
   };
   const demarrerTrait = (e) => {
@@ -482,6 +485,9 @@ export function PdfPageContent({
     if (pointeurIgnore(e)) { defilerAuDoigt(e, e.currentTarget.closest('.pdfr-scroll')); return; } // le doigt fait défiler (lib/tablette.js)
     // BOUT GOMME / bouton gomme d'un stylet (bouton 5, si le navigateur l'expose) : il gomme, le crayon reste l'outil
     if (e.pointerType === 'pen' && (e.button === 5 || (e.buttons & 32))) { demarrerGomme(e); return; }
+    // (20/10 soir) GOMME DE TRAIT et LASSO : des modes du crayon (l'outil reste le crayon)
+    if (modeCrayon === 'gomme') { demarrerGomme(e); return; }
+    if (modeCrayon === 'lasso') { demarrerLasso(e); return; }
     if (onDebutTrait) onDebutTrait(); // (11/10) un trait commence : la boîte sélectionnée se désélectionne
     const pid = e.pointerId; // un tracé ne suit QUE son pointeur (2e doigt, paume)
     if (e.button !== 0) return;
@@ -507,20 +513,39 @@ export function PdfPageContent({
       largeur: Math.max(surligneur ? 4 : 1, ep * facteur() * r.height) });
     if (apercuRef.current) apercuRef.current.classList.toggle('surligneur', surligneur);
     peindreApercu(points, r, styleApercu());
+    /* MAINTENIR POUR REDRESSER (20/10 soir) : le pointeur immobile 450 ms à la fin d'un trait de dessin → la
+       forme reconnue (ligne, cercle, rectangle, triangle, flèche) remplace le trait, tout de suite à l'aperçu */
+    let forme = null, minuterieForme = null, dernierBouge = [e.clientX, e.clientY];
+    const armerRedresser = () => {
+      clearTimeout(minuterieForme);
+      if (surligneur) return;
+      minuterieForme = setTimeout(() => {
+        if (points.length < 6) return;
+        const f = reconnaitreForme(points, ratio);
+        if (f) { forme = f; peindreApercu(f.points, r, { ...styleApercu(), droit: f.rendu === 'droit' }); }
+      }, 450);
+    };
     const ajouter = (q) => {
       brut = q;
-      const lisse = suivreEnDouceur(points[points.length - 1], q, surligneur ? 0.3 : 0.45);
+      if (forme) return; // redressé : la forme est posée, le reste du geste n'y change rien
+      const lisse = suivreEnDouceur(points[points.length - 1], q, surligneur ? 0.3 : forceStabilisation(stabilisation));
       const der = points[points.length - 1];
       if (Math.hypot(lisse[0] - der[0], lisse[1] - der[1]) < PAS_MIN) return;
       points = [...points, lisse];
     };
+    // surligneur « en ligne droite » : du point de départ au pointeur, angles aimantés (horizontal surtout)
+    const droiteSurligneur = () => accrocherAngles([points[0], brut], ratio, 12);
     const move = (ev) => {
       if (ev.pointerId !== pid) return;
       const lot = typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : [];
       (lot.length ? lot : [ev]).forEach((x) => { ajouter(pt(x)); noterPression(x); });
-      peindreApercu(points, r, styleApercu()); // tout de suite, dans l'événement
+      if (Math.hypot(ev.clientX - dernierBouge[0], ev.clientY - dernierBouge[1]) > 3) { dernierBouge = [ev.clientX, ev.clientY]; armerRedresser(); }
+      if (forme) return;
+      if (surligneur && surligneurDroit) peindreApercu(droiteSurligneur(), r, { ...styleApercu(), droit: true });
+      else peindreApercu(points, r, styleApercu()); // tout de suite, dans l'événement
     };
     const finir = () => {
+      clearTimeout(minuterieForme);
       rendreTrace(pid);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
@@ -533,17 +558,90 @@ export function PdfPageContent({
       const fin = ev && Number.isFinite(ev.clientX) ? pt(ev) : brut;
       const der = points[points.length - 1];
       if (Math.hypot(fin[0] - der[0], fin[1] - der[1]) > 1e-6) points = [...points, fin];
+      // GRIFFONNER POUR EFFACER (option) : un zigzag serré efface les traits qu'il recouvre, sans rien poser
+      if (!surligneur && griffonner && !forme && estGriffonnage(points, ratio)) {
+        const seuil = 0.01, touches = new Map();
+        for (const q of points) for (const t of traits || []) if (!touches.has(t.id) && traitTouche(t, q[0], q[1], seuil)) touches.set(t.id, t);
+        effacerApercu();
+        if (touches.size) { onSupprimerTraits([...touches.values()]); return; }
+      }
       if (points.length >= 2) {
-        peindreApercu(points, r, styleApercu());
+        let finaux, rendu;
+        if (forme) { finaux = forme.points; rendu = forme.rendu; }
+        else if (surligneur && surligneurDroit) { finaux = droiteSurligneur(); rendu = 'droit'; }
+        else { finaux = chaikin(lisserTrait(points, { aimant: !surligneur && aimantActif, ratio }), surligneur ? 0 : passesLissage(stabilisation)); rendu = 'cr'; }
+        peindreApercu(finaux, r, { ...styleApercu(), droit: rendu === 'droit' });
         apercuAEffacer.current = true; // effacé quand le trait enregistré est à l'écran (ou au plus tard 1,5 s)
         setTimeout(() => { if (apercuAEffacer.current) effacerApercu(); }, 1500);
-        onCreerTrait({ page: pageNum, mode: modeCrayon, pression: facteur(),
-          points: lisserTrait(points, { aimant: !surligneur && aimantActif, ratio }) });
+        onCreerTrait({ page: pageNum, mode: modeCrayon, pression: facteur(), rendu, ...(forme ? { formeReconnue: forme.type } : {}), points: finaux });
       } else effacerApercu();
     };
     window.addEventListener('pointercancel', up);
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+  };
+
+  /* LASSO (20/10 soir, pdf/crayon.js) : mode du crayon. On entoure des traits (au moins 60 % de leurs points
+     dans le tracé) — ou on touche un trait pour le prendre seul — ; la sélection se déplace d'un glisser, se
+     recolore, se supprime d'un clic (ou Suppr). Chaque geste = une entrée d'Annuler. */
+  const [selTraits, setSelTraits] = useState(null); // ids sélectionnés
+  const [decalSel, setDecalSel] = useState(null); // [dx, dy] pendant le déplacement de la sélection
+  useEffect(() => { if (outil !== 'crayon' || modeCrayon !== 'lasso') setSelTraits(null); }, [outil, modeCrayon]);
+  const traitsSel = selTraits ? (traits || []).filter((t) => selTraits.includes(t.id)) : [];
+  useEffect(() => { if (selTraits && !traitsSel.length) setSelTraits(null); }, [traits]); // eslint-disable-line react-hooks/exhaustive-deps
+  const supprimerSel = () => { const l = traitsSel; setSelTraits(null); if (l.length) onSupprimerTraits(l); };
+  const supprimerSelRef = useRef(supprimerSel); supprimerSelRef.current = supprimerSel;
+  useEffect(() => {
+    if (!selTraits) return undefined;
+    const k = (e) => {
+      if (e.key === 'Escape') { setSelTraits(null); return; }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !(document.activeElement && (document.activeElement.isContentEditable || /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)))) { e.preventDefault(); supprimerSelRef.current(); }
+    };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [selTraits]);
+  const demarrerLasso = (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const r = e.currentTarget.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const pt = (ev) => [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)];
+    const poly = [pt(e)];
+    setSelTraits(null);
+    const style = { couleur: '#7c5cff', opacite: 0.9, largeur: 1.5, droit: true, tirets: [5, 4] };
+    const move = (ev) => { if (ev.pointerId !== e.pointerId) return; poly.push(pt(ev)); peindreApercu(poly, r, style); };
+    const up = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      effacerApercu();
+      const xs = poly.map((q) => q[0] * r.width), ys = poly.map((q) => q[1] * r.height);
+      const petit = Math.max(...xs) - Math.min(...xs) < 8 && Math.max(...ys) - Math.min(...ys) < 8;
+      // un simple toucher : le trait sous le pointeur ; sinon : ceux entourés
+      const pris = petit ? (traits || []).filter((t) => traitTouche(t, poly[0][0], poly[0][1], 0.012)).slice(-1) : traitsDansLasso(traits, poly);
+      setSelTraits(pris.length ? pris.map((t) => t.id) : null);
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+  const boiteSel = (() => {
+    if (!traitsSel.length) return null;
+    const pts = traitsSel.flatMap((t) => t.points);
+    const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]), m = 0.008;
+    return { x: Math.min(...xs) - m, y: Math.min(...ys) - m, w: Math.max(...xs) - Math.min(...xs) + 2 * m, h: Math.max(...ys) - Math.min(...ys) + 2 * m };
+  })();
+  const deplacerSel = (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const page = e.currentTarget.closest('.pdfr-page'); const r = page.getBoundingClientRect();
+    const d0 = [e.clientX, e.clientY]; let dernier = null;
+    const move = (ev) => { dernier = [(ev.clientX - d0[0]) / r.width, (ev.clientY - d0[1]) / r.height]; setDecalSel(dernier); };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      setDecalSel(null);
+      if (dernier && Math.hypot(dernier[0] * r.width, dernier[1] * r.height) > 2 && onModifierTraits) {
+        onModifierTraits(traitsSel.map((t) => ({ avant: t, apres: { ...t, points: t.points.map(([x, y]) => [+clamp01(x + dernier[0]).toFixed(5), +clamp01(y + dernier[1]).toFixed(5)]) } })), traitsSel.length > 1 ? 'Déplacement de traits' : 'Déplacement d’un trait');
+      }
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
 
   /* GOMME (nuit du 30/09). Elle n'efface QUE les traits de crayon (dessin et
@@ -857,7 +955,7 @@ export function PdfPageContent({
           const surl = modeDuTrait(t) === 'surligneur';
           const ep = surl ? (t.epaisseur || EPAISSEUR_SURLIGNEUR) : (t.epaisseur || 0.0042);
           return (
-            <path key={cle} d={cheminLisse(t.points)} fill="none"
+            <path key={cle} d={cheminTrait(t, cheminLisse)} fill="none"
               stroke={encre(t.couleur)}
               strokeOpacity={Number.isFinite(t.opacite) ? t.opacite : (surl ? OPACITE_SURLIGNEUR : (apercu ? 0.9 : 1))}
               strokeWidth={Math.max(surl ? 4 : 1, ep * H)}
@@ -866,7 +964,8 @@ export function PdfPageContent({
         };
         const enCours = traitEnCours && { points: traitEnCours, couleur: couleurTrait, mode: modeCrayon,
           epaisseur: epaisseurTrait, opacite: opaciteTrait };
-        const visibles = masques ? traits.filter((t) => !masques.has(t.id)) : traits;
+        const visibles0 = masques ? traits.filter((t) => !masques.has(t.id)) : traits;
+        const visibles = decalSel && selTraits ? visibles0.map((t) => (selTraits.includes(t.id) ? { ...t, points: t.points.map(([x, y]) => [x + decalSel[0], y + decalSel[1]]) } : t)) : visibles0;
         const surl = visibles.filter((t) => modeDuTrait(t) === 'surligneur');
         const dess = visibles.filter((t) => modeDuTrait(t) !== 'surligneur');
         return (
@@ -903,7 +1002,22 @@ export function PdfPageContent({
 
       {outil === 'crayon' && (<>
         <canvas ref={apercuRef} className="pdfr-apercu-trait" width={1} height={1} aria-hidden="true" />
-        <div className="pdfr-inkcapture" onPointerDown={demarrerTrait} />
+        <div className={'pdfr-inkcapture' + (modeCrayon === 'lasso' ? ' lasso' : modeCrayon === 'gomme' ? ' gomme' : '')} onPointerDown={demarrerTrait} />
+        {boiteSel && (
+          <div className="pdfr-lasso-sel" style={{ left: (boiteSel.x + (decalSel ? decalSel[0] : 0)) * 100 + '%', top: (boiteSel.y + (decalSel ? decalSel[1] : 0)) * 100 + '%', width: boiteSel.w * 100 + '%', height: boiteSel.h * 100 + '%' }}
+            onPointerDown={deplacerSel} title="Glisser pour déplacer · Suppr pour supprimer · Échap pour désélectionner">
+            {!decalSel && (
+              <div className="nb-actions pdfr-lasso-barre" onPointerDown={(e) => e.stopPropagation()}>
+                <span className="pdfr-lasso-n">{traitsSel.length} trait{traitsSel.length > 1 ? 's' : ''}</span>
+                <BoutonCouleur couleur={traitsSel[0] && traitsSel[0].couleur} titre="Couleur des traits sélectionnés"
+                  onCouleur={(c) => onModifierTraits && onModifierTraits(traitsSel.map((t) => ({ avant: t, apres: { ...t, couleur: c } })), 'Couleur des traits')} />
+                <button type="button" className="nb-act danger" onClick={(e) => { e.stopPropagation(); supprimerSel(); }} title="Supprimer la sélection (Suppr)" aria-label="Supprimer la sélection">
+                  <Icon name="trash" size={13} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </>)}
 
       {/* VERROU 1 : la couche de tracé n'existe QUE pendant que l'outil « Boîte de

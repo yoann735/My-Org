@@ -22,6 +22,7 @@ import { PDFDocument, BlendMode, StandardFonts, rgb, degrees } from 'pdf-lib';
 import { getBlob } from '../lib/storage.js';
 import { cheminForme, typeForme, estFermee, estTrait, extremites } from './formes.js';
 import { aStyle, styleFleche, cheminFleche } from './flechesGeo.js';
+import { cheminCatmull } from './crayon.js';
 import { connecteursDe } from './connecteurs.js';
 import { separerParType } from '../lib/annotationTypes.js';
 import { ocrImage } from '../ocr/ocrImage.js';
@@ -250,7 +251,9 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const { W, H } = dims(page);
     const surl = modeDuTrait(t) === 'surligneur';
     const ep = (surl ? (t.epaisseur || EPAISSEUR_SURLIGNEUR) : (t.epaisseur || 0.0042)) * H;
-    page.drawSvgPath(cheminPoints(t.points, W, H), {
+    // (20/10 soir) trait v4 : courbes Catmull-Rom (`rendu: 'cr'`) comme à l'écran ; forme redressée : segments droits
+    const d = t.rendu === 'cr' ? cheminCatmull(t.points.map(([x, y]) => [(x * W) / 100, (y * H) / 100]), 100) : cheminPoints(t.points, W, H);
+    page.drawSvgPath(d, {
       x: 0, y: H, borderColor: hexVersRgb(couleurHex(t.couleur)), borderWidth: Math.max(surl ? 2.5 : 0.6, ep),
       borderOpacity: Number.isFinite(t.opacite) ? t.opacite : (surl ? OPACITE_SURLIGNEUR : 1), borderLineCap: 1 /* rond */, ...(surl ? { blendMode: BlendMode.Multiply } : {}),
     });
