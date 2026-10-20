@@ -8,7 +8,9 @@ await b.ev(`document.querySelector('.pdfr-scroll').scrollTop=0`); await b.dormir
 const pg = await b.rect(`[...document.querySelectorAll('.pdfr-textlayer span')][0].closest('.pdfr-page')`);
 const lire = (st) => b.S(`return JSON.stringify((await S.getAll('${st}')).filter(a=>a.ficheId==='f-fj'))`).then(JSON.parse);
 const persoOutil = async (hex) => {
-  await b.clic(await b.pos(`document.querySelector('.pdfr-contexte .sc-roue-btn')`, false), { att: 500 });
+  // (20/10) « ▾ Plus de couleurs » ouvre le panneau façon Word ; la roue + hex est derrière « Autres couleurs »
+  await b.clic(await b.pos(`document.querySelector('.pdfr-contexte .sc-roue-btn')`, false), { att: 400 });
+  await b.clic(await b.pos(`[...document.querySelectorAll('.scw-panneau .scw-action')].find(a=>a.innerText.includes('Autres'))`, false), { att: 500 });
   const ok = await b.ev(`document.activeElement && document.activeElement.classList.contains('sc-hex')`);
   await b.touche('a', { meta: true }); await b.ecrire(hex.slice(1)); await b.T.Enter(); await b.dormir(300);
   const actif = await b.ev(`(()=>{const p=document.querySelector('.pdfr-contexte .sc-pastille.actif');return p?getComputedStyle(p).backgroundColor:null})()`);
@@ -52,7 +54,7 @@ if (fr) {
   const btn = await b.pos(`document.querySelector('.pdfr-forme .pf-actions .sc-bouton, .pf-actions .sc-bouton')`, false);
   if (btn) {
     await b.clic(btn, { att: 400 });
-    await b.clic(await b.pos(`document.querySelector('.sc-pop .sc-roue-btn')`, false), { att: 500 });
+    await b.clic(await b.pos(`[...document.querySelectorAll('.scw-panneau .scw-action')].find(a=>a.innerText.includes('Autres'))`, false), { att: 500 });
     await b.touche('a', { meta: true }); await b.ecrire('43a047'); await b.dormir(200);
     const trait = await b.ev(`(()=>{const p=document.querySelector('.pdfr-forme path:not(.pf-hit), .pdfr-forme rect, .pdfr-forme ellipse');return p?getComputedStyle(p).stroke:null})()`);
     b.ok(trait === `rgb(${rgb('#43a047')})`, 'forme sélectionnée : aperçu en direct', trait);
@@ -70,7 +72,7 @@ await b.clic(await b.pos(`${bx}.querySelector('.ProseMirror')`, false), { att: 3
 await b.touche('a', { meta: true });
 const couleurTexte = async (titre, hex) => {
   await b.clic(await b.pos(`[...document.querySelectorAll('.pdfr-contexte .sc-bouton')].find(x=>x.title===${JSON.stringify(titre)})`, false), { att: 400 });
-  await b.clic(await b.pos(`document.querySelector('.sc-pop .sc-roue-btn')`, false), { att: 500 });
+  await b.clic(await b.pos(`[...document.querySelectorAll('.scw-panneau .scw-action')].find(a=>a.innerText.includes('Autres'))`, false), { att: 500 });
   await b.touche('a', { meta: true }); await b.ecrire(hex.slice(1)); await b.T.Enter(); await b.dormir(500);
 };
 await couleurTexte('Couleur du texte sélectionné', '#ffffff');

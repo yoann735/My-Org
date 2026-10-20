@@ -29,9 +29,10 @@ await b.capt('boite-A-pleine');
 const selA = `[...document.querySelectorAll('.note-box')].find(n=>n.innerText.includes('Boîte A'))`;
 await b.clic(await b.pos(selA, false), { att: 700 });
 await b.clic(await b.pos(`document.querySelector('.nb-actions .sc-bouton')`, false), { att: 400 });
-b.ok(await b.ev(`!!document.querySelector('.sc-pop')`), 'barre de la boîte : panneau des couleurs ouvert');
-b.ok(await b.ev(`[...document.querySelectorAll('.sc-pop .sc-pastille')].length>=6 && !!document.querySelector('.sc-pop .sc-roue-btn.avec-libelle')`), '6 couleurs de base + « Personnalisée »');
-await b.clic(await b.pos(`document.querySelector('.sc-pop .sc-roue-btn')`, false), { att: 500 });
+b.ok(await b.ev(`!!document.querySelector('.scw-panneau')`), 'barre de la boîte : panneau des couleurs ouvert');
+// (20/10) panneau façon Word : grille du thème (les 6 couleurs de base y sont) + « Autres couleurs »
+b.ok(await b.ev(`document.querySelectorAll('.scw-panneau .scw-grille .scw-cellule').length===60 && ['ambre','corail','violet','ardoise','sauge','poudre'].every(c=>document.querySelector('.scw-panneau .scw-cellule[data-valeur="'+c+'"]')) && !!([...document.querySelectorAll('.scw-panneau .scw-action')].find(a=>a.innerText.includes('Autres')))`), '6 couleurs de base (dans la grille du thème) + « Autres couleurs »');
+await b.clic(await b.pos(`[...document.querySelectorAll('.scw-panneau .scw-action')].find(a=>a.innerText.includes('Autres'))`, false), { att: 500 });
 const fen = await b.rect(`document.querySelector('.sc-fenetre')`);
 b.ok(fen && fen.y >= 0 && fen.b <= 900 && fen.r <= 1440, 'panneau entièrement dans l’écran', JSON.stringify(fen));
 b.ok(await b.ev(`document.activeElement && document.activeElement.classList.contains('sc-hex')`), 'le champ hex a le focus (souris)');
@@ -58,7 +59,7 @@ b.ok(JSON.parse(await etat()).find((x) => x.id === A.id).c === '#1e88e5', '⌘�
 // 4) COLLER un hex puis Échap = annuler
 await b.clic(await b.pos(selA, false), { att: 700 });
 await b.clic(await b.pos(`document.querySelector('.nb-actions .sc-bouton')`, false), { att: 400 });
-await b.clic(await b.pos(`document.querySelector('.sc-pop .sc-roue-btn')`, false), { att: 500 });
+await b.clic(await b.pos(`[...document.querySelectorAll('.scw-panneau .scw-action')].find(a=>a.innerText.includes('Autres'))`, false), { att: 500 });
 await b.c.send('Browser.grantPermissions', { permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'], origin: 'http://localhost:5199' });
 await b.ev(`navigator.clipboard.writeText('color: #E53935;')`);
 await b.touche('a', { meta: true });
@@ -70,13 +71,16 @@ b.ok((await b.fond(selA)).includes(rgb('#e53935')), 'aperçu rouge sur la boîte
 // saisie invalide : signalée, rien d'appliqué
 await b.touche('a', { meta: true }); await b.ecrire('12x');
 b.ok(await b.ev(`document.querySelector('.sc-hex-champ').classList.contains('invalide')`), 'saisie invalide « 12x » signalée en direct');
+// (20/10) Échap dans « Autres couleurs » revient au panneau façon Word ; un 2e Échap le ferme
 await b.T.Escape(); await b.dormir(400);
-b.ok(!(await b.ev(`!!document.querySelector('.sc-fenetre')`)), 'Échap : panneau fermé');
+b.ok(!(await b.ev(`!!document.querySelector('.sc-perso-panneau')`)) && await b.ev(`!!document.querySelector('.scw-panneau')`), 'Échap : la roue se ferme, retour au panneau des couleurs');
+await b.T.Escape(); await b.dormir(400);
+b.ok(!(await b.ev(`!!document.querySelector('.sc-fenetre')`)), '2e Échap : panneau fermé');
 b.ok((await b.fond(selA)).includes(rgb('#1e88e5')), 'Échap : l’ancienne couleur revient à l’écran', await b.fond(selA));
 b.ok(JSON.parse(await etat()).find((x) => x.id === A.id).c === '#1e88e5', 'Échap : rien d’écrit');
 // 5) CURSEURS : teinte + carré, puis clic ailleurs = valider
-if (!(await b.ev(`!!document.querySelector('.sc-pop')`))) await b.clic(await b.pos(`document.querySelector('.nb-actions .sc-bouton')`, false), { att: 400 });
-await b.clic(await b.pos(`document.querySelector('.sc-pop .sc-roue-btn')`, false), { att: 500 });
+if (!(await b.ev(`!!document.querySelector('.scw-panneau')`))) await b.clic(await b.pos(`document.querySelector('.nb-actions .sc-bouton')`, false), { att: 400 });
+await b.clic(await b.pos(`[...document.querySelectorAll('.scw-panneau .scw-action')].find(a=>a.innerText.includes('Autres'))`, false), { att: 500 });
 const t0 = await b.ev(`document.querySelector('.sc-teinte').getAttribute('aria-valuenow')`);
 await b.glisser(await b.dans(`document.querySelector('.sc-teinte')`, 0.6, 0.5), await b.dans(`document.querySelector('.sc-teinte')`, 0.85, 0.5));
 const t1 = await b.ev(`document.querySelector('.sc-teinte').getAttribute('aria-valuenow')`);
