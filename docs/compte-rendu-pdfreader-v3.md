@@ -325,4 +325,5 @@ Doutes / limites :
 | `d9d19f5` | perf : zoom sans flash blanc (chantier 6) |
 | `85c9d17` | feat : iPad + Apple Pencil (chantier 4) |
 | `91cd8c3` | test : transcript ↔ fiche jumelle, tests de couleur du 15/10 mis à jour |
-| (ce commit) | docs : ce compte rendu et ses captures |
+| `7221b1d` | docs : ce compte rendu et ses captures |
+| (suivant) | test : t-couleurs tablette (rangée qui défile) + hash du commit de doc |

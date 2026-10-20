@@ -116,13 +116,15 @@ b.ok(P && P.recentes === Math.min(8, rec.length), 'panneau : « Couleurs récent
 await b.T.Escape(); await b.dormir(200);
 // --- 7. « Aucune » pour le fond du texte (rangée de mise en forme de la boîte)
 await b.ev(`(()=>{const pm=document.querySelector('.note-box.active .ProseMirror');pm.focus();const s=getSelection();s.selectAllChildren(pm);return 1})()`); await b.dormir(200);
-await b.clic(await b.pos(`document.querySelector('.pdfr-contexte [aria-label="Surligneur de fond du texte sélectionné"]')`, false), { att: 400 });
+// rangée de texte plus longue que la tablette : elle défile (en douceur) jusqu'au bouton avant de le viser
+const boutonFond = async () => { await b.ev(`document.querySelector('.pdfr-contexte [aria-label="Surligneur de fond du texte sélectionné"]').scrollIntoView({block:'nearest',inline:'nearest'});1`); await b.dormir(700); return b.pos(`document.querySelector('.pdfr-contexte [aria-label="Surligneur de fond du texte sélectionné"]')`, false); };
+await b.clic(await boutonFond(), { att: 400 });
 P = await panneau();
 b.ok(P && P.actions.includes('Aucune'), 'fond du texte : action « Aucune » présente', P && P.actions.join('|'));
 await b.clic(await cellule(1, 2), { att: 400 });
 const avecFond = await b.ev(`document.querySelector('.note-box.active .ProseMirror').innerHTML.includes('background-color')`);
 await b.ev(`(()=>{const pm=document.querySelector('.note-box.active .ProseMirror');pm.focus();getSelection().selectAllChildren(pm);return 1})()`); await b.dormir(150);
-await b.clic(await b.pos(`document.querySelector('.pdfr-contexte [aria-label="Surligneur de fond du texte sélectionné"]')`, false), { att: 400 });
+await b.clic(await boutonFond(), { att: 400 });
 await b.clic(await b.pos(`[...document.querySelectorAll('.scw-action')].find(a=>a.innerText.includes('Aucune'))`, false), { att: 400 });
 const sansFond = await b.ev(`!document.querySelector('.note-box.active .ProseMirror').innerHTML.includes('background-color')`);
 b.ok(avecFond && sansFond, '« Aucune » retire le fond du texte', `avec ${avecFond}, sans ${sansFond}`);
