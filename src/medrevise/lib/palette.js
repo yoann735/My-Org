@@ -45,3 +45,34 @@ export function sensCouleur(c) {
   if (p && p.sens === 'cloze') return 'rose';
   return c;
 }
+
+/* COULEURS DU THÈME (20/10, docs/compte-rendu-pdfreader-v3.md) : la grille du sélecteur « façon Word ».
+   10 teintes de la DA en colonnes — l'encre et le gris des textes, les 6 couleurs de base (avec leur id :
+   ambre reste « prioritaire », rose poudré « cloze »), l'indigo de l'accent (design.css --accent) et une
+   sarcelle — chacune avec 5 variantes en dessous, comme Word : plus claire 80 / 60 / 40 %, plus foncée 25 / 50 %. */
+export const COULEURS_THEME = [
+  { id: null, hex: '#2B2B33', label: 'Encre' },
+  { id: null, hex: '#8A8F98', label: 'Gris' },
+  ...['ambre', 'corail', 'poudre', 'violet'].map((id) => PALETTE_BASE.find((c) => c.id === id)),
+  { id: null, hex: '#7C6FE0', label: 'Indigo' },
+  PALETTE_BASE.find((c) => c.id === 'ardoise'),
+  { id: null, hex: '#3FAFBF', label: 'Sarcelle' },
+  PALETTE_BASE.find((c) => c.id === 'sauge'),
+];
+export const NUANCES_THEME = [
+  { t: 0, label: '' },
+  { t: 0.8, label: 'plus claire 80 %' }, { t: 0.6, label: 'plus claire 60 %' }, { t: 0.4, label: 'plus claire 40 %' },
+  { t: -0.25, label: 'plus foncée 25 %' }, { t: -0.5, label: 'plus foncée 50 %' },
+];
+/** nuance d'un hex : t > 0 éclaircit (mélange avec le blanc), t < 0 fonce (mélange avec le noir) */
+export function nuance(hex, t) {
+  const n = parseInt(hexPalette(hex).slice(1), 16);
+  const f = (c) => Math.round(t >= 0 ? c + (255 - c) * t : c * (1 + t));
+  return '#' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => f(c).toString(16).padStart(2, '0')).join('');
+}
+/** la grille : lignes × colonnes de { valeur (id de base ou hex), hex, label } */
+export function grilleTheme() {
+  return NUANCES_THEME.map(({ t, label }) => COULEURS_THEME.map((c) => (t === 0
+    ? { valeur: c.id || c.hex.toLowerCase(), hex: c.hex, label: c.label }
+    : { valeur: nuance(c.hex, t), hex: nuance(c.hex, t), label: `${c.label}, ${label}` })));
+}

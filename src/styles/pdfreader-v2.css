@@ -316,3 +316,4 @@
 @media (pointer: coarse) { .nb-conn-x { width: 32px; height: 32px; margin: -16px 0 0 -16px; } }
 .nb-act .nb-act-n { min-width: 14px; height: 14px; padding: 0 3px; margin-left: -3px; border-radius: 7px; font-size: 9.5px; line-height: 14px; font-weight: 700;
   background: var(--pv-actif, rgba(124, 92, 255, .18)); color: var(--accent, #7c5cff); }
+

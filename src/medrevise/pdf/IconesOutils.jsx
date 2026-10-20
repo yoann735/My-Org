@@ -74,6 +74,8 @@ const DESSINS = {
     <rect x="3.5" y="5" width="17" height="14" rx="2" />
     <path d="M7 9.5h10M7 13h7" />
   </>),
+  // pipette (sélecteur de couleur, 20/10)
+  pipette: <path d="m14.5 6.5 3 3M4 20l1.5-.5 9.8-9.8-3-3-9.8 9.8L4 20Zm11.2-15.7a2.1 2.1 0 0 1 3 0l1 1a2.1 2.1 0 0 1 0 3l-1.7 1.7-4-4 1.7-1.7Z" />,
   // flèche (lien d'une boîte)
   fleche: <path d="M4 20 19 5m0 0h-7.5M19 5v7.5" />,
   // épingle

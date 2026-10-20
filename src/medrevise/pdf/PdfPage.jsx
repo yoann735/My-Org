@@ -20,7 +20,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { noterPointeur, pointeurIgnore, prendreTrace, rendreTrace } from '../lib/tablette.js';
 import { EditorContent } from '@tiptap/react';
 import { IconeOutil } from './IconesOutils.jsx';
-import { SelecteurCouleurs, BoutonCouleur } from './Couleurs.jsx';
+import { SelecteurCouleurs, BoutonCouleur, AUCUNE } from './Couleurs.jsx';
 import { cheminForme, extremites, typeForme, estTrait, estFermee, tailleParDefaut, ancreSurForme } from './formes.js';
 import { connecteursDe, epingleSeule, patchRetirer, patchAjouter, patchDeplacer } from './connecteurs.js';
 import { suivreImage } from './attaches.js';
@@ -2016,9 +2016,9 @@ export function EditToolbar({ editor, onReset, libre = false, couleur = null, on
       <BoutonCouleur titre="Couleur du texte sélectionné" couleur={editor.getAttributes('textStyle').color || null}
         icone={<span className="et-lettre" aria-hidden="true">A</span>}
         onCouleur={(c) => run((ch) => ch.setColor(couleurHex(c, '#1F1F24')))} />
-      <BoutonCouleur titre="Surligneur de fond du texte sélectionné" couleur={editor.getAttributes('textStyle').backgroundColor || null}
+      <BoutonCouleur titre="Surligneur de fond du texte sélectionné" couleur={editor.getAttributes('textStyle').backgroundColor || null} aucune
         icone={<IconeOutil nom="surligneur" size={13} />}
-        onCouleur={(c) => { const hex = couleurHex(c); run((ch) => (fondPartout(editor, hex) ? ch.unsetBackgroundColor() : ch.setBackgroundColor(hex))); }} />
+        onCouleur={(c) => { if (c === AUCUNE) { run((ch) => ch.unsetBackgroundColor()); return; } const hex = couleurHex(c); run((ch) => (fondPartout(editor, hex) ? ch.unsetBackgroundColor() : ch.setBackgroundColor(hex))); }} />
       <span className="et-sep" />
       <button type="button" className={'et-btn' + (active('bulletList') ? ' active' : '')} title="Liste à puces" onClick={() => run((c) => c.toggleBulletList())}><Icon name="list" size={13} /></button>
       <button type="button" className={'et-btn' + (active('orderedList') ? ' active' : '')} title="Liste numérotée" onClick={() => run((c) => c.toggleOrderedList())}>1.</button>
