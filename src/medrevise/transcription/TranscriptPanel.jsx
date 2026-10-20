@@ -24,7 +24,7 @@ import {
 } from './engine.js';
 import { listerMicros, choisirAutomatique, estVirtuel, sonderNiveau, memoriserMicroValide } from './audio.js';
 import {
-  decouperTermes, fusionnerTermes, compterMots, proposerTermes, regexTermes, decouperSurlignage,
+  decouperTermes, fusionnerTermes, compterMots, proposerTermesDetail, regexTermes, decouperSurlignage,
   MAX_MOTS, SEUIL_CONSEIL, integrerCandidats, selectionner, basculerTerme, toutCocher, toutDecocher,
   ajouterManuels, retirerManuel, termesEnvoyables,
 } from './keyterms.js';
@@ -141,6 +141,9 @@ export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, texteEnPlu
      en reprise, la liste vient de la session reprise (manuels) et n'est pas mémorisée. */
   const [memo, setMemo] = useState(reprendre ? { manuels: reprendre.keyterms || [], decoches: [], connus: [] } : null);
   const [candidats, setCandidats] = useState(null); // null = calcul en cours
+  // (20/10 soir) explication du score de chaque terme proposé (« Pourquoi ? » au survol) et dernière session
+  const [pourquoi, setPourquoi] = useState({});
+  const [derniere, setDerniere] = useState(null);
   const [saisie, setSaisie] = useState('');
   const [refus, setRefus] = useState(null); // message bref (limite atteinte)
   const [demarrage, setDemarrage] = useState(false);
@@ -151,9 +154,12 @@ export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, texteEnPlu
   useEffect(() => {
     let vivant = true;
     const memoP = reprendre ? Promise.resolve({ manuels: reprendre.keyterms || [], decoches: [], connus: [] }) : lireMotsClesMemo(courseId);
-    const candP = reprendre ? Promise.resolve([]) : proposerTermes(pdfDoc, { ocrPages, texteEnPlus }).catch(() => []);
-    Promise.all([memoP, candP]).then(([m, c]) => {
+    const candP = reprendre ? Promise.resolve([]) : proposerTermesDetail(pdfDoc, { ocrPages, texteEnPlus }).catch(() => []);
+    if (!reprendre) sessionsDuCours(courseId).then((l) => { if (vivant) setDerniere((l || []).find((x) => x.endedAt && (x.keyterms || []).length) || null); }).catch(() => {});
+    Promise.all([memoP, candP]).then(([m, detail]) => {
       if (!vivant) return;
+      const c = detail.map((x) => x.terme);
+      setPourquoi(Object.fromEntries(detail.map((x) => [x.terme.toLocaleLowerCase('fr'), x.pourquoi])));
       setCandidats(c);
       setMemo(reprendre ? m : integrerCandidats(m, c)); // nouveaux proposés : cochés dans la limite
     });
@@ -284,6 +290,15 @@ export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, texteEnPlu
               <div className="trx-sous-etiquette row spread">
                 <span>Proposés d’après le PDF · {nbCoches}/{proposes.length} cochés</span>
                 <span className="row" style={{ gap: 4 }}>
+                  {derniere && (<>
+                    <button type="button" className="trx-lien" title={`Les ${derniere.keyterms.length} mots-clés envoyés lors de la session du ${dateCourte(derniere.startedAt)}`}
+                      onClick={() => setMemo((m) => {
+                        const garder = new Set(derniere.keyterms.map((t) => t.toLocaleLowerCase('fr')));
+                        // ces termes en tête (cochés), les autres proposés décochés : la même liste qu'à la dernière session
+                        return { manuels: [...derniere.keyterms], decoches: (candidats || []).filter((t) => !garder.has(t.toLocaleLowerCase('fr'))).map((t) => t.toLocaleLowerCase('fr')), connus: [...new Set([...(m.connus || []), ...(candidats || []).map((t) => t.toLocaleLowerCase('fr'))])] };
+                      })}>Reprendre les mots-clés de la dernière session</button>
+                    <span className="hint">·</span>
+                  </>)}
                   <button type="button" className="trx-lien" onClick={() => setMemo((m) => toutCocher(m, candidats || []))}>Tout cocher</button>
                   <span className="hint">·</span>
                   <button type="button" className="trx-lien" onClick={() => setMemo((m) => toutDecocher(m, candidats || []))}>Tout décocher</button>
@@ -293,7 +308,7 @@ export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, texteEnPlu
                 {proposes.map((l) => (
                   <button key={l.terme} type="button" aria-pressed={l.coche}
                     className={'trx-puce' + (l.coche ? ' on' : '') + (!l.coche && sel.plein ? ' grise' : '')} onClick={() => basculer(l)}
-                    title={l.coche ? 'Coché : envoyé à Deepgram — cliquer pour décocher' : 'Décoché — cliquer pour cocher'}>
+                    title={`${pourquoi[l.terme.toLocaleLowerCase('fr')] ? `Pourquoi ? ${pourquoi[l.terme.toLocaleLowerCase('fr')]}\n` : ''}${l.coche ? 'Coché : envoyé à Deepgram — cliquer pour décocher' : 'Décoché — cliquer pour cocher'}`}>
                     <Icon name={l.coche ? 'check' : 'plus'} size={10} /> {l.terme}
                   </button>
                 ))}

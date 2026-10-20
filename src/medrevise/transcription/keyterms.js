@@ -81,90 +81,206 @@ export function decouperSurlignage(texte, rx) {
   return out;
 }
 
-/* ---------- propositions depuis la couche texte du PDF ----------
-   Heuristique volontairement simple (pas d'IA) : on compte les mots du cours,
-   et on garde ceux qui ont l'air de vocabulaire technique :
-   - suffixes/préfixes médicaux courants (‑ite, ‑ose, ‑algie, ‑ectomie, ‑cyte…) ;
-   - mots longs (≥ 10 lettres) ou rares dans la langue courante ;
-   - termes à majuscule hors début de phrase (noms propres : Havers, Volkmann) ;
-   - quelques bigrammes « nom + de + Nom » (canal de Havers, loi de Wolff).
-   Un mot très fréquent du français (liste courte ci-dessous) n'est jamais proposé. */
-const MOTS_VIDES = new Set(('alors aussi autre autres avec avoir beaucoup cette ceux chaque comme comment dans depuis donc elle elles encore entre être fait faire font leur leurs mais même moins notre nous parce pendant peut peuvent plus pour pourquoi quand quel quelle quelles quels sans selon sera sont sous tout toute toutes tous très vous ainsi après avant celui celle cela ceci chez contre dont lors lorsque puis quelque quelques souvent toujours voici voilà également exemple exemples partie parties niveau importante important importantes importants permet permettent différents différentes général générale ensemble premier première deuxième troisième chapitre cours introduction conclusion schéma figure tableau page pages définition définitions principe principes rôle rôles fonction fonctions')
-  .split(' '));
-const SUFFIXES = /(ite|ites|ose|oses|algie|algies|ectomie|tomie|plastie|scopie|graphie|gramme|logie|pathie|émie|cyte|cytes|blaste|blastes|claste|clastes|ome|omes|aire|aires|ique|iques|ale|aux|ienne|iens|oïde|oïdes|ase|ases|ine|ines|rrhée|plégie|trophie|sclérose|osis)$/i;
-const PREFIXES = /^(hypo|hyper|endo|péri|épi|intra|inter|extra|sous|sus|myo|ostéo|chondro|neuro|cardio|hémo|lipo|gluco|glyco|tendin|ligament|arthr|leuco|érythro|thrombo|fibro|kinési|proprio|vaso|broncho|gastro|hépat|néphro)/i;
+/* ---------- propositions depuis le texte du cours (refait le 20/10 soir, docs/compte-rendu-pdfreader-v4.md) ----------
+   Sans IA. Le texte de TOUT le cours : couche texte native de chaque page ET mots reconnus par l'OCR (pages
+   image, schémas des pages mixtes), plus le texte d'un document. Chaque terme candidat reçoit un score :
 
-export async function proposerTermes(pdfDoc, { maxPages = 80, max = 150, ocrPages = null, texteEnPlus = '' } = {}) {
-  // (08/10) `texteEnPlus` : le texte d'un DOCUMENT et celui reconnu dans ses images (Texte en
-  // direct) — un document n'a pas de PDF, il n'avait donc jamais de mots-clés proposés
-  if (!pdfDoc && !texteEnPlus) return [];
+       score = rareté × fréquence × (1 + bonus)
+
+   - RARETÉ dans le français courant (transcription/motsFrequents.js, liste embarquée) : très fréquent → exclu ;
+     courant → 0,25 ; hors liste → 1 (1,15 si ≥ 10 lettres).
+   - FRÉQUENCE dans le cours, amortie : 1 + log2(nombre d'occurrences).
+   - BONUS (cumulables) : majuscule interne (ATPase) +0,8 ; sigle (ADN, LCA) +0,6 ; suffixe médical (‑ite, ‑ome,
+     ‑ose, ‑algie, ‑ase, ‑cyte, ‑ectomie…) +1 ; suffixe savant (‑ique, ‑aire, ‑al) +0,4 ; préfixe médical (hypo‑,
+     ostéo‑, néphro‑…) +0,5 ; mot composé (trait d'union) +0,8, terme de deux mots répété (« tubule proximal »)
+     +1, éponyme « … de Nom » (« canal de Havers ») +1 ; terme latin (‑us, ‑um, ‑ae) +0,8 ; nom propre +0,6.
+   EXCLUS : mots vides, nombres, termes de mise en page (« diapo », « chapitre », « figure »…), noms de
+   l'école et des profs — mots en majuscule des lignes répétées (en-têtes, pieds de page) absents du reste du
+   texte, et noms qui suivent « Dr », « Pr », « Prof. », « Mme », « M. » — sauf s'ils sont ajoutés à la main.
+   Au plus 50 termes, triés par score ; chacun porte son explication (« Pourquoi ? » au survol). */
+import { rarete, singulier, TRES_FREQUENTS } from './motsFrequents.js';
+
+const MISE_EN_PAGE = new Set(('diapo diapos diapositive diapositives slide slides chapitre chapitres partie parties sommaire plan objectif objectifs introduction conclusion rappel rappels cours page pages figure figures fig tableau tableaux source sources référence références bibliographie copyright université faculté haute école helha institut campus bloc année années semestre professeur professeure docteur enseignant enseignante étudiant étudiants étudiante étudiantes examen examens exercice exercices question questions réponse réponses schéma schémas image images photo photos vidéo vidéos www http https pdf version annoté annotée export notes note légende légendes exemple exemples définition définitions résumé synthèse suite').split(' '));
+const TITRES = /^(dr|docteur|pr|prof|professeur|professeure|mme|madame|mlle|m|mr|monsieur)$/i;
+// lignes de CRÉDITS d'une figure (droits, éditeur, auteurs et année) : jamais des termes du cours
+const CREDITS = /(©|copyright|all rights|permission|licen[cs]e|creative commons|wiley|elsevier|springer|thieme|netter|gray's|doi|isbn|https?:|www\.|et al\.?|d['’]après|adapt(é|ed)|source\s*:|reproduced|\b(19|20)\d\d\b)/i;
+// mots anglais courants (légendes et crédits en anglais) : ni sigles ni termes
+const ANGLAIS = new Set(('the of and or by for with from this that these those be is are was were may might can could will would shall should not no all any use used using owned owner author authors please permission rights reserved without written joint view figure plate copyright inc ltd press edition '
+  + 'internal external lateral medial anterior posterior superior inferior anterolateral posterolateral anteromedial posteromedial proximal distal hydrophobic hydrophilic chain chains bond bonds acid acids protein proteins bone bones knee head body').split(' '));
+const SUFF_MED = /(ite|ites|ome|omes|ose|oses|algie|algies|ase|ases|ectomie|tomie|stomie|plastie|scopie|graphie|gramme|pathie|émie|cyte|cytes|blaste|blastes|claste|clastes|plégie|trophie|rrhée|gène|gènes|lyse|ide|ides|osome|osomes|ocyte|ocytes|ique|iques)$/i;
+const SUFF_MED_FORT = /(ite|ites|ome|omes|ose|oses|algie|algies|ase|ases|ectomie|tomie|stomie|plastie|scopie|graphie|pathie|émie|cyte|cytes|blaste|blastes|claste|clastes|plégie|trophie|rrhée|lyse|osome|osomes)$/i;
+const SUFF_SAVANT = /(ique|iques|aire|aires|al|ale|aux|ienne|iens|oïde|oïdes|ide|ides|ine|ines|gène|gènes)$/i;
+const PREF_MED = /^(hypo|hyper|endo|péri|épi|intra|inter|extra|myo|ostéo|chondro|neuro|cardio|hémo|lipo|gluco|glyco|arthr|leuco|érythro|thrombo|fibro|kinési|proprio|vaso|broncho|gastro|hépat|néphro|phospho|nucléo|ribo|désoxy|poly|mono|di|tri|cyto|mito|photo|chloro|bio|macro|micro)(?=\p{L}{3,})/iu;
+const LATIN = /(us|um|ae|ii|is)$/i;
+const fmt = (x) => (Math.round(x * 100) / 100).toString().replace('.', ',');
+
+/** texte de chaque page du cours (natif, OCR des pages image, étiquettes OCR des pages mixtes), et ses mots
+    POSITIONNÉS (mot + case de 12 unités où il se trouve) : un mot qui revient à la même place sur beaucoup de
+    pages est un élément fixe de la maquette (logo de l'école, en-tête, pied de page), pas du cours */
+const plat = (w) => w.toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const motsPlaces = (liste) => {
+  const out = new Set();
+  for (const [txt, x, y] of liste) for (const w of (String(txt).match(/[\p{L}][\p{L}'’-]*[\p{L}]/gu) || [])) out.add(plat(w) + '@' + Math.round(x / 12) + ',' + Math.round(y / 12));
+  return out;
+};
+async function textesDesPages(pdfDoc, { maxPages, ocrPages, texteEnPlus }) {
   const n = pdfDoc ? Math.min(pdfDoc.numPages || 0, maxPages) : 0;
-  const compte = new Map(); // forme normalisée → { forme, n, maj }
-  const bigrammes = new Map();
-  let nbMots = 0;
-  for (let p = 1; p <= n + (texteEnPlus ? 1 : 0); p++) {
-    let texte = '';
-    if (p > n) texte = String(texteEnPlus);
-    else {
+  const pages = [], pieds = [];
+  for (let p = 1; p <= n; p++) {
+    let texte = '', pied = [];
     const ocr = ocrPages && ocrPages[p - 1];
     if (ocr && !ocr.natif && ocr.words && ocr.words.length) {
-      // page IMAGE : les mots reconnus par l'OCR (docs/compte-rendu-ocr.md), ligne par ligne
       const parLigne = new Map();
       ocr.words.forEach((m) => { if (!parLigne.has(m.line)) parLigne.set(m.line, []); parLigne.get(m.line).push(m); });
       texte = [...parLigne.values()].map((l) => l.sort((a, b) => a.x - b.x).map((m) => m.t).join(' ')).join('\n');
+      pied = ocr.words.map((m) => [m.t, m.x, m.y]);
     } else {
       try {
         const page = await pdfDoc.getPage(p);
         const tc = await page.getTextContent();
         texte = tc.items.map((it) => it.str + (it.hasEOL ? '\n' : ' ')).join('');
+        pied = tc.items.filter((it) => it.transform).map((it) => [it.str, it.transform[4], it.transform[5]]);
       } catch (e) { continue; }
-      // page mixte (08/10) : + les étiquettes reconnues dans ses schémas
-      if (ocr && ocr.mixte && ocr.words && ocr.words.length) texte += '\n' + ocr.words.map((m) => m.t).join(' ');
+      if (ocr && ocr.mixte && ocr.words && ocr.words.length) {
+        texte += '\n' + ocr.words.map((m) => m.t).join(' ');
+        pied = [...pied, ...ocr.words.map((m) => [m.t, m.x, ocr.height ? ocr.height - m.y : m.y])];
+      }
     }
-    }
-    const phrases = texte.split(/[.!?:\n•·–—]+/);
-    for (const ph of phrases) {
-      const mots = ph.match(/[\p{L}][\p{L}'’-]*[\p{L}]/gu) || [];
-      mots.forEach((m, i) => {
-        nbMots++;
-        const propre = m.replace(/^[ldjmnstcqu]+['’]/i, '');
-        if (propre.length < 4) return;
-        const k = propre.toLocaleLowerCase('fr');
-        if (MOTS_VIDES.has(k)) return;
-        const e = compte.get(k) || { forme: propre, n: 0, maj: 0 };
-        e.n++;
-        if (i > 0 && /^\p{Lu}\p{Ll}/u.test(propre)) e.maj++;
-        if (/^\p{Ll}/u.test(propre)) e.forme = propre; // préfère la forme minuscule
-        compte.set(k, e);
-        // « canal de Havers », « loi de Wolff », « os spongieux »
-        const suiv = mots[i + 1], suiv2 = mots[i + 2];
-        if (suiv && /^(de|du|des|d)$/i.test(suiv) && suiv2 && /^\p{Lu}/u.test(suiv2)) {
-          const b = `${propre} ${suiv} ${suiv2}`;
-          bigrammes.set(b.toLocaleLowerCase('fr'), { forme: b, n: (bigrammes.get(b.toLocaleLowerCase('fr')) || { n: 0 }).n + 1 });
-        }
-      });
+    pages.push(texte); pieds.push(motsPlaces(pied || []));
+  }
+  if (texteEnPlus) { pages.push(String(texteEnPlus)); pieds.push(new Set()); }
+  return { pages, pieds };
+}
+
+/** Les termes proposés, détaillés : [{ terme, score, pourquoi, details }], triés, au plus `max`. */
+export async function proposerTermesDetail(pdfDoc, { maxPages = 200, max = 50, ocrPages = null, texteEnPlus = '' } = {}) {
+  if (!pdfDoc && !texteEnPlus) return [];
+  const { pages, pieds } = await textesDesPages(pdfDoc, { maxPages, ocrPages, texteEnPlus });
+  // MAQUETTE (logo de l'école, en-tête, pied de page, nom du prof) : mot revenu À LA MÊME PLACE sur au moins 35 %
+  // des pages (3 au moins). Les mots du cours, eux, changent de place d'une diapositive à l'autre.
+  const parPlace = new Map();
+  pieds.forEach((set) => set.forEach((k) => parPlace.set(k, (parPlace.get(k) || 0) + 1)));
+  const seuilPied = Math.max(3, Math.ceil(pages.length * 0.35));
+  const motsPied = new Set([...parPlace].filter(([, n]) => n >= seuilPied).map(([k]) => k.split('@')[0]));
+  // variantes d'OCR d'un même mot de la maquette (« HELH », « Louvai ») : même début, longueur voisine
+  const piedListe = [...motsPied].filter((w) => w.length >= 4);
+  const dansPied = (w) => { const x = plat(w); return motsPied.has(x) || (x.length >= 4 && piedListe.some((p) => (p.startsWith(x) || x.startsWith(p)) && Math.abs(p.length - x.length) <= 2)); };
+  // en-têtes et pieds de page : lignes répétées sur au moins 40 % des pages (3 au moins)
+  const vuesLigne = new Map();
+  const cleLigne = (l) => l.toLocaleLowerCase('fr').replace(/[\d\s.,:;/|–—-]+/g, ' ').trim();
+  pages.forEach((t) => { new Set(t.split('\n').map(cleLigne).filter((l) => l.length >= 3)).forEach((l) => vuesLigne.set(l, (vuesLigne.get(l) || 0) + 1)); });
+  const seuilRep = Math.max(3, Math.ceil(pages.length * 0.4));
+  const repetees = new Set([...vuesLigne].filter(([, n]) => n >= seuilRep).map(([l]) => l));
+  const compte = new Map(); // clé (singulier) → { forme, n, maj, horsRep, sigle }
+  const bigrammes = new Map(), eponymes = new Map(), noms = new Set();
+  let nbMots = 0;
+  for (const texte of pages) {
+    for (const ligne of texte.split('\n')) {
+      const rep = repetees.has(cleLigne(ligne));
+      if (CREDITS.test(ligne)) continue;
+      for (const ph of ligne.split(/[.!?:•·–—;,/+=()[\]«»"]+/)) {
+        // un MOT écrit en capitales (titre de diapo : « CONDYLES FÉMORAUX ») est lu comme un mot ordinaire ;
+        // seuls 2 à 4 capitales (ou avec un chiffre) font un SIGLE (ADN, LCA, ATP)
+        const mots = (ph.match(/[\p{L}][\p{L}\p{N}'’-]*[\p{L}\p{N}]|[\p{Lu}]{2,}/gu) || []).map((w) => (/^[\p{Lu}'’-]{5,}$/u.test(w) ? w.toLocaleLowerCase('fr') : w));
+        mots.forEach((brut, i) => {
+          nbMots++;
+          const m = brut.replace(/^[ldjmnstcqu]+['’]/i, '').replace(/['’]s$/, '');
+          if (/\p{N}/u.test(m) && !/\p{L}{2,}/u.test(m)) return;
+          if (i > 0 && TITRES.test(mots[i - 1].replace(/\./g, ''))) { noms.add(m.toLocaleLowerCase('fr')); return; } // « Dr Dupont »
+          if (ANGLAIS.has(m.toLocaleLowerCase('fr')) || dansPied(m) || m.split('-').some((x) => x.length >= 3 && dansPied(x))) return;
+          const sigle = /^\p{Lu}[\p{Lu}\p{N}]{1,3}$/u.test(m) && !/^[IVXLC]+$/.test(m);
+          if (!sigle && m.length < 4) return;
+          // clé sans accents : « fémoral » et « femoral » (OCR) sont le même terme
+          const k = sigle ? m : plat(singulier(m));
+          const kl = k.toLocaleLowerCase('fr');
+          if (MISE_EN_PAGE.has(kl) || MISE_EN_PAGE.has(m.toLocaleLowerCase('fr')) || (!sigle && rarete(m) === 0) || (sigle && TRES_FREQUENTS.has(kl))) return;
+          const e = compte.get(k) || { forme: m, n: 0, maj: 0, horsRep: 0, sigle };
+          e.n++; if (!rep) e.horsRep++;
+          if (i > 0 && /^\p{Lu}\p{Ll}/u.test(m)) e.maj++;
+          // forme affichée : minuscule, accentuée, au singulier de préférence
+          const accents = (w) => (w.match(/[à-ÿ]/gi) || []).length;
+          if (/^\p{Ll}/u.test(m) && (/^\p{Lu}/u.test(e.forme) || accents(m) > accents(e.forme) || (accents(m) === accents(e.forme) && m.length < e.forme.length))) e.forme = m;
+          compte.set(k, e);
+          // « tubule proximal », « ligament croisé » : deux mots pleins qui se suivent
+          const suiv = mots[i + 1];
+          if (suiv && !rep) {
+            const s2 = suiv.replace(/^[ldjmnstcqu]+['’]/i, '');
+            if (s2 === suiv && s2.length >= 4 && !dansPied(s2) && rarete(m) > 0 && rarete(s2) > 0 && (rarete(m) === 1 || rarete(s2) === 1) && !MISE_EN_PAGE.has(s2.toLocaleLowerCase('fr'))) {
+              const bk = plat(singulier(m) + ' ' + singulier(s2));
+              const bg = bigrammes.get(bk) || { forme: `${m} ${s2}`, n: 0 }; bg.n++; bigrammes.set(bk, bg);
+            }
+            // « canal de Havers », « loi de Wolff »
+            const s3 = mots[i + 2];
+            if (/^(de|du|des|d)$/i.test(suiv) && s3 && /^\p{Lu}\p{Ll}/u.test(s3)) {
+              const ek = (m + ' ' + suiv + ' ' + s3).toLocaleLowerCase('fr');
+              const ep = eponymes.get(ek) || { forme: `${m} ${suiv} ${s3}`, n: 0 }; ep.n++; eponymes.set(ek, ep);
+            }
+          }
+        });
+      }
     }
   }
-  if (nbMots < 30) return []; // PDF en images : pas de couche texte exploitable
-  const scores = [];
+  if (nbMots < 30) return []; // pas de texte exploitable (PDF en images sans OCR)
+  const candidats = [];
+  const cles = [...compte.keys()].map((k) => k.toLocaleLowerCase('fr'));
   for (const [k, e] of compte) {
-    let s = 0;
-    if (SUFFIXES.test(k)) s += 2;
-    if (PREFIXES.test(k)) s += 2;
-    if (k.length >= 10) s += 1.5;
-    if (k.length >= 13) s += 1;
-    if (e.maj && e.maj >= e.n / 2) s += 2; // nom propre (Havers)
-    if (/[-]/.test(k)) s += 0.5;
-    if (s < 2) continue;
-    if (e.n === 1 && s < 3) continue;
-    // PERTINENCE = rareté (indices de vocabulaire technique ci-dessus) × fréquence dans
-    // le PDF (amortie : un terme cité 8 fois ne pèse pas 8 fois plus qu'un terme cité 1 fois)
-    s *= 1 + Math.log2(e.n);
-    scores.push({ terme: e.maj >= e.n / 2 ? e.forme.replace(/^\p{Ll}/u, (c) => c.toUpperCase()) : e.forme, s });
+    const kl = k.toLocaleLowerCase('fr');
+    if (noms.has(kl)) continue;
+    // fragment d'OCR (« tend » pour tendon, « adip », « post ») : court, peu vu, début d'un mot plus long du cours
+    if (!e.sigle && rarete(e.forme) === 1 && ((kl.length <= 4 && cles.some((o) => o.length >= kl.length + 2 && o.startsWith(kl))) || (kl.length <= 6 && e.n <= 2 && cles.some((o) => o.length >= kl.length + 3 && o.startsWith(kl))))) continue;
+    if (!e.sigle && cles.some((o) => o !== kl && o.endsWith(kl) && o.length - kl.length <= 2 && (compte.get(o) || { n: 0 }).n >= e.n)) continue; // « emoral » pour « femoral »
+    if (/-$/.test(kl) || /-\p{L}{1,3}$/u.test(kl)) continue; // « sous-rot » : mot coupé en fin de ligne
+    const propre = e.maj && e.maj >= e.n / 2;
+    if (propre && e.horsRep === 0) continue; // nom (école, prof, titre) qui n'apparaît QUE dans les en-têtes / pieds de page
+    let r = e.sigle ? 1 : rarete(e.forme);
+    if (r === 1 && k.length >= 10) r = 1.15;
+    const bonus = [];
+    if (!e.sigle && /^.+\p{Lu}/u.test(e.forme) && /\p{Ll}/u.test(e.forme)) bonus.push(['majuscule interne', 0.8]);
+    if (e.sigle) bonus.push(['sigle', 0.6]);
+    if (SUFF_MED_FORT.test(kl)) bonus.push(['suffixe médical', 1]);
+    else if (SUFF_MED.test(kl) || SUFF_SAVANT.test(kl)) bonus.push(['suffixe savant', 0.4]);
+    if (PREF_MED.test(kl)) bonus.push(['préfixe médical', 0.5]);
+    if (/-/.test(kl)) bonus.push(['mot composé', 0.8]);
+    if (LATIN.test(kl) && kl.length >= 5 && r >= 1 && !/(ous|eus|ais|ois)$/.test(kl)) bonus.push(['terme latin', 0.8]);
+    if (propre && !e.sigle) bonus.push(['nom propre', 0.6]);
+    const somme = bonus.reduce((a, b) => a + b[1], 0);
+    if (r < 1 && somme < 1) continue; // mot courant : seulement avec un fort indice technique
+    if (e.n === 1 && somme === 0) continue; // rare mais cité une fois sans indice : souvent une coquille d'OCR
+    const freq = 1 + Math.log2(e.n);
+    const score = r * freq * (1 + somme);
+    const terme = propre && !e.sigle ? e.forme.replace(/^\p{Ll}/u, (c) => c.toUpperCase()) : e.forme;
+    candidats.push({ terme, score, details: { rarete: r, n: e.n, bonus } });
   }
-  for (const [, b] of bigrammes) if (b.n >= 1) scores.push({ terme: b.forme, s: 6 * (1 + Math.log2(b.n)) });
-  scores.sort((a, b) => b.s - a.s);
-  return decouperTermes(scores.map((x) => x.terme).join('\n')).slice(0, max);
+  for (const [, bg] of bigrammes) {
+    if (bg.n < 3) continue;
+    const [a, c] = bg.forme.split(' ');
+    // vraie association : le terme de deux mots couvre au moins 30 % des emplois du moins fréquent des deux
+    const na = (compte.get(plat(singulier(a))) || { n: bg.n }).n, nc = (compte.get(plat(singulier(c))) || { n: bg.n }).n;
+    if (bg.n < 0.3 * Math.min(na, nc)) continue;
+    const r = Math.min(1, (rarete(a) + rarete(c)) / 2);
+    const freq = 1 + Math.log2(bg.n);
+    candidats.push({ terme: bg.forme.toLocaleLowerCase('fr') === bg.forme ? bg.forme : bg.forme, score: r * freq * 2, details: { rarete: r, n: bg.n, bonus: [['terme de deux mots', 1]] } });
+  }
+  for (const [, ep] of eponymes) candidats.push({ terme: ep.forme, score: (1 + Math.log2(ep.n)) * 2.6, details: { rarete: 1, n: ep.n, bonus: [['éponyme « de Nom »', 1], ['nom propre', 0.6]] } });
+  candidats.sort((a, b) => b.score - a.score);
+  const vus = new Set(), out = [];
+  for (const c of candidats) {
+    const k = c.terme.toLocaleLowerCase('fr');
+    if (vus.has(k)) continue;
+    vus.add(k);
+    const d = c.details;
+    c.score = +c.score.toFixed(2);
+    c.pourquoi = `score ${fmt(c.score)} = rareté ${fmt(d.rarete)} × fréquence ${d.n} fois (×${fmt(1 + Math.log2(d.n))})`
+      + (d.bonus.length ? ` × (1 + ${d.bonus.map(([l, v]) => `${l} ${fmt(v)}`).join(' + ')})` : '');
+    out.push(c);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/** Les termes proposés (texte seul), triés par score — voir proposerTermesDetail. */
+export async function proposerTermes(pdfDoc, options = {}) {
+  return (await proposerTermesDetail(pdfDoc, options)).map((c) => c.terme);
 }
 
 /* ---------- sélection dans la limite (v1.1) ----------
