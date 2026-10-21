@@ -17,7 +17,7 @@ import { suivrePointeur, rectPage } from './pointeur.js';
 
 export const COINS = ['nw', 'ne', 'sw', 'se'];
 /** classe à poser sur tout ce qui fait partie de la sélection (cadre, poignées, mini barre) : un clic dessus ne désélectionne pas */
-export const ZONE_SELECTION = '.sel-zone, .sel-cadre, .mini-barre, .sc-pop, .sc-fenetre, .scw-pipette';
+export const ZONE_SELECTION = '.sel-zone, .sel-cadre, .mini-barre, .sc-pop, .sc-fenetre, .scw-pipette, .mb-pop';
 
 /** cadre de sélection : à poser DANS l'élément de l'objet (inset 0). `contre` : facteur qui annule la mise à l'échelle
     de l'objet pour garder des poignées de taille constante à l'écran ; `onCoin(e, coin)` absent = pas de poignées. */
@@ -65,6 +65,7 @@ export function redimensionner(e, coin, { base, min, ratio = null, onGeste = () 
  * La MINI BARRE. `ancre` : rectangle de l'objet en px de la page { x, y, w, h } ; `items` : liste de
  *   { cle, icone, titre, onClick, actif?, desactive? }  bouton (icône seule)
  *   { cle, couleur, onCouleur, onApercu?, titre }       la couleur (sélecteur commun)
+ *   { cle, element }                                     un contrôle déjà construit (taille du texte…)
  *   { cle: '|' }                                         séparateur de groupe
  *   { cle: 'supprimer', onClick, titre }                 toujours en dernier, en rouge
  */
@@ -106,6 +107,7 @@ export function MiniBarre({ ancre, pageWidth, pageHeight, items, classe = '' }) 
       onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
       {items.filter(Boolean).map((it, i) => {
         if (it.cle === '|') return <span key={'s' + i} className="mb-sep" aria-hidden="true" />;
+        if (it.element) return <span key={it.cle} className="mb-el">{it.element}</span>;
         if (it.couleur !== undefined) return <BoutonCouleur key={it.cle} couleur={it.couleur} titre={it.titre} onApercu={it.onApercu || null} onCouleur={it.onCouleur} />;
         if (it.libelle) return <button key={it.cle} type="button" className="nb-act vise" title={it.titre} {...arret(it.onClick)}>{it.libelle}</button>;
         const supprimer = it.cle === 'supprimer';

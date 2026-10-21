@@ -117,6 +117,32 @@ export const MOT = { largeurMin: 40, hauteur: 24, largeurMaxPage: 0.45 };
 /** fraction de page d'une longueur en px à l'échelle de référence des boîtes */
 export const fractionRef = (px, cote100) => (cote100 > 0 ? px / (cote100 * ECHELLE_BOITES) : 0);
 
+/* TAILLE DU TEXTE EN % DE LA LARGEUR DE PAGE (22/10, docs/compte-rendu-tableau-flashcards.md §4). Une taille
+   nominale occupe la même proportion de n'importe quelle page (A4 portrait, 16:9, capture d'écran) : champ `tailleTexte`
+   (pourcentage de la largeur) des boîtes, zones de texte et formes ; préréglages S / M / L / XL étalonnés sur une
+   diapo 16:9 (M = 1 % ≈ 13,5 px au zoom de référence). Une annotation d'avant n'a pas ce champ : sa taille d'alors
+   (13 px de référence, 15 px pour une zone de texte) est relue en % de SA page — rien ne change à l'écran. */
+export const TAILLES_TEXTE = [{ id: 'S', v: 0.8 }, { id: 'M', v: 1.0 }, { id: 'L', v: 1.4 }, { id: 'XL', v: 2.0 }];
+export const TAILLE_TEXTE_MIN = 0.4, TAILLE_TEXTE_MAX = 4;
+export const lireTailleTexte = () => { try { const v = parseFloat(localStorage.getItem('medrevise.tailleTexte')); return v >= TAILLE_TEXTE_MIN && v <= TAILLE_TEXTE_MAX ? v : 1.0; } catch (e) { return 1.0; } };
+export const ecrireTailleTexte = (v) => { try { localStorage.setItem('medrevise.tailleTexte', String(v)); } catch (e) { /* stockage bloqué */ } };
+/** taille effective (% de la largeur) ; `pxRef` : la taille d'avant en px à l'échelle de référence, `largeurRef` : la
+    largeur de la page à cette échelle */
+export const tailleTexteDe = (a, pxRef, largeurRef) => (Number.isFinite(a && a.tailleTexte) ? a.tailleTexte : largeurRef > 0 ? (pxRef / largeurRef) * 100 : 1.0);
+/** le préréglage le plus proche d'une taille (pour l'affichage) */
+export const presetTaille = (v) => TAILLES_TEXTE.reduce((m, t) => (Math.abs(t.v - v) < Math.abs(m.v - v) ? t : m), TAILLES_TEXTE[0]);
+
+/* ÉPAISSEURS EN % DE LA LARGEUR DE PAGE (22/10, même logique) : champ `epaisseurL` (fraction de la largeur) des traits
+   et des formes créés depuis le 22/10 ; avant, `epaisseur` était une fraction de la HAUTEUR — relue telle quelle.
+   Les deux champs sont écrits (un appareil pas encore à jour lit `epaisseur`). Préréglages convertis pour qu'un trait
+   sur une diapo 16:9 garde exactement son épaisseur d'avant (rapport hauteur / largeur 595 / 842). */
+export const RAPPORT_DIAPO = 595 / 842;
+export const versLargeur = (vHauteur) => +(vHauteur * RAPPORT_DIAPO).toFixed(5);
+/** épaisseur en px d'un trait ou d'une forme (W × H : la page affichée) */
+export const epaisseurPx = (a, W, H, defaut) => (Number.isFinite(a && a.epaisseurL) ? a.epaisseurL * W : ((a && a.epaisseur) || defaut) * H);
+/** les deux champs d'une épaisseur choisie (fraction de la largeur) sur une page W × H */
+export const champsEpaisseur = (vL, W, H) => ({ epaisseurL: vL, epaisseur: W > 0 && H > 0 ? +((vL * W) / H).toFixed(5) : vL });
+
 /* PALETTE DU CRAYON (et du texte libre) — 01/10. Les 4 couleurs des surlignages
    ont un SENS (prioritaire, cloze…) et restent seules pour eux ; le crayon, lui,
    dessine : il a droit à une vraie palette. Mêmes ids que COLORS pour les 4

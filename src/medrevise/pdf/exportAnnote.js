@@ -26,7 +26,7 @@ import { cheminCatmull } from './crayon.js';
 import { connecteursDe } from './connecteurs.js';
 import { separerParType } from '../lib/annotationTypes.js';
 import { ocrImage } from '../ocr/ocrImage.js';
-import { COLOR_RGB, couleurHex, couleurFoncee, opaciteFondBoite, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, modeDuTrait } from './pdfShared.js';
+import { COLOR_RGB, couleurHex, couleurFoncee, opaciteFondBoite, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, modeDuTrait, epaisseurPx } from './pdfShared.js';
 
 /* Le texte des boîtes est collé à la page dans le lecteur (13 px boîte, 15 px texte
    libre À 160 %, mis à l'échelle de la page avec elle — 04/10) : même taille relative
@@ -34,6 +34,8 @@ import { COLOR_RGB, couleurHex, couleurFoncee, opaciteFondBoite, EPAISSEUR_SURLI
 const ZOOM_REFERENCE = 1.6;
 const TAILLE_BOITE = 13 / ZOOM_REFERENCE;
 const TAILLE_TEXTE = 15 / ZOOM_REFERENCE;
+/** (22/10) taille du texte d'une annotation (pt) : `tailleTexte` % de la largeur de la page, sinon celle d'avant */
+const tailleDe = (a, W, avant) => (Number.isFinite(a && a.tailleTexte) ? (a.tailleTexte / 100) * W : avant);
 
 const hexVersRgb = (hex) => {
   const h = String(hex || '#000000').replace('#', '');
@@ -258,7 +260,7 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     if (!page || !t.points || t.points.length < 2) { bilan.ignores += 1; continue; }
     const { W, H } = dims(page);
     const surl = modeDuTrait(t) === 'surligneur';
-    const ep = (surl ? (t.epaisseur || EPAISSEUR_SURLIGNEUR) : (t.epaisseur || 0.0042)) * H;
+    const ep = epaisseurPx(t, W, H, surl ? EPAISSEUR_SURLIGNEUR : 0.0042); // (22/10) % de la largeur, ou de la hauteur avant
     // (20/10 soir) trait v4 : courbes Catmull-Rom (`rendu: 'cr'`) comme à l'écran ; forme redressée : segments droits
     const d = t.rendu === 'cr' ? cheminCatmull(t.points.map(([x, y]) => [(x * W) / 100, (y * H) / 100]), 100) : cheminPoints(t.points, W, H);
     page.drawSvgPath(d, {
@@ -271,21 +273,22 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
   /* (21/10) cadres des boîtes exportées (px de page, y vers le bas, et fractions) : les flèches rattachées à une boîte
      finissent à son bord */
   const geoBoite = (b, W, H) => {
-    const pad = 4;
+    // (22/10) gabarit « carte » : marges 10 × 8 px de référence ; taille du texte en % de la largeur
+    const carte = b.gabarit === 'carte', pad = carte ? 10 / ZOOM_REFERENCE : 4, tb = tailleDe(b, W, TAILLE_BOITE);
     const x = b.x * W;
     // (21/10) gabarit « un mot » : la largeur suit le texte jusqu'à 45 % de la page, comme à l'écran
-    let w = Math.max(24, b.gabarit === 'mot' && !b.largeurFixe ? 0.45 * W : b.width * W);
-    const lignes = couperLignes(paragraphesDe(b.content).map(propre), font, TAILLE_BOITE, w - 2 * pad);
+    let w = Math.max(24, (b.gabarit === 'mot' || carte) && !b.largeurFixe ? 0.45 * W : b.width * W);
+    const lignes = couperLignes(paragraphesDe(b.content).map(propre), font, tb, w - 2 * pad);
     // comme à l'écran : la boîte épouse sa ligne la plus longue (+ marge), sauf largeur fixée à la main
     if (!b.largeurFixe && lignes.some((l) => l.trim())) {
-      const plusLongue = Math.max(...lignes.map((l) => font.widthOfTextAtSize(l, TAILLE_BOITE)));
+      const plusLongue = Math.max(...lignes.map((l) => font.widthOfTextAtSize(l, tb)));
       w = Math.max(24, Math.min(w, plusLongue + 2 * pad + 6));
     }
-    const lh = TAILLE_BOITE * 1.35;
+    const lh = tb * 1.35;
     const h = Math.max(b.height * H, 2 * pad + Math.max(1, lignes.length) * lh);
     let top = H - b.y * H;
     if (top - h < 0) top = Math.min(H, h); // une boîte qui déborderait en bas remonte dans la page
-    return { pad, x, w, h, top, lignes, lh };
+    return { pad, x, w, h, top, lignes, lh, tb };
   };
   const cadresBoites = new Map();
   for (const b of par.boite) {
@@ -305,7 +308,7 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     if (!page) { bilan.ignores += 1; continue; }
     const { W, H } = dims(page);
     const type = typeForme(f);
-    const ep = Math.max(0.8, (f.epaisseur || 0.0025) * H);
+    const ep = Math.max(0.8, epaisseurPx(f, W, H, 0.0025));
     const coul = hexVersRgb(couleurHex(f.couleur, '#e5383b'));
     const origine = { x: f.x * W, y: H - f.y * H };
     if (estTrait(type)) {
@@ -323,7 +326,7 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
       pointes.forEach((pd) => page.drawSvgPath(pd, { ...origine, color: coul }));
     }
     if (f.texte && String(f.texte).trim()) {
-      const taille = TAILLE_BOITE;
+      const taille = tailleDe(f, W, TAILLE_BOITE);
       const lignes = String(f.texte).split('\n').map(propre);
       const lh = taille * 1.25;
       const cx = (f.x + f.width / 2) * W;
@@ -343,15 +346,16 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     if (!page || !paras.join('').trim()) { if (!page) bilan.ignores += 1; continue; }
     const { W, H } = dims(page);
     const largeurT = t.gabarit === 'mot' && !t.largeurFixe ? 0.45 * W : t.width * W; // (21/10) gabarit « un mot » : suit le texte
-    const lignes = couperLignes(paras.map(propre), font, TAILLE_TEXTE, Math.max(20, largeurT - 4));
-    const lh = TAILLE_TEXTE * 1.3;
-    lignes.forEach((l, i) => { if (l) page.drawText(l, { x: t.x * W + 2, y: H - t.y * H - 2 - TAILLE_TEXTE * 0.9 - i * lh, size: TAILLE_TEXTE, font, color: hexVersRgb(couleurHex(t.couleur, '#1F1F24')) }); });
+    const tt = tailleDe(t, W, TAILLE_TEXTE);
+    const lignes = couperLignes(paras.map(propre), font, tt, Math.max(20, largeurT - 4));
+    const lh = tt * 1.3;
+    lignes.forEach((l, i) => { if (l) page.drawText(l, { x: t.x * W + 2, y: H - t.y * H - 2 - tt * 0.9 - i * lh, size: tt, font, color: hexVersRgb(couleurHex(t.couleur, '#1F1F24')) }); });
     if (reperes && reperes.has(t.id)) {
       // cadre du texte libre (sans bordure visible) : l'étendue RÉELLE de son texte — le repère reste
       // collé au texte, jamais sur la page autour
-      const larg = Math.max(...lignes.map((l) => font.widthOfTextAtSize(l, TAILLE_TEXTE)), 0);
+      const larg = Math.max(...lignes.map((l) => font.widthOfTextAtSize(l, tt)), 0);
       const top = H - t.y * H, w = Math.max(20, Math.min(largeurT, larg + 4)), h = 4 + Math.max(1, lignes.length) * lh;
-      poserRepere(page, t.id, { x: t.x * W, top, w, h, lignes: lignes.map((l, i) => ({ x: t.x * W + 2, top: top - 2 - i * lh, w: font.widthOfTextAtSize(l, TAILLE_TEXTE), h: lh, vide: !l.trim() })) });
+      poserRepere(page, t.id, { x: t.x * W, top, w, h, lignes: lignes.map((l, i) => ({ x: t.x * W + 2, top: top - 2 - i * lh, w: font.widthOfTextAtSize(l, tt), h: lh, vide: !l.trim() })) });
     }
     bilan.textes += 1;
   }
@@ -375,7 +379,7 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const page = pageDe(b.page);
     if (!page) { bilan.ignores += 1; continue; }
     const { W, H } = dims(page);
-    const { pad, x, w, h, top, lignes, lh } = geoBoite(b, W, H);
+    const { pad, x, w, h, top, lignes, lh, tb } = geoBoite(b, W, H);
     const fond = hexVersRgb(couleurHex(b.couleur));
     const ancre = b.ancre && Number.isFinite(b.ancre.x) && Number.isFinite(b.ancre.y) ? { x: b.ancre.x * W, y: H - b.ancre.y * H } : null;
     const coulFleche = hexVersRgb(couleurFoncee(b.couleur)); // teinte foncée, même règle qu'à l'écran
@@ -402,8 +406,8 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const encreBoite = b.fond === 'plein' && (0.299 * fond.red + 0.587 * fond.green + 0.114 * fond.blue) < 0.5 ? rgb(1, 1, 1) : rgb(0.09, 0.09, 0.16);
     if (!b.fond) page.drawRectangle({ x, y: top - h, width: w, height: h, color: fond, opacity: opaciteFondBoite(b.couleur), borderColor: rgb(0, 0, 0), borderOpacity: 0.28, borderWidth: 0.8 });
     else page.drawRectangle({ x, y: top - h, width: w, height: h, ...(b.fond === 'transparent' ? {} : { color: fond, opacity: b.fond === 'teinte' ? 0.15 : 0.92 }), borderColor: fond, borderWidth: 1 });
-    lignes.forEach((l, i) => { if (l) page.drawText(l, { x: x + pad, y: top - pad - TAILLE_BOITE * 0.95 - i * lh, size: TAILLE_BOITE, font, color: encreBoite }); });
-    if (reperes && reperes.has(b.id)) poserRepere(page, b.id, { x, top, w, h, lignes: lignes.map((l, i) => ({ x: x + pad, top: top - pad - i * lh, w: font.widthOfTextAtSize(l, TAILLE_BOITE), h: lh, vide: !l.trim() })) });
+    lignes.forEach((l, i) => { if (l) page.drawText(l, { x: x + pad, y: top - pad - tb * 0.95 - i * lh, size: tb, font, color: encreBoite }); });
+    if (reperes && reperes.has(b.id)) poserRepere(page, b.id, { x, top, w, h, lignes: lignes.map((l, i) => ({ x: x + pad, top: top - pad - i * lh, w: font.widthOfTextAtSize(l, tb), h: lh, vide: !l.trim() })) });
     if (ancre) page.drawCircle({ x: ancre.x, y: ancre.y, size: 3.5, color: rgb(1, 1, 1), borderColor: coulFleche, borderWidth: 1.8 });
     autres.forEach((a) => page.drawCircle({ x: a.x, y: a.y, size: 3, color: rgb(1, 1, 1), borderColor: coulFleche, borderWidth: 1.5 }));
     bilan.boites += 1;

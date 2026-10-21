@@ -35,7 +35,7 @@ await b.ev(`document.querySelector('.pdfr-scroll').scrollTop=0;1`); await b.dorm
 if (!(await b.ev(`!!document.querySelector('.ptb-outil.actif[title^="Sélection"], .tab-outil.actif[aria-label="Sélection"]')`))) await b.outil('Sélection');
 await b.dormir(500);
 const ATTENDU = {
-  'o-boite': ['couleur', 'fond', 'fleche', 'reduire', 'supprimer'], 'o-texte': ['couleur', 'supprimer'], 'o-question': ['supprimer'],
+  'o-boite': ['couleur', 'taille', 'fond', 'fleche', 'reduire', 'supprimer'], 'o-texte': ['couleur', 'taille', 'supprimer'], 'o-question': ['supprimer'],
   'o-rect': ['trait', 'remplir', 'epaisseur', 'couleur', 'supprimer'], 'o-ellipse': ['trait', 'remplir', 'epaisseur', 'couleur', 'supprimer'], 'o-triangle': ['trait', 'remplir', 'epaisseur', 'couleur', 'supprimer'],
   'o-fleche': ['type', 'debut', 'fin', 'trait', 'epaisseur', 'couleur', 'supprimer'], 'o-ligne': ['type', 'debut', 'fin', 'trait', 'epaisseur', 'couleur', 'supprimer'],
   'o-trait': ['couleur', 'epaisseur', 'supprimer'], 'o-image': ['rogner', 'verrou', 'supprimer'],

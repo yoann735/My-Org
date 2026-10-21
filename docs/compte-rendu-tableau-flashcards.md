@@ -9,8 +9,8 @@ aucune écriture Supabase.
 |---|---|
 | 3. « Insérer une page » | livré, testé (ordinateur, iPad) |
 | 5. Transcript : en-tête, défilement | livré, testé (ordinateur, iPad, mobile) |
-| 2. Boîtes modernisées | à faire |
-| 4. Texte uniforme (% de la largeur de page) | à faire |
+| 2. Boîtes modernisées | livré, testé (ordinateur, iPad) |
+| 4. Texte uniforme (% de la largeur de page) | livré, testé (3 formats, ordinateur, iPad) |
 | 6. Onglet Flashcards | à faire |
 | 1. Tableau par fiche | à faire |
 
@@ -74,3 +74,80 @@ l'en-tête sur une ligne à 332, 260 et 220 px, la barre au repos, le glisser ju
 | Glisser la poignée : repère horaire, « ↑ Début », « ↓ Fin » |
 |---|
 | ![](img/tableau-flashcards/trx-defil-glisser.png) |
+
+## 2. Boîtes : plus modernes, de la même famille que les cartes du tableau
+
+Une **famille « carte »** (CSS « FAMILLE CARTE (22/10) » de `pdfreader-v2.css`) dessine à la fois les boîtes du lecteur
+(commentaires, post-it, zones de texte) et les cartes du tableau. Les réglages de taille changent d'un usage à l'autre
+par variables (`--carte-r`, `--carte-px`, `--carte-py`) : une famille visuelle, sans copie.
+
+- **Boîtes créées depuis le 22/10** (`gabarit: 'carte'`) :
+  - coins arrondis de 10 px, marges de 10 px (horizontales) × 8 px (verticales), interligne 1,35 ;
+  - fond plein de la couleur choisie, texte en contraste automatique (règle existante) ;
+  - ombre très légère, contour fin uniquement à la sélection (cadre commun) ;
+  - largeur du texte (règle « un mot »), jamais sous la taille d'un mot.
+- **Boîtes d'avant** : elles prennent le nouveau dessin (coins de 10 px, ombre légère, bandeau des toutes premières boîtes
+  devenu invisible, épingle discrète) **sans changer de position ni de taille**. Leurs marges sont gardées, puisque des
+  marges plus grandes changeraient leur taille. C'est vérifié sur trois formats de page (§4).
+- La typographie de la DA, 13–14 px, correspond à la taille « M » sur une diapo 16:9 au zoom de référence (13,5 px).
+
+| Nouvelle boîte (« M ») | Sélecteur de taille de la mini barre |
+|---|---|
+| ![](img/tableau-flashcards/boite-carte.png) | ![](img/tableau-flashcards/taille-texte.png) |
+
+## 4. Taille de texte uniforme entre cours
+
+**Avant** : une taille « 24 » était exprimée en pixels de l'échelle de référence de la page. Sur une page étroite, elle
+paraissait énorme ; sur une page large, petite.
+
+**Règle** (`pdfShared.js#TAILLES_TEXTE`) : toutes les tailles de texte d'annotation sont un **pourcentage de la largeur
+de la page**. Cela vaut pour les boîtes, commentaires et post-it, les zones de texte, le texte des formes et les tailles
+de la barre de mise en forme d'une boîte.
+- Préréglages **S 0,8 %**, **M 1 %**, **L 1,4 %**, **XL 2 %**, et un réglage fin de 0,4 à 4 % par crans de 0,05 %. Ils
+  sont proposés par le bouton « Aa » de la mini barre, avec un aperçu de chaque taille.
+- La dernière taille choisie est mémorisée sur l'appareil : la boîte suivante naît à cette taille.
+- Rendu : variable `--lp` (1 % de la largeur de la page à l'échelle de référence de la boîte), puis
+  `font-size: calc(var(--lp) × taille)`.
+- **Étalonnage** : M = 1 % donne 13,5 px sur une diapo 16:9 au zoom de référence. La demande citait 1,6 % en exemple,
+  mais 1 % respecte la typographie 13–14 px exigée au §2 sur le format le plus courant des cours (diapos).
+
+**Migration à la lecture** : une annotation d'avant n'a pas de champ `tailleTexte`. Elle garde sa taille d'alors
+(13 px de référence, 15 px pour une zone de texte). Le sélecteur la présente en % de **sa** page, sans rien écrire.
+
+**Crayon et bordures**, même logique : nouveau champ `epaisseurL`, fraction de la largeur, sur les traits et les formes
+créés depuis le 22/10 (`pdfShared.js#epaisseurPx`).
+- Les traits et formes d'avant gardent `epaisseur`, fraction de la hauteur, relue telle quelle.
+- Les deux champs sont écrits, pour qu'un appareil pas encore à jour lise `epaisseur`.
+- Les préréglages sont convertis pour qu'un trait sur une diapo 16:9 garde exactement son épaisseur d'avant.
+- L'export PDF suit les mêmes règles.
+
+Bancs (`scripts/tests-pdfreader-harmonisation/`) :
+- `t-formats.mjs uniforme` (A4 portrait, diapo 16:9, capture d'écran 390 × 844) : 5/5.
+
+  | Format | Largeur affichée | Police « M » | « Néphron » | Texte de forme | Trait | Bordure |
+  |---|---|---|---|---|---|---|
+  | A4 portrait | 595 px | 1 % | 4,158 % | 1 % | 0,3 % | 0,3 % |
+  | Diapo 16:9 | 960 px | 1 % | 4,157 % | 1 % | 0,3 % | 0,3 % |
+  | Capture d'écran | 390 px | 1 % | 4,159 % | 1 % | 0,3 % | 0,3 % |
+
+  (Le rendu ne descend jamais sous 1 px : une bordure de 0,18 % sur la capture de 390 px resterait à 1 px.)
+- `t-formats.mjs geo avant|apres` : les **annotations d'avant inchangées** sur les trois formats (boîte à bandeau,
+  compacte, « un mot », zone de texte, trait, forme avec texte). Position, taille, police et épaisseurs sont relevées
+  sur l'ancien code puis sur le nouveau : **3/3, 0 écart**. À l'œil, seul le dessin change (coins, ombre, bandeau).
+- `t-taille.mjs` (9/9 ordinateur, 9/9 iPad) : nouvelle boîte (gabarit, coins, marges, interligne, ombre, contour,
+  taille M), sélecteur S / M / L / XL avec aperçu, L enregistré, réglage fin au clavier, mémorisation pour la boîte
+  suivante, tailles de la barre de mise en forme.
+- Non-régression :
+  - `t-objets` (PDF ×3, fiche jumelle, document) : la mini barre a désormais l'option « taille » ;
+  - `t-boites` (×2) et `t-contextes` 19/19, mis aux métriques « carte » et à `epaisseurL` ;
+  - `t-fleches`, `t-zoom`, `t-crayon` (×2), `t-export`, `t-dock`, `t-couleurs-boite` 33/33 : tout passe ;
+  - `t-anciennes` (comparaison au pixel) diffère désormais par le nouveau dessin, comme prévu. La géométrie est
+    vérifiée par `t-formats geo`.
+
+| A4 portrait | Diapo 16:9 | Capture d'écran |
+|---|---|---|
+| ![](img/tableau-flashcards/formats-uniforme-f-fmt-a4.png) | ![](img/tableau-flashcards/formats-uniforme-f-fmt-169.png) | ![](img/tableau-flashcards/formats-uniforme-f-fmt-cap.png) |
+
+| Annotations d'avant, ancien code (16:9) | Même page, nouveau code |
+|---|---|
+| ![](img/tableau-flashcards/formats-anciennes-f-fmt-169-avant.png) | ![](img/tableau-flashcards/formats-anciennes-f-fmt-169-apres.png) |

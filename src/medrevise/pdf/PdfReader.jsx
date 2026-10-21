@@ -70,7 +70,7 @@ import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
   COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI, opaciteSurlignage, MOT, fractionRef,
   useDevicePixelRatio, compareHighlights, computePageTextMap,
-  MODES_CRAYON, couleurHex, BOITE_DEFAUT, lireFondBoiteDefaut, echelleControles,
+  MODES_CRAYON, couleurHex, BOITE_DEFAUT, lireFondBoiteDefaut, echelleControles, lireTailleTexte, champsEpaisseur, versLargeur,
 } from './pdfShared.js';
 import { PdfPageContent, EditToolbar, ECHELLE_REF } from './PdfPage.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
@@ -2182,7 +2182,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // rien à l'écran : l'outil « ne créait rien ». La couleur est celle de la barre
     // contextuelle, partagée par tous les outils colorés.
     // (21/10) `gabarit: 'mot'` : taille d'un mot, grandit avec le texte (pdfShared.js#MOT) — les boîtes d'avant n'ont pas ce champ
-    const rec = { ...newNoteBox({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurActive, fond: lireFondBoiteDefaut() }), ...(gabarit ? { gabarit } : {}), ...(largeurFixe ? { largeurFixe: true } : {}) };
+    // (22/10) gabarit « carte » et taille du texte en % de la largeur de page (la dernière choisie)
+    const rec = { ...newNoteBox({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurActive, fond: lireFondBoiteDefaut() }), ...(gabarit ? { gabarit } : {}), ...(largeurFixe ? { largeurFixe: true } : {}),
+      ...(gabarit === 'carte' ? { tailleTexte: lireTailleTexte() } : {}) };
     const cmd = cmdCreer('annotations', rec, 'Boîte de texte');
     hist.appliquer(cmd); // visible tout de suite (effet local), écrite ensuite
     videsFraiches.current.add(rec.id);
@@ -2272,8 +2274,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!points || points.length < 2) return;
     const surligneur = mode === 'surligneur';
     // (21/10) épaisseur = le préréglage choisi ; opacité fixe (1 au crayon, 40 % au surligneur) ; tracé Catmull-Rom
+    // (22/10) épaisseur en % de la largeur de SA page (pdfShared.js#champsEpaisseur) : la même proportion partout
+    const sz = pageSizes.find((p) => String(p.cle) === String(page)) || pageSizes[0] || { width: 842, height: 595 };
     const rec = { ...newTrait({ ficheId: nsAnnot, page, points, couleur: couleurCrayon, mode, epaisseur: epaisseurDe(mode),
-      opacite: surligneur ? OPACITE_SURLIGNEUR_CRAYON : 1, aimant: false }), rendu };
+      opacite: surligneur ? OPACITE_SURLIGNEUR_CRAYON : 1, aimant: false }), rendu, ...champsEpaisseur(versLargeur(epaisseurDe(mode)), sz.width, sz.height) };
     await hist.appliquer(cmdCreer('annotations', rec, surligneur ? 'Surligneur à main levée' : 'Trait au crayon'));
   };
   /* GOMME : UN geste = UNE entrée d'historique, même s'il a traversé plusieurs traits. `supprimer` : traits et
@@ -2595,7 +2599,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const creerForme = ({ page, x, y, width, height, forme, fx, fy }) => {
     const rec0 = newForme({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurForme, forme, fx, fy, remplie: formeRemplie && estFermee(forme) });
     // (21/10) ligne / flèche : le dessin harmonisé des flèches (trait fin d'une bordure de boîte, pointe proportionnelle)
-    const rec = estTrait(forme) ? { ...rec0, epaisseur: 0.0012, fleche: { geo: GEO_HARMONISE } } : rec0;
+    // (22/10) forme fermée : bordure en % de la largeur de sa page, taille de son texte aussi
+    const sz = pageSizes.find((p) => String(p.cle) === String(page)) || pageSizes[0] || { width: 842, height: 595 };
+    const rec = estTrait(forme) ? { ...rec0, epaisseur: 0.0012, fleche: { geo: GEO_HARMONISE } }
+      : { ...rec0, ...champsEpaisseur(versLargeur(rec0.epaisseur || 0.0025), sz.width, sz.height), tailleTexte: lireTailleTexte() };
     hist.appliquer(cmdCreer('annotations', rec, 'Forme'));
   };
   /* déplacer / redimensionner une forme : ses LÉGENDES suivent (02/10 soir) — l'épingle
@@ -2963,7 +2970,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const sz = pageSizes.find((p) => String(p.cle) === String(page)) || pageSizes[0] || { width: 600, height: 800 };
       const ligne = fractionRef(MOT.hauteur, sz.height), largeur = fractionRef(MOT.largeurMin, sz.width);
       const rec = { ...newTexteLibre({ ficheId: nsAnnot, page, x: Math.min(x, 1 - largeur), y: Math.max(0, Math.min(y - ligne / 2, 1 - ligne)),
-        width: largeur, height: ligne, couleur: couleurTexte }), gabarit: 'mot' };
+        width: largeur, height: ligne, couleur: couleurTexte }), gabarit: 'carte', tailleTexte: lireTailleTexte() };
       hist.appliquer(cmdCreer('annotations', rec, 'Texte libre'));
       videsFraiches.current.add(rec.id);
       setActiveEditId(rec.id);

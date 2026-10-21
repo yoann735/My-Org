@@ -1,4 +1,4 @@
-// MÊME MOTEUR PARTOUT : crayon (aperçu direct, trait Catmull-Rom), boîte « un mot » + flèche (la boîte reste), gomme de
+// MÊME MOTEUR PARTOUT : crayon (aperçu direct, trait Catmull-Rom), boîte « carte » + flèche (la boîte reste), gomme de
 // zone — sur un PDF, sur la FICHE d'une fiche jumelle, sur un DOCUMENT éditable ; en ordinateur et en tablette 820 px
 // (tactile : on crée au stylet, le doigt fait défiler). Cours des bancs fiche jumelle (tests-fiche-jumelle/tout.sh).
 import { banc, TITRE } from './commun.mjs';
@@ -35,8 +35,8 @@ for (const ctx of CONTEXTES) for (const tab of [false, true]) {
   await souris('mouseReleased', pts[pts.length - 1], ex); await b.dormir(600);
   let n = await nouveaux();
   const tr = n.find((a) => a.kind === 'trait');
-  b.ok(peint && tr && tr.rendu === 'cr' && tr.opacite === 1 && [0.0024, 0.0042, 0.0075].includes(tr.epaisseur), `${nom} : crayon — aperçu dès le 1er point, trait Catmull-Rom, épaisseur prédéfinie`, JSON.stringify(tr && { rendu: tr.rendu, ep: tr.epaisseur }));
-  // boîte « un mot » + flèche
+  b.ok(peint && tr && tr.rendu === 'cr' && tr.opacite === 1 && [0.0024, 0.0042, 0.0075].map((v) => +(v * 595 / 842).toFixed(5)).includes(tr.epaisseurL), `${nom} : crayon — aperçu dès le 1er point, trait Catmull-Rom, épaisseur prédéfinie`, JSON.stringify(tr && { rendu: tr.rendu, epL: tr.epaisseurL }));
+  // boîte « carte » + flèche
   await b.outil('Boîte');
   const pb = [x0 + 40, y0 + 120];
   await souris('mouseMoved', pb, ex); await souris('mousePressed', pb, { ...ex, buttons: 1 }); await souris('mouseReleased', pb, ex); await b.dormir(600);
@@ -51,7 +51,7 @@ for (const ctx of CONTEXTES) for (const tab of [false, true]) {
   n = await nouveaux();
   const bt = n.find((a) => a.kind === 'libre');
   const active = await b.ev(`!!document.querySelector('.note-box.mot.active')`);
-  b.ok(bt && bt.gabarit === 'mot' && (bt.fleches || []).length === 1 && active, `${nom} : boîte « un mot » + flèche — la boîte reste affichée et sélectionnée`, JSON.stringify(bt && { gabarit: bt.gabarit, fleches: (bt.fleches || []).length, active }));
+  b.ok(bt && bt.gabarit === 'carte' && (bt.fleches || []).length === 1 && active, `${nom} : boîte « carte » + flèche — la boîte reste affichée et sélectionnée`, JSON.stringify(bt && { gabarit: bt.gabarit, fleches: (bt.fleches || []).length, active }));
   await b.T.Escape(); await b.T.Escape(); await b.dormir(300);
   // gomme de zone : coupe le trait
   await b.outil('Gomme');

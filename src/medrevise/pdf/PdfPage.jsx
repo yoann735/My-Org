@@ -27,6 +27,7 @@ import { connecteursDe, epingleSeule, patchRetirer, patchAjouter, patchStyle, pa
 import { styleFleche, cheminFleche, geoPointe, sommetsConnecteur, sommetsForme, pointesForme, harmonisee, suivant, TRAITS as TRAITS_FORME } from './flechesGeo.js';
 import { TraitFleche, PoigneesFleche, pointsAvecAjout, glisserPointFleche, appuiLong, itemsFleche, boiteSous } from './Fleche.jsx';
 import { CadreSelection, MiniBarre, redimensionner } from './Selection.jsx';
+import { BoutonTailleTexte } from './TailleTexte.jsx';
 import { lisser3, arrondirPoints, cheminCatmull, cheminDroit, cheminTrait, densifier, morceauxHors, OPACITE_SURLIGNEUR_CRAYON, EPAISSEURS_CRAYON } from './crayon.js';
 import { suivreImage } from './attaches.js';
 import { Icon } from '../../shared/Icon.jsx';
@@ -39,6 +40,7 @@ import { ocrImage } from '../ocr/ocrImage.js';
 import { COULEUR_DEFAUT } from '../lib/palette.js';
 import {
   couleurFoncee, opaciteFondBoite, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT, COMPACT, fractionPx100, MOT, fractionRef,
+  TAILLES_TEXTE, tailleTexteDe, ecrireTailleTexte, epaisseurPx, champsEpaisseur, versLargeur,
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
   soustraireAncres, partCouverte, surlignagesTouches, couleurHex, planSurlignage,
@@ -352,7 +354,7 @@ export function PdfPageContent({
       const y = clamp(rect.y, 0, 1 - minH);
       const trace = rect !== courant ? false : true; // rectangle tracé : sa largeur est celle voulue
       onCreerBoite({
-        page: pageNum, x, y, gabarit: 'mot', ...(trace ? { largeurFixe: true } : {}),
+        page: pageNum, x, y, gabarit: 'carte', ...(trace ? { largeurFixe: true } : {}),
         width: clamp(rect.width, minL, 1 - x),
         height: clamp(rect.height, minH, 1 - y),
       });
@@ -455,7 +457,7 @@ export function PdfPageContent({
     const droit = surligneur && surligneurDroit;
     const brut = [versPage(e, r)];
     const points = () => (droit ? accrocherAngles([brut[0], brut[brut.length - 1]], ratio, 12) : lisser3(brut));
-    const style = { couleur: encre(couleurTrait), opacite: surligneur ? OPACITE_SURLIGNEUR_CRAYON : 1, largeur: Math.max(surligneur ? 4 : 1, epaisseurTrait * r.height), droit };
+    const style = { couleur: encre(couleurTrait), opacite: surligneur ? OPACITE_SURLIGNEUR_CRAYON : 1, largeur: Math.max(surligneur ? 4 : 1, versLargeur(epaisseurTrait) * r.width), droit }; // (22/10) en % de la largeur
     let annule = false;
     const suivi = suivrePointeur(e, {
       doigt: 'defiler',
@@ -514,7 +516,7 @@ export function PdfPageContent({
           if (touches.has(t.id) || !traitTouche(t, px, py, seuil)) continue;
           if (!zone) { touches.set(t.id, t); continue; }
           // zone : les points (rapprochés) sous le rond de la gomme disparaissent
-          const demiEp = (modeDuTrait(t) === 'surligneur' ? (t.epaisseur || EPAISSEUR_SURLIGNEUR) : 0) * 0.5;
+          const demiEp = (modeDuTrait(t) === 'surligneur' ? epaisseurPx(t, ratio, 1, EPAISSEUR_SURLIGNEUR) : 0) * 0.5; // en fraction de hauteur
           const rayon = seuil + demiEp;
           const pts = restes.get(t.id) || [densifier(t.points || [], seuil / 2, ratio)];
           const nouv = pts.flatMap((m) => morceauxHors(m, (q) => Math.hypot((q[0] - px) * ratio, q[1] - py) <= rayon));
@@ -831,17 +833,18 @@ export function PdfPageContent({
           entier (stroke-opacity d'un seul <path>) : un trait qui se recroise ne
           fonce pas sur lui-même, comme un vrai surligneur. */}
       {traits.length > 0 && (() => {
-        const H = pageHeight || 800;
+        const H = pageHeight || 800, W = pageWidth || 600;
         /* ÉPAISSEUR COLLÉE À LA PAGE (04/10, décision finale) : `epaisseur × hauteur de
-           page affichée` — le trait grossit et rapetisse avec la page, comme le PDF. */
+           page affichée` — le trait grossit et rapetisse avec la page, comme le PDF ; depuis le 22/10, `epaisseurL ×
+           largeur` (pdfShared.js#epaisseurPx) — la même proportion sur toutes les pages. */
         const rendu = (t, cle) => {
           const surl = modeDuTrait(t) === 'surligneur';
-          const ep = surl ? (t.epaisseur || EPAISSEUR_SURLIGNEUR) : (t.epaisseur || 0.0042);
+          const epPx = epaisseurPx(t, W, H, surl ? EPAISSEUR_SURLIGNEUR : 0.0042);
           return (
             <path key={cle} d={cheminTrait(t, cheminLisse)} fill="none"
               stroke={encre(t.couleur)}
               strokeOpacity={Number.isFinite(t.opacite) ? t.opacite : (surl ? OPACITE_SURLIGNEUR : 1)}
-              strokeWidth={Math.max(surl ? 4 : 1, ep * H)}
+              strokeWidth={Math.max(surl ? 4 : 1, epPx)}
               strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
           );
         };
@@ -863,7 +866,7 @@ export function PdfPageContent({
               <svg className="pdfr-traits-prise" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
                 {visibles.map((t) => (
                   <path key={t.id} className="sel-objet" data-trait={t.id} d={cheminTrait(t, cheminLisse)} fill="none" stroke="transparent" strokeLinecap="round" strokeLinejoin="round"
-                    strokeWidth={Math.max(12, (t.epaisseur || 0.0042) * H + 8)} vectorEffect="non-scaling-stroke"
+                    strokeWidth={Math.max(12, epaisseurPx(t, W, H, 0.0042) + 8)} vectorEffect="non-scaling-stroke"
                     onPointerDown={(e) => { const t0 = traits.find((q) => q.id === t.id); if (t0) deplacerTrait(e, t0); }} />
                 ))}
               </svg>
@@ -884,10 +887,11 @@ export function PdfPageContent({
       {traitSel && outil === 'main' && (() => {
         const pts = traitApercu && traitApercu.id === traitSel.id ? traitApercu.points : traitSel.points;
         const c = cadreTrait(pts), H = pageHeight || 800, W = pageWidth || 600;
-        const marge = Math.max(4, ((traitSel.epaisseur || 0.0042) * H) / 2 + 3); // le cadre entoure le trait, épaisseur comprise
+        const marge = Math.max(4, epaisseurPx(traitSel, W, H, 0.0042) / 2 + 3); // le cadre entoure le trait, épaisseur comprise
         const ancre = { x: c.x * W - marge, y: c.y * H - marge, w: c.width * W + 2 * marge, h: c.height * H + 2 * marge };
-        const liste = EPAISSEURS_CRAYON[modeDuTrait(traitSel) === 'surligneur' ? 'surligneur' : 'dessin'].map((x) => x.v);
-        const ep = traitSel.epaisseur || liste[1];
+        // les 3 épaisseurs en % de la largeur (22/10) ; celle du trait, quelle que soit son unité
+        const liste = EPAISSEURS_CRAYON[modeDuTrait(traitSel) === 'surligneur' ? 'surligneur' : 'dessin'].map((x) => versLargeur(x.v));
+        const ep = epaisseurPx(traitSel, W, H, 0.0042) / W;
         const iEp = liste.reduce((best, v, i) => (Math.abs(v - ep) < Math.abs(liste[best] - ep) ? i : best), 0);
         return (<>
           <div className="pdfr-trait-sel sel-objet" style={{ left: ancre.x, top: ancre.y, width: ancre.w, height: ancre.h }}
@@ -898,7 +902,7 @@ export function PdfPageContent({
             <MiniBarre ancre={ancre} pageWidth={W} pageHeight={H} items={[
               { cle: 'couleur', couleur: traitSel.couleur, titre: 'Couleur du trait', onCouleur: (cl) => onModifierTrait(traitSel, { couleur: cl }, 'Couleur du trait') },
               { cle: 'epaisseur', icone: <IconeOutil nom={'epaisseur' + (iEp + 1)} size={16} />, titre: 'Épaisseur (fine, moyenne, épaisse)',
-                onClick: () => onModifierTrait(traitSel, { epaisseur: liste[(iEp + 1) % liste.length] }, 'Épaisseur du trait') },
+                onClick: () => onModifierTrait(traitSel, champsEpaisseur(liste[(iEp + 1) % liste.length], W, H), 'Épaisseur du trait') },
               { cle: '|' },
               { cle: 'supprimer', titre: `Supprimer le trait (annulable par ${RACCOURCI_Z})`, onClick: () => { onSelection(null); onGommer({ supprimer: [traitSel] }); } },
             ]} />
@@ -1164,12 +1168,23 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      (cause du bug du 20/10 : docs/compte-rendu-pdfreader-v4.md). Gabarit compact du 20/10 (pdfShared.js#COMPACT) et
      gabarit « un mot » du 21/10 (pdfShared.js#MOT) : largeur du texte, au plus 45 % de la page. */
   const extraitBrut = boite.content ? richToHTML(boite.content).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
-  const mot = boite.gabarit === 'mot';
+  /* (22/10) gabarit « carte » des boîtes créées depuis le 22/10 : la règle « un mot » (largeur du texte), avec les
+     métriques de la famille « carte » (marges 10 × 8 px, coins 10 px) partagées avec les cartes du tableau ; une
+     boîte d'avant garde ses métriques (aucune ne change de position ni de taille) */
+  const carte = boite.gabarit === 'carte';
+  const mot = boite.gabarit === 'mot' || carte;
   const motLibre = mot && !boite.largeurFixe && !redim;
   const compacteLibre = !mot && !!boite.compacte && !boite.largeurFixe && !redim;
   const ajustee = !mot && !boite.compacte && !redim && !boite.largeurFixe && !!extraitBrut;
   const libre = motLibre || compacteLibre || ajustee; // largeur suivie à l'écran (largVue), pas celle enregistrée
+  /* TAILLE DU TEXTE en % de la largeur de page (22/10, pdfShared.js#TAILLES_TEXTE) : --lp = 1 % de la largeur de la
+     page à l'échelle de référence de la boîte ; sans `tailleTexte`, la taille d'avant (13 px, 15 px pour un texte) */
+  const [apercuTaille, setApercuTaille] = useState(null);
+  const tailleEff = tailleTexteDe(boite, texteLibre ? 15 : 13, refW);
+  const tailleVue = apercuTaille != null ? apercuTaille : Number.isFinite(boite.tailleTexte) ? boite.tailleTexte : null;
+  const styleCorps = tailleVue != null ? { fontSize: `calc(var(--lp) * ${tailleVue})` } : undefined;
   const style = {
+    '--lp': (refW / 100) + 'px',
     left: b.x * 100 + '%', top: b.y * 100 + '%', minHeight: mot ? (boite.largeurFixe || redim ? b.height * refH : 0) : b.height * refH,
     ...(k !== 1 ? { scale: String(k), transformOrigin: '0 0' } : {}),
     ...(motLibre ? { width: 'max-content', minWidth: MOT.largeurMin, maxWidth: MOT.largeurMaxPage * refW }
@@ -1315,13 +1330,17 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const version = versionAffichee(boite);
   const iFond = Math.max(0, FONDS_BOITE.findIndex((f) => f.id === (boite.fond || 'plein')));
   const fondSuivant = FONDS_BOITE[(iFond + 1) % FONDS_BOITE.length];
+  const itemTaille = { cle: 'taille', element: <BoutonTailleTexte valeur={tailleEff} onApercu={setApercuTaille}
+    onChange={(v) => { ecrireTailleTexte(v); onModifier(boite, { tailleTexte: v }, 'Taille du texte'); }} /> };
   const itemsBoite = enAncrage ? [{ cle: 'vise', libelle: 'Clique ce que la flèche vise… · Annuler', titre: 'Annuler (Échap)', onClick: () => onDemanderAncrage(null) }]
     : texteLibre ? [
       { cle: 'couleur', couleur: boite.couleur, titre: 'Couleur du texte', onApercu, onCouleur: (c) => onModifier(boite, { couleur: c }, 'Couleur du texte') },
+      itemTaille,
       { cle: '|' },
       { cle: 'supprimer', titre: `Supprimer ce texte (annulable par ${RACCOURCI_Z})`, onClick: () => onSupprimer(boite) },
     ] : [
       { cle: 'couleur', couleur: boite.couleur, titre: 'Couleur de la boîte', onApercu, onCouleur: (c) => onModifier(boite, { couleur: c }, 'Couleur de la boîte') },
+      itemTaille,
       { cle: 'fond', icone: <span className={'nb-fond-ic ' + FONDS_BOITE[iFond].id} style={{ '--c': couleurBoite }} aria-hidden="true" />,
         titre: `Fond : ${FONDS_BOITE[iFond].label.toLowerCase()} — cliquer pour « ${fondSuivant.label.toLowerCase()} » (plein → transparent → teinté)`,
         onClick: () => { ecrireFondBoiteDefaut(fondSuivant.id); onModifier(boite, { fond: fondSuivant.id }, 'Fond de la boîte'); } },
@@ -1398,7 +1417,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       <MiniBarre ancre={ancreBarre} pageWidth={pageWidth} pageHeight={pageHeight} items={itemsBoite} classe={enAncrage ? 'vise' : ''} />
     )}
     <div ref={boiteRef} data-boite={boite.id} data-objet={boite.id}
-      className={'note-box sel-objet' + (ajustee ? ' ajustee' : '') + (mot ? ' mot' : boite.compacte ? ' compacte' : '') + (!texteLibre && boite.fond ? ' fond-' + boite.fond : '') + (texteLibre ? ' texte-libre' : '') + (active ? ' active' : '') + (selectionne || active ? ' selectionnee' : '') + (enGeste ? ' en-geste' : '') + (enAncrage ? ' en-ancrage' : '') + (texteLibre && !extraitBrut ? ' vide' : '')} style={style}
+      className={'note-box sel-objet' + (ajustee ? ' ajustee' : '') + (mot ? ' mot' : boite.compacte ? ' compacte' : '') + (carte ? ' carte' : '') + (!texteLibre && boite.fond ? ' fond-' + boite.fond : '') + (texteLibre ? ' texte-libre' : '') + (active ? ' active' : '') + (selectionne || active ? ' selectionnee' : '') + (enGeste ? ' en-geste' : '') + (enAncrage ? ' en-ancrage' : '') + (texteLibre && !extraitBrut ? ' vide' : '')} style={style}
       onPointerDown={appui} onDoubleClick={(e) => { if (!active) { e.stopPropagation(); activer(e); } }}>
       {/* (21/10) plus de poignée de déplacement : le bandeau des boîtes d'avant reste un simple bandeau (même rendu),
           il ne porte plus que l'état (épinglée) et le badge « IA / orig. » */}
@@ -1438,8 +1457,8 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
               window.addEventListener('mousemove', bouger);
               window.addEventListener('mouseup', lacher);
             } catch (err) { /* ignore */ }
-          }}><EditorContent editor={editor} /></div>
-        : <div className="nb-body" data-vide={texteLibre ? 'Texte…' : undefined} dangerouslySetInnerHTML={{ __html: html }} />}
+          }} style={styleCorps}><EditorContent editor={editor} /></div>
+        : <div className="nb-body" style={styleCorps} data-vide={texteLibre ? 'Texte…' : undefined} dangerouslySetInnerHTML={{ __html: html }} />}
 
       {(selectionne || active) && (
         <CadreSelection contre={contre} onCoin={(e, coin) => redimensionner(e, coin, {
@@ -1753,7 +1772,7 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
   const trait = estTrait(type);
   const W = pageWidth || 600, H = pageHeight || 800;
   // épaisseur du cadre : fraction de la page affichée — elle suit le zoom avec le cadre (04/10)
-  const ep = Math.max(1, (forme.epaisseur || 0.0025) * H);
+  const ep = Math.max(1, epaisseurPx(forme, W, H, 0.0025)); // (22/10) en % de la largeur pour les formes récentes
   const coul = fondNoir ? lisibleSurNoir(couleurHex(forme.couleur, '#e5383b')) : couleurHex(forme.couleur, '#e5383b');
   const wpx = g.width * W, hpx = g.height * H;
   /* FLÈCHES DE L'OUTIL FORMES (ligne, flèche, double flèche) — le MÊME modèle et le même tracé que les flèches des
@@ -1836,7 +1855,8 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
   const couleurTexte = couleurFoncee(forme.couleur);
   /* LA MINI BARRE (pdf/Selection.jsx) : forme fermée = style du trait · remplissage · épaisseur · couleur · supprimer ;
      ligne / flèche = LA mini barre des flèches (la même que celle d'une flèche de boîte) */
-  const iEp = EPAISSEURS_FORME.indexOf(forme.epaisseur || 0.0025);
+  const epL = epaisseurPx(forme, W, H, 0.0025) / W, listeEp = EPAISSEURS_FORME.map(versLargeur);
+  const iEp = listeEp.reduce((best, v, i) => (Math.abs(v - epL) < Math.abs(listeEp[best] - epL) ? i : best), 0);
   const IC_T = { continu: 'traitContinu', tirets: 'traitTirets', pointilles: 'traitPointilles' };
   const items = trait
     ? itemsFleche(st, { couleurDefaut: forme.couleur, onStyle: (patch, libelle) => (patch.couleur !== undefined ? onModifier(forme, { couleur: patch.couleur, ...(forme.fleche && forme.fleche.couleur ? { fleche: { ...forme.fleche, couleur: null } } : {}) }, libelle) : stylerForme(patch, libelle)), onSupprimer: () => onSupprimer(forme) })
@@ -1846,7 +1866,7 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
       ...(estFermee(type) ? [{ cle: 'remplir', icone: <IconeOutil nom={forme.remplie ? 'remplir' : 'vide'} size={16} />, actif: !!forme.remplie, titre: forme.remplie ? 'Remplie — cliquer pour retirer le fond' : 'Vide — cliquer pour remplir d’une teinte légère',
         onClick: () => onModifier(forme, { remplie: !forme.remplie }, forme.remplie ? 'Forme vidée' : 'Forme remplie') }] : []),
       { cle: 'epaisseur', icone: <IconeOutil nom={'epaisseur' + (iEp < 0 ? 2 : iEp + 1)} size={16} />, titre: 'Épaisseur (fine, moyenne, épaisse)',
-        onClick: () => onModifier(forme, { epaisseur: EPAISSEURS_FORME[(Math.max(-1, iEp) + 1) % EPAISSEURS_FORME.length] }, 'Épaisseur de la forme') },
+        onClick: () => onModifier(forme, champsEpaisseur(listeEp[(iEp + 1) % listeEp.length], W, H), 'Épaisseur de la forme') },
       { cle: 'couleur', couleur: forme.couleur, titre: 'Couleur de la forme', onApercu, onCouleur: (c) => onModifier(forme, { couleur: c }, 'Couleur de la forme') },
       { cle: '|' },
       { cle: 'supprimer', titre: `Supprimer la forme (annulable par ${RACCOURCI_Z}, ou à la gomme)`, onClick: () => onSupprimer(forme) },
@@ -1889,7 +1909,7 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
         )}
       </svg>
       {(forme.texte || ecrit !== null) && (
-        <div className={'pf-texte' + (trait ? ' sur-trait' : '')} style={{ color: couleurTexte }}>
+        <div className={'pf-texte' + (trait ? ' sur-trait' : '')} style={{ color: couleurTexte, ...(Number.isFinite(forme.tailleTexte) ? { fontSize: (forme.tailleTexte / 100) * W } : {}) }}>
           {ecrit !== null ? (
             <textarea autoFocus value={ecrit} rows={Math.max(1, ecrit.split('\n').length)} placeholder="Texte…"
               onChange={(e) => setEcrit(e.target.value)}
@@ -2061,9 +2081,11 @@ export function EditToolbar({ editor, onReset, libre = false, couleur = null, on
       <button type="button" className={'et-btn' + (active('underline') ? ' active' : '')} title="Souligné" onClick={() => run((c) => c.toggleUnderline())}><u>U</u></button>
       <button type="button" className={'et-btn' + (active('strike') ? ' active' : '')} title="Barré" onClick={() => run((c) => c.toggleStrike())}><s>S</s></button>
       <span className="et-sep" />
+      {/* (22/10) dans une boîte, les tailles sont en % de la largeur de la page (--lp, voir NoteBox) */}
       <select className="et-select" defaultValue="" onChange={(e) => { if (e.target.value) run((c) => c.setFontSize(e.target.value)); e.target.value = ''; }}>
         <option value="" disabled>Taille</option>
-        {FONT_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+        {libre ? TAILLES_TEXTE.map((t) => <option key={t.id} value={`calc(var(--lp) * ${t.v})`}>{t.id} · {String(t.v).replace('.', ',')} %</option>)
+          : FONT_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
       </select>
       <select className="et-select" defaultValue="" onChange={(e) => { if (e.target.value) run((c) => c.setFontFamily(e.target.value)); e.target.value = ''; }}>
         <option value="" disabled>Police</option>

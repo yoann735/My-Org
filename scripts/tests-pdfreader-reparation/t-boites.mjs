@@ -6,6 +6,7 @@
 import { banc } from './commun.mjs';
 const ipad = process.argv[2] === 'ipad';
 const b = await banc(1440, 900, { tactile: ipad });
+await b.ev(`localStorage.removeItem('medrevise.tailleTexte');1`); // taille « M » (pdfShared.js#TAILLES_TEXTE)
 await b.preparer([]);
 await b.ev(`localStorage.setItem('medrevise.fondBoite','plein');1`);
 await b.ouvrirCours({ ipad, zoom: 1.6 });
@@ -24,11 +25,12 @@ const ici = [vue.x + 200, vue.y + 160];
 await poser(ici);
 await b.attendreFocus();
 let m = await mesure();
-b.ok(m && Math.abs(m.h - (m.ligne + 6)) <= 1 && Math.abs(m.w - 40) <= 1, 'boîte vide : compacte — une ligne + 6 px de haut, 40 px de large', JSON.stringify({ w: m.w, h: m.h, ligne: m.ligne }));
+// (22/10) les boîtes neuves ont le gabarit « carte » : marges 10 × 8 px
+b.ok(m && Math.abs(m.h - (m.ligne + 16)) <= 1 && Math.abs(m.w - 40) <= 1, 'boîte vide : compacte — une ligne + 16 px de haut (marges 8 px), 40 px de large', JSON.stringify({ w: m.w, h: m.h, ligne: m.ligne }));
 await b.ecrire('Rein'); await b.dormir(300);
 m = await mesure();
-b.ok(Math.abs(m.w - Math.max(40, m.texte + 12)) <= 1.5 && Math.abs(m.h - (m.ligne + 6)) <= 1, 'un mot : largeur = mot + 12 px, hauteur = une ligne + 6 px (aucune marge superflue)', JSON.stringify({ w: m.w, h: m.h, texte: m.texte }));
-b.ok(m.coins === '8px' && m.bord === '0px' && m.contour === '1.5px' && m.ombre && m.police === '13px', 'dessin : coins 8 px, pas de bordure, contour 1,5 px à la sélection, ombre, 13 px', JSON.stringify(m));
+b.ok(Math.abs(m.w - Math.max(40, m.texte + 20)) <= 1.5 && Math.abs(m.h - (m.ligne + 16)) <= 1, 'un mot : largeur = mot + 20 px, hauteur = une ligne + 16 px (marges 10 × 8 px)', JSON.stringify({ w: m.w, h: m.h, texte: m.texte }));
+b.ok(m.coins === '10px' && m.bord === '0px' && m.contour === '1.5px' && m.ombre, 'dessin : coins 10 px, pas de bordure, contour 1,5 px à la sélection, ombre légère', JSON.stringify(m));
 const motUn = m;
 // (21/10, harmonisation) sélectionnée : le cadre unique (contour + 4 coins) et la mini barre — plus de poignée ni d'épingle
 const sel1 = await b.ev(`({coins:document.querySelectorAll('.note-box.active .sel-cadre .sel-coin').length,barre:!!document.querySelector('.mini-barre [data-option="fleche"]'),poignee:!!document.querySelector('.note-box.active .nb-epingle')})`);
@@ -38,7 +40,7 @@ await b.capture('boite-mot' + (ipad ? '-ipad' : ''), { x: Math.round(ici[0] - 30
 await b.ecrire(' droit plus bas que le gauche, capsule fibreuse, cortex et médullaire, pyramides de Malpighi et colonnes de Bertin, hile rénal'); await b.dormir(300);
 m = await mesure();
 b.ok(m.w <= P.w * 0.45 + 1 && m.h >= motUn.h + m.ligne - 0.5, 'texte long : la boîte s’élargit jusqu’à 45 % de la page puis passe à la ligne', JSON.stringify({ w: m.w, h: m.h, max: +(P.w * 0.45).toFixed(1) }));
-for (let i = 0; i < 125; i++) await b.T.Retour();
+for (let i = 0; i < 126; i++) await b.T.Retour(); // exactement le texte ajouté
 await b.dormir(300);
 m = await mesure();
 b.ok(Math.abs(m.w - motUn.w) <= 1.5 && Math.abs(m.h - motUn.h) <= 1, 'texte effacé jusqu’à « Rein » : la boîte revient exactement à la taille d’un mot', JSON.stringify({ w: m.w, h: m.h }));
@@ -76,7 +78,7 @@ await b.T.Escape(); await b.dormir(300);
 // 5) zone de texte : mêmes règles
 await b.outil('Texte'); await poser([vue.x + 200, vue.y + 420]); await b.attendreFocus();
 let z = await mesure();
-b.ok(z && Math.abs(z.w - 40) <= 1 && Math.abs(z.h - (z.ligne + 6)) <= 1, 'zone de texte vide : un mot (40 px, une ligne + 6 px)', JSON.stringify(z && { w: z.w, h: z.h, ligne: z.ligne }));
+b.ok(z && Math.abs(z.w - 40) <= 1 && Math.abs(z.h - (z.ligne + 6)) <= 1, 'zone de texte vide : un mot (40 px, une ligne + 6 px — sans fond, ses marges restent fines)', JSON.stringify(z && { w: z.w, h: z.h, ligne: z.ligne }));
 await b.ecrire('Hile'); await b.dormir(300);
 z = await mesure();
 b.ok(Math.abs(z.w - Math.max(40, z.texte + 12)) <= 1.5 && z.contour === '1.5px', 'zone de texte « Hile » : largeur = mot + 12 px, contour de sélection 1,5 px', JSON.stringify({ w: z.w, texte: z.texte, contour: z.contour }));

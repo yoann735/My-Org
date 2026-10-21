@@ -498,3 +498,50 @@
 .pdfr-pages .pdfr-inter-plus:hover { background: var(--accent); color: #fff; }
 @media (hover: none) { .pdfr-pages .pdfr-inter:hover:not(.vu) .pdfr-inter-trait, .pdfr-pages .pdfr-inter:hover:not(.vu) .pdfr-inter-plus { opacity: 0; } }
 @media print { .pdfr-pages .pdfr-inter { display: none !important; } }
+
+/* ---- FAMILLE « CARTE » (22/10, docs/compte-rendu-tableau-flashcards.md §2) ----
+   Un dessin pour les boîtes du lecteur (commentaires, post-it, zones de texte) et les cartes du tableau : coins
+   arrondis, fond plein de la couleur choisie (texte en contraste automatique, pdfShared.js#styleFondBoite), ombre très
+   légère, contour fin seulement à la sélection (pdf/Selection.jsx). Les réglages de taille diffèrent par variables
+   (--carte-r, --carte-px, --carte-py) : une famille visuelle, pas une copie. */
+.carte-mr { --carte-r: 10px; --carte-px: 10px; --carte-py: 8px; border-radius: var(--carte-r);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .10), 0 0 0 .5px rgba(0, 0, 0, .04); line-height: 1.35; }
+.pdfr-page .note-box.carte { --carte-r: 10px; --carte-px: 10px; --carte-py: 8px; }
+.pdfr-page .note-box.carte:not(.texte-libre) .nb-body { padding: var(--carte-py) var(--carte-px); line-height: 1.35; font-size: 13.5px; }
+.pdfr-page .note-box.carte:not(.texte-libre):is(.fond-transparent, .fond-teinte) .nb-body { padding: calc(var(--carte-py) - 1px) calc(var(--carte-px) - 1px); }
+.pdfr-page .note-box.carte.texte-libre .nb-body { line-height: 1.35; }
+/* toutes les boîtes (celles d'avant comprises) : le dessin moderne — sans changer leur taille ni leur position */
+.pdfr-page .note-box:not(.texte-libre) { border-radius: 10px; }
+.pdfr-page .note-box:not(.texte-libre) .nb-body { border-radius: inherit; }
+.pdfr-page .note-box.fond-plein, .pdfr-page .note-box.mot:not(.texte-libre):not(.fond-transparent):not(.fond-teinte) {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .10), 0 0 0 .5px rgba(0, 0, 0, .04); }
+.pdfr-page .note-box.mot.active, .pdfr-page .note-box.mot.selectionnee { box-shadow: 0 1px 2px rgba(0, 0, 0, .10), 0 0 0 .5px rgba(0, 0, 0, .04); }
+/* bandeau des boîtes d'avant : sa place est gardée (le texte ne bouge pas), il n'est plus dessiné */
+.pdfr-page .note-box:not(.mot):not(.compacte) .nb-bar { background: transparent; border-bottom-color: transparent; }
+/* épingle d'une boîte d'avant : discrète */
+.pdfr-page .note-box .nb-etat { opacity: .55; }
+.pdfr-page .nb-ancre:not(.sel) { opacity: .8; transform: scale(.8); }
+
+/* ---- TAILLE DU TEXTE (22/10, pdf/TailleTexte.jsx) ---- */
+.mini-barre .mb-el { display: inline-flex; }
+.tt { position: relative; display: inline-flex; }
+.tt-bouton { width: auto !important; min-width: 30px; padding: 0 6px; gap: 2px; }
+.tt-aa { font-weight: 700; font-size: 14px; line-height: 1; letter-spacing: -.02em; }
+.tt-aa small { font-size: 10px; }
+.tt-id { font-size: 10px; font-weight: 700; color: var(--text-3); min-width: 0; }
+.tt-pop { position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 60; width: 236px; padding: 10px; border-radius: 12px;
+  background: var(--card); border: 1px solid var(--border-2); box-shadow: 0 12px 32px rgba(0, 0, 0, .35); display: flex; flex-direction: column; gap: 8px; cursor: default; white-space: normal; text-align: left; }
+.mini-barre.dessous .tt-pop { top: auto; bottom: calc(100% + 8px); }
+.tt-presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.tt-preset { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; height: 52px; padding: 4px 0; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg-2, transparent); color: var(--text); cursor: pointer; font: inherit; }
+.tt-preset:hover { border-color: var(--accent); }
+.tt-preset.actif { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.tt-apercu { font-weight: 600; line-height: 1; }
+.tt-nom { font-size: 10.5px; font-weight: 700; color: var(--text-3); }
+.tt-preset.actif .tt-nom { color: var(--accent); }
+.tt-fin { display: flex; align-items: center; gap: 8px; }
+.tt-fin input[type="range"] { flex: 1; accent-color: var(--accent); }
+.tt-val { font-size: 12px; font-weight: 700; color: var(--text-2); min-width: 52px; text-align: right; }
+.tt-aide { font-size: 11px; color: var(--text-3); line-height: 1.3; }
+@media (pointer: coarse) { .tt-preset { height: 58px; } .tt-pop { width: 260px; } }

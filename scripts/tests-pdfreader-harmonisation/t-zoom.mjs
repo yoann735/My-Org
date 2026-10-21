@@ -19,6 +19,7 @@ const mesure = (z) => b.ev(`(async()=>{window.__mrZoom(${z});await new Promise(r
   const pg=await voir('.pdfr-page[data-cle="1"]');out.page=pg&&+pg.height.toFixed(1);
   const bd=await voir('.pdfr-page[data-cle="1"] .pdfr-trx-badge');const be=document.querySelector('.pdfr-page[data-cle="1"] .pdfr-trx-badge');
   out.badge=bd&&{h:+bd.height.toFixed(1),texte:be.innerText.trim()};
+  {const p1=document.querySelector('.pdfr-page[data-cle="1"]');if(p1){const r=p1.getBoundingClientRect(),q=z1.getBoundingClientRect();z1.scrollTop+=r.bottom-(q.y+q.height*0.3);await dorm(800)}} // la page ajoutée (après la 1) montée
   const rt=await voir('.pdfr-page[data-cle="z-page"] .pdfr-ajout-retirer');const re=document.querySelector('.pdfr-page[data-cle="z-page"] .pdfr-ajout-retirer');
   out.retirer=rt&&{h:+rt.height.toFixed(1),texte:re.innerText.trim()};
   return out})()`);
