@@ -465,17 +465,9 @@
 /* au doigt, le navigateur ne reprend pas le geste d'un objet pour faire défiler la page (même règle pour tous) */
 .pdfr-page .pdfr-forme.interactive, .pdfr-page .pdfr-forme .pf-hit, .pdfr-page .pdfr-traits-prise path, .pdfr-page .pdfr-question .pq-rond, .pdfr-page .nb-conn-cible, .pdfr-page .nb-ancre { touch-action: none; }
 
-/* ---- CONTRÔLES SUR / ENTRE LES PAGES À L'ÉCHELLE DU ZOOM (21/10, pdfShared.js#echelleControles) ----
-   « Insérer une page ici », badge du transcript, étiquette d'une page ajoutée : taille du zoom de référence × --ec
-   (zoom ÷ 160 %, au plus 1,25), jamais sous 18 px de haut ; en dessous (.fin / .ctl-reduit) : leur forme réduite —
-   une fine ligne « + » entre les pages, une pastille sans texte sur la page. */
-.pdfr-pages .pdfr-inter-lbl { height: max(18px, calc(22px * var(--ec, 1))); gap: calc(5px * var(--ec, 1)); padding: 0 calc(11px * var(--ec, 1)); font-size: calc(11.5px * var(--ec, 1)); }
-.pdfr-pages .pdfr-inter-lbl svg { width: calc(12px * var(--ec, 1)); height: calc(12px * var(--ec, 1)); }
-.pdfr-pages .pdfr-inter.fin .pdfr-inter-trait { border-top: 1px solid var(--border-2); opacity: .55; }
-.pdfr-pages .pdfr-inter-plus { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--card); border: 1px solid var(--border-2); color: var(--text-2); opacity: .85; transition: opacity .14s, color .14s, border-color .14s; }
-.pdfr-pages .pdfr-inter.fin:hover .pdfr-inter-trait, .pdfr-pages .pdfr-inter.fin:focus-visible .pdfr-inter-trait { border-top-color: var(--accent); opacity: 1; }
-.pdfr-pages .pdfr-inter.fin:hover .pdfr-inter-plus, .pdfr-pages .pdfr-inter.fin:focus-visible .pdfr-inter-plus { opacity: 1; color: var(--accent); border-color: var(--accent); }
+/* ---- CONTRÔLES SUR LES PAGES À L'ÉCHELLE DU ZOOM (21/10, pdfShared.js#echelleControles) ----
+   badge du transcript, étiquette d'une page ajoutée : taille du zoom de référence × --ec (zoom ÷ 160 %, au plus 1,25),
+   jamais sous 18 px de haut ; en dessous (.ctl-reduit) : une pastille sans texte. */
 .pdfr-pages .pdfr-page .pdfr-trx-badge { top: calc(8px * var(--ec, 1)); right: calc(8px * var(--ec, 1)); height: max(18px, calc(22px * var(--ec, 1))); gap: calc(4px * var(--ec, 1));
   padding: 0 max(6px, calc(8px * var(--ec, 1))); font-size: max(10px, calc(11px * var(--ec, 1))); line-height: 1; }
 .pdfr-pages .pdfr-page .pdfr-trx-badge svg { width: max(10px, calc(11px * var(--ec, 1))); height: max(10px, calc(11px * var(--ec, 1))); }
@@ -491,3 +483,18 @@
   .pdfr-pages .pdfr-page .pdfr-ajout-retirer { position: relative; }
   .pdfr-pages .pdfr-page .pdfr-trx-badge::after, .pdfr-pages .pdfr-page .pdfr-ajout-retirer::after { content: ''; position: absolute; inset: -8px; }
 }
+
+/* ---- INSÉRER UNE PAGE (22/10) : rien hors survol ; au survol / au focus / au premier toucher (.vu), une ligne
+   pointillée de la largeur exacte de la page et un « + » rond centré, à l'échelle de la page (--b : 18–40 px) ---- */
+.pdfr-pages .pdfr-inter { position: absolute; left: 50%; transform: translateX(-50%); z-index: 3; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; overflow: visible; }
+.pdfr-pages .pdfr-inter::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: max(100%, 20px); transform: translateY(-50%); } /* prise ≥ 20 px même dézoomé */
+.pdfr-pages .pdfr-inter-trait { position: absolute; left: 0; right: 0; top: 50%; border-top: 1.5px dashed var(--accent); opacity: 0; transition: opacity .14s; pointer-events: none; }
+.pdfr-pages .pdfr-inter-plus { position: relative; z-index: 1; width: var(--b); height: var(--b); padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--accent); background: var(--card); color: var(--accent); cursor: pointer; opacity: 0; transform: scale(.85);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .25); transition: opacity .14s, transform .14s, background .14s, color .14s; }
+.pdfr-pages .pdfr-inter:hover .pdfr-inter-trait, .pdfr-pages .pdfr-inter.vu .pdfr-inter-trait, .pdfr-pages .pdfr-inter:focus-within .pdfr-inter-trait { opacity: 1; }
+.pdfr-pages .pdfr-inter:hover .pdfr-inter-plus, .pdfr-pages .pdfr-inter.vu .pdfr-inter-plus, .pdfr-pages .pdfr-inter:focus-within .pdfr-inter-plus { opacity: 1; transform: none; }
+.pdfr-pages .pdfr-inter-plus:hover { background: var(--accent); color: #fff; }
+@media (hover: none) { .pdfr-pages .pdfr-inter:hover:not(.vu) .pdfr-inter-trait, .pdfr-pages .pdfr-inter:hover:not(.vu) .pdfr-inter-plus { opacity: 0; } }
+@media print { .pdfr-pages .pdfr-inter { display: none !important; } }

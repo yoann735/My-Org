@@ -329,6 +329,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      onglet « Transcript » du panneau de droite + feuille de démarrage. La session
      elle-même vit dans transcription/engine.js, hors de ce composant. */
   const [feuilleTrx, setFeuilleTrx] = useState(null); // null | { reprendre }
+  // « Insérer une page » montré au doigt (premier toucher) : l'index de la page après laquelle il insère
+  const [interVu, setInterVu] = useState(null);
+  const pointeurInter = useRef('mouse');
+  const minuterieInter = useRef(null);
+  const montrerInter = (idx) => { setInterVu(idx); clearTimeout(minuterieInter.current); minuterieInter.current = setTimeout(() => setInterVu(null), 4000); };
   const [ongletDemande, setOngletDemande] = useState(null);
   const ouvrirTranscript = () => {
     setPanelOpen(true);
@@ -3566,17 +3571,26 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                   ? { position: 'absolute', top, left: `calc(50% - ${w / 2}px)`, width: w, height: h, '--k': scale / ECHELLE_REF, '--ec': ctl.ec }
                   : { position: 'absolute', top, left: '50%', transform: 'translateX(-50%)', width: w, height: h, '--k': scale / ECHELLE_REF, '--ec': ctl.ec };
                 if (!active) return <div key={n} className="pdfr-placeholder" style={style} />;
-                /* INSÉRER UNE PAGE ICI (03/10) : TOUT l'espace entre deux pages est un
-                   bouton, sur toute la largeur de la page — on vise large, on voit où la
-                   page arrivera (trait pointillé + libellé au survol). */
+                /* INSÉRER UNE PAGE (22/10) : la zone entre cette page et la suivante (ou après la dernière), de la
+                   hauteur EXACTE de l'espace inter-pages et de la largeur EXACTE de la page, invisible par défaut.
+                   Au survol (au doigt : au premier toucher), une ligne pointillée de la largeur de la page et un
+                   bouton rond « + » centré apparaissent, à l'échelle de la page (18–40 px à l'écran). */
+                const tailleInter = Math.round(Math.min(40, Math.max(18, (24 * scale) / ECHELLE_REF)));
                 const inter = (
-                  <button key={n + ':inter'} type="button" className={'pdfr-inter' + (ctl.reduit() ? ' fin' : '')}
-                    style={{ top: top + h, height: Math.max(16, GAP * scale), width: w, '--ec': ctl.ec }}
-                    onClick={() => insererPageApres(idx)} title={`Insérer une page blanche ici (après la page ${idx + 1})`} aria-label={`Insérer une page ici (après la page ${idx + 1})`}>
+                  <div key={n + ':inter'} className={'pdfr-inter' + (interVu === idx ? ' vu' : '')} data-apres={idx + 1}
+                    style={{ top: top + h, height: GAP * scale, width: w, '--b': tailleInter + 'px' }}
+                    onPointerDown={(e) => { pointeurInter.current = e.pointerType; }}
+                    onClick={(e) => {
+                      // au doigt, le premier toucher montre la ligne et le « + » ; le « + » insère
+                      if (pointeurInter.current !== 'mouse' && interVu !== idx && !e.target.closest('.pdfr-inter-plus')) { montrerInter(idx); return; }
+                      setInterVu(null); insererPageApres(idx);
+                    }}>
                     <span className="pdfr-inter-trait" aria-hidden="true" />
-                    {ctl.reduit() ? <span className="pdfr-inter-plus" aria-hidden="true"><Icon name="plus" size={10} /></span>
-                      : <span className="pdfr-inter-lbl"><Icon name="plus" size={12} /> Insérer une page ici</span>}
-                  </button>
+                    <button type="button" className="pdfr-inter-plus" title={`Insérer une page blanche ici (après la page ${idx + 1})`} aria-label={`Insérer une page ici (après la page ${idx + 1})`}
+                      onFocus={() => setInterVu(idx)} onBlur={() => setInterVu((v) => (v === idx ? null : v))}>
+                      <Icon name="plus" size={Math.round(tailleInter * 0.55)} />
+                    </button>
+                  </div>
                 );
                 return [inter, (
                   <div key={n} data-cle={String(n)} className={'pdfr-page' + (sz.ajout && !modeDoc ? ' pdfr-page-ajoutee' : '') + (modeDoc ? ' pdfr-page-doc' : '') + (modeDoc && fondNoir ? ' fond-noir' : '') + (ctl.reduit() ? ' ctl-reduit' : '') + (ctl.reduit(28) ? ' ctl-reduit-etiquette' : '')} style={style}>
