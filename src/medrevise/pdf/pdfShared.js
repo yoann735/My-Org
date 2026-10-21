@@ -26,6 +26,17 @@ export function useDevicePixelRatio() {
   return dpr;
 }
 
+/* CONTRÔLES POSÉS SUR / ENTRE LES PAGES (21/10, docs/compte-rendu-pdfreader-harmonisation.md) — « Insérer une page
+   ici », badge du transcript, étiquette d'une page ajoutée : en UNITÉS DE PAGE (leur taille au zoom de référence 160 %
+   × zoom ÷ 160 %), au plus CONTROLE_MAX ×, jamais sous CONTROLE_MIN px de haut — en dessous, leur forme réduite (une
+   fine ligne « + », une pastille sans texte). `ec` : facteur lu par le CSS (--ec) ; `reduit(base)` : un contrôle haut de
+   `base` px au zoom de référence passerait sous le minimum. */
+export const CONTROLE_MIN = 18, CONTROLE_MAX = 1.25, CONTROLE_BASE = 22;
+export function echelleControles(scale) {
+  const k = scale / 1.6;
+  return { ec: Math.min(k, CONTROLE_MAX), reduit: (base = CONTROLE_BASE) => base * k < CONTROLE_MIN };
+}
+
 // Sens des couleurs = celui du gabarit HTML (voir SENS_PAR_COULEUR, lib/courseExport.js) :
 // jaune = notion PRIORITAIRE, rose = CLOZE, vert/bleu = surlignage simple. Mêmes ids
 // que data-hl du gabarit, pour que l'export des deux sources parle la même langue.

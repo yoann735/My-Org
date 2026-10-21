@@ -464,3 +464,30 @@
 .pdfr-page .pdfr-question .pq-rond:hover, .pdfr-page .pdfr-question.glisse .pq-rond { transform: none; }
 /* au doigt, le navigateur ne reprend pas le geste d'un objet pour faire défiler la page (même règle pour tous) */
 .pdfr-page .pdfr-forme.interactive, .pdfr-page .pdfr-forme .pf-hit, .pdfr-page .pdfr-traits-prise path, .pdfr-page .pdfr-question .pq-rond, .pdfr-page .nb-conn-cible, .pdfr-page .nb-ancre { touch-action: none; }
+
+/* ---- CONTRÔLES SUR / ENTRE LES PAGES À L'ÉCHELLE DU ZOOM (21/10, pdfShared.js#echelleControles) ----
+   « Insérer une page ici », badge du transcript, étiquette d'une page ajoutée : taille du zoom de référence × --ec
+   (zoom ÷ 160 %, au plus 1,25), jamais sous 18 px de haut ; en dessous (.fin / .ctl-reduit) : leur forme réduite —
+   une fine ligne « + » entre les pages, une pastille sans texte sur la page. */
+.pdfr-pages .pdfr-inter-lbl { height: max(18px, calc(22px * var(--ec, 1))); gap: calc(5px * var(--ec, 1)); padding: 0 calc(11px * var(--ec, 1)); font-size: calc(11.5px * var(--ec, 1)); }
+.pdfr-pages .pdfr-inter-lbl svg { width: calc(12px * var(--ec, 1)); height: calc(12px * var(--ec, 1)); }
+.pdfr-pages .pdfr-inter.fin .pdfr-inter-trait { border-top: 1px solid var(--border-2); opacity: .55; }
+.pdfr-pages .pdfr-inter-plus { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--card); border: 1px solid var(--border-2); color: var(--text-2); opacity: .85; transition: opacity .14s, color .14s, border-color .14s; }
+.pdfr-pages .pdfr-inter.fin:hover .pdfr-inter-trait, .pdfr-pages .pdfr-inter.fin:focus-visible .pdfr-inter-trait { border-top-color: var(--accent); opacity: 1; }
+.pdfr-pages .pdfr-inter.fin:hover .pdfr-inter-plus, .pdfr-pages .pdfr-inter.fin:focus-visible .pdfr-inter-plus { opacity: 1; color: var(--accent); border-color: var(--accent); }
+.pdfr-pages .pdfr-page .pdfr-trx-badge { top: calc(8px * var(--ec, 1)); right: calc(8px * var(--ec, 1)); height: max(18px, calc(22px * var(--ec, 1))); gap: calc(4px * var(--ec, 1));
+  padding: 0 max(6px, calc(8px * var(--ec, 1))); font-size: max(10px, calc(11px * var(--ec, 1))); line-height: 1; }
+.pdfr-pages .pdfr-page .pdfr-trx-badge svg { width: max(10px, calc(11px * var(--ec, 1))); height: max(10px, calc(11px * var(--ec, 1))); }
+.pdfr-pages .pdfr-page .pdfr-ajout-etiquette { top: calc(10px * var(--ec, 1)); right: calc(10px * var(--ec, 1)); gap: calc(8px * var(--ec, 1)); }
+.pdfr-pages .pdfr-page .pdfr-ajout-nom { font-size: max(10px, calc(11px * var(--ec, 1))); }
+.pdfr-pages .pdfr-page .pdfr-ajout-retirer { height: max(18px, calc(28px * var(--ec, 1))); min-height: 0; gap: calc(6px * var(--ec, 1)); padding: 0 max(6px, calc(12px * var(--ec, 1)));
+  border-radius: calc(8px * var(--ec, 1)); font-size: max(10px, calc(12.5px * var(--ec, 1))); }
+.pdfr-pages .pdfr-page .pdfr-ajout-retirer svg { width: max(11px, calc(13px * var(--ec, 1))); height: max(11px, calc(13px * var(--ec, 1))); }
+.pdfr-pages .pdfr-page.ctl-reduit .pdfr-trx-badge .pdfr-ctl-texte, .pdfr-pages .pdfr-page.ctl-reduit-etiquette .pdfr-ajout-etiquette .pdfr-ctl-texte,
+.pdfr-pages .pdfr-page.ctl-reduit-etiquette .pdfr-ajout-nom { display: none; }
+/* au doigt : la même taille à l'écran, une prise élargie (invisible) */
+@media (pointer: coarse) {
+  .pdfr-pages .pdfr-page .pdfr-ajout-retirer { position: relative; }
+  .pdfr-pages .pdfr-page .pdfr-trx-badge::after, .pdfr-pages .pdfr-page .pdfr-ajout-retirer::after { content: ''; position: absolute; inset: -8px; }
+}

@@ -70,7 +70,7 @@ import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
   COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI, opaciteSurlignage, MOT, fractionRef,
   useDevicePixelRatio, compareHighlights, computePageTextMap,
-  MODES_CRAYON, couleurHex, BOITE_DEFAUT, lireFondBoiteDefaut,
+  MODES_CRAYON, couleurHex, BOITE_DEFAUT, lireFondBoiteDefaut, echelleControles,
 } from './pdfShared.js';
 import { PdfPageContent, EditToolbar, ECHELLE_REF } from './PdfPage.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
@@ -3550,7 +3550,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                   onNotion={notionDePage} onFlashcard={flashcardDePage} onJournal={hist.noterPage}
                   onPagination={(r) => setPagination((p) => (p && p.nbPages === r.nbPages && JSON.stringify(p.blocs) === JSON.stringify(r.blocs) ? p : r))} />
               )}
-              {pageSizes.map((sz, idx) => {
+              {(() => { const ctl = echelleControles(scale); return pageSizes.map((sz, idx) => {
                 const n = sz.cle; // numéro de page du PDF, ou id d'une page ajoutée
                 const top = layout.offsets[idx];
                 const w = sz.width * scale, h = sz.height * scale;
@@ -3558,23 +3558,25 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 // --k : échelle des annotations (zoom ÷ 160 %), lue par le CSS des repères (épingles, « ? »…)
                 // document : PAS de transform sur la page (il en ferait un contexte d'empilement et le
                 // texte du flux, posé dessus, ne pourrait plus passer SOUS les annotations de la page)
+                // --ec : échelle des contrôles posés sur la page (badge du transcript, étiquette d'une page ajoutée)
                 const style = modeDoc
-                  ? { position: 'absolute', top, left: `calc(50% - ${w / 2}px)`, width: w, height: h, '--k': scale / ECHELLE_REF }
-                  : { position: 'absolute', top, left: '50%', transform: 'translateX(-50%)', width: w, height: h, '--k': scale / ECHELLE_REF };
+                  ? { position: 'absolute', top, left: `calc(50% - ${w / 2}px)`, width: w, height: h, '--k': scale / ECHELLE_REF, '--ec': ctl.ec }
+                  : { position: 'absolute', top, left: '50%', transform: 'translateX(-50%)', width: w, height: h, '--k': scale / ECHELLE_REF, '--ec': ctl.ec };
                 if (!active) return <div key={n} className="pdfr-placeholder" style={style} />;
                 /* INSÉRER UNE PAGE ICI (03/10) : TOUT l'espace entre deux pages est un
                    bouton, sur toute la largeur de la page — on vise large, on voit où la
                    page arrivera (trait pointillé + libellé au survol). */
                 const inter = (
-                  <button key={n + ':inter'} type="button" className="pdfr-inter"
-                    style={{ top: top + h, height: Math.max(16, GAP * scale), width: w }}
-                    onClick={() => insererPageApres(idx)} title={`Insérer une page blanche ici (après la page ${idx + 1})`}>
+                  <button key={n + ':inter'} type="button" className={'pdfr-inter' + (ctl.reduit() ? ' fin' : '')}
+                    style={{ top: top + h, height: Math.max(16, GAP * scale), width: w, '--ec': ctl.ec }}
+                    onClick={() => insererPageApres(idx)} title={`Insérer une page blanche ici (après la page ${idx + 1})`} aria-label={`Insérer une page ici (après la page ${idx + 1})`}>
                     <span className="pdfr-inter-trait" aria-hidden="true" />
-                    <span className="pdfr-inter-lbl"><Icon name="plus" size={12} /> Insérer une page ici</span>
+                    {ctl.reduit() ? <span className="pdfr-inter-plus" aria-hidden="true"><Icon name="plus" size={10} /></span>
+                      : <span className="pdfr-inter-lbl"><Icon name="plus" size={12} /> Insérer une page ici</span>}
                   </button>
                 );
                 return [inter, (
-                  <div key={n} data-cle={String(n)} className={'pdfr-page' + (sz.ajout && !modeDoc ? ' pdfr-page-ajoutee' : '') + (modeDoc ? ' pdfr-page-doc' : '') + (modeDoc && fondNoir ? ' fond-noir' : '')} style={style}>
+                  <div key={n} data-cle={String(n)} className={'pdfr-page' + (sz.ajout && !modeDoc ? ' pdfr-page-ajoutee' : '') + (modeDoc ? ' pdfr-page-doc' : '') + (modeDoc && fondNoir ? ' fond-noir' : '') + (ctl.reduit() ? ' ctl-reduit' : '') + (ctl.reduit(28) ? ' ctl-reduit-etiquette' : '')} style={style}>
                     {/* PAGE AJOUTÉE (03/10) : son étiquette et « Retirer » vivent DANS la page,
                         en haut à droite, au-dessus de toutes ses couches. Avant, posées dans
                         l'espace entre les pages, elles étaient recouvertes par la zone
@@ -3587,7 +3589,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       <div className={'pdfr-ajout-etiquette' + (modeDoc ? ' doc' : '')}>
                         {!modeDoc && <span className="pdfr-ajout-nom">Page ajoutée</span>}
                         <button type="button" className="pdfr-ajout-retirer" onClick={() => demanderSuppressionPage(sz.ajout)} title={`Retirer cette page (annulable par ${RACCOURCI}Z)`}>
-                          <Icon name="trash" size={13} /> Retirer la page
+                          <Icon name="trash" size={13} /> <span className="pdfr-ctl-texte">Retirer la page</span>
                         </button>
                       </div>
                     )}
@@ -3652,7 +3654,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                     />
                   </div>
                 )];
-              })}
+              }); })()}
             </div>
           )}
         </div>

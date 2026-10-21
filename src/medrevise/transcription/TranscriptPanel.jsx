@@ -79,7 +79,7 @@ export function BadgePageTranscript({ courseId, page, doc, onOuvrir }) {
     <button type="button" className={'pdfr-trx-badge' + (live ? ' direct' : '')} data-page={page}
       title={`${n} ligne${n > 1 ? 's' : ''} du transcript${live ? ' en direct' : ` du ${dateCourte(session.startedAt)}`} sur cette page — ouvrir le transcript filtré sur la page`}
       onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onOuvrir(session.id); }}>
-      <Icon name="mic" size={11} /> {n} ligne{n > 1 ? 's' : ''}
+      <Icon name="mic" size={11} /> {n}<span className="pdfr-ctl-texte">&nbsp;ligne{n > 1 ? 's' : ''}</span>
     </button>
   );
 }
