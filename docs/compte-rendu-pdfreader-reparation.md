@@ -204,3 +204,4 @@ boîtes créées désormais, pour que les annotations existantes restent affich�
 - `a5efbfe` fix(medrevise): flèches — poser une flèche ne fait plus disparaître la boîte ; un seul modèle de flèche
 - `aafd903` feat(medrevise): boîtes et zones de texte « un mot » ; un seul gestionnaire de pointeur
 - `533ffe8` feat(medrevise): dock de couleurs — 7 couleurs franches, noir et blanc, « + » et 3 favoris
+- `28f1e8b` docs(medrevise): compte rendu de la réparation du lecteur, captures, bancs de test
