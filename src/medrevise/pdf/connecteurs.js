@@ -71,8 +71,10 @@ export function connecteurStocke(boite, id) {
 /** (21/10) déplace TOUTE la flèche de (dx, dy) (fractions de page) : ses points de contrôle et son bout — sauf un bout
     rattaché à une boîte, qui reste accroché ; le départ, sur la boîte source, ne bouge jamais */
 export function patchTranslater(boite, id, dx, dy) {
-  const t = (p) => ({ ...p, x: +Math.max(0, Math.min(1, p.x + dx)).toFixed(5), y: +Math.max(0, Math.min(1, p.y + dy)).toFixed(5) });
-  const appliquer = (fl, bout) => ({ ...fl, ...(Array.isArray(fl.points) && fl.points.length ? { points: fl.points.map(t) } : {}), ...(bout && !fl.boiteCible ? t(bout) : {}) });
+  const xy = (p) => ({ x: +Math.max(0, Math.min(1, p.x + dx)).toFixed(5), y: +Math.max(0, Math.min(1, p.y + dy)).toFixed(5) });
+  const t = (p) => ({ ...p, ...xy(p) });
+  // le bout : ses seules coordonnées (recopier la flèche entière écraserait les points déjà déplacés)
+  const appliquer = (fl, bout) => ({ ...fl, ...(Array.isArray(fl.points) && fl.points.length ? { points: fl.points.map(t) } : {}), ...(bout && !fl.boiteCible ? xy(bout) : {}) });
   if (id === ID_PRINCIPALE) {
     const fp = appliquer(boite.flechePrincipale || {}, null);
     const ancre = boite.flechePrincipale && boite.flechePrincipale.boiteCible ? boite.ancre : { ...boite.ancre, ...t(boite.ancre) };

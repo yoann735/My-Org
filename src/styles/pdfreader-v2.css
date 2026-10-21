@@ -437,12 +437,11 @@
 .pdfr-page .pdfr-question .pq-rond { position: relative; width: calc(26px * var(--pq, 1)); height: calc(26px * var(--pq, 1)); font-size: calc(14px * var(--pq, 1)); }
 .pdfr-page .pdfr-question .pq-x { display: none; }
 /* points de contrôle et bouts d'une flèche : cercles de 8 px, bord d'accent, fond blanc — partout les mêmes */
-.pdfr-page .nb-ctl, .pdfr-page .fl-bout { position: absolute; z-index: 6; width: 8px; height: 8px; margin: -4px 0 0 -4px; box-sizing: content-box; border-radius: 50% !important;
+.pdfr-page .nb-ctl, .pdfr-page .fl-bout { position: absolute; z-index: 6; width: 8px; height: 8px; margin: -4px 0 0 -4px; box-sizing: border-box; border-radius: 50% !important;
   border: 1.5px solid var(--accent) !important; background: #fff; box-shadow: 0 0 0 4px transparent; cursor: move; touch-action: none; pointer-events: auto; }
-.pdfr-page .nb-ctl::after, .pdfr-page .fl-bout::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; } /* prise de 8 px de rayon autour du point */
+.pdfr-page .nb-ctl::after, .pdfr-page .fl-bout::after { content: ''; position: absolute; inset: -5.5px; border-radius: 50%; } /* prise : 8 px de rayon autour du centre (2,5 + 5,5), à la souris comme au doigt ; au-delà, c'est le trait */
 .pdfr-page .fl-bout { cursor: grab; background: var(--accent); }
 .pdfr-page .nb-ctl:hover, .pdfr-page .fl-bout:hover { transform: scale(1.25); }
-@media (pointer: coarse) { .pdfr-page .nb-ctl, .pdfr-page .fl-bout { width: 14px; height: 14px; margin: -7px 0 0 -7px; } .pdfr-page .nb-ctl::after, .pdfr-page .fl-bout::after { inset: -10px; } }
 .pdfr-page .nb-conn.sel .nb-conn-halo, .pdfr-page .pf-halo { pointer-events: none; }
 /* formes fermées : prises par toute leur surface (outil Sélection) */
 .pdfr-page .pdfr-forme.interactive.prise-pleine { pointer-events: auto; cursor: move; }

@@ -94,12 +94,20 @@ export function appuiLong(e, action) {
   window.addEventListener('pointerup', fin); window.addEventListener('pointercancel', fin); window.addEventListener('pointermove', bouge);
 }
 
-/** les points de contrôle, sur le trait (HTML, au-dessus du tracé) ; `position(p)` → style left / top */
-export function PoigneesFleche({ points, couleur, position, donnees = {}, classe = 'nb-ctl', onGlisser, onRetirer }) {
+/** rayon de prise d'un point de contrôle (px) : au-delà, l'appui est pour le trait */
+export const RAYON_POINT = 8;
+/** les points de contrôle, sur le trait (HTML, au-dessus du tracé) ; `position(p)` → style left / top ; `onTrait(e)` :
+    un appui à plus de RAYON_POINT du centre (le navigateur au doigt « aimante » le toucher vers le point) va au trait */
+export function PoigneesFleche({ points, couleur, position, donnees = {}, classe = 'nb-ctl', onGlisser, onRetirer, onTrait = null }) {
+  const appui = (e, i) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    if (onTrait && Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)) > RAYON_POINT) { onTrait(e); return; }
+    onGlisser(e, i);
+  };
   return points.map((p, i) => (
     <span key={i} className={classe} data-i={i} {...donnees} style={{ ...position(p), borderColor: couleur }}
       title="Point de la flèche — glisser pour le déplacer · double-clic : le retirer"
-      onPointerDown={(e) => onGlisser(e, i)} onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); onRetirer(i); }} />
+      onPointerDown={(e) => appui(e, i)} onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); onRetirer(i); }} />
   ));
 }
 

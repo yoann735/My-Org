@@ -18,10 +18,10 @@
    de l'encodage standard des PDF (WinAnsi : flèches unicode, lettres grecques,
    emoji…) remplacés par un équivalent lisible ou « ? ».
    ============================================================ */
-import { PDFDocument, BlendMode, StandardFonts, rgb, degrees } from 'pdf-lib';
+import { PDFDocument, BlendMode, StandardFonts, rgb, degrees, pushGraphicsState, popGraphicsState, rectangle, clip, endPath } from 'pdf-lib';
 import { getBlob } from '../lib/storage.js';
 import { cheminForme, typeForme, estFermee, estTrait } from './formes.js';
-import { styleFleche, cheminFleche, geoPointe, sommetsConnecteur, sommetsForme, pointesForme } from './flechesGeo.js';
+import { styleFleche, cheminFleche, geoPointe, sommetsConnecteur, sommetsForme, pointesForme, harmonisee } from './flechesGeo.js';
 import { cheminCatmull } from './crayon.js';
 import { connecteursDe } from './connecteurs.js';
 import { separerParType } from '../lib/annotationTypes.js';
@@ -115,6 +115,8 @@ function couperLignes(paragraphes, font, taille, largeur) {
 /** points [[x,y]…] normalisés → chemin SVG en points de page (y vers le bas). */
 const cheminPoints = (points, W, H) => points.map(([x, y], i) => `${i ? 'L' : 'M'}${(x * W).toFixed(2)} ${(y * H).toFixed(2)}`).join(' ');
 
+/** (21/10) un pixel d'écran au zoom de référence (160 %) en points PDF : les flèches harmonisées gardent leurs proportions */
+const K_PDF = 1 / 1.6;
 /** une image (blob) prête pour pdf-lib : PNG/JPEG tels quels, le reste converti en PNG. */
 async function embarquerImage(outDoc, blob) {
   const type = (blob.type || '').toLowerCase();
@@ -191,6 +193,12 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
         const phi = (-im.rotation * Math.PI) / 180, c = Math.cos(phi), s = Math.sin(phi);
         const bx = cx + (-w / 2) * c - (-h / 2) * s, by = cy + (-w / 2) * s + (-h / 2) * c;
         page.drawImage(emb, { x: bx, y: by, width: w, height: h, rotate: degrees(-im.rotation) });
+      } else if (im.rognage && im.rognage.w > 0 && im.rognage.h > 0) {
+        // ROGNÉE (21/10) : l'image entière, découpée au cadre visible — comme à l'écran
+        const rg = im.rognage, fw = (im.width * W) / rg.w, fh = (im.height * H) / rg.h;
+        page.pushOperators(pushGraphicsState(), rectangle(im.x * W, H - (im.y + im.height) * H, im.width * W, im.height * H), clip(), endPath());
+        page.drawImage(emb, { x: im.x * W - rg.x * fw, y: H - (im.y * H - rg.y * fh) - fh, width: fw, height: fh });
+        page.pushOperators(popGraphicsState());
       } else {
         page.drawImage(emb, { x: im.x * W, y: H - (im.y + im.height) * H, width: im.width * W, height: im.height * H });
       }
@@ -260,6 +268,34 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     bilan.traits += 1;
   }
 
+  /* (21/10) cadres des boîtes exportées (px de page, y vers le bas, et fractions) : les flèches rattachées à une boîte
+     finissent à son bord */
+  const geoBoite = (b, W, H) => {
+    const pad = 4;
+    const x = b.x * W;
+    // (21/10) gabarit « un mot » : la largeur suit le texte jusqu'à 45 % de la page, comme à l'écran
+    let w = Math.max(24, b.gabarit === 'mot' && !b.largeurFixe ? 0.45 * W : b.width * W);
+    const lignes = couperLignes(paragraphesDe(b.content).map(propre), font, TAILLE_BOITE, w - 2 * pad);
+    // comme à l'écran : la boîte épouse sa ligne la plus longue (+ marge), sauf largeur fixée à la main
+    if (!b.largeurFixe && lignes.some((l) => l.trim())) {
+      const plusLongue = Math.max(...lignes.map((l) => font.widthOfTextAtSize(l, TAILLE_BOITE)));
+      w = Math.max(24, Math.min(w, plusLongue + 2 * pad + 6));
+    }
+    const lh = TAILLE_BOITE * 1.35;
+    const h = Math.max(b.height * H, 2 * pad + Math.max(1, lignes.length) * lh);
+    let top = H - b.y * H;
+    if (top - h < 0) top = Math.min(H, h); // une boîte qui déborderait en bas remonte dans la page
+    return { pad, x, w, h, top, lignes, lh };
+  };
+  const cadresBoites = new Map();
+  for (const b of par.boite) {
+    const page = pageDe(b.page);
+    if (!page) continue;
+    const { W, H } = dims(page);
+    const g = geoBoite(b, W, H);
+    cadresBoites.set(b.id, { page, px: { x: g.x, y: H - g.top, w: g.w, h: g.h }, fr: { x: g.x / W, y: (H - g.top) / H, w: g.w / W, h: g.h / H } });
+  }
+
   /* 5 bis. FORMES (03/10 ; douze formes depuis le 02/10 soir) : LE MÊME tracé qu'à
         l'écran (pdf/formes.js#cheminForme), fond translucide si remplie, pointes
         pleines, étiquette de texte au centre. */
@@ -274,9 +310,12 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const origine = { x: f.x * W, y: H - f.y * H };
     if (estTrait(type)) {
       // (21/10) ligne / flèche / double flèche : le MÊME tracé qu'à l'écran (pdf/flechesGeo.js), points de contrôle compris
-      const st = styleFleche(f.fleche, { pointes: pointesForme(type) });
-      const larg = ep * st.epaisseur, cf = st.couleur ? hexVersRgb(couleurHex(st.couleur, '#e5383b')) : coul;
-      dessinerFlechePdf(page, sommetsForme(f, W, H), st, larg, geoPointe(f.fleche, larg, { contexte: 'forme' }), cf, origine);
+      // harmonisée : le trait et la pointe d'une flèche de boîte ; bouts rattachés (`attaches`) au bord de leur boîte
+      const st = styleFleche(f.fleche, { pointes: pointesForme(type) }), harmo = harmonisee(f.fleche);
+      const larg = harmo ? 1.5 * K_PDF * st.epaisseur : ep * st.epaisseur, cf = st.couleur ? hexVersRgb(couleurHex(st.couleur, '#e5383b')) : coul;
+      const cadres = {};
+      for (const id of [f.attaches && f.attaches.debut, f.attaches && f.attaches.fin]) { const cb = id && cadresBoites.get(id); if (cb && cb.page === page) cadres[id] = cb.fr; }
+      dessinerFlechePdf(page, sommetsForme(f, W, H, null, cadres), st, larg, geoPointe(f.fleche, larg, { contexte: 'forme', k: K_PDF }), cf, origine);
     } else {
       const { d, pointes } = cheminForme(type, f.width * W, f.height * H, { fx: !!f.fx, fy: !!f.fy, epaisseur: ep });
       page.drawSvgPath(d, { ...origine, borderColor: coul, borderWidth: ep, borderLineCap: 1,
@@ -336,20 +375,7 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const page = pageDe(b.page);
     if (!page) { bilan.ignores += 1; continue; }
     const { W, H } = dims(page);
-    const pad = 4;
-    const x = b.x * W;
-    // (21/10) gabarit « un mot » : la largeur suit le texte jusqu'à 45 % de la page, comme à l'écran
-    let w = Math.max(24, b.gabarit === 'mot' && !b.largeurFixe ? 0.45 * W : b.width * W);
-    const lignes = couperLignes(paragraphesDe(b.content).map(propre), font, TAILLE_BOITE, w - 2 * pad);
-    // comme à l'écran : la boîte épouse sa ligne la plus longue (+ marge), sauf largeur fixée à la main
-    if (!b.largeurFixe && lignes.some((l) => l.trim())) {
-      const plusLongue = Math.max(...lignes.map((l) => font.widthOfTextAtSize(l, TAILLE_BOITE)));
-      w = Math.max(24, Math.min(w, plusLongue + 2 * pad + 6));
-    }
-    const lh = TAILLE_BOITE * 1.35;
-    const h = Math.max(b.height * H, 2 * pad + Math.max(1, lignes.length) * lh);
-    let top = H - b.y * H;
-    if (top - h < 0) top = Math.min(H, h); // une boîte qui déborderait en bas remonte dans la page
+    const { pad, x, w, h, top, lignes, lh } = geoBoite(b, W, H);
     const fond = hexVersRgb(couleurHex(b.couleur));
     const ancre = b.ancre && Number.isFinite(b.ancre.x) && Number.isFinite(b.ancre.y) ? { x: b.ancre.x * W, y: H - b.ancre.y * H } : null;
     const coulFleche = hexVersRgb(couleurFoncee(b.couleur)); // teinte foncée, même règle qu'à l'écran
@@ -359,10 +385,15 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
        drawSvgPath ; échelle 0,75 : trait de 1,5 pt comme avant */
     const cadre = { x, y: H - top, w, h };
     for (const c of connecteursDe(b)) {
-      const pts = sommetsConnecteur(cadre, c, W, H, 0.75);
+      // (21/10) flèche harmonisée : la proportion de l'écran (1,5 px à 160 % = 1,5 / 1,6 pt), la couleur de la boîte,
+      // un bout rattaché à une boîte (`boiteCible`) finit au bord de celle-ci ; flèches d'avant : leur rendu d'alors
+      const harmo = harmonisee(c), kc = harmo ? K_PDF : 0.75;
+      const cc = c.boiteCible && cadresBoites.get(c.boiteCible);
+      const pts = sommetsConnecteur(cadre, c, W, H, kc, null, cc && cc.page === page ? cc.px : null);
       if (!pts) continue;
-      const st = styleFleche(c), larg = 1.5 * st.epaisseur;
-      dessinerFlechePdf(page, pts, st, larg, geoPointe(c, larg, { k: 0.75 }), st.couleur ? hexVersRgb(couleurHex(st.couleur, '#444444')) : coulFleche, { x: 0, y: H });
+      const st = styleFleche(c), larg = (harmo ? 1.5 * K_PDF : 1.5) * st.epaisseur;
+      const defaut = harmo ? hexVersRgb(couleurHex(b.couleur)) : coulFleche;
+      dessinerFlechePdf(page, pts, st, larg, geoPointe(c, larg, { k: kc }), st.couleur ? hexVersRgb(couleurHex(st.couleur, '#444444')) : defaut, { x: 0, y: H });
       bilan.fleches += 1;
     }
     // bouts des flèches supplémentaires : leur petit rond (plus bas), comme avant

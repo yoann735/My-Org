@@ -877,7 +877,7 @@ export function PdfPageContent({
       {formes.map((f) => (masques && masques.has(f.id) ? null : (
         <Forme key={f.id} forme={f} active={f.id === formeActiveId} interactive={outil === 'main'} fondNoir={fondNoir}
           liee={liesFormes.has(f.id)} pageWidth={pageWidth} pageHeight={pageHeight}
-          onActiver={onFormeActiver} onMaj={onFormeMaj} onModifier={onFormeModifier} onSupprimer={onFormeSupprimer} cadres={cadres}
+          onActiver={onFormeActiver} onMaj={onFormeMaj} onModifier={onFormeModifier} onSupprimer={onFormeSupprimer} cadres={cadres} k={scale / ECHELLE_REF}
           onApercu={onApercuCouleur ? (c) => onApercuCouleur(f.id, c) : null}
           onGeste={(enCours) => { gesteBoite.current = enCours; }} />
       )))}
@@ -1358,7 +1358,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     {gSel && (<>
       <PoigneesFleche points={ctlApercu && ctlApercu.id === cSel.id ? ctlApercu.points : gSel.st.points} couleur={gSel.couleur} classe="nb-ctl sel-zone" donnees={{ 'data-conn': cSel.id }}
         position={(p) => ({ left: p.x * 100 + '%', top: p.y * 100 + '%' })}
-        onGlisser={(e, i) => glisserCtl(e, cSel, i)} onRetirer={(i) => retirerPoint(cSel, i)} />
+        onGlisser={(e, i) => glisserCtl(e, cSel, i)} onRetirer={(i) => retirerPoint(cSel, i)} onTrait={(e) => appuiTrait(e, cSel)} />
       {/* les deux bouts : le départ (sur la boîte) se glisse sur une autre boîte, l'arrivée se déplace ou se rattache */}
       <span className="fl-bout sel-zone" data-bout="debut" data-conn={cSel.id} style={{ left: (gSel.pts[0].x / pageWidth) * 100 + '%', top: (gSel.pts[0].y / pageHeight) * 100 + '%' }}
         title="Départ — glisser sur une autre boîte pour que la flèche en parte"
@@ -1745,7 +1745,7 @@ function formeSousPoint(el, cx, cy) {
 /** (21/10) les 3 épaisseurs d'une forme (fraction de la hauteur de page) ; 0,0025 = celle d'avant ; style du trait */
 export const EPAISSEURS_FORME = [0.0012, 0.0025, 0.004];
 const dashForme = (f, ep) => (f.trait === 'tirets' ? `${ep * 4} ${ep * 3}` : f.trait === 'pointilles' ? `0.01 ${ep * 2.4}` : undefined);
-function Forme({ forme, active = false, interactive = false, liee = false, apercu = false, fondNoir = false, pageWidth, pageHeight, onActiver, onMaj, onModifier, onSupprimer, onGeste, onApercu = null, cadres = null }) {
+function Forme({ forme, active = false, interactive = false, liee = false, apercu = false, fondNoir = false, pageWidth, pageHeight, onActiver, onMaj, onModifier, onSupprimer, onGeste, onApercu = null, cadres = null, k = 1 }) {
   const [geste, setGeste] = useState(null);
   const [ecrit, setEcrit] = useState(null); // texte en cours d'écriture (null = pas d'édition)
   const g = geste || forme;
@@ -1764,11 +1764,14 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
   const [ctl, setCtl] = useState(null); // points pendant le glisser d'un point de contrôle
   const srcStyle = ctl ? { ...(g.fleche || {}), points: ctl } : (g.fleche || null);
   const st = trait ? styleFleche(srcStyle, { pointes: pointesForme(type) }) : null;
-  const epTrait = trait ? ep * st.epaisseur : ep;
+  // flèche harmonisée (21/10) : EXACTEMENT le trait et la pointe d'une flèche de boîte (1,5 px à 160 % × épaisseur,
+  // en unités de page) ; flèches d'avant : leur épaisseur de forme
+  const harmo = trait && harmonisee(srcStyle);
+  const epTrait = trait ? (harmo ? 1.5 * k * st.epaisseur : ep * st.epaisseur) : ep;
   const coulTrait = trait && st.couleur ? (fondNoir ? lisibleSurNoir(couleurHex(st.couleur, coul)) : couleurHex(st.couleur, coul)) : coul;
   // un bout en cours de glisser est détaché (il suit le pointeur) ; les autres bouts rattachés suivent leur boîte
   const sommets = trait ? sommetsForme(g, W, H, ctl, cadres) : null;
-  const geoTrait = trait ? geoPointe(srcStyle, epTrait, { contexte: 'forme' }) : null;
+  const geoTrait = trait ? geoPointe(srcStyle, epTrait, { contexte: 'forme', k }) : null;
   const { d, pointes } = trait ? { d: cheminFleche(sommets, st, epTrait, geoTrait).d, pointes: [] } : cheminForme(type, wpx, hpx, { fx: !!g.fx, fy: !!g.fy, epaisseur: ep });
 
   const demarrer = (e, typeGeste) => {
@@ -1871,7 +1874,7 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
          sur son tracé (son cadre n'est pas l'objet) */
       onPointerDown={interactive && !trait ? auDoigtOuClic : undefined} onDoubleClick={interactive && !trait ? doubleClic : undefined}>
       <svg className="pf-svg" width="100%" height="100%" overflow="visible" aria-hidden="true">
-        {trait ? <TraitFleche pts={sommets} st={st} largeur={epTrait * (active ? 1.25 : 1)} geo={geoTrait} couleur={coulTrait} sel={active} halo={epTrait + 7} classes={{ g: 'pf-fleche', halo: 'pf-halo', trait: 'pf-trace', tete: 'pf-tete' }} />
+        {trait ? <TraitFleche pts={sommets} st={st} largeur={epTrait * (active ? (harmo ? 1.5 : 1.25) : 1)} geo={geoTrait} couleur={coulTrait} sel={active} halo={harmo ? 9 * k : epTrait + 7} classes={{ g: 'pf-fleche', halo: 'pf-halo', trait: 'pf-trace', tete: 'pf-tete' }} />
           : <path className="pf-trace" d={d} fill={forme.remplie && estFermee(type) ? avecAlpha(coul, 0.18) : 'none'} stroke={coul} strokeWidth={ep} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} />}
         {pointes.map((p, i) => <path key={i} d={p} fill={coul} stroke={coul} strokeWidth={Math.min(ep, 2)} strokeLinejoin="round" />)}
         {!apercu && (
@@ -1879,7 +1882,7 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
             fill="transparent" stroke="transparent" strokeWidth={ep + 18} strokeLinecap="round" />
         )}
         {interactive && trait && (
-          <path className="pf-hit" d={d} fill="none" stroke="transparent" strokeWidth={Math.max(14, ep + 10)} strokeLinecap="round"
+          <path className="pf-hit" d={d} fill="none" stroke="transparent" strokeWidth={harmo ? Math.max(14, 12 * k) : Math.max(14, ep + 10)} strokeLinecap="round"
             onPointerDown={auDoigtOuClic} onDoubleClick={doubleClic}>
             <title>Flèche · clic : sélectionner · glisser : la déplacer · double-clic : ajouter un point · Suppr pour retirer</title>
           </path>
@@ -1908,7 +1911,7 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
       ))}
       {interactive && active && trait && (
         <PoigneesFleche points={st.points} couleur={coulTrait} classe="nb-ctl pf-ctl sel-zone" position={(p) => ({ left: (p.x - g.x) * W, top: (p.y - g.y) * H })}
-          onGlisser={glisserCtlForme} onRetirer={(i) => stylerForme({ points: st.points.filter((_, j) => j !== i) }, 'Point de la flèche retiré')} />
+          onGlisser={glisserCtlForme} onRetirer={(i) => stylerForme({ points: st.points.filter((_, j) => j !== i) }, 'Point de la flèche retiré')} onTrait={auDoigtOuClic} />
       )}
     </div>
     {interactive && active && !geste && !ctl && !apercu && <MiniBarre ancre={ancre} pageWidth={W} pageHeight={H} items={items} />}
