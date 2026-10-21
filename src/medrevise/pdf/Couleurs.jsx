@@ -60,7 +60,8 @@ import '../../styles/couleurs-word.css';
 export const SELECTEUR_FLOTTANT = '.sc-fenetre, .sc-pop, .scw-pipette';
 export const dansSelecteurFlottant = (el) => !!(el && el.closest && el.closest(SELECTEUR_FLOTTANT));
 
-const NB_RECENTES = 3; // dans la rangée : les 3 dernières ; le panneau en montre 8
+const NB_FAVORIS = 3; // dans le dock : les 3 dernières couleurs personnalisées ; le panneau en montre 8
+const NEUTRES = ['noir', 'blanc'];
 const NB_RECENTES_PANNEAU = 8;
 /** valeur « aucune couleur » (fond du texte) */
 export const AUCUNE = 'off';
@@ -87,13 +88,20 @@ const isoler = { onPointerDown: (e) => e.stopPropagation(), onMouseDown: (e) => 
     dessin du téléphone, sur fond noir, pour l'ENCRE (blanc à l'écran, noir sur la page).
     `onApercu(hex | null)` (facultatif) : aperçu en direct pendant le réglage d'une couleur
     personnalisée ; null = rendre la couleur d'avant. */
+/* (21/10, docs/compte-rendu-pdfreader-reparation.md) LE DOCK, partout le même et rien d'autre :
+     ● ● ● ● ● ● ●  │  ● ○  │  +  ● ● ●
+     7 couleurs franches   noir blanc   sélecteur complet, puis jusqu'à 3 favoris (mes couleurs, retirables) */
 export function SelecteurCouleurs({ couleur, onCouleur, onApercu = null, titre = 'Couleur', enTete = [], libelle = false, aucune = false }) {
   const [perso, , retirer] = useCouleursPerso();
-  const recentes = perso.slice(0, NB_RECENTES);
+  const favoris = perso.slice(0, NB_FAVORIS);
   const [panneau, setPanneau] = useState(null); // { x, y, haut } : position du panneau
   const btnRef = useRef(null);
   const fermeA = useRef(0);
-  const actuelleHorsListe = !!couleur && couleur !== 'off' && !COLORS.some((c) => c.id === couleur) && !recentes.includes(String(couleur).toLowerCase()) && !enTete.some((c) => c.id === couleur);
+  const base = COLORS.filter((c) => !NEUTRES.includes(c.id)), neutres = COLORS.filter((c) => NEUTRES.includes(c.id));
+  const pastille = (c) => (
+    <button key={c.id} type="button" title={c.label} aria-label={c.label} onClick={() => onCouleur(c.id)}
+      className={'sc-pastille' + (c.id === 'blanc' ? ' blanc' : '') + (couleur === c.id ? ' actif' : '')} style={{ background: c.hex }} />
+  );
   const ouvrir = () => {
     if (Date.now() - fermeA.current < 350) return; // le clic qui vient de valider (clic ailleurs) ne rouvre pas
     const r = btnRef.current.getBoundingClientRect();
@@ -102,32 +110,24 @@ export function SelecteurCouleurs({ couleur, onCouleur, onApercu = null, titre =
   const fermer = () => { fermeA.current = Date.now(); setPanneau(null); };
   return (
     <div className="sc-couleurs" role="group" aria-label={titre}>
-      {actuelleHorsListe && (<>
-        <button type="button" title="Couleur actuelle" className="sc-pastille actif" style={{ background: couleurHex(couleur, '#888888') }} onClick={() => onCouleur(couleur)} />
-        <span className="sc-sep" aria-hidden="true" />
-      </>)}
-      {enTete.map((c) => (
-        <button key={c.id} type="button" title={c.label} onClick={() => onCouleur(c.id)}
-          className={'sc-pastille' + (couleur === c.id ? ' actif' : '')} style={{ background: c.hex }} />
-      ))}
-      {COLORS.map((c) => (
-        <button key={c.id} type="button" title={c.label} aria-label={c.label} onClick={() => onCouleur(c.id)}
-          className={'sc-pastille' + (couleur === c.id ? ' actif' : '')} style={{ background: c.hex }} />
-      ))}
-      {recentes.length > 0 && <span className="sc-sep" aria-hidden="true" />}
-      {recentes.map((hex) => (
-        <span key={hex} className="sc-perso">
-          <button type="button" title={`Récente ${hex}`} aria-label={`Couleur récente ${hex}`} onClick={() => onCouleur(hex)}
-            className={'sc-pastille' + (String(couleur).toLowerCase() === hex ? ' actif' : '')} style={{ background: hex }} />
-          <button type="button" className="sc-retirer" title="Retirer des récentes" onClick={() => retirer(hex)}><Icon name="x" size={8} /></button>
-        </span>
-      ))}
-      <button ref={btnRef} type="button" className={'sc-roue-btn' + (panneau ? ' actif' : '') + (libelle ? ' avec-libelle' : '')}
-        title="Plus de couleurs — couleurs du thème, récentes, pipette, autres couleurs" aria-label="Plus de couleurs" aria-expanded={!!panneau} aria-haspopup="dialog"
+      {enTete.map(pastille)}
+      {base.map(pastille)}
+      <span className="sc-sep" aria-hidden="true" />
+      {neutres.map(pastille)}
+      <span className="sc-sep" aria-hidden="true" />
+      <button ref={btnRef} type="button" className={'sc-plus' + (panneau ? ' actif' : '') + (libelle ? ' avec-libelle' : '')}
+        title="Plus de couleurs — sélecteur complet (couleurs du thème, pipette, autres couleurs) ; une couleur choisie ici devient un favori" aria-label="Plus de couleurs" aria-expanded={!!panneau} aria-haspopup="dialog"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => (panneau ? fermer() : ouvrir())}>
-        <span className="sc-roue-mini" />{libelle ? <span>Plus de couleurs</span> : <Icon name="chevD" size={10} />}
+        <Icon name="plus" size={13} />{libelle ? <span>Plus de couleurs</span> : null}
       </button>
+      {favoris.map((hex) => (
+        <span key={hex} className="sc-perso">
+          <button type="button" title={`Favori ${hex}`} aria-label={`Couleur favorite ${hex}`} onClick={() => onCouleur(hex)}
+            className={'sc-pastille' + (String(couleur).toLowerCase() === hex ? ' actif' : '')} style={{ background: hex }} />
+          <button type="button" className="sc-retirer" title="Retirer des favoris" onClick={() => retirer(hex)}><Icon name="x" size={8} /></button>
+        </span>
+      ))}
       {panneau && createPortal(
         <PanneauCouleurs x={panneau.x} y={panneau.y} ancreHaut={panneau.haut} couleur={couleur} titre={titre} aucune={aucune}
           onApercu={onApercu} onFermer={fermer} onValider={(c) => { onCouleur(c); fermer(); }} />,

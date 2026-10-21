@@ -430,7 +430,7 @@ export function newNoteBox({ ficheId, page, x, y, width, height, couleur, conten
   return {
     id: genId('an'), ficheId, page, x, y, width, height,
     kind: 'libre', type: 'boite',
-    couleur: couleur || 'jaune-vif',
+    couleur: couleur || 'jaune-franc',
     // 09/10 : fond de la boîte — 'transparent' | 'teinte' | 'plein' (défaut des nouvelles depuis le 15/10,
     // puis le dernier choisi : pdfShared.js#lireFondBoiteDefaut) ;
     // absent = boîte d'avant : rendu d'origine (fond plein), rien n'est réécrit

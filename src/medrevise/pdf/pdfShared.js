@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react';
 import { pdfjsLib } from './pdfjsSetup.js';
 import { rgb } from 'pdf-lib';
-import { PALETTE_BASE, PALETTE_VIVE, alphaSurligneur } from '../lib/palette.js';
+import { PALETTE_BASE, PALETTE_VIVE, PALETTE_DOCK, NEUTRES_DOCK, alphaSurligneur } from '../lib/palette.js';
 
 /** densité réelle de l'écran, suivie en direct : elle change quand la fenêtre passe
     d'un écran Retina à un écran externe, ou au zoom navigateur (Cmd +/−). Une page
@@ -41,20 +41,23 @@ export const COLORS_GABARIT = [
    Les ids d'avant (jaune, vert, bleu, rose) restent rendus à l'identique (COLOR_HEX / RGB). */
 /* (20/10 soir) le dock et tous les sélecteurs proposent la PALETTE VIVE (lib/palette.js#PALETTE_VIVE) ; les
    teintes du 09/10 (PALETTE_BASE) restent rendues à l'identique pour ce qui est déjà posé */
-export const COLORS = PALETTE_VIVE.map((c) => ({
+/* (21/10) le DOCK : 7 couleurs franches puis noir et blanc (lib/palette.js#PALETTE_DOCK) ; la palette vive du 20/10 reste
+   rendue à l'identique pour ce qui est déjà posé */
+export const COLORS = [...PALETTE_DOCK, ...NEUTRES_DOCK].map((c) => ({
   id: c.id, hex: c.hex, short: c.label,
   label: c.sens === 'prioritaire' ? `${c.label} — prioritaire` : c.sens === 'cloze' ? `${c.label} — cloze` : c.label,
 }));
 const hexVersRgbPdf = (hex) => { const n = parseInt(hex.slice(1), 16); return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
-export const COLOR_HEX = { ...Object.fromEntries(COLORS_GABARIT.map((c) => [c.id, c.hex])), ...Object.fromEntries(COLORS.map((c) => [c.id, c.hex])) };
-export const COLOR_TAG = { jaune: 'Prioritaire', rose: 'Cloze', ambre: 'Prioritaire', poudre: 'Cloze', 'jaune-vif': 'Prioritaire', magenta: 'Cloze' }; // étiquette affichée dans le panneau
+export const COLOR_HEX = { ...Object.fromEntries(COLORS_GABARIT.map((c) => [c.id, c.hex])), ...Object.fromEntries(PALETTE_VIVE.map((c) => [c.id, c.hex])), ...Object.fromEntries(COLORS.map((c) => [c.id, c.hex])) };
+export const COLOR_TAG = { jaune: 'Prioritaire', rose: 'Cloze', ambre: 'Prioritaire', poudre: 'Cloze', 'jaune-vif': 'Prioritaire', magenta: 'Cloze', 'jaune-franc': 'Prioritaire', 'rose-franc': 'Cloze' }; // étiquette affichée dans le panneau
 export const COLOR_RGB = {
   jaune: rgb(1, 0.85, 0.3), vert: rgb(0.55, 0.89, 0.55), bleu: rgb(0.5, 0.78, 1), rose: rgb(1, 0.62, 0.82),
   ...Object.fromEntries(PALETTE_BASE.map((c) => [c.id, hexVersRgbPdf(c.hex)])),
+  ...Object.fromEntries(PALETTE_VIVE.map((c) => [c.id, hexVersRgbPdf(c.hex)])),
   ...Object.fromEntries(COLORS.map((c) => [c.id, hexVersRgbPdf(c.hex)])),
 };
 /** une des six couleurs de base (09/10) ? Elles s'affichent en variante « surligneur ». */
-export const estCouleurBase = (c) => PALETTE_BASE.some((x) => x.id === c) || PALETTE_VIVE.some((x) => x.id === c);
+export const estCouleurBase = (c) => PALETTE_BASE.some((x) => x.id === c) || PALETTE_VIVE.some((x) => x.id === c) || PALETTE_DOCK.some((x) => x.id === c);
 /** opacité d'un surlignage à l'écran : pastels d'avant pleins (multiply), couleurs de base en
     variante surligneur (ALPHA_SURLIGNEUR), couleur perso à 45 % — l'export pose 0,4 partout */
 export const opaciteSurlignage = (c) => (String(c).startsWith('#') ? 0.45 : estCouleurBase(c) ? alphaSurligneur(c) : 1);
@@ -122,7 +125,7 @@ export const PALETTE_CRAYON = [
   { id: 'rose', hex: '#FF9FD1', label: 'Rose' },
   { id: 'marron', hex: '#8B5A2B', label: 'Marron' },
 ];
-const PALETTE_HEX = { ...Object.fromEntries(PALETTE_CRAYON.map((c) => [c.id, c.hex])), ...Object.fromEntries(PALETTE_BASE.map((c) => [c.id, c.hex])), blanc: '#FFFFFF', ...Object.fromEntries(PALETTE_VIVE.map((c) => [c.id, c.hex])) }; // blanc : cartes du tableau d'avant le 02/10 soir
+const PALETTE_HEX = { ...Object.fromEntries(PALETTE_CRAYON.map((c) => [c.id, c.hex])), ...Object.fromEntries(PALETTE_BASE.map((c) => [c.id, c.hex])), blanc: '#FFFFFF', ...Object.fromEntries(PALETTE_VIVE.map((c) => [c.id, c.hex])), ...Object.fromEntries(PALETTE_DOCK.map((c) => [c.id, c.hex])) }; // blanc : cartes du tableau d'avant le 02/10 soir
 /** couleur affichable d'un id de palette (surlignage, crayon) ou d'un hex libre. */
 export function couleurHex(c, repli = '#FFD84D') {
   if (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)) return c;

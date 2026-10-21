@@ -48,13 +48,29 @@ export const PALETTE_VIVE = [
   { id: 'blanc', hex: '#FFFFFF', label: 'Blanc' },
 ];
 export const ALPHA_SURLIGNEUR_VIVE = 0.4;
-export const COULEUR_DEFAUT = 'jaune-vif';
-/** une couleur de la palette vive ? */
-export const estCouleurVive = (c) => PALETTE_VIVE.some((x) => x.id === c);
+/* DOCK DE COULEURS (21/10, docs/compte-rendu-pdfreader-reparation.md) — le même pour TOUS les outils : 7 couleurs de
+   base franches (saturation 100 %, plus vives que la palette du 20/10), puis noir et blanc, puis « + » (sélecteur
+   complet) et jusqu'à 3 favoris personnalisés. Nouveaux ids : rien n'est converti, les annotations déjà posées
+   (palette vive, teintes du 09/10, couleurs d'avant) gardent exactement leur teinte. Sens : jaune = prioritaire,
+   rose = cloze. Variante surligneur : 40 %. */
+export const PALETTE_DOCK = [
+  { id: 'rouge-franc', hex: '#FF1F2D', label: 'Rouge' },
+  { id: 'orange-franc', hex: '#FF7A00', label: 'Orange' },
+  { id: 'jaune-franc', hex: '#FFD500', label: 'Jaune', sens: 'prioritaire' },
+  { id: 'vert-franc', hex: '#00C853', label: 'Vert' },
+  { id: 'bleu-franc', hex: '#0A64FF', label: 'Bleu' },
+  { id: 'violet-franc', hex: '#8A2BFF', label: 'Violet' },
+  { id: 'rose-franc', hex: '#FF2D95', label: 'Rose', sens: 'cloze' },
+];
+/** les deux neutres du dock, après le séparateur (ids repris de la palette vive) */
+export const NEUTRES_DOCK = ['noir', 'blanc'].map((id) => PALETTE_VIVE.find((c) => c.id === id));
+export const COULEUR_DEFAUT = 'jaune-franc';
+/** une couleur de la palette vive (ou du dock) ? */
+export const estCouleurVive = (c) => PALETTE_VIVE.some((x) => x.id === c) || PALETTE_DOCK.some((x) => x.id === c);
 /** opacité de la variante surligneur : 40 % (palette vive), 42 % (les six teintes du 09/10, inchangées) */
 export const alphaSurligneur = (c) => (estCouleurVive(c) ? ALPHA_SURLIGNEUR_VIVE : ALPHA_SURLIGNEUR);
 
-const HEX = { ...COULEURS_HISTORIQUES, ...Object.fromEntries(PALETTE_BASE.map((c) => [c.id, c.hex])), ...Object.fromEntries(PALETTE_VIVE.map((c) => [c.id, c.hex])) };
+const HEX = { ...COULEURS_HISTORIQUES, ...Object.fromEntries(PALETTE_BASE.map((c) => [c.id, c.hex])), ...Object.fromEntries(PALETTE_VIVE.map((c) => [c.id, c.hex])), ...Object.fromEntries(PALETTE_DOCK.map((c) => [c.id, c.hex])) };
 /** hex d'un id de palette (nouveau ou ancien) ou d'un hex libre ; `repli` sinon */
 export function hexPalette(c, repli = '#F5A524') {
   if (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)) return c;
@@ -67,7 +83,7 @@ export function surligneurPalette(c, a = alphaSurligneur(c)) {
 }
 /** sens d'une couleur pour les exports de cours : 'jaune' (prioritaire), 'rose' (cloze) ou l'id */
 export function sensCouleur(c) {
-  const p = PALETTE_BASE.find((x) => x.id === c) || PALETTE_VIVE.find((x) => x.id === c);
+  const p = PALETTE_BASE.find((x) => x.id === c) || PALETTE_VIVE.find((x) => x.id === c) || PALETTE_DOCK.find((x) => x.id === c);
   if (p && p.sens === 'prioritaire') return 'jaune';
   if (p && p.sens === 'cloze') return 'rose';
   return c;

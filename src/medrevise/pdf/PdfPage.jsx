@@ -66,7 +66,7 @@ export function PdfPageContent({
   corps = null, // TEXTE D'UNE PAGE DE DOCUMENT (08/10, pdf/PageTexte.jsx) : juste au-dessus de la page, sous les annotations
   fondNoir = false, // fond de page noir (document) : une encre sombre est rendue claire (lisibleSurNoir)
   // SURLIGNER LE TEXTE D'UNE IMAGE COLLÉE (09/10, docs/compte-rendu-pdfreader-v2.md)
-  onSurlignerImage = () => {}, onFlashcardTexte = () => {}, couleurSurligneur = 'jaune-vif',
+  onSurlignerImage = () => {}, onFlashcardTexte = () => {}, couleurSurligneur = 'jaune-franc',
   onApercuCouleur = null, // (15/10) aperçu en direct d'une couleur personnalisée : (id, hex | null)
 }) {
   /* surlignages posés sur les MOTS d'une image collée (`imageId` + `mots`) : dessinés par
@@ -1547,7 +1547,7 @@ function QuestionMarque({ q, onModifier, onSupprimer, onGeste }) {
 const URLS_IMAGES = new Map();
 const mesureMots = typeof document !== 'undefined' ? document.createElement('canvas').getContext('2d') : null;
 function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque, onSupprimer, onGeste, onApercu = () => {}, pageWidth = 0, pageHeight = 0,
-  outil = 'main', surlignages = EMPTY_ARRAY, couleurSurligneur = 'jaune-vif', onSurligner = () => {}, onFlashcard = () => {} }) {
+  outil = 'main', surlignages = EMPTY_ARRAY, couleurSurligneur = 'jaune-franc', onSurligner = () => {}, onFlashcard = () => {} }) {
   const [url, setUrl] = useState(() => URLS_IMAGES.get(img.blobId) || null);
   const [manquante, setManquante] = useState(false);
   useEffect(() => {

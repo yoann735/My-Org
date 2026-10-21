@@ -392,3 +392,15 @@
   .note-box.mot .nb-epingle { width: 16px; height: 16px; top: -2px; right: -8px; }
 }
 @media (prefers-reduced-motion: reduce) { .note-box.mot .nb-bar, .note-box.mot .nb-corner { transition: none; } }
+
+/* ---- DOCK DE COULEURS (21/10, lib/palette.js#PALETTE_DOCK) : 7 couleurs │ noir blanc │ + puis 3 favoris ----
+   Les pastilles gardent leur animation (survol, sélection) ; le « + » a leur taille ; le blanc a un liseré pour se
+   voir sur le fond clair de la barre. */
+.sc-plus { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border-radius: 50%; flex: 0 0 auto; cursor: pointer;
+  border: 1.5px dashed var(--border-2, rgba(127, 127, 140, .5)); background: transparent; color: var(--text-2); transition: transform .15s, border-color .15s, color .15s; }
+.sc-plus:hover, .sc-plus.actif { border-color: var(--accent); border-style: solid; color: var(--accent); transform: scale(1.08); }
+.sc-plus.avec-libelle { width: auto; padding: 0 9px 0 6px; border-radius: 999px; gap: 5px; display: inline-flex; font-size: 12px; font-weight: 600; }
+.sc-pastille.blanc { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .22); }
+.sc-pastille.blanc.actif { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .22), 0 0 0 2px var(--card), 0 0 0 3.5px var(--text); }
+.pdfr-v2 .pdfr-contexte .sc-plus { width: 18px; height: 18px; }
+.pdfr-v2.lecteur-tab .pdfr-contexte .sc-plus { width: 32px; height: 32px; margin: 0 4px; } /* au doigt : une cible de 32 px */

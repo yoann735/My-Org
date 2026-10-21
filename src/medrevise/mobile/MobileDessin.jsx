@@ -274,7 +274,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
   const camRef = useRef(cam); camRef.current = cam;
   const [outil, setOutil] = useState('crayon');
   const [couleur, setCouleur] = useState('blanc'); // fond noir : l'encre par défaut est claire (sur le PDF elle sortira noire)
-  const [couleurSurl, setCouleurSurl] = useState('jaune-vif');
+  const [couleurSurl, setCouleurSurl] = useState('jaune-franc');
   const [epIdx, setEpIdx] = useState(1);
   const [typeForme, setTypeForme] = useState('rectangle');
   const [remplie, setRemplie] = useState(false);
