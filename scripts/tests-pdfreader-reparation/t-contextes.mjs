@@ -43,7 +43,7 @@ for (const ctx of CONTEXTES) for (const tab of [false, true]) {
   await b.attendreFocus();
   await b.ecrire('Mot'); await b.dormir(200);
   await b.dormir(300);
-  const pf = await b.pos(`document.querySelector('.nb-barre [aria-label="Ajouter une flèche"]')`, false);
+  const pf = await b.pos(`document.querySelector('.mini-barre [data-option="fleche"]')`, false);
   if (pf) { if (tab) await b.tape(pf); else await b.clic(pf, { att: 350 }); }
   const vise = await b.ev(`!!document.querySelector('.pdfr-ancrage')`);
   const cible = [x0 + 260, y0 + 200];

@@ -28,6 +28,7 @@ await b.clic(await b.pos(`document.querySelector('.trx-cette-page')`, false), { 
 await b.clic(await b.pos(`[...document.querySelectorAll('.trx-liste .trx-page')].find(x=>x.textContent==='p. 6')`, true), { att: 2500 });
 b.ok((await vue()) === 'Original' && (await pageLue()) === 6, 'clic « p. 6 » depuis la fiche : retour sur l’original, page 6', `${await vue()} p. ${await pageLue()}`);
 const badge = await b.ev(`(()=>{const x=document.querySelector('.pdfr-page[data-cle="6"] .pdfr-trx-badge');return x&&x.innerText.trim()})()`);
-b.ok(badge === '1 ligne', 'badge de la page 6 de l’original : « 1 ligne » (les lignes de la fiche ne comptent pas ici)', String(badge));
+// (21/10) à 100 % de zoom le badge prend sa forme réduite : le nombre seul
+b.ok(['1 ligne', '1'].includes(String(badge).replace(/\s+/g, ' ').trim()), 'badge de la page 6 de l’original : « 1 » ligne (les lignes de la fiche ne comptent pas ici)', String(badge));
 b.ok(!b.erreurs.length, 'aucune erreur', b.erreurs.join(' / '));
 process.exit(0);

@@ -24,6 +24,8 @@ const blob = await blobImage(b);
 // document : une image collée devient un bloc du texte (conversion du 01/10), pas un objet posé sur la page
 const OBJ = objets(ns, isNaN(+page) ? page : +page, contexte === 'document' ? null : blob);
 // seuls les objets du banc (ids « o- ») sont remplacés : les pages d'un document sont aussi des annotations du cours
+// PDF : le cours du banc, vidé de tout ce que les autres bancs y ont laissé (boîtes, flèches, pages insérées)
+if (contexte === 'pdf') await b.S(`for(const a of await S.getAll('annotations'))if(a.ficheId===${JSON.stringify(FICHE)})await S.remove('annotations',a.id);return 1`);
 await b.S(`for(const a of await S.getAll('annotations'))if(String(a.id).startsWith('o-'))await S.remove('annotations',a.id);for(const a of ${JSON.stringify(OBJ)})await S.put('annotations',a);return 1`);
 await b.ouvrir(CTX.titre, { recharger: true });
 await versVue();

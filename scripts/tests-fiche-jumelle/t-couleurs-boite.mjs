@@ -95,8 +95,8 @@ await b.clic([pg.x + 30, pg.y + pg.h * 0.9], { att: 500 }); // clic ailleurs sur
 b.ok(JSON.parse(await etat()).find((x) => x.id === A.id).c === hexCurseurs, 'clic ailleurs : couleur des curseurs validée', hexCurseurs);
 // 6) changer le fond en teinté → la suivante est teintée ; A et les anciennes inchangées
 await b.clic(await b.pos(selA, false), { att: 700 });
-await b.clic(await b.pos(`document.querySelector('.nb-actions .nb-fond')`, false), { att: 400 }); // plein → transparent
-await b.clic(await b.pos(`document.querySelector('.nb-actions .nb-fond')`, false), { att: 400 }); // transparent → teinté
+await b.clic(await b.pos(`document.querySelector('.mini-barre [data-option="fond"]')`, false), { att: 400 }); // plein → transparent
+await b.clic(await b.pos(`document.querySelector('.mini-barre [data-option="fond"]')`, false), { att: 400 }); // transparent → teinté
 b.ok(JSON.parse(await etat()).find((x) => x.id === A.id).f === 'teinte', 'boîte A passée en « teinté »');
 await b.T.Escape(); await b.dormir(300);
 await b.clic(await b.bouton('Boîte'));

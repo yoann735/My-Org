@@ -83,7 +83,8 @@ b.ok(marques(s3).length === 2 && croissant(s3) && s3.durationS > s2.durationS &&
 await b.dormir(800);
 const dom = await b.ev(`[...document.querySelectorAll('.trx-liste .trx-reprise-marque')].map(x=>x.innerText)`);
 b.ok(dom.length === 2 && dom.every((t) => /^— reprise à \d\d:\d\d —$/.test(t)), 'dans la liste : les marques discrètes « — reprise à HH:MM — »', JSON.stringify(dom));
-await b.capture('trx-reprise-marques', await b.ev(`(()=>{const m=document.querySelector('.trx-liste .trx-reprise-marque');const p=document.querySelector('.trx-panneau').getBoundingClientRect();const r=m.getBoundingClientRect();return {x:Math.round(p.x),y:Math.round(Math.max(p.y,r.y-160)),width:Math.round(p.width),height:320}})()`));
+await b.ev(`document.querySelectorAll('.trx-liste .trx-reprise-marque')[1].scrollIntoView({block:'center'});1`); await b.dormir(600);
+await b.capture('trx-reprise-marques', await b.ev(`(()=>{const m=document.querySelectorAll('.trx-liste .trx-reprise-marque')[1];const p=document.querySelector('.trx-panneau').getBoundingClientRect();const r=m.getBoundingClientRect();return {x:Math.round(p.x),y:Math.round(Math.max(0,r.y-150)),width:Math.round(p.width),height:300}})()`));
 // ---------- 4. Copier tout : avec les marques ; option pour les retirer ----------
 await clicTexte('.trx-groupe button', '/Copier tout/'); await b.dormir(300);
 const avecM = await b.ev(`window.__copie||''`);

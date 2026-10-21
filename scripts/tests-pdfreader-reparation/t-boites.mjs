@@ -17,7 +17,7 @@ const poser = async (p) => { const ex = ipad ? { pointerType: 'pen' } : {}; awai
 const mesure = () => b.ev(`(()=>{const n=document.querySelector('.note-box.active');if(!n)return null;const r=n.getBoundingClientRect();const pm=n.querySelector('.ProseMirror')||n.querySelector('.nb-body');
   const t=pm&&pm.querySelector('p');let lt=0;if(t&&t.firstChild){const g=document.createRange();g.selectNodeContents(t);lt=g.getBoundingClientRect().width}
   const cs=getComputedStyle(n),cb=getComputedStyle(n.querySelector('.nb-body'));
-  return {w:+r.width.toFixed(2),h:+r.height.toFixed(2),texte:+lt.toFixed(2),ligne:parseFloat(cb.lineHeight),police:cb.fontSize,coins:cs.borderTopLeftRadius,bord:cs.borderTopWidth,contour:(cs.boxShadow.match(/0px 0px 0px ([\\d.]+px)/)||[])[1]||'aucun',ombre:cs.boxShadow!=='none',fond:cs.backgroundColor,couleur:cs.color}})()`);
+  return {w:+r.width.toFixed(2),h:+r.height.toFixed(2),texte:+lt.toFixed(2),ligne:parseFloat(cb.lineHeight),police:cb.fontSize,coins:cs.borderTopLeftRadius,bord:cs.borderTopWidth,contour:(()=>{const c=n.querySelector('.sel-cadre');return c?(getComputedStyle(c).boxShadow.match(/0px 0px 0px ([\\d.]+px)/)||[])[1]||'aucun':'aucun'})(),ombre:cs.boxShadow!=='none',fond:cs.backgroundColor,couleur:cs.color}})()`);
 // 1) boîte vide = un mot
 await b.outil('Boîte');
 const ici = [vue.x + 200, vue.y + 160];
@@ -30,9 +30,9 @@ m = await mesure();
 b.ok(Math.abs(m.w - Math.max(40, m.texte + 12)) <= 1.5 && Math.abs(m.h - (m.ligne + 6)) <= 1, 'un mot : largeur = mot + 12 px, hauteur = une ligne + 6 px (aucune marge superflue)', JSON.stringify({ w: m.w, h: m.h, texte: m.texte }));
 b.ok(m.coins === '8px' && m.bord === '0px' && m.contour === '1.5px' && m.ombre && m.police === '13px', 'dessin : coins 8 px, pas de bordure, contour 1,5 px à la sélection, ombre, 13 px', JSON.stringify(m));
 const motUn = m;
-const epingle = await b.ev(`!!document.querySelector('.note-box.active .nb-epingle')`);
-const languette = await b.ev(`getComputedStyle(document.querySelector('.note-box.active .nb-bar')).opacity`);
-b.ok(epingle && languette === '1', 'sélectionnée : poignée de déplacement et épingle de flèche visibles', JSON.stringify({ epingle, languette }));
+// (21/10, harmonisation) sélectionnée : le cadre unique (contour + 4 coins) et la mini barre — plus de poignée ni d'épingle
+const sel1 = await b.ev(`({coins:document.querySelectorAll('.note-box.active .sel-cadre .sel-coin').length,barre:!!document.querySelector('.mini-barre [data-option="fleche"]'),poignee:!!document.querySelector('.note-box.active .nb-epingle')})`);
+b.ok(sel1.coins === 4 && sel1.barre && !sel1.poignee, 'sélectionnée : cadre à 4 coins et mini barre (flèche), sans poignée ni épingle', JSON.stringify(sel1));
 await b.capture('boite-mot' + (ipad ? '-ipad' : ''), { x: Math.round(ici[0] - 30), y: Math.round(ici[1] - 50), width: 200, height: 100 });
 // 2) grandit avec le texte seulement ; texte long : retour à la ligne à 45 % de la page
 await b.ecrire(' droit plus bas que le gauche, capsule fibreuse, cortex et médullaire, pyramides de Malpighi et colonnes de Bertin, hile rénal'); await b.dormir(300);
@@ -45,18 +45,16 @@ b.ok(Math.abs(m.w - motUn.w) <= 1.5 && Math.abs(m.h - motUn.h) <= 1, 'texte effa
 await b.T.Escape(); await b.outil('Sélection'); await b.dormir(300);
 // au repos (non sélectionnée, sans survol) : pas de poignée visible
 await souris('mouseMoved', [vue.x + 20, vue.y + 20]); await b.dormir(400);
-const repos = await b.ev(`(()=>{const n=[...document.querySelectorAll('.note-box.mot')][0];return {bar:getComputedStyle(n.querySelector('.nb-bar')).opacity,coin:getComputedStyle(n.querySelector('.nb-corner')).opacity,anneau:/0px 0px 0px 1.5px/.test(getComputedStyle(n).boxShadow)}})()`);
-b.ok(repos.bar === '0' && repos.coin === '0' && !repos.anneau, 'au repos : ni poignée, ni coin, ni contour', JSON.stringify(repos));
+const repos = await b.ev(`(()=>{const n=[...document.querySelectorAll('.note-box.mot')][0];return {cadre:!!n.querySelector('.sel-cadre'),bar:!!n.querySelector('.nb-bar'),anneau:/0px 0px 0px 1.5px/.test(getComputedStyle(n).boxShadow)}})()`);
+b.ok(!repos.cadre && !repos.bar && !repos.anneau, 'au repos : ni poignée, ni coin, ni contour', JSON.stringify(repos));
 await b.capture('boite-mot-repos' + (ipad ? '-ipad' : ''), { x: Math.round(ici[0] - 30), y: Math.round(ici[1] - 50), width: 200, height: 100 });
-// 3) 10 déplacements par la poignée : taille mesurée à CHAQUE image
+// 3) 10 déplacements en glissant la boîte elle-même (règle unique du 21/10) : taille mesurée à CHAQUE image
 await b.ev(`(()=>{window.__tailles=[];const f=()=>{const n=document.querySelector('.note-box.mot');if(n){const r=n.getBoundingClientRect();window.__tailles.push([+r.width.toFixed(2),+r.height.toFixed(2)])}if(window.__ech)requestAnimationFrame(f)};window.__ech=true;requestAnimationFrame(f);return 1})()`);
 let pos0 = null;
 for (let i = 0; i < 10; i++) {
   const r = await b.rect(`document.querySelector('.note-box.mot')`);
   if (!pos0) pos0 = r;
-  await souris('mouseMoved', [r.x + r.w / 2, r.y + r.h / 2]); await b.dormir(200); // survol : la languette apparaît
-  const g = await b.rect(`document.querySelector('.note-box.mot .nb-bar')`);
-  const de = [g.cx, g.cy], a = [g.cx + (i % 2 ? -40 : 45), g.cy + (i % 3 ? 25 : -20)];
+  const de = [r.cx, r.cy], a = [r.cx + (i % 2 ? -40 : 45), r.cy + (i % 3 ? 25 : -20)];
   await (ipad ? b.doigt(de, a, 8) : b.glisser(de, a, 8));
 }
 await b.ev(`window.__ech=false;1`);
@@ -65,15 +63,15 @@ const ws = tailles.map((t) => t[0]), hs = tailles.map((t) => t[1]);
 const r1 = await b.rect(`document.querySelector('.note-box.mot')`);
 b.ok(tailles.length > 40 && Math.max(...ws) - Math.min(...ws) <= 0.5 && Math.max(...hs) - Math.min(...hs) <= 0.5 && Math.hypot(r1.x - pos0.x, r1.y - pos0.y) > 5,
   '10 déplacements : taille identique à chaque image (aucune variation)', `${tailles.length} images, largeur ${Math.min(...ws)}–${Math.max(...ws)}, hauteur ${Math.min(...hs)}–${Math.max(...hs)}`);
-// 4) épingle de flèche : un appui puis un clic sur la page = une flèche
+// 4) « Ajouter une flèche » (mini barre) puis un clic sur la page = une flèche
 const nb = await b.rect(`document.querySelector('.note-box.mot')`);
-await (ipad ? b.tape([nb.x + 8, nb.cy]) : b.clic([nb.x + 8, nb.cy], { att: 400 })); // sélectionne (clic dans le texte)
-const ep = await b.rect(`document.querySelector('.note-box.mot .nb-epingle')`);
+await (ipad ? b.tape([nb.x + 8, nb.cy]) : b.clic([nb.x + 8, nb.cy], { att: 400 })); // sélectionne
+const ep = await b.rect(`document.querySelector('.mini-barre [data-option="fleche"]')`);
 if (ep) { if (ipad) await b.tape([ep.cx, ep.cy]); else await b.clic([ep.cx, ep.cy], { att: 300 }); }
 const vise = await b.ev(`!!document.querySelector('.pdfr-ancrage')`);
 await (ipad ? b.tape([nb.x + 300, nb.y + 160]) : b.clic([nb.x + 300, nb.y + 160], { att: 500 }));
 const bt = (await b.enBase()).find((a) => a.kind === 'libre');
-b.ok(ep && vise && bt && (bt.fleches || []).length === 1 && (await b.ev(`!!document.querySelector('.note-box.mot.active')`)), 'épingle sur le bord : une flèche posée au clic suivant, la boîte reste sélectionnée', JSON.stringify({ vise, fleches: bt && (bt.fleches || []).length }));
+b.ok(ep && vise && bt && (bt.fleches || []).length === 1 && (await b.ev(`!!document.querySelector('.note-box.mot.active')`)), '« Ajouter une flèche » : une flèche posée au clic suivant, la boîte reste sélectionnée', JSON.stringify({ vise, fleches: bt && (bt.fleches || []).length }));
 await b.T.Escape(); await b.dormir(300);
 // 5) zone de texte : mêmes règles
 await b.outil('Texte'); await poser([vue.x + 200, vue.y + 420]); await b.attendreFocus();
@@ -86,8 +84,8 @@ await b.T.Escape(); await b.dormir(300);
 // 6) redimension à la main : taille gardée, jamais sous un mot
 await b.outil('Sélection');
 const bx = await b.rect(`document.querySelector('.note-box.mot:not(.texte-libre)')`);
-await souris('mouseMoved', [bx.cx, bx.cy]); await b.dormir(250);
-const coin = await b.rect(`document.querySelector('.note-box.mot:not(.texte-libre) .nb-corner')`);
+await (ipad ? b.tape([bx.cx, bx.cy]) : b.clic([bx.cx, bx.cy], { att: 350 })); // sélection : les 4 coins
+const coin = await b.rect(`document.querySelector('.note-box.mot:not(.texte-libre) .sel-coin.sel-se')`);
 await (ipad ? b.doigt([coin.cx, coin.cy], [coin.cx - 200, coin.cy - 100], 8) : b.glisser([coin.cx, coin.cy], [coin.cx - 200, coin.cy - 100], 8));
 const petit = await b.rect(`document.querySelector('.note-box.mot:not(.texte-libre)')`);
 b.ok(petit.w >= 39.5 && petit.h >= 23.5, 'redimension vers le bas : jamais sous la taille d’un mot', JSON.stringify({ w: petit.w, h: petit.h }));

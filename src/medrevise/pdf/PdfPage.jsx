@@ -1323,7 +1323,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     ] : [
       { cle: 'couleur', couleur: boite.couleur, titre: 'Couleur de la boîte', onApercu, onCouleur: (c) => onModifier(boite, { couleur: c }, 'Couleur de la boîte') },
       { cle: 'fond', icone: <span className={'nb-fond-ic ' + FONDS_BOITE[iFond].id} style={{ '--c': couleurBoite }} aria-hidden="true" />,
-        titre: `Fond : ${FONDS_BOITE[iFond].label.toLowerCase()} — cliquer pour « ${fondSuivant.label.toLowerCase()} » (plein → teinté → transparent)`,
+        titre: `Fond : ${FONDS_BOITE[iFond].label.toLowerCase()} — cliquer pour « ${fondSuivant.label.toLowerCase()} » (plein → transparent → teinté)`,
         onClick: () => { ecrireFondBoiteDefaut(fondSuivant.id); onModifier(boite, { fond: fondSuivant.id }, 'Fond de la boîte'); } },
       { cle: '|' },
       { cle: 'fleche', icone: <Icon name="arrowR" size={15} />, titre: 'Ajouter une flèche : clique ensuite l’endroit, le surlignage, la forme ou la boîte visés', onClick: () => onDemanderAncrage(boite.id, { ajout: true }) },

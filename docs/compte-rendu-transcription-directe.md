@@ -562,3 +562,64 @@ Le bouton « Transcrire » a quitté la barre du PDF (il vit en tête du mode Tr
 panneau), la carte crédits est devenue une ligne dépliable en bas de ce mode, et la feuille
 Transcrire a une source **Automatique**, une sonde de 3 s, un guide et la bascule de micro à
 chaud. Détails, tests et captures : `docs/compte-rendu-panneau-lateral.md`.
+
+---
+
+## Reprise de session (21/10/2026)
+
+Une session **terminée** peut repartir : la suite s'ajoute à la même session. Chantier « harmonisation du lecteur »
+(`docs/compte-rendu-pdfreader-harmonisation.md`), partie B.
+
+### Ce que voit l'étudiant
+
+- **« Reprendre l'enregistrement »** sur chaque session terminée : icône micro dans la liste « Sessions de ce cours »,
+  bouton dans la barre de la session affichée. Absent quand une transcription tourne déjà.
+- La **feuille Transcrire** s'ouvre en reprise (« Reprendre la transcription ») : mots-clés de la session cochés, source de
+  la session présélectionnée (l'onglet, ou le micro, avec l'entrée choisie sur cet appareil). Le bouton dit « Reprendre ».
+- Une **nouvelle connexion Deepgram** s'ouvre. Les segments s'ajoutent à la suite (même `id`), l'horloge repart de la
+  durée déjà enregistrée, et une marque discrète apparaît dans la liste : **« — reprise à 14:32 — »** (heure réelle de la
+  reprise, posée à l'instant de cours où la partie précédente s'arrêtait).
+- Notes, numéros de page, intervenants (la diarisation de la session est gardée, l'interrupteur est verrouillé) et
+  crédits (seules les secondes de cette reprise sont décomptées) se comportent comme dans une session neuve.
+- **Reprises illimitées** ; les **anciennes sessions** (sans page, d'avant le 20/10) se reprennent aussi.
+- **« Copier tout »**, `.txt` et `.md` incluent les marques. Le menu ▾ propose aussi
+  « Copier tout, sans les marques de reprise » quand la session en a.
+- **Autre appareil** : avant de reprendre, le panneau relit la session (synchro ciblée, puis base locale). Si elle est
+  « en cours » et plus récente que la version affichée, il affiche **« Déjà en cours sur un autre appareil »** et ouvre la
+  session en lecture ; rien ne démarre.
+
+### Comment c'est fait (un seul chemin)
+
+- `engine.js#demarrer({ reprendre })` existait pour la reprise d'une session **interrompue** (onglet rechargé,
+  plantage). Il sert maintenant aussi aux sessions terminées : `{ ...session, endedAt: null }`, horloge
+  `base = max(durationS, t1 des segments, t des notes)`.
+- La marque (`sessions.js#marqueReprise`) est un segment `status: 'gap'` avec `reprise: true`, `text: 'reprise à HH:MM'`
+  et `repriseLe` (ISO). Elle remplace aussi l'ancien repère « Reprise de la session » des reprises après plantage : une
+  seule marque. Les sessions déjà enregistrées gardent leur ancien repère, inchangé.
+- Pour qu'un autre appareil voie la session « en cours », celle-ci est écrite `endedAt: null` et envoyée **une fois** au
+  cloud, juste après l'ouverture du micro. Ensuite, comme toute session en direct, rien ne part avant l'arrêt. Un échec de
+  jeton ou de micro ne la touche donc pas. C'est une écriture LWW normale (`updated_at`), pas une suppression.
+- Export (`exporter.js`) : option `reprises` (vraie par défaut) de `texteSession` / `markdownSession`.
+
+### Tests
+
+`scripts/tests-pdfreader-harmonisation/t-reprise.mjs` (faux Deepgram, micro simulé, base locale, cours « Rein v3 ») :
+**17/17**. Le test couvre :
+- démarrer, une note, arrêter ;
+- reprendre depuis la liste (feuille en reprise avec les 50 mots-clés de la session, même id, horloge à 11 s, même source) ;
+- segments ajoutés à la suite (anciens intacts), marque à l'instant de fin de la 1re partie, horodatages croissants,
+  pages des nouvelles lignes, note après la reprise ;
+- 2ᵉ reprise depuis la session affichée (2 marques dans la liste) ;
+- « Copier tout » avec les 2 marques, puis sans elles (2 lignes de moins, rien d'autre) ;
+- reprise d'une session d'avant (marque à 1:00, lignes intactes) ;
+- refus « Déjà en cours sur un autre appareil » (session rendue « en cours », plus récente, dans la base locale, comme
+  si la synchro l'avait apportée).
+
+Non-régression `tests-pdfreader-v3/t-transcript.mjs` : tout passe. Ce test a dû être adapté : à 100 % de zoom, le badge
+de page n'affiche plus que le nombre (règle des contrôles à l'échelle du zoom).
+
+| Marques de reprise | Refus (autre appareil) |
+|---|---|
+| ![](img/transcription-directe/26-reprise-marques.png) | ![](img/transcription-directe/27-reprise-refus.png) |
+
+Aucune variable d'environnement ni migration. Commit : `94cbff6`.

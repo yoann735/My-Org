@@ -3076,6 +3076,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const dehors = (e) => {
       const t = e.target;
       if (t && t.closest && (t.closest(ZONE_SELECTION) || t.closest('.sel-objet') || t.closest('.pdfr-ancrage'))) return;
+      // un sélecteur de couleur ouvert : ce clic le valide et le ferme (Couleurs.jsx) — désélectionner maintenant le
+      // démonterait avant qu'il ait validé
+      if (document.querySelector('.sc-pop, .sc-fenetre, .scw-pipette')) return;
       setSel(null);
     };
     const clavier = (e) => {

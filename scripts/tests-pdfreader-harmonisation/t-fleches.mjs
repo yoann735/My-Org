@@ -87,6 +87,7 @@ const bouge0 = dist(enPx(fl.points[0]), enPx(avant2[0])), bouge1 = dist(enPx(fl.
 b.ok(Math.abs(bouge0 - Math.hypot(20, 40)) <= 1.5 && bouge1 < 0.5, 'glisser un point : ce point seul', JSON.stringify({ bouge0, bouge1 }));
 d0 = await surTrait(TRAIT, `.nb-ctl[data-conn="${idf}"]`);
 b.ok(d0.every((d) => d <= 1.5), 'la courbe passe toujours par ses points', JSON.stringify(d0));
+await b.capture('fleche-courbe-deplacee' + (ipad ? '-ipad' : ''), { x: Math.round(P.x), y: Math.round(Math.max(P.y, 0)), width: Math.round(P.w * 0.55), height: Math.round(P.h * 0.45) });
 // ---------- D. double-clic sur un point : retiré ----------
 await doubleSur(await b.pos(`document.querySelector('.nb-ctl[data-conn="${idf}"][data-i="1"]')`, false));
 bt = (await boites())[0]; fl = bt.fleches.find((x) => x.id === idf);
