@@ -78,13 +78,15 @@ const lireLS = (k) => { try { return localStorage.getItem(k); } catch (e) { retu
 const ecrireLS = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* stockage bloqué */ } };
 const TYPES_IDS = ['qcm', 'flashcard', 'exercice', 'feynman'];
 
-export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null, cleMemo = null, contenuReplie = null, flashcardDemandee = null }) {
+export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null, cleMemo = null, contenuReplie = null, flashcardDemandee = null, flashcardVisee = null }) {
   const avecItems = !!ficheId;
   const extras = (ongletsEnPlus || []).filter(Boolean);
   const extraNotions = extras.find((o) => o.id === 'notions') || null;
   const extraTranscript = extras.find((o) => o.id === 'transcript') || null;
   // 07/10 : « Notes » — le document de notes du cours (documents/NotesEditor.jsx)
   const extraNotes = extras.find((o) => o.id === 'notes') || null;
+  // (22/10) « Tableau » : le tableau de la fiche (tableau/PanneauTableau.jsx), après Notions
+  const extraTableau = extras.find((o) => o.id === 'tableau') || null;
   const ficheItems = useMemo(() => (avecItems ? (ctx.db.questions || []).filter((q) => q.ficheId === ficheId) : []), [ctx.db, ficheId, avecItems]);
   const countByType = useMemo(() => {
     const c = { qcm: 0, flashcard: 0, exercice: 0, feynman: 0 };
@@ -99,6 +101,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     extraTranscript && { id: 'transcript', label: 'Transcript', badge: extraTranscript.badge },
     extraNotes && { id: 'notes', label: 'Notes' },
     extraNotions && { id: 'notions', label: 'Notions', n: extraNotions.n },
+    extraTableau && { id: 'tableau', label: 'Tableau' },
   ].filter(Boolean);
   const cle = cleMemo || ficheId || 'doc';
   const versMode = (id) => (TYPES_IDS.includes(id) ? 'exercices' : id);
@@ -238,6 +241,22 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     setRectoInitial({ texte: flashcardDemandee.texte, n: flashcardDemandee.n });
     allerMode('exercices');
   }, [nFlash]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* (22/10) une carte du TABLEAU rouvre sa flashcard : Exercices › Flashcards, la carte montrée et mise en évidence */
+  const nVisee = flashcardVisee ? flashcardVisee.n : 0;
+  useEffect(() => {
+    if (!flashcardVisee || !flashcardVisee.id || !avecItems) return undefined;
+    setActiveType('flashcard'); setEditingId(null); setRecherche(''); setFiltreSorte('toutes');
+    allerMode('exercices');
+    const t = setTimeout(() => {
+      const el = panneauRef.current && panneauRef.current.querySelector(`[data-item="${flashcardVisee.id}"]`);
+      if (!el) return;
+      const z = el.closest('.pis-scroll');
+      if (z) { const r = el.getBoundingClientRect(), q = z.getBoundingClientRect(); z.scrollTop += r.top - q.top - 40; }
+      el.classList.add('fcl-visee'); setTimeout(() => el.classList.remove('fcl-visee'), 2400);
+    }, 450);
+    return () => clearTimeout(t);
+  }, [nVisee]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- édition inline ----
   const [editingId, setEditingId] = useState(null);
@@ -457,7 +476,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     ? <div className="pis-extra-plein">{extraTranscript.contenu}</div>
     : <div className="pis-scroll scroll pis-extra">{extraTranscript.contenu}</div>) : null), [extraTranscript && extraTranscript.contenu, extraTranscript && extraTranscript.plein]); // eslint-disable-line react-hooks/exhaustive-deps
   const contenuNotes = useMemo(() => (extraNotes ? <div className="pis-extra-plein">{extraNotes.contenu}</div> : null), [extraNotes && extraNotes.contenu]); // eslint-disable-line react-hooks/exhaustive-deps
-  const contenuMode = (m) => (m.id === 'exercices' ? exercices : m.id === 'notions' ? contenuNotions : m.id === 'notes' ? contenuNotes : contenuTranscript);
+  const contenuTableau = useMemo(() => (extraTableau ? <div className="pis-scroll scroll pis-extra">{extraTableau.contenu}</div> : null), [extraTableau && extraTableau.contenu]); // eslint-disable-line react-hooks/exhaustive-deps
+  const contenuMode = (m) => (m.id === 'exercices' ? exercices : m.id === 'notions' ? contenuNotions : m.id === 'notes' ? contenuNotes : m.id === 'tableau' ? contenuTableau : contenuTranscript);
 
   return (
     <ModalesHorsPanneauCtx.Provider value>

@@ -122,7 +122,9 @@ import { PanneauExportIA } from './ExportIA.jsx';
 import { preparerSourceIA, pngsIA } from './exportIA.js';
 import { creerZip } from '../lib/zipSimple.js';
 import { refsCourtes, construireExportIA, estBoiteTexte, aDeuxVersions, versionAffichee, boitesOrdonnees, construireExport, lireImport, planImport, resumeImport, basculerVersion, avecContenuEdite } from '../lib/textesAnnotations.js';
-import { Tableau } from '../tableau/Tableau.jsx';
+import { Board } from '../tableau/Board.jsx';
+import { PanneauTableau } from '../tableau/PanneauTableau.jsx';
+import { ajouterCarteAuBoard } from '../lib/board.js';
 import { useFicheJumelle, lireVue, ecrireVue, pageCorrespondante, importerJumelle, remplacerJumelle, blocsDuFlux, pagesDocument, pageMapDocument } from '../lib/ficheJumelle.js';
 import { EditeurCorrespondance, ListeNonReplacees } from './Correspondance.jsx';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
@@ -366,6 +368,20 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (d !== 'pdf') setPanelOpen(false); // la place va au tableau ; le panneau se rouvre d'un clic
   };
   const tableauRef = useRef(null);
+  /* TABLEAU (22/10, tableau/Board.jsx) : ses flashcards (import, glisser-déposer), « ouvrir la flashcard » d'une carte,
+     « Depuis les flashcards » demandé du panneau (le tableau s'ouvre d'abord s'il est masqué) */
+  const flashcardsFiche = useMemo(() => (ctx.db.questions || []).filter((q) => q.ficheId === ficheId && q.type === 'flashcard'), [ctx.db, ficheId]);
+  const [flashcardVisee, setFlashcardVisee] = useState(null); // { id, n }
+  const ouvrirFlashcardDuTableau = (id) => { setPanelOpen(true); setFlashcardVisee((v) => ({ id, n: (v ? v.n : 0) + 1 })); };
+  const importDemande = useRef(false);
+  const ecranLarge = () => typeof window !== 'undefined' && window.innerWidth >= 1100;
+  const importerAuTableau = () => {
+    if (tableauRef.current) { tableauRef.current.ouvrirImport(); return; }
+    importDemande.current = true;
+    setDisposition(ecranLarge() ? 'deux' : 'tableau');
+  };
+  useEffect(() => { if (importDemande.current && tableauRef.current) { importDemande.current = false; tableauRef.current.ouvrirImport(); } });
+  const [carteAjoutee, setCarteAjoutee] = useState(0);
   const [copiedCount, setCopiedCount] = useState(0); // >0 → confirmation « N notions copiées »
   const [exporting, setExporting] = useState(false);
 
@@ -3689,7 +3705,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
               onPointerDown={debutPoignee} onDoubleClick={() => majRatio(0.5)} />
           )}
           <div className="pdfr-tableau">
-            <Tableau ref={tableauRef} ficheId={ficheId} />
+            <Board ref={tableauRef} ficheId={ficheId} flashcards={flashcardsFiche} onOuvrirFlashcard={ouvrirFlashcardDuTableau} />
           </div>
         </>)}
 
@@ -3713,6 +3729,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <CourseItemsSidebar ctx={ctx} ficheId={ficheReelle ? ficheReelle.id : null}
           ongletsEnPlus={[
             { id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length + notionsAutreDoc.length, contenu: notionsPdf },
+            tableauDispo && {
+              // (22/10) le tableau de la fiche : plein écran ou côte à côte, « Depuis les flashcards »
+              id: 'tableau', label: 'Tableau', icon: 'grid',
+              contenu: <PanneauTableau ficheId={ficheId} disposition={disposition} onDisposition={setDisposition} onImporter={importerAuTableau} large={ecranLarge()} carteAjoutee={carteAjoutee} />,
+            },
             ficheReelle && {
               // 07/10 : notes du cours (vide par défaut) — aussi dans un document (08/10) : même panneau qu'un PDF
               id: 'notes', label: 'Notes', icon: 'edit', plein: true,
@@ -3725,7 +3746,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 pageLecteur={pret ? { page: pageCourante, doc: docAffiche } : null} onAllerPage={allerAuSegment} demandePage={demandePage} />,
             },
           ]}
-          ongletDemande={ongletDemande} cleMemo={ficheId} flashcardDemandee={flashcardNotes}
+          ongletDemande={ongletDemande} cleMemo={ficheId} flashcardDemandee={flashcardNotes} flashcardVisee={flashcardVisee}
           ongletInitial={ficheReelle ? null : 'notions'}
           replie={!panelOpen} onReplier={(v) => replierPanneau(v)}
           contenuReplie={modeTab ? (
@@ -3741,18 +3762,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           (qui ne surligne JAMAIS rien) + du texte sélectionné → une bulle propose d'en
           faire une carte. Le texte est COPIÉ, sans lien retour vers le PDF. Le
           mousedown est neutralisé : cliquer la bulle ne perd pas la sélection. */}
-      {tableauDispo && disposition === 'deux' && outil === 'main' && pending && pending.texte && createPortal(
+      {tableauDispo && outil === 'main' && pending && pending.texte && createPortal(
         <button type="button" className="pdfr-vers-carte"
           style={{ left: Math.min(pending.x + 6, window.innerWidth - 230), top: Math.min(pending.y + 8, window.innerHeight - 44) }}
           onMouseDown={(e) => e.preventDefault()}
-          onClick={() => {
+          onClick={async () => {
             const t = pending.texte;
-            if (tableauRef.current) tableauRef.current.creerCarteTexte(t);
+            // (22/10) tableau affiché : la carte y apparaît ; masqué : elle est ajoutée à son enregistrement
+            if (tableauRef.current) tableauRef.current.creerCarteTexte(t); else { await ajouterCarteAuBoard(ficheId, { corps: t }); setCarteAjoutee((n) => n + 1); }
             setPending(null);
             if (window.getSelection) window.getSelection().removeAllRanges();
           }}
-          title="Copier ce passage sur une nouvelle carte du tableau">
-          <Icon name="plus" size={13} /> Carte sur le tableau
+          title="Copier ce passage sur une nouvelle carte du tableau de la fiche">
+          <Icon name="plus" size={13} /> Ajouter au tableau
         </button>,
         document.body,
       )}

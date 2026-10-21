@@ -229,3 +229,4 @@ textarea.fcf-champ { min-height: 0; }
 @media (max-width: 820px) { .fc-carte .card-body { padding: 12px; } .fc-type { font-size: 12px; } .fcf-pied .btn { min-height: 36px; } }
 .pis-item.fcl-carte img, .pis-item.fcl-carte .fc-img img { max-height: 96px; width: auto; max-width: 100%; object-fit: contain; }
 .alib-selectionner.actif { color: var(--accent); border-color: var(--accent); }
+.pis-item.fcl-visee { box-shadow: 0 0 0 2px var(--accent); transition: box-shadow .3s; } /* (22/10) rouverte depuis une carte du tableau */

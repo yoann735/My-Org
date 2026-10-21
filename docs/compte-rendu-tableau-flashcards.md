@@ -12,7 +12,7 @@ aucune écriture Supabase.
 | 2. Boîtes modernisées | livré, testé (ordinateur, iPad) |
 | 4. Texte uniforme (% de la largeur de page) | livré, testé (3 formats, ordinateur, iPad) |
 | 6. Onglet Flashcards | livré, testé (ordinateur, iPad, mobile) |
-| 1. Tableau par fiche | à faire |
+| 1. Tableau par fiche | livré, testé (ordinateur, iPad, mobile) |
 
 ## 3. « Insérer une page » : réglé pour de bon
 
@@ -254,3 +254,108 @@ fixture absente de ce banc (`fichier.json`), pas de l'interface. `tests-zones/t-
 | ![](img/tableau-flashcards/fc-apres-plus-options.png) | ![](img/tableau-flashcards/fc-apres-modification.png) | ![](img/tableau-flashcards/fc-apres-type-muscle.png) |
 | **Mobile (768 px)** | | |
 | ![](img/tableau-flashcards/fc-apres-mobile.png) | | |
+
+## 1. Tableau (Miro) par fiche
+
+**Où** :
+- un onglet **« Tableau »** dans le panneau de la fiche, après Notions (`tableau/PanneauTableau.jsx`) : résumé (cartes,
+  flèches, images), « Ouvrir en plein écran », « Côte à côte » (ordinateur de 1100 px et plus), « Revenir au cours »,
+  « Depuis les flashcards » ;
+- le tableau lui-même (`tableau/Board.jsx`) prend la place du PDF ou se met à côté, dans les dispositions du lecteur qui
+  existaient pour le tableau du 04/10. **Ce tableau est remplacé** : `tableau/Tableau.jsx`, `tableau/geometrie.js` et
+  `lib/tableau.js` sont supprimés, ainsi que leur CSS.
+
+**Un seul moteur d'annotation**, partagé avec le lecteur, sans copie :
+- `pdf/Selection.jsx` : cadre de sélection, mini barre, redimension par les coins ;
+- `pdf/flechesGeo.js` + `pdf/Fleche.jsx` : modèle `geo 3`, tracé, pointes, styles, points de contrôle, mini barre des
+  flèches, rattachement (`boiteSous` vise désormais tout `[data-boite]`, boîtes du lecteur et cartes du tableau) ;
+- `pdf/pointeur.js` : gestes ;
+- la famille « carte » (`.carte-mr`) pour les cartes.
+
+Le monde du tableau est une « page » (`.pdfr-page`) : ses styles de sélection, de points et de bouts sont ceux du
+lecteur. Seule la conversion écran ↔ monde (la caméra) est propre au tableau. Les mini barres vivent dans un calque à
+l'échelle de l'écran.
+
+**Canevas** :
+- fond sombre ou blanc (bascule mémorisée avec le tableau), grille pointillée discrète ;
+- déplacement par glisser du fond (au doigt) ou par la molette / le trackpad ; à la souris, glisser le fond trace un
+  cadre de sélection (Espace ou la molette centrale déplacent la vue) ;
+- zoom à la molette avec ⌘ / Ctrl, au pincement (trackpad, deux doigts) ou par les boutons, borné de 15 % à 300 % ;
+- minimap facultative en bas à droite (cliquer pour y aller), « Recadrer sur tout ».
+
+**Objets** :
+- **cartes** : titre + texte, couleur du dock (sélecteur commun), coins arrondis, redimensionnables, double-clic ou
+  Entrée pour écrire ;
+- **flèches** du lecteur : droite / courbe, points de contrôle (double-clic sur le trait = un point, double-clic sur un
+  point = le retirer), pointes, styles, épaisseurs. Elles sont accrochées aux cartes et les suivent ; glisser le trait
+  déplace toute la flèche ; un bout relâché sur une carte s'y accroche ; le départ passe sur une autre carte ;
+- **images** collées (⌘V) ou glissées ;
+- **groupes** : sélection multiple au cadre (ou Maj-clic), puis « Grouper » (⌘G) dans la mini barre ; un groupe se
+  sélectionne et se déplace d'un bloc ;
+- **aimantation légère** : bords et centres alignés sur les autres objets à 6 px, guides affichés, Alt pour s'en passer.
+
+**Mêmes règles que le lecteur** : un clic sélectionne (cadre et 4 coins) ; glisser n'importe où déplace ; un clic sur
+une carte déjà sélectionnée ou un double-clic l'édite ; la mini barre est la même (carte : couleur │ flèche · écrire
+· flashcard │ supprimer ; flèche : celle du lecteur).
+
+**Depuis les flashcards** :
+- « + Depuis les flashcards » ouvre la liste des cartes de la fiche, avec cases à cocher et recherche. Chaque carte
+  choisie devient une carte du tableau qui **garde son contenu** : recto en titre, verso en texte, image, tableau Muscle
+  rendu en tableau, tableau rendu en tableau, molécule rendue en image ;
+- une **icône** sur la carte rouvre la flashcard d'origine (Exercices › Flashcards, carte mise en évidence) ;
+- la carte du tableau est une **copie indépendante** : la modifier ne touche pas la flashcard ;
+- même résultat en **glissant une flashcard** du panneau sur le tableau (côte à côte), à l'endroit du dépôt ;
+- la vue se recadre sur les cartes importées si elles tombent hors de l'écran.
+
+**Depuis le cours** : une sélection de texte du PDF (outil Sélection) propose **« Ajouter au tableau »**. Si le
+tableau est affiché, la carte y apparaît ; sinon, elle est ajoutée à son enregistrement.
+
+**Stockage** (`lib/board.js`) :
+- un enregistrement `board:<ficheId>` par fiche, `{ objects[], edges[], viewport, theme }`, store `board` ajouté à la
+  synchro comme type additionnel ;
+- sauvegarde continue (chaque geste) ; annuler / rétablir (⌘Z, ⇧⌘Z, ⌘Y, boutons) par la même pile d'annulation que le
+  lecteur (`lib/annotHistory.js`) ;
+- une version plus récente arrivée par la synchro remplace l'affichage (pas pendant un geste) ;
+- la purge d'une fiche emporte son tableau ;
+- l'**ancien tableau** (store `tableau`) n'est jamais réécrit : à la première ouverture, ses cartes et ses liens sont
+  repris dans un board neuf (lecture seule de l'ancien) ;
+- **export PNG** du tableau entier (canvas : cartes, textes, tableaux, images, molécules, flèches).
+
+**Migration SQL** préparée, **non appliquée** : `supabase/migrations/20261022_board.sql`. Elle ajoute un index partiel.
+La table `medrevise_records` est générique et `medrevise_push` n'a pas de liste blanche : sans ce script, le type
+« board » se synchronise déjà.
+
+**Banc** `scripts/tests-tableau/t-tableau.mjs` : **24/24 sur ordinateur**, **23/23 sur iPad et mobile** (au doigt,
+l'étape de sélection du PDF est hors sujet). Il couvre, dans l'ordre :
+1. l'onglet après Notions ;
+2. le plein écran ;
+3. 5 cartes ;
+4. la sélection au cadre du lecteur et sa mini barre ;
+5. le glisser n'importe où ;
+6. 3 flèches du modèle `geo 3` (2 accrochées, 1 libre), avec la mini barre des flèches du lecteur ;
+7. une flèche courbe avec un point ajouté au double-clic ;
+8. la flèche qui suit la carte déplacée ;
+9. 3 flashcards importées (texte, Muscle, image), leur rendu et leur lien ;
+10. l'indépendance de la copie ;
+11. le lien qui rouvre la flashcard ;
+12. le glisser-déposer depuis le panneau ;
+13. le fond blanc mémorisé ;
+14. le zoom borné (15 % à 300 %) ;
+15. le déplacement de la vue (molette / doigt) ;
+16. la minimap ;
+17. annuler / rétablir ;
+18. l'export PNG (2408 × 1180, 200 ko) ;
+19. la version d'un 2ᵉ appareil qui s'affiche (enregistrement plus récent, puis rechargement après synchro ; le type
+    est dans `SYNCABLE_STORES`) ;
+20. la sélection du PDF › « Ajouter au tableau » (côte à côte).
+
+La synchro vers un vrai 2ᵉ appareil passe par le cloud. Elle n'a pas été jouée : aucun test ne touche Supabase. Seul le
+chemin de réception local est vérifié.
+
+| Fond sombre (cartes importées : Muscle, image, texte) | Fond blanc |
+|---|---|
+| ![](img/tableau-flashcards/tableau-sombre-ordinateur.png) | ![](img/tableau-flashcards/tableau-blanc-ordinateur.png) |
+| **Flèches (dont la courbe avec son point)** | **Côte à côte, carte sélectionnée, minimap** |
+| ![](img/tableau-flashcards/tableau-fleches-ordinateur.png) | ![](img/tableau-flashcards/tableau-cote-a-cote.png) |
+| **iPad** | **Mobile (768 px)** |
+| ![](img/tableau-flashcards/tableau-sombre-ipad.png) | ![](img/tableau-flashcards/tableau-blanc-mobile.png) |

@@ -138,9 +138,10 @@ export function itemsFleche(st, { couleurDefaut, onStyle, onSupprimer }) {
   ];
 }
 
-/** objet sous le pointeur au relâchement d'un bout de flèche : l'id d'une boîte (sauf `exclure`), ou null */
+/** objet sous le pointeur au relâchement d'un bout de flèche : l'id d'une boîte du lecteur ou d'une carte du tableau
+    (tout élément `[data-boite]`, 22/10), sauf `exclure` ; null sinon */
 export function boiteSous(clientX, clientY, exclure = null) {
   const els = typeof document !== 'undefined' && document.elementsFromPoint ? document.elementsFromPoint(clientX, clientY) : [];
-  for (const el of els) { const n = el.closest && el.closest('.note-box[data-boite]'); if (n && n.dataset.boite !== exclure) return n.dataset.boite; }
+  for (const el of els) { const n = el.closest && el.closest('[data-boite]'); if (n && n.dataset.boite !== exclure) return n.dataset.boite; }
   return null;
 }

@@ -92,6 +92,11 @@ const S = {
   // `highlights`/`annotations` avec `ficheId = <courseId>::fiche:<version>` (clé d'espace de
   // noms, comme les documents de notes) : rien d'existant n'est réécrit.
   companion_pdf: store('companion_pdf'),
+  // TABLEAU (Miro) D'UNE FICHE (22/10, docs/compte-rendu-tableau-flashcards.md §1) — type ADDITIONNEL,
+  // synchronisé : UN enregistrement par fiche (id 'board:' + ficheId) { objects[], edges[], viewport, theme }
+  // (lib/board.js). L'ancien store `tableau` (un enregistrement par carte, 04/10) n'est jamais réécrit : un
+  // board est construit à partir de ses éléments à la première ouverture.
+  board: store('board'),
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
@@ -101,7 +106,7 @@ const S = {
 // `sessionsLog` est syncable pour la même raison que `questions`/`stats` : la
 // tendance affichée en fin de série doit refléter l'activité desktop ET mobile,
 // pas seulement cet appareil.
-const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau', 'liaison', 'dessins', 'reading_position', 'notes_doc', 'learning_set', 'companion_pdf'];
+const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau', 'liaison', 'dessins', 'reading_position', 'notes_doc', 'learning_set', 'companion_pdf', 'board'];
 
 export function genId(prefix = 'x') {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -805,6 +810,7 @@ export async function purgeFiche(ficheId) {
     ...(annotations || []).filter((a) => deLaJumelle(a.ficheId)).map((a) => remove('annotations', a.id)),
     ...nsJumelle.map((ns) => get('rp:' + ns, S.reading_position).then((r) => (r ? remove('reading_position', 'rp:' + ns) : null))),
     get('cp:' + ficheId, S.companion_pdf).then((r) => (r ? remove('companion_pdf', 'cp:' + ficheId) : null)),
+    get('board:' + ficheId, S.board).then((r) => (r ? remove('board', 'board:' + ficheId) : null)), // (22/10) son tableau
   ]);
   await Promise.all([
     ...(tableau || []).filter((t) => t.ficheId === ficheId).map((t) => remove('tableau', t.id)),
