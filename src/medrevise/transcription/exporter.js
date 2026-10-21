@@ -50,10 +50,17 @@ export function intervenantsDe(session) {
 /** lignes gardées par un filtre d'intervenants (Set) ; notes et coupures restent */
 export const passeFiltre = (l, filtre) => !filtre || l.note || l.status === 'gap' || l.speaker == null || filtre.has(l.speaker);
 
-/** `pages` (20/10) : chaque ligne commence par sa page — « [p. 14] », « [fiche p. 3] » — si elle en a une */
-export function texteSession(session, { horodatage = true, filtre = null, pages = false } = {}) {
+/** (21/10) la session a-t-elle des marques de reprise ? */
+export const aDesReprises = (session) => ((session && session.segments) || []).some((s) => s.reprise);
+/** lignes exportées : le texte, les pertes d'audio et (option `reprises`) les marques de reprise */
+const exportee = (l, filtre, reprises) => (l.status !== 'gap' || l.perte || (reprises && l.reprise)) && passeFiltre(l, filtre);
+
+/** `pages` (20/10) : chaque ligne commence par sa page — « [p. 14] », « [fiche p. 3] » — si elle en a une ;
+    `reprises` (21/10) : les marques « — reprise à 14:32 — » (incluses par défaut) */
+export function texteSession(session, { horodatage = true, filtre = null, pages = false, reprises = true } = {}) {
   const noms = avecIntervenants(session);
-  return lignesSession(session).filter((l) => (l.status !== 'gap' || l.perte) && passeFiltre(l, filtre)).map((l) => {
+  return lignesSession(session).filter((l) => exportee(l, filtre, reprises)).map((l) => {
+    if (l.reprise) return `— ${l.text} —`;
     const h = (horodatage ? `[${mmss(l.t0)}] ` : '') + (pages && Number.isFinite(l.page) ? `[${l.doc === 'fiche' ? 'fiche ' : ''}p. ${l.page}] ` : '');
     if (l.note) return `${h}NOTE — ${l.text || ''}`.trimEnd();
     if (l.status === 'gap') return `${h}[${l.text}]`;
@@ -62,11 +69,12 @@ export function texteSession(session, { horodatage = true, filtre = null, pages 
   }).join('\n');
 }
 
-export function markdownSession(session, titre, { filtre = null } = {}) {
+export function markdownSession(session, titre, { filtre = null, reprises = true } = {}) {
   const noms = avecIntervenants(session);
   const d = session.startedAt ? new Date(session.startedAt) : new Date();
   const tete = `# ${titre || 'Transcript'}\n\n_${d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} · ${dureeLisible(session.durationS)}_\n\n`;
-  const corps = lignesSession(session).filter((l) => (l.status !== 'gap' || l.perte) && passeFiltre(l, filtre)).map((l) => {
+  const corps = lignesSession(session).filter((l) => exportee(l, filtre, reprises)).map((l) => {
+    if (l.reprise) return `_— ${l.text} —_`;
     if (l.note) return `> **Note ${mmss(l.t0)}** — ${l.text || ''}`;
     if (l.status === 'gap') return `_[${mmss(l.t0)}] ${l.text}_`;
     const qui = noms && l.speaker != null ? `**${nomIntervenant(session, l.speaker)}** : ` : '';

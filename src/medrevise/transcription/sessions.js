@@ -24,6 +24,12 @@ export const nouvelId = () => genId('ts');
 export const nouvelIdSegment = () => genId('sg');
 export const nouvelIdNote = () => genId('nt');
 
+/** (21/10) la marque d'une reprise : un segment « gap » `reprise`, à l'instant de cours `t`, avec l'heure réelle */
+export function marqueReprise(id, t, date = new Date()) {
+  const heure = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  return { id, t0: t, t1: t, text: 'reprise à ' + heure, status: 'gap', reprise: true, repriseLe: date.toISOString() };
+}
+
 export function nouvelleSession({ courseId, source, keyterms, fontSize }) {
   const maintenant = new Date().toISOString();
   return {

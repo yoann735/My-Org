@@ -72,7 +72,9 @@ await b.clic(await b.pos(`document.querySelector('.trx-cette-page')`, false), { 
 // badges des pages
 await allerPage(7);
 const badge = (n) => b.ev(`(()=>{const x=document.querySelector('.pdfr-page[data-cle="${n}"] .pdfr-trx-badge');return x?x.innerText.trim():null})()`);
-b.ok((await badge(7)) === `${parPage[7]} lignes` || (await badge(7)) === `${parPage[7]} ligne`, `badge de la page 7 : « ${parPage[7]} lignes »`, String(await badge(7)));
+// (21/10, contrôles à l'échelle du zoom) : à 100 % le badge passerait sous 18 px — sa forme réduite, le nombre seul
+const txtBadge = String(await badge(7)).replace(/\s+/g, ' ');
+b.ok([`${parPage[7]} lignes`, `${parPage[7]} ligne`, `${parPage[7]}`].includes(txtBadge), `badge de la page 7 : « ${parPage[7]} » (forme réduite à 100 %)`, txtBadge);
 b.ok((await badge(8)) === null && (await badge(6)) === null, 'pas de badge sur une page sans transcript');
 const pg7 = await b.rect(`document.querySelector('.pdfr-page[data-cle="7"]')`);
 await b.capture('trx-badge-page', { x: Math.round(pg7.x + pg7.w - 360), y: Math.round(pg7.y), width: 360, height: 120 });

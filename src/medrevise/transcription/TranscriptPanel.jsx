@@ -33,7 +33,7 @@ import {
 } from './sessions.js';
 import {
   mmss, dureeLisible, lignesSession, texteSession, markdownSession, telecharger, nomFichier, copierTexte,
-  avecIntervenants, nomIntervenant, intervenantsDe, passeFiltre,
+  avecIntervenants, nomIntervenant, intervenantsDe, passeFiltre, aDesReprises,
 } from './exporter.js';
 import { synchroTranscripts } from './synchro.js';
 import { surPage, sessionAvecPages, useSessionReference, compterLignes, docDe } from './pages.js';
@@ -124,7 +124,10 @@ export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, texteEnPlu
     // (17/10) « Transcrire » depuis un cours Teams de l'emploi du temps : pré-rempli, sans
     // toucher au choix mémorisé tant que l'étudiant ne change rien lui-même
     if (sourceInitiale === 'onglet') return 'onglet';
+    // (21/10) reprise : la source de la session (l'onglet, ou le micro — l'entrée choisie sur cet appareil)
+    if (reprendre && reprendre.source === 'onglet') return 'onglet';
     const c = lireLS(CLE_CHOIX, null);
+    if (reprendre && c === 'onglet') return 'auto';
     if (c) return c;
     return lireLS(CLE_SOURCE, 'micro') === 'onglet' ? 'onglet' : 'auto';
   });
@@ -427,6 +430,7 @@ function NumeroPage({ l, onPage }) {
 }
 const Ligne = memo(function Ligne({ l, rx, onNote, onSupprNote, focusNoteId, lecture, nom, onRenommer, onPage }) {
   if (l.note) return <LigneNote l={l} onNote={onNote} onSuppr={onSupprNote} focus={focusNoteId === l.id} lecture={lecture} onPage={onPage} />;
+  if (l.reprise) return <div className="trx-reprise-marque" data-id={l.id} title={`Enregistrement repris à ${mmss(l.t0)} du cours`}>— {l.text} —</div>;
   if (l.status === 'gap') return <div className="trx-coupure" data-id={l.id}><span>{mmss(l.t0)} · {l.text}</span></div>;
   const morceaux = decouperSurlignage(l.text, rx);
   return (
@@ -616,8 +620,8 @@ function MenuCopie({ session, titre, filtre = null }) {
   const [copie, setCopie] = useState(false);
   const minuteurCopie = useRef(null);
   useEffect(() => () => clearTimeout(minuteurCopie.current), []);
-  const copier = async (horodatage, f = null, pages = false) => {
-    if (await copierTexte(texteSession(session, { horodatage, filtre: f, pages }))) { setCopie(true); clearTimeout(minuteurCopie.current); minuteurCopie.current = setTimeout(() => setCopie(false), 1500); }
+  const copier = async (horodatage, f = null, pages = false, reprises = true) => {
+    if (await copierTexte(texteSession(session, { horodatage, filtre: f, pages, reprises }))) { setCopie(true); clearTimeout(minuteurCopie.current); minuteurCopie.current = setTimeout(() => setCopie(false), 1500); }
   };
   const nomsFiltre = filtre ? [...filtre].sort((a, b) => a - b).map((n) => nomIntervenant(session, n)).join(', ') : '';
   return (
@@ -641,6 +645,7 @@ function MenuCopie({ session, titre, filtre = null }) {
       {menu && (
         <ContextMenu fermerAuDefilement={false} x={menu.x} y={menu.y} hautAncre={menu.haut} onClose={() => setMenu(null)} items={[
           sessionAvecPages(session) && { label: 'Copier tout, avec numéros de page', icon: 'copy', onClick: () => copier(true, null, true) },
+          aDesReprises(session) && { label: 'Copier tout, sans les marques de reprise', icon: 'copy', onClick: () => copier(true, null, false, false) },
           { label: 'Copier sans horodatage', icon: 'copy', onClick: () => copier(false) },
           { label: 'Télécharger en .txt', icon: 'upload', onClick: () => telecharger(nomFichier(titre, session, 'txt'), texteSession(session), 'text/plain;charset=utf-8') },
           { label: 'Télécharger en .md', icon: 'upload', onClick: () => telecharger(nomFichier(titre, session, 'md'), markdownSession(session, titre), 'text/markdown;charset=utf-8') },
@@ -824,6 +829,19 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
   ) : null;
 
 
+  /* REPRENDRE L'ENREGISTREMENT (21/10) d'une session terminée : la feuille Transcrire, pré-remplie (source, mots-clés),
+     puis la même session continue (même id). D'abord la version la plus récente (synchro ciblée) : si elle a été
+     reprise entre-temps sur un autre appareil (en cours, plus récente), on le dit et on l'ouvre en lecture. */
+  const [dejaAilleurs, setDejaAilleurs] = useState(null);
+  const reprendreEnregistrement = async (s) => {
+    setDejaAilleurs(null);
+    try { await synchroTranscripts(); } catch (x) { /* hors ligne : la version locale */ }
+    const frais = (await lireSession(s.id)) || s;
+    if (!frais.endedAt && !(sessionActive() && lireEtat().session && lireEtat().session.id === s.id)) {
+      setDejaAilleurs(frais.id); setLecture(frais); recharger(); return;
+    }
+    onReprendre(frais);
+  };
   const recharger = useCallback(async () => {
     const l = await sessionsDuCours(courseId);
     setSessions(l);
@@ -945,10 +963,17 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
     const corps = (
       <div className={'trx-panneau' + (plein ? ' plein' : '')}>
         <div className="trx-barre">
-          <button type="button" className="btn ghost sm" onClick={() => { setLecture(null); setPlein(false); setSurCettePage(false); }}><Icon name="chevL" size={13} /> Sessions</button>
+          <button type="button" className="btn ghost sm" onClick={() => { setLecture(null); setPlein(false); setSurCettePage(false); setDejaAilleurs(null); }}><Icon name="chevL" size={13} /> Sessions</button>
           <span className="trx-titre-lecture">{dateCourte(lecture.startedAt)} · {dureeLisible(lecture.durationS)}</span>
           <span style={{ flex: 1 }} />
+          {lecture.endedAt && dejaAilleurs !== lecture.id && (
+            <button type="button" className="btn sm" disabled={sessionActive()} onClick={() => reprendreEnregistrement(lecture)}
+              title={sessionActive() ? 'Une transcription est déjà en cours' : 'Reprendre l’enregistrement : la suite s’ajoute à cette session'}>
+              <Icon name="mic" size={12} /> Reprendre l’enregistrement
+            </button>
+          )}
         </div>
+        {dejaAilleurs === lecture.id && <div className="trx-info"><Icon name="alert" size={12} /> Déjà en cours sur un autre appareil — ouverte en lecture.</div>}
         <div className="trx-barre secondaire">
           {boutonPage(lecture)}
           <span style={{ flex: 1 }} />
@@ -995,12 +1020,16 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
       <div className="trx-sous-etiquette" style={{ marginTop: 16 }}>Sessions de ce cours</div>
       {sessions && sessions.filter((s) => s.endedAt).length === 0 && <div className="hint" style={{ padding: '6px 2px' }}>Aucune session pour l’instant.</div>}
       {(sessions || []).filter((s) => s.endedAt).map((s) => (
-        <div key={s.id} className="trx-session" role="button" tabIndex={0} onClick={() => setLecture(s)} onKeyDown={(ev) => { if (ev.key === 'Enter') setLecture(s); }}>
+        <div key={s.id} className="trx-session" data-session={s.id} role="button" tabIndex={0} onClick={() => setLecture(s)} onKeyDown={(ev) => { if (ev.key === 'Enter') setLecture(s); }}>
           <Icon name="mic" size={13} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="trx-session-date">{dateCourte(s.startedAt)}</div>
             <div className="hint" style={{ fontSize: 11.5 }}>{dureeLisible(s.durationS)} · {s.segments.filter((x) => x.status !== 'gap').length} lignes{s.notes.length ? ` · ${s.notes.length} note${s.notes.length > 1 ? 's' : ''}` : ''}</div>
           </div>
+          {!ailleurs && (
+            <button type="button" className="cd-ic trx-session-reprendre" title="Reprendre l’enregistrement : la suite s’ajoute à cette session" aria-label="Reprendre l’enregistrement"
+              onClick={(ev) => { ev.stopPropagation(); reprendreEnregistrement(s); }}><Icon name="mic" size={12} /></button>
+          )}
           <button type="button" className="cd-ic" title="Supprimer cette session" onClick={(ev) => { ev.stopPropagation(); setASupprimer(s); }}><Icon name="trash" size={12} /></button>
         </div>
       ))}

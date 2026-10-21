@@ -34,7 +34,7 @@
 import { demarrerCapture, SAMPLE_RATE } from './audio.js';
 import { parametresKeyterms, termesEnvoyables } from './keyterms.js';
 import {
-  nouvelleSession, nouvelIdSegment, nouvelIdNote, ecrireSession, viderEcritures, ecrireMotsClesSession,
+  nouvelleSession, nouvelIdSegment, nouvelIdNote, ecrireSession, viderEcritures, ecrireMotsClesSession, marqueReprise,
 } from './sessions.js';
 import { marquerVivante, pousserMaintenant } from './synchro.js';
 import { tarifEffectif, noterDebutSession, finSessionCredits, facteurDiarisation } from './credits.js';
@@ -141,7 +141,8 @@ function majSession(fn, { ecrire = true } = {}) {
  * @param {string} [o.deviceId]
  * @param {string[]} o.keyterms
  * @param {string} [o.fontSize]
- * @param {object} [o.reprendre] session interrompue à continuer
+ * @param {object} [o.reprendre] session à continuer : interrompue, ou TERMINÉE (« Reprendre l'enregistrement », 21/10) —
+ *   même id, segments ajoutés à la suite, horloge reprise là où elle s'était arrêtée, une marque « reprise à HH:MM »
  */
 export async function demarrer({ courseId, source = 'micro', deviceId = null, keyterms = [], fontSize = 'm', reprendre = null, diarize = false }) {
   if (etat.phase !== 'idle' && etat.phase !== 'error') throw new Error('Une transcription est déjà en cours.');
@@ -173,12 +174,20 @@ export async function demarrer({ courseId, source = 'micro', deviceId = null, ke
     marquerVivante(null);
     return false;
   }
+  /* (21/10) une session TERMINÉE qui repart (micro ouvert : la reprise a bien lieu) : elle est écrite « en cours »
+     (endedAt nul) et envoyée UNE fois au cloud — un autre appareil qui voudrait la reprendre aussi voit qu'elle tourne
+     ici (« Déjà en cours sur un autre appareil ») ; ensuite, comme toute session en direct, rien ne part avant l'arrêt */
+  if (reprendre && reprendre.endedAt) {
+    marquerVivante(null);
+    try { await ecrireSession(session); await viderEcritures(); await pousserMaintenant(session.id); } catch (e) { /* hors ligne : rien à signaler */ }
+    marquerVivante(session.id);
+  }
   dernierSon = Date.now();
   noterDebutSession(); // crédits : solde de départ (décompte local, aucun appel réseau)
   publier({ phase: 'live', sourceLibelle: capture.libelle });
-  if (reprendre && (reprendre.segments || []).length) {
-    // repère visible de la reprise (onglet rechargé, plantage)
-    majSession((s) => ({ ...s, segments: [...s.segments, { id: nouvelIdSegment(), t0: base, t1: base, text: 'Reprise de la session', status: 'gap' }] }));
+  if (reprendre && ((reprendre.segments || []).length || (reprendre.notes || []).length)) {
+    // la marque de la reprise (session terminée reprise, onglet rechargé, plantage) : « — reprise à 14:32 — »
+    majSession((s) => ({ ...s, segments: [...s.segments, marqueReprise(nouvelIdSegment(), base)] }));
   }
   connecter();
   return true;
