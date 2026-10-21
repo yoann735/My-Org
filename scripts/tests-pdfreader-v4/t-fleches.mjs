@@ -119,7 +119,7 @@ await b.clic(ligneForme, { att: 300 });
 await tape2(ligneForme);
 let f = await enBase('an-f-F');
 b.ok(f.fleche && f.fleche.points && f.fleche.points.length === 1, 'flèche libre : point de contrôle ajouté (style dans `fleche`)', JSON.stringify(f.fleche));
-await b.clic(await b.pos(`document.querySelector('.pf-actions [data-reglage="type"]')`, false), { att: 400 });
+await b.clic(await b.pos(`document.querySelector('.barre-fleche [data-reglage="type"]')`, false), { att: 400 }); // (21/10) réglages dans la rangée commune
 const dForme = await b.ev(`document.querySelector('.pdfr-forme[data-forme="fleche"] .pf-trace').getAttribute('d')`);
 f = await enBase('an-f-F');
 b.ok(f.fleche.type === 'souple' && /C/.test(dForme) && f.epaisseur === 0.0025 && f.couleur === 'corail', 'flèche libre souple ; épaisseur et couleur de la forme intactes', dForme.slice(0, 60));

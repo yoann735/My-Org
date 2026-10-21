@@ -25,6 +25,8 @@
    chemin sert à l'écran (SVG) et à l'export PDF (pdf-lib drawSvgPath).
    ============================================================ */
 
+import { cheminFleche, styleFleche, pointesForme } from './flechesGeo.js';
+
 export const TYPES_FORMES = [
   { id: 'rectangle', label: 'Rectangle' },
   { id: 'arrondi', label: 'Rectangle arrondi' },
@@ -57,14 +59,6 @@ export function extremites(w, h, fx, fy) {
   return [{ x: fx ? w : 0, y: fy ? h : 0 }, { x: fx ? 0 : w, y: fy ? 0 : h }];
 }
 
-/** pointe pleine au point `b`, venant de `a`. */
-function pointe(a, b, taille) {
-  const L = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-  const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L;
-  const bx = b.x - ux * taille, by = b.y - uy * taille, l = taille * 0.55;
-  return `M${n(b.x)} ${n(b.y)} L${n(bx - uy * l)} ${n(by + ux * l)} L${n(bx + uy * l)} ${n(by - ux * l)} Z`;
-}
-
 /**
  * Le dessin d'une forme dans une boîte de w × h pixels.
  * @returns {{ d: string, pointes: string[], fermee: boolean }}
@@ -80,14 +74,9 @@ export function cheminForme(type, w, h, { fx = false, fy = false, epaisseur = 2,
     case 'ligne':
     case 'fleche':
     case 'double': {
-      const [a, b] = extremites(W, H, fx, fy);
-      const L = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-      const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L;
-      const recul = tete * 0.8; // le trait s'arrête sous la pointe : bout net
-      const fin = type === 'ligne' ? b : { x: b.x - ux * recul, y: b.y - uy * recul };
-      const debut = type === 'double' ? { x: a.x + ux * recul, y: a.y + uy * recul } : a;
-      const pointes = type === 'ligne' ? [] : type === 'fleche' ? [pointe(a, b, tete)] : [pointe(a, b, tete), pointe(b, a, tete)];
-      return { d: `M${P(debut.x, debut.y)} L${P(fin.x, fin.y)}`, pointes, fermee: false };
+      // (21/10) LE tracé des flèches (pdf/flechesGeo.js) : mêmes proportions qu'avant (recul 0,8, demi-largeur 0,55)
+      const ch = cheminFleche(extremites(W, H, fx, fy), styleFleche(null, { pointes: pointesForme(type) }), epaisseur, { t: tete, demi: 0.55, avance: 0, recul: 0.8, contour: 0 });
+      return { d: ch.d, pointes: ch.tetes.map((t) => t.d), fermee: false };
     }
     case 'ellipse': {
       const k = 0.5523, rx = W / 2, ry = H / 2, cx = rx, cy = ry;

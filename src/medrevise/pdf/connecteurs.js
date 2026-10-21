@@ -19,6 +19,8 @@
    pdf/flechesGeo.js) : sur l'entrée de `fleches`, ou dans `flechePrincipale` pour la principale ; absent =
    rendu d'avant à l'identique.
    ============================================================ */
+import { GEO_CLASSIQUE } from './flechesGeo.js';
+
 export const ID_PRINCIPALE = 'principale';
 
 const pointValide = (p) => !!p && Number.isFinite(p.x) && Number.isFinite(p.y);
@@ -44,10 +46,12 @@ export function patchRetirer(boite, id) {
   if (id === ID_PRINCIPALE) return { ancre: null, fleche: false, surlignageId: null, formeId: null, ...(boite.flechePrincipale ? { flechePrincipale: null } : {}) };
   return { fleches: (boite.fleches || []).filter((fl, i) => idDe(fl, i) !== id) };
 }
-/** change le STYLE d'un connecteur (type, points, pointes, trait, epaisseur, couleur — fusionné) */
+/** change le STYLE d'un connecteur (type, points, pointes, trait, epaisseur, couleur — fusionné). (21/10) Une flèche
+    modifiée prend les proportions de pointe « classiques », celles de toutes les autres (flechesGeo.js#geoPointe). */
 export function patchStyle(boite, id, style) {
-  if (id === ID_PRINCIPALE) return { flechePrincipale: { ...(boite.flechePrincipale || {}), ...style } };
-  return { fleches: (boite.fleches || []).map((fl, i) => (idDe(fl, i) === id ? { ...fl, ...style } : fl)) };
+  const s = { ...style, geo: GEO_CLASSIQUE };
+  if (id === ID_PRINCIPALE) return { flechePrincipale: { ...(boite.flechePrincipale || {}), ...s } };
+  return { fleches: (boite.fleches || []).map((fl, i) => (idDe(fl, i) === id ? { ...fl, ...s } : fl)) };
 }
 
 /** ajoute un connecteur vers `cible` ({ x, y, texte, surlignageId?, formeId? }) — la 1re comme les suivantes */

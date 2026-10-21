@@ -20,8 +20,8 @@
    ============================================================ */
 import { PDFDocument, BlendMode, StandardFonts, rgb, degrees } from 'pdf-lib';
 import { getBlob } from '../lib/storage.js';
-import { cheminForme, typeForme, estFermee, estTrait, extremites } from './formes.js';
-import { aStyle, styleFleche, cheminFleche } from './flechesGeo.js';
+import { cheminForme, typeForme, estFermee, estTrait } from './formes.js';
+import { styleFleche, cheminFleche, geoPointe, sommetsConnecteur, sommetsForme, pointesForme } from './flechesGeo.js';
 import { cheminCatmull } from './crayon.js';
 import { connecteursDe } from './connecteurs.js';
 import { separerParType } from '../lib/annotationTypes.js';
@@ -272,14 +272,11 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const ep = Math.max(0.8, (f.epaisseur || 0.0025) * H);
     const coul = hexVersRgb(couleurHex(f.couleur, '#e5383b'));
     const origine = { x: f.x * W, y: H - f.y * H };
-    if (estTrait(type) && f.fleche && aStyle(f.fleche)) {
-      // (20/10 soir) flèche libre souple / dure : le même chemin qu'à l'écran (pdf/flechesGeo.js)
-      const st = styleFleche(f.fleche, { pointes: type === 'ligne' ? { debut: 'aucune', fin: 'aucune' } : type === 'double' ? { debut: 'pleine', fin: 'pleine' } : { debut: 'aucune', fin: 'pleine' } });
-      const [a, bb] = extremites(f.width * W, f.height * H, !!f.fx, !!f.fy);
-      const ch = cheminFleche([a, ...st.points.map((q) => ({ x: (q.x - f.x) * W, y: (q.y - f.y) * H })), bb], st, ep * st.epaisseur);
-      const cf = st.couleur ? hexVersRgb(couleurHex(st.couleur, '#e5383b')) : coul;
-      page.drawSvgPath(ch.d, { ...origine, borderColor: cf, borderWidth: ep * st.epaisseur, borderLineCap: 1, ...(ch.dash ? { borderDashArray: ch.dash.split(' ').map(Number) } : {}) });
-      ch.tetes.forEach((t) => page.drawSvgPath(t.d, t.pleine ? { ...origine, color: cf } : { ...origine, borderColor: cf, borderWidth: ep * st.epaisseur, borderLineCap: 1 }));
+    if (estTrait(type)) {
+      // (21/10) ligne / flèche / double flèche : le MÊME tracé qu'à l'écran (pdf/flechesGeo.js), points de contrôle compris
+      const st = styleFleche(f.fleche, { pointes: pointesForme(type) });
+      const larg = ep * st.epaisseur, cf = st.couleur ? hexVersRgb(couleurHex(st.couleur, '#e5383b')) : coul;
+      dessinerFlechePdf(page, sommetsForme(f, W, H), st, larg, geoPointe(f.fleche, larg, { contexte: 'forme' }), cf, origine);
     } else {
       const { d, pointes } = cheminForme(type, f.width * W, f.height * H, { fx: !!f.fx, fy: !!f.fy, epaisseur: ep });
       page.drawSvgPath(d, { ...origine, borderColor: coul, borderWidth: ep, borderLineCap: 1,
@@ -355,45 +352,16 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const ancre = b.ancre && Number.isFinite(b.ancre.x) && Number.isFinite(b.ancre.y) ? { x: b.ancre.x * W, y: H - b.ancre.y * H } : null;
     const coulFleche = hexVersRgb(couleurFoncee(b.couleur)); // teinte foncée, même règle qu'à l'écran
 
-    // flèches d'abord (sous la boîte et les épingles) : du BORD de la boîte au point visé
-    const dessinerFleche = (cible) => {
-      const cx = x + w / 2, cy = top - h / 2, dx = cible.x - cx, dy = cible.y - cy;
-      const dedans = cible.x >= x && cible.x <= x + w && cible.y <= top && cible.y >= top - h;
-      if (dedans) return;
-      const t = Math.min(dx ? (w / 2) / Math.abs(dx) : Infinity, dy ? (h / 2) / Math.abs(dy) : Infinity);
-      const sx = cx + dx * t, sy = cy + dy * t;
-      const L = Math.hypot(cible.x - sx, cible.y - sy);
-      if (L <= 8) return;
-      const ux = (cible.x - sx) / L, uy = (cible.y - sy) / L;
-      const ex = cible.x - ux * 5, ey = cible.y - uy * 5; // la pointe s'arrête au bord de l'épingle
-      const tete = 7;
-      const bx = ex - ux * tete, by = ey - uy * tete;
-      page.drawLine({ start: { x: sx, y: sy }, end: { x: bx, y: by }, thickness: 1.5, color: coulFleche });
-      // pointe : triangle plein (coordonnées SVG, y vers le bas depuis le haut de la page)
-      const P = (px, py) => `${px.toFixed(2)} ${(H - py).toFixed(2)}`;
-      page.drawSvgPath(`M${P(ex, ey)} L${P(bx - uy * tete * 0.5, by + ux * tete * 0.5)} L${P(bx + uy * tete * 0.5, by - ux * tete * 0.5)} Z`, { x: 0, y: H, color: coulFleche });
-      bilan.fleches += 1;
-    };
-    /* (20/10 soir) flèche STYLÉE (souple / dure, points, pointes, trait — pdf/flechesGeo.js) : le même chemin qu'à
-       l'écran, en coordonnées « écran » (y vers le bas) posées par drawSvgPath ; sans style : tracé d'avant */
-    const dessinerStylee = (c) => {
-      const st = styleFleche(c);
-      const haut = H - top; // haut de la boîte, y vers le bas
-      const cible = { x: c.x * W, y: c.y * H }, inter = st.points.map((q) => ({ x: q.x * W, y: q.y * H }));
-      const vers = inter[0] || cible, cx = x + w / 2, cy = haut + h / 2, dx = vers.x - cx, dy = vers.y - cy;
-      if (vers.x >= x && vers.x <= x + w && vers.y >= haut && vers.y <= haut + h) return;
-      const t = Math.min(dx ? (w / 2) / Math.abs(dx) : Infinity, dy ? (h / 2) / Math.abs(dy) : Infinity);
-      const prec = inter[inter.length - 1] || { x: cx + dx * t, y: cy + dy * t }, L = Math.hypot(cible.x - prec.x, cible.y - prec.y) || 1;
-      const pts = [{ x: cx + dx * t, y: cy + dy * t }, ...inter, { x: cible.x - ((cible.x - prec.x) * 5) / L, y: cible.y - ((cible.y - prec.y) * 5) / L }];
-      const larg = 1.5 * st.epaisseur, cf = st.couleur ? hexVersRgb(couleurHex(st.couleur, '#444444')) : coulFleche;
-      const ch = cheminFleche(pts, st, larg);
-      page.drawSvgPath(ch.d, { x: 0, y: H, borderColor: cf, borderWidth: larg, borderLineCap: 1, ...(ch.dash ? { borderDashArray: ch.dash.split(' ').map(Number) } : {}) });
-      ch.tetes.forEach((tt) => page.drawSvgPath(tt.d, tt.pleine ? { x: 0, y: H, color: cf } : { x: 0, y: H, borderColor: cf, borderWidth: larg, borderLineCap: 1 }));
-      bilan.fleches += 1;
-    };
+    /* flèches d'abord (sous la boîte et les épingles) : LE calcul de l'écran (pdf/flechesGeo.js) — du BORD de la
+       boîte, par ses points de contrôle, jusqu'au rond de la cible ; repère « écran » (y vers le bas) posé par
+       drawSvgPath ; échelle 0,75 : trait de 1,5 pt comme avant */
+    const cadre = { x, y: H - top, w, h };
     for (const c of connecteursDe(b)) {
-      if (aStyle(c)) dessinerStylee(c);
-      else dessinerFleche({ x: c.x * W, y: H - c.y * H });
+      const pts = sommetsConnecteur(cadre, c, W, H, 0.75);
+      if (!pts) continue;
+      const st = styleFleche(c), larg = 1.5 * st.epaisseur;
+      dessinerFlechePdf(page, pts, st, larg, geoPointe(c, larg, { k: 0.75 }), st.couleur ? hexVersRgb(couleurHex(st.couleur, '#444444')) : coulFleche, { x: 0, y: H });
+      bilan.fleches += 1;
     }
     // bouts des flèches supplémentaires : leur petit rond (plus bas), comme avant
     const autres = (b.fleches || []).filter((fl) => fl && Number.isFinite(fl.x) && Number.isFinite(fl.y)).map((fl) => ({ x: fl.x * W, y: H - fl.y * H }));
@@ -414,6 +382,14 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
   }
   const octets = await outDoc.save();
   return { octets, bilan };
+
+  /** une flèche (sommets en px « écran » depuis `origine`) : trait, pointes — le même chemin qu'à l'écran */
+  function dessinerFlechePdf(page, pts, st, larg, geo, couleur, origine) {
+    const ch = cheminFleche(pts, st, larg, geo);
+    if (!ch.d) return;
+    page.drawSvgPath(ch.d, { ...origine, borderColor: couleur, borderWidth: larg, borderLineCap: 1, ...(ch.dash ? { borderDashArray: ch.dash.split(' ').map(Number) } : {}) });
+    ch.tetes.forEach((t) => page.drawSvgPath(t.d, t.pleine ? { ...origine, color: couleur, ...(ch.contour > 0 ? { borderColor: couleur, borderWidth: ch.contour } : {}) } : { ...origine, borderColor: couleur, borderWidth: larg, borderLineCap: 1 }));
+  }
 
   /* ÉTIQUETTE DE REPÈRE (export spécial IA) — règles :
      - TOUJOURS à l'intérieur du cadre de la boîte (jamais sur l'image du cours, jamais dehors) ;

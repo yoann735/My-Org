@@ -79,7 +79,8 @@ import { patchAjouter, patchStyle, connecteursDe } from './connecteurs.js';
 import { BarreFleche } from './BarreFleche.jsx';
 import { reglagesCrayon as reglagesCrayonPdf, EPAISSEURS_CRAYON, OPACITE_SURLIGNEUR_CRAYON } from './crayon.js';
 import { IconeOutil, IconeForme } from './IconesOutils.jsx';
-import { TYPES_FORMES, estTrait, estFermee, ancreSurForme } from './formes.js';
+import { TYPES_FORMES, estTrait, estFermee, ancreSurForme, typeForme } from './formes.js';
+import { pointesForme } from './flechesGeo.js';
 import { publierFicheActive, useSondage, dessinsDeFiche, retirerDessin } from '../lib/dessins.js';
 import { suivreImage } from './attaches.js';
 import { htmlVersTiptap } from './htmlVersTiptap.js';
@@ -1389,7 +1390,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   useEffect(() => {
     if (!activeEditId) return undefined;
     // marque l'événement : l'Échap qui referme une boîte ne quitte PAS aussi l'outil
-    const onKey = (e) => { if (e.key === 'Escape') { e.boiteRefermee = true; setActiveEditId(null); } };
+    // Échap pendant la visée d'une flèche : seule la flèche en cours est annulée (voir ancrage), la boîte reste sélectionnée
+    const onKey = (e) => { if (e.key === 'Escape') { e.boiteRefermee = true; if (!ancrageRef.current) setActiveEditId(null); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [activeEditId]);
@@ -2143,7 +2145,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       if (videsFraiches.current.has(prec)) {
         const rec = (editsRef.current || []).find((a) => a.id === prec);
         const final = contenu || (rec && rec.content);
-        if (contenuVide(final)) {
+        // une boîte qui a une flèche n'est pas « vide » : elle reste (21/10)
+        if (contenuVide(final) && !(rec && connecteursDe(rec).length)) {
           videsFraiches.current.delete(prec);
           if (rec) hist.appliquer(cmdSupprimer('annotations', rec, rec.kind === 'texte' ? 'Texte vide retiré' : 'Boîte vide retirée'));
         } else videsFraiches.current.delete(prec);
@@ -2431,12 +2434,18 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // un outil d'annotation (surligneur compris) : la barre s'efface
   useEffect(() => { if (outil !== 'main') setEditeurPage(null); }, [outil]);
   /* boîte de texte active : un clic hors de la boîte et de sa barre la referme (remplace
-     l'ancien bouton « Terminé ») */
+     l'ancien bouton « Terminé »).
+     CAUSE DU BUG « POSER UNE FLÈCHE FAIT DISPARAÎTRE LA BOÎTE » (21/10, docs/compte-rendu-pdfreader-reparation.md) : le
+     clic qui pose le bout d'une flèche tombe sur la couche de visée (.pdfr-ancrage), que cette liste ne connaissait
+     pas — la boîte était désélectionnée AVANT que la flèche soit posée : une boîte neuve encore vide était alors
+     retirée (« Boîte vide retirée ») et la flèche visait une boîte qui n'existait plus ; une boîte avec du texte
+     perdait sa sélection, et la frappe des 400 dernières ms pouvait être réécrite par l'ancienne version. La visée
+     fait partie de la boîte : la boîte reste affichée et sélectionnée. */
   useEffect(() => {
     if (!activeEditId) return undefined;
     const dehors = (e) => {
       const t = e.target;
-      if (!t || !t.closest || t.closest('.note-box, .nb-actions, .edit-block-active, .pdfr-edit-toolbar, .pdfr-rangee-texte, .sc-pop, .sc-fenetre, .ptb-pop, .ctx-menu, .mf-menu, .ptb-outils, .tab-outils')) return;
+      if (!t || !t.closest || t.closest('.note-box, .nb-actions, .pdfr-ancrage, .edit-block-active, .pdfr-edit-toolbar, .pdfr-rangee-texte, .sc-pop, .sc-fenetre, .ptb-pop, .ctx-menu, .mf-menu, .ptb-outils, .tab-outils')) return;
       setActiveEditId(null);
     };
     window.addEventListener('pointerdown', dehors, true);
@@ -2558,6 +2567,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      Un cadre tracé (outil « Forme », qui reste actif pour enchaîner) ; « Légende »
      pose une boîte reliée par une flèche (formeId côté boîte, comme surlignageId). */
   const [formeActiveId, setFormeActiveId] = useState(null);
+  // forme « trait » sélectionnée (ligne, flèche, double flèche) : ses réglages de flèche dans la même rangée
+  const formeFlecheActive = (() => { const f = formeActiveId && edits.find((a) => a.id === formeActiveId); return f && f.kind === 'forme' && estTrait(typeForme(f)) ? f : null; })();
   const creerForme = ({ page, x, y, width, height, forme, fx, fy }) => {
     const rec = newForme({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurForme, forme, fx, fy, remplie: formeRemplie && estFermee(forme) });
     hist.appliquer(cmdCreer('annotations', rec, 'Forme'));
@@ -2616,7 +2627,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   };
   useEffect(() => {
     if (!formeActiveId) return undefined;
-    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.pdfr-forme')) && !dansSelecteurFlottant(e.target)) setFormeActiveId(null); };
+    // (21/10) la rangée de réglages de la flèche (BarreFleche) fait partie de la forme sélectionnée
+    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.pdfr-forme, .barre-fleche')) && !dansSelecteurFlottant(e.target)) setFormeActiveId(null); };
     const onKey = (e) => { if (e.key === 'Escape') setFormeActiveId(null); };
     window.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey);
@@ -3381,6 +3393,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         rangeeTexte={flecheChoisie ? (
           <BarreFleche key={'f:' + flecheChoisie.boite.id + ':' + flecheChoisie.c.id} connecteur={flecheChoisie.c}
             onStyle={(patch, libelle) => modifierBoite(flecheChoisie.boite, patchStyle(flecheChoisie.boite, flecheChoisie.c.id, patch), libelle)} />
+        ) : formeFlecheActive ? (
+          /* (21/10) une flèche de l'outil Formes : la MÊME rangée de réglages que celle d'une boîte */
+          <BarreFleche key={'ff:' + formeFlecheActive.id} connecteur={formeFlecheActive.fleche || null} defauts={{ pointes: pointesForme(typeForme(formeFlecheActive)) }}
+            onStyle={(patch, libelle) => modifierForme(formeFlecheActive, { fleche: { ...(formeFlecheActive.fleche || {}), ...patch } }, libelle)} />
         ) : activeEdit && editor ? (
           <EditToolbar key={'b:' + activeEdit.id} editor={editor} libre={activeEdit.kind === 'libre'}
             couleur={activeEdit.couleur}
