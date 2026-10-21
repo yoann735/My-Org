@@ -488,7 +488,10 @@ function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, 
   const [, setVersion] = useState(0);
   const [vue, setVue] = useState({ haut: 0, h: 700 });
   const vueRef = useRef(vue); vueRef.current = vue;
-  const est = taille === 's' ? 46 : taille === 'l' ? 80 : 60;
+  // hauteur estimée d'une ligne pas encore mesurée : la moyenne des lignes mesurées (22/10 — la hauteur totale, donc la
+  // poignée de la barre de défilement, ne change plus au fil du défilement), sinon une valeur par taille de texte
+  const mesurees = hauteurs.current.size;
+  const est = mesurees >= 8 ? [...hauteurs.current.values()].reduce((a, h) => a + h, 0) / mesurees : taille === 's' ? 46 : taille === 'l' ? 80 : 60;
   let debut = 0, fin = lignes.length, cale1 = 0, cale2 = 0;
   if (virtuel) {
     const H = lignes.map((l) => hauteurs.current.get(l.id) || est);
@@ -568,6 +571,31 @@ function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, 
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   };
 
+  const allerAuDebut = () => { const el = ref.current; if (!el) return; enBasRef.current = false; setEnBas(false); el.scrollTo({ top: 0, behavior: 'smooth' }); };
+  // fin de liste : au bout, puis encore au bout une fois les dernières lignes mesurées (liste virtualisée)
+  const allerALaFin = () => {
+    if (live) { reprendreDefilement(); return; }
+    const el = ref.current;
+    if (!el) return;
+    let n = 0;
+    const bout = () => { el.scrollTop = el.scrollHeight; if (++n < 6) requestAnimationFrame(bout); };
+    bout();
+  };
+  // l'heure de cours de la première ligne visible (repère du glisser de la poignée)
+  const tempsDe = useMemo(() => new Map(lignes.map((l) => [String(l.id), l.t0])), [lignes]);
+  const repereVisible = () => {
+    const el = ref.current;
+    if (!el) return null;
+    const haut = el.getBoundingClientRect().top + 4;
+    for (const c of el.children) { if (!c.dataset || !c.dataset.id) continue; const r = c.getBoundingClientRect(); if (r.bottom > haut && r.top < haut + el.clientHeight) { const t = tempsDe.get(c.dataset.id); return Number.isFinite(t) ? mmss(t) : null; } }
+    // glisser rapide : les lignes de la nouvelle position ne sont pas encore rendues (liste virtualisée) — l'heure de la
+    // ligne à la même proportion de la liste
+    const n = lignes.length;
+    if (!n) return null;
+    const i = Math.min(n - 1, Math.max(0, Math.round((el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight)) * (n - 1))));
+    return Number.isFinite(lignes[i].t0) ? mmss(lignes[i].t0) : null;
+  };
+
   return (
     <div className="trx-liste-cadre">
       <div ref={ref} className={'trx-liste taille-' + taille} onScroll={surDefilement}>
@@ -586,7 +614,67 @@ function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, 
           ↓ Reprendre{nouvelles > 0 ? ` · ${nouvelles} nouvelle${nouvelles > 1 ? 's' : ''} ligne${nouvelles > 1 ? 's' : ''}` : ''}
         </button>
       )}
+      <BarreDefilement cible={ref} version={lignes.length + ':' + dernierTexte.length + ':' + taille} repere={repereVisible}
+        onDebut={allerAuDebut} onFin={allerALaFin} finMasquee={live && !enBas} />
     </div>
+  );
+}
+
+/* BARRE DE DÉFILEMENT DU TRANSCRIPT (22/10) : toujours visible (la barre du système se cache sur Mac et au doigt),
+   fine, aux couleurs de la DA ; la poignée se saisit (souris, doigt, stylet) et fait défiler, avec un repère horaire
+   flottant (« 1:12:30 ») pendant le glisser ; « ↑ Début » et « ↓ Fin » quand il y a de quoi défiler. */
+function BarreDefilement({ cible, version, repere, onDebut, onFin, finMasquee = false }) {
+  const [m, setM] = useState({ haut: 0, h: 1, total: 1 });
+  const [glisse, setGlisse] = useState(null); // { texte, y } pendant le glisser
+  const pisteRef = useRef(null);
+  const mesurer = useCallback(() => {
+    const el = cible.current;
+    if (!el) return;
+    setM((p) => (p.haut === el.scrollTop && p.h === el.clientHeight && p.total === el.scrollHeight ? p : { haut: el.scrollTop, h: el.clientHeight, total: el.scrollHeight }));
+  }, [cible]);
+  useEffect(() => {
+    const el = cible.current;
+    if (!el) return undefined;
+    el.addEventListener('scroll', mesurer, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(mesurer) : null;
+    if (ro) ro.observe(el);
+    return () => { el.removeEventListener('scroll', mesurer); if (ro) ro.disconnect(); };
+  }, [cible, mesurer]);
+  useLayoutEffect(mesurer, [version, mesurer]); // nouvelles lignes : la poignée se met à jour
+  if (m.total <= m.h + 2) return null;
+  const piste = pisteRef.current ? pisteRef.current.clientHeight : m.h;
+  const hp = Math.max(28, (m.h / m.total) * piste);
+  const yp = ((m.haut / Math.max(1, m.total - m.h)) * (piste - hp)) || 0;
+  const saisir = (e) => {
+    const el = cible.current;
+    if (!el || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    e.preventDefault(); e.stopPropagation();
+    const y0 = e.clientY, s0 = el.scrollTop, course = Math.max(1, piste - hp), plage = Math.max(1, el.scrollHeight - el.clientHeight);
+    const bouge = (ev) => {
+      el.scrollTop = s0 + ((ev.clientY - y0) / course) * plage;
+      const r = pisteRef.current && pisteRef.current.getBoundingClientRect();
+      requestAnimationFrame(() => setGlisse({ texte: repere() || '', y: ((el.scrollTop / plage) * course) + hp / 2 + (r ? 0 : 0) }));
+    };
+    const fin = () => { window.removeEventListener('pointermove', bouge); window.removeEventListener('pointerup', fin); window.removeEventListener('pointercancel', fin); setGlisse(null); };
+    window.addEventListener('pointermove', bouge); window.addEventListener('pointerup', fin); window.addEventListener('pointercancel', fin);
+    setGlisse({ texte: repere() || '', y: yp + hp / 2 });
+  };
+  // un clic dans la piste : une page vers ce côté
+  const cliquerPiste = (e) => {
+    const el = cible.current;
+    if (!el || e.target !== e.currentTarget) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    el.scrollBy({ top: (e.clientY - r.top < yp ? -1 : 1) * el.clientHeight * 0.9, behavior: 'smooth' });
+  };
+  return (
+    <>
+      <div ref={pisteRef} className={'trx-defil' + (glisse ? ' actif' : '')} onPointerDown={cliquerPiste} aria-hidden="true">
+        <span className="trx-defil-poignee" style={{ height: hp, transform: `translateY(${yp}px)` }} onPointerDown={saisir} />
+        {glisse && glisse.texte && <span className="trx-defil-repere tnum" style={{ top: glisse.y }}>{glisse.texte}</span>}
+      </div>
+      {m.haut > 40 && <button type="button" className="trx-aller debut" onClick={onDebut} title="Revenir au début du transcript">↑ Début</button>}
+      {!finMasquee && m.total - m.h - m.haut > 40 && <button type="button" className="trx-aller fin" onClick={onFin} title="Aller à la fin du transcript">↓ Fin</button>}
+    </>
   );
 }
 
@@ -962,14 +1050,18 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
   if (lecture) {
     const corps = (
       <div className={'trx-panneau' + (plein ? ' plein' : '')}>
-        <div className="trx-barre">
-          <button type="button" className="btn ghost sm" onClick={() => { setLecture(null); setPlein(false); setSurCettePage(false); setDejaAilleurs(null); }}><Icon name="chevL" size={13} /> Sessions</button>
-          <span className="trx-titre-lecture">{dateCourte(lecture.startedAt)} · {dureeLisible(lecture.durationS)}</span>
-          <span style={{ flex: 1 }} />
+        {/* (22/10) UNE ligne : « ‹ Sessions · Mer. 21 oct. · 10:51 · 1 h 59 », le titre tronqué proprement ;
+            en panneau étroit, les libellés des boutons s'abrègent (icône seule) avant tout retour à la ligne */}
+        <div className="trx-barre trx-entete-lecture">
+          <button type="button" className="btn ghost sm trx-retour" title="Retour aux sessions" onClick={() => { setLecture(null); setPlein(false); setSurCettePage(false); setDejaAilleurs(null); }}>
+            <Icon name="chevL" size={13} /> <span className="trx-abr">Sessions</span>
+          </button>
+          <span className="trx-titre-lecture" title={`${dateCourte(lecture.startedAt)} · ${dureeLisible(lecture.durationS)}`}>{dateCourte(lecture.startedAt)} · {dureeLisible(lecture.durationS)}</span>
           {lecture.endedAt && dejaAilleurs !== lecture.id && (
-            <button type="button" className="btn sm" disabled={sessionActive()} onClick={() => reprendreEnregistrement(lecture)}
+            <button type="button" className="btn sm trx-reprendre-enr" disabled={sessionActive()} onClick={() => reprendreEnregistrement(lecture)}
+              aria-label="Reprendre l’enregistrement"
               title={sessionActive() ? 'Une transcription est déjà en cours' : 'Reprendre l’enregistrement : la suite s’ajoute à cette session'}>
-              <Icon name="mic" size={12} /> Reprendre l’enregistrement
+              <Icon name="mic" size={12} /> <span className="trx-abr">Reprendre</span>
             </button>
           )}
         </div>

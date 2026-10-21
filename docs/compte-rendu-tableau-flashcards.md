@@ -8,7 +8,7 @@ aucune écriture Supabase.
 | Chantier | État |
 |---|---|
 | 3. « Insérer une page » | livré, testé (ordinateur, iPad) |
-| 5. Transcript : en-tête, défilement | à faire |
+| 5. Transcript : en-tête, défilement | livré, testé (ordinateur, iPad, mobile) |
 | 2. Boîtes modernisées | à faire |
 | 4. Texte uniforme (% de la largeur de page) | à faire |
 | 6. Onglet Flashcards | à faire |
@@ -43,3 +43,34 @@ Banc `scripts/tests-pdfreader-harmonisation/t-inserer.mjs` : **9/9** sur ordinat
 | 50 % (survol) | 160 % (survol) | 300 % (survol) |
 |---|---|---|
 | ![](img/tableau-flashcards/inserer-50.png) | ![](img/tableau-flashcards/inserer-160.png) | ![](img/tableau-flashcards/inserer-300.png) |
+
+## 5. Transcript : en-tête et défilement
+
+**En-tête de lecture** : avant, la date de la session s'affichait en colonne verticale. Il tient désormais sur **une
+ligne** : « ‹ Sessions · Mer. 21 oct. · 10:51 · 1 h 59 », puis le bouton « Reprendre » (icône micro + libellé court).
+- Le titre se tronque par une ellipse (infobulle complète au survol).
+- Quand le panneau rétrécit, les libellés s'abrègent avant tout retour à la ligne : « Sessions » disparaît sous 360 px
+  (le chevron reste), « Reprendre » sous 300 px (l'icône reste). Une requête de conteneur sur le panneau gère ce
+  passage, y compris en tablette, où `tablette.css` faisait passer les barres à la ligne.
+
+**Barre de défilement** de la liste, toujours visible : fine, aux couleurs de la DA. La barre du système se cache sur
+Mac et au doigt.
+- La poignée fait au moins 28 px et se met à jour avec les nouvelles lignes.
+- Elle se saisit à la souris, au doigt et au stylet. Pendant le glisser, un **repère horaire** flotte à côté (« 59:12 »,
+  « 1:11:12 »), c'est l'heure de la première ligne visible.
+- Un clic dans la piste défile d'un écran.
+- « ↑ Début » et « ↓ Fin » apparaissent quand il y a de quoi défiler. En direct, « ↓ Reprendre » garde son rôle.
+- La liste virtualisée (au-delà de 150 lignes) estime désormais la hauteur des lignes non mesurées par la moyenne des
+  lignes mesurées : la hauteur totale, donc la poignée, ne saute plus au fil du défilement.
+
+Banc `t-transcript-entete.mjs` (session de 2 h, 300 lignes) : **9/9** sur ordinateur, iPad et mobile. Il vérifie
+l'en-tête sur une ligne à 332, 260 et 220 px, la barre au repos, le glisser jusqu'au milieu avec son repère, et
+« Fin » / « Début ». Non-régression : `t-reprise` 17/17, `v3/t-transcript` 24/24.
+
+| En-tête (332 px) | 260 px | 220 px |
+|---|---|---|
+| ![](img/tableau-flashcards/trx-entete.png) | ![](img/tableau-flashcards/trx-entete-260.png) | ![](img/tableau-flashcards/trx-entete-220.png) |
+
+| Glisser la poignée : repère horaire, « ↑ Début », « ↓ Fin » |
+|---|
+| ![](img/tableau-flashcards/trx-defil-glisser.png) |

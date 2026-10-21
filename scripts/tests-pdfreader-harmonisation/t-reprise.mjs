@@ -69,7 +69,7 @@ b.ok(m1 && Math.abs(m1.t0 - s1.durationS) < 0.6 && apres.every((x) => x.t0 >= m1
 b.ok(/^reprise à \d\d:\d\d$/.test(m1.text) && apres.every((x) => x.page === 3) && s2.notes.length === 2 && s2.notes[1].t >= m1.t0, 'marque « reprise à HH:MM », pages des nouvelles lignes (p. 3), note ajoutée après la reprise', JSON.stringify({ texte: m1.text, pages: [...new Set(apres.map((x) => x.page))], notes: s2.notes.map((n) => n.t) }));
 
 // ---------- 3. reprise n° 2, depuis la SESSION AFFICHÉE ----------
-const btnLecture = await b.pos(`[...document.querySelectorAll('.trx-barre .btn')].find(x=>/Reprendre l’enregistrement/.test(x.innerText))`, true);
+const btnLecture = await b.pos(`document.querySelector('.trx-entete-lecture [aria-label="Reprendre l’enregistrement"]')`, true);
 b.ok(!!btnLecture, 'la session affichée a « Reprendre l’enregistrement »');
 await b.clic(btnLecture, { att: 1200 });
 await attendreBouton('/Reprendre/');
