@@ -17,7 +17,7 @@ const valeurCellule = (l, c) => b.ev(`document.querySelectorAll('.scw-panneau .s
 
 // --- 1. outil Surligneur : la rangée → « Plus de couleurs » → panneau
 await b.outil('Surligneur');
-await b.clic(await b.pos(`document.querySelector('.pdfr-contexte .sc-roue-btn')`, false), { att: 400 });
+await b.clic(await b.pos(`document.querySelector('.pdfr-contexte .sc-plus')`, false), { att: 400 });
 let P = await panneau();
 b.ok(P && P.cellules === 60 && P.lignes === 6, 'panneau : grille « Couleurs du thème » 10 teintes × (1 + 5 variantes)', JSON.stringify(P && { c: P.cellules, l: P.lignes }));
 b.ok(P && P.actions.join('|') === 'Pipette|Autres couleurs', 'actions : Pipette, Autres couleurs (pas « Aucune » hors fond)', P && P.actions.join('|'));
@@ -31,7 +31,7 @@ await b.clic(await cellule(2, 3), { att: 400 });
 b.ok(!(await panneau()), 'clic sur une case : valide et referme');
 const recentes = await b.ev(`JSON.parse(localStorage.getItem('medrevise.couleursPerso')||'[]')`);
 b.ok(recentes[0] === v23, 'la variante choisie entre en tête des « Couleurs récentes »', `${v23} / ${recentes.slice(0, 3)}`);
-b.ok(await b.ev(`!!document.querySelector('.pdfr-contexte .sc-pastille[title="Récente ${v23}"].actif')`), 'la rangée de l’outil montre la couleur choisie (récente, active)');
+b.ok(await b.ev(`!!document.querySelector('.pdfr-contexte .sc-pastille[title="Favori ${v23}"].actif')`), 'la rangée de l’outil montre la couleur choisie (favori, actif — dock du 21/10)');
 
 // --- 2. une boîte : aperçu en direct, Échap annule, clic valide, Annuler
 await b.outil('Boîte');
@@ -65,14 +65,15 @@ await b.outil('Sélection'); await activer();
 await b.clic(await b.pos(`document.querySelector('.nb-barre [aria-label="Couleur de la boîte"]')`, false), { att: 400 });
 // la boîte est « jaune vif » (défaut de la palette vive, case 0,4) : → → ↓ mène à la case (1,6)
 await b.touche('ArrowRight', { vk: 39 }); await b.touche('ArrowRight', { vk: 39 }); await b.touche('ArrowDown', { vk: 40 });
-const v12 = await valeurCellule(1, 6);
+// (21/10) le jaune du dock n'est pas dans la grille : on lit la case choisie au clavier plutôt qu'une position fixe
+const v12 = await b.ev(`(document.querySelector('.scw-cellule.choisie')||{dataset:{}}).dataset.valeur`);
 b.ok(await b.ev(`!!document.querySelector('.scw-cellule.choisie[data-valeur="${v12}"]')`), 'flèches : la case choisie est mise en évidence', v12);
 await b.T.Enter(); await b.dormir(500);
 b.ok((await b.S(`return (await S.getOne('annotations',${JSON.stringify(boite.id)})).couleur`)) === v12, 'Entrée : valide la case choisie au clavier', v12);
 await activer();
 await b.clic(await b.pos(`document.querySelector('.nb-barre [aria-label="Couleur de la boîte"]')`, false), { att: 400 });
 await b.touche('ArrowRight', { vk: 39 }); await b.dormir(100); // depuis la couleur actuelle (1,6) → (1,7)
-const v01 = await valeurCellule(1, 7);
+const v01 = await b.ev(`(document.querySelector('.scw-cellule.choisie')||{dataset:{}}).dataset.valeur`);
 await b.clic([page.x + page.w * 0.15, page.y + page.h * 0.9], { att: 500 });
 b.ok((await b.S(`return (await S.getOne('annotations',${JSON.stringify(boite.id)})).couleur`)) === v01, 'clic ailleurs : valide la case choisie au clavier', v01);
 

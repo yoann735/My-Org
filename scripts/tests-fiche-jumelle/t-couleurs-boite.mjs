@@ -23,8 +23,8 @@ let boites = JSON.parse(await etat());
 const A = boites.find((x) => !avant.some((y) => y.id === x.id));
 b.ok(A && A.f === 'plein', 'nouvelle boîte créée en fond « plein »', JSON.stringify(A));
 const styleA = await b.ev(`(()=>{const e=[...document.querySelectorAll('.note-box')].find(n=>n.innerText.includes('Boîte A'));const s=getComputedStyle(e);return s.backgroundColor+' | texte '+s.color})()`);
-// (20/10 soir) couleur par défaut des boîtes : le jaune vif de la palette vive
-b.ok(styleA.startsWith('rgba(255, 196, 0, 0.92)') && styleA.includes('22, 22, 42'), 'fond jaune vif plein, texte SOMBRE sur couleur claire', styleA);
+// (21/10) couleur par défaut des boîtes : le jaune franc du dock (lib/palette.js#PALETTE_DOCK)
+b.ok(styleA.startsWith('rgba(255, 213, 0, 0.92)') && styleA.includes('22, 22, 42'), 'fond jaune franc plein, texte SOMBRE sur couleur claire', styleA);
 await b.capt('boite-A-pleine');
 // 2) sélectionner A, ouvrir sa couleur → Personnalisée
 const selA = `[...document.querySelectorAll('.note-box')].find(n=>n.innerText.includes('Boîte A'))`;
@@ -43,7 +43,7 @@ await b.touche('a', { meta: true });
 await b.ecrire('1e88e5');
 await b.dormir(200);
 b.ok((await b.fond(selA)).includes(rgb('#1e88e5')), 'aperçu EN DIRECT sur la boîte pendant la frappe', await b.fond(selA));
-b.ok(JSON.parse(await etat()).find((x) => x.id === A.id).c === 'jaune-vif', 'rien n’est écrit pendant l’aperçu');
+b.ok(JSON.parse(await etat()).find((x) => x.id === A.id).c === 'jaune-franc', 'rien n’est écrit pendant l’aperçu');
 b.ok(!(await b.ev(`${selA}.innerText`)).includes('1e88e5'), 'la frappe ne va PAS dans le texte de la boîte (bug d’avant)');
 const styleBleu = await b.ev(`getComputedStyle(${selA}).color`);
 b.ok(styleBleu.includes('255, 255, 255'), 'couleur foncée : texte CLAIR (contraste auto)', styleBleu);
@@ -54,7 +54,7 @@ b.ok(await b.ev(`(JSON.parse(localStorage.getItem('medrevise.couleursPerso')||'[
 // 3) annuler / rétablir
 await b.clic(await b.pos(`document.querySelector('.pdfr-page canvas')`, false), { att: 300 }); // désélectionner
 await b.touche('z', { meta: true }); await b.dormir(500);
-b.ok(JSON.parse(await etat()).find((x) => x.id === A.id).c === 'jaune-vif', '⌘Z : une seule entrée d’annuler → jaune vif');
+b.ok(JSON.parse(await etat()).find((x) => x.id === A.id).c === 'jaune-franc', '⌘Z : une seule entrée d’annuler → jaune franc');
 await b.touche('z', { meta: true, shift: true }); await b.dormir(500);
 b.ok(JSON.parse(await etat()).find((x) => x.id === A.id).c === '#1e88e5', '⌘⇧Z : rétabli → #1e88e5');
 // 4) COLLER un hex puis Échap = annuler
