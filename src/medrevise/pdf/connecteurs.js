@@ -19,7 +19,7 @@
    pdf/flechesGeo.js) : sur l'entrée de `fleches`, ou dans `flechePrincipale` pour la principale ; absent =
    rendu d'avant à l'identique.
    ============================================================ */
-import { GEO_CLASSIQUE } from './flechesGeo.js';
+import { GEO_CLASSIQUE, GEO_HARMONISE } from './flechesGeo.js';
 
 export const ID_PRINCIPALE = 'principale';
 
@@ -49,15 +49,41 @@ export function patchRetirer(boite, id) {
 /** change le STYLE d'un connecteur (type, points, pointes, trait, epaisseur, couleur — fusionné). (21/10) Une flèche
     modifiée prend les proportions de pointe « classiques », celles de toutes les autres (flechesGeo.js#geoPointe). */
 export function patchStyle(boite, id, style) {
-  const s = { ...style, geo: GEO_CLASSIQUE };
+  // une flèche harmonisée (21/10) le reste ; une flèche d'avant modifiée prend les proportions classiques
+  const actuel = id === ID_PRINCIPALE ? boite.flechePrincipale : (boite.fleches || []).find((fl, i) => idDe(fl, i) === id);
+  const s = { ...style, geo: actuel && actuel.geo === GEO_HARMONISE ? GEO_HARMONISE : GEO_CLASSIQUE };
   if (id === ID_PRINCIPALE) return { flechePrincipale: { ...(boite.flechePrincipale || {}), ...s } };
   return { fleches: (boite.fleches || []).map((fl, i) => (idDe(fl, i) === id ? { ...fl, ...s } : fl)) };
 }
 
-/** ajoute un connecteur vers `cible` ({ x, y, texte, surlignageId?, formeId? }) — la 1re comme les suivantes */
+/** ajoute un connecteur vers `cible` ({ x, y, texte, surlignageId?, formeId?, boiteCible? }) — la 1re comme les
+    suivantes ; (21/10) une nouvelle flèche a le dessin harmonisé (`geo: 3`, flechesGeo.js#geoPointe) */
 export function patchAjouter(boite, cible) {
   const id = 'fl' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  return { fleches: [...(boite.fleches || []), { id, ...cible }] };
+  return { fleches: [...(boite.fleches || []), { id, geo: GEO_HARMONISE, ...cible }] };
+}
+/** un connecteur, tel que stocké (pour le recopier sur une autre boîte) */
+export function connecteurStocke(boite, id) {
+  if (id === ID_PRINCIPALE) return boite.fleche && pointValide(boite.ancre) ? { ...(boite.flechePrincipale || {}), x: boite.ancre.x, y: boite.ancre.y, texte: boite.ancre.texte || null } : null;
+  const fl = (boite.fleches || []).find((f, i) => idDe(f, i) === id);
+  return fl ? { ...fl } : null;
+}
+/** (21/10) déplace TOUTE la flèche de (dx, dy) (fractions de page) : ses points de contrôle et son bout — sauf un bout
+    rattaché à une boîte, qui reste accroché ; le départ, sur la boîte source, ne bouge jamais */
+export function patchTranslater(boite, id, dx, dy) {
+  const t = (p) => ({ ...p, x: +Math.max(0, Math.min(1, p.x + dx)).toFixed(5), y: +Math.max(0, Math.min(1, p.y + dy)).toFixed(5) });
+  const appliquer = (fl, bout) => ({ ...fl, ...(Array.isArray(fl.points) && fl.points.length ? { points: fl.points.map(t) } : {}), ...(bout && !fl.boiteCible ? t(bout) : {}) });
+  if (id === ID_PRINCIPALE) {
+    const fp = appliquer(boite.flechePrincipale || {}, null);
+    const ancre = boite.flechePrincipale && boite.flechePrincipale.boiteCible ? boite.ancre : { ...boite.ancre, ...t(boite.ancre) };
+    return { flechePrincipale: fp, ancre, surlignageId: null, formeId: null };
+  }
+  return { fleches: (boite.fleches || []).map((fl, i) => { if (idDe(fl, i) !== id) return fl; const { surlignageId, formeId, ...reste } = appliquer(fl, fl); return reste; }) };
+}
+/** (21/10) le bout d'un connecteur rattaché à une boîte (`boiteId`) ou détaché (null, au point `point`) */
+export function patchRattacher(boite, id, boiteId, point) {
+  if (id === ID_PRINCIPALE) return { ancre: { x: point.x, y: point.y, texte: point.texte || null }, surlignageId: null, formeId: null, flechePrincipale: { ...(boite.flechePrincipale || {}), boiteCible: boiteId || null } };
+  return { fleches: (boite.fleches || []).map((fl, i) => { if (idDe(fl, i) !== id) return fl; const { surlignageId, formeId, ...reste } = fl; return { ...reste, id: fl.id || id, x: point.x, y: point.y, texte: point.texte || null, boiteCible: boiteId || null }; }) };
 }
 
 /** déplace le bout d'un connecteur : déplacé à la main, il n'est plus lié à un surlignage ou une forme */

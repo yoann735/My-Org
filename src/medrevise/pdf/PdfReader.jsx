@@ -75,13 +75,13 @@ import {
 import { PdfPageContent, EditToolbar, ECHELLE_REF } from './PdfPage.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
 import { SelecteurCouleurs, dansSelecteurFlottant } from './Couleurs.jsx';
-import { patchAjouter, patchStyle, connecteursDe } from './connecteurs.js';
-import { BarreFleche } from './BarreFleche.jsx';
+import { patchAjouter, patchRetirer, connecteursDe, connecteurStocke } from './connecteurs.js';
+import { ZONE_SELECTION } from './Selection.jsx';
 import { COULEUR_DEFAUT } from '../lib/palette.js';
 import { reglagesCrayon as reglagesCrayonPdf, EPAISSEURS_CRAYON, OPACITE_SURLIGNEUR_CRAYON } from './crayon.js';
 import { IconeOutil, IconeForme } from './IconesOutils.jsx';
 import { TYPES_FORMES, estTrait, estFermee, ancreSurForme, typeForme } from './formes.js';
-import { pointesForme } from './flechesGeo.js';
+import { GEO_HARMONISE } from './flechesGeo.js';
 import { publierFicheActive, useSondage, dessinsDeFiche, retirerDessin } from '../lib/dessins.js';
 import { suivreImage } from './attaches.js';
 import { htmlVersTiptap } from './htmlVersTiptap.js';
@@ -253,6 +253,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
 
   const [edits, setEdits] = useState([]); // blocs de texte : remplacement (Chantier 1) ET boîtes libres (kind:'libre')
   const [activeEditId, setActiveEditIdBrut] = useState(null); // à changer via setActiveEditId (plus bas), jamais en direct
+  /* SÉLECTION UNIQUE (21/10, pdf/Selection.jsx, docs/compte-rendu-pdfreader-harmonisation.md) : l'objet sélectionné,
+     quel qu'il soit — { kind: 'boite' | 'texte' | 'question' | 'forme' | 'image' | 'trait', id } ou la flèche d'une boîte
+     { kind: 'fleche', id: <boîte>, conn }. Un clic ailleurs, Échap, un autre outil ou un trait la retirent. Une boîte
+     en ÉDITION (activeEditId) est aussi sélectionnée ; Échap sort de l'édition, un 2ᵉ Échap désélectionne. */
+  const [sel, setSel] = useState(null);
+  const selRef = useRef(sel); selRef.current = sel;
+  const selectionner = useCallback((s) => setSel((p) => (s && p && p.id === s.id && p.kind === s.kind && p.conn === s.conn ? p : s)), []);
   /* APERÇU DE COULEUR (15/10, pdf/Couleurs.jsx) : pendant le réglage d'une couleur personnalisée,
      la boîte / forme / texte visé s'affiche dans la couleur en cours — rien n'est écrit tant que
      ce n'est pas validé (une seule entrée d'annuler), Échap rend l'ancienne. { id, couleur } | null */
@@ -306,7 +313,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     }
     // (11/10) changer d'outil — y compris revenir à la Sélection — désélectionne la boîte : sa barre
     // d'outils disparaît sans Échap (docs/compte-rendu-finitions-boites-sidebar.md)
-    setOutil(id); setPending(null); setAncrage(null); setActiveEditId(null);
+    setOutil(id); setPending(null); setAncrage(null); setActiveEditId(null); setSel(null);
   };
   const choisirOutilRef = useRef(choisirOutil); choisirOutilRef.current = choisirOutil;
 
@@ -2155,6 +2162,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     }
     activeEditIdRef.current = id;
     setActiveEditIdBrut(id);
+    // une boîte en édition est la sélection
+    if (id) { const r = (editsRef.current || []).find((a) => a.id === id); selectionner({ id, kind: r && r.kind === 'texte' ? 'texte' : 'boite' }); }
   };
 
   /* ---- BOÎTE DE TEXTE LIBRE ----
@@ -2203,16 +2212,20 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   /* Modification générique d'une boîte (repli, ancre, flèche…) : repart de la
      version la plus fraîche (texte en attente compris) et passe par l'historique —
      une entrée par geste, annulable par Cmd+Z comme tout le reste. */
-  /* FLÈCHE SÉLECTIONNÉE (20/10 soir) : signalée par la boîte (NoteBox) ; ses réglages (BarreFleche) occupent la
-     rangée contextuelle. Dérivée des annotations à jour : chaque réglage part de la version la plus fraîche. */
-  const [flecheSel, setFlecheSel] = useState(null); // { boiteId, connId }
-  const signalerFleche = useCallback((boiteId, connId) => setFlecheSel((f) => (connId ? (f && f.boiteId === boiteId && f.connId === connId ? f : { boiteId, connId }) : (f && f.boiteId === boiteId ? null : f))), []);
-  const flecheChoisie = (() => {
-    if (!flecheSel) return null;
-    const bt = edits.find((a) => a.id === flecheSel.boiteId);
-    const c = bt && connecteursDe(bt).find((x) => x.id === flecheSel.connId);
-    return c ? { boite: bt, c } : null;
-  })();
+  /* (21/10) le DÉPART d'une flèche relâché sur une autre boîte : la flèche part désormais de celle-ci (même style,
+     mêmes points, même cible) — une seule entrée d'Annuler */
+  const transfererFleche = async (source, connId, cibleId) => {
+    const src = boiteFraiche(source.id, source), dest = (editsRef.current || []).find((a) => a.id === cibleId);
+    const fl = src && connecteurStocke(src, connId);
+    if (!fl || !dest || dest.kind !== 'libre') return;
+    const { id, principale, boiteCible, ...reste } = fl; // eslint-disable-line no-unused-vars
+    const nouvelle = { ...reste, id: 'fl' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...(boiteCible && boiteCible !== cibleId ? { boiteCible } : {}) };
+    await hist.appliquer(cmdGroupe('Flèche déplacée sur une autre boîte', [
+      cmdModifier('annotations', src, { ...src, ...patchRetirer(src, connId) }, 'Flèche retirée'),
+      cmdModifier('annotations', dest, { ...dest, fleches: [...(dest.fleches || []), nouvelle] }, 'Flèche ajoutée'),
+    ]));
+    setSel({ id: cibleId, kind: 'fleche', conn: nouvelle.id });
+  };
   const modifierBoite = async (b, patch, libelle) => {
     if (patch && patch.versionTexte) { await basculerBoites([b], patch.versionTexte, libelle); return; }
     const actuel = boiteFraiche(b.id, b);
@@ -2245,6 +2258,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   /* ---- CRAYON ----
      Le trait arrive DÉJÀ lissé de la page (moyenne mobile sur 3 points, pdf/crayon.js) : on ne relisse
      jamais deux fois. Une entrée d'historique par trait — Cmd+Z efface le trait entier, jamais un bout. */
+  // (21/10) un trait sélectionné : déplacé, redimensionné, recoloré, épaisseur changée — une entrée d'Annuler par geste
+  const modifierTrait = async (avant, apres, libelle) => {
+    const actuel = (editsRef.current || []).find((a) => a.id === avant.id) || avant;
+    await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, ...apres }, libelle));
+  };
   const creerTrait = async ({ page, points, mode = 'dessin', rendu = 'cr' }) => {
     if (!points || points.length < 2) return;
     const surligneur = mode === 'surligneur';
@@ -2567,11 +2585,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   /* ---- FORMES (03/10) ----
      Un cadre tracé (outil « Forme », qui reste actif pour enchaîner) ; « Légende »
      pose une boîte reliée par une flèche (formeId côté boîte, comme surlignageId). */
-  const [formeActiveId, setFormeActiveId] = useState(null);
-  // forme « trait » sélectionnée (ligne, flèche, double flèche) : ses réglages de flèche dans la même rangée
-  const formeFlecheActive = (() => { const f = formeActiveId && edits.find((a) => a.id === formeActiveId); return f && f.kind === 'forme' && estTrait(typeForme(f)) ? f : null; })();
+  const formeActiveId = sel && sel.kind === 'forme' ? sel.id : null;
+  const setFormeActiveId = (id) => (id ? selectionner({ id, kind: 'forme' }) : setSel((p) => (p && p.kind === 'forme' ? null : p)));
   const creerForme = ({ page, x, y, width, height, forme, fx, fy }) => {
-    const rec = newForme({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurForme, forme, fx, fy, remplie: formeRemplie && estFermee(forme) });
+    const rec0 = newForme({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurForme, forme, fx, fy, remplie: formeRemplie && estFermee(forme) });
+    // (21/10) ligne / flèche : le dessin harmonisé des flèches (trait fin d'une bordure de boîte, pointe proportionnelle)
+    const rec = estTrait(forme) ? { ...rec0, epaisseur: 0.0012, fleche: { geo: GEO_HARMONISE } } : rec0;
     hist.appliquer(cmdCreer('annotations', rec, 'Forme'));
   };
   /* déplacer / redimensionner une forme : ses LÉGENDES suivent (02/10 soir) — l'épingle
@@ -2579,7 +2598,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      entrée d'annulation (avant : la flèche restait pointée sur l'ancienne place). */
   const majForme = (avant, apres, libelle) => {
     const actuel = edits.find((a) => a.id === avant.id) || avant;
-    const nouvelle = { ...actuel, ...GEO(apres), ...(apres.fx !== undefined ? { fx: !!apres.fx, fy: !!apres.fy } : {}) };
+    /* (21/10) CAUSE DU « DÉPLACER LA FLÈCHE NE DÉPLACE QUE LE CADRE » : seule la géométrie du cadre était enregistrée —
+       les points de contrôle déplacés avec la flèche (`fleche.points`) étaient perdus au relâchement. Ils voyagent
+       désormais avec elle, comme les bouts rattachés à une boîte (`attaches`). */
+    const nouvelle = { ...actuel, ...GEO(apres), ...(apres.fx !== undefined ? { fx: !!apres.fx, fy: !!apres.fy } : {}),
+      ...(apres.fleche !== undefined ? { fleche: apres.fleche } : {}), ...(apres.attaches !== undefined ? { attaches: apres.attaches } : {}) };
     const suivent = edits.filter((b) => b.kind === 'libre' && (b.formeId === actuel.id || (b.fleches || []).some((fl) => fl.formeId === actuel.id)));
     const cmds = suivent.map((b) => cmdModifier('annotations', b, {
       ...b,
@@ -2612,35 +2635,15 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (formeActiveId === f.id) setFormeActiveId(null);
     hist.appliquer(cmdGroupe('Suppression de la forme', cmdsSuppressionForme(f, 'Suppression de la forme')));
   };
-  const creerLegende = (f) => {
-    const W = BOITE_DEFAUT.width, Hb = BOITE_DEFAUT.height;
-    const aDroite = f.x + f.width + 0.03 + W <= 0.99;
-    const x = aDroite ? f.x + f.width + 0.03 : Math.max(0.01, f.x - 0.03 - W);
-    const y = Math.max(0, Math.min(1 - Hb, f.y + f.height / 2 - Hb / 2));
-    const ancre = ancreSurForme(f, { x });
-    // (20/10, pdf/connecteurs.js) la légende naît avec UN connecteur ordinaire, retirable comme les autres
-    const base = newNoteBox({ ficheId: nsAnnot, page: f.page, x, y, width: W, height: Hb, couleur: couleurActive, fond: lireFondBoiteDefaut() });
-    const rec = { ...base, gabarit: 'mot', ...patchAjouter(base, { ...ancre, formeId: f.id }) };
-    hist.appliquer(cmdCreer('annotations', rec, 'Légende de la forme'));
-    videsFraiches.current.add(rec.id);
-    setFormeActiveId(null);
-    setActiveEditId(rec.id);
-  };
-  useEffect(() => {
-    if (!formeActiveId) return undefined;
-    // (21/10) la rangée de réglages de la flèche (BarreFleche) fait partie de la forme sélectionnée
-    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.pdfr-forme, .barre-fleche')) && !dansSelecteurFlottant(e.target)) setFormeActiveId(null); };
-    const onKey = (e) => { if (e.key === 'Escape') setFormeActiveId(null); };
-    window.addEventListener('pointerdown', onDown);
-    window.addEventListener('keydown', onKey);
-    return () => { window.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); };
-  }, [formeActiveId]);
+
+  /* (21/10) plus de « clic ailleurs » ni d'Échap propres à la forme ou à l'image : la sélection unique s'en charge */
 
   /* ---- IMAGES COLLÉES (01/10) ----
      Importées (bouton « Image »), collées (Cmd/Ctrl+V) ou glissées sur une page.
      Le fichier devient un blob ordinaire (même canal que les images de
      flashcards) ; l'annotation ne porte que sa place, sa taille et son calque. */
-  const [imageActiveId, setImageActiveId] = useState(null);
+  const imageActiveId = sel && sel.kind === 'image' ? sel.id : null;
+  const setImageActiveId = (id) => (id ? selectionner({ id, kind: 'image' }) : setSel((p) => (p && p.kind === 'image' ? null : p)));
   const entreeImageRef = useRef(null);
   // `blobIdExistant` (02/10) : un dessin reçu du téléphone est DÉJÀ un blob stocké
   // (et au cloud) — l'image posée le réutilise, sans copie.
@@ -2841,7 +2844,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const textesAttaches = (img) => edits.filter((a) => a.kind === 'texte' && a.imageId === img.id);
   const majImage = async (avant, apres, libelle) => {
     const actuel = edits.find((a) => a.id === avant.id) || avant;
-    const nouvelle = { ...actuel, ...GEO(apres), ...(apres.rotation !== undefined ? { rotation: apres.rotation } : {}) };
+    // (21/10) le rognage et le verrou voyagent avec la géométrie
+    const nouvelle = { ...actuel, ...GEO(apres), ...(apres.rotation !== undefined ? { rotation: apres.rotation } : {}),
+      ...(apres.rognage !== undefined ? { rognage: apres.rognage } : {}), ...(apres.verrouille !== undefined ? { verrouille: apres.verrouille } : {}) };
     const suivent = textesAttaches(actuel).map((t) => cmdModifier('annotations', t, { ...t, ...suivreImage(actuel, nouvelle, t, ratioPage(actuel.page)) }, 'Texte du dessin'));
     const cmd = cmdModifier('annotations', actuel, nouvelle, libelle);
     await hist.appliquer(suivent.length ? cmdGroupe(libelle, [cmd, ...suivent]) : cmd);
@@ -2857,28 +2862,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   };
   // CALQUES : `z` ne classe que les images d'une même page entre elles. Une seule
   // écriture par geste (la nouvelle valeur s'intercale), donc une entrée d'annulation.
-  const changerCalque = async (img, action) => {
-    const liste = imagesByPage[img.page] || [];
-    const i = liste.findIndex((x) => x.id === img.id);
-    if (i < 0 || liste.length < 2) return;
-    const zs = liste.map((x) => x.z || 0);
-    let z = img.z || 0;
-    if (action === 'premier') { if (i === liste.length - 1) return; z = Math.max(...zs) + 1; }
-    else if (action === 'arriere') { if (i === 0) return; z = Math.min(...zs) - 1; }
-    else if (action === 'avancer') { if (i === liste.length - 1) return; z = i + 2 < liste.length ? (zs[i + 1] + zs[i + 2]) / 2 : zs[i + 1] + 1; }
-    else if (action === 'reculer') { if (i === 0) return; z = i - 2 >= 0 ? (zs[i - 1] + zs[i - 2]) / 2 : zs[i - 1] - 1; }
-    const libelles = { premier: 'Image au premier plan', arriere: 'Image à l’arrière-plan', avancer: 'Image avancée', reculer: 'Image reculée' };
-    await hist.appliquer(cmdModifier('annotations', img, { ...img, z }, libelles[action]));
-  };
-  // désélection : clic ailleurs que sur l'image ou sa barre ; Échap
-  useEffect(() => {
-    if (!imageActiveId) return undefined;
-    const onDown = (e) => { if (!(e.target.closest && e.target.closest('.pdfr-image'))) setImageActiveId(null); };
-    const onKey = (e) => { if (e.key === 'Escape') setImageActiveId(null); };
-    window.addEventListener('pointerdown', onDown);
-    window.addEventListener('keydown', onKey);
-    return () => { window.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); };
-  }, [imageActiveId]);
+  // (21/10) plus de réglage du calque des images (mini barre : rogner · verrouiller · supprimer) ; leur ordre `z` reste lu
+
+
   // Cmd/Ctrl+V d'une image (capture d'écran, image copiée d'une page web…) : posée
   // sur la page affichée. Jamais quand on colle DANS un texte (boîte, champ…).
   const ajouterImageRef = useRef(ajouterImage); ajouterImageRef.current = ajouterImage;
@@ -3070,6 +3056,38 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     return { ok: true, texte: n ? `${n} boîte${n > 1 ? 's' : ''} en ${v}.` : `Tout est déjà en ${v}.` };
   };
 
+  /* SÉLECTION UNIQUE : un clic ailleurs que sur un objet ou sa mini barre, Échap (hors édition et hors visée d'une
+     flèche) désélectionnent ; Suppr / ⌫ supprime l'objet sélectionné, quel qu'il soit (jamais pendant une saisie) */
+  const supprimerSelection = () => {
+    const s0 = selRef.current;
+    if (!s0) return;
+    const rec = (editsRef.current || []).find((a) => a.id === s0.id);
+    setSel(null);
+    if (!rec) return;
+    if (s0.kind === 'fleche') { modifierBoite(rec, patchRetirer(rec, s0.conn), 'Flèche retirée'); return; }
+    if (s0.kind === 'forme') supprimerForme(rec);
+    else if (s0.kind === 'image') supprimerImage(rec);
+    else if (s0.kind === 'trait') gommer({ supprimer: [rec] });
+    else supprimerBoite(rec);
+  };
+  const supprimerSelectionRef = useRef(supprimerSelection); supprimerSelectionRef.current = supprimerSelection;
+  useEffect(() => {
+    if (!sel) return undefined;
+    const dehors = (e) => {
+      const t = e.target;
+      if (t && t.closest && (t.closest(ZONE_SELECTION) || t.closest('.sel-objet') || t.closest('.pdfr-ancrage'))) return;
+      setSel(null);
+    };
+    const clavier = (e) => {
+      if (e.key === 'Escape') { if (e.boiteRefermee || ancrageRef.current || activeEditIdRef.current) return; setSel(null); return; }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !activeEditIdRef.current && !cibleEditable(e.target) && !cibleEditable(document.activeElement)) {
+        e.preventDefault(); supprimerSelectionRef.current();
+      }
+    };
+    window.addEventListener('pointerdown', dehors, true);
+    window.addEventListener('keydown', clavier);
+    return () => { window.removeEventListener('pointerdown', dehors, true); window.removeEventListener('keydown', clavier); };
+  }, [sel]);
   const supprimerBoite = async (b) => {
     if (!b) return;
     const actuel = boiteFraiche(b.id, b); // restaurer la boîte AVEC son texte le plus récent
@@ -3391,14 +3409,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         imageDansTexte={modeDoc}
         /* rangée « texte » sous la barre d'outils (09/10) : mise en forme de la boîte active, ou
            du texte du document qui a le curseur — jamais avec un outil d'annotation */
-        rangeeTexte={flecheChoisie ? (
-          <BarreFleche key={'f:' + flecheChoisie.boite.id + ':' + flecheChoisie.c.id} connecteur={flecheChoisie.c}
-            onStyle={(patch, libelle) => modifierBoite(flecheChoisie.boite, patchStyle(flecheChoisie.boite, flecheChoisie.c.id, patch), libelle)} />
-        ) : formeFlecheActive ? (
-          /* (21/10) une flèche de l'outil Formes : la MÊME rangée de réglages que celle d'une boîte */
-          <BarreFleche key={'ff:' + formeFlecheActive.id} connecteur={formeFlecheActive.fleche || null} defauts={{ pointes: pointesForme(typeForme(formeFlecheActive)) }}
-            onStyle={(patch, libelle) => modifierForme(formeFlecheActive, { fleche: { ...(formeFlecheActive.fleche || {}), ...patch } }, libelle)} />
-        ) : activeEdit && editor ? (
+        rangeeTexte={activeEdit && editor ? (
           <EditToolbar key={'b:' + activeEdit.id} editor={editor} libre={activeEdit.kind === 'libre'}
             couleur={activeEdit.couleur}
             onCouleur={(c) => changerCouleurBoite(activeEdit, c)} onApercu={(c) => apercuPour(activeEdit.id, c)}
@@ -3596,13 +3607,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       formes={formesByPage[n] || EMPTY_ARRAY}
                       formeActiveId={formeActiveId}
                       onFormeActiver={(id) => { setFormeActiveId(id); setImageActiveId(null); setActiveEditId(null); }}
-                      onCreerForme={creerForme} onFormeMaj={majForme} onFormeSupprimer={supprimerForme} onFormeLegende={creerLegende}
+                      onCreerForme={creerForme} onFormeMaj={majForme} onFormeSupprimer={supprimerForme}
                       onFormeModifier={modifierForme}
                       couleurApercuSelection={outil === 'surligneur' ? couleurApercuSurligneur : null}
                       couleurForme={couleurForme} typeFormeActif={typeFormeActif} formeRemplie={formeRemplie}
                       imageActiveId={imageActiveId}
                       onImageActiver={(id) => { setImageActiveId(id); setActiveEditId(null); }}
-                      onImageMaj={majImage} onImageCalque={changerCalque} onImageSupprimer={supprimerImage}
+                      onImageMaj={majImage} onImageSupprimer={supprimerImage}
                       onPoser={poserElement}
                       onCreerTrait={creerTrait}
                       onGommer={gommer}
@@ -3616,7 +3627,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onSupprimerBoite={supprimerBoite}
                       onModifierBoite={modifierBoite}
                       onApercuCouleur={apercuPour}
-                      onSelFleche={signalerFleche}
+                      selection={sel} onSelection={selectionner} onTransfererFleche={transfererFleche}
+                      onModifierTrait={modifierTrait}
                       ancrageBoiteId={ancrageBoiteId} ancrageFleche={!!(ancrage && ancrage.fleche)} ancrageSurlignage={!!(ancrage && ancrage.surlignage)} ancrageAjout={!!(ancrage && ancrage.ajout)} onDemanderAncrage={setAncrageBoiteId}
                       pageWidth={w}
                       activeEditId={activeEditId}
@@ -3627,7 +3639,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       cibleHlId={flashHlId}
                       ocrPage={sz.ajout ? null : ocrPagePour(n)} ocrDebug={ocrDebug}
                       onActivateEdit={setActiveEditId}
-                      onDebutTrait={() => { if (activeEditIdRef.current) setActiveEditId(null); }}
+                      onDebutTrait={() => { if (activeEditIdRef.current) setActiveEditId(null); setSel(null); }}
                       activeEditor={editor}
                       fondNoir={modeDoc && fondNoir}
                       corps={sz.ajout && docCharge && !modeDoc && docNonVide(corpsPages.current[n]) ? (

@@ -19,12 +19,18 @@ export const POINTES = ['aucune', 'ouverte', 'pleine'];
 export const TRAITS = ['continu', 'tirets', 'pointilles'];
 export const EPAISSEURS = [0.5, 1, 1.5, 2, 3];
 export const GEO_CLASSIQUE = 2;
+/** (21/10) dessin harmonisé avec les boîtes : trait fin (la bordure d'une boîte), pointe nette proportionnelle à
+    l'épaisseur, couleur de la boîte — les flèches créées depuis le 21/10 (connecteurs et outil Formes) */
+export const GEO_HARMONISE = 3;
+/** les 3 épaisseurs proposées (facteur de l'épaisseur de base) ; les autres valeurs déjà posées restent rendues */
+export const EPAISSEURS_FLECHE = [1, 1.6, 2.4];
 const CHAMPS = ['type', 'points', 'pointes', 'trait', 'epaisseur', 'couleur'];
 
 /** la flèche a-t-elle un style à elle ? */
 export const aStyle = (f) => !!f && CHAMPS.some((k) => f[k] != null && !(k === 'points' && !f.points.length));
 /** proportions de la pointe : celles des flèches d'avant (« classique ») sauf pour une flèche stylée du 20/10 */
-export const proportionsV4 = (f) => aStyle(f) && f.geo !== GEO_CLASSIQUE;
+export const proportionsV4 = (f) => aStyle(f) && f.geo !== GEO_CLASSIQUE && f.geo !== GEO_HARMONISE;
+export const harmonisee = (f) => !!f && f.geo === GEO_HARMONISE;
 /** style complet, valeurs par défaut comprises */
 export function styleFleche(f, defauts = {}) {
   const d = { type: 'dure', pointes: { debut: 'aucune', fin: 'pleine' }, trait: 'continu', epaisseur: 1, couleur: null, ...defauts };
@@ -64,6 +70,8 @@ function tete(b, dir, t, genre, demi) {
  *   contour épaisseur du liseré d'une pointe pleine (0 : aucun)
  */
 export function geoPointe(f, largeur, { contexte = 'connecteur', k = 1 } = {}) {
+  // harmonisée (21/10) : la même pointe partout, proportionnelle à l'épaisseur du trait
+  if (harmonisee(f)) return { t: Math.max(6 * k, largeur * 4.5), demi: 0.5, avance: 0.15, recul: 0.15, contour: 0 };
   if (contexte === 'forme') return { t: Math.max(aStyle(f) ? 8 : 9, largeur * 4.2), demi: 0.55, avance: 0, recul: 0.8, contour: Math.min(largeur, 2) };
   if (proportionsV4(f)) return { t: Math.max(8, largeur * 4.2), demi: 0.55, avance: 0, recul: 0.8, contour: Math.min(largeur, 1.5 * k) };
   // classique : la pointe des flèches d'avant (marqueur de 9 × k, base à 7,65 × k du bout du trait)
@@ -120,9 +128,15 @@ export function bordVers(cadre, vers) {
  * contrôle, ou la cible), points de contrôle, puis bout du trait à `7 × k` px de la cible (son rond).
  * `points` remplace ceux du connecteur (glisser en cours). null si la flèche n'a pas la place d'exister.
  */
-export function sommetsConnecteur(cadre, c, W, H, k = 1, points = null) {
-  const cible = { x: c.x * W, y: c.y * H };
+export function sommetsConnecteur(cadre, c, W, H, k = 1, points = null, cadreCible = null) {
   const inter = (points || styleFleche(c).points).map((p) => ({ x: p.x * W, y: p.y * H }));
+  if (cadreCible) { // (21/10) bout rattaché à une boîte : du bord de la source au bord de la cible
+    const centre = { x: cadreCible.x + cadreCible.w / 2, y: cadreCible.y + cadreCible.h / 2 };
+    const debut = bordVers(cadre, inter[0] || centre);
+    const fin = debut && bordVers(cadreCible, inter[inter.length - 1] || debut);
+    return debut && fin ? [debut, ...inter, fin] : null;
+  }
+  const cible = { x: c.x * W, y: c.y * H };
   const debut = bordVers(cadre, inter[0] || cible);
   if (!debut) return null;
   const prec = inter[inter.length - 1] || debut;
@@ -132,10 +146,15 @@ export function sommetsConnecteur(cadre, c, W, H, k = 1, points = null) {
   return [debut, ...inter, { x: cible.x - ((cible.x - prec.x) * 7 * k) / l, y: cible.y - ((cible.y - prec.y) * 7 * k) / l }];
 }
 /** sommets d'une flèche de l'outil Formes, en pixels du CADRE de la forme (origine en haut à gauche du cadre) */
-export function sommetsForme(f, W, H, points = null) {
+export function sommetsForme(f, W, H, points = null, cadres = null) {
   const w = f.width * W, h = f.height * H;
-  const a = { x: f.fx ? w : 0, y: f.fy ? h : 0 }, b = { x: f.fx ? 0 : w, y: f.fy ? 0 : h };
+  let a = { x: f.fx ? w : 0, y: f.fy ? h : 0 }, b = { x: f.fx ? 0 : w, y: f.fy ? 0 : h };
   const inter = (points || ((f.fleche && f.fleche.points) || [])).map((p) => ({ x: (p.x - f.x) * W, y: (p.y - f.y) * H }));
+  // (21/10) un bout rattaché à une boîte (`attaches`) part de son bord, dans le repère du cadre de la forme
+  const at = f.attaches || {}, local = (c) => c && { x: c.x * W - f.x * W, y: c.y * H - f.y * H, w: c.w * W, h: c.h * H };
+  const ca = cadres && at.debut && local(cadres[at.debut]), cb = cadres && at.fin && local(cadres[at.fin]);
+  if (ca) a = bordVers(ca, inter[0] || b) || a;
+  if (cb) b = bordVers(cb, inter[inter.length - 1] || a) || b;
   return [a, ...inter, b];
 }
 /** pointes par défaut d'une forme trait */

@@ -8,8 +8,9 @@
      glisser un point           le déplacer (la courbe passe toujours par lui)
      double-clic sur un point   le retirer
    ============================================================ */
-import { cheminFleche, indexInsertion } from './flechesGeo.js';
+import { cheminFleche, indexInsertion, suivant, POINTES, TRAITS, EPAISSEURS_FLECHE } from './flechesGeo.js';
 import { suivrePointeur, rectPage } from './pointeur.js';
+import { IconeOutil } from './IconesOutils.jsx';
 
 const arrondi = (v) => +v.toFixed(5);
 
@@ -100,4 +101,38 @@ export function PoigneesFleche({ points, couleur, position, donnees = {}, classe
       title="Point de la flèche — glisser pour le déplacer · double-clic : le retirer"
       onPointerDown={(e) => onGlisser(e, i)} onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); onRetirer(i); }} />
   ));
+}
+
+/* ---------- LA MINI BARRE D'UNE FLÈCHE (la même pour un connecteur de boîte et une flèche / ligne de Formes) ----------
+   type droite / courbe · pointe de début · pointe de fin · style du trait · épaisseur (3) · couleur · supprimer */
+const IC_POINTE = { aucune: 'pointeAucune', ouverte: 'pointeOuverte', pleine: 'pointePleine' };
+const IC_TRAIT = { continu: 'traitContinu', tirets: 'traitTirets', pointilles: 'traitPointilles' };
+const LIB_POINTE = { aucune: 'aucune', ouverte: 'ouverte', pleine: 'pleine' };
+const LIB_TRAIT = { continu: 'continu', tirets: 'tirets', pointilles: 'pointillés' };
+export function itemsFleche(st, { couleurDefaut, onStyle, onSupprimer }) {
+  const ic = (n, style) => <IconeOutil nom={n} size={16} style={style} />;
+  const iEp = EPAISSEURS_FLECHE.indexOf(st.epaisseur);
+  const courbe = st.type === 'souple';
+  return [
+    { cle: 'type', icone: ic(courbe ? 'courbe' : 'droite'), actif: courbe, titre: courbe ? 'Courbe (passe par chaque point) — cliquer pour une flèche droite' : 'Droite (segments) — cliquer pour une courbe',
+      onClick: () => onStyle({ type: courbe ? 'dure' : 'souple' }, 'Type de la flèche') },
+    { cle: 'debut', icone: ic(IC_POINTE[st.pointes.debut], { transform: 'scaleX(-1)' }), titre: `Pointe de début : ${LIB_POINTE[st.pointes.debut]} (aucune, ouverte, pleine)`,
+      onClick: () => onStyle({ pointes: { ...st.pointes, debut: suivant(POINTES, st.pointes.debut) } }, 'Pointe de début') },
+    { cle: 'fin', icone: ic(IC_POINTE[st.pointes.fin]), titre: `Pointe de fin : ${LIB_POINTE[st.pointes.fin]} (aucune, ouverte, pleine)`,
+      onClick: () => onStyle({ pointes: { ...st.pointes, fin: suivant(POINTES, st.pointes.fin) } }, 'Pointe de fin') },
+    { cle: 'trait', icone: ic(IC_TRAIT[st.trait]), titre: `Style : ${LIB_TRAIT[st.trait]} (continu, tirets, pointillés)`,
+      onClick: () => onStyle({ trait: suivant(TRAITS, st.trait) }, 'Style du trait') },
+    { cle: 'epaisseur', icone: ic('epaisseur' + (iEp < 0 ? 1 : iEp + 1)), titre: 'Épaisseur (fine, moyenne, épaisse)',
+      onClick: () => onStyle({ epaisseur: EPAISSEURS_FLECHE[(Math.max(-1, iEp) + 1) % EPAISSEURS_FLECHE.length] }, 'Épaisseur de la flèche') },
+    { cle: 'couleur', couleur: st.couleur || couleurDefaut, titre: 'Couleur de la flèche', onCouleur: (c) => onStyle({ couleur: c }, 'Couleur de la flèche') },
+    { cle: '|' },
+    { cle: 'supprimer', titre: 'Supprimer la flèche (Suppr)', onClick: onSupprimer },
+  ];
+}
+
+/** objet sous le pointeur au relâchement d'un bout de flèche : l'id d'une boîte (sauf `exclure`), ou null */
+export function boiteSous(clientX, clientY, exclure = null) {
+  const els = typeof document !== 'undefined' && document.elementsFromPoint ? document.elementsFromPoint(clientX, clientY) : [];
+  for (const el of els) { const n = el.closest && el.closest('.note-box[data-boite]'); if (n && n.dataset.boite !== exclure) return n.dataset.boite; }
+  return null;
 }

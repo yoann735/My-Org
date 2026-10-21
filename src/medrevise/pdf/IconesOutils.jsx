@@ -106,6 +106,23 @@ const DESSINS = {
     <path d="M5.5 12.5h12" />
     <path d="M20 15.5s1.5 1.8 1.5 3a1.5 1.5 0 0 1-3 0c0-1.2 1.5-3 1.5-3Z" />
   </>),
+  /* (21/10) GRAMMAIRE DE LA MINI BARRE (pdf/Selection.jsx) : une icône par réglage, son état se lit sur l'icône */
+  rogner: <path d="M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14" />,
+  cadenas: (<><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>),
+  cadenasOuvert: (<><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 7.6-1.7" /></>),
+  reduire: <path d="M5 12h14" />,
+  droite: <path d="M4 18 10 8l5 6 5-9" />,
+  courbe: <path d="M4 18c3-9 6-11 8-6s5 3 8-7" />,
+  pointeAucune: <path d="M4 12h16" />,
+  pointeOuverte: <path d="M4 12h16m-5-5 5 5-5 5" />,
+  pointePleine: (<><path d="M4 12h11" /><path d="M20 12l-6-5v10l6-5Z" fill="currentColor" /></>),
+  traitContinu: <path d="M3 12h18" />,
+  traitTirets: <path d="M3 12h4m3 0h4m3 0h4" />,
+  traitPointilles: <path d="M4 12h.01M8 12h.01M12 12h.01M16 12h.01M20 12h.01" strokeWidth="2.6" />,
+  epaisseur1: <path d="M4 12h16" strokeWidth="1.2" />,
+  epaisseur2: <path d="M4 12h16" strokeWidth="2.6" />,
+  epaisseur3: <path d="M4 12h16" strokeWidth="4.6" />,
+  vide: <rect x="5" y="5" width="14" height="14" rx="2" />,
 };
 
 /** <IconeForme type="ellipse" /> — dessinée avec LE MÊME tracé que la forme posée

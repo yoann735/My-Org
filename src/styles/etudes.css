@@ -1692,8 +1692,6 @@
 .pi-coin { position: absolute; width: 11px; height: 11px; background: #fff; border: 2px solid var(--accent); border-radius: 3px; }
 .pi-nw { left: -6px; top: -6px; cursor: nwse-resize; } .pi-se { right: -6px; bottom: -6px; cursor: nwse-resize; }
 .pi-ne { right: -6px; top: -6px; cursor: nesw-resize; } .pi-sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
-.pi-actions { left: 0; top: 0; white-space: nowrap; z-index: 20; }
-.pi-actions.dessous { top: 100%; }
 .nb-act:disabled { opacity: .4; cursor: default; }
 
 /* ---- Nom de la fiche, en petit, renommable (01/10) — remplace le grand en-tête quand un document est ouvert ---- */
@@ -1869,7 +1867,6 @@
 .pf-texte span { background: rgba(255,255,255,.82); border-radius: 4px; padding: 0 3px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .pf-texte textarea { pointer-events: auto; font: inherit; color: inherit; text-align: center; min-width: 120px; resize: none; border: 1.5px solid var(--accent);
   border-radius: 6px; background: #fff; padding: 3px 6px; outline: none; }
-.pdfr-forme .pf-actions .sc-bouton { height: 22px; border-color: transparent; }
 /* sélecteur de forme dans la barre contextuelle */
 .ptb-formes { display: inline-flex; align-items: center; gap: 2px; flex-wrap: wrap; }
 .ptb-forme { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 7px; border: 1px solid transparent;
@@ -1880,9 +1877,6 @@
 .pf-n { left: -6px; right: -6px; top: -6px; height: 10px; } .pf-s { left: -6px; right: -6px; bottom: -6px; height: 10px; }
 .pf-e { top: -6px; bottom: -6px; right: -6px; width: 10px; } .pf-w { top: -6px; bottom: -6px; left: -6px; width: 10px; }
 .pdfr-forme .pi-coin { pointer-events: auto; }
-.pdfr-forme .pf-actions { left: 0; top: 0; pointer-events: auto; z-index: 20; }
-.pdfr-forme .pf-actions.dessous { top: 100%; }
-.pdfr-forme .pf-actions.a-droite { left: auto; right: 0; }
 .pdfr-formelayer { cursor: crosshair; }
 .pdfr-forme-apercu { position: absolute; border: 2px dashed; border-radius: 3px; pointer-events: none; }
 
@@ -2039,7 +2033,6 @@ textarea.tb-texte { display: block; resize: none; border: 0; outline: none; back
 .pdfr-image-corps { position: absolute; inset: 0; transform-origin: 50% 50%; }
 .pdfr-image.active { box-shadow: none !important; }
 .pdfr-image.active .pdfr-image-corps { box-shadow: 0 0 0 2px var(--accent); }
-.pdfr-image .pi-actions { top: -30px; }
 /* effet génie (02/10 nuit) : la carte réelle est masquée pendant que ses tranches s'animent */
 .ad-genie-scene { position: fixed; inset: 0; z-index: 960; pointer-events: none; }
 .ad.ad-genie, .ad.ad-aspire { visibility: hidden; }

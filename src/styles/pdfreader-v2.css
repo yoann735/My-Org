@@ -404,3 +404,64 @@
 .sc-pastille.blanc.actif { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .22), 0 0 0 2px var(--card), 0 0 0 3.5px var(--text); }
 .pdfr-v2 .pdfr-contexte .sc-plus { width: 18px; height: 18px; }
 .pdfr-v2.lecteur-tab .pdfr-contexte .sc-plus { width: 32px; height: 32px; margin: 0 4px; } /* au doigt : une cible de 32 px */
+
+/* ---- SÉLECTION ET MINI BARRE UNIQUES (21/10, pdf/Selection.jsx, docs/compte-rendu-pdfreader-harmonisation.md) ----
+   Tous les objets : contour 1,5 px d'accent (en ombre portée : un contour de 1,5 px serait arrondi à 1 px) et 4 poignées
+   d'angle identiques. Rien d'autre. Pendant un glisser, l'objet passe au-dessus des autres. */
+.pdfr-page .sel-cadre { position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 1.5px var(--accent); pointer-events: none; z-index: 5; }
+.pdfr-page .sel-cadre.rond { border-radius: 50%; }
+.pdfr-page .sel-coin { position: absolute; width: 10px; height: 10px; box-sizing: border-box; border-radius: 3px; background: #fff; border: 1.5px solid var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .25); pointer-events: auto; touch-action: none; animation: fondu .12s ease-out both; }
+.pdfr-page .sel-coin.sel-nw { left: -5px; top: -5px; cursor: nwse-resize; transform-origin: 100% 100%; }
+.pdfr-page .sel-coin.sel-ne { right: -5px; top: -5px; cursor: nesw-resize; transform-origin: 0 100%; }
+.pdfr-page .sel-coin.sel-sw { left: -5px; bottom: -5px; cursor: nesw-resize; transform-origin: 100% 0; }
+.pdfr-page .sel-coin.sel-se { right: -5px; bottom: -5px; cursor: nwse-resize; transform-origin: 0 0; }
+@media (pointer: coarse) { .pdfr-page .sel-coin { width: 18px; height: 18px; border-radius: 50%; } .pdfr-page .sel-coin.sel-nw, .pdfr-page .sel-coin.sel-sw { left: -9px; } .pdfr-page .sel-coin.sel-ne, .pdfr-page .sel-coin.sel-se { right: -9px; }
+  .pdfr-page .sel-coin.sel-nw, .pdfr-page .sel-coin.sel-ne { top: -9px; } .pdfr-page .sel-coin.sel-sw, .pdfr-page .sel-coin.sel-se { bottom: -9px; } }
+.pdfr-page .mini-barre { position: absolute; pointer-events: auto; white-space: nowrap; width: auto; }
+.pdfr-page .mini-barre .mb-sep { width: 1px; height: 18px; margin: 0 3px; background: var(--border); flex: 0 0 auto; }
+.pdfr-page .mini-barre .nb-act:disabled { opacity: .35; cursor: default; }
+.pdfr-page .mini-barre .nb-act.vise { width: auto; padding: 0 10px; color: #fff; background: var(--accent); }
+/* boîtes : sélection = le cadre commun ; plus de languette, de coin unique ni d'épingle sur le bord */
+.pdfr-page .note-box { cursor: default; touch-action: none; }
+.pdfr-page .note-box.selectionnee:not(.active) { cursor: move; }
+.pdfr-page .note-box.active .nb-body { cursor: text; }
+.pdfr-page .note-box.mot.active, .pdfr-page .note-box.mot.selectionnee { box-shadow: 0 2px 8px rgba(0, 0, 0, .16); }
+.pdfr-page .note-box.mot.texte-libre.active, .pdfr-page .note-box.mot.texte-libre.selectionnee { box-shadow: none; }
+.pdfr-page .note-box.selectionnee { overflow: visible; }
+.pdfr-page .note-box.en-geste, .pdfr-page .pdfr-forme.glisse, .pdfr-page .pdfr-image.glisse, .pdfr-page .pdfr-question.glisse { z-index: 40 !important; }
+.pdfr-page .note-box .nb-bar { cursor: inherit; }
+.pdfr-page .note-box .nb-grip, .pdfr-page .note-box .nb-corner, .pdfr-page .note-box .nb-epingle { display: none; }
+.pdfr-page .note-box.mot .nb-bar { opacity: 1; background: transparent; }
+/* « ? » : sa taille (`taille`) */
+.pdfr-page .pdfr-question .pq-rond { position: relative; width: calc(26px * var(--pq, 1)); height: calc(26px * var(--pq, 1)); font-size: calc(14px * var(--pq, 1)); }
+.pdfr-page .pdfr-question .pq-x { display: none; }
+/* points de contrôle et bouts d'une flèche : cercles de 8 px, bord d'accent, fond blanc — partout les mêmes */
+.pdfr-page .nb-ctl, .pdfr-page .fl-bout { position: absolute; z-index: 6; width: 8px; height: 8px; margin: -4px 0 0 -4px; box-sizing: content-box; border-radius: 50% !important;
+  border: 1.5px solid var(--accent) !important; background: #fff; box-shadow: 0 0 0 4px transparent; cursor: move; touch-action: none; pointer-events: auto; }
+.pdfr-page .nb-ctl::after, .pdfr-page .fl-bout::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; } /* prise de 8 px de rayon autour du point */
+.pdfr-page .fl-bout { cursor: grab; background: var(--accent); }
+.pdfr-page .nb-ctl:hover, .pdfr-page .fl-bout:hover { transform: scale(1.25); }
+@media (pointer: coarse) { .pdfr-page .nb-ctl, .pdfr-page .fl-bout { width: 14px; height: 14px; margin: -7px 0 0 -7px; } .pdfr-page .nb-ctl::after, .pdfr-page .fl-bout::after { inset: -10px; } }
+.pdfr-page .nb-conn.sel .nb-conn-halo, .pdfr-page .pf-halo { pointer-events: none; }
+/* formes fermées : prises par toute leur surface (outil Sélection) */
+.pdfr-page .pdfr-forme.interactive.prise-pleine { pointer-events: auto; cursor: move; }
+.pdfr-page .pdfr-forme.active { outline: none; }
+/* traits de crayon : la bande de prise (outil Sélection) et le cadre du trait sélectionné */
+.pdfr-page .pdfr-traits-prise { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.pdfr-page .pdfr-traits-prise path { pointer-events: stroke; cursor: move; }
+.pdfr-page .pdfr-trait-sel { position: absolute; border-radius: 4px; cursor: move; touch-action: none; z-index: 4; }
+/* images : la partie rognée de l'image entière ; verrouillée : ni déplacement ni coins */
+.pdfr-page .pdfr-image-corps.rognee { overflow: hidden; }
+.pdfr-page .pdfr-image-plein { position: absolute; inset: 0; }
+.pdfr-page .pdfr-image-plein img { width: 100%; height: 100%; }
+.pdfr-page .pdfr-image.active .pdfr-image-corps { box-shadow: none; }
+.pdfr-page .pdfr-image.verrouillee { cursor: default; }
+.pdfr-page .pdfr-image.rognage .sel-coin { border-radius: 0; background: var(--accent); }
+.pdfr-page .pdfr-image .pi-rotation, .pdfr-page .pdfr-image .pi-coin { display: none; }
+/* le bandeau des boîtes d'avant garde sa hauteur (celle que lui donnait l'icône de poignée) : le texte ne bouge pas */
+.pdfr-page .note-box:not(.mot):not(.compacte) .nb-bar { box-sizing: border-box; height: 17px; min-height: 17px; }
+/* le « ? » garde sa taille au survol et pendant un glisser (règle commune : aucun saut de taille) */
+.pdfr-page .pdfr-question .pq-rond:hover, .pdfr-page .pdfr-question.glisse .pq-rond { transform: none; }
+/* au doigt, le navigateur ne reprend pas le geste d'un objet pour faire défiler la page (même règle pour tous) */
+.pdfr-page .pdfr-forme.interactive, .pdfr-page .pdfr-forme .pf-hit, .pdfr-page .pdfr-traits-prise path, .pdfr-page .pdfr-question .pq-rond, .pdfr-page .nb-conn-cible, .pdfr-page .nb-ancre { touch-action: none; }
