@@ -41,7 +41,7 @@ const nFinal = (s) => s.segments.filter((x) => x.status === 'final').length;
 b.ok(s1 && s1.endedAt && nFinal(s1) >= 2 && s1.keyterms.length > 0, 'session arrêtée et enregistrée (segments, mots-clés)', JSON.stringify({ segs: nFinal(s1), kt: s1 && s1.keyterms.length, d: s1 && s1.durationS }));
 
 // ---------- 2. reprise n° 1, depuis la LISTE des sessions ----------
-await b.clic(await b.pos(`[...document.querySelectorAll('.trx-barre .btn')].find(x=>/Sessions/.test(x.innerText))`, false), { att: 700 });
+await b.clic(await b.pos(`document.querySelector('.trx-retour')`, false), { att: 700 });
 const bouton = await b.pos(`document.querySelector('.trx-session[data-session="${id}"] .trx-session-reprendre')`, true);
 b.ok(!!bouton && (await b.ev(`[...document.querySelectorAll('.trx-session-reprendre')].every(x=>x.getAttribute('aria-label')==='Reprendre l’enregistrement')`)), 'chaque session terminée de la liste a « Reprendre l’enregistrement »');
 await b.clic(bouton, { att: 1200 });
@@ -95,7 +95,7 @@ b.ok((avecM.match(/— reprise à \d\d:\d\d —/g) || []).length === 2 && !/repr
   '« Copier tout » inclut les 2 marques ; « sans les marques de reprise » les retire (et rien d’autre)', JSON.stringify({ avec: avecM.split('\n').length, sans: sansM.split('\n').length }));
 
 // ---------- 5. une session d'AVANT (sans page, sans marque) se reprend aussi ----------
-await b.clic(await b.pos(`[...document.querySelectorAll('.trx-barre .btn')].find(x=>/Sessions/.test(x.innerText))`, false), { att: 700 });
+await b.clic(await b.pos(`document.querySelector('.trx-retour')`, false), { att: 700 });
 await b.clic(await b.pos(`document.querySelector('.trx-session[data-session="${ANCIENNE.id}"] .trx-session-reprendre')`, true), { att: 1200 });
 await attendreBouton('/Reprendre/');
 await clicTexte('.trx-feuille button', '/^\\s*Reprendre\\s*$/');
@@ -106,7 +106,7 @@ const sa = await enBase(ANCIENNE.id);
 b.ok(sa.segments[0].text === ANCIENNE.segments[0].text && sa.segments[1].text === ANCIENNE.segments[1].text && marques(sa).length === 1 && marques(sa)[0].t0 === 60 && nFinal(sa) > 2, 'ancienne session : ses lignes intactes, la suite après la marque à 1:00', JSON.stringify({ n: sa.segments.length, m: marques(sa).map((x) => x.t0) }));
 
 // ---------- 6. reprise refusée : la session a été reprise sur un autre appareil entre-temps ----------
-await b.clic(await b.pos(`[...document.querySelectorAll('.trx-barre .btn')].find(x=>/Sessions/.test(x.innerText))`, false), { att: 700 });
+await b.clic(await b.pos(`document.querySelector('.trx-retour')`, false), { att: 700 });
 // l'autre appareil l'a reprise (endedAt nul, plus récente) — arrivée par la synchro dans la base locale
 await b.S(`const r=await S.getOne('transcript_session',${JSON.stringify(id)});await S.put('transcript_session',{...r,endedAt:null,updatedAt:new Date(Date.now()+1000).toISOString()});return 1`);
 await b.clic(await b.pos(`document.querySelector('.trx-session[data-session="${id}"] .trx-session-reprendre')`, true), { att: 1500 });

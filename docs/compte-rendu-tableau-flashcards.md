@@ -359,3 +359,49 @@ chemin de réception local est vérifié.
 | ![](img/tableau-flashcards/tableau-fleches-ordinateur.png) | ![](img/tableau-flashcards/tableau-cote-a-cote.png) |
 | **iPad** | **Mobile (768 px)** |
 | ![](img/tableau-flashcards/tableau-sombre-ipad.png) | ![](img/tableau-flashcards/tableau-blanc-mobile.png) |
+
+## Non-régression générale
+
+Rejouée en fin de chantier sur le banc local (Chrome headless, base locale, aucun appel Supabase) :
+
+| Banc | Résultat |
+|---|---|
+| `t-objets` (PDF ×3 appareils, document, fiche jumelle) | 33/33 ×3, 30/30, 33/33 |
+| `t-fleches` (ordinateur, iPad), `t-zoom`, `t-inserer`, `t-taille`, `t-formats uniforme` | 18/18 ×2, 10/10, 9/9, 9/9, 5/5 |
+| `t-crayon` (×2), `t-boites`, `t-dock`, `t-export`, `t-telephone`, `t-contextes` | tout passe |
+| `v4/t-clignotement`, `v3/t-zoom`, `v3/t-couleurs`, `v3/t-transcript` | 6/6, 6/6, 27/27, 24/24 |
+| `t-reprise`, `t-transcript-entete` | 17/17, 9/9 |
+| `t-flashcards`, `t-tableau`, `import-tableau-nettete` (t-tableau, mobile, tablette) | 18/18, 24/24, 16/16, 9/9, 5/5 |
+| fiche jumelle `tout.sh` (couleurs, import, bascule, calques, éditeur, tablette, remplacer, sans-les-deux, document ×5, correspondance 30/30 ×3) | tout passe |
+
+Ajustements de bancs pendant ce passage (le code n'était pas en cause) :
+- `t-objets` fixe le zoom à 160 % : les bancs `t-zoom` et `t-inserer` laissaient le cours de test à 100 %, et les objets
+  déplacés finissaient par se chevaucher ;
+- `t-tableau` remet le cours en disposition « PDF » à la fin : en « côte à côte », le panneau est fermé, ce qui gênait
+  les bancs suivants ;
+- `t-reprise` et `v3/t-transcript` visent le bouton « ‹ Sessions » par sa classe, puisque son libellé s'abrège en
+  panneau étroit (§5).
+
+Aléa connu, non lié à ce chantier : `v3/t-transcript` peut voir un segment validé pendant le défilement entre deux
+pages (« page 5 »). Il est réapparu sur un passage sur trois.
+
+**MealWeek** : elle s'ouvre normalement depuis le sélecteur d'apps (« Planning de la semaine »), 0 erreur JavaScript.
+`git diff 4b8d13c..HEAD -- src/mealweek src/shared` est **vide**.
+
+![](img/tableau-flashcards/mealweek-apres-chantier.png)
+
+## Migration SQL
+
+`supabase/migrations/20261022_board.sql` : additive, idempotente, **non appliquée**. Elle ajoute un index partiel sur
+`medrevise_records` pour le type « board ». L'app fonctionne sans elle.
+
+## Commits
+
+| Commit | Message |
+|---|---|
+| `a26e038` | fix(medrevise): « Insérer une page » — invisible hors survol, ligne de la largeur exacte de la page, « + » rond à l'échelle (18–40 px) |
+| `0225b9d` | feat(medrevise): Transcript — en-tête de lecture sur une ligne, barre de défilement toujours visible avec repère horaire, Début / Fin |
+| `391214f` | feat(medrevise): boîtes de la famille « carte » et tailles en % de la largeur de page (texte, crayon, bordures) |
+| `db65df8` | feat(medrevise): onglet Flashcards refait — sélecteur de sorte unique, Recto / Verso d'abord, « Plus d'options », menu Amorce, recherche et filtres, actions au survol |
+| `721a422` | feat(medrevise): tableau (Miro) par fiche — cartes, flèches du lecteur, images, groupes, import de flashcards, export PNG |
+| (ce commit) | test + docs : non-régression, MealWeek, liste des commits |

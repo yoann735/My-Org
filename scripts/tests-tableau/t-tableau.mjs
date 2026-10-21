@@ -182,5 +182,8 @@ if (app === 'ordinateur') {
   b.ok(n >= 1 && /Ajouter au tableau/.test(await b.ev(`'Ajouter au tableau'`)), 'sélection de texte du PDF › « Ajouter au tableau » : une carte avec le passage', String(n));
   await b.capture('tableau-cote-a-cote', { x: 0, y: 0, width: 1440, height: 900 });
 }
+// remise en état : le cours en disposition « PDF » (les autres bancs y comptent sur le panneau ouvert)
+{ const pdf = await b.pos(`[...document.querySelectorAll('.pdfr-dispo .seg-btn, .tab-dispo .tab-bt')].find(x=>/PDF|Le PDF seul/.test(x.innerText+(x.title||'')))`, false); if (pdf) await tape(pdf); await b.dormir(1500); }
+await b.ev(`localStorage.setItem('medrevise.disposition.${COURS}','pdf');1`);
 b.ok(!b.erreurs.length, 'aucune erreur', b.erreurs.join(' | '));
 process.exit(0);

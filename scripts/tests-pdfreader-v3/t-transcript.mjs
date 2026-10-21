@@ -97,7 +97,7 @@ b.ok(lignesCopie.length >= rec.segs.filter((s) => s.status === 'final').length &
 await b.clic(await b.pos(`document.querySelector('.trx-groupe .btn')`, false), { att: 500 });
 b.ok(!/\[p\. \d+\]/.test(await b.ev(`window.__copie||''`)), '« Copier tout » simple : inchangé, sans numéros');
 // ancienne session : intacte, sans numéros
-await b.clic(await b.pos(`[...document.querySelectorAll('.trx-barre button')].find(x=>x.innerText.includes('Sessions'))`, false), { att: 600 });
+await b.clic(await b.pos(`document.querySelector('.trx-retour') /* (22/10) libellé abrégé en panneau étroit */`, false), { att: 600 });
 await b.clic(await b.pos(`[...document.querySelectorAll('.trx-session')].pop()`, false), { att: 700 });
 const anc = await b.ev(`({n:document.querySelectorAll('.trx-liste .trx-ligne').length,pages:document.querySelectorAll('.trx-liste .trx-page').length,filtre:!!document.querySelector('.trx-cette-page')})`);
 b.ok(anc.n === 2 && anc.pages === 0 && !anc.filtre, 'ancienne session : ses 2 lignes, sans numéro de page ni filtre', JSON.stringify(anc));

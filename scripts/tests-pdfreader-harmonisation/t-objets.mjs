@@ -31,6 +31,8 @@ await b.ouvrir(CTX.titre, { recharger: true });
 await versVue();
 if (appareil === 'ipad') { await b.c.send('Emulation.setDeviceMetricsOverride', { width: 1024, height: 1366, deviceScaleFactor: 2, mobile: true }); await b.dormir(1800); }
 if (appareil === 'mobile') { await b.c.send('Emulation.setDeviceMetricsOverride', { width: 768, height: 1024, deviceScaleFactor: 2, mobile: true }); await b.dormir(1800); }
+// zoom de référence (160 %) : les autres bancs laissent le cours à un autre zoom, mémorisé
+await b.ev(`window.__mrZoom&&window.__mrZoom(1.6);1`); await b.dormir(1200);
 await b.ev(`document.querySelector('.pdfr-scroll').scrollTop=0;1`); await b.dormir(900);
 if (!(await b.ev(`!!document.querySelector('.ptb-outil.actif[title^="Sélection"], .tab-outil.actif[aria-label="Sélection"]')`))) await b.outil('Sélection');
 await b.dormir(500);
