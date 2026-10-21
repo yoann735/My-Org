@@ -45,7 +45,9 @@ import { TableauRevision } from './FlashcardTableau.jsx';
 import { estMolecule, texteMolecule, SENS, NIVEAUX } from '../molecule/carte.js';
 import { VueMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from './FlashcardImage.jsx';
-import { CarteAjoutFlashcard } from './CarteAjoutFlashcard.jsx';
+import { CarteAjoutFlashcard, sorteDe } from './CarteAjoutFlashcard.jsx';
+import { ActionsCarte } from './ActionsCarte.jsx';
+import { IconeRafale } from './IconeRafale.jsx';
 import { planDuJour } from '../lib/apprentissageFC.js';
 import { nextDate } from '../lib/planning.js';
 import { todayISO } from '../lib/sm2.js';
@@ -259,6 +261,18 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   };
 
   const items = useMemo(() => ficheItems.filter((q) => q.type === activeType), [ficheItems, activeType]);
+  /* FLASHCARDS : RECHERCHE ET FILTRES PAR SORTE (22/10, docs/compte-rendu-tableau-flashcards.md §6) */
+  const [recherche, setRecherche] = useState('');
+  const [filtreSorte, setFiltreSorte] = useState('toutes');
+  const sorteListe = (q) => (estOcclusion(q) ? 'image' : sorteDe(q) !== 'standard' ? sorteDe(q) : (q.cloze && q.cloze.length) || /\{\{[^{}]+\}\}/.test(q.recto || '') ? 'trou' : q.imageId ? 'image' : 'texte');
+  const nbParSorte = useMemo(() => { const n = {}; for (const q of items) { const k = sorteListe(q); n[k] = (n[k] || 0) + 1; } return n; }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sansAcc = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const itemsVus = useMemo(() => {
+    if (activeType !== 'flashcard') return items;
+    const q0 = sansAcc(recherche.trim());
+    return items.filter((q) => (filtreSorte === 'toutes' || sorteListe(q) === filtreSorte)
+      && (!q0 || sansAcc([q.recto, q.verso, q.theme, q.indice, q.a_retenir, q.muscle && q.muscle.nom, q.molecule && q.molecule.nom].filter(Boolean).join(' ')).includes(q0)));
+  }, [items, activeType, recherche, filtreSorte]); // eslint-disable-line react-hooks/exhaustive-deps
   // les flashcards de CE cours : combien, combien à revoir aujourd'hui (étape 2 FSRS : plus de
   // compteur « nouvelles / à apprendre », le mode Apprentissage est supprimé)
   const resumeFC = useMemo(() => {
@@ -305,9 +319,9 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
       )}
       <div className="pm-actions">
         {/* carte flashcard ouverte : elle a son propre « Terminer » — pas de doublon ici */}
-        {!(adding && addSource === 'form' && activeType === 'flashcard') && <button type="button" className={'btn sm' + (adding && addSource === 'form' ? ' actif' : '')}
+        {!(adding && addSource === 'form' && activeType === 'flashcard') && <button type="button" className={'btn sm' + (adding && addSource === 'form' ? ' actif' : '') + (activeType === 'flashcard' ? ' primary' : '')} data-act="nouvelle"
           onClick={() => { if (adding && addSource === 'form') closeAdd(); else { setAdding(true); setAddSource('form'); setAddedCount(0); setEditingId(null); } }}>
-          <Icon name={adding && addSource === 'form' ? 'x' : 'plus'} size={13} /> {adding && addSource === 'form' ? 'Fermer' : 'Ajouter'}
+          <Icon name={adding && addSource === 'form' ? 'x' : 'plus'} size={13} /> {adding && addSource === 'form' ? 'Fermer' : activeType === 'flashcard' ? 'Nouvelle carte' : 'Ajouter'}
         </button>}
         {/* (17/10) importer des flashcards (fichier .json / .zip ou collage) — lib/importFlashcards.js */}
         {activeType === 'flashcard' && <button type="button" className="btn sm" data-act="importer-fc" title="Importer des flashcards (JSON)" onClick={() => setImportFC(true)}>
@@ -315,9 +329,9 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         </button>}
         <span style={{ flex: 1 }} />
         {activeType === 'flashcard' && items.length > 0 && ctx.setLearningSet && (
-          <button type="button" className={'btn sm ghost alib-selectionner' + (selection ? ' actif' : '')} onClick={() => setSelection((x) => (x ? null : new Set()))}
-            title="Cocher plusieurs cartes pour les mettre en apprentissage (ou les en retirer)">
-            {selection ? 'Fermer la sélection' : 'Sélectionner'}
+          <button type="button" className={'icon-btn sm alib-selectionner' + (selection ? ' actif' : '')} onClick={() => setSelection((x) => (x ? null : new Set()))}
+            title={selection ? 'Fermer la sélection' : 'Sélectionner : cocher plusieurs cartes pour les mettre en apprentissage (ou les en retirer)'} aria-label={selection ? 'Fermer la sélection' : 'Sélectionner'} aria-pressed={!!selection}>
+            <Icon name={selection ? 'x' : 'check'} size={15} />
           </button>
         )}
         <button type="button" className="icon-btn sm" title="Plus d’actions : coller du JSON"
@@ -358,6 +372,22 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
           </div>
         </div>
       )}
+      {activeType === 'flashcard' && items.length > 0 && (
+        <div className="fcl-outils">
+          <label className="fcl-recherche">
+            <Icon name="search" size={13} />
+            <input type="search" value={recherche} placeholder={`Chercher dans ${items.length} carte${items.length > 1 ? 's' : ''}…`} onChange={(e) => setRecherche(e.target.value)} aria-label="Chercher une flashcard" />
+          </label>
+          <div className="fcl-filtres" role="radiogroup" aria-label="Filtrer par sorte">
+            {[['toutes', 'Toutes', items.length], ['texte', 'Texte'], ['trou', 'Trou'], ['image', 'Image'], ['muscle', 'Muscle'], ['tableau', 'Tableau'], ['molecule', 'Molécule']]
+              .filter(([id]) => id === 'toutes' || nbParSorte[id]).map(([id, lbl, n]) => (
+                <button key={id} type="button" role="radio" aria-checked={filtreSorte === id} data-filtre={id} className={'fcl-filtre' + (filtreSorte === id ? ' actif' : '')} onClick={() => setFiltreSorte(id)}>
+                  {lbl} <span className="tnum">{n ?? nbParSorte[id]}</span>
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
       {activeType === 'flashcard' && selection && (() => {
         const choisies = items.filter((q) => selection.has(q.id)).map((q) => q.id);
         const aMettre = choisies.filter((id) => !dansAppr.has(id));
@@ -380,15 +410,23 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         );
       })()}
       <div className="pis-list">
+        {activeType === 'flashcard' && items.length > 0 && itemsVus.length === 0 && (
+          <div className="pm-vide fcl-vide"><Icon name="search" size={20} /><div>Aucune carte ne correspond.</div>
+            <button type="button" className="linklike" onClick={() => { setRecherche(''); setFiltreSorte('toutes'); }}>Tout afficher</button></div>
+        )}
         {items.length === 0 && !adding && (
           <div className="pm-vide">
             <Icon name={(TYPES.find((t) => t.id === activeType) || {}).icon || 'cards'} size={22} />
             <div>{VIDES[activeType]}</div>
-            <div className="hint">« Ajouter » pour en créer un, ou « ⋯ » pour coller le JSON d’un prompt.</div>
+            <div className="hint">{activeType === 'flashcard' ? '« Nouvelle carte » pour en créer une, « Importer » pour un fichier JSON.' : '« Ajouter » pour en créer un, ou « ⋯ » pour coller le JSON d’un prompt.'}</div>
           </div>
         )}
-        {items.map((item) => (
-          editingId === item.id ? (
+        {itemsVus.map((item) => (
+          editingId === item.id && item.type === 'flashcard' ? (
+            /* modification : le MÊME formulaire que la création (sorte affichée, verrouillée) */
+            <CarteAjoutFlashcard key={item.id} ctx={ctx} ficheId={ficheId} initial={item} busy={busyEdit}
+              onAjouter={(raw) => submitEdit(item, raw)} onTerminer={() => setEditingId(null)} />
+          ) : editingId === item.id ? (
             <div key={item.id} className="pis-item card fadein">
               <div className="card-body">
                 <ItemForm type={item.type} initial={item} submitLabel="Enregistrer" busy={busyEdit}
@@ -396,7 +434,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
               </div>
             </div>
           ) : (
-            <ItemReadCard key={item.id} item={item}
+            <ItemReadCard key={item.id} item={item} ctx={ctx}
               appr={item.type === 'flashcard' && ctx.setLearningSet ? { dans: dansAppr.has(item.id), basculer: () => basculerAppr([item.id], !dansAppr.has(item.id)) } : null}
               coche={item.type === 'flashcard' && selection ? { oui: selection.has(item.id), basculer: () => cocher(item.id) } : null}
               // (16/10) glisser vers l'onglet Apprentissage : la carte, ou toute la sélection si elle en fait partie
@@ -407,7 +445,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         ))}
       </div>
     </div>
-  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC, dansAppr, selection]); // eslint-disable-line react-hooks/exhaustive-deps
+  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, itemsVus, recherche, filtreSorte, nbParSorte, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC, dansAppr, selection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* contenus des modes : des éléments STABLES (mêmes objets d'un rendu à l'autre tant que
      leur contenu ne change pas) — le volet mémoïsé (Volet) ne se re-rend alors jamais
@@ -489,9 +527,12 @@ const Volet = memo(function Volet({ id, label, k, cache, contenu }) {
 });
 
 /* ---- carte de lecture (réponse toujours visible) + Éditer/Supprimer ---- */
-function ItemReadCard({ item, onEdit, onDelete, appr = null, coche = null, glisse = null }) {
+function ItemReadCard({ item, ctx = null, onEdit, onDelete, appr = null, coche = null, glisse = null }) {
+  /* (22/10) flashcards : une carte compacte, ses actions au survol (au doigt : toujours visibles) — modifier,
+     apprentissage, carnet d'erreurs, supprimer (docs/compte-rendu-tableau-flashcards.md §6) */
+  const fc = item.type === 'flashcard';
   return (
-    <div className={'pis-item card' + (coche && coche.oui ? ' alib-cochee' : '') + (glisse ? ' alib-glissable' : '')} data-item={item.id}
+    <div className={'pis-item card' + (fc ? ' fcl-carte' : '') + (coche && coche.oui ? ' alib-cochee' : '') + (glisse ? ' alib-glissable' : '')} data-item={item.id}
       draggable={!!glisse} onDragStart={glisse ? (e) => commencerGlisse(e, glisse()) : undefined} onDragEnd={glisse ? finirGlisse : undefined}
       title={glisse ? 'Glisser sur « Apprentissage » (barre de gauche) pour l’y ajouter' : undefined}>
       <div className="card-body">
@@ -499,18 +540,23 @@ function ItemReadCard({ item, onEdit, onDelete, appr = null, coche = null, gliss
           {coche && <input type="checkbox" className="alib-case" checked={coche.oui} onChange={coche.basculer} aria-label="Sélectionner cette carte" />}
           <span className="hint" style={{ fontWeight: 700, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto' }}>{item.theme || 'Sans thème'}</span>
           {appr && appr.dans && <span className="alib-pastille" title="Cette carte est dans l’espace Apprentissage (elle suit toujours les J)">Apprentissage</span>}
-          <div className="row" style={{ gap: 4, flex: '0 0 auto' }}>
+          <div className={'row' + (fc ? ' fcl-actions' : '')} style={{ gap: 4, flex: '0 0 auto' }}>
             {estMuscle(item) && <BoutonCopier texte={() => texteMuscle(item)} />}
             {estMolecule(item) && <BoutonCopier texte={() => texteMolecule(item)} />}
-            <button type="button" className="cd-ic" title="Éditer" onClick={onEdit}><Icon name="edit" size={12} /></button>
-            <button type="button" className="cd-ic" title="Supprimer" onClick={onDelete}><Icon name="trash" size={12} /></button>
+            <button type="button" className="cd-ic" title={fc ? 'Modifier' : 'Éditer'} aria-label="Modifier" data-act="modifier" onClick={onEdit}><Icon name="edit" size={12} /></button>
+            {fc && appr && (
+              <button type="button" className={'cd-ic' + (appr.dans ? ' actif' : '')} data-act="apprentissage" onClick={appr.basculer}
+                title={appr.dans ? 'Retirer de l’apprentissage' : 'Mettre en apprentissage'} aria-label={appr.dans ? 'Retirer de l’apprentissage' : 'Mettre en apprentissage'}><IconeRafale size={12} /></button>
+            )}
+            {fc && ctx && <ActionsCarte ctx={ctx} carte={item} mobile={false} sansApprentissage />}
+            <button type="button" className="cd-ic" title="Supprimer" aria-label="Supprimer" data-act="supprimer" onClick={onDelete}><Icon name="trash" size={12} /></button>
           </div>
         </div>
         {item.type === 'qcm' && <QcmReadBody item={item} />}
         {item.type === 'flashcard' && (estOcclusion(item) ? <OcclusionReadBody item={item} /> : estTableau(item) ? <TableauReadBody item={item} /> : estMuscle(item) ? <MuscleReadBody item={item} /> : estMolecule(item) ? <MoleculeReadBody item={item} /> : <FlashcardReadBody item={item} />)}
         {item.type === 'feynman' && <FeynmanReadBody item={item} />}
         {item.type === 'exercice' && <ExerciceReadBody item={item} />}
-        {appr && (
+        {appr && !fc && (
           <div className="alib-pied">
             <button type="button" className={'alib-btn-carte' + (appr.dans ? ' dans' : '')} onClick={appr.basculer}>
               <Icon name={appr.dans ? 'x' : 'refresh'} size={12} /> {appr.dans ? 'Retirer de l’apprentissage' : 'Mettre en apprentissage'}

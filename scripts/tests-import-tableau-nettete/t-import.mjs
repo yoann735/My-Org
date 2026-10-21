@@ -13,8 +13,8 @@ await b.S(`for(const q of await S.getAll('questions'))if(q.ficheId==='f-002-imp'
 await b.biblio({ recharger: true });
 await b.ouvrir('Import (test 17/10)');
 await b.panneauFlashcards();
-const btn = await b.ev(`(()=>{const a=[...document.querySelectorAll('.pm-actions button')];const i=a.findIndex(x=>x.dataset.act==='importer-fc');const j=a.findIndex(x=>x.innerText.trim()==='Ajouter');return {i,j,txt:i>=0?a[i].innerText.trim():null}})()`);
-b.ok(btn.i === btn.j + 1 && btn.txt === 'Importer', 'Flashcards : bouton « Importer » juste à côté de « + Ajouter »', JSON.stringify(btn));
+const btn = await b.ev(`(()=>{const a=[...document.querySelectorAll('.pm-actions button')];const i=a.findIndex(x=>x.dataset.act==='importer-fc');const j=a.findIndex(x=>x.dataset.act==='nouvelle'); /* (22/10) « Nouvelle carte » */return {i,j,txt:i>=0?a[i].innerText.trim():null}})()`);
+b.ok(btn.i === btn.j + 1 && btn.txt === 'Importer', 'Flashcards : bouton « Importer » juste à côté de « + Nouvelle carte »', JSON.stringify(btn));
 await b.clic(await b.pos(`document.querySelector('[data-act=importer-fc]')`), { att: 500 });
 const M = `document.querySelector('[data-import-flashcards]')`;
 b.ok(await b.ev(`!!${M}`), 'fenêtre « Importer des flashcards »');

@@ -144,7 +144,7 @@ await A.clic(await A.pos(`[...(${F}).querySelectorAll('.imp-actions .btn.primary
 await A.dormir(2500);
 const carte = await A.ev(`(async () => { const q = (await ${A.st}.getAll('questions')).find((x) => x.recto === ${JSON.stringify(NOM)}); return q ? { id: q.id, images: Object.keys(q.muscle.images || {}).sort(), generale: q.muscle.imageGenerale } : null; })()`);
 ok(carte && carte.images.join(',') === 'insertion,origine' && carte.generale && carte.generale.auRecto === true, 'carte enregistrée : images Insertion + Origine, image générale au recto', JSON.stringify(carte));
-await A.ev(`(() => { const b = [...document.querySelectorAll('.pis-add button')].find((x) => /Terminer/.test(x.textContent)); b && b.click(); return 1; })()`); await A.dormir(800);
+await A.ev(`(() => { const b = [...document.querySelectorAll('.pis-add .imp-actions button')].find((x) => x.offsetParent && /Annuler/.test(x.textContent)) /* (22/10) « Terminer » → « Annuler » */; b && b.click(); return 1; })()`); await A.dormir(800);
 const item = `[...document.querySelectorAll('.pis-item')].find((x) => x.textContent.includes(${JSON.stringify(NOM)}))`;
 await A.ev(`(${item}).scrollIntoView({ block: 'center' }), true`); await A.dormir(300);
 // liste du panneau (lecture) : vignettes du tableau compact, cliquables
@@ -176,7 +176,7 @@ await A.clic(await A.pos(`(${S}).querySelector('.zim-act.retirer')`));
 ok(await A.ev(`!!(${S}).querySelector('.zim-ajout')`), 'carte standard : Retirer → bouton « Image »');
 
 // 8. CARTE MOLÉCULE : même composant ; enregistrée avec son image
-await A.clic(await A.pos(`[...document.querySelectorAll('.fc-sorte')].find((b) => b.offsetParent && /Molécule/.test(b.textContent))`));
+await A.clic(await A.pos(`document.querySelector('.fc-type[data-sorte="molecule"]') /* (22/10) sélecteur de sorte unique */`));
 await A.attendre(`!!document.querySelector('.mol-form #mol-nom') && !!document.querySelector('.mol-form .fci-champ')`, 30000);
 await A.dormir(1500);
 await A.clic(await A.pos(`document.querySelector('.mol-form #mol-nom')`));
@@ -197,7 +197,7 @@ await A.clic(await A.pos(`[...document.querySelectorAll('.mol-form .imp-actions 
 await A.dormir(2500);
 const molCarte = await A.ev(`(async () => { const q = (await ${A.st}.getAll('questions')).filter((x) => x.molecule && x.molecule.nom === 'Alanine' && x.imageId).pop(); return q ? { imagePlace: q.imagePlace, imageId: !!q.imageId, smiles: !!q.molecule.smiles } : null; })()`);
 ok(molCarte && molCarte.imagePlace === 'deux' && molCarte.smiles, 'carte Molécule enregistrée avec son image (affichée aux deux faces)', JSON.stringify(molCarte));
-await A.ev(`(() => { const b = [...document.querySelectorAll('.pis-add button')].find((x) => /Terminer/.test(x.textContent)); b && b.click(); return 1; })()`); await A.dormir(800);
+await A.ev(`(() => { const b = [...document.querySelectorAll('.pis-add .imp-actions button')].find((x) => x.offsetParent && /Annuler/.test(x.textContent)) /* (22/10) « Terminer » → « Annuler » */; b && b.click(); return 1; })()`); await A.dormir(800);
 const molListe = await A.ev(`(() => { const it = [...document.querySelectorAll('.pis-item')].filter((x) => /Alanine/.test(x.textContent)).pop(); return it ? !!it.querySelector('.fc-image img, .fc-image') : null; })()`);
 ok(molListe === true, 'liste du panneau : la carte Molécule montre son image');
 

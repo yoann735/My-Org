@@ -84,11 +84,9 @@ export function ThemeFicheFlashcards({ ctx, ficheId }) {
   return (
     <div className="tf">
       {!edition ? (
-        <div className="tf-ligne">
-          <Icon name="tag" size={13} />
-          {theme
-            ? <span className="tf-txt" title="Thème donné automatiquement à chaque nouvelle flashcard de cette fiche">Thème auto : <b>{theme}</b></span>
-            : <span className="tf-txt tf-vide">Pas de thème auto pour cette fiche</span>}
+        /* (22/10) un petit en-tête discret « Thème : — · Définir » (docs/compte-rendu-tableau-flashcards.md §6) */
+        <div className="tf-ligne tf-discret" title="Thème donné automatiquement à chaque nouvelle flashcard de cette fiche">
+          <span className="tf-txt">Thème : {theme ? <b>{theme}</b> : <span className="tf-vide">—</span>}</span>
           <button type="button" className="linklike tf-modif" disabled={occupe} onClick={() => { setSaisie(theme); setEdition(true); }}>
             {theme ? 'Modifier' : 'Définir'}
           </button>

@@ -11,10 +11,10 @@ await b.S(`for(const q of await S.getAll('questions'))if(q.ficheId==='f-001-tb'|
 await b.biblio({ recharger: true });
 await b.ouvrir('Fesse — tableaux (test)');
 await b.panneauFlashcards();
-await b.clic(await b.pos(`[...document.querySelectorAll('.pm-actions button')].find(x=>x.innerText.trim()==='Ajouter')`, false), { att: 500 });
-const sortes = await b.ev(`[...document.querySelectorAll('.fc-sortes .fc-sorte')].map(x=>x.innerText.trim())`);
-b.ok(sortes.join(' · ') === 'Tableau muscle · Tableau · Molécule', 'formulaire unifié : « + Tableau » à côté de « + Tableau muscle » et « + Molécule »', sortes.join(' · '));
-await b.clic(await b.pos(`[...document.querySelectorAll('.fc-sorte')].find(x=>x.innerText.trim()==='Tableau')`, false), { att: 400 });
+await b.clic(await b.pos(`document.querySelector('.pm-actions [data-act="nouvelle"]')`, false), { att: 500 });
+const sortes = await b.ev(`[...document.querySelectorAll('.fc-types .fc-type')].map(x=>x.innerText.trim())`);
+b.ok(sortes.join(' · ') === 'Texte · Muscle · Tableau · Molécule', '(22/10) sélecteur de sorte unique : Texte · Muscle · Tableau · Molécule', sortes.join(' · '));
+await b.clic(await b.pos(`document.querySelector('.fc-type[data-sorte="tableau"]')`, false), { att: 400 });
 const F = `document.querySelector('[data-formulaire-tableau]')`;
 b.ok(await b.ev(`!!${F} && ${F}.offsetParent!==null`), 'le formulaire Tableau s’ouvre');
 // 3 colonnes × 4 lignes, saisies
@@ -51,7 +51,7 @@ await b.clic(await b.pos(`${F}.querySelector('[data-act=ajouter]')`), { att: 120
 q = await b.S(`return (await S.getAll('questions')).filter(q=>q.ficheId==='f-001-tb'&&q.tableau).map(q=>q.recto+' : '+q.tableau.colonnes.length+'×'+q.tableau.lignes.length)`);
 b.ok(q.length === 2 && q.includes('Muscles de la fesse — innervation : 4×2'), 'deuxième carte (TSV) enregistrée : 4 colonnes × 2 lignes', q.join(' / '));
 // panneau : la carte s'affiche avec son tableau
-await b.clic(await b.pos(`[...document.querySelectorAll('.fc-carte button')].find(x=>x.innerText.trim()==='Terminer')`, false), { att: 600 });
+await b.clic(await b.pos(`[...document.querySelectorAll('.fc-carte .imp-actions button')].find(x=>x.offsetParent&&x.innerText.trim()==='Annuler')`, false), { att: 600 });
 b.ok(await b.ev(`[...document.querySelectorAll('.pis-face-tag')].some(x=>x.textContent.trim()==='Tableau') && !!document.querySelector('.pis [data-tableau] table')`), 'panneau : la carte s’affiche « Tableau » avec son tableau (non masqué)');
 await b.capture('tb-panneau', await b.ev(`(()=>{const e=[...document.querySelectorAll('.pis [data-tableau]')][0].closest('.pis-item')||document.querySelector('.pis [data-tableau]');const r=e.getBoundingClientRect();return {x:r.x-8,y:r.y-8,width:r.width+16,height:Math.min(500,r.height+16)}})()`));
 await b.fermerLecteur();

@@ -49,7 +49,7 @@ function Fenetre({ titre, onFermer, largeur = 'min(480px, 94vw)', children }) {
 }
 
 /* `carte` : la carte AFFICHÉE (id, type, recto) ; `mobile` : icônes de 40 px, feuille du bas */
-export function ActionsCarte({ ctx, carte, mobile: mobileProp }) {
+export function ActionsCarte({ ctx, carte, mobile: mobileProp, sansApprentissage = false }) {
   const mobile = mobileProp ?? etroit();
   const [menu, setMenu] = useState(false); // menu des pré-réponses
   const [posMenu, setPosMenu] = useState(null); // ordinateur : position FIXE (jamais rognée par la zone qui défile)
@@ -73,7 +73,8 @@ export function ActionsCarte({ ctx, carte, mobile: mobileProp }) {
 
   if (!carte) return null;
   const carnetOk = admissibleCarnet(carte);
-  const apprOk = estAdmissible(carte) && !carte.ephemeral && !!ctx.setLearningSet;
+  // `sansApprentissage` (22/10) : la liste des flashcards du panneau a déjà son interrupteur Apprentissage
+  const apprOk = !sansApprentissage && estAdmissible(carte) && !carte.ephemeral && !!ctx.setLearningSet;
   if (!carnetOk && !apprOk) return null;
   const dejaAppr = ((ctx.db && ctx.db.learningSet) || []).includes(carte.id);
   const dejaCarnet = !!((ctx.db && ctx.db.questions) || []).find((q) => q.id === carte.id && q.carnetAt);

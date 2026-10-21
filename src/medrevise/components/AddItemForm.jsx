@@ -32,7 +32,7 @@ import { OPTION_LETTERS } from '../lib/schema.js';
 import { parseCloze } from '../lib/cloze.js';
 import { OcclusionEditorModal } from './OcclusionImage.jsx';
 import { ChampImageFlashcard } from './FlashcardImage.jsx';
-import { AmorcesRecto } from './AmorcesRecto.jsx';
+import { MenuAmorces } from './AmorcesRecto.jsx';
 import { FormulaireMuscle } from './FlashcardMuscle.jsx';
 import { estMuscle } from '../lib/muscle.js';
 import { estTableau } from '../lib/carteTableau.js';
@@ -480,62 +480,46 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
     if (e.key === 'Tab' && e.shiftKey && e.target === versoRef.current) { e.preventDefault(); rectoRef.current && rectoRef.current.focus(); }
   };
   const themePropre = !initial && themeDefaut && theme.trim() !== themeDefaut;
+  /* REFONTE (22/10, docs/compte-rendu-tableau-flashcards.md §6) : Recto / Verso d'abord ; les options secondaires
+     (thème, indice, à retenir, image et masques) repliées derrière « Plus d'options », ouvertes d'office si la carte
+     en a déjà ; un seul bouton principal « Ajouter » (⌘↵) et « Annuler ». Même formulaire en création et en
+     modification. Les amorces : un menu « Amorce ▾ » (components/AmorcesRecto.jsx#MenuAmorces). */
+  const [plus, setPlus] = useState(() => !!(initial && (initial.indice || initial.a_retenir || initial.imageId || (initial.theme && initial.theme !== themeDefaut))));
+  useEffect(() => { if (avecImage) setPlus(true); }, [avecImage]); // une image collée sur le recto : ses options se montrent
+  const resumeOptions = [theme.trim() && `Thème : ${theme.trim()}`, indice.trim() && 'Indice', aRetenir.trim() && 'À retenir', avecImage && 'Image'].filter(Boolean);
 
   return (
-    <div className={'aif-champs' + (depot ? ' fc-depot' : '')} ref={racineRef} onKeyDown={auClavier}
+    <div className={'aif-champs fcf' + (depot ? ' fc-depot' : '')} ref={racineRef} onKeyDown={auClavier}
       onDragOver={(e) => { if (sansImage || !glisseDesFichiers(e.dataTransfer)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; if (!depot) setDepot(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDepot(false); }}
       onDrop={() => setDepot(false)}>
-      <div className="imp-field">
-        <label>Thème <span className="imp-opt">(optionnel)</span></label>
-        <input className="imp-title" placeholder="ex : Surfactant" value={theme} onChange={(e) => { themeRetouche.current = true; setTheme(e.target.value); }} />
-        {!initial && (themeDefaut ? (
-          <div className="hint fc-theme-aide">
-            {themePropre
-              ? <>Pour cette carte seulement — la fiche garde « {themeDefaut} ». <button type="button" className="linklike" onClick={() => { setTheme(themeDefaut); themeRetouche.current = false; }}>Remettre</button></>
-              : <>Thème de la fiche, donné à chaque nouvelle carte.</>}
-          </div>
-        ) : theme.trim() ? <div className="hint fc-theme-aide">La fiche n’a pas encore de thème : celui-ci deviendra le sien (pré-rempli sur les cartes suivantes).</div> : null)}
-      </div>
-      <div className="imp-field" {...(sansImage ? {} : { 'data-zone-image': 'recto', 'data-zone-focus': 'recto' })}>
-        <div className="row spread" style={{ alignItems: 'center' }}>
-          <label style={{ marginBottom: 0 }}>Recto</label>
+      <div className="imp-field fcf-face" {...(sansImage ? {} : { 'data-zone-image': 'recto', 'data-zone-focus': 'recto' })}>
+        <div className="fcf-etiquette">
+          <label htmlFor={undefined}>Recto</label>
+          <span style={{ flex: 1 }} />
+          {optionsTexte && <MenuAmorces onInserer={insererAmorce} />}
           {optionsTexte && (
-            <button type="button" className="btn ghost sm" onClick={addHole} title="Sélectionne un mot dans le recto, puis clique ici pour le transformer en trou (cloze)">
-              <Icon name="box" size={13} /> Ajouter un trou
+            <button type="button" className="btn ghost sm" onMouseDown={(e) => e.preventDefault()} onClick={addHole} title="Sélectionne un mot du recto, puis « Trou » : il devient un trou à compléter (carte à trou)">
+              <Icon name="box" size={12} /> Trou
             </button>
           )}
         </div>
-        {optionsTexte && <AmorcesRecto onInserer={insererAmorce} />}
-        <textarea ref={rectoRef} className="imp-title" style={{ minHeight: 78, resize: 'vertical', fontFamily: 'inherit', marginTop: 6 }}
-          value={recto} onChange={(e) => { setRecto(e.target.value); setHoleHint(null); }} placeholder="Question / terme… (pour une carte à trou : sélectionne un mot, puis « Ajouter un trou »)" />
-        {holeHint && <div className="hint" style={{ marginTop: 6, color: 'var(--accent-2)' }}><Icon name="alert" size={12} /> {holeHint}</div>}
+        <textarea ref={rectoRef} className="imp-title fcf-champ" rows={3}
+          value={recto} onChange={(e) => { setRecto(e.target.value); setHoleHint(null); }} placeholder="Question, terme…" aria-label="Recto" />
+        {holeHint && <div className="hint fcf-aide alerte"><Icon name="alert" size={12} /> {holeHint}</div>}
         {blanks.length > 0 && (
-          <div style={{ marginTop: 8 }}>
-            <div className="hint" style={{ marginBottom: 6 }}>Aperçu de la carte à trou :</div>
-            <div style={{ lineHeight: 1.7 }}>
-              {segments.map((s, i) => s.type === 'text'
-                ? <span key={i}>{s.value}</span>
-                : (
-                  <button key={i} type="button" onClick={() => removeHole(s.index)} title="Cliquer pour retirer ce trou"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 3, margin: '0 2px', padding: '1px 7px',
-                      border: '1px dashed var(--accent)', borderRadius: 6, background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
-                      color: 'var(--accent)', fontSize: 12.5, cursor: 'pointer',
-                    }}>
-                    [ … ] <Icon name="x" size={10} />
-                  </button>
-                ))}
-            </div>
-            <div className="hint" style={{ marginTop: 6 }}>
-              Réponse{blanks.length > 1 ? 's' : ''} : {blanks.map((b) => b.expected).join(', ')}
-            </div>
+          <div className="fcf-trous">
+            <span className="hint">Carte à trou :</span>{' '}
+            {segments.map((sg, i) => sg.type === 'text'
+              ? <span key={i}>{sg.value}</span>
+              : <button key={i} type="button" className="fcf-trou" onClick={() => removeHole(sg.index)} title="Retirer ce trou">[ … ] <Icon name="x" size={10} /></button>)}
+            <div className="hint">Réponse{blanks.length > 1 ? 's' : ''} : {blanks.map((bl) => bl.expected).join(', ')}</div>
           </div>
         )}
       </div>
-      <div className="imp-field" {...(sansImage ? {} : { 'data-zone-image': 'verso', 'data-zone-focus': 'verso' })}>
-        <label>Verso</label>
-        <textarea ref={versoRef} className="imp-title" style={{ minHeight: 60, resize: 'vertical', fontFamily: 'inherit' }} value={verso} onChange={(e) => setVerso(e.target.value)} placeholder="Réponse…" />
+      <div className="imp-field fcf-face" {...(sansImage ? {} : { 'data-zone-image': 'verso', 'data-zone-focus': 'verso' })}>
+        <div className="fcf-etiquette"><label>Verso</label></div>
+        <textarea ref={versoRef} className="imp-title fcf-champ" rows={2} value={verso} onChange={(e) => setVerso(e.target.value)} placeholder="Réponse…" aria-label="Verso" />
       </div>
       {apercu && (recto.trim() || verso.trim()) && (
         <div className="fc-apercu">
@@ -543,30 +527,48 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
           <div className="pis-face"><span className="pis-face-tag">Verso</span>{verso || <span className="hint">—</span>}</div>
         </div>
       )}
-      {!sansImage && <ChampImageFlashcard valeur={image} onChange={setImage} onColler={(f) => collage.colleDans('image', f)} />}
-      {!sansImage && avecImage && onOcclusion && !initial && (
-        <div className="fc-occ-option">
-          <button type="button" className="btn sm" onClick={() => onOcclusion({ fichier: image.fichier, imageId: image.imageId, recto, verso, theme })}>
-            <Icon name="image" size={13} /> Masques à deviner…
-          </button>
-          <span className="hint">dessine des zones ou <b>masque des mots</b> reconnus sur l’image (OCR)</span>
+      <button type="button" className={'fcf-plus' + (plus ? ' ouvert' : '')} aria-expanded={plus} onClick={() => setPlus((v) => !v)}>
+        <Icon name={plus ? 'chevD' : 'chevR'} size={12} /> Plus d’options
+        {!plus && resumeOptions.length > 0 && <span className="fcf-resume">{resumeOptions.join(' · ')}</span>}
+      </button>
+      {plus && (
+        <div className="fcf-options">
+          <div className="imp-field">
+            <label>Thème</label>
+            <input className="imp-title fcf-champ" placeholder="ex : Surfactant" value={theme} onChange={(e) => { themeRetouche.current = true; setTheme(e.target.value); }} />
+            {!initial && (themeDefaut ? (
+              <div className="hint fc-theme-aide">
+                {themePropre
+                  ? <>Pour cette carte seulement — la fiche garde « {themeDefaut} ». <button type="button" className="linklike" onClick={() => { setTheme(themeDefaut); themeRetouche.current = false; }}>Remettre</button></>
+                  : <>Thème de la fiche, donné à chaque nouvelle carte.</>}
+              </div>
+            ) : theme.trim() ? <div className="hint fc-theme-aide">La fiche n’a pas encore de thème : celui-ci deviendra le sien (pré-rempli sur les cartes suivantes).</div> : null)}
+          </div>
+          <div className="imp-field">
+            <label>Indice</label>
+            <textarea className="imp-title fcf-champ fc-txt-court" rows={1} value={indice} onChange={(e) => setIndice(e.target.value)} />
+          </div>
+          <div className="imp-field">
+            <label>À retenir</label>
+            <textarea className="imp-title fcf-champ fc-txt-court" rows={1} value={aRetenir} onChange={(e) => setARetenir(e.target.value)} />
+          </div>
+          {!sansImage && <ChampImageFlashcard valeur={image} onChange={setImage} onColler={(f) => collage.colleDans('image', f)} />}
+          {!sansImage && avecImage && onOcclusion && !initial && (
+            <div className="fc-occ-option">
+              <button type="button" className="btn sm" onClick={() => onOcclusion({ fichier: image.fichier, imageId: image.imageId, recto, verso, theme })}>
+                <Icon name="image" size={13} /> Masques à deviner…
+              </button>
+              <span className="hint">dessine des zones ou <b>masque des mots</b> reconnus sur l’image (OCR)</span>
+            </div>
+          )}
         </div>
       )}
-      <div className="imp-field">
-        <label>Indice <span className="imp-opt">(optionnel)</span></label>
-        <textarea className="imp-title fc-txt-court" rows={1} value={indice} onChange={(e) => setIndice(e.target.value)} />
-      </div>
-      <div className="imp-field">
-        <label>À retenir <span className="imp-opt">(optionnel)</span></label>
-        <textarea className="imp-title fc-txt-court" rows={1} value={aRetenir} onChange={(e) => setARetenir(e.target.value)} />
-      </div>
-      <div className="imp-actions">
-        <span className="fc-raccourci" title="Entrée = retour à la ligne · Échap = annuler">{RACCOURCI_ENREGISTRER} pour enregistrer</span>
+      <div className="imp-actions fcf-pied">
+        <span className="fc-raccourci" title="Entrée = retour à la ligne · Échap = annuler">{RACCOURCI_ENREGISTRER}</span>
         {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
-        <button className="btn primary" onClick={submit} disabled={!ready || busy}><Icon name="check" size={15} /> {submitLabel || 'Ajouter cette flashcard'}</button>
+        <button className="btn primary" onClick={submit} disabled={!ready || busy} title={ready ? `Ajouter (${RACCOURCI_ENREGISTRER})` : 'Recto et verso requis'}><Icon name="check" size={14} /> {submitLabel || 'Ajouter'}</button>
       </div>
       <MessageCollage message={collage.message} onAnnuler={collage.annuler} onFermer={collage.fermer} />
-      {!ready && <div className="hint" style={{ marginTop: 8 }}>Recto et verso requis.</div>}
     </div>
   );
 }

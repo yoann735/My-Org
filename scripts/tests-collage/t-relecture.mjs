@@ -8,7 +8,7 @@ const A = await appareil(9335, { captures });
 const NOM = 'm. Test collage';
 // 1. rouvrir : l'élément de la liste du panneau → Éditer
 const item = `[...document.querySelectorAll('.pis-item')].find((x) => x.textContent.includes(${JSON.stringify(NOM)}))`;
-await A.ev(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.offsetParent && /Fermer|Terminer/.test(x.textContent) && x.closest('.pis-scroll, .pm-exos')); b && b.click(); return 1; })()`);
+await A.ev(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.offsetParent && /Fermer|Terminer|Annuler/.test(x.textContent) && x.closest('.pis-scroll, .pm-exos')); b && b.click(); return 1; })()`);
 await A.dormir(600);
 const trouve = await A.ev(`!!(${item})`);
 ok(trouve, 'carte « m. Test collage » dans la liste du cours');
