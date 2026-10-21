@@ -69,15 +69,15 @@ import { buildCourseExportFromParts } from '../lib/courseExport.js';
 import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
   COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI, opaciteSurlignage, COMPACT, fractionPx100,
-  useDevicePixelRatio, compareHighlights, computePageTextMap, EPAISSEURS,
-  MODES_CRAYON, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, couleurHex, BOITE_DEFAUT, lireFondBoiteDefaut,
+  useDevicePixelRatio, compareHighlights, computePageTextMap,
+  MODES_CRAYON, couleurHex, BOITE_DEFAUT, lireFondBoiteDefaut,
 } from './pdfShared.js';
 import { PdfPageContent, EditToolbar, ECHELLE_REF } from './PdfPage.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
-import { SelecteurCouleurs, ReglagesTrait, dansSelecteurFlottant } from './Couleurs.jsx';
+import { SelecteurCouleurs, dansSelecteurFlottant } from './Couleurs.jsx';
 import { patchAjouter, patchStyle, connecteursDe } from './connecteurs.js';
 import { BarreFleche } from './BarreFleche.jsx';
-import { reglagesCrayonV4, EPAISSEURS_CRAYON } from './crayon.js';
+import { reglagesCrayon as reglagesCrayonPdf, EPAISSEURS_CRAYON, OPACITE_SURLIGNEUR_CRAYON } from './crayon.js';
 import { IconeOutil, IconeForme } from './IconesOutils.jsx';
 import { TYPES_FORMES, estTrait, estFermee, ancreSurForme } from './formes.js';
 import { publierFicheActive, useSondage, dessinsDeFiche, retirerDessin } from '../lib/dessins.js';
@@ -96,7 +96,7 @@ import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
 import { dehydrateDoc, EMPTY_DOC, docToMarkdown } from '../documents/lib/richtext.js';
 import { exporterMarkdownDoc, nomFichier, telecharger as telechargerFichier } from '../documents/lib/exportDoc.js';
 import { PageTexte, PAGE_A4, OutilsTexteDocument, effacerSurlignageRecherche } from './PageTexte.jsx';
-import { useTablette, abonnerStylet, styletActif, dessinAuDoigt, pressionActive, ecrireDessinAuDoigt, ecrirePressionActive, abonnerReglagesStylet, lireFractionVolet, ecrireFractionVolet, bornerVolet, VOLET_MIN, VOLET_MAX, VOLET_PLEIN } from '../lib/tablette.js';
+import { useTablette, abonnerStylet, styletActif, dessinAuDoigt, ecrireDessinAuDoigt, abonnerReglagesStylet, lireFractionVolet, ecrireFractionVolet, bornerVolet, VOLET_MIN, VOLET_MAX, VOLET_PLEIN } from '../lib/tablette.js';
 import '../../styles/tablette.css';
 import '../../styles/notes-doc.css';
 import '../../styles/pdfreader-v2.css';
@@ -210,10 +210,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      le bas (08/10, portrait comme paysage). Desktop (≥ 1 200 px) et shell mobile : rien ne change. */
   const { tablette } = useTablette();
   const [stylet, setStylet] = useState(styletActif);
-  /* RÉGLAGES DU STYLET (20/10, lib/tablette.js) : « Dessiner au doigt » (non par défaut) et « Pression »
-     (oui par défaut), dans la rangée du crayon sur un écran tactile */
-  const [reglagesStylet, setReglagesStylet] = useState(() => ({ doigt: dessinAuDoigt(), pression: pressionActive() }));
-  useEffect(() => abonnerReglagesStylet(() => setReglagesStylet({ doigt: dessinAuDoigt(), pression: pressionActive() })), []);
+  /* RÉGLAGE DU STYLET (20/10, lib/tablette.js) : « Dessiner au doigt » (non par défaut), dans la rangée du
+     crayon sur un écran tactile. (21/10) La pression du stylet est retirée : épaisseur fixe. */
+  const [dessinDoigt, setDessinDoigt] = useState(dessinAuDoigt);
+  useEffect(() => abonnerReglagesStylet(() => setDessinDoigt(dessinAuDoigt())), []);
   const ecranTactile = typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(any-pointer: coarse)').matches;
   useEffect(() => abonnerStylet(() => setStylet(true)), []);
   // v3 tablette (08/10) : volet qui monte depuis le BAS — hauteur mémorisée, plein écran par geste
@@ -284,25 +284,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const setTypeFormeActif = (t) => { setTypeFormeActifBrut(t); try { localStorage.setItem('medrevise.typeForme', t); } catch (e) { /* ignore */ } };
   const [formeRemplie, setFormeRemplie] = useState(false);
   const [couleurTexte, setCouleurTexte] = useState('noir'); // couleur du prochain TEXTE LIBRE
-  /* RÉGLAGES DU CRAYON (03/10) : TAILLE et OPACITÉ, deux curseurs, réglés séparément
-     pour chaque mode (dessin / surligneur à main levée) et mémorisés sur l'appareil
-     (préférence d'affichage, rien au cloud). Remplacent les 3 boutons d'épaisseur. */
-  const REGLAGES_DEFAUT = { dessin: { taille: 0.0042, opacite: 1 }, surligneur: { taille: EPAISSEUR_SURLIGNEUR, opacite: OPACITE_SURLIGNEUR } };
-  const [reglagesCrayon, setReglagesCrayon] = useState(() => {
-    try { const v = JSON.parse(localStorage.getItem('medrevise.reglagesCrayon') || 'null'); if (v && v.dessin && v.surligneur) return v; } catch (e) { /* ignore */ }
-    return REGLAGES_DEFAUT;
-  });
-  const [aimant, setAimant] = useState(true); // le lissage est utile par défaut ; décochable (mode dessin seulement)
-  const [modeCrayon, setModeCrayon] = useState('dessin'); // dessin (fin, doux) | surligneur (épais, translucide) | gomme | lasso (20/10 soir)
-  // (20/10 soir, pdf/crayon.js) réglages du crayon v4, mémorisés par appareil
-  const [stabilisation, setStabilisationBrut] = useState(reglagesCrayonV4.stabilisation);
-  const setStabilisation = (v) => { setStabilisationBrut(v); reglagesCrayonV4.setStabilisation(v); };
-  const [surligneurDroit, setSurligneurDroitBrut] = useState(reglagesCrayonV4.surligneurDroit);
-  const setSurligneurDroit = (v) => { setSurligneurDroitBrut(v); reglagesCrayonV4.setSurligneurDroit(v); };
-  const [griffonner, setGriffonnerBrut] = useState(reglagesCrayonV4.griffonner);
-  const setGriffonner = (v) => { setGriffonnerBrut(v); reglagesCrayonV4.setGriffonner(v); };
-  // mode de TRACÉ (épaisseur, opacité) : la gomme et le lasso gardent ceux du dessin
-  const modeTrace = modeCrayon === 'surligneur' ? 'surligneur' : 'dessin';
+  /* CRAYON (refait simple le 21/10, pdf/crayon.js) : couleur + une de TROIS épaisseurs par mode (dessin /
+     surligneur à main levée), mémorisées sur l'appareil ; surligneur « en ligne droite » ; gomme Zone / Trait entier. */
+  const [modeCrayon, setModeCrayon] = useState('dessin'); // dessin | surligneur (même moteur)
+  const [epaisseurs, setEpaisseurs] = useState(() => ({ dessin: reglagesCrayonPdf.epaisseur('dessin').id, surligneur: reglagesCrayonPdf.epaisseur('surligneur').id }));
+  const choisirEpaisseur = (mode, id) => { reglagesCrayonPdf.setEpaisseur(mode, id); setEpaisseurs((e) => ({ ...e, [mode]: id })); };
+  const epaisseurDe = (mode) => (EPAISSEURS_CRAYON[mode].find((x) => x.id === epaisseurs[mode]) || EPAISSEURS_CRAYON[mode][1]).v;
+  const [surligneurDroit, setSurligneurDroitBrut] = useState(reglagesCrayonPdf.surligneurDroit);
+  const setSurligneurDroit = (v) => { setSurligneurDroitBrut(v); reglagesCrayonPdf.setSurligneurDroit(v); };
+  const [modeGomme, setModeGommeBrut] = useState(reglagesCrayonPdf.modeGomme);
+  const setModeGomme = (v) => { setModeGommeBrut(v); reglagesCrayonPdf.setModeGomme(v); };
   // changer d'outil ferme ce qui appartenait au précédent
   const choisirOutil = (idDemande) => {
     // re-cliquer l'outil actif = en sortir (retour à la Sélection), comme dans Aperçu
@@ -2248,34 +2239,30 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, couleur }, 'Couleur de la boîte'));
   };
   /* ---- CRAYON ----
-     Le trait arrive DÉJÀ lissé de la page (lisserTrait est appliqué au
-     relâchement, voir PdfPage) : on ne relisse jamais deux fois, et un trait
-     enregistré sans aimant reste brut pour toujours. Une entrée d'historique
-     par trait — Cmd+Z efface le trait entier, jamais un bout. */
-  // (20/10 soir) lasso : plusieurs traits modifiés (déplacés, recolorés) = UNE entrée d'Annuler
-  const modifierTraits = async (liste, libelle) => {
-    const cmds = (liste || []).map(({ avant, apres }) => cmdModifier('annotations', avant, apres, libelle));
-    if (cmds.length) await hist.appliquer(cmds.length === 1 ? cmds[0] : cmdGroupe(libelle, cmds));
-  };
-  const creerTrait = async ({ page, points, mode = 'dessin', pression = 1, rendu = null, formeReconnue = null }) => {
+     Le trait arrive DÉJÀ lissé de la page (moyenne mobile sur 3 points, pdf/crayon.js) : on ne relisse
+     jamais deux fois. Une entrée d'historique par trait — Cmd+Z efface le trait entier, jamais un bout. */
+  const creerTrait = async ({ page, points, mode = 'dessin', rendu = 'cr' }) => {
     if (!points || points.length < 2) return;
     const surligneur = mode === 'surligneur';
-    // (20/10) pression du stylet : facteur léger (0,6 à 1,4) sur l'épaisseur réglée — 1 à la souris / au doigt
-    const rec0 = newTrait({ ficheId: nsAnnot, page, points, couleur: couleurCrayon, mode,
-      epaisseur: (reglagesCrayon[mode] || REGLAGES_DEFAUT.dessin).taille * (Number.isFinite(pression) && pression > 0 ? pression : 1),
-      opacite: (reglagesCrayon[mode] || REGLAGES_DEFAUT.dessin).opacite,
-      aimant: !surligneur && aimant });
-    // (20/10 soir) `rendu` : 'cr' (courbes Catmull-Rom) ou 'droit' (forme redressée, surligneur en ligne droite)
-    const rec = { ...rec0, ...(rendu ? { rendu } : {}), ...(formeReconnue ? { formeReconnue } : {}) };
-    await hist.appliquer(cmdCreer('annotations', rec, formeReconnue ? 'Forme redressée' : surligneur ? 'Surligneur à main levée' : 'Trait au crayon'));
+    // (21/10) épaisseur = le préréglage choisi ; opacité fixe (1 au crayon, 40 % au surligneur) ; tracé Catmull-Rom
+    const rec = { ...newTrait({ ficheId: nsAnnot, page, points, couleur: couleurCrayon, mode, epaisseur: epaisseurDe(mode),
+      opacite: surligneur ? OPACITE_SURLIGNEUR_CRAYON : 1, aimant: false }), rendu };
+    await hist.appliquer(cmdCreer('annotations', rec, surligneur ? 'Surligneur à main levée' : 'Trait au crayon'));
   };
-  // gomme : UN geste = UNE entrée d'historique, même s'il a traversé plusieurs traits
-  // (02/10 soir) la gomme efface aussi les FORMES : leurs légendes sont déliées, comme à la suppression
-  const supprimerTraits = async (liste) => {
-    const elems = (liste || []).filter(Boolean);
+  /* GOMME : UN geste = UNE entrée d'historique, même s'il a traversé plusieurs traits. `supprimer` : traits et
+     formes effacés en entier (les légendes d'une forme sont déliées, comme à la suppression) ; `decouper` : gomme
+     de zone — le trait est remplacé par ses morceaux restants (mêmes couleur, épaisseur, mode, rendu). */
+  const gommer = async ({ supprimer = [], decouper = [] }) => {
+    const elems = supprimer.filter(Boolean);
     const cmds = elems.flatMap((t) => (t.kind === 'forme' ? cmdsSuppressionForme(t, 'Gomme') : [cmdSupprimer('annotations', t, 'Gomme')]));
+    for (const { trait, morceaux } of decouper) {
+      cmds.push(cmdSupprimer('annotations', trait, 'Gomme'));
+      // chaque morceau : une copie du trait (tous ses champs, rendu compris) avec un nouvel id et ses points
+      morceaux.forEach((m) => cmds.push(cmdCreer('annotations', { ...trait, id: newTrait({ ficheId: trait.ficheId, page: trait.page }).id,
+        createdAt: new Date().toISOString(), points: m.map(([x, y]) => [+x.toFixed(5), +y.toFixed(5)]) }, 'Gomme')));
+    }
     if (!cmds.length) return;
-    const nf = elems.filter((t) => t.kind === 'forme').length, nt = elems.length - nf;
+    const nf = elems.filter((t) => t.kind === 'forme').length, nt = elems.length - nf + decouper.length;
     if (nf && formeActiveId && elems.some((t) => t.id === formeActiveId)) setFormeActiveId(null);
     const detail = [nt ? `${nt} trait${nt > 1 ? 's' : ''}` : '', nf ? `${nf} forme${nf > 1 ? 's' : ''}` : ''].filter(Boolean).join(', ');
     await hist.appliquer(cmdGroupe(`Gomme (${detail})`, cmds));
@@ -3437,49 +3424,28 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         ) : outil === 'texte' ? (
           <SelecteurCouleurs couleur={couleurTexte} onCouleur={setCouleurTexte} titre="Couleur du texte" />
         ) : outil === 'question' ? <span /> : outil === 'crayon' ? (
+          /* (21/10) UN crayon : couleur, dessin / surligneur (même moteur), 3 épaisseurs ; surligneur en ligne droite ;
+             sur écran tactile, le réglage d'appareil « Dessiner au doigt » (d'avant le 20/10) */
           <>
             <SelecteurCouleurs couleur={couleurCrayon} onCouleur={setCouleurCrayon} titre="Couleur du crayon" />
             <span className="ptb-sep" />
-            {/* (20/10 soir) quatre modes : dessiner, surligner, gommer des traits, sélectionner au lasso — l'outil reste le crayon */}
             <div className="ptb-segment" role="group" aria-label="Mode du crayon">
-              {[...MODES_CRAYON, { id: 'gomme', label: 'Gomme' }, { id: 'lasso', label: 'Lasso' }].map((m) => (
+              {MODES_CRAYON.map((m) => (
                 <button key={m.id} type="button" className={modeCrayon === m.id ? 'actif' : ''} onClick={() => setModeCrayon(m.id)} data-mode={m.id}
-                  title={{ dessin: 'Trait fin et doux, pour écrire ou schématiser — maintenir immobile à la fin d’un trait pour le redresser (ligne, cercle, rectangle, triangle, flèche)', surligneur: 'Trait épais et translucide, sous le texte', gomme: 'Gomme de trait : touche ou balaie un trait pour l’effacer en entier', lasso: 'Lasso : entoure des traits (ou touche-en un) pour les déplacer, les recolorer ou les supprimer' }[m.id]}>
+                  title={m.id === 'dessin' ? 'Trait fin et doux, pour écrire ou schématiser' : 'Trait épais et translucide (40 %), sous le texte'}>
                   {m.label}
                 </button>
               ))}
             </div>
-            {(modeCrayon === 'dessin' || modeCrayon === 'surligneur') && (<>
-              <span className="ptb-sep" />
-              <div className="ptb-segment" role="group" aria-label="Épaisseur">
-                {EPAISSEURS_CRAYON[modeTrace].map((e) => (
-                  <button key={e.id} type="button" data-epaisseur={e.id} className={Math.abs(reglagesCrayon[modeTrace].taille - e.v) < 1e-6 ? 'actif' : ''} title={`Épaisseur : ${e.label.toLowerCase()} (réglage fin : « Taille »)`}
-                    onClick={() => setReglagesCrayon((r) => { const n = { ...r, [modeTrace]: { ...r[modeTrace], taille: e.v } }; try { localStorage.setItem('medrevise.reglagesCrayon', JSON.stringify(n)); } catch (er) { /* ignore */ } return n; })}>
-                    {e.label}
-                  </button>
-                ))}
-              </div>
-              <span className="ptb-sep" />
-              <ReglagesTrait mode={modeTrace} reglage={reglagesCrayon[modeTrace]} couleur={couleurHex(couleurCrayon)}
-                hauteurPage={(pageSizes[Math.max(0, pageCourante - 1)] || { height: 792 }).height * scale}
-                onChange={(patch) => setReglagesCrayon((r) => {
-                  const n = { ...r, [modeTrace]: { ...r[modeTrace], ...patch } };
-                  try { localStorage.setItem('medrevise.reglagesCrayon', JSON.stringify(n)); } catch (e) { /* ignore */ }
-                  return n;
-                })} />
-            </>)}
-            {modeCrayon === 'dessin' && (<>
-              <span className="ptb-sep" />
-              <label className="rt-curseur ptb-stabilisation" title="Stabilisation : lisse le tremblement de la main (0 % : trait brut)">
-                <span>Stabilisation</span>
-                <input type="range" min="0" max="100" value={Math.round(stabilisation * 100)} onChange={(e) => setStabilisation(Number(e.target.value) / 100)} aria-label="Stabilisation" />
-                <i className="rt-valeur">{Math.round(stabilisation * 100)} %</i>
-              </label>
-              <button type="button" className={'ptb-bascule' + (griffonner ? ' actif' : '')} aria-pressed={griffonner} data-reglage="griffonner" onClick={() => setGriffonner(!griffonner)}
-                title="Griffonner (zigzag serré) sur des traits les efface, sans changer d’outil">
-                Griffonner pour effacer : {griffonner ? 'oui' : 'non'}
-              </button>
-            </>)}
+            <span className="ptb-sep" />
+            <div className="ptb-segment" role="group" aria-label="Épaisseur">
+              {EPAISSEURS_CRAYON[modeCrayon].map((e) => (
+                <button key={e.id} type="button" data-epaisseur={e.id} className={epaisseurs[modeCrayon] === e.id ? 'actif' : ''} title={`Épaisseur : ${e.label.toLowerCase()}`}
+                  onClick={() => choisirEpaisseur(modeCrayon, e.id)}>
+                  <span className="ptb-ep" style={{ '--ep': [2, 3.5, 6][EPAISSEURS_CRAYON[modeCrayon].indexOf(e)] + 'px' }} aria-hidden="true" />{e.label}
+                </button>
+              ))}
+            </div>
             {modeCrayon === 'surligneur' && (<>
               <span className="ptb-sep" />
               <button type="button" className={'ptb-bascule' + (surligneurDroit ? ' actif' : '')} aria-pressed={surligneurDroit} data-reglage="ligne-droite" onClick={() => setSurligneurDroit(!surligneurDroit)}
@@ -3487,31 +3453,21 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 Tracer en ligne droite : {surligneurDroit ? 'oui' : 'non'}
               </button>
             </>)}
-            {modeCrayon === 'lasso' && <span className="hint ptb-contexte-aide">Entoure des traits, ou touche-en un · glisser la sélection pour la déplacer · Suppr pour la supprimer</span>}
-            {modeCrayon === 'gomme' && <span className="hint ptb-contexte-aide">Touche ou balaie un trait : il s’efface en entier</span>}
             {(modeTab || ecranTactile) && (<>
               <span className="ptb-sep" />
-              <button type="button" className={'ptb-bascule' + (reglagesStylet.pression ? ' actif' : '')} aria-pressed={reglagesStylet.pression}
-                onClick={() => ecrirePressionActive(!reglagesStylet.pression)}
-                title="Apple Pencil : appuyer plus fort épaissit légèrement le trait. Désactivé : épaisseur fixe.">
-                Pression {reglagesStylet.pression ? 'activée' : 'désactivée'}
-              </button>
-              <button type="button" className={'ptb-bascule' + (reglagesStylet.doigt ? ' actif' : '')} aria-pressed={reglagesStylet.doigt}
-                onClick={() => ecrireDessinAuDoigt(!reglagesStylet.doigt)}
+              <button type="button" className={'ptb-bascule' + (dessinDoigt ? ' actif' : '')} aria-pressed={dessinDoigt}
+                onClick={() => ecrireDessinAuDoigt(!dessinDoigt)}
                 title="Par défaut, seul le stylet (ou la souris) dessine : le doigt fait défiler et zoomer, la paume est ignorée. Activé : le doigt dessine aussi.">
-                Dessiner au doigt : {reglagesStylet.doigt ? 'oui' : 'non'}
+                Dessiner au doigt : {dessinDoigt ? 'oui' : 'non'}
               </button>
             </>)}
-            {modeCrayon === 'dessin' && (
-              <>
-                <span className="ptb-sep" />
-                <button type="button" className={'ptb-bascule' + (aimant ? ' actif' : '')} onClick={() => setAimant((v) => !v)}
-                  title="Lisse le tremblement et redresse les traits presque droits. Décoché, le trait est conservé tel qu'il a été tracé.">
-                  <IconeOutil nom="aimant" size={14} /> Aimant {aimant ? 'activé' : 'désactivé'}
-                </button>
-              </>
-            )}
           </>
+        ) : outil === 'gomme' ? (
+          <div className="ptb-segment" role="group" aria-label="Mode de la gomme">
+            {[{ id: 'zone', label: 'Zone', titre: 'Efface seulement ce qui passe sous la gomme (le trait est coupé)' }, { id: 'trait', label: 'Trait entier', titre: 'Un trait touché s’efface en entier' }].map((m) => (
+              <button key={m.id} type="button" data-mode-gomme={m.id} className={modeGomme === m.id ? 'actif' : ''} title={m.titre} onClick={() => setModeGomme(m.id)}>{m.label}</button>
+            ))}
+          </div>
         ) : null}
       />
       </div>
@@ -3632,12 +3588,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onImageMaj={majImage} onImageCalque={changerCalque} onImageSupprimer={supprimerImage}
                       onPoser={poserElement}
                       onCreerTrait={creerTrait}
-                      onSupprimerTraits={supprimerTraits}
+                      onGommer={gommer}
                       couleurTrait={couleurCrayon}
-                      epaisseurTrait={reglagesCrayon[modeTrace].taille}
-                      opaciteTrait={reglagesCrayon[modeTrace].opacite}
-                      stabilisation={stabilisation} surligneurDroit={surligneurDroit} griffonner={griffonner} onModifierTraits={modifierTraits}
-                      aimantActif={aimant}
+                      epaisseurTrait={epaisseurDe(modeCrayon)}
+                      surligneurDroit={surligneurDroit} modeGomme={modeGomme}
                       modeCrayon={modeCrayon}
                       outil={outil}
                       onCreerBoite={creerBoite}

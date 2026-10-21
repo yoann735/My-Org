@@ -1,46 +1,41 @@
-// (20/10 soir) Crayon v4 (src/medrevise/pdf/crayon.js) — docs/compte-rendu-pdfreader-v4.md
+// (21/10) Crayon refait simple (src/medrevise/pdf/crayon.js) — docs/compte-rendu-pdfreader-reparation.md
 import { describe, it, expect } from 'vitest';
-import { reconnaitreForme, estGriffonnage, traitsDansLasso, chaikin, cheminCatmull, cheminTrait, forceStabilisation } from '../../src/medrevise/pdf/crayon.js';
+import { lisser3, cheminCatmull, cheminDroit, cheminTrait, densifier, morceauxHors, arrondirPoints, EPAISSEURS_CRAYON } from '../../src/medrevise/pdf/crayon.js';
 
-const bruit = (i) => Math.sin(i * 12.9898) * 0.004; // tremblement déterministe
+const bruit = (i) => (i % 2 ? 1 : -1) * 0.004 * (1 + 0.3 * Math.sin(i)); // tremblement de la main (déterministe)
 const ligne = Array.from({ length: 40 }, (_, i) => [0.1 + i * 0.01, 0.5 + bruit(i)]);
-const cercle = Array.from({ length: 60 }, (_, i) => { const a = (2 * Math.PI * i) / 58; return [0.5 + 0.1 * Math.cos(a) + bruit(i), 0.5 + 0.1 * Math.sin(a) + bruit(i + 3)]; });
-const cote = (a, b, n) => Array.from({ length: n }, (_, i) => [a[0] + ((b[0] - a[0]) * i) / n + bruit(i), a[1] + ((b[1] - a[1]) * i) / n + bruit(i + 7)]);
-const rectangle = [...cote([0.2, 0.2], [0.6, 0.2], 15), ...cote([0.6, 0.2], [0.6, 0.45], 10), ...cote([0.6, 0.45], [0.2, 0.45], 15), ...cote([0.2, 0.45], [0.2, 0.2], 10), [0.2, 0.2]];
-const triangle = [...cote([0.3, 0.6], [0.5, 0.2], 15), ...cote([0.5, 0.2], [0.7, 0.6], 15), ...cote([0.7, 0.6], [0.3, 0.6], 15), [0.3, 0.6]];
-const fleche = [...cote([0.1, 0.5], [0.6, 0.5], 30), ...cote([0.6, 0.5], [0.55, 0.45], 5), ...cote([0.55, 0.45], [0.6, 0.5], 5), ...cote([0.6, 0.5], [0.55, 0.55], 5)];
+const rugosite = (p) => p.slice(2).reduce((s, q, i) => s + Math.abs(q[1] - 2 * p[i + 1][1] + p[i][1]), 0);
 
-describe('crayon v4', () => {
-  it('redresse : ligne, cercle, rectangle, triangle, flèche', () => {
-    expect(reconnaitreForme(ligne).type).toBe('ligne');
-    expect(reconnaitreForme(ligne).points).toHaveLength(2);
-    expect(reconnaitreForme(cercle).type).toBe('cercle');
-    expect(reconnaitreForme(rectangle).type).toBe('rectangle');
-    expect(reconnaitreForme(triangle).type).toBe('triangle');
-    expect(reconnaitreForme(fleche).type).toBe('fleche');
+describe('crayon (21/10)', () => {
+  it('moyenne mobile sur 3 points : extrémités gardées, tremblement réduit', () => {
+    const l = lisser3(ligne);
+    expect(l).toHaveLength(ligne.length);
+    expect(l[0]).toEqual(ligne[0]);
+    expect(l[l.length - 1]).toEqual(ligne[ligne.length - 1]); // le bout du trait reste sous le pointeur
+    expect(l[5][1]).toBeCloseTo((ligne[4][1] + ligne[5][1] + ligne[6][1]) / 3, 10);
+    expect(rugosite(l)).toBeLessThan(rugosite(ligne) * 0.6);
+    expect(lisser3([[0, 0], [1, 1]])).toEqual([[0, 0], [1, 1]]);
   });
-  it('un gribouillis libre n’est pas redressé', () => {
-    const libre = Array.from({ length: 50 }, (_, i) => [0.2 + i * 0.006 + 0.03 * Math.sin(i / 2.3), 0.4 + 0.08 * Math.sin(i / 5) + 0.03 * Math.cos(i / 1.7)]);
-    expect(reconnaitreForme(libre)).toBe(null);
+  it('trois épaisseurs par mode', () => {
+    expect(EPAISSEURS_CRAYON.dessin.map((e) => e.id)).toEqual(['fin', 'moyen', 'epais']);
+    expect(EPAISSEURS_CRAYON.surligneur).toHaveLength(3);
   });
-  it('griffonnage : zigzag serré reconnu, écriture normale non', () => {
-    const zig = Array.from({ length: 40 }, (_, i) => [0.3 + (i % 2 ? 0.05 : 0) + i * 0.001, 0.3 + i * 0.002]);
-    expect(estGriffonnage(zig)).toBe(true);
-    expect(estGriffonnage(ligne)).toBe(false);
-    expect(estGriffonnage(cercle)).toBe(false);
-  });
-  it('lasso : traits entourés à 60 % au moins', () => {
-    const poly = [[0, 0.4], [0.3, 0.4], [0.3, 0.6], [0, 0.6]]; // « b » : la moitié de ses points seulement
-    const pris = traitsDansLasso([{ id: 'a', points: ligne.slice(0, 20) }, { id: 'b', points: ligne }, { id: 'c', points: cercle }], poly).map((t) => t.id);
-    expect(pris).toEqual(['a']);
-  });
-  it('lissage et rendu Catmull-Rom ; ancien trait inchangé', () => {
-    expect(chaikin(ligne, 1).length).toBe(2 * (ligne.length - 1) + 2);
+  it('même chemin pour l’aperçu (pixels) et le trait posé (repère 0–100)', () => {
     expect(cheminCatmull(ligne)).toMatch(/^M[\d.]+ [\d.]+ C/);
+    expect(cheminCatmull([[0.5, 0.5], [1, 1]], 200, 100)).toMatch(/^M100\.000 50\.000 C/);
+    expect(cheminDroit([[0, 0], [1, 1]], 100, 50)).toBe('M0.000 0.000 L100.000 50.000');
     const ancien = () => 'ANCIEN';
-    expect(cheminTrait({ points: ligne }, ancien)).toBe('ANCIEN');
+    expect(cheminTrait({ points: ligne }, ancien)).toBe('ANCIEN'); // trait d'avant le 20/10 : ancien tracé
     expect(cheminTrait({ points: [[0, 0], [1, 1]], rendu: 'droit' }, ancien)).toBe('M0.000 0.000 L100.000 100.000');
-    expect(forceStabilisation(0)).toBe(0);
-    expect(forceStabilisation(1)).toBeGreaterThan(forceStabilisation(0.3));
+    expect(arrondirPoints([[0.123456789, 0.5]])).toEqual([[0.12346, 0.5]]);
+  });
+  it('gomme de zone : le trait est coupé en deux morceaux', () => {
+    const d = densifier([[0, 0.5], [1, 0.5]], 0.01);
+    expect(d.length).toBe(101);
+    const morceaux = morceauxHors(d, (q) => Math.abs(q[0] - 0.5) < 0.05);
+    expect(morceaux).toHaveLength(2);
+    expect(morceaux[0][morceaux[0].length - 1][0]).toBeLessThan(0.46);
+    expect(morceaux[1][0][0]).toBeGreaterThan(0.54);
+    expect(morceauxHors(d, () => true)).toEqual([]);
   });
 });

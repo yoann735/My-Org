@@ -447,8 +447,8 @@ export function newNoteBox({ ficheId, page, x, y, width, height, couleur, conten
    `points` : [[x,y], …] normalisés [0,1] par rapport à la page, donc
    indépendants du zoom, comme les rects d'un surlignage.
    `epaisseur` : en FRACTION DE HAUTEUR DE PAGE, pour suivre le zoom elle aussi.
-   `aimant` : le trait a-t-il été lissé et redressé à la pose (voir
-   pdf/pdfShared.js#lisserTrait). Informatif : le résultat est déjà dans
+   `aimant` : le trait a-t-il été redressé à la pose (traits d'avant le 21/10 ;
+   toujours faux depuis, pdf/crayon.js). Informatif : le résultat est déjà dans
    `points`, on ne relisse jamais deux fois. ---- */
 export function newTrait({ ficheId, page, points, couleur, epaisseur, aimant, mode, opacite }) {
   return {

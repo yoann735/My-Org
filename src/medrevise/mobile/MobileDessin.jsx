@@ -24,8 +24,9 @@ import { createPortal } from 'react-dom';
 import { TYPES_FORMES, cheminForme, estTrait, estFermee } from '../pdf/formes.js';
 import { getStroke, getStrokePoints } from 'perfect-freehand';
 import { couleurHex, avecAlpha, COLORS } from '../pdf/pdfShared.js';
+import { lisser3, cheminCatmull } from '../pdf/crayon.js';
 
-export const EPAISSEURS = [2, 4, 7, 12, 20]; // px à zoom 1
+export const EPAISSEURS = [2, 4, 7]; // px à zoom 1 — (21/10) trois épaisseurs, comme le crayon du lecteur
 const CLE_BROUILLON = 'medrevise.dessinMobile';
 const OUTILS = [
   { id: 'crayon', label: 'Crayon' },
@@ -82,7 +83,9 @@ export function cheminTrait(points) {
   return `${d} L${f(z[0])} ${f(z[1])}`;
 }
 
-/* LISSAGE « FAÇON APPLE » EN DIRECT (02/10 nuit) — perfect-freehand (MIT), l'algorithme
+/* (21/10) RENDU DES TRAITS D'AVANT le crayon unique (`lisse: true`, sans `rendu`) — gardé pour les afficher à
+   l'identique ; les nouveaux traits passent par pdf/crayon.js (lisser3 + cheminCatmull).
+   LISSAGE « FAÇON APPLE » EN DIRECT (02/10 nuit) — perfect-freehand (MIT), l'algorithme
    des outils de dessin à main levée (tldraw, Excalidraw) : stabilisation du point
    (streamline), lissage du contour, PRESSION simulée d'après la vitesse du doigt (ou
    la vraie pression d'un stylet), fin de trait effilée. Calculé à CHAQUE point pendant
@@ -98,13 +101,6 @@ export function cheminTrait(points) {
    stabilisation jusqu'à 0,76, fenêtre de pré-lissage élargie plus tôt) ; côté écriture
    à peine plus (lettres aussi fidèles, mesuré). Même dosage adaptatif. */
 const mix = (a, b, f) => a + (b - a) * f;
-export function facteurLissage(points, zoom = 1) {
-  if (!points || points.length < 2) return 0;
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const p of points) { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); }
-  const diag = Math.hypot(x1 - x0, y1 - y0) * zoom; // taille du geste EN PIXELS D'ÉCRAN
-  return Math.max(0, Math.min(1, (diag - 80) / 220)); // ≤ 80 px (lettres, mots) : écriture ; ≥ 300 px : dessin
-}
 export function optionsLissage(ep, surligneur, avecPression = false, f = 1) {
   return surligneur
     ? { size: ep, thinning: 0, smoothing: mix(0.6, 0.9, f), streamline: mix(0.36, 0.76, f), simulatePressure: false, start: { cap: true }, end: { cap: true } }
@@ -148,16 +144,6 @@ export function cheminLisse(e, fini = true) {
   return cheminContour(getStroke(preLisser(e.points, f), { ...optionsLissage(e.ep, e.opacite < 1, e.pression, f), last: fini }));
 }
 
-/** simplification légère (on retire les points à moins de 0,6 px du précédent). */
-function alleger(points) {
-  const out = [];
-  for (const q of points) {
-    const d = out[out.length - 1];
-    if (!d || Math.hypot(q[0] - d[0], q[1] - d[1]) >= 0.6) out.push(q);
-  }
-  return out;
-}
-
 /** boîte englobante (monde) d'un élément, épaisseur comprise. */
 export function boiteElement(e) {
   if (e.type === 'texte') return { x: e.x - 2, y: e.y - 2, w: largeurZone(e) + 4, h: hauteurZone(e) + 4 };
@@ -198,10 +184,12 @@ export function ElementDessin({ e, gommeLarg = 0, fond = 'noir' }) {
   const coul = couleurSurFond(e.couleur, fond);
   if (e.type === 'texte') return null; // zones de texte : couche HTML (voir CanvasDessin)
   if (e.type === 'trait') {
-    const d = cheminTrait(e.points);
+    /* (21/10) trait du crayon unique (`rendu: 'cr'`, pdf/crayon.js) : lissé sur 3 points, Catmull-Rom, épaisseur
+       constante ; les traits d'avant gardent leur rendu (contour perfect-freehand `lisse`, ou tracé brut) */
+    const d = e.rendu === 'cr' ? cheminCatmull(e.points, 1) : cheminTrait(e.points);
     return (
       <g data-id={e.id}>
-        {e.lisse
+        {e.lisse && e.rendu !== 'cr'
           ? <path d={cheminLisse(e)} fill={coul} fillOpacity={e.opacite ?? 1} stroke="none" />
           : <path d={d} fill="none" stroke={coul} strokeWidth={e.ep} strokeOpacity={e.opacite ?? 1} strokeLinecap="round" strokeLinejoin="round" />}
         {gommeLarg > 0 && <path className="md-gomme" data-id={e.id} d={d} fill="none" stroke="transparent" strokeWidth={e.ep + gommeLarg} strokeLinecap="round" />}
@@ -308,8 +296,6 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     mq.addEventListener('change', maj);
     return () => mq.removeEventListener('change', maj);
   }, []);
-  const [lisse, setLisseBrut] = useState(() => { try { return localStorage.getItem('medrevise.dessinLisse') !== '0'; } catch (e) { return true; } });
-  const setLisse = (v) => { setLisseBrut(v); try { localStorage.setItem('medrevise.dessinLisse', v ? '1' : '0'); } catch (e) { /* ignore */ } };
   /* ============================================================
      ZONES DE TEXTE (refaites le 02/10 nuit). Du HTML posé sur le canvas, dans une couche
      transformée EXACTEMENT comme le dessin : la zone affichée et la zone en écriture ont
@@ -615,22 +601,16 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
     if (outil === 'main') { marquerGeste(true); geste.current = { type: 'pan', x0: e.clientX, y0: e.clientY, cam0: { ...camRef.current } }; return; }
     if (outil === 'gomme') { geste.current = { type: 'gomme', touches: new Set() }; toucheGomme(e.clientX, e.clientY); return; }
     if (outil === 'forme') { geste.current = { type: 'forme', p0: [wx, wy], courant: null }; return; }
+    /* (21/10) LE crayon du lecteur (pdf/crayon.js) : moyenne mobile sur 3 points, même chemin à l'aperçu et une fois
+       posé, épaisseur constante, sans pression ; surligneur = même moteur à 40 % */
     const surl = outil === 'surligneur';
-    const stylet = e.pointerType === 'pen' && e.pressure > 0;
-    const p0 = stylet ? [wx, wy, e.pressure] : [wx, wy];
-    geste.current = { type: 'trait', points: [p0], dernier: [wx, wy], surl, lisse, stylet, ep: EPAISSEURS[epIdx] * (surl ? 3 : 1) };
+    geste.current = { type: 'trait', points: [[wx, wy]], surl, ep: EPAISSEURS[epIdx] * (surl ? 3 : 1) };
     const tr = traitRef.current;
     if (tr) {
-      const coulT = couleurSurFond(surl ? couleurSurl : couleur, 'noir');
-      if (lisse) {
-        tr.setAttribute('d', cheminLisse({ points: [p0], ep: geste.current.ep, opacite: surl ? 0.4 : 1, pression: stylet, fl: 0 }, false));
-        tr.setAttribute('fill', coulT); tr.setAttribute('fill-opacity', surl ? '0.4' : '1'); tr.setAttribute('stroke', 'none');
-      } else {
-        tr.setAttribute('d', cheminTrait([[wx, wy]]));
-        tr.setAttribute('fill', 'none'); tr.setAttribute('stroke', coulT);
-        tr.setAttribute('stroke-width', String(geste.current.ep));
-        tr.setAttribute('stroke-opacity', surl ? '0.4' : '1');
-      }
+      tr.setAttribute('d', cheminCatmull([[wx, wy]], 1));
+      tr.setAttribute('fill', 'none'); tr.setAttribute('stroke', couleurSurFond(surl ? couleurSurl : couleur, 'noir'));
+      tr.setAttribute('stroke-width', String(geste.current.ep));
+      tr.setAttribute('stroke-opacity', surl ? '0.4' : '1');
     }
   };
 
@@ -673,16 +653,10 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       return;
     }
     if (g.type === 'trait') {
-      if (g.lisse) {
-        // TOUS les points du doigt (événements regroupés compris) : le lissage les traite
-        for (const q of lot) { const [x, y] = versMonde(q.clientX, q.clientY); g.points.push(g.stylet ? [x, y, q.pressure || 0.5] : [x, y]); }
-        g.fl = facteurLissage(g.points, camRef.current.z);
-        if (traitRef.current) traitRef.current.setAttribute('d', cheminLisse({ points: g.points, ep: g.ep, opacite: g.surl ? 0.4 : 1, pression: g.stylet, fl: g.fl }, false));
-      } else {
-        // tracé BRUT : chaque point du doigt, sans filtre
-        for (const q of lot) { g.dernier = versMonde(q.clientX, q.clientY); g.points.push(g.dernier); }
-        if (traitRef.current) traitRef.current.setAttribute('d', cheminTrait(g.points));
-      }
+      // TOUS les points du doigt (événements regroupés compris), un pas minimal de 0,6 px à l'écran
+      const z = camRef.current.z;
+      for (const q of lot) { const p = versMonde(q.clientX, q.clientY), d = g.points[g.points.length - 1]; if (Math.hypot(p[0] - d[0], p[1] - d[1]) * z >= 0.6) g.points.push(p); }
+      if (traitRef.current) traitRef.current.setAttribute('d', cheminCatmull(lisser3(g.points), 1));
     }
   };
 
@@ -742,10 +716,9 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
       return;
     }
     if (g.type === 'trait') {
-      const pts = g.lisse ? g.points.map((q) => q.map((v) => Math.round(v * 100) / 100)) : alleger(g.points);
+      const pts = lisser3(g.points).map((q) => q.map((v) => Math.round(v * 100) / 100));
       if (traitRef.current) traitRef.current.setAttribute('d', '');
-      valider([...elementsRef.current, { id: nouvelId(), type: 'trait', points: pts, couleur: g.surl ? couleurSurl : couleur, ep: g.ep, opacite: g.surl ? 0.4 : 1,
-        ...(g.lisse ? { lisse: true, fl: Math.round(facteurLissage(g.points, camRef.current.z) * 100) / 100 } : {}), ...(g.stylet ? { pression: true } : {}) }]);
+      valider([...elementsRef.current, { id: nouvelId(), type: 'trait', points: pts, couleur: g.surl ? couleurSurl : couleur, ep: g.ep, opacite: g.surl ? 0.4 : 1, rendu: 'cr' }]);
     }
   };
 
@@ -934,7 +907,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
                 ))}
               </div>
             )}
-            {/* épaisseur + lissage : une seule colonne en paysage (sans effet en portrait) */}
+            {/* épaisseur : une seule colonne en paysage (sans effet en portrait) */}
             <div className="md-col">
             {outil !== 'gomme' && outil !== 'main' && outil !== 'texte' && (
               <div className="md-rang md-tailles" role="group" aria-label="Épaisseur">
@@ -947,12 +920,6 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
                   );
                 })}
               </div>
-            )}
-            {(outil === 'crayon' || outil === 'surligneur') && (
-              <button type="button" className={'md-bascule' + (lisse ? ' actif' : '')} onClick={() => setLisse(!lisse)} aria-pressed={lisse}>
-                <span className="md-bascule-txt"><b>Lissage</b><small>{lisse ? 'Adaptatif : léger pour écrire, doux pour dessiner' : 'Tracé brut, exactement le doigt'}</small></span>
-                <span className="md-interrupteur"><i /></span>
-              </button>
             )}
             </div>
             {outil === 'gomme' && <div className="md-aide">Touche ou glisse sur un trait, une forme ou un texte pour l’effacer.</div>}

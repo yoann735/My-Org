@@ -73,26 +73,20 @@ export function abonnerStylet(f) { abonnesStylet.add(f); return () => abonnesSty
    `touch-action: none` (sinon iPadOS ferait défiler la page sous le Pencil) : le défilement au doigt y est
    donc fait ici, à la main, avec inertie (`defilerAuDoigt`). Réglages mémorisés par appareil. */
 const CLE_DOIGT = 'medrevise.dessinDoigt';
-const CLE_PRESSION = 'medrevise.pressionStylet';
 const EV_REGLAGES = 'medrevise:reglages-stylet';
 const lireLS = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 export const dessinAuDoigt = () => lireLS(CLE_DOIGT) === '1';
-/** pression du stylet → épaisseur du crayon (activée par défaut) */
-export const pressionActive = () => lireLS(CLE_PRESSION) !== '0';
 function ecrireReglage(cle, v) {
   try { localStorage.setItem(cle, v ? '1' : '0'); } catch (e) { /* stockage bloqué : réglage de la session seulement */ }
   try { window.dispatchEvent(new Event(EV_REGLAGES)); } catch (e) { /* ignore */ }
 }
 export const ecrireDessinAuDoigt = (v) => ecrireReglage(CLE_DOIGT, v);
-export const ecrirePressionActive = (v) => ecrireReglage(CLE_PRESSION, v);
 export function abonnerReglagesStylet(f) {
   window.addEventListener(EV_REGLAGES, f); window.addEventListener('storage', f);
   return () => { window.removeEventListener(EV_REGLAGES, f); window.removeEventListener('storage', f); };
 }
 /** Un pointeur doit-il être ignoré par les couches d'annotation ? Le doigt (et la paume), sauf « Dessiner au doigt ». */
 export const pointeurIgnore = (e) => !!e && e.pointerType === 'touch' && !dessinAuDoigt();
-/** facteur d'épaisseur d'un trait au stylet d'après la pression moyenne (0 → 1) : léger, 0,6 à 1,4 */
-export const facteurPression = (moyenne) => Math.max(0.6, Math.min(1.4, 0.6 + 0.8 * moyenne));
 
 /* doigts posés (pointeurs « touch » en cours), pour savoir si un 2e doigt pince */
 const doigts = new Set();

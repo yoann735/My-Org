@@ -236,12 +236,6 @@
 .md-saisie { position: absolute; z-index: 5; margin: 0; padding: 0 2px; min-width: 80px; border: 1.5px dashed rgba(255,255,255,.55); border-radius: 6px;
   background: rgba(15,15,19,.6); outline: none; resize: none; overflow: hidden; line-height: 1.25; font-weight: 500; white-space: pre; }
 .md-ep-a { font-weight: 700; line-height: 1; }
-.md-bascule { display: inline-flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px 0 6px; border-radius: 999px; border: 1px solid var(--border-2); background: transparent; color: var(--text-2); font-weight: 600; font-size: 13px; }
-.md-interrupteur { width: 36px; height: 22px; border-radius: 999px; background: rgba(255,255,255,.18); position: relative; transition: background .2s; }
-.md-interrupteur i { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .22s cubic-bezier(.3,.7,.2,1); box-shadow: 0 1px 3px rgba(0,0,0,.35); }
-.md-bascule.actif { color: var(--text); }
-.md-bascule.actif .md-interrupteur { background: #34c759; }
-.md-bascule.actif .md-interrupteur i { transform: translateX(14px); }
 
 /* ---- DOCK FLOTTANT du dessin (02/10 nuit) : verre sombre, quel que soit le thème ---- */
 .md-dock { position: absolute; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 4;
@@ -274,13 +268,6 @@
 .md-carte .md-formes { gap: 6px; }
 .md-carte .md-forme { width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,.06); color: rgba(235,235,245,.75); border: 1.5px solid transparent; }
 .md-carte .md-forme.actif { border-color: #fff; color: #fff; background: rgba(255,255,255,.14); }
-.md-carte .md-bascule { width: 100%; height: auto; padding: 2px 2px; justify-content: space-between; border: 0; border-radius: 0; color: #f2f2f5; }
-.md-bascule-txt { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; }
-.md-bascule-txt b { font-size: 14px; font-weight: 650; }
-.md-bascule-txt small { font-size: 12px; color: rgba(235,235,245,.55); }
-.md-interrupteur { width: 51px; height: 31px; flex: 0 0 auto; }
-.md-interrupteur i { width: 27px; height: 27px; }
-.md-bascule.actif .md-interrupteur i { transform: translateX(20px); }
 .md-carte .md-aide { padding: 0 2px; color: rgba(235,235,245,.6); font-size: 13px; line-height: 1.4; }
 .md-dock .md-outils { border-radius: 22px; padding: 6px; display: flex; gap: 2px; }
 .md-dock .md-outil { color: rgba(235,235,245,.6); border-radius: 16px; padding: 7px 0 6px; font-size: 10.5px; }
@@ -382,10 +369,6 @@
 .md-paysage .md-carte .md-tailles { display: flex; flex-direction: column; padding: 4px; gap: 2px; }
 .md-paysage .md-taille { flex: none; width: 44px; height: 40px; }
 .md-paysage .md-col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.md-paysage .md-carte .md-bascule { width: 52px; flex-direction: column; justify-content: center; gap: 6px; padding: 4px 0; }
-.md-paysage .md-bascule-txt { align-items: center; }
-.md-paysage .md-bascule-txt b { font-size: 11px; }
-.md-paysage .md-bascule-txt small { display: none; }
 .md-paysage .md-retirer { bottom: auto; left: auto; right: calc(100% + 8px); top: 50%; transform: translateY(-50%); }
 .md-paysage .md-carte .md-aide { display: none; }
 .md-paysage .md-format { left: 64px; right: 70px; }

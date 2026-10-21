@@ -17,14 +17,15 @@
    ============================================================ */
 import { aDeuxVersions, versionAffichee } from '../lib/textesAnnotations.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { noterPointeur, pointeurIgnore, prendreTrace, rendreTrace, defilerAuDoigt, pressionActive, facteurPression } from '../lib/tablette.js';
+import { prendreTrace, rendreTrace } from '../lib/tablette.js';
+import { suivrePointeur, versPage } from './pointeur.js';
 import { EditorContent } from '@tiptap/react';
 import { IconeOutil } from './IconesOutils.jsx';
 import { SelecteurCouleurs, BoutonCouleur, AUCUNE } from './Couleurs.jsx';
 import { cheminForme, extremites, typeForme, estTrait, estFermee, tailleParDefaut, ancreSurForme } from './formes.js';
 import { connecteursDe, epingleSeule, patchRetirer, patchAjouter, patchDeplacer, patchStyle } from './connecteurs.js';
 import { aStyle, styleFleche, cheminFleche, indexInsertion, suivant, POINTES, TRAITS, EPAISSEURS } from './flechesGeo.js';
-import { forceStabilisation, chaikin, passesLissage, cheminTrait, reconnaitreForme, estGriffonnage, traitsDansLasso } from './crayon.js';
+import { lisser3, arrondirPoints, cheminCatmull, cheminDroit, cheminTrait, densifier, morceauxHors, OPACITE_SURLIGNEUR_CRAYON } from './crayon.js';
 import { suivreImage } from './attaches.js';
 import { Icon } from '../../shared/Icon.jsx';
 import { outputScaleFor } from './pdfjsSetup.js';
@@ -39,7 +40,7 @@ import {
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
   soustraireAncres, partCouverte, surlignagesTouches, couleurHex, planSurlignage,
-  lisserTrait, traitTouche, cheminLisse, suivreEnDouceur, modeDuTrait, accrocherAngles,
+  traitTouche, cheminLisse, modeDuTrait, accrocherAngles,
   EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, positionTexteProche,
   lisibleSurNoir, EMPTY_ARRAY, opaciteSurlignage,
   ecrireFondBoiteDefaut,
@@ -52,10 +53,10 @@ export function PdfPageContent({
   pdfDoc, pageNum, vierge = false, scale, pageHeight, dpr, highlights: tousSurlignages, edits, boites, traits, outil, activeEditId, matches, activeMatchIdx,
   onCreateHighlight, onActivateEdit, activeEditor, onCreerBoite, onMajBoite, onSupprimerBoite, onModifierBoite, pageWidth, ancrageBoiteId = null, ancrageFleche = false, ancrageSurlignage = false, ancrageAjout = false, onSelFleche = null,
   onDemanderAncrage = () => {},
-  stabilisation = 0.3, surligneurDroit = true, griffonner = false, onModifierTraits = null, // crayon v4 (20/10 soir, pdf/crayon.js)
-  onCreerTrait, onSupprimerTraits, cibleHlId, onDebutTrait = null,
+  surligneurDroit = true, modeGomme = 'zone', // crayon et gomme (21/10, pdf/crayon.js)
+  onCreerTrait, onGommer, cibleHlId, onDebutTrait = null,
   ocrPage = null, ocrDebug = false, // couche OCR de cette page (docs/compte-rendu-ocr.md)
-  couleurTrait = 'jaune', epaisseurTrait = 0.0042, opaciteTrait = 1, aimantActif = true, modeCrayon = 'dessin',
+  couleurTrait = 'jaune', epaisseurTrait = 0.0042, modeCrayon = 'dessin',
   textes = [], questions = [], onPoser = () => {},
   images = [], imageActiveId = null, onImageActiver = () => {}, onImageMaj = () => {}, onImageCalque = () => {}, onImageSupprimer = () => {},
   formes = [], formeActiveId = null, onFormeActiver = () => {}, onCreerForme = () => {}, onFormeMaj = () => {}, onFormeSupprimer = () => {}, onFormeLegende = () => {},
@@ -323,27 +324,18 @@ export function PdfPageContent({
      [0,1] par rapport à la page, donc indépendant du zoom. */
   const [trace, setTrace] = useState(null);
   const demarrerTrace = (e) => {
-    noterPointeur(e); // stylet : le doigt et la paume ne dessinent plus (lib/tablette.js)
-    if (pointeurIgnore(e)) { defilerAuDoigt(e, e.currentTarget.closest('.pdfr-scroll')); return; } // le doigt fait défiler (lib/tablette.js)
-    const pid = e.pointerId; // un tracé ne suit QUE son pointeur (2e doigt, paume)
-    e.preventDefault(); // pas de sélection native pendant le tracé
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    const x0 = clamp01((e.clientX - r.left) / r.width);
-    const y0 = clamp01((e.clientY - r.top) / r.height);
+    const [x0, y0] = versPage(e, r);
     let courant = null;
     const move = (ev) => {
-      if (ev.pointerId !== pid) return;
-      const x1 = clamp01((ev.clientX - r.left) / r.width);
-      const y1 = clamp01((ev.clientY - r.top) / r.height);
+      const [x1, y1] = versPage(ev, r);
       courant = { x: Math.min(x0, x1), y: Math.min(y0, y1), width: Math.abs(x1 - x0), height: Math.abs(y1 - y0) };
       setTrace(courant);
     };
-    const up = (ev) => {
-      if (ev && ev.pointerId !== pid) return;
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
+    const up = (ev, { annule }) => {
       setTrace(null);
+      if (annule) return;
       /* (20/10 soir) GABARIT COMPACT : un clic pose une boîte d'UNE ligne (~120 × 24 px à 100 %) qui grandira avec
          son texte ; un rectangle tracé garde sa taille, jamais sous 48 × 24 px à 100 % */
       const l100 = r.width / (scale || 1), h100 = r.height / (scale || 1);
@@ -362,8 +354,7 @@ export function PdfPageContent({
         height: clamp(rect.height, minH, 1 - y),
       });
     };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
+    suivrePointeur(e, { doigt: 'defiler', move, fin: up });
   };
 
   /* TRACÉ D'UNE FORME (03/10, enrichi le 02/10 soir) : glisser = la forme étirée du point
@@ -373,19 +364,14 @@ export function PdfPageContent({
      reste actif pour en poser d'autres. */
   const [traceForme, setTraceForme] = useState(null);
   const demarrerForme = (e) => {
-    noterPointeur(e); // stylet : le doigt et la paume ne dessinent plus (lib/tablette.js)
-    if (pointeurIgnore(e)) { defilerAuDoigt(e, e.currentTarget.closest('.pdfr-scroll')); return; } // le doigt fait défiler (lib/tablette.js)
-    const pid = e.pointerId; // un tracé ne suit QUE son pointeur (2e doigt, paume)
-    if (e.button !== 0) return;
-    e.preventDefault();
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return;
     const type = typeFormeActif;
     const trait = estTrait(type);
-    const x0 = clamp01((e.clientX - r.left) / r.width), y0 = clamp01((e.clientY - r.top) / r.height);
+    const [x0, y0] = versPage(e, r);
     let courant = null;
     const calculer = (ev) => {
-      let x1 = clamp01((ev.clientX - r.left) / r.width), y1 = clamp01((ev.clientY - r.top) / r.height);
+      let [x1, y1] = versPage(ev, r);
       if (ev.shiftKey) {
         const dxp = (x1 - x0) * r.width, dyp = (y1 - y0) * r.height;
         if (trait) { // aimanté à 45°
@@ -401,12 +387,10 @@ export function PdfPageContent({
         // triangle s'ouvrent vers là où on a tiré (vers la gauche ou le haut = retourné)
         fx: x1 < x0, fy: y1 < y0 };
     };
-    const move = (ev) => { if (ev.pointerId !== pid) return; courant = calculer(ev); setTraceForme({ ...courant, type }); };
-    const up = (ev) => {
-      if (ev && ev.pointerId !== pid) return;
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
+    const move = (ev) => { courant = calculer(ev); setTraceForme({ ...courant, type }); };
+    const up = (ev, { annule }) => {
       setTraceForme(null);
+      if (annule) return;
       let rect = courant;
       const longueurPx = rect ? Math.hypot(rect.width * r.width, rect.height * r.height) : 0;
       const tropPetit = !rect || (trait ? longueurPx < 8 : rect.width * r.width < 8 || rect.height * r.height < 8);
@@ -416,8 +400,7 @@ export function PdfPageContent({
       }
       onCreerForme({ page: pageNum, ...rect, forme: type });
     };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
+    suivrePointeur(e, { doigt: 'defiler', move, fin: up });
   };
 
   /* (08/10) Plus de contour ni de main au survol d'un surlignage : il n'est plus
@@ -432,252 +415,109 @@ export function PdfPageContent({
     return hit || null;
   };
 
-  /* CRAYON. Même principe de couche que la boîte (VERROU 1) : tant que l'outil
-     est actif, une couche posée au-dessus de la couche de texte intercepte tout,
-     donc ni sélection ni surlignage ne peuvent se déclencher pendant qu'on dessine.
-     On échantillonne avec un pas minimal — sans ça un trait lent enregistrerait
-     des milliers de points quasi confondus, pour rien.
-     `ratio` = largeur/hauteur de la page : sans lui, l'accrochage angulaire
-     redresserait de travers, l'espace normalisé n'étant pas carré. */
-  /* FLUIDITÉ (nuit du 30/09) : l'ancien échantillonnage gardait un point tous les
-     ~3 px et le rendait en segments droits — d'où un trait anguleux. Désormais :
-     1. TOUS les événements du pointeur (getCoalescedEvents : la souris en émet
-        plusieurs par image, le navigateur n'en livre qu'un) ;
-     2. un pas minimal sous le pixel, pour ne garder que ce qui bouge ;
-     3. le STREAMLINE (suivreEnDouceur) qui absorbe le tremblement en direct ;
-     4. un rendu en courbes (cheminLisse), en direct comme une fois enregistré.
-     Le dernier point rejoint la position réelle au relâchement : le trait finit
-     exactement sous le curseur, sans le retard du lissage. */
-  const [traitEnCours] = useState(null); // (20/10) l'aperçu du trait en cours est dessiné sur un canvas (apercuRef)
-  const PAS_MIN = 0.0007;
-  /* APERÇU EN DIRECT (20/10, docs/compte-rendu-pdfreader-v3.md) : le trait en cours est peint sur un canvas
-     posé sur la page, DANS l'événement du pointeur (aucun rendu React, aucune attente d'image) — le stylet
-     n'a pas de retard visible. Au relâchement, le trait lissé est enregistré (même lissage qu'avant) et
-     l'aperçu s'efface quand il est à l'écran. */
+  /* CRAYON (refait simple le 21/10, pdf/crayon.js). Même principe de couche que la boîte (VERROU 1) : tant que
+     l'outil est actif, une couche posée au-dessus de la couche de texte intercepte tout. Le trait :
+       1. tous les événements coalescés du pointeur (gestionnaire unique, pdf/pointeur.js) ;
+       2. lissage fixe léger — moyenne mobile sur 3 points (lisser3), extrémités gardées : le bout du trait
+          reste sous le pointeur ;
+       3. aperçu EN DIRECT dès le premier point : le canvas posé sur la page est redessiné DANS l'événement,
+          avec le même chemin que le trait enregistré (cheminCatmull → Path2D) ;
+       4. au relâchement : enregistré en fractions de page, épaisseur en fraction de la hauteur de page
+          (constante en unités PDF, quel que soit le zoom). L'aperçu s'efface quand le trait est à l'écran.
+     Surligneur à main levée : même moteur, opacité 40 %, fusion multiply ; « Tracer en ligne droite » :
+     du point de départ au pointeur, angle aimanté (horizontal surtout). */
+  const PAS_MIN = 0.0007; // pas minimal entre deux points (fraction de page) : on ne garde que ce qui bouge
   const apercuRef = useRef(null);
   const apercuAEffacer = useRef(false);
   const effacerApercu = () => { const c = apercuRef.current; if (c && c.width > 1) c.getContext('2d').clearRect(0, 0, c.width, c.height); apercuAEffacer.current = false; };
   useEffect(() => { if (apercuAEffacer.current) requestAnimationFrame(effacerApercu); }, [traits]); // eslint-disable-line react-hooks/exhaustive-deps
   const peindreApercu = (points, r, style) => {
     const c = apercuRef.current;
-    if (!c || points.length < 1) return;
+    if (!c || !points.length) return;
     const d = window.devicePixelRatio || 1;
     const W = Math.round(r.width * d), H = Math.round(r.height * d);
     if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
     const x = c.getContext('2d');
     x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, W, H);
     x.globalAlpha = style.opacite; x.strokeStyle = style.couleur; x.lineWidth = style.largeur * d; x.lineCap = 'round'; x.lineJoin = 'round';
-    x.beginPath();
-    if (style.tirets) x.setLineDash(style.tirets.map((v) => v * d)); else x.setLineDash([]);
-    const P = (i) => [points[i][0] * W, points[i][1] * H];
-    const [ax, ay] = P(0);
-    x.moveTo(ax, ay);
-    if (points.length === 1) x.lineTo(ax + 0.01, ay);
-    if (style.droit) for (let i = 1; i < points.length; i++) x.lineTo(...P(i)); // forme redressée, lasso
-    else for (let i = 0; i < points.length - 1; i++) { // (20/10 soir) Catmull-Rom, comme le trait enregistré
-      const p0 = P(Math.max(0, i - 1)), p1 = P(i), p2 = P(i + 1), p3 = P(Math.min(points.length - 1, i + 2));
-      x.bezierCurveTo(p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6, p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6, p2[0], p2[1]);
-    }
-    if (style.ferme) x.closePath();
-    x.stroke();
+    x.stroke(new Path2D(style.droit ? cheminDroit(points, W, H) : cheminCatmull(points, W, H)));
   };
   const demarrerTrait = (e) => {
-    noterPointeur(e); // stylet : le doigt et la paume ne dessinent plus (lib/tablette.js)
-    if (pointeurIgnore(e)) { defilerAuDoigt(e, e.currentTarget.closest('.pdfr-scroll')); return; } // le doigt fait défiler (lib/tablette.js)
-    // BOUT GOMME / bouton gomme d'un stylet (bouton 5, si le navigateur l'expose) : il gomme, le crayon reste l'outil
+    // bout gomme / bouton gomme d'un stylet (bouton 5) : il gomme, le crayon reste l'outil
     if (e.pointerType === 'pen' && (e.button === 5 || (e.buttons & 32))) { demarrerGomme(e); return; }
-    // (20/10 soir) GOMME DE TRAIT et LASSO : des modes du crayon (l'outil reste le crayon)
-    if (modeCrayon === 'gomme') { demarrerGomme(e); return; }
-    if (modeCrayon === 'lasso') { demarrerLasso(e); return; }
-    if (onDebutTrait) onDebutTrait(); // (11/10) un trait commence : la boîte sélectionnée se désélectionne
-    const pid = e.pointerId; // un tracé ne suit QUE son pointeur (2e doigt, paume)
-    if (e.button !== 0) return;
-    // un seul tracé à la fois ; 2e doigt aussitôt posé = geste à deux doigts → tracé annulé
-    if (!prendreTrace(e, () => { annule = true; finir(); })) return;
-    let annule = false;
-    e.preventDefault();
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return;
     const ratio = r.width / r.height;
     const surligneur = modeCrayon === 'surligneur';
-    const pt = (ev) => [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)];
-    let points = [pt(e)];
-    let brut = points[0];
-    // PRESSION du stylet (20/10) : épaisseur légèrement modulée par la pression moyenne du trait (désactivable)
-    const avecPression = e.pointerType === 'pen' && pressionActive();
-    let sommeP = 0, nP = 0;
-    const noterPression = (ev) => { if (avecPression && ev.pressure > 0) { sommeP += ev.pressure; nP += 1; } };
-    noterPression(e);
-    const facteur = () => (avecPression && nP ? facteurPression(sommeP / nP) : 1);
-    const ep = surligneur ? (epaisseurTrait || EPAISSEUR_SURLIGNEUR) : (epaisseurTrait || 0.0042);
-    const styleApercu = () => ({ couleur: encre(couleurTrait), opacite: Number.isFinite(opaciteTrait) ? opaciteTrait : (surligneur ? OPACITE_SURLIGNEUR : 0.9),
-      largeur: Math.max(surligneur ? 4 : 1, ep * facteur() * r.height) });
-    if (apercuRef.current) apercuRef.current.classList.toggle('surligneur', surligneur);
-    peindreApercu(points, r, styleApercu());
-    /* MAINTENIR POUR REDRESSER (20/10 soir) : le pointeur immobile 450 ms à la fin d'un trait de dessin → la
-       forme reconnue (ligne, cercle, rectangle, triangle, flèche) remplace le trait, tout de suite à l'aperçu */
-    let forme = null, minuterieForme = null, dernierBouge = [e.clientX, e.clientY];
-    const armerRedresser = () => {
-      clearTimeout(minuterieForme);
-      if (surligneur) return;
-      minuterieForme = setTimeout(() => {
-        if (points.length < 6) return;
-        const f = reconnaitreForme(points, ratio);
-        if (f) { forme = f; peindreApercu(f.points, r, { ...styleApercu(), droit: f.rendu === 'droit' }); }
-      }, 450);
-    };
-    const ajouter = (q) => {
-      brut = q;
-      if (forme) return; // redressé : la forme est posée, le reste du geste n'y change rien
-      const lisse = suivreEnDouceur(points[points.length - 1], q, surligneur ? 0.3 : forceStabilisation(stabilisation));
-      const der = points[points.length - 1];
-      if (Math.hypot(lisse[0] - der[0], lisse[1] - der[1]) < PAS_MIN) return;
-      points = [...points, lisse];
-    };
-    // surligneur « en ligne droite » : du point de départ au pointeur, angles aimantés (horizontal surtout)
-    const droiteSurligneur = () => accrocherAngles([points[0], brut], ratio, 12);
-    const move = (ev) => {
-      if (ev.pointerId !== pid) return;
-      const lot = typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : [];
-      (lot.length ? lot : [ev]).forEach((x) => { ajouter(pt(x)); noterPression(x); });
-      if (Math.hypot(ev.clientX - dernierBouge[0], ev.clientY - dernierBouge[1]) > 3) { dernierBouge = [ev.clientX, ev.clientY]; armerRedresser(); }
-      if (forme) return;
-      if (surligneur && surligneurDroit) peindreApercu(droiteSurligneur(), r, { ...styleApercu(), droit: true });
-      else peindreApercu(points, r, styleApercu()); // tout de suite, dans l'événement
-    };
-    const finir = () => {
-      clearTimeout(minuterieForme);
-      rendreTrace(pid);
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
-    };
-    const up = (ev) => {
-      if (ev && ev.pointerId !== pid) return;
-      finir();
-      if (annule || (ev && ev.type === 'pointercancel')) { effacerApercu(); return; }
-      const fin = ev && Number.isFinite(ev.clientX) ? pt(ev) : brut;
-      const der = points[points.length - 1];
-      if (Math.hypot(fin[0] - der[0], fin[1] - der[1]) > 1e-6) points = [...points, fin];
-      // GRIFFONNER POUR EFFACER (option) : un zigzag serré efface les traits qu'il recouvre, sans rien poser
-      if (!surligneur && griffonner && !forme && estGriffonnage(points, ratio)) {
-        const seuil = 0.01, touches = new Map();
-        for (const q of points) for (const t of traits || []) if (!touches.has(t.id) && traitTouche(t, q[0], q[1], seuil)) touches.set(t.id, t);
-        effacerApercu();
-        if (touches.size) { onSupprimerTraits([...touches.values()]); return; }
-      }
-      if (points.length >= 2) {
-        let finaux, rendu;
-        if (forme) { finaux = forme.points; rendu = forme.rendu; }
-        else if (surligneur && surligneurDroit) { finaux = droiteSurligneur(); rendu = 'droit'; }
-        else { finaux = chaikin(lisserTrait(points, { aimant: !surligneur && aimantActif, ratio }), surligneur ? 0 : passesLissage(stabilisation)); rendu = 'cr'; }
-        peindreApercu(finaux, r, { ...styleApercu(), droit: rendu === 'droit' });
+    const droit = surligneur && surligneurDroit;
+    const brut = [versPage(e, r)];
+    const points = () => (droit ? accrocherAngles([brut[0], brut[brut.length - 1]], ratio, 12) : lisser3(brut));
+    const style = { couleur: encre(couleurTrait), opacite: surligneur ? OPACITE_SURLIGNEUR_CRAYON : 1, largeur: Math.max(surligneur ? 4 : 1, epaisseurTrait * r.height), droit };
+    let annule = false;
+    const suivi = suivrePointeur(e, {
+      doigt: 'defiler',
+      move: (ev, lot) => {
+        for (const q of lot) { const p = versPage(q, r), der = brut[brut.length - 1]; if (Math.hypot(p[0] - der[0], p[1] - der[1]) >= PAS_MIN) brut.push(p); }
+        peindreApercu(points(), r, style); // tout de suite, dans l'événement
+      },
+      fin: (ev, { annule: interrompu }) => {
+        rendreTrace(e.pointerId);
+        if (annule || interrompu) { effacerApercu(); return; }
+        if (ev && Number.isFinite(ev.clientX)) { const p = versPage(ev, r), der = brut[brut.length - 1]; if (Math.hypot(p[0] - der[0], p[1] - der[1]) > 1e-6) brut.push(p); }
+        if (brut.length < 2) { effacerApercu(); return; }
+        const finaux = arrondirPoints(points());
+        peindreApercu(finaux, r, style);
         apercuAEffacer.current = true; // effacé quand le trait enregistré est à l'écran (ou au plus tard 1,5 s)
         setTimeout(() => { if (apercuAEffacer.current) effacerApercu(); }, 1500);
-        onCreerTrait({ page: pageNum, mode: modeCrayon, pression: facteur(), rendu, ...(forme ? { formeReconnue: forme.type } : {}), points: finaux });
-      } else effacerApercu();
-    };
-    window.addEventListener('pointercancel', up);
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
+        onCreerTrait({ page: pageNum, mode: surligneur ? 'surligneur' : 'dessin', rendu: droit ? 'droit' : 'cr', points: finaux });
+      },
+    });
+    if (!suivi) return; // doigt qui défile, autre bouton
+    // un seul tracé à la fois ; 2e doigt aussitôt posé = geste à deux doigts → tracé annulé
+    if (!prendreTrace(e, () => { annule = true; suivi.arreter(); })) { annule = true; suivi.arreter(); return; }
+    if (onDebutTrait) onDebutTrait(); // (11/10) un trait commence : la boîte sélectionnée se désélectionne
+    if (apercuRef.current) apercuRef.current.classList.toggle('surligneur', surligneur);
+    peindreApercu(points(), r, style); // visible dès le premier point
   };
 
-  /* LASSO (20/10 soir, pdf/crayon.js) : mode du crayon. On entoure des traits (au moins 60 % de leurs points
-     dans le tracé) — ou on touche un trait pour le prendre seul — ; la sélection se déplace d'un glisser, se
-     recolore, se supprime d'un clic (ou Suppr). Chaque geste = une entrée d'Annuler. */
-  const [selTraits, setSelTraits] = useState(null); // ids sélectionnés
-  const [decalSel, setDecalSel] = useState(null); // [dx, dy] pendant le déplacement de la sélection
-  useEffect(() => { if (outil !== 'crayon' || modeCrayon !== 'lasso') setSelTraits(null); }, [outil, modeCrayon]);
-  const traitsSel = selTraits ? (traits || []).filter((t) => selTraits.includes(t.id)) : [];
-  useEffect(() => { if (selTraits && !traitsSel.length) setSelTraits(null); }, [traits]); // eslint-disable-line react-hooks/exhaustive-deps
-  const supprimerSel = () => { const l = traitsSel; setSelTraits(null); if (l.length) onSupprimerTraits(l); };
-  const supprimerSelRef = useRef(supprimerSel); supprimerSelRef.current = supprimerSel;
-  useEffect(() => {
-    if (!selTraits) return undefined;
-    const k = (e) => {
-      if (e.key === 'Escape') { setSelTraits(null); return; }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && !(document.activeElement && (document.activeElement.isContentEditable || /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)))) { e.preventDefault(); supprimerSelRef.current(); }
-    };
-    window.addEventListener('keydown', k);
-    return () => window.removeEventListener('keydown', k);
-  }, [selTraits]);
-  const demarrerLasso = (e) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const r = e.currentTarget.getBoundingClientRect();
-    if (!r.width || !r.height) return;
-    const pt = (ev) => [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)];
-    const poly = [pt(e)];
-    setSelTraits(null);
-    const style = { couleur: '#7c5cff', opacite: 0.9, largeur: 1.5, droit: true, tirets: [5, 4] };
-    const move = (ev) => { if (ev.pointerId !== e.pointerId) return; poly.push(pt(ev)); peindreApercu(poly, r, style); };
-    const up = (ev) => {
-      if (ev.pointerId !== e.pointerId) return;
-      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
-      effacerApercu();
-      const xs = poly.map((q) => q[0] * r.width), ys = poly.map((q) => q[1] * r.height);
-      const petit = Math.max(...xs) - Math.min(...xs) < 8 && Math.max(...ys) - Math.min(...ys) < 8;
-      // un simple toucher : le trait sous le pointeur ; sinon : ceux entourés
-      const pris = petit ? (traits || []).filter((t) => traitTouche(t, poly[0][0], poly[0][1], 0.012)).slice(-1) : traitsDansLasso(traits, poly);
-      setSelTraits(pris.length ? pris.map((t) => t.id) : null);
-    };
-    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
-  };
-  const boiteSel = (() => {
-    if (!traitsSel.length) return null;
-    const pts = traitsSel.flatMap((t) => t.points);
-    const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]), m = 0.008;
-    return { x: Math.min(...xs) - m, y: Math.min(...ys) - m, w: Math.max(...xs) - Math.min(...xs) + 2 * m, h: Math.max(...ys) - Math.min(...ys) + 2 * m };
-  })();
-  const deplacerSel = (e) => {
-    if (e.button !== 0) return;
-    e.preventDefault(); e.stopPropagation();
-    const page = e.currentTarget.closest('.pdfr-page'); const r = page.getBoundingClientRect();
-    const d0 = [e.clientX, e.clientY]; let dernier = null;
-    const move = (ev) => { dernier = [(ev.clientX - d0[0]) / r.width, (ev.clientY - d0[1]) / r.height]; setDecalSel(dernier); };
-    const up = () => {
-      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
-      setDecalSel(null);
-      if (dernier && Math.hypot(dernier[0] * r.width, dernier[1] * r.height) > 2 && onModifierTraits) {
-        onModifierTraits(traitsSel.map((t) => ({ avant: t, apres: { ...t, points: t.points.map(([x, y]) => [+clamp01(x + dernier[0]).toFixed(5), +clamp01(y + dernier[1]).toFixed(5)]) } })), traitsSel.length > 1 ? 'Déplacement de traits' : 'Déplacement d’un trait');
-      }
-    };
-    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
-  };
-
-  /* GOMME (nuit du 30/09). Elle n'efface QUE les traits de crayon (dessin et
-     surligneur à main levée) — jamais un surlignage de texte ni une boîte, qui ont
-     leur propre bouton Supprimer. Tant qu'elle est active, une couche de capture
-     couvre toute la page (boîtes comprises) : rien d'autre ne peut réagir.
-     Précision : la position est mesurée sur CETTE couche, qui a exactement la
-     taille de la page, et le curseur est un rond dont le point chaud est au centre
-     — ce qu'on voit sous le rond est ce qui s'efface. On peut cliquer (un trait)
-     ou glisser (tous ceux qu'on traverse) ; un geste = UNE entrée d'annulation. */
-  const [masques, setMasques] = useState(null); // traits (et formes) déjà gommés pendant le geste en cours
+  /* GOMME (nuit du 30/09 ; deux modes depuis le 21/10). Elle n'efface QUE les traits de crayon et les formes —
+     jamais un surlignage de texte ni une boîte, qui ont leur propre bouton Supprimer. Tant qu'elle est active,
+     une couche de capture couvre toute la page : rien d'autre ne peut réagir. Le curseur est un rond dont le
+     point chaud est au centre : ce qu'on voit sous le rond est ce qui s'efface.
+       - « Zone » : seule la partie d'un trait passée sous la gomme disparaît (le trait est coupé en morceaux) ;
+       - « Trait entier » : un trait touché s'efface en entier.
+     Une forme touchée s'efface en entier dans les deux modes. Un geste = UNE entrée d'annulation. */
+  const [masques, setMasques] = useState(null); // traits (et formes) effacés en entier pendant le geste en cours
+  const [coupes, setCoupes] = useState(null); // gomme de zone : Map id → morceaux restants pendant le geste
   const pageRef = () => (canvasRef.current && canvasRef.current.closest('.pdfr-page')) || document;
   const RAYON_GOMME = 9; // px à l'écran : le rayon du curseur rond (voir etudes.css)
   const demarrerGomme = (e) => {
-    noterPointeur(e); // stylet : le doigt et la paume ne dessinent plus (lib/tablette.js)
-    if (pointeurIgnore(e)) { defilerAuDoigt(e, e.currentTarget.closest('.pdfr-scroll')); return; } // le doigt fait défiler (lib/tablette.js)
-    const pid = e.pointerId; // un tracé ne suit QUE son pointeur (2e doigt, paume)
-    if (e.button !== 0 && !(e.pointerType === 'pen' && e.button === 5)) return; // (20/10) + bout gomme du stylet
-    e.preventDefault();
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return;
     const seuil = RAYON_GOMME / Math.min(r.width, r.height);
-    const touches = new Map();
+    const ratio = r.width / r.height;
+    const zone = modeGomme === 'zone';
+    const touches = new Map(); // effacés en entier
+    const restes = new Map(); // gomme de zone : id → points (densifiés) encore présents
     let prec = null;
     const tester = (cx, cy) => {
-      // échantillonne le segment depuis la position précédente : un glisser rapide
-      // ne « saute » aucun trait fin entre deux événements
+      // échantillonne le segment depuis la position précédente : un glisser rapide ne « saute » aucun trait fin
       const pas = prec ? Math.max(1, Math.ceil(Math.hypot(cx - prec[0], cy - prec[1]) / 3)) : 1;
       for (let k = 1; k <= pas; k++) {
         const x = prec ? prec[0] + ((cx - prec[0]) * k) / pas : cx;
         const y = prec ? prec[1] + ((cy - prec[1]) * k) / pas : cy;
         const px = (x - r.left) / r.width, py = (y - r.top) / r.height;
-        for (const t of traits || []) if (!touches.has(t.id) && traitTouche(t, px, py, seuil)) touches.set(t.id, t);
-        // FORMES (02/10 soir) : la gomme les efface aussi — test exact sur leur tracé SVG
-        // (isPointInStroke, élargi du rayon de la gomme), intérieur compris si remplie
+        for (const t of traits || []) {
+          if (touches.has(t.id) || !traitTouche(t, px, py, seuil)) continue;
+          if (!zone) { touches.set(t.id, t); continue; }
+          // zone : les points (rapprochés) sous le rond de la gomme disparaissent
+          const demiEp = (modeDuTrait(t) === 'surligneur' ? (t.epaisseur || EPAISSEUR_SURLIGNEUR) : 0) * 0.5;
+          const rayon = seuil + demiEp;
+          const pts = restes.get(t.id) || [densifier(t.points || [], seuil / 2, ratio)];
+          const nouv = pts.flatMap((m) => morceauxHors(m, (q) => Math.hypot((q[0] - px) * ratio, q[1] - py) <= rayon));
+          restes.set(t.id, nouv);
+        }
+        // FORMES (02/10 soir) : test exact sur leur tracé SVG (isPointInStroke, élargi du rayon de la gomme)
         if (formes && formes.length) {
           for (const el of pageRef().querySelectorAll('path.pf-gomme')) {
             const id = el.getAttribute('data-id');
@@ -689,22 +529,20 @@ export function PdfPageContent({
       }
       prec = [cx, cy];
       if (touches.size) setMasques(new Set(touches.keys()));
+      if (restes.size) setCoupes(new Map(restes));
     };
-    tester(e.clientX, e.clientY);
-    const move = (ev) => {
-      if (ev.pointerId !== pid) return;
-      const lot = typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : [];
-      (lot.length ? lot : [ev]).forEach((x) => tester(x.clientX, x.clientY));
-    };
-    const up = async (ev) => {
-      if (ev && ev.pointerId !== pid) return;
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      if (touches.size) await onSupprimerTraits([...touches.values()]);
-      setMasques(null);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
+    const suivi = suivrePointeur(e, {
+      doigt: 'defiler',
+      move: (ev, lot) => lot.forEach((q) => tester(q.clientX, q.clientY)),
+      fin: async (ev, { annule }) => {
+        if (!annule) {
+          const decoupes = [...restes].filter(([id]) => !touches.has(id)).map(([id, morceaux]) => ({ trait: traits.find((t) => t.id === id), morceaux })).filter((d) => d.trait);
+          if (touches.size || decoupes.length) await onGommer({ supprimer: [...touches.values()], decouper: decoupes });
+        }
+        setMasques(null); setCoupes(null);
+      },
+    });
+    if (suivi) tester(e.clientX, e.clientY);
   };
 
   /* ANCRAGE d'une boîte : la boîte en attente est-elle sur CETTE page ? Le point
@@ -948,36 +786,33 @@ export function PdfPageContent({
           noir dessous) et SOUS les dessins. L'opacité est portée par le TRAIT
           entier (stroke-opacity d'un seul <path>) : un trait qui se recroise ne
           fonce pas sur lui-même, comme un vrai surligneur. */}
-      {(traits.length > 0 || traitEnCours) && (() => {
+      {traits.length > 0 && (() => {
         const H = pageHeight || 800;
         /* ÉPAISSEUR COLLÉE À LA PAGE (04/10, décision finale) : `epaisseur × hauteur de
            page affichée` — le trait grossit et rapetisse avec la page, comme le PDF. */
-        const rendu = (t, cle, apercu = false) => {
+        const rendu = (t, cle) => {
           const surl = modeDuTrait(t) === 'surligneur';
           const ep = surl ? (t.epaisseur || EPAISSEUR_SURLIGNEUR) : (t.epaisseur || 0.0042);
           return (
             <path key={cle} d={cheminTrait(t, cheminLisse)} fill="none"
               stroke={encre(t.couleur)}
-              strokeOpacity={Number.isFinite(t.opacite) ? t.opacite : (surl ? OPACITE_SURLIGNEUR : (apercu ? 0.9 : 1))}
+              strokeOpacity={Number.isFinite(t.opacite) ? t.opacite : (surl ? OPACITE_SURLIGNEUR : 1)}
               strokeWidth={Math.max(surl ? 4 : 1, ep * H)}
               strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
           );
         };
-        const enCours = traitEnCours && { points: traitEnCours, couleur: couleurTrait, mode: modeCrayon,
-          epaisseur: epaisseurTrait, opacite: opaciteTrait };
-        const visibles0 = masques ? traits.filter((t) => !masques.has(t.id)) : traits;
-        const visibles = decalSel && selTraits ? visibles0.map((t) => (selTraits.includes(t.id) ? { ...t, points: t.points.map(([x, y]) => [x + decalSel[0], y + decalSel[1]]) } : t)) : visibles0;
+        // gomme en cours : traits effacés masqués, traits coupés (gomme de zone) remplacés par leurs morceaux
+        const visibles = traits.flatMap((t) => (masques && masques.has(t.id) ? [] : coupes && coupes.has(t.id)
+          ? coupes.get(t.id).map((m, i) => ({ ...t, id: t.id + '#' + i, points: m })) : [t]));
         const surl = visibles.filter((t) => modeDuTrait(t) === 'surligneur');
         const dess = visibles.filter((t) => modeDuTrait(t) !== 'surligneur');
         return (
           <>
             <svg className="pdfr-inklayer surligneur" viewBox="0 0 100 100" preserveAspectRatio="none">
               {surl.map((t) => rendu(t, t.id))}
-              {enCours && enCours.mode === 'surligneur' && rendu(enCours, 'en-cours', true)}
             </svg>
             <svg className="pdfr-inklayer" viewBox="0 0 100 100" preserveAspectRatio="none">
               {dess.map((t) => rendu(t, t.id))}
-              {enCours && enCours.mode !== 'surligneur' && rendu(enCours, 'en-cours', true)}
             </svg>
           </>
         );
@@ -1003,22 +838,7 @@ export function PdfPageContent({
 
       {outil === 'crayon' && (<>
         <canvas ref={apercuRef} className="pdfr-apercu-trait" width={1} height={1} aria-hidden="true" />
-        <div className={'pdfr-inkcapture' + (modeCrayon === 'lasso' ? ' lasso' : modeCrayon === 'gomme' ? ' gomme' : '')} onPointerDown={demarrerTrait} />
-        {boiteSel && (
-          <div className="pdfr-lasso-sel" style={{ left: (boiteSel.x + (decalSel ? decalSel[0] : 0)) * 100 + '%', top: (boiteSel.y + (decalSel ? decalSel[1] : 0)) * 100 + '%', width: boiteSel.w * 100 + '%', height: boiteSel.h * 100 + '%' }}
-            onPointerDown={deplacerSel} title="Glisser pour déplacer · Suppr pour supprimer · Échap pour désélectionner">
-            {!decalSel && (
-              <div className="nb-actions pdfr-lasso-barre" onPointerDown={(e) => e.stopPropagation()}>
-                <span className="pdfr-lasso-n">{traitsSel.length} trait{traitsSel.length > 1 ? 's' : ''}</span>
-                <BoutonCouleur couleur={traitsSel[0] && traitsSel[0].couleur} titre="Couleur des traits sélectionnés"
-                  onCouleur={(c) => onModifierTraits && onModifierTraits(traitsSel.map((t) => ({ avant: t, apres: { ...t, couleur: c } })), 'Couleur des traits')} />
-                <button type="button" className="nb-act danger" onClick={(e) => { e.stopPropagation(); supprimerSel(); }} title="Supprimer la sélection (Suppr)" aria-label="Supprimer la sélection">
-                  <Icon name="trash" size={13} />
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+        <div className="pdfr-inkcapture" onPointerDown={demarrerTrait} />
       </>)}
 
       {/* VERROU 1 : la couche de tracé n'existe QUE pendant que l'outil « Boîte de
@@ -1038,13 +858,10 @@ export function PdfPageContent({
           elle seule reçoit le clic — ni sélection ni surlignage possibles. */}
       {(outil === 'texte' || outil === 'question') && (
         <div className={'pdfr-poselayer outil-' + outil} onPointerDown={(e) => {
-          noterPointeur(e);
-          if (pointeurIgnore(e)) { defilerAuDoigt(e, e.currentTarget.closest('.pdfr-scroll')); return; }
-          if (e.button !== 0) return;
-          e.preventDefault();
           const r = e.currentTarget.getBoundingClientRect();
-          if (!r.width || !r.height) return;
-          onPoser(outil, { page: pageNum, x: clamp01((e.clientX - r.left) / r.width), y: clamp01((e.clientY - r.top) / r.height) });
+          if (!r.width || !r.height || !suivrePointeur(e, { doigt: 'defiler' })) return;
+          const [x, y] = versPage(e, r);
+          onPoser(outil, { page: pageNum, x, y });
         }} />
       )}
 

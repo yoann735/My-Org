@@ -100,8 +100,6 @@ const DESSINS = {
     <rect x="3" y="5" width="18" height="14" rx="2" />
     <path d="M9 9.5h6M12 9.5v5.5" />
   </>),
-  // aimant (lissage du trait)
-  aimant: <path d="M6 3h4v8a2 2 0 0 0 4 0V3h4v8a6 6 0 0 1-12 0V3Zm0 4h4m4 0h4" />,
   // remplissage (pot de peinture simplifié : forme pleine)
   remplir: (<>
     <path d="M5 11 11 5l7 7-6 6a2 2 0 0 1-2.8 0L5 13.8a2 2 0 0 1 0-2.8Z" />

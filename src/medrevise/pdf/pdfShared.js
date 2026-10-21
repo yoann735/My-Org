@@ -630,36 +630,12 @@ export function computeMatchRectsFromDom(container, matches) {
 }
 
 /* ============================================================
-   CRAYON — géométrie du trait (étape 6). Fonctions PURES, sans DOM : elles se
-   testent hors navigateur, ce qui est précieux pour de la géométrie.
-
-   Tous les points sont normalisés [0,1] par rapport à la page, comme les
-   surlignages et les boîtes — donc indépendants du zoom.
-
-   LE MODE AIMANT, en deux temps :
-     1. SIMPLIFIER (Ramer–Douglas–Peucker) : retire les points qui n'apportent
-        rien à la forme. C'est ce qui enlève le tremblement de la main.
-     2. ACCROCHER : tout segment à moins de TOLERANCE_DEG d'un multiple de 45°
-        est redressé exactement sur cet axe. Une ligne presque droite devient
-        droite ; une courbe voulue reste une courbe, parce que ses segments ne
-        sont jamais tous proches d'un même axe.
-   Les extrémités sont recousues au fur et à mesure : chaque segment redressé
-   part du point d'arrivée du précédent, donc le trait ne se disloque pas.
+   CRAYON — géométrie du trait (étape 6 ; simplifiée le 21/10, pdf/crayon.js). Fonctions PURES, sans DOM.
+   Tous les points sont normalisés [0,1] par rapport à la page, comme les surlignages et les boîtes — donc
+   indépendants du zoom. Le lissage et le tracé des nouveaux traits vivent dans pdf/crayon.js ; ici restent
+   l'accrochage angulaire (surligneur « en ligne droite »), le test de la gomme et l'ancien tracé.
    ============================================================ */
-
-export const EPAISSEURS = [
-  { id: 'fin', label: 'Fin', v: 0.0022 },
-  { id: 'moyen', label: 'Moyen', v: 0.0042 },
-  { id: 'epais', label: 'Épais', v: 0.0075 },
-];
 const TOLERANCE_DEG = 7;   // au-delà, on considère que l'angle est voulu
-/* Seuil de simplification, en FRACTION DE HAUTEUR DE PAGE. Réglé à l'usage :
-   à 0,0016 (~2 px au zoom courant) un tremblement de main ordinaire passait
-   entre les mailles — les points étaient conservés, donc chaque micro-segment
-   gardait un angle de ±10°, donc l'accrochage angulaire ne s'appliquait à aucun
-   et le trait restait ondulé. 0,0035 (~5 px) absorbe le tremblement sans
-   toucher aux courbes voulues, dont l'écart se compte en dizaines de pixels. */
-const EPSILON_RDP = 0.0035;
 
 /** distance d'un point à un segment (au carré, on ne compare que des distances). */
 function distanceCarreeAuSegment(p, a, b) {
@@ -669,28 +645,6 @@ function distanceCarreeAuSegment(p, a, b) {
   let t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2;
   t = Math.max(0, Math.min(1, t));
   return (p[0] - (a[0] + t * dx)) ** 2 + (p[1] - (a[1] + t * dy)) ** 2;
-}
-
-/** Ramer–Douglas–Peucker, itératif (une pile plutôt que la récursion : un trait
-    peut compter des milliers de points, et on ne veut pas dépendre de la pile
-    d'appels du moteur). */
-export function simplifierRDP(points, epsilon = EPSILON_RDP) {
-  const n = (points || []).length;
-  if (n < 3) return [...(points || [])];
-  const garder = new Array(n).fill(false);
-  garder[0] = garder[n - 1] = true;
-  const pile = [[0, n - 1]];
-  const eps2 = epsilon * epsilon;
-  while (pile.length) {
-    const [i, j] = pile.pop();
-    let max = 0, idx = -1;
-    for (let k = i + 1; k < j; k++) {
-      const d = distanceCarreeAuSegment(points[k], points[i], points[j]);
-      if (d > max) { max = d; idx = k; }
-    }
-    if (idx !== -1 && max > eps2) { garder[idx] = true; pile.push([i, idx], [idx, j]); }
-  }
-  return points.filter((_, i) => garder[i]);
 }
 
 /** redresse les segments presque horizontaux / verticaux / à 45°. `ratio` corrige
@@ -716,18 +670,6 @@ export function accrocherAngles(points, ratio = 1, toleranceDeg = TOLERANCE_DEG)
   return sortie;
 }
 
-/** Traitement complet appliqué AU RELÂCHEMENT. Sans aimant, la FORME tracée est
-    conservée : on ne retire que les points redondants à l'échelle du sous-pixel
-    (EPSILON_FIN), invisibles mais qui alourdissent le stockage et la synchro
-    maintenant que la capture lit tous les événements coalescés. */
-const EPSILON_FIN = 0.0004;
-export function lisserTrait(points, { aimant = false, ratio = 1 } = {}) {
-  const p = (points || []).filter((q) => Array.isArray(q) && q.length === 2);
-  if (p.length < 2) return p;
-  if (!aimant) return simplifierRDP(p, EPSILON_FIN);
-  return accrocherAngles(simplifierRDP(p), ratio);
-}
-
 /* ---- DEUX MODES DE CRAYON (nuit du 30/09) ----
    - « dessin » : trait fin, doux — rendu en courbes, pas en segments ;
    - « surligneur » : trait épais (≈ une ligne de texte de cours), semi-transparent
@@ -742,14 +684,6 @@ export const MODES_CRAYON = [
 export const EPAISSEUR_SURLIGNEUR = 0.017;
 export const OPACITE_SURLIGNEUR = 0.38;
 export const modeDuTrait = (t) => (t && t.mode === 'surligneur' ? 'surligneur' : 'dessin');
-
-/** STREAMLINE (lissage en direct, façon Procreate) : chaque nouveau point ne
-    rejoint qu'une fraction du chemin vers la position réelle du pointeur. La
-    main tremble, le trait non. `force` 0 = brut, 1 = immobile. */
-export function suivreEnDouceur(dernier, brut, force = 0.45) {
-  if (!dernier) return brut;
-  return [dernier[0] + (brut[0] - dernier[0]) * (1 - force), dernier[1] + (brut[1] - dernier[1]) * (1 - force)];
-}
 
 /** Le clic est-il sur ce trait ? (gomme) — distance au segment le plus proche.
     `seuil` en fraction de page : un trait fin doit rester facile à viser, et un
@@ -766,14 +700,8 @@ export function traitTouche(trait, x, y, seuil = 0.012) {
   return false;
 }
 
-/** points normalisés → attribut `points` d'un <polyline> SVG en pourcentage de
-    la boîte de la page (viewBox 0 0 100 100, preserveAspectRatio="none"). */
-export function pointsVersSvg(points) {
-  return (points || []).map(([x, y]) => `${(x * 100).toFixed(3)},${(y * 100).toFixed(3)}`).join(' ');
-}
-
-/** points normalisés → attribut `d` d'un <path> LISSÉ (même repère que
-    pointsVersSvg). Courbes quadratiques passant par les MILIEUX des segments,
+/** points normalisés → attribut `d` d'un <path> LISSÉ (repère 0–100 de la page) — ANCIEN tracé des traits
+    d'avant le 20/10, gardé pour les afficher à l'identique. Courbes quadratiques passant par les MILIEUX des segments,
     chaque point servant de point de contrôle : la courbe est continue et sans
     angle, et elle reste collée au tracé (elle ne s'en écarte jamais de plus
     d'une demi-distance entre deux points échantillonnés, soit < 1 px). */

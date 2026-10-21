@@ -352,11 +352,5 @@
 .nb-conn-barre .nb-act { height: 26px; padding: 0 8px; font-size: 11.5px; }
 @media (pointer: coarse) { .nb-conn-barre .nb-act, .nb-conn-barre .sc-bouton { min-height: 40px; min-width: 40px; } }
 
-/* ---- CRAYON v4 (20/10 soir, pdf/crayon.js) : lasso, gomme de trait ---- */
-.pdfr-inkcapture.lasso { cursor: crosshair; }
-.pdfr-inkcapture.gomme { cursor: cell; }
-.pdfr-lasso-sel { position: absolute; z-index: 6; border: 1.5px dashed #7c5cff; border-radius: 4px; background: rgba(124, 92, 255, .06); cursor: move; touch-action: none; }
-.pdfr-lasso-barre { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 3px 4px;
-  border-radius: 10px; background: var(--card, #1b1b22); border: 1px solid var(--border, rgba(255, 255, 255, .1)); box-shadow: 0 6px 18px rgba(0, 0, 0, .3); white-space: nowrap; cursor: default; }
-.pdfr-lasso-n { font-size: 11.5px; color: var(--text-2, #ccc); padding: 0 6px; }
-.ptb-stabilisation input[type=range] { width: 90px; }
+/* ---- CRAYON (21/10, pdf/crayon.js) : pastille d'épaisseur dans les boutons Fin / Moyen / Épais ---- */
+.ptb-ep { display: inline-block; width: 14px; height: var(--ep, 3px); border-radius: 99px; background: currentColor; margin-right: 6px; vertical-align: middle; opacity: .85; }
