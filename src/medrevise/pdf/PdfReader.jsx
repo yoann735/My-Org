@@ -68,7 +68,7 @@ import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
 import { buildCourseExportFromParts } from '../lib/courseExport.js';
 import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
-  COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI, opaciteSurlignage, COMPACT, fractionPx100,
+  COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI, opaciteSurlignage, MOT, fractionRef,
   useDevicePixelRatio, compareHighlights, computePageTextMap,
   MODES_CRAYON, couleurHex, BOITE_DEFAUT, lireFondBoiteDefaut,
 } from './pdfShared.js';
@@ -2161,13 +2161,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      redimensionnable, supprimable. Même store et même géométrie normalisée [0,1]
      que le bloc de remplacement de texte — seul `kind: 'libre'` les distingue.
      Les trois actions passent par l'historique : la boîte naît annulable. */
-  const creerBoite = async ({ page, x, y, width, height, compacte = false, largeurFixe = false }) => {
+  const creerBoite = async ({ page, x, y, width, height, gabarit = null, largeurFixe = false }) => {
     // CORRECTIF : `couleurBoite` n'était déclaré nulle part. La ReferenceError partait
     // dans une fonction async appelée depuis un écouteur pointerup — promesse rejetée,
     // rien à l'écran : l'outil « ne créait rien ». La couleur est celle de la barre
     // contextuelle, partagée par tous les outils colorés.
-    // (20/10 soir) `compacte` : gabarit compact (pdfShared.js#COMPACT) — les boîtes d'avant n'ont pas ce champ
-    const rec = { ...newNoteBox({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurActive, fond: lireFondBoiteDefaut() }), ...(compacte ? { compacte: true } : {}), ...(largeurFixe ? { largeurFixe: true } : {}) };
+    // (21/10) `gabarit: 'mot'` : taille d'un mot, grandit avec le texte (pdfShared.js#MOT) — les boîtes d'avant n'ont pas ce champ
+    const rec = { ...newNoteBox({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurActive, fond: lireFondBoiteDefaut() }), ...(gabarit ? { gabarit } : {}), ...(largeurFixe ? { largeurFixe: true } : {}) };
     const cmd = cmdCreer('annotations', rec, 'Boîte de texte');
     hist.appliquer(cmd); // visible tout de suite (effet local), écrite ensuite
     videsFraiches.current.add(rec.id);
@@ -2619,7 +2619,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const ancre = ancreSurForme(f, { x });
     // (20/10, pdf/connecteurs.js) la légende naît avec UN connecteur ordinaire, retirable comme les autres
     const base = newNoteBox({ ficheId: nsAnnot, page: f.page, x, y, width: W, height: Hb, couleur: couleurActive, fond: lireFondBoiteDefaut() });
-    const rec = { ...base, ...patchAjouter(base, { ...ancre, formeId: f.id }) };
+    const rec = { ...base, gabarit: 'mot', ...patchAjouter(base, { ...ancre, formeId: f.id }) };
     hist.appliquer(cmdCreer('annotations', rec, 'Légende de la forme'));
     videsFraiches.current.add(rec.id);
     setFormeActiveId(null);
@@ -2967,11 +2967,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      marque souvent plusieurs d'affilée en relisant. */
   const poserElement = async (quoi, { page, x, y }) => {
     if (quoi === 'texte') {
-      // (20/10 soir) gabarit compact : une ligne de ~120 px à 100 %, qui grandit avec le texte (pdfShared.js#COMPACT)
+      // (21/10) gabarit « un mot » : la zone de texte a la taille d'un mot et grandit avec le texte (pdfShared.js#MOT)
       const sz = pageSizes.find((p) => String(p.cle) === String(page)) || pageSizes[0] || { width: 600, height: 800 };
-      const ligne = fractionPx100(COMPACT.hauteurMin, sz.height), largeur = fractionPx100(COMPACT.largeurVide, sz.width);
+      const ligne = fractionRef(MOT.hauteur, sz.height), largeur = fractionRef(MOT.largeurMin, sz.width);
       const rec = { ...newTexteLibre({ ficheId: nsAnnot, page, x: Math.min(x, 1 - largeur), y: Math.max(0, Math.min(y - ligne / 2, 1 - ligne)),
-        width: largeur, height: ligne, couleur: couleurTexte }), compacte: true };
+        width: largeur, height: ligne, couleur: couleurTexte }), gabarit: 'mot' };
       hist.appliquer(cmdCreer('annotations', rec, 'Texte libre'));
       videsFraiches.current.add(rec.id);
       setActiveEditId(rec.id);

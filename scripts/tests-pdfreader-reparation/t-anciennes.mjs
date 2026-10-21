@@ -15,7 +15,7 @@ for (const z of [1, 1.6]) {
   const vue = await b.rect(`document.querySelector('.pdfr-scroll')`);
   const x = Math.max(P.x, vue.x), y = Math.max(P.y, vue.y);
   await b.capture(nom, { x: Math.round(x), y: Math.round(y), width: Math.round(Math.min(P.r, vue.r) - x), height: Math.round(Math.min(P.b, vue.b) - y) });
-  if (quand === 'apres') { const e = await b.ecart(nom.replace('-apres', '-avant'), nom); b.ok(e.n >= 0 && e.max <= 2, `anciennes annotations identiques à ${z * 100} %${ipad ? ' (iPad)' : ''}`, JSON.stringify(e)); }
+  if (quand !== 'avant') { const e = await b.ecart(nom.replace('-' + quand, '-avant'), nom); b.ok(e.n >= 0 && e.max <= 2, `anciennes annotations identiques à ${z * 100} %${ipad ? ' (iPad)' : ''} (${quand})`, JSON.stringify(e)); }
   else console.log('capture', nom);
 }
 b.ok(!b.erreurs.length, 'aucune erreur', b.erreurs.join(' | '));

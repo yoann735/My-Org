@@ -37,7 +37,7 @@ import { createPortal } from 'react-dom';
 import { ocrImage } from '../ocr/ocrImage.js';
 import { COULEUR_DEFAUT } from '../lib/palette.js';
 import {
-  couleurFoncee, opaciteFondBoite, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT, COMPACT, fractionPx100,
+  couleurFoncee, opaciteFondBoite, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT, COMPACT, fractionPx100, MOT, fractionRef,
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
   soustraireAncres, partCouverte, surlignagesTouches, couleurHex, planSurlignage,
@@ -337,20 +337,20 @@ export function PdfPageContent({
     const up = (ev, { annule }) => {
       setTrace(null);
       if (annule) return;
-      /* (20/10 soir) GABARIT COMPACT : un clic pose une boîte d'UNE ligne (~120 × 24 px à 100 %) qui grandira avec
-         son texte ; un rectangle tracé garde sa taille, jamais sous 48 × 24 px à 100 % */
+      /* (21/10) GABARIT « UN MOT » (pdfShared.js#MOT) : un clic pose une boîte de la taille d'UN mot, qui grandira
+         avec son texte ; un rectangle tracé garde sa taille, jamais sous 40 × 24 px (échelle de référence) */
       const l100 = r.width / (scale || 1), h100 = r.height / (scale || 1);
-      const minL = fractionPx100(COMPACT.largeurMin, l100), minH = fractionPx100(COMPACT.hauteurMin, h100);
+      const minL = fractionRef(MOT.largeurMin, l100), minH = fractionRef(MOT.hauteur, h100);
       let rect = courant;
       if (!rect || rect.width * l100 < 16 || rect.height * h100 < 12) { // un clic (ou un tracé minuscule)
-        rect = { x: x0, y: clamp(y0 - minH / 2, 0, 1), width: fractionPx100(COMPACT.largeurVide, l100), height: minH };
+        rect = { x: x0, y: clamp(y0 - minH / 2, 0, 1), width: minL, height: minH };
       }
       // la boîte ne sort jamais de la page
       const x = clamp(rect.x, 0, 1 - minL);
       const y = clamp(rect.y, 0, 1 - minH);
       const trace = rect !== courant ? false : true; // rectangle tracé : sa largeur est celle voulue
       onCreerBoite({
-        page: pageNum, x, y, compacte: true, ...(trace ? { largeurFixe: true } : {}),
+        page: pageNum, x, y, gabarit: 'mot', ...(trace ? { largeurFixe: true } : {}),
         width: clamp(rect.width, minL, 1 - x),
         height: clamp(rect.height, minH, 1 - y),
       });
@@ -1060,11 +1060,8 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   };
 
   const demarrer = (e, type) => {
-    if (e.button !== 0) return;
-    e.preventDefault();   // VERROU 2 : pas de sélection native
-    e.stopPropagation();  // VERROU 2 : l'événement ne remonte pas à la page
-    const page = e.currentTarget.closest('.pdfr-page');
-    const r = page && page.getBoundingClientRect();
+    // VERROU 2 (gestionnaire unique, pdf/pointeur.js) : pas de sélection native, l'événement ne remonte pas à la page
+    const r = rectPage(e.currentTarget);
     if (!r || !r.width || !r.height) return;
     const depart = { x: e.clientX, y: e.clientY };
     const avant = boite;
@@ -1077,14 +1074,11 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     // être plus étroite que sa largeur enregistrée, ou plus haute)
     const base = type === 'resize' ? { ...avant, height: Math.max(hVue, avant.height), width: lVue || avant.width } : avant;
     let courant = null;
-    let bouge = false;
-    onGeste(true);
-    // minimum : 48 × 24 px à 100 % pour une boîte compacte ; l'ancien minimum (fractions) sinon
-    const min = avant.compacte ? { width: fractionPx100(COMPACT.largeurMin, refW / ECHELLE_REF), height: fractionPx100(COMPACT.hauteurMin, refH / ECHELLE_REF) } : BOITE_MIN;
+    // minimum : un mot (40 × 24 px de référence) ; 48 × 24 px à 100 % pour une boîte compacte du 20/10 ; l'ancien minimum sinon
+    const min = avant.gabarit === 'mot' ? { width: MOT.largeurMin / refW, height: MOT.hauteur / refH }
+      : avant.compacte ? { width: fractionPx100(COMPACT.largeurMin, refW / ECHELLE_REF), height: fractionPx100(COMPACT.hauteurMin, refH / ECHELLE_REF) } : BOITE_MIN;
 
     const move = (ev) => {
-      if (!bouge && Math.abs(ev.clientX - depart.x) + Math.abs(ev.clientY - depart.y) <= 4) return;
-      bouge = true;
       // déplacer comme redimensionner : en fraction de la page (un seul repère)
       const dx = (ev.clientX - depart.x) / r.width;
       const dy = (ev.clientY - depart.y) / r.height;
@@ -1096,16 +1090,14 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       if (type === 'resize') setRedim(true);
       setApercu(courant);
     };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
+    const up = (ev, { bouge, annule }) => {
       setApercu(null); setRedim(false);
       onGeste(false); // relâché ici ; handleMouseUp consommera le drapeau s'il est appelé
+      if (annule) return;
       if (bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de la boîte' : 'Redimension de la boîte');
       else if (type === 'move') onActivate(boite.id); // clic sans déplacement sur le bandeau → sélectionner
     };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
+    if (suivrePointeur(e, { seuil: 4, arreter: true, move, fin: up })) onGeste(true);
   };
 
   /* HAUTEUR = UN MINIMUM (01/10) : la boîte grandit avec son texte au lieu de
@@ -1125,14 +1117,21 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      (`max-content`, suivi en direct par le navigateur, sans attendre l'enregistrement) — au moins la largeur de
      création (une ligne de ~120 px vide), au plus 45 % de la page, puis le texte passe à la ligne. Une boîte
      tracée ou redimensionnée à la main (`largeurFixe`) garde sa largeur. Hauteur : jamais sous 24 px à 100 %. */
-  const compacteLibre = !!boite.compacte && !boite.largeurFixe && !redim;
-  const ajustee = !boite.compacte && !redim && !boite.largeurFixe && !!extraitBrut;
+  /* (21/10) GABARIT « UN MOT » (pdfShared.js#MOT) : la boîte épouse son texte — largeur = contenu + marges (au moins
+     40 px, au plus 45 % de la page, puis retour à la ligne), hauteur = ses lignes + marges, aucune hauteur imposée.
+     Tracée ou redimensionnée à la main (`largeurFixe`) : la taille choisie. Un déplacement ne change que x / y. */
+  const mot = boite.gabarit === 'mot';
+  const motLibre = mot && !boite.largeurFixe && !redim;
+  const compacteLibre = !mot && !!boite.compacte && !boite.largeurFixe && !redim;
+  const ajustee = !mot && !boite.compacte && !redim && !boite.largeurFixe && !!extraitBrut;
+  const libre = motLibre || compacteLibre || ajustee; // largeur suivie à l'écran (largVue), pas celle enregistrée
   const style = {
-    left: b.x * 100 + '%', top: b.y * 100 + '%', minHeight: b.height * refH,
+    left: b.x * 100 + '%', top: b.y * 100 + '%', minHeight: mot ? (boite.largeurFixe || redim ? b.height * refH : 0) : b.height * refH,
     ...(k !== 1 ? { scale: String(k), transformOrigin: '0 0' } : {}),
-    ...(compacteLibre ? { width: 'max-content', minWidth: Math.max(b.width * refW, COMPACT.largeurMin * ECHELLE_REF), maxWidth: Math.max(b.width, COMPACT.largeurMaxPage) * refW }
+    ...(motLibre ? { width: 'max-content', minWidth: MOT.largeurMin, maxWidth: MOT.largeurMaxPage * refW }
+      : compacteLibre ? { width: 'max-content', minWidth: Math.max(b.width * refW, COMPACT.largeurMin * ECHELLE_REF), maxWidth: Math.max(b.width, COMPACT.largeurMaxPage) * refW }
       : ajustee ? { width: 'max-content', maxWidth: b.width * refW } : { width: b.width * refW }),
-    ...(boite.compacte ? { minHeight: Math.max(b.height * refH, COMPACT.hauteurMin * ECHELLE_REF) } : {}),
+    ...(boite.compacte && !mot ? { minHeight: Math.max(b.height * refH, COMPACT.hauteurMin * ECHELLE_REF) } : {}),
     ...(texteLibre
       ? { color: couleurHex(boite.couleur, '#1F1F24') }
       : (() => { const f = styleFondBoite(boite, fondNoir); if (active && !boite.fond) delete f.borderColor; return f; })()),
@@ -1151,25 +1150,18 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      clic (< 4 px) n'est pas un glisser : il garde son sens (rouvrir la pastille).
      Le point reste dans la page ; le passage visé est recalculé au relâchement. */
   const glisserPoint = (e, { cible, depart, surClic }) => {
-    if (e.button !== 0) return;
-    e.preventDefault(); e.stopPropagation();
-    const page = e.currentTarget.closest('.pdfr-page');
-    const r = page && page.getBoundingClientRect();
+    const r = rectPage(e.currentTarget);
     if (!r || !r.width || !r.height) return;
     const d0 = { x: e.clientX, y: e.clientY };
-    let bouge = false, dernier = null;
-    onGeste(true);
+    let dernier = null;
     const move = (ev) => {
-      if (!bouge && Math.abs(ev.clientX - d0.x) + Math.abs(ev.clientY - d0.y) <= 4) return;
-      bouge = true;
       dernier = { x: clamp01(depart.x + (ev.clientX - d0.x) / r.width), y: clamp01(depart.y + (ev.clientY - d0.y) / r.height), cx: ev.clientX, cy: ev.clientY };
       setPointApercu({ cible, x: dernier.x, y: dernier.y });
     };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
+    const up = (ev, { bouge, annule }) => {
       onGeste(false);
       setPointApercu(null);
+      if (annule) return;
       if (!bouge || !dernier) { if (surClic) surClic(); return; }
       if (cible === 'ancre') { // épingle SANS flèche (ancien modèle) : son repère se déplace comme avant
         onModifier(boite, { ancre: { x: dernier.x, y: dernier.y, texte: texteProche ? texteProche(dernier.cx, dernier.cy) : null } }, 'Déplacement de l’épingle');
@@ -1179,8 +1171,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         onModifier(boite, { x: clamp(dernier.x, 0, 1 - boite.width), y: clamp(dernier.y, 0, 1 - boite.height) }, 'Déplacement de la boîte réduite');
       }
     };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
+    if (suivrePointeur(e, { seuil: 4, arreter: true, move, fin: up })) onGeste(true);
   };
 
   // survol (barre d'actions) — déclaré AVANT le retour anticipé de la pastille : même
@@ -1275,7 +1266,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      de contrôle et mêmes gestes que les flèches de l'outil Formes. Le bout qu'on glisse suit le pointeur
      (pointApercu), le point de contrôle qu'on glisse aussi (ctlApercu). */
   const cadreBoite = () => ({ x: b.x * pageWidth, y: b.y * pageHeight,
-    w: ((ajustee || compacteLibre) && largVue ? largVue : b.width * refW) * k, h: Math.max(b.height * refH, hautVue || 0) * k });
+    w: (libre && largVue ? largVue : b.width * refW) * k, h: (mot && hautVue ? hautVue : Math.max(b.height * refH, hautVue || 0)) * k });
   const connecteurs = connecteursDe(boite).map((c) => (pointApercu && pointApercu.cible === 'fl:' + c.id ? { ...c, x: pointApercu.x, y: pointApercu.y } : c));
   const pinSeule = epingleSeule(boite);
   const couleurFleche = couleurFoncee(boite.couleur);
@@ -1311,8 +1302,8 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      (PdfReader.jsx). Plus d'apparition au survol. Au-dessus de la boîte, dessous s'il n'y a pas
      la place ; toujours dans la page (repositionnée si la boîte est au bord). */
   const tactile = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-  const bLarg = refW ? ((ajustee || compacteLibre) && largVue ? largVue : b.width * refW) / refW : b.width; // largeur affichée (fraction de page)
-  const bHaut = Math.max(b.height, (hautVue * k) / (pageHeight || 1)); // hauteur affichée (fraction de page)
+  const bLarg = refW ? (libre && largVue ? largVue : b.width * refW) / refW : b.width; // largeur affichée (fraction de page)
+  const bHaut = mot && hautVue ? (hautVue * k) / (pageHeight || 1) : Math.max(b.height, (hautVue * k) / (pageHeight || 1)); // hauteur affichée (fraction de page)
   const ICONE = tactile ? 36 : 28;
   const NB_ICONES = texteLibre ? 2 : 5;
   const barreL = enAncrage ? Math.min(330, (pageWidth || 330) - 8) : NB_ICONES * ICONE + (NB_ICONES - 1) * 2 + 8;
@@ -1440,7 +1431,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         </>)}
       </div>
     )}
-    <div ref={boiteRef} className={'note-box' + (ajustee ? ' ajustee' : '') + (boite.compacte ? ' compacte' : '') + (!texteLibre && boite.fond ? ' fond-' + boite.fond : '') + (texteLibre ? ' texte-libre' : '') + (active ? ' active' : '') + (enAncrage ? ' en-ancrage' : '') + (texteLibre && !extraitBrut ? ' vide' : '')} style={style}
+    <div ref={boiteRef} className={'note-box' + (ajustee ? ' ajustee' : '') + (mot ? ' mot' : boite.compacte ? ' compacte' : '') + (!texteLibre && boite.fond ? ' fond-' + boite.fond : '') + (texteLibre ? ' texte-libre' : '') + (active ? ' active' : '') + (enAncrage ? ' en-ancrage' : '') + (texteLibre && !extraitBrut ? ' vide' : '')} style={style}
       onMouseEnter={entrer} onMouseLeave={sortir}>
       {/* CORRECTIF (défaut 4) : le bandeau est focusable, et c'est LUI qui porte la
           suppression au clavier — plus aucun écouteur global ne peut effacer la
@@ -1490,6 +1481,13 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
           }}><EditorContent editor={editor} /></div>
         : <div className="nb-body" onMouseDown={(e) => { if (e.button === 0) appuiRef.current = { x: e.clientX, y: e.clientY }; }} onClick={activer} data-vide={texteLibre ? 'Texte…' : undefined} dangerouslySetInnerHTML={{ __html: html }} />}
 
+      {/* (21/10) ÉPINGLE DE FLÈCHE intégrée : un petit point sur le bord droit, visible quand la boîte est sélectionnée —
+          un appui = « Ajouter une flèche » (le clic suivant sur la page pose son arrivée) */}
+      {mot && !texteLibre && active && !enAncrage && (
+        <span className="nb-epingle" role="button" aria-label="Ajouter une flèche" title="Ajouter une flèche : clique ensuite l’endroit visé"
+          style={k !== 1 ? { scale: String(1 / k) } : undefined}
+          onPointerDown={(e) => { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); onDemanderAncrage(boite.id, { ajout: true }); }} />
+      )}
       <div className="nb-corner" title="Glisser pour redimensionner" onPointerDown={(e) => demarrer(e, 'resize')}
         style={active && k !== 1 ? { scale: String(1 / k), transformOrigin: '100% 100%' } : undefined} />
     </div>
@@ -1506,31 +1504,23 @@ function QuestionMarque({ q, onModifier, onSupprimer, onGeste }) {
   const [apercu, setApercu] = useState(null);
   const pos = apercu || q;
   const glisser = (e) => {
-    if (e.button !== 0) return;
-    e.preventDefault(); e.stopPropagation();
     const btn = e.currentTarget;
-    const page = btn.closest('.pdfr-page');
-    const r = page && page.getBoundingClientRect();
+    const r = rectPage(btn);
     if (!r || !r.width || !r.height) return;
     const d0 = { x: e.clientX, y: e.clientY };
-    let bouge = false, dernier = null;
-    onGeste(true);
+    let dernier = null;
     const move = (ev) => {
-      if (!bouge && Math.abs(ev.clientX - d0.x) + Math.abs(ev.clientY - d0.y) <= 4) return;
-      bouge = true;
       dernier = { x: clamp01(q.x + (ev.clientX - d0.x) / r.width), y: clamp01(q.y + (ev.clientY - d0.y) / r.height) };
       setApercu(dernier);
     };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
+    const up = (ev, { bouge, annule }) => {
       onGeste(false);
       setApercu(null);
+      if (annule) return;
       if (bouge && dernier) onModifier(q, dernier, 'Déplacement du « ? »');
       else btn.focus();
     };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
+    if (suivrePointeur(e, { seuil: 4, arreter: true, move, fin: up })) onGeste(true);
   };
   return (
     <span className={'pdfr-question' + (apercu ? ' glisse' : '')} style={{ left: pos.x * 100 + '%', top: pos.y * 100 + '%' }}>
@@ -1574,10 +1564,7 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
   const g = apercu || img;
   const cadreRef = useRef(null);
   const geste = (e, type) => {
-    if (e.button !== 0) return;
-    e.preventDefault(); e.stopPropagation();
-    const page = e.currentTarget.closest('.pdfr-page');
-    const r = page && page.getBoundingClientRect();
+    const r = rectPage(e.currentTarget);
     if (!r || !r.width || !r.height) return;
     const d0 = { x: e.clientX, y: e.clientY };
     const avant = img;
@@ -1587,13 +1574,8 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
     const rot = avant.rotation || 0, th = (rot * Math.PI) / 180, cosT = Math.cos(th), sinT = Math.sin(th);
     const centre = { x: r.left + (avant.x + avant.width / 2) * r.width, y: r.top + (avant.y + avant.height / 2) * r.height };
     const a0 = Math.atan2(e.clientY - centre.y, e.clientX - centre.x);
-    let bouge = false, courant = null;
-    onGeste(true);
-    onActiver(img.id);
-    if (cadreRef.current) cadreRef.current.focus({ preventScroll: true });
+    let courant = null;
     const move = (ev) => {
-      if (!bouge && Math.abs(ev.clientX - d0.x) + Math.abs(ev.clientY - d0.y) <= 3) return;
-      bouge = true;
       const dx = (ev.clientX - d0.x) / r.width, dy = (ev.clientY - d0.y) / r.height;
       if (type === 'rotation') {
         let deg = rot + ((Math.atan2(ev.clientY - centre.y, ev.clientX - centre.x) - a0) * 180) / Math.PI;
@@ -1630,16 +1612,16 @@ function ImageCollee({ img, active, premier, dernier, onActiver, onMaj, onCalque
       setApercu(courant);
       onApercu(courant);
     };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
+    const up = (ev, { bouge, annule }) => {
       onGeste(false);
       setApercu(null);
       onApercu(null);
-      if (bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de l’image' : type === 'rotation' ? 'Rotation de l’image' : 'Redimension de l’image');
+      if (!annule && bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de l’image' : type === 'rotation' ? 'Rotation de l’image' : 'Redimension de l’image');
     };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
+    if (!suivrePointeur(e, { seuil: 3, arreter: true, move, fin: up })) return;
+    onGeste(true);
+    onActiver(img.id);
+    if (cadreRef.current) cadreRef.current.focus({ preventScroll: true });
   };
   const stop = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onClick: (e) => { e.stopPropagation(); fn(); } });
 
@@ -1823,21 +1805,14 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
   const { d, pointes } = trait ? { d: cheminFleche(sommets, st, epTrait, geoTrait).d, pointes: [] } : cheminForme(type, wpx, hpx, { fx: !!g.fx, fy: !!g.fy, epaisseur: ep });
 
   const demarrer = (e, typeGeste) => {
-    if (e.button !== 0) return;
-    e.preventDefault(); e.stopPropagation();
-    const page = e.currentTarget.closest('.pdfr-page');
-    const r = page && page.getBoundingClientRect();
+    const r = rectPage(e.currentTarget);
     if (!r || !r.width || !r.height) return;
     const d0 = { x: e.clientX, y: e.clientY };
     const avant = forme;
-    let bouge = false, courant = null;
-    onGeste(true);
-    onActiver(forme.id);
+    let courant = null;
     // extrémités d'un trait en fractions de page : [départ, arrivée]
     const [a0, b0] = extremites(avant.width, avant.height, avant.fx, avant.fy).map((p) => ({ x: avant.x + p.x, y: avant.y + p.y }));
     const move = (ev) => {
-      if (!bouge && Math.abs(ev.clientX - d0.x) + Math.abs(ev.clientY - d0.y) <= 3) return;
-      bouge = true;
       const dx = (ev.clientX - d0.x) / r.width, dy = (ev.clientY - d0.y) / r.height;
       if (typeGeste === 'move') {
         courant = { ...avant, x: clamp(avant.x + dx, 0, 1 - avant.width), y: clamp(avant.y + dy, 0, 1 - avant.height) };
@@ -1857,15 +1832,12 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
       }
       setGeste(courant);
     };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
+    const up = (ev, { bouge, annule }) => {
       onGeste(false);
       setGeste(null);
-      if (bouge && courant) onMaj(avant, courant, typeGeste === 'move' ? 'Déplacement de la forme' : 'Redimension de la forme');
+      if (!annule && bouge && courant) onMaj(avant, courant, typeGeste === 'move' ? 'Déplacement de la forme' : 'Redimension de la forme');
     };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
+    if (suivrePointeur(e, { seuil: 3, arreter: true, move, fin: up })) { onGeste(true); onActiver(forme.id); }
   };
 
   const stylerForme = (patch, libelle) => onModifier(forme, { fleche: { ...(forme.fleche || {}), ...patch } }, libelle);

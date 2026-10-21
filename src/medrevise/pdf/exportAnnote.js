@@ -303,14 +303,15 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const paras = paragraphesDe(t.content);
     if (!page || !paras.join('').trim()) { if (!page) bilan.ignores += 1; continue; }
     const { W, H } = dims(page);
-    const lignes = couperLignes(paras.map(propre), font, TAILLE_TEXTE, Math.max(20, t.width * W - 4));
+    const largeurT = t.gabarit === 'mot' && !t.largeurFixe ? 0.45 * W : t.width * W; // (21/10) gabarit « un mot » : suit le texte
+    const lignes = couperLignes(paras.map(propre), font, TAILLE_TEXTE, Math.max(20, largeurT - 4));
     const lh = TAILLE_TEXTE * 1.3;
     lignes.forEach((l, i) => { if (l) page.drawText(l, { x: t.x * W + 2, y: H - t.y * H - 2 - TAILLE_TEXTE * 0.9 - i * lh, size: TAILLE_TEXTE, font, color: hexVersRgb(couleurHex(t.couleur, '#1F1F24')) }); });
     if (reperes && reperes.has(t.id)) {
       // cadre du texte libre (sans bordure visible) : l'étendue RÉELLE de son texte — le repère reste
       // collé au texte, jamais sur la page autour
       const larg = Math.max(...lignes.map((l) => font.widthOfTextAtSize(l, TAILLE_TEXTE)), 0);
-      const top = H - t.y * H, w = Math.max(20, Math.min(t.width * W, larg + 4)), h = 4 + Math.max(1, lignes.length) * lh;
+      const top = H - t.y * H, w = Math.max(20, Math.min(largeurT, larg + 4)), h = 4 + Math.max(1, lignes.length) * lh;
       poserRepere(page, t.id, { x: t.x * W, top, w, h, lignes: lignes.map((l, i) => ({ x: t.x * W + 2, top: top - 2 - i * lh, w: font.widthOfTextAtSize(l, TAILLE_TEXTE), h: lh, vide: !l.trim() })) });
     }
     bilan.textes += 1;
@@ -337,7 +338,8 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const { W, H } = dims(page);
     const pad = 4;
     const x = b.x * W;
-    let w = Math.max(24, b.width * W);
+    // (21/10) gabarit « un mot » : la largeur suit le texte jusqu'à 45 % de la page, comme à l'écran
+    let w = Math.max(24, b.gabarit === 'mot' && !b.largeurFixe ? 0.45 * W : b.width * W);
     const lignes = couperLignes(paragraphesDe(b.content).map(propre), font, TAILLE_BOITE, w - 2 * pad);
     // comme à l'écran : la boîte épouse sa ligne la plus longue (+ marge), sauf largeur fixée à la main
     if (!b.largeurFixe && lignes.some((l) => l.trim())) {

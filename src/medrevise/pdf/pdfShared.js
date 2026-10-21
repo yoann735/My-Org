@@ -93,6 +93,15 @@ export const BOITE_MIN = { width: 0.04, height: 0.022 };
 export const COMPACT = { largeurVide: 120, largeurMin: 48, hauteurMin: 24, largeurMaxPage: 0.45 };
 /** fraction de page d'une longueur en px à 100 % (`cote100` = largeur ou hauteur de la page à 100 %) */
 export const fractionPx100 = (px, cote100) => (cote100 > 0 ? px / cote100 : 0);
+/* GABARIT « UN MOT » (21/10, docs/compte-rendu-pdfreader-reparation.md) — boîtes et zones de texte créées depuis le
+   21/10 (champ `gabarit: 'mot'`). Tailles en px à l'ÉCHELLE DE RÉFÉRENCE des boîtes (160 %, voir NoteBox) : une boîte
+   vide fait UN mot — hauteur d'une ligne + 6 px (marges 3 px), largeur = contenu + 12 px (marges 6 px), au moins
+   40 px ; elle grandit avec le texte seulement, jusqu'à 45 % de la page (puis le texte passe à la ligne). Les boîtes
+   d'avant (avec ou sans `compacte`) gardent leur gabarit et leur dessin. */
+export const ECHELLE_BOITES = 1.6;
+export const MOT = { largeurMin: 40, hauteur: 24, largeurMaxPage: 0.45 };
+/** fraction de page d'une longueur en px à l'échelle de référence des boîtes */
+export const fractionRef = (px, cote100) => (cote100 > 0 ? px / (cote100 * ECHELLE_BOITES) : 0);
 
 /* PALETTE DU CRAYON (et du texte libre) — 01/10. Les 4 couleurs des surlignages
    ont un SENS (prioritaire, cloze…) et restent seules pour eux ; le crayon, lui,

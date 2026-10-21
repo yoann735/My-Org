@@ -354,3 +354,41 @@
 
 /* ---- CRAYON (21/10, pdf/crayon.js) : pastille d'épaisseur dans les boutons Fin / Moyen / Épais ---- */
 .ptb-ep { display: inline-block; width: 14px; height: var(--ep, 3px); border-radius: 99px; background: currentColor; margin-right: 6px; vertical-align: middle; opacity: .85; }
+
+/* ---- BOÎTES « UN MOT » (21/10, docs/compte-rendu-pdfreader-reparation.md ; pdfShared.js#MOT) ----
+   Mises en page à l'échelle de référence (160 %). Sobre : fond plein de la couleur choisie (texte en contraste
+   automatique, styleFondBoite), coins de 8 px, AUCUNE bordure sauf à la sélection (contour 1,5 px d'accent), ombre
+   très légère, texte de la DA en 13 px. La boîte fait la taille de son texte : marges de 3 px (haut / bas) et 6 px
+   (gauche / droite), rien d'autre. La poignée de déplacement est une languette au-dessus du coin gauche, visible
+   au survol et à la sélection ; la poignée de taille et l'épingle de flèche (point sur le bord droit) aussi.
+   Mêmes règles (taille, sélection, poignée) pour les zones de texte. Les boîtes d'avant ne changent pas. */
+.note-box.mot { border: 0; border-radius: 8px; overflow: visible; box-shadow: 0 1px 2px rgba(0, 0, 0, .14), 0 0 0 .5px rgba(0, 0, 0, .05); }
+.note-box.mot.active { box-shadow: 0 0 0 1.5px var(--accent), 0 2px 8px rgba(0, 0, 0, .16); } /* anneau en ombre : un contour de 1,5 px serait arrondi à 1 px */
+.note-box.mot:is(.fond-transparent, .fond-teinte) { border: 1px solid; box-shadow: none; }
+.note-box.mot:is(.fond-transparent, .fond-teinte) .nb-body { padding: 2px 5px; } /* le liseré de 1 px est pris sur la marge : même taille */
+.note-box.mot:is(.fond-transparent, .fond-teinte).active { box-shadow: 0 0 0 1.5px var(--accent); }
+.note-box.mot .nb-body { padding: 3px 6px; font-size: 13px; line-height: 1.35; overflow: visible; border-radius: inherit; }
+.note-box.mot .nb-body p { margin: 0; }
+.note-box.mot .nb-bar { position: absolute; left: 6px; top: -13px; height: 12px; padding: 0 6px; gap: 3px; min-height: 0;
+  border: 0; border-radius: 6px 6px 0 0; background: var(--accent); color: #fff; opacity: 0; transition: opacity .12s ease-out; }
+.note-box.mot .nb-bar .nb-grip { opacity: .95; transform: scale(.8); }
+.note-box.mot:is(:hover, .active) .nb-bar, .note-box.mot .nb-bar:focus-visible { opacity: 1; }
+.note-box.mot .nb-bar:has(.nb-version) { opacity: 1; background: transparent; }
+.note-box.mot:is(:hover, .active) .nb-bar:has(.nb-version) { background: var(--accent); }
+.note-box.mot .nb-corner { width: 10px; height: 10px; border-radius: 0 0 8px 0; opacity: 0; transition: opacity .12s ease-out; animation: none;
+  background: linear-gradient(135deg, transparent 55%, color-mix(in srgb, currentColor 45%, transparent) 55%); }
+.note-box.mot:is(:hover, .active) .nb-corner { opacity: 1; }
+.note-box.mot .nb-epingle { position: absolute; right: -5px; top: 3px; width: 10px; height: 10px; box-sizing: border-box; /* haut du bord droit : la poignée de taille garde le coin */
+  border-radius: 50%; background: var(--accent); border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .12); cursor: crosshair; touch-action: none; animation: fondu .12s ease-out both; }
+.note-box.mot .nb-epingle:hover { transform: scale(1.25); }
+.note-box.mot.texte-libre { border: 0; border-radius: 8px; outline: 1px dashed transparent; box-shadow: none; }
+.note-box.mot.texte-libre:hover { outline-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.note-box.mot.texte-libre.active { outline-color: transparent; box-shadow: 0 0 0 1.5px var(--accent); border-radius: 8px; }
+.note-box.mot.texte-libre .nb-body { padding: 3px 6px; font-size: 15px; }
+.note-box.mot.texte-libre .nb-bar { top: -13px; border-radius: 6px 6px 0 0; }
+@media (pointer: coarse) {
+  .note-box.mot .nb-bar { height: 18px; top: -19px; padding: 0 9px; }
+  .note-box.mot .nb-corner { width: 16px; height: 16px; right: -8px; bottom: -8px; border-radius: 50%; box-sizing: border-box; background: #fff; border: 2px solid var(--accent); }
+  .note-box.mot .nb-epingle { width: 16px; height: 16px; top: -2px; right: -8px; }
+}
+@media (prefers-reduced-motion: reduce) { .note-box.mot .nb-bar, .note-box.mot .nb-corner { transition: none; } }
