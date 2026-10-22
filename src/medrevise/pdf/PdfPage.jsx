@@ -27,6 +27,8 @@ import { connecteursDe, epingleSeule, patchRetirer, patchAjouter, patchStyle, pa
 import { styleFleche, cheminFleche, geoPointe, sommetsConnecteur, sommetsForme, pointesForme, harmonisee, suivant, TRAITS as TRAITS_FORME } from './flechesGeo.js';
 import { TraitFleche, PoigneesFleche, pointsAvecAjout, glisserPointFleche, appuiLong, itemsFleche, boiteSous } from './Fleche.jsx';
 import { CadreSelection, MiniBarre, redimensionner } from './Selection.jsx';
+import { elementsFormat, useSuiviEditeur, ALIGNEMENTS } from './FormatTexte.jsx';
+import { BoiteTableau, estGrille, contenuGrille, ajouterLigne, ajouterColonne, retirerLigne, retirerColonne, LIMITES_GRILLE } from './BoiteTableau.jsx';
 import { BoutonTaille } from './ChoixTaille.jsx';
 import { lisser3, arrondirPoints, cheminCatmull, cheminDroit, cheminTrait, densifier, morceauxHors, OPACITE_SURLIGNEUR_CRAYON } from './crayon.js';
 import { suivreImage } from './attaches.js';
@@ -46,7 +48,7 @@ import {
   soustraireAncres, partCouverte, surlignagesTouches, couleurHex, planSurlignage,
   traitTouche, cheminLisse, modeDuTrait, accrocherAngles,
   EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, positionTexteProche,
-  lisibleSurNoir, EMPTY_ARRAY, opaciteSurlignage,
+  lisibleSurNoir, EMPTY_ARRAY, opaciteSurlignage, lignesSurlignage,
   ecrireFondBoiteDefaut,
 } from './pdfShared.js';
 
@@ -72,6 +74,7 @@ export function PdfPageContent({
   // SURLIGNER LE TEXTE D'UNE IMAGE COLLÉE (09/10, docs/compte-rendu-pdfreader-v2.md)
   onSurlignerImage = () => {}, onFlashcardTexte = () => {}, couleurSurligneur = 'jaune-franc',
   onApercuCouleur = null, // (15/10) aperçu en direct d'une couleur personnalisée : (id, hex | null)
+  onVersTableau = null, boitesAuTableau = null, onReinitialiserBloc = () => {}, // (22/10) « → Tableau », bloc remplacé
 }) {
   /* surlignages posés sur les MOTS d'une image collée (`imageId` + `mots`) : dessinés par
      l'image elle-même (ils la suivent : déplacement, taille, rotation) — tout le reste de la
@@ -346,15 +349,21 @@ export function PdfPageContent({
       const l100 = r.width / (scale || 1), h100 = r.height / (scale || 1);
       const minL = fractionRef(MOT.largeurMin, l100), minH = fractionRef(MOT.hauteur, h100);
       let rect = courant;
+      const variante = outil; // (22/10) boite | postit | boiteTableau
       if (!rect || rect.width * l100 < 16 || rect.height * h100 < 12) { // un clic (ou un tracé minuscule)
-        rect = { x: x0, y: clamp(y0 - minH / 2, 0, 1), width: minL, height: minH };
+        // (22/10) post-it : un carré de 170 px (référence 1000 px) ; boîte-tableau : 420 px de large ; boîte : un mot
+        const dim = variante === 'postit' ? { w: 170 / PAGE_REF, h: (170 / PAGE_REF) * (r.width / r.height) }
+          : variante === 'boiteTableau' ? { w: 420 / PAGE_REF, h: (130 / PAGE_REF) * (r.width / r.height) } : null;
+        rect = dim ? { x: clamp(x0, 0, 1 - dim.w), y: clamp(y0, 0, 1 - dim.h), width: dim.w, height: dim.h }
+          : { x: x0, y: clamp(y0 - minH / 2, 0, 1), width: minL, height: minH };
+        if (dim) courant = rect; // même chemin qu'un rectangle tracé : sa taille est gardée
       }
       // la boîte ne sort jamais de la page
       const x = clamp(rect.x, 0, 1 - minL);
       const y = clamp(rect.y, 0, 1 - minH);
       const trace = rect !== courant ? false : true; // rectangle tracé : sa largeur est celle voulue
       onCreerBoite({
-        page: pageNum, x, y, gabarit: 'carte', ...(trace ? { largeurFixe: true } : {}),
+        page: pageNum, x, y, gabarit: 'carte', variante, ...(trace ? { largeurFixe: true } : {}),
         width: clamp(rect.width, minL, 1 - x),
         height: clamp(rect.height, minH, 1 - y),
       });
@@ -446,6 +455,14 @@ export function PdfPageContent({
     x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, W, H);
     x.globalAlpha = style.opacite; x.strokeStyle = style.couleur; x.lineWidth = style.largeur * d; x.lineCap = 'round'; x.lineJoin = 'round';
     x.stroke(new Path2D(style.droit ? cheminDroit(points, W, H) : cheminCatmull(points, W, H)));
+  };
+  /** le pointeur est-il sur un caractère de la couche de texte (span pdf.js ou mot OCR) ? */
+  const surDuTexte = (e) => {
+    const couche = textLayerRef.current, t = e.target;
+    const span = t && t.closest && t.closest('span');
+    if (!couche || !span || !couche.contains(span) || !(span.textContent || '').trim()) return false;
+    const q = span.getBoundingClientRect();
+    return e.clientX >= q.left - 1 && e.clientX <= q.right + 1 && e.clientY >= q.top - 1 && e.clientY <= q.bottom + 1;
   };
   const demarrerTrait = (e) => {
     // bout gomme / bouton gomme d'un stylet (bouton 5) : il gomme, le crayon reste l'outil
@@ -756,7 +773,7 @@ export function PdfPageContent({
     const x0 = e.clientX, y0 = e.clientY;
     let pts = null;
     suivrePointeur(e, {
-      seuil: 3, arreter: true,
+      seuil: 3, arreter: true, glisser: true,
       move: (ev) => { const dx = (ev.clientX - x0) / r.width, dy = (ev.clientY - y0) / r.height; pts = t.points.map(([x, y]) => [x + dx, y + dy]); setTraitApercu({ id: t.id, points: pts }); },
       fin: (ev, { bouge, annule }) => { setTraitApercu(null); if (!annule && bouge && pts) onModifierTrait(t, { points: arrondir5(pts) }, 'Déplacement du trait'); },
     });
@@ -786,7 +803,11 @@ export function PdfPageContent({
           ))}
         </div>
       )}
-      <div ref={textLayerRef} className={'pdfr-textlayer outil-' + outil} onMouseUp={handleMouseUp} onCopy={handleCopy} />
+      {/* SURLIGNEUR UNIQUE (22/10, docs/compte-rendu-simplification-outils.md §1) : un geste qui commence SUR du texte
+          (natif ou couche OCR) le sélectionne et le surligne au relâchement ; ailleurs, il trace un surlignage à main
+          levée (même moteur que le crayon). */}
+      <div ref={textLayerRef} className={'pdfr-textlayer outil-' + outil} onMouseUp={handleMouseUp} onCopy={handleCopy}
+        onPointerDown={outil === 'surligneur' ? (e) => { if (!surDuTexte(e)) demarrerTrait(e); } : undefined} />
       {corps}
       {/* IMAGES COLLÉES (01/10) : JUSTE au-dessus du PDF, SOUS toutes les annotations
           (surlignages, blocs, traits, textes, « ? », boîtes — rendus après). Leur
@@ -806,10 +827,12 @@ export function PdfPageContent({
         </div>
       )}
       <div className="pdfr-hlayer">
-        {highlights.flatMap((h) => (shownRects[h.id] || h.rects).map((r, i) => (
-          <div key={h.id + ':' + i}
+        {/* (22/10) UN rectangle continu par ligne (pdfShared.js#lignesSurlignage), coins de 3 px, 1 px de débord en
+            hauteur (etudes.css .pdfr-hl-rect) — même rendu sur le texte natif et sur la couche OCR */}
+        {highlights.flatMap((h) => lignesSurlignage(shownRects[h.id] || h.rects).map((r, i) => (
+          <div key={h.id + ':' + i} data-hl={h.id}
             className={'pdfr-hl-rect' + (h.id === cibleHlId ? ' cible' : '') + (liesActifs.has(h.id) ? ' lie' : '')}
-            style={{ left: r.x * 100 + '%', top: r.y * 100 + '%', width: r.width * 100 + '%', height: r.height * 100 + '%', background: couleurHex(h.couleur),
+            style={{ left: r.x * 100 + '%', top: r.y * 100 + '%', width: r.w * 100 + '%', height: r.h * 100 + '%', background: couleurHex(h.couleur),
               // couleur perso (hex) : translucide comme un vrai surligneur — un violet ou un
               // bleu foncé en pleine teinte rendrait le texte illisible (les 4 couleurs
               // « cours » sont déjà des pastels). Même rendu qu'à l'export (opacité 0,4).
@@ -822,7 +845,8 @@ export function PdfPageContent({
       </div>
       <canvas ref={selCanvasRef} className="pdfr-selcanvas" aria-hidden="true" />
       {edits.map((a) => (
-        <TextEditBlock key={a.id} edit={a} active={a.id === activeEditId} editable={outil === 'main'} onActivate={onActivateEdit} editor={a.id === activeEditId ? activeEditor : null} pageHeight={pageHeight} />
+        <TextEditBlock key={a.id} edit={a} active={a.id === activeEditId} editable={outil === 'main'} onActivate={onActivateEdit} editor={a.id === activeEditId ? activeEditor : null} pageHeight={pageHeight}
+          pageWidth={pageWidth} onReinitialiser={() => onReinitialiserBloc(a.id)} />
       ))}
 
       {/* Les traits au crayon : un seul <svg> par page, transparent à la souris.
@@ -916,17 +940,15 @@ export function PdfPageContent({
         </div>
       )}
 
-      {outil === 'crayon' && (<>
-        <canvas ref={apercuRef} className="pdfr-apercu-trait" width={1} height={1} aria-hidden="true" />
-        <div className="pdfr-inkcapture" onPointerDown={demarrerTrait} />
-      </>)}
+      {(outil === 'crayon' || outil === 'surligneur') && <canvas ref={apercuRef} className="pdfr-apercu-trait" width={1} height={1} aria-hidden="true" />}
+      {outil === 'crayon' && <div className="pdfr-inkcapture" onPointerDown={demarrerTrait} />}
 
       {/* VERROU 1 : la couche de tracé n'existe QUE pendant que l'outil « Boîte de
           texte » est actif, et elle est posée AU-DESSUS de la couche de texte. Tant
           qu'elle est là, aucun événement n'atteint `pdfr-textlayer` : ni sélection,
           ni surlignage, ni test de position. Rien à désactiver, rien à oublier. */}
-      {outil === 'boite' && (
-        <div className="pdfr-drawlayer" onPointerDown={demarrerTrace}>
+      {(outil === 'boite' || outil === 'postit' || outil === 'boiteTableau') && (
+        <div className={'pdfr-drawlayer outil-' + outil} onPointerDown={demarrerTrace}>
           {trace && (
             <div className="nb-preview" style={{ left: trace.x * 100 + '%', top: trace.y * 100 + '%', width: trace.width * 100 + '%', height: trace.height * 100 + '%' }} />
           )}
@@ -974,6 +996,7 @@ export function PdfPageContent({
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
           onMaj={onMajBoite} onSupprimer={onSupprimerBoite} onModifier={onModifierBoite}
           enAncrage={b.id === ancrageBoiteId} viseSurlignage={ancrageSurlignage} viseAjout={ancrageAjout} onDemanderAncrage={onDemanderAncrage} flechesInteractives={outil === 'main'}
+          onVersTableau={onVersTableau} auTableau={!!(boitesAuTableau && boitesAuTableau.has(b.id))}
           onApercu={onApercuCouleur ? (c) => onApercuCouleur(b.id, c) : null}
           {...propsSelection(b, 'boite')}
           pageWidth={pageWidth} pageHeight={pageHeight} texteProche={texteProche} />
@@ -1053,7 +1076,8 @@ function useApparition(visible, ms = 120) {
 }
 
 function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, onApercu = null, enAncrage = false, viseSurlignage = false, viseAjout = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF, fondNoir = false, flechesInteractives = true,
-  selectionne = false, onSelectionner = () => {}, selConn = null, onSelConn = () => {}, cadres = null, onCadre = null, onTransferer = null }) {
+  selectionne = false, onSelectionner = () => {}, selConn = null, onSelConn = () => {}, cadres = null, onCadre = null, onTransferer = null,
+  onVersTableau = null, auTableau = false }) {
   /* UN SEUL REPÈRE : LA PAGE (04/10, docs/compte-rendu-zoom-annotations.md). Position,
      épingle, connecteurs ET taille sont des fractions de page. La boîte est mise en page
      à l'échelle de RÉFÉRENCE (160 % : refW × refH, police 13 px…) puis mise à l'échelle
@@ -1086,8 +1110,9 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      réellement dans CETTE boîte, on pose la sélection par commande, puis on
      donne le focus au DOM de façon synchrone (view.focus()). */
   const boiteRef = useRef(null);
+  const grille = !texteLibre && estGrille(boite.grille) ? boite.grille : null; // (22/10) boîte-tableau (pdf/BoiteTableau.jsx)
   useEffect(() => {
-    if (!active || !editor) return undefined;
+    if (!active || !editor || grille) return undefined;
     let essais = 0;
     let t = null;
     const essayer = () => {
@@ -1140,6 +1165,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   /* GESTE UNIQUE (21/10, pdf/Selection.jsx) — le même pour tous les objets : un clic sélectionne, cliquer-glisser
      N'IMPORTE OÙ sur la boîte la déplace (elle garde sa taille et passe au-dessus des autres), un clic sur une boîte
      déjà sélectionnée ou un double-clic ouvre l'édition du texte. En édition, le texte reçoit le pointeur. */
+  const verrou = !!boite.verrouille; // (22/10) boîte verrouillée : ni déplacée ni redimensionnée (son texte reste modifiable)
   const appui = (e) => {
     if (active) return;
     const r = rectPage(e.currentTarget);
@@ -1147,12 +1173,13 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     const avant = boite, x0 = e.clientX, y0 = e.clientY, deja = selectionne;
     let courant = null;
     const suivi = suivrePointeur(e, {
-      seuil: 4, arreter: true,
-      move: (ev) => { courant = { ...avant, x: clamp(avant.x + (ev.clientX - x0) / r.width, 0, 0.98), y: clamp(avant.y + (ev.clientY - y0) / r.height, 0, 0.98) }; setApercu(courant); },
+      seuil: 4, arreter: true, glisser: !verrou,
+      move: (ev) => { if (verrou) return; courant = { ...avant, x: clamp(avant.x + (ev.clientX - x0) / r.width, 0, 0.98), y: clamp(avant.y + (ev.clientY - y0) / r.height, 0, 0.98) }; setApercu(courant); },
       fin: (ev, { bouge, annule }) => {
         setApercu(null); onGeste(false);
         if (annule) return;
         if (bouge && courant) { onMaj(avant, courant, 'Déplacement de la boîte'); if (!deja) onSelectionner(); }
+        else if (bouge && verrou) { if (!deja) onSelectionner(); } // glisser une boîte verrouillée : rien ne bouge, rien ne s'ouvre
         else if (deja) activer(ev);
         else onSelectionner();
       },
@@ -1243,13 +1270,17 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         onModifier(boite, { x: clamp(dernier.x, 0, 1 - boite.width), y: clamp(dernier.y, 0, 1 - boite.height) }, 'Déplacement de la boîte réduite');
       }
     };
-    if (suivrePointeur(e, { seuil: 4, arreter: true, move, fin: up })) onGeste(true);
+    if (suivrePointeur(e, { seuil: 4, arreter: true, glisser: true, move, fin: up })) onGeste(true);
   };
   const rouvrir = () => onModifier(boite, { reduite: false }, 'Réouverture de la boîte');
   const couleurBoite = couleurHex(boite.couleur);
   const [ctlApercu, setCtlApercu] = useState(null); // point de contrôle en cours de glisser : { id, points }
   const [translApercu, setTranslApercu] = useState(null); // flèche entière en cours de glisser : { id, dx, dy }
 
+  // (22/10) hooks de la mini barre, AVANT le rendu en pastille (même nombre de hooks dans les deux cas)
+  useSuiviEditeur(active && editor && !editor.isDestroyed && !grille ? editor : null);
+  const celluleRef = useRef(null); // boîte-tableau : la cellule qui a le curseur (+ ligne / + colonne s'y ajoutent)
+  useEffect(() => { if (!active) celluleRef.current = null; }, [active]); // hors édition : à la fin du tableau
   if (boite.reduite && !texteLibre) {
     const pos = pointApercu && pointApercu.cible === 'pastille' ? pointApercu : (ancre || { x: b.x, y: b.y });
     const cible = ancre ? 'ancre' : 'pastille';
@@ -1321,44 +1352,103 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     const x0 = e.clientX, y0 = e.clientY;
     let dernier = null;
     const suivi = suivrePointeur(e, {
-      seuil: 4, arreter: true,
+      seuil: 4, arreter: true, glisser: true,
       move: (ev) => { dernier = { id: c.id, dx: (ev.clientX - x0) / r.width, dy: (ev.clientY - y0) / r.height }; setTranslApercu(dernier); },
       fin: (ev, { bouge, annule }) => { onGeste(false); setTranslApercu(null); if (!annule && bouge && dernier) onModifier(boite, patchTranslater(boite, c.id, dernier.dx, dernier.dy), 'Déplacement de la flèche'); },
     });
     if (suivi) onGeste(true);
   };
 
-  /* LA MINI BARRE (pdf/Selection.jsx) — la même pour tous les objets ; ici : couleur · fond · ajouter une flèche ·
-     réduire · supprimer (zone de texte : couleur · supprimer) ; pendant la visée d'une flèche : « Annuler ». */
+  /* LA MINI BARRE (pdf/Selection.jsx) — la même pour tous les objets. (22/10, docs/compte-rendu-simplification-outils.md)
+     Elle porte aussi la mise en forme du texte (l'ancienne grande barre au-dessus de la diapo, pdf/FormatTexte.jsx) :
+       boîte, post-it : taille · couleur du texte · fond · G · I · alignement · flèche · → Tableau · « … » · supprimer
+       boîte-tableau  : taille · couleur du texte · fond · G · I · + ligne · + colonne · − ligne · − colonne · en-tête ·
+                        flèche · → Tableau · « … » · supprimer
+       texte libre    : taille · couleur · G · I · alignement · « … » · supprimer
+     En édition, une action de texte vaut pour la sélection (s'il y en a une), sinon pour tout le texte de la boîte.
+     Pendant la visée d'une flèche : « Annuler ». */
   const ancreBarre = { x: b.x * pageWidth, y: b.y * pageHeight, w: bLarg * pageWidth, h: bHaut * pageHeight };
   const deuxVersions = aDeuxVersions(boite);
   const version = versionAffichee(boite);
   const iFond = Math.max(0, FONDS_BOITE.findIndex((f) => f.id === (boite.fond || 'plein')));
   const fondSuivant = FONDS_BOITE[(iFond + 1) % FONDS_BOITE.length];
-  const itemTaille = { cle: 'taille', element: <BoutonTaille genre="texte" valeur={tailleEff} echelle={(refW * k) / PAGE_REF} onApercu={setApercuTaille}
-    onChange={(v) => { ecrireTaille('texte', v); onModifier(boite, champsTaille(v), 'Taille du texte'); }} /> };
+  const ouvert = active && editor && !editor.isDestroyed && !grille ? editor : null;
+  const surSelection = !!ouvert && !ouvert.state.selection.empty;
+  const fmt = grille ? null : elementsFormat({ editor: ouvert, contenu: boite.content, onContenu: (json, lib) => onModifier(boite, { content: json }, lib) });
+  const itemTaille = { cle: 'taille', element: <BoutonTaille genre="texte" valeur={tailleEff} echelle={(refW * k) / PAGE_REF} onApercu={surSelection ? null : setApercuTaille}
+    onChange={(v) => {
+      // une sélection dans le texte : sa taille seulement (px d'une page de 1000 px, --lp) ; sinon toute la boîte
+      if (surSelection) { ouvert.chain().focus().setFontSize(`calc(var(--lp) * ${+(v / 10).toFixed(4)})`).run(); return; }
+      ecrireTaille('texte', v); onModifier(boite, champsTaille(v), 'Taille du texte');
+    }} /> };
   // bordure d'une boîte transparente ou teintée (px d'une page de 1000 px ; une boîte d'avant : sa bordure de 1,5 px de référence)
-  const itemBordure = avecBord ? { cle: 'bordure', element: <BoutonTaille genre="bordure" valeur={Number.isFinite(boite.bord1000) ? boite.bord1000 : +((1.5 / (refW || 1)) * PAGE_REF).toFixed(2)}
+  const itemBordure = avecBord ? { cle: 'bordure', titre: 'Épaisseur de la bordure', element: <BoutonTaille genre="bordure" valeur={Number.isFinite(boite.bord1000) ? boite.bord1000 : +((1.5 / (refW || 1)) * PAGE_REF).toFixed(2)}
     echelle={(refW * k) / PAGE_REF} couleur={couleurHex(boite.couleur)} onApercu={setApercuBord}
     onChange={(v) => { ecrireTaille('bordure', v); onModifier(boite, { bord1000: v }, 'Bordure de la boîte'); }} /> } : null;
+  const icL = (n, t = 16) => <IconeOutil nom={n} size={t} />;
+  const itemVerrou = { cle: 'verrou', icone: icL(verrou ? 'cadenas' : 'cadenasOuvert'), actif: verrou, libelle: verrou ? 'Déverrouiller' : 'Verrouiller',
+    titre: verrou ? 'Verrouillée — cliquer pour déverrouiller' : 'Verrouiller : la boîte ne bouge plus',
+    onClick: () => onModifier(boite, { verrouille: !verrou }, verrou ? 'Boîte déverrouillée' : 'Boîte verrouillée') };
+  const itemSupprimer = { cle: 'supprimer', titre: `${texteLibre ? 'Supprimer ce texte' : 'Supprimer la boîte'} (annulable par ${RACCOURCI_Z})`, onClick: () => onSupprimer(boite) };
+  // couleur du texte : sélection (éditeur) ; sinon zone de texte = sa couleur, boîte-tableau = la couleur de son texte
+  const itemCouleurTexte = texteLibre
+    ? (surSelection ? fmt.couleur : { cle: 'couleur', couleur: boite.couleur, titre: 'Couleur du texte', icone: <span className="et-lettre" aria-hidden="true">A</span>, onApercu, onCouleur: (c) => onModifier(boite, { couleur: c }, 'Couleur du texte') })
+    : grille ? { cle: 'couleur-texte', couleur: boite.couleurTexte || null, titre: 'Couleur du texte', icone: <span className="et-lettre" aria-hidden="true">A</span>, aucune: true,
+      onCouleur: (c) => onModifier(boite, { couleurTexte: c === AUCUNE ? null : c }, 'Couleur du texte') }
+      : fmt.couleur;
+  const itemsFond = [
+    { cle: 'couleur', couleur: boite.couleur, titre: boite.postit ? 'Couleur du post-it' : 'Fond de la boîte (couleur)', onApercu, onCouleur: (c) => onModifier(boite, { couleur: c }, 'Couleur de la boîte') },
+    { cle: 'fond', icone: <span className={'nb-fond-ic ' + FONDS_BOITE[iFond].id} style={{ '--c': couleurBoite }} aria-hidden="true" />,
+      titre: `Fond : ${FONDS_BOITE[iFond].label.toLowerCase()} — cliquer pour « ${fondSuivant.label.toLowerCase()} » (plein → transparent → teinté)`,
+      onClick: () => { ecrireFondBoiteDefaut(fondSuivant.id); onModifier(boite, { fond: fondSuivant.id }, 'Fond de la boîte'); } },
+  ];
+  const itemsActions = [
+    { cle: 'fleche', icone: <Icon name="arrowR" size={15} />, titre: 'Ajouter une flèche : clique ensuite l’endroit, le surlignage, la forme ou la boîte visés', onClick: () => onDemanderAncrage(boite.id, { ajout: true }) },
+    onVersTableau && { cle: 'vers-tableau', icone: icL('versTableau'), actif: auTableau, titre: auTableau ? 'Déjà sur le tableau de la fiche — l’y montrer' : '→ Tableau : ajouter cette boîte au tableau de la fiche (même contenu, même couleur)', onClick: () => onVersTableau(boite) },
+  ];
+  const majGrille = (g, lib) => onModifier(boite, { grille: g, content: contenuGrille(g) }, lib);
+  const itemsGrille = grille ? (() => {
+    const c = celluleRef.current, gi = c ? c.i : grille.lignes.length - 1, gj = c ? c.j : grille.cols.length - 1;
+    return [
+      { cle: 'gras', icone: icL('gras', 15), titre: 'Gras (tout le tableau)', actif: !!boite.gras, onClick: () => onModifier(boite, { gras: !boite.gras }, 'Gras') },
+      { cle: 'italique', icone: icL('italique', 15), titre: 'Italique (tout le tableau)', actif: !!boite.italique, onClick: () => onModifier(boite, { italique: !boite.italique }, 'Italique') },
+      { cle: '|' },
+      { cle: 'ligne+', icone: icL('ligneAjout'), titre: 'Ajouter une ligne', desactive: grille.lignes.length >= LIMITES_GRILLE.ligMax, onClick: () => majGrille(ajouterLigne(grille, gi), 'Ligne ajoutée') },
+      { cle: 'colonne+', icone: icL('colonneAjout'), titre: 'Ajouter une colonne', desactive: grille.cols.length >= LIMITES_GRILLE.colMax, onClick: () => majGrille(ajouterColonne(grille, gj), 'Colonne ajoutée') },
+      { cle: 'ligne-', icone: icL('ligneMoins'), titre: 'Supprimer la ligne', desactive: grille.lignes.length <= LIMITES_GRILLE.ligMin, onClick: () => { celluleRef.current = null; majGrille(retirerLigne(grille, gi), 'Ligne supprimée'); } },
+      { cle: 'colonne-', icone: icL('colonneMoins'), titre: 'Supprimer la colonne', desactive: grille.cols.length <= LIMITES_GRILLE.colMin, onClick: () => { celluleRef.current = null; majGrille(retirerColonne(grille, gj), 'Colonne supprimée'); } },
+      { cle: 'entete', icone: icL('entete'), actif: !!grille.entete, titre: grille.entete ? 'Ligne d’en-tête : oui — cliquer pour la retirer' : 'Ligne d’en-tête : non — cliquer pour la première ligne en gras', onClick: () => majGrille({ ...grille, entete: !grille.entete }, 'En-tête du tableau') },
+    ];
+  })() : null;
+  const iAlignG = Math.max(0, ALIGNEMENTS.findIndex((a) => a.id === (boite.align || 'left')));
+  const alignGrille = { cle: 'align', icone: icL(ALIGNEMENTS[iAlignG].icone), titre: `Alignement : ${ALIGNEMENTS[iAlignG].label}`,
+    onClick: () => onModifier(boite, { align: ALIGNEMENTS[(iAlignG + 1) % ALIGNEMENTS.length].id }, 'Alignement') };
   const itemsBoite = enAncrage ? [{ cle: 'vise', libelle: 'Clique ce que la flèche vise… · Annuler', titre: 'Annuler (Échap)', onClick: () => onDemanderAncrage(null) }]
     : texteLibre ? [
-      { cle: 'couleur', couleur: boite.couleur, titre: 'Couleur du texte', onApercu, onCouleur: (c) => onModifier(boite, { couleur: c }, 'Couleur du texte') },
-      itemTaille,
+      itemTaille, itemCouleurTexte,
       { cle: '|' },
-      { cle: 'supprimer', titre: `Supprimer ce texte (annulable par ${RACCOURCI_Z})`, onClick: () => onSupprimer(boite) },
+      fmt.gras, fmt.italique, fmt.align,
+      { cle: '|' },
+      { cle: '…', plus: [fmt.police, fmt.souligne, fmt.barre, fmt.fond, fmt.puces, fmt.numeros, { cle: '|' }, itemVerrou] },
+      itemSupprimer,
+    ] : grille ? [
+      itemTaille, itemCouleurTexte, ...itemsFond,
+      { cle: '|' },
+      ...itemsGrille,
+      { cle: '|' },
+      ...itemsActions,
+      { cle: '…', plus: [alignGrille, itemBordure, { cle: '|' }, { cle: 'reduire', icone: icL('reduire'), libelle: 'Réduire en pastille', titre: 'Réduire en pastille', onClick: () => onModifier(boite, { reduite: true }, 'Réduction de la boîte') }, itemVerrou] },
+      itemSupprimer,
     ] : [
-      { cle: 'couleur', couleur: boite.couleur, titre: 'Couleur de la boîte', onApercu, onCouleur: (c) => onModifier(boite, { couleur: c }, 'Couleur de la boîte') },
-      itemTaille,
-      { cle: 'fond', icone: <span className={'nb-fond-ic ' + FONDS_BOITE[iFond].id} style={{ '--c': couleurBoite }} aria-hidden="true" />,
-        titre: `Fond : ${FONDS_BOITE[iFond].label.toLowerCase()} — cliquer pour « ${fondSuivant.label.toLowerCase()} » (plein → transparent → teinté)`,
-        onClick: () => { ecrireFondBoiteDefaut(fondSuivant.id); onModifier(boite, { fond: fondSuivant.id }, 'Fond de la boîte'); } },
-      itemBordure,
+      itemTaille, itemCouleurTexte, ...itemsFond,
       { cle: '|' },
-      { cle: 'fleche', icone: <Icon name="arrowR" size={15} />, titre: 'Ajouter une flèche : clique ensuite l’endroit, le surlignage, la forme ou la boîte visés', onClick: () => onDemanderAncrage(boite.id, { ajout: true }) },
-      { cle: 'reduire', icone: <IconeOutil nom="reduire" size={16} />, titre: 'Réduire en pastille : un clic sur la pastille rouvre la boîte, un glisser la déplace', onClick: () => onModifier(boite, { reduite: true }, 'Réduction de la boîte') },
+      fmt.gras, fmt.italique, fmt.align,
       { cle: '|' },
-      { cle: 'supprimer', titre: `Supprimer la boîte (annulable par ${RACCOURCI_Z})`, onClick: () => onSupprimer(boite) },
+      ...itemsActions,
+      { cle: '…', plus: [fmt.police, fmt.souligne, fmt.barre, fmt.fond, fmt.puces, fmt.numeros, itemBordure, { cle: '|' },
+        { cle: 'reduire', icone: icL('reduire'), libelle: 'Réduire en pastille', titre: 'Réduire en pastille : un clic sur la pastille rouvre la boîte, un glisser la déplace', onClick: () => onModifier(boite, { reduite: true }, 'Réduction de la boîte') },
+        itemVerrou] },
+      itemSupprimer,
     ];
   const enGeste = !!apercu;
   const cSel = selVisible && connecteurs.find((x) => x.id === selVisible);
@@ -1428,7 +1518,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       <MiniBarre ancre={ancreBarre} pageWidth={pageWidth} pageHeight={pageHeight} items={itemsBoite} classe={enAncrage ? 'vise' : ''} />
     )}
     <div ref={boiteRef} data-boite={boite.id} data-objet={boite.id}
-      className={'note-box sel-objet' + (ajustee ? ' ajustee' : '') + (mot ? ' mot' : boite.compacte ? ' compacte' : '') + (carte ? ' carte' : '') + (!texteLibre && boite.fond ? ' fond-' + boite.fond : '') + (texteLibre ? ' texte-libre' : '') + (active ? ' active' : '') + (selectionne || active ? ' selectionnee' : '') + (enGeste ? ' en-geste' : '') + (enAncrage ? ' en-ancrage' : '') + (texteLibre && !extraitBrut ? ' vide' : '')} style={style}
+      className={'note-box sel-objet' + (ajustee ? ' ajustee' : '') + (mot ? ' mot' : boite.compacte ? ' compacte' : '') + (carte ? ' carte' : '') + (!texteLibre && boite.fond ? ' fond-' + boite.fond : '') + (texteLibre ? ' texte-libre' : '') + (active ? ' active' : '') + (selectionne || active ? ' selectionnee' : '') + (enGeste ? ' en-geste' : '') + (enAncrage ? ' en-ancrage' : '') + (texteLibre && !extraitBrut ? ' vide' : '') + (boite.postit ? ' postit' : '') + (grille ? ' boite-tableau' : '') + (verrou ? ' verrouillee' : '')} style={style}
       onPointerDown={appui} onDoubleClick={(e) => { if (!active) { e.stopPropagation(); activer(e); } }}>
       {/* (21/10) plus de poignée de déplacement : le bandeau des boîtes d'avant reste un simple bandeau (même rendu),
           il ne porte plus que l'état (épinglée) et le badge « IA / orig. » */}
@@ -1448,7 +1538,15 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       )}
 
       {/* VERROU 4 : en édition, le corps est du TEXTE */}
-      {active && editor
+      {/* (22/10) BOÎTE-TABLEAU : le tableau occupe le corps de la boîte (même typographie, même fond) */}
+      {grille ? (
+        <div className="nb-body" style={{ ...(styleCorps || {}), ...(boite.couleurTexte ? { color: couleurHex(boite.couleurTexte, '#1F1F24') } : {}),
+          fontWeight: boite.gras ? 700 : undefined, fontStyle: boite.italique ? 'italic' : undefined, textAlign: boite.align || undefined }}>
+          <BoiteTableau grille={grille} edition={active} focus={active ? clicRef.current : null} filets={(active || selectionne) && !verrou} echelle={k}
+            onCellule={(i, j) => { celluleRef.current = { i, j }; }}
+            onChange={(g, lib) => majGrille(g, lib)} onFin={() => onActivate(null)} />
+        </div>
+      ) : active && editor
         ? <div className="nb-body" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => {
             // CLIC N'IMPORTE OÙ (02/10) : hors des lignes de texte, le curseur va au point le plus proche
             if (!editor || (e.target.closest && e.target.closest('.ProseMirror p, .ProseMirror li, .ProseMirror h1, .ProseMirror h2, .ProseMirror h3'))) return;
@@ -1472,7 +1570,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         : <div className="nb-body" style={styleCorps} data-vide={texteLibre ? 'Texte…' : undefined} dangerouslySetInnerHTML={{ __html: html }} />}
 
       {(selectionne || active) && (
-        <CadreSelection contre={contre} onCoin={(e, coin) => redimensionner(e, coin, {
+        <CadreSelection contre={contre} onCoin={verrou ? null : (e, coin) => redimensionner(e, coin, {
           base: () => ({ x: boite.x, y: boite.y, width: bLarg, height: bHaut }),
           // minimum : un mot (40 × 24 px de référence) ; 48 × 24 px à 100 % pour une boîte compacte du 20/10 ; l'ancien minimum sinon
           min: mot ? { width: MOT.largeurMin / refW, height: MOT.hauteur / refH }
@@ -1514,7 +1612,7 @@ function QuestionMarque({ q, onModifier, onSupprimer, onGeste, selectionne = fal
       if (bouge && dernier) onModifier(q, dernier, 'Déplacement du « ? »');
       if (!deja) onSelectionner();
     };
-    if (suivrePointeur(e, { seuil: 4, arreter: true, move, fin: up })) onGeste(true);
+    if (suivrePointeur(e, { seuil: 4, arreter: true, glisser: true, move, fin: up })) onGeste(true);
   };
   const diam = 26 * taille * k; // px à l'écran (le rond suit --k, l'échelle des annotations)
   const ancre = { x: pos.x * pageWidth - diam / 2, y: pos.y * pageHeight - diam / 2, w: diam, h: diam };
@@ -1620,7 +1718,7 @@ function ImageCollee({ img, active, onActiver, onMaj, onModifier, onSupprimer, o
       onApercu(null);
       if (!annule && bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de l’image' : rogne ? 'Rognage de l’image' : 'Redimension de l’image');
     };
-    if (!suivrePointeur(e, { seuil: 3, arreter: true, move, fin: up })) return;
+    if (!suivrePointeur(e, { seuil: 3, arreter: true, glisser: type === 'move', move, fin: up })) return;
     onGeste(true);
     if (!deja) onActiver(img.id);
     if (cadreRef.current) cadreRef.current.focus({ preventScroll: true });
@@ -1702,11 +1800,13 @@ function ImageCollee({ img, active, onActiver, onMaj, onModifier, onSupprimer, o
         : <div className="pdfr-image-vide">{manquante ? 'Image indisponible sur cet appareil' : '…'}</div>}
       {motsSurlignes.length > 0 && (
         <div className="pi-surlignages" aria-hidden="true">
-          {motsSurlignes.map(({ h, m, i }) => (
+          {/* (22/10) mots surlignés fusionnés par ligne et par surlignage, comme sur la page */}
+          {[...motsSurlignes.reduce((acc, { h, m }) => { if (!acc.has(h.id)) acc.set(h.id, { h, ms: [] }); acc.get(h.id).ms.push(m); return acc; }, new Map()).values()]
+            .flatMap(({ h, ms }) => lignesSurlignage(ms).map((m, i) => (
             <span key={h.id + ':' + i} className="pdfr-hl-rect pi-hl" data-hl={h.id}
               style={{ left: m.x * 100 + '%', top: m.y * 100 + '%', width: m.w * 100 + '%', height: m.h * 100 + '%', background: couleurHex(h.couleur),
                 ...(opaciteSurlignage(h.couleur) < 1 ? { opacity: opaciteSurlignage(h.couleur) } : {}) }} />
-          ))}
+          )))}
         </div>
       )}
       {ocr && (
@@ -1846,7 +1946,7 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
       }
       onMaj(avant, courant, typeGeste === 'move' ? 'Déplacement de la forme' : 'Redimension de la forme');
     };
-    if (suivrePointeur(e, { seuil: 3, arreter: true, move, fin: up })) { onGeste(true); onActiver(forme.id); }
+    if (suivrePointeur(e, { seuil: 3, arreter: true, glisser: typeGeste === 'move', move, fin: up })) { onGeste(true); onActiver(forme.id); }
   };
 
   const stylerForme = (patch, libelle) => onModifier(forme, { fleche: { ...(forme.fleche || {}), ...patch } }, libelle);
@@ -2010,8 +2110,26 @@ const RACCOURCI_Z = (typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(
     statique (HTML généré) tant qu'il n'est pas actif, live (une SEULE instance TipTap,
     possédée par PdfReader et partagée avec EditToolbar — voir plus haut) une fois activé.
     Read-only strict en mode lecture (aucun onClick, aucune interaction). */
-function TextEditBlock({ edit, active, editable, onActivate, editor, pageHeight }) {
+function TextEditBlock({ edit, active, editable, onActivate, editor, pageHeight, pageWidth = 0, onReinitialiser = () => {} }) {
   const html = useMemo(() => richToHTML(edit.content), [edit.content]);
+  /* (22/10) sa MINI BARRE remplace la grande barre de format : taille · couleur · G · I · alignement · « … » · réinitialiser */
+  const ouvert = active && editable && editor && !editor.isDestroyed ? editor : null;
+  useSuiviEditeur(ouvert);
+  const items = (() => {
+    if (!ouvert) return null;
+    const fmt = elementsFormat({ editor: ouvert });
+    const base1000 = edit.fontSize && pageHeight && pageWidth ? (edit.fontSize * pageHeight * PAGE_REF) / pageWidth : 13;
+    return [
+      { cle: 'taille', element: <BoutonTaille genre="texte" valeur={+base1000.toFixed(1)} echelle={pageWidth / PAGE_REF}
+        onChange={(v) => { const em = `${+(v / base1000).toFixed(3)}em`; const c = ouvert.chain().focus(); (ouvert.state.selection.empty ? c.selectAll() : c).setFontSize(em).run(); }} /> },
+      fmt.couleur,
+      { cle: '|' },
+      fmt.gras, fmt.italique, fmt.align,
+      { cle: '|' },
+      { cle: '…', plus: [fmt.police, fmt.souligne, fmt.barre, fmt.fond, fmt.puces, fmt.numeros] },
+      { cle: 'reinitialiser', icone: <IconeOutil nom="reinitialiser" size={15} />, titre: 'Réinitialiser : revenir au texte d’origine (annulable)', onClick: onReinitialiser },
+    ];
+  })();
   // BUG C : la boîte hérite EXACTEMENT de la typographie du texte d'origine — même
   // font-size (dérivé de la hauteur de page courante → suit le zoom), même
   // font-family, line-height 1 et letter-spacing normal, padding 0. Les DEUX états
@@ -2027,7 +2145,10 @@ function TextEditBlock({ edit, active, editable, onActivate, editor, pageHeight 
   };
 
   if (active && editable && editor) {
-    return <div className="edit-block-active" style={style}><EditorContent editor={editor} className="edit-block-content" /></div>;
+    return (<>
+      <div className="edit-block-active" style={style}><EditorContent editor={editor} className="edit-block-content" /></div>
+      {items && pageWidth > 0 && <MiniBarre ancre={{ x: edit.x * pageWidth, y: edit.y * pageHeight, w: edit.width * pageWidth, h: edit.height * pageHeight }} pageWidth={pageWidth} pageHeight={pageHeight} items={items} />}
+    </>);
   }
   return (
     <div className={'edit-block-static' + (editable ? ' editable' : '')} style={style}
@@ -2036,101 +2157,6 @@ function TextEditBlock({ edit, active, editable, onActivate, editor, pageHeight 
   );
 }
 
-/** barre d'outils riche, fixe sous la barre principale tant qu'un bloc est en édition —
-    plutôt qu'une popover flottante ancrée sur le bloc, pour rester fiable pendant le
-    scroll/zoom (un bloc édité peut sortir du viewport pendant qu'on le rédige). Pilote
-    la MÊME instance `editor` que celle rendue dans le bloc (passée par PdfReader). */
-// `sansSupprimer` / `extras` (08/10) : texte d'une page de document — rien à supprimer, et ses
-// réglages propres (titres, cases, citation, tableau, lien) à côté des listes
-// 09/10 : plus de bouton « Terminé » — cliquer hors du texte, Échap ou choisir un outil suffit
-export function EditToolbar({ editor, onReset, libre = false, couleur = null, onCouleur = null, onApercu = null, palette = null, libelleSupprimer = null, sansSupprimer = false, extras = null, flottante = false, onAnnuler = null, onRetablir = null, peutAnnuler = true, peutRetablir = true }) {
-  const [, force] = useState(0);
-  useEffect(() => {
-    const rerender = () => force((v) => v + 1);
-    editor.on('transaction', rerender);
-    return () => editor.off('transaction', rerender);
-  }, [editor]);
-
-  const active = (name, attrs) => editor.isActive(name, attrs);
-  const run = (fn) => fn(editor.chain().focus()).run();
-  /* (10/10) surligneur de fond : la MÊME couleur sur un passage déjà entièrement de cette
-     couleur la retire (portion sélectionnée seulement) ; une autre couleur la remplace */
-  const fondPartout = (ed, hex) => {
-    const { from, to, empty } = ed.state.selection;
-    if (empty) return false;
-    let tout = true, du = false;
-    ed.state.doc.nodesBetween(from, to, (n) => {
-      if (!n.isText || !n.text.trim()) return;
-      du = true;
-      const m = n.marks.find((x) => x.type.name === 'textStyle');
-      if (!m || String(m.attrs.backgroundColor || '').toLowerCase() !== String(hex).toLowerCase()) tout = false;
-    });
-    return du && tout;
-  };
-
-  /* CORRECTIF (défaut 2) : un `mousedown` sur un bouton de cette barre RETIRE le
-     curseur de l'éditeur. `chain().focus()` le rendait bien, mais sur une sélection
-     déjà perdue : la mise en forme s'appliquait alors à une sélection vide, donc
-     sans effet visible. On empêche la barre de prendre le focus — sauf sur les
-     <select> et <input>, qui ont besoin de s'ouvrir normalement. */
-  const garderLeCurseur = (e) => {
-    if (e.target && e.target.closest && e.target.closest('select, input')) return;
-    e.preventDefault();
-  };
-
-  return (
-    <div className={'pdfr-edit-toolbar' + (flottante ? ' flottante' : '')} onMouseDown={garderLeCurseur}>
-      {libre && onCouleur && (
-        <>
-          <span className="et-sep" />
-          <SelecteurCouleurs couleur={couleur} onCouleur={onCouleur} onApercu={onApercu} titre="Couleur de la boîte" />
-          <span className="et-sep" />
-        </>
-      )}
-      {palette && <><span className="et-sep" />{palette}<span className="et-sep" /></>}
-      <button type="button" className={'et-btn' + (active('bold') ? ' active' : '')} title="Gras" onClick={() => run((c) => c.toggleBold())}><b>G</b></button>
-      <button type="button" className={'et-btn' + (active('italic') ? ' active' : '')} title="Italique" onClick={() => run((c) => c.toggleItalic())}><i>I</i></button>
-      <button type="button" className={'et-btn' + (active('underline') ? ' active' : '')} title="Souligné" onClick={() => run((c) => c.toggleUnderline())}><u>U</u></button>
-      <button type="button" className={'et-btn' + (active('strike') ? ' active' : '')} title="Barré" onClick={() => run((c) => c.toggleStrike())}><s>S</s></button>
-      <span className="et-sep" />
-      {/* (v1.1) dans une boîte, les tailles en px d'une page de 1000 px (10 px = --lp, voir NoteBox) */}
-      <select className="et-select" defaultValue="" onChange={(e) => { if (e.target.value) run((c) => c.setFontSize(e.target.value)); e.target.value = ''; }}>
-        <option value="" disabled>Taille</option>
-        {libre ? GRILLE.texte.liste.map((v) => <option key={v} value={`calc(var(--lp) * ${v / 10})`}>{v} px</option>)
-          : FONT_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
-      </select>
-      <select className="et-select" defaultValue="" onChange={(e) => { if (e.target.value) run((c) => c.setFontFamily(e.target.value)); e.target.value = ''; }}>
-        <option value="" disabled>Police</option>
-        {FONT_FAMILIES.map((f) => <option key={f} value={f}>{f}</option>)}
-      </select>
-      {/* même système de couleurs que tous les outils (02/10 soir), en version compacte */}
-      <BoutonCouleur titre="Couleur du texte sélectionné" couleur={editor.getAttributes('textStyle').color || null}
-        icone={<span className="et-lettre" aria-hidden="true">A</span>}
-        onCouleur={(c) => run((ch) => ch.setColor(couleurHex(c, '#1F1F24')))} />
-      <BoutonCouleur titre="Surligneur de fond du texte sélectionné" couleur={editor.getAttributes('textStyle').backgroundColor || null} aucune
-        icone={<IconeOutil nom="surligneur" size={13} />}
-        onCouleur={(c) => { if (c === AUCUNE) { run((ch) => ch.unsetBackgroundColor()); return; } const hex = couleurHex(c); run((ch) => (fondPartout(editor, hex) ? ch.unsetBackgroundColor() : ch.setBackgroundColor(hex))); }} />
-      <span className="et-sep" />
-      <button type="button" className={'et-btn' + (active('bulletList') ? ' active' : '')} title="Liste à puces" onClick={() => run((c) => c.toggleBulletList())}><Icon name="list" size={13} /></button>
-      <button type="button" className={'et-btn' + (active('orderedList') ? ' active' : '')} title="Liste numérotée" onClick={() => run((c) => c.toggleOrderedList())}>1.</button>
-      <select className="et-select" defaultValue="" onChange={(e) => { if (e.target.value) run((c) => c.setTextAlign(e.target.value)); e.target.value = ''; }}>
-        <option value="" disabled>Alignement</option>
-        <option value="left">Gauche</option>
-        <option value="center">Centre</option>
-        <option value="right">Droite</option>
-      </select>
-      {extras && <><span className="et-sep" />{extras}</>}
-      <span className="et-sep" />
-      {/* page d'un document : le journal du document (lib/journalAnnuler.js) ; boîte : son éditeur */}
-      <button type="button" className="et-btn" title="Annuler (⌘Z)" disabled={!!onAnnuler && !peutAnnuler} onMouseDown={(e) => e.preventDefault()}
-        onClick={() => (onAnnuler ? onAnnuler() : editor.chain().focus().undo().run())}><IconeOutil nom="annuler" size={15} /></button>
-      <button type="button" className="et-btn" title="Rétablir (⌘⇧Z ou ⌘Y)" disabled={!!onRetablir && !peutRetablir} onMouseDown={(e) => e.preventDefault()}
-        onClick={() => (onRetablir ? onRetablir() : editor.chain().focus().redo().run())}><IconeOutil nom="retablir" size={15} /></button>
-      <span style={{ flex: 1 }} />
-      {!sansSupprimer && <button type="button" className="btn ghost sm" onClick={onReset}>
-        {libelleSupprimer ? <><Icon name="trash" size={13} /> {libelleSupprimer}</> : libre ? <><Icon name="trash" size={13} /> Supprimer la boîte</> : <><Icon name="refresh" size={13} /> Réinitialiser (texte d'origine)</>}
-      </button>}
-    </div>
-  );
-}
+/* (22/10) EditToolbar — la barre de mise en forme fixe sous la barre d'outils — a disparu : ses options sont dans les mini
+   barres (pdf/FormatTexte.jsx, docs/compte-rendu-simplification-outils.md). */
 

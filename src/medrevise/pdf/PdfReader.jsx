@@ -70,10 +70,11 @@ import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
   COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI, opaciteSurlignage, MOT, fractionRef,
   useDevicePixelRatio, compareHighlights, computePageTextMap,
-  MODES_CRAYON, couleurHex, BOITE_DEFAUT, lireFondBoiteDefaut, echelleControles, GRILLE, PAGE_REF, lireTaille, ecrireTaille, champsTaille, champsEp1000,
+  couleurHex, BOITE_DEFAUT, lireFondBoiteDefaut, echelleControles, GRILLE, PAGE_REF, lireTaille, ecrireTaille, champsTaille, champsEp1000,
 } from './pdfShared.js';
-import { PdfPageContent, EditToolbar, ECHELLE_REF } from './PdfPage.jsx';
-import { PdfToolbar } from './PdfToolbar.jsx';
+import { PdfPageContent, ECHELLE_REF } from './PdfPage.jsx';
+import { nouvelleGrille, contenuGrille } from './BoiteTableau.jsx';
+import { PdfToolbar, OUTILS as OUTILS_BARRE } from './PdfToolbar.jsx';
 import { SelecteurCouleurs, dansSelecteurFlottant } from './Couleurs.jsx';
 import { patchAjouter, patchRetirer, connecteursDe, connecteurStocke } from './connecteurs.js';
 import { ZONE_SELECTION } from './Selection.jsx';
@@ -98,7 +99,7 @@ import { DocumentFlux } from './DocumentFlux.jsx';
 import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
 import { dehydrateDoc, EMPTY_DOC, docToMarkdown } from '../documents/lib/richtext.js';
 import { exporterMarkdownDoc, nomFichier, telecharger as telechargerFichier } from '../documents/lib/exportDoc.js';
-import { PageTexte, PAGE_A4, OutilsTexteDocument, effacerSurlignageRecherche } from './PageTexte.jsx';
+import { PageTexte, PAGE_A4, effacerSurlignageRecherche } from './PageTexte.jsx';
 import { useTablette, abonnerStylet, styletActif, dessinAuDoigt, ecrireDessinAuDoigt, abonnerReglagesStylet, lireFractionVolet, ecrireFractionVolet, bornerVolet, VOLET_MIN, VOLET_MAX, VOLET_PLEIN } from '../lib/tablette.js';
 import '../../styles/tablette.css';
 import '../../styles/notes-doc.css';
@@ -124,12 +125,16 @@ import { preparerSourceIA, pngsIA } from './exportIA.js';
 import { creerZip } from '../lib/zipSimple.js';
 import { refsCourtes, construireExportIA, estBoiteTexte, aDeuxVersions, versionAffichee, boitesOrdonnees, construireExport, lireImport, planImport, resumeImport, basculerVersion, avecContenuEdite } from '../lib/textesAnnotations.js';
 import { Board } from '../tableau/Board.jsx';
-import { PanneauTableau, useFlashcardsAuTableau } from '../tableau/PanneauTableau.jsx';
-import { ajouterCarteAuBoard, ajouterFlashcardsAuBoard } from '../lib/board.js';
+import { PanneauTableau, useFlashcardsAuTableau, useBoitesAuTableau } from '../tableau/PanneauTableau.jsx';
+import { ajouterCarteAuBoard, ajouterFlashcardsAuBoard, ajouterBoiteAuBoard } from '../lib/board.js';
 import { useFicheJumelle, lireVue, ecrireVue, pageCorrespondante, importerJumelle, remplacerJumelle, blocsDuFlux, pagesDocument, pageMapDocument } from '../lib/ficheJumelle.js';
 import { EditeurCorrespondance, ListeNonReplacees } from './Correspondance.jsx';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
 const dansLeTableau = (el) => !!(el && el.closest && el.closest('.tb'));
+/** (22/10) les outils de la barre qui regroupent plusieurs outils du moteur : { dessin: ['crayon', 'gomme'], ecrire: [...] } */
+const GROUPES_OUTILS = Object.fromEntries(OUTILS_BARRE.filter((o) => o.sous).map((o) => [o.id, o.sous]));
+/** (22/10) sous-barre Formes : les cinq formes affichées d'emblée (les sept autres derrière « … ») */
+const FORMES_PRINCIPALES = ['rectangle', 'ellipse', 'triangle', 'ligne', 'fleche'];
 
 
 /* C — bi-mode : route plein-écran (déclenchée par Réviser, via ctx.pdfView /
@@ -272,7 +277,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // la couche de texte (voir PdfPageContent) : tant qu'il est actif, ni la sélection
   // ni le test de position des surlignages ne peuvent se déclencher — c'est
   // structurel, pas une suite de conditions à ne pas oublier.
-  const [outil, setOutil] = useState('main'); // main | surligneur | boite | crayon | gomme — actif sur TOUS les écrans depuis l'étape 7
+  const [outil, setOutil] = useState('main'); // main | surligneur | crayon | gomme | boite | texte | postit | boiteTableau | forme — actif sur TOUS les écrans depuis l'étape 7
+  /* (22/10, docs/compte-rendu-simplification-outils.md) SIX OUTILS dans la barre (PdfToolbar.jsx#OUTILS) : Dessin regroupe
+     crayon et gomme, Texte regroupe boîte, texte libre, post-it et boîte-tableau — chacun retrouve le dernier sous-outil
+     choisi. Insérer n'est pas un mode de la page : il ouvre sa sous-barre (image, page, dessins) et la page reste en
+     Sélection. */
+  const [insererOuvert, setInsererOuvert] = useState(false);
+  const dernierSous = useRef({ dessin: 'crayon', ecrire: 'boite' });
   const [couleurActive, setCouleurActive] = useState(COULEUR_DEFAUT); // couleur des BOÎTES (dock, 21/10)
   /* surligneur et crayon : chacun sa couleur, prise parmi les 4 couleurs « cours »,
      mes couleurs, ou la roue (pdf/Couleurs.jsx). Un id de COLORS ou un hex. */
@@ -296,10 +307,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const setTypeFormeActif = (t) => { setTypeFormeActifBrut(t); try { localStorage.setItem('medrevise.typeForme', t); } catch (e) { /* ignore */ } };
   const [formeRemplie, setFormeRemplie] = useState(false);
   const [couleurTexte, setCouleurTexte] = useState('noir'); // couleur du prochain TEXTE LIBRE
+  const [couleurPostit, setCouleurPostit] = useState('jaune-franc'); // (22/10) couleur du prochain POST-IT
+  const [formesPlus, setFormesPlus] = useState(false); // (22/10) sous-barre Formes : les 7 formes de « … » affichées
   /* CRAYON (refait simple le 21/10, pdf/crayon.js) : couleur + épaisseur par mode (dessin / surligneur à main levée),
      mémorisée sur l'appareil ; surligneur « en ligne droite » ; gomme Zone / Trait entier.
-     (v1.1) l'épaisseur se choisit au sélecteur commun (pdf/ChoixTaille.jsx), en px d'une page de 1000 px */
-  const [modeCrayon, setModeCrayon] = useState('dessin'); // dessin | surligneur (même moteur)
+     (v1.1) l'épaisseur se choisit au sélecteur commun (pdf/ChoixTaille.jsx), en px d'une page de 1000 px
+     (22/10) le surligneur à main levée n'est plus un mode du crayon : c'est l'outil Surligneur, quand le geste commence
+     hors du texte (même moteur de trait, sa couleur est celle du Surligneur) */
+  const modeCrayon = outil === 'surligneur' ? 'surligneur' : 'dessin';
   const genreCrayon = (mode) => (mode === 'surligneur' ? 'surligneur' : 'crayon');
   const [epaisseurs, setEpaisseurs] = useState(() => ({ dessin: lireTaille('crayon'), surligneur: lireTaille('surligneur') }));
   const choisirEpaisseur = (mode, v) => { ecrireTaille(genreCrayon(mode), v); setEpaisseurs((e) => ({ ...e, [mode]: v })); };
@@ -310,8 +325,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const setModeGomme = (v) => { setModeGommeBrut(v); reglagesCrayonPdf.setModeGomme(v); };
   // changer d'outil ferme ce qui appartenait au précédent
   const choisirOutil = (idDemande) => {
+    // INSÉRER : sa sous-barre s'ouvre (re-clic : se ferme), la page reste en Sélection
+    if (idDemande === 'inserer') { const ouvrir = !insererOuvert; choisirOutil('main'); setInsererOuvert(ouvrir); return; }
+    setInsererOuvert(false);
+    // un GROUPE (Dessin, Texte) : son dernier sous-outil ; re-cliquer le groupe actif = en sortir
+    const sous = GROUPES_OUTILS[idDemande];
     // re-cliquer l'outil actif = en sortir (retour à la Sélection), comme dans Aperçu
-    const id = idDemande === outil && idDemande !== 'main' ? 'main' : idDemande;
+    const id = sous ? (sous.includes(outil) ? 'main' : dernierSous.current[idDemande])
+      : idDemande === outil && idDemande !== 'main' ? 'main' : idDemande;
     // comme dans Word : du texte est sélectionné, on prend le surligneur → il est surligné
     if (id === 'surligneur' && pending && window.getSelection && !window.getSelection().isCollapsed) {
       commitHighlightAvec(pending, couleurSurligneur);
@@ -319,6 +340,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // (11/10) changer d'outil — y compris revenir à la Sélection — désélectionne la boîte : sa barre
     // d'outils disparaît sans Échap (docs/compte-rendu-finitions-boites-sidebar.md)
     setOutil(id); setPending(null); setAncrage(null); setActiveEditId(null); setSel(null);
+  };
+  /** un sous-outil de la sous-barre (Crayon / Gomme, Boîte / Texte libre / Post-it / Boîte-tableau) : jamais une bascule */
+  const choisirSousOutil = (id) => {
+    for (const [g, l] of Object.entries(GROUPES_OUTILS)) if (l.includes(id)) dernierSous.current[g] = id;
+    if (id !== outil) choisirOutil(id);
   };
   const choisirOutilRef = useRef(choisirOutil); choisirOutilRef.current = choisirOutil;
 
@@ -394,7 +420,24 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       setDisposition(ecranLarge() ? 'deux' : 'tableau');
     },
   };
-  useEffect(() => { if (montrerDemande.current && tableauRef.current) { const id = montrerDemande.current; montrerDemande.current = null; tableauRef.current.montrerFlashcard(id); } });
+  useEffect(() => { if (montrerDemande.current && tableauRef.current) { const id = montrerDemande.current; montrerDemande.current = null; if (typeof id === 'object') tableauRef.current.montrerBoite(id.boiteId); else tableauRef.current.montrerFlashcard(id); } });
+  /* (22/10, docs/compte-rendu-simplification-outils.md §6) « → Tableau » d'une BOÎTE (sa mini barre) : ajoutée au tableau
+     de la fiche comme carte (même contenu, même couleur) — par la pile d'annulation du tableau s'il est affiché ; déjà
+     posée : le tableau s'ouvre et se recentre sur sa carte */
+  const boitesAuTableau = useBoitesAuTableau(ficheId);
+  const boiteVersTableau = async (b0) => {
+    const b = boiteFraicheRef.current ? boiteFraicheRef.current(b0.id, b0) : b0;
+    const deja = boitesAuTableau.has(b.id);
+    if (!deja) {
+      if (tableauRef.current) { tableauRef.current.ajouterBoite(b); return; }
+      const r = await ajouterBoiteAuBoard(ficheId, b);
+      if (!r.deja) { setCarteAjoutee((n) => n + 1); return; }
+    }
+    if (tableauRef.current) { tableauRef.current.montrerBoite(b.id); return; }
+    montrerDemande.current = { boiteId: b.id };
+    setDisposition(ecranLarge() ? 'deux' : 'tableau');
+  };
+  const boiteFraicheRef = useRef(null);
   // stable tant que l'ensemble des cartes posées ne change pas (le panneau mémoïse ses volets)
   const tableauFlashcards = useMemo(() => ({ dans: fcAuTableau, ajouter: (ids) => versTableau.current.ajouter(ids), montrer: (id) => versTableau.current.montrer(id) }), [fcAuTableau]);
   const [carteAjoutee, setCarteAjoutee] = useState(0);
@@ -1414,7 +1457,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      seulement (effet ci-dessous) : l'outil reste prêt pour la suivante. */
   const outilRef = useRef(outil); outilRef.current = outil;
   useEffect(() => {
-    if (outil === 'main') return undefined;
+    if (outil === 'main' && !insererOuvert) return undefined;
     const onKey = (e) => {
       if (e.key !== 'Escape' || e.boiteRefermee || activeEditIdRef.current || ancrageRef.current) return;
       if (dansLeTableau(e.target)) return;
@@ -1423,7 +1466,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [outil]);
+  }, [outil, insererOuvert]);
   // (11/10) passer en mode focus (barre latérale, MedReviseApp.jsx) désélectionne la boîte
   useEffect(() => {
     const surFocus = () => { if (activeEditIdRef.current) setActiveEditId(null); setAncrage(null); };
@@ -2208,7 +2251,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      redimensionnable, supprimable. Même store et même géométrie normalisée [0,1]
      que le bloc de remplacement de texte — seul `kind: 'libre'` les distingue.
      Les trois actions passent par l'historique : la boîte naît annulable. */
-  const creerBoite = async ({ page, x, y, width, height, gabarit = null, largeurFixe = false }) => {
+  const creerBoite = async ({ page, x, y, width, height, gabarit = null, largeurFixe = false, variante = 'boite' }) => {
     // CORRECTIF : `couleurBoite` n'était déclaré nulle part. La ReferenceError partait
     // dans une fonction async appelée depuis un écouteur pointerup — promesse rejetée,
     // rien à l'écran : l'outil « ne créait rien ». La couleur est celle de la barre
@@ -2218,7 +2261,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // 10 × 8 px — en px d'une page de 1000 px (pdfShared.js#GRILLE)
     const rec = { ...newNoteBox({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurActive, fond: lireFondBoiteDefaut() }), ...(gabarit ? { gabarit } : {}), ...(largeurFixe ? { largeurFixe: true } : {}),
       ...(gabarit === 'carte' ? { ...champsTaille(lireTaille('texte')), bord1000: lireTaille('bordure'), pad1000: [GRILLE.padding.x, GRILLE.padding.y] } : {}) };
-    const cmd = cmdCreer('annotations', rec, 'Boîte de texte');
+    /* (22/10, docs/compte-rendu-simplification-outils.md) POST-IT : une boîte carrée, pleine, de la couleur du post-it ;
+       BOÎTE-TABLEAU : une boîte dont le corps est un tableau (3 colonnes × 4 lignes, en-tête), son texte à plat dans
+       `content` (exports, recherche, version précédente de l'app) */
+    if (variante === 'postit') Object.assign(rec, { postit: true, couleur: couleurPostit, fond: 'plein', largeurFixe: true });
+    if (variante === 'boiteTableau') { const g = nouvelleGrille(); Object.assign(rec, { grille: g, content: contenuGrille(g), largeurFixe: true }); }
+    const cmd = cmdCreer('annotations', rec, variante === 'postit' ? 'Post-it' : variante === 'boiteTableau' ? 'Boîte-tableau' : 'Boîte de texte');
     hist.appliquer(cmd); // visible tout de suite (effet local), écrite ensuite
     videsFraiches.current.add(rec.id);
     setActiveEditId(rec.id);
@@ -2238,6 +2286,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const enAttente = activeEditId === id && editLastJson.current;
     return enAttente ? { ...base, content: editLastJson.current } : base;
   };
+  boiteFraicheRef.current = boiteFraiche;
   const GEO = (o) => ({ x: o.x, y: o.y, width: o.width, height: o.height });
 
   // UNE entrée d'historique par geste, pas soixante : l'état d'avant est capturé au
@@ -2271,8 +2320,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const actuel = boiteFraiche(b.id, b);
     if (!actuel) return;
     if (patch.reduite && activeEditId === b.id) setActiveEditId(null); // on replie : on quitte l'édition
-    if (patch.couleur) setCouleurActive(patch.couleur); // la prochaine boîte héritera du dernier choix (comme changerCouleurBoite)
-    await hist.appliquer(cmdModifier('annotations', actuel, { ...actuel, ...patch }, libelle));
+    if (patch.couleur) { if (actuel.postit) setCouleurPostit(patch.couleur); else if (actuel.kind === 'texte') setCouleurTexte(patch.couleur); else setCouleurActive(patch.couleur); } // le prochain élément héritera du dernier choix
+    // (22/10) texte mis en forme depuis la mini barre (boîte non ouverte) : la version AFFICHÉE change (boîte à deux versions)
+    const { content, ...reste } = patch;
+    const apres = content !== undefined && !actuel.grille ? { ...avecContenuEdite(actuel, content), ...reste } : { ...actuel, ...patch };
+    await hist.appliquer(cmdModifier('annotations', actuel, apres, libelle));
   };
   /* ANCRAGE (demande du 30/09) : « viser » l'endroit de la page auquel la boîte se
      rapporte. `ancrageBoiteId` = la boîte qui attend son point ; la page concernée
@@ -2309,7 +2361,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // (21/10) épaisseur = le préréglage choisi ; opacité fixe (1 au crayon, 40 % au surligneur) ; tracé Catmull-Rom
     // (v1.1) épaisseur en px d'une page de 1000 px (pdfShared.js#champsEp1000) : la même proportion partout
     const sz = pageSizes.find((p) => String(p.cle) === String(page)) || pageSizes[0] || { width: 842, height: 595 };
-    const rec = { ...newTrait({ ficheId: nsAnnot, page, points, couleur: couleurCrayon, mode,
+    const rec = { ...newTrait({ ficheId: nsAnnot, page, points, couleur: surligneur ? couleurSurligneur : couleurCrayon, mode,
       opacite: surligneur ? OPACITE_SURLIGNEUR_CRAYON : 1, aimant: false }), rendu, ...champsEp1000(epaisseurDe(mode), sz.width, sz.height) };
     await hist.appliquer(cmdCreer('annotations', rec, surligneur ? 'Surligneur à main levée' : 'Trait au crayon'));
   };
@@ -2747,7 +2799,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     await hist.appliquer(textesRecs.length
       ? cmdGroupe(`Dessin posé (avec ${textesRecs.length} texte${textesRecs.length > 1 ? 's' : ''})`, [cmdCreer('annotations', rec, 'Image collée'), ...textesRecs.map((t) => cmdCreer('annotations', t, 'Texte du dessin'))])
       : cmdCreer('annotations', rec, 'Image collée'));
-    setOutil('main'); setActiveEditId(null);
+    setOutil('main'); setInsererOuvert(false); setActiveEditId(null);
     setImageActiveId(rec.id);
   };
   /* ---- DOCUMENT : UNE IMAGE S'INSÈRE TOUJOURS DANS LE FLUX (10/10,
@@ -2799,7 +2851,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const apres = state.selection.to;
       ed.view.dispatch(state.tr.insert(apres, lignes.flatMap((l) => l.split('\n')).map((l) => P.create(null, l ? state.schema.text(l) : null))));
     }
-    setOutil('main'); setActiveEditId(null);
+    setOutil('main'); setInsererOuvert(false); setActiveEditId(null);
     return true;
   };
   /* CONVERSION UNIQUE des images flottantes d'un DOCUMENT en blocs du flux (10/10) : à
@@ -2940,6 +2992,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [arrivee, setArrivee] = useState(null); // { dessin, autres }
   const [pulseDessins, setPulseDessins] = useState(0);
   const boutonDessinsRef = useRef(null);
+  /* (22/10) le bouton des dessins vit dans la sous-barre Insérer, fermée la plupart du temps : un dessin qui arrive
+     vole alors vers le bouton Insérer de la barre */
+  const boutonInsererRef = useRef(null);
+  const cibleArrivee = useMemo(() => ({ get current() { return boutonDessinsRef.current || boutonInsererRef.current; } }), []);
   useSondage('dessins', async () => {
     const liste = await dessinsDeFiche(ficheId);
     const sig = liste.map((d) => d.id).join(',');
@@ -3429,7 +3485,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         {...(tableauDispo && disposition === 'tableau' ? { outilsAnnotation: false, sansPages: true, sansRecherche: true } : {})}
         pageCourante={pageCourante} numPages={nbPagesAffichees} onAllerPage={allerALaPage}
         scale={scale} onZoom={zoomButtons} onAjuster={ajusterALaLargeur}
-        outil={outil} setOutil={choisirOutil}
+        outil={insererOuvert ? 'inserer' : outil} setOutil={choisirOutil}
         couleurActive={couleurActive} setCouleurActive={setCouleurActive}
         hist={hist}
         search={search} setSearch={setSearch} matches={matches} activeMatch={activeMatch} searching={searching}
@@ -3455,35 +3511,92 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         ) : null}
         onAjouterImage={pret ? () => entreeImageRef.current && entreeImageRef.current.click() : null}
         imageDansTexte={modeDoc}
-        /* rangée « texte » sous la barre d'outils (09/10) : mise en forme de la boîte active, ou
-           du texte du document qui a le curseur — jamais avec un outil d'annotation */
-        rangeeTexte={activeEdit && editor ? (
-          <EditToolbar key={'b:' + activeEdit.id} editor={editor} libre={activeEdit.kind === 'libre'}
-            couleur={activeEdit.couleur}
-            onCouleur={(c) => changerCouleurBoite(activeEdit, c)} onApercu={(c) => apercuPour(activeEdit.id, c)}
-            palette={activeEdit.kind === 'texte' ? <SelecteurCouleurs couleur={activeEdit.couleur} onCouleur={(c) => changerCouleurTexte(activeEdit, c)} onApercu={(c) => apercuPour(activeEdit.id, c)} titre="Couleur du texte" /> : null}
-            libelleSupprimer={activeEdit.kind === 'texte' ? 'Supprimer le texte' : null}
-            onReset={() => (activeEdit.kind === 'libre' || activeEdit.kind === 'texte' ? supprimerBoite(activeEdit) : resetEdit(activeEdit.id))} />
-        ) : editeurPage && outil === 'main' && !editeurPage.ed.isDestroyed ? (
-          <EditToolbar key="t" editor={editeurPage.ed} sansSupprimer extras={<OutilsTexteDocument editor={editeurPage.ed} />}
-            onAnnuler={hist.annuler} onRetablir={hist.retablir} peutAnnuler={hist.peutAnnuler} peutRetablir={hist.peutRetablir} />
-        ) : null}
         /* (20/10) rangée RÉSERVÉE en permanence, PDF compris : son emplacement est fixe, choisir ou
-           quitter un outil ne décale jamais le document (docs/compte-rendu-pdfreader-v3.md) */
+           quitter un outil ne décale jamais le document (docs/compte-rendu-pdfreader-v3.md).
+           (22/10) la grande barre de mise en forme du texte qui l'occupait a disparu : boîte, texte, bloc et texte d'un
+           document se mettent en forme dans leur MINI BARRE (pdf/FormatTexte.jsx) */
         reserverRangee
-        aideVide={modeDoc ? 'Cliquez dans le texte pour le mettre en forme' : 'Choisissez un outil : ses couleurs et réglages s’affichent ici'}
-        contexteSupplementaire={outil === 'boite' ? (
-          <SelecteurCouleurs couleur={couleurActive} onCouleur={setCouleurActive} titre="Couleur de la boîte" />
+        aideVide={modeDoc ? 'Sélectionnez du texte : sa mise en forme s’affiche au-dessus' : 'Choisissez un outil : ses couleurs et réglages s’affichent ici'}
+        nbDessinsNouveaux={dessins.filter((dd) => !edits.some((a) => a.kind === 'image' && a.blobId === dd.blobId)).length}
+        pulseInserer={pulseDessins} boutonInsererRef={boutonInsererRef}
+        contexteSupplementaire={outil === 'surligneur' ? (
+          /* SURLIGNEUR (22/10) : un seul outil — sur du texte il surligne les caractères, ailleurs il trace à main levée */
+          <>
+            <SelecteurCouleurs couleur={couleurSurligneur} onCouleur={setCouleurSurligneur} titre="Couleur du surligneur" />
+            <span className="ptb-sep" />
+            <BoutonTaille barre genre="surligneur" titre="Épaisseur du trait libre" valeur={epaisseurDe('surligneur')} couleur={couleurHex(couleurSurligneur)}
+              echelle={(((pageSizes[Math.max(0, pageCourante - 1)] || pageSizes[0] || { width: 842 }).width) * scale) / PAGE_REF}
+              onChange={(v) => choisirEpaisseur('surligneur', v)} />
+            <button type="button" className={'ptb-bascule' + (surligneurDroit ? ' actif' : '')} aria-pressed={surligneurDroit} data-reglage="ligne-droite" onClick={() => setSurligneurDroit(!surligneurDroit)}
+              title="Trait libre en ligne droite, du point de départ au point d’arrivée (aimantée à l’horizontale)">
+              <IconeOutil nom="traitContinu" size={14} /> Ligne droite
+            </button>
+          </>
+        ) : outil === 'crayon' || outil === 'gomme' ? (
+          /* DESSIN (22/10) : Crayon · Gomme (standard / trait entier), épaisseur, couleurs */
+          <>
+            <div className="ptb-segment" role="group" aria-label="Outil de dessin">
+              {[['crayon', 'Crayon', 'Dessiner à main levée'], ['gomme', 'Gomme', 'Effacer les traits et les formes — cliquer, ou glisser pour en effacer plusieurs']].map(([id, lbl, aide]) => (
+                <button key={id} type="button" data-sous-outil={id} className={outil === id ? 'actif' : ''} aria-pressed={outil === id} title={aide} onClick={() => choisirSousOutil(id)}>
+                  <IconeOutil nom={id} size={14} /> {lbl}
+                </button>
+              ))}
+            </div>
+            <span className="ptb-sep" />
+            {outil === 'gomme' ? (
+              <div className="ptb-segment" role="group" aria-label="Mode de la gomme">
+                {[{ id: 'zone', label: 'Standard', titre: 'Efface seulement ce qui passe sous la gomme (le trait est coupé)' }, { id: 'trait', label: 'Trait entier', titre: 'Un trait touché s’efface en entier' }].map((m) => (
+                  <button key={m.id} type="button" data-mode-gomme={m.id} className={modeGomme === m.id ? 'actif' : ''} title={m.titre} onClick={() => setModeGomme(m.id)}>{m.label}</button>
+                ))}
+              </div>
+            ) : (<>
+              <BoutonTaille barre genre="crayon" valeur={epaisseurDe('dessin')} couleur={couleurHex(couleurCrayon, '#1F1F24')}
+                echelle={(((pageSizes[Math.max(0, pageCourante - 1)] || pageSizes[0] || { width: 842 }).width) * scale) / PAGE_REF}
+                onChange={(v) => choisirEpaisseur('dessin', v)} />
+              <span className="ptb-sep" />
+              <SelecteurCouleurs couleur={couleurCrayon} onCouleur={setCouleurCrayon} titre="Couleur du crayon" />
+              {(modeTab || ecranTactile) && (<>
+                <span className="ptb-sep" />
+                <button type="button" className={'ptb-bascule' + (dessinDoigt ? ' actif' : '')} aria-pressed={dessinDoigt}
+                  onClick={() => ecrireDessinAuDoigt(!dessinDoigt)}
+                  title="Par défaut, seul le stylet (ou la souris) dessine : le doigt fait défiler et zoomer, la paume est ignorée. Activé : le doigt dessine aussi.">
+                  Dessiner au doigt : {dessinDoigt ? 'oui' : 'non'}
+                </button>
+              </>)}
+            </>)}
+          </>
+        ) : ['boite', 'texte', 'postit', 'boiteTableau'].includes(outil) ? (
+          /* TEXTE (22/10) : Boîte · Texte libre · Post-it · Boîte-tableau, et la couleur de ce qui sera posé */
+          <>
+            <div className="ptb-segment" role="group" aria-label="Élément de texte à poser">
+              {[['boite', 'Boîte', 'boite', 'Cliquer ou tracer pour poser une boîte — l’outil reste actif pour enchaîner'],
+                ['texte', 'Texte libre', 'texte', 'Cliquer sur la page pour y écrire du texte libre, sans cadre'],
+                ['postit', 'Post-it', 'postit', 'Cliquer pour coller un post-it (une question, un « je n’ai pas compris »…)'],
+                ['boiteTableau', 'Boîte-tableau', 'boiteTableau', 'Cliquer ou tracer pour poser une boîte contenant un tableau (3 colonnes × 4 lignes)']].map(([id, lbl, ic, aide]) => (
+                <button key={id} type="button" data-sous-outil={id} className={outil === id ? 'actif' : ''} aria-pressed={outil === id} title={aide} onClick={() => choisirSousOutil(id)}>
+                  <IconeOutil nom={ic} size={14} /> {lbl}
+                </button>
+              ))}
+            </div>
+            <span className="ptb-sep" />
+            {outil === 'texte' ? <SelecteurCouleurs couleur={couleurTexte} onCouleur={setCouleurTexte} titre="Couleur du texte" />
+              : outil === 'postit' ? <SelecteurCouleurs couleur={couleurPostit} onCouleur={setCouleurPostit} titre="Couleur du post-it" />
+              : <SelecteurCouleurs couleur={couleurActive} onCouleur={setCouleurActive} titre="Couleur de la boîte" />}
+          </>
         ) : outil === 'forme' ? (
+          /* FORMES (22/10) : Rectangle · Ellipse · Triangle · Ligne · Flèche, les autres derrière « … » */
           <>
             <div className="ptb-formes" role="group" aria-label="Forme à poser">
-              {TYPES_FORMES.map((t) => (
-                <button key={t.id} type="button" className={'ptb-forme' + (typeFormeActif === t.id ? ' actif' : '')}
+              {TYPES_FORMES.filter((t) => formesPlus || FORMES_PRINCIPALES.includes(t.id) || t.id === typeFormeActif).map((t) => (
+                <button key={t.id} type="button" data-forme={t.id} className={'ptb-forme' + (typeFormeActif === t.id ? ' actif' : '')}
                   title={`${t.label} — clic sur la page pour la poser, glisser pour l’étirer (Maj : ${estTrait(t.id) ? 'angle de 45°' : 'proportions gardées'})`}
                   onClick={() => setTypeFormeActif(t.id)}>
                   <IconeForme type={t.id} size={17} />
                 </button>
               ))}
+              <button type="button" className={'ptb-forme' + (formesPlus ? ' actif' : '')} data-forme="plus" aria-expanded={formesPlus}
+                title={formesPlus ? 'Moins de formes' : 'Plus de formes : rectangle arrondi, losange, étoile, double flèche, accolade, crochet, croix'}
+                onClick={() => setFormesPlus((v) => !v)}><Icon name="more" size={16} /></button>
             </div>
             <span className="ptb-sep" />
             <SelecteurCouleurs couleur={couleurForme} onCouleur={setCouleurForme} titre="Couleur de la forme" />
@@ -3495,50 +3608,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
               </button>
             </>)}
           </>
-        ) : outil === 'surligneur' ? (
-          <SelecteurCouleurs couleur={couleurSurligneur} onCouleur={setCouleurSurligneur} titre="Couleur du surligneur" />
-        ) : outil === 'texte' ? (
-          <SelecteurCouleurs couleur={couleurTexte} onCouleur={setCouleurTexte} titre="Couleur du texte" />
-        ) : outil === 'question' ? <span /> : outil === 'crayon' ? (
-          /* (21/10) UN crayon : couleur, dessin / surligneur (même moteur), 3 épaisseurs ; surligneur en ligne droite ;
-             sur écran tactile, le réglage d'appareil « Dessiner au doigt » (d'avant le 20/10) */
-          <>
-            <SelecteurCouleurs couleur={couleurCrayon} onCouleur={setCouleurCrayon} titre="Couleur du crayon" />
-            <span className="ptb-sep" />
-            <div className="ptb-segment" role="group" aria-label="Mode du crayon">
-              {MODES_CRAYON.map((m) => (
-                <button key={m.id} type="button" className={modeCrayon === m.id ? 'actif' : ''} onClick={() => setModeCrayon(m.id)} data-mode={m.id}
-                  title={m.id === 'dessin' ? 'Trait fin et doux, pour écrire ou schématiser' : 'Trait épais et translucide (40 %), sous le texte'}>
-                  {m.label}
-                </button>
-              ))}
-            </div>
-            <span className="ptb-sep" />
-            <BoutonTaille barre genre={genreCrayon(modeCrayon)} valeur={epaisseurDe(modeCrayon)} couleur={couleurHex(couleurCrayon, '#1F1F24')}
-              echelle={(((pageSizes[Math.max(0, pageCourante - 1)] || pageSizes[0] || { width: 842 }).width) * scale) / PAGE_REF}
-              onChange={(v) => choisirEpaisseur(modeCrayon, v)} />
-            {modeCrayon === 'surligneur' && (<>
-              <span className="ptb-sep" />
-              <button type="button" className={'ptb-bascule' + (surligneurDroit ? ' actif' : '')} aria-pressed={surligneurDroit} data-reglage="ligne-droite" onClick={() => setSurligneurDroit(!surligneurDroit)}
-                title="Le surligneur trace une ligne droite du point de départ au point d’arrivée (aimantée à l’horizontale)">
-                Tracer en ligne droite : {surligneurDroit ? 'oui' : 'non'}
-              </button>
-            </>)}
-            {(modeTab || ecranTactile) && (<>
-              <span className="ptb-sep" />
-              <button type="button" className={'ptb-bascule' + (dessinDoigt ? ' actif' : '')} aria-pressed={dessinDoigt}
-                onClick={() => ecrireDessinAuDoigt(!dessinDoigt)}
-                title="Par défaut, seul le stylet (ou la souris) dessine : le doigt fait défiler et zoomer, la paume est ignorée. Activé : le doigt dessine aussi.">
-                Dessiner au doigt : {dessinDoigt ? 'oui' : 'non'}
-              </button>
-            </>)}
-          </>
-        ) : outil === 'gomme' ? (
-          <div className="ptb-segment" role="group" aria-label="Mode de la gomme">
-            {[{ id: 'zone', label: 'Zone', titre: 'Efface seulement ce qui passe sous la gomme (le trait est coupé)' }, { id: 'trait', label: 'Trait entier', titre: 'Un trait touché s’efface en entier' }].map((m) => (
-              <button key={m.id} type="button" data-mode-gomme={m.id} className={modeGomme === m.id ? 'actif' : ''} title={m.titre} onClick={() => setModeGomme(m.id)}>{m.label}</button>
-            ))}
-          </div>
         ) : null}
       />
       </div>
@@ -3671,7 +3740,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onPoser={poserElement}
                       onCreerTrait={creerTrait}
                       onGommer={gommer}
-                      couleurTrait={couleurCrayon}
+                      couleurTrait={outil === 'surligneur' ? couleurSurligneur : couleurCrayon}
                       epaisseurTrait={epaisseurDe(modeCrayon)}
                       surligneurDroit={surligneurDroit} modeGomme={modeGomme}
                       modeCrayon={modeCrayon}
@@ -3681,6 +3750,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onSupprimerBoite={supprimerBoite}
                       onModifierBoite={modifierBoite}
                       onApercuCouleur={apercuPour}
+                      onVersTableau={tableauDispo ? boiteVersTableau : null} boitesAuTableau={boitesAuTableau}
+                      onReinitialiserBloc={resetEdit}
                       selection={sel} onSelection={selectionner} onTransfererFleche={transfererFleche}
                       onModifierTrait={modifierTrait}
                       ancrageBoiteId={ancrageBoiteId} ancrageFleche={!!(ancrage && ancrage.fleche)} ancrageSurlignage={!!(ancrage && ancrage.surlignage)} ancrageAjout={!!(ancrage && ancrage.ajout)} onDemanderAncrage={setAncrageBoiteId}
@@ -3792,7 +3863,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       )}
 
       {arrivee && pret && srcTab === 'pdf' && (!tableauDispo || disposition !== 'tableau') && (
-        <ArriveeDessin key={arrivee.dessin.id} dessin={arrivee.dessin} autres={arrivee.autres} cible={boutonDessinsRef}
+        <ArriveeDessin key={arrivee.dessin.id} dessin={arrivee.dessin} autres={arrivee.autres} cible={cibleArrivee}
           pdfPret={!!pageSizes.length} onPoser={(d) => poserDessin(d)} onFermer={() => setArrivee(null)} />
       )}
 

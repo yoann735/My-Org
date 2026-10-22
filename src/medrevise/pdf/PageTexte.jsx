@@ -13,6 +13,7 @@
    s'arrêter, comme dans un traitement de texte. Retour arrière au tout début d'une page :
    son premier bloc remonte à la fin de la page précédente.
    ============================================================ */
+import { BarreTexteDocument, rectSelection } from './FormatTexte.jsx';
 import { memo, useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -184,7 +185,13 @@ export const PageTexte = memo(forwardRef(function PageTexte({
     },
     onFocus: ({ editor: ed }) => { rappels.current.onActiver(pageId, ed); },
     onSelectionUpdate: ({ editor: ed }) => { majBulle(ed); if (ed.isFocused) rappels.current.onActiver(pageId, ed); },
-    onBlur: () => setTimeout(() => { const ed = editorRef.current; if (ed && !ed.isFocused) setBulle(null); }, 120),
+    onBlur: () => setTimeout(() => {
+      const ed = editorRef.current;
+      // (22/10) une liste (police, taille) ou le sélecteur de couleur de la mini barre a pris le focus : elle reste
+      const a = document.activeElement;
+      if (a && a.closest && a.closest('.barre-texte-doc, .sc-pop, .sc-fenetre')) return;
+      if (ed && !ed.isFocused) setBulle(null);
+    }, 120),
   });
   editorRef.current = editor;
 
@@ -192,10 +199,10 @@ export const PageTexte = memo(forwardRef(function PageTexte({
   function majBulle(ed) {
     const { from, to, empty } = ed.state.selection;
     // une IMAGE sélectionnée a sa propre barre (imageVue.js) : pas de « Notion / Flashcard »
-    if (empty || !ed.isFocused || outilRef.current !== 'main' || ed.state.selection instanceof NodeSelection) { setBulle(null); return; }
+    // (22/10) la mini barre de texte : sur une sélection, et dans un tableau du document (lignes, colonnes)
+    if ((empty && !ed.isActive('table')) || !ed.isFocused || outilRef.current !== 'main' || ed.state.selection instanceof NodeSelection) { setBulle(null); return; }
     try {
-      const a = ed.view.coordsAtPos(from), b = ed.view.coordsAtPos(to);
-      setBulle({ x: (a.left + b.right) / 2, y: Math.min(a.top, b.top), notion: ed.isActive('notion') });
+      setBulle({ rect: rectSelection(ed), notion: ed.isActive('notion') });
     } catch (e) { setBulle(null); }
   }
 
@@ -441,72 +448,12 @@ export const PageTexte = memo(forwardRef(function PageTexte({
       onMouseDown={surAppui} onMouseUp={surRelache}
       onPointerDown={() => { const ed = editorRef.current; if (ed && outilRef.current === 'main') rappels.current.onActiver(pageId, ed); }}>
       <EditorContent editor={editor} className="pt-corps" style={{ height: hUtile }} />
-      {bulle && createPortal(
-        <div className="nd-bulle pt-bulle" style={{ left: bulle.x, top: bulle.y - 8 }} onMouseDown={(e) => e.preventDefault()}>
-          {bulle.notion
-            ? <button type="button" className="nd-bt nd-bt-txt" onClick={retirerNotion} title="Ce passage n’est plus une notion"><Icon name="x" size={13} /> Retirer la notion</button>
-            : <button type="button" className="nd-bt nd-bt-txt" onClick={() => marquerNotion(COULEUR_DEFAUT)} title="Faire de ce passage une notion (mode Notions du panneau)"><Icon name="edit" size={13} /> Notion</button>}
-          <button type="button" className="nd-bt nd-bt-txt" onClick={versFlashcard} title="Créer une flashcard à partir de ce passage"><Icon name="cards" size={13} /> Flashcard</button>
-        </div>,
-        document.body,
-      )}
+      {/* (22/10) mise en forme + Notion · Flashcard : LA mini barre, au-dessus de la sélection (pdf/FormatTexte.jsx) */}
+      {bulle && <BarreTexteDocument editor={editorRef.current} rect={bulle.rect} notion={bulle.notion}
+        onNotion={() => marquerNotion(COULEUR_DEFAUT)} onRetirerNotion={retirerNotion} onFlashcard={versFlashcard} />}
     </div>
   );
 }));
 
-/* Réglages propres au TEXTE D'UNE PAGE, glissés dans la barre de mise en forme du lecteur
-   (EditToolbar, la même que pour les boîtes de texte) : titres, cases à cocher, citation,
-   tableau, séparateur, lien, image. Mêmes boutons `.et-btn` que le reste de la barre. */
-export function OutilsTexteDocument({ editor }) {
-  const [, force] = useState(0);
-  const [lien, setLien] = useState(null);
-  useEffect(() => {
-    if (!editor) return undefined;
-    const maj = () => force((v) => v + 1);
-    editor.on('transaction', maj);
-    return () => editor.off('transaction', maj);
-  }, [editor]);
-  if (!editor || editor.isDestroyed) return null;
-  const actif = (n, a) => editor.isActive(n, a);
-  const run = (f) => f(editor.chain().focus()).run();
-  const Bt = ({ titre, on, onClick, children }) => (
-    <button type="button" className={'et-btn' + (on ? ' active' : '')} title={titre} aria-label={titre} aria-pressed={on || undefined} onClick={onClick}>{children}</button>
-  );
-  const image = () => {
-    const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*';
-    i.onchange = async () => {
-      const f = i.files && i.files[0];
-      if (!f) return;
-      const blobId = await putBlob(f);
-      insererImageBloc(editor, { src: URL.createObjectURL(f), blobId });
-    };
-    i.click();
-  };
-  const validerLien = () => {
-    const h = (lien || '').trim();
-    run((c) => (h ? c.extendMarkRange('link').setLink({ href: /^[a-z]+:/i.test(h) ? h : 'https://' + h }) : c.extendMarkRange('link').unsetLink()));
-    setLien(null);
-  };
-  return (
-    <>
-      <Bt titre="Titre 1" on={actif('heading', { level: 1 })} onClick={() => run((c) => c.toggleHeading({ level: 1 }))}><b>H1</b></Bt>
-      <Bt titre="Titre 2" on={actif('heading', { level: 2 })} onClick={() => run((c) => c.toggleHeading({ level: 2 }))}><b>H2</b></Bt>
-      <Bt titre="Titre 3" on={actif('heading', { level: 3 })} onClick={() => run((c) => c.toggleHeading({ level: 3 }))}><b>H3</b></Bt>
-      <Bt titre="Cases à cocher (⌘⇧9)" on={actif('taskList')} onClick={() => run((c) => c.toggleTaskList())}><Icon name="check" size={13} /></Bt>
-      <Bt titre="Citation" on={actif('blockquote')} onClick={() => run((c) => c.toggleBlockquote())}>❝</Bt>
-      <Bt titre="Tableau (3 × 3)" on={actif('table')} onClick={() => run((c) => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true }))}><Icon name="grid" size={13} /></Bt>
-      {actif('table') && (<>
-        <Bt titre="Ajouter une ligne" onClick={() => run((c) => c.addRowAfter())}>+L</Bt>
-        <Bt titre="Ajouter une colonne" onClick={() => run((c) => c.addColumnAfter())}>+C</Bt>
-        <Bt titre="Supprimer le tableau" onClick={() => run((c) => c.deleteTable())}><Icon name="trash" size={13} /></Bt>
-      </>)}
-      <Bt titre="Séparateur" onClick={() => run((c) => c.setHorizontalRule())}>—</Bt>
-      <Bt titre="Image (ou colle / glisse-la dans le texte)" onClick={image}><Icon name="image" size={13} /></Bt>
-      {lien == null
-        ? <Bt titre="Lien" on={actif('link')} onClick={() => setLien(editor.getAttributes('link').href || '')}><Icon name="ext" size={13} /></Bt>
-        : <input className="et-lien" autoFocus value={lien} placeholder="https://…" onChange={(e) => setLien(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); validerLien(); } if (e.key === 'Escape') { e.stopPropagation(); setLien(null); } }}
-            onBlur={() => setLien(null)} />}
-    </>
-  );
-}
+/* (22/10) OutilsTexteDocument (titres, cases, citation, tableau, séparateur, lien, image de la barre de format) : ces
+   réglages sont désormais dans la mini barre au-dessus de la sélection (pdf/FormatTexte.jsx, elementsFormat document). */

@@ -16,6 +16,7 @@
    Couches (de bas en haut) : fond des pages → CE TEXTE → annotations de chaque page
    (crayon, formes, boîtes : un calque par page, en coordonnées de page, hors du flux).
    ============================================================ */
+import { BarreTexteDocument, rectSelection } from './FormatTexte.jsx';
 import { memo, useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -117,16 +118,22 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
     },
     onFocus: ({ editor: ed }) => { rappels.current.onActiver(ed); },
     onSelectionUpdate: ({ editor: ed }) => { majBulle(ed); if (ed.isFocused) rappels.current.onActiver(ed); },
-    onBlur: () => setTimeout(() => { const ed = editorRef.current; if (ed && !ed.isFocused) setBulle(null); }, 120),
+    onBlur: () => setTimeout(() => {
+      const ed = editorRef.current;
+      // (22/10) une liste (police, taille) ou le sélecteur de couleur de la mini barre a pris le focus : elle reste
+      const a = document.activeElement;
+      if (a && a.closest && a.closest('.barre-texte-doc, .sc-pop, .sc-fenetre')) return;
+      if (ed && !ed.isFocused) setBulle(null);
+    }, 120),
   });
   editorRef.current = editor;
 
   function majBulle(ed) {
     const { from, to, empty } = ed.state.selection;
-    if (empty || !ed.isFocused || outilRef.current !== 'main' || ed.state.selection instanceof NodeSelection) { setBulle(null); return; }
+    // (22/10) la mini barre de texte : sur une sélection, et dans un tableau du document (lignes, colonnes)
+    if ((empty && !ed.isActive('table')) || !ed.isFocused || outilRef.current !== 'main' || ed.state.selection instanceof NodeSelection) { setBulle(null); return; }
     try {
-      const a = ed.view.coordsAtPos(from), b = ed.view.coordsAtPos(to);
-      setBulle({ x: (a.left + b.right) / 2, y: Math.min(a.top, b.top), notion: ed.isActive('notion') });
+      setBulle({ rect: rectSelection(ed), notion: ed.isActive('notion') });
     } catch (e) { setBulle(null); }
   }
 
@@ -422,15 +429,9 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
         }}>
         <EditorContent editor={editor} />
       </div>
-      {bulle && createPortal(
-        <div className="nd-bulle pt-bulle" style={{ left: bulle.x, top: bulle.y - 8 }} onMouseDown={(e) => e.preventDefault()}>
-          {bulle.notion
-            ? <button type="button" className="nd-bt nd-bt-txt" onClick={retirerNotion} title="Ce passage n’est plus une notion"><Icon name="x" size={13} /> Retirer la notion</button>
-            : <button type="button" className="nd-bt nd-bt-txt" onClick={() => marquerNotion(COULEUR_DEFAUT)} title="Faire de ce passage une notion (mode Notions du panneau)"><Icon name="edit" size={13} /> Notion</button>}
-          <button type="button" className="nd-bt nd-bt-txt" onClick={versFlashcard} title="Créer une flashcard à partir de ce passage"><Icon name="cards" size={13} /> Flashcard</button>
-        </div>,
-        document.body,
-      )}
+      {/* (22/10) mise en forme + Notion · Flashcard : LA mini barre, au-dessus de la sélection (pdf/FormatTexte.jsx) */}
+      {bulle && <BarreTexteDocument editor={editorRef.current} rect={bulle.rect} notion={bulle.notion}
+        onNotion={() => marquerNotion(COULEUR_DEFAUT)} onRetirerNotion={retirerNotion} onFlashcard={versFlashcard} />}
     </div>
   );
 }));

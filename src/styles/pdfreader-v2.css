@@ -525,38 +525,118 @@
 /* ---- LE SÉLECTEUR DE TAILLE (v1.1, pdf/ChoixTaille.jsx) : le même pour le texte et toutes les épaisseurs ---- */
 .mini-barre .mb-el { display: inline-flex; }
 .ct { position: relative; display: inline-flex; }
-.ct-bouton { width: auto !important; min-width: 34px; padding: 0 6px; gap: 4px; display: inline-flex; align-items: center; }
+.ct-bouton { width: auto !important; min-width: 34px; padding: 0 6px; gap: 3px; display: inline-flex; align-items: center; }
+.ct-bt-ic { flex: 0 0 auto; }
 .ct-bt-aa { font-weight: 700; font-size: 14px; line-height: 1; letter-spacing: -.02em; }
 .ct-bt-aa small { font-size: 10px; }
 .ct-bt-trait { display: inline-block; width: 14px; border-radius: 4px; background: currentColor; }
-.ct-bt-val { font-size: 11px; font-weight: 700; color: var(--text-3); }
+.ct-bt-val { font-size: 10px; font-weight: 700; color: var(--text-3); }
 .ct-bouton.actif .ct-bt-val { color: var(--accent); }
-.ct-pop { position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 60; width: 244px; padding: 10px; border-radius: 12px; box-sizing: border-box;
-  background: var(--card); border: 1px solid var(--border-2); box-shadow: 0 12px 32px rgba(0, 0, 0, .35); display: flex; flex-direction: column; gap: 8px;
+.ct-pop { position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 60; width: 176px; padding: 7px; border-radius: 11px; box-sizing: border-box;
+  background: var(--card); border: 1px solid var(--border-2); box-shadow: 0 12px 32px rgba(0, 0, 0, .35); display: flex; flex-direction: column; gap: 5px;
   cursor: default; white-space: normal; text-align: left; color: var(--text); }
 .mini-barre.dessous .ct-pop, .ct-pop.dessus { top: auto; bottom: calc(100% + 8px); }
 .ct-pop.fixe { position: fixed; top: auto; bottom: auto; transform: none; z-index: 10040; }
 .ct-titre { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
-.ct-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.ct-preset { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 66px; padding: 4px 2px; border-radius: 8px; overflow: hidden;
+.ct-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.ct-preset { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 1px; height: 46px; padding: 2px 1px; border-radius: 7px; overflow: hidden;
   border: 1px solid var(--border); background: var(--bg-2, transparent); color: var(--text); cursor: pointer; font: inherit; }
 .ct-preset:hover { border-color: var(--accent); }
 .ct-preset.actif { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-.ct-ap { display: flex; align-items: center; justify-content: center; height: 44px; max-width: 100%; overflow: hidden; color: var(--text); }
+.ct-ap { display: flex; align-items: center; justify-content: center; height: 30px; max-width: 100%; overflow: hidden; color: var(--text); }
 .ct-preset.actif .ct-ap { color: var(--accent); }
 .ct-aa { font-weight: 600; line-height: 1; white-space: nowrap; }
 .ct-nom { font-size: 10.5px; font-weight: 700; color: var(--text-3); white-space: nowrap; }
 .ct-preset.actif .ct-nom { color: var(--accent); }
-.ct-champ { display: flex; align-items: center; gap: 8px; }
-.ct-ap-champ { flex: 1 1 auto; min-width: 0; height: 44px; border-radius: 8px; background: var(--bg-2, rgba(255, 255, 255, .04)); }
-.ct-saisie { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border-2); background: var(--bg); }
+.ct-champ { display: flex; align-items: center; gap: 5px; }
+.ct-ap-champ { flex: 1 1 auto; min-width: 0; height: 30px; border-radius: 7px; background: var(--bg-2, rgba(255, 255, 255, .04)); }
+.ct-saisie { display: inline-flex; align-items: center; gap: 3px; height: 26px; padding: 0 6px; border-radius: 7px; border: 1px solid var(--border-2); background: var(--bg); }
 .ct-saisie:focus-within { border-color: var(--accent); }
-.ct-saisie input { width: 42px; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.ct-saisie input { width: 36px; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 .ct-unite { font-size: 12px; color: var(--text-3); }
-.ct-liste-bt { width: 28px; height: 32px; border-radius: 8px; border: 1px solid var(--border-2); background: transparent; color: var(--text-2); cursor: pointer; font: inherit; }
+.ct-liste-bt { width: 24px; height: 26px; border-radius: 7px; border: 1px solid var(--border-2); background: transparent; color: var(--text-2); cursor: pointer; font: inherit; }
 .ct-liste-bt.actif { border-color: var(--accent); color: var(--accent); }
-.ct-liste { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
-.ct-liste button { height: 28px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; font-variant-numeric: tabular-nums; }
+.ct-liste { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
+.ct-liste button { height: 22px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; font-variant-numeric: tabular-nums; }
 .ct-liste button:hover { border-color: var(--accent); }
 .ct-liste button.actif { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-@media (pointer: coarse) { .ct-preset { height: 72px; } .ct-pop { width: 264px; } .ct-saisie { height: 40px; } .ct-liste-bt { height: 40px; width: 36px; } .ct-liste button { height: 36px; } }
+@media (pointer: coarse) { .ct-preset { height: 52px; } .ct-pop { width: 196px; } .ct-saisie { height: 34px; } .ct-liste-bt { height: 34px; width: 30px; } .ct-liste button { height: 30px; } }
+
+/* ============================================================
+   SIMPLIFICATION DES OUTILS (22/10, docs/compte-rendu-simplification-outils.md)
+   ============================================================ */
+/* §5 SURLIGNAGE CONTINU : un rectangle par ligne (PdfPage.jsx, pdfShared.js#lignesSurlignage), coins de 3 px,
+   1 px de débord en haut et en bas ; multiply, opacité de la couleur (inchangée) */
+.pdfr-page .pdfr-hl-rect { border-radius: 3px; margin-top: -1px; padding-bottom: 2px; box-sizing: content-box; }
+
+/* §1 BARRE À 6 OUTILS : pastille « nouveau dessin » sur Insérer ; sous-barres avec icône + libellé */
+.ptb-outil[data-outil="inserer"], .tab-outil[data-outil="inserer"] { position: relative; }
+.ptb-outil[data-outil="inserer"].pulse, .tab-outil[data-outil="inserer"].pulse { animation: ad-bouton 1s ease-out; }
+.pdfr-v2 .pdfr-contexte .ptb-segment button { display: inline-flex; align-items: center; gap: 5px; }
+.pdfr-v2 .pdfr-contexte .ptb-bascule { display: inline-flex; align-items: center; gap: 5px; }
+.pdfr-v2 .ptb-inserer .ptb-dessins { display: inline-flex; align-items: center; gap: 5px; height: auto; min-width: 0; padding: 0 10px; border: 0; border-radius: 5px;
+  background: transparent; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; }
+.pdfr-v2 .ptb-inserer .ptb-dessins .ptb-outil-lbl { display: inline !important; }
+.pdfr-v2 .ptb-inserer .ptb-dessins:hover, .pdfr-v2 .ptb-segment button:hover:not(.actif) { color: var(--text); }
+@media (prefers-reduced-motion: reduce) { .ptb-outil[data-outil="inserer"].pulse, .tab-outil[data-outil="inserer"].pulse { animation: none; } }
+/* Surligneur : main levée hors du texte (croix), sélection sur le texte */
+.pdfr-page .pdfr-textlayer.outil-surligneur { cursor: crosshair; }
+.pdfr-page .pdfr-textlayer.outil-surligneur span { cursor: text; }
+.pdfr-page .pdfr-drawlayer.outil-postit, .pdfr-page .pdfr-drawlayer.outil-boiteTableau { cursor: crosshair; }
+
+/* MINI BARRE : « … », barre flottante (texte d'un document), boutons avec libellé.
+   Une page est un contexte d'empilement (transform) : la page qui porte une mini barre passe devant ses voisines
+   (sinon le menu « … », le sélecteur de taille ou la barre « dessous » d'un objet du bas de page passaient sous la
+   zone « insérer une page » et la page suivante) */
+.pdfr-pages > .pdfr-page:has(.mini-barre, .ct-pop) { z-index: 6; }
+.mini-barre .mb-plus { position: relative; display: inline-flex; }
+.mini-barre .mb-plus-pop { position: absolute; top: calc(100% + 6px); right: -5px; z-index: 75; min-width: 212px; padding: 4px; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 1px; border-radius: 11px; border: 1px solid var(--border-2); background: var(--card); color: var(--text);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .35); white-space: nowrap; cursor: default; animation: fondu .1s ease-out both; }
+.mini-barre.dessous .mb-plus-pop { top: calc(100% + 6px); }
+.mini-barre .mb-plus-pop.dessus { top: auto; bottom: calc(100% + 6px); }
+.mb-plus-ligne { display: flex; align-items: center; gap: 9px; min-height: 30px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent;
+  color: var(--text); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.mb-plus-ligne:hover:not(.avec-el):not(:disabled) { background: var(--bg-2); }
+.mb-plus-ligne.actif { color: var(--accent); background: var(--accent-soft); }
+.mb-plus-ligne.actif .mb-plus-ic { color: var(--accent); }
+.mb-plus-ligne:disabled { opacity: .4; cursor: default; }
+.mb-plus-ligne.avec-el { justify-content: space-between; cursor: default; }
+.mb-plus-ligne.avec-el .sc-bouton { width: 28px; height: 28px; padding: 0; justify-content: center; border: 0; border-radius: 7px; background: transparent; }
+.mb-plus-ic { width: 18px; display: inline-flex; justify-content: center; flex: 0 0 auto; color: var(--text-2); }
+.mb-plus-lib { flex: 1 1 auto; }
+.mb-plus-sep { height: 1px; margin: 3px 6px; background: var(--border); flex: 0 0 auto; }
+.mb-select { height: 26px; max-width: 132px; font-size: 12px; }
+.mini-barre.flottante { position: fixed; z-index: 10030; white-space: nowrap; width: auto; }
+.mini-barre.flottante .mb-sep { width: 1px; height: 18px; margin: 0 3px; background: var(--border); flex: 0 0 auto; }
+.mini-barre.flottante .nb-act:disabled { opacity: .35; cursor: default; }
+.nb-actions.nb-barre .nb-act.avec-texte { width: auto; padding: 0 8px; gap: 5px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.nb-actions.nb-barre.tactile .nb-act.avec-texte { width: auto; }
+.nb-actions.nb-barre .et-lettre { font-weight: 800; font-size: 13px; line-height: 1; margin-right: 2px; }
+
+/* §2 POST-IT : une note carrée, coins presque droits, ombre portée */
+.pdfr-page .note-box.postit { border-radius: 2px !important; box-shadow: 0 7px 14px -7px rgba(0, 0, 0, .45), 0 1px 2px rgba(0, 0, 0, .12); }
+.pdfr-page .note-box.postit.selectionnee { box-shadow: 0 0 0 1.5px var(--accent), 0 7px 14px -7px rgba(0, 0, 0, .45); }
+
+/* §4 BOÎTE-TABLEAU (pdf/BoiteTableau.jsx) : le tableau fait corps avec la boîte (fond, marges, arrondis, typographie) ;
+   filets intérieurs fins de la couleur du texte à faible opacité, aucune bordure extérieure */
+.btab { position: relative; width: 100%; }
+.btab-table { width: 100%; border-collapse: collapse; border-style: hidden; table-layout: fixed; font: inherit; color: inherit; }
+.btab-td { border: 1px solid color-mix(in srgb, currentColor 24%, transparent); padding: .3em .45em; vertical-align: top; text-align: inherit; }
+.btab-tete .btab-td { font-weight: 700; }
+.btab-cell { min-height: 1.25em; white-space: pre-wrap; overflow-wrap: anywhere; outline: none; }
+.btab.edition .btab-cell { cursor: text; border-radius: 3px; }
+.btab.edition .btab-cell:focus { box-shadow: 0 0 0 1.5px color-mix(in srgb, currentColor 35%, transparent); background: color-mix(in srgb, currentColor 6%, transparent); }
+.btab-filet { position: absolute; top: 0; bottom: 0; width: 10px; margin-left: -5px; cursor: col-resize; z-index: 3; touch-action: none; }
+.btab-filet::after { content: ''; position: absolute; left: 4.5px; top: 0; bottom: 0; width: 1px; background: var(--accent); opacity: 0; transition: opacity .12s; }
+.btab-filet:hover::after { opacity: 1; }
+.pdfr-page .note-box.boite-tableau .nb-body { overflow: visible; }
+
+/* §6 CURSEURS : main ouverte au survol d'un objet déplaçable (outil Sélection), main fermée pendant le glisser,
+   « texte » seulement en édition — mêmes curseurs dans le lecteur et le tableau */
+.pdfr-page .note-box:not(.active):not(.verrouillee), .pdfr-page .note-box.selectionnee:not(.active):not(.verrouillee) { cursor: grab; }
+.pdfr-page .note-box.verrouillee:not(.active) { cursor: default; }
+.pdfr-page .pdfr-forme.interactive.prise-pleine, .pdfr-page .pdfr-traits-prise path, .pdfr-page .pdfr-trait-sel,
+.pdfr-imglayer.interactif .pdfr-image:not(.verrouillee), .pdfr-page .nb-pastille, .pdfr-page .pdfr-question { cursor: grab; }
+.pdfr-page .note-box.active .nb-body { cursor: text; }
+html.mr-glisse, html.mr-glisse * { cursor: grabbing !important; }

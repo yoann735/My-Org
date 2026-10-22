@@ -6,24 +6,28 @@
    ============================================================ */
 import { useEffect, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { lireBoard, flashcardsDuBoard } from '../lib/board.js';
+import { lireBoard, flashcardsDuBoard, boitesDuBoard } from '../lib/board.js';
 
 /** (v1.1) les ids des flashcards déjà posées sur le tableau de la fiche, tenus à jour (écritures, synchro) */
-export function useFlashcardsAuTableau(ficheId, actif = true) {
+export const useFlashcardsAuTableau = (ficheId, actif = true) => useIdsDuTableau(ficheId, flashcardsDuBoard, actif);
+/** (22/10) les ids des boîtes du lecteur déjà posées sur le tableau (« → Tableau » de la mini barre) */
+export const useBoitesAuTableau = (ficheId, actif = true) => useIdsDuTableau(ficheId, boitesDuBoard, actif);
+
+function useIdsDuTableau(ficheId, extraire, actif) {
   const [ids, setIds] = useState(() => new Set());
   useEffect(() => {
     if (!actif || !ficheId) { setIds(new Set()); return undefined; }
     let vivant = true;
     const lire = () => lireBoard(ficheId).then((b) => {
       if (!vivant) return;
-      const n = flashcardsDuBoard(b);
+      const n = extraire(b);
       setIds((v) => (v.size === n.size && [...n].every((x) => v.has(x)) ? v : n));
     });
     lire();
     const maj = (e) => { if (!e.detail || e.detail.store === 'board') lire(); };
     window.addEventListener('medrevise:ecriture', maj); window.addEventListener('medrevise:recharge', lire);
     return () => { vivant = false; window.removeEventListener('medrevise:ecriture', maj); window.removeEventListener('medrevise:recharge', lire); };
-  }, [ficheId, actif]);
+  }, [ficheId, actif, extraire]);
   return ids;
 }
 

@@ -20,6 +20,7 @@ import { GEO_HARMONISE } from '../pdf/flechesGeo.js';
 import { estMuscle } from './muscle.js';
 import { estTableau } from './carteTableau.js';
 import { estMolecule } from '../molecule/carte.js';
+import { texteDeContenu } from './textesAnnotations.js';
 
 export const idBoard = (ficheId) => 'board:' + ficheId;
 export const CARTE_BOARD = { w: 240, h: 120, min: { w: 120, h: 56 } };
@@ -116,4 +117,29 @@ export async function ajouterCarteAuBoard(ficheId, { titre = '', corps = '' }) {
   const c = nouvelleCarte({ x: (400 - v.x) / v.z + k, y: (240 - v.y) / v.z + k, titre, corps, z });
   await ecrireBoard({ ...b, objects: [...b.objects, c] });
   return c;
+}
+
+/* ---- « → Tableau » depuis une BOÎTE du lecteur (22/10, docs/compte-rendu-simplification-outils.md §6) ----
+   La boîte devient une carte : même texte, même couleur ; une boîte-tableau garde son tableau (champ `grille`, rendu par
+   le même composant que dans le lecteur). `source.boiteId` : la carte est une COPIE ; le lien sert à la retrouver
+   (« → Tableau » sur une boîte déjà posée montre sa carte). */
+export const boitesDuBoard = (b) => new Set(((b && b.objects) || []).filter((o) => o.source && o.source.boiteId).map((o) => o.source.boiteId));
+export function carteDepuisBoite(boite, { x, y, z = 0 }) {
+  const grille = boite.grille ? JSON.parse(JSON.stringify(boite.grille)) : null;
+  const corps = grille ? '' : texteDeContenu(boite.content || null);
+  const lignes = corps ? corps.split('\n').length : 1;
+  return nouvelleCarte({ x, y, z, couleur: boite.couleur || 'jaune-franc', titre: '', corps,
+    ...(grille ? { grille, w: 380, h: Math.max(CARTE_BOARD.h, 40 + 30 * grille.lignes.length) } : { h: Math.max(CARTE_BOARD.h, Math.min(400, 40 + 22 * lignes)) }),
+    source: { boiteId: boite.id, sorte: grille ? 'boite-tableau' : 'boite' } });
+}
+/** une boîte ajoutée au tableau d'une fiche sans l'ouvrir ; déjà posée : rend sa carte, rien n'est ajouté */
+export async function ajouterBoiteAuBoard(ficheId, boite) {
+  const b = await lireBoard(ficheId);
+  const deja = b.objects.find((o) => o.source && o.source.boiteId === boite.id);
+  if (deja) return { carte: deja, deja: true };
+  const p = origineNouvelles(b);
+  const z = b.objects.reduce((m, o) => Math.max(m, o.z || 0), 0) + 1;
+  const c = carteDepuisBoite(boite, { x: p.x, y: p.y, z });
+  await ecrireBoard({ ...b, objects: [...b.objects, c] });
+  return { carte: c, deja: false };
 }
