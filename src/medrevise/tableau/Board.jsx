@@ -31,6 +31,8 @@ import { TableauMuscle } from '../components/FlashcardMuscle.jsx';
 import { TableauRevision } from '../components/FlashcardTableau.jsx';
 import { VueMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { porteCartes, cartesGlissees, EVT_GLISSE } from '../apprentissageLibre/liste.js';
+import { BoiteTableau, estGrille, nouvelleGrille, ajouterLigne, ajouterColonne, retirerLigne, retirerColonne, LIMITES_GRILLE } from '../pdf/BoiteTableau.jsx';
+import { carteDepuisBoite } from '../lib/board.js';
 import '../../styles/tableau-board.css';
 
 const SEUIL_AIMANT = 6; // px à l'écran
@@ -63,21 +65,28 @@ export function fondCarte(couleur) {
   const a = opaciteFondBoite(couleur) < 0.9 ? 0.3 : 0.88;
   return '#' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v, i) => Math.round(v * a + FOND_ANCIEN[i] * (1 - a)).toString(16).padStart(2, '0')).join('');
 }
-function Carte({ o, sel, edition, onAppui, onEditer, onFinEdition, onCoin, onOuvrirFlashcard, visee }) {
+function Carte({ o, sel, edition, onAppui, onEditer, onFinEdition, onCoin, onOuvrirFlashcard, visee, onGrille = null, onCellule = () => {}, focus = null }) {
   const style = { left: o.x, top: o.y, width: o.w, height: o.h, zIndex: (o.z || 0) + (sel ? 1000 : 0), background: fondCarte(o.couleur) };
   const titreRef = useRef(null), corpsRef = useRef(null);
   const src = o.source || null;
   const finir = () => onFinEdition({ titre: titreRef.current ? titreRef.current.value : o.titre, corps: corpsRef.current ? corpsRef.current.value : o.corps });
   return (
-    <div className={'tb2-carte sel-objet' + (sel ? ' sel' : '') + (edition ? ' edition' : '') + (visee ? ' visee' : '') + (src ? ' de-flashcard sorte-' + src.sorte : '')}
-      data-boite={o.id} data-objet={o.id} style={style} onPointerDown={edition ? undefined : onAppui} onDoubleClick={(e) => { e.stopPropagation(); if (!edition) onEditer(); }}>
-      {src && !edition && (
+    <div className={'tb2-carte sel-objet' + (sel ? ' sel' : '') + (edition ? ' edition' : '') + (visee ? ' visee' : '') + (src && src.sorte ? ' de-flashcard sorte-' + src.sorte : '') + (estGrille(o.grille) ? ' carte-grille' : '')}
+      data-boite={o.id} data-objet={o.id} style={style} onPointerDown={edition ? undefined : onAppui} onDoubleClick={(e) => { e.stopPropagation(); if (!edition) onEditer(e); }}>
+      {src && src.flashcardId && !edition && (
         <button type="button" className="tb2-lien-fc" title="Ouvrir la flashcard d’origine (la carte du tableau en est une copie indépendante)" aria-label="Ouvrir la flashcard"
           onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onOuvrirFlashcard && onOuvrirFlashcard(src.flashcardId); }}>
           <Icon name="cards" size={12} />
         </button>
       )}
-      {edition ? (
+      {/* (22/10) CARTE-TABLEAU : le même composant que la boîte-tableau du lecteur (pdf/BoiteTableau.jsx) */}
+      {estGrille(o.grille) ? (
+        <div className="tb2-contenu tb2-grille">
+          {o.titre && <div className="tb2-titre">{o.titre}</div>}
+          <BoiteTableau grille={o.grille} edition={edition} focus={edition ? focus : null} filets={sel} echelle={1}
+            onChange={(g, lib) => onGrille && onGrille(g, lib)} onCellule={onCellule} onFin={() => onFinEdition({ titre: o.titre, corps: o.corps })} />
+        </div>
+      ) : edition ? (
         <div className="tb2-edition" onPointerDown={(e) => e.stopPropagation()}
           onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) finir(); }}
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) { e.preventDefault(); finir(); } }}>
@@ -192,6 +201,8 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
   /* ---------- sélection ---------- */
   const [selection, setSelection] = useState(() => new Set());
   const [editId, setEditId] = useState(null);
+  const celluleRef = useRef(null); // (22/10) carte-tableau : { id, i, j } de la cellule qui a le curseur
+  const focusEdition = useRef(null); // point du clic qui ouvre l'édition (la cellule visée prend le curseur)
   const [visee, setVisee] = useState(null); // id de la carte d'où part une flèche en cours de pose
   const [apercu, setApercu] = useState(null); // { ids, dx, dy } | { id, rect }
   const [apercuFleche, setApercuFleche] = useState(null); // { id, ...patch } pendant un geste sur une flèche
@@ -223,6 +234,14 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
     modifier((b) => ({ ...b, objects: [...b.objects, c] }), 'Carte');
     setSelection(new Set([c.id]));
     if (editer) setEditId(c.id);
+    return c;
+  };
+  /** (22/10) une CARTE-TABLEAU (3 colonnes × 4 lignes, en-tête), en édition tout de suite */
+  const creerCarteTableau = (x, y) => {
+    const c = nouvelleCarte({ x: x - 190, y: y - 80, w: 380, h: 160, couleur: couleurNouvelle, z: zMax() + 1, grille: nouvelleGrille() });
+    modifier((b) => ({ ...b, objects: [...b.objects, c] }), 'Boîte-tableau');
+    setSelection(new Set([c.id]));
+    setEditId(c.id);
     return c;
   };
   const importer = (ids, ou = null) => {
@@ -274,11 +293,32 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
       setTimeout(() => ro.disconnect(), 1200);
     }
   };
-  useEffect(() => { if (board && aMontrer.current) { const id = aMontrer.current; aMontrer.current = null; requestAnimationFrame(() => montrerFlashcard(id)); } }); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (board && aMontrer.current) { const id = aMontrer.current; aMontrer.current = null; requestAnimationFrame(() => (typeof id === 'object' ? montrerBoite(id.boiteId) : montrerFlashcard(id))); } }); // eslint-disable-line react-hooks/exhaustive-deps
+  /* (22/10) « → Tableau » d'une BOÎTE du lecteur : sa carte (copie, même contenu, même couleur) ; déjà posée : montrée */
+  const montrerBoite = (id) => {
+    const b = boardRef.current;
+    if (!b) { aMontrer.current = { boiteId: id }; return; } // le tableau se charge : il la montrera
+    const objs = b.objects.filter((o) => o.source && o.source.boiteId === id);
+    if (!objs.length) return;
+    setSelection(new Set(objs.map((o) => o.id)));
+    centrer(objs); focusTableau();
+    const v = vueRef.current;
+    if (v && typeof ResizeObserver !== 'undefined') { const ro = new ResizeObserver(() => centrer(objs)); ro.observe(v); setTimeout(() => ro.disconnect(), 1200); }
+  };
+  const ajouterBoite = (boite) => {
+    if (objets.some((o) => o.source && o.source.boiteId === boite.id)) { montrerBoite(boite.id); return null; }
+    const B0 = bornes(objets);
+    const p = B0 ? { x: B0.r + 80, y: B0.y } : (() => { const c = centreVue(); return { x: c.x - 140, y: c.y - 60 }; })();
+    const c = carteDepuisBoite(boite, { x: p.x, y: p.y, z: zMax() + 1 });
+    modifier((b) => ({ ...b, objects: [...b.objects, c] }), 'Boîte ajoutée au tableau');
+    setSelection(new Set([c.id]));
+    montrer([c]);
+    return c;
+  };
   useImperativeHandle(ref, () => ({
     creerCarteTexte(texte) { const p = centreVue(); const k = (cascade.current++ % 6) * 26; const c = creerCarte(p.x + k, p.y + k, { corps: texte }, false); focusTableau(); return c; },
     importerFlashcards(ids) { return importer(ids); },
-    montrerFlashcard,
+    montrerFlashcard, montrerBoite, ajouterBoite,
   }));
   const ajouterImages = async (fichiers, ou = null) => {
     const p = ou || centreVue();
@@ -395,7 +435,7 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
     const B = bornes(bouges), z = cam.current.z;
     let dx = 0, dy = 0;
     const suivi = suivrePointeur(e, {
-      seuil: 3, arreter: true,
+      seuil: 3, arreter: true, glisser: true,
       move: (ev) => {
         dx = (ev.clientX - e.clientX) / z; dy = (ev.clientY - e.clientY) / z;
         const seuil = SEUIL_AIMANT / z, g = [];
@@ -414,7 +454,7 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
       fin: (ev, { bouge, annule }) => {
         geste.current = false; setGuides([]); setApercu(null);
         if (annule) return;
-        if (!bouge) { if (deja && o.type === 'carte') setEditId(o.id); return; }
+        if (!bouge) { if (deja && o.type === 'carte') { focusEdition.current = ev ? { x: ev.clientX, y: ev.clientY } : null; setEditId(o.id); } return; }
         const rx = Math.round(dx), ry = Math.round(dy);
         if (!rx && !ry) return;
         modifier((b) => ({ ...b, objects: b.objects.map((x) => (ids.has(x.id) ? { ...x, x: x.x + rx, y: x.y + ry } : x)),
@@ -463,7 +503,7 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
     const z = cam.current.z;
     let d = null;
     const suivi = suivrePointeur(e, {
-      seuil: 4, arreter: true,
+      seuil: 4, arreter: true, glisser: true,
       move: (ev) => { const dx = (ev.clientX - e.clientX) / z, dy = (ev.clientY - e.clientY) / z; d = { dx, dy };
         setApercuFleche({ id: f.id, patch: { points: (f.points || []).map((p) => ({ x: p.x + dx, y: p.y + dy })), ...(f.vers ? {} : { x: f.x + dx, y: f.y + dy }) } }); },
       fin: (ev, { bouge, annule }) => { geste.current = false; setApercuFleche(null); if (annule || !bouge || !d) return;
@@ -648,6 +688,26 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
       { cle: 'supprimer', titre: 'Supprimer (Suppr)', onClick: supprimerSelection },
     ];
     const o = selObjets[0];
+    if (estGrille(o.grille)) {
+      const g = o.grille, c = celluleRef.current && celluleRef.current.id === o.id ? celluleRef.current : null;
+      const gi = c ? c.i : g.lignes.length - 1, gj = c ? c.j : g.cols.length - 1;
+      const maj = (ng, lib) => modifierObjet(o.id, { grille: ng }, lib);
+      const ic = (n) => <IconeOutil nom={n} size={16} />;
+      return [
+        { cle: 'couleur', couleur: o.couleur, titre: 'Couleur de la carte', onCouleur: (cl) => { setCouleurNouvelle(cl); modifierObjet(o.id, { couleur: cl }, 'Couleur de la carte'); } },
+        { cle: '|' },
+        { cle: 'ligne+', icone: ic('ligneAjout'), titre: 'Ajouter une ligne', desactive: g.lignes.length >= LIMITES_GRILLE.ligMax, onClick: () => maj(ajouterLigne(g, gi), 'Ligne ajoutée') },
+        { cle: 'colonne+', icone: ic('colonneAjout'), titre: 'Ajouter une colonne', desactive: g.cols.length >= LIMITES_GRILLE.colMax, onClick: () => maj(ajouterColonne(g, gj), 'Colonne ajoutée') },
+        { cle: 'ligne-', icone: ic('ligneMoins'), titre: 'Supprimer la ligne', desactive: g.lignes.length <= LIMITES_GRILLE.ligMin, onClick: () => { celluleRef.current = null; maj(retirerLigne(g, gi), 'Ligne supprimée'); } },
+        { cle: 'colonne-', icone: ic('colonneMoins'), titre: 'Supprimer la colonne', desactive: g.cols.length <= LIMITES_GRILLE.colMin, onClick: () => { celluleRef.current = null; maj(retirerColonne(g, gj), 'Colonne supprimée'); } },
+        { cle: 'entete', icone: ic('entete'), actif: !!g.entete, titre: g.entete ? 'Ligne d’en-tête : oui — cliquer pour la retirer' : 'Ligne d’en-tête : non', onClick: () => maj({ ...g, entete: !g.entete }, 'En-tête du tableau') },
+        { cle: '|' },
+        { cle: 'fleche', icone: <Icon name="arrowR" size={15} />, titre: 'Ajouter une flèche : clique ensuite la carte visée (ou un endroit du tableau)', onClick: () => setVisee(o.id) },
+        { cle: 'ecrire', icone: <Icon name="edit" size={14} />, titre: 'Écrire dans le tableau (Entrée, ou double-clic)', onClick: () => setEditId(o.id) },
+        { cle: '|' },
+        { cle: 'supprimer', titre: 'Supprimer (Suppr)', onClick: supprimerSelection },
+      ];
+    }
     if (o.type === 'image') return [{ cle: 'dupliquer', icone: <Icon name="copy" size={14} />, titre: 'Dupliquer (⌘D)', onClick: dupliquer }, { cle: '|' }, { cle: 'supprimer', titre: 'Supprimer (Suppr)', onClick: supprimerSelection }];
     return [
       { cle: 'couleur', couleur: o.couleur, titre: 'Couleur de la carte', onCouleur: (c) => { setCouleurNouvelle(c); modifierObjet(o.id, { couleur: c }, 'Couleur de la carte'); } },
@@ -694,7 +754,8 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
             }
             return (
               <Carte key={o.id} o={o} sel={sel} edition={editId === o.id} visee={visee === o.id}
-                onAppui={(e) => appuiObjet(e, o0)} onEditer={() => { setSelection(new Set([o.id])); setEditId(o.id); }}
+                onGrille={(g, lib) => modifierObjet(o.id, { grille: g }, lib)} onCellule={(i, j) => { celluleRef.current = { id: o.id, i, j }; }} focus={focusEdition.current}
+                onAppui={(e) => appuiObjet(e, o0)} onEditer={(e) => { focusEdition.current = e ? { x: e.clientX, y: e.clientY } : null; setSelection(new Set([o.id])); setEditId(o.id); }}
                 onFinEdition={({ titre, corps }) => { setEditId(null); if (titre !== o0.titre || corps !== o0.corps) modifierObjet(o.id, { titre, corps }, 'Texte de la carte'); focusTableau(); }}
                 onCoin={(e, coin) => redim(e, o0, coin)} onOuvrirFlashcard={onOuvrirFlashcard} />
             );
@@ -718,7 +779,8 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
 
       {/* calque des mini barres : à l'échelle de l'écran (une « page » de la taille de la vue) */}
       <div className="pdfr-page tb2-calque" aria-hidden={false}>
-        {!panEnCours && !apercu && !apercuFleche && !editId && selObjets.length > 0 && (() => {
+        {/* (22/10) une carte-tableau en édition garde sa mini barre (+ ligne / + colonne au curseur) */}
+        {!panEnCours && !apercu && !apercuFleche && (!editId || estGrille((parId.get(editId) || {}).grille)) && selObjets.length > 0 && (() => {
           const B = bornes(selObjets.map(geo));
           return <MiniBarre ancre={versEcran({ x: B.x, y: B.y, w: B.r - B.x, h: B.b - B.y })} pageWidth={rv.width} pageHeight={rv.height} items={itemsObjets()} />;
         })()}
@@ -733,6 +795,7 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
       {/* barre du tableau */}
       <div className="tb2-barre" role="toolbar" aria-label="Tableau" onPointerDown={(e) => e.stopPropagation()}>
         <button type="button" className="tb2-btn principal" data-act="carte" onClick={() => { const p = centreVue(); creerCarte(p.x, p.y); }} title="Nouvelle carte (N, ou double-clic sur le fond)"><Icon name="plus" size={13} /> Carte</button>
+        <button type="button" className="tb2-btn" data-act="carte-tableau" onClick={() => { const p = centreVue(); creerCarteTableau(p.x, p.y); }} title="Nouvelle boîte-tableau : une carte contenant un tableau (3 colonnes × 4 lignes)" aria-label="Nouvelle boîte-tableau"><IconeOutil nom="boiteTableau" size={15} /></button>
         <span className="tb2-sep" />
         <button type="button" className="tb2-btn" data-act="annuler" onClick={hist.annuler} disabled={!hist.peutAnnuler} title={hist.peutAnnuler ? `Annuler — ${hist.libelleAnnuler} (⌘Z)` : 'Annuler (⌘Z)'}><IconeOutil nom="annuler" size={14} /></button>
         <button type="button" className="tb2-btn" data-act="retablir" onClick={hist.retablir} disabled={!hist.peutRetablir} title="Rétablir (⇧⌘Z)"><IconeOutil nom="retablir" size={14} /></button>
@@ -759,11 +822,10 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
         );
       })()}
 
+      {/* (22/10) tableau vide : une seule phrase, centrée */}
       {!objets.length && (
-        <div className="tb2-vide-tableau">
-          <div className="tb2-vide-titre">Le tableau de la fiche</div>
-          <div>Double-clic ou « + Carte » pour une carte · « → Tableau » sur une flashcard, ou glisse-la ici</div>
-          <div>Colle ou glisse une image · sélectionne du texte du cours › « Ajouter au tableau »</div>
+        <div className="tb2-vide-tableau" data-vide="1">
+          <div className="tb2-vide-titre">Double-cliquez pour ajouter une carte, ou glissez une flashcard ici</div>
         </div>
       )}
       {board.repris > 0 && <div className="tb2-info">Ton tableau d’avant ({board.repris} éléments) a été repris ici.</div>}
