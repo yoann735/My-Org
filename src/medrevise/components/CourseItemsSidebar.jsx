@@ -196,6 +196,51 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
      flèches, Page↓, espace — agit aussitôt dessus), sans défilement. Seulement si le focus
      est dans le panneau ou nulle part : jamais volé au lecteur ni à un champ ailleurs. */
   const panneauRef = useRef(null);
+  /* SÉLECTEUR DE MODES EN PANNEAU ÉTROIT (v1.1) : les libellés s'abrègent d'abord (« Exos », « Trans. »…, classe
+     `court` posée ici quand les libellés entiers ne tiennent pas ; le libellé entier reste lu par les lecteurs d'écran) ; les colonnes restent ÉGALES (l'indicateur glisse de 100 % par mode) et larges
+     comme le plus long contenu (--pm-col, mesuré ici) ; si elles ne tiennent pas, le sélecteur défile à l'horizontale,
+     en douceur, avec un fondu sur le bord qui cache encore un mode. Rien ne se chevauche, rien n'est rogné. */
+  const segDefilRef = useRef(null);
+  useLayoutEffect(() => {
+    const d = segDefilRef.current;
+    if (!d || collapsed) return undefined;
+    const seg = d.firstElementChild;
+    const largeurMax = () => {
+      let max = 0;
+      for (const bt of seg.querySelectorAll('.pm-seg-btn')) {
+        let w = 0;
+        for (const c of bt.children) { const r = c.getBoundingClientRect(); if (r.width) w += r.width + (w ? 4 : 0); }
+        max = Math.max(max, w);
+      }
+      return Math.ceil(max + 14); // marges du bouton
+    };
+    const mesurer = () => {
+      d.classList.remove('court');
+      let col = largeurMax();
+      const court = col * modesRef.current.length + 6 > d.clientWidth;
+      if (court) { d.classList.add('court'); col = largeurMax(); }
+      if (seg.style.getPropertyValue('--pm-col') !== col + 'px') seg.style.setProperty('--pm-col', col + 'px');
+      fondus();
+    };
+    const fondus = () => {
+      const deborde = d.scrollWidth > d.clientWidth + 1;
+      d.classList.toggle('fondu-g', deborde && d.scrollLeft > 2);
+      d.classList.toggle('fondu-d', deborde && d.scrollLeft < d.scrollWidth - d.clientWidth - 2);
+    };
+    mesurer();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(mesurer) : null;
+    if (ro) ro.observe(d);
+    d.addEventListener('scroll', fondus, { passive: true });
+    return () => { if (ro) ro.disconnect(); d.removeEventListener('scroll', fondus); };
+  }); // chaque rendu : les compteurs et badges changent la largeur des contenus
+  useEffect(() => { // le mode actif reste visible dans le sélecteur qui défile
+    const d = segDefilRef.current;
+    const bt = d && d.querySelectorAll('.pm-seg-btn')[indexActif];
+    if (!bt || d.scrollWidth <= d.clientWidth + 1) return;
+    const g = bt.offsetLeft - 16, dr = bt.offsetLeft + bt.offsetWidth + 16 - d.clientWidth;
+    if (d.scrollLeft > g) d.scrollTo({ left: g, behavior: 'smooth' });
+    else if (d.scrollLeft < dr) d.scrollTo({ left: dr, behavior: 'smooth' });
+  }, [indexActif]);
   useLayoutEffect(() => {
     if (!focusApres.current) return;
     focusApres.current = false;
@@ -499,15 +544,17 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
       {!collapsed && (
       <div className="pis-body">
         {modes.length > 1 && (
+          <div className="pm-seg-defil" ref={segDefilRef}>
           <div className="pm-seg" role="tablist" aria-label="Mode du panneau" style={{ '--n': modes.length }}>
             <span className="pm-seg-indic" ref={indicRef} aria-hidden="true" />
             {modes.map((m) => (
-              <button key={m.id} type="button" role="tab" aria-selected={modeActif === m.id}
+              <button key={m.id} type="button" role="tab" aria-selected={modeActif === m.id} title={m.label}
                 className={'pm-seg-btn' + (modeActif === m.id ? ' actif' : '')} onClick={() => choisirMode(m.id)}>
-                {m.label}
+                <span className="pm-lib"><span className="pm-long">{m.label}</span><span className="pm-court" aria-hidden="true">{LIBELLES_COURTS[m.id] || m.label}</span></span>
                 {m.badge || (m.n ? <span className="tnum pm-n">{m.n}</span> : null)}
               </button>
             ))}
+          </div>
           </div>
         )}
         <div className="pm-corps" ref={corpsRef}>
@@ -547,6 +594,9 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
 /* ---- un volet de la piste (v1.4) : mémoïsé — props stables (contenu mémoïsé, `cache`
    ne change qu'à la fin d'une aimantation). Sa translation (k × 100 %) est fixe ; c'est la
    piste qui bouge. Hors écran : inerte, masqué aux lecteurs d'écran, hors tabulation. ---- */
+/* libellés abrégés du sélecteur de modes en panneau étroit (v1.1) */
+const LIBELLES_COURTS = { exercices: 'Exos', transcript: 'Trans.', notes: 'Notes', notions: 'Notions', tableau: 'Tableau' };
+
 const Volet = memo(function Volet({ id, label, k, cache, contenu }) {
   return (
     <div className="pm-vue" data-mode={id} style={{ transform: `translate3d(${k * 100}%, 0, 0)` }}

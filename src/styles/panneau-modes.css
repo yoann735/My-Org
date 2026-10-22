@@ -4,11 +4,23 @@
    ============================================================ */
 
 /* sélecteur segmenté, indicateur glissant (--i = index actif, --n = nombre de modes) */
+/* v1.1 : dans un cadre qui défile à l'horizontale quand les modes ne tiennent pas (fondu sur le bord qui cache encore un
+   mode) ; colonnes ÉGALES, au moins aussi larges que le plus long contenu (--pm-col, mesuré par CourseItemsSidebar) */
+.pm-seg-defil { margin: 10px 10px 0; flex: 0 0 auto; overflow-x: auto; overflow-y: hidden; scroll-behavior: smooth; overscroll-behavior-x: contain;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.pm-seg-defil::-webkit-scrollbar { display: none; }
+.pm-seg-defil.fondu-d { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+.pm-seg-defil.fondu-g { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
+.pm-seg-defil.fondu-g.fondu-d { -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
 .pm-seg {
-  position: relative; display: grid; grid-template-columns: repeat(var(--n), 1fr);
-  margin: 10px 10px 0; padding: 3px; border-radius: var(--r-5, 10px);
-  background: var(--bg-2); border: 1px solid var(--border-2); flex: 0 0 auto;
+  position: relative; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); min-width: calc(var(--n) * var(--pm-col, 0px) + 8px); box-sizing: border-box;
+  padding: 3px; border-radius: var(--r-5, 10px);
+  background: var(--bg-2); border: 1px solid var(--border-2);
 }
+.pm-lib { display: inline-flex; flex: 0 0 auto; }
+.pm-court { display: none; }
+.pm-seg-defil.court .pm-court { display: inline; }
+.pm-seg-defil.court .pm-long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } /* lu par les lecteurs d'écran */
 .pm-seg-indic {
   position: absolute; top: 3px; bottom: 3px; left: 3px;
   width: calc((100% - 6px) / var(--n)); transform: translateX(calc(var(--i) * 100%));
@@ -17,7 +29,7 @@
   transition: transform .12s cubic-bezier(0, 0, .58, 1); /* (17/10) 120 ms, ease-out sans dépassement */
 }
 .pm-seg-btn {
-  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; overflow: hidden;
   padding: 6px 4px; border: none; background: transparent; color: var(--text-3);
   font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: color .2s;
 }
@@ -184,7 +196,8 @@ textarea.fcf-champ { min-height: 0; }
 /* menu « Amorce ▾ » */
 .mam { position: relative; display: inline-flex; }
 .mam-bouton.actif { color: var(--accent); }
-.mam-menu { position: absolute; z-index: 40; top: calc(100% + 4px); right: 0; width: min(290px, 80vw); max-height: 340px; display: flex; flex-direction: column; gap: 6px; padding: 8px;
+/* v1.1 : rendu dans un portail, position fixe calculée (AmorcesRecto.jsx#placerMenuAmorces) */
+.mam-menu { position: fixed; z-index: 10050; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; padding: 8px;
   border-radius: 12px; background: var(--card); border: 1px solid var(--border-2); box-shadow: 0 14px 36px rgba(0, 0, 0, .4); }
 .mam-recherche { height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border-2); background: var(--bg); color: var(--text); font: inherit; font-size: 12.5px; outline: none; }
 .mam-recherche:focus { border-color: var(--accent); }

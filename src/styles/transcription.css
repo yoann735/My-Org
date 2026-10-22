@@ -155,6 +155,17 @@
 .trx-entete-lecture .trx-titre-lecture::before { content: '· '; color: var(--text-3); }
 @container trx (max-width: 360px) { .trx-entete-lecture .trx-retour .trx-abr { display: none; } .trx-entete-lecture .trx-titre-lecture::before { content: ''; } }
 @container trx (max-width: 300px) { .trx-entete-lecture .trx-abr { display: none; } }
+/* v1.1 — RANGÉES DE CONTRÔLES D'UNE SESSION en panneau étroit (< 400 px de panneau) : jamais de chevauchement.
+   Rangée principale (direct) : la pastille garde son point, Pause / Arrêter restent entiers. Rangée secondaire : DEUX
+   lignes propres — les actions (note, mots-clés, source, page) puis, à droite, la taille du texte et le plein écran. */
+.trx-barre:not(.trx-entete-lecture) > * { flex-shrink: 0; }
+.trx-barre:not(.trx-entete-lecture) > .trx-ressort { flex-shrink: 1; min-width: 0; }
+@container trx (max-width: 376px) {
+  .trx-panneau > .trx-barre:not(.secondaire):not(.trx-entete-lecture) .trx-pastille { font-size: 0; gap: 0; }
+  .trx-panneau > .trx-barre.secondaire { flex-wrap: wrap; row-gap: 6px; }
+  .trx-panneau > .trx-barre.secondaire > .trx-ressort { flex: 1 0 100% !important; height: 0; margin-bottom: -6px; } /* le saut de ligne */
+  .trx-panneau > .trx-barre.secondaire > .trx-tailles { margin-left: auto; }
+}
 
 @media (max-width: 760px) {
   .trx-liste.taille-m { --trx-fs: 17px; }

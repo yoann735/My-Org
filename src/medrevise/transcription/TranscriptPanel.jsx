@@ -1002,7 +1002,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
           <Pastille e={e} />
           <span className="trx-chrono tnum">{mmss(e.secondes)}</span>
           <VuMetre />
-          <span style={{ flex: 1 }} />
+          <span className="trx-ressort" style={{ flex: 1 }} />
           {e.phase === 'paused'
             ? <button type="button" className="btn sm primary" onClick={reprendreApresPause}><Icon name="play" size={12} /> Reprendre</button>
             : <button type="button" className="btn sm" onClick={pause} disabled={e.phase !== 'live'} title="Pause : plus rien n’est envoyé, la connexion reste ouverte"><span className="trx-ic-pause" /> Pause</button>}
@@ -1023,7 +1023,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
             <Icon name="mic" size={12} />
           </button>
           {boutonPage(e.session)}
-          <span style={{ flex: 1 }} />
+          <span className="trx-ressort" style={{ flex: 1 }} />
           {/* tablette comprise : tout reste visible (la rangée passe à la ligne si besoin) */}
           <ChoixTaille taille={taille} onTaille={choisirTaille} />
           <button type="button" className="icon-btn sm" onClick={() => setPlein((v) => !v)} title={plein ? 'Quitter le plein écran (Échap)' : 'Plein écran (lecture à distance)'}><Icon name={plein ? 'x' : 'maximize'} size={13} /></button>
@@ -1068,7 +1068,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
         {dejaAilleurs === lecture.id && <div className="trx-info"><Icon name="alert" size={12} /> Déjà en cours sur un autre appareil — ouverte en lecture.</div>}
         <div className="trx-barre secondaire">
           {boutonPage(lecture)}
-          <span style={{ flex: 1 }} />
+          <span className="trx-ressort" style={{ flex: 1 }} />
           <ChoixTaille taille={taille} onTaille={choisirTaille} />
           <button type="button" className="icon-btn sm" onClick={() => setPlein((v) => !v)} title={plein ? 'Quitter le plein écran (Échap)' : 'Plein écran'}><Icon name={plein ? 'x' : 'maximize'} size={13} /></button>
         </div>
