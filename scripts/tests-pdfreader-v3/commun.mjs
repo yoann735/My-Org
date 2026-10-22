@@ -11,7 +11,20 @@ export async function banc(W = 1440, H = 900, opts = {}) {
     const pdfId=await S.putBlob(new Blob([a],{type:'application/pdf'}));
     await S.put('fiches',{id:${JSON.stringify(id)},matiereId:'mat-v3',dossierId:null,titre:${JSON.stringify(titre)},type:'standard',pdfId,pdfName:${JSON.stringify(fichier)},dateImport:'2026-10-20'});return pdfId;`);
   // outil de la barre par son libellé (aria-label en tablette, title sinon)
-  b.outil = async (label) => { const p = await b.pos(`[...document.querySelectorAll('.ptb-outil, .tab-outil')].find(x=>(x.getAttribute('aria-label')||x.title||'').startsWith(${JSON.stringify(label)}))`, false); await b.clic(p, { att: 250 }); };
+  // (22/10, docs/compte-rendu-simplification-outils.md) barre à 6 outils : un ancien nom d'outil ouvre son groupe
+  // (Dessin, Texte, Insérer) puis choisit le sous-outil dans la sous-barre — les anciens bancs restent valables
+  const SOUS = { Crayon: ['dessin', 'crayon'], Gomme: ['dessin', 'gomme'], 'Boîte': ['ecrire', 'boite'], Texte: ['ecrire', 'texte'], Forme: ['forme', null], Image: ['inserer', 'image'] };
+  b.outil = async (label) => {
+    const g = SOUS[label];
+    if (g && await b.ev(`!!document.querySelector('[data-outil="${g[0]}"]')`)) {
+      const actif = await b.ev(`(document.querySelector('[data-outil="${g[0]}"]').getAttribute('aria-pressed'))`);
+      if (actif !== 'true' || !g[1]) await b.clic(await b.pos(`document.querySelector('[data-outil="${g[0]}"]')`, false), { att: 250 });
+      if (g[1] === 'image') { await b.clic(await b.pos(`document.querySelector('[data-inserer="image"]')`, false), { att: 250 }); return; }
+      if (g[1] && (await b.ev(`(document.querySelector('[data-sous-outil="${g[1]}"]')||{}).getAttribute?.('aria-pressed')`)) !== 'true') await b.clic(await b.pos(`document.querySelector('[data-sous-outil="${g[1]}"]')`, false), { att: 250 });
+      return;
+    }
+    const p = await b.pos(`[...document.querySelectorAll('.ptb-outil, .tab-outil')].find(x=>(x.getAttribute('aria-label')||x.title||'').startsWith(${JSON.stringify(label)}))`, false); await b.clic(p, { att: 250 });
+  };
   b.zoomPct = () => b.ev(`(document.querySelector('.tab-zoom, .ptb-zoom .hint')||{}).innerText||''`);
   // fait défiler le lecteur jusqu'à la page de clé n (pages virtualisées : on avance par écrans jusqu'à ce qu'elle soit montée)
   b.allerPage = async (n, marge = 6) => {
