@@ -27,8 +27,8 @@ import { connecteursDe, epingleSeule, patchRetirer, patchAjouter, patchStyle, pa
 import { styleFleche, cheminFleche, geoPointe, sommetsConnecteur, sommetsForme, pointesForme, harmonisee, suivant, TRAITS as TRAITS_FORME } from './flechesGeo.js';
 import { TraitFleche, PoigneesFleche, pointsAvecAjout, glisserPointFleche, appuiLong, itemsFleche, boiteSous } from './Fleche.jsx';
 import { CadreSelection, MiniBarre, redimensionner } from './Selection.jsx';
-import { BoutonTailleTexte } from './TailleTexte.jsx';
-import { lisser3, arrondirPoints, cheminCatmull, cheminDroit, cheminTrait, densifier, morceauxHors, OPACITE_SURLIGNEUR_CRAYON, EPAISSEURS_CRAYON } from './crayon.js';
+import { BoutonTaille } from './ChoixTaille.jsx';
+import { lisser3, arrondirPoints, cheminCatmull, cheminDroit, cheminTrait, densifier, morceauxHors, OPACITE_SURLIGNEUR_CRAYON } from './crayon.js';
 import { suivreImage } from './attaches.js';
 import { Icon } from '../../shared/Icon.jsx';
 import { outputScaleFor } from './pdfjsSetup.js';
@@ -40,7 +40,7 @@ import { ocrImage } from '../ocr/ocrImage.js';
 import { COULEUR_DEFAUT } from '../lib/palette.js';
 import {
   couleurFoncee, opaciteFondBoite, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT, COMPACT, fractionPx100, MOT, fractionRef,
-  TAILLES_TEXTE, tailleTexteDe, ecrireTailleTexte, epaisseurPx, champsEpaisseur, versLargeur,
+  GRILLE, PAGE_REF, taille1000De, champsTaille, ecrireTaille, epaisseurPx, ep1000De, champsEp1000, epFleche1000, champsFleche1000,
   clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
   soustraireAncres, partCouverte, surlignagesTouches, couleurHex, planSurlignage,
@@ -457,7 +457,7 @@ export function PdfPageContent({
     const droit = surligneur && surligneurDroit;
     const brut = [versPage(e, r)];
     const points = () => (droit ? accrocherAngles([brut[0], brut[brut.length - 1]], ratio, 12) : lisser3(brut));
-    const style = { couleur: encre(couleurTrait), opacite: surligneur ? OPACITE_SURLIGNEUR_CRAYON : 1, largeur: Math.max(surligneur ? 4 : 1, versLargeur(epaisseurTrait) * r.width), droit }; // (22/10) en % de la largeur
+    const style = { couleur: encre(couleurTrait), opacite: surligneur ? OPACITE_SURLIGNEUR_CRAYON : 1, largeur: Math.max(surligneur ? 4 : 1, (epaisseurTrait / PAGE_REF) * r.width), droit }; // (v1.1) px d'une page de 1000 px
     let annule = false;
     const suivi = suivrePointeur(e, {
       doigt: 'defiler',
@@ -889,10 +889,8 @@ export function PdfPageContent({
         const c = cadreTrait(pts), H = pageHeight || 800, W = pageWidth || 600;
         const marge = Math.max(4, epaisseurPx(traitSel, W, H, 0.0042) / 2 + 3); // le cadre entoure le trait, épaisseur comprise
         const ancre = { x: c.x * W - marge, y: c.y * H - marge, w: c.width * W + 2 * marge, h: c.height * H + 2 * marge };
-        // les 3 épaisseurs en % de la largeur (22/10) ; celle du trait, quelle que soit son unité
-        const liste = EPAISSEURS_CRAYON[modeDuTrait(traitSel) === 'surligneur' ? 'surligneur' : 'dessin'].map((x) => versLargeur(x.v));
-        const ep = epaisseurPx(traitSel, W, H, 0.0042) / W;
-        const iEp = liste.reduce((best, v, i) => (Math.abs(v - ep) < Math.abs(liste[best] - ep) ? i : best), 0);
+        // (v1.1) le sélecteur commun (pdf/ChoixTaille.jsx) : l'épaisseur du trait en px d'une page de 1000 px, quelle que soit son unité
+        const genreTrait = modeDuTrait(traitSel) === 'surligneur' ? 'surligneur' : 'crayon';
         return (<>
           <div className="pdfr-trait-sel sel-objet" style={{ left: ancre.x, top: ancre.y, width: ancre.w, height: ancre.h }}
             onPointerDown={(e) => deplacerTrait(e, traitSel)}>
@@ -901,8 +899,8 @@ export function PdfPageContent({
           {!traitApercu && (
             <MiniBarre ancre={ancre} pageWidth={W} pageHeight={H} items={[
               { cle: 'couleur', couleur: traitSel.couleur, titre: 'Couleur du trait', onCouleur: (cl) => onModifierTrait(traitSel, { couleur: cl }, 'Couleur du trait') },
-              { cle: 'epaisseur', icone: <IconeOutil nom={'epaisseur' + (iEp + 1)} size={16} />, titre: 'Épaisseur (fine, moyenne, épaisse)',
-                onClick: () => onModifierTrait(traitSel, champsEpaisseur(liste[(iEp + 1) % liste.length], W, H), 'Épaisseur du trait') },
+              { cle: 'epaisseur', element: <BoutonTaille genre={genreTrait} valeur={ep1000De(traitSel, W, H, genreTrait === 'surligneur' ? EPAISSEUR_SURLIGNEUR : 0.0042)} echelle={W / PAGE_REF}
+                couleur={couleurHex(traitSel.couleur, '#1F1F24')} onChange={(v) => { ecrireTaille(genreTrait, v); onModifierTrait(traitSel, champsEp1000(v, W, H), 'Épaisseur du trait'); }} /> },
               { cle: '|' },
               { cle: 'supprimer', titre: `Supprimer le trait (annulable par ${RACCOURCI_Z})`, onClick: () => { onSelection(null); onGommer({ supprimer: [traitSel] }); } },
             ]} />
@@ -1177,14 +1175,20 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const compacteLibre = !mot && !!boite.compacte && !boite.largeurFixe && !redim;
   const ajustee = !mot && !boite.compacte && !redim && !boite.largeurFixe && !!extraitBrut;
   const libre = motLibre || compacteLibre || ajustee; // largeur suivie à l'écran (largVue), pas celle enregistrée
-  /* TAILLE DU TEXTE en % de la largeur de page (22/10, pdfShared.js#TAILLES_TEXTE) : --lp = 1 % de la largeur de la
-     page à l'échelle de référence de la boîte ; sans `tailleTexte`, la taille d'avant (13 px, 15 px pour un texte) */
+  /* TAILLE DU TEXTE (v1.1, pdfShared.js#GRILLE) : px d'une page de 1000 px (`taille1000`) ; --lp = 1 % de la largeur de
+     la page à l'échelle de référence de la boîte (10 px de référence = --lp). Sans champ : la taille d'avant (`tailleTexte`
+     en %, sinon 13 px — 15 px pour une zone de texte — de référence), relue telle quelle.
+     BORDURE et MARGES des boîtes créées depuis la v1.1 (`bord1000`, `pad1000`) : elles aussi en px d'une page de 1000 px. */
   const [apercuTaille, setApercuTaille] = useState(null);
-  const tailleEff = tailleTexteDe(boite, texteLibre ? 15 : 13, refW);
-  const tailleVue = apercuTaille != null ? apercuTaille : Number.isFinite(boite.tailleTexte) ? boite.tailleTexte : null;
-  const styleCorps = tailleVue != null ? { fontSize: `calc(var(--lp) * ${tailleVue})` } : undefined;
+  const tailleEff = taille1000De(boite, texteLibre ? 15 : 13, refW);
+  const tailleVue = apercuTaille != null ? apercuTaille : Number.isFinite(boite.taille1000) || Number.isFinite(boite.tailleTexte) ? tailleEff : null;
+  const styleCorps = tailleVue != null ? { fontSize: `calc(var(--lp) * ${+(tailleVue / 10).toFixed(4)})` } : undefined;
+  const [apercuBord, setApercuBord] = useState(null);
+  const avecBord = !texteLibre && (boite.fond === 'transparent' || boite.fond === 'teinte');
+  const bord1000 = apercuBord != null ? apercuBord : Number.isFinite(boite.bord1000) ? boite.bord1000 : null;
   const style = {
     '--lp': (refW / 100) + 'px',
+    ...(Array.isArray(boite.pad1000) ? { '--carte-px': (boite.pad1000[0] / PAGE_REF) * refW + 'px', '--carte-py': (boite.pad1000[1] / PAGE_REF) * refW + 'px' } : {}),
     left: b.x * 100 + '%', top: b.y * 100 + '%', minHeight: mot ? (boite.largeurFixe || redim ? b.height * refH : 0) : b.height * refH,
     ...(k !== 1 ? { scale: String(k), transformOrigin: '0 0' } : {}),
     ...(motLibre ? { width: 'max-content', minWidth: MOT.largeurMin, maxWidth: MOT.largeurMaxPage * refW }
@@ -1194,6 +1198,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     ...(texteLibre
       ? { color: couleurHex(boite.couleur, '#1F1F24') }
       : (() => { const f = styleFondBoite(boite, fondNoir); if ((active || selectionne) && !boite.fond) delete f.borderColor; return f; })()),
+    ...(avecBord && bord1000 != null ? { borderWidth: (bord1000 / PAGE_REF) * refW, '--carte-bord': (bord1000 / PAGE_REF) * refW + 'px' } : {}),
   };
 
   const bLarg = refW ? (libre && largVue ? largVue : b.width * refW) / refW : b.width; // largeur affichée (fraction de page)
@@ -1285,10 +1290,10 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     const harmo = harmonisee(c);
     // dessin harmonisé (21/10) : le trait d'une bordure de boîte (1,5 px à 160 %), la couleur de la boîte ; flèches
     // d'avant : 2 px, la teinte foncée de la boîte — exactement leur rendu d'alors
-    const base = (harmo ? 1.5 : 2) * k * st.epaisseur;
+    const base = Number.isFinite(c.ep1000) ? (c.ep1000 / PAGE_REF) * pageWidth : (harmo ? 1.5 : 2) * k * st.epaisseur; // (v1.1) px d'une page de 1000 px
     const defaut = harmo ? couleurBoite : couleurFoncee(boite.couleur);
     const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-    return { pts, st, harmo, largeur: base * (sel ? 1.5 : 1), geo: geoPointe(c, base, { k }), couleurDefaut: defaut, couleur: st.couleur ? couleurHex(st.couleur, defaut) : defaut,
+    return { pts, st, harmo, c, largeur: base * (sel ? 1.5 : 1), geo: geoPointe(c, base, { k }), couleurDefaut: defaut, couleur: st.couleur ? couleurHex(st.couleur, defaut) : defaut,
       boite: { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) } };
   };
   const geos = new Map(connecteurs.map((c) => [c.id, geoConn(c, false)]));
@@ -1330,8 +1335,12 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const version = versionAffichee(boite);
   const iFond = Math.max(0, FONDS_BOITE.findIndex((f) => f.id === (boite.fond || 'plein')));
   const fondSuivant = FONDS_BOITE[(iFond + 1) % FONDS_BOITE.length];
-  const itemTaille = { cle: 'taille', element: <BoutonTailleTexte valeur={tailleEff} onApercu={setApercuTaille}
-    onChange={(v) => { ecrireTailleTexte(v); onModifier(boite, { tailleTexte: v }, 'Taille du texte'); }} /> };
+  const itemTaille = { cle: 'taille', element: <BoutonTaille genre="texte" valeur={tailleEff} echelle={(refW * k) / PAGE_REF} onApercu={setApercuTaille}
+    onChange={(v) => { ecrireTaille('texte', v); onModifier(boite, champsTaille(v), 'Taille du texte'); }} /> };
+  // bordure d'une boîte transparente ou teintée (px d'une page de 1000 px ; une boîte d'avant : sa bordure de 1,5 px de référence)
+  const itemBordure = avecBord ? { cle: 'bordure', element: <BoutonTaille genre="bordure" valeur={Number.isFinite(boite.bord1000) ? boite.bord1000 : +((1.5 / (refW || 1)) * PAGE_REF).toFixed(2)}
+    echelle={(refW * k) / PAGE_REF} couleur={couleurHex(boite.couleur)} onApercu={setApercuBord}
+    onChange={(v) => { ecrireTaille('bordure', v); onModifier(boite, { bord1000: v }, 'Bordure de la boîte'); }} /> } : null;
   const itemsBoite = enAncrage ? [{ cle: 'vise', libelle: 'Clique ce que la flèche vise… · Annuler', titre: 'Annuler (Échap)', onClick: () => onDemanderAncrage(null) }]
     : texteLibre ? [
       { cle: 'couleur', couleur: boite.couleur, titre: 'Couleur du texte', onApercu, onCouleur: (c) => onModifier(boite, { couleur: c }, 'Couleur du texte') },
@@ -1344,6 +1353,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       { cle: 'fond', icone: <span className={'nb-fond-ic ' + FONDS_BOITE[iFond].id} style={{ '--c': couleurBoite }} aria-hidden="true" />,
         titre: `Fond : ${FONDS_BOITE[iFond].label.toLowerCase()} — cliquer pour « ${fondSuivant.label.toLowerCase()} » (plein → transparent → teinté)`,
         onClick: () => { ecrireFondBoiteDefaut(fondSuivant.id); onModifier(boite, { fond: fondSuivant.id }, 'Fond de la boîte'); } },
+      itemBordure,
       { cle: '|' },
       { cle: 'fleche', icone: <Icon name="arrowR" size={15} />, titre: 'Ajouter une flèche : clique ensuite l’endroit, le surlignage, la forme ou la boîte visés', onClick: () => onDemanderAncrage(boite.id, { ajout: true }) },
       { cle: 'reduire', icone: <IconeOutil nom="reduire" size={16} />, titre: 'Réduire en pastille : un clic sur la pastille rouvre la boîte, un glisser la déplace', onClick: () => onModifier(boite, { reduite: true }, 'Réduction de la boîte') },
@@ -1390,6 +1400,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       {!enGeste && !translApercu && !ctlApercu && (
         <MiniBarre ancre={gSel.boite} pageWidth={pageWidth} pageHeight={pageHeight}
           items={itemsFleche(gSel.st, { couleurDefaut: gSel.couleurDefaut, onStyle: (patch, libelle) => onModifier(boite, patchStyle(boite, cSel.id, patch), libelle),
+            ep: { valeur: epFleche1000(cSel, refW, gSel.harmo ? 1.5 : 2), echelle: pageWidth / PAGE_REF, champs: (v) => champsFleche1000(v, refW, gSel.harmo ? 1.5 : 2) },
             onSupprimer: () => { onSelConn(null); onModifier(boite, patchRetirer(boite, cSel.id), 'Flèche retirée'); } })} />
       )}
     </>)}
@@ -1762,7 +1773,6 @@ function formeSousPoint(el, cx, cy) {
 }
 
 /** (21/10) les 3 épaisseurs d'une forme (fraction de la hauteur de page) ; 0,0025 = celle d'avant ; style du trait */
-export const EPAISSEURS_FORME = [0.0012, 0.0025, 0.004];
 const dashForme = (f, ep) => (f.trait === 'tirets' ? `${ep * 4} ${ep * 3}` : f.trait === 'pointilles' ? `0.01 ${ep * 2.4}` : undefined);
 function Forme({ forme, active = false, interactive = false, liee = false, apercu = false, fondNoir = false, pageWidth, pageHeight, onActiver, onMaj, onModifier, onSupprimer, onGeste, onApercu = null, cadres = null, k = 1 }) {
   const [geste, setGeste] = useState(null);
@@ -1772,7 +1782,7 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
   const trait = estTrait(type);
   const W = pageWidth || 600, H = pageHeight || 800;
   // épaisseur du cadre : fraction de la page affichée — elle suit le zoom avec le cadre (04/10)
-  const ep = Math.max(1, epaisseurPx(forme, W, H, 0.0025)); // (22/10) en % de la largeur pour les formes récentes
+  const ep = Math.max(1, epaisseurPx(forme, W, H, 0.0025)); // (v1.1) px d'une page de 1000 px (`ep1000`), sinon l'unité d'avant
   const coul = fondNoir ? lisibleSurNoir(couleurHex(forme.couleur, '#e5383b')) : couleurHex(forme.couleur, '#e5383b');
   const wpx = g.width * W, hpx = g.height * H;
   /* FLÈCHES DE L'OUTIL FORMES (ligne, flèche, double flèche) — le MÊME modèle et le même tracé que les flèches des
@@ -1786,7 +1796,7 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
   // flèche harmonisée (21/10) : EXACTEMENT le trait et la pointe d'une flèche de boîte (1,5 px à 160 % × épaisseur,
   // en unités de page) ; flèches d'avant : leur épaisseur de forme
   const harmo = trait && harmonisee(srcStyle);
-  const epTrait = trait ? (harmo ? 1.5 * k * st.epaisseur : ep * st.epaisseur) : ep;
+  const epTrait = trait ? (srcStyle && Number.isFinite(srcStyle.ep1000) ? (srcStyle.ep1000 / PAGE_REF) * W : harmo ? 1.5 * k * st.epaisseur : ep * st.epaisseur) : ep;
   const coulTrait = trait && st.couleur ? (fondNoir ? lisibleSurNoir(couleurHex(st.couleur, coul)) : couleurHex(st.couleur, coul)) : coul;
   // un bout en cours de glisser est détaché (il suit le pointeur) ; les autres bouts rattachés suivent leur boîte
   const sommets = trait ? sommetsForme(g, W, H, ctl, cadres) : null;
@@ -1855,18 +1865,20 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
   const couleurTexte = couleurFoncee(forme.couleur);
   /* LA MINI BARRE (pdf/Selection.jsx) : forme fermée = style du trait · remplissage · épaisseur · couleur · supprimer ;
      ligne / flèche = LA mini barre des flèches (la même que celle d'une flèche de boîte) */
-  const epL = epaisseurPx(forme, W, H, 0.0025) / W, listeEp = EPAISSEURS_FORME.map(versLargeur);
-  const iEp = listeEp.reduce((best, v, i) => (Math.abs(v - epL) < Math.abs(listeEp[best] - epL) ? i : best), 0);
+  const refW = W / (k || 1); // largeur de la page à l'échelle de référence
   const IC_T = { continu: 'traitContinu', tirets: 'traitTirets', pointilles: 'traitPointilles' };
   const items = trait
-    ? itemsFleche(st, { couleurDefaut: forme.couleur, onStyle: (patch, libelle) => (patch.couleur !== undefined ? onModifier(forme, { couleur: patch.couleur, ...(forme.fleche && forme.fleche.couleur ? { fleche: { ...forme.fleche, couleur: null } } : {}) }, libelle) : stylerForme(patch, libelle)), onSupprimer: () => onSupprimer(forme) })
+    ? itemsFleche(st, { couleurDefaut: forme.couleur,
+      ep: { valeur: Number.isFinite(srcStyle && srcStyle.ep1000) ? srcStyle.ep1000 : harmo ? epFleche1000(srcStyle, refW) : +(((ep * st.epaisseur) / W) * PAGE_REF).toFixed(2), echelle: W / PAGE_REF,
+        champs: (v) => (harmo ? champsFleche1000(v, refW) : { ep1000: v }) },
+      onStyle: (patch, libelle) => (patch.couleur !== undefined ? onModifier(forme, { couleur: patch.couleur, ...(forme.fleche && forme.fleche.couleur ? { fleche: { ...forme.fleche, couleur: null } } : {}) }, libelle) : stylerForme(patch, libelle)), onSupprimer: () => onSupprimer(forme) })
     : [
       { cle: 'trait', icone: <IconeOutil nom={IC_T[forme.trait] || 'traitContinu'} size={16} />, titre: 'Style du trait (continu, tirets, pointillés)',
         onClick: () => onModifier(forme, { trait: suivant(TRAITS_FORME, forme.trait || 'continu') }, 'Style du trait') },
       ...(estFermee(type) ? [{ cle: 'remplir', icone: <IconeOutil nom={forme.remplie ? 'remplir' : 'vide'} size={16} />, actif: !!forme.remplie, titre: forme.remplie ? 'Remplie — cliquer pour retirer le fond' : 'Vide — cliquer pour remplir d’une teinte légère',
         onClick: () => onModifier(forme, { remplie: !forme.remplie }, forme.remplie ? 'Forme vidée' : 'Forme remplie') }] : []),
-      { cle: 'epaisseur', icone: <IconeOutil nom={'epaisseur' + (iEp < 0 ? 2 : iEp + 1)} size={16} />, titre: 'Épaisseur (fine, moyenne, épaisse)',
-        onClick: () => onModifier(forme, champsEpaisseur(listeEp[(iEp + 1) % listeEp.length], W, H), 'Épaisseur de la forme') },
+      { cle: 'epaisseur', element: <BoutonTaille genre="forme" valeur={ep1000De(forme, W, H, 0.0025)} echelle={W / PAGE_REF} couleur={coul}
+        onChange={(v) => { ecrireTaille('forme', v); onModifier(forme, champsEp1000(v, W, H), 'Épaisseur de la forme'); }} /> },
       { cle: 'couleur', couleur: forme.couleur, titre: 'Couleur de la forme', onApercu, onCouleur: (c) => onModifier(forme, { couleur: c }, 'Couleur de la forme') },
       { cle: '|' },
       { cle: 'supprimer', titre: `Supprimer la forme (annulable par ${RACCOURCI_Z}, ou à la gomme)`, onClick: () => onSupprimer(forme) },
@@ -1909,7 +1921,7 @@ function Forme({ forme, active = false, interactive = false, liee = false, aperc
         )}
       </svg>
       {(forme.texte || ecrit !== null) && (
-        <div className={'pf-texte' + (trait ? ' sur-trait' : '')} style={{ color: couleurTexte, ...(Number.isFinite(forme.tailleTexte) ? { fontSize: (forme.tailleTexte / 100) * W } : {}) }}>
+        <div className={'pf-texte' + (trait ? ' sur-trait' : '')} style={{ color: couleurTexte, ...(Number.isFinite(forme.taille1000) || Number.isFinite(forme.tailleTexte) ? { fontSize: (taille1000De(forme, 13, W) / PAGE_REF) * W } : {}) }}>
           {ecrit !== null ? (
             <textarea autoFocus value={ecrit} rows={Math.max(1, ecrit.split('\n').length)} placeholder="Texte…"
               onChange={(e) => setEcrit(e.target.value)}
@@ -2081,10 +2093,10 @@ export function EditToolbar({ editor, onReset, libre = false, couleur = null, on
       <button type="button" className={'et-btn' + (active('underline') ? ' active' : '')} title="Souligné" onClick={() => run((c) => c.toggleUnderline())}><u>U</u></button>
       <button type="button" className={'et-btn' + (active('strike') ? ' active' : '')} title="Barré" onClick={() => run((c) => c.toggleStrike())}><s>S</s></button>
       <span className="et-sep" />
-      {/* (22/10) dans une boîte, les tailles sont en % de la largeur de la page (--lp, voir NoteBox) */}
+      {/* (v1.1) dans une boîte, les tailles en px d'une page de 1000 px (10 px = --lp, voir NoteBox) */}
       <select className="et-select" defaultValue="" onChange={(e) => { if (e.target.value) run((c) => c.setFontSize(e.target.value)); e.target.value = ''; }}>
         <option value="" disabled>Taille</option>
-        {libre ? TAILLES_TEXTE.map((t) => <option key={t.id} value={`calc(var(--lp) * ${t.v})`}>{t.id} · {String(t.v).replace('.', ',')} %</option>)
+        {libre ? GRILLE.texte.liste.map((v) => <option key={v} value={`calc(var(--lp) * ${v / 10})`}>{v} px</option>)
           : FONT_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
       </select>
       <select className="et-select" defaultValue="" onChange={(e) => { if (e.target.value) run((c) => c.setFontFamily(e.target.value)); e.target.value = ''; }}>

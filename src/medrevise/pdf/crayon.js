@@ -16,18 +16,11 @@
 const lireLS = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } };
 const ecrireLS = (k, v) => { try { localStorage.setItem(k, String(v)); } catch (e) { /* stockage bloqué : réglage de la session */ } };
 
-/** les 3 épaisseurs (fraction de la hauteur de page) — mêmes valeurs que les préréglages du 20/10 */
-export const EPAISSEURS_CRAYON = {
-  dessin: [{ id: 'fin', label: 'Fin', v: 0.0024 }, { id: 'moyen', label: 'Moyen', v: 0.0042 }, { id: 'epais', label: 'Épais', v: 0.0075 }],
-  surligneur: [{ id: 'fin', label: 'Fin', v: 0.011 }, { id: 'moyen', label: 'Moyen', v: 0.017 }, { id: 'epais', label: 'Épais', v: 0.026 }],
-};
 /** opacité fixe du surligneur à main levée */
 export const OPACITE_SURLIGNEUR_CRAYON = 0.4;
 
-/** réglages mémorisés par appareil : épaisseur choisie par mode, surligneur en ligne droite, mode de la gomme */
+/** réglages mémorisés par appareil : surligneur en ligne droite, mode de la gomme (l'épaisseur : pdfShared.js#lireTaille, v1.1) */
 export const reglagesCrayon = {
-  epaisseur: (mode) => { const id = lireLS('medrevise.epaisseur.' + mode, 'moyen'); return (EPAISSEURS_CRAYON[mode] || EPAISSEURS_CRAYON.dessin).find((e) => e.id === id) || EPAISSEURS_CRAYON[mode][1]; },
-  setEpaisseur: (mode, id) => ecrireLS('medrevise.epaisseur.' + mode, id),
   surligneurDroit: () => lireLS('medrevise.surligneurDroit', '1') !== '0',
   setSurligneurDroit: (v) => ecrireLS('medrevise.surligneurDroit', v ? '1' : '0'),
   modeGomme: () => (lireLS('medrevise.modeGomme', 'zone') === 'trait' ? 'trait' : 'zone'),

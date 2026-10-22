@@ -25,11 +25,12 @@ const ici = [vue.x + 200, vue.y + 160];
 await poser(ici);
 await b.attendreFocus();
 let m = await mesure();
-// (22/10) les boîtes neuves ont le gabarit « carte » : marges 10 × 8 px
-b.ok(m && Math.abs(m.h - (m.ligne + 16)) <= 1 && Math.abs(m.w - 40) <= 1, 'boîte vide : compacte — une ligne + 16 px de haut (marges 8 px), 40 px de large', JSON.stringify({ w: m.w, h: m.h, ligne: m.ligne }));
+// (22/10) les boîtes neuves ont le gabarit « carte » ; (v1.1) marges 10 × 8 px d'une page de 1000 px (k = largeur de la page / 1000)
+const k1000 = (await b.page(1)).w / 1000;
+b.ok(m && Math.abs(m.h - (m.ligne + 16 * k1000)) <= 1 && Math.abs(m.w - 40) <= 1, 'boîte vide : compacte — une ligne + 2 × 8 px (page de 1000 px) de haut, 40 px de large', JSON.stringify({ w: m.w, h: m.h, ligne: m.ligne, k1000 }));
 await b.ecrire('Rein'); await b.dormir(300);
 m = await mesure();
-b.ok(Math.abs(m.w - Math.max(40, m.texte + 20)) <= 1.5 && Math.abs(m.h - (m.ligne + 16)) <= 1, 'un mot : largeur = mot + 20 px, hauteur = une ligne + 16 px (marges 10 × 8 px)', JSON.stringify({ w: m.w, h: m.h, texte: m.texte }));
+b.ok(Math.abs(m.w - Math.max(40, m.texte + 20 * k1000)) <= 1.5 && Math.abs(m.h - (m.ligne + 16 * k1000)) <= 1, 'un mot : largeur = mot + 2 × 10 px, hauteur = une ligne + 2 × 8 px (marges d’une page de 1000 px)', JSON.stringify({ w: m.w, h: m.h, texte: m.texte }));
 b.ok(m.coins === '10px' && m.bord === '0px' && m.contour === '1.5px' && m.ombre, 'dessin : coins 10 px, pas de bordure, contour 1,5 px à la sélection, ombre légère', JSON.stringify(m));
 const motUn = m;
 // (21/10, harmonisation) sélectionnée : le cadre unique (contour + 4 coins) et la mini barre — plus de poignée ni d'épingle

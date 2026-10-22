@@ -25,7 +25,7 @@ const glisser = async (de, a) => { if (tactile) await b.doigt(de, a, 10); else a
 const ecrireDans = async (sel, t) => { await b.ev(`(()=>{const e=${sel};e.focus();e.select&&e.select();return 1})()`); await b.ev(`document.execCommand('insertText',false,${JSON.stringify(t)})`); };
 
 // 1) l'onglet « Tableau » du panneau, après Notions
-const modes = await b.ev(`[...document.querySelectorAll('.pm-seg-btn')].map(x=>x.innerText.replace(/\\d+/g,'').trim())`);
+const modes = await b.ev(`[...document.querySelectorAll('.pm-seg-btn')].map(x=>x.querySelector('.pm-long').textContent.trim())`); // (v1.1) le libellé entier (abrégé à l'écran en panneau étroit)
 b.ok(modes[modes.length - 1] === 'Tableau' && modes.indexOf('Tableau') === modes.indexOf('Notions') + 1, 'panneau : un onglet « Tableau » après Notions', JSON.stringify(modes));
 await clic(`[...document.querySelectorAll('.pm-seg-btn')].find(x=>x.innerText.trim().startsWith('Tableau'))`); await b.dormir(600);
 const boutons = await b.ev(`[...document.querySelectorAll('.ptb2 [data-act]')].map(x=>x.dataset.act+(x.disabled?':off':''))`);

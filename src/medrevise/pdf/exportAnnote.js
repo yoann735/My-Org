@@ -34,8 +34,9 @@ import { COLOR_RGB, couleurHex, couleurFoncee, opaciteFondBoite, EPAISSEUR_SURLI
 const ZOOM_REFERENCE = 1.6;
 const TAILLE_BOITE = 13 / ZOOM_REFERENCE;
 const TAILLE_TEXTE = 15 / ZOOM_REFERENCE;
-/** (22/10) taille du texte d'une annotation (pt) : `tailleTexte` % de la largeur de la page, sinon celle d'avant */
-const tailleDe = (a, W, avant) => (Number.isFinite(a && a.tailleTexte) ? (a.tailleTexte / 100) * W : avant);
+/** taille du texte d'une annotation (pt) : (v1.1) `taille1000` px d'une page de 1000 px, (22/10) `tailleTexte` % de la
+    largeur de la page, sinon celle d'avant */
+const tailleDe = (a, W, avant) => (Number.isFinite(a && a.taille1000) ? (a.taille1000 / 1000) * W : Number.isFinite(a && a.tailleTexte) ? (a.tailleTexte / 100) * W : avant);
 
 const hexVersRgb = (hex) => {
   const h = String(hex || '#000000').replace('#', '');
@@ -274,7 +275,7 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
      finissent à son bord */
   const geoBoite = (b, W, H) => {
     // (22/10) gabarit « carte » : marges 10 × 8 px de référence ; taille du texte en % de la largeur
-    const carte = b.gabarit === 'carte', pad = carte ? 10 / ZOOM_REFERENCE : 4, tb = tailleDe(b, W, TAILLE_BOITE);
+    const carte = b.gabarit === 'carte', pad = Array.isArray(b.pad1000) ? (b.pad1000[0] / 1000) * W : carte ? 10 / ZOOM_REFERENCE : 4, tb = tailleDe(b, W, TAILLE_BOITE);
     const x = b.x * W;
     // (21/10) gabarit « un mot » : la largeur suit le texte jusqu'à 45 % de la page, comme à l'écran
     let w = Math.max(24, (b.gabarit === 'mot' || carte) && !b.largeurFixe ? 0.45 * W : b.width * W);
@@ -315,7 +316,7 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
       // (21/10) ligne / flèche / double flèche : le MÊME tracé qu'à l'écran (pdf/flechesGeo.js), points de contrôle compris
       // harmonisée : le trait et la pointe d'une flèche de boîte ; bouts rattachés (`attaches`) au bord de leur boîte
       const st = styleFleche(f.fleche, { pointes: pointesForme(type) }), harmo = harmonisee(f.fleche);
-      const larg = harmo ? 1.5 * K_PDF * st.epaisseur : ep * st.epaisseur, cf = st.couleur ? hexVersRgb(couleurHex(st.couleur, '#e5383b')) : coul;
+      const larg = f.fleche && Number.isFinite(f.fleche.ep1000) ? (f.fleche.ep1000 / 1000) * W : harmo ? 1.5 * K_PDF * st.epaisseur : ep * st.epaisseur, cf = st.couleur ? hexVersRgb(couleurHex(st.couleur, '#e5383b')) : coul;
       const cadres = {};
       for (const id of [f.attaches && f.attaches.debut, f.attaches && f.attaches.fin]) { const cb = id && cadresBoites.get(id); if (cb && cb.page === page) cadres[id] = cb.fr; }
       dessinerFlechePdf(page, sommetsForme(f, W, H, null, cadres), st, larg, geoPointe(f.fleche, larg, { contexte: 'forme', k: K_PDF }), cf, origine);
@@ -395,7 +396,7 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
       const cc = c.boiteCible && cadresBoites.get(c.boiteCible);
       const pts = sommetsConnecteur(cadre, c, W, H, kc, null, cc && cc.page === page ? cc.px : null);
       if (!pts) continue;
-      const st = styleFleche(c), larg = (harmo ? 1.5 * K_PDF : 1.5) * st.epaisseur;
+      const st = styleFleche(c), larg = Number.isFinite(c.ep1000) ? (c.ep1000 / 1000) * W : (harmo ? 1.5 * K_PDF : 1.5) * st.epaisseur;
       const defaut = harmo ? hexVersRgb(couleurHex(b.couleur)) : coulFleche;
       dessinerFlechePdf(page, pts, st, larg, geoPointe(c, larg, { k: kc }), st.couleur ? hexVersRgb(couleurHex(st.couleur, '#444444')) : defaut, { x: 0, y: H });
       bilan.fleches += 1;
@@ -405,7 +406,7 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     // 09/10 : fond choisi par boîte (transparent / teinté / plein) ; sans `fond` : rendu d'avant
     const encreBoite = b.fond === 'plein' && (0.299 * fond.red + 0.587 * fond.green + 0.114 * fond.blue) < 0.5 ? rgb(1, 1, 1) : rgb(0.09, 0.09, 0.16);
     if (!b.fond) page.drawRectangle({ x, y: top - h, width: w, height: h, color: fond, opacity: opaciteFondBoite(b.couleur), borderColor: rgb(0, 0, 0), borderOpacity: 0.28, borderWidth: 0.8 });
-    else page.drawRectangle({ x, y: top - h, width: w, height: h, ...(b.fond === 'transparent' ? {} : { color: fond, opacity: b.fond === 'teinte' ? 0.15 : 0.92 }), borderColor: fond, borderWidth: 1 });
+    else page.drawRectangle({ x, y: top - h, width: w, height: h, ...(b.fond === 'transparent' ? {} : { color: fond, opacity: b.fond === 'teinte' ? 0.15 : 0.92 }), borderColor: fond, borderWidth: Number.isFinite(b.bord1000) && b.fond !== 'plein' ? (b.bord1000 / 1000) * W : 1 });
     lignes.forEach((l, i) => { if (l) page.drawText(l, { x: x + pad, y: top - pad - tb * 0.95 - i * lh, size: tb, font, color: encreBoite }); });
     if (reperes && reperes.has(b.id)) poserRepere(page, b.id, { x, top, w, h, lignes: lignes.map((l, i) => ({ x: x + pad, top: top - pad - i * lh, w: font.widthOfTextAtSize(l, tb), h: lh, vide: !l.trim() })) });
     if (ancre) page.drawCircle({ x: ancre.x, y: ancre.y, size: 3.5, color: rgb(1, 1, 1), borderColor: coulFleche, borderWidth: 1.8 });

@@ -70,7 +70,7 @@ import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
   COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI, opaciteSurlignage, MOT, fractionRef,
   useDevicePixelRatio, compareHighlights, computePageTextMap,
-  MODES_CRAYON, couleurHex, BOITE_DEFAUT, lireFondBoiteDefaut, echelleControles, lireTailleTexte, champsEpaisseur, versLargeur,
+  MODES_CRAYON, couleurHex, BOITE_DEFAUT, lireFondBoiteDefaut, echelleControles, GRILLE, PAGE_REF, lireTaille, ecrireTaille, champsTaille, champsEp1000,
 } from './pdfShared.js';
 import { PdfPageContent, EditToolbar, ECHELLE_REF } from './PdfPage.jsx';
 import { PdfToolbar } from './PdfToolbar.jsx';
@@ -78,7 +78,8 @@ import { SelecteurCouleurs, dansSelecteurFlottant } from './Couleurs.jsx';
 import { patchAjouter, patchRetirer, connecteursDe, connecteurStocke } from './connecteurs.js';
 import { ZONE_SELECTION } from './Selection.jsx';
 import { COULEUR_DEFAUT } from '../lib/palette.js';
-import { reglagesCrayon as reglagesCrayonPdf, EPAISSEURS_CRAYON, OPACITE_SURLIGNEUR_CRAYON } from './crayon.js';
+import { reglagesCrayon as reglagesCrayonPdf, OPACITE_SURLIGNEUR_CRAYON } from './crayon.js';
+import { BoutonTaille } from './ChoixTaille.jsx';
 import { IconeOutil, IconeForme } from './IconesOutils.jsx';
 import { TYPES_FORMES, estTrait, estFermee, ancreSurForme, typeForme } from './formes.js';
 import { GEO_HARMONISE } from './flechesGeo.js';
@@ -295,12 +296,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const setTypeFormeActif = (t) => { setTypeFormeActifBrut(t); try { localStorage.setItem('medrevise.typeForme', t); } catch (e) { /* ignore */ } };
   const [formeRemplie, setFormeRemplie] = useState(false);
   const [couleurTexte, setCouleurTexte] = useState('noir'); // couleur du prochain TEXTE LIBRE
-  /* CRAYON (refait simple le 21/10, pdf/crayon.js) : couleur + une de TROIS épaisseurs par mode (dessin /
-     surligneur à main levée), mémorisées sur l'appareil ; surligneur « en ligne droite » ; gomme Zone / Trait entier. */
+  /* CRAYON (refait simple le 21/10, pdf/crayon.js) : couleur + épaisseur par mode (dessin / surligneur à main levée),
+     mémorisée sur l'appareil ; surligneur « en ligne droite » ; gomme Zone / Trait entier.
+     (v1.1) l'épaisseur se choisit au sélecteur commun (pdf/ChoixTaille.jsx), en px d'une page de 1000 px */
   const [modeCrayon, setModeCrayon] = useState('dessin'); // dessin | surligneur (même moteur)
-  const [epaisseurs, setEpaisseurs] = useState(() => ({ dessin: reglagesCrayonPdf.epaisseur('dessin').id, surligneur: reglagesCrayonPdf.epaisseur('surligneur').id }));
-  const choisirEpaisseur = (mode, id) => { reglagesCrayonPdf.setEpaisseur(mode, id); setEpaisseurs((e) => ({ ...e, [mode]: id })); };
-  const epaisseurDe = (mode) => (EPAISSEURS_CRAYON[mode].find((x) => x.id === epaisseurs[mode]) || EPAISSEURS_CRAYON[mode][1]).v;
+  const genreCrayon = (mode) => (mode === 'surligneur' ? 'surligneur' : 'crayon');
+  const [epaisseurs, setEpaisseurs] = useState(() => ({ dessin: lireTaille('crayon'), surligneur: lireTaille('surligneur') }));
+  const choisirEpaisseur = (mode, v) => { ecrireTaille(genreCrayon(mode), v); setEpaisseurs((e) => ({ ...e, [mode]: v })); };
+  const epaisseurDe = (mode) => epaisseurs[mode] || GRILLE[genreCrayon(mode)].defaut; // px1000
   const [surligneurDroit, setSurligneurDroitBrut] = useState(reglagesCrayonPdf.surligneurDroit);
   const setSurligneurDroit = (v) => { setSurligneurDroitBrut(v); reglagesCrayonPdf.setSurligneurDroit(v); };
   const [modeGomme, setModeGommeBrut] = useState(reglagesCrayonPdf.modeGomme);
@@ -2211,9 +2214,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // rien à l'écran : l'outil « ne créait rien ». La couleur est celle de la barre
     // contextuelle, partagée par tous les outils colorés.
     // (21/10) `gabarit: 'mot'` : taille d'un mot, grandit avec le texte (pdfShared.js#MOT) — les boîtes d'avant n'ont pas ce champ
-    // (22/10) gabarit « carte » et taille du texte en % de la largeur de page (la dernière choisie)
+    // (22/10) gabarit « carte » ; (v1.1) taille du texte (la dernière choisie, 18 px par défaut), bordure 1,5 px et marges
+    // 10 × 8 px — en px d'une page de 1000 px (pdfShared.js#GRILLE)
     const rec = { ...newNoteBox({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurActive, fond: lireFondBoiteDefaut() }), ...(gabarit ? { gabarit } : {}), ...(largeurFixe ? { largeurFixe: true } : {}),
-      ...(gabarit === 'carte' ? { tailleTexte: lireTailleTexte() } : {}) };
+      ...(gabarit === 'carte' ? { ...champsTaille(lireTaille('texte')), bord1000: lireTaille('bordure'), pad1000: [GRILLE.padding.x, GRILLE.padding.y] } : {}) };
     const cmd = cmdCreer('annotations', rec, 'Boîte de texte');
     hist.appliquer(cmd); // visible tout de suite (effet local), écrite ensuite
     videsFraiches.current.add(rec.id);
@@ -2303,10 +2307,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!points || points.length < 2) return;
     const surligneur = mode === 'surligneur';
     // (21/10) épaisseur = le préréglage choisi ; opacité fixe (1 au crayon, 40 % au surligneur) ; tracé Catmull-Rom
-    // (22/10) épaisseur en % de la largeur de SA page (pdfShared.js#champsEpaisseur) : la même proportion partout
+    // (v1.1) épaisseur en px d'une page de 1000 px (pdfShared.js#champsEp1000) : la même proportion partout
     const sz = pageSizes.find((p) => String(p.cle) === String(page)) || pageSizes[0] || { width: 842, height: 595 };
-    const rec = { ...newTrait({ ficheId: nsAnnot, page, points, couleur: couleurCrayon, mode, epaisseur: epaisseurDe(mode),
-      opacite: surligneur ? OPACITE_SURLIGNEUR_CRAYON : 1, aimant: false }), rendu, ...champsEpaisseur(versLargeur(epaisseurDe(mode)), sz.width, sz.height) };
+    const rec = { ...newTrait({ ficheId: nsAnnot, page, points, couleur: couleurCrayon, mode,
+      opacite: surligneur ? OPACITE_SURLIGNEUR_CRAYON : 1, aimant: false }), rendu, ...champsEp1000(epaisseurDe(mode), sz.width, sz.height) };
     await hist.appliquer(cmdCreer('annotations', rec, surligneur ? 'Surligneur à main levée' : 'Trait au crayon'));
   };
   /* GOMME : UN geste = UNE entrée d'historique, même s'il a traversé plusieurs traits. `supprimer` : traits et
@@ -2628,10 +2632,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const creerForme = ({ page, x, y, width, height, forme, fx, fy }) => {
     const rec0 = newForme({ ficheId: nsAnnot, page, x, y, width, height, couleur: couleurForme, forme, fx, fy, remplie: formeRemplie && estFermee(forme) });
     // (21/10) ligne / flèche : le dessin harmonisé des flèches (trait fin d'une bordure de boîte, pointe proportionnelle)
-    // (22/10) forme fermée : bordure en % de la largeur de sa page, taille de son texte aussi
+    // (v1.1) en px d'une page de 1000 px : trait d'une forme fermée (2,5), flèche (2,5), texte (18) — les derniers choisis
     const sz = pageSizes.find((p) => String(p.cle) === String(page)) || pageSizes[0] || { width: 842, height: 595 };
-    const rec = estTrait(forme) ? { ...rec0, epaisseur: 0.0012, fleche: { geo: GEO_HARMONISE } }
-      : { ...rec0, ...champsEpaisseur(versLargeur(rec0.epaisseur || 0.0025), sz.width, sz.height), tailleTexte: lireTailleTexte() };
+    const rec = estTrait(forme) ? { ...rec0, epaisseur: 0.0012, fleche: { geo: GEO_HARMONISE, ep1000: lireTaille('fleche') } }
+      : { ...rec0, ...champsEp1000(lireTaille('forme'), sz.width, sz.height), ...champsTaille(lireTaille('texte')) };
     hist.appliquer(cmdCreer('annotations', rec, 'Forme'));
   };
   /* déplacer / redimensionner une forme : ses LÉGENDES suivent (02/10 soir) — l'épingle
@@ -2999,7 +3003,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const sz = pageSizes.find((p) => String(p.cle) === String(page)) || pageSizes[0] || { width: 600, height: 800 };
       const ligne = fractionRef(MOT.hauteur, sz.height), largeur = fractionRef(MOT.largeurMin, sz.width);
       const rec = { ...newTexteLibre({ ficheId: nsAnnot, page, x: Math.min(x, 1 - largeur), y: Math.max(0, Math.min(y - ligne / 2, 1 - ligne)),
-        width: largeur, height: ligne, couleur: couleurTexte }), gabarit: 'carte', tailleTexte: lireTailleTexte() };
+        width: largeur, height: ligne, couleur: couleurTexte }), gabarit: 'carte', ...champsTaille(lireTaille('texte')) };
       hist.appliquer(cmdCreer('annotations', rec, 'Texte libre'));
       videsFraiches.current.add(rec.id);
       setActiveEditId(rec.id);
@@ -3510,14 +3514,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
               ))}
             </div>
             <span className="ptb-sep" />
-            <div className="ptb-segment" role="group" aria-label="Épaisseur">
-              {EPAISSEURS_CRAYON[modeCrayon].map((e) => (
-                <button key={e.id} type="button" data-epaisseur={e.id} className={epaisseurs[modeCrayon] === e.id ? 'actif' : ''} title={`Épaisseur : ${e.label.toLowerCase()}`}
-                  onClick={() => choisirEpaisseur(modeCrayon, e.id)}>
-                  <span className="ptb-ep" style={{ '--ep': [2, 3.5, 6][EPAISSEURS_CRAYON[modeCrayon].indexOf(e)] + 'px' }} aria-hidden="true" />{e.label}
-                </button>
-              ))}
-            </div>
+            <BoutonTaille barre genre={genreCrayon(modeCrayon)} valeur={epaisseurDe(modeCrayon)} couleur={couleurHex(couleurCrayon, '#1F1F24')}
+              echelle={(((pageSizes[Math.max(0, pageCourante - 1)] || pageSizes[0] || { width: 842 }).width) * scale) / PAGE_REF}
+              onChange={(v) => choisirEpaisseur(modeCrayon, v)} />
             {modeCrayon === 'surligneur' && (<>
               <span className="ptb-sep" />
               <button type="button" className={'ptb-bascule' + (surligneurDroit ? ' actif' : '')} aria-pressed={surligneurDroit} data-reglage="ligne-droite" onClick={() => setSurligneurDroit(!surligneurDroit)}

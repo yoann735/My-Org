@@ -22,8 +22,6 @@ export const GEO_CLASSIQUE = 2;
 /** (21/10) dessin harmonisé avec les boîtes : trait fin (la bordure d'une boîte), pointe nette proportionnelle à
     l'épaisseur, couleur de la boîte — les flèches créées depuis le 21/10 (connecteurs et outil Formes) */
 export const GEO_HARMONISE = 3;
-/** les 3 épaisseurs proposées (facteur de l'épaisseur de base) ; les autres valeurs déjà posées restent rendues */
-export const EPAISSEURS_FLECHE = [1, 1.6, 2.4];
 const CHAMPS = ['type', 'points', 'pointes', 'trait', 'epaisseur', 'couleur'];
 
 /** la flèche a-t-elle un style à elle ? */

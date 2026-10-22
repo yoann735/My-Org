@@ -35,7 +35,7 @@ for (const ctx of CONTEXTES) for (const tab of [false, true]) {
   await souris('mouseReleased', pts[pts.length - 1], ex); await b.dormir(600);
   let n = await nouveaux();
   const tr = n.find((a) => a.kind === 'trait');
-  b.ok(peint && tr && tr.rendu === 'cr' && tr.opacite === 1 && [0.0024, 0.0042, 0.0075].map((v) => +(v * 595 / 842).toFixed(5)).includes(tr.epaisseurL), `${nom} : crayon — aperçu dès le 1er point, trait Catmull-Rom, épaisseur prédéfinie`, JSON.stringify(tr && { rendu: tr.rendu, epL: tr.epaisseurL }));
+  b.ok(peint && tr && tr.rendu === 'cr' && tr.opacite === 1 && [2, 3, 5].includes(tr.ep1000), `${nom} : crayon — aperçu dès le 1er point, trait Catmull-Rom, épaisseur prédéfinie (px d’une page de 1000 px)`, JSON.stringify(tr && { rendu: tr.rendu, ep1000: tr.ep1000 }));
   // boîte « carte » + flèche
   await b.outil('Boîte');
   const pb = [x0 + 40, y0 + 120];

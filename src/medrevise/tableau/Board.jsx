@@ -21,7 +21,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { putBlob, getBlob, getOne, put, genId } from '../lib/storage.js';
 import { useAnnotHistorique, cmdModifier } from '../lib/annotHistory.js';
 import { lireBoard, idBoard, nouvelleCarte, nouvelleImage, nouvelleFleche, grilleDeCartes, CARTE_BOARD, ZOOM_BOARD } from '../lib/board.js';
-import { couleurHex, opaciteFondBoite } from '../pdf/pdfShared.js';
+import { couleurHex, opaciteFondBoite, lireTaille } from '../pdf/pdfShared.js';
 import { CadreSelection, MiniBarre, redimRect } from '../pdf/Selection.jsx';
 import { IconeOutil } from '../pdf/IconesOutils.jsx';
 import { TraitFleche, PoigneesFleche, itemsFleche, boiteSous } from '../pdf/Fleche.jsx';
@@ -328,7 +328,7 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
     if (editId) setEditId(null);
     if (visee) { // flèche en cours de pose : un clic sur le fond pose son bout libre
       const p = versMonde(e.clientX, e.clientY);
-      const f = nouvelleFleche({ de: visee, x: p.x, y: p.y });
+      const f = { ...nouvelleFleche({ de: visee, x: p.x, y: p.y }), ep1000: lireTaille('fleche') };
       modifier((b) => ({ ...b, edges: [...b.edges, f] }), 'Flèche');
       setVisee(null); setSelection(new Set([f.id]));
       return;
@@ -379,7 +379,7 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     if (visee) { // la flèche en cours de pose vise cette carte
       e.stopPropagation(); e.preventDefault();
-      if (o.id !== visee && o.type === 'carte') { const f = nouvelleFleche({ de: visee, vers: o.id }); modifier((b) => ({ ...b, edges: [...b.edges, f] }), 'Flèche'); setSelection(new Set([f.id])); }
+      if (o.id !== visee && o.type === 'carte') { const f = { ...nouvelleFleche({ de: visee, vers: o.id }), ep1000: lireTaille('fleche') }; modifier((b) => ({ ...b, edges: [...b.edges, f] }), 'Flèche'); setSelection(new Set([f.id])); }
       setVisee(null); return;
     }
     if (outilMain || espace.current) return; // le fond fait le déplacement de vue
@@ -447,7 +447,8 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
     const pts = sommetsConnecteur(cad, f, 1, 1, 1, null, cible);
     if (!pts) return null;
     const st = styleFleche(f);
-    const base = 1.5 * st.epaisseur;
+    // (v1.1) `ep1000` : le monde du tableau compte comme une page de 1000 px ; une flèche d'avant : 1,5 × son facteur
+    const base = Number.isFinite(f.ep1000) ? f.ep1000 : 1.5 * st.epaisseur;
     // couleur par défaut : l'encre du fond du tableau (une flèche de la couleur de sa carte se perdait sur les cartes)
     const defaut = theme === 'blanc' ? '#3b3b4f' : '#c9c9d6';
     const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
@@ -723,7 +724,8 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
         })()}
         {!panEnCours && !apercuFleche && gSel && (
           <MiniBarre ancre={versEcran(gSel.boite)} pageWidth={rv.width} pageHeight={rv.height}
-            items={itemsFleche(gSel.st, { couleurDefaut: gSel.couleurDefaut, onStyle: (patch, libelle) => modifierFleche(fSel.id, patch, libelle), onSupprimer: () => { setSelection(new Set()); modifier((b) => ({ ...b, edges: b.edges.filter((f) => f.id !== fSel.id) }), 'Flèche retirée'); } })} />
+            items={itemsFleche(gSel.st, { couleurDefaut: gSel.couleurDefaut, onStyle: (patch, libelle) => modifierFleche(fSel.id, patch, libelle),
+              ep: { valeur: Number.isFinite(fSel.ep1000) ? fSel.ep1000 : 1.5 * gSel.st.epaisseur, echelle: z, champs: (v) => ({ ep1000: v, epaisseur: +(v / 1.5).toFixed(3) }) }, onSupprimer: () => { setSelection(new Set()); modifier((b) => ({ ...b, edges: b.edges.filter((f) => f.id !== fSel.id) }), 'Flèche retirée'); } })} />
         )}
         {visee && <div className="tb2-visee mini-barre">Clique la carte visée (ou un endroit du tableau) · <button type="button" className="linklike" onClick={() => setVisee(null)}>Annuler</button></div>}
       </div>

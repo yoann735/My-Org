@@ -20,6 +20,7 @@
    rendu d'avant à l'identique.
    ============================================================ */
 import { GEO_CLASSIQUE, GEO_HARMONISE } from './flechesGeo.js';
+import { lireTaille } from './pdfShared.js';
 
 export const ID_PRINCIPALE = 'principale';
 
@@ -57,10 +58,11 @@ export function patchStyle(boite, id, style) {
 }
 
 /** ajoute un connecteur vers `cible` ({ x, y, texte, surlignageId?, formeId?, boiteCible? }) — la 1re comme les
-    suivantes ; (21/10) une nouvelle flèche a le dessin harmonisé (`geo: 3`, flechesGeo.js#geoPointe) */
+    suivantes ; (21/10) une nouvelle flèche a le dessin harmonisé (`geo: 3`, flechesGeo.js#geoPointe) ; (v1.1) son
+    épaisseur, la dernière choisie (2,5 px d'une page de 1000 px par défaut) */
 export function patchAjouter(boite, cible) {
   const id = 'fl' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  return { fleches: [...(boite.fleches || []), { id, geo: GEO_HARMONISE, ...cible }] };
+  return { fleches: [...(boite.fleches || []), { id, geo: GEO_HARMONISE, ep1000: lireTaille('fleche'), ...cible }] }; // (v1.1) épaisseur en px d'une page de 1000 px
 }
 /** un connecteur, tel que stocké (pour le recopier sur une autre boîte) */
 export function connecteurStocke(boite, id) {

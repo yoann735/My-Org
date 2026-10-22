@@ -8,7 +8,9 @@
      glisser un point           le déplacer (la courbe passe toujours par lui)
      double-clic sur un point   le retirer
    ============================================================ */
-import { cheminFleche, indexInsertion, suivant, POINTES, TRAITS, EPAISSEURS_FLECHE } from './flechesGeo.js';
+import { cheminFleche, indexInsertion, suivant, POINTES, TRAITS } from './flechesGeo.js';
+import { BoutonTaille } from './ChoixTaille.jsx';
+import { ecrireTaille, couleurHex } from './pdfShared.js';
 import { suivrePointeur, rectPage } from './pointeur.js';
 import { IconeOutil } from './IconesOutils.jsx';
 
@@ -112,14 +114,15 @@ export function PoigneesFleche({ points, couleur, position, donnees = {}, classe
 }
 
 /* ---------- LA MINI BARRE D'UNE FLÈCHE (la même pour un connecteur de boîte et une flèche / ligne de Formes) ----------
-   type droite / courbe · pointe de début · pointe de fin · style du trait · épaisseur (3) · couleur · supprimer */
+   type droite / courbe · pointe de début · pointe de fin · style du trait · épaisseur · couleur · supprimer
+   (v1.1) l'épaisseur passe par LE sélecteur commun (pdf/ChoixTaille.jsx), en px d'une page de 1000 px :
+   `ep` = { valeur (px1000), echelle (px à l'écran par px1000), champs(v) → les champs à écrire } */
 const IC_POINTE = { aucune: 'pointeAucune', ouverte: 'pointeOuverte', pleine: 'pointePleine' };
 const IC_TRAIT = { continu: 'traitContinu', tirets: 'traitTirets', pointilles: 'traitPointilles' };
 const LIB_POINTE = { aucune: 'aucune', ouverte: 'ouverte', pleine: 'pleine' };
 const LIB_TRAIT = { continu: 'continu', tirets: 'tirets', pointilles: 'pointillés' };
-export function itemsFleche(st, { couleurDefaut, onStyle, onSupprimer }) {
+export function itemsFleche(st, { couleurDefaut, onStyle, onSupprimer, ep }) {
   const ic = (n, style) => <IconeOutil nom={n} size={16} style={style} />;
-  const iEp = EPAISSEURS_FLECHE.indexOf(st.epaisseur);
   const courbe = st.type === 'souple';
   return [
     { cle: 'type', icone: ic(courbe ? 'courbe' : 'droite'), actif: courbe, titre: courbe ? 'Courbe (passe par chaque point) — cliquer pour une flèche droite' : 'Droite (segments) — cliquer pour une courbe',
@@ -130,8 +133,8 @@ export function itemsFleche(st, { couleurDefaut, onStyle, onSupprimer }) {
       onClick: () => onStyle({ pointes: { ...st.pointes, fin: suivant(POINTES, st.pointes.fin) } }, 'Pointe de fin') },
     { cle: 'trait', icone: ic(IC_TRAIT[st.trait]), titre: `Style : ${LIB_TRAIT[st.trait]} (continu, tirets, pointillés)`,
       onClick: () => onStyle({ trait: suivant(TRAITS, st.trait) }, 'Style du trait') },
-    { cle: 'epaisseur', icone: ic('epaisseur' + (iEp < 0 ? 1 : iEp + 1)), titre: 'Épaisseur (fine, moyenne, épaisse)',
-      onClick: () => onStyle({ epaisseur: EPAISSEURS_FLECHE[(Math.max(-1, iEp) + 1) % EPAISSEURS_FLECHE.length] }, 'Épaisseur de la flèche') },
+    { cle: 'epaisseur', element: <BoutonTaille genre="fleche" valeur={ep.valeur} echelle={ep.echelle} couleur={couleurHex(st.couleur || couleurDefaut, '#888890')}
+      onChange={(v) => { ecrireTaille('fleche', v); onStyle(ep.champs(v), 'Épaisseur de la flèche'); }} /> },
     { cle: 'couleur', couleur: st.couleur || couleurDefaut, titre: 'Couleur de la flèche', onCouleur: (c) => onStyle({ couleur: c }, 'Couleur de la flèche') },
     { cle: '|' },
     { cle: 'supprimer', titre: 'Supprimer la flèche (Suppr)', onClick: onSupprimer },

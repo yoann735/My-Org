@@ -117,31 +117,61 @@ export const MOT = { largeurMin: 40, hauteur: 24, largeurMaxPage: 0.45 };
 /** fraction de page d'une longueur en px à l'échelle de référence des boîtes */
 export const fractionRef = (px, cote100) => (cote100 > 0 ? px / (cote100 * ECHELLE_BOITES) : 0);
 
-/* TAILLE DU TEXTE EN % DE LA LARGEUR DE PAGE (22/10, docs/compte-rendu-tableau-flashcards.md §4). Une taille
-   nominale occupe la même proportion de n'importe quelle page (A4 portrait, 16:9, capture d'écran) : champ `tailleTexte`
-   (pourcentage de la largeur) des boîtes, zones de texte et formes ; préréglages S / M / L / XL étalonnés sur une
-   diapo 16:9 (M = 1 % ≈ 13,5 px au zoom de référence). Une annotation d'avant n'a pas ce champ : sa taille d'alors
-   (13 px de référence, 15 px pour une zone de texte) est relue en % de SA page — rien ne change à l'écran. */
-export const TAILLES_TEXTE = [{ id: 'S', v: 0.8 }, { id: 'M', v: 1.0 }, { id: 'L', v: 1.4 }, { id: 'XL', v: 2.0 }];
-export const TAILLE_TEXTE_MIN = 0.4, TAILLE_TEXTE_MAX = 4;
-export const lireTailleTexte = () => { try { const v = parseFloat(localStorage.getItem('medrevise.tailleTexte')); return v >= TAILLE_TEXTE_MIN && v <= TAILLE_TEXTE_MAX ? v : 1.0; } catch (e) { return 1.0; } };
-export const ecrireTailleTexte = (v) => { try { localStorage.setItem('medrevise.tailleTexte', String(v)); } catch (e) { /* stockage bloqué */ } };
-/** taille effective (% de la largeur) ; `pxRef` : la taille d'avant en px à l'échelle de référence, `largeurRef` : la
-    largeur de la page à cette échelle */
-export const tailleTexteDe = (a, pxRef, largeurRef) => (Number.isFinite(a && a.tailleTexte) ? a.tailleTexte : largeurRef > 0 ? (pxRef / largeurRef) * 100 : 1.0);
-/** le préréglage le plus proche d'une taille (pour l'affichage) */
-export const presetTaille = (v) => TAILLES_TEXTE.reduce((m, t) => (Math.abs(t.v - v) < Math.abs(m.v - v) ? t : m), TAILLES_TEXTE[0]);
+/* ============================================================
+   GRILLE DES TAILLES (v1.1, docs/compte-rendu-tableau-flashcards.md « v1.1 — corrections ») — UNE unité pour tout le
+   lecteur et le tableau : le PX D'UNE PAGE DE RÉFÉRENCE DE 1000 PX DE LARGE (« px1000 »). Une valeur est rendue
+   proportionnellement à la largeur réelle de la page : 16 px fait la même proportion sur une A4, une diapo 16:9 ou une
+   capture d'écran. L'utilisateur ne voit que des px (pdf/ChoixTaille.jsx).
+   Champs : `taille1000` (texte), `ep1000` (crayon, surligneur, forme, flèche), `bord1000` et `pad1000` (boîtes).
+   Les champs d'avant restent ÉCRITS à côté (un appareil pas encore à jour les lit) et sont RELUS sans rien changer à
+   l'écran quand le nouveau manque : `tailleTexte` (% de la largeur, 22/10) = px1000 / 10 ; `epaisseurL` (fraction de la
+   largeur) × 1000 ; `epaisseur` (fraction de la hauteur, avant le 22/10) ; texte sans champ : sa taille d'alors (13 px
+   de référence, 15 px pour une zone de texte) rapportée à SA page.
+   ============================================================ */
+export const PAGE_REF = 1000;
+export const GRILLE = {
+  texte: { defaut: 18, presets: [14, 18, 24], liste: [10, 12, 14, 16, 18, 20, 24, 28, 32, 40], min: 6, max: 120, pas: 1 },
+  crayon: { defaut: 3, presets: [2, 3, 5], min: 0.5, max: 40, pas: 0.5 },
+  surligneur: { defaut: 14, presets: [10, 14, 20], min: 2, max: 80, pas: 1 },
+  fleche: { defaut: 2.5, presets: [1.5, 2.5, 4], min: 0.5, max: 20, pas: 0.5 },
+  forme: { defaut: 2.5, presets: [1.5, 2.5, 4], min: 0.5, max: 20, pas: 0.5 },
+  bordure: { defaut: 1.5, presets: [1, 1.5, 3], min: 0.5, max: 12, pas: 0.5 },
+  padding: { x: 10, y: 8 },
+};
+export const bornerTaille = (genre, v) => { const g = GRILLE[genre] || GRILLE.texte; return Math.min(g.max, Math.max(g.min, Math.round(v * 2) / 2)); };
+/** dernière valeur choisie d'un genre (sur l'appareil) : la prochaine annotation de ce genre naît à cette taille */
+export const lireTaille = (genre) => { try { const v = parseFloat(localStorage.getItem('medrevise.px1000.' + genre)); const g = GRILLE[genre]; return v >= g.min && v <= g.max ? v : g.defaut; } catch (e) { return GRILLE[genre].defaut; } };
+export const ecrireTaille = (genre, v) => { try { localStorage.setItem('medrevise.px1000.' + genre, String(v)); } catch (e) { /* stockage bloqué */ } };
 
-/* ÉPAISSEURS EN % DE LA LARGEUR DE PAGE (22/10, même logique) : champ `epaisseurL` (fraction de la largeur) des traits
-   et des formes créés depuis le 22/10 ; avant, `epaisseur` était une fraction de la HAUTEUR — relue telle quelle.
-   Les deux champs sont écrits (un appareil pas encore à jour lit `epaisseur`). Préréglages convertis pour qu'un trait
-   sur une diapo 16:9 garde exactement son épaisseur d'avant (rapport hauteur / largeur 595 / 842). */
+/** TEXTE : la taille en px1000 d'une annotation ; `pxRef` : sa taille d'avant en px à l'échelle de référence,
+    `largeurRef` : la largeur de SA page à cette échelle */
+export const taille1000De = (a, pxRef, largeurRef) => (Number.isFinite(a && a.taille1000) ? a.taille1000
+  : Number.isFinite(a && a.tailleTexte) ? a.tailleTexte * 10 : largeurRef > 0 ? (pxRef / largeurRef) * PAGE_REF : GRILLE.texte.defaut);
+/** les champs écrits pour une taille de texte choisie */
+export const champsTaille = (v) => ({ taille1000: v, tailleTexte: +(v / 10).toFixed(4) });
+/** taille du texte en px à l'écran, sur une page affichée de largeur W */
+export const texteVersPx = (v1000, W) => (v1000 / PAGE_REF) * W;
+
+/* ÉPAISSEURS (traits du crayon, formes) : `ep1000` ; sinon `epaisseurL` (fraction de la largeur, 22/10) ; sinon
+   `epaisseur` (fraction de la HAUTEUR, d'avant le 22/10) — relues telles quelles. */
 export const RAPPORT_DIAPO = 595 / 842;
 export const versLargeur = (vHauteur) => +(vHauteur * RAPPORT_DIAPO).toFixed(5);
-/** épaisseur en px d'un trait ou d'une forme (W × H : la page affichée) */
-export const epaisseurPx = (a, W, H, defaut) => (Number.isFinite(a && a.epaisseurL) ? a.epaisseurL * W : ((a && a.epaisseur) || defaut) * H);
-/** les deux champs d'une épaisseur choisie (fraction de la largeur) sur une page W × H */
-export const champsEpaisseur = (vL, W, H) => ({ epaisseurL: vL, epaisseur: W > 0 && H > 0 ? +((vL * W) / H).toFixed(5) : vL });
+/** épaisseur en px d'un trait ou d'une forme (W × H : la page affichée) ; `defaut` : fraction de la hauteur */
+export const epaisseurPx = (a, W, H, defaut) => (Number.isFinite(a && a.ep1000) ? (a.ep1000 / PAGE_REF) * W
+  : Number.isFinite(a && a.epaisseurL) ? a.epaisseurL * W : ((a && a.epaisseur) || defaut) * H);
+/** la même, en px1000 (pour l'afficher) */
+export const ep1000De = (a, W, H, defaut) => (Number.isFinite(a && a.ep1000) ? a.ep1000 : W > 0 ? +((epaisseurPx(a, W, H, defaut) / W) * PAGE_REF).toFixed(2) : 0);
+/** les champs écrits pour une épaisseur choisie (px1000) sur une page W × H */
+export const champsEp1000 = (v, W, H) => ({ ep1000: v, epaisseurL: +(v / PAGE_REF).toFixed(6), epaisseur: W > 0 && H > 0 ? +((v / PAGE_REF) * W / H).toFixed(6) : v / PAGE_REF });
+
+/* FLÈCHES (connecteurs des boîtes, lignes et flèches de Formes, flèches du tableau) : `ep1000` ; une flèche d'avant
+   garde son facteur `epaisseur` (× 1,5 px à l'échelle de référence pour une flèche harmonisée du 21/10). */
+/** épaisseur d'une flèche en px1000 ; `largeurRef` : la largeur de la page à l'échelle de référence (`base` px par
+    facteur 1 à cette échelle) */
+export const epFleche1000 = (f, largeurRef, base = 1.5) => (Number.isFinite(f && f.ep1000) ? f.ep1000
+  : largeurRef > 0 ? +((base * ((f && Number.isFinite(f.epaisseur)) ? f.epaisseur : 1) / largeurRef) * PAGE_REF).toFixed(2) : GRILLE.fleche.defaut);
+/** les champs écrits pour une épaisseur de flèche choisie : `ep1000` et le facteur équivalent (appareils d'avant) */
+export const champsFleche1000 = (v, largeurRef, base = 1.5) => ({ ep1000: v, ...(largeurRef > 0 ? { epaisseur: +((v / PAGE_REF) * largeurRef / base).toFixed(3) } : {}) });
 
 /* PALETTE DU CRAYON (et du texte libre) — 01/10. Les 4 couleurs des surlignages
    ont un SENS (prioritaire, cloze…) et restent seules pour eux ; le crayon, lui,
