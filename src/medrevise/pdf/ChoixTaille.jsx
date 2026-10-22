@@ -11,10 +11,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { GRILLE, bornerTaille } from './pdfShared.js';
+import { IconeOutil } from './IconesOutils.jsx';
 
 export const fmtPx = (v) => (Math.round(v * 10) / 10).toLocaleString('fr-FR') + ' px';
 const TITRES = { texte: 'Taille du texte', crayon: 'Épaisseur du crayon', surligneur: 'Épaisseur du surligneur', fleche: 'Épaisseur de la flèche', forme: 'Épaisseur du trait', bordure: 'Épaisseur de la bordure' };
-const APERCU_MAX = 44; // px : un aperçu plus grand est rogné (il reste à l'échelle)
+const APERCU_MAX = 32; // px : un aperçu plus grand est rogné (il reste à l'échelle) — (22/10) panneau ~30 % plus compact
 
 /** l'aperçu à l'échelle : « Aa » (texte) ou un trait (épaisseurs) ; `echelle` = px à l'écran par px de référence */
 function Apercu({ genre, v, echelle, couleur }) {
@@ -40,7 +41,7 @@ export function BoutonTaille({ genre = 'texte', valeur, echelle = 1, couleur = n
   const [fixe, setFixe] = useState(null); // position du panneau en portail (barre d'outils)
   useLayoutEffect(() => {
     if (!barre || !ouvert || !ref.current) { setFixe(null); return; }
-    const r = ref.current.getBoundingClientRect(), L = 252, m = 8;
+    const r = ref.current.getBoundingClientRect(), L = 184, m = 8;
     const left = Math.max(m, Math.min(r.left, window.innerWidth - L - m));
     const dessous = window.innerHeight - r.bottom > 300 || r.top < 300;
     setFixe(dessous ? { left, top: r.bottom + 8 } : { left, bottom: window.innerHeight - r.top + 8 });
@@ -73,9 +74,10 @@ export function BoutonTaille({ genre = 'texte', valeur, echelle = 1, couleur = n
   return (
     <span className={'ct' + (barre ? ' ct-barre' : '')} ref={ref}>
       <button type="button" className={(barre ? 'ptb-bascule ' : 'nb-act ') + 'ct-bouton' + (ouvert ? ' actif' : '')} data-option={option || (genre === 'texte' ? 'taille' : genre === 'bordure' ? 'bordure' : 'epaisseur')}
-        data-genre={genre} aria-label={`${nom} : ${fmtPx(valeur)}`} title={`${nom} : ${fmtPx(valeur)}`} aria-expanded={ouvert}
+        data-genre={genre} aria-label={`${nom} : ${fmtPx(valeur)}`} title={genre === 'texte' ? nom : `${nom} : ${fmtPx(valeur)}`} aria-expanded={ouvert}
         onPointerDown={arret} onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); setOuvert((o) => !o); }}>
-        {genre === 'texte' ? <span className="ct-bt-aa" aria-hidden="true">A<small>a</small></span>
+        {/* (22/10) une icône explicite de taille de texte (T et double flèche verticale), la valeur en petit */}
+        {genre === 'texte' ? <IconeOutil nom="tailleTexte" size={16} className="ct-bt-ic" />
           : <span className="ct-bt-trait" aria-hidden="true" style={{ height: Math.max(1.5, Math.min(7, valeur * echelle)) }} />}
         <span className="ct-bt-val tnum">{Math.round(valeur * 10) / 10}</span>
       </button>
