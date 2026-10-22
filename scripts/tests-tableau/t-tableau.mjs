@@ -29,7 +29,7 @@ const modes = await b.ev(`[...document.querySelectorAll('.pm-seg-btn')].map(x=>x
 b.ok(modes[modes.length - 1] === 'Tableau' && modes.indexOf('Tableau') === modes.indexOf('Notions') + 1, 'panneau : un onglet « Tableau » après Notions', JSON.stringify(modes));
 await clic(`[...document.querySelectorAll('.pm-seg-btn')].find(x=>x.innerText.trim().startsWith('Tableau'))`); await b.dormir(600);
 const boutons = await b.ev(`[...document.querySelectorAll('.ptb2 [data-act]')].map(x=>x.dataset.act+(x.disabled?':off':''))`);
-b.ok(['plein', 'cote', 'depuis-flashcards'].every((x) => boutons.some((y) => y.startsWith(x))), 'onglet : « Ouvrir en plein écran », « Côte à côte », « Depuis les flashcards »', JSON.stringify(boutons));
+b.ok(['plein', 'cote'].every((x) => boutons.some((y) => y.startsWith(x))) && !boutons.some((y) => y.startsWith('depuis')), 'onglet : « Ouvrir en plein écran », « Côte à côte » (plus de « Depuis les flashcards », v1.1)', JSON.stringify(boutons));
 await clic(`document.querySelector('.ptb2 [data-act="plein"]')`); await b.dormir(1200);
 let V = await b.rect(`document.querySelector('.tb2-vue')`);
 b.ok(V && V.w > 300 && V.h > 300, 'le tableau s’ouvre en plein écran', JSON.stringify(V && { w: V.w, h: V.h }));
@@ -95,10 +95,11 @@ await glisser([r.x + r.w * 0.5, r.y + r.h * 0.6], [r.x + r.w * 0.5 + 60, r.y + r
 const bout1 = await surF(f2.id, 1);
 b.ok(Math.hypot(bout1[0] - bout0[0], bout1[1] - bout0[1]) > 20, 'la carte bouge : le bout de la flèche accrochée la suit', JSON.stringify({ bout0, bout1 }));
 await b.capture('tableau-fleches-' + app, { x: Math.round(V.x), y: Math.round(V.y), width: Math.round(V.w), height: Math.round(V.h) });
-// 5) importer 3 flashcards (texte, Muscle, image)
-await clic(`document.querySelector('.tb2-barre [data-act="importer"]')`); await b.dormir(500);
-for (const id of ['fa-texte', 'fa-muscle', 'fa-image']) await clic(`document.querySelector('[data-flashcard="${id}"] input')`);
-await clic(`document.querySelector('[data-act="importer-tableau"]')`); await b.dormir(1500);
+// 5) poser 3 flashcards (texte, Muscle, image) — v1.1 : plus de bouton « Depuis les flashcards » ; dépôt de 3 cartes glissées
+b.ok(!(await b.ev(`!!document.querySelector('.tb2-barre [data-act="importer"]')`)), 'barre du tableau : plus de « + Depuis les flashcards » (v1.1)');
+{ const V5 = await b.rect(`document.querySelector('.tb2-vue')`);
+  await b.ev(`(()=>{const dt=new DataTransfer();dt.setData('application/x-medrevise-cartes',JSON.stringify(['fa-texte','fa-muscle','fa-image']));const v=document.querySelector('.tb2-vue');const o={bubbles:true,cancelable:true,dataTransfer:dt,clientX:${V5.x + V5.w * 0.3},clientY:${V5.y + V5.h * 0.15}};v.dispatchEvent(new DragEvent('dragover',o));v.dispatchEvent(new DragEvent('drop',o));return 1})()`); }
+await b.dormir(1500);
 B = await etat();
 const imp = B.objects.filter((o) => o.source);
 b.ok(imp.length === 3 && imp.some((o) => o.source.sorte === 'muscle' && o.source.muscle) && imp.some((o) => o.source.sorte === 'image' && o.blobId) && imp.some((o) => o.source.sorte === 'texte' && o.titre === 'Définis : le néphron' && o.corps === 'Unité fonctionnelle du rein'),

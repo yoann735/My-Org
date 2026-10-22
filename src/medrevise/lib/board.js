@@ -84,6 +84,29 @@ export function grilleDeCartes(questions, { x, y, colonnes = 3, ecart = 28, z = 
   return out;
 }
 
+/* ---- « → Tableau » depuis l'onglet Flashcards (v1.1) ---- */
+/** ids des flashcards déjà posées sur le tableau */
+export const flashcardsDuBoard = (b) => new Set(((b && b.objects) || []).filter((o) => o.source && o.source.flashcardId).map((o) => o.source.flashcardId));
+/** origine de la grille de nouvelles cartes : à droite de ce qui est posé (rien n'est recouvert), sinon au centre de la vue */
+export function origineNouvelles(b, largeurVue = 800, hauteurVue = 500) {
+  const objs = (b && b.objects) || [];
+  if (objs.length) return { x: Math.max(...objs.map((o) => o.x + o.w)) + 80, y: Math.min(...objs.map((o) => o.y)) };
+  const v = (b && b.viewport) || { x: 80, y: 80, z: 1 };
+  return { x: (largeurVue / 2 - v.x) / v.z - 140, y: (hauteurVue / 2 - v.y) / v.z - 60 };
+}
+/** des flashcards ajoutées au tableau d'une fiche sans l'ouvrir (celles déjà posées sont ignorées) ; rend les cartes */
+export async function ajouterFlashcardsAuBoard(ficheId, questions) {
+  const b = await lireBoard(ficheId);
+  const deja = flashcardsDuBoard(b);
+  const qs = questions.filter((q) => q && !deja.has(q.id));
+  if (!qs.length) return [];
+  const p = origineNouvelles(b);
+  const z = b.objects.reduce((m, o) => Math.max(m, o.z || 0), 0);
+  const cartes = grilleDeCartes(qs, { x: p.x, y: p.y, colonnes: Math.min(3, qs.length), z });
+  await ecrireBoard({ ...b, objects: [...b.objects, ...cartes] });
+  return cartes;
+}
+
 /** une carte ajoutée au tableau d'une fiche sans l'ouvrir (sélection de texte du PDF, tableau masqué) */
 export async function ajouterCarteAuBoard(ficheId, { titre = '', corps = '' }) {
   const b = await lireBoard(ficheId);

@@ -499,13 +499,13 @@
 @media (hover: none) { .pdfr-pages .pdfr-inter:hover:not(.vu) .pdfr-inter-trait, .pdfr-pages .pdfr-inter:hover:not(.vu) .pdfr-inter-plus { opacity: 0; } }
 @media print { .pdfr-pages .pdfr-inter { display: none !important; } }
 
-/* ---- FAMILLE « CARTE » (22/10, docs/compte-rendu-tableau-flashcards.md §2) ----
-   Un dessin pour les boîtes du lecteur (commentaires, post-it, zones de texte) et les cartes du tableau : coins
-   arrondis, fond plein de la couleur choisie (texte en contraste automatique, pdfShared.js#styleFondBoite), ombre très
-   légère, contour fin seulement à la sélection (pdf/Selection.jsx). Les réglages de taille diffèrent par variables
+/* ---- FAMILLE « CARTE » (22/10, docs/compte-rendu-tableau-flashcards.md §2 ; v1.1 : modèle = les cartes du tableau
+   du 04/10, tableau-board.css) ----
+   Les boîtes du lecteur (commentaires, post-it, zones de texte) reprennent le dessin des cartes du tableau : coins
+   arrondis de 10 px, ombre double des cartes, fond plein de la couleur choisie (texte en contraste automatique, pdfShared.js#styleFondBoite), contour fin seulement à la sélection (pdf/Selection.jsx). Les réglages de taille diffèrent par variables
    (--carte-r, --carte-px, --carte-py) : une famille visuelle, pas une copie. */
 .carte-mr { --carte-r: 10px; --carte-px: 10px; --carte-py: 8px; border-radius: var(--carte-r);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .10), 0 0 0 .5px rgba(0, 0, 0, .04); line-height: 1.35; }
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 0 4px 14px rgba(0, 0, 0, .08); line-height: 1.35; }
 .pdfr-page .note-box.carte { --carte-r: 10px; --carte-px: 10px; --carte-py: 8px; }
 .pdfr-page .note-box.carte:not(.texte-libre) .nb-body { padding: var(--carte-py) var(--carte-px); line-height: 1.35; font-size: 13.5px; }
 .pdfr-page .note-box.carte:not(.texte-libre):is(.fond-transparent, .fond-teinte) .nb-body { padding: calc(var(--carte-py) - 1px) calc(var(--carte-px) - 1px); }
@@ -514,8 +514,8 @@
 .pdfr-page .note-box:not(.texte-libre) { border-radius: 10px; }
 .pdfr-page .note-box:not(.texte-libre) .nb-body { border-radius: inherit; }
 .pdfr-page .note-box.fond-plein, .pdfr-page .note-box.mot:not(.texte-libre):not(.fond-transparent):not(.fond-teinte) {
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .10), 0 0 0 .5px rgba(0, 0, 0, .04); }
-.pdfr-page .note-box.mot.active, .pdfr-page .note-box.mot.selectionnee { box-shadow: 0 1px 2px rgba(0, 0, 0, .10), 0 0 0 .5px rgba(0, 0, 0, .04); }
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 0 4px 14px rgba(0, 0, 0, .08); }
+.pdfr-page .note-box.mot.active, .pdfr-page .note-box.mot.selectionnee { box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 0 4px 14px rgba(0, 0, 0, .08); }
 /* bandeau des boîtes d'avant : sa place est gardée (le texte ne bouge pas), il n'est plus dessiné */
 .pdfr-page .note-box:not(.mot):not(.compacte) .nb-bar { background: transparent; border-bottom-color: transparent; }
 /* épingle d'une boîte d'avant : discrète */

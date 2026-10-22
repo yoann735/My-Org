@@ -123,8 +123,8 @@ import { preparerSourceIA, pngsIA } from './exportIA.js';
 import { creerZip } from '../lib/zipSimple.js';
 import { refsCourtes, construireExportIA, estBoiteTexte, aDeuxVersions, versionAffichee, boitesOrdonnees, construireExport, lireImport, planImport, resumeImport, basculerVersion, avecContenuEdite } from '../lib/textesAnnotations.js';
 import { Board } from '../tableau/Board.jsx';
-import { PanneauTableau } from '../tableau/PanneauTableau.jsx';
-import { ajouterCarteAuBoard } from '../lib/board.js';
+import { PanneauTableau, useFlashcardsAuTableau } from '../tableau/PanneauTableau.jsx';
+import { ajouterCarteAuBoard, ajouterFlashcardsAuBoard } from '../lib/board.js';
 import { useFicheJumelle, lireVue, ecrireVue, pageCorrespondante, importerJumelle, remplacerJumelle, blocsDuFlux, pagesDocument, pageMapDocument } from '../lib/ficheJumelle.js';
 import { EditeurCorrespondance, ListeNonReplacees } from './Correspondance.jsx';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
@@ -368,19 +368,32 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (d !== 'pdf') setPanelOpen(false); // la place va au tableau ; le panneau se rouvre d'un clic
   };
   const tableauRef = useRef(null);
-  /* TABLEAU (22/10, tableau/Board.jsx) : ses flashcards (import, glisser-déposer), « ouvrir la flashcard » d'une carte,
-     « Depuis les flashcards » demandé du panneau (le tableau s'ouvre d'abord s'il est masqué) */
+  /* TABLEAU (22/10, tableau/Board.jsx) : ses flashcards (glisser-déposer), « ouvrir la flashcard » d'une carte ;
+     (v1.1) « → Tableau » d'une flashcard ou d'une sélection (onglet Flashcards) : ajoutée au tableau affiché (pile
+     d'annulation du tableau) ou à son enregistrement s'il est masqué ; déjà posée : le tableau s'ouvre et se recentre */
   const flashcardsFiche = useMemo(() => (ctx.db.questions || []).filter((q) => q.ficheId === ficheId && q.type === 'flashcard'), [ctx.db, ficheId]);
   const [flashcardVisee, setFlashcardVisee] = useState(null); // { id, n }
   const ouvrirFlashcardDuTableau = (id) => { setPanelOpen(true); setFlashcardVisee((v) => ({ id, n: (v ? v.n : 0) + 1 })); };
-  const importDemande = useRef(false);
   const ecranLarge = () => typeof window !== 'undefined' && window.innerWidth >= 1100;
-  const importerAuTableau = () => {
-    if (tableauRef.current) { tableauRef.current.ouvrirImport(); return; }
-    importDemande.current = true;
-    setDisposition(ecranLarge() ? 'deux' : 'tableau');
+  const fcAuTableau = useFlashcardsAuTableau(ficheId);
+  const montrerDemande = useRef(null);
+  const versTableau = useRef(null);
+  versTableau.current = {
+    ajouter: async (ids) => {
+      const qs = flashcardsFiche.filter((q) => ids.includes(q.id) && !fcAuTableau.has(q.id));
+      if (!qs.length) { if (ids.length) versTableau.current.montrer(ids[0]); return; }
+      if (tableauRef.current) tableauRef.current.importerFlashcards(qs.map((q) => q.id));
+      else await ajouterFlashcardsAuBoard(ficheId, qs);
+    },
+    montrer: (id) => {
+      if (tableauRef.current) { tableauRef.current.montrerFlashcard(id); return; }
+      montrerDemande.current = id;
+      setDisposition(ecranLarge() ? 'deux' : 'tableau');
+    },
   };
-  useEffect(() => { if (importDemande.current && tableauRef.current) { importDemande.current = false; tableauRef.current.ouvrirImport(); } });
+  useEffect(() => { if (montrerDemande.current && tableauRef.current) { const id = montrerDemande.current; montrerDemande.current = null; tableauRef.current.montrerFlashcard(id); } });
+  // stable tant que l'ensemble des cartes posées ne change pas (le panneau mémoïse ses volets)
+  const tableauFlashcards = useMemo(() => ({ dans: fcAuTableau, ajouter: (ids) => versTableau.current.ajouter(ids), montrer: (id) => versTableau.current.montrer(id) }), [fcAuTableau]);
   const [carteAjoutee, setCarteAjoutee] = useState(0);
   const [copiedCount, setCopiedCount] = useState(0); // >0 → confirmation « N notions copiées »
   const [exporting, setExporting] = useState(false);
@@ -3730,9 +3743,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           ongletsEnPlus={[
             { id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length + notionsAutreDoc.length, contenu: notionsPdf },
             tableauDispo && {
-              // (22/10) le tableau de la fiche : plein écran ou côte à côte, « Depuis les flashcards »
+              // (22/10) le tableau de la fiche : plein écran ou côte à côte
               id: 'tableau', label: 'Tableau', icon: 'grid',
-              contenu: <PanneauTableau ficheId={ficheId} disposition={disposition} onDisposition={setDisposition} onImporter={importerAuTableau} large={ecranLarge()} carteAjoutee={carteAjoutee} />,
+              contenu: <PanneauTableau ficheId={ficheId} disposition={disposition} onDisposition={setDisposition} large={ecranLarge()} carteAjoutee={carteAjoutee} />,
             },
             ficheReelle && {
               // 07/10 : notes du cours (vide par défaut) — aussi dans un document (08/10) : même panneau qu'un PDF
@@ -3746,7 +3759,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 pageLecteur={pret ? { page: pageCourante, doc: docAffiche } : null} onAllerPage={allerAuSegment} demandePage={demandePage} />,
             },
           ]}
-          ongletDemande={ongletDemande} cleMemo={ficheId} flashcardDemandee={flashcardNotes} flashcardVisee={flashcardVisee}
+          ongletDemande={ongletDemande} cleMemo={ficheId} flashcardDemandee={flashcardNotes} flashcardVisee={flashcardVisee} tableauFlashcards={tableauDispo ? tableauFlashcards : null}
           ongletInitial={ficheReelle ? null : 'notions'}
           replie={!panelOpen} onReplier={(v) => replierPanneau(v)}
           contenuReplie={modeTab ? (

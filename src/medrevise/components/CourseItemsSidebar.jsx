@@ -78,7 +78,7 @@ const lireLS = (k) => { try { return localStorage.getItem(k); } catch (e) { retu
 const ecrireLS = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* stockage bloqué */ } };
 const TYPES_IDS = ['qcm', 'flashcard', 'exercice', 'feynman'];
 
-export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null, cleMemo = null, contenuReplie = null, flashcardDemandee = null, flashcardVisee = null }) {
+export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null, cleMemo = null, contenuReplie = null, flashcardDemandee = null, flashcardVisee = null, tableauFlashcards = null }) {
   const avecItems = !!ficheId;
   const extras = (ongletsEnPlus || []).filter(Boolean);
   const extraNotions = extras.find((o) => o.id === 'notions') || null;
@@ -424,6 +424,16 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
                   Retirer {aRetirer.length > 1 ? `les ${aRetirer.length} cartes` : 'la carte'} de l’apprentissage
                 </button>
               )}
+              {tableauFlashcards && (() => { // (v1.1) les cartes cochées, posées en grille sur le tableau
+                const aPoser = choisies.filter((id) => !tableauFlashcards.dans.has(id));
+                return (
+                  <button type="button" className="btn sm" data-act="selection-vers-tableau" disabled={!choisies.length}
+                    title={aPoser.length ? `Poser ${aPoser.length > 1 ? `les ${aPoser.length} cartes` : 'la carte'} sur le tableau, en grille` : 'Déjà sur le tableau : y aller'}
+                    onClick={async () => { await tableauFlashcards.ajouter(choisies); setSelection(null); }}>
+                    <Icon name="grid" size={12} /> → Tableau{aPoser.length && aPoser.length < choisies.length ? ` (${aPoser.length})` : ''}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         );
@@ -454,6 +464,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
             </div>
           ) : (
             <ItemReadCard key={item.id} item={item} ctx={ctx}
+              tableau={item.type === 'flashcard' && tableauFlashcards ? { dans: tableauFlashcards.dans.has(item.id), ajouter: () => tableauFlashcards.ajouter([item.id]), montrer: () => tableauFlashcards.montrer(item.id) } : null}
               appr={item.type === 'flashcard' && ctx.setLearningSet ? { dans: dansAppr.has(item.id), basculer: () => basculerAppr([item.id], !dansAppr.has(item.id)) } : null}
               coche={item.type === 'flashcard' && selection ? { oui: selection.has(item.id), basculer: () => cocher(item.id) } : null}
               // (16/10) glisser vers l'onglet Apprentissage : la carte, ou toute la sélection si elle en fait partie
@@ -464,7 +475,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         ))}
       </div>
     </div>
-  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, itemsVus, recherche, filtreSorte, nbParSorte, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC, dansAppr, selection]); // eslint-disable-line react-hooks/exhaustive-deps
+  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, itemsVus, recherche, filtreSorte, nbParSorte, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC, dansAppr, selection, tableauFlashcards]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* contenus des modes : des éléments STABLES (mêmes objets d'un rendu à l'autre tant que
      leur contenu ne change pas) — le volet mémoïsé (Volet) ne se re-rend alors jamais
@@ -547,14 +558,14 @@ const Volet = memo(function Volet({ id, label, k, cache, contenu }) {
 });
 
 /* ---- carte de lecture (réponse toujours visible) + Éditer/Supprimer ---- */
-function ItemReadCard({ item, ctx = null, onEdit, onDelete, appr = null, coche = null, glisse = null }) {
+function ItemReadCard({ item, ctx = null, onEdit, onDelete, appr = null, coche = null, glisse = null, tableau = null }) {
   /* (22/10) flashcards : une carte compacte, ses actions au survol (au doigt : toujours visibles) — modifier,
      apprentissage, carnet d'erreurs, supprimer (docs/compte-rendu-tableau-flashcards.md §6) */
   const fc = item.type === 'flashcard';
   return (
     <div className={'pis-item card' + (fc ? ' fcl-carte' : '') + (coche && coche.oui ? ' alib-cochee' : '') + (glisse ? ' alib-glissable' : '')} data-item={item.id}
       draggable={!!glisse} onDragStart={glisse ? (e) => commencerGlisse(e, glisse()) : undefined} onDragEnd={glisse ? finirGlisse : undefined}
-      title={glisse ? 'Glisser sur « Apprentissage » (barre de gauche) pour l’y ajouter' : undefined}>
+      title={glisse ? (tableau ? 'Glisser sur « Apprentissage » (barre de gauche) ou sur le tableau pour l’y ajouter' : 'Glisser sur « Apprentissage » (barre de gauche) pour l’y ajouter') : undefined}>
       <div className="card-body">
         <div className="row spread" style={{ marginBottom: 8, alignItems: 'flex-start', gap: 8 }}>
           {coche && <input type="checkbox" className="alib-case" checked={coche.oui} onChange={coche.basculer} aria-label="Sélectionner cette carte" />}
@@ -567,6 +578,13 @@ function ItemReadCard({ item, ctx = null, onEdit, onDelete, appr = null, coche =
             {fc && appr && (
               <button type="button" className={'cd-ic' + (appr.dans ? ' actif' : '')} data-act="apprentissage" onClick={appr.basculer}
                 title={appr.dans ? 'Retirer de l’apprentissage' : 'Mettre en apprentissage'} aria-label={appr.dans ? 'Retirer de l’apprentissage' : 'Mettre en apprentissage'}><IconeRafale size={12} /></button>
+            )}
+            {fc && tableau && ( /* (v1.1) « → Tableau » : la poser sur le tableau ; déjà posée (icône marquée) : y aller */
+              <button type="button" className={'cd-ic fcl-vers-tableau' + (tableau.dans ? ' actif' : '')} data-act="vers-tableau" aria-pressed={tableau.dans}
+                onClick={tableau.dans ? tableau.montrer : tableau.ajouter}
+                title={tableau.dans ? 'Déjà sur le tableau — y aller' : '→ Tableau : poser cette carte sur le tableau'} aria-label={tableau.dans ? 'Déjà sur le tableau, y aller' : 'Poser sur le tableau'}>
+                <Icon name="grid" size={12} />
+              </button>
             )}
             {fc && ctx && <ActionsCarte ctx={ctx} carte={item} mobile={false} sansApprentissage />}
             <button type="button" className="cd-ic" title="Supprimer" aria-label="Supprimer" data-act="supprimer" onClick={onDelete}><Icon name="trash" size={12} /></button>

@@ -221,6 +221,8 @@ textarea.fcf-champ { min-height: 0; }
 .pis-item.fcl-carte .fcl-actions { opacity: 0; transition: opacity .12s; }
 .pis-item.fcl-carte:hover .fcl-actions, .pis-item.fcl-carte:focus-within .fcl-actions { opacity: 1; }
 .pis-item.fcl-carte .fcl-actions .cd-ic.actif { color: var(--accent); }
+/* « → Tableau » (v1.1) : marquée quand la carte est déjà sur le tableau */
+.pis-item.fcl-carte .fcl-actions .fcl-vers-tableau.actif { background: var(--accent-soft) !important; border-color: color-mix(in srgb, var(--accent) 45%, transparent) !important; color: var(--accent) !important; }
 .pis-item.fcl-carte .fcl-actions .ac { display: inline-flex; position: static; inset: auto; transform: none; margin: 0; gap: 4px; }
 .pis-item.fcl-carte .fcl-actions .ac-icone { width: 24px; height: 24px; }
 @media (hover: none) { .pis-item.fcl-carte .fcl-actions { opacity: 1; } }

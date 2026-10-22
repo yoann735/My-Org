@@ -8,7 +8,8 @@
      flèches : modèle, tracé, gestes   pdf/flechesGeo.js + pdf/Fleche.jsx (TraitFleche, PoigneesFleche, itemsFleche,
                                        boiteSous) — droite / courbe, points de contrôle, pointes, styles, accrochées
      gestes                            pdf/pointeur.js     (suivrePointeur)
-     cartes                            la famille « carte » (CSS .carte-mr, pdfreader-v2.css) des boîtes du lecteur
+     cartes                            le dessin des cartes du tableau du 04/10 (v1.1, fondCarte ci-dessous), dont les
+                                       boîtes du lecteur (.carte-mr) sont de la même famille
    Seule la CONVERSION écran ↔ monde est propre au tableau (la caméra) : le monde est en px au zoom 1, illimité.
 
    Le monde est une « page » (.pdfr-page) : les styles de sélection, de points et de bouts sont ceux du lecteur ; les
@@ -20,8 +21,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { putBlob, getBlob, getOne, put, genId } from '../lib/storage.js';
 import { useAnnotHistorique, cmdModifier } from '../lib/annotHistory.js';
 import { lireBoard, idBoard, nouvelleCarte, nouvelleImage, nouvelleFleche, grilleDeCartes, CARTE_BOARD, ZOOM_BOARD } from '../lib/board.js';
-import { couleurHex } from '../pdf/pdfShared.js';
-import { styleFondBoite } from '../pdf/PdfPage.jsx';
+import { couleurHex, opaciteFondBoite } from '../pdf/pdfShared.js';
 import { CadreSelection, MiniBarre, redimRect } from '../pdf/Selection.jsx';
 import { IconeOutil } from '../pdf/IconesOutils.jsx';
 import { TraitFleche, PoigneesFleche, itemsFleche, boiteSous } from '../pdf/Fleche.jsx';
@@ -30,8 +30,7 @@ import { suivrePointeur } from '../pdf/pointeur.js';
 import { TableauMuscle } from '../components/FlashcardMuscle.jsx';
 import { TableauRevision } from '../components/FlashcardTableau.jsx';
 import { VueMoleculeParesseuse } from '../molecule/Paresseux.jsx';
-import { porteCartes, cartesGlissees } from '../apprentissageLibre/liste.js';
-import { ImportFlashcardsTableau } from './ImportFlashcardsTableau.jsx';
+import { porteCartes, cartesGlissees, EVT_GLISSE } from '../apprentissageLibre/liste.js';
 import '../../styles/tableau-board.css';
 
 const SEUIL_AIMANT = 6; // px à l'écran
@@ -53,14 +52,24 @@ function ImageBlob({ blobId, className = '' }) {
   return url ? <img className={className} src={url} alt="" draggable={false} /> : <span className={className + ' tb2-img-attente'} />;
 }
 
-/* ---------- une carte ---------- */
+/* ---------- une carte : le DESSIN DU TABLEAU DU 04/10 (v1.1, docs/compte-rendu-tableau-flashcards.md) ----------
+   Fond de la couleur à 88 % (une couleur foncée : teinte à 30 %), encre #1d1d26, posé sur le fond clair d'alors
+   (#f7f7f5) puis rendu OPAQUE : la carte est identique à celle d'avant sur le fond blanc comme sur le fond sombre. */
+const FOND_ANCIEN = [0xf7, 0xf7, 0xf5];
+export const ENCRE_CARTE = '#1d1d26';
+export function fondCarte(couleur) {
+  if (couleur === 'blanc') return '#ffffff';
+  const hex = couleurHex(couleur, '#FFD84D'), n = parseInt(hex.slice(1), 16);
+  const a = opaciteFondBoite(couleur) < 0.9 ? 0.3 : 0.88;
+  return '#' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v, i) => Math.round(v * a + FOND_ANCIEN[i] * (1 - a)).toString(16).padStart(2, '0')).join('');
+}
 function Carte({ o, sel, edition, onAppui, onEditer, onFinEdition, onCoin, onOuvrirFlashcard, visee }) {
-  const style = { left: o.x, top: o.y, width: o.w, height: o.h, zIndex: (o.z || 0) + (sel ? 1000 : 0), ...styleFondBoite({ couleur: o.couleur, fond: 'plein' }) };
+  const style = { left: o.x, top: o.y, width: o.w, height: o.h, zIndex: (o.z || 0) + (sel ? 1000 : 0), background: fondCarte(o.couleur) };
   const titreRef = useRef(null), corpsRef = useRef(null);
   const src = o.source || null;
   const finir = () => onFinEdition({ titre: titreRef.current ? titreRef.current.value : o.titre, corps: corpsRef.current ? corpsRef.current.value : o.corps });
   return (
-    <div className={'carte-mr tb2-carte sel-objet' + (sel ? ' sel' : '') + (edition ? ' edition' : '') + (visee ? ' visee' : '') + (src ? ' de-flashcard sorte-' + src.sorte : '')}
+    <div className={'tb2-carte sel-objet' + (sel ? ' sel' : '') + (edition ? ' edition' : '') + (visee ? ' visee' : '') + (src ? ' de-flashcard sorte-' + src.sorte : '')}
       data-boite={o.id} data-objet={o.id} style={style} onPointerDown={edition ? undefined : onAppui} onDoubleClick={(e) => { e.stopPropagation(); if (!edition) onEditer(); }}>
       {src && !edition && (
         <button type="button" className="tb2-lien-fc" title="Ouvrir la flashcard d’origine (la carte du tableau en est une copie indépendante)" aria-label="Ouvrir la flashcard"
@@ -239,11 +248,37 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
     cam.current = { z, x: r.width / 2 - ((B.x + B.r) / 2) * z, y: r.height / 2 - ((B.y + B.b) / 2) * z };
     peindreCam(); validerCam();
   };
-  const [importOuvert, setImportOuvert] = useState(false);
+  /** la vue centrée sur ces objets (zoom gardé, réduit s'ils ne tiennent pas) */
+  const centrer = (objs) => {
+    const B = bornes(objs), v = vueRef.current;
+    if (!B || !v) return;
+    const r = v.getBoundingClientRect(), c = cam.current;
+    const z = Math.max(ZOOM_BOARD.min, Math.min(c.z, (r.width - 120) / (B.r - B.x || 1), (r.height - 120) / (B.b - B.y || 1)));
+    cam.current = { z, x: r.width / 2 - ((B.x + B.r) / 2) * z, y: r.height / 2 - ((B.y + B.b) / 2) * z };
+    peindreCam(); validerCam();
+  };
+  /* (v1.1) « → Tableau » d'une flashcard déjà posée : le tableau se recentre sur sa carte (attend le chargement) */
+  const aMontrer = useRef(null);
+  const montrerFlashcard = (id) => {
+    const b = boardRef.current;
+    if (!b) { aMontrer.current = id; return; }
+    const objs = b.objects.filter((o) => o.source && o.source.flashcardId === id);
+    if (!objs.length) return;
+    setSelection(new Set(objs.map((o) => o.id)));
+    centrer(objs); focusTableau();
+    // le tableau vient peut-être de s'ouvrir (le panneau se ferme, la vue s'élargit) : recentrer tant que la vue change
+    const v = vueRef.current;
+    if (v && typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => centrer(objs));
+      ro.observe(v);
+      setTimeout(() => ro.disconnect(), 1200);
+    }
+  };
+  useEffect(() => { if (board && aMontrer.current) { const id = aMontrer.current; aMontrer.current = null; requestAnimationFrame(() => montrerFlashcard(id)); } }); // eslint-disable-line react-hooks/exhaustive-deps
   useImperativeHandle(ref, () => ({
     creerCarteTexte(texte) { const p = centreVue(); const k = (cascade.current++ % 6) * 26; const c = creerCarte(p.x + k, p.y + k, { corps: texte }, false); focusTableau(); return c; },
     importerFlashcards(ids) { return importer(ids); },
-    ouvrirImport() { setImportOuvert(true); },
+    montrerFlashcard,
   }));
   const ajouterImages = async (fichiers, ou = null) => {
     const p = ou || centreVue();
@@ -501,11 +536,24 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
     const t = e.clipboardData && e.clipboardData.getData('text/plain');
     if (t && t.trim()) { e.preventDefault(); const p = centreVue(); creerCarte(p.x, p.y, { corps: t.trim() }, false); }
   };
-  // déposer : des flashcards glissées depuis le panneau, ou des images
+  // déposer : des flashcards glissées depuis le panneau (aperçu fantôme à l'endroit visé), ou des images
   const [depot, setDepot] = useState(false);
-  const onDragOver = (e) => { if (porteCartes(e) || [...(e.dataTransfer.types || [])].includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; if (!depot) setDepot(true); } };
+  const [fantome, setFantome] = useState(null); // { x, y } (monde) : où tomberont les cartes glissées
+  const nGlisse = useRef(1);
+  useEffect(() => {
+    const f = (e) => { if (e.detail && e.detail.actif) nGlisse.current = e.detail.n || 1; else setFantome(null); };
+    window.addEventListener(EVT_GLISSE, f);
+    return () => window.removeEventListener(EVT_GLISSE, f);
+  }, []);
+  const onDragOver = (e) => {
+    const cartes = porteCartes(e);
+    if (!cartes && ![...(e.dataTransfer.types || [])].includes('Files')) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+    if (!depot) setDepot(true);
+    if (cartes) { const p = versMonde(e.clientX, e.clientY); setFantome((f) => (f && Math.abs(f.x - p.x) < 1 && Math.abs(f.y - p.y) < 1 ? f : { x: p.x, y: p.y })); }
+  };
   const onDrop = (e) => {
-    setDepot(false);
+    setDepot(false); setFantome(null);
     const p = versMonde(e.clientX, e.clientY);
     if (porteCartes(e)) { e.preventDefault(); importer(cartesGlissees(e), p); return; }
     const fichiers = [...(e.dataTransfer.files || [])].filter(estImage);
@@ -554,19 +602,22 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
           const b = await getBlob(o.blobId).catch(() => null);
           if (o.type === 'image') { if (b) { const bm = await createImageBitmap(b); x.drawImage(bm, o.x, o.y, o.w, o.h); } continue; }
         }
-        const st = styleFondBoite({ couleur: o.couleur, fond: 'plein' });
-        x.fillStyle = st.background; x.beginPath(); x.roundRect(o.x, o.y, o.w, o.h, 12); x.fill();
-        x.save(); x.beginPath(); x.roundRect(o.x, o.y, o.w, o.h, 12); x.clip();
-        x.fillStyle = st.color || '#16162a';
-        let y = o.y + 12;
-        if (o.titre) for (const l of lignes(o.titre, o.w - 24, '700 14px system-ui, sans-serif')) { x.font = '700 14px system-ui, sans-serif'; x.fillText(l, o.x + 12, y + 13); y += 19; }
+        // le dessin des cartes (v1.1) : coins de 10, bord fin, ombre légère, encre #1d1d26, 16 px
+        x.save(); x.shadowColor = 'rgba(0,0,0,.10)'; x.shadowBlur = 10; x.shadowOffsetY = 3;
+        x.fillStyle = fondCarte(o.couleur); x.beginPath(); x.roundRect(o.x, o.y, o.w, o.h, 10); x.fill(); x.restore();
+        x.strokeStyle = 'rgba(0,0,0,.08)'; x.lineWidth = 1; x.beginPath(); x.roundRect(o.x + 0.5, o.y + 0.5, o.w - 1, o.h - 1, 10); x.stroke();
+        x.save(); x.beginPath(); x.roundRect(o.x, o.y, o.w, o.h, 10); x.clip();
+        x.fillStyle = ENCRE_CARTE;
+        let y = o.y + 10;
+        const POLICE = '"Plus Jakarta Sans", system-ui, sans-serif';
+        if (o.titre) for (const l of lignes(o.titre, o.w - 24, `600 16px ${POLICE}`)) { x.font = `600 16px ${POLICE}`; x.fillText(l, o.x + 12, y + 15); y += 20; }
         const src = o.source || {};
         const rangs = src.muscle ? Object.entries(src.muscle.lignes || {}).filter(([, v]) => v).map(([k, v]) => `${k} : ${v}`)
           : src.tableau ? [src.tableau.colonnes.join(' · '), ...src.tableau.lignes.map((l) => l.join(' · '))] : [];
         const svg = el && el.querySelector('.tb2-mol svg');
         if (svg) { try { const u = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' })); const im = new Image(); await new Promise((ok) => { im.onload = ok; im.onerror = ok; im.src = u; }); const r = svg.getBoundingClientRect(); const k2 = Math.min((o.w - 24) / (r.width || 1), (o.h - (y - o.y) - 12) / (r.height || 1)); x.drawImage(im, o.x + 12, y + 4, r.width * k2, r.height * k2); y += r.height * k2 + 8; URL.revokeObjectURL(u); } catch (e) { /* molécule non dessinée */ } }
         if (o.blobId) { const b = await getBlob(o.blobId).catch(() => null); if (b) { const bm = await createImageBitmap(b); const k2 = Math.min((o.w - 24) / bm.width, Math.max(20, o.h - (y - o.y) - 40) / bm.height); x.drawImage(bm, o.x + 12, y + 4, bm.width * k2, bm.height * k2); y += bm.height * k2 + 10; } }
-        for (const l of [...rangs.flatMap((r) => lignes(r, o.w - 24, '12px system-ui, sans-serif')), ...lignes(o.corps, o.w - 24, '13px system-ui, sans-serif')]) { x.font = '13px system-ui, sans-serif'; if (y > o.y + o.h - 8) break; x.fillText(l, o.x + 12, y + 14); y += 18; }
+        for (const l of [...rangs.flatMap((r) => lignes(r, o.w - 24, `13px ${POLICE}`)), ...lignes(o.corps, o.w - 24, `16px ${POLICE}`)]) { x.font = `16px ${POLICE}`; if (y > o.y + o.h - 8) break; x.fillText(l, o.x + 12, y + 15); y += 20; }
         x.restore();
       }
       const blob = await new Promise((ok) => cv.toBlob(ok, 'image/png'));
@@ -610,7 +661,7 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
 
   return (
     <div className={'tb tb2 theme-' + theme + (depot ? ' depot' : '') + (visee ? ' en-visee' : '')} ref={racineRef} tabIndex={0}
-      onKeyDown={onKeyDown} onKeyUp={onKeyUp} onPaste={onPaste} onDragOver={onDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDepot(false); }} onDrop={onDrop}>
+      onKeyDown={onKeyDown} onKeyUp={onKeyUp} onPaste={onPaste} onDragOver={onDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setDepot(false); setFantome(null); } }} onDrop={onDrop}>
       <div ref={vueRef} className={'tb-vue tb2-vue' + (outilMain ? ' pan' : '')} onPointerDown={debutFond} onDoubleClick={doubleClicFond}>
         <div ref={mondeRef} className="pdfr-page tb2-monde">
           <svg className="tb2-fleches" width="1" height="1" overflow="visible" aria-hidden="true">
@@ -647,6 +698,10 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
                 onCoin={(e, coin) => redim(e, o0, coin)} onOuvrirFlashcard={onOuvrirFlashcard} />
             );
           })}
+          {fantome && Array.from({ length: Math.min(9, nGlisse.current) }, (_, i) => { // les cartes à venir, en grille (comme au dépôt)
+            const col = Math.min(3, nGlisse.current);
+            return <div key={i} className="tb2-fantome" aria-hidden="true" style={{ left: fantome.x - 140 + (i % col) * (CARTE_BOARD.w + 28), top: fantome.y - 60 + Math.floor(i / col) * (CARTE_BOARD.h + 28), width: CARTE_BOARD.w, height: CARTE_BOARD.h }}>{i === 0 ? (nGlisse.current > 1 ? `${nGlisse.current} cartes` : 'Déposer ici') : null}</div>;
+          })}
           {gSel && (<>
             <PoigneesFleche points={gSel.st.points} couleur={gSel.couleur} classe="nb-ctl sel-zone" donnees={{ 'data-fleche': fSel.id }}
               position={(p) => ({ left: p.x, top: p.y })} onGlisser={(e, i) => glisserPoint(e, fSel, i)}
@@ -676,7 +731,6 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
       {/* barre du tableau */}
       <div className="tb2-barre" role="toolbar" aria-label="Tableau" onPointerDown={(e) => e.stopPropagation()}>
         <button type="button" className="tb2-btn principal" data-act="carte" onClick={() => { const p = centreVue(); creerCarte(p.x, p.y); }} title="Nouvelle carte (N, ou double-clic sur le fond)"><Icon name="plus" size={13} /> Carte</button>
-        <button type="button" className="tb2-btn" data-act="importer" onClick={() => setImportOuvert(true)} title="Ajouter des flashcards de la fiche au tableau"><Icon name="plus" size={13} /> Depuis les flashcards</button>
         <span className="tb2-sep" />
         <button type="button" className="tb2-btn" data-act="annuler" onClick={hist.annuler} disabled={!hist.peutAnnuler} title={hist.peutAnnuler ? `Annuler — ${hist.libelleAnnuler} (⌘Z)` : 'Annuler (⌘Z)'}><IconeOutil nom="annuler" size={14} /></button>
         <button type="button" className="tb2-btn" data-act="retablir" onClick={hist.retablir} disabled={!hist.peutRetablir} title="Rétablir (⇧⌘Z)"><IconeOutil nom="retablir" size={14} /></button>
@@ -706,13 +760,11 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
       {!objets.length && (
         <div className="tb2-vide-tableau">
           <div className="tb2-vide-titre">Le tableau de la fiche</div>
-          <div>Double-clic pour une carte · « Depuis les flashcards » pour y poser tes cartes</div>
+          <div>Double-clic ou « + Carte » pour une carte · « → Tableau » sur une flashcard, ou glisse-la ici</div>
           <div>Colle ou glisse une image · sélectionne du texte du cours › « Ajouter au tableau »</div>
         </div>
       )}
       {board.repris > 0 && <div className="tb2-info">Ton tableau d’avant ({board.repris} éléments) a été repris ici.</div>}
-      {importOuvert && <ImportFlashcardsTableau cartes={flashcards} dejaLa={new Set(objets.filter((o) => o.source).map((o) => o.source.flashcardId))}
-        onImporter={(ids) => { importer(ids); setImportOuvert(false); }} onFermer={() => setImportOuvert(false)} />}
     </div>
   );
 });

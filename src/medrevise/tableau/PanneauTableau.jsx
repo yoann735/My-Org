@@ -1,13 +1,33 @@
 /* ============================================================
    MedRevise — L'ONGLET « TABLEAU » du panneau de la fiche (22/10, docs/compte-rendu-tableau-flashcards.md §1) : ouvrir
-   le tableau en plein écran ou côte à côte (ordinateur large), y poser des flashcards, son résumé. Le tableau lui-même
-   s'affiche dans le lecteur (tableau/Board.jsx), à la place du PDF ou à côté.
+   le tableau en plein écran ou côte à côte (ordinateur large), son résumé. Le tableau lui-même s'affiche dans le lecteur
+   (tableau/Board.jsx), à la place du PDF ou à côté. Les flashcards s'y ajoutent DEPUIS LA CARTE (v1.1) : « → Tableau »
+   sur une flashcard ou une sélection (onglet Flashcards), ou en la glissant sur le tableau.
    ============================================================ */
 import { useEffect, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { lireBoard } from '../lib/board.js';
+import { lireBoard, flashcardsDuBoard } from '../lib/board.js';
 
-export function PanneauTableau({ ficheId, disposition, onDisposition, onImporter, large = true }) {
+/** (v1.1) les ids des flashcards déjà posées sur le tableau de la fiche, tenus à jour (écritures, synchro) */
+export function useFlashcardsAuTableau(ficheId, actif = true) {
+  const [ids, setIds] = useState(() => new Set());
+  useEffect(() => {
+    if (!actif || !ficheId) { setIds(new Set()); return undefined; }
+    let vivant = true;
+    const lire = () => lireBoard(ficheId).then((b) => {
+      if (!vivant) return;
+      const n = flashcardsDuBoard(b);
+      setIds((v) => (v.size === n.size && [...n].every((x) => v.has(x)) ? v : n));
+    });
+    lire();
+    const maj = (e) => { if (!e.detail || e.detail.store === 'board') lire(); };
+    window.addEventListener('medrevise:ecriture', maj); window.addEventListener('medrevise:recharge', lire);
+    return () => { vivant = false; window.removeEventListener('medrevise:ecriture', maj); window.removeEventListener('medrevise:recharge', lire); };
+  }, [ficheId, actif]);
+  return ids;
+}
+
+export function PanneauTableau({ ficheId, disposition, onDisposition, large = true }) {
   const [resume, setResume] = useState(null);
   useEffect(() => {
     let vivant = true;
@@ -30,9 +50,8 @@ export function PanneauTableau({ ficheId, disposition, onDisposition, onImporter
         <Icon name="panel" size={14} /> Côte à côte
       </button>
       {disposition !== 'pdf' && <button type="button" className="btn ghost" data-act="fermer-tableau" onClick={() => onDisposition('pdf')}><Icon name="filePdf" size={14} /> Revenir au cours</button>}
-      <button type="button" className="btn" data-act="depuis-flashcards" onClick={onImporter}><Icon name="plus" size={14} /> Depuis les flashcards</button>
       <div className="hint ptb2-aide">
-        Cartes, flèches (droites ou courbes, accrochées aux cartes), images collées ou glissées, groupes, export PNG. Glisse une flashcard de l’onglet Exercices sur le tableau, ou sélectionne du texte du cours › « Ajouter au tableau ».
+        Cartes, flèches (droites ou courbes, accrochées aux cartes), images collées ou glissées, groupes, export PNG. Une flashcard s’y ajoute par « → Tableau » sur la carte (Exercices › Flashcards), ou en la glissant sur le tableau ; du texte du cours, par la sélection › « Ajouter au tableau ».
       </div>
     </div>
   );
