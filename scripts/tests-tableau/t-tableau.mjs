@@ -162,6 +162,8 @@ await clic(`document.querySelector('.tb2-barre [data-act="retablir"]')`); await 
 const apR = JSON.stringify((await etat()).objects.map((o) => [o.id, o.x, o.y]));
 b.ok(movedOk && apU === avU && apR !== avU, 'annuler : la carte revient ; rétablir : elle repart', JSON.stringify({ movedOk }));
 // 11) export PNG
+// le téléchargement est intercepté dans la page : rien n'est écrit dans ~/Downloads
+await b.ev(`(()=>{if(!window.__sansTelechargement){const o=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){if(this.download){window.__telechargeIntercepte=this.download;return}return o.call(this)};window.__sansTelechargement=1}return 1})()`);
 await clic(`document.querySelector('.tb2-barre [data-act="png"]')`);
 for (let i = 0; i < 20 && !(await b.ev(`!!window.__dernierExportTableau`)); i++) await b.dormir(400);
 const png = await b.ev(`window.__dernierExportTableau||null`);
