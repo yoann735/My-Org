@@ -27,27 +27,30 @@ export const rectPage = (el) => { const p = el && el.closest && el.closest('.pdf
  *   doigt   'defiler' (calques de dessin : sans « Dessiner au doigt », le doigt fait défiler la page) | 'suivre'
  *   seuil   déplacement minimal (px, somme |dx|+|dy|) avant le premier `move` — un clic reste un clic
  *   arreter stopPropagation au pointerdown (poignées posées sur la page)
+ *   glisser (22/10) déplacement d'un objet : curseur « main fermée » (grabbing) partout tant que le glisser dure
  *   move(ev, lot, bouge)   à chaque déplacement ; `lot` = événements coalescés (au moins `ev`)
  *   fin(ev, { bouge, annule })   au relâchement (annule : pointercancel ou `arreter()`)
  * Renvoie { arreter } ou null si le geste n'a pas démarré (autre bouton, doigt qui défile).
  */
-export function suivrePointeur(e, { doigt = 'suivre', seuil = 0, arreter = false, move = null, fin = null } = {}) {
+export function suivrePointeur(e, { doigt = 'suivre', seuil = 0, arreter = false, glisser = false, move = null, fin = null } = {}) {
   noterPointeur(e);
   if (doigt === 'defiler' && pointeurIgnore(e)) { defilerAuDoigt(e, e.currentTarget && e.currentTarget.closest && e.currentTarget.closest('.pdfr-scroll')); return null; }
   if (e.button !== 0 && !(e.pointerType === 'pen' && e.button === 5)) return null; // gauche, ou bout gomme du stylet
   e.preventDefault(); // pas de sélection native pendant le geste
   if (arreter) e.stopPropagation();
   const pid = e.pointerId, x0 = e.clientX, y0 = e.clientY;
-  let bouge = seuil <= 0, fini = false;
+  let bouge = seuil <= 0, fini = false, prise = false;
   const onMove = (ev) => {
     if (ev.pointerId !== pid || fini) return;
     if (!bouge) { if (Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) <= seuil) return; bouge = true; }
+    if (glisser && !prise) { prise = true; document.documentElement.classList.add('mr-glisse'); }
     if (!move) return;
     const lot = typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : [];
     move(ev, lot.length ? lot : [ev], bouge);
   };
   const nettoyer = () => {
     fini = true;
+    if (prise) document.documentElement.classList.remove('mr-glisse');
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onFin);
     window.removeEventListener('pointercancel', onFin);
