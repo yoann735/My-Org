@@ -405,3 +405,249 @@ pages (« page 5 »). Il est réapparu sur un passage sur trois.
 | `db65df8` | feat(medrevise): onglet Flashcards refait — sélecteur de sorte unique, Recto / Verso d'abord, « Plus d'options », menu Amorce, recherche et filtres, actions au survol |
 | `721a422` | feat(medrevise): tableau (Miro) par fiche — cartes, flèches du lecteur, images, groupes, import de flashcards, export PNG |
 | (ce commit) | test + docs : non-régression, MealWeek, liste des commits |
+
+## v1.1 — corrections (22/10/2026)
+
+Cinq corrections demandées après le chantier, et rien d'autre. Tests sur l'instance locale isolée (Vite :5199 sans
+Supabase, Chrome headless en CDP, faux Deepgram local pour la session en direct) : aucune écriture Supabase. MealWeek et
+`src/shared/` intacts (contrôle en fin de section).
+
+| Correction | État |
+|---|---|
+| 1. Cartes du tableau : retour à l'ancien design | livré, testé (ordinateur, iPad, mobile) |
+| 2. Menu « Amorce » et en-tête du panneau en session de transcript | livré, testé (ordinateur, iPad, mobile) |
+| 3. Taille de texte en px, uniforme entre diapos | livré, testé (3 formats, ordinateur, iPad, mobile) |
+| 4. Flashcards ajoutées au tableau depuis la carte | livré, testé (ordinateur, iPad, mobile) |
+| 5. Grille unique des tailles par défaut, sélecteur unique | livré, testé (ordinateur, iPad, mobile) |
+
+### 1. Cartes du tableau : l'ancien design rétabli
+
+Le dessin des cartes du tableau du 04/10 (`tableau/Tableau.jsx` et le CSS `.tb-carte` d'`etudes.css`, supprimés par
+`721a422`) a été retrouvé dans git et réappliqué tel quel aux cartes du tableau actuel (`tableau-board.css`,
+`Board.jsx#fondCarte`) :
+
+- coins arrondis de 10 px, marges 10 × 12 px, bord fin `rgba(0,0,0,.08)` ;
+- ombre double `0 1px 2px rgba(0,0,0,.12), 0 4px 14px rgba(0,0,0,.08)`, plus marquée au survol ;
+- encre `#1d1d26`, texte de la police de l'app en 16 px, graisse normale, interligne normal (valeurs **mesurées** sur
+  l'ancien code : la règle `font: 500 14px/1.4 inherit` d'alors était invalide, le navigateur l'ignorait) ;
+- fond : la couleur à 88 % (teinte à 30 % pour une couleur foncée), posée sur le fond clair d'alors (`#f7f7f5`) puis
+  rendue opaque. La carte est donc identique à l'ancienne sur le fond blanc comme sur le fond sombre ;
+- « Double-clic pour écrire » en italique gris ; on écrit directement sur la carte (champs sans cadre ni fond).
+
+Ce qui est venu depuis garde ce dessin : le titre (même taille, en gras), le contenu riche d'une flashcard (tableau
+Muscle, tableau, molécule, image), l'icône de lien vers la flashcard. Le reste du chantier est conservé : flèches
+unifiées, mini barre, sélection multiple, groupes, fond sombre / blanc, minimap, export PNG (qui dessine aussi l'ancien
+design). Les boîtes du lecteur reprennent l'ombre de ces cartes (famille visuelle, `pdfreader-v2.css`).
+
+Contrôle (`scripts/tests-tableau-v11/cap-cartes.mjs`, même jeu de 7 cartes, même caméra, ancien code servi sur le
+même port) : rayon, marges, bord, ombre, encre et police identiques ; fond jaune `rgb(254, 220, 97)` =
+88 % de `#FFD84D` sur `#f7f7f5`, exactement la couleur affichée avant.
+
+| Avant le chantier (commit `721a422^`) | Refusé (`94efb32`) | v1.1 |
+|---|---|---|
+| ![](img/tableau-flashcards/v11-cartes-ancien.png) | ![](img/tableau-flashcards/v11-cartes-refuse.png) | ![](img/tableau-flashcards/v11-cartes-apres.png) |
+
+| v1.1 sur fond sombre : cartes importées (texte, Muscle, image), flèches, lien vers la flashcard |
+|---|
+| ![](img/tableau-flashcards/v11-tableau-sombre.png) |
+
+### 2. Affichages coupés ou superposés
+
+**Menu « Amorce »** (`AmorcesRecto.jsx`) : il est rendu dans un **portail** (au-dessus de tout, hors du panneau qui le
+coupait), en position fixe calculée :
+- largeur ≥ 320 px (celle du formulaire jusqu'à 360 px) ;
+- sous le bouton, ou au-dessus s'il manque la place ;
+- aligné sur le bouton, ou sur le bord gauche du formulaire si la place manque à droite ;
+- jamais hors du panneau ni de l'écran, recalculé au défilement et au redimensionnement ;
+- la liste défile à l'intérieur ;
+- la recherche, les favoris, « + Mon amorce », Échap et le clic dehors marchent comme avant. Les événements du portail
+  ne remontent plus au formulaire : Échap ferme le menu sans fermer le formulaire.
+
+Banc `t-amorce.mjs` (panneau de 360 puis 320 px) : 6/6 sur ordinateur, iPad et mobile. Il vérifie le menu entier dans
+l'écran et dans le panneau, ≥ 320 px, au-dessus de tout, le défilement interne, aucun libellé tronqué, la recherche au
+clavier et l'insertion au recto, Échap.
+
+| Menu Amorce, panneau de 360 px — avant | v1.1 |
+|---|---|
+| ![](img/tableau-flashcards/v11-amorce-avant.png) | ![](img/tableau-flashcards/v11-amorce-apres.png) |
+
+**En-tête du panneau en session de transcript.**
+- **Sélecteur de modes** (`CourseItemsSidebar.jsx`, `panneau-modes.css`). Avant, ses colonnes n'étaient plus égales
+  quand un libellé dépassait : l'indicateur glissant restait sur une grille égale, donc la pastille « 6 » d'Exercices
+  chevauchait « Transcript » et « Tableau » sortait du cadre. Désormais :
+  - les colonnes restent égales, larges comme le plus long contenu (mesuré) ;
+  - si les libellés entiers ne tiennent pas, ils s'abrègent : « Exos », « Trans. », « Notes », « Notions », « Tableau ».
+    Le libellé entier reste lu par les lecteurs d'écran et donné en infobulle ;
+  - si cela ne tient toujours pas, le sélecteur défile à l'horizontale en douceur, avec un fondu sur le bord qui cache
+    encore un mode, et le mode actif reste visible.
+- **Rangée de contrôles d'une session** (lecture et direct, `transcription.css`). Sous 400 px de panneau, la rangée
+  secondaire passe sur deux lignes propres : les actions (note, mots-clés, source, page), puis à droite la taille du
+  texte et le plein écran. Sur la rangée principale du direct, la pastille garde son point ; Pause et Arrêter restent
+  entiers.
+
+Banc `t-entete-panneau.mjs` : vue lecture d'une session enregistrée, puis session **en direct** (micro simulé, faux
+Deepgram), panneau de 520, 420, 360 et 320 px. Il mesure chaque paire d'éléments de l'en-tête (aucun ne chevauche un
+autre), tout débordement hors du panneau, tout texte rogné sans ellipse, et le nombre de lignes de la rangée de
+contrôles. Résultat : **9/9 sur ordinateur, iPad et mobile**.
+
+| En direct, panneau de 360 px — avant | v1.1 |
+|---|---|
+| ![](img/tableau-flashcards/v11-entete-360-avant.png) | ![](img/tableau-flashcards/v11-entete-360-apres.png) |
+| **Lecture, 360 px — avant** | **v1.1** |
+| ![](img/tableau-flashcards/v11-entete-lecture-360-avant.png) | ![](img/tableau-flashcards/v11-entete-lecture-360-apres.png) |
+| **v1.1 à 320 px (défilement, fondu à droite)** | **v1.1 à 420 px** |
+| ![](img/tableau-flashcards/v11-entete-320-apres.png) | ![](img/tableau-flashcards/v11-entete-420-apres.png) |
+
+### 3 et 5. Tailles en px d'une page de 1000 px, une grille, un sélecteur
+
+**Unité** (`pdfShared.js#GRILLE`) : toute taille et toute épaisseur du lecteur et du tableau est un **px d'une page de
+référence de 1000 px de large**, rendu proportionnellement à la largeur réelle de la page. L'utilisateur ne voit que
+des px.
+- Les préréglages S / M / L / XL, le réglage fin et tout affichage en % sont retirés.
+- Champs : `taille1000` (texte), `ep1000` (crayon, surligneur, formes, flèches), `bord1000` et `pad1000` (boîtes).
+- Dans le tableau, le monde compte comme une page de 1000 px.
+
+**Grille des tailles par défaut** (nouvelles annotations ; la dernière valeur choisie est reprise pour la suivante,
+comme avant) :
+
+| Élément | Défaut (px d'une page de 1000 px) | Préréglages | Champ px |
+|---|---|---|---|
+| Texte (boîte, zone de texte, texte d'une forme) | **18** | 14 · 18 · 24, plus la liste 10 · 12 · 14 · 16 · 18 · 20 · 24 · 28 · 32 · 40 | 6 à 120 |
+| Bordure de boîte (transparente ou teintée) | **1,5** | 1 · 1,5 · 3 | 0,5 à 12 |
+| Marges de boîte | **10 × 8** | — | — |
+| Flèche (boîtes, Formes, tableau) ; pointe proportionnelle | **2,5** | 1,5 · 2,5 · 4 | 0,5 à 20 |
+| Crayon | **3** | 2 · 3 · 5 | 0,5 à 40 |
+| Surligneur à main levée | **14** | 10 · 14 · 20 | 2 à 80 |
+| Formes (trait) | **2,5** | 1,5 · 2,5 · 4 | 0,5 à 20 |
+
+Avant, en px d'une page de 1000 px : texte « M » 10, crayon moyen ≈ 3, surligneur moyen ≈ 12, flèche ≈ 1,1 sur une
+diapo 16:9 (elle dépendait du format), forme ≈ 1,8. La nouvelle grille est un peu plus grande et plus lisible, et la
+même pour tous les outils.
+
+**Un seul sélecteur** (`pdf/ChoixTaille.jsx`, remplace `TailleTexte.jsx`, les boutons Fin / Moyen / Épais du crayon
+et les cycles d'épaisseur des mini barres) :
+- le même composant pour le texte, la bordure, la flèche, le crayon, le surligneur et la forme ;
+- 3 préréglages, chacun avec un **aperçu réel à l'échelle de la page** : un « Aa » ou un trait, de la couleur de
+  l'objet ;
+- un champ en px avec son aperçu (flèches ↑ ↓ pour ajuster, Entrée pour valider) ; pour le texte, « ▾ » ouvre la liste
+  10 → 40 px ;
+- depuis la barre d'outils (crayon), le panneau passe par un portail : la rangée de réglages, qui défile, le rognait.
+
+La barre de mise en forme d'une boîte propose les mêmes tailles en px.
+
+**Migration à la lecture, sans aucun changement visuel.** Les champs d'avant sont relus quand le nouveau manque :
+- `tailleTexte` (% de la largeur, 22/10) × 10 ;
+- `epaisseurL` × 1000 ;
+- `epaisseur` en fraction de la hauteur (d'avant le 22/10) ;
+- un texte sans champ garde sa taille d'alors (13 px de référence, 15 px pour une zone de texte), rapportée à **sa** page ;
+- une flèche à facteur garde son facteur.
+
+Rien n'est réécrit en base à la lecture. À la modification, le nouveau champ est écrit, et l'ancien à côté pour un
+appareil pas encore à jour. L'export PDF suit les mêmes règles.
+
+Bancs (`scripts/tests-tableau-v11/t-tailles.mjs`) :
+- `geo avant|apres` : sur trois cours (A4 portrait, diapo 16:9, capture 390 × 844) chargés d'annotations existantes
+  (boîte à bandeau, boîte « un mot » avec sa flèche, zone de texte, trait, surligneur, rectangle avec texte, flèche de
+  Formes à facteur 1,6, boîte, trait et ellipse du 22/10 en %). Relevé sur l'ancien code (`024913c`, même port, même
+  base), puis sur le nouveau : **3/3, 11 objets identiques** par cours (position, taille, police, marges, bordures,
+  épaisseurs des traits et des flèches). Et **rien n'est réécrit en base**.
+- `uniforme` : 16 px choisis au sélecteur (champ + Entrée) sur une boîte de chacun des trois cours. Résultat sur
+  ordinateur, iPad et mobile :
+
+  | Format | Page affichée | Police à l'écran | Police / largeur × 1000 | « Néphron » / largeur × 1000 |
+  |---|---|---|---|---|
+  | A4 portrait | 595 px | 9,52 px | 16 | 66,5 |
+  | Diapo 16:9 | 960 px | 15,36 px | 16 | 66,5 |
+  | Capture d'écran | 390 px | 6,24 px | 16 | 66,51 |
+
+- `selecteurs` : **7/7 sur ordinateur, iPad et mobile**. Il vérifie :
+  - les défauts des nouvelles annotations, stockés et rendus : boîte 18 / 10 × 8 / 1,5, sa flèche 2,5, crayon 3,
+    surligneur 14, rectangle 2,5 avec texte 18, flèche de Formes 2,5 ;
+  - le même sélecteur pour les six réglages (3 préréglages, champ en px, 4 aperçus) ;
+  - les préréglages et la liste du texte ;
+  - un préréglage choisi qui écrit `ep1000` et le facteur d'avant ;
+  - qu'il ne reste ni S / M / L / XL, ni %, ni Fin / Moyen / Épais.
+
+Chrome arrondit une bordure au pixel d'écran (1,44 px voulu, 1,25 px affiché au zoom 100 %) : c'est le moteur, pas la
+valeur.
+
+| Sélecteur d'avant (S / M / L / XL, %) | Texte, v1.1 | Flèche, v1.1 | Crayon, v1.1 (barre d'outils) |
+|---|---|---|---|
+| ![](img/tableau-flashcards/taille-texte.png) | ![](img/tableau-flashcards/v11-selecteur-texte.png) | ![](img/tableau-flashcards/v11-selecteur-fleche.png) | ![](img/tableau-flashcards/v11-selecteur-crayon.png) |
+
+| 16 px sur A4 portrait | 16 px sur diapo 16:9 | 16 px sur capture d'écran |
+|---|---|---|
+| ![](img/tableau-flashcards/v11-16px-a4.png) | ![](img/tableau-flashcards/v11-16px-169.png) | ![](img/tableau-flashcards/v11-16px-cap.png) |
+
+### 4. Ajout de flashcards au tableau : depuis la carte
+
+**Retiré** : « + Depuis les flashcards » de la barre du tableau et de l'onglet Tableau, et sa fenêtre
+(`ImportFlashcardsTableau.jsx`, supprimé).
+
+Trois chemins restent :
+- **(a) « → Tableau » sur chaque flashcard** (onglet Exercices › Flashcards) : une petite action discrète dans la
+  rangée d'actions de la carte (icône grille, infobulle « → Tableau »).
+  - Tableau affiché : la carte y apparaît, et ⌘Z l'annule.
+  - Tableau masqué : elle est ajoutée à son enregistrement, à droite de ce qui est posé.
+  - L'icône est ensuite **marquée** (fond accent). Un clic sur une carte déjà posée **ouvre le tableau** (côte à côte
+    sur un écran large, plein écran sinon), sélectionne la carte et **recentre** la vue dessus, une fois la largeur
+    du tableau stabilisée.
+  - **Sélection multiple** : « → Tableau (n) » dans la barre de sélection pose toutes les cartes cochées en grille.
+    Celles déjà posées ne sont pas doublées.
+- **(b) Glisser-déposer** une flashcard du panneau sur le canevas : un **aperçu fantôme** en pointillés suit le
+  pointeur (« Déposer ici », ou « n cartes » en grille). La carte tombe exactement à l'endroit lâché.
+- **(c) Création manuelle** : double-clic sur le fond ou « + Carte ».
+
+Banc `t-vers-tableau.mjs` : **8/8 sur ordinateur** (dont un glisser-déposer HTML5 réel, avec la position du fantôme
+comparée à celle de la carte déposée), **7/7 sur iPad et mobile** (le glisser HTML5 n'existe pas au doigt).
+
+| « → Tableau » marquée (déjà posée) | « → Tableau (3) » sur une sélection | Aperçu fantôme pendant le glisser |
+|---|---|---|
+| ![](img/tableau-flashcards/v11-vers-tableau-marque.png) | ![](img/tableau-flashcards/v11-vers-tableau-selection.png) | ![](img/tableau-flashcards/v11-glisser-fantome.png) |
+
+### Non-régression
+
+Rejouée sur le banc local après les cinq corrections (Chrome headless, base locale, aucun appel Supabase) :
+
+| Banc | Résultat |
+|---|---|
+| `t-objets` : PDF (ordinateur, iPad, mobile), document, fiche jumelle | 33/33 ×3, 30/30, 33/33 |
+| `t-fleches` (ordinateur, iPad), `t-zoom`, `t-inserer` | 18/18 ×2, 10/10, 9/9 |
+| `reparation/` : `t-boites`, `t-crayon` (ordinateur, iPad), `t-contextes`, `t-dock`, `t-export`, `t-telephone` | 13/13, 15/15, 17/17, 19/19, 11/11, 3/3, 6/6 |
+| `fiche-jumelle/t-couleurs-boite`, `v3/t-couleurs` | 33/33, 27/27 |
+| `t-tableau` (ordinateur, iPad, mobile) | 25/25, 24/24, 24/24 |
+| `t-flashcards` (ordinateur, iPad, mobile) | 18/18 ×3 |
+| `t-transcript-entete` | 9/9 |
+| v1.1 : `t-vers-tableau`, `t-amorce`, `t-entete-panneau`, `t-tailles` (geo, uniforme, selecteurs), `t-mealweek` | 8/8 · 7/7 · 7/7 ; 6/6 ×3 ; 9/9 ×3 ; 5/5, 2/2 ×3, 7/7 ×3 ; 2/2 |
+
+Bancs mis à jour pour la v1.1 (le code n'était pas en cause, les attentes étaient celles d'avant) :
+- `reparation/t-boites` : marges 10 × 8 px d'une page de 1000 px ;
+- `reparation/t-crayon` et `t-contextes` : le sélecteur d'épaisseur commun, `ep1000` 3 / 5 ;
+- `t-tableau` : le libellé entier d'un mode, puisqu'il est abrégé à l'écran en panneau étroit ;
+- `t-tableau` : l'import par glisser-déposer remplace la fenêtre « Depuis les flashcards ».
+
+`harmonisation/t-taille` et `t-formats` (S / M / L / XL, « M = 1 % ») sont remplacés par `t-tailles`.
+
+Écartés, car **ils échouaient déjà sur `94efb32`**, avant toute la v1.1 (rejoués sur ce code, servi sur le même port) :
+- `reparation/t-fleches` : il vise un libellé « Ajouter une flèche » qui a changé le 22/10 ;
+- `v4/t-boites`, `v4/t-crayon`, `v4/t-fleches`.
+
+`t-reprise` échoue sur 2 points (page des lignes après une reprise). Il échoue de la même façon sur `94efb32` et sur
+`bc6a624` : c'est un aléa du banc, sans lien avec ces corrections.
+
+Pendant la passe, la fiche jumelle de test avait perdu sa jumelle (état du banc). Elle a été réimportée par
+`t-jumelle-import`.
+
+**MealWeek** : elle s'ouvre depuis le sélecteur d'apps (« Semaine 1 sur 9 »), 0 erreur JavaScript (`t-mealweek.mjs`).
+`git diff 94efb32..HEAD -- src/mealweek src/shared` est **vide**.
+
+![](img/tableau-flashcards/v11-mealweek.png)
+
+### Commits v1.1
+
+| Commit | Message |
+|---|---|
+| `bc6a624` | fix(medrevise): tableau v1.1 — cartes à l'ancien design, flashcards ajoutées depuis la carte |
+| `024913c` | fix(medrevise): panneau v1.1 — menu Amorce entier (portail ≥ 320 px), sélecteur de modes et contrôles de session sans chevauchement |
+| `79bd5a2` | feat(medrevise): tailles v1.1 — px d'une page de 1000 px, grille de défauts unique, un seul sélecteur |
+| (ce commit) | docs + test : compte rendu v1.1 (captures avant / après, table des tailles), banc MealWeek |
