@@ -11,6 +11,7 @@
                       supprimer ; posée au-dessus de l'objet, en dessous s'il n'y a pas la place, jamais dessus
    ============================================================ */
 import { useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { BoutonCouleur } from './Couleurs.jsx';
 import { suivrePointeur, rectPage } from './pointeur.js';
@@ -67,12 +68,15 @@ export function redimensionner(e, coin, { base, min, ratio = null, onGeste = () 
  *   { cle, couleur, onCouleur, onApercu?, titre }       la couleur (sélecteur commun)
  *   { cle, element }                                     un contrôle déjà construit (taille du texte…)
  *   { cle: '|' }                                         séparateur de groupe
+ *   { cle: '…', plus: [items] }                          (22/10) le reste, dans un menu « … » (icône + libellé)
  *   { cle: 'supprimer', onClick, titre }                 toujours en dernier, en rouge
+ * (22/10, docs/compte-rendu-simplification-outils.md) LA barre de tous les objets : boîte, post-it, boîte-tableau,
+ * texte libre, bloc de texte remplacé, forme, flèche, image, trait, et (MiniBarreFlottante) le texte d'un document.
  */
 export function MiniBarre({ ancre, pageWidth, pageHeight, items, classe = '' }) {
   const ref = useRef(null);
   const [place, setPlace] = useState(null);
-  const tactile = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  const tactile = estTactile();
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return undefined;
@@ -100,24 +104,105 @@ export function MiniBarre({ ancre, pageWidth, pageHeight, items, classe = '' }) 
     window.addEventListener('resize', planifier);
     return () => { if (zone) zone.removeEventListener('scroll', planifier); window.removeEventListener('resize', planifier); if (raf) cancelAnimationFrame(raf); };
   }, [ancre.x, ancre.y, ancre.w, ancre.h, pageWidth, pageHeight, items.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  const arret = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onMouseDown: (e) => e.preventDefault(), onClick: (e) => { e.stopPropagation(); fn(); } });
   return (
     <div ref={ref} role="toolbar" className={'mini-barre nb-actions nb-barre' + (place && place.dessous ? ' dessous' : '') + (tactile ? ' tactile' : '') + (classe ? ' ' + classe : '')}
       style={{ left: place ? place.left : ancre.x, top: place ? place.top : ancre.y - 40, visibility: place ? 'visible' : 'hidden' }}
       onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-      {items.filter(Boolean).map((it, i) => {
-        if (it.cle === '|') return <span key={'s' + i} className="mb-sep" aria-hidden="true" />;
-        if (it.element) return <span key={it.cle} className="mb-el">{it.element}</span>;
-        if (it.couleur !== undefined) return <BoutonCouleur key={it.cle} couleur={it.couleur} titre={it.titre} onApercu={it.onApercu || null} onCouleur={it.onCouleur} />;
-        if (it.libelle) return <button key={it.cle} type="button" className="nb-act vise" title={it.titre} {...arret(it.onClick)}>{it.libelle}</button>;
-        const supprimer = it.cle === 'supprimer';
-        return (
-          <button key={it.cle} type="button" data-option={it.cle} aria-label={it.titre} title={it.titre} disabled={!!it.desactive}
-            className={'nb-act' + (it.actif ? ' actif' : '') + (supprimer ? ' danger' : '')} {...arret(it.onClick)}>
-            {supprimer ? <Icon name="trash" size={15} /> : it.icone}
-          </button>
-        );
-      })}
+      <ContenuBarre items={items} />
     </div>
+  );
+}
+
+const estTactile = () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+const arret = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onMouseDown: (e) => e.preventDefault(), onClick: (e) => { e.stopPropagation(); fn(); } });
+
+/** les boutons d'une mini barre (communs à MiniBarre et MiniBarreFlottante) */
+function ContenuBarre({ items }) {
+  return items.filter(Boolean).map((it, i) => {
+    if (it.cle === '|') return <span key={'s' + i} className="mb-sep" aria-hidden="true" />;
+    if (it.plus) return <BoutonPlus key={it.cle} items={it.plus} titre={it.titre} />;
+    if (it.element) return <span key={it.cle} className="mb-el" data-mb={it.cle}>{it.element}</span>;
+    if (it.couleur !== undefined) return <span key={it.cle} className="mb-el" data-mb={it.cle}><BoutonCouleur couleur={it.couleur} titre={it.titre} icone={it.icone || null} aucune={!!it.aucune} onApercu={it.onApercu || null} onCouleur={it.onCouleur} /></span>;
+    if (it.libelle && !it.icone) return <button key={it.cle} type="button" className="nb-act vise" title={it.titre} {...arret(it.onClick)}>{it.libelle}</button>;
+    if (it.texte) return <button key={it.cle} type="button" data-option={it.cle} className="nb-act avec-texte" title={it.titre} {...arret(it.onClick)}>{it.icone}{it.texte}</button>;
+    const supprimer = it.cle === 'supprimer';
+    return (
+      <button key={it.cle} type="button" data-option={it.cle} aria-label={it.titre} title={it.titre} disabled={!!it.desactive} aria-pressed={it.actif === undefined ? undefined : !!it.actif}
+        className={'nb-act' + (it.actif ? ' actif' : '') + (supprimer ? ' danger' : '')} {...arret(it.onClick)}>
+        {supprimer ? <Icon name="trash" size={15} /> : it.icone}
+      </button>
+    );
+  });
+}
+
+/** « … » : le reste des options, en liste (icône + libellé) ; un clic sur une option la lance et referme le menu
+    (sauf les contrôles intégrés : couleur, taille, qui ont leur propre panneau) */
+function BoutonPlus({ items, titre = 'Plus d’options' }) {
+  const [ouvert, setOuvert] = useState(false);
+  const ref = useRef(null), popRef = useRef(null);
+  const [dessus, setDessus] = useState(false);
+  useLayoutEffect(() => {
+    if (!ouvert || !popRef.current) return;
+    const r = popRef.current.getBoundingClientRect();
+    if (r.bottom > window.innerHeight - 8 && r.top - r.height - 48 > 0) setDessus(true);
+  }, [ouvert]);
+  useLayoutEffect(() => {
+    if (!ouvert) { setDessus(false); return undefined; }
+    const dehors = (e) => { if (ref.current && !ref.current.contains(e.target) && !(e.target.closest && e.target.closest('.sc-pop, .sc-fenetre, .ct-pop, .scw-pipette'))) setOuvert(false); };
+    const clavier = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setOuvert(false); } };
+    window.addEventListener('pointerdown', dehors, true);
+    window.addEventListener('keydown', clavier, true);
+    return () => { window.removeEventListener('pointerdown', dehors, true); window.removeEventListener('keydown', clavier, true); };
+  }, [ouvert]);
+  return (
+    <span className="mb-plus" ref={ref}>
+      <button type="button" data-option="plus" aria-label={titre} title={titre} aria-expanded={ouvert} className={'nb-act' + (ouvert ? ' actif' : '')}
+        {...arret(() => setOuvert((o) => !o))}>
+        <Icon name="more" size={16} />
+      </button>
+      {ouvert && (
+        <div ref={popRef} role="menu" className={'mb-pop mb-plus-pop' + (dessus ? ' dessus' : '')} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => { if (!(e.target.closest && e.target.closest('input, select'))) e.preventDefault(); }}>
+          {items.filter(Boolean).map((it, i) => {
+            if (it.cle === '|') return <span key={'s' + i} className="mb-plus-sep" aria-hidden="true" />;
+            if (it.element) return <div key={it.cle} className="mb-plus-ligne avec-el" data-option={it.cle}><span className="mb-plus-lib">{it.titre}</span><span className="mb-plus-el">{it.element}</span></div>;
+            if (it.couleur !== undefined) return <div key={it.cle} className="mb-plus-ligne avec-el" data-option={it.cle}><span className="mb-plus-lib">{it.titre}</span><BoutonCouleur couleur={it.couleur} titre={it.titre} icone={it.icone || null} aucune={!!it.aucune} onApercu={it.onApercu || null} onCouleur={it.onCouleur} /></div>;
+            return (
+              <button key={it.cle} type="button" role="menuitem" data-option={it.cle} disabled={!!it.desactive} aria-pressed={it.actif === undefined ? undefined : !!it.actif}
+                className={'mb-plus-ligne' + (it.actif ? ' actif' : '') + (it.cle === 'supprimer' ? ' danger' : '')} title={it.titre}
+                {...arret(() => { it.onClick(); if (!it.garder) setOuvert(false); })}>
+                <span className="mb-plus-ic">{it.icone}</span><span className="mb-plus-lib">{it.libelle || String(it.titre || '').replace(/ \(.*\)$/, '')}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </span>
+  );
+}
+
+/**
+ * La même barre, posée AU-DESSUS D'UNE SÉLECTION DE TEXTE (document créé dans l'app) : `rect` = rectangle de la
+ * sélection à l'écran (getBoundingClientRect) ; portail en position fixe, dessous s'il manque la place en haut.
+ */
+export function MiniBarreFlottante({ rect, items, classe = '' }) {
+  const ref = useRef(null);
+  const [place, setPlace] = useState(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !rect) return;
+    const bw = el.offsetWidth, bh = el.offsetHeight, m = 8;
+    const left = Math.max(m, Math.min(rect.left + rect.width / 2 - bw / 2, window.innerWidth - bw - m));
+    const dessous = rect.top - bh - m < 56;
+    const top = dessous ? rect.bottom + m : rect.top - bh - m;
+    setPlace((p) => (p && Math.abs(p.left - left) < 0.5 && Math.abs(p.top - top) < 0.5 && p.dessous === dessous ? p : { left, top, dessous }));
+  });
+  if (!rect || typeof document === 'undefined') return null;
+  return createPortal(
+    <div ref={ref} role="toolbar" className={'mini-barre nb-actions nb-barre flottante' + (place && place.dessous ? ' dessous' : '') + (estTactile() ? ' tactile' : '') + (classe ? ' ' + classe : '')}
+      style={{ left: place ? place.left : rect.left, top: place ? place.top : rect.top - 44, visibility: place ? 'visible' : 'hidden' }}
+      onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => { if (!(e.target.closest && e.target.closest('input, select'))) e.preventDefault(); }}>
+      <ContenuBarre items={items} />
+    </div>,
+    document.querySelector('[data-app="medrevise"]') || document.body,
   );
 }

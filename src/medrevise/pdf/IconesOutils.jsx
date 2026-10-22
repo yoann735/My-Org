@@ -123,6 +123,54 @@ const DESSINS = {
   epaisseur2: <path d="M4 12h16" strokeWidth="2.6" />,
   epaisseur3: <path d="M4 12h16" strokeWidth="4.6" />,
   vide: <rect x="5" y="5" width="14" height="14" rx="2" />,
+  /* (22/10, docs/compte-rendu-simplification-outils.md) barre à 6 outils, sous-barres, mini barres */
+  // Dessin : un pinceau et son trait
+  dessin: (<>
+    <path d="M14.5 4.5 19.5 9.5 11 18l-5-5 8.5-8.5Z" />
+    <path d="M6 13c-2 .5-3 2-3 4.5V20h2.5c2.5 0 4-1 4.5-3" />
+  </>),
+  // Insérer : un carré et un +
+  inserer: (<><rect x="3.5" y="3.5" width="17" height="17" rx="3" /><path d="M12 8v8M8 12h8" /></>),
+  // Post-it : une note carrée au coin replié
+  postit: (<><path d="M4 4h16v10l-6 6H4V4Z" /><path d="M14 20v-6h6" /></>),
+  // boîte-tableau : un cadre arrondi et sa grille
+  boiteTableau: (<><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M3 9.5h18M3 14.8h18M10 4v16" /></>),
+  // taille du texte : un T et une double flèche verticale
+  tailleTexte: (<><path d="M3 6.5V5h10v1.5M8 5v14M6 19h4" /><path d="M18 5v14m-2.5-11.5L18 5l2.5 2.5m-5 9L18 19l2.5-2.5" /></>),
+  // alignements
+  alignGauche: <path d="M4 6h16M4 10h10M4 14h16M4 18h10" />,
+  alignCentre: <path d="M4 6h16M7 10h10M4 14h16M7 18h10" />,
+  alignDroite: <path d="M4 6h16M10 10h10M4 14h16M10 18h10" />,
+  alignJustifie: <path d="M4 6h16M4 10h16M4 14h16M4 18h16" />,
+  // listes
+  listePuces: <path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" />,
+  listeNum: <path d="M10 6h10M10 12h10M10 18h10M4 4.5h1.2V9M3.5 13.5c.4-.9 2.6-1 2.4.5-.1.8-2.4 2-2.4 3h2.6" />,
+  // police : « Aa »
+  police: <path d="M3 18 7.5 6 12 18M4.6 14h5.8M16.5 11.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5ZM19 11v7" />,
+  // surligneur de fond (texte) : un A sur une bande
+  fondTexte: (<><path d="M7 15 11 4h2l4 11M8.5 11h7" /><path d="M3 20h18" strokeWidth="3" opacity=".55" /></>),
+  // → Tableau : une carte qui part vers le tableau
+  versTableau: (<><rect x="3" y="7" width="11" height="9" rx="2" /><path d="M14 11.5h7m-2.5-2.5 2.5 2.5-2.5 2.5" /><path d="M6 10.5h5" /></>),
+  // boîte-tableau : lignes / colonnes
+  ligneAjout: (<><rect x="3" y="4" width="18" height="10" rx="2" /><path d="M3 9h18M12 16.5v5M9.5 19h5" /></>),
+  colonneAjout: (<><rect x="3" y="3" width="10" height="18" rx="2" /><path d="M8 3v18M16.5 12h5M19 9.5v5" /></>),
+  ligneMoins: (<><rect x="3" y="4" width="18" height="10" rx="2" /><path d="M3 9h18M9.5 19h5" /></>),
+  colonneMoins: (<><rect x="3" y="3" width="10" height="18" rx="2" /><path d="M8 3v18M16.5 12h5" /></>),
+  entete: (<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9.5h18" /><path d="M3.5 4.5h17v5h-17z" fill="currentColor" opacity=".35" stroke="none" /></>),
+  // souligné / barré / gras / italique (lettres dessinées : même trait que le reste de la barre)
+  gras: <path d="M7 5h6a3.5 3.5 0 0 1 0 7H7V5Zm0 7h7a3.5 3.5 0 0 1 0 7H7v-7Z" strokeWidth="2.4" />,
+  italique: <path d="M10 5h8M6 19h8M14 5l-4 14" />,
+  souligne: <path d="M7 4v7a5 5 0 0 0 10 0V4M5 20h14" />,
+  barre: <path d="M16.5 7.5c-.5-1.8-2.2-3-4.5-3-2.8 0-4.5 1.5-4.5 3.3 0 4 9.5 2.6 9.5 7.2 0 2-2 3.5-5 3.5-2.4 0-4.4-1.2-5-3M4 12h16" />,
+  titre1: <path d="M4 6v12M11 6v12M4 12h7M15.5 9 18 7v11" />,
+  titre2: <path d="M4 6v12M11 6v12M4 12h7M15 9.5c.3-1.6 4.5-2 4.5.7 0 2-4.5 4.5-4.5 7.8h4.8" />,
+  titre3: <path d="M4 6v12M11 6v12M4 12h7M15 8h4.5l-2.5 3.5c2 0 3 1 3 2.8 0 2.6-3.4 3.4-5.2 1.7" />,
+  citation: <path d="M5 11h4v6H4v-5c0-3 1-5 4-6M15 11h4v6h-5v-5c0-3 1-5 4-6" />,
+  cases: (<><rect x="3.5" y="4" width="6" height="6" rx="1.5" /><path d="m5 7 1.2 1.2L8.4 5.8M13 7h8M3.5 15h6v6h-6zM13 18h8" /></>),
+  separateur: <path d="M3 12h18M7 6h10M7 18h10" opacity=".9" />,
+  lien: <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />,
+  grille: (<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M3 15h18M9 4v16M15 4v16" /></>),
+  reinitialiser: <path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4.5h4.5" />,
 };
 
 /** <IconeForme type="ellipse" /> — dessinée avec LE MÊME tracé que la forme posée
