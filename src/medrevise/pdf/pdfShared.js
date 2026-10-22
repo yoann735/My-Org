@@ -569,6 +569,24 @@ export function rangeFromAnchor(container, anchor) {
     span entièrement couvert remonte à la fois sa boîte et celle de son texte, deux
     rectangles presque identiques qui, en fusion « multiply », dessineraient une tache
     plus foncée. On ne garde que le plus grand des deux. */
+/* SURLIGNAGE CONTINU (22/10, docs/compte-rendu-simplification-outils.md §5) : les rectangles d'un surlignage
+   (un par morceau de texte : mot, span pdf.js, mot OCR) sont fusionnés LIGNE PAR LIGNE en un seul rectangle, du
+   premier au dernier caractère, espaces compris. Rendu seulement : le stockage (plages de caractères + rects) ne
+   change pas. Deux morceaux sont sur la même ligne s'ils se recouvrent verticalement sur la moitié de la plus petite
+   hauteur. `r` : { x, y, width, height } (fractions) ou { x, y, w, h }. */
+export function lignesSurlignage(rects) {
+  const n = (r) => ({ x: r.x, y: r.y, w: r.width != null ? r.width : r.w, h: r.height != null ? r.height : r.h });
+  const tries = (rects || []).map(n).filter((r) => r.w > 0 && r.h > 0).sort((a, b) => (a.y + a.h / 2) - (b.y + b.h / 2) || a.x - b.x);
+  const lignes = [];
+  for (const r of tries) {
+    const l = lignes.find((q) => Math.min(q.y + q.h, r.y + r.h) - Math.max(q.y, r.y) >= Math.min(q.h, r.h) * 0.5);
+    if (!l) { lignes.push({ ...r }); continue; }
+    const x0 = Math.min(l.x, r.x), y0 = Math.min(l.y, r.y), x1 = Math.max(l.x + l.w, r.x + r.w), y1 = Math.max(l.y + l.h, r.y + r.h);
+    Object.assign(l, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+  }
+  return lignes.sort((a, b) => a.y - b.y || a.x - b.x);
+}
+
 export function rectsFromRange(container, range) {
   const cr = container.getBoundingClientRect();
   if (!cr.width || !cr.height) return [];
