@@ -16,7 +16,8 @@ await b.c.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPo
 await b.dormir(1500);
 const anno = (id) => b.S(`return (await S.getAll('annotations')).find((a) => a.id === ${JSON.stringify(id)}) || null`);
 const centre = async (sel) => { const r = await o.rect(sel); return [r.x + r.w / 2, r.y + r.h / 2]; };
-await b.allerPage(95); await b.dormir(1000);
+await b.allerPage(95);
+for (let i = 0; i < 40 && !(await b.ev(`!!document.querySelector('.pdfr-page[data-cle="95"] .pdfr-image')`)); i++) await b.dormir(250);
 const outil = await b.pos(`document.querySelector('[data-outil="main"]')`, false);
 if (outil) await o.tap(outil, 300);
 const id = await b.ev(`(() => { const e = document.querySelector('.pdfr-page[data-cle="95"] .pdfr-image'); return e ? e.dataset.objet : null; })()`);

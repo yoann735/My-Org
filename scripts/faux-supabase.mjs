@@ -17,6 +17,9 @@ const journal = [];
 // JOURNAL=1 (ou POST /__journal?actif=1) la crée. Insert « on conflict (id) do nothing ».
 const revues = new Map(); // id → ligne
 let journalActif = process.env.JOURNAL === '1';
+// (24/10) contrainte du vrai cloud tant que supabase/migrations/20261024_review_log_evenements.sql n'est pas appliqué :
+// rating NOT NULL, entre 1 et 4. CONTRAINTE_RATING=0 (ou POST /__journal?contrainteRating=0) = SQL appliqué.
+let contrainteRating = process.env.CONTRAINTE_RATING !== '0';
 let seqInsert = 0;
 let refuses = new Set((process.env.REFUSER_STORES || '').split(',').filter(Boolean));
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS', 'Access-Control-Expose-Headers': 'Content-Range' };
@@ -43,12 +46,17 @@ http.createServer(async (req, res) => {
   const body = await lire(req);
   const out = (code, obj, extra = {}) => { res.writeHead(code, { 'Content-Type': 'application/json', ...cors, ...extra }); res.end(JSON.stringify(obj)); };
   journal.push({ t: new Date().toISOString(), m: req.method, p: u.pathname, q: u.search.slice(0, 160) });
-  if (u.pathname === '/__journal') { if (u.searchParams.has('actif')) journalActif = u.searchParams.get('actif') === '1'; return out(200, { actif: journalActif, lignes: [...revues.values()] }); }
+  if (u.pathname === '/__journal') {
+    if (u.searchParams.has('actif')) journalActif = u.searchParams.get('actif') === '1';
+    if (u.searchParams.has('contrainteRating')) contrainteRating = u.searchParams.get('contrainteRating') === '1';
+    return out(200, { actif: journalActif, contrainteRating, lignes: [...revues.values()] });
+  }
   if (u.pathname === '/rest/v1/medrevise_review_log') {
     if (!journalActif) return out(404, { code: 'PGRST205', message: "Could not find the table 'public.medrevise_review_log' in the schema cache" });
     if (req.method === 'POST') {
       const lignes = [].concat(JSON.parse(body.toString() || '[]'));
       const ignorer = /ignore-duplicates/.test(req.headers['prefer'] || '');
+      if (contrainteRating && lignes.some((l) => !(l.rating >= 1 && l.rating <= 4))) return out(400, { code: '23514', message: 'new row for relation "medrevise_review_log" violates check constraint "medrevise_review_log_rating_check"' });
       let n = 0;
       for (const l of lignes) {
         if (revues.has(l.id) && ignorer) continue;
