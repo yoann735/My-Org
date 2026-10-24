@@ -458,6 +458,17 @@
 .pdfr-page .pdfr-image.verrouillee { cursor: default; }
 .pdfr-page .pdfr-image.rognage .sel-coin { border-radius: 0; background: var(--accent); }
 .pdfr-page .pdfr-image .pi-rotation, .pdfr-page .pdfr-image .pi-coin { display: none; }
+/* (24/10) image au bord de la page : poignées ramenées au bord visible (PdfPage.jsx bordsPoignees) */
+.pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-nw, .pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-sw { left: var(--sel-g, -5px); }
+.pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-ne, .pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-se { right: var(--sel-d, -5px); }
+.pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-nw, .pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-ne { top: var(--sel-h, -5px); }
+.pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-sw, .pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-se { bottom: var(--sel-b, -5px); }
+@media (pointer: coarse) {
+  .pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-nw, .pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-sw { left: var(--sel-g, -9px); }
+  .pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-ne, .pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-se { right: var(--sel-d, -9px); }
+  .pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-nw, .pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-ne { top: var(--sel-h, -9px); }
+  .pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-sw, .pdfr-page .pdfr-image > .sel-cadre > .sel-coin.sel-se { bottom: var(--sel-b, -9px); }
+}
 /* le bandeau des boîtes d'avant garde sa hauteur (celle que lui donnait l'icône de poignée) : le texte ne bouge pas */
 .pdfr-page .note-box:not(.mot):not(.compacte) .nb-bar { box-sizing: border-box; height: 17px; min-height: 17px; }
 /* le « ? » garde sa taille au survol et pendant un glisser (règle commune : aucun saut de taille) */

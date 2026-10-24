@@ -22,6 +22,7 @@ import { genId } from '../../lib/storage.js';
 import { planMots } from '../../lib/resurlignage.js';
 import { gesteDocument } from './paginationExt.js';
 import { hexPalette, COULEUR_DEFAUT } from '../../lib/palette.js';
+import { ouvrirRognage, rognageValide } from '../../lib/rognageImage.js';
 
 const SEUIL_GLISSER = 6; // px écran avant qu'un appui devienne un déplacement
 const LARGEUR_MIN = 40;
@@ -106,6 +107,9 @@ export function vueImageDoc({ node, getPos, editor }) {
     center: bouton('Centrer', trait('<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>'), () => changer({ align: 'center' })),
     right: bouton('Aligner à droite', trait('<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/>'), () => changer({ align: 'right' })),
   };
+  // (24/10, docs/compte-rendu-seance-categories.md § 2) « Rogner » : cadre de rognage commun (lib/rognageImage.js)
+  const bRogner = bouton('Rogner : cadre à poignées sur l’image entière — Entrée valide, Échap annule (réversible)', trait('<path d="M6 2v14a2 2 0 0 0 2 2h14M18 22V8a2 2 0 0 0-2-2H2"/>'), () => rogner());
+  bRogner.dataset.option = 'rogner';
   bouton('Supprimer l’image (Suppr)', trait('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>'), () => supprimer()).classList.add('pti-suppr');
   cadre.appendChild(barre);
   /* TEXTE EN DIRECT (08/10) : calque des mots reconnus (transparent ; visible et sélectionnable
@@ -147,11 +151,54 @@ export function vueImageDoc({ node, getPos, editor }) {
     view.focus();
   };
 
-  /* taille AFFICHÉE : attributs (si posés), bornée à la largeur du texte et à la hauteur de page */
+  /* taille AFFICHÉE : attributs (si posés), bornée à la largeur du texte et à la hauteur de page.
+     (24/10) IMAGE ROGNÉE (`rognage`, fractions de l'image entière) : width / height décrivent la partie VISIBLE ;
+     l'image entière garde son échelle, décalée et coupée (clip-path) — la structure du cadre ne change pas. */
+  const rg = () => rognageValide(courant.attrs.rognage);
   const ratio = () => {
     const a = courant.attrs;
     if (a.width && a.height) return Number(a.height) / Number(a.width);
-    return img.naturalWidth ? img.naturalHeight / img.naturalWidth : 0.66;
+    const r = rg();
+    const nat = img.naturalWidth ? img.naturalHeight / img.naturalWidth : 0.66;
+    return r ? nat * (r.h / r.w) : nat;
+  };
+  // pose la taille visible W × H (cadre) et, rognée, l'image entière autour
+  const poser = (w, h) => {
+    const r = rg();
+    cadre.style.width = Math.round(w) + 'px';
+    dom.classList.toggle('rognee', !!r);
+    const calques = [calque, notionsCalque];
+    if (!r) {
+      img.style.height = Math.round(h) + 'px';
+      img.style.width = ''; img.style.margin = ''; img.style.clipPath = '';
+      calques.forEach((c) => { c.style.left = ''; c.style.top = ''; c.style.width = ''; c.style.height = ''; c.style.clipPath = ''; });
+      return;
+    }
+    const W = w / r.w, H = h / r.h, gx = r.x * W, gy = r.y * H, dx = (1 - r.x - r.w) * W, dy = (1 - r.y - r.h) * H;
+    img.style.width = W + 'px'; img.style.height = H + 'px';
+    img.style.margin = `${-gy}px 0 ${-dy}px ${-gx}px`;
+    const clip = `inset(${gy}px ${dx}px ${dy}px ${gx}px)`;
+    img.style.clipPath = clip;
+    calques.forEach((c) => { c.style.left = -gx + 'px'; c.style.top = -gy + 'px'; c.style.width = W + 'px'; c.style.height = H + 'px'; c.style.clipPath = clip; });
+  };
+  let rognageOuvert = null;
+  const rogner = () => {
+    if (rognageOuvert) { rognageOuvert.valider(); return; }
+    const avant = rg();
+    const w0 = cadre.offsetWidth, h0 = cadre.offsetHeight;
+    const W = avant ? w0 / avant.w : w0, H = avant ? h0 / avant.h : h0; // l'image entière, à l'échelle affichée
+    const libre = !!courant.attrs.height;
+    dom.classList.add('rognage');
+    rognageOuvert = ouvrirRognage({
+      cadreEl: cadre, url: img.currentSrc || img.src, rognage: avant,
+      onValider: (n) => {
+        rognageOuvert = null; dom.classList.remove('rognage');
+        const r = n || { w: 1, h: 1 };
+        changer({ rognage: n, width: Math.round(W * r.w), height: libre ? Math.round(H * r.h) : null });
+        if (!view.hasFocus()) view.focus(); // ⌘Z suivant : l'historique du document
+      },
+      onAnnuler: () => { rognageOuvert = null; dom.classList.remove('rognage'); if (!view.hasFocus()) view.focus(); },
+    });
   };
   const majTaille = () => {
     const { maxW, maxH } = bornes(view, dom);
@@ -160,8 +207,7 @@ export function vueImageDoc({ node, getPos, editor }) {
     w = Math.min(w, maxW);
     let h = w * r;
     if (h > maxH) { h = maxH; w = h / r; }
-    cadre.style.width = Math.round(w) + 'px';
-    img.style.height = Math.round(h) + 'px';
+    poser(w, h);
     if (typeof ajusterMots === 'function') ajusterMots();
   };
   const appliquer = () => {
@@ -179,7 +225,7 @@ export function vueImageDoc({ node, getPos, editor }) {
   const mesure = document.createElement('canvas').getContext('2d');
   const ajusterMots = () => {
     // taille de police de chaque mot : la hauteur de sa boîte, étirée à sa largeur (sélection juste)
-    const H = img.offsetHeight || 0, W = cadre.offsetWidth || 0;
+    const H = img.offsetHeight || 0, W = img.offsetWidth || 0; // l'image ENTIÈRE (rognée : plus grande que le cadre)
     if (!H || !W) return;
     for (const sp of calque.children) {
       const m = (courant.attrs.ocr && courant.attrs.ocr.mots[Number(sp.dataset.i)]) || null;
@@ -339,7 +385,7 @@ export function vueImageDoc({ node, getPos, editor }) {
     try { p.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
     const s = echelleDe(view.dom) || 1;
     const { maxW, maxH } = bornes(view, dom);
-    const w0 = cadre.offsetWidth, h0 = img.offsetHeight, x0 = e.clientX, y0 = e.clientY;
+    const w0 = cadre.offsetWidth, h0 = cadre.offsetHeight, x0 = e.clientX, y0 = e.clientY; // partie visible
     const coin = p.dataset.coin;
     const sensX = coin.endsWith('g') ? -1 : 1, sensY = coin.startsWith('h') ? -1 : 1;
     const facteur = (courant.attrs.align || 'center') === 'center' ? 2 : 1; // centrée : elle grandit des deux côtés
@@ -352,8 +398,7 @@ export function vueImageDoc({ node, getPos, editor }) {
       w = Math.max(LARGEUR_MIN, Math.min(maxW, w0 + sensX * ((ev.clientX - x0) / s) * facteur));
       h = libre ? Math.max(30, Math.min(maxH, h0 + sensY * (ev.clientY - y0) / s)) : w * (h0 / w0);
       if (!libre && h > maxH) { h = maxH; w = h * (w0 / h0); }
-      cadre.style.width = Math.round(w) + 'px';
-      img.style.height = Math.round(h) + 'px';
+      poser(w, h);
     };
     const up = (ev) => {
       if (ev.pointerId !== e.pointerId) return;
@@ -471,7 +516,7 @@ export function vueImageDoc({ node, getPos, editor }) {
       return true;
     },
     selectNode() { dom.classList.add('sel'); requestAnimationFrame(placerBarre); },
-    deselectNode() { dom.classList.remove('sel'); },
+    deselectNode() { dom.classList.remove('sel'); if (rognageOuvert) rognageOuvert.valider(); },
     // poignées, barre et déplacement : gérés ici, pas par ProseMirror
     stopEvent(e) {
       const t = e.target;
@@ -482,7 +527,7 @@ export function vueImageDoc({ node, getPos, editor }) {
       return false;
     },
     ignoreMutation() { return true; },
-    destroy() { if (ligne) ligne.remove(); fermerBulle(); document.removeEventListener('pointerdown', dehors, true); },
+    destroy() { if (rognageOuvert) rognageOuvert.annuler(); if (ligne) ligne.remove(); fermerBulle(); document.removeEventListener('pointerdown', dehors, true); },
   };
 }
 

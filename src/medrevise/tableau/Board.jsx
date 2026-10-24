@@ -33,6 +33,7 @@ import { VueMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { porteCartes, cartesGlissees, EVT_GLISSE } from '../apprentissageLibre/liste.js';
 import { BoiteTableau, estGrille, nouvelleGrille, ajouterLigne, ajouterColonne, retirerLigne, retirerColonne, LIMITES_GRILLE } from '../pdf/BoiteTableau.jsx';
 import { carteDepuisBoite } from '../lib/board.js';
+import { redimRectImage, ouvrirRognage, cadreApresRognage, styleEntiere } from '../lib/rognageImage.js';
 import '../../styles/tableau-board.css';
 
 const SEUIL_AIMANT = 6; // px à l'écran
@@ -471,10 +472,35 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
     let courant = null;
     const suivi = suivrePointeur(e, {
       seuil: 2, arreter: true,
-      move: (ev) => { const r = redimRect(base, coin, (ev.clientX - x0) / z, (ev.clientY - y0) / z, { min: { width: CARTE_BOARD.min.w, height: o.type === 'image' ? 30 : CARTE_BOARD.min.h }, ratio }); courant = { x: r.x, y: r.y, w: r.width, h: r.height }; setApercu({ id: o.id, rect: courant }); },
+      // (24/10) image : proportions conservées, Maj = libre (lib/rognageImage.js, même règle que le lecteur et les documents)
+      move: (ev) => { const dx = (ev.clientX - x0) / z, dy = (ev.clientY - y0) / z; const r = o.type === 'image' ? redimRectImage(base, coin, dx, dy, { min: { width: 30, height: 30 }, ratio, libre: ev.shiftKey }) : redimRect(base, coin, dx, dy, { min: { width: CARTE_BOARD.min.w, height: CARTE_BOARD.min.h }, ratio }); courant = { x: r.x, y: r.y, w: r.width, h: r.height }; setApercu({ id: o.id, rect: courant }); },
       fin: (ev, { annule }) => { geste.current = false; setApercu(null); if (!annule && courant) modifierObjet(o.id, { x: Math.round(courant.x), y: Math.round(courant.y), w: Math.round(courant.w), h: Math.round(courant.h) }, 'Redimension'); },
     });
     if (suivi) geste.current = true;
+  };
+
+  /* ---------- (24/10) ROGNER une image : cadre de rognage commun (lib/rognageImage.js) — non destructif, réversible,
+     une entrée d'annulation ; l'image entière reste en place, seul son cadre visible change ---------- */
+  const [rognageId, setRognageId] = useState(null);
+  const rognageEnCours = useRef(null);
+  useEffect(() => () => { if (rognageEnCours.current) rognageEnCours.current.annuler(); }, []);
+  const rognerImage = async (o) => {
+    if (rognageEnCours.current) { rognageEnCours.current.valider(); return; }
+    const el = mondeRef.current && mondeRef.current.querySelector(`.tb2-image[data-objet="${o.id}"]`);
+    const blob = el && await getBlob(o.blobId).catch(() => null);
+    if (!el || !blob) return;
+    const url = URL.createObjectURL(blob);
+    const fin = () => { rognageEnCours.current = null; setRognageId(null); URL.revokeObjectURL(url); };
+    setRognageId(o.id);
+    rognageEnCours.current = ouvrirRognage({
+      cadreEl: el, url, rognage: o.rognage || null,
+      onValider: (n) => {
+        fin();
+        const c = cadreApresRognage({ x: o.x, y: o.y, width: o.w, height: o.h }, o.rognage || null, n);
+        modifierObjet(o.id, { x: Math.round(c.x * 10) / 10, y: Math.round(c.y * 10) / 10, w: Math.round(c.width * 10) / 10, h: Math.round(c.height * 10) / 10, rognage: n }, n ? 'Rognage de l’image' : 'Image entière');
+      },
+      onAnnuler: fin,
+    });
   };
 
   /* ---------- flèches : le modèle et les gestes du lecteur ---------- */
@@ -708,7 +734,8 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
         { cle: 'supprimer', titre: 'Supprimer (Suppr)', onClick: supprimerSelection },
       ];
     }
-    if (o.type === 'image') return [{ cle: 'dupliquer', icone: <Icon name="copy" size={14} />, titre: 'Dupliquer (⌘D)', onClick: dupliquer }, { cle: '|' }, { cle: 'supprimer', titre: 'Supprimer (Suppr)', onClick: supprimerSelection }];
+    if (o.type === 'image') return [{ cle: 'rogner', icone: <IconeOutil nom="rogner" size={16} />, actif: rognageId === o.id, titre: 'Rogner : cadre à poignées sur l’image entière — Entrée valide, Échap annule (réversible)', onClick: () => rognerImage(o) },
+      { cle: 'dupliquer', icone: <Icon name="copy" size={14} />, titre: 'Dupliquer (⌘D)', onClick: dupliquer }, { cle: '|' }, { cle: 'supprimer', titre: 'Supprimer (Suppr)', onClick: supprimerSelection }];
     return [
       { cle: 'couleur', couleur: o.couleur, titre: 'Couleur de la carte', onCouleur: (c) => { setCouleurNouvelle(c); modifierObjet(o.id, { couleur: c }, 'Couleur de la carte'); } },
       { cle: '|' },
@@ -747,8 +774,10 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
               return (
                 <div key={o.id} className={'tb2-image sel-objet' + (sel ? ' sel' : '')} data-objet={o.id} style={{ left: o.x, top: o.y, width: o.w, height: o.h, zIndex: (o.z || 0) + (sel ? 1000 : 0) }}
                   onPointerDown={(e) => appuiObjet(e, o0)}>
-                  <ImageBlob blobId={o.blobId} className="tb2-img" />
-                  {sel && <CadreSelection onCoin={(e, coin) => redim(e, o0, coin)} />}
+                  {o.rognage
+                    ? <div className="tb2-rogne"><div className="tb2-plein" style={styleEntiere(o.rognage)}><ImageBlob blobId={o.blobId} className="tb2-img" /></div></div>
+                    : <ImageBlob blobId={o.blobId} className="tb2-img" />}
+                  {sel && rognageId !== o.id && <CadreSelection onCoin={(e, coin) => redim(e, o0, coin)} />}
                 </div>
               );
             }

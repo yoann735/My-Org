@@ -27,6 +27,7 @@ import { connecteursDe, epingleSeule, patchRetirer, patchAjouter, patchStyle, pa
 import { styleFleche, cheminFleche, geoPointe, sommetsConnecteur, sommetsForme, pointesForme, harmonisee, suivant, TRAITS as TRAITS_FORME } from './flechesGeo.js';
 import { TraitFleche, PoigneesFleche, pointsAvecAjout, glisserPointFleche, appuiLong, itemsFleche, boiteSous } from './Fleche.jsx';
 import { CadreSelection, MiniBarre, redimensionner } from './Selection.jsx';
+import { redimRectImage, ouvrirRognage, cadreApresRognage, entiereDepuisCadre } from '../lib/rognageImage.js';
 import { elementsFormat, useSuiviEditeur, ALIGNEMENTS } from './FormatTexte.jsx';
 import { BoiteTableau, estGrille, contenuGrille, ajouterLigne, ajouterColonne, retirerLigne, retirerColonne, LIMITES_GRILLE } from './BoiteTableau.jsx';
 import { BoutonTaille } from './ChoixTaille.jsx';
@@ -1652,9 +1653,18 @@ const mesureMots = typeof document !== 'undefined' ? document.createElement('can
 /** (21/10) une image ROGNÉE garde l'image entière : `rognage` { x, y, w, h } = la partie visible, en fractions de l'image ;
     son cadre (x, y, width, height) est cette partie. L'image entière, en fractions de page : */
 export function imageEntiere(img) {
-  const rg = img.rognage;
-  if (!rg) return { x: img.x, y: img.y, width: img.width, height: img.height };
-  return { x: img.x - (rg.x / rg.w) * img.width, y: img.y - (rg.y / rg.h) * img.height, width: img.width / rg.w, height: img.height / rg.h };
+  return entiereDepuisCadre(img, img.rognage || null); // (24/10) calcul commun : lib/rognageImage.js
+}
+/* (24/10) une image qui touche ou dépasse un bord de la page : le calque des images (overflow: hidden) coupait la moitié
+   extérieure de ses poignées (souvent introuvables). Leur position est ramenée au bord VISIBLE de la page. */
+function bordsPoignees(g, W, H) {
+  if (!W || !H) return undefined;
+  const s = {};
+  if (g.x < 0.006) s['--sel-g'] = Math.max(0, -g.x * W) + 'px';
+  if (g.y < 0.006) s['--sel-h'] = Math.max(0, -g.y * H) + 'px';
+  if (g.x + g.width > 0.994) s['--sel-d'] = Math.max(0, (g.x + g.width - 1) * W) + 'px';
+  if (g.y + g.height > 0.994) s['--sel-b'] = Math.max(0, (g.y + g.height - 1) * H) + 'px';
+  return s;
 }
 function ImageCollee({ img, active, onActiver, onMaj, onModifier, onSupprimer, onGeste, onApercu = () => {}, pageWidth = 0, pageHeight = 0,
   outil = 'main', surlignages = EMPTY_ARRAY, couleurSurligneur = 'jaune-franc', onSurligner = () => {}, onFlashcard = () => {} }) {
@@ -1674,9 +1684,26 @@ function ImageCollee({ img, active, onActiver, onMaj, onModifier, onSupprimer, o
   const g = apercu || img;
   const cadreRef = useRef(null);
   /* GESTE UNIQUE (21/10, pdf/Selection.jsx) : clic = sélection, glisser n'importe où = déplacement, 4 coins =
-     redimension (proportions gardées) — ou ROGNAGE quand « Rogner » est actif ; verrouillée : sélection seulement. */
+     redimension (proportions gardées, Maj = libre) ; verrouillée : sélection seulement.
+     (24/10, docs/compte-rendu-seance-categories.md § 2) AVANT : `redimRect` était appelé ici sans être importé —
+     chaque glisser d'un coin levait « ReferenceError: redimRect is not defined » (redimension ET rognage morts,
+     sans rien à l'écran ; le build ne le voit pas). Le rognage se fait désormais dans le CADRE DE ROGNAGE commun
+     (lib/rognageImage.js ouvrirRognage : Entrée valide, Échap annule, non destructif). */
   const [rogne, setRogne] = useState(false);
-  useEffect(() => { if (!active) setRogne(false); }, [active]);
+  const rognage = useRef(null);
+  useEffect(() => { if (!active && rognage.current) rognage.current.valider(); }, [active]);
+  useEffect(() => () => { if (rognage.current) rognage.current.annuler(); }, []);
+  const rogner = () => {
+    if (rognage.current) { rognage.current.valider(); return; }
+    if (!cadreRef.current || !url) return;
+    const avant = img;
+    setRogne(true);
+    rognage.current = ouvrirRognage({
+      cadreEl: cadreRef.current, url, rognage: avant.rognage || null,
+      onValider: (n) => { rognage.current = null; setRogne(false); onMaj(avant, { ...avant, ...cadreApresRognage(avant, avant.rognage || null, n), rognage: n }, n ? 'Rognage de l’image' : 'Image entière'); },
+      onAnnuler: () => { rognage.current = null; setRogne(false); },
+    });
+  };
   const geste = (e, type) => {
     const r = rectPage(e.currentTarget);
     if (!r || !r.width || !r.height) return;
@@ -1691,14 +1718,8 @@ function ImageCollee({ img, active, onActiver, onMaj, onModifier, onSupprimer, o
       const dx = (ev.clientX - d0.x) / r.width, dy = (ev.clientY - d0.y) / r.height;
       if (type === 'move') {
         courant = { ...avant, x: clamp(avant.x + dx, -avant.width * 0.8, 1 - avant.width * 0.2), y: clamp(avant.y + dy, -avant.height * 0.8, 1 - avant.height * 0.2) };
-      } else if (rogne && !rot) {
-        // ROGNER : le cadre visible bouge, l'image entière reste en place (rognage borné à l'image)
-        const F = imageEntiere(avant), R = redimRect(avant, type, dx, dy, { min: { width: 0.02, height: 0.02 } });
-        const x1 = Math.max(F.x, R.x), y1 = Math.max(F.y, R.y), x2 = Math.min(F.x + F.width, R.x + R.width), y2 = Math.min(F.y + F.height, R.y + R.height);
-        const q = (v) => +v.toFixed(5);
-        courant = { ...avant, x: x1, y: y1, width: x2 - x1, height: y2 - y1, rognage: { x: q((x1 - F.x) / F.width), y: q((y1 - F.y) / F.height), w: q((x2 - x1) / F.width), h: q((y2 - y1) / F.height) } };
       } else if (!rot) {
-        courant = { ...avant, ...redimRect(avant, type, dx, dy, { min: { width: 0.03, height: 0.03 * ratio }, ratio }) };
+        courant = { ...avant, ...redimRectImage(avant, type, dx, dy, { min: { width: 0.03, height: 0.03 * ratio }, ratio, libre: ev.shiftKey }) };
       } else {
         const sx = type.includes('e') ? 1 : -1, sy = type.includes('s') ? 1 : -1;
         const px = ev.clientX - d0.x, py = ev.clientY - d0.y;
@@ -1716,7 +1737,7 @@ function ImageCollee({ img, active, onActiver, onMaj, onModifier, onSupprimer, o
       onGeste(false);
       setApercu(null);
       onApercu(null);
-      if (!annule && bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de l’image' : rogne ? 'Rognage de l’image' : 'Redimension de l’image');
+      if (!annule && bouge && courant) onMaj(avant, courant, type === 'move' ? 'Déplacement de l’image' : 'Redimension de l’image');
     };
     if (!suivrePointeur(e, { seuil: 3, arreter: true, glisser: type === 'move', move, fin: up })) return;
     onGeste(true);
@@ -1790,7 +1811,7 @@ function ImageCollee({ img, active, onActiver, onMaj, onModifier, onSupprimer, o
 
   return (<>
     <div ref={cadreRef} tabIndex={0} data-objet={img.id} className={'pdfr-image sel-objet' + (active ? ' active' : '') + (apercu ? ' glisse' : '') + (img.verrouille ? ' verrouillee' : '') + (rogne ? ' rognage' : '')}
-      style={{ left: g.x * 100 + '%', top: g.y * 100 + '%', width: g.width * 100 + '%', height: g.height * 100 + '%' }}
+      style={{ left: g.x * 100 + '%', top: g.y * 100 + '%', width: g.width * 100 + '%', height: g.height * 100 + '%', ...bordsPoignees(g, pageWidth, pageHeight) }}
       onPointerDown={(e) => geste(e, 'move')}
       title="Image collée · clic : sélectionner · glisser : déplacer · coins : redimensionner · Suppr : retirer">
       {/* le CORPS pivote (image d'avant le 21/10 pivotée) ; il ne montre que la partie rognée de l'image entière */}
@@ -1820,16 +1841,18 @@ function ImageCollee({ img, active, onActiver, onMaj, onModifier, onSupprimer, o
         </div>
       )}
       </div>
-      {active && <CadreSelection onCoin={img.verrouille ? null : (e, coin) => geste(e, coin)} />}
+      {active && !rogne && g.rotation ? <CadreSelection onCoin={img.verrouille ? null : (e, coin) => geste(e, coin)} /> : null}
       </div>
+      {/* (24/10) poignées HORS du corps : sur une image rognée, son overflow: hidden coupait les coins */}
+      {active && !rogne && !g.rotation && <CadreSelection onCoin={img.verrouille ? null : (e, coin) => geste(e, coin)} />}
     </div>
-    {active && !apercu && (
+    {active && !apercu && !rogne && (
       <MiniBarre ancre={{ x: g.x * pageWidth, y: g.y * pageHeight, w: g.width * pageWidth, h: g.height * pageHeight }} pageWidth={pageWidth} pageHeight={pageHeight}
         items={[
-          { cle: 'rogner', icone: <IconeOutil nom="rogner" size={16} />, actif: rogne, desactive: !!img.rotation || !!img.verrouille,
-            titre: img.rotation ? 'Rogner : redresse d’abord l’image' : rogne ? 'Rognage en cours : les coins rognent — cliquer pour terminer' : 'Rogner : les coins rognent l’image au lieu de la redimensionner', onClick: () => setRogne((v) => !v) },
+          { cle: 'rogner', icone: <IconeOutil nom="rogner" size={16} />, actif: rogne, desactive: !!img.rotation || !!img.verrouille || !url,
+            titre: img.rotation ? 'Rogner : redresse d’abord l’image' : 'Rogner : cadre à poignées sur l’image entière — Entrée valide, Échap annule (réversible)', onClick: rogner },
           { cle: 'verrou', icone: <IconeOutil nom={img.verrouille ? 'cadenas' : 'cadenasOuvert'} size={16} />, actif: !!img.verrouille,
-            titre: img.verrouille ? 'Verrouillée : ni déplacée ni redimensionnée — cliquer pour déverrouiller' : 'Verrouiller : l’image ne bouge plus', onClick: () => { setRogne(false); onModifier(img, { verrouille: !img.verrouille }, img.verrouille ? 'Image déverrouillée' : 'Image verrouillée'); } },
+            titre: img.verrouille ? 'Verrouillée : ni déplacée ni redimensionnée — cliquer pour déverrouiller' : 'Verrouiller : l’image ne bouge plus', onClick: () => { if (rognage.current) rognage.current.annuler(); onModifier(img, { verrouille: !img.verrouille }, img.verrouille ? 'Image déverrouillée' : 'Image verrouillée'); } },
           { cle: '|' },
           { cle: 'supprimer', titre: `Supprimer l'image (annulable par ${RACCOURCI_Z})`, onClick: () => onSupprimer(img) },
         ]} />

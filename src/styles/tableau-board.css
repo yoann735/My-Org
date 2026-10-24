@@ -54,6 +54,10 @@
 /* une image */
 .tb2-image { position: absolute; touch-action: none; }
 .tb2-image .tb2-img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 4px; pointer-events: none; }
+/* (24/10) image rognée : la partie visible de l'image entière (lib/rognageImage.js) */
+.tb2-image .tb2-rogne { position: absolute; inset: 0; overflow: hidden; border-radius: 4px; }
+.tb2-image .tb2-plein { position: absolute; }
+.tb2-image .tb2-plein .tb2-img { object-fit: fill; border-radius: 0; }
 .tb2-img-attente { display: block; width: 100%; height: 100%; background: rgba(128, 128, 140, .2); border-radius: 6px; }
 
 /* barre du tableau */

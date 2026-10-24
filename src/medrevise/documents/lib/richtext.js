@@ -82,6 +82,12 @@ const ImageDoc = BlobImage.extend({
       notions: { default: null, rendered: false },
       // (10/10) id de l'image flottante d'origine quand le bloc vient de sa conversion
       deAnnotation: { default: null, rendered: false },
+      // (24/10) partie visible { x, y, w, h } en fractions de l'image entière (lib/rognageImage.js) — non destructif
+      rognage: {
+        default: null,
+        parseHTML: (el) => { try { return JSON.parse(el.getAttribute('data-rognage') || 'null'); } catch (e) { return null; } },
+        renderHTML: (attrs) => (attrs.rognage ? { 'data-rognage': JSON.stringify(attrs.rognage) } : {}),
+      },
     };
   },
   addNodeView() {

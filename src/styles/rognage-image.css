@@ -1,0 +1,29 @@
+/* ============================================================
+   MedRevise — CADRE DE ROGNAGE DES IMAGES (24/10, lib/rognageImage.js) : un seul composant pour le lecteur,
+   la fiche jumelle, les documents et le tableau. Posé sur document.body (position fixe). Jetons de la DA.
+   ============================================================ */
+.rgn { position: fixed; inset: 0; z-index: 1200; pointer-events: none; }
+.rgn-entiere { position: fixed; pointer-events: none; }
+.rgn-entiere > img { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .5; user-select: none; -webkit-user-select: none; }
+/* zone gardée : l'image en clair (le voile est l'ombre portée géante de la zone) */
+.rgn-zone { position: absolute; box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 100vmax rgba(10, 10, 14, .42); cursor: move; pointer-events: auto; touch-action: none; }
+.rgn-zone::before { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background-image: linear-gradient(to right, transparent calc(33.333% - .5px), rgba(255,255,255,.55) calc(33.333% - .5px), rgba(255,255,255,.55) calc(33.333% + .5px), transparent calc(33.333% + .5px), transparent calc(66.666% - .5px), rgba(255,255,255,.55) calc(66.666% - .5px), rgba(255,255,255,.55) calc(66.666% + .5px), transparent calc(66.666% + .5px)),
+    linear-gradient(to bottom, transparent calc(33.333% - .5px), rgba(255,255,255,.55) calc(33.333% - .5px), rgba(255,255,255,.55) calc(33.333% + .5px), transparent calc(33.333% + .5px), transparent calc(66.666% - .5px), rgba(255,255,255,.55) calc(66.666% - .5px), rgba(255,255,255,.55) calc(66.666% + .5px), transparent calc(66.666% + .5px));
+  opacity: 0; transition: opacity .12s; }
+.rgn.geste .rgn-zone::before { opacity: 1; }
+/* poignées d'angle : en L, aux couleurs de l'accent ; prise de 28 px (doigt) */
+.rgn-coin { position: absolute; width: 18px; height: 18px; pointer-events: auto; touch-action: none; }
+.rgn-coin::after { content: ''; position: absolute; inset: 0; border: 0 solid var(--accent); }
+.rgn-coin::before { content: ''; position: absolute; inset: -6px; } /* prise élargie */
+.rgn-nw { left: -4px; top: -4px; cursor: nwse-resize; } .rgn-nw::after { border-left-width: 4px; border-top-width: 4px; }
+.rgn-ne { right: -4px; top: -4px; cursor: nesw-resize; } .rgn-ne::after { border-right-width: 4px; border-top-width: 4px; }
+.rgn-sw { left: -4px; bottom: -4px; cursor: nesw-resize; } .rgn-sw::after { border-left-width: 4px; border-bottom-width: 4px; }
+.rgn-se { right: -4px; bottom: -4px; cursor: nwse-resize; } .rgn-se::after { border-right-width: 4px; border-bottom-width: 4px; }
+@media (pointer: coarse) { .rgn-coin { width: 24px; height: 24px; } .rgn-coin::before { inset: -10px; } }
+.rgn-barre { position: fixed; display: flex; gap: 4px; padding: 4px; border-radius: 10px; background: var(--card-2, var(--card)); border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg, 0 10px 30px rgba(0,0,0,.35)); pointer-events: auto; white-space: nowrap; }
+.rgn-bt { height: 30px; min-width: 30px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--text-2); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.rgn-bt:hover { background: var(--bg-2); color: var(--text); }
+.rgn-bt.ok { background: var(--accent); color: var(--on-accent, #fff); }
+@media (pointer: coarse) { .rgn-bt { height: 38px; min-width: 38px; } }

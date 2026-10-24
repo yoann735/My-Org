@@ -204,6 +204,12 @@
 .pti-cadre > img { display: block; width: 100%; max-width: none; margin: 0; border-radius: 4px; object-fit: fill; outline: none; } /* Maj = libre : l’image suit le cadre */
 .pti.sel .pti-cadre > img { outline: 2px solid #6b5cff; outline-offset: 1px; cursor: grab; touch-action: none; }
 .pti.deplace .pti-cadre > img { opacity: .45; cursor: grabbing; }
+/* (24/10) image rognée : l'image entière est coupée (clip-path) — son contour de sélection passe sur le cadre visible */
+.pti.rognee .pti-cadre > img { max-width: none; }
+.pti.rognee.sel .pti-cadre > img { outline: none; }
+.pti.rognee.sel .pti-cadre { outline: 2px solid #6b5cff; outline-offset: 1px; border-radius: 4px; }
+.ProseMirror:not(.ProseMirror-focused) .pti.rognee.sel .pti-cadre { outline: none; }
+.pti.rognage .pti-poignee, .pti.rognage .pti-barre { display: none !important; }
 /* poignées d'angle : 14 px écran à la souris, 40 px au doigt (contre-échelle : la page est zoomée) */
 .pti { --pti-inv: var(--pt-inv, 1); --pti-p: 14px; } /* --pt-inv = 1 / zoom de la page (PageTexte) */
 @media (pointer: coarse) { .pti { --pti-p: 40px; } }
