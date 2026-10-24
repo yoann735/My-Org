@@ -73,3 +73,29 @@
   backdrop-filter: blur(3px); animation: fade .15s ease; text-align: left; }
 .ac-fenetre { max-height: 86vh; display: flex; flex-direction: column; }
 .ac-fenetre-corps { overflow-y: auto; }
+
+/* ---- (24/10) CARNET D'ERREURS EN RÉVISION : PETIT MENU (docs/compte-rendu-seance-categories.md § 6) ----
+   pré-réponses en puces sur 2 lignes au plus (colonnes = moitié des puces, libellé sur 2 lignes au plus),
+   « Ajouter une note » replié ; téléphone : feuille du bas ≤ 35 % de la hauteur, sans défilement ;
+   ordinateur : popover compact sous l'icône */
+.cn { display: flex; flex-direction: column; gap: 8px; }
+.cn-puces { display: grid; grid-template-columns: repeat(var(--cn-col, 4), minmax(0, 1fr)); gap: 6px; }
+.cn-puce { min-width: 0; min-height: 40px; padding: 4px 6px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-2, var(--card));
+  color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; line-height: 1.2; cursor: pointer; display: grid; place-items: center; text-align: center; }
+.cn-puce > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.cn-puce:hover, .cn-puce:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+.cn-puce:active { transform: scale(.97); }
+.cn-puce.cn-autre { color: var(--text-2); }
+.cn-note-bt { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 6px; border: 0; border-radius: 7px; background: none;
+  color: var(--text-3); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.cn-note-bt:hover { color: var(--accent); }
+.cn-note { width: 100%; height: 36px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--card); color: var(--text); font: inherit; font-size: 13.5px; }
+.cn-note:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.cn-pop { position: fixed; z-index: 460; padding: 8px; border-radius: 12px; background: var(--card-2, var(--card)); border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg, 0 10px 30px rgba(0,0,0,.35)); animation: fc-entree .12s ease-out; }
+.sn-feuille.cn-feuille { max-height: 35vh; max-height: 35dvh; overflow: hidden; padding: 6px 14px calc(12px + env(safe-area-inset-bottom)); }
+.cn-feuille .sn-feuille-poignee { margin: 0 auto 6px; }
+.cn-tete { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; min-width: 0; }
+.cn-titre { flex: 0 0 auto; font-weight: 700; font-size: 14.5px; color: var(--text); }
+.cn-sous { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cn-fermer { flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--text-2); cursor: pointer; }

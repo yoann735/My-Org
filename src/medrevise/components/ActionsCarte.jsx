@@ -5,9 +5,11 @@
    la carte affichée, apparaît dès que la carte est RETOURNÉE (avant même de noter) et disparaît avec
    elle quand on passe à la suivante. Hors du flux du contenu : toujours visible, quel que soit le
    défilement interne de la carte.
-   - « Carnet d'erreurs » (icône cible) : menu de pré-réponses à UN tap (feuille du bas au téléphone) ;
-     l'entrée est créée tout de suite (lib/carnetPreReponses.js) — toast « Ajouté au carnet ·
-     Modifier » ; « Autre… » ouvre le formulaire complet (SaisieCarnet) ;
+   - « Carnet d'erreurs » (icône cible) : (24/10, docs/compte-rendu-seance-categories.md § 6) PETIT MENU —
+     les pré-réponses en puces sur 2 lignes au plus, un tap crée l'entrée (lib/carnetPreReponses.js) et
+     ferme — toast « Ajouté au carnet · Modifier » ; « Ajouter une note » replié, facultatif (la note part
+     avec la puce touchée ensuite). Téléphone : feuille du bas ≤ 35 % de la hauteur, sans défilement ;
+     ordinateur : popover compact sous l'icône. Remplace la grande liste (et le formulaire « Autre… ») ;
    - « Apprentissage » (icône rafale) : la carte rejoint la liste du mode Apprentissage.
    INDÉPENDANCE : « Apprentissage » n'écrit QUE `learning_set` (ctx.setLearningSet) — jamais la
    carte, ses J, son état FSRS ni le journal. Le carnet n'écrit que ses champs (carnetAt,
@@ -18,11 +20,8 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { IconeRafale } from './IconeRafale.jsx';
-import { SaisieCarnet } from './SaisieCarnet.jsx';
 import { preReponsesDe, ajouterAuCarnet, admissibleCarnet } from '../lib/carnetPreReponses.js';
 import { ajouter as ajouterAListe, estAdmissible } from '../apprentissageLibre/liste.js';
-import { getOne } from '../lib/storage.js';
-import { todayISO } from '../lib/sm2.js';
 import '../../styles/actions-carte.css';
 
 const etroit = () => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
@@ -54,18 +53,19 @@ export function ActionsCarte({ ctx, carte, mobile: mobileProp, sansApprentissage
   const [menu, setMenu] = useState(false); // menu des pré-réponses
   const [posMenu, setPosMenu] = useState(null); // ordinateur : position FIXE (jamais rognée par la zone qui défile)
   const boutonCarnet = useRef(null);
-  const [autre, setAutre] = useState(null); // carte (relue) pour le formulaire complet
+  const [note, setNote] = useState(null); // note facultative du carnet : null = repliée
   const [modifier, setModifier] = useState(null); // { id, type, note }
   const [toast, setToast] = useState(null); // { texte, sous, action }
   const racine = useRef(null);
 
   // autre carte : menu refermé (le toast de la carte précédente peut finir sa course)
-  useEffect(() => { setMenu(false); }, [carte && carte.id]);
+  useEffect(() => { setMenu(false); setNote(null); }, [carte && carte.id]);
+  useEffect(() => { if (!menu) setNote(null); else setToast(null); }, [menu]); // menu ouvert : le toast précédent ne le recouvre pas
   useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(null), 4500); return () => clearTimeout(t); }, [toast]);
   // menu (ordinateur) : se ferme au clic à l'extérieur ou sur Échap
   useEffect(() => {
     if (!menu) return undefined;
-    const dehors = (e) => { if (!mobile && racine.current && !racine.current.contains(e.target) && !(e.target.closest && e.target.closest('.sn-menu'))) setMenu(false); };
+    const dehors = (e) => { if (!mobile && racine.current && !racine.current.contains(e.target) && !(e.target.closest && e.target.closest('.cn-pop'))) setMenu(false); };
     const echap = (e) => { if (e.key === 'Escape') setMenu(false); };
     window.addEventListener('pointerdown', dehors); window.addEventListener('keydown', echap);
     return () => { window.removeEventListener('pointerdown', dehors); window.removeEventListener('keydown', echap); };
@@ -82,18 +82,12 @@ export function ActionsCarte({ ctx, carte, mobile: mobileProp, sansApprentissage
   const stop = (e) => e.stopPropagation();
 
   const choisir = async (pr) => {
+    const n = String(note || '').trim();
     setMenu(false);
     try {
-      await ajouterAuCarnet(carte.id, { type: pr.label }, ctx.saveQuestion);
-      setToast({ texte: 'Ajouté au carnet', sous: pr.label, action: { label: 'Modifier', fn: () => setModifier({ id: carte.id, type: pr.label, note: '' }) } });
+      await ajouterAuCarnet(carte.id, { type: pr.label, note: n }, ctx.saveQuestion);
+      setToast({ texte: 'Ajouté au carnet', sous: pr.label, action: { label: 'Modifier', fn: () => setModifier({ id: carte.id, type: pr.label, note: n }) } });
     } catch (e) { setToast({ texte: e.message }); }
-  };
-  const ouvrirAutre = async () => { setMenu(false); setAutre((await getOne('questions', carte.id)) || carte); };
-  const enregistrerAutre = async ({ raison, type, astuce }) => {
-    const q = (await getOne('questions', carte.id)) || carte;
-    await ctx.saveQuestion({ ...q, carnetAt: q.carnetAt || todayISO(), carnetType: type || 'Autre', carnetRaison: raison, ...(astuce ? { carnetAstuce: astuce } : {}) });
-    setAutre(null);
-    setToast({ texte: 'Ajouté au carnet', sous: type || 'Autre' });
   };
   const apprentissage = async () => {
     if (dejaAppr) { setToast({ texte: 'Déjà dans l’apprentissage' }); return; }
@@ -105,13 +99,26 @@ export function ActionsCarte({ ctx, carte, mobile: mobileProp, sansApprentissage
   };
 
   const titre = apercu(carte);
+  // puces : 2 lignes au plus (colonnes = moitié des puces) ; libellé court (sans la parenthèse), le complet en infobulle
+  const court = (l) => String(l || '').replace(/\s*\(.*\)\s*$/, '').trim() || l;
+  const puces = [...preReponses, { id: 'autre', label: 'Autre' }];
   const listePre = (
-    <div className={mobile ? 'sn-feuille-liste' : 'sn-menu ctx-menu'} role="menu" aria-label="Pré-réponses du carnet d’erreurs" style={!mobile && posMenu ? posMenu : undefined}>
-      {preReponses.map((p) => (
-        <button key={p.id} type="button" role="menuitem" className={mobile ? 'sn-feuille-item' : 'ctx-menu-item sn-menu-item'} data-pre={p.id} onClick={() => choisir(p)}>{p.label}</button>
-      ))}
-      <button type="button" role="menuitem" className={(mobile ? 'sn-feuille-item' : 'ctx-menu-item sn-menu-item') + ' sn-autre'} data-pre="autre" onClick={ouvrirAutre}>Autre…</button>
+    <div className="cn" data-carnet="menu">
+      <div className="cn-puces" role="menu" aria-label="Pré-réponses du carnet d’erreurs" style={{ '--cn-col': Math.ceil(puces.length / 2) }}>
+        {puces.map((p) => (
+          <button key={p.id} type="button" role="menuitem" className={'cn-puce' + (p.id === 'autre' ? ' cn-autre' : '')} data-pre={p.id} title={p.label} onClick={() => choisir(p)}>
+            <span>{court(p.label)}</span></button>
+        ))}
+      </div>
+      {note == null
+        ? <button type="button" className="cn-note-bt" data-carnet="note" onClick={() => setNote('')}><Icon name="plus" size={12} /> Ajouter une note</button>
+        : <input className="cn-note" data-carnet="champ-note" autoFocus value={note} placeholder="Note facultative, puis touche un type"
+            aria-label="Note du carnet (facultative)" onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); choisir({ label: 'Autre' }); } }} />}
     </div>
+  );
+  const popover = !mobile && (
+    <div className="cn-pop" role="dialog" aria-label="Carnet d’erreurs" style={posMenu || undefined}>{listePre}</div>
   );
 
   return (
@@ -124,13 +131,14 @@ export function ActionsCarte({ ctx, carte, mobile: mobileProp, sansApprentissage
             if (!menu && boutonCarnet.current && !mobile) {
               // sous l'icône s'il y a la place, sinon au-dessus ; aligné à droite de l'icône
               const r = boutonCarnet.current.getBoundingClientRect();
-              const haut = window.innerHeight - r.bottom < 330;
-              setPosMenu({ left: Math.max(8, Math.min(r.right - 300, window.innerWidth - 348)), ...(haut ? { bottom: window.innerHeight - r.top + 6 } : { top: r.bottom + 6 }) });
+              const L = Math.min(380, window.innerWidth - 16);
+              const haut = window.innerHeight - r.bottom < 170;
+              setPosMenu({ width: L, left: Math.max(8, Math.min(r.right - L, window.innerWidth - L - 8)), ...(haut ? { bottom: window.innerHeight - r.top + 6 } : { top: r.bottom + 6 }) });
             }
             setMenu((v) => !v);
           }}><Icon name="target" size={mobile ? 19 : 15} /></button>
       )}
-      {menu && !mobile && createPortal(listePre, document.body) /* portail : un ancêtre animé (transform 3D de la carte) décalerait le `fixed` */}
+      {menu && !mobile && createPortal(popover, document.body) /* portail : un ancêtre animé (transform 3D de la carte) décalerait le `fixed` */}
       {apprOk && (
         <button type="button" className={'ac-icone' + (dejaAppr ? ' fait' : '')} data-sn="apprentissage"
           title={dejaAppr ? 'Déjà dans la liste du mode Apprentissage' : 'Apprentissage : ajouter cette carte à la liste (indépendant des J)'} aria-label="Apprentissage"
@@ -139,20 +147,16 @@ export function ActionsCarte({ ctx, carte, mobile: mobileProp, sansApprentissage
 
       {menu && mobile && createPortal(
         <div className="sn-feuille-fond" onClick={() => setMenu(false)}>
-          <div className="sn-feuille" role="dialog" aria-label="Carnet d’erreurs" onClick={(e) => e.stopPropagation()}>
+          <div className="sn-feuille cn-feuille" role="dialog" aria-label="Carnet d’erreurs" onClick={(e) => e.stopPropagation()}>
             <div className="sn-feuille-poignee" />
-            <div className="sn-feuille-titre">Carnet d’erreurs</div>
-            <div className="sn-feuille-sous">{titre}</div>
+            <div className="cn-tete">
+              <span className="cn-titre">Carnet d’erreurs</span><span className="cn-sous">{titre}</span>
+              <button type="button" className="cn-fermer" onClick={() => setMenu(false)} aria-label="Fermer"><Icon name="x" size={15} /></button>
+            </div>
             {listePre}
-            <button type="button" className="sn-feuille-annuler" onClick={() => setMenu(false)}>Annuler</button>
           </div>
         </div>, document.body)}
 
-      {autre && (
-        <Fenetre titre="Carnet d’erreurs" onFermer={() => setAutre(null)} largeur="min(560px, 96vw)">
-          <SaisieCarnet ctx={ctx} carte={autre} mobile={mobile} onSubmit={enregistrerAutre} onSkip={() => setAutre(null)} />
-        </Fenetre>
-      )}
       {modifier && (
         <Fenetre titre="Modifier l’entrée du carnet" onFermer={() => setModifier(null)}>
           <div className="sn-modif">
