@@ -1,9 +1,17 @@
 // (24/10) Images collées : gestes communs aux 4 contextes (lecteur, fiche jumelle, document, tableau) —
 // vrais événements souris CDP (Maj = modificateur 8), cadre de rognage commun (lib/rognageImage.js, .rgn).
-export function outilsImages(b) {
+export function outilsImages(b, { tactile = false } = {}) {
   const souris = (type, x, y, opts = {}) => b.c.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1, ...opts });
   // glisser de (x, y) de (dx, dy) en 12 pas ; `maj` : touche Maj enfoncée pendant le geste
   const glisser = async ([x, y], dx, dy, { maj = false } = {}) => {
+    if (tactile) { // doigt : appui, 12 pas, relâché (≥ 50 ms après le dernier pas)
+      await b.c.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      for (let k = 1; k <= 12; k++) { await b.c.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + (dx * k) / 12, y: y + (dy * k) / 12 }] }); await b.dormir(25); }
+      await b.dormir(60);
+      await b.c.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await b.dormir(500);
+      return;
+    }
     const modifiers = maj ? 8 : 0;
     await b.c.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, modifiers });
     await souris('mousePressed', x, y, { modifiers });
@@ -28,5 +36,6 @@ export function outilsImages(b) {
     const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
     const dt = new DataTransfer(); dt.items.add(new File([blob], 'test.png', { type: 'image/png' }));
     const el = ${cible} || document.body; el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); return true; })()`);
-  return { glisser, coin, rect, rgnOuvert, rgnCoin, entree, echap, annulerZ, collerImage };
+  const tap = async ([x, y], att = 500) => { await b.c.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] }); await b.dormir(60); await b.c.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await b.dormir(att); };
+  return { tap, glisser, coin, rect, rgnOuvert, rgnCoin, entree, echap, annulerZ, collerImage };
 }

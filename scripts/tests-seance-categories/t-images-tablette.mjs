@@ -1,0 +1,75 @@
+// (24/10) Images collées AU DOIGT — tablette 820 × 1 180 tactile (le lecteur n'existe pas sous 760 px : le « mobile »
+// du lecteur est la tablette). Lecteur (image réelle p. 95) et tableau : redimension aux coins (proportions), Rogner →
+// cadre commun → ✓ / ✕ au doigt, « Image entière », annulation par le bouton de la barre.
+// Copie des vraies données (profil isolé 9341). Usage : CDP_PORT=9341 node t-images-tablette.mjs
+import { banc } from '../tests-pdfreader-v3/commun.mjs';
+import { outilsImages } from './commun-images.mjs';
+const b = await banc(1440, 900);
+const o = outilsImages(b, { tactile: true });
+b.ok(await b.ouvrir('Introduction 26 27', { recharger: true }), 'cours ouvert (1 440 px), puis passage en tablette');
+const pdf = await b.pos(`[...document.querySelectorAll('button')].find((x) => x.innerText.trim() === 'PDF')`, false);
+if (pdf) await b.clic(pdf, { att: 1500 });
+const orig = await b.pos(`[...document.querySelectorAll('.pdfr-jumelle-bascule .seg-btn')].find(x=>x.innerText==='Original')`, false);
+if (orig) await b.clic(orig, { att: 1200 });
+await b.c.send('Emulation.setDeviceMetricsOverride', { width: 820, height: 1180, deviceScaleFactor: 1, mobile: true });
+await b.c.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+await b.dormir(1500);
+const anno = (id) => b.S(`return (await S.getAll('annotations')).find((a) => a.id === ${JSON.stringify(id)}) || null`);
+const centre = async (sel) => { const r = await o.rect(sel); return [r.x + r.w / 2, r.y + r.h / 2]; };
+await b.allerPage(95); await b.dormir(1000);
+const outil = await b.pos(`document.querySelector('[data-outil="main"]')`, false);
+if (outil) await o.tap(outil, 300);
+const id = await b.ev(`(() => { const e = document.querySelector('.pdfr-page[data-cle="95"] .pdfr-image'); return e ? e.dataset.objet : null; })()`);
+const sel = `document.querySelector('.pdfr-image[data-objet="${id}"]')`;
+await b.ev(`(${sel}.scrollIntoView({ block: 'center' }), 1)`); await b.dormir(600);
+await o.tap(await centre(sel), 700);
+b.ok(await b.ev(`${sel}.classList.contains('active')`), 'lecteur : image sélectionnée au doigt');
+const coinTaille = await b.ev(`(() => { const k = ${sel}.querySelector('.sel-coin'); return k ? Math.round(k.getBoundingClientRect().width) : 0; })()`);
+b.ok(coinTaille >= 18, `poignées tactiles (${coinTaille} px)`);
+const a0 = await anno(id);
+await o.glisser(await o.coin(sel, 'se'), -60, -20);
+const a1 = await anno(id);
+b.ok(a1.width < a0.width && Math.abs(a1.height / a1.width - a0.height / a0.width) < 0.003, 'lecteur : coin glissé au doigt → réduite, proportions conservées', `${a0.width.toFixed(3)} → ${a1.width.toFixed(3)}`);
+await b.capture('img-tablette-redim');
+await o.tap(await b.pos(`document.querySelector('.mini-barre [data-option="rogner"]')`, false), 600);
+b.ok(await o.rgnOuvert(), 'lecteur : « Rogner » au doigt → cadre de rognage');
+await o.glisser(await o.rgnCoin('nw'), 40, 30);
+await b.capture('img-tablette-rognage');
+await o.tap(await b.pos(`document.querySelector('.rgn [data-rgn="valider"]')`, false), 600);
+const a2 = await anno(id);
+b.ok(!(await o.rgnOuvert()) && a2.rognage && a2.rognage.x > 0, 'lecteur : ✓ → rognage enregistré', JSON.stringify(a2.rognage));
+await o.tap(await centre(sel), 600);
+await o.tap(await b.pos(`document.querySelector('.mini-barre [data-option="rogner"]')`, false), 600);
+await o.glisser(await o.rgnCoin('se'), -40, -40);
+await o.tap(await b.pos(`document.querySelector('.rgn [data-rgn="annuler"]')`, false), 600);
+b.ok(JSON.stringify((await anno(id)).rognage) === JSON.stringify(a2.rognage), 'lecteur : ✕ → rien n’est écrit');
+// annulation : bouton de la barre (tablette)
+for (let k = 0; k < 2; k++) await o.tap(await b.pos(`[...document.querySelectorAll('button[aria-label="Annuler"]')].find((x) => x.offsetParent && !x.disabled)`, false), 600);
+const a3 = await anno(id);
+b.ok(!a3.rognage && Math.abs(a3.width - a0.width) < 1e-6, 'lecteur : bouton Annuler × 2 → image d’origine');
+// tableau au doigt
+await b.c.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+await b.dormir(600);
+await b.clic(await b.pos(`[...document.querySelectorAll('button')].find((x) => x.innerText.trim() === 'Tableau')`, false), { att: 1500 });
+await b.c.send('Emulation.setDeviceMetricsOverride', { width: 820, height: 1180, deviceScaleFactor: 1, mobile: true });
+await b.dormir(1200);
+const board = () => b.S(`const id = (await S.getAll('board')).map((x) => x.id).find((x) => x.includes('fmv967iu0nq14')); return id ? await S.getOne('board', id) : null;`);
+const avant = new Set(((await board()) || { objects: [] }).objects.map((x) => x.id));
+await b.ev(`(document.querySelector('.tb2').focus(), 1)`);
+await o.collerImage(`document.querySelector('.tb2')`);
+await b.dormir(1500);
+const img = (await board()).objects.find((x) => x.type === 'image' && !avant.has(x.id));
+const st = `document.querySelector('.tb2-image[data-objet="${img.id}"]')`;
+const obj = async () => (await board()).objects.find((x) => x.id === img.id);
+await o.tap(await centre(st), 600);
+const t0 = await obj();
+await o.glisser(await o.coin(st, 'se'), 60, 0);
+const t1 = await obj();
+b.ok(t1.w > t0.w && Math.abs(t1.h / t1.w - t0.h / t0.w) < 0.02, 'tableau : coin glissé au doigt → agrandie, proportions conservées', `${t0.w} → ${t1.w}`);
+await o.tap(await b.pos(`document.querySelector('.mini-barre [data-option="rogner"]')`, false), 600);
+await o.glisser(await o.rgnCoin('nw'), 40, 20);
+await o.tap(await b.pos(`document.querySelector('.rgn [data-rgn="valider"]')`, false), 600);
+b.ok(!!(await obj()).rognage, 'tableau : rognage au doigt (✓)');
+await b.capture('img-tablette-tableau');
+b.ok(b.erreurs.length === 0, 'aucune erreur JS', b.erreurs.slice(0, 3).join(' | '));
+process.exit(0);

@@ -95,6 +95,12 @@
   /* 2 000 lignes sans ralentir : le navigateur ne met en page que ce qui est visible */
   content-visibility: auto; contain-intrinsic-size: auto 3.2em;
 }
+/* (24/10) en direct : la vue est figée par un ancrage MANUEL (TranscriptPanel ListeTranscript) — pas d'ancrage du
+   navigateur en plus (double correction), et des hauteurs réelles (un gabarit content-visibility de 3,2em changeait
+   de taille hors de tout rendu React, donc hors de l'ancrage) */
+.trx-liste.direct { overflow-anchor: none; }
+.trx-liste.direct .trx-ligne, .trx-liste.direct .trx-note, .trx-liste.direct .trx-coupure { content-visibility: visible; }
+.trx-reserve { height: 0; flex: none; }
 .trx-ligne { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; padding: 5px 2px; }
 .trx-t {
   font-size: 11px; font-weight: 700; color: var(--text-3); padding-top: .55em; min-width: 38px;

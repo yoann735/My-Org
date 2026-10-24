@@ -533,45 +533,146 @@ function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, 
   };
   useEffect(() => () => { if (rafVue.current) cancelAnimationFrame(rafVue.current); }, []);
 
-  /* Seul un défilement VERS LE HAUT met l'auto-défilement en pause. Un panneau qui
-     rétrécit (éditeur de mots-clés, note, fenêtre) éloigne aussi le bas sans que
-     scrollTop ne bouge : ce n'est pas un geste de l'étudiant, on reste collé en bas. */
+  /* SUIVI AUTOMATIQUE (24/10, docs/compte-rendu-seance-categories.md § 1). Tout défilement initié par
+     l'étudiant (molette, trackpad, doigt, clavier, barre de défilement) met le suivi en PAUSE tout de suite,
+     quelle que soit la distance. Avant : la pause n'était décidée qu'à partir de la POSITION (moins de 40 px
+     du bas = « collé »), donc remonter d'une ligne (~40 px) laissait la liste collée et la publication
+     suivante du texte provisoire la ramenait en bas ; et un contenu qui raccourcit (provisoire retiré avant
+     la ligne finale) recollait la liste sans geste. Pendant la pause la vue est figée AU PIXEL : ancrage
+     manuel sur la ligne visible (rétabli après chaque rendu, la virtualisation comprise) et réserve de
+     hauteur en fin de liste (le navigateur ne peut plus ramener scrollTop quand le contenu raccourcit).
+     Le suivi ne reprend que par « ↓ Reprendre » ou en redescendant soi-même tout en bas. */
   const dernierHaut = useRef(0);
+  const ancre = useRef(null); // { id, dy } : ligne visible en haut de la vue et son décalage (px)
+  const reserveRef = useRef(null);
+  const hauteurPause = useRef(0); // plus grande hauteur de contenu vue pendant la pause
+  const geste = useRef(0); // instant du dernier geste de défilement de l'étudiant
+  const attendu = useRef(null); // scrollTop posé par le code (son événement scroll n'est pas un geste)
+  const poser = (el, top) => { el.scrollTop = top; attendu.current = el.scrollTop; };
+  const reserveDe = () => (reserveRef.current ? reserveRef.current.offsetHeight : 0);
+  const noterAncre = () => {
+    const el = ref.current;
+    if (!el) return;
+    const haut = el.getBoundingClientRect().top;
+    for (const c of el.children) {
+      if (!c.dataset || !c.dataset.id) continue;
+      const r = c.getBoundingClientRect();
+      if (r.bottom > haut + 1) { ancre.current = { id: c.dataset.id, dy: r.top - haut }; return; }
+    }
+  };
+  const pause = () => {
+    const el = ref.current;
+    if (!enBasRef.current || !el) return;
+    enBasRef.current = false; setEnBas(false);
+    hauteurPause.current = el.scrollHeight - reserveDe();
+    // la fenêtre virtuelle part de la position RÉELLE (avant : une position périmée la faisait sauter)
+    setVue({ haut: el.scrollTop, h: el.clientHeight });
+    dejaVues.current = nbValidees;
+    noterAncre();
+  };
+  const reprendre = () => {
+    enBasRef.current = true; setEnBas(true); setNouvelles(0); dejaVues.current = nbValidees;
+    ancre.current = null; hauteurPause.current = 0;
+    if (reserveRef.current) reserveRef.current.style.height = '0px';
+  };
+  // pendant la pause : réserve (jamais de contenu plus court) puis ancrage sur la ligne notée
+  const figer = () => {
+    const el = ref.current;
+    if (!el || enBasRef.current) return;
+    const res = reserveRef.current;
+    if (res) {
+      const contenu = el.scrollHeight - res.offsetHeight;
+      hauteurPause.current = Math.max(hauteurPause.current, contenu);
+      const h = Math.max(0, hauteurPause.current - contenu);
+      if (Math.abs(h - res.offsetHeight) > 0.5) res.style.height = h + 'px';
+    }
+    const a = ancre.current;
+    if (!a) return;
+    const c = [...el.children].find((x) => x.dataset && x.dataset.id === a.id);
+    if (!c) return;
+    const d = c.getBoundingClientRect().top - el.getBoundingClientRect().top - a.dy;
+    if (Math.abs(d) > 0.5) poser(el, el.scrollTop + d);
+  };
   const surDefilement = () => {
     const el = ref.current;
     if (!el) return;
     suivreVue();
-    const bas = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-    const monte = el.scrollTop < dernierHaut.current - 2;
+    const prog = attendu.current != null && Math.abs(el.scrollTop - attendu.current) < 1;
+    attendu.current = null;
+    const monte = el.scrollTop < dernierHaut.current - 0.5;
     dernierHaut.current = el.scrollTop;
-    if (bas) {
-      if (!enBasRef.current) { enBasRef.current = true; setEnBas(true); }
-      setNouvelles(0); dejaVues.current = nbValidees;
-    } else if (monte && enBasRef.current) { enBasRef.current = false; setEnBas(false); }
+    // au doigt, le navigateur ne transmet les touchmove qu'au-delà de son seuil et l'inertie continue sans eux : une
+    // montée réelle juste après un toucher / une molette met aussi en pause (jamais une montée due au code)
+    if (enBasRef.current && !prog && monte && Date.now() - geste.current < 1500) pause();
+    if (enBasRef.current || prog) return; // nos propres corrections ne redéfinissent pas l'ancre (sinon les résidus s'additionnent)
+    noterAncre();
+    if (Date.now() - geste.current > 1500) return; // défilement sans geste récent de l'étudiant : jamais une reprise
+    const bas = el.scrollHeight - reserveDe() - el.scrollTop - el.clientHeight <= 2;
+    if (bas && !monte) reprendre();
   };
+  // gestes de l'étudiant : la pause est posée AVANT que la vue ne bouge
+  const surGeste = useRef(null);
+  surGeste.current = (versLeBas) => {
+    const el = ref.current;
+    geste.current = Date.now();
+    if (!el || !enBasRef.current) return;
+    const auBout = el.scrollHeight - el.scrollTop - el.clientHeight <= 2;
+    if (versLeBas && auBout) return; // déjà tout en bas : rien ne bouge, le suivi continue
+    pause();
+  };
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const g = (bas) => surGeste.current(bas);
+    const roue = (e) => { if (e.deltaY || e.deltaX) g(e.deltaY > 0); };
+    let y0 = null;
+    const tDebut = (e) => { y0 = e.touches[0] ? e.touches[0].clientY : null; geste.current = Date.now(); };
+    const tBouge = (e) => { const y = e.touches[0] ? e.touches[0].clientY : null; g(y0 != null && y != null && y < y0); };
+    const touche = (e) => {
+      const t = e.target;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (['ArrowUp', 'PageUp', 'Home'].includes(e.key) || (e.key === ' ' && e.shiftKey)) g(false);
+      else if (['ArrowDown', 'PageDown', 'End', ' '].includes(e.key)) g(true);
+    };
+    // barre de défilement native (là où elle est affichée) : un appui hors de la zone de contenu
+    const appui = (e) => { if (e.target === el && e.offsetX > el.clientWidth) g(false); };
+    el.addEventListener('wheel', roue, { passive: true });
+    el.addEventListener('touchstart', tDebut, { passive: true });
+    el.addEventListener('touchmove', tBouge, { passive: true });
+    el.addEventListener('keydown', touche);
+    el.addEventListener('pointerdown', appui);
+    return () => {
+      el.removeEventListener('wheel', roue); el.removeEventListener('touchstart', tDebut); el.removeEventListener('touchmove', tBouge);
+      el.removeEventListener('keydown', touche); el.removeEventListener('pointerdown', appui);
+    };
+  }, []);
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof ResizeObserver === 'undefined') return undefined;
     const ro = new ResizeObserver(() => {
-      if (enBasRef.current) el.scrollTop = el.scrollHeight;
+      if (enBasRef.current) poser(el, el.scrollHeight); else figer();
       if (Math.abs(el.clientHeight - vueRef.current.h) > 4) setVue({ haut: el.scrollTop, h: el.clientHeight });
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // après CHAQUE rendu : collé → en bas ; en pause → vue figée (aucun scrollIntoView, aucune remise à zéro)
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (enBasRef.current) { el.scrollTop = el.scrollHeight; dernierHaut.current = el.scrollTop; dejaVues.current = nbValidees; }
-    else setNouvelles(Math.max(0, nbValidees - dejaVues.current));
-  }, [nbValidees, dernierTexte, taille, plein]);
+    if (enBasRef.current) { poser(el, el.scrollHeight); dernierHaut.current = el.scrollTop; dejaVues.current = nbValidees; }
+    else figer();
+  });
+  useLayoutEffect(() => {
+    if (!enBasRef.current) setNouvelles(Math.max(0, nbValidees - dejaVues.current));
+  }, [nbValidees]);
   const reprendreDefilement = () => {
     const el = ref.current;
-    enBasRef.current = true; setEnBas(true); setNouvelles(0); dejaVues.current = nbValidees;
+    reprendre();
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   };
 
-  const allerAuDebut = () => { const el = ref.current; if (!el) return; enBasRef.current = false; setEnBas(false); el.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const allerAuDebut = () => { const el = ref.current; if (!el) return; geste.current = Date.now(); pause(); el.scrollTo({ top: 0, behavior: 'smooth' }); };
   // fin de liste : au bout, puis encore au bout une fois les dernières lignes mesurées (liste virtualisée)
   const allerALaFin = () => {
     if (live) { reprendreDefilement(); return; }
@@ -598,7 +699,7 @@ function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, 
 
   return (
     <div className="trx-liste-cadre">
-      <div ref={ref} className={'trx-liste taille-' + taille} onScroll={surDefilement}>
+      <div ref={ref} className={'trx-liste taille-' + taille + (live ? ' direct' : '')} onScroll={surDefilement}>
         {lignes.length === 0 && (
           <div className="trx-vide">{vide || (live ? 'À l’écoute… le texte apparaît ici dès que le prof parle.' : 'Cette session ne contient aucun texte.')}</div>
         )}
@@ -608,6 +709,7 @@ function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, 
             nom={noms && l.speaker != null ? noms(l.speaker) : null} onRenommer={onRenommer} onPage={onPage} />
         ))}
         {cale2 > 0 && <div className="trx-cale" style={{ height: cale2 }} aria-hidden="true" />}
+        {live && <div ref={reserveRef} className="trx-reserve" aria-hidden="true" />}
       </div>
       {live && !enBas && (
         <button type="button" className="trx-reprendre" onClick={reprendreDefilement}>
@@ -615,7 +717,7 @@ function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, 
         </button>
       )}
       <BarreDefilement cible={ref} version={lignes.length + ':' + dernierTexte.length + ':' + taille} repere={repereVisible}
-        onDebut={allerAuDebut} onFin={allerALaFin} finMasquee={live && !enBas} />
+        onDebut={allerAuDebut} onFin={allerALaFin} finMasquee={live && !enBas} onGeste={(bas) => surGeste.current(bas)} />
     </div>
   );
 }
@@ -623,7 +725,7 @@ function ListeTranscript({ lignes, keyterms, taille, live, onNote, onSupprNote, 
 /* BARRE DE DÉFILEMENT DU TRANSCRIPT (22/10) : toujours visible (la barre du système se cache sur Mac et au doigt),
    fine, aux couleurs de la DA ; la poignée se saisit (souris, doigt, stylet) et fait défiler, avec un repère horaire
    flottant (« 1:12:30 ») pendant le glisser ; « ↑ Début » et « ↓ Fin » quand il y a de quoi défiler. */
-function BarreDefilement({ cible, version, repere, onDebut, onFin, finMasquee = false }) {
+function BarreDefilement({ cible, version, repere, onDebut, onFin, finMasquee = false, onGeste = null }) {
   const [m, setM] = useState({ haut: 0, h: 1, total: 1 });
   const [glisse, setGlisse] = useState(null); // { texte, y } pendant le glisser
   const pisteRef = useRef(null);
@@ -649,8 +751,10 @@ function BarreDefilement({ cible, version, repere, onDebut, onFin, finMasquee = 
     const el = cible.current;
     if (!el || (e.pointerType === 'mouse' && e.button !== 0)) return;
     e.preventDefault(); e.stopPropagation();
+    if (onGeste) onGeste(false);
     const y0 = e.clientY, s0 = el.scrollTop, course = Math.max(1, piste - hp), plage = Math.max(1, el.scrollHeight - el.clientHeight);
     const bouge = (ev) => {
+      if (onGeste) onGeste(ev.clientY > y0);
       el.scrollTop = s0 + ((ev.clientY - y0) / course) * plage;
       const r = pisteRef.current && pisteRef.current.getBoundingClientRect();
       requestAnimationFrame(() => setGlisse({ texte: repere() || '', y: ((el.scrollTop / plage) * course) + hp / 2 + (r ? 0 : 0) }));
@@ -664,6 +768,7 @@ function BarreDefilement({ cible, version, repere, onDebut, onFin, finMasquee = 
     const el = cible.current;
     if (!el || e.target !== e.currentTarget) return;
     const r = e.currentTarget.getBoundingClientRect();
+    if (onGeste) onGeste(e.clientY - r.top >= yp);
     el.scrollBy({ top: (e.clientY - r.top < yp ? -1 : 1) * el.clientHeight * 0.9, behavior: 'smooth' });
   };
   return (
