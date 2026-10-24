@@ -720,6 +720,8 @@ export function newItem(ficheId, item, startDate = isoDate()) {
     // "vrai J+N depuis le début" du calendrier (sm2.js trueDaysSinceJ0),
     // distinct de intervalDays (délai jusqu'à la PROCHAINE échéance).
     ...(scheduled ? { ...startAdaptive(startDate), j0Date: startDate } : {}),
+    // (24/10) flashcard : Nouvelle jusqu'à « Passer en révision » (lib/categoriesFC.js)
+    ...(item.type === 'flashcard' ? { nouvelle: true } : {}),
     historique: [], missed: 0,
   };
 }

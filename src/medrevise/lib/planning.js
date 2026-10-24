@@ -6,6 +6,7 @@
    ============================================================ */
 import { labelForCursor, todayISO, isoDate, trueDaysSinceJ0, isDueBecauseStruggled } from './sm2.js';
 import { dateApresConversion } from './conversionApprentissage.js';
+import { estNouvelle } from './categoriesFC.js';
 
 const SCHEDULED_TYPES = new Set(['qcm', 'flashcard']);
 // exercices : HORS méthode des J (comme le Feynman). Ils ne sont plus programmés,
@@ -45,6 +46,9 @@ const J_TYPES = new Set(['qcm', 'flashcard']);
    jamais dans le rattrapage. Toute autre carte : `dueDate` tel quel. */
 export function nextDate(record) {
   if (!record || record.termine) return null;
+  // (24/10, lib/categoriesFC.js) une flashcard NOUVELLE (jamais notée, pas passée en révision) n'a pas de date : sa
+  // date de départ reste en base mais n'est plus lue — jamais due, jamais en retard ; elle attend le bloc Nouvelles
+  if (estNouvelle(record)) return null;
   const conv = dateApresConversion(record, todayISO());
   const due = (conv !== undefined ? conv : record.dueDate) || null;
   if (due != null && record.skippedOn && record.skippedOn >= due) return addDays(record.skippedOn, 1);

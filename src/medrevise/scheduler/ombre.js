@@ -14,7 +14,9 @@ export function rapportOmbre(cartes, journal, jour, dateMaison = (c) => c.dueDat
   const dateFsrs = (c) => (c.fsrs && (c.fsrs.source === 'reponse' || c.fsrs.source === 'journal') ? c.fsrs.due : dateMaison(c));
   const maison = chargeParJour(fc, dateMaison, jour);
   const fsrs = chargeParJour(fc, dateFsrs, jour);
-  const entrees = (journal || []).filter((e) => !(e.details && e.details.relearn));
+  // (24/10) un événement sans note (passage en révision) n'est ni une réponse ni une répétition
+  const notes = (journal || []).filter((e) => e.rating >= 1 && e.rating <= 4);
+  const entrees = notes.filter((e) => !(e.details && e.details.relearn));
   const parNote = { 1: 0, 2: 0, 3: 0, 4: 0 };
   entrees.forEach((e) => { if (parNote[e.rating] != null) parNote[e.rating]++; });
   const exemples = vues
@@ -22,7 +24,7 @@ export function rapportOmbre(cartes, journal, jour, dateMaison = (c) => c.dueDat
     .slice(0, 10)
     .map((c) => ({ id: c.id, recto: texte(c.recto), dateMaison: dateMaison(c) || null, dateFsrs: c.fsrs.due || null, stabilite: c.fsrs.stability, difficulte: c.fsrs.difficulty }));
   return {
-    jour, reponses: entrees.length, repetitions: (journal || []).length - entrees.length, parNote,
+    jour, reponses: entrees.length, repetitions: notes.length - entrees.length, evenements: (journal || []).length - notes.length, parNote,
     cartesVuesParFsrs: vues.length,
     tableau: maison.lignes.map((l, i) => ({ jour: l.jour, maison: l.n, fsrs: fsrs.lignes[i].n })),
     retard: { maison: maison.retard, fsrs: fsrs.retard },

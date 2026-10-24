@@ -100,9 +100,18 @@ async function passe(client) {
   poser({ enCours: true });
   try {
     const aEnvoyer = await entreesEnAttente();
-    const env = await envoyerEntrees(client, aEnvoyer);
+    // (24/10) les événements sans note (passage en révision, rating null) partent À PART : tant que
+    // supabase/migrations/20261024_review_log_evenements.sql n'est pas appliqué, la table les refuse — ils
+    // restent dans la file locale sans jamais bloquer l'envoi des notes.
+    const evenements = aEnvoyer.filter((e) => e.rating == null);
+    const env = await envoyerEntrees(client, aEnvoyer.filter((e) => e.rating != null));
     if (env.envoyees.length) await marquerEnvoyees(env.envoyees);
     if (env.erreur) { poser({ enCours: false, erreur: env.erreur, tableAbsente: env.tableAbsente }); return { ok: false, ...env }; }
+    if (evenements.length) {
+      const ev = await envoyerEntrees(client, evenements);
+      if (ev.envoyees.length) await marquerEnvoyees(ev.envoyees);
+      poser({ evenementsEnAttente: evenements.length - ev.envoyees.length });
+    }
     const rec = await recevoirEntrees(client, await getMeta(CLE_CURSEUR));
     if (rec.erreur) { poser({ enCours: false, erreur: rec.erreur, tableAbsente: rec.tableAbsente }); return { ok: false, ...rec }; }
     const neuves = await integrerEntrees(rec.lignes.map(depuisLigne));

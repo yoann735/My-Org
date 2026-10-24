@@ -15,6 +15,7 @@ import { toInternalItem } from './adapter.js';
 import { addDays, index, isFicheScheduled } from './planning.js';
 import { palierFromInterval, todayISO, INTERVAL_START, INTERVAL_CAP } from './sm2.js';
 import { convertirApprentissage } from './conversionApprentissage.js';
+import { convertirNouvelles } from './conversionNouvelles.js';
 
 const MIGRATIONS_KEY = 'migrations';
 const MIG_V1 = 'items-v1.0';
@@ -27,6 +28,7 @@ const MIG_CHRONO_FIXE = 'chronologie-fixe-v1';
 const MIG_RESET_MISSED = 'reset-ancien-carnet-erreurs-v1';
 const MIG_ADAPTATIF = 'moteur-adaptatif-v1';
 const MIG_CONVERSION_APPRENTISSAGE = 'conversion-apprentissage-v1';
+export const MIG_CONVERSION_NOUVELLES = 'conversion-nouvelles-v1';
 // ancienne cadence à 5 paliers (avant CETTE refonte), FIGÉE : usage UNIQUE
 // des deux migrations ci-dessous (jamais le moteur courant). Ancien palier
 // (0..4) → nouvel index plan (0..6, J0/J+1/J+3/J+7/J+14/J+30/J+90) :
@@ -452,6 +454,41 @@ async function executerConversion() {
   return { ran: maj.length > 0, ...complet };
 }
 
+/**
+ * (24/10, docs/compte-rendu-seance-categories.md § 3) CONVERSION « NOUVELLES » : toute flashcard jamais notée
+ * reçoit `nouvelle: true` (+ trace `conversionNouvelles`) — AJOUT de champs seulement, sa date de départ reste en
+ * base (plus lue) ; les cartes déjà notées ne sont pas touchées. Même patron que la conversion du mode
+ * Apprentissage : après la synchro de démarrage, putBackup des cartes concernées AVANT écriture, idempotente par
+ * carte (rejouée à chaque démarrage, elle ne marque que les retardataires — ex. une carte créée par un appareil
+ * pas à jour), rapport dans meta (`migration.conversion-nouvelles-v1`, le premier passage gardé tel quel).
+ */
+let nouvellesEnCours = null;
+export function migrateConversionNouvellesV1() {
+  if (!nouvellesEnCours) nouvellesEnCours = executerConversionNouvelles().finally(() => { nouvellesEnCours = null; });
+  return nouvellesEnCours;
+}
+async function executerConversionNouvelles() {
+  const questions = (await getAll('questions')) || [];
+  const { maj, rapport } = convertirNouvelles(questions, todayISO());
+  const cle = 'pre-' + MIG_CONVERSION_NOUVELLES + '-' + Date.now();
+  if (maj.length) {
+    const ids = new Set(maj.map((q) => q.id));
+    await putBackup(cle, questions.filter((q) => ids.has(q.id)));
+    for (let i = 0; i < maj.length; i += 200) await putMany('questions', maj.slice(i, i + 200));
+  }
+  const applied = await appliedList();
+  const complet = { date: new Date().toISOString(), sauvegarde: maj.length ? cle : null, ...rapport };
+  if (!applied.includes(MIG_CONVERSION_NOUVELLES)) {
+    await setMeta('migration.' + MIG_CONVERSION_NOUVELLES, complet);
+    await setMeta(MIGRATIONS_KEY, [...applied, MIG_CONVERSION_NOUVELLES]);
+  } else if (maj.length) {
+    await setMeta('migration.' + MIG_CONVERSION_NOUVELLES + '.suivant', complet);
+  }
+  // eslint-disable-next-line no-console
+  if (maj.length || !applied.includes(MIG_CONVERSION_NOUVELLES)) console.info('[MedRevise] migration ' + MIG_CONVERSION_NOUVELLES + ' :', { ...complet, liste: complet.liste.length + ' cartes' });
+  return { ran: maj.length > 0, ...complet };
+}
+
 /** point d'entrée bootstrap : applique toutes les migrations en attente */
 export async function runMigrations() {
   const items = await migrateItemsToV1();
@@ -464,5 +501,6 @@ export async function runMigrations() {
   const adaptatif = await migrateAdaptatifV1();
   const resetMissed = await migrateResetMissedV1();
   const conversionApprentissage = await migrateConversionApprentissageV1();
-  return { items, documents, anatImages, orphans, demoZombies, cadenceFixe, chronologieFixe, adaptatif, resetMissed, conversionApprentissage };
+  const conversionNouvelles = await migrateConversionNouvellesV1();
+  return { items, documents, anatImages, orphans, demoZombies, cadenceFixe, chronologieFixe, adaptatif, resetMissed, conversionApprentissage, conversionNouvelles };
 }

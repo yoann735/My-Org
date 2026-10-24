@@ -14,10 +14,10 @@
    Interrupteur ON (+ migration appliquée) : `dueDate` = échéance FSRS ; les champs maison continuent
    d'être tenus (historique, intervalDays) pour qu'un retour à OFF reparte proprement.
    ============================================================ */
-import { advanceQuestion, recordRelearnAttempt, QUALITY, todayISO } from '../lib/sm2.js';
+import { advanceQuestion, recordRelearnAttempt, QUALITY, todayISO, INTERVAL_START } from '../lib/sm2.js';
 import { appliquer, previsualiser, initialiser, NOTES, Rating } from './fsrs.js';
 import { configPlanificateur, planificateurActif, VERSION_PLANIFICATEUR, VERSION_TS_FSRS } from './config.js';
-import { jourDeRevision, ecartJours } from './jours.js';
+import { jourDeRevision, ecartJours, ajouterJours } from './jours.js';
 
 export const BOUTONS = [
   { note: Rating.Again, cle: 'again', libelle: 'À revoir', classe: 'fail' },
@@ -63,6 +63,39 @@ export function libelleIntervalle(jours) {
 const uuid = () => (globalThis.crypto && globalThis.crypto.randomUUID ? globalThis.crypto.randomUUID()
   : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16); }));
 
+const resume = (c) => ({ dueDate: c.dueDate == null ? null : c.dueDate, intervalDays: c.intervalDays == null ? null : c.intervalDays, termine: !!c.termine, fsrs: c.fsrs ? { ...c.fsrs, base: undefined } : null });
+
+/**
+ * (24/10, docs/compte-rendu-seance-categories.md § 5) PASSER EN RÉVISION une carte Nouvelle (bloc Nouvelles,
+ * bouton « Passer en révision »). Pur. Ce n'est PAS une note : rien dans `historique`. J0 = aujourd'hui, la carte
+ * entre dans le cycle des J comme une carte vue pour la première fois aujourd'hui (intervalle de départ, due au
+ * J suivant) ; l'état FSRS de l'ombre s'initialise à ce moment (carte neuve, échéance = celle des J) ; l'événement
+ * est journalisé (rating null, details.evenement = 'passage_revision').
+ */
+export function passerEnRevision(carte, options = {}) {
+  const { reglages = null, maintenant = new Date(), appareil = null, today = todayISO() } = options;
+  const config = configPlanificateur(reglages);
+  const avant = champsPrives(carte);
+  const jour = jourDeRevision(maintenant, config.bascule, config.fuseau);
+  const maison = { ...avant, nouvelle: false, nouvellePasseeLe: today, j0Date: today, intervalDays: INTERVAL_START,
+    dueDate: ajouterJours(today, INTERVAL_START), capped: false, termine: false };
+  // carte NEUVE pour FSRS : ni ancien bloc, ni traces de l'ancien mode Apprentissage (sinon « déjà vue », état estimé)
+  const { fsrs: _ancien, ...sansBloc } = maison; // eslint-disable-line no-unused-vars
+  const neuve = { ...sansBloc, historique: [], learningPresented: false, learningDoneOn: null, learningStreak: 0 };
+  const bloc = { ...initialiser(neuve, jour, config), majLe: maintenant.toISOString() };
+  const apres = { ...maison, fsrs: bloc };
+  const entree = {
+    id: uuid(), card_id: avant.id, rating: null,
+    reviewed_at: maintenant.toISOString(), jour,
+    device: appareil, scheduler_version: `${VERSION_PLANIFICATEUR}+ts-fsrs@${VERSION_TS_FSRS}`,
+    planificateur: planificateurActif(reglages),
+    state_before: resume({ ...avant, fsrs: avant.fsrs || null }),
+    state_after: resume(apres),
+    details: { evenement: 'passage_revision', j0: today, dueMaison: apres.dueDate, dueFsrs: bloc.due },
+  };
+  return { carte: apres, entree };
+}
+
 /**
  * Note une flashcard. Pur : renvoie la carte à enregistrer et l'entrée de journal à ajouter.
  * @param carte    flashcard (peut porter des champs d'affichage _fiche/_matiere : retirés)
@@ -93,7 +126,6 @@ export function noterFlashcard(carte, note, options = {}) {
     ? { ...maison, dueDate: blocFinal.due, capped: false, termine: false, fsrs: blocFinal }
     : { ...maison, fsrs: blocFinal };
 
-  const resume = (c) => ({ dueDate: c.dueDate == null ? null : c.dueDate, intervalDays: c.intervalDays == null ? null : c.intervalDays, termine: !!c.termine, fsrs: c.fsrs ? { ...c.fsrs, base: undefined } : null });
   const entree = {
     id: uuid(), card_id: avant.id, rating: n,
     reviewed_at: maintenant.toISOString(), jour,

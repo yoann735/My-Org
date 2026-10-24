@@ -2451,3 +2451,42 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .arch-titre { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .arch-titre strong { overflow-wrap: anywhere; }
 .arch-lecture { margin: 10px 0 0; padding: 12px; border-radius: 10px; background: var(--bg-2); color: var(--text); font: inherit; font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; }
+
+/* ---- (24/10) LANCEMENT PAR CATÉGORIES (components/SeanceAujourdhui.jsx, docs/compte-rendu-seance-categories.md § 4) ----
+   trois cases Nouvelles · Révisions · Retard (nombre disponible + maximum), raccourcis, Démarrer — jetons de la DA */
+.sfa-tete { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sfa-reprise { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 36px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; }
+.sfa-cats { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.sfa-cat { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 4px 6px 4px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-2, var(--card)); }
+.sfa-cat.coche { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.sfa-cat.vide .sfa-cat-n { color: var(--text-3); }
+.sfa-case { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; cursor: pointer; min-height: 40px; }
+.sfa-case input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.sfa-boite { flex: 0 0 auto; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; border: 1.5px solid var(--border-2, var(--border)); color: transparent; background: var(--card); }
+.sfa-cat.coche .sfa-boite { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); }
+.sfa-case input:focus-visible + .sfa-boite { box-shadow: 0 0 0 3px var(--accent-soft); }
+.sfa-cat-nom { font-size: 15px; font-weight: 600; color: var(--text); }
+.sfa-cat-n { margin-left: auto; font-size: 15px; font-weight: 800; color: var(--text); }
+.sfa-max { flex: 0 0 auto; min-width: 84px; height: 36px; padding: 0 8px; border-radius: 9px; border: 1px solid var(--border); background: var(--card); color: var(--text);
+  font: inherit; font-size: 13.5px; cursor: pointer; }
+.sfa-max:disabled { opacity: .45; cursor: default; }
+.sfa-pied { display: flex; flex-direction: column; gap: 8px; }
+.sfa-raccourcis { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.sfa-racc { min-height: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text-2);
+  font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.sfa-racc.actif { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.sfa-btn:disabled { opacity: .45; cursor: default; }
+.sfa-lanceur .sfa-btn { margin-top: 0; }
+/* Réviser (ordinateur) : les trois cases côte à côte, raccourcis et Démarrer sur une ligne */
+.revise-seance .sfa.sfa-lanceur { flex-direction: column; align-items: stretch; gap: 10px; }
+.revise-seance .sfa-lanceur .sfa-ligne { flex: none; }
+@media (min-width: 761px) {
+  .revise-seance .sfa-lanceur .sfa-cats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .revise-seance .sfa-lanceur .sfa-pied { flex-direction: row; align-items: center; }
+  .revise-seance .sfa-lanceur .sfa-raccourcis { display: flex; }
+  .revise-seance .sfa-lanceur .sfa-btn { margin-left: auto; min-height: 44px; padding: 0 22px; }
+}
+/* séance : les deux boutons d'une carte nouvelle */
+.sfc-notes.deux { grid-template-columns: 1fr 1fr; }
+.sfc-notes.deux .sfc-btn { font-size: 15px; line-height: 1.15; }

@@ -1,5 +1,6 @@
 // Tests sur une COPIE EN MÉMOIRE de la sauvegarde pre-fsrs-2026-10-10 (vraies cartes, lecture seule).
 // « Avant installation » = le code du tag git pre-fsrs-2026-10-10, extrait dans un dossier temporaire.
+import { estNouvelle } from '../../src/medrevise/lib/categoriesFC.js';
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { execSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
@@ -43,9 +44,10 @@ describe.skipIf(!sauvegardePresente)('conversion du mode Apprentissage (copie de
     // rattrapage : aucune carte convertie
     const retard = new Set(planning.overdueQuestions(apres).map((q) => q.id));
     expect(maj.filter((q) => retard.has(q.id))).toHaveLength(0);
-    // séance du jour : les 77 y sont, avec les 39 révisions déjà dues
+    // séance du jour : les 77 y sont, avec les 39 révisions déjà dues — (24/10) celles jamais notées sont des
+    // NOUVELLES (lib/categoriesFC.js) : sans date, proposées au bloc Nouvelles, jamais en rattrapage
     const dues = new Set(planning.dueToday(apres).map((q) => q.id));
-    expect(maj.filter((q) => q.conversionApprentissage.seanceDuJour && dues.has(q.id))).toHaveLength(77);
+    expect(maj.filter((q) => q.conversionApprentissage.seanceDuJour && (dues.has(q.id) || estNouvelle(q)))).toHaveLength(77);
     // seuls dueDate et le champ ajouté changent ; les autres cartes sont intactes
     for (const q of maj) {
       const o = avant.find((x) => x.id === q.id);
@@ -86,7 +88,8 @@ describe.skipIf(!sauvegardePresente)('interrupteur OFF = dates strictement ident
   });
   it('calendrier, série du jour et rattrapage sur 30 jours : identiques pour toutes les cartes non concernées par la conversion', () => {
     const db = chargerDb();
-    const horsConversion = (l) => l.filter((q) => !(q.type === 'flashcard' && q.learnState === 'learning')).map((q) => q.id).sort();
+    // (24/10) hors conversion ET hors Nouvelles (jamais notées : plus de date, docs/compte-rendu-seance-categories.md)
+    const horsConversion = (l) => l.filter((q) => !(q.type === 'flashcard' && q.learnState === 'learning') && !estNouvelle(q)).map((q) => q.id).sort();
     for (let i = 0; i < 30; i++) {
       const d = ajouterJours(JOUR, i);
       expect(horsConversion(planning.dueOn(db, d))).toEqual(horsConversion(ancien.planning.dueOn(db, d)));
