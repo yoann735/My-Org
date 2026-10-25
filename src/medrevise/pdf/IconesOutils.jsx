@@ -136,7 +136,8 @@ const DESSINS = {
   // boîte-tableau : un cadre arrondi et sa grille
   boiteTableau: (<><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M3 9.5h18M3 14.8h18M10 4v16" /></>),
   // taille du texte : un T et une double flèche verticale
-  tailleTexte: (<><path d="M3 6.5V5h10v1.5M8 5v14M6 19h4" /><path d="M18 5v14m-2.5-11.5L18 5l2.5 2.5m-5 9L18 19l2.5-2.5" /></>),
+  // (25/10) taille du texte : un « A » et une petite flèche (même icône partout où l'on règle une taille de texte)
+  tailleTexte: (<><path d="M3 20 9 4h1.5l6 16M5.4 14h9.2" /><path d="M20 13V4m-2.6 2.6L20 4l2.6 2.6" /></>),
   // alignements
   alignGauche: <path d="M4 6h16M4 10h10M4 14h16M4 18h10" />,
   alignCentre: <path d="M4 6h16M7 10h10M4 14h16M7 18h10" />,

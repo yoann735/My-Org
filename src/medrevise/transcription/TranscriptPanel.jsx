@@ -16,6 +16,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { createPortal } from 'react-dom';
 import { useDejaVisible } from '../components/modeVisible.js';
 import { Icon } from '../../shared/Icon.jsx';
+import { IconeOutil } from '../pdf/IconesOutils.jsx';
 import { ConfirmModal, ContextMenu, Modal } from '../components/ui.jsx';
 import { useNiveauAudio, useTranscription } from './useTranscription.js';
 import {
@@ -852,6 +853,7 @@ function MenuCopie({ session, titre, filtre = null }) {
 function ChoixTaille({ taille, onTaille }) {
   return (
     <div className="trx-tailles" role="group" aria-label="Taille du texte">
+      <span className="trx-taille-ic" title="Taille du texte" aria-hidden="true"><IconeOutil nom="tailleTexte" size={14} /></span>
       {TAILLES.map(([id, lbl, aide]) => (
         <button key={id} type="button" className={'trx-taille t-' + id + (taille === id ? ' actif' : '')} title={`Texte ${aide.toLowerCase()}`} onClick={() => onTaille(id)}>{lbl}</button>
       ))}
@@ -1202,7 +1204,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
         <div className="trx-info"><Icon name="mic" size={13} /> Une transcription tourne sur un autre cours ({mmss(e.secondes)}).
           <button type="button" className="btn sm" onClick={() => arreter()}>Arrêter</button></div>
       ) : (
-        <button type="button" className="btn primary" style={{ width: '100%', justifyContent: 'center' }} onClick={onDemarrer}>
+        <button type="button" className="btn primary" style={{ width: '100%', justifyContent: 'center' }} onClick={onDemarrer} title="Transcrire le cours : démarrer une transcription en direct">
           <Icon name="mic" size={14} /> Transcrire le cours
         </button>
       )}

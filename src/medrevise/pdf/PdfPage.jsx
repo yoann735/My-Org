@@ -30,7 +30,8 @@ import { CadreSelection, MiniBarre, redimensionner } from './Selection.jsx';
 import { redimRectImage, ouvrirRognage, cadreApresRognage, entiereDepuisCadre } from '../lib/rognageImage.js';
 import { elementsFormat, useSuiviEditeur, ALIGNEMENTS } from './FormatTexte.jsx';
 import { BoiteTableau, BoutonMenuTableau, estGrille, contenuGrille } from './BoiteTableau.jsx';
-import { ImageBoite } from './ImageBoite.jsx';
+import { ImageBoite, urlImageBoite, texteImageBoite } from './ImageBoite.jsx';
+import { largeurImage } from './imageBoiteModele.js';
 import { BoutonTaille } from './ChoixTaille.jsx';
 import { lisser3, arrondirPoints, cheminCatmull, cheminDroit, cheminTrait, densifier, morceauxHors, OPACITE_SURLIGNEUR_CRAYON } from './crayon.js';
 import { suivreImage } from './attaches.js';
@@ -1418,11 +1419,30 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      image, le même bouton ouvre : au-dessus / en dessous du texte · Remplacer… · Retirer */
   const choisirImage = () => { if (fichierRef.current) { fichierRef.current.value = ''; fichierRef.current.click(); } };
   const posImage = avecImage ? (boite.image.position || 'dessus') : null;
-  const itemImage = !onImageBoite || texteLibre ? null : avecImage ? { cle: 'image', icone: icL('image'), actif: true, titre: 'Image de la boîte : position, remplacer, retirer', plus: [
+  /* (25/10, §4) mêmes options que les images collées, regroupées sous « Image » : recadrer EN PLACE (cadre + poignées,
+     Entrée / Échap — lib/rognageImage.js, le même composant), largeur (poignées sur l'image), position, remplacer, texte
+     reconnu (OCR), retirer */
+  const recadrerImage = async () => {
+    const el = document.querySelector(`[data-boite-image="${CSS.escape(boite.id)}"]`);
+    const url = el && await urlImageBoite(boite.image.blobId);
+    if (!el || !url) return;
+    ouvrirRognage({ cadreEl: el, url, rognage: boite.image.rognage || null,
+      onValider: (rg) => onModifier(boite, { image: { ...boite.image, rognage: rg } }, rg ? 'Recadrage de l’image' : 'Image entière') });
+  };
+  const copierTexteImage = async () => {
+    const t = await texteImageBoite(boite.image.blobId);
+    try { await navigator.clipboard.writeText(t); } catch (e) { /* presse-papiers refusé */ }
+  };
+  const itemImage = !onImageBoite || texteLibre ? null : avecImage ? { cle: 'image', icone: icL('image'), actif: true, titre: 'Image : recadrer, largeur, position, remplacer, texte, retirer', plus: [
+    { cle: 'image-recadrer', icone: icL('rogner'), libelle: 'Recadrer (Entrée : valider, Échap : annuler)', onClick: recadrerImage },
+    { cle: 'image-largeur', icone: icL('image'), libelle: largeurImage(boite.image) < 1 ? 'Toute la largeur de la boîte' : 'Largeur : glisser les poignées de l’image', actif: false, desactive: largeurImage(boite.image) >= 1,
+      onClick: () => onModifier(boite, { image: { ...boite.image, largeur: 1 } }, 'Largeur de l’image') },
+    { cle: '|' },
     { cle: 'image-dessus', icone: icL('alignHaut'), libelle: 'Au-dessus du texte', actif: posImage === 'dessus', onClick: () => onModifier(boite, { image: { ...boite.image, position: 'dessus' } }, 'Image au-dessus du texte') },
     { cle: 'image-dessous', icone: icL('alignBas'), libelle: 'En dessous du texte', actif: posImage === 'dessous', onClick: () => onModifier(boite, { image: { ...boite.image, position: 'dessous' } }, 'Image en dessous du texte') },
     { cle: '|' },
     { cle: 'image-remplacer', icone: icL('image'), libelle: 'Remplacer l’image…', onClick: choisirImage },
+    { cle: 'image-texte', icone: <Icon name="copy" size={14} />, libelle: 'Copier le texte de l’image (OCR)', onClick: copierTexteImage },
     { cle: 'image-retirer', icone: <Icon name="trash" size={14} />, libelle: 'Retirer l’image', onClick: () => onImageBoite(boite, { retirer: true }) },
   ] } : { cle: 'image', icone: icL('image'), titre: 'Image : ajouter une image dans la boîte (aussi ⌘V ou glisser-déposer sur la boîte)', onClick: choisirImage };
   const itemsActions = [
@@ -1474,6 +1494,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const enGeste = !!apercu;
   const imageEl = avecImage ? (
     <ImageBoite image={boite.image} outil={outil} couleurSurligneur={couleurSurligneur} surlignages={surlignagesImage}
+      idBoite={boite.id} actif={(selectionne || active) && !verrou} onLargeur={(v) => onModifier(boite, { image: { ...boite.image, largeur: v } }, 'Largeur de l’image')}
       onSurligner={onSurlignerImage ? (p, couleur, opts) => onSurlignerImage({ ...p, img: { id: boite.id, page: boite.page }, page: boite.page, rects: p.rectsDe(p.mots) }, couleur, opts) : null} />
   ) : null;
   const cSel = selVisible && connecteurs.find((x) => x.id === selVisible);

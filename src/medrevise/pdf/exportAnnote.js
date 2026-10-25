@@ -18,6 +18,7 @@
    de l'encodage standard des PDF (WinAnsi : flèches unicode, lettres grecques,
    emoji…) remplacés par un équivalent lisible ou « ? ».
    ============================================================ */
+import { largeurImage } from './imageBoiteModele.js';
 import { PDFDocument, BlendMode, StandardFonts, rgb, degrees, pushGraphicsState, popGraphicsState, rectangle, clip, endPath } from 'pdf-lib';
 import { getBlob } from '../lib/storage.js';
 import { cheminForme, typeForme, estFermee, estTrait } from './formes.js';
@@ -304,7 +305,12 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const tab = estGrille(b.grille) ? mesurerGrille(b, b.grille, b.x * W + pad, Math.max(24, b.width * W) - 2 * pad, tb, W) : null;
     if (tab) w = Math.max(24, b.width * W);
     // (25/10) image de la boîte : la largeur intérieure, hauteur proportionnelle, au-dessus ou en dessous du texte
-    const img = b.image && b.image.blobId ? { h: (w - 2 * pad) * (Number(b.image.ratio) > 0 ? Number(b.image.ratio) : 0.66), ecart: 0.45 * tb, dessous: b.image.position === 'dessous' } : null;
+    // (25/10) largeur choisie (fraction de la largeur intérieure, centrée) et recadrage : comme à l'écran (ImageBoite.jsx)
+    const img = b.image && b.image.blobId ? (() => {
+      const fr = largeurImage(b.image), rg = b.image.rognage && b.image.rognage.w > 0 && b.image.rognage.h > 0 ? b.image.rognage : null;
+      const vw = (w - 2 * pad) * fr;
+      return { w: vw, decal: ((w - 2 * pad) - vw) / 2, h: vw * (Number(b.image.ratio) > 0 ? Number(b.image.ratio) : 0.66) * (rg ? rg.h / rg.w : 1), rg, ecart: 0.45 * tb, dessous: b.image.position === 'dessous' };
+    })() : null;
     const hImg = img ? img.h + img.ecart : 0;
     const hTexte = tab ? tab.hauteur : (img && !paragraphesDe(b.content).join('').trim() ? -img.ecart : Math.max(1, lignes.length) * lh);
     const h = tab || img ? 2 * pad + hTexte + hImg : Math.max(b.height * H, 2 * pad + Math.max(1, lignes.length) * lh);
@@ -501,7 +507,13 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     if (img) {
       const yImg = img.dessous ? top - h + pad + img.h : top - pad;
       const emb = imagesBoites.get(b.image.blobId);
-      if (emb) page.drawImage(emb, { x: x + pad, y: yImg - img.h, width: w - 2 * pad, height: img.h });
+      const xi = x + pad + img.decal;
+      if (emb && img.rg) {
+        const fw = img.w / img.rg.w, fh = img.h / img.rg.h;
+        page.pushOperators(pushGraphicsState(), rectangle(xi, yImg - img.h, img.w, img.h), clip(), endPath());
+        page.drawImage(emb, { x: xi - img.rg.x * fw, y: yImg + img.rg.y * fh - fh, width: fw, height: fh });
+        page.pushOperators(popGraphicsState());
+      } else if (emb) page.drawImage(emb, { x: xi, y: yImg - img.h, width: img.w, height: img.h });
       if (!img.dessous) hautTexte = top - pad - img.h - img.ecart;
     }
     if (tab) dessinerGrille(page, b, b.grille, tab, hautTexte, encreBoite); // (25/10) boîte-tableau : le tableau tel qu'à l'écran

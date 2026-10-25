@@ -79,7 +79,8 @@ export function BoutonTaille({ genre = 'texte', valeur, echelle = 1, couleur = n
         {/* (22/10) une icône explicite de taille de texte (T et double flèche verticale), la valeur en petit */}
         {genre === 'texte' ? <IconeOutil nom="tailleTexte" size={16} className="ct-bt-ic" />
           : <span className="ct-bt-trait" aria-hidden="true" style={{ height: Math.max(1.5, Math.min(7, valeur * echelle)) }} />}
-        <span className="ct-bt-val tnum">{Math.round(valeur * 10) / 10}</span>
+        {/* (25/10) taille du texte : la valeur ARRONDIE à l'entier (« 11 ») ; épaisseurs : au dixième */}
+        <span className="ct-bt-val tnum">{genre === 'texte' ? Math.round(valeur) : Math.round(valeur * 10) / 10}</span>
       </button>
       {ouvert && (!barre || fixe) && enPortail(barre,
         <div ref={popRef} className={'ct-pop mb-pop' + (decale.dessus ? ' dessus' : '') + (barre ? ' fixe' : '')} style={barre ? fixe : decale.x ? { marginLeft: decale.x } : undefined} role="dialog" aria-label={nom}

@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
+import { IconeOutil } from '../pdf/IconesOutils.jsx';
 import { getDoc, setDoc, putBlob } from '../lib/storage.js';
 import {
   RICH_EXTENSIONS, EMPTY_DOC, hydrateDoc, dehydrateDoc,
@@ -357,10 +358,11 @@ function TranscriptFormatBar({ editor }) {
         <input type="color" style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} onChange={(e) => run((c) => c.setColor(e.target.value))} />
       </label>
       <span className="et-sep" />
-      <select className="et-select" defaultValue="" onMouseDown={keep} onChange={(e) => { if (e.target.value) run((c) => c.setFontSize(e.target.value)); e.target.value = ''; }} title="Taille">
-        <option value="" disabled>Taille</option>
-        {FONT_SIZES.map((s) => <option key={s} value={s}>{s.replace('px', '')}</option>)}
-      </select>
+      <span className="ct-select" title="Taille du texte"><IconeOutil nom="tailleTexte" size={15} />
+      <select className="et-select" defaultValue="" onMouseDown={keep} onChange={(e) => { if (e.target.value) run((c) => c.setFontSize(e.target.value)); e.target.value = ''; }} title="Taille du texte" aria-label="Taille du texte">
+        <option value="" disabled>—</option>
+        {FONT_SIZES.map((s) => <option key={s} value={s}>{String(Math.round(parseFloat(s)))}</option>)}
+      </select></span>
       <select className="et-select" defaultValue="" onMouseDown={keep} onChange={(e) => { if (e.target.value) run((c) => c.setFontFamily(e.target.value)); e.target.value = ''; }} title="Police">
         <option value="" disabled>Police</option>
         {FONT_FAMILIES.map((f) => <option key={f} value={f}>{f}</option>)}
@@ -425,10 +427,11 @@ function FloatingToolbar({ editor, pos, hlOpen, setHlOpen }) {
         <input type="color" style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} onChange={(e) => run((c) => c.setColor(e.target.value))} />
       </label>
       <span className="rt-fsep" />
-      <select className="rt-fsel" defaultValue="" onChange={(e) => { if (e.target.value) run((c) => c.setFontSize(e.target.value)); e.target.value = ''; }} title="Taille">
-        <option value="" disabled>T</option>
-        {FONT_SIZES.map((s) => <option key={s} value={s}>{s.replace('px', '')}</option>)}
-      </select>
+      <span className="ct-select" title="Taille du texte"><IconeOutil nom="tailleTexte" size={14} />
+      <select className="rt-fsel" defaultValue="" onChange={(e) => { if (e.target.value) run((c) => c.setFontSize(e.target.value)); e.target.value = ''; }} title="Taille du texte" aria-label="Taille du texte">
+        <option value="" disabled>—</option>
+        {FONT_SIZES.map((s) => <option key={s} value={s}>{String(Math.round(parseFloat(s)))}</option>)}
+      </select></span>
       <select className="rt-fsel" defaultValue="" onChange={(e) => { if (e.target.value) run((c) => c.setFontFamily(e.target.value)); e.target.value = ''; }} title="Police">
         <option value="" disabled>Aa</option>
         {FONT_FAMILIES.map((f) => <option key={f} value={f}>{f}</option>)}

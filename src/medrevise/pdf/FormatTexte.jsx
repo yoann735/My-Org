@@ -118,11 +118,13 @@ export function elementsFormat({ editor = null, contenu = null, onContenu = null
       titre3: { cle: 'h3', icone: ic('titre3'), titre: 'Titre 3', actif: editor.isActive('heading', { level: 3 }), onClick: r((c) => c.toggleHeading({ level: 3 })) },
       cases: { cle: 'cases', icone: ic('cases'), titre: 'Cases à cocher (⌘⇧9)', actif: editor.isActive('taskList'), onClick: r((c) => c.toggleTaskList()) },
       citation: { cle: 'citation', icone: ic('citation'), titre: 'Citation', actif: editor.isActive('blockquote'), onClick: r((c) => c.toggleBlockquote()) },
+      // (25/10) même icône de taille que partout, valeur arrondie à l'entier
       taille: { cle: 'taille-doc', titre: 'Taille du texte', element: (
+        <span className="ct-select" title="Taille du texte"><IconeOutil nom="tailleTexte" size={15} />
         <select className="et-select mb-select" value="" aria-label="Taille du texte" onChange={(e) => { const v = e.target.value; e.target.value = ''; if (v) editor.chain().focus().setFontSize(v).run(); }}>
-          <option value="" disabled>{attr('fontSize') || 'Taille'}</option>
-          {FONT_SIZES.map((f) => <option key={f} value={f}>{f}</option>)}
-        </select>) },
+          <option value="" disabled>{attr('fontSize') ? String(Math.round(parseFloat(attr('fontSize')))) : '—'}</option>
+          {FONT_SIZES.map((f) => <option key={f} value={f}>{String(Math.round(parseFloat(f)))}</option>)}
+        </select></span>) },
       tableau: { cle: 'tableau', icone: ic('grille'), titre: 'Tableau (3 × 3)', actif: editor.isActive('table'), onClick: r((c) => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true })) },
       separateur: { cle: 'separateur', icone: ic('separateur'), titre: 'Séparateur', onClick: r((c) => c.setHorizontalRule()) },
       lien: { cle: 'lien', icone: ic('lien'), titre: editor.isActive('link') ? 'Retirer le lien' : 'Lien (adresse demandée)', actif: editor.isActive('link'), onClick: () => {

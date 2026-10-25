@@ -13,6 +13,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { blobURL } from '../lib/storage.js';
 import { ocrImage } from '../ocr/ocrImage.js';
 import { couleurHex, opaciteSurlignage, lignesSurlignage } from './pdfShared.js';
+import { styleEntiere } from '../lib/rognageImage.js';
+import { largeurImage, ratioVisible, largeurApresGlisser } from './imageBoiteModele.js';
 
 const URLS = new Map(); // blobId → adresse objet (partagée par toutes les boîtes de la session)
 const mesure = typeof document !== 'undefined' ? document.createElement('canvas').getContext('2d') : null;
@@ -28,7 +30,7 @@ export async function tailleImage(file) {
  *   onSurligner({ mots, texte, texteDe, rectsDe }, couleur, opts)   mots balayés au Surligneur ; `rectsDe(ids)` en
  *                                                                    fractions de la PAGE (cadre affiché de l'image)
  */
-export function ImageBoite({ image, outil = 'main', surlignages = [], couleurSurligneur = 'jaune-franc', onSurligner = null, classe = '' }) {
+export function ImageBoite({ image, outil = 'main', surlignages = [], couleurSurligneur = 'jaune-franc', onSurligner = null, classe = '', idBoite = null, actif = false, onLargeur = null }) {
   const [url, setUrl] = useState(() => URLS.get(image.blobId) || null);
   const [manquante, setManquante] = useState(false);
   useEffect(() => {
@@ -60,15 +62,17 @@ export function ImageBoite({ image, outil = 'main', surlignages = [], couleurSur
   const tailles = useMemo(() => {
     if (!ocr || !mesure || !taille.w) return [];
     return ocr.mots.map((m) => {
-      const fs = Math.max(3, m.h * taille.h * 0.86);
+      // fractions de l'image ENTIÈRE (recadrée : plus grande que le cadre visible)
+      const rgx = image.rognage && image.rognage.w > 0 ? image.rognage : { w: 1, h: 1 };
+      const fs = Math.max(3, m.h * (taille.h / rgx.h) * 0.86);
       mesure.font = `${fs}px sans-serif`;
-      return { fs, sx: (m.w * taille.w) / (mesure.measureText(m.t).width || 1) };
+      return { fs, sx: (m.w * (taille.w / rgx.w)) / (mesure.measureText(m.t).width || 1) };
     });
-  }, [ocr, taille.w, taille.h]);
+  }, [ocr, taille.w, taille.h, image.rognage]);
   const vivant = !!ocr && outil === 'surligneur' && !!onSurligner;
   const texteDe = (ids) => ids.map((i) => ocr.mots[i] && ocr.mots[i].t).filter(Boolean).join(' ');
   const rectsDe = (ids) => {
-    const el = ref.current, page = el && el.closest('.pdfr-page');
+    const el = ref.current && (ref.current.querySelector('.nb-image-entiere') || ref.current), page = el && el.closest('.pdfr-page');
     if (!el || !page) return [];
     const r = el.getBoundingClientRect(), p = page.getBoundingClientRect();
     const F = { x: (r.left - p.left) / p.width, y: (r.top - p.top) / p.height, w: r.width / p.width, h: r.height / p.height };
@@ -92,9 +96,26 @@ export function ImageBoite({ image, outil = 'main', surlignages = [], couleurSur
     window.addEventListener('pointerup', fin, true);
   };
   const motsSurlignes = surlignages.flatMap((h) => (h.mots || []).map((i) => ({ h, m: ocr && ocr.mots[i] }))).filter((x) => x.m);
-  const ratio = Number.isFinite(image.ratio) && image.ratio > 0 ? image.ratio : 0.66;
+  /* (25/10, §4) LARGEUR choisie (poignées latérales quand la boîte est sélectionnée, bornée à la boîte, centrée) et
+     RECADRAGE non destructif (même modèle que les images collées) : le calque `nb-image-entiere` porte l'image ENTIÈRE et
+     ses mots OCR (fractions de l'image entière), le cadre visible la découpe */
+  const rg = image.rognage && image.rognage.w > 0 && image.rognage.h > 0 ? image.rognage : null;
+  const [largeurGeste, setLargeurGeste] = useState(null);
+  const largeur = largeurGeste != null ? largeurGeste : largeurImage(image);
+  const glisser = (cote) => (e) => {
+    if (!onLargeur || (e.button && e.button !== 0)) return;
+    e.preventDefault(); e.stopPropagation();
+    const interieur = ref.current && ref.current.parentElement ? ref.current.parentElement.getBoundingClientRect().width : 1;
+    const x0 = e.clientX, l0 = largeurImage(image);
+    let v = l0;
+    const bouge = (ev) => { v = largeurApresGlisser(l0, ev.clientX - x0, interieur, cote); setLargeurGeste(v); };
+    const fin = () => { window.removeEventListener('pointermove', bouge); window.removeEventListener('pointerup', fin); window.removeEventListener('pointercancel', fin); setLargeurGeste(null); if (v !== l0) onLargeur(v); };
+    window.addEventListener('pointermove', bouge); window.addEventListener('pointerup', fin); window.addEventListener('pointercancel', fin);
+  };
   return (
-    <div ref={ref} className={'nb-image' + (classe ? ' ' + classe : '')} data-position={image.position || 'dessus'} style={{ aspectRatio: `1 / ${ratio}` }}>
+    <div ref={ref} className={'nb-image' + (rg ? ' rognee' : '') + (classe ? ' ' + classe : '')} data-position={image.position || 'dessus'} data-boite-image={idBoite || undefined}
+      style={{ aspectRatio: `1 / ${ratioVisible(image)}`, width: largeur < 1 ? `${(largeur * 100).toFixed(2)}%` : undefined }}>
+      <div className="nb-image-entiere" style={styleEntiere(rg)}>
       {url ? <img src={url} alt={image.nom || 'Image de la boîte'} draggable={false} />
         : <div className="nb-image-vide">{manquante ? 'Image indisponible sur cet appareil' : '…'}</div>}
       {motsSurlignes.length > 0 && (
@@ -117,6 +138,27 @@ export function ImageBoite({ image, outil = 'main', surlignages = [], couleurSur
           ))}
         </div>
       )}
+      </div>
+      {actif && onLargeur && url && ['g', 'd'].map((c) => (
+        <span key={c} className={'nb-image-poignee ' + c} data-poignee-image={c} title="Glisser pour régler la largeur de l’image" onPointerDown={glisser(c === 'd' ? 1 : -1)} />
+      ))}
+      {largeurGeste != null && <span className="nb-image-taille tnum">{Math.round(largeurGeste * 100)} %</span>}
     </div>
   );
+}
+
+/** l'adresse objet de l'image d'une boîte (pour le cadre de recadrage, la copie du texte reconnu) */
+export async function urlImageBoite(blobId) {
+  if (URLS.has(blobId)) return URLS.get(blobId);
+  const x = await blobURL(blobId);
+  if (x) URLS.set(blobId, x);
+  return x;
+}
+/** texte reconnu (OCR) de l'image d'une boîte, ligne par ligne */
+export async function texteImageBoite(blobId) {
+  const r = await ocrImage({ blobId }).catch(() => null);
+  if (!r || !r.mots || !r.mots.length) return '';
+  let t = '';
+  r.mots.forEach((m, i) => { t += m.t + (i + 1 < r.mots.length ? (r.mots[i + 1].line !== m.line ? '\n' : ' ') : ''); });
+  return t;
 }

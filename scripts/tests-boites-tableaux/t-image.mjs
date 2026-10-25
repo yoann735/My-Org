@@ -44,7 +44,8 @@ b.ok(m.w > w0 + 60 && Math.abs(m.w - m.inner) <= 1.5 && Math.abs(m.h / m.w - 520
 // 3. position : en dessous (menu Image de la mini barre)
 await b.clic(await b.pos(`[...document.querySelectorAll('.mini-barre [data-option="image"]')].find(e=>e.offsetParent)`, false), { att: 400 });
 const entrees = await b.ev(`[...document.querySelectorAll('.mb-plus-pop [data-option]')].map(e=>e.dataset.option)`);
-b.ok(JSON.stringify(entrees) === JSON.stringify(['image-dessus', 'image-dessous', 'image-remplacer', 'image-retirer']), 'mini barre › Image : au-dessus · en dessous · remplacer · retirer', JSON.stringify(entrees));
+// (25/10, docs/compte-rendu-apprentissage-v2-recherche-tags.md §4) mêmes options que les images collées : recadrer, largeur, texte (OCR)
+b.ok(JSON.stringify(entrees) === JSON.stringify(['image-recadrer', 'image-largeur', 'image-dessus', 'image-dessous', 'image-remplacer', 'image-texte', 'image-retirer']), 'mini barre › Image : recadrer · largeur · au-dessus · en dessous · remplacer · texte · retirer', JSON.stringify(entrees));
 await b.clic(await b.pos(`document.querySelector('.mb-plus-pop [data-option="image-dessous"]')`, false), { att: 600 });
 m = await mesure('bi-1');
 b.ok((await A('bi-1')).image.position === 'dessous' && m.imgHaut > m.texteHaut, 'en dessous du texte', JSON.stringify({ imgHaut: Math.round(m.imgHaut), texteHaut: Math.round(m.texteHaut) }));

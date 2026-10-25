@@ -651,8 +651,9 @@
 .btab-td { border: 1px solid color-mix(in srgb, currentColor 24%, transparent); padding: .3em .45em; vertical-align: top; text-align: inherit; }
 .btab-tete .btab-td { font-weight: 700; }
 .btab-cell { min-height: 1.25em; white-space: pre-wrap; overflow-wrap: anywhere; outline: none; }
-.btab.edition .btab-cell { cursor: text; border-radius: 3px; }
-.btab.edition .btab-cell:focus { box-shadow: 0 0 0 1.5px color-mix(in srgb, currentColor 35%, transparent); background: color-mix(in srgb, currentColor 6%, transparent); }
+/* (25/10) édition : on tape DANS la cellule (curseur texte), sans champ visible ni arrondi, même typographie */
+.btab.edition .btab-cell { cursor: text; border-radius: 0; caret-color: var(--accent); }
+.btab.edition .btab-cell:focus { box-shadow: none; background: transparent; }
 .btab-filet { position: absolute; top: 0; bottom: 0; width: 10px; margin-left: -5px; cursor: col-resize; z-index: 3; touch-action: none; }
 .btab-filet::after { content: ''; position: absolute; left: 4.5px; top: 0; bottom: 0; width: 1px; background: var(--accent); opacity: 0; transition: opacity .12s; }
 .btab-filet:hover::after { opacity: 1; }
@@ -666,7 +667,10 @@
 .btab-table.bord-perso { border-style: none; }
 .btab.alterne tr.btab-impaire > .btab-td { background-color: color-mix(in srgb, currentColor 7%, transparent); }
 .btab-td { background-clip: padding-box; }
-.btab-td.sel { background-image: linear-gradient(color-mix(in srgb, var(--accent) 22%, transparent), color-mix(in srgb, var(--accent) 22%, transparent)); }
+/* (25/10) cellule sélectionnée : seulement un contour intérieur fin couleur d'accent (inline, BoiteTableau.jsx contourSel) ;
+   une PLAGE : en plus un léger voile d'accent à 12 % */
+.btab-td.sel { background-image: none; }
+.btab.avec-plage .btab-td.sel { background-image: linear-gradient(color-mix(in srgb, var(--accent) 12%, transparent), color-mix(in srgb, var(--accent) 12%, transparent)); }
 .btab.avec-plage .btab-td.sel .btab-cell:focus { box-shadow: none; background: transparent; }
 .btab.en-plage, .btab.en-plage .btab-cell { user-select: none; -webkit-user-select: none; }
 .btab.avec-plage .btab-cell::selection { background: transparent; }
@@ -757,3 +761,23 @@ html.mr-glisse, html.mr-glisse * { cursor: grabbing !important; }
 .note-box.nb-signalee { animation: nb-signal .9s ease-in-out 2; }
 @media (prefers-reduced-motion: reduce) { .note-box.nb-signalee { animation: none; outline: 3px solid var(--accent); } }
 .pdfr-scroll { overflow-anchor: none; } /* (25/10) §3 : pas d’ancrage de défilement (rien ne bouge pendant une sélection) */
+/* (25/10) menu Tableau à CÔTÉ de la boîte (BoiteTableau.jsx placerACote) : posé sur la racine de l'app, en position fixe */
+.mt-pop.portail { position: fixed; transform: none; z-index: 990; /* sous les sélecteurs de couleur (sc-pop 999, sc-fenetre 1000) qu’il ouvre */ max-width: calc(100vw - 16px); }
+.mt-pop.portail.tactile .mt-ic { width: 38px; height: 38px; }
+.mt-pop.portail.tactile .mt-bt { height: 52px; }
+/* (25/10) image d'une boîte : largeur réglable (centrée, bornée à la boîte), recadrage non destructif — calque de l'image
+   ENTIÈRE découpé par le cadre visible ; poignées latérales quand la boîte est sélectionnée */
+.nb-image { margin-left: auto; margin-right: auto; }
+.nb-image-entiere { position: absolute; }
+.nb-image:not(.rognee) .nb-image-entiere { inset: 0; }
+.nb-image-poignee { position: absolute; top: 50%; width: 9px; height: 30px; margin-top: -15px; border-radius: 5px; z-index: 3; cursor: ew-resize; touch-action: none;
+  background: #fff; border: 1.5px solid var(--accent); box-shadow: 0 1px 4px rgba(0, 0, 0, .3); }
+.nb-image-poignee.g { left: 3px; }
+.nb-image-poignee.d { right: 3px; }
+@media (pointer: coarse) { .nb-image-poignee { width: 14px; height: 40px; margin-top: -20px; } }
+.nb-image-taille { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); z-index: 3; padding: 2px 7px; border-radius: 6px; font-size: 11px; font-weight: 700;
+  color: #fff; background: rgba(0, 0, 0, .65); pointer-events: none; }
+/* (25/10) icône de taille du texte devant les listes de tailles (document, transcript) et les groupes A A A */
+.ct-select { display: inline-flex; align-items: center; gap: 3px; color: var(--text-2); }
+.ct-select svg { flex: 0 0 auto; }
+.trx-taille-ic, .md-taille-ic { display: inline-flex; align-items: center; padding: 0 3px; color: var(--text-3); }

@@ -900,6 +900,7 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
             )}
             {outil === 'texte' && (
               <div className="md-rang md-tailles" role="group" aria-label="Taille du texte">
+                <span className="md-taille-ic" aria-hidden="true"><IconeOutil nom="tailleTexte" size={16} /></span>
                 {TAILLES_TEXTE.map((t, i) => (
                   <button key={t} type="button" className={'md-taille' + (tailleIdx === i ? ' actif' : '')} onClick={() => setTailleIdx(i)} aria-label={`Taille ${i + 1}`}>
                     <span className="md-taille-a" style={{ fontSize: 12 + i * 3.5 }}>A</span>

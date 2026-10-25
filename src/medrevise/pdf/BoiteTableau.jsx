@@ -15,6 +15,8 @@
    ⌘Z hors frappe en cours = le journal d'Annuler du lecteur / du tableau Miro (chaque opération = une entrée).
    ============================================================ */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { placerACote, contourSel } from './tableauPlacement.js';
 import { suivrePointeur } from './pointeur.js';
 import { couleurHex } from './pdfShared.js';
 import { BoutonCouleur, AUCUNE } from './Couleurs.jsx';
@@ -350,7 +352,7 @@ export function BoiteTableau({ grille, edition = false, onChange, onFin = () => 
                   const texte = g.lignes[c.i][c.j] || '';
                   return (
                     <td key={c.j} className={'btab-td' + (choisie ? ' sel' : '')} data-i={c.i} data-j={c.j} colSpan={c.cs > 1 ? c.cs : undefined} rowSpan={c.rs > 1 ? c.rs : undefined}
-                      style={styleCellule(g, c, nl, nc)}>
+                      style={choisie ? { ...styleCellule(g, c, nl, nc), boxShadow: contourSel(sel, c) } : styleCellule(g, c, nl, nc)}>
                       {edition ? (
                         <div className="btab-cell" data-i={c.i} data-j={c.j} data-propre="" contentEditable="plaintext-only" suppressContentEditableWarning spellCheck={false}
                           role="textbox" aria-label={`Cellule ligne ${c.i + 1}, colonne ${c.j + 1}`}
@@ -443,27 +445,31 @@ const MENU_SECTIONS = ['selection', 'lignes', 'cellules', 'bordures', 'style'];
 export function BoutonMenuTableau({ api, grille, sel, onChange, uniteNom = 'px' }) {
   const [ouvert, setOuvert] = useState(false);
   const ref = useRef(null), popRef = useRef(null);
-  const [dessus, setDessus] = useState(false);
-  const [decale, setDecale] = useState(0);
-  const [hautMax, setHautMax] = useState(null);
-  /* le panneau reste dans la zone visible : décalé à gauche / droite, posé au-dessus du bouton s'il manque la place en
-     dessous, et s'il ne tient d'aucun côté, borné à la plus grande place (il défile) */
+  /* (25/10, docs/compte-rendu-apprentissage-v2-recherche-tags.md §4) le panneau s'ouvre À CÔTÉ de la boîte, jamais dessus :
+     à droite, sinon à gauche, sinon en dessous (puis au-dessus) ; il reste dans l'écran et défile en interne s'il manque
+     de hauteur. Posé sur la racine de l'app (position fixe) : ni la page, ni la mini barre, ni le zoom ne le coupent. */
+  const [place, setPlace] = useState(null); // { left, top, maxHeight, width }
+  const [tactile, setTactile] = useState(false);
+  const boiteDe = () => {
+    const el = (api && api.current && api.current.element && api.current.element()) || null;
+    return (el && el.closest && el.closest('.note-box, .tb2-carte')) || el;
+  };
   useLayoutEffect(() => {
-    if (!ouvert || !popRef.current || !ref.current) { setDessus(false); setDecale(0); setHautMax(null); return; }
-    const r = popRef.current.getBoundingClientRect(), bt = ref.current.getBoundingClientRect(), m = 8;
-    const z = popRef.current.closest('.pdfr-scroll, .tb2-vue');
-    const zr = z ? z.getBoundingClientRect() : { left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight };
-    const gch = Math.max(0, zr.left) + m, dr = Math.min(window.innerWidth, zr.right) - m;
-    setDecale(r.left < gch ? gch - r.left : r.right > dr ? dr - r.right : 0);
-    const bas = Math.min(window.innerHeight, zr.bottom) - m, haut = Math.max(0, zr.top) + m;
-    const dessous = bas - (bt.bottom + 6), dessusPlace = bt.top - 6 - haut, h = popRef.current.scrollHeight;
-    if (h <= dessous) return;
-    if (h <= dessusPlace) { setDessus(true); return; }
-    if (dessusPlace > dessous) { setDessus(true); setHautMax(Math.max(160, dessusPlace)); } else setHautMax(Math.max(160, dessous));
-  }, [ouvert]);
+    if (!ouvert) { setPlace(null); return undefined; }
+    const placer = () => {
+      const bx = boiteDe(), pop = popRef.current;
+      if (!bx || !pop) return;
+      setTactile(!!(ref.current && ref.current.closest('.mini-barre.tactile')));
+      setPlace(placerACote(bx.getBoundingClientRect(), { w: pop.offsetWidth || 292, h: pop.scrollHeight }, { W: window.innerWidth, H: window.innerHeight }));
+    };
+    placer();
+    const raf = requestAnimationFrame(placer); // 2e mesure : contenu peint
+    window.addEventListener('resize', placer); window.addEventListener('scroll', placer, true);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', placer); window.removeEventListener('scroll', placer, true); };
+  }, [ouvert]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!ouvert) return undefined;
-    const dehors = (e) => { if (ref.current && !ref.current.contains(e.target) && !(e.target.closest && e.target.closest('.sc-pop, .sc-fenetre, .scw-pipette, .btab'))) setOuvert(false); };
+    const dehors = (e) => { if (ref.current && !ref.current.contains(e.target) && !(popRef.current && popRef.current.contains(e.target)) && !(e.target.closest && e.target.closest('.sc-pop, .sc-fenetre, .scw-pipette, .btab'))) setOuvert(false); };
     const clavier = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setOuvert(false); } };
     window.addEventListener('pointerdown', dehors, true);
     window.addEventListener('keydown', clavier, true);
@@ -484,7 +490,7 @@ export function BoutonMenuTableau({ api, grille, sel, onChange, uniteNom = 'px' 
   const commun = (cle) => G.formatCommun(g, cible, cle);
   const tailleCommune = commun('taille');
   const [taille, setTaille] = useState('');
-  useEffect(() => { setTaille(Number.isFinite(tailleCommune) ? String(tailleCommune).replace('.', ',') : ''); }, [tailleCommune, ouvert]);
+  useEffect(() => { setTaille(Number.isFinite(tailleCommune) ? String(Math.round(tailleCommune)) : ''); }, [tailleCommune, ouvert]); // (25/10) valeur arrondie
   const b = g.bordures || null;
   const [ep, setEp] = useState('1');
   useEffect(() => { setEp(String(b && Number.isFinite(b.ep) ? b.ep : 1).replace('.', ',')); }, [b && b.ep, ouvert]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -512,7 +518,8 @@ export function BoutonMenuTableau({ api, grille, sel, onChange, uniteNom = 'px' 
         <IconeOutil nom="grille" size={16} /><span>Tableau</span>
       </button>
       {ouvert && (
-        <div ref={popRef} role="dialog" aria-label="Tableau" className={'mb-pop mt-pop' + (dessus ? ' dessus' : '')} style={{ ...(decale ? { marginLeft: decale } : {}), ...(hautMax ? { maxHeight: hautMax, overflowY: 'auto' } : {}) }} {...arret}>
+        createPortal(<div ref={popRef} role="dialog" aria-label="Tableau" className={'mb-pop mt-pop portail' + (tactile ? ' tactile' : '')} data-cote={place ? place.cote : ''}
+          style={place ? { left: place.left, top: place.top, maxHeight: place.maxHeight, overflowY: 'auto' } : { left: -9999, top: 0 }} {...arret}>
           <div className="mt-section" data-section="selection">
             <div className="mt-titre">Sélection <span className="mt-resume" data-resume="">{resume}</span></div>
             <div className="mt-rangee">
@@ -595,9 +602,10 @@ export function BoutonMenuTableau({ api, grille, sel, onChange, uniteNom = 'px' 
               {bt('st-aucun', 'styleAucun', 'Aucun', () => faire((x) => G.style(x, 'aucun'), 'Style du tableau retiré'), { actif: !g.entete && !g.alterne, titre: 'Aucun style' })}
             </div>
           </div>
-        </div>
+        </div>, document.querySelector('[data-app="medrevise"]') || document.body)
       )}
     </span>
   );
 }
+
 export { MENU_SECTIONS };

@@ -2693,7 +2693,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (!activeEditId) return undefined;
     const dehors = (e) => {
       const t = e.target;
-      if (!t || !t.closest || t.closest('.note-box, .nb-actions, .pdfr-ancrage, .edit-block-active, .pdfr-edit-toolbar, .pdfr-rangee-texte, .sc-pop, .sc-fenetre, .ptb-pop, .ctx-menu, .mf-menu, .ptb-outils, .tab-outils')) return;
+      if (!t || !t.closest || t.closest('.note-box, .nb-actions, .mt-pop, .pdfr-ancrage, .edit-block-active, .pdfr-edit-toolbar, .pdfr-rangee-texte, .sc-pop, .sc-fenetre, .ptb-pop, .ctx-menu, .mf-menu, .ptb-outils, .tab-outils')) return; // (25/10) .mt-pop : le menu Tableau, posé à côté de la boîte (portail)
       setActiveEditId(null);
     };
     window.addEventListener('pointerdown', dehors, true);
