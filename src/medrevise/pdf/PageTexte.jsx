@@ -13,6 +13,7 @@
    s'arrêter, comme dans un traitement de texte. Retour arrière au tout début d'une page :
    son premier bloc remonte à la fin de la page précédente.
    ============================================================ */
+import { occurrencesDom, surlignerOccurrences } from './rechercheDom.js';
 import { BarreTexteDocument, rectSelection } from './FormatTexte.jsx';
 import { memo, useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -34,7 +35,7 @@ export function surlignerRecherche(range) {
   try { if (window.CSS && CSS.highlights && window.Highlight) CSS.highlights.set('recherche-doc', new window.Highlight(range)); } catch (e) { /* navigateur ancien : pas de surlignage */ }
 }
 export function effacerSurlignageRecherche() {
-  try { if (window.CSS && CSS.highlights) CSS.highlights.delete('recherche-doc'); } catch (e) { /* ignore */ }
+  try { if (window.CSS && CSS.highlights) { CSS.highlights.delete('recherche-doc'); CSS.highlights.delete('recherche-doc-toutes'); } } catch (e) { /* ignore */ }
 }
 export const MARGE_PAGE = 56; // marges d'écriture, en unités de page (≈ 2 cm)
 const DELAI_SAUVEGARDE = 600;
@@ -356,30 +357,17 @@ export const PageTexte = memo(forwardRef(function PageTexte({
       editor.view.dispatch(tr);
       editor.view.focus();
     },
-    /** recherche du lecteur : surligne la n-ième occurrence de `q` (dans un même nœud texte,
-        comme le JSON l'a comptée) et la centre — sans prendre le focus du champ de recherche */
+    /** recherche du lecteur (25/10, pdf/rechercheDom.js) : surligne les occurrences de la PHRASE `q` sur cette page, la
+        n-ième en courante, et la centre — sans prendre le focus du champ de recherche */
     montrerOccurrence(q, rang) {
       const dom = editor && editor.view && editor.view.dom;
-      const cible = (q || '').toLowerCase();
-      if (!dom || !cible) return false;
-      const marcheur = document.createTreeWalker(dom, NodeFilter.SHOW_TEXT);
-      let n = 0, noeud;
-      while ((noeud = marcheur.nextNode())) {
-        const t = noeud.nodeValue.toLowerCase();
-        let i = t.indexOf(cible);
-        while (i !== -1) {
-          if (n === rang) {
-            const r = document.createRange();
-            r.setStart(noeud, i); r.setEnd(noeud, i + cible.length);
-            surlignerRecherche(r);
-            const el = noeud.parentElement;
-            if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            return true;
-          }
-          n++; i = t.indexOf(cible, i + 1);
-        }
-      }
-      return false;
+      if (!dom || !q) return false;
+      const occ = occurrencesDom(dom, q);
+      if (!occ[rang]) return false;
+      surlignerOccurrences(occ.map((o) => o.range), rang);
+      const el = occ[rang].range.startContainer.parentElement;
+      if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return true;
     },
     allerANotion(id) {
       const el = editor && editor.view && editor.view.dom.querySelector(`mark[data-notion="${CSS.escape(id)}"]`);

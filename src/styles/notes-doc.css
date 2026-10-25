@@ -329,3 +329,6 @@
 /* (10/10 soir) surligneur sur le texte d'un document : le glisser est géré par DocumentFlux (au doigt
    aussi) — pas de défilement tactile ni de sélection native sur le texte pendant ce mode */
 .pt-flux-cadre.outil-surligneur .pt-flux { touch-action: none; -webkit-user-select: text; }
+/* (25/10) recherche de phrases : toutes les occurrences (la courante garde ::highlight(recherche-doc)) */
+::highlight(recherche-doc-toutes) { background-color: rgba(255, 196, 0, .28); color: inherit; }
+.pti-mot::highlight(recherche-doc-toutes) { background: rgba(255, 200, 0, .28); }

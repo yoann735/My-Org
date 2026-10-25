@@ -28,7 +28,7 @@ import { NOTES_EXTENSIONS, EMPTY_DOC, hydrateDoc, dehydrateDoc } from '../docume
 import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
 import { surlignerNotions } from '../documents/lib/notionMarks.js';
 import { PaginationDocument, SautDePage, gesteDocument } from '../documents/lib/paginationExt.js';
-import { surlignerRecherche } from './PageTexte.jsx';
+import { occurrencesDom, surlignerOccurrences } from './rechercheDom.js';
 
 const dansTexteImage = () => { const sel = window.getSelection(); const n = sel && sel.anchorNode; const el = n && (n.nodeType === 1 ? n : n.parentElement); return !!(el && el.closest && el.closest('.pti-texte')); };
 export const MARGE_DOC = 56; // ≈ 20 mm sur l'A4 (595 × 842)
@@ -230,27 +230,19 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
     /** synchro : version plus récente venue d'un AUTRE appareil — seulement si l'on n'écrit pas */
     inactifDepuis: () => Date.now() - derniereFrappe.current,
     remplacerDistant: (json) => { const j = editor && editor.getJSON(); return remplacerContenu(json).then(() => j); },
-    /** recherche : la n-ième occurrence de `q` dans le texte affiché (texte des images compris) */
+    /** recherche (25/10, pdf/rechercheDom.js) : toutes les occurrences de la PHRASE `q` dans le texte affiché (texte des
+        images compris), avec un extrait */
+    occurrences(q) {
+      const dom = editor && editor.view && editor.view.dom;
+      return dom ? occurrencesDom(dom, q) : [];
+    },
+    /** surligne toutes les occurrences, la n-ième en courante ; → son rectangle à l'écran */
     montrerOccurrence(q, rang) {
       const dom = editor && editor.view && editor.view.dom;
-      const cible = (q || '').toLowerCase();
-      if (!dom || !cible) return null;
-      const marcheur = document.createTreeWalker(dom, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement && n.parentElement.closest('.pt-saut-page') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
-      let n = 0, noeud;
-      while ((noeud = marcheur.nextNode())) {
-        const t = noeud.nodeValue.toLowerCase();
-        let i = t.indexOf(cible);
-        while (i !== -1) {
-          if (n === rang) {
-            const r = document.createRange();
-            r.setStart(noeud, i); r.setEnd(noeud, i + cible.length);
-            surlignerRecherche(r);
-            return r.getBoundingClientRect();
-          }
-          n++; i = t.indexOf(cible, i + 1);
-        }
-      }
-      return null;
+      if (!dom || !q) return null;
+      const occ = occurrencesDom(dom, q);
+      surlignerOccurrences(occ.map((o) => o.range), rang);
+      return occ[rang] ? occ[rang].range.getBoundingClientRect() : null;
     },
     allerANotion(id) {
       const el = editor && editor.view && editor.view.dom.querySelector(`[data-notion="${CSS.escape(id)}"]`);

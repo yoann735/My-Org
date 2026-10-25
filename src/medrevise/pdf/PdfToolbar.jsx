@@ -20,6 +20,7 @@
    Tout ce qui est rare ou propre à une fiche (exports, prompts, items) part
    dans le menu « ⋯ Document » : huit boutons de moins sur la barre.
    ============================================================ */
+import { ResultatsRecherche, compteurRecherche } from './ResultatsRecherche.jsx';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { ContextMenu } from '../components/ui.jsx';
@@ -65,7 +66,7 @@ export function PdfToolbar({
   scale, onZoom, onAjuster,
   outil, setOutil, couleurActive, setCouleurActive,
   hist,
-  search, setSearch, matches, activeMatch, searching, onPrecedent, onSuivant, onFermerRecherche,
+  search, setSearch, matches, activeMatch, searching, onPrecedent, onSuivant, onFermerRecherche, onAllerResultat = null,
   panelOpen, setPanelOpen, nbNotions,
   actionsDocument, outilsAnnotation = true, contexteSupplementaire = null,
   // MÊME BARRE pour les fiches HTML (nuit du 30/09) : un document HTML n'a ni pages
@@ -104,6 +105,15 @@ export function PdfToolbar({
      loupe dépliable, AVANT de passer sur deux lignes (niveau 3). */
   const [niveau, setNiveau] = useState(0);
   const [rechercheOuverte, setRechercheOuverte] = useState(false);
+  // (25/10) liste des résultats (page + extrait) sous le champ : ouverte d'office à chaque nouvelle recherche
+  const [listeOuverte, setListeOuverte] = useState(true);
+  useEffect(() => { setListeOuverte(true); }, [search]);
+  const liste = !!search && listeOuverte && !searching && matches.length > 0 && onAllerResultat
+    ? <ResultatsRecherche matches={matches} activeMatch={activeMatch} onAller={onAllerResultat} /> : null;
+  const boutonListe = onAllerResultat && !!search && matches.length > 0 ? (
+    <button type="button" className={(tablette ? 'tab-bt' : 'icon-btn sm') + (listeOuverte ? ' actif' : '')} aria-pressed={listeOuverte} onClick={() => setListeOuverte((o) => !o)}
+      title={listeOuverte ? 'Masquer la liste des résultats' : 'Afficher la liste des résultats (page et extrait)'} aria-label="Liste des résultats"><Icon name="list" size={tablette ? 16 : 13} /></button>
+  ) : null;
   const [, setMesure] = useState(0); // force une nouvelle mesure même si le niveau était déjà 0
   useEffect(() => {
     const el = barreRef.current;
@@ -316,10 +326,12 @@ export function PdfToolbar({
               <input ref={champRecherche} placeholder="Rechercher dans le cours" value={search} enterKeyHint="search"
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (e.shiftKey) onPrecedent(); else onSuivant(); } if (e.key === 'Escape') { onFermerRecherche(); setRechercheOuverte(false); } }} />
-              {!!search && <span className="hint tnum">{searching ? '…' : matches.length ? `${activeMatch + 1}/${matches.length}` : '0'}</span>}
-              <button type="button" className="tab-bt" disabled={!matches.length} onClick={onPrecedent} aria-label="Résultat précédent"><Icon name="chevU" size={16} /></button>
-              <button type="button" className="tab-bt" disabled={!matches.length} onClick={onSuivant} aria-label="Résultat suivant"><Icon name="chevD" size={16} /></button>
-              <button type="button" className="tab-bt" onClick={() => { onFermerRecherche(); setRechercheOuverte(false); }} aria-label="Fermer la recherche"><Icon name="x" size={16} /></button>
+              {!!search && <span className="hint tnum rch-compteur" data-compteur-recherche="">{compteurRecherche(searching, matches, activeMatch)}</span>}
+              {boutonListe}
+              <button type="button" className="tab-bt" disabled={!matches.length} onClick={onPrecedent} title="Résultat précédent" aria-label="Résultat précédent"><Icon name="chevU" size={16} /></button>
+              <button type="button" className="tab-bt" disabled={!matches.length} onClick={onSuivant} title="Résultat suivant" aria-label="Résultat suivant"><Icon name="chevD" size={16} /></button>
+              <button type="button" className="tab-bt" onClick={() => { onFermerRecherche(); setRechercheOuverte(false); }} title="Fermer la recherche (Échap)" aria-label="Fermer la recherche"><Icon name="x" size={16} /></button>
+              {liste}
             </div>
           )}
         </div>
@@ -389,15 +401,17 @@ export function PdfToolbar({
             </button>
           )}
           {!sansRecherche && rechercheVisible && (<>
-          <div className="search ptb-recherche">
+          <div className="search ptb-recherche rch-ancre">
             <Icon name="search" size={14} className="ic" />
             <input ref={champRecherche} placeholder="Rechercher" onBlur={() => { if (!search) setRechercheOuverte(false); }} title={`Rechercher dans le document (${raccourciF}) · Entrée : suivant · Maj+Entrée : précédent`} value={search} onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (e.shiftKey) onPrecedent(); else onSuivant(); } if (e.key === 'Escape') onFermerRecherche(); }} />
-            {search && <button className="icon-btn sm" onClick={onFermerRecherche} title="Fermer la recherche"><Icon name="x" size={13} /></button>}
+            {search && <button className="icon-btn sm" onClick={onFermerRecherche} title="Fermer la recherche (Échap)" aria-label="Fermer la recherche"><Icon name="x" size={13} /></button>}
+            {liste}
           </div>
           {!!search && (
             <div className="ptb-resultats">
-              <span className="hint tnum">{searching ? '…' : matches.length ? `${activeMatch + 1}/${matches.length}` : '0'}</span>
+              <span className="hint tnum rch-compteur" data-compteur-recherche="">{compteurRecherche(searching, matches, activeMatch)}</span>
+              {boutonListe}
               <button className="icon-btn sm" disabled={!matches.length} onClick={onPrecedent} title="Précédent (Maj+Entrée)"><Icon name="chevU" size={13} /></button>
               <button className="icon-btn sm" disabled={!matches.length} onClick={onSuivant} title="Suivant (Entrée)"><Icon name="chevD" size={13} /></button>
             </div>

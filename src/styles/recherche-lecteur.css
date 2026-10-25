@@ -1,0 +1,17 @@
+/* (25/10) recherche de phrases du lecteur : compteur « 3 sur 12 » et liste des résultats (pdf/ResultatsRecherche.jsx) */
+.rch-ancre { position: relative; }
+.rch-compteur { white-space: nowrap; }
+.rch-sonde { display: none; }
+.rch-liste { position: fixed; z-index: 1300; overflow: auto;
+  padding: 6px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); box-shadow: 0 16px 36px -16px rgba(0, 0, 0, .45);
+  display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.rch-item { display: flex; gap: 10px; align-items: baseline; width: 100%; padding: 7px 9px; border: 0; border-radius: 8px; background: none; color: var(--text-2);
+  font: inherit; font-size: 12.5px; line-height: 1.4; text-align: left; cursor: pointer; }
+.rch-item:hover { background: var(--bg-2); color: var(--text); }
+.rch-item.actif { background: var(--accent-soft); color: var(--text); }
+.rch-page { flex: 0 0 auto; min-width: 34px; font-weight: 700; color: var(--text-3); font-size: 11.5px; }
+.rch-item.actif .rch-page { color: var(--accent); }
+.rch-extrait { min-width: 0; overflow-wrap: anywhere; }
+.rch-extrait mark { background: color-mix(in srgb, #FFB020 45%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+.rch-plus { padding: 6px 9px; font-size: 12px; }
+@media (pointer: coarse) { .rch-item { min-height: 44px; align-items: center; font-size: 14px; } }

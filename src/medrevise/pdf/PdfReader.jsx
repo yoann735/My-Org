@@ -105,6 +105,7 @@ import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
 import { dehydrateDoc, EMPTY_DOC, docToMarkdown } from '../documents/lib/richtext.js';
 import { exporterMarkdownDoc, nomFichier, telecharger as telechargerFichier } from '../documents/lib/exportDoc.js';
 import { PageTexte, PAGE_A4, effacerSurlignageRecherche } from './PageTexte.jsx';
+import { chercher, extrait } from '../lib/rechercheTexte.js';
 import { useTablette, abonnerStylet, styletActif, dessinAuDoigt, ecrireDessinAuDoigt, abonnerReglagesStylet, lireFractionVolet, ecrireFractionVolet, bornerVolet, VOLET_MIN, VOLET_MAX, VOLET_PLEIN } from '../lib/tablette.js';
 import '../../styles/tablette.css';
 import '../../styles/notes-doc.css';
@@ -1631,51 +1632,37 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     return () => clearTimeout(t);
   }, [search]);
 
+  /* (25/10) RECHERCHE DE PHRASES (lib/rechercheTexte.js) : la phrase entière, insensible à la casse, aux accents,
+     aux retours à la ligne, aux espaces multiples, aux tirets de césure et aux apostrophes typographiques — dans le
+     texte natif du PDF ET les mots de l'OCR, dans le document éditable et dans la fiche jumelle (même moteur).
+     Chaque occurrence : ses morceaux (un par ligne touchée), sa page et un extrait (liste des résultats). */
   useEffect(() => {
     let cancelled = false;
-    const q = debouncedSearch.trim().toLowerCase();
+    const q = debouncedSearch.trim();
     if (q && modeDoc && fluxRef.current && fluxRef.current.editor) {
-      /* DOCUMENT, moteur paginé : on cherche dans le FLUX (état de l'éditeur, la seule source),
-         dans l'ordre du DOM — la n-ième occurrence est montrée par l'éditeur lui-même */
-      const found = [];
-      let rang = 0;
-      const w = (n) => {
-        if (n.type === 'text' && n.text) { const t = n.text.toLowerCase(); let i = t.indexOf(q); while (i !== -1) { found.push({ page: null, doc: true, flux: true, rang: rang++, idx: found.length }); i = t.indexOf(q, i + 1); } }
-        if (n.type === 'image' && n.attrs && n.attrs.ocr && n.attrs.ocr.mots) for (const m of n.attrs.ocr.mots) { const t = String(m.t || '').toLowerCase(); let i = t.indexOf(q); while (i !== -1) { found.push({ page: null, doc: true, flux: true, rang: rang++, idx: found.length }); i = t.indexOf(q, i + 1); } }
-        (n.content || []).forEach(w);
-      };
-      w(fluxRef.current.editor.getJSON());
-      setMatches(found); setActiveMatch(0); setSearching(false);
+      /* DOCUMENT, moteur paginé : on cherche dans le texte AFFICHÉ du flux (jamais virtualisé), images reconnues comprises ;
+         la page d'une occurrence = celle où elle est posée à l'écran */
+      const occ = fluxRef.current.occurrences(q);
+      const pagesEl = pagesRef.current, top0 = pagesEl ? pagesEl.getBoundingClientRect().top : 0;
+      const pageDe = (r) => { const y = (r.getBoundingClientRect().top - top0); let k = 0; layout.offsets.forEach((o, i) => { if (o <= y + 1) k = i; }); return k + 1; };
+      setMatches(occ.map((o, i) => ({ page: null, pageAff: pageDe(o.range), doc: true, flux: true, rang: i, idx: i, extrait: o.extrait })));
+      setActiveMatch(0); setSearching(false);
       return;
     }
     if (q && modeDoc) {
-      // DOCUMENT (08/10) : on cherche dans le texte des pages (nœuds texte du JSON, dans l'ordre)
+      // DOCUMENT (08/10) : le texte des pages (nœuds texte du JSON, dans l'ordre ; mots reconnus des images compris)
       const found = [];
-      pageSizesRef.current.forEach((sz) => {
+      pageSizesRef.current.forEach((sz, iPage) => {
         const corps = corpsPages.current[sz.cle];
         if (!corps) return;
-        const blocs = (corps.content || []).length || 1;
-        let rang = 0;
-        (corps.content || []).forEach((bloc, iBloc) => {
-          const w = (n) => {
-            if (n.type === 'text' && n.text) {
-              const t = n.text.toLowerCase();
-              let i = t.indexOf(q);
-              while (i !== -1) { found.push({ page: sz.cle, doc: true, rang: rang++, approxY: Math.min(0.9, 0.07 + (iBloc / blocs) * 0.86) }); i = t.indexOf(q, i + 1); }
-            }
-            // texte reconnu dans une IMAGE (Texte en direct) : un mot = un nœud texte du calque,
-            // dans le même ordre qu'à l'écran — la n-ième occurrence est la même des deux côtés
-            if (n.type === 'image' && n.attrs && n.attrs.ocr && n.attrs.ocr.mots) {
-              for (const m of n.attrs.ocr.mots) {
-                const t = String(m.t || '').toLowerCase();
-                let i = t.indexOf(q);
-                while (i !== -1) { found.push({ page: sz.cle, doc: true, rang: rang++, approxY: Math.min(0.9, 0.07 + (iBloc / blocs) * 0.86) }); i = t.indexOf(q, i + 1); }
-              }
-            }
-            (n.content || []).forEach(w);
-          };
-          w(bloc);
-        });
+        const segs = [];
+        const w = (n) => {
+          if (n.type === 'text' && n.text) segs.push(n.text);
+          if (n.type === 'image' && n.attrs && n.attrs.ocr && n.attrs.ocr.mots) for (const m of n.attrs.ocr.mots) segs.push(String(m.t || ''));
+          (n.content || []).forEach(w);
+        };
+        w(corps);
+        chercher(segs, q).forEach((o, rang) => found.push({ page: sz.cle, pageAff: iPage + 1, doc: true, rang, approxY: 0.07 + 0.86 * (o.morceaux[0].seg / Math.max(1, segs.length)), extrait: extrait(segs, o) }));
       });
       found.forEach((m, i) => { m.idx = i; });
       setMatches(found); setActiveMatch(0); setSearching(false);
@@ -1689,14 +1676,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         if (cancelled) return;
         if (!textMapCache.current[n]) textMapCache.current[n] = await computePageTextMap(pdfDoc, n, ocrPagePour(n));
         const items = textMapCache.current[n];
-        items.forEach((it, itemIdx) => {
-          const s = it.str.toLowerCase();
-          let idx = s.indexOf(q);
-          while (idx !== -1) {
-            found.push({ page: n, itemIdx, charStart: idx, charEnd: idx + q.length, approxY: it.y0 });
-            idx = s.indexOf(q, idx + 1);
-          }
-        });
+        const segs = items.map((it) => it.str);
+        for (const o of chercher(segs, q)) {
+          const a = o.morceaux[0];
+          found.push({ page: n, pageAff: indexDePage(n) + 1, itemIdx: a.seg, charStart: a.debut, charEnd: a.fin,
+            morceaux: o.morceaux.map((x) => ({ itemIdx: x.seg, charStart: x.debut, charEnd: x.fin })), approxY: items[a.seg].y0, extrait: extrait(segs, o) });
+        }
       }
       if (cancelled) return;
       found.forEach((m, i) => { m.idx = i; });
@@ -1708,7 +1693,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   }, [debouncedSearch, pdfDoc, numPages, coucheOcr, modeDoc]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!matches.length) { if (modeDoc) effacerSurlignageRecherche(); return; }
+    if (!matches.length) { effacerSurlignageRecherche(); return; }
     const m = matches[Math.max(0, Math.min(activeMatch, matches.length - 1))];
     if (m && m.flux) { // flux : jamais virtualisé, l'occurrence est toujours dans le DOM
       const r = fluxRef.current && fluxRef.current.montrerOccurrence(debouncedSearch.trim(), m.rang);
@@ -3651,7 +3636,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         outil={insererOuvert ? 'inserer' : outil} setOutil={choisirOutil}
         couleurActive={couleurActive} setCouleurActive={setCouleurActive}
         hist={hist}
-        search={search} setSearch={setSearch} matches={matches} activeMatch={activeMatch} searching={searching}
+        search={search} setSearch={setSearch} matches={matches} activeMatch={activeMatch} searching={searching} onAllerResultat={setActiveMatch}
         onPrecedent={gotoPrevMatch} onSuivant={gotoNextMatch} onFermerRecherche={closeSearch}
         panelOpen={panelOpen} setPanelOpen={setPanelOpen} nbNotions={highlights.length + notionsAutreDoc.length}
         basculeDocument={jumelle && srcTab === 'pdf' ? (

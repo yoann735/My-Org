@@ -706,7 +706,8 @@ export function computeMatchRectsFromDom(container, matches) {
   const cr = container.getBoundingClientRect();
   if (!cr.width || !cr.height) return [];
   const out = [];
-  matches.forEach((m) => {
+  // (25/10) une phrase à cheval sur plusieurs lignes = plusieurs morceaux (un par span touché)
+  matches.flatMap((m) => (m.morceaux ? m.morceaux.map((x) => ({ ...x, idx: m.idx })) : [m])).forEach((m, k) => {
     const span = spans[m.itemIdx];
     const textNode = span && span.firstChild;
     if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
@@ -719,7 +720,7 @@ export function computeMatchRectsFromDom(container, matches) {
       range.setStart(textNode, start);
       range.setEnd(textNode, end);
       Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0).forEach((r, ri) => {
-        out.push({ idx: m.idx, ri, rect: { x: (r.left - cr.left) / cr.width, y: (r.top - cr.top) / cr.height, width: r.width / cr.width, height: r.height / cr.height } });
+        out.push({ idx: m.idx, ri: k + ':' + ri, rect: { x: (r.left - cr.left) / cr.width, y: (r.top - cr.top) / cr.height, width: r.width / cr.width, height: r.height / cr.height } });
       });
     } catch (e) { /* offset invalide (page changée entre-temps) — ignore */ }
   });
