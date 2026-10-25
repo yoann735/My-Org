@@ -3,6 +3,7 @@
    screens, and exposes everything to pages via `ctx`. Theme is the
    shared "univers" theme (passed from the top-level App).
    ============================================================ */
+import { Infobulles } from './components/Infobulles.jsx';
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../shared/Icon.jsx';
 import { installerRetablirChamps } from './lib/journalAnnuler.js';
@@ -868,7 +869,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
       <button type="button" onClick={() => setAvisRetire(null)} aria-label="Fermer"><Icon name="x" size={12} /></button>
     </div>
   );
-  if (isMobile) return <><MobileApp ctx={ctx} /><IndicateurTranscription />{avis}</>;
+  if (isMobile) return <><MobileApp ctx={ctx} /><IndicateurTranscription />{avis}<Infobulles /></>;
 
   // OCR des PDF image (docs/compte-rendu-ocr.md) : démarré avec le shell bureau,
   // une seule fois (reprise des couches incomplètes, traitement en masse initial)
@@ -892,6 +893,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
       </div>
       <MedBottomNav current={screen} onNav={setScreen} focus={focusNotes} />
       <IndicateurTranscription />
+      {/* (25/10) infobulles de toutes les commandes au survol (components/Infobulles.jsx) */}
+      <Infobulles />
     </div>
   );
 }

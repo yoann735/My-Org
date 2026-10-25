@@ -1,0 +1,10 @@
+/* (25/10) infobulles des commandes (components/Infobulles.jsx) — bulle sombre compacte, DA de l'app, raccourci en touche */
+.infobulle { position: fixed; z-index: 3000; transform: translateX(-50%); pointer-events: none; max-width: min(320px, calc(100vw - 12px));
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 9px; border-radius: 8px;
+  background: rgba(24, 22, 34, .96); color: #f4f2fb; box-shadow: 0 8px 22px -8px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .06);
+  font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1.35; white-space: pre-line; animation: infobulle-fondu .12s ease-out both; }
+.infobulle.dessus { transform: translate(-50%, -100%); }
+.infobulle-texte { min-width: 0; }
+.infobulle-kbd { flex: 0 0 auto; padding: 1px 5px; border-radius: 5px; font: inherit; font-size: 11px; font-weight: 700; color: #d9d2ff;
+  background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .14); }
+@keyframes infobulle-fondu { from { opacity: 0; } to { opacity: 1; } }
