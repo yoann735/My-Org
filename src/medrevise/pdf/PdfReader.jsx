@@ -53,6 +53,8 @@ import { createPortal } from 'react-dom';
 import { pdfjsLib, openPdf } from './pdfjsSetup.js';
 import { exporterDepuisBlob, extrairePages } from './exportAnnote.js';
 import { FenetreExportPages } from './ChoixPages.jsx';
+import { FenetreBoiteFlashcard } from './BoiteFlashcard.jsx';
+import { appendItemsToFiche, adopterThemeDeCarte, themeFlashcardsDeFiche } from '../lib/import.js';
 import { suffixePages } from './choixPages.js';
 import { useEditor } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -406,6 +408,49 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const flashcardsFiche = useMemo(() => (ctx.db.questions || []).filter((q) => q.ficheId === ficheId && q.type === 'flashcard'), [ctx.db, ficheId]);
   const [flashcardVisee, setFlashcardVisee] = useState(null); // { id, n }
   const ouvrirFlashcardDuTableau = (id) => { setPanelOpen(true); setFlashcardVisee((v) => ({ id, n: (v ? v.n : 0) + 1 })); };
+  /* (25/10, docs/compte-rendu-boites-tableaux.md §2) BOÎTE → FLASHCARD : « → Flashcard » de la mini barre ouvre l'aperçu
+     modifiable (pdf/BoiteFlashcard.jsx) ; une boîte déjà convertie (une carte porte `source.boiteId`) ouvre sa carte.
+     La carte est rattachée au cours affiché ; elle garde un lien vers la boîte (panneau : icône → la page et la boîte). */
+  const [boiteFlashcard, setBoiteFlashcard] = useState(null); // la boîte dont on prépare la carte
+  const boitesEnCarte = useMemo(() => new Map((db.questions || []).filter((q) => q.source && q.source.boiteId && !q.deleted).map((q) => [q.source.boiteId, q.id])), [db.questions]);
+  const boiteVersFlashcard = (b0) => {
+    const deja = boitesEnCarte.get(b0.id);
+    if (deja) { ouvrirFlashcardDuTableau(deja); return; }
+    setBoiteFlashcard(boiteFraicheRef.current ? boiteFraicheRef.current(b0.id, b0) || b0 : b0);
+  };
+  const creerCarteDeBoite = async (raw, startDate) => {
+    const coursId = ficheReelle ? ficheReelle.id : ficheId;
+    const r = await appendItemsToFiche({ ficheId: coursId, items: [raw], startDate });
+    if (!r || r.ok === false) throw new Error('cours introuvable');
+    if (!r.count) throw new Error('carte refusée (recto et verso sont obligatoires)');
+    await adopterThemeDeCarte(coursId, raw);
+    await ctx.reload();
+    setBoiteFlashcard(null);
+    const cree = (await getAll('questions')).find((q) => q.ficheId === coursId && q.srcId === raw.id);
+    if (cree) ouvrirFlashcardDuTableau(cree.id);
+  };
+  /* le lien retour d'une carte : sa page (en basculant sur la fiche jumelle s'il le faut), sa boîte sélectionnée et signalée */
+  const allerABoite = (src) => {
+    if (!src || !src.boiteId) return;
+    const autreDoc = jumelle && src.ns && src.ns !== nsAnnot;
+    if (autreDoc) basculerJumelle(src.ns === jumelle.nsAnnot ? 'fiche' : 'original');
+    const montrer = (essai = 0) => {
+      const idx = pageSizesRef.current.findIndex((p) => String(p.cle) === String(src.page));
+      if (idx < 0) { if (essai < 20) setTimeout(() => montrer(essai + 1), 150); return; }
+      allerALaPageRef.current(idx + 1);
+      setTimeout(() => {
+        const el = document.querySelector(`.note-box[data-boite="${CSS.escape(src.boiteId)}"]`);
+        if (!el) { if (essai < 20) setTimeout(() => montrer(essai + 1), 150); return; }
+        el.scrollIntoView({ block: 'center', inline: 'nearest' });
+        setSel({ kind: 'boite', id: src.boiteId });
+        el.classList.remove('nb-signalee'); void el.offsetWidth; el.classList.add('nb-signalee');
+        setTimeout(() => el.classList.remove('nb-signalee'), 1800);
+      }, 250);
+    };
+    setTimeout(() => montrer(), autreDoc ? 500 : 0);
+  };
+  const allerABoiteRef = useRef(allerABoite); allerABoiteRef.current = allerABoite;
+  const allerABoiteStable = useCallback((src) => allerABoiteRef.current(src), []); // le panneau mémorise sa liste : une fonction stable
   const ecranLarge = () => typeof window !== 'undefined' && window.innerWidth >= 1100;
   const fcAuTableau = useFlashcardsAuTableau(ficheId);
   const montrerDemande = useRef(null);
@@ -878,6 +923,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   useEffect(() => { textMapCache.current = {}; }, [coucheOcr]); // nouvelle page reconnue : la recherche la voit
   // aller à une page : son bord haut juste sous la barre, sans la marge de 70 px
   // qu'utilisent recherche et notions (qui visent une LIGNE, pas une page).
+  const allerALaPageRef = useRef(null);
   const allerALaPage = (n) => {
     const idx = Math.max(0, Math.min(nbPagesAffichees - 1, n - 1));
     const el = scrollRef.current;
@@ -885,6 +931,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     el.scrollTop = Math.max(0, layout.offsets[idx] - 8 * scale);
     computeVisibleRange();
   };
+  allerALaPageRef.current = allerALaPage;
 
   /* TRANSCRIPT ↔ PAGES (20/10, transcription/pages.js, docs/compte-rendu-pdfreader-v3.md) : le moteur de
      transcription lit ici la page affichée à chaque segment validé ; un numéro « p. 14 » du transcript
@@ -3823,6 +3870,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onApercuCouleur={apercuPour}
                       onVersTableau={tableauDispo ? boiteVersTableau : null} boitesAuTableau={boitesAuTableau}
                       onReinitialiserBloc={resetEdit} onImageBoite={imageBoite}
+                      onVersFlashcard={ficheReelle ? boiteVersFlashcard : null} boitesEnCarte={boitesEnCarte}
                       selection={sel} onSelection={selectionner} onTransfererFleche={transfererFleche}
                       onModifierTrait={modifierTrait}
                       ancrageBoiteId={ancrageBoiteId} ancrageFleche={!!(ancrage && ancrage.fleche)} ancrageSurlignage={!!(ancrage && ancrage.surlignage)} ancrageAjout={!!(ancrage && ancrage.ajout)} onDemanderAncrage={setAncrageBoiteId}
@@ -3880,7 +3928,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             QCM / Flashcard / Exercice / Feynman pour une vraie fiche, plus l'onglet
             « Notions » (les passages surlignés de CE PDF). Pour un document sans
             fiche (Prise de notes, anatomie), seul l'onglet Notions existe. */}
-        <CourseItemsSidebar ctx={ctx} ficheId={ficheReelle ? ficheReelle.id : null}
+        <CourseItemsSidebar ctx={ctx} ficheId={ficheReelle ? ficheReelle.id : null} onAllerABoite={allerABoiteStable}
           ongletsEnPlus={[
             { id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length + notionsAutreDoc.length, contenu: notionsPdf },
             tableauDispo && {
@@ -3954,6 +4002,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       )}
       {miseEnPage && modeDoc && <PanneauMiseEnPage marges={marges} onChange={changerMarges} onFermer={() => setMiseEnPage(false)} fondNoir={fondNoir} onFond={basculerFond} />}
       {avisExport && <div className="fj-avis" role="status">{avisExport}</div>}
+      {boiteFlashcard && (
+        <FenetreBoiteFlashcard key={boiteFlashcard.id} boite={boiteFlashcard} ns={nsAnnot} themeDefaut={themeFlashcardsDeFiche(ficheReelle)}
+          onCreer={creerCarteDeBoite} onFermer={() => setBoiteFlashcard(null)} />
+      )}
       {exportPages && (() => {
         const T = { pdf: [surFiche ? 'Exporter la fiche annotée' : modeDocCours ? 'Exporter le document annoté' : 'Exporter la diapo annotée', 'PDF avec toutes les annotations des pages choisies'],
           doc: ['Exporter le document annoté', 'Impression en PDF des pages choisies, telles qu’à l’écran'],

@@ -77,6 +77,7 @@ export function PdfPageContent({
   onSurlignerImage = () => {}, onFlashcardTexte = () => {}, couleurSurligneur = 'jaune-franc',
   onApercuCouleur = null, // (15/10) aperçu en direct d'une couleur personnalisée : (id, hex | null)
   onVersTableau = null, boitesAuTableau = null, onReinitialiserBloc = () => {}, // (22/10) « → Tableau », bloc remplacé
+  onVersFlashcard = null, boitesEnCarte = null, // (25/10) « → Flashcard » (docs/compte-rendu-boites-tableaux.md §2)
   onImageBoite = null, // (25/10) image dans une boîte : (boite, { fichier } | { retirer }) — docs/compte-rendu-boites-tableaux.md §1
 }) {
   /* surlignages posés sur les MOTS d'une image collée (`imageId` + `mots`) : dessinés par
@@ -1001,6 +1002,7 @@ export function PdfPageContent({
           enAncrage={b.id === ancrageBoiteId} viseSurlignage={ancrageSurlignage} viseAjout={ancrageAjout} onDemanderAncrage={onDemanderAncrage} flechesInteractives={outil === 'main'}
           onVersTableau={onVersTableau} auTableau={!!(boitesAuTableau && boitesAuTableau.has(b.id))}
           onApercu={onApercuCouleur ? (c) => onApercuCouleur(b.id, c) : null}
+          onVersFlashcard={onVersFlashcard} enCarte={!!(boitesEnCarte && boitesEnCarte.has(b.id))}
           onImageBoite={onImageBoite} outil={outil} couleurSurligneur={couleurSurligneur} onSurlignerImage={onSurlignerImage}
           surlignagesImage={b.image ? surlignagesImages.filter((h) => h.imageId === b.id) : EMPTY_ARRAY}
           {...propsSelection(b, 'boite')}
@@ -1082,7 +1084,7 @@ function useApparition(visible, ms = 120) {
 
 function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, onApercu = null, enAncrage = false, viseSurlignage = false, viseAjout = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF, fondNoir = false, flechesInteractives = true,
   selectionne = false, onSelectionner = () => {}, selConn = null, onSelConn = () => {}, cadres = null, onCadre = null, onTransferer = null,
-  onVersTableau = null, auTableau = false, onImageBoite = null, outil = 'main', couleurSurligneur = 'jaune-franc', onSurlignerImage = null, surlignagesImage = EMPTY_ARRAY }) {
+  onVersTableau = null, auTableau = false, onVersFlashcard = null, enCarte = false, onImageBoite = null, outil = 'main', couleurSurligneur = 'jaune-franc', onSurlignerImage = null, surlignagesImage = EMPTY_ARRAY }) {
   /* UN SEUL REPÈRE : LA PAGE (04/10, docs/compte-rendu-zoom-annotations.md). Position,
      épingle, connecteurs ET taille sont des fractions de page. La boîte est mise en page
      à l'échelle de RÉFÉRENCE (160 % : refW × refH, police 13 px…) puis mise à l'échelle
@@ -1426,6 +1428,9 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const itemsActions = [
     itemImage,
     { cle: 'fleche', icone: <Icon name="arrowR" size={15} />, titre: 'Ajouter une flèche : clique ensuite l’endroit, le surlignage, la forme ou la boîte visés', onClick: () => onDemanderAncrage(boite.id, { ajout: true }) },
+    // (25/10) → Flashcard : aperçu modifiable ; déjà convertie : ouvre la carte
+    onVersFlashcard && !texteLibre && { cle: 'vers-flashcard', icone: <Icon name="cards" size={15} />, actif: enCarte,
+      titre: enCarte ? 'Déjà convertie en flashcard — ouvrir la carte' : '→ Flashcard : créer une carte depuis cette boîte (aperçu modifiable)', onClick: () => onVersFlashcard(boite) },
     onVersTableau && { cle: 'vers-tableau', icone: icL('versTableau'), actif: auTableau, titre: auTableau ? 'Déjà sur le tableau de la fiche — l’y montrer' : '→ Tableau : ajouter cette boîte au tableau de la fiche (même contenu, même couleur)', onClick: () => onVersTableau(boite) },
   ];
   const majGrille = (g, lib) => onModifier(boite, { grille: g, content: contenuGrille(g) }, lib);

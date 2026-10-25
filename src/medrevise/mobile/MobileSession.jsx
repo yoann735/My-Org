@@ -352,7 +352,7 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
               {molecule && <FaceMoleculeParesseuse carte={item} cote="verso" />}
               {muscle && <><div className="mu-titre"><Tex>{item.recto}</Tex></div><ImageGeneraleMuscle item={item} face="verso" /><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>}
               {tableau && <><div className="mu-titre"><Tex>{item.recto}</Tex></div><TableauRevision item={item} /></>}
-              {!muscle && !tableau && !molecule && !(occ && item.versoAuto) && <div className="mrm-flash-back">{cloze ? <MobileClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>}
+              {!muscle && !tableau && !molecule && !(occ && item.versoAuto) && <div className="mrm-flash-back">{cloze ? <MobileClozeVerso parts={versoParts} /> : <Tex leger={item.versoFormat === 'leger'}>{item.verso}</Tex>}</div>}
               {item.a_retenir && <div className="mrm-indice"><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></div>}
             </ZoneDefilante>
           )}

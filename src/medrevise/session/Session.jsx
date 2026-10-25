@@ -511,11 +511,11 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
               : muscle
               ? <><div className="mu-titre"><Tex>{item.recto}</Tex></div><ImageGeneraleMuscle item={item} face="verso" /><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>
               : occ
-              ? <div className="ff-occ"><OcclusionView occ={occ} revele />{!item.versoAuto && <div className="ff-imgq"><Tex>{item.verso}</Tex></div>}</div>
+              ? <div className="ff-occ"><OcclusionView occ={occ} revele />{!item.versoAuto && <div className="ff-imgq"><Tex leger={item.versoFormat === 'leger'}>{item.verso}</Tex></div>}</div>
               : imageAuVerso(item)
               // image au verso (ou aux deux faces) : flashcard texte avec image, voir components/FlashcardImage.jsx
-              ? <div className="ff-imgwrap"><AnatImage imageId={item.imageId} compact /><div className="ff-imgq">{cloze ? <ClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div></div>
-              : <div className="ff-text">{cloze ? <ClozeVerso parts={versoParts} /> : <Tex>{item.verso}</Tex>}</div>}
+              ? <div className="ff-imgwrap"><AnatImage imageId={item.imageId} compact /><div className="ff-imgq">{cloze ? <ClozeVerso parts={versoParts} /> : <Tex leger={item.versoFormat === 'leger'}>{item.verso}</Tex>}</div></div>
+              : <div className="ff-text">{cloze ? <ClozeVerso parts={versoParts} /> : <Tex leger={item.versoFormat === 'leger'}>{item.verso}</Tex>}</div>}
             {item.a_retenir && (
               <div className="ff-aretenir" style={{ marginTop: 10, padding: '8px 12px', borderRadius: 10, background: 'var(--accent-soft)', border: '1px solid var(--accent)', fontSize: 13.5, display: 'flex', gap: 7, alignItems: 'baseline' }}>
                 <Icon name="star" size={13} style={{ color: 'var(--accent)', flex: '0 0 auto' }} /> <span><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></span>

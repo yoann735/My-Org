@@ -59,7 +59,7 @@ export function FaceCarte({ carte, cote, masquable = true }) {
   const cloze = isCloze(carte);
   const occ = estOcclusion(carte) ? carte.occlusion : null;
   const texte = verso
-    ? (cloze ? highlightClozeWords(carte.verso, carte.cloze).map((p, i) => (p.hl ? <mark key={i} className="mrm-cloze-mark">{p.text}</mark> : <span key={i}>{p.text}</span>)) : <Tex>{carte.verso}</Tex>)
+    ? (cloze ? highlightClozeWords(carte.verso, carte.cloze).map((p, i) => (p.hl ? <mark key={i} className="mrm-cloze-mark">{p.text}</mark> : <span key={i}>{p.text}</span>)) : <Tex leger={carte.versoFormat === 'leger'}>{carte.verso}</Tex>)
     : (cloze ? parseCloze(carte.recto, carte.cloze).map((s, i) => (s.type === 'text' ? <Tex key={i}>{s.value}</Tex> : <span key={i} className="mrm-cloze-blank" aria-hidden="true" />)) : <Tex>{carte.recto}</Tex>);
   const long = String((verso ? carte.verso : carte.recto) || '').length > 260;
   return (

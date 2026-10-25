@@ -53,3 +53,12 @@
   .tb-ligne-btn { height: 36px; }
   .tb-tout-btn { min-height: 44px; }
 }
+
+/* (25/10, docs/compte-rendu-boites-tableaux.md §2) carte Tableau faite d'une boîte-tableau : le tableau de la boîte tel quel
+   (styles de cellule en ligne : components/FlashcardTableau.jsx#GrilleRevision, pdf/BoiteTableau.jsx#styleCellule) */
+.tb-grille { width: 100%; border-collapse: collapse; border-style: hidden; table-layout: fixed; font-size: 13px; color: inherit; }
+.tb-grille.bord-perso { border-style: none; }
+.tb-grille td { border: 1px solid color-mix(in srgb, currentColor 24%, transparent); padding: .35em .5em; vertical-align: top; overflow-wrap: anywhere; background-clip: padding-box; }
+.tb-grille .tb-grille-tete td { font-weight: 700; }
+.tb-grille tr.impaire td { background-color: color-mix(in srgb, currentColor 7%, transparent); }
+.tb-rev-grille.compact .tb-grille { font-size: 11.5px; }

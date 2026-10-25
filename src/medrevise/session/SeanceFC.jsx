@@ -276,7 +276,7 @@ function FaceFC({ carte, cote, masquable = false }) {
     : <Tex>{carte.recto}</Tex>;
   const verso = cloze
     ? highlightClozeWords(carte.verso, carte.cloze).map((p, i) => (p.hl ? <mark key={i} className="mrm-cloze-mark">{p.text}</mark> : <span key={i}>{p.text}</span>))
-    : <Tex>{carte.verso}</Tex>;
+    : <Tex leger={carte.versoFormat === 'leger'}>{carte.verso}</Tex>;
   const montrerRecto = cote !== 'verso';
   const montrerVerso = cote !== 'recto';
   const image = !occ && ((montrerRecto && imageAuRecto(carte)) || (montrerVerso && imageAuVerso(carte)));

@@ -12,13 +12,64 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Tex } from './Tex.jsx';
 import { LIMITES, carteTableau, normaliserTableau, lireTSV, estTSV } from '../lib/carteTableau.js';
+import { styleCellule } from '../pdf/BoiteTableau.jsx';
+import { cellulesAffichees, estGrille as estGrilleBoite } from '../pdf/grille.js';
 import '../../styles/flashcard-tableau.css';
 
 const stop = (e) => e.stopPropagation();
 const vide = (n) => Array.from({ length: n }, () => '');
 
+/* (25/10, docs/compte-rendu-boites-tableaux.md §2) CARTE TABLEAU FAITE D'UNE BOÎTE-TABLEAU : `item.grille` est le tableau
+   complet de la boîte (pdf/grille.js) — révisé TEL QUEL : couleurs de fond et de texte, gras / italique / taille,
+   alignements, fusions, bordures ; la ligne d'en-tête reste visible, chaque autre cellule se révèle au toucher. */
+function GrilleRevision({ item, masquable = true, compact = false }) {
+  const g = item.grille;
+  const [vues, setVues] = useState(() => new Set());
+  useEffect(() => { setVues(new Set()); }, [item && item.id]);
+  const nl = g.lignes.length, nc = g.cols.length;
+  const cellules = cellulesAffichees(g);
+  const pleine = (c) => !!String(g.lignes[c.i][c.j] || '').trim();
+  const tete = (c) => !!g.entete && c.i === 0;
+  const cle = (c) => c.i + ':' + c.j;
+  const cachee = (c) => masquable && pleine(c) && !tete(c) && !vues.has(cle(c));
+  const reste = cellules.filter(cachee);
+  const voir = (...ks) => setVues((s) => { const n = new Set(s); ks.forEach((k) => n.add(k)); return n; });
+  const parLigne = g.lignes.map((_, i) => cellules.filter((c) => c.i === i));
+  return (
+    <div className={'tb-rev tb-rev-grille' + (compact ? ' compact' : '')} onClick={stop} onPointerDown={stop} data-tableau="" data-grille="">
+      <div className="tb-defil">
+        <table className={'tb-grille' + (g.bordures ? ' bord-perso' : '')} style={{ '--btab-u': compact ? '0.7px' : '0.9px' }}>
+          <colgroup>{g.cols.map((c, k) => <col key={k} style={{ width: (c * 100).toFixed(3) + '%' }} />)}</colgroup>
+          <tbody>
+            {parLigne.map((cs, i) => (
+              <tr key={i} className={(g.entete && i === 0 ? 'tb-grille-tete' : '') + (g.alterne && !(g.entete && i === 0) && (i - (g.entete ? 1 : 0)) % 2 === 1 ? ' impaire' : '') || undefined}
+                style={Array.isArray(g.hauts) && Number.isFinite(g.hauts[i]) ? { height: `calc(var(--btab-u) * ${g.hauts[i]})` } : undefined}>
+                {cs.map((c) => (
+                  <td key={c.j} colSpan={c.cs > 1 ? c.cs : undefined} rowSpan={c.rs > 1 ? c.rs : undefined} style={styleCellule(g, c, nl, nc)} data-cellule={cle(c)}
+                    className={cachee(c) ? 'cachee' : undefined}>
+                    {cachee(c)
+                      ? <button type="button" className="tb-masque" aria-label={`Révéler la cellule ligne ${c.i + 1}, colonne ${c.j + 1}`} onClick={() => voir(cle(c))}>Toucher</button>
+                      : <span className="tb-valeur">{String(g.lignes[c.i][c.j] || '').split('\n').map((l, k, a) => <span key={k}><Tex>{l}</Tex>{k < a.length - 1 ? <br /> : null}</span>)}</span>}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {reste.length > 0 && (
+        <div className="tb-tout"><button type="button" className="tb-tout-btn" onClick={() => voir(...reste.map(cle))}>Tout révéler <span className="tnum">({reste.length})</span></button></div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- révision ---------- */
 export function TableauRevision({ item, masquable = true, compact = false }) {
+  if (item && estGrilleBoite(item.grille)) return <GrilleRevision item={item} masquable={masquable} compact={compact} />;
+  return <TableauSimple item={item} masquable={masquable} compact={compact} />;
+}
+function TableauSimple({ item, masquable = true, compact = false }) {
   const t = item && item.tableau;
   const [vues, setVues] = useState(() => new Set());
   useEffect(() => { setVues(new Set()); }, [item && item.id]);

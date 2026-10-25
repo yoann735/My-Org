@@ -78,7 +78,7 @@ const lireLS = (k) => { try { return localStorage.getItem(k); } catch (e) { retu
 const ecrireLS = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* stockage bloqué */ } };
 const TYPES_IDS = ['qcm', 'flashcard', 'exercice', 'feynman'];
 
-export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null, cleMemo = null, contenuReplie = null, flashcardDemandee = null, flashcardVisee = null, tableauFlashcards = null }) {
+export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null, cleMemo = null, contenuReplie = null, flashcardDemandee = null, flashcardVisee = null, tableauFlashcards = null, onAllerABoite = null }) {
   const avecItems = !!ficheId;
   const extras = (ongletsEnPlus || []).filter(Boolean);
   const extraNotions = extras.find((o) => o.id === 'notions') || null;
@@ -508,7 +508,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
               </div>
             </div>
           ) : (
-            <ItemReadCard key={item.id} item={item} ctx={ctx}
+            <ItemReadCard key={item.id} item={item} ctx={ctx} onBoite={onAllerABoite && item.source && item.source.boiteId ? () => onAllerABoite(item.source) : null}
               tableau={item.type === 'flashcard' && tableauFlashcards ? { dans: tableauFlashcards.dans.has(item.id), ajouter: () => tableauFlashcards.ajouter([item.id]), montrer: () => tableauFlashcards.montrer(item.id) } : null}
               appr={item.type === 'flashcard' && ctx.setLearningSet ? { dans: dansAppr.has(item.id), basculer: () => basculerAppr([item.id], !dansAppr.has(item.id)) } : null}
               coche={item.type === 'flashcard' && selection ? { oui: selection.has(item.id), basculer: () => cocher(item.id) } : null}
@@ -608,7 +608,7 @@ const Volet = memo(function Volet({ id, label, k, cache, contenu }) {
 });
 
 /* ---- carte de lecture (réponse toujours visible) + Éditer/Supprimer ---- */
-function ItemReadCard({ item, ctx = null, onEdit, onDelete, appr = null, coche = null, glisse = null, tableau = null }) {
+function ItemReadCard({ item, ctx = null, onEdit, onDelete, appr = null, coche = null, glisse = null, tableau = null, onBoite = null }) {
   /* (22/10) flashcards : une carte compacte, ses actions au survol (au doigt : toujours visibles) — modifier,
      apprentissage, carnet d'erreurs, supprimer (docs/compte-rendu-tableau-flashcards.md §6) */
   const fc = item.type === 'flashcard';
@@ -635,6 +635,10 @@ function ItemReadCard({ item, ctx = null, onEdit, onDelete, appr = null, coche =
                 title={tableau.dans ? 'Déjà sur le tableau — y aller' : '→ Tableau : poser cette carte sur le tableau'} aria-label={tableau.dans ? 'Déjà sur le tableau, y aller' : 'Poser sur le tableau'}>
                 <Icon name="grid" size={12} />
               </button>
+            )}
+            {fc && onBoite && ( /* (25/10) carte faite d'une boîte : y retourner (sa page, la boîte signalée) */
+              <button type="button" className="cd-ic fcl-vers-boite" data-act="vers-boite" onClick={onBoite}
+                title={`Faite depuis une boîte (page ${item.source.page}) — y aller`} aria-label="Aller à la boîte d’origine"><Icon name="ext" size={12} /></button>
             )}
             {fc && ctx && <ActionsCarte ctx={ctx} carte={item} mobile={false} sansApprentissage />}
             <button type="button" className="cd-ic" title="Supprimer" aria-label="Supprimer" data-act="supprimer" onClick={onDelete}><Icon name="trash" size={12} /></button>
@@ -678,7 +682,7 @@ function FlashcardReadBody({ item }) {
   return (
     <>
       <div className="pis-face"><span className="pis-face-tag">Recto</span>{imageAuRecto(item) && <ImageFlashcard imageId={item.imageId} maxH={110} />}<Tex>{item.recto}</Tex></div>
-      <div className="pis-face"><span className="pis-face-tag">Verso</span>{imageAuVerso(item) && <ImageFlashcard imageId={item.imageId} maxH={110} />}<Tex>{item.verso}</Tex></div>
+      <div className="pis-face"><span className="pis-face-tag">Verso</span>{imageAuVerso(item) && <ImageFlashcard imageId={item.imageId} maxH={110} />}<Tex leger={item.versoFormat === 'leger'}>{item.verso}</Tex></div>
       {item.a_retenir && <div className="hint" style={{ marginTop: 6 }}><strong>À retenir : </strong><Tex>{item.a_retenir}</Tex></div>}
     </>
   );
@@ -738,7 +742,7 @@ function OcclusionReadBody({ item }) {
     <>
       <div className="pis-face"><span className="pis-face-tag">Flashcard image · {nb} masque{nb > 1 ? 's' : ''}</span><Tex>{item.recto}</Tex></div>
       <OcclusionView occ={occ} revele maxH={200} />
-      {!item.versoAuto && <div className="hint" style={{ marginTop: 6 }}><Tex>{item.verso}</Tex></div>}
+      {!item.versoAuto && <div className="hint" style={{ marginTop: 6 }}><Tex leger={item.versoFormat === 'leger'}>{item.verso}</Tex></div>}
     </>
   );
 }
