@@ -301,12 +301,13 @@ export function PdfToolbar({
               </button>
             )}
             {avantPanneau}
-            {!!actions.length && (
-              <button type="button" className="tab-bt" title="Actions sur le document" aria-label="Actions sur le document"
-                onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: Math.min(r.left, window.innerWidth - 260), y: r.bottom + 6 }); }}>
-                <Icon name="more" size={18} />
-              </button>
-            )}
+            {/* (25/10, docs/compte-rendu-boites-tableaux.md §3) TOUJOURS là, grisé sans action : avant, il n'apparaissait qu'avec
+                une sélection de texte (« Remplacer le texte sélectionné ») et décalait toute la barre de 20 px à chaque sélection */}
+            <button type="button" className="tab-bt" title={actions.length ? 'Actions sur le document' : 'Actions sur le document — sélectionne du texte pour le remplacer'} aria-label="Actions sur le document"
+              disabled={!actions.length} data-actions-doc=""
+              onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: Math.min(r.left, window.innerWidth - 260), y: r.bottom + 6 }); }}>
+              <Icon name="more" size={18} />
+            </button>
           </div>
           {/* recherche : un champ qui recouvre la barre (la place manque pour le garder ouvert) */}
           {rechercheOuv && (
@@ -405,12 +406,11 @@ export function PdfToolbar({
           {avantPanneau}
           {/* (05/10) plus de bouton « Panneau » ni « Transcrire » ici : la poignée du
               panneau l'ouvre et le replie (audit M4), la transcription vit dans son mode */}
-          {!!actions.length && (
-            <button className="icon-btn sm" title="Actions sur le document"
-              onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: Math.min(r.left, window.innerWidth - 260), y: r.bottom + 6 }); }}>
-              <Icon name="more" size={16} />
-            </button>
-          )}
+          {/* (25/10) toujours là, grisé sans action : une sélection ne fait plus entrer de bouton dans la barre (§3) */}
+          <button className="icon-btn sm" title={actions.length ? 'Actions sur le document' : 'Actions sur le document — sélectionne du texte pour le remplacer'} disabled={!actions.length} data-actions-doc=""
+            onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: Math.min(r.left, window.innerWidth - 260), y: r.bottom + 6 }); }}>
+            <Icon name="more" size={16} />
+          </button>
         </div>
       </div>
 

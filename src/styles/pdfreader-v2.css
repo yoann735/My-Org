@@ -756,3 +756,4 @@ html.mr-glisse, html.mr-glisse * { cursor: grabbing !important; }
 @keyframes nb-signal { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 30%, 70% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 55%, transparent); } }
 .note-box.nb-signalee { animation: nb-signal .9s ease-in-out 2; }
 @media (prefers-reduced-motion: reduce) { .note-box.nb-signalee { animation: none; outline: 3px solid var(--accent); } }
+.pdfr-scroll { overflow-anchor: none; } /* (25/10) §3 : pas d’ancrage de défilement (rien ne bouge pendant une sélection) */

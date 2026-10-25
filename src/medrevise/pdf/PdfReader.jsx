@@ -1983,6 +1983,51 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       sc.scrollTop += rc.bottom > bas ? (mode === 'center' ? rc.bottom - (haut + bas) / 2 : rc.bottom - bas) : rc.top - haut;
     } catch (e) { /* ignore */ }
   };
+  /* (25/10, docs/compte-rendu-boites-tableaux.md §3) LA PAGE NE BOUGE PLUS PENDANT UNE SÉLECTION (iPad surtout). Pendant
+     qu'un texte est sélectionné (diapo, boîte, document) :
+       - la FENÊTRE ne défile jamais (Safari la faisait glisser pour « montrer » la sélection ou ses poignées) ;
+       - un défilement du lecteur que l'utilisateur n'a pas demandé (ni doigt, ni molette, ni glisser, ni clavier depuis
+         450 ms) est annulé au pixel près, SAUF si le bout de la sélection touche le bord de la zone visible (on étire alors
+         la sélection vers le haut / le bas : le navigateur doit pouvoir défiler) ;
+       - (CSS) plus d'ancrage de défilement (overflow-anchor) dans le lecteur.
+     Le bouton « ⋯ » de la barre, qui n'apparaissait qu'avec une sélection, est désormais toujours là (pdf/PdfToolbar.jsx). */
+  useEffect(() => {
+    const sc = scrollRef.current;
+    if (!sc || !pret) return undefined;
+    let intention = 0, haut = sc.scrollTop, gauche = sc.scrollLeft;
+    const voulu = () => { intention = performance.now(); };
+    // un clic (bouton de zoom, de page…) : intention courte — un appui long qui SÉLECTIONNE (≈ 500 ms) n'en est pas une
+    const clic = () => { intention = Math.max(intention, performance.now() - 200); };
+    const avecBoutons = (e) => { if (e.buttons || e.pointerType === 'touch') voulu(); };
+    const selectionActive = () => {
+      const g = window.getSelection();
+      if (!g || g.isCollapsed || !g.rangeCount) return null;
+      const n = g.focusNode && (g.focusNode.nodeType === 1 ? g.focusNode : g.focusNode.parentElement);
+      return n && sc.contains(n) ? g : null;
+    };
+    const onScroll = () => {
+      const g = selectionActive();
+      if (!g || performance.now() - intention < 450) { haut = sc.scrollTop; gauche = sc.scrollLeft; return; }
+      // le bout de la sélection contre un bord : étirement vers le haut / le bas, on laisse défiler
+      const rg = g.getRangeAt(0).cloneRange(); rg.collapse(g.focusNode === g.anchorNode ? g.focusOffset < g.anchorOffset : !!(g.anchorNode.compareDocumentPosition(g.focusNode) & Node.DOCUMENT_POSITION_PRECEDING));
+      const rc = rg.getBoundingClientRect(), v = sc.getBoundingClientRect();
+      if (rc && (rc.top || rc.bottom) && (rc.top < v.top + 36 || rc.bottom > v.bottom - 36)) { haut = sc.scrollTop; gauche = sc.scrollLeft; return; }
+      if (sc.scrollTop !== haut || sc.scrollLeft !== gauche) { sc.scrollTop = haut; sc.scrollLeft = gauche; window.__mrDefilementAnnule = (window.__mrDefilementAnnule || 0) + 1; }
+    };
+    const fenetre = () => { if (selectionActive() && (window.scrollY || window.scrollX)) window.scrollTo(0, 0); };
+    sc.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scroll', fenetre, { passive: true });
+    for (const t of ['wheel', 'touchmove', 'keydown']) window.addEventListener(t, voulu, { passive: true, capture: true });
+    window.addEventListener('pointermove', avecBoutons, { passive: true, capture: true });
+    window.addEventListener('pointerdown', clic, { passive: true, capture: true });
+    return () => {
+      window.removeEventListener('pointerdown', clic, { capture: true });
+      sc.removeEventListener('scroll', onScroll);
+      window.removeEventListener('scroll', fenetre);
+      for (const t of ['wheel', 'touchmove', 'keydown']) window.removeEventListener(t, voulu, { capture: true });
+      window.removeEventListener('pointermove', avecBoutons, { capture: true });
+    };
+  }, [pret]);
   /* HAUTEUR : le lecteur occupe exactement la hauteur visible restante (plus de défilement
      de l'écran entier, barres comprises). Suit la hauteur VISIBLE (visualViewport) : clavier
      virtuel ouvert, le lecteur rétrécit et le champ en cours est ramené au centre. */
