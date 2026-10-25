@@ -6,6 +6,7 @@ import { useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, Switch, matiereMeta, syncStatusLabel, SyncIndicator } from '../components/ui.jsx';
 import { isClassicUI, setClassicUI } from '../../shared/uiMode.js';
+import { ongletReviserOrdinateur, setOngletReviserOrdinateur } from '../lib/ongletReviser.js';
 import { wipeAll } from '../lib/storage.js';
 import { exportBackup, formatOctets } from '../lib/backupExport.js';
 import { BoutonDiagnostic } from '../components/BoutonDiagnostic.jsx';
@@ -92,6 +93,7 @@ export function Reglages({ ctx }) {
   const [showArch, setShowArch] = useState(false);
   // Lu une fois : la seule façon de le changer est l'interrupteur, qui recharge.
   const uiClassique = isClassicUI();
+  const [reviserOrdi, setReviserOrdi] = useState(() => ongletReviserOrdinateur());
 
   const active = db.sources.filter((s) => !s.archive);
   const archived = db.sources.filter((s) => s.archive);
@@ -284,6 +286,14 @@ export function Reglages({ ctx }) {
               ? 'Interface d\'origine active. Coupe l\'interrupteur pour revenir à la direction actuelle.'
               : 'Direction actuelle active.'}
             {' '}S'applique aussi à MealWeek et au hub, et recharge la page.
+          </div>
+          {/* (26/10, docs/compte-rendu-nettoyage-v2.md §5) réglage de cet appareil (lib/ongletReviser.js) */}
+          <div className="row spread" style={{ alignItems: 'center', gap: 12, marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border-2)' }} data-reglage="onglet-reviser">
+            <div>
+              <div style={{ fontWeight: 600 }}>Afficher l'onglet Réviser sur ordinateur</div>
+              <div className="hint">Désactivé : l'onglet Réviser disparaît de la barre latérale de l'ordinateur. Il reste toujours sur téléphone et tablette.</div>
+            </div>
+            <Switch on={reviserOrdi} onChange={(v) => setReviserOrdi(setOngletReviserOrdinateur(v))} label="Afficher l'onglet Réviser sur ordinateur" />
           </div>
         </Card>
         <Card title="Profil" icon="settings">

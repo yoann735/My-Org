@@ -16,6 +16,7 @@ import { estMolecule } from '../molecule/carte.js';
 import { estNouvelle } from '../lib/categoriesFC.js';
 import { normaliser } from '../lib/rechercheTexte.js';
 import { trierSections } from '../components/useTreeOpenState.js';
+import { trierMatieres } from '../lib/ordreMatieres.js';
 
 export const TYPES = [
   { cle: 'texte', libelle: 'Texte' },
@@ -130,7 +131,7 @@ export function grouper(db, cartes, stats = null) {
   }
   const sections = trierSections((db && db.sources) || [], stats);
   const ordreSec = [...sections.map((s) => s.id), '—'];
-  const ordreMat = [...((db && db.matieres) || []).map((m) => m.id), '—'];
+  const ordreMat = [...trierMatieres((db && db.matieres) || []).map((m) => m.id), '—']; // (26/10) ordre de la Bibliothèque
   const nomSec = new Map(sections.map((s) => [s.id, s.nom]));
   const out = [];
   for (const sid of ordreSec) {

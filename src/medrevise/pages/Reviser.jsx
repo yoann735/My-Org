@@ -24,6 +24,7 @@ import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import { openPdf, pdfjsLib } from '../pdf/pdfjsSetup.js';
 import { AddItemModal } from '../components/AddItemForm.jsx';
 import { SeanceAujourdhui } from '../components/SeanceAujourdhui.jsx';
+import { trierMatieres } from '../lib/ordreMatieres.js';
 import { CoursePromptsButton } from '../components/CoursePromptsMenu.jsx';
 import { useImportParDepot } from '../components/TreeFileDrop.jsx';
 import { useTreeOpenState, ancestorDossierIds, trierSections, deplacerSection } from '../components/useTreeOpenState.js';
@@ -237,7 +238,7 @@ export function Reviser({ ctx }) {
   // l'ancienne carte « À rattraper » du tableau de bord (ctx.dismissOverdue).
   const [confirmRetard, setConfirmRetard] = useState(null);
   const fichesOf = (matId) => db.fiches.filter((f) => f.matiereId === matId && !f.archive).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
-  const matieresOf = (srcId) => db.matieres.filter((m) => m.sourceId === srcId && !m.archive);
+  const matieresOf = (srcId) => trierMatieres(db.matieres.filter((m) => m.sourceId === srcId && !m.archive)); // (26/10) même ordre que la Bibliothèque
   // sous-dossiers d'une matière sur DEUX niveaux — même store et MÊMES helpers que
   // Bibliotheque.jsx (aucune donnée propre à Reviser, juste une autre vue du même
   // rangement) : unité = dossier sans parentId, chapitre = dossier dont parentId

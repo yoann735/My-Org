@@ -11,6 +11,7 @@ import { installerRetablirChamps } from './lib/journalAnnuler.js';
 // ⌘Y / Ctrl+Y = rétablir aussi dans les champs de saisie (flashcards, formulaires) — 08/10
 installerRetablirChamps();
 import { StudySidebar, LoaderL6 } from './components/ui.jsx';
+import { trierMatieres } from './lib/ordreMatieres.js';
 import { Dashboard } from './pages/Dashboard.jsx';
 import { Reviser } from './pages/Reviser.jsx';
 import { Bibliotheque } from './pages/Bibliotheque.jsx';
@@ -19,7 +20,6 @@ import { CarnetDashboard } from './pages/CarnetDashboard.jsx';
 import { EcranApprentissage } from './apprentissageLibre/EcranApprentissage.jsx';
 import { lireListe, ecrireListe, lireNotes, ecrireNote } from './apprentissageLibre/liste.js';
 import { IconeRafale } from './components/IconeRafale.jsx';
-import { estFocusNotes, setFocusNotes, ECRAN_FOCUS } from './lib/focusMode.js';
 import { initSpotlight } from './lib/spotlight.js';
 import { isClassicUI } from '../shared/uiMode.js';
 import { Session } from './session/Session.jsx';
@@ -68,8 +68,8 @@ const ECRANS_RETIRES = {
 };
 const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard, apprlibre: EcranApprentissage, seancefc: SeanceFC, integrite: EcranIntegrite };
 
-function MedBottomNav({ current, onNav, focus }) {
-  const items = focus ? [{ id: ECRAN_FOCUS, label: 'Biblio', icon: 'book' }] : [
+function MedBottomNav({ current, onNav }) {
+  const items = [
     { id: 'dashboard', label: 'Accueil', icon: 'home' },
     { id: 'revise', label: 'Réviser', icon: 'cards' },
     { id: 'apprlibre', label: 'Apprendre', Ic: IconeRafale }, // mode Apprentissage libre (apprentissageLibre/)
@@ -107,16 +107,12 @@ export default function MedReviseApp({ themeApi, goHub }) {
     document.documentElement.setAttribute('data-app-actif', 'medrevise');
     return () => document.documentElement.removeAttribute('data-app-actif');
   }, []);
-  // MODE FOCUS (lib/focusMode.js) : lu AVANT le premier rendu, ce qui fait toute la
-  // persistance — au rechargement on repart directement sur la Bibliothèque.
-  const [focusNotes, setFocusNotesState] = useState(() => estFocusNotes());
-  const [screen, setScreenBrut] = useState(() => (estFocusNotes() ? ECRAN_FOCUS : 'dashboard'));
+  // (26/10, docs/compte-rendu-nettoyage-v2.md §6) le « mode focus » est supprimé (bouton, code, réglage)
+  const [screen, setScreenBrut] = useState('dashboard');
   const [avisRetire, setAvisRetire] = useState(null); // message discret : écran retiré
-  // Garde : tant que le focus est actif, AUCUNE autre destination n'est acceptée —
-  // y compris venant d'un appel oublié quelque part (ctx.go, openPdfReader…).
   const setScreen = useCallback((id) => {
-    if (ECRANS_RETIRES[id]) { setAvisRetire(ECRANS_RETIRES[id]); id = estFocusNotes() ? ECRAN_FOCUS : 'dashboard'; }
-    setScreenBrut((cur) => (estFocusNotes() && id !== ECRAN_FOCUS ? cur : id));
+    if (ECRANS_RETIRES[id]) { setAvisRetire(ECRANS_RETIRES[id]); id = 'dashboard'; }
+    setScreenBrut(id);
   }, []);
   // ancienne adresse : /medrevise/<écran> ou /medrevise#<écran> — on revient sur /medrevise
   useEffect(() => {
@@ -138,13 +134,6 @@ export default function MedReviseApp({ themeApi, goHub }) {
     const t = setTimeout(() => setAvisRetire(null), 7000);
     return () => clearTimeout(t);
   }, [avisRetire]);
-  const basculerFocus = useCallback((actif) => {
-    setFocusNotes(actif);
-    setFocusNotesState(!!actif);
-    setScreenBrut(actif ? ECRAN_FOCUS : 'dashboard');
-    // une boîte sélectionnée dans le lecteur se désélectionne (sa barre d'outils disparaît)
-    try { window.dispatchEvent(new Event('medrevise:focus')); } catch (e) { /* ignore */ }
-  }, []);
   const [expanded, setExpanded] = useState(false);
   const [db, setDb] = useState(null);
   const [stats, setStats] = useState(null);
@@ -305,7 +294,6 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const ctx = {
     theme, toggleTheme, goHub,
     go: setScreen,
-    focusNotes, basculerFocus,
     db, stats, reload, promptOverrides, exoPromptOverrides, chapExoPromptOverrides,
     syncState, forceSync,
     focusFiche, setFocusFiche,
@@ -554,6 +542,18 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // absent = racine de la matière. Les frères/sœurs pris en compte pour
     // l'ordre sont scopés au MÊME bucket (matiereId + dossierId), le dossier
     // reste un pur rangement d'affichage (voir fiche.dossierId, storage.js).
+    /* (26/10, docs/compte-rendu-nettoyage-v2.md §7) une MATIÈRE glissée : posée avant `beforeMatiereId` (fin de la section
+       sinon), éventuellement dans une autre section. Champ `ordre` en ajout sur les matières de la section d'arrivée ; leurs
+       cours, dossiers et cartes ne bougent pas (ils suivent leur matière). */
+    moveMatiereTo: async (matiereId, sourceId, beforeMatiereId = null) => {
+      const m = db.matieres.find((x) => x.id === matiereId); if (!m || !sourceId) return;
+      const freres = trierMatieres(db.matieres.filter((x) => x.sourceId === sourceId && !x.archive && x.id !== matiereId));
+      let at = freres.length;
+      if (beforeMatiereId) { const i = freres.findIndex((x) => x.id === beforeMatiereId); if (i >= 0) at = i; }
+      const ordonnees = [...freres.slice(0, at), m, ...freres.slice(at)];
+      await putMany('matieres', ordonnees.map((x, i) => ({ ...x, sourceId, ordre: i })));
+      await reload();
+    },
     moveFicheTo: async (ficheId, matiereId, beforeFicheId, dossierId = null) => {
       const f = db.fiches.find((x) => x.id === ficheId); if (!f) return;
       const siblings = db.fiches
@@ -880,18 +880,15 @@ export default function MedReviseApp({ themeApi, goHub }) {
     /* data-app : marqueur de portée posé à l'ÉTAPE 3. Le fichier de thème est
        global depuis l'étape 1 ; les ANIMATIONS, elles, sont scopées sous cet
        attribut — MealWeek ne peut donc pas les recevoir, par construction. */
-    <div className={'app' + (focusNotes ? ' focus-notes' : '')} data-app="medrevise">
+    <div className="app" data-app="medrevise">
       <StudySidebar current={screen} onNav={setScreen} expanded={expanded} onToggle={() => setExpanded((v) => !v)} onHub={goHub} ctx={ctx}
-        focus={focusNotes} onBasculerFocus={basculerFocus} />
+        />
       <div className="main">
-        {/* MODE FOCUS : une seule commande, l'icône « Focus » de la barre latérale
-            (ui.jsx#StudySidebar) — elle active ET désactive. Repli sans interface :
-            voir lib/focusMode.js (une lecture qui échoue renvoie « pas de focus »). */}
         <BandeauFilet ctx={ctx} onOuvrirIntegrite={() => setScreen('integrite')} onOuvrirReglages={() => setScreen('settings')} />
         {avis}
         <Current ctx={ctx} key={screen} />
       </div>
-      <MedBottomNav current={screen} onNav={setScreen} focus={focusNotes} />
+      <MedBottomNav current={screen} onNav={setScreen} />
       <IndicateurTranscription />
       {/* (25/10) infobulles de toutes les commandes au survol (components/Infobulles.jsx) */}
       <Infobulles />

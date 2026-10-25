@@ -10,7 +10,7 @@
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DropCible, LigneDossierArbre, dossierDeleteTexts, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
+import { matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DropCible, DraggableMatiere, DropMatiere, trierMatieres, LigneDossierArbre, dossierDeleteTexts, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
 import { useTreeOpenState, trierSections, deplacerSection } from '../components/useTreeOpenState.js';
 import { useImportParDepot } from '../components/TreeFileDrop.jsx';
 import { putBlob } from '../lib/storage.js';
@@ -468,7 +468,7 @@ export function Bibliotheque({ ctx }) {
   const lignesBiblio = (() => {
     const out = [];
     trierSections(db.sources.filter((s) => !s.archive), ctx.stats).forEach((src, iSec) => {
-      db.matieres.filter((m) => m.sourceId === src.id && !m.archive).forEach((mat, iMat) => {
+      trierMatieres(db.matieres.filter((m) => m.sourceId === src.id && !m.archive)).forEach((mat, iMat) => {
         ordonner(db.fiches.filter((f) => f.matiereId === mat.id && !f.archive)).forEach((f, iF) => {
           const d = f.dossierId && db.dossiers.find((x) => x.id === f.dossierId);
           const p = d && d.parentId && db.dossiers.find((x) => x.id === d.parentId);
@@ -695,7 +695,9 @@ export function Bibliotheque({ ctx }) {
         <div className="lib-master-body">
             {barreRechercheTri}
 
-            <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}>
+            <FicheDndProvider onDropAt={onDropAt} renderOverlay={renderFicheOverlay}
+              onDropMatiere={({ matiereId, sourceId, beforeMatiereId }) => { if (beforeMatiereId !== matiereId) ctx.moveMatiereTo(matiereId, sourceId, beforeMatiereId); }}
+              renderOverlayMatiere={(id) => { const m = db.matieres.find((x) => x.id === id); const mm = m ? matiereMeta(m) : null; return mm ? <div className="lt-rangee lt-mat dnd-overlay-mat" style={{ '--teinte': mm.tint }}><span className="lt-point" style={{ background: mm.tint }} /><span className="lt-nom">{mm.label}</span></div> : null; }}>
             <div className="lib-tree" {...fd.dropProps({ key: 'tree' })}>
               {annonce && (
                 <div className={'tree-drop-hint' + (annonce.ok ? ' ok' : '')} role="status">
@@ -713,7 +715,7 @@ export function Bibliotheque({ ctx }) {
               {(() => { const sections = trierSections(db.sources.filter((s) => !s.archive), ctx.stats); return sections.map((src, iSec) => {
                 // recherche : seules les branches qui mènent à une fiche trouvée, dépliées
                 // pour l'affichage (l'état mémorisé du repli n'est pas réécrit)
-                const mats = db.matieres.filter((m) => m.sourceId === src.id && !m.archive && (!q || db.fiches.some((f) => f.matiereId === m.id && !f.archive && ficheTrouvee(f))));
+                const mats = trierMatieres(db.matieres.filter((m) => m.sourceId === src.id && !m.archive && (!q || db.fiches.some((f) => f.matiereId === m.id && !f.archive && ficheTrouvee(f)))));
                 if (q && !mats.length) return null;
                 const srcOuverte = !!q || openSrc[src.id] !== false;
                 const rappels = src.rappelsJ !== false;
@@ -750,6 +752,8 @@ export function Bibliotheque({ ctx }) {
                         <BellButton on={rappels} onToggle={() => ctx.setSourceRappels(src.id, !rappels)} />
                       </span>
                     </div>
+                    {/* (26/10) section repliée : on peut quand même y déposer une matière (en fin de section) */}
+                    {!srcOuverte && <DropMatiere sourceId={src.id} fin />}
                     {srcOuverte && (
                       <div className="lt-enfants lt-enfants-sec">
                         {mats.map((mat) => {
@@ -761,8 +765,12 @@ export function Bibliotheque({ ctx }) {
                           return (
                             <div key={mat.id} className={fd.dropClass('mat:' + mat.id).trim()}
                               {...fd.dropProps({ key: 'mat:' + mat.id, matiereId: mat.id })}>
+                              {/* (26/10, nettoyage v2 §7) créneau de dépôt d'une MATIÈRE glissée, avant celle-ci */}
+                              <DropMatiere sourceId={src.id} beforeId={mat.id} />
                               {/* toute la ligne de la matière reçoit une fiche lâchée dessus (racine) */}
                               <DropCible matiereId={mat.id} dossierId={null} onSurvolProlonge={() => setMatFermee((o) => (o[mat.id] ? { ...o, [mat.id]: false } : o))}>
+                                {/* (26/10) la matière se glisse comme un cours : maintenir, glisser, déposer (réordonner ou changer de section) */}
+                                <DraggableMatiere id={mat.id} disabled={isRen('matiere', mat.id) || !!q}>
                                 <div className="lt-rangee lt-mat" role="button" style={{ '--teinte': mm.tint }} title={(matOuverte ? 'Replier' : 'Déplier') + ' la matière · double-clic = renommer'}
                                   onClick={() => setMatFermee((o) => ({ ...o, [mat.id]: matOuverte }))}
                                   onDoubleClick={(e) => { e.stopPropagation(); startRename('matiere', mat.id, mm.label); }}>
@@ -777,6 +785,7 @@ export function Bibliotheque({ ctx }) {
                                     </button>
                                   </span>
                                 </div>
+                                </DraggableMatiere>
                               </DropCible>
 
                               {matOuverte && (
@@ -829,6 +838,7 @@ export function Bibliotheque({ ctx }) {
                             </div>
                           );
                         })}
+                        <DropMatiere sourceId={src.id} fin />
                         {!q && (
                         <button type="button" className="lt-rangee lt-ajout" onClick={() => createMatiere(src.id)} title={`Créer une matière dans « ${src.nom} »`}>
                           <Icon name="plus" size={13} className="lt-pli" /> <span className="lt-nom">Nouvelle matière</span>

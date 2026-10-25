@@ -12,7 +12,7 @@ import { comparerAuCloud, derniereSyncReussie } from '../lib/syncStatus.js';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { todayISO } from '../lib/sm2.js';
 import { IconeRafale } from './IconeRafale.jsx';
-import { ECRAN_FOCUS } from '../lib/focusMode.js';
+import { useOngletReviserVisible } from '../lib/ongletReviser.js';
 import { dernierEchecCloud } from '../data/sync.js';
 
 const FALLBACK_TINT = '#7C6FE0';
@@ -391,7 +391,9 @@ function OngletApprentissage({ n, actif, onNav }) {
   );
 }
 
-export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx, focus = false, onBasculerFocus }) {
+export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx }) {
+  // (26/10, nettoyage v2 §5) Réglages → Apparence : l'onglet Réviser peut être masqué sur ordinateur (jamais au doigt)
+  const reviserVisible = useOngletReviserVisible();
   // 'carnet' est un onglet à part entière désormais (plus un sous-état de
   // 'revise') — retiré de la liste ci-dessous pour ne pas allumer les DEUX
   // onglets à la fois quand on est sur l'écran carnet.
@@ -404,8 +406,7 @@ export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx, f
         <div className="sb-brand-name">MedRevise<small>Révision</small></div>
       </div>
       <div className="sb-nav">
-        {/* MODE FOCUS (lib/focusMode.js) : il ne reste qu'une entrée. */}
-        {(focus ? ED_NAV.filter((n) => n.id === ECRAN_FOCUS) : ED_NAV).map((n) => (n.id === 'apprlibre' ? (
+        {ED_NAV.filter((n) => n.id !== 'revise' || reviserVisible).map((n) => (n.id === 'apprlibre' ? (
           <OngletApprentissage key={n.id} n={n} actif={isActive(n.id)} onNav={onNav} ctx={ctx} />
         ) : (
           <div key={n.id} className={'sb-item' + (isActive(n.id) ? ' active' : '')} onClick={() => onNav(n.id)} title={n.label}>
@@ -416,17 +417,6 @@ export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx, f
       </div>
       <div className="sb-spacer" />
       <div className="sb-foot">
-        {/* MODE FOCUS (lib/focusMode.js) : UNE icône, ici, au-dessus de
-            Réglages — le SEUL endroit pour l'activer comme pour le désactiver. Même
-            place et même icône dans les deux états (allumée = focus actif), donc on
-            sait toujours où cliquer pour en sortir. */}
-        <div className={'sb-item sb-focus' + (focus ? ' active' : '')} onClick={() => onBasculerFocus(!focus)}
-          role="switch" aria-checked={focus}
-          title={focus ? 'Focus actif — cliquer pour quitter et retrouver tous les onglets' : 'Mode focus : ne garder que la Bibliothèque (même après un rechargement)'}>
-          <span className="sb-icon"><Icon name="target" size={20} /></span>
-          <span className="sb-label">{focus ? 'Focus' : 'Mode focus'}</span>
-        </div>
-        {!focus && (<>
         <div className={'sb-item' + (current === 'settings' ? ' active' : '')} onClick={() => onNav('settings')} title="Réglages">
           <span className="sb-icon"><Icon name="settings" size={20} /></span>
           <span className="sb-label">Réglages</span>
@@ -435,7 +425,6 @@ export function StudySidebar({ current, onNav, expanded, onToggle, onHub, ctx, f
           <span className="sb-icon"><Icon name="grid" size={20} /></span>
           <span className="sb-label">Changer d'app</span>
         </div>
-        </>)}
         <button className="sb-toggle" onClick={onToggle} title={expanded ? 'Réduire' : 'Étendre'}>
           <span className="sb-icon"><Icon name="panel" size={19} /></span>
           <span className="sb-label">Réduire</span>
@@ -993,9 +982,16 @@ export function DateActionModal({ title, body, label = 'Nouvelle date', confirmL
     chapitre, dans les DEUX écrans qui montrent l'arbre. Les deux consomment le même
     composant, ils restent donc rigoureusement identiques. */
 const FicheDragCtx = createContext(false);
+/* (26/10, docs/compte-rendu-nettoyage-v2.md §7) MATIÈRES glissables dans le MÊME contexte : id « mat:<id> », créneaux
+   « mslot:<sectionId>:<avantMatiereId|END> » (DropMatiere). Pendant le glisser d'une matière, les cibles des fiches sont
+   inactives (et inversement) : chaque glisser ne vise que ses propres créneaux. */
+const GenreGlisseCtx = createContext(null); // 'fiche' | 'matiere' | null
 
-export function FicheDndProvider({ onDropAt, renderOverlay, children }) {
+export { trierMatieres } from '../lib/ordreMatieres.js';
+
+export function FicheDndProvider({ onDropAt, renderOverlay, onDropMatiere = null, renderOverlayMatiere = null, children }) {
   const [activeId, setActiveId] = useState(null);
+  const genre = activeId == null ? null : String(activeId).startsWith('mat:') ? 'matiere' : 'fiche';
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
@@ -1013,13 +1009,21 @@ export function FicheDndProvider({ onDropAt, renderOverlay, children }) {
         setActiveId(null);
         const { active, over } = e;
         if (!over) return;
+        if (String(active.id).startsWith('mat:')) {
+          const [type, sourceId, avant] = String(over.id).split(':');
+          if (type === 'mslot' && onDropMatiere) onDropMatiere({ matiereId: String(active.id).slice(4), sourceId, beforeMatiereId: avant === 'END' ? null : avant });
+          return;
+        }
+        if (String(over.id).startsWith('mslot:')) return;
         const ficheId = stripPrefix(active.id);
         const [, matiereId, dossierRaw, beforeRaw] = String(over.id).split(':');
         onDropAt({ ficheId, matiereId, dossierId: dossierRaw === 'ROOT' ? null : dossierRaw, beforeFicheId: beforeRaw === 'END' ? null : beforeRaw });
       }}>
-      <FicheDragCtx.Provider value={!!activeId}>{children}</FicheDragCtx.Provider>
+      <GenreGlisseCtx.Provider value={genre}>
+        <FicheDragCtx.Provider value={genre === 'fiche'}>{children}</FicheDragCtx.Provider>
+      </GenreGlisseCtx.Provider>
       <DragOverlay dropAnimation={null}>
-        {activeId ? renderOverlay(stripPrefix(activeId)) : null}
+        {activeId ? (genre === 'matiere' ? (renderOverlayMatiere ? renderOverlayMatiere(String(activeId).slice(4)) : null) : renderOverlay(stripPrefix(activeId))) : null}
       </DragOverlay>
     </DndContext>
   );
@@ -1037,13 +1041,32 @@ export function DraggableFiche({ id, disabled, className = '', style, children }
   );
 }
 
+/** (26/10) une MATIÈRE glissable : toute sa ligne (maintenir puis glisser, comme une fiche) */
+export function DraggableMatiere({ id, disabled, children }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: 'mat:' + id, disabled });
+  return (
+    <div ref={setNodeRef} {...listeners} {...attributes} className={'lt-mat-glisse' + (isDragging ? ' dnd-dragging' : '')}
+      style={{ opacity: isDragging ? 0.35 : 1, cursor: disabled ? undefined : 'grab', touchAction: 'none' }}>
+      {children}
+    </div>
+  );
+}
+/** (26/10) créneau de dépôt d'une matière : avant une matière de la section, ou en fin de section — même indicateur
+    (fine barre d'insertion) que les fiches, actif seulement pendant le glisser d'une matière */
+export function DropMatiere({ sourceId, beforeId = null, fin = false }) {
+  const genre = useContext(GenreGlisseCtx);
+  const { setNodeRef, isOver } = useDroppable({ id: `mslot:${sourceId}:${beforeId || 'END'}`, disabled: genre !== 'matiere' });
+  if (fin) return <div ref={setNodeRef} className={'dnd-zone' + (isOver ? ' over' : '') + (genre === 'matiere' ? '' : ' idle')}>{genre === 'matiere' ? 'Déposer la matière ici' : null}</div>;
+  return <div ref={setNodeRef} className={'dnd-slot' + (isOver ? ' over' : '')} />;
+}
+
 /** Créneau de dépôt immobile : "line" = fine barre d'insertion entre 2 fiches,
     "zone" = zone plus large ("déposer ici") en fin de matière/dossier ou bucket
     vide. dossierId (optionnel) = sous-dossier ciblé, absent/null = racine de
     la matière. */
 export function DropSlot({ matiereId, dossierId, beforeId, variant = 'line', label = 'Déposer ici' }) {
   const id = `slot:${matiereId}:${dossierId || 'ROOT'}:${beforeId || 'END'}`;
-  const { setNodeRef, isOver } = useDroppable({ id });
+  const { setNodeRef, isOver } = useDroppable({ id, disabled: useContext(GenreGlisseCtx) === 'matiere' });
   const dragging = useContext(FicheDragCtx);
   if (variant === 'zone') {
     // au repos : le nœud reste monté (donc toujours enregistré comme cible) mais
@@ -1061,7 +1084,7 @@ export function DropSlot({ matiereId, dossierId, beforeId, variant = 'line', lab
     `onSurvolProlonge` : appelé après 650 ms de survol pendant un glisser (ex.
     ouvrir le dossier survolé, pour viser une fiche précise à l'intérieur). */
 export function DropCible({ matiereId, dossierId, onSurvolProlonge, children, className = '' }) {
-  const { setNodeRef, isOver } = useDroppable({ id: `cible:${matiereId}:${dossierId || 'ROOT'}:END` });
+  const { setNodeRef, isOver } = useDroppable({ id: `cible:${matiereId}:${dossierId || 'ROOT'}:END`, disabled: useContext(GenreGlisseCtx) === 'matiere' });
   const dragging = useContext(FicheDragCtx);
   useEffect(() => {
     if (!isOver || !dragging || !onSurvolProlonge) return undefined;
