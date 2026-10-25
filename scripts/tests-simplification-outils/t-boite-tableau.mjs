@@ -36,17 +36,17 @@ await b.capRect('so-boite-tableau', `document.querySelector('.note-box.boite-tab
 await b.clic(await b.pos(`document.querySelector('.note-box.boite-tableau')`, false), { att: 600 });
 b.ok(!(await b.ev(`!!document.querySelector('.note-box.boite-tableau .btab.edition')`)), 'un clic : la boîte-tableau est sélectionnée (pas en édition)');
 const ob = (await b.optionsBarre())[0];
-b.ok(['ligne+', 'colonne+', 'ligne-', 'colonne-', 'entete', 'vers-tableau'].every((k) => ob.includes(k)), 'mini barre : + ligne · + colonne · − ligne · − colonne · en-tête · → Tableau', JSON.stringify(ob));
+b.ok(['tableau', 'vers-tableau'].every((k) => ob.includes(k)), 'mini barre : menu Tableau (lignes, colonnes, en-tête…) · → Tableau', JSON.stringify(ob));
 { const r = await b.rect(`[...document.querySelectorAll('.mini-barre')].find(e=>e.offsetParent)`); await b.capture('so-mini-boite-tableau', { x: Math.round(r.x - 6), y: Math.round(r.y - 6), width: Math.round(r.w + 12), height: Math.round(r.h + 12) }); }
-await b.cliqueOption('ligne+', 600); await b.cliqueOption('colonne+', 600);
+await b.tableau('ins-dessous'); await b.tableau('ins-droite');
 B = await boite(); const apresAjout = [B.grille.lignes.length, B.grille.cols.length];
-await b.cliqueOption('ligne-', 600); await b.cliqueOption('colonne-', 600);
+await b.margeTableau('lig', 4); await b.tableau('sup-ligne'); await b.margeTableau('col', 3); await b.tableau('sup-colonne');
 B = await boite(); const apresRetrait = [B.grille.lignes.length, B.grille.cols.length];
 b.ok(apresAjout[0] === 5 && apresAjout[1] === 4 && apresRetrait[0] === 4 && apresRetrait[1] === 3 && JSON.stringify(B.grille.lignes[1]) === JSON.stringify(valeurs[1]), 'ajouter puis supprimer une ligne et une colonne (le texte est gardé)', JSON.stringify({ apresAjout, apresRetrait }));
-await b.cliqueOption('entete', 600);
+await b.tableau('st-entete');
 B = await boite();
 b.ok(B.grille.entete === false && (await b.ev(`getComputedStyle(document.querySelector('.note-box.boite-tableau tr .btab-cell')).fontWeight`)) === '400', 'en-tête off : la 1re ligne n’est plus en gras');
-await b.cliqueOption('entete', 600);
+await b.tableau('st-entete');
 // redimensionner la boîte : colonnes proportionnelles (la boîte d'abord bien dans l'écran)
 await b.ev(`document.querySelector('.note-box.boite-tableau').scrollIntoView({block:'center'});1`); await b.dormir(800);
 const avantCols = (await boite()).grille.cols;
@@ -70,7 +70,7 @@ b.ok(JSON.stringify((await boite()).grille.cols) === JSON.stringify(apresCols), 
 const c11 = await b.pos(`document.querySelector('.note-box.boite-tableau .btab-cell[data-i="1"][data-j="1"]')`, false);
 await b.clic(c11, { att: 900 });
 b.ok((await b.ev(`(document.activeElement||{}).dataset?.i+':'+(document.activeElement||{}).dataset?.j`)) === '1:1', 'clic sur une cellule de la boîte sélectionnée : édition, curseur dans CETTE cellule');
-await b.cliqueOption('ligne+', 700);
+await b.tableau('ins-dessous', 700);
 B = await boite();
 b.ok(B.grille.lignes.length === 5 && B.grille.lignes[2].every((c) => c === '') && B.grille.lignes[3][0] === 'Iliaque', 'en édition : « + ligne » s’insère sous la ligne du curseur', JSON.stringify(B.grille.lignes.map((l) => l[0])));
 await b.T.Escape(); await b.T.Escape(); await b.dormir(500);

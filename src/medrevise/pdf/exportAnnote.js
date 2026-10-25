@@ -25,6 +25,7 @@ import { styleFleche, cheminFleche, geoPointe, sommetsConnecteur, sommetsForme, 
 import { cheminCatmull } from './crayon.js';
 import { connecteursDe } from './connecteurs.js';
 import { separerParType } from '../lib/annotationTypes.js';
+import { estGrille, cellulesAffichees, formatDe } from './grille.js';
 import { ocrImage } from '../ocr/ocrImage.js';
 import { COLOR_RGB, couleurHex, couleurFoncee, opaciteFondBoite, EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, modeDuTrait, epaisseurPx } from './pdfShared.js';
 
@@ -144,6 +145,8 @@ async function embarquerImage(outDoc, blob) {
 export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations = [], { reperes = null } = {}) {
   const outDoc = await PDFDocument.load(octetsPdf);
   const font = await outDoc.embedFont(StandardFonts.Helvetica);
+  /* (25/10) boîtes-tableaux : gras / italique des cellules (docs/compte-rendu-boites-tableaux.md §5) */
+  const polices = { '': font, b: await outDoc.embedFont(StandardFonts.HelveticaBold), i: await outDoc.embedFont(StandardFonts.HelveticaOblique), bi: await outDoc.embedFont(StandardFonts.HelveticaBoldOblique) };
   /* EXPORT SPÉCIAL IA (10/10 soir) : `reperes` (Map id → « #k3f ») ajoute, et SEULEMENT
      dans ce cas, une étiquette par boîte (voir poserRepere). Sans `reperes`, l'export
      est exactement celui d'avant. */
@@ -286,10 +289,73 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
       w = Math.max(24, Math.min(w, plusLongue + 2 * pad + 6));
     }
     const lh = tb * 1.35;
-    const h = Math.max(b.height * H, 2 * pad + Math.max(1, lignes.length) * lh);
+    // (25/10) boîte-tableau : la boîte a la hauteur de son tableau, comme à l'écran
+    const tab = estGrille(b.grille) ? mesurerGrille(b, b.grille, b.x * W + pad, Math.max(24, b.width * W) - 2 * pad, tb, W) : null;
+    if (tab) w = Math.max(24, b.width * W);
+    const h = tab ? 2 * pad + tab.hauteur : Math.max(b.height * H, 2 * pad + Math.max(1, lignes.length) * lh);
     let top = H - b.y * H;
     if (top - h < 0) top = Math.min(H, h); // une boîte qui déborderait en bas remonte dans la page
-    return { pad, x, w, h, top, lignes, lh, tb };
+    return { pad, x, w, h, top, lignes, lh, tb, tab };
+  };
+  /* (25/10) MISE EN PAGE D'UN TABLEAU (pdf/grille.js) — les règles de l'écran (pdfreader-v2.css, .btab) : colonnes en
+     fractions de la largeur intérieure, marges de cellule .3 em × .45 em, interligne 1,35, hauteur de ligne = la plus
+     haute de ses cellules (au moins `hauts`, px d'une page de 1000 px), fusions (une cellule = son étendue) */
+  const mesurerGrille = (b, g, x0, wi, tb, W) => {
+    const u = W / 1000, nl = g.lignes.length, nc = g.cols.length;
+    const colX = [0]; g.cols.forEach((c, j) => colX.push(colX[j] + c * wi));
+    const hauts = g.lignes.map((_, i) => (Array.isArray(g.hauts) && Number.isFinite(g.hauts[i]) ? g.hauts[i] * u : 0));
+    const cellules = cellulesAffichees(g).map((c) => {
+      const f = formatDe(g, c.i, c.j) || {};
+      const ts = Number.isFinite(f.taille) ? f.taille * u : tb;
+      const gras = !!(f.gras || b.gras || (g.entete && c.i === 0)), ital = !!(f.italique || b.italique);
+      const pol = polices[(gras ? 'b' : '') + (ital ? 'i' : '')];
+      const larg = colX[c.j + c.cs] - colX[c.j];
+      const lignes = couperLignes(String(g.lignes[c.i][c.j] || '').split('\n').map(nettoyeur(pol)), pol, ts, Math.max(4, larg - 0.9 * ts));
+      const hc = Math.max(1, lignes.length) * ts * 1.35 + 0.6 * ts;
+      return { ...c, f, ts, pol, lignes, x: x0 + colX[c.j], w: larg, hc };
+    });
+    for (const c of cellules) if (c.rs === 1) hauts[c.i] = Math.max(hauts[c.i], c.hc);
+    for (const c of cellules) if (c.rs > 1) { // une fusion verticale : la dernière ligne grandit s'il manque de la place
+      const somme = hauts.slice(c.i, c.i + c.rs).reduce((a, v) => a + v, 0);
+      if (somme < c.hc) hauts[c.i + c.rs - 1] += c.hc - somme;
+    }
+    const ligY = [0]; hauts.forEach((h, i) => ligY.push(ligY[i] + h));
+    for (const c of cellules) { c.y = ligY[c.i]; c.h = ligY[c.i + c.rs] - ligY[c.i]; }
+    return { cellules, hauteur: ligY[nl], ligY, colX, x0, wi, nl, nc, u };
+  };
+  /** dessine le tableau mesuré, haut du tableau à `haut` (points, repère pdf-lib) */
+  const dessinerGrille = (page, b, g, t, haut, encre) => {
+    const encreHex = b.couleurTexte ? hexVersRgb(couleurHex(b.couleurTexte, '#1F1F24')) : encre;
+    // fonds : lignes alternées (la couleur du texte à 7 %), puis fond propre de chaque cellule
+    if (g.alterne) for (const c of t.cellules) {
+      if (g.entete && c.i === 0) continue;
+      if ((c.i - (g.entete ? 1 : 0)) % 2 === 1) page.drawRectangle({ x: c.x, y: haut - c.y - c.h, width: c.w, height: c.h, color: encreHex, opacity: 0.07 });
+    }
+    for (const c of t.cellules) if (c.f.fond) page.drawRectangle({ x: c.x, y: haut - c.y - c.h, width: c.w, height: c.h, color: hexVersRgb(couleurHex(c.f.fond, '#ffffff')) });
+    // texte : alignements horizontal et vertical
+    for (const c of t.cellules) {
+      const coul = c.f.couleur ? hexVersRgb(couleurHex(c.f.couleur, '#1F1F24')) : encreHex;
+      const lh = c.ts * 1.35, hTexte = Math.max(1, c.lignes.length) * lh;
+      const dv = c.f.alignV === 'milieu' ? (c.h - 0.6 * c.ts - hTexte) / 2 : c.f.alignV === 'bas' ? c.h - 0.6 * c.ts - hTexte : 0;
+      const alignH = c.f.alignH || b.align || 'left';
+      c.lignes.forEach((l, k) => {
+        if (!l) return;
+        const lw = c.pol.widthOfTextAtSize(l, c.ts), marge = 0.45 * c.ts;
+        const x = alignH === 'center' ? c.x + (c.w - lw) / 2 : alignH === 'right' ? c.x + c.w - marge - lw : c.x + marge;
+        page.drawText(l, { x, y: haut - c.y - 0.3 * c.ts - dv - k * lh - c.ts * 0.95, size: c.ts, font: c.pol, color: coul });
+      });
+    }
+    // filets : intérieurs fins de la couleur du texte à 24 % (rendu d'avant), ou les bordures choisies
+    const bd = g.bordures || { mode: 'interieures', couleur: null, ep: null };
+    const ext = bd.mode === 'toutes' || bd.mode === 'exterieures', int = bd.mode === 'toutes' || bd.mode === 'interieures';
+    const ep = Number.isFinite(bd.ep) ? bd.ep * t.u : K_PDF;
+    const trait = { thickness: ep, color: bd.couleur ? hexVersRgb(couleurHex(bd.couleur, '#1F1F24')) : encreHex, opacity: bd.couleur ? 1 : 0.24 };
+    const ligne = (x1, y1, x2, y2) => page.drawLine({ start: { x: x1, y: haut - y1 }, end: { x: x2, y: haut - y2 }, ...trait });
+    if (int) for (const c of t.cellules) {
+      if (c.i > 0) ligne(c.x, c.y, c.x + c.w, c.y);
+      if (c.j > 0) ligne(c.x, c.y, c.x, c.y + c.h);
+    }
+    if (ext) { const x1 = t.x0, x2 = t.x0 + t.wi, y2 = t.hauteur; ligne(x1, 0, x2, 0); ligne(x1, y2, x2, y2); ligne(x1, 0, x1, y2); ligne(x2, 0, x2, y2); }
   };
   const cadresBoites = new Map();
   for (const b of par.boite) {
@@ -407,7 +473,9 @@ export async function exporterPdfAnnote(octetsPdf, highlights = [], annotations 
     const encreBoite = b.fond === 'plein' && (0.299 * fond.red + 0.587 * fond.green + 0.114 * fond.blue) < 0.5 ? rgb(1, 1, 1) : rgb(0.09, 0.09, 0.16);
     if (!b.fond) page.drawRectangle({ x, y: top - h, width: w, height: h, color: fond, opacity: opaciteFondBoite(b.couleur), borderColor: rgb(0, 0, 0), borderOpacity: 0.28, borderWidth: 0.8 });
     else page.drawRectangle({ x, y: top - h, width: w, height: h, ...(b.fond === 'transparent' ? {} : { color: fond, opacity: b.fond === 'teinte' ? 0.15 : 0.92 }), borderColor: fond, borderWidth: Number.isFinite(b.bord1000) && b.fond !== 'plein' ? (b.bord1000 / 1000) * W : 1 });
-    lignes.forEach((l, i) => { if (l) page.drawText(l, { x: x + pad, y: top - pad - tb * 0.95 - i * lh, size: tb, font, color: encreBoite }); });
+    const { tab } = geoBoite(b, W, H);
+    if (tab) dessinerGrille(page, b, b.grille, tab, top - pad, encreBoite); // (25/10) boîte-tableau : le tableau tel qu'à l'écran
+    else lignes.forEach((l, i) => { if (l) page.drawText(l, { x: x + pad, y: top - pad - tb * 0.95 - i * lh, size: tb, font, color: encreBoite }); });
     if (reperes && reperes.has(b.id)) poserRepere(page, b.id, { x, top, w, h, lignes: lignes.map((l, i) => ({ x: x + pad, top: top - pad - i * lh, w: font.widthOfTextAtSize(l, tb), h: lh, vide: !l.trim() })) });
     if (ancre) page.drawCircle({ x: ancre.x, y: ancre.y, size: 3.5, color: rgb(1, 1, 1), borderColor: coulFleche, borderWidth: 1.8 });
     autres.forEach((a) => page.drawCircle({ x: a.x, y: a.y, size: 3, color: rgb(1, 1, 1), borderColor: coulFleche, borderWidth: 1.5 }));

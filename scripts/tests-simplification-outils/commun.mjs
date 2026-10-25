@@ -38,6 +38,17 @@ export async function banc(W = 1440, H = 900, opts = {}) {
   // option d'une mini barre visible (data-option), ou d'un menu « … » ouvert
   b.option = (cle) => `[...document.querySelectorAll('.mini-barre [data-mb="${cle}"] button, .mini-barre [data-option="${cle}"]')].find(e=>e.offsetParent)`;
   b.cliqueOption = async (cle, att = 400) => { const p = await b.pos(b.option(cle), false); if (!p) throw new Error('option introuvable : ' + cle); await b.clic(p, { att }); };
+  // (25/10, docs/compte-rendu-boites-tableaux.md §5) + ligne, + colonne, − ligne, − colonne, en-tête sont dans le MENU TABLEAU
+  // de la mini barre : `b.tableau(cle)` l'ouvre et clique l'entrée (data-tab) ; `b.margeTableau('lig'|'col', k)` sélectionne une ligne / colonne
+  b.tableau = async (cle, att = 600) => {
+    if (!(await b.ev(`!!document.querySelector('.mt-pop')`))) await b.clic(await b.pos(`[...document.querySelectorAll('.mini-barre [data-option="tableau"]')].find(e=>e.offsetParent)`, false), { att: 400 });
+    const p = await b.pos(`document.querySelector('.mt-pop [data-tab="${cle}"]')`, true);
+    await b.clic(p, { att });
+    const q = await b.pos(`(document.querySelector('.mt-pop')&&[...document.querySelectorAll('.mini-barre [data-option="tableau"]')].find(e=>e.offsetParent))||null`, false);
+    if (q) await b.clic(q, { att: 300 }); // referme
+    else console.log('(menu Tableau déjà refermé ; mini barre :', await b.ev(`document.querySelectorAll('.mini-barre').length`), ')');
+  };
+  b.margeTableau = async (quoi, k, boite = '.btab') => { await b.clic(await b.pos(`document.querySelector('${boite} .btab-marge-${quoi}[data-${quoi}="${k}"]')`, false), { att: 400 }); };
   b.optionsBarre = () => b.ev(`(()=>{const m=[...document.querySelectorAll('.mini-barre')].filter(e=>e.offsetParent&&getComputedStyle(e).visibility!=='hidden');return m.map(x=>[...x.children].map(c=>c.classList.contains('mb-sep')?'|':c.classList.contains('mb-plus')?'…':(c.getAttribute('data-mb')||c.getAttribute('data-option')||(c.querySelector('[data-option]')||{}).getAttribute?.('data-option')||c.getAttribute('aria-label')||c.title||c.className)))})()`);
   b.optionsPlus = () => b.ev(`[...document.querySelectorAll('.mb-plus-pop [data-option]')].map(e=>e.getAttribute('data-option')+' : '+(e.querySelector('.mb-plus-lib')||e).innerText.trim())`);
   b.capRect = async (nom, js, marge = 8) => { const r = await b.rect(js); if (!r) return false; await b.capture(nom, { x: Math.max(0, Math.round(r.x - marge)), y: Math.max(0, Math.round(r.y - marge)), width: Math.round(r.w + 2 * marge), height: Math.round(r.h + 2 * marge) }); return true; };

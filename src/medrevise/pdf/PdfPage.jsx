@@ -29,7 +29,7 @@ import { TraitFleche, PoigneesFleche, pointsAvecAjout, glisserPointFleche, appui
 import { CadreSelection, MiniBarre, redimensionner } from './Selection.jsx';
 import { redimRectImage, ouvrirRognage, cadreApresRognage, entiereDepuisCadre } from '../lib/rognageImage.js';
 import { elementsFormat, useSuiviEditeur, ALIGNEMENTS } from './FormatTexte.jsx';
-import { BoiteTableau, estGrille, contenuGrille, ajouterLigne, ajouterColonne, retirerLigne, retirerColonne, LIMITES_GRILLE } from './BoiteTableau.jsx';
+import { BoiteTableau, BoutonMenuTableau, estGrille, contenuGrille } from './BoiteTableau.jsx';
 import { BoutonTaille } from './ChoixTaille.jsx';
 import { lisser3, arrondirPoints, cheminCatmull, cheminDroit, cheminTrait, densifier, morceauxHors, OPACITE_SURLIGNEUR_CRAYON } from './crayon.js';
 import { suivreImage } from './attaches.js';
@@ -1217,7 +1217,8 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   const style = {
     '--lp': (refW / 100) + 'px',
     ...(Array.isArray(boite.pad1000) ? { '--carte-px': (boite.pad1000[0] / PAGE_REF) * refW + 'px', '--carte-py': (boite.pad1000[1] / PAGE_REF) * refW + 'px' } : {}),
-    left: b.x * 100 + '%', top: b.y * 100 + '%', minHeight: mot ? (boite.largeurFixe || redim ? b.height * refH : 0) : b.height * refH,
+    // (25/10) boîte-tableau : SA HAUTEUR EST CELLE DU TABLEAU (docs/compte-rendu-boites-tableaux.md §5), jamais un minimum enregistré
+    left: b.x * 100 + '%', top: b.y * 100 + '%', minHeight: grille ? 0 : mot ? (boite.largeurFixe || redim ? b.height * refH : 0) : b.height * refH,
     ...(k !== 1 ? { scale: String(k), transformOrigin: '0 0' } : {}),
     ...(motLibre ? { width: 'max-content', minWidth: MOT.largeurMin, maxWidth: MOT.largeurMaxPage * refW }
       : compacteLibre ? { width: 'max-content', minWidth: Math.max(b.width * refW, COMPACT.largeurMin * ECHELLE_REF), maxWidth: Math.max(b.width, COMPACT.largeurMaxPage) * refW }
@@ -1230,7 +1231,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   };
 
   const bLarg = refW ? (libre && largVue ? largVue : b.width * refW) / refW : b.width; // largeur affichée (fraction de page)
-  const bHaut = mot && hautVue ? (hautVue * k) / (pageHeight || 1) : Math.max(b.height, (hautVue * k) / (pageHeight || 1)); // hauteur affichée
+  const bHaut = (mot || grille) && hautVue ? (hautVue * k) / (pageHeight || 1) : Math.max(b.height, (hautVue * k) / (pageHeight || 1)); // hauteur affichée
   // cadre AFFICHÉ (fractions de page), signalé à la page : une flèche rattachée à cette boîte finit sur son bord
   useEffect(() => { if (onCadre) onCadre(boite.id, boite.reduite ? null : { x: b.x, y: b.y, w: bLarg, h: bHaut }); }, [b.x, b.y, bLarg, bHaut, boite.reduite]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { if (onCadre) onCadre(boite.id, null); }, [boite.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1280,8 +1281,9 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
 
   // (22/10) hooks de la mini barre, AVANT le rendu en pastille (même nombre de hooks dans les deux cas)
   useSuiviEditeur(active && editor && !editor.isDestroyed && !grille ? editor : null);
-  const celluleRef = useRef(null); // boîte-tableau : la cellule qui a le curseur (+ ligne / + colonne s'y ajoutent)
-  useEffect(() => { if (!active) celluleRef.current = null; }, [active]); // hors édition : à la fin du tableau
+  // (25/10) boîte-tableau : l'accès au tableau (grille avec la frappe en cours, sélection) et sa sélection, pour le menu Tableau
+  const tabApi = useRef(null);
+  const [selTab, setSelTab] = useState(null);
   if (boite.reduite && !texteLibre) {
     const pos = pointApercu && pointApercu.cible === 'pastille' ? pointApercu : (ancre || { x: b.x, y: b.y });
     const cible = ancre ? 'ancre' : 'pastille';
@@ -1408,19 +1410,13 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     onVersTableau && { cle: 'vers-tableau', icone: icL('versTableau'), actif: auTableau, titre: auTableau ? 'Déjà sur le tableau de la fiche — l’y montrer' : '→ Tableau : ajouter cette boîte au tableau de la fiche (même contenu, même couleur)', onClick: () => onVersTableau(boite) },
   ];
   const majGrille = (g, lib) => onModifier(boite, { grille: g, content: contenuGrille(g) }, lib);
-  const itemsGrille = grille ? (() => {
-    const c = celluleRef.current, gi = c ? c.i : grille.lignes.length - 1, gj = c ? c.j : grille.cols.length - 1;
-    return [
-      { cle: 'gras', icone: icL('gras', 15), titre: 'Gras (tout le tableau)', actif: !!boite.gras, onClick: () => onModifier(boite, { gras: !boite.gras }, 'Gras') },
-      { cle: 'italique', icone: icL('italique', 15), titre: 'Italique (tout le tableau)', actif: !!boite.italique, onClick: () => onModifier(boite, { italique: !boite.italique }, 'Italique') },
-      { cle: '|' },
-      { cle: 'ligne+', icone: icL('ligneAjout'), titre: 'Ajouter une ligne', desactive: grille.lignes.length >= LIMITES_GRILLE.ligMax, onClick: () => majGrille(ajouterLigne(grille, gi), 'Ligne ajoutée') },
-      { cle: 'colonne+', icone: icL('colonneAjout'), titre: 'Ajouter une colonne', desactive: grille.cols.length >= LIMITES_GRILLE.colMax, onClick: () => majGrille(ajouterColonne(grille, gj), 'Colonne ajoutée') },
-      { cle: 'ligne-', icone: icL('ligneMoins'), titre: 'Supprimer la ligne', desactive: grille.lignes.length <= LIMITES_GRILLE.ligMin, onClick: () => { celluleRef.current = null; majGrille(retirerLigne(grille, gi), 'Ligne supprimée'); } },
-      { cle: 'colonne-', icone: icL('colonneMoins'), titre: 'Supprimer la colonne', desactive: grille.cols.length <= LIMITES_GRILLE.colMin, onClick: () => { celluleRef.current = null; majGrille(retirerColonne(grille, gj), 'Colonne supprimée'); } },
-      { cle: 'entete', icone: icL('entete'), actif: !!grille.entete, titre: grille.entete ? 'Ligne d’en-tête : oui — cliquer pour la retirer' : 'Ligne d’en-tête : non — cliquer pour la première ligne en gras', onClick: () => majGrille({ ...grille, entete: !grille.entete }, 'En-tête du tableau') },
-    ];
-  })() : null;
+  const itemsGrille = grille ? [
+    { cle: 'gras', icone: icL('gras', 15), titre: 'Gras (tout le tableau)', actif: !!boite.gras, onClick: () => onModifier(boite, { gras: !boite.gras }, 'Gras') },
+    { cle: 'italique', icone: icL('italique', 15), titre: 'Italique (tout le tableau)', actif: !!boite.italique, onClick: () => onModifier(boite, { italique: !boite.italique }, 'Italique') },
+    { cle: '|' },
+    // (25/10) LE menu Tableau : lignes / colonnes, cellules, bordures, style (pdf/BoiteTableau.jsx#BoutonMenuTableau)
+    { cle: 'tableau', element: <BoutonMenuTableau api={tabApi} grille={grille} sel={selTab} onChange={majGrille} uniteNom="px" /> },
+  ] : null;
   const iAlignG = Math.max(0, ALIGNEMENTS.findIndex((a) => a.id === (boite.align || 'left')));
   const alignGrille = { cle: 'align', icone: icL(ALIGNEMENTS[iAlignG].icone), titre: `Alignement : ${ALIGNEMENTS[iAlignG].label}`,
     onClick: () => onModifier(boite, { align: ALIGNEMENTS[(iAlignG + 1) % ALIGNEMENTS.length].id }, 'Alignement') };
@@ -1543,8 +1539,8 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       {grille ? (
         <div className="nb-body" style={{ ...(styleCorps || {}), ...(boite.couleurTexte ? { color: couleurHex(boite.couleurTexte, '#1F1F24') } : {}),
           fontWeight: boite.gras ? 700 : undefined, fontStyle: boite.italique ? 'italic' : undefined, textAlign: boite.align || undefined }}>
-          <BoiteTableau grille={grille} edition={active} focus={active ? clicRef.current : null} filets={(active || selectionne) && !verrou} echelle={k}
-            onCellule={(i, j) => { celluleRef.current = { i, j }; }}
+          <BoiteTableau grille={grille} edition={active} focus={active ? clicRef.current : null} filets={(active || selectionne) && !verrou}
+            unite="calc(var(--lp) / 10)" api={tabApi} onSel={setSelTab}
             onChange={(g, lib) => majGrille(g, lib)} onFin={() => onActivate(null)} />
         </div>
       ) : active && editor

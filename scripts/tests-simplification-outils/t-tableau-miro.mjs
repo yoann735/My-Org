@@ -92,11 +92,11 @@ b.ok(f0 === '0:0' && cg && cg.grille.lignes.length === 4 && cg.grille.cols.lengt
 b.ok((await b.ev(`!!document.querySelector('.tb2-carte.carte-grille .btab .btab-table')`)), 'la carte rend le MÊME composant (BoiteTableau) que le lecteur');
 await b.clic(await b.pos(`document.querySelector('.tb2-carte.carte-grille')`, false), { att: 500 });
 const og = (await b.optionsBarre())[0];
-b.ok(['ligne+', 'colonne+', 'ligne-', 'colonne-', 'entete'].every((k) => og.includes(k)), 'mini barre de la carte-tableau : + ligne · + colonne · − ligne · − colonne · en-tête', JSON.stringify(og));
-await b.cliqueOption('ligne+', 600); await b.cliqueOption('colonne+', 600);
+b.ok(og.includes('tableau'), 'mini barre de la carte-tableau : le menu Tableau (+ ligne, + colonne, en-tête…)', JSON.stringify(og));
+await b.tableau('ins-dessous'); await b.tableau('ins-droite');
 B = await b.board(); const cg2 = B.objects.find((o) => o.grille);
 b.ok(cg2.grille.lignes.length === 5 && cg2.grille.cols.length === 4, '+ ligne / + colonne dans le tableau Miro', JSON.stringify([cg2.grille.lignes.length, cg2.grille.cols.length]));
-await b.cliqueOption('colonne-', 600);
+await b.margeTableau('col', 3, '.tb2-carte.carte-grille'); await b.tableau('sup-colonne');
 { const r = await b.rect(`document.querySelector('.tb2-carte.carte-grille')`), m = await b.rect(`[...document.querySelectorAll('.mini-barre')].find(e=>e.offsetParent)`);
   const x0 = Math.min(r.x, m.x) - 12, y0 = Math.min(r.y, m.y) - 12; await b.capture('so-tableau-boite-tableau' + (tablette ? '-tablette' : ''), { x: Math.round(x0), y: Math.round(y0), width: Math.round(Math.max(r.r, m.r) - x0 + 12), height: Math.round(Math.max(r.b, m.b) - y0 + 12) }); }
 await b.T.Escape();

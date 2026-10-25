@@ -570,7 +570,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       const t = e.target, a = document.activeElement;
       if (dansLeTableau(t) || dansLeTableau(a)) return; // le tableau a ses propres raccourcis
       const pageDoc = (el) => !!(el && el.closest && el.closest('.pt-zone'));
-      if ((cibleEditable(t) || cibleEditable(a)) && !pageDoc(t) && !pageDoc(a)) return;
+      // (25/10) cellule d'une boîte-tableau SANS frappe en cours : ⌘Z va au journal (opérations du menu Tableau)
+      const celluleNette = (el) => !!(el && el.closest && el.closest('.btab-cell[data-propre]'));
+      if ((cibleEditable(t) || cibleEditable(a)) && !pageDoc(t) && !pageDoc(a) && !celluleNette(a)) return;
       e.preventDefault(); e.stopPropagation();
       if (action === 'retablir') hist.retablir(); else hist.annuler();
     };

@@ -171,6 +171,26 @@ const DESSINS = {
   lien: <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />,
   grille: (<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M3 15h18M9 4v16M15 4v16" /></>),
   reinitialiser: <path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4.5h4.5" />,
+  // (25/10) menu Tableau d'une boîte (pdf/BoiteTableau.jsx) : insérer, fusionner, bordures, alignement vertical, style
+  ligneDessus: (<><rect x="3" y="10" width="18" height="10" rx="2" /><path d="M3 15h18M12 2.5v5M9.5 5h5" /></>),
+  ligneDessous: (<><rect x="3" y="4" width="18" height="10" rx="2" /><path d="M3 9h18M12 16.5v5M9.5 19h5" /></>),
+  colonneGauche: (<><rect x="11" y="3" width="10" height="18" rx="2" /><path d="M16 3v18M2.5 12h5M5 9.5v5" /></>),
+  colonneDroite: (<><rect x="3" y="3" width="10" height="18" rx="2" /><path d="M8 3v18M16.5 12h5M19 9.5v5" /></>),
+  repartir: (<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M15 4v16" /><path d="M4.8 12h2.4m9.6 0h2.4m-6.4 0h-.8" opacity=".7" /></>),
+  fusionner: (<><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 12h10m-3-3 3 3-3 3M10 9l-3 3 3 3" /></>),
+  scinder: (<><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M12 5v14M5.5 12h3m-1.5-1.5L8.5 12 7 13.5m11.5-1.5h-3m1.5-1.5L15.5 12l1.5 1.5" /></>),
+  bordToutes: (<><rect x="4" y="4" width="16" height="16" rx="1" /><path d="M4 12h16M12 4v16" /></>),
+  bordAucune: (<><rect x="4" y="4" width="16" height="16" rx="1" strokeDasharray="1.5 2.5" opacity=".6" /><path d="M4 12h16M12 4v16" strokeDasharray="1.5 2.5" opacity=".6" /></>),
+  bordExterieures: (<><rect x="4" y="4" width="16" height="16" rx="1" /><path d="M4 12h16M12 4v16" strokeDasharray="1.5 2.5" opacity=".6" /></>),
+  bordInterieures: (<><rect x="4" y="4" width="16" height="16" rx="1" strokeDasharray="1.5 2.5" opacity=".6" /><path d="M4 12h16M12 4v16" /></>),
+  alignHaut: <path d="M4 4h16M8 8h8M8 12h8" />,
+  alignMilieu: <path d="M4 12h16M8 8h8M8 16h8" opacity=".95" />,
+  alignBas: <path d="M4 20h16M8 12h8M8 16h8" />,
+  lignesAlternees: (<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3.5 9.3h17v5.4h-17z" fill="currentColor" opacity=".3" stroke="none" /><path d="M3 9.3h18M3 14.7h18" /></>),
+  styleAucun: (<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M3 15h18M9 4v16" opacity=".5" /><path d="m5 20 14-16" /></>),
+  selLigne: (<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3.5 9.3h17v5.4h-17z" fill="currentColor" opacity=".45" stroke="none" /></>),
+  selColonne: (<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9.3 4.5h5.4v15H9.3z" fill="currentColor" opacity=".45" stroke="none" /></>),
+  selCellule: (<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M3 15h18M9 4v16M15 4v16" opacity=".45" /><path d="M9.5 10.5h5v4h-5z" fill="currentColor" opacity=".55" stroke="none" /></>),
 };
 
 /** <IconeForme type="ellipse" /> — dessinée avec LE MÊME tracé que la forme posée
