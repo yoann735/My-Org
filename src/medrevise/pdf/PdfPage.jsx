@@ -30,6 +30,7 @@ import { CadreSelection, MiniBarre, redimensionner } from './Selection.jsx';
 import { redimRectImage, ouvrirRognage, cadreApresRognage, entiereDepuisCadre } from '../lib/rognageImage.js';
 import { elementsFormat, useSuiviEditeur, ALIGNEMENTS } from './FormatTexte.jsx';
 import { BoiteTableau, BoutonMenuTableau, estGrille, contenuGrille } from './BoiteTableau.jsx';
+import { ImageBoite } from './ImageBoite.jsx';
 import { BoutonTaille } from './ChoixTaille.jsx';
 import { lisser3, arrondirPoints, cheminCatmull, cheminDroit, cheminTrait, densifier, morceauxHors, OPACITE_SURLIGNEUR_CRAYON } from './crayon.js';
 import { suivreImage } from './attaches.js';
@@ -76,6 +77,7 @@ export function PdfPageContent({
   onSurlignerImage = () => {}, onFlashcardTexte = () => {}, couleurSurligneur = 'jaune-franc',
   onApercuCouleur = null, // (15/10) aperçu en direct d'une couleur personnalisée : (id, hex | null)
   onVersTableau = null, boitesAuTableau = null, onReinitialiserBloc = () => {}, // (22/10) « → Tableau », bloc remplacé
+  onImageBoite = null, // (25/10) image dans une boîte : (boite, { fichier } | { retirer }) — docs/compte-rendu-boites-tableaux.md §1
 }) {
   /* surlignages posés sur les MOTS d'une image collée (`imageId` + `mots`) : dessinés par
      l'image elle-même (ils la suivent : déplacement, taille, rotation) — tout le reste de la
@@ -999,6 +1001,8 @@ export function PdfPageContent({
           enAncrage={b.id === ancrageBoiteId} viseSurlignage={ancrageSurlignage} viseAjout={ancrageAjout} onDemanderAncrage={onDemanderAncrage} flechesInteractives={outil === 'main'}
           onVersTableau={onVersTableau} auTableau={!!(boitesAuTableau && boitesAuTableau.has(b.id))}
           onApercu={onApercuCouleur ? (c) => onApercuCouleur(b.id, c) : null}
+          onImageBoite={onImageBoite} outil={outil} couleurSurligneur={couleurSurligneur} onSurlignerImage={onSurlignerImage}
+          surlignagesImage={b.image ? surlignagesImages.filter((h) => h.imageId === b.id) : EMPTY_ARRAY}
           {...propsSelection(b, 'boite')}
           pageWidth={pageWidth} pageHeight={pageHeight} texteProche={texteProche} />
       ))}
@@ -1078,7 +1082,7 @@ function useApparition(visible, ms = 120) {
 
 function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, onApercu = null, enAncrage = false, viseSurlignage = false, viseAjout = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF, fondNoir = false, flechesInteractives = true,
   selectionne = false, onSelectionner = () => {}, selConn = null, onSelConn = () => {}, cadres = null, onCadre = null, onTransferer = null,
-  onVersTableau = null, auTableau = false }) {
+  onVersTableau = null, auTableau = false, onImageBoite = null, outil = 'main', couleurSurligneur = 'jaune-franc', onSurlignerImage = null, surlignagesImage = EMPTY_ARRAY }) {
   /* UN SEUL REPÈRE : LA PAGE (04/10, docs/compte-rendu-zoom-annotations.md). Position,
      épingle, connecteurs ET taille sont des fractions de page. La boîte est mise en page
      à l'échelle de RÉFÉRENCE (160 % : refW × refH, police 13 px…) puis mise à l'échelle
@@ -1199,9 +1203,11 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      boîte d'avant garde ses métriques (aucune ne change de position ni de taille) */
   const carte = boite.gabarit === 'carte';
   const mot = boite.gabarit === 'mot' || carte;
-  const motLibre = mot && !boite.largeurFixe && !redim;
-  const compacteLibre = !mot && !!boite.compacte && !boite.largeurFixe && !redim;
-  const ajustee = !mot && !boite.compacte && !redim && !boite.largeurFixe && !!extraitBrut;
+  // (25/10) une boîte qui contient une IMAGE garde sa largeur : l'image en occupe toute la largeur intérieure
+  const avecImage = !texteLibre && !!(boite.image && boite.image.blobId);
+  const motLibre = mot && !boite.largeurFixe && !redim && !avecImage;
+  const compacteLibre = !mot && !!boite.compacte && !boite.largeurFixe && !redim && !avecImage;
+  const ajustee = !mot && !boite.compacte && !redim && !boite.largeurFixe && !!extraitBrut && !avecImage;
   const libre = motLibre || compacteLibre || ajustee; // largeur suivie à l'écran (largVue), pas celle enregistrée
   /* TAILLE DU TEXTE (v1.1, pdfShared.js#GRILLE) : px d'une page de 1000 px (`taille1000`) ; --lp = 1 % de la largeur de
      la page à l'échelle de référence de la boîte (10 px de référence = --lp). Sans champ : la taille d'avant (`tailleTexte`
@@ -1284,6 +1290,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
   // (25/10) boîte-tableau : l'accès au tableau (grille avec la frappe en cours, sélection) et sa sélection, pour le menu Tableau
   const tabApi = useRef(null);
   const [selTab, setSelTab] = useState(null);
+  const fichierRef = useRef(null); // (25/10) choix du fichier de l'image de la boîte
   if (boite.reduite && !texteLibre) {
     const pos = pointApercu && pointApercu.cible === 'pastille' ? pointApercu : (ancre || { x: b.x, y: b.y });
     const cible = ancre ? 'ancre' : 'pastille';
@@ -1405,7 +1412,19 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       titre: `Fond : ${FONDS_BOITE[iFond].label.toLowerCase()} — cliquer pour « ${fondSuivant.label.toLowerCase()} » (plein → transparent → teinté)`,
       onClick: () => { ecrireFondBoiteDefaut(fondSuivant.id); onModifier(boite, { fond: fondSuivant.id }, 'Fond de la boîte'); } },
   ];
+  /* (25/10) IMAGE DE LA BOÎTE : « Image » ajoute (choix d'un fichier ; aussi ⌘V et glisser-déposer sur la boîte) ; avec une
+     image, le même bouton ouvre : au-dessus / en dessous du texte · Remplacer… · Retirer */
+  const choisirImage = () => { if (fichierRef.current) { fichierRef.current.value = ''; fichierRef.current.click(); } };
+  const posImage = avecImage ? (boite.image.position || 'dessus') : null;
+  const itemImage = !onImageBoite || texteLibre ? null : avecImage ? { cle: 'image', icone: icL('image'), actif: true, titre: 'Image de la boîte : position, remplacer, retirer', plus: [
+    { cle: 'image-dessus', icone: icL('alignHaut'), libelle: 'Au-dessus du texte', actif: posImage === 'dessus', onClick: () => onModifier(boite, { image: { ...boite.image, position: 'dessus' } }, 'Image au-dessus du texte') },
+    { cle: 'image-dessous', icone: icL('alignBas'), libelle: 'En dessous du texte', actif: posImage === 'dessous', onClick: () => onModifier(boite, { image: { ...boite.image, position: 'dessous' } }, 'Image en dessous du texte') },
+    { cle: '|' },
+    { cle: 'image-remplacer', icone: icL('image'), libelle: 'Remplacer l’image…', onClick: choisirImage },
+    { cle: 'image-retirer', icone: <Icon name="trash" size={14} />, libelle: 'Retirer l’image', onClick: () => onImageBoite(boite, { retirer: true }) },
+  ] } : { cle: 'image', icone: icL('image'), titre: 'Image : ajouter une image dans la boîte (aussi ⌘V ou glisser-déposer sur la boîte)', onClick: choisirImage };
   const itemsActions = [
+    itemImage,
     { cle: 'fleche', icone: <Icon name="arrowR" size={15} />, titre: 'Ajouter une flèche : clique ensuite l’endroit, le surlignage, la forme ou la boîte visés', onClick: () => onDemanderAncrage(boite.id, { ajout: true }) },
     onVersTableau && { cle: 'vers-tableau', icone: icL('versTableau'), actif: auTableau, titre: auTableau ? 'Déjà sur le tableau de la fiche — l’y montrer' : '→ Tableau : ajouter cette boîte au tableau de la fiche (même contenu, même couleur)', onClick: () => onVersTableau(boite) },
   ];
@@ -1448,6 +1467,10 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       itemSupprimer,
     ];
   const enGeste = !!apercu;
+  const imageEl = avecImage ? (
+    <ImageBoite image={boite.image} outil={outil} couleurSurligneur={couleurSurligneur} surlignages={surlignagesImage}
+      onSurligner={onSurlignerImage ? (p, couleur, opts) => onSurlignerImage({ ...p, img: { id: boite.id, page: boite.page }, page: boite.page, rects: p.rectsDe(p.mots) }, couleur, opts) : null} />
+  ) : null;
   const cSel = selVisible && connecteurs.find((x) => x.id === selVisible);
   const gSel = cSel && geoConn(cSel, true);
 
@@ -1539,9 +1562,11 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
       {grille ? (
         <div className="nb-body" style={{ ...(styleCorps || {}), ...(boite.couleurTexte ? { color: couleurHex(boite.couleurTexte, '#1F1F24') } : {}),
           fontWeight: boite.gras ? 700 : undefined, fontStyle: boite.italique ? 'italic' : undefined, textAlign: boite.align || undefined }}>
+          {posImage === 'dessus' && imageEl}
           <BoiteTableau grille={grille} edition={active} focus={active ? clicRef.current : null} filets={(active || selectionne) && !verrou}
             unite="calc(var(--lp) / 10)" api={tabApi} onSel={setSelTab}
             onChange={(g, lib) => majGrille(g, lib)} onFin={() => onActivate(null)} />
+          {posImage === 'dessous' && imageEl}
         </div>
       ) : active && editor
         ? <div className="nb-body" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => {
@@ -1563,8 +1588,14 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
               window.addEventListener('mousemove', bouger);
               window.addEventListener('mouseup', lacher);
             } catch (err) { /* ignore */ }
-          }} style={styleCorps}><EditorContent editor={editor} /></div>
-        : <div className="nb-body" style={styleCorps} data-vide={texteLibre ? 'Texte…' : undefined} dangerouslySetInnerHTML={{ __html: html }} />}
+          }} style={styleCorps}>{posImage === 'dessus' && imageEl}<EditorContent editor={editor} />{posImage === 'dessous' && imageEl}</div>
+        : avecImage
+          ? <div className="nb-body avec-image" style={styleCorps}>{posImage === 'dessus' && imageEl}<div className="nb-texte" dangerouslySetInnerHTML={{ __html: html }} />{posImage === 'dessous' && imageEl}</div>
+          : <div className="nb-body" style={styleCorps} data-vide={texteLibre ? 'Texte…' : undefined} dangerouslySetInnerHTML={{ __html: html }} />}
+      {onImageBoite && !texteLibre && (
+        <input ref={fichierRef} type="file" accept="image/*" hidden data-image-boite={boite.id}
+          onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) onImageBoite(boite, { fichier: f }); }} />
+      )}
 
       {(selectionne || active) && (
         <CadreSelection contre={contre} onCoin={verrou ? null : (e, coin) => redimensionner(e, coin, {

@@ -61,6 +61,7 @@ import { useJournalAnnuler, raccourciAnnuler } from '../lib/journalAnnuler.js';
 import { texteOcr } from '../ocr/ocrImage.js';
 import { useAnnotHistorique, cmdCreer, cmdSupprimer, cmdModifier, cmdGroupe, cibleEditable } from '../lib/annotHistory.js';
 import { imageDuPressePapier } from '../lib/collerImage.js';
+import { tailleImage } from './ImageBoite.jsx';
 import { planMots } from '../lib/resurlignage.js';
 import { RICH_EXTENSIONS } from '../documents/lib/richtext.js';
 import { AddItemModal, PasteJsonForm } from '../components/AddItemForm.jsx';
@@ -2964,6 +2965,47 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // (21/10) plus de réglage du calque des images (mini barre : rogner · verrouiller · supprimer) ; leur ordre `z` reste lu
 
 
+  /* (25/10, docs/compte-rendu-boites-tableaux.md §1) IMAGE DANS UNE BOÎTE : `{ fichier }` la pose (ou la remplace) — la
+     boîte prend une largeur fixe (au moins 28 % de la page) que l'image occupe entière ; `{ retirer }` l'enlève avec les
+     mots surlignés de son texte reconnu. Une entrée d'Annuler. */
+  const imageBoite = async (boite, { fichier = null, retirer = false } = {}) => {
+    const id = typeof boite === 'string' ? boite : boite.id;
+    const actuel = boiteFraiche(id, typeof boite === 'string' ? null : boite);
+    if (!actuel || actuel.kind !== 'libre') return;
+    if (retirer) {
+      const surl = highlights.filter((h) => h.imageId === id);
+      const sans = { ...actuel }; delete sans.image;
+      await hist.appliquer(surl.length ? cmdGroupe('Image retirée de la boîte', [cmdModifier('annotations', actuel, sans, 'Image retirée de la boîte'), ...surl.map((h) => cmdSupprimer('highlights', h, 'Surlignage de l’image'))])
+        : cmdModifier('annotations', actuel, sans, 'Image retirée de la boîte'));
+      return;
+    }
+    if (!fichier || !/^image\//.test(fichier.type || '')) return;
+    const t = await tailleImage(fichier);
+    if (!t) return;
+    const blobId = await putBlob(fichier);
+    const width = Math.min(Math.max(actuel.width || 0, 0.28), 1 - (actuel.x || 0));
+    const apres = { ...actuel, width, largeurFixe: true, image: { blobId, ratio: +(t.h / t.w).toFixed(4), position: (actuel.image && actuel.image.position) || 'dessus', nom: fichier.name || null } };
+    await hist.appliquer(cmdModifier('annotations', actuel, apres, actuel.image ? 'Image de la boîte remplacée' : 'Image dans la boîte'));
+  };
+  const imageBoiteRef = useRef(imageBoite); imageBoiteRef.current = imageBoite;
+  /* ⌘V d'une image quand une boîte est SÉLECTIONNÉE ou EN ÉDITION : l'image va dans la boîte (avant le texte de la boîte et
+     avant la pose sur la page — écouteur en capture) */
+  useEffect(() => {
+    if (!pret || srcTab !== 'pdf') return undefined;
+    const onPaste = (e) => {
+      const s0 = selRef.current, id = activeEditIdRef.current || (s0 && s0.kind === 'boite' ? s0.id : null);
+      if (!id) return;
+      const f = imageDuPressePapier(e.clipboardData);
+      if (!f) return;
+      const el = document.querySelector(`.note-box[data-boite="${CSS.escape(id)}"]:not(.texte-libre)`);
+      if (!el) return;
+      e.preventDefault(); e.stopPropagation();
+      imageBoiteRef.current(id, { fichier: f });
+    };
+    window.addEventListener('paste', onPaste, true);
+    return () => window.removeEventListener('paste', onPaste, true);
+  }, [pret, srcTab]);
+
   // Cmd/Ctrl+V d'une image (capture d'écran, image copiée d'une page web…) : posée
   // sur la page affichée. Jamais quand on colle DANS un texte (boîte, champ…).
   const ajouterImageRef = useRef(ajouterImage); ajouterImageRef.current = ajouterImage;
@@ -3039,8 +3081,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       poserDessin(d, { page: sz.cle, x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
       return;
     }
-    if (e.defaultPrevented) return; // déposée DANS le texte d'une page de document : déjà insérée
     const f = [...((e.dataTransfer && e.dataTransfer.files) || [])].find((x) => /^image\//.test(x.type));
+    // (25/10) déposée SUR UNE BOÎTE : l'image va dans la boîte
+    const nb = f && e.target.closest && e.target.closest('.note-box[data-boite]:not(.texte-libre)');
+    if (nb) { e.preventDefault(); imageBoite(nb.dataset.boite, { fichier: f }); return; }
+    if (e.defaultPrevented) return; // déposée DANS le texte d'une page de document : déjà insérée
     if (!f) return;
     e.preventDefault();
     if (modeDoc) { ajouterImage(f, { ecran: { x: e.clientX, y: e.clientY } }); return; }
@@ -3753,7 +3798,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onModifierBoite={modifierBoite}
                       onApercuCouleur={apercuPour}
                       onVersTableau={tableauDispo ? boiteVersTableau : null} boitesAuTableau={boitesAuTableau}
-                      onReinitialiserBloc={resetEdit}
+                      onReinitialiserBloc={resetEdit} onImageBoite={imageBoite}
                       selection={sel} onSelection={selectionner} onTransfererFleche={transfererFleche}
                       onModifierTrait={modifierTrait}
                       ancrageBoiteId={ancrageBoiteId} ancrageFleche={!!(ancrage && ancrage.fleche)} ancrageSurlignage={!!(ancrage && ancrage.surlignage)} ancrageAjout={!!(ancrage && ancrage.ajout)} onDemanderAncrage={setAncrageBoiteId}

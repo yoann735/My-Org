@@ -120,7 +120,7 @@ const arret = (fn) => ({ onPointerDown: (e) => e.stopPropagation(), onMouseDown:
 function ContenuBarre({ items }) {
   return items.filter(Boolean).map((it, i) => {
     if (it.cle === '|') return <span key={'s' + i} className="mb-sep" aria-hidden="true" />;
-    if (it.plus) return <BoutonPlus key={it.cle} items={it.plus} titre={it.titre} />;
+    if (it.plus) return <BoutonPlus key={it.cle} items={it.plus} titre={it.titre} icone={it.icone || null} option={it.icone ? it.cle : 'plus'} actif={!!it.actif} />;
     if (it.element) return <span key={it.cle} className="mb-el" data-mb={it.cle}>{it.element}</span>;
     if (it.couleur !== undefined) return <span key={it.cle} className="mb-el" data-mb={it.cle}><BoutonCouleur couleur={it.couleur} titre={it.titre} icone={it.icone || null} aucune={!!it.aucune} onApercu={it.onApercu || null} onCouleur={it.onCouleur} /></span>;
     if (it.libelle && !it.icone) return <button key={it.cle} type="button" className="nb-act vise" title={it.titre} {...arret(it.onClick)}>{it.libelle}</button>;
@@ -137,7 +137,7 @@ function ContenuBarre({ items }) {
 
 /** « … » : le reste des options, en liste (icône + libellé) ; un clic sur une option la lance et referme le menu
     (sauf les contrôles intégrés : couleur, taille, qui ont leur propre panneau) */
-function BoutonPlus({ items, titre = 'Plus d’options' }) {
+function BoutonPlus({ items, titre = 'Plus d’options', icone = null, option = 'plus', actif = false }) {
   const [ouvert, setOuvert] = useState(false);
   const ref = useRef(null), popRef = useRef(null);
   const [dessus, setDessus] = useState(false);
@@ -156,9 +156,9 @@ function BoutonPlus({ items, titre = 'Plus d’options' }) {
   }, [ouvert]);
   return (
     <span className="mb-plus" ref={ref}>
-      <button type="button" data-option="plus" aria-label={titre} title={titre} aria-expanded={ouvert} className={'nb-act' + (ouvert ? ' actif' : '')}
+      <button type="button" data-option={option} aria-label={titre} title={titre} aria-expanded={ouvert} className={'nb-act' + (ouvert || actif ? ' actif' : '')}
         {...arret(() => setOuvert((o) => !o))}>
-        <Icon name="more" size={16} />
+        {icone || <Icon name="more" size={16} />}
       </button>
       {ouvert && (
         <div ref={popRef} role="menu" className={'mb-pop mb-plus-pop' + (dessus ? ' dessus' : '')} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => { if (!(e.target.closest && e.target.closest('input, select'))) e.preventDefault(); }}>

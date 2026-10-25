@@ -130,6 +130,7 @@ export function carteDepuisBoite(boite, { x, y, z = 0 }) {
   const lignes = corps ? corps.split('\n').length : 1;
   return nouvelleCarte({ x, y, z, couleur: boite.couleur || 'jaune-franc', titre: '', corps,
     ...(grille ? { grille, w: 380, h: Math.max(CARTE_BOARD.h, 40 + 30 * grille.lignes.length) } : { h: Math.max(CARTE_BOARD.h, Math.min(400, 40 + 22 * lignes)) }),
+    ...(boite.image && boite.image.blobId ? { blobId: boite.image.blobId } : {}), // (25/10) l'image de la boîte
     source: { boiteId: boite.id, sorte: grille ? 'boite-tableau' : 'boite' } });
 }
 /** une boîte ajoutée au tableau d'une fiche sans l'ouvrir ; déjà posée : rend sa carte, rien n'est ajouté */

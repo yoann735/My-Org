@@ -49,3 +49,20 @@ export function outilsTableau(b, sel = '.note-box.boite-tableau') {
   T.shiftClic = async (p) => { for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await b.c.send('Input.dispatchMouseEvent', { type, x: p[0], y: p[1], button: 'left', clickCount: 1, modifiers: 8 }); await b.dormir(300); };
   return T;
 }
+
+/* images de test (PNG faits dans la page, écrits dans FX) : un schéma avec du texte (OCR) et une image sans texte */
+export async function imagesTest(b) {
+  const fs = await import('node:fs');
+  const FX = process.env.FX;
+  const faire = async (nom, js) => {
+    const f = FX + '/' + nom;
+    if (fs.existsSync(f)) return f;
+    const d = await b.ev(`(()=>{const c=document.createElement('canvas');${js};return c.toDataURL('image/png').split(',')[1]})()`);
+    fs.writeFileSync(f, Buffer.from(d, 'base64'));
+    return f;
+  };
+  return {
+    schema: await faire('schema-rein.png', `c.width=900;c.height=520;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,900,520);x.strokeStyle='#c0392b';x.lineWidth=10;x.beginPath();x.arc(250,270,140,0,7);x.stroke();x.fillStyle='#111';x.font='bold 54px Arial';x.fillText('GLOMERULE',470,170);x.fillText('TUBULE',470,280);x.fillText('ANSE DE HENLE',430,390)`),
+    photo: await faire('photo-bleue.png', `c.width=600;c.height=300;const x=c.getContext('2d');const g=x.createLinearGradient(0,0,600,0);g.addColorStop(0,'#1e88e5');g.addColorStop(1,'#43a047');x.fillStyle=g;x.fillRect(0,0,600,300);x.fillStyle='#fdd835';x.beginPath();x.arc(450,120,60,0,7);x.fill()`),
+  };
+}

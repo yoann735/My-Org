@@ -711,3 +711,14 @@
 .pdfr-imglayer.interactif .pdfr-image:not(.verrouillee), .pdfr-page .nb-pastille, .pdfr-page .pdfr-question { cursor: grab; }
 .pdfr-page .note-box.active .nb-body { cursor: text; }
 html.mr-glisse, html.mr-glisse * { cursor: grabbing !important; }
+
+/* (25/10, docs/compte-rendu-boites-tableaux.md §1) IMAGE DANS UNE BOÎTE (pdf/ImageBoite.jsx) : toute la largeur intérieure
+   (marges de la boîte respectées), hauteur proportionnelle (aspect-ratio), au-dessus ou en dessous du texte */
+.nb-image { position: relative; display: block; width: 100%; border-radius: 6px; overflow: hidden; background: color-mix(in srgb, currentColor 6%, transparent); }
+.nb-image[data-position="dessus"] { margin-bottom: .45em; }
+.nb-image[data-position="dessous"] { margin-top: .45em; }
+.nb-image img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; user-select: none; -webkit-user-drag: none; }
+.nb-image-vide { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: .8em; opacity: .6; }
+.note-box .nb-body.avec-image .nb-texte p { margin: 0 0 .25em; }
+.note-box .nb-body.avec-image .nb-texte p:last-child { margin-bottom: 0; }
+.tb2-carte .nb-image { margin-bottom: 6px; }
