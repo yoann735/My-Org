@@ -86,6 +86,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   const extraNotes = extras.find((o) => o.id === 'notes') || null;
   // (22/10) « Tableau » : le tableau de la fiche (tableau/PanneauTableau.jsx), après Notions
   const extraTableau = extras.find((o) => o.id === 'tableau') || null;
+  // (25/10) « Pages » : vignettes des pages du document affiché, tags « Début / Fin de cours » (pdf/TagsPages.jsx)
+  const extraPages = extras.find((o) => o.id === 'pages') || null;
   const ficheItems = useMemo(() => (avecItems ? (ctx.db.questions || []).filter((q) => q.ficheId === ficheId) : []), [ctx.db, ficheId, avecItems]);
   const countByType = useMemo(() => {
     const c = { qcm: 0, flashcard: 0, exercice: 0, feynman: 0 };
@@ -101,6 +103,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     extraNotes && { id: 'notes', label: 'Notes' },
     extraNotions && { id: 'notions', label: 'Notions', n: extraNotions.n },
     extraTableau && { id: 'tableau', label: 'Tableau' },
+    extraPages && { id: 'pages', label: 'Pages', n: extraPages.n },
   ].filter(Boolean);
   const cle = cleMemo || ficheId || 'doc';
   const versMode = (id) => (TYPES_IDS.includes(id) ? 'exercices' : id);
@@ -517,7 +520,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     : <div className="pis-scroll scroll pis-extra">{extraTranscript.contenu}</div>) : null), [extraTranscript && extraTranscript.contenu, extraTranscript && extraTranscript.plein]); // eslint-disable-line react-hooks/exhaustive-deps
   const contenuNotes = useMemo(() => (extraNotes ? <div className="pis-extra-plein">{extraNotes.contenu}</div> : null), [extraNotes && extraNotes.contenu]); // eslint-disable-line react-hooks/exhaustive-deps
   const contenuTableau = useMemo(() => (extraTableau ? <div className="pis-scroll scroll pis-extra">{extraTableau.contenu}</div> : null), [extraTableau && extraTableau.contenu]); // eslint-disable-line react-hooks/exhaustive-deps
-  const contenuMode = (m) => (m.id === 'exercices' ? exercices : m.id === 'notions' ? contenuNotions : m.id === 'notes' ? contenuNotes : m.id === 'tableau' ? contenuTableau : contenuTranscript);
+  const contenuPages = extraPages ? <div className="pis-scroll scroll pis-extra">{extraPages.contenu}</div> : null;
+  const contenuMode = (m) => (m.id === 'exercices' ? exercices : m.id === 'notions' ? contenuNotions : m.id === 'notes' ? contenuNotes : m.id === 'tableau' ? contenuTableau : m.id === 'pages' ? contenuPages : contenuTranscript);
 
   return (
     <ModalesHorsPanneauCtx.Provider value>
@@ -579,7 +583,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
    ne change qu'à la fin d'une aimantation). Sa translation (k × 100 %) est fixe ; c'est la
    piste qui bouge. Hors écran : inerte, masqué aux lecteurs d'écran, hors tabulation. ---- */
 /* libellés abrégés du sélecteur de modes en panneau étroit (v1.1) */
-const LIBELLES_COURTS = { exercices: 'Exos', transcript: 'Trans.', notes: 'Notes', notions: 'Notions', tableau: 'Tableau' };
+const LIBELLES_COURTS = { exercices: 'Exos', transcript: 'Trans.', notes: 'Notes', notions: 'Notions', tableau: 'Tableau', pages: 'Pages' };
 
 const Volet = memo(function Volet({ id, label, k, cache, contenu }) {
   return (

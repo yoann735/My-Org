@@ -59,7 +59,7 @@ import { suffixePages } from './choixPages.js';
 import { useEditor } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
-import { EdTop, detectDocKind, Modal, LoaderL6, ConfirmModal } from '../components/ui.jsx';
+import { EdTop, detectDocKind, Modal, LoaderL6, ConfirmModal, ContextMenu } from '../components/ui.jsx';
 import { putBackup, getBlob, putBlob, getAll, put, remove, genId, getMeta, setMeta, newHighlight, newTextEdit, newNoteBox, newTrait, newTexteLibre, newQuestionMarque, newPageAjoutee, newImageCollee, newForme } from '../lib/storage.js';
 import { useJournalAnnuler, raccourciAnnuler } from '../lib/journalAnnuler.js';
 import { texteOcr } from '../ocr/ocrImage.js';
@@ -106,6 +106,8 @@ import { dehydrateDoc, EMPTY_DOC, docToMarkdown } from '../documents/lib/richtex
 import { exporterMarkdownDoc, nomFichier, telecharger as telechargerFichier } from '../documents/lib/exportDoc.js';
 import { PageTexte, PAGE_A4, effacerSurlignageRecherche } from './PageTexte.jsx';
 import { chercher, extrait } from '../lib/rechercheTexte.js';
+import { useTagsPages, tagsDe, seances as seancesDe, pagesEnSeance, pageDuTag, poserTag, modifierTag, retirerTag, SORTES } from '../lib/tagsPages.js';
+import { PastilleTag, FenetreTag, FenetreSeances, PanneauPages } from './TagsPages.jsx';
 import { useTablette, abonnerStylet, styletActif, dessinAuDoigt, ecrireDessinAuDoigt, abonnerReglagesStylet, lireFractionVolet, ecrireFractionVolet, bornerVolet, VOLET_MIN, VOLET_MAX, VOLET_PLEIN } from '../lib/tablette.js';
 import '../../styles/tablette.css';
 import '../../styles/notes-doc.css';
@@ -958,6 +960,48 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setDemandePage((d) => ({ page, doc: docAffiche, sessionId, n: (d ? d.n : 0) + 1 }));
     ouvrirTranscript();
   };
+
+  /* TAGS « DÉBUT / FIN DE COURS » (25/10, lib/tagsPages.js, pdf/TagsPages.jsx) : menu de la page (clic droit ou « … »),
+     pastille dans le coin de la page et de sa vignette (mode « Pages » du panneau), liseré des pages d'une séance,
+     liste « Séances » du menu Fichier. Une pastille liée ouvre sa session de transcript. */
+  const tagsCours = useTagsPages(ficheId);
+  const tagsDoc = useMemo(() => tagsDe(tagsCours, ficheId, docAffiche), [tagsCours, ficheId, docAffiche]);
+  const seancesDoc = useMemo(() => seancesDe(tagsDoc, pageSizes), [tagsDoc, pageSizes]);
+  const enSeance = useMemo(() => pagesEnSeance(seancesDoc), [seancesDoc]);
+  const tagsParPage = useMemo(() => { const m = new Map(); for (const t of tagsDoc) { const p = pageDuTag(t, pageSizes); if (!m.has(p)) m.set(p, []); m.get(p).push(t); } return m; }, [tagsDoc, pageSizes]);
+  const [menuPage, setMenuPage] = useState(null); // { idx, x, y }
+  const [fenetreTag, setFenetreTag] = useState(null); // { kind, page, pageCle, tag? }
+  const [seancesOuvertes, setSeancesOuvertes] = useState(false);
+  const ouvrirMenuPage = (idx, x, y) => setMenuPage({ idx, x, y });
+  const itemsMenuPage = (idx) => {
+    const num = idx + 1, cle = pageSizes[idx] ? pageSizes[idx].cle : num;
+    const sur = tagsParPage.get(num) || [];
+    return ['debut', 'fin'].flatMap((kind) => {
+      const t = sur.find((x) => x.kind === kind);
+      return t ? [
+        { label: `${kind === 'debut' ? 'Début' : 'Fin'} de cours : date et transcript…`, icon: 'edit', onClick: () => setFenetreTag({ kind, page: num, pageCle: cle, tag: t }) },
+        { label: `Retirer le tag « ${kind === 'debut' ? 'Début' : 'Fin'} »`, icon: 'x', onClick: () => retirerTag(t) },
+      ] : [{ label: SORTES[kind].menu, icon: kind === 'debut' ? 'play' : 'check', onClick: () => setFenetreTag({ kind, page: num, pageCle: cle }) }];
+    });
+  };
+  const validerTag = async ({ date, transcriptSessionId }) => {
+    const f = fenetreTag; setFenetreTag(null);
+    if (!f || !ficheId) return;
+    if (f.tag) await modifierTag(f.tag, { date, transcriptSessionId });
+    else await poserTag({ courseId: ficheId, document: docAffiche, page: f.page, pageCle: f.pageCle, kind: f.kind, date, transcriptSessionId }, tagsCours);
+  };
+  const ouvrirPastille = (t) => {
+    const p = pageDuTag(t, pageSizes);
+    if (t.transcriptSessionId) ouvrirTranscriptPage(p, t.transcriptSessionId);
+    else setFenetreTag({ kind: t.kind, page: p, pageCle: t.pageCle, tag: t });
+  };
+  const listesSeances = useMemo(() => {
+    const l = [{ document: 'original', nom: modeDocCours ? 'Document' : 'Diapo originale', seances: seancesDe(tagsDe(tagsCours, ficheId, 'original'), docAffiche === 'original' ? pageSizes : null) }];
+    if (jumelle) l.push({ document: 'fiche', nom: 'Fiche', seances: seancesDe(tagsDe(tagsCours, ficheId, 'fiche'), docAffiche === 'fiche' ? pageSizes : null) });
+    return l;
+  }, [tagsCours, ficheId, jumelle, docAffiche, pageSizes, modeDocCours]); // eslint-disable-line react-hooks/exhaustive-deps
+  const allerSeance = (doc, page) => { setSeancesOuvertes(false); if (doc === docAffiche) allerALaPage(page); else allerAuSegment({ page, doc }); };
+  const ouvrirSessionSeance = (doc, page, sid) => { setSeancesOuvertes(false); if (doc !== docAffiche) allerAuSegment({ page, doc }); else allerALaPage(page); setDemandePage((d) => ({ page, doc, sessionId: sid, n: (d ? d.n : 0) + 1 })); ouvrirTranscript(); };
 
   // « Ajuster à la largeur » : la même formule que l'ajustement automatique de
   // l'écran splitté (voir `ajusterLargeur`), déclenchée à la demande.
@@ -1871,6 +1915,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     renommer: ficheReelle ? { onClick: () => setDemandeRenommer((n) => n + 1) } : pasCeDocument,
     fichiers: ficheReelle ? { onClick: () => { setFichiersDemarrer(null); setFichiersOuvert(true); } } : pasCeDocument,
     supprimer: ficheReelle ? { onClick: () => setSupprimerOuvert(true) } : pasCeDocument,
+    seances: ficheId ? { onClick: () => setSeancesOuvertes(true), etat: listesSeances.reduce((n, l) => n + l.seances.length, 0) || null } : pasCeDocument,
   };
   const docOriginal = {
     cle: 'original',
@@ -3845,7 +3890,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                   </div>
                 );
                 return [inter, (
-                  <div key={n} data-cle={String(n)} className={'pdfr-page' + (sz.ajout && !modeDoc ? ' pdfr-page-ajoutee' : '') + (modeDoc ? ' pdfr-page-doc' : '') + (modeDoc && fondNoir ? ' fond-noir' : '') + (ctl.reduit() ? ' ctl-reduit' : '') + (ctl.reduit(28) ? ' ctl-reduit-etiquette' : '')} style={style}>
+                  <div key={n} data-cle={String(n)} onContextMenu={ficheId && !impression ? (e) => {
+                      // clic droit : le menu de la page, sauf sur du texte sélectionné ou dans un champ (menu du navigateur gardé)
+                      const sel = window.getSelection && window.getSelection();
+                      if ((sel && !sel.isCollapsed) || (e.target.closest && e.target.closest('input, textarea, [contenteditable="true"], .ProseMirror'))) return;
+                      e.preventDefault(); ouvrirMenuPage(idx, e.clientX, e.clientY);
+                    } : undefined}
+                    className={'pdfr-page' + (enSeance.has(idx + 1) ? ' en-seance' : '') + (sz.ajout && !modeDoc ? ' pdfr-page-ajoutee' : '') + (modeDoc ? ' pdfr-page-doc' : '') + (modeDoc && fondNoir ? ' fond-noir' : '') + (ctl.reduit() ? ' ctl-reduit' : '') + (ctl.reduit(28) ? ' ctl-reduit-etiquette' : '')} style={style}>
                     {/* PAGE AJOUTÉE (03/10) : son étiquette et « Retirer » vivent DANS la page,
                         en haut à droite, au-dessus de toutes ses couches. Avant, posées dans
                         l'espace entre les pages, elles étaient recouvertes par la zone
@@ -3861,6 +3912,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                           <Icon name="trash" size={13} /> <span className="pdfr-ctl-texte">Retirer la page</span>
                         </button>
                       </div>
+                    )}
+                    {/* (25/10) tags « Début / Fin de cours » : pastilles dans le coin supérieur gauche ; « … » = menu de la page */}
+                    {ficheId && !impression && (tagsParPage.get(idx + 1) || []).length > 0 && (
+                      <div className="pdfr-tags">{tagsParPage.get(idx + 1).map((t) => <PastilleTag key={t.id} tag={t} onOuvrir={ouvrirPastille} />)}</div>
+                    )}
+                    {ficheId && !impression && (
+                      <button type="button" className={'pdfr-page-menu' + (menuPage && menuPage.idx === idx ? ' ouvert' : '')} title={`Page ${idx + 1} : marquer début / fin de cours`} aria-label={`Menu de la page ${idx + 1}`}
+                        onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); ouvrirMenuPage(idx, r.left, r.bottom + 4); }}>
+                        <Icon name="more" size={14} />
+                      </button>
                     )}
                     {/* (20/10) lignes du transcript dites sur cette page : badge discret, en haut à droite */}
                     {ficheId && !impression && (
@@ -3960,6 +4021,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             fiche (Prise de notes, anatomie), seul l'onglet Notions existe. */}
         <CourseItemsSidebar ctx={ctx} ficheId={ficheReelle ? ficheReelle.id : null} onAllerABoite={allerABoiteStable}
           ongletsEnPlus={[
+            ficheId && pret && {
+              // (25/10) les pages du document affiché : vignettes, tags « Début / Fin », liseré, « … »
+              id: 'pages', label: 'Pages', icon: 'layers', n: pageSizes.length,
+              contenu: <PanneauPages pdfDoc={modeDoc ? null : pdfDoc} pageCourante={pageCourante} tagsParPage={tagsParPage} enSeance={enSeance}
+                pages={pageSizes.map((sz, idx) => ({ idx, cle: sz.cle, ratio: sz.height / sz.width, pdf: !modeDoc && !sz.ajout && typeof sz.cle === 'number' ? sz.cle : null }))}
+                onAller={allerALaPage} onMenu={ouvrirMenuPage} onPastille={ouvrirPastille} />,
+            },
             { id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length + notionsAutreDoc.length, contenu: notionsPdf },
             tableauDispo && {
               // (22/10) le tableau de la fiche : plein écran ou côte à côte
@@ -4077,6 +4145,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           onConfirm={() => supprimerPageAjoutee(pageASupprimer)}
           onCancel={() => setPageASupprimer(null)} />
       )}
+      {menuPage && <ContextMenu x={menuPage.x} y={menuPage.y} items={itemsMenuPage(menuPage.idx)} onClose={() => setMenuPage(null)} />}
+      {fenetreTag && ficheId && <FenetreTag courseId={ficheId} cible={fenetreTag} onValider={validerTag} onFermer={() => setFenetreTag(null)}
+        onRetirer={async () => { const t = fenetreTag.tag; setFenetreTag(null); if (t) await retirerTag(t); }} />}
+      {seancesOuvertes && ficheId && <FenetreSeances courseId={ficheId} listes={listesSeances} onAllerPage={allerSeance} onOuvrirSession={ouvrirSessionSeance} onFermer={() => setSeancesOuvertes(false)} />}
       {feuilleTrx && ficheId && (
         <FeuilleDemarrage courseId={ficheId} pdfDoc={pdfDoc} ocrPages={coucheOcr ? coucheOcr.pages : null} texteEnPlus={modeDoc ? texteBrutDocument() : ''} reprendre={feuilleTrx.reprendre || null} sourceInitiale={feuilleTrx.source || null}
           onClose={() => setFeuilleTrx(null)} onDemarre={ouvrirTranscript} />

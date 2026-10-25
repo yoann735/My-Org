@@ -992,11 +992,14 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
   const lienPage = onAllerPage ? allerPage : null;
   // badge d'une page cliqué dans le lecteur : sa session, filtrée sur la page
   const nDemande = demandePage ? demandePage.n : 0;
+  const [lectureForcee, setLectureForcee] = useState(false);
   useEffect(() => {
     if (!demandePage) return;
     setSurCettePage(true);
-    if (sessionActive() && lireEtat().courseId === courseId && lireEtat().session && lireEtat().session.id === demandePage.sessionId) { setLecture(null); return; }
-    if (demandePage.sessionId) lireSession(demandePage.sessionId).then((s) => { if (s) setLecture(s); });
+    if (sessionActive() && lireEtat().courseId === courseId && lireEtat().session && lireEtat().session.id === demandePage.sessionId) { setLecture(null); setLectureForcee(false); return; }
+    // (25/10) une AUTRE session demandée (badge, tag « Début / Fin » lié) : elle s'affiche même pendant le direct ;
+    // « Retour aux sessions » ramène au direct
+    if (demandePage.sessionId) lireSession(demandePage.sessionId).then((s) => { if (s) { setLecture(s); setLectureForcee(sessionActive()); } });
   }, [nDemande]); // eslint-disable-line react-hooks/exhaustive-deps
   const libellePage = pageLecteur ? `${pageLecteur.doc === 'fiche' ? 'fiche ' : ''}p. ${pageLecteur.page}` : '';
   const boutonPage = (session) => (pageLecteur && (sessionAvecPages(session) || (ici && session === e.session)) ? (
@@ -1007,7 +1010,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
   ) : null);
   const videPage = surCettePage && pageLecteur ? `Aucune ligne sur la page ${pageLecteur.page}${pageLecteur.doc === 'fiche' ? ' de la fiche' : ''}.` : null;
   const ouvrirRenommage = useCallback((n, rect) => setRenommage({ n, rect }), []);
-  const sessionVue = ici && e.session ? e.session : lecture;
+  const sessionVue = ici && e.session && !lectureForcee ? e.session : lecture;
   const validerRenommage = async (nom) => {
     const r = renommage; setRenommage(null);
     if (!r || !sessionVue) return;
@@ -1097,7 +1100,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
   }
 
   /* ---- session EN DIRECT sur CE cours ---- */
-  if (ici && e.session) {
+  if (ici && e.session && !(lectureForcee && lecture)) {
     const diar = !!e.session.diarize;
     const lignes = lignesSession(e.session, e.interim).filter((l) => passeFiltre(l, filtre) && (l.status === 'interim' ? !surCettePage : passePage(l)));
     const nomsDirect = diar ? (n) => nomIntervenant(e.session, n) : null;
@@ -1158,7 +1161,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
         {/* (22/10) UNE ligne : « ‹ Sessions · Mer. 21 oct. · 10:51 · 1 h 59 », le titre tronqué proprement ;
             en panneau étroit, les libellés des boutons s'abrègent (icône seule) avant tout retour à la ligne */}
         <div className="trx-barre trx-entete-lecture">
-          <button type="button" className="btn ghost sm trx-retour" title="Retour aux sessions" onClick={() => { setLecture(null); setPlein(false); setSurCettePage(false); setDejaAilleurs(null); }}>
+          <button type="button" className="btn ghost sm trx-retour" title="Retour aux sessions" onClick={() => { setLecture(null); setLectureForcee(false); setPlein(false); setSurCettePage(false); setDejaAilleurs(null); }}>
             <Icon name="chevL" size={13} /> <span className="trx-abr">Sessions</span>
           </button>
           <span className="trx-titre-lecture" title={`${dateCourte(lecture.startedAt)} · ${dureeLisible(lecture.durationS)}`}>{dateCourte(lecture.startedAt)} · {dureeLisible(lecture.durationS)}</span>

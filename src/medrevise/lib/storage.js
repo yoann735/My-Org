@@ -97,6 +97,11 @@ const S = {
   // (lib/board.js). L'ancien store `tableau` (un enregistrement par carte, 04/10) n'est jamais réécrit : un
   // board est construit à partir de ses éléments à la première ouverture.
   board: store('board'),
+  // TAGS DE PAGE « Début / Fin de cours » (25/10, docs/compte-rendu-apprentissage-v2-recherche-tags.md) — type ADDITIONNEL,
+  // synchronisé : un enregistrement par tag { id, courseId, document:'original'|'fiche', page, pageCle, kind:'debut'|'fin',
+  // date:'AAAA-MM-JJ', transcriptSessionId|null, supprime? } (lib/tagsPages.js). Un tag retiré est MARQUÉ `supprime`, jamais
+  // effacé : aucune suppression ne part au cloud.
+  page_tag: store('page_tag'),
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
@@ -106,7 +111,7 @@ const S = {
 // `sessionsLog` est syncable pour la même raison que `questions`/`stats` : la
 // tendance affichée en fin de série doit refléter l'activité desktop ET mobile,
 // pas seulement cet appareil.
-const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau', 'liaison', 'dessins', 'reading_position', 'notes_doc', 'learning_set', 'companion_pdf', 'board'];
+const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau', 'liaison', 'dessins', 'reading_position', 'notes_doc', 'learning_set', 'companion_pdf', 'board', 'page_tag'];
 
 export function genId(prefix = 'x') {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);

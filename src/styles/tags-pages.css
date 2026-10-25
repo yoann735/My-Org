@@ -1,0 +1,49 @@
+/* (25/10) tags « Début / Fin de cours » (pdf/TagsPages.jsx) — pastilles, liseré des pages en séance, fenêtres, panneau Pages */
+.tgp-pastille { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+  font: inherit; font-size: 11px; font-weight: 700; letter-spacing: .01em; color: #fff; border: 0;
+  background: color-mix(in srgb, var(--accent) 88%, #000); box-shadow: 0 2px 6px -2px rgba(0, 0, 0, .35); opacity: .92; }
+.tgp-pastille.fin { background: color-mix(in srgb, var(--accent) 60%, #333); }
+.tgp-pastille:hover { opacity: 1; }
+.tgp-pastille.compacte { height: 18px; padding: 0 6px; font-size: 10px; }
+/* sur la page : coin supérieur gauche, à l'échelle des contrôles (--ec) */
+.pdfr-tags { position: absolute; top: calc(8px * var(--ec, 1)); left: calc(8px * var(--ec, 1)); z-index: 9; display: flex; gap: 4px; align-items: center; transform-origin: 0 0; }
+.pdfr-tags .tgp-pastille { height: calc(22px * var(--ec, 1)); font-size: calc(11px * var(--ec, 1)); padding: 0 calc(8px * var(--ec, 1)); }
+.pdfr-page-menu { position: absolute; top: calc(6px * var(--ec, 1)); left: 50%; transform: translateX(-50%); z-index: 9; display: grid; place-items: center;
+  width: calc(28px * var(--ec, 1)); height: calc(22px * var(--ec, 1)); border-radius: 8px; border: 1px solid rgba(0, 0, 0, .12); background: rgba(255, 255, 255, .9); color: #555;
+  cursor: pointer; opacity: 0; transition: opacity .15s; }
+.pdfr-page:hover > .pdfr-page-menu, .pdfr-page-menu:focus-visible, .pdfr-page-menu.ouvert { opacity: 1; }
+@media (pointer: coarse) { .pdfr-page-menu { opacity: .55; width: 36px; height: 30px; } }
+/* liseré latéral des pages entre un début et une fin : fin, discret, de la couleur des pastilles */
+.pdfr-page.en-seance::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: calc(4px * var(--ec, 1)); z-index: 8; pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 80%, transparent); }
+/* fenêtre du tag */
+.tgp-corps { display: flex; flex-direction: column; gap: 14px; }
+.tgp-champ { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.tgp-champ > span:first-child { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+.tgp-champ input[type=date], .tgp-select { height: 36px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; font-size: 14px; }
+.tgp-choix { display: flex; align-items: center; gap: 8px; min-height: 30px; cursor: pointer; }
+.tgp-choix input { accent-color: var(--accent); width: 16px; height: 16px; }
+.tgp-aide { font-size: 12px; }
+/* liste Séances */
+.tgp-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tgp-ligne { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--border-2); }
+.tgp-aller { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 10px; border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; text-align: left; padding: 4px 2px; }
+.tgp-aller:hover .tgp-pages { color: var(--accent); }
+.tgp-date { font-weight: 700; font-size: 14px; min-width: 56px; }
+.tgp-pages { font-size: 13px; color: var(--text-2); }
+.tgp-doc { font-size: 11.5px; }
+.tgp-sans { font-size: 12px; }
+.tgp-trx { white-space: nowrap; }
+/* panneau Pages */
+.tgp-panneau { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 12px 8px 30px; }
+.tgp-vignette { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.tgp-vbouton { padding: 0; border: 2px solid transparent; border-radius: 6px; background: none; cursor: pointer; line-height: 0; }
+.tgp-vignette.courante .tgp-vbouton { border-color: var(--accent); }
+.tgp-mini { background: #fff; border-radius: 4px; overflow: hidden; box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
+.tgp-mini canvas { width: 100%; height: 100%; display: block; }
+.tgp-vignette.en-seance::after { content: ''; position: absolute; top: 2px; height: calc(100% - 30px); left: -9px; width: 3px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 75%, transparent); }
+.tgp-coin { position: absolute; top: 7px; left: 7px; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.tgp-vpied { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); }
+.tgp-plus { display: grid; place-items: center; width: 26px; height: 22px; border-radius: 7px; border: 0; background: none; color: var(--text-3); cursor: pointer; }
+.tgp-plus:hover { background: var(--bg-2); color: var(--text); }
+@media (pointer: coarse) { .tgp-plus { width: 40px; height: 36px; } }
