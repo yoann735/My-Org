@@ -35,10 +35,10 @@ for (const [id, ou] of [['bt-milieu', 'center'], ['bt-droite', 'center'], ['bt-b
   await b.clic(await b.pos(box(id), false), { att: 500 });
   await b.clic(await T.posCell(1, 1), { att: 600 });
   await T.ouvrirMenu(); await b.dormir(400);
-  const g = await b.ev(`(()=>{const p=document.querySelector('.mt-pop').getBoundingClientRect(),bx=${box(id)}.getBoundingClientRect(),t=${box(id)}.querySelector('.btab-table').getBoundingClientRect();const R=(r)=>({x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)});
-    return {pop:R(p),boite:R(bx),table:R(t),cote:document.querySelector('.mt-pop').dataset.cote,W:innerWidth,H:innerHeight,defile:document.querySelector('.mt-pop').scrollHeight>document.querySelector('.mt-pop').clientHeight+1}})()`);
+  const g = await b.ev(`(()=>{const p=document.querySelector('.mt-pop').getBoundingClientRect(),bx=${box(id)}.getBoundingClientRect(),t=${box(id)}.querySelector('.btab-table').getBoundingClientRect(),mb=[...document.querySelectorAll('.mini-barre')].find(e=>e.offsetParent).getBoundingClientRect();const R=(r)=>({x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)});
+    return {pop:R(p),boite:R(bx),table:R(t),mini:R(mb),cote:document.querySelector('.mt-pop').dataset.cote,W:innerWidth,H:innerHeight,defile:document.querySelector('.mt-pop').scrollHeight>document.querySelector('.mt-pop').clientHeight+1}})()`);
   const dansEcran = g.pop.x >= 0 && g.pop.y >= 0 && g.pop.x + g.pop.w <= g.W && g.pop.y + g.pop.h <= g.H;
-  v(!recouvre(g.pop, g.boite) && !recouvre(g.pop, g.table) && dansEcran, `menu Tableau (${id}) : ${g.cote}, ni sur la boîte ni sur le tableau, dans l’écran${g.defile ? ', défile en interne' : ''}`, JSON.stringify(g));
+  v(!recouvre(g.pop, g.boite) && !recouvre(g.pop, g.table) && !recouvre(g.pop, g.mini) && dansEcran, `menu Tableau (${id}) : ${g.cote}, ni sur la boîte, ni sur le tableau, ni sur la mini barre, dans l’écran${g.defile ? ', défile en interne' : ''}`, JSON.stringify(g));
   cotes[id] = g.cote;
   v((await T.focus()) === '1:1', `(${id}) le curseur reste dans la cellule`);
   await b.capture(`boites-${app}-menu-${id}`);
@@ -108,11 +108,15 @@ await b.glisser(pg2, [pg2[0] + 600, pg2[1]], 10); await b.dormir(600);
 v((await A('bi-img')).image.largeur === 1, 'élargie au-delà : bornée à la largeur de la boîte (100 %)');
 await b.glisser(await b.pos(`${box('bi-img')}.querySelector('[data-poignee-image="d"]')`, false), [pg[0] - 40, pg[1]], 10); await b.dormir(600);
 await b.capRect(`boites-${app}-image-largeur`, box('bi-img'), 14);
-// remplacer
-await b.clic(await b.pos(`[...document.querySelectorAll('.mini-barre [data-option="image"]')].find(e=>e.offsetParent)`, false), { att: 500 });
+// remplacer : repartir d'une sélection simple (Échap ferme l'écriture puis la sélection ; un clic au bord sélectionne)
+await b.T.Escape(); await b.dormir(200); await b.T.Escape(); await b.dormir(300);
+{ const r = await b.rect(box('bi-img')); await b.clic([r.x + 4, r.y + r.h * 0.9], { att: 600 }); }
+for (let i = 0; i < 3 && !(await b.ev(`!!document.querySelector('.mb-plus-pop [data-option="image-remplacer"]')`)); i++) await b.clic(await b.pos(`[...document.querySelectorAll('.mini-barre [data-option="image"]')].find(e=>e.offsetParent)`, false), { att: 600 });
 const choix = b.choisirFichier(IM.photo);
-await b.clic(await b.pos(`document.querySelector('.mb-plus-pop [data-option="image-remplacer"]')`, false), { att: 300 });
-await choix; await b.dormir(1500);
+const pr = await b.pos(`document.querySelector('.mb-plus-pop [data-option="image-remplacer"]')`, false);
+console.log('Remplacer… visé en', pr, 'sous le pointeur :', pr && await b.ev(`(()=>{const e=document.elementFromPoint(${pr && pr[0]},${pr && pr[1]});return e&&(e.dataset.option||e.className)})()`));
+await b.clic(pr, { att: 300 });
+console.log('sélecteur :', await Promise.race([choix.then(() => 'ouvert'), new Promise((ok) => setTimeout(() => ok('PAS OUVERT (8 s)'), 8000))])); await b.dormir(1500);
 const I2 = (await A('bi-img')).image;
 v(I2.blobId !== blobId && Math.abs(I2.ratio - 0.5) < 0.01, 'Remplacer… : nouvelle image dans la boîte', JSON.stringify(I2));
 // ---- 4. icône de taille ----

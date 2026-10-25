@@ -460,7 +460,11 @@ export function BoutonMenuTableau({ api, grille, sel, onChange, uniteNom = 'px' 
       const bx = boiteDe(), pop = popRef.current;
       if (!bx || !pop) return;
       setTactile(!!(ref.current && ref.current.closest('.mini-barre.tactile')));
-      setPlace(placerACote(bx.getBoundingClientRect(), { w: pop.offsetWidth || 292, h: pop.scrollHeight }, { W: window.innerWidth, H: window.innerHeight }));
+      // la mini barre (au-dessus ou en dessous de la boîte) compte avec la boîte : le menu ne la recouvre pas non plus
+      const r = bx.getBoundingClientRect(), mb = ref.current && ref.current.closest('.mini-barre, .nb-actions');
+      const m = mb ? mb.getBoundingClientRect() : r;
+      const obstacle = { left: Math.min(r.left, m.left), right: Math.max(r.right, m.right), top: Math.min(r.top, m.top), bottom: Math.max(r.bottom, m.bottom) };
+      setPlace(placerACote(obstacle, { w: pop.offsetWidth || 292, h: pop.scrollHeight }, { W: window.innerWidth, H: window.innerHeight }));
     };
     placer();
     const raf = requestAnimationFrame(placer); // 2e mesure : contenu peint
