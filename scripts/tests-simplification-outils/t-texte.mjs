@@ -33,7 +33,7 @@ await b.capRect('so-postit', `document.querySelector('.note-box.postit')`, 16);
 await b.outil6('main');
 await b.clic(await b.pos(`document.querySelector('.note-box.postit')`, false), { att: 500 });
 const op = (await b.optionsBarre())[0];
-b.ok(JSON.stringify(op) === JSON.stringify(['taille', 'couleur-texte', 'couleur', 'fond', '|', 'gras', 'italique', 'align', '|', 'fleche', 'vers-tableau', '…', 'supprimer']), 'post-it : même mini barre qu’une boîte', JSON.stringify(op));
+b.ok(JSON.stringify(op) === JSON.stringify(['taille', 'couleur-texte', 'couleur', 'fond', '|', 'gras', 'italique', 'align', '|', 'image', 'fleche', 'vers-flashcard', 'vers-tableau', '…', 'supprimer']), 'post-it : même mini barre qu’une boîte', JSON.stringify(op));
 await b.T.Escape();
 // Formes : une forme cachée derrière « … » (étoile), posée d'un clic
 await b.outil6('forme');

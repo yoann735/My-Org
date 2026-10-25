@@ -24,7 +24,7 @@ b.ok(!(await b.ev(`!!document.querySelector('.pdfr-edit-toolbar, .pdfr-rangee-te
 await selectionner(`document.querySelector('[data-boite="mb-boite"]')`);
 const ob = (await b.optionsBarre())[0];
 console.log('boîte :', JSON.stringify(ob));
-const attendu = ['taille', 'couleur-texte', 'couleur', 'fond', '|', 'gras', 'italique', 'align', '|', 'fleche', 'vers-tableau', '…', 'supprimer'];
+const attendu = ['taille', 'couleur-texte', 'couleur', 'fond', '|', 'gras', 'italique', 'align', '|', 'image', 'fleche', 'vers-flashcard', 'vers-tableau', '…', 'supprimer'];
 b.ok(JSON.stringify(ob.filter((x) => !/^sc-|^ct/.test(x))) === JSON.stringify(attendu) || JSON.stringify(ob) === JSON.stringify(attendu), 'boîte : taille · couleur du texte · fond · G · I · alignement · flèche · → Tableau · … · supprimer', JSON.stringify(ob));
 await capBarre('so-mini-boite' + (tablette ? '-tablette' : ''));
 await b.cliqueOption('plus');

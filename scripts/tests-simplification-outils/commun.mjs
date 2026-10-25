@@ -48,7 +48,7 @@ export async function banc(W = 1440, H = 900, opts = {}) {
     if (q) await b.clic(q, { att: 300 }); // referme
     else console.log('(menu Tableau déjà refermé ; mini barre :', await b.ev(`document.querySelectorAll('.mini-barre').length`), ')');
   };
-  b.margeTableau = async (quoi, k, boite = '.btab') => { await b.clic(await b.pos(`document.querySelector('${boite} .btab-marge-${quoi}[data-${quoi}="${k}"]')`, false), { att: 400 }); };
+  b.margeTableau = async (quoi, k, boite = '.btab') => { await b.clic(await b.pos(`document.querySelector('${boite} .btab-marge-${quoi}[data-${quoi}="${k}"]')`, true), { att: 600 }); };
   b.optionsBarre = () => b.ev(`(()=>{const m=[...document.querySelectorAll('.mini-barre')].filter(e=>e.offsetParent&&getComputedStyle(e).visibility!=='hidden');return m.map(x=>[...x.children].map(c=>c.classList.contains('mb-sep')?'|':c.classList.contains('mb-plus')?'…':(c.getAttribute('data-mb')||c.getAttribute('data-option')||(c.querySelector('[data-option]')||{}).getAttribute?.('data-option')||c.getAttribute('aria-label')||c.title||c.className)))})()`);
   b.optionsPlus = () => b.ev(`[...document.querySelectorAll('.mb-plus-pop [data-option]')].map(e=>e.getAttribute('data-option')+' : '+(e.querySelector('.mb-plus-lib')||e).innerText.trim())`);
   b.capRect = async (nom, js, marge = 8) => { const r = await b.rect(js); if (!r) return false; await b.capture(nom, { x: Math.max(0, Math.round(r.x - marge)), y: Math.max(0, Math.round(r.y - marge)), width: Math.round(r.w + 2 * marge), height: Math.round(r.h + 2 * marge) }); return true; };
