@@ -874,7 +874,8 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
       {/* (22/10) tableau vide : une seule phrase, centrée */}
       {!objets.length && (
         <div className="tb2-vide-tableau" data-vide="1">
-          <div className="tb2-vide-titre">Double-cliquez pour ajouter une carte, ou glissez une flashcard ici</div>
+          {/* (26/10, nettoyage v2 §2) plus de glisser d'une flashcard vers le tableau */}
+          <div className="tb2-vide-titre">Double-cliquez pour ajouter une carte</div>
         </div>
       )}
       {board.repris > 0 && <div className="tb2-info">Ton tableau d’avant ({board.repris} éléments) a été repris ici.</div>}

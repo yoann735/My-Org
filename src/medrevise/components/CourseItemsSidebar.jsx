@@ -51,7 +51,6 @@ import { planDuJour } from '../lib/apprentissageFC.js';
 import { nextDate } from '../lib/planning.js';
 import { todayISO } from '../lib/sm2.js';
 import { ModeVisibleCtx } from './modeVisible.js';
-import { commencerGlisse, finirGlisse } from '../apprentissageLibre/liste.js';
 import '../../styles/apprentissage-libre.css';
 import '../../styles/panneau-modes.css';
 
@@ -77,17 +76,14 @@ const lireLS = (k) => { try { return localStorage.getItem(k); } catch (e) { retu
 const ecrireLS = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* stockage bloqué */ } };
 const TYPES_IDS = ['qcm', 'flashcard', 'exercice', 'feynman'];
 
-export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null, cleMemo = null, contenuReplie = null, flashcardDemandee = null, flashcardVisee = null, tableauFlashcards = null, onAllerABoite = null }) {
+export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletInitial = null, replie = null, onReplier = null, ongletDemande = null, cleMemo = null, contenuReplie = null, flashcardDemandee = null, flashcardVisee = null, onAllerABoite = null }) {
   const avecItems = !!ficheId;
   const extras = (ongletsEnPlus || []).filter(Boolean);
   const extraNotions = extras.find((o) => o.id === 'notions') || null;
   const extraTranscript = extras.find((o) => o.id === 'transcript') || null;
   // 07/10 : « Notes » — le document de notes du cours (documents/NotesEditor.jsx)
   const extraNotes = extras.find((o) => o.id === 'notes') || null;
-  // (22/10) « Tableau » : le tableau de la fiche (tableau/PanneauTableau.jsx), après Notions
-  const extraTableau = extras.find((o) => o.id === 'tableau') || null;
-  // (25/10) « Pages » : vignettes des pages du document affiché, tags « Début / Fin de cours » (pdf/TagsPages.jsx)
-  const extraPages = extras.find((o) => o.id === 'pages') || null;
+  // (26/10, docs/compte-rendu-nettoyage-v2.md §2) plus d'onglets « Tableau » ni « Pages »
   const ficheItems = useMemo(() => (avecItems ? (ctx.db.questions || []).filter((q) => q.ficheId === ficheId) : []), [ctx.db, ficheId, avecItems]);
   const countByType = useMemo(() => {
     const c = { qcm: 0, flashcard: 0, exercice: 0, feynman: 0 };
@@ -102,8 +98,6 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     extraTranscript && { id: 'transcript', label: 'Transcript', badge: extraTranscript.badge },
     extraNotes && { id: 'notes', label: 'Notes' },
     extraNotions && { id: 'notions', label: 'Notions', n: extraNotions.n },
-    extraTableau && { id: 'tableau', label: 'Tableau' },
-    extraPages && { id: 'pages', label: 'Pages', n: extraPages.n },
   ].filter(Boolean);
   const cle = cleMemo || ficheId || 'doc';
   const versMode = (id) => (TYPES_IDS.includes(id) ? 'exercices' : id);
@@ -179,7 +173,11 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
       onArrivee: (k) => arriveeRef.current(k),
     });
     glisseRef.current = g;
-    return () => { g.detacher(); glisseRef.current = null; };
+    // (26/10, nettoyage v2 §1) filet de sécurité (navigateurs sans `overflow: clip`) : le conteneur de la piste n'est jamais défilé
+    const corps = corpsRef.current;
+    const recaler = () => { if (corps.scrollLeft) corps.scrollLeft = 0; };
+    corps.addEventListener('scroll', recaler, { passive: true });
+    return () => { g.detacher(); glisseRef.current = null; corps.removeEventListener('scroll', recaler); };
   }, [collapsed]); // eslint-disable-line react-hooks/exhaustive-deps
   // changement de mode venu d'ailleurs (mémoire, modes qui changent) : placé sans animation
   useLayoutEffect(() => {
@@ -346,11 +344,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     if (!fc.length) return null;
     return { total: fc.length, aRevoir: planDuJour(fc, todayISO(), nextDate).dues.length };
   }, [ficheItems]);
-  /* SÉLECTION de plusieurs cartes (→ Tableau). (25/10, Apprentissage v2) plus de « Mettre en apprentissage » :
-     toutes les flashcards sont dans le mode Apprentissage d'office. */
-  const [selection, setSelection] = useState(null); // null = pas de sélection ; Set d'ids sinon
-  const cocher = (id) => setSelection((sel) => { const n = new Set(sel || []); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const choisirType = (t) => { setActiveType(t); setAdding(false); setEditingId(null); setSelection(null); };
+  const choisirType = (t) => { setActiveType(t); setAdding(false); setEditingId(null); };
   // (15/10) « Prompts » : ils produisent le JSON qu'on colle ici — l'entrée a quitté le menu Fichier
   const [promptsOuverts, setPromptsOuverts] = useState(false);
   const actions = [
@@ -390,12 +384,6 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
           <Icon name="upload" size={13} /> Importer
         </button>}
         <span style={{ flex: 1 }} />
-        {activeType === 'flashcard' && items.length > 0 && tableauFlashcards && (
-          <button type="button" className={'icon-btn sm alib-selectionner' + (selection ? ' actif' : '')} onClick={() => setSelection((x) => (x ? null : new Set()))}
-            title={selection ? 'Fermer la sélection' : 'Sélectionner : cocher plusieurs cartes pour les poser sur le tableau'} aria-label={selection ? 'Fermer la sélection' : 'Sélectionner'} aria-pressed={!!selection}>
-            <Icon name={selection ? 'x' : 'check'} size={15} />
-          </button>
-        )}
         <button type="button" className="icon-btn sm" title="Plus d’actions : coller du JSON"
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuActions({ x: Math.min(r.right - 250, window.innerWidth - 260), y: r.bottom + 6 }); }}>
           <Icon name="more" size={16} />
@@ -450,27 +438,6 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
           </div>
         </div>
       )}
-      {activeType === 'flashcard' && selection && (() => {
-        const choisies = items.filter((q) => selection.has(q.id)).map((q) => q.id);
-        const toutes = items.length > 0 && choisies.length === items.length;
-        return (
-          <div className="alib-selbar" role="toolbar" aria-label="Sélection de cartes">
-            <label className="alib-coche"><input type="checkbox" checked={toutes} onChange={() => setSelection(toutes ? new Set() : new Set(items.map((q) => q.id)))} /> <span>Tout <span className="hint tnum">({choisies.length}/{items.length})</span></span></label>
-            <div className="alib-selactions">
-              {tableauFlashcards && (() => { // (v1.1) les cartes cochées, posées en grille sur le tableau
-                const aPoser = choisies.filter((id) => !tableauFlashcards.dans.has(id));
-                return (
-                  <button type="button" className="btn sm" data-act="selection-vers-tableau" disabled={!choisies.length}
-                    title={aPoser.length ? `Poser ${aPoser.length > 1 ? `les ${aPoser.length} cartes` : 'la carte'} sur le tableau, en grille` : 'Déjà sur le tableau : y aller'}
-                    onClick={async () => { await tableauFlashcards.ajouter(choisies); setSelection(null); }}>
-                    <Icon name="grid" size={12} /> → Tableau{aPoser.length && aPoser.length < choisies.length ? ` (${aPoser.length})` : ''}
-                  </button>
-                );
-              })()}
-            </div>
-          </div>
-        );
-      })()}
       <div className="pis-list">
         {activeType === 'flashcard' && items.length > 0 && itemsVus.length === 0 && (
           <div className="pm-vide fcl-vide"><Icon name="search" size={20} /><div>Aucune carte ne correspond.</div>
@@ -497,17 +464,13 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
             </div>
           ) : (
             <ItemReadCard key={item.id} item={item} ctx={ctx} onBoite={onAllerABoite && item.source && item.source.boiteId ? () => onAllerABoite(item.source) : null}
-              tableau={item.type === 'flashcard' && tableauFlashcards ? { dans: tableauFlashcards.dans.has(item.id), ajouter: () => tableauFlashcards.ajouter([item.id]), montrer: () => tableauFlashcards.montrer(item.id) } : null}
-              coche={item.type === 'flashcard' && selection ? { oui: selection.has(item.id), basculer: () => cocher(item.id) } : null}
-              // glisser sur le tableau : la carte, ou toute la sélection si elle en fait partie
-              glisse={item.type === 'flashcard' && tableauFlashcards ? () => (selection && selection.has(item.id) ? items.filter((q) => selection.has(q.id)).map((q) => q.id) : [item.id]) : null}
               onEdit={() => { if (estOcclusion(item)) { setOccEdition(item); return; } setEditingId(item.id); setAdding(false); }}
               onDelete={() => setConfirmDel(item)} />
           )
         ))}
       </div>
     </div>
-  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, itemsVus, recherche, filtreSorte, nbParSorte, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC, selection, tableauFlashcards]); // eslint-disable-line react-hooks/exhaustive-deps
+  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, itemsVus, recherche, filtreSorte, nbParSorte, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* contenus des modes : des éléments STABLES (mêmes objets d'un rendu à l'autre tant que
      leur contenu ne change pas) — le volet mémoïsé (Volet) ne se re-rend alors jamais
@@ -519,9 +482,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     ? <div className="pis-extra-plein">{extraTranscript.contenu}</div>
     : <div className="pis-scroll scroll pis-extra">{extraTranscript.contenu}</div>) : null), [extraTranscript && extraTranscript.contenu, extraTranscript && extraTranscript.plein]); // eslint-disable-line react-hooks/exhaustive-deps
   const contenuNotes = useMemo(() => (extraNotes ? <div className="pis-extra-plein">{extraNotes.contenu}</div> : null), [extraNotes && extraNotes.contenu]); // eslint-disable-line react-hooks/exhaustive-deps
-  const contenuTableau = useMemo(() => (extraTableau ? <div className="pis-scroll scroll pis-extra">{extraTableau.contenu}</div> : null), [extraTableau && extraTableau.contenu]); // eslint-disable-line react-hooks/exhaustive-deps
-  const contenuPages = extraPages ? <div className="pis-scroll scroll pis-extra">{extraPages.contenu}</div> : null;
-  const contenuMode = (m) => (m.id === 'exercices' ? exercices : m.id === 'notions' ? contenuNotions : m.id === 'notes' ? contenuNotes : m.id === 'tableau' ? contenuTableau : m.id === 'pages' ? contenuPages : contenuTranscript);
+  const contenuMode = (m) => (m.id === 'exercices' ? exercices : m.id === 'notions' ? contenuNotions : m.id === 'notes' ? contenuNotes : contenuTranscript);
 
   return (
     <ModalesHorsPanneauCtx.Provider value>
@@ -583,7 +544,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
    ne change qu'à la fin d'une aimantation). Sa translation (k × 100 %) est fixe ; c'est la
    piste qui bouge. Hors écran : inerte, masqué aux lecteurs d'écran, hors tabulation. ---- */
 /* libellés abrégés du sélecteur de modes en panneau étroit (v1.1) */
-const LIBELLES_COURTS = { exercices: 'Exos', transcript: 'Trans.', notes: 'Notes', notions: 'Notions', tableau: 'Tableau', pages: 'Pages' };
+const LIBELLES_COURTS = { exercices: 'Exos', transcript: 'Trans.', notes: 'Notes', notions: 'Notions' };
 
 const Volet = memo(function Volet({ id, label, k, cache, contenu }) {
   return (
@@ -596,29 +557,19 @@ const Volet = memo(function Volet({ id, label, k, cache, contenu }) {
 });
 
 /* ---- carte de lecture (réponse toujours visible) + Éditer/Supprimer ---- */
-function ItemReadCard({ item, ctx = null, onEdit, onDelete, coche = null, glisse = null, tableau = null, onBoite = null }) {
+function ItemReadCard({ item, ctx = null, onEdit, onDelete, onBoite = null }) {
   /* (22/10) flashcards : une carte compacte, ses actions au survol (au doigt : toujours visibles) — modifier,
      apprentissage, carnet d'erreurs, supprimer (docs/compte-rendu-tableau-flashcards.md §6) */
   const fc = item.type === 'flashcard';
   return (
-    <div className={'pis-item card' + (fc ? ' fcl-carte' : '') + (coche && coche.oui ? ' alib-cochee' : '') + (glisse ? ' alib-glissable' : '')} data-item={item.id}
-      draggable={!!glisse} onDragStart={glisse ? (e) => commencerGlisse(e, glisse()) : undefined} onDragEnd={glisse ? finirGlisse : undefined}
-      title={glisse ? 'Glisser sur le tableau pour l’y poser' : undefined}>
+    <div className={'pis-item card' + (fc ? ' fcl-carte' : '')} data-item={item.id}>
       <div className="card-body">
         <div className="row spread" style={{ marginBottom: 8, alignItems: 'flex-start', gap: 8 }}>
-          {coche && <input type="checkbox" className="alib-case" checked={coche.oui} onChange={coche.basculer} aria-label="Sélectionner cette carte" />}
           <span className="hint" style={{ fontWeight: 700, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto' }}>{item.theme || 'Sans thème'}</span>
           <div className={'row' + (fc ? ' fcl-actions' : '')} style={{ gap: 4, flex: '0 0 auto' }}>
             {estMuscle(item) && <BoutonCopier texte={() => texteMuscle(item)} />}
             {estMolecule(item) && <BoutonCopier texte={() => texteMolecule(item)} />}
             <button type="button" className="cd-ic" title={fc ? 'Modifier' : 'Éditer'} aria-label="Modifier" data-act="modifier" onClick={onEdit}><Icon name="edit" size={12} /></button>
-            {fc && tableau && ( /* (v1.1) « → Tableau » : la poser sur le tableau ; déjà posée (icône marquée) : y aller */
-              <button type="button" className={'cd-ic fcl-vers-tableau' + (tableau.dans ? ' actif' : '')} data-act="vers-tableau" aria-pressed={tableau.dans}
-                onClick={tableau.dans ? tableau.montrer : tableau.ajouter}
-                title={tableau.dans ? 'Déjà sur le tableau — y aller' : '→ Tableau : poser cette carte sur le tableau'} aria-label={tableau.dans ? 'Déjà sur le tableau, y aller' : 'Poser sur le tableau'}>
-                <Icon name="grid" size={12} />
-              </button>
-            )}
             {fc && onBoite && ( /* (25/10) carte faite d'une boîte : y retourner (sa page, la boîte signalée) */
               <button type="button" className="cd-ic fcl-vers-boite" data-act="vers-boite" onClick={onBoite}
                 title={`Faite depuis une boîte (page ${item.source.page}) — y aller`} aria-label="Aller à la boîte d’origine"><Icon name="ext" size={12} /></button>

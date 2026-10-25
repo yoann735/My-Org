@@ -77,7 +77,7 @@ export function PdfPageContent({
   // SURLIGNER LE TEXTE D'UNE IMAGE COLLÉE (09/10, docs/compte-rendu-pdfreader-v2.md)
   onSurlignerImage = () => {}, onFlashcardTexte = () => {}, couleurSurligneur = 'jaune-franc',
   onApercuCouleur = null, // (15/10) aperçu en direct d'une couleur personnalisée : (id, hex | null)
-  onVersTableau = null, boitesAuTableau = null, onReinitialiserBloc = () => {}, // (22/10) « → Tableau », bloc remplacé
+  onReinitialiserBloc = () => {}, // (22/10) bloc remplacé — (26/10) plus de « → Tableau »
   onVersFlashcard = null, boitesEnCarte = null, // (25/10) « → Flashcard » (docs/compte-rendu-boites-tableaux.md §2)
   onImageBoite = null, // (25/10) image dans une boîte : (boite, { fichier } | { retirer }) — docs/compte-rendu-boites-tableaux.md §1
 }) {
@@ -1001,7 +1001,7 @@ export function PdfPageContent({
           onGeste={(enCours) => { gesteBoite.current = enCours; }}
           onMaj={onMajBoite} onSupprimer={onSupprimerBoite} onModifier={onModifierBoite}
           enAncrage={b.id === ancrageBoiteId} viseSurlignage={ancrageSurlignage} viseAjout={ancrageAjout} onDemanderAncrage={onDemanderAncrage} flechesInteractives={outil === 'main'}
-          onVersTableau={onVersTableau} auTableau={!!(boitesAuTableau && boitesAuTableau.has(b.id))}
+
           onApercu={onApercuCouleur ? (c) => onApercuCouleur(b.id, c) : null}
           onVersFlashcard={onVersFlashcard} enCarte={!!(boitesEnCarte && boitesEnCarte.has(b.id))}
           onImageBoite={onImageBoite} outil={outil} couleurSurligneur={couleurSurligneur} onSurlignerImage={onSurlignerImage}
@@ -1085,7 +1085,7 @@ function useApparition(visible, ms = 120) {
 
 function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprimer, onModifier, onApercu = null, enAncrage = false, viseSurlignage = false, viseAjout = false, onDemanderAncrage, pageWidth, pageHeight, texteProche, variante = 'boite', echelle = ECHELLE_REF, fondNoir = false, flechesInteractives = true,
   selectionne = false, onSelectionner = () => {}, selConn = null, onSelConn = () => {}, cadres = null, onCadre = null, onTransferer = null,
-  onVersTableau = null, auTableau = false, onVersFlashcard = null, enCarte = false, onImageBoite = null, outil = 'main', couleurSurligneur = 'jaune-franc', onSurlignerImage = null, surlignagesImage = EMPTY_ARRAY }) {
+  onVersFlashcard = null, enCarte = false, onImageBoite = null, outil = 'main', couleurSurligneur = 'jaune-franc', onSurlignerImage = null, surlignagesImage = EMPTY_ARRAY }) {
   /* UN SEUL REPÈRE : LA PAGE (04/10, docs/compte-rendu-zoom-annotations.md). Position,
      épingle, connecteurs ET taille sont des fractions de page. La boîte est mise en page
      à l'échelle de RÉFÉRENCE (160 % : refW × refH, police 13 px…) puis mise à l'échelle
@@ -1174,9 +1174,12 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
      N'IMPORTE OÙ sur la boîte la déplace (elle garde sa taille et passe au-dessus des autres), un clic sur une boîte
      déjà sélectionnée ou un double-clic ouvre l'édition du texte. En édition, le texte reçoit le pointeur. */
   const verrou = !!boite.verrouille; // (22/10) boîte verrouillée : ni déplacée ni redimensionnée (son texte reste modifiable)
-  const appui = (e) => {
-    if (active) return;
-    const r = rectPage(e.currentTarget);
+  /* (26/10, nettoyage v2 §4) `parPrise` : la bande de prise d'une boîte-tableau — elle déplace la boîte même en édition
+     (les cellules gardent tous leurs gestes) ; un simple clic sur la bande sélectionne, il n'ouvre jamais l'écriture */
+  const appui = (e, parPrise = false) => {
+    if (active && !parPrise) return;
+    if (parPrise) { if (e.button > 0) return; e.stopPropagation(); }
+    const r = rectPage(parPrise ? boiteRef.current : e.currentTarget);
     if (!r || !r.width || !r.height) return;
     const avant = boite, x0 = e.clientX, y0 = e.clientY, deja = selectionne;
     let courant = null;
@@ -1188,6 +1191,7 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         if (annule) return;
         if (bouge && courant) { onMaj(avant, courant, 'Déplacement de la boîte'); if (!deja) onSelectionner(); }
         else if (bouge && verrou) { if (!deja) onSelectionner(); } // glisser une boîte verrouillée : rien ne bouge, rien ne s'ouvre
+        else if (parPrise) { if (!deja) onSelectionner(); }
         else if (deja) activer(ev);
         else onSelectionner();
       },
@@ -1380,7 +1384,9 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
        texte libre    : taille · couleur · G · I · alignement · « … » · supprimer
      En édition, une action de texte vaut pour la sélection (s'il y en a une), sinon pour tout le texte de la boîte.
      Pendant la visée d'une flèche : « Annuler ». */
-  const ancreBarre = { x: b.x * pageWidth, y: b.y * pageHeight, w: bLarg * pageWidth, h: bHaut * pageHeight };
+  // (26/10) boîte-tableau : la bande de prise est AU-DESSUS des marges de colonnes — la mini barre se pose au-dessus d'elle
+  const hautPrise = grille && !verrou ? (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 30 : 20) : 0;
+  const ancreBarre = { x: b.x * pageWidth, y: b.y * pageHeight - hautPrise, w: bLarg * pageWidth, h: bHaut * pageHeight + hautPrise };
   const deuxVersions = aDeuxVersions(boite);
   const version = versionAffichee(boite);
   const iFond = Math.max(0, FONDS_BOITE.findIndex((f) => f.id === (boite.fond || 'plein')));
@@ -1451,7 +1457,6 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     // (25/10) → Flashcard : aperçu modifiable ; déjà convertie : ouvre la carte
     onVersFlashcard && !texteLibre && { cle: 'vers-flashcard', icone: <Icon name="cards" size={15} />, actif: enCarte,
       titre: enCarte ? 'Déjà convertie en flashcard — ouvrir la carte' : '→ Flashcard : créer une carte depuis cette boîte (aperçu modifiable)', onClick: () => onVersFlashcard(boite) },
-    onVersTableau && { cle: 'vers-tableau', icone: icL('versTableau'), actif: auTableau, titre: auTableau ? 'Déjà sur le tableau de la fiche — l’y montrer' : '→ Tableau : ajouter cette boîte au tableau de la fiche (même contenu, même couleur)', onClick: () => onVersTableau(boite) },
   ];
   const majGrille = (g, lib) => onModifier(boite, { grille: g, content: contenuGrille(g) }, lib);
   const itemsGrille = grille ? [
@@ -1583,6 +1588,8 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
         </div>
       )}
 
+      {/* (26/10) BOÎTE-TABLEAU : bande de prise fine sur le bord haut (survol, sélection) — curseur main, déplace la boîte */}
+      {grille && !verrou && <div className="btab-prise" data-prise-boite={boite.id} title="Glisser pour déplacer le tableau" onPointerDown={(e) => appui(e, true)} />}
       {/* VERROU 4 : en édition, le corps est du TEXTE */}
       {/* (22/10) BOÎTE-TABLEAU : le tableau occupe le corps de la boîte (même typographie, même fond) */}
       {grille ? (

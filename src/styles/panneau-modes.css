@@ -49,6 +49,9 @@
    transformation sur le corps : une modale `position: fixed` du mode affiché doit rester
    pleine page. */
 .pm-corps { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+/* (26/10, docs/compte-rendu-nettoyage-v2.md §1) `overflow: clip` : le conteneur de la piste ne peut plus être DÉFILÉ, même
+   par un scrollIntoView lancé dans un volet hors écran (cause du panneau décalé, Exos coupé à gauche, vignettes par-dessus) */
+@supports (overflow: clip) { .pm-corps { overflow: clip; } }
 /* le défilement vertical reste au navigateur, le glissement horizontal change de mode */
 .pm-corps, .pm-corps * { touch-action: pan-y; }
 .pm-piste {

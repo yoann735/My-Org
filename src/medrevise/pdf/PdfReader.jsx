@@ -107,7 +107,7 @@ import { exporterMarkdownDoc, nomFichier, telecharger as telechargerFichier } fr
 import { PageTexte, PAGE_A4, effacerSurlignageRecherche } from './PageTexte.jsx';
 import { chercher, extrait } from '../lib/rechercheTexte.js';
 import { useTagsPages, tagsDe, seances as seancesDe, pagesEnSeance, pageDuTag, poserTag, modifierTag, retirerTag, SORTES } from '../lib/tagsPages.js';
-import { PastilleTag, FenetreTag, FenetreSeances, PanneauPages } from './TagsPages.jsx';
+import { PastilleTag, FenetreTag, FenetreSeances, MARGE_TAGS } from './TagsPages.jsx';
 import { useTablette, abonnerStylet, styletActif, dessinAuDoigt, ecrireDessinAuDoigt, abonnerReglagesStylet, lireFractionVolet, ecrireFractionVolet, bornerVolet, VOLET_MIN, VOLET_MAX, VOLET_PLEIN } from '../lib/tablette.js';
 import '../../styles/tablette.css';
 import '../../styles/notes-doc.css';
@@ -133,8 +133,7 @@ import { preparerSourceIA, pngsIA } from './exportIA.js';
 import { creerZip } from '../lib/zipSimple.js';
 import { refsCourtes, construireExportIA, estBoiteTexte, aDeuxVersions, versionAffichee, boitesOrdonnees, construireExport, lireImport, planImport, resumeImport, basculerVersion, avecContenuEdite } from '../lib/textesAnnotations.js';
 import { Board } from '../tableau/Board.jsx';
-import { PanneauTableau, useFlashcardsAuTableau, useBoitesAuTableau } from '../tableau/PanneauTableau.jsx';
-import { ajouterCarteAuBoard, ajouterFlashcardsAuBoard, ajouterBoiteAuBoard } from '../lib/board.js';
+import { ajouterCarteAuBoard } from '../lib/board.js';
 import { useFicheJumelle, lireVue, ecrireVue, pageCorrespondante, importerJumelle, remplacerJumelle, blocsDuFlux, pagesDocument, pageMapDocument } from '../lib/ficheJumelle.js';
 import { EditeurCorrespondance, ListeNonReplacees } from './Correspondance.jsx';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
@@ -455,43 +454,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const allerABoiteRef = useRef(allerABoite); allerABoiteRef.current = allerABoite;
   const allerABoiteStable = useCallback((src) => allerABoiteRef.current(src), []); // le panneau mémorise sa liste : une fonction stable
   const ecranLarge = () => typeof window !== 'undefined' && window.innerWidth >= 1100;
-  const fcAuTableau = useFlashcardsAuTableau(ficheId);
-  const montrerDemande = useRef(null);
-  const versTableau = useRef(null);
-  versTableau.current = {
-    ajouter: async (ids) => {
-      const qs = flashcardsFiche.filter((q) => ids.includes(q.id) && !fcAuTableau.has(q.id));
-      if (!qs.length) { if (ids.length) versTableau.current.montrer(ids[0]); return; }
-      if (tableauRef.current) tableauRef.current.importerFlashcards(qs.map((q) => q.id));
-      else await ajouterFlashcardsAuBoard(ficheId, qs);
-    },
-    montrer: (id) => {
-      if (tableauRef.current) { tableauRef.current.montrerFlashcard(id); return; }
-      montrerDemande.current = id;
-      setDisposition(ecranLarge() ? 'deux' : 'tableau');
-    },
-  };
-  useEffect(() => { if (montrerDemande.current && tableauRef.current) { const id = montrerDemande.current; montrerDemande.current = null; if (typeof id === 'object') tableauRef.current.montrerBoite(id.boiteId); else tableauRef.current.montrerFlashcard(id); } });
-  /* (22/10, docs/compte-rendu-simplification-outils.md §6) « → Tableau » d'une BOÎTE (sa mini barre) : ajoutée au tableau
-     de la fiche comme carte (même contenu, même couleur) — par la pile d'annulation du tableau s'il est affiché ; déjà
-     posée : le tableau s'ouvre et se recentre sur sa carte */
-  const boitesAuTableau = useBoitesAuTableau(ficheId);
-  const boiteVersTableau = async (b0) => {
-    const b = boiteFraicheRef.current ? boiteFraicheRef.current(b0.id, b0) : b0;
-    const deja = boitesAuTableau.has(b.id);
-    if (!deja) {
-      if (tableauRef.current) { tableauRef.current.ajouterBoite(b); return; }
-      const r = await ajouterBoiteAuBoard(ficheId, b);
-      if (!r.deja) { setCarteAjoutee((n) => n + 1); return; }
-    }
-    if (tableauRef.current) { tableauRef.current.montrerBoite(b.id); return; }
-    montrerDemande.current = { boiteId: b.id };
-    setDisposition(ecranLarge() ? 'deux' : 'tableau');
-  };
+  /* (26/10, docs/compte-rendu-nettoyage-v2.md §2) plus de « → Tableau » (mini barres, flashcards) ni d'onglet Tableau
+     dans le panneau : les tableaux existants restent en base, le tableau reste affichable (PDF · Les deux · Tableau) */
   const boiteFraicheRef = useRef(null);
-  // stable tant que l'ensemble des cartes posées ne change pas (le panneau mémoïse ses volets)
-  const tableauFlashcards = useMemo(() => ({ dans: fcAuTableau, ajouter: (ids) => versTableau.current.ajouter(ids), montrer: (id) => versTableau.current.montrer(id) }), [fcAuTableau]);
-  const [carteAjoutee, setCarteAjoutee] = useState(0);
   const [copiedCount, setCopiedCount] = useState(0); // >0 → confirmation « N notions copiées »
   const [exporting, setExporting] = useState(false);
 
@@ -1009,7 +974,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const el = scrollRef.current;
     if (!el || !pageSizes.length) return;
     const largeur = pageSizes.reduce((m, sz) => Math.max(m, sz.width), 0);
-    const dispo = el.clientWidth - 28;
+    const dispo = el.clientWidth - 2 * MARGE_TAGS - 4; // (26/10) la gouttière des tags de chaque côté
     if (dispo < 120 || !largeur) return;
     zoomAt(el.getBoundingClientRect().top, dispo / largeur);
   };
@@ -1259,7 +1224,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const ajuster = () => {
       raf = null;
       if (zoomManuel.current) return;
-      const dispo = el.clientWidth - 28; // marge pour l'ombre de page et la barre de défilement
+      const dispo = el.clientWidth - 2 * MARGE_TAGS - 4; // gouttière des tags (et ombre de page) de chaque côté, barre de défilement
       if (dispo < 120 || !largeurPage) return; // panneau masqué/replié : on garde le zoom actuel
       const cible = Math.max(0.4, Math.min(4, +(dispo / largeurPage).toFixed(3)));
       setScale((sc) => {
@@ -1564,12 +1529,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [outil, insererOuvert]);
-  // (11/10) passer en mode focus (barre latérale, MedReviseApp.jsx) désélectionne la boîte
-  useEffect(() => {
-    const surFocus = () => { if (activeEditIdRef.current) setActiveEditId(null); setAncrage(null); };
-    window.addEventListener('medrevise:focus', surFocus);
-    return () => window.removeEventListener('medrevise:focus', surFocus);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Échap : désélectionner la boîte / le bloc actif (avant, seul « Terminé » le
   // permettait). Posé À PART des popovers ci-dessous, qui ont leur propre Échap.
   useEffect(() => {
@@ -3845,7 +3804,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) ajouterImage(f); }} />
           {!pret && !loadError && <div className="gen-spinner" style={{ width: 40, height: 40, margin: '60px auto' }} />}
           {pret && (
-            <div ref={pagesRef} className={'pdfr-pages' + (modeDoc ? ' pdfr-pages-doc' : '') + (pose ? ' pose' : '')} style={{ height: layout.totalHeight, width: layout.maxWidth, minWidth: '100%' }}>
+            <div ref={pagesRef} className={'pdfr-pages' + (modeDoc ? ' pdfr-pages-doc' : '') + (pose ? ' pose' : '')} style={{ height: layout.totalHeight, width: layout.maxWidth + 2 * MARGE_TAGS, minWidth: '100%' }}>
               {/* DOCUMENT : le texte, UN flux paginé posé sur toutes les pages (jamais virtualisé) */}
               {modeDoc && fluxInitial && pageSizes.length > 0 && (
                 <DocumentFlux key={'flux:' + ficheId} ref={fluxRef} initial={fluxInitial}
@@ -3896,7 +3855,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       if ((sel && !sel.isCollapsed) || (e.target.closest && e.target.closest('input, textarea, [contenteditable="true"], .ProseMirror'))) return;
                       e.preventDefault(); ouvrirMenuPage(idx, e.clientX, e.clientY);
                     } : undefined}
-                    className={'pdfr-page' + (enSeance.has(idx + 1) ? ' en-seance' : '') + (sz.ajout && !modeDoc ? ' pdfr-page-ajoutee' : '') + (modeDoc ? ' pdfr-page-doc' : '') + (modeDoc && fondNoir ? ' fond-noir' : '') + (ctl.reduit() ? ' ctl-reduit' : '') + (ctl.reduit(28) ? ' ctl-reduit-etiquette' : '')} style={style}>
+                    className={'pdfr-page' + (enSeance.has(idx + 1) ? ' en-seance' : '') + ((tagsParPage.get(idx + 1) || []).map((t) => ' tag-' + t.kind).join('')) + (sz.ajout && !modeDoc ? ' pdfr-page-ajoutee' : '') + (modeDoc ? ' pdfr-page-doc' : '') + (modeDoc && fondNoir ? ' fond-noir' : '') + (ctl.reduit() ? ' ctl-reduit' : '') + (ctl.reduit(28) ? ' ctl-reduit-etiquette' : '')} style={style}>
                     {/* PAGE AJOUTÉE (03/10) : son étiquette et « Retirer » vivent DANS la page,
                         en haut à droite, au-dessus de toutes ses couches. Avant, posées dans
                         l'espace entre les pages, elles étaient recouvertes par la zone
@@ -3913,15 +3872,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                         </button>
                       </div>
                     )}
-                    {/* (25/10) tags « Début / Fin de cours » : pastilles dans le coin supérieur gauche ; « … » = menu de la page */}
-                    {ficheId && !impression && (tagsParPage.get(idx + 1) || []).length > 0 && (
-                      <div className="pdfr-tags">{tagsParPage.get(idx + 1).map((t) => <PastilleTag key={t.id} tag={t} onOuvrir={ouvrirPastille} />)}</div>
-                    )}
+                    {/* (26/10, nettoyage v2 §3) tags « Début / Fin de cours » : DANS LA MARGE GAUCHE, hors de la page — une petite
+                        icône toujours visible ouvre le menu des tags ; dessous, l'étiquette de chaque tag (« ▶ Début · 22 oct. ») */}
                     {ficheId && !impression && (
-                      <button type="button" className={'pdfr-page-menu' + (menuPage && menuPage.idx === idx ? ' ouvert' : '')} title={`Page ${idx + 1} : marquer début / fin de cours`} aria-label={`Menu de la page ${idx + 1}`}
-                        onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); ouvrirMenuPage(idx, r.left, r.bottom + 4); }}>
-                        <Icon name="more" size={14} />
-                      </button>
+                      <div className="pdfr-marge-tags" onPointerDown={(e) => e.stopPropagation()}>
+                        <button type="button" className={'pdfr-tag-ic' + (menuPage && menuPage.idx === idx ? ' ouvert' : '')} title={`Page ${idx + 1} : marquer début / fin de cours`} aria-label={`Tags de la page ${idx + 1}`}
+                          data-tags-page={idx + 1} onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); ouvrirMenuPage(idx, r.right + 4, r.top); }}>
+                          <Icon name="tag" size={13} />
+                        </button>
+                        {(tagsParPage.get(idx + 1) || []).map((t) => <PastilleTag key={t.id} tag={t} onOuvrir={ouvrirPastille} />)}
+                      </div>
                     )}
                     {/* (20/10) lignes du transcript dites sur cette page : badge discret, en haut à droite */}
                     {ficheId && !impression && (
@@ -3959,7 +3919,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onSupprimerBoite={supprimerBoite}
                       onModifierBoite={modifierBoite}
                       onApercuCouleur={apercuPour}
-                      onVersTableau={tableauDispo ? boiteVersTableau : null} boitesAuTableau={boitesAuTableau}
+
                       onReinitialiserBloc={resetEdit} onImageBoite={imageBoite}
                       onVersFlashcard={ficheReelle ? boiteVersFlashcard : null} boitesEnCarte={boitesEnCarte}
                       selection={sel} onSelection={selectionner} onTransfererFleche={transfererFleche}
@@ -4021,19 +3981,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             fiche (Prise de notes, anatomie), seul l'onglet Notions existe. */}
         <CourseItemsSidebar ctx={ctx} ficheId={ficheReelle ? ficheReelle.id : null} onAllerABoite={allerABoiteStable}
           ongletsEnPlus={[
-            ficheId && pret && {
-              // (25/10) les pages du document affiché : vignettes, tags « Début / Fin », liseré, « … »
-              id: 'pages', label: 'Pages', icon: 'layers', n: pageSizes.length,
-              contenu: <PanneauPages pdfDoc={modeDoc ? null : pdfDoc} pageCourante={pageCourante} tagsParPage={tagsParPage} enSeance={enSeance}
-                pages={pageSizes.map((sz, idx) => ({ idx, cle: sz.cle, ratio: sz.height / sz.width, pdf: !modeDoc && !sz.ajout && typeof sz.cle === 'number' ? sz.cle : null }))}
-                onAller={allerALaPage} onMenu={ouvrirMenuPage} onPastille={ouvrirPastille} />,
-            },
             { id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length + notionsAutreDoc.length, contenu: notionsPdf },
-            tableauDispo && {
-              // (22/10) le tableau de la fiche : plein écran ou côte à côte
-              id: 'tableau', label: 'Tableau', icon: 'grid',
-              contenu: <PanneauTableau ficheId={ficheId} disposition={disposition} onDisposition={setDisposition} large={ecranLarge()} carteAjoutee={carteAjoutee} />,
-            },
             ficheReelle && {
               // 07/10 : notes du cours (vide par défaut) — aussi dans un document (08/10) : même panneau qu'un PDF
               id: 'notes', label: 'Notes', icon: 'edit', plein: true,
@@ -4046,7 +3994,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                 pageLecteur={pret ? { page: pageCourante, doc: docAffiche } : null} onAllerPage={allerAuSegment} demandePage={demandePage} />,
             },
           ]}
-          ongletDemande={ongletDemande} cleMemo={ficheId} flashcardDemandee={flashcardNotes} flashcardVisee={flashcardVisee} tableauFlashcards={tableauDispo ? tableauFlashcards : null}
+          ongletDemande={ongletDemande} cleMemo={ficheId} flashcardDemandee={flashcardNotes} flashcardVisee={flashcardVisee}
           ongletInitial={ficheReelle ? null : 'notions'}
           replie={!panelOpen} onReplier={(v) => replierPanneau(v)}
           contenuReplie={modeTab ? (
@@ -4069,7 +4017,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           onClick={async () => {
             const t = pending.texte;
             // (22/10) tableau affiché : la carte y apparaît ; masqué : elle est ajoutée à son enregistrement
-            if (tableauRef.current) tableauRef.current.creerCarteTexte(t); else { await ajouterCarteAuBoard(ficheId, { corps: t }); setCarteAjoutee((n) => n + 1); }
+            if (tableauRef.current) tableauRef.current.creerCarteTexte(t); else await ajouterCarteAuBoard(ficheId, { corps: t });
             setPending(null);
             if (window.getSelection) window.getSelection().removeAllRanges();
           }}

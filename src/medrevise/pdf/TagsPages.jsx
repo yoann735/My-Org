@@ -1,11 +1,10 @@
 /* ============================================================
    MedRevise — TAGS « DÉBUT / FIN DE COURS » : l'interface (25/10, docs/compte-rendu-apprentissage-v2-recherche-tags.md).
-   - PastilleTag : « ▶ Début · 22 oct. » / « ■ Fin · 22 oct. », discrète, dans le coin supérieur gauche de la page et de sa
-     vignette ; un clic ouvre la session de transcript liée (sans lien : la fenêtre du tag).
+   - PastilleTag : l'étiquette « ▶ Début · 22 oct. » / « ■ Fin · 22 oct. », dans la MARGE GAUCHE de la page (26/10, nettoyage
+     v2 §3 : la page taguée a un cadre vert / rouge) ; un clic ouvre la session de transcript liée (sans lien : la fenêtre du tag).
    - FenetreTag : date (aujourd'hui par défaut, modifiable) + lien vers une session de transcript : aucune, la session en
      cours, ou une session existante du cours (liste) ; lien modifiable ou retirable ; « Retirer le tag ».
    - FenetreSeances (menu Fichier → Séances) : date, pages début–fin, transcript lié — un clic y va.
-   - PanneauPages (mode « Pages » du panneau) : une vignette par page, ses pastilles, le liseré des pages en séance, « … ».
    Données et règles : lib/tagsPages.js.
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -24,6 +23,9 @@ const duree = (s) => { const m = Math.round((s.durationS || 0) / 60); return m ?
 export const libelleSession = (s) => [dateCourte(isoJour(s.startedAt)), heure(s.startedAt), duree(s)].filter(Boolean).join(' · ');
 
 const racine = () => document.querySelector('[data-app="medrevise"]') || document.body;
+
+/** (26/10) gouttière fixe (px) de chaque côté des pages du lecteur : l'icône et les étiquettes des tags y vivent */
+export const MARGE_TAGS = 30;
 
 export function PastilleTag({ tag, onOuvrir, compacte = false }) {
   return (
@@ -140,72 +142,4 @@ export function FenetreSeances({ courseId, listes, onAllerPage, onOuvrirSession,
         <div className="day-pop-foot"><span style={{ flex: 1 }} /><button type="button" className="btn" onClick={onFermer}>Fermer</button></div>
       </div>
     </div>, racine());
-}
-
-/* ---- vignette d'une page du PDF, rendue à petite échelle quand elle approche de l'écran ---- */
-function MiniPage({ pdfDoc, n, largeur, ratio }) {
-  const ref = useRef(null), cv = useRef(null);
-  const [vue, setVue] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || vue) return undefined;
-    if (typeof IntersectionObserver === 'undefined') { setVue(true); return undefined; }
-    const io = new IntersectionObserver((e) => { if (e.some((x) => x.isIntersecting)) { setVue(true); io.disconnect(); } }, { rootMargin: '300px' });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [vue]);
-  useEffect(() => {
-    if (!vue || !pdfDoc || typeof n !== 'number' || !cv.current) return undefined;
-    let annule = false, tache = null;
-    pdfDoc.getPage(n).then((p) => {
-      if (annule) return;
-      const v1 = p.getViewport({ scale: 1 });
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const vp = p.getViewport({ scale: (largeur * dpr) / v1.width });
-      const c = cv.current; if (!c) return;
-      c.width = Math.round(vp.width); c.height = Math.round(vp.height);
-      tache = p.render({ canvasContext: c.getContext('2d'), viewport: vp });
-      tache.promise.catch(() => {});
-    }).catch(() => {});
-    return () => { annule = true; if (tache) { try { tache.cancel(); } catch (e) { /* ignore */ } } };
-  }, [vue, pdfDoc, n, largeur]);
-  return (
-    <div ref={ref} className="tgp-mini" style={{ width: largeur, height: Math.round(largeur * ratio) }}>
-      {typeof n === 'number' && pdfDoc ? <canvas ref={cv} /> : <span className="tgp-mini-vide" aria-hidden="true" />}
-    </div>
-  );
-}
-
-/**
- * Mode « Pages » du panneau : vignettes, pastilles, liseré, page courante ; clic = y aller, « … » = menu de la page.
- * `pages` = [{ idx (0…), cle, ratio, pdf: n° du PDF | null }]
- */
-export function PanneauPages({ pdfDoc, pages, tagsParPage, enSeance, pageCourante, onAller, onMenu, onPastille }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const el = ref.current && ref.current.querySelector('.tgp-vignette.courante');
-    if (el) el.scrollIntoView({ block: 'nearest' });
-  }, [pageCourante]);
-  return (
-    <div ref={ref} className="tgp-panneau" data-panneau-pages="">
-      {pages.map((p) => {
-        const num = p.idx + 1;
-        const tags = tagsParPage.get(num) || [];
-        return (
-          <div key={String(p.cle)} className={'tgp-vignette' + (num === pageCourante ? ' courante' : '') + (enSeance.has(num) ? ' en-seance' : '')} data-vignette={num}
-            onContextMenu={(e) => { e.preventDefault(); onMenu(p.idx, e.clientX, e.clientY); }}>
-            <button type="button" className="tgp-vbouton" onClick={() => onAller(num)} title={`Aller à la page ${num}`}>
-              <MiniPage pdfDoc={pdfDoc} n={p.pdf} largeur={132} ratio={p.ratio} />
-            </button>
-            {tags.length > 0 && <div className="tgp-coin">{tags.map((t) => <PastilleTag key={t.id} tag={t} compacte onOuvrir={onPastille} />)}</div>}
-            <div className="tgp-vpied">
-              <span className="tnum">{num}</span>
-              <button type="button" className="tgp-plus" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onMenu(p.idx, r.left, r.bottom + 4); }}
-                title={`Page ${num} : marquer début / fin de cours`} aria-label={`Menu de la page ${num}`}><Icon name="more" size={14} /></button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
 }
