@@ -36,7 +36,7 @@ await b.capRect('so-boite-tableau', `document.querySelector('.note-box.boite-tab
 await b.clic(await b.pos(`document.querySelector('.note-box.boite-tableau')`, false), { att: 600 });
 b.ok(!(await b.ev(`!!document.querySelector('.note-box.boite-tableau .btab.edition')`)), 'un clic : la boîte-tableau est sélectionnée (pas en édition)');
 const ob = (await b.optionsBarre())[0];
-b.ok(['tableau', 'vers-tableau'].every((k) => ob.includes(k)), 'mini barre : menu Tableau (lignes, colonnes, en-tête…) · → Tableau', JSON.stringify(ob));
+b.ok(ob.includes('tableau') && !ob.includes('vers-tableau'), 'mini barre : menu Tableau (lignes, colonnes, en-tête…) — plus de « → Tableau » (26/10)', JSON.stringify(ob));
 { const r = await b.rect(`[...document.querySelectorAll('.mini-barre')].find(e=>e.offsetParent)`); await b.capture('so-mini-boite-tableau', { x: Math.round(r.x - 6), y: Math.round(r.y - 6), width: Math.round(r.w + 12), height: Math.round(r.h + 12) }); }
 await b.tableau('ins-dessous'); await b.tableau('ins-droite');
 B = await boite(); const apresAjout = [B.grille.lignes.length, B.grille.cols.length];

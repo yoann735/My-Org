@@ -32,30 +32,16 @@ await b.clic(await b.pos(`document.querySelector('[data-boite="tm-boite"]')`, fa
 await b.clic(await b.pos(`document.querySelector('[data-boite="tm-boite"]')`, false), { att: 900 });
 b.ok((await curseur(`document.querySelector('[data-boite="tm-boite"] .ProseMirror')`)) === 'text', 'lecteur : curseur « text » seulement en édition');
 await b.T.Escape(); await b.T.Escape(); await b.dormir(300);
-// « → TABLEAU » depuis la boîte (tableau masqué) : ajoutée comme carte, même texte, même couleur
+// (26/10, docs/compte-rendu-nettoyage-v2.md §2) « → Tableau » est retiré des mini barres : il ne doit plus y être
 await b.clic(await b.pos(`document.querySelector('[data-boite="tm-boite"]')`, false), { att: 500 });
-await b.cliqueOption('vers-tableau', 1200);
-let B = await b.board();
-const c1 = B && B.objects.find((o) => o.source && o.source.boiteId === 'tm-boite');
-b.ok(c1 && c1.corps === 'Le néphron filtre le sang' && c1.couleur === 'vert-franc', '« → Tableau » : la boîte devient une carte du tableau (même contenu, même couleur)', JSON.stringify(c1 && { corps: c1.corps, couleur: c1.couleur }));
-b.ok((await b.ev(`(${b.option('vers-tableau')}||{}).getAttribute?.('aria-pressed')`)) === 'true', 'l’action se marque : la boîte est sur le tableau');
-// 2e fois : le tableau s'ouvre et montre la carte (rien n'est ajouté)
-await b.cliqueOption('vers-tableau', 2200);
-B = await b.board();
-const vue = await b.ev(`(()=>{const v=document.querySelector('.tb2-vue');const s=document.querySelector('.tb2-carte.sel');if(!v||!s)return null;const a=v.getBoundingClientRect(),c=s.getBoundingClientRect();return {dx:Math.round(c.x+c.width/2-(a.x+a.width/2)),dy:Math.round(c.y+c.height/2-(a.y+a.height/2)),texte:s.innerText}})()`);
-b.ok(vue && Math.abs(vue.dx) < 40 && Math.abs(vue.dy) < 40 && /néphron filtre/.test(vue.texte) && B.objects.filter((o) => o.source && o.source.boiteId === 'tm-boite').length === 1, 'déjà sur le tableau : « → Tableau » l’ouvre, sélectionne et centre la carte', JSON.stringify(vue));
-// boîte-tableau → Tableau : la carte garde son tableau (même composant)
-await dispo('PDF');
-await b.clic(await b.pos(`document.querySelector('[data-boite="tm-grille"]')`, false), { att: 500 });
-await b.cliqueOption('vers-tableau', 1200);
-B = await b.board();
-const c2 = B.objects.find((o) => o.source && o.source.boiteId === 'tm-grille');
-b.ok(c2 && JSON.stringify(c2.grille.lignes) === JSON.stringify(G.lignes) && c2.couleur === 'bleu-franc', 'boîte-tableau → Tableau : la carte garde le tableau', JSON.stringify(c2 && c2.grille));
+b.ok(!(await b.ev(`!!(${b.option('vers-tableau')})`)), 'mini barre d’une boîte : plus de « → Tableau » (retiré le 26/10)');
+await b.T.Escape(); await b.dormir(300);
+let B;
 // TABLEAU VIDE : message centré
 await b.S(`await S.remove('board','board:${FICHE}');return 1`);
 await dispo('Tableau'); await b.dormir(600);
 const vide = await b.ev(`(()=>{const e=document.querySelector('.tb2-vide-tableau');const v=document.querySelector('.tb2-vue');if(!e||!v)return null;const r=e.getBoundingClientRect(),q=v.getBoundingClientRect();return {texte:e.innerText.trim(),dx:Math.round(r.x+r.width/2-(q.x+q.width/2)),dy:Math.round(r.y+r.height/2-(q.y+q.height/2))}})()`);
-b.ok(vide && vide.texte === 'Double-cliquez pour ajouter une carte, ou glissez une flashcard ici' && Math.abs(vide.dx) < 4 && Math.abs(vide.dy) < 4, 'tableau vide : « Double-cliquez pour ajouter une carte, ou glissez une flashcard ici », centré', JSON.stringify(vide));
+b.ok(vide && vide.texte === 'Double-cliquez pour ajouter une carte' && Math.abs(vide.dx) < 4 && Math.abs(vide.dy) < 4, 'tableau vide : « Double-cliquez pour ajouter une carte », centré', JSON.stringify(vide));
 { const r = await b.rect(`document.querySelector('.tb2')`); await b.capture('so-tableau-vide' + (tablette ? '-tablette' : ''), { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.w), height: Math.round(Math.min(r.h, 900 - r.y)) }); }
 // « + Carte » visible dans la barre du tableau
 const plusCarte = await b.ev(`(()=>{const e=document.querySelector('.tb2-barre [data-act="carte"]');if(!e)return null;const r=e.getBoundingClientRect();return {texte:e.innerText.trim(),visible:r.width>0&&r.height>0,titre:e.title}})()`);

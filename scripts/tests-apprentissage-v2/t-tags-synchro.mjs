@@ -32,7 +32,7 @@ await A.clic(await A.pos(`[...document.querySelectorAll('.ctx-menu-item')].find(
 await valider('2026-10-22');
 await page(3);
 await A.c.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 600, y: 400 });
-await A.clic(await A.pos(`document.querySelector('.pdfr-page[data-cle="3"] .pdfr-page-menu')`, false), { att: 500 });
+await A.clic(await A.pos(`document.querySelector('.pdfr-page[data-cle="3"] .pdfr-tag-ic')`, false), { att: 500 });
 await A.clic(await A.pos(`[...document.querySelectorAll('.ctx-menu-item')].find(x=>x.innerText.includes('Marquer fin'))`, false), { att: 500 });
 await valider('2026-10-22');
 await A.ev(`window.dispatchEvent(new Event('online'));1`); await A.dormir(6000);

@@ -1,5 +1,5 @@
 // Tags « Début / Fin de cours » : 2 séances (clic droit et « … »), liaison à une ANCIENNE session puis à la session EN COURS
-// (faux Deepgram), pastilles page + vignette (mode Pages), liseré, liste « Séances » (menu Fichier), pastille → transcript.
+// (faux Deepgram), étiquettes dans la marge + cadre de couleur (26/10), liseré, liste « Séances » (menu Fichier), étiquette → transcript.
 // Banc 9333 (base locale ; Chrome lancé avec micro factice). node t-tags.mjs [ordinateur|tablette]
 import { banc } from '../tests-fiche-jumelle/commun.mjs';
 const app = process.argv[2] || 'ordinateur';
@@ -29,10 +29,10 @@ const fenetre = async ({ date, lien, session }) => {
   return lie;
 };
 const droit = async (n) => { await versPage(n); const r = await b.ev(`(()=>{const e=document.querySelector('.pdfr-page[data-cle="${n}"]').getBoundingClientRect();return [e.x+e.width*.3,e.y+Math.min(e.height*.5,300)]})()`);
-  if (app === 'tablette') { const q = await b.pos(`document.querySelector('.pdfr-page[data-cle="${n}"] .pdfr-page-menu')`, false); await b.clic(q, { att: 500 }); return; }
+  if (app === 'tablette') { const q = await b.pos(`document.querySelector('.pdfr-page[data-cle="${n}"] .pdfr-tag-ic')`, false); await b.clic(q, { att: 500 }); return; }
   for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await b.c.send('Input.dispatchMouseEvent', { type, x: r[0], y: r[1], button: 'right', clickCount: 1 }); await b.dormir(500); };
-const troisPoints = async (n) => { await versPage(n); await b.c.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 700, y: 400 }); const q = await b.pos(`document.querySelector('.pdfr-page[data-cle="${n}"] .pdfr-page-menu')`, false); await b.clic(q, { att: 500 }); };
-const pastilles = () => b.ev(`[...document.querySelectorAll('.pdfr-page[data-cle] .pdfr-tags .tgp-pastille')].map(x=>x.closest('.pdfr-page').dataset.cle+':'+x.textContent)`);
+const troisPoints = async (n) => { await versPage(n); await b.c.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 700, y: 400 }); const q = await b.pos(`document.querySelector('.pdfr-page[data-cle="${n}"] .pdfr-tag-ic')`, false); await b.clic(q, { att: 500 }); };
+const pastilles = () => b.ev(`[...document.querySelectorAll('.pdfr-page[data-cle] .pdfr-marge-tags .tgp-pastille')].map(x=>x.closest('.pdfr-page').dataset.cle+':'+x.textContent)`);
 // ---- séance 1 : ANCIENNE session ----
 await droit(2);
 v(await b.ev(`[...document.querySelectorAll('.ctx-menu-item')].map(x=>x.innerText).join('|')`).then((t) => /Marquer début de cours/.test(t) && /Marquer fin de cours/.test(t)), app === 'tablette' ? '« … » de la page : « Marquer début / fin de cours »' : 'clic droit sur la page : « Marquer début / fin de cours »');
@@ -71,21 +71,10 @@ console.log('liseré (pages montées) :', JSON.stringify(lis));
 const lis2 = {}; for (const n of [1, 2, 3, 5, 6, 8, 9, 10]) { await versPage(n); lis2[n] = await b.ev(`document.querySelector('.pdfr-page[data-cle="${n}"]').classList.contains('en-seance')`); }
 v(!lis2[1] && lis2[2] && lis2[3] && lis2[5] && lis2[6] && lis2[8] && lis2[9] && !lis2[10], 'liseré sur les pages 2–5 et 6–9, pas sur 1 ni 10', JSON.stringify(lis2));
 await versPage(5); await b.capture(`tags-${app}-page`);
-// ---- vignettes (mode Pages) ----
-if (app === 'tablette') { const pb = await b.pos(`[...document.querySelectorAll('button')].find(x=>/^(Afficher le panneau|Panneau)/.test(x.getAttribute('aria-label')||x.title||''))`, false); if (pb) await b.clic(pb, { att: 900 }); }
-await b.ev(`[...document.querySelectorAll('.pm-seg-btn')].find(x=>x.innerText.trim().startsWith('Pages')).scrollIntoView({inline:'nearest'});1`); await b.dormir(900);
-const sp = await b.pos(`[...document.querySelectorAll('.pm-seg-btn')].find(x=>x.innerText.trim().startsWith('Pages'))`, false);
-if (sp) await b.clic(sp, { att: 1500 });
-v(await b.ev(`(document.querySelector('.pm-seg-btn.actif')||{}).innerText.startsWith('Pages')`), 'mode « Pages » du panneau ouvert');
-const vig = await b.ev(`(()=>{const l=[...document.querySelectorAll('.tgp-vignette')];return {n:l.length,tags:l.filter(x=>x.querySelector('.tgp-pastille')).map(x=>x.dataset.vignette+':'+[...x.querySelectorAll('.tgp-pastille')].map(p=>p.textContent).join('+')),seance:l.filter(x=>x.classList.contains('en-seance')).map(x=>x.dataset.vignette).join(','),canvas:l.filter(x=>{const c=x.querySelector('canvas');return c&&c.width>0}).length}})()`);
-v(vig.n === 26 && vig.tags.length === 4 && vig.seance === '2,3,4,5,6,7,8,9', `vignettes : ${vig.n} pages, pastilles ${vig.tags.join(' ')}, liseré ${vig.seance}, ${vig.canvas} rendues`);
-await b.ev(`document.querySelector('.tgp-vignette[data-vignette="2"]').scrollIntoView({block:'start'});1`); await b.dormir(1200);
-await b.capRect?.('x', 'null').catch?.(() => {});
-const rp = await b.rect(`document.querySelector('.pis-body') || document.querySelector('.tgp-panneau')`);
-if (rp) await b.capture(`tags-${app}-vignettes`, { x: Math.round(rp.x), y: Math.round(rp.y), width: Math.round(rp.w), height: Math.round(Math.min(rp.h, 900 - rp.y)) });
-// clic sur une vignette → page
-await jsClic(`document.querySelector('.tgp-vignette[data-vignette="7"] .tgp-vbouton')`); await b.dormir(900);
-v(await b.ev(`(()=>{const s=document.querySelector('.pdfr-scroll').getBoundingClientRect();const e=document.querySelector('.pdfr-page[data-cle="7"]');if(!e)return false;const r=e.getBoundingClientRect();return r.top<s.top+80&&r.bottom>s.top})()`), 'clic sur la vignette 7 → page 7 affichée');
+// ---- (26/10, nettoyage v2 §3) plus de panneau « Pages » : étiquettes dans la marge et cadre de couleur ----
+const marge = {};
+for (const n of [2, 5, 6, 9]) { await versPage(n); marge[n] = await b.ev(`(()=>{const e=document.querySelector('.pdfr-page[data-cle="${n}"]');if(!e)return 'non montée';return [...e.querySelectorAll('.pdfr-marge-tags .tgp-pastille')].map(x=>x.textContent).join('+')+'|'+(e.classList.contains('tag-debut')?'vert':'')+(e.classList.contains('tag-fin')?'rouge':'')})()`); }
+v(/Début/.test(marge[2]) && /vert/.test(marge[2]) && /Fin/.test(marge[5]) && /rouge/.test(marge[5]) && /vert/.test(marge[6]) && /rouge/.test(marge[9]), 'étiquettes dans la marge et cadres (vert début, rouge fin) sur les pages 2, 5, 6, 9', JSON.stringify(marge));
 // ---- Séances (menu Fichier) ----
 await b.clic(await b.pos(`document.querySelector('.mf-bouton')`, false), { att: 500 });
 await b.clic(await b.pos(`document.querySelector('[data-entree="seances"]')`, false), { att: 900 });
@@ -96,7 +85,7 @@ await b.clic(await b.pos(`[...document.querySelectorAll('.tgp-ligne')].find(x=>/
 v(await b.ev(`(()=>{const s=document.querySelector('.pdfr-scroll').getBoundingClientRect();const e=document.querySelector('.pdfr-page[data-cle="2"]');if(!e)return false;const r=e.getBoundingClientRect();return r.top<s.top+80&&r.bottom>s.top})()`), 'un clic sur une séance → sa page de début');
 // ---- pastille liée → transcript de l'ancienne session ----
 await versPage(2);
-await b.clic(await b.pos(`document.querySelector('.pdfr-page[data-cle="2"] .pdfr-tags .tgp-pastille')`, false), { att: 1500 });
+await b.clic(await b.pos(`document.querySelector('.pdfr-page[data-cle="2"] .pdfr-marge-tags .tgp-pastille')`, false), { att: 1500 });
 const trx = await b.ev(`(()=>{const a=document.querySelector('.pm-seg-btn.actif');return a?a.innerText.trim():''})()`);
 const sesAff = await b.ev(`document.querySelector('.pm-vue[data-mode=transcript]').textContent.includes('Bonjour, aujourd’hui le néphron')`);
 v(/^Trans/.test(trx) && sesAff, `clic sur la pastille → panneau Transcript sur la session liée (${trx}, ligne de l’ancienne session visible : ${sesAff})`);
