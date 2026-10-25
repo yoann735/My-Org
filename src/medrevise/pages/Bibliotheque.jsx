@@ -21,7 +21,6 @@ import { PdfReader } from '../pdf/PdfReader.jsx';
 import { FichiersCours } from '../pdf/FichiersCours.jsx';
 import { useCoursAvecJumelle } from '../lib/ficheJumelle.js';
 import { useDatesModif, dateAjout, dateModif, ilYa, leJour } from '../lib/datesFiches.js';
-import { commencerGlisse, finirGlisse } from '../apprentissageLibre/liste.js';
 import '../../styles/fiche-jumelle.css';
 import '../../styles/bibliotheque-tri.css';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
@@ -202,13 +201,8 @@ export function Bibliotheque({ ctx }) {
   ) : null);
 
   const qById = (fId) => db.questions.filter((x) => x.ficheId === fId);
-  /* (16/10) une flashcard de la liste se glisse sur l'onglet « Apprentissage » ; le pointerdown est
-     arrêté sur la ligne pour ne pas lancer le déplacement de la fiche (dnd-kit) */
-  const glisseCarte = (x) => (x.type === 'flashcard' ? {
-    draggable: true, onPointerDown: (e) => e.stopPropagation(),
-    onDragStart: (e) => { e.stopPropagation(); commencerGlisse(e, [x.id]); }, onDragEnd: finirGlisse,
-    title: `${x.concept || x.recto || ''}\nGlisser sur « Apprentissage » (barre de gauche) pour l’y ajouter`,
-  } : {});
+  // (25/10) plus de glisser vers « Apprentissage » : toutes les flashcards y sont d'office
+  const glisseCarte = (x) => (x.type === 'flashcard' ? { title: x.concept || x.recto || '' } : {});
   const count = (fId, t) => qById(fId).filter((x) => x.type === t).length;
 
   // arbre des dossiers sur 2 niveaux — le niveau se déduit de parentId (voir
@@ -395,7 +389,7 @@ export function Bibliotheque({ ctx }) {
           {fo && !kind && (
             <div className="lt-cartes">
               {qById(f.id).map((x) => (
-                <div className={'lt-carte' + (x.type === 'flashcard' ? ' alib-glissable' : '')} key={x.id} data-carte={x.id} {...glisseCarte(x)}>
+                <div className="lt-carte" key={x.id} data-carte={x.id} {...glisseCarte(x)}>
                   <Icon name={x.type === 'flashcard' ? 'cards' : x.type === 'feynman' ? 'lightbulb' : 'list'} size={11} />
                   <span>{x.concept}</span>
                   <button className="cd-ic" title="Supprimer cette carte" onClick={() => ctx.deleteQuestion(x.id)}><Icon name="trash" size={12} /></button>

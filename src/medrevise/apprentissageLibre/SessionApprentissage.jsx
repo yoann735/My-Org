@@ -2,26 +2,22 @@
    MedRevise — MODE APPRENTISSAGE LIBRE : la session en rafale (bureau et téléphone).
    Question → retourner → réponse ; « Pas su » / « Su » ; « Skip » discret. Logique pure dans
    ./session.js. L'état vit en mémoire seulement : quitter = abandonner (rien à reprendre).
-   AUCUNE écriture pendant la session. La seule écriture possible est à la fin, sur demande
-   et après confirmation : retirer les cartes sues de la liste `learning_set`.
+   AUCUNE écriture, ni pendant ni après la session (v2, 25/10 : plus de liste à vider — toutes les
+   flashcards sont dans le mode Apprentissage d'office).
    Gestes (téléphone) : toucher = retourner ; au verso, glisser à droite = Su, à gauche = Pas su.
    Clavier (bureau) : Espace = retourner ; ← ou 1 = Pas su ; → ou 2 = Su ; S = Skip.
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { ConfirmModal } from '../components/ui.jsx';
 import { ligneParLigne } from '../components/FlashcardMuscle.jsx';
 import { FaceCarte } from './FaceCarte.jsx';
 import { nouvelleSession, carteCourante, repondre, passer, finir, bilan } from './session.js';
-import { retirer } from './liste.js';
 
 const pl = (n, s, p = s + 's') => `${n} ${n > 1 ? p : s}`;
 
 export function SessionApprentissage({ ctx, ids, onQuitter, pleinEcran = false }) {
   const [s, setS] = useState(() => nouvelleSession(ids));
   const [retournee, setRetournee] = useState(false);
-  const [confirmer, setConfirmer] = useState(false);
-  const [retrait, setRetrait] = useState(null); // nombre de cartes retirées à la fin
   const cartes = useMemo(() => Object.fromEntries((ctx.db.questions || []).map((q) => [q.id, q])), [ctx.db.questions]);
   const fiches = useMemo(() => Object.fromEntries((ctx.db.fiches || []).map((f) => [f.id, f])), [ctx.db.fiches]);
   const id = carteCourante(s);
@@ -38,11 +34,11 @@ export function SessionApprentissage({ ctx, ids, onQuitter, pleinEcran = false }
   const skip = () => agir(passer);
 
   // clavier (bureau)
-  const actions = useRef({}); actions.current = { su, pasSu, skip, retourner: () => setRetournee(true), retournee, fin: s.fin, confirmer };
+  const actions = useRef({}); actions.current = { su, pasSu, skip, retourner: () => setRetournee(true), retournee, fin: s.fin };
   useEffect(() => {
     const onKey = (e) => {
       const a = actions.current;
-      if (a.fin || a.confirmer || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (a.fin || e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       if (e.key === ' ' || e.key === 'Enter') { if (!a.retournee) { e.preventDefault(); a.retourner(); } }
       else if (e.key === 'ArrowRight' || e.key === '2') { if (a.retournee) { e.preventDefault(); a.su(); } }
@@ -77,13 +73,6 @@ export function SessionApprentissage({ ctx, ids, onQuitter, pleinEcran = false }
   const pct = total ? (s.sues.length / total) * 100 : 100;
   const suite = id ? s.suites[id] || 0 : 0;
 
-  const retirerSues = async () => {
-    setConfirmer(false);
-    const n = s.sues.length;
-    await ctx.setLearningSet(retirer(ctx.db.learningSet || [], s.sues));
-    setRetrait(n);
-  };
-
   return (
     <div className={'sfc alib-session' + (pleinEcran ? ' plein-ecran' : '')}>
       <div className="sfc-tete">
@@ -97,9 +86,6 @@ export function SessionApprentissage({ ctx, ids, onQuitter, pleinEcran = false }
         <div className="sfc-centre sfc-synthese alib-fin">
           <div className="sfc-titre">{b.vues && !s.file.length ? 'Toutes les cartes sont sues' : 'Session terminée'}</div>
           <div className="alib-bilan tnum">{pl(b.vues, 'carte vue', 'cartes vues')} · {pl(b.sues, 'sue', 'sues')} · {b.aRetravailler} à retravailler</div>
-          {retrait != null
-            ? <div className="hint alib-ok"><Icon name="check" size={14} /> {pl(retrait, 'carte retirée', 'cartes retirées')} de l’apprentissage.</div>
-            : b.sues > 0 && <button type="button" className="sfc-btn neutre" onClick={() => setConfirmer(true)}>Retirer de l’apprentissage les cartes sues</button>}
           <button type="button" className="sfc-btn principal" onClick={onQuitter}>Terminer</button>
         </div>
       )}
@@ -135,11 +121,6 @@ export function SessionApprentissage({ ctx, ids, onQuitter, pleinEcran = false }
         </div>
       )}
 
-      {confirmer && (
-        <ConfirmModal title={`Retirer ${pl(b.sues, 'carte', 'cartes')} de l’apprentissage ?`}
-          body="Elles quittent seulement la liste d’apprentissage (sur tous tes appareils). Les cartes elles-mêmes, leurs dates et la méthode des J ne changent pas."
-          confirmLabel="Retirer" onConfirm={retirerSues} onCancel={() => setConfirmer(false)} />
-      )}
     </div>
   );
 }

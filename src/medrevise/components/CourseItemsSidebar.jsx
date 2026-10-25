@@ -47,12 +47,11 @@ import { VueMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from './FlashcardImage.jsx';
 import { CarteAjoutFlashcard, sorteDe } from './CarteAjoutFlashcard.jsx';
 import { ActionsCarte } from './ActionsCarte.jsx';
-import { IconeRafale } from './IconeRafale.jsx';
 import { planDuJour } from '../lib/apprentissageFC.js';
 import { nextDate } from '../lib/planning.js';
 import { todayISO } from '../lib/sm2.js';
 import { ModeVisibleCtx } from './modeVisible.js';
-import { ajouter as ajouterApprentissage, retirer as retirerApprentissage, commencerGlisse, finirGlisse } from '../apprentissageLibre/liste.js';
+import { commencerGlisse, finirGlisse } from '../apprentissageLibre/liste.js';
 import '../../styles/apprentissage-libre.css';
 import '../../styles/panneau-modes.css';
 
@@ -344,13 +343,9 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
     if (!fc.length) return null;
     return { total: fc.length, aRevoir: planDuJour(fc, todayISO(), nextDate).dues.length };
   }, [ficheItems]);
-  /* MODE APPRENTISSAGE LIBRE (11/10, apprentissageLibre/) : mettre / retirer des cartes de la
-     liste `learning_set`, une par une ou par sélection multiple. Seule la liste est écrite :
-     la carte elle-même (dates, états, FSRS) n'est jamais touchée. */
-  const listeAppr = ctx.db.learningSet || [];
-  const dansAppr = useMemo(() => new Set(listeAppr), [listeAppr]);
+  /* SÉLECTION de plusieurs cartes (→ Tableau). (25/10, Apprentissage v2) plus de « Mettre en apprentissage » :
+     toutes les flashcards sont dans le mode Apprentissage d'office. */
   const [selection, setSelection] = useState(null); // null = pas de sélection ; Set d'ids sinon
-  const basculerAppr = (ids, mettre) => ctx.setLearningSet && ctx.setLearningSet(mettre ? ajouterApprentissage(listeAppr, ids) : retirerApprentissage(listeAppr, ids));
   const cocher = (id) => setSelection((sel) => { const n = new Set(sel || []); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const choisirType = (t) => { setActiveType(t); setAdding(false); setEditingId(null); setSelection(null); };
   // (15/10) « Prompts » : ils produisent le JSON qu'on colle ici — l'entrée a quitté le menu Fichier
@@ -392,9 +387,9 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
           <Icon name="upload" size={13} /> Importer
         </button>}
         <span style={{ flex: 1 }} />
-        {activeType === 'flashcard' && items.length > 0 && ctx.setLearningSet && (
+        {activeType === 'flashcard' && items.length > 0 && tableauFlashcards && (
           <button type="button" className={'icon-btn sm alib-selectionner' + (selection ? ' actif' : '')} onClick={() => setSelection((x) => (x ? null : new Set()))}
-            title={selection ? 'Fermer la sélection' : 'Sélectionner : cocher plusieurs cartes pour les mettre en apprentissage (ou les en retirer)'} aria-label={selection ? 'Fermer la sélection' : 'Sélectionner'} aria-pressed={!!selection}>
+            title={selection ? 'Fermer la sélection' : 'Sélectionner : cocher plusieurs cartes pour les poser sur le tableau'} aria-label={selection ? 'Fermer la sélection' : 'Sélectionner'} aria-pressed={!!selection}>
             <Icon name={selection ? 'x' : 'check'} size={15} />
           </button>
         )}
@@ -454,21 +449,11 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
       )}
       {activeType === 'flashcard' && selection && (() => {
         const choisies = items.filter((q) => selection.has(q.id)).map((q) => q.id);
-        const aMettre = choisies.filter((id) => !dansAppr.has(id));
-        const aRetirer = choisies.filter((id) => dansAppr.has(id));
         const toutes = items.length > 0 && choisies.length === items.length;
         return (
           <div className="alib-selbar" role="toolbar" aria-label="Sélection de cartes">
             <label className="alib-coche"><input type="checkbox" checked={toutes} onChange={() => setSelection(toutes ? new Set() : new Set(items.map((q) => q.id)))} /> <span>Tout <span className="hint tnum">({choisies.length}/{items.length})</span></span></label>
             <div className="alib-selactions">
-              <button type="button" className="btn sm primary" disabled={!aMettre.length} onClick={async () => { await basculerAppr(aMettre, true); setSelection(null); }}>
-                <Icon name="refresh" size={12} /> Mettre {aMettre.length > 1 ? `les ${aMettre.length} cartes` : aMettre.length ? 'la carte' : 'les cartes'} en apprentissage
-              </button>
-              {aRetirer.length > 0 && (
-                <button type="button" className="btn sm" onClick={async () => { await basculerAppr(aRetirer, false); setSelection(null); }}>
-                  Retirer {aRetirer.length > 1 ? `les ${aRetirer.length} cartes` : 'la carte'} de l’apprentissage
-                </button>
-              )}
               {tableauFlashcards && (() => { // (v1.1) les cartes cochées, posées en grille sur le tableau
                 const aPoser = choisies.filter((id) => !tableauFlashcards.dans.has(id));
                 return (
@@ -510,17 +495,16 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
           ) : (
             <ItemReadCard key={item.id} item={item} ctx={ctx} onBoite={onAllerABoite && item.source && item.source.boiteId ? () => onAllerABoite(item.source) : null}
               tableau={item.type === 'flashcard' && tableauFlashcards ? { dans: tableauFlashcards.dans.has(item.id), ajouter: () => tableauFlashcards.ajouter([item.id]), montrer: () => tableauFlashcards.montrer(item.id) } : null}
-              appr={item.type === 'flashcard' && ctx.setLearningSet ? { dans: dansAppr.has(item.id), basculer: () => basculerAppr([item.id], !dansAppr.has(item.id)) } : null}
               coche={item.type === 'flashcard' && selection ? { oui: selection.has(item.id), basculer: () => cocher(item.id) } : null}
-              // (16/10) glisser vers l'onglet Apprentissage : la carte, ou toute la sélection si elle en fait partie
-              glisse={item.type === 'flashcard' && ctx.setLearningSet ? () => (selection && selection.has(item.id) ? items.filter((q) => selection.has(q.id)).map((q) => q.id) : [item.id]) : null}
+              // glisser sur le tableau : la carte, ou toute la sélection si elle en fait partie
+              glisse={item.type === 'flashcard' && tableauFlashcards ? () => (selection && selection.has(item.id) ? items.filter((q) => selection.has(q.id)).map((q) => q.id) : [item.id]) : null}
               onEdit={() => { if (estOcclusion(item)) { setOccEdition(item); return; } setEditingId(item.id); setAdding(false); }}
               onDelete={() => setConfirmDel(item)} />
           )
         ))}
       </div>
     </div>
-  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, itemsVus, recherche, filtreSorte, nbParSorte, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC, dansAppr, selection, tableauFlashcards]); // eslint-disable-line react-hooks/exhaustive-deps
+  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, itemsVus, recherche, filtreSorte, nbParSorte, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC, selection, tableauFlashcards]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* contenus des modes : des éléments STABLES (mêmes objets d'un rendu à l'autre tant que
      leur contenu ne change pas) — le volet mémoïsé (Volet) ne se re-rend alors jamais
@@ -608,27 +592,22 @@ const Volet = memo(function Volet({ id, label, k, cache, contenu }) {
 });
 
 /* ---- carte de lecture (réponse toujours visible) + Éditer/Supprimer ---- */
-function ItemReadCard({ item, ctx = null, onEdit, onDelete, appr = null, coche = null, glisse = null, tableau = null, onBoite = null }) {
+function ItemReadCard({ item, ctx = null, onEdit, onDelete, coche = null, glisse = null, tableau = null, onBoite = null }) {
   /* (22/10) flashcards : une carte compacte, ses actions au survol (au doigt : toujours visibles) — modifier,
      apprentissage, carnet d'erreurs, supprimer (docs/compte-rendu-tableau-flashcards.md §6) */
   const fc = item.type === 'flashcard';
   return (
     <div className={'pis-item card' + (fc ? ' fcl-carte' : '') + (coche && coche.oui ? ' alib-cochee' : '') + (glisse ? ' alib-glissable' : '')} data-item={item.id}
       draggable={!!glisse} onDragStart={glisse ? (e) => commencerGlisse(e, glisse()) : undefined} onDragEnd={glisse ? finirGlisse : undefined}
-      title={glisse ? (tableau ? 'Glisser sur « Apprentissage » (barre de gauche) ou sur le tableau pour l’y ajouter' : 'Glisser sur « Apprentissage » (barre de gauche) pour l’y ajouter') : undefined}>
+      title={glisse ? 'Glisser sur le tableau pour l’y poser' : undefined}>
       <div className="card-body">
         <div className="row spread" style={{ marginBottom: 8, alignItems: 'flex-start', gap: 8 }}>
           {coche && <input type="checkbox" className="alib-case" checked={coche.oui} onChange={coche.basculer} aria-label="Sélectionner cette carte" />}
           <span className="hint" style={{ fontWeight: 700, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto' }}>{item.theme || 'Sans thème'}</span>
-          {appr && appr.dans && <span className="alib-pastille" title="Cette carte est dans l’espace Apprentissage (elle suit toujours les J)">Apprentissage</span>}
           <div className={'row' + (fc ? ' fcl-actions' : '')} style={{ gap: 4, flex: '0 0 auto' }}>
             {estMuscle(item) && <BoutonCopier texte={() => texteMuscle(item)} />}
             {estMolecule(item) && <BoutonCopier texte={() => texteMolecule(item)} />}
             <button type="button" className="cd-ic" title={fc ? 'Modifier' : 'Éditer'} aria-label="Modifier" data-act="modifier" onClick={onEdit}><Icon name="edit" size={12} /></button>
-            {fc && appr && (
-              <button type="button" className={'cd-ic' + (appr.dans ? ' actif' : '')} data-act="apprentissage" onClick={appr.basculer}
-                title={appr.dans ? 'Retirer de l’apprentissage' : 'Mettre en apprentissage'} aria-label={appr.dans ? 'Retirer de l’apprentissage' : 'Mettre en apprentissage'}><IconeRafale size={12} /></button>
-            )}
             {fc && tableau && ( /* (v1.1) « → Tableau » : la poser sur le tableau ; déjà posée (icône marquée) : y aller */
               <button type="button" className={'cd-ic fcl-vers-tableau' + (tableau.dans ? ' actif' : '')} data-act="vers-tableau" aria-pressed={tableau.dans}
                 onClick={tableau.dans ? tableau.montrer : tableau.ajouter}
@@ -640,7 +619,7 @@ function ItemReadCard({ item, ctx = null, onEdit, onDelete, appr = null, coche =
               <button type="button" className="cd-ic fcl-vers-boite" data-act="vers-boite" onClick={onBoite}
                 title={`Faite depuis une boîte (page ${item.source.page}) — y aller`} aria-label="Aller à la boîte d’origine"><Icon name="ext" size={12} /></button>
             )}
-            {fc && ctx && <ActionsCarte ctx={ctx} carte={item} mobile={false} sansApprentissage />}
+            {fc && ctx && <ActionsCarte ctx={ctx} carte={item} mobile={false} />}
             <button type="button" className="cd-ic" title="Supprimer" aria-label="Supprimer" data-act="supprimer" onClick={onDelete}><Icon name="trash" size={12} /></button>
           </div>
         </div>
@@ -648,13 +627,6 @@ function ItemReadCard({ item, ctx = null, onEdit, onDelete, appr = null, coche =
         {item.type === 'flashcard' && (estOcclusion(item) ? <OcclusionReadBody item={item} /> : estTableau(item) ? <TableauReadBody item={item} /> : estMuscle(item) ? <MuscleReadBody item={item} /> : estMolecule(item) ? <MoleculeReadBody item={item} /> : <FlashcardReadBody item={item} />)}
         {item.type === 'feynman' && <FeynmanReadBody item={item} />}
         {item.type === 'exercice' && <ExerciceReadBody item={item} />}
-        {appr && !fc && (
-          <div className="alib-pied">
-            <button type="button" className={'alib-btn-carte' + (appr.dans ? ' dans' : '')} onClick={appr.basculer}>
-              <Icon name={appr.dans ? 'x' : 'refresh'} size={12} /> {appr.dans ? 'Retirer de l’apprentissage' : 'Mettre en apprentissage'}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

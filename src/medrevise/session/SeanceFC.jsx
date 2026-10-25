@@ -25,7 +25,6 @@ import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
 import { TableauMuscle, ligneParLigne, ImageGeneraleMuscle } from '../components/FlashcardMuscle.jsx';
 import { BoutonsFlashcard } from '../components/BoutonsFlashcard.jsx';
 import { ActionsCarte } from '../components/ActionsCarte.jsx';
-import { commencerGlisse, finirGlisse } from '../apprentissageLibre/liste.js';
 import { estMuscle } from '../lib/muscle.js';
 import { estTableau } from '../lib/carteTableau.js';
 import { TableauRevision } from '../components/FlashcardTableau.jsx';
@@ -242,7 +241,6 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
           {/* (17/10) cadre : la carte (un bouton) + les icônes carnet / apprentissage de CETTE carte, en surimpression dans son en-tête */}
           <div className="sfc-carte-cadre">
           <button type="button" className={'sfc-carte' + (retournee ? ' avec-actions' : '')} key={carte.id + ':' + (retournee ? 'v' : 'r')} data-carte={carte.id}
-            draggable onDragStart={(e) => commencerGlisse(e, [carte.id])} onDragEnd={finirGlisse}
             onClick={() => setRetournee((r) => !r)}>
             <FaceFC carte={carte} cote={retournee ? 'verso' : 'recto'} masquable={ligneParLigne(ctx)} />
             {!retournee && <span className="sfc-indication">Touche pour voir la réponse</span>}

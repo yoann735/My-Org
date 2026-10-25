@@ -165,7 +165,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
         {onOuvrirApprentissage && (
           <button type="button" className="mrm-card alib-entree" onClick={onOuvrirApprentissage}>
             <span className="alib-entree-ic"><Icon name="refresh" size={18} /></span>
-            <span className="alib-entree-txt"><strong>Apprentissage</strong><span className="hint">{(ctx.db.learningSet || []).length ? `${(ctx.db.learningSet || []).length} carte${(ctx.db.learningSet || []).length > 1 ? 's' : ''} en apprentissage` : 'Aucune carte pour l’instant'}</span></span>
+            <span className="alib-entree-txt"><strong>Apprentissage</strong><span className="hint">{(() => { const n = (ctx.db.questions || []).filter((q) => q.type === 'flashcard').length; return n ? `${n} carte${n > 1 ? 's' : ''} à parcourir` : 'Aucune carte pour l’instant'; })()}</span></span>
             <Icon name="chevR" size={16} />
           </button>
         )}

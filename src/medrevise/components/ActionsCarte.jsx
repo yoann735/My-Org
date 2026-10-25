@@ -10,18 +10,16 @@
      ferme — toast « Ajouté au carnet · Modifier » ; « Ajouter une note » replié, facultatif (la note part
      avec la puce touchée ensuite). Téléphone : feuille du bas ≤ 35 % de la hauteur, sans défilement ;
      ordinateur : popover compact sous l'icône. Remplace la grande liste (et le formulaire « Autre… ») ;
-   - « Apprentissage » (icône rafale) : la carte rejoint la liste du mode Apprentissage.
-   INDÉPENDANCE : « Apprentissage » n'écrit QUE `learning_set` (ctx.setLearningSet) — jamais la
-   carte, ses J, son état FSRS ni le journal. Le carnet n'écrit que ses champs (carnetAt,
+   - (25/10) l'ancien bouton « Apprentissage » est retiré : toutes les flashcards sont dans le mode
+     Apprentissage d'office (apprentissageLibre/).
+   Le carnet n'écrit que ses champs (carnetAt,
    carnetType, carnetRaison) sur la version enregistrée de la carte.
    Les clics ne remontent jamais à la carte (qui se retourne au clic).
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
-import { IconeRafale } from './IconeRafale.jsx';
 import { preReponsesDe, ajouterAuCarnet, admissibleCarnet } from '../lib/carnetPreReponses.js';
-import { ajouter as ajouterAListe, estAdmissible } from '../apprentissageLibre/liste.js';
 import '../../styles/actions-carte.css';
 
 const etroit = () => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
@@ -48,7 +46,7 @@ function Fenetre({ titre, onFermer, largeur = 'min(480px, 94vw)', children }) {
 }
 
 /* `carte` : la carte AFFICHÉE (id, type, recto) ; `mobile` : icônes de 40 px, feuille du bas */
-export function ActionsCarte({ ctx, carte, mobile: mobileProp, sansApprentissage = false }) {
+export function ActionsCarte({ ctx, carte, mobile: mobileProp }) {
   const mobile = mobileProp ?? etroit();
   const [menu, setMenu] = useState(false); // menu des pré-réponses
   const [posMenu, setPosMenu] = useState(null); // ordinateur : position FIXE (jamais rognée par la zone qui défile)
@@ -73,10 +71,8 @@ export function ActionsCarte({ ctx, carte, mobile: mobileProp, sansApprentissage
 
   if (!carte) return null;
   const carnetOk = admissibleCarnet(carte);
-  // `sansApprentissage` (22/10) : la liste des flashcards du panneau a déjà son interrupteur Apprentissage
-  const apprOk = !sansApprentissage && estAdmissible(carte) && !carte.ephemeral && !!ctx.setLearningSet;
-  if (!carnetOk && !apprOk) return null;
-  const dejaAppr = ((ctx.db && ctx.db.learningSet) || []).includes(carte.id);
+  // (25/10, Apprentissage v2) plus de bouton « Apprentissage » : toutes les flashcards y sont d'office
+  if (!carnetOk) return null;
   const dejaCarnet = !!((ctx.db && ctx.db.questions) || []).find((q) => q.id === carte.id && q.carnetAt);
   const preReponses = preReponsesDe(ctx.carnetPreReponses);
   const stop = (e) => e.stopPropagation();
@@ -89,15 +85,6 @@ export function ActionsCarte({ ctx, carte, mobile: mobileProp, sansApprentissage
       setToast({ texte: 'Ajouté au carnet', sous: pr.label, action: { label: 'Modifier', fn: () => setModifier({ id: carte.id, type: pr.label, note: n }) } });
     } catch (e) { setToast({ texte: e.message }); }
   };
-  const apprentissage = async () => {
-    if (dejaAppr) { setToast({ texte: 'Déjà dans l’apprentissage' }); return; }
-    await ctx.setLearningSet(ajouterAListe((ctx.db && ctx.db.learningSet) || [], [carte.id]));
-    const q = (ctx.db.questions || []).find((x) => x.id === carte.id) || carte;
-    const f = (ctx.db.fiches || []).find((x) => x.id === q.ficheId);
-    const m = f && (ctx.db.matieres || []).find((x) => x.id === f.matiereId);
-    setToast({ texte: 'Ajoutée à l’apprentissage', sous: [m && m.nom, f && f.titre].filter(Boolean).join(' › ') });
-  };
-
   const titre = apercu(carte);
   // puces : 2 lignes au plus (colonnes = moitié des puces) ; libellé court (sans la parenthèse), le complet en infobulle
   const court = (l) => String(l || '').replace(/\s*\(.*\)\s*$/, '').trim() || l;
@@ -139,11 +126,6 @@ export function ActionsCarte({ ctx, carte, mobile: mobileProp, sansApprentissage
           }}><Icon name="target" size={mobile ? 19 : 15} /></button>
       )}
       {menu && !mobile && createPortal(popover, document.body) /* portail : un ancêtre animé (transform 3D de la carte) décalerait le `fixed` */}
-      {apprOk && (
-        <button type="button" className={'ac-icone' + (dejaAppr ? ' fait' : '')} data-sn="apprentissage"
-          title={dejaAppr ? 'Déjà dans la liste du mode Apprentissage' : 'Apprentissage : ajouter cette carte à la liste (indépendant des J)'} aria-label="Apprentissage"
-          onClick={apprentissage}><IconeRafale size={mobile ? 19 : 15} />{dejaAppr && <span className="ac-coche"><Icon name="check" size={9} /></span>}</button>
-      )}
 
       {menu && mobile && createPortal(
         <div className="sn-feuille-fond" onClick={() => setMenu(false)}>

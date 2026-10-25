@@ -7,7 +7,6 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, MeasuringStrategy, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Icon } from '../../shared/Icon.jsx';
-import { EVT_GLISSE, porteCartes, cartesGlissees, ajouter as ajouterAListe } from '../apprentissageLibre/liste.js';
 import { verifierFichiers } from '../lib/fichiersCours.js';
 import { comparerAuCloud, derniereSyncReussie } from '../lib/syncStatus.js';
 import { isClassicUI } from '../../shared/uiMode.js';
@@ -381,36 +380,12 @@ const ED_NAV = [
   { id: 'carnet', label: "Carnet d'erreurs", icon: 'target' },
 ];
 
-/* ONGLET « APPRENTISSAGE » = CIBLE DE DÉPÔT (16/10, docs/compte-rendu-fichiers-cours.md) : une
-   flashcard (ou une sélection) glissée depuis le panneau Flashcards ou la Bibliothèque s'ajoute à
-   la liste learning_set. Pendant le glisser, l'onglet s'éclaire ; il s'illumine à l'approche ; le
-   compteur (cartes en apprentissage) s'incrémente au dépôt. Seule la liste est écrite. */
-function OngletApprentissage({ n, actif, onNav, ctx }) {
-  const [glisse, setGlisse] = useState(false);
-  const [proche, setProche] = useState(false);
-  const [pulse, setPulse] = useState(0);
-  useEffect(() => {
-    const f = (e) => { setGlisse(!!(e.detail && e.detail.actif)); if (!(e.detail && e.detail.actif)) setProche(false); };
-    window.addEventListener(EVT_GLISSE, f);
-    return () => window.removeEventListener(EVT_GLISSE, f);
-  }, []);
-  const db = ctx && ctx.db;
-  const nb = db ? (db.learningSet || []).filter((id) => db.questions.some((q) => q.id === id && q.type === 'flashcard')).length : 0;
-  const deposer = async (e) => {
-    if (!porteCartes(e)) return;
-    e.preventDefault();
-    setProche(false); setGlisse(false);
-    const ids = cartesGlissees(e).filter((id) => db.questions.some((q) => q.id === id && q.type === 'flashcard'));
-    if (ids.length && ctx.setLearningSet) { await ctx.setLearningSet(ajouterAListe(db.learningSet || [], ids)); setPulse((p) => p + 1); }
-  };
+/* ONGLET « APPRENTISSAGE » (25/10, Apprentissage v2) : toutes les flashcards y sont d'office — plus de
+   dépôt par glisser ni de compteur « cartes en apprentissage ». */
+function OngletApprentissage({ n, actif, onNav }) {
   return (
-    <div className={'sb-item sb-appr' + (actif ? ' active' : '') + (glisse ? ' depot-possible' : '') + (proche ? ' depot-proche' : '')}
-      onClick={() => onNav(n.id)} title={glisse ? 'Lâcher ici pour mettre en apprentissage' : n.label} data-onglet="apprlibre"
-      onDragEnter={(e) => { if (porteCartes(e)) { e.preventDefault(); setProche(true); } }}
-      onDragOver={(e) => { if (porteCartes(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; if (!proche) setProche(true); } }}
-      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setProche(false); }}
-      onDrop={deposer}>
-      <span className="sb-icon"><n.Ic size={20} />{nb > 0 && <span key={pulse} className={'sb-compte tnum' + (pulse ? ' pulse' : '')} aria-label={`${nb} carte${nb > 1 ? 's' : ''} en apprentissage`}>{nb}</span>}</span>
+    <div className={'sb-item sb-appr' + (actif ? ' active' : '')} onClick={() => onNav(n.id)} title={n.label} data-onglet="apprlibre">
+      <span className="sb-icon"><n.Ic size={20} /></span>
       <span className="sb-label">{n.label}</span>
     </div>
   );

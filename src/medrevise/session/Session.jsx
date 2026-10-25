@@ -16,7 +16,6 @@ import { imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { Icon } from '../../shared/Icon.jsx';
 import { SaisieCarnet } from '../components/SaisieCarnet.jsx';
 import { ActionsCarte } from '../components/ActionsCarte.jsx';
-import { commencerGlisse, finirGlisse } from '../apprentissageLibre/liste.js';
 import { Breadcrumb, matiereMeta, EtiquetteQuickSet, SessionTrendCard } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { ZoneDefilante, classeLongueur } from '../components/ZoneDefilante.jsx';
@@ -476,10 +475,8 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
   return (
     <div>
       <div className="flash-scene">
-        {/* (17/10) ordinateur : la carte se glisse vers l'onglet « Apprentissage » de la barre latérale */}
         <div className={'flash-card' + (flipped ? ' flipped' : '') + (occ ? ' occ' : '') + (muscle || tableau ? ' muscle' : '') + (molecule ? ' molecule' : '') + (!occ && (imageAuRecto(item) || imageAuVerso(item)) ? ' img' : '')} onClick={() => setFlipped((f) => !f)}
-          draggable={!erreurMode && item.type === 'flashcard' && !item.ephemeral} data-carte-glissable={item.id}
-          onDragStart={!erreurMode && item.type === 'flashcard' && !item.ephemeral ? (e) => commencerGlisse(e, [item.id]) : undefined} onDragEnd={finirGlisse}>
+>
           <div className="flash-face front">
             <span className="ff-tag" style={{ color: meta.tint }}>{erreurMode ? "Flashcard d'erreur" : `${meta.label} · ${item.theme}`}</span>
             <ZoneDefilante className={'ff-zone ' + classeLongueur(item.recto)}>
