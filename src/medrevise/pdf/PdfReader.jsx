@@ -51,7 +51,9 @@ import { separerParType } from '../lib/annotationTypes.js';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { pdfjsLib, openPdf } from './pdfjsSetup.js';
-import { exporterDepuisBlob } from './exportAnnote.js';
+import { exporterDepuisBlob, extrairePages } from './exportAnnote.js';
+import { FenetreExportPages } from './ChoixPages.jsx';
+import { suffixePages } from './choixPages.js';
 import { useEditor } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
@@ -1817,8 +1819,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const textes = { choix: { exporter: direct(() => setPanneauTextes('exporter'), 'textes', 'exporter'), importer: direct(() => setPanneauTextes('importer'), 'textes', 'importer') } };
     if (type === 'document') {
       return {
-        pdfAnnote: direct(() => imprimerDocument(), 'pdfAnnote'),
-        formats: { choix: { md: direct(() => exporterMdDocument(), 'formats', 'md'), png: { indispo: 'Pas de PNG pour un document créé dans l’app : « Exporter le document annoté » en PDF' } } },
+        pdfAnnote: direct(() => setExportPages({ type: 'doc' }), 'pdfAnnote'),
+        formats: { choix: { md: direct(() => setExportPages({ type: 'mdDoc' }), 'formats', 'md'), png: { indispo: 'Pas de PNG pour un document créé dans l’app : « Exporter le document annoté » en PDF' } } },
         exportIA: { indispo: 'Non disponible pour un document créé dans l’app' },
         textes,
         ocr: { indispo: 'Un document créé dans l’app est déjà du texte' },
@@ -1826,8 +1828,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       };
     }
     return {
-      pdfAnnote: affiche ? { onClick: () => { if (!exporting) exportAnnotated(); }, etat: exporting ? 'en cours…' : null } : viaBascule('pdfAnnote'),
-      formats: { choix: { md: direct(() => exporterMdPdf(), 'formats', 'md'), png: direct(() => exporterPngPages(), 'formats', 'png') } },
+      pdfAnnote: affiche ? { onClick: () => { if (!exporting) setExportPages({ type: 'pdf' }); }, etat: exporting ? 'en cours…' : null } : viaBascule('pdfAnnote'),
+      formats: { choix: { md: direct(() => setExportPages({ type: 'md' }), 'formats', 'md'), png: direct(() => setExportPages({ type: 'png' }), 'formats', 'png') } },
       exportIA: direct(() => setPanneauExportIA(true), 'exportIA'),
       textes,
       ocr: affiche ? (pdfIdActif ? { onClick: () => setDetailOcr(true), etat: libelleOcr().replace('Reconnaissance de texte : ', '').replace(/ \(PDF déjà en texte\)$/, '') } : { indispo: 'Diapo pas encore chargée' }) : viaBascule('ocr'),
@@ -2101,18 +2103,22 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      ajoutées. Un NOUVEAU fichier téléchargé ; le blob d'origine n'est que LU.
      Avant : surlignages seulement, et l'entrée ne faisait rien sans surlignage. */
   const [exportErreur, setExportErreur] = useState(null);
-  const exportAnnotated = async () => {
+  /* (25/10, docs/compte-rendu-boites-tableaux.md §4) CHOIX DES PAGES : chaque export passe d'abord par la même fenêtre
+     (pdf/ChoixPages.jsx) — Toutes · Page courante · Plage · Pages précises, mémorisé par cours. { type } | null */
+  const [exportPages, setExportPages] = useState(null);
+  const exportAnnotated = async (pages = null) => {
     if (!fiche || !pdfIdActif || exporting) return;
     setExporting(true); setExportErreur(null);
     try {
       // le texte en cours de frappe dans une boîte n'est sauvegardé qu'après 400 ms :
       // on part de la version la plus fraîche pour ne rien laisser derrière
       const annots = edits.map((a) => (a.id === activeEditId && editLastJson.current ? { ...a, content: editLastJson.current } : a));
-      const { octets } = await exporterDepuisBlob(pdfIdActif, highlights, annots);
+      const { octets: tout } = await exporterDepuisBlob(pdfIdActif, highlights, annots);
+      const octets = pages ? await extrairePages(tout, pages) : tout; // les pages choisies, dans l'ordre du lecteur
       const outBlob = new Blob([octets], { type: 'application/pdf' });
       const url = URL.createObjectURL(outBlob);
       const a = document.createElement('a');
-      a.href = url; a.download = `${(fiche.titre || 'cours').replace(/[\\/:*?"<>|]/g, '')}${surFiche ? '-fiche' : ''}-annote.pdf`;
+      a.href = url; a.download = `${(fiche.titre || 'cours').replace(/[\\/:*?"<>|]/g, '')}${surFiche ? '-fiche' : ''}-annote${suffixePages(pages, nbPagesAffichees)}.pdf`;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
     } catch (e) {
@@ -2123,30 +2129,34 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   };
   /* EXPORTER › .md (15/10) : le texte du cours (texte structuré, passages surlignés en
      [PRIORITAIRE], notes des surlignages — le même que « Copier les notions ») puis l'onglet Notes */
-  const exporterMdPdf = async () => {
+  const exporterMdPdf = async (pages = null) => {
     if (!pdfDoc) return;
     try {
-      const { texteStructure } = await pdfParts();
+      // (25/10) une partie des pages : celles du PDF parmi les pages choisies (une page ajoutée n'a pas de texte de PDF)
+      const tout = !pages || pages.length === nbPagesAffichees;
+      const pdfChoisies = tout ? null : new Set(pages.map((i) => pageSizes[i]).filter((p) => p && !p.ajout).map((p) => p.cle));
+      const { texteStructure } = await pdfCourseParts(pdfDoc, highlights, { normalize: pdfjsLib.normalizeUnicode, pages: pdfChoisies });
       const titre = ((fiche && fiche.titre) || 'Cours') + (surFiche ? ' — fiche' : '');
-      let md = `# ${titre}\n\n${texteStructure.trim()}\n`;
-      const n = ficheReelle ? await lireNotesDoc(ficheReelle.id) : null;
+      let md = `# ${titre}${tout ? '' : ` (pages ${suffixePages(pages, nbPagesAffichees).slice(2).replace(/_/g, ', ')})`}\n\n${texteStructure.trim()}\n`;
+      const n = tout && ficheReelle ? await lireNotesDoc(ficheReelle.id) : null; // les notes du cours : avec le cours entier
       if (n && n.content && docNonVide(n.content)) md += `\n## Notes\n\n${docToMarkdown(n.content, { titre: null, images: new Map() }).trim()}\n`;
-      telechargerFichier(new Blob([md], { type: 'text/markdown;charset=utf-8' }), nomFichier(titre, 'md'));
+      telechargerFichier(new Blob([md], { type: 'text/markdown;charset=utf-8' }), nomFichier(titre + (tout ? '' : suffixePages(pages, nbPagesAffichees)), 'md'));
     } catch (e) { setExportErreur('L’export .md a échoué : ' + ((e && e.message) || 'texte illisible') + '. Le cours n’a pas été modifié.'); }
   };
   /* EXPORTER › PNG par page (15/10) : le PDF annoté (même moteur que « Exporter le PDF annoté »),
      une image par page à 2× la taille de page, dans un .zip. Le blob d'origine n'est que LU. */
   const [avisExport, setAvisExport] = useState(null);
-  const exporterPngPages = async () => {
+  const exporterPngPages = async (pages = null) => {
     if (!pdfIdActif || avisExport) return;
     setExportErreur(null); setAvisExport('PNG par page : préparation…');
     try {
       const annots = edits.map((a) => (a.id === activeEditId && editLastJson.current ? { ...a, content: editLastJson.current } : a));
       const { octets } = await exporterDepuisBlob(pdfIdActif, highlights, annots);
       const d = await openPdf(octets.slice()); const n = d.numPages; try { d.loadingTask ? d.loadingTask.destroy() : d.destroy(); } catch (x) { /* ignore */ }
-      const pngs = await pngsIA({ octets, indices: [...Array(n).keys()] }, { onProgres: (f, t) => setAvisExport(`PNG par page : ${f} / ${t}`) });
+      const indices = pages ? pages.filter((i) => i < n) : [...Array(n).keys()]; // (25/10) les pages choisies
+      const pngs = await pngsIA({ octets, indices }, { onProgres: (f, t) => setAvisExport(`PNG par page : ${f} / ${t}`) });
       const fichiers = await Promise.all(pngs.map(async (p) => ({ nom: p.nom, donnees: new Uint8Array(await p.blob.arrayBuffer()) })));
-      const base = ((fiche && fiche.titre) || 'cours') + (surFiche ? ' fiche' : '') + ' png';
+      const base = ((fiche && fiche.titre) || 'cours') + (surFiche ? ' fiche' : '') + ' png' + suffixePages(pages, n);
       telechargerFichier(creerZip(fichiers), nomFichier(base, 'zip'));
     } catch (e) {
       setExportErreur('L’export PNG a échoué : ' + ((e && e.message) || 'PDF illisible') + '. Le cours n’a pas été modifié.');
@@ -2580,7 +2590,15 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const r = await lireNotesDoc(ficheId);
     return contenuGlobal({ pages: (r && r.pages) || {} }, ordrePages());
   };
-  const exporterMdDocument = async () => exporterMarkdownDoc(await texteDocument(), fiche && fiche.titre);
+  /* (25/10) .md d'une partie des pages d'un document : les blocs du flux dont la page est choisie (pagination calculée) */
+  const exporterMdDocument = async (pages = null) => {
+    const doc = await texteDocument();
+    const tout = !pages || pages.length === nbPagesAffichees;
+    const blocs = pagination && pagination.blocs;
+    if (tout || !modeDoc || !doc || !Array.isArray(doc.content) || !blocs || blocs.length !== doc.content.length) return exporterMarkdownDoc(doc, fiche && fiche.titre);
+    const choisies = new Set(pages);
+    return exporterMarkdownDoc({ ...doc, content: doc.content.filter((_, i) => choisies.has(blocs[i].page)) }, ((fiche && fiche.titre) || 'Document') + suffixePages(pages, nbPagesAffichees));
+  };
   /* texte brut d'un document pour les mots-clés de la transcription : texte des pages ET texte
      reconnu dans ses images (Texte en direct, 08/10) */
   const texteBrutDocument = () => {
@@ -2602,7 +2620,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      réglage du document (08/10 : le fond noir était retiré, et les couleurs de fond —
      surlignages compris — ne s'imprimaient pas : voir notes-doc.css). */
   const [impression, setImpression] = useState(false);
-  const imprimerDocument = async () => {
+  const imprimerDocument = async (pagesChoisies = null) => {
     const el = scrollRef.current;
     if (!el || impression) return;
     pagesTexte.current.forEach((api) => api.vider());
@@ -2629,7 +2647,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
        à ses bords, sous le calque d'annotations de cette page. Pas de second moteur. */
     const cadre = modeDoc ? el.querySelector('.pdfr-pages > .pt-flux-cadre') : null;
     const rc = cadre && cadre.getBoundingClientRect();
-    [...el.querySelectorAll('.pdfr-page')].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top).forEach((pg) => {
+    const choisies = pagesChoisies ? new Set(pagesChoisies) : null; // (25/10) seulement les pages choisies, dans l'ordre
+    [...el.querySelectorAll('.pdfr-page')].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top).forEach((pg, i) => {
+      if (choisies && !choisies.has(i)) return;
       const c = pg.cloneNode(true);
       c.querySelectorAll('.pdfr-ajout-etiquette, .pdfr-selcanvas, canvas').forEach((x) => x.remove());
       if (cadre) {
@@ -3130,13 +3150,17 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [panneauExportIA, setPanneauExportIA] = useState(false);
   const annotationsFraiches = () => (editsRef.current || []).map((a) => (a.id === activeEditIdRef.current && editLastJson.current ? avecContenuEdite(a, editLastJson.current) : a));
   const ordrePagesIA = () => pageSizes.map((p) => p.cle);
-  const preparerIA = (portee) => preparerSourceIA({ titre: (fiche && (fiche.titre || fiche.nom)) || '', pdfId: pdfIdActif, highlights,
-    annotations: annotationsFraiches(), ordrePages: ordrePagesIA(), portee, pageIndex: pageCourante - 1 });
-  const jsonIA = (portee) => {
+  // (25/10) `pages` : indices des pages choisies (pdf/ChoixPages.jsx)
+  const preparerIA = (pages) => preparerSourceIA({ titre: (fiche && (fiche.titre || fiche.nom)) || '', pdfId: pdfIdActif, highlights,
+    annotations: annotationsFraiches(), ordrePages: ordrePagesIA(), pages });
+  const jsonIA = (pages) => {
     const toutes = boitesOrdonnees(annotationsFraiches(), ordrePagesIA());
-    const cles = portee === 'page' ? [ordrePagesIA()[pageCourante - 1]] : ordrePagesIA();
-    return construireExportIA({ cours: (fiche && (fiche.titre || fiche.nom)) || '', page: portee === 'page' ? pageCourante : null, boites: boitesOrdonnees(annotationsFraiches(), cles), refs: refsCourtes(toutes) });
+    const cles = pages.map((i) => ordrePagesIA()[i]).filter((c) => c != null);
+    const j = construireExportIA({ cours: (fiche && (fiche.titre || fiche.nom)) || '', page: pages.length === 1 ? pages[0] + 1 : null, boites: boitesOrdonnees(annotationsFraiches(), cles), refs: refsCourtes(toutes) });
+    if (pages.length > 1 && pages.length < ordrePagesIA().length) j.pages = pages.map((i) => i + 1);
+    return j;
   };
+  const compterIA = (pages) => boitesOrdonnees(edits, pages.map((i) => pageSizes[i] && pageSizes[i].cle).filter((c) => c != null)).length;
   // annotations à jour, texte en cours de frappe compris ; la boîte ouverte est refermée
   // (son texte est enregistré dans la version affichée) avant toute réécriture
   const editsFraisFermes = () => {
@@ -3915,7 +3939,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       )}
 
       {panneauExportIA && (
-        <PanneauExportIA pageCourante={pageCourante} nbPages={nbPagesAffichees} compter={(portee) => compterTextes(portee).boites}
+        <PanneauExportIA pageCourante={pageCourante} nbPages={nbPagesAffichees} compter={compterIA} coursId={(ficheReelle && ficheReelle.id) || ficheId}
           preparer={preparerIA} jsonDe={jsonIA} onFermer={() => setPanneauExportIA(false)}
           extras={[
             { label: copiedCount ? 'Notions copiées ✓' : 'Copier les notions', icon: 'copy', onClick: copyPriority, title: copyTitle },
@@ -3930,6 +3954,20 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       )}
       {miseEnPage && modeDoc && <PanneauMiseEnPage marges={marges} onChange={changerMarges} onFermer={() => setMiseEnPage(false)} fondNoir={fondNoir} onFond={basculerFond} />}
       {avisExport && <div className="fj-avis" role="status">{avisExport}</div>}
+      {exportPages && (() => {
+        const T = { pdf: [surFiche ? 'Exporter la fiche annotée' : modeDocCours ? 'Exporter le document annoté' : 'Exporter la diapo annotée', 'PDF avec toutes les annotations des pages choisies'],
+          doc: ['Exporter le document annoté', 'Impression en PDF des pages choisies, telles qu’à l’écran'],
+          png: ['PNG par page', 'Une image par page choisie (avec annotations), dans un .zip'],
+          md: ['Exporter en .md', 'Le texte des pages choisies (passages surlignés, notes)'],
+          mdDoc: ['Exporter en .md', 'Le texte des pages choisies du document'] }[exportPages.type];
+        const lancer = (pages) => {
+          const t = exportPages.type; setExportPages(null);
+          if (t === 'pdf') exportAnnotated(pages); else if (t === 'doc') imprimerDocument(pages); else if (t === 'png') exporterPngPages(pages);
+          else if (t === 'md') exporterMdPdf(pages); else if (t === 'mdDoc') exporterMdDocument(pages);
+        };
+        return <FenetreExportPages titre={T[0]} aide={T[1]} coursId={(ficheReelle && ficheReelle.id) || ficheId} nbPages={nbPagesAffichees} pageCourante={pageCourante}
+          libelleAction="Exporter" occupe={exporting} onExporter={lancer} onFermer={() => setExportPages(null)} />;
+      })()}
 
       {ajoutPage && (
         <Modal title="Ajouter une page" onClose={() => setAjoutPage(null)} width="min(420px, 94vw)">

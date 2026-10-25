@@ -39,6 +39,7 @@ await b.capture('fcc-menu-diapo-affichee', await b.ev(`(()=>{const e=document.qu
 /* 2. action de l'autre section : la fiche s'affiche d'abord, puis l'export part */
 await b.pieger();
 await b.entree('fiche', 'pdfAnnote');
+await b.validerPages();
 let t0 = Date.now(), dl = [];
 while (Date.now() - t0 < 12000 && !(dl = await b.telecharges()).length) await b.dormir(300);
 b.ok((await b.vue()) === 'Fiche', '« Exporter la fiche annotée » depuis l’Original : la fiche est affichée d’abord');
@@ -47,6 +48,7 @@ await b.pieger();
 await b.ev(`document.querySelector('.pdfr-scroll').focus();1`);
 await b.c.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'p', code: 'KeyP', modifiers: 4, windowsVirtualKeyCode: 80 });
 await b.c.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'p', code: 'KeyP', modifiers: 4, windowsVirtualKeyCode: 80 });
+await b.validerPages();
 t0 = Date.now(); while (Date.now() - t0 < 8000 && !(dl = await b.telecharges()).length) await b.dormir(300);
 b.ok(dl.length === 1 && /-fiche-annote\.pdf$/.test(dl[0]), '⌘P : exporte le document AFFICHÉ (la fiche)', dl.join(', '));
 

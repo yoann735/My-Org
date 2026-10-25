@@ -136,6 +136,17 @@ async function embarquerImage(outDoc, blob) {
   return outDoc.embedPng(new Uint8Array(await png.arrayBuffer()));
 }
 
+/** (25/10, docs/compte-rendu-boites-tableaux.md §4) un PDF fait des seules pages `indices` (0…n-1, dans l'ordre) d'un autre */
+export async function extrairePages(octets, indices) {
+  const src = await PDFDocument.load(octets);
+  const n = src.getPageCount();
+  const liste = [...new Set(indices)].filter((i) => i >= 0 && i < n).sort((a, b) => a - b);
+  if (liste.length === n) return octets;
+  const out = await PDFDocument.create();
+  (await out.copyPages(src, liste)).forEach((pg) => out.addPage(pg));
+  return out.save();
+}
+
 /**
  * @param {ArrayBuffer} octetsPdf  copie des octets du PDF d'origine (jamais réécrite)
  * @param {object[]} highlights    surlignages du document

@@ -12,7 +12,10 @@ const pieger = () => b.ev(`(()=>{if(window.__piege)return 1;window.__piege=1;win
 const dl = () => b.ev(`JSON.stringify(window.__dl||[])`).then(JSON.parse);
 const viderDl = () => b.ev(`(window.__dl=[],1)`);
 const ouvrirMenu = async () => { if (!(await b.ev(`!!document.querySelector('.mf-menu')`))) await b.clic(await b.pos(`document.querySelector('.mf-bouton')`, false), { att: 450 }); };
-const entree = async (id, choix = null) => { await ouvrirMenu(); await b.clic(await b.pos(choix ? `document.querySelector('[data-entree=${id}] [data-choix=${choix}]')` : `document.querySelector('button[data-entree=${id}]')`, false), { att: 600 }); };
+const entree = async (id, choix = null) => { await ouvrirMenu(); await b.clic(await b.pos(choix ? `document.querySelector('[data-entree=${id}] [data-choix=${choix}]')` : `document.querySelector('button[data-entree=${id}]')`, false), { att: 600 });
+  // (25/10) les exports passent par le choix des pages (pdf/ChoixPages.jsx) : « Toutes », puis Exporter
+  if (await b.ev(`!!document.querySelector('.cp-fenetre')`)) { await b.clic(await b.pos(`document.querySelector('.cp-fenetre .cp-mode[data-mode="toutes"]')`, false), { att: 200 }); await b.clic(await b.pos(`document.querySelector('.cp-fenetre [data-action="exporter"]')`, false), { att: 600 }); }
+};
 const menuOuvert = () => b.ev(`!!document.querySelector('.mf-menu')`);
 const vue = async (v) => { await b.ev(`(()=>{const x=[...document.querySelectorAll('.pdfr-jumelle-bascule .seg-btn')].find(x=>x.innerText===${JSON.stringify(v)});x&&x.click();return 1})()`); await b.dormir(1800); };
 const attendre = async (f, ms = 20000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await f()) return true; await b.dormir(300); } return false; };

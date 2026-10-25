@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
+import { ChoixPages } from './ChoixPages.jsx';
 import { pdfIA, pngsIA, zipPngsIA, lisezmoiIA, ExportAnnule, DPI_REPLI } from './exportIA.js';
 
 const mo = (o) => (o / (1024 * 1024)).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' Mo';
@@ -20,8 +21,10 @@ const ko = (o) => Math.round(o / 1024).toLocaleString('fr-FR') + ' Ko';
 
 /* `extras` (15/10) : [{ label, icon, title, onClick }] — « Copier les notions », « Cours complet
    (JSON) », « Prompts » : des sorties pour une IA qui étaient des entrées à part du menu Fichier */
-export function PanneauExportIA({ pageCourante, nbPages, compter, preparer, jsonDe, onFermer, extras = [] }) {
-  const [portee, setPortee] = useState('page');
+export function PanneauExportIA({ pageCourante, nbPages, compter, preparer, jsonDe, onFermer, extras = [], coursId = null }) {
+  // (25/10, docs/compte-rendu-boites-tableaux.md §4) la portée = les pages choisies (pdf/ChoixPages.jsx), comme tous les exports
+  const [portee, setPortee] = useState([Math.max(0, pageCourante - 1)]);
+  const [erreurPages, setErreurPages] = useState(null);
   const [message, setMessage] = useState(null);
   const [occupe, setOccupe] = useState(false);
   const [progres, setProgres] = useState(null); // { etape, fait, total }
@@ -37,7 +40,8 @@ export function PanneauExportIA({ pageCourante, nbPages, compter, preparer, json
   });
   useEffect(() => () => { if (annulation.current) annulation.current.abort(); }, []); // panneau fermé : génération arrêtée
   const fermerApercu = () => { if (apercu) apercu.pngs.forEach((p) => URL.revokeObjectURL(p.url)); setApercu(null); };
-  const n = compter(portee);
+  const n = portee ? compter(portee) : 0;
+  const unePage = !!portee && portee.length === 1;
   const executer = async (f) => {
     if (occupe) return;
     const ctrl = new AbortController();
@@ -95,9 +99,9 @@ export function PanneauExportIA({ pageCourante, nbPages, compter, preparer, json
     }),
     image: () => executer(async () => {
       // promesse passée au presse-papiers tout de suite : le geste de l'utilisateur reste valable
-      const prete = preparer('page').then((s) => pngsIA(s)).then((p) => p[0].blob);
+      const prete = preparer(portee).then((s) => pngsIA(s)).then((p) => p[0].blob);
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': prete })]);
-      return { ok: true, texte: `Image de la page ${pageCourante} copiée (2× la taille de page).` };
+      return { ok: true, texte: `Image de la page ${portee[0] + 1} copiée (2× la taille de page).` };
     }),
   };
   const pct = progres && progres.total ? Math.round((100 * progres.fait) / progres.total) : 0;
@@ -109,22 +113,20 @@ export function PanneauExportIA({ pageCourante, nbPages, compter, preparer, json
           <span className="mep-titre">Export spécial IA</span>
           <button type="button" className="icon-btn sm" onClick={onFermer} title="Fermer (Échap)" aria-label="Fermer"><Icon name="x" size={14} /></button>
         </div>
-        <div className="mep-prereglages ta-portee" role="group" aria-label="Portée">
-          {[['page', `Page ${pageCourante}`], ['cours', `Cours entier (${nbPages} p.)`]].map(([id, lbl]) => (
-            <button key={id} type="button" className={'mep-pre' + (portee === id ? ' actif' : '')} aria-pressed={portee === id}
-              disabled={occupe} onClick={() => { setPortee(id); setMessage(null); }}>{lbl}</button>
-          ))}
+        <div className="eia-pages-choix">
+          <ChoixPages coursId={coursId} nbPages={nbPages} pageCourante={pageCourante} desactive={occupe}
+            onPages={(p, err) => { setPortee(p); setErreurPages(err); setMessage(null); }} />
         </div>
         <div className="ta-corps">
           <p className="ta-aide">{n} boîte{n > 1 ? 's' : ''}. Le PDF montre chaque page avec toutes ses annotations ; chaque boîte y porte son repère (ex. #k3f), aussi écrit dans le JSON et, invisible, dans le texte du PDF. L’IA rend le même JSON, textes corrigés ; réimport par Fichier › Importer des textes d’annotations.</p>
           <div className="ta-actions">
-            <button type="button" className="btn primary sm" disabled={occupe || !n} onClick={actions.pdf} title="Le PDF (une page par page de cours, repères visibles + texte invisible), annotations.json et LISEZMOI.txt"><Icon name="upload" size={13} /> Télécharger (PDF + JSON)</button>
-            <button type="button" className="btn sm" disabled={occupe || !n} onClick={actions.png} title="Un PNG par page (2× la taille de page), avec annotations.json, dans un .zip"><Icon name="image" size={13} /> PNG par page</button>
+            <button type="button" className="btn primary sm" disabled={occupe || !n || !portee} onClick={actions.pdf} title="Le PDF (une page par page de cours, repères visibles + texte invisible), annotations.json et LISEZMOI.txt"><Icon name="upload" size={13} /> Télécharger (PDF + JSON)</button>
+            <button type="button" className="btn sm" disabled={occupe || !n || !portee} onClick={actions.png} title="Un PNG par page (2× la taille de page), avec annotations.json, dans un .zip"><Icon name="image" size={13} /> PNG par page</button>
           </div>
           <div className="ta-actions">
-            <button type="button" className="btn sm" disabled={occupe || !n} onClick={actions.apercu}><Icon name="search" size={13} /> Aperçu</button>
-            <button type="button" className="btn sm" disabled={occupe || !n} onClick={actions.json}><Icon name="copy" size={13} /> Copier le JSON</button>
-            {portee === 'page' && <button type="button" className="btn sm" disabled={occupe || !n} onClick={actions.image}><Icon name="image" size={13} /> Copier l’image</button>}
+            <button type="button" className="btn sm" disabled={occupe || !n || !portee} onClick={actions.apercu}><Icon name="search" size={13} /> Aperçu</button>
+            <button type="button" className="btn sm" disabled={occupe || !n || !portee} onClick={actions.json}><Icon name="copy" size={13} /> Copier le JSON</button>
+            {unePage && <button type="button" className="btn sm" disabled={occupe || !n || !portee} onClick={actions.image}><Icon name="image" size={13} /> Copier l’image</button>}
           </div>
           {progres && (
             <div className="eia-progres" role="progressbar" aria-valuemin={0} aria-valuemax={progres.total || 1} aria-valuenow={progres.fait} aria-label="Progression de l’export">

@@ -15,6 +15,19 @@ export async function banc(W = 1440, H = 900, opts = {}) {
     entrees:[...s.querySelectorAll('[data-entree]')].map(e=>({id:e.dataset.entree,label:(e.querySelector('.mf-label')||e).innerText.trim(),gris:e.getAttribute('aria-disabled')==='true'||e.classList.contains('indispo'),titre:e.title,kbd:(e.querySelector('.mf-kbd')||{}).innerText||'',danger:e.classList.contains('danger'),
       choix:[...e.querySelectorAll('[data-choix]')].map(c=>({id:c.dataset.choix,gris:c.getAttribute('aria-disabled')==='true',titre:c.title}))}))}))`);
   // clic sur l'entrée `id` de la section `cle` (et la pastille `choix`)
+  // (25/10) un export ouvre d'abord le choix des pages (pdf/ChoixPages.jsx) : « Toutes » puis Exporter (attend la fenêtre)
+  b.validerPages = async (attente = 4000) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < attente) {
+      if (await b.ev(`!!document.querySelector('.cp-fenetre')`)) {
+        await b.clic(await b.pos(`document.querySelector('.cp-fenetre .cp-mode[data-mode="toutes"]')`, false), { att: 200 });
+        await b.clic(await b.pos(`document.querySelector('.cp-fenetre [data-action="exporter"]')`, false), { att: 400 });
+        return true;
+      }
+      await b.dormir(200);
+    }
+    return false;
+  };
   b.entree = async (cle, id, choix = null) => {
     await b.ouvrirMenu();
     const sel = `.mf-menu .mf-section[data-section=${cle}] [data-entree=${id}]` + (choix ? ` [data-choix=${choix}]` : '');

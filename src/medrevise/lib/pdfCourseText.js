@@ -247,11 +247,12 @@ const noteBlock = (h, normalize) => {
  *   des textes identiques à ceux que le lecteur enregistre
  * @returns {Promise<{ texteStructure: string, surlignages: object[] }>}
  */
-export async function pdfCourseParts(pdfDoc, highlights, { normalize = (s) => s } = {}) {
+export async function pdfCourseParts(pdfDoc, highlights, { normalize = (s) => s, pages = null } = {}) {
   const out = [];
   const surlignages = [];
   let nMarks = 0;
   for (let p = 1; p <= pdfDoc.numPages; p++) {
+    if (pages && !pages.has(p)) continue; // (25/10) export d'une partie des pages (pdf/choixPages.js)
     const { items, blocks } = await pageModel(await pdfDoc.getPage(p));
     const { owner, unplaced } = paint(items, (highlights || []).filter((h) => h.page === p), normalize);
     const unit = (u) => {

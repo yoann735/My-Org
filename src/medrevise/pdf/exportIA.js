@@ -20,6 +20,7 @@ import { exporterDepuisBlob, nettoyeur } from './exportAnnote.js';
 import { openPdf } from './pdfjsSetup.js';
 import { boitesOrdonnees, refsCourtes, construireExportIA, LISEZMOI_IA } from '../lib/textesAnnotations.js';
 import { creerZip } from '../lib/zipSimple.js';
+import { suffixePages } from './choixPages.js';
 
 export const ECHELLE_PNG = 2; // 2× la taille de page
 export const DPI_IA = 150;
@@ -47,16 +48,22 @@ const verifier = (signal) => { if (signal && signal.aborted) throw new ExportAnn
  * @param {'page'|'cours'} o.portee
  * @param {number} o.pageIndex     0… (portée « page »)
  */
-export async function preparerSourceIA({ titre, pdfId, highlights, annotations, ordrePages, portee, pageIndex = 0 }) {
+export async function preparerSourceIA({ titre, pdfId, highlights, annotations, ordrePages, portee, pageIndex = 0, pages = null }) {
+  // (25/10, docs/compte-rendu-boites-tableaux.md §4) `pages` : les indices choisis (pdf/ChoixPages.jsx) ; sinon la portée d'avant
+  if (Array.isArray(pages)) {
+    if (pages.length === 1) { portee = 'page'; pageIndex = pages[0]; } else if (pages.length < ordrePages.length) portee = 'pages';
+    else portee = 'cours';
+  }
   const toutes = boitesOrdonnees(annotations, ordrePages);
   const refs = refsCourtes(toutes); // repères calculés sur TOUT le cours : un même repère partout
-  const cles = portee === 'page' ? [ordrePages[pageIndex]] : ordrePages;
+  const cles = portee === 'page' ? [ordrePages[pageIndex]] : portee === 'pages' ? pages.map((i) => ordrePages[i]) : ordrePages;
   const boites = boitesOrdonnees(annotations, cles);
   const reperes = new Map(boites.map((b) => [b.id, refs.get(b.id)]));
   const { octets, bilan } = await exporterDepuisBlob(pdfId, highlights, annotations, { reperes });
-  const indices = portee === 'page' ? [pageIndex] : ordrePages.map((_, i) => i); // pages du PDF vectoriel exportées
+  const indices = portee === 'page' ? [pageIndex] : portee === 'pages' ? [...pages] : ordrePages.map((_, i) => i); // pages du PDF vectoriel exportées
   const json = construireExportIA({ cours: titre, page: portee === 'page' ? pageIndex + 1 : null, boites, refs });
-  const base = nomFichier(titre) + '-export-ia' + (portee === 'page' ? '-p' + deux(pageIndex + 1) : '');
+  if (portee === 'pages') json.pages = pages.map((i) => i + 1);
+  const base = nomFichier(titre) + '-export-ia' + (portee === 'page' ? '-p' + deux(pageIndex + 1) : portee === 'pages' ? suffixePages(pages, ordrePages.length) : '');
   return { titre, octets, indices, etiquettes: bilan.reperes || [], json, base, nb: boites.length, portee };
 }
 
