@@ -13,6 +13,7 @@ import { ActionsCarte } from '../components/ActionsCarte.jsx';
 import { advanceQuestion, recordRelearnAttempt, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
 import { BoutonsFlashcard } from '../components/BoutonsFlashcard.jsx';
 import { repondreFlashcard } from '../scheduler/repondre.js';
+import { garderTagEnBase } from '../lib/aApprendre.js';
 import { NOTE_DEPUIS_QUALITE_SCORE, NOTE_DEPUIS_ETIQUETTE } from '../scheduler/noter.js';
 import { planificateurActif } from '../scheduler/config.js';
 import { index } from '../lib/planning.js';
@@ -141,7 +142,7 @@ export function MobileSession({ ctx, onQuit }) {
         // flashcard : planificateur unique (maison si FSRS OFF, FSRS si ON) + mode ombre + journal
         updated = await repondreFlashcard(item, noteFlashcard(ratingIn), {
           reglages: ctx.reglagesFC, relearn: !!item._relearn, tempsMs: applyExtra.tempsMs,
-          sauver: async (c) => { await ctx.saveQuestion(c); return c; },
+          sauver: async (c) => { const r = await garderTagEnBase(c); await ctx.saveQuestion(r); return r; }, // (26/10) tag « À apprendre » posé pendant l'affichage conservé
         });
       } else {
         updated = item._relearn ? recordRelearnAttempt(item, quality, applyExtra) : advanceQuestion(item, quality, applyExtra);
@@ -332,7 +333,7 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
   return (
     <div className="mrm-fc-classique">
       <div className="mrm-flash-scene">
-        <button type="button" className={'mrm-flash-card' + (image ? ' avec-image' : '') + (flipped && !erreurMode ? ' avec-actions' : '')} onClick={() => setFlipped((f) => !f)}>
+        <button type="button" className={'mrm-flash-card' + (image ? ' avec-image' : '') + (!erreurMode ? ' avec-actions' : '')} onClick={() => setFlipped((f) => !f)}>
           {image && <ImageFlashcard imageId={item.imageId} maxH="min(220px, 30dvh)" className="mrm" />}
           {!flipped ? (
             <>
@@ -358,7 +359,7 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
           )}
         </button>
         {/* (17/10) carnet d'erreurs / apprentissage de CETTE carte : icônes de 40 px dans l'en-tête de la carte */}
-        {flipped && !erreurMode && <ActionsCarte ctx={ctx} carte={item} mobile />}
+        {!erreurMode && <ActionsCarte ctx={ctx} carte={item} mobile carnet={flipped} />}
       </div>
       {flipped && (
         <div className="mrm-fc-bas">

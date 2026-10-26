@@ -99,3 +99,14 @@
 .cn-titre { flex: 0 0 auto; font-weight: 700; font-size: 14.5px; color: var(--text); }
 .cn-sous { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cn-fermer { flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--text-2); cursor: pointer; }
+
+/* (26/10) « À apprendre » (components/BoutonAApprendre.jsx) : étoile pleine d'accent quand la carte est taguée ;
+   petite étiquette posée sur la carte. Jetons de la DA seulement. */
+.aap-bt.actif { color: var(--accent); }
+.ac-icone.aap-bt.actif { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.cd-ic.aap-bt.actif { color: var(--accent) !important; }
+.aap-etiquette { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; height: 18px; padding: 0 7px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; color: var(--accent); background: var(--accent-soft); }
+.flash-face.front:has(> .ac) .ff-zone { margin-top: 10px; }
+.sn-toast.mobile.haut { top: calc(14px + env(safe-area-inset-top)); bottom: auto; }
+.aap-toast-hote .sn-toast { z-index: 1300; } /* au-dessus de la vue agrandie et de l'aperçu (1200) */

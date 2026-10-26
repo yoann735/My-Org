@@ -47,6 +47,9 @@ import { VueMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from './FlashcardImage.jsx';
 import { CarteAjoutFlashcard, sorteDe } from './CarteAjoutFlashcard.jsx';
 import { ActionsCarte } from './ActionsCarte.jsx';
+import { EtiquetteAApprendre } from './BoutonAApprendre.jsx';
+import { VueAgrandie } from './VueAgrandie.jsx';
+import { estAApprendre } from '../lib/aApprendre.js';
 import { planDuJour } from '../lib/apprentissageFC.js';
 import { nextDate } from '../lib/planning.js';
 import { todayISO } from '../lib/sm2.js';
@@ -291,7 +294,7 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   const nVisee = flashcardVisee ? flashcardVisee.n : 0;
   useEffect(() => {
     if (!flashcardVisee || !flashcardVisee.id || !avecItems) return undefined;
-    setActiveType('flashcard'); setEditingId(null); setRecherche(''); setFiltreSorte('toutes');
+    setActiveType('flashcard'); setEditingId(null); setRecherche(''); setFiltreSorte('toutes'); setFiltreAap(false);
     allerMode('exercices');
     const t = setTimeout(() => {
       const el = panneauRef.current && panneauRef.current.querySelector(`[data-item="${flashcardVisee.id}"]`);
@@ -328,15 +331,19 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   /* FLASHCARDS : RECHERCHE ET FILTRES PAR SORTE (22/10, docs/compte-rendu-tableau-flashcards.md §6) */
   const [recherche, setRecherche] = useState('');
   const [filtreSorte, setFiltreSorte] = useState('toutes');
+  // (26/10) filtre « À apprendre », combinable avec la sorte et la recherche ; carte agrandie (id)
+  const [filtreAap, setFiltreAap] = useState(false);
+  const [agrandie, setAgrandie] = useState(null);
   const sorteListe = (q) => (estOcclusion(q) ? 'image' : sorteDe(q) !== 'standard' ? sorteDe(q) : (q.cloze && q.cloze.length) || /\{\{[^{}]+\}\}/.test(q.recto || '') ? 'trou' : q.imageId ? 'image' : 'texte');
+  const nbAap = useMemo(() => items.filter(estAApprendre).length, [items]);
   const nbParSorte = useMemo(() => { const n = {}; for (const q of items) { const k = sorteListe(q); n[k] = (n[k] || 0) + 1; } return n; }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
   const sansAcc = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const itemsVus = useMemo(() => {
     if (activeType !== 'flashcard') return items;
     const q0 = sansAcc(recherche.trim());
-    return items.filter((q) => (filtreSorte === 'toutes' || sorteListe(q) === filtreSorte)
+    return items.filter((q) => (filtreSorte === 'toutes' || sorteListe(q) === filtreSorte) && (!filtreAap || estAApprendre(q))
       && (!q0 || sansAcc([q.recto, q.verso, q.theme, q.indice, q.a_retenir, q.muscle && q.muscle.nom, q.molecule && q.molecule.nom].filter(Boolean).join(' ')).includes(q0)));
-  }, [items, activeType, recherche, filtreSorte]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [items, activeType, recherche, filtreSorte, filtreAap]); // eslint-disable-line react-hooks/exhaustive-deps
   // les flashcards de CE cours : combien, combien à revoir aujourd'hui (étape 2 FSRS : plus de
   // compteur « nouvelles / à apprendre », le mode Apprentissage est supprimé)
   const resumeFC = useMemo(() => {
@@ -375,7 +382,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
       )}
       <div className="pm-actions">
         {/* carte flashcard ouverte : elle a son propre « Terminer » — pas de doublon ici */}
-        {!(adding && addSource === 'form' && activeType === 'flashcard') && <button type="button" className={'btn sm' + (adding && addSource === 'form' ? ' actif' : '') + (activeType === 'flashcard' ? ' primary' : '')} data-act="nouvelle"
+        {/* (26/10) Flashcards : le formulaire vit en tête de la liste, replié en une ligne « + Nouvelle carte » (plus bas) */}
+        {activeType !== 'flashcard' && <button type="button" className={'btn sm' + (adding && addSource === 'form' ? ' actif' : '') + (activeType === 'flashcard' ? ' primary' : '')} data-act="nouvelle"
           onClick={() => { if (adding && addSource === 'form') closeAdd(); else { setAdding(true); setAddSource('form'); setAddedCount(0); setEditingId(null); } }}>
           <Icon name={adding && addSource === 'form' ? 'x' : 'plus'} size={13} /> {adding && addSource === 'form' ? 'Fermer' : activeType === 'flashcard' ? 'Nouvelle carte' : 'Ajouter'}
         </button>}
@@ -391,6 +399,12 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
       </div>
       {/* thème de la fiche : TOUJOURS visible (08/10) — derrière « ⋯ », on ne le trouvait plus */}
       {activeType === 'flashcard' && <ThemeFicheFlashcards ctx={ctx} ficheId={ficheId} />}
+      {activeType === 'flashcard' && !(adding && addSource === 'form') && (
+        <button type="button" className="fcl-nouvelle" data-act="nouvelle" aria-expanded="false"
+          onClick={() => { setAdding(true); setAddSource('form'); setAddedCount(0); setEditingId(null); }}>
+          <Icon name="plus" size={14} /> Nouvelle carte
+        </button>
+      )}
       {adding && addSource === 'form' && activeType === 'flashcard' && (
         <CarteAjoutFlashcard key={rectoInitial ? 'r' + rectoInitial.n : 'carte'} ctx={ctx} ficheId={ficheId} busy={busyAdd} onAjouter={submitAdd} onTerminer={closeAdd}
           rectoInitial={rectoInitial ? rectoInitial.texte : null}
@@ -435,13 +449,19 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
                   {lbl} <span className="tnum">{n ?? nbParSorte[id]}</span>
                 </button>
               ))}
+            {(nbAap > 0 || filtreAap) && (
+              <button type="button" role="switch" aria-checked={filtreAap} data-filtre="aap" className={'fcl-filtre fcl-filtre-aap' + (filtreAap ? ' actif' : '')}
+                onClick={() => setFiltreAap((v) => !v)} title="Seulement les cartes « À apprendre » (se combine avec la sorte et la recherche)">
+                <Icon name="star" size={11} fill={filtreAap} /> À apprendre <span className="tnum">{nbAap}</span>
+              </button>
+            )}
           </div>
         </div>
       )}
       <div className="pis-list">
         {activeType === 'flashcard' && items.length > 0 && itemsVus.length === 0 && (
           <div className="pm-vide fcl-vide"><Icon name="search" size={20} /><div>Aucune carte ne correspond.</div>
-            <button type="button" className="linklike" onClick={() => { setRecherche(''); setFiltreSorte('toutes'); }}>Tout afficher</button></div>
+            <button type="button" className="linklike" onClick={() => { setRecherche(''); setFiltreSorte('toutes'); setFiltreAap(false); }}>Tout afficher</button></div>
         )}
         {items.length === 0 && !adding && (
           <div className="pm-vide">
@@ -465,12 +485,12 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
           ) : (
             <ItemReadCard key={item.id} item={item} ctx={ctx} onBoite={onAllerABoite && item.source && item.source.boiteId ? () => onAllerABoite(item.source) : null}
               onEdit={() => { if (estOcclusion(item)) { setOccEdition(item); return; } setEditingId(item.id); setAdding(false); }}
-              onDelete={() => setConfirmDel(item)} />
+              onDelete={() => setConfirmDel(item)} onAgrandir={item.type === 'flashcard' ? () => setAgrandie(item.id) : null} />
           )
         ))}
       </div>
     </div>
-  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, itemsVus, recherche, filtreSorte, nbParSorte, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC]); // eslint-disable-line react-hooks/exhaustive-deps
+  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, itemsVus, recherche, filtreSorte, filtreAap, nbAap, nbParSorte, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* contenus des modes : des éléments STABLES (mêmes objets d'un rendu à l'autre tant que
      leur contenu ne change pas) — le volet mémoïsé (Volet) ne se re-rend alors jamais
@@ -518,6 +538,10 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
 
         {menuActions && <ContextMenu x={menuActions.x} y={menuActions.y} items={actions} onClose={() => setMenuActions(null)} />}
         {promptsOuverts && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOuverts(false)} />}
+        {agrandie && activeType === 'flashcard' && (
+          <VueAgrandie ctx={ctx} id={agrandie} ids={itemsVus.some((q) => q.id === agrandie) ? itemsVus.map((q) => q.id) : [agrandie]}
+            onChanger={setAgrandie} onFermer={() => setAgrandie(null)} />
+        )}
         {importFC && <ImportFlashcards ctx={ctx} ficheId={ficheId} onFermer={() => setImportFC(false)} />}
 
         {occEdition && (
@@ -557,7 +581,7 @@ const Volet = memo(function Volet({ id, label, k, cache, contenu }) {
 });
 
 /* ---- carte de lecture (réponse toujours visible) + Éditer/Supprimer ---- */
-function ItemReadCard({ item, ctx = null, onEdit, onDelete, onBoite = null }) {
+function ItemReadCard({ item, ctx = null, onEdit, onDelete, onBoite = null, onAgrandir = null }) {
   /* (22/10) flashcards : une carte compacte, ses actions au survol (au doigt : toujours visibles) — modifier,
      apprentissage, carnet d'erreurs, supprimer (docs/compte-rendu-tableau-flashcards.md §6) */
   const fc = item.type === 'flashcard';
@@ -566,6 +590,7 @@ function ItemReadCard({ item, ctx = null, onEdit, onDelete, onBoite = null }) {
       <div className="card-body">
         <div className="row spread" style={{ marginBottom: 8, alignItems: 'flex-start', gap: 8 }}>
           <span className="hint" style={{ fontWeight: 700, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto' }}>{item.theme || 'Sans thème'}</span>
+          {fc && <EtiquetteAApprendre carte={item} />}
           <div className={'row' + (fc ? ' fcl-actions' : '')} style={{ gap: 4, flex: '0 0 auto' }}>
             {estMuscle(item) && <BoutonCopier texte={() => texteMuscle(item)} />}
             {estMolecule(item) && <BoutonCopier texte={() => texteMolecule(item)} />}
@@ -573,6 +598,9 @@ function ItemReadCard({ item, ctx = null, onEdit, onDelete, onBoite = null }) {
             {fc && onBoite && ( /* (25/10) carte faite d'une boîte : y retourner (sa page, la boîte signalée) */
               <button type="button" className="cd-ic fcl-vers-boite" data-act="vers-boite" onClick={onBoite}
                 title={`Faite depuis une boîte (page ${item.source.page}) — y aller`} aria-label="Aller à la boîte d’origine"><Icon name="ext" size={12} /></button>
+            )}
+            {fc && onAgrandir && ( /* (26/10) la carte en grand, comme en révision (components/VueAgrandie.jsx) */
+              <button type="button" className="cd-ic" data-act="agrandir" onClick={onAgrandir} title="Agrandir — voir la carte comme en révision" aria-label="Agrandir"><Icon name="maximize" size={12} /></button>
             )}
             {fc && ctx && <ActionsCarte ctx={ctx} carte={item} mobile={false} />}
             <button type="button" className="cd-ic" title="Supprimer" aria-label="Supprimer" data-act="supprimer" onClick={onDelete}><Icon name="trash" size={12} /></button>

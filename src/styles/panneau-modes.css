@@ -248,3 +248,10 @@ textarea.fcf-champ { min-height: 0; }
 .pis-item.fcl-carte img, .pis-item.fcl-carte .fc-img img { max-height: 96px; width: auto; max-width: 100%; object-fit: contain; }
 .alib-selectionner.actif { color: var(--accent); border-color: var(--accent); }
 .pis-item.fcl-visee { box-shadow: 0 0 0 2px var(--accent); transition: box-shadow .3s; } /* (22/10) rouverte depuis une carte du tableau */
+
+/* (26/10) onglet Flashcards : formulaire replié en une ligne « + Nouvelle carte » en tête de la liste ; filtre « À apprendre » */
+.fcl-nouvelle { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 36px; margin: 2px 0 10px; border-radius: 10px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--border)); background: transparent; color: var(--accent); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.fcl-nouvelle:hover, .fcl-nouvelle:focus-visible { background: var(--accent-soft); border-style: solid; outline: none; }
+.fcl-filtre-aap svg { color: var(--accent); }
+.pis-item.fcl-carte .aap-etiquette { margin-left: -2px; }

@@ -2,7 +2,8 @@
    MedRevise — MODE APPRENTISSAGE LIBRE : la session en rafale (bureau et téléphone).
    Question → retourner → réponse ; « Pas su » / « Su » ; « Skip » discret. Logique pure dans
    ./session.js. L'état vit en mémoire seulement : quitter = abandonner (rien à reprendre).
-   AUCUNE écriture, ni pendant ni après la session (v2, 25/10 : plus de liste à vider — toutes les
+   (26/10) seule écriture possible : l'étoile « À apprendre » de la carte affichée (champ `aApprendre`, geste explicite).
+   AUCUNE autre écriture, ni pendant ni après la session (v2, 25/10 : plus de liste à vider — toutes les
    flashcards sont dans le mode Apprentissage d'office).
    Gestes (téléphone) : toucher = retourner ; au verso, glisser à droite = Su, à gauche = Pas su.
    Clavier (bureau) : Espace = retourner ; ← ou 1 = Pas su ; → ou 2 = Su ; S = Skip.
@@ -11,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { ligneParLigne } from '../components/FlashcardMuscle.jsx';
 import { FaceCarte } from './FaceCarte.jsx';
+import { BoutonAApprendre } from '../components/BoutonAApprendre.jsx';
 import { nouvelleSession, carteCourante, repondre, passer, finir, bilan } from './session.js';
 
 const pl = (n, s, p = s + 's') => `${n} ${n > 1 ? p : s}`;
@@ -95,6 +97,7 @@ export function SessionApprentissage({ ctx, ids, onQuitter, pleinEcran = false }
           <div className="sfc-etiquette alib-etiquette">
             <span className="alib-cours">{(fiches[carte.ficheId] || {}).titre || ''}</span>
             {suite > 0 && <span className="pill accent alib-suite" title="Encore un « Su » d’affilée et la carte est sue">1 Su sur 2</span>}
+            <BoutonAApprendre ctx={ctx} carte={carte} classe="ac-icone" taille={pleinEcran ? 18 : 15} mobile={pleinEcran} />
           </div>
           <button type="button" className="sfc-carte" key={carte.id + ':' + (retournee ? 'v' : 'r')} data-carte={carte.id}
             style={decal ? { transform: `translateX(${decal}px) rotate(${decal / 40}deg)`, transition: 'none' } : undefined}

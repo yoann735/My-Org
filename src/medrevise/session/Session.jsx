@@ -22,6 +22,7 @@ import { ZoneDefilante, classeLongueur } from '../components/ZoneDefilante.jsx';
 import { advanceQuestion, recordRelearnAttempt, QUALITY, QUALITY_TO_RATING, qualityFromRatio, shuffle, labelForCursor, todayISO, computeStreak, lastTwoAreFails } from '../lib/sm2.js';
 import { BoutonsFlashcard } from '../components/BoutonsFlashcard.jsx';
 import { repondreFlashcard } from '../scheduler/repondre.js';
+import { garderTagEnBase } from '../lib/aApprendre.js';
 import { NOTE_DEPUIS_QUALITE_SCORE, NOTE_DEPUIS_ETIQUETTE } from '../scheduler/noter.js';
 import { planificateurActif } from '../scheduler/config.js';
 import { index } from '../lib/planning.js';
@@ -194,7 +195,7 @@ export function Session({ ctx }) {
         // flashcard : planificateur unique (maison si FSRS OFF, FSRS si ON) + mode ombre + journal
         updated = await repondreFlashcard(item, noteFlashcard(ratingIn), {
           reglages: ctx.reglagesFC, relearn: !!item._relearn, tempsMs: applyExtra.tempsMs,
-          sauver: async (c) => { await ctx.saveQuestion(c); return c; },
+          sauver: async (c) => { const r = await garderTagEnBase(c); await ctx.saveQuestion(r); return r; }, // (26/10) tag « À apprendre » posé pendant l'affichage conservé
         });
       } else {
         updated = item._relearn ? recordRelearnAttempt(item, quality, applyExtra) : advanceQuestion(item, quality, applyExtra);
@@ -479,6 +480,8 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
 >
           <div className="flash-face front">
             <span className="ff-tag" style={{ color: meta.tint }}>{erreurMode ? "Flashcard d'erreur" : `${meta.label} · ${item.theme}`}</span>
+            {/* (26/10) « À apprendre » dès le recto (le carnet reste sur la face réponse) */}
+            {!erreurMode && !flipped && <ActionsCarte ctx={ctx} carte={item} carnet={false} />}
             <ZoneDefilante className={'ff-zone ' + classeLongueur(item.recto)}>
             {molecule
               ? <>{imageAuRecto(item) && <AnatImage imageId={item.imageId} compact />}<FaceMoleculeParesseuse carte={item} cote="recto" /></>

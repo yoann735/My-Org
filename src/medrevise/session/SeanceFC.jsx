@@ -33,6 +33,7 @@ import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { isCloze, parseCloze, highlightClozeWords } from '../lib/cloze.js';
 import { put, getMeta, setMeta } from '../lib/storage.js';
+import { garderTagEnBase } from '../lib/aApprendre.js';
 import { todayISO } from '../lib/sm2.js';
 import { index, isFicheScheduled, nextDate } from '../lib/planning.js';
 import { planDuJour, entrelacer, estFlashcardJ, VERSION_MESURES, reprendreSeance } from '../lib/apprentissageFC.js';
@@ -176,7 +177,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
       let e = tick();
       const s = await repondreFlashcard(carte, note, {
         reglages: ctx.reglagesFC,
-        sauver: async (c) => { const r = await put('questions', c); setCartes((x) => ({ ...x, [r.id]: r })); return r; },
+        sauver: async (c) => { const r = await put('questions', await garderTagEnBase(c)); setCartes((x) => ({ ...x, [r.id]: r })); return r; },
       });
       e = { ...e, idx: e.idx + 1, faites: { ...e.faites, revisions: e.faites.revisions + 1, notees: (e.faites.notees || 0) + 1, rates: e.faites.rates + (note === 1 ? 1 : 0) } };
       // la séance se remet d'accord à chaque réponse (v2 : cartes devenues dues entre-temps ajoutées)
@@ -196,7 +197,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
       if (passer) {
         s = await passerFlashcardEnRevision(carte, {
           reglages: ctx.reglagesFC,
-          sauver: async (c) => { const r = await put('questions', c); setCartes((x) => ({ ...x, [r.id]: r })); return r; },
+          sauver: async (c) => { const r = await put('questions', await garderTagEnBase(c)); setCartes((x) => ({ ...x, [r.id]: r })); return r; },
         });
       }
       e = { ...e, idx: e.idx + 1, faites: { ...e.faites, revisions: e.faites.revisions + 1, [passer ? 'passees' : 'gardees']: ((e.faites[passer ? 'passees' : 'gardees']) || 0) + 1 } };
@@ -240,12 +241,13 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
           <div className="sfc-etiquette" data-categorie={categorie}>{nouvelle ? 'Nouvelle carte' : categorie === 'retard' ? 'En retard' : (carte.historique || []).some((h) => h && h.qualite != null) ? 'Révision' : 'Nouvelle carte'}</div>
           {/* (17/10) cadre : la carte (un bouton) + les icônes carnet / apprentissage de CETTE carte, en surimpression dans son en-tête */}
           <div className="sfc-carte-cadre">
-          <button type="button" className={'sfc-carte' + (retournee ? ' avec-actions' : '')} key={carte.id + ':' + (retournee ? 'v' : 'r')} data-carte={carte.id}
+          <button type="button" className="sfc-carte avec-actions" key={carte.id + ':' + (retournee ? 'v' : 'r')} data-carte={carte.id}
             onClick={() => setRetournee((r) => !r)}>
             <FaceFC carte={carte} cote={retournee ? 'verso' : 'recto'} masquable={ligneParLigne(ctx)} />
             {!retournee && <span className="sfc-indication">Touche pour voir la réponse</span>}
           </button>
-          {retournee && <ActionsCarte ctx={ctx} carte={carte} />}
+          {/* (26/10) « À apprendre » toujours là (recto compris) ; le carnet, lui, après le retournement */}
+          <ActionsCarte ctx={ctx} carte={carte} carnet={retournee} />
           </div>
           <div className="sfc-bas">
             {!retournee && <button type="button" className="sfc-btn neutre" onClick={() => setRetournee(true)}>Voir la réponse</button>}
@@ -265,8 +267,9 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
   );
 }
 
-/** une face (recto, verso, ou les deux pour la présentation) — texte, trous, image, masques */
-function FaceFC({ carte, cote, masquable = false }) {
+/** une face (recto, verso, ou les deux pour la présentation) — texte, trous, image, masques.
+ *  (26/10) exportée : la vue « Agrandir » du panneau Flashcards affiche la carte avec CE composant. */
+export function FaceFC({ carte, cote, masquable = false }) {
   const cloze = isCloze(carte);
   const occ = estOcclusion(carte) ? carte.occlusion : null;
   const recto = cloze

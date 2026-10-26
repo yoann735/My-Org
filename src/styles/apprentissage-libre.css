@@ -259,3 +259,24 @@
 .alib2-arecto { margin: 26px 18px 0; padding-bottom: 10px; border-bottom: 1px dashed var(--border-2); font-size: 14px; font-weight: 600; color: var(--text-2); text-align: center; overflow-wrap: anywhere; }
 .alib2 .linklike.alib2-reinit { font-size: 12.5px; text-decoration: none; font-weight: 600; }
 .alib2 .linklike, .alib2-feuille .linklike { font-size: 13px; font-weight: 600; text-decoration: none; }
+
+/* (26/10) « À apprendre » : étoile au coin de chaque vignette (toujours visible au doigt, au survol à la souris si non taguée) */
+.alib2-carte { position: relative; }
+.alib2-aap { position: absolute; top: 7px; right: 7px; z-index: 2; }
+.alib2-aap .ac-icone { width: 26px; height: 26px; border-radius: 8px; }
+.alib2-carte:not(.aap) .alib2-aap { opacity: 0; transition: opacity .12s; }
+.alib2-carte:hover .alib2-aap, .alib2-carte:focus-within .alib2-aap { opacity: 1; }
+@media (hover: none) { .alib2-carte:not(.aap) .alib2-aap { opacity: 1; } }
+.alib2-vignette .alib2-tags, .alib2-vignette .alib2-recto { padding-right: 26px; }
+.alib2-cartes.liste .alib2-aap { top: 6px; right: 8px; }
+.alib-mobile .alib2-aap .ac-icone { width: 36px; height: 36px; border-radius: 10px; }
+.alib-mobile .alib2-vignette .alib2-tags, .alib-mobile .alib2-vignette .alib2-recto { padding-right: 38px; }
+.alib2-puce-n { color: var(--text-3); font-weight: 600; }
+.alib2-puce.actif .alib2-puce-n { color: var(--accent); }
+.alib2-puce[data-puce="aap"] svg { color: var(--accent); }
+.alib2-atete .ac-icone { width: 30px; height: 30px; }
+.alib-etiquette .ac-icone { width: 30px; height: 30px; }
+.alib-mobile .alib-etiquette .ac-icone, .sfc.plein-ecran .alib-etiquette .ac-icone { width: 40px; height: 40px; border-radius: 12px; }
+/* vue « Agrandir » du panneau Flashcards (components/VueAgrandie.jsx) : la carte de la séance dans l'aperçu */
+.va .va-sfc { flex: 1 1 auto; min-height: min(420px, 60dvh); background: transparent; }
+.va .va-sfc .sfc-carte-cadre { min-height: min(420px, 60dvh); }

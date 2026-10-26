@@ -4,7 +4,9 @@
    - TOUTES les flashcards y sont, d'office (plus de « Mettre en apprentissage ») ; l'ancienne liste
      `learning_set` ne filtre plus rien — elle ne garde que les NOTES par carte (toujours affichées).
    - Tableau de bord : recherche (recto, verso, thème) ; puces Matières (plusieurs), Cours (plusieurs,
-     inclus ou exclus), Nouvelles, Type ; compteur en direct ; « Réinitialiser ».
+     inclus ou exclus), Nouvelles, À apprendre (26/10 : tag de la carte, avec son compteur), Type ; compteur en direct ; « Réinitialiser ».
+   - (26/10) l'étoile « À apprendre » (components/BoutonAApprendre.jsx) sur chaque vignette, dans l'aperçu et en session :
+     c'est la seule écriture sur la carte (champ `aApprendre`), sans effet sur les J ni FSRS.
    - Rangement Section → Matière → Cours, groupes repliables avec compteurs ; vignettes recto / verso
      (grille par défaut, ou liste compacte) ; clic = aperçu plein, retournable.
    - « Lancer » : la session en rafale sur les cartes VISIBLES, dans l'ordre affiché (SessionApprentissage).
@@ -21,6 +23,8 @@ import { imageGeneraleDe } from '../lib/muscle.js';
 import { estNouvelle } from '../lib/categoriesFC.js';
 import { FaceCarte } from './FaceCarte.jsx';
 import { SessionApprentissage } from './SessionApprentissage.jsx';
+import { BoutonAApprendre, EtiquetteAApprendre } from '../components/BoutonAApprendre.jsx';
+import { estAApprendre } from '../lib/aApprendre.js';
 import {
   TYPES, FILTRES_VIDES, filtresActifs, filtresValides, filtrer, grouper, idsAffiches,
   choixFiltres, toutesLesCartes, typeCarte, rectoTexte, versoTexte,
@@ -51,6 +55,8 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
   const total = useMemo(() => toutesLesCartes(db).length, [db]);
   const choix = useMemo(() => choixFiltres(db, ctx.stats), [db, ctx.stats]);
   const visibles = useMemo(() => filtrer(db, filtres), [db, filtres]);
+  // compteur de la puce « À apprendre » : les cartes taguées qui passent les AUTRES filtres
+  const nbAap = useMemo(() => (filtres.aApprendre ? visibles.length : filtrer(db, { ...filtres, aApprendre: true }).length), [db, filtres, visibles]);
   const groupes = useMemo(() => grouper(db, visibles, ctx.stats), [db, visibles, ctx.stats]);
   const ordre = useMemo(() => idsAffiches(groupes), [groupes]);
   const notes = db.learningNotes || {};
@@ -65,7 +71,7 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
 
   const lancer = () => ordre.length && setSession({ ids: ordre, n: Date.now() });
   const reinitialiser = () => setFiltres(FILTRES_VIDES);
-  const nbFiltres = filtres.matieres.length + filtres.coursInclus.length + filtres.coursExclus.length + (filtres.nouvelles ? 1 : 0) + filtres.types.length;
+  const nbFiltres = filtres.matieres.length + filtres.coursInclus.length + filtres.coursExclus.length + (filtres.nouvelles ? 1 : 0) + (filtres.aApprendre ? 1 : 0) + filtres.types.length;
 
   const titre = (
     <div>
@@ -111,11 +117,17 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
       {filtres.nouvelles && <Icon name="check" size={12} />} Nouvelles
     </button>
   );
+  const puceAApprendre = (
+    <button type="button" className={'alib2-puce' + (filtres.aApprendre ? ' actif' : '')} aria-pressed={filtres.aApprendre} data-puce="aap"
+      onClick={() => setFiltres((f) => ({ ...f, aApprendre: !f.aApprendre }))} title="Seulement les cartes taguées « À apprendre » (se combine avec les autres filtres)">
+      <Icon name="star" size={12} fill={filtres.aApprendre} /> À apprendre <span className="tnum alib2-puce-n">{nbAap}</span>
+    </button>
+  );
 
   const vignettes = (cartes) => (
     <ul className={'alib2-cartes ' + vue}>
       {cartes.map((q) => (
-        <Vignette key={q.id} q={q} vue={vue} note={notes[q.id]} onOuvrir={() => setApercu(q.id)} />
+        <Vignette key={q.id} ctx={ctx} mobile={mobile} q={q} vue={vue} note={notes[q.id]} onOuvrir={() => setApercu(q.id)} />
       ))}
     </ul>
   );
@@ -160,6 +172,7 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
                 </PuceMenu>
               ))}
               {puceNouvelles}
+              {puceAApprendre}
               <PuceMenu cle="types" libelle={libType} actif={filtres.types.length > 0} ouvert={menu === 'types'} onOuvrir={() => setMenu(menu === 'types' ? null : 'types')} onFermer={() => setMenu(null)}>
                 {contenuFiltre('types')}
               </PuceMenu>
@@ -231,7 +244,7 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
               <button type="button" className="cn-fermer" onClick={() => setFeuille(false)} aria-label="Fermer" title="Fermer"><Icon name="x" size={15} /></button>
             </div>
             <div className="alib2-fcorps">
-              <div className="alib2-fsection"><div className="alib2-ftitre">Nouvelles</div>{puceNouvelles}</div>
+              <div className="alib2-fsection"><div className="alib2-ftitre">Nouvelles · À apprendre</div><div className="alib2-types">{puceNouvelles}{puceAApprendre}</div></div>
               <div className="alib2-fsection"><div className="alib2-ftitre">Type</div>{contenuFiltre('types')}</div>
               <div className="alib2-fsection"><div className="alib2-ftitre">Matières</div>{contenuFiltre('matieres')}</div>
               <div className="alib2-fsection"><div className="alib2-ftitre">Cours</div>{contenuFiltre('cours')}</div>
@@ -368,7 +381,7 @@ function MiniatureImage({ imageId }) {
 const imageDe = (q) => q.imageId || (q.occlusion && q.occlusion.imageId) || ((imageGeneraleDe(q) || {}).imageId) || null;
 
 /* ---- VIGNETTE : recto en haut, verso en dessous (tronqué, « voir plus »), image, tag « Nouvelle » ---- */
-function Vignette({ q, vue, note, onOuvrir }) {
+function Vignette({ ctx, mobile, q, vue, note, onOuvrir }) {
   const [plus, setPlus] = useState(false);
   const nouvelle = estNouvelle(q);
   const type = typeCarte(q);
@@ -377,11 +390,13 @@ function Vignette({ q, vue, note, onOuvrir }) {
   const img = imageDe(q);
   const long = verso.length > (vue === 'liste' ? 90 : 160) || verso.split('\n').length > 4;
   return (
-    <li className={'alib2-carte' + (nouvelle ? ' nouvelle' : '')} data-carte={q.id} data-type={type}>
+    <li className={'alib2-carte' + (nouvelle ? ' nouvelle' : '') + (estAApprendre(q) ? ' aap' : '')} data-carte={q.id} data-type={type}>
+      <span className="alib2-aap"><BoutonAApprendre ctx={ctx} carte={q} classe="ac-icone" taille={mobile ? 17 : 14} mobile={mobile} /></span>
       <div role="button" tabIndex={0} className="alib2-vignette" onClick={onOuvrir} title="Ouvrir l’aperçu"
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOuvrir(); } }}>
-        {(nouvelle || type !== 'texte') && (
+        {(nouvelle || type !== 'texte' || estAApprendre(q)) && (
           <div className="alib2-tags">
+            <EtiquetteAApprendre carte={q} />
             {nouvelle && <span className="alib2-tag nouvelle">Nouvelle</span>}
             {type !== 'texte' && <span className="alib2-tag">{LIB_TYPE[type]}</span>}
           </div>
@@ -425,8 +440,9 @@ function Apercu({ ctx, ordre, id, onChanger, onFermer, mobile }) {
     <div className="alib2-apercu-fond" onClick={onFermer}>
       <div className={'alib2-apercu' + (mobile ? ' mobile' : '')} role="dialog" aria-label="Aperçu de la carte" onClick={(e) => e.stopPropagation()} data-apercu={id}>
         <div className="alib2-atete">
-          <span className="alib2-acours">{fiche ? fiche.titre : ''}{estNouvelle(carte) && <span className="alib2-tag nouvelle">Nouvelle</span>}</span>
+          <span className="alib2-acours">{fiche ? fiche.titre : ''}{estNouvelle(carte) && <span className="alib2-tag nouvelle">Nouvelle</span>}<EtiquetteAApprendre carte={carte} /></span>
           <span className="hint tnum">{i + 1} / {ordre.length}</span>
+          <BoutonAApprendre ctx={ctx} carte={carte} classe="ac-icone" taille={mobile ? 17 : 15} mobile={mobile} />
           <button type="button" className="cn-fermer" onClick={onFermer} aria-label="Fermer l’aperçu" title="Fermer (Échap)"><Icon name="x" size={15} /></button>
         </div>
         <button type="button" className="sfc-carte alib2-aface" onClick={() => setVerso((v) => !v)} title={verso ? 'Revenir au recto (Espace)' : 'Voir le verso (Espace)'}>

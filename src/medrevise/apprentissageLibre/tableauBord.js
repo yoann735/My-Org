@@ -5,7 +5,7 @@
    - TOUTES les flashcards sont dans le mode Apprentissage, d'office (plus de liste à remplir).
    - Filtres : recherche (recto, verso, thème), matières (plusieurs), cours (plusieurs, inclus ou
      exclus), « Nouvelles » (définition existante : lib/categoriesFC.js estNouvelle — LECTURE seule),
-     type (texte, Muscle, Tableau, Molécule, image).
+     type (texte, Muscle, Tableau, Molécule, image) ; (26/10) « À apprendre » (tag de la carte, lib/aApprendre.js — LECTURE seule).
    - Rangement Section → Matière → Cours, dans l'ordre de la Bibliothèque.
    INDÉPENDANCE : ce module ne lit que l'identité, le rangement et le contenu des cartes (et, pour le
    filtre « Nouvelles », la définition existante) ; il n'écrit RIEN.
@@ -14,6 +14,7 @@ import { estMuscle, texteMuscle } from '../lib/muscle.js';
 import { estTableau, texteTableau } from '../lib/carteTableau.js';
 import { estMolecule } from '../molecule/carte.js';
 import { estNouvelle } from '../lib/categoriesFC.js';
+import { estAApprendre } from '../lib/aApprendre.js';
 import { normaliser } from '../lib/rechercheTexte.js';
 import { trierSections } from '../components/useTreeOpenState.js';
 import { trierMatieres } from '../lib/ordreMatieres.js';
@@ -54,9 +55,9 @@ export function versoTexte(q) {
 /** texte cherché par la barre de recherche : recto, verso, thème */
 export const texteCherche = (q) => [rectoTexte(q), versoTexte(q), q.theme || ''].join(' ');
 
-export const FILTRES_VIDES = { q: '', matieres: [], coursInclus: [], coursExclus: [], nouvelles: false, types: [] };
+export const FILTRES_VIDES = { q: '', matieres: [], coursInclus: [], coursExclus: [], nouvelles: false, aApprendre: false, types: [] };
 
-export const filtresActifs = (f) => !!(f && (String(f.q || '').trim() || f.matieres.length || f.coursInclus.length || f.coursExclus.length || f.nouvelles || f.types.length));
+export const filtresActifs = (f) => !!(f && (String(f.q || '').trim() || f.matieres.length || f.coursInclus.length || f.coursExclus.length || f.nouvelles || f.aApprendre || f.types.length));
 
 /** filtres lus (mémorisés) remis d'aplomb */
 export function filtresValides(brut) {
@@ -66,6 +67,7 @@ export function filtresValides(brut) {
     q: typeof b.q === 'string' ? b.q : '',
     matieres: liste(b.matieres), coursInclus: liste(b.coursInclus), coursExclus: liste(b.coursExclus),
     nouvelles: b.nouvelles === true,
+    aApprendre: b.aApprendre === true,
     types: liste(b.types).filter((t) => TYPES.some((x) => x.cle === t)),
   };
 }
@@ -100,6 +102,7 @@ export function filtrer(db, filtres) {
     if (mats.size) { const fi = fiches.get(c.ficheId); if (!fi || !mats.has(fi.matiereId)) return false; }
     if (types.size && !types.has(typeCarte(c))) return false;
     if (f.nouvelles && !estNouvelle(c)) return false;
+    if (f.aApprendre && !estAApprendre(c)) return false;
     if (q && !normaliser(texteCherche(c)).includes(q)) return false;
     return true;
   });
