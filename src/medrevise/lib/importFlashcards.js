@@ -6,7 +6,8 @@
                     "image":    { "data": "data:image/png;base64,…" | "fichier": "nom.png" (dans le .zip), "place": "recto"|"verso"|"deux" },
                     "muscle":   { "origine", "trajet", "insertion", "action", "innervation" },
                     "molecule": { "nom", "smiles", "sens": "nom-molecule"|"molecule-nom" },
-                    "tableau":  { "colonnes": [2 à 6], "lignes": [[…], …] (1 à 12) } } ] }
+                    "tableau":  { "colonnes": [2 à 6], "lignes": [[…], …] (1 à 12) },
+                    "items":    [ { "text", "masked": true|false }, … ] (26/10 : éléments à révéler d'une carte texte) } ] }
    Une carte Muscle / Molécule / Tableau a son recto (nom, titre) ; son verso est construit.
    VALIDATION STRICTE : champ manquant, type inconnu, champ inconnu, valeur hors limites → un message
    par carte, avec son numéro et sa LIGNE dans le JSON ; rien n'est importé tant qu'il reste une
@@ -24,7 +25,24 @@ import { carteMolecule, SENS } from '../molecule/carte.js';
 import { carteTableau, normaliserTableau } from './carteTableau.js';
 import { lireZip, typeImage } from './zipLecture.js';
 
-const CHAMPS = new Set(['type', 'id', 'theme', 'concept', 'recto', 'verso', 'cloze', 'indice', 'a_retenir', 'difficulte', 'tags', 'source_cours', 'image', 'muscle', 'molecule', 'tableau']);
+const CHAMPS = new Set(['type', 'id', 'theme', 'concept', 'recto', 'verso', 'cloze', 'indice', 'a_retenir', 'difficulte', 'tags', 'source_cours', 'image', 'muscle', 'molecule', 'tableau', 'items']);
+
+/* (26/10) éléments à révéler du verso d'une carte texte : [{ text, masked }] — `masked` facultatif (vrai par défaut) */
+function lireElements(v) {
+  if (v == null) return { items: null };
+  if (!Array.isArray(v)) return { erreur: 'champ « items » : liste d’éléments [{ "text", "masked" }] attendue' };
+  const items = [];
+  for (let k = 0; k < v.length; k++) {
+    const x = v[k];
+    if (!x || typeof x !== 'object' || Array.isArray(x)) return { erreur: `items[${k}] : objet { "text", "masked" } attendu` };
+    const inconnu = sansCommentaires(x).find((c) => !['text', 'masked'].includes(c));
+    if (inconnu) return { erreur: `items[${k}].${inconnu} : champ inconnu (attendus : text, masked)` };
+    if (!estTexte(x.text)) return { erreur: `items[${k}].text : texte manquant` };
+    if (x.masked != null && typeof x.masked !== 'boolean') return { erreur: `items[${k}].masked : true ou false` };
+    items.push({ text: str(x.text), masked: x.masked !== false });
+  }
+  return { items };
+}
 const AUTRES_TYPES = new Set(['qcm', 'feynman', 'exercice']);
 const CHAMPS_MUSCLE = LIGNES_MUSCLE.map((l) => l.id);
 const estTexte = (v) => typeof v === 'string' && v.trim() !== '';
@@ -111,6 +129,7 @@ async function lireCarte(it, fichiers, chimie) {
   if (inconnu) return { erreur: `champ inconnu « ${inconnu} »` };
   const sortes = ['muscle', 'molecule', 'tableau'].filter((k) => it[k] != null);
   if (sortes.length > 1) return { erreur: `une carte est soit muscle, soit molecule, soit tableau (ici : ${sortes.join(' + ')})` };
+  if (sortes.length && it.items != null) return { erreur: `« items » (éléments à révéler) : seulement sur une carte texte (pas ${sortes[0]})` };
   const base = { theme: str(it.theme || it.concept), indice: str(it.indice), aRetenir: str(it.a_retenir), difficulte: estTexte(it.difficulte) ? it.difficulte : 'intermediaire' };
   const im = lireImage(it.image, fichiers);
   if (im.erreur) return { erreur: im.erreur };
@@ -150,13 +169,16 @@ async function lireCarte(it, fichiers, chimie) {
     carte = carteTableau({ titre: it.recto, colonnes: r.tableau.colonnes, lignes: r.tableau.lignes, ...base });
     sorte = 'tableau';
   } else {
-    if (!estTexte(it.recto) && !estTexte(it.verso)) return { erreur: 'champs « recto » et « verso » manquants' };
+    const el = lireElements(it.items);
+    if (el.erreur) return { erreur: el.erreur };
+    const avecElements = !!(el.items && el.items.length);
+    if (!estTexte(it.recto) && !estTexte(it.verso) && !avecElements) return { erreur: 'champs « recto » et « verso » manquants' };
     if (!estTexte(it.recto)) return { erreur: 'champ « recto » manquant' };
-    if (!estTexte(it.verso)) return { erreur: 'champ « verso » manquant' };
+    if (!estTexte(it.verso) && !avecElements) return { erreur: 'champ « verso » manquant (ou des « items » à révéler)' };
     if (it.cloze != null && !Array.isArray(it.cloze)) return { erreur: 'champ « cloze » : liste de mots attendue (ou null)' };
     const cloze = (it.cloze || []).map(str).filter(Boolean);
     carte = { type: 'flashcard', theme: base.theme, concept: base.theme, difficulte: base.difficulte, recto: str(it.recto), verso: str(it.verso),
-      indice: base.indice || null, a_retenir: base.aRetenir, ...(cloze.length ? { cloze } : {}) };
+      indice: base.indice || null, a_retenir: base.aRetenir, ...(cloze.length ? { cloze } : {}), ...(avecElements ? { items: el.items } : {}) };
     sorte = cloze.length || /\{\{[^}]+\}\}/.test(it.recto) ? 'trous' : im.image ? 'image' : 'texte';
   }
   if (Array.isArray(it.tags)) carte.tags = it.tags.map(str).filter(Boolean);
@@ -239,6 +261,7 @@ export const EXEMPLE_IMPORT = {
     { _sorte: 'texte', type: 'flashcard', theme: 'Nerfs crâniens', recto: 'Quel nerf innerve le muscle oblique supérieur ?', verso: 'Le nerf trochléaire (IV).', indice: 'Le plus fin des nerfs crâniens', a_retenir: 'SO4 : oblique supérieur → IV' },
     { _sorte: 'trous (cloze)', _aide: 'le recto contient {{…}} ; « cloze » liste les mots masqués', type: 'flashcard', theme: 'Nerfs crâniens', recto: 'Le nerf {{abducens}} innerve le muscle droit latéral.', verso: 'Le nerf abducens (VI) innerve le muscle droit latéral.', cloze: ['abducens'] },
     { _sorte: 'image', _aide: 'image.data = URL de donnée, ou image.fichier = nom d’un fichier joint dans un .zip ; place : recto, verso ou deux', type: 'flashcard', theme: 'Ostéologie', recto: 'Quel os est montré ?', verso: 'La scapula.', image: { data: PIXEL, place: 'recto' } },
+    { _sorte: 'texte à éléments', _aide: 'items = éléments du verso, révélés un par un en révision ; masked: true = caché jusqu’au toucher (défaut), false = toujours visible ; verso facultatif (introduction)', type: 'flashcard', theme: 'Physiologie rénale', recto: 'Quelles sont les 4 fonctions du rein ?', verso: 'Quatre grandes fonctions :', items: [{ text: 'Épuration des déchets azotés (urée, créatinine)', masked: true }, { text: 'Équilibre hydro-électrolytique', masked: true }, { text: 'Équilibre acido-basique', masked: false }, { text: 'Fonctions endocrines (EPO, rénine, calcitriol)', masked: true }] },
     { _sorte: 'muscle', _aide: 'recto = nom du muscle ; les 5 champs du tableau Muscle (au moins un rempli) ; verso construit', type: 'flashcard', theme: 'Muscles du bras', recto: 'Biceps brachial', muscle: { origine: 'Chef long : tubercule supra-glénoïdal ; chef court : processus coracoïde', trajet: 'Loge antérieure du bras', insertion: 'Tubérosité radiale', action: 'Flexion du coude, supination', innervation: 'Nerf musculo-cutané (C5–C6)' } },
     { _sorte: 'molécule', _aide: 'molecule.smiles (obligatoire), nom, sens : nom-molecule (recto = nom) ou molecule-nom', type: 'flashcard', theme: 'Biochimie', molecule: { nom: 'Éthanol', smiles: 'CCO', sens: 'nom-molecule' } },
     { _sorte: 'tableau', _aide: 'recto = titre ; 2 à 6 colonnes, 1 à 12 lignes ; en révision les cellules se révèlent une par une', type: 'flashcard', theme: 'Myologie', recto: 'Muscles de la fesse — insertions', tableau: { colonnes: ['Muscle', 'Origine', 'Insertion'], lignes: [['Grand glutéal', 'Ilium, sacrum, coccyx', 'Tubérosité glutéale'], ['Moyen glutéal', 'Face glutéale de l’ilium', 'Grand trochanter'], ['Piriforme', 'Face pelvienne du sacrum', 'Bord supérieur du grand trochanter']] } },
@@ -257,6 +280,7 @@ En plus des flashcards texte et à trous, tu peux produire, dans le même tablea
 - **Muscle** : "recto" = nom du muscle, "muscle": { "origine", "trajet", "insertion", "action", "innervation" } (verso construit automatiquement) ;
 - **Molécule** : "molecule": { "nom", "smiles", "sens": "nom-molecule" | "molecule-nom" } (SMILES valide obligatoire) ;
 - **Tableau** : "recto" = titre, "tableau": { "colonnes": [2 à 6 noms], "lignes": [[…], …] (1 à 12 lignes, autant de cellules que de colonnes) } ;
+- **Texte à éléments** : "items": [{ "text": "…", "masked": true }, …] — la réponse découpée en éléments révélés un par un ("masked": false = toujours visible) ; "verso" devient facultatif (introduction) ;
 - **Image** (facultative sur une carte texte) : "image": { "data": "data:image/png;base64,…", "place": "recto" | "verso" | "deux" }.
 Aucun autre champ. Exemple complet :
 

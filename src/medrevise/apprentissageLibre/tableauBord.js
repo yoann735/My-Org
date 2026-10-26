@@ -49,7 +49,9 @@ export function versoTexte(q) {
   if (estMuscle(q)) return texteMuscle(q).split('\n').slice(1).join('\n');
   if (estTableau(q)) return texteTableau(q.tableau);
   if (estMolecule(q)) { const m = q.molecule || {}; return [m.formule, q.verso].filter(Boolean).join(' · '); }
-  return sansTrous(q.verso || '');
+  // (26/10) éléments à révéler d'une carte Texte : une ligne « • … » chacun, après le verso
+  const els = Array.isArray(q.items) ? q.items.filter((x) => x && String(x.text || '').trim()).map((x) => '• ' + String(x.text).trim()) : [];
+  return [sansTrous(q.verso || ''), ...els].filter(Boolean).join('\n');
 }
 
 /** texte cherché par la barre de recherche : recto, verso, thème */
@@ -150,6 +152,22 @@ export function grouper(db, cartes, stats = null) {
     out.push({ section: { id: sid, nom: sid === '—' ? 'Sans section' : nomSec.get(sid) || 'Section' }, n: mats.reduce((n, x) => n + x.n, 0), matieres: mats });
   }
   return out;
+}
+
+/**
+ * (26/10) RANG de chaque cours dans l'ordre de la Bibliothèque (section → matière → cours), le même que `grouper` :
+ * Map(ficheId → rang). Sert à « Regrouper par cours » de la séance du jour (lib/categoriesFC.js regrouperParCours).
+ */
+export function rangDesCours(db, stats = null) {
+  const sections = trierSections((db && db.sources) || [], stats);
+  const rangSec = new Map(sections.map((x, i) => [x.id, i]));
+  const rangMat = new Map(trierMatieres((db && db.matieres) || []).map((m, i) => [m.id, i]));
+  const mats = new Map(((db && db.matieres) || []).map((m) => [m.id, m]));
+  const cle = (f) => { const m = mats.get(f.matiereId); const sec = m && rangSec.has(m.sourceId) ? rangSec.get(m.sourceId) : sections.length;
+    return [sec, m && rangMat.has(m.id) ? rangMat.get(m.id) : Infinity, f.ordre ?? 0]; };
+  const fiches = ((db && db.fiches) || []).map((f, i) => ({ f, i, k: cle(f) }));
+  fiches.sort((a, b) => (a.k[0] - b.k[0]) || ((a.k[1] - b.k[1]) || 0) || (a.k[2] - b.k[2]) || (a.i - b.i));
+  return new Map(fiches.map((x, i) => [x.f.id, i]));
 }
 
 /** ids dans l'ordre affiché (celui de la session) */

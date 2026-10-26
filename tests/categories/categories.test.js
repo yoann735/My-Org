@@ -58,9 +58,9 @@ describe('catégories', () => {
   });
   it('raccourcis et choix mémorisé', () => {
     const c = choixValide({ nouvelles: { coche: false, max: 20 }, revisions: { coche: true, max: 15 }, retard: { coche: false, max: 'xx' } });
-    expect(c.retard.max).toBe('tout');
-    expect(raccourci('blocNouvelles', c)).toEqual({ nouvelles: { coche: true, max: 20 }, revisions: { coche: false, max: 15 }, retard: { coche: false, max: 'tout' } });
-    expect(raccourci('revisionsJ', c)).toEqual({ nouvelles: { coche: false, max: 20 }, revisions: { coche: true, max: 15 }, retard: { coche: true, max: 'tout' } });
+    expect(c.retard.max).toBe('tout'); // (26/10) le choix porte aussi « Regrouper par cours » (OFF par défaut)
+    expect(raccourci('blocNouvelles', c)).toEqual({ nouvelles: { coche: true, max: 20 }, revisions: { coche: false, max: 15 }, retard: { coche: false, max: 'tout' }, parCours: false });
+    expect(raccourci('revisionsJ', c)).toEqual({ nouvelles: { coche: false, max: 20 }, revisions: { coche: true, max: 15 }, retard: { coche: true, max: 'tout' }, parCours: false });
   });
 });
 

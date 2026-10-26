@@ -146,8 +146,15 @@ function normQcm(raw, c) {
   };
 }
 
+/** (26/10) éléments à révéler du verso d'une carte Texte : [{ text, masked }] (masqué par défaut), vides retirés */
+export const normElements = (v) => asArray(v)
+  .map((x) => (x && typeof x === 'object' ? { text: str(x.text).trim(), masked: x.masked !== false } : { text: str(x).trim(), masked: true }))
+  .filter((x) => x.text);
+
 function normFlashcard(raw, c) {
-  const okRecto = isStr(raw.recto), okVerso = isStr(raw.verso);
+  const items = normElements(raw.items);
+  // (26/10) une carte à éléments peut se passer de verso (le verso devient un texte d'introduction facultatif)
+  const okRecto = isStr(raw.recto), okVerso = isStr(raw.verso) || items.length > 0;
   if (!okRecto || !okVerso) {
     return { ok: false, reason: !okRecto && !okVerso ? 'recto et verso manquants' : !okRecto ? 'recto manquant' : 'verso manquant' };
   }
@@ -159,10 +166,11 @@ function normFlashcard(raw, c) {
     ok: true,
     item: {
       ...c, type: 'flashcard',
-      recto: raw.recto.trim(), verso: raw.verso.trim(),
+      recto: raw.recto.trim(), verso: str(raw.verso).trim(),
       indice: isStr(raw.indice) ? raw.indice.trim() : null,
       a_retenir: str(raw.a_retenir).trim(),
       ...(cloze.length ? { cloze } : {}),
+      ...(items.length || Array.isArray(raw.items) ? { items } : {}), // absent → carte inchangée
     },
   };
 }

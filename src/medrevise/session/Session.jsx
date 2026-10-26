@@ -23,6 +23,7 @@ import { advanceQuestion, recordRelearnAttempt, QUALITY, QUALITY_TO_RATING, qual
 import { BoutonsFlashcard } from '../components/BoutonsFlashcard.jsx';
 import { repondreFlashcard } from '../scheduler/repondre.js';
 import { garderTagEnBase } from '../lib/aApprendre.js';
+import { ElementsVerso, elementsDe } from '../components/ElementsVerso.jsx';
 import { NOTE_DEPUIS_QUALITE_SCORE, NOTE_DEPUIS_ETIQUETTE } from '../scheduler/noter.js';
 import { planificateurActif } from '../scheduler/config.js';
 import { index } from '../lib/planning.js';
@@ -503,7 +504,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
             <span className="ff-tag">Réponse</span>
             {/* (17/10) carnet d'erreurs / apprentissage : icônes de CETTE carte, dans l'en-tête de la face réponse */}
             {!erreurMode && flipped && <ActionsCarte ctx={ctx} carte={item} />}
-            <ZoneDefilante className={'ff-zone ' + (muscle || tableau ? 'ff-muscle' : classeLongueur(item.verso, item.a_retenir))}>
+            <ZoneDefilante className={'ff-zone ' + (muscle || tableau || elementsDe(item).length ? 'ff-muscle' : classeLongueur(item.verso, item.a_retenir))}>
             {molecule
               ? (flipped ? <>{imageAuVerso(item) && <AnatImage imageId={item.imageId} compact />}<FaceMoleculeParesseuse carte={item} cote="verso" /></> : null) /* monté au retournement : l'atelier s'ouvre à ce moment-là */
               : tableau
@@ -516,6 +517,8 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
               // image au verso (ou aux deux faces) : flashcard texte avec image, voir components/FlashcardImage.jsx
               ? <div className="ff-imgwrap"><AnatImage imageId={item.imageId} compact /><div className="ff-imgq">{cloze ? <ClozeVerso parts={versoParts} /> : <Tex leger={item.versoFormat === 'leger'}>{item.verso}</Tex>}</div></div>
               : <div className="ff-text">{cloze ? <ClozeVerso parts={versoParts} /> : <Tex leger={item.versoFormat === 'leger'}>{item.verso}</Tex>}</div>}
+            {/* (26/10) éléments à révéler du verso (carte Texte) */}
+            {!molecule && !tableau && !muscle && <ElementsVerso carte={item} />}
             {item.a_retenir && (
               <div className="ff-aretenir" style={{ marginTop: 10, padding: '8px 12px', borderRadius: 10, background: 'var(--accent-soft)', border: '1px solid var(--accent)', fontSize: 13.5, display: 'flex', gap: 7, alignItems: 'baseline' }}>
                 <Icon name="star" size={13} style={{ color: 'var(--accent)', flex: '0 0 auto' }} /> <span><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></span>

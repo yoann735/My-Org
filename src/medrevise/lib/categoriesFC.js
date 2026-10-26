@@ -10,6 +10,9 @@
    - RETARD : date passée non faite — de la plus en retard à la moins en retard.
    Séance : seuls les types cochés, chacun limité à son maximum, dans l'ordre Retard → Révisions →
    Nouvelles.
+   (26/10) « REGROUPER PAR COURS » (`choix.parCours`) : la MÊME sélection (mêmes maximums sur l'ensemble de la
+   séance), seulement réordonnée — cours dans l'ordre de la Bibliothèque (section → matière → cours), et dans chaque
+   cours Retard (le plus en retard d'abord) → Révisions → Nouvelles. OFF : ordre inchangé.
    ============================================================ */
 import { estFlashcardJ, aEteNoteeJ, entrelacer } from './apprentissageFC.js';
 
@@ -40,14 +43,15 @@ export function choixValide(brut) {
     const d = CHOIX_DEFAUT[cle];
     out[cle] = { coche: typeof b.coche === 'boolean' ? b.coche : d.coche, max: MAXIMUMS.includes(b.max) ? b.max : d.max };
   }
+  out.parCours = !!(brut && brut.parCours === true); // (26/10) regrouper par cours — OFF par défaut
   return out;
 }
 
 /** raccourcis : « Bloc nouvelles » (Nouvelles seules) · « Révisions J » (Révisions + Retard) — maximums conservés */
 export function raccourci(nom, choix) {
   const c = choixValide(choix);
-  if (nom === 'blocNouvelles') return { nouvelles: { ...c.nouvelles, coche: true }, revisions: { ...c.revisions, coche: false }, retard: { ...c.retard, coche: false } };
-  if (nom === 'revisionsJ') return { nouvelles: { ...c.nouvelles, coche: false }, revisions: { ...c.revisions, coche: true }, retard: { ...c.retard, coche: true } };
+  if (nom === 'blocNouvelles') return { nouvelles: { ...c.nouvelles, coche: true }, revisions: { ...c.revisions, coche: false }, retard: { ...c.retard, coche: false }, parCours: c.parCours };
+  if (nom === 'revisionsJ') return { nouvelles: { ...c.nouvelles, coche: false }, revisions: { ...c.revisions, coche: true }, retard: { ...c.retard, coche: true }, parCours: c.parCours };
   return c;
 }
 
@@ -88,8 +92,9 @@ export function nombres(cats, choix) {
  * Liste ordonnée des ids de la séance : Retard (plus en retard d'abord) → Révisions (cours alternés,
  * mélangées) → Nouvelles (ordre de départ). Chaque type coché, limité à son maximum.
  * → { ids, categorie: { [id]: 'retard'|'revisions'|'nouvelles' } }
+ * (26/10) `rangCours(ficheId)` (ordre de la Bibliothèque) + `choix.parCours` : même sélection, regroupée par cours.
  */
-export function composerSeance(cats, choix, coursDe = () => '', rand = Math.random) {
+export function composerSeance(cats, choix, coursDe = () => '', rand = Math.random, rangCours = null) {
   const c = choixValide(choix);
   const ids = []; const categorie = {};
   for (const cle of ORDRE_SEANCE) {
@@ -99,7 +104,21 @@ export function composerSeance(cats, choix, coursDe = () => '', rand = Math.rand
     l = l.slice(0, c[cle].max === 'tout' ? l.length : c[cle].max);
     l.forEach((id) => { if (!(id in categorie)) { ids.push(id); categorie[id] = cle; } });
   }
+  if (c.parCours && rangCours) return { ids: regrouperParCours(ids, categorie, coursDe, rangCours), categorie };
   return { ids, categorie };
+}
+
+/**
+ * (26/10) REGROUPER PAR COURS : réordonne les ids d'une séance déjà composée (aucune carte ajoutée ni retirée).
+ * Cours dans l'ordre `rangCours` (Bibliothèque ; un cours inconnu va à la fin), puis dans chaque cours l'ordre des
+ * catégories (Retard → Révisions → Nouvelles), puis l'ordre de composition (le plus en retard d'abord, etc.).
+ */
+export function regrouperParCours(ids, categorie, coursDe, rangCours) {
+  const rangCat = (id) => ORDRE_SEANCE.indexOf(categorie[id]);
+  const rang = (id) => { const r = rangCours(coursDe(id)); return r == null || r < 0 ? Infinity : r; };
+  return ids.map((id, i) => ({ id, i, c: rang(id), k: rangCat(id) }))
+    .sort((a, b) => (a.c - b.c) || (a.c === Infinity && String(coursDe(a.id)).localeCompare(String(coursDe(b.id)))) || (a.k - b.k) || (a.i - b.i))
+    .map((x) => x.id);
 }
 
 /**

@@ -13,6 +13,7 @@ import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { estMuscle } from '../lib/muscle.js';
 import { estTableau } from '../lib/carteTableau.js';
 import { TableauRevision } from '../components/FlashcardTableau.jsx';
+import { ElementsVerso, elementsDe } from '../components/ElementsVerso.jsx';
 import { estMolecule } from '../molecule/carte.js';
 import { isCloze, parseCloze, highlightClozeWords } from '../lib/cloze.js';
 
@@ -61,14 +62,16 @@ export function FaceCarte({ carte, cote, masquable = true }) {
   const texte = verso
     ? (cloze ? highlightClozeWords(carte.verso, carte.cloze).map((p, i) => (p.hl ? <mark key={i} className="mrm-cloze-mark">{p.text}</mark> : <span key={i}>{p.text}</span>)) : <Tex leger={carte.versoFormat === 'leger'}>{carte.verso}</Tex>)
     : (cloze ? parseCloze(carte.recto, carte.cloze).map((s, i) => (s.type === 'text' ? <Tex key={i}>{s.value}</Tex> : <span key={i} className="mrm-cloze-blank" aria-hidden="true" />)) : <Tex>{carte.recto}</Tex>);
-  const long = String((verso ? carte.verso : carte.recto) || '').length > 260;
+  const elements = verso && elementsDe(carte).length > 0; // (26/10) éléments à révéler du verso
+  const long = elements || String((verso ? carte.verso : carte.recto) || '').length > 260;
   return (
     <>
       {image && <ImageFlashcard imageId={carte.imageId} maxH="min(220px, 28dvh)" className="mrm" />}
       <ZoneDefilante className={'sfc-zone' + (long ? ' long' : '')}>
         {occ && <OcclusionView occ={occ} revele={verso} maxH={260} />}
         {!verso && <div className="sfc-recto">{texte}</div>}
-        {verso && !(occ && carte.versoAuto) && <div className="sfc-verso">{texte}</div>}
+        {verso && !(occ && carte.versoAuto) && !(elements && !String(carte.verso || '').trim()) && <div className="sfc-verso">{texte}</div>}
+        {elements && <ElementsVerso carte={carte} masquable={masquable} />}
         {retenir}
       </ZoneDefilante>
     </>

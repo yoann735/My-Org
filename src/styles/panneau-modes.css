@@ -255,3 +255,18 @@ textarea.fcf-champ { min-height: 0; }
 .fcl-nouvelle:hover, .fcl-nouvelle:focus-visible { background: var(--accent-soft); border-style: solid; outline: none; }
 .fcl-filtre-aap svg { color: var(--accent); }
 .pis-item.fcl-carte .aap-etiquette { margin-left: -2px; }
+
+/* (26/10) éléments à révéler du verso (components/ElementsVerso.jsx EditeurElements) */
+.fce { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.fce-ligne { display: flex; align-items: flex-start; gap: 4px; border-radius: 9px; transition: background .12s; }
+.fce-ligne.glisse { background: var(--accent-soft); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+.fce-poignee { flex: 0 0 auto; display: grid; place-items: center; width: 20px; height: 32px; color: var(--text-3); cursor: grab; touch-action: none; }
+.fce-ligne.glisse .fce-poignee { cursor: grabbing; color: var(--accent); }
+.fce-num { flex: 0 0 auto; width: 16px; padding-top: 8px; font-size: 11.5px; font-weight: 700; color: var(--text-3); text-align: right; }
+.fce-champ { flex: 1 1 auto; min-width: 0; resize: none; overflow: hidden; }
+.fce-ligne .cd-ic { flex: 0 0 auto; margin-top: 4px; }
+.fce-oeil { color: var(--text-3); }
+.fce-oeil.visible { color: var(--accent); }
+.fce-ajouter { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 8px;
+  border: 1px dashed var(--border); background: transparent; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.fce-ajouter:hover, .fce-ajouter:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }

@@ -43,6 +43,7 @@ import { putBlob } from '../lib/storage.js';
 import { glisseDesFichiers } from '../lib/collerImage.js';
 import { useCollageAuSurvol } from '../lib/collerAuSurvol.js';
 import { MessageCollage } from './CollageImage.jsx';
+import { EditeurElements, ElementsVerso, nouvelElement } from './ElementsVerso.jsx';
 
 export const TYPES = [
   { id: 'qcm', label: 'QCM', icon: 'list' },
@@ -365,13 +366,16 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
   const [verso, setVerso] = useState(initial?.verso || '');
   const [indice, setIndice] = useState(initial?.indice || '');
   const [aRetenir, setARetenir] = useState(initial?.a_retenir || '');
+  // (26/10) éléments à révéler du verso : [{ cle, text, masked }] — `items` de la carte
+  const [elements, setElements] = useState(() => (Array.isArray(initial?.items) ? initial.items.map((x) => nouvelElement(x)) : []));
   // image facultative (components/FlashcardImage.jsx) : le fichier n'est écrit
   // qu'à l'enregistrement ; place absente sur une carte d'avant = recto.
   const [image, setImage] = useState({ imageId: initial?.imageId || null, fichier: null, place: initial?.imagePlace || 'recto' });
   const [holeHint, setHoleHint] = useState(null);
   const rectoRef = useRef(null);
   const versoRef = useRef(null);
-  const ready = !!recto.trim() && !!verso.trim();
+  const elementsPleins = elements.filter((x) => x.text.trim()).map((x) => ({ text: x.text.trim(), masked: !!x.masked }));
+  const ready = !!recto.trim() && (!!verso.trim() || elementsPleins.length > 0); // (26/10) des éléments suffisent : le verso devient facultatif
   /* COLLER UNE IMAGE (03/10 ; au survol depuis le 11/10, lib/collerAuSurvol.js) : ⌘V d'une image
      → la zone SURVOLÉE décide : Recto → image affichée au recto, Verso → au verso, champ Image →
      l'image (place inchangée) ; sans survol : le champ qui a le focus (recto / verso), sinon le champ
@@ -464,8 +468,11 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
       indice: indice.trim() || null, a_retenir: aRetenir.trim(),
       cloze: blanks.map((b) => b.expected),
       imageId, imagePlace: imageId ? image.place : null,
+      // (26/10) seulement si la carte a (ou avait) des éléments : une carte sans éléments reste telle qu'avant
+      ...(elementsPleins.length || Array.isArray(initial?.items) ? { items: elementsPleins } : {}),
     });
     if (!initial) {
+      setElements([]);
       setRecto(''); setVerso(''); setIndice(''); setARetenir(''); setHoleHint(null); setImage({ imageId: null, fichier: null, place: 'recto' });
       setTheme(themeDefaut); themeRetouche.current = false; // thème retouché = pour cette carte seulement
     }
@@ -519,12 +526,14 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
       </div>
       <div className="imp-field fcf-face" {...(sansImage ? {} : { 'data-zone-image': 'verso', 'data-zone-focus': 'verso' })}>
         <div className="fcf-etiquette"><label>Verso</label></div>
-        <textarea ref={versoRef} className="imp-title fcf-champ" rows={2} value={verso} onChange={(e) => setVerso(e.target.value)} placeholder="Réponse…" aria-label="Verso" />
+        <textarea ref={versoRef} className="imp-title fcf-champ" rows={2} value={verso} onChange={(e) => setVerso(e.target.value)} placeholder={elements.length ? 'Introduction (facultative)…' : 'Réponse…'} aria-label="Verso" />
+        <EditeurElements elements={elements} onChange={setElements} />
       </div>
-      {apercu && (recto.trim() || verso.trim()) && (
+      {apercu && (recto.trim() || verso.trim() || elementsPleins.length > 0) && (
         <div className="fc-apercu">
           <div className="pis-face"><span className="pis-face-tag">Aperçu · recto</span>{segments.map((sg, i) => (sg.type === 'text' ? <span key={i}>{sg.value}</span> : <span key={i} className="fc-trou">[ … ]</span>))}</div>
-          <div className="pis-face"><span className="pis-face-tag">Verso</span>{verso || <span className="hint">—</span>}</div>
+          <div className="pis-face"><span className="pis-face-tag">Verso</span>{verso || (!elementsPleins.length && <span className="hint">—</span>)}
+            <ElementsVerso carte={{ id: 'apercu', items: elementsPleins }} masquable={false} compact /></div>
         </div>
       )}
       <button type="button" className={'fcf-plus' + (plus ? ' ouvert' : '')} aria-expanded={plus} onClick={() => setPlus((v) => !v)}>
@@ -566,7 +575,7 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
       <div className="imp-actions fcf-pied">
         <span className="fc-raccourci" title="Entrée = retour à la ligne · Échap = annuler">{RACCOURCI_ENREGISTRER}</span>
         {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
-        <button className="btn primary" onClick={submit} disabled={!ready || busy} title={ready ? `Ajouter (${RACCOURCI_ENREGISTRER})` : 'Recto et verso requis'}><Icon name="check" size={14} /> {submitLabel || 'Ajouter'}</button>
+        <button className="btn primary" onClick={submit} disabled={!ready || busy} title={ready ? `Ajouter (${RACCOURCI_ENREGISTRER})` : 'Recto et verso (ou un élément) requis'}><Icon name="check" size={14} /> {submitLabel || 'Ajouter'}</button>
       </div>
       <MessageCollage message={collage.message} onAnnuler={collage.annuler} onFermer={collage.fermer} />
     </div>

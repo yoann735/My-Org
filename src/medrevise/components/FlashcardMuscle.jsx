@@ -47,7 +47,26 @@ export function ImageGeneraleMuscle({ item, face = 'verso' }) {
 export function TableauMuscle({ item, masquable = false, compact = false }) {
   const lignes = lignesDe(item);
   const images = imagesDe(item); // (10/10 soir) une image par ligne, révélée avec sa ligne
-  const pleines = LIGNES_MUSCLE.filter((l) => lignes[l.id].trim() || images[l.id]).map((l) => l.id);
+  return (
+    <LignesARevelerer masquable={masquable} compact={compact}
+      lignes={LIGNES_MUSCLE.map((l) => ({
+        id: l.id, etiquette: l.label, pleine: !!(lignes[l.id].trim() || images[l.id]),
+        contenu: (
+          <>
+            {(lignes[l.id].trim() || !images[l.id]) && <ContenuMuscle texte={lignes[l.id]} />}
+            {images[l.id] && <div className="mu-ligne-image"><ImageMuscle imageId={images[l.id].imageId} masques={images[l.id].masques} titre={l.label} /></div>}
+          </>
+        ),
+      }))} />
+  );
+}
+
+/* ---- (26/10) LE composant de révélation, partagé : tableau Muscle et ÉLÉMENTS À RÉVÉLER du verso d'une carte Texte
+   (components/ElementsVerso.jsx). Chaque ligne masquée affiche « Toucher pour révéler » et se révèle au clic / tap
+   (ou au clavier) ; « Tout révéler (n) » révèle le reste. `lignes` : [{ id, etiquette, contenu, pleine, masque }] —
+   `masque: false` = toujours visible. Rendu identique à l'ancien TableauMuscle (classes mu-*). ---- */
+export function LignesARevelerer({ lignes, masquable = false, compact = false, classe = '' }) {
+  const pleines = lignes.filter((l) => l.pleine && l.masque !== false).map((l) => l.id);
   const [vues, setVues] = useState(() => new Set());
   const cachee = (id) => masquable && pleines.includes(id) && !vues.has(id);
   const reste = masquable ? pleines.filter((id) => !vues.has(id)).length : 0;
@@ -57,20 +76,15 @@ export function TableauMuscle({ item, masquable = false, compact = false }) {
   };
   const auClavier = (id) => (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); voir(id)(e); } };
   return (
-    <div className={'mu-tableau' + (compact ? ' compact' : '')} onClick={masquable ? (e) => e.stopPropagation() : undefined}>
-      {LIGNES_MUSCLE.map((l) => {
+    <div className={'mu-tableau' + (compact ? ' compact' : '') + (classe ? ' ' + classe : '')} onClick={masquable ? (e) => e.stopPropagation() : undefined}>
+      {lignes.map((l) => {
         const c = cachee(l.id);
         return (
           <div key={l.id} className={'mu-ligne' + (c ? ' cachee' : '')} data-ligne={l.id}
-            {...(c ? { role: 'button', tabIndex: 0, 'aria-label': `Révéler : ${l.label}`, onClick: voir(l.id), onKeyDown: auClavier(l.id) } : {})}>
-            <div className="mu-etiquette">{l.label}</div>
+            {...(c ? { role: 'button', tabIndex: 0, 'aria-label': `Révéler : ${l.etiquette}`, onClick: voir(l.id), onKeyDown: auClavier(l.id) } : {})}>
+            <div className="mu-etiquette">{l.etiquette}</div>
             <div className="mu-contenu">
-              {c ? <span className="mu-masque" aria-hidden="true">Toucher pour révéler</span> : (
-                <>
-                  {(lignes[l.id].trim() || !images[l.id]) && <ContenuMuscle texte={lignes[l.id]} />}
-                  {images[l.id] && <div className="mu-ligne-image"><ImageMuscle imageId={images[l.id].imageId} masques={images[l.id].masques} titre={l.label} /></div>}
-                </>
-              )}
+              {c ? <span className="mu-masque" aria-hidden="true">Toucher pour révéler</span> : l.contenu}
             </div>
           </div>
         );

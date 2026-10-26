@@ -49,6 +49,7 @@ import { CarteAjoutFlashcard, sorteDe } from './CarteAjoutFlashcard.jsx';
 import { ActionsCarte } from './ActionsCarte.jsx';
 import { EtiquetteAApprendre } from './BoutonAApprendre.jsx';
 import { VueAgrandie } from './VueAgrandie.jsx';
+import { ElementsVerso } from './ElementsVerso.jsx';
 import { estAApprendre } from '../lib/aApprendre.js';
 import { planDuJour } from '../lib/apprentissageFC.js';
 import { nextDate } from '../lib/planning.js';
@@ -637,7 +638,8 @@ function FlashcardReadBody({ item }) {
   return (
     <>
       <div className="pis-face"><span className="pis-face-tag">Recto</span>{imageAuRecto(item) && <ImageFlashcard imageId={item.imageId} maxH={110} />}<Tex>{item.recto}</Tex></div>
-      <div className="pis-face"><span className="pis-face-tag">Verso</span>{imageAuVerso(item) && <ImageFlashcard imageId={item.imageId} maxH={110} />}<Tex leger={item.versoFormat === 'leger'}>{item.verso}</Tex></div>
+      <div className="pis-face"><span className="pis-face-tag">Verso</span>{imageAuVerso(item) && <ImageFlashcard imageId={item.imageId} maxH={110} />}<Tex leger={item.versoFormat === 'leger'}>{item.verso}</Tex>
+        <ElementsVerso carte={item} masquable={false} compact /></div>
       {item.a_retenir && <div className="hint" style={{ marginTop: 6 }}><strong>À retenir : </strong><Tex>{item.a_retenir}</Tex></div>}
     </>
   );

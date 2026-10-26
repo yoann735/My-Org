@@ -14,6 +14,7 @@ import { advanceQuestion, recordRelearnAttempt, QUALITY, QUALITY_TO_RATING, qual
 import { BoutonsFlashcard } from '../components/BoutonsFlashcard.jsx';
 import { repondreFlashcard } from '../scheduler/repondre.js';
 import { garderTagEnBase } from '../lib/aApprendre.js';
+import { ElementsVerso, elementsDe } from '../components/ElementsVerso.jsx';
 import { NOTE_DEPUIS_QUALITE_SCORE, NOTE_DEPUIS_ETIQUETTE } from '../scheduler/noter.js';
 import { planificateurActif } from '../scheduler/config.js';
 import { index } from '../lib/planning.js';
@@ -348,12 +349,13 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
               <span className="mrm-flash-hint mrm-flash-pied">Tape pour révéler la réponse</span>
             </>
           ) : (
-            <ZoneDefilante className={'mrm-flash-zone ' + (muscle || tableau ? 'mrm-muscle' : lgVerso)}>
+            <ZoneDefilante className={'mrm-flash-zone ' + (muscle || tableau || elementsDe(item).length ? 'mrm-muscle' : lgVerso)}>
               {occ && <OcclusionView occ={item.occlusion} revele maxH={280} />}
               {molecule && <FaceMoleculeParesseuse carte={item} cote="verso" />}
               {muscle && <><div className="mu-titre"><Tex>{item.recto}</Tex></div><ImageGeneraleMuscle item={item} face="verso" /><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>}
               {tableau && <><div className="mu-titre"><Tex>{item.recto}</Tex></div><TableauRevision item={item} /></>}
               {!muscle && !tableau && !molecule && !(occ && item.versoAuto) && <div className="mrm-flash-back">{cloze ? <MobileClozeVerso parts={versoParts} /> : <Tex leger={item.versoFormat === 'leger'}>{item.verso}</Tex>}</div>}
+              {!muscle && !tableau && !molecule && <ElementsVerso carte={item} />}
               {item.a_retenir && <div className="mrm-indice"><strong>À retenir :</strong> <Tex>{item.a_retenir}</Tex></div>}
             </ZoneDefilante>
           )}

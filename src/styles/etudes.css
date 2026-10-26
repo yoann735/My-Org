@@ -2490,3 +2490,20 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 /* séance : les deux boutons d'une carte nouvelle */
 .sfc-notes.deux { grid-template-columns: 1fr 1fr; }
 .sfc-notes.deux .sfc-btn { font-size: 15px; line-height: 1.15; }
+
+/* (26/10) « Regrouper par cours » : interrupteur du lanceur, nom du cours sur la carte, intercalaire « Cours suivant » */
+.sfa-groupe { display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 12px; }
+.sfa-groupe-lib { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 14px; font-weight: 600; }
+.sfa-groupe-sous { font-size: 12px; font-weight: 500; color: var(--text-3); }
+.sfc-cours { margin-left: auto; min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text-3); }
+.sfc-intercalaire { border: 0; background: transparent; color: var(--text); font: inherit; cursor: pointer; width: 100%; }
+.sfc-intercalaire-sur { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); }
+.sfc-intercalaire-n { font-size: 15px; color: var(--text-2); }
+
+/* (26/10) éléments à révéler du verso d'une carte Texte (components/ElementsVerso.jsx) : le tableau Muscle, numéroté */
+.mu-tableau.mu-elements { margin-top: 12px; }
+.mu-tableau.mu-elements .mu-ligne { --mu-etiq: 22px; gap: 10px; } /* le numéro, pas une étiquette de Muscle */
+.mu-tableau.mu-elements .mu-etiquette { font-variant-caps: normal; font-variant-numeric: tabular-nums; text-align: right; }
+.mu-element { font-size: 16px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mu-tableau.mu-elements.compact .mu-element { font-size: 13px; }

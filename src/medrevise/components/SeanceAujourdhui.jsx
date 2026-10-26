@@ -6,9 +6,12 @@
    (lib/categoriesFC.js). Deux raccourcis : « Bloc nouvelles » (Nouvelles seules) et « Révisions J »
    (Révisions + Retard). Le dernier choix est mémorisé sur l'appareil (meta `seanceFC.choix`).
    L'en-tête « N cartes · ≈ M min » suit la sélection. Séance du jour commencée : « Reprendre ».
+   (26/10) Sous les cases : l'interrupteur « Regrouper par cours » (mémorisé avec le choix) — il ne change QUE l'ordre
+   de passage (lib/categoriesFC.js regrouperParCours).
    ============================================================ */
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { Switch } from './ui.jsx';
 import { getMeta, setMeta } from '../lib/storage.js';
 import { todayISO } from '../lib/sm2.js';
 import { nextDate } from '../lib/planning.js';
@@ -45,7 +48,7 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
   const cocher = (cle, v) => changer({ ...choix, [cle]: { ...choix[cle], coche: v } });
   const borner = (cle, v) => changer({ ...choix, [cle]: { ...choix[cle], max: v === 'tout' ? 'tout' : Number(v) } });
   const demarrer = async () => {
-    const e = nouvelleSeance(ctx.db, today, choix);
+    const e = nouvelleSeance(ctx.db, today, choix, ctx.stats);
     if (!e.cartes.length) return;
     await setMeta(CLE_SEANCE, e);
     onDemarrer('choix');
@@ -93,6 +96,11 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
             </div>
           );
         })}
+      </div>
+      <div className="sfa-groupe" data-sfa="par-cours">
+        <span className="sfa-groupe-lib" id="sfa-par-cours">Regrouper par cours
+          <span className="sfa-groupe-sous">{choix.parCours ? 'cours après cours, dans l’ordre de la bibliothèque' : 'cartes mélangées'}</span></span>
+        <Switch on={choix.parCours} onChange={(v) => changer({ ...choix, parCours: v })} label="Regrouper par cours" />
       </div>
       <div className="sfa-pied">
         <div className="sfa-raccourcis" role="group" aria-label="Raccourcis">

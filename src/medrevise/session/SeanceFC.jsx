@@ -28,6 +28,7 @@ import { ActionsCarte } from '../components/ActionsCarte.jsx';
 import { estMuscle } from '../lib/muscle.js';
 import { estTableau } from '../lib/carteTableau.js';
 import { TableauRevision } from '../components/FlashcardTableau.jsx';
+import { ElementsVerso, elementsDe } from '../components/ElementsVerso.jsx';
 import { estMolecule } from '../molecule/carte.js';
 import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
@@ -39,6 +40,7 @@ import { index, isFicheScheduled, nextDate } from '../lib/planning.js';
 import { planDuJour, entrelacer, estFlashcardJ, VERSION_MESURES, reprendreSeance } from '../lib/apprentissageFC.js';
 import { repondreFlashcard, passerFlashcardEnRevision } from '../scheduler/repondre.js';
 import { categoriser, composerSeance, reprendreSeanceChoix, choixValide, estNouvelle } from '../lib/categoriesFC.js';
+import { rangDesCours } from '../apprentissageLibre/tableauBord.js';
 
 export const CLE_SEANCE = 'seanceFC';
 export const CLE_MESURES = 'seanceFC.mesures';
@@ -80,14 +82,17 @@ function remiseDAccord(db, etat, cartesParId, today, rand = Math.random) {
   return reprendreSeance(etat, plan, coursDe, rand).etat;
 }
 
-/** (24/10) nouvelle séance composée d'après le choix de l'écran de lancement (Retard → Révisions → Nouvelles) */
-export function nouvelleSeance(db, today, choix) {
+/** (24/10) nouvelle séance composée d'après le choix de l'écran de lancement (Retard → Révisions → Nouvelles).
+ *  (26/10) `choix.parCours` : regroupée par cours, dans l'ordre de la Bibliothèque (`stats` : ordre des sections). L'ordre
+ *  est écrit dans l'état de la séance : une reprise le garde tel quel. */
+export function nouvelleSeance(db, today, choix, stats = null) {
   const cartes = flashcardsPlanifiees(db);
   const parId = Object.fromEntries(cartes.map((q) => [q.id, q]));
   const c = choixValide(choix);
-  const { ids, categorie } = composerSeance(categoriser(cartes, today, nextDate), c, (id) => (parId[id] || {}).ficheId);
+  const rangs = c.parCours ? rangDesCours(db, stats) : null;
+  const { ids, categorie } = composerSeance(categoriser(cartes, today, nextDate), c, (id) => (parId[id] || {}).ficheId, Math.random, rangs && ((f) => rangs.get(f)));
   return {
-    v: VERSION_SEANCE, date: today, phase: ids.length ? 'cartes' : 'fin', cartes: ids, categorie, choix: c, idx: 0, nTotal: ids.length,
+    v: VERSION_SEANCE, date: today, phase: ids.length ? 'cartes' : 'fin', cartes: ids, categorie, choix: c, idx: 0, nTotal: ids.length, parCours: c.parCours,
     faites: { revisions: 0, rates: 0, notees: 0, passees: 0, gardees: 0 }, ms: { revisions: 0 }, debut: new Date().toISOString(),
   };
 }
@@ -99,6 +104,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
   const [cartes, setCartes] = useState(() => Object.fromEntries((ctx.db.questions || []).map((q) => [q.id, q])));
   const [retournee, setRetournee] = useState(false);
   const [enCours, setEnCours] = useState(false); // une réponse est en train d'être enregistrée
+  const [intercalairePasse, setIntercalairePasse] = useState(-1); // (26/10) index dont l'intercalaire « Cours suivant » a été passé
   const etatRef = useRef(null); etatRef.current = etat;
   const cartesRef = useRef(cartes); cartesRef.current = cartes;
 
@@ -145,7 +151,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
     (async () => {
       const sauve = await getMeta(CLE_SEANCE);
       // (24/10) l'écran de lancement écrit la séance composée avant d'ouvrir celle-ci ; sinon : le dernier choix
-      const e = seanceEnCours(sauve, cartesRef.current, today, ctx.db) ? remettreDAccord(sauve) : nouvelleSeance(ctx.db, today, await getMeta(CLE_CHOIX));
+      const e = seanceEnCours(sauve, cartesRef.current, today, ctx.db) ? remettreDAccord(sauve) : nouvelleSeance(ctx.db, today, await getMeta(CLE_CHOIX), ctx.stats);
       if (vivant) { depuis.current = Date.now(); await ecrire(e); }
     })();
     return () => { vivant = false; };
@@ -211,6 +217,14 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
   // (24/10) carte du bloc Nouvelles (séance v3) encore nouvelle : Garder / Passer au lieu des 4 boutons
   const categorie = (id && etat.categorie && etat.categorie[id]) || null;
   const nouvelle = !!carte && categorie === 'nouvelles' && estNouvelle(carte);
+  /* (26/10) REGROUPÉE PAR COURS : le cours de la carte en haut de la carte ; au changement de cours, un court
+     intercalaire « Cours suivant : <nom> · N cartes », passé d'un tap */
+  const coursDe = (k) => { const q = cartes[etat.cartes[k]]; return q ? q.ficheId : null; };
+  const titreCours = (f) => ((ctx.db.fiches || []).find((x) => x.id === f) || {}).titre || 'Cours';
+  const coursActuel = etat.parCours && carte ? carte.ficheId : null;
+  let nCours = 0;
+  if (coursActuel) for (let k = etat.idx; k < etat.cartes.length && coursDe(k) === coursActuel; k++) nCours++;
+  const intercalaire = !!coursActuel && etat.idx > 0 && coursDe(etat.idx - 1) !== coursActuel && intercalairePasse !== etat.idx;
 
   return (
     <div className={'sfc' + (pleinEcran ? ' plein-ecran' : '')}>
@@ -236,9 +250,20 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
         </div>
       )}
 
-      {etat.phase === 'cartes' && carte && (
+      {etat.phase === 'cartes' && carte && intercalaire && (
+        <button type="button" className="sfc-centre sfc-intercalaire" data-intercalaire={coursActuel} onClick={() => setIntercalairePasse(etat.idx)}
+          title="Toucher pour continuer">
+          <span className="sfc-intercalaire-sur">Cours suivant</span>
+          <span className="sfc-titre">{titreCours(coursActuel)}</span>
+          <span className="sfc-intercalaire-n tnum">{nCours} carte{nCours > 1 ? 's' : ''}</span>
+          <span className="sfc-indication">Touche pour continuer</span>
+        </button>
+      )}
+
+      {etat.phase === 'cartes' && carte && !intercalaire && (
         <div className="sfc-corps">
-          <div className="sfc-etiquette" data-categorie={categorie}>{nouvelle ? 'Nouvelle carte' : categorie === 'retard' ? 'En retard' : (carte.historique || []).some((h) => h && h.qualite != null) ? 'Révision' : 'Nouvelle carte'}</div>
+          <div className="sfc-etiquette" data-categorie={categorie}>{nouvelle ? 'Nouvelle carte' : categorie === 'retard' ? 'En retard' : (carte.historique || []).some((h) => h && h.qualite != null) ? 'Révision' : 'Nouvelle carte'}
+            {coursActuel && <span className="sfc-cours" data-cours={coursActuel} title={titreCours(coursActuel)}>{titreCours(coursActuel)}</span>}</div>
           {/* (17/10) cadre : la carte (un bouton) + les icônes carnet / apprentissage de CETTE carte, en surimpression dans son en-tête */}
           <div className="sfc-carte-cadre">
           <button type="button" className="sfc-carte avec-actions" key={carte.id + ':' + (retournee ? 'v' : 'r')} data-carte={carte.id}
@@ -281,7 +306,8 @@ export function FaceFC({ carte, cote, masquable = false }) {
   const montrerRecto = cote !== 'verso';
   const montrerVerso = cote !== 'recto';
   const image = !occ && ((montrerRecto && imageAuRecto(carte)) || (montrerVerso && imageAuVerso(carte)));
-  const long = ((montrerRecto ? carte.recto || '' : '') + (montrerVerso ? carte.verso || '' : '')).length > 260;
+  const elements = montrerVerso && elementsDe(carte).length > 0; // (26/10) éléments à révéler : contenu en liste, aligné à gauche
+  const long = elements || ((montrerRecto ? carte.recto || '' : '') + (montrerVerso ? carte.verso || '' : '')).length > 260;
   if (estMolecule(carte)) {
     return (
       <>
@@ -323,7 +349,8 @@ export function FaceFC({ carte, cote, masquable = false }) {
         {occ && <OcclusionView occ={occ} revele={montrerVerso} maxH={260} />}
         {montrerRecto && <div className="sfc-recto">{recto}</div>}
         {cote === 'deux' && <div className="sfc-sep" />}
-        {montrerVerso && !(occ && carte.versoAuto) && <div className="sfc-verso">{verso}</div>}
+        {montrerVerso && !(occ && carte.versoAuto) && !(elements && !String(carte.verso || '').trim()) && <div className="sfc-verso">{verso}</div>}
+        {elements && <ElementsVerso carte={carte} masquable={cote === 'verso'} />}
         {montrerVerso && carte.a_retenir && <div className="sfc-retenir"><strong>À retenir :</strong> <Tex>{carte.a_retenir}</Tex></div>}
       </ZoneDefilante>
     </>
