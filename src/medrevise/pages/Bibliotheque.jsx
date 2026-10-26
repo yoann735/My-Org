@@ -11,6 +11,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { matiereMeta, FicheDndProvider, DraggableFiche, DropSlot, DropCible, DraggableMatiere, DropMatiere, trierMatieres, LigneDossierArbre, dossierDeleteTexts, etiquetteMeta, etiquetteMenuItems, ContextMenu, ConfirmModal, detectDocKind, BellButton, Modal, SplitHandle } from '../components/ui.jsx';
+import { ExportFlashcards } from '../components/ExportFlashcards.jsx';
+import { estExportable } from '../lib/exportFlashcards.js';
 import { useTreeOpenState, trierSections, deplacerSection } from '../components/useTreeOpenState.js';
 import { useImportParDepot } from '../components/TreeFileDrop.jsx';
 import { putBlob } from '../lib/storage.js';
@@ -139,6 +141,9 @@ export function Bibliotheque({ ctx }) {
   // que Réviser (ctx.deleteMatiere : fiches → « À classer », matière → corbeille,
   // précédé d'un putBackup) — avec une confirmation qui dit tout ce qui bouge.
   const [matMenu, setMatMenu] = useState(null); // { x, y, matiereId }
+  // (26/10) « Exporter les flashcards… » d'un cours ou d'une matière (components/ExportFlashcards.jsx) : { cartes, libelle }
+  const [exportFC, setExportFC] = useState(null);
+  const flashcardsDe = (ficheIds) => (db.questions || []).filter((q) => estExportable(q) && ficheIds.has(q.ficheId));
   const [confirmDeleteMatiere, setConfirmDeleteMatiere] = useState(null); // { matiere, fiches, dossiers, cartes }
 
   /* IMPORT PAR DÉPÔT D'UN FICHIER (Finder) SUR L'ARBRE — exactement le mécanisme de
@@ -297,6 +302,8 @@ export function Bibliotheque({ ctx }) {
       // (16/10, lib/fichiersCours.js) UN document principal + au plus UNE fiche jumelle : plus
       // d'« attacher », d'« ouvrir en PDF / en HTML », de « remplacer le fichier HTML » ici
       items.push({ label: 'Fichiers du cours…', icon: 'filePdf', onClick: () => ouvrirFichiers(f) });
+      const fc = flashcardsDe(new Set([f.id]));
+      if (fc.length) items.push({ label: `Exporter les flashcards (${fc.length})…`, icon: 'archive', onClick: () => setExportFC({ cartes: fc, libelle: f.titre }) });
       items.push({
         label: f.rappelsJ === false ? 'Reprendre les rappels J' : 'Mettre les rappels J en pause', icon: 'bell',
         onClick: () => ctx.setFicheRappelsJ(f.id, f.rappelsJ === false),
@@ -925,10 +932,12 @@ export function Bibliotheque({ ctx }) {
             { label: 'Renommer', icon: 'edit', onClick: () => startRename('matiere', m.id, matiereMeta(m).label) },
             { label: 'Nouveau document', icon: 'edit', onClick: () => setNouveauDoc({ matiereId: m.id }) },
             { label: 'Nouveau dossier', icon: 'folder', onClick: () => createUnite(m.id) },
+            ...(() => { const fc = flashcardsDe(new Set((db.fiches || []).filter((f) => f.matiereId === m.id).map((f) => f.id))); return fc.length ? [{ label: `Exporter les flashcards (${fc.length})…`, icon: 'archive', onClick: () => setExportFC({ cartes: fc, libelle: matiereMeta(m).label }) }] : []; })(),
             { label: 'Supprimer la matière…', icon: 'trash', danger: true, onClick: () => askDeleteMatiere(m.id) },
           ]} />
         );
       })()}
+      {exportFC && <ExportFlashcards ctx={ctx} cartes={exportFC.cartes} libelle={exportFC.libelle} onFermer={() => setExportFC(null)} />}
       {confirmDeleteMatiere && (() => {
         const c = confirmDeleteMatiere;
         const nom = matiereMeta(c.matiere).label;

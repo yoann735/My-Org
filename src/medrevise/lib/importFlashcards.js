@@ -8,6 +8,11 @@
                     "molecule": { "nom", "smiles", "sens": "nom-molecule"|"molecule-nom" },
                     "tableau":  { "colonnes": [2 à 6], "lignes": [[…], …] (1 à 12) },
                     "items":    [ { "text", "masked": true|false }, … ] (26/10 : éléments à révéler d'une carte texte) } ] }
+   (26/10, export complet — lib/exportFlashcards.js, docs/compte-rendu-export-flashcards.md) ACCEPTE EN PLUS, pour
+   ré-importer un export tel quel : "occlusion": { "fichier"|"data", "largeur", "hauteur", "masques": [ … ] } (image à
+   masques), "muscle.images": { <ligne>: { "fichier"|"data", "masques"? } }, "molecule": { …, "molfile", "formule",
+   "comparaison", "biblio" }, "verso_format", "verso_auto", "a_apprendre", "origine" et "modifie_le" (informatifs),
+   "cree_le" (gardé sur la carte), "progress" (repris SEULEMENT avec l'option « Reprendre aussi la progression »).
    Une carte Muscle / Molécule / Tableau a son recto (nom, titre) ; son verso est construit.
    VALIDATION STRICTE : champ manquant, type inconnu, champ inconnu, valeur hors limites → un message
    par carte, avec son numéro et sa LIGNE dans le JSON ; rien n'est importé tant qu'il reste une
@@ -18,14 +23,16 @@
    (mêmes J, date de départ choisie) ; les images passent par putBlob (même stockage, même synchro).
    ============================================================ */
 import { parseLooseJson, cleanPastedJson, extractFirstJsonValue } from './parsePastedJson.js';
-import { appendItemsToFiche } from './import.js';
+import { appendItemsToFiche, cleanCoche } from './import.js';
 import { putBlob } from './storage.js';
 import { carteMuscle, LIGNES_MUSCLE } from './muscle.js';
 import { carteMolecule, SENS } from '../molecule/carte.js';
 import { carteTableau, normaliserTableau } from './carteTableau.js';
 import { lireZip, typeImage } from './zipLecture.js';
 
-const CHAMPS = new Set(['type', 'id', 'theme', 'concept', 'recto', 'verso', 'cloze', 'indice', 'a_retenir', 'difficulte', 'tags', 'source_cours', 'image', 'muscle', 'molecule', 'tableau', 'items']);
+const CHAMPS = new Set(['type', 'id', 'theme', 'concept', 'recto', 'verso', 'cloze', 'indice', 'a_retenir', 'difficulte', 'tags', 'source_cours', 'image', 'muscle', 'molecule', 'tableau', 'items',
+  // (26/10) export complet ré-importable
+  'occlusion', 'verso_format', 'verso_auto', 'a_apprendre', 'origine', 'cree_le', 'modifie_le', 'progress']);
 
 /* (26/10) éléments à révéler du verso d'une carte texte : [{ text, masked }] — `masked` facultatif (vrai par défaut) */
 function lireElements(v) {
@@ -88,6 +95,31 @@ function lignesDesItems(texte) {
   return pos.map((k) => ligneDe(k));
 }
 
+/* ---- un fichier image (« data » ou « fichier » du .zip) : { blob, nom } ou { erreur } ; `nom` (fichier du .zip) sert à
+   n'écrire qu'UNE fois une image partagée par plusieurs cartes ---- */
+function lireFichierImage(o, fichiers, champ) {
+  if (o.data != null) {
+    const m = /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/i.exec(String(o.data));
+    if (!m) return { erreur: `${champ}.data : URL de donnée d’image invalide (data:image/…;base64,…)` };
+    try {
+      const bin = atob(m[2].replace(/\s/g, ''));
+      const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+      return { blob: new Blob([a], { type: m[1].toLowerCase() }), nom: null };
+    } catch (e) { return { erreur: `${champ}.data : base64 illisible` }; }
+  }
+  if (o.fichier != null) {
+    const nom = str(o.fichier);
+    if (!fichiers) return { erreur: `${champ}.fichier « ${nom} » : importe un .zip qui contient ce fichier (ou utilise ${champ}.data)` };
+    const trouve = fichiers.has(nom) ? [nom, fichiers.get(nom)] : [...fichiers.entries()].find(([k]) => k.split('/').pop() === nom.split('/').pop());
+    if (!trouve) return { erreur: `${champ}.fichier « ${nom} » absent du .zip` };
+    const t = typeImage(nom);
+    if (!t) return { erreur: `${champ}.fichier « ${nom} » : format d’image non reconnu` };
+    const b = trouve[1];
+    return { blob: b.type ? b : new Blob([b], { type: t }), nom: trouve[0] };
+  }
+  return { erreur: `${champ} : « data » ou « fichier » attendu` };
+}
+
 /* ---- une image : { blob } prête à écrire, ou une erreur ---- */
 function lireImage(img, fichiers) {
   if (img == null) return { image: null };
@@ -97,28 +129,45 @@ function lireImage(img, fichiers) {
   if (inconnus.length) return { erreur: `image.${inconnus[0]} : champ inconnu (attendus : data, fichier, place)` };
   const place = o.place == null ? 'recto' : String(o.place);
   if (!['recto', 'verso', 'deux'].includes(place)) return { erreur: `image.place « ${place} » : recto, verso ou deux` };
-  if (o.data != null) {
-    const m = /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/i.exec(String(o.data));
-    if (!m) return { erreur: 'image.data : URL de donnée d’image invalide (data:image/…;base64,…)' };
-    try {
-      const bin = atob(m[2].replace(/\s/g, ''));
-      const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
-      return { image: { blob: new Blob([a], { type: m[1].toLowerCase() }), place } };
-    } catch (e) { return { erreur: 'image.data : base64 illisible' }; }
-  }
-  if (o.fichier != null) {
-    const nom = str(o.fichier);
-    if (!fichiers) return { erreur: `image.fichier « ${nom} » : importe un .zip qui contient ce fichier (ou utilise image.data)` };
-    const b = fichiers.get(nom) || [...fichiers.entries()].find(([k]) => k.split('/').pop() === nom)?.[1];
-    if (!b) return { erreur: `image.fichier « ${nom} » absent du .zip` };
-    const t = typeImage(nom);
-    if (!t) return { erreur: `image.fichier « ${nom} » : format d’image non reconnu` };
-    return { image: { blob: b.type ? b : new Blob([b], { type: t }), place } };
-  }
-  return { erreur: 'image : « data » ou « fichier » attendu' };
+  const f = lireFichierImage(o, fichiers, 'image');
+  if (f.erreur) return { erreur: f.erreur };
+  return { image: { blob: f.blob, nom: f.nom, place } };
 }
 
-/* ---- une carte : { carte, sorte, image } ou { erreur } ---- */
+/* ---- (26/10) image à masques (occlusion) : { occlusion: { blob, nom, imageW, imageH, coches } } ou { erreur } ---- */
+function lireOcclusion(v, fichiers) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return { erreur: 'occlusion : objet { fichier | data, largeur, hauteur, masques } attendu' };
+  const inconnu = sansCommentaires(v).find((k) => !['data', 'fichier', 'largeur', 'hauteur', 'masques'].includes(k));
+  if (inconnu) return { erreur: `occlusion.${inconnu} : champ inconnu (attendus : fichier, data, largeur, hauteur, masques)` };
+  if (!Array.isArray(v.masques)) return { erreur: 'occlusion.masques : liste des masques et étiquettes attendue' };
+  const k = v.masques.findIndex((c) => !c || typeof c !== 'object' || Array.isArray(c));
+  if (k >= 0) return { erreur: `occlusion.masques[${k}] : objet attendu` };
+  for (const d of ['largeur', 'hauteur']) if (v[d] != null && !(Number.isFinite(v[d]) && v[d] > 0)) return { erreur: `occlusion.${d} : nombre de pixels attendu` };
+  const f = lireFichierImage(v, fichiers, 'occlusion');
+  if (f.erreur) return { erreur: f.erreur };
+  return { occlusion: { blob: f.blob, nom: f.nom, imageW: v.largeur ?? null, imageH: v.hauteur ?? null, coches: v.masques.map((c, i) => ({ ...c, ...cleanCoche(c, i) })) } }; // normalisés, rien de perdu
+}
+
+/* ---- (26/10) images par ligne d'une carte Muscle : { images: { ligne: { blob, nom, masques? } } } ou { erreur } ---- */
+function lireImagesMuscle(v, fichiers) {
+  if (v == null) return { images: {} };
+  if (typeof v !== 'object' || Array.isArray(v)) return { erreur: 'muscle.images : objet { <ligne>: { fichier | data, masques } } attendu' };
+  const images = {};
+  for (const ligne of sansCommentaires(v)) {
+    if (!CHAMPS_MUSCLE.includes(ligne)) return { erreur: `muscle.images.${ligne} : ligne inconnue (attendues : ${CHAMPS_MUSCLE.join(', ')})` };
+    const o = v[ligne];
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return { erreur: `muscle.images.${ligne} : objet { fichier | data, masques } attendu` };
+    const inconnu = sansCommentaires(o).find((k) => !['data', 'fichier', 'masques'].includes(k));
+    if (inconnu) return { erreur: `muscle.images.${ligne}.${inconnu} : champ inconnu (attendus : fichier, data, masques)` };
+    if (o.masques != null && !Array.isArray(o.masques)) return { erreur: `muscle.images.${ligne}.masques : liste attendue` };
+    const f = lireFichierImage(o, fichiers, `muscle.images.${ligne}`);
+    if (f.erreur) return { erreur: f.erreur };
+    images[ligne] = { blob: f.blob, nom: f.nom, ...(o.masques && o.masques.length ? { masques: o.masques } : {}) };
+  }
+  return { images };
+}
+
+/* ---- une carte : { carte, sorte, image, occlusion, imagesMuscle, progress } ou { erreur } ---- */
 async function lireCarte(it, fichiers, chimie) {
   if (!it || typeof it !== 'object' || Array.isArray(it)) return { erreur: 'n’est pas un objet' };
   if (it.type == null) return { erreur: 'champ « type » manquant' };
@@ -130,15 +179,25 @@ async function lireCarte(it, fichiers, chimie) {
   const sortes = ['muscle', 'molecule', 'tableau'].filter((k) => it[k] != null);
   if (sortes.length > 1) return { erreur: `une carte est soit muscle, soit molecule, soit tableau (ici : ${sortes.join(' + ')})` };
   if (sortes.length && it.items != null) return { erreur: `« items » (éléments à révéler) : seulement sur une carte texte (pas ${sortes[0]})` };
-  const base = { theme: str(it.theme || it.concept), indice: str(it.indice), aRetenir: str(it.a_retenir), difficulte: estTexte(it.difficulte) ? it.difficulte : 'intermediaire' };
+  if (it.occlusion != null && (sortes.length || it.items != null || it.image != null)) return { erreur: 'une image à masques (« occlusion ») ne se combine ni avec « image », ni avec « items », muscle, molecule ou tableau' };
+  // (26/10) champs de l'export complet
+  if (it.a_apprendre != null && typeof it.a_apprendre !== 'boolean') return { erreur: 'champ « a_apprendre » : true ou false' };
+  if (it.verso_auto != null && typeof it.verso_auto !== 'boolean') return { erreur: 'champ « verso_auto » : true ou false' };
+  if (it.verso_format != null && typeof it.verso_format !== 'string') return { erreur: 'champ « verso_format » : texte attendu' };
+  for (const k of ['origine', 'progress']) if (it[k] != null && (typeof it[k] !== 'object' || Array.isArray(it[k]))) return { erreur: `champ « ${k} » : objet attendu` };
+  if (it.cree_le != null && (typeof it.cree_le !== 'string' || Number.isNaN(Date.parse(it.cree_le)))) return { erreur: 'champ « cree_le » : date ISO attendue' };
+  const base = { theme: str(it.theme || it.concept), indice: str(it.indice), aRetenir: str(it.a_retenir), difficulte: estTexte(it.difficulte) || [1, 2, 3].includes(it.difficulte) ? it.difficulte : 'intermediaire' }; // (26/10) l'export écrit la valeur stockée (1|2|3)
   const im = lireImage(it.image, fichiers);
   if (im.erreur) return { erreur: im.erreur };
-  let carte, sorte;
+  let carte, sorte, occlusion = null, imagesMuscle = {};
   if (it.muscle != null) {
     const m = it.muscle;
     if (typeof m !== 'object' || Array.isArray(m)) return { erreur: 'muscle : objet { origine, trajet, insertion, action, innervation } attendu' };
-    const k = sansCommentaires(m).find((x) => !CHAMPS_MUSCLE.includes(x));
-    if (k) return { erreur: `muscle.${k} : champ inconnu (attendus : ${CHAMPS_MUSCLE.join(', ')})` };
+    const k = sansCommentaires(m).find((x) => !CHAMPS_MUSCLE.includes(x) && x !== 'images');
+    if (k) return { erreur: `muscle.${k} : champ inconnu (attendus : ${CHAMPS_MUSCLE.join(', ')}, images)` };
+    const ims = lireImagesMuscle(m.images, fichiers);
+    if (ims.erreur) return { erreur: ims.erreur };
+    imagesMuscle = ims.images;
     if (!CHAMPS_MUSCLE.some((x) => estTexte(m[x]))) return { erreur: 'muscle : au moins un des 5 champs rempli' };
     if (!estTexte(it.recto)) return { erreur: 'champ « recto » (nom du muscle) manquant' };
     carte = carteMuscle({ nom: it.recto, lignes: Object.fromEntries(CHAMPS_MUSCLE.map((x) => [x, str(m[x])])), ...base });
@@ -146,8 +205,9 @@ async function lireCarte(it, fichiers, chimie) {
   } else if (it.molecule != null) {
     const m = it.molecule;
     if (typeof m !== 'object' || Array.isArray(m)) return { erreur: 'molecule : objet { nom, smiles } attendu' };
-    const k = sansCommentaires(m).find((x) => !['nom', 'smiles', 'sens'].includes(x));
-    if (k) return { erreur: `molecule.${k} : champ inconnu (attendus : nom, smiles, sens)` };
+    const k = sansCommentaires(m).find((x) => !['nom', 'smiles', 'sens', 'molfile', 'formule', 'comparaison', 'biblio'].includes(x));
+    if (k) return { erreur: `molecule.${k} : champ inconnu (attendus : nom, smiles, sens, molfile, formule)` };
+    if (m.molfile != null && !estTexte(m.molfile)) return { erreur: 'molecule.molfile : texte (molfile V2000) attendu' };
     if (!estTexte(m.smiles)) return { erreur: 'champ « molecule.smiles » manquant' };
     const nom = str(m.nom) || str(it.recto);
     if (!nom) return { erreur: 'champ « molecule.nom » (ou « recto ») manquant' };
@@ -160,7 +220,10 @@ async function lireCarte(it, fichiers, chimie) {
       if (!lu.getAllAtoms()) throw new Error('vide');
       mol = chimie.exporter(OCL, lu);
     } catch (e) { return { erreur: `molecule.smiles « ${str(m.smiles)} » : SMILES illisible` }; }
-    carte = carteMolecule({ nom, smiles: mol.smiles, molfile: mol.molfile, formule: mol.formule, sens, ...base });
+    // (26/10) export complet : le dessin d'origine (molfile, coordonnées comprises) est gardé tel quel
+    if (estTexte(m.molfile)) mol = { smiles: str(m.smiles), molfile: m.molfile, formule: estTexte(m.formule) ? str(m.formule) : mol.formule };
+    carte = carteMolecule({ nom, smiles: mol.smiles, molfile: mol.molfile, formule: mol.formule, sens, ...base,
+      ...(estTexte(m.comparaison) ? { comparaison: str(m.comparaison) } : {}), ...(m.biblio != null ? { biblio: m.biblio } : {}) });
     sorte = 'molecule';
   } else if (it.tableau != null) {
     const r = normaliserTableau(it.tableau);
@@ -180,13 +243,24 @@ async function lireCarte(it, fichiers, chimie) {
     carte = { type: 'flashcard', theme: base.theme, concept: base.theme, difficulte: base.difficulte, recto: str(it.recto), verso: str(it.verso),
       indice: base.indice || null, a_retenir: base.aRetenir, ...(cloze.length ? { cloze } : {}), ...(avecElements ? { items: el.items } : {}) };
     sorte = cloze.length || /\{\{[^}]+\}\}/.test(it.recto) ? 'trous' : im.image ? 'image' : 'texte';
+    if (it.occlusion != null) {
+      const o = lireOcclusion(it.occlusion, fichiers);
+      if (o.erreur) return { erreur: o.erreur };
+      occlusion = o.occlusion;
+      sorte = 'occlusion';
+    }
   }
+  if (estTexte(it.verso_format)) carte.versoFormat = str(it.verso_format);
+  if (it.verso_auto === true) carte.versoAuto = true;
+  if (it.a_apprendre === true) carte.aApprendre = true;
+  if (it.cree_le != null) carte.createdAt = it.cree_le;
   if (Array.isArray(it.tags)) carte.tags = it.tags.map(str).filter(Boolean);
   if (estTexte(it.id)) carte.id = str(it.id);
-  return { carte, sorte, image: im.image };
+  const progress = it.progress ? Object.fromEntries(Object.entries(it.progress).filter(([k]) => k !== 'categorie')) : null;
+  return { carte, sorte, image: im.image, occlusion, imagesMuscle, progress: progress && Object.keys(progress).length ? progress : null };
 }
 
-export const LIBELLES_SORTES = { texte: 'Texte', trous: 'Trous', image: 'Image', muscle: 'Muscle', molecule: 'Molécule', tableau: 'Tableau' };
+export const LIBELLES_SORTES = { texte: 'Texte', trous: 'Trous', image: 'Image', occlusion: 'Image à masques', muscle: 'Muscle', molecule: 'Molécule', tableau: 'Tableau' };
 
 /**
  * Analyse un import (texte JSON, ou fichier .json / .zip). Rien n'est écrit.
@@ -217,7 +291,7 @@ export async function analyserImport({ texte = null, fichier = null, existantes 
   };
   const deja = new Set((existantes || []).filter((q) => q.type === 'flashcard').map((q) => normRecto(q.recto)));
   const cartes = [], erreurs = [], autres = [];
-  const compte = { texte: 0, trous: 0, image: 0, muscle: 0, molecule: 0, tableau: 0 };
+  const compte = { texte: 0, trous: 0, image: 0, occlusion: 0, muscle: 0, molecule: 0, tableau: 0 };
   for (let i = 0; i < items.length; i++) {
     const r = await lireCarte(items[i], fichiers, chimie);
     const ou = { index: i + 1, ligne: lignes[i] || null };
@@ -226,31 +300,61 @@ export async function analyserImport({ texte = null, fichier = null, existantes 
     const cle = normRecto(r.carte.recto);
     const doublon = deja.has(cle);
     deja.add(cle);
-    cartes.push({ ...ou, carte: r.carte, sorte: r.sorte, image: r.image, doublon });
+    cartes.push({ ...ou, carte: r.carte, sorte: r.sorte, image: r.image, occlusion: r.occlusion, imagesMuscle: r.imagesMuscle, progress: r.progress, doublon });
     compte[r.sorte]++;
   }
-  return { ok: true, cartes, erreurs, autres, compte, doublons: cartes.filter((c) => c.doublon).length };
+  return { ok: true, cartes, erreurs, autres, compte, doublons: cartes.filter((c) => c.doublon).length, avecProgression: cartes.filter((c) => c.progress).length };
 }
 
 /**
  * Importe les cartes analysées dans la fiche (aucune s'il reste une erreur).
- * `doublons` : 'ignorer' | 'importer'. Rend { count, ignores }.
+ * `doublons` : 'ignorer' | 'importer'. `progression` (26/10) : reprendre le bloc `progress` des cartes qui en ont un
+ * (dates, J, FSRS, historique) au lieu de les faire partir de `startDate` comme des cartes neuves. Rend { count, ignores }.
  */
-export async function importerCartes({ ficheId, analyse, startDate, doublons = 'ignorer' }) {
+export async function importerCartes({ ficheId, analyse, startDate, doublons = 'ignorer', progression = false }) {
   if (!analyse || !analyse.ok || analyse.erreurs.length) throw new Error('Corrige les erreurs avant d’importer.');
   const garder = analyse.cartes.filter((c) => doublons === 'importer' || !c.doublon);
   const items = [];
+  const progres = new Map(); // item → bloc progress
+  // une image partagée par plusieurs cartes (même fichier du .zip) n'est écrite qu'une fois
+  const ecrites = new Map();
+  const ecrire = async (im) => {
+    if (im.nom && ecrites.has(im.nom)) return ecrites.get(im.nom);
+    const id = await putBlob(im.blob);
+    if (im.nom) ecrites.set(im.nom, id);
+    return id;
+  };
   for (const c of garder) {
-    const carte = { ...c.carte };
-    if (c.image) {
-      const id = await putBlob(c.image.blob);
-      if (c.sorte === 'muscle') carte.muscle = { ...carte.muscle, imageGenerale: { imageId: id, auRecto: c.image.place !== 'verso' } };
-      else { carte.imageId = id; carte.imagePlace = c.image.place; }
+    let carte = { ...c.carte };
+    if (c.sorte === 'muscle') {
+      const images = {};
+      for (const [ligne, im] of Object.entries(c.imagesMuscle || {})) images[ligne] = { imageId: await ecrire(im), ...(im.masques ? { masques: im.masques } : {}) };
+      const imageGenerale = c.image ? { imageId: await ecrire(c.image), auRecto: c.image.place !== 'verso' } : null;
+      if (c.image || Object.keys(images).length) {
+        // verso reconstruit avec les images (comme une carte faite à la main)
+        const m = carteMuscle({ nom: carte.recto, lignes: carte.muscle.lignes, theme: carte.theme || '', indice: carte.indice || '', aRetenir: carte.a_retenir || '', difficulte: carte.difficulte, images, imageGenerale });
+        carte = { ...carte, verso: m.verso, muscle: m.muscle };
+      }
+    } else if (c.occlusion) {
+      carte.occlusion = { imageId: await ecrire(c.occlusion), imageW: c.occlusion.imageW, imageH: c.occlusion.imageH, coches: c.occlusion.coches };
+    } else if (c.image) {
+      carte.imageId = await ecrire(c.image); carte.imagePlace = c.image.place;
     }
+    if (progression && c.progress) progres.set(carte, c.progress);
     items.push(carte);
   }
-  const r = await appendItemsToFiche({ ficheId, items, startDate });
+  const decorer = progres.size ? (rec, raw) => avecProgression(rec, progres.get(raw)) : null;
+  const r = await appendItemsToFiche({ ficheId, items, startDate, decorer });
   return { count: r.count || 0, ignores: analyse.cartes.length - garder.length + (r.duplicates || 0) };
+}
+
+/* la planification d'une carte neuve (newItem : départ, Nouvelle, historique vide) cède la place à celle de l'export */
+const PLANIF_NEUVE = ['dueDate', 'j0Date', 'intervalDays', 'capped', 'termine', 'nouvelle', 'historique', 'missed', 'plan', 'cursor'];
+function avecProgression(rec, progress) {
+  if (!progress) return rec;
+  const out = { ...rec };
+  for (const k of PLANIF_NEUVE) delete out[k];
+  return { ...out, ...progress };
 }
 
 /* ---- le format attendu : un exemple COMPLET et commenté (clés « _… »), réimportable tel quel ---- */

@@ -161,10 +161,10 @@ function preferePartage() {
  * Seul un `AbortError` — il a réellement fermé la feuille — vaut « annulé ».
  * @returns {Promise<'partage'|'telechargement'|'annule'>}
  */
-export async function deliverFile(blob, filename) {
+export async function deliverFile(blob, filename, type = 'application/json') { // (26/10) `type` : .zip de l'export des flashcards
   if (preferePartage()) {
     try {
-      const file = new File([blob], filename, { type: 'application/json' });
+      const file = new File([blob], filename, { type });
       if (navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: filename });
         return 'partage';

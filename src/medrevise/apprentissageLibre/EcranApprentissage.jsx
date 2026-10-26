@@ -25,6 +25,7 @@ import { FaceCarte } from './FaceCarte.jsx';
 import { SessionApprentissage } from './SessionApprentissage.jsx';
 import { BoutonAApprendre, EtiquetteAApprendre } from '../components/BoutonAApprendre.jsx';
 import { estAApprendre } from '../lib/aApprendre.js';
+import { ExportFlashcards } from '../components/ExportFlashcards.jsx';
 import {
   TYPES, FILTRES_VIDES, filtresActifs, filtresValides, filtrer, grouper, idsAffiches,
   choixFiltres, toutesLesCartes, typeCarte, rectoTexte, versoTexte,
@@ -49,6 +50,7 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
   const [plis, setPlis] = useState({}); // id de groupe → ouvert (true) / replié (false), choisi à la main
   const [menu, setMenu] = useState(null); // puce ouverte (ordinateur) : 'matieres' | 'cours' | 'types'
   const [feuille, setFeuille] = useState(false); // filtres (téléphone)
+  const [exportFC, setExportFC] = useState(false); // (26/10) exporter les cartes visibles (components/ExportFlashcards.jsx)
   const [apercu, setApercu] = useState(null); // id de la carte en aperçu
   const [session, setSession] = useState(null);
 
@@ -93,6 +95,12 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
     <button type="button" className="btn primary alib-lancer" disabled={!ordre.length} onClick={lancer}
       title={ordre.length ? `Lancer une session sur les ${pl(ordre.length, 'carte visible', 'cartes visibles')}` : 'Aucune carte visible'}>
       <Icon name="play" size={14} /> Lancer{ordre.length ? <span className="tnum"> ({ordre.length})</span> : null}
+    </button>
+  );
+  const boutonExporter = (
+    <button type="button" className="icon-btn" data-act="exporter-fc" disabled={!visibles.length} onClick={() => setExportFC(true)}
+      title={visibles.length ? `Exporter ${pl(visibles.length, 'carte visible', 'cartes visibles')} (.zip ré-importable)` : 'Aucune carte visible'} aria-label="Exporter les cartes visibles">
+      <Icon name="archive" size={16} />
     </button>
   );
   const choixVue = (
@@ -148,6 +156,7 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
               </button>
               {compteur}
               <span style={{ flex: 1 }} />
+              {boutonExporter}
               {boutonLancer}
             </div>
           </div>
@@ -163,6 +172,7 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
               {recherche}
               <span style={{ flex: 1 }} />
               {choixVue}
+              {boutonExporter}
               {boutonLancer}
             </div>
             <div className="alib2-ligne2">
@@ -256,6 +266,7 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
           </div>
         </div>, document.body)}
 
+      {exportFC && <ExportFlashcards ctx={ctx} cartes={visibles} defautLibelle={actifs ? 'apprentissage' : 'toutes'} onFermer={() => setExportFC(false)} />}
       {apercu && (
         <Apercu ctx={ctx} ordre={ordre} id={apercu} onChanger={setApercu} onFermer={() => setApercu(null)} mobile={mobile} />
       )}

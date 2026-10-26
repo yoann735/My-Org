@@ -41,6 +41,7 @@ import { TableauMuscle, ImageGeneraleMuscle } from './FlashcardMuscle.jsx';
 import { estMuscle, texteMuscle } from '../lib/muscle.js';
 import { estTableau } from '../lib/carteTableau.js';
 import { ImportFlashcards } from './ImportFlashcards.jsx';
+import { ExportFlashcards } from './ExportFlashcards.jsx';
 import { TableauRevision } from './FlashcardTableau.jsx';
 import { estMolecule, texteMolecule, SENS, NIVEAUX } from '../molecule/carte.js';
 import { VueMoleculeParesseuse } from '../molecule/Paresseux.jsx';
@@ -335,6 +336,10 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
   // (26/10) filtre « À apprendre », combinable avec la sorte et la recherche ; carte agrandie (id)
   const [filtreAap, setFiltreAap] = useState(false);
   const [agrandie, setAgrandie] = useState(null);
+  // (26/10) export (components/ExportFlashcards.jsx) : sélection cochée (Set d'ids, null = hors sélection) → cartes à exporter
+  const [selExport, setSelExport] = useState(null);
+  const [exportFC, setExportFC] = useState(null);
+  const cocher = (id) => setSelExport((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const sorteListe = (q) => (estOcclusion(q) ? 'image' : sorteDe(q) !== 'standard' ? sorteDe(q) : (q.cloze && q.cloze.length) || /\{\{[^{}]+\}\}/.test(q.recto || '') ? 'trou' : q.imageId ? 'image' : 'texte');
   const nbAap = useMemo(() => items.filter(estAApprendre).length, [items]);
   const nbParSorte = useMemo(() => { const n = {}; for (const q of items) { const k = sorteListe(q); n[k] = (n[k] || 0) + 1; } return n; }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -391,6 +396,11 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         {/* (17/10) importer des flashcards (fichier .json / .zip ou collage) — lib/importFlashcards.js */}
         {activeType === 'flashcard' && <button type="button" className="btn sm" data-act="importer-fc" title="Importer des flashcards (JSON)" onClick={() => setImportFC(true)}>
           <Icon name="upload" size={13} /> Importer
+        </button>}
+        {/* (26/10) exporter : toutes les cartes de la fiche, ou la sélection cochée (.zip ré-importable) */}
+        {activeType === 'flashcard' && items.length > 0 && <button type="button" className={'btn sm' + (selExport ? ' actif' : '')} data-act="exporter-fc" title="Exporter des flashcards (.zip : JSON + images, ré-importable)"
+          onClick={() => setSelExport((s) => (s ? null : new Set(items.map((q) => q.id))))}>
+          <Icon name="archive" size={13} /> Exporter
         </button>}
         <span style={{ flex: 1 }} />
         <button type="button" className="icon-btn sm" title="Plus d’actions : coller du JSON"
@@ -459,6 +469,19 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
           </div>
         </div>
       )}
+      {activeType === 'flashcard' && selExport && items.length > 0 && (
+        <div className="fcl-selection" data-selection={selExport.size}>
+          <span><span className="tnum">{selExport.size}</span> / <span className="tnum">{items.length}</span> cochée{selExport.size > 1 ? 's' : ''}</span>
+          <button type="button" className="linklike" data-act="tout-cocher" onClick={() => setSelExport(new Set(items.map((q) => q.id)))}>Tout cocher</button>
+          <button type="button" className="linklike" data-act="tout-decocher" onClick={() => setSelExport(new Set())}>Tout décocher</button>
+          <span style={{ flex: 1 }} />
+          <button type="button" className="btn sm primary" data-act="exporter-selection" disabled={!selExport.size}
+            onClick={() => setExportFC(items.filter((q) => selExport.has(q.id)))}>
+            <Icon name="archive" size={13} /> {selExport.size === items.length ? `Exporter les ${items.length} cartes` : `Exporter la sélection (${selExport.size})`}
+          </button>
+          <button type="button" className="cd-ic" onClick={() => setSelExport(null)} title="Quitter la sélection" aria-label="Quitter la sélection"><Icon name="x" size={12} /></button>
+        </div>
+      )}
       <div className="pis-list">
         {activeType === 'flashcard' && items.length > 0 && itemsVus.length === 0 && (
           <div className="pm-vide fcl-vide"><Icon name="search" size={20} /><div>Aucune carte ne correspond.</div>
@@ -486,12 +509,13 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
           ) : (
             <ItemReadCard key={item.id} item={item} ctx={ctx} onBoite={onAllerABoite && item.source && item.source.boiteId ? () => onAllerABoite(item.source) : null}
               onEdit={() => { if (estOcclusion(item)) { setOccEdition(item); return; } setEditingId(item.id); setAdding(false); }}
-              onDelete={() => setConfirmDel(item)} onAgrandir={item.type === 'flashcard' ? () => setAgrandie(item.id) : null} />
+              onDelete={() => setConfirmDel(item)} onAgrandir={item.type === 'flashcard' ? () => setAgrandie(item.id) : null}
+              coche={selExport && item.type === 'flashcard' ? selExport.has(item.id) : undefined} onCocher={() => cocher(item.id)} />
           )
         ))}
       </div>
     </div>
-  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, itemsVus, recherche, filtreSorte, filtreAap, nbAap, nbParSorte, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC]); // eslint-disable-line react-hooks/exhaustive-deps
+  ), [activeType, countByType, adding, addSource, busyAdd, addedCount, items, itemsVus, recherche, filtreSorte, filtreAap, nbAap, nbParSorte, editingId, busyEdit, ctx, ficheId, rectoInitial, resumeFC, selExport]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* contenus des modes : des éléments STABLES (mêmes objets d'un rendu à l'autre tant que
      leur contenu ne change pas) — le volet mémoïsé (Volet) ne se re-rend alors jamais
@@ -544,6 +568,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
             onChanger={setAgrandie} onFermer={() => setAgrandie(null)} />
         )}
         {importFC && <ImportFlashcards ctx={ctx} ficheId={ficheId} onFermer={() => setImportFC(false)} />}
+        {exportFC && <ExportFlashcards ctx={ctx} cartes={exportFC} libelle={((ctx.db.fiches || []).find((f) => f.id === ficheId) || {}).titre || null}
+          onFermer={() => { setExportFC(null); setSelExport(null); }} />}
 
         {occEdition && (
           <OcclusionEditorModal ctx={ctx} ficheId={ficheId} initial={occEdition === true ? null : occEdition}
@@ -582,7 +608,7 @@ const Volet = memo(function Volet({ id, label, k, cache, contenu }) {
 });
 
 /* ---- carte de lecture (réponse toujours visible) + Éditer/Supprimer ---- */
-function ItemReadCard({ item, ctx = null, onEdit, onDelete, onBoite = null, onAgrandir = null }) {
+function ItemReadCard({ item, ctx = null, onEdit, onDelete, onBoite = null, onAgrandir = null, coche = undefined, onCocher = null }) {
   /* (22/10) flashcards : une carte compacte, ses actions au survol (au doigt : toujours visibles) — modifier,
      apprentissage, carnet d'erreurs, supprimer (docs/compte-rendu-tableau-flashcards.md §6) */
   const fc = item.type === 'flashcard';
@@ -590,6 +616,7 @@ function ItemReadCard({ item, ctx = null, onEdit, onDelete, onBoite = null, onAg
     <div className={'pis-item card' + (fc ? ' fcl-carte' : '')} data-item={item.id}>
       <div className="card-body">
         <div className="row spread" style={{ marginBottom: 8, alignItems: 'flex-start', gap: 8 }}>
+          {coche !== undefined && <input type="checkbox" className="fcl-coche" checked={coche} onChange={onCocher} data-coche={item.id} aria-label="Exporter cette carte" title="Inclure cette carte dans l’export" />}
           <span className="hint" style={{ fontWeight: 700, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto' }}>{item.theme || 'Sans thème'}</span>
           {fc && <EtiquetteAApprendre carte={item} />}
           <div className={'row' + (fc ? ' fcl-actions' : '')} style={{ gap: 4, flex: '0 0 auto' }}>

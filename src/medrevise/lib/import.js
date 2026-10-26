@@ -114,7 +114,9 @@ export function doublonsRedatables(questions, ficheId, items, startDate) {
   return (questions || []).filter((q) => q.ficheId === ficheId && q.srcId && ids.has(q.srcId) && jamaisRevisee(q) && (q.j0Date || q.dueDate) !== startDate);
 }
 
-export async function appendItemsToFiche({ ficheId, items, startDate, meta, j0PourDoublons = false }) {
+// `decorer(rec, raw)` (26/10, ré-import d'un export avec sa progression — lib/importFlashcards.js) : retouche
+// l'enregistrement neuf d'un item avant l'écriture groupée ; absent = comportement inchangé.
+export async function appendItemsToFiche({ ficheId, items, startDate, meta, j0PourDoublons = false, decorer = null }) {
   const fiche = await getOne('fiches', ficheId);
   if (!fiche) return { ok: false };
   const themeFiche = themeFlashcardsDeFiche(fiche);
@@ -127,7 +129,7 @@ export async function appendItemsToFiche({ ficheId, items, startDate, meta, j0Po
   for (const raw of (items || [])) {
     const srcId = raw && raw.id;
     if (srcId && existingSrc.has(srcId)) { duplicates++; continue; }
-    const rec = toInternalItem(avecThemeDeFiche(raw, themeFiche), (it) => newItem(ficheId, it, start));
+    const rec = toInternalItem(avecThemeDeFiche(raw, themeFiche), (it) => (decorer ? decorer(newItem(ficheId, it, start), raw) : newItem(ficheId, it, start)));
     if (!rec) continue;
     fresh.push(rec);
     if (srcId) existingSrc.add(srcId); // évite les doublons intra-collage

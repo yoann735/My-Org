@@ -18,13 +18,32 @@ export function crc32(octets) {
 
 /** @param {{ nom: string, donnees: Uint8Array | string }[]} fichiers @returns {Blob} application/zip */
 export function creerZip(fichiers) {
+  const z = archive(fichiers.length);
+  for (const f of fichiers) z.ajouter(f);
+  return z.fermer();
+}
+
+/* (26/10, export des flashcards : des centaines d'images) MÊME archive, construite par étapes : la main est
+   rendue au navigateur toutes les ~30 ms (l'interface ne fige pas) ; `onProgres(fait, total)` après chaque fichier */
+export async function creerZipProgressif(fichiers, onProgres = () => {}) {
+  const z = archive(fichiers.length);
+  let t0 = Date.now();
+  for (let i = 0; i < fichiers.length; i++) {
+    z.ajouter(fichiers[i]);
+    onProgres(i + 1, fichiers.length);
+    if (Date.now() - t0 > 30) { await new Promise((r) => setTimeout(r, 0)); t0 = Date.now(); }
+  }
+  return z.fermer();
+}
+
+function archive(n) {
   const enc = new TextEncoder();
   const morceaux = [], central = [];
   let decalage = 0;
   const d = new Date();
   const heure = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
   const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
-  for (const f of fichiers) {
+  const ajouter = (f) => {
     const nom = enc.encode(f.nom);
     const data = typeof f.donnees === 'string' ? enc.encode(f.donnees) : f.donnees;
     const crc = crc32(data);
@@ -40,10 +59,13 @@ export function creerZip(fichiers) {
     cen.setUint32(42, decalage, true);
     central.push(new Uint8Array(cen.buffer), nom);
     decalage += 30 + nom.length + data.length;
-  }
-  const tailleCentral = central.reduce((n, x) => n + x.length, 0);
-  const fin = new DataView(new ArrayBuffer(22));
-  fin.setUint32(0, 0x06054b50, true); fin.setUint16(8, fichiers.length, true); fin.setUint16(10, fichiers.length, true);
-  fin.setUint32(12, tailleCentral, true); fin.setUint32(16, decalage, true);
-  return new Blob([...morceaux, ...central, new Uint8Array(fin.buffer)], { type: 'application/zip' });
+  };
+  const fermer = () => {
+    const tailleCentral = central.reduce((k, x) => k + x.length, 0);
+    const fin = new DataView(new ArrayBuffer(22));
+    fin.setUint32(0, 0x06054b50, true); fin.setUint16(8, n, true); fin.setUint16(10, n, true);
+    fin.setUint32(12, tailleCentral, true); fin.setUint32(16, decalage, true);
+    return new Blob([...morceaux, ...central, new Uint8Array(fin.buffer)], { type: 'application/zip' });
+  };
+  return { ajouter, fermer };
 }

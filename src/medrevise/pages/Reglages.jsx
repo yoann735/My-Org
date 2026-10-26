@@ -16,6 +16,8 @@ import { reglagesFC } from '../lib/apprentissageFC.js';
 import { ReglagesFSRS } from '../components/ReglagesFSRS.jsx';
 import { SynchroJournal } from '../components/SynchroJournal.jsx';
 import { CarteSauvegardes } from '../components/FiletSecurite.jsx';
+import { ExportFlashcards } from '../components/ExportFlashcards.jsx';
+import { estExportable } from '../lib/exportFlashcards.js';
 import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
 import { CarteArchives, CarteFichiersHorsModele } from '../components/Archives.jsx';
 import { ReglagesCarnet } from '../components/SaisieCarnet.jsx';
@@ -349,6 +351,8 @@ export function Reglages({ ctx }) {
           </div>
           {backup.message && <div className="hint" style={{ marginTop: 10 }}>{backup.message}</div>}
         </Card>
+        {/* (26/10) export complet des flashcards : .zip ré-importable (components/ExportFlashcards.jsx) */}
+        <CarteExportFlashcards ctx={ctx} />
         <Card title="Restaurer une sauvegarde" icon="upload">
           <div className="hint" style={{ marginBottom: 12 }}>
             Remet CET appareil dans l'état d'un fichier exporté, puis pousse cet état
@@ -477,5 +481,24 @@ function ReglagesFlashcards({ ctx }) {
       </label>
       <div className="hint">Séance du jour : toutes les cartes dues, une vue chacune, 4 boutons (À revoir · Difficile · Correct · Facile).</div>
     </div>
+  );
+}
+
+/* (26/10) toutes les flashcards, en un .zip ré-importable par « Importer » du panneau Flashcards d'un cours */
+function CarteExportFlashcards({ ctx }) {
+  const [ouvert, setOuvert] = useState(false);
+  const cartes = (ctx.db.questions || []).filter(estExportable);
+  return (
+    <Card title="Exporter les flashcards" icon="cards">
+      <div className="hint" style={{ marginBottom: 12 }}>
+        Toutes tes flashcards ({cartes.length}) dans un fichier .zip : leur contenu complet, leurs images, le tag
+        « À apprendre », leur cours d'origine et leur progression (à part). Ré-importable tel quel dans n'importe quel
+        cours (panneau Flashcards › Importer). Lecture seule : aucune carte n'est modifiée.
+      </div>
+      <button type="button" className="btn" data-act="exporter-toutes-fc" disabled={!cartes.length} onClick={() => setOuvert(true)}>
+        <Icon name="archive" size={15} /> Exporter toutes les flashcards…
+      </button>
+      {ouvert && <ExportFlashcards ctx={ctx} cartes={cartes} libelle="toutes" titre="Exporter toutes les flashcards" onFermer={() => setOuvert(false)} />}
+    </Card>
   );
 }

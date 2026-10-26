@@ -10,6 +10,8 @@
    - « Voir le format attendu » : l'exemple complet et commenté (copié d'un clic, réimportable tel
      quel) et le prompt de génération (Réglages › Prompts) complété des types en plus.
    Les cartes importées entrent dans les J exactement comme des cartes créées à la main.
+   (26/10) Un .zip de l'export complet (components/ExportFlashcards.jsx) s'importe ici tel quel ; ses cartes portent leur
+   progression (bloc « progress ») : ignorée par défaut, reprise avec « Reprendre aussi la progression ».
    ============================================================ */
 import { useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -39,6 +41,7 @@ export function ImportFlashcards({ ctx, ficheId, onFermer }) {
   const [enCours, setEnCours] = useState(false);
   const [doublons, setDoublons] = useState('ignorer');
   const [depart, setDepart] = useState(todayISO());
+  const [progression, setProgression] = useState(false);
   const [fait, setFait] = useState(null);
   const [format, setFormat] = useState(false);
   const entree = useRef(null);
@@ -51,9 +54,9 @@ export function ImportFlashcards({ ctx, ficheId, onFermer }) {
   const importer = async () => {
     setEnCours(true);
     try {
-      const r = await importerCartes({ ficheId, analyse, startDate: depart, doublons });
+      const r = await importerCartes({ ficheId, analyse, startDate: depart, doublons, progression });
       await ctx.reload();
-      setFait(r); setAnalyse(null); setTexte(''); setNomFichier(null);
+      setFait({ ...r, progression: progression && analyse.avecProgression > 0 }); setAnalyse(null); setTexte(''); setNomFichier(null); setProgression(false);
     } catch (e) { setFait({ erreur: e.message }); } finally { setEnCours(false); }
   };
   const prompt = ((ctx.promptOverrides && ctx.promptOverrides.biologie) || DEFAULT_PROMPTS.biologie) + COMPLEMENT_PROMPT;
@@ -142,6 +145,11 @@ export function ImportFlashcards({ ctx, ficheId, onFermer }) {
                 </div>
               </div>
             )}
+            {a.avecProgression > 0 && (
+              <label className="ifc-progression" title="Chaque carte de cet export porte sa progression (catégorie, dates, J, état FSRS, historique). Décoché : les cartes repartent de zéro à la date de départ.">
+                <input type="checkbox" checked={progression} onChange={(e) => setProgression(e.target.checked)} data-champ="progression" /> Reprendre aussi la progression <span className="hint tnum">({a.avecProgression} carte{a.avecProgression > 1 ? 's' : ''})</span>
+              </label>
+            )}
             <div className="row spread ifc-pied" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <label className="ifc-date">Date de départ <input type="date" className="input" value={depart} onChange={(e) => setDepart(e.target.value || todayISO())} data-champ="depart" /></label>
               <button type="button" className="btn primary" data-act="importer" disabled={enCours || a.erreurs.length > 0 || n === 0} onClick={importer}>
@@ -150,7 +158,7 @@ export function ImportFlashcards({ ctx, ficheId, onFermer }) {
             </div>
           </div>
         )}
-        {fait && !fait.erreur && <div className="ifc-fait" role="status" data-fait={fait.count}><Icon name="check" size={14} /> {fait.count} carte{fait.count > 1 ? 's' : ''} importée{fait.count > 1 ? 's' : ''} dans cette fiche — dans les J à partir du {new Date(depart + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}{fait.ignores ? ` (${fait.ignores} doublon${fait.ignores > 1 ? 's' : ''} ignoré${fait.ignores > 1 ? 's' : ''})` : ''}.</div>}
+        {fait && !fait.erreur && <div className="ifc-fait" role="status" data-fait={fait.count}><Icon name="check" size={14} /> {fait.count} carte{fait.count > 1 ? 's' : ''} importée{fait.count > 1 ? 's' : ''} dans cette fiche — {fait.progression ? 'avec leur progression' : <>dans les J à partir du {new Date(depart + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}</>}{fait.ignores ? ` (${fait.ignores} doublon${fait.ignores > 1 ? 's' : ''} ignoré${fait.ignores > 1 ? 's' : ''})` : ''}.</div>}
         {fait && fait.erreur && <div className="fj-erreur" role="alert">{fait.erreur}</div>}
       </div>
     </Modal>
