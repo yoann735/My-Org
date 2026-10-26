@@ -1,0 +1,54 @@
+// Ordinateur (A) : mode Apprentissage — puce « À apprendre » à côté de « Nouvelles » avec compteur, combinable ;
+// étoile au survol d'une vignette, dans l'aperçu (toast au-dessus de l'aperçu, Annuler) et en session.
+import { banc } from './commun.mjs';
+process.env.CDP_PORT = '9335';
+let echecs = 0;
+const A = await banc();
+const v = (c, m, d = '') => { if (!A.ok(c, m, d)) echecs++; };
+await A.ouvrirApp({ recharger: true });
+await A.ev(`localStorage.removeItem('medrevise.apprentissage.filtres');1`);
+await A.apprentissage();
+const tag = await A.S(`return (await S.getAll('questions')).filter((q) => q.aApprendre === true).length`);
+const voisins = await A.ev(`(()=>{const p=document.querySelector('[data-puce="aap"]');return [p.previousElementSibling&&p.previousElementSibling.dataset.puce, p.textContent.trim()]})()`);
+v(voisins[0] === 'nouvelles' && new RegExp('À apprendre\\s*' + tag).test(voisins[1]), `puce « À apprendre » juste après « Nouvelles », compteur ${voisins[1]}`);
+await A.toucher(`document.querySelector('[data-puce="aap"]')`, 600);
+v((await A.compteur()) === tag, `filtre « À apprendre » : ${await A.compteur()} cartes (attendu ${tag})`);
+await A.capture('aap-apprentissage-filtre');
+await A.toucher(`document.querySelector('[data-puce="nouvelles"]')`, 600);
+const att = await A.S(`const c = await import(performance.getEntriesByType('resource').map((r) => r.name).find((n) => n.includes('categoriesFC.js')) || '/src/medrevise/lib/categoriesFC.js'); return (await S.getAll('questions')).filter((q) => q.type === 'flashcard' && q.aApprendre === true && c.estNouvelle(q)).length`);
+v((await A.compteur()) === att, `+ Nouvelles : ${await A.compteur()} (attendu ${att})`);
+const n2 = await A.ev(`document.querySelector('[data-puce="aap"]').textContent.trim()`);
+v(new RegExp('À apprendre\\s*' + att).test(n2), `le compteur de la puce suit les autres filtres (${n2})`);
+await A.toucher(`document.querySelector('[data-puce="nouvelles"]')`, 600);
+// étoile au survol d'une vignette non taguée (filtre retiré)
+await A.toucher(`document.querySelector('[data-puce="aap"]')`, 600);
+await A.taper(`document.querySelector('.alib2-recherche input')`, 'Petit recto 1');
+const op0 = await A.ev(`getComputedStyle(document.querySelector('.alib2-carte[data-carte="ab1"] .alib2-aap')).opacity`);
+await A.survol(`document.querySelector('.alib2-carte[data-carte="ab1"]')`);
+const op1 = await A.ev(`getComputedStyle(document.querySelector('.alib2-carte[data-carte="ab1"] .alib2-aap')).opacity`);
+v(op0 === '0' && op1 === '1', `vignette non taguée : étoile cachée, visible au survol (${op0} → ${op1})`);
+await A.toucher(`document.querySelector('.alib2-carte[data-carte="ab1"] .aap-bt')`, 700);
+v((await A.carteBase('ab1')).aApprendre === true && await A.ev(`!!document.querySelector('.alib2-carte[data-carte="ab1"] .aap-etiquette')`), 'vignette : ab1 taguée, étiquette sur la vignette, étoile restée visible');
+await A.capture('aap-apprentissage-vignette', { x: 140, y: 140, width: 1300, height: 420 });
+// aperçu : étoile, toast au-dessus, Annuler
+await A.toucher(`document.querySelector('.alib2-carte[data-carte="ab1"] .alib2-vignette')`, 700);
+await A.toucher(`document.querySelector('.alib2-apercu .aap-bt')`, 700);
+const dessus = await A.ev(`(()=>{const b=document.querySelector('[data-toast="aap"] .sn-toast-action');const r=b.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===b})()`);
+v((await A.carteBase('ab1')).aApprendre === false && dessus, 'aperçu : étoile → tag retiré, toast « Annuler » au-dessus de l’aperçu (cliquable)');
+await A.toucher(`document.querySelector('[data-toast="aap"] .sn-toast-action')`, 800);
+v((await A.carteBase('ab1')).aApprendre === true && await A.ev(`!!document.querySelector('.alib2-apercu')`), 'Annuler depuis l’aperçu : retaguée, l’aperçu reste ouvert');
+await A.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }); await A.dormir(400);
+// session
+await A.toucher(`document.querySelector('.alib-lancer')`, 900);
+await A.toucher(`document.querySelector('.alib-session .aap-bt')`, 700);
+v((await A.carteBase('ab1')).aApprendre === false, 'session : étoile de l’en-tête → tag retiré');
+await A.capture('aap-apprentissage-session');
+await A.toucher(`document.querySelector('[data-toast="aap"] .sn-toast-action')`, 800);
+v((await A.carteBase('ab1')).aApprendre === true, 'session : Annuler');
+await A.toucher(`document.querySelector('.sfc-quitter')`, 800);
+await A.taper(`document.querySelector('.alib2-recherche input')`, '');
+await A.ev(`localStorage.removeItem('medrevise.apprentissage.filtres');1`);
+const errs = A.erreurs.filter((e) => !/validateDOMNesting/.test(e));
+v(errs.length === 0, 'aucune erreur console', errs.join(' | ').slice(0, 300));
+console.log(echecs ? `❌ ${echecs} échec(s)` : '✅ tout est vert');
+process.exit(0);
