@@ -584,3 +584,122 @@ alternées avec `t-defil.mjs`, ancien code par `git stash`.
 | 976a7ae | `feat(medrevise)` : formulaire en tête de la liste, Agrandir, tag « À apprendre » partout, filtres, conservation du tag à la notation |
 | 056aaa2 | `test(medrevise)` : banc `scripts/tests-a-apprendre/` |
 | (ce commit) | `docs(medrevise)` : cette section et ses captures |
+
+## Carte Texte : éléments à révéler au verso (26/10/2026)
+
+### Fonctionnement
+
+**Formulaire.** Le formulaire Texte reste celui d'avant : recto, verso. Sous le champ Verso, un bouton discret
+**« + Élément »** ajoute un champ d'élément, autant de fois qu'on veut. Entrée dans un élément en ajoute un
+autre juste après.
+
+Chaque élément a :
+- son texte ;
+- une poignée pour le réordonner en glissant (souris ou doigt) ;
+- un **œil** : masqué par défaut, ouvert = toujours visible ;
+- une corbeille.
+
+Le champ Verso reste disponible : il devient un texte d'introduction facultatif, affiché au-dessus des
+éléments. Une carte avec au moins un élément n'a pas besoin de verso. La même carte sert à la modification.
+
+**Affichage.** Au retournement, le texte du verso s'affiche, puis la liste numérotée des éléments. Les éléments
+masqués affichent « Toucher pour révéler » et se révèlent un par un au clic ou au tap. « Tout révéler (n) »
+révèle le reste.
+- **Aucune nouvelle mécanique** : c'est le composant de révélation des cartes Muscle. Il est factorisé en
+  `LignesARevelerer` (components/FlashcardMuscle.jsx) et `TableauMuscle` l'utilise lui-même.
+- Le rendu Muscle est vérifié **identique au pixel** à l'ancien code (voir plus bas).
+- Les éléments s'affichent dans :
+  - les trois séances (séance du jour, séance d'un cours, séance mobile) ;
+  - la vue agrandie ;
+  - le mode Apprentissage (session ; aperçu et vignette tout visibles) ;
+  - la liste du panneau (tout visible).
+
+**Stockage.** Le champ ajouté est `items: [{ text, masked }]`, sur la carte Texte (lib/schema.js
+`normElements`). Une carte **sans éléments est inchangée** : le champ n'est jamais ajouté, ni à la création,
+ni à la modification d'une carte qui n'en avait pas.
+
+### Format JSON (import du panneau, « Voir le format attendu », prompt)
+
+```json
+{
+  "type": "flashcard",
+  "theme": "Physiologie rénale",
+  "recto": "Quelles sont les 4 fonctions du rein ?",
+  "verso": "Quatre grandes fonctions :",
+  "items": [
+    { "text": "Épuration des déchets azotés (urée, créatinine)", "masked": true },
+    { "text": "Équilibre hydro-électrolytique", "masked": true },
+    { "text": "Équilibre acido-basique", "masked": false },
+    { "text": "Fonctions endocrines (EPO, rénine, calcitriol)", "masked": true }
+  ]
+}
+```
+
+- `masked` est facultatif et vaut `true` par défaut ; `false` signifie toujours visible.
+- `verso` devient facultatif quand il y a des `items`.
+- Les erreurs sont signalées précisément : liste attendue, champ inconnu, `masked` autre que true / false,
+  texte manquant, `items` sur une carte Muscle / Molécule / Tableau.
+- L'exemple « Voir le format attendu » contient cette carte et se réimporte sans erreur.
+- Le complément du prompt de génération décrit le champ.
+- **Export** : la sauvegarde (records JSONL, `sauvegarde/export.js`) contient la carte telle quelle. Les
+  éléments sont relus à l'identique (clés triées).
+
+### Tests
+
+Banc `scripts/tests-par-cours-elements/` : Vite sur le port 5302 sans Supabase, Chrome C et Chrome D.
+
+| Banc | Contenu | Résultat |
+|---|---|---|
+| `t-elements.mjs` (ordinateur) | carte « Quelles sont les 4 fonctions du rein ? » : création (4 éléments, 3 masqués, 1 visible), modification (élément 4 glissé en tête, œils), planification inchangée, liste du panneau, vue agrandie (3 masqués, un par un, Tout révéler), vignette et session Apprentissage, format attendu, import réel de l'exemple, export puis relecture, cartes témoins identiques octet pour octet | 21 ✅ |
+| `t-session-cours.mjs` (ordinateur) | séance d'un cours (`Session.jsx`, carte 3D) : 3 masqués → 2, Tout révéler | 5 ✅ |
+| `t-elements-mobile.mjs` (téléphone) | séance du jour : verso avec introduction, 3 masqués, un par un au doigt sans retourner la carte, Tout révéler, boutons Nouvelle inchangés ; session Apprentissage | 9 ✅ |
+| `npm test` (`tests/elements/`) | schéma (verso facultatif, défauts, cartes anciennes identiques), modification qui garde la planification, import (exemple et 6 erreurs), versoTexte, aller-retour JSON | 7 ✅ |
+
+**Cartes Texte anciennes et Muscle identiques au pixel** (`t-pixel.mjs` + `px-diff.mjs`). Méthode : ancien code
+par `git stash`, même page, même port. Cas comparés : vue agrandie au verso, aperçu Apprentissage, carte de la
+liste.
+
+| Capture | Ancien ↔ nouveau | Nouveau ↔ nouveau (bruit) |
+|---|---|---|
+| Muscle, vue agrandie (champs masqués) | 0 px | 0 px |
+| Muscle, aperçu Apprentissage | 0 px | 0 px (ancien ↔ ancien : 5 px) |
+| Muscle, liste du panneau | 0 px | 40 px (écart ≤ 3) |
+| Texte ancienne, aperçu Apprentissage | 0 px | 0 px |
+| Texte ancienne, vue agrandie | 8 px (écart ≤ 3) | 8 px (écart ≤ 3) |
+| Texte ancienne, liste | 57 px (écart ≤ 3) | 57 px (écart ≤ 3) |
+
+Les écarts restants sont ceux de deux captures de la **même** version : de l'anticrénelage.
+
+### Non-régression
+
+- `npm test` : 150 tests verts sur 151. Le seul échec (`crayon`) existait déjà avant.
+- `vite build` : vert.
+- Banc « À apprendre » rejoué : 94 vérifications vertes.
+- `src/shared/` et `src/mealweek/` : non modifiés.
+- MealWeek : identique au pixel entre les builds avant et après (`cmp`).
+
+**Incident de banc.** Une première relance du banc « À apprendre » a échoué sans erreur dans l'app : toast
+absent, liste non rafraîchie. Cause : le serveur Vite de dev (port 5300) était resté périmé après des
+`vite build` lancés pendant qu'il tournait. Après redémarrage, tout est vert. Le code n'était pas en cause.
+
+### Captures (`docs/img/par-cours-elements/`)
+
+| | |
+|---|---|
+| Formulaire : verso, 4 éléments, œils (3 masqués, 1 visible), « + Élément » | ![](img/par-cours-elements/el-formulaire.png) |
+| Réordonnement en glissant la poignée | ![](img/par-cours-elements/el-glisser.png) |
+| Liste du panneau | ![](img/par-cours-elements/el-liste.png) |
+| Vue agrandie : masqués, puis tout révélé | ![](img/par-cours-elements/el-agrandie-masques.png) ![](img/par-cours-elements/el-agrandie-revele.png) |
+| Séance d'un cours (carte 3D) | ![](img/par-cours-elements/el-seance-cours.png) |
+| Téléphone : masqués, un par un, tout | ![](img/par-cours-elements/el-revision-mobile-masques.png) ![](img/par-cours-elements/el-revision-mobile-un-par-un.png) ![](img/par-cours-elements/el-revision-mobile-tout.png) |
+| Mode Apprentissage (ordinateur, téléphone) | ![](img/par-cours-elements/el-apprentissage-session.png) ![](img/par-cours-elements/el-apprentissage-mobile.png) |
+| « Voir le format attendu » | ![](img/par-cours-elements/el-format.png) |
+| MealWeek (après) | ![](img/par-cours-elements/mealweek.png) |
+
+### Commits (Regrouper par cours + éléments à révéler)
+
+| Commit | Contenu |
+|---|---|
+| fb5670a | `feat(medrevise)` : « Regrouper par cours » et éléments à révéler (formulaire, affichage partout, composant Muscle factorisé, import / format / prompt) |
+| 584d432 | `test(medrevise)` : banc `scripts/tests-par-cours-elements/` |
+| (ce commit) | `docs(medrevise)` : sections « Regrouper par cours » (compte-rendu-seance-categories.md) et « éléments à révéler » (ce fichier), captures |

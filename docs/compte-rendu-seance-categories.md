@@ -547,3 +547,77 @@ Date de départ = `dueDate` conservée en base (plus lue). Fiche « (archivée) 
 | 268 | Résumé de cours visio (cata) | Quelle est l'année de vésale ? | 2026-10-09 | `qmuy8fotfajgh` |
 | 269 | Résumé de cours visio (cata) | cadre chronologique : La figure et type de corp pendant l'Antiquité ? | 2026-10-09 | `qmuy94e7nl97a` |
 | 270 | Résumé de cours visio (cata) | cadre chronologique : La figure et type de corp pendant Moyen Âge ? | 2026-10-09 | `qmuy9qb2ewkqq` |
+
+## 7. « Regrouper par cours » (26/10/2026)
+
+### Règle d'ordre
+
+L'écran de lancement a un nouvel interrupteur **« Regrouper par cours »**, juste sous les cases
+Nouvelles / Révisions / Retard. Il est mémorisé avec le choix, sur l'appareil (meta `seanceFC.choix`, champ
+`parCours`). Les raccourcis « Bloc nouvelles » et « Révisions J » le gardent.
+
+Il ne change **que l'ordre de passage**.
+
+1. **La sélection ne change pas.** Elle est composée comme aujourd'hui (`composerSeance`) : types cochés,
+   maximum de chaque catégorie appliqué **à toute la séance**, Retard trié du plus en retard au moins en retard,
+   Révisions de cours alternés, Nouvelles dans l'ordre de départ. Avec l'interrupteur à ON comme à OFF, ce sont
+   les mêmes cartes, dans les mêmes catégories.
+2. **OFF** : l'ordre reste celui d'avant (Retard → Révisions → Nouvelles, cours mélangés). Le code ne change
+   pas pour ce cas : même liste, même tirage.
+3. **ON** : `regrouperParCours` (lib/categoriesFC.js) réordonne cette sélection par un tri stable, sur trois clés
+   dans cet ordre :
+   - **le rang du cours dans la Bibliothèque** (`rangDesCours`, apprentissageLibre/tableauBord.js) : section
+     (ordre manuel `ordreSections`), puis matière (`ordre`), puis cours (`ordre`). C'est le même ordre que le
+     tableau de bord Apprentissage. Un cours inconnu passe en dernier ;
+   - **la catégorie** : Retard → Révisions → Nouvelles ;
+   - **l'ordre de composition** : le plus en retard d'abord, etc.
+4. L'ordre est écrit dans l'état de la séance (`cartes`, `parCours: true`). Une séance interrompue puis
+   reprise (`reprendreSeanceChoix`) **garde le même ordre** et la même position. Rien n'est ajouté ni
+   réordonné.
+
+### En séance (ON)
+
+- Le nom du cours en cours s'affiche discrètement en haut de la carte, à droite de l'étiquette de catégorie.
+- Quand on change de cours, un intercalaire s'affiche : « Cours suivant · <nom> · N cartes ». Un tap le passe.
+- Ni la notation, ni la planification, ni FSRS, ni le journal ne changent. Le même `repondreFlashcard` est
+  appelé sur la même carte.
+
+### Tests
+
+Banc `scripts/tests-par-cours-elements/` (`tout.sh`) :
+- Vite sur le port 5302, **sans Supabase** ;
+- Chrome C (ordinateur) et Chrome D (téléphone), profils neufs ;
+- 40 cartes sur 4 cours (par cours : 3 Retard, 4 Révisions, 3 Nouvelles), réparties dans 2 sections et
+  3 matières, **créées dans le désordre** (cours 4, 2, 1, 3) ;
+- `t-seance.mjs`, sur ordinateur et sur téléphone : **22 vérifications vertes chacun**.
+
+| Vérifié (ordinateur et téléphone) | Résultat |
+|---|---|
+| Interrupteur sous les cases, OFF par défaut, mémorisé après rechargement | ✅ |
+| OFF : 40 cartes, Retard → Révisions → Nouvelles, cours mélangés (39 changements de cours), pas de nom de cours | ✅ |
+| ON : les **mêmes** 40 cartes ; cours 1 → 2 → 3 → 4 d'un seul tenant (ordre de la Bibliothèque, pas de création) | ✅ |
+| ON : Retard → Révisions → Nouvelles dans chaque cours ; Retard du plus en retard d'abord | ✅ |
+| Nom du cours en haut de la carte | ✅ |
+| Intercalaire « Cours suivant · Cours 2 — Cœur · 10 cartes », passé d'un tap ; 2ᵉ intercalaire au cours 3 | ✅ |
+| Interruption au milieu du cours 2 (page rechargée) → « Reprendre » : même ordre, même position (14 / 40), même carte | ✅ |
+| Maximums Retard 5 et Nouvelles 5 : 5 et 5 sur toute la séance ; mêmes cartes Retard / Nouvelles qu'à OFF ; toujours groupé | ✅ |
+| Notation inchangée : J et historique écrits comme avant (`c1-retard2` J 2026-10-16 → 2026-11-03, historique +1) | ✅ |
+
+Tests unitaires (`tests/categories/parCours.test.js`, 6 tests) :
+- OFF identique au code d'avant, au tirage près ;
+- ON : ordre exact attendu ;
+- maximums ;
+- mémoire de l'interrupteur et raccourcis ;
+- cours inconnu ;
+- rang de la Bibliothèque.
+
+Le test existant `raccourcis et choix mémorisé` compare la forme exacte du choix : la clé `parCours: false`
+y a été ajoutée.
+
+| Lanceur (ordinateur) OFF / ON | Lanceur (téléphone) |
+|---|---|
+| ![](img/par-cours-elements/pc-lanceur-off.png) ![](img/par-cours-elements/pc-lanceur-on.png) | ![](img/par-cours-elements/pc-lanceur-on-mobile.png) |
+
+| Nom du cours sur la carte (ordinateur, téléphone) | Intercalaire (ordinateur, téléphone) |
+|---|---|
+| ![](img/par-cours-elements/pc-carte-cours.png) ![](img/par-cours-elements/pc-carte-cours-mobile.png) | ![](img/par-cours-elements/pc-intercalaire.png) ![](img/par-cours-elements/pc-intercalaire-mobile.png) |
