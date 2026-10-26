@@ -462,3 +462,125 @@ Sur téléphone, seule la révision est concernée, et elle est testée.
 |---|---|
 | ffb7373 | `feat(medrevise)` : zones image v2 — composant unique, survol discret, actions en icônes, tableau Muscle aligné, image des cartes Molécule, bancs `scripts/tests-zones/` |
 | ac9f488 | `docs(medrevise)` : section « Zones image v2 », captures avant / après |
+
+## Liste, « Agrandir » et tag « À apprendre » (26/10/2026)
+
+### Ce qui a changé
+
+**Onglet Flashcards du panneau**
+- Le formulaire de création est en tête de la liste. Quand on ne s'en sert pas, il est replié en une ligne
+  « + Nouvelle carte ». Un clic le déplie au même endroit. « Annuler » le replie.
+- En dessous : la liste de toutes les cartes du cours, avec la recherche et les filtres de sorte existants.
+- Un nouveau filtre « ★ À apprendre N » apparaît dès qu'une carte est taguée. Il se combine avec la sorte et
+  la recherche.
+- Chaque carte a deux nouvelles icônes, avec infobulle :
+  - **Agrandir** (⛶) ouvre la carte en grand ;
+  - **À apprendre** (★) pose ou retire le tag.
+- Une carte taguée porte l'étiquette « ★ À apprendre » à côté de son thème.
+
+**Agrandir** (`components/VueAgrandie.jsx`)
+- La carte s'affiche avec **le composant de la séance du jour** (`FaceFC`, désormais exporté de
+  `session/SeanceFC.jsx`), dans le même cadre `.sfc-carte`.
+- On y retrouve le recto, le geste pour retourner, le verso, et les champs Muscle / Tableau qui se révèlent un
+  par un (« Tout révéler » inclus). La rangée d'icônes est aussi la même : l'étoile tout le temps, le carnet
+  d'erreurs une fois la carte retournée.
+- Échap ou un clic dehors ferment la vue. Les flèches ← → passent à la carte précédente ou suivante **de la
+  liste affichée**, filtres compris. Espace / Entrée retournent la carte.
+- Rien n'est noté.
+
+**Tag « À apprendre »** (`lib/aApprendre.js`, `components/BoutonAApprendre.jsx`)
+- C'est un booléen `aApprendre`, ajouté sur la carte (champ en plus, aucune autre donnée touchée). Il se
+  synchronise avec la carte, comme le carnet d'erreurs.
+- L'écriture relit la carte enregistrée et ne change **que** ce champ.
+- La même étoile apparaît partout où une carte est affichée :
+  - liste du panneau ;
+  - vue agrandie ;
+  - séances de révision : séance du jour, séance d'un cours, séance mobile. L'étoile est dans la rangée
+    d'icônes de l'en-tête, à côté du carnet, **dès le recto** ;
+  - mode Apprentissage : vignettes, aperçu et session.
+- Chaque bascule affiche un toast « Ajoutée à À apprendre » ou « Retirée d’À apprendre », avec « Annuler »,
+  pendant 4,5 s.
+- Mode Apprentissage : une puce « ★ À apprendre N » est placée juste après « Nouvelles » (dans la feuille
+  Filtres sur téléphone). Elle se combine avec les autres filtres. Son compteur donne le nombre de cartes
+  taguées qui passent les autres filtres.
+
+### Trois défauts trouvés par les tests et corrigés
+1. **Une note donnée après le tag l'effaçait.** Les séances notent la copie de la carte prise à l'affichage.
+   Le tag posé entre-temps était donc réécrit à faux.
+   - Correctif : `garderTagEnBase` reprend le tag de la version enregistrée au moment d'enregistrer la note.
+   - Il est appliqué dans `SeanceFC`, `Session` et `MobileSession`.
+   - Le planificateur n'est pas touché.
+2. **Sur téléphone, le toast recouvrait les boutons de notation** pendant 4,5 s. Un tap de notation tombait
+   sur « Annuler ». Le toast de l'étoile s'affiche maintenant **en haut** de l'écran sur téléphone.
+3. **Avec le filtre « À apprendre » actif**, retirer l'étoile faisait disparaître la carte, et son toast
+   avec elle : il n'y avait plus d'« Annuler ».
+   - Le toast vit maintenant dans un hôte unique, indépendant de la carte.
+   - Il s'affiche au-dessus de l'aperçu et de la vue agrandie.
+
+Autre correctif : Échap ne fermait pas la vue agrandie quand le focus était sur l'étoile, parce que la rangée
+d'icônes arrête la propagation du clavier. L'écouteur passe maintenant en phase de capture.
+
+### Tests
+
+Le banc est dans `scripts/tests-a-apprendre/` (`tout.sh`), sans le vrai cloud :
+- faux Supabase sur le port 54399 ;
+- Vite sur le port 5300 ;
+- deux Chrome headless aux profils neufs : A (ordinateur) et B (téléphone).
+
+Le jeu de test compte 200 cartes de toutes les sortes dans un cours (`seed.mjs`).
+
+Résultat : **94 vérifications, toutes vertes** (dernière passe complète sur le code commité).
+
+| Banc | Contenu | Résultat |
+|---|---|---|
+| `t-liste.mjs` (ordinateur) | formulaire replié et déplié ; défilement de 200 cartes ; Agrandir pour les 6 sortes, ← →, Échap, clic dehors, liste filtrée ; tag depuis la liste et la vue agrandie, toast, Annuler ; filtre combiné ; preuve d'indépendance ; faux cloud | 56 ✅ |
+| `t-mobile.mjs` (téléphone 390 px) | synchro A → B ; étoile en séance (40 px, recto et verso) ; tag conservé après la note ; filtre de la feuille, combiné avec « Nouvelles » ; Annuler sur une carte qui sort du filtre ; session ; synchro B → A | 17 ✅ |
+| `t-tablette.mjs` (820 px tactile) | icônes toujours visibles au doigt ; formulaire ; Agrandir au doigt ; champ Muscle révélé ; › ; étoile ; toucher dehors | 10 ✅ |
+| `t-apprentissage.mjs` (ordinateur) | puce après « Nouvelles », compteur qui suit les filtres ; étoile au survol d'une vignette ; aperçu (toast cliquable au-dessus) ; session | 11 ✅ |
+| `npm test` (`tests/a-apprendre/`) | `ecrireAApprendre` ne change que le tag ; filtre du tableau de bord ; `garderTagEnBase` | 6 ✅ |
+
+**Preuve d'indépendance.** Empreintes SHA-256 relevées avant et après avoir tagué 10 cartes (8 depuis la
+liste, 2 depuis la vue agrandie) :
+
+| Empreinte | Avant | Après |
+|---|---|---|
+| Planification (dueDate, J0, intervalle, état, nouvelle, FSRS, historique, carnet) | `8146fd64a7e4d92c` | `8146fd64a7e4d92c` |
+| Cartes entières, hors `aApprendre` et horodatage | `2bec2a64616929b8` | `2bec2a64616929b8` |
+| Journal des révisions | `4f53cda18c2baa0c` | `4f53cda18c2baa0c` |
+| Séance du jour | `74234e98afe7498f` | `74234e98afe7498f` |
+
+**Défilement de 200 cartes.** Aucune tâche longue pendant 120 crans de molette. Les images au-delà de 34 ms
+relevées par le rAF en headless (5 à 9 sur environ 125 en isolé, jusqu'à 16 en fin de batterie) sont **les mêmes avec l'ancien code** : mesures
+alternées avec `t-defil.mjs`, ancien code par `git stash`.
+
+**Non-régression**
+- `npm test` : 137 tests verts sur 138. Le seul échec (`crayon › trois épaisseurs par mode`) existait déjà
+  avant ce chantier.
+- `vite build` : vert.
+- `src/shared/` et `src/mealweek/` : non modifiés.
+- MealWeek : identique au pixel entre les builds avant et après (`cmp` des captures).
+- L'avertissement de dev `validateDOMNesting` (boutons « Toucher » d'un tableau dans la carte-bouton) est déjà
+  émis par la séance du jour. La vue agrandie le reprend puisqu'elle utilise le même composant.
+
+### Captures (`docs/img/a-apprendre/`)
+
+| | |
+|---|---|
+| Liste avec icônes (survol) | ![](img/a-apprendre/aap-liste-icones.png) |
+| Carte taguée (étiquette) | ![](img/a-apprendre/aap-liste-taguee.png) |
+| Formulaire replié / déplié | ![](img/a-apprendre/aap-liste-replie.png) ![](img/a-apprendre/aap-liste-deplie.png) |
+| Filtre « À apprendre » du panneau | ![](img/a-apprendre/aap-liste-filtre.png) |
+| Vue agrandie : texte (recto), Muscle et Tableau (verso, champs révélables) | ![](img/a-apprendre/aap-agrandie-texte-recto.png) ![](img/a-apprendre/aap-agrandie-muscle-verso.png) ![](img/a-apprendre/aap-agrandie-tableau-verso.png) |
+| Vue agrandie d'une carte taguée ; tablette | ![](img/a-apprendre/aap-agrandie-taguee.png) ![](img/a-apprendre/aap-agrandie-tablette.png) |
+| Icône en révision mobile (recto avec toast en haut, verso à côté du carnet) | ![](img/a-apprendre/aap-revision-mobile-recto.png) ![](img/a-apprendre/aap-revision-mobile-verso.png) |
+| Filtre du mode Apprentissage (ordinateur, téléphone) | ![](img/a-apprendre/aap-apprentissage-filtre.png) ![](img/a-apprendre/aap-apprentissage-filtre-mobile.png) |
+| Étoile sur les vignettes ; session mobile | ![](img/a-apprendre/aap-apprentissage-vignette.png) ![](img/a-apprendre/aap-apprentissage-session-mobile.png) |
+| MealWeek (après, identique à avant) | ![](img/a-apprendre/mealweek.png) |
+
+### Commits
+
+| Commit | Contenu |
+|---|---|
+| 976a7ae | `feat(medrevise)` : formulaire en tête de la liste, Agrandir, tag « À apprendre » partout, filtres, conservation du tag à la notation |
+| 056aaa2 | `test(medrevise)` : banc `scripts/tests-a-apprendre/` |
+| (ce commit) | `docs(medrevise)` : cette section et ses captures |
