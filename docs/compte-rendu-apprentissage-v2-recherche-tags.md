@@ -432,3 +432,84 @@ sur le type `page_tag`, sans toucher aux données. L'app fonctionne exactement p
   à l'horizontale quand le panneau est étroit, comme avant.
 - **Le panneau Transcript affiche maintenant la session liée** demandée par une pastille, même pendant une transcription
   en direct. Avant, le direct prenait toujours la place, y compris pour le badge « N lignes » d'une page.
+
+
+## 9. Sélection libre des cartes et compteur de passages (28/10/2026)
+
+Le mode Apprentissage reste **indépendant des J, de FSRS et du journal**. Rien de ce qui suit n'écrit sur une carte.
+
+### 9.1 Sélection libre
+
+- **Une case sur chaque carte**, quel que soit le filtre actif.
+- **La sélection survit à tout** : changement de filtre, recherche, vue grille ou liste, retour au tableau de bord après
+  une session. C'est une liste d'ids mémorisée sur l'appareil (`localStorage`, `medrevise.apprentissage.selection`),
+  qui ne dépend pas des filtres.
+- **Une case sur chaque en-tête de cours et de matière.** Elle coche **toutes** les cartes du groupe, y compris celles
+  masquées par le filtre en cours. Son infobulle l'annonce : « Sélectionner les 10 cartes de ce cours (dont 7 masquées
+  par le filtre) ». Si une partie seulement des cartes est cochée, la case affiche l'état partiel (–). Un clic sur une
+  case partielle coche tout, et un clic sur une case cochée décoche tout le groupe.
+- **Barre collante en bas de l'écran** : « 13 cartes sélectionnées dont 10 hors filtre · Vider la sélection ·
+  Lancer ».
+  - Avec une sélection, « Lancer », dans la barre comme dans l'en-tête, joue **la sélection**, rangée dans l'ordre de
+    la Bibliothèque.
+  - Sans sélection, « Lancer » joue les cartes visibles, comme avant. La barre disparaît.
+- Code : `idsParGroupe`, `etatSelection`, `basculerCarte`, `basculerGroupe`, `resumeSelection` et `ordreSelection`
+  (`apprentissageLibre/tableauBord.js`, fonctions pures), plus `CaseGroupe` (`EcranApprentissage.jsx`).
+
+### 9.2 Compteur de passages
+
+- **Quand une carte devient « sue »** (2 « Su » d'affilée) dans une session Apprentissage, son compteur augmente de 1.
+  L'écriture est faite tout de suite : quitter la session ou fermer l'app ensuite ne perd rien. Une carte vue mais
+  jamais sue n'a pas de badge.
+- **Badge discret « ×3 »** sur la vignette du tableau de bord et sur la carte affichée en session.
+- **Stockage** : `passages[cardId]` dans l'enregistrement `learning_set`, le même que les notes. Il est synchronisé comme
+  lui (`put` → file d'envoi → `medrevise_records`). C'est un ajout : aucun champ de planification n'est touché, et
+  aucune carte n'est réécrite. Code : `lirePassages` et `ajouterPassages` (`apprentissageLibre/liste.js`), puis
+  `ctx.addLearningPassages` et `db.learningPassages` (`MedReviseApp.jsx`).
+- **Tri optionnel « Moins passées d'abord »** (puce du tableau de bord, et section « Affichage » de la feuille de filtres
+  sur téléphone). Dans chaque cours, les cartes les moins souvent sues passent d'abord. Le tri est stable, et le
+  rangement Section → Matière → Cours ne change pas. La session suit cet ordre. Le choix est mémorisé sur l'appareil.
+- **Limite connue** : `learning_set` est un seul enregistrement, fusionné en « dernier qui écrit gagne », comme les
+  notes. Si deux appareils valident des cartes **en même temps, hors ligne**, le compteur du premier à se synchroniser
+  est écrasé par l'autre. En usage normal, une session sur un appareil à la fois, rien n'est perdu : les tests le
+  vérifient dans les deux sens.
+
+### 9.3 Tests
+
+Banc `scripts/tests-selection-passages/`, sans le vrai cloud :
+
+- faux Supabase local (`scripts/faux-supabase.mjs`, journal actif) ;
+- Vite :5300 ;
+- Chrome headless A (ordinateur 1440×900) et B (téléphone 390×844, tactile), profils neufs.
+
+Le jeu de test (`seed.mjs`) compte 4 cours de 10 cartes et un cours témoin, plus 2 entrées de journal.
+
+| Scénario | Résultat |
+|---|---|
+| `t-selection.mjs` (ordinateur) : 3 cartes cochées sous « Néphro-cardio » → autre filtre (« Pneumo ») : sélection conservée, 2 de plus → **5 dont 3 hors filtre** ; recherche, vue liste : inchangé ; « Pneumo + Nouvelles » (3 cartes visibles) : case du Cours 3 **partielle**, infobulle « dont 7 masquées » → clic : **13 dont 10 hors filtre** ; matière partielle → tout → rien ; « Lancer » (barre et en-tête) = session sur les 10 cartes de la sélection ; Vider → la barre disparaît, Lancer revient aux 41 visibles ; **empreinte cartes / planification / journal / séance identique avant et après** | 22 ✅ |
+| `t-selection.mjs tel` (téléphone, taps, feuille de filtres) : la même chose, sauf la vue liste | 21 ✅ |
+| `t-passages.mjs` (2 appareils) : session 1 sur A au clavier → 2 cartes sues, la 3ᵉ (« Pas su ») non ; compteur écrit **avant la fin de la session** ; badges **×1** sur A ; synchro → B : ×1 ; session 2 sur B au doigt : badge **×1 en session** → **×2** ; synchro → A : ×2 ; tri « Moins passées d'abord » : les ×2 passent en fin de cours, et la session sur la sélection commence par la moins passée ; **A et B : cartes, planification, journal et séance identiques avant et après ; faux cloud : aucune ligne `questions` réécrite** (mêmes `updated_at`) ; `learning_set.passages` = `{ c1-rev1: 2, c1-rev2: 2 }` | 18 ✅ |
+| Vitest `tests/apprentissage-libre/selection.test.js` : groupes, états, 3 + 2 = 5, case d'un cours filtré, carte supprimée, ordre de session, lecture du compteur, tri stable | 7 ✅ |
+
+Non-régression :
+
+- `npm test` : 175 tests verts sur 176. Le seul échec (`crayon`) existait déjà avant ce chantier.
+- `vite build` : vert.
+- Banc `scripts/tests-a-apprendre/` (étoile « À apprendre », liste, téléphone, tablette, mode Apprentissage), dans l'ordre de
+  son `tout.sh` : `t-liste`, `t-mobile`, `t-tablette` et `t-apprentissage` sont tous verts.
+
+Lancement complet : `scripts/tests-selection-passages/tout.sh`. Un jeu de test neuf est posé avant chaque test.
+- `src/shared/` et `src/mealweek/` : aucun fichier modifié.
+- **MealWeek** : builds avant (`HEAD`) et après, servis sur la même origine. Les captures sont identiques octet pour
+  octet (SHA-256 `8e985aa57c95e757…`, × 3).
+
+### 9.4 Captures (`docs/img/selection-passages/`)
+
+| | |
+|---|---|
+| Ordinateur : sélection partielle (matière et cours), barre collante | ![](img/selection-passages/sel-ordi-partiel.png) |
+| Ordinateur : case d'un cours filtré → « 13 sélectionnées dont 10 hors filtre » | ![](img/selection-passages/sel-ordi-cours-filtre.png) |
+| Téléphone : même scénario | ![](img/selection-passages/sel-tel-cours-filtre.png) |
+| Badges ×1 après la 1ʳᵉ session (ordinateur) | ![](img/selection-passages/pass-ordi-badges-x1.png) |
+| Badge ×1 en session, puis ×2 au tableau de bord (téléphone) | ![](img/selection-passages/pass-tel-session-badge.png) ![](img/selection-passages/pass-tel-badges-x2.png) |
+| Tri « Moins passées d'abord » | ![](img/selection-passages/pass-ordi-tri.png) |
