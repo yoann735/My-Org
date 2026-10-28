@@ -183,3 +183,67 @@ export function choixFiltres(db, stats = null) {
   }
   return { matieres, cours };
 }
+
+/* ============================================================
+   (28/10) SÉLECTION LIBRE et COMPTEUR DE PASSAGES (docs/compte-rendu-apprentissage-v2-recherche-tags.md).
+   La sélection est une liste d'ids, INDÉPENDANTE des filtres : une carte cochée le reste quand le filtre, la
+   recherche ou la vue changent. Une case de cours / de matière porte sur TOUTES ses cartes, même masquées par le
+   filtre en cours. Le compteur de passages (`passages[cardId]`, apprentissageLibre/liste.js) n'est que LU ici.
+   ============================================================ */
+
+/** ids de toutes les cartes du mode, par cours (ficheId) et par matière (même clé que `grouper` : '—' = sans matière) */
+export function idsParGroupe(db) {
+  const { fiches, matieres } = index(db);
+  const cours = new Map(), mats = new Map();
+  const pousser = (m, k, id) => { if (!m.has(k)) m.set(k, []); m.get(k).push(id); };
+  for (const c of toutesLesCartes(db)) {
+    pousser(cours, c.ficheId, c.id);
+    const fi = fiches.get(c.ficheId);
+    const mid = fi && fi.matiereId && matieres.has(fi.matiereId) ? fi.matiereId : '—';
+    pousser(mats, mid, c.id);
+  }
+  return { cours, matieres: mats };
+}
+
+/** état d'une case de groupe : 'tout' | 'partiel' | 'aucun' */
+export function etatSelection(ids, sel) {
+  const s = sel instanceof Set ? sel : new Set(sel || []);
+  const n = (ids || []).filter((id) => s.has(id)).length;
+  return n === 0 ? 'aucun' : n === (ids || []).length ? 'tout' : 'partiel';
+}
+
+/** coche une carte (ou la décoche) — renvoie la nouvelle liste (ordre de sélection conservé) */
+export const basculerCarte = (sel, id) => ((sel || []).includes(id) ? sel.filter((x) => x !== id) : [...(sel || []), id]);
+
+/** case de groupe : tout cocher (si rien ou une partie est cochée) ou tout décocher (si tout l'est) */
+export function basculerGroupe(sel, ids) {
+  const l = sel || [];
+  if (etatSelection(ids, l) === 'tout') { const r = new Set(ids); return l.filter((x) => !r.has(x)); }
+  const deja = new Set(l);
+  return [...l, ...(ids || []).filter((id) => !deja.has(id))];
+}
+
+/** sélection résumée : cartes encore existantes, dont combien masquées par le filtre en cours */
+export function resumeSelection(db, sel, visibles) {
+  const existe = new Set(toutesLesCartes(db).map((c) => c.id));
+  const vis = new Set((visibles || []).map((c) => (typeof c === 'string' ? c : c.id)));
+  const ids = (sel || []).filter((id) => existe.has(id));
+  return { n: ids.length, horsFiltre: ids.filter((id) => !vis.has(id)).length, ids };
+}
+
+/** ids de la sélection dans l'ordre de rangement (Section → Matière → Cours → cartes) : l'ordre de la session */
+export function ordreSelection(db, sel, stats = null, passages = null) {
+  const s = new Set(sel || []);
+  const g = grouper(db, toutesLesCartes(db).filter((c) => s.has(c.id)), stats);
+  return idsAffiches(passages ? trierMoinsPassees(g, passages) : g);
+}
+
+/** nombre de passages d'une carte (0 = jamais sue en session Apprentissage) */
+export const passagesDe = (passages, id) => { const n = passages && passages[id]; return Number.isInteger(n) && n > 0 ? n : 0; };
+
+/** tri « Moins passées d'abord » : dans chaque cours, les cartes de 0 passage d'abord (tri stable, rangement inchangé) */
+export function trierMoinsPassees(groupes, passages) {
+  return groupes.map((s) => ({ ...s, matieres: s.matieres.map((m) => ({ ...m, cours: m.cours.map((g) => ({
+    ...g, cartes: g.cartes.map((c, i) => [c, i]).sort((a, b) => (passagesDe(passages, a[0].id) - passagesDe(passages, b[0].id)) || (a[1] - b[1])).map((x) => x[0]),
+  })) })) }));
+}

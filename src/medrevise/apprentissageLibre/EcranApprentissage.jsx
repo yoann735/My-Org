@@ -10,8 +10,14 @@
    - Rangement Section → Matière → Cours, groupes repliables avec compteurs ; vignettes recto / verso
      (grille par défaut, ou liste compacte) ; clic = aperçu plein, retournable.
    - « Lancer » : la session en rafale sur les cartes VISIBLES, dans l'ordre affiché (SessionApprentissage).
+   - (28/10) SÉLECTION LIBRE : une case sur chaque vignette et sur chaque en-tête de cours / matière (toutes ses cartes,
+     même masquées par le filtre ; état partiel). La sélection survit aux filtres, à la recherche et à la vue (mémorisée
+     sur l'appareil). Barre collante « N cartes sélectionnées · Vider la sélection · Lancer » : avec une sélection, Lancer
+     joue la sélection ; sans, les cartes visibles. COMPTEUR DE PASSAGES : badge « ×3 » (fois où la carte a été sue en
+     session), tri optionnel « Moins passées d'abord » (dans chaque cours).
    Téléphone (`mobile`) : recherche en tête, filtres dans une feuille du bas, vignettes pleine largeur.
-   Lecture seule : rien n'est écrit, sauf une note qu'on tape (learning_set.notes, jamais la carte).
+   Lecture seule : rien n'est écrit, sauf une note qu'on tape (learning_set.notes, jamais la carte) et, en session, le
+   compteur de passages (learning_set.passages, jamais la carte).
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -21,7 +27,7 @@ import { Tex } from '../components/Tex.jsx';
 import { ImageFlashcard } from '../components/FlashcardImage.jsx';
 import { imageGeneraleDe } from '../lib/muscle.js';
 import { estNouvelle } from '../lib/categoriesFC.js';
-import { FaceCarte } from './FaceCarte.jsx';
+import { FaceCarte, BadgePassages } from './FaceCarte.jsx';
 import { SessionApprentissage } from './SessionApprentissage.jsx';
 import { BoutonAApprendre, EtiquetteAApprendre } from '../components/BoutonAApprendre.jsx';
 import { estAApprendre } from '../lib/aApprendre.js';
@@ -29,12 +35,15 @@ import { ExportFlashcards } from '../components/ExportFlashcards.jsx';
 import {
   TYPES, FILTRES_VIDES, filtresActifs, filtresValides, filtrer, grouper, idsAffiches,
   choixFiltres, toutesLesCartes, typeCarte, rectoTexte, versoTexte,
+  idsParGroupe, etatSelection, basculerCarte, basculerGroupe, resumeSelection, ordreSelection, passagesDe, trierMoinsPassees,
 } from './tableauBord.js';
 import '../../styles/apprentissage-libre.css';
 
 const pl = (n, s, p = s + 's') => `${n} ${n > 1 ? p : s}`;
 const CLE_FILTRES = 'medrevise.apprentissage.filtres';
 const CLE_VUE = 'medrevise.apprentissage.vue';
+const CLE_SELECTION = 'medrevise.apprentissage.selection'; // (28/10) sélection libre (ids), mémorisée sur l'appareil
+const CLE_TRI = 'medrevise.apprentissage.tri'; // (28/10) 'passages' = « Moins passées d'abord »
 const lire = (cle, defaut) => { try { const v = localStorage.getItem(cle); return v == null ? defaut : JSON.parse(v); } catch (e) { return defaut; } };
 const ecrire = (cle, v) => { try { localStorage.setItem(cle, JSON.stringify(v)); } catch (e) { /* stockage indisponible */ } };
 const LIB_TYPE = Object.fromEntries(TYPES.map((t) => [t.cle, t.libelle]));
@@ -53,13 +62,22 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
   const [exportFC, setExportFC] = useState(false); // (26/10) exporter les cartes visibles (components/ExportFlashcards.jsx)
   const [apercu, setApercu] = useState(null); // id de la carte en aperçu
   const [session, setSession] = useState(null);
+  const [sel, setSelBrut] = useState(() => { const v = lire(CLE_SELECTION, []); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; });
+  const setSel = (f) => setSelBrut((x) => { const n = typeof f === 'function' ? f(x) : f; ecrire(CLE_SELECTION, n); return n; });
+  const [tri, setTriBrut] = useState(() => (lire(CLE_TRI, '') === 'passages' ? 'passages' : ''));
+  const setTri = (t) => { setTriBrut(t); ecrire(CLE_TRI, t); };
 
   const total = useMemo(() => toutesLesCartes(db).length, [db]);
   const choix = useMemo(() => choixFiltres(db, ctx.stats), [db, ctx.stats]);
   const visibles = useMemo(() => filtrer(db, filtres), [db, filtres]);
   // compteur de la puce « À apprendre » : les cartes taguées qui passent les AUTRES filtres
   const nbAap = useMemo(() => (filtres.aApprendre ? visibles.length : filtrer(db, { ...filtres, aApprendre: true }).length), [db, filtres, visibles]);
-  const groupes = useMemo(() => grouper(db, visibles, ctx.stats), [db, visibles, ctx.stats]);
+  const passages = db.learningPassages || {};
+  const groupesBruts = useMemo(() => grouper(db, visibles, ctx.stats), [db, visibles, ctx.stats]);
+  const groupes = useMemo(() => (tri === 'passages' ? trierMoinsPassees(groupesBruts, passages) : groupesBruts), [groupesBruts, tri, passages]);
+  const parGroupe = useMemo(() => idsParGroupe(db), [db]);
+  const selSet = useMemo(() => new Set(sel), [sel]);
+  const resume = useMemo(() => resumeSelection(db, sel, visibles), [db, sel, visibles]);
   const ordre = useMemo(() => idsAffiches(groupes), [groupes]);
   const notes = db.learningNotes || {};
   const actifs = filtresActifs(filtres);
@@ -71,7 +89,12 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
 
   if (session) return <SessionApprentissage key={session.n} ctx={ctx} ids={session.ids} pleinEcran={mobile} onQuitter={() => setSession(null)} />;
 
-  const lancer = () => ordre.length && setSession({ ids: ordre, n: Date.now() });
+  // avec une sélection : la sélection (ordre de rangement, tri compris) ; sans : les cartes visibles, comme avant
+  const idsLancer = resume.n ? ordreSelection(db, resume.ids, ctx.stats, tri === 'passages' ? passages : null) : ordre;
+  const lancer = () => idsLancer.length && setSession({ ids: idsLancer, n: Date.now() });
+  const vider = () => setSel([]);
+  const cocherCarte = (id) => setSel((l) => basculerCarte(l, id));
+  const cocherGroupe = (ids) => setSel((l) => basculerGroupe(l, ids));
   const reinitialiser = () => setFiltres(FILTRES_VIDES);
   const nbFiltres = filtres.matieres.length + filtres.coursInclus.length + filtres.coursExclus.length + (filtres.nouvelles ? 1 : 0) + (filtres.aApprendre ? 1 : 0) + filtres.types.length;
 
@@ -92,9 +115,9 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
   );
   const compteur = <span className="alib2-compteur tnum" aria-live="polite" data-compteur={visibles.length}>{pl(visibles.length, 'carte')}{actifs && <span className="hint"> sur {total}</span>}</span>;
   const boutonLancer = (
-    <button type="button" className="btn primary alib-lancer" disabled={!ordre.length} onClick={lancer}
-      title={ordre.length ? `Lancer une session sur les ${pl(ordre.length, 'carte visible', 'cartes visibles')}` : 'Aucune carte visible'}>
-      <Icon name="play" size={14} /> Lancer{ordre.length ? <span className="tnum"> ({ordre.length})</span> : null}
+    <button type="button" className="btn primary alib-lancer" disabled={!idsLancer.length} onClick={lancer} data-lancer={resume.n ? 'selection' : 'visibles'}
+      title={resume.n ? `Lancer une session sur la sélection (${pl(resume.n, 'carte')})` : ordre.length ? `Lancer une session sur les ${pl(ordre.length, 'carte visible', 'cartes visibles')}` : 'Aucune carte visible'}>
+      <Icon name="play" size={14} /> Lancer{idsLancer.length ? <span className="tnum"> ({idsLancer.length})</span> : null}
     </button>
   );
   const boutonExporter = (
@@ -125,6 +148,24 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
       {filtres.nouvelles && <Icon name="check" size={12} />} Nouvelles
     </button>
   );
+  const puceTri = (
+    <button type="button" className={'alib2-puce' + (tri === 'passages' ? ' actif' : '')} aria-pressed={tri === 'passages'} data-puce="tri"
+      onClick={() => setTri(tri === 'passages' ? '' : 'passages')} title="Dans chaque cours, les cartes les moins souvent sues en session d’abord">
+      {tri === 'passages' && <Icon name="check" size={12} />} Moins passées d’abord
+    </button>
+  );
+  // barre collante de la sélection (bas de l'écran)
+  const barreSelection = resume.n > 0 && (
+    <div className="alib2-selbarre" role="region" aria-label="Sélection" data-selection={resume.n} data-hors-filtre={resume.horsFiltre}>
+      <span className="alib2-seltexte tnum">{resume.n} carte{resume.n > 1 ? 's' : ''} sélectionnée{resume.n > 1 ? 's' : ''}
+        {resume.horsFiltre > 0 && <span className="hint"> dont {resume.horsFiltre} hors filtre</span>}</span>
+      <button type="button" className="linklike alib2-vider" onClick={vider} data-act="vider-selection">Vider la sélection</button>
+      <span style={{ flex: 1 }} />
+      <button type="button" className="btn primary sm alib-lancer" onClick={lancer} data-act="lancer-selection" title={`Lancer une session sur la sélection (${pl(resume.n, 'carte')})`}>
+        <Icon name="play" size={13} /> Lancer
+      </button>
+    </div>
+  );
   const puceAApprendre = (
     <button type="button" className={'alib2-puce' + (filtres.aApprendre ? ' actif' : '')} aria-pressed={filtres.aApprendre} data-puce="aap"
       onClick={() => setFiltres((f) => ({ ...f, aApprendre: !f.aApprendre }))} title="Seulement les cartes taguées « À apprendre » (se combine avec les autres filtres)">
@@ -135,7 +176,8 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
   const vignettes = (cartes) => (
     <ul className={'alib2-cartes ' + vue}>
       {cartes.map((q) => (
-        <Vignette key={q.id} ctx={ctx} mobile={mobile} q={q} vue={vue} note={notes[q.id]} onOuvrir={() => setApercu(q.id)} />
+        <Vignette key={q.id} ctx={ctx} mobile={mobile} q={q} vue={vue} note={notes[q.id]} onOuvrir={() => setApercu(q.id)}
+          coche={selSet.has(q.id)} onCocher={() => cocherCarte(q.id)} passages={passagesDe(passages, q.id)} />
       ))}
     </ul>
   );
@@ -183,6 +225,7 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
               ))}
               {puceNouvelles}
               {puceAApprendre}
+              {puceTri}
               <PuceMenu cle="types" libelle={libType} actif={filtres.types.length > 0} ouvert={menu === 'types'} onOuvrir={() => setMenu(menu === 'types' ? null : 'types')} onFermer={() => setMenu(null)}>
                 {contenuFiltre('types')}
               </PuceMenu>
@@ -219,18 +262,24 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
                   const mid = 'm:' + s.section.id + ':' + m.matiere.id, mOuv = estOuvert(mid);
                   return (
                     <div key={mid} className="alib2-matiere" data-matiere={m.matiere.id}>
-                      <button type="button" className="alib2-mtete" aria-expanded={mOuv} onClick={() => basculerPli(mid)}>
-                        <Icon name={mOuv ? 'chevD' : 'chevR'} size={13} /> <span>{m.matiere.nom}</span> <span className="hint tnum">{pl(m.n, 'carte')}</span>
-                      </button>
+                      <div className="alib2-gtete">
+                        <CaseGroupe ids={parGroupe.matieres.get(m.matiere.id) || []} sel={selSet} visibles={m.n} nom={m.matiere.nom} quoi="matière" onCocher={cocherGroupe} />
+                        <button type="button" className="alib2-mtete" aria-expanded={mOuv} onClick={() => basculerPli(mid)}>
+                          <Icon name={mOuv ? 'chevD' : 'chevR'} size={13} /> <span>{m.matiere.nom}</span> <span className="hint tnum">{pl(m.n, 'carte')}</span>
+                        </button>
+                      </div>
                       {mOuv && m.cours.map((g) => {
                         const cid = 'c:' + g.fiche.id, cOuv = estOuvert(cid, ouvertParDefaut);
                         return (
                           <div key={cid} className="card alib2-cours" data-cours={g.fiche.id}>
-                            <button type="button" className="alib2-ctete" aria-expanded={cOuv} onClick={() => basculerPli(cid, ouvertParDefaut)}>
-                              <Icon name={cOuv ? 'chevD' : 'chevR'} size={13} />
-                              <span className="alib2-cnom">{g.fiche.titre || 'Sans titre'}</span>
-                              <span className="pill alib-n tnum">{g.cartes.length}</span>
-                            </button>
+                            <div className="alib2-gtete cours">
+                              <CaseGroupe ids={parGroupe.cours.get(g.fiche.id) || []} sel={selSet} visibles={g.cartes.length} nom={g.fiche.titre || 'Sans titre'} quoi="cours" onCocher={cocherGroupe} />
+                              <button type="button" className="alib2-ctete" aria-expanded={cOuv} onClick={() => basculerPli(cid, ouvertParDefaut)}>
+                                <Icon name={cOuv ? 'chevD' : 'chevR'} size={13} />
+                                <span className="alib2-cnom">{g.fiche.titre || 'Sans titre'}</span>
+                                <span className="pill alib-n tnum">{g.cartes.length}</span>
+                              </button>
+                            </div>
                             {cOuv && vignettes(g.cartes)}
                           </div>
                         );
@@ -243,6 +292,9 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
           })}
         </div>
       )}
+
+      {/* barre collante en BAS (après les groupes : elle ne couvre jamais l'en-tête ni ses menus) */}
+      {barreSelection}
 
       {mobile && feuille && createPortal(
         <div className="sn-feuille-fond" onClick={() => setFeuille(false)}>
@@ -258,7 +310,7 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
               <div className="alib2-fsection"><div className="alib2-ftitre">Type</div>{contenuFiltre('types')}</div>
               <div className="alib2-fsection"><div className="alib2-ftitre">Matières</div>{contenuFiltre('matieres')}</div>
               <div className="alib2-fsection"><div className="alib2-ftitre">Cours</div>{contenuFiltre('cours')}</div>
-              <div className="alib2-fsection"><div className="alib2-ftitre">Affichage</div>{choixVue}</div>
+              <div className="alib2-fsection"><div className="alib2-ftitre">Affichage</div><div className="alib2-types">{choixVue}{puceTri}</div></div>
             </div>
             <div className="alib2-fpied">
               <button type="button" className="btn primary" onClick={() => setFeuille(false)}>Voir {pl(visibles.length, 'carte')}</button>
@@ -271,6 +323,22 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
         <Apercu ctx={ctx} ordre={ordre} id={apercu} onChanger={setApercu} onFermer={() => setApercu(null)} mobile={mobile} />
       )}
     </div>
+  );
+}
+
+/* ---- (28/10) CASE d'un cours ou d'une matière : coche / décoche TOUTES ses cartes, même masquées par le filtre ;
+   état partiel (indeterminate) quand une partie seulement est cochée ---- */
+function CaseGroupe({ ids, sel, visibles, nom, quoi, onCocher }) {
+  const ref = useRef(null);
+  const etat = etatSelection(ids, sel);
+  useEffect(() => { if (ref.current) ref.current.indeterminate = etat === 'partiel'; }, [etat]);
+  const masquees = ids.length - visibles;
+  const titre = etat === 'tout' ? `Désélectionner les ${pl(ids.length, 'carte')} de ce ${quoi}`
+    : `Sélectionner les ${pl(ids.length, 'carte')} de ce ${quoi}${masquees > 0 ? ` (dont ${masquees} masquée${masquees > 1 ? 's' : ''} par le filtre)` : ''}`;
+  return (
+    <label className={'alib2-case groupe' + (etat !== 'aucun' ? ' ' + etat : '')} title={titre} data-case-groupe={quoi} data-etat={etat} onClick={(e) => e.stopPropagation()}>
+      <input ref={ref} type="checkbox" checked={etat === 'tout'} onChange={() => onCocher(ids)} aria-label={`${titre} « ${nom} »`} />
+    </label>
   );
 }
 
@@ -392,7 +460,7 @@ function MiniatureImage({ imageId }) {
 const imageDe = (q) => q.imageId || (q.occlusion && q.occlusion.imageId) || ((imageGeneraleDe(q) || {}).imageId) || null;
 
 /* ---- VIGNETTE : recto en haut, verso en dessous (tronqué, « voir plus »), image, tag « Nouvelle » ---- */
-function Vignette({ ctx, mobile, q, vue, note, onOuvrir }) {
+function Vignette({ ctx, mobile, q, vue, note, onOuvrir, coche = false, onCocher, passages = 0 }) {
   const [plus, setPlus] = useState(false);
   const nouvelle = estNouvelle(q);
   const type = typeCarte(q);
@@ -401,12 +469,16 @@ function Vignette({ ctx, mobile, q, vue, note, onOuvrir }) {
   const img = imageDe(q);
   const long = verso.length > (vue === 'liste' ? 90 : 160) || verso.split('\n').length > 4;
   return (
-    <li className={'alib2-carte' + (nouvelle ? ' nouvelle' : '') + (estAApprendre(q) ? ' aap' : '')} data-carte={q.id} data-type={type}>
+    <li className={'alib2-carte' + (nouvelle ? ' nouvelle' : '') + (estAApprendre(q) ? ' aap' : '') + (coche ? ' cochee' : '')} data-carte={q.id} data-type={type}>
+      <label className="alib2-case carte" title={coche ? 'Retirer de la sélection' : 'Ajouter à la sélection'} onClick={(e) => e.stopPropagation()}>
+        <input type="checkbox" checked={coche} onChange={onCocher} aria-label={(coche ? 'Retirer de la sélection : ' : 'Sélectionner : ') + recto.slice(0, 60)} />
+      </label>
       <span className="alib2-aap"><BoutonAApprendre ctx={ctx} carte={q} classe="ac-icone" taille={mobile ? 17 : 14} mobile={mobile} /></span>
       <div role="button" tabIndex={0} className="alib2-vignette" onClick={onOuvrir} title="Ouvrir l’aperçu"
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOuvrir(); } }}>
-        {(nouvelle || type !== 'texte' || estAApprendre(q)) && (
+        {(nouvelle || type !== 'texte' || estAApprendre(q) || passages > 0) && (
           <div className="alib2-tags">
+            {passages > 0 && <BadgePassages n={passages} />}
             <EtiquetteAApprendre carte={q} />
             {nouvelle && <span className="alib2-tag nouvelle">Nouvelle</span>}
             {type !== 'texte' && <span className="alib2-tag">{LIB_TYPE[type]}</span>}

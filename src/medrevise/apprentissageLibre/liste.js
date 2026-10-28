@@ -2,7 +2,8 @@
    MedRevise — MODE APPRENTISSAGE LIBRE (11/10, docs/compte-rendu-mode-apprentissage-libre.md)
    La liste « cartes en apprentissage » : UN enregistrement `learning_set` { id, cardIds[],
    updatedAt }, synchronisé comme les autres types (lib/storage.js put → file d'envoi). C'est
-   TOUT ce que ce mode stocke : ni compteur, ni date, ni historique.
+   TOUT ce que ce mode stocke : ni date, ni historique — (16/10) les notes, (28/10) le COMPTEUR DE PASSAGES
+   (`passages[cardId]`, voir plus bas), tous deux dans ce même enregistrement.
 
    INDÉPENDANCE : ce module ne lit des cartes que leur id, leur fiche, leur type et leur
    contenu (pour l'affichage) ; il n'écrit QUE `learning_set`. Jamais `questions`, jamais le
@@ -43,6 +44,24 @@ export async function ecrireNote(cardId, texte) {
   if (t.trim()) notes[cardId] = t; else delete notes[cardId];
   const rec = await put(STORE, { ...avant, id: ID, cardIds: avant.cardIds || [], notes });
   return rec.notes;
+}
+
+/* ---- COMPTEUR DE PASSAGES (28/10, docs/compte-rendu-apprentissage-v2-recherche-tags.md) : nombre de fois où une
+   carte a été « sue » (2 « Su » d'affilée) dans une session Apprentissage — `passages[cardId]` dans CE même
+   enregistrement, synchronisé avec lui. JAMAIS sur la carte : ni les J, ni FSRS, ni le journal n'en savent rien.
+   Une carte jamais validée n'a pas d'entrée. Écrit dès que la carte est sue (quitter la session ne perd rien). ---- */
+const passagesValides = (p) => Object.fromEntries(Object.entries(p && typeof p === 'object' ? p : {}).filter(([, n]) => Number.isInteger(n) && n > 0));
+export async function lirePassages() {
+  const r = await getOne(STORE, ID);
+  return passagesValides(r && r.passages);
+}
+/** +1 pour chaque id (une carte citée deux fois compte deux fois) ; renvoie tous les compteurs */
+export async function ajouterPassages(ids) {
+  const avant = (await getOne(STORE, ID)) || { id: ID, cardIds: [] };
+  const passages = passagesValides(avant.passages);
+  for (const id of ids || []) if (typeof id === 'string' && id) passages[id] = (passages[id] || 0) + 1;
+  const rec = await put(STORE, { ...avant, id: ID, cardIds: avant.cardIds || [], passages });
+  return rec.passages;
 }
 
 /* ---- GLISSER-DÉPOSER (16/10) : une carte (ou une sélection) glissée depuis le panneau

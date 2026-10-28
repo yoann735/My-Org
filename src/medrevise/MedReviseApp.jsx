@@ -18,7 +18,7 @@ import { Bibliotheque } from './pages/Bibliotheque.jsx';
 import { Reglages } from './pages/Reglages.jsx';
 import { CarnetDashboard } from './pages/CarnetDashboard.jsx';
 import { EcranApprentissage } from './apprentissageLibre/EcranApprentissage.jsx';
-import { lireListe, ecrireListe, lireNotes, ecrireNote } from './apprentissageLibre/liste.js';
+import { lireListe, ecrireListe, lireNotes, ecrireNote, lirePassages, ajouterPassages } from './apprentissageLibre/liste.js';
 import { IconeRafale } from './components/IconeRafale.jsx';
 import { initSpotlight } from './lib/spotlight.js';
 import { isClassicUI } from '../shared/uiMode.js';
@@ -174,10 +174,11 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // Clé AJOUTÉE à db, lue par ce seul mode — aucun calcul existant (J, FSRS, séance) ne la lit.
     const learningSet = await lireListe();
     const learningNotes = await lireNotes(); // (16/10) notes libres par carte, dans le même enregistrement
+    const learningPassages = await lirePassages(); // (28/10) compteur de passages par carte, même enregistrement
     // (11/10) les stores `apprentissage` (unités exos + PDF) et `notes` (documents de Prise de
     // notes) ne sont plus chargés ici : leurs écrans sont supprimés. Les données restent en base
     // et synchronisées ; les notes se lisent dans Réglages → Archives (components/Archives.jsx).
-    setDb({ sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, learningSet, learningNotes });
+    setDb({ sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, learningSet, learningNotes, learningPassages });
     setStats(st);
     setPromptOverrides(pr);
     setExoPromptOverrides(epr);
@@ -325,6 +326,12 @@ export default function MedReviseApp({ themeApi, goHub }) {
       const notes = await ecrireNote(cardId, texte);
       setDb((d) => (d ? { ...d, learningNotes: notes } : d));
       return notes;
+    },
+    // (28/10) carte(s) sue(s) dans une session Apprentissage : +1 au compteur de passages (learning_set, jamais la carte)
+    addLearningPassages: async (ids) => {
+      const passages = await ajouterPassages(ids);
+      setDb((d) => (d ? { ...d, learningPassages: passages } : d));
+      return passages;
     },
 
     // ---- session lifecycle ----

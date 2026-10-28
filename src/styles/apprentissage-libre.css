@@ -280,3 +280,29 @@
 /* vue « Agrandir » du panneau Flashcards (components/VueAgrandie.jsx) : la carte de la séance dans l'aperçu */
 .va .va-sfc { flex: 1 1 auto; min-height: min(420px, 60dvh); background: transparent; }
 .va .va-sfc .sfc-carte-cadre { min-height: min(420px, 60dvh); }
+
+/* (28/10) sélection libre + compteur de passages */
+.alib2-gtete { display: flex; align-items: center; gap: 2px; }
+.alib2-gtete > button { flex: 1 1 auto; min-width: 0; }
+.alib2-gtete.cours { background: color-mix(in srgb, var(--bg-2) 55%, transparent); padding-left: 10px; }
+.alib2-gtete.cours .alib2-ctete { background: none; padding-left: 4px; }
+.alib2-cours[data-cours] > .alib2-gtete:has(.alib2-ctete[aria-expanded="true"]) { border-bottom: 1px solid var(--border-2); }
+.alib2-cours[data-cours] > .alib2-gtete .alib2-ctete[aria-expanded="true"] { border-bottom: 0; }
+.alib2-case { display: inline-grid; place-items: center; flex: 0 0 auto; width: 28px; height: 28px; cursor: pointer; }
+.alib2-case input { width: 16px; height: 16px; margin: 0; cursor: pointer; accent-color: var(--accent); }
+.alib2-case.carte { position: absolute; top: 4px; left: 4px; z-index: 2; }
+.alib2-vignette .alib2-tags, .alib2-vignette .alib2-recto { padding-left: 22px; }
+.alib2-cartes.liste .alib2-case.carte { top: 3px; left: 6px; }
+.alib2-carte.cochee .alib2-vignette { border-color: color-mix(in srgb, var(--accent) 60%, transparent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.alib2-cartes.liste .alib2-carte.cochee .alib2-vignette { background: var(--accent-soft); box-shadow: none; }
+.alib2-tag.passages { color: var(--text-2); background: var(--bg-2); border: 1px solid var(--border-2); font-variant-numeric: tabular-nums; }
+.alib2-selbarre { position: sticky; bottom: 12px; z-index: 4; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 14px; padding: 9px 12px 9px 16px;
+  border-radius: 14px; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); background: var(--card); box-shadow: 0 12px 30px -18px rgba(0, 0, 0, .55); }
+.alib2-seltexte { font-weight: 700; font-size: 13.5px; }
+.alib-mobile .alib2-case { width: 40px; height: 40px; }
+.alib-mobile .alib2-case input { width: 20px; height: 20px; }
+.alib-mobile .alib2-case.carte { top: 0; left: 0; }
+.alib-mobile .alib2-vignette .alib2-tags, .alib-mobile .alib2-vignette .alib2-recto { padding-left: 30px; }
+.alib-mobile .alib2-selbarre { bottom: calc(10px + env(safe-area-inset-bottom)); }
+.alib-mobile .alib2-selbarre .btn { min-height: 40px; }
+.alib-etiquette .alib2-tag.passages { margin-right: auto; }

@@ -87,3 +87,9 @@ export function typeDeCarte(q) {
   if (isCloze(q)) return 'Trous';
   return null;
 }
+
+/* ---- (28/10) badge discret « ×3 » : nombre de fois où la carte a été sue en session Apprentissage ---- */
+export function BadgePassages({ n }) {
+  if (!n) return null;
+  return <span className="alib2-tag passages tnum" data-passages={n} title={`Sue ${n} fois en session Apprentissage`}>×{n}</span>;
+}
