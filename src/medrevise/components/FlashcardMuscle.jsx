@@ -5,7 +5,7 @@
    - FormulaireMuscle : nom du muscle + tableau à 5 lignes étiquetées (zones de texte
      qui grandissent avec leur contenu), thème / indice / à retenir comme les autres
      cartes, « Pré-remplir depuis une image » (OCR existant). Entrée = retour à la ligne,
-     Tab = ligne suivante, ⌘Entrée = enregistrer, Échap = annuler. Sert à la création
+     Tab = ligne suivante, ⌘Entrée = enregistrer, Échap = quitter le champ (n’annule rien, 28/10). Sert à la création
      (carte d'ajout du panneau) ET à la modification (ItemForm).
    - TableauMuscle : le verso en révision — deux colonnes, filets fins ; en mode « ligne
      par ligne » (réglage, actif par défaut) les contenus sont masqués et se révèlent un
@@ -15,7 +15,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Tex } from './Tex.jsx';
-import { RACCOURCI_ENREGISTRER, estEnregistrer } from './AddItemForm.jsx';
+import { RACCOURCI_ENREGISTRER, estEnregistrer, echapDansFormulaire } from './AddItemForm.jsx';
 import { LIGNES_MUSCLE, lignesDe, lignesVides, blocsContenu, normaliserPuces, carteMuscle, imagesDe, imageGeneraleDe } from '../lib/muscle.js';
 import { ImageMuscle, ChampImageMuscle } from './ImagesMuscle.jsx';
 import { putBlob } from '../lib/storage.js';
@@ -186,7 +186,7 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
 
   const ordre = ['nom', ...LIGNES_MUSCLE.map((l) => l.id)];
   const clavier = (e) => {
-    if (e.key === 'Escape' && onCancel) { e.preventDefault(); e.stopPropagation(); onCancel(); return; }
+    if (echapDansFormulaire(e)) return;
     if (estEnregistrer(e)) { e.preventDefault(); e.stopPropagation(); valider(); return; }
     if (e.key !== 'Tab') return;
     const k = ordre.findIndex((id) => (id === 'nom' ? nomRef.current : refs.current[id]) === e.target);
@@ -311,7 +311,7 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
         <textarea className="imp-title fc-txt-court" rows={1} value={aRetenir} onChange={(e) => setARetenir(e.target.value)} />
       </div>
       <div className="imp-actions">
-        <span className="fc-raccourci" title="Entrée = retour à la ligne · Tab = ligne suivante · Échap = annuler">{RACCOURCI_ENREGISTRER} pour enregistrer</span>
+        <span className="fc-raccourci" title="Entrée = retour à la ligne · Tab = ligne suivante · Échap = quitter le champ">{RACCOURCI_ENREGISTRER} pour enregistrer</span>
         {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
         <button type="button" className="btn primary" onClick={valider} disabled={!pret || busy}><Icon name="check" size={15} /> {submitLabel}</button>
       </div>

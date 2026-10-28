@@ -347,10 +347,19 @@ function QcmForm({ onAdd, busy, initial, submitLabel, onCancel }) {
                    après chaque ajout.
    CLAVIER DE TOUS LES FORMULAIRES FLASHCARD (08/10) : Entrée = retour à la ligne (jamais
    « enregistrer » : on tape des paragraphes), ⌘Entrée / Ctrl+Entrée = enregistrer,
-   Échap = annuler. Les retours à la ligne sont gardés tels quels (trim aux bords seulement)
+   Échap = sortir du champ (28/10 : n'annule PLUS, le brouillon n'est jamais perdu ; seul « Annuler » ferme). Les retours à la ligne sont gardés tels quels (trim aux bords seulement)
    et rendus en pre-wrap à la révision. */
 export const RACCOURCI_ENREGISTRER = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? '⌘↵' : 'Ctrl+↵';
 export const estEnregistrer = (e) => e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.isComposing;
+/** (28/10) Échap dans un formulaire de flashcard : quitte le champ, n'annule rien. Les menus ouverts (Amorce, couleur…)
+    écoutent Échap en phase de capture et l'ont déjà consommé ; ici on le garde pour soi (rien d'autre ne doit le voir). */
+export function echapDansFormulaire(e) {
+  if (e.key !== 'Escape' || e.isComposing) return false;
+  e.preventDefault(); e.stopPropagation();
+  const champ = e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable="true"]');
+  if (champ && champ.blur) champ.blur();
+  return true;
+}
 export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefaut = '', sansImage = false, apercu = false, clavier = false, rectoInitial = '', onOcclusion = null }) {
   // nouvelle carte : PRÉ-REMPLI avec le thème de la fiche (components/ThemeFiche.jsx). Le
   // changer ne vaut que pour CETTE carte : la suivante repart du thème de la fiche, qui ne
@@ -479,7 +488,7 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
     if (clavier) requestAnimationFrame(() => rectoRef.current && rectoRef.current.focus()); // enchaîner la carte suivante
   };
   const auClavier = (e) => {
-    if (e.key === 'Escape' && onCancel) { e.preventDefault(); e.stopPropagation(); onCancel(); return; }
+    if (echapDansFormulaire(e)) return;
     // Entrée seule : comportement natif (retour à la ligne dans les zones de texte)
     if (estEnregistrer(e)) { e.preventDefault(); e.stopPropagation(); if (ready && !busy) submit(); return; }
     if (!clavier) return;
@@ -573,7 +582,7 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
         </div>
       )}
       <div className="imp-actions fcf-pied">
-        <span className="fc-raccourci" title="Entrée = retour à la ligne · Échap = annuler">{RACCOURCI_ENREGISTRER}</span>
+        <span className="fc-raccourci" title="Entrée = retour à la ligne · Échap = quitter le champ">{RACCOURCI_ENREGISTRER}</span>
         {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
         <button className="btn primary" onClick={submit} disabled={!ready || busy} title={ready ? `Ajouter (${RACCOURCI_ENREGISTRER})` : 'Recto et verso (ou un élément) requis'}><Icon name="check" size={14} /> {submitLabel || 'Ajouter'}</button>
       </div>

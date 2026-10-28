@@ -28,7 +28,14 @@ export function FenetreBoiteFlashcard({ boite, ns = null, themeDefaut = '', onCr
   const ref = useRef(null);
   const apercu = useMemo(() => carteDeBoite(boite, { recto, verso, theme, imagePlace: avecImage ? place : null, ns, id: 'apercu' }), [boite, recto, verso, theme, place]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const touche = (e) => { if (e.key === 'Escape' && !occupe) { e.stopPropagation(); onFermer(); } };
+    // (28/10) Échap ne ferme plus la fenêtre (le brouillon n'est jamais perdu) : il quitte le champ ; « Annuler » / ✕ ferment
+    const touche = (e) => {
+      if (e.key !== 'Escape' || !ref.current || !ref.current.contains(document.activeElement)) return;
+      if (e.target && e.target.closest && e.target.closest('.sc-pop, .mf-menu')) return; // un menu ouvert garde son Échap
+      e.preventDefault(); e.stopPropagation();
+      const champ = document.activeElement.closest('input, textarea, select');
+      if (champ) champ.blur();
+    };
     window.addEventListener('keydown', touche, true);
     return () => window.removeEventListener('keydown', touche, true);
   });
@@ -44,7 +51,7 @@ export function FenetreBoiteFlashcard({ boite, ns = null, themeDefaut = '', onCr
     <div ref={ref} className="mep-panneau ta-panneau bfc-fenetre" role="dialog" aria-label="Boîte → Flashcard" onPointerDown={(e) => e.stopPropagation()}>
       <div className="mep-tete">
         <span className="mep-titre">Boîte → Flashcard <span className="bfc-type" data-type={tableau ? 'tableau' : 'texte'}>{tableau ? 'Tableau' : 'Texte'}</span></span>
-        <button type="button" className="icon-btn sm" onClick={onFermer} title="Fermer (Échap)" aria-label="Fermer"><Icon name="x" size={14} /></button>
+        <button type="button" className="icon-btn sm" onClick={onFermer} title="Fermer" aria-label="Fermer"><Icon name="x" size={14} /></button>
       </div>
       <div className="ta-corps bfc-corps">
         <label className="bfc-champ"><span>Recto</span>

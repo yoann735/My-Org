@@ -7,14 +7,14 @@
      dans l'éditeur, modifiable ; on peut aussi dessiner de zéro sans rien choisir ;
    - sens (nom → molécule, ou molécule → nom), niveau de comparaison (constitution par défaut,
      ou stéréo stricte), thème / indice / à retenir comme les autres cartes ;
-   - ⌘Entrée enregistre (hors de l'éditeur), Échap ferme ;
+   - ⌘Entrée enregistre (hors de l'éditeur), Échap quitte le champ (n’annule rien, 28/10) ;
    - (11/10, Zones image v2) image facultative (recto / verso / les deux), le même champ que les
      cartes standard (components/FlashcardImage.jsx → ZoneImage) ; collage au survol / ⌘V comme
      ailleurs (lib/collerAuSurvol.js, une seule zone « image »).
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
-import { RACCOURCI_ENREGISTRER, estEnregistrer } from '../components/AddItemForm.jsx';
+import { RACCOURCI_ENREGISTRER, estEnregistrer, echapDansFormulaire } from '../components/AddItemForm.jsx';
 import { EditeurMolecule } from './EditeurMolecule.jsx';
 import { rechercher } from './recherche.js';
 import { carteMolecule, SENS, NIVEAUX } from './carte.js';
@@ -87,7 +87,7 @@ export default function FormulaireMolecule({ initial = null, themeDefaut = '', o
   };
   const clavier = (e) => {
     if (e.target.closest && e.target.closest('.mol-zone')) return; // l'éditeur garde ses touches
-    if (e.key === 'Escape' && onCancel && !ouvert) { e.preventDefault(); e.stopPropagation(); onCancel(); return; }
+    if (!ouvert && echapDansFormulaire(e)) return;
     if (estEnregistrer(e)) { e.preventDefault(); e.stopPropagation(); valider(); }
   };
 
@@ -150,7 +150,7 @@ export default function FormulaireMolecule({ initial = null, themeDefaut = '', o
         <textarea className="imp-title fc-txt-court" rows={1} value={aRetenir} onChange={(e) => setARetenir(e.target.value)} />
       </div>
       <div className="imp-actions">
-        <span className="fc-raccourci" title="Échap = annuler">{RACCOURCI_ENREGISTRER} pour enregistrer</span>
+        <span className="fc-raccourci" title="Échap = quitter le champ">{RACCOURCI_ENREGISTRER} pour enregistrer</span>
         {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
         <button type="button" className="btn primary" onClick={valider} disabled={!pret || busy}><Icon name="check" size={15} /> {submitLabel}</button>
       </div>

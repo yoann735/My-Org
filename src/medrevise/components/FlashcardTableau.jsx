@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Tex } from './Tex.jsx';
+import { echapDansFormulaire } from './AddItemForm.jsx';
 import { LIMITES, carteTableau, normaliserTableau, lireTSV, estTSV } from '../lib/carteTableau.js';
 import { styleCellule } from '../pdf/BoiteTableau.jsx';
 import { cellulesAffichees, estGrille as estGrilleBoite } from '../pdf/grille.js';
@@ -173,7 +174,7 @@ export function FormulaireTableau({ initial = null, themeDefaut = '', onAdd, onC
     }
   };
   const clavier = (e) => {
-    if (e.key === 'Escape' && onCancel) { e.preventDefault(); e.stopPropagation(); onCancel(); return; }
+    if (echapDansFormulaire(e)) return;
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); e.stopPropagation(); valider(); }
   };
 
