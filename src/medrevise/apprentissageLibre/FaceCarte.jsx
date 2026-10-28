@@ -4,6 +4,7 @@
    flashcard image, Molécule, tableau Muscle dont les champs se révèlent un par un) —
    aucune logique de notation ni de planification partagée.
    ============================================================ */
+import { useEnSynchro } from '../components/Chiffre.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { ZoneDefilante } from '../components/ZoneDefilante.jsx';
 import { OcclusionView, estOcclusion } from '../components/OcclusionImage.jsx';
@@ -90,6 +91,7 @@ export function typeDeCarte(q) {
 
 /* ---- (28/10) badge discret « ×3 » : nombre de fois où la carte a été sue en session Apprentissage ---- */
 export function BadgePassages({ n }) {
-  if (!n) return null;
+  const enSynchro = useEnSynchro(); // (28/10) compteur synchronisé : pas de badge périmé pendant la synchro complète
+  if (!n || enSynchro) return null;
   return <span className="alib2-tag passages tnum" data-passages={n} title={`Sue ${n} fois en session Apprentissage`}>×{n}</span>;
 }

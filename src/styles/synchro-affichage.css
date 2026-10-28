@@ -1,0 +1,28 @@
+/* (28/10) SYNCHRO COMPLÈTE AVANT AFFICHAGE — components/Chiffre.jsx, docs/compte-rendu-synchro-avant-affichage.md.
+   Indicateur des chiffres en attente, repli pour les chiffres .tnum non enveloppés, bandeau discret. */
+.chiffre-attente { display: inline-block; width: 1.05em; height: 1.05em; vertical-align: -0.16em; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--text-3) 35%, transparent); border-top-color: var(--accent); animation: chiffre-tour .8s linear infinite; box-sizing: border-box; }
+.chiffre-attente.seul { width: 12px; height: 12px; border-width: 1.6px; }
+@keyframes chiffre-tour { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .chiffre-attente { animation-duration: 2.4s; } }
+/* repli : tout autre chiffre tabulaire de MedRevise attend aussi (texte masqué, même indicateur à sa place) */
+html[data-app-actif="medrevise"][data-mr-synchro="attente"] .tnum:not(.sfc .tnum):not(.alib-session .tnum) { position: relative; color: transparent !important; }
+html[data-app-actif="medrevise"][data-mr-synchro="attente"] .tnum:not(.sfc .tnum):not(.alib-session .tnum) > * { visibility: hidden; }
+html[data-app-actif="medrevise"][data-mr-synchro="attente"] .tnum:not(.sfc .tnum):not(.alib-session .tnum)::after { content: ''; position: absolute; left: 50%; top: 50%; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px;
+  border-radius: 50%; border: 1.6px solid color-mix(in srgb, var(--text-3) 35%, transparent); border-top-color: var(--accent); animation: chiffre-tour .8s linear infinite; box-sizing: border-box; }
+/* bandeau */
+.bandeau-synchro { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1500; display: inline-flex; align-items: center; gap: 7px;
+  max-width: calc(100vw - 32px); padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--text-2);
+  background: color-mix(in srgb, var(--card) 92%, transparent); border: 1px solid var(--border); box-shadow: 0 8px 24px -14px rgba(0, 0, 0, .5);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); transition: opacity .6s ease; white-space: nowrap;
+  pointer-events: none; /* ne bloque jamais ce qui est dessous (boutons d'une séance…) ; seul « Réessayer » est cliquable */ }
+.bandeau-synchro span:not(.chiffre-attente) { overflow: hidden; text-overflow: ellipsis; }
+.bandeau-synchro.ajour { color: var(--text-2); }
+.bandeau-synchro.ajour svg { color: var(--ok, #2f9e6e); }
+.bandeau-synchro.horsligne, .bandeau-synchro.incomplet { color: var(--text); border-color: color-mix(in srgb, var(--warn, #d9822b) 45%, var(--border)); }
+.bandeau-synchro.horsligne svg, .bandeau-synchro.incomplet svg { color: var(--warn, #d9822b); }
+.bandeau-synchro.fondu { opacity: 0; }
+.bandeau-synchro.mobile { top: calc(70px + env(safe-area-inset-top)); font-size: 12px; } /* sous l'en-tête du téléphone */
+.bandeau-reessayer { font-size: 12.5px; font-weight: 700; margin-left: 2px; pointer-events: auto; }
+/* boutons « Lancer » désactivés le temps de la synchro : l'état se voit */
+html[data-app-actif="medrevise"][data-mr-synchro="attente"] .btn.primary:disabled { opacity: .5; cursor: default; }

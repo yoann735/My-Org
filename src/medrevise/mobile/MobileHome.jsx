@@ -6,6 +6,7 @@
    Les fiches "schéma anatomique" (quiz visuel canvas) sont exclues : hors
    périmètre mobile (voir le plan validé).
    ============================================================ */
+import { Chiffre, useEnSynchro } from '../components/Chiffre.jsx';
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
@@ -26,6 +27,7 @@ const stripCloze = (s) => (s || '').replace(/\{\{([^{}]+)\}\}/g, '$1');
 
 export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman, onOpenDessin = null, onStartSeanceFC = null, onOuvrirApprentissage = null }) {
   const { db } = ctx;
+  const enSynchro = useEnSynchro(); // (28/10) chiffres et « Commencer » attendent la fin de la synchro complète
   const ix = useMemo(() => index(db), [db]);
   const due = useMemo(() => dueToday(db, ix), [db, ix]);
   const plan = useMemo(() => todayPlan(db, ix), [db, ix]);
@@ -147,12 +149,12 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
         {onStartSeanceFC && <SeanceAujourdhui ctx={ctx} onDemarrer={onStartSeanceFC} />}
 
         <div className="mrm-card mrm-hero">
-          <div className="mrm-hero-n">{due.length}</div>
-          <div className="mrm-hero-label">carte{due.length > 1 ? 's' : ''} due{due.length > 1 ? 's' : ''} aujourd'hui</div>
+          <div className="mrm-hero-n" data-hero="n"><Chiffre>{due.length}</Chiffre></div>
+          <div className="mrm-hero-label">{enSynchro ? 'cartes dues aujourd’hui' : <>carte{due.length > 1 ? 's' : ''} due{due.length > 1 ? 's' : ''} aujourd'hui</>}</div>
           {(ctx.stats && ctx.stats.streak > 0) && (
             <div className="mrm-streak"><Icon name="fire" size={14} fill /> {ctx.stats.streak} jour{ctx.stats.streak > 1 ? 's' : ''} d'affilée</div>
           )}
-          <button type="button" className="mrm-cta" onClick={startAll} disabled={!due.length}>
+          <button type="button" className="mrm-cta" onClick={startAll} disabled={!due.length || enSynchro}>
             <Icon name="play" size={20} fill /> Commencer la série
           </button>
         </div>
@@ -165,7 +167,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
         {onOuvrirApprentissage && (
           <button type="button" className="mrm-card alib-entree" onClick={onOuvrirApprentissage}>
             <span className="alib-entree-ic"><Icon name="refresh" size={18} /></span>
-            <span className="alib-entree-txt"><strong>Apprentissage</strong><span className="hint">{(() => { const n = (ctx.db.questions || []).filter((q) => q.type === 'flashcard').length; return n ? `${n} carte${n > 1 ? 's' : ''} à parcourir` : 'Aucune carte pour l’instant'; })()}</span></span>
+            <span className="alib-entree-txt"><strong>Apprentissage</strong><span className="hint"><Chiffre>{(() => { const n = (ctx.db.questions || []).filter((q) => q.type === 'flashcard').length; return n ? `${n} carte${n > 1 ? 's' : ''} à parcourir` : 'Aucune carte pour l’instant'; })()}</Chiffre></span></span>
             <Icon name="chevR" size={16} />
           </button>
         )}

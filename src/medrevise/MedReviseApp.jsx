@@ -4,7 +4,7 @@
    shared "univers" theme (passed from the top-level App).
    ============================================================ */
 import { Infobulles } from './components/Infobulles.jsx';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '../shared/Icon.jsx';
 import { installerRetablirChamps } from './lib/journalAnnuler.js';
 
@@ -41,7 +41,11 @@ import { synchroniserJournal } from './journal/synchro.js';
 import { BandeauFilet, EcranIntegrite, rafraichirStatutServeur } from './components/FiletSecurite.jsx';
 import { lancerControle } from './integrite/executer.js';
 import { copierDansDossier } from './sauvegarde/dossierLocal.js';
-import { marquerSyncReussie } from './lib/syncStatus.js';
+import { marquerSyncReussie, derniereSyncReussie, etatLocal, etatCloud } from './lib/syncStatus.js';
+import { outboxCount } from './data/sync.js';
+import { SYNC_ENABLED } from './data/supabaseClient.js';
+import { creerPorte } from './lib/synchroAffichage.js';
+import { SynchroContext, BandeauSynchro } from './components/Chiffre.jsx';
 import { todayISO, startAdaptive } from './lib/sm2.js';
 import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor, linkedV2Questions } from './lib/planning.js';
 import { useMediaQuery } from '../shared/hooks/useMediaQuery.js';
@@ -232,10 +236,50 @@ export default function MedReviseApp({ themeApi, goHub }) {
      (indicateur « cloud injoignable »), sans jamais bloquer l'usage — et le
      garde-fou C2 de syncNow (« ne jamais pousser après un tirage raté ») reste
      seul juge de ce qui part au cloud. */
+  /* (28/10) SYNCHRO COMPLÈTE AVANT AFFICHAGE (lib/synchroAffichage.js, docs/compte-rendu-synchro-avant-affichage.md).
+     À l'ouverture, au retour au premier plan (visibilitychange, focus) et au retour du réseau, une PASSE complète :
+     1) envoi de tout ce qui attend + 2) tirage complet et fusion (syncNow, inchangé) ; 2 bis) journal : envoi, réception
+     (synchroniserJournal, inchangé) ; 3) application du journal aux cartes (dans synchroniserJournal) ; 4) rechargement
+     (plan du jour recalculé) ; puis comparaison des empreintes locale / cloud (lib/syncStatus.js). Tant que la passe
+     n'est pas finie (< 8 s), les chiffres calculés attendent (components/Chiffre.jsx). Une seule passe à la fois. */
+  const [porte, setPorte] = useState(() => ({ phase: SYNC_ENABLED ? 'attente' : 'local', at: null, depuis: derniereSyncReussie() }));
+  const reloadRef = useRef(reload); reloadRef.current = reload;
+  const migrationsFaites = useRef(false);
+  const porteRef = useRef(null);
+  if (!porteRef.current && SYNC_ENABLED) {
+    porteRef.current = creerPorte({
+      passe: async () => {
+        setSyncState((s) => ({ ...s, status: 'syncing' }));
+        const r = await syncNow();
+        setSyncState({ status: r.status, at: new Date().toISOString(), degraded: !!r.degraded, blobs: r.blobs || null });
+        if (r.status !== 'ok') return { ok: false };
+        const j = await synchroniserJournal();
+        // table du journal absente (SQL pas appliqué) : rien à recevoir, la passe reste complète ; autre erreur : échec
+        if (j && j.ok === false && !j.tableAbsente && j.raison !== 'désactivée') return { ok: false };
+        if (!migrationsFaites.current) { migrationsFaites.current = true; await runMigrations(); }
+        await reloadRef.current();
+        return { ok: true };
+      },
+      verifier: async () => {
+        const [local, cloud, enAttente] = await Promise.all([etatLocal(), etatCloud(), outboxCount()]);
+        return cloud ? { local: local.hash, cloud: cloud.hash, enAttente } : null;
+      },
+      poser: (e) => setPorte({ ...e }),
+      derniere: derniereSyncReussie,
+      marquer: marquerSyncReussie,
+    });
+  }
+  const lancerPorte = useCallback(() => (porteRef.current ? porteRef.current.lancer() : Promise.resolve(null)), []);
+  // racine : les chiffres hors <Chiffre> (.tnum) attendent aussi (repli CSS, styles/synchro-affichage.css)
+  useEffect(() => {
+    document.documentElement.setAttribute('data-mr-synchro', porte.phase);
+    return () => document.documentElement.removeAttribute('data-mr-synchro');
+  }, [porte.phase]);
+
   useEffect(() => { (async () => {
     try { await reload(); } catch (e) { /* lecture locale impossible : la séquence ci-dessous réessaie */ }
-    await forceSync();
-    await runMigrations(); await reload();
+    if (SYNC_ENABLED) await lancerPorte();
+    else { await forceSync(); await runMigrations(); await reload(); }
     /* FILET DE SÉCURITÉ (11/10, docs/compte-rendu-filet-securite.md) — en tâche de fond, après la
        synchro de démarrage, sans rien bloquer : contrôle d'intégrité (lecture seule), état de la copie
        serveur (GitHub, via /api/backup-status), copie hebdomadaire dans le dossier local si autorisé. */
@@ -248,13 +292,15 @@ export default function MedReviseApp({ themeApi, goHub }) {
 
   // reconcile à la reconnexion réseau et quand l'onglet redevient visible (retour d'un
   // autre appareil) — capte les changements faits ailleurs sans polling permanent.
+  // (28/10) + `focus` ; chaque déclencheur lance la PASSE complète (une seule à la fois, voir la porte)
   useEffect(() => {
-    const onSync = () => { forceSync(); };
+    const onSync = () => { if (SYNC_ENABLED) lancerPorte(); else forceSync(); };
     const onVisible = () => { if (document.visibilityState === 'visible') onSync(); };
     window.addEventListener('online', onSync);
+    window.addEventListener('focus', onSync);
     document.addEventListener('visibilitychange', onVisible);
-    return () => { window.removeEventListener('online', onSync); document.removeEventListener('visibilitychange', onVisible); };
-  }, [forceSync]);
+    return () => { window.removeEventListener('online', onSync); window.removeEventListener('focus', onSync); document.removeEventListener('visibilitychange', onVisible); };
+  }, [forceSync, lancerPorte]);
 
   // ÉTAPE 3 — halo de bordure qui suit le curseur. Branché une seule fois, dès
   // que la base est chargée (donc que la racine [data-app] est dans le DOM) ;
@@ -296,7 +342,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     theme, toggleTheme, goHub,
     go: setScreen,
     db, stats, reload, promptOverrides, exoPromptOverrides, chapExoPromptOverrides,
-    syncState, forceSync,
+    syncState, forceSync, porte, relancerSynchro: lancerPorte,
     focusFiche, setFocusFiche,
     session, feynman, exercice, anatQuiz, pdfView, schemaView,
 
@@ -876,7 +922,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
       <button type="button" onClick={() => setAvisRetire(null)} aria-label="Fermer"><Icon name="x" size={12} /></button>
     </div>
   );
-  if (isMobile) return <><MobileApp ctx={ctx} /><IndicateurTranscription />{avis}<Infobulles /></>;
+  const bandeau = <BandeauSynchro porte={porte} onReessayer={lancerPorte} mobile={isMobile} />;
+  if (isMobile) return <SynchroContext.Provider value={porte}><MobileApp ctx={ctx} />{bandeau}<IndicateurTranscription />{avis}<Infobulles /></SynchroContext.Provider>;
 
   // OCR des PDF image (docs/compte-rendu-ocr.md) : démarré avec le shell bureau,
   // une seule fois (reprise des couches incomplètes, traitement en masse initial)
@@ -887,6 +934,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     /* data-app : marqueur de portée posé à l'ÉTAPE 3. Le fichier de thème est
        global depuis l'étape 1 ; les ANIMATIONS, elles, sont scopées sous cet
        attribut — MealWeek ne peut donc pas les recevoir, par construction. */
+    <SynchroContext.Provider value={porte}>
     <div className="app" data-app="medrevise">
       <StudySidebar current={screen} onNav={setScreen} expanded={expanded} onToggle={() => setExpanded((v) => !v)} onHub={goHub} ctx={ctx}
         />
@@ -899,6 +947,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
       <IndicateurTranscription />
       {/* (25/10) infobulles de toutes les commandes au survol (components/Infobulles.jsx) */}
       <Infobulles />
+      {bandeau}
     </div>
+    </SynchroContext.Provider>
   );
 }

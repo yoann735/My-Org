@@ -3,6 +3,7 @@
    etudes.css classes for visual fidelity, but is wired to our real
    data model (matiere = {id,nom,couleur,icon}, fiche, questions).
    ============================================================ */
+import { Chiffre, useEnSynchro } from './Chiffre.jsx';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, MeasuringStrategy, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
@@ -602,7 +603,23 @@ export function Breadcrumb({ parts }) {
    flex normal — jamais en position absolute — pour ne jamais chevaucher
    tc-aside (le compteur de cartes du jour), quelle que soit la largeur. */
 export function TodaySeriesCard({ plan, onStart, compact, collapsed, onToggleCollapse }) {
+  const enSynchro = useEnSynchro();
   const total = plan.reduce((s, c) => s + c.items.length, 0);
+  // (28/10) série calculée : pendant la synchro complète, ni « Tout est à jour » ni prochaine fiche (état local périmé)
+  if (enSynchro) {
+    return (
+      <div className={'today-cta tc-attente' + (compact ? ' tc-compact' : '') + (collapsed ? ' tc-collapsed' : '')} data-serie="attente">
+        <div className="tc-glow" />
+        <div className="tc-main">
+          <div className="tc-headrow">
+            <div className="tc-eyebrow"><Icon name="calendar" size={14} /> Série du jour · méthode des J</div>
+            {onToggleCollapse && <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />}
+          </div>
+          {!collapsed && <div className="tc-title"><Chiffre /></div>}
+        </div>
+      </div>
+    );
+  }
   const allItems = plan.flatMap((c) => c.items);
   const collapsible = !!onToggleCollapse;
 

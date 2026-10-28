@@ -128,6 +128,9 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
   /* ---- reprise : séance remise d'accord avec le plan du jour ---- */
   const remettreDAccord = (base = null, cartesParId = cartesRef.current) => remiseDAccord(ctx.db, base || tick() || etatRef.current, cartesParId, today);
   // fin de synchro / retour d'arrière-plan (nouveau ctx.db) : cartes rafraîchies (la plus récente gagne)
+  // (28/10, docs/compte-rendu-synchro-avant-affichage.md) une séance OUVERTE n'est jamais modifiée sous les yeux : la file,
+  // la carte affichée et la progression restent telles quelles ; elles se remettent d'accord à la prochaine reprise
+  // (chargement ci-dessous). Seule exception : une carte encore à faire a été SUPPRIMÉE ailleurs (sinon rien à afficher).
   const premierDb = useRef(true);
   const monte = useRef(true);
   useEffect(() => { monte.current = true; return () => { monte.current = false; }; }, []);
@@ -139,6 +142,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
     const frais = {};
     (ctx.db.questions || []).forEach((q) => { const p = prec[q.id]; frais[q.id] = p && (p.updatedAt || '') > (q.updatedAt || '') ? p : q; });
     cartesRef.current = frais; setCartes(frais);
+    if (!avant.cartes.slice(avant.idx).some((id) => !frais[id])) return;
     const e = remettreDAccord();
     if (!monte.current) return;
     if (e.cartes[e.idx] !== avant.cartes[avant.idx]) setRetournee(false);

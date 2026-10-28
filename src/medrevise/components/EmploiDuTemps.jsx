@@ -11,6 +11,7 @@
    En mode « Mes J », rien de ce fichier n'est rendu à la place du calendrier des J :
    seul le sélecteur s'ajoute à l'en-tête.
    ============================================================ */
+import { Chiffre, useEnSynchro } from './Chiffre.jsx';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { matiereMeta, PALETTE_MATIERES } from './ui.jsx';
@@ -272,6 +273,7 @@ export function CalendrierEcole({ ctx, mobile = false }) {
 /* ---------- accueil téléphone : « Mes J » du jour, ou l'école ---------- */
 function JourJMobile({ ctx }) {
   const [jour, setJour] = useState(0);
+  const enSynchro = useEnSynchro(); // (28/10) calendrier calculé : attend la fin de la synchro
   const glisse = useGlissement(() => setJour((j) => j + 1), () => setJour((j) => j - 1));
   const { db } = ctx;
   // même source que le calendrier desktop (planning.js#weekData) : semaine + jour
@@ -294,7 +296,8 @@ function JourJMobile({ ctx }) {
         {jour !== 0 && <button type="button" className="btn ghost sm" onClick={() => setJour(0)}>Aujourd'hui</button>}
       </div>
       <div className="edt-jour-liste" {...glisse} data-jour={jour}>
-        {(!day || (day.byFiche.length === 0 && (day.schemas || []).length === 0))
+        {enSynchro ? <div className="wcal-empty edt-rien" data-cal-attente><Chiffre /></div>
+          : (!day || (day.byFiche.length === 0 && (day.schemas || []).length === 0))
           ? <div className="wcal-empty edt-rien">Rien à réviser ce jour-là.</div>
           : [...day.byFiche, ...(day.schemas || [])].map((c) => {
             const meta = matiereMeta(c.matiere);

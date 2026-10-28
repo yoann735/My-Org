@@ -8,10 +8,13 @@
    L'en-tête « N cartes · ≈ M min » suit la sélection. Séance du jour commencée : « Reprendre ».
    (26/10) Sous les cases : l'interrupteur « Regrouper par cours » (mémorisé avec le choix) — il ne change QUE l'ordre
    de passage (lib/categoriesFC.js regrouperParCours).
+   (28/10) Tant que la synchro complète n'est pas finie (components/Chiffre.jsx) : chiffres remplacés par un indicateur,
+   Démarrer / Reprendre désactivés, jamais « Rien à faire » sur un état local périmé.
    ============================================================ */
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Switch } from './ui.jsx';
+import { Chiffre, useEnSynchro } from './Chiffre.jsx';
 import { getMeta, setMeta } from '../lib/storage.js';
 import { todayISO } from '../lib/sm2.js';
 import { nextDate } from '../lib/planning.js';
@@ -24,6 +27,7 @@ const memeChoix = (a, b) => CATEGORIES.every(({ cle }) => a[cle].coche === b[cle
 
 export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
   const today = todayISO();
+  const enSynchro = useEnSynchro();
   const [sauve, setSauve] = useState(undefined);
   const [mesures, setMesures] = useState([]);
   const [choix, setChoix] = useState(null);
@@ -48,6 +52,7 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
   const cocher = (cle, v) => changer({ ...choix, [cle]: { ...choix[cle], coche: v } });
   const borner = (cle, v) => changer({ ...choix, [cle]: { ...choix[cle], max: v === 'tout' ? 'tout' : Number(v) } });
   const demarrer = async () => {
+    if (enSynchro) return;
     const e = nouvelleSeance(ctx.db, today, choix, ctx.stats);
     if (!e.cartes.length) return;
     await setMeta(CLE_SEANCE, e);
@@ -56,7 +61,7 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
   const cls = 'sfa sfa-lanceur' + (compact ? ' compact' : '');
   const disponibles = cats.nouvelles.length + cats.revisions.length + cats.retard.length;
 
-  if (!disponibles && !reprise) {
+  if (!disponibles && !reprise && !enSynchro) {
     const proch = prochaineSeance(cartes, today, nextDate);
     return (
       <div className={'sfa' + (compact ? ' compact' : '') + ' vide'}>
@@ -71,11 +76,11 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
     <div className={cls} data-sfa="lanceur">
       <div className="sfa-tete">
         <div className="sfa-titre">Aujourd'hui</div>
-        <div className="sfa-ligne"><span className="tnum" data-sfa="total">{pluriel(total)} · ≈ {minutes(total)} min</span></div>
+        <div className="sfa-ligne"><Chiffre><span className="tnum" data-sfa="total">{pluriel(total)} · ≈ {minutes(total)} min</span></Chiffre></div>
       </div>
       {reprise && (
-        <button type="button" className="sfa-reprise" data-sfa="reprendre" onClick={() => onDemarrer('reprise')}>
-          <Icon name="play" size={14} fill /> Reprendre la séance commencée · <span className="tnum">{reprise.restantes}</span> restante{reprise.restantes > 1 ? 's' : ''}
+        <button type="button" className="sfa-reprise" data-sfa="reprendre" disabled={enSynchro} onClick={() => onDemarrer('reprise')}>
+          <Icon name="play" size={14} fill /> Reprendre la séance commencée · <Chiffre><span className="tnum">{reprise.restantes}</span> restante{reprise.restantes > 1 ? 's' : ''}</Chiffre>
         </button>
       )}
       <div className="sfa-cats" role="group" aria-label="Cartes de la séance">
@@ -87,7 +92,7 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
                 <input type="checkbox" checked={c.coche} onChange={(e) => cocher(cle, e.target.checked)} />
                 <span className="sfa-boite" aria-hidden="true"><Icon name="check" size={12} /></span>
                 <span className="sfa-cat-nom">{libelle}</span>
-                <span className="sfa-cat-n tnum" data-n={n}>{n}</span>
+                <Chiffre className="sfa-cat-n"><span className="sfa-cat-n tnum" data-n={n}>{n}</span></Chiffre>
               </label>
               <select className="sfa-max" value={String(c.max)} disabled={!c.coche} aria-label={`Nombre maximum de cartes ${libelle.toLowerCase()}`}
                 onChange={(e) => borner(cle, e.target.value)}>
@@ -107,7 +112,7 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
           <button type="button" className={'sfa-racc' + (memeChoix(choix, blocNouvelles) ? ' actif' : '')} data-raccourci="blocNouvelles" onClick={() => changer(blocNouvelles)}>Bloc nouvelles</button>
           <button type="button" className={'sfa-racc' + (memeChoix(choix, revisionsJ) ? ' actif' : '')} data-raccourci="revisionsJ" onClick={() => changer(revisionsJ)}>Révisions J</button>
         </div>
-        <button type="button" className="sfa-btn" data-sfa="demarrer" disabled={!total} onClick={demarrer}><Icon name="play" size={16} fill /> Démarrer</button>
+        <button type="button" className="sfa-btn" data-sfa="demarrer" disabled={!total || enSynchro} onClick={demarrer}><Icon name="play" size={16} fill /> Démarrer</button>
       </div>
     </div>
   );

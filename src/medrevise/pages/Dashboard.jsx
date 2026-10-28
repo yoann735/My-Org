@@ -2,6 +2,7 @@
    MedRevise — Dashboard : CTA série du jour (méthode des J),
    calendrier de la SEMAINE, import de fiche, streak.
    ============================================================ */
+import { Chiffre, useEnSynchro } from '../components/Chiffre.jsx';
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card, EdTop, TodaySeriesCard, DestPicker, CourseDocField, detectDocKind, matiereMeta, OverdueBox, Modal, DateActionModal, ConfirmModal } from '../components/ui.jsx';
@@ -66,7 +67,7 @@ export function Dashboard({ ctx }) {
             </Card>
           ) : (
           <Card title="Calendrier de la semaine — méthode des J" icon="calendar"
-            action={<span className="edt-tete"><SelecteurCalendrier mode={modeCal} onMode={setModeCal} /><span className="pill accent"><Icon name="cards" size={13} /> {due.length} carte{due.length > 1 ? 's' : ''}{dueSchemas.length > 0 ? ` + ${dueSchemas.length} schéma${dueSchemas.length > 1 ? 's' : ''}` : ''} aujourd'hui</span></span>}>
+            action={<span className="edt-tete"><SelecteurCalendrier mode={modeCal} onMode={setModeCal} /><span className="pill accent" data-dash="dues"><Icon name="cards" size={13} /> <Chiffre>{due.length} carte{due.length > 1 ? 's' : ''}{dueSchemas.length > 0 ? ` + ${dueSchemas.length} schéma${dueSchemas.length > 1 ? 's' : ''}` : ''} aujourd'hui</Chiffre></span></span>}>
             <WeekCalendar ctx={ctx} onPick={setSelDay} />
             {/* légende = matières qui PEUVENT apparaître au calendrier : section active
                (ni archivée, ni en pause de la méthode des J), matière non archivée,
@@ -345,6 +346,7 @@ function TrueJBadge({ days }) {
   return <span className="jr-truej" title="Jours écoulés depuis le tout premier départ de cette carte (pas son prochain délai)">J0+{days}</span>;
 }
 function WeekCalendar({ ctx, onPick }) {
+  const enSynchro = useEnSynchro(); // (28/10) calendrier calculé : attend la fin de la synchro
   const [wk, setWk] = useState(0);
   const { monday, days } = weekData(ctx.db, wk);
   const end = (() => { const d = new Date(monday + 'T00:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().split('T')[0]; })();
@@ -366,12 +368,13 @@ function WeekCalendar({ ctx, onPick }) {
         {days.map((day, i) => {
           const cls = 'wcal-day' + (day.isToday ? ' today' : '') + (day.isPast ? ' past' : '');
           return (
-            <button className={cls} key={i} disabled={day.total === 0} onClick={() => day.total && onPick(day)}>
+            <button className={cls} key={i} disabled={day.total === 0 || enSynchro} onClick={() => day.total && !enSynchro && onPick(day)}>
               <div className="wcal-dhead">
                 <span className="wcal-dow">{day.dow}</span>
                 <span className="wcal-dnum">{day.dayNum}</span>
                 {day.isToday && <span className="wcal-today-dot">Auj.</span>}
               </div>
+              {enSynchro ? <div className="wcal-courses" data-cal-attente><div className="wcal-empty"><Chiffre /></div></div> : <>
               <div className="wcal-courses">
                 {day.byFiche.length === 0 && (day.schemas || []).length === 0 && <div className="wcal-empty">{day.isPast ? '' : '—'}</div>}
                 {day.byFiche.map((c) => {
@@ -412,6 +415,7 @@ function WeekCalendar({ ctx, onPick }) {
                 })}
               </div>
               {day.total > 0 && <div className="wcal-foot">{dayFootLabel(day)}</div>}
+              </>}
             </button>
           );
         })}

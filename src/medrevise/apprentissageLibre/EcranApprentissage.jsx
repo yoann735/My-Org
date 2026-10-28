@@ -32,6 +32,7 @@ import { SessionApprentissage } from './SessionApprentissage.jsx';
 import { BoutonAApprendre, EtiquetteAApprendre } from '../components/BoutonAApprendre.jsx';
 import { estAApprendre } from '../lib/aApprendre.js';
 import { ExportFlashcards } from '../components/ExportFlashcards.jsx';
+import { Chiffre, useEnSynchro } from '../components/Chiffre.jsx';
 import {
   TYPES, FILTRES_VIDES, filtresActifs, filtresValides, filtrer, grouper, idsAffiches,
   choixFiltres, toutesLesCartes, typeCarte, rectoTexte, versoTexte,
@@ -52,6 +53,7 @@ const OUVERTS_JUSQUA = 160;
 
 export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
   const db = ctx.db;
+  const enSynchro = useEnSynchro(); // (28/10) compteurs et Lancer attendent la fin de la synchro complète
   const [filtres, setFiltresBrut] = useState(() => filtresValides(lire(CLE_FILTRES, FILTRES_VIDES)));
   const setFiltres = (f) => setFiltresBrut((x) => { const n = typeof f === 'function' ? f(x) : f; ecrire(CLE_FILTRES, n); return n; });
   const [vue, setVueBrut] = useState(() => (lire(CLE_VUE, 'grille') === 'liste' ? 'liste' : 'grille'));
@@ -113,11 +115,11 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
       {filtres.q && <button type="button" className="alib2-effacer" onClick={() => setFiltres((f) => ({ ...f, q: '' }))} aria-label="Effacer la recherche" title="Effacer la recherche"><Icon name="x" size={13} /></button>}
     </label>
   );
-  const compteur = <span className="alib2-compteur tnum" aria-live="polite" data-compteur={visibles.length}>{pl(visibles.length, 'carte')}{actifs && <span className="hint"> sur {total}</span>}</span>;
+  const compteur = <Chiffre><span className="alib2-compteur tnum" aria-live="polite" data-compteur={visibles.length}>{pl(visibles.length, 'carte')}{actifs && <span className="hint"> sur {total}</span>}</span></Chiffre>;
   const boutonLancer = (
-    <button type="button" className="btn primary alib-lancer" disabled={!idsLancer.length} onClick={lancer} data-lancer={resume.n ? 'selection' : 'visibles'}
+    <button type="button" className="btn primary alib-lancer" disabled={!idsLancer.length || enSynchro} onClick={lancer} data-lancer={resume.n ? 'selection' : 'visibles'}
       title={resume.n ? `Lancer une session sur la sélection (${pl(resume.n, 'carte')})` : ordre.length ? `Lancer une session sur les ${pl(ordre.length, 'carte visible', 'cartes visibles')}` : 'Aucune carte visible'}>
-      <Icon name="play" size={14} /> Lancer{idsLancer.length ? <span className="tnum"> ({idsLancer.length})</span> : null}
+      <Icon name="play" size={14} /> Lancer{enSynchro ? null : idsLancer.length ? <span className="tnum"> ({idsLancer.length})</span> : null}
     </button>
   );
   const boutonExporter = (
@@ -161,7 +163,7 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
         {resume.horsFiltre > 0 && <span className="hint"> dont {resume.horsFiltre} hors filtre</span>}</span>
       <button type="button" className="linklike alib2-vider" onClick={vider} data-act="vider-selection">Vider la sélection</button>
       <span style={{ flex: 1 }} />
-      <button type="button" className="btn primary sm alib-lancer" onClick={lancer} data-act="lancer-selection" title={`Lancer une session sur la sélection (${pl(resume.n, 'carte')})`}>
+      <button type="button" className="btn primary sm alib-lancer" onClick={lancer} disabled={enSynchro} data-act="lancer-selection" title={`Lancer une session sur la sélection (${pl(resume.n, 'carte')})`}>
         <Icon name="play" size={13} /> Lancer
       </button>
     </div>
@@ -169,7 +171,7 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
   const puceAApprendre = (
     <button type="button" className={'alib2-puce' + (filtres.aApprendre ? ' actif' : '')} aria-pressed={filtres.aApprendre} data-puce="aap"
       onClick={() => setFiltres((f) => ({ ...f, aApprendre: !f.aApprendre }))} title="Seulement les cartes taguées « À apprendre » (se combine avec les autres filtres)">
-      <Icon name="star" size={12} fill={filtres.aApprendre} /> À apprendre <span className="tnum alib2-puce-n">{nbAap}</span>
+      <Icon name="star" size={12} fill={filtres.aApprendre} /> À apprendre <Chiffre><span className="tnum alib2-puce-n">{nbAap}</span></Chiffre>
     </button>
   );
 

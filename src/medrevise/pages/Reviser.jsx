@@ -3,6 +3,7 @@
    (cases à cocher, sélection simple/multiple, rappels J).
    Droite : méthode des J (frise) + cards QCM/Flash/Feynman + erreurs.
    ============================================================ */
+import { Chiffre, useEnSynchro } from '../components/Chiffre.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
@@ -115,6 +116,7 @@ function TreeResizer({ width, onResize, onCommit }) {
 
 export function Reviser({ ctx }) {
   const { db } = ctx;
+  const enSynchro = useEnSynchro(); // (28/10) chiffres du jour et « Lancer » attendent la fin de la synchro complète
   const ix = useMemo(() => index(db), [db]);
   const [selIds, setSelIds] = useState(() => (ctx.focusFiche ? [ctx.focusFiche] : (db.fiches[0] ? [db.fiches[0].id] : [])));
   // dépliage de l'arbre (cours + unités + chapitres) : MÉMORISÉ dans stats, partagé
@@ -908,8 +910,9 @@ export function Reviser({ ctx }) {
               </button>
               <EtiquetteDot value={f.etiquette} />
               {f.rappelsJ === false && <span className="lt-etat" title="Rappels J en pause pour cette fiche"><Icon name="bellOff" size={12} /></span>}
-              {overdueFicheIds.has(f.id) && <span className="lt-etat lt-retard" title="En retard — à rattraper"><Icon name="alert" size={12} /></span>}
-              {cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
+              {/* (28/10) retard et dues du jour : calculés, ils attendent la fin de la synchro complète */}
+              {!enSynchro && overdueFicheIds.has(f.id) && <span className="lt-etat lt-retard" title="En retard — à rattraper"><Icon name="alert" size={12} /></span>}
+              {!enSynchro && cdt > 0 && <span className="due-badge sm" title={`${cdt} carte(s) à réviser aujourd'hui`}>{cdt}</span>}
               <span className="lt-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
                 {f.type !== 'transcript' && (
                   <button type="button" className="cd-ic" title="Réviser cette fiche" onClick={() => { if (f.type === 'anat_schema') ctx.startAnatQuiz(f, { mode: 'total' }); else { ctx.setFocusFiche(f.id); ctx.startSession(db.questions.filter((x) => x.ficheId === f.id && x.type !== 'feynman'), f.titre); } }}>
@@ -960,7 +963,7 @@ export function Reviser({ ctx }) {
             {/* « À rattraper » vit ICI depuis qu'il a quitté le tableau de bord (30/09) :
                tout le retard en une série ; fiche par fiche, clic droit → « Rattraper
                maintenant » / « Retirer du retard… ». */}
-            {overdue.length > 0 && (
+            {overdue.length > 0 && !enSynchro && (
               <button className="tree-clear tree-rattraper" title={`${overdue.length} fiche${overdue.length > 1 ? 's' : ''} en retard — tout rattraper en une série`}
                 onClick={() => ctx.startSession(overdue.filter((g) => !g.isSchema).flatMap((g) => g.items || []), 'Rattrapage')}>
                 <Icon name="clock" size={12} /> Rattraper ({overdue.length})
@@ -1242,7 +1245,7 @@ export function Reviser({ ctx }) {
                   {!scheduled
                     ? <span className="jc-paused">En pause</span>
                     : dueSel.length > 0
-                      ? <><span className="jc-today-badge">Aujourd'hui</span> <span className="tnum">{dueSel.length}</span> carte{dueSel.length > 1 ? 's' : ''}</>
+                      ? <><span className="jc-today-badge">Aujourd'hui</span> <Chiffre><span className="tnum">{dueSel.length}</span> carte{dueSel.length > 1 ? 's' : ''}</Chiffre></>
                       : <span className="hint">Rien dû aujourd'hui</span>}
                 </div>
                 <div className="rb-actions">
@@ -1267,7 +1270,7 @@ export function Reviser({ ctx }) {
                     </label>
                   )}
                   {erreurDoc && <span className="fj-erreur" role="alert">{erreurDoc}</span>}
-                  {dueSel.length > 0 && <button className="btn primary sm" onClick={launchToday}><Icon name="play" size={13} fill /> Lancer aujourd'hui</button>}
+                  {dueSel.length > 0 && <button className="btn primary sm" disabled={enSynchro} onClick={launchToday}><Icon name="play" size={13} fill /> Lancer aujourd'hui</button>}
                   {!multi && primary && (
                     <button type="button" className="cd-ic rb-more" title="Autres actions sur cette fiche"
                       onClick={(e) => setBarMenu({ x: Math.min(e.clientX, window.innerWidth - 230), y: Math.min(e.clientY, window.innerHeight - 170) })}>
