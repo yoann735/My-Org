@@ -703,3 +703,108 @@ absent, liste non rafraîchie. Cause : le serveur Vite de dev (port 5300) était
 | fb5670a | `feat(medrevise)` : « Regrouper par cours » et éléments à révéler (formulaire, affichage partout, composant Muscle factorisé, import / format / prompt) |
 | 584d432 | `test(medrevise)` : banc `scripts/tests-par-cours-elements/` |
 | (ce commit) | `docs(medrevise)` : sections « Regrouper par cours » (compte-rendu-seance-categories.md) et « éléments à révéler » (ce fichier), captures |
+
+
+## Échap n'annule plus · ligne « Topographie » des cartes Muscle (28/10/2026)
+
+### 1. Échap ne fait plus perdre le brouillon
+
+**Avant.** Dans le formulaire de flashcard du panneau, Échap appelait « Annuler », pour les quatre sortes
+(Texte, Muscle, Tableau, Molécule) et aussi en modification. Un appui de trop, et la saisie était perdue.
+
+**Maintenant.** Dans le formulaire, Échap fait seulement deux choses :
+
+- il ferme le menu ouvert (« Amorce », liste de suggestions de la Molécule…). Ces menus écoutent Échap en phase de
+  capture et le consomment avant le formulaire, comme avant ;
+- sinon, il fait sortir du champ (le curseur quitte la zone de texte).
+
+Le brouillon n'est jamais perdu. Seul le bouton « Annuler » ferme le formulaire. Un clic ou un tap en dehors
+(page du cours, barre du panneau) ne le ferme pas non plus. C'était déjà le cas, et c'est maintenant vérifié.
+
+La fenêtre « Boîte → Flashcard » du lecteur (créer une carte depuis une boîte) suivait la même règle : Échap la
+fermait. Elle se comporte maintenant comme le formulaire. Échap quitte le champ, et « Annuler » ou ✕ ferment la
+fenêtre.
+
+Code : `echapDansFormulaire(e)` (`components/AddItemForm.jsx`), appelé par `FlashcardForm`, `FormulaireMuscle`,
+`FormulaireTableau` et `FormulaireMolecule` à la place de `onCancel()`. Le gestionnaire Échap de `pdf/BoiteFlashcard.jsx`
+a été modifié de la même façon. Les infobulles « Échap = annuler » disent maintenant « Échap = quitter le champ ».
+
+### 2. Carte Muscle : 6ᵉ ligne « Topographie »
+
+- **Modèle** (`lib/muscle.js`) : `LIGNES_MUSCLE` a une 6ᵉ entrée, `{ id: 'topographie', label: 'Topographie' }`,
+  après Innervation. Le formulaire, le tableau de révision, la liste, la vue agrandie, le mode Apprentissage, les
+  séances, l'export et l'import lisent tous cette liste. La nouvelle ligne a donc le même rendu et le même
+  comportement que les autres : texte à puces, image par ligne (`muscle.images.topographie`) et révélation ligne
+  par ligne.
+- **Aucune ligne obligatoire** : le formulaire n'exige que le nom du muscle, comme avant. L'import n'exige plus
+  « au moins un des 5 champs ». Le tableau n'affiche aucune mention « optionnel ».
+- **Ligne vide** : « — » en révision, comme les autres, et elle n'est pas comptée dans « Tout révéler (n) ».
+- **Cartes existantes** : rien n'est réécrit, il n'y a pas de migration. Une carte sans clé `topographie` est lue
+  avec une Topographie vide (`lignesDe`). Elle affiche donc une 6ᵉ ligne « — », et le reste est inchangé.
+  L'empreinte de la carte témoin en base est identique avant et après affichage, modification annulée et export.
+  Aucune écriture Supabase n'a été faite : c'est un champ en ajout, synchronisé avec la carte comme les autres.
+- **Import / export JSON** : `muscle.topographie` est accepté à l'import, et toujours écrit à l'export (`""` pour
+  une ancienne carte). L'exemple de « Voir le format attendu » et le complément du prompt le contiennent :
+
+```json
+{ "type": "flashcard", "theme": "Muscles du bras", "recto": "Biceps brachial",
+  "muscle": { "origine": "…", "trajet": "Loge antérieure du bras", "insertion": "Tubérosité radiale",
+              "action": "Flexion du coude, supination", "innervation": "Nerf musculo-cutané (C5–C6)",
+              "topographie": "Loge antérieure du bras, superficiel au brachial" } }
+```
+
+- **Pré-remplissage depuis une capture (OCR)** : « Topographie » est reconnue comme étiquette. Sans cela, le
+  contenu de cette ligne d'un tableau de cours aurait été versé dans Innervation. Le compteur affiche « n/6 ».
+
+### Tests
+
+Banc `scripts/tests-topographie-echap/` (`tout.sh`) : Vite :5302 **sans Supabase**, Chrome headless isolés
+(9337 ordinateur, 9338 téléphone), profils neufs. Les vraies données et le cloud n'ont jamais été touchés, et aucun
+fichier n'a été écrit dans ~/Downloads (téléchargement intercepté).
+
+| Scénario | Résultat |
+|---|---|
+| `t-echap.mjs` (ordinateur 1440×900) : Échap ×2 pendant la saisie de chaque sorte (Texte, Muscle, Tableau, Molécule) → formulaire présent, saisie intacte, focus sorti du champ ; Échap avec « Amorce » ouvert → seul le menu se ferme ; liste de la Molécule → se ferme, nom gardé ; clics dehors (page du cours, barre du panneau) après chaque sorte ; retour sur chaque sorte → rien perdu ; aucune carte créée ; « Annuler » ferme ; **modification** d'une carte Texte et de l'ancienne carte Muscle : mêmes vérifications, base inchangée | 29 ✅ |
+| `t-echap.mjs tablette` (820×1180, taps au doigt, panneau en volet) : la même chose | 29 ✅ |
+| **Avant / après** : `t-echap.mjs` rejoué sur l'ancien code (`git stash -- src/`) | ❌ dès le 1er Échap (formulaire fermé, saisie perdue) |
+| `t-topographie.mjs` : 6 lignes, Topographie en bas, aucun « optionnel » ; carte avec la **Topographie seule** (texte + image collée ⌘V) → base `topographie` + `images.topographie` ; carte avec le **nom seul** → créée, 6 lignes vides ; vue agrandie : 5 « — », Topographie masquée, « Tout révéler (1) », un toucher révèle texte et image ; carte nom seul : 6 « — », rien à révéler ; **ancienne carte Muscle** : 5 lignes masquées comme avant + Topographie « — », révélation ligne par ligne, empreinte identique ; mode Apprentissage : 6 lignes ; « Voir le format attendu » ; import de l'exemple ; JSON collé (Topographie seule / aucune ligne) ; **export .zip** du cours (UI) → `topographie` sur chaque carte (`""` pour l'ancienne), image exportée → **ré-import** du .zip dans un autre cours : topographie et image retrouvées | 25 ✅ |
+| `t-mobile.mjs` (téléphone 390×844, tactile) : séance du jour, carte Muscle (Topographie + 2 lignes remplies) : 6 lignes, vides « — », un tap révèle la Topographie seule (la carte ne se retourne pas), « Tout révéler » ; ancienne carte identique | 6 ✅ |
+| `t-boite.mjs` : fenêtre « Boîte → Flashcard » : Échap (×3) → reste ouverte, saisie gardée ; clic sur la page → reste ; « Annuler » ferme ; aucune carte créée | 6 ✅ |
+| Vitest `tests/muscle-topographie/` (9) : modèle, ancienne carte non modifiée, verso construit, image de ligne, OCR, import sans ligne obligatoire, format attendu ré-importable, export | ✅ |
+
+Le téléphone (< 760 px) n'a pas de panneau, donc pas de formulaire de création. Le « mobile » du formulaire est la
+tablette, et la révision est testée sur téléphone.
+
+### Non-régression
+
+- `npm test` : 168 tests verts sur 169. Le seul échec (`crayon`) existait déjà avant ce chantier. Le test d'export
+  attend maintenant `topographie: ""` pour une carte d'avant.
+- `vite build` : vert.
+- Banc `scripts/tests-par-cours-elements/tout.sh` (formulaire, éléments à révéler, séances) : 84 vérifications
+  vertes.
+- `src/shared/` et `src/mealweek/` : aucun fichier modifié (`git status` vide).
+- **MealWeek** : builds avant (HEAD) et après, servis sur la même origine. Les captures sont identiques octet pour
+  octet (`cmp`), et deux captures de l'ancien build le sont aussi.
+
+### Captures (`docs/img/topographie-echap/`)
+
+| | |
+|---|---|
+| Échap avec le menu « Amorce » ouvert (ordinateur, tablette) | ![](img/topographie-echap/echap-amorce-ouvert.png) ![](img/topographie-echap/tab-echap-amorce-ouvert.png) |
+| Brouillon intact après Échap et clics dehors | ![](img/topographie-echap/echap-brouillon-intact.png) ![](img/topographie-echap/tab-echap-brouillon-intact.png) |
+| Ancienne carte Muscle en modification (6 lignes) | ![](img/topographie-echap/echap-muscle-edition.png) |
+| Formulaire : ligne Topographie | ![](img/topographie-echap/topo-formulaire.png) |
+| Vue agrandie : Topographie masquée, puis révélée (texte + image) | ![](img/topographie-echap/topo-revision-masquee.png) ![](img/topographie-echap/topo-revision-revelee.png) |
+| Ancienne carte Muscle en révision | ![](img/topographie-echap/topo-ancienne-carte.png) |
+| « Voir le format attendu » | ![](img/topographie-echap/topo-format.png) |
+| Téléphone : masquée, une ligne, tout | ![](img/topographie-echap/topo-mobile-masques.png) ![](img/topographie-echap/topo-mobile-une-ligne.png) ![](img/topographie-echap/topo-mobile-tout.png) |
+| MealWeek (après) | ![](img/topographie-echap/mealweek.png) |
+
+### Commits (Échap · Topographie)
+
+| Commit | Contenu |
+|---|---|
+| 51fdc19 | `fix(medrevise)` : Échap n'annule plus la création / modification (4 sortes + fenêtre Boîte → Flashcard) |
+| fb4859d | `feat(medrevise)` : 6ᵉ ligne « Topographie » des cartes Muscle, import / export / format attendu, tests Vitest |
+| cf3f22d | `test(medrevise)` : banc `scripts/tests-topographie-echap/` |
+| (ce commit) | `docs(medrevise)` : cette section et ses captures |
