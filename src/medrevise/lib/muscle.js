@@ -3,7 +3,8 @@
 
    Une carte Muscle est une flashcard ORDINAIRE (type 'flashcard', même notation,
    même cycle Apprendre / J, même synchro) qui porte en plus :
-     muscle: { v: 1, lignes: { origine, trajet, insertion, action, innervation } }
+     muscle: { v: 1, lignes: { origine, trajet, insertion, action, innervation, topographie } }
+   (28/10) 6ᵉ ligne « Topographie » : une carte d'avant n'a pas la clé → lue vide (lignesDe), rien n'est réécrit.
    Le recto est le nom du muscle ; le verso TEXTE est rempli avec le tableau mis à
    plat (« Origine : … ») — ainsi tout ce qui ne connaît pas encore ce type (ancien
    appareil, export, carnet d'erreurs, recherche) affiche une carte lisible.
@@ -18,13 +19,14 @@ export const LIGNES_MUSCLE = [
   { id: 'insertion', label: 'Insertion' },
   { id: 'action', label: 'Action' },
   { id: 'innervation', label: 'Innervation' },
+  { id: 'topographie', label: 'Topographie' },
 ];
 
 export const estMuscle = (item) => !!(item && item.muscle && typeof item.muscle === 'object' && item.muscle.lignes);
 
 export const lignesVides = () => Object.fromEntries(LIGNES_MUSCLE.map((l) => [l.id, '']));
 
-/** lignes d'une carte, toujours les 5 clés (chaînes) */
+/** lignes d'une carte, toujours les 6 clés (chaînes) */
 export function lignesDe(item) {
   const src = (item && item.muscle && item.muscle.lignes) || {};
   return Object.fromEntries(LIGNES_MUSCLE.map((l) => [l.id, typeof src[l.id] === 'string' ? src[l.id] : '']));
@@ -130,7 +132,7 @@ export function carteMuscle({ nom, lignes, theme = '', indice = '', aRetenir = '
    - tableau à 2 colonnes (étiquettes à gauche, contenu à droite), étiquettes en haut
      de cellule OU centrées verticalement ;
    - étiquettes en titres (« Origine : » puis le texte, dessous ou à la suite) ;
-   - tableau horizontal (5 étiquettes côte à côte en en-tête, contenu dessous).
+   - tableau horizontal (étiquettes côte à côte en en-tête, contenu dessous).
    ============================================================ */
 const sansAccent = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 const motNorm = (t) => sansAccent(String(t || '').toLowerCase()).replace(/[^a-z/]/g, '');
@@ -141,8 +143,9 @@ const ANCRES = {
   insertion: /^(insertions?|terminaisons?)$/,
   action: /^(actions?|fonctions?)$/,
   innervation: /^(innervations?|innerve|innervee)$/,
+  topographie: /^topographies?$/,
 };
-const VOCAB_ETIQUETTE = /^(origines?|direction|directions|des|de|fibres?|trajets?|insertions?|terminaisons?|actions?|fonctions?|innervations?|et|\/)$/;
+const VOCAB_ETIQUETTE = /^(origines?|direction|directions|des|de|fibres?|trajets?|insertions?|terminaisons?|actions?|fonctions?|innervations?|topographies?|et|\/)$/;
 // première « lettre » d'une ligne lue par l'OCR à la place d'une puce
 const PUCE_OCR = /^([•●◦○▪■□‣·*\-–—»«>©®°➢➤►]|e|o|O|¢|\+)$/;
 

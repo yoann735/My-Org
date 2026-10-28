@@ -2,8 +2,8 @@
    MedRevise — FLASHCARD « MUSCLE » : formulaire et tableau (08/10,
    docs/compte-rendu-flashcards.md, modèle dans lib/muscle.js).
 
-   - FormulaireMuscle : nom du muscle + tableau à 5 lignes étiquetées (zones de texte
-     qui grandissent avec leur contenu), thème / indice / à retenir comme les autres
+   - FormulaireMuscle : nom du muscle + tableau à 6 lignes étiquetées (Topographie ajoutée le 28/10 ; aucune
+     n'est obligatoire) — zones de texte qui grandissent avec leur contenu, thème / indice / à retenir comme les autres
      cartes, « Pré-remplir depuis une image » (OCR existant). Entrée = retour à la ligne,
      Tab = ligne suivante, ⌘Entrée = enregistrer, Échap = quitter le champ (n’annule rien, 28/10). Sert à la création
      (carte d'ajout du panneau) ET à la modification (ItemForm).
@@ -279,11 +279,11 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
         <div className="mu-ocr-etat"><span className="mu-sablier" aria-hidden="true" /> Lecture de la capture…{ocr.apercu && <img src={ocr.apercu} alt="" />}</div>
       )}
       {ocr && ocr.etat === 'fait' && (
-        <div className="mu-ocr-etat ok"><Icon name="check" size={13} /> {ocr.trouvees.length}/5 ligne{ocr.trouvees.length > 1 ? 's' : ''} pré-remplie{ocr.trouvees.length > 1 ? 's' : ''} — relis et corrige.
-          {ocr.trouvees.length < 5 && <> Non trouvée{5 - ocr.trouvees.length > 1 ? 's' : ''} : {libelleTrouvees(ocr.trouvees).join(', ')}.</>}</div>
+        <div className="mu-ocr-etat ok"><Icon name="check" size={13} /> {ocr.trouvees.length}/{LIGNES_MUSCLE.length} ligne{ocr.trouvees.length > 1 ? 's' : ''} pré-remplie{ocr.trouvees.length > 1 ? 's' : ''} — relis et corrige.
+          {ocr.trouvees.length < LIGNES_MUSCLE.length && <> Non trouvée{LIGNES_MUSCLE.length - ocr.trouvees.length > 1 ? 's' : ''} : {libelleTrouvees(ocr.trouvees).join(', ')}.</>}</div>
       )}
       {ocr && ocr.etat === 'rien' && (
-        <div className="mu-ocr-etat"><Icon name="alert" size={13} /> Aucune étiquette (Origine, Trajet, Insertion, Action, Innervation) lue sur cette image — remplis à la main.</div>
+        <div className="mu-ocr-etat"><Icon name="alert" size={13} /> Aucune étiquette (Origine, Trajet, Insertion, Action, Innervation, Topographie) lue sur cette image — remplis à la main.</div>
       )}
 
       <div className="mu-saisie" role="group" aria-label="Tableau du muscle">

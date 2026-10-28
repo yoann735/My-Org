@@ -4,7 +4,7 @@
    génération), ÉTENDU à tous les types de cartes :
      { "items": [ { "type": "flashcard", "theme", "recto", "verso", "cloze", "indice", "a_retenir",
                     "image":    { "data": "data:image/png;base64,…" | "fichier": "nom.png" (dans le .zip), "place": "recto"|"verso"|"deux" },
-                    "muscle":   { "origine", "trajet", "insertion", "action", "innervation" },
+                    "muscle":   { "origine", "trajet", "insertion", "action", "innervation", "topographie" } (28/10 : tous facultatifs),
                     "molecule": { "nom", "smiles", "sens": "nom-molecule"|"molecule-nom" },
                     "tableau":  { "colonnes": [2 à 6], "lignes": [[…], …] (1 à 12) },
                     "items":    [ { "text", "masked": true|false }, … ] (26/10 : éléments à révéler d'une carte texte) } ] }
@@ -192,13 +192,13 @@ async function lireCarte(it, fichiers, chimie) {
   let carte, sorte, occlusion = null, imagesMuscle = {};
   if (it.muscle != null) {
     const m = it.muscle;
-    if (typeof m !== 'object' || Array.isArray(m)) return { erreur: 'muscle : objet { origine, trajet, insertion, action, innervation } attendu' };
+    if (typeof m !== 'object' || Array.isArray(m)) return { erreur: 'muscle : objet { origine, trajet, insertion, action, innervation, topographie } attendu' };
     const k = sansCommentaires(m).find((x) => !CHAMPS_MUSCLE.includes(x) && x !== 'images');
     if (k) return { erreur: `muscle.${k} : champ inconnu (attendus : ${CHAMPS_MUSCLE.join(', ')}, images)` };
     const ims = lireImagesMuscle(m.images, fichiers);
     if (ims.erreur) return { erreur: ims.erreur };
     imagesMuscle = ims.images;
-    if (!CHAMPS_MUSCLE.some((x) => estTexte(m[x]))) return { erreur: 'muscle : au moins un des 5 champs rempli' };
+    // (28/10) aucune ligne n'est obligatoire (comme dans le formulaire) : seul le nom du muscle l'est
     if (!estTexte(it.recto)) return { erreur: 'champ « recto » (nom du muscle) manquant' };
     carte = carteMuscle({ nom: it.recto, lignes: Object.fromEntries(CHAMPS_MUSCLE.map((x) => [x, str(m[x])])), ...base });
     sorte = 'muscle';
@@ -366,7 +366,7 @@ export const EXEMPLE_IMPORT = {
     { _sorte: 'trous (cloze)', _aide: 'le recto contient {{…}} ; « cloze » liste les mots masqués', type: 'flashcard', theme: 'Nerfs crâniens', recto: 'Le nerf {{abducens}} innerve le muscle droit latéral.', verso: 'Le nerf abducens (VI) innerve le muscle droit latéral.', cloze: ['abducens'] },
     { _sorte: 'image', _aide: 'image.data = URL de donnée, ou image.fichier = nom d’un fichier joint dans un .zip ; place : recto, verso ou deux', type: 'flashcard', theme: 'Ostéologie', recto: 'Quel os est montré ?', verso: 'La scapula.', image: { data: PIXEL, place: 'recto' } },
     { _sorte: 'texte à éléments', _aide: 'items = éléments du verso, révélés un par un en révision ; masked: true = caché jusqu’au toucher (défaut), false = toujours visible ; verso facultatif (introduction)', type: 'flashcard', theme: 'Physiologie rénale', recto: 'Quelles sont les 4 fonctions du rein ?', verso: 'Quatre grandes fonctions :', items: [{ text: 'Épuration des déchets azotés (urée, créatinine)', masked: true }, { text: 'Équilibre hydro-électrolytique', masked: true }, { text: 'Équilibre acido-basique', masked: false }, { text: 'Fonctions endocrines (EPO, rénine, calcitriol)', masked: true }] },
-    { _sorte: 'muscle', _aide: 'recto = nom du muscle ; les 5 champs du tableau Muscle (au moins un rempli) ; verso construit', type: 'flashcard', theme: 'Muscles du bras', recto: 'Biceps brachial', muscle: { origine: 'Chef long : tubercule supra-glénoïdal ; chef court : processus coracoïde', trajet: 'Loge antérieure du bras', insertion: 'Tubérosité radiale', action: 'Flexion du coude, supination', innervation: 'Nerf musculo-cutané (C5–C6)' } },
+    { _sorte: 'muscle', _aide: 'recto = nom du muscle ; les 6 champs du tableau Muscle, chacun facultatif (une ligne vide s’affiche « — ») ; verso construit', type: 'flashcard', theme: 'Muscles du bras', recto: 'Biceps brachial', muscle: { origine: 'Chef long : tubercule supra-glénoïdal ; chef court : processus coracoïde', trajet: 'Loge antérieure du bras', insertion: 'Tubérosité radiale', action: 'Flexion du coude, supination', innervation: 'Nerf musculo-cutané (C5–C6)', topographie: 'Loge antérieure du bras, superficiel au brachial' } },
     { _sorte: 'molécule', _aide: 'molecule.smiles (obligatoire), nom, sens : nom-molecule (recto = nom) ou molecule-nom', type: 'flashcard', theme: 'Biochimie', molecule: { nom: 'Éthanol', smiles: 'CCO', sens: 'nom-molecule' } },
     { _sorte: 'tableau', _aide: 'recto = titre ; 2 à 6 colonnes, 1 à 12 lignes ; en révision les cellules se révèlent une par une', type: 'flashcard', theme: 'Myologie', recto: 'Muscles de la fesse — insertions', tableau: { colonnes: ['Muscle', 'Origine', 'Insertion'], lignes: [['Grand glutéal', 'Ilium, sacrum, coccyx', 'Tubérosité glutéale'], ['Moyen glutéal', 'Face glutéale de l’ilium', 'Grand trochanter'], ['Piriforme', 'Face pelvienne du sacrum', 'Bord supérieur du grand trochanter']] } },
   ],
@@ -381,7 +381,7 @@ export const COMPLEMENT_PROMPT = `
 ## TYPES DE FLASHCARDS SUPPLÉMENTAIRES (import du panneau MedRevise)
 
 En plus des flashcards texte et à trous, tu peux produire, dans le même tableau "items" (toujours "type": "flashcard") :
-- **Muscle** : "recto" = nom du muscle, "muscle": { "origine", "trajet", "insertion", "action", "innervation" } (verso construit automatiquement) ;
+- **Muscle** : "recto" = nom du muscle, "muscle": { "origine", "trajet", "insertion", "action", "innervation", "topographie" } (chaque champ facultatif ; verso construit automatiquement) ;
 - **Molécule** : "molecule": { "nom", "smiles", "sens": "nom-molecule" | "molecule-nom" } (SMILES valide obligatoire) ;
 - **Tableau** : "recto" = titre, "tableau": { "colonnes": [2 à 6 noms], "lignes": [[…], …] (1 à 12 lignes, autant de cellules que de colonnes) } ;
 - **Texte à éléments** : "items": [{ "text": "…", "masked": true }, …] — la réponse découpée en éléments révélés un par un ("masked": false = toujours visible) ; "verso" devient facultatif (introduction) ;

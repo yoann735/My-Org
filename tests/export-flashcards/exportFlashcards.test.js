@@ -114,7 +114,7 @@ describe('ré-import', () => {
     expect([occN.imageW, occN.imageH, occN.coches]).toEqual([occO.imageW, occO.imageH, occO.coches]);
     await memeImage(occO.imageId, occN.imageId);
     const mO = o['Biceps brachial'].muscle, mN = n['Biceps brachial'].muscle;
-    expect(mN.lignes).toEqual(mO.lignes);
+    expect(mN.lignes).toEqual({ ...mO.lignes, topographie: '' }); // (28/10) carte d'avant la ligne Topographie : ressort vide
     expect(mN.images.origine.masques).toEqual(mO.images.origine.masques);
     await memeImage(mO.images.origine.imageId, mN.images.origine.imageId);
     await memeImage(mO.images.insertion.imageId, mN.images.insertion.imageId);
