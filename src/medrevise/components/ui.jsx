@@ -167,6 +167,12 @@ export function syncStatusLabel(syncState) {
     if (t === 'refus') return 'Le cloud refuse la lecture (droits, RLS ou quota) — vérifie la configuration Supabase.';
     return 'Hors ligne — nouvel essai automatique à la reconnexion.';
   }
+  // (29/10) le serveur a répondu par une erreur (envoi ou lecture) : ce n'est pas « hors ligne »
+  if (s === 'echec') {
+    const e = syncState.envoi;
+    const reste = e && e.restants ? ` ${e.restants} élément${e.restants > 1 ? 's' : ''} encore en file d'envoi.` : '';
+    return 'Synchro en échec : le serveur cloud a refusé la requête — nouvel essai automatique.' + reste;
+  }
   if (s === 'ok') {
     const quand = syncState.at
       ? ' à ' + new Date(syncState.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })

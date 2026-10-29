@@ -23,7 +23,7 @@
    ne peut pas le redécouvrir tout seul et réimporterait la version encore
    vivante côté cloud sans ce rejeu préalable).
    ============================================================ */
-import { get, set, del, keys, entries, delMany, createStore } from 'idb-keyval';
+import { get, set, del, keys, entries, createStore } from 'idb-keyval';
 import { supabase, SYNC_ENABLED, RECORDS_TABLE, BLOBS_BUCKET } from './supabaseClient.js';
 
 const outboxStore = createStore('medrevise-outbox', 'v1');
@@ -86,18 +86,77 @@ function rpcIntrouvable(error) {
     || /function .* does not exist/i.test(msg);
 }
 
-/** Envoie un lot au cloud. Renvoie true seulement si la base l'a réellement
+/** Erreur réseau (requête jamais arrivée) ou refus du serveur (il a répondu) ?
+ *  Le navigateur ne dit rien de plus qu'un `TypeError: Failed to fetch`. */
+export function natureErreur(error) {
+  const msg = String((error && (error.message || error.details)) || error || '');
+  const status = Number(error && (error.status || error.statusCode)) || 0;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'reseau';
+  // un code Postgres/PostgREST (57014 « statement timeout », PGRST…) = le serveur a répondu
+  if (status || (error && error.code)) return 'serveur';
+  return /fetch|network|NetworkError|Load failed/i.test(msg) ? 'reseau' : 'serveur';
+}
+
+/** Envoie un lot au cloud. `{ ok: true }` seulement si la base l'a réellement
  *  accepté — même piège que partout ici : supabase-js NE REJETTE PAS sur un
- *  échec réseau, il résout avec `{ error }` renseigné. */
+ *  échec réseau, il résout avec `{ error }` renseigné. Sinon `{ ok: false, erreur }`
+ *  ('reseau' | 'serveur'), lu par l'indicateur pour ne pas confondre les deux. */
 async function pushRecords(batch) {
-  if (!rpcAbsente) {
-    const { error } = await supabase.rpc(RPC_PUSH, { records: batch });
-    if (!error) return true;
-    if (!rpcIntrouvable(error)) return false; // vrai échec (réseau, 5xx) → on garde l'outbox
-    rpcAbsente = true; // socle SQL absent → repli signalé, une seule fois
-  }
-  const { error } = await supabase.from(RECORDS_TABLE).upsert(batch, { onConflict: 'store,record_id' });
-  return !error;
+  try {
+    if (!rpcAbsente) {
+      const { error } = await supabase.rpc(RPC_PUSH, { records: batch });
+      if (!error) return { ok: true };
+      if (!rpcIntrouvable(error)) return { ok: false, erreur: natureErreur(error), message: String(error.message || error) }; // on garde l'outbox
+      rpcAbsente = true; // socle SQL absent → repli signalé, une seule fois
+    }
+    const { error } = await supabase.from(RECORDS_TABLE).upsert(batch, { onConflict: 'store,record_id' });
+    return error ? { ok: false, erreur: natureErreur(error), message: String(error.message || error) } : { ok: true };
+  } catch (e) { return { ok: false, erreur: natureErreur(e), message: String((e && e.message) || e) }; }
+}
+
+/* ============================================================
+   ENVOI PAR LOTS + RETRAIT CONFIRMÉ (29/10, docs/compte-rendu-statut-synchro.md).
+
+   Le défaut constaté : 4469 entrées dans l'outbox, toutes déjà au cloud dans la
+   même version, jamais retirées. L'outbox partait en UN SEUL appel (des Mo de
+   JSON, au-delà du temps d'exécution accordé par Supabase) : l'appel échouait,
+   rien n'était retiré, et chaque passe recommençait.
+
+   Désormais :
+   - envoi par lots de TAILLE_LOT, chaque lot confirmé sort aussitôt de l'outbox
+     (une coupure à 1200 / 4469 ne fait pas tout repartir) ;
+   - une entrée ne sort que si elle n'a pas été RÉÉCRITE pendant l'envoi (même
+     updated_at, même `deleted`) : avant, une écriture faite pendant le vol était
+     effacée avec l'ancienne version et n'arrivait jamais au cloud ;
+   - la progression est publiée (surProgressionEnvoi) pour l'afficher.
+   ============================================================ */
+export const TAILLE_LOT = 200;
+const memeVersion = (a, b) => !!a && !!b && a.updated_at === b.updated_at && !!a.deleted === !!b.deleted;
+
+/** Retire de l'outbox, en UNE transaction, les entrées encore identiques à la version
+ *  donnée (`[[clé, { updated_at, deleted }], …]`). Rend le nombre d'entrées retirées. */
+export function retirerSiInchange(paires) {
+  if (!paires.length) return Promise.resolve(0);
+  return outboxStore('readwrite', (store) => new Promise((resolve, reject) => {
+    let n = 0;
+    for (const [k, v] of paires) {
+      const req = store.get(k);
+      req.onsuccess = () => { if (memeVersion(req.result, v)) { store.delete(k); n++; } };
+    }
+    store.transaction.oncomplete = () => resolve(n);
+    store.transaction.onerror = store.transaction.onabort = () => reject(store.transaction.error);
+  }));
+}
+
+const abonnesProgression = new Set();
+/** Suit l'envoi de l'outbox : fn({ faits, total }) à chaque lot ; null quand c'est fini. */
+export function surProgressionEnvoi(fn) { abonnesProgression.add(fn); return () => abonnesProgression.delete(fn); }
+const publierProgression = (p) => abonnesProgression.forEach((fn) => { try { fn(p); } catch (e) { /* écran démonté */ } });
+
+/** Contenu de l'outbox (lecture seule) : [[clé, entrée], …]. */
+export async function outboxEntries() {
+  if (!SYNC_ENABLED) return [];
+  try { const t = (await entries(outboxStore)) || []; outboxOuvert = true; return t; } catch (e) { return []; }
 }
 
 /** Met en file un enregistrement à pousser (débounce ~800 ms, comme MealWeek) —
@@ -129,48 +188,63 @@ export function queuePush(store, id, data, updatedAt, deleted = false) {
    ============================================================ */
 let outboxOuvert = false;
 
-/** Vide l'outbox vers Supabase : ne retire QUE les entrées confirmées par l'upsert —
- *  un échec (hors-ligne, etc.) laisse tout en place pour le prochain déclencheur
- *  (debounce, pagehide/visibilitychange, reconnexion réseau, ou prochain boot). */
+/** Vide l'outbox vers Supabase, PAR LOTS (voir « ENVOI PAR LOTS » ci-dessus) : ne retire
+ *  QUE les entrées confirmées et non réécrites entre-temps — un échec (hors-ligne, etc.)
+ *  laisse le reste en place pour le prochain déclencheur (debounce,
+ *  pagehide/visibilitychange, reconnexion réseau, ou prochain boot).
+ *  @returns {Promise<{ ok: boolean, envoyes: number, restants: number, erreur?: 'reseau'|'serveur' }>} */
 async function flushPending({ depuisFermeture = false } = {}) {
-  if (!SYNC_ENABLED) return;
-  if (depuisFermeture && !outboxOuvert) return; // voir « JAMAIS D'OUVERTURE… » ci-dessus
+  const rien = { ok: true, envoyes: 0, restants: 0 };
+  if (!SYNC_ENABLED) return rien;
+  if (depuisFermeture && !outboxOuvert) return rien; // voir « JAMAIS D'OUVERTURE… » ci-dessus
   if (flushing) return flushing; // un flush déjà en vol suffit — l'outbox reste la source de vérité
   flushing = (async () => {
+    let envoyes = 0, total = 0;
     try {
       const tout = await entries(outboxStore); // [[clé, valeur], ...] — pris AVANT l'appel réseau
       outboxOuvert = true;
-      if (!tout.length) return;
+      if (!tout.length) return rien;
       const snapshot = tout.filter(([, v]) => !STORES_ISOLES.includes(v && v.store));
       const isoles = tout.filter(([, v]) => STORES_ISOLES.includes(v && v.store));
-      if (!snapshot.length) { await flushIsoles(isoles); return; }
-      const batch = snapshot.map(([, v]) => v);
-      // pushRecords (ci-dessus) passe par la RPC conditionnelle et vérifie `error`
-      // explicitement — supabase-js NE REJETTE PAS sur un échec réseau (DNS,
-      // offline, 5xx), il résout avec `{ error }` renseigné. Sans cette
-      // vérification, un échec passerait pour un succès et l'entrée serait
-      // retirée de l'outbox pour rien.
-      const parti = await pushRecords(batch);
-      if (!parti) throw new Error('push refusé');
-      // NB : une entrée REJETÉE par la condition (updated_at pas plus récent que
-      // le cloud) compte comme partie — c'est le comportement voulu. Elle a été
-      // examinée par la base et volontairement écartée ; la garder dans l'outbox
-      // la ferait rejouer indéfiniment sans jamais pouvoir gagner.
-      await delMany(snapshot.map(([k]) => k), outboxStore); // retire SEULEMENT ce qui a été envoyé
-      await flushIsoles(isoles);
-    } catch (e) { /* hors-ligne : tout reste dans l'outbox, repoussé au prochain déclencheur */ }
-    finally { flushing = null; }
+      total = tout.length;
+      const suivre = total > TAILLE_LOT;
+      if (suivre) publierProgression({ faits: 0, total });
+      for (let i = 0; i < snapshot.length; i += TAILLE_LOT) {
+        const lot = snapshot.slice(i, i + TAILLE_LOT);
+        // pushRecords (ci-dessus) passe par la RPC conditionnelle et vérifie `error`
+        // explicitement — supabase-js NE REJETTE PAS sur un échec réseau (DNS,
+        // offline, 5xx), il résout avec `{ error }` renseigné.
+        const r = await pushRecords(lot.map(([, v]) => v));
+        if (!r.ok) return { ok: false, envoyes, restants: total - envoyes, erreur: r.erreur };
+        // NB : une entrée REJETÉE par la condition (updated_at pas plus récent que
+        // le cloud) compte comme partie — c'est le comportement voulu. Elle a été
+        // examinée par la base et volontairement écartée ; la garder dans l'outbox
+        // la ferait rejouer indéfiniment sans jamais pouvoir gagner.
+        await retirerSiInchange(lot); // SEULEMENT ce qui a été envoyé, dans la version envoyée
+        envoyes += lot.length;
+        if (suivre) publierProgression({ faits: envoyes, total });
+      }
+      const r = await flushIsoles(isoles);
+      envoyes += r.envoyes;
+      return r.erreur ? { ok: false, envoyes, restants: total - envoyes, erreur: r.erreur } : { ok: true, envoyes, restants: 0 };
+    } catch (e) {
+      return { ok: false, envoyes, restants: total - envoyes, erreur: natureErreur(e) }; // IndexedDB ou réseau : tout reste
+    } finally {
+      flushing = null;
+      if (total > TAILLE_LOT) publierProgression(null);
+    }
   })();
   return flushing;
 }
 
 /** Stores isolés : un appel par enregistrement ; seul ce qui est confirmé quitte l'outbox. */
 async function flushIsoles(isoles) {
-  for (const [k, v] of isoles) {
-    try {
-      if (await pushRecords([v])) await del(k, outboxStore);
-    } catch (e) { /* reste dans l'outbox */ }
+  let envoyes = 0, erreur = null;
+  for (const paire of isoles) {
+    const r = await pushRecords([paire[1]]);
+    if (r.ok) { await retirerSiInchange([paire]).catch(() => {}); envoyes++; } else erreur = erreur || r.erreur; // reste dans l'outbox
   }
+  return { envoyes, erreur };
 }
 
 /** Nombre d'écritures locales encore EN ATTENTE d'envoi. Lecture seule, sert à
@@ -357,6 +431,33 @@ export async function pullStoreMeta(store) {
   } catch (e) { return noterEchec(e); }
 }
 
+/**
+ * MÉTADONNÉES de TOUTE la table (29/10) : store, record_id, updated_at, deleted — sans
+ * `data`, tous stores compris. Sert à reconnaître les entrées d'outbox déjà au cloud dans
+ * la même version (storage.js#purgerOutboxAligne). Mêmes règles : ordre stable, tout ou rien.
+ * @returns {Promise<Array|null>}
+ */
+export async function pullAllMeta() {
+  if (!SYNC_ENABLED) return null;
+  try {
+    const tout = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE;
+      const { data, error } = await supabase
+        .from(RECORDS_TABLE)
+        .select('store,record_id,updated_at,deleted')
+        .order('store', { ascending: true })
+        .order('record_id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) return noterEchec(error);
+      const lot = data || [];
+      tout.push(...lot);
+      if (lot.length < PAGE) return tout;
+    }
+    return noterEchec(new Error('trop de pages'));
+  } catch (e) { return noterEchec(e); }
+}
+
 /** Enregistrements COMPLETS de quelques ids d'un store (par paquets de 20).
  *  @returns {Promise<Array|null>} null si un paquet échoue (rien de partiel). */
 export async function pullStoreIds(store, ids) {
@@ -395,7 +496,7 @@ export async function pushTombstonesNow(records) {
     // piège géré : supabase-js résout avec `{ error }` plutôt que de rejeter sur
     // un échec réseau — sinon migrate.js marquerait la migration "appliquée"
     // malgré un push raté.
-    return await pushRecords(records);
+    return (await pushRecords(records)).ok;
   } catch (e) {
     return false;
   }

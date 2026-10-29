@@ -21,6 +21,10 @@ html[data-app-actif="medrevise"][data-mr-synchro="attente"] .tnum:not(.sfc .tnum
 .bandeau-synchro.ajour svg { color: var(--ok, #2f9e6e); }
 .bandeau-synchro.horsligne, .bandeau-synchro.incomplet { color: var(--text); border-color: color-mix(in srgb, var(--warn, #d9822b) 45%, var(--border)); }
 .bandeau-synchro.horsligne svg, .bandeau-synchro.incomplet svg { color: var(--warn, #d9822b); }
+/* (29/10) le serveur a répondu par une erreur : ce n'est pas « hors ligne » */
+.bandeau-synchro.echec { color: var(--text); border-color: color-mix(in srgb, var(--crit, #d64545) 45%, var(--border)); }
+.bandeau-synchro.echec svg { color: var(--crit, #d64545); }
+.bandeau-synchro.attente span[data-bandeau-texte] { font-variant-numeric: tabular-nums; }
 .bandeau-synchro.fondu { opacity: 0; }
 .bandeau-synchro.mobile { top: calc(70px + env(safe-area-inset-top)); font-size: 12px; } /* sous l'en-tête du téléphone */
 .bandeau-reessayer { font-size: 12.5px; font-weight: 700; margin-left: 2px; pointer-events: auto; }

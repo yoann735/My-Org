@@ -6,7 +6,7 @@
    ============================================================ */
 import { get, set, del, clear, keys, values, entries, setMany, createStore } from 'idb-keyval';
 import { isoDate, startAdaptive } from './sm2.js';
-import { queuePush, pullAllRecords, pullStore, queueBlobPush, flushBlobOutbox, blobOutboxEntries, listCloudBlobs, pullBlob, flushOutbox, isPushDegraded } from '../data/sync.js';
+import { queuePush, pullAllRecords, pullAllMeta, pullStore, queueBlobPush, flushBlobOutbox, blobOutboxEntries, listCloudBlobs, pullBlob, flushOutbox, isPushDegraded, outboxEntries, retirerSiInchange, dernierEchecCloud } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
 const store = (name) => createStore('medrevise-' + name, 'v1');
@@ -950,55 +950,73 @@ export async function synchroCiblee(name) {
 }
 
 /* ============================================================
-   B — RATTRAPAGE INCONDITIONNEL (filet de sécurité, indépendant de la
-   comparaison ci-dessus). reconcileAll() ne remet en file un enregistrement
-   local que s'il a pu comparer avec le cloud (pull réussi) ET a détecté un
-   écart — un pull raté, ou un écart non détecté pour quelque raison que ce
-   soit, laisse alors des écritures locales orphelines indéfiniment.
-   queueAllLocalForPush() ne compare RIEN : il remet TOUT le local syncable
-   dans l'outbox, sans condition. Idempotent et sans risque — un upsert
-   identique ne change rien côté cloud — et le dataset personnel reste petit
-   (comme MealWeek). Appelé par syncNow() (boot + bouton "Forcer la sync"),
-   toujours APRÈS reconcileAll() : l'état local est alors déjà à jour avec le
-   cloud, donc ce qu'on remet en file est forcément ce qu'il faut pousser
-   (jamais une version qu'on vient tout juste d'écraser par plus récent).
+   B — OUTBOX ALIGNÉE SUR LE CLOUD (29/10, docs/compte-rendu-statut-synchro.md).
+
+   AVANT : un « rattrapage inconditionnel » (queueAllLocalForPush) remettait TOUT
+   le local dans l'outbox à chaque passe — 4469 entrées pour 4469 enregistrements,
+   envoyées en un seul appel trop gros pour aboutir, donc jamais retirées : « En
+   attente d'envoi : 4469 » alors que local = cloud. Il est supprimé : reconcileAll
+   met déjà en file, enregistrement par enregistrement, ce qui est absent du cloud
+   ou plus récent en local — les seuls vrais écarts. La file n'est plus jamais
+   reconstruite en entier.
+
+   purgerOutboxAligne() : au début de chaque passe, une lecture des MÉTADONNÉES du
+   cloud (sans `data`) ; toute entrée dont le cloud détient déjà exactement la même
+   version (même instant updated_at, même état supprimé) sort de la file — après une
+   copie de ces entrées (putBackup). Rien d'autre n'est touché : un vrai écart reste
+   en file et part normalement. Lecture impossible → on ne retire rien.
    ============================================================ */
-export async function queueAllLocalForPush() {
-  for (const name of SYNCABLE) {
-    const recs = (await values(S[name])) || [];
-    for (const rec of recs) {
-      if (!rec || !rec.id) continue;
-      queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString());
-    }
-  }
+const instant = (v) => { const t = Date.parse(v || ''); return Number.isNaN(t) ? null : t; };
+
+/** Entrées d'outbox dont le cloud a déjà la même version. Fonction pure (testée). */
+export function entreesDejaAuCloud(outbox, meta) {
+  const C = new Map(meta.map((r) => [r.store + ':' + r.record_id, r]));
+  return outbox.filter(([, v]) => {
+    const c = v && C.get(v.store + ':' + v.record_id);
+    return !!c && instant(c.updated_at) !== null && instant(c.updated_at) === instant(v.updated_at) && !!c.deleted === !!v.deleted;
+  });
+}
+
+export async function purgerOutboxAligne() {
+  const outbox = await outboxEntries();
+  if (!outbox.length) return { ok: true, retires: 0, restants: 0 };
+  const meta = await pullAllMeta();
+  if (meta === null) return { ok: false, retires: 0, restants: outbox.length };
+  const alignes = entreesDejaAuCloud(outbox, meta);
+  if (!alignes.length) return { ok: true, retires: 0, restants: outbox.length };
+  await putBackup('pre-purge-outbox-' + Date.now(), alignes.map(([, v]) => v)); // AVANT tout retrait
+  const retires = await retirerSiInchange(alignes); // une entrée réécrite entre-temps reste
+  return { ok: true, retires, restants: outbox.length - retires };
 }
 
 /* ============================================================
-   C — SYNCHRO COMPLÈTE, POINT D'ENTRÉE UNIQUE. Rejoue l'outbox → réconcilie
-   (pull + merge) → rattrape inconditionnellement tout le local → repousse
-   immédiatement (sans attendre le debounce). Utilisée au boot ET par le
+   C — SYNCHRO COMPLÈTE, POINT D'ENTRÉE UNIQUE. Retire de l'outbox ce que le
+   cloud a déjà → envoie le reste (par lots) → réconcilie (pull + merge) →
+   envoie ce que la réconciliation a mis en file. Utilisée au boot ET par le
    bouton "Forcer la synchro" (Réglages desktop, accueil mobile) : mêmes
    garanties partout, jamais deux chemins différents à maintenir.
    Retourne un statut exploitable par l'UI plutôt qu'un booléen :
    'disabled' (sync non configurée — rien à faire, jamais une erreur),
-   'offline' (pull cloud impossible cette fois — état local intact, retry
-   au prochain déclencheur), 'ok' (pull + merge réussis).
+   'offline' (réseau absent : requête jamais arrivée — état local intact),
+   'echec' (le serveur a répondu par une erreur), 'ok' (pull + merge + envoi réussis).
+   `envoi` : résultat du dernier vidage d'outbox ({ ok, envoyes, restants, erreur }).
    ============================================================ */
+const statutEchec = (nature) => (nature === 'serveur' ? 'echec' : 'offline');
+const natureLecture = () => { const t = (dernierEchecCloud() || {}).type; return t === 'refus' ? 'serveur' : 'reseau'; };
+
 export async function syncNow(opts = {}) {
   if (!SYNC_ENABLED) return { status: 'disabled' };
   if (syncPaused) return { status: 'paused' }; // restauration en cours, voir setSyncPaused
-  await flushOutbox();
+  await purgerOutboxAligne();
+  const premier = await flushOutbox();
   const rec = await reconcileAll();
   // C2 (docs/audit-sync-J-2026.md §2) : NE JAMAIS pousser après un tirage raté.
-  // reconcileAll sort sans avoir rien fusionné quand le pull échoue ; enchaîner
-  // sur queueAllLocalForPush revenait à republier tout l'état local par-dessus un
-  // cloud qu'on n'a même pas lu — le scénario « pull KO / push OK » d'un réseau
-  // mobile. L'état local reste intact, on retentera au prochain déclencheur.
+  // reconcileAll sort sans avoir rien fusionné quand le pull échoue. L'état local
+  // reste intact, on retentera au prochain déclencheur.
   // Les BLOBS, eux, peuvent partir quand même : un fichier n'est jamais « plus
   // ancien » que le cloud (même id = même fichier, ou la dernière auto-sauvegarde).
-  if (!rec.ok) { flushBlobOutbox(); return { status: 'offline', cloudEmpty: false, degraded: isPushDegraded() }; }
-  await queueAllLocalForPush();
-  await flushOutbox();
+  if (!rec.ok) { flushBlobOutbox(); return { status: statutEchec(natureLecture()), cloudEmpty: false, degraded: isPushDegraded(), envoi: premier }; }
+  const envoi = await flushOutbox();
   // transcription en direct : synchro CIBLÉE de son store, à part et sans attendre —
   // un échec de ce type ne change rien au statut des autres (import dynamique : le
   // module importe storage.js, pas de cycle au chargement)
@@ -1006,7 +1024,8 @@ export async function syncNow(opts = {}) {
   import('../ocr/couches.js').then((m) => m.synchroOcr()).catch(() => {}); // couches OCR, même principe
   
   const blobs = await syncBlobs(opts);
-  return { status: 'ok', cloudEmpty: rec.cloudEmpty, degraded: isPushDegraded(), blobs };
+  const status = envoi && !envoi.ok ? statutEchec(envoi.erreur) : 'ok';
+  return { status, cloudEmpty: rec.cloudEmpty, degraded: isPushDegraded(), blobs, envoi };
 }
 
 /* Blobs dans syncNow : audit (liste du bucket) au premier passage de la session puis

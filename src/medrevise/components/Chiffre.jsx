@@ -3,7 +3,7 @@
    Tant que la passe de synchro complète (lib/synchroAffichage.js) n'est pas terminée, aucun chiffre calculé n'est
    montré : <Chiffre> rend un petit indicateur à la place de son contenu, et `useEnSynchro()` permet aux écrans de
    désactiver Démarrer / Lancer. La phase vient de SynchroContext (MedReviseApp, ordinateur et téléphone).
-   Le bandeau « Synchronisation… / À jour · 18:42 / Hors ligne · données du … / Synchro incomplète » vit ici aussi.
+   Le bandeau « Synchronisation… / À jour · 18:42 / Hors ligne · dernière synchro … / Synchro en échec / Synchro incomplète » vit ici aussi.
    ============================================================ */
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -39,9 +39,9 @@ export function BandeauSynchro({ porte, onReessayer, mobile = false }) {
     <div className={'bandeau-synchro ' + phase + (fondu ? ' fondu' : '') + (mobile ? ' mobile' : '')} role="status" aria-live="polite" data-bandeau-synchro={phase}>
       {phase === 'attente' && <span className="chiffre-attente seul" aria-hidden="true" />}
       {phase === 'ajour' && <Icon name="check" size={13} />}
-      {(phase === 'horsligne' || phase === 'incomplet') && <Icon name="alert" size={13} />}
-      <span>{texte}</span>
-      {phase === 'incomplet' && onReessayer && (
+      {(phase === 'horsligne' || phase === 'incomplet' || phase === 'echec') && <Icon name="alert" size={13} />}
+      <span data-bandeau-texte>{texte}</span>
+      {(phase === 'incomplet' || phase === 'echec') && onReessayer && (
         <button type="button" className="linklike bandeau-reessayer" onClick={onReessayer} data-act="reessayer-synchro">Réessayer</button>
       )}
     </div>

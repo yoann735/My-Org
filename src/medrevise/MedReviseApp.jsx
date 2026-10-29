@@ -42,7 +42,7 @@ import { BandeauFilet, EcranIntegrite, rafraichirStatutServeur } from './compone
 import { lancerControle } from './integrite/executer.js';
 import { copierDansDossier } from './sauvegarde/dossierLocal.js';
 import { marquerSyncReussie, derniereSyncReussie, etatLocal, etatCloud } from './lib/syncStatus.js';
-import { outboxCount } from './data/sync.js';
+import { outboxCount, dernierEchecCloud, surProgressionEnvoi } from './data/sync.js';
 import { SYNC_ENABLED } from './data/supabaseClient.js';
 import { creerPorte } from './lib/synchroAffichage.js';
 import { SynchroContext, BandeauSynchro } from './components/Chiffre.jsx';
@@ -204,11 +204,12 @@ export default function MedReviseApp({ themeApi, goHub }) {
     const r = await syncNow(opts);
     // trace locale (localStorage) de la derniere synchro REUSSIE, pour que
     // l'indicateur puisse l'afficher meme apres un rechargement de page.
-    if (r.status === 'ok') { marquerSyncReussie(); await reload(); }
+    // (29/10) « réussie » = tout est parti : un envoi resté en file n'est pas une synchro réussie
+    if (r.status === 'ok') { if (!(await outboxCount())) marquerSyncReussie(); await reload(); }
     // `degraded` : la RPC conditionnelle `medrevise_push` est absente de Supabase
     // (script SQL pas encore exécuté) et l'envoi est retombé sur l'ancien upsert
     // non protégé — remonté tel quel à l'UI, voir ui.jsx#syncStatusLabel.
-    setSyncState({ status: r.status, at: new Date().toISOString(), degraded: !!r.degraded, blobs: r.blobs || null });
+    setSyncState({ status: r.status, at: new Date().toISOString(), degraded: !!r.degraded, blobs: r.blobs || null, envoi: r.envoi || null });
     // journal des révisions (étape 2 FSRS) : son propre canal, après la synchro générale, sans la modifier
     if (r.status === 'ok') synchroniserJournal().then((j) => { if (j && j.cartesMaj) reload(); }).catch(() => {});
     return r;
@@ -251,18 +252,20 @@ export default function MedReviseApp({ themeApi, goHub }) {
       passe: async () => {
         setSyncState((s) => ({ ...s, status: 'syncing' }));
         const r = await syncNow();
-        setSyncState({ status: r.status, at: new Date().toISOString(), degraded: !!r.degraded, blobs: r.blobs || null });
-        if (r.status !== 'ok') return { ok: false };
+        setSyncState({ status: r.status, at: new Date().toISOString(), degraded: !!r.degraded, blobs: r.blobs || null, envoi: r.envoi || null });
+        // (29/10) 'offline' = réseau absent, 'echec' = le serveur a répondu par une erreur (statuts de syncNow)
+        if (r.status !== 'ok') return { ok: false, erreur: r.status === 'echec' ? 'serveur' : 'reseau' };
         const j = await synchroniserJournal();
         // table du journal absente (SQL pas appliqué) : rien à recevoir, la passe reste complète ; autre erreur : échec
-        if (j && j.ok === false && !j.tableAbsente && j.raison !== 'désactivée') return { ok: false };
+        if (j && j.ok === false && !j.tableAbsente && j.raison !== 'désactivée') return { ok: false, erreur: /fetch|network|Load failed/i.test(String(j.erreur || j.raison || '')) ? 'reseau' : 'serveur' };
         if (!migrationsFaites.current) { migrationsFaites.current = true; await runMigrations(); }
         await reloadRef.current();
         return { ok: true };
       },
       verifier: async () => {
         const [local, cloud, enAttente] = await Promise.all([etatLocal(), etatCloud(), outboxCount()]);
-        return cloud ? { local: local.hash, cloud: cloud.hash, enAttente } : null;
+        if (cloud) return { local: local.hash, cloud: cloud.hash, enAttente };
+        return { erreur: (dernierEchecCloud() || {}).type === 'refus' ? 'serveur' : 'reseau' };
       },
       poser: (e) => setPorte({ ...e }),
       derniere: derniereSyncReussie,
@@ -270,6 +273,9 @@ export default function MedReviseApp({ themeApi, goHub }) {
     });
   }
   const lancerPorte = useCallback(() => (porteRef.current ? porteRef.current.lancer() : Promise.resolve(null)), []);
+  // (29/10) gros envoi de la file : « Synchronisation… 1200 / 4469 » dans le bandeau
+  useEffect(() => surProgressionEnvoi((p) => { if (porteRef.current) porteRef.current.progression(p); }), []);
+  useEffect(() => () => { if (porteRef.current) porteRef.current.arreter(); }, []);
   // racine : les chiffres hors <Chiffre> (.tnum) attendent aussi (repli CSS, styles/synchro-affichage.css)
   useEffect(() => {
     document.documentElement.setAttribute('data-mr-synchro', porte.phase);
