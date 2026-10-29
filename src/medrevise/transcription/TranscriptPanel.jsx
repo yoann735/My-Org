@@ -17,6 +17,7 @@ import { createPortal } from 'react-dom';
 import { useDejaVisible } from '../components/modeVisible.js';
 import { Icon } from '../../shared/Icon.jsx';
 import { IconeOutil } from '../pdf/IconesOutils.jsx';
+import { CaseACocher } from '../components/CaseACocher.jsx';
 import { ConfirmModal, ContextMenu, Modal } from '../components/ui.jsx';
 import { useNiveauAudio, useTranscription } from './useTranscription.js';
 import {
@@ -118,7 +119,11 @@ export function ResumeReplie({ courseId }) {
 /* ============================================================
    FEUILLE DE DÉMARRAGE
    ============================================================ */
-export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, texteEnPlus = '', reprendre = null, sourceInitiale = null, onClose, onDemarre }) {
+/* (29/10, docs/compte-rendu-transcription-marque-cours.md) `marquerDebut` = { page } : le lecteur propose de marquer
+   le DÉBUT DU COURS sur la page affichée (case cochée par défaut) ; « Arrêter » marquera la fin. Absent (reprise,
+   panneau hors lecteur) : la feuille est celle d'avant. `onDemarre({ marquerDebut })` dit ce qui a été choisi. */
+export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, texteEnPlus = '', reprendre = null, sourceInitiale = null, marquerDebut = null, onClose, onDemarre }) {
+  const [marquer, setMarquer] = useState(true);
   /* SOURCE (05/10) : 'auto' (défaut) | 'onglet' | deviceId — mémorisée par appareil.
      Reprise de l'ancien réglage (source + micro) au premier passage. */
   const [choix, setChoixBrut] = useState(() => {
@@ -213,7 +218,7 @@ export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, texteEnPlu
       fontSize: lireLS(CLE_TAILLE, 'm'), reprendre, diarize,
     });
     setDemarrage(false);
-    if (ok) { if (source === 'micro' && avecSon) memoriserMicroValide(deviceId); onDemarre && onDemarre(); onClose(); }
+    if (ok) { if (source === 'micro' && avecSon) memoriserMicroValide(deviceId); onDemarre && onDemarre({ marquerDebut: !!(marquerDebut && !reprendre && marquer) }); onClose(); }
     else { setErreur(lireEtat().erreur); effacerErreur(); }
   };
 
@@ -331,6 +336,12 @@ export function FeuilleDemarrage({ courseId, pdfDoc, ocrPages = null, texteEnPlu
           </span>
         </label>
         </>)}
+        {marquerDebut && !reprendre && (
+          <CaseACocher haut className="trx-marquer-debut" checked={marquer} onChange={(v) => setMarquer(v)} inputProps={{ 'data-champ': 'marquer-debut' }}>
+            <span><b>Marquer le début du cours sur la page {marquerDebut.page}</b>
+              <span className="hint" style={{ display: 'block' }}>« Arrêter » marquera la fin sur la page où tu seras. Plus besoin de poser les tags à la main.</span></span>
+          </CaseACocher>
+        )}
         {erreur && <div className="trx-erreur"><Icon name="alert" size={14} /> {erreur}</div>}
 
         <div className="row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>

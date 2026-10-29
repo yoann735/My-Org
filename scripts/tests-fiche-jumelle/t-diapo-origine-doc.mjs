@@ -7,7 +7,8 @@ await b.dormir(1500);
 const vue = () => b.ev(`document.querySelector('.pdfr-jumelle-bascule .seg-btn.active')?.innerText`);
 if ((await vue()) !== 'Fiche') { await b.ev(`[...document.querySelectorAll('.pdfr-jumelle-bascule .seg-btn')].find(x=>x.innerText==='Fiche').click();1`); await b.dormir(1800); }
 b.ok((await vue()) === 'Fiche', 'fiche affichée');
-const lire = () => b.ev(`[...document.querySelectorAll('.pdfr-origine')].map(x=>x.closest('.pdfr-page').dataset.cle+':'+x.innerText.replace(/\\s+/g,' ').trim())`);
+// l'infobulle, toujours là (à faible zoom, le bouton n'affiche que son icône : règle .ctl-reduit de l'app)
+const lire = () => b.ev(`[...document.querySelectorAll('.pdfr-origine')].map(x=>x.closest('.pdfr-page').dataset.cle+':'+(((x.title||'').match(/le document (p\\. [\\d–]+)/)||[])[1] ? 'Document '+x.title.match(/le document (p\\. [\\d–]+)/)[1] : ''))`);
 // les pages hors écran ne sont pas dessinées : on descend dans la fiche jusqu'à un lien vers une page > 1
 const vus = new Set();
 for (let i = 0; i < 60; i++) { (await lire()).forEach((l) => vus.add(l)); if ([...vus].some((l) => +l.split(':Document p. ')[1]?.split(/[–\s]/)[0] > 1)) break; await b.ev(`(()=>{document.querySelector('.pdfr-scroll').scrollTop+=400;return 1})()`); await b.dormir(150); }

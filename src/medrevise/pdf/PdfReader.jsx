@@ -116,7 +116,8 @@ import '../../styles/fiche-jumelle.css';
 import { PanneauMiseEnPage, ReglesMarges } from './MiseEnPage.jsx';
 import { margesDe, margesUnites } from '../documents/lib/marges.js';
 import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
-import { sessionActive as transcriptionActive, lireEtat as etatTranscription, definirPageCourante } from '../transcription/engine.js';
+import { sessionActive as transcriptionActive, lireEtat as etatTranscription, definirPageCourante, abonner as abonnerTranscription } from '../transcription/engine.js';
+import { marquerDebutCours, suiveurArret } from '../transcription/marquerCours.js';
 import { noterCoursOuvert } from '../lib/derniersCours.js';
 import { actualiserCredits } from '../transcription/credits.js';
 import { useCoucheOcr, useEtatOcr } from '../ocr/useOcr.js';
@@ -945,6 +946,27 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const seancesDoc = useMemo(() => seancesDe(tagsDoc, pageSizes), [tagsDoc, pageSizes]);
   const enSeance = useMemo(() => pagesEnSeance(seancesDoc), [seancesDoc]);
   const tagsParPage = useMemo(() => { const m = new Map(); for (const t of tagsDoc) { const p = pageDuTag(t, pageSizes); if (!m.has(p)) m.set(p, []); m.get(p).push(t); } return m; }, [tagsDoc, pageSizes]);
+  /* (29/10, docs/compte-rendu-transcription-marque-cours.md) LA TRANSCRIPTION MARQUE LE COURS : la case « Marquer le
+     début du cours sur la page N » (cochée par défaut) pose le tag Début sur la page affichée, lié à la session ;
+     quand CETTE session s'arrête (n'importe quel bouton « Arrêter »), le tag Fin est posé sur la page affichée du
+     même document. Mémoire de l'appareil (`medrevise.trx.finAuto.<cours>`) : survit à un rechargement / une reprise.
+     Les tags restent ceux d'avant (même store, mêmes champs) : modifiables et retirables à la main. */
+  const tagsCoursRef = useRef(tagsCours); tagsCoursRef.current = tagsCours;
+  const demarreTranscription = async ({ marquerDebut = false } = {}) => {
+    ouvrirTranscript();
+    if (!marquerDebut || !ficheId) return;
+    const e = etatTranscription();
+    try {
+      const t = await marquerDebutCours({ courseId: ficheId, page: pagePourTrx.current, sessionId: e && e.session ? e.session.id : null, tags: tagsCoursRef.current, poserTag, modifierTag, stockage: localStorage });
+      if (t) setAvisJumelle(`Début du cours marqué page ${t.page}`);
+    } catch (x) { setAvisJumelle('Le début du cours n’a pas pu être marqué — pose-le à la main (clic droit sur la page)'); }
+  };
+  useEffect(() => {
+    if (!ficheId) return undefined;
+    const suivre = suiveurArret({ courseId: ficheId, phaseInitiale: (etatTranscription() || {}).phase, lirePage: () => pagePourTrx.current, lireTags: () => tagsCoursRef.current,
+      poserTag, modifierTag, stockage: localStorage, onAvis: (t) => setAvisJumelle(t) });
+    return abonnerTranscription((e) => { suivre(e).catch(() => {}); });
+  }, [ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [menuPage, setMenuPage] = useState(null); // { idx, x, y }
   const [fenetreTag, setFenetreTag] = useState(null); // { kind, page, pageCle, tag? }
   const [seancesOuvertes, setSeancesOuvertes] = useState(false);
@@ -4207,7 +4229,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       {seancesOuvertes && ficheId && <FenetreSeances courseId={ficheId} listes={listesSeances} onAllerPage={allerSeance} onOuvrirSession={ouvrirSessionSeance} onFermer={() => setSeancesOuvertes(false)} />}
       {feuilleTrx && ficheId && (
         <FeuilleDemarrage courseId={ficheId} pdfDoc={pdfDoc} ocrPages={coucheOcr ? coucheOcr.pages : null} texteEnPlus={modeDoc ? texteBrutDocument() : ''} reprendre={feuilleTrx.reprendre || null} sourceInitiale={feuilleTrx.source || null}
-          onClose={() => setFeuilleTrx(null)} onDemarre={ouvrirTranscript} />
+          // (29/10) proposer de marquer le début du cours sur la page affichée (lecteur prêt, nouvelle session)
+          marquerDebut={pret && !feuilleTrx.reprendre && pagePourTrx.current && pagePourTrx.current.page ? { page: pagePourTrx.current.page } : null}
+          onClose={() => setFeuilleTrx(null)} onDemarre={demarreTranscription} />
       )}
       <input ref={entreeJumelle} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
         onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) recevoirJumelle(f); }} />
