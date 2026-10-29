@@ -13,6 +13,7 @@ import { Icon } from '../../shared/Icon.jsx';
 import { Modal } from '../components/ui.jsx';
 import { getAll } from '../lib/storage.js';
 import { supprimerJumelle, supprimerPrincipal } from '../lib/fichiersCours.js';
+import { prefixeCalques } from '../lib/ficheJumelle.js';
 
 const pl = (n, s) => `${n} ${s}${n > 1 ? 's' : ''}`;
 
@@ -24,7 +25,8 @@ export function SuppressionDocument({ quoi, fiche, jumelle, db, onFermer, onRemp
     let vivant = true;
     (async () => {
       const [hs, ans] = [await getAll('highlights'), await getAll('annotations')];
-      const pref = `${fiche.id}::fiche:`;
+      // (29/10) les calques de LA fiche affichée (avec plusieurs fiches, pas celles des autres)
+      const pref = jumelle ? prefixeCalques({ ...jumelle, courseId: jumelle.courseId || fiche.id }) : `${fiche.id}::fiche:`;
       const du = (ns) => (a) => (typeof ns === 'string' ? a.ficheId === ns : String(a.ficheId).startsWith(pref));
       const orig = hs.filter(du(fiche.id)).length + ans.filter(du(fiche.id)).length;
       const fi = hs.filter(du(null)).length + ans.filter(du(null)).length;

@@ -54,9 +54,83 @@ export const nsJumelle = (courseId, version = 1) => `${courseId}::fiche:${versio
 const EVENEMENT = 'medrevise:jumelle';
 const prevenir = () => { try { window.dispatchEvent(new Event(EVENEMENT)); } catch (e) { /* ignore */ } };
 
+/* ============================================================
+   PLUSIEURS FICHES PAR COURS (29/10, docs/compte-rendu-plusieurs-fiches.md).
+   Un gros diapo couvre plusieurs séances, chacune avec sa (ou ses) fiche(s) de résumé.
+   RIEN NE CHANGE pour la fiche déjà importée : même enregistrement `cp:<cours>`, même calque
+   `<cours>::fiche:<v>`. Une fiche EN PLUS est un autre enregistrement du même store :
+     { id: 'cp:<cours>:<cle>', cle, courseId, …mêmes champs…, nsAnnot: '<cours>::fiche-<cle>:<v>' }
+   (le calque commence toujours par `<cours>::fiche`, comme l'attend la suppression du cours).
+   Champs facultatifs sur TOUTE fiche : `titre` (nom affiché), `seance` = { tagId, date, de, a }
+   (la séance qu'elle résume, instantané des tags Début / Fin au moment du choix).
+   Le lecteur continue de travailler sur UNE fiche à la fois : la fiche CHOISIE (préférence de
+   l'appareil, par cours) ; sans choix, la première fiche (celle d'avant ce changement).
+   ============================================================ */
+export const idFicheEnPlus = (courseId, cle) => `cp:${courseId}:${cle}`;
+/** calque d'annotations d'une version de cette fiche */
+export const nsDeVersion = (rec, version) => (rec && rec.cle ? `${rec.courseId}::fiche-${rec.cle}:${version}` : nsJumelle(rec.courseId, version));
+/** préfixe de TOUS les calques (toutes versions) de cette fiche, et d'elle seule */
+export const prefixeCalques = (rec) => (rec && rec.cle ? `${rec.courseId}::fiche-${rec.cle}:` : `${rec.courseId}::fiche:`);
+/** nom affiché d'une fiche */
+export const nomFiche = (rec) => (rec && (rec.titre || String(rec.fileName || 'fiche').replace(/\.pdf$/i, ''))) || 'Fiche';
+
 export async function lireJumelle(courseId) {
   if (!courseId) return null;
   try { const r = await getOne(STORE, idJumelle(courseId)); return r && r.fileId ? r : null; } catch (e) { return null; }
+}
+
+/** toutes les fiches d'un cours : la première (celle d'avant) d'abord, puis par date d'import */
+export async function lireFiches(courseId) {
+  if (!courseId) return [];
+  try {
+    const l = ((await getAll(STORE)) || []).filter((r) => r && r.fileId && r.courseId === courseId);
+    return l.sort((a, b) => (a.id === idJumelle(courseId) ? -1 : b.id === idJumelle(courseId) ? 1 : String(a.importeLe || '').localeCompare(String(b.importeLe || ''))));
+  } catch (e) { return []; }
+}
+
+/** les fiches d'un cours, tenues à jour (synchro, autre onglet) */
+export function useFichesJumelles(courseId) {
+  const [liste, setListe] = useState([]);
+  useEffect(() => {
+    let vivant = true;
+    const relire = () => { lireFiches(courseId).then((l) => { if (vivant) setListe((o) => (JSON.stringify(o) === JSON.stringify(l) ? o : l)); }); };
+    setListe([]); relire();
+    window.addEventListener(EVENEMENT, relire);
+    window.addEventListener('medrevise:recharge', relire);
+    return () => { vivant = false; window.removeEventListener(EVENEMENT, relire); window.removeEventListener('medrevise:recharge', relire); };
+  }, [courseId]);
+  return liste;
+}
+
+/* fiche choisie dans le lecteur : préférence de l'appareil, par cours */
+const cleActive = (courseId) => 'medrevise.jumelle.active.' + courseId;
+export function lireFicheActive(courseId) { try { return localStorage.getItem(cleActive(courseId)); } catch (e) { return null; } }
+export function ecrireFicheActive(courseId, id) { try { localStorage.setItem(cleActive(courseId), id); } catch (e) { /* ignore */ } }
+
+/** rattache une fiche à une séance (ou la détache : seance = null) et/ou la renomme — seuls ces champs changent */
+export async function modifierFiche(rec, { seance, titre } = {}) {
+  const maj = { ...rec };
+  if (seance !== undefined) { if (seance) maj.seance = seance; else delete maj.seance; }
+  if (titre !== undefined) { const t = String(titre || '').trim(); if (t) maj.titre = t; else delete maj.titre; }
+  const ecrit = await put(STORE, maj);
+  prevenir();
+  return ecrit;
+}
+
+/** séance la plus probable d'une fiche : celle qui contient le plus de pages d'origine de la fiche — et
+    seulement si elle en contient nettement la majorité (≥ 60 %) : une fiche qui résume tout le diapo
+    n'est rattachée à aucune séance en particulier (proposer une séance au hasard tromperait). */
+export const PART_SEANCE = 0.6;
+export function seanceProposee(pageMap, seances) {
+  const pages = ((pageMap && pageMap.versOrig) || []).filter((p) => p != null);
+  let meilleure = null, max = 0;
+  for (const s of seances || []) {
+    if (!s || s.de == null) continue;
+    const a = s.a == null ? Infinity : s.a;
+    const n = pages.filter((p) => p >= s.de && p <= a).length;
+    if (n > max) { max = n; meilleure = s; }
+  }
+  return pages.length && max / pages.length >= PART_SEANCE ? meilleure : null;
 }
 
 /** l'enregistrement de la fiche jumelle d'un cours, tenu à jour (synchro, autre onglet) */
@@ -232,15 +306,19 @@ async function pagesOriginal({ pdfIdOrig, instantDoc }) {
   if (!blobOrig) throw new Error('PDF original indisponible sur cet appareil');
   return textesPages(await ouvrir(blobOrig), pdfIdOrig);
 }
-export async function importerJumelle({ courseId, fichier, pdfIdOrig = null, instantDoc = null }) {
+/* `enPlus` (29/10) : la fiche s'AJOUTE aux fiches déjà là (nouvel enregistrement, nouveau calque) ;
+   sans lui, comportement d'origine : la fiche du cours qui n'en a pas (`cp:<cours>`). */
+export async function importerJumelle({ courseId, fichier, pdfIdOrig = null, instantDoc = null, enPlus = false }) {
   const tO = await pagesOriginal({ pdfIdOrig, instantDoc });
   const docF = await ouvrir(fichier);
   const tF = await textesPages(docF);
   const fileId = await putBlob(fichier);
   const c = correspondance(tO, tF);
   const pageMap = instantDoc ? { ...pageMapDe(c), mode: 'bloc', parBloc: parBlocDe(c.versB, tO) } : pageMapDe(c);
+  const cle = enPlus ? genId('fs').replace(/[^a-z0-9]/gi, '') : null;
+  const base = cle ? { id: idFicheEnPlus(courseId, cle), cle, courseId } : { id: idJumelle(courseId), courseId };
   const rec = {
-    id: idJumelle(courseId), courseId, fileId, fileName: fichier.name || 'fiche.pdf', version: 1, nsAnnot: nsJumelle(courseId, 1),
+    ...base, fileId, fileName: fichier.name || 'fiche.pdf', version: 1, nsAnnot: nsDeVersion(base, 1),
     nbPagesOrig: tO.length, nbPagesFiche: docF.numPages, pageMap, versions: [], nonReplacees: [],
     importeLe: new Date().toISOString(),
   };
@@ -298,7 +376,7 @@ export async function remplacerJumelle({ rec, fichier, pdfIdOrig = null, instant
   }
   // recopie des annotations de l'ancienne version
   const version = (rec.version || 1) + 1;
-  const ns = nsJumelle(rec.courseId, version);
+  const ns = nsDeVersion(rec, version); // calque de CETTE fiche (une fiche en plus garde le sien)
   const [hs, ans] = [await getAll('highlights'), await getAll('annotations')];
   const anciens = [...hs.filter((h) => h.ficheId === rec.nsAnnot).map((a) => ['highlights', a]), ...ans.filter((a) => a.ficheId === rec.nsAnnot).map((a) => ['annotations', a])];
   const idMap = new Map(anciens.map(([store, a]) => [a.id, genId(store === 'highlights' ? 'h' : 'an')]));

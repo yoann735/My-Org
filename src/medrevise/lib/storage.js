@@ -816,7 +816,8 @@ export async function purgeFiche(ficheId) {
     ...(highlights || []).filter((h) => deLaJumelle(h.ficheId)).map((h) => remove('highlights', h.id)),
     ...(annotations || []).filter((a) => deLaJumelle(a.ficheId)).map((a) => remove('annotations', a.id)),
     ...nsJumelle.map((ns) => get('rp:' + ns, S.reading_position).then((r) => (r ? remove('reading_position', 'rp:' + ns) : null))),
-    get('cp:' + ficheId, S.companion_pdf).then((r) => (r ? remove('companion_pdf', 'cp:' + ficheId) : null)),
+    // (29/10) TOUTES les fiches du cours (la première `cp:<cours>` et celles ajoutées `cp:<cours>:<cle>`)
+    values(S.companion_pdf).then((l) => Promise.all((l || []).filter((r) => r && r.courseId === ficheId).map((r) => remove('companion_pdf', r.id)))),
     get('board:' + ficheId, S.board).then((r) => (r ? remove('board', 'board:' + ficheId) : null)), // (22/10) son tableau
   ]);
   await Promise.all([

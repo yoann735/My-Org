@@ -17,7 +17,7 @@
    ============================================================ */
 import { getAll, getBlob, getOne, put, putMany, putBlob, remove, putBackup, genId } from './storage.js';
 import { openPdf } from '../pdf/pdfjsSetup.js';
-import { textesPages, correspondance, idJumelle } from './ficheJumelle.js';
+import { textesPages, correspondance, idJumelle, prefixeCalques } from './ficheJumelle.js';
 import { estImage, ordonnerImages, imagesToPdf } from './imageToPdf.js';
 
 export const TAILLE_MAX = 100 * 1024 * 1024; // 100 Mo
@@ -184,12 +184,13 @@ export async function remplacerPrincipal({ fiche, fichiers }) {
    `fichiersRetires` du cours (Réglages › Archives). Le cours revient « sans fiche ». ---- */
 export async function supprimerJumelle({ fiche, rec }) {
   return avecVerrou('suppression de la fiche jumelle', async () => {
-    const pref = `${fiche.id}::fiche:`;
+    // (29/10) les calques de CETTE fiche seulement : avec plusieurs fiches, les autres ne sont pas touchées
+    const pref = prefixeCalques({ ...rec, courseId: rec.courseId || fiche.id });
     const [hs, ans] = [await getAll('highlights'), await getAll('annotations')];
     const siens = [...hs.filter((h) => String(h.ficheId).startsWith(pref)).map((a) => ['highlights', a]), ...ans.filter((a) => String(a.ficheId).startsWith(pref)).map((a) => ['annotations', a])];
     await putBackup(`pre-supprime-jumelle-${fiche.id}-${Date.now()}`, { companion: rec, highlights: siens.filter(([s]) => s === 'highlights').map(([, a]) => a), annotations: siens.filter(([s]) => s === 'annotations').map(([, a]) => a) });
     for (const [store, a] of siens) await remove(store, a.id);
-    await remove('companion_pdf', idJumelle(fiche.id));
+    await remove('companion_pdf', rec.id || idJumelle(fiche.id));
     const f = (await getOne('fiches', fiche.id)) || fiche;
     await put('fiches', { ...f, fichiersRetires: [...(f.fichiersRetires || []), { type: 'jumelle', fileId: rec.fileId, fileName: rec.fileName, retireLe: new Date().toISOString(), importeLe: rec.importeLe || null, annotationsSupprimees: siens.length, versions: (rec.versions || []).map((v) => ({ fileId: v.fileId, fileName: v.fileName })) }] });
     window.dispatchEvent(new Event('medrevise:jumelle'));

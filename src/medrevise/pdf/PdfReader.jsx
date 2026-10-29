@@ -134,7 +134,9 @@ import { creerZip } from '../lib/zipSimple.js';
 import { refsCourtes, construireExportIA, estBoiteTexte, aDeuxVersions, versionAffichee, boitesOrdonnees, construireExport, lireImport, planImport, resumeImport, basculerVersion, avecContenuEdite } from '../lib/textesAnnotations.js';
 import { Board } from '../tableau/Board.jsx';
 import { ajouterCarteAuBoard } from '../lib/board.js';
-import { useFicheJumelle, lireVue, ecrireVue, pageCorrespondante, importerJumelle, remplacerJumelle, blocsDuFlux, pagesDocument, pageMapDocument } from '../lib/ficheJumelle.js';
+import { lireVue, ecrireVue, pageCorrespondante, importerJumelle, remplacerJumelle, blocsDuFlux, pagesDocument, pageMapDocument,
+  useFichesJumelles, lireFicheActive, ecrireFicheActive, modifierFiche, seanceProposee, nomFiche } from '../lib/ficheJumelle.js';
+import { ChoixFiche, ChoixSeanceFiche } from './ChoixFiche.jsx';
 import { EditeurCorrespondance, ListeNonReplacees } from './Correspondance.jsx';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
 const dansLeTableau = (el) => !!(el && el.closest && el.closest('.tb'));
@@ -191,7 +193,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      fiche importée, `surFiche` est toujours faux : rien ne change.
      (15/10 soir) aussi sur un cours DOCUMENT (créé dans l'app) : côté « Original » l'éditeur paginé,
      côté « Fiche » le lecteur PDF ; `modeDoc` n'est vrai que quand le document est affiché. */
-  const jumelle = useFicheJumelle(ficheReelle && (fiche.pdfId || modeDocCours) ? ficheReelle.id : null);
+  /* (29/10, docs/compte-rendu-plusieurs-fiches.md) PLUSIEURS FICHES : `jumelle` reste LA fiche affichée
+     côté « Fiche » — tout le code ci-dessous est inchangé — mais c'est désormais la fiche CHOISIE parmi
+     celles du cours (menu de choix dans la barre, visible à partir de 2 fiches). Une seule fiche : identique. */
+  const fichesCours = useFichesJumelles(ficheReelle && (fiche.pdfId || modeDocCours) ? ficheReelle.id : null);
+  const [ficheChoisie, setFicheChoisie] = useState(() => lireFicheActive(idFiche));
+  useEffect(() => { setFicheChoisie(lireFicheActive(idFiche)); }, [idFiche]);
+  const jumelle = fichesCours.find((r) => r.id === ficheChoisie) || fichesCours[0] || null;
   const [vueJumelle, setVueJumelle] = useState(() => lireVue(idFiche));
   useEffect(() => { setVueJumelle(lireVue(idFiche)); }, [idFiche]);
   const surFiche = !!(jumelle && vueJumelle === 'fiche');
@@ -435,7 +443,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const allerABoite = (src) => {
     if (!src || !src.boiteId) return;
     const autreDoc = jumelle && src.ns && src.ns !== nsAnnot;
-    if (autreDoc) basculerJumelle(src.ns === jumelle.nsAnnot ? 'fiche' : 'original');
+    // (29/10) la carte vient peut-être d'une AUTRE fiche du cours : on choisit celle-là
+    const autreFiche = autreDoc && src.ns !== jumelle.nsAnnot ? fichesCours.find((r) => r !== jumelle && r.nsAnnot === src.ns) : null;
+    if (autreFiche) choisirFiche(autreFiche.id);
+    else if (autreDoc) basculerJumelle(src.ns === jumelle.nsAnnot ? 'fiche' : 'original');
     const montrer = (essai = 0) => {
       const idx = pageSizesRef.current.findIndex((p) => String(p.cle) === String(src.page));
       if (idx < 0) { if (essai < 20) setTimeout(() => montrer(essai + 1), 150); return; }
@@ -1122,6 +1133,20 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setVueJumelle(cible); ecrireVue(idFiche, cible);
   };
   const basculerRef = useRef(basculerJumelle); basculerRef.current = basculerJumelle;
+  /* (29/10) choisir UNE AUTRE fiche du cours : on enregistre la position du document quitté, la fiche
+     choisie s'ouvre à SA dernière position (une position par calque, comme pour Original / Fiche). */
+  const choisirFiche = (id) => {
+    if (!id) return;
+    if (jumelle && id === jumelle.id) { basculerJumelle('fiche'); return; }
+    if (modeDoc && fluxRef.current && fluxRef.current.editor && !fluxRef.current.editor.isDestroyed) {
+      fluxRef.current.vider();
+      setFluxInitial(dehydrateDoc(fluxRef.current.editor.getJSON()));
+    }
+    sauverRef.current();
+    cibleBascule.current = null;
+    ecrireFicheActive(idFiche, id); setFicheChoisie(id);
+    setVueJumelle('fiche'); ecrireVue(idFiche, 'fiche');
+  };
   /* COURS DOCUMENT : la correspondance est stockée PAR BLOC (lib/ficheJumelle.js#pageMapDocument) et
      recalculée sur le texte et la pagination du moment. `instantDoc` : le dernier état connu du
      document (blocs, page de chaque bloc, clés des pages) — gardé quand la fiche est affichée. */
@@ -1169,24 +1194,41 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [travailJumelle, setTravailJumelle] = useState(null); // { etat: 'encours' | 'fini' | 'erreur', remplacement, rec?, message? }
   const [editeurCorresp, setEditeurCorresp] = useState(false);
   const [listeNonReplacees, setListeNonReplacees] = useState(false);
+  // (29/10) « Ajouter une fiche de résumé… » passe par le même sélecteur de fichier : ce drapeau dit
+  // que la fiche s'AJOUTE (sinon : importer la première fiche, ou remplacer la fiche affichée, comme avant)
+  const ajoutFiche = useRef(false);
+  const ouvrirAjoutFiche = () => { ajoutFiche.current = true; if (entreeJumelle.current) entreeJumelle.current.click(); };
+  const ouvrirFichierJumelle = () => { ajoutFiche.current = false; if (entreeJumelle.current) entreeJumelle.current.click(); };
   const recevoirJumelle = async (fichier) => {
     if (!fichier || !ficheReelle || !(fiche.pdfId || modeDocCours)) return;
+    const enPlus = ajoutFiche.current && !!jumelle; ajoutFiche.current = false;
     const instant = modeDocCours ? prendreInstantDoc() : null;
     if (modeDocCours && !instant) { setTravailJumelle({ etat: 'erreur', message: 'Le document n’est pas encore prêt — réessaie dans un instant' }); return; }
     // (16/10) mêmes règles que le principal : un PDF, taille limitée, un import à la fois (lib/fichiersCours.js)
     const errFichier = verifierFichiers([fichier], { images: false });
     if (errFichier) { setTravailJumelle({ etat: 'erreur', message: errFichier.replace(/\.$/, '') }); return; }
-    const remplacement = !!jumelle;
-    setTravailJumelle({ etat: 'encours', remplacement });
+    const remplacement = !!jumelle && !enPlus;
+    setTravailJumelle({ etat: 'encours', remplacement, enPlus });
     try {
       sauverRef.current();
       const rec = await avecVerrou(remplacement ? 'remplacement de la fiche jumelle' : 'import de la fiche jumelle', () => (remplacement
         ? remplacerJumelle({ rec: jumelle, fichier, pdfIdOrig: fiche.pdfId, instantDoc: instant })
-        : importerJumelle({ courseId: ficheReelle.id, fichier, pdfIdOrig: fiche.pdfId, instantDoc: instant })));
-      setTravailJumelle({ etat: 'fini', remplacement, rec });
+        : importerJumelle({ courseId: ficheReelle.id, fichier, pdfIdOrig: fiche.pdfId, instantDoc: instant, enPlus })));
+      setTravailJumelle({ etat: 'fini', remplacement, enPlus, rec });
     } catch (e) {
       setTravailJumelle({ etat: 'erreur', remplacement, message: (e && e.message) || 'PDF illisible' });
     }
+  };
+  /* (29/10) nom et séance choisis dans la fenêtre d'import : enregistrés à sa fermeture, seulement s'ils changent */
+  const choixImport = useRef(null);
+  const enregistrerChoixImport = async (rec) => {
+    const c = choixImport.current; choixImport.current = null;
+    if (!c || !rec) return;
+    const titre = String(c.titre || '').trim();
+    const changeTitre = !!titre && titre !== nomFiche(rec);
+    const changeSeance = JSON.stringify(c.seance || null) !== JSON.stringify(rec.seance || null);
+    if (!changeTitre && !changeSeance) return;
+    try { await modifierFiche(rec, { ...(changeSeance ? { seance: c.seance } : {}), ...(changeTitre ? { titre } : {}) }); } catch (e) { /* le choix pourra être refait */ }
   };
   const resumeCorresp = (rec) => {
     const pm = rec === jumelle ? pageMapCourant() : rec.pageMap;
@@ -1875,6 +1917,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     fichiers: ficheReelle ? { onClick: () => { setFichiersDemarrer(null); setFichiersOuvert(true); } } : pasCeDocument,
     supprimer: ficheReelle ? { onClick: () => setSupprimerOuvert(true) } : pasCeDocument,
     seances: ficheId ? { onClick: () => setSeancesOuvertes(true), etat: listesSeances.reduce((n, l) => n + l.seances.length, 0) || null } : pasCeDocument,
+    // (29/10) une fiche de résumé EN PLUS (sans fiche encore : c'est l'import habituel de la première)
+    ajouterFiche: !ficheReelle ? pasCeDocument
+      : jumelleDispo && !estHtml && principal.type !== 'html' ? { onClick: () => (jumelle ? ouvrirAjoutFiche() : ouvrirFichierJumelle()), etat: fichesCours.length > 1 ? `${fichesCours.length} fiches` : null }
+        : { indispo: estHtml || principal.type === 'html' ? 'Non disponible pour une fiche HTML' : 'Importe d’abord la diapo originale' },
   };
   const docOriginal = {
     cle: 'original',
@@ -1901,12 +1947,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       ...actionsContenu('fiche', 'pdf', cleAffichee === 'fiche'),
       correspondance: { onClick: () => setEditeurCorresp(true),
         title: (() => { const r = resumeCorresp(jumelle); return `Correspondance des pages — ${r.appariees} associées · ${r.ajoutees} ajoutée${r.ajoutees > 1 ? 's' : ''} dans la fiche${jumelle.pageMap.manuel ? ' · corrigée' : ''}`; })() },
-      remplacer: { onClick: () => entreeJumelle.current && entreeJumelle.current.click(), title: 'Nouvelle version de la fiche : ses annotations suivent leur page' },
+      remplacer: { onClick: () => ouvrirFichierJumelle(), title: 'Nouvelle version de la fiche : ses annotations suivent leur page' },
       supprimer: { onClick: () => setSuppressionDoc('fiche') },
     },
   } : {
     cle: 'fiche', role: 'Fiche', court: 'fiche', genre: 'f', icone: 'filePdf', vide: true, affiche: false,
-    actions: { importer: jumelleDispo ? { onClick: () => entreeJumelle.current && entreeJumelle.current.click() }
+    actions: { importer: jumelleDispo ? { onClick: () => ouvrirFichierJumelle() }
       : { indispo: estHtml || principal.type === 'html' ? 'Non disponible pour une fiche HTML' : !ficheReelle ? 'Non disponible pour ce document' : 'Importe d’abord la diapo originale' } },
   };
   const documentsFichier = [docOriginal, docFiche];
@@ -3651,6 +3697,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                   onClick={() => basculerJumelle(id)} title={`${aide} — Tab ou ${RACCOURCI}Maj+F pour basculer`}>{lbl}</button>
               ))}
             </div>
+            {/* (29/10) plusieurs fiches : le choix de la fiche, rangée par séance — absent avec une seule fiche */}
+            {fichesCours.length > 1 && (
+              <ChoixFiche fiches={fichesCours} active={jumelle} surFiche={surFiche} seances={listesSeances[0] ? listesSeances[0].seances : []}
+                nomOriginal={modeDocCours ? 'Document original' : 'Diapo originale'}
+                onChoisir={choisirFiche} onOriginal={() => basculerJumelle('original')}
+                onAjouter={jumelleDispo && !estHtml && principal.type !== 'html' ? ouvrirAjoutFiche : null} />
+            )}
           </div>
         ) : null}
         actionsDocument={afficherEntete ? actionsSelection : actionsDocument /* avec l'en-tête, tout est dans « Fichier » (sauf la sélection) */}
@@ -4104,7 +4157,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       <input ref={entreeJumelle} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
         onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) recevoirJumelle(f); }} />
       {travailJumelle && (
-        <Modal title={travailJumelle.remplacement ? 'Remplacer la fiche' : 'Fiche jumelle'} onClose={() => { if (travailJumelle.etat !== 'encours') setTravailJumelle(null); }} width="min(460px, 94vw)">
+        <Modal title={travailJumelle.remplacement ? 'Remplacer la fiche' : travailJumelle.enPlus ? 'Fiche de résumé ajoutée' : 'Fiche jumelle'}
+          onClose={() => { if (travailJumelle.etat === 'encours') return; if (travailJumelle.etat === 'fini' && !travailJumelle.remplacement) enregistrerChoixImport(travailJumelle.rec); setTravailJumelle(null); }} width="min(460px, 94vw)">
           {travailJumelle.etat === 'encours' && (
             <div className="fj-travail"><div className="gen-spinner" style={{ width: 28, height: 28 }} /><div>{travailJumelle.remplacement ? 'Nouvelle version : recherche des pages et replacement des annotations…' : 'Lecture des deux PDF et recherche des pages correspondantes…'}</div></div>
           )}
@@ -4120,10 +4174,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                   {r.sansEq > 0 && <li>{r.sansEq} page{r.sansEq > 1 ? 's' : ''} de l’original sans équivalent</li>}
                   {travailJumelle.remplacement && <li>{rec.replacees || 0} annotation{rec.replacees > 1 ? 's' : ''} replacée{rec.replacees > 1 ? 's' : ''} sur la nouvelle version{(rec.nonReplacees || []).length ? `, ${rec.nonReplacees.length} non replacée${rec.nonReplacees.length > 1 ? 's' : ''} (listée${rec.nonReplacees.length > 1 ? 's' : ''}, rien de supprimé)` : ''}</li>}
                 </ul>
+                {/* (29/10) nom de la fiche + la séance qu'elle résume (pas pour un remplacement : la fiche garde les siens) */}
+                {!travailJumelle.remplacement && (
+                  <ChoixSeanceFiche rec={rec} seances={listesSeances[0] ? listesSeances[0].seances : []} onChange={(c) => { choixImport.current = c; }} />
+                )}
                 <div className="row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
                   {travailJumelle.remplacement && (rec.nonReplacees || []).length > 0 && <button type="button" className="btn ghost sm" onClick={() => { setTravailJumelle(null); setListeNonReplacees(true); }}>Voir les non replacées</button>}
-                  <button type="button" className="btn ghost sm" onClick={() => { setTravailJumelle(null); setEditeurCorresp(true); }}>Vérifier la correspondance</button>
-                  <button type="button" className="btn primary sm" onClick={() => { setTravailJumelle(null); basculerJumelle('fiche'); }}>Voir la fiche</button>
+                  <button type="button" className="btn ghost sm" onClick={async () => { const t = travailJumelle; setTravailJumelle(null); if (!t.remplacement) await enregistrerChoixImport(rec); if (t.enPlus) choisirFiche(rec.id); setEditeurCorresp(true); }}>Vérifier la correspondance</button>
+                  <button type="button" className="btn primary sm" onClick={async () => { const t = travailJumelle; setTravailJumelle(null); if (!t.remplacement) await enregistrerChoixImport(rec); if (t.enPlus) choisirFiche(rec.id); else basculerJumelle('fiche'); }}>Voir la fiche</button>
                 </div>
               </div>
             );
@@ -4159,8 +4217,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       )}
       {promptsOuverts && <AllPromptsModal ctx={ctx} onClose={() => setPromptsOuverts(false)} />}
       {fichiersOuvert && ficheReelle && (
-        <FichiersCours ctx={ctx} fiche={ficheReelle} jumelle={jumelle} onFermer={() => { setFichiersOuvert(false); setFichiersDemarrer(null); }} demarrer={fichiersDemarrer}
-          onImporterJumelle={jumelleDispo ? () => entreeJumelle.current && entreeJumelle.current.click() : null}
+        <FichiersCours ctx={ctx} fiche={ficheReelle} jumelle={jumelle} autresFiches={Math.max(0, fichesCours.length - 1)} onFermer={() => { setFichiersOuvert(false); setFichiersDemarrer(null); }} demarrer={fichiersDemarrer}
+          onImporterJumelle={jumelleDispo ? () => ouvrirFichierJumelle() : null}
           onExporterDocument={modeDocCours ? () => { setFichiersOuvert(false); if (surFiche) basculerJumelle('original'); setTimeout(() => imprimerDocument(), 400); } : null}
           pagesDocument={modeDocCours && !surFiche ? nbPagesAffichees : null}
           onRemplace={() => { cacheDocs.current.clear(); reloadHighlights(); reloadEdits(); }}

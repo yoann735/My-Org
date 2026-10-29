@@ -33,6 +33,8 @@ const cmd = (t) => (MAC ? '⌘' + t.replace('Maj+', '⇧') : 'Ctrl+' + t);
 export const ENTREES_COURS = [
   { id: 'renommer', label: 'Renommer le cours', icon: 'edit', raccourci: 'F2', aide: 'Renommer le cours' },
   { id: 'fichiers', label: 'Fichiers du cours…', icon: 'folder', aide: 'Diapo originale et fiche : noms, tailles, dates d’import' },
+  // (29/10) plusieurs fiches de résumé par cours, chacune rattachée à une séance (lib/ficheJumelle.js)
+  { id: 'ajouterFiche', label: 'Ajouter une fiche de résumé…', icon: 'upload', aide: 'Un PDF de résumé en plus (par exemple la fiche d’une séance) : la diapo et les autres fiches ne changent pas' },
   // (25/10) les séances marquées sur les pages (tags « Début / Fin de cours », pdf/TagsPages.jsx)
   { id: 'seances', label: 'Séances…', icon: 'calendar', aide: 'Les séances marquées sur les pages : date, pages début–fin, transcript lié' },
   { id: 'supprimer', label: 'Supprimer le cours…', icon: 'trash', danger: true, aide: 'Le cours part dans la corbeille (restaurable)' },

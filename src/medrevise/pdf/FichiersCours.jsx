@@ -35,7 +35,7 @@ function NomEditable({ nom, onRenommer, desactive }) {
   );
 }
 
-export function FichiersCours({ ctx, fiche, jumelle = null, onFermer, onImporterJumelle = null, onExporterDocument = null, onRemplace = null, onNonReplacees = null, pagesDocument = null, demarrer = null }) {
+export function FichiersCours({ ctx, fiche, jumelle = null, autresFiches = 0, onFermer, onImporterJumelle = null, onExporterDocument = null, onRemplace = null, onNonReplacees = null, pagesDocument = null, demarrer = null }) {
   const p = principalDe(fiche);
   const [infoP, setInfoP] = useState(null);
   const [infoJ, setInfoJ] = useState(null);
@@ -116,10 +116,12 @@ export function FichiersCours({ ctx, fiche, jumelle = null, onFermer, onImporter
         <div className="fcrs-ligne" data-ligne="jumelle">
           <span className="fcrs-ic"><Icon name="filePdf" size={18} /></span>
           <div className="fcrs-corps">
-            <div className="fcrs-role">Fiche jumelle</div>
+            <div className="fcrs-role">{autresFiches ? 'Fiche affichée' : 'Fiche jumelle'}</div>
             {jumelle ? <NomEditable nom={jumelle.fileName} desactive={occupe} onRenommer={(v) => renommerJumelle(jumelle, v)} /> : <span className="fcrs-aucun">Aucune</span>}
             {metaJ && <div className="fcrs-meta">{metaJ}</div>}
             {!jumelle && !p.type && <div className="fcrs-meta">Importe d’abord le document principal.</div>}
+            {/* (29/10) plusieurs fiches : les autres se choisissent dans la barre du lecteur (menu à côté d’« Original · Fiche ») */}
+            {autresFiches > 0 && <div className="fcrs-meta" data-autres-fiches={autresFiches}>+ {pl(autresFiches, 'autre fiche')} dans ce cours — choisis-la dans le menu à côté d’« Original · Fiche » pour la remplacer, la supprimer ou l’exporter.</div>}
           </div>
           <div className="fcrs-actions">
             <button type="button" className="btn sm" disabled={occupe || !onImporterJumelle || !p.type || p.type === 'html'}
@@ -130,7 +132,7 @@ export function FichiersCours({ ctx, fiche, jumelle = null, onFermer, onImporter
           </div>
         </div>
 
-        <div className="fcrs-pied">Un cours = un document principal (PDF, ou images converties en PDF ; ou document créé dans l’app) et au plus une fiche jumelle (PDF). {mo(TAILLE_MAX)} maximum par fichier, un import à la fois.</div>
+        <div className="fcrs-pied">Un cours = un document principal (PDF, ou images converties en PDF ; ou document créé dans l’app) et une ou plusieurs fiches de résumé (PDF, « Fichier › Ajouter une fiche de résumé… »). {mo(TAILLE_MAX)} maximum par fichier, un import à la fois.</div>
 
         {etape && etape.quoi === 'remplacer' && (
           <div className="fcrs-confirme" role="alertdialog" aria-label="Confirmer le remplacement">
