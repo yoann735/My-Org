@@ -6,6 +6,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { BoiteCase } from '../components/CaseACocher.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { index } from '../lib/planning.js';
 import { feynmanVerdict } from '../lib/sm2.js';
@@ -89,8 +90,8 @@ function FeynmanCard({ item, fiche, onNext, isLast }) {
             <div style={{ marginTop: 14 }}>
               <div className="mrm-section-head" style={{ marginBottom: 8 }}>Checklist — coche ce que tu as couvert ({points.filter((_p, i) => checkedPoints[i]).length}/{points.length})</div>
               {points.map((p, i) => (
-                <button type="button" key={i} className={'mrm-criterion' + (checkedPoints[i] ? ' on' : '')} onClick={() => setCheckedPoints((c) => ({ ...c, [i]: !c[i] }))}>
-                  <input type="checkbox" readOnly checked={!!checkedPoints[i]} />
+                <button type="button" key={i} role="checkbox" aria-checked={!!checkedPoints[i]} className={'mrm-criterion' + (checkedPoints[i] ? ' on' : '')} onClick={() => setCheckedPoints((c) => ({ ...c, [i]: !c[i] }))}>
+                  <BoiteCase checked={!!checkedPoints[i]} />
                   <span><Tex>{p}</Tex></span>
                 </button>
               ))}
@@ -106,8 +107,8 @@ function FeynmanCard({ item, fiche, onNext, isLast }) {
             <div style={{ marginTop: 14 }}>
               <div className="mrm-section-head" style={{ marginBottom: 8 }}>Auto-évaluation</div>
               {grille.map((c) => (
-                <button type="button" key={c.id} className={'mrm-criterion' + (checked[c.id] ? ' on' : '')} onClick={() => setChecked((ch) => ({ ...ch, [c.id]: !ch[c.id] }))}>
-                  <input type="checkbox" readOnly checked={!!checked[c.id]} />
+                <button type="button" key={c.id} role="checkbox" aria-checked={!!checked[c.id]} className={'mrm-criterion' + (checked[c.id] ? ' on' : '')} onClick={() => setChecked((ch) => ({ ...ch, [c.id]: !ch[c.id] }))}>
+                  <BoiteCase checked={!!checked[c.id]} />
                   <span><Tex>{c.critere}</Tex></span>
                 </button>
               ))}

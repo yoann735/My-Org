@@ -13,6 +13,7 @@
    ============================================================ */
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { CaseACocher } from './CaseACocher.jsx';
 import { Switch } from './ui.jsx';
 import { Chiffre, useEnSynchro } from './Chiffre.jsx';
 import { getMeta, setMeta } from '../lib/storage.js';
@@ -88,12 +89,10 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
           const c = choix[cle], n = cats[cle].length;
           return (
             <div key={cle} className={'sfa-cat' + (c.coche ? ' coche' : '') + (n ? '' : ' vide')} data-cat={cle}>
-              <label className="sfa-case">
-                <input type="checkbox" checked={c.coche} onChange={(e) => cocher(cle, e.target.checked)} />
-                <span className="sfa-boite" aria-hidden="true"><Icon name="check" size={12} /></span>
+              <CaseACocher className="sfa-case" checked={c.coche} onChange={(v) => cocher(cle, v)}>
                 <span className="sfa-cat-nom">{libelle}</span>
                 <Chiffre className="sfa-cat-n"><span className="sfa-cat-n tnum" data-n={n}>{n}</span></Chiffre>
-              </label>
+              </CaseACocher>
               <select className="sfa-max" value={String(c.max)} disabled={!c.coche} aria-label={`Nombre maximum de cartes ${libelle.toLowerCase()}`}
                 onChange={(e) => borner(cle, e.target.value)}>
                 {MAXIMUMS.map((m) => <option key={m} value={String(m)}>{m === 'tout' ? 'Tout' : `max ${m}`}</option>)}

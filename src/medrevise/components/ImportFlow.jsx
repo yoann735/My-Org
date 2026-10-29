@@ -5,6 +5,7 @@
    un seul jeu de composants pour ne pas dupliquer la mise en page.
    ============================================================ */
 import { Icon } from '../../shared/Icon.jsx';
+import { CaseACocher } from './CaseACocher.jsx';
 
 /* ---- champ « coller le JSON » : textarea monospace + erreur de parse ---- */
 export function ImportJsonField({ label, placeholder, value, onChange, error }) {
@@ -30,10 +31,9 @@ export function ImportJsonField({ label, placeholder, value, onChange, error }) 
 export function ChoixJ0Doublons({ n, actif, onChange }) {
   if (!n || !onChange) return null;
   return (
-    <label className="hint imp-j0-doublons" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8, cursor: 'pointer', color: 'var(--text-2)' }}>
-      <input type="checkbox" checked={actif} onChange={(e) => onChange(e.target.checked)} style={{ marginTop: 2 }} />
+    <CaseACocher haut className="hint imp-j0-doublons" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8, color: 'var(--text-2)' }} checked={actif} onChange={(v) => onChange(v)}>
       <span>Appliquer aussi ce J0 aux <b>{n}</b> carte{n > 1 ? 's' : ''} de ce collage <b>déjà dans la fiche</b>, jamais révisée{n > 1 ? 's' : ''} (sinon elle{n > 1 ? 's gardent leur' : ' garde sa'} date actuelle).</span>
-    </label>
+    </CaseACocher>
   );
 }
 

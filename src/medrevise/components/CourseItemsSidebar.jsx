@@ -28,6 +28,7 @@
    ============================================================ */
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { CaseACocher } from './CaseACocher.jsx';
 import { Tex } from './Tex.jsx';
 import { ConfirmModal, ContextMenu, SplitHandle, ModalesHorsPanneauCtx } from './ui.jsx';
 import { creerGlissement } from './glissementModes.js';
@@ -616,7 +617,8 @@ function ItemReadCard({ item, ctx = null, onEdit, onDelete, onBoite = null, onAg
     <div className={'pis-item card' + (fc ? ' fcl-carte' : '')} data-item={item.id}>
       <div className="card-body">
         <div className="row spread" style={{ marginBottom: 8, alignItems: 'flex-start', gap: 8 }}>
-          {coche !== undefined && <input type="checkbox" className="fcl-coche" checked={coche} onChange={onCocher} data-coche={item.id} aria-label="Exporter cette carte" title="Inclure cette carte dans l’export" />}
+          {coche !== undefined && <CaseACocher className="fcl-case" checked={coche} onChange={() => onCocher()} ariaLabel="Exporter cette carte" title="Inclure cette carte dans l’export"
+            inputProps={{ className: 'fcl-coche', 'data-coche': item.id }} />}
           <span className="hint" style={{ fontWeight: 700, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto' }}>{item.theme || 'Sans thème'}</span>
           {fc && <EtiquetteAApprendre carte={item} />}
           <div className={'row' + (fc ? ' fcl-actions' : '')} style={{ gap: 4, flex: '0 0 auto' }}>

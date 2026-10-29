@@ -15,6 +15,7 @@
    ============================================================ */
 import { useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { CaseACocher } from './CaseACocher.jsx';
 import { Modal } from './ui.jsx';
 import { analyserImport, importerCartes, LIBELLES_SORTES, exempleJSON, COMPLEMENT_PROMPT } from '../lib/importFlashcards.js';
 import { DEFAULT_PROMPTS } from '../lib/coursePrompts.js';
@@ -146,9 +147,10 @@ export function ImportFlashcards({ ctx, ficheId, onFermer }) {
               </div>
             )}
             {a.avecProgression > 0 && (
-              <label className="ifc-progression" title="Chaque carte de cet export porte sa progression (catégorie, dates, J, état FSRS, historique). Décoché : les cartes repartent de zéro à la date de départ.">
-                <input type="checkbox" checked={progression} onChange={(e) => setProgression(e.target.checked)} data-champ="progression" /> Reprendre aussi la progression <span className="hint tnum">({a.avecProgression} carte{a.avecProgression > 1 ? 's' : ''})</span>
-              </label>
+              <CaseACocher className="ifc-progression" title="Chaque carte de cet export porte sa progression (catégorie, dates, J, état FSRS, historique). Décoché : les cartes repartent de zéro à la date de départ."
+                checked={progression} onChange={(v) => setProgression(v)} inputProps={{ 'data-champ': 'progression' }}>
+                Reprendre aussi la progression <span className="hint tnum">({a.avecProgression} carte{a.avecProgression > 1 ? 's' : ''})</span>
+              </CaseACocher>
             )}
             <div className="row spread ifc-pied" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <label className="ifc-date">Date de départ <input type="date" className="input" value={depart} onChange={(e) => setDepart(e.target.value || todayISO())} data-champ="depart" /></label>

@@ -8,6 +8,7 @@
    ============================================================ */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { CaseACocher } from '../components/CaseACocher.jsx';
 import { Breadcrumb, EdTop, matiereMeta, EtiquetteQuickSet } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { index } from '../lib/planning.js';
@@ -121,10 +122,10 @@ export function Feynman({ ctx }) {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {points.map((p, i) => (
-                      <label key={i} className="fey-crit" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer', padding: '8px 10px', borderRadius: 9, background: checkedPoints[i] ? 'var(--accent-soft)' : 'transparent', border: '1px solid ' + (checkedPoints[i] ? 'var(--accent)' : 'var(--border)') }}>
-                        <input type="checkbox" checked={!!checkedPoints[i]} onChange={() => togglePoint(i)} style={{ marginTop: 3, accentColor: 'var(--accent)' }} />
+                      <CaseACocher key={i} haut className="fey-crit" style={{ display: 'flex', gap: 10, padding: '8px 10px', borderRadius: 9, background: checkedPoints[i] ? 'var(--accent-soft)' : 'transparent', border: '1px solid ' + (checkedPoints[i] ? 'var(--accent)' : 'var(--border)') }}
+                        checked={!!checkedPoints[i]} onChange={() => togglePoint(i)}>
                         <span style={{ fontSize: 14 }}><Tex>{p}</Tex></span>
-                      </label>
+                      </CaseACocher>
                     ))}
                   </div>
                 </div>
@@ -148,13 +149,13 @@ export function Feynman({ ctx }) {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {grille.map((c) => (
-                      <label key={c.id} className="fey-crit" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer', padding: '8px 10px', borderRadius: 9, background: checked[c.id] ? 'var(--accent-soft)' : 'transparent', border: '1px solid ' + (checked[c.id] ? 'var(--accent)' : 'var(--border)') }}>
-                        <input type="checkbox" checked={!!checked[c.id]} onChange={() => toggle(c.id)} style={{ marginTop: 3, accentColor: 'var(--accent)' }} />
+                      <CaseACocher key={c.id} haut className="fey-crit" style={{ display: 'flex', gap: 10, padding: '8px 10px', borderRadius: 9, background: checked[c.id] ? 'var(--accent-soft)' : 'transparent', border: '1px solid ' + (checked[c.id] ? 'var(--accent)' : 'var(--border)') }}
+                        checked={!!checked[c.id]} onChange={() => toggle(c.id)}>
                         <span style={{ fontSize: 14 }}>
                           <Tex>{c.critere}</Tex>
                           {c.essentiel && <span className="pill accent" style={{ marginLeft: 8, height: 20, fontSize: 11 }}>essentiel</span>}
                         </span>
-                      </label>
+                      </CaseACocher>
                     ))}
                   </div>
                 </div>

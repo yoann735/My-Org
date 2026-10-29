@@ -1,0 +1,43 @@
+/* (29/10) CASE À COCHER UNIQUE de MedRevise — components/CaseACocher.jsx, docs/compte-rendu-statut-synchro.md.
+   18 px, coins 5 px, filet de la DA (--border) ; cochée = --accent + coche blanche tracée en 120 ms ; partiel = tiret ;
+   survol (filet --accent) et focus clavier (anneau --accent-soft) ; zone de clic ≥ 40 px sur téléphone. */
+/* :where() = spécificité nulle : la mise en page d'un écran (.alib2-option, .sfa-case…) garde la main */
+:where(.mr-case) { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; min-width: 0; }
+.mr-case { position: relative; -webkit-tap-highlight-color: transparent; }
+:where(.mr-case.haut) { align-items: flex-start; }
+.mr-case.haut .mr-case-boite { margin-top: 1px; }
+:where(.mr-case.seule) { justify-content: center; }
+.mr-case.inactive { cursor: default; opacity: .5; }
+/* l'input natif reste là (clavier, lecteur d'écran, tests) mais invisible ; il couvre la zone de clic */
+.mr-case > .mr-case-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; z-index: 1; }
+/* le libellé ne crée pas de boîte : ses enfants restent des éléments flex de l’écran (écart nom / nombre conservé) */
+.mr-case-texte { display: contents; }
+
+.mr-case-boite { position: relative; flex: 0 0 auto; width: 18px; height: 18px; box-sizing: border-box; border-radius: 5px;
+  border: 1.5px solid var(--border-hover, var(--border)); background: var(--card);
+  display: grid; place-items: center; transition: background-color .12s ease, border-color .12s ease, box-shadow .12s ease; }
+.mr-case-coche { width: 12px; height: 12px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 12; stroke-dashoffset: 12; transition: stroke-dashoffset .12s ease-out; grid-area: 1 / 1; }
+.mr-case-tiret { grid-area: 1 / 1; width: 8px; height: 2px; border-radius: 1px; background: #fff; transform: scaleX(0); transition: transform .12s ease-out; }
+
+.mr-case-boite.coche { background: var(--accent); border-color: var(--accent); }
+.mr-case-boite.coche .mr-case-coche { stroke-dashoffset: 0; }
+.mr-case-boite.partiel { background: var(--accent); border-color: var(--accent); }
+.mr-case-boite.partiel .mr-case-tiret { transform: scaleX(1); }
+
+/* survol : le filet prend l'accent ; focus clavier : anneau visible */
+.mr-case:not(.inactive):hover .mr-case-boite:not(.coche):not(.partiel),
+button:hover > .mr-case-boite:not(.coche):not(.partiel) { border-color: var(--accent); }
+.mr-case:not(.inactive):hover .mr-case-boite.coche, .mr-case:not(.inactive):hover .mr-case-boite.partiel { filter: brightness(1.08); }
+.mr-case-input:focus-visible + .mr-case-boite,
+button:focus-visible > .mr-case-boite { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); border-color: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) { .mr-case-boite, .mr-case-coche, .mr-case-tiret { transition: none; } }
+
+/* téléphone / écran tactile : zone de clic d'au moins 40 × 40 px (la boîte reste à 18 px) */
+@media (pointer: coarse), (max-width: 767px) {
+  .mr-case { min-height: 40px; }
+  .mr-case.seule { min-width: 40px; }
+}
+.mrm-app .mr-case, .alib-mobile .mr-case { min-height: 40px; }
+.mrm-app .mr-case.seule, .alib-mobile .mr-case.seule { min-width: 40px; }

@@ -22,6 +22,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
+import { CaseACocher } from '../components/CaseACocher.jsx';
 import { EdTop } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { ImageFlashcard } from '../components/FlashcardImage.jsx';
@@ -331,16 +332,13 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
 /* ---- (28/10) CASE d'un cours ou d'une matière : coche / décoche TOUTES ses cartes, même masquées par le filtre ;
    état partiel (indeterminate) quand une partie seulement est cochée ---- */
 function CaseGroupe({ ids, sel, visibles, nom, quoi, onCocher }) {
-  const ref = useRef(null);
   const etat = etatSelection(ids, sel);
-  useEffect(() => { if (ref.current) ref.current.indeterminate = etat === 'partiel'; }, [etat]);
   const masquees = ids.length - visibles;
   const titre = etat === 'tout' ? `Désélectionner les ${pl(ids.length, 'carte')} de ce ${quoi}`
     : `Sélectionner les ${pl(ids.length, 'carte')} de ce ${quoi}${masquees > 0 ? ` (dont ${masquees} masquée${masquees > 1 ? 's' : ''} par le filtre)` : ''}`;
   return (
-    <label className={'alib2-case groupe' + (etat !== 'aucun' ? ' ' + etat : '')} title={titre} data-case-groupe={quoi} data-etat={etat} onClick={(e) => e.stopPropagation()}>
-      <input ref={ref} type="checkbox" checked={etat === 'tout'} onChange={() => onCocher(ids)} aria-label={`${titre} « ${nom} »`} />
-    </label>
+    <CaseACocher className={'alib2-case groupe' + (etat !== 'aucun' ? ' ' + etat : '')} title={titre} data-case-groupe={quoi} data-etat={etat} onClick={(e) => e.stopPropagation()}
+      checked={etat === 'tout'} partiel={etat === 'partiel'} onChange={() => onCocher(ids)} ariaLabel={`${titre} « ${nom} »`} />
   );
 }
 
@@ -375,10 +373,9 @@ function ChoixMatieres({ choix, filtres, setFiltres }) {
         return (
           <div key={m.id}>
             {titre && <div className="alib2-choix-groupe">{titre}</div>}
-            <label className="alib2-option">
-              <input type="checkbox" checked={sel.has(m.id)} onChange={() => basculer(m.id)} />
+            <CaseACocher className="alib2-option" checked={sel.has(m.id)} onChange={() => basculer(m.id)}>
               <span className="alib2-onom">{m.nom}</span><span className="hint tnum">{m.n}</span>
-            </label>
+            </CaseACocher>
           </div>
         );
       })}
@@ -472,9 +469,8 @@ function Vignette({ ctx, mobile, q, vue, note, onOuvrir, coche = false, onCocher
   const long = verso.length > (vue === 'liste' ? 90 : 160) || verso.split('\n').length > 4;
   return (
     <li className={'alib2-carte' + (nouvelle ? ' nouvelle' : '') + (estAApprendre(q) ? ' aap' : '') + (coche ? ' cochee' : '')} data-carte={q.id} data-type={type}>
-      <label className="alib2-case carte" title={coche ? 'Retirer de la sélection' : 'Ajouter à la sélection'} onClick={(e) => e.stopPropagation()}>
-        <input type="checkbox" checked={coche} onChange={onCocher} aria-label={(coche ? 'Retirer de la sélection : ' : 'Sélectionner : ') + recto.slice(0, 60)} />
-      </label>
+      <CaseACocher className="alib2-case carte" title={coche ? 'Retirer de la sélection' : 'Ajouter à la sélection'} onClick={(e) => e.stopPropagation()}
+        checked={coche} onChange={() => onCocher()} ariaLabel={(coche ? 'Retirer de la sélection : ' : 'Sélectionner : ') + recto.slice(0, 60)} />
       <span className="alib2-aap"><BoutonAApprendre ctx={ctx} carte={q} classe="ac-icone" taille={mobile ? 17 : 14} mobile={mobile} /></span>
       <div role="button" tabIndex={0} className="alib2-vignette" onClick={onOuvrir} title="Ouvrir l’aperçu"
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOuvrir(); } }}>

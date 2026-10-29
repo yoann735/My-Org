@@ -7,6 +7,7 @@
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { BoiteCase } from '../components/CaseACocher.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { recordExerciceAttempt, qualityForExercice, todayISO, computeStreak } from '../lib/sm2.js';
 import { checkNumerique, parseScientificValue } from '../lib/correction.js';
@@ -218,8 +219,8 @@ function OpenAnswer({ item, onApply }) {
         <>
           {item.correction && item.correction.conclusion && <div className="mrm-explication"><Tex>{item.correction.conclusion}</Tex></div>}
           {grille.length > 0 && grille.map((g) => (
-            <button type="button" key={g.id} className={'mrm-criterion' + (checked[g.id] ? ' on' : '')} onClick={() => setChecked((c) => ({ ...c, [g.id]: !c[g.id] }))}>
-              <input type="checkbox" readOnly checked={!!checked[g.id]} />
+            <button type="button" key={g.id} role="checkbox" aria-checked={!!checked[g.id]} className={'mrm-criterion' + (checked[g.id] ? ' on' : '')} onClick={() => setChecked((c) => ({ ...c, [g.id]: !c[g.id] }))}>
+              <BoiteCase checked={!!checked[g.id]} />
               <span><Tex>{g.critere}</Tex></span>
             </button>
           ))}

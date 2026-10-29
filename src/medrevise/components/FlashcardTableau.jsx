@@ -10,6 +10,7 @@
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { CaseACocher } from './CaseACocher.jsx';
 import { Tex } from './Tex.jsx';
 import { echapDansFormulaire } from './AddItemForm.jsx';
 import { LIMITES, carteTableau, normaliserTableau, lireTSV, estTSV } from '../lib/carteTableau.js';
@@ -195,7 +196,7 @@ export function FormulaireTableau({ initial = null, themeDefaut = '', onAdd, onC
           onChange={(e) => setTsv(e.target.value)}
           onPaste={(e) => { const t = e.clipboardData && e.clipboardData.getData('text/plain'); if (estTSV(t)) { e.preventDefault(); setTsv(t); appliquerTSV(t); } }} />
         <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <label className="tb-opt"><input type="checkbox" checked={entetes} onChange={(e) => setEntetes(e.target.checked)} /> 1re ligne = noms des colonnes</label>
+          <CaseACocher className="tb-opt" checked={entetes} onChange={(v) => setEntetes(v)}>1re ligne = noms des colonnes</CaseACocher>
           <button type="button" className="btn ghost sm" disabled={!tsv.trim()} onClick={() => appliquerTSV(tsv)}><Icon name="check" size={12} /> Remplir le tableau</button>
         </div>
       </details>

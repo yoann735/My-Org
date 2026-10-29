@@ -21,6 +21,7 @@
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { CaseACocher } from './CaseACocher.jsx';
 import { isClassicUI } from '../../shared/uiMode.js';
 import { Modal, LoaderL6 } from './ui.jsx';
 import { appendItemsToFiche, appendExosToChapitre, themeFlashcardsDeFiche, doublonsRedatables, adopterThemeDeCarte } from '../lib/import.js';
@@ -308,7 +309,7 @@ function QcmForm({ onAdd, busy, initial, submitLabel, onCancel }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {options.map((o, i) => (
             <div key={i} className="row" style={{ gap: 8 }}>
-              <input type="checkbox" checked={o.correct} onChange={(e) => setOpt(i, { correct: e.target.checked })} disabled={!o.texte.trim()} style={{ accentColor: 'var(--accent)' }} />
+              <CaseACocher checked={o.correct} onChange={(v) => setOpt(i, { correct: v })} disabled={!o.texte.trim()} ariaLabel={`Option ${(OPTION_LETTERS[i] || '?').toUpperCase()} correcte`} title="Bonne réponse" />
               <input className="imp-title" style={{ flex: 1 }} placeholder={`Option ${(OPTION_LETTERS[i] || '?').toUpperCase()}`} value={o.texte} onChange={(e) => setOpt(i, { texte: e.target.value })} />
               {options.length > 2 && (
                 <button type="button" className="cd-ic" title="Retirer cette option" onClick={() => removeOption(i)}><Icon name="x" size={12} /></button>

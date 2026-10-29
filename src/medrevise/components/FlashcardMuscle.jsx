@@ -14,6 +14,7 @@
    ============================================================ */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { CaseACocher } from './CaseACocher.jsx';
 import { Tex } from './Tex.jsx';
 import { RACCOURCI_ENREGISTRER, estEnregistrer, echapDansFormulaire } from './AddItemForm.jsx';
 import { LIGNES_MUSCLE, lignesDe, lignesVides, blocsContenu, normaliserPuces, carteMuscle, imagesDe, imageGeneraleDe } from '../lib/muscle.js';
@@ -263,9 +264,9 @@ export function FormulaireMuscle({ initial = null, themeDefaut = '', onAdd, onCa
         <span className="mu-generale-titre">Image du muscle <span className="imp-opt">(optionnelle)</span></span>
         <ChampImageMuscle valeur={generale} libelle="Image du muscle" onChange={(v) => setGenerale(v)} onColler={(f) => collage.colleDans('generale', f)}
           aside={(generale.imageId || generale.fichier) ? (
-            <label className="mu-recto-opt" title="Cochée : l’image s’affiche aussi au recto. Sinon : au verso seulement.">
-              <input type="checkbox" checked={auRecto} onChange={(e) => setAuRecto(e.target.checked)} /> Montrer au recto
-            </label>
+            <CaseACocher className="mu-recto-opt" title="Cochée : l’image s’affiche aussi au recto. Sinon : au verso seulement." checked={auRecto} onChange={(v) => setAuRecto(v)}>
+              Montrer au recto
+            </CaseACocher>
           ) : null} />
       </div>
 

@@ -150,7 +150,6 @@
 .mrm-verdict.ko { background: color-mix(in srgb, var(--crit) 12%, transparent); color: color-mix(in srgb, var(--crit) 70%, var(--text)); }
 
 .mrm-criterion { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 8px; }
-.mrm-criterion input { width: 22px; height: 22px; margin-top: 1px; accent-color: var(--accent); flex: 0 0 auto; }
 .mrm-criterion.on { border-color: var(--accent); background: var(--accent-soft); }
 
 .mrm-done { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 30px; gap: 14px; }
@@ -433,3 +432,5 @@
 @media (orientation: landscape) and (max-height: 500px) {
   .mrm-ecran-carte .mrm-rate.quatre { grid-template-columns: repeat(4, 1fr); }
 }
+/* (29/10) critères : la boîte du composant unique (components/CaseACocher.jsx) */
+.mrm-criterion .mr-case-boite { margin-top: 1px; }

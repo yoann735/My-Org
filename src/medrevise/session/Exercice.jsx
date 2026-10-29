@@ -13,6 +13,7 @@
    ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { CaseACocher } from '../components/CaseACocher.jsx';
 import { Breadcrumb, EdTop, matiereMeta, EtiquetteQuickSet } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { index } from '../lib/planning.js';
@@ -564,10 +565,10 @@ export function OpenAnswer({ item, revealed, onReveal, onAutoVerdict }) {
               <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 10 }}>Auto-évaluation — coche ce que ta solution couvre</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {grille.map((g) => (
-                  <label key={g.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer', padding: '8px 10px', borderRadius: 9, background: checked[g.id] ? 'var(--accent-soft)' : 'transparent', border: '1px solid ' + (checked[g.id] ? 'var(--accent)' : 'var(--border)') }}>
-                    <input type="checkbox" checked={!!checked[g.id]} onChange={() => setChecked((c) => ({ ...c, [g.id]: !c[g.id] }))} style={{ marginTop: 3, accentColor: 'var(--accent)' }} />
+                  <CaseACocher key={g.id} haut style={{ display: 'flex', gap: 10, padding: '8px 10px', borderRadius: 9, background: checked[g.id] ? 'var(--accent-soft)' : 'transparent', border: '1px solid ' + (checked[g.id] ? 'var(--accent)' : 'var(--border)') }}
+                    checked={!!checked[g.id]} onChange={() => setChecked((c) => ({ ...c, [g.id]: !c[g.id] }))}>
                     <span style={{ fontSize: 14 }}><Tex>{g.critere}</Tex>{g.essentiel && <span className="pill accent" style={{ marginLeft: 8, height: 20, fontSize: 11 }}>essentiel</span>}</span>
-                  </label>
+                  </CaseACocher>
                 ))}
               </div>
             </div>

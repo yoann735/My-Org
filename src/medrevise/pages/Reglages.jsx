@@ -4,6 +4,7 @@
    ============================================================ */
 import { useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { CaseACocher } from '../components/CaseACocher.jsx';
 import { Card, EdTop, Switch, matiereMeta, syncStatusLabel, SyncIndicator } from '../components/ui.jsx';
 import { isClassicUI, setClassicUI } from '../../shared/uiMode.js';
 import { ongletReviserOrdinateur, setOngletReviserOrdinateur } from '../lib/ongletReviser.js';
@@ -475,10 +476,9 @@ function ReglagesFlashcards({ ctx }) {
   const r = reglagesFC(ctx.reglagesFC);
   return (
     <div className="rfc">
-      <label className="rfc-champ rfc-bascule">
+      <CaseACocher texteAvant className="rfc-champ rfc-bascule" checked={r.muscleLigneParLigne} onChange={(v) => ctx.saveReglagesFC({ ...(ctx.reglagesFC || {}), muscleLigneParLigne: v })}>
         <span className="rfc-libelle">Carte Muscle : révéler ligne par ligne<span className="hint">au retournement, les 5 lignes sont masquées ; touche une ligne pour la voir, ou « Tout révéler »</span></span>
-        <input type="checkbox" checked={r.muscleLigneParLigne} onChange={(e) => ctx.saveReglagesFC({ ...(ctx.reglagesFC || {}), muscleLigneParLigne: e.target.checked })} />
-      </label>
+      </CaseACocher>
       <div className="hint">Séance du jour : toutes les cartes dues, une vue chacune, 4 boutons (À revoir · Difficile · Correct · Facile).</div>
     </div>
   );
