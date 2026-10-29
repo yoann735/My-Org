@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecteur par séances</title>
+<link rel="stylesheet" href="commun/commun.css">
+<style>
+body { overflow-x: hidden; }
+.page { max-width: 1320px; margin: 0 auto; padding: 40px 24px 80px; }
+.sur { font: 700 11.5px var(--police); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+h1 { font-size: clamp(28px, 4vw, 42px); letter-spacing: -.03em; margin: 8px 0 10px; line-height: 1.08; }
+.chapeau { color: var(--text-2); font-size: 16px; max-width: 820px; margin: 0 0 22px; }
+.liens { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 30px; }
+.lien { display: inline-flex; gap: 8px; align-items: center; border: 1px solid var(--border); background: var(--card); color: var(--text); text-decoration: none; border-radius: 10px; padding: 8px 12px; font-weight: 600; font-size: 13.5px; }
+.lien:hover { border-color: var(--accent); }
+.besoin { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 40px; }
+.besoin div { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+.besoin b { display: block; font-size: 22px; letter-spacing: -.02em; } .besoin span { color: var(--text-2); font-size: 13px; }
+.versions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: stretch; }
+.v { background: var(--card); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+.v.reco { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 30px 60px -40px color-mix(in srgb, var(--accent) 70%, transparent); }
+.v .ruban-reco { position: absolute; top: 14px; right: 14px; z-index: 2; background: var(--accent); color: #fff; font-weight: 800; font-size: 11px; letter-spacing: .06em; padding: 4px 10px; border-radius: 999px; }
+.apercu { position: relative; height: 250px; overflow: hidden; background: var(--bg); border-bottom: 1px solid var(--border); display: block; }
+.apercu iframe { position: absolute; top: -96px; left: 0; width: 1500px; height: 1060px; border: 0; transform: scale(.285); transform-origin: 0 0; pointer-events: none; }
+.apercu::after { content: 'Ouvrir le prototype →'; position: absolute; inset: auto 12px 12px auto; background: rgba(10,10,15,.85); color: #fff; font-weight: 700; font-size: 12.5px; padding: 6px 10px; border-radius: 8px; opacity: 0; transition: .2s; }
+.apercu:hover::after { opacity: 1; }
+.v .corps { padding: 18px 20px 20px; display: grid; gap: 14px; flex: 1; align-content: start; }
+.v .lettre { font: 800 12px var(--mono); color: var(--accent); }
+.v h2 { margin: 2px 0 0; font-size: 21px; letter-spacing: -.02em; }
+.v .idee { color: var(--text-2); font-size: 14px; margin: 0; }
+.v h4 { margin: 0 0 6px; font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; }
+.v ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; color: var(--text-2); }
+.gagne h4 { color: var(--ok); } .perdu h4 { color: var(--crit); }
+.v .note { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--text-3); }
+.v .note span { border: 1px solid var(--border); border-radius: 999px; padding: 3px 9px; }
+.v .ouvrir { margin-top: auto; display: flex; justify-content: center; text-decoration: none; background: var(--accent-soft); color: var(--accent); font-weight: 700; padding: 10px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.v.reco .ouvrir { background: var(--accent); color: #fff; }
+.reco-bloc { margin-top: 40px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; }
+.reco-bloc .carte { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 22px 24px; }
+.reco-bloc h3 { margin: 0 0 10px; font-size: 20px; letter-spacing: -.02em; }
+.reco-bloc p, .reco-bloc li { color: var(--text-2); font-size: 14px; }
+.reco-bloc ol { padding-left: 20px; margin: 0; display: grid; gap: 6px; }
+.tableau { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tableau th, .tableau td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border-2); }
+.tableau th { color: var(--text-3); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; }
+.tableau td:first-child { color: var(--text); font-weight: 600; }
+.etoiles { color: var(--accent); letter-spacing: 2px; }
+.etoiles i { color: var(--border-hover); font-style: normal; }
+.avant { margin-top: 40px; }
+.avant h3 { font-size: 18px; margin: 0 0 12px; }
+.captures { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.captures a { display: block; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--card); text-decoration: none; color: var(--text-2); font-size: 12px; }
+.captures img { width: 100%; display: block; aspect-ratio: 16 / 10; object-fit: cover; object-position: top; }
+.captures span { display: block; padding: 8px 10px; }
+.seg-theme { position: fixed; top: 16px; right: 16px; z-index: 5; }
+@media (max-width: 1100px) { .versions, .reco-bloc { grid-template-columns: 1fr; } .besoin, .captures { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .besoin, .captures { grid-template-columns: 1fr; } .page { padding: 28px 16px 60px; } }
+</style>
+</head>
+<body>
+<div class="seg seg-theme"><button data-t="dark">Sombre</button><button data-t="light">Clair</button></div>
+<div class="page">
+  <div class="sur">MedRevise · étude UX · lecteur de cours</div>
+  <h1>Un gros diapo, cinq séances, sept fiches :<br>trois façons de les ranger</h1>
+  <p class="chapeau">Un cours de 300 pages couvre un mois de cours. Chaque séance a son transcript en direct et une ou plusieurs fiches de résumé que Claude produit le soir. Ce sont ces fiches qu’on lit et qu’on révise. Voici trois prototypes cliquables, très différents, avec les mêmes données d’exemple. Chacun se teste sur ordinateur, iPad et téléphone, en thème sombre ou clair, avec des scénarios guidés en haut de page.</p>
+  <div class="liens">
+    <a class="lien" href="../audit.md">📋 Audit du lecteur actuel</a>
+    <a class="lien" href="recommandation.md">🧭 Recommandation et modèle de données</a>
+    <a class="lien" href="../captures/">🖼 Captures de l’existant</a>
+  </div>
+  <div class="besoin">
+    <div><b>300</b><span>pages de diapo dans un seul PDF</span></div>
+    <div><b>5</b><span>séances, chacune avec son transcript horodaté et relié aux pages</span></div>
+    <div><b>7 → 8</b><span>fiches : 2 pour la séance 2, 2 pour la séance 3, une synthèse S1+S2, puis l’import de la fiche S5</span></div>
+    <div><b>3</b><span>moments : ouvrir le cours, suivre le cours en direct, réviser le soir</span></div>
+  </div>
+
+  <div class="versions">
+    <article class="v reco">
+      <span class="ruban-reco">RECOMMANDÉE</span>
+      <a class="apercu" href="v1-seances/index.html"><iframe src="v1-seances/index.html?appareil=desktop" title="Aperçu version A" loading="lazy" tabindex="-1"></iframe></a>
+      <div class="corps">
+        <div><div class="lettre">VERSION A</div><h2>Séances d’abord</h2></div>
+        <p class="idee">Le cours s’ouvre sur ses séances : où on en est, ce qui manque, ce qui a lieu aujourd’hui. Chaque séance réunit trois documents, <b>Fiche(s) · Diapo · Transcript</b>. Pendant qu’on lit la fiche, une colonne <b>Sources</b> montre les pages du diapo et les phrases du prof qui correspondent à la page lue.</p>
+        <div class="gagne"><h4>Ce qui est gagné</h4><ul>
+          <li>Les 3 moments répondent en 3 secondes : accueil, <b>direct</b> avec tag Début automatique, révision avec sources.</li>
+          <li>Plusieurs fiches par séance, une fiche pour plusieurs séances, import qui <b>propose</b> la séance.</li>
+          <li>Cartes, notions et notes filtrées par « Cette séance ».</li>
+          <li>Le lecteur actuel reste à l’intérieur de la séance : mêmes outils, même panneau.</li>
+        </ul></div>
+        <div class="perdu"><h4>Ce qui est perdu</h4><ul>
+          <li>Un niveau de plus (cours → séance) pour atteindre une page précise du diapo complet.</li>
+          <li>Le transcript sort du panneau : un changement d’habitude.</li>
+          <li>Un rail de séances de 250 px (une rangée de puces sur iPad).</li>
+        </ul></div>
+        <div class="note"><span>Effort : moyen</span><span>Risque : moyen</span><span>Changement visible : fort</span></div>
+        <a class="ouvrir" href="v1-seances/index.html">Ouvrir la version A</a>
+      </div>
+    </article>
+
+    <article class="v">
+      <a class="apercu" href="v2-classeur/index.html"><iframe src="v2-classeur/index.html?appareil=desktop" title="Aperçu version B" loading="lazy" tabindex="-1"></iframe></a>
+      <div class="corps">
+        <div><div class="lettre">VERSION B</div><h2>Le classeur</h2></div>
+        <p class="idee">L’évolution la plus prudente. Le lecteur actuel reste, mais la bascule Original · Fiche devient une <b>barre d’onglets</b> : le diapo, puis chaque fiche avec sa pastille de séance. Un <b>ruban</b> des 300 pages, coloré par séance, donne la position. Le Transcript du panneau est rangé par séance.</p>
+        <div class="gagne"><h4>Ce qui est gagné</h4><ul>
+          <li>Presque rien à réapprendre : c’est l’écran d’aujourd’hui, élargi.</li>
+          <li>Chaque fiche est à un clic, et ses sources aussi (liens, vue côte à côte).</li>
+          <li>Une seule fenêtre « Documents &amp; séances » à la place de deux.</li>
+          <li>Le chantier le plus court.</li>
+        </ul></div>
+        <div class="perdu"><h4>Ce qui est perdu</h4><ul>
+          <li>La séance reste une couleur : on navigue par document, pas par séance.</li>
+          <li>Avec 8 onglets ou plus, la barre défile (surtout sur iPad).</li>
+          <li>Le direct et la révision gardent l’écran chargé d’outils.</li>
+        </ul></div>
+        <div class="note"><span>Effort : faible</span><span>Risque : faible</span><span>Changement visible : modéré</span></div>
+        <a class="ouvrir" href="v2-classeur/index.html">Ouvrir la version B</a>
+      </div>
+    </article>
+
+    <article class="v">
+      <a class="apercu" href="v3-table/index.html"><iframe src="v3-table/index.html?appareil=desktop" title="Aperçu version C" loading="lazy" tabindex="-1"></iframe></a>
+      <div class="corps">
+        <div><div class="lettre">VERSION C</div><h2>La table synchronisée</h2></div>
+        <p class="idee">Plus de bascule : la fiche, le diapo et le transcript sont <b>trois volets synchronisés</b>, avec un sommaire à gauche (séances → fiches → parties). Quand on fait défiler la fiche, le diapo et le transcript suivent. Les modes Réviser, En direct et Diapo réorganisent les volets. Cartes, notions et notes passent dans un tiroir en bas.</p>
+        <div class="gagne"><h4>Ce qui est gagné</h4><ul>
+          <li>La révision la plus riche : tout est visible en même temps et reste aligné.</li>
+          <li>Le lien fiche ↔ diapo ↔ transcript se voit.</li>
+          <li>Le sommaire donne une vue complète du cours en permanence.</li>
+        </ul></div>
+        <div class="perdu"><h4>Ce qui est perdu</h4><ul>
+          <li>Très dense : trois volets sur un portable 13", deux sur iPad, un seul sur téléphone.</li>
+          <li>Le panneau latéral disparaît (Exos, Notions, Notes en tiroir).</li>
+          <li>Le chantier le plus long (défilement synchronisé, nouvelle mise en page).</li>
+        </ul></div>
+        <div class="note"><span>Effort : élevé</span><span>Risque : élevé</span><span>Changement visible : très fort</span></div>
+        <a class="ouvrir" href="v3-table/index.html">Ouvrir la version C</a>
+      </div>
+    </article>
+  </div>
+
+  <div class="reco-bloc">
+    <div class="carte">
+      <h3>Ma recommandation : la version A, avec le ruban de B et la synchronisation de C</h3>
+      <p>Le besoin réel, c’est <b>« ce qui s’est passé le 8 octobre »</b> : des pages, une voix, une ou deux fiches, des cartes. Seule la version A fait de la séance l’objet qu’on ouvre. Les deux autres la laissent soit en étiquette (B), soit en sommaire (C).</p>
+      <p>A répond aux trois moments sans réglage. À l’ouverture, on voit d’un coup d’œil quelles séances n’ont pas encore de fiche. En direct, Début et transcript se posent tout seuls. Le soir, la fiche s’affiche avec ses sources.</p>
+      <p>A garde aussi le lecteur actuel <i>dans</i> la séance : ses outils, son panneau, son export. On ne jette rien, on range.</p>
+      <ol>
+        <li>Du <b>B</b>, je garde le ruban des 300 pages (navigation dans le diapo complet) et la prudence : le lecteur reste reconnaissable.</li>
+        <li>Du <b>C</b>, je garde les sources qui <b>suivent la page lue</b>, avec un verrou, et le côte à côte fiche + diapo en option sur grand écran.</li>
+        <li>Je laisse de côté les trois volets permanents de C et la barre de 8+ onglets de B.</li>
+      </ol>
+      <p style="margin-bottom:0">Modèle de données, migration sans perte et 5 chantiers : <a href="recommandation.md" style="color:var(--accent)">recommandation.md</a>.</p>
+    </div>
+    <div class="carte">
+      <h3>Comparaison rapide</h3>
+      <table class="tableau">
+        <tr><th></th><th>A</th><th>B</th><th>C</th></tr>
+        <tr><td>Ouvrir le cours</td><td class="etoiles">●●●</td><td class="etoiles">●●<i>●</i></td><td class="etoiles">●●<i>●</i></td></tr>
+        <tr><td>En direct</td><td class="etoiles">●●●</td><td class="etoiles">●<i>●●</i></td><td class="etoiles">●●●</td></tr>
+        <tr><td>Réviser le soir</td><td class="etoiles">●●●</td><td class="etoiles">●●<i>●</i></td><td class="etoiles">●●●</td></tr>
+        <tr><td>Plusieurs fiches</td><td class="etoiles">●●●</td><td class="etoiles">●●<i>●</i></td><td class="etoiles">●●●</td></tr>
+        <tr><td>iPad</td><td class="etoiles">●●●</td><td class="etoiles">●●<i>●</i></td><td class="etoiles">●<i>●●</i></td></tr>
+        <tr><td>Téléphone</td><td class="etoiles">●●●</td><td class="etoiles">●●<i>●</i></td><td class="etoiles">●●<i>●</i></td></tr>
+        <tr><td>Réapprentissage</td><td class="etoiles">●●<i>●</i></td><td class="etoiles">●●●</td><td class="etoiles">●<i>●●</i></td></tr>
+        <tr><td>Effort de dév.</td><td class="etoiles">●●<i>●</i></td><td class="etoiles">●●●</td><td class="etoiles">●<i>●●</i></td></tr>
+      </table>
+      <p style="font-size:12px;color:var(--text-3);margin:10px 0 0">●●● = le meilleur des trois sur ce critère.</p>
+    </div>
+  </div>
+
+  <section class="avant">
+    <h3>L’existant (captures de l’audit)</h3>
+    <div class="captures">
+      <a href="../captures/ordi-09-vue-fiche.png"><img src="../captures/ordi-09-vue-fiche.png" alt="Lecteur actuel, vue Fiche"><span>Lecteur actuel : une diapo, au plus une fiche</span></a>
+      <a href="../captures/ordi-02-menu-fichier.png"><img src="../captures/ordi-02-menu-fichier.png" alt="Menu Fichier actuel"><span>Menu Fichier : 20 entrées, 3 sections</span></a>
+      <a href="../captures/ordi-16-tags-page.png"><img src="../captures/ordi-16-tags-page.png" alt="Tags de page"><span>Séance = tags Début / Fin posés à la main</span></a>
+      <a href="../captures/ipad-01-lecteur.png"><img src="../captures/ipad-01-lecteur.png" alt="Lecteur iPad"><span>iPad : panneau en volet du bas</span></a>
+    </div>
+  </section>
+</div>
+<script>
+const t = (() => { try { return localStorage.getItem('proto.theme') || 'dark'; } catch (e) { return 'dark'; } })();
+document.documentElement.dataset.theme = t;
+const maj = () => document.querySelectorAll('.seg-theme button').forEach((b) => b.classList.toggle('actif', b.dataset.t === document.documentElement.dataset.theme));
+document.querySelector('.seg-theme').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; document.documentElement.dataset.theme = b.dataset.t; try { localStorage.setItem('proto.theme', b.dataset.t); } catch (x) { /* privé */ } maj(); });
+maj();
+</script>
+</body>
+</html>

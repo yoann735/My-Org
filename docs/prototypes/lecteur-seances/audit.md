@@ -1,5 +1,7 @@
 # Audit du lecteur de cours MedRevise : séances, fiches, transcripts (29/10/2026)
 
+> **Mise à jour (essai 2).** Cet inventaire reste valable, mais ses verdicts les plus ambitieux (sortir le transcript du panneau, accueil de cours, rail de séances) ont donné un premier essai trop chargé, archivé dans `essai-1/`. La proposition retenue garde l'écran actuel et n'ajoute que 4 choses : voir [`proposition.md`](proposition.md) et le prototype [`index.html`](index.html).
+
 ## Comment cet audit a été fait
 
 - **Parcours dans Chrome** sur un banc local, avec une base de test. Aucune donnée réelle n'a été touchée : ni IndexedDB, ni Supabase.

@@ -3,190 +3,479 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lecteur par séances</title>
-<link rel="stylesheet" href="commun/commun.css">
+<title>Lecteur de cours · plusieurs fiches</title>
 <style>
-body { overflow-x: hidden; }
-.page { max-width: 1320px; margin: 0 auto; padding: 40px 24px 80px; }
-.sur { font: 700 11.5px var(--police); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
-h1 { font-size: clamp(28px, 4vw, 42px); letter-spacing: -.03em; margin: 8px 0 10px; line-height: 1.08; }
-.chapeau { color: var(--text-2); font-size: 16px; max-width: 820px; margin: 0 0 22px; }
-.liens { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 30px; }
-.lien { display: inline-flex; gap: 8px; align-items: center; border: 1px solid var(--border); background: var(--card); color: var(--text); text-decoration: none; border-radius: 10px; padding: 8px 12px; font-weight: 600; font-size: 13.5px; }
-.lien:hover { border-color: var(--accent); }
-.besoin { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 40px; }
-.besoin div { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
-.besoin b { display: block; font-size: 22px; letter-spacing: -.02em; } .besoin span { color: var(--text-2); font-size: 13px; }
-.versions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: stretch; }
-.v { background: var(--card); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; position: relative; }
-.v.reco { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 30px 60px -40px color-mix(in srgb, var(--accent) 70%, transparent); }
-.v .ruban-reco { position: absolute; top: 14px; right: 14px; z-index: 2; background: var(--accent); color: #fff; font-weight: 800; font-size: 11px; letter-spacing: .06em; padding: 4px 10px; border-radius: 999px; }
-.apercu { position: relative; height: 250px; overflow: hidden; background: var(--bg); border-bottom: 1px solid var(--border); display: block; }
-.apercu iframe { position: absolute; top: -96px; left: 0; width: 1500px; height: 1060px; border: 0; transform: scale(.285); transform-origin: 0 0; pointer-events: none; }
-.apercu::after { content: 'Ouvrir le prototype →'; position: absolute; inset: auto 12px 12px auto; background: rgba(10,10,15,.85); color: #fff; font-weight: 700; font-size: 12.5px; padding: 6px 10px; border-radius: 8px; opacity: 0; transition: .2s; }
-.apercu:hover::after { opacity: 1; }
-.v .corps { padding: 18px 20px 20px; display: grid; gap: 14px; flex: 1; align-content: start; }
-.v .lettre { font: 800 12px var(--mono); color: var(--accent); }
-.v h2 { margin: 2px 0 0; font-size: 21px; letter-spacing: -.02em; }
-.v .idee { color: var(--text-2); font-size: 14px; margin: 0; }
-.v h4 { margin: 0 0 6px; font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; }
-.v ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; color: var(--text-2); }
-.gagne h4 { color: var(--ok); } .perdu h4 { color: var(--crit); }
-.v .note { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--text-3); }
-.v .note span { border: 1px solid var(--border); border-radius: 999px; padding: 3px 9px; }
-.v .ouvrir { margin-top: auto; display: flex; justify-content: center; text-decoration: none; background: var(--accent-soft); color: var(--accent); font-weight: 700; padding: 10px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
-.v.reco .ouvrir { background: var(--accent); color: #fff; }
-.reco-bloc { margin-top: 40px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; }
-.reco-bloc .carte { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 22px 24px; }
-.reco-bloc h3 { margin: 0 0 10px; font-size: 20px; letter-spacing: -.02em; }
-.reco-bloc p, .reco-bloc li { color: var(--text-2); font-size: 14px; }
-.reco-bloc ol { padding-left: 20px; margin: 0; display: grid; gap: 6px; }
-.tableau { width: 100%; border-collapse: collapse; font-size: 13px; }
-.tableau th, .tableau td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border-2); }
-.tableau th { color: var(--text-3); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; }
-.tableau td:first-child { color: var(--text); font-weight: 600; }
-.etoiles { color: var(--accent); letter-spacing: 2px; }
-.etoiles i { color: var(--border-hover); font-style: normal; }
-.avant { margin-top: 40px; }
-.avant h3 { font-size: 18px; margin: 0 0 12px; }
-.captures { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.captures a { display: block; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--card); text-decoration: none; color: var(--text-2); font-size: 12px; }
-.captures img { width: 100%; display: block; aspect-ratio: 16 / 10; object-fit: cover; object-position: top; }
-.captures span { display: block; padding: 8px 10px; }
-.seg-theme { position: fixed; top: 16px; right: 16px; z-index: 5; }
-@media (max-width: 1100px) { .versions, .reco-bloc { grid-template-columns: 1fr; } .besoin, .captures { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 560px) { .besoin, .captures { grid-template-columns: 1fr; } .page { padding: 28px 16px 60px; } }
+/* Prototype : le lecteur ACTUEL de MedRevise, reproduit tel quel, + 4 ajouts marqués « Nouveau ».
+   Tout est fictif et en mémoire (aucun lien avec l'app ni avec les données réelles). */
+:root {
+  --bg: #0B0B0F; --bg-2: #121218; --card: #15151C; --card-2: #1B1B24; --elev: #1E1E27;
+  --border: #2A2A33; --border-2: #222229; --border-hover: #3A3A43;
+  --text: #F2F2F5; --text-2: #A7A7B3; --text-3: #6E6E7A;
+  --accent: #A47BFF; --accent-soft: color-mix(in srgb, #A47BFF 15%, transparent);
+  --ok: #3FAE7A; --crit: #E5677D; --live: #FF5470;
+  --police: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; --mono: ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: 14px/1.45 var(--police); -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; }
+button { font: inherit; color: inherit; cursor: pointer; }
+.ic { width: 16px; height: 16px; display: inline-block; vertical-align: -3px; flex: 0 0 auto; }
+
+/* ---------- bandeau du prototype (hors app) ---------- */
+.guide { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 9px 16px; background: #17122b; border-bottom: 1px solid #3a2d6b; font-size: 13px; }
+.guide b { color: #d9ccff; }
+.guide .etape { border: 1px solid #4a3a85; background: #221a40; color: #e7e0ff; border-radius: 999px; padding: 4px 11px; font-size: 12.5px; font-weight: 600; }
+.guide .etape:hover { background: #2d2357; }
+.guide .etape span { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; margin-right: 6px; }
+.guide .droite { margin-left: auto; color: #a99bd8; font-size: 12px; }
+
+/* ---------- l'app ---------- */
+.app { flex: 1; min-height: 0; display: grid; grid-template-columns: 76px 1fr; padding: 14px 14px 14px 0; gap: 0; }
+.nav { margin-left: 14px; border: 1px solid var(--border); border-radius: 16px; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 16px 0; background: var(--bg); }
+.nav .logo { width: 36px; height: 36px; border-radius: 10px; border: 1px solid #5b47b8; display: grid; place-items: center; color: var(--accent); margin-bottom: 12px; }
+.nav button { width: 38px; height: 38px; border-radius: 10px; border: 0; background: none; color: var(--text-2); display: grid; place-items: center; }
+.nav button.actif { background: var(--accent); color: #fff; }
+.nav .bas { margin-top: auto; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.nav .av { width: 30px; height: 30px; border-radius: 50%; background: #8f6bff; color: #fff; font-size: 11px; font-weight: 800; display: grid; place-items: center; }
+.lecteur { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-left: 20px; }
+
+.entete { display: flex; align-items: flex-start; gap: 10px; padding: 8px 4px 4px; }
+.entete .titre { font-weight: 800; font-size: 15px; } .entete .nb { color: var(--text-3); font-size: 12px; margin-left: 8px; }
+.lien-fichier { display: block; border: 0; background: none; padding: 2px 0; font-size: 12.5px; color: var(--text-2); }
+.lien-fichier:hover { color: var(--text); }
+.dispo { margin-left: auto; display: flex; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; }
+.dispo button { border: 0; background: none; color: var(--text-2); padding: 5px 10px; border-radius: 7px; font-size: 12.5px; display: flex; gap: 6px; align-items: center; }
+.dispo button.actif { background: var(--card-2); color: var(--text); border: 1px solid var(--border); }
+
+.barre { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border-2); }
+.grp { display: flex; align-items: center; gap: 2px; border: 1px solid var(--border); border-radius: 10px; padding: 3px; background: var(--bg); }
+.grp button { border: 0; background: none; color: var(--text-2); padding: 5px 8px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.grp button:hover { color: var(--text); background: var(--card); }
+.grp button.actif { background: var(--accent-soft); color: var(--accent); }
+.grp .num { font: 600 12.5px var(--mono); color: var(--text-2); padding: 0 4px; display: flex; align-items: center; gap: 4px; }
+.grp .num input { width: 42px; background: var(--bg-2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; font: 600 12.5px var(--mono); text-align: center; padding: 3px 2px; }
+.btn-doc { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); background: var(--card); border-radius: 10px; padding: 6px 10px; font-size: 13px; font-weight: 600; max-width: 360px; }
+.btn-doc:hover { border-color: var(--border-hover); }
+.btn-doc .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn-doc .s { font-size: 11px; font-weight: 800; padding: 1px 6px; border-radius: 6px; flex: 0 0 auto; }
+.recherche { margin-left: auto; display: flex; align-items: center; gap: 8px; width: 220px; border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; color: var(--text-3); font-size: 13px; }
+.nouveau { font-size: 9.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #fff; background: var(--accent); border-radius: 5px; padding: 1px 5px; flex: 0 0 auto; }
+
+.corps { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 360px; gap: 14px; padding-top: 12px; }
+.pages { overflow: auto; border-radius: 12px; background: var(--bg-2); padding: 18px 18px 120px 46px; position: relative; scroll-behavior: auto; }
+.page { position: relative; margin: 0 auto 18px; max-width: 840px; }
+.diapo { aspect-ratio: 4 / 3; background: #fff; color: #1f1f2a; border-radius: 4px; padding: 5% 7%; display: flex; flex-direction: column; }
+.diapo .tt { font-weight: 800; font-size: clamp(16px, 2.3vw, 30px); color: #312a7a; padding-bottom: 3%; border-bottom: 3px solid var(--sc); margin-bottom: 5%; }
+.diapo ul { margin: 0; padding-left: 1.2em; display: grid; gap: 4%; font-size: clamp(11px, 1.4vw, 19px); color: #333; }
+.diapo .pied { margin-top: auto; display: flex; justify-content: space-between; color: #9a9aa8; font-size: 11px; }
+.fiche { background: #fffdf8; color: #22222b; border-radius: 4px; padding: 34px 40px 40px; min-height: 560px; }
+.fiche .sur { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #8a85b5; }
+.fiche h3 { margin: 6px 0 16px; font-size: 22px; color: #2a2560; }
+.fiche ul { margin: 0; padding-left: 20px; display: grid; gap: 12px; font-size: 15.5px; }
+.fiche li { border-radius: 4px; padding: 1px 4px; cursor: text; }
+.fiche li.surligne { background: #fff1a6; }
+.fiche .pied { margin-top: 26px; color: #a19db5; font-size: 11px; text-align: right; }
+/* marge gauche : tags Début / Fin (existant) */
+.tag { position: absolute; left: -36px; top: 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.tag .ic-tag { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--border); background: var(--card); display: grid; place-items: center; color: var(--text-3); }
+.pastille { position: absolute; left: 10px; top: 10px; z-index: 2; background: var(--ok); color: #fff; border-radius: 7px; font-size: 11.5px; font-weight: 700; padding: 3px 8px; display: flex; gap: 5px; align-items: center; box-shadow: 0 4px 10px -4px rgba(0,0,0,.4); }
+.pastille.fin { background: var(--crit); }
+.badge-trans { position: absolute; right: 10px; top: 10px; z-index: 2; background: rgba(20,20,30,.85); color: #fff; border-radius: 7px; font-size: 11.5px; padding: 3px 8px; display: flex; gap: 5px; align-items: center; border: 0; }
+/* NOUVEAU : lien d'une page de fiche vers la diapo d'origine */
+.origine { position: absolute; right: 12px; top: 12px; z-index: 2; display: flex; align-items: center; gap: 6px; border: 1px solid #d9d2fb; background: #f3efff; color: #4b3fb0; border-radius: 8px; padding: 5px 10px; font-size: 12.5px; font-weight: 600; }
+.origine:hover { background: #e7e0ff; }
+.retour-fiche { position: sticky; top: 0; z-index: 5; margin: -6px auto 12px; width: fit-content; display: flex; gap: 8px; align-items: center; background: var(--accent); color: #fff; border: 0; border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: 13px; box-shadow: 0 10px 24px -10px rgba(0,0,0,.7); }
+
+/* panneau latéral (existant) */
+.panneau { border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+.onglets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; margin: 10px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; }
+.onglets button { border: 0; background: none; color: var(--text-2); padding: 6px 0; border-radius: 7px; font-size: 13px; font-weight: 600; }
+.onglets button.actif { background: var(--card-2); color: var(--text); border: 1px solid var(--border); }
+.onglets .rouge { color: var(--live); }
+.p-corps { overflow: auto; padding: 0 12px 14px; display: grid; gap: 8px; align-content: start; flex: 1; min-height: 0; }
+.p-corps h5 { margin: 8px 2px 2px; font-size: 12px; color: var(--text-2); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--border); background: var(--card); border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: 600; }
+.btn:hover { border-color: var(--border-hover); }
+.btn.prim { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.rouge { background: none; border-color: color-mix(in srgb, var(--live) 50%, var(--border)); color: var(--live); }
+.btn.plein { width: 100%; }
+.seance { display: grid; gap: 3px; width: 100%; text-align: left; border: 1px solid var(--border); background: var(--card); border-radius: 12px; padding: 10px 12px; }
+.seance:hover { border-color: var(--border-hover); }
+.seance b { font-size: 13.5px; } .seance small { color: var(--text-3); font-size: 12px; }
+.s-num { font-size: 11px; font-weight: 800; padding: 1px 6px; border-radius: 6px; margin-right: 6px; }
+.ligne { display: grid; grid-template-columns: 42px 1fr; gap: 8px; font-size: 13px; padding: 6px 4px; border-radius: 8px; }
+.ligne .h { font: 600 11px var(--mono); color: var(--text-3); padding-top: 2px; }
+.ligne .p { border: 0; background: none; color: var(--accent); font: 600 11px var(--mono); padding: 0 0 0 4px; }
+.ligne.neuve { background: var(--accent-soft); animation: arrivee .5s ease-out; }
+@keyframes arrivee { from { opacity: 0; transform: translateY(5px); } }
+.enreg { display: flex; align-items: center; gap: 8px; border: 1px solid color-mix(in srgb, var(--live) 40%, var(--border)); background: color-mix(in srgb, var(--live) 8%, var(--card)); border-radius: 12px; padding: 10px 12px; }
+.point { width: 9px; height: 9px; border-radius: 50%; background: var(--live); animation: pouls 1.2s infinite; }
+@keyframes pouls { 50% { opacity: .25; } }
+.carte { border: 1px solid var(--border); background: var(--card); border-radius: 12px; padding: 10px 12px; font-size: 13px; }
+.carte small { color: var(--text-3); display: block; margin-bottom: 3px; }
+.carte .v { color: var(--text-2); margin-top: 3px; }
+.vide { color: var(--text-3); font-size: 12.5px; text-align: center; padding: 18px 8px; }
+.sous-onglets { display: flex; gap: 14px; padding: 0 4px 6px; border-bottom: 1px solid var(--border-2); font-size: 13px; color: var(--text-2); }
+.sous-onglets b { color: var(--text); border-bottom: 2px solid var(--accent); padding-bottom: 5px; }
+
+/* menus et fenêtres */
+.menu { position: fixed; z-index: 30; background: var(--elev); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 24px 50px -20px rgba(0,0,0,.8); padding: 6px; min-width: 300px; max-height: 70vh; overflow: auto; }
+.menu .grp-t { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); padding: 9px 10px 4px; display: flex; gap: 8px; align-items: center; }
+.menu .item { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; text-align: left; padding: 8px 10px; border-radius: 8px; font-size: 13.5px; }
+.menu .item:hover { background: var(--card-2); }
+.menu .item.actif { background: var(--accent-soft); }
+.menu .item small { margin-left: auto; color: var(--text-3); font-size: 11.5px; }
+.menu .item.sous { padding-left: 30px; }
+.menu .item.grise { color: var(--text-3); cursor: default; font-size: 12.5px; }
+.menu .sep { height: 1px; background: var(--border); margin: 6px 4px; }
+.menu .rouge { color: var(--crit); }
+.voile { position: fixed; inset: 0; z-index: 40; background: rgba(5,5,10,.6); display: grid; place-items: center; }
+.fen { width: min(540px, 92vw); background: var(--card); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 30px 60px -20px rgba(0,0,0,.8); }
+.fen .t { padding: 16px 18px; font-weight: 800; font-size: 16px; border-bottom: 1px solid var(--border); }
+.fen .c { padding: 18px; display: grid; gap: 14px; font-size: 13.5px; }
+.fen .p { padding: 12px 18px; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border); }
+.fen label { display: grid; gap: 6px; font-weight: 600; }
+.fen select, .fen input[type=text] { background: var(--bg-2); color: var(--text); border: 1px solid var(--border); border-radius: 9px; padding: 9px 10px; font: 13.5px var(--police); }
+.fen .aide { color: var(--text-3); font-size: 12px; font-weight: 500; }
+.depot { border: 2px dashed var(--border-hover); border-radius: 12px; padding: 28px; text-align: center; color: var(--text-2); }
+.depot:hover { border-color: var(--accent); color: var(--text); }
+.coche { display: flex !important; grid-auto-flow: column; align-items: center; gap: 10px; font-weight: 500 !important; }
+.coche input { width: 17px; height: 17px; accent-color: var(--accent); }
+.tableau-docs { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tableau-docs td { padding: 8px 6px; border-bottom: 1px solid var(--border-2); }
+.tableau-docs td:last-child { text-align: right; color: var(--text-3); }
+.toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(16px); opacity: 0; transition: .25s; z-index: 60; background: var(--elev); border: 1px solid var(--border); border-radius: 12px; padding: 10px 16px; font-size: 13.5px; box-shadow: 0 20px 40px -20px rgba(0,0,0,.8); pointer-events: none; }
+.toast.vu { opacity: 1; transform: translateX(-50%); }
+.anneau { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 10px; animation: anneau 1s 3; }
+@keyframes anneau { 50% { outline-color: transparent; } }
 </style>
 </head>
 <body>
-<div class="seg seg-theme"><button data-t="dark">Sombre</button><button data-t="light">Clair</button></div>
-<div class="page">
-  <div class="sur">MedRevise · étude UX · lecteur de cours</div>
-  <h1>Un gros diapo, cinq séances, sept fiches :<br>trois façons de les ranger</h1>
-  <p class="chapeau">Un cours de 300 pages couvre un mois de cours. Chaque séance a son transcript en direct et une ou plusieurs fiches de résumé que Claude produit le soir. Ce sont ces fiches qu’on lit et qu’on révise. Voici trois prototypes cliquables, très différents, avec les mêmes données d’exemple. Chacun se teste sur ordinateur, iPad et téléphone, en thème sombre ou clair, avec des scénarios guidés en haut de page.</p>
-  <div class="liens">
-    <a class="lien" href="audit.md">📋 Audit du lecteur actuel</a>
-    <a class="lien" href="recommandation.md">🧭 Recommandation et modèle de données</a>
-    <a class="lien" href="captures/">🖼 Captures de l’existant</a>
-  </div>
-  <div class="besoin">
-    <div><b>300</b><span>pages de diapo dans un seul PDF</span></div>
-    <div><b>5</b><span>séances, chacune avec son transcript horodaté et relié aux pages</span></div>
-    <div><b>7 → 8</b><span>fiches : 2 pour la séance 2, 2 pour la séance 3, une synthèse S1+S2, puis l’import de la fiche S5</span></div>
-    <div><b>3</b><span>moments : ouvrir le cours, suivre le cours en direct, réviser le soir</span></div>
-  </div>
-
-  <div class="versions">
-    <article class="v reco">
-      <span class="ruban-reco">RECOMMANDÉE</span>
-      <a class="apercu" href="v1-seances/index.html"><iframe src="v1-seances/index.html?appareil=desktop" title="Aperçu version A" loading="lazy" tabindex="-1"></iframe></a>
-      <div class="corps">
-        <div><div class="lettre">VERSION A</div><h2>Séances d’abord</h2></div>
-        <p class="idee">Le cours s’ouvre sur ses séances : où on en est, ce qui manque, ce qui a lieu aujourd’hui. Chaque séance réunit trois documents, <b>Fiche(s) · Diapo · Transcript</b>. Pendant qu’on lit la fiche, une colonne <b>Sources</b> montre les pages du diapo et les phrases du prof qui correspondent à la page lue.</p>
-        <div class="gagne"><h4>Ce qui est gagné</h4><ul>
-          <li>Les 3 moments répondent en 3 secondes : accueil, <b>direct</b> avec tag Début automatique, révision avec sources.</li>
-          <li>Plusieurs fiches par séance, une fiche pour plusieurs séances, import qui <b>propose</b> la séance.</li>
-          <li>Cartes, notions et notes filtrées par « Cette séance ».</li>
-          <li>Le lecteur actuel reste à l’intérieur de la séance : mêmes outils, même panneau.</li>
-        </ul></div>
-        <div class="perdu"><h4>Ce qui est perdu</h4><ul>
-          <li>Un niveau de plus (cours → séance) pour atteindre une page précise du diapo complet.</li>
-          <li>Le transcript sort du panneau : un changement d’habitude.</li>
-          <li>Un rail de séances de 250 px (une rangée de puces sur iPad).</li>
-        </ul></div>
-        <div class="note"><span>Effort : moyen</span><span>Risque : moyen</span><span>Changement visible : fort</span></div>
-        <a class="ouvrir" href="v1-seances/index.html">Ouvrir la version A</a>
-      </div>
-    </article>
-
-    <article class="v">
-      <a class="apercu" href="v2-classeur/index.html"><iframe src="v2-classeur/index.html?appareil=desktop" title="Aperçu version B" loading="lazy" tabindex="-1"></iframe></a>
-      <div class="corps">
-        <div><div class="lettre">VERSION B</div><h2>Le classeur</h2></div>
-        <p class="idee">L’évolution la plus prudente. Le lecteur actuel reste, mais la bascule Original · Fiche devient une <b>barre d’onglets</b> : le diapo, puis chaque fiche avec sa pastille de séance. Un <b>ruban</b> des 300 pages, coloré par séance, donne la position. Le Transcript du panneau est rangé par séance.</p>
-        <div class="gagne"><h4>Ce qui est gagné</h4><ul>
-          <li>Presque rien à réapprendre : c’est l’écran d’aujourd’hui, élargi.</li>
-          <li>Chaque fiche est à un clic, et ses sources aussi (liens, vue côte à côte).</li>
-          <li>Une seule fenêtre « Documents &amp; séances » à la place de deux.</li>
-          <li>Le chantier le plus court.</li>
-        </ul></div>
-        <div class="perdu"><h4>Ce qui est perdu</h4><ul>
-          <li>La séance reste une couleur : on navigue par document, pas par séance.</li>
-          <li>Avec 8 onglets ou plus, la barre défile (surtout sur iPad).</li>
-          <li>Le direct et la révision gardent l’écran chargé d’outils.</li>
-        </ul></div>
-        <div class="note"><span>Effort : faible</span><span>Risque : faible</span><span>Changement visible : modéré</span></div>
-        <a class="ouvrir" href="v2-classeur/index.html">Ouvrir la version B</a>
-      </div>
-    </article>
-
-    <article class="v">
-      <a class="apercu" href="v3-table/index.html"><iframe src="v3-table/index.html?appareil=desktop" title="Aperçu version C" loading="lazy" tabindex="-1"></iframe></a>
-      <div class="corps">
-        <div><div class="lettre">VERSION C</div><h2>La table synchronisée</h2></div>
-        <p class="idee">Plus de bascule : la fiche, le diapo et le transcript sont <b>trois volets synchronisés</b>, avec un sommaire à gauche (séances → fiches → parties). Quand on fait défiler la fiche, le diapo et le transcript suivent. Les modes Réviser, En direct et Diapo réorganisent les volets. Cartes, notions et notes passent dans un tiroir en bas.</p>
-        <div class="gagne"><h4>Ce qui est gagné</h4><ul>
-          <li>La révision la plus riche : tout est visible en même temps et reste aligné.</li>
-          <li>Le lien fiche ↔ diapo ↔ transcript se voit.</li>
-          <li>Le sommaire donne une vue complète du cours en permanence.</li>
-        </ul></div>
-        <div class="perdu"><h4>Ce qui est perdu</h4><ul>
-          <li>Très dense : trois volets sur un portable 13", deux sur iPad, un seul sur téléphone.</li>
-          <li>Le panneau latéral disparaît (Exos, Notions, Notes en tiroir).</li>
-          <li>Le chantier le plus long (défilement synchronisé, nouvelle mise en page).</li>
-        </ul></div>
-        <div class="note"><span>Effort : élevé</span><span>Risque : élevé</span><span>Changement visible : très fort</span></div>
-        <a class="ouvrir" href="v3-table/index.html">Ouvrir la version C</a>
-      </div>
-    </article>
-  </div>
-
-  <div class="reco-bloc">
-    <div class="carte">
-      <h3>Ma recommandation : la version A, avec le ruban de B et la synchronisation de C</h3>
-      <p>Le besoin réel, c’est <b>« ce qui s’est passé le 8 octobre »</b> : des pages, une voix, une ou deux fiches, des cartes. Seule la version A fait de la séance l’objet qu’on ouvre. Les deux autres la laissent soit en étiquette (B), soit en sommaire (C).</p>
-      <p>A répond aux trois moments sans réglage. À l’ouverture, on voit d’un coup d’œil quelles séances n’ont pas encore de fiche. En direct, Début et transcript se posent tout seuls. Le soir, la fiche s’affiche avec ses sources.</p>
-      <p>A garde aussi le lecteur actuel <i>dans</i> la séance : ses outils, son panneau, son export. On ne jette rien, on range.</p>
-      <ol>
-        <li>Du <b>B</b>, je garde le ruban des 300 pages (navigation dans le diapo complet) et la prudence : le lecteur reste reconnaissable.</li>
-        <li>Du <b>C</b>, je garde les sources qui <b>suivent la page lue</b>, avec un verrou, et le côte à côte fiche + diapo en option sur grand écran.</li>
-        <li>Je laisse de côté les trois volets permanents de C et la barre de 8+ onglets de B.</li>
-      </ol>
-      <p style="margin-bottom:0">Modèle de données, migration sans perte et 5 chantiers : <a href="recommandation.md" style="color:var(--accent)">recommandation.md</a>.</p>
-    </div>
-    <div class="carte">
-      <h3>Comparaison rapide</h3>
-      <table class="tableau">
-        <tr><th></th><th>A</th><th>B</th><th>C</th></tr>
-        <tr><td>Ouvrir le cours</td><td class="etoiles">●●●</td><td class="etoiles">●●<i>●</i></td><td class="etoiles">●●<i>●</i></td></tr>
-        <tr><td>En direct</td><td class="etoiles">●●●</td><td class="etoiles">●<i>●●</i></td><td class="etoiles">●●●</td></tr>
-        <tr><td>Réviser le soir</td><td class="etoiles">●●●</td><td class="etoiles">●●<i>●</i></td><td class="etoiles">●●●</td></tr>
-        <tr><td>Plusieurs fiches</td><td class="etoiles">●●●</td><td class="etoiles">●●<i>●</i></td><td class="etoiles">●●●</td></tr>
-        <tr><td>iPad</td><td class="etoiles">●●●</td><td class="etoiles">●●<i>●</i></td><td class="etoiles">●<i>●●</i></td></tr>
-        <tr><td>Téléphone</td><td class="etoiles">●●●</td><td class="etoiles">●●<i>●</i></td><td class="etoiles">●●<i>●</i></td></tr>
-        <tr><td>Réapprentissage</td><td class="etoiles">●●<i>●</i></td><td class="etoiles">●●●</td><td class="etoiles">●<i>●●</i></td></tr>
-        <tr><td>Effort de dév.</td><td class="etoiles">●●<i>●</i></td><td class="etoiles">●●●</td><td class="etoiles">●<i>●●</i></td></tr>
-      </table>
-      <p style="font-size:12px;color:var(--text-3);margin:10px 0 0">●●● = le meilleur des trois sur ce critère.</p>
-    </div>
-  </div>
-
-  <section class="avant">
-    <h3>L’existant (captures de l’audit)</h3>
-    <div class="captures">
-      <a href="captures/ordi-09-vue-fiche.png"><img src="captures/ordi-09-vue-fiche.png" alt="Lecteur actuel, vue Fiche"><span>Lecteur actuel : une diapo, au plus une fiche</span></a>
-      <a href="captures/ordi-02-menu-fichier.png"><img src="captures/ordi-02-menu-fichier.png" alt="Menu Fichier actuel"><span>Menu Fichier : 20 entrées, 3 sections</span></a>
-      <a href="captures/ordi-16-tags-page.png"><img src="captures/ordi-16-tags-page.png" alt="Tags de page"><span>Séance = tags Début / Fin posés à la main</span></a>
-      <a href="captures/ipad-01-lecteur.png"><img src="captures/ipad-01-lecteur.png" alt="Lecteur iPad"><span>iPad : panneau en volet du bas</span></a>
-    </div>
-  </section>
+<div class="guide">
+  <b>Prototype</b> — le lecteur d’aujourd’hui, plus 4 ajouts marqués <span class="nouveau">Nouveau</span>. À essayer :
+  <button class="etape" data-guide="1"><span>1</span>Changer de document</button>
+  <button class="etape" data-guide="2"><span>2</span>Ajouter une fiche</button>
+  <button class="etape" data-guide="3"><span>3</span>Fiche → diapo d’origine</button>
+  <button class="etape" data-guide="4"><span>4</span>Transcrire le cours d’aujourd’hui</button>
+  <span class="droite">Données fictives · rien n’est enregistré</span>
 </div>
+<div class="app" id="app"></div>
+<div class="toast" id="toast"></div>
 <script>
-const t = (() => { try { return localStorage.getItem('proto.theme') || 'dark'; } catch (e) { return 'dark'; } })();
-document.documentElement.dataset.theme = t;
-const maj = () => document.querySelectorAll('.seg-theme button').forEach((b) => b.classList.toggle('actif', b.dataset.t === document.documentElement.dataset.theme));
-document.querySelector('.seg-theme').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; document.documentElement.dataset.theme = b.dataset.t; try { localStorage.setItem('proto.theme', b.dataset.t); } catch (x) { /* privé */ } maj(); });
-maj();
+/* ===================== données d'exemple ===================== */
+const COURS = { titre: 'Physiologie rénale', pages: 300 };
+const SEANCES = [
+  { id: 's1', n: 1, date: 'mer. 1 oct.', de: 1, a: 58, titre: 'Anatomie du rein et du néphron', couleur: '#8B7BEA', duree: '1 h 52' },
+  { id: 's2', n: 2, date: 'mer. 8 oct.', de: 59, a: 121, titre: 'Filtration glomérulaire et clairances', couleur: '#3FA7D6', duree: '2 h 05' },
+  { id: 's3', n: 3, date: 'mer. 15 oct.', de: 122, a: 180, titre: 'Transports tubulaires', couleur: '#2FB58A', duree: '1 h 58' },
+  { id: 's4', n: 4, date: 'mer. 22 oct.', de: 181, a: 243, titre: 'Eau, sodium et ADH', couleur: '#E9A23B', duree: '2 h 01' },
+  { id: 's5', n: 5, date: 'aujourd’hui', de: 244, a: 300, titre: 'Équilibre acide-base', couleur: '#E5677D', duree: null },
+];
+const TITRES = {
+  s1: ['Plan du cours', 'Situation des reins', 'Rapports anatomiques', 'Coupe frontale du rein', 'Cortex et médullaire', 'Pyramides de Malpighi', 'Vascularisation artérielle', 'Le néphron', 'Corpuscule de Malpighi', 'Tube contourné proximal', 'Anse de Henle', 'Appareil juxtaglomérulaire'],
+  s2: ['Rappels séance 1', 'Barrière de filtration', 'Podocytes et fentes', 'Forces de Starling', 'Pression oncotique', 'DFG : définition', 'Valeurs normales du DFG', 'Autorégulation', 'Rétrocontrôle tubulo-glomérulaire', 'Notion de clairance', 'Clairance de l’inuline', 'Clairance de la créatinine', 'Clairance du PAH', 'Exercices de calcul'],
+  s3: ['Plan', 'Na⁺/K⁺-ATPase', 'TCP : réabsorption du Na⁺', 'SGLT2 et glucose', 'Seuil rénal du glucose', 'Anse de Henle', 'NKCC2', 'TCD : NCC', 'Canal collecteur : ENaC', 'Aldostérone', 'Diurétiques'],
+  s4: ['Plan', 'Compartiments liquidiens', 'Osmolalité plasmatique', 'Gradient cortico-papillaire', 'Contre-courant', 'ADH', 'Aquaporine 2', 'Hyponatrémie', 'SIADH', 'Diabète insipide'],
+  s5: ['Plan', 'pH et ions H⁺', 'Tampons du plasma', 'Henderson-Hasselbalch', 'Réabsorption du HCO₃⁻', 'Excrétion acide', 'Ammoniogenèse', 'Acidose métabolique', 'Trou anionique', 'Compensation respiratoire', 'Gaz du sang'],
+};
+const PHRASES = {
+  s1: ['Le rein droit est un peu plus bas que le gauche, à cause du foie.', 'Sur la coupe frontale : cortex en périphérie, médullaire au centre.', 'Les artères segmentaires sont terminales : pas d’anastomoses.', 'Le néphron est l’unité fonctionnelle, environ un million par rein.', 'Le tube contourné proximal réabsorbe les deux tiers du filtrat.'],
+  s2: ['La barrière a trois couches : endothélium fenêtré, membrane basale, podocytes.', 'L’albumine est négative : elle passe mal la barrière.', 'Le DFG normal, c’est environ 120 mL par minute.', 'Le DFG reste stable entre 80 et 180 mmHg de pression artérielle.', 'La clairance : C égale U fois V sur P.', 'L’inuline n’est ni réabsorbée ni sécrétée : sa clairance égale le DFG.', 'La créatinine est un peu sécrétée, elle surestime le DFG.'],
+  s3: ['Tout repose sur la pompe sodium-potassium au pôle basolatéral.', 'Au TCP, le sodium entre avec le glucose par SGLT2.', 'Au-delà de 180 mg/dL de glycémie : glycosurie.', 'NKCC2 dans la branche ascendante : cible du furosémide.', 'L’aldostérone fait réabsorber le sodium et sécréter le potassium.'],
+  s4: ['L’osmolalité plasmatique normale est autour de 285.', 'Le gradient va jusqu’à 1200 dans la papille.', 'L’ADH agit sur les récepteurs V2 et l’aquaporine 2.', 'Une hyponatrémie, c’est d’abord un problème d’eau.'],
+  s5: ['Dernière séance du module : l’équilibre acide-base.', 'Le pH normal est entre 7,38 et 7,42.', 'Le principal tampon, c’est le couple bicarbonate / CO₂.', 'Le rein réabsorbe presque tout le bicarbonate filtré.', 'L’ammoniogenèse augmente en cas d’acidose chronique.', 'Devant une acidose métabolique, calculez le trou anionique.', 'PCO₂ attendue : 1,5 fois le bicarbonate plus 8.'],
+};
+const sDe = (p) => SEANCES.find((s) => p >= s.de && p <= s.a);
+const sId = (id) => SEANCES.find((s) => s.id === id);
+const titreDiapo = (p) => { const s = sDe(p); const t = TITRES[s.id]; return p === s.de ? 'Séance ' + s.n + ' — ' + s.titre : t[(p - s.de) % t.length]; };
+const pucesDiapo = (p) => { const s = sDe(p); const ph = PHRASES[s.id]; return [0, 1, 2].map((k) => ph[(p + k) % ph.length]); };
+
+/* fiches de résumé : plan (une page par titre), et pages du diapo résumées par chaque page */
+const PUCES = {
+  'Barrière de filtration': ['3 couches : endothélium fenêtré, membrane basale, podocytes', 'Sélectivité de taille (< 70 kDa) et de charge', 'Albumine : 69 kDa, négative → quasi absente de l’urine'],
+  'Forces de Starling': ['PUF = (Pcg − Pb) − (πcg − πb)', 'Pcg ≈ 55 mmHg, Pb ≈ 15 mmHg, πcg ≈ 30 mmHg', 'Pression nette ≈ 10 mmHg en début de capillaire'],
+  'Valeurs du DFG': ['DFG ≈ 120 mL/min ≈ 180 L/jour', 'Diminue avec l’âge (≈ −1 mL/min/an après 40 ans)', 'Normalisé à 1,73 m² de surface corporelle'],
+  'Autorégulation': ['DFG stable pour une PAM de 80 à 180 mmHg', 'Réponse myogénique de l’artériole afférente', 'Rétrocontrôle tubulo-glomérulaire (macula densa)'],
+  'Artérioles afférente / efférente': ['Constriction afférente → ↓ Pcg → ↓ DFG', 'Constriction efférente → ↑ Pcg → ↑ DFG', 'Angiotensine II : surtout efférente → maintient le DFG'],
+  'Définition et formule': ['Volume de plasma épuré d’une substance par minute', 'C = U × V / P', 'Unité : mL/min'],
+  'Inuline et créatinine': ['Inuline : ni réabsorbée ni sécrétée → C = DFG', 'Créatinine : un peu sécrétée → surestime le DFG', 'En pratique : créatinine (dosage simple)'],
+  'PAH et débit plasmatique': ['PAH : filtré et sécrété presque totalement', 'Clairance du PAH ≈ débit plasmatique rénal', 'Fraction de filtration = DFG / DPR ≈ 20 %'],
+  'À retenir': ['La formule de la clairance', 'Les 3 valeurs normales', 'Le piège classique du QCM'],
+  'Tampons et pH': ['pH normal : 7,38 – 7,42', 'Tampon principal : HCO₃⁻ / CO₂', 'pH = 6,1 + log [HCO₃⁻] / (0,03 × PCO₂)'],
+  'Rôle du rein': ['Réabsorbe presque tout le HCO₃⁻ filtré (surtout au TCP)', 'Excrète les acides : acidité titrable + NH₄⁺', 'Régénère du bicarbonate'],
+  'Ammoniogenèse': ['À partir de la glutamine, dans le TCP', 'Augmente en acidose chronique', 'C’est l’adaptation rénale majeure'],
+  'Acidose métabolique': ['pH ↓ et HCO₃⁻ ↓', 'Toujours calculer le trou anionique', 'Compensation : hyperventilation'],
+  'Trou anionique': ['TA = Na⁺ − (Cl⁻ + HCO₃⁻) ≈ 12', 'Augmenté : cétose, lactates, IRC, toxiques', 'Normal : pertes digestives ou rénales de HCO₃⁻'],
+  'Situation et rapports': ['Rétropéritonéaux, de T12 à L3', 'Rein droit plus bas (foie)', 'Entourés de la loge rénale (fascia de Gerota)'],
+  'Le néphron': ['≈ 1 million par rein', 'Corpuscule + tubule (TCP, anse, TCD) + canal collecteur', 'Néphrons corticaux (85 %) et juxtamédullaires'],
+  'Tube contourné proximal': ['Réabsorbe ≈ 2/3 du filtrat (Na⁺, eau)', 'Glucose et acides aminés : 100 %', 'Bordure en brosse, nombreuses mitochondries'],
+  'Glucose et seuil rénal': ['Cotransport Na⁺-glucose (SGLT2)', 'Seuil ≈ 180 mg/dL → glycosurie au-delà', 'Tm du glucose ≈ 375 mg/min'],
+  'ADH': ['Synthèse hypothalamique, libération post-hypophysaire', 'Récepteurs V2 → aquaporine 2 à la membrane', 'Stimulée par ↑ osmolalité et ↓ volémie'],
+};
+const puces = (t) => PUCES[t] || ['Idée principale : ' + t.toLowerCase(), 'Le mécanisme en une phrase', 'La valeur ou l’exemple à connaître'];
+const F = (id, titre, seance, plan, de) => ({ id, titre, seance, plan, de });
+let FICHES = [
+  F('f1', 'Anatomie du rein et du néphron', 's1', ['Situation et rapports', 'Configuration interne', 'Vascularisation', 'Le néphron', 'Appareil juxtaglomérulaire', 'À retenir'], 1),
+  F('f2a', 'DFG et ses déterminants', 's2', ['Barrière de filtration', 'Forces de Starling', 'Valeurs du DFG', 'Autorégulation', 'Artérioles afférente / efférente', 'À retenir'], 59),
+  F('f2b', 'Clairances : méthode et calculs', 's2', ['Définition et formule', 'Inuline et créatinine', 'PAH et débit plasmatique', 'Exercices corrigés'], 97),
+  F('f3a', 'Transports tubulaires', 's3', ['Principes de transport', 'Tube contourné proximal', 'Glucose et seuil rénal', 'Anse de Henle', 'TCD et canal collecteur', 'À retenir'], 122),
+  F('f3b', 'Diurétiques (tableau)', 's3', ['Sites d’action', 'Effets sur la kaliémie', 'Indications'], 168),
+  F('f4', 'Eau, sodium et ADH', 's4', ['Compartiments et osmolalité', 'Gradient cortico-papillaire', 'ADH', 'Hyponatrémie', 'SIADH et diabète insipide', 'À retenir'], 181),
+  F('fx', 'Synthèse anatomie + filtration', 's1', ['Du néphron au DFG', 'Clairances en un tableau', 'Pièges de QCM'], 30),
+];
+const FICHE_S5 = F('f5', 'Équilibre acide-base', 's5', ['Tampons et pH', 'Rôle du rein', 'Ammoniogenèse', 'Acidose métabolique', 'Trou anionique', 'À retenir'], 244);
+/* pages d'origine d'une page de fiche : une tranche de la séance (calcul fictif, l'app le fait par correspondance du texte) */
+function origine(f, i) { const s = sId(f.seance); const nb = f.plan.length; const span = Math.max(4, Math.floor((s.a - f.de + 1) / nb)); const de = Math.min(s.a, f.de + i * Math.min(span, 9)); return { de, a: Math.min(s.a, de + 3) }; }
+
+/* ===================== état ===================== */
+const E = {
+  doc: 'f2a',              // 'diapo' ou id de fiche
+  page: { diapo: 59 },     // page affichée par document
+  outil: 'select', onglet: 'exos', vueTrans: null,
+  retour: null,            // { fiche, page } quand on est allé voir la diapo d'origine
+  menu: null, fen: null, live: null, surl: { f2a: ['1-0', '2-0'] },
+  tags: [{ p: 59, kind: 'debut', s: 's2' }, { p: 121, kind: 'fin', s: 's2' }, { p: 1, kind: 'debut', s: 's1' }, { p: 58, kind: 'fin', s: 's1' }, { p: 122, kind: 'debut', s: 's3' }, { p: 180, kind: 'fin', s: 's3' }, { p: 181, kind: 'debut', s: 's4' }, { p: 243, kind: 'fin', s: 's4' }],
+};
+const fiche = (id) => FICHES.find((f) => f.id === id);
+const nbPages = () => (E.doc === 'diapo' ? COURS.pages : fiche(E.doc).plan.length);
+
+/* ===================== icônes ===================== */
+const I = {
+  retour: '<path d="M15 18l-6-6 6-6"/>', haut: '<path d="M6 15l6-6 6 6"/>', bas: '<path d="M6 9l6 6 6-6"/>', moins: '<path d="M5 12h14"/>', plus: '<path d="M12 5v14M5 12h14"/>',
+  plein: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>', fleche: '<path d="M5 3l14 8-6 2-2 6z"/>', surligne: '<path d="M9 11l6-6 4 4-6 6z"/><path d="M4 20h7l-2-5z"/>', crayon: '<path d="M4 20l4-1 11-11-3-3L5 16z"/>',
+  texte: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>', formes: '<rect x="3" y="12" width="8" height="8" rx="1"/><circle cx="17" cy="7" r="4"/>', inserer: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 8v8M8 12h8"/>',
+  annuler: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-2"/>', loupe: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', diapo: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  fiche: '<path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7"/>', micro: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>', tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+  chev: '<path d="M6 9l6 6 6-6"/>', import: '<path d="M12 4v11M7 10l5 5 5-5"/><path d="M5 20h14"/>', check: '<path d="M5 12l5 5 9-10"/>', lien: '<path d="M7 17L17 7M9 7h8v8"/>', stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>', pause: '<path d="M8 5v14M16 5v14"/>',
+  accueil: '<path d="M4 11l8-7 8 7v9H4z"/>', cartes: '<rect x="4" y="6" width="13" height="14" rx="2"/><path d="M8 3h10a2 2 0 0 1 2 2v11"/>', eclair: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', livre: '<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/>', cible: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>', reglages: '<circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.3l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2.2-1.3L14 2h-4l-.4 2.6a7 7 0 0 0-2.2 1.3l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .9.1 1.3l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2.2 1.3L10 22h4l.4-2.6a7 7 0 0 0 2.2-1.3l2.4 1 2-3.4-2-1.6c.1-.4.1-.9.1-1.3z"/>', grille: '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>',
+};
+const ic = (n, t = 16) => `<svg class="ic" viewBox="0 0 24 24" width="${t}" height="${t}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${I[n] || ''}</svg>`;
+const h = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const pastilleS = (s) => `<span class="s-num" style="background:color-mix(in srgb, ${s.couleur} 22%, transparent);color:${s.couleur}">S${s.n}</span>`;
+
+/* ===================== rendu ===================== */
+const app = document.getElementById('app');
+function rendre() {
+  const f = E.doc === 'diapo' ? null : fiche(E.doc);
+  const nomDoc = f ? `${pastilleS(sId(f.seance))}<span class="t">${h(f.titre)}</span>` : `${ic('diapo')}<span class="t">Diapo du cours</span>`;
+  const p = E.page[E.doc] || 1;
+  app.innerHTML = `
+  <nav class="nav"><div class="logo">${ic('livre', 18)}</div>${['accueil', 'cartes', 'eclair', 'livre', 'cible'].map((n, i) => `<button class="${i === 3 ? 'actif' : ''}">${ic(n, 18)}</button>`).join('')}
+    <div class="bas"><button>${ic('reglages', 18)}</button><button>${ic('grille', 18)}</button><div class="av">MR</div></div></nav>
+  <section class="lecteur">
+    <div class="entete"><div><span class="titre">${COURS.titre}</span><span class="nb">${nbPages()} pages</span><button class="lien-fichier" data-a="menu-fichier" id="b-fichier">Fichier</button></div>
+      <div class="dispo"><button class="actif">${ic('fiche', 14)} PDF</button><button>Les deux</button><button>Tableau</button></div></div>
+    <div class="barre">
+      <div class="grp"><button>${ic('retour', 15)} Retour</button></div>
+      <button class="btn-doc" data-a="menu-doc" id="b-doc" title="Choisir le document affiché">${nomDoc}${ic('chev', 14)}<span class="nouveau">Nouveau</span></button>
+      <div class="grp"><button data-a="prec">${ic('haut', 15)}</button><span class="num"><input id="num" value="${p}" aria-label="Aller à la page"> / ${nbPages()}</span><button data-a="suiv">${ic('bas', 15)}</button></div>
+      <div class="grp"><button>${ic('moins', 15)}</button><span class="num">100 %</span><button>${ic('plus', 15)}</button><button>${ic('plein', 15)}</button></div>
+      <div class="grp">${[['select', 'fleche', 'Sélection'], ['surligne', 'surligne', 'Surligneur'], ['crayon', 'crayon', 'Dessin'], ['texte', 'texte', 'Texte'], ['formes', 'formes', 'Formes'], ['inserer', 'inserer', 'Insérer']].map(([o, i, t]) => `<button class="${E.outil === o ? 'actif' : ''}" data-a="outil" data-v="${o}" title="${t}">${ic(i, 15)}</button>`).join('')}<button title="Annuler">${ic('annuler', 15)}</button></div>
+      <div class="recherche">${ic('loupe', 14)} Rechercher</div>
+    </div>
+    <div class="corps">
+      <div class="pages" id="pages">${E.retour && E.doc === 'diapo' ? `<button class="retour-fiche" data-a="revenir">${ic('retour', 14)} Revenir à la fiche « ${h(fiche(E.retour.fiche).titre)} » (p. ${E.retour.page})</button>` : ''}${pagesHTML()}</div>
+      <aside class="panneau">${panneau()}</aside>
+    </div>
+  </section>`;
+  allerA(E.page[E.doc] || 1, false);
+  const pg = document.getElementById('pages');
+  pg.addEventListener('scroll', () => { const n = pageVisible(); if (n && n !== E.page[E.doc]) { E.page[E.doc] = n; document.getElementById('num').value = n; } });
+}
+
+function pagesHTML() {
+  if (E.doc !== 'diapo') {
+    const f = fiche(E.doc);
+    return f.plan.map((t, i) => { const o = origine(f, i); const S = E.surl[f.id] || [];
+      return `<div class="page" data-p="${i + 1}"><button class="origine" data-a="origine" data-de="${o.de}" data-page="${i + 1}" title="Ouvrir la diapo à la page résumée ici">${ic('diapo', 14)} Diapo p. ${o.de}–${o.a} ${ic('lien', 13)}</button>
+        <div class="fiche"><div class="sur">${h(f.titre)}</div><h3>${h(t)}</h3><ul>${puces(t).map((x, k) => `<li data-li="${i + 1}-${k}" class="${S.includes(i + 1 + '-' + k) ? 'surligne' : ''}">${h(x)}</li>`).join('')}</ul><div class="pied">${i + 1} / ${f.plan.length}</div></div></div>`; }).join('');
+  }
+  let out = '';
+  for (let p = 1; p <= COURS.pages; p++) {
+    const s = sDe(p); const tags = E.tags.filter((t) => t.p === p);
+    const nbT = s.id !== 's5' ? 2 + (p % 5) : (E.live && p >= 244 && p <= E.live.page ? 1 : 0);
+    out += `<div class="page" data-p="${p}" style="--sc:${s.couleur}"><div class="tag"><span class="ic-tag" title="Marquer début / fin de cours">${ic('tag', 13)}</span></div>
+      ${tags.map((t) => `<span class="pastille ${t.kind === 'fin' ? 'fin' : ''}" style="${t.kind === 'fin' ? 'top:auto;bottom:10px' : ''}">${t.kind === 'fin' ? '■ Fin' : '▶ Début'} · ${sId(t.s).date}</span>`).join('')}
+      ${nbT ? `<button class="badge-trans" data-a="trans-page" data-p="${p}">${ic('micro', 12)} ${nbT} lignes</button>` : ''}
+      <div class="diapo"><div class="tt">${h(titreDiapo(p))}</div><ul>${pucesDiapo(p).map((x) => `<li>${h(x)}</li>`).join('')}</ul><div class="pied"><span>${COURS.titre} · UE 2.4</span><span>${p}</span></div></div></div>`;
+  }
+  return out;
+}
+
+function panneau() {
+  const onglets = [['exos', 'Exos'], ['trans', 'Trans.'], ['notes', 'Notes'], ['notions', 'Notions']].map(([v, l]) => `<button class="${E.onglet === v ? 'actif' : ''} ${v === 'trans' && E.live ? 'rouge' : ''}" data-a="onglet" data-v="${v}">${v === 'trans' && E.live ? '● ' : ''}${l}</button>`).join('');
+  let c = '';
+  if (E.onglet === 'exos') {
+    c = `<div class="sous-onglets"><span>QCM 0</span><b>Flashcards 7</b><span>Exercices 0</span></div>
+      ${[['Valeur normale du DFG ?', '≈ 120 mL/min (180 L/j)'], ['Formule de la clairance ?', 'C = U × V / P'], ['Pourquoi la créatinine surestime le DFG ?', 'Légère sécrétion tubulaire'], ['Effet d’une constriction efférente ?', '↑ Pcg → ↑ DFG'], ['Cible du furosémide ?', 'NKCC2 (anse de Henle)'], ['Où agit l’ADH ?', 'Récepteurs V2 → aquaporine 2'], ['Artères segmentaires : particularité ?', 'Terminales']].map(([q, r]) => `<div class="carte">${h(q)}<div class="v">${h(r)}</div></div>`).join('')}`;
+  } else if (E.onglet === 'notes') {
+    c = `<div class="carte" style="min-height:200px"><small>Notes du cours</small>• refaire l’exercice de clairance du PAH<br>• demander : CKD-EPI au programme ?<br>• schéma des forces de Starling</div>`;
+  } else if (E.onglet === 'notions') {
+    c = `<div class="carte"><small>DFG et ses déterminants · p. 1</small>3 couches : endothélium fenêtré, membrane basale, podocytes</div><div class="carte"><small>DFG et ses déterminants · p. 2</small>PUF = (Pcg − Pb) − (πcg − πb)</div><div class="carte"><small>Clairances · p. 2</small>Inuline : clairance = DFG</div>`;
+  } else c = transcript();
+  return `<div class="onglets">${onglets}</div><div class="p-corps" id="p-corps">${c}</div>`;
+}
+
+function transcript() {
+  if (E.live) {
+    return `<div class="enreg"><span class="point"></span><b>Enregistrement</b><span style="font:600 13px var(--mono)">${mm(E.live.sec)}</span>
+      <span style="margin-left:auto;display:flex;gap:6px"><button class="btn" style="padding:6px 9px" title="Pause">${ic('pause', 14)}</button><button class="btn rouge" style="padding:6px 10px" data-a="arreter">${ic('stop', 14)} Arrêter</button></span></div>
+      <small style="color:var(--text-3)">Séance 5 · le début du cours est marqué p. 244. Chaque phrase est rattachée à la page affichée.</small>
+      ${E.live.lignes.map((l, i) => `<div class="ligne ${i === E.live.lignes.length - 1 ? 'neuve' : ''}"><span class="h">${l.h}</span><span>${h(l.t)}<button class="p" data-a="aller-diapo" data-p="${l.p}">p. ${l.p}</button></span></div>`).join('') || '<div class="vide">Le transcript apparaît ici dès que le prof parle…</div>'}`;
+  }
+  if (E.vueTrans) {
+    const s = sId(E.vueTrans); const ph = PHRASES[s.id]; const L = [];
+    for (let i = 0; i < 18; i++) { const p = s.de + Math.round(i * (s.a - s.de) / 17); L.push(`<div class="ligne"><span class="h">${mm(i * 410 + 30)}</span><span>${h(ph[i % ph.length])}<button class="p" data-a="aller-diapo" data-p="${p}">p. ${p}</button></span></div>`); }
+    return `<button class="btn" data-a="trans-liste" style="justify-self:start">${ic('retour', 14)} Séances</button>
+      <div><b>${pastilleS(s)}${h(s.titre)}</b><br><small style="color:var(--text-3)">${s.date} · ${s.duree} · diapo p. ${s.de}–${s.a}</small></div>${L.join('')}`;
+  }
+  const lignes = SEANCES.filter((s) => s.duree).map((s) => `<button class="seance" data-a="trans-seance" data-s="${s.id}"><b>${pastilleS(s)}${h(s.titre)}</b><small>${s.date} · ${s.duree} · diapo p. ${s.de}–${s.a}</small></button>`).reverse().join('');
+  return `<button class="btn prim plein" data-a="transcrire" id="b-transcrire">${ic('micro', 15)} Transcrire le cours</button>
+    <h5 style="display:flex;gap:8px;align-items:center">Séances enregistrées <span class="nouveau">Nouveau</span></h5>${lignes}`;
+}
+const mm = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+/* ===================== menus ===================== */
+function ouvrirMenu(type, ancre) {
+  fermerMenu();
+  const r = ancre.getBoundingClientRect(); const m = document.createElement('div'); m.className = 'menu'; m.id = 'menu';
+  m.style.left = r.left + 'px'; m.style.top = (r.bottom + 6) + 'px';
+  if (type === 'doc') {
+    const sous = SEANCES.map((s) => {
+      const fs = FICHES.filter((f) => f.seance === s.id);
+      return `<div class="grp-t">${pastilleS(s)} Séance ${s.n} · ${s.date} · p. ${s.de}–${s.a}</div>${fs.map((f) => `<button class="item sous ${E.doc === f.id ? 'actif' : ''}" data-a="doc" data-v="${f.id}">${ic('fiche', 15)} ${h(f.titre)}<small>${f.plan.length} p.</small></button>`).join('') || `<button class="item sous grise" data-a="ajouter">Pas encore de fiche — en ajouter une</button>`}`;
+    }).join('');
+    m.innerHTML = `<button class="item ${E.doc === 'diapo' ? 'actif' : ''}" data-a="doc" data-v="diapo">${ic('diapo', 15)} Diapo du cours<small>${COURS.pages} p.</small></button><div class="sep"></div>
+      <div class="grp-t" style="padding-top:2px">Fiches de résumé</div>${sous}<div class="sep"></div><button class="item" data-a="ajouter">${ic('import', 15)} Ajouter une fiche de résumé…</button>`;
+  } else {
+    m.innerHTML = `<div class="grp-t">Cours</div>
+      <button class="item">Renommer le cours<small>F2</small></button>
+      <button class="item" data-a="docs">Fichiers du cours et séances…</button>
+      <button class="item" data-a="ajouter">${ic('import', 15)} Ajouter une fiche de résumé… <span class="nouveau" style="margin-left:auto">Nouveau</span></button>
+      <button class="item rouge">Supprimer le cours…</button><div class="sep"></div>
+      <div class="grp-t">Document affiché</div>
+      <button class="item">Exporter annoté<small>⌘P</small></button>
+      <button class="item">Export spécial IA…<small>⌘⇧E</small></button>
+      <button class="item">Reconnaissance de texte…</button>
+      ${E.doc !== 'diapo' ? '<button class="item">Remplacer cette fiche…</button><button class="item rouge">Retirer cette fiche…</button>' : '<button class="item">Remplacer le fichier…</button>'}`;
+  }
+  document.body.appendChild(m);
+  const b = m.getBoundingClientRect(); if (b.bottom > innerHeight - 10) m.style.top = Math.max(10, innerHeight - b.height - 10) + 'px';
+}
+function fermerMenu() { const m = document.getElementById('menu'); if (m) m.remove(); }
+
+/* ===================== fenêtres ===================== */
+function fenetre(html) { fermerFen(); const v = document.createElement('div'); v.className = 'voile'; v.id = 'voile'; v.innerHTML = `<div class="fen">${html}</div>`; document.body.appendChild(v); }
+function fermerFen() { const v = document.getElementById('voile'); if (v) v.remove(); }
+function fenAjouter(etape = 1) {
+  if (etape === 1) return fenetre(`<div class="t">Ajouter une fiche de résumé</div><div class="c">
+    <div class="depot" data-a="choisir">${ic('import', 26)}<br><b>Glisse ici le PDF que Claude t’a rendu</b><br><span class="aide">ou clique pour choisir le fichier</span></div>
+    <span class="aide">La diapo du cours ne change pas : la fiche s’ajoute à côté, et tu passes de l’une à l’autre avec le menu du document.</span></div>
+    <div class="p"><button class="btn" data-a="fermer">Annuler</button></div>`);
+  const dispo = SEANCES.map((s) => `<option value="${s.id}" ${s.id === 's5' ? 'selected' : ''}>Séance ${s.n} · ${s.date} · ${s.titre} (p. ${s.de}–${s.a})</option>`).join('');
+  fenetre(`<div class="t">Ajouter une fiche de résumé</div><div class="c">
+    <div class="carte" style="display:flex;gap:10px;align-items:center">${ic('fiche', 18)}<div><b>Equilibre-acide-base-fiche.pdf</b><br><small style="margin:0">6 pages</small></div></div>
+    <label>Nom de la fiche<input type="text" id="nom-fiche" value="Équilibre acide-base"></label>
+    <label>Elle résume quelle séance ?<select id="seance-fiche">${dispo}</select>
+      <span class="aide">${ic('check', 13)} Proposée parce que la fiche reprend les pages 244 à 300 du diapo.</span></label></div>
+    <div class="p"><button class="btn" data-a="fermer">Annuler</button><button class="btn prim" data-a="valider-ajout">Ajouter la fiche</button></div>`);
+}
+function fenDocs() {
+  const lignes = SEANCES.map((s) => { const fs = FICHES.filter((f) => f.seance === s.id);
+    return `<tr><td colspan="2" style="padding-top:14px"><b>${pastilleS(s)}Séance ${s.n} · ${s.date}</b> <span style="color:var(--text-3)">· diapo p. ${s.de}–${s.a} · ${s.duree ? 'transcript ' + s.duree : 'pas de transcript'}</span></td></tr>
+    ${fs.map((f) => `<tr><td style="padding-left:30px">${ic('fiche', 14)} ${h(f.titre)}</td><td>${f.plan.length} p. · <a href="#" style="color:var(--accent)">changer de séance</a></td></tr>`).join('') || '<tr><td style="padding-left:30px;color:var(--text-3)">aucune fiche</td><td></td></tr>'}`; }).join('');
+  fenetre(`<div class="t">Fichiers du cours et séances</div><div class="c" style="max-height:60vh;overflow:auto">
+    <table class="tableau-docs"><tr><td>${ic('diapo', 14)} <b>Diapo du cours</b> · Physio-renale-complet.pdf</td><td>${COURS.pages} p. · <a href="#" style="color:var(--accent)">remplacer</a></td></tr>${lignes}</table></div>
+    <div class="p"><button class="btn" data-a="ajouter">${ic('import', 14)} Ajouter une fiche…</button><button class="btn prim" data-a="fermer">Fermer</button></div>`);
+}
+function fenTranscrire() {
+  const p = E.doc === 'diapo' ? E.page.diapo : 244;
+  fenetre(`<div class="t">Transcrire le cours</div><div class="c">
+    <label>Micro<select><option>Micro du MacBook (automatique)</option><option>AirPods</option></select></label>
+    <label class="coche"><input type="checkbox" id="marquer" checked> Marquer le début du cours sur la page ${p} <span class="nouveau">Nouveau</span></label>
+    <span class="aide">La diapo s’affiche à cette page. À la fin, « Arrêter » marque la fin du cours sur la page où tu seras. Plus besoin de poser les tags à la main.</span></div>
+    <div class="p"><button class="btn" data-a="fermer">Annuler</button><button class="btn prim" data-a="demarrer">${ic('micro', 14)} Démarrer</button></div>`);
+}
+
+/* ===================== navigation ===================== */
+function allerA(n, doux = true) {
+  const pg = document.getElementById('pages'); const el = pg && pg.querySelector(`.page[data-p="${n}"]`); if (!el) return;
+  pg.scrollTo({ top: el.offsetTop - 14 - (E.retour && E.doc === 'diapo' ? 50 : 0), behavior: doux ? 'smooth' : 'auto' });
+  E.page[E.doc] = n; const i = document.getElementById('num'); if (i) i.value = n;
+}
+function pageVisible() { const pg = document.getElementById('pages'); const y = pg.getBoundingClientRect().top + 140; const els = pg.querySelectorAll('.page'); for (const el of els) if (el.getBoundingClientRect().bottom > y) return +el.dataset.p; return null; }
+function afficherDoc(v, page) { E.doc = v; if (page) E.page[v] = page; if (!E.page[v]) E.page[v] = 1; E.retour = null; rendre(); }
+let tToast; function toast(m) { const t = document.getElementById('toast'); t.innerHTML = m; t.classList.add('vu'); clearTimeout(tToast); tToast = setTimeout(() => t.classList.remove('vu'), 3200); }
+function anneau(el) { if (!el) return; el.classList.remove('anneau'); void el.offsetWidth; el.classList.add('anneau'); setTimeout(() => el.classList.remove('anneau'), 3100); }
+function majPanneau() { const a = document.querySelector('.panneau'); if (a) { a.innerHTML = panneau(); const c = document.getElementById('p-corps'); if (c && E.live) c.scrollTop = c.scrollHeight; } }
+
+function demarrer() {
+  const marquer = document.getElementById('marquer').checked; fermerFen();
+  E.doc = 'diapo'; E.retour = null; E.page.diapo = E.page.diapo >= 244 ? E.page.diapo : 244; E.onglet = 'trans'; E.vueTrans = null;
+  const debut = E.page.diapo;
+  if (marquer) E.tags.push({ p: debut, kind: 'debut', s: 's5' });
+  E.live = { sec: 0, page: debut, lignes: [], debut };
+  rendre(); toast(marquer ? `${ic('check', 14)} Début du cours marqué sur la page ${debut}` : 'Enregistrement démarré');
+  E.live.timer = setInterval(() => {
+    const L = E.live; L.sec += 41; const ph = PHRASES.s5;
+    if (L.lignes.length && L.lignes.length % 3 === 0 && L.page < 300) { L.page++; allerA(L.page); }
+    L.lignes.push({ h: mm(L.sec), t: ph[L.lignes.length % ph.length], p: L.page }); majPanneau();
+  }, 1600);
+}
+function arreter() {
+  clearInterval(E.live.timer); const fin = E.page.diapo;
+  E.tags.push({ p: fin, kind: 'fin', s: 's5' }); const debut = E.live.debut;
+  sId('s5').duree = mm(E.live.sec).replace(':', ' min ').replace(/^0 min /, '') + ' s';
+  E.live = null; rendre(); toast(`${ic('check', 14)} Séance 5 enregistrée · cours marqué p. ${debut} → p. ${fin}`);
+}
+
+/* ===================== clics ===================== */
+document.addEventListener('click', (e) => {
+  const g = e.target.closest('[data-guide]');
+  if (g) { fermerMenu(); fermerFen(); const k = g.dataset.guide;
+    if (k === '1') { const b = document.getElementById('b-doc'); anneau(b); ouvrirMenu('doc', b); }
+    if (k === '2') { const b = document.getElementById('b-fichier'); anneau(b); ouvrirMenu('fichier', b); setTimeout(() => anneau([...document.querySelectorAll('#menu .item')].find((x) => /Ajouter une fiche/.test(x.textContent))), 50); }
+    if (k === '3') { if (E.doc === 'diapo') afficherDoc('f2a'); setTimeout(() => anneau(document.querySelector('.origine')), 60); toast('Chaque page de fiche indique la diapo qu’elle résume : clique dessus.'); }
+    if (k === '4') { E.onglet = 'trans'; E.vueTrans = null; if (!E.live) { afficherDoc('diapo', 244); setTimeout(() => anneau(document.getElementById('b-transcrire')), 60); } else rendre(); }
+    return; }
+  const li = e.target.closest('.fiche li');
+  if (li && E.outil === 'surligne') { const S = (E.surl[E.doc] = E.surl[E.doc] || []); const k = li.dataset.li; const i = S.indexOf(k); i >= 0 ? S.splice(i, 1) : S.push(k); li.classList.toggle('surligne'); return; }
+  const b = e.target.closest('[data-a]');
+  if (!b) { if (!e.target.closest('#menu')) fermerMenu(); if (e.target.id === 'voile') fermerFen(); return; }
+  const a = b.dataset.a;
+  if (a !== 'menu-doc' && a !== 'menu-fichier') fermerMenu();
+  switch (a) {
+    case 'menu-doc': document.getElementById('menu') ? fermerMenu() : ouvrirMenu('doc', b); break;
+    case 'menu-fichier': document.getElementById('menu') ? fermerMenu() : ouvrirMenu('fichier', b); break;
+    case 'doc': afficherDoc(b.dataset.v); break;
+    case 'prec': allerA(Math.max(1, (E.page[E.doc] || 1) - 1)); break;
+    case 'suiv': allerA(Math.min(nbPages(), (E.page[E.doc] || 1) + 1)); break;
+    case 'outil': E.outil = b.dataset.v; document.querySelectorAll('[data-a=outil]').forEach((x) => x.classList.toggle('actif', x === b)); if (E.outil === 'surligne') toast('Surligneur : clique une ligne de la fiche'); break;
+    case 'onglet': E.onglet = b.dataset.v; majPanneau(); break;
+    case 'origine': E.retour = { fiche: E.doc, page: +b.dataset.page }; E.doc = 'diapo'; E.page.diapo = +b.dataset.de; rendre(); break;
+    case 'revenir': { const r = E.retour; E.retour = null; afficherDoc(r.fiche, r.page); break; }
+    case 'aller-diapo': if (E.doc !== 'diapo') { E.doc = 'diapo'; E.retour = null; E.page.diapo = +b.dataset.p; rendre(); } else allerA(+b.dataset.p); break;
+    case 'trans-page': E.onglet = 'trans'; E.vueTrans = sDe(+b.dataset.p).id; majPanneau(); break;
+    case 'trans-seance': E.vueTrans = b.dataset.s; majPanneau(); break;
+    case 'trans-liste': E.vueTrans = null; majPanneau(); break;
+    case 'transcrire': fenTranscrire(); break;
+    case 'demarrer': demarrer(); break;
+    case 'arreter': arreter(); break;
+    case 'ajouter': fenAjouter(1); break;
+    case 'choisir': fenAjouter(2); break;
+    case 'docs': fenDocs(); break;
+    case 'fermer': fermerFen(); break;
+    case 'valider-ajout': {
+      const s = document.getElementById('seance-fiche').value; const nom = document.getElementById('nom-fiche').value || 'Fiche';
+      if (!fiche('f5')) FICHES.push({ ...FICHE_S5, titre: nom, seance: s }); else Object.assign(fiche('f5'), { titre: nom, seance: s });
+      fermerFen(); afficherDoc('f5', 1); toast(`${ic('check', 14)} Fiche ajoutée à la séance ${sId(s).n}. La diapo du cours est toujours là, dans le menu du document.`); break;
+    }
+  }
+});
+document.addEventListener('change', (e) => { if (e.target.id === 'num') { const n = Math.min(nbPages(), Math.max(1, parseInt(e.target.value, 10) || 1)); allerA(n); } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { fermerMenu(); fermerFen(); } });
+rendre();
 </script>
 </body>
 </html>
