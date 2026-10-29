@@ -41,6 +41,17 @@ function multipart(buf, ct) {
   }
   return null;
 }
+// (29/10, synchro incrémentale) tri `order=a.desc,b.asc` et filtres gt/gte/lt/lte comme PostgREST
+const trier = (liste, order, defaut) => {
+  const cles = (order || '').split(',').filter(Boolean).map((o) => { const [c, sens] = o.split('.'); return [c, sens === 'desc' ? -1 : 1]; });
+  if (!cles.length) return liste.sort(defaut);
+  return liste.sort((a, b) => { for (const [c, k] of cles) { const x = String(a[c] ?? ''), y = String(b[c] ?? ''); if (x !== y) return (x < y ? -1 : 1) * k; } return 0; });
+};
+const compare = (r, k, v) => {
+  const m = /^(gt|gte|lt|lte)\.(.*)$/.exec(v); if (!m) return true;
+  const a = Date.parse(r[k]), b = Date.parse(m[2]); const [x, y] = Number.isNaN(a) || Number.isNaN(b) ? [String(r[k]), m[2]] : [a, b];
+  return m[1] === 'gt' ? x > y : m[1] === 'gte' ? x >= y : m[1] === 'lt' ? x < y : x <= y;
+};
 http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
   if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
@@ -69,7 +80,7 @@ http.createServer(async (req, res) => {
     if (req.method === 'GET') {
       let liste = [...revues.values()];
       for (const [k, v] of u.searchParams) { if (v.startsWith('gt.')) liste = liste.filter((r) => String(r[k]) > v.slice(3)); }
-      liste.sort((a, b) => (a.inserted_at < b.inserted_at ? -1 : a.inserted_at > b.inserted_at ? 1 : a.id < b.id ? -1 : 1));
+      trier(liste, u.searchParams.get('order'), (a, b) => (a.inserted_at < b.inserted_at ? -1 : a.inserted_at > b.inserted_at ? 1 : a.id < b.id ? -1 : 1));
       let off = Number(u.searchParams.get('offset') || 0), lim = Number(u.searchParams.get('limit') || 1e9);
       const rg = /(\d+)-(\d+)/.exec(req.headers['range'] || ''); if (rg) { off = +rg[1]; lim = +rg[2] - off + 1; }
       return out(200, liste.slice(off, off + lim));
@@ -99,13 +110,16 @@ http.createServer(async (req, res) => {
     for (const [k, v] of u.searchParams) {
       if (['select', 'order', 'offset', 'limit'].includes(k)) continue;
       if (v.startsWith('eq.')) liste = liste.filter((r) => String(r[k]) === v.slice(3));
+      if (/^(gt|gte|lt|lte)\./.test(v)) liste = liste.filter((r) => compare(r, k, v));
       const mIn = /^(not\.)?in\.\((.*)\)$/.exec(v);
       if (mIn) { const vals = mIn[2].split(',').map((x) => x.replace(/^"|"$/g, '')); liste = liste.filter((r) => (mIn[1] ? !vals.includes(String(r[k])) : vals.includes(String(r[k])))); }
     }
-    liste.sort((a, b) => (a.store + '\u0000' + a.record_id).localeCompare(b.store + '\u0000' + b.record_id));
+    trier(liste, u.searchParams.get('order'), (a, b) => (a.store + '\u0000' + a.record_id).localeCompare(b.store + '\u0000' + b.record_id));
     let off = Number(u.searchParams.get('offset') || 0), lim = Number(u.searchParams.get('limit') || 1e9);
     const rg = /(\d+)-(\d+)/.exec(req.headers['range'] || ''); if (rg) { off = +rg[1]; lim = +rg[2] - off + 1; }
-    const page = liste.slice(off, off + lim);
+    // (29/10) projection `select=` comme PostgREST : une lecture de métadonnées ne transporte pas `data`
+    const cols = (u.searchParams.get('select') || '*').split(',');
+    const page = liste.slice(off, off + lim).map((r) => (cols.includes('*') ? r : Object.fromEntries(cols.map((c) => [c, r[c]]))));
     return out(200, page, { 'Content-Range': `${off}-${off + page.length - 1}/${liste.length}` });
   }
   let m = /^\/storage\/v1\/object\/list\/medrevise-blobs$/.exec(u.pathname);

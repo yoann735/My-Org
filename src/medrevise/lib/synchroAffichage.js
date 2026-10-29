@@ -21,6 +21,15 @@
      'incomplet' — passes réussies mais empreintes encore différentes après MAX_PASSES : « Synchro incomplète » +
                    Réessayer ;
      'local'     — synchro non configurée sur ce déploiement : rien à attendre, rien à afficher.
+
+   (29/10, docs/compte-rendu-synchro-rapide-surlignage-listes.md) PASSE RAPIDE. Avec `passeRapide`, chaque lancement
+   essaie d'abord la synchro incrémentale (vérification légère, puis seulement ce qui a changé) ; la passe COMPLÈTE
+   ne sert qu'au premier démarrage (pas de curseur vérifié : passeRapide répond { complet: true }), après une erreur
+   du serveur ou une synchro incomplète (le lancement suivant est complet) et à la demande (lancer({ complet: true })).
+   Une simple coupure réseau n'en demande pas : la lecture est tout ou rien, rien n'a été fusionné à moitié. « À jour » garde le même sens : la
+   passe rapide ne répond ok que si la file est vide et que le cloud et l'appareil correspondent au dernier alignement
+   vérifié ; quand elle a reçu des changements, l'empreinte complète est revérifiée EN ARRIÈRE-PLAN (`verifierFond`) et
+   un écart relance aussitôt une passe complète.
    ============================================================ */
 
 export const REESSAI_MS = 30000;
@@ -75,12 +84,16 @@ const enLigneNavigateur = () => (typeof navigator === 'undefined' ? true : navig
  *   poser(etat)  : publie l'état de la porte ; derniere() → ISO de la dernière synchro réussie ;
  *   marquer(iso) : retient la dernière synchro réussie (appelé UNIQUEMENT sur « à jour ») ;
  *   enLigne()    : navigator.onLine ; horloge : { maintenant, attendre(ms, fn) → annuler }.
+ *   passeRapide() → Promise<{ ok, erreur?, complet?, aVerifier? }> (facultatif) : synchro incrémentale ; `complet` = il
+ *                  faut une passe complète ; `aVerifier` = revérifier l'empreinte en fond ;
+ *   verifierFond() → Promise<'ok'|'ecart'|null> (facultatif) : empreinte complète, après l'affichage.
  */
-export function creerPorte({ passe, verifier, poser, derniere = () => null, marquer = () => {}, enLigne = enLigneNavigateur, horloge = horlogeReelle, reessai = REESSAI_MS, reessaiReseau = REESSAI_RESEAU_MS, maxPasses = MAX_PASSES }) {
+export function creerPorte({ passe, verifier, passeRapide = null, verifierFond = null, poser, derniere = () => null, marquer = () => {}, enLigne = enLigneNavigateur, horloge = horlogeReelle, reessai = REESSAI_MS, reessaiReseau = REESSAI_RESEAU_MS, maxPasses = MAX_PASSES }) {
   let enVol = null;
   let etat = { phase: 'attente', at: null, depuis: derniere(), progression: null };
   let annulerReessai = null;
   let echecsReseau = 0;
+  let completRequis = false; // après une erreur du serveur ou une synchro incomplète : le lancement suivant est complet
   const publier = (p) => { etat = { ...etat, ...p }; poser(etat); };
   const pause = (ms) => new Promise((r) => { horloge.attendre(ms, r); });
 
@@ -97,31 +110,54 @@ export function creerPorte({ passe, verifier, poser, derniere = () => null, marq
   const programmerReessai = () => { annulerReessai = horloge.attendre(reessai, () => { annulerReessai = null; lancer(); }); };
   const horsLigne = () => { publier({ phase: 'horsligne', depuis: derniere(), progression: null }); programmerReessai(); };
 
-  function lancer() {
+  function lancer({ complet = false } = {}) {
     if (enVol) return enVol;
     if (annulerReessai) { annulerReessai(); annulerReessai = null; }
     if (!enLigne()) { horsLigne(); return Promise.resolve(etat); } // pas de réseau du tout : inutile d'essayer
     publier({ phase: 'attente', progression: null });
     enVol = (async () => {
       let res = 'reseau';
+      let aVerifier = false;
+      let rapide = !!passeRapide && !complet && !completRequis;
       try {
-        for (let n = 0; n < maxPasses; n++) {
+        for (let essai = 0; rapide && essai < 2; essai++) {
+          const r = await passeRapide();
+          if (r && r.ok) { res = 'ok'; aVerifier = !!r.aVerifier; break; }
+          if (!r || r.complet) { rapide = false; break; } // pas de curseur vérifié (ou écart local) : passe complète
+          res = r.erreur === 'serveur' ? 'serveur' : 'reseau';
+          // 1ʳᵉ erreur réseau alors que l'appareil se dit en ligne : on réessaie vite, comme la passe complète
+          if (res === 'reseau' && enLigne() && echecsReseau === 0) { echecsReseau = 1; await pause(reessaiReseau); continue; }
+          break;
+        }
+        if (!rapide) for (let n = 0; n < maxPasses; n++) {
           res = await unePasse();
           if (res === 'reseau' && enLigne() && echecsReseau === 0) { echecsReseau = 1; await pause(reessaiReseau); n--; continue; }
           if (res !== 'ecart') break;
         }
       } catch (e) { res = 'serveur'; }
       const at = horloge.maintenant();
-      if (res === 'ok') { echecsReseau = 0; marquer(at); publier({ phase: 'ajour', at, depuis: at, progression: null }); }
-      else if (res === 'reseau') { echecsReseau = 2; horsLigne(); }
+      if (res === 'ok') {
+        echecsReseau = 0; completRequis = false; marquer(at); publier({ phase: 'ajour', at, depuis: at, progression: null });
+        if (rapide && aVerifier && verifierFond) verifierEnFond();
+      }
+      else if (res === 'reseau') { echecsReseau = 2; horsLigne(); } // coupure : rien n'a été appliqué à moitié, la reprise reste incrémentale
       else {
-        echecsReseau = 0;
+        echecsReseau = 0; completRequis = true;
         publier({ phase: res === 'ecart' ? 'incomplet' : 'echec', at, depuis: derniere(), progression: null });
         programmerReessai();
       }
       return etat;
     })().finally(() => { enVol = null; });
     return enVol;
+  }
+
+  /** empreinte complète APRÈS l'affichage ; un écart relance une passe complète (illisible : rien, on réessaiera) */
+  function verifierEnFond() {
+    Promise.resolve().then(() => verifierFond()).then((v) => {
+      if (v !== 'ecart') return;
+      completRequis = true;
+      if (enVol) enVol.then(() => lancer({ complet: true })); else lancer({ complet: true });
+    }).catch(() => {});
   }
 
   /** progression d'un gros envoi ({ faits, total } ou null) — affichée seulement pendant la passe */

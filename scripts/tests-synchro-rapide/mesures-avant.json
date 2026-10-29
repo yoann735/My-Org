@@ -1,0 +1,43 @@
+{
+  "etiquette": "avant",
+  "volume": 4480,
+  "reseau": {
+    "offline": false,
+    "latency": 120,
+    "downloadThroughput": 1500000,
+    "uploadThroughput": 600000
+  },
+  "sansChangement": [
+    {
+      "ms": 10853,
+      "phases": "attente → ajour",
+      "trace": []
+    },
+    {
+      "ms": 10914,
+      "phases": "ajour → attente → ajour",
+      "trace": []
+    },
+    {
+      "ms": 10675,
+      "phases": "ajour → attente → ajour",
+      "trace": []
+    }
+  ],
+  "dixReponses": {
+    "ms": 10905,
+    "phases": "ajour → attente → ajour",
+    "trace": []
+  },
+  "etapes": {
+    "envoi_purge": 0,
+    "envoi_file": 0,
+    "recuperation_tout": 5224,
+    "octets_recus": 6773252,
+    "recuperation_et_application": 5282,
+    "application": 58,
+    "journal": 136,
+    "empreinte_locale": 41,
+    "empreinte_cloud": 5262
+  }
+}

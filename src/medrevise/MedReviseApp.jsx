@@ -30,19 +30,19 @@ import { PdfReader } from './pdf/PdfReader.jsx';
 import { SeanceFC } from './session/SeanceFC.jsx';
 import { SchemaEditorScreen } from './documents/SchemaEditorScreen.jsx';
 import {
-  getAll, put, putMany, remove, getStats, setStats as saveStats, genId, syncNow,
+  getAll, put, putMany, remove, getStats, setStats as saveStats, genId, syncNow, syncRapide,
   purgeSource, purgeMatiere, purgeFiche, putBackup, newErrorCard,
   getCoursePrompts, setCoursePrompts, getExoPrompts, setExoPrompts,
   getChapExoPrompts, setChapExoPrompts, getReglagesFC, setReglagesFC, getCarnetPuces, setCarnetPuces, getCarnetPreReponses, setCarnetPreReponses, getEdtReglages, majEdtReglages,
 } from './lib/storage.js';
 import { demarrerEmploiDuTemps } from './lib/emploiDuTemps.js';
 import { runMigrations } from './lib/migrate.js';
-import { synchroniserJournal } from './journal/synchro.js';
+import { synchroniserJournal, journalAChange } from './journal/synchro.js';
 import { BandeauFilet, EcranIntegrite, rafraichirStatutServeur } from './components/FiletSecurite.jsx';
 import { lancerControle } from './integrite/executer.js';
 import { copierDansDossier } from './sauvegarde/dossierLocal.js';
-import { marquerSyncReussie, derniereSyncReussie, etatLocal, etatCloud } from './lib/syncStatus.js';
-import { outboxCount, dernierEchecCloud, surProgressionEnvoi } from './data/sync.js';
+import { marquerSyncReussie, derniereSyncReussie, etatLocal, etatCloud, lireCurseur, ecrireCurseur } from './lib/syncStatus.js';
+import { outboxCount, dernierEchecCloud, surProgressionEnvoi, flushOutbox } from './data/sync.js';
 import { SYNC_ENABLED } from './data/supabaseClient.js';
 import { creerPorte } from './lib/synchroAffichage.js';
 import { SynchroContext, BandeauSynchro } from './components/Chiffre.jsx';
@@ -166,7 +166,17 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // "Forcer la synchro" (Réglages desktop, accueil mobile), voir forceSync ci-dessous.
   const [syncState, setSyncState] = useState({ status: 'idle', at: null });
 
-  const reload = useCallback(async () => {
+  /* (29/10, synchro incrémentale) `stores` : les stores réellement modifiés par une passe. Vide → rien à relire ;
+     seulement `questions` → on ne relit QUE les cartes (le plan du jour, calculé à partir de db.questions, suit) ;
+     sinon, ou sans argument → rechargement complet, comme avant. */
+  const reload = useCallback(async (stores) => {
+    if (stores && !stores.size) return;
+    if (stores && [...stores].every((n) => n === 'questions')) {
+      const questions = await getAll('questions');
+      setDb((d) => (d ? { ...d, questions } : d));
+      try { window.dispatchEvent(new Event('medrevise:recharge')); } catch (e) { /* ignore */ }
+      return;
+    }
     const [sources, matieres, dossiers, fiches, questions, anatstruct, sessionsLog, st, pr, epr, cepr] = await Promise.all([
       getAll('sources'), getAll('matieres'), getAll('dossiers'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getStats(), getCoursePrompts(), getExoPrompts(), getChapExoPrompts(),
     ]);
@@ -246,12 +256,14 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [porte, setPorte] = useState(() => ({ phase: SYNC_ENABLED ? 'attente' : 'local', at: null, depuis: derniereSyncReussie() }));
   const reloadRef = useRef(reload); reloadRef.current = reload;
   const migrationsFaites = useRef(false);
+  const dernierTirage = useRef(null); // { n, maxMaj } du cloud lu par la dernière passe complète
   const porteRef = useRef(null);
   if (!porteRef.current && SYNC_ENABLED) {
     porteRef.current = creerPorte({
       passe: async () => {
         setSyncState((s) => ({ ...s, status: 'syncing' }));
         const r = await syncNow();
+        dernierTirage.current = r.n != null ? { n: r.n, maxMaj: r.maxMaj } : null; // photographie du cloud lu (curseur)
         setSyncState({ status: r.status, at: new Date().toISOString(), degraded: !!r.degraded, blobs: r.blobs || null, envoi: r.envoi || null });
         // (29/10) 'offline' = réseau absent, 'echec' = le serveur a répondu par une erreur (statuts de syncNow)
         if (r.status !== 'ok') return { ok: false, erreur: r.status === 'echec' ? 'serveur' : 'reseau' };
@@ -264,8 +276,57 @@ export default function MedReviseApp({ themeApi, goHub }) {
       },
       verifier: async () => {
         const [local, cloud, enAttente] = await Promise.all([etatLocal(), etatCloud(), outboxCount()]);
-        if (cloud) return { local: local.hash, cloud: cloud.hash, enAttente };
+        if (cloud) {
+          // (29/10) alignement vérifié : il devient le curseur de la synchro incrémentale
+          if (local.hash === cloud.hash && !enAttente && dernierTirage.current) await ecrireCurseur({ ...dernierTirage.current, hash: local.hash, verifieLe: Date.now() });
+          return { local: local.hash, cloud: cloud.hash, enAttente };
+        }
         return { erreur: (dernierEchecCloud() || {}).type === 'refus' ? 'serveur' : 'reseau' };
+      },
+      /* (29/10, docs/compte-rendu-synchro-rapide-surlignage-listes.md) PASSE RAPIDE : file d'envoi, vérification légère
+         (cloud + journal), puis seulement ce qui a changé ; relecture limitée aux stores touchés. */
+      passeRapide: async () => {
+        const t0 = performance.now(); const trace = (etape, ms) => { try { (window.__mrMesuresSynchro = window.__mrMesuresSynchro || []).push({ etape, ms: Math.round(ms) }); } catch (e) { /* ignore */ } };
+        const cur = await lireCurseur();
+        if (!cur || !cur.hash || !cur.maxMaj) return { ok: false, complet: true };
+        const [r, j] = await Promise.all([syncRapide(cur), journalAChange()]);
+        Object.entries(r.mesures || {}).forEach(([k, v]) => trace(k, v));
+        if (r.status !== 'ok') return { ok: false, erreur: r.status === 'echec' ? 'serveur' : 'reseau' };
+        if (j === null) return { ok: false, erreur: 'reseau' };
+        let d = performance.now();
+        const stores = new Set(r.stores);
+        if (j) {
+          const jr = await synchroniserJournal();
+          if (jr && jr.ok === false && !jr.tableAbsente && jr.raison !== 'désactivée') return { ok: false, erreur: /fetch|network|Load failed/i.test(String(jr.erreur || jr.raison || '')) ? 'reseau' : 'serveur' };
+          if (jr && jr.cartesMaj) stores.add('questions');
+          trace('journal', performance.now() - d); d = performance.now();
+        }
+        // l'application du journal réécrit les cartes touchées (bloc FSRS) : on les envoie dans la même passe
+        if (await outboxCount()) { const f = await flushOutbox(); if (!f.ok) return { ok: false, erreur: f.erreur === 'serveur' ? 'serveur' : 'reseau' }; trace('renvoi_journal', performance.now() - d); d = performance.now(); }
+        if (await outboxCount()) return { ok: false, complet: true }; // écrit pendant la passe : la complète tranchera
+        if (!migrationsFaites.current) { migrationsFaites.current = true; await runMigrations(); stores.add('*'); }
+        await reloadRef.current(stores.has('*') ? undefined : stores);
+        trace('recalcul', performance.now() - d); d = performance.now();
+        const rien = !!r.inchange && !stores.size; // cloud identique au curseur (nombre ET date max) et rien reçu du journal
+        if (rien) {
+          // cloud inchangé depuis l'alignement vérifié : l'appareil doit encore avoir la même empreinte
+          const l = await etatLocal();
+          trace('empreinte_locale', performance.now() - d);
+          if (l.hash !== cur.hash) return { ok: false, complet: true };
+        } else await ecrireCurseur({ n: r.leger.n, maxMaj: r.leger.maxMaj, hash: null, verifieLe: cur.verifieLe });
+        trace('total', performance.now() - t0);
+        // empreinte complète en fond : après des changements, ou au plus toutes les 30 min
+        return { ok: true, aVerifier: !rien || !cur.verifieLe || Date.now() - cur.verifieLe > 30 * 60 * 1000 };
+      },
+      verifierFond: async () => {
+        const t0 = performance.now();
+        const avant = await lireCurseur();
+        const [local, cloud, enAttente] = await Promise.all([etatLocal(), etatCloud(), outboxCount()]);
+        try { (window.__mrMesuresSynchro = window.__mrMesuresSynchro || []).push({ etape: 'empreinte_fond', ms: Math.round(performance.now() - t0) }); } catch (e) { /* ignore */ }
+        if (!cloud) return null;
+        if (local.hash !== cloud.hash || enAttente) return 'ecart';
+        if (avant) await ecrireCurseur({ ...avant, hash: local.hash, verifieLe: Date.now() });
+        return 'ok';
       },
       poser: (e) => setPorte({ ...e }),
       derniere: derniereSyncReussie,

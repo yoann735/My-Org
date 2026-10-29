@@ -6,7 +6,7 @@
    ============================================================ */
 import { get, set, del, clear, keys, values, entries, setMany, createStore } from 'idb-keyval';
 import { isoDate, startAdaptive } from './sm2.js';
-import { queuePush, pullAllRecords, pullAllMeta, pullStore, queueBlobPush, flushBlobOutbox, blobOutboxEntries, listCloudBlobs, pullBlob, flushOutbox, isPushDegraded, outboxEntries, retirerSiInchange, dernierEchecCloud } from '../data/sync.js';
+import { queuePush, pullAllRecords, pullAllMeta, pullStore, queueBlobPush, flushBlobOutbox, blobOutboxEntries, listCloudBlobs, pullBlob, flushOutbox, isPushDegraded, outboxEntries, retirerSiInchange, dernierEchecCloud, outboxCount, etatLegerCloud, pullDepuis, pullParIds } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
 const store = (name) => createStore('medrevise-' + name, 'v1');
@@ -869,6 +869,8 @@ export async function purgeSource(sourceId) {
    mode Apprentissage : retour au last-write-wins simple pour toutes les cartes. Les réponses faites
    en parallèle sur deux appareils sont désormais toutes gardées dans le journal des révisions
    (journal/), qui reconstruit l'état FSRS quel que soit l'ordre. */
+function instant(v) { const t = Date.parse(v || ''); return Number.isNaN(t) ? null : t; }
+
 export async function reconcileAll() {
   const cloudRows = await pullAllRecords();
   if (cloudRows === null) return { ok: false, cloudEmpty: false };
@@ -911,7 +913,10 @@ export async function reconcileAll() {
       await set(id, cloud.data, S[name]);
     }
   }
-  return { ok: true, cloudEmpty: cloudRows.length === 0 };
+  // (29/10) photographie du cloud lu, pour le curseur de la synchro incrémentale (voir syncRapide plus bas)
+  let maxMaj = null;
+  for (const r of cloudRows) { const t = instant(r.updated_at); if (t !== null && (maxMaj === null || t > maxMaj)) maxMaj = t; }
+  return { ok: true, cloudEmpty: cloudRows.length === 0, n: cloudRows.length, maxMaj: maxMaj === null ? null : new Date(maxMaj).toISOString() };
 }
 
 /* ============================================================
@@ -967,7 +972,6 @@ export async function synchroCiblee(name) {
    copie de ces entrées (putBackup). Rien d'autre n'est touché : un vrai écart reste
    en file et part normalement. Lecture impossible → on ne retire rien.
    ============================================================ */
-const instant = (v) => { const t = Date.parse(v || ''); return Number.isNaN(t) ? null : t; };
 
 /** Entrées d'outbox dont le cloud a déjà la même version. Fonction pure (testée). */
 export function entreesDejaAuCloud(outbox, meta) {
@@ -1026,7 +1030,98 @@ export async function syncNow(opts = {}) {
   
   const blobs = await syncBlobs(opts);
   const status = envoi && !envoi.ok ? statutEchec(envoi.erreur) : 'ok';
-  return { status, cloudEmpty: rec.cloudEmpty, degraded: isPushDegraded(), blobs, envoi };
+  return { status, cloudEmpty: rec.cloudEmpty, degraded: isPushDegraded(), blobs, envoi, n: rec.n, maxMaj: rec.maxMaj };
+}
+
+/* ============================================================
+   D — SYNCHRO INCRÉMENTALE (29/10, docs/compte-rendu-synchro-rapide-surlignage-listes.md).
+   Au retour sur l'app, quand un curseur vérifié existe (lib/synchroAffichage.js) :
+     1. envoi de la file seulement (rien n'est reconstruit) ;
+     2. vérification légère du cloud (nombre de lignes + updated_at max) ; identique au curseur → rien à faire ;
+     3. sinon : ne télécharger QUE les lignes modifiées depuis le curseur (data/sync.js#pullDepuis) et les fusionner
+        avec EXACTEMENT les règles de reconcileAll (last-write-wins par updated_at, tombstone plus récent = suppression,
+        local plus récent = remis en file) ;
+     4. renvoi de ce que la fusion a remis en file.
+   La synchro complète (syncNow) reste le chemin du premier démarrage, après une erreur et de « Forcer la synchro ».
+   ============================================================ */
+
+/** Ce que syncNow lance aussi, en tâche de fond et sans l'attendre : transcriptions, couches OCR, fichiers. */
+function fondCommeSyncNow() {
+  import('../transcription/synchro.js').then((m) => m.synchroTranscripts()).catch(() => {});
+  import('../ocr/couches.js').then((m) => m.synchroOcr()).catch(() => {});
+  syncBlobs().catch(() => {});
+}
+
+/** Fusionne des lignes cloud (rien d'autre n'est lu ni touché). → { stores: Set des stores modifiés, cartes: ids de `questions` modifiés } */
+export async function appliquerLignesCloud(rows) {
+  const stores = new Set(); const cartes = [];
+  for (const cloud of rows || []) {
+    const name = cloud && cloud.store;
+    if (!SYNCABLE.includes(name) || !cloud.record_id) continue;
+    const id = cloud.record_id;
+    const rec = await get(id, S[name]);
+    const cloudTs = instant(cloud.updated_at) || 0;
+    let change = false;
+    if (!rec) {
+      if (!cloud.deleted) { await set(id, cloud.data, S[name]); change = true; } // nouveau sur cet appareil
+    } else {
+      const localTs = instant(rec.updatedAt) || 0;
+      if (cloud.deleted) {
+        if (cloudTs >= localTs) { await del(id, S[name]); change = true; } // tombstone plus récent → supprimer
+        else queuePush(name, id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → réhabiliter
+      } else if (cloudTs > localTs) { await set(id, cloud.data, S[name]); change = true; } // cloud plus récent → adopter
+      else if (localTs > cloudTs) queuePush(name, id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → pousser
+    }
+    if (change) { stores.add(name); if (name === 'questions') cartes.push(id); }
+  }
+  return { stores, cartes };
+}
+
+/**
+ * Passe incrémentale. `curseur` = { n, maxMaj } du cloud au dernier alignement vérifié.
+ * → { status: 'ok'|'offline'|'echec'|'disabled'|'paused', leger, inchange (cloud identique au curseur), recues, stores, cartes, mesures }
+ */
+export async function syncRapide(curseur) {
+  if (!SYNC_ENABLED) return { status: 'disabled' };
+  if (syncPaused) return { status: 'paused' };
+  const mesures = {}; const t0 = () => performance.now();
+  let d = t0();
+  if (await outboxCount()) {
+    const r = await flushOutbox();
+    if (!r.ok) return { status: statutEchec(r.erreur), mesures };
+  }
+  mesures.envoi = Math.round(t0() - d); d = t0();
+  const leger = await etatLegerCloud();
+  mesures.verification = Math.round(t0() - d); d = t0();
+  if (!leger) return { status: statutEchec(natureLecture()), mesures };
+  const vide = { stores: new Set(), cartes: [] };
+  if (curseur && leger.n === curseur.n && instant(leger.maxMaj) === instant(curseur.maxMaj)) { fondCommeSyncNow(); return { status: 'ok', leger, inchange: true, recues: 0, ...vide, mesures }; }
+  // en deux temps : les MÉTADONNÉES de ce qui est récent, puis le contenu de ce qui diffère vraiment du local
+  // (la marge ramène aussi des lignes déjà connues — un gros import récent n'est pas retéléchargé à chaque retour)
+  const metas = await pullDepuis(curseur && curseur.maxMaj, { meta: true });
+  if (metas === null) return { status: statutEchec(natureLecture()), mesures };
+  const besoin = [];
+  for (const m of metas) {
+    if (!SYNCABLE.includes(m.store) || m.deleted) continue; // tombstone : son contenu ne sert pas
+    const rec = await get(m.record_id, S[m.store]);
+    const cloudTs = instant(m.updated_at) || 0, localTs = rec ? (instant(rec.updatedAt) || 0) : 0;
+    if (!rec || cloudTs > localTs) besoin.push([m.store, m.record_id]);
+    else if (localTs > cloudTs) queuePush(m.store, rec.id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → pousser (règle de reconcileAll)
+  }
+  const pleins = besoin.length > 400 ? await pullDepuis(curseur && curseur.maxMaj) : await pullParIds(besoin);
+  mesures.recuperation = Math.round(t0() - d); d = t0();
+  if (pleins === null) return { status: statutEchec(natureLecture()), mesures };
+  const P = new Map(pleins.map((r) => [r.store + ':' + r.record_id, r]));
+  const rows = metas.map((m) => P.get(m.store + ':' + m.record_id) || (m.deleted ? m : null)).filter(Boolean);
+  const app = await appliquerLignesCloud(rows);
+  mesures.application = Math.round(t0() - d); d = t0();
+  if (await outboxCount()) {
+    const r = await flushOutbox();
+    if (!r.ok) return { status: statutEchec(r.erreur), mesures };
+  }
+  mesures.renvoi = Math.round(t0() - d);
+  fondCommeSyncNow();
+  return { status: 'ok', leger, recues: rows.length, ...app, mesures };
 }
 
 /* Blobs dans syncNow : audit (liste du bucket) au premier passage de la session puis

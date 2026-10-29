@@ -458,6 +458,85 @@ export async function pullAllMeta() {
   } catch (e) { return noterEchec(e); }
 }
 
+/* ============================================================
+   SYNCHRO INCRÉMENTALE (29/10, docs/compte-rendu-synchro-rapide-surlignage-listes.md).
+   Revenir sur l'onglet relançait DEUX lectures complètes de la table (fusion + empreinte), ~6,7 Mo pour 4500
+   enregistrements. Désormais, au retour :
+   - etatLegerCloud() : UNE requête minimale — nombre de lignes + `updated_at` le plus récent (hors stores isolés,
+     comme pullAllRecords). Rien n'a bougé depuis le curseur → rien à télécharger ;
+   - sinon pullDepuis(curseur) : seulement les lignes dont `updated_at` ≥ curseur − MARGE_INCR_MS. Mêmes règles que
+     pullAllRecords : ordre total stable, tout ou rien.
+   Lecture seule, aucune fonction SQL à installer. `updated_at` ne recule jamais au cloud (écriture conditionnelle
+   medrevise_push) : toute écriture acceptée fait monter le maximum ou le nombre de lignes. La marge couvre les
+   horloges d'appareils un peu décalées ; l'empreinte complète, vérifiée en arrière-plan (lib/syncStatus.js),
+   rattrape le reste en relançant une synchro complète.
+   ============================================================ */
+export const MARGE_INCR_MS = 10 * 60 * 1000;
+
+/** { n, maxMaj } du cloud (maxMaj : ISO normalisé ou null si vide), ou null si illisible. */
+export async function etatLegerCloud() {
+  if (!SYNC_ENABLED) return null;
+  try {
+    const { data, error, count } = await supabase
+      .from(RECORDS_TABLE)
+      .select('updated_at', { count: 'exact' })
+      .not('store', 'in', `(${STORES_ISOLES.join(',')})`)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    if (error || typeof count !== 'number') return noterEchec(error || new Error('nombre de lignes absent'));
+    const d = data && data[0] ? new Date(data[0].updated_at) : null;
+    return { n: count, maxMaj: d && !Number.isNaN(d.getTime()) ? d.toISOString() : null };
+  } catch (e) { return noterEchec(e); }
+}
+
+/** Lignes (hors stores isolés) modifiées depuis `depuisIso` − MARGE_INCR_MS. Tout ou rien (null si une page échoue).
+ *  `{ meta: true }` : métadonnées seules (store, record_id, updated_at, deleted), sans `data`. */
+export async function pullDepuis(depuisIso, { meta = false } = {}) {
+  if (!SYNC_ENABLED) return null;
+  const t = Date.parse(depuisIso || '');
+  const depuis = Number.isNaN(t) ? '1970-01-01T00:00:00.000Z' : new Date(t - MARGE_INCR_MS).toISOString();
+  try {
+    const tout = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE;
+      const { data, error } = await supabase
+        .from(RECORDS_TABLE)
+        .select(meta ? 'store,record_id,updated_at,deleted' : 'store,record_id,data,updated_at,deleted')
+        .not('store', 'in', `(${STORES_ISOLES.join(',')})`)
+        .gte('updated_at', depuis)
+        .order('updated_at', { ascending: true })
+        .order('store', { ascending: true })
+        .order('record_id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) return noterEchec(error);
+      const lot = data || [];
+      tout.push(...lot);
+      if (lot.length < PAGE) return tout;
+    }
+    return noterEchec(new Error('trop de pages'));
+  } catch (e) { return noterEchec(e); }
+}
+
+/** (29/10) Enregistrements COMPLETS de `paires` [[store, id], …], par paquets de 100 ids d'un même store.
+ *  Tout ou rien : null si un paquet échoue. */
+export async function pullParIds(paires) {
+  if (!SYNC_ENABLED) return null;
+  const parStore = new Map();
+  for (const [st, id] of paires) { if (!parStore.has(st)) parStore.set(st, []); parStore.get(st).push(id); }
+  const tout = [];
+  try {
+    for (const [st, ids] of parStore) {
+      for (let i = 0; i < ids.length; i += 100) {
+        const paquet = ids.slice(i, i + 100);
+        const { data, error } = await supabase.from(RECORDS_TABLE).select('store,record_id,data,updated_at,deleted').eq('store', st).in('record_id', paquet);
+        if (error) return noterEchec(error);
+        tout.push(...(data || []).filter((r) => paquet.includes(r.record_id)));
+      }
+    }
+    return tout;
+  } catch (e) { return noterEchec(e); }
+}
+
 /** Enregistrements COMPLETS de quelques ids d'un store (par paquets de 20).
  *  @returns {Promise<Array|null>} null si un paquet échoue (rien de partiel). */
 export async function pullStoreIds(store, ids) {

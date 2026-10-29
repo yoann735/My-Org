@@ -32,8 +32,8 @@
    `pullAllRecords()` de la réconciliation, et la liste du bucket des fichiers
    (storage.js#etatBlobs, étape 5).
    ============================================================ */
-import { SYNCABLE_STORES, getAll, etatBlobs } from './storage.js';
-import { pullAllRecords, outboxCount, dernierEchecCloud } from '../data/sync.js';
+import { SYNCABLE_STORES, getAll, etatBlobs, getMeta, setMeta } from './storage.js';
+import { pullAllMeta, outboxCount, dernierEchecCloud } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 
 /** Date -> forme canonique unique. Voir « LE PIÈGE » ci-dessus. */
@@ -66,9 +66,11 @@ export async function etatLocal() {
 }
 
 /** Photographie du CLOUD. null si la lecture complète échoue — jamais un
- *  résultat partiel (pullAllRecords applique déjà la règle du tout ou rien). */
+ *  résultat partiel (pullAllMeta applique déjà la règle du tout ou rien).
+ *  (29/10) MÉTADONNÉES seules (store, id, updated_at, deleted — sans `data`) : l'empreinte n'en lit pas plus,
+ *  et télécharger tout le contenu une seconde fois coûtait autant que la synchro elle-même (6,7 Mo / 4500). */
 export async function etatCloud() {
-  const rows = await pullAllRecords();
+  const rows = await pullAllMeta();
   if (rows === null) return null;
   const lignes = [];
   const parStore = {};
@@ -141,3 +143,12 @@ export function marquerSyncReussie(iso) {
 export function derniereSyncReussie() {
   try { return localStorage.getItem(CLE_DERNIERE); } catch (e) { return null; }
 }
+
+/* ---- CURSEUR de la synchro incrémentale (29/10, docs/compte-rendu-synchro-rapide-surlignage-listes.md) ----
+   { n, maxMaj, hash, at } : état du cloud (nombre de lignes, updated_at max) au dernier alignement, et l'empreinte
+   VÉRIFIÉE égale des deux côtés (null tant que la vérification de fond n'a pas confirmé). Dans le store `meta`
+   (IndexedDB, jamais synchronisé) et non en localStorage : il disparaît AVEC les données de l'appareil — une base
+   effacée ne peut pas garder un curseur qui ferait croire qu'elle est à jour. */
+const CLE_CURSEUR = 'synchro.curseur';
+export async function lireCurseur() { try { return (await getMeta(CLE_CURSEUR)) || null; } catch (e) { return null; } }
+export async function ecrireCurseur(c) { try { await setMeta(CLE_CURSEUR, c ? { ...c, at: new Date().toISOString() } : null); } catch (e) { /* ignore */ } }

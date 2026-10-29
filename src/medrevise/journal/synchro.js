@@ -89,6 +89,21 @@ export async function resumeJournal() {
   return { enAttente: enAttente.length, total, derniere: derniere || etat.derniere };
 }
 
+/* (29/10, synchro incrémentale) VÉRIFICATION LÉGÈRE : une requête minimale — l'inserted_at le plus récent du journal
+   au cloud. Égal au curseur local et file vide → rien à envoyer ni à recevoir, la passe est inutile.
+   → true (une passe est nécessaire), false (rien à faire), null (illisible : réseau / serveur). */
+const inst = (v) => { const t = Date.parse(v || ''); return Number.isNaN(t) ? null : t; };
+export async function journalAChange(client = clientParDefaut) {
+  if (!SYNC_ENABLED || !client) return false;
+  if ((await idsEnAttente()).length) return true;
+  try {
+    const { data, error } = await client.from(TABLE_JOURNAL).select('inserted_at').order('inserted_at', { ascending: false }).limit(1);
+    if (error) return estTableAbsente(error) ? false : null; // table pas encore créée : rien à recevoir
+    const max = data && data[0] ? data[0].inserted_at : null;
+    return inst(max) !== inst(await getMeta(CLE_CURSEUR));
+  } catch (e) { return null; }
+}
+
 let enVol = null;
 /** une passe complète : envoi de la file, réception, recalcul des cartes touchées */
 export function synchroniserJournal(client = clientParDefaut) {
