@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react';
 import { pdfjsLib } from './pdfjsSetup.js';
 import { rgb } from 'pdf-lib';
-import { PALETTE_BASE, PALETTE_VIVE, PALETTE_DOCK, NEUTRES_DOCK, alphaSurligneur } from '../lib/palette.js';
+import { PALETTE_BASE, PALETTE_VIVE, PALETTE_DOCK, NEUTRES_DOCK } from '../lib/palette.js';
 
 /** densité réelle de l'écran, suivie en direct : elle change quand la fenêtre passe
     d'un écran Retina à un écran externe, ou au zoom navigateur (Cmd +/−). Une page
@@ -69,9 +69,11 @@ export const COLOR_RGB = {
 };
 /** une des six couleurs de base (09/10) ? Elles s'affichent en variante « surligneur ». */
 export const estCouleurBase = (c) => PALETTE_BASE.some((x) => x.id === c) || PALETTE_VIVE.some((x) => x.id === c) || PALETTE_DOCK.some((x) => x.id === c);
-/** opacité d'un surlignage à l'écran : pastels d'avant pleins (multiply), couleurs de base en
-    variante surligneur (ALPHA_SURLIGNEUR), couleur perso à 45 % — l'export pose 0,4 partout */
-export const opaciteSurlignage = (c) => (String(c).startsWith('#') ? 0.45 : estCouleurBase(c) ? alphaSurligneur(c) : 1);
+/** opacité d'un surlignage à l'écran : pastels d'avant pleins (multiply) ; couleurs de la palette et couleur perso à
+    45 % (29/10 : une seule valeur partout — diapo, OCR, fiche, document ; avant 40-42 % selon la palette) — l'export
+    pose 0,4 partout */
+export const OPACITE_SURLIGNAGE = 0.45;
+export const opaciteSurlignage = (c) => (String(c).startsWith('#') || estCouleurBase(c) ? OPACITE_SURLIGNAGE : 1);
 
 export const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 export const clamp01 = (v) => clamp(v, 0, 1);
@@ -294,7 +296,7 @@ export function itemsDepuisOcr(ocrPage) {
     const memeLigne = suivant && suivant.line === m.line && suivant.x > m.x;
     items.push({
       str: m.t + (memeLigne ? ' ' : ''),
-      x: m.x, y: m.y, h: m.h,
+      x: m.x, y: m.y, h: m.h, wMot: m.w, // (29/10) largeur du MOT seul : bornes exactes (pdfShared.js « BORNES EXACTES »)
       w: memeLigne ? Math.max(m.w, suivant.x - m.x) : m.w,
       eol: !memeLigne,
     });
@@ -313,6 +315,7 @@ export async function buildTextLayer(page, viewport, container, ocrPage = null) 
   container.replaceChildren();
   const frag = document.createDocumentFragment();
   const toFit = []; // [span, largeur cible en px, angle, espaces seuls]
+  const glyphes = { page, parSpan: new WeakMap(), cache: new WeakMap() }; // (29/10) voir « BORNES EXACTES » plus bas
   for (const item of textContent.items) {
     if (!item.str) {
       if (item.hasEOL) frag.appendChild(document.createElement('br'));
@@ -333,9 +336,11 @@ export async function buildTextLayer(page, viewport, container, ocrPage = null) 
     span.style.transformOrigin = '0% 100%';
     frag.appendChild(span);
     toFit.push([span, item.width * viewport.scale, angle, !item.str.trim()]);
+    if (!angle) glyphes.parSpan.set(span, { str: item.str, fontName: item.fontName, largeur: item.width, corps: Math.hypot(item.transform[0], item.transform[1]) });
     if (item.hasEOL) frag.appendChild(document.createElement('br'));
   }
   container.appendChild(frag);
+  container.__mrGlyphes = glyphes;
   if (pageMixteUtile(ocrPage)) ajouterMotsOcr(viewport, container, ocrPage);
   installerFinDeTexte(container);
   // toutes les lectures de largeur PUIS toutes les écritures : un seul calcul de mise
@@ -352,6 +357,7 @@ export async function buildTextLayer(page, viewport, container, ocrPage = null) 
 
 function construireCoucheOcr(viewport, container, ocrPage) {
   container.replaceChildren();
+  container.__mrGlyphes = { page: null, parSpan: new WeakMap(), cache: new WeakMap() }; // mots OCR : voir ajouterMotsOcr
   ajouterMotsOcr(viewport, container, ocrPage);
   installerFinDeTexte(container);
 }
@@ -374,6 +380,8 @@ function ajouterMotsOcr(viewport, container, ocrPage) {
     span.style.transformOrigin = '0% 0%';
     frag.appendChild(span);
     toFit.push([span, it.w * k]);
+    // (29/10) le span couvre le mot PUIS l'espace jusqu'au mot suivant : la borne de fin du mot est à wMot / w
+    if (container.__mrGlyphes && it.w > 0) container.__mrGlyphes.parSpan.set(span, { ocr: true, str: it.str, partMot: Math.min(1, (it.wMot || it.w) / it.w) });
     if (it.eol) frag.appendChild(document.createElement('br'));
   }
   container.appendChild(frag);
@@ -587,9 +595,152 @@ export function lignesSurlignage(rects) {
   return lignes.sort((a, b) => a.y - b.y || a.x - b.x);
 }
 
+/* ============================================================
+   BORNES EXACTES DES CARACTÈRES (29/10, docs/compte-rendu-synchro-rapide-surlignage-listes.md).
+   LE BUG : « exemple positif » surligné, le « e » restait dehors. La couche de texte (invisible) est écrite en
+   `sans-serif` puis étirée (scaleX) pour que CHAQUE MORCEAU ait la largeur exacte du PDF — mais à l'intérieur du
+   morceau, les lettres de `sans-serif` n'ont pas la largeur des lettres réelles. Sur un PDF à polices embarquées
+   (PowerPoint, Word, Chrome…), une borne tombait jusqu'à 14 px à côté de l'encre (médiane 4 px, sonde
+   scripts/tests-surlignage-listes/sonde-bornes.mjs) : début du passage trop à droite → 1ʳᵉ lettre découverte ; fin
+   trop à droite ou trop à gauche → dernière lettre coupée. Sur un PDF sans police embarquée, la page est dessinée
+   en sans-serif elle aussi : l'écart y est presque nul, d'où un bug visible seulement sur certains cours.
+   LA CORRECTION : la position de chaque caractère est calculée avec les VRAIES largeurs de glyphes de la police du
+   PDF (pdf.js, `fontExtraProperties` : widths + toUnicode), ramenées à la largeur exacte du morceau. Les espaces que
+   pdf.js insère sans glyphe prennent le reste. Police illisible, texte pivoté, OCR → repli sur la géométrie du DOM,
+   comme avant. Le stockage ne change pas (ancre = morceau + caractère) : seule la géométrie devient exacte.
+   ============================================================ */
+const inversesUnicode = new WeakMap(); // police pdf.js → Map(texte unicode → code)
+function inverseUnicode(f) {
+  if (inversesUnicode.has(f)) return inversesUnicode.get(f);
+  const inv = new Map(); const tu = f.toUnicode;
+  if (tu && Array.isArray(tu._map)) tu._map.forEach((u, code) => { if (typeof u === 'string' && u && !inv.has(u)) inv.set(u, code); });
+  else if (tu && Number.isFinite(tu.firstChar)) for (let c = tu.firstChar; c <= tu.lastChar; c++) inv.set(String.fromCharCode(c), c);
+  inversesUnicode.set(f, inv);
+  return inv;
+}
+/** fractions [0..1] de la largeur du span à chaque borne de caractère (longueur str + 1), ou null (repli DOM) */
+export function fractionsCaracteres(container, span) {
+  const g = container && container.__mrGlyphes;
+  const d = g && g.parSpan.get(span);
+  if (!d) return null;
+  if (g.cache.has(span)) return g.cache.get(span);
+  let res = null;
+  if (d.ocr) { res = fractionsOcr(d); g.cache.set(span, res); return res; }
+  try {
+    const f = g.page.commonObjs.has(d.fontName) ? g.page.commonObjs.get(d.fontName) : null;
+    if (f && f.widths && f.toUnicode && d.largeur > 0) {
+      const inv = inverseUnicode(f); const fm = (f.fontMatrix && f.fontMatrix[0]) || 0.001;
+      const av = []; // avance de chaque caractère (unités du PDF), null = inconnue
+      const s = d.str;
+      for (let i = 0; i < s.length;) {
+        let pris = 0;
+        for (const n of [3, 2, 1]) { // ligature (« ﬁ » → « fi ») : un glyphe pour plusieurs caractères
+          const code = inv.get(s.slice(i, i + n));
+          if (code == null || i + n > s.length) continue;
+          const w = (f.widths[code] != null ? f.widths[code] : f.defaultWidth || 0) * fm * d.corps;
+          for (let k = 0; k < n; k++) av.push(w / n);
+          pris = n; break;
+        }
+        if (!pris) { av.push(null); pris = 1; }
+        i += pris;
+      }
+      const connus = av.reduce((a, w) => a + (w || 0), 0), inconnus = av.filter((w) => w == null).length;
+      // seuls des BLANCS peuvent être sans glyphe (espaces insérées par pdf.js) : ils prennent le reste de la largeur ;
+      // le reste (texte justifié, approche Tc/Tz, crénage) est réparti en proportion de chaque glyphe — mesuré : c'est
+      // ainsi que la justification se répartit dans les PDF testés (sonde-bornes.mjs), pas sur les seules espaces
+      if (connus > 0 && av.every((w, i) => w != null || /\s/.test(s[i]))) {
+        const reste = Math.max(0, d.largeur - connus);
+        const pleins = av.map((w) => (w == null ? reste / inconnus : w));
+        const total = pleins.reduce((a, w) => a + w, 0);
+        // écart énorme : police mal décrite → on ne fait pas mieux que le DOM
+        if (total > 0 && Math.abs(total - d.largeur) / d.largeur < 0.2) {
+          res = [0]; let x = 0;
+          for (const w of pleins) { x += w; res.push(x / total); }
+        }
+      }
+    }
+  } catch (e) { res = null; }
+  if (res) g.cache.set(span, res); // police pas encore chargée : on réessaiera
+  return res;
+}
+
+/* mot OCR : ses lettres réparties sur la largeur RÉELLE du mot (boîte de l'OCR) selon leurs largeurs relatives en
+   sans-serif, puis l'espace sur le reste du span — début et fin du mot tombent exactement sur sa boîte */
+let mesureOcr = null;
+function fractionsOcr(d) {
+  const mot = d.str.replace(/\s+$/, ''), n = d.str.length;
+  if (!mot.length) return null;
+  if (!mesureOcr && typeof document !== 'undefined') { mesureOcr = document.createElement('canvas').getContext('2d'); if (mesureOcr) mesureOcr.font = '100px sans-serif'; }
+  const larg = [...mot].map((c) => (mesureOcr ? mesureOcr.measureText(c).width : 1) || 1);
+  const somme = larg.reduce((a, w) => a + w, 0);
+  const res = [0]; let x = 0;
+  for (const w of larg) { x += w; res.push((x / somme) * d.partMot); }
+  for (let i = mot.length; i < n; i++) res.push(d.partMot + ((1 - d.partMot) * (i + 1 - mot.length)) / (n - mot.length));
+  return res;
+}
+
+/** rectangles ÉCRAN { left, top, right, bottom } du texte d'un Range sur la couche, bornes exactes quand le modèle
+    existe (voir « BORNES EXACTES »). Un rectangle par morceau de span ; hauteur = celle du texte dans le DOM. */
+export function rectsTexteEcran(container, range) {
+  const out = [];
+  for (const sp of container.querySelectorAll('span')) {
+    const t = sp.firstChild;
+    if (!t || t.nodeType !== 3 || !t.length || !range.intersectsNode(t)) continue;
+    const a = t === range.startContainer ? range.startOffset : 0;
+    const b = t === range.endContainer ? range.endOffset : t.length;
+    if (b <= a) continue;
+    const sub = document.createRange(); sub.setStart(t, a); sub.setEnd(t, b);
+    const qs = [...sub.getClientRects()].filter((q) => q.width > 0 && q.height > 0);
+    if (!qs.length) continue;
+    const fr = fractionsCaracteres(container, sp);
+    if (fr) {
+      const R = sp.getBoundingClientRect();
+      out.push({ left: R.left + R.width * fr[a], right: R.left + R.width * fr[b], top: Math.min(...qs.map((q) => q.top)), bottom: Math.max(...qs.map((q) => q.bottom)) });
+    } else qs.forEach((q) => out.push({ left: q.left, right: q.right, top: q.top, bottom: q.bottom }));
+  }
+  return out;
+}
+
+/** borne de texte EXACTE sous le point (x, y) : le span de la ligne visée (à moins d'un demi-corps), puis la borne de
+    caractère d'après le modèle. `cote` : 'debut' (borne de DÉBUT d'un passage : une lettre est prise si le point est
+    avant les 80 % de sa largeur) ou 'fin' (une lettre est prise dès que le point a passé 20 % de sa largeur) — un glisser
+    qui s'arrête sur la fin de l'ENCRE d'une lettre étroite (« i », « l ») la prend, alors que la règle du navigateur
+    (borne la plus proche) la laissait dehors ; sans `cote` : borne la plus proche. null si le point n'est pas sur du
+    texte modélisé. */
+export function positionExacte(container, x, y, cote = null) {
+  // le span qui CONTIENT le point, sinon le plus proche dans la tolérance (deux mots OCR voisins se touchent)
+  let best = null, dBest = Infinity;
+  for (const sp of container.querySelectorAll('span')) {
+    const t = sp.firstChild;
+    if (!t || t.nodeType !== 3 || !t.length) continue;
+    const R = sp.getBoundingClientRect();
+    const m = R.height * 0.5;
+    if (y < R.top - m * 0.3 || y > R.bottom + m * 0.3 || x < R.left - m || x > R.right + m) continue;
+    const d = (x < R.left ? R.left - x : x > R.right ? x - R.right : 0) + (y < R.top ? R.top - y : y > R.bottom ? y - R.bottom : 0) * 4;
+    if (d < dBest) { dBest = d; best = { sp, t, R }; }
+  }
+  if (best) {
+    const { sp, t, R } = best;
+    const fr = fractionsCaracteres(container, sp);
+    if (!fr) return null;
+    const X = (k) => R.left + R.width * fr[k];
+    const n = fr.length - 1;
+    if (cote === 'fin') { let k = 0; for (let j = 0; j < n; j++) if (x >= X(j) + (X(j + 1) - X(j)) * 0.2) k = j + 1; return { node: t, offset: k }; }
+    if (cote === 'debut') { for (let j = 0; j < n; j++) if (x <= X(j) + (X(j + 1) - X(j)) * 0.8) return { node: t, offset: j }; return { node: t, offset: n }; }
+    let k = 0, dk = Infinity;
+    for (let j = 0; j <= n; j++) { const dd = Math.abs(X(j) - x); if (dd < dk) { dk = dd; k = j; } }
+    return { node: t, offset: k };
+  }
+  return null;
+}
+
 export function rectsFromRange(container, range) {
   const cr = container.getBoundingClientRect();
   if (!cr.width || !cr.height) return [];
+  if (container.__mrGlyphes) {
+    return rectsTexteEcran(container, range).map((r) => ({ x: (r.left - cr.left) / cr.width, y: (r.top - cr.top) / cr.height, width: (r.right - r.left) / cr.width, height: (r.bottom - r.top) / cr.height }))
+      .filter((r) => r.width > 0 && r.height > 0);
+  }
   const inside = (a, b) => a.left >= b.left - 0.5 && a.top >= b.top - 0.5 && a.right <= b.right + 0.5 && a.bottom <= b.bottom + 0.5;
   const kept = [];
   for (const r of range.getClientRects()) {

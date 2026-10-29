@@ -23,7 +23,8 @@ await passer();
 const h3 = await hls();
 b.ok(h3.length === 1 && h3[0].couleur !== h1[0].couleur, 'autre couleur sur le même passage : la couleur est remplacée', JSON.stringify({ avant: h1[0].couleur, apres: h3, couleurs: couleurs.slice(0, 3) }));
 const tr = await b.ev(`[...document.querySelectorAll('.pdfr-page[data-cle="1"] .pdfr-hlayer .pdfr-hl-rect')].map(e=>{const c=getComputedStyle(e);return {rayon:c.borderTopLeftRadius,mix:c.mixBlendMode,op:c.opacity,pb:c.paddingBottom,mt:c.marginTop}})`);
-b.ok(tr.length === 1 && tr[0].rayon === '3px' && tr[0].mix === 'multiply' && tr[0].pb === '2px' && tr[0].mt === '-1px', 'rendu : un rectangle par ligne, coins 3 px, débord 1 px en haut et en bas, multiply', JSON.stringify(tr));
+// (29/10, docs/compte-rendu-synchro-rapide-surlignage-listes.md) coins de 4 px et 2 px de débord à gauche et à droite
+b.ok(tr.length === 1 && tr[0].rayon === '4px' && tr[0].mix === 'multiply' && tr[0].pb === '2px' && tr[0].mt === '-1px', 'rendu : un rectangle par ligne, coins 4 px, débord 1 px en haut et en bas (2 px sur les côtés), multiply', JSON.stringify(tr));
 // MAIN LEVÉE : un geste qui commence hors du texte (bas de la page 1, vide)
 const page = await b.rect(`document.querySelector('.pdfr-page[data-cle="1"]')`);
 const de = [page.x + page.w * 0.2, page.y + page.h * 0.85], a = [page.x + page.w * 0.6, page.y + page.h * 0.88];

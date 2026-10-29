@@ -131,6 +131,10 @@
 .pt-prose img.ProseMirror-selectednode { outline: 2px solid #6b5cff; }
 .pt-prose mark { border-radius: 2px; padding: 0 .08em; color: inherit; }
 .pt-prose mark.rt-notion { background: color-mix(in srgb, var(--nc, #FFD84D) 75%, transparent); }
+/* (29/10) même rendu que le surlignage d'une diapo : couleur à 45 % en multiply, coins de 4 px, 2 px de débord de chaque
+   côté (sans décaler le texte), bande continue d'une ligne à l'autre */
+.pt-prose mark.rt-notion { background: color-mix(in srgb, var(--nc, #FFD84D) 45%, transparent); mix-blend-mode: multiply; border-radius: 4px;
+  padding: 0 2px; margin: 0 -2px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .pt-prose mark.rt-notion.cible { animation: pt-cible 1.6s ease-out; }
 @keyframes pt-cible { 0%, 40% { box-shadow: 0 0 0 3px rgba(107, 92, 255, .45); } 100% { box-shadow: 0 0 0 0 rgba(107, 92, 255, 0); } }
 .pt-prose table { border-collapse: collapse; width: 100%; margin: .5em 0 .8em; table-layout: fixed; }
@@ -276,6 +280,7 @@
 /* notions prises sur l'image */
 .pti-notions { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
 .pti-notion { position: absolute; border-radius: 2px; background: color-mix(in srgb, var(--nc, #FFD84D) 55%, transparent); mix-blend-mode: multiply; }
+.pti-notion { border-radius: 4px; background: color-mix(in srgb, var(--nc, #FFD84D) 45%, transparent); margin-left: -2px; padding: 0 2px; box-sizing: content-box; } /* (29/10) même rendu partout */
 .pti-notion.cible { animation: pt-cible 1.6s ease-out; }
 /* résultat de recherche ⌘F dans le texte d'une image */
 .pti-mot::highlight(recherche-doc) { background: rgba(255, 200, 0, .55); }

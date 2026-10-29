@@ -594,6 +594,10 @@
 /* §5 SURLIGNAGE CONTINU : un rectangle par ligne (PdfPage.jsx, pdfShared.js#lignesSurlignage), coins de 3 px,
    1 px de débord en haut et en bas ; multiply, opacité de la couleur (inchangée) */
 .pdfr-page .pdfr-hl-rect { border-radius: 3px; margin-top: -1px; padding-bottom: 2px; box-sizing: content-box; }
+/* (29/10, docs/compte-rendu-synchro-rapide-surlignage-listes.md) bande par ligne, du premier au dernier caractère
+   (bornes exactes, pdfShared.js « BORNES EXACTES »), 2 px de débord à gauche et à droite, coins de 4 px ; même rendu
+   sur la diapo, la couche OCR, la fiche et les images (pi-hl) */
+.pdfr-page .pdfr-hl-rect, .pdfr-hl-rect.pi-hl { border-radius: 4px; margin: -1px 0 0 -2px; padding: 0 2px 2px; box-sizing: content-box; }
 
 /* §1 BARRE À 6 OUTILS : pastille « nouveau dessin » sur Insérer ; sous-barres avec icône + libellé */
 .ptb-outil[data-outil="inserer"], .tab-outil[data-outil="inserer"] { position: relative; }

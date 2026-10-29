@@ -51,7 +51,7 @@ import {
   soustraireAncres, partCouverte, surlignagesTouches, couleurHex, planSurlignage,
   traitTouche, cheminLisse, modeDuTrait, accrocherAngles,
   EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, positionTexteProche,
-  lisibleSurNoir, EMPTY_ARRAY, opaciteSurlignage, lignesSurlignage,
+  lisibleSurNoir, EMPTY_ARRAY, opaciteSurlignage, lignesSurlignage, rectsTexteEcran, positionExacte,
   ecrireFondBoiteDefaut,
 } from './pdfShared.js';
 
@@ -154,15 +154,12 @@ export function PdfPageContent({
       if (sel && sel.rangeCount && !sel.isCollapsed) {
         const range = sel.getRangeAt(0);
         if (range.intersectsNode(couche)) {
-          for (const sp of couche.querySelectorAll('span')) {
-            const t = sp.firstChild;
-            if (!t || t.nodeType !== 3 || !t.length || !range.intersectsNode(t)) continue;
-            const r = document.createRange();
-            r.setStart(t, t === range.startContainer ? range.startOffset : 0);
-            r.setEnd(t, t === range.endContainer ? range.endOffset : t.length);
-            // même hauteur qu'un surlignage (un peu plus haute que la boîte du span) :
-            // un surlignage sous la sélection est entièrement recouvert, sans liseré
-            for (const q of r.getClientRects()) if (q.width > 0.5 && q.height > 0.5) rects.push([q.left - pr.left, q.top - pr.top - q.height * 0.1, q.width, q.height * 1.16]);
+          // (29/10) bornes exactes des caractères (pdfShared.js « BORNES EXACTES ») : l'aperçu = le futur surlignage.
+          // Même hauteur qu'un surlignage (un peu plus haute que la boîte du span) et même débord de 2 px :
+          // un surlignage sous la sélection est entièrement recouvert, sans liseré.
+          for (const q of rectsTexteEcran(couche, range)) {
+            const w = q.right - q.left, h = q.bottom - q.top;
+            if (w > 0.5 && h > 0.5) rects.push([q.left - pr.left - 2, q.top - pr.top - h * 0.1, w + 4, h * 1.16]);
           }
         }
       }
@@ -640,6 +637,9 @@ export function PdfPageContent({
   // terminer ne doit RIEN déclencher ici, même si le pointeur a fini sa course
   // hors de la boîte — auquel cas le mouseup atteint bien cette couche.
   const gesteBoite = useRef(false);
+  // (29/10) point de départ d'un glisser à la souris / au stylet : sert à poser les bornes EXACTES au relâcher
+  const departGlisser = useRef(null);
+  const handlePointerDown = (e) => { departGlisser.current = e.button === 0 && e.pointerType !== 'touch' ? { x: e.clientX, y: e.clientY } : null; };
   const handleMouseUp = (e) => {
     if (gesteBoite.current) { gesteBoite.current = false; return; }
     const sel = window.getSelection();
@@ -664,6 +664,32 @@ export function PdfPageContent({
         else r.setEnd(pos.node, pos.offset);
         if (!r.collapsed) selRange = r;
       }
+    }
+    /* (29/10) BORNES EXACTES : le navigateur place les bornes d'après les lettres de la couche de texte (sans-serif),
+       pas d'après l'encre de la page — relâcher sur la fin réelle de « positif » pouvait laisser le « f » dehors. Pour un
+       glisser à la souris, chaque borne est reprise sous le pointeur avec les vraies largeurs de glyphes
+       (pdfShared.js#positionExacte) ; un point hors du texte modélisé laisse la sélection du navigateur telle quelle. */
+    const dep = departGlisser.current; departGlisser.current = null;
+    // sens du glisser d'après les bornes les plus proches, puis bornes de DÉBUT et de FIN (voir positionExacte)
+    const n0 = dep && Math.hypot(e.clientX - dep.x, e.clientY - dep.y) > 3 ? positionExacte(container, dep.x, dep.y) : null;
+    const n1 = n0 ? positionExacte(container, e.clientX, e.clientY) : null;
+    let p0 = null, p1 = null;
+    if (n0 && n1) {
+      const r0 = document.createRange(); r0.setStart(n0.node, n0.offset);
+      const avant = r0.comparePoint(n1.node, n1.offset) >= 0; // glisser vers l'avant (dans l'ordre du texte)
+      p0 = positionExacte(container, dep.x, dep.y, avant ? 'debut' : 'fin');
+      p1 = positionExacte(container, e.clientX, e.clientY, avant ? 'fin' : 'debut');
+    }
+    if (p0 && p1) {
+      try {
+        const r = document.createRange();
+        r.setStart(p0.node, p0.offset);
+        if (r.comparePoint(p1.node, p1.offset) < 0) { r.setStart(p1.node, p1.offset); r.setEnd(p0.node, p0.offset); } else r.setEnd(p1.node, p1.offset);
+        if (!r.collapsed && container.contains(r.startContainer) && container.contains(r.endContainer)) {
+          selRange = r;
+          sel.setBaseAndExtent(p0.node, p0.offset, p1.node, p1.offset); // l'aperçu dessiné suit
+        }
+      } catch (err) { /* borne invalide : on garde la sélection du navigateur */ }
     }
     const anchor = anchorFromRange(container, selRange);
     const range = (anchor && rangeFromAnchor(container, anchor)) || selRange;
@@ -812,7 +838,7 @@ export function PdfPageContent({
           (natif ou couche OCR) le sélectionne et le surligne au relâchement ; ailleurs, il trace un surlignage à main
           levée (même moteur que le crayon). */}
       <div ref={textLayerRef} className={'pdfr-textlayer outil-' + outil} onMouseUp={handleMouseUp} onCopy={handleCopy}
-        onPointerDown={outil === 'surligneur' ? (e) => { if (!surDuTexte(e)) demarrerTrait(e); } : undefined} />
+        onPointerDown={(e) => { handlePointerDown(e); if (outil === 'surligneur' && !surDuTexte(e)) demarrerTrait(e); }} />
       {corps}
       {/* IMAGES COLLÉES (01/10) : JUSTE au-dessus du PDF, SOUS toutes les annotations
           (surlignages, blocs, traits, textes, « ? », boîtes — rendus après). Leur

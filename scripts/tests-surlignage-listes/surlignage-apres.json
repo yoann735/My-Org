@@ -1,0 +1,72 @@
+[
+  {
+    "titre": "polices embarquées",
+    "attendu": "à quatre",
+    "texte": "à quatre",
+    "ecartG": -2.1,
+    "ecartD": -4.5
+  },
+  {
+    "titre": "polices embarquées",
+    "attendu": "conseil par téléphone",
+    "texte": "conseil par téléphone",
+    "ecartG": -1.5,
+    "ecartD": -3.5
+  },
+  {
+    "titre": "polices embarquées",
+    "attendu": "demanderai",
+    "texte": "demanderai",
+    "ecartG": -2,
+    "ecartD": -3.9
+  },
+  {
+    "titre": "polices embarquées",
+    "attendu": "collègue de confiance.",
+    "texte": "collègue de confiance",
+    "ecartG": -2.3,
+    "ecartD": -2.9
+  },
+  {
+    "titre": "polices embarquées",
+    "attendu": "soignants,",
+    "texte": "soignants",
+    "ecartG": -2.4,
+    "ecartD": -5.4
+  },
+  {
+    "titre": "polices embarquées",
+    "attendu": "patient",
+    "texte": "patient",
+    "ecartG": -2.6,
+    "ecartD": -5.4
+  },
+  {
+    "titre": "polices embarquées",
+    "attendu": "un kiné",
+    "texte": "un kiné",
+    "ecartG": -0.9,
+    "ecartD": -4.5
+  },
+  {
+    "titre": "polices embarquées",
+    "attendu": "exemple positif",
+    "texte": "exemplepositif",
+    "ecartG": -3.5,
+    "ecartD": -4.7
+  },
+  {
+    "titre": "OCR",
+    "attendu": "exemple",
+    "texte": "exemple",
+    "ecartG": -1.4,
+    "ecartD": -2.7
+  },
+  {
+    "titre": "OCR",
+    "attendu": "quatre",
+    "texte": "quatre",
+    "ecartG": -1.1,
+    "ecartD": -3
+  }
+]

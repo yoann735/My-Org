@@ -22,6 +22,9 @@ export function openPdf(data) {
     standardFontDataUrl: ASSETS + 'standard_fonts/',
     wasmUrl: ASSETS + 'wasm/',
     iccUrl: ASSETS + 'iccs/',
+    // (29/10) largeurs de glyphes + table unicode des polices : bornes EXACTES des caractères du surlignage
+    // (pdf/pdfShared.js « BORNES EXACTES »). Lecture seule, aucun effet sur le rendu de la page.
+    fontExtraProperties: true,
   }).promise;
 }
 
