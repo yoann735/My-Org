@@ -293,6 +293,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
         Object.entries(r.mesures || {}).forEach(([k, v]) => trace(k, v));
         if (r.status !== 'ok') return { ok: false, erreur: r.status === 'echec' ? 'serveur' : 'reseau' };
         if (j === null) return { ok: false, erreur: 'reseau' };
+        if (r.ecart) return { ok: false, complet: true }; // une ligne a échappé au tirage : synchro complète, pas « À jour »
         let d = performance.now();
         const stores = new Set(r.stores);
         if (j) {

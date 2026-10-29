@@ -6,8 +6,8 @@
 //  2. retour après 5 min réelles sans changement : idem ;
 //  3. 10 réponses sur A → retour sur B : « À jour » < 3 s, cartes reçues, empreinte revérifiée en fond, A = B = cloud ;
 //  4. mode avion sur B (A répond pendant ce temps) → « Hors ligne » ; retour du réseau → « À jour » < 3 s, sans lecture complète ;
-//  5. ligne arrivée au cloud avec une date ANCIENNE (horloge décalée) : la vérification de fond voit l'écart, une passe
-//     complète la rapatrie ;
+//  5. ligne arrivée au cloud avec une date ANCIENNE (horloge décalée) : le nombre de lignes vivantes trahit l'écart, une
+//     passe complète la rapatrie AVANT d'afficher « À jour » ;
 //  6. rien de perdu (comptes A, B, cloud) ; aucune erreur console.
 import { appareil, faux } from '../tests-synchro-affichage/commun.mjs';
 const ATTENDRE = !process.argv.includes('--sans-attente');
@@ -94,11 +94,14 @@ let recue = false;
 for (let i = 0; i < 120 && !recue; i++) { recue = !!(await B.S(`return !!(await S.getOne('fiches', 'f-horloge'))`)); if (!recue) await B.dormir(250); }
 await B.attendrePhase(['ajour'], 60000);
 const lc5 = await lecturesCompletes(j0);
-v(recue && lc5 >= 1, `5. date ancienne : « ${r5.fin} » en ${r5.ms} ms, puis vérification de fond → écart → passe complète → fiche reçue`, `reçue ${recue}, lectures complètes ${lc5} ${r5.phases}`);
+// la passe rapide voit l'écart (nombre de lignes vivantes) et enchaîne sur une passe complète : « À jour » n'apparaît
+// qu'une fois la fiche reçue — jamais avant
+v(recue && lc5 >= 1 && r5.fin === 'ajour' && r5.phases.startsWith('attente'), `5. date ancienne : la passe rapide voit l'écart → passe complète → « À jour » en ${r5.ms} ms, fiche reçue`, `reçue ${recue}, lectures complètes ${lc5} ${r5.phases}`);
 
 // 6. rien de perdu
 await B.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
-await A.ev(`window.dispatchEvent(new Event('online')); 1`); await A.attendrePhase(['ajour'], 60000); await A.dormir(500); await A.attendrePhase(['ajour'], 60000);
+// A doit RELANCER une passe (sa phase affiche encore « À jour » d'avant) : on attend la transition attente → à jour
+await A.dormir(1500); await chrono(A, (b) => b.ev(`window.dispatchEvent(new Event('online')); 1`));
 const e6A = await empreintes(A), e6B = await empreintes(B);
 const comptesApres = (await faux()).rows.filter((r) => !r.deleted).length;
 v(e6A.local === e6B.local && e6B.local === e6B.cloud && e6A.n === e6B.n, `6. fin : empreintes A ${e6A.local} = B ${e6B.local} = cloud ${e6B.cloud} (${e6B.n} enregistrements)`);

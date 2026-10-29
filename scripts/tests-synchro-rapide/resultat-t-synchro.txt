@@ -1,0 +1,20 @@
+(info) cloud : 4480 enregistrements
+1. retour sans changement : 199 ms, 200 ms, 194 ms — attente → ajour
+2. retour après 10 réponses sur A : 1954 ms — ajour → attente → ajour
+3. étapes (ms) : {"envoi_purge":31,"envoi_file":1,"recuperation_tout":5461,"octets_recus":6773252,"recuperation_et_application":5267,"application":-194,"journal":130,"empreinte_locale":32,"empreinte_cloud":940}
+✅ 1. retour sans changement : « À jour » en 196 ms, 167 ms, 205 ms (< 1 s)
+✅ 1. aucune lecture complète de la table pendant ces retours
+✅ 2. retour après 5 min sans changement : « À jour » en 218 ms, sans lecture complète
+✅ 3. 10 réponses sur A → retour sur B : « À jour » en 2067 ms (< 3 s) — ajour → attente → ajour [envoi 12, verification 138, recuperation 1548, application 6, renvoi 0, journal 153, renvoi_journal 167, recalcul 1, total 2057]
+✅ 3. sans lecture complète de la table
+✅ 3. empreinte complète revérifiée en arrière-plan (curseur 2f1bfc5f23e2)
+✅ 3. empreintes égales : A 2f1bfc5f23e2, B 2f1bfc5f23e2, cloud 2f1bfc5f23e2
+✅ 4. mode avion : « horsligne » — horsligne
+✅ 4. retour du réseau (3 réponses faites sur A entre-temps) : « À jour » en 1954 ms — attente → ajour [envoi 40, verification 140, recuperation 1576, application 3, renvoi 0, journal 134, recalcul 1, total 1924]
+✅ 4. reprise incrémentale (aucune lecture complète)
+✅ 5. date ancienne : « ajour » en 8586 ms, puis vérification de fond → écart → passe complète → fiche reçue — reçue true, lectures complètes 5 attente → ajour [envoi 0, verification 126, recuperation 1525, application 1, renvoi 0]
+✅ 6. fin : empreintes A 3fad20a02d85 = B 3fad20a02d85 = cloud 3fad20a02d85 (4481 enregistrements)
+✅ 6. cloud : 4480 → 4481 enregistrements vivants (+1 : la fiche du scénario 5), rien de perdu
+✅ aucune erreur console
+✅ tout est vert
+FIN 0

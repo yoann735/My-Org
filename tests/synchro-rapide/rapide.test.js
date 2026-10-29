@@ -54,8 +54,10 @@ beforeEach(async () => {
 describe('synchro incrémentale (storage.js#syncRapide)', () => {
   it('vérification légère : nombre de lignes + updated_at max, sans `data`', async () => {
     poserCloud(ligne('questions', 'q1', '2026-10-29T08:00:00.000Z'), ligne('questions', 'q2', '2026-10-29T09:00:00.000Z'), ligne('transcript_session', 't1', '2026-10-29T10:00:00.000Z'));
-    expect(await Y.etatLegerCloud()).toEqual({ n: 2, maxMaj: '2026-10-29T09:00:00.000Z' }); // stores isolés exclus
-    expect(lectures.at(-1)).toEqual({ cols: 'updated_at', n: 1 });
+    poserCloud(ligne('questions', 'q0', '2026-10-28T08:00:00.000Z', {}, true)); // tombstone : compte dans n, pas dans les vivantes
+    expect(await Y.etatLegerCloud(S.SYNCABLE_STORES)).toEqual({ n: 3, maxMaj: '2026-10-29T09:00:00.000Z', vivants: 2 }); // stores isolés exclus
+    expect(lectures.slice(-2).map((l) => l.n)).toEqual([1, 1]); // une ligne par requête, aucun contenu
+    expect(lectures.every((l) => l.cols !== '*')).toBe(true);
   });
   it('rien n’a changé depuis le curseur : aucune ligne téléchargée', async () => {
     poserCloud(ligne('questions', 'q1', '2026-10-29T08:00:00.000Z'));
@@ -78,7 +80,17 @@ describe('synchro incrémentale (storage.js#syncRapide)', () => {
     expect([...r.stores]).toEqual(['questions']); expect(r.cartes.length).toBe(10);
     expect((await S.getOne('questions', 'q3')).n).toBe(1);
     expect((await S.getOne('questions', 'q30')).n).toBe(0);
-    expect(r.leger).toEqual({ n: 50, maxMaj: '2026-10-29T12:00:09.000Z' });
+    expect(r.leger).toEqual({ n: 50, maxMaj: '2026-10-29T12:00:09.000Z', vivants: 50 });
+    expect(r.ecart).toBe(false);
+  });
+  it('ligne arrivée avec une date ANCIENNE (horloge en retard) : hors du tirage, mais le nombre de lignes vivantes la trahit', async () => {
+    for (let i = 0; i < 5; i++) poserCloud(ligne('questions', 'q' + i, '2026-10-29T08:00:00.000Z'));
+    await S.reconcileAll();
+    poserCloud(ligne('fiches', 'f-retard', '2026-10-20T08:00:00.000Z', { titre: 'écrite par un appareil en retard' }));
+    const r = await S.syncRapide({ n: 5, maxMaj: '2026-10-29T08:00:00.000Z' });
+    expect(r.status).toBe('ok');
+    expect(await S.getOne('fiches', 'f-retard')).toBeUndefined(); // échappe au tirage incrémental…
+    expect(r.ecart).toBe(true); // … mais la passe le sait : synchro complète, pas « À jour »
   });
   it('mêmes règles que reconcileAll : tombstone plus récent supprime, local plus récent repart au cloud, nouveau ajouté', async () => {
     poserCloud(ligne('questions', 'a', '2026-10-28T08:00:00.000Z'), ligne('questions', 'b', '2026-10-28T08:00:00.000Z'));

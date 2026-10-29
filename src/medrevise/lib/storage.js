@@ -1045,6 +1045,13 @@ export async function syncNow(opts = {}) {
    La synchro complète (syncNow) reste le chemin du premier démarrage, après une erreur et de « Forcer la synchro ».
    ============================================================ */
 
+/** nombre d'enregistrements des stores synchronisés sur cet appareil (clés seules : rapide) */
+async function compterLocal() {
+  let n = 0;
+  for (const name of SYNCABLE) n += ((await keys(S[name])) || []).length;
+  return n;
+}
+
 /** Ce que syncNow lance aussi, en tâche de fond et sans l'attendre : transcriptions, couches OCR, fichiers. */
 function fondCommeSyncNow() {
   import('../transcription/synchro.js').then((m) => m.synchroTranscripts()).catch(() => {});
@@ -1079,7 +1086,8 @@ export async function appliquerLignesCloud(rows) {
 
 /**
  * Passe incrémentale. `curseur` = { n, maxMaj } du cloud au dernier alignement vérifié.
- * → { status: 'ok'|'offline'|'echec'|'disabled'|'paused', leger, inchange (cloud identique au curseur), recues, stores, cartes, mesures }
+ * → { status: 'ok'|'offline'|'echec'|'disabled'|'paused', leger, inchange (cloud identique au curseur), recues, stores, cartes,
+ *     ecart (le nombre de lignes vivantes du cloud ≠ celui de l'appareil : synchro complète nécessaire), mesures }
  */
 export async function syncRapide(curseur) {
   if (!SYNC_ENABLED) return { status: 'disabled' };
@@ -1091,7 +1099,7 @@ export async function syncRapide(curseur) {
     if (!r.ok) return { status: statutEchec(r.erreur), mesures };
   }
   mesures.envoi = Math.round(t0() - d); d = t0();
-  const leger = await etatLegerCloud();
+  const leger = await etatLegerCloud(SYNCABLE);
   mesures.verification = Math.round(t0() - d); d = t0();
   if (!leger) return { status: statutEchec(natureLecture()), mesures };
   const vide = { stores: new Set(), cartes: [] };
@@ -1121,7 +1129,10 @@ export async function syncRapide(curseur) {
   }
   mesures.renvoi = Math.round(t0() - d);
   fondCommeSyncNow();
-  return { status: 'ok', leger, recues: rows.length, ...app, mesures };
+  // autant d'enregistrements ici que de lignes vivantes au cloud ? Sinon une ligne a échappé au tirage (horloge d'un
+  // appareil très en retard) : `ecart`, la porte enchaîne sur une synchro complète au lieu d'afficher « À jour »
+  const ecart = (await compterLocal()) !== leger.vivants;
+  return { status: 'ok', leger, recues: rows.length, ...app, ecart, mesures };
 }
 
 /* Blobs dans syncNow : audit (liste du bucket) au premier passage de la session puis

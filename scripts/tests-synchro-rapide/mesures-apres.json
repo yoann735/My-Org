@@ -1,0 +1,139 @@
+{
+  "etiquette": "apres",
+  "volume": 4480,
+  "reseau": {
+    "offline": false,
+    "latency": 120,
+    "downloadThroughput": 1500000,
+    "uploadThroughput": 600000
+  },
+  "sansChangement": [
+    {
+      "ms": 199,
+      "phases": "attente → ajour",
+      "trace": [
+        {
+          "etape": "envoi",
+          "ms": 1
+        },
+        {
+          "etape": "verification",
+          "ms": 132
+        },
+        {
+          "etape": "recalcul",
+          "ms": 0
+        },
+        {
+          "etape": "empreinte_locale",
+          "ms": 32
+        },
+        {
+          "etape": "total",
+          "ms": 175
+        }
+      ]
+    },
+    {
+      "ms": 200,
+      "phases": "attente → ajour",
+      "trace": [
+        {
+          "etape": "envoi",
+          "ms": 0
+        },
+        {
+          "etape": "verification",
+          "ms": 127
+        },
+        {
+          "etape": "recalcul",
+          "ms": 1
+        },
+        {
+          "etape": "empreinte_locale",
+          "ms": 42
+        },
+        {
+          "etape": "total",
+          "ms": 178
+        }
+      ]
+    },
+    {
+      "ms": 194,
+      "phases": "attente → ajour",
+      "trace": [
+        {
+          "etape": "envoi",
+          "ms": 0
+        },
+        {
+          "etape": "verification",
+          "ms": 126
+        },
+        {
+          "etape": "recalcul",
+          "ms": 1
+        },
+        {
+          "etape": "empreinte_locale",
+          "ms": 33
+        },
+        {
+          "etape": "total",
+          "ms": 168
+        }
+      ]
+    }
+  ],
+  "dixReponses": {
+    "ms": 1954,
+    "phases": "ajour → attente → ajour",
+    "trace": [
+      {
+        "etape": "envoi",
+        "ms": 0
+      },
+      {
+        "etape": "verification",
+        "ms": 126
+      },
+      {
+        "etape": "recuperation",
+        "ms": 1658
+      },
+      {
+        "etape": "application",
+        "ms": 5
+      },
+      {
+        "etape": "renvoi",
+        "ms": 0
+      },
+      {
+        "etape": "journal",
+        "ms": 136
+      },
+      {
+        "etape": "recalcul",
+        "ms": 1
+      },
+      {
+        "etape": "total",
+        "ms": 1947
+      }
+    ]
+  },
+  "etapes": {
+    "envoi_purge": 31,
+    "envoi_file": 1,
+    "recuperation_tout": 5461,
+    "octets_recus": 6773252,
+    "recuperation_et_application": 5267,
+    "application": -194,
+    "journal": 130,
+    "empreinte_locale": 32,
+    "empreinte_cloud": 940
+  }
+}

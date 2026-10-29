@@ -462,30 +462,35 @@ export async function pullAllMeta() {
    SYNCHRO INCRÉMENTALE (29/10, docs/compte-rendu-synchro-rapide-surlignage-listes.md).
    Revenir sur l'onglet relançait DEUX lectures complètes de la table (fusion + empreinte), ~6,7 Mo pour 4500
    enregistrements. Désormais, au retour :
-   - etatLegerCloud() : UNE requête minimale — nombre de lignes + `updated_at` le plus récent (hors stores isolés,
-     comme pullAllRecords). Rien n'a bougé depuis le curseur → rien à télécharger ;
+   - etatLegerCloud() : des requêtes minimales — nombre de lignes + `updated_at` le plus récent (hors stores isolés,
+     comme pullAllRecords), et nombre de lignes VIVANTES. Rien n'a bougé depuis le curseur → rien à télécharger ;
    - sinon pullDepuis(curseur) : seulement les lignes dont `updated_at` ≥ curseur − MARGE_INCR_MS. Mêmes règles que
      pullAllRecords : ordre total stable, tout ou rien.
    Lecture seule, aucune fonction SQL à installer. `updated_at` ne recule jamais au cloud (écriture conditionnelle
    medrevise_push) : toute écriture acceptée fait monter le maximum ou le nombre de lignes. La marge couvre les
-   horloges d'appareils un peu décalées ; l'empreinte complète, vérifiée en arrière-plan (lib/syncStatus.js),
-   rattrape le reste en relançant une synchro complète.
+   horloges d'appareils un peu décalées. Une ligne écrite par un appareil à l'horloge très en retard échapperait au
+   tirage : le nombre de lignes vivantes, comparé à celui de l'appareil après la passe, la trahit (synchro complète
+   aussitôt, jamais « À jour ») ; l'empreinte complète, vérifiée en arrière-plan (lib/syncStatus.js), rattrape le reste.
    ============================================================ */
 export const MARGE_INCR_MS = 10 * 60 * 1000;
 
-/** { n, maxMaj } du cloud (maxMaj : ISO normalisé ou null si vide), ou null si illisible. */
-export async function etatLegerCloud() {
+/** { n, maxMaj, vivants } du cloud (maxMaj : ISO normalisé ou null si vide ; vivants : lignes NON supprimées des
+ *  stores `stores` — à comparer au nombre d'enregistrements de l'appareil), ou null si illisible. Deux requêtes
+ *  minimales en parallèle (une ligne chacune). */
+export async function etatLegerCloud(stores = []) {
   if (!SYNC_ENABLED) return null;
   try {
-    const { data, error, count } = await supabase
-      .from(RECORDS_TABLE)
-      .select('updated_at', { count: 'exact' })
-      .not('store', 'in', `(${STORES_ISOLES.join(',')})`)
-      .order('updated_at', { ascending: false })
-      .limit(1);
-    if (error || typeof count !== 'number') return noterEchec(error || new Error('nombre de lignes absent'));
-    const d = data && data[0] ? new Date(data[0].updated_at) : null;
-    return { n: count, maxMaj: d && !Number.isNaN(d.getTime()) ? d.toISOString() : null };
+    const [a, b] = await Promise.all([
+      supabase.from(RECORDS_TABLE).select('updated_at', { count: 'exact' })
+        .not('store', 'in', `(${STORES_ISOLES.join(',')})`)
+        .order('updated_at', { ascending: false }).limit(1),
+      supabase.from(RECORDS_TABLE).select('record_id', { count: 'exact' })
+        .in('store', stores).eq('deleted', false).limit(1),
+    ]);
+    if (a.error || typeof a.count !== 'number') return noterEchec(a.error || new Error('nombre de lignes absent'));
+    if (b.error || typeof b.count !== 'number') return noterEchec(b.error || new Error('nombre de lignes absent'));
+    const d = a.data && a.data[0] ? new Date(a.data[0].updated_at) : null;
+    return { n: a.count, maxMaj: d && !Number.isNaN(d.getTime()) ? d.toISOString() : null, vivants: b.count };
   } catch (e) { return noterEchec(e); }
 }
 
