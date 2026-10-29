@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Version A · Séances d'abord</title>
+<link rel="stylesheet" href="../commun/commun.css">
+<style>
+/* ============ Version A — « Séances d'abord » ============ */
+.a { display: grid; grid-template-columns: 252px 1fr auto; grid-template-rows: 56px 1fr; height: 100%; }
+.a-haut { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.a-haut .fil { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 13px; }
+.a-haut .fil b { color: var(--text); font-size: 15px; }
+.a-haut .droite { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.btn { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: var(--card); border-radius: 10px; padding: 7px 12px; font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.btn:hover { border-color: var(--border-hover); }
+.btn.prim { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.live { background: var(--live); border-color: var(--live); color: #fff; }
+.btn.fant { background: none; border-color: transparent; color: var(--text-2); }
+.btn.fant:hover { color: var(--text); background: var(--card); }
+.btn.ico { padding: 7px; }
+.chercher { display: flex; align-items: center; gap: 8px; width: 260px; border: 1px solid var(--border); background: var(--bg-2); border-radius: 10px; padding: 7px 10px; color: var(--text-3); font-size: 13px; }
+.chercher kbd { margin-left: auto; font: 600 11px var(--mono); color: var(--text-3); border: 1px solid var(--border); border-radius: 5px; padding: 0 5px; }
+
+/* rail des séances */
+.rail { border-right: 1px solid var(--border); padding: 14px 10px; overflow: auto; display: flex; flex-direction: column; gap: 4px; background: var(--bg); }
+.rail h4 { margin: 6px 8px 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.r-item { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: center; padding: 8px; border-radius: 10px; border: 1px solid transparent; text-align: left; background: none; width: 100%; }
+.r-item:hover { background: var(--card); }
+.r-item.actif { background: var(--card); border-color: var(--border); }
+.r-num { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-weight: 800; font-size: 12px; color: var(--sc); background: color-mix(in srgb, var(--sc) 16%, transparent); }
+.r-txt { min-width: 0; } .r-txt b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-txt small { color: var(--text-3); font-size: 11.5px; }
+.r-etat { display: flex; gap: 3px; color: var(--text-3); }
+.r-etat .ok { color: var(--ok); }
+.r-fiches { margin: -2px 0 6px 42px; display: grid; gap: 2px; }
+.r-fiche { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px; font-size: 12.5px; color: var(--text-2); background: none; border: 0; text-align: left; }
+.r-fiche:hover { color: var(--text); background: var(--card); }
+.r-fiche.actif { color: var(--text); background: var(--accent-soft); }
+.r-fiche .x { margin-left: auto; font-size: 10.5px; color: var(--text-3); }
+.rail .sep { height: 1px; background: var(--border); margin: 8px 6px; }
+.depot { margin: 6px 4px 0; border: 1.5px dashed var(--border-hover); border-radius: 12px; padding: 12px; text-align: center; color: var(--text-2); font-size: 12.5px; background: none; }
+.depot:hover { border-color: var(--accent); color: var(--text); }
+
+/* centre */
+.centre { overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.defile { overflow: auto; flex: 1; }
+
+/* accueil du cours */
+.acc { padding: 28px 32px 40px; max-width: 1060px; }
+.acc h1 { margin: 0; font-size: 28px; letter-spacing: -.02em; }
+.acc .sous { color: var(--text-2); margin: 4px 0 20px; }
+.ruban { display: flex; height: 34px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+.ruban button { border: 0; border-right: 1px solid var(--bg); background: color-mix(in srgb, var(--sc) 30%, var(--card)); color: var(--text); font-size: 11.5px; font-weight: 700; position: relative; }
+.ruban button:hover { background: color-mix(in srgb, var(--sc) 50%, var(--card)); }
+.ruban button.vide { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--sc) 18%, var(--card)) 0 6px, var(--card) 6px 12px); }
+.ruban-leg { display: flex; justify-content: space-between; color: var(--text-3); font: 600 11px var(--mono); margin: 5px 2px 22px; }
+.reprise { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 26px; }
+.carte { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 16px 18px; }
+.carte .eti { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); font-weight: 700; }
+.carte h3 { margin: 6px 0 4px; font-size: 17px; }
+.carte p { margin: 0 0 12px; color: var(--text-2); font-size: 13px; }
+.carte.aujourdhui { border-color: color-mix(in srgb, var(--live) 45%, var(--border)); background: linear-gradient(135deg, color-mix(in srgb, var(--live) 10%, var(--card)), var(--card)); }
+.grille-s { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.cs { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px; display: grid; gap: 10px; text-align: left; position: relative; }
+.cs:hover { border-color: var(--border-hover); }
+.cs .tete { display: flex; align-items: center; gap: 10px; }
+.cs .tete h3 { margin: 0; font-size: 15px; } .cs .tete small { color: var(--text-3); display: block; font-size: 12px; }
+.cs .vign { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.cs .meta { display: flex; gap: 12px; color: var(--text-2); font-size: 12px; flex-wrap: wrap; }
+.cs .meta .ok { color: var(--ok); }
+.chip-fiche { white-space: nowrap; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--bg-2); border-radius: 8px; padding: 5px 8px; font-size: 12px; font-weight: 600; color: var(--text); }
+.chip-fiche:hover { border-color: var(--accent); }
+.chip-fiche.partage::after { content: 'S1+S2'; font-size: 10px; color: var(--text-3); }
+.cs .fiches { display: flex; gap: 6px; flex-wrap: wrap; }
+.cs.drop { outline: 2px dashed var(--accent); outline-offset: 3px; }
+
+/* séance */
+.s-tete { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border); }
+.s-tete h2 { margin: 0; font-size: 16px; } .s-tete small { color: var(--text-3); font-size: 12px; }
+.s-tete .seg { margin-left: 10px; }
+.s-tete .seg button { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.s-tete > div:nth-child(2) { min-width: 0; } .s-tete h2, .s-tete small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.s-tete .droite { margin-left: auto; display: flex; gap: 6px; }
+.outils { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2); }
+.outils button { border: 0; background: none; color: var(--text-2); padding: 5px 7px; border-radius: 7px; }
+.outils button.actif { background: var(--accent-soft); color: var(--accent); }
+.choix-fiche { display: flex; gap: 6px; overflow-x: auto; white-space: nowrap; padding: 8px 20px; border-bottom: 1px solid var(--border-2); background: var(--bg-2); align-items: center; font-size: 12px; color: var(--text-3); }
+.choix-fiche .chip-fiche.actif { border-color: var(--accent); background: var(--accent-soft); }
+.lecture { display: grid; grid-template-columns: 1fr 300px; height: 100%; min-height: 0; }
+.lecture.sans-sources { grid-template-columns: 1fr; }
+.pages { overflow: auto; padding: 26px 40px 80px; display: grid; gap: 22px; justify-content: center; grid-template-columns: minmax(0, 720px); }
+.src-rail { border-left: 1px solid var(--border); overflow: auto; padding: 14px; display: grid; gap: 14px; align-content: start; background: var(--bg); }
+.src-rail h5 { margin: 0 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
+.src-rail .fil-lien { font-size: 12px; color: var(--text-2); background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
+.src-rail .fil-lien b { color: var(--text); }
+.mini-d { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mini-d .page-diapo { cursor: zoom-in; }
+.mini-d .page-diapo:hover { outline: 2px solid var(--accent); }
+.trans-extrait { display: grid; gap: 2px; }
+.trans-extrait .lignetrans { cursor: pointer; } .trans-extrait .lignetrans:hover { background: var(--card); }
+.diapos { overflow: auto; padding: 22px; display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; align-content: start; }
+.diapo-c { position: relative; }
+.diapo-c .badge-t { position: absolute; top: 6px; right: 6px; background: rgba(20,20,30,.82); color: #fff; font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 6px; }
+.diapo-c .tag-p { position: absolute; left: 6px; top: 6px; background: var(--ok); color: #fff; font-size: 10.5px; font-weight: 800; padding: 2px 6px; border-radius: 6px; }
+.diapo-c .tag-p.fin { background: var(--crit); }
+.trans-plein { overflow: auto; padding: 18px 28px; max-width: 860px; }
+.trans-plein .lignetrans { grid-template-columns: 54px 1fr 64px; font-size: 14px; }
+.trans-plein .qui { font-weight: 700; color: var(--text-2); margin-right: 6px; }
+.pg-btn { border: 1px solid var(--border); background: var(--card); border-radius: 6px; font: 600 11px var(--mono); color: var(--accent); padding: 2px 6px; height: fit-content; }
+
+/* direct */
+.direct { display: grid; grid-template-columns: 1fr 380px; height: 100%; min-height: 0; }
+.d-scene { padding: 22px 28px; display: flex; flex-direction: column; gap: 14px; min-width: 0; overflow: auto; }
+.d-barre { display: flex; align-items: center; gap: 10px; }
+.d-barre .chrono { font: 700 15px var(--mono); }
+.d-page { position: relative; max-width: 860px; width: 100%; margin: 0 auto; }
+.d-page .tag-debut { position: absolute; left: 12px; top: 12px; z-index: 2; box-shadow: 0 4px 12px -4px rgba(0,0,0,.4); background: var(--ok); color: #fff; font-weight: 800; font-size: 11px; padding: 4px 8px; border-radius: 8px; white-space: nowrap; }
+.d-nav { display: flex; justify-content: center; gap: 8px; align-items: center; color: var(--text-2); font: 600 13px var(--mono); }
+.d-trans { border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+.d-trans .tete { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.d-trans .flux { overflow: auto; flex: 1; padding: 10px; display: grid; gap: 2px; align-content: start; }
+.vu-metre { display: flex; gap: 2px; align-items: end; height: 16px; } .vu-metre i { width: 3px; background: var(--live); border-radius: 2px; animation: vu .9s infinite ease-in-out; }
+.vu-metre i:nth-child(2) { animation-delay: .2s } .vu-metre i:nth-child(3) { animation-delay: .4s } .vu-metre i:nth-child(4) { animation-delay: .1s }
+@keyframes vu { 0%,100% { height: 4px } 50% { height: 16px } }
+
+/* panneau d'outils (droite) */
+.panneau { width: 320px; border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+.panneau.ferme { width: 48px; align-items: center; padding-top: 10px; gap: 6px; }
+.p-tete { padding: 10px; display: flex; gap: 6px; align-items: center; border-bottom: 1px solid var(--border); }
+.p-tete .seg { flex: 1; } .p-tete .seg button { flex: 1; }
+.portee { display: flex; gap: 6px; align-items: center; padding: 8px 12px; font-size: 12px; color: var(--text-3); border-bottom: 1px solid var(--border-2); }
+.portee .seg button { font-size: 11.5px; padding: 3px 8px; }
+.p-corps { overflow: auto; padding: 12px; display: grid; gap: 8px; align-content: start; }
+.fc { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; font-size: 13px; }
+.fc small { color: var(--text-3); display: flex; justify-content: space-between; margin-bottom: 4px; }
+.fc .v { color: var(--text-2); margin-top: 4px; }
+.notion { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; padding: 8px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); }
+.notion i { width: 4px; align-self: stretch; border-radius: 4px; background: #e8cf3f; }
+
+/* fenêtres */
+.voile { position: absolute; inset: 0; background: rgba(5, 5, 10, .55); display: grid; place-items: center; z-index: 30; backdrop-filter: blur(2px); }
+.fenetre { width: min(620px, 92%); background: var(--card); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--ombre); overflow: hidden; }
+.fenetre .ft { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; }
+.fenetre .ft h3 { margin: 0; font-size: 16px; }
+.fenetre .fc2 { padding: 18px; display: grid; gap: 14px; }
+.fenetre .fp { padding: 12px 18px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+.zone-depot { border: 2px dashed var(--border-hover); border-radius: 14px; padding: 26px; text-align: center; color: var(--text-2); }
+.zone-depot.prise { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.analyse { display: grid; gap: 6px; font-size: 13px; }
+.analyse .l { display: flex; gap: 8px; align-items: center; } .analyse .l .ok { color: var(--ok); }
+.choix-s { display: grid; gap: 6px; }
+.choix-s label { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; cursor: pointer; }
+.choix-s label.prop { border-color: var(--accent); background: var(--accent-soft); }
+.choix-s input { accent-color: var(--accent); width: 16px; height: 16px; }
+.choix-s .why { margin-left: auto; color: var(--text-3); font-size: 11.5px; }
+.barre-prog { height: 6px; border-radius: 6px; background: var(--bg-2); overflow: hidden; } .barre-prog i { display: block; height: 100%; background: var(--accent); width: 0; transition: width 1.2s ease; }
+.menu { position: absolute; z-index: 25; min-width: 270px; background: var(--elev); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--ombre); padding: 6px; }
+.menu .grp { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); padding: 8px 10px 4px; }
+.menu button { display: flex; gap: 10px; width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 8px; font-size: 13px; align-items: center; }
+.menu button:hover { background: var(--card-2); }
+.menu button kbd { margin-left: auto; font: 11px var(--mono); color: var(--text-3); }
+
+/* ---------- iPad ---------- */
+[data-appareil="ipad"] .a { grid-template-columns: 1fr; grid-template-rows: 56px auto 1fr auto; }
+[data-appareil="ipad"] .rail { display: flex; flex-direction: row; border-right: 0; border-bottom: 1px solid var(--border); padding: 8px 12px; overflow-x: auto; gap: 6px; }
+[data-appareil="ipad"] .rail h4, [data-appareil="ipad"] .rail .sep, [data-appareil="ipad"] .r-fiches, [data-appareil="ipad"] .r-etat { display: none; }
+[data-appareil="ipad"] .r-item { width: auto; grid-template-columns: 26px auto; flex: 0 0 auto; }
+[data-appareil="ipad"] .depot { margin: 0; padding: 8px 12px; flex: 0 0 auto; }
+[data-appareil="ipad"] .panneau { width: auto; border-left: 0; border-top: 1px solid var(--border); max-height: 300px; }
+[data-appareil="ipad"] .panneau.ferme { max-height: 48px; flex-direction: row; justify-content: center; padding: 6px; }
+[data-appareil="ipad"] .lecture { grid-template-columns: 1fr 250px; }
+[data-appareil="ipad"] .direct { grid-template-columns: 1fr 330px; }
+[data-appareil="ipad"] .chercher { width: 180px; }
+[data-appareil="ipad"] .pages { padding: 18px 20px 60px; }
+
+/* ---------- téléphone ---------- */
+.m { height: 100%; display: flex; flex-direction: column; background: var(--bg); position: relative; }
+.m-haut { min-height: 96px; padding: 48px 16px 10px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+.m-haut b { font-size: 15px; display: block; line-height: 1.25; } .m-haut > div { min-width: 0; } .m-haut small { color: var(--text-3); display: block; font-size: 11.5px; }
+.m-corps { flex: 1; overflow: auto; padding: 14px 14px 90px; display: grid; gap: 12px; align-content: start; }
+.m-seg { padding: 8px 14px; border-bottom: 1px solid var(--border); } .m-seg .seg { display: flex; } .m-seg .seg button { flex: 1; }
+.m .page-fiche { padding: 18px; } .m .page-fiche h3 { font-size: 16px; } .m .page-fiche ul { font-size: 13.5px; }
+.m-sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--border); border-radius: 20px 20px 0 0; padding: 10px 14px 30px; box-shadow: 0 -20px 40px -20px rgba(0,0,0,.6); max-height: 62%; overflow: auto; display: grid; gap: 10px; z-index: 20; }
+.m-sheet .poignee { width: 40px; height: 4px; border-radius: 4px; background: var(--border-hover); margin: 0 auto 6px; }
+.m-fab { position: absolute; right: 16px; bottom: 26px; z-index: 10; box-shadow: var(--ombre); }
+</style>
+</head>
+<body>
+<script src="../commun/donnees.js"></script>
+<script src="../commun/commun.js"></script>
+<script>
+const { COURS, SEANCES, TRANSCRIPTS, FICHES, FICHE_A_IMPORTER, ANNOTATIONS, pagesFiche, titreDiapo, seanceDePage, mmss } = MR;
+const { h, ic, diapo, pageFiche, toast, seance } = Proto;
+
+const etat = {
+  vue: 'accueil', seance: 's2', onglet: 'fiche', fiche: 'f2a', pageVisible: 1, diapoFocus: null,
+  panneau: 'exos', portee: 'seance', panneauOuvert: true, menu: false, importer: null, msheet: null,
+  fiches: FICHES.slice(), annots: JSON.parse(JSON.stringify(ANNOTATIONS)), outil: 'surligne',
+  live: { actif: false, lignes: [], page: 244, secondes: 0, timer: null },
+};
+const fichesDe = (sid) => etat.fiches.filter((f) => f.seances.includes(sid));
+const ficheCourante = () => etat.fiches.find((f) => f.id === etat.fiche);
+
+/* ---------------- rendu ---------------- */
+let racine;
+function rendre() {
+  racine = racine || document.querySelector('.appareil');
+  const t = racine.querySelector(':scope > .toast'); // le toast survit au rendu
+  racine.innerHTML = etat.appareil === 'mobile' ? rendreMobile()
+    : `<div class="a">${haut()}${rail()}<main class="centre">${centre()}</main>${panneau()}</div>${etat.menu ? menuFichier() : ''}${etat.importer ? fenImport() : ''}`;
+  if (t) racine.appendChild(t);
+  apresRendu();
+}
+
+function haut() {
+  const s = seance(etat.seance);
+  const fil = etat.vue === 'accueil' ? '' : `<span>›</span><span class="pastille-seance" style="--sc:${s.couleur}">Séance ${s.n}</span>`;
+  return `<header class="a-haut">
+    <button class="btn fant ico" data-act="biblio" title="Bibliothèque">${ic('retour')}</button>
+    <div class="fil"><button class="btn fant" data-act="accueil" style="padding:4px 6px"><b>${h(COURS.titre)}</b></button><span>${h(COURS.ue)}</span>${fil}${etat.live.actif ? '<span class="badge-live">EN DIRECT</span>' : ''}</div>
+    <div class="droite"><div class="chercher">${ic('recherche', 14)} Chercher dans le cours<kbd>⌘K</kbd></div>
+      <button class="btn" data-act="menu">${ic('fichier', 15)} Fichier</button>
+      ${etat.appareil === 'ipad' ? `<button class="btn ico" data-act="panneau" title="Outils">${ic('panneau')}</button>` : ''}</div></header>`;
+}
+
+function rail() {
+  const items = SEANCES.map((s) => {
+    const fs = fichesDe(s.id); const actif = etat.vue !== 'accueil' && etat.seance === s.id;
+    const sous = s.etat === 'aujourdhui' ? (etat.live.actif ? '● en direct' : 'aujourd’hui · ' + s.heure) : s.jour + ' · p. ' + s.debut + '–' + s.fin;
+    const etats = `<span class="r-etat">${TRANSCRIPTS[s.id].lignes.length && s.etat === 'faite' ? `<span class="ok" title="Transcript">${ic('micro', 13)}</span>` : ''}${fs.length ? `<span class="ok" title="${fs.length} fiche(s)">${ic('fiche', 13)}</span>` : ''}</span>`;
+    const sousFiches = actif && etat.appareil !== 'ipad' ? `<div class="r-fiches">${fs.map((f) => `<button class="r-fiche ${etat.vue === 'seance' && etat.onglet === 'fiche' && etat.fiche === f.id ? 'actif' : ''}" data-act="fiche" data-id="${f.id}">${ic('fiche', 13)} ${h(f.titre)}<span class="x">${f.pages} p.</span></button>`).join('')}
+      <button class="r-fiche ${etat.onglet === 'diapo' ? 'actif' : ''}" data-act="onglet" data-v="diapo">${ic('diapo', 13)} Diapo<span class="x">p. ${s.debut}–${s.fin}</span></button>
+      <button class="r-fiche ${etat.onglet === 'transcript' ? 'actif' : ''}" data-act="onglet" data-v="transcript">${ic('micro', 13)} Transcript<span class="x">${s.duree}</span></button></div>` : '';
+    return `<button class="r-item ${actif ? 'actif' : ''}" data-act="seance" data-id="${s.id}" style="--sc:${s.couleur}"><span class="r-num">S${s.n}</span><span class="r-txt"><b>${h(s.titre)}</b><small>${sous}</small></span>${etats}</button>${sousFiches}`;
+  }).join('');
+  return `<nav class="rail"><h4>Séances</h4>${items}<div class="sep"></div>
+    <button class="r-item ${etat.vue === 'diapo-complet' ? 'actif' : ''}" data-act="tout-diapo" style="--sc:#888"><span class="r-num">${ic('diapo', 14)}</span><span class="r-txt"><b>Diapo complet</b><small>${COURS.pages} pages · original</small></span></button>
+    <button class="depot" data-act="importer">${ic('import', 14)} Importer une fiche<br><small style="color:var(--text-3)">ou glisse un PDF sur une séance</small></button></nav>`;
+}
+
+function centre() {
+  if (etat.vue === 'accueil') return `<div class="defile">${accueil()}</div>`;
+  if (etat.vue === 'direct') return direct();
+  if (etat.vue === 'diapo-complet') return `<div class="s-tete"><h2>Diapo complet</h2><small>${COURS.fichier} · ${COURS.pages} p.</small></div><div class="defile">${grilleDiapos(1, 300, 1)}</div>`;
+  return vueSeance();
+}
+
+function accueil() {
+  const reprise = etat.fiches.find((f) => f.id === 'f2a');
+  const s5 = seance('s5');
+  const ruban = SEANCES.map((s) => `<button data-act="seance" data-id="${s.id}" class="${fichesDe(s.id).length ? '' : 'vide'}" style="--sc:${s.couleur};flex:${s.fin - s.debut + 1}" title="Séance ${s.n} · p. ${s.debut}–${s.fin}">S${s.n}</button>`).join('');
+  const cartes = SEANCES.map((s) => {
+    const fs = fichesDe(s.id);
+    const vign = [s.debut, s.debut + 8, s.debut + 20, s.debut + 34].map((p) => diapo(p)).join('');
+    return `<div class="cs" data-act="seance" data-id="${s.id}" data-depot="${s.id}" style="--sc:${s.couleur}" role="button" tabindex="0">
+      <div class="tete"><span class="r-num">S${s.n}</span><div><h3>${h(s.titre)}</h3><small>${s.jour} · ${s.heure} · p. ${s.debut}–${s.fin}</small></div>${s.etat === 'aujourdhui' ? '<span class="badge-live" style="margin-left:auto">AUJOURD’HUI</span>' : ''}</div>
+      <div class="vign">${vign}</div>
+      <div class="meta">${s.etat === 'faite' ? `<span class="ok">${ic('micro', 13)} transcript ${s.duree}</span>` : `<span>${ic('micro', 13)} pas encore de transcript</span>`}<span>${ic('cartes', 13)} ${Math.round(COURS.flashcards / 5)} flashcards</span><span>${ic('notions', 13)} ${Math.round(COURS.notions / 5)} notions</span></div>
+      <div class="fiches">${fs.length ? fs.map((f) => `<button class="chip-fiche ${f.seances.length > 1 ? 'partage' : ''}" data-act="fiche" data-id="${f.id}" data-s="${s.id}">${ic('fiche', 13)} ${h(f.titre)}</button>`).join('') : '<span style="color:var(--text-3);font-size:12px">Aucune fiche — glisse le PDF de Claude ici</span>'}</div></div>`;
+  }).join('');
+  return `<div class="acc"><h1>${h(COURS.titre)}</h1><div class="sous">${COURS.ue} · ${COURS.pages} pages · ${SEANCES.length} séances · ${etat.fiches.length} fiches · ${COURS.flashcards} flashcards</div>
+    <div class="ruban">${ruban}</div><div class="ruban-leg"><span>p. 1</span><span>diapo complet · une bande = une séance · hachures = sans fiche</span><span>p. ${COURS.pages}</span></div>
+    <div class="reprise">
+      <div class="carte"><div class="eti">Reprendre</div><h3>${h(reprise.titre)}</h3><p>Séance 2 · page 4 sur 9 · lue hier à 22:10</p><button class="btn prim" data-act="fiche" data-id="f2a" data-s="s2">${ic('fiche', 15)} Continuer la fiche</button></div>
+      <div class="carte aujourdhui"><div class="eti" style="color:var(--live)">Aujourd’hui · ${s5.heure}</div><h3>Séance 5 — ${h(s5.titre)}</h3><p>p. ${s5.debut}–${s5.fin} · le transcript et le tag Début se posent tout seuls</p><button class="btn live" data-act="direct">${ic('micro', 15)} Démarrer le cours en direct</button></div>
+    </div>
+    <div class="grille-s">${cartes}</div></div>`;
+}
+
+function vueSeance() {
+  const s = seance(etat.seance); const fs = fichesDe(s.id);
+  const seg = [['fiche', fs.length > 1 ? 'Fiches ' + fs.length : 'Fiche', 'fiche'], ['diapo', 'Diapo', 'diapo'], ['transcript', 'Transcript', 'micro']]
+    .map(([v, l, i]) => `<button class="${etat.onglet === v ? 'actif' : ''}" data-act="onglet" data-v="${v}" ${v === 'fiche' && !fs.length ? 'disabled style="opacity:.4"' : ''}>${ic(i, 14)} ${l}</button>`).join('');
+  const outils = etat.onglet !== 'transcript' ? `<div class="outils">${[['surligne', 'Surligner'], ['crayon', 'Dessiner'], ['texte', 'Note'], ['tag', 'Tag de page']].map(([o, t]) => `<button class="${etat.outil === o ? 'actif' : ''}" data-act="outil" data-v="${o}" title="${t}">${ic(o, 15)}</button>`).join('')}</div>` : '';
+  const tete = `<div class="s-tete" style="--sc:${s.couleur}"><span class="r-num">S${s.n}</span><div><h2>${h(s.titre)}</h2><small>${s.jour} · p. ${s.debut}–${s.fin}${s.etat === 'faite' ? ' · ' + s.duree : ''}</small></div>
+    <div class="seg">${seg}</div><div class="droite">${outils}${s.etat === 'aujourdhui' ? `<button class="btn live" data-act="direct">${ic('micro', 14)} En direct</button>` : ''}</div></div>`;
+  if (etat.onglet === 'fiche' && fs.length) {
+    const choix = fs.length > 1 ? `<div class="choix-fiche">Fiches de la séance :${fs.map((f) => `<button class="chip-fiche ${f.id === etat.fiche ? 'actif' : ''}" data-act="fiche" data-id="${f.id}">${ic('fiche', 13)} ${h(f.titre)}${f.seances.length > 1 ? ' <small style="color:var(--text-3)">· S' + f.seances.map((x) => seance(x).n).join('+S') + '</small>' : ''}</button>`).join('')}</div>` : '';
+    if (!fs.find((f) => f.id === etat.fiche)) etat.fiche = fs[0].id;
+    const f = ficheCourante(); const pgs = pagesFiche(f);
+    const pages = pgs.map((pg) => pageFiche(f, pg, etat.annots[f.id] || [])).join('');
+    return `${tete}${choix}<div class="lecture" style="flex:1;min-height:0"><div class="pages" data-zone="fiche">${pages}</div><aside class="src-rail" data-zone="sources">${sources(f, pgs[etat.pageVisible - 1] || pgs[0])}</aside></div>`;
+  }
+  if (etat.onglet === 'transcript') return `${tete}<div class="defile">${transcriptPlein(s)}</div>`;
+  return `${tete}<div class="defile">${grilleDiapos(s.debut, s.fin, etat.diapoFocus)}</div>`;
+}
+
+function sources(f, pg) {
+  const s = seance(pg.seance);
+  const pagesSrc = []; for (let p = pg.sources.de; p <= pg.sources.a; p++) pagesSrc.push(p);
+  const lignes = TRANSCRIPTS[s.id].lignes.filter((l) => l.page >= pg.sources.de - 1 && l.page <= pg.sources.a + 1).slice(0, 4);
+  return `<div class="fil-lien">${ic('lien', 13)} Page <b>${pg.n}</b> de la fiche ← diapo <b>p. ${pg.sources.de}–${pg.sources.a}</b> · Séance ${s.n}</div>
+    <div><h5>${ic('diapo', 13)} Pages d’origine</h5><div class="mini-d">${pagesSrc.map((p) => diapo(p, `data-act="ouvrir-diapo" data-p="${p}"`)).join('')}</div></div>
+    <div><h5>${ic('micro', 13)} Ce qu’a dit le prof</h5><div class="trans-extrait">${lignes.length ? lignes.map((l) => `<div class="lignetrans" data-act="ouvrir-trans" data-t="${l.t}"><span class="h">${l.horo}</span><span>${h(l.texte)}</span></div>`).join('') : '<small style="color:var(--text-3)">Pas de transcript sur ces pages.</small>'}</div></div>
+    <button class="btn" data-act="onglet" data-v="transcript">${ic('transcript', 14)} Tout le transcript de la séance</button>`;
+}
+
+function grilleDiapos(de, a, focus) {
+  const s = seanceDePage(de); const out = [];
+  for (let p = de; p <= a; p++) {
+    const nb = s && s.etat === 'faite' ? TRANSCRIPTS[seanceDePage(p).id].lignes.filter((l) => l.page === p).length : 0;
+    const tag = SEANCES.find((x) => x.debut === p) ? '<span class="tag-p">▶ Début</span>' : SEANCES.find((x) => x.fin === p) ? '<span class="tag-p fin">■ Fin</span>' : '';
+    out.push(`<div class="diapo-c" ${focus === p ? 'id="focus" style="outline:3px solid var(--accent);border-radius:8px"' : ''}>${diapo(p)}${tag}${nb ? `<span class="badge-t">${ic('micro', 10)} ${nb}</span>` : ''}</div>`);
+  }
+  return `<div class="diapos">${out.join('')}</div>`;
+}
+
+function transcriptPlein(s) {
+  const L = TRANSCRIPTS[s.id].lignes;
+  if (!L.length || s.etat !== 'faite') return `<div class="trans-plein" style="color:var(--text-2)">Pas encore de transcript pour cette séance. Il se crée tout seul quand tu démarres le cours en direct.</div>`;
+  return `<div class="trans-plein"><h3 style="margin:0 0 10px">Transcript · Séance ${s.n} <small style="color:var(--text-3);font-weight:500">${s.jour} · ${s.duree} · ${TRANSCRIPTS[s.id].mots} mots</small></h3>
+    ${L.map((l) => `<div class="lignetrans ${etat.transFocus === l.t ? 'actuelle' : ''}" ${etat.transFocus === l.t ? 'id="focus"' : ''}><span class="h">${l.horo}</span><span><span class="qui">${l.qui}</span>${h(l.texte)}</span><button class="pg-btn" data-act="ouvrir-diapo" data-p="${l.page}">p. ${l.page}</button></div>`).join('')}</div>`;
+}
+
+function direct() {
+  const s = seance('s5'); const L = etat.live;
+  return `<div class="direct" style="flex:1;min-height:0"><div class="d-scene">
+    <div class="d-barre"><span class="badge-live">EN DIRECT</span><span class="chrono">${mmss(L.secondes)}</span><div class="vu-metre"><i></i><i></i><i></i><i></i></div>
+      <span style="color:var(--text-2);font-size:13px">Séance 5 · ${h(s.titre)}</span>
+      <span style="margin-left:auto;display:flex;gap:6px"><button class="btn" data-act="note-live">${ic('texte', 14)} Note</button><button class="btn" data-act="pause">${ic(L.actif ? 'pause' : 'jouer', 14)} ${L.actif ? 'Pause' : 'Reprendre'}</button><button class="btn" data-act="fin-live">${ic('stop', 14)} Terminer la séance</button></span></div>
+    <div class="d-page">${diapo(L.page)}${L.page === 244 ? '' : ''}<span class="tag-debut">▶ Début · ${s.heure}</span></div>
+    <div class="d-nav"><button class="btn ico" data-act="live-prec">${ic('haut')}</button> p. ${L.page} / ${COURS.pages} <button class="btn ico" data-act="live-suiv">${ic('bas')}</button>
+      <span style="font-family:var(--police);color:var(--text-3);font-weight:500">Le tag Début a été posé sur la p. 244 au démarrage ; la page suit le cours.</span></div>
+  </div><aside class="d-trans"><div class="tete">${ic('micro', 15)} <b>Transcript</b><small style="color:var(--text-3)">${L.lignes.length} lignes · se cale sur la page</small></div>
+    <div class="flux" data-zone="flux">${L.lignes.map((l, i) => `<div class="lignetrans ${i === L.lignes.length - 1 ? 'actuelle nouvelle' : ''}"><span class="h">${l.horo}</span><span>${h(l.texte)}<span class="p">p. ${l.page}</span></span></div>`).join('') || '<small style="color:var(--text-3);padding:10px">En attente de la voix du prof…</small>'}</div></aside></div>`;
+}
+
+function panneau() {
+  if (etat.vue === 'direct' && etat.appareil !== 'ipad') return '';
+  if (!etat.panneauOuvert) return `<aside class="panneau ferme"><button class="btn ico" data-act="panneau" title="Ouvrir les outils">${ic('panneau')}</button><button class="btn ico" data-act="mode" data-v="exos">${ic('cartes')}</button><button class="btn ico" data-act="mode" data-v="notions">${ic('notions')}</button><button class="btn ico" data-act="mode" data-v="notes">${ic('notes')}</button></aside>`;
+  const s = seance(etat.seance);
+  const modes = [['exos', 'Cartes'], ['notions', 'Notions'], ['notes', 'Notes']].map(([v, l]) => `<button class="${etat.panneau === v ? 'actif' : ''}" data-act="mode" data-v="${v}">${l}</button>`).join('');
+  const scope = etat.vue === 'accueil' ? 'cours' : etat.portee;
+  const ps = scope === 'seance' ? `Séance ${s.n}` : 'tout le cours';
+  let corps = '';
+  if (etat.panneau === 'exos') {
+    const cartes = [['Valeur normale du DFG ?', '≈ 120 mL/min (180 L/j)', 's2'], ['Formule de la clairance ?', 'C = U × V / P', 's2'], ['Pourquoi la créatinine surestime-t-elle le DFG ?', 'Légère sécrétion tubulaire', 's2'], ['Effet d’une vasoconstriction efférente ?', '↑ Pcg → ↑ DFG', 's2'], ['Cible du furosémide ?', 'NKCC2 (anse, branche large)', 's3'], ['Où agit l’ADH ?', 'Récepteurs V2 → aquaporine 2', 's4'], ['Artères segmentaires : particularité ?', 'Terminales (pas d’anastomoses)', 's1']]
+      .filter((c) => scope === 'cours' || c[2] === etat.seance);
+    corps = `<div style="display:flex;gap:6px"><button class="btn prim" style="flex:1">${ic('plus', 14)} Carte</button><button class="btn">Réviser ${ps === 'tout le cours' ? 'le cours' : 'S' + s.n}</button></div>
+      ${cartes.map((c) => `<div class="fc"><small><span>Flashcard</span><span class="pastille-seance" style="--sc:${seance(c[2]).couleur}">S${seance(c[2]).n}</span></small>${h(c[0])}<div class="v">${h(c[1])}</div></div>`).join('') || '<small style="color:var(--text-3)">Aucune carte pour cette séance.</small>'}`;
+  } else if (etat.panneau === 'notions') {
+    const ns = [['Albumine : 69 kDa, négative → quasi absente de l’urine', 'f2a p.2', 's2'], ['DFG stable pour PAM 80 → 180 mmHg', 'f2a p.4', 's2'], ['Inuline : clairance = DFG', 'f2b p.2', 's2'], ['SGLT2 : seuil ≈ 180 mg/dL', 'f3a p.3', 's3'], ['Rein droit plus bas (foie)', 'f1 p.1', 's1']].filter((n) => scope === 'cours' || n[2] === etat.seance);
+    corps = ns.map((n) => `<div class="notion"><i></i><div>${h(n[0])}<div style="color:var(--text-3);font-size:11.5px;margin-top:3px">${n[1]} · S${seance(n[2]).n}</div></div></div>`).join('') || '<small style="color:var(--text-3)">Surligne dans une fiche : la notion apparaît ici.</small>';
+  } else {
+    corps = `<div class="fc" style="min-height:220px"><small><span>Notes · ${ps}</span></small><b>À revoir avant le partiel</b><div class="v">• refaire l’exo de clairance du PAH<br>• demander au prof : CKD-EPI au programme ?<br>• schéma des forces de Starling</div></div><small style="color:var(--text-3)">Une note par séance, plus une note générale du cours.</small>`;
+  }
+  return `<aside class="panneau"><div class="p-tete"><div class="seg">${modes}</div><button class="btn ico fant" data-act="panneau" title="Replier">${ic('fermer', 14)}</button></div>
+    ${etat.vue === 'accueil' ? '' : `<div class="portee">Afficher<div class="seg"><button class="${scope === 'seance' ? 'actif' : ''}" data-act="portee" data-v="seance">Séance ${s.n}</button><button class="${scope === 'cours' ? 'actif' : ''}" data-act="portee" data-v="cours">Tout le cours</button></div></div>`}
+    <div class="p-corps">${corps}</div></aside>`;
+}
+
+function menuFichier() {
+  const f = etat.vue === 'seance' && etat.onglet === 'fiche' ? ficheCourante() : null;
+  return `<div class="menu" style="top:52px;right:${etat.appareil === 'ipad' ? 60 : 16}px">
+    <div class="grp">Cours</div>
+    <button data-act="importer">${ic('import', 15)} Importer une fiche…</button>
+    <button>${ic('calendrier', 15)} Séances et documents…</button>
+    <button>${ic('crayon', 15)} Renommer le cours<kbd>F2</kbd></button>
+    <div class="grp">${f ? 'Fiche affichée — ' + h(f.titre) : 'Document affiché'}</div>
+    <button>${ic('fichier', 15)} Exporter annoté…<kbd>⌘P</kbd></button>
+    <button>${ic('cartes', 15)} Export spécial IA…<kbd>⌘⇧E</kbd></button>
+    ${f ? `<button>${ic('lien', 15)} Changer de séance…</button><button>${ic('import', 15)} Remplacer par une nouvelle version…</button>` : ''}
+    <button style="color:var(--crit)">${ic('fermer', 15)} Retirer du cours…</button></div>`;
+}
+
+function fenImport() {
+  const st = etat.importer;
+  const corps = st.etape === 'depot'
+    ? `<div class="zone-depot" data-act="deposer">${ic('import', 26)}<p style="margin:8px 0 2px"><b>Dépose la fiche que Claude t’a rendue</b></p><small>PDF · ou clique pour simuler « Equilibre-acide-base-fiche.pdf »</small></div>`
+    : st.etape === 'analyse'
+      ? `<div class="zone-depot prise">${ic('fiche', 22)} <b>Equilibre-acide-base-fiche.pdf</b> · 8 pages</div><div class="barre-prog"><i data-prog></i></div><div class="analyse"><div class="l">${ic('check', 14)} Lecture des 8 pages…</div></div>`
+      : `<div class="zone-depot prise" style="padding:14px">${ic('fiche', 18)} <b>Equilibre-acide-base-fiche.pdf</b> · 8 pages</div>
+        <div class="analyse"><div class="l"><span class="ok">${ic('check', 14)}</span> 47 pages du diapo reconnues dans la fiche, toutes entre <b>p. 244 et 300</b></div><div class="l"><span class="ok">${ic('check', 14)}</span> Vocabulaire proche du transcript du <b>29 oct.</b></div><div class="l"><span class="ok">${ic('check', 14)}</span> Titre : « Équilibre acide-base »</div></div>
+        <div><b style="font-size:13px">Rattacher à</b><div class="choix-s" style="margin-top:8px">${SEANCES.map((s) => `<label class="${s.id === 's5' ? 'prop' : ''}" style="--sc:${s.couleur}"><input type="checkbox" data-s="${s.id}" ${st.choix.includes(s.id) ? 'checked' : ''}><span class="r-num" style="width:22px;height:22px;font-size:11px">S${s.n}</span>${h(s.titre)}<span class="why">${s.id === 's5' ? 'proposé · pages et date' : s.jour}</span></label>`).join('')}</div></div>`;
+  const pied = st.etape === 'resultat' ? `<button class="btn" data-act="fermer-import">Annuler</button><button class="btn prim" data-act="rattacher">${ic('lien', 14)} Rattacher et ouvrir</button>` : `<button class="btn" data-act="fermer-import">Annuler</button>`;
+  return `<div class="voile"><div class="fenetre"><div class="ft"><h3>Importer une fiche</h3><button class="btn fant ico" style="margin-left:auto" data-act="fermer-import">${ic('fermer')}</button></div><div class="fc2">${corps}</div><div class="fp">${pied}</div></div></div>`;
+}
+
+/* ---------------- téléphone ---------------- */
+function rendreMobile() {
+  const s = seance(etat.seance);
+  if (etat.vue === 'direct') {
+    const L = etat.live;
+    return `<div class="m"><div class="m-haut"><button class="btn fant ico" data-act="accueil">${ic('retour')}</button><div><b>Séance 5</b><small>${h(s.titre)}</small></div><span class="badge-live" style="margin-left:auto">${mmss(L.secondes)}</span></div>
+      <div class="m-corps"><div style="position:relative">${diapo(L.page)}</div><div class="flux" data-zone="flux" style="display:grid;gap:2px">${L.lignes.slice(-8).map((l, i, a) => `<div class="lignetrans ${i === a.length - 1 ? 'actuelle nouvelle' : ''}"><span class="h">${l.horo}</span><span>${h(l.texte)}</span></div>`).join('')}</div></div>
+      <button class="btn m-fab" data-act="pause">${ic(L.actif ? 'pause' : 'jouer', 15)} ${L.actif ? 'Pause' : 'Reprendre'}</button></div>`;
+  }
+  if (etat.vue === 'accueil' || etat.vue === 'diapo-complet') {
+    return `<div class="m"><div class="m-haut"><button class="btn fant ico">${ic('retour')}</button><div><b>${h(COURS.titre)}</b><small>${SEANCES.length} séances · ${etat.fiches.length} fiches</small></div></div>
+      <div class="m-corps"><div class="carte aujourdhui"><div class="eti" style="color:var(--live)">Aujourd’hui · 08:30</div><h3>S5 · Équilibre acide-base</h3><button class="btn live" data-act="direct">${ic('micro', 15)} Démarrer en direct</button></div>
+      ${SEANCES.map((x) => `<button class="cs" data-act="seance" data-id="${x.id}" style="--sc:${x.couleur}"><div class="tete"><span class="r-num">S${x.n}</span><div><h3>${h(x.titre)}</h3><small>${x.jour} · ${fichesDe(x.id).length} fiche(s)</small></div></div></button>`).join('')}</div></div>`;
+  }
+  const fs = fichesDe(s.id); if (!fs.find((f) => f.id === etat.fiche) && fs.length) etat.fiche = fs[0].id;
+  const f = ficheCourante(); const pgs = f ? pagesFiche(f) : [];
+  const corps = etat.onglet === 'fiche' && f ? pgs.slice(0, 4).map((pg) => pageFiche(f, pg, etat.annots[f.id] || [], { sansSources: true })).join('')
+    : etat.onglet === 'transcript' ? TRANSCRIPTS[s.id].lignes.slice(0, 18).map((l) => `<div class="lignetrans"><span class="h">${l.horo}</span><span>${h(l.texte)} <span class="p">p.${l.page}</span></span></div>`).join('')
+      : [s.debut, s.debut + 1, s.debut + 2].map((p) => diapo(p)).join('');
+  const pg = pgs[0];
+  const sheet = etat.msheet && pg ? `<div class="m-sheet"><div class="poignee"></div><b>Sources de la p. ${pg.n}</b><div class="mini-d">${[pg.sources.de, pg.sources.de + 1].map((p) => diapo(p)).join('')}</div>${pg.extrait.map((l) => `<div class="lignetrans"><span class="h">${l.horo}</span><span>${h(l.texte)}</span></div>`).join('')}<button class="btn" data-act="msheet">Fermer</button></div>` : '';
+  return `<div class="m"><div class="m-haut"><button class="btn fant ico" data-act="accueil">${ic('retour')}</button><div><b>S${s.n} · ${h(s.titre)}</b><small>${f ? h(f.titre) : 'pas de fiche'}</small></div></div>
+    <div class="m-seg"><div class="seg"><button class="${etat.onglet === 'fiche' ? 'actif' : ''}" data-act="onglet" data-v="fiche">Fiche</button><button class="${etat.onglet === 'diapo' ? 'actif' : ''}" data-act="onglet" data-v="diapo">Diapo</button><button class="${etat.onglet === 'transcript' ? 'actif' : ''}" data-act="onglet" data-v="transcript">Transcript</button></div></div>
+    <div class="m-corps">${corps}</div>${etat.onglet === 'fiche' ? `<button class="btn prim m-fab" data-act="msheet">${ic('lien', 15)} Sources</button>` : ''}${sheet}</div>`;
+}
+
+/* ---------------- interactions ---------------- */
+function apresRendu() {
+  const z = racine.querySelector('[data-zone="fiche"]');
+  if (z) {
+    z.addEventListener('scroll', () => {
+      const pagesEl = [...z.querySelectorAll('.page-fiche')]; const top = z.getBoundingClientRect().top + 120;
+      const v = pagesEl.find((el) => el.getBoundingClientRect().bottom > top) || pagesEl[0];
+      const n = +v.dataset.pagefiche;
+      if (n !== etat.pageVisible) { etat.pageVisible = n; const f = ficheCourante(); racine.querySelector('[data-zone="sources"]').innerHTML = sources(f, pagesFiche(f)[n - 1]); }
+    });
+    if (etat.allerPageFiche) { const el = z.querySelector(`[data-pagefiche="${etat.allerPageFiche}"]`); if (el) z.scrollTop = el.offsetTop - 20; etat.allerPageFiche = null; }
+  }
+  const foc = racine.querySelector('#focus'); if (foc) foc.scrollIntoView({ block: 'center' });
+  const flux = racine.querySelector('[data-zone="flux"]'); if (flux) flux.scrollTop = flux.scrollHeight;
+}
+
+function demarrerDirect() {
+  etat.vue = 'direct'; etat.seance = 's5';
+  const L = etat.live; if (!L.lignes.length) { L.page = 244; L.secondes = 0; }
+  L.actif = true; clearInterval(L.timer);
+  L.timer = setInterval(() => {
+    if (!L.actif) return;
+    const src = TRANSCRIPTS.s5.lignes; const i = L.lignes.length % src.length;
+    L.secondes += 37; if (L.lignes.length && L.lignes.length % 2 === 0 && L.page < 300) L.page += 1 + (L.lignes.length % 3);
+    L.lignes.push({ ...src[i], horo: mmss(L.secondes), page: L.page });
+    if (etat.vue === 'direct') rendre();
+  }, 1500);
+  toast(`${ic('tag', 14)} Tag <b>Début</b> posé sur la p. 244 · transcript lié à la séance 5`);
+}
+
+function clic(e) {
+  const b = e.target.closest('[data-act]');
+  const li = e.target.closest('.page-fiche li');
+  if (li && !b && etat.vue === 'seance') { // annoter : clic sur une puce = surligner (outil surligneur)
+    const f = ficheCourante(); const pg = +li.closest('.page-fiche').dataset.pagefiche; const k = +li.dataset.puce;
+    const A = (etat.annots[f.id] = etat.annots[f.id] || []); const i = A.findIndex((a) => a.page === pg && a.puce === k && a.type === 'surligne');
+    if (i >= 0) A.splice(i, 1); else A.push({ page: pg, puce: k, type: 'surligne', couleur: 'jaune' });
+    li.classList.toggle('hl-jaune'); toast(i >= 0 ? 'Surlignage retiré' : `${ic('notions', 14)} Surligné → ajouté aux <b>Notions</b> de la séance`); return;
+  }
+  const src = e.target.closest('[data-aller-diapo],[data-aller-trans]');
+  if (src) {
+    if (src.dataset.allerDiapo) { etat.onglet = 'diapo'; etat.diapoFocus = +src.dataset.allerDiapo; }
+    else { const [sid, t] = src.dataset.allerTrans.split(':'); etat.seance = sid; etat.onglet = 'transcript'; etat.transFocus = +t; }
+    rendre(); return;
+  }
+  if (!b) { if (etat.menu && !e.target.closest('.menu')) { etat.menu = false; rendre(); } return; }
+  const a = b.dataset.act; e.stopPropagation();
+  if (a !== 'menu') etat.menu = false;
+  switch (a) {
+    case 'accueil': etat.vue = 'accueil'; break;
+    case 'biblio': toast('Retour à la Bibliothèque'); return;
+    case 'seance': etat.vue = 'seance'; etat.seance = b.dataset.id; etat.onglet = fichesDe(b.dataset.id).length ? 'fiche' : 'diapo'; etat.pageVisible = 1; etat.diapoFocus = null; break;
+    case 'fiche': etat.vue = 'seance'; etat.fiche = b.dataset.id; etat.seance = b.dataset.s || etat.fiches.find((f) => f.id === b.dataset.id).seances[0]; etat.onglet = 'fiche'; etat.pageVisible = 1; break;
+    case 'onglet': etat.vue = 'seance'; etat.onglet = b.dataset.v; etat.diapoFocus = null; etat.transFocus = null; break;
+    case 'tout-diapo': etat.vue = 'diapo-complet'; break;
+    case 'outil': etat.outil = b.dataset.v; toast(b.dataset.v === 'tag' ? 'Tag de page : clique une page pour marquer Début / Fin (rarement utile : le direct les pose)' : 'Outil : ' + b.title); break;
+    case 'ouvrir-diapo': etat.vue = 'seance'; etat.seance = seanceDePage(+b.dataset.p).id; etat.onglet = 'diapo'; etat.diapoFocus = +b.dataset.p; break;
+    case 'ouvrir-trans': etat.onglet = 'transcript'; etat.transFocus = +b.dataset.t; break;
+    case 'direct': demarrerDirect(); break;
+    case 'pause': etat.live.actif = !etat.live.actif; break;
+    case 'live-prec': etat.live.page = Math.max(244, etat.live.page - 1); break;
+    case 'live-suiv': etat.live.page = Math.min(300, etat.live.page + 1); break;
+    case 'note-live': toast('Note horodatée ajoutée au transcript (p. ' + etat.live.page + ')'); return;
+    case 'fin-live': etat.live.actif = false; clearInterval(etat.live.timer); etat.vue = 'seance'; etat.seance = 's5'; etat.onglet = 'diapo'; toast(`Séance 5 terminée · tag <b>Fin</b> posé p. ${etat.live.page} · transcript enregistré`); break;
+    case 'panneau': etat.panneauOuvert = !etat.panneauOuvert; break;
+    case 'mode': etat.panneau = b.dataset.v; etat.panneauOuvert = true; break;
+    case 'portee': etat.portee = b.dataset.v; break;
+    case 'menu': etat.menu = !etat.menu; break;
+    case 'importer': etat.importer = { etape: 'depot', choix: ['s5'] }; break;
+    case 'fermer-import': etat.importer = null; break;
+    case 'deposer': etat.importer.etape = 'analyse'; rendre(); requestAnimationFrame(() => { const p = racine.querySelector('[data-prog]'); if (p) p.style.width = '100%'; }); setTimeout(() => { if (etat.importer) { etat.importer.etape = 'resultat'; rendre(); } }, 1300); return;
+    case 'rattacher': {
+      const choix = [...racine.querySelectorAll('.choix-s input:checked')].map((x) => x.dataset.s);
+      if (!etat.fiches.find((f) => f.id === 'f5')) etat.fiches.push({ ...FICHE_A_IMPORTER, seances: choix.length ? choix : ['s5'] });
+      etat.importer = null; etat.vue = 'seance'; etat.seance = (choix[0] || 's5'); etat.fiche = 'f5'; etat.onglet = 'fiche'; etat.pageVisible = 1;
+      toast(`${ic('check', 14)} Fiche rattachée à la séance ${seance(etat.seance).n} · ${etat.fiches.length} fiches dans le cours`); break;
+    }
+    case 'msheet': etat.msheet = !etat.msheet; break;
+  }
+  rendre();
+}
+
+/* scénarios de la barre du prototype */
+const scenarios = [
+  { id: 'ouvrir', libelle: 'Ouvrir le cours', aller: (e) => { e.vue = 'accueil'; } },
+  { id: 'seances', libelle: 'Vue des séances', aller: (e) => { e.vue = 'seance'; e.seance = 's2'; e.onglet = 'diapo'; } },
+  { id: 'direct', libelle: 'Séance 5 en direct', aller: () => demarrerDirect() },
+  { id: 'import', libelle: 'Importer la fiche S5', aller: (e) => { e.vue = 'accueil'; e.importer = { etape: 'depot', choix: ['s5'] }; } },
+  { id: 'lire', libelle: 'Lire une fiche', aller: (e) => { e.vue = 'seance'; e.seance = 's2'; e.fiche = 'f2a'; e.onglet = 'fiche'; e.pageVisible = 1; } },
+  { id: 'aller', libelle: 'Fiche ↔ diapo ↔ transcript', aller: (e) => { e.vue = 'seance'; e.seance = 's2'; e.fiche = 'f2a'; e.onglet = 'fiche'; e.pageVisible = 4; e.allerPageFiche = 4; } },
+  { id: 'panneau', libelle: 'Panneau latéral', aller: (e) => { e.vue = 'seance'; e.seance = 's2'; e.onglet = 'fiche'; e.panneauOuvert = true; e.panneau = 'notions'; e.portee = 'seance'; } },
+];
+const app = Proto.monter({ titre: 'Version A · Séances d’abord', sousTitre: 'le cours se lit séance par séance', scenarios, rendre, etat });
+racine = app;
+app.addEventListener('click', clic);
+app.addEventListener('dragover', (e) => { const c = e.target.closest('[data-depot]'); if (c) { e.preventDefault(); c.classList.add('drop'); } });
+</script>
+</body>
+</html>
