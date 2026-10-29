@@ -22,6 +22,7 @@ let journalActif = process.env.JOURNAL === '1';
 let contrainteRating = process.env.CONTRAINTE_RATING !== '0';
 let seqInsert = 0;
 let refuses = new Set((process.env.REFUSER_STORES || '').split(',').filter(Boolean));
+let lenteur = 0, panne = 0;
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS', 'Access-Control-Expose-Headers': 'Content-Range' };
 const lire = (req) => new Promise((r) => { const c = []; req.on('data', (d) => c.push(d)); req.on('end', () => r(Buffer.concat(c))); });
 function multipart(buf, ct) {
@@ -78,6 +79,12 @@ http.createServer(async (req, res) => {
   // PANNE INJECTABLE (05/10, transcription) : POST /__refuser?stores=a,b → la RPC refuse
   // tout lot contenant ces stores (comme une contrainte CHECK côté base) ; ?stores= rétablit.
   if (u.pathname === '/__refuser') { refuses = new Set((u.searchParams.get('stores') || '').split(',').filter(Boolean)); return out(200, { refuses: [...refuses] }); }
+  // (29/10, statut de synchro) SERVEUR LENT / EN PANNE injectables : POST /__lent?ms=3000 retarde chaque réponse ;
+  // POST /__panne?code=500 fait répondre toute requête /rest et /storage par ce code (?code= rétablit)
+  if (u.pathname === '/__lent') { lenteur = Number(u.searchParams.get('ms') || 0); return out(200, { lenteur }); }
+  if (u.pathname === '/__panne') { panne = Number(u.searchParams.get('code') || 0); return out(200, { panne }); }
+  if (lenteur) await new Promise((r) => setTimeout(r, lenteur));
+  if (panne && /^\/(rest|storage)\//.test(u.pathname)) return out(panne, { code: 'XX000', message: 'panne simulée du serveur (' + panne + ')' });
   if (u.pathname === '/rest/v1/rpc/medrevise_push') {
     const { records } = JSON.parse(body.toString() || '{}'); let n = 0;
     if ((records || []).some((r) => refuses.has(r.store))) return out(400, { code: '23514', message: 'new row violates check constraint (panne simulée)' });
