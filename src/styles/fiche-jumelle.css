@@ -95,3 +95,23 @@
 .fj-champ { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
 .fj-champ input, .fj-champ select { height: 36px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg-2, var(--card)); color: var(--text); font: inherit; font-weight: 500; }
 .fj-aide { color: var(--text-3); font-weight: 500; font-size: 12px; }
+
+/* (29/10) DIAPO D'ORIGINE : sur chaque page de fiche, en HAUT À GAUCHE — visible dès que la page arrive à l'écran
+   (même plus haute que l'écran) et même quand un fort zoom la rend plus large que la zone de lecture (son bord droit
+   sort alors de l'écran) ; le badge du transcript garde le coin droit ;
+   même échelle que les autres contrôles posés sur la page (--ec, voir pdfreader-v2.css), même pastille que le
+   badge du transcript. Le bouton « Revenir à la fiche » flotte en bas, au centre. */
+.pdfr-pages .pdfr-page .pdfr-origine { position: absolute; z-index: 30; left: calc(8px * var(--ec, 1)); top: calc(8px * var(--ec, 1));
+  display: inline-flex; align-items: center; gap: calc(5px * var(--ec, 1)); height: max(20px, calc(26px * var(--ec, 1))); padding: 0 max(7px, calc(10px * var(--ec, 1)));
+  border-radius: calc(8px * var(--ec, 1)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); cursor: pointer;
+  background: color-mix(in srgb, var(--card) 88%, transparent); color: var(--text); font-size: max(10px, calc(12px * var(--ec, 1))); font-weight: 600; line-height: 1;
+  box-shadow: 0 4px 12px -6px rgba(0, 0, 0, .45); opacity: .82; transition: opacity .12s, border-color .12s; }
+.pdfr-pages .pdfr-page .pdfr-origine:hover, .pdfr-pages .pdfr-page .pdfr-origine:focus-visible { opacity: 1; border-color: var(--accent); }
+.pdfr-pages .pdfr-page .pdfr-origine svg { width: max(10px, calc(12px * var(--ec, 1))); height: max(10px, calc(12px * var(--ec, 1))); color: var(--accent); }
+.pdfr-pages .pdfr-page.ctl-reduit .pdfr-origine .pdfr-ctl-texte { display: none; }
+@media (pointer: coarse) { .pdfr-pages .pdfr-page .pdfr-origine { min-height: 32px; } }
+.pdfr-retour-fiche { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 1150; display: inline-flex; align-items: center; gap: 8px;
+  height: 38px; padding: 0 16px 0 12px; border-radius: 999px; border: 0; background: var(--accent); color: #fff; font: inherit; font-size: 13px; font-weight: 700;
+  box-shadow: 0 12px 28px -10px rgba(0, 0, 0, .6); cursor: pointer; animation: sc-entree .14s ease-out; max-width: min(560px, 92vw); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pdfr-retour-fiche:hover { filter: brightness(1.08); }
+@media (pointer: coarse) { .pdfr-retour-fiche { height: 44px; } }

@@ -1036,6 +1036,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       setTourRestauration((n) => n + 1);
       return;
     }
+    // (29/10) « Diapo d'origine » vers un document jamais affiché dans cette session : sa clé de page n'est pas
+    // encore connue ; la cible porte aussi le NUMÉRO de page affichée (`numero`), utilisé alors
+    if (bascule && bascule.numero && bascule.numero <= pageSizes.length) {
+      const i = bascule.numero - 1;
+      aRestaurer.current = { ...bascule, cle: pageSizes[i].cle, index: i };
+      setTourRestauration((n) => n + 1);
+      return;
+    }
     const p = posRef.current;
     // document : la page mémorisée existe encore ; PDF : même fichier, même nombre de pages
     const valable = modeDoc ? !!(p && p.kind === 'doc' && pageSizes.some((sz) => String(sz.cle) === String(p.cle)))
@@ -1167,6 +1175,40 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (jumelle.pageMap.mode !== 'bloc') return jumelle.pageMap;
     const d = prendreInstantDoc();
     return d ? pageMapDocument(jumelle.pageMap, d, jumelle.nbPagesFiche) : jumelle.pageMap;
+  };
+  /* (29/10, docs/compte-rendu-diapo-origine.md) DIAPO D'ORIGINE : chaque page de la fiche affichée porte
+     « Diapo p. 12–13 ↗ » (correspondance des pages déjà calculée à l'import, rien de nouveau stocké). Un
+     clic ouvre l'original À CETTE PAGE ; « ← Revenir à la fiche » ramène à la page de fiche quittée. */
+  const [retourFiche, setRetourFiche] = useState(null); // { id, page } : la page de fiche d'où l'on vient
+  useEffect(() => { setRetourFiche(null); }, [idFiche]);
+  useEffect(() => { if (surFiche) setRetourFiche(null); }, [surFiche]); // revenu sur une fiche (bouton, Tab…) : plus rien à proposer
+  const liensOrigine = (() => {
+    if (!surFiche || !jumelle) return null;
+    const pm = pageMapCourant();
+    if (!pm || !pm.versOrig) return null;
+    const plages = {};
+    (pm.versFiche || []).forEach((f, i) => { if (f == null) return; const x = plages[f]; plages[f] = x ? { de: Math.min(x.de, i + 1), a: Math.max(x.a, i + 1) } : { de: i + 1, a: i + 1 }; });
+    pm.versOrig.forEach((o, j) => { if (o != null && !plages[j + 1]) plages[j + 1] = { de: o, a: o }; });
+    return plages; // n° de page de fiche → { de, a } pages de l'original (absent : page ajoutée dans la fiche)
+  })();
+  const allerOrigine = (pageFiche, pageOrig) => {
+    if (!jumelle || !surFiche) return;
+    sauverRef.current(); // position de la fiche quittée
+    const cle = modeDocCours ? ((instantDoc.current && instantDoc.current.cles[pageOrig - 1]) || null) : pageOrig;
+    cibleBascule.current = { kind: modeDocCours ? 'doc' : 'pdf', cle, numero: pageOrig, fraction: 0, scale, zoomManuel: zoomManuel.current };
+    setVueJumelle('original'); ecrireVue(idFiche, 'original');
+    setRetourFiche({ id: jumelle.id, page: pageFiche });
+  };
+  const revenirFiche = () => {
+    const r = retourFiche; if (!r) return;
+    if (modeDoc && fluxRef.current && fluxRef.current.editor && !fluxRef.current.editor.isDestroyed) {
+      fluxRef.current.vider();
+      setFluxInitial(dehydrateDoc(fluxRef.current.editor.getJSON()));
+    }
+    sauverRef.current();
+    cibleBascule.current = { kind: 'pdf', cle: r.page, fraction: 0, scale, zoomManuel: zoomManuel.current };
+    if (jumelle && r.id !== jumelle.id) { ecrireFicheActive(idFiche, r.id); setFicheChoisie(r.id); }
+    setVueJumelle('fiche'); ecrireVue(idFiche, 'fiche');
   };
   // raccourcis : Tab (hors texte et champ de saisie) ou ⌘⇧F / Ctrl+Maj+F (aussi en écrivant dans le document)
   useEffect(() => {
@@ -3940,6 +3982,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                     {ficheId && !impression && (
                       <BadgePageTranscript courseId={ficheId} page={idx + 1} doc={docAffiche} onOuvrir={(sid) => ouvrirTranscriptPage(idx + 1, sid)} />
                     )}
+                    {/* (29/10) page de FICHE : la diapo d'origine qu'elle résume, en haut à gauche (rien sur une page ajoutée dans la fiche) */}
+                    {liensOrigine && !impression && typeof n === 'number' && liensOrigine[n] && (() => {
+                      const o = liensOrigine[n];
+                      const quoi = modeDocCours ? 'Document' : 'Diapo';
+                      const pages = o.a > o.de ? `p. ${o.de}–${o.a}` : `p. ${o.de}`;
+                      return (
+                        <button type="button" className="pdfr-origine" data-origine={o.de} onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => { e.stopPropagation(); allerOrigine(n, o.de); }}
+                          title={`Cette page de la fiche résume ${modeDocCours ? 'le document' : 'la diapo'} ${pages} — l’ouvrir à cette page`}>
+                          <Icon name="filePdf" size={12} /> <span className="pdfr-ctl-texte">{quoi} {pages}</span> <Icon name="ext" size={11} />
+                        </button>
+                      );
+                    })()}
                     <PdfPageContent
                       pdfDoc={pdfDoc} pageNum={n} vierge={!!sz.ajout} scale={scale} dpr={dpr} pageHeight={h}
                       highlights={highlightsByPage[n] || EMPTY_ARRAY}
@@ -4195,6 +4250,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       )}
       {listeNonReplacees && jumelle && <ListeNonReplacees rec={jumelle} onClose={() => setListeNonReplacees(false)} />}
       {avisJumelle && <div className="fj-avis" role="status">{avisJumelle}</div>}
+      {/* (29/10) venu d'une page de fiche par « Diapo p. … » : le chemin du retour */}
+      {retourFiche && !surFiche && jumelle && (
+        <button type="button" className="pdfr-retour-fiche" onClick={revenirFiche} data-retour-fiche={retourFiche.page}>
+          <Icon name="chevL" size={14} /> Revenir à la fiche{fichesCours.length > 1 ? ` « ${nomFiche(fichesCours.find((r) => r.id === retourFiche.id) || jumelle)} »` : ''} (p. {retourFiche.page})
+        </button>
+      )}
       {detailOcr && fiche && pdfIdActif && !modeDoc && (
         <Modal title="Reconnaissance de texte" onClose={() => setDetailOcr(false)} width="min(460px, 94vw)">
           {(() => {
