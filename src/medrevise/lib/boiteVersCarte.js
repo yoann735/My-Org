@@ -43,13 +43,22 @@ export function lignesDeContenu(content) {
     }
     fin();
   };
-  const bloc = (n, prefixe = '') => {
+  /* (29/10, listes dans les cartes) une liste imbriquée garde son NIVEAU : deux espaces par niveau devant la marque ;
+     2ᵉ niveau numéroté en lettres (« a. »). Lignes suivantes d'un élément : des espaces jusque sous son texte. */
+  const bloc = (n, prefixe = '', niveau = 0) => {
     if (!n) return;
     if (n.type === 'paragraph' || n.type === 'heading') pousser(blocsInline(n), prefixe);
     else if (n.type === 'bulletList' || n.type === 'orderedList') {
       const debut = (n.attrs && n.attrs.start) || 1;
-      (n.content || []).forEach((li, i) => (li.content || []).forEach((c, j) => bloc(c, j === 0 ? (n.type === 'bulletList' ? '- ' : `${debut + i}. `) : '   ')));
-    } else (n.content || []).forEach((c) => bloc(c, prefixe));
+      const retrait = '  '.repeat(niveau);
+      (n.content || []).forEach((li, i) => {
+        const marque = n.type === 'bulletList' ? '- ' : niveau % 2 ? `${String.fromCharCode(96 + Math.min(26, debut + i))}. ` : `${debut + i}. `;
+        (li.content || []).forEach((c, j) => {
+          if (c.type === 'bulletList' || c.type === 'orderedList') bloc(c, '', niveau + 1);
+          else bloc(c, retrait + (j === 0 ? marque : ' '.repeat(marque.length)), niveau);
+        });
+      });
+    } else (n.content || []).forEach((c) => bloc(c, prefixe, niveau));
   };
   if (content && content.type === 'doc') (content.content || []).forEach((c) => bloc(c));
   return lignes;

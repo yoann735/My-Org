@@ -117,6 +117,31 @@ await capturer('polices', P1.slice(0, 4).flat());
 if (lettreIsolee) await capturer('lettre-isolee', lettreIsolee);
 await capturer('deux-lignes', P1.at(-1));
 
+// ---------- 1 bis. tablette tactile (1024×1366) : les surlignages posés, recalculés depuis leur ancre, couvrent l'encre
+await b.c.send('Emulation.setDeviceMetricsOverride', { width: 1024, height: 1366, deviceScaleFactor: 2, mobile: true });
+await b.c.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+await b.biblio({ recharger: true }); await b.ouvrir('Surlignage précis'); await b.dormir(2000);
+await b.ev(`window.__mrZoom && window.__mrZoom(0.9); 1`); await b.dormir(1500); await b.allerPage(1); await b.dormir(2500);
+{
+  const M = await motsEncre();
+  const hs = await b.S(`return (await S.getAll('highlights')).filter((h) => h.ficheId === 'f-surl').map((h) => ({ id: h.id, texte: h.texte }))`);
+  let couverts = 0, vus = 0; const rates = [];
+  for (const h of hs) {
+    const mots = h.texte.split(/\s+/);
+    const bandes = await b.ev(`[...document.querySelectorAll('.pdfr-page[data-cle="1"] .pdfr-hl-rect[data-hl="${h.id}"]')].map((e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; })`);
+    const de = (m) => bandes.find((x) => m.y >= x.t && m.y <= x.b && m.d > x.l && m.g < x.r);
+    // le mot peut revenir plusieurs fois sur la page : l'occurrence surlignée est celle sous la bande
+    const i = M.findIndex((m, j) => mots.every((w, q) => M[j + q] && lettres(M[j + q].mot) === lettres(w)) && de(m));
+    if (i < 0) continue;
+    const p = M.slice(i, i + mots.length); vus++;
+    if (de(p[0]) && de(p.at(-1)) && de(p[0]).l <= p[0].g && de(p.at(-1)).r >= p.at(-1).d) couverts++;
+    else rates.push(`${h.texte} : ${de(p[0]) ? (de(p[0]).l - p[0].g).toFixed(1) : '—'} / ${de(p.at(-1)) ? (p.at(-1).d - de(p.at(-1)).r).toFixed(1) : '—'} px`);
+  }
+  v(vus >= 5 && couverts === vus, `tablette : ${couverts}/${vus} surlignages couvrent l'encre de leur 1ʳᵉ et dernière lettre`, rates.join(' | '));
+  await capturer('tablette', P1.slice(0, 3).flat().length ? M.filter((m) => P1.slice(0, 3).flat().some((x) => x.mot === m.mot)).slice(0, 6) : M.slice(0, 4));
+}
+await b.c.send('Emulation.clearDeviceMetricsOverride'); await b.c.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+
 // ---------- 2. PDF image : texte de l'OCR, 2 passages
 await ouvrir('f-scan', 'Surlignage OCR', 'scan.pdf');
 let nOcr = 0;

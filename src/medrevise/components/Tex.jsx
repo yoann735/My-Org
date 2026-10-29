@@ -8,6 +8,7 @@
 import { useMemo } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import '../../styles/listes.css';
 
 function render(tex, displayMode) {
   try {
@@ -24,20 +25,37 @@ const TOKEN = /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g;
    (`versoFormat: 'leger'`, cartes faites depuis une boîte : lib/boiteVersCarte.js) : **gras**, *italique*, une ligne par
    retour à la ligne, « - » en puce. Les autres cartes s'affichent exactement comme avant. */
 const MARQUE = /\*\*\*([^*\n]+?)\*\*\*|\*\*([^*\n]+?)\*\*|\*([^*\n]+?)\*/g;
+function marques(corps) {
+  const out = []; let last = 0; let m;
+  MARQUE.lastIndex = 0;
+  while ((m = MARQUE.exec(corps))) {
+    if (m.index > last) out.push(corps.slice(last, m.index));
+    out.push(m[1] != null ? <strong key={m.index}><em>{m[1]}</em></strong> : m[2] != null ? <strong key={m.index}>{m[2]}</strong> : <em key={m.index}>{m[3]}</em>);
+    last = m.index + m[0].length;
+  }
+  if (last < corps.length) out.push(corps.slice(last));
+  return out;
+}
+/* (29/10, docs/compte-rendu-synchro-rapide-surlignage-listes.md) LISTES : « - », « 1. », « a. » en tête de ligne (deux
+   espaces par niveau, lib/boiteVersCarte.js) → une vraie ligne de liste (styles/listes.css) : puce / numéro sur la 1ʳᵉ
+   ligne, retour à la ligne aligné sous le texte ; • puis ◦. Ligne en retrait juste après : suite du même élément. */
+const LIGNE_LISTE = /^( *)(- |\d+\. |[a-z]\. )(.*)$/;
 function leger(texte, cle) {
   const lignes = String(texte).split('\n');
+  let niveauListe = null; // niveau du dernier élément de liste (null : hors liste)
   return lignes.map((l, i) => {
-    const puce = /^\s*- /.test(l);
-    const corps = puce ? l.replace(/^(\s*)- /, '$1') : l;
-    const out = []; let last = 0; let m;
-    MARQUE.lastIndex = 0;
-    while ((m = MARQUE.exec(corps))) {
-      if (m.index > last) out.push(corps.slice(last, m.index));
-      out.push(m[1] != null ? <strong key={m.index}><em>{m[1]}</em></strong> : m[2] != null ? <strong key={m.index}>{m[2]}</strong> : <em key={m.index}>{m[3]}</em>);
-      last = m.index + m[0].length;
+    const k = cle + ':' + i;
+    const li = LIGNE_LISTE.exec(l);
+    if (li) {
+      const niv = Math.min(1, Math.floor(li[1].length / 2));
+      niveauListe = niv;
+      const puce = li[2] === '- ';
+      return <span key={k} className={'tex-li' + (puce ? '' : ' num')} style={{ '--niv': niv }}><span className="tex-marque">{puce ? (niv ? '◦' : '•') : li[2].trim()}</span><span className="tex-txt">{marques(li[3])}</span></span>;
     }
-    if (last < corps.length) out.push(corps.slice(last));
-    return <span key={cle + ':' + i}>{puce ? '• ' : ''}{out}{i < lignes.length - 1 ? <br /> : null}</span>;
+    if (niveauListe != null && /^ +\S/.test(l)) return <span key={k} className="tex-suite" style={{ '--niv': niveauListe }}>{marques(l.trim())}</span>;
+    niveauListe = null;
+    const suivanteBloc = i < lignes.length - 1 && (LIGNE_LISTE.test(lignes[i + 1]));
+    return <span key={k}>{marques(l)}{i < lignes.length - 1 && !suivanteBloc ? <br /> : null}</span>;
   });
 }
 

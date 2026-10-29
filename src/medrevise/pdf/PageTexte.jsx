@@ -26,6 +26,7 @@ import { putBlob, genId } from '../lib/storage.js';
 import { NOTES_EXTENSIONS, EMPTY_DOC, hydrateDoc, dehydrateDoc } from '../documents/lib/richtext.js';
 import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
 import { surlignerNotions } from '../documents/lib/notionMarks.js';
+import { nettoyerCollage } from '../lib/collageListes.js';
 
 export const PAGE_A4 = { width: 595, height: 842 };
 
@@ -124,6 +125,7 @@ export const PageTexte = memo(forwardRef(function PageTexte({
     editable: false,
     editorProps: {
       attributes: { class: 'pt-prose', spellcheck: 'true' },
+      transformPastedHTML: (h) => nettoyerCollage(h), // (29/10) listes collées de Word / Google Docs / Notion (lib/collageListes.js)
       // copie / coupe du TEXTE D'UNE IMAGE (Texte en direct) : celle du navigateur, pas celle de l'éditeur
       handleDOMEvents: {
         copy: () => { const sel = window.getSelection(); const n = sel && sel.anchorNode; const el = n && (n.nodeType === 1 ? n : n.parentElement); return !!(el && el.closest && el.closest('.pti-texte')); },

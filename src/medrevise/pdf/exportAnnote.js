@@ -55,17 +55,23 @@ export function paragraphesDe(content) {
     if (n.type === 'hardBreak') return '\n';
     return (n.content || []).map(texteInline).join('');
   };
-  const bloc = (n, prefixe = '') => {
+  /* (29/10, docs/compte-rendu-synchro-rapide-surlignage-listes.md) listes comme à l'écran (styles/listes.css) : 2 niveaux
+     (• puis –, 1. puis a.) ; une sous-liste commence sous le TEXTE de son élément (retrait = largeur de la puce du
+     parent) ; les lignes suivantes d'un élément s'alignent sous son texte (couperLignes reprend ce retrait) */
+  const bloc = (n, prefixe = '', niveau = 0, retrait = '') => {
     if (!n) return;
     if (n.type === 'paragraph' || n.type === 'heading') {
       texteInline(n).split('\n').forEach((l, i) => out.push((i === 0 ? prefixe : ' '.repeat(prefixe.length)) + l));
     } else if (n.type === 'bulletList' || n.type === 'orderedList') {
       const debut = (n.attrs && n.attrs.start) || 1;
-      (n.content || []).forEach((li, i) => (li.content || []).forEach((c, j) => {
-        const puce = n.type === 'bulletList' ? '• ' : `${debut + i}. `;
-        bloc(c, j === 0 ? puce : '   ');
-      }));
-    } else (n.content || []).forEach((c) => bloc(c, prefixe));
+      (n.content || []).forEach((li, i) => {
+        const puce = n.type === 'bulletList' ? (niveau % 2 ? '– ' : '• ') : niveau % 2 ? `${String.fromCharCode(96 + Math.min(26, debut + i))}. ` : `${debut + i}. `;
+        (li.content || []).forEach((c, j) => {
+          if (c.type === 'bulletList' || c.type === 'orderedList') bloc(c, '', niveau + 1, retrait + ' '.repeat(puce.length));
+          else bloc(c, retrait + (j === 0 ? puce : ' '.repeat(puce.length)), niveau, retrait);
+        });
+      });
+    } else (n.content || []).forEach((c) => bloc(c, prefixe, niveau, retrait));
   };
   if (content && content.type === 'doc') (content.content || []).forEach((c) => bloc(c));
   // retire les lignes vides de fin
@@ -93,10 +99,15 @@ export function nettoyeur(font) {
 }
 
 /** découpe en lignes tenant dans `largeur` (points). Les mots trop longs sont coupés. */
-function couperLignes(paragraphes, font, taille, largeur) {
+export function couperLignes(paragraphes, font, taille, largeur) {
   const lignes = [];
+  const espace = font.widthOfTextAtSize(' ', taille) || 1;
   for (const p of paragraphes) {
     if (!p.trim()) { lignes.push(''); continue; }
+    // (29/10) élément de liste (« • », « – », « 1. », « a. », ou ligne suivante en retrait) : les retours à la ligne
+    // reprennent sous le TEXTE, pas sous la puce — retrait fait d'espaces de même largeur que « retrait + puce »
+    const tete = /^(\s*)([•–]|\d+\.|[a-z]\.)\s/.exec(p) || /^(\s+)/.exec(p);
+    const suite = tete ? ' '.repeat(Math.round(font.widthOfTextAtSize(tete[0], taille) / espace)) : '';
     let courante = '';
     for (const mot of p.split(/(\s+)/)) {
       const essai = courante + mot;
@@ -110,7 +121,7 @@ function couperLignes(paragraphes, font, taille, largeur) {
           }
           courante = morceau;
         } else courante = essai;
-      } else { lignes.push(courante.trimEnd()); courante = mot.trimStart(); }
+      } else { lignes.push(courante.trimEnd()); courante = suite + mot.trimStart(); }
     }
     lignes.push(courante.trimEnd());
   }

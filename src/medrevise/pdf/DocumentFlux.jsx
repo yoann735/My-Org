@@ -29,6 +29,7 @@ import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
 import { surlignerNotions } from '../documents/lib/notionMarks.js';
 import { PaginationDocument, SautDePage, gesteDocument } from '../documents/lib/paginationExt.js';
 import { occurrencesDom, surlignerOccurrences } from './rechercheDom.js';
+import { nettoyerCollage } from '../lib/collageListes.js';
 
 const dansTexteImage = () => { const sel = window.getSelection(); const n = sel && sel.anchorNode; const el = n && (n.nodeType === 1 ? n : n.parentElement); return !!(el && el.closest && el.closest('.pti-texte')); };
 export const MARGE_DOC = 56; // ≈ 20 mm sur l'A4 (595 × 842)
@@ -76,6 +77,7 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
     editable: false,
     editorProps: {
       attributes: { class: 'pt-prose pt-flux', spellcheck: 'true', 'data-zone': String(zone) },
+      transformPastedHTML: (h) => nettoyerCollage(h), // (29/10) listes collées de Word / Google Docs / Notion (lib/collageListes.js)
       handleDOMEvents: {
         // copie du TEXTE D'UNE IMAGE (Texte en direct) : celle du navigateur
         copy: () => { const sel = window.getSelection(); const n = sel && sel.anchorNode; const el = n && (n.nodeType === 1 ? n : n.parentElement); return !!(el && el.closest && el.closest('.pti-texte')); },

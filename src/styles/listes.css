@@ -1,0 +1,29 @@
+/* ============================================================
+   LISTES À PUCES ET NUMÉROTÉES DANS LES BOÎTES (29/10, docs/compte-rendu-synchro-rapide-surlignage-listes.md).
+   Bug : dans une boîte, un post-it, une cellule de tableau ou une carte, une liste prenait les valeurs du navigateur
+   (40 px de retrait, 1 em de marge avant et après, 0,25 em sous chaque élément) : retrait énorme, trous aberrants.
+   Une seule règle partout :
+   - retrait ~1,1 em, puce / numéro sur la 1ʳᵉ ligne, retour à la ligne aligné sous le TEXTE (pas sous la puce) ;
+   - interligne du texte normal, aucune marge avant / après la liste ni entre les éléments ;
+   - 2 niveaux : • puis ◦ ; 1. 2. 3. puis a. b. c.
+   Lu par : boîtes / post-it / textes libres du lecteur (.note-box .nb-body, édition TipTap et affichage), cellules des
+   tableaux d'un document ou de notes (.pt-prose / .nd-prose td, th), cartes en balisage léger (components/Tex.jsx).
+   ============================================================ */
+:is(.note-box .nb-body, .pt-prose td, .pt-prose th, .nd-prose td, .nd-prose th) :is(ul, ol) {
+  margin: 0; padding: 0 0 0 1.1em; list-style-position: outside;
+}
+:is(.note-box .nb-body, .pt-prose td, .pt-prose th, .nd-prose td, .nd-prose th) ol { padding-left: 1.35em; } /* « 10. » tient dans le retrait */
+:is(.note-box .nb-body, .pt-prose td, .pt-prose th, .nd-prose td, .nd-prose th) ul { list-style-type: disc; }
+:is(.note-box .nb-body, .pt-prose td, .pt-prose th, .nd-prose td, .nd-prose th) :is(ul, ol) ul { list-style-type: circle; }
+:is(.note-box .nb-body, .pt-prose td, .pt-prose th, .nd-prose td, .nd-prose th) ol { list-style-type: decimal; }
+:is(.note-box .nb-body, .pt-prose td, .pt-prose th, .nd-prose td, .nd-prose th) :is(ul, ol) ol { list-style-type: lower-alpha; }
+:is(.note-box .nb-body, .pt-prose td, .pt-prose th, .nd-prose td, .nd-prose th) li { margin: 0; padding: 0; line-height: inherit; }
+:is(.note-box .nb-body, .pt-prose td, .pt-prose th, .nd-prose td, .nd-prose th) li > p { margin: 0; }
+:is(.note-box .nb-body, .pt-prose td, .pt-prose th, .nd-prose td, .nd-prose th) li::marker { font-variant-numeric: tabular-nums; }
+
+/* CARTES en balisage léger (components/Tex.jsx) : « - » / « 1. » / « a. » en tête de ligne, deux espaces par niveau */
+.tex-li { display: grid; grid-template-columns: 1.1em minmax(0, 1fr); margin-left: calc(var(--niv, 0) * 1.1em); }
+.tex-li.num { grid-template-columns: 1.35em minmax(0, 1fr); }
+.tex-li > .tex-marque { font-variant-numeric: tabular-nums; }
+.tex-li > .tex-txt { min-width: 0; }
+.tex-suite { display: block; margin-left: calc(var(--niv, 0) * 1.1em + 1.1em); } /* ligne suivante d'un même élément */

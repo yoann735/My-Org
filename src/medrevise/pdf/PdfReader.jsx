@@ -113,6 +113,7 @@ import '../../styles/tablette.css';
 import '../../styles/notes-doc.css';
 import '../../styles/pdfreader-v2.css';
 import '../../styles/fiche-jumelle.css';
+import '../../styles/listes.css';
 import { PanneauMiseEnPage, ReglesMarges } from './MiseEnPage.jsx';
 import { margesDe, margesUnites } from '../documents/lib/marges.js';
 import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
@@ -139,6 +140,7 @@ import { lireVue, ecrireVue, pageCorrespondante, importerJumelle, remplacerJumel
   useFichesJumelles, lireFicheActive, ecrireFicheActive, modifierFiche, seanceProposee, nomFiche } from '../lib/ficheJumelle.js';
 import { ChoixFiche, ChoixSeanceFiche } from './ChoixFiche.jsx';
 import { EditeurCorrespondance, ListeNonReplacees } from './Correspondance.jsx';
+import { nettoyerCollage } from '../lib/collageListes.js';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
 const dansLeTableau = (el) => !!(el && el.closest && el.closest('.tb'));
 /** (22/10) les outils de la barre qui regroupent plusieurs outils du moteur : { dessin: ['crayon', 'gomme'], ecrire: [...] } */
@@ -3468,6 +3470,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const editor = useEditor({
     extensions: RICH_EXTENSIONS,
     content: (activeEdit && activeEdit.content) || undefined,
+    // (29/10) listes collées de Word / Google Docs / Notion : vraies listes, styles importés retirés (lib/collageListes.js)
+    editorProps: { transformPastedHTML: (h) => nettoyerCollage(h) },
     onUpdate: ({ editor: ed }) => {
       const id = activeEditIdRef.current; // jamais l'instantané de la création (défaut 3)
       if (!id) return;
