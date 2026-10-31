@@ -150,7 +150,7 @@ export function carteVersItem(q, { fichiers = new Map(), origine = null, categor
     it.molecule = { nom: m.nom || '', smiles: m.smiles || '', sens: m.sens || 'nom-molecule', ...(m.molfile ? { molfile: m.molfile } : {}), ...(m.formule ? { formule: m.formule } : {}),
       ...(m.comparaison ? { comparaison: m.comparaison } : {}), ...(m.biblio != null ? { biblio: m.biblio } : {}) };
   }
-  if (estTableau(q)) it.tableau = { colonnes: q.tableau.colonnes, lignes: q.tableau.lignes };
+  if (estTableau(q)) it.tableau = { colonnes: q.tableau.colonnes, lignes: q.tableau.lignes, ...(q.tableau.masque ? { masque: q.tableau.masque } : {}) }; // (31/10) masque choisi, s'il y en a un
   if (q.aApprendre === true) it.a_apprendre = true;
   it.origine = { ...(origine || {}), id: q.id, ...(q.source && typeof q.source === 'object' ? { source: q.source } : {}) };
   const cree = dateCreation(q);

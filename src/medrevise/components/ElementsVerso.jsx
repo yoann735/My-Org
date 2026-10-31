@@ -30,7 +30,7 @@ let n = 0;
 export const nouvelElement = (x = {}) => ({ cle: 'el' + (++n) + Date.now().toString(36), text: x.text || '', masked: x.masked !== false });
 
 /* œil (le jeu d'icônes partagé n'en a pas) : ouvert = visible, barré = masqué */
-const Oeil = ({ barre, size = 15 }) => (
+export const Oeil = ({ barre, size = 15 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="2.8" />
     {barre && <path d="M4 20 20 4" />}

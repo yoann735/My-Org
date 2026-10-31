@@ -5,6 +5,8 @@
      tableur (TSV) pour pré-remplir — dans la zone prévue ou directement dans la grille ;
    - TableauRevision : les NOMS DE COLONNES restent visibles ; chaque cellule est masquée puis
      révélée au tap, une ligne d'un coup (« Révéler la ligne ») ou tout (« Tout révéler ») ;
+     (31/10) sauf si la carte a choisi son masque (tableau.masque) : seules les cases masquées sont cachées,
+     les noms de colonnes masqués aussi ; l'éditeur a un œil par case, ligne, colonne et nom + un menu « Masquage » ;
      défilement horizontal interne si le tableau est plus large que la carte.
    Les clics ne remontent jamais à la carte (qui se retourne au clic).
    ============================================================ */
@@ -13,7 +15,8 @@ import { Icon } from '../../shared/Icon.jsx';
 import { CaseACocher } from './CaseACocher.jsx';
 import { Tex } from './Tex.jsx';
 import { echapDansFormulaire } from './AddItemForm.jsx';
-import { LIMITES, carteTableau, normaliserTableau, lireTSV, estTSV } from '../lib/carteTableau.js';
+import { LIMITES, carteTableau, normaliserTableau, lireTSV, estTSV, masqueDe, masqueParDefaut } from '../lib/carteTableau.js';
+import { Oeil } from './ElementsVerso.jsx';
 import { styleCellule } from '../pdf/BoiteTableau.jsx';
 import { cellulesAffichees, estGrille as estGrilleBoite } from '../pdf/grille.js';
 import '../../styles/flashcard-tableau.css';
@@ -76,19 +79,33 @@ function TableauSimple({ item, masquable = true, compact = false }) {
   const [vues, setVues] = useState(() => new Set());
   useEffect(() => { setVues(new Set()); }, [item && item.id]);
   if (!t) return null;
+  // (31/10) seules les cases MASQUÉES (tableau.masque ; absent = toutes) sont cachées ; un nom de colonne peut l'être aussi
+  const mq = masqueDe(t);
   const cle = (r, c) => `${r}:${c}`;
+  const cleNom = (c) => `n:${c}`;
   const pleine = (r, c) => !!(t.lignes[r][c] || '').trim();
-  const cachee = (r, c) => masquable && pleine(r, c) && !vues.has(cle(r, c));
-  const toutes = t.lignes.flatMap((l, r) => l.map((_, c) => cle(r, c)).filter((_, c) => pleine(r, c)));
-  const reste = masquable ? toutes.filter((k) => !vues.has(k)).length : 0;
+  const cachee = (r, c) => masquable && pleine(r, c) && mq.cellules[r][c] && !vues.has(cle(r, c));
+  const nomCache = (c) => masquable && !!(t.colonnes[c] || '').trim() && mq.noms[c] && !vues.has(cleNom(c));
+  const toutes = [...t.colonnes.map((_, c) => c).filter(nomCache).map(cleNom), ...t.lignes.flatMap((l, r) => l.map((_, c) => cle(r, c)).filter((_, c) => cachee(r, c)))];
+  const reste = toutes.length;
   const voir = (...ks) => setVues((s) => { const n = new Set(s); ks.forEach((k) => n.add(k)); return n; });
   const resteLigne = (r) => t.lignes[r].some((_, c) => cachee(r, c));
+  const avecLignes = masquable && t.lignes.some((_, r) => resteLigne(r) || t.lignes[r].some((_, c) => pleine(r, c) && mq.cellules[r][c]));
   return (
     <div className={'tb-rev' + (compact ? ' compact' : '')} onClick={stop} onPointerDown={stop} data-tableau="">
       <div className="tb-defil">
         <table className="tb-table">
           <thead>
-            <tr>{t.colonnes.map((c, k) => <th key={k} scope="col"><Tex>{c}</Tex></th>)}{masquable && <th className="tb-col-act" aria-label="Révéler" />}</tr>
+            <tr>
+              {t.colonnes.map((c, k) => (
+                <th key={k} scope="col" data-nom={k} className={nomCache(k) ? 'cachee' : undefined}>
+                  {nomCache(k)
+                    ? <button type="button" className="tb-masque tb-masque-nom" aria-label={`Révéler le nom de la colonne ${k + 1}`} onClick={() => voir(cleNom(k))}>Colonne {k + 1}</button>
+                    : <Tex>{c}</Tex>}
+                </th>
+              ))}
+              {avecLignes && <th className="tb-col-act" aria-label="Révéler" />}
+            </tr>
           </thead>
           <tbody>
             {t.lignes.map((l, r) => (
@@ -98,15 +115,15 @@ function TableauSimple({ item, masquable = true, compact = false }) {
                   return (
                     <td key={c} className={ca ? 'cachee' : ''} data-cellule={cle(r, c)}>
                       {ca
-                        ? <button type="button" className="tb-masque" aria-label={`Révéler : ${t.colonnes[c]}, ligne ${r + 1}`} onClick={() => voir(cle(r, c))}>Toucher</button>
+                        ? <button type="button" className="tb-masque" aria-label={`Révéler : ${nomCache(c) ? `colonne ${c + 1}` : t.colonnes[c]}, ligne ${r + 1}`} onClick={() => voir(cle(r, c))}>Toucher</button>
                         : v ? <span className="tb-valeur"><Tex>{v}</Tex></span> : <span className="tb-vide">—</span>}
                     </td>
                   );
                 })}
-                {masquable && (
+                {avecLignes && (
                   <td className="tb-col-act">
                     {resteLigne(r) && <button type="button" className="tb-ligne-btn" title="Révéler la ligne" aria-label={`Révéler la ligne ${r + 1}`}
-                      onClick={() => voir(...l.map((_, c) => cle(r, c)).filter((_, c) => pleine(r, c)))}><Icon name="chevR" size={13} /><span>Ligne</span></button>}
+                      onClick={() => voir(...l.map((_, c) => cle(r, c)).filter((_, c) => cachee(r, c)))}><Icon name="chevR" size={13} /><span>Ligne</span></button>}
                   </td>
                 )}
               </tr>
@@ -121,6 +138,41 @@ function TableauSimple({ item, masquable = true, compact = false }) {
   );
 }
 
+/* ---------- (31/10) menu « Masquage » du tableau de l'éditeur : tout masquer / afficher, la colonne et la ligne de la
+   dernière case touchée. Échap le ferme sans fermer le formulaire. ---------- */
+function MenuMasquage({ etatTout, focusCase, colonnes, etatLigne, etatColonne, onTout, onLigne, onColonne }) {
+  const [ouvert, setOuvert] = useState(false);
+  const racine = useRef(null);
+  useEffect(() => {
+    if (!ouvert) return undefined;
+    const dehors = (e) => { if (racine.current && !racine.current.contains(e.target)) setOuvert(false); };
+    window.addEventListener('pointerdown', dehors, true);
+    return () => window.removeEventListener('pointerdown', dehors, true);
+  }, [ouvert]);
+  const faire = (f) => () => { f(); setOuvert(false); };
+  const fc = focusCase && focusCase.r != null ? focusCase : null;
+  const etC = fc ? etatColonne(fc.c) : null, etL = fc ? etatLigne(fc.r) : null;
+  const nomC = fc ? (colonnes[fc.c] || '').trim() || `colonne ${fc.c + 1}` : '';
+  return (
+    <span className="tb-menu" ref={racine} onKeyDown={(e) => { if (e.key === 'Escape' && ouvert) { e.stopPropagation(); e.preventDefault(); setOuvert(false); } }}>
+      <button type="button" className={'btn ghost sm tb-menu-bouton' + (ouvert ? ' actif' : '')} aria-haspopup="menu" aria-expanded={ouvert} data-act="masquage"
+        title="Choisir ce qui est masqué en révision" onClick={() => setOuvert((o) => !o)}><Oeil barre size={13} /> Masquage <Icon name="chevD" size={11} /></button>
+      {ouvert && (
+        <div className="tb-menu-liste" role="menu" aria-label="Masquage du tableau">
+          <button type="button" role="menuitem" data-menu="tout-masquer" disabled={etatTout === 'masquee'} onClick={faire(() => onTout(true))}><Oeil barre size={13} /> Tout masquer</button>
+          <button type="button" role="menuitem" data-menu="tout-afficher" disabled={etatTout === 'visible'} onClick={faire(() => onTout(false))}><Oeil size={13} /> Tout afficher</button>
+          <div className="tb-menu-sep" />
+          <button type="button" role="menuitem" data-menu="colonne" disabled={!fc} onClick={faire(() => onColonne(fc.c, etC !== 'masquee'))}>
+            <Oeil barre={etC !== 'masquee'} size={13} /><span className="tb-menu-txt">{etC === 'masquee' ? 'Afficher la colonne' : 'Masquer la colonne'}{fc && <span className="hint"> « {nomC} »</span>}</span></button>
+          <button type="button" role="menuitem" data-menu="ligne" disabled={!fc} onClick={faire(() => onLigne(fc.r, etL !== 'masquee'))}>
+            <Oeil barre={etL !== 'masquee'} size={13} /><span className="tb-menu-txt">{etL === 'masquee' ? 'Afficher la ligne' : 'Masquer la ligne'}{fc && <span className="hint tnum"> {fc.r + 1}</span>}</span></button>
+          {!fc && <div className="hint tb-menu-aide">Touche d’abord une case pour viser sa colonne ou sa ligne.</div>}
+        </div>
+      )}
+    </span>
+  );
+}
+
 /* ---------- formulaire (création et modification) ---------- */
 export function FormulaireTableau({ initial = null, themeDefaut = '', onAdd, onCancel, busy, submitLabel = 'Ajouter' }) {
   const [theme, setTheme] = useState(initial ? initial.theme || '' : themeDefaut);
@@ -131,6 +183,9 @@ export function FormulaireTableau({ initial = null, themeDefaut = '', onAdd, onC
   const [lignes, setLignes] = useState(() => (initial && initial.tableau ? initial.tableau.lignes.map((l) => [...l]) : [vide(3), vide(3), vide(3)]));
   const [indice, setIndice] = useState(initial?.indice || '');
   const [aRetenir, setARetenir] = useState(initial?.a_retenir || '');
+  // (31/10) ce qui est masqué en révision : une case, une ligne, une colonne, un nom de colonne (lib/carteTableau.js#masqueDe)
+  const [masque, setMasque] = useState(() => (initial && initial.tableau ? masqueDe(initial.tableau) : masqueParDefaut(3, 3)));
+  const [focusCase, setFocusCase] = useState(null); // { r, c } : la dernière case touchée (cible du menu « Masquage »)
   const [entetes, setEntetes] = useState(true);
   const [tsv, setTsv] = useState('');
   const [message, setMessage] = useState(null); // { ok, texte }
@@ -147,7 +202,7 @@ export function FormulaireTableau({ initial = null, themeDefaut = '', onAdd, onC
     cols = [...cols, ...vide(n)].slice(0, n);
     ls = ls.slice(0, LIMITES.ligMax).map((l) => [...l, ...vide(n)].slice(0, n));
     if (!ls.length) ls = [vide(n)];
-    setColonnes(cols); setLignes(ls);
+    setColonnes(cols); setLignes(ls); setMasque(masqueParDefaut(ls.length, n)); setFocusCase(null);
     setMessage({ ok: !coupeesC && !coupeesL, texte: `Collé : ${n} colonne${n > 1 ? 's' : ''} × ${ls.length} ligne${ls.length > 1 ? 's' : ''}${coupeesC ? ` (au-delà de ${LIMITES.colMax} colonnes : coupé)` : ''}${coupeesL ? ` (au-delà de ${LIMITES.ligMax} lignes : coupé)` : ''} — relis et corrige.` });
   };
   const collerGrille = (e) => {
@@ -157,19 +212,33 @@ export function FormulaireTableau({ initial = null, themeDefaut = '', onAdd, onC
     appliquerTSV(t);
   };
 
-  const ajouterColonne = () => { if (nc >= LIMITES.colMax) return; setColonnes((c) => [...c, '']); setLignes((ls) => ls.map((l) => [...l, ''])); };
-  const retirerColonne = (k) => { if (nc <= LIMITES.colMin) return; setColonnes((c) => c.filter((_, i) => i !== k)); setLignes((ls) => ls.map((l) => l.filter((_, i) => i !== k))); };
-  const ajouterLigne = () => { if (lignes.length >= LIMITES.ligMax) return; setLignes((ls) => [...ls, vide(nc)]); };
-  const retirerLigne = (r) => { if (lignes.length <= LIMITES.ligMin) return; setLignes((ls) => ls.filter((_, i) => i !== r)); };
+  // une nouvelle ligne / colonne naît masquée (nom de colonne visible), comme un nouveau tableau
+  const ajouterColonne = () => { if (nc >= LIMITES.colMax) return; setColonnes((c) => [...c, '']); setLignes((ls) => ls.map((l) => [...l, ''])); setMasque((m) => ({ cellules: m.cellules.map((l) => [...l, true]), noms: [...m.noms, false] })); };
+  const retirerColonne = (k) => { if (nc <= LIMITES.colMin) return; setColonnes((c) => c.filter((_, i) => i !== k)); setLignes((ls) => ls.map((l) => l.filter((_, i) => i !== k))); setMasque((m) => ({ cellules: m.cellules.map((l) => l.filter((_, i) => i !== k)), noms: m.noms.filter((_, i) => i !== k) })); setFocusCase(null); };
+  const ajouterLigne = () => { if (lignes.length >= LIMITES.ligMax) return; setLignes((ls) => [...ls, vide(nc)]); setMasque((m) => ({ ...m, cellules: [...m.cellules, Array(nc).fill(true)] })); };
+  const retirerLigne = (r) => { if (lignes.length <= LIMITES.ligMin) return; setLignes((ls) => ls.filter((_, i) => i !== r)); setMasque((m) => ({ ...m, cellules: m.cellules.filter((_, i) => i !== r) })); setFocusCase(null); };
+  // masquer / afficher : une case, une ligne, une colonne (toutes ses cases), un nom de colonne, tout
+  const mCase = (r, c) => !!(masque.cellules[r] && masque.cellules[r][c]);
+  const etat = (l) => (l.every(Boolean) ? 'masquee' : l.some(Boolean) ? 'partiel' : 'visible');
+  const etatLigne = (r) => etat(colonnes.map((_, c) => mCase(r, c)));
+  const etatColonne = (c) => etat(lignes.map((_, r) => mCase(r, c)));
+  const etatTout = etat(lignes.flatMap((_, r) => colonnes.map((__, c) => mCase(r, c))));
+  const poser = (f) => setMasque((m) => ({ ...m, cellules: m.cellules.map((l, r) => l.map((x, c) => f(r, c, x))) }));
+  const basculerCase = (r, c) => poser((i, j, x) => (i === r && j === c ? !x : x));
+  const poserLigne = (r, v) => poser((i, j, x) => (i === r ? v : x));
+  const poserColonne = (c, v) => poser((i, j, x) => (j === c ? v : x));
+  const basculerNom = (c) => setMasque((m) => ({ ...m, noms: m.noms.map((x, k) => (k === c ? !x : x)) }));
+  const toutMasquer = (v) => poser(() => v);
+  const bulle = (et, quoi, f = 'e') => (et === 'masquee' ? `${quoi} : masqué${f} en révision — clic pour afficher` : et === 'partiel' ? `${quoi} : en partie masqué${f} — clic pour tout masquer` : `${quoi} : visible en révision — clic pour masquer`);
   const cellule = (r, c, v) => setLignes((ls) => ls.map((l, i) => (i === r ? l.map((x, j) => (j === c ? v : x)) : l)));
 
-  const verif = normaliserTableau({ colonnes, lignes });
+  const verif = normaliserTableau({ colonnes, lignes, masque });
   const pret = !!titre.trim() && verif.ok;
   const valider = async () => {
     if (!pret || busy) return;
-    await onAdd(carteTableau({ titre, colonnes, lignes, theme, indice, aRetenir, difficulte: initial?.difficulte || 'intermediaire' }));
+    await onAdd(carteTableau({ titre, colonnes, lignes, masque, theme, indice, aRetenir, difficulte: initial?.difficulte || 'intermediaire' }));
     if (!initial) {
-      setTitre(''); setColonnes(vide(3)); setLignes([vide(3), vide(3), vide(3)]); setIndice(''); setARetenir(''); setTsv(''); setMessage(null);
+      setTitre(''); setColonnes(vide(3)); setLignes([vide(3), vide(3), vide(3)]); setMasque(masqueParDefaut(3, 3)); setFocusCase(null); setIndice(''); setARetenir(''); setTsv(''); setMessage(null);
       setTheme(themeDefaut); themeRetouche.current = false;
       requestAnimationFrame(() => titreRef.current && titreRef.current.focus());
     }
@@ -203,15 +272,42 @@ export function FormulaireTableau({ initial = null, themeDefaut = '', onAdd, onC
       {message && <div className={'tb-message' + (message.ok ? ' ok' : '')} role="status">{message.texte}</div>}
 
       <div className="tb-saisie" onPaste={collerGrille} role="group" aria-label="Tableau">
+        <div className="tb-masquage-barre">
+          <MenuMasquage etatTout={etatTout} focusCase={focusCase} colonnes={colonnes} etatLigne={etatLigne} etatColonne={etatColonne}
+            onTout={toutMasquer} onLigne={poserLigne} onColonne={poserColonne} />
+          <span className="hint tb-legende"><span className="tb-legende-hachure" aria-hidden="true" /> hachurée = masquée en révision · <Oeil size={12} /> pour changer</span>
+        </div>
         <div className="tb-defil">
           <table className="tb-table tb-edition">
             <thead>
+              <tr className="tb-ctrl">
+                <th className="tb-col-lig">
+                  <button type="button" className={'tb-oeil tb-oeil-tout ' + etatTout} aria-pressed={etatTout === 'masquee'} data-oeil="tout"
+                    title={bulle(etatTout, 'Tout le tableau', '')} aria-label={bulle(etatTout, 'Tout le tableau', '')} onClick={() => toutMasquer(etatTout !== 'masquee')}><Oeil barre={etatTout !== 'visible'} size={14} /></button>
+                </th>
+                {colonnes.map((c, k) => {
+                  const et = etatColonne(k);
+                  return (
+                    <th key={k}>
+                      <button type="button" className={'tb-oeil tb-oeil-col ' + et} aria-pressed={et === 'masquee'} data-oeil={`col:${k}`}
+                        title={bulle(et, `Colonne ${k + 1}`, 'e')} aria-label={bulle(et, `Colonne ${k + 1}`, 'e')} onClick={() => poserColonne(k, et !== 'masquee')}>
+                        <Oeil barre={et !== 'visible'} size={13} /><span>Colonne</span>
+                      </button>
+                    </th>
+                  );
+                })}
+                <th className="tb-col-act" />
+              </tr>
               <tr>
+                <th className="tb-col-lig" />
                 {colonnes.map((c, k) => (
-                  <th key={k}>
+                  <th key={k} className={masque.noms[k] ? 'masquee' : undefined}>
                     <div className="tb-th">
                       <input className="tb-champ tb-nom-col" value={c} placeholder={`Colonne ${k + 1}`} aria-label={`Nom de la colonne ${k + 1}`} data-col={k}
                         onChange={(e) => setColonnes((cs) => cs.map((x, i) => (i === k ? e.target.value : x)))} />
+                      <button type="button" className={'tb-oeil tb-oeil-nom ' + (masque.noms[k] ? 'masquee' : 'visible')} aria-pressed={!!masque.noms[k]} data-oeil={`nom:${k}`}
+                        title={bulle(masque.noms[k] ? 'masquee' : 'visible', `Nom de la colonne ${k + 1}`, '')} aria-label={bulle(masque.noms[k] ? 'masquee' : 'visible', `Nom de la colonne ${k + 1}`, '')}
+                        onClick={() => basculerNom(k)}><Oeil barre={!!masque.noms[k]} size={13} /></button>
                       <button type="button" className="tb-x" disabled={nc <= LIMITES.colMin} title="Retirer la colonne" aria-label={`Retirer la colonne ${k + 1}`} onClick={() => retirerColonne(k)}><Icon name="x" size={11} /></button>
                     </div>
                   </th>
@@ -220,17 +316,29 @@ export function FormulaireTableau({ initial = null, themeDefaut = '', onAdd, onC
               </tr>
             </thead>
             <tbody>
-              {lignes.map((l, r) => (
-                <tr key={r}>
-                  {l.map((v, c) => (
-                    <td key={c}>
-                      <textarea className="tb-champ tb-cellule" rows={1} value={v} placeholder="—" aria-label={`${colonnes[c] || `Colonne ${c + 1}`}, ligne ${r + 1}`} data-cellule={`${r}:${c}`}
-                        onChange={(e) => cellule(r, c, e.target.value)} />
+              {lignes.map((l, r) => {
+                const et = etatLigne(r);
+                return (
+                  <tr key={r}>
+                    <td className="tb-col-lig">
+                      <button type="button" className={'tb-oeil tb-oeil-lig ' + et} aria-pressed={et === 'masquee'} data-oeil={`lig:${r}`}
+                        title={bulle(et, `Ligne ${r + 1}`, 'e')} aria-label={bulle(et, `Ligne ${r + 1}`, 'e')} onClick={() => poserLigne(r, et !== 'masquee')}>
+                        <Oeil barre={et !== 'visible'} size={13} /><span className="tnum">{r + 1}</span>
+                      </button>
                     </td>
-                  ))}
-                  <td className="tb-col-act"><button type="button" className="tb-x" disabled={lignes.length <= LIMITES.ligMin} title="Retirer la ligne" aria-label={`Retirer la ligne ${r + 1}`} onClick={() => retirerLigne(r)}><Icon name="x" size={11} /></button></td>
-                </tr>
-              ))}
+                    {l.map((v, c) => (
+                      <td key={c} className={'tb-case' + (mCase(r, c) ? ' masquee' : '')}>
+                        <textarea className="tb-champ tb-cellule" rows={1} value={v} placeholder="—" aria-label={`${colonnes[c] || `Colonne ${c + 1}`}, ligne ${r + 1}`} data-cellule={`${r}:${c}`}
+                          onFocus={() => setFocusCase({ r, c })} onChange={(e) => cellule(r, c, e.target.value)} />
+                        <button type="button" tabIndex={-1} className={'tb-oeil tb-oeil-case ' + (mCase(r, c) ? 'masquee' : 'visible')} aria-pressed={mCase(r, c)} data-oeil={`case:${r}:${c}`}
+                          title={bulle(mCase(r, c) ? 'masquee' : 'visible', 'Case')} aria-label={bulle(mCase(r, c) ? 'masquee' : 'visible', `Case ligne ${r + 1}, colonne ${c + 1}`)}
+                          onMouseDown={(e) => e.preventDefault()} onClick={() => { setFocusCase({ r, c }); basculerCase(r, c); }}><Oeil barre={mCase(r, c)} size={12} /></button>
+                      </td>
+                    ))}
+                    <td className="tb-col-act"><button type="button" className="tb-x" disabled={lignes.length <= LIMITES.ligMin} title="Retirer la ligne" aria-label={`Retirer la ligne ${r + 1}`} onClick={() => retirerLigne(r)}><Icon name="x" size={11} /></button></td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

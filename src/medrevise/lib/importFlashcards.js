@@ -6,7 +6,9 @@
                     "image":    { "data": "data:image/png;base64,…" | "fichier": "nom.png" (dans le .zip), "place": "recto"|"verso"|"deux" },
                     "muscle":   { "origine", "trajet", "insertion", "action", "innervation", "topographie" } (28/10 : tous facultatifs),
                     "molecule": { "nom", "smiles", "sens": "nom-molecule"|"molecule-nom" },
-                    "tableau":  { "colonnes": [2 à 6], "lignes": [[…], …] (1 à 12) },
+                    "tableau":  { "colonnes": [2 à 6], "lignes": [[…], …] (1 à 12),
+                                  "masque"?: { "cellules": [[true|false, …], …], "noms": [true|false, …] } (31/10 : true = masqué ;
+                                  absent = toutes les cases masquées, noms de colonnes visibles) },
                     "items":    [ { "text", "masked": true|false }, … ] (26/10 : éléments à révéler d'une carte texte) } ] }
    (26/10, export complet — lib/exportFlashcards.js, docs/compte-rendu-export-flashcards.md) ACCEPTE EN PLUS, pour
    ré-importer un export tel quel : "occlusion": { "fichier"|"data", "largeur", "hauteur", "masques": [ … ] } (image à
@@ -229,7 +231,7 @@ async function lireCarte(it, fichiers, chimie) {
     const r = normaliserTableau(it.tableau);
     if (!r.ok) return { erreur: r.raison };
     if (!estTexte(it.recto)) return { erreur: 'champ « recto » (titre du tableau) manquant' };
-    carte = carteTableau({ titre: it.recto, colonnes: r.tableau.colonnes, lignes: r.tableau.lignes, ...base });
+    carte = carteTableau({ titre: it.recto, colonnes: r.tableau.colonnes, lignes: r.tableau.lignes, masque: r.tableau.masque || null, ...base });
     sorte = 'tableau';
   } else {
     const el = lireElements(it.items);
@@ -369,6 +371,7 @@ export const EXEMPLE_IMPORT = {
     { _sorte: 'muscle', _aide: 'recto = nom du muscle ; les 6 champs du tableau Muscle, chacun facultatif (une ligne vide s’affiche « — ») ; verso construit', type: 'flashcard', theme: 'Muscles du bras', recto: 'Biceps brachial', muscle: { origine: 'Chef long : tubercule supra-glénoïdal ; chef court : processus coracoïde', trajet: 'Loge antérieure du bras', insertion: 'Tubérosité radiale', action: 'Flexion du coude, supination', innervation: 'Nerf musculo-cutané (C5–C6)', topographie: 'Loge antérieure du bras, superficiel au brachial' } },
     { _sorte: 'molécule', _aide: 'molecule.smiles (obligatoire), nom, sens : nom-molecule (recto = nom) ou molecule-nom', type: 'flashcard', theme: 'Biochimie', molecule: { nom: 'Éthanol', smiles: 'CCO', sens: 'nom-molecule' } },
     { _sorte: 'tableau', _aide: 'recto = titre ; 2 à 6 colonnes, 1 à 12 lignes ; en révision les cellules se révèlent une par une', type: 'flashcard', theme: 'Myologie', recto: 'Muscles de la fesse — insertions', tableau: { colonnes: ['Muscle', 'Origine', 'Insertion'], lignes: [['Grand glutéal', 'Ilium, sacrum, coccyx', 'Tubérosité glutéale'], ['Moyen glutéal', 'Face glutéale de l’ilium', 'Grand trochanter'], ['Piriforme', 'Face pelvienne du sacrum', 'Bord supérieur du grand trochanter']] } },
+    { _sorte: 'tableau (masque choisi)', _aide: 'masque facultatif : cellules = une ligne de booléens par ligne du tableau (true = masquée en révision, false = toujours visible) ; noms = un booléen par colonne (true = nom de colonne masqué) ; sans masque : toutes les cases masquées, noms visibles', type: 'flashcard', theme: 'Myologie', recto: 'Muscles de la fesse — innervation', tableau: { colonnes: ['Muscle', 'Innervation'], lignes: [['Grand glutéal', 'Nerf glutéal inférieur'], ['Moyen glutéal', 'Nerf glutéal supérieur']], masque: { cellules: [[false, true], [false, true]], noms: [false, false] } } },
   ],
 };
 export const exempleJSON = () => JSON.stringify(EXEMPLE_IMPORT, null, 2);
@@ -383,7 +386,7 @@ export const COMPLEMENT_PROMPT = `
 En plus des flashcards texte et à trous, tu peux produire, dans le même tableau "items" (toujours "type": "flashcard") :
 - **Muscle** : "recto" = nom du muscle, "muscle": { "origine", "trajet", "insertion", "action", "innervation", "topographie" } (chaque champ facultatif ; verso construit automatiquement) ;
 - **Molécule** : "molecule": { "nom", "smiles", "sens": "nom-molecule" | "molecule-nom" } (SMILES valide obligatoire) ;
-- **Tableau** : "recto" = titre, "tableau": { "colonnes": [2 à 6 noms], "lignes": [[…], …] (1 à 12 lignes, autant de cellules que de colonnes) } ;
+- **Tableau** : "recto" = titre, "tableau": { "colonnes": [2 à 6 noms], "lignes": [[…], …] (1 à 12 lignes, autant de cellules que de colonnes), "masque" facultatif : { "cellules": [[true|false, …], …] (une ligne de booléens par ligne ; true = case masquée en révision, false = toujours visible), "noms": [true|false, …] (true = nom de colonne masqué) } — sans "masque", toutes les cases sont masquées et les noms de colonnes visibles } ;
 - **Texte à éléments** : "items": [{ "text": "…", "masked": true }, …] — la réponse découpée en éléments révélés un par un ("masked": false = toujours visible) ; "verso" devient facultatif (introduction) ;
 - **Image** (facultative sur une carte texte) : "image": { "data": "data:image/png;base64,…", "place": "recto" | "verso" | "deux" }.
 Aucun autre champ. Exemple complet :

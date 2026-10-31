@@ -62,3 +62,48 @@
 .tb-grille .tb-grille-tete td { font-weight: 700; }
 .tb-grille tr.impaire td { background-color: color-mix(in srgb, currentColor 7%, transparent); }
 .tb-rev-grille.compact .tb-grille { font-size: 11.5px; }
+
+/* (31/10, docs/compte-rendu-flashcards.md « Tableau : choisir ce qui est masqué ») — éditeur : un œil par case, ligne,
+   colonne et nom de colonne ; une case masquée en révision est légèrement hachurée, la saisie reste entière. */
+.tb-masquage-barre { display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.tb-legende { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.tb-legende-hachure { display: inline-block; width: 16px; height: 12px; border-radius: 3px; border: 1px solid var(--border);
+  background: repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in srgb, var(--accent) 22%, transparent) 4px 5px), var(--card); }
+.tb-edition .tb-col-lig { width: 1%; min-width: 0 !important; padding-left: 0 !important; padding-right: 2px !important; white-space: nowrap; vertical-align: middle; }
+.tb-edition .tb-ctrl th { position: static; padding-top: 0; padding-bottom: 0; border-bottom: 0; }
+.tb-oeil { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 22px; min-width: 22px; padding: 0 5px; border-radius: 6px;
+  border: 1px solid transparent; background: none; color: var(--text-3); font: inherit; font-size: 11.5px; font-weight: 600; font-variant-caps: normal;
+  letter-spacing: 0; cursor: pointer; transition: color .15s, background .15s, border-color .15s; }
+.tb-oeil:hover, .tb-oeil:focus-visible { color: var(--accent); background: var(--bg-2); outline: none; }
+.tb-oeil.masquee { color: var(--accent); }
+.tb-oeil.partiel { color: var(--accent); opacity: .7; border-style: dashed; border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.tb-oeil-col, .tb-oeil-lig { border-color: var(--border); }
+.tb-oeil-col { width: 100%; }
+.tb-edition .tb-case { position: relative; min-width: 128px; }
+.tb-edition .tb-case .tb-cellule { padding-right: 24px; }
+.tb-oeil-case { position: absolute; top: 8px; right: 7px; height: 20px; min-width: 20px; padding: 0; opacity: .55; }
+.tb-case:hover .tb-oeil-case, .tb-case:focus-within .tb-oeil-case, .tb-oeil-case.visible { opacity: 1; }
+.tb-oeil-case.visible { color: var(--text-3); }
+.tb-edition .masquee > .tb-cellule, .tb-edition th.masquee .tb-nom-col {
+  background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--accent) 9%, transparent) 6px 7px), var(--card); }
+.tb-menu { position: relative; display: inline-flex; }
+.tb-menu-bouton.actif { color: var(--accent); border-color: var(--accent); }
+.tb-menu-liste { position: absolute; left: 0; top: calc(100% + 4px); z-index: 30; min-width: 220px; max-width: min(280px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 1px; padding: 6px;
+  border-radius: 12px; background: var(--card); border: 1px solid var(--border-2, var(--border)); box-shadow: 0 14px 36px rgba(0, 0, 0, .3); }
+.tb-menu-liste button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: none;
+  color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.tb-menu-liste button:hover:not(:disabled), .tb-menu-liste button:focus-visible { background: var(--bg-2); color: var(--accent); outline: none; }
+.tb-menu-liste button:disabled { opacity: .4; cursor: default; }
+.tb-menu-liste button svg { flex: 0 0 auto; }
+.tb-menu-txt { min-width: 0; padding: 6px 0; line-height: 1.3; }
+.tb-menu-sep { height: 1px; margin: 4px 2px; background: var(--border); }
+.tb-menu-aide { padding: 4px 10px 2px; font-size: 11.5px; max-width: 230px; }
+/* révision : un nom de colonne masqué */
+.tb-table th.cachee { font-variant-caps: normal; }
+.tb-masque-nom { min-height: 24px; font-size: 11.5px; }
+@media (pointer: coarse) {
+  .tb-oeil { height: 30px; min-width: 30px; }
+  .tb-oeil-case { height: 26px; min-width: 26px; top: 7px; right: 7px; opacity: 1; }
+  .tb-edition .tb-case .tb-cellule { padding-right: 32px; }
+  .tb-menu-liste button { min-height: 42px; }
+}
