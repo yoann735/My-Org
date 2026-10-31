@@ -4,9 +4,53 @@
     {
       "name": "mealweek",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["node_modules/vite/bin/vite.js"],
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js"
+      ],
       "autoPort": true,
       "port": 5173
+    },
+    {
+      "name": "medrevise-banc",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "--port",
+        "5302",
+        "--strictPort"
+      ],
+      "env": {
+        "VITE_SUPABASE_URL": "",
+        "VITE_SUPABASE_ANON_KEY": ""
+      },
+      "port": 5302
+    },
+    {
+      "name": "faux-supabase",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/faux-supabase.mjs"
+      ],
+      "env": {
+        "JOURNAL": "1",
+        "CONTRAINTE_RATING": "0"
+      },
+      "port": 54399
+    },
+    {
+      "name": "medrevise-faux-cloud",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "--port",
+        "5300",
+        "--strictPort"
+      ],
+      "env": {
+        "VITE_SUPABASE_URL": "http://localhost:54399",
+        "VITE_SUPABASE_ANON_KEY": "cle-de-test"
+      },
+      "port": 5300
     }
   ]
 }
