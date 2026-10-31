@@ -8,6 +8,7 @@ import { get, set, del, clear, keys, values, entries, setMany, createStore } fro
 import { isoDate, startAdaptive } from './sm2.js';
 import { queuePush, pullAllRecords, pullAllMeta, pullStore, queueBlobPush, flushBlobOutbox, blobOutboxEntries, listCloudBlobs, pullBlob, flushOutbox, isPushDegraded, outboxEntries, retirerSiInchange, dernierEchecCloud, outboxCount, etatLegerCloud, pullDepuis, pullParIds } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
+import { appareil } from '../journal/journal.js';
 
 const store = (name) => createStore('medrevise-' + name, 'v1');
 const S = {
@@ -693,6 +694,38 @@ export async function setChapExoPrompts(overrides) {
   return rec;
 }
 
+/* ---- SUPPRESSIONS VOLONTAIRES (31/10, integrite/suppressions.js) : registre des questions
+   supprimées depuis l'interface, lu par le contrôle d'intégrité pour ne pas les prendre pour des
+   pertes. Même mécanique que carnetPuces — store `S.prompts` (SYNCABLE), enregistrement
+   ADDITIONNEL — mais UN enregistrement PAR APPAREIL ('suppressionsVolontaires:<appareil>') :
+   chaque appareil n'écrit que le sien, deux appareils ne s'écrasent donc jamais (LWW).
+   Entrées : { [questionId]: { type, le, origine } }, gardées 120 jours. À appeler AVANT remove() :
+   le registre part dans l'outbox avant la tombstone. */
+const PREFIXE_SUPPR = 'suppressionsVolontaires:';
+const JOURS_SUPPR = 120;
+export async function getSuppressionsVolontaires() {
+  return ((await entries(S.prompts)) || []).filter(([k]) => typeof k === 'string' && k.startsWith(PREFIXE_SUPPR)).map(([, v]) => v);
+}
+let fileSuppr = Promise.resolve();
+export function noterSuppressionsVolontaires(questions, origine) {
+  const liste = (questions || []).filter((q) => q && q.id);
+  if (!liste.length) return Promise.resolve(null);
+  const tache = fileSuppr.then(async () => {
+    const cle = PREFIXE_SUPPR + appareil();
+    const actuel = (await get(cle, S.prompts)) || { id: cle, entrees: {} };
+    const maintenant = new Date();
+    const limite = new Date(maintenant.getTime() - JOURS_SUPPR * 86400000).toISOString();
+    const entrees = Object.fromEntries(Object.entries(actuel.entrees || {}).filter(([, e]) => e && e.le >= limite));
+    for (const q of liste) entrees[q.id] = { type: q.type || null, le: maintenant.toISOString(), origine };
+    const rec = { id: cle, entrees, updatedAt: maintenant.toISOString() };
+    await set(cle, rec, S.prompts);
+    queuePush('prompts', cle, rec, rec.updatedAt);
+    return rec;
+  });
+  fileSuppr = tache.catch(() => {});
+  return tache;
+}
+
 /* Item v1.0 (schéma unifié) → enregistrement planifiable en base. `item` est
    déjà un item "superset" (v1.0 + champs legacy) produit par toInternalItem().
    On lui donne une clé primaire neuve + son état initial méthode des J.
@@ -820,6 +853,7 @@ export async function purgeFiche(ficheId) {
     values(S.companion_pdf).then((l) => Promise.all((l || []).filter((r) => r && r.courseId === ficheId).map((r) => remove('companion_pdf', r.id)))),
     get('board:' + ficheId, S.board).then((r) => (r ? remove('board', 'board:' + ficheId) : null)), // (22/10) son tableau
   ]);
+  await noterSuppressionsVolontaires((questions || []).filter((q) => q.ficheId === ficheId), 'suppression définitive du cours');
   await Promise.all([
     ...(tableau || []).filter((t) => t.ficheId === ficheId).map((t) => remove('tableau', t.id)),
     ...(dessins || []).filter((d) => d.ficheId === ficheId).map((d) => remove('dessins', d.id)), // le blob reste (règle des blobs)
@@ -842,6 +876,7 @@ export async function purgeMatiere(matiereId) {
   // ils resteraient donc orphelins en base ET dans le cloud. Purgés ici avec leurs
   // dossiers, pour la même raison que anatstruct juste au-dessus.
   const chapIds = new Set(dossiersOfMat.map((d) => d.id));
+  await noterSuppressionsVolontaires((questions || []).filter((q) => q.chapitreId && chapIds.has(q.chapitreId)), 'suppression définitive de la matière');
   await Promise.all([
     ...(fiches || []).filter((f) => f.matiereId === matiereId).map((f) => purgeFiche(f.id)),
     ...(anatstruct || []).filter((s) => s.matiereId === matiereId).map((s) => remove('anatstruct', s.id)),

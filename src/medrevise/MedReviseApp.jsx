@@ -31,7 +31,7 @@ import { SeanceFC } from './session/SeanceFC.jsx';
 import { SchemaEditorScreen } from './documents/SchemaEditorScreen.jsx';
 import {
   getAll, put, putMany, remove, getStats, setStats as saveStats, genId, syncNow, syncRapide,
-  purgeSource, purgeMatiere, purgeFiche, putBackup, newErrorCard,
+  purgeSource, purgeMatiere, purgeFiche, putBackup, newErrorCard, noterSuppressionsVolontaires,
   getCoursePrompts, setCoursePrompts, getExoPrompts, setExoPrompts,
   getChapExoPrompts, setChapExoPrompts, getReglagesFC, setReglagesFC, getCarnetPuces, setCarnetPuces, getCarnetPreReponses, setCarnetPreReponses, getEdtReglages, majEdtReglages,
 } from './lib/storage.js';
@@ -401,6 +401,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
     if (!cibles.length) return 0;
     const v2 = type === 'flashcard' ? linkedV2Questions(db, cibles.map((q) => q.id)) : [];
     await putBackup(`pre-delete-${type}-${ficheId || chapitreId}-${Date.now()}`, { questions: cibles, carnetV2: v2 });
+    // registre des suppressions volontaires AVANT les tombstones (integrite/suppressions.js)
+    await noterSuppressionsVolontaires([...cibles, ...v2], 'suppression des cartes d’un type');
     await Promise.all([...cibles, ...v2].map((q) => remove('questions', q.id)));
     await reload();
     return cibles.length;
@@ -591,6 +593,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
           .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
         await putMany('fiches', fiches.map((f, i) => ({ ...f, dossierId: cible, ordre: targetSiblings.length + i })));
       }
+      await noterSuppressionsVolontaires(exos, 'suppression d’un dossier');
       await Promise.all([
         ...exos.map((q) => remove('questions', q.id)),
         ...ids.map((id) => remove('dossiers', id)),
@@ -849,7 +852,12 @@ export default function MedReviseApp({ themeApi, goHub }) {
       await putMany('questions', targets.map((q) => ({ ...q, skippedOn: date })));
       await reload();
     },
-    deleteQuestion: async (id) => { await remove('questions', id); await reload(); },
+    // suppression d'UNE carte depuis l'interface : notée comme volontaire AVANT la tombstone,
+    // pour que le contrôle d'intégrité ne la prenne pas pour une perte (integrite/suppressions.js)
+    deleteQuestion: async (id) => {
+      await noterSuppressionsVolontaires([db.questions.find((q) => q.id === id) || { id }], 'suppression d’une carte');
+      await remove('questions', id); await reload();
+    },
     // suppression en masse des cartes d'UN type d'UNE fiche ('qcm' | 'flashcard' |
     // 'feynman' | 'exercice') — voir deleteCardsOfType ci-dessus : putBackup, canal
     // durable, périmètre strict (ce type, cette fiche).
@@ -885,6 +893,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     removeFromCarnet: async (v1Id) => {
       const q = db.questions.find((x) => x.id === v1Id); if (!q) return;
       const linkedV2 = db.questions.filter((x) => x.type === 'flashcard_erreur' && x.sourceErrorId === v1Id);
+      await noterSuppressionsVolontaires(linkedV2, 'sortie du carnet d’erreurs');
       await Promise.all([
         put('questions', { ...q, carnetAt: null, carnetRaison: null, ...(q.carnetType ? { carnetType: null } : {}), ...(q.carnetAstuce ? { carnetAstuce: null } : {}) }),
         ...linkedV2.map((v2) => remove('questions', v2.id)),

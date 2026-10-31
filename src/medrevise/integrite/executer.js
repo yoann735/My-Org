@@ -3,14 +3,16 @@
    Lancé en tâche de fond APRÈS la synchro de démarrage (MedReviseApp.jsx) : lecture IndexedDB,
    contrôle pur (./controle.js, quelques ms sur 2 000 enregistrements), comparaison au cloud en
    lecture seule (lib/syncStatus.js comparerAuCloud), journal en attente (lecture).
+   Les suppressions faites depuis l'interface (registre ./suppressions.js) ne sont pas des pertes.
    N'écrit QUE dans `meta` (local, jamais synchronisé) : l'instantané du jour (comptes + ids, pour
    détecter une baisse le lendemain) et le dernier résultat. Aucune donnée n'est corrigée ici.
    ============================================================ */
-import { getAll, getMeta, setMeta } from '../lib/storage.js';
+import { getAll, getMeta, setMeta, getSuppressionsVolontaires } from '../lib/storage.js';
 import { todayISO } from '../lib/sm2.js';
 import { comparerAuCloud } from '../lib/syncStatus.js';
 import { entreesEnAttente } from '../journal/journal.js';
 import { controlerIntegrite } from './controle.js';
+import { idsVolontaires } from './suppressions.js';
 
 const CLE_INSTANTANES = 'integrite.instantanes';
 const CLE_RESULTAT = 'integrite.resultat';
@@ -29,7 +31,7 @@ export function lancerControle({ avecCloud = true } = {}) {
 
 async function executer(avecCloud) {
   const jour = todayISO();
-  const [sources, matieres, fiches, questions, inst] = await Promise.all([getAll('sources'), getAll('matieres'), getAll('fiches'), getAll('questions'), getMeta(CLE_INSTANTANES)]);
+  const [sources, matieres, fiches, questions, inst, registres] = await Promise.all([getAll('sources'), getAll('matieres'), getAll('fiches'), getAll('questions'), getMeta(CLE_INSTANTANES), getSuppressionsVolontaires().catch(() => [])]);
   const db = { sources: sources || [], matieres: matieres || [], fiches: fiches || [], questions: questions || [] };
   let { courant = null, precedent = null } = inst || {};
   if (courant && courant.jour < jour) precedent = courant;
@@ -42,7 +44,7 @@ async function executer(avecCloud) {
   }
   let journalPlusAncien = null;
   try { journalPlusAncien = (await entreesEnAttente()).map((e) => e.reviewed_at).filter(Boolean).sort()[0] || null; } catch (e) { /* journal illisible : ignoré */ }
-  const r = controlerIntegrite({ db, jour, precedent, cloud, journalPlusAncien });
+  const r = controlerIntegrite({ db, jour, precedent, cloud, journalPlusAncien, volontaires: idsVolontaires(registres) });
   // instantané du jour (le dernier de la journée sert de référence le lendemain)
   await setMeta(CLE_INSTANTANES, { precedent, courant: r.instantane });
   const { instantane, ...resume } = r; // eslint-disable-line no-unused-vars

@@ -7,7 +7,8 @@
    - aucune carte planifiée dont l'échéance est passée de plus de 60 jours sans avoir JAMAIS été
      revue — « enterrée » (les cours dont les rappels J sont coupés ne comptent pas : c'est voulu) ;
    - aucun id en double — « doublon » ;
-   - nombre de questions par type ≥ celui de la veille — « baisse » (ids manquants listés) ;
+   - aucune question de la veille disparue SANS suppression volontaire — « baisse » (ids manquants
+     listés ; les suppressions faites depuis l'interface sont exclues, voir ./suppressions.js) ;
    - empreinte cloud = empreinte locale ; journal : aucune réponse en attente depuis plus de 7 jours.
    ============================================================ */
 import { index, isFicheScheduled } from '../lib/planning.js';
@@ -18,11 +19,17 @@ const estJour = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) &&
 const moinsJours = (jour, n) => { const d = new Date(jour + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
 const texte = (v, n = 90) => String(v == null ? '' : v).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 
-/** instantané du jour (comptes par type + ids des questions) */
+/** instantané du jour (comptes par type + ids des questions, et ids par type pour nommer le type d'une
+ *  carte disparue — absent des instantanés d'avant le 31/10) */
 export function instantane(questions, jour) {
-  const comptesParType = {};
-  for (const q of questions || []) if (q && q.type) comptesParType[q.type] = (comptesParType[q.type] || 0) + 1;
-  return { jour, total: (questions || []).length, comptesParType, ids: (questions || []).map((q) => q && q.id).filter(Boolean).sort() };
+  const comptesParType = {}; const idsParType = {};
+  for (const q of questions || []) {
+    if (!q || !q.type) continue;
+    comptesParType[q.type] = (comptesParType[q.type] || 0) + 1;
+    if (q.id) (idsParType[q.type] = idsParType[q.type] || []).push(q.id);
+  }
+  for (const t of Object.keys(idsParType)) idsParType[t].sort();
+  return { jour, total: (questions || []).length, comptesParType, idsParType, ids: (questions || []).map((q) => q && q.id).filter(Boolean).sort() };
 }
 
 /**
@@ -31,8 +38,9 @@ export function instantane(questions, jour) {
  * @param precedent  instantané de la veille (ou du dernier jour connu), ou null
  * @param cloud      { statut, empreinteLocale, empreinteCloud } ou null (pas de cloud / hors ligne)
  * @param journalPlusAncien  ISO de l'entrée de journal en attente la plus ancienne, ou null
+ * @param volontaires  Set des ids supprimés volontairement depuis l'interface (./suppressions.js#idsVolontaires)
  */
-export function controlerIntegrite({ db, jour, precedent = null, cloud = null, journalPlusAncien = null }) {
+export function controlerIntegrite({ db, jour, precedent = null, cloud = null, journalPlusAncien = null, volontaires = null }) {
   const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const ix = index(db);
   const questions = db.questions || [];
@@ -66,16 +74,22 @@ export function controlerIntegrite({ db, jour, precedent = null, cloud = null, j
     if (planifiee && jamaisRevue && q.dueDate < limite) carte(q, 'enterree', `due depuis le ${q.dueDate}, jamais revue`, true);
   }
 
-  // baisse du nombre de questions depuis la veille
+  // questions de la veille disparues (31/10) : seules comptent celles qu'AUCUNE suppression volontaire
+  // n'explique. Avant, la règle comparait les COMPTES par type et prenait donc chaque carte supprimée
+  // à la main pour une perte (et laissait passer une perte masquée par des créations du jour).
   const cour = instantane(questions, jour);
-  let baisse = null;
+  let baisse = null; let suppressionsVolontaires = 0;
   if (precedent && precedent.jour < jour) {
-    const types = new Set([...Object.keys(precedent.comptesParType || {}), ...Object.keys(cour.comptesParType)]);
-    const parType = {};
-    for (const t of types) { const d = (precedent.comptesParType[t] || 0) - (cour.comptesParType[t] || 0); if (d > 0) parType[t] = d; }
-    if (Object.keys(parType).length) {
-      const actuels = new Set(cour.ids);
-      baisse = { depuis: precedent.jour, total: Math.max(0, precedent.total - cour.total), parType, idsManquants: (precedent.ids || []).filter((id) => !actuels.has(id)) };
+    const actuels = new Set(cour.ids);
+    const manquants = (precedent.ids || []).filter((id) => !actuels.has(id));
+    const inexpliques = volontaires ? manquants.filter((id) => !volontaires.has(id)) : manquants;
+    suppressionsVolontaires = manquants.length - inexpliques.length;
+    if (inexpliques.length) {
+      const typeDe = {};
+      for (const [t, ids] of Object.entries(precedent.idsParType || {})) for (const id of ids || []) typeDe[id] = t;
+      const parType = {};
+      for (const id of inexpliques) { const t = typeDe[id] || 'inconnu'; parType[t] = (parType[t] || 0) + 1; }
+      baisse = { depuis: precedent.jour, total: inexpliques.length, parType, idsManquants: inexpliques };
     }
   }
 
@@ -91,7 +105,7 @@ export function controlerIntegrite({ db, jour, precedent = null, cloud = null, j
   return {
     jour, ok: !anomalies.length && !baisse && !globales.length,
     flashcards, questions: questions.length, comptesParType: cour.comptesParType,
-    anomalies, cartesAVerifier: new Set(anomalies.map((a) => a.carteId)).size, globales, baisse,
+    anomalies, cartesAVerifier: new Set(anomalies.map((a) => a.carteId)).size, globales, baisse, suppressionsVolontaires,
     instantane: cour, dureeMs,
   };
 }

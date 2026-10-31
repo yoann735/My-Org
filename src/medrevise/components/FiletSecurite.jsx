@@ -1,7 +1,7 @@
 /* ============================================================
    MedRevise — FILET DE SÉCURITÉ : interface (11/10/2026, docs/compte-rendu-filet-securite.md).
    - BandeauFilet : RIEN tant que tout va bien. Sinon, en haut de l'app, une seule ligne discrète,
-     par priorité : rouge « N cartes de moins qu'hier » → orange « Pas de copie depuis N jours » →
+     par priorité : rouge « N cartes disparues » (hors suppressions faites par toi) → orange « Pas de copie depuis N jours » →
      « N cartes à vérifier ». Un clic ouvre l'écran Intégrité (ou Réglages pour la copie).
    - EcranIntegrite : chaque anomalie (carte, cours, problème) ; par carte « Remettre dans le planning
      (aujourd'hui) » et « Voir la carte » ; « Tout remettre dans le planning ». AUCUNE correction
@@ -46,7 +46,7 @@ export function BandeauFilet({ ctx, onOuvrirIntegrite, onOuvrirReglages }) {
   if (r && r.jour === todayISO() && r.baisse) {
     return (
       <button type="button" className="filet-bandeau rouge" onClick={onOuvrirIntegrite} data-testid="bandeau-baisse">
-        <Icon name="alert" size={14} /> {nf(r.baisse.total || Object.values(r.baisse.parType).reduce((a, b) => a + b, 0))} carte{(r.baisse.total || 2) > 1 ? 's' : ''} de moins qu’hier — voir la liste et la restauration
+        <Icon name="alert" size={14} /> {nf(r.baisse.total || Object.values(r.baisse.parType).reduce((a, b) => a + b, 0))} carte{(r.baisse.total || 2) > 1 ? 's' : ''} disparue{(r.baisse.total || 2) > 1 ? 's' : ''} sans suppression de ta part — voir la liste et la restauration
       </button>
     );
   }
@@ -95,10 +95,11 @@ export function EcranIntegrite({ ctx, onRetour = null }) {
         <span className="hint">du {new Date(r.le || Date.now()).toLocaleString('fr-FR')} · {nf(r.flashcards)} flashcards · {nf(r.questions)} questions · {r.dureeMs} ms</span>
       </div>
       {r.ok && <div className="filet-ok"><span className="filet-point" /> Tout est en ordre.</div>}
+      {r.suppressionsVolontaires > 0 && <div className="hint" data-testid="suppressions-volontaires">{nf(r.suppressionsVolontaires)} carte{r.suppressionsVolontaires > 1 ? 's' : ''} supprimée{r.suppressionsVolontaires > 1 ? 's' : ''} par toi depuis le dernier contrôle : normal, non signalé.</div>}
       {r.baisse && (
         <div className="filet-bloc rouge">
-          <b>{nf(r.baisse.total)} carte{r.baisse.total > 1 ? 's' : ''} de moins que le {r.baisse.depuis}</b>
-          <div className="hint">Par type : {Object.entries(r.baisse.parType).map(([t, n]) => `${t} −${n}`).join(' · ')}. Si ce n’est pas toi qui les as supprimées, elles peuvent être restaurées depuis la copie GitHub ou le dossier local : procédure dans <code>{PROCEDURE}</code>.</div>
+          <b>{nf(r.baisse.total)} carte{r.baisse.total > 1 ? 's' : ''} disparue{r.baisse.total > 1 ? 's' : ''} depuis le {r.baisse.depuis}, sans suppression de ta part</b>
+          <div className="hint">Par type : {Object.entries(r.baisse.parType).map(([t, n]) => `${t} −${n}`).join(' · ')}. Aucune suppression depuis l’interface ne les explique (synchro, migration ou bug) : elles peuvent être restaurées depuis la copie GitHub ou le dossier local : procédure dans <code>{PROCEDURE}</code>.</div>
           {r.baisse.idsManquants.length > 0 && <div className="filet-ids">Identifiants manquants : {r.baisse.idsManquants.slice(0, 200).join(', ')}{r.baisse.idsManquants.length > 200 ? '…' : ''}</div>}
         </div>
       )}
