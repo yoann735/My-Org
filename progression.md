@@ -12,6 +12,7 @@ Session : 3 corrections MedRevise (synchro rapide, surlignage précis, listes da
 - Listes : `styles/listes.css`, `lib/collageListes.js` (Word/GDocs/Notion), `components/Tex.jsx`, `lib/boiteVersCarte.js`, `pdf/exportAnnote.js`.
 - Compte rendu : `docs/compte-rendu-synchro-rapide-surlignage-listes.md`. Commits 94e0583, 7a268da, 28f1a75, 2004c73, 3e5e0cd (poussés).
 - `.claude/launch.json` lance `node` depuis le PATH (4a47f65).
+- (31/10, /goal) Cartes Tableau : choisir ce qui est masqué (case, ligne, colonne, nom de colonne). Champ additif `tableau.masque` (absent = tout masqué, noms visibles), éditeur à œils + hachurage + menu « Masquage », révision / vue agrandie / Apprentissage, import / export / format attendu. Commits b6a5b83, f17aa2f + docs. Banc `scripts/tests-tableau-masque/tout.sh` (Vite :5302 sans Supabase, Chrome 9337/9338) : 25 + 25 (tablette) + 27 + 15 ✅ ; Vitest `tests/tableau-masque` 8 ✅. Compte rendu : `docs/compte-rendu-flashcards.md` § « Tableau : choisir ce qui est masqué ». Doute noté : les cartes Tableau faites d'une boîte-tableau (`grille`) gardent leur révision d'avant (hors périmètre, pas d'éditeur pour elles).
 
 ## 🚧 En cours (point d'arrêt exact)
 - Rien en cours. Question posée à l'utilisateur, sans réponse : corriger l'espace manquant d'un surlignage à cheval sur deux lignes (texte enregistré « exemplepositif »).
@@ -49,3 +50,4 @@ Session : 3 corrections MedRevise (synchro rapide, surlignage précis, listes da
 
 ## Historique des clôtures
 - 2026-10-31 15:15 – Synchro rapide, surlignage exact, listes dans les boîtes livrés et poussés ; question ouverte : espace sur surlignage deux lignes.
+- 2026-10-31 (soir) – /goal Tableau : masque par case livré, testé (ordinateur, tablette, téléphone), poussé ; question « espace sur surlignage deux lignes » toujours en attente du feu vert.

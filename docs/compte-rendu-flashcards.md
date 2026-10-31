@@ -808,3 +808,114 @@ tablette, et la révision est testée sur téléphone.
 | fb4859d | `feat(medrevise)` : 6ᵉ ligne « Topographie » des cartes Muscle, import / export / format attendu, tests Vitest |
 | cf3f22d | `test(medrevise)` : banc `scripts/tests-topographie-echap/` |
 | (ce commit) | `docs(medrevise)` : cette section et ses captures |
+
+## Tableau : choisir ce qui est masqué (31/10/2026)
+
+Avant, une carte Tableau cachait toujours **toutes** ses cases en révision, et laissait voir les noms de colonnes.
+Désormais, on choisit case par case ce qui est caché : une case, une ligne, une colonne ou un nom de colonne.
+
+### Dans l'éditeur (création et modification)
+
+- **Un œil par case**, en haut à droite du champ. Barré = la case sera cachée en révision. L'œil ne prend pas le focus
+  (Tab passe toujours d'une case à l'autre) et ne gêne pas la saisie.
+- **Un œil par ligne** (colonne de gauche, avec le numéro) et **un œil par colonne** (rangée « Colonne » au-dessus des
+  noms) : ils masquent ou affichent toutes les cases de la ligne ou de la colonne. On peut ensuite rendre une case
+  visible à part, ou l'inverse. L'œil d'une ligne ou d'une colonne mixte est en pointillés (« en partie masquée »).
+- **Un œil sur chaque nom de colonne** : il masque le nom lui-même.
+- L'œil du coin masque ou affiche tout le tableau.
+- **Les cases masquées sont légèrement hachurées.** Une légende le rappelle au-dessus du tableau. Toutes les infobulles
+  disent l'état et l'action : « Colonne 3 : en partie masquée — clic pour tout masquer », « Case : visible en
+  révision — clic pour masquer ».
+- **Menu « Masquage »** au-dessus du tableau : Tout masquer, Tout afficher, Masquer la colonne et Masquer la ligne de la
+  dernière case touchée (avec son nom ou son numéro). Le libellé devient « Afficher la colonne / la ligne » si elle est
+  déjà masquée. Échap ferme le menu, pas le formulaire.
+- **Par défaut**, comme avant : toutes les cases sont masquées et les noms de colonnes visibles, y compris pour une
+  ligne ou une colonne ajoutée et pour un collage depuis un tableur.
+
+### En révision (séance, vue agrandie, mode Apprentissage)
+
+- Seules les cases masquées sont cachées (« Toucher »). Les autres s'affichent directement.
+- Un nom de colonne masqué devient une pastille « Colonne N », qui se révèle au toucher.
+- Les révélations utilisent le composant existant : une case au toucher, « Ligne » pour les cases cachées d'une ligne
+  (le bouton n'apparaît que sur les lignes concernées), « Tout révéler (n) » pour les cases et noms restants. La carte
+  ne se retourne pas.
+- Dans la liste du panneau et dans les aperçus, rien n'est masqué, comme avant.
+
+### Données (champ additif, aucune écriture destructive)
+
+```json
+"tableau": { "colonnes": [...], "lignes": [[...], ...],
+             "masque": { "cellules": [[true, false, ...], ...], "noms": [false, true, ...] } }
+```
+
+- `true` = masqué en révision. Le champ `masque` **n'est écrit que s'il diffère du défaut**. Une carte d'avant, ou un
+  tableau laissé tel quel, reste identique octet pour octet.
+- Une ligne entièrement vide est retirée à l'enregistrement, et le masque suit les lignes gardées.
+- Synchronisation : le masque fait partie de la carte (store `questions`), avec le même chemin qu'avant. Rien de
+  nouveau côté Supabase.
+- Le verso texte (tableau mis à plat) est inchangé : un appareil pas encore à jour montre la carte comme avant.
+- **Import JSON** : `masque` est facultatif. Un masque partiel est complété avec le défaut, et 1 / 0 sont acceptés.
+  Les erreurs sont précises (`tableau.masque.cellules[0] : 5 booléens au plus`, champ inconnu, plus de lignes que le
+  tableau…).
+- **Export** : le masque est écrit s'il y en a un. « Voir le format attendu » contient un exemple « tableau (masque
+  choisi) », réimportable tel quel. Le prompt de génération le décrit aussi.
+
+Code : `lib/carteTableau.js` (`masqueDe`, `masqueParDefaut`, validation), `components/FlashcardTableau.jsx`
+(`TableauSimple`, `FormulaireTableau`, `MenuMasquage`), `styles/flashcard-tableau.css`, `lib/importFlashcards.js`,
+`lib/exportFlashcards.js`. L'œil de `ElementsVerso.jsx` est réutilisé, puisque le jeu d'icônes partagé n'en a pas et
+que `src/shared/` n'est pas touché.
+
+### Tests
+
+Banc `scripts/tests-tableau-masque/` (`tout.sh`). Il tourne sur Vite :5302 **sans Supabase**, avec des Chrome headless
+isolés (9337 pour l'ordinateur, 9338 pour le téléphone) aux profils neufs : jamais le vrai cloud. Tableau 4 × 5 testé :
+colonne « Insertion » masquée, ligne 2 masquée, 3 cases isolées (0:4, 2:0, 3:3), case 3:2 rendue visible dans la colonne
+masquée, nom « Origine » masqué. Cela fait 10 cases cachées sur 20, plus 1 nom.
+
+| Banc | Vérifie | Résultat |
+|---|---|---|
+| `t-editeur.mjs` (ordinateur 1440×900) | défaut 3 × 3 tout masqué, hachurage ; 4 × 5 né masqué ; 20 cases saisies ; menu : Tout masquer (grisé) / Tout afficher / Masquer + Afficher la colonne / Masquer + Afficher la ligne ; Échap ferme le menu seul ; œils (colonne, ligne, 3 cases, case visible dans la colonne masquée, nom) ; infobulles ; saisie dans une case masquée ; base `tableau.masque` exacte ; verso texte ; réouverture fidèle (œils « masquée » / « en partie ») ; enregistrer sans changement ; planification inchangée ; témoins identiques | 25 ✅ |
+| `t-editeur.mjs tablette` (820×1180, au doigt) | le même parcours au toucher | 25 ✅ |
+| `t-revision.mjs` (ordinateur) | liste lisible ; vue agrandie : seules les 10 cases et le nom cachés, cases visibles affichées, « Ligne » × 4, « Tout révéler (11) », une case, une ligne, le nom, tout ; ancienne carte : tout caché, noms visibles ; **HTML du nouveau rendu = HTML de l'ancien code** (698d539, rendus côte à côte) pour une ancienne carte, avant et après case / ligne / tout, en compact et en aperçu ; séance du jour (SeanceFC) ; session Apprentissage ; format attendu ; import réel de l'exemple ; export → ré-import ; sauvegarde JSONL ; témoins identiques | 27 ✅ |
+| `t-mobile.mjs` (téléphone 390×844, tactile) | séance du jour : 10 cases + 1 nom cachés, 10 visibles ; défilement horizontal interne sans débordement de page ; un tap, « Ligne », nom, « Tout révéler » ; boutons Nouvelle inchangés ; session Apprentissage ; ancienne carte comme avant ; témoins identiques | 15 ✅ |
+| Vitest `tests/tableau-masque/` | modèle, défaut non écrit, ancienne carte inchangée par `toInternalItem`, 4 × 5, ligne vide retirée, masque partiel / 1-0, erreurs, format attendu réimportable, erreur d'import | 8 ✅ |
+
+Le téléphone (< 760 px) n'a pas de panneau, donc pas d'éditeur de cartes. L'éditeur au doigt est testé sur tablette,
+et la révision sur téléphone.
+
+### Non-régression
+
+- `npm test` : 235 tests verts sur 236. Le seul échec (`crayon › trois épaisseurs`) existait avant ce chantier.
+- `vite build` : vert. `/verify` sur le build de production (`vite preview`, sans clés cloud) : hub, MedRevise et
+  MealWeek s'ouvrent. Les seules erreurs sont les 404 attendus des fonctions serveur `/api/*`, absentes de
+  `vite preview`.
+- Bancs `tests-topographie-echap/t-echap.mjs` (Échap dans les 4 sortes, dont Tableau) : 29 ✅.
+  `tests-par-cours-elements/t-elements.mjs` (éléments à révéler, œil partagé) : 21 ✅.
+- `src/shared/` et `src/mealweek/` : aucun fichier modifié (`git status -- src/mealweek src/shared` vide). Les tests
+  Vitest MealWeek sont verts.
+- Planification et journal : aucun code touché. La planification de la carte modifiée est vérifiée inchangée.
+
+### Captures (`docs/img/tableau-masque/`)
+
+| | |
+|---|---|
+| Éditeur (panneau) : œils, hachurage, légende | ![](img/tableau-masque/tm-editeur.png) |
+| Menu « Masquage » | ![](img/tableau-masque/tm-menu.png) |
+| Réouverture en modification | ![](img/tableau-masque/tm-modification.png) |
+| Éditeur sur tablette (au doigt) | ![](img/tableau-masque/tab-tm-editeur.png) |
+| Vue agrandie : seules les cases masquées cachées, nom « Colonne 2 » | ![](img/tableau-masque/tm-agrandie-masques.png) |
+| Vue agrandie : une case, la ligne 2 et le nom révélés | ![](img/tableau-masque/tm-agrandie-partiel.png) |
+| Séance du jour (ordinateur) | ![](img/tableau-masque/tm-seance.png) |
+| Session Apprentissage (ordinateur) | ![](img/tableau-masque/tm-apprentissage.png) |
+| Ancienne carte Tableau (inchangée) | ![](img/tableau-masque/tm-ancienne.png) |
+| « Voir le format attendu » | ![](img/tableau-masque/tm-format.png) |
+| Téléphone : séance, puis révélations | ![](img/tableau-masque/tm-mobile-masques.png) ![](img/tableau-masque/tm-mobile-partiel.png) |
+| Téléphone : Apprentissage, ancienne carte | ![](img/tableau-masque/tm-mobile-apprentissage.png) ![](img/tableau-masque/tm-mobile-ancienne.png) |
+
+### Commits (Tableau : masque choisi)
+
+| Commit | Contenu |
+|---|---|
+| b6a5b83 | `feat(medrevise)` : masque par case des cartes Tableau (modèle, éditeur, révision, import / export, Vitest) |
+| f17aa2f | `test(medrevise)` : banc `scripts/tests-tableau-masque/` |
+| (ce commit) | `docs(medrevise)` : cette section, ses captures, passation |
