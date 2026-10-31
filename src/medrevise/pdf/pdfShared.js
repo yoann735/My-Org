@@ -507,6 +507,36 @@ export function cleanSelectedText(raw, { inline = false } = {}) {
   return inline ? t.replace(/\s+/g, ' ').trim() : t;
 }
 
+/* (31/10, docs/compte-rendu-synchro-rapide-surlignage-listes.md « Espace entre deux lignes ») TEXTE D'UN RANGE DE LA
+   COUCHE DE TEXTE. `range.toString()` ignore les <br> et recolle deux morceaux pdf.js posés sur deux lignes quand le
+   PDF ne marque pas la fin de ligne (« exemplepositif »). Ici, entre deux nœuds texte consécutifs, on met « \n » s'il
+   y a un <br> entre eux, sinon une espace s'ils ne sont pas sur la même ligne (même règle que lignesSurlignage :
+   recouvrement vertical de moins de la moitié de la plus petite hauteur). Deux morceaux d'une même ligne restent collés
+   (pdf.js coupe parfois un mot en plusieurs morceaux). Rien n'est ajouté si un blanc est déjà là. */
+export function texteDeRange(range) {
+  if (!range) return '';
+  const racine = range.commonAncestorContainer.nodeType === Node.TEXT_NODE ? range.commonAncestorContainer.parentNode : range.commonAncestorContainer;
+  if (range.startContainer === range.endContainer && range.startContainer.nodeType === Node.TEXT_NODE) return range.toString();
+  const tw = document.createTreeWalker(racine, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+  const boite = (n) => { const r = n.parentElement && n.parentElement.getBoundingClientRect(); return r && r.height > 0 ? r : null; };
+  const memeLigne = (a, b) => { if (!a || !b) return true; const h = Math.min(a.height, b.height); return Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) >= h / 2; };
+  let out = '', prec = null, br = false;
+  for (let n = tw.currentNode; n; n = tw.nextNode()) {
+    if (!range.intersectsNode(n)) { if (out && n.nodeType === Node.ELEMENT_NODE && range.comparePoint(n, 0) > 0) break; continue; }
+    if (n.nodeType === Node.ELEMENT_NODE) { if (n.tagName === 'BR' && out) br = true; continue; }
+    const debut = n === range.startContainer ? range.startOffset : 0;
+    const fin = n === range.endContainer ? range.endOffset : n.length;
+    const t = n.data.slice(debut, fin);
+    if (!t) continue;
+    if (prec && out && !/\s$/.test(out) && !/^\s/.test(t)) {
+      if (br) out += '\n';
+      else if (!memeLigne(boite(prec), boite(n))) out += ' ';
+    }
+    out += t; prec = n; br = false;
+  }
+  return out;
+}
+
 /* ============================================================
    ANCRAGE D'UN SURLIGNAGE DANS LE TEXTE (étape 3).
    Un surlignage garde ses `rects` (géométrie au moment de la création — servent

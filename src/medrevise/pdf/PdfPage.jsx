@@ -46,7 +46,7 @@ import { COULEUR_DEFAUT } from '../lib/palette.js';
 import {
   couleurFoncee, opaciteFondBoite, FONT_SIZES, FONT_FAMILIES, BOITE_MIN, BOITE_DEFAUT, COMPACT, fractionPx100, MOT, fractionRef,
   GRILLE, PAGE_REF, taille1000De, champsTaille, ecrireTaille, epaisseurPx, ep1000De, champsEp1000, epFleche1000, champsFleche1000,
-  clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText,
+  clamp, clamp01, avecAlpha, buildTextLayer, cleanSelectedText, texteDeRange,
   anchorFromRange, rangeFromAnchor, rectsFromRange, computeMatchRectsFromDom,
   soustraireAncres, partCouverte, surlignagesTouches, couleurHex, planSurlignage,
   traitTouche, cheminLisse, modeDuTrait, accrocherAngles,
@@ -198,7 +198,9 @@ export function PdfPageContent({
     const next = {};
     for (const h of highlights) {
       const range = h.anchor && rangeFromAnchor(container, h.anchor);
-      if (!range || cleanSelectedText(range.toString(), { inline: true }) !== h.texte) continue;
+      // (31/10) texte lu avec l'espace entre deux lignes (texteDeRange) ; un surlignage enregistré AVANT ce correctif
+      // (« exemplepositif », range.toString()) reste reconnu : il garde son affichage ancré, son texte n'est pas réécrit
+      if (!range || (cleanSelectedText(texteDeRange(range), { inline: true }) !== h.texte && cleanSelectedText(range.toString(), { inline: true }) !== h.texte)) continue;
       const rects = rectsFromRange(container, range);
       if (rects.length) next[h.id] = rects;
     }
@@ -694,8 +696,9 @@ export function PdfPageContent({
     const anchor = anchorFromRange(container, selRange);
     const range = (anchor && rangeFromAnchor(container, anchor)) || selRange;
     // sur une ligne : un surlignage à cheval sur deux lignes donne « un calcul : un IMC »,
-    // pas deux lignes (ni, avant les <br>, « unIMC »)
-    const texte = cleanSelectedText(range.toString(), { inline: true });
+    // pas deux lignes (ni, avant les <br>, « unIMC ») ; (31/10) ni « exemplepositif » quand le PDF ne marque pas la
+    // fin de ligne : texteDeRange met l'espace entre deux morceaux qui ne sont pas sur la même ligne
+    const texte = cleanSelectedText(texteDeRange(range), { inline: true });
     if (!texte) return;
     const cr = container.getBoundingClientRect();
     const rects = rectsFromRange(container, range);
@@ -717,7 +720,7 @@ export function PdfPageContent({
       const sansAncre = highlights.filter((h) => !h.anchor).flatMap((h) => shownRects[h.id] || h.rects || []);
       for (const seg of soustraireAncres(anchor, highlights.map((h) => h.anchor).filter(Boolean))) {
         const r = rangeFromAnchor(container, seg);
-        const t = r && cleanSelectedText(r.toString(), { inline: true });
+        const t = r && cleanSelectedText(texteDeRange(r), { inline: true });
         if (!t || !/[\p{L}\p{N}]/u.test(t)) continue; // espace ou ponctuation seule entre deux surlignages
         const rs = rectsFromRange(container, r).filter((x) => partCouverte(x, sansAncre) < 0.5);
         if (rs.length) segments.push({ texte: t, rects: rs, anchor: seg });
@@ -759,7 +762,7 @@ export function PdfPageContent({
       const materialiser = (a0) => {
         const a = rognerBlancs(a0);
         const r = rangeFromAnchor(container, a);
-        const t = r && cleanSelectedText(r.toString(), { inline: true });
+        const t = r && cleanSelectedText(texteDeRange(r), { inline: true });
         const rs = r ? rectsFromRange(container, r) : [];
         return t && rs.length ? { anchor: a, texte: t, rects: rs } : null;
       };
