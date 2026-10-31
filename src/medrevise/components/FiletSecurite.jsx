@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Card } from './ui.jsx';
-import { putMany } from '../lib/storage.js';
+import { putMany, noterSuppressionsVolontaires } from '../lib/storage.js';
 import { todayISO } from '../lib/sm2.js';
 import { resultatIntegrite, surIntegrite, lancerControle, dernierResultat } from '../integrite/executer.js';
 import { statutCopieServeur, lancerCopieServeur, quandLisible, joursSansCopie } from '../sauvegarde/statutServeur.js';
@@ -85,6 +85,16 @@ export function EcranIntegrite({ ctx, onRetour = null }) {
       setMessage(`${cartes.length} carte${cartes.length > 1 ? 's' : ''} remise${cartes.length > 1 ? 's' : ''} dans le planning (aujourd’hui).`);
     } finally { setOccupe(false); }
   };
+  // (31/10) les disparues sont des suppressions de l'utilisateur (faites avant le registre, ou ailleurs) : il les
+  // confirme d'un clic → inscrites au registre des suppressions volontaires, contrôle relancé, plus d'alerte.
+  const confirmerMiennes = async (ids) => {
+    setOccupe(true);
+    try {
+      await noterSuppressionsVolontaires(ids.map((id) => ({ id })), 'confirmée depuis l’écran Intégrité');
+      await lancerControle({ avecCloud: false });
+      setMessage(`${ids.length} suppression${ids.length > 1 ? 's' : ''} confirmée${ids.length > 1 ? 's' : ''} : plus signalée${ids.length > 1 ? 's' : ''}.`);
+    } finally { setOccupe(false); }
+  };
   if (!r) return <div className="page-wrap"><p className="hint">Contrôle en cours…</p></div>;
   const reparables = (r.anomalies || []).filter((a) => a.reparable && parId[a.carteId]);
   return (
@@ -101,6 +111,11 @@ export function EcranIntegrite({ ctx, onRetour = null }) {
           <b>{nf(r.baisse.total)} carte{r.baisse.total > 1 ? 's' : ''} disparue{r.baisse.total > 1 ? 's' : ''} depuis le {r.baisse.depuis}, sans suppression de ta part</b>
           <div className="hint">Par type : {Object.entries(r.baisse.parType).map(([t, n]) => `${t} −${n}`).join(' · ')}. Aucune suppression depuis l’interface ne les explique (synchro, migration ou bug) : elles peuvent être restaurées depuis la copie GitHub ou le dossier local : procédure dans <code>{PROCEDURE}</code>.</div>
           {r.baisse.idsManquants.length > 0 && <div className="filet-ids">Identifiants manquants : {r.baisse.idsManquants.slice(0, 200).join(', ')}{r.baisse.idsManquants.length > 200 ? '…' : ''}</div>}
+          {r.baisse.idsManquants.length > 0 && (
+            <button type="button" className="btn sm" disabled={occupe} data-testid="confirmer-suppressions" onClick={() => confirmerMiennes(r.baisse.idsManquants)}>
+              C’est moi qui les ai supprimées — ne plus signaler
+            </button>
+          )}
         </div>
       )}
       {(r.globales || []).map((g, i) => (

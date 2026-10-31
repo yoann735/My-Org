@@ -166,6 +166,21 @@ Ce sont tous ceux qui suppriment des questions depuis l'interface :
   non signalé ».
 - **Bandeau** : il dit « N cartes disparues sans suppression de ta part ».
 
+### Confirmer d'un clic (ajout du 31/10, soir)
+
+Après le déploiement, l'appareil signalait encore **10 cartes**. Ce sont d'autres suppressions que
+les 12 du diagnostic, faites avant que le registre n'existe. L'utilisateur confirme que ce sont
+toutes les siennes.
+
+L'écran Intégrité, sur ordinateur, tablette et téléphone, a maintenant le bouton **« C'est moi qui
+les ai supprimées — ne plus signaler »** sous la liste des identifiants manquants. Un clic :
+1. inscrit ces ids dans le registre de l'appareil (origine « confirmée depuis l'écran Intégrité ») ;
+2. relance le contrôle ;
+3. fait disparaître le bandeau.
+
+L'inscription est synchronisée : les autres appareils ne les signaleront plus non plus. Le banc
+`t-suppressions.mjs` le vérifie par de vrais clics : bandeau, puis bouton, puis plus aucune alerte.
+
 ### Mise à jour de la référence
 
 Les 12 suppressions du 26 au 28/10 précèdent le registre. Elles sont inscrites **dans le code**

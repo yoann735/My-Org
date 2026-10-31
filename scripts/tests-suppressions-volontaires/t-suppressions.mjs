@@ -6,6 +6,7 @@
 //     contrôle relancé : AUCUNE alerte, « 1 carte supprimée par toi » ;
 //  3. disparition NON manuelle simulée (copie de données sans une carte : effacement direct d'IndexedDB, sans passer
 //     par l'interface ni par le registre) → alerte rouge avec CETTE carte seulement ;
+//  3 bis. clic « C'est moi qui les ai supprimées » sur l'écran Intégrité → plus d'alerte ;
 //  4. les 12 suppressions du 26–28/10 dans une référence ancienne → aucune alerte.
 import { banc, COURS } from '../tests-par-cours-elements/commun.mjs';
 const b = await banc(false);
@@ -52,6 +53,17 @@ v(r.volontaires === 1, 'la suppression manuelle reste à part (non signalée)', 
 await b.dormir(400);
 const t = await bandeau();
 v(/1 carte disparue sans suppression de ta part/.test(t), 'bandeau rouge affiché', t);
+
+// 3 bis. l'utilisateur confirme que c'était lui : clic sur le bandeau → écran Intégrité → « C'est moi… » → plus d'alerte
+const clic = async (js) => { const p = await b.rect(js); if (!p) return false; for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await b.send('Input.dispatchMouseEvent', { type, x: p.x + p.w / 2, y: p.y + p.h / 2, button: 'left', clickCount: 1 }); await b.dormir(900); return true; };
+v(await clic(`document.querySelector('[data-testid="bandeau-baisse"]')`), 'clic sur le bandeau rouge');
+v(await clic(`document.querySelector('[data-testid="confirmer-suppressions"]')`), 'écran Intégrité : clic sur « C’est moi qui les ai supprimées »');
+await b.dormir(500);
+r = await controle();
+v(!r.baisse && r.volontaires === 2, 'après confirmation : AUCUNE alerte, 2 suppressions volontaires', JSON.stringify(r));
+v(!(await bandeau()), 'bandeau rouge disparu');
+const regConf = await b.S(`return (await S.getSuppressionsVolontaires()).some(x=>x.entrees&&x.entrees[${JSON.stringify(perdue)}]&&x.entrees[${JSON.stringify(perdue)}].origine==='confirmée depuis l’écran Intégrité')`);
+v(regConf, 'carte confirmée inscrite au registre');
 
 // 4. les 12 suppressions confirmées du 26–28/10, dans une référence ancienne
 await b.S(`const {SUPPRESSIONS_CONFIRMEES}=await import('/src/medrevise/integrite/suppressions.js');return 1`);
