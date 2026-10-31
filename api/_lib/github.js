@@ -78,5 +78,21 @@ export function clientGithub({ token, depot, branche = 'main', fetchFn = fetch }
     return { sha, date: c.commit.committer.date, message: c.commit.message, manifeste };
   }
 
-  return { commit, dernier, tete };
+  /** (31/10) LECTURE SEULE : les `n` derniers commits de la branche [{ sha, date, message, arbre }] */
+  async function historique(n = 14) {
+    const liste = await appel('GET', `/commits?sha=${encodeURIComponent(branche)}&per_page=${Math.min(100, n)}`);
+    return (liste || []).map((c) => ({ sha: c.sha, date: c.commit.committer.date, message: c.commit.message, arbre: c.commit.tree.sha }));
+  }
+  /** (31/10) LECTURE SEULE : fichiers d'un arbre dont le chemin passe `filtre` [{ chemin, sha }] */
+  async function fichiers(arbreSha, filtre = () => true) {
+    const a = await appel('GET', `/git/trees/${arbreSha}?recursive=1`);
+    return (a.tree || []).filter((t) => t.type === 'blob' && filtre(t.path)).map((t) => ({ chemin: t.path, sha: t.sha }));
+  }
+  /** (31/10) LECTURE SEULE : contenu texte d'un blob (jusqu'à 100 Mo, API « git blobs ») */
+  async function blob(sha) {
+    const b = await appel('GET', `/git/blobs/${sha}`);
+    return Buffer.from(b.content || '', b.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
+  }
+
+  return { commit, dernier, tete, historique, fichiers, blob };
 }

@@ -181,6 +181,42 @@ les ai supprimées — ne plus signaler »** sous la liste des identifiants manq
 L'inscription est synchronisée : les autres appareils ne les signaleront plus non plus. Le banc
 `t-suppressions.mjs` le vérifie par de vrais clics : bandeau, puis bouton, puis plus aucune alerte.
 
+### Reconnaître les cartes disparues (ajout du 31/10, soir)
+
+L'écran Intégrité ne montrait que des identifiants. Pour chaque carte disparue, il montre maintenant
+son **recto**, son **type**, son **cours** et, quand ils viennent des copies, sa **date de suppression**
+et le début de son **verso**. Les identifiants restent disponibles, repliés sous « Identifiants ».
+
+**Deux sources :**
+
+1. **La référence du contrôle.** L'instantané garde désormais un libellé court par carte :
+   `libelles[id] = [recto sur 80 caractères, ficheId]`. Le cours est retrouvé par sa fiche. C'est
+   immédiat et marche hors ligne : c'est le cas de toute carte disparue à partir de maintenant.
+2. **Les copies GitHub quotidiennes**, pour une référence plus ancienne sans libellés, comme les
+   10 cartes signalées ce soir.
+   - **Route** : `POST /api/backup-cartes { ids }`, qui appelle
+     `api/_lib/sauvegarde.js#retrouverCartes`.
+   - **Lecture seule** du dépôt : il remonte les copies de la plus récente à la plus ancienne (14 au
+     plus, 4 lues en parallèle) jusqu'à trouver la dernière version vivante de chaque carte.
+   - **Ce qui est renvoyé** : des extraits courts (recto, verso, cours, type, date de la tombstone),
+     pour 200 ids au plus.
+   - **Protection** : origine de l'app et 20 appels par 10 minutes, comme les autres routes de copie.
+   - **Durée**, mesurée sur le vrai dépôt : 15 à 60 secondes. L'écran affiche « Recherche de ces
+     cartes dans les copies… », et une recherche n'est lancée qu'une fois par chargement de l'app.
+   - **Limite** : une carte créée et supprimée entre deux copies n'existe dans aucune copie.
+     L'écran l'indique.
+
+**Vérifié :**
+- sur le vrai dépôt, en lecture seule avec le jeton local : les cartes `qmupsujka8l6w`,
+  `qmutztmq7lmgv` et `qmvnusp4gy3qi` sont retrouvées avec recto, verso, cours et date de
+  suppression, et un id inconnu est signalé introuvable ;
+- Vitest : 3 tests de plus (libellé dans l'alerte ; copies lues uniquement en GET ; absence de
+  configuration) ;
+- banc `t-reconnaitre.mjs` : libellé affiché sans appel ; recherche dans les copies (réponse simulée
+  dans la page, jamais le vrai GitHub) ; un seul appel ; copies injoignables, avec un message clair.
+
+Capture : `docs/img/suppressions-volontaires/reconnaitre-copies.png`.
+
 ### Mise à jour de la référence
 
 Les 12 suppressions du 26 au 28/10 précèdent le registre. Elles sont inscrites **dans le code**

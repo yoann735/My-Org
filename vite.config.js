@@ -110,9 +110,14 @@ function apiDeepgramDev() {
       // /api/deepgram-token et /api/deepgram-credits (transcription en direct)
       server.middlewares.use(async (req, res, next) => {
         // + filet de sécurité (11/10) : /api/backup-daily, /api/backup-now, /api/backup-status
-        const m = /^\/api\/(deepgram-(?:token|credits)|backup-(?:daily|now|status)|timetable)(?:\?|$)/.exec(req.url || '');
+        // + (31/10) /api/backup-cartes { ids } : le corps JSON est lu ici (Vercel le fait en production)
+        const m = /^\/api\/(deepgram-(?:token|credits)|backup-(?:daily|now|status|cartes)|timetable)(?:\?|$)/.exec(req.url || '');
         if (!m) return next();
         try {
+          if (m[1] === 'backup-cartes' && req.method === 'POST') {
+            let brut = ''; for await (const morceau of req) brut += morceau;
+            try { req.body = brut ? JSON.parse(brut) : {}; } catch { req.body = {}; }
+          }
           const mod = await server.ssrLoadModule(`/api/${m[1]}.js`);
           const r = {
             setHeader: (k, v) => res.setHeader(k, v),

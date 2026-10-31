@@ -19,17 +19,21 @@ const estJour = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) &&
 const moinsJours = (jour, n) => { const d = new Date(jour + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
 const texte = (v, n = 90) => String(v == null ? '' : v).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 
-/** instantané du jour (comptes par type + ids des questions, et ids par type pour nommer le type d'une
- *  carte disparue — absent des instantanés d'avant le 31/10) */
+/** instantané du jour (comptes par type + ids des questions, ids par type pour nommer le type d'une carte
+ *  disparue, et un LIBELLÉ court par carte [recto, ficheId] pour la reconnaître une fois supprimée — ces deux
+ *  derniers absents des instantanés d'avant le 31/10 : l'écran Intégrité les cherche alors dans les copies GitHub) */
 export function instantane(questions, jour) {
-  const comptesParType = {}; const idsParType = {};
+  const comptesParType = {}; const idsParType = {}; const libelles = {};
   for (const q of questions || []) {
     if (!q || !q.type) continue;
     comptesParType[q.type] = (comptesParType[q.type] || 0) + 1;
-    if (q.id) (idsParType[q.type] = idsParType[q.type] || []).push(q.id);
+    if (q.id) {
+      (idsParType[q.type] = idsParType[q.type] || []).push(q.id);
+      libelles[q.id] = [texte(q.recto || q.question || q.consigne || q.concept, 80), q.ficheId || null];
+    }
   }
   for (const t of Object.keys(idsParType)) idsParType[t].sort();
-  return { jour, total: (questions || []).length, comptesParType, idsParType, ids: (questions || []).map((q) => q && q.id).filter(Boolean).sort() };
+  return { jour, total: (questions || []).length, comptesParType, idsParType, libelles, ids: (questions || []).map((q) => q && q.id).filter(Boolean).sort() };
 }
 
 /**
@@ -89,7 +93,10 @@ export function controlerIntegrite({ db, jour, precedent = null, cloud = null, j
       for (const [t, ids] of Object.entries(precedent.idsParType || {})) for (const id of ids || []) typeDe[id] = t;
       const parType = {};
       for (const id of inexpliques) { const t = typeDe[id] || 'inconnu'; parType[t] = (parType[t] || 0) + 1; }
-      baisse = { depuis: precedent.jour, total: inexpliques.length, parType, idsManquants: inexpliques };
+      // de quoi reconnaître chaque carte : recto gardé dans l'instantané, cours retrouvé par sa fiche (encore là, en général)
+      const nomFiche = (fid) => { const f = ix.fById[fid]; const m = f && ix.mById[f.matiereId]; const s = m && ix.sById[m.sourceId]; return [s && (s.nom || s.titre), m && (m.nom || m.name), f && (f.titre || f.title)].filter(Boolean).join(' › ') || null; };
+      const details = inexpliques.map((id) => { const l = (precedent.libelles || {})[id]; return { id, type: typeDe[id] || null, recto: l ? l[0] : null, cours: l && l[1] ? nomFiche(l[1]) : null }; });
+      baisse = { depuis: precedent.jour, total: inexpliques.length, parType, idsManquants: inexpliques, details };
     }
   }
 

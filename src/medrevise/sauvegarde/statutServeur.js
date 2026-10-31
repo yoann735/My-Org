@@ -4,9 +4,9 @@
    ============================================================ */
 export const HEURES_ALERTE = 36;
 
-async function appeler(chemin) {
+async function appeler(chemin, corps = {}) {
   try {
-    const r = await fetch(chemin, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const r = await fetch(chemin, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps) });
     const j = await r.json().catch(() => null);
     if (!j) return { ok: false, code: 'reponse', message: `Réponse illisible du serveur (HTTP ${r.status}).` };
     return j;
@@ -17,6 +17,8 @@ async function appeler(chemin) {
 
 export const statutCopieServeur = () => appeler('/api/backup-status');
 export const lancerCopieServeur = () => appeler('/api/backup-now');
+/** (31/10) ce qu'étaient des cartes disparues (recto, cours, date de suppression), lu dans les copies GitHub */
+export const retrouverDansCopies = (ids) => appeler('/api/backup-cartes', { ids });
 
 /** « hier 03:31 », « aujourd'hui 09:12 », « 08/10 03:30 » */
 export function quandLisible(iso, maintenant = new Date()) {

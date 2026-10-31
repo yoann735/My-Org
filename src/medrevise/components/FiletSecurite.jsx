@@ -14,12 +14,59 @@ import { Card } from './ui.jsx';
 import { putMany, noterSuppressionsVolontaires } from '../lib/storage.js';
 import { todayISO } from '../lib/sm2.js';
 import { resultatIntegrite, surIntegrite, lancerControle, dernierResultat } from '../integrite/executer.js';
-import { statutCopieServeur, lancerCopieServeur, quandLisible, joursSansCopie } from '../sauvegarde/statutServeur.js';
+import { statutCopieServeur, lancerCopieServeur, quandLisible, joursSansCopie, retrouverDansCopies } from '../sauvegarde/statutServeur.js';
 import { etatDossier, choisirDossier, autoriserDossier, copierDansDossier, dossierDisponible } from '../sauvegarde/dossierLocal.js';
 
 const PROCEDURE = 'scripts/sauvegarde/restore-from-github.md';
 const LIBELLES = { 'sans-date': 'Sans date valide', orpheline: 'Cours introuvable', enterree: 'Enterrée (jamais revue)', doublon: 'Identifiant en double' };
 const nf = (n) => Number(n || 0).toLocaleString('fr-FR');
+const TYPES = { flashcard: 'Flashcard', qcm: 'QCM', exercice: 'Exercice', feynman: 'Feynman', flashcard_erreur: 'Carte d’erreur' };
+
+/* (31/10) CARTES DISPARUES, reconnaissables : recto + cours gardés dans l'instantané du contrôle ; pour une
+   référence plus ancienne (sans libellé), recherche dans les copies GitHub (/api/backup-cartes, lecture seule). */
+// une recherche (jusqu'à une minute côté serveur) par liste d'ids et par ouverture de l'app : l'écran peut se
+// remonter plusieurs fois (résultat du contrôle republié), la même promesse sert
+const recherches = new Map();
+const chercherDansCopies = (ids) => {
+  const cle = ids.join(',');
+  if (!recherches.has(cle)) recherches.set(cle, retrouverDansCopies(ids).then((r) => { if (!r || !r.ok) recherches.delete(cle); return r; }));
+  return recherches.get(cle);
+};
+function ListeDisparues({ baisse }) {
+  const details = baisse.details || baisse.idsManquants.map((id) => ({ id }));
+  const sansLibelle = details.filter((d) => !d.recto).map((d) => d.id);
+  const cle = sansLibelle.join(',');
+  const [copies, setCopies] = useState(null); // null = pas cherché ; { enCours } | { cartes: Map, erreur }
+  useEffect(() => {
+    if (!sansLibelle.length) return undefined;
+    let vivant = true;
+    setCopies({ enCours: true });
+    chercherDansCopies(sansLibelle).then((r) => {
+      if (!vivant) return;
+      setCopies(r && r.ok ? { cartes: new Map((r.cartes || []).map((c) => [c.id, c])) } : { cartes: new Map(), erreur: (r && r.message) || 'Copies illisibles.' });
+    });
+    return () => { vivant = false; };
+  }, [cle]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="filet-disparues" data-testid="cartes-disparues">
+      {copies && copies.enCours && <div className="hint">Recherche de ces cartes dans les copies quotidiennes (jusqu’à une minute)…</div>}
+      {copies && copies.erreur && <div className="hint">{copies.erreur}</div>}
+      {details.map((d) => {
+        const c = (copies && copies.cartes && copies.cartes.get(d.id)) || null;
+        const recto = d.recto || (c && c.recto);
+        const cours = d.cours || (c && c.cours);
+        const type = TYPES[d.type || (c && c.type)] || d.type || (c && c.type) || '';
+        return (
+          <div key={d.id} className="filet-disparue" data-disparue={d.id}>
+            <div className="filet-d-recto">{recto || (copies && copies.enCours ? '…' : 'Introuvable dans les copies (créée et supprimée entre deux copies ?)')}</div>
+            <div className="hint">{[type, cours, c && c.supprimeeLe ? 'supprimée le ' + new Date(c.supprimeeLe).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null].filter(Boolean).join(' · ')}</div>
+            {c && c.verso && <div className="hint filet-d-verso">{c.verso}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 /* ---- état partagé : résultat du contrôle + statut de la copie serveur (lu une fois par ouverture) ---- */
 let statutServeur = null; let promesseStatut = null;
@@ -109,8 +156,9 @@ export function EcranIntegrite({ ctx, onRetour = null }) {
       {r.baisse && (
         <div className="filet-bloc rouge">
           <b>{nf(r.baisse.total)} carte{r.baisse.total > 1 ? 's' : ''} disparue{r.baisse.total > 1 ? 's' : ''} depuis le {r.baisse.depuis}, sans suppression de ta part</b>
-          <div className="hint">Par type : {Object.entries(r.baisse.parType).map(([t, n]) => `${t} −${n}`).join(' · ')}. Aucune suppression depuis l’interface ne les explique (synchro, migration ou bug) : elles peuvent être restaurées depuis la copie GitHub ou le dossier local : procédure dans <code>{PROCEDURE}</code>.</div>
-          {r.baisse.idsManquants.length > 0 && <div className="filet-ids">Identifiants manquants : {r.baisse.idsManquants.slice(0, 200).join(', ')}{r.baisse.idsManquants.length > 200 ? '…' : ''}</div>}
+          <div className="hint">{Object.keys(r.baisse.parType).some((t) => t !== 'inconnu') ? `Par type : ${Object.entries(r.baisse.parType).filter(([t]) => t !== 'inconnu').map(([t, n]) => `${TYPES[t] || t} −${n}`).join(' · ')}. ` : ''}Aucune suppression depuis l’interface ne les explique (synchro, migration ou bug) : elles peuvent être restaurées depuis la copie GitHub ou le dossier local : procédure dans <code>{PROCEDURE}</code>.</div>
+          {r.baisse.idsManquants.length > 0 && <ListeDisparues baisse={r.baisse} />}
+          {r.baisse.idsManquants.length > 0 && <details className="filet-ids"><summary>Identifiants</summary>{r.baisse.idsManquants.slice(0, 200).join(', ')}{r.baisse.idsManquants.length > 200 ? '…' : ''}</details>}
           {r.baisse.idsManquants.length > 0 && (
             <button type="button" className="btn sm" disabled={occupe} data-testid="confirmer-suppressions" onClick={() => confirmerMiennes(r.baisse.idsManquants)}>
               C’est moi qui les ai supprimées — ne plus signaler

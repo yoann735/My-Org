@@ -68,3 +68,53 @@ export async function lireStatut({ env = process.env, fetchFn = fetch, maintenan
     comptes: d.manifeste.comptes, journalAbsent: !!d.manifeste.journalAbsent, fichiersBucket: d.manifeste.fichiersBucket,
   };
 }
+
+/* ============================================================
+   (31/10) RETROUVER DES CARTES DISPARUES dans les copies (écran Intégrité, docs/diagnostic-elements-manquants.md).
+   LECTURE SEULE du dépôt : on remonte les copies de la plus récente à la plus ancienne (au plus `profondeur`)
+   jusqu'à trouver, pour chaque id, sa DERNIÈRE version vivante. Les noms (fiche › matière › cours) viennent
+   de la même copie. La tombstone la plus récente donne la date de suppression. Seuls des extraits courts
+   sont renvoyés (recto, verso, cours), jamais l'enregistrement complet.
+   ============================================================ */
+const MAX_IDS = 200;
+const court = (v, n) => String(v == null ? '' : v).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
+export async function retrouverCartes({ ids, env = process.env, fetchFn = fetch, profondeur = 14, enParallele = 4 } = {}) {
+  const cfg = configuration(env);
+  if (!cfg.token || !cfg.depot) return { ok: false, configure: false, code: 'non_configure', message: 'Copie serveur non configurée.' };
+  const voulus = new Set((Array.isArray(ids) ? ids : []).filter((x) => typeof x === 'string' && /^[\w:.-]{1,80}$/.test(x)).slice(0, MAX_IDS));
+  if (!voulus.size) return { ok: true, cartes: [], introuvables: [], copiesLues: 0 };
+  const gh = clientGithub({ token: cfg.token, depot: cfg.depot, branche: cfg.branche, fetchFn });
+  // une copie → ses questions voulues (vivantes / supprimées) et les noms fiche › matière › cours
+  const lire = async (c) => {
+    const vivants = new Map(); const supprimees = new Map(); const noms = new Map();
+    for (const f of await gh.fichiers(c.arbre, (p) => /^data\/records(-\d{3})?\.jsonl$/.test(p))) {
+      for (const ligne of (await gh.blob(f.sha)).split('\n')) {
+        if (!ligne) continue;
+        let r; try { r = JSON.parse(ligne); } catch { continue; }
+        if (['fiches', 'matieres', 'sources'].includes(r.store) && r.data) noms.set(r.store + ':' + r.id, r.data);
+        else if (r.store === 'questions' && voulus.has(r.id)) { if (r.deleted || !r.data) supprimees.set(r.id, r.updated_at || null); else vivants.set(r.id, r.data); }
+      }
+    }
+    return { c, vivants, supprimees, noms };
+  };
+  const trouvees = new Map(); const supprimeesLe = new Map();
+  const commits = (await gh.historique(profondeur)).filter((c) => /^backup /.test(c.message));
+  let lues = 0;
+  // copies lues par paquets en parallèle, puis examinées de la plus récente à la plus ancienne
+  for (let i = 0; i < commits.length && trouvees.size < voulus.size; i += enParallele) {
+    for (const { c, vivants, supprimees, noms } of await Promise.all(commits.slice(i, i + enParallele).map(lire))) {
+      lues++;
+      for (const [id, t] of supprimees) if (!trouvees.has(id) && !supprimeesLe.has(id)) supprimeesLe.set(id, t);
+      for (const [id, q] of vivants) {
+        if (trouvees.has(id)) continue;
+        const f = noms.get('fiches:' + q.ficheId); const m = f && noms.get('matieres:' + f.matiereId); const s = m && noms.get('sources:' + m.sourceId);
+        trouvees.set(id, {
+          id, type: q.type || null, recto: court(q.recto || q.question || q.consigne || q.concept, 160), verso: court(q.verso || q.reponse, 120),
+          cours: [s && (s.nom || s.titre), m && (m.nom || m.name), f && (f.titre || f.title)].filter(Boolean).join(' › ') || null,
+          copie: c.message.replace(/^backup /, ''), supprimeeLe: supprimeesLe.get(id) || null,
+        });
+      }
+    }
+  }
+  return { ok: true, cartes: [...trouvees.values()], introuvables: [...voulus].filter((id) => !trouvees.has(id)), copiesLues: lues };
+}

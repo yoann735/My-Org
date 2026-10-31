@@ -2418,6 +2418,11 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .filet-bloc { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; gap: 6px; }
 .filet-bloc.rouge { border-color: color-mix(in srgb, var(--crit) 55%, transparent); background: color-mix(in srgb, var(--crit) 10%, var(--card)); }
 .filet-ids { font-size: 12px; color: var(--text-2); word-break: break-all; }
+.filet-ids summary { cursor: pointer; }
+.filet-disparues { display: flex; flex-direction: column; gap: 6px; margin: 2px 0; }
+.filet-disparue { padding: 8px 10px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
+.filet-d-recto { font-size: 13.5px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.filet-d-verso { font-style: italic; overflow-wrap: anywhere; }
 .filet-liste { display: flex; flex-direction: column; gap: 8px; }
 .filet-anomalie { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; gap: 4px; }
 .filet-a-tete { display: flex; gap: 10px; align-items: baseline; }
