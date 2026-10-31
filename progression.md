@@ -15,11 +15,11 @@ Session : 3 corrections MedRevise (synchro rapide, surlignage précis, listes da
 - (31/10, /goal) Cartes Tableau : choisir ce qui est masqué (case, ligne, colonne, nom de colonne). Champ additif `tableau.masque` (absent = tout masqué, noms visibles), éditeur à œils + hachurage + menu « Masquage », révision / vue agrandie / Apprentissage, import / export / format attendu. Commits b6a5b83, f17aa2f + docs. Banc `scripts/tests-tableau-masque/tout.sh` (Vite :5302 sans Supabase, Chrome 9337/9338) : 25 + 25 (tablette) + 27 + 15 ✅ ; Vitest `tests/tableau-masque` 8 ✅. Compte rendu : `docs/compte-rendu-flashcards.md` § « Tableau : choisir ce qui est masqué ». Doute noté : les cartes Tableau faites d'une boîte-tableau (`grille`) gardent leur révision d'avant (hors périmètre, pas d'éditeur pour elles).
 
 ## 🚧 En cours (point d'arrêt exact)
-- Rien en cours. Question posée à l'utilisateur, sans réponse : corriger l'espace manquant d'un surlignage à cheval sur deux lignes (texte enregistré « exemplepositif »).
+- Rien en cours. (31/10) Espace manquant d'un surlignage sur deux lignes CORRIGÉ (feu vert reçu) : `pdfShared.js#texteDeRange`, anciens surlignages gardés tels quels ; banc `scripts/tests-surlignage-listes/t-deux-lignes.mjs` 16 ✅ ; compte rendu § « Espace entre deux lignes ».
 - Modifications non commitées : aucune.
 
 ## ➡️ Prochaines étapes (dans l'ordre)
-1. Attendre le feu vert de l'utilisateur avant le correctif « espace entre deux lignes » (texte via `range.toString()` dans `PdfPage.jsx#handleMouseUp` ; attention au contrôle `shownRects` qui compare au texte stocké des anciens surlignages).
+1. (fait le 31/10) correctif « espace entre deux lignes ».
 2. Faire tester par l'utilisateur sur un vrai cours : synchro au retour, surlignage PDF PowerPoint/Word, collage Word, transcription (Début/Fin).
 
 ## 🧭 Décisions prises (ne pas rediscuter)
@@ -50,4 +50,4 @@ Session : 3 corrections MedRevise (synchro rapide, surlignage précis, listes da
 
 ## Historique des clôtures
 - 2026-10-31 15:15 – Synchro rapide, surlignage exact, listes dans les boîtes livrés et poussés ; question ouverte : espace sur surlignage deux lignes.
-- 2026-10-31 (soir) – /goal Tableau : masque par case livré, testé (ordinateur, tablette, téléphone), poussé ; question « espace sur surlignage deux lignes » toujours en attente du feu vert.
+- 2026-10-31 (soir) – /goal Tableau : masque par case livré, testé (ordinateur, tablette, téléphone), poussé ; puis correctif « espace entre deux lignes » livré et poussé.

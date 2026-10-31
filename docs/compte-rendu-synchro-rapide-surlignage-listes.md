@@ -255,3 +255,59 @@ Les PDF de test du surlignage sont imprimés par Chrome : `polices.pdf` à polic
 2. Réponds à quelques cartes sur l'ordinateur, puis reviens sur le téléphone : « Synchronisation… » une à deux secondes, puis « À jour ».
 3. Sur un cours dont le PDF vient de PowerPoint ou Word, surligne un mot au milieu d'une ligne : la première et la dernière lettre doivent être dans la bande.
 4. Colle une liste depuis Word dans une boîte : puces, sous-niveaux et retrait propres.
+
+## Espace entre deux lignes (31/10/2026)
+
+**Défaut** : le texte enregistré d'un surlignage à cheval sur deux lignes recollait les deux mots (« exemplepositif »,
+« commeexemple »). C'est ce texte qui part dans les Notions et les flashcards. La bande dessinée, elle, était juste.
+
+**Cause** : le texte venait de `range.toString()`, qui ignore les `<br>` que la couche de texte pose aux fins de ligne,
+et qui recolle deux morceaux pdf.js posés sur deux lignes quand le PDF ne marque pas la fin de ligne.
+
+**Correctif** : nouvelle fonction `pdfShared.js#texteDeRange(range)`. Entre deux morceaux de texte consécutifs, elle met
+un passage à la ligne s'il y a un `<br>` entre eux. Sinon, elle met une espace s'ils ne sont pas sur la même ligne (même
+règle que `lignesSurlignage` : moins de la moitié de la plus petite hauteur en commun). Le texte est ensuite replié sur
+une ligne, comme avant. Il n'y a aucun ajout dans trois cas :
+- deux morceaux d'une même ligne (pdf.js coupe parfois un mot en deux) ;
+- un blanc déjà présent ;
+- un seul morceau de texte.
+
+`PdfPage.jsx` l'utilise pour le texte d'un nouveau surlignage, pour les morceaux non couverts et pour les morceaux
+recalculés en repassant au surligneur.
+
+**Anciens surlignages** : le contrôle d'affichage (`shownRects`) accepte le texte d'avant (`range.toString()`) comme le
+nouveau. Un surlignage enregistré « exemplepositif » reste donc affiché depuis son ancre, et **son texte n'est pas
+réécrit** (aucune écriture en base ni dans le cloud).
+
+### Tests
+
+Banc `scripts/tests-surlignage-listes/t-deux-lignes.mjs` (Vite :5302 sans Supabase, Chrome headless 9337). Le PDF est
+imprimé par Chrome depuis un HTML de 3 paragraphes étroits (Georgia, justifié, Avenir), soit 9 coupures de ligne.
+L'outil Surligneur est utilisé comme un utilisateur : glisser à la souris du premier au dernier caractère. **16 ✅** :
+
+| Cas | Avant (lecture d'origine) | Après |
+|---|---|---|
+| 5 coupures de ligne | « commeexemple », « cours.La », « dudépistage », « l’adulte.Le », « l’urineprimitive » | « comme exemple », « cours. La », « du dépistage », « l’adulte. Le », « l’urine primitive » |
+| Une ligne (« Un cas clinique ») | identique | identique (aucune espace ajoutée) |
+| Trois lignes | mots recollés | « clinique comme exemple positif de la méthode » |
+| Sans `<br>`, deux lignes (morceaux posés à la main) | « exemplepositif » | « exemple positif » |
+| Sans `<br>`, un mot coupé en deux morceaux sur la même ligne | « dépistage » | « dépistage » |
+| Blanc déjà présent | « fin suite » | « fin suite » (pas de double espace) |
+| Ancien surlignage « commeexemple », rects stockés volontairement faux | — | affiché depuis son ancre (2 bandes sur les mots), texte non réécrit |
+
+Le banc d'origine (`t-surlignage.mjs`) comparait les lettres sans les blancs, d'où le défaut passé inaperçu. Ses PDF
+de test (dossier temporaire) n'existent plus. Non-régression : `npm test` 235/236 (seul l'échec connu `crayon`),
+`vite build` vert, `src/shared/` et `src/mealweek/` non touchés.
+
+HTML du PDF de test (impression Chrome, `--print-to-pdf`, sans en-tête) :
+
+```html
+<style>@page{size:A4;margin:20mm} body{font:22px Georgia,serif} p{width:260px;margin:0 0 30px} .j{text-align:justify}</style>
+<p>Un cas clinique comme exemple positif de la méthode étudiée en cours.</p>
+<p class="j">La glycémie à jeun reste un exemple positif du dépistage précoce chez l’adulte.</p>
+<p style="font-family:Avenir,Helvetica;width:240px">Le rein filtre le plasma et forme l’urine primitive chaque jour.</p>
+```
+
+| Surlignage sur trois lignes (texte enregistré : « clinique comme exemple positif de la méthode ») |
+|---|
+| ![](img/surlignage-listes/deux-lignes-espace.png) |
