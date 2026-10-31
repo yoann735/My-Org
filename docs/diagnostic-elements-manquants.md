@@ -110,10 +110,109 @@ Le scénario est donc le suivant :
 L'alerte vient d'un appareil dont l'instantané précède les suppressions, par exemple le
 téléphone, où ces cartes ont été revues le 27/10.
 
-## À confirmer
+## Confirmation
 
 Les **12 suppressions** portent la signature d'une action manuelle depuis l'interface. **Aucune
 disparition** ne vient d'autre chose : ni synchro, ni migration, ni conversion, ni écrasement, ni
 nettoyage automatique.
 
 > Confirmes-tu que ces suppressions sont les tiennes ?
+
+**Réponse de l'utilisateur, 31/10 : « Oui, ce sont les miennes. »** Rien n'est donc à restaurer.
+
+## Correction (31/10)
+
+### Principe
+
+Une suppression faite depuis l'interface est **notée comme volontaire avant d'être exécutée**, dans
+un registre synchronisé. Le contrôle ne signale plus que les cartes **absentes du registre**.
+
+### Le registre
+
+- **Fonction** : `lib/storage.js#noterSuppressionsVolontaires`.
+- **Stockage** : un enregistrement **par appareil** dans le store `prompts`, déjà synchronisé, sous
+  la clé `suppressionsVolontaires:<appareil>`. C'est un enregistrement additionnel : aucune donnée
+  existante n'est réécrite.
+- **Pourquoi un par appareil** : chaque appareil n'écrit que le sien, donc la règle « la dernière
+  écriture gagne » n'efface jamais l'enregistrement d'un autre.
+- **Contenu de chaque entrée** : `{ type, le, origine }`. Les entrées sont gardées 120 jours.
+- **Ordre** : le registre est écrit **avant** `remove()`. Il part donc dans l'outbox avant la
+  tombstone, et l'appareil qui reçoit la tombstone reçoit aussi l'explication. C'était le cas réel :
+  la carte est supprimée sur un appareil, l'alerte apparaissait sur un autre.
+
+### Chemins de suppression couverts
+
+Ce sont tous ceux qui suppriment des questions depuis l'interface :
+
+| Chemin | Code |
+|---|---|
+| Suppression d'une carte (Bibliothèque, panneau du cours, Réviser, carnet) | `ctx.deleteQuestion` |
+| Suppression de toutes les cartes d'un type d'une fiche ou d'un chapitre, avec leurs V2 | `deleteCardsOfType` |
+| Exercices d'un dossier supprimé | `deleteDossier` |
+| V2 d'une carte sortie du carnet d'erreurs | `removeFromCarnet` |
+| Suppression définitive d'un cours, d'une matière, d'une source, ou corbeille vidée | `purgeFiche`, `purgeMatiere` (`purgeSource` passe par `purgeMatiere`) |
+
+### Le contrôle
+
+`integrite/controle.js`, règle « baisse » :
+- **Avant** : il comparait les **comptes** par type à l'instantané de la veille. Chaque suppression
+  manuelle devenait donc une perte. Une vraie perte compensée par des créations du jour passait
+  inaperçue.
+- **Maintenant** : il liste les ids de la veille absents aujourd'hui, retire ceux du registre (tous
+  appareils confondus, `integrite/suppressions.js#idsVolontaires`), et n'alerte que s'il en reste.
+- **Instantané** : il garde aussi `idsParType`, pour nommer le type d'une carte disparue. Un
+  instantané plus ancien donne le type « inconnu ».
+- **Écran Intégrité** : il affiche « N cartes supprimées par toi depuis le dernier contrôle : normal,
+  non signalé ».
+- **Bandeau** : il dit « N cartes disparues sans suppression de ta part ».
+
+### Mise à jour de la référence
+
+Les 12 suppressions du 26 au 28/10 précèdent le registre. Elles sont inscrites **dans le code**
+(`SUPPRESSIONS_CONFIRMEES`, `integrite/suppressions.js`) et comptent comme volontaires. Aucune donnée
+n'est écrite pour cela. L'appareil dont l'instantané précède ces suppressions n'alertera plus.
+
+### Limites assumées
+
+- **« Tout effacer »** (Réglages, `wipeAll`) n'est pas inscrit au registre, car il efface aussi le
+  registre. Les autres appareils signaleront donc cette remise à zéro. C'est voulu : c'est une
+  disparition massive.
+- **Ancienne version de l'app** : si un appareil tourne encore sur l'ancienne version (page restée
+  ouverte, cache du téléphone), ses suppressions ne passent pas par le registre. Elles seront
+  signalées une fois sur les autres appareils, jusqu'à ce qu'il se recharge.
+- **Restauration depuis une sauvegarde** (`replaceStore`) : une carte absente de la copie restaurée
+  est signalée. Il vaut mieux voir ce qu'une restauration enlève.
+
+### Tests
+
+| Test | Résultat |
+|---|---|
+| Vitest `tests/suppressions-volontaires`, 7 tests : suppression du registre sans alerte ; disparition non expliquée alertée avec son type ; cas mêlé ; perte masquée par une création ; fusion de plusieurs appareils et des 12 ids confirmés ; ancien instantané ; même jour | ✅ |
+| Vitest `tests/filet`, ancien test « baisse » sans registre | 16/16 ✅ |
+| `scripts/tests-suppressions-volontaires/t-suppressions.mjs` : Vite :5302 **sans Supabase**, Chrome isolé | ✅ |
+| `scripts/tests-suppressions-volontaires/t-deux-appareils.mjs` : **faux Supabase** :54399 + Vite :5300, ordinateur A 9335 et téléphone B 9336 | ✅ |
+| Non-régression de la synchro : `scripts/tests-synchro-rapide/tout.sh apres --sans-attente` | 15/15 ✅ |
+| `npm test` (seul échec : `crayon › trois épaisseurs`, déjà connu) | 242/243 |
+| `npx vite build` | vert |
+| MealWeek et `src/shared/` : `git diff --name-only -- src/mealweek src/shared` | vide |
+
+Détail de `t-suppressions.mjs` :
+1. référence d'hier posée ;
+2. **vrai clic** dans le panneau du cours › Flashcards : corbeille, puis « Supprimer » dans la
+   modale ;
+3. carte supprimée, inscrite au registre (« suppression d'une carte »), **aucune alerte**, aucun
+   bandeau ;
+4. carte effacée directement dans IndexedDB, comme une copie de données sans elle : **alerte**
+   pour cette seule carte, et bandeau « 1 carte disparue sans suppression de ta part » ;
+5. une référence contenant les 12 ids du 26 au 28/10 ne donne aucune alerte (12 volontaires) ;
+6. aucune erreur console.
+
+Détail de `t-deux-appareils.mjs` :
+1. A supprime une carte par le chemin de l'interface ;
+2. B reçoit la tombstone **et** le registre de A : **aucune alerte** ;
+3. A efface une autre carte hors interface (tombstone seule) : B **alerte** pour elle seule ;
+4. A = B = cloud ; aucune erreur console.
+
+Relancer : `scripts/tests-suppressions-volontaires/tout.sh` (installation décrite en tête du script).
+Les serveurs du banc sont dans `.claude/launch.json` : `medrevise-banc`, `faux-supabase`,
+`medrevise-faux-cloud`.

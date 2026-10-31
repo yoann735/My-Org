@@ -122,7 +122,7 @@ téléphone de test). Pas besoin de Web Worker.
 | Orpheline | fiche, matière ou cours introuvable |
 | Enterrée | carte **planifiée** due depuis plus de 60 jours et jamais revue. Les cours dont tu as coupé les rappels J ne comptent pas : c'est voulu |
 | Doublon | id présent plusieurs fois |
-| Baisse | nombre de questions par type inférieur à celui de la veille : instantané local (comptes + ids) dans `meta`, ids manquants listés |
+| Baisse | question de la veille absente aujourd'hui **sans suppression volontaire** (registre des suppressions faites depuis l'interface, depuis le 31/10 : `docs/diagnostic-elements-manquants.md`) : instantané local (comptes + ids) dans `meta`, ids manquants listés |
 | Écart cloud | empreinte locale ≠ empreinte cloud (`comparerAuCloud`, lecture) |
 | Journal | réponse en attente d'envoi depuis plus de 7 jours |
 
@@ -135,8 +135,8 @@ téléphone de test). Pas besoin de Web Worker.
     « Déplacer ») et « Voir la carte ».
   - Pour tout le lot : « Tout remettre dans le planning ».
   - **Aucune correction automatique.**
-- **Baisse** : bandeau rouge « N cartes de moins qu'hier », avec la liste des ids manquants et le
-  lien vers la procédure de restauration.
+- **Baisse** : bandeau rouge « N cartes disparues sans suppression de ta part » (depuis le 31/10),
+  avec la liste des ids manquants et le lien vers la procédure de restauration.
 
 ## Variables Vercel à créer (par toi)
 
