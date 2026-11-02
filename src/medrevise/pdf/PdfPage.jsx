@@ -51,7 +51,7 @@ import {
   soustraireAncres, partCouverte, surlignagesTouches, couleurHex, planSurlignage,
   traitTouche, cheminLisse, modeDuTrait, accrocherAngles,
   EPAISSEUR_SURLIGNEUR, OPACITE_SURLIGNEUR, positionTexteProche,
-  lisibleSurNoir, EMPTY_ARRAY, opaciteSurlignage, lignesSurlignage, rectsTexteEcran, positionExacte,
+  lisibleSurNoir, EMPTY_ARRAY, opaciteSurlignage, lignesSurlignage, rectsTexteEcran, positionExacte, itemsCouche, itemDeNoeud,
   ecrireFondBoiteDefaut,
 } from './pdfShared.js';
 
@@ -463,8 +463,8 @@ export function PdfPageContent({
   /** le pointeur est-il sur un caractère de la couche de texte (span pdf.js ou mot OCR) ? */
   const surDuTexte = (e) => {
     const couche = textLayerRef.current, t = e.target;
-    const span = t && t.closest && t.closest('span');
-    if (!couche || !span || !couche.contains(span) || !(span.textContent || '').trim()) return false;
+    const span = couche && t && itemDeNoeud(couche, t); // (02/11) le morceau, pas le caractère de la couche alignée
+    if (!span || !(span.textContent || '').trim()) return false;
     const q = span.getBoundingClientRect();
     return e.clientX >= q.left - 1 && e.clientX <= q.right + 1 && e.clientY >= q.top - 1 && e.clientY <= q.bottom + 1;
   };
@@ -580,7 +580,7 @@ export function PdfPageContent({
   const texteProche = (cx, cy) => {
     const pos = textLayerRef.current && positionTexteProche(textLayerRef.current, cx, cy);
     if (!pos) return null;
-    const t = cleanSelectedText(pos.node.nodeValue || '', { inline: true });
+    const t = cleanSelectedText((pos.span ? pos.span.textContent : pos.node.nodeValue) || '', { inline: true });
     return t ? (t.length > 90 ? t.slice(0, 90) + '…' : t) : null;
   };
   const poserAncre = (e) => {
@@ -736,7 +736,7 @@ export function PdfPageContent({
        est calculé à la couleur choisie (tout de suite au surligneur, plus tard depuis la bulle) ;
        chaque ancre résultante est remise en texte + rectangles sur CETTE couche de texte. */
     const calculer = anchor ? (couleur) => {
-      const spans = [...container.querySelectorAll('span')];
+      const spans = itemsCouche(container);
       const txt = (a) => { const r = rangeFromAnchor(container, a); return r ? r.toString() : ''; };
       // blancs aux bords retirés (un morceau ne commence ni ne finit par une espace)
       const rognerBlancs = (a) => {
