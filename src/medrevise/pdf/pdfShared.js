@@ -884,6 +884,47 @@ export function rectsFromRange(container, range) {
     .filter((r) => r.width > 0 && r.height > 0);
 }
 
+/* EXPORT AUX BONNES BORNES (02/11, docs/compte-rendu-surlignage-alignement.md). L'export (PDF annoté, PNG, IA) dessine
+   les `rects` ENREGISTRÉS à la création. Un surlignage posé quand la couche était décalée (avant le 02/11) s'affiche
+   désormais juste — ses rects sont recalculés depuis l'ancre — mais s'exporterait encore décalé. Ici, chaque surlignage
+   ancré est remis sur ses caractères dans une couche alignée construite hors écran, page par page, avec le même calcul
+   que l'affichage (même garde-fou : texte identique). Rien n'est écrit en base : seule la copie exportée change. */
+export async function surlignagesAlignes(pdfDoc, highlights, { ocrPagePour = () => null, estPagePdf = () => true } = {}) {
+  const parPage = new Map();
+  for (const h of highlights || []) {
+    if (!h || !h.anchor || h.imageId || !estPagePdf(h.page)) continue;
+    if (!parPage.has(h.page)) parPage.set(h.page, []);
+    parPage.get(h.page).push(h);
+  }
+  if (!pdfDoc || !parPage.size || typeof document === 'undefined') return highlights;
+  const remplaces = new Map();
+  const hote = document.createElement('div');
+  hote.setAttribute('aria-hidden', 'true');
+  Object.assign(hote.style, { position: 'fixed', left: '-100000px', top: '0', visibility: 'hidden', pointerEvents: 'none' });
+  document.body.appendChild(hote);
+  try {
+    for (const [n, lot] of parPage) {
+      try {
+        const page = await pdfDoc.getPage(n);
+        const viewport = page.getViewport({ scale: 2 });
+        const couche = document.createElement('div');
+        couche.className = 'pdfr-textlayer';
+        Object.assign(couche.style, { position: 'absolute', inset: 'auto', left: '0', top: '0', width: `${viewport.width}px`, height: `${viewport.height}px` });
+        hote.appendChild(couche);
+        await buildTextLayer(page, viewport, couche, ocrPagePour(n));
+        for (const h of lot) {
+          const r = rangeFromAnchor(couche, h.anchor);
+          if (!r || (cleanSelectedText(texteDeRange(r), { inline: true }) !== h.texte && cleanSelectedText(r.toString(), { inline: true }) !== h.texte)) continue;
+          const rects = rectsFromRange(couche, r);
+          if (rects.length) remplaces.set(h.id, rects);
+        }
+        couche.remove();
+      } catch (e) { /* page illisible : ses surlignages gardent leurs rects enregistrés */ }
+    }
+  } finally { hote.remove(); }
+  return remplaces.size ? highlights.map((h) => (remplaces.has(h.id) ? { ...h, rects: remplaces.get(h.id) } : h)) : highlights;
+}
+
 /* ============================================================
    PAS DE SURLIGNAGE PAR-DESSUS UN SURLIGNAGE (nuit du 30/09).
    Avant, re-sélectionner un passage déjà surligné créait un second surlignage

@@ -74,7 +74,7 @@ import { buildCourseExportFromParts } from '../lib/courseExport.js';
 import { pdfCourseParts } from '../lib/pdfCourseText.js';
 import {
   COLORS, COLOR_HEX, COLOR_TAG, COLOR_RGB, GAP, EMPTY_ARRAY, RACCOURCI, opaciteSurlignage, MOT, fractionRef,
-  useDevicePixelRatio, compareHighlights, computePageTextMap,
+  useDevicePixelRatio, compareHighlights, computePageTextMap, surlignagesAlignes,
   couleurHex, BOITE_DEFAUT, lireFondBoiteDefaut, echelleControles, GRILLE, PAGE_REF, lireTaille, ecrireTaille, champsTaille, champsEp1000,
 } from './pdfShared.js';
 import { PdfPageContent, ECHELLE_REF } from './PdfPage.jsx';
@@ -2299,6 +2299,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   /* (25/10, docs/compte-rendu-boites-tableaux.md §4) CHOIX DES PAGES : chaque export passe d'abord par la même fenêtre
      (pdf/ChoixPages.jsx) — Toutes · Page courante · Plage · Pages précises, mémorisé par cours. { type } | null */
   const [exportPages, setExportPages] = useState(null);
+  // (02/11) surlignages ancrés remis sur leurs caractères (couche alignée hors écran) : l'export dessine ce qu'on voit
+  const surlignagesExport = () => surlignagesAlignes(pdfDoc, highlights, { ocrPagePour, estPagePdf: (n) => (pageSizes || []).some((p) => p && p.cle === n && !p.ajout) });
   const exportAnnotated = async (pages = null) => {
     if (!fiche || !pdfIdActif || exporting) return;
     setExporting(true); setExportErreur(null);
@@ -2306,7 +2308,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       // le texte en cours de frappe dans une boîte n'est sauvegardé qu'après 400 ms :
       // on part de la version la plus fraîche pour ne rien laisser derrière
       const annots = edits.map((a) => (a.id === activeEditId && editLastJson.current ? { ...a, content: editLastJson.current } : a));
-      const { octets: tout } = await exporterDepuisBlob(pdfIdActif, highlights, annots);
+      const { octets: tout } = await exporterDepuisBlob(pdfIdActif, await surlignagesExport(), annots);
       const octets = pages ? await extrairePages(tout, pages) : tout; // les pages choisies, dans l'ordre du lecteur
       const outBlob = new Blob([octets], { type: 'application/pdf' });
       const url = URL.createObjectURL(outBlob);
@@ -2344,7 +2346,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     setExportErreur(null); setAvisExport('PNG par page : préparation…');
     try {
       const annots = edits.map((a) => (a.id === activeEditId && editLastJson.current ? { ...a, content: editLastJson.current } : a));
-      const { octets } = await exporterDepuisBlob(pdfIdActif, highlights, annots);
+      const { octets } = await exporterDepuisBlob(pdfIdActif, await surlignagesExport(), annots);
       const d = await openPdf(octets.slice()); const n = d.numPages; try { d.loadingTask ? d.loadingTask.destroy() : d.destroy(); } catch (x) { /* ignore */ }
       const indices = pages ? pages.filter((i) => i < n) : [...Array(n).keys()]; // (25/10) les pages choisies
       const pngs = await pngsIA({ octets, indices }, { onProgres: (f, t) => setAvisExport(`PNG par page : ${f} / ${t}`) });
@@ -3344,7 +3346,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const annotationsFraiches = () => (editsRef.current || []).map((a) => (a.id === activeEditIdRef.current && editLastJson.current ? avecContenuEdite(a, editLastJson.current) : a));
   const ordrePagesIA = () => pageSizes.map((p) => p.cle);
   // (25/10) `pages` : indices des pages choisies (pdf/ChoixPages.jsx)
-  const preparerIA = (pages) => preparerSourceIA({ titre: (fiche && (fiche.titre || fiche.nom)) || '', pdfId: pdfIdActif, highlights,
+  const preparerIA = async (pages) => preparerSourceIA({ titre: (fiche && (fiche.titre || fiche.nom)) || '', pdfId: pdfIdActif, highlights: await surlignagesExport(),
     annotations: annotationsFraiches(), ordrePages: ordrePagesIA(), pages });
   const jsonIA = (pages) => {
     const toutes = boitesOrdonnees(annotationsFraiches(), ordrePagesIA());
