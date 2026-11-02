@@ -866,8 +866,10 @@ export function positionExacte(container, x, y, cote = null) {
   bornes.push(ns[n - 1].node.parentElement.getBoundingClientRect().right);
   const X = (k) => bornes[k];
   const point = (k) => (k >= n ? { node: ns[n - 1].node, offset: ns[n - 1].node.length } : { node: ns[k].node, offset: 0 });
-  if (cote === 'fin') { let k = 0; for (let j = 0; j < n; j++) if (x >= X(j) + (X(j + 1) - X(j)) * 0.2) k = j + 1; return point(k); }
-  if (cote === 'debut') { for (let j = 0; j < n; j++) if (x <= X(j) + (X(j + 1) - X(j)) * 0.8) return point(j); return point(n); }
+  // (02/11) ponctuation et espace : prises à mi-largeur seulement — l'encre d'une italique déborde sur la virgule qui suit
+  const seuil = (j, lettre) => (/[\p{L}\p{N}]/u.test(ns[j].node.data) ? lettre : 0.5);
+  if (cote === 'fin') { let k = 0; for (let j = 0; j < n; j++) if (x >= X(j) + (X(j + 1) - X(j)) * seuil(j, 0.2)) k = j + 1; return point(k); }
+  if (cote === 'debut') { for (let j = 0; j < n; j++) if (x <= X(j) + (X(j + 1) - X(j)) * seuil(j, 0.8)) return point(j); return point(n); }
   let k = 0, dk = Infinity;
   for (let j = 0; j <= n; j++) { const dd = Math.abs(X(j) - x); if (dd < dk) { dk = dd; k = j; } }
   return point(k);

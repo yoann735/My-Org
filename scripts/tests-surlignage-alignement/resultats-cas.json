@@ -1,0 +1,146 @@
+[
+ {
+  "n": 1,
+  "nom": "Titre gras 31 pt (cours réel, PowerPoint)",
+  "mode": "souris",
+  "zoom": 1,
+  "dpr": 1,
+  "ok": true,
+  "detail": "enregistré « corps virtuel » ; bande -2.8 px / encre début, 4.5 px / encre fin"
+ },
+ {
+  "n": 2,
+  "nom": "Texte courant 9,5 pt (fiche réelle, Word)",
+  "mode": "souris",
+  "zoom": 1,
+  "dpr": 1,
+  "ok": true,
+  "detail": "enregistré « exemple positif » ; bande -1.5 px / encre début, 2.7 px / encre fin"
+ },
+ {
+  "n": 3,
+  "nom": "Titre gras 32 pt Georgia (Chrome)",
+  "mode": "souris",
+  "zoom": 1,
+  "dpr": 1,
+  "ok": true,
+  "detail": "enregistré « corps virtuel » ; bande -3.1 px / encre début, 2.1 px / encre fin"
+ },
+ {
+  "n": 4,
+  "nom": "Texte courant Georgia 12 pt",
+  "mode": "souris",
+  "zoom": 1,
+  "dpr": 1,
+  "ok": true,
+  "detail": "enregistré « perception du schéma » ; bande -2.4 px / encre début, 2.1 px / encre fin"
+ },
+ {
+  "n": 5,
+  "nom": "Italique Times 13 pt",
+  "mode": "souris",
+  "zoom": 1,
+  "dpr": 1,
+  "ok": true,
+  "detail": "enregistré « rééducation progressive » ; bande -2.5 px / encre début, 0.2 px / encre fin"
+ },
+ {
+  "n": 6,
+  "nom": "Petite police Avenir 7 pt",
+  "mode": "souris",
+  "zoom": 1,
+  "dpr": 1,
+  "ok": true,
+  "detail": "enregistré « proprioception lombaire » ; bande -2.6 px / encre début, 2.1 px / encre fin"
+ },
+ {
+  "n": 7,
+  "nom": "Monospace Courier 11 pt",
+  "mode": "souris",
+  "zoom": 1,
+  "dpr": 1,
+  "ok": true,
+  "detail": "enregistré « lombalgie basse » ; bande -3.5 px / encre début, 2.4 px / encre fin"
+ },
+ {
+  "n": 8,
+  "nom": "Deux lignes (colonne justifiée Gill Sans)",
+  "mode": "souris",
+  "zoom": 1,
+  "dpr": 1,
+  "ok": true,
+  "detail": "enregistré « reste un exemple » ; bande -3.1 px / encre début, 1.3 px / encre fin"
+ },
+ {
+  "n": 9,
+  "nom": "Début de ligne (italique)",
+  "mode": "souris",
+  "zoom": 1,
+  "dpr": 1,
+  "ok": true,
+  "detail": "enregistré « Un exemple » ; bande -3.5 px / encre début, 1.1 px / encre fin"
+ },
+ {
+  "n": 10,
+  "nom": "Fin de ligne",
+  "mode": "souris",
+  "zoom": 1,
+  "dpr": 1,
+  "ok": true,
+  "detail": "enregistré « patient lombalgique » ; bande -2.2 px / encre début, 2.0 px / encre fin"
+ },
+ {
+  "n": 11,
+  "nom": "Zoom 50 % (titre gras Avenir 20 pt)",
+  "mode": "souris",
+  "zoom": 0.5,
+  "dpr": 1,
+  "ok": true,
+  "detail": "enregistré « articulaire du genou » ; bande -1.4 px / encre début, 3.2 px / encre fin"
+ },
+ {
+  "n": 12,
+  "nom": "Zoom 200 % (cours réel)",
+  "mode": "souris",
+  "zoom": 2,
+  "dpr": 1,
+  "ok": true,
+  "detail": "enregistré « corps virtuel » ; bande -4.5 px / encre début, 7.1 px / encre fin"
+ },
+ {
+  "n": 13,
+  "nom": "Retina ×2, zoom 100 % (fiche réelle)",
+  "mode": "souris",
+  "zoom": 1,
+  "dpr": 2,
+  "ok": true,
+  "detail": "enregistré « exemple positif » ; bande -2.5 px / encre début, 1.2 px / encre fin"
+ },
+ {
+  "n": 14,
+  "nom": "Texte OCR (PDF image seule)",
+  "mode": "souris",
+  "zoom": 1,
+  "dpr": 1,
+  "ok": true,
+  "detail": "enregistré « chronique modifie » ; bande -2.0 px / encre début, 1.6 px / encre fin"
+ },
+ {
+  "n": 15,
+  "nom": "iPad au doigt (1024×1366 tactile, Retina ×2)",
+  "mode": "doigt",
+  "zoom": 1,
+  "dpr": 2,
+  "ok": true,
+  "detail": "enregistré « corps virtuel » ; bande -3.1 px / encre début, 2.6 px / encre fin"
+ },
+ {
+  "n": 16,
+  "nom": "iPad au stylet (Apple Pencil)",
+  "mode": "stylet",
+  "zoom": 1,
+  "dpr": 2,
+  "ok": true,
+  "detail": "enregistré « corps virtuel » ; bande -3.3 px / encre début, 4.5 px / encre fin"
+ }
+]
