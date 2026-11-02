@@ -45,6 +45,24 @@ export async function banc(W = 1440, H = 900, opts = {}) {
     const debut = ecran[a] ? ecran[a][0] : null, fin = ecran[ecran.length - (tot - z)] ? ecran[ecran.length - (tot - z)][1] : null;
     return { debut, fin, y: (R.top + R.bottom) / 2, bandes: ecran.length, lettres: tot };
   })()`);
+  // points ÉCRAN du bord gauche du 1er caractère et du bord droit du dernier d'un passage, calculés depuis le PDF seul
+  // (pdf.js : position du morceau + largeurs des glyphes de sa police) — indépendant de la couche de texte testée
+  b.pointsPdf = (fiche, page, passage) => b.ev(`(async () => {
+    const { openPdf, pdfjsLib } = await import('/src/medrevise/pdf/pdfjsSetup.js'); const S = await import('/src/medrevise/lib/storage.js');
+    const f = await S.getOne('fiches', ${JSON.stringify(fiche)}); const d = await openPdf(new Uint8Array(await (await S.getBlob(f.pdfId)).arrayBuffer()));
+    const pg = await d.getPage(${page}); await pg.getOperatorList(); const tc = await pg.getTextContent();
+    const it = tc.items.find((x) => x.str.includes(${JSON.stringify(passage)})); const fo = pg.commonObjs.get(it.fontName);
+    const inv = new Map(); const tu = fo.toUnicode; if (tu && Array.isArray(tu._map)) tu._map.forEach((u, c) => { if (typeof u === 'string' && u && !inv.has(u)) inv.set(u, c); });
+    const corps = Math.hypot(it.transform[0], it.transform[1]), fm = (fo.fontMatrix && fo.fontMatrix[0]) || 0.001;
+    const av = [...it.str].map((ch) => { const c = inv.get(ch); return c == null ? null : (fo.widths[c] != null ? fo.widths[c] : fo.defaultWidth || 0) * fm * corps; });
+    const connus = av.reduce((a, w) => a + (w || 0), 0), nb = av.filter((w) => w == null).length; const pleins = av.map((w) => (w == null ? Math.max(0, it.width - connus) / Math.max(1, nb) : w));
+    const tot = pleins.reduce((a, w) => a + w, 0); const x = [0]; pleins.forEach((w) => x.push(x[x.length - 1] + w * it.width / tot));
+    const i = it.str.indexOf(${JSON.stringify(passage)}), j = i + ${passage.length};
+    const cv = document.querySelector('.pdfr-page[data-cle="${page}"] canvas.pdfr-tampon.devant'); const cr = cv.getBoundingClientRect();
+    const vp = pg.getViewport({ scale: cr.width / pg.getViewport({ scale: 1 }).width }); const tx = pdfjsLib.Util.transform(vp.transform, it.transform);
+    const h = Math.hypot(tx[2], tx[3]);
+    return { debut: cr.left + tx[4] + x[i] * vp.scale, fin: cr.left + tx[4] + x[j] * vp.scale, y: cr.top + tx[5] - h * 0.35 };
+  })()`);
   const souris = (type, x, y, extra = {}) => b.c.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1, ...extra });
   b.glisser = async (de, a, pas = 14, extra = {}) => {
     await souris('mouseMoved', de[0], de[1], extra); await souris('mousePressed', de[0], de[1], extra);
@@ -83,6 +101,11 @@ export async function banc(W = 1440, H = 900, opts = {}) {
       const w = (Math.max(...qs.map((q) => q.right)) - Math.min(...qs.map((q) => q.left))) / k;
       pire = Math.max(pire, Math.abs(w / (d.largeur * e) - 1)); }
     return +(pire * 100).toFixed(2); })()`);
+  // outil Surligneur actif (recliquer un outil actif le désactive)
+  b.surligneur = async () => {
+    const actif = await b.ev(`(() => { const x = [...document.querySelectorAll('.ptb-outil, .tab-outil, [data-outil]')].find((e) => /^Surligneur/.test(e.getAttribute('aria-label') || e.title || '')); return !!x && x.getAttribute('aria-pressed') === 'true'; })()`);
+    if (!actif) { await b.outil('Surligneur'); await b.dormir(300); }
+  };
   b.surlignages = (id) => b.S(`return (await S.getAll('highlights')).filter((h) => h.ficheId === ${JSON.stringify(id)}).map((h) => ({ id: h.id, texte: h.texte, anchor: h.anchor }))`);
   return b;
 }

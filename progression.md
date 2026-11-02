@@ -1,45 +1,44 @@
 <!-- PASSATION:DEBUT -->
 # 🔁 Passation – My Org (MedRevise)
-_Clôturée le 2026-11-02 à 11:11_
+_Mise à jour le 2026-11-02 (après-midi)_
 
 ## 🎯 Objectif
 SPA Vite + React (hub + MealWeek + MedRevise), déployée sur Vercel au push sur `main`.
-Sessions du 31/10 : cartes Tableau à masque choisi, surlignage sur deux lignes, puis /goal « cartes manquantes » du contrôle d'intégrité.
+Session du 02/11 : /goal « surlignage décalé du PdfReader » (« corps virtuel » → « rps virt »), terminé.
 
-## ✅ Fait (vérifié, poussé, main == origin/main)
-- Antérieur : synchro rapide, surlignage exact, listes dans les boîtes, cartes Tableau à masque choisi, espace entre deux lignes d'un surlignage (voir `docs/compte-rendu-flashcards.md`, `docs/compte-rendu-synchro-rapide-surlignage-listes.md`).
-- Diagnostic en lecture seule (`docs/diagnostic-elements-manquants.md`) : 12 flashcards disparues, toutes supprimées à la main les 26 et 28/10 ; l'utilisateur a confirmé que ce sont les siennes.
-- Suppressions volontaires : registre `suppressionsVolontaires:<appareil>` (store `prompts`, synchronisé, `lib/storage.js#noterSuppressionsVolontaires`) écrit AVANT chaque `remove` de questions venant de l'interface (deleteQuestion, deleteCardsOfType, deleteDossier, removeFromCarnet, purgeFiche, purgeMatiere). La « baisse » (`integrite/controle.js`) ne compte que les ids absents du registre ; les 12 ids sont dans `integrite/suppressions.js#SUPPRESSIONS_CONFIRMEES`. Commits 7fe5945, f4fd00e, d86089b.
-- Écran Intégrité : bouton « C'est moi qui les ai supprimées — ne plus signaler » (inscrit les ids au registre, relance le contrôle). Commit 6d02511.
-- Écran Intégrité : chaque carte disparue montre recto, type, cours (libellé `[recto, ficheId]` gardé dans l'instantané) ; pour une référence ancienne, recherche en lecture seule dans les copies GitHub via `POST /api/backup-cartes` (`api/_lib/sauvegarde.js#retrouverCartes`, 15–60 s, testé sur le vrai dépôt). Commit 0416252.
-- Tests : `npm test` 245/246 (seul échec connu `crayon › trois épaisseurs`), build vert, bancs `scripts/tests-suppressions-volontaires/tout.sh` ✅ (t-suppressions, t-reconnaitre, t-deux-appareils), synchro rapide 15 ✅. MealWeek et `src/shared/` intacts.
+## ✅ Fait (vérifié, poussé)
+- Antérieur : intégrité (registre des suppressions volontaires, écran Intégrité : commits 7fe5945 → 0416252) ; synchro rapide, surlignage, listes, cartes Tableau (voir docs/).
+- 02/11 — surlignage aligné (`docs/compte-rendu-surlignage-alignement.md`) :
+  - CAUSE : couche invisible en sans-serif (lettres à côté de l'encre, jusqu'à 7 px à 100 %) + étirement mesuré avec getBoundingClientRect, donc faux d'un facteur k si la couche est construite pendant un pincement / Ctrl+molette (10 à 19 % mesurés) → plage enregistrée décalée (« ple positif (« un pa » pour « exemple positif »).
+  - CORRECTION (`pdf/pdfShared.js`) : un span par morceau pdf.js (index et ancres inchangés) contenant un span par caractère posé et étiré aux largeurs de glyphes du PDF ; largeurs lues hors transformation ; rectangles via Range.getClientRects ; accès par `itemsCouche` / `pointDeChar` / `itemDeNoeud` (plus jamais `querySelectorAll('span')` ni `firstChild`) ; export (PDF annoté, PNG, IA) recalculé depuis les ancres (`surlignagesAlignes`), rien réécrit en base.
+  - TESTS : `scripts/tests-surlignage-alignement/` — t-cas 16/16 (titres gras, courant, italique, 7 pt, Courier, 3 PDF, OCR, deux lignes, début/fin de ligne, zooms 50/100/200, Retina, iPad doigt + stylet émulés), t-anciens 5/5 (surlignages posés par l'ancien code), t-nonreg 14/14 (⌘F, notion, carte du tableau, export, perf 6–31 ms/page, 0 erreur console), t-mealweek ✅. Build vert ; npm test 244/246 (crayon › trois épaisseurs et /api/timetable › cache : déjà en échec avant).
+  - Commits cf5acd6, e42bdf4, f142bdf + commit du compte rendu.
 
 ## 🚧 En cours
-- Rien. Modifications non commitées : aucune (à part cette passation).
-- Non vérifié : l'état READY du déploiement Vercel de 0416252 ; l'effet réel sur l'appareil de l'utilisateur (alerte de 10 cartes encore signalées : il doit ouvrir l'écran Intégrité, reconnaître les cartes, cliquer « C'est moi… »).
+- Rien. Non vérifié : iPad RÉEL (tests en émulation Chrome) ; déploiement Vercel READY.
 
 ## ➡️ Prochaines étapes (dans l'ordre)
-1. Attendre le retour de l'utilisateur : l'écran Intégrité affiche-t-il bien ses 10 cartes (recto, cours) et le bouton efface-t-il l'alerte ? Ne rien lancer sans sa demande.
-2. Retour du test sur un vrai cours : synchro au retour, surlignage PDF (dont passage à la ligne), collage Word, transcription Début/Fin, cartes Tableau masquées.
+1. Attendre le retour de l'utilisateur : surlignage sur iPad réel (doigt, stylet), après un pincement ; écran Intégrité (10 cartes, bouton « C'est moi… »).
+2. Retour du test sur un vrai cours (synchro, collage Word, transcription, cartes Tableau masquées).
 
 ## 🧭 Décisions prises (ne pas rediscuter)
-- Registre par appareil (pas un seul enregistrement) : pas d'écrasement LWW entre appareils ; entrées gardées 120 jours.
-- « Tout effacer » (`wipeAll`) et une restauration (`replaceStore`) restent signalés : voulu.
-- Alerte fondée sur les ids disparus (pas les comptes) : une perte masquée par des créations est détectée.
-- Synchro complète seulement au 1er démarrage / erreur / « Forcer la synchro » ; fusion des surlignages contigus de même couleur = voulu.
+- Une plage de surlignage enregistrée fausse AVANT le 02/11 se réaffiche sur ses caractères enregistrés (pas de « devinette ») : la repasser au surligneur.
+- Bornes d'un glisser : lettre prise à 20 % de sa largeur, ponctuation / espace à 50 %.
+- Fusion des surlignages contigus de même couleur = voulu (y compris d'un morceau au suivant).
+- Registre des suppressions par appareil, 120 jours ; « Tout effacer » et restauration restent signalés ; alerte fondée sur les ids disparus.
 
 ## 🛠️ Commandes utiles
 - Build : `npx vite build` · Tests : `npm test`
 - Serveurs de banc (`.claude/launch.json`, via preview_start) : `medrevise-banc` (:5302 sans Supabase), `faux-supabase` (:54399), `medrevise-faux-cloud` (:5300).
-- Chrome headless isolé : `--remote-debugging-port=9337` (1440×900, sur :5302) ; 9335 / 9336 sur :5300 ; profils neufs dans le scratchpad.
-- Banc : `scripts/tests-suppressions-volontaires/tout.sh` ; synchro : `scripts/tests-synchro-rapide/tout.sh apres --sans-attente` (restaurer ensuite `mesures-apres.json` avec git checkout).
-- Copies GitHub : dépôt privé `yoann735/medrevise-backups` (lecture : `gh repo clone`).
+- Chrome headless isolé : `--remote-debugging-port=9337` sur :5302, profil neuf dans le scratchpad.
+- Banc surlignage : `CDP_PORT=9337 CDP_FILTRE=5302 FX=<dossier des PDF> node scripts/tests-surlignage-alignement/t-cas.mjs` (PDF : voir § 5 du compte rendu).
+- Copies GitHub : dépôt privé `yoann735/medrevise-backups`.
 
 ## ⚠️ Pièges et préférences
 - Ne jamais toucher MealWeek ni `src/shared/` ; jamais le vrai cloud dans les bancs ; données réelles en lecture seule.
-- Français ; commit + push autonomes, conventionnels, jamais de force push. Un processus « sync auto » commite parfois seul (ex. 005d293).
+- Français ; commit + push autonomes, conventionnels, jamais de force push. Un processus « sync auto » commite parfois seul.
+- Bancs : recliquer un outil actif le désactive (helper `b.surligneur()`) ; `new URL(...).pathname` encode les accents du chemin → utiliser `fileURLToPath`.
 - Le middleware de dev (`vite.config.js`) lit le corps JSON seulement pour `/api/backup-cartes`.
-- Chrome headless audio bloqué sur ce Mac ; HMR Vite réinitialise l'état si un fichier est créé pendant un test.
 <!-- PASSATION:FIN -->
 
 ## Historique des clôtures
