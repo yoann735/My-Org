@@ -32,6 +32,26 @@ export function configuration(env = process.env) {
 }
 
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
+const masquer = (t) => String(t == null ? '' : t).replace(/(gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g, '[jeton masqué]');
+
+/* (07/11, docs/compte-rendu-sauvegarde-et-statut-synchro.md) COPIE RÉUSSIE = records, review_log, index des fichiers
+   ET manifest relus dans le commit avec le bon contenu (gh.verifier). Seuls ces commits s'appellent « backup AAAA-MM-JJ ».
+   Un échec définitif est noté dans manifest.json (`echecs` : [{ le, raison }], les 10 derniers) par un petit commit
+   « backup-echec AAAA-MM-JJ » qui ne touche que le manifest — il n'est JAMAIS compté comme une copie réussie. */
+export const RE_COPIE_REUSSIE = /^backup \d{4}-\d{2}-\d{2}/;
+const MAX_ECHECS = 10;
+
+/** raison courte et lisible d'un échec (aucun secret) */
+export function raisonCourte(e) {
+  const m = masquer((e && e.message) || e);
+  const st = Number(e && e.status) || 0;
+  if (st === 401 || /HTTP 401/.test(m)) return 'jeton GitHub refusé (HTTP 401) : jeton expiré ou révoqué, à renouveler';
+  if (st === 403 || /HTTP 403/.test(m)) return 'GitHub refuse l’écriture (HTTP 403) : droits du jeton insuffisants ou limite atteinte';
+  if (st === 404 || /GitHub .*HTTP 404/.test(m)) return 'dépôt de sauvegarde introuvable (HTTP 404) : nom du dépôt ou accès du jeton';
+  if (/supabase|PGRST|rest\/v1|storage\/v1|medrevise_|^lecture /i.test(m)) return 'lecture Supabase impossible : ' + m.slice(0, 110);
+  if (/timeout|aborted|TimeoutError/i.test(m)) return 'délai dépassé (GitHub ou Supabase trop lent)';
+  return m.slice(0, 140) || 'erreur inconnue';
+}
 
 export async function executerCopie({ env = process.env, maintenant = new Date(), fetchFn = fetch, essais = 3, pause = 2000 } = {}) {
   const cfg = configuration(env);
@@ -39,13 +59,17 @@ export async function executerCopie({ env = process.env, maintenant = new Date()
   if (!cfg.supabaseUrl || !cfg.supabaseCle) return { ok: false, code: 'supabase_absent', message: 'Supabase non configuré côté serveur (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).' };
   const jour = jourBruxelles(maintenant);
   let derniere = null;
+  let gh = null;
   for (let i = 0; i < essais; i++) {
     try {
+      gh = clientGithub({ token: cfg.token, depot: cfg.depot, branche: cfg.branche, fetchFn });
+      const precedent = await gh.dernier(); // pour reporter la trace des échecs d'une copie à l'autre
+      const echecs = (precedent && precedent.manifeste && Array.isArray(precedent.manifeste.echecs)) ? precedent.manifeste.echecs : [];
       const cloud = await lireCloud({ url: cfg.supabaseUrl, cle: cfg.supabaseCle, fetchFn });
-      const { fichiers, manifeste } = construireExport({ ...cloud, jour, maxOctets: cfg.maxOctets });
-      const gh = clientGithub({ token: cfg.token, depot: cfg.depot, branche: cfg.branche, fetchFn });
+      const { fichiers, manifeste } = construireExport({ ...cloud, jour, maxOctets: cfg.maxOctets, echecs });
       // anciens morceaux devenus inutiles (ex. records-003.jsonl quand le fichier a rétréci)
       const r = await gh.commit({ fichiers, message: `backup ${jour}`, supprimer: (c) => /^data\/(records|review_log)(-\d{3})?\.jsonl$/.test(c) });
+      await gh.verifier(r.sha, fichiers); // les 4 sortes de fichiers, contenu exact : sinon ce n'est pas une réussite
       return { ok: true, jour, commit: r.sha, cree: r.cree, raison: r.raison || null, comptes: manifeste.comptes, fichiers: manifeste.fichiers.length, essai: i + 1 };
     } catch (e) {
       derniere = e;
@@ -53,8 +77,20 @@ export async function executerCopie({ env = process.env, maintenant = new Date()
       if (i < essais - 1) await attendre(pause * (i + 1));
     }
   }
-  return { ok: false, code: 'echec', message: 'Copie échouée après ' + essais + ' tentatives : ' + String((derniere && derniere.message) || derniere).replace(/(gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g, '[jeton masqué]') };
+  const raison = raisonCourte(derniere);
+  const note = gh ? await noterEchec({ gh, jour, le: maintenant.toISOString(), raison }).catch(() => false) : false;
+  return { ok: false, code: 'echec', raison, echecNote: note, message: 'Copie échouée après ' + essais + ' tentatives : ' + masquer((derniere && derniere.message) || derniere) };
 }
+
+/** ajoute { le, raison } à manifest.json (commit « backup-echec … » qui ne touche que le manifest) */
+async function noterEchec({ gh, jour, le, raison }) {
+  const d = await gh.dernier();
+  if (!d || !d.manifeste) return false;
+  const m = { ...d.manifeste, echecs: [...(Array.isArray(d.manifeste.echecs) ? d.manifeste.echecs : []), { le, raison }].slice(-MAX_ECHECS) };
+  await gh.commit({ fichiers: [{ chemin: 'manifest.json', contenu: JSON.stringify(trierCles(m), null, 1) + '\n' }], message: `backup-echec ${jour}` });
+  return true;
+}
+const trierCles = (v) => (Array.isArray(v) ? v.map(trierCles) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, trierCles(v[k])])) : v);
 
 export async function lireStatut({ env = process.env, fetchFn = fetch, maintenant = new Date() } = {}) {
   const cfg = configuration(env);
@@ -62,11 +98,57 @@ export async function lireStatut({ env = process.env, fetchFn = fetch, maintenan
   const gh = clientGithub({ token: cfg.token, depot: cfg.depot, branche: cfg.branche, fetchFn });
   const d = await gh.dernier();
   if (!d || !d.manifeste) return { ok: true, configure: true, aucune: true, message: 'Aucune copie pour l’instant.' };
+  // dernière copie RÉUSSIE : la tête si c'en est une, sinon on remonte l'historique (une tête « backup-echec … »)
+  const succes = RE_COPIE_REUSSIE.test(d.message) ? { date: d.date, sha: d.sha, message: d.message }
+    : ((await gh.historique(30)).find((c) => RE_COPIE_REUSSIE.test(c.message)) || null);
+  const echecs = Array.isArray(d.manifeste.echecs) ? d.manifeste.echecs : [];
+  const dernierEchec = echecs.length ? echecs[echecs.length - 1] : null;
   return {
-    ok: true, configure: true, date: d.date, message: d.message, commit: d.sha.slice(0, 7), jour: d.manifeste.jour,
-    ageHeures: Math.round(((maintenant - new Date(d.date)) / 3600000) * 10) / 10,
+    ok: true, configure: true, aucune: !succes,
+    date: succes ? succes.date : null, message: succes ? succes.message : null, commit: succes ? succes.sha.slice(0, 7) : null, jour: d.manifeste.jour,
+    ageHeures: succes ? Math.round(((maintenant - new Date(succes.date)) / 3600000) * 10) / 10 : null,
+    // un échec postérieur à la dernière réussite (sinon il est déjà rattrapé)
+    dernierEchec: dernierEchec && (!succes || dernierEchec.le > succes.date) ? { le: dernierEchec.le, raison: String(dernierEchec.raison || '').slice(0, 160) } : null,
     comptes: d.manifeste.comptes, journalAbsent: !!d.manifeste.journalAbsent, fichiersBucket: d.manifeste.fichiersBucket,
   };
+}
+
+/* ============================================================
+   (07/11) RATTRAPAGE À L'OUVERTURE DE L'APP (/api/backup-catchup).
+   Le SERVEUR décide : dernière copie réussie (lireStatut) de moins de `seuilHeures` → rien. Sinon, EXACTEMENT la
+   même copie que le cron (executerCopie, même fonction). Une seule à la fois, et au plus une tentative toutes les
+   30 min : étiquette git « rattrapage-AAAAMMJJTHHMMZ » par créneau de 30 min, créée atomiquement AVANT la copie
+   (422 = déjà prise) ; un créneau précédent encore récent bloque aussi. Les étiquettes de plus de 7 jours sont
+   retirées (ce ne sont que des verrous, aucune donnée).
+   ============================================================ */
+const PREFIXE_VERROU = 'rattrapage-';
+const nomCreneau = (ms) => PREFIXE_VERROU + new Date(ms).toISOString().replace(/[-:]/g, '').slice(0, 13) + 'Z';
+const debutCreneau = (nom) => {
+  const m = /^rattrapage-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})Z$/.exec(nom);
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+};
+
+export async function rattrapage({ env = process.env, fetchFn = fetch, maintenant = new Date(), seuilHeures = 24, espacementMin = 30, executer = executerCopie } = {}) {
+  const cfg = configuration(env);
+  if (!cfg.token || !cfg.depot) return { ok: false, code: 'non_configure', action: 'aucune' };
+  const statut = await lireStatut({ env, fetchFn, maintenant });
+  const resume = { derniereReussie: statut.date || null, ageHeures: statut.ageHeures ?? null };
+  if (statut.date && statut.ageHeures < seuilHeures) return { ok: true, action: 'rien', ...resume };
+  const gh = clientGithub({ token: cfg.token, depot: cfg.depot, branche: cfg.branche, fetchFn });
+  const pas = espacementMin * 60000;
+  const creneau = Math.floor(maintenant.getTime() / pas) * pas;
+  const pris = (await gh.etiquettes(PREFIXE_VERROU).catch(() => [])).map((n) => ({ n, t: debutCreneau(n) })).filter((x) => x.t != null);
+  if (pris.some((x) => x.t >= creneau - pas)) return { ok: true, action: 'trop_tot', ...resume };
+  const tete = await gh.tete();
+  if (tete) {
+    try { await gh.creerEtiquette(nomCreneau(creneau), tete); } catch (e) {
+      if (e && e.status === 422) return { ok: true, action: 'deja_en_cours', ...resume };
+      throw e;
+    }
+  }
+  const r = await executer({ env, fetchFn, maintenant });
+  for (const x of pris) if (x.t < creneau - 7 * 864e5) await gh.supprimerEtiquette(x.n).catch(() => {}); // ménage des vieux verrous
+  return { ok: true, action: 'lancee', ...resume, resultat: { ok: !!r.ok, jour: r.jour || null, cree: !!r.cree, code: r.ok ? null : r.code || null, raison: r.ok ? null : r.raison || null } };
 }
 
 /* ============================================================

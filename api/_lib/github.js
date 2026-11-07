@@ -65,17 +65,40 @@ export function clientGithub({ token, depot, branche = 'main', fetchFn = fetch }
     return { cree: true, sha: nouveau.sha, fichiersModifies: entrees.length };
   }
 
+  /** (07/11) PREUVE D'ÉCRITURE : relit l'arbre du commit `sha` et vérifie que CHAQUE fichier y est, avec exactement
+   *  le contenu voulu (empreinte git). Lève une erreur sinon — une copie n'est « réussie » qu'à cette condition. */
+  async function verifier(sha, fichiers) {
+    const c = await appel('GET', `/git/commits/${sha}`);
+    const arbre = await appel('GET', `/git/trees/${c.tree.sha}?recursive=1`);
+    const presents = new Map((arbre.tree || []).filter((t) => t.type === 'blob').map((t) => [t.path, t.sha]));
+    const manquants = fichiers.filter((f) => presents.get(f.chemin) !== empreinteGit(f.contenu)).map((f) => f.chemin);
+    if (manquants.length) throw new Error('écriture incomplète sur GitHub : ' + manquants.join(', '));
+    return true;
+  }
+
+  /* (07/11) VERROU DU RATTRAPAGE : une étiquette git par créneau de 30 min. Créer une référence est ATOMIQUE côté
+     GitHub (422 si elle existe déjà) : deux ouvertures simultanées de l'app ne lancent donc qu'une seule copie. */
+  async function etiquettes(prefixe) {
+    const liste = await appel('GET', `/git/matching-refs/tags/${prefixe}`);
+    return (liste || []).map((r) => String(r.ref || '').replace(/^refs\/tags\//, ''));
+  }
+  const creerEtiquette = (nom, sha) => appel('POST', '/git/refs', { ref: `refs/tags/${nom}`, sha });
+  const supprimerEtiquette = (nom) => appel('DELETE', `/git/refs/tags/${nom}`);
+
+  /** manifest.json d'une révision (null si absent) */
+  async function manifeste(ref) {
+    try {
+      const m = await appel('GET', `/contents/manifest.json?ref=${ref}`);
+      return JSON.parse(Buffer.from(m.content, 'base64').toString('utf8'));
+    } catch { return null; }
+  }
+
   /** dernier commit de la branche + manifest.json à cette révision */
   async function dernier() {
     const sha = await tete();
     if (!sha) return null;
     const c = await appel('GET', `/commits/${sha}`);
-    let manifeste = null;
-    try {
-      const m = await appel('GET', `/contents/manifest.json?ref=${sha}`);
-      manifeste = JSON.parse(Buffer.from(m.content, 'base64').toString('utf8'));
-    } catch { /* pas encore de manifeste (dépôt tout juste initialisé) */ }
-    return { sha, date: c.commit.committer.date, message: c.commit.message, manifeste };
+    return { sha, date: c.commit.committer.date, message: c.commit.message, manifeste: await manifeste(sha) }; // manifeste null : dépôt tout juste initialisé
   }
 
   /** (31/10) LECTURE SEULE : les `n` derniers commits de la branche [{ sha, date, message, arbre }] */
@@ -94,5 +117,5 @@ export function clientGithub({ token, depot, branche = 'main', fetchFn = fetch }
     return Buffer.from(b.content || '', b.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
   }
 
-  return { commit, dernier, tete, historique, fichiers, blob };
+  return { commit, verifier, dernier, tete, historique, fichiers, blob, etiquettes, creerEtiquette, supprimerEtiquette };
 }

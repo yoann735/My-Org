@@ -9,6 +9,7 @@ export function fauxGithub(depot = 'moi/medrevise-backups-test') {
   const objets = new Map(); // sha → { type, ... }
   const refs = new Map(); // 'heads/main' → sha
   let horloge = Date.UTC(2026, 9, 11, 1, 30);
+  const etiquettesCreees = [];
   const blobSha = (texte) => { const b = Buffer.from(texte, 'utf8'); return createHash('sha1').update(Buffer.concat([Buffer.from(`blob ${b.length}\0`), b])).digest('hex'); };
   const arbreComplet = (sha) => { const t = objets.get(sha); return t ? t.entrees : []; };
   const fetchFn = async (url, init = {}) => {
@@ -41,11 +42,20 @@ export function fauxGithub(depot = 'moi/medrevise-backups-test') {
       const c = objets.get(u.searchParams.get('ref')); const e = arbreComplet(c.tree).find((x) => x.path === 'manifest.json');
       return e ? rep(200, { content: Buffer.from(objets.get(e.sha).contenu).toString('base64') }) : rep(404, { message: 'Not Found' });
     }
+    // (07/11) historique, étiquettes (verrou du rattrapage), panne d'écriture injectable
+    if (m === 'GET' && p === '/commits') {
+      const out = []; let c = refs.get('heads/main');
+      while (c && out.length < Number(u.searchParams.get('per_page') || 30)) { const o = objets.get(c); out.push({ sha: c, commit: { message: o.message, committer: { date: o.date }, tree: { sha: o.tree } } }); c = o.parents[0]; }
+      return rep(200, out);
+    }
+    if (m === 'GET' && (mm = /^\/git\/matching-refs\/tags\/(.*)$/.exec(p))) return rep(200, [...refs.keys()].filter((k) => k.startsWith('tags/' + mm[1])).map((k) => ({ ref: 'refs/' + k, object: { sha: refs.get(k) } })));
+    if (m === 'POST' && p === '/git/refs') { const k = corps.ref.replace(/^refs\//, ''); if (refs.has(k)) return rep(422, { message: 'Reference already exists' }); refs.set(k, corps.sha); etiquettesCreees.push(k); return rep(201, { ref: corps.ref }); }
+    if (m === 'DELETE' && (mm = /^\/git\/refs\/(tags\/.*)$/.exec(p))) { refs.delete(mm[1]); return rep(204, null); }
     return rep(404, { message: 'route inconnue ' + m + ' ' + p });
   };
   const commits = () => { const out = []; let c = refs.get('heads/main'); while (c) { const o = objets.get(c); out.push({ sha: c, ...o }); c = o.parents[0]; } return out; };
   const fichiers = () => { const c = objets.get(refs.get('heads/main')); return Object.fromEntries(arbreComplet(c.tree).map((e) => [e.path, objets.get(e.sha).contenu])); };
-  return { fetchFn, commits, fichiers, avancer: (ms) => { horloge += ms; } };
+  return { fetchFn, commits, fichiers, avancer: (ms) => { horloge += ms; }, regler: (ms) => { horloge = ms; }, etiquettes: () => [...refs.keys()].filter((k) => k.startsWith('tags/')), etiquettesCreees };
 }
 
 export function fauxSupabase(records, { journalAbsent = true, fichiers = [] } = {}) {

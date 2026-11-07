@@ -2,7 +2,8 @@
    MedRevise — état de la COPIE SERVEUR (dépôt GitHub privé) vu depuis l'app (filet de sécurité).
    Appelle /api/backup-status et /api/backup-now : le jeton GitHub reste sur le serveur.
    ============================================================ */
-export const HEURES_ALERTE = 36;
+/* (07/11) un seul seuil : avertissement « plus de 48 h sans copie réussie » (Réglages ET bandeau) */
+export const HEURES_ALERTE = 48;
 
 async function appeler(chemin, corps = {}) {
   try {
@@ -17,6 +18,13 @@ async function appeler(chemin, corps = {}) {
 
 export const statutCopieServeur = () => appeler('/api/backup-status');
 export const lancerCopieServeur = () => appeler('/api/backup-now');
+/** (07/11) rattrapage silencieux à l'ouverture : le SERVEUR décide (dernière copie réussie > 24 h → copie, sinon rien).
+ *  Appelé une fois par chargement de page, jamais attendu par l'interface. */
+let rattrapageLance = null;
+export function lancerRattrapageSauvegarde() {
+  if (!rattrapageLance) rattrapageLance = appeler('/api/backup-catchup');
+  return rattrapageLance;
+}
 /** (31/10) ce qu'étaient des cartes disparues (recto, cours, date de suppression), lu dans les copies GitHub */
 export const retrouverDansCopies = (ids) => appeler('/api/backup-cartes', { ids });
 
@@ -34,7 +42,7 @@ export function quandLisible(iso, maintenant = new Date()) {
 
 /** nombre de jours sans copie (null si récente) */
 export function joursSansCopie(statut, maintenant = new Date()) {
-  if (!statut || !statut.ok || !statut.configure || statut.aucune || !statut.date) return null;
+  if (!statut || !statut.ok || !statut.configure || !statut.date) return null;
   const h = (maintenant - new Date(statut.date)) / 3600000;
   return h > HEURES_ALERTE ? Math.max(1, Math.floor(h / 24)) : null;
 }

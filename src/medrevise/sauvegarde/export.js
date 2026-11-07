@@ -115,7 +115,7 @@ export function comptes(rows, journal = []) {
  * Export complet. `fichiersBucket` : [{ nom, taille, empreinte, type, maj }] (liste du bucket, sans contenu).
  * `jour` : 'YYYY-MM-DD' (le seul élément daté). Renvoie { fichiers: [{ chemin, contenu }], manifeste }.
  */
-export function construireExport({ records, journal = [], journalAbsent = false, fichiersBucket = [], jour, maxOctets = MAX_OCTETS_DEFAUT }) {
+export function construireExport({ records, journal = [], journalAbsent = false, fichiersBucket = [], jour, maxOctets = MAX_OCTETS_DEFAUT, echecs = [] }) {
   const fichiers = [
     ...decouper('data/records', 'jsonl', lignesRecords(records), maxOctets),
     ...decouper('data/review_log', 'jsonl', lignesJournal(journal), maxOctets),
@@ -131,6 +131,8 @@ export function construireExport({ records, journal = [], journalAbsent = false,
     fichiersBucket: { nombre: index.length, octets: index.reduce((s, f) => s + (f.taille || 0), 0) },
     fichiers: fichiers.map((f) => ({ chemin: f.chemin, octets: octets(f.contenu), sha256: sha256(f.contenu), lignes: f.contenu ? f.contenu.split('\n').length - 1 : 0 })),
   };
+  // (07/11) trace des échecs de la copie serveur [{ le, raison }] (les 10 derniers), reportée d'une copie à l'autre
+  if (echecs && echecs.length) manifeste.echecs = echecs.slice(-10);
   fichiers.push({ chemin: 'manifest.json', contenu: JSON.stringify(trier(manifeste), null, 1) + '\n' });
   return { fichiers, manifeste };
 }

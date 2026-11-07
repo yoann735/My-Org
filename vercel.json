@@ -1,13 +1,29 @@
 {
   "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
   ],
   "crons": [
-    { "path": "/api/backup-daily", "schedule": "30 1 * * *" },
-    { "path": "/api/backup-daily", "schedule": "30 2 * * *" }
+    {
+      "path": "/api/backup-daily",
+      "schedule": "30 1 * * *"
+    },
+    {
+      "path": "/api/backup-daily",
+      "schedule": "30 2 * * *"
+    }
   ],
   "functions": {
-    "api/backup-daily.js": { "maxDuration": 120 },
-    "api/backup-now.js": { "maxDuration": 120 }
+    "api/backup-daily.js": {
+      "maxDuration": 120
+    },
+    "api/backup-now.js": {
+      "maxDuration": 120
+    },
+    "api/backup-catchup.js": {
+      "maxDuration": 120
+    }
   }
 }

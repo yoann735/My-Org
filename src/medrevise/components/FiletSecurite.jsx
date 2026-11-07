@@ -69,15 +69,23 @@ function ListeDisparues({ baisse }) {
 }
 
 /* ---- état partagé : résultat du contrôle + statut de la copie serveur (lu une fois par ouverture) ---- */
-let statutServeur = null; let promesseStatut = null;
+let statutServeur = null; let promesseStatut = null; let luLe = 0;
 const abonnesStatut = new Set();
 export function rafraichirStatutServeur() {
-  promesseStatut = statutCopieServeur().then((s) => { statutServeur = s; abonnesStatut.forEach((fn) => fn(s)); return s; });
+  luLe = Date.now();
+  promesseStatut = statutCopieServeur().then((s) => { statutServeur = s; abonnesStatut.forEach((fn) => fn(s)); return s; }).finally(() => { promesseStatut = null; });
   return promesseStatut;
 }
+/* (07/11) Le statut était lu UNE fois par chargement de page : un onglet (ou l'app de l'iPad) resté ouvert plusieurs
+   jours gardait la date d'une ancienne lecture et calculait son âge sur l'horloge du jour — « pas de copie depuis
+   4 jours » alors que la copie tournait chaque nuit. Désormais : relu s'il a plus de 10 min, à l'affichage et au
+   retour sur l'onglet. */
+const STATUT_PERIME_MS = 10 * 60 * 1000;
+const relireSiPerime = () => { if (!promesseStatut && (!statutServeur || Date.now() - luLe > STATUT_PERIME_MS)) rafraichirStatutServeur().catch(() => {}); };
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && statutServeur) relireSiPerime(); });
 function useStatutServeur() {
   const [s, setS] = useState(statutServeur);
-  useEffect(() => { abonnesStatut.add(setS); if (!statutServeur && !promesseStatut) rafraichirStatutServeur(); return () => abonnesStatut.delete(setS); }, []);
+  useEffect(() => { abonnesStatut.add(setS); relireSiPerime(); return () => abonnesStatut.delete(setS); }, []);
   return s;
 }
 function useIntegrite() {
@@ -226,9 +234,16 @@ export function CarteSauvegardes({ ctx }) {
               {!s ? 'Lecture de l’état…'
                 : s.configure === false ? 'Copie serveur non configurée (variables Vercel à créer, voir docs/compte-rendu-filet-securite.md).'
                   : !s.ok ? s.message
-                    : s.aucune ? 'Aucune copie pour l’instant.'
-                      : <>Dernière copie : {quandLisible(s.date)} {jours ? `— il y a ${jours} jour${jours > 1 ? 's' : ''}` : '✓'} · {nf(s.comptes && s.comptes.flashcards)} flashcards · {nf(s.comptes && s.comptes.questions)} questions · commit {s.commit}</>}
+                    : s.aucune || !s.date ? 'Aucune sauvegarde réussie pour l’instant.'
+                      : <>Dernière sauvegarde réussie : <b data-derniere-reussie>{quandLisible(s.date)}</b> {jours ? '' : '✓'} · {nf(s.comptes && s.comptes.flashcards)} flashcards · {nf(s.comptes && s.comptes.questions)} questions · commit {s.commit}</>}
             </div>
+            {/* (07/11) plus de 48 h sans copie réussie : avertissement clair + raison du dernier échec, en une ligne */}
+            {s && s.ok && s.configure && (jours || s.aucune) && (
+              <div className="hint filet-alerte" data-testid="alerte-copie" style={{ color: 'var(--warn, #d08a2a)', fontWeight: 600 }}>
+                <Icon name="alert" size={13} /> Aucune sauvegarde réussie depuis plus de 48 h{jours ? ` (${jours} jour${jours > 1 ? 's' : ''})` : ''}
+                {s.dernierEchec ? <> — dernier échec {quandLisible(s.dernierEchec.le)} : {s.dernierEchec.raison}</> : ''}
+              </div>
+            )}
           </div>
           <button type="button" className="btn sm" disabled={copie === 'en cours' || (s && s.configure === false)} onClick={lancer}>
             <Icon name="refresh" size={13} /> {copie === 'en cours' ? 'Copie…' : 'Lancer une copie maintenant'}

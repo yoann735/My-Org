@@ -88,8 +88,8 @@ describe('copie quotidienne vers GitHub (faux GitHub et faux Supabase en mémoir
     let appels = 0;
     const panne = async (url) => { if (String(url).includes('api.github.com')) { appels++; throw new Error('réseau coupé ghp_SECRETSECRET123'); } return fauxSupabase(jeu())(url); };
     const r = await executerCopie({ env, fetchFn: panne, pause: 0 });
-    expect(r).toMatchObject({ ok: false, code: 'echec' });
-    expect(appels).toBe(3);
+    expect(r).toMatchObject({ ok: false, code: 'echec', echecNote: false });
+    expect(appels).toBe(4); // 3 tentatives + 1 essai de noter l'échec dans le manifest (impossible : GitHub en panne)
     expect(r.message).not.toContain('SECRETSECRET');
   });
 });
