@@ -1,47 +1,49 @@
 <!-- PASSATION:DEBUT -->
 # 🔁 Passation – My Org (MedRevise)
-_Mise à jour le 2026-11-07 16:35_
+_Clôturée le 2026-11-07 à 17:20_
 
 ## 🎯 Objectif
 SPA Vite + React (hub + MealWeek + MedRevise), déployée sur Vercel (projet `my-org`) au push sur `main`.
-Session du 07/11 : /goal « vérifier et remettre en état l'environnement de travail ». Terminé, en lecture seule, aucun code modifié.
+Session du 07/11 (/goal) : causes et corrections de (1) la sauvegarde GitHub « arrêtée » et (2) l'en-tête « À jour » alors que Réglages affichait « 19 en attente ». Terminé, poussé, déployé.
 
-## ✅ Fait (vérifié, poussé)
-- Rapport `docs/diagnostic-environnement-2026-11-07.md` (commit c429098, poussé sur `main`).
-- Local = `origin/main`, `gh` connecté (yoann735), Node 24.18 / npm 11.16, `npm ci` + `npm run build` OK (0 erreur ; avertissements : chunks > 500 kB, imports mixtes, 48 vulnérabilités npm audit non traitées).
-- Prod : le déploiement de 9fc0fe2 est Ready (vu via le statut GitHub), `https://my-org-blue.vercel.app` répond 200, le cron `/api/backup-daily` est déclaré dans `vercel.json` et a tourné cette nuit.
-- Variables de prod présentes par déduction (endpoints) : Supabase, GITHUB_BACKUP_*, CRON_SECRET, DEEPGRAM_API_KEY, HELHA_ICAL_URL. ANTHROPIC_API_KEY non vérifiée.
-- Supabase `deaonugwvbapkdixdowk` : 4 693 enregistrements et 1 050 lignes de review_log (chiffres de la sauvegarde, pas de `.env` local).
-- Sauvegarde du 07/11 à 02:05 UTC dans `yoann735/medrevise-backups` (records, review_log, files-index, manifest). Tag `pre-fsrs-2026-10-10` et branche `backup/pre-fsrs` présents.
+## ✅ Fait (vérifié, poussé, déployé : 550ff49, f65e3cc, 58b64e2, 3a71334)
+- Sauvegarde : elle ne s'était PAS arrêtée (un commit chaque nuit, 29/10 → 07/11). Cause probable du message « 4 jours » : le statut était lu une fois par chargement de page, il est maintenant relu s'il date de plus de 10 min.
+- Rattrapage `api/backup-catchup.js` → `rattrapage()` dans `api/_lib/sauvegarde.js` : il lance la même copie que le cron si la dernière copie réussie a plus de 24 h. Verrou par étiquette git `rattrapage-*`, une tentative / 30 min. Appelé en silence au démarrage (`MedReviseApp.jsx`).
+- Copie « réussie » = les 4 fichiers relus (`gh.verifier`). Un échec est noté dans `manifest.json` `echecs` (commit `backup-echec …`). Réglages › Sauvegardes avertit au-delà de 48 h, avec la raison.
+- Prod : catch-up → « rien » (14 h). Copie réelle via backup-now → commit `d5ddbe0` 07/11 16:14 UTC, 4 739 enregistrements.
+- Les 19 = cartes « Boîte → Flashcard » dont `srcId` (genId('bfc')) était pris pour un fichier. Correction : `estIdDeBlob` dans `lib/storage.js`. Aucune donnée touchée.
+- État de synchro unique : `src/medrevise/lib/etatSynchro.js`, lu par l'en-tête (`Chiffre.jsx`) et par Réglages / accueil du téléphone (`components/EtatSynchro.jsx`, liste « N en attente » qui se déplie).
+- Compte rendu complet : `docs/compte-rendu-sauvegarde-et-statut-synchro.md` (preuves, liste des 19, captures `docs/img/sauvegarde-statut/`).
+- Tests : vitest 253/255 (crayon + timetable échouaient déjà avant) ; bancs navigateur 50 ✅ ; MealWeek identique au pixel près.
 
 ## 🚧 En cours
-- Rien. Antérieur, toujours non vérifié : surlignage sur iPad RÉEL, écran Intégrité (retour utilisateur attendu).
+- Rien. Modifications non commitées : aucune.
 
 ## ➡️ Prochaines étapes (dans l'ordre)
-1. Attendre le feu vert ou la nouvelle demande de l'utilisateur (environnement prêt pour coder).
-2. Côté utilisateur : installer la CLI Vercel et lier le dossier : `npm i -g vercel`, `vercel login`, puis `vercel link --yes --project my-org`.
-3. Côté utilisateur : vérifier si la migration `supabase/migrations/20261024_review_log_evenements.sql` est appliquée : `select is_nullable from information_schema.columns where table_name='medrevise_review_log' and column_name='rating';` (YES = appliquée). Les 9 autres semblent appliquées.
-4. Retours iPad réel (surlignage, Intégrité) et test sur un vrai cours.
+1. Attendre le feu vert ou la nouvelle demande de l'utilisateur.
+2. Côté utilisateur : ouvrir l'app sur l'iPad et le téléphone. L'en-tête et Réglages doivent dire la même chose ; si « N en attente » apparaît, lire la liste dépliée.
+3. Vérifier demain matin que le cron de la nuit a créé « backup 2026-11-08 » (nouvelle vérification d'écriture) : `gh api 'repos/yoann735/medrevise-backups/commits?per_page=3'`.
+4. Encore en attente côté utilisateur : CLI Vercel (`npm i -g vercel`, `vercel login`, `vercel link --yes --project my-org`) et migration `20261024_review_log_evenements.sql` (requête is_nullable).
 
 ## 🧭 Décisions prises (ne pas rediscuter)
-- Aucune écriture Supabase, aucun réglage Vercel ni déploiement manuel sans demande explicite.
-- Pas de `.env` local créé : les bancs utilisent le faux Supabase.
-- Surlignage : bornes à 20 % (lettre) / 50 % (ponctuation) ; fusion des surlignages contigus voulue ; registre des suppressions sur 120 jours.
+- Rattrapage : cron quotidien conservé + appel à l'ouverture, le serveur décide (seuil 24 h, verrou 30 min).
+- « À jour » seulement si la passe est confirmée ET la liste recalculée après est vide.
+- `syncStatusLabel` ne sert plus qu'au mode dégradé ; `SyncIndicator` = diagnostic d'empreinte seulement.
 
 ## 🛠️ Commandes utiles
-- Build : `npm run build` · Tests : `npm test` (244/246 au 02/11, 2 échecs déjà présents avant).
-- Statut sauvegarde (lecture) : `curl -s -X POST -H "Origin: https://my-org-blue.vercel.app" -H 'Content-Type: application/json' -d '{}' https://my-org-blue.vercel.app/api/backup-status`
-- Bancs (`.claude/launch.json`) : `medrevise-banc` (:5302), `faux-supabase` (:54399), `medrevise-faux-cloud` (:5300).
+- Build : `npm run build` · Tests : `npm test`
+- Bancs (`.claude/launch.json` : faux-supabase, faux-github, medrevise-banc-sauvegarde) + Chrome headless 9335/9336/9337 → `cd scripts/tests-sauvegarde-statut && node seed.mjs && node t-synchro.mjs && node t-sauvegarde.mjs`
+- Statut prod (lecture) : `curl -s -X POST -H "Origin: https://my-org-blue.vercel.app" -H 'Content-Type: application/json' -d '{}' https://my-org-blue.vercel.app/api/backup-status`
 
 ## ⚠️ Pièges et préférences
-- Ne jamais toucher MealWeek ni `src/shared/` ; jamais le vrai cloud dans les bancs ; ne pas ouvrir l'app réelle (synchro) ; données réelles en lecture seule.
-- Ne jamais afficher de secret (clés, tokens, URL iCal).
-- Le connecteur Vercel MCP renvoie 403/404 sur ce projet : lire les déploiements via `gh api repos/yoann735/My-Org/deployments`.
-- Dépôt `My-Org` PUBLIC. Un processus « sync auto » commite parfois tout seul.
-- Français ; commits conventionnels et push autonomes ; jamais de force push.
+- Ne jamais toucher MealWeek ni `src/shared/` ; aucune écriture Supabase ; ne pas ouvrir l'app réelle pendant le dev ; aucun secret affiché.
+- Le connecteur Vercel MCP ne voit pas le projet : passer par les statuts GitHub (`gh api repos/yoann735/My-Org/commits/<sha>/statuses`).
+- Le limiteur de backup-catchup (30 / 10 min / IP) est en mémoire : en banc, beaucoup de rechargements → redémarrer Vite.
+- Dépôt PUBLIC ; un processus « sync auto » commite parfois tout seul ; français, commits conventionnels, jamais de force push.
 <!-- PASSATION:FIN -->
 
 ## Historique des clôtures
+- 2026-11-07 17:20 – /goal sauvegarde + statut synchro : sauvegarde jamais arrêtée, rattrapage ajouté, 19 « en attente » = faux compteur (srcId bfc), état unique ; poussé, déployé, copie prod d5ddbe0.
 - 2026-11-07 16:35 – /goal environnement : tout vérifié (build, prod Ready, sauvegarde 07/11), rapport poussé ; restent CLI Vercel et migration 20261024 à vérifier.
 - 2026-11-02 11:11 – Cartes manquantes : suppressions volontaires, bouton « C'est moi… », cartes disparues reconnaissables (recto, cours) ; poussé, attente retour utilisateur.
 - 2026-10-31 20:55 – /goal : diagnostic des 12 flashcards manquantes (suppressions manuelles confirmées), alerte d'intégrité corrigée pour les suppressions volontaires, testée et poussée.
