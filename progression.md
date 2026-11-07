@@ -1,47 +1,48 @@
 <!-- PASSATION:DEBUT -->
 # 🔁 Passation – My Org (MedRevise)
-_Mise à jour le 2026-11-02 (après-midi)_
+_Mise à jour le 2026-11-07 16:35_
 
 ## 🎯 Objectif
-SPA Vite + React (hub + MealWeek + MedRevise), déployée sur Vercel au push sur `main`.
-Session du 02/11 : /goal « surlignage décalé du PdfReader » (« corps virtuel » → « rps virt »), terminé.
+SPA Vite + React (hub + MealWeek + MedRevise), déployée sur Vercel (projet `my-org`) au push sur `main`.
+Session du 07/11 : /goal « vérifier et remettre en état l'environnement de travail ». Terminé, en lecture seule, aucun code modifié.
 
 ## ✅ Fait (vérifié, poussé)
-- Antérieur : intégrité (registre des suppressions volontaires, écran Intégrité : commits 7fe5945 → 0416252) ; synchro rapide, surlignage, listes, cartes Tableau (voir docs/).
-- 02/11 — surlignage aligné (`docs/compte-rendu-surlignage-alignement.md`) :
-  - CAUSE : couche invisible en sans-serif (lettres à côté de l'encre, jusqu'à 7 px à 100 %) + étirement mesuré avec getBoundingClientRect, donc faux d'un facteur k si la couche est construite pendant un pincement / Ctrl+molette (10 à 19 % mesurés) → plage enregistrée décalée (« ple positif (« un pa » pour « exemple positif »).
-  - CORRECTION (`pdf/pdfShared.js`) : un span par morceau pdf.js (index et ancres inchangés) contenant un span par caractère posé et étiré aux largeurs de glyphes du PDF ; largeurs lues hors transformation ; rectangles via Range.getClientRects ; accès par `itemsCouche` / `pointDeChar` / `itemDeNoeud` (plus jamais `querySelectorAll('span')` ni `firstChild`) ; export (PDF annoté, PNG, IA) recalculé depuis les ancres (`surlignagesAlignes`), rien réécrit en base.
-  - TESTS : `scripts/tests-surlignage-alignement/` — t-cas 16/16 (titres gras, courant, italique, 7 pt, Courier, 3 PDF, OCR, deux lignes, début/fin de ligne, zooms 50/100/200, Retina, iPad doigt + stylet émulés), t-anciens 5/5 (surlignages posés par l'ancien code), t-nonreg 14/14 (⌘F, notion, carte du tableau, export, perf 6–31 ms/page, 0 erreur console), t-mealweek ✅. Build vert ; npm test 244/246 (crayon › trois épaisseurs et /api/timetable › cache : déjà en échec avant).
-  - Commits cf5acd6, e42bdf4, f142bdf + commit du compte rendu.
+- Rapport `docs/diagnostic-environnement-2026-11-07.md` (commit c429098, poussé sur `main`).
+- Local = `origin/main`, `gh` connecté (yoann735), Node 24.18 / npm 11.16, `npm ci` + `npm run build` OK (0 erreur ; avertissements : chunks > 500 kB, imports mixtes, 48 vulnérabilités npm audit non traitées).
+- Prod : le déploiement de 9fc0fe2 est Ready (vu via le statut GitHub), `https://my-org-blue.vercel.app` répond 200, le cron `/api/backup-daily` est déclaré dans `vercel.json` et a tourné cette nuit.
+- Variables de prod présentes par déduction (endpoints) : Supabase, GITHUB_BACKUP_*, CRON_SECRET, DEEPGRAM_API_KEY, HELHA_ICAL_URL. ANTHROPIC_API_KEY non vérifiée.
+- Supabase `deaonugwvbapkdixdowk` : 4 693 enregistrements et 1 050 lignes de review_log (chiffres de la sauvegarde, pas de `.env` local).
+- Sauvegarde du 07/11 à 02:05 UTC dans `yoann735/medrevise-backups` (records, review_log, files-index, manifest). Tag `pre-fsrs-2026-10-10` et branche `backup/pre-fsrs` présents.
 
 ## 🚧 En cours
-- Rien. Non vérifié : iPad RÉEL (tests en émulation Chrome) ; déploiement Vercel READY.
+- Rien. Antérieur, toujours non vérifié : surlignage sur iPad RÉEL, écran Intégrité (retour utilisateur attendu).
 
 ## ➡️ Prochaines étapes (dans l'ordre)
-1. Attendre le retour de l'utilisateur : surlignage sur iPad réel (doigt, stylet), après un pincement ; écran Intégrité (10 cartes, bouton « C'est moi… »).
-2. Retour du test sur un vrai cours (synchro, collage Word, transcription, cartes Tableau masquées).
+1. Attendre le feu vert ou la nouvelle demande de l'utilisateur (environnement prêt pour coder).
+2. Côté utilisateur : installer la CLI Vercel et lier le dossier : `npm i -g vercel`, `vercel login`, puis `vercel link --yes --project my-org`.
+3. Côté utilisateur : vérifier si la migration `supabase/migrations/20261024_review_log_evenements.sql` est appliquée : `select is_nullable from information_schema.columns where table_name='medrevise_review_log' and column_name='rating';` (YES = appliquée). Les 9 autres semblent appliquées.
+4. Retours iPad réel (surlignage, Intégrité) et test sur un vrai cours.
 
 ## 🧭 Décisions prises (ne pas rediscuter)
-- Une plage de surlignage enregistrée fausse AVANT le 02/11 se réaffiche sur ses caractères enregistrés (pas de « devinette ») : la repasser au surligneur.
-- Bornes d'un glisser : lettre prise à 20 % de sa largeur, ponctuation / espace à 50 %.
-- Fusion des surlignages contigus de même couleur = voulu (y compris d'un morceau au suivant).
-- Registre des suppressions par appareil, 120 jours ; « Tout effacer » et restauration restent signalés ; alerte fondée sur les ids disparus.
+- Aucune écriture Supabase, aucun réglage Vercel ni déploiement manuel sans demande explicite.
+- Pas de `.env` local créé : les bancs utilisent le faux Supabase.
+- Surlignage : bornes à 20 % (lettre) / 50 % (ponctuation) ; fusion des surlignages contigus voulue ; registre des suppressions sur 120 jours.
 
 ## 🛠️ Commandes utiles
-- Build : `npx vite build` · Tests : `npm test`
-- Serveurs de banc (`.claude/launch.json`, via preview_start) : `medrevise-banc` (:5302 sans Supabase), `faux-supabase` (:54399), `medrevise-faux-cloud` (:5300).
-- Chrome headless isolé : `--remote-debugging-port=9337` sur :5302, profil neuf dans le scratchpad.
-- Banc surlignage : `CDP_PORT=9337 CDP_FILTRE=5302 FX=<dossier des PDF> node scripts/tests-surlignage-alignement/t-cas.mjs` (PDF : voir § 5 du compte rendu).
-- Copies GitHub : dépôt privé `yoann735/medrevise-backups`.
+- Build : `npm run build` · Tests : `npm test` (244/246 au 02/11, 2 échecs déjà présents avant).
+- Statut sauvegarde (lecture) : `curl -s -X POST -H "Origin: https://my-org-blue.vercel.app" -H 'Content-Type: application/json' -d '{}' https://my-org-blue.vercel.app/api/backup-status`
+- Bancs (`.claude/launch.json`) : `medrevise-banc` (:5302), `faux-supabase` (:54399), `medrevise-faux-cloud` (:5300).
 
 ## ⚠️ Pièges et préférences
-- Ne jamais toucher MealWeek ni `src/shared/` ; jamais le vrai cloud dans les bancs ; données réelles en lecture seule.
-- Français ; commit + push autonomes, conventionnels, jamais de force push. Un processus « sync auto » commite parfois seul.
-- Bancs : recliquer un outil actif le désactive (helper `b.surligneur()`) ; `new URL(...).pathname` encode les accents du chemin → utiliser `fileURLToPath`.
-- Le middleware de dev (`vite.config.js`) lit le corps JSON seulement pour `/api/backup-cartes`.
+- Ne jamais toucher MealWeek ni `src/shared/` ; jamais le vrai cloud dans les bancs ; ne pas ouvrir l'app réelle (synchro) ; données réelles en lecture seule.
+- Ne jamais afficher de secret (clés, tokens, URL iCal).
+- Le connecteur Vercel MCP renvoie 403/404 sur ce projet : lire les déploiements via `gh api repos/yoann735/My-Org/deployments`.
+- Dépôt `My-Org` PUBLIC. Un processus « sync auto » commite parfois tout seul.
+- Français ; commits conventionnels et push autonomes ; jamais de force push.
 <!-- PASSATION:FIN -->
 
 ## Historique des clôtures
+- 2026-11-07 16:35 – /goal environnement : tout vérifié (build, prod Ready, sauvegarde 07/11), rapport poussé ; restent CLI Vercel et migration 20261024 à vérifier.
 - 2026-11-02 11:11 – Cartes manquantes : suppressions volontaires, bouton « C'est moi… », cartes disparues reconnaissables (recto, cours) ; poussé, attente retour utilisateur.
 - 2026-10-31 20:55 – /goal : diagnostic des 12 flashcards manquantes (suppressions manuelles confirmées), alerte d'intégrité corrigée pour les suppressions volontaires, testée et poussée.
 - 2026-10-31 20:09 – Tableau masque choisi + espace deux lignes livrés, poussés ; attente test utilisateur sur vrai cours.
