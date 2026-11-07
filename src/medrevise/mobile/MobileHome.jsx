@@ -6,12 +6,13 @@
    Les fiches "schéma anatomique" (quiz visuel canvas) sont exclues : hors
    périmètre mobile (voir le plan validé).
    ============================================================ */
-import { Chiffre, useEnSynchro } from '../components/Chiffre.jsx';
+import { Chiffre, useEnSynchro, useEtatSynchro } from '../components/Chiffre.jsx';
+import { LigneEtatSynchro } from '../components/EtatSynchro.jsx';
 import { useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { index, dueToday, todayPlan, overdueByFiche, isFicheScheduled, carnetV1Questions, carnetV2Questions } from '../lib/planning.js';
 import { todayISO } from '../lib/sm2.js';
-import { matiereMeta, syncStatusLabel, DateActionModal, ConfirmModal, SyncIndicator } from '../components/ui.jsx';
+import { matiereMeta, DateActionModal, ConfirmModal, SyncIndicator } from '../components/ui.jsx';
 import { Tex } from '../components/Tex.jsx';
 import { exportBackup } from '../lib/backupExport.js';
 import { BoutonDiagnostic } from '../components/BoutonDiagnostic.jsx';
@@ -26,6 +27,7 @@ import { useModeCalendrier } from '../lib/emploiDuTemps.js';
 const stripCloze = (s) => (s || '').replace(/\{\{([^{}]+)\}\}/g, '$1');
 
 export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman, onOpenDessin = null, onStartSeanceFC = null, onOuvrirApprentissage = null }) {
+  const etatSynchro = useEtatSynchro(); // (07/11) même état que l'en-tête et Réglages
   const { db } = ctx;
   const enSynchro = useEnSynchro(); // (28/10) chiffres et « Commencer » attendent la fin de la synchro complète
   const ix = useMemo(() => index(db), [db]);
@@ -135,7 +137,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
         </div>
         <div className="mrm-header-actions">
           <button type="button" className="mrm-icon-btn" disabled={ctx.syncState?.status === 'syncing'}
-            onClick={async () => { await ctx.forceSync({ complet: true }); setSyncTick((t) => t + 1); }} aria-label="Forcer la synchro" title={syncStatusLabel(ctx.syncState)}>
+            onClick={async () => { await ctx.forceSync({ complet: true }); setSyncTick((t) => t + 1); }} aria-label="Forcer la synchro" title={(etatSynchro && etatSynchro.etat && etatSynchro.etat.libelle) || 'Forcer la synchro'}>
             <Icon name="refresh" size={18} className={ctx.syncState?.status === 'syncing' ? 'spin' : ''} />
           </button>
           <button type="button" className="mrm-icon-btn" onClick={ctx.toggleTheme} aria-label="Thème">
@@ -293,6 +295,7 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
           <div className="mrm-card">
             {/* MEME composant que Reglages desktop : l'empreinte affichée ici doit
                 être identique à celle de l'ordi quand les deux sont à jour. */}
+            <LigneEtatSynchro />
             <SyncIndicator compact refreshKey={syncTick} />
             <BoutonDiagnostic mobile />
           </div>

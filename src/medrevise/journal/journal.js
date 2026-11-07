@@ -6,7 +6,7 @@
      modifiée ; le journal a son propre canal, ./synchro.js, vers la table `medrevise_review_log`.
    Toute réponse à une flashcard est journalisée, interrupteur FSRS ON ou OFF.
    ============================================================ */
-import { get, set, values, keys, del, setMany, createStore } from 'idb-keyval';
+import { get, set, values, keys, del, setMany, entries, createStore } from 'idb-keyval';
 
 const S_JOURNAL = createStore('medrevise-review_log', 'v1');
 const S_ENVOI = createStore('medrevise-review_log_outbox', 'v1');
@@ -55,6 +55,19 @@ export async function entreesEnAttente() {
   const ids = await idsEnAttente();
   const out = [];
   for (const id of ids) { const e = await get(id, S_JOURNAL); if (e) out.push(e); else await del(id, S_ENVOI); }
+  return out;
+}
+/** (07/11) file d'envoi en LECTURE SEULE, pour la liste « N en attente » (lib/etatSynchro.js) :
+ *  contrairement à entreesEnAttente, ne retire RIEN (même une entrée orpheline reste, signalée).
+ *  [{ id, depuis, carte, note, orpheline }] */
+export async function fileEnvoiLecture() {
+  const out = [];
+  try {
+    for (const [id, v] of (await entries(S_ENVOI)) || []) {
+      const e = await get(id, S_JOURNAL);
+      out.push({ id: String(id), depuis: (v && v.depuis) || (e && e.reviewed_at) || null, carte: (e && e.card_id) || null, note: e ? e.rating : null, orpheline: !e });
+    }
+  } catch (e) { /* base indisponible : liste vide, rien n'est conclu de plus */ }
   return out;
 }
 export async function marquerEnvoyees(ids) { for (const id of ids) await del(id, S_ENVOI); prevenir(); }

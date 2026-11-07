@@ -148,6 +148,21 @@ export function retirerSiInchange(paires) {
   }));
 }
 
+/* (07/11, docs/compte-rendu-sauvegarde-et-statut-synchro.md) FILE OBSERVABLE, EN LECTURE : l'état de synchro unique
+   (lib/etatSynchro.js) se recalcule quand une file change (fin d'un vidage, réussi ou non) et affiche la raison du
+   dernier refus. Aucune écriture ici : on prévient, on retient le dernier message d'échec, c'est tout. */
+let dernierEchecEnvoiMsg = null; // { le, erreur: 'reseau'|'serveur', message } | null
+/** dernier échec d'envoi des enregistrements (null après un envoi confirmé) */
+export const dernierEchecEnvoi = () => dernierEchecEnvoiMsg;
+const abonnesFile = new Set();
+/** fn() appelée quand une file d'envoi (enregistrements ou fichiers) a pu changer */
+export function surChangementFile(fn) { abonnesFile.add(fn); return () => abonnesFile.delete(fn); }
+const prevenirFile = () => abonnesFile.forEach((fn) => { try { fn(); } catch (e) { /* écran démonté */ } });
+const noterEnvoi = (r) => {
+  dernierEchecEnvoiMsg = r && r.ok === false ? { le: new Date().toISOString(), erreur: r.erreur || 'serveur', message: String(r.message || '').slice(0, 160) || null } : null;
+  return r;
+};
+
 const abonnesProgression = new Set();
 /** Suit l'envoi de l'outbox : fn({ faits, total }) à chaque lot ; null quand c'est fini. */
 export function surProgressionEnvoi(fn) { abonnesProgression.add(fn); return () => abonnesProgression.delete(fn); }
@@ -215,7 +230,7 @@ async function flushPending({ depuisFermeture = false } = {}) {
         // explicitement — supabase-js NE REJETTE PAS sur un échec réseau (DNS,
         // offline, 5xx), il résout avec `{ error }` renseigné.
         const r = await pushRecords(lot.map(([, v]) => v));
-        if (!r.ok) return { ok: false, envoyes, restants: total - envoyes, erreur: r.erreur };
+        if (!r.ok) return noterEnvoi({ ok: false, envoyes, restants: total - envoyes, erreur: r.erreur, message: r.message });
         // NB : une entrée REJETÉE par la condition (updated_at pas plus récent que
         // le cloud) compte comme partie — c'est le comportement voulu. Elle a été
         // examinée par la base et volontairement écartée ; la garder dans l'outbox
@@ -226,12 +241,13 @@ async function flushPending({ depuisFermeture = false } = {}) {
       }
       const r = await flushIsoles(isoles);
       envoyes += r.envoyes;
-      return r.erreur ? { ok: false, envoyes, restants: total - envoyes, erreur: r.erreur } : { ok: true, envoyes, restants: 0 };
+      return noterEnvoi(r.erreur ? { ok: false, envoyes, restants: total - envoyes, erreur: r.erreur, message: r.message } : { ok: true, envoyes, restants: 0 });
     } catch (e) {
-      return { ok: false, envoyes, restants: total - envoyes, erreur: natureErreur(e) }; // IndexedDB ou réseau : tout reste
+      return noterEnvoi({ ok: false, envoyes, restants: total - envoyes, erreur: natureErreur(e), message: String((e && e.message) || e) }); // IndexedDB ou réseau : tout reste
     } finally {
       flushing = null;
       if (total > TAILLE_LOT) publierProgression(null);
+      prevenirFile();
     }
   })();
   return flushing;
@@ -239,12 +255,12 @@ async function flushPending({ depuisFermeture = false } = {}) {
 
 /** Stores isolés : un appel par enregistrement ; seul ce qui est confirmé quitte l'outbox. */
 async function flushIsoles(isoles) {
-  let envoyes = 0, erreur = null;
+  let envoyes = 0, erreur = null, message = null;
   for (const paire of isoles) {
     const r = await pushRecords([paire[1]]);
-    if (r.ok) { await retirerSiInchange([paire]).catch(() => {}); envoyes++; } else erreur = erreur || r.erreur; // reste dans l'outbox
+    if (r.ok) { await retirerSiInchange([paire]).catch(() => {}); envoyes++; } else { erreur = erreur || r.erreur; message = message || r.message; } // reste dans l'outbox
   }
-  return { envoyes, erreur };
+  return { envoyes, erreur, message };
 }
 
 /** Nombre d'écritures locales encore EN ATTENTE d'envoi. Lecture seule, sert à
@@ -703,6 +719,7 @@ export function flushBlobOutbox({ inclureBloques = false, depuisFermeture = fals
     const reste = ((await entries(blobOutboxStore).catch(() => [])) || []).filter(([, v]) => !v.bloque);
     if (reste.length) scheduleBlobRetry(echecs > 0);
     else { clearTimeout(blobRetryTimer); blobRetryStep = 0; }
+    if (envoyes || echecs) prevenirFile();
     return { envoyes, echecs, restants: reste.length };
   })().finally(() => { blobFlushing = null; });
   return blobFlushing;

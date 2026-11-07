@@ -21,29 +21,34 @@ export function Chiffre({ children, className = '' }) {
   return <span className={'chiffre-attente ' + className} role="status" aria-label="Synchronisation en cours" data-chiffre="attente" />;
 }
 
-/** bandeau discret, en haut au centre ; « À jour » disparaît en fondu */
-export function BandeauSynchro({ porte, onReessayer, mobile = false }) {
+/** bandeau discret, en haut au centre ; « À jour » disparaît en fondu.
+ *  (07/11) Le texte vient de l'ÉTAT DE SYNCHRO UNIQUE (lib/etatSynchro.js, le même que Réglages) : « À jour » seulement
+ *  si la passe est confirmée ET qu'aucun élément n'attend ; sinon « N en attente » reste affiché. */
+export function BandeauSynchro({ porte, etat, onReessayer, mobile = false }) {
   const [visible, setVisible] = useState(true);
   const [fondu, setFondu] = useState(false);
+  const code = etat ? etat.code : porte && porte.phase;
   useEffect(() => {
     setVisible(true); setFondu(false);
-    if (!porte || porte.phase !== 'ajour') return undefined;
+    if (code !== 'ajour') return undefined;
     const t1 = setTimeout(() => setFondu(true), 2200);
     const t2 = setTimeout(() => setVisible(false), 2900);
     return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [porte && porte.phase, porte && porte.at]); // eslint-disable-line react-hooks/exhaustive-deps
-  const texte = libelleBandeau(porte);
+  }, [code, porte && porte.at, etat && etat.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  const texte = etat ? etat.libelle : libelleBandeau(porte);
   if (!texte || !visible) return null;
-  const phase = porte.phase;
   return (
-    <div className={'bandeau-synchro ' + phase + (fondu ? ' fondu' : '') + (mobile ? ' mobile' : '')} role="status" aria-live="polite" data-bandeau-synchro={phase}>
-      {phase === 'attente' && <span className="chiffre-attente seul" aria-hidden="true" />}
-      {phase === 'ajour' && <Icon name="check" size={13} />}
-      {(phase === 'horsligne' || phase === 'incomplet' || phase === 'echec') && <Icon name="alert" size={13} />}
+    <div className={'bandeau-synchro ' + code + (fondu ? ' fondu' : '') + (mobile ? ' mobile' : '')} role="status" aria-live="polite" data-bandeau-synchro={code} data-en-attente={etat ? etat.n : undefined}>
+      {code === 'attente' && <span className="chiffre-attente seul" aria-hidden="true" />}
+      {code === 'ajour' && <Icon name="check" size={13} />}
+      {(code === 'horsligne' || code === 'incomplet' || code === 'echec' || code === 'enattente') && <Icon name="alert" size={13} />}
       <span data-bandeau-texte>{texte}</span>
-      {(phase === 'incomplet' || phase === 'echec') && onReessayer && (
+      {(code === 'incomplet' || code === 'echec') && onReessayer && (
         <button type="button" className="linklike bandeau-reessayer" onClick={onReessayer} data-act="reessayer-synchro">Réessayer</button>
       )}
     </div>
   );
 }
+
+/** l'état de synchro unique, pour Réglages / accueil mobile */
+export const useEtatSynchro = () => useContext(SynchroContext);

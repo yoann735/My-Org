@@ -22,6 +22,8 @@ html[data-app-actif="medrevise"][data-mr-synchro="attente"] .tnum:not(.sfc .tnum
 .bandeau-synchro.horsligne, .bandeau-synchro.incomplet { color: var(--text); border-color: color-mix(in srgb, var(--warn, #d9822b) 45%, var(--border)); }
 .bandeau-synchro.horsligne svg, .bandeau-synchro.incomplet svg { color: var(--warn, #d9822b); }
 /* (29/10) le serveur a répondu par une erreur : ce n'est pas « hors ligne » */
+.bandeau-synchro.enattente { color: var(--text); border-color: color-mix(in srgb, var(--warn, #d9822b) 45%, var(--border)); }
+.bandeau-synchro.enattente svg { color: var(--warn, #d9822b); }
 .bandeau-synchro.echec { color: var(--text); border-color: color-mix(in srgb, var(--crit, #d64545) 45%, var(--border)); }
 .bandeau-synchro.echec svg { color: var(--crit, #d64545); }
 .bandeau-synchro.attente span[data-bandeau-texte] { font-variant-numeric: tabular-nums; }
@@ -30,3 +32,19 @@ html[data-app-actif="medrevise"][data-mr-synchro="attente"] .tnum:not(.sfc .tnum
 .bandeau-reessayer { font-size: 12.5px; font-weight: 700; margin-left: 2px; pointer-events: auto; }
 /* boutons « Lancer » désactivés le temps de la synchro : l'état se voit */
 html[data-app-actif="medrevise"][data-mr-synchro="attente"] .btn.primary:disabled { opacity: .5; cursor: default; }
+
+/* (07/11) Réglages : état de synchro unique + liste des éléments en attente (lecture seule) */
+.etat-synchro { margin-bottom: 12px; }
+.etat-synchro-ligne { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.etat-synchro-ligne .point { width: 9px; height: 9px; border-radius: 50%; background: var(--text-2); flex: none; }
+.etat-synchro-ligne.ajour .point { background: var(--ok, #2f9e6e); }
+.etat-synchro-ligne.enattente .point, .etat-synchro-ligne.horsligne .point, .etat-synchro-ligne.incomplet .point { background: var(--warn, #d9822b); }
+.etat-synchro-ligne.echec .point { background: var(--crit, #d64545); }
+.etat-synchro-ouvrir { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px; margin: 0; background: none; border: 0; color: inherit; font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
+.etat-synchro-ouvrir:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.etat-synchro-liste { list-style: none; margin: 6px 0 0; padding: 0; border: 1px solid var(--border); border-radius: 10px; max-height: 320px; overflow-y: auto; }
+.etat-synchro-liste li { padding: 8px 10px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.35; }
+.etat-synchro-liste li:first-child { border-top: 0; }
+.etat-synchro-liste .genre { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); margin-right: 6px; }
+.etat-synchro-liste .titre { font-weight: 600; overflow-wrap: anywhere; }
+.etat-synchro-liste .meta { color: var(--text-2); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }

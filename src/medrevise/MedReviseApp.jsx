@@ -4,7 +4,7 @@
    shared "univers" theme (passed from the top-level App).
    ============================================================ */
 import { Infobulles } from './components/Infobulles.jsx';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../shared/Icon.jsx';
 import { installerRetablirChamps } from './lib/journalAnnuler.js';
 
@@ -45,6 +45,10 @@ import { marquerSyncReussie, derniereSyncReussie, etatLocal, etatCloud, lireCurs
 import { outboxCount, dernierEchecCloud, surProgressionEnvoi, flushOutbox } from './data/sync.js';
 import { SYNC_ENABLED } from './data/supabaseClient.js';
 import { creerPorte } from './lib/synchroAffichage.js';
+import { collecterEnAttente, calculerEtatSynchro, surEnAttente, enAttenteActuel } from './lib/etatSynchro.js';
+import { surChangementFile } from './data/sync.js';
+import { surChangementJournal } from './journal/journal.js';
+import { lancerRattrapageSauvegarde } from './sauvegarde/statutServeur.js';
 import { SynchroContext, BandeauSynchro } from './components/Chiffre.jsx';
 import { todayISO, startAdaptive } from './lib/sm2.js';
 import { addDays, unstartedQuestionsFor, unstartedSchemasFor, dueOnFor, linkedV2Questions } from './lib/planning.js';
@@ -338,6 +342,24 @@ export default function MedReviseApp({ themeApi, goHub }) {
   // (29/10) gros envoi de la file : « Synchronisation… 1200 / 4469 » dans le bandeau
   useEffect(() => surProgressionEnvoi((p) => { if (porteRef.current) porteRef.current.progression(p); }), []);
   useEffect(() => () => { if (porteRef.current) porteRef.current.arreter(); }, []);
+  /* (07/11, docs/compte-rendu-sauvegarde-et-statut-synchro.md) ÉTAT DE SYNCHRO UNIQUE : la liste des éléments en
+     attente est recalculée APRÈS chaque passe (avec la liste du bucket) et à chaque changement d'une file (vidage
+     réussi ou non, réponse journalisée, réseau). L'en-tête et Réglages lisent le MÊME calcul (lib/etatSynchro.js). */
+  const [enAttente, setEnAttente] = useState(enAttenteActuel());
+  useEffect(() => {
+    if (!SYNC_ENABLED) return undefined;
+    let t = null;
+    const local = () => { clearTimeout(t); t = setTimeout(() => { collecterEnAttente().catch(() => {}); }, 300); };
+    const offs = [surEnAttente(setEnAttente), surChangementFile(local), surChangementJournal(local)];
+    window.addEventListener('online', local); window.addEventListener('offline', local);
+    return () => { clearTimeout(t); offs.forEach((f) => f()); window.removeEventListener('online', local); window.removeEventListener('offline', local); };
+  }, []);
+  useEffect(() => {
+    if (SYNC_ENABLED && porte.phase !== 'attente') collecterEnAttente({ avecCloud: porte.phase === 'ajour' || porte.phase === 'incomplet' }).catch(() => {});
+  }, [porte.phase, porte.at]);
+  const etatSynchro = useMemo(() => calculerEtatSynchro(porte, enAttente), [porte, enAttente]);
+  const valeurSynchro = useMemo(() => ({ ...porte, etat: etatSynchro, relancer: (o) => (porteRef.current ? porteRef.current.lancer(o) : Promise.resolve(null)) }), [porte, etatSynchro]);
+
   // racine : les chiffres hors <Chiffre> (.tnum) attendent aussi (repli CSS, styles/synchro-affichage.css)
   useEffect(() => {
     document.documentElement.setAttribute('data-mr-synchro', porte.phase);
@@ -355,6 +377,9 @@ export default function MedReviseApp({ themeApi, goHub }) {
       lancerControle().catch(() => {});
       rafraichirStatutServeur().catch(() => {});
       copierDansDossier().catch(() => {});
+      /* (07/11) RATTRAPAGE DE LA COPIE GITHUB : le serveur vérifie lui-même la date de la dernière copie réussie et
+         ne lance la copie (même code que le cron) que si elle a plus de 24 h. Silencieux, jamais attendu. */
+      lancerRattrapageSauvegarde().then((r) => { if (r && r.action === 'lancee') rafraichirStatutServeur().catch(() => {}); }).catch(() => {});
     }, 800);
   })(); }, [forceSync, reload]);
 
@@ -999,8 +1024,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
       <button type="button" onClick={() => setAvisRetire(null)} aria-label="Fermer"><Icon name="x" size={12} /></button>
     </div>
   );
-  const bandeau = <BandeauSynchro porte={porte} onReessayer={lancerPorte} mobile={isMobile} />;
-  if (isMobile) return <SynchroContext.Provider value={porte}><MobileApp ctx={ctx} />{bandeau}<IndicateurTranscription />{avis}<Infobulles /></SynchroContext.Provider>;
+  const bandeau = <BandeauSynchro porte={porte} etat={etatSynchro} onReessayer={lancerPorte} mobile={isMobile} />;
+  if (isMobile) return <SynchroContext.Provider value={valeurSynchro}><MobileApp ctx={ctx} />{bandeau}<IndicateurTranscription />{avis}<Infobulles /></SynchroContext.Provider>;
 
   // OCR des PDF image (docs/compte-rendu-ocr.md) : démarré avec le shell bureau,
   // une seule fois (reprise des couches incomplètes, traitement en masse initial)
@@ -1011,7 +1036,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     /* data-app : marqueur de portée posé à l'ÉTAPE 3. Le fichier de thème est
        global depuis l'étape 1 ; les ANIMATIONS, elles, sont scopées sous cet
        attribut — MealWeek ne peut donc pas les recevoir, par construction. */
-    <SynchroContext.Provider value={porte}>
+    <SynchroContext.Provider value={valeurSynchro}>
     <div className="app" data-app="medrevise">
       <StudySidebar current={screen} onNav={setScreen} expanded={expanded} onToggle={() => setExpanded((v) => !v)} onHub={goHub} ctx={ctx}
         />

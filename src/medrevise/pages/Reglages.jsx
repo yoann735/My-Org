@@ -17,6 +17,7 @@ import { reglagesFC } from '../lib/apprentissageFC.js';
 import { ReglagesFSRS } from '../components/ReglagesFSRS.jsx';
 import { SynchroJournal } from '../components/SynchroJournal.jsx';
 import { CarteSauvegardes } from '../components/FiletSecurite.jsx';
+import { LigneEtatSynchro } from '../components/EtatSynchro.jsx';
 import { ExportFlashcards } from '../components/ExportFlashcards.jsx';
 import { estExportable } from '../lib/exportFlashcards.js';
 import { AllPromptsModal } from '../components/CoursePromptsMenu.jsx';
@@ -448,7 +449,10 @@ export function Reglages({ ctx }) {
         <div className="reglages-credits"><CarteCredits deplieeParDefaut /></div>
         <CarteOcrReglages />
         <Card title="Synchronisation" icon="refresh">
-          <div className="hint" style={{ marginBottom: 12 }}>{syncStatusLabel(ctx.syncState)}</div>
+          {/* (07/11) l'état de synchro UNIQUE, le même que l'en-tête (lib/etatSynchro.js) ; « N en attente » se déplie.
+              syncStatusLabel ne sert plus qu'à signaler le mode dégradé (fonction medrevise_push absente). */}
+          <LigneEtatSynchro />
+          {ctx.syncState?.degraded && <div className="hint" style={{ marginBottom: 12, color: 'var(--warn)' }}>{syncStatusLabel(ctx.syncState)}</div>}
           <button type="button" className="btn" disabled={ctx.syncState?.status === 'syncing'} onClick={async () => { await ctx.forceSync({ complet: true }); setSyncTick((t) => t + 1); }}>
             <Icon name="refresh" size={15} /> {ctx.syncState?.status === 'syncing' ? 'Synchronisation…' : 'Forcer la synchro'}
           </button>

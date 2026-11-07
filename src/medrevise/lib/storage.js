@@ -304,6 +304,21 @@ export async function putBlobAt(id, blob) {
    (anciennes versions d'un HTML auto-sauvegardé) ne sont pas envoyés : inutile de
    remplir le bucket de fichiers que plus rien n'affiche.
    ============================================================ */
+/* (07/11, docs/compte-rendu-sauvegarde-et-statut-synchro.md) FORME EXACTE D'UN ID DE BLOB. L'ancien test
+   (`^b[0-9a-z]{6,}$` dans un champ `…Id`) prenait pour un fichier l'id d'un AUTRE objet qui commence lui aussi par
+   « b » : `srcId: "bfc…"` des cartes « Boîte → Flashcard » (genId('bfc')), et potentiellement `bc…`/`bi…`/`bf…` du
+   tableau blanc. Résultat constaté : 19 « fichiers ni ici ni au cloud » inexistants, donc « Pas à jour — 19 éléments
+   à synchroniser » dans Réglages alors que l'en-tête disait « À jour ». Un id de blob vient de genId('b') :
+   « b » + Date.now() en base 36 (8 caractères jusqu'en 2059) + au plus 4 caractères aléatoires. On exige donc que les
+   8 caractères après le « b » se lisent comme une date plausible (2020 → demain) : « fcmvz7fo » (bfc…) ou
+   « cmvz7fo3 » (bc…) donnent des dates absurdes et sont écartés. Vérifié sur les 514 fichiers du bucket : tous passent. */
+const DEBUT_IDS = Date.UTC(2020, 0, 1);
+export function estIdDeBlob(v) {
+  if (typeof v !== 'string' || !/^b[0-9a-z]{9,12}$/.test(v)) return false;
+  const t = parseInt(v.slice(1, 9), 36);
+  return t >= DEBUT_IDS && t <= Date.now() + 864e5;
+}
+
 async function referencedBlobIds() {
   const locaux = new Set((await keys(S.blobs)) || []);
   const refs = new Set();
@@ -314,7 +329,7 @@ async function referencedBlobIds() {
   let courant = null;
   const walk = (v, key) => {
     if (typeof v === 'string') {
-      if (locaux.has(v) || (/Id$/.test(key || '') && /^b[0-9a-z]{6,}$/.test(v))) {
+      if (locaux.has(v) || (/Id$/.test(key || '') && estIdDeBlob(v))) {
         refs.add(v);
         if (courant && !proprietaires.has(v)) proprietaires.set(v, { ...courant, champ: key || null });
       }
@@ -363,6 +378,7 @@ export async function etatBlobs() {
     introuvablesDetail: introuvables.map((id) => ({ id, ...(proprietaires.get(id) || {}) })),
     enAttente: file.filter((e) => !e.bloque).length,
     bloques: file.filter((e) => e.bloque),
+    proprietaires, // (07/11) qui référence chaque fichier : titre lisible dans la liste « N en attente »
   };
 }
 

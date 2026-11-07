@@ -3,7 +3,8 @@
    etudes.css classes for visual fidelity, but is wired to our real
    data model (matiere = {id,nom,couleur,icon}, fiche, questions).
    ============================================================ */
-import { Chiffre, useEnSynchro } from './Chiffre.jsx';
+import { Chiffre, useEnSynchro, SynchroContext } from './Chiffre.jsx';
+import { collecterEnAttente } from '../lib/etatSynchro.js';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, MeasuringStrategy, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
@@ -202,11 +203,20 @@ export function SyncIndicator({ compact = false, refreshKey = 0 }) {
   const [enCours, setEnCours] = useState(false);
   const [detail, setDetail] = useState(false);
 
+  /* (07/11, docs/compte-rendu-sauvegarde-et-statut-synchro.md) Cet indicateur ne décide PLUS du statut : la ligne
+     d'état unique (components/EtatSynchro.jsx, même calcul que l'en-tête) le fait. Il reste le DIAGNOSTIC de
+     l'empreinte (comparable entre appareils). Après sa vérification, la liste des éléments en attente est relue
+     (bucket compris) ; un écart d'enregistrements relance la passe de synchro, qui tranchera pour tout le monde. */
+  const synchro = useContext(SynchroContext);
+  const relancerRef = useRef(null); relancerRef.current = synchro && synchro.relancer;
   const verifier = useCallback(async () => {
     setEnCours(true);
-    try { setEtat(await comparerAuCloud()); }
+    let r = null;
+    try { r = await comparerAuCloud(); setEtat(r); }
     catch (e) { setEtat({ statut: 'erreur', message: String((e && e.message) || e) }); }
     setEnCours(false);
+    if (r && r.statut === 'ecart' && (r.ecarts || r.enAttente) && relancerRef.current) relancerRef.current();
+    else if (r && r.statut !== 'disabled') collecterEnAttente({ avecCloud: true }).catch(() => {});
   }, []);
 
   useEffect(() => { verifier(); }, [verifier, refreshKey]);
@@ -228,16 +238,15 @@ export function SyncIndicator({ compact = false, refreshKey = 0 }) {
       return { txt: '⚠️ Cloud injoignable — état non vérifiable', couleur: 'var(--warn, #d08a2a)' };
     }
     if (etat.statut === 'erreur') return { txt: '⚠️ Vérification impossible : ' + etat.message, couleur: 'var(--crit)' };
-    if (etat.statut === 'ajour') return { txt: '✅ À jour avec le cloud', couleur: 'var(--ok, #3fae7a)' };
-    const n = etat.ecarts + etat.enAttente + (etat.fichiersEnSouffrance || 0);
-    return { txt: `⚠️ Pas à jour — ${n} élément${n > 1 ? 's' : ''} à synchroniser`, couleur: 'var(--warn, #d08a2a)' };
+    // 'ajour' / 'ecart' : le statut est dit par la ligne d'état unique, pas ici (un seul calcul)
+    return null;
   };
   const b = bandeau();
   const utile = etat && (etat.statut === 'ajour' || etat.statut === 'ecart');
 
   return (
     <div style={{ marginTop: 10 }}>
-      <div style={{ fontWeight: 600, color: b.couleur, marginBottom: utile ? 8 : 0 }}>{b.txt}</div>
+      {b && <div style={{ fontWeight: 600, color: b.couleur, marginBottom: utile ? 8 : 0 }}>{b.txt}</div>}
 
       {utile && (
         <>
@@ -269,19 +278,11 @@ export function SyncIndicator({ compact = false, refreshKey = 0 }) {
               : `À rapatrier : ${etat.aTirer} · à envoyer : ${etat.aPousser} · versions différentes : ${etat.divergents}`}
           </div>
           <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 3 }}>
-            En attente d'envoi : <strong>{etat.enAttente}</strong>
-            {quand ? ` · dernière synchro réussie : ${quand}` : ' · aucune synchro réussie enregistrée'}
+            {quand ? `Dernière synchro réussie : ${quand}` : 'Aucune synchro réussie enregistrée'}
           </div>
           {etat.blobs && (
             <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 3 }}>
               Fichiers (PDF, cours, images) au cloud : <strong>{etat.blobs.auCloud} / {etat.blobs.references}</strong>
-              {etat.fichiersEnSouffrance > 0 && (
-                <span style={{ color: 'var(--warn, #d08a2a)' }}>{blobsLabel({
-                  enAttente: etat.blobs.enAttente + etat.blobs.aEnvoyer.length,
-                  bloques: etat.blobs.bloques.length,
-                  introuvables: etat.blobs.introuvables.length,
-                })}</span>
-              )}
               {/* LE fichier manquant, nommé : quelle fiche, quel document — pour savoir
                   ce que c'est avant de décider (voir docs/fichier-manquant.md). */}
               {(etat.blobs.introuvablesDetail || []).map((d) => (
