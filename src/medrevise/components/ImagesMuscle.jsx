@@ -14,15 +14,13 @@
    le composant unique components/ZoneImage.jsx (VignetteImage, ZoneImage).
    ============================================================ */
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Icon } from '../../shared/Icon.jsx';
 import { ocrImage } from '../ocr/ocrImage.js';
 import { VignetteImage, ZoneImage, useUrlImage } from './ZoneImage.jsx';
+import { Visionneuse } from './Visionneuse.jsx';
 import '../../styles/muscle-images.css';
 
 export { useUrlImage };
-
-const stop = (e) => e.stopPropagation();
 
 /** masques (zones en fractions de l'image) posés sur l'image */
 function Masques({ masques, caches }) {
@@ -53,11 +51,7 @@ export function VisionneuseImage({ imageId, url, masques = null, titre = 'Image'
       .catch(() => { if (vivant) setOcr({ erreur: true, mots: [] }); });
     return () => { vivant = false; };
   }, [imageId, url]);
-  useEffect(() => {
-    const k = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onFermer(); } };
-    window.addEventListener('keydown', k, true);
-    return () => window.removeEventListener('keydown', k, true);
-  }, [onFermer]);
+  // (07/11) Échap, zoom, fermeture : la visionneuse unique (components/Visionneuse.jsx)
   useEffect(() => {
     const el = cadre.current;
     if (!el) return undefined;
@@ -74,35 +68,32 @@ export function VisionneuseImage({ imageId, url, masques = null, titre = 'Image'
     try { await navigator.clipboard.writeText([...lignes.values()].map((l) => l.join(' ')).join('\n')); setCopie(true); setTimeout(() => setCopie(false), 1600); } catch (e) { /* refus */ }
   };
   const caches = !!(masques && masques.length) && !revele;
-  return createPortal(
-    <div className="mui-visionneuse" role="dialog" aria-label={titre} onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onFermer(); }}
-      onPointerDown={stop} onMouseDown={stop}>
-      <div className="mui-v-barre">
-        <b className="mui-v-titre">{titre}</b>
-        <span style={{ flex: 1 }} />
-        <button type="button" className={'btn sm' + (texte ? ' primary' : '')} aria-pressed={texte} onClick={() => setTexte((v) => !v)}
-          disabled={!mots.length} title={ocr ? (mots.length ? 'Afficher le texte reconnu (sélectionnable)' : 'Aucun texte reconnu') : 'Lecture du texte…'}>
-          <Icon name="search" size={13} /> {ocr ? (mots.length ? 'Texte' : 'Aucun texte') : 'Lecture…'}
-        </button>
-        {mots.length > 0 && <button type="button" className="btn sm" onClick={copier}><Icon name="copy" size={13} /> {copie ? 'Copié ✓' : 'Copier le texte'}</button>}
-        {masques && masques.length > 0 && <button type="button" className="btn sm" onClick={() => setRevele((v) => !v)}>{revele ? 'Remasquer' : `Révéler (${masques.length})`}</button>}
-        <button type="button" className="icon-btn sm" onClick={onFermer} aria-label="Fermer" title="Fermer (Échap)"><Icon name="x" size={15} /></button>
+  // la visionneuse UNIQUE (components/Visionneuse.jsx) ; ses outils propres en plus : texte reconnu, copie, mots masqués.
+  // En mode « Texte » (sélection du texte), les gestes de zoom sont coupés.
+  const outils = (
+    <>
+      <button type="button" className={'btn sm' + (texte ? ' primary' : '')} aria-pressed={texte} onClick={() => setTexte((v) => !v)}
+        disabled={!mots.length} title={ocr ? (mots.length ? 'Afficher le texte reconnu (sélectionnable)' : 'Aucun texte reconnu') : 'Lecture du texte…'}>
+        <Icon name="search" size={13} /> {ocr ? (mots.length ? 'Texte' : 'Aucun texte') : 'Lecture…'}
+      </button>
+      {mots.length > 0 && <button type="button" className="btn sm" onClick={copier} title="Copier le texte reconnu"><Icon name="copy" size={13} /> {copie ? 'Copié ✓' : 'Copier le texte'}</button>}
+      {masques && masques.length > 0 && <button type="button" className="btn sm" onClick={() => setRevele((v) => !v)} title={revele ? 'Recouvrir les mots masqués' : 'Montrer les mots masqués'}>{revele ? 'Remasquer' : `Révéler (${masques.length})`}</button>}
+    </>
+  );
+  return (
+    <Visionneuse titre={titre} onFermer={onFermer} outils={outils} gestes={!texte}>
+      <div ref={cadre} className={'mui-v-cadre' + (texte ? ' texte' : '')}>
+        <img src={url} alt="" draggable={false} />
+        <Masques masques={masques} caches={caches} />
+        {texte && (
+          <div className="mui-v-mots">
+            {mots.map((m, i) => (
+              <span key={i} style={{ left: m.x * 100 + '%', top: m.y * 100 + '%', width: m.w * 100 + '%', height: m.h * 100 + '%', fontSize: Math.max(6, m.h * hauteur * 0.82) + 'px' }}>{m.t + ' '}</span>
+            ))}
+          </div>
+        )}
       </div>
-      <div className="mui-v-zone" onClick={(e) => { if (e.target === e.currentTarget) onFermer(); }}>
-        <div ref={cadre} className={'mui-v-cadre' + (texte ? ' texte' : '')}>
-          <img src={url} alt="" draggable={false} />
-          <Masques masques={masques} caches={caches} />
-          {texte && (
-            <div className="mui-v-mots">
-              {mots.map((m, i) => (
-                <span key={i} style={{ left: m.x * 100 + '%', top: m.y * 100 + '%', width: m.w * 100 + '%', height: m.h * 100 + '%', fontSize: Math.max(6, m.h * hauteur * 0.82) + 'px' }}>{m.t + ' '}</span>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body,
+    </Visionneuse>
   );
 }
 

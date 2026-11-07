@@ -29,7 +29,7 @@ export function VueAgrandie({ ctx, ids, id, onChanger, onFermer }) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target;
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-      if (document.querySelector('.cn-pop, .cn-feuille, .ac-fenetre')) return; // menu du carnet ouvert : il prend Échap
+      if (document.querySelector('.cn-pop, .cn-feuille, .ac-fenetre, .vz-fond')) return; // menu du carnet ouvert, ou image agrandie (07/11) : ils prennent Échap
       if (e.key === 'Escape') { e.preventDefault(); onFermer(); }
       else if (e.key === 'ArrowRight' && i >= 0 && i < ids.length - 1) { e.preventDefault(); onChanger(ids[i + 1]); }
       else if (e.key === 'ArrowLeft' && i > 0) { e.preventDefault(); onChanger(ids[i - 1]); }

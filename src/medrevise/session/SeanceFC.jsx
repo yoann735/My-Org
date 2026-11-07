@@ -315,7 +315,7 @@ export function FaceFC({ carte, cote, masquable = false }) {
   if (estMolecule(carte)) {
     return (
       <>
-      {image && <ImageFlashcard imageId={carte.imageId} maxH="min(220px, 28dvh)" className="mrm" />}
+      {image && <ImageFlashcard imageId={carte.imageId} maxH="min(220px, 28dvh)" className="mrm" agrandissable />}
       <ZoneDefilante className="sfc-zone sfc-molecule">
         <FaceMoleculeParesseuse carte={carte} cote={cote} />
         {cote !== 'recto' && carte.a_retenir && <div className="sfc-retenir"><strong>À retenir :</strong> <Tex>{carte.a_retenir}</Tex></div>}
@@ -348,9 +348,9 @@ export function FaceFC({ carte, cote, masquable = false }) {
   }
   return (
     <>
-      {image && <ImageFlashcard imageId={carte.imageId} maxH="min(220px, 28dvh)" className="mrm" />}
+      {image && <ImageFlashcard imageId={carte.imageId} maxH="min(220px, 28dvh)" className="mrm" agrandissable />}
       <ZoneDefilante className={'sfc-zone' + (long ? ' long' : '')}>
-        {occ && <OcclusionView occ={occ} revele={montrerVerso} maxH={260} />}
+        {occ && <OcclusionView occ={occ} revele={montrerVerso} maxH={260} agrandissable />}
         {montrerRecto && <div className="sfc-recto">{recto}</div>}
         {cote === 'deux' && <div className="sfc-sep" />}
         {montrerVerso && !(occ && carte.versoAuto) && !(elements && !String(carte.verso || '').trim()) && <div className="sfc-verso">{verso}</div>}

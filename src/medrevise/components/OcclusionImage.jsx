@@ -29,6 +29,7 @@ import { cleanCoche, appendItemsToFiche, themeFlashcardsDeFiche } from '../lib/i
 import { toInternalItem } from '../lib/adapter.js';
 import { imageDuPressePapier, texteDuPressePapier } from '../lib/collerImage.js';
 import { MasquerMots } from './MasquerMots.jsx';
+import { useAgrandir } from './Visionneuse.jsx';
 
 export const RECTO_DEFAUT = 'Que cachent les masques ?';
 const COULEUR_MASQUE = '#8B6FE8';
@@ -53,8 +54,16 @@ function useBlobUrl(imageId) {
  * L'image et ses encarts, recto (`revele=false` : masques opaques) ou verso
  * (`revele=true` : masques en contour + réponses). `maxH` borne la hauteur (px).
  */
-export function OcclusionView({ occ, revele = false, maxH = 340, onClickImage }) {
+export function OcclusionView({ occ, revele = false, maxH = 340, onClickImage, agrandissable = false }) {
   const url = useBlobUrl(occ && occ.imageId);
+  // (07/11) écrans de révision : un clic / tap ouvre la visionneuse (components/Visionneuse.jsx) avec l'image DANS L'ÉTAT
+  // AFFICHÉ (masques opaques au recto, réponses au verso) — rien n'est révélé, la carte ne se retourne pas
+  const [agrandir, visionneuse] = useAgrandir({ actif: agrandissable && !!(occ && occ.imageId), titre: 'Image à masques',
+    rendu: () => (
+      <div className="vz-occ" style={{ width: `min(100vw, calc(100dvh * ${(occ.imageW || 4)} / ${(occ.imageH || 3)}))` }}>
+        <OcclusionView occ={occ} revele={revele} maxH={100000} />
+      </div>
+    ) });
   if (!occ || !occ.imageId) return null;
   const w = occ.imageW || 4, h = occ.imageH || 3;
   const coches = occ.coches || [];
@@ -66,7 +75,7 @@ export function OcclusionView({ occ, revele = false, maxH = 340, onClickImage })
   // largeur telle que la hauteur ne dépasse pas maxH, sans jamais déborder du conteneur
   const largeurMax = Math.round((maxH * w) / h);
   return (
-    <div className="occ-view" style={{ width: '100%', maxWidth: largeurMax, aspectRatio: `${w} / ${h}` }} onClick={onClickImage}>
+    <div className="occ-view" style={{ width: '100%', maxWidth: largeurMax, aspectRatio: `${w} / ${h}` }} onClick={onClickImage} {...agrandir}>
       {url ? <img src={url} alt="" draggable={false} /> : <div className="occ-ph"><Icon name="image" size={26} /></div>}
       <ZonesLayer coches={zones} />
       <svg className="occ-traits" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -86,6 +95,7 @@ export function OcclusionView({ occ, revele = false, maxH = 340, onClickImage })
           ? <span key={c.id} className="occ-reponse" style={{ left: p.x * 100 + '%', top: p.y * 100 + '%', borderColor: c.couleur || COULEUR_MASQUE }}>{c.texte}</span>
           : null;
       })}
+      {visionneuse}
     </div>
   );
 }

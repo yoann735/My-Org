@@ -487,7 +487,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
             {molecule
               ? <>{imageAuRecto(item) && <AnatImage imageId={item.imageId} compact />}<FaceMoleculeParesseuse carte={item} cote="recto" /></>
               : occ
-              ? <div className="ff-occ"><OcclusionView occ={occ} /><div className="ff-imgq"><Tex>{item.recto}</Tex></div></div>
+              ? <div className="ff-occ"><OcclusionView occ={occ} agrandissable /><div className="ff-imgq"><Tex>{item.recto}</Tex></div></div>
               : imageAuRecto(item)
               ? <div className="ff-imgwrap"><AnatImage imageId={item.imageId} compact /><div className="ff-imgq">{cloze ? <ClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div></div>
               : <div className="ff-text">{cloze ? <ClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div>}
@@ -512,7 +512,7 @@ function ClassicFlashCard({ item, meta, cloze, flipped, setFlipped, onRate, canP
               : muscle
               ? <><div className="mu-titre"><Tex>{item.recto}</Tex></div><ImageGeneraleMuscle item={item} face="verso" /><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>
               : occ
-              ? <div className="ff-occ"><OcclusionView occ={occ} revele />{!item.versoAuto && <div className="ff-imgq"><Tex leger={item.versoFormat === 'leger'}>{item.verso}</Tex></div>}</div>
+              ? <div className="ff-occ"><OcclusionView occ={occ} revele agrandissable />{!item.versoAuto && <div className="ff-imgq"><Tex leger={item.versoFormat === 'leger'}>{item.verso}</Tex></div>}</div>
               : imageAuVerso(item)
               // image au verso (ou aux deux faces) : flashcard texte avec image, voir components/FlashcardImage.jsx
               ? <div className="ff-imgwrap"><AnatImage imageId={item.imageId} compact /><div className="ff-imgq">{cloze ? <ClozeVerso parts={versoParts} /> : <Tex leger={item.versoFormat === 'leger'}>{item.verso}</Tex>}</div></div>

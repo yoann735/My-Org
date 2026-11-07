@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { blobURL } from '../lib/storage.js';
 import { ZoneImage } from './ZoneImage.jsx';
+import { useAgrandir } from './Visionneuse.jsx';
 
 export const PLACES_IMAGE = [
   { id: 'recto', label: 'Recto' },
@@ -30,19 +31,26 @@ export function placeImage(item) {
 export const imageAuRecto = (item) => ['recto', 'deux'].includes(placeImage(item));
 export const imageAuVerso = (item) => ['verso', 'deux'].includes(placeImage(item));
 
-/** l'image elle-même (blob → URL objet, libérée au démontage). */
-export function ImageFlashcard({ imageId, maxH = 240, className = '' }) {
+/** l'image elle-même (blob → URL objet, libérée au démontage).
+ *  (07/11) `agrandissable` (écrans de révision) : un clic / tap l'ouvre en plein écran (components/Visionneuse.jsx)
+ *  SANS retourner la carte. */
+export function ImageFlashcard({ imageId, maxH = 240, className = '', agrandissable = false }) {
   const [url, setUrl] = useState(null);
   useEffect(() => {
     let vivant = true; let u = null;
     blobURL(imageId).then((x) => { u = x; if (vivant) setUrl(x); });
     return () => { vivant = false; if (u) URL.revokeObjectURL(u); };
   }, [imageId]);
+  const [agrandir, visionneuse] = useAgrandir({ actif: agrandissable && !!url, titre: 'Image de la carte',
+    rendu: () => <img className="vz-img" src={url} alt="" draggable={false} /> });
   if (!imageId) return null;
   return (
-    <div className={'fc-image ' + className} style={{ maxHeight: maxH }}>
-      {url ? <img src={url} alt="" style={{ maxHeight: maxH }} /> : <span className="fc-image-ph"><Icon name="image" size={22} /></span>}
-    </div>
+    <>
+      <div className={'fc-image ' + className} style={{ maxHeight: maxH }} {...agrandir}>
+        {url ? <img src={url} alt="" style={{ maxHeight: maxH }} /> : <span className="fc-image-ph"><Icon name="image" size={22} /></span>}
+      </div>
+      {visionneuse}
+    </>
   );
 }
 

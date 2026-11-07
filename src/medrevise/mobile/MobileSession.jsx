@@ -335,11 +335,11 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
     <div className="mrm-fc-classique">
       <div className="mrm-flash-scene">
         <button type="button" className={'mrm-flash-card' + (image ? ' avec-image' : '') + (!erreurMode ? ' avec-actions' : '')} onClick={() => setFlipped((f) => !f)}>
-          {image && <ImageFlashcard imageId={item.imageId} maxH="min(220px, 30dvh)" className="mrm" />}
+          {image && <ImageFlashcard imageId={item.imageId} maxH="min(220px, 30dvh)" className="mrm" agrandissable />}
           {!flipped ? (
             <>
               <ZoneDefilante className={'mrm-flash-zone ' + lgRecto}>
-                {occ && <OcclusionView occ={item.occlusion} maxH={280} />}
+                {occ && <OcclusionView occ={item.occlusion} maxH={280} agrandissable />}
                 {molecule ? <FaceMoleculeParesseuse carte={item} cote="recto" /> : <div className="mrm-flash-text">{cloze ? <MobileClozeRecto segments={rectoSegments} /> : <Tex>{item.recto}</Tex>}</div>}
                 {muscle && <ImageGeneraleMuscle item={item} face="recto" />}
                 {item.indice && (showIndice
@@ -350,7 +350,7 @@ function MobileClassicFlashCard({ item, cloze, onRate, ctx, carnetPrompt, onCarn
             </>
           ) : (
             <ZoneDefilante className={'mrm-flash-zone ' + (muscle || tableau || elementsDe(item).length ? 'mrm-muscle' : lgVerso)}>
-              {occ && <OcclusionView occ={item.occlusion} revele maxH={280} />}
+              {occ && <OcclusionView occ={item.occlusion} revele maxH={280} agrandissable />}
               {molecule && <FaceMoleculeParesseuse carte={item} cote="verso" />}
               {muscle && <><div className="mu-titre"><Tex>{item.recto}</Tex></div><ImageGeneraleMuscle item={item} face="verso" /><TableauMuscle item={item} masquable={ligneParLigne(ctx)} /></>}
               {tableau && <><div className="mu-titre"><Tex>{item.recto}</Tex></div><TableauRevision item={item} /></>}

@@ -49,7 +49,7 @@ export function FaceCarte({ carte, cote, masquable = true }) {
   if (estMolecule(carte)) {
     return (
       <>
-        {image && <ImageFlashcard imageId={carte.imageId} maxH="min(220px, 28dvh)" className="mrm" />}
+        {image && <ImageFlashcard imageId={carte.imageId} maxH="min(220px, 28dvh)" className="mrm" agrandissable />}
         <ZoneDefilante className="sfc-zone sfc-molecule">
           <FaceMoleculeParesseuse carte={carte} cote={cote} />
           {retenir}
@@ -67,9 +67,9 @@ export function FaceCarte({ carte, cote, masquable = true }) {
   const long = elements || String((verso ? carte.verso : carte.recto) || '').length > 260;
   return (
     <>
-      {image && <ImageFlashcard imageId={carte.imageId} maxH="min(220px, 28dvh)" className="mrm" />}
+      {image && <ImageFlashcard imageId={carte.imageId} maxH="min(220px, 28dvh)" className="mrm" agrandissable />}
       <ZoneDefilante className={'sfc-zone' + (long ? ' long' : '')}>
-        {occ && <OcclusionView occ={occ} revele={verso} maxH={260} />}
+        {occ && <OcclusionView occ={occ} revele={verso} maxH={260} agrandissable />}
         {!verso && <div className="sfc-recto">{texte}</div>}
         {verso && !(occ && carte.versoAuto) && !(elements && !String(carte.verso || '').trim()) && <div className="sfc-verso">{texte}</div>}
         {elements && <ElementsVerso carte={carte} masquable={masquable} />}
