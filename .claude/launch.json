@@ -51,6 +51,32 @@
         "VITE_SUPABASE_ANON_KEY": "cle-de-test"
       },
       "port": 5300
+    },
+    {
+      "name": "faux-github",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/tests-sauvegarde-statut/faux-github.mjs"
+      ],
+      "port": 54398
+    },
+    {
+      "name": "medrevise-banc-sauvegarde",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "--port",
+        "5303",
+        "--strictPort"
+      ],
+      "env": {
+        "VITE_SUPABASE_URL": "http://localhost:54399",
+        "VITE_SUPABASE_ANON_KEY": "cle-de-test",
+        "GITHUB_API_URL": "http://localhost:54398",
+        "GITHUB_BACKUP_TOKEN": "jeton-de-test",
+        "GITHUB_BACKUP_REPO": "moi/medrevise-backups-test"
+      },
+      "port": 5303
     }
   ]
 }
