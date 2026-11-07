@@ -48,6 +48,7 @@ import { creerPorte } from './lib/synchroAffichage.js';
 import { collecterEnAttente, calculerEtatSynchro, surEnAttente, enAttenteActuel } from './lib/etatSynchro.js';
 import { surChangementFile } from './data/sync.js';
 import { surChangementJournal } from './journal/journal.js';
+import { chargerVues } from './lib/vuesCartes.js';
 import { lancerRattrapageSauvegarde } from './sauvegarde/statutServeur.js';
 import { SynchroContext, BandeauSynchro } from './components/Chiffre.jsx';
 import { todayISO, startAdaptive } from './lib/sm2.js';
@@ -345,6 +346,9 @@ export default function MedReviseApp({ themeApi, goHub }) {
   /* (07/11, docs/compte-rendu-sauvegarde-et-statut-synchro.md) ÉTAT DE SYNCHRO UNIQUE : la liste des éléments en
      attente est recalculée APRÈS chaque passe (avec la liste du bucket) et à chaque changement d'une file (vidage
      réussi ou non, réponse journalisée, réseau). L'en-tête et Réglages lisent le MÊME calcul (lib/etatSynchro.js). */
+  // (07/11) compteur de vues par carte (lib/vuesCartes.js) : la passe sur le journal local part dès l'ouverture, en
+  // tâche de fond — le panneau Apprendre trouve le calcul prêt (lecture seule, rien n'est écrit)
+  useEffect(() => { const t = setTimeout(() => { chargerVues(); }, 1200); return () => clearTimeout(t); }, []);
   const [enAttente, setEnAttente] = useState(enAttenteActuel());
   useEffect(() => {
     if (!SYNC_ENABLED) return undefined;

@@ -15,6 +15,9 @@
      sur l'appareil). Barre collante « N cartes sélectionnées · Vider la sélection · Lancer » : avec une sélection, Lancer
      joue la sélection ; sans, les cartes visibles. COMPTEUR DE PASSAGES : badge « ×3 » (fois où la carte a été sue en
      session), tri optionnel « Moins passées d'abord » (dans chaque cours).
+   (07/11) COMPTEUR DE VUES (lib/vuesCartes.js, calculé depuis le journal des révisions) : œil + nombre sur chaque vignette
+     (components/BadgeVues.jsx), tris « Moins vues → plus vues » / « Plus vues → moins vues » (menu Tri, avec « Moins
+     passées d'abord »), filtre par tranches 0 · 1–2 · 3–5 · 6–10 · >10 (plusieurs, combinables avec les autres filtres).
    Téléphone (`mobile`) : recherche en tête, filtres dans une feuille du bas, vignettes pleine largeur.
    Lecture seule : rien n'est écrit, sauf une note qu'on tape (learning_set.notes, jamais la carte) et, en session, le
    compteur de passages (learning_set.passages, jamais la carte).
@@ -37,15 +40,17 @@ import { Chiffre, useEnSynchro } from '../components/Chiffre.jsx';
 import {
   TYPES, FILTRES_VIDES, filtresActifs, filtresValides, filtrer, grouper, idsAffiches,
   choixFiltres, toutesLesCartes, typeCarte, rectoTexte, versoTexte,
-  idsParGroupe, etatSelection, basculerCarte, basculerGroupe, resumeSelection, ordreSelection, passagesDe, trierMoinsPassees,
+  idsParGroupe, etatSelection, basculerCarte, basculerGroupe, resumeSelection, ordreSelection, passagesDe, appliquerTri, TRIS,
 } from './tableauBord.js';
+import { useVues, vuesDe, TRANCHES_VUES } from '../lib/vuesCartes.js';
+import { BadgeVues } from '../components/BadgeVues.jsx';
 import '../../styles/apprentissage-libre.css';
 
 const pl = (n, s, p = s + 's') => `${n} ${n > 1 ? p : s}`;
 const CLE_FILTRES = 'medrevise.apprentissage.filtres';
 const CLE_VUE = 'medrevise.apprentissage.vue';
 const CLE_SELECTION = 'medrevise.apprentissage.selection'; // (28/10) sélection libre (ids), mémorisée sur l'appareil
-const CLE_TRI = 'medrevise.apprentissage.tri'; // (28/10) 'passages' = « Moins passées d'abord »
+const CLE_TRI = 'medrevise.apprentissage.tri'; // (28/10) 'passages' = « Moins passées d'abord » ; (07/11) 'vues-asc' | 'vues-desc'
 const lire = (cle, defaut) => { try { const v = localStorage.getItem(cle); return v == null ? defaut : JSON.parse(v); } catch (e) { return defaut; } };
 const ecrire = (cle, v) => { try { localStorage.setItem(cle, JSON.stringify(v)); } catch (e) { /* stockage indisponible */ } };
 const LIB_TYPE = Object.fromEntries(TYPES.map((t) => [t.cle, t.libelle]));
@@ -67,17 +72,19 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
   const [session, setSession] = useState(null);
   const [sel, setSelBrut] = useState(() => { const v = lire(CLE_SELECTION, []); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; });
   const setSel = (f) => setSelBrut((x) => { const n = typeof f === 'function' ? f(x) : f; ecrire(CLE_SELECTION, n); return n; });
-  const [tri, setTriBrut] = useState(() => (lire(CLE_TRI, '') === 'passages' ? 'passages' : ''));
+  const [tri, setTriBrut] = useState(() => { const t = lire(CLE_TRI, ''); return TRIS.some((x) => x.cle === t) ? t : ''; });
+  const { comptes: vues, pret: vuesPretes } = useVues(); // (07/11) compteur de vues, mis à jour à chaque notation
   const setTri = (t) => { setTriBrut(t); ecrire(CLE_TRI, t); };
 
   const total = useMemo(() => toutesLesCartes(db).length, [db]);
   const choix = useMemo(() => choixFiltres(db, ctx.stats), [db, ctx.stats]);
-  const visibles = useMemo(() => filtrer(db, filtres), [db, filtres]);
+  const visibles = useMemo(() => filtrer(db, filtres, vues), [db, filtres, vues]);
   // compteur de la puce « À apprendre » : les cartes taguées qui passent les AUTRES filtres
-  const nbAap = useMemo(() => (filtres.aApprendre ? visibles.length : filtrer(db, { ...filtres, aApprendre: true }).length), [db, filtres, visibles]);
+  const nbAap = useMemo(() => (filtres.aApprendre ? visibles.length : filtrer(db, { ...filtres, aApprendre: true }, vues).length), [db, filtres, visibles, vues]);
   const passages = db.learningPassages || {};
   const groupesBruts = useMemo(() => grouper(db, visibles, ctx.stats), [db, visibles, ctx.stats]);
-  const groupes = useMemo(() => (tri === 'passages' ? trierMoinsPassees(groupesBruts, passages) : groupesBruts), [groupesBruts, tri, passages]);
+  const trier = (g) => appliquerTri(g, tri, { passages, vues });
+  const groupes = useMemo(() => trier(groupesBruts), [groupesBruts, tri, passages, vues]); // eslint-disable-line react-hooks/exhaustive-deps
   const parGroupe = useMemo(() => idsParGroupe(db), [db]);
   const selSet = useMemo(() => new Set(sel), [sel]);
   const resume = useMemo(() => resumeSelection(db, sel, visibles), [db, sel, visibles]);
@@ -93,13 +100,13 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
   if (session) return <SessionApprentissage key={session.n} ctx={ctx} ids={session.ids} pleinEcran={mobile} onQuitter={() => setSession(null)} />;
 
   // avec une sélection : la sélection (ordre de rangement, tri compris) ; sans : les cartes visibles, comme avant
-  const idsLancer = resume.n ? ordreSelection(db, resume.ids, ctx.stats, tri === 'passages' ? passages : null) : ordre;
+  const idsLancer = resume.n ? ordreSelection(db, resume.ids, ctx.stats, trier) : ordre;
   const lancer = () => idsLancer.length && setSession({ ids: idsLancer, n: Date.now() });
   const vider = () => setSel([]);
   const cocherCarte = (id) => setSel((l) => basculerCarte(l, id));
   const cocherGroupe = (ids) => setSel((l) => basculerGroupe(l, ids));
   const reinitialiser = () => setFiltres(FILTRES_VIDES);
-  const nbFiltres = filtres.matieres.length + filtres.coursInclus.length + filtres.coursExclus.length + (filtres.nouvelles ? 1 : 0) + (filtres.aApprendre ? 1 : 0) + filtres.types.length;
+  const nbFiltres = filtres.matieres.length + filtres.coursInclus.length + filtres.coursExclus.length + (filtres.nouvelles ? 1 : 0) + (filtres.aApprendre ? 1 : 0) + filtres.types.length + filtres.vues.length;
 
   const titre = (
     <div>
@@ -139,11 +146,14 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
   const contenuFiltre = (cle) => {
     if (cle === 'matieres') return <ChoixMatieres choix={choix} filtres={filtres} setFiltres={setFiltres} />;
     if (cle === 'cours') return <ChoixCours choix={choix} filtres={filtres} setFiltres={setFiltres} />;
+    if (cle === 'vues') return <ChoixVues filtres={filtres} setFiltres={setFiltres} />;
     return <ChoixTypes filtres={filtres} setFiltres={setFiltres} />;
   };
   const libMat = filtres.matieres.length ? `Matières · ${filtres.matieres.length}` : 'Matières';
   const libCours = filtres.coursInclus.length || filtres.coursExclus.length
     ? `Cours · ${[filtres.coursInclus.length && `${filtres.coursInclus.length}`, filtres.coursExclus.length && `${filtres.coursExclus.length} exclu${filtres.coursExclus.length > 1 ? 's' : ''}`].filter(Boolean).join(' · ')}` : 'Cours';
+  const libVues = filtres.vues.length ? `Vues · ${TRANCHES_VUES.filter((t) => filtres.vues.includes(t.cle)).map((t) => t.libelle).join(', ')}` : 'Vues';
+  const triChoisi = TRIS.find((t) => t.cle === tri) || TRIS[0];
   const libType = filtres.types.length ? `Type · ${filtres.types.map((t) => LIB_TYPE[t]).join(', ')}` : 'Type';
   const puceNouvelles = (
     <button type="button" className={'alib2-puce' + (filtres.nouvelles ? ' actif' : '')} aria-pressed={filtres.nouvelles} data-puce="nouvelles"
@@ -151,11 +161,17 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
       {filtres.nouvelles && <Icon name="check" size={12} />} Nouvelles
     </button>
   );
-  const puceTri = (
-    <button type="button" className={'alib2-puce' + (tri === 'passages' ? ' actif' : '')} aria-pressed={tri === 'passages'} data-puce="tri"
-      onClick={() => setTri(tri === 'passages' ? '' : 'passages')} title="Dans chaque cours, les cartes les moins souvent sues en session d’abord">
-      {tri === 'passages' && <Icon name="check" size={12} />} Moins passées d’abord
-    </button>
+  // (07/11) tris : un choix parmi TRIS (« Ordre du cours », « Moins passées d'abord », « Moins vues → plus vues »,
+  // « Plus vues → moins vues ») — menu sur ordinateur, puces dans la feuille du téléphone
+  const choixTri = (
+    <div className="alib2-choix alib2-types" data-choix="tri" role="radiogroup" aria-label="Tri">
+      {TRIS.map((t) => (
+        <button key={t.cle || 'cours'} type="button" role="radio" aria-checked={tri === t.cle} className={'alib2-puce' + (tri === t.cle ? ' actif' : '')} data-tri={t.cle || 'cours'}
+          onClick={() => { setTri(t.cle); setMenu(null); }} title={t.aide || 'Les cartes dans l’ordre de leur cours'}>
+          {tri === t.cle && <Icon name="check" size={12} />} {t.libelle}
+        </button>
+      ))}
+    </div>
   );
   // barre collante de la sélection (bas de l'écran)
   const barreSelection = resume.n > 0 && (
@@ -180,7 +196,7 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
     <ul className={'alib2-cartes ' + vue}>
       {cartes.map((q) => (
         <Vignette key={q.id} ctx={ctx} mobile={mobile} q={q} vue={vue} note={notes[q.id]} onOuvrir={() => setApercu(q.id)}
-          coche={selSet.has(q.id)} onCocher={() => cocherCarte(q.id)} passages={passagesDe(passages, q.id)} />
+          coche={selSet.has(q.id)} onCocher={() => cocherCarte(q.id)} passages={passagesDe(passages, q.id)} vues={vuesDe(vues, q.id)} vuesPretes={vuesPretes} />
       ))}
     </ul>
   );
@@ -228,7 +244,12 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
               ))}
               {puceNouvelles}
               {puceAApprendre}
-              {puceTri}
+              <PuceMenu cle="vues" libelle={libVues} actif={filtres.vues.length > 0} ouvert={menu === 'vues'} onOuvrir={() => setMenu(menu === 'vues' ? null : 'vues')} onFermer={() => setMenu(null)}>
+                {contenuFiltre('vues')}
+              </PuceMenu>
+              <PuceMenu cle="tri" libelle={tri ? `Tri · ${triChoisi.libelle}` : 'Tri'} actif={!!tri} ouvert={menu === 'tri'} onOuvrir={() => setMenu(menu === 'tri' ? null : 'tri')} onFermer={() => setMenu(null)}>
+                {choixTri}
+              </PuceMenu>
               <PuceMenu cle="types" libelle={libType} actif={filtres.types.length > 0} ouvert={menu === 'types'} onOuvrir={() => setMenu(menu === 'types' ? null : 'types')} onFermer={() => setMenu(null)}>
                 {contenuFiltre('types')}
               </PuceMenu>
@@ -310,10 +331,12 @@ export function EcranApprentissage({ ctx, mobile = false, onRetour = null }) {
             </div>
             <div className="alib2-fcorps">
               <div className="alib2-fsection"><div className="alib2-ftitre">Nouvelles · À apprendre</div><div className="alib2-types">{puceNouvelles}{puceAApprendre}</div></div>
+              <div className="alib2-fsection"><div className="alib2-ftitre">Vues en séance</div>{contenuFiltre('vues')}</div>
               <div className="alib2-fsection"><div className="alib2-ftitre">Type</div>{contenuFiltre('types')}</div>
               <div className="alib2-fsection"><div className="alib2-ftitre">Matières</div>{contenuFiltre('matieres')}</div>
               <div className="alib2-fsection"><div className="alib2-ftitre">Cours</div>{contenuFiltre('cours')}</div>
-              <div className="alib2-fsection"><div className="alib2-ftitre">Affichage</div><div className="alib2-types">{choixVue}{puceTri}</div></div>
+              <div className="alib2-fsection"><div className="alib2-ftitre">Affichage</div><div className="alib2-types">{choixVue}</div></div>
+              <div className="alib2-fsection"><div className="alib2-ftitre">Tri</div>{choixTri}</div>
             </div>
             <div className="alib2-fpied">
               <button type="button" className="btn primary" onClick={() => setFeuille(false)}>Voir {pl(visibles.length, 'carte')}</button>
@@ -427,6 +450,22 @@ function ChoixCours({ choix, filtres, setFiltres }) {
   );
 }
 
+/* (07/11) tranches du compteur de vues : plusieurs à la fois (aucune = toutes) */
+function ChoixVues({ filtres, setFiltres }) {
+  const sel = new Set(filtres.vues);
+  return (
+    <div className="alib2-choix alib2-types" data-choix="vues">
+      {TRANCHES_VUES.map((t) => (
+        <button key={t.cle} type="button" className={'alib2-puce' + (sel.has(t.cle) ? ' actif' : '')} aria-pressed={sel.has(t.cle)} data-tranche={t.cle}
+          onClick={() => setFiltres((f) => ({ ...f, vues: f.vues.includes(t.cle) ? f.vues.filter((x) => x !== t.cle) : [...f.vues, t.cle] }))}
+          title={t.cle === '0' ? 'Cartes jamais révisées en séance' : `Cartes révisées ${t.libelle} fois en séance`}>
+          {sel.has(t.cle) && <Icon name="check" size={12} />} {t.libelle}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ChoixTypes({ filtres, setFiltres }) {
   const sel = new Set(filtres.types);
   return (
@@ -459,7 +498,7 @@ function MiniatureImage({ imageId }) {
 const imageDe = (q) => q.imageId || (q.occlusion && q.occlusion.imageId) || ((imageGeneraleDe(q) || {}).imageId) || null;
 
 /* ---- VIGNETTE : recto en haut, verso en dessous (tronqué, « voir plus »), image, tag « Nouvelle » ---- */
-function Vignette({ ctx, mobile, q, vue, note, onOuvrir, coche = false, onCocher, passages = 0 }) {
+function Vignette({ ctx, mobile, q, vue, note, onOuvrir, coche = false, onCocher, passages = 0, vues = 0, vuesPretes = true }) {
   const [plus, setPlus] = useState(false);
   const nouvelle = estNouvelle(q);
   const type = typeCarte(q);
@@ -474,8 +513,9 @@ function Vignette({ ctx, mobile, q, vue, note, onOuvrir, coche = false, onCocher
       <span className="alib2-aap"><BoutonAApprendre ctx={ctx} carte={q} classe="ac-icone" taille={mobile ? 17 : 14} mobile={mobile} /></span>
       <div role="button" tabIndex={0} className="alib2-vignette" onClick={onOuvrir} title="Ouvrir l’aperçu"
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOuvrir(); } }}>
-        {(nouvelle || type !== 'texte' || estAApprendre(q) || passages > 0) && (
+        {(
           <div className="alib2-tags">
+            <BadgeVues n={vues} pret={vuesPretes} />
             {passages > 0 && <BadgePassages n={passages} />}
             <EtiquetteAApprendre carte={q} />
             {nouvelle && <span className="alib2-tag nouvelle">Nouvelle</span>}

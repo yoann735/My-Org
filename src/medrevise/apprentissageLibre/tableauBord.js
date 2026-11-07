@@ -18,6 +18,7 @@ import { estAApprendre } from '../lib/aApprendre.js';
 import { normaliser } from '../lib/rechercheTexte.js';
 import { trierSections } from '../components/useTreeOpenState.js';
 import { trierMatieres } from '../lib/ordreMatieres.js';
+import { TRANCHES_VUES, dansTranches, vuesDe } from '../lib/vuesCartes.js';
 
 export const TYPES = [
   { cle: 'texte', libelle: 'Texte' },
@@ -57,9 +58,10 @@ export function versoTexte(q) {
 /** texte cherché par la barre de recherche : recto, verso, thème */
 export const texteCherche = (q) => [rectoTexte(q), versoTexte(q), q.theme || ''].join(' ');
 
-export const FILTRES_VIDES = { q: '', matieres: [], coursInclus: [], coursExclus: [], nouvelles: false, aApprendre: false, types: [] };
+// (07/11) `vues` : tranches du compteur de vues (lib/vuesCartes.js TRANCHES_VUES), sélection multiple
+export const FILTRES_VIDES = { q: '', matieres: [], coursInclus: [], coursExclus: [], nouvelles: false, aApprendre: false, types: [], vues: [] };
 
-export const filtresActifs = (f) => !!(f && (String(f.q || '').trim() || f.matieres.length || f.coursInclus.length || f.coursExclus.length || f.nouvelles || f.aApprendre || f.types.length));
+export const filtresActifs = (f) => !!(f && (String(f.q || '').trim() || f.matieres.length || f.coursInclus.length || f.coursExclus.length || f.nouvelles || f.aApprendre || f.types.length || (f.vues && f.vues.length)));
 
 /** filtres lus (mémorisés) remis d'aplomb */
 export function filtresValides(brut) {
@@ -71,6 +73,7 @@ export function filtresValides(brut) {
     nouvelles: b.nouvelles === true,
     aApprendre: b.aApprendre === true,
     types: liste(b.types).filter((t) => TYPES.some((x) => x.cle === t)),
+    vues: liste(b.vues).filter((t) => TRANCHES_VUES.some((x) => x.cle === t)),
   };
 }
 
@@ -92,8 +95,8 @@ function index(db) {
 /** toutes les cartes du mode (ordre de la base) */
 export const toutesLesCartes = (db) => ((db && db.questions) || []).filter(estCarteApprentissage);
 
-/** les cartes qui passent les filtres (`filtres` = FILTRES_VIDES & co) */
-export function filtrer(db, filtres) {
+/** les cartes qui passent les filtres (`filtres` = FILTRES_VIDES & co) ; `vues` = compteur de vues (Map, lib/vuesCartes.js) */
+export function filtrer(db, filtres, vues = null) {
   const f = filtres || FILTRES_VIDES;
   const { fiches } = index(db);
   const q = normaliser(f.q);
@@ -105,6 +108,7 @@ export function filtrer(db, filtres) {
     if (types.size && !types.has(typeCarte(c))) return false;
     if (f.nouvelles && !estNouvelle(c)) return false;
     if (f.aApprendre && !estAApprendre(c)) return false;
+    if (f.vues && f.vues.length && !dansTranches(vues, c.id, f.vues)) return false;
     if (q && !normaliser(texteCherche(c)).includes(q)) return false;
     return true;
   });
@@ -232,18 +236,40 @@ export function resumeSelection(db, sel, visibles) {
 }
 
 /** ids de la sélection dans l'ordre de rangement (Section → Matière → Cours → cartes) : l'ordre de la session */
-export function ordreSelection(db, sel, stats = null, passages = null) {
+export function ordreSelection(db, sel, stats = null, trier = null) {
   const s = new Set(sel || []);
   const g = grouper(db, toutesLesCartes(db).filter((c) => s.has(c.id)), stats);
-  return idsAffiches(passages ? trierMoinsPassees(g, passages) : g);
+  // `trier` : fonction (groupes → groupes), ou (ancien appel) l'objet des passages
+  return idsAffiches(typeof trier === 'function' ? trier(g) : trier ? trierMoinsPassees(g, trier) : g);
 }
 
 /** nombre de passages d'une carte (0 = jamais sue en session Apprentissage) */
 export const passagesDe = (passages, id) => { const n = passages && passages[id]; return Number.isInteger(n) && n > 0 ? n : 0; };
 
-/** tri « Moins passées d'abord » : dans chaque cours, les cartes de 0 passage d'abord (tri stable, rangement inchangé) */
-export function trierMoinsPassees(groupes, passages) {
+/** tri STABLE des cartes dans chaque cours selon une valeur numérique (rangement Section → Matière → Cours inchangé) */
+function trierDansCours(groupes, valeur, sens = 1) {
   return groupes.map((s) => ({ ...s, matieres: s.matieres.map((m) => ({ ...m, cours: m.cours.map((g) => ({
-    ...g, cartes: g.cartes.map((c, i) => [c, i]).sort((a, b) => (passagesDe(passages, a[0].id) - passagesDe(passages, b[0].id)) || (a[1] - b[1])).map((x) => x[0]),
+    ...g, cartes: g.cartes.map((c, i) => [c, i, valeur(c.id)]).sort((a, b) => (sens * (a[2] - b[2])) || (a[1] - b[1])).map((x) => x[0]),
   })) })) }));
+}
+
+/** tri « Moins passées d'abord » : dans chaque cours, les cartes de 0 passage d'abord (tri stable, rangement inchangé) */
+export const trierMoinsPassees = (groupes, passages) => trierDansCours(groupes, (id) => passagesDe(passages, id), 1);
+
+/** (07/11) tri par VUES (lib/vuesCartes.js) dans chaque cours : sens 1 = moins vues → plus vues, -1 = l'inverse */
+export const trierParVues = (groupes, vues, sens = 1) => trierDansCours(groupes, (id) => vuesDe(vues, id), sens);
+
+/** (07/11) les tris proposés (le choix vide = ordre du cours) */
+export const TRIS = [
+  { cle: '', libelle: 'Ordre du cours' },
+  { cle: 'passages', libelle: 'Moins passées d’abord', aide: 'Dans chaque cours, les cartes les moins souvent sues en session Apprentissage d’abord' },
+  { cle: 'vues-asc', libelle: 'Moins vues → plus vues', aide: 'Dans chaque cours, les cartes les moins révisées en séance d’abord' },
+  { cle: 'vues-desc', libelle: 'Plus vues → moins vues', aide: 'Dans chaque cours, les cartes les plus révisées en séance d’abord' },
+];
+/** applique le tri choisi aux groupes */
+export function appliquerTri(groupes, tri, { passages = null, vues = null } = {}) {
+  if (tri === 'passages') return trierMoinsPassees(groupes, passages);
+  if (tri === 'vues-asc') return trierParVues(groupes, vues, 1);
+  if (tri === 'vues-desc') return trierParVues(groupes, vues, -1);
+  return groupes;
 }

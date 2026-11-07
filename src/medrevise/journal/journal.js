@@ -27,7 +27,9 @@ export function appareil() {
 
 const abonnes = new Set();
 export function surChangementJournal(fn) { abonnes.add(fn); return () => abonnes.delete(fn); }
-const prevenir = () => abonnes.forEach((fn) => { try { fn(); } catch (e) { /* ignore */ } });
+/* (07/11) les abonnés reçoivent les entrées NOUVELLES (ajout local ou reçues du cloud) — [] quand rien n'est ajouté
+   (file d'envoi vidée) : le compteur de vues (lib/vuesCartes.js) se met à jour sans relire tout le journal. */
+const prevenir = (neuves = []) => abonnes.forEach((fn) => { try { fn(neuves); } catch (e) { /* ignore */ } });
 
 /** ajoute une entrée (immuable) + la met en file d'envoi. Une entrée déjà présente est ignorée. */
 export async function ajouterAuJournal(entree) {
@@ -35,7 +37,7 @@ export async function ajouterAuJournal(entree) {
   if (await get(entree.id, S_JOURNAL)) return false;
   await set(entree.id, entree, S_JOURNAL);
   await set(entree.id, { id: entree.id, depuis: new Date().toISOString() }, S_ENVOI);
-  prevenir();
+  prevenir([entree]);
   return true;
 }
 
@@ -43,7 +45,7 @@ export async function ajouterAuJournal(entree) {
 export async function integrerEntrees(entrees) {
   const connus = new Set(await keys(S_JOURNAL));
   const neuves = (entrees || []).filter((e) => e && e.id && !connus.has(e.id) && (connus.add(e.id), true));
-  if (neuves.length) { await setMany(neuves.map((e) => [e.id, e]), S_JOURNAL); prevenir(); }
+  if (neuves.length) { await setMany(neuves.map((e) => [e.id, e]), S_JOURNAL); prevenir(neuves); }
   return neuves;
 }
 
