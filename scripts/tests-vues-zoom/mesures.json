@@ -1,0 +1,702 @@
+[
+ {
+  "etiquette": "avant (tout, cours repliés)",
+  "type": "ordi",
+  "cartes": "1545",
+  "mesures": [
+   53.1,
+   41.2,
+   48.1,
+   39.1,
+   43.9,
+   41.3,
+   38.3,
+   33.8,
+   37.5
+  ],
+  "mediane": 41.2,
+  "min": 33.8,
+  "max": 53.1,
+  "le": "2026-11-07T16:50:33.863Z"
+ },
+ {
+  "etiquette": "avant (150 visibles)",
+  "type": "ordi",
+  "cartes": "150",
+  "mesures": [
+   101.2,
+   97.4,
+   94.6,
+   86.4,
+   99.8,
+   89.3,
+   92.4,
+   93.7,
+   88.5
+  ],
+  "mediane": 93.7,
+  "min": 86.4,
+  "max": 101.2,
+  "le": "2026-11-07T16:50:57.587Z"
+ },
+ {
+  "etiquette": "avant (tout, cours repliés)",
+  "type": "tablette",
+  "cartes": "1545",
+  "mesures": [
+   43.2,
+   48.2,
+   34.2,
+   40.4,
+   47.5,
+   37.3,
+   38.4,
+   38.6,
+   40.3
+  ],
+  "mediane": 40.3,
+  "min": 34.2,
+  "max": 48.2,
+  "le": "2026-11-07T16:51:15.028Z"
+ },
+ {
+  "etiquette": "apres (tout, cours repliés)",
+  "type": "ordi",
+  "cartes": "1545",
+  "mesures": [
+   58.8,
+   39.4,
+   35.3,
+   44.9,
+   39.9,
+   40.4,
+   45.8,
+   36.4,
+   43.3
+  ],
+  "mediane": 40.4,
+  "min": 35.3,
+  "max": 58.8,
+  "le": "2026-11-07T17:24:49.615Z"
+ },
+ {
+  "etiquette": "apres (150 visibles)",
+  "type": "ordi",
+  "cartes": "150",
+  "mesures": [
+   119.2,
+   91.6,
+   107.8,
+   106.3,
+   105.4,
+   81.4,
+   100,
+   105.7,
+   103
+  ],
+  "mediane": 105.4,
+  "min": 81.4,
+  "max": 119.2,
+  "le": "2026-11-07T17:25:09.974Z"
+ },
+ {
+  "etiquette": "apres (tout, cours repliés)",
+  "type": "tablette",
+  "cartes": "1545",
+  "mesures": [
+   60.2,
+   38.9,
+   42.3,
+   36.5,
+   47.4,
+   44.9,
+   38,
+   40.3,
+   51.5
+  ],
+  "mediane": 42.3,
+  "min": 36.5,
+  "max": 60.2,
+  "le": "2026-11-07T17:25:29.898Z"
+ },
+ {
+  "etiquette": "apres-bis (150 visibles)",
+  "type": "ordi",
+  "cartes": "150",
+  "mesures": [
+   119,
+   112,
+   107.5,
+   108.7,
+   107.2,
+   100.2,
+   102.5,
+   102.2,
+   104
+  ],
+  "mediane": 107.2,
+  "min": 100.2,
+  "max": 119,
+  "le": "2026-11-07T17:25:56.492Z"
+ },
+ {
+  "etiquette": "apres-bis (150 visibles)",
+  "type": "ordi",
+  "cartes": "150",
+  "mesures": [
+   118.4,
+   113.5,
+   106.5,
+   107.7,
+   91.8,
+   101.5,
+   105.1,
+   105.3,
+   101.9
+  ],
+  "mediane": 105.3,
+  "min": 91.8,
+  "max": 118.4,
+  "le": "2026-11-07T17:26:16.981Z"
+ },
+ {
+  "etiquette": "apres-masque (150 visibles)",
+  "type": "ordi",
+  "cartes": "150",
+  "mesures": [
+   122.2,
+   85.9,
+   80.2,
+   75.3,
+   72.2,
+   72.9,
+   71,
+   72.8,
+   70.2
+  ],
+  "mediane": 72.9,
+  "min": 70.2,
+  "max": 122.2,
+  "le": "2026-11-07T17:26:53.376Z"
+ },
+ {
+  "etiquette": "apres-masque (150 visibles)",
+  "type": "ordi",
+  "cartes": "150",
+  "mesures": [
+   88.4,
+   75.4,
+   79,
+   71.8,
+   77.9,
+   74.5,
+   76.1,
+   73.6,
+   72
+  ],
+  "mediane": 75.4,
+  "min": 71.8,
+  "max": 88.4,
+  "le": "2026-11-07T17:27:13.366Z"
+ },
+ {
+  "etiquette": "final-apres (tout, cours repliés)",
+  "type": "ordi",
+  "cartes": "1545",
+  "mesures": [
+   39.6,
+   26.5,
+   31.5,
+   21.8,
+   26.9,
+   22.4,
+   32.5,
+   25.5,
+   28.5
+  ],
+  "mediane": 26.9,
+  "min": 21.8,
+  "max": 39.6,
+  "le": "2026-11-07T17:28:00.155Z"
+ },
+ {
+  "etiquette": "final-apres (tout, cours repliés)",
+  "type": "tablette",
+  "cartes": "1545",
+  "mesures": [
+   45.7,
+   36.5,
+   33.3,
+   21.8,
+   26.2,
+   26,
+   35.3,
+   31.7,
+   29.2
+  ],
+  "mediane": 31.7,
+  "min": 21.8,
+  "max": 45.7,
+  "le": "2026-11-07T17:28:20.358Z"
+ },
+ {
+  "etiquette": "final-apres (150 visibles)",
+  "type": "ordi",
+  "cartes": "150",
+  "mesures": [
+   123.1,
+   103.6,
+   101.4,
+   100.3,
+   97.1,
+   100.2,
+   98.9,
+   95.3,
+   92.5
+  ],
+  "mediane": 100.2,
+  "min": 92.5,
+  "max": 123.1,
+  "le": "2026-11-07T17:28:54.797Z"
+ },
+ {
+  "etiquette": "final-apres (150 visibles)",
+  "type": "tablette",
+  "cartes": "150",
+  "mesures": [
+   112.1,
+   96.4,
+   101.3,
+   97.5,
+   96.4,
+   91.3,
+   93.8,
+   97.3,
+   78.9
+  ],
+  "mediane": 96.4,
+  "min": 78.9,
+  "max": 112.1,
+  "le": "2026-11-07T17:29:15.210Z"
+ },
+ {
+  "etiquette": "reference-avant (tout, cours repliés)",
+  "type": "ordi",
+  "cartes": "1545",
+  "mesures": [
+   47.4,
+   42,
+   41.9,
+   44.3,
+   41.7,
+   40.6,
+   49.4,
+   40.1,
+   46.7
+  ],
+  "mediane": 42,
+  "min": 40.1,
+  "max": 49.4,
+  "le": "2026-11-07T17:29:49.653Z"
+ },
+ {
+  "etiquette": "reference-avant (150 visibles)",
+  "type": "ordi",
+  "cartes": "150",
+  "mesures": [
+   115,
+   94,
+   97.3,
+   74.6,
+   107.1,
+   91.1,
+   89.3,
+   92.3,
+   70.6
+  ],
+  "mediane": 92.3,
+  "min": 70.6,
+  "max": 115,
+  "le": "2026-11-07T17:30:09.930Z"
+ },
+ {
+  "etiquette": "reference-avant (tout, cours repliés)",
+  "type": "tablette",
+  "cartes": "1545",
+  "mesures": [
+   38.2,
+   25.3,
+   26.2,
+   28,
+   27.9,
+   32.3,
+   29.1,
+   32.2,
+   28.8
+  ],
+  "mediane": 28.8,
+  "min": 25.3,
+  "max": 38.2,
+  "le": "2026-11-07T17:30:29.519Z"
+ },
+ {
+  "etiquette": "reference-avant (150 visibles)",
+  "type": "tablette",
+  "cartes": "150",
+  "mesures": [
+   92,
+   74.8,
+   77.2,
+   66.4,
+   68.1,
+   65.3,
+   66.2,
+   65.1,
+   66.4
+  ],
+  "mediane": 66.4,
+  "min": 65.1,
+  "max": 92,
+  "le": "2026-11-07T17:30:49.482Z"
+ },
+ {
+  "etiquette": "reference-avant (tout, cours repliés)",
+  "type": "ordi",
+  "cartes": "1545",
+  "mesures": [
+   30.4,
+   28,
+   29.5,
+   35.2,
+   28.1,
+   28.9,
+   32.2,
+   26,
+   23.7
+  ],
+  "mediane": 28.9,
+  "min": 23.7,
+  "max": 35.2,
+  "le": "2026-11-07T17:31:09.082Z"
+ },
+ {
+  "etiquette": "reference-avant (150 visibles)",
+  "type": "ordi",
+  "cartes": "150",
+  "mesures": [
+   83.4,
+   79.5,
+   72.1,
+   72.6,
+   69.3,
+   69.5,
+   67.6,
+   68.2,
+   73
+  ],
+  "mediane": 72.1,
+  "min": 67.6,
+  "max": 83.4,
+  "le": "2026-11-07T17:31:29.048Z"
+ },
+ {
+  "etiquette": "reference-avant (tout, cours repliés)",
+  "type": "tablette",
+  "cartes": "1545",
+  "mesures": [
+   39.6,
+   26,
+   29.7,
+   26.9,
+   29.5,
+   32.3,
+   29.7,
+   30.9,
+   29.9
+  ],
+  "mediane": 29.7,
+  "min": 26,
+  "max": 39.6,
+  "le": "2026-11-07T17:31:48.632Z"
+ },
+ {
+  "etiquette": "reference-avant (150 visibles)",
+  "type": "tablette",
+  "cartes": "150",
+  "mesures": [
+   111,
+   95.3,
+   91.1,
+   87.9,
+   93.4,
+   90.1,
+   89.8,
+   88.7,
+   87.1
+  ],
+  "mediane": 90.1,
+  "min": 87.1,
+  "max": 111,
+  "le": "2026-11-07T17:32:08.985Z"
+ },
+ {
+  "etiquette": "nouveau-apres (tout, cours repliés)",
+  "type": "ordi",
+  "cartes": "1545",
+  "mesures": [
+   48.5,
+   37,
+   50.6,
+   27.8,
+   42,
+   42.3,
+   51,
+   29.8,
+   37.2
+  ],
+  "mediane": 42,
+  "min": 27.8,
+  "max": 51,
+  "le": "2026-11-07T17:32:48.162Z"
+ },
+ {
+  "etiquette": "nouveau-apres (150 visibles)",
+  "type": "ordi",
+  "cartes": "150",
+  "mesures": [
+   108.7,
+   85.6,
+   73.2,
+   73.1,
+   70.8,
+   73.4,
+   82.8,
+   71,
+   70.8
+  ],
+  "mediane": 73.2,
+  "min": 70.8,
+  "max": 108.7,
+  "le": "2026-11-07T17:33:08.253Z"
+ },
+ {
+  "etiquette": "nouveau-apres (tout, cours repliés)",
+  "type": "tablette",
+  "cartes": "1545",
+  "mesures": [
+   55,
+   48.1,
+   38.6,
+   49.3,
+   35.5,
+   42.9,
+   38.1,
+   34.7,
+   46.2
+  ],
+  "mediane": 42.9,
+  "min": 34.7,
+  "max": 55,
+  "le": "2026-11-07T17:33:28.168Z"
+ },
+ {
+  "etiquette": "nouveau-apres (150 visibles)",
+  "type": "tablette",
+  "cartes": "150",
+  "mesures": [
+   89.3,
+   75.9,
+   74.9,
+   76,
+   73.5,
+   74.5,
+   70.3,
+   73.4,
+   78.6
+  ],
+  "mediane": 74.9,
+  "min": 70.3,
+  "max": 89.3,
+  "le": "2026-11-07T17:33:48.211Z"
+ },
+ {
+  "etiquette": "nouveau-apres (tout, cours repliés)",
+  "type": "ordi",
+  "cartes": "1545",
+  "mesures": [
+   34.3,
+   27.7,
+   30.7,
+   31.9,
+   35,
+   32.7,
+   32.9,
+   36,
+   31.8
+  ],
+  "mediane": 32.7,
+  "min": 27.7,
+  "max": 36,
+  "le": "2026-11-07T17:34:07.791Z"
+ },
+ {
+  "etiquette": "nouveau-apres (150 visibles)",
+  "type": "ordi",
+  "cartes": "150",
+  "mesures": [
+   88.2,
+   81,
+   71.6,
+   74,
+   78.4,
+   94.1,
+   91.1,
+   96.1,
+   96.6
+  ],
+  "mediane": 88.2,
+  "min": 71.6,
+  "max": 96.6,
+  "le": "2026-11-07T17:34:27.914Z"
+ },
+ {
+  "etiquette": "nouveau-apres (tout, cours repliés)",
+  "type": "tablette",
+  "cartes": "1545",
+  "mesures": [
+   45.8,
+   48.2,
+   51.4,
+   52.6,
+   42.9,
+   44,
+   51.9,
+   31.2,
+   29.6
+  ],
+  "mediane": 45.8,
+  "min": 29.6,
+  "max": 52.6,
+  "le": "2026-11-07T17:34:47.842Z"
+ },
+ {
+  "etiquette": "nouveau-apres (150 visibles)",
+  "type": "tablette",
+  "cartes": "150",
+  "mesures": [
+   95.9,
+   82.6,
+   80.7,
+   77.1,
+   74.2,
+   70.9,
+   74.4,
+   71.4,
+   73.3
+  ],
+  "mediane": 74.4,
+  "min": 70.9,
+  "max": 95.9,
+  "le": "2026-11-07T17:35:07.842Z"
+ },
+ {
+  "etiquette": "nouveau-apres-ter (tout, cours repliés)",
+  "type": "tablette",
+  "cartes": "1545",
+  "mesures": [
+   30.6,
+   27,
+   27.7,
+   27.4,
+   30.9,
+   33.3,
+   27.1,
+   31.8,
+   32
+  ],
+  "mediane": 30.6,
+  "min": 27,
+  "max": 33.3,
+  "le": "2026-11-07T17:35:36.140Z"
+ },
+ {
+  "etiquette": "nouveau-apres-ter (tout, cours repliés)",
+  "type": "tablette",
+  "cartes": "1545",
+  "mesures": [
+   39.5,
+   27.1,
+   32.7,
+   20.1,
+   25.7,
+   34.5,
+   22.9,
+   31.6,
+   24.1
+  ],
+  "mediane": 27.1,
+  "min": 20.1,
+  "max": 39.5,
+  "le": "2026-11-07T17:35:55.905Z"
+ },
+ {
+  "etiquette": "nouveau-apres-ter (tout, cours repliés)",
+  "type": "tablette",
+  "cartes": "1545",
+  "mesures": [
+   39.2,
+   20.9,
+   25.3,
+   22.9,
+   30.6,
+   26.7,
+   24.2,
+   29.4,
+   33
+  ],
+  "mediane": 26.7,
+  "min": 20.9,
+  "max": 39.2,
+  "le": "2026-11-07T17:36:15.744Z"
+ },
+ {
+  "etiquette": "nouveau-apres-final (150 visibles)",
+  "type": "ordi",
+  "cartes": "150",
+  "mesures": [
+   98.2,
+   87.9,
+   83.6,
+   81.7,
+   78.4,
+   81.7,
+   80.6,
+   86,
+   77.6
+  ],
+  "mediane": 81.7,
+  "min": 77.6,
+  "max": 98.2,
+  "le": "2026-11-07T17:41:13.373Z"
+ },
+ {
+  "etiquette": "nouveau-apres-final (150 visibles)",
+  "type": "tablette",
+  "cartes": "150",
+  "mesures": [
+   108.2,
+   83.6,
+   86.2,
+   79.2,
+   72.9,
+   79.3,
+   72.9,
+   77.7,
+   76.2
+  ],
+  "mediane": 79.2,
+  "min": 72.9,
+  "max": 108.2,
+  "le": "2026-11-07T17:41:33.458Z"
+ }
+]
