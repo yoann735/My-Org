@@ -28,6 +28,8 @@ export function fauxGithub(depot = 'moi/medrevise-backups-test') {
     let mm;
     if (m === 'GET' && (mm = /^\/git\/commits\/(\w+)$/.exec(p))) { const c = objets.get(mm[1]); return rep(200, { sha: mm[1], tree: { sha: c.tree } }); }
     if (m === 'GET' && (mm = /^\/git\/trees\/(\w+)$/.exec(p))) return rep(200, { sha: mm[1], tree: arbreComplet(mm[1]) });
+    // (14/11) lecture d'un fichier (historique des versions, api/_lib/sauvegarde.js#retrouverVersionsDoc)
+    if (m === 'GET' && (mm = /^\/git\/blobs\/(\w+)$/.exec(p))) { const o = objets.get(mm[1]); return o ? rep(200, { sha: mm[1], encoding: 'base64', content: Buffer.from(o.contenu).toString('base64') }) : rep(404, { message: 'Not Found' }); }
     if (m === 'POST' && p === '/git/blobs') { const contenu = Buffer.from(corps.content, 'base64').toString('utf8'); const b = blobSha(contenu); objets.set(b, { type: 'blob', contenu }); return rep(201, { sha: b }); }
     if (m === 'POST' && p === '/git/trees') {
       const entrees = new Map(arbreComplet(corps.base_tree).map((e) => [e.path, e]));

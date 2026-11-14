@@ -1,0 +1,296 @@
+{
+ "avant-ordi": {
+  "etiquette": "avant",
+  "type": "ordi",
+  "essais": [
+   {
+    "images": 358,
+    "lentes": 1,
+    "p95": 16.7,
+    "max": 33.4,
+    "moyenne": 16.71,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 4.01,
+    "tachesMsParFrappe": 10.32
+   },
+   {
+    "images": 359,
+    "lentes": 0,
+    "p95": 16.8,
+    "max": 16.8,
+    "moyenne": 16.67,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 4.02,
+    "tachesMsParFrappe": 10.24
+   },
+   {
+    "images": 359,
+    "lentes": 0,
+    "p95": 16.8,
+    "max": 16.8,
+    "moyenne": 16.67,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 4.19,
+    "tachesMsParFrappe": 10.48
+   }
+  ],
+  "images": 358.67,
+  "partLentes": 0.09,
+  "p95": 16.77,
+  "max": 33.4,
+  "moyenne": 16.68,
+  "longues": 0,
+  "longuesMs": 0,
+  "scriptMsParFrappe": 4.07,
+  "tachesMsParFrappe": 10.35,
+  "lent": 1
+ },
+ "apres-ordi": {
+  "etiquette": "apres",
+  "type": "ordi",
+  "essais": [
+   {
+    "images": 358,
+    "lentes": 0,
+    "p95": 16.7,
+    "max": 16.8,
+    "moyenne": 16.67,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 3.89,
+    "tachesMsParFrappe": 10.14
+   },
+   {
+    "images": 359,
+    "lentes": 0,
+    "p95": 16.7,
+    "max": 16.8,
+    "moyenne": 16.67,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 3.96,
+    "tachesMsParFrappe": 10.23
+   },
+   {
+    "images": 359,
+    "lentes": 0,
+    "p95": 16.8,
+    "max": 16.8,
+    "moyenne": 16.67,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 4.14,
+    "tachesMsParFrappe": 10.64
+   }
+  ],
+  "images": 358.67,
+  "partLentes": 0,
+  "p95": 16.73,
+  "max": 16.8,
+  "moyenne": 16.67,
+  "longues": 0,
+  "longuesMs": 0,
+  "scriptMsParFrappe": 4,
+  "tachesMsParFrappe": 10.34,
+  "lent": 1
+ },
+ "avant-ordi-cpu4": {
+  "etiquette": "avant",
+  "type": "ordi",
+  "essais": [
+   {
+    "images": 367,
+    "lentes": 34,
+    "p95": 33.3,
+    "max": 50,
+    "moyenne": 18.44,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 12.54,
+    "tachesMsParFrappe": 31.14
+   },
+   {
+    "images": 373,
+    "lentes": 30,
+    "p95": 33.3,
+    "max": 50.1,
+    "moyenne": 18.32,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 12.85,
+    "tachesMsParFrappe": 31.52
+   },
+   {
+    "images": 347,
+    "lentes": 45,
+    "p95": 33.4,
+    "max": 66.7,
+    "moyenne": 19.45,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 13.37,
+    "tachesMsParFrappe": 31.17
+   }
+  ],
+  "images": 362.33,
+  "partLentes": 10.03,
+  "p95": 33.33,
+  "max": 66.7,
+  "moyenne": 18.74,
+  "longues": 0,
+  "longuesMs": 0,
+  "scriptMsParFrappe": 12.92,
+  "tachesMsParFrappe": 31.28,
+  "lent": 4
+ },
+ "apres-ordi-cpu4": {
+  "etiquette": "apres",
+  "type": "ordi",
+  "essais": [
+   {
+    "images": 372,
+    "lentes": 32,
+    "p95": 33.3,
+    "max": 50.1,
+    "moyenne": 18.28,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 12.31,
+    "tachesMsParFrappe": 31.34
+   },
+   {
+    "images": 360,
+    "lentes": 43,
+    "p95": 33.4,
+    "max": 66.7,
+    "moyenne": 19.12,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 13.13,
+    "tachesMsParFrappe": 32.31
+   },
+   {
+    "images": 354,
+    "lentes": 36,
+    "p95": 33.4,
+    "max": 83.3,
+    "moyenne": 19.07,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 13.63,
+    "tachesMsParFrappe": 31.87
+   }
+  ],
+  "images": 362,
+  "partLentes": 10.22,
+  "p95": 33.37,
+  "max": 83.3,
+  "moyenne": 18.82,
+  "longues": 0,
+  "longuesMs": 0,
+  "scriptMsParFrappe": 13.02,
+  "tachesMsParFrappe": 31.84,
+  "lent": 4
+ },
+ "avant-tablette": {
+  "etiquette": "avant",
+  "type": "tablette",
+  "essais": [
+   {
+    "images": 360,
+    "lentes": 0,
+    "p95": 16.7,
+    "max": 16.8,
+    "moyenne": 16.67,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 4.05,
+    "tachesMsParFrappe": 9.86
+   },
+   {
+    "images": 359,
+    "lentes": 0,
+    "p95": 16.7,
+    "max": 16.8,
+    "moyenne": 16.67,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 4.19,
+    "tachesMsParFrappe": 10.18
+   },
+   {
+    "images": 359,
+    "lentes": 0,
+    "p95": 16.8,
+    "max": 16.8,
+    "moyenne": 16.67,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 4.41,
+    "tachesMsParFrappe": 10.3
+   }
+  ],
+  "images": 359.33,
+  "partLentes": 0,
+  "p95": 16.73,
+  "max": 16.8,
+  "moyenne": 16.67,
+  "longues": 0,
+  "longuesMs": 0,
+  "scriptMsParFrappe": 4.22,
+  "tachesMsParFrappe": 10.11,
+  "lent": 1
+ },
+ "apres-tablette": {
+  "etiquette": "apres",
+  "type": "tablette",
+  "essais": [
+   {
+    "images": 359,
+    "lentes": 1,
+    "p95": 16.8,
+    "max": 33.4,
+    "moyenne": 16.71,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 4.02,
+    "tachesMsParFrappe": 9.99
+   },
+   {
+    "images": 357,
+    "lentes": 1,
+    "p95": 16.8,
+    "max": 33.3,
+    "moyenne": 16.71,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 4.07,
+    "tachesMsParFrappe": 9.98
+   },
+   {
+    "images": 361,
+    "lentes": 0,
+    "p95": 16.8,
+    "max": 16.8,
+    "moyenne": 16.67,
+    "longues": 0,
+    "longuesMs": 0,
+    "scriptMsParFrappe": 4.23,
+    "tachesMsParFrappe": 10.35
+   }
+  ],
+  "images": 359,
+  "partLentes": 0.19,
+  "p95": 16.8,
+  "max": 33.4,
+  "moyenne": 16.7,
+  "longues": 0,
+  "longuesMs": 0,
+  "scriptMsParFrappe": 4.11,
+  "tachesMsParFrappe": 10.11,
+  "lent": 1
+ }
+}
