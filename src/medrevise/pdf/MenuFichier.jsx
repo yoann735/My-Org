@@ -51,6 +51,8 @@ export const ENTREES_DOCUMENT = [
   // actions propres : seulement dans la section qui les déclare
   { id: 'miseEnPage', propre: true, label: () => 'Mise en page…', icon: 'maximize', aide: 'Marges et fond de page' },
   { id: 'correspondance', propre: true, label: () => 'Correspondance des pages…', icon: 'grid', aide: 'Quelle page de la fiche va avec quelle diapo' },
+  // (14/11) l'historique des versions du document (pdf/HistoriqueDoc.jsx) : aperçu, récupérer les boîtes manquantes, restaurer
+  { id: 'historique', propre: true, label: () => 'Historique…', icon: 'clock', aide: 'Les versions de ce document (toutes les 5 min d’édition, à la fermeture, sauvegardes quotidiennes) : aperçu, récupérer les boîtes manquantes, restaurer' },
   { id: 'remplacer', label: () => 'Remplacer ce fichier…', icon: 'refresh', aide: 'Un nouveau fichier prend la place ; les annotations suivent leur page' },
   { id: 'supprimer', label: (d) => `Supprimer ${art(d)} ${d.court}${d.cle === 'original' ? (d.genre === 'm' ? ' original' : ' originale') : ''}…`, icon: 'trash', danger: true },
 ];

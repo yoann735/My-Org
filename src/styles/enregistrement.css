@@ -1,0 +1,94 @@
+/* MedRevise — indicateur d'enregistrement, alerte « boîtes disparues », historique des versions (14/11/2026).
+   DA : sombre premium, accent teal (var(--accent)), sobre, transitions ~120 ms. */
+
+/* ---- indicateur (barre du document) ---- */
+.ienr {
+  display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px; margin: 0 2px;
+  border: 0; border-radius: 999px; background: transparent; color: var(--text-3, #8a8a94);
+  font: 500 11.5px/1 var(--font-sans); white-space: nowrap; cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.ienr:disabled { cursor: default; }
+.ienr:not(:disabled):hover { background: var(--accent-soft); color: var(--text); }
+.ienr svg { flex: none; }
+.ienr-envoye { color: var(--accent); }
+.ienr-envoye svg + svg { margin-left: -9px; }
+.ienr-appareil { color: var(--text-2, #b4b4bd); }
+.ienr-attente { color: var(--warn); }
+.ienr-erreur { color: var(--crit); background: color-mix(in srgb, var(--crit) 14%, transparent); }
+.ienr-ecriture svg { animation: ienr-tourne 900ms linear infinite; }
+.ienr-compact .ienr-lib { display: none; }
+@media (max-width: 720px) { .ienr .ienr-lib { display: none; } }
+@keyframes ienr-tourne { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ienr-ecriture svg { animation: none; } }
+
+/* ---- bandeau d'erreur persistant / alerte disparitions ---- */
+.enr-bandeau {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 10px; padding: 8px 12px;
+  border-radius: var(--r, 8px); font: 500 12.5px/1.35 var(--font-sans); color: var(--text);
+  background: color-mix(in srgb, var(--warn) 12%, var(--card)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 40%, transparent);
+  animation: enr-entre 120ms ease;
+}
+.enr-bandeau.erreur { background: color-mix(in srgb, var(--crit) 14%, var(--card)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--crit) 45%, transparent); }
+.enr-bandeau .enr-txt { flex: 1 1 240px; }
+.enr-bandeau .btn { transition: background-color 120ms ease, color 120ms ease; }
+@keyframes enr-entre { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+
+/* ---- historique ---- */
+.hv { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.hv-recherche { margin: 0; font-size: 12px; color: var(--text-2, #b4b4bd); display: flex; align-items: center; gap: 8px; }
+.hv-recherche.erreur { color: var(--warn); }
+.hv-rond { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--accent); border-right-color: transparent; animation: ienr-tourne 800ms linear infinite; }
+.hv-corps { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 14px; min-height: 0; max-height: min(72vh, 760px); }
+.hv-liste { list-style: none; margin: 0; padding: 0 4px 0 0; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+.hv-version {
+  width: 100%; text-align: left; display: grid; gap: 2px; padding: 8px 10px; border: 0; border-radius: var(--r, 8px);
+  background: transparent; color: var(--text); cursor: pointer; box-shadow: inset 0 0 0 1px var(--border);
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+.hv-version:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.hv-version.actif { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.hv-date { font: 600 12.5px/1.2 var(--font-sans); }
+.hv-raison { font-size: 11.5px; color: var(--text-2, #b4b4bd); }
+.hv-compte { font-size: 11px; color: var(--text-3, #8a8a94); }
+.hv-manque { justify-self: start; margin-top: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 600; color: var(--on-accent); background: var(--accent); }
+.hv-detail { display: flex; flex-direction: column; gap: 8px; min-width: 0; overflow: auto; }
+.hv-tete { font-size: 13px; }
+.hv-pages { display: flex; flex-wrap: wrap; gap: 4px; }
+.hv-onglet {
+  min-width: 40px; height: 26px; padding: 0 8px; border: 0; border-radius: 999px; background: var(--track, #141418); color: var(--text-2, #b4b4bd);
+  font: 500 11.5px/1 var(--font-sans); cursor: pointer; transition: background-color 120ms ease, color 120ms ease;
+}
+.hv-onglet.actif { background: var(--accent); color: var(--on-accent); }
+.hv-onglet.a-absent:not(.actif) { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--text); }
+.hv-page { position: relative; width: min(100%, 560px); border-radius: 4px; overflow: hidden; background: #fff; box-shadow: var(--shadow-lg); align-self: center; }
+.hv-fond { position: absolute; inset: 0; width: 100%; height: 100%; }
+.hv-fond-blanc { background: #fff; }
+.hv-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.hv-trait { stroke: #3b6ea8; stroke-width: 3; vector-effect: non-scaling-stroke; }
+.hv-trait.absent { stroke: #0f9f8f; stroke-width: 4; }
+.hv-surl { fill: rgba(250, 214, 64, .45); }
+.hv-surl.absent { fill: rgba(20, 184, 166, .45); stroke: #0f9f8f; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.hv-boite {
+  position: absolute; box-sizing: border-box; padding: 2px 4px; overflow: hidden; border-radius: 3px;
+  background: rgba(255, 246, 196, .92); color: #1b1b1f; font: 500 9.5px/1.25 var(--font-sans);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .18);
+}
+.hv-boite span { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
+.hv-boite.absent { background: rgba(204, 251, 241, .96); box-shadow: 0 0 0 2px #0f9f8f; }
+.hv-legende { margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.hv-pastille { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: rgba(255, 246, 196, .92); box-shadow: 0 0 0 1px rgba(0, 0, 0, .3); }
+.hv-pastille.absent { background: rgba(204, 251, 241, .96); box-shadow: 0 0 0 2px #0f9f8f; }
+.hv-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; padding-top: 4px; }
+.hv-actions .hint { flex: 1 1 260px; }
+.hv-message { margin: 0; font-size: 12.5px; }
+.hv-message.ok { color: var(--accent); }
+.hv-message.erreur { color: var(--crit); }
+.hv-espace { margin: 0; font-size: 11px; }
+@media (max-width: 760px) {
+  .hv-corps { grid-template-columns: 1fr; max-height: none; }
+  .hv-liste { max-height: 34vh; }
+}
+
+/* erreur d'écriture locale : message persistant, au-dessus du document, jusqu'à la prochaine écriture confirmée */
+.enr-flottant { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 4000; max-width: min(640px, 94vw); margin: 0; box-shadow: var(--shadow-lg), inset 0 0 0 1px color-mix(in srgb, var(--crit) 45%, transparent); }

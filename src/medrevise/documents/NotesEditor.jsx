@@ -23,8 +23,9 @@ import { insererImageBloc, limiteSous } from './lib/imageVue.js';
 import { NOTES_EXTENSIONS, EMPTY_DOC, hydrateDoc, dehydrateDoc } from './lib/richtext.js';
 import { lireNotesDoc, ecrireNotesDoc } from './lib/notesDoc.js';
 import '../../styles/notes-doc.css';
+import { inscrireVidage } from '../lib/enregistrement.js';
 
-const DELAI_SAUVEGARDE = 800;
+const DELAI_SAUVEGARDE = 150; // (14/11) écriture continue : au plus 150 ms après une frappe (lib/enregistrement.js)
 
 export const NotesEditor = forwardRef(function NotesEditor({
   ficheId, compact = false, placeholder = 'Commence à écrire… « # » titre, « - » liste, « [] » case à cocher',
@@ -33,6 +34,7 @@ export const NotesEditor = forwardRef(function NotesEditor({
   const [pret, setPret] = useState(false);
   const urls = useRef([]);
   const minuteur = useRef(null);
+  const derniereEcriture = useRef(0); // (14/11) heure de la dernière écriture (écriture continue)
   const enAttente = useRef(null);
   const chargeRef = useRef(false);
   const ficheRef = useRef(ficheId); ficheRef.current = ficheId;
@@ -110,8 +112,11 @@ export const NotesEditor = forwardRef(function NotesEditor({
       if (!chargeRef.current) return;
       setEtat('modifié');
       enAttente.current = ed.getJSON();
-      clearTimeout(minuteur.current);
-      minuteur.current = setTimeout(vider, DELAI_SAUVEGARDE);
+      if (!minuteur.current) { // (14/11) écriture continue : 1re frappe tout de suite, puis au plus toutes les DELAI_SAUVEGARDE ms
+        const ecoule = performance.now() - derniereEcriture.current;
+        if (ecoule >= DELAI_SAUVEGARDE) { derniereEcriture.current = performance.now(); vider(); }
+        else minuteur.current = setTimeout(() => { derniereEcriture.current = performance.now(); vider(); }, DELAI_SAUVEGARDE - ecoule);
+      }
     },
   });
   editorRef.current = editor;
@@ -140,7 +145,9 @@ export const NotesEditor = forwardRef(function NotesEditor({
     const cache = () => { if (document.visibilityState === 'hidden') vider(); };
     document.addEventListener('visibilitychange', cache);
     window.addEventListener('pagehide', vider);
+    const offVidage = inscrireVidage(vider); // (14/11) changement de page / document, fermeture (lib/enregistrement.js)
     return () => {
+      offVidage();
       document.removeEventListener('visibilitychange', cache);
       window.removeEventListener('pagehide', vider);
       vider();

@@ -27,6 +27,7 @@ import { NOTES_EXTENSIONS, EMPTY_DOC, hydrateDoc, dehydrateDoc } from '../docume
 import { insererImageBloc, limiteSous } from '../documents/lib/imageVue.js';
 import { surlignerNotions } from '../documents/lib/notionMarks.js';
 import { nettoyerCollage } from '../lib/collageListes.js';
+import { inscrireVidage } from '../lib/enregistrement.js';
 
 export const PAGE_A4 = { width: 595, height: 842 };
 
@@ -39,7 +40,7 @@ export function effacerSurlignageRecherche() {
   try { if (window.CSS && CSS.highlights) { CSS.highlights.delete('recherche-doc'); CSS.highlights.delete('recherche-doc-toutes'); } } catch (e) { /* ignore */ }
 }
 export const MARGE_PAGE = 56; // marges d'écriture, en unités de page (≈ 2 cm)
-const DELAI_SAUVEGARDE = 600;
+const DELAI_SAUVEGARDE = 150; // (14/11) écriture continue : au plus 150 ms après une frappe (lib/enregistrement.js)
 
 const estVide = (doc) => doc.childCount === 1 && doc.firstChild.isTextblock && doc.firstChild.content.size === 0;
 
@@ -50,6 +51,7 @@ export const PageTexte = memo(forwardRef(function PageTexte({
   const urls = useRef([]);
   const charge = useRef(false);
   const minuteur = useRef(null);
+  const derniereEcriture = useRef(0); // (14/11) heure de la dernière écriture (écriture continue)
   const enAttente = useRef(null);
   const editorRef = useRef(null);
   const zoneRef = useRef(null);
@@ -182,8 +184,11 @@ export const PageTexte = memo(forwardRef(function PageTexte({
     onUpdate: ({ editor: ed }) => {
       if (!charge.current) return;
       enAttente.current = ed.getJSON();
-      clearTimeout(minuteur.current);
-      minuteur.current = setTimeout(vider, DELAI_SAUVEGARDE);
+      if (!minuteur.current) { // (14/11) écriture continue : 1re frappe tout de suite, puis au plus toutes les DELAI_SAUVEGARDE ms
+        const ecoule = performance.now() - derniereEcriture.current;
+        if (ecoule >= DELAI_SAUVEGARDE) { derniereEcriture.current = performance.now(); vider(); }
+        else minuteur.current = setTimeout(() => { derniereEcriture.current = performance.now(); vider(); }, DELAI_SAUVEGARDE - ecoule);
+      }
       requestAnimationFrame(verifierDebordement);
     },
     onFocus: ({ editor: ed }) => { rappels.current.onActiver(pageId, ed); },
@@ -285,7 +290,9 @@ export const PageTexte = memo(forwardRef(function PageTexte({
     const cache = () => { if (document.visibilityState === 'hidden') vider(); };
     document.addEventListener('visibilitychange', cache);
     window.addEventListener('pagehide', vider);
+    const offVidage = inscrireVidage(vider); // (14/11) changement de page / document, fermeture (lib/enregistrement.js)
     return () => {
+      offVidage();
       document.removeEventListener('visibilitychange', cache);
       window.removeEventListener('pagehide', vider);
       vider();

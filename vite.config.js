@@ -112,10 +112,11 @@ function apiDeepgramDev() {
         // + filet de sécurité (11/10) : /api/backup-daily, /api/backup-now, /api/backup-status
         // + (31/10) /api/backup-cartes { ids } : le corps JSON est lu ici (Vercel le fait en production)
         // + (07/11) /api/backup-catchup : rattrapage de la copie à l'ouverture de l'app
-        const m = /^\/api\/(deepgram-(?:token|credits)|backup-(?:daily|now|status|cartes|catchup)|timetable)(?:\?|$)/.exec(req.url || '');
+        // + (14/11) /api/backup-versions { ns } : versions d'un document dans les copies (historique)
+        const m = /^\/api\/(deepgram-(?:token|credits)|backup-(?:daily|now|status|cartes|catchup|versions)|timetable)(?:\?|$)/.exec(req.url || '');
         if (!m) return next();
         try {
-          if (m[1] === 'backup-cartes' && req.method === 'POST') {
+          if ((m[1] === 'backup-cartes' || m[1] === 'backup-versions') && req.method === 'POST') {
             let brut = ''; for await (const morceau of req) brut += morceau;
             try { req.body = brut ? JSON.parse(brut) : {}; } catch { req.body = {}; }
           }

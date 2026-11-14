@@ -35,6 +35,7 @@ import { BoiteTableau, BoutonMenuTableau, estGrille, nouvelleGrille } from '../p
 import { carteDepuisBoite } from '../lib/board.js';
 import { redimRectImage, ouvrirRognage, cadreApresRognage, styleEntiere } from '../lib/rognageImage.js';
 import '../../styles/tableau-board.css';
+import { IndicateurEnregistrement } from '../components/IndicateurEnregistrement.jsx';
 
 const SEUIL_AIMANT = 6; // px à l'écran
 const rectsSeCroisent = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -848,6 +849,7 @@ export const Board = forwardRef(function Board({ ficheId, flashcards = [], onOuv
         <span className="tb2-sep" />
         <button type="button" className="tb2-btn" data-act="annuler" onClick={hist.annuler} disabled={!hist.peutAnnuler} title={hist.peutAnnuler ? `Annuler — ${hist.libelleAnnuler} (⌘Z)` : 'Annuler (⌘Z)'}><IconeOutil nom="annuler" size={14} /></button>
         <button type="button" className="tb2-btn" data-act="retablir" onClick={hist.retablir} disabled={!hist.peutRetablir} title="Rétablir (⇧⌘Z)"><IconeOutil nom="retablir" size={14} /></button>
+        <IndicateurEnregistrement ns={ficheId} compact /> {/* (14/11) même calcul que la barre du PDF (lib/enregistrement.js) */}
         <span className="tb2-sep" />
         <button type="button" className="tb2-btn" onClick={() => zoomBoutons(1 / 1.2)} title="Dézoomer (⌘ + molette, ou pincer)" aria-label="Dézoomer"><span className="tb2-moins" aria-hidden="true">−</span></button>
         <span className="tb2-zoom tnum" data-zoom={z}>{Math.round(z * 100)} %</span>

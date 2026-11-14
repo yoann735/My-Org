@@ -110,6 +110,11 @@ import { useTagsPages, tagsDe, seances as seancesDe, pagesEnSeance, pageDuTag, p
 import { PastilleTag, FenetreTag, FenetreSeances, MARGE_TAGS } from './TagsPages.jsx';
 import { useTablette, abonnerStylet, styletActif, dessinAuDoigt, ecrireDessinAuDoigt, abonnerReglagesStylet, lireFractionVolet, ecrireFractionVolet, bornerVolet, VOLET_MIN, VOLET_MAX, VOLET_PLEIN } from '../lib/tablette.js';
 import '../../styles/tablette.css';
+// (14/11) enregistrement incassable + historique des versions (docs/compte-rendu-boites-disparues-et-sauvegarde-continue.md)
+import { IndicateurEnregistrement } from '../components/IndicateurEnregistrement.jsx';
+import { HistoriqueDoc } from './HistoriqueDoc.jsx';
+import { inscrireVidage, viderTout } from '../lib/enregistrement.js';
+import { ouvertureDocument, fermetureDocument, ignorerDisparitions } from '../lib/historiqueDoc.js';
 import '../../styles/notes-doc.css';
 import '../../styles/pdfreader-v2.css';
 import '../../styles/fiche-jumelle.css';
@@ -143,6 +148,8 @@ import { EditeurCorrespondance, ListeNonReplacees } from './Correspondance.jsx';
 import { nettoyerCollage } from '../lib/collageListes.js';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
 const dansLeTableau = (el) => !!(el && el.closest && el.closest('.tb'));
+/* (14/11) texte d'une boîte : 1re frappe écrite aussitôt, puis au plus toutes les 200 ms (< 300 ms après chaque frappe) */
+const DELAI_ECRITURE_BOITE = 200;
 /** (22/10) les outils de la barre qui regroupent plusieurs outils du moteur : { dessin: ['crayon', 'gomme'], ecrire: [...] } */
 const GROUPES_OUTILS = Object.fromEntries(OUTILS_BARRE.filter((o) => o.sous).map((o) => [o.id, o.sous]));
 /** (22/10) sous-barre Formes : les cinq formes affichées d'emblée (les sept autres derrière « … ») */
@@ -889,6 +896,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // page affichée = celle qui passe sous la ligne de lecture (voir computeVisibleRange),
   // tenue à jour par le même défilement que le rendu virtualisé.
   const pageCourante = Math.min(nbPagesAffichees || 1, Math.max(1, pageLue));
+  useEffect(() => { viderTout(); }, [pageCourante]); // (14/11) changement de page : la frappe en mémoire part tout de suite
   /* OCR (05/10, docs/compte-rendu-ocr.md) : couche de texte reconnue des pages IMAGE,
      tenue à jour page par page pendant le traitement (la page affichée passe d'abord).
      Rien n'est visible par défaut : elle sert la sélection, le surlignage, la recherche
@@ -1918,6 +1926,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [fichiersOuvert, setFichiersOuvert] = useState(!!ouvrirFichiers); // (16/10) Bibliothèque › ⋯ › « Fichiers du cours… » ouvre le cours sur cet écran
   const [fichiersDemarrer, setFichiersDemarrer] = useState(null); // (17/10) 'remplacer' : Fichier › Diapo › « Remplacer ce fichier… »
   const [suppressionDoc, setSuppressionDoc] = useState(null); // (17/10) null | 'original' | 'fiche' | 'refus'
+  const [historiqueOuvert, setHistoriqueOuvert] = useState(false); // (14/11) Fichier › Historique…
+  const [disparues, setDisparues] = useState(null); // (14/11) { ns, liste, reference } — garde-fou à l'ouverture
   const [nonReplaceesPrincipal, setNonReplaceesPrincipal] = useState(null);
   /* (17/10) MENU FICHIER EN SECTIONS (pdf/MenuFichier.jsx, docs/compte-rendu-fichier-carnet-calendrier.md) :
      « Cours », puis « Diapo originale — <nom> » et « Fiche — <nom> », mêmes actions dans les deux.
@@ -1968,6 +1978,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         textes,
         ocr: { indispo: 'Un document créé dans l’app est déjà du texte' },
         miseEnPage: direct(() => setMiseEnPage(true), 'miseEnPage'),
+        historique: direct(() => setHistoriqueOuvert(true), 'historique'),
       };
     }
     return {
@@ -1976,6 +1987,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       exportIA: direct(() => setPanneauExportIA(true), 'exportIA'),
       textes,
       ocr: affiche ? (pdfIdActif ? { onClick: () => setDetailOcr(true), etat: libelleOcr().replace('Reconnaissance de texte : ', '').replace(/ \(PDF déjà en texte\)$/, '') } : { indispo: 'Diapo pas encore chargée' }) : viaBascule('ocr'),
+      historique: direct(() => setHistoriqueOuvert(true), 'historique'),
     };
   };
   const coursFichier = {
@@ -2408,6 +2420,38 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // Déclarés ICI, avant leur première utilisation dans le fichier (boiteFraiche).
   const editSaveTimer = useRef(null);
   const editLastJson = useRef(null);
+  const derniereEcritureBoite = useRef(0);
+  /* (14/11) écriture en base SEULE du texte d'une boîte en cours de frappe (l'écran suit à la fermeture) ; une erreur
+     d'écriture est affichée par le moteur (barre du document), jamais avalée en silence */
+  const ecrireContenuBoite = (id, json) => {
+    const base = (editsRef.current || []).find((a) => a.id === id);
+    if (!base) return Promise.resolve();
+    return put('annotations', avecContenuEdite(base, json)).catch(() => {});
+  };
+  const ecrireBoiteEnCours = (id) => {
+    const j = editLastJson.current;
+    if (j && activeEditIdRef.current === id) ecrireContenuBoite(id, j);
+  };
+  /* vidage immédiat (arrière-plan, fermeture, changement de page ou de document, perte de focus) */
+  const viderBoiteRef = useRef(null);
+  viderBoiteRef.current = () => {
+    const id = activeEditIdRef.current, j = editLastJson.current;
+    if (id && j && editSaveTimer.current) { clearTimeout(editSaveTimer.current); editSaveTimer.current = null; ecrireContenuBoite(id, j); }
+  };
+  useEffect(() => inscrireVidage(() => viderBoiteRef.current && viderBoiteRef.current()), []);
+  /* (14/11) HISTORIQUE : une version à l'ouverture (et le garde-fou « boîtes disparues »), une à la fermeture */
+  useEffect(() => {
+    if (!nsAnnot) return undefined;
+    const ns = nsAnnot; let vivant = true;
+    ouvertureDocument(ns).then((r) => { if (vivant) setDisparues(r.disparues.length ? { ns, liste: r.disparues, reference: r.reference } : null); }).catch(() => {});
+    const fermeture = () => { fermetureDocument(ns).catch(() => {}); };
+    window.addEventListener('pagehide', fermeture);
+    return () => {
+      vivant = false; window.removeEventListener('pagehide', fermeture);
+      viderTout(); // le texte en mémoire part avant la photographie
+      setTimeout(fermeture, 400);
+    };
+  }, [nsAnnot]);
   /* CORRECTIF (boîte de texte, défaut 3) : l'éditeur TipTap n'est recréé qu'au
      changement de bloc actif ; son `onUpdate` capturait donc l'enregistrement tel
      qu'il était À CE MOMENT-LÀ, et la sauvegarde différée réécrivait cette version
@@ -2433,7 +2477,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const prec = activeEditIdRef.current;
     if (prec && prec !== id) {
       let contenu = null;
-      if (editSaveTimer.current && editLastJson.current) {
+      // (14/11) `editLastJson` non nul = texte que l'ÉCRAN (edits) n'a pas encore, qu'il soit déjà écrit en base ou non
+      if (editLastJson.current) {
         clearTimeout(editSaveTimer.current); editSaveTimer.current = null;
         contenu = editLastJson.current; editLastJson.current = null;
         saveEditContent(prec, contenu);
@@ -3360,7 +3405,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   // (son texte est enregistré dans la version affichée) avant toute réécriture
   const editsFraisFermes = () => {
     const id = activeEditIdRef.current;
-    const enAttente = id && editSaveTimer.current ? editLastJson.current : null;
+    const enAttente = id ? editLastJson.current : null;
     if (id) setActiveEditId(null);
     return (editsRef.current || []).map((a) => (a.id === id && enAttente ? avecContenuEdite(a, enAttente) : a));
   };
@@ -3479,9 +3524,18 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       if (!id) return;
       const json = ed.getJSON();
       editLastJson.current = json;
-      clearTimeout(editSaveTimer.current);
-      editSaveTimer.current = setTimeout(() => { saveEditContent(id, json); editLastJson.current = null; }, 400);
+      /* (14/11, docs/compte-rendu-boites-disparues-et-sauvegarde-continue.md) ÉCRITURE CONTINUE : au plus
+         DELAI_ECRITURE_BOITE ms après une frappe, le texte est dans IndexedDB (relu, voir lib/enregistrement.js) — plus
+         d'attente de 400 ms de silence, qu'une frappe continue repoussait indéfiniment. L'écran (edits) n'est mis à jour
+         qu'à la fermeture de la boîte : aucun rendu du lecteur pendant la frappe. */
+      // première frappe après une pause : écrite TOUT DE SUITE ; les suivantes, regroupées au plus toutes les 200 ms
+      if (!editSaveTimer.current) {
+        const ecoule = performance.now() - derniereEcritureBoite.current;
+        if (ecoule >= DELAI_ECRITURE_BOITE) { derniereEcritureBoite.current = performance.now(); ecrireBoiteEnCours(id); }
+        else editSaveTimer.current = setTimeout(() => { editSaveTimer.current = null; derniereEcritureBoite.current = performance.now(); ecrireBoiteEnCours(id); }, DELAI_ECRITURE_BOITE - ecoule);
+      }
     },
+    onBlur: () => { if (viderBoiteRef.current) viderBoiteRef.current(); },
   }, [activeEditId]);
   // au changement de bloc actif (ou fermeture) : flush immédiat d'une sauvegarde en attente
   useEffect(() => () => {
@@ -3741,6 +3795,20 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       {/* en-tête : nom renommable + menu Fichier (plein écran, ou Bibliothèque) —
           en tablette, une seule ligne compacte (titre tronqué, « … » pour le reste) */}
       {afficherEntete && (modeTab ? enteteTablette() : entete())}
+      {/* (14/11) GARDE-FOU : des annotations de la version précédente manquent sans suppression enregistrée — rien n'est modifié */}
+      {disparues && disparues.ns === nsAnnot && (() => {
+        const n = disparues.liste.length;
+        const nb = disparues.liste.filter((a) => !a.kind || a.kind === 'libre' || a.kind === 'texte').length;
+        const quoi = nb === n ? (n > 1 ? `${n} boîtes ont disparu` : '1 boîte a disparu') : `${n} éléments ont disparu${nb ? ` (dont ${nb} boîte${nb > 1 ? 's' : ''})` : ''}`;
+        return (
+          <div className="enr-bandeau" role="alert" data-disparues={n}>
+            <Icon name="alert" size={15} />
+            <span className="enr-txt">{quoi} de ce document depuis la version du {new Date(disparues.reference.le).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', ' à')}, sans suppression enregistrée. Rien n’a été modifié.</span>
+            <button type="button" className="btn primary sm" onClick={() => setHistoriqueOuvert(true)} title="Voir la version précédente et récupérer les boîtes manquantes">Voir l’historique</button>
+            <button type="button" className="btn ghost sm" onClick={async () => { await ignorerDisparitions(disparues.ns, disparues.liste.map((a) => a.id)); setDisparues(null); }} title="Ne plus signaler ces éléments (aucune donnée modifiée)">Ne plus signaler</button>
+          </div>
+        );
+      })()}
 
       {/* tablette : barre fusionnée (48 px) dans un conteneur qui se replie au défilement ;
           ailleurs ce conteneur est transparent (display: contents) */}
@@ -3748,6 +3816,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       <PdfToolbar
         tablette={modeTab}
         onClose={close}
+        statut={nsAnnot ? <IndicateurEnregistrement ns={nsAnnot} compact={modeTab} onClick={() => setHistoriqueOuvert(true)} /> : null}
         // TABLEAU SEUL : les outils du PDF (pages, zoom, annotations, recherche) ne servent
         // à rien — il reste Retour et Panneau ; le tableau a sa propre barre
         {...(tableauDispo && disposition === 'tableau' ? { outilsAnnotation: false, sansPages: true, sansRecherche: true } : {})}
@@ -4316,6 +4385,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           onNonReplacees={(r) => setNonReplaceesPrincipal(r)} />
       )}
       {nonReplaceesPrincipal && <ListeNonReplacees rec={{ nonReplacees: nonReplaceesPrincipal.nonReplacees, fileName: ficheReelle && ficheReelle.pdfName, versions: [{ fileName: nonReplaceesPrincipal.fileName }] }} onClose={() => setNonReplaceesPrincipal(null)} />}
+      {historiqueOuvert && (
+        <HistoriqueDoc ns={nsAnnot} titre={(fiche && fiche.titre) + (surFiche ? ' — fiche' : '')} pageSizes={pageSizes} pdfDoc={modeDoc ? null : pdfDoc}
+          versionInitiale={disparues && disparues.ns === nsAnnot && disparues.reference ? disparues.reference.id : null}
+          onFermer={() => setHistoriqueOuvert(false)}
+          onApplique={async () => { hist.vider(); await rechargerAnnotations(); setDisparues(null); }} />
+      )}
       {suppressionDoc && ficheReelle && (
         <SuppressionDocument quoi={suppressionDoc} fiche={ficheReelle} jumelle={jumelle} db={db} onFermer={() => setSuppressionDoc(null)}
           onRemplacer={() => { setSuppressionDoc(null); setFichiersDemarrer('remplacer'); setFichiersOuvert(true); }}

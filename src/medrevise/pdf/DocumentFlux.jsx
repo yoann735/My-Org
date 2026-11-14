@@ -30,10 +30,11 @@ import { surlignerNotions } from '../documents/lib/notionMarks.js';
 import { PaginationDocument, SautDePage, gesteDocument } from '../documents/lib/paginationExt.js';
 import { occurrencesDom, surlignerOccurrences } from './rechercheDom.js';
 import { nettoyerCollage } from '../lib/collageListes.js';
+import { inscrireVidage } from '../lib/enregistrement.js';
 
 const dansTexteImage = () => { const sel = window.getSelection(); const n = sel && sel.anchorNode; const el = n && (n.nodeType === 1 ? n : n.parentElement); return !!(el && el.closest && el.closest('.pti-texte')); };
 export const MARGE_DOC = 56; // ≈ 20 mm sur l'A4 (595 × 842)
-const DELAI_SAUVEGARDE = 600;
+const DELAI_SAUVEGARDE = 150; // (14/11) écriture continue : au plus 150 ms après une frappe (lib/enregistrement.js)
 
 export const DocumentFlux = memo(forwardRef(function DocumentFlux({
   initial, largeurPage, hauteurPage, ecart, echelle, hauteurTotale, outil, couleurSurligneur, fondNoir = false,
@@ -43,6 +44,7 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
   const urls = useRef([]);
   const charge = useRef(false);
   const minuteur = useRef(null);
+  const derniereEcriture = useRef(0); // (14/11) heure de la dernière écriture (écriture continue)
   const enAttente = useRef(null);
   const editorRef = useRef(null);
   const dernierJSON = useRef(null);
@@ -115,8 +117,11 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
       if (!charge.current) return;
       derniereFrappe.current = Date.now();
       enAttente.current = ed.getJSON();
-      clearTimeout(minuteur.current);
-      minuteur.current = setTimeout(vider, DELAI_SAUVEGARDE);
+      if (!minuteur.current) { // (14/11) écriture continue : 1re frappe tout de suite, puis au plus toutes les DELAI_SAUVEGARDE ms
+        const ecoule = performance.now() - derniereEcriture.current;
+        if (ecoule >= DELAI_SAUVEGARDE) { derniereEcriture.current = performance.now(); vider(); }
+        else minuteur.current = setTimeout(() => { derniereEcriture.current = performance.now(); vider(); }, DELAI_SAUVEGARDE - ecoule);
+      }
     },
     onFocus: ({ editor: ed }) => { rappels.current.onActiver(ed); },
     onSelectionUpdate: ({ editor: ed }) => { majBulle(ed); if (ed.isFocused) rappels.current.onActiver(ed); },
@@ -201,7 +206,9 @@ export const DocumentFlux = memo(forwardRef(function DocumentFlux({
     const cache = () => { if (document.visibilityState === 'hidden') vider(); };
     document.addEventListener('visibilitychange', cache);
     window.addEventListener('pagehide', vider);
+    const offVidage = inscrireVidage(vider); // (14/11) changement de page / document, fermeture (lib/enregistrement.js)
     return () => {
+      offVidage();
       document.removeEventListener('visibilitychange', cache);
       window.removeEventListener('pagehide', vider);
       vider();

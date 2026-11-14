@@ -9,6 +9,7 @@ import { isoDate, startAdaptive } from './sm2.js';
 import { queuePush, pullAllRecords, pullAllMeta, pullStore, queueBlobPush, flushBlobOutbox, blobOutboxEntries, listCloudBlobs, pullBlob, flushOutbox, isPushDegraded, outboxEntries, retirerSiInchange, dernierEchecCloud, outboxCount, etatLegerCloud, pullDepuis, pullParIds } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 import { appareil } from '../journal/journal.js';
+import { estStoreDocument, ecrireVerifie, suivreMiseEnFile, suivreEcriture } from './enregistrement.js';
 
 const store = (name) => createStore('medrevise-' + name, 'v1');
 const S = {
@@ -103,6 +104,10 @@ const S = {
   // date:'AAAA-MM-JJ', transcriptSessionId|null, supprime? } (lib/tagsPages.js). Un tag retiré est MARQUÉ `supprime`, jamais
   // effacé : aucune suppression ne part au cloud.
   page_tag: store('page_tag'),
+  // HISTORIQUE DES VERSIONS D'UN DOCUMENT (14/11, lib/historiqueDoc.js) — LOCAL à l'appareil, jamais synchronisé
+  // (hors SYNCABLE) : une photographie des annotations d'un document toutes les 5 min d'édition, à la fermeture,
+  // avant toute restauration, et chaque version écartée par un conflit. Clé `<ns>|<horodatage>|<id>`. 60 jours.
+  versions_doc: store('versions_doc'),
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
@@ -188,18 +193,60 @@ export async function mergeBlobs(pairs) {
 const signalerEcriture = (name) => {
   try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('medrevise:ecriture', { detail: { store: name } })); } catch (e) { /* ignore */ }
 };
+/* (14/11) CROCHETS « DOCUMENT » posés par lib/historiqueDoc.js (inversion de dépendance : ce fichier ne connaît pas
+   l'historique). `avantEcriture(name, precedent, nouveau)` : version écrasée par un autre onglet → historique ;
+   `avantSuppression(name, precedent)` : suppression notée (garde-fou « boîtes disparues ») ;
+   `avantCloud(name, local, cloudData|null)` : version locale remplacée ou supprimée par la synchro → historique. */
+const crochetsDoc = { avantEcriture: null, avantSuppression: null, avantCloud: null };
+export function definirCrochetsDocuments(c) { Object.assign(crochetsDoc, c || {}); }
+const crocher = async (nom, ...args) => { const f = crochetsDoc[nom]; if (!f) return; try { await f(...args); } catch (e) { /* jamais bloquant */ } };
+
+/* ÉCRITURE D'UN DOCUMENT (14/11, lib/enregistrement.js) : écrite, RELUE, réessayée, erreur visible ; puis mise en
+   file d'envoi (attendue : jamais compté « envoyé » avant d'être dans la file). */
+/* (14/11) ORDRE GARANTI PAR ENREGISTREMENT : deux écritures du même enregistrement s'appliquent dans l'ordre où elles
+   sont DEMANDÉES. Sans cela, la création d'une boîte (vide) et la première lettre tapée juste après pouvaient se
+   croiser : la création, plus lente, finissait en dernier et effaçait la lettre. */
+const filesParCle = new Map();
+function enOrdre(cles, fn) {
+  const prec = Promise.all(cles.map((k) => (filesParCle.get(k) || Promise.resolve()).catch(() => {})));
+  const p = prec.then(fn);
+  const garde = p.catch(() => {});
+  cles.forEach((k) => filesParCle.set(k, garde));
+  garde.then(() => cles.forEach((k) => { if (filesParCle.get(k) === garde) filesParCle.delete(k); }));
+  return p;
+}
+function ecrireDocument(name, stamped) { return suivreEcriture(() => enOrdre(stamped.map((r) => name + ':' + r.id), () => ecrireDocument0(name, stamped))); }
+async function ecrireDocument0(name, stamped) {
+  const ids = stamped.map((r) => r.id);
+  if (crochetsDoc.avantEcriture) {
+    const prec = await Promise.all(ids.map((id) => get(id, S[name]).catch(() => undefined)));
+    for (let i = 0; i < stamped.length; i++) if (prec[i]) await crocher('avantEcriture', name, prec[i], stamped[i]);
+  }
+  await ecrireVerifie({
+    store: name, elements: stamped.map((r) => ({ id: r.id, rec: r })),
+    ecrire: () => (stamped.length === 1 ? set(stamped[0].id, stamped[0], S[name]) : setMany(stamped.map((r) => [r.id, r]), S[name])),
+    relire: () => Promise.all(ids.map((id) => get(id, S[name]))),
+  });
+  if (SYNCABLE.includes(name)) await Promise.all(stamped.map((r) => suivreMiseEnFile(name, r.id, queuePush(name, r.id, r, r.updatedAt))));
+}
 export async function put(name, rec) {
   const stamped = SYNCABLE.includes(name) ? { ...rec, updatedAt: new Date().toISOString() } : rec;
-  await set(stamped.id, stamped, S[name]);
-  if (SYNCABLE.includes(name)) queuePush(name, stamped.id, stamped, stamped.updatedAt);
+  if (estStoreDocument(name)) await ecrireDocument(name, [stamped]);
+  else {
+    await set(stamped.id, stamped, S[name]);
+    if (SYNCABLE.includes(name)) queuePush(name, stamped.id, stamped, stamped.updatedAt);
+  }
   signalerEcriture(name);
   return stamped;
 }
 export async function putMany(name, recs) {
   const syncable = SYNCABLE.includes(name);
   const stamped = syncable ? recs.map((r) => ({ ...r, updatedAt: new Date().toISOString() })) : recs;
-  await setMany(stamped.map((r) => [r.id, r]), S[name]);
-  if (syncable) stamped.forEach((r) => queuePush(name, r.id, r, r.updatedAt));
+  if (estStoreDocument(name) && stamped.length) await ecrireDocument(name, stamped);
+  else {
+    await setMany(stamped.map((r) => [r.id, r]), S[name]);
+    if (syncable) stamped.forEach((r) => queuePush(name, r.id, r, r.updatedAt));
+  }
   signalerEcriture(name);
   return stamped;
 }
@@ -254,9 +301,35 @@ if (typeof document !== 'undefined') {
 }
 
 export async function remove(name, id) {
-  await del(id, S[name]);
-  if (SYNCABLE.includes(name)) queuePush(name, id, {}, new Date().toISOString(), true); // tombstone (data vide, deleted=true)
+  if (estStoreDocument(name)) {
+    await suivreEcriture(() => enOrdre([name + ':' + id], async () => {
+      const prec = await get(id, S[name]).catch(() => undefined);
+      if (prec) await crocher('avantSuppression', name, prec);
+      await ecrireVerifie({ store: name, elements: [{ id, rec: null }], ecrire: () => del(id, S[name]), relire: () => Promise.all([get(id, S[name])]) });
+      if (SYNCABLE.includes(name)) await suivreMiseEnFile(name, id, queuePush(name, id, {}, new Date().toISOString(), true));
+    }));
+  } else {
+    await del(id, S[name]);
+    if (SYNCABLE.includes(name)) queuePush(name, id, {}, new Date().toISOString(), true); // tombstone (data vide, deleted=true)
+  }
   signalerEcriture(name);
+}
+
+/* ---- historique des versions (store local `versions_doc`, logique dans lib/historiqueDoc.js) ---- */
+export const versionsDocCles = () => keys(S.versions_doc);
+export const versionDoc = (cle) => get(cle, S.versions_doc);
+export const ecrireVersionDoc = (cle, v) => set(cle, v, S.versions_doc);
+export const supprimerVersionDoc = (cle) => del(cle, S.versions_doc);
+/** enregistrements d'un document, en LECTURE seule : annotations + surlignages (+ tableau, notes) */
+export async function lireDocument(ns) {
+  const [ann, hl] = await Promise.all([values(S.annotations), values(S.highlights)]);
+  const board = await get('board:' + ns, S.board).catch(() => undefined);
+  const notes = await get(ns, S.notes_doc).catch(() => undefined);
+  return {
+    annotations: (ann || []).filter((a) => a && a.ficheId === ns),
+    highlights: (hl || []).filter((h) => h && h.ficheId === ns),
+    board: board || null, notes_doc: notes || null,
+  };
 }
 
 /* ---- blobs (images recadrées, PDF) — Storage cloud (pas la table de records :
@@ -573,14 +646,10 @@ export const getDoc = (ficheId) => get(ficheId, S.docs);
 export async function setDoc(ficheId, content) {
   const updatedAt = new Date().toISOString();
   const rec = { id: ficheId, content, updatedAt };
-  await set(ficheId, rec, S.docs);
-  queuePush('docs', ficheId, rec, updatedAt);
+  await ecrireDocument('docs', [rec]); // (14/11) moteur d'enregistrement : relu, réessayé, mis en file
   signalerEcriture('docs');
 }
-export async function removeDoc(ficheId) {
-  await del(ficheId, S.docs);
-  queuePush('docs', ficheId, {}, new Date().toISOString(), true);
-}
+export async function removeDoc(ficheId) { await remove('docs', ficheId); }
 
 /* ---- stats (carte unique) ---- */
 // `serieCollapsed` et `rattraperCollapsedReviser` retirés (ÉTAPE 1, audit UX Réviser) :
@@ -949,9 +1018,10 @@ export async function reconcileAll() {
       }
       const cloudTs = cloud.updated_at ? Date.parse(cloud.updated_at) : 0;
       if (cloud.deleted) {
-        if (cloudTs >= localTs) await del(rec.id, S[name]); // tombstone plus récent → supprimer localement
+        if (cloudTs >= localTs) { if (estStoreDocument(name)) await crocher('avantCloud', name, rec, null); await del(rec.id, S[name]); } // tombstone plus récent → supprimer localement
         else queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → réhabiliter
       } else if (cloudTs > localTs) {
+        if (estStoreDocument(name)) await crocher('avantCloud', name, rec, cloud.data); // la version écartée va dans l'historique
         await set(rec.id, cloud.data, S[name]); // cloud plus récent → adopter
       } else if (localTs > cloudTs) {
         queuePush(name, rec.id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → pousser
@@ -1125,9 +1195,9 @@ export async function appliquerLignesCloud(rows) {
     } else {
       const localTs = instant(rec.updatedAt) || 0;
       if (cloud.deleted) {
-        if (cloudTs >= localTs) { await del(id, S[name]); change = true; } // tombstone plus récent → supprimer
+        if (cloudTs >= localTs) { if (estStoreDocument(name)) await crocher('avantCloud', name, rec, null); await del(id, S[name]); change = true; } // tombstone plus récent → supprimer
         else queuePush(name, id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → réhabiliter
-      } else if (cloudTs > localTs) { await set(id, cloud.data, S[name]); change = true; } // cloud plus récent → adopter
+      } else if (cloudTs > localTs) { if (estStoreDocument(name)) await crocher('avantCloud', name, rec, cloud.data); await set(id, cloud.data, S[name]); change = true; } // cloud plus récent → adopter
       else if (localTs > cloudTs) queuePush(name, id, rec, rec.updatedAt || new Date().toISOString()); // local plus récent → pousser
     }
     if (change) { stores.add(name); if (name === 'questions') cartes.push(id); }

@@ -34,7 +34,7 @@
    parce que le partage se fait sur la cible du clavier (voir PdfReader).
    ============================================================ */
 import { useCallback, useRef, useState } from 'react';
-import { put, remove } from './storage.js';
+import { put, remove, getOne } from './storage.js';
 
 export const MAX_HISTORIQUE = 100;
 
@@ -50,26 +50,53 @@ export const MAX_HISTORIQUE = 100;
    plus que confirmer. */
 const effet = (store, avant, apres) => ({ store, avant: avant || null, apres: apres || null });
 
-export const cmdCreer = (store, rec, libelle) => ({
-  libelle: libelle || 'Création',
-  effets: [effet(store, null, rec)],
-  faire: () => put(store, rec),
-  defaire: () => remove(store, rec.id),
-});
+/* (14/11, docs/compte-rendu-boites-disparues-et-sauvegarde-continue.md) TEXTE TAPÉ APRÈS LA CRÉATION. Le texte d'une
+   boîte n'entre pas dans cette pile (il a l'historique de TipTap) : annuler la CRÉATION d'une boîte où l'on a écrit
+   depuis l'effaçait, et la rétablir la rendait VIDE (l'instantané de la création) — le texte était perdu. Désormais
+   `defaire` relit l'enregistrement le plus récent avant de le retirer, et `faire` (rétablir) remet CETTE version. */
+const lireActuel = async (store, id) => { try { return await getOne(store, id); } catch (e) { return undefined; } };
+export const cmdCreer = (store, rec, libelle) => {
+  let dernier = null;
+  return {
+    libelle: libelle || 'Création',
+    get effets() { return [effet(store, null, dernier || rec)]; },
+    faire: () => put(store, dernier || rec),
+    defaire: async () => { const cur = await lireActuel(store, rec.id); if (cur) dernier = cur; return remove(store, rec.id); },
+  };
+};
 
-export const cmdSupprimer = (store, rec, libelle) => ({
-  libelle: libelle || 'Suppression',
-  effets: [effet(store, rec, null)],
-  faire: () => remove(store, rec.id),
-  defaire: () => put(store, rec),
-});
+export const cmdSupprimer = (store, rec, libelle) => {
+  let dernier = null; // (14/11) la version supprimée la plus récente, pour que l'annulation rende le texte complet
+  return {
+    libelle: libelle || 'Suppression',
+    get effets() { return [effet(store, dernier || rec, null)]; },
+    faire: async () => { const cur = await lireActuel(store, rec.id); if (cur) dernier = cur; return remove(store, rec.id); },
+    defaire: () => put(store, dernier || rec),
+  };
+};
 
-export const cmdModifier = (store, avant, apres, libelle) => ({
-  libelle: libelle || 'Modification',
-  effets: [effet(store, avant, apres)],
-  faire: () => put(store, apres),
-  defaire: () => put(store, avant),
-});
+/* (14/11) une modification qui ne touche PAS au texte (déplacement, taille, couleur…) garde, à l'annulation comme au
+   rétablissement, le texte ACTUEL de la boîte : sinon annuler un déplacement remettait aussi le texte d'avant ce
+   déplacement, et ce qui avait été tapé depuis disparaissait. */
+const CHAMPS_TEXTE = ['content', 'contentAlt', 'contentOriginal', 'textAlt', 'textOriginal'];
+const texteDe = (r) => JSON.stringify(CHAMPS_TEXTE.map((k) => (r ? r[k] : undefined)));
+export const cmdModifier = (store, avant, apres, libelle) => {
+  const toucheTexte = texteDe(avant) !== texteDe(apres);
+  const avecTexteActuel = async (cible) => {
+    if (toucheTexte || store !== 'annotations' || !cible) return cible;
+    const cur = await lireActuel(store, cible.id);
+    if (!cur || texteDe(cur) === texteDe(cible)) return cible;
+    const r = { ...cible };
+    for (const k of CHAMPS_TEXTE) { if (cur[k] === undefined) delete r[k]; else r[k] = cur[k]; }
+    return r;
+  };
+  return {
+    libelle: libelle || 'Modification',
+    effets: [effet(store, avant, apres)],
+    faire: async () => put(store, await avecTexteActuel(apres)),
+    defaire: async () => put(store, await avecTexteActuel(avant)),
+  };
+};
 
 /** plusieurs commandes = UNE entrée d'annulation (gomme, retrait d'une page…). */
 export const cmdGroupe = (libelle, cmds) => (cmds.length === 1 ? cmds[0] : {

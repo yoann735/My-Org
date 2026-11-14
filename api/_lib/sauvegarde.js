@@ -200,3 +200,43 @@ export async function retrouverCartes({ ids, env = process.env, fetchFn = fetch,
   }
   return { ok: true, cartes: [...trouvees.values()], introuvables: [...voulus].filter((id) => !trouvees.has(id)), copiesLues: lues };
 }
+
+/* ============================================================
+   VERSIONS D'UN DOCUMENT DANS LES COPIES (14/11, docs/compte-rendu-boites-disparues-et-sauvegarde-continue.md).
+   LECTURE SEULE du dépôt de copies : pour un document (`ns` = ficheId, `<cours>::fiche:<v>`…), ses annotations et
+   surlignages vivants dans chaque copie « backup AAAA-MM-JJ », de la plus récente à la plus ancienne (14 au plus,
+   4 lues en parallèle). Deux copies identiques ne donnent qu'une version (la plus ancienne des deux est écartée).
+   Rien n'est écrit, ni au dépôt ni ailleurs ; le jeton reste sur le serveur.
+   ============================================================ */
+const RE_NS = /^[\w:.-]{1,120}$/;
+export async function retrouverVersionsDoc({ ns, env = process.env, fetchFn = fetch, profondeur = 14, enParallele = 4 } = {}) {
+  const cfg = configuration(env);
+  if (!cfg.token || !cfg.depot) return { ok: false, configure: false, code: 'non_configure', message: 'Copie serveur non configurée.' };
+  if (typeof ns !== 'string' || !RE_NS.test(ns)) return { ok: false, code: 'ns', message: 'Document inconnu.' };
+  const gh = clientGithub({ token: cfg.token, depot: cfg.depot, branche: cfg.branche, fetchFn });
+  const commits = (await gh.historique(profondeur)).filter((c) => RE_COPIE_REUSSIE.test(c.message));
+  const lire = async (c) => {
+    const annotations = []; const highlights = [];
+    for (const f of await gh.fichiers(c.arbre, (p) => /^data\/records(-\d{3})?\.jsonl$/.test(p))) {
+      for (const ligne of (await gh.blob(f.sha)).split('\n')) {
+        if (!ligne || ligne.indexOf(ns) < 0) continue; // filtre rapide avant JSON.parse
+        let r; try { r = JSON.parse(ligne); } catch { continue; }
+        if (r.deleted || !r.data || r.data.ficheId !== ns) continue;
+        if (r.store === 'annotations') annotations.push(r.data); else if (r.store === 'highlights') highlights.push(r.data);
+      }
+    }
+    annotations.sort((a, b) => (a.id < b.id ? -1 : 1)); highlights.sort((a, b) => (a.id < b.id ? -1 : 1));
+    return { copie: c.message.replace(/^backup /, '').slice(0, 10), sha: c.sha, le: c.date || null, annotations, highlights };
+  };
+  const lues = [];
+  for (let i = 0; i < commits.length; i += enParallele) lues.push(...await Promise.all(commits.slice(i, i + enParallele).map(lire)));
+  // une version par contenu distinct : la plus ANCIENNE copie de chaque suite identique (« depuis le … »)
+  const versions = []; let prec = null;
+  for (const v of lues.slice().reverse()) {
+    if (!v.annotations.length && !v.highlights.length) { prec = null; continue; }
+    const cle = JSON.stringify([v.annotations.map((a) => [a.id, a.updatedAt]), v.highlights.map((h) => [h.id, h.updatedAt])]);
+    if (cle !== prec) versions.push(v);
+    prec = cle;
+  }
+  return { ok: true, versions: versions.reverse(), copiesLues: lues.length };
+}

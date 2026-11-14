@@ -96,7 +96,9 @@ export function useDatesModif(actif) {
       const s = e && e.detail && e.detail.store;
       if (!SOURCES[s]) return;
       enAttente.add(s);
-      if (!minuteur) minuteur = setTimeout(() => { minuteur = null; const l = [...enAttente]; enAttente.clear(); relire(l); }, 700);
+      // (14/11) attend une PAUSE d'écriture : la frappe est désormais écrite en continu (lib/enregistrement.js) et ne doit
+      // pas relire tout le store à chaque seconde de frappe
+      clearTimeout(minuteur); minuteur = setTimeout(() => { minuteur = null; const l = [...enAttente]; enAttente.clear(); relire(l); }, 1500);
     };
     const tout = () => relire(STORES_MODIF);
     window.addEventListener('medrevise:ecriture', ecriture);

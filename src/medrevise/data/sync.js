@@ -181,11 +181,14 @@ export async function outboxEntries() {
 export function queuePush(store, id, data, updatedAt, deleted = false) {
   if (!SYNC_ENABLED) return;
   const key = store + ':' + id;
-  set(key, { store, record_id: id, data, updated_at: updatedAt, deleted }, outboxStore)
+  // (14/11) la promesse est RENDUE : le moteur d'enregistrement des documents (lib/enregistrement.js) attend que
+  // l'entrée soit dans la file avant de compter l'écriture « en attente d'envoi » (jamais un faux « envoyé »)
+  const p = set(key, { store, record_id: id, data, updated_at: updatedAt, deleted }, outboxStore)
     .then(() => { outboxOuvert = true; })
     .catch(() => { /* écriture outbox best-effort ; en pire cas, pas pire qu'avant l'outbox */ });
   clearTimeout(pushTimer);
   pushTimer = setTimeout(flushPending, PUSH_DEBOUNCE_MS);
+  return p;
 }
 
 /* ============================================================

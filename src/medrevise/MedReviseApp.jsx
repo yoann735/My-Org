@@ -34,6 +34,7 @@ import {
   purgeSource, purgeMatiere, purgeFiche, putBackup, newErrorCard, noterSuppressionsVolontaires,
   getCoursePrompts, setCoursePrompts, getExoPrompts, setExoPrompts,
   getChapExoPrompts, setChapExoPrompts, getReglagesFC, setReglagesFC, getCarnetPuces, setCarnetPuces, getCarnetPreReponses, setCarnetPreReponses, getEdtReglages, majEdtReglages,
+  setMeta,
 } from './lib/storage.js';
 import { demarrerEmploiDuTemps } from './lib/emploiDuTemps.js';
 import { runMigrations } from './lib/migrate.js';
@@ -58,6 +59,9 @@ import { useHorsImpression } from './lib/tablette.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
 import { IndicateurTranscription } from './transcription/IndicateurGlobal.jsx';
 import { demarrerOcr } from './ocr/service.js';
+// (14/11) historique des versions (crochets posés dans lib/storage.js à l'import) + stockage persistant
+import './lib/historiqueDoc.js';
+import { demanderStockagePersistant } from './lib/enregistrement.js';
 
 let ocrDemarre = false; // démarrage unique du service OCR (voir plus bas)
 
@@ -384,6 +388,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
       /* (07/11) RATTRAPAGE DE LA COPIE GITHUB : le serveur vérifie lui-même la date de la dernière copie réussie et
          ne lance la copie (même code que le cron) que si elle a plus de 24 h. Silencieux, jamais attendu. */
       lancerRattrapageSauvegarde().then((r) => { if (r && r.action === 'lancee') rafraichirStatutServeur().catch(() => {}); }).catch(() => {});
+      /* (14/11) le navigateur ne peut plus effacer les données locales de lui-même (navigator.storage.persist) */
+      demanderStockagePersistant().then((r) => setMeta('stockagePersistant', r).catch(() => {})).catch(() => {});
     }, 800);
   })(); }, [forceSync, reload]);
 
