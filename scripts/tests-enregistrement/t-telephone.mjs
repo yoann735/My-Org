@@ -37,18 +37,32 @@ b.ok(e2.code === 'envoye', 'état : « Enregistré et envoyé »', e2.detail);
 await b.S(`await S.remove('annotations', ${JSON.stringify(id)}); return 1;`);
 
 // séance de flashcards (non-régression)
+// seed.mjs ne sème ses 6 flashcards qu'une fois et chaque passage des bancs en note une : sans carte fraîche, au 7e passage
+// plus rien n'est dû (bouton désactivé, journal inchangé). On ajoute donc une carte de test due aujourd'hui, retirée à la fin.
+const idCarte = 'fc-tel-' + Date.now();
+await b.S(`const t = (await __imp('/src/medrevise/lib/sm2.js')).todayISO();
+  await S.put('questions', { id: ${JSON.stringify(idCarte)}, type: 'flashcard', ficheId: 'f-enr', theme: 'Glandes', recto: 'Question téléphone ?', verso: 'Réponse téléphone',
+    historique: [{ date: t, qualite: 3 }], nouvelle: false, intervalDays: 2, dueDate: t, j0Date: t }); return 1;`);
 await b.ouvrirApp();
 await b.attendreSynchro(30000);
 const cta = await b.ev(`(() => { const x = document.querySelector('.mrm-cta'); return x ? { txt: x.innerText, off: x.disabled } : null; })()`);
 b.ok(!!cta && !cta.off, 'accueil : séance disponible', cta && cta.txt.replace(/\n/g, ' '));
-await b.clic(`document.querySelector('.mrm-cta')`, 1500);
-b.ok(await b.attendre(`!!document.querySelector('.mrm-flash-card')`, 25000), 'séance lancée : une carte s’affiche');
+// machine chargée : on attend (et on retente le clic) plutôt que de dormir un temps fixe
+let carte = false;
+for (let essai = 0; essai < 3 && !carte; essai++) {
+  await b.attendre(`(() => { const x = document.querySelector('.mrm-cta'); return !!x && !x.disabled; })()`, 10000);
+  await b.clic(`document.querySelector('.mrm-cta')`, 1500);
+  carte = await b.attendre(`!!document.querySelector('.mrm-flash-card')`, 20000);
+}
+b.ok(carte, 'séance lancée : une carte s’affiche');
 await b.clic(`document.querySelector('.mrm-flash-card')`, 800);
 await b.attendre(`!!document.querySelector('.mrm-rate-btn.hard, .mrm-rate-btn')`, 5000);
 const avant = await b.ev(`(async () => { const J = await __imp('/src/medrevise/journal/journal.js'); return (await J.toutLeJournal()).length; })()`);
 await b.clic(`[...document.querySelectorAll('.mrm-rate-btn')].find((x) => /Correct|Bien|Facile|Difficile/.test(x.innerText)) || document.querySelector('.mrm-rate-btn')`, 1200);
+await b.attendre(`(async () => { const J = await __imp('/src/medrevise/journal/journal.js'); return (await J.toutLeJournal()).length > ${avant}; })()`, 10000, 250);
 const apres = await b.ev(`(async () => { const J = await __imp('/src/medrevise/journal/journal.js'); return (await J.toutLeJournal()).length; })()`);
 b.ok(apres === avant + 1, 'une réponse notée : journal +1', `${avant} → ${apres}`);
 await b.capture('telephone-seance');
+await b.S(`await S.remove('questions', ${JSON.stringify(idCarte)}); return 1;`);
 process.exitCode = b.fin();
 b.fermerWs();

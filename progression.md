@@ -16,12 +16,11 @@ Session /goal du 14-15/11 : retrouver les boîtes « disparues » d'Épithélium
 
 ## 🚧 En cours
 - Rien de commencé. Modifications non commitées : aucune (hors `progression.md`, modifié par cette clôture).
-- ⚠️ Non vérifié : le DERNIER passage de `scripts/tests-enregistrement/tout.sh` a donné ordinateur ✅×3, tablette ✅×3, mais téléphone 2 échecs (« séance lancée : une carte s'affiche », puis « journal +1 : 2 → 2 ») dans `t-telephone.mjs` (séance de flashcards, non-régression). Les passages précédents étaient verts ; probablement délai/instabilité du banc, non investigué.
+- ✅ Banc téléphone tranché (15/11 soir) : PAS de régression. Les échecs venaient du banc : `seed.mjs` ne sème que 6 flashcards et chaque passage en note une → au 7e passage plus rien n'est dû (bouton désactivé, journal 2 → 2). `t-telephone.mjs` ajoute désormais sa propre carte due (retirée à la fin) et attend au lieu de dormir. 3 passages verts sur profil épuisé + `tout.sh` complet vert (142 ✅). Attention : machine saturée (charge ~40-50) ou Chrome headless mort → faux échecs de latence sur la tablette.
 
 ## ➡️ Prochaines étapes (dans l'ordre)
-1. Relancer `node t-telephone.mjs` (après `node seed.mjs`) et trancher : banc instable ou vraie régression de la séance flashcards sur téléphone ; corriger si besoin.
-2. Côté utilisateur : essayer sur le vrai Mac et le vrai iPad (indicateur, Fichier › Historique…, fermeture d'onglet juste après frappe).
-3. Toujours en attente côté utilisateur : CLI Vercel (`npm i -g vercel`, `vercel login`, `vercel link --yes --project my-org`) et migration `supabase/migrations/20261024_review_log_evenements.sql`.
+1. Côté utilisateur : essayer sur le vrai Mac et le vrai iPad (indicateur, Fichier › Historique…, fermeture d'onglet juste après frappe).
+2. Toujours en attente côté utilisateur : CLI Vercel (`npm i -g vercel`, `vercel login`, `vercel link --yes --project my-org`) et migration `supabase/migrations/20261024_review_log_evenements.sql`.
 
 ## 🧭 Décisions prises (ne pas rediscuter)
 - Rien n'est restauré automatiquement : alerte + Historique seulement ; récupération = ajout seul, idempotent, putBackup d'abord.
