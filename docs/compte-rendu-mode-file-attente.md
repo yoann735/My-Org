@@ -109,6 +109,11 @@ pas touchée. Chaque « jour » recharge l'app à 10 h (heure de Bruxelles).
 Les séances testées se font **à l'écran** : on touche la carte, puis on la note avec les boutons. Les journées
 simplement « faites » autour du point testé passent par le même chemin que l'app (`scheduler/repondre.js`, journal compris).
 
+Serveurs : Vite :5310 (sans cloud), Vite :5311 avec le faux Supabase :54409 (configurations `fa-local`, `fa-cloud` et
+`fa-faux-supabase` de `.claude/launch.json`), et le code d'avant sur :5312 (`git archive 481184d`). Attention : deux
+Vite lancés dans le même dossier partagent `node_modules/.vite`, ce qui peut charger deux copies de React. Donner à
+chaque Vite un `cacheDir` séparé.
+
 Bancs : `scripts/tests-file-attente/` (`t-scenarios.mjs ordi|tablette|tel`, `t-deux-appareils.mjs`,
 `t-avant-apres.mjs`, `t-mealweek-apprentissage.mjs`). Résultats détaillés dans `scripts/tests-file-attente/resultats/*.json`.
 Tests purs : `tests/fileAttente/fileAttente.test.js` (14 tests).
@@ -120,7 +125,7 @@ Tests purs : `tests/fileAttente/fileAttente.test.js` (14 tests).
 | **20 révisions/jour, mardi et mercredi oubliés.** Lundi : séance à l'écran (20). Jeudi : mardi et mercredi sont mis en pause ; Révisions 20 = les 20 cartes de mardi, Retard 0 ; ligne « 2 j de décalage sur ton planning » ; séance à l'écran = cartes de mardi. Vendredi = les cartes de mercredi. Samedi = les cartes de jeudi. Décalage 2 j. | 14/14 ✅ | 14/14 ✅ | 13/13 ✅ |
 | **Activation : 100 retards sur 3 jours (30, 30, 40) + 50/jour.** Date proposée : mardi 17 novembre, « → 3 j de décalage » ; choix du 17 à aujourd'hui ; aperçu 30, 30, 40, 50, 50, 50, 50 (Retard 0). Date plus récente (le 19) : aperçu mis à jour en direct, Retard 60 + Révisions 40 aujourd'hui. Après « Activer » : Retard 60 (cartes du 17 et du 18), Révisions 40, pause le 19, décalage 1 j. Rien n'est écrit avant « Activer ». | 9/9 ✅ | 9/9 ✅ | — (pas d'écran Réglages) |
 | **Carte notée « À revoir » pendant le mode.** `dueDate` réelle = demain ; le lendemain, la carte est là, même si la journée a été mise en pause. | 4/4 ✅ | 4/4 ✅ | 4/4 ✅ |
-| **Deux trous successifs (2 j puis 3 j).** Décalage 5 j ; ligne orange « Pense à rattraper avant les examens » (couleur `--warn`, rgb 240 162 60) ; le mardi 24 = cartes du jeudi 19, le mercredi 25 = cartes du vendredi 20. | 5/5 ✅ | 5/5 ✅ | 5/5 ✅ |
+| **Deux trous successifs (2 j puis 3 j).** Décalage 5 j ; ligne orange « Pense à rattraper avant les examens » (couleur `var(--warn)`, rgb(255, 154, 60) en thème sombre) ; le mardi 24 = cartes du jeudi 19, le mercredi 25 = cartes du vendredi 20. | 5/5 ✅ | 5/5 ✅ | 5/5 ✅ |
 | **Journée à moitié faite** (10/20 à l'écran). Le lendemain, la journée est en pause et les 10 restantes arrivent ; elles passent en premier dans la séance. | 4/4 ✅ | 4/4 ✅ | 4/4 ✅ |
 | **« Faire le paquet suivant ».** Absent tant qu'il reste des révisions. Apparaît quand Retard et Révisions sont finies (les Nouvelles peuvent rester). Après un clic : décalage 3 → 2 j, et les 6 cartes du jour suivant apparaissent tout de suite. | 4/4 ✅ | 4/4 ✅ | 4/4 ✅ |
 | **Désactivation.** Message « 30 cartes vont repasser en retard. Désactiver ? ». Après confirmation : Retard 30, Révisions 10, les mêmes chiffres qu'avant l'activation ; l'écart vaut exactement le nombre annoncé ; liste vidée. | 4/4 ✅ | 4/4 ✅ | — (pas d'écran Réglages) |
@@ -142,7 +147,17 @@ Au téléphone, il n'y a pas d'écran Réglages. Le mode y est donc activé par 
 
 `t-deux-appareils.mjs` : faux Supabase local, A = ordinateur, B = tablette.
 
-RESULTAT_DEUX
+| Étape | Résultat |
+|---|---|
+| Lundi : A active le mode à l'écran et fait 6 cartes sur 15. B ouvre et reçoit le mode et les cartes par la synchro (9 restantes). | ✅ |
+| Mardi → vendredi : l'app n'est ouverte nulle part. | — |
+| Samedi : **B ouvre en premier**. Jours en pause : `16, 17, 18, 19, 20` (lundi, pas fini, puis mardi → vendredi). File : les 9 cartes restantes du lundi. | ✅ |
+| Samedi : A ouvre ensuite. Mêmes jours en pause, même décalage (5 j), même file (Retard et Révisions). **A ne réécrit rien** : `updatedAt` reste celui de B, son calcul est identique. | ✅ |
+| 5 ouvertures de plus sur chaque appareil : aucun changement (idempotent). | ✅ |
+| Écrans A et B identiques : Révisions 9, « 5 j de décalage sur ton planning · Pense à rattraper avant les examens », en orange. | ✅ |
+| Erreurs console | 0 |
+
+Total : 10/10 ✅.
 
 ### 4.4 Mode désactivé = comportement d'avant (comparaison sur la même copie de données)
 
