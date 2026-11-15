@@ -7,6 +7,7 @@
 import { labelForCursor, todayISO, isoDate, trueDaysSinceJ0, isDueBecauseStruggled } from './sm2.js';
 import { dateApresConversion } from './conversionApprentissage.js';
 import { estNouvelle } from './categoriesFC.js';
+import { appliquerDecalage, etatFile } from './fileAttente.js';
 
 const SCHEDULED_TYPES = new Set(['qcm', 'flashcard']);
 // exercices : HORS méthode des J (comme le Feynman). Ils ne sont plus programmés,
@@ -44,7 +45,7 @@ const J_TYPES = new Set(['qcm', 'flashcard']);
    migration n'a pas écrit la date convertie d'une ancienne carte « en apprentissage » (premier
    démarrage, avant la fin de la synchro), on lit déjà cette date-là — la carte n'apparaît donc
    jamais dans le rattrapage. Toute autre carte : `dueDate` tel quel. */
-export function nextDate(record) {
+export function dateBase(record) {
   if (!record || record.termine) return null;
   // (24/10, lib/categoriesFC.js) une flashcard NOUVELLE (jamais notée, pas passée en révision) n'a pas de date : sa
   // date de départ reste en base mais n'est plus lue — jamais due, jamais en retard ; elle attend le bloc Nouvelles
@@ -54,6 +55,17 @@ export function nextDate(record) {
   if (due != null && record.skippedOn && record.skippedOn >= due) return addDays(record.skippedOn, 1);
   return due;
 }
+
+/* (15/11) MODE FILE D'ATTENTE (lib/fileAttente.js, docs/compte-rendu-mode-file-attente.md) — LA SEULE fonction qui
+   décide si une carte est due : séance (Retard / Révisions), compteurs, calendrier, listes, prévisions passent tous par
+   elle (`nextDate` en est l'ancien nom, conservé). dateEffective = dateBase + jours en pause situés STRICTEMENT après le
+   jour de la dernière révision de la carte. Mode désactivé (ou sans jour en pause) : dateEffective === dateBase, à
+   l'identique. `etat` (facultatif) : un état candidat du mode (aperçu de l'activation) ; par défaut l'état courant.
+   Rien n'est jamais écrit : dueDate, FSRS et journal gardent les vraies dates. */
+export function dateEffective(record, etat) {
+  return appliquerDecalage(record, dateBase(record), etat === undefined ? etatFile() : etat);
+}
+export const nextDate = (record) => dateEffective(record);
 
 /* ---- index helpers ---- */
 export function index(db) {

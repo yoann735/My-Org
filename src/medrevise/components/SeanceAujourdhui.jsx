@@ -18,7 +18,9 @@ import { Switch } from './ui.jsx';
 import { Chiffre, useEnSynchro } from './Chiffre.jsx';
 import { getMeta, setMeta } from '../lib/storage.js';
 import { todayISO } from '../lib/sm2.js';
-import { nextDate } from '../lib/planning.js';
+import { nextDate, dateBase } from '../lib/planning.js';
+import { decalageAffiche, paquetSuivantVisible, SEUIL_ALERTE } from '../lib/fileAttente.js';
+import '../../styles/file-attente.css';
 import { prochaineSeance, estimationMs } from '../lib/apprentissageFC.js';
 import { categoriser, nombres, raccourci, choixValide, CATEGORIES, MAXIMUMS } from '../lib/categoriesFC.js';
 import { flashcardsPlanifiees, seanceEnCours, nouvelleSeance, CLE_SEANCE, CLE_MESURES, CLE_CHOIX } from '../session/SeanceFC.jsx';
@@ -44,6 +46,9 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
   const parId = useMemo(() => Object.fromEntries((ctx.db.questions || []).map((q) => [q.id, q])), [ctx.db]);
   const cats = useMemo(() => categoriser(cartes, today, nextDate), [cartes, today]);
   const reprise = sauve === undefined ? null : seanceEnCours(sauve, parId, today, ctx.db);
+  // (15/11) mode file d'attente : décalage affiché + « Faire le paquet suivant » (lib/fileAttente.js)
+  const decalage = useMemo(() => decalageAffiche(ctx.fileAttente, cartes, dateBase), [ctx.fileAttente, cartes]);
+  const [paquetEnCours, setPaquetEnCours] = useState(false);
 
   if (sauve === undefined || !choix) return null;
   const { total } = nombres(cats, choix);
@@ -60,6 +65,18 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
     onDemarrer('choix');
   };
   const cls = 'sfa sfa-lanceur' + (compact ? ' compact' : '');
+  const ligneDecalage = decalage > 0 && !enSynchro ? (
+    <div className={'sfa-decalage' + (decalage >= SEUIL_ALERTE ? ' alerte' : '')} data-sfa="decalage" data-n={decalage}>
+      <span className="tnum">{decalage}</span> j de décalage sur ton planning{decalage >= SEUIL_ALERTE ? ' · Pense à rattraper avant les examens' : ''}
+    </div>
+  ) : null;
+  const paquet = paquetSuivantVisible(cats, decalage) && !enSynchro && ctx.paquetSuivant ? (
+    <button type="button" className="sfa-paquet" data-sfa="paquet-suivant" disabled={paquetEnCours}
+      title="Faire le paquet suivant : les cartes du jour suivant arrivent maintenant (1 j de décalage en moins)"
+      onClick={async () => { setPaquetEnCours(true); try { await ctx.paquetSuivant(); } finally { setPaquetEnCours(false); } }}>
+      <Icon name="play" size={14} fill /> Faire le paquet suivant
+    </button>
+  ) : null;
   const disponibles = cats.nouvelles.length + cats.revisions.length + cats.retard.length;
 
   if (!disponibles && !reprise && !enSynchro) {
@@ -69,6 +86,8 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
         <div className="sfa-titre">Aujourd'hui</div>
         <div className="sfa-rien">Rien à faire aujourd'hui</div>
         {proch && <div className="sfa-ligne">Prochaine séance : {fmtJour(proch)}</div>}
+        {ligneDecalage}
+        {paquet}
       </div>
     );
   }
@@ -79,6 +98,8 @@ export function SeanceAujourdhui({ ctx, onDemarrer, compact = false }) {
         <div className="sfa-titre">Aujourd'hui</div>
         <div className="sfa-ligne"><Chiffre><span className="tnum" data-sfa="total">{pluriel(total)} · ≈ {minutes(total)} min</span></Chiffre></div>
       </div>
+      {ligneDecalage}
+      {paquet}
       {reprise && (
         <button type="button" className="sfa-reprise" data-sfa="reprendre" disabled={enSynchro} onClick={() => onDemarrer('reprise')}>
           <Icon name="play" size={14} fill /> Reprendre la séance commencée · <Chiffre><span className="tnum">{reprise.restantes}</span> restante{reprise.restantes > 1 ? 's' : ''}</Chiffre>

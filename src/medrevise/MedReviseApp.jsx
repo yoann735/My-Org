@@ -34,8 +34,11 @@ import {
   purgeSource, purgeMatiere, purgeFiche, putBackup, newErrorCard, noterSuppressionsVolontaires,
   getCoursePrompts, setCoursePrompts, getExoPrompts, setExoPrompts,
   getChapExoPrompts, setChapExoPrompts, getReglagesFC, setReglagesFC, getCarnetPuces, setCarnetPuces, getCarnetPreReponses, setCarnetPreReponses, getEdtReglages, majEdtReglages,
-  setMeta,
+  setMeta, getFileAttente, setFileAttente,
 } from './lib/storage.js';
+import { definirEtatFile, cloturerJours, jourFile, retirerDernierePause } from './lib/fileAttente.js';
+import { dateBase } from './lib/planning.js';
+import { flashcardsPlanifiees } from './session/SeanceFC.jsx';
 import { demarrerEmploiDuTemps } from './lib/emploiDuTemps.js';
 import { runMigrations } from './lib/migrate.js';
 import { synchroniserJournal, journalAChange } from './journal/synchro.js';
@@ -161,6 +164,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [session, setSession] = useState(null);
   // flashcards : réglages synchronisés (Muscle, FSRS — lib/apprentissageFC.js reglagesFC) + écran de retour
   const [reglagesFC, setReglagesFCState] = useState(null);
+  // (15/11) mode file d'attente (lib/fileAttente.js) : enregistrement synchronisé `prompts/fileAttente`
+  const [fileAttente, setFileAttenteState] = useState(null);
   const [carnetPuces, setCarnetPucesState] = useState(null); // puces du carnet d'erreurs (lib/carnetPuces.js)
   const [carnetPreReponses, setCarnetPreReponsesState] = useState(null); // (17/10) pré-réponses rapides (lib/carnetPreReponses.js)
   const [edtReglages, setEdtReglagesState] = useState(null); // emploi du temps : couleur / matière par cours (lib/edtCouleurs.js)
@@ -190,6 +195,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
       getAll('sources'), getAll('matieres'), getAll('dossiers'), getAll('fiches'), getAll('questions'), getAll('anatstruct'), getAll('sessionsLog'), getStats(), getCoursePrompts(), getExoPrompts(), getChapExoPrompts(),
     ]);
     setReglagesFCState(await getReglagesFC());
+    // (15/11) état du mode file d'attente posé AVANT les cartes : tout calcul de date du rendu suivant le lit
+    const fa = await getFileAttente(); definirEtatFile(fa); setFileAttenteState(fa);
     setCarnetPucesState(await getCarnetPuces());
     setCarnetPreReponsesState(await getCarnetPreReponses());
     setEdtReglagesState(await getEdtReglages());
@@ -366,6 +373,36 @@ export default function MedReviseApp({ themeApi, goHub }) {
     if (SYNC_ENABLED && porte.phase !== 'attente') collecterEnAttente({ avecCloud: porte.phase === 'ajour' || porte.phase === 'incomplet' }).catch(() => {});
   }, [porte.phase, porte.at]);
   const etatSynchro = useMemo(() => calculerEtatSynchro(porte, enAttente), [porte, enAttente]);
+
+  /* (15/11) MODE FILE D'ATTENTE — clôture des journées terminées (lib/fileAttente.js cloturerJours), APRÈS une passe
+     de synchro aboutie (ou sans cloud) : les réponses des autres appareils sont arrivées, le calcul est déterministe.
+     Hors ligne ou en échec : on attend la prochaine passe (jamais de jour en pause décidé sur un état périmé). */
+  const ecrireFile = useCallback(async (etat) => {
+    const rec = await setFileAttente(etat);
+    definirEtatFile(rec); setFileAttenteState(rec);
+    await reload();
+    return rec;
+  }, [reload]);
+  const verifierFile = useCallback(async () => {
+    const rec = await getFileAttente();
+    if (!rec || !rec.actif) return null;
+    const [sources, matieres, fiches, questions] = await Promise.all([getAll('sources'), getAll('matieres'), getAll('fiches'), getAll('questions')]);
+    const r = cloturerJours(rec, flashcardsPlanifiees({ sources, matieres, fiches, questions }), dateBase, jourFile());
+    if (r.change) await ecrireFile(r.etat);
+    return r;
+  }, [ecrireFile]);
+  const verifEnCours = useRef(null);
+  useEffect(() => {
+    if (!['ajour', 'incomplet', 'local'].includes(porte.phase)) return;
+    if (verifEnCours.current) return;
+    verifEnCours.current = verifierFile().catch(() => null).finally(() => { verifEnCours.current = null; });
+  }, [porte.phase, porte.at, verifierFile]);
+  useEffect(() => {
+    if (SYNC_ENABLED) return undefined;
+    const onVis = () => { if (document.visibilityState === 'visible') verifierFile().catch(() => {}); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [verifierFile]);
   const valeurSynchro = useMemo(() => ({ ...porte, etat: etatSynchro, relancer: (o) => (porteRef.current ? porteRef.current.lancer(o) : Promise.resolve(null)) }), [porte, etatSynchro]);
 
   // racine : les chiffres hors <Chiffre> (.tnum) attendent aussi (repli CSS, styles/synchro-affichage.css)
@@ -377,7 +414,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
   useEffect(() => { (async () => {
     try { await reload(); } catch (e) { /* lecture locale impossible : la séquence ci-dessous réessaie */ }
     if (SYNC_ENABLED) await lancerPorte();
-    else { await forceSync(); await runMigrations(); await reload(); }
+    else { await forceSync(); await runMigrations(); await reload(); await verifierFile().catch(() => null); }
     /* FILET DE SÉCURITÉ (11/10, docs/compte-rendu-filet-securite.md) — en tâche de fond, après la
        synchro de démarrage, sans rien bloquer : contrôle d'intégrité (lecture seule), état de la copie
        serveur (GitHub, via /api/backup-status), copie hebdomadaire dans le dossier local si autorisé. */
@@ -391,7 +428,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
       /* (14/11) le navigateur ne peut plus effacer les données locales de lui-même (navigator.storage.persist) */
       demanderStockagePersistant().then((r) => setMeta('stockagePersistant', r).catch(() => {})).catch(() => {});
     }, 800);
-  })(); }, [forceSync, reload]);
+  })(); }, [forceSync, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // reconcile à la reconnexion réseau et quand l'onglet redevient visible (retour d'un
   // autre appareil) — capte les changements faits ailleurs sans polling permanent.
@@ -454,6 +491,11 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // ---- flashcards : séance quotidienne (session/SeanceFC.jsx — étape 2 FSRS : une seule liste) ----
     reglagesFC,
     saveReglagesFC: async (r) => { setReglagesFCState(await setReglagesFC(r)); },
+    // ---- (15/11) mode file d'attente (lib/fileAttente.js) : seul l'enregistrement `prompts/fileAttente` est écrit ----
+    fileAttente,
+    activerFileAttente: (etat) => ecrireFile(etat),
+    desactiverFileAttente: () => ecrireFile({ actif: false, pauses: [], activeLe: null, verifieJusquau: null }),
+    paquetSuivant: async () => { const rec = await getFileAttente(); if (rec && rec.actif) await ecrireFile(retirerDernierePause(rec)); },
     // ---- carnet d'erreurs : puces « Type d'erreur » (16/10) ----
     carnetPuces,
     saveCarnetPuces: async (puces) => { setCarnetPucesState(await setCarnetPuces(puces)); },

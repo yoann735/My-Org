@@ -15,6 +15,7 @@ import { CarteCredits } from '../transcription/Credits.jsx';
 import { CarteOcrReglages } from '../ocr/PanneauOcr.jsx';
 import { reglagesFC } from '../lib/apprentissageFC.js';
 import { ReglagesFSRS } from '../components/ReglagesFSRS.jsx';
+import { ReglagesFileAttente } from '../components/ReglagesFileAttente.jsx';
 import { SynchroJournal } from '../components/SynchroJournal.jsx';
 import { CarteSauvegardes } from '../components/FiletSecurite.jsx';
 import { LigneEtatSynchro } from '../components/EtatSynchro.jsx';
@@ -317,6 +318,8 @@ export function Reglages({ ctx }) {
           <div className="hint" style={{ marginBottom: 12 }}>Flashcards (4 boutons) avec ce moteur : À revoir → Raté · Difficile → Difficile · Correct et Facile → Facile. Avec « Utiliser FSRS pour les dates » (carte FSRS), FSRS décide à la place.</div>
           <button type="button" className="btn" style={{ color: 'var(--crit)' }} onClick={resetAllJ}><Icon name="calendar" size={15} /> Réinitialiser les dates</button>
         </Card>
+        {/* (15/11) Planification : mode file d'attente (components/ReglagesFileAttente.jsx) */}
+        <ReglagesFileAttente ctx={ctx} />
         <Card title="Flashcards" icon="cards">
           <ReglagesFlashcards ctx={ctx} />
         </Card>

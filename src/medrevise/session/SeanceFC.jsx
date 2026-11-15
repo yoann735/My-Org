@@ -36,7 +36,8 @@ import { isCloze, parseCloze, highlightClozeWords } from '../lib/cloze.js';
 import { put, getMeta, setMeta } from '../lib/storage.js';
 import { garderTagEnBase } from '../lib/aApprendre.js';
 import { todayISO } from '../lib/sm2.js';
-import { index, isFicheScheduled, nextDate } from '../lib/planning.js';
+import { index, isFicheScheduled, nextDate, dateBase } from '../lib/planning.js';
+import { departageFile } from '../lib/fileAttente.js';
 import { planDuJour, entrelacer, estFlashcardJ, VERSION_MESURES, reprendreSeance } from '../lib/apprentissageFC.js';
 import { repondreFlashcard, passerFlashcardEnRevision } from '../scheduler/repondre.js';
 import { categoriser, composerSeance, reprendreSeanceChoix, choixValide, estNouvelle } from '../lib/categoriesFC.js';
@@ -90,7 +91,8 @@ export function nouvelleSeance(db, today, choix, stats = null) {
   const parId = Object.fromEntries(cartes.map((q) => [q.id, q]));
   const c = choixValide(choix);
   const rangs = c.parCours ? rangDesCours(db, stats) : null;
-  const { ids, categorie } = composerSeance(categoriser(cartes, today, nextDate), c, (id) => (parId[id] || {}).ficheId, Math.random, rangs && ((f) => rangs.get(f)));
+  const dep = departageFile(dateBase); // (15/11) mode file d'attente actif : paquets dans l'ordre ; sinon null (inchangé)
+  const { ids, categorie } = composerSeance(categoriser(cartes, today, nextDate, dep), c, (id) => (parId[id] || {}).ficheId, Math.random, rangs && ((f) => rangs.get(f)), dep);
   return {
     v: VERSION_SEANCE, date: today, phase: ids.length ? 'cartes' : 'fin', cartes: ids, categorie, choix: c, idx: 0, nTotal: ids.length, parCours: c.parCours,
     faites: { revisions: 0, rates: 0, notees: 0, passees: 0, gardees: 0 }, ms: { revisions: 0 }, debut: new Date().toISOString(),

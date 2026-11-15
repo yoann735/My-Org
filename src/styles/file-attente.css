@@ -1,0 +1,41 @@
+/* MedRevise — mode file d'attente (15/11/2026, components/ReglagesFileAttente.jsx, components/SeanceAujourdhui.jsx).
+   DA existante : jetons var(--accent), var(--card), var(--border)… ; transitions ~120 ms, sans rebond. */
+.fa-etat { margin-top: 10px; }
+.fa-feuille { display: flex; flex-direction: column; gap: 12px; }
+.fa-phrase { font-size: 14px; line-height: 1.45; color: var(--text); }
+.fa-phrase b { color: var(--accent); font-weight: 700; }
+.fa-champ { display: flex; flex-direction: column; gap: 6px; }
+.fa-libelle { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); }
+.fa-jours { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
+.fa-jour {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  width: 48px; min-height: 52px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-2, var(--card));
+  color: var(--text-2); cursor: pointer; font: inherit;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.fa-jour:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--text); }
+.fa-jour.actif { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: var(--accent); color: var(--text); }
+.fa-jour-sem { font-size: 11px; text-transform: capitalize; }
+.fa-jour-num { font-size: 16px; font-weight: 700; }
+.fa-jour.actif .fa-jour-num { color: var(--accent); }
+.fa-choix b { color: var(--text); }
+.fa-tableau { border: 1px solid var(--border); border-radius: 10px; font-size: 13px; overflow: hidden; }
+.fa-ligne { display: grid; grid-template-columns: 1fr 64px 76px 56px; gap: 8px; padding: 5px 10px; border-bottom: 1px solid var(--border-2, var(--border)); }
+.fa-ligne:last-child { border-bottom: 0; }
+.fa-ligne span:not(:first-child) { text-align: right; }
+.fa-ligne.tete { background: var(--card); font-weight: 600; color: var(--text-2); }
+.fa-ligne span[data-col="total"] { font-weight: 700; color: var(--text); }
+.fa-note { margin-top: -4px; }
+.fa-actions { display: flex; gap: 8px; margin-top: 4px; }
+
+/* séance : ligne discrète du décalage, alerte orange à partir de 5 j, bouton « Faire le paquet suivant » */
+.sfa-decalage { font-size: 12.5px; color: var(--text-2); transition: color 120ms ease; }
+.sfa-decalage.alerte { color: var(--warn); font-weight: 600; }
+.sfa-paquet {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; align-self: flex-start; min-height: 36px; padding: 0 14px;
+  border-radius: 10px; border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border)); background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.sfa-paquet:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.sfa-paquet:disabled { opacity: .55; cursor: default; }

@@ -705,6 +705,21 @@ export async function setReglagesFC(reglages) {
   return rec;
 }
 
+/* ---- (15/11) MODE FILE D'ATTENTE (lib/fileAttente.js) : activé oui/non + jours en pause. Même mécanique que
+   reglagesFC — store `S.prompts` (SYNCABLE), clé DISTINCTE, enregistrement ADDITIONNEL (aucune table ni migration :
+   les réglages voyagent par medrevise_records comme les autres). Absent → mode désactivé. L'état précédent part dans
+   `backups` (putBackup) AVANT chaque écriture. Jamais aucune carte écrite ici. */
+export async function getFileAttente() { return (await get('fileAttente', S.prompts)) || null; }
+export async function setFileAttente(etat) {
+  const avant = await get('fileAttente', S.prompts);
+  if (avant) await putBackup('pre-fileAttente-' + Date.now(), avant);
+  const updatedAt = new Date().toISOString();
+  const rec = { actif: !!etat.actif, pauses: (etat.pauses || []).slice(), activeLe: etat.activeLe || null, verifieJusquau: etat.verifieJusquau || null, id: 'fileAttente', updatedAt };
+  await set('fileAttente', rec, S.prompts);
+  queuePush('prompts', 'fileAttente', rec, updatedAt);
+  return rec;
+}
+
 /* ---- PUCES DU CARNET D'ERREURS (16/10, lib/carnetPuces.js) : types d'erreur et leurs gabarits,
    éditables dans Réglages. Même mécanique que reglagesFC — store `S.prompts` (SYNCABLE), clé
    DISTINCTE, enregistrement ADDITIONNEL. Absent → liste par défaut. */

@@ -60,7 +60,7 @@ export function raccourci(nom, choix) {
  * `dateDue` = planning.js nextDate (Sauter, conversion). Une carte « sautée » aujourd'hui n'est pas proposée.
  * → { nouvelles, revisions, retard } (listes de cartes ; retard trié du plus ancien au plus récent)
  */
-export function categoriser(cartes, today, dateDue = (q) => q.dueDate) {
+export function categoriser(cartes, today, dateDue = (q) => q.dueDate, departage = null) {
   const nouvelles = [], revisions = [], retard = [];
   (cartes || []).forEach((q, i) => {
     if (!estFlashcardJ(q) || q.termine) return;
@@ -70,7 +70,10 @@ export function categoriser(cartes, today, dateDue = (q) => q.dueDate) {
     if (d === today) revisions.push(q);
     else if (d < today) retard.push([q, d, i]);
   });
-  retard.sort((a, b) => (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : a[2] - b[2]));
+  // (15/11) mode file d'attente (lib/fileAttente.js departageFile) : à date effective égale, la date de base la plus
+  // ancienne d'abord. `departage` absent (mode inactif) : tri strictement inchangé.
+  const dep = departage ? (x) => departage(x[0]) : null;
+  retard.sort((a, b) => (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : (dep && dep(a) !== dep(b) ? (dep(a) < dep(b) ? -1 : 1) : a[2] - b[2])));
   // nouvelles : dans l'ordre de leur date de départ prévue (puis de création)
   const depart = (q) => q.j0Date || q.dueDate || '';
   nouvelles.sort((a, b) => (depart(a[0]) < depart(b[0]) ? -1 : depart(a[0]) > depart(b[0]) ? 1 : a[1] - b[1]));
@@ -94,18 +97,27 @@ export function nombres(cats, choix) {
  * → { ids, categorie: { [id]: 'retard'|'revisions'|'nouvelles' } }
  * (26/10) `rangCours(ficheId)` (ordre de la Bibliothèque) + `choix.parCours` : même sélection, regroupée par cours.
  */
-export function composerSeance(cats, choix, coursDe = () => '', rand = Math.random, rangCours = null) {
+export function composerSeance(cats, choix, coursDe = () => '', rand = Math.random, rangCours = null, departage = null) {
   const c = choixValide(choix);
   const ids = []; const categorie = {};
   for (const cle of ORDRE_SEANCE) {
     if (!c[cle].coche) continue;
     let l = cats[cle].map((q) => q.id);
-    if (cle === 'revisions') l = entrelacer(l, coursDe, rand);
+    if (cle === 'revisions' && departage) l = entrelacerParPaquet(cats[cle], departage, coursDe, rand);
+    else if (cle === 'revisions') l = entrelacer(l, coursDe, rand);
     l = l.slice(0, c[cle].max === 'tout' ? l.length : c[cle].max);
     l.forEach((id) => { if (!(id in categorie)) { ids.push(id); categorie[id] = cle; } });
   }
   if (c.parCours && rangCours) return { ids: regrouperParCours(ids, categorie, coursDe, rangCours), categorie };
   return { ids, categorie };
+}
+
+/** (15/11) mode file d'attente : révisions du jour par PAQUET (date de base, la plus ancienne d'abord — les cartes
+ *  d'une journée non finie passent en premier), cours entrelacés dans chaque paquet comme d'habitude. */
+function entrelacerParPaquet(cartes, departage, coursDe, rand) {
+  const paquets = new Map();
+  cartes.forEach((q) => { const k = departage(q); if (!paquets.has(k)) paquets.set(k, []); paquets.get(k).push(q.id); });
+  return [...paquets.keys()].sort().flatMap((k) => entrelacer(paquets.get(k), coursDe, rand));
 }
 
 /**
