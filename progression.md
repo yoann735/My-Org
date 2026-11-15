@@ -1,46 +1,46 @@
 <!-- PASSATION:DEBUT -->
 # 🔁 Passation – My Org (MedRevise)
-_Clôturée le 2026-11-14 à 16:39_
+_Clôturée le 2026-11-15 à 19:18_
 
 ## 🎯 Objectif
 SPA Vite + React (hub + MealWeek + MedRevise), déployée sur Vercel (projet `my-org`) au push sur `main`.
-Session /goal du 07/11 : (1) compteur de vues par carte dans le panneau Apprendre, (2) agrandissement plein écran des images de flashcard en révision sans retourner la carte. Terminé, poussé, déployé (Vercel « success » sur 7048c82).
+Session /goal du 14-15/11 : retrouver les boîtes « disparues » d'Épithélium glandulaire, puis rendre l'enregistrement des documents incassable. Terminé et poussé (d23bed3, 4e3a9ca, 22bd96a, a4fb223).
 
-## ✅ Fait (vérifié, poussé : 009298f, df416f6, a403221, 7048c82)
-- Compteur : `src/medrevise/lib/vuesCartes.js` (un seul calcul, depuis le journal local : rating 1..4 ; relearn compte ; « Passer en révision » et mode Apprentissage non). Une passe 1,2 s après l'ouverture de l'app, puis mise à jour incrémentale (`journal/journal.js` transmet les entrées nouvelles à ses abonnés). Aucun stockage ajouté.
-- Affichage : `components/BadgeVues.jsx` (classe `alib2-nbvues`, œil en masque CSS), menu Tri (Ordre du cours / Moins passées / Moins vues → plus vues / Plus vues → moins vues), filtre Vues 0 · 1–2 · 3–5 · 6–10 · >10 (`apprentissageLibre/tableauBord.js`, `EcranApprentissage.jsx`).
-- Visionneuse unique : `components/Visionneuse.jsx` + `useAgrandir`, `styles/visionneuse.css`. Branchée sur `ImageFlashcard`, `OcclusionView` (état affiché, rien révélé) et la visionneuse Muscle (`ImagesMuscle.jsx`) ; prop `agrandissable` dans SeanceFC, Session, MobileSession, FaceCarte. `VueAgrandie` laisse Échap à `.vz-fond`.
-- Diagnostic (sauvegarde d5ddbe0) : journal depuis le 10/10/2026 19:12 UTC, 1 050 notations, complet en local après synchro ; écarts avec reps expliqués (relearn −1, historique antérieur +2/+3).
-- Tests : vitest 261/263 (2 échecs anciens : crayon, emploi du temps) ; bancs `scripts/tests-vues-zoom` verts sur ordinateur, tablette, téléphone (t-vues 33/33/31, t-zoom 93/91/91) ; panneau Apprendre pas plus lent (médianes ±3 ms) ; MealWeek identique octet pour octet.
-- Compte rendu : `docs/compte-rendu-compteur-vues-et-zoom-image.md` (captures dans `docs/img/vues-zoom/`).
+## ✅ Fait (vérifié)
+- Diagnostic : Épithélium glandulaire, **aucune boîte disparue** (original 42, S1 18, S2 6 ; 36 copies GitHub + cloud + journal LevelDB d'une COPIE d'Aside). 21 boîtes créées puis supprimées entre deux sauvegardes (presque toutes vides). Sauvegarde GitHub complète (3837/3837). Captures réelles hors dépôt : `…/Projets/My Org/captures-privees-boites/`.
+- Moteur unique `src/medrevise/lib/enregistrement.js` (écriture relue, 3 essais, erreur persistante, file d'envoi, vidage à pagehide/visibilitychange, beforeunload seulement si écriture locale en cours, storage.persist). Branché dans `lib/storage.js` (`ecrireDocument`, ordre par enregistrement `enOrdre`).
+- Historique `lib/historiqueDoc.js` + store local `versions_doc` (60 j, version / 5 min, à la fermeture, avant restauration/remplacement cloud) ; UI `pdf/HistoriqueDoc.jsx` (Fichier › Historique…), bandeau de disparition dans `PdfReader.jsx`, indicateur `components/IndicateurEnregistrement.jsx`. Versions des sauvegardes GitHub : `api/backup-versions.js` (lecture seule).
+- Bugs corrigés : perte à fermeture rapide (écriture immédiate à la 1re frappe), course création/1re lettre, ⌘Z/⌘⇧Z qui vidait une boîte (`lib/annotHistory.js`).
+- Build vert ; vitest 273/275 (2 échecs anciens : crayon, emploi du temps) ; MealWeek identique octet pour octet ; frappe aussi rapide (CPU×4 : 31,8 vs 31,3 ms).
+- Compte rendu : `docs/compte-rendu-boites-disparues-et-sauvegarde-continue.md`.
 
 ## 🚧 En cours
-- Rien. Modifications non commitées : aucune (avant cette clôture). `progression.md` est modifié par cette clôture.
+- Rien de commencé. Modifications non commitées : aucune (hors `progression.md`, modifié par cette clôture).
+- ⚠️ Non vérifié : le DERNIER passage de `scripts/tests-enregistrement/tout.sh` a donné ordinateur ✅×3, tablette ✅×3, mais téléphone 2 échecs (« séance lancée : une carte s'affiche », puis « journal +1 : 2 → 2 ») dans `t-telephone.mjs` (séance de flashcards, non-régression). Les passages précédents étaient verts ; probablement délai/instabilité du banc, non investigué.
 
 ## ➡️ Prochaines étapes (dans l'ordre)
-1. Attendre le feu vert ou la nouvelle demande de l'utilisateur.
-2. Côté utilisateur : essayer sur le vrai iPad et le vrai téléphone (toucher une image en séance → visionneuse ; compteur œil dans Apprendre).
+1. Relancer `node t-telephone.mjs` (après `node seed.mjs`) et trancher : banc instable ou vraie régression de la séance flashcards sur téléphone ; corriger si besoin.
+2. Côté utilisateur : essayer sur le vrai Mac et le vrai iPad (indicateur, Fichier › Historique…, fermeture d'onglet juste après frappe).
 3. Toujours en attente côté utilisateur : CLI Vercel (`npm i -g vercel`, `vercel login`, `vercel link --yes --project my-org`) et migration `supabase/migrations/20261024_review_log_evenements.sql`.
 
 ## 🧭 Décisions prises (ne pas rediscuter)
-- Vue = notation aux 4 boutons dans le journal (définition de l'utilisateur) ; compte depuis le 10/10 seulement.
-- Tris « vues » dans chaque cours (comme « Moins passées d'abord »), rangement Section → Matière → Cours conservé.
-- Bouton « Révéler » de la visionneuse Muscle gardé (fonction existante, n'agit que dans la visionneuse).
+- Rien n'est restauré automatiquement : alerte + Historique seulement ; récupération = ajout seul, idempotent, putBackup d'abord.
+- `versions_doc` reste local (non synchronisé) ; les versions GitHub sont rapatriées à la demande, lecture seule.
+- Le téléphone n'a pas d'éditeur de documents : on y teste réception, file hors ligne et séance.
 
 ## 🛠️ Commandes utiles
 - Build : `npm run build` · Tests : `npx vitest run`
-- Bancs : preview_start `faux-supabase`, `faux-github`, `medrevise-banc-sauvegarde` (:5303) + Chrome headless 9335 (1440×900), 9336 (390×844), 9337 (1024×1366), profils neufs dans le scratchpad → `cd scripts/tests-vues-zoom && node seed.mjs && node t-vues.mjs ordi|tel|tablette` ; `node t-zoom.mjs …` ; mesure : `node mesure.mjs <étiquette> ordi [ouvert]`.
+- Bancs : preview_start `faux-supabase` (:54399), `faux-github` (:54398), `medrevise-banc-sauvegarde` (:5303) + Chrome headless 9335 (ordi), 9336 (tel), 9337 (tablette) → `cd scripts/tests-enregistrement && node seed.mjs && node t-ecriture.mjs ordi|tablette` ; tout : `./tout.sh`.
 
 ## ⚠️ Pièges et préférences
-- Ne jamais toucher MealWeek ni `src/shared/` ; aucune écriture Supabase ; ne pas ouvrir l'app réelle ; aucun secret affiché.
-- Vite (banc) peut planter en boucle de rechargement à chaud (cycle ImagesMuscle ↔ ZoneImage) après beaucoup d'éditions : relancer le serveur.
-- Mesures de vitesse très bruitées d'un lancement à l'autre : comparer le code de départ servi sur le MÊME port et les mêmes données.
-- `t-zoom` note les cartes image : relancer `node seed.mjs` avant chaque banc.
-- Connecteur Vercel MCP ne voit pas le projet : `gh api repos/yoann735/My-Org/commits/<sha>/statuses`.
-- Dépôt PUBLIC (données réelles seulement dans le scratchpad) ; « sync auto » commite parfois seul ; français, commits conventionnels, jamais de force push.
+- Ne jamais toucher MealWeek ni `src/shared/` ; aucune écriture Supabase ; ne pas ouvrir l'app réelle ; aucune donnée réelle dans le dépôt (PUBLIC).
+- Bancs : importer les modules via `window.__imp` (sinon autre instance Vite `?t=`) ; points d'appui via `pointPage` (zone visible) ; tablette = stylet (pointerType pen).
+- Un commit+push combiné peut être refusé : faire commit puis push séparément. « sync auto » commite parfois seul.
+- Français, commits conventionnels, jamais de force push.
 <!-- PASSATION:FIN -->
 
 ## Historique des clôtures
+- 2026-11-15 19:18 – Clôture du /goal boîtes disparues + sauvegarde continue (livré, poussé a4fb223) ; à revoir : banc téléphone séance flashcards en échec au dernier passage.
 - 2026-11-14 18:40 – /goal boîtes disparues + sauvegarde continue : Épithélium glandulaire, aucune boîte disparue (36 copies, cloud, journal du Mac) ; enregistrement continu (< 300 ms, relu, erreur visible), historique des versions, garde-fou ; bancs verts 3 appareils ; poussé (d23bed3, 4e3a9ca, 22bd96a).
 - 2026-11-14 16:39 – /goal compteur de vues (œil, tris, filtre) + visionneuse d'image plein écran en révision : livrés, testés 3 appareils, poussés, déployés (7048c82).
 - 2026-11-07 17:20 – /goal sauvegarde + statut synchro : sauvegarde jamais arrêtée, rattrapage ajouté, 19 « en attente » = faux compteur (srcId bfc), état unique ; poussé, déployé, copie prod d5ddbe0.
