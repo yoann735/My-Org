@@ -228,3 +228,10 @@ terminée et un QCM. Les deux versions :
 - Les QCM et les schémas, qui sont encore datés, ne sont pas décalés : le mode concerne les flashcards de la séance.
 - **Accent** : l'app utilise son jeton `var(--accent)`, celui de toute l'interface. Aucune couleur nouvelle n'a été
   ajoutée, hormis l'orange `var(--warn)`, qui existait déjà.
+
+## 7. Commits
+
+- `b8c367c` feat(medrevise): mode file d'attente — `dateEffective` unique, jours en pause, activation, paquet suivant (+ tests vitest)
+- `238021b` « sync auto » (commit automatique, pas fait par le chantier) : il contient les bancs `scripts/tests-file-attente/`, le compteur du hub (`src/Selecteur.jsx`), le correctif des boutons de la feuille d'activation (`file-attente.css`), les configurations `.claude/launch.json` et une première version de ce compte rendu
+- `7b9221f` docs(medrevise): compte rendu, résultats chiffrés, deux appareils, captures
+- (ce commit) docs : liste des commits, retrait de la sonde du banc
