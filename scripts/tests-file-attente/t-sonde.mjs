@@ -1,0 +1,12 @@
+import { appareil, paquets } from './commun.mjs';
+const b = await appareil('ordi');
+await b.vider();
+await b.horloge('2026-11-16');
+await b.semer(paquets('2026-11-16', 3, 4));
+await b.ouvrir();
+console.log(JSON.stringify(await b.etat()).slice(0, 600));
+await b.aller('Réviser');
+console.log(JSON.stringify(await b.ecran()));
+await b.capture('sonde');
+console.log(b.erreurs.slice(0, 5));
+b.fermerWs();

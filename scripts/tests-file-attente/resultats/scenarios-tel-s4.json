@@ -1,0 +1,43 @@
+{
+ "type": "tel",
+ "resultats": [
+  {
+   "ok": true,
+   "m": "décalage 5 j",
+   "d": "2026-11-17,2026-11-18,2026-11-21,2026-11-22,2026-11-23"
+  },
+  {
+   "ok": true,
+   "m": "alerte orange « Pense à rattraper avant les examens »",
+   "d": "5 j de décalage sur ton planning · Pense à rattraper avant les examens (rgb(255, 154, 60))"
+  },
+  {
+   "ok": true,
+   "m": "ordre : mardi 24 = les cartes du jeudi 19",
+   "d": "10"
+  },
+  {
+   "ok": true,
+   "m": "mercredi 25 = les cartes du vendredi 20",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "aucune erreur console",
+   "d": ""
+  }
+ ],
+ "resume": {
+  "s4": {
+   "pauses": [
+    "2026-11-17",
+    "2026-11-18",
+    "2026-11-21",
+    "2026-11-22",
+    "2026-11-23"
+   ],
+   "decalage": 5,
+   "couleur": "rgb(255, 154, 60)"
+  }
+ }
+}

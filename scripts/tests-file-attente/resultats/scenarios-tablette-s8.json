@@ -1,0 +1,59 @@
+{
+ "type": "tablette",
+ "resultats": [
+  {
+   "ok": true,
+   "m": "« 30 cartes vont repasser en retard. Désactiver ? »",
+   "d": "30 cartes vont repasser en retard. Désactiver ?"
+  },
+  {
+   "ok": true,
+   "m": "retour au comportement actuel : mêmes compteurs qu’avant l’activation, écart = nombre annoncé",
+   "d": "{\"retard\":30,\"revisions\":10,\"nouvelles\":0,\"decalage\":null,\"paquet\":false,\"vide\":false} → {\"retard\":0,\"revisions\":10,\"nouvelles\":0,\"decalage\":{\"n\":3,\"texte\":\"3 j de décalage sur ton planning\",\"alerte\":false,\"couleur\":\"rgb(179, 179, 188)\"},\"paquet\":false,\"vide\":false} → {\"retard\":30,\"revisions\":10,\"nouvelles\":0,\"decalage\":null,\"paquet\":false,\"vide\":false}"
+  },
+  {
+   "ok": true,
+   "m": "liste des jours en pause vidée",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "aucune erreur console",
+   "d": ""
+  }
+ ],
+ "resume": {
+  "s8": {
+   "annonce": 30,
+   "sans": {
+    "retard": 30,
+    "revisions": 10,
+    "nouvelles": 0,
+    "decalage": null,
+    "paquet": false,
+    "vide": false
+   },
+   "avec": {
+    "retard": 0,
+    "revisions": 10,
+    "nouvelles": 0,
+    "decalage": {
+     "n": 3,
+     "texte": "3 j de décalage sur ton planning",
+     "alerte": false,
+     "couleur": "rgb(179, 179, 188)"
+    },
+    "paquet": false,
+    "vide": false
+   },
+   "apres": {
+    "retard": 30,
+    "revisions": 10,
+    "nouvelles": 0,
+    "decalage": null,
+    "paquet": false,
+    "vide": false
+   }
+  }
+ }
+}

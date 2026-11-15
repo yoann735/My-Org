@@ -26,7 +26,9 @@
 .fa-ligne.tete { background: var(--card); font-weight: 600; color: var(--text-2); }
 .fa-ligne span[data-col="total"] { font-weight: 700; color: var(--text); }
 .fa-note { margin-top: -4px; }
-.fa-actions { display: flex; gap: 8px; margin-top: 4px; }
+/* boutons toujours visibles en bas de la feuille (le corps de la modale défile) */
+.day-pop:has(.fa-feuille) .day-pop-body { max-height: min(80vh, 780px); padding-bottom: 0; }
+.fa-actions { display: flex; gap: 8px; margin-top: 4px; position: sticky; bottom: 0; padding: 10px 0 16px; background: var(--card); border-top: 1px solid var(--border-2, var(--border)); }
 
 /* séance : ligne discrète du décalage, alerte orange à partir de 5 j, bouton « Faire le paquet suivant » */
 .sfa-decalage { font-size: 12.5px; color: var(--text-2); transition: color 120ms ease; }

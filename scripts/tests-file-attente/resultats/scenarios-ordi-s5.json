@@ -1,0 +1,30 @@
+{
+ "type": "ordi",
+ "resultats": [
+  {
+   "ok": true,
+   "m": "lundi : 10 cartes sur 20 faites à l’écran",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "mardi : le lundi est mis en pause, les 10 restantes arrivent",
+   "d": "2026-11-16"
+  },
+  {
+   "ok": true,
+   "m": "elles passent en premier",
+   "d": "c2026-11-16-17,c2026-11-16-16,c2026-11-16-11"
+  },
+  {
+   "ok": true,
+   "m": "aucune erreur console",
+   "d": ""
+  }
+ ],
+ "resume": {
+  "s5": {
+   "restes": 10
+  }
+ }
+}

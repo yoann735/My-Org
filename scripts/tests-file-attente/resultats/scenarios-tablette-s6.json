@@ -1,0 +1,32 @@
+{
+ "type": "tablette",
+ "resultats": [
+  {
+   "ok": true,
+   "m": "pas de bouton tant qu’il reste des révisions ; décalage 3 j",
+   "d": "{\"retard\":0,\"revisions\":6,\"nouvelles\":4,\"decalage\":{\"n\":3,\"texte\":\"3 j de décalage sur ton planning\",\"alerte\":false,\"couleur\":\"rgb(179, 179, 188)\"},\"paquet\":false,\"vide\":false}"
+  },
+  {
+   "ok": true,
+   "m": "Retard + Révisions finies, décalage > 0 : le bouton apparaît (les Nouvelles restent)",
+   "d": "{\"retard\":0,\"revisions\":0,\"nouvelles\":4,\"decalage\":{\"n\":3,\"texte\":\"3 j de décalage sur ton planning\",\"alerte\":false,\"couleur\":\"rgb(179, 179, 188)\"},\"paquet\":true,\"vide\":false}"
+  },
+  {
+   "ok": true,
+   "m": "après le clic : décalage 2 j, les 6 cartes du jour suivant apparaissent",
+   "d": "{\"retard\":0,\"revisions\":6,\"nouvelles\":4,\"decalage\":{\"n\":2,\"texte\":\"2 j de décalage sur ton planning\",\"alerte\":false,\"couleur\":\"rgb(179, 179, 188)\"},\"paquet\":false,\"vide\":false}"
+  },
+  {
+   "ok": true,
+   "m": "aucune erreur console",
+   "d": ""
+  }
+ ],
+ "resume": {
+  "s6": {
+   "decalageAvant": 3,
+   "decalageApres": 2,
+   "revisions": 6
+  }
+ }
+}

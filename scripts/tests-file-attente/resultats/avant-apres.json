@@ -1,0 +1,42 @@
+{
+ "chiffres": {
+  "retard": 63,
+  "revisions": 3,
+  "nouvelles": 14,
+  "cartes": 283,
+  "seance1": 76,
+  "seance2": 23
+ },
+ "ecran": {
+  "avant": {
+   "retard": 63,
+   "revisions": 3,
+   "nouvelles": 14,
+   "decalage": null,
+   "paquet": false,
+   "vide": false
+  },
+  "apres": {
+   "retard": 63,
+   "revisions": 3,
+   "nouvelles": 14,
+   "decalage": null,
+   "paquet": false,
+   "vide": false
+  },
+  "desactive": {
+   "retard": 63,
+   "revisions": 3,
+   "nouvelles": 14,
+   "decalage": null,
+   "paquet": false,
+   "vide": false
+  }
+ },
+ "hub": [
+  "4",
+  "4",
+  "4"
+ ],
+ "echecs": 0
+}

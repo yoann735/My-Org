@@ -1,0 +1,32 @@
+{
+ "type": "tablette",
+ "resultats": [
+  {
+   "ok": true,
+   "m": "max par type : Révisions max 5 (sur 12) + Nouvelles max 10 (6 disponibles) → 11 cartes",
+   "d": "11 cartes · ≈ 3 min"
+  },
+  {
+   "ok": true,
+   "m": "Nouvelles : « Garder en nouvelle / Passer en révision » inchangés",
+   "d": "nv-00 garder,passer"
+  },
+  {
+   "ok": true,
+   "m": "Garder : inchangée ; Passer : J0 aujourd’hui, due demain (réel)",
+   "d": "2026-11-20 → 2026-11-21"
+  },
+  {
+   "ok": true,
+   "m": "aucune erreur console",
+   "d": ""
+  }
+ ],
+ "resume": {
+  "nr": {
+   "total": "11 cartes · ≈ 3 min",
+   "nouvelleId": "nv-00",
+   "passee": "nv-01"
+  }
+ }
+}

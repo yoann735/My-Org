@@ -6,7 +6,8 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './shared/Icon.jsx';
 import { weekKpis } from './mealweek/data/dataLayer.js';
-import { getAll } from './medrevise/lib/storage.js';
+import { getAll, getFileAttente } from './medrevise/lib/storage.js';
+import { definirEtatFile } from './medrevise/lib/fileAttente.js';
 import { dueToday } from './medrevise/lib/planning.js';
 
 function readJSON(key, fallback) {
@@ -29,7 +30,8 @@ export function Selecteur({ themeApi, onOpen, medReady = false }) {
   useEffect(() => {
     if (!medReady) return;
     let cancelled = false;
-    Promise.all(['sources', 'matieres', 'fiches', 'questions'].map(getAll))
+    // (15/11) mode file d'attente : même date effective que MedRevise (état du mode chargé avant le calcul)
+    Promise.all([...['sources', 'matieres', 'fiches', 'questions'].map(getAll), getFileAttente().then(definirEtatFile).catch(() => null)])
       .then(([sources, matieres, fiches, questions]) => {
         if (!cancelled) setDueCount(dueToday({ sources, matieres, fiches, questions }).length);
       })

@@ -1,0 +1,86 @@
+{
+ "type": "ordi",
+ "resultats": [
+  {
+   "ok": true,
+   "m": "activation : feuille ouverte, rien écrit avant « Activer », aucun retard",
+   "d": "Aucun retard : rien n’est décalé, seuls les prochains jours oubliés seront mis en pause."
+  },
+  {
+   "ok": true,
+   "m": "lundi : 20 révisions, pas de décalage",
+   "d": "{\"retard\":0,\"revisions\":20,\"nouvelles\":0,\"decalage\":null,\"paquet\":false,\"vide\":false}"
+  },
+  {
+   "ok": true,
+   "m": "lundi : séance faite à l’écran (20 cartes du lundi)",
+   "d": "20"
+  },
+  {
+   "ok": true,
+   "m": "jeudi : mardi et mercredi mis en pause",
+   "d": "2026-11-17,2026-11-18"
+  },
+  {
+   "ok": true,
+   "m": "jeudi = les 20 cartes de mardi (écran : Révisions 20, Retard 0)",
+   "d": "{\"retard\":0,\"revisions\":20,\"nouvelles\":0,\"decalage\":{\"n\":2,\"texte\":\"2 j de décalage sur ton planning\",\"alerte\":false,\"couleur\":\"rgb(179, 179, 188)\"},\"paquet\":false,\"vide\":false}"
+  },
+  {
+   "ok": true,
+   "m": "ligne « 2 j de décalage sur ton planning » (discrète)",
+   "d": "2 j de décalage sur ton planning"
+  },
+  {
+   "ok": true,
+   "m": "jeudi : séance à l’écran = 20 cartes de mardi",
+   "d": "c2026-11-17-15,c2026-11-17-01,c2026-11-17-18"
+  },
+  {
+   "ok": true,
+   "m": "vendredi = les 20 cartes de mercredi",
+   "d": "20"
+  },
+  {
+   "ok": true,
+   "m": "samedi = les 20 cartes de jeudi",
+   "d": "20"
+  },
+  {
+   "ok": true,
+   "m": "décalage 2 j",
+   "d": "2"
+  },
+  {
+   "ok": true,
+   "m": "aucune dueDate ni état FSRS modifié pour les 220 cartes non révisées",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "journal : vraies dates de révision (lundi 16, jeudi 19 — pas les dates décalées)",
+   "d": "60 entrées"
+  },
+  {
+   "ok": true,
+   "m": "FSRS/maison reçoivent la vraie date (historique du 19, prochaine date calculée depuis le 19)",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "aucune erreur console",
+   "d": ""
+  }
+ ],
+ "resume": {
+  "s1": {
+   "pauses": [
+    "2026-11-17",
+    "2026-11-18"
+   ],
+   "decalage": 2,
+   "nonModifiees": 220,
+   "journal": 60
+  }
+ }
+}

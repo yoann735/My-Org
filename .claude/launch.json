@@ -77,6 +77,48 @@
         "GITHUB_BACKUP_REPO": "moi/medrevise-backups-test"
       },
       "port": 5303
+    },
+    {
+      "name": "fa-local",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "--port",
+        "5310",
+        "--strictPort"
+      ],
+      "env": {
+        "VITE_SUPABASE_URL": "",
+        "VITE_SUPABASE_ANON_KEY": ""
+      },
+      "port": 5310
+    },
+    {
+      "name": "fa-faux-supabase",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/tests-file-attente/faux-supabase-54409.mjs"
+      ],
+      "env": {
+        "JOURNAL": "1",
+        "CONTRAINTE_RATING": "0"
+      },
+      "port": 54409
+    },
+    {
+      "name": "fa-cloud",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "--port",
+        "5311",
+        "--strictPort"
+      ],
+      "env": {
+        "VITE_SUPABASE_URL": "http://localhost:54409",
+        "VITE_SUPABASE_ANON_KEY": "cle-de-test"
+      },
+      "port": 5311
     }
   ]
 }

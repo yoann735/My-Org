@@ -1,0 +1,37 @@
+{
+ "type": "tablette",
+ "resultats": [
+  {
+   "ok": true,
+   "m": "« À revoir » donné à l’écran (première carte de la séance)",
+   "d": "c2026-11-17-00"
+  },
+  {
+   "ok": true,
+   "m": "dueDate réelle = demain (21)",
+   "d": "2026-11-21"
+  },
+  {
+   "ok": true,
+   "m": "le lendemain RÉEL, elle est là (même si le 20 est mis en pause)",
+   "d": "2026-11-17,2026-11-18,2026-11-19,2026-11-20"
+  },
+  {
+   "ok": true,
+   "m": "aucune erreur console",
+   "d": ""
+  }
+ ],
+ "resume": {
+  "s3": {
+   "cible": "c2026-11-17-00",
+   "dueDate": "2026-11-21",
+   "pauses": [
+    "2026-11-17",
+    "2026-11-18",
+    "2026-11-19",
+    "2026-11-20"
+   ]
+  }
+ }
+}
