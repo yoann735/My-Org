@@ -255,7 +255,9 @@ Les cartes sont notées **à l'écran** : bloc Nouvelles → « Voir la réponse
 
 ### 3.4 Résultats complémentaires
 
-(complété ci-dessous à la fin des bancs)
+- `tests-file-attente/t-scenarios.mjs` : **ordinateur, tablette, téléphone tout verts** (séance, Retard / Révisions / Nouvelles, mode file d'attente, FSRS).
+- MealWeek ouvert dans le navigateur sur le code d'après (:5310) : semaine et planning affichés, **aucune erreur console**. Comme le diff est nul sur `src/mealweek`, `src/shared`, `App.jsx` et `Selecteur.jsx`, le rendu est identique par construction.
+- Les bancs précédents réécrivent leurs captures et leurs fichiers de résultats à chaque passage. Ces fichiers ont été remis à leur version d'origine (`1ac6e5a`).
 
 ---
 
@@ -281,4 +283,15 @@ Les 74 événements partent par le canal de repli à cette ouverture. Si l'iPad 
 
 ## 6. Commits
 
-(liste ci-dessous)
+- `25c6dd2` « sync auto ». La synchro automatique du dossier a commité et poussé **tout le chantier** en un seul commit, avant que je fasse mes commits conventionnels :
+  - code : `confirmationServeur.js`, `journal/*`, `syncStatus.js`, `etatSynchro.js`, `diagnosticExport.js`, `MedReviseApp.jsx`, `EtatSynchro.jsx`, `sync.js`, `storage.js` ;
+  - tests : `tests/file-synchro/` ;
+  - `package.json` (build) ;
+  - banc `scripts/tests-74-en-attente/` et faux Supabase ;
+  - captures et premier jet de ce compte rendu.
+
+  L'historique n'a pas été réécrit (jamais de force push).
+- `1ac6e5a` chore : restaure `launch.json` et les captures réécrites par les bancs de non-régression, embarqués par erreur dans `25c6dd2`.
+- Ce compte rendu, version finale : docs.
+
+**Migration** : aucune nouvelle. `20261024_review_log_evenements.sql` reste **non appliquée** et facultative.
