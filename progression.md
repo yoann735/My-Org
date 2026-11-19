@@ -1,44 +1,47 @@
 <!-- PASSATION:DEBUT -->
 # 🔁 Passation – My Org (MedRevise)
-_Clôturée le 2026-11-15 à 19:18_
+_Clôturée le 2026-11-19 à 21:44_
 
 ## 🎯 Objectif
 SPA Vite + React (hub + MealWeek + MedRevise), déployée sur Vercel (projet `my-org`) au push sur `main`.
-Session /goal du 14-15/11 : retrouver les boîtes « disparues » d'Épithélium glandulaire, puis rendre l'enregistrement des documents incassable. Terminé et poussé (d23bed3, 4e3a9ca, 22bd96a, a4fb223).
+Session du 15/11 : /goal « Mode file d'attente » (planning en pause les jours sans révision), livré et poussé (b8c367c, 238021b, 7b9221f, 5d56577) ; banc téléphone tranché en parallèle (d042293).
 
 ## ✅ Fait (vérifié)
-- Diagnostic : Épithélium glandulaire, **aucune boîte disparue** (original 42, S1 18, S2 6 ; 36 copies GitHub + cloud + journal LevelDB d'une COPIE d'Aside). 21 boîtes créées puis supprimées entre deux sauvegardes (presque toutes vides). Sauvegarde GitHub complète (3837/3837). Captures réelles hors dépôt : `…/Projets/My Org/captures-privees-boites/`.
-- Moteur unique `src/medrevise/lib/enregistrement.js` (écriture relue, 3 essais, erreur persistante, file d'envoi, vidage à pagehide/visibilitychange, beforeunload seulement si écriture locale en cours, storage.persist). Branché dans `lib/storage.js` (`ecrireDocument`, ordre par enregistrement `enOrdre`).
-- Historique `lib/historiqueDoc.js` + store local `versions_doc` (60 j, version / 5 min, à la fermeture, avant restauration/remplacement cloud) ; UI `pdf/HistoriqueDoc.jsx` (Fichier › Historique…), bandeau de disparition dans `PdfReader.jsx`, indicateur `components/IndicateurEnregistrement.jsx`. Versions des sauvegardes GitHub : `api/backup-versions.js` (lecture seule).
-- Bugs corrigés : perte à fermeture rapide (écriture immédiate à la 1re frappe), course création/1re lettre, ⌘Z/⌘⇧Z qui vidait une boîte (`lib/annotHistory.js`).
-- Build vert ; vitest 273/275 (2 échecs anciens : crayon, emploi du temps) ; MealWeek identique octet pour octet ; frappe aussi rapide (CPU×4 : 31,8 vs 31,3 ms).
-- Compte rendu : `docs/compte-rendu-boites-disparues-et-sauvegarde-continue.md`.
+- **Mode file d'attente** : une seule `dateEffective(carte)` dans `src/medrevise/lib/planning.js` (`nextDate` = alias) = dateBase + jours en pause STRICTEMENT après la dernière révision. Logique pure : `src/medrevise/lib/fileAttente.js` (clôture des journées, élagage, activation, aperçu 7 j, paquet suivant, désactivation).
+- Stockage : enregistrement synchronisé `prompts/fileAttente` (`lib/storage.js` get/setFileAttente, putBackup avant chaque écriture). Aucune carte, FSRS ni journal écrits ; pas de migration SQL.
+- UI : Réglages › Planification (`components/ReglagesFileAttente.jsx`, feuille d'activation), ligne de décalage, alerte orange ≥ 5 j, bouton « Faire le paquet suivant » (`components/SeanceAujourdhui.jsx`), CSS `src/styles/file-attente.css`. Clôture lancée après une passe de synchro aboutie (`MedReviseApp.jsx`). Hub (`src/Selecteur.jsx`) charge l'état du mode.
+- Tests : vitest 287/289 (2 échecs anciens : crayon, emploi du temps) dont 14 nouveaux (`tests/fileAttente/`) ; bancs Chrome `scripts/tests-file-attente/` tous verts (ordinateur, tablette, téléphone, deux appareils, avant/après = mode désactivé identique, MealWeek identique à l'octet). Build vert.
+- Compte rendu : `docs/compte-rendu-mode-file-attente.md` (règle, stockage, résultats chiffrés, captures `docs/img/file-attente/`, doutes, commits).
+- Banc téléphone : PAS de régression (le banc manquait de cartes dues) ; corrigé dans `scripts/tests-enregistrement/t-telephone.mjs` (d042293), `tout.sh` vert.
 
-## 🚧 En cours
-- Rien de commencé. Modifications non commitées : aucune (hors `progression.md`, modifié par cette clôture).
-- ✅ Banc téléphone tranché (15/11 soir) : PAS de régression. Les échecs venaient du banc : `seed.mjs` ne sème que 6 flashcards et chaque passage en note une → au 7e passage plus rien n'est dû (bouton désactivé, journal 2 → 2). `t-telephone.mjs` ajoute désormais sa propre carte due (retirée à la fin) et attend au lieu de dormir. 3 passages verts sur profil épuisé + `tout.sh` complet vert (142 ✅). Attention : machine saturée (charge ~40-50) ou Chrome headless mort → faux échecs de latence sur la tablette.
+## 🚧 En cours (point d'arrêt exact)
+- Rien en cours. Modifications non commitées : aucune (hors `progression.md`, modifié par cette clôture).
 
 ## ➡️ Prochaines étapes (dans l'ordre)
-1. Côté utilisateur : essayer sur le vrai Mac et le vrai iPad (indicateur, Fichier › Historique…, fermeture d'onglet juste après frappe).
-2. Toujours en attente côté utilisateur : CLI Vercel (`npm i -g vercel`, `vercel login`, `vercel link --yes --project my-org`) et migration `supabase/migrations/20261024_review_log_evenements.sql`.
+1. Côté utilisateur : essayer le mode file d'attente sur le vrai Mac et le vrai iPad (Réglages › Planification › activer, vérifier la séance) ; attendre son retour avant toute modification.
+2. Côté utilisateur : essayer l'enregistrement continu (indicateur, Fichier › Historique…, fermeture d'onglet juste après frappe).
+3. Toujours en attente côté utilisateur : CLI Vercel (`npm i -g vercel`, `vercel login`, `vercel link --yes --project my-org`) et migration `supabase/migrations/20261024_review_log_evenements.sql`.
 
 ## 🧭 Décisions prises (ne pas rediscuter)
-- Rien n'est restauré automatiquement : alerte + Historique seulement ; récupération = ajout seul, idempotent, putBackup d'abord.
-- `versions_doc` reste local (non synchronisé) ; les versions GitHub sont rapatriées à la demande, lecture seule.
-- Le téléphone n'a pas d'éditeur de documents : on y teste réception, file hors ligne et séance.
+- Règle dateEffective exacte du cahier des charges ; seules les flashcards sont décalées ; « dues ce jour-là » = dateEffective == jour (les vieux retards seuls ne créent pas de pause).
+- Clôture seulement après synchro aboutie (jamais hors ligne / en échec) – pour que 2 appareils donnent le même résultat.
+- Journées en pause = bascule 4 h Bruxelles ; compteurs gardent `todayISO()` (minuit), inchangés – mode désactivé strictement identique.
+- Pas d'écran Réglages au téléphone : activation sur ordinateur ou tablette, la synchro l'apporte.
 
 ## 🛠️ Commandes utiles
-- Build : `npm run build` · Tests : `npx vitest run`
-- Bancs : preview_start `faux-supabase` (:54399), `faux-github` (:54398), `medrevise-banc-sauvegarde` (:5303) + Chrome headless 9335 (ordi), 9336 (tel), 9337 (tablette) → `cd scripts/tests-enregistrement && node seed.mjs && node t-ecriture.mjs ordi|tablette` ; tout : `./tout.sh`.
+- Build : `npm run build` · Tests : `npm test` (TZ Bruxelles)
+- Banc file d'attente : preview_start `fa-local` (:5310) [+ `fa-faux-supabase` :54409 et Vite :5311 avec `cacheDir` séparé pour 2 appareils] ; Chrome headless 9345 (ordi), 9346 (tel), 9347 (tablette), 9348 (ordi 2) → `cd scripts/tests-file-attente && node t-scenarios.mjs ordi|tablette|tel [s1…s8|nr]`, `node t-deux-appareils.mjs`, `node t-avant-apres.mjs` (code d'avant sur :5312 via `git archive 481184d`).
+- Banc enregistrement : `faux-supabase` (:54399), `faux-github` (:54398), `medrevise-banc-sauvegarde` (:5303) + Chrome 9335/9336/9337 → `scripts/tests-enregistrement/tout.sh`.
 
 ## ⚠️ Pièges et préférences
 - Ne jamais toucher MealWeek ni `src/shared/` ; aucune écriture Supabase ; ne pas ouvrir l'app réelle ; aucune donnée réelle dans le dépôt (PUBLIC).
-- Bancs : importer les modules via `window.__imp` (sinon autre instance Vite `?t=`) ; points d'appui via `pointPage` (zone visible) ; tablette = stylet (pointerType pen).
-- Un commit+push combiné peut être refusé : faire commit puis push séparément. « sync auto » commite parfois seul.
-- Français, commits conventionnels, jamais de force push.
+- Deux Vite dans le même dossier partagent `node_modules/.vite` → deux copies de React (page vide, « Invalid hook call ») : donner un `cacheDir` séparé. Panneau navigateur : 5 serveurs max par session.
+- Bancs : modules via `window.__imp` ; horloge simulée par `localStorage.__decalageMs` (commun.mjs) ; machine saturée = faux échecs de latence.
+- « sync auto » commite parfois seul (a embarqué une partie du chantier dans 238021b). Commit puis push séparément. Français, commits conventionnels, jamais de force push.
 <!-- PASSATION:FIN -->
 
 ## Historique des clôtures
+- 2026-11-19 21:44 – Clôture : mode file d'attente livré et poussé (5d56577), banc téléphone tranché sans régression (d042293) ; attente des essais sur vrai Mac/iPad.
 - 2026-11-15 21:00 – /goal mode file d'attente : dateEffective unique (planning.js), jours en pause dans prompts/fileAttente (aucune carte écrite, pas de migration), Réglages › Planification, décalage + alerte + « Faire le paquet suivant » ; testé ordinateur, tablette, téléphone, deux appareils, avant/après (mode désactivé identique) ; compte rendu docs/compte-rendu-mode-file-attente.md.
 - 2026-11-15 19:18 – Clôture du /goal boîtes disparues + sauvegarde continue (livré, poussé a4fb223) ; à revoir : banc téléphone séance flashcards en échec au dernier passage.
 - 2026-11-14 18:40 – /goal boîtes disparues + sauvegarde continue : Épithélium glandulaire, aucune boîte disparue (36 copies, cloud, journal du Mac) ; enregistrement continu (< 300 ms, relu, erreur visible), historique des versions, garde-fou ; bancs verts 3 appareils ; poussé (d23bed3, 4e3a9ca, 22bd96a).
@@ -48,5 +51,3 @@ Session /goal du 14-15/11 : retrouver les boîtes « disparues » d'Épithélium
 - 2026-11-02 11:11 – Cartes manquantes : suppressions volontaires, bouton « C'est moi… », cartes disparues reconnaissables (recto, cours) ; poussé, attente retour utilisateur.
 - 2026-10-31 20:55 – /goal : diagnostic des 12 flashcards manquantes (suppressions manuelles confirmées), alerte d'intégrité corrigée pour les suppressions volontaires, testée et poussée.
 - 2026-10-31 20:09 – Tableau masque choisi + espace deux lignes livrés, poussés ; attente test utilisateur sur vrai cours.
-- 2026-10-31 15:15 – Synchro rapide, surlignage exact, listes dans les boîtes livrés et poussés ; question ouverte : espace sur surlignage deux lignes.
-- 2026-10-31 (soir) – /goal Tableau : masque par case livré, testé (ordinateur, tablette, téléphone), poussé ; puis correctif « espace entre deux lignes » livré et poussé.
