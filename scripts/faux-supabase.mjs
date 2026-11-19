@@ -79,7 +79,13 @@ http.createServer(async (req, res) => {
     }
     if (req.method === 'GET') {
       let liste = [...revues.values()];
-      for (const [k, v] of u.searchParams) { if (v.startsWith('gt.')) liste = liste.filter((r) => String(r[k]) > v.slice(3)); }
+      for (const [k, v] of u.searchParams) {
+        if (v.startsWith('gt.')) liste = liste.filter((r) => String(r[k]) > v.slice(3));
+        // (19/11) filtre `in.(…)` et projection `select=` comme PostgREST (relecture des ids en file)
+        const mIn = /^in\.\((.*)\)$/.exec(v); if (mIn) { const vals = mIn[1].split(',').map((x) => x.replace(/^"|"$/g, '')); liste = liste.filter((r) => vals.includes(String(r[k]))); }
+      }
+      const colsJ = (u.searchParams.get('select') || '*').split(',');
+      liste = liste.map((r) => (colsJ.includes('*') ? r : Object.fromEntries(colsJ.map((c) => [c, r[c]]))));
       trier(liste, u.searchParams.get('order'), (a, b) => (a.inserted_at < b.inserted_at ? -1 : a.inserted_at > b.inserted_at ? 1 : a.id < b.id ? -1 : 1));
       let off = Number(u.searchParams.get('offset') || 0), lim = Number(u.searchParams.get('limit') || 1e9);
       const rg = /(\d+)-(\d+)/.exec(req.headers['range'] || ''); if (rg) { off = +rg[1]; lim = +rg[2] - off + 1; }
@@ -105,7 +111,7 @@ http.createServer(async (req, res) => {
     }
     return out(200, n);
   }
-  if (u.pathname === '/rest/v1/medrevise_records' && req.method === 'GET') {
+  if (u.pathname === '/rest/v1/medrevise_records' && (req.method === 'GET' || req.method === 'HEAD')) {
     let liste = [...rows.values()];
     for (const [k, v] of u.searchParams) {
       if (['select', 'order', 'offset', 'limit'].includes(k)) continue;
@@ -120,6 +126,7 @@ http.createServer(async (req, res) => {
     // (29/10) projection `select=` comme PostgREST : une lecture de métadonnées ne transporte pas `data`
     const cols = (u.searchParams.get('select') || '*').split(',');
     const page = liste.slice(off, off + lim).map((r) => (cols.includes('*') ? r : Object.fromEntries(cols.map((c) => [c, r[c]]))));
+    if (req.method === 'HEAD') { res.writeHead(200, { ...cors, 'Content-Range': `*/${liste.length}` }); return res.end(); } // count exact
     return out(200, page, { 'Content-Range': `${off}-${off + page.length - 1}/${liste.length}` });
   }
   let m = /^\/storage\/v1\/object\/list\/medrevise-blobs$/.exec(u.pathname);

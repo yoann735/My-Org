@@ -35,7 +35,7 @@ export function LigneEtatSynchro() {
           {elements.map((e) => (
             <li key={e.cle} data-element={e.type}>
               <div><span className="genre">{e.genre}</span><span className="titre">{e.titre}</span></div>
-              <div className="meta">{[quand(e.depuis) ? 'depuis le ' + quand(e.depuis) : null, e.raison].filter(Boolean).join(' · ')}</div>
+              <div className="meta">{[quand(e.depuis) ? 'depuis le ' + quand(e.depuis) : null, e.tentatives ? e.tentatives + (e.tentatives > 1 ? ' tentatives' : ' tentative') : null, e.raison].filter(Boolean).join(' · ')}</div>
             </li>
           ))}
         </ul>

@@ -151,6 +151,10 @@ export function retirerSiInchange(paires) {
 /* (07/11, docs/compte-rendu-sauvegarde-et-statut-synchro.md) FILE OBSERVABLE, EN LECTURE : l'état de synchro unique
    (lib/etatSynchro.js) se recalcule quand une file change (fin d'un vidage, réussi ou non) et affiche la raison du
    dernier refus. Aucune écriture ici : on prévient, on retient le dernier message d'échec, c'est tout. */
+/* (19/11) nombre d'essais d'envoi sans succès par entrée (clé store:id), pour la liste « N en attente » — en mémoire,
+   remis à zéro au rechargement (la file elle-même, persistée, ne change pas de forme) */
+const tentativesParCle = new Map();
+export const tentativesEnvoi = (cle) => tentativesParCle.get(cle) || 0;
 let dernierEchecEnvoiMsg = null; // { le, erreur: 'reseau'|'serveur', message } | null
 /** dernier échec d'envoi des enregistrements (null après un envoi confirmé) */
 export const dernierEchecEnvoi = () => dernierEchecEnvoiMsg;
@@ -233,7 +237,7 @@ async function flushPending({ depuisFermeture = false } = {}) {
         // explicitement — supabase-js NE REJETTE PAS sur un échec réseau (DNS,
         // offline, 5xx), il résout avec `{ error }` renseigné.
         const r = await pushRecords(lot.map(([, v]) => v));
-        if (!r.ok) return noterEnvoi({ ok: false, envoyes, restants: total - envoyes, erreur: r.erreur, message: r.message });
+        if (!r.ok) { snapshot.slice(i).forEach(([k]) => tentativesParCle.set(k, (tentativesParCle.get(k) || 0) + 1)); return noterEnvoi({ ok: false, envoyes, restants: total - envoyes, erreur: r.erreur, message: r.message }); }
         // NB : une entrée REJETÉE par la condition (updated_at pas plus récent que
         // le cloud) compte comme partie — c'est le comportement voulu. Elle a été
         // examinée par la base et volontairement écartée ; la garder dans l'outbox

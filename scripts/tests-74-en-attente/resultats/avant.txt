@@ -1,0 +1,10 @@
+[avant] ✅ départ : téléphone à jour, 0 en attente — {"n":0,"phase":"ajour"}
+[avant] après 7 « Passer en révision » : {"phase":"ajour","n":7,"empreinteLocale":"cf37ea94da33","empreinteCloud":"cf37ea94da33","fileJournal":7,"evenementsAuCloud":0}
+[avant] liste : 7 en attente RÉVISION« Nouvelle 1 ? » depuis le 19/11 22:16 · pas encore envoyée (envoi au prochain passage) RÉVISION« Nouvelle 2 ? » depuis le 19/11 22:16 · pas encore envoyée (envoi au prochain passage) RÉVISION« Nouvelle 3 ? » depuis le 19/11 22:16 · pas encore envoyée (envoi au prochain passage) RÉVISION« Nouvelle 4 ? » depuis le 19/11 22:16 · pas encore envoyée (envoi au prochain passage) RÉV
+[avant] ✅ AVANT — reproduit : 7 éléments en attente après 7 « Passer en révision » — 7
+[avant] ✅ AVANT — reproduit : empreinte locale = empreinte cloud malgré les 7 en attente — cf37ea94da33 / cf37ea94da33
+[avant] ✅ AVANT — reproduit : « Revérifier » ne fait pas baisser le compteur — 7
+[avant] ✅ AVANT — reproduit : +1 à chaque nouvelle carte passée (7 → 8) — 8
+[avant] ✅ AVANT — aucun de ces événements n’est au serveur
+[avant] ✅ aucune erreur console
+[avant] ✅ tout est vert

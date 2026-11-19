@@ -6,7 +6,7 @@
      modifiée ; le journal a son propre canal, ./synchro.js, vers la table `medrevise_review_log`.
    Toute réponse à une flashcard est journalisée, interrupteur FSRS ON ou OFF.
    ============================================================ */
-import { get, set, values, keys, del, setMany, entries, createStore } from 'idb-keyval';
+import { get, set, values, keys, del, delMany, getMany, setMany, entries, createStore } from 'idb-keyval';
 
 const S_JOURNAL = createStore('medrevise-review_log', 'v1');
 const S_ENVOI = createStore('medrevise-review_log_outbox', 'v1');
@@ -56,20 +56,62 @@ export async function idsEnAttente() { return ((await keys(S_ENVOI)) || []).map(
 export async function entreesEnAttente() {
   const ids = await idsEnAttente();
   const out = [];
-  for (const id of ids) { const e = await get(id, S_JOURNAL); if (e) out.push(e); else await del(id, S_ENVOI); }
+  // (19/11) n'efface plus rien : une entrée de file sans entrée de journal (orpheline) est traitée par journal/synchro.js
+  for (const id of ids) { const e = await get(id, S_JOURNAL); if (e) out.push(e); }
   return out;
 }
 /** (07/11) file d'envoi en LECTURE SEULE, pour la liste « N en attente » (lib/etatSynchro.js) :
  *  contrairement à entreesEnAttente, ne retire RIEN (même une entrée orpheline reste, signalée).
- *  [{ id, depuis, carte, note, orpheline }] */
+ *  (19/11) + tentatives et raison du dernier essai (journal/synchro.js noterTentatives).
+ *  [{ id, depuis, carte, note, evenement, orpheline, tentatives, raison, derniereTentative }] */
 export async function fileEnvoiLecture() {
   const out = [];
   try {
     for (const [id, v] of (await entries(S_ENVOI)) || []) {
       const e = await get(id, S_JOURNAL);
-      out.push({ id: String(id), depuis: (v && v.depuis) || (e && e.reviewed_at) || null, carte: (e && e.card_id) || null, note: e ? e.rating : null, orpheline: !e });
+      out.push({
+        id: String(id), depuis: (v && v.depuis) || (e && e.reviewed_at) || null, carte: (e && e.card_id) || null, note: e ? e.rating : null,
+        evenement: (e && e.details && e.details.evenement) || null, orpheline: !e,
+        tentatives: (v && v.tentatives) || 0, raison: (v && v.raison) || null, derniereTentative: (v && v.derniereTentative) || null,
+      });
     }
   } catch (e) { /* base indisponible : liste vide, rien n'est conclu de plus */ }
   return out;
 }
-export async function marquerEnvoyees(ids) { for (const id of ids) await del(id, S_ENVOI); prevenir(); }
+
+/* (19/11, docs/compte-rendu-74-en-attente.md) SORTIE DE FILE SUR PREUVE DU SERVEUR UNIQUEMENT.
+   Ces fonctions ne touchent QUE la file d'envoi : l'entrée du journal elle-même n'est jamais modifiée ni retirée.
+   C'est journal/synchro.js qui décide, après avoir RELU le serveur (lib/confirmationServeur.js). */
+
+/** retire de la FILE les ids confirmés par le serveur (une transaction) — la donnée reste dans le journal */
+export async function retirerDeLaFile(ids) {
+  if (!ids || !ids.length) return 0;
+  await delMany(ids, S_ENVOI);
+  prevenir();
+  return ids.length;
+}
+
+/** note un essai d'envoi resté sans confirmation : compteur de tentatives + raison en une ligne */
+export async function noterTentatives(ids, raison) {
+  if (!ids || !ids.length) return;
+  const le = new Date().toISOString();
+  for (const id of ids) {
+    const v = await get(id, S_ENVOI);
+    if (!v) continue; // sortie entre-temps : rien à noter
+    await set(id, { ...v, id, tentatives: (v.tentatives || 0) + 1, raison: String(raison || '').slice(0, 200) || null, derniereTentative: le }, S_ENVOI);
+  }
+}
+
+/** remet en file des entrées du journal présentes ICI et absentes du serveur (garde-fou de réconciliation) */
+export async function remettreEnFile(ids) {
+  const deja = new Set(await idsEnAttente());
+  const neufs = (ids || []).filter((id) => !deja.has(String(id)));
+  for (const id of neufs) await set(id, { id, depuis: new Date().toISOString(), tentatives: 0, raison: 'absente du serveur (trouvée par la réconciliation)' }, S_ENVOI);
+  if (neufs.length) prevenir();
+  return neufs.length;
+}
+
+export const idsJournalLocal = async () => ((await keys(S_JOURNAL)) || []).map(String);
+export const lireEntrees = async (ids) => (await getMany(ids, S_JOURNAL)).filter(Boolean);
+/** @deprecated (19/11) gardé pour compatibilité : retire de la file SANS preuve — plus appelé par la synchro */
+export async function marquerEnvoyees(ids) { return retirerDeLaFile(ids); }

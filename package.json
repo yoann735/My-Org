@@ -6,7 +6,7 @@
   "description": "MealWeek — planificateur de repas personnel (Vite + React + Tailwind, données figées, sans backend).",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vitest run tests/file-synchro && vite build",
     "preview": "vite preview",
     "test": "TZ=Europe/Brussels vitest run"
   },

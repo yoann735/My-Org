@@ -34,7 +34,7 @@ import {
   purgeSource, purgeMatiere, purgeFiche, putBackup, newErrorCard, noterSuppressionsVolontaires,
   getCoursePrompts, setCoursePrompts, getExoPrompts, setExoPrompts,
   getChapExoPrompts, setChapExoPrompts, getReglagesFC, setReglagesFC, getCarnetPuces, setCarnetPuces, getCarnetPreReponses, setCarnetPreReponses, getEdtReglages, majEdtReglages,
-  setMeta, getFileAttente, setFileAttente,
+  setMeta, getFileAttente, setFileAttente, purgerOutboxAligne,
 } from './lib/storage.js';
 import { definirEtatFile, cloturerJours, jourFile, retirerDernierePause } from './lib/fileAttente.js';
 import { dateBase } from './lib/planning.js';
@@ -42,11 +42,15 @@ import { flashcardsPlanifiees } from './session/SeanceFC.jsx';
 import { demarrerEmploiDuTemps } from './lib/emploiDuTemps.js';
 import { runMigrations } from './lib/migrate.js';
 import { synchroniserJournal, journalAChange } from './journal/synchro.js';
+import { idsEnAttente as idsJournalEnAttente } from './journal/journal.js';
+/* (19/11, docs/compte-rendu-74-en-attente.md) « en attente » = file des enregistrements + file du journal des révisions :
+   avant, seule la première comptait pour dire « À jour », d'où « À jour » et « 74 en attente » au même instant. */
+const enAttenteTotal = async () => (await outboxCount()) + ((await idsJournalEnAttente().catch(() => [])).length);
 import { BandeauFilet, EcranIntegrite, rafraichirStatutServeur } from './components/FiletSecurite.jsx';
 import { lancerControle } from './integrite/executer.js';
 import { copierDansDossier } from './sauvegarde/dossierLocal.js';
 import { marquerSyncReussie, derniereSyncReussie, etatLocal, etatCloud, lireCurseur, ecrireCurseur } from './lib/syncStatus.js';
-import { outboxCount, dernierEchecCloud, surProgressionEnvoi, flushOutbox } from './data/sync.js';
+import { outboxCount, dernierEchecCloud, surProgressionEnvoi, flushOutbox, flushBlobOutbox } from './data/sync.js';
 import { SYNC_ENABLED } from './data/supabaseClient.js';
 import { creerPorte } from './lib/synchroAffichage.js';
 import { collecterEnAttente, calculerEtatSynchro, surEnAttente, enAttenteActuel } from './lib/etatSynchro.js';
@@ -231,13 +235,13 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // trace locale (localStorage) de la derniere synchro REUSSIE, pour que
     // l'indicateur puisse l'afficher meme apres un rechargement de page.
     // (29/10) « réussie » = tout est parti : un envoi resté en file n'est pas une synchro réussie
-    if (r.status === 'ok') { if (!(await outboxCount())) marquerSyncReussie(); await reload(); }
+    // (19/11) le journal passe AVANT de conclure : « réussie » = les deux files vides, confirmées par le serveur
+    if (r.status === 'ok') { await synchroniserJournal(undefined, { complete: true }).catch(() => {}); if (!(await enAttenteTotal())) marquerSyncReussie(); await reload(); }
     // `degraded` : la RPC conditionnelle `medrevise_push` est absente de Supabase
     // (script SQL pas encore exécuté) et l'envoi est retombé sur l'ancien upsert
     // non protégé — remonté tel quel à l'UI, voir ui.jsx#syncStatusLabel.
     setSyncState({ status: r.status, at: new Date().toISOString(), degraded: !!r.degraded, blobs: r.blobs || null, envoi: r.envoi || null });
     // journal des révisions (étape 2 FSRS) : son propre canal, après la synchro générale, sans la modifier
-    if (r.status === 'ok') synchroniserJournal().then((j) => { if (j && j.cartesMaj) reload(); }).catch(() => {});
     return r;
   }, [reload]);
 
@@ -283,7 +287,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
         setSyncState({ status: r.status, at: new Date().toISOString(), degraded: !!r.degraded, blobs: r.blobs || null, envoi: r.envoi || null });
         // (29/10) 'offline' = réseau absent, 'echec' = le serveur a répondu par une erreur (statuts de syncNow)
         if (r.status !== 'ok') return { ok: false, erreur: r.status === 'echec' ? 'serveur' : 'reseau' };
-        const j = await synchroniserJournal();
+        const j = await synchroniserJournal(undefined, { complete: true }); // (19/11) passe complète : réconciliation par ids
         // table du journal absente (SQL pas appliqué) : rien à recevoir, la passe reste complète ; autre erreur : échec
         if (j && j.ok === false && !j.tableAbsente && j.raison !== 'désactivée') return { ok: false, erreur: /fetch|network|Load failed/i.test(String(j.erreur || j.raison || '')) ? 'reseau' : 'serveur' };
         if (!migrationsFaites.current) { migrationsFaites.current = true; await runMigrations(); }
@@ -291,7 +295,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
         return { ok: true };
       },
       verifier: async () => {
-        const [local, cloud, enAttente] = await Promise.all([etatLocal(), etatCloud(), outboxCount()]);
+        const [local, cloud, enAttente] = await Promise.all([etatLocal(), etatCloud(), enAttenteTotal()]);
         if (cloud) {
           // (29/10) alignement vérifié : il devient le curseur de la synchro incrémentale
           if (local.hash === cloud.hash && !enAttente && dernierTirage.current) await ecrireCurseur({ ...dernierTirage.current, hash: local.hash, verifieLe: Date.now() });
@@ -320,7 +324,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
         }
         // l'application du journal réécrit les cartes touchées (bloc FSRS) : on les envoie dans la même passe
         if (await outboxCount()) { const f = await flushOutbox(); if (!f.ok) return { ok: false, erreur: f.erreur === 'serveur' ? 'serveur' : 'reseau' }; trace('renvoi_journal', performance.now() - d); d = performance.now(); }
-        if (await outboxCount()) return { ok: false, complet: true }; // écrit pendant la passe : la complète tranchera
+        if (await enAttenteTotal()) return { ok: false, complet: true }; // écrit pendant la passe (ou journal non confirmé) : la complète tranchera
         if (!migrationsFaites.current) { migrationsFaites.current = true; await runMigrations(); stores.add('*'); }
         await reloadRef.current(stores.has('*') ? undefined : stores);
         trace('recalcul', performance.now() - d); d = performance.now();
@@ -338,7 +342,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
       verifierFond: async () => {
         const t0 = performance.now();
         const avant = await lireCurseur();
-        const [local, cloud, enAttente] = await Promise.all([etatLocal(), etatCloud(), outboxCount()]);
+        const [local, cloud, enAttente] = await Promise.all([etatLocal(), etatCloud(), enAttenteTotal()]);
         try { (window.__mrMesuresSynchro = window.__mrMesuresSynchro || []).push({ etape: 'empreinte_fond', ms: Math.round(performance.now() - t0) }); } catch (e) { /* ignore */ }
         if (!cloud) return null;
         if (local.hash !== cloud.hash || enAttente) return 'ecart';
@@ -373,6 +377,26 @@ export default function MedReviseApp({ themeApi, goHub }) {
     if (SYNC_ENABLED && porte.phase !== 'attente') collecterEnAttente({ avecCloud: porte.phase === 'ajour' || porte.phase === 'incomplet' }).catch(() => {});
   }, [porte.phase, porte.at]);
   const etatSynchro = useMemo(() => calculerEtatSynchro(porte, enAttente), [porte, enAttente]);
+  /* (19/11, docs/compte-rendu-74-en-attente.md) GARDE-FOU : « N en attente » (N > 0) alors que la passe vient d'être
+     confirmée par le serveur (empreintes égales) → réconciliation automatique, une fois par liste distincte :
+     relecture au serveur de chaque élément en file (enregistrements, journal), sortie des identiques, envoi du reste,
+     puis liste recalculée. Si l'incohérence persiste, chaque élément porte sa raison (liste dépliable, diagnostic). */
+  const dejaReconcilie = useRef('');
+  useEffect(() => {
+    if (etatSynchro.code !== 'enattente') return;
+    const sig = etatSynchro.elements.map((e) => e.cle).sort().join(',');
+    if (!sig || dejaReconcilie.current === sig) return;
+    dejaReconcilie.current = sig;
+    (async () => {
+      try {
+        await purgerOutboxAligne();
+        await synchroniserJournal(undefined, { complete: true });
+        if (await outboxCount()) await flushOutbox();
+        flushBlobOutbox();
+      } catch (e) { /* la raison de chaque élément reste visible dans la liste */ }
+      collecterEnAttente({ avecCloud: true }).catch(() => {});
+    })();
+  }, [etatSynchro]);
 
   /* (15/11) MODE FILE D'ATTENTE — clôture des journées terminées (lib/fileAttente.js cloturerJours), APRÈS une passe
      de synchro aboutie (ou sans cloud) : les réponses des autres appareils sont arrivées, le calcul est déterministe.

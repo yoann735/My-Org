@@ -9,6 +9,7 @@ import { isoDate, startAdaptive } from './sm2.js';
 import { queuePush, pullAllRecords, pullAllMeta, pullStore, queueBlobPush, flushBlobOutbox, blobOutboxEntries, listCloudBlobs, pullBlob, flushOutbox, isPushDegraded, outboxEntries, retirerSiInchange, dernierEchecCloud, outboxCount, etatLegerCloud, pullDepuis, pullParIds } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
 import { appareil } from '../journal/journal.js';
+import { classerContreServeur } from './confirmationServeur.js';
 import { estStoreDocument, ecrireVerifie, suivreMiseEnFile, suivreEcriture } from './enregistrement.js';
 
 const store = (name) => createStore('medrevise-' + name, 'v1');
@@ -1110,12 +1111,12 @@ export async function synchroCiblee(name) {
    ============================================================ */
 
 /** Entrées d'outbox dont le cloud a déjà la même version. Fonction pure (testée). */
+/* (19/11) même règle que le journal des révisions : lib/confirmationServeur.js (un seul code de confirmation) */
 export function entreesDejaAuCloud(outbox, meta) {
-  const C = new Map(meta.map((r) => [r.store + ':' + r.record_id, r]));
-  return outbox.filter(([, v]) => {
-    const c = v && C.get(v.store + ':' + v.record_id);
-    return !!c && instant(c.updated_at) !== null && instant(c.updated_at) === instant(v.updated_at) && !!c.deleted === !!v.deleted;
-  });
+  const paires = outbox.filter(([, v]) => !!v);
+  const cle = (x) => x.store + ':' + x.record_id;
+  const meme = new Set(classerContreServeur('enregistrement', paires.map(([k, v]) => ({ ...v, __k: k })), meta, cle).identique.map((v) => v.__k));
+  return paires.filter(([k]) => meme.has(k));
 }
 
 export async function purgerOutboxAligne() {

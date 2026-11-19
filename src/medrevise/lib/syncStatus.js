@@ -35,6 +35,15 @@
 import { SYNCABLE_STORES, getAll, etatBlobs, getMeta, setMeta } from './storage.js';
 import { pullAllMeta, outboxCount, dernierEchecCloud } from '../data/sync.js';
 import { SYNC_ENABLED } from '../data/supabaseClient.js';
+import { toutLeJournal } from '../journal/journal.js';
+import { journalCloudComplet } from '../journal/synchro.js';
+
+/* (19/11, docs/compte-rendu-74-en-attente.md) L'EMPREINTE COUVRE AUSSI LE JOURNAL DES RÉVISIONS.
+   Avant : seuls les enregistrements (medrevise_records) y entraient. Le téléphone pouvait donc garder 74 réponses
+   jamais arrivées au serveur avec une empreinte IDENTIQUE à celle du Mac. Désormais une ligne `journal|id|reviewed_at`
+   par entrée du journal, des deux côtés (local : store medrevise-review_log ; cloud : table medrevise_review_log +
+   canal de repli `review_log_evenement`), même calcul sur tous les appareils. Une réponse absente d'un côté
+   change l'empreinte. `n` reste le nombre d'ENREGISTREMENTS (affichage inchangé) ; `nJournal` s'y ajoute. */
 
 /** Date -> forme canonique unique. Voir « LE PIÈGE » ci-dessus. */
 function normaliserDate(v) {
@@ -61,8 +70,11 @@ export async function etatLocal() {
       lignes.push(nom + '|' + r.id + '|' + normaliserDate(r.updatedAt));
     }
   }
+  const n = lignes.length;
+  const journal = await toutLeJournal().catch(() => []);
+  for (const e of journal) if (e && e.id) lignes.push('journal|' + e.id + '|' + normaliserDate(e.reviewed_at));
   lignes.sort();
-  return { n: lignes.length, parStore, hash: await empreinte(lignes), lignes };
+  return { n, nJournal: lignes.length - n, parStore, hash: await empreinte(lignes), lignes };
 }
 
 /** Photographie du CLOUD. null si la lecture complète échoue — jamais un
@@ -79,8 +91,12 @@ export async function etatCloud() {
     parStore[r.store] = (parStore[r.store] || 0) + 1;
     lignes.push(r.store + '|' + r.record_id + '|' + normaliserDate(r.updated_at));
   }
+  const n = lignes.length;
+  const journal = await journalCloudComplet();
+  if (journal === null && SYNC_ENABLED) return null; // journal illisible : on ne conclut rien (tout ou rien)
+  for (const [id, quand] of journal || []) lignes.push('journal|' + id + '|' + normaliserDate(quand));
   lignes.sort();
-  return { n: lignes.length, parStore, hash: await empreinte(lignes), lignes };
+  return { n, nJournal: lignes.length - n, parStore, hash: await empreinte(lignes), lignes };
 }
 
 const cle = (l) => l.slice(0, l.lastIndexOf('|'));

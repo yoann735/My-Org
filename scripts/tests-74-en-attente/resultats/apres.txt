@@ -1,0 +1,18 @@
+[apres] ✅ départ : téléphone à jour, 0 en attente — {"n":0,"phase":"ajour"}
+[apres] après 7 « Passer en révision » : {"phase":"ajour","n":0,"empreinteLocale":"174a531acda0","empreinteCloud":"174a531acda0","fileJournal":0,"evenementsAuCloud":7}
+[apres] liste : À jour · 22:13
+[apres] ✅ APRÈS : 7 « Passer en révision » → 0 en attente après la synchro — 0
+[apres] ✅ APRÈS : même empreinte locale / cloud (journal compris) — 174a531acda0
+[apres] ✅ APRÈS : chaque événement « Passer en révision » du téléphone est au serveur (canal de repli, aucune migration) — 8 événements locaux, tous présents
+[apres] ✅ APRÈS : une carte de plus passée → toujours 0 après la synchro — 0
+[apres] ✅ hors ligne : 10 cartes notées → 10 en attente — 10 notées, 10 en attente
+[apres] ✅ retour en ligne : 0 en attente, empreinte = cloud — 0 · 76bf9ff9ed14
+[apres] ✅ ordinateur et téléphone : 0 en attente, MÊME empreinte (= cloud) — 1ec1b40158e2 = 1ec1b40158e2 = 1ec1b40158e2
+[apres] ✅ compteur de vues de l’ordinateur = celui du téléphone (révisions du téléphone incluses) — 10 = 10
+[apres] ✅ app tuée en plein envoi puis rouverte : 0 en attente — 0
+[apres] ✅ aucun doublon, aucune perte au serveur — 10 → 12
+[apres] ✅ empreinte = cloud après la réouverture
+[apres] ✅ trois appareils : 0 en attente, même empreinte partout (= cloud) — b3815cf3e11d = b3815cf3e11d = b3815cf3e11d
+[apres] ✅ compteur de vues identique sur les trois appareils — 12 · 12 · 12
+[apres] ✅ aucune erreur console
+[apres] ✅ tout est vert

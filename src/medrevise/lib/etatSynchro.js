@@ -17,7 +17,7 @@
    STRICTEMENT EN LECTURE : rien n'est retiré d'aucune file, rien n'est marqué envoyé, aucune écriture IndexedDB ni
    cloud. Les seuls appels réseau sont la liste du bucket des fichiers (etatBlobs), après une passe.
    ============================================================ */
-import { outboxEntries, blobOutboxEntries, dernierEchecEnvoi } from '../data/sync.js';
+import { outboxEntries, blobOutboxEntries, dernierEchecEnvoi, tentativesEnvoi } from '../data/sync.js';
 import { etatBlobs, getOne } from './storage.js';
 import { fileEnvoiLecture } from '../journal/journal.js';
 import { libelleBandeau, heureCourte } from './synchroAffichage.js';
@@ -67,22 +67,26 @@ export function collecterEnAttente({ avecCloud = false } = {}) {
     const elements = [];
     // 1. enregistrements (file `medrevise-outbox`)
     const echec = dernierEchecEnvoi();
-    for (const [, v] of await outboxEntries()) {
+    for (const [k, v] of await outboxEntries()) {
       if (!v) continue;
       elements.push({
         cle: 'r:' + v.store + ':' + v.record_id, type: 'enregistrement', genre: nomStore(v.store), store: v.store, id: v.record_id,
         titre: v.deleted ? 'suppression de « ' + titreLisible(v.data, v.record_id) + ' »' : titreLisible(v.data, v.record_id),
-        depuis: v.updated_at || null, raison: raisonEnvoi(echec),
+        depuis: v.updated_at || null, tentatives: tentativesEnvoi(k), raison: raisonEnvoi(echec),
       });
     }
     // 2. réponses du journal des révisions (file `medrevise-review_log_outbox`)
     const NOTES = { 1: 'À revoir', 2: 'Difficile', 3: 'Correct', 4: 'Facile' };
     for (const j of await fileEnvoiLecture()) {
       const carte = j.carte ? await getOne('questions', j.carte).catch(() => null) : null;
-      const titre = (carte ? '« ' + titreLisible(carte, j.carte) + ' »' : 'réponse à une carte') + (NOTES[j.note] ? ' · ' + NOTES[j.note] : '');
+      const quoi = j.evenement === 'passage_revision' ? 'passage en révision' : NOTES[j.note] || null;
+      const titre = (carte ? '« ' + titreLisible(carte, j.carte) + ' »' : 'réponse à une carte') + (quoi ? ' · ' + quoi : '');
       elements.push({
-        cle: 'j:' + j.id, type: 'revision', genre: 'Révision', id: j.id, titre,
-        depuis: j.depuis || null, raison: j.orpheline ? 'entrée de journal absente de cet appareil (ignorée à l’envoi)' : 'pas encore envoyée (envoi au prochain passage)',
+        cle: 'j:' + j.id, type: 'revision', genre: j.evenement ? 'Événement du journal' : 'Révision', id: j.id, titre,
+        depuis: j.depuis || null, tentatives: j.tentatives || 0,
+        // (19/11) raison RÉELLE du dernier essai (journal/synchro.js noterTentatives), jamais une phrase générique
+        raison: j.orpheline ? 'entrée de file sans réponse correspondante sur cet appareil (retirée au prochain passage, rien à envoyer)'
+          : j.raison || (j.tentatives ? 'non confirmée par le serveur' : 'pas encore envoyée (envoi au prochain passage)'),
       });
     }
     // 3. fichiers : file d'envoi (`medrevise-blob-outbox`), puis absents du cloud (lecture du bucket)

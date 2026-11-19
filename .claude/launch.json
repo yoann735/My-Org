@@ -119,6 +119,19 @@
         "VITE_SUPABASE_ANON_KEY": "cle-de-test"
       },
       "port": 5311
+    },
+    {
+      "name": "a74-avant",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd '/private/tmp/claude-501/-Users-yoannlmr-Documents-D-v---projets-Claude-Projets-My-Org-My-Org/c356b473-4492-4f5c-aea8-65401b8fb57f/scratchpad/avant' && exec node node_modules/vite/bin/vite.js --config vite.config.banc.mjs --port 5312 --strictPort"
+      ],
+      "env": {
+        "VITE_SUPABASE_URL": "http://localhost:54409",
+        "VITE_SUPABASE_ANON_KEY": "cle-de-test"
+      },
+      "port": 5312
     }
   ]
 }

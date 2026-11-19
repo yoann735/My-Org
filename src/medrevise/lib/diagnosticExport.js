@@ -19,7 +19,11 @@ import { comparerAuCloud } from './syncStatus.js';
 import { todayISO } from './sm2.js';
 import { index, isFicheScheduled, nextDate } from './planning.js';
 import { estFlashcardJ, planDuJour, reglagesFC } from './apprentissageFC.js';
-import { compteJournal, idsEnAttente } from '../journal/journal.js';
+import { compteJournal, idsEnAttente, fileEnvoiLecture, lireEntrees } from '../journal/journal.js';
+import { lireAuServeur } from '../journal/synchro.js';
+import { collecterEnAttente } from './etatSynchro.js';
+import { classerContreServeur } from './confirmationServeur.js';
+import { supabase, SYNC_ENABLED } from '../data/supabaseClient.js';
 import { deliverFile, formatOctets } from './backupExport.js';
 
 export const DIAGNOSTIC_SCHEMA = 'medrevise-diagnostic/1';
@@ -79,6 +83,26 @@ export async function construireDiagnostic() {
     };
   } catch (e) { cloud = { statut: 'erreur', message: String((e && e.message) || e) }; }
 
+  /* (19/11, docs/compte-rendu-74-en-attente.md) CHAQUE élément en attente, avec son type, sa date, ses tentatives, sa
+     raison — et, pour le journal, son classement d'après le serveur RELU (lecture seule) : identique (faux en attente),
+     absent (vraiment non envoyé), different (autre version sous le même id). Plus jamais un « 74 » sans détail. */
+  let enAttenteDetail = null;
+  try { enAttenteDetail = (await collecterEnAttente({ avecCloud: true })).elements; } catch (e) { enAttenteDetail = { erreur: String((e && e.message) || e) }; }
+  let fileJournal = null;
+  try {
+    const file = await fileEnvoiLecture();
+    const entrees = await lireEntrees(file.filter((f) => !f.orpheline).map((f) => f.id));
+    let classe = null;
+    if (SYNC_ENABLED && supabase && entrees.length) {
+      const lu = await lireAuServeur(supabase, entrees.map((e) => e.id));
+      if (!lu.erreur) {
+        const c = classerContreServeur('journal', entrees, lu.lignes, (x) => x.id);
+        classe = new Map(); for (const k of Object.keys(c)) for (const e of c[k]) classe.set(e.id, k);
+      }
+    }
+    fileJournal = file.map((f) => ({ ...f, serveur: classe ? classe.get(f.id) || (f.orpheline ? 'orpheline' : null) : 'illisible' }));
+  } catch (e) { fileJournal = { erreur: String((e && e.message) || e) }; }
+
   const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { return null; } })();
   return {
     schema: DIAGNOSTIC_SCHEMA,
@@ -93,7 +117,8 @@ export async function construireDiagnostic() {
     },
     reglagesFC: { brut: reglages, effectifs: reglagesFC(reglages) },
     planDuJour: { compteurs: { dues: plan.dues.length }, dues: ids(plan.dues) },
-    journal: { entrees: journalN, enAttente: journalAttente.length },
+    journal: { entrees: journalN, enAttente: journalAttente.length, file: fileJournal },
+    enAttente: enAttenteDetail,
     seanceEnregistree: seance || null,
     mesuresSeance: mesures || [],
     migrations: { appliquees: migrations || [], apprentissageV1: migV1 || null, apprentissageV11: migV11 || null, conversionApprentissage: conversion || null },
