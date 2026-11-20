@@ -15,7 +15,9 @@ import { useEffect, useState } from 'react';
 import { Editor } from '@tiptap/core';
 import { IconeOutil } from './IconesOutils.jsx';
 import { AUCUNE } from './Couleurs.jsx';
-import { couleurHex, FONT_FAMILIES, FONT_SIZES } from './pdfShared.js';
+import { couleurHex, FONT_FAMILIES } from './pdfShared.js';
+import { BoutonTaille } from './ChoixTaille.jsx';
+import { PAGE_REF, pageVersPx1000, px1000VersPage } from '../lib/taillesTexte.js';
 import { RICH_EXTENSIONS, EMPTY_DOC } from '../documents/lib/richtext.js';
 import { MiniBarreFlottante } from './Selection.jsx';
 import { Icon } from '../../shared/Icon.jsx';
@@ -118,13 +120,18 @@ export function elementsFormat({ editor = null, contenu = null, onContenu = null
       titre3: { cle: 'h3', icone: ic('titre3'), titre: 'Titre 3', actif: editor.isActive('heading', { level: 3 }), onClick: r((c) => c.toggleHeading({ level: 3 })) },
       cases: { cle: 'cases', icone: ic('cases'), titre: 'Cases à cocher (⌘⇧9)', actif: editor.isActive('taskList'), onClick: r((c) => c.toggleTaskList()) },
       citation: { cle: 'citation', icone: ic('citation'), titre: 'Citation', actif: editor.isActive('blockquote'), onClick: r((c) => c.toggleBlockquote()) },
-      // (25/10) même icône de taille que partout, valeur arrondie à l'entier
-      taille: { cle: 'taille-doc', titre: 'Taille du texte', element: (
-        <span className="ct-select" title="Taille du texte"><IconeOutil nom="tailleTexte" size={15} />
-        <select className="et-select mb-select" value="" aria-label="Taille du texte" onChange={(e) => { const v = e.target.value; e.target.value = ''; if (v) editor.chain().focus().setFontSize(v).run(); }}>
-          <option value="" disabled>{attr('fontSize') ? String(Math.round(parseFloat(attr('fontSize')))) : '—'}</option>
-          {FONT_SIZES.map((f) => <option key={f} value={f}>{String(Math.round(parseFloat(f)))}</option>)}
-        </select></span>) },
+      /* (20/11, lib/taillesTexte.js) LE sélecteur de taille de tous les objets (pdf/ChoixTaille.jsx), en px d'une page de
+         1000 px : la page du document est mise en page à 595 px puis agrandie — la liste d'avant proposait des px de
+         mise en page (« 12 » = 20 px de référence) et affichait « — » pour le texte par défaut. */
+      taille: { cle: 'taille-doc', titre: 'Taille du texte', element: (() => {
+        const dom = editor.view && editor.view.dom;
+        const pg = dom && dom.closest && dom.closest('.pdfr-page');
+        const a = attr('fontSize');
+        let v = a ? pageVersPx1000(a) : null;
+        if (v == null) { try { v = pageVersPx1000(getComputedStyle(dom).fontSize); } catch (e) { v = null; } }
+        return <BoutonTaille genre="texte" valeur={v || 21} echelle={pg ? pg.getBoundingClientRect().width / PAGE_REF : 1}
+          onChange={(x) => editor.chain().focus().setFontSize(px1000VersPage(x)).run()} />;
+      })() },
       tableau: { cle: 'tableau', icone: ic('grille'), titre: 'Tableau (3 × 3)', actif: editor.isActive('table'), onClick: r((c) => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true })) },
       separateur: { cle: 'separateur', icone: ic('separateur'), titre: 'Séparateur', onClick: r((c) => c.setHorizontalRule()) },
       lien: { cle: 'lien', icone: ic('lien'), titre: editor.isActive('link') ? 'Retirer le lien' : 'Lien (adresse demandée)', actif: editor.isActive('link'), onClick: () => {
@@ -165,13 +172,15 @@ export function BarreTexteDocument({ editor, rect: rect0, notion = false, onNoti
   const f = elementsFormat({ editor, toutSiVide: false, document: true });
   const vide = editor.state.selection.empty;
   const items = [
+    f.taille,
+    { cle: '|' },
     f.gras, f.italique, f.souligne,
     { cle: '|' },
     f.titre1, f.titre2, f.puces, f.numeros, f.align,
     { cle: '|' },
     f.couleur,
     ...(f.tLigne ? [{ cle: '|' }, f.tLigne, f.tColonne] : []),
-    { cle: '…', plus: [f.barre, f.titre3, f.taille, f.police, f.fond, { cle: '|' }, f.cases, f.citation, f.tableau,
+    { cle: '…', plus: [f.barre, f.titre3, f.police, f.fond, { cle: '|' }, f.cases, f.citation, f.tableau,
       ...(f.tLigne ? [f.tLigneMoins, f.tColonneMoins, f.tSupprimer] : []), f.separateur, f.lien] },
     ...(!vide ? [
       { cle: '|' },

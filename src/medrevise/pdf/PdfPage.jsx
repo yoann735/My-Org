@@ -33,6 +33,7 @@ import { BoiteTableau, BoutonMenuTableau, estGrille, contenuGrille } from './Boi
 import { ImageBoite, urlImageBoite, texteImageBoite } from './ImageBoite.jsx';
 import { largeurImage } from './imageBoiteModele.js';
 import { BoutonTaille } from './ChoixTaille.jsx';
+import { contientTailles, contenuSansTailles } from '../lib/taillesTexte.js';
 import { lisser3, arrondirPoints, cheminCatmull, cheminDroit, cheminTrait, densifier, morceauxHors, OPACITE_SURLIGNEUR_CRAYON } from './crayon.js';
 import { suivreImage } from './attaches.js';
 import { Icon } from '../../shared/Icon.jsx';
@@ -1427,7 +1428,15 @@ function NoteBox({ boite, active, editor, onActivate, onGeste, onMaj, onSupprime
     onChange={(v) => {
       // une sélection dans le texte : sa taille seulement (px d'une page de 1000 px, --lp) ; sinon toute la boîte
       if (surSelection) { ouvert.chain().focus().setFontSize(`calc(var(--lp) * ${+(v / 10).toFixed(4)})`).run(); return; }
-      ecrireTaille('texte', v); onModifier(boite, champsTaille(v), 'Taille du texte');
+      ecrireTaille('texte', v);
+      /* (20/11, lib/taillesTexte.js) la taille de l'OBJET vaut pour TOUT son texte : une taille en dur (texte collé,
+         taille donnée avant à une partie) l'emportait sur le corps de la boîte — le choix ne changeait rien. */
+      if (ouvert) {
+        if (contientTailles(ouvert.getJSON())) { const { from, to } = ouvert.state.selection; ouvert.chain().selectAll().unsetFontSize().setTextSelection({ from, to }).run(); }
+        onModifier(boite, champsTaille(v), 'Taille du texte');
+        return;
+      }
+      onModifier(boite, { ...champsTaille(v), ...(!grille && contientTailles(boite.content) ? { content: contenuSansTailles(boite.content) } : {}) }, 'Taille du texte');
     }} /> };
   // bordure d'une boîte transparente ou teintée (px d'une page de 1000 px ; une boîte d'avant : sa bordure de 1,5 px de référence)
   const itemBordure = avecBord ? { cle: 'bordure', titre: 'Épaisseur de la bordure', element: <BoutonTaille genre="bordure" valeur={Number.isFinite(boite.bord1000) ? boite.bord1000 : +((1.5 / (refW || 1)) * PAGE_REF).toFixed(2)}
@@ -2232,7 +2241,8 @@ function TextEditBlock({ edit, active, editable, onActivate, editor, pageHeight,
     const fmt = elementsFormat({ editor: ouvert });
     const base1000 = edit.fontSize && pageHeight && pageWidth ? (edit.fontSize * pageHeight * PAGE_REF) / pageWidth : 13;
     return [
-      { cle: 'taille', element: <BoutonTaille genre="texte" valeur={+base1000.toFixed(1)} echelle={pageWidth / PAGE_REF}
+      /* (20/11) la valeur affichée est celle du texte sélectionné (em × taille d'origine), pas toujours celle d'origine */
+      { cle: 'taille', element: <BoutonTaille genre="texte" valeur={(() => { const a = ouvert.getAttributes('textStyle').fontSize; const em = /em\s*$/.test(String(a || '')) ? parseFloat(a) : NaN; return +(Number.isFinite(em) ? em * base1000 : base1000).toFixed(1); })()} echelle={pageWidth / PAGE_REF}
         onChange={(v) => { const em = `${+(v / base1000).toFixed(3)}em`; const c = ouvert.chain().focus(); (ouvert.state.selection.empty ? c.selectAll() : c).setFontSize(em).run(); }} /> },
       fmt.couleur,
       { cle: '|' },

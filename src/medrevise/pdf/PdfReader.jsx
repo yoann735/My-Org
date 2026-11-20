@@ -146,6 +146,7 @@ import { lireVue, ecrireVue, pageCorrespondante, importerJumelle, remplacerJumel
 import { ChoixFiche, ChoixSeanceFiche } from './ChoixFiche.jsx';
 import { EditeurCorrespondance, ListeNonReplacees } from './Correspondance.jsx';
 import { nettoyerCollage } from '../lib/collageListes.js';
+import { sansTaillesCollees } from '../lib/taillesTexte.js';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
 const dansLeTableau = (el) => !!(el && el.closest && el.closest('.tb'));
 /* (14/11) texte d'une boîte : 1re frappe écrite aussitôt, puis au plus toutes les 200 ms (< 300 ms après chaque frappe) */
@@ -3514,7 +3515,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     extensions: RICH_EXTENSIONS,
     content: (activeEdit && activeEdit.content) || undefined,
     // (29/10) listes collées de Word / Google Docs / Notion : vraies listes, styles importés retirés (lib/collageListes.js)
-    editorProps: { transformPastedHTML: (h) => nettoyerCollage(h) },
+    // (20/11, lib/taillesTexte.js) un collage dans un OBJET n'apporte pas de taille absolue (couche texte du diapo, Word,
+    // page web) : elle l'emportait sur la taille de la boîte, que le sélecteur ne pouvait plus changer
+    editorProps: { transformPastedHTML: (h) => sansTaillesCollees(nettoyerCollage(h)) },
     onUpdate: ({ editor: ed }) => {
       const id = activeEditIdRef.current; // jamais l'instantané de la création (défaut 3)
       if (!id) return;
