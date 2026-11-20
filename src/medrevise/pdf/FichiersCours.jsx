@@ -105,7 +105,7 @@ export function FichiersCours({ ctx, fiche, jumelle = null, autresFiches = 0, on
               <button type="button" className="btn sm primary" disabled={occupe} onClick={() => choisir('importer')}><Icon name="upload" size={13} /> Importer</button>
             ) : (<>
               <button type="button" className="btn sm" disabled={occupe || p.type === 'document'} onClick={() => choisir('principal')}
-                title={p.type === 'document' ? 'Un document créé dans l’app se modifie directement : il n’a pas de fichier à remplacer' : 'Un nouveau PDF (ou des images) prend la place ; les annotations suivent leur page'}><Icon name="refresh" size={13} /> Remplacer</button>
+                title={p.type === 'document' ? 'Le PDF du prof remplace le fond du document : menu Fichier › « Remplacer par un PDF… »' : 'Un nouveau PDF (ou des images) prend la place ; les annotations suivent leur page'}><Icon name="refresh" size={13} /> Remplacer</button>
               <button type="button" className="btn sm ghost" disabled={occupe || (p.type !== 'document' && !(infoP && infoP.present))}
                 onClick={() => (p.type === 'document' ? onExporterDocument && onExporterDocument() : exporter(p.fileId, p.nom))}
                 title={p.type === 'document' ? 'Exporter le document en PDF' : 'Télécharger le fichier tel quel'}><Icon name="ext" size={13} /> Exporter</button>

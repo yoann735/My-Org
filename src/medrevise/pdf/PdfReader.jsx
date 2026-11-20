@@ -133,6 +133,8 @@ import { TitreRenommable } from '../components/TitreRenommable.jsx';
 import { MenuFichier } from './MenuFichier.jsx';
 import { FichiersCours } from './FichiersCours.jsx';
 import { SuppressionDocument } from './SuppressionDocument.jsx';
+import { RemplacerDocument } from './RemplacerDocument.jsx';
+import { compterAnnotations, pagesDuFichier } from '../lib/remplacerDocument.js';
 import { verifierFichiers, avecVerrou, importerPrincipal, principalDe } from '../lib/fichiersCours.js';
 import { PanneauTextesAnnotations } from './TextesAnnotations.jsx';
 import { PanneauExportIA } from './ExportIA.jsx';
@@ -456,7 +458,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     if (autreFiche) choisirFiche(autreFiche.id);
     else if (autreDoc) basculerJumelle(src.ns === jumelle.nsAnnot ? 'fiche' : 'original');
     const montrer = (essai = 0) => {
-      const idx = pageSizesRef.current.findIndex((p) => String(p.cle) === String(src.page));
+      // (20/11) la page ACTUELLE de la boîte (déplacée, document remplacé par un PDF) ; sinon celle notée sur la carte
+      const rec = (editsRef.current || []).find((a) => a.id === src.boiteId);
+      const pageBoite = rec && rec.page != null ? rec.page : src.page;
+      const idx = pageSizesRef.current.findIndex((p) => String(p.cle) === String(pageBoite));
       if (idx < 0) { if (essai < 20) setTimeout(() => montrer(essai + 1), 150); return; }
       allerALaPageRef.current(idx + 1);
       setTimeout(() => {
@@ -1925,6 +1930,17 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const [fichiersDemarrer, setFichiersDemarrer] = useState(null); // (17/10) 'remplacer' : Fichier › Diapo › « Remplacer ce fichier… »
   const [suppressionDoc, setSuppressionDoc] = useState(null); // (17/10) null | 'original' | 'fiche' | 'refus'
   const [historiqueOuvert, setHistoriqueOuvert] = useState(false); // (14/11) Fichier › Historique…
+  // (20/11, lib/remplacerDocument.js) « Remplacer par un PDF… » d'un document créé : { fichiers, pdf, n, x, nom } | { erreur }
+  const [remplDoc, setRemplDoc] = useState(null);
+  const entreeRemplDoc = useRef(null);
+  const choisirPdfRemplacement = async (fichiers) => {
+    const l = [...(fichiers || [])];
+    if (!l.length || !ficheReelle) return;
+    try {
+      const [{ pdf, n }, x] = [await pagesDuFichier(l), await compterAnnotations(ficheReelle.id)];
+      setRemplDoc({ fichiers: l, pdf, n, x, nom: pdf.name || l[0].name || 'cours.pdf' });
+    } catch (e) { setAvisJumelle('Ce fichier n’est pas un PDF lisible.'); }
+  };
   const [disparues, setDisparues] = useState(null); // (14/11) { ns, liste, reference } — garde-fou à l'ouverture
   const [nonReplaceesPrincipal, setNonReplaceesPrincipal] = useState(null);
   /* (17/10) MENU FICHIER EN SECTIONS (pdf/MenuFichier.jsx, docs/compte-rendu-fichier-carnet-calendrier.md) :
@@ -2008,7 +2024,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     actions: {
       ...actionsContenu('original', typeOrig, cleAffichee === 'original'),
       remplacer: !ficheReelle ? pasCeDocument
-        : typeOrig === 'document' ? { indispo: 'Un document créé dans l’app se modifie directement : il n’a pas de fichier à remplacer' }
+        : typeOrig === 'document' ? { onClick: () => { if (entreeRemplDoc.current) { entreeRemplDoc.current.value = ''; entreeRemplDoc.current.click(); } }, title: 'Le PDF du prof remplace le fond du document ; tes annotations restent en place (annulable dans l’Historique)' }
           : typeOrig === 'pdf' || principal.type === 'html' ? { onClick: () => { setFichiersDemarrer('remplacer'); setFichiersOuvert(true); } } : { indispo: 'Ce cours n’a pas de diapo' },
       supprimer: !ficheReelle ? pasCeDocument
         : jumelle && principal.type === 'pdf' ? { onClick: () => setSuppressionDoc('refus'), title: 'Refusé tant qu’une fiche est rattachée à cette diapo' }
@@ -4514,7 +4530,18 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
         <HistoriqueDoc ns={nsAnnot} titre={(fiche && fiche.titre) + (surFiche ? ' — fiche' : '')} pageSizes={pageSizes} pdfDoc={modeDoc ? null : pdfDoc}
           versionInitiale={disparues && disparues.ns === nsAnnot && disparues.reference ? disparues.reference.id : null}
           onFermer={() => setHistoriqueOuvert(false)}
-          onApplique={async () => { hist.vider(); await rechargerAnnotations(); setDisparues(null); }} />
+          onApplique={async () => { hist.vider(); cacheDocs.current.clear(); await rechargerAnnotations(); await ctx.reload(); setDisparues(null); }} />
+      )}
+      <input ref={entreeRemplDoc} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }} data-entree-rempl-doc=""
+        onChange={(e) => { const f = e.target.files; choisirPdfRemplacement(f); }} />
+      {remplDoc && ficheReelle && (
+        <RemplacerDocument fiche={ficheReelle} choix={remplDoc} onFermer={() => setRemplDoc(null)}
+          onFait={async (r) => {
+            setRemplDoc(null); hist.vider();
+            cacheDocs.current.clear();
+            await ctx.reload(); reloadHighlights(); reloadEdits();
+            setAvisJumelle(`Document remplacé par « ${r.fiche.pdfName} » (${r.nPages} page${r.nPages > 1 ? 's' : ''}) — ${r.nAnnotations} annotation${r.nAnnotations > 1 ? 's' : ''} en place. Fichier › Historique pour revenir en arrière.`);
+          }} />
       )}
       {suppressionDoc && ficheReelle && (
         <SuppressionDocument quoi={suppressionDoc} fiche={ficheReelle} jumelle={jumelle} db={db} onFermer={() => setSuppressionDoc(null)}

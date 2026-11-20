@@ -53,7 +53,8 @@ export const ENTREES_DOCUMENT = [
   { id: 'correspondance', propre: true, label: () => 'Correspondance des pages…', icon: 'grid', aide: 'Quelle page de la fiche va avec quelle diapo' },
   // (14/11) l'historique des versions du document (pdf/HistoriqueDoc.jsx) : aperçu, récupérer les boîtes manquantes, restaurer
   { id: 'historique', propre: true, label: () => 'Historique…', icon: 'clock', aide: 'Les versions de ce document (toutes les 5 min d’édition, à la fermeture, sauvegardes quotidiennes) : aperçu, récupérer les boîtes manquantes, restaurer' },
-  { id: 'remplacer', label: () => 'Remplacer ce fichier…', icon: 'refresh', aide: 'Un nouveau fichier prend la place ; les annotations suivent leur page' },
+  // (20/11) un document créé dans l'app : le PDF du prof en remplace le fond (lib/remplacerDocument.js)
+  { id: 'remplacer', label: (d) => (d.court === 'document' ? 'Remplacer par un PDF…' : 'Remplacer ce fichier…'), icon: 'refresh', aide: 'Un nouveau fichier prend la place ; les annotations suivent leur page' },
   { id: 'supprimer', label: (d) => `Supprimer ${art(d)} ${d.court}${d.cle === 'original' ? (d.genre === 'm' ? ' original' : ' originale') : ''}…`, icon: 'trash', danger: true },
 ];
 /** pour la doc et les tests : la liste des raccourcis du menu */

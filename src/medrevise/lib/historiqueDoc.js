@@ -25,7 +25,7 @@
    ============================================================ */
 import {
   lireDocument, versionsDocCles, versionDoc, ecrireVersionDoc, supprimerVersionDoc, definirCrochetsDocuments,
-  getMeta, setMeta, putBackup, putMany, put, remove, getAllEntries, genId,
+  getMeta, setMeta, putBackup, putMany, put, remove, getAllEntries, genId, getOne,
 } from './storage.js';
 import { surEcritureDocument, nsDe, estStoreDocument } from './enregistrement.js';
 
@@ -226,6 +226,10 @@ export async function recupererManquantes(ns, version) {
 export async function restaurerVersion(ns, version) {
   if (version.partielle) throw new Error('version partielle : seule la récupération des boîtes manquantes est possible');
   const actuel = await lireDocument(ns);
+  /* (20/11, lib/remplacerDocument.js) une version prise avant « Remplacer par un PDF » porte aussi la FICHE : la
+     restaurer remet le document tel quel (sans le PDF) — la fiche d'aujourd'hui est gardée dans la version « Avant » */
+  const ficheVersion = version.contenu.fiche && version.contenu.fiche.id === ns ? version.contenu.fiche : null;
+  if (ficheVersion) actuel.fiche = (await getOne('fiches', ns)) || null;
   await putBackup('pre-restauration-' + ns + '-' + Date.now(), actuel);
   await garderVersion(ns, 'Avant restauration', { force: true, contenu: actuel });
   const garder = idsDe(version.contenu);
@@ -236,6 +240,9 @@ export async function restaurerVersion(ns, version) {
   for (const x of actuel.highlights) if (!garder.has(x.id)) await remove('highlights', x.id);
   if (version.contenu.board && actuel.board) await put('board', version.contenu.board);
   if (version.contenu.notes_doc && actuel.notes_doc) await put('notes_doc', version.contenu.notes_doc);
+  // la fiche EN DERNIER : un document qui redevient « créé dans l'app » trouve ses pages déjà là (sinon le lecteur,
+  // voyant un document sans page, en créerait une)
+  if (ficheVersion) await put('fiches', ficheVersion);
   await garderVersion(ns, `Après restauration de la version du ${dateLisible(version.le)}`, { force: true });
 }
 
