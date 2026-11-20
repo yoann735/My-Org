@@ -25,6 +25,7 @@ import { TYPES_FORMES, cheminForme, estTrait, estFermee } from '../pdf/formes.js
 import { getStroke, getStrokePoints } from 'perfect-freehand';
 import { couleurHex, avecAlpha, COLORS } from '../pdf/pdfShared.js';
 import { lisser3, cheminCatmull } from '../pdf/crayon.js';
+import { releverTextes } from './textesPng.js';
 
 export const EPAISSEURS = [2, 4, 7]; // px à zoom 1 — (21/10) trois épaisseurs, comme le crayon du lecteur
 const CLE_BROUILLON = 'medrevise.dessinMobile';
@@ -506,7 +507,10 @@ export const CanvasDessin = forwardRef(function CanvasDessin({ onRetour, barreHa
         gras: !!x.gras, italique: !!x.italique, souligne: !!x.souligne, align: x.align || 'left',
         couleur: encre(x.couleur),
       }));
-      return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${fond}<g transform="translate(${m - b.x} ${m - b.y})">${morceaux}</g></svg>`, w, h, textes };
+      // (20/11) « Enregistrer en PNG » : les mots des zones de texte, mesurés à l'écran, pour être
+      // peints DANS l'image (mobile/textesPng.js) — l'export vers un cours ne s'en sert pas
+      const mots = releverTextes(coucheRef.current, { ox: b.x - m, oy: b.y - m, encre });
+      return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${fond}<g transform="translate(${m - b.x} ${m - b.y})">${morceaux}</g></svg>`, w, h, textes, mots };
     },
     vider: () => { valider([]); try { localStorage.removeItem(CLE_BROUILLON); } catch (e) { /* ignore */ } },
   }), [valider]);

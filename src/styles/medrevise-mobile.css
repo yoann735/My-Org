@@ -225,6 +225,15 @@
 .mde-fond-choix button { flex: 1; height: 38px; border-radius: 10px; border: 1px solid var(--border-2); background: var(--bg); color: var(--text-2); font-weight: 600; }
 .mde-fond-choix button.actif { border-color: var(--accent); color: var(--accent); }
 .mde-actions { display: flex; gap: 8px; justify-content: flex-end; }
+/* (20/11) « Enregistrer en PNG » (mobile/EcranDessin.jsx) */
+.mde-sous-titre { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); margin-top: -4px; }
+.mde-png { display: flex; gap: 8px; }
+.mde-png > button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.mde-png-btn { transition: border-color .12s ease, color .12s ease, background-color .12s ease; }
+.mde-png-btn:hover:not(:disabled), .mde-png-btn:active:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.mde-png-btn:disabled { opacity: .6; }
+.mde-png-statut b { color: var(--text); font-weight: 600; word-break: break-all; }
+.mde-png-statut.erreur { color: var(--crit, #e5484d); }
 .mde-sec { height: 42px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--border-2); background: transparent; color: var(--text); font-weight: 600; }
 .mde-fin { align-items: stretch; }
 .mde-statut { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
