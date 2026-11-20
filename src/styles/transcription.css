@@ -186,6 +186,17 @@
 }
 .trx-flottant-txt { font-weight: 600; white-space: nowrap; }
 .trx-point.arret { background: var(--text-3); box-shadow: none; animation: none; }
+/* (20/11) la barre ramène au cours : son libellé est un bouton (docs/compte-rendu-export-png-et-retour-transcription.md) */
+.trx-flottant.avec-retour { padding-left: 4px; }
+.trx-flottant-retour {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 10px 0 8px; border-radius: 999px;
+  border: 1px solid transparent; background: transparent; color: inherit; font: inherit; cursor: pointer;
+  transition: background-color .12s ease, border-color .12s ease, color .12s ease;
+}
+.trx-flottant-retour:hover { background: var(--bg-2, rgba(255,255,255,.05)); border-color: var(--border); }
+.trx-flottant-retour:active { background: var(--accent-soft, rgba(45,212,191,.12)); }
+.trx-flottant-retour:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.trx-flottant-revenir { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); font-weight: 600; white-space: nowrap; }
 @media (max-width: 760px) {
   .trx-flottant { left: 50%; right: auto; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom)); max-width: calc(100vw - 24px); }
   .trx-flottant-txt { display: none; }

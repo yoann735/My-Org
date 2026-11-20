@@ -65,6 +65,7 @@ import { useMediaQuery } from '../shared/hooks/useMediaQuery.js';
 import { useHorsImpression } from './lib/tablette.js';
 import { MobileApp } from './mobile/MobileApp.jsx';
 import { IndicateurTranscription } from './transcription/IndicateurGlobal.jsx';
+import { definirRetourCours } from './transcription/retourCours.js';
 import { demarrerOcr } from './ocr/service.js';
 // (14/11) historique des versions (crochets posés dans lib/storage.js à l'import) + stockage persistant
 import './lib/historiqueDoc.js';
@@ -179,6 +180,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
   const [anatQuiz, setAnatQuiz] = useState(null); // { fiche, mode:'total'|'random', proportion }
   const [focusFiche, setFocusFiche] = useState(null);
   const [pdfView, setPdfView] = useState(null); // { ficheId, returnScreen, srcTab }
+  // (20/11) retour au cours depuis la barre « Transcription en cours » : la Bibliothèque rouvre ce cours
+  const [biblioDemande, setBiblioDemande] = useState(null); // { ficheId, srcTab, n }
   const [schemaView, setSchemaView] = useState(null); // { ficheId, returnScreen }
   // 'idle' | 'syncing' | 'ok' | 'offline' | 'disabled' — exposé pour le bouton
   // "Forcer la synchro" (Réglages desktop, accueil mobile), voir forceSync ci-dessous.
@@ -511,6 +514,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
     syncState, forceSync, porte, relancerSynchro: lancerPorte,
     focusFiche, setFocusFiche,
     session, feynman, exercice, anatQuiz, pdfView, schemaView,
+    biblioDemande,
 
     // ---- flashcards : séance quotidienne (session/SeanceFC.jsx — étape 2 FSRS : une seule liste) ----
     reglagesFC,
@@ -1075,6 +1079,24 @@ export default function MedReviseApp({ themeApi, goHub }) {
     },
   };
 
+  /* (20/11) RETOUR AU COURS depuis la barre « Transcription en cours » (transcription/retourCours.js) :
+     le lecteur rouvre là où il était — embarqué dans la Bibliothèque, ou en plein écran — et la
+     position de lecture mémorisée le remet à la même page, au même endroit. Le shell du téléphone
+     n'a pas de lecteur : aucun gestionnaire n'y est déclaré. La session de transcription n'est
+     jamais touchée (simple navigation). */
+  const retourRef = useRef(null);
+  retourRef.current = (courseId, origine) => {
+    if (!db || !db.fiches.some((f) => f.id === courseId)) return;
+    if (origine && origine.embedded === false) {
+      ctx.openPdfReader(courseId, screen === 'pdf' ? (pdfView && pdfView.returnScreen) || 'library' : screen, origine.srcTab);
+      return;
+    }
+    setBiblioDemande((d) => ({ ficheId: courseId, srcTab: origine && origine.srcTab, n: (d ? d.n : 0) + 1 }));
+    setScreen('library');
+  };
+  useEffect(() => (isMobile ? undefined : definirRetourCours((id, o) => retourRef.current && retourRef.current(id, o))), [isMobile]);
+  const titreCours = (id) => { const f = db && db.fiches.find((x) => x.id === id); return f ? f.titre : ''; };
+
   if (!db) {
     // Mode « UI d'avant » : l'écran de démarrage d'origine, une simple ligne de
     // texte — le loader L6 est un composant de l'étape 3 du portage.
@@ -1122,7 +1144,7 @@ export default function MedReviseApp({ themeApi, goHub }) {
         <Current ctx={ctx} key={screen} />
       </div>
       <MedBottomNav current={screen} onNav={setScreen} />
-      <IndicateurTranscription />
+      <IndicateurTranscription titreDe={titreCours} />
       {/* (25/10) infobulles de toutes les commandes au survol (components/Infobulles.jsx) */}
       <Infobulles />
       {bandeau}

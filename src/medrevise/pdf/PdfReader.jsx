@@ -122,6 +122,7 @@ import '../../styles/listes.css';
 import { PanneauMiseEnPage, ReglesMarges } from './MiseEnPage.jsx';
 import { margesDe, margesUnites } from '../documents/lib/marges.js';
 import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
+import { noterOrigineLecteur, prendreDemandePanneau } from '../transcription/retourCours.js';
 import { sessionActive as transcriptionActive, lireEtat as etatTranscription, definirPageCourante, abonner as abonnerTranscription } from '../transcription/engine.js';
 import { marquerDebutCours, suiveurArret } from '../transcription/marquerCours.js';
 import { noterCoursOuvert } from '../lib/derniersCours.js';
@@ -1121,6 +1122,14 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     raf = requestAnimationFrame(verifier);
     return () => { fini = true; if (raf) cancelAnimationFrame(raf); };
   }, [layout, restaure, tourRestauration]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* (20/11) RETOUR AU COURS (transcription/retourCours.js) : le lecteur note où il est affiché
+     (Bibliothèque ou plein écran, Original/Fiche) ; revenu depuis la barre « Transcription en
+     cours », il ouvre le panneau Transcript UNE FOIS la position de lecture restaurée (même page,
+     même endroit). La session de transcription n'est jamais touchée. */
+  useEffect(() => { if (ficheId) noterOrigineLecteur(ficheId, { embedded: !!embedded, srcTab }); }, [ficheId, embedded, srcTab]);
+  useEffect(() => {
+    if (restaure && ficheId && srcTab !== 'html' && prendreDemandePanneau(ficheId)) ouvrirTranscript();
+  }, [restaure, ficheId, srcTab]); // eslint-disable-line react-hooks/exhaustive-deps
   // enregistrement
   const etatPosition = useRef({});
   etatPosition.current = { layout, pageSizes, scale, disposition, pdfId: pdfIdActif, nb: modeDoc ? pageSizes.length : pdfDoc && pdfDoc.numPages, modeDoc, ns: nsAnnot };

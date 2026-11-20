@@ -58,6 +58,8 @@ const sansAccents = (x) => String(x || '').toLocaleLowerCase('fr').normalize('NF
 const schemaViews = (f) => ficheImages(f).length;
 const schemaCoches = (f) => totalCoches(f);
 
+let derniereDemandeBiblio = 0; // (20/11) dernière demande « revenir au cours » déjà servie
+
 export function Bibliotheque({ ctx }) {
   const { db } = ctx;
   // (15/10) petite marque « fiche » sur les cours qui ont une fiche jumelle (lib/ficheJumelle.js)
@@ -237,6 +239,15 @@ export function Bibliotheque({ ctx }) {
     if (kind) setListCollapsed(true);
   };
   const closeDoc = () => { setSelected(null); setListCollapsed(false); };
+  /* (20/11) retour au cours depuis la barre « Transcription en cours » (transcription/retourCours.js) :
+     la demande posée par MedReviseApp rouvre ce cours ici, une seule fois (numéro consommé). */
+  const demande = ctx.biblioDemande;
+  useEffect(() => {
+    if (!demande || demande.n <= derniereDemandeBiblio) return;
+    derniereDemandeBiblio = demande.n;
+    const f = db.fiches.find((x) => x.id === demande.ficheId);
+    if (f) openDoc(f, demande.srcTab || undefined);
+  }, [demande && demande.n]); // eslint-disable-line react-hooks/exhaustive-deps
   // « Fichiers du cours… » : le cours s'ouvre sur cet écran ; un cours à cartes seules (rien à ouvrir) l'a ici même
   const [fichiersSansDoc, setFichiersSansDoc] = useState(null); // ficheId
   const ouvrirFichiers = (f) => {

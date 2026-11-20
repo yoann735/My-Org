@@ -46,6 +46,7 @@ import { PasteJsonForm } from '../components/AddItemForm.jsx';
 import { CourseItemsSidebar } from '../components/CourseItemsSidebar.jsx';
 import { FeuilleDemarrage, TranscriptPanel, BadgeTranscript } from '../transcription/TranscriptPanel.jsx';
 import { enregistrerLecteur } from '../transcription/IndicateurGlobal.jsx';
+import { prendreDemandePanneau } from '../transcription/retourCours.js';
 import { buildCourseExport } from '../lib/courseExport.js';
 import { serializeCourseHtml } from '../lib/courseHtmlSave.js';
 
@@ -56,6 +57,13 @@ export function CourseHtmlView({ ctx, fiche, ficheId, canAddItem, embedded, clos
   const [feuilleTrx, setFeuilleTrx] = useState(null);
   const [ongletDemande, setOngletDemande] = useState(null);
   useEffect(() => (ficheId ? enregistrerLecteur(ficheId) : undefined), [ficheId]);
+  // (20/11) revenu depuis la barre « Transcription en cours » : panneau Transcript ouvert (transcription/retourCours.js)
+  useEffect(() => {
+    if (!ficheId || !prendreDemandePanneau(ficheId)) return;
+    setPanelOpen(true);
+    if (window.matchMedia('(max-width: 900px)').matches) setMobileView('items');
+    setOngletDemande((o) => ({ id: 'transcript', n: (o ? o.n : 0) + 1 }));
+  }, [ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showImportItems, setShowImportItems] = useState(false);
   const [importedCount, setImportedCount] = useState(0);
 
