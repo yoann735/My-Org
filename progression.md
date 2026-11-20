@@ -41,6 +41,7 @@ Session du 20/11 : /goal séance « Passer → / ← Précédente » + flashcard
 <!-- PASSATION:FIN -->
 
 ## Historique des clôtures
+- 2026-11-20 – /goal police + duplication + remplacement : cause du bug de police (taille en dur dans le texte d'un objet ; px de mise en page dans le document), corrigée ; ⌘C/⌘V/⌘D des objets ; « Remplacer par un PDF… » d'un document créé (Historique, restauration exacte) ; bancs verts ordinateur + iPad, téléphone (synchro), MealWeek identique ; compte rendu docs/compte-rendu-police-duplication-remplacement-pdf.md. Sur vrai iPad/iPhone (WebKit) : non testé.
 - 2026-11-20 14:25 – /goal séance Passer/Précédente (renotation annulable, journal en ajout seul) + boîte → formulaire complet unique ; bancs verts 3 appareils, MealWeek identique ; poussé (7e06f27).
 - 2026-11-20 12:52 – /goal 74 en attente : cause = événements « Passer en révision » refusés (rating null) et ignorés ; preuve serveur unique, canal de repli sans migration, empreinte + journal, garde-fou ; 18 tests au build, bancs verts 3 appareils ; poussé, déployé (3840ce0).
 - 2026-11-19 21:44 – Clôture : mode file d'attente livré et poussé (5d56577), banc téléphone tranché sans régression (d042293) ; attente des essais sur vrai Mac/iPad.
