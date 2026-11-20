@@ -53,6 +53,9 @@
 .hv-compte { font-size: 11px; color: var(--text-3, #8a8a94); }
 .hv-manque { justify-self: start; margin-top: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 600; color: var(--on-accent); background: var(--accent); }
 .hv-detail { display: flex; flex-direction: column; gap: 8px; min-width: 0; overflow: auto; }
+/* (20/11) la rangée de la grille prend la hauteur de son contenu : sans borne propre, le détail DÉBORDAIT sous la grille
+   au lieu de défiler, et la ligne d'espace du bas recouvrait « Restaurer » (iPad portrait) */
+.hv-detail, .hv-liste { min-height: 0; max-height: min(72vh, 760px); }
 .hv-tete { font-size: 13px; }
 .hv-pages { display: flex; flex-wrap: wrap; gap: 4px; }
 .hv-onglet {

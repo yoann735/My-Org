@@ -66,7 +66,10 @@ export function BoutonTaille({ genre = 'texte', valeur, echelle = 1, couleur = n
     window.addEventListener('keydown', clavier, true);
     return () => { window.removeEventListener('pointerdown', dehors, true); window.removeEventListener('keydown', clavier, true); };
   }, [ouvert, onApercu]);
-  const choisir = (v) => { const b = bornerTaille(genre, v); if (onApercu) onApercu(null); onChange(b); setSaisie(String(b).replace('.', ',')); setListe(false); };
+  /* (20/11) la valeur qui vient d'être choisie : rendre le focus au texte (éditeur) fait perdre le sien au champ, dont le
+     « blur » rappliquait la même taille PENDANT la première application (« Applying a mismatched transaction ») */
+  const dernierChoix = useRef(null);
+  const choisir = (v) => { const b = bornerTaille(genre, v); dernierChoix.current = b; if (onApercu) onApercu(null); onChange(b); setSaisie(String(b).replace('.', ',')); setListe(false); };
   const lu = parseFloat(String(saisie).replace(',', '.'));
   const valide = Number.isFinite(lu) && lu > 0;
   const nom = titre || TITRES[genre] || 'Taille';
@@ -99,7 +102,7 @@ export function BoutonTaille({ genre = 'texte', valeur, echelle = 1, couleur = n
               <input type="text" inputMode="decimal" value={saisie} aria-label={`${nom} en px`} data-champ="px"
                 onChange={(e) => { setSaisie(e.target.value); const v = parseFloat(e.target.value.replace(',', '.')); if (onApercu && Number.isFinite(v) && v > 0) onApercu(bornerTaille(genre, v)); }}
                 onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && valide) { e.preventDefault(); choisir(lu); } if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); const v = bornerTaille(genre, (valide ? lu : valeur) + (e.key === 'ArrowUp' ? 1 : -1) * g.pas); setSaisie(String(v).replace('.', ',')); if (onApercu) onApercu(v); } }}
-                onBlur={() => { if (valide && Math.abs(bornerTaille(genre, lu) - valeur) > 0.001) choisir(lu); }} />
+                onBlur={() => { const v = valide ? bornerTaille(genre, lu) : null; if (v != null && Math.abs(v - valeur) > 0.001 && !(dernierChoix.current != null && Math.abs(v - dernierChoix.current) < 0.001)) choisir(lu); }} />
               <span className="ct-unite">px</span>
             </label>
             {g.liste && <button type="button" className={'ct-liste-bt' + (liste ? ' actif' : '')} aria-expanded={liste} title="Toutes les tailles" onClick={() => setListe((x) => !x)}>▾</button>}
