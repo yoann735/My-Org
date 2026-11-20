@@ -1,0 +1,266 @@
+{
+ "resultats": [
+  {
+   "ok": true,
+   "m": "lanceur : 2 en retard · 4 révisions · 2 nouvelles",
+   "d": "{\"retard\":2,\"revisions\":4,\"nouvelles\":2,\"decalage\":null,\"paquet\":false,\"vide\":false}"
+  },
+  {
+   "ok": true,
+   "m": "séance : Retard → Révisions → Nouvelles (8 cartes)",
+   "d": "ret-1 ret-2 rev-4 rev-2 rev-1 rev-3 nv-1 nv-2"
+  },
+  {
+   "ok": true,
+   "m": "boutons « ← Précédente » (désactivé sur la 1re carte) et « Passer → » présents",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "infobulle sur chaque bouton (avec son raccourci)",
+   "d": "Carte précédente (←) — la revoir, changer sa note | Passer cette carte (→) — rien n’est enregistré, elle reste à faire"
+  },
+  {
+   "ok": true,
+   "m": "3 cartes passées : la séance avance de 3",
+   "d": "idx 3 · 4 / 8"
+  },
+  {
+   "ok": true,
+   "m": "passer : aucune carte modifiée (dates, état FSRS : instantané identique)",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "passer : aucune entrée de journal",
+   "d": "0 → 0"
+  },
+  {
+   "ok": true,
+   "m": "compteurs : 0 vue, 3 passées",
+   "d": "{\"revisions\":0,\"rates\":0,\"notees\":0,\"passees\":0,\"gardees\":0,\"sautees\":3}"
+  },
+  {
+   "ok": true,
+   "m": "4e carte affichée",
+   "d": "rev-2"
+  },
+  {
+   "ok": true,
+   "m": "« Facile » : une entrée au journal",
+   "d": "57162217-c48e-4c50-ad7a-e86b1b277c93"
+  },
+  {
+   "ok": true,
+   "m": "compteur de vues : 1 après « Facile »",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "« ← Précédente » : la carte notée revient",
+   "d": "4 / 8"
+  },
+  {
+   "ok": true,
+   "m": "sa note d’avant (« Facile ») est signalée",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "la carte passée (3e) revient, signalée « passée sans note »",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "« Suivante → » ×2 : retour là où j’en étais (5e carte)",
+   "d": "5 / 8"
+  },
+  {
+   "ok": true,
+   "m": "revenir sans rien toucher : aucune écriture (cartes et journal identiques)",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "renotation : entrée d’annulation (rating null) qui référence la ligne « Facile »",
+   "d": "ccfce069-131a-4667-a07e-19f5113d16ba"
+  },
+  {
+   "ok": true,
+   "m": "nouvelle note « Difficile » à l’heure de la notation d’origine",
+   "d": "2026-11-20T09:00:13.019Z"
+  },
+  {
+   "ok": true,
+   "m": "journal en ajout seul : la ligne « Facile » est intacte, +2 entrées",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "carte renotée ≡ carte notée directement « Difficile » au même moment (dueDate, état FSRS, intervalle, historique)",
+   "d": "due 2026-11-25 / attendu 2026-11-25 · FSRS due 2026-12-07 / 2026-12-07"
+  },
+  {
+   "ok": true,
+   "m": "compteur de vues : toujours 1 (la notation annulée ne compte pas)",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "après la renotation : retour à la carte où j’en étais",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "carte passée retrouvée (3e)",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "une carte passée puis retrouvée se note normalement (« Correct »)",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "puis la carte suivante (la 4e, déjà faite) s’affiche",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "« À apprendre » sur une carte précédente = même effet que sur la carte courante",
+   "d": "champs : aApprendre,updatedAt | aApprendre,updatedAt"
+  },
+  {
+   "ok": true,
+   "m": "« À apprendre » ne touche ni la date ni l’état FSRS de la carte précédente",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "première Nouvelle affichée",
+   "d": "nv-1"
+  },
+  {
+   "ok": true,
+   "m": "« Passer en révision » : carte sortie des Nouvelles, événement journalisé",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "retour sur la Nouvelle : ses 2 boutons, son choix d’avant signalé",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "changé en « Garder en nouvelle » : carte exactement comme avant, passage annulé au journal",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "puis de nouveau « Passer en révision » : même résultat qu’au premier passage (heure d’origine)",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "fin de séance",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "synthèse juste : 6 vues (4 notées, 1 passée en révision, 1 gardée), 2 passées sans note",
+   "d": "{\"revisions\":6,\"rates\":0,\"notees\":4,\"passees\":1,\"gardees\":1,\"sautees\":2}"
+  },
+  {
+   "ok": true,
+   "m": "écran de fin : « 6 cartes vues » · « 2 passées sans note »",
+   "d": "6 cartes vues 1 passée en révision 1 gardée en nouvelle 2 passées sans note 1 min de travail réel"
+  },
+  {
+   "ok": true,
+   "m": "« ← Précédente » depuis l’écran de fin : la dernière carte",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "« Suivante → » : de nouveau l’écran de fin",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "compteur de vues : 1 par carte notée (renotée comprise), 0 pour les passées et les Nouvelles",
+   "d": "{\"ret-1\":0,\"ret-2\":0,\"rev-4\":1,\"rev-2\":1,\"rev-1\":1,\"rev-3\":1,\"nv-1\":0,\"nv-2\":0}"
+  },
+  {
+   "ok": true,
+   "m": "lanceur après la séance : compteurs = état réel des cartes ; les 2 cartes passées sont toujours dues (en retard)",
+   "d": "{\"ecran\":{\"retard\":2,\"revisions\":0,\"nouvelles\":1,\"decalage\":null,\"paquet\":false,\"vide\":false},\"retard\":[\"ret-1\",\"ret-2\"],\"revisions\":[]}"
+  },
+  {
+   "ok": true,
+   "m": "séance suivante : les cartes passées reviennent (et la Nouvelle gardée)",
+   "d": "ret-1 ret-2 nv-2"
+  },
+  {
+   "ok": true,
+   "m": "synchro : « à jour », 0 en attente (annulations comprises)",
+   "d": "4 événement(s) au canal de repli, 5 ligne(s) au journal cloud"
+  },
+  {
+   "ok": true,
+   "m": "lendemain (horloge simulée) : les cartes passées non faites sont en retard",
+   "d": "ret-1 ret-2"
+  }
+ ],
+ "chiffres": {
+  "passer": {
+   "journal": [
+    0,
+    0
+   ],
+   "cartesIdentiques": true
+  },
+  "revoir": {
+   "cartesIdentiques": true,
+   "journal": [
+    1,
+    1
+   ]
+  },
+  "renoter": {
+   "dueFacile": "2026-11-30",
+   "dueRenotee": "2026-11-25",
+   "dueAttendue": "2026-11-25",
+   "fsrsIdentique": true,
+   "vues": 1
+  },
+  "vues": {
+   "ret-1": 0,
+   "ret-2": 0,
+   "rev-4": 1,
+   "rev-2": 1,
+   "rev-1": 1,
+   "rev-3": 1,
+   "nv-1": 0,
+   "nv-2": 0
+  },
+  "lanceurApres": {
+   "retard": 2,
+   "revisions": 0,
+   "nouvelles": 1,
+   "decalage": null,
+   "paquet": false,
+   "vide": false
+  },
+  "synchro": {
+   "ajour": true,
+   "evenementsRepli": 4,
+   "journalCloud": 5
+  },
+  "lendemain": {
+   "retard": [
+    "ret-1",
+    "ret-2"
+   ]
+  }
+ }
+}

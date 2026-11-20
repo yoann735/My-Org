@@ -1,0 +1,155 @@
+{
+ "resultats": [
+  {
+   "ok": true,
+   "m": "cours ouvert, boîtes affichées",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "« → Flashcard » dans la mini barre de la boîte",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "le formulaire du panneau (« Nouvelle carte ») s’ouvre",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "l’ancien formulaire réduit n’existe plus",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "même composant : sélecteur Texte · Muscle · Tableau · Molécule",
+   "d": "[\"standard\",\"muscle\",\"tableau\",\"molecule\"]"
+  },
+  {
+   "ok": true,
+   "m": "pré-rempli comme avant : recto = 1re ligne, verso = le reste (mise en forme gardée)",
+   "d": "{\"recto\":\"Néphron\",\"verso\":\"Unité fonctionnelle du rein : **filtration**, réabsorption.\\nEx : *glomérule*\"}"
+  },
+  {
+   "ok": true,
+   "m": "toutes les options : image de la boîte, « Masques à deviner… », thème / indice / à retenir",
+   "d": "{\"sortes\":[\"standard\",\"muscle\",\"tableau\",\"molecule\"],\"active\":\"standard\",\"recto\":\"Néphron\",\"verso\":\"Unité fonctionnelle du rein : **filtration**, réabsorption.\\nEx : *glomérule*\",\"image\":true,\"masques\":true,\"elements\":true,\"plus\":true,\"theme\":true}"
+  },
+  {
+   "ok": true,
+   "m": "l’éditeur de masques s’ouvre avec l’image de la boîte (sans la recopier)",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "carte à masques créée depuis la boîte (masque dessiné, image de la boîte)",
+   "d": "{\"recto\":\"Néphron\",\"masques\":1,\"source\":{\"boiteId\":\"bx-img\",\"ns\":\"bx-f\",\"page\":1,\"sorte\":\"boite\"}}"
+  },
+  {
+   "ok": true,
+   "m": "lien avec la boîte conservé (source : boîte, page)",
+   "d": "{\"boiteId\":\"bx-img\",\"ns\":\"bx-f\",\"page\":1,\"sorte\":\"boite\"}"
+  },
+  {
+   "ok": true,
+   "m": "le formulaire se ferme, la nouvelle carte est montrée dans le panneau",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "carte à masques depuis la boîte ≡ carte à masques depuis le panneau (mêmes champs), + le lien vers la boîte",
+   "d": "boîte : 21 champs · panneau : 21 champs · en plus : source=true, panneau source=false"
+  },
+  {
+   "ok": true,
+   "m": "« Annuler » ferme le formulaire du panneau",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "boîte déjà convertie : la carte existante s’ouvre (pas de doublon)",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "boîte-tableau : le même formulaire s’ouvre",
+   "d": ""
+  },
+  {
+   "ok": true,
+   "m": "sorte Tableau, titre et colonnes pré-remplis",
+   "d": "{\"active\":\"tableau\",\"titre\":\"Compléter le tableau\",\"cols\":[\"Segment\",\"Rôle\"]}"
+  },
+  {
+   "ok": true,
+   "m": "carte Tableau créée : tableau complet de la boîte (couleurs) et lien vers la boîte",
+   "d": "{\"recto\":\"Compléter le tableau\",\"lignes\":2,\"grille\":true}"
+  }
+ ],
+ "chiffres": {
+  "formulaire": {
+   "sortes": [
+    "standard",
+    "muscle",
+    "tableau",
+    "molecule"
+   ],
+   "active": "standard",
+   "recto": "Néphron",
+   "verso": "Unité fonctionnelle du rein : **filtration**, réabsorption.\nEx : *glomérule*",
+   "image": true,
+   "masques": true,
+   "elements": true,
+   "plus": true,
+   "theme": true
+  },
+  "masques": {
+   "champsBoite": [
+    "_schema",
+    "a_retenir",
+    "capped",
+    "concept",
+    "difficulte",
+    "dueDate",
+    "ficheId",
+    "historique",
+    "indice",
+    "intervalDays",
+    "j0Date",
+    "missed",
+    "nouvelle",
+    "occlusion",
+    "recto",
+    "tags",
+    "termine",
+    "theme",
+    "type",
+    "verso",
+    "versoAuto"
+   ],
+   "champsPanneau": [
+    "_schema",
+    "a_retenir",
+    "capped",
+    "concept",
+    "difficulte",
+    "dueDate",
+    "ficheId",
+    "historique",
+    "indice",
+    "intervalDays",
+    "j0Date",
+    "missed",
+    "nouvelle",
+    "occlusion",
+    "recto",
+    "tags",
+    "termine",
+    "theme",
+    "type",
+    "verso",
+    "versoAuto"
+   ]
+  }
+ }
+}
