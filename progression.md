@@ -12,6 +12,7 @@ Session du 19-20/11 : /goal « 74 en attente » sur le téléphone (empreinte cl
 - Correctif : preuve unique par relecture serveur (`src/medrevise/lib/confirmationServeur.js`) ; canal de repli des événements = records store `review_log_evenement` via RPC `medrevise_push` (sans migration) ; empreinte avec lignes `journal|id|reviewed_at` (`lib/syncStatus.js`) ; enAttenteTotal = outbox records + journal ; garde-fou réconciliation si « en attente » + empreinte identique (`MedReviseApp.jsx`) ; tentatives + vraies raisons dans la liste dépliable (`lib/etatSynchro.js`, `components/EtatSynchro.jsx`) ; export diagnostic classe chaque élément (`lib/diagnosticExport.js`). Cœur : `journal/synchro.js`, `journal/journal.js`.
 - Tests : 18 tests `tests/file-synchro/` liés au build (`"build": "vitest run tests/file-synchro && vite build"`) ; banc `scripts/tests-74-en-attente/t-74.mjs avant|apres` vert ordinateur/tablette/téléphone (bug reproduit avant, absent après). MealWeek inchangé. WebKit non testé (absent du Mac). Déploiement vérifié (bundle en ligne à 22:37 le 19/11).
 - Compte rendu : `docs/compte-rendu-74-en-attente.md` (+ captures `docs/img/74-en-attente/`).
+- (20/11, /goal) Séance : « Passer → » / « ← Précédente » (touches → / ←), renotation = champs remis + entrée d'annulation au journal (ajout seul) + note réappliquée à l'heure d'origine (`lib/retourSeance.js`, `session/SeanceFC.jsx`) ; vues / reconstruction FSRS / rapport ombre ignorent les notations annulées. Flashcard depuis une boîte = formulaire complet du panneau (`CarteAjoutFlashcard` pré-rempli, lien `source` gardé) ; `pdf/BoiteFlashcard.jsx` supprimé. Banc Chrome `scripts/tests-seance-passer-precedente/` : séance 42/42 ×3 appareils, boîte 17/17 ordi + iPad, MealWeek identique au pixel, Apprentissage OK. Compte rendu : `docs/compte-rendu-seance-passer-precedente-et-formulaire-fc.md`. 2 échecs `npm test` (crayon, emploi du temps) préexistants, hors chantier.
 
 ## 🚧 En cours (point d'arrêt exact)
 - Rien en cours. Modifications non commitées : aucune (hors `progression.md`, modifié par cette clôture).
@@ -19,7 +20,8 @@ Session du 19-20/11 : /goal « 74 en attente » sur le téléphone (empreinte cl
 ## ➡️ Prochaines étapes (dans l'ordre)
 1. Côté utilisateur : ouvrir l'app sur le téléphone (puis l'iPad), attendre une synchro → attendu « 0 en attente », même empreinte et même compteur de vues que le Mac. Attendre son retour avant toute modification.
 2. Côté utilisateur : essais du mode file d'attente (Réglages › Planification) sur vrai Mac/iPad, et de l'enregistrement continu.
-3. Toujours en attente côté utilisateur : CLI Vercel (`npm i -g vercel`, `vercel login`, `vercel link --yes --project my-org`) et migration `supabase/migrations/20261024_review_log_evenements.sql` (l'app marche sans).
+3. Côté utilisateur : essayer « Passer / Précédente » en séance et « → Flashcard » d'une boîte sur le vrai iPad/téléphone (WebKit non testé).
+4. Toujours en attente côté utilisateur : CLI Vercel (`npm i -g vercel`, `vercel login`, `vercel link --yes --project my-org`) et migration `supabase/migrations/20261024_review_log_evenements.sql` (l'app marche sans).
 
 ## 🧭 Décisions prises (ne pas rediscuter)
 - Un élément ne quitte la file qu'avec une preuve lue au serveur (identique), jamais sur un simple « ok » d'envoi ; putBackup avant toute opération sur la file.
