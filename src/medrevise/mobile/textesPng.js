@@ -7,10 +7,10 @@
    enregistré sur le téléphone, lui, doit contenir TOUT le dessin : ces zones y sont
    peintes par-dessus l'image du même rendu (svgExport → svgVersPng).
 
-   Mesure, pas réimplémentation : chaque mot est mesuré dans le DOM affiché
-   (Range.getClientRects : retour à la ligne, gras, italique, taille, alignement
-   exacts), ramené en coordonnées du dessin (la couche est transformée par la
-   caméra : on divise par l'échelle réelle de la zone), puis peint avec fillText.
+   Mesure, pas réimplémentation : chaque mot est mesuré dans une COPIE de la couche
+   affichée (Range.getClientRects : retour à la ligne, gras, italique, taille, alignement
+   exacts), copie posée sans caméra (ni zoom ni déplacement) dans un conteneur invisible :
+   un px mesuré = un px du dessin. Puis peint avec fillText.
    Pas de <foreignObject> : Safari « teinte » le canvas et le PNG deviendrait illisible.
    ============================================================ */
 
@@ -43,45 +43,70 @@ const souligne = (el, zone) => {
 export function releverTextes(couche, { ox, oy, encre }) {
   const mots = [];
   if (!couche) return mots;
-  for (const zone of couche.querySelectorAll(':scope > .md-zone[data-id]')) {
-    if (zone.classList.contains('cachee') || zone.classList.contains('md-editeur')) continue;
-    const zr = zone.getBoundingClientRect();
-    const k = zone.offsetWidth ? zr.width / zone.offsetWidth : 0;
-    if (!k) continue;
-    const zx = zone.offsetLeft - ox, zy = zone.offsetTop - oy;
-    const parcours = document.createTreeWalker(zone, NodeFilter.SHOW_TEXT);
-    for (let n = parcours.nextNode(); n; n = parcours.nextNode()) {
-      const txt = n.nodeValue || '';
-      if (!txt.trim() || !n.parentElement) continue;
-      const cs = getComputedStyle(n.parentElement);
-      const taille = parseFloat(cs.fontSize) || 18;
-      const police = `${cs.fontStyle} ${cs.fontWeight} ${taille}px ${cs.fontFamily}`;
-      const { hex, alpha } = couleurCss(cs.color);
-      const base = { police, taille, couleur: encre(hex), alpha, souligne: souligne(n.parentElement, zone) };
-      const r = document.createRange();
-      const pousser = (debut, fin) => {
-        r.setStart(n, debut); r.setEnd(n, fin);
-        const rects = [...r.getClientRects()].filter((q) => q.width > 0 || q.height > 0);
-        if (rects.length === 1) {
-          const q = rects[0];
-          mots.push({ ...base, t: txt.slice(debut, fin), x: zx + (q.left - zr.left) / k, y: zy + (q.top - zr.top) / k, w: q.width / k, h: q.height / k });
+  /* (20/11 soir) MESURE SUR UNE COPIE SANS CAMÉRA : sur iPhone, les mots du texte coloré manquaient dans le PNG
+     alors que le même chemin marche dans Chrome et Safari macOS. La couche affichée est déplacée et zoomée par la
+     caméra (transform) ; mesurer les mots DEDANS faisait dépendre les positions de ce zoom et de la façon dont
+     WebKit iOS rend les rectangles d'une plage de texte transformée. La couche est donc COPIÉE, sans transform, dans
+     un conteneur invisible en (0, 0) : un px mesuré = un px du dessin, quel que soit le zoom à l'écran. */
+  const boite = document.createElement('div');
+  boite.setAttribute('aria-hidden', 'true');
+  boite.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;overflow:visible;opacity:0;pointer-events:none;z-index:-1;contain:none';
+  const copie = couche.cloneNode(true);
+  copie.style.transform = 'none';
+  copie.style.left = '0px'; copie.style.top = '0px';
+  boite.appendChild(copie);
+  document.body.appendChild(boite);
+  try {
+    const origine = copie.getBoundingClientRect();
+    for (const zone of copie.querySelectorAll(':scope > .md-zone[data-id]')) {
+      if (zone.classList.contains('cachee') || zone.classList.contains('md-editeur')) continue;
+      const avant = mots.length;
+      const csZone = getComputedStyle(zone);
+      const parcours = document.createTreeWalker(zone, NodeFilter.SHOW_TEXT);
+      for (let n = parcours.nextNode(); n; n = parcours.nextNode()) {
+        const txt = n.nodeValue || '';
+        if (!txt.trim() || !n.parentElement) continue;
+        const cs = getComputedStyle(n.parentElement);
+        const taille = parseFloat(cs.fontSize) || 18;
+        const police = `${cs.fontStyle} ${cs.fontWeight} ${taille}px ${cs.fontFamily}`;
+        const { hex, alpha } = couleurCss(cs.color);
+        const base = { police, taille, couleur: encre(hex), alpha, souligne: souligne(n.parentElement, zone) };
+        const r = document.createRange();
+        const pousser = (debut, fin) => {
+          r.setStart(n, debut); r.setEnd(n, fin);
+          const rects = [...r.getClientRects()].filter((q) => q.width > 0);
+          if (!rects.length) return false;
+          // un mot = une boîte ; s'il en rend plusieurs (WebKit en ajoute parfois une vide en fin de ligne), la plus large
+          const q = rects.length === 1 ? rects[0] : rects.reduce((m, x) => (x.width > m.width ? x : m));
+          if (rects.length > 1 && rects.filter((x) => x.width > 1).length > 1) return false; // vraiment coupé sur 2 lignes
+          mots.push({ ...base, t: txt.slice(debut, fin), x: q.left - origine.left - ox, y: q.top - origine.top - oy, w: q.width, h: q.height });
           return true;
-        }
-        return false;
-      };
-      // mot par mot ; un mot coupé sur deux lignes (overflow-wrap) : lettre par lettre
-      const re = /\S+/g;
-      let m;
-      while ((m = re.exec(txt))) {
-        if (pousser(m.index, m.index + m[0].length)) continue;
-        for (let i = m.index; i < m.index + m[0].length;) {
-          const cp = txt.codePointAt(i), l = cp > 0xffff ? 2 : 1;
-          pousser(i, i + l);
-          i += l;
+        };
+        // mot par mot ; un mot coupé sur deux lignes (overflow-wrap) : lettre par lettre
+        const re = /\S+/g;
+        let m;
+        while ((m = re.exec(txt))) {
+          if (pousser(m.index, m.index + m[0].length)) continue;
+          for (let i = m.index; i < m.index + m[0].length;) {
+            const cp = txt.codePointAt(i), l = cp > 0xffff ? 2 : 1;
+            pousser(i, i + l);
+            i += l;
+          }
         }
       }
+      // FILET : aucune boîte mesurée pour une zone qui a du texte → ses lignes, à sa place, dans sa couleur
+      if (mots.length === avant && (zone.innerText || zone.textContent || '').trim()) {
+        const taille = parseFloat(csZone.fontSize) || 18, interligne = taille * 1.3;
+        const { hex, alpha } = couleurCss(csZone.color);
+        const police = `${csZone.fontStyle} ${csZone.fontWeight} ${taille}px ${csZone.fontFamily}`;
+        (zone.innerText || zone.textContent).split('\n').forEach((ligne, i) => {
+          if (!ligne.trim()) return;
+          mots.push({ t: ligne, x: zone.offsetLeft + 6 - ox, y: zone.offsetTop + 4 + i * interligne - oy, w: ligne.length * taille * 0.5, h: interligne,
+            police, taille, couleur: encre(hex), alpha, souligne: false });
+        });
+      }
     }
-  }
+  } finally { boite.remove(); }
   return mots;
 }
 
