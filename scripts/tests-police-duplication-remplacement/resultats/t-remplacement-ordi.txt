@@ -1,0 +1,29 @@
+[ordinateur] ✅ document créé ouvert
+[ordinateur] ✅ ses annotations affichées
+[ordinateur] ✅ menu Fichier › Document original : « Remplacer par un PDF… » — {"t":"Remplacer par un PDF…","indispo":null,"title":"Le PDF du prof remplace le fond du document ; tes annotations restent en place (annulable dans l’Historique)"}
+[ordinateur] ✅ infobulle sur l’entrée — Le PDF du prof remplace le fond du document ; tes annotations restent en place (annulable dans l’Historique)
+[ordinateur] ✅ fenêtre de confirmation
+[ordinateur] ✅ message exact de la confirmation — Le document sera remplacé par diapo-du-prof-12.pdf (12 pages). Tes 5 annotations restent en place. Annulable dans l’Historique.
+[ordinateur] ✅ le PDF s’affiche
+[ordinateur] ✅ le document affiche maintenant les 12 pages du PDF (page 12 au bout)
+[ordinateur] ✅ 5 annotations : même numéro de page, même position relative — a1:p1 a2:p1 a3:p2 a4:p2 a5:p2
+[ordinateur] ✅ les pages du document ne s’affichent plus (gardées dans un calque d’archive)
+[ordinateur] ✅ les 2 pages du document sont gardées (archive)
+[ordinateur] ✅ même cours, même identifiant, le PDF comme principal
+[ordinateur] ✅ la flashcard liée n’a pas bougé (lien source.boiteId = a1)
+[ordinateur] ✅ le texte écrit dans le document est gardé en base
+[ordinateur] ✅ page 1 du PDF rendue, avec ses annotations
+[ordinateur] ✅ couche de texte du PDF (comme tout PDF importé)
+[ordinateur] ✅ boîte liée toujours repérée
+[ordinateur] (panneau des cartes fermé : « aller à la boîte » non testé à l’écran — lien vérifié en base)
+[ordinateur] ✅ Historique : version « Avant remplacement par « diapo-du-prof-12.pdf » »
+[ordinateur] ✅ restauration : annotations et pages exactement comme avant
+[ordinateur] ✅ restauration : la fiche exactement comme avant (plus de PDF)
+[ordinateur] ✅ restauration : carte et texte du document inchangés
+[ordinateur] ✅ le document créé est de nouveau affiché, avec ses annotations
+[ordinateur] ✅ aucune erreur console
+[ordinateur] ✅ tout est vert
+[téléphone] ✅ téléphone : le cours remplacé arrive par la synchro (même id, le PDF)
+[téléphone] ✅ téléphone : les 5 annotations, sur leurs pages du PDF — 5
+[téléphone] ✅ aucune erreur console
+[téléphone] ✅ tout est vert

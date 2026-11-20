@@ -1,0 +1,52 @@
+[ordinateur] ✅ diapo ouverte
+[ordinateur] ✅ objets affichés
+[ordinateur] ✅ forme et flèche affichées — fl,fo
+[ordinateur] ✅ ⌘D sans objet sélectionné : rien de créé, raccourci du navigateur laissé
+[ordinateur] ✅ pi : sélectionné au clic — pi
+[ordinateur] ✅ pi : ⌘V crée exactement une copie — 1
+[ordinateur] ✅ pi : nouvel id, même contenu, même style
+[ordinateur] ✅ pi : collé sur la page 2, au pointeur — 2 0.5,0.4
+[ordinateur] ✅ pi : ⌘D duplique sur place, décalé de 16 px — 0.516,0.42844
+[ordinateur] ✅ pi : la copie dupliquée est sélectionnée
+[ordinateur] ✅ pi : ⌘D du navigateur bloqué (objet sélectionné)
+[ordinateur] ✅ bx : sélectionné au clic — bx
+[ordinateur] ✅ bx : ⌘V crée exactement une copie — 1
+[ordinateur] ✅ bx : nouvel id, même contenu, même style
+[ordinateur] ✅ bx : collé sur la page 2, au pointeur — 2 0.5,0.4
+[ordinateur] ✅ bx : ⌘D duplique sur place, décalé de 16 px — 0.516,0.42844
+[ordinateur] ✅ bx : la copie dupliquée est sélectionnée
+[ordinateur] ✅ bx : ⌘D du navigateur bloqué (objet sélectionné)
+[ordinateur] ✅ fo : sélectionné au clic — fo
+[ordinateur] ✅ fo : ⌘V crée exactement une copie — 1
+[ordinateur] ✅ fo : nouvel id, même contenu, même style
+[ordinateur] ✅ fo : collé sur la page 2, au pointeur — 2 0.5,0.4
+[ordinateur] ✅ fo : ⌘D duplique sur place, décalé de 16 px — 0.516,0.42844
+[ordinateur] ✅ fo : la copie dupliquée est sélectionnée
+[ordinateur] ✅ fo : ⌘D du navigateur bloqué (objet sélectionné)
+[ordinateur] ✅ fl : sélectionné au clic — fl
+[ordinateur] ✅ fl : ⌘V crée exactement une copie — 1
+[ordinateur] ✅ fl : nouvel id, même contenu, même style
+[ordinateur] ✅ fl : collé sur la page 2, au pointeur — 2 0.5,0.4
+[ordinateur] ✅ fl : ⌘D duplique sur place, décalé de 16 px — 0.516,0.42844
+[ordinateur] ✅ fl : la copie dupliquée est sélectionnée
+[ordinateur] ✅ fl : ⌘D du navigateur bloqué (objet sélectionné)
+[ordinateur] ✅ tx : sélectionné au clic — tx
+[ordinateur] ✅ tx : ⌘V crée exactement une copie — 1
+[ordinateur] ✅ tx : nouvel id, même contenu, même style
+[ordinateur] ✅ tx : collé sur la page 2, au pointeur — 2 0.5,0.4
+[ordinateur] ✅ tx : ⌘D duplique sur place, décalé de 16 px — 0.516,0.42844
+[ordinateur] ✅ tx : la copie dupliquée est sélectionnée
+[ordinateur] ✅ tx : ⌘D du navigateur bloqué (objet sélectionné)
+[ordinateur] ✅ les copies ne sont liées à aucune flashcard (seule l’originale l’est)
+[ordinateur] ✅ pastille « en carte » : seulement sur l’originale
+[ordinateur] ✅ ⌘Z annule la dernière duplication
+[ordinateur] ✅ pointeur hors de la page : collé à côté de l’original, décalé de 16 px — 1 0.076,0.24844
+[ordinateur] ✅ boîte en écriture (double-clic)
+[ordinateur] ✅ en écriture : ⌘C / ⌘V / ⌘D ne créent aucun objet
+[ordinateur] ✅ en écriture : ⌘C / ⌘V copie-colle le TEXTE — "Boîte néphron\n\nBoîte néphron"
+[ordinateur] ✅ autre document ouvert
+[ordinateur] ✅ collé dans un autre document (même contenu, même style) — [["pr-autre",1,0.336,0.10844]]
+[ordinateur] ✅ la copie s’affiche dans l’autre document
+[ordinateur] ✅ synchro : la copie est envoyée au cloud (faux Supabase) — 26
+[ordinateur] ✅ aucune erreur console
+[ordinateur] ✅ tout est vert

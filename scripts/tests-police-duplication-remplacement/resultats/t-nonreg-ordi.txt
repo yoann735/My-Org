@@ -1,0 +1,17 @@
+[ordinateur] ✅ diapo ouverte
+[ordinateur] ✅ page rendue
+[ordinateur] ✅ crayon : un trait tracé — trait
+[ordinateur] ✅ surligneur : un passage du texte surligné
+[ordinateur] ✅ forme : une forme tracée — forme
+[ordinateur] ✅ boîte : le texte est enregistré en local pendant l’écriture (écriture continue)
+[ordinateur] ✅ Suppr : la forme sélectionnée est supprimée
+[ordinateur] ✅ ⌘Z : la forme revient
+[ordinateur] ✅ cours rouvert avec sa fiche
+[ordinateur] ✅ bascule Original → Fiche
+[ordinateur] ✅ la fiche s’affiche, sans les annotations de l’original (calque séparé)
+[ordinateur] ✅ copie de l’original collée sur la fiche (son calque) — pr-nr::fiche:1
+[ordinateur] ✅ retour à l’original : ses annotations
+[ordinateur] ✅ synchro : toutes les annotations sont au cloud — 4/4
+[ordinateur] ✅ synchro : état « à jour » — ajour
+[ordinateur] ✅ aucune erreur console
+[ordinateur] ✅ tout est vert

@@ -1,0 +1,26 @@
+[tablette] ✅ document vierge ouvert
+[tablette] ✅ page d’écriture affichée
+[tablette] ✅ document : 14 px demandés → 14 px rendus (référence 1000 px)
+[tablette] ✅ document : 24 px demandés → 24 px rendus (référence 1000 px)
+[tablette] ✅ document : 32 px demandés → 32 px rendus (référence 1000 px)
+[tablette] ✅ le sélecteur affiche la taille du texte sélectionné (32 px)
+[tablette] ✅ diapo ouverte
+[tablette] ✅ boîtes du diapo affichées
+[tablette] ✅ diapo — boîte au texte collé (taille en dur 23,4 px) : 24 px demandés → 24 px rendus
+[tablette] ✅ diapo — texte libre : 32 px demandés → 32 px rendus
+[tablette] ✅ diapo — post-it : 20 px demandés → 20 px rendus
+[tablette] ✅ boîte en écriture, texte sélectionné : 28 px demandés → 28 px rendus
+[tablette] ✅ PDF classique ouvert
+[tablette] ✅ boîte du PDF affichée
+[tablette] ✅ PDF classique — boîte : 28 px demandés → 28 px rendus
+[tablette] ✅ diapo rouverte après rechargement
+[tablette] ✅ après rechargement — bx-colle : 24 px (attendu 24)
+[tablette] ✅ après rechargement — tx-libre : 32 px (attendu 32)
+[tablette] ✅ après rechargement — post-it (texte sélectionné à 28 px) : 28 px
+[tablette] ✅ document rouvert après rechargement
+[tablette] ✅ après rechargement — document : 32 px (attendu 32)
+[tablette] ✅ PDF classique rouvert
+[tablette] ✅ après rechargement — PDF classique : 28 px (attendu 28)
+CHIFFRES {"docDefaut":21.01,"doc14":14,"doc24":24,"doc32":32,"bx-colle":24,"tx-libre":32,"pi-1":20,"selection28":28,"a4":28}
+[tablette] ✅ aucune erreur console
+[tablette] ✅ tout est vert

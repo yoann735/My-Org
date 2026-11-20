@@ -1,0 +1,51 @@
+[tablette] ✅ diapo ouverte
+[tablette] ✅ objets affichés
+[tablette] ✅ forme et flèche affichées — fl,fo
+[tablette] ✅ ⌘D sans objet sélectionné : rien de créé, raccourci du navigateur laissé
+[tablette] ✅ pi : sélectionné au doigt — pi
+[tablette] ✅ pi : ⌘V crée exactement une copie — 1
+[tablette] ✅ pi : nouvel id, même contenu, même style
+[tablette] ✅ pi : sans pointeur sur la page → décalé de 16 px — 1 0.336,0.10844
+[tablette] ✅ pi : ⌘D duplique sur place, décalé de 16 px — 0.352,0.13688
+[tablette] ✅ pi : la copie dupliquée est sélectionnée
+[tablette] ✅ pi : ⌘D du navigateur bloqué (objet sélectionné)
+[tablette] ✅ bx : sélectionné au doigt — bx
+[tablette] ✅ bx : ⌘V crée exactement une copie — 1
+[tablette] ✅ bx : nouvel id, même contenu, même style
+[tablette] ✅ bx : sans pointeur sur la page → décalé de 16 px — 1 0.076,0.24844
+[tablette] ✅ bx : ⌘D duplique sur place, décalé de 16 px — 0.092,0.27688
+[tablette] ✅ bx : la copie dupliquée est sélectionnée
+[tablette] ✅ bx : ⌘D du navigateur bloqué (objet sélectionné)
+[tablette] ✅ fo : sélectionné au doigt — fo
+[tablette] ✅ fo : ⌘V crée exactement une copie — 1
+[tablette] ✅ fo : nouvel id, même contenu, même style
+[tablette] ✅ fo : sans pointeur sur la page → décalé de 16 px — 1 0.076,0.47844
+[tablette] ✅ fo : ⌘D duplique sur place, décalé de 16 px — 0.092,0.50688
+[tablette] ✅ fo : la copie dupliquée est sélectionnée
+[tablette] ✅ fo : ⌘D du navigateur bloqué (objet sélectionné)
+[tablette] ✅ fl : sélectionné au doigt — fl
+[tablette] ✅ fl : ⌘V crée exactement une copie — 1
+[tablette] ✅ fl : nouvel id, même contenu, même style
+[tablette] ✅ fl : sans pointeur sur la page → décalé de 16 px — 1 0.276,0.52844
+[tablette] ✅ fl : ⌘D duplique sur place, décalé de 16 px — 0.292,0.55688
+[tablette] ✅ fl : la copie dupliquée est sélectionnée
+[tablette] ✅ fl : ⌘D du navigateur bloqué (objet sélectionné)
+[tablette] ✅ tx : sélectionné au doigt — tx
+[tablette] ✅ tx : ⌘V crée exactement une copie — 1
+[tablette] ✅ tx : nouvel id, même contenu, même style
+[tablette] ✅ tx : sans pointeur sur la page → décalé de 16 px — 1 0.076,0.72844
+[tablette] ✅ tx : ⌘D duplique sur place, décalé de 16 px — 0.092,0.75688
+[tablette] ✅ tx : la copie dupliquée est sélectionnée
+[tablette] ✅ tx : ⌘D du navigateur bloqué (objet sélectionné)
+[tablette] ✅ les copies ne sont liées à aucune flashcard (seule l’originale l’est)
+[tablette] ✅ pastille « en carte » : seulement sur l’originale
+[tablette] ✅ ⌘Z annule la dernière duplication
+[tablette] ✅ boîte en écriture (double-clic)
+[tablette] ✅ en écriture : ⌘C / ⌘V / ⌘D ne créent aucun objet
+[tablette] ✅ en écriture : ⌘C / ⌘V copie-colle le TEXTE — "Boîte néphron\n\nBoîte néphron"
+[tablette] ✅ autre document ouvert
+[tablette] ✅ collé dans un autre document (même contenu, même style) — [["pr-autre",1,0.336,0.10844]]
+[tablette] ✅ la copie s’affiche dans l’autre document
+[tablette] ✅ synchro : la copie est envoyée au cloud (faux Supabase) — 26
+[tablette] ✅ aucune erreur console
+[tablette] ✅ tout est vert

@@ -1,0 +1,3 @@
+[ordi] ✅ MealWeek : même texte avant / après (346 car.)
+[ordi] ✅ MealWeek : capture identique au pixel près (95629 / 95629 octets)
+[ordi] ✅ aucune erreur console 

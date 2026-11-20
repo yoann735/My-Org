@@ -1,0 +1,25 @@
+[tablette] ✅ document créé ouvert
+[tablette] ✅ ses annotations affichées
+[tablette] ✅ menu Fichier › Document original : « Remplacer par un PDF… » — {"t":"Remplacer par un PDF…","indispo":null,"title":"Le PDF du prof remplace le fond du document ; tes annotations restent en place (annulable dans l’Historique)"}
+[tablette] ✅ infobulle sur l’entrée — Le PDF du prof remplace le fond du document ; tes annotations restent en place (annulable dans l’Historique)
+[tablette] ✅ fenêtre de confirmation
+[tablette] ✅ message exact de la confirmation — Le document sera remplacé par diapo-du-prof-12.pdf (12 pages). Tes 5 annotations restent en place. Annulable dans l’Historique.
+[tablette] ✅ le PDF s’affiche
+[tablette] ✅ le document affiche maintenant les 12 pages du PDF (page 12 au bout)
+[tablette] ✅ 5 annotations : même numéro de page, même position relative — a1:p1 a2:p1 a3:p2 a4:p2 a5:p2
+[tablette] ✅ les pages du document ne s’affichent plus (gardées dans un calque d’archive)
+[tablette] ✅ les 2 pages du document sont gardées (archive)
+[tablette] ✅ même cours, même identifiant, le PDF comme principal
+[tablette] ✅ la flashcard liée n’a pas bougé (lien source.boiteId = a1)
+[tablette] ✅ le texte écrit dans le document est gardé en base
+[tablette] ✅ page 1 du PDF rendue, avec ses annotations
+[tablette] ✅ couche de texte du PDF (comme tout PDF importé)
+[tablette] ✅ boîte liée toujours repérée
+[tablette] (panneau des cartes fermé : « aller à la boîte » non testé à l’écran — lien vérifié en base)
+[tablette] ✅ Historique : version « Avant remplacement par « diapo-du-prof-12.pdf » »
+[tablette] ✅ restauration : annotations et pages exactement comme avant
+[tablette] ✅ restauration : la fiche exactement comme avant (plus de PDF)
+[tablette] ✅ restauration : carte et texte du document inchangés
+[tablette] ✅ le document créé est de nouveau affiché, avec ses annotations
+[tablette] ✅ aucune erreur console
+[tablette] ✅ tout est vert
