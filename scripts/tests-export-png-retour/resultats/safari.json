@@ -1,0 +1,142 @@
+{
+ "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Safari/605.1.15",
+ "fond": "blanc",
+ "zonesDom": [
+  [
+   "z1",
+   "Lombalgie\nVertèbre et disque",
+   "rgb(242, 242, 245)"
+  ],
+  [
+   "z2",
+   "Zone verte",
+   "rgb(48, 209, 88)"
+  ],
+  [
+   "z3",
+   "Palette rouge",
+   "rgb(229, 56, 59)"
+  ],
+  [
+   "z4",
+   "Palette bleu sans largeur",
+   "rgb(126, 200, 255)"
+  ],
+  [
+   "z5",
+   "Gras orange\nGrand",
+   "rgb(255, 159, 10)"
+  ]
+ ],
+ "taille": [
+  539,
+  342
+ ],
+ "mots": [
+  [
+   "Lombalgie",
+   26,
+   55,
+   "#1F1F24",
+   1
+  ],
+  [
+   "Vertèbre",
+   26,
+   86,
+   "#34c759",
+   1
+  ],
+  [
+   "et",
+   122,
+   86,
+   "#1F1F24",
+   1
+  ],
+  [
+   "disque",
+   148,
+   86,
+   "#ff3b30",
+   1
+  ],
+  [
+   "Zone",
+   26,
+   165,
+   "#30d158",
+   1
+  ],
+  [
+   "verte",
+   95,
+   165,
+   "#30d158",
+   1
+  ],
+  [
+   "Palette",
+   26,
+   225,
+   "#e5383b",
+   1
+  ],
+  [
+   "rouge",
+   117,
+   225,
+   "#e5383b",
+   1
+  ],
+  [
+   "Palette",
+   26,
+   285,
+   "#7ec8ff",
+   1
+  ],
+  [
+   "bleu",
+   117,
+   285,
+   "#7ec8ff",
+   1
+  ],
+  [
+   "sans",
+   177,
+   285,
+   "#7ec8ff",
+   1
+  ],
+  [
+   "largeur",
+   241,
+   285,
+   "#7ec8ff",
+   1
+  ],
+  [
+   "Gras",
+   346,
+   55,
+   "#ff9f0a",
+   1
+  ],
+  [
+   "orange",
+   394,
+   55,
+   "#ff9f0a",
+   1
+  ],
+  [
+   "Grand",
+   346,
+   81,
+   "#ff9f0a",
+   1
+  ]
+ ]
+}

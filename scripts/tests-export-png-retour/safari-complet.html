@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Banc WebKit — PNG complet</title></head>
+<body style="margin:0;background:#111"><div id="racine" style="width:390px;height:760px;position:relative"></div>
+<!-- Banc WebKit (20/11) : le VRAI écran de dessin (MobileDessin) monté seul, puis le chemin complet de « Enregistrer en
+     PNG » (svgExport → svgVersPng ×3 + peindreTextes). Résultat vers recepteur.mjs (:54411). Ouvrir dans Safari. -->
+<script type="module">
+import '/src/styles/medrevise-mobile.css';
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { MobileDessin } from '/src/medrevise/mobile/MobileDessin.jsx';
+import { svgVersPng } from '/src/medrevise/mobile/EcranDessin.jsx';
+import { echellePng } from '/src/medrevise/mobile/exportPng.js';
+import { peindreTextes } from '/src/medrevise/mobile/textesPng.js';
+const fond = new URLSearchParams(location.search).get('fond') || 'blanc';
+localStorage.setItem('medrevise.dessinMobile', JSON.stringify({ cam: { x: Number(new URLSearchParams(location.search).get('cx') || 10), y: Number(new URLSearchParams(location.search).get('cy') || 80), z: Number(new URLSearchParams(location.search).get('z') || 0.6) }, elements: [
+  { id: 't1', type: 'trait', rendu: 'cr', ep: 5, couleur: '#F2F2F5', opacite: 1, points: [[0, 0], [500, 0]] },
+  { id: 'z1', type: 'texte', x: 0, y: 30, taille: 24, largeur: 300, couleur: '#F2F2F5', html: '<div>Lombalgie</div><div><span style="color: rgb(52, 199, 89)">Vertèbre</span> et <span style="color: #ff3b30">disque</span></div>' },
+  { id: 'z2', type: 'texte', x: 0, y: 140, taille: 28, largeur: 300, couleur: '#30d158', texte: 'Zone verte' },
+  { id: 'z3', type: 'texte', x: 0, y: 200, taille: 28, largeur: 300, couleur: 'rouge', texte: 'Palette rouge' },
+  { id: 'z4', type: 'texte', x: 0, y: 260, taille: 28, couleur: 'bleu', texte: 'Palette bleu sans largeur' },
+  { id: 'z5', type: 'texte', x: 320, y: 30, taille: 20, largeur: 160, couleur: '#ff9f0a', html: '<div><b>Gras orange</b></div><div><span style="font-size: 32px">Grand</span></div>' },
+] }));
+const ref = { current: null };
+createRoot(document.getElementById('racine')).render(React.createElement(MobileDessin, { onQuit: () => {}, canvasRef: ref, barreHaut: null }));
+await new Promise((r) => setTimeout(r, 1500));
+const out = { ua: navigator.userAgent, fond };
+try {
+  out.zonesDom = [...document.querySelectorAll('.md-zone[data-id]')].map((z) => [z.dataset.id, z.innerText.slice(0, 30), getComputedStyle(z).color]);
+  const exp = ref.current.svgExport({ fond });
+  out.taille = [exp.w, exp.h];
+  out.mots = (exp.mots || []).map((m) => [m.t, Math.round(m.x), Math.round(m.y), m.couleur, m.alpha]);
+  const { png, largeur, hauteur } = await svgVersPng(exp.svg, exp.w, exp.h, { echelle: echellePng(exp.w, exp.h), peindre: (g, k) => peindreTextes(g, exp.mots || [], k) });
+  out.png = [largeur, hauteur, png.size];
+  out.data = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(png); });
+} catch (e) { out.erreur = String(e && e.stack || e); }
+const data = out.data; delete out.data;
+await fetch('http://localhost:54411/resultat', { method: 'POST', body: JSON.stringify({ ...out, png: data }) });
+document.body.insertAdjacentHTML('beforeend', '<p style="color:#fff;font:16px system-ui;padding:12px">Résultat envoyé — tu peux fermer cet onglet.</p>');
+</script></body></html>

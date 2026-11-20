@@ -75,3 +75,17 @@ Limites et remarques :
 - `2f45a50` feat(medrevise) : la barre « Transcription en cours » ramène au cours
 - `3e685d1` test(medrevise) : banc Chrome export PNG et retour au cours, non-régression MealWeek
 - (ce compte rendu) docs(medrevise) : compte rendu export PNG et retour au cours
+
+
+## 5. Correctif du 20/11 au soir — texte coloré absent du PNG sur iPhone
+
+**Constat** (essai réel : PNG enregistré sur l'iPhone puis ouvert sur le Mac) : « Lombalgie » (encre noire) figure dans l'image, mais pas le texte coloré, alors que l'image est assez grande pour contenir les zones.
+
+**Recherche** : le même chemin (vrai écran Dessin, svgExport → svgVersPng → zones peintes, mots colorés en `<span>`, couleur de zone, couleurs de palette) donne un PNG complet dans Chrome **et dans Safari macOS** (WebKit). Pages de banc : `scripts/tests-export-png-retour/safari.html` et `safari-complet.html`, résultats renvoyés à `recepteur.mjs`. La différence ne peut donc venir que de l'iPhone. Or le relevé mesurait les mots dans la couche affichée, que la caméra du dessin déplace et zoome (transform) : les positions dépendaient du zoom à l'écran et des rectangles que WebKit iOS rend pour une plage de texte transformée. Un écart à cet endroit envoie les mots hors de l'image.
+
+**Correctif** (`mobile/textesPng.js`) :
+- les zones sont mesurées sur une **copie de la couche, sans caméra**, dans un conteneur invisible en (0, 0) : un px mesuré = un px du dessin, quel que soit le zoom ;
+- un mot qui rend une boîte vide en plus (fin de ligne WebKit) n'est plus écarté ;
+- **filet** : une zone qui a du texte mais dont aucun mot n'a pu être mesuré est peinte ligne par ligne, à sa place, dans sa couleur. Une zone ne peut plus disparaître du PNG.
+
+**Vérifié** : Safari macOS avec une caméra extrême (zoom ×0,25, dessin décalé hors de l'écran) donne le même PNG, texte coloré compris, aux mêmes positions qu'au zoom 0,6. Banc Chrome `t-png` : tel 38 ✅, iPad 36 ✅, ordinateur 35 ✅. Tests unitaires 8/8, build vert. **Reste à confirmer sur ton vrai iPhone.**

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Banc WebKit — textes du PNG</title></head>
+<body style="margin:0;background:#111">
+<!-- Banc WebKit (20/11) : les zones de texte du dessin, telles que l'écran Dessin les affiche, relevées et peintes par
+     mobile/textesPng.js — le résultat (mots relevés, image) part vers recepteur.mjs (:54411). Ouvrir dans Safari. -->
+<div id="scene" style="position:relative;width:390px;height:700px;overflow:hidden"><div class="md-couche" id="couche"></div></div>
+<script type="module">
+import '/src/styles/medrevise-mobile.css';
+import { styleZone } from '/src/medrevise/mobile/MobileDessin.jsx';
+import { htmlZone } from '/src/medrevise/mobile/zonesTexte.js';
+import { releverTextes, peindreTextes, couleurCss } from '/src/medrevise/mobile/textesPng.js';
+const zones = [
+  { id: 'z1', x: 0, y: 40, taille: 24, largeur: 260, couleur: '#F2F2F5', html: '<div>Lombalgie</div><div><span style="color: rgb(52, 199, 89)">Vertèbre lombaire</span></div><div><span style="color: rgb(255, 59, 48)">Disque</span> et <span style="color: #0a84ff">nerf</span></div>' },
+  { id: 'z2', x: 20, y: 200, taille: 28, largeur: 220, couleur: '#ff9f0a', texte: 'Zone orange entière' },
+  { id: 'z3', x: 10, y: 300, taille: 22, couleur: '#bf5af2', texte: 'Sans largeur' },
+];
+const couche = document.getElementById('couche');
+couche.style.transform = 'translate(20px, 60px) scale(0.8)';
+for (const z of zones) { const d = document.createElement('div'); d.className = 'md-zone'; d.dataset.id = z.id; Object.assign(d.style, styleZone(z)); d.innerHTML = htmlZone(z); couche.appendChild(d); }
+await new Promise((r) => setTimeout(r, 300));
+const out = { ua: navigator.userAgent, calcules: [] };
+try {
+  for (const s of couche.querySelectorAll('span, .md-zone')) out.calcules.push([s.textContent.slice(0, 12), getComputedStyle(s).color, couleurCss(getComputedStyle(s).color)]);
+  const mots = releverTextes(couche, { ox: -16, oy: 24, encre: (c) => c });
+  out.mots = mots.map((m) => ({ t: m.t, x: Math.round(m.x), y: Math.round(m.y), couleur: m.couleur, alpha: m.alpha, police: m.police }));
+  const cv = document.createElement('canvas'); cv.width = 1000; cv.height = 1200; const g = cv.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+  peindreTextes(g, mots, 3);
+  const mt = g.measureText('Test'); out.mesure = { asc: mt.fontBoundingBoxAscent, desc: mt.fontBoundingBoxDescent, w: mt.width };
+  out.png = cv.toDataURL('image/png');
+} catch (e) { out.erreur = String(e && e.stack || e); }
+await fetch('http://localhost:54411/resultat', { method: 'POST', body: JSON.stringify(out) });
+document.body.insertAdjacentHTML('beforeend', '<p style="color:#fff;font:16px system-ui;padding:12px">Résultat envoyé — tu peux fermer cet onglet.</p>');
+</script>
+</body></html>
