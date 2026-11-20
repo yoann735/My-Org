@@ -109,7 +109,9 @@ export function OcclusionView({ occ, revele = false, maxH = 340, onClickImage, a
  */
 // `imageInitiale` (05/10) : un fichier déjà choisi dans la carte d'ajout du panneau
 // `rectoInitial` / `versoInitial` / `themeInitial` (08/10) : repris du formulaire unifié quand on y choisit « Masques à deviner »
-export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, onSaved, imageInitiale = null, rectoInitial = '', versoInitial = '', themeInitial = null }) {
+/* (20/11) `imageIdInitiale` : image déjà enregistrée (blob) d'une carte neuve — ex. l'image d'une boîte d'annotation —
+   ouverte sans copie ; `enPlus` : champs ajoutés à la carte créée (id + lien `source` vers la boîte). onSaved(raw). */
+export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, onSaved, imageInitiale = null, imageIdInitiale = null, rectoInitial = '', versoInitial = '', themeInitial = null, enPlus = null }) {
   const occ0 = initial && initial.occlusion;
   const [image, setImageState] = useState(null); // { url, w, h, blobId, newFile }
   const [coches, setCoches] = useState(() => (occ0 && occ0.coches) || []);
@@ -148,7 +150,19 @@ export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, on
     probe.src = url;
   };
 
-  useEffect(() => { if (imageInitiale && !initial) choisirImage(imageInitiale); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (initial) return;
+    if (imageInitiale) { choisirImage(imageInitiale); return; }
+    if (!imageIdInitiale) return;
+    blobURL(imageIdInitiale).then((u) => {
+      if (!u) { setErreur('Image introuvable.'); return; }
+      urls.current.add(u);
+      const probe = new Image();
+      probe.onload = () => { setErreur(null); setImageState({ url: u, w: probe.naturalWidth, h: probe.naturalHeight, blobId: imageIdInitiale, newFile: null }); };
+      probe.onerror = () => setErreur('Image illisible.');
+      probe.src = u;
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // COLLER une capture d'écran (Cmd/Ctrl+V) : n'importe où dans la fenêtre. Dans un
   // champ (recto, verso, thème), seulement si le presse-papier n'a pas de texte —
@@ -204,10 +218,10 @@ export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, on
         if (!maj) throw new Error('carte invalide');
         await ctx.saveQuestion(maj);
       } else {
-        await appendItemsToFiche({ ficheId, items: [raw] });
+        await appendItemsToFiche({ ficheId, items: [enPlus ? { ...raw, ...enPlus } : raw] });
         await ctx.reload();
       }
-      if (onSaved) onSaved();
+      if (onSaved) onSaved(enPlus ? { ...raw, ...enPlus } : raw);
       onClose();
     } catch (e) {
       setErreur("L'enregistrement a échoué — rien n'a été modifié. " + ((e && e.message) || ''));

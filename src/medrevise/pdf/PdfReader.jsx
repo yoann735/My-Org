@@ -53,8 +53,8 @@ import { createPortal } from 'react-dom';
 import { pdfjsLib, openPdf } from './pdfjsSetup.js';
 import { exporterDepuisBlob, extrairePages } from './exportAnnote.js';
 import { FenetreExportPages } from './ChoixPages.jsx';
-import { FenetreBoiteFlashcard } from './BoiteFlashcard.jsx';
-import { appendItemsToFiche, adopterThemeDeCarte, themeFlashcardsDeFiche } from '../lib/import.js';
+import { decouperBoite, carteDeBoite } from '../lib/boiteVersCarte.js';
+import { themeFlashcardsDeFiche } from '../lib/import.js';
 import { suffixePages } from './choixPages.js';
 import { useEditor } from '@tiptap/react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -431,23 +431,19 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   /* (25/10, docs/compte-rendu-boites-tableaux.md §2) BOÎTE → FLASHCARD : « → Flashcard » de la mini barre ouvre l'aperçu
      modifiable (pdf/BoiteFlashcard.jsx) ; une boîte déjà convertie (une carte porte `source.boiteId`) ouvre sa carte.
      La carte est rattachée au cours affiché ; elle garde un lien vers la boîte (panneau : icône → la page et la boîte). */
-  const [boiteFlashcard, setBoiteFlashcard] = useState(null); // la boîte dont on prépare la carte
+  /* (20/11, docs/compte-rendu-seance-passer-precedente-et-formulaire-fc.md §2) la carte se prépare dans le formulaire
+     COMPLET du panneau (components/CarteAjoutFlashcard.jsx, le même que « Nouvelle carte »), pré-rempli par le découpage
+     de la boîte ; l'ancien formulaire réduit (pdf/BoiteFlashcard.jsx) est supprimé. */
   const boitesEnCarte = useMemo(() => new Map((db.questions || []).filter((q) => q.source && q.source.boiteId && !q.deleted).map((q) => [q.source.boiteId, q.id])), [db.questions]);
   const boiteVersFlashcard = (b0) => {
     const deja = boitesEnCarte.get(b0.id);
     if (deja) { ouvrirFlashcardDuTableau(deja); return; }
-    setBoiteFlashcard(boiteFraicheRef.current ? boiteFraicheRef.current(b0.id, b0) || b0 : b0);
-  };
-  const creerCarteDeBoite = async (raw, startDate) => {
-    const coursId = ficheReelle ? ficheReelle.id : ficheId;
-    const r = await appendItemsToFiche({ ficheId: coursId, items: [raw], startDate });
-    if (!r || r.ok === false) throw new Error('cours introuvable');
-    if (!r.count) throw new Error('carte refusée (recto et verso sont obligatoires)');
-    await adopterThemeDeCarte(coursId, raw);
-    await ctx.reload();
-    setBoiteFlashcard(null);
-    const cree = (await getAll('questions')).find((q) => q.ficheId === coursId && q.srcId === raw.id);
-    if (cree) ouvrirFlashcardDuTableau(cree.id);
+    const boite = boiteFraicheRef.current ? boiteFraicheRef.current(b0.id, b0) || b0 : b0;
+    const tableau = !!(boite.grille && Array.isArray(boite.grille.lignes));
+    const d = decouperBoite(boite.content);
+    const carte = carteDeBoite(boite, { recto: tableau ? 'Compléter le tableau' : d.recto, verso: d.verso, theme: themeFlashcardsDeFiche(ficheReelle), ns: nsAnnot, id: genId('bfc') });
+    setPanelOpen(true);
+    setFlashcardNotes((f) => ({ carte, n: (f ? f.n : 0) + 1 }));
   };
   /* le lien retour d'une carte : sa page (en basculant sur la fiche jumelle s'il le faut), sa boîte sélectionnée et signalée */
   const allerABoite = (src) => {
@@ -4253,10 +4249,6 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
       )}
       {miseEnPage && modeDoc && <PanneauMiseEnPage marges={marges} onChange={changerMarges} onFermer={() => setMiseEnPage(false)} fondNoir={fondNoir} onFond={basculerFond} />}
       {avisExport && <div className="fj-avis" role="status">{avisExport}</div>}
-      {boiteFlashcard && (
-        <FenetreBoiteFlashcard key={boiteFlashcard.id} boite={boiteFlashcard} ns={nsAnnot} themeDefaut={themeFlashcardsDeFiche(ficheReelle)}
-          onCreer={creerCarteDeBoite} onFermer={() => setBoiteFlashcard(null)} />
-      )}
       {exportPages && (() => {
         const T = { pdf: [surFiche ? 'Exporter la fiche annotée' : modeDocCours ? 'Exporter le document annoté' : 'Exporter la diapo annotée', 'PDF avec toutes les annotations des pages choisies'],
           doc: ['Exporter le document annoté', 'Impression en PDF des pages choisies, telles qu’à l’écran'],

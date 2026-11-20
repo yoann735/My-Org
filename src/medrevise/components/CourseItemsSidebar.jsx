@@ -48,6 +48,7 @@ import { estMolecule, texteMolecule, SENS, NIVEAUX } from '../molecule/carte.js'
 import { VueMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from './FlashcardImage.jsx';
 import { CarteAjoutFlashcard, sorteDe } from './CarteAjoutFlashcard.jsx';
+import { getAll } from '../lib/storage.js';
 import { ActionsCarte } from './ActionsCarte.jsx';
 import { EtiquetteAApprendre } from './BoutonAApprendre.jsx';
 import { VueAgrandie } from './VueAgrandie.jsx';
@@ -280,22 +281,37 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
       setAddedCount((n) => n + 1);
     } finally { setBusyAdd(false); }
   };
-  const closeAdd = () => { setAdding(false); setAddedCount(0); setAddSource('form'); setRectoInitial(null); };
+  const closeAdd = () => { setAdding(false); setAddedCount(0); setAddSource('form'); setRectoInitial(null); setPrerempli(null); };
   /* FLASHCARD DEPUIS UNE SÉLECTION (07/10) : { texte, n } — le mode Exercices s'ouvre sur
      les flashcards, carte d'ajout ouverte, recto pré-rempli (on n'a plus qu'à écrire le verso) */
   const [rectoInitial, setRectoInitial] = useState(null); // { texte, n }
+  /* (20/11, docs/compte-rendu-seance-passer-precedente-et-formulaire-fc.md §2) FLASHCARD DEPUIS UNE BOÎTE : { carte, n } —
+     la MÊME carte d'ajout, pré-remplie avec la carte de la boîte (lib/boiteVersCarte.js carteDeBoite) ; une fois créée,
+     la carte d'ajout se ferme et la carte est montrée (elle garde son lien vers la boîte) */
+  const [prerempli, setPrerempli] = useState(null); // { carte, n }
   const nFlash = flashcardDemandee ? flashcardDemandee.n : 0;
   useEffect(() => {
-    if (!flashcardDemandee || !flashcardDemandee.texte || !avecItems) return;
+    if (!flashcardDemandee || !(flashcardDemandee.texte || flashcardDemandee.carte) || !avecItems) return;
     setActiveType('flashcard'); setEditingId(null);
     setAddSource('form'); setAdding(true); setAddedCount(0);
-    setRectoInitial({ texte: flashcardDemandee.texte, n: flashcardDemandee.n });
+    if (flashcardDemandee.carte) { setRectoInitial(null); setPrerempli({ carte: flashcardDemandee.carte, n: flashcardDemandee.n }); }
+    else { setPrerempli(null); setRectoInitial({ texte: flashcardDemandee.texte, n: flashcardDemandee.n }); }
     allerMode('exercices');
   }, [nFlash]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [viseeLocale, setViseeLocale] = useState(null); // { id, n } : carte créée depuis une boîte, à montrer
+  const carteDeBoiteCreee = async (raw) => {
+    closeAdd();
+    const cree = (await getAll('questions')).find((q) => q.ficheId === ficheId && q.srcId === raw.id);
+    if (cree) setViseeLocale((v) => ({ id: cree.id, n: (v ? v.n : 0) + 1 }));
+  };
 
   /* (22/10) une carte du TABLEAU rouvre sa flashcard : Exercices › Flashcards, la carte montrée et mise en évidence */
-  const nVisee = flashcardVisee ? flashcardVisee.n : 0;
+  const nVisee = (flashcardVisee ? flashcardVisee.n : 0) + ':' + (viseeLocale ? viseeLocale.n : 0);
+  const dernierVisee = useRef(null); // la plus récente des deux demandes (lecteur / carte créée ici)
+  useEffect(() => { if (flashcardVisee) dernierVisee.current = flashcardVisee; }, [flashcardVisee]);
+  useEffect(() => { if (viseeLocale) dernierVisee.current = viseeLocale; }, [viseeLocale]);
   useEffect(() => {
+    const flashcardVisee = dernierVisee.current; // eslint-disable-line no-shadow
     if (!flashcardVisee || !flashcardVisee.id || !avecItems) return undefined;
     setActiveType('flashcard'); setEditingId(null); setRecherche(''); setFiltreSorte('toutes'); setFiltreAap(false);
     allerMode('exercices');
@@ -418,8 +434,8 @@ export function CourseItemsSidebar({ ctx, ficheId, ongletsEnPlus = [], ongletIni
         </button>
       )}
       {adding && addSource === 'form' && activeType === 'flashcard' && (
-        <CarteAjoutFlashcard key={rectoInitial ? 'r' + rectoInitial.n : 'carte'} ctx={ctx} ficheId={ficheId} busy={busyAdd} onAjouter={submitAdd} onTerminer={closeAdd}
-          rectoInitial={rectoInitial ? rectoInitial.texte : null}
+        <CarteAjoutFlashcard key={prerempli ? 'b' + prerempli.n : rectoInitial ? 'r' + rectoInitial.n : 'carte'} ctx={ctx} ficheId={ficheId} busy={busyAdd} onAjouter={submitAdd} onTerminer={closeAdd}
+          rectoInitial={rectoInitial ? rectoInitial.texte : null} prerempli={prerempli ? prerempli.carte : null} onCree={carteDeBoiteCreee}
           themeDefaut={themeFlashcardsDeFiche((ctx.db.fiches || []).find((f) => f.id === ficheId))} />
       )}
       {adding && !(addSource === 'form' && activeType === 'flashcard') && (

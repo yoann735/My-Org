@@ -174,17 +174,19 @@ function MenuMasquage({ etatTout, focusCase, colonnes, etatLigne, etatColonne, o
 }
 
 /* ---------- formulaire (création et modification) ---------- */
-export function FormulaireTableau({ initial = null, themeDefaut = '', onAdd, onCancel, busy, submitLabel = 'Ajouter' }) {
+export function FormulaireTableau({ initial = null, prerempli = null, themeDefaut = '', onAdd, onCancel, busy, submitLabel = 'Ajouter' }) {
+  // (20/11) `prerempli` : carte NEUVE pré-remplie (boîte-tableau d'annotation) — mêmes champs que `initial`, mais en création
+  const src = initial || prerempli;
   const [theme, setTheme] = useState(initial ? initial.theme || '' : themeDefaut);
   const themeRetouche = useRef(false);
   useEffect(() => { if (!initial && !themeRetouche.current) setTheme(themeDefaut); }, [themeDefaut]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [titre, setTitre] = useState(initial ? initial.recto || '' : '');
-  const [colonnes, setColonnes] = useState(() => (initial && initial.tableau ? [...initial.tableau.colonnes] : vide(3)));
-  const [lignes, setLignes] = useState(() => (initial && initial.tableau ? initial.tableau.lignes.map((l) => [...l]) : [vide(3), vide(3), vide(3)]));
-  const [indice, setIndice] = useState(initial?.indice || '');
-  const [aRetenir, setARetenir] = useState(initial?.a_retenir || '');
+  const [titre, setTitre] = useState(src ? src.recto || '' : '');
+  const [colonnes, setColonnes] = useState(() => (src && src.tableau ? [...src.tableau.colonnes] : vide(3)));
+  const [lignes, setLignes] = useState(() => (src && src.tableau ? src.tableau.lignes.map((l) => [...l]) : [vide(3), vide(3), vide(3)]));
+  const [indice, setIndice] = useState(src?.indice || '');
+  const [aRetenir, setARetenir] = useState(src?.a_retenir || '');
   // (31/10) ce qui est masqué en révision : une case, une ligne, une colonne, un nom de colonne (lib/carteTableau.js#masqueDe)
-  const [masque, setMasque] = useState(() => (initial && initial.tableau ? masqueDe(initial.tableau) : masqueParDefaut(3, 3)));
+  const [masque, setMasque] = useState(() => (src && src.tableau ? masqueDe(src.tableau) : masqueParDefaut(3, 3)));
   const [focusCase, setFocusCase] = useState(null); // { r, c } : la dernière case touchée (cible du menu « Masquage »)
   const [entetes, setEntetes] = useState(true);
   const [tsv, setTsv] = useState('');

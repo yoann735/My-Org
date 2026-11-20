@@ -39,3 +39,22 @@ describe('boîte → flashcard', () => {
     expect(tableauDeGrille({ cols: [1], entete: false, lignes: [['a']] }).colonnes).toEqual(['Colonne 1', 'Colonne 2']);
   });
 });
+
+/* (20/11) formulaire COMPLET pré-rempli depuis une boîte : ce que la carte venue d'une boîte ajoute à la carte saisie */
+import { complementsDeBoite as complements } from '../../src/medrevise/lib/boiteVersCarte.js';
+describe('complementsDeBoite (formulaire unique)', () => {
+  const pre = { id: 'bfc-1', source: { boiteId: 'b1', ns: 'n', page: 3, sorte: 'boite' }, versoFormat: 'leger', imageId: 'img1', imagePlace: 'verso' };
+  it('carte texte : id + lien vers la boîte + balisage léger', () => {
+    expect(complements(pre, { type: 'flashcard', recto: 'R', verso: 'V' })).toEqual({ id: 'bfc-1', source: pre.source, versoFormat: 'leger' });
+  });
+  it('carte à masques (éditeur de masques) : id + lien seulement', () => {
+    expect(complements(pre, null)).toEqual({ id: 'bfc-1', source: pre.source });
+    expect(complements(pre, { occlusion: {} })).toEqual({ id: 'bfc-1', source: pre.source });
+  });
+  it('boîte-tableau : la grille complète reste tant que les cases ne sont pas retouchées ; l’image suit', () => {
+    const t = { colonnes: ['A', 'B'], lignes: [['1', '2']] };
+    const p = { ...pre, source: { ...pre.source, sorte: 'boite-tableau' }, tableau: t, grille: { lignes: [['A', 'B'], ['1', '2']] } };
+    expect(complements(p, { tableau: { ...t } })).toMatchObject({ grille: p.grille, imageId: 'img1', imagePlace: 'verso' });
+    expect(complements(p, { tableau: { colonnes: ['A', 'B'], lignes: [['1', 'X']] } }).grille).toBeUndefined();
+  });
+});

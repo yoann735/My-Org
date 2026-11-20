@@ -16,6 +16,10 @@
    (Texte · Muscle · Tableau · Molécule) qui transforme le formulaire ; plus de « Terminer » flottant — « Annuler »
    ferme, « Ajouter » (⌘↵) enregistre et laisse le formulaire vide pour enchaîner. Le MÊME composant sert à la
    MODIFICATION (`initial`) : sa sorte y est affichée, verrouillée.
+   (20/11, docs/compte-rendu-seance-passer-precedente-et-formulaire-fc.md §2) BOÎTE → FLASHCARD : la création depuis une
+   boîte d'annotation ouvre CE formulaire (`prerempli` = carte de lib/boiteVersCarte.js carteDeBoite) : Texte ou Tableau
+   pré-rempli, toutes les options (masques, image, éléments, thème…). La carte créée garde son lien `source` vers la
+   boîte (et son id, qui devient son srcId). Le formulaire réduit de la boîte (pdf/BoiteFlashcard.jsx) n'existe plus.
    ============================================================ */
 import { lazy, Suspense, useRef, useState } from 'react';
 import { FlashcardForm } from './AddItemForm.jsx';
@@ -25,21 +29,27 @@ import { FormulaireTableau } from './FlashcardTableau.jsx';
 import { estMuscle } from '../lib/muscle.js';
 import { estTableau } from '../lib/carteTableau.js';
 import { estMolecule } from '../molecule/carte.js';
+import { complementsDeBoite } from '../lib/boiteVersCarte.js';
 
 const FormulaireMolecule = lazy(() => import('../molecule/FormulaireMolecule.jsx'));
 
 export const SORTES = [{ id: 'standard', label: 'Texte' }, { id: 'muscle', label: 'Muscle' }, { id: 'tableau', label: 'Tableau' }, { id: 'molecule', label: 'Molécule' }];
 export const sorteDe = (item) => (estMuscle(item) ? 'muscle' : estTableau(item) ? 'tableau' : estMolecule(item) ? 'molecule' : 'standard');
 
-export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter, onTerminer, busy, rectoInitial = null, initial = null }) {
+export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter, onTerminer, busy, rectoInitial = null, initial = null, prerempli = null, onCree = null }) {
   const edition = !!initial;
-  const [sorte, setSorte] = useState(() => (initial ? sorteDe(initial) : 'standard'));
+  const [sorte, setSorte] = useState(() => (initial ? sorteDe(initial) : prerempli ? sorteDe(prerempli) : 'standard'));
   const [moleculeVue, setMoleculeVue] = useState(() => !!(initial && sorteDe(initial) === 'molecule')); // monté une fois ouvert (chargement à la demande)
   const [nb, setNb] = useState(0);
   const [occ, setOcc] = useState(null); // { fichier, recto, verso, theme } → éditeur de masques
   const [cle, setCle] = useState(0); // remise à zéro du formulaire standard (après une carte à masques)
   const racine = useRef(null);
-  const ajouter = async (raw) => { await onAjouter(raw); setNb((n) => n + 1); };
+  // (20/11) carte venue d'une boîte : son lien `source` (et son id) suivent la carte, quelle que soit la sorte choisie
+  const ajouter = async (raw) => {
+    const r = prerempli ? { ...raw, ...complementsDeBoite(prerempli, raw) } : raw;
+    await onAjouter(r); setNb((n) => n + 1);
+    if (prerempli && onCree) onCree(r);
+  };
   const choisir = (x) => { setSorte(x); if (x === 'molecule') setMoleculeVue(true); };
   const libelle = edition ? 'Enregistrer' : 'Ajouter';
 
@@ -62,7 +72,7 @@ export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter,
         </div>
         <div hidden={sorte !== 'standard'}>
           <FlashcardForm key={cle} apercu clavier themeDefaut={themeDefaut} onAdd={ajouter} busy={busy} initial={edition && sorte === 'standard' ? initial : undefined}
-            onCancel={onTerminer} submitLabel={libelle}
+            onCancel={onTerminer} submitLabel={libelle} prerempli={prerempli && sorteDe(prerempli) === 'standard' ? prerempli : null}
             rectoInitial={rectoInitial || ''} onOcclusion={(x) => setOcc(x)} />
         </div>
         {(!edition || sorte === 'muscle') && (
@@ -73,7 +83,8 @@ export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter,
         )}
         {(!edition || sorte === 'tableau') && (
           <div hidden={sorte !== 'tableau'}>
-            <FormulaireTableau themeDefaut={themeDefaut} onAdd={ajouter} onCancel={onTerminer} busy={busy} initial={edition ? initial : null} submitLabel={libelle} />
+            <FormulaireTableau themeDefaut={themeDefaut} onAdd={ajouter} onCancel={onTerminer} busy={busy} initial={edition ? initial : null} submitLabel={libelle}
+              prerempli={prerempli && sorteDe(prerempli) === 'tableau' ? prerempli : null} />
           </div>
         )}
         {moleculeVue && (!edition || sorte === 'molecule') && (
@@ -85,10 +96,11 @@ export function CarteAjoutFlashcard({ ctx, ficheId, themeDefaut = '', onAjouter,
         )}
       </div>
       {occ && (
-        <OcclusionEditorModal ctx={ctx} ficheId={ficheId} imageInitiale={occ.fichier}
+        <OcclusionEditorModal ctx={ctx} ficheId={ficheId} imageInitiale={occ.fichier} imageIdInitiale={occ.fichier ? null : occ.imageId}
           rectoInitial={occ.recto} versoInitial={occ.verso} themeInitial={occ.theme}
+          enPlus={prerempli ? complementsDeBoite(prerempli, null) : null}
           onClose={() => setOcc(null)}
-          onSaved={() => { setNb((n) => n + 1); setCle((k) => k + 1); }} />
+          onSaved={(raw) => { setNb((n) => n + 1); setCle((k) => k + 1); if (prerempli && onCree) onCree(raw); }} />
       )}
     </div>
   );

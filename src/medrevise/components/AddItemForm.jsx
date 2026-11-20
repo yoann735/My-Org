@@ -19,6 +19,7 @@
    formulaire simple ne doit jamais faire régresser un item plus riche
    (importé via JSON).
    ============================================================ */
+import { Tex } from './Tex.jsx'; // (20/11) aperçu du verso d'une carte venue d'une boîte (balisage léger)
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { CaseACocher } from './CaseACocher.jsx';
@@ -361,7 +362,10 @@ export function echapDansFormulaire(e) {
   if (champ && champ.blur) champ.blur();
   return true;
 }
-export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefaut = '', sansImage = false, apercu = false, clavier = false, rectoInitial = '', onOcclusion = null }) {
+export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, themeDefaut = '', sansImage = false, apercu = false, clavier = false, rectoInitial = '', onOcclusion = null, prerempli = null }) {
+  // (20/11) `prerempli` : carte NEUVE pré-remplie (boîte d'annotation, lib/boiteVersCarte.js) — recto, verso, image…
+  // comme `initial`, mais le formulaire reste en CRÉATION (masques, toutes les options)
+  const src = initial || prerempli;
   // nouvelle carte : PRÉ-REMPLI avec le thème de la fiche (components/ThemeFiche.jsx). Le
   // changer ne vaut que pour CETTE carte : la suivante repart du thème de la fiche, qui ne
   // bouge pas. Si le thème de la fiche change pendant que le formulaire est ouvert (carte
@@ -372,15 +376,15 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
     if (!initial && !themeRetouche.current) setTheme(themeDefaut);
   }, [themeDefaut]); // eslint-disable-line react-hooks/exhaustive-deps
   // rectoInitial (07/10) : carte NEUVE pré-remplie depuis une sélection (document de notes)
-  const [recto, setRecto] = useState(initial?.recto || rectoInitial || '');
-  const [verso, setVerso] = useState(initial?.verso || '');
-  const [indice, setIndice] = useState(initial?.indice || '');
-  const [aRetenir, setARetenir] = useState(initial?.a_retenir || '');
+  const [recto, setRecto] = useState(src?.recto || rectoInitial || '');
+  const [verso, setVerso] = useState(src?.verso || '');
+  const [indice, setIndice] = useState(src?.indice || '');
+  const [aRetenir, setARetenir] = useState(src?.a_retenir || '');
   // (26/10) éléments à révéler du verso : [{ cle, text, masked }] — `items` de la carte
-  const [elements, setElements] = useState(() => (Array.isArray(initial?.items) ? initial.items.map((x) => nouvelElement(x)) : []));
+  const [elements, setElements] = useState(() => (Array.isArray(src?.items) ? src.items.map((x) => nouvelElement(x)) : []));
   // image facultative (components/FlashcardImage.jsx) : le fichier n'est écrit
   // qu'à l'enregistrement ; place absente sur une carte d'avant = recto.
-  const [image, setImage] = useState({ imageId: initial?.imageId || null, fichier: null, place: initial?.imagePlace || 'recto' });
+  const [image, setImage] = useState({ imageId: src?.imageId || null, fichier: null, place: src?.imagePlace || 'recto' });
   const [holeHint, setHoleHint] = useState(null);
   const rectoRef = useRef(null);
   const versoRef = useRef(null);
@@ -542,7 +546,7 @@ export function FlashcardForm({ onAdd, busy, initial, submitLabel, onCancel, the
       {apercu && (recto.trim() || verso.trim() || elementsPleins.length > 0) && (
         <div className="fc-apercu">
           <div className="pis-face"><span className="pis-face-tag">Aperçu · recto</span>{segments.map((sg, i) => (sg.type === 'text' ? <span key={i}>{sg.value}</span> : <span key={i} className="fc-trou">[ … ]</span>))}</div>
-          <div className="pis-face"><span className="pis-face-tag">Verso</span>{verso || (!elementsPleins.length && <span className="hint">—</span>)}
+          <div className="pis-face"><span className="pis-face-tag">Verso</span>{verso ? (prerempli && prerempli.versoFormat === 'leger' ? <Tex leger>{verso}</Tex> : verso) : (!elementsPleins.length && <span className="hint">—</span>)}
             <ElementsVerso carte={{ id: 'apercu', items: elementsPleins }} masquable={false} compact /></div>
         </div>
       )}

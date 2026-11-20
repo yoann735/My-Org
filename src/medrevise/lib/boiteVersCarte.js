@@ -119,3 +119,21 @@ export function carteDeBoite(boite, { recto, verso, theme = '', imagePlace = nul
   }
   return { ...base, verso: String(verso || '').replace(/\s+$/, ''), versoFormat: 'leger' };
 }
+
+/** (20/11) ce qu'une carte venue d'une boîte ajoute à la carte saisie dans le formulaire complet (components/
+ *  CarteAjoutFlashcard.jsx) : son id (→ srcId : la boîte retrouve sa carte), son lien `source` ; le balisage léger du
+ *  verso pour une carte texte ; pour une carte Tableau, le tableau complet de la boîte (`grille` : couleurs, fusions)
+ *  tant que ses cases n'ont pas été retouchées (sinon la carte reste un tableau simple, celui du formulaire) et l'image
+ *  de la boîte. `raw` null (éditeur de masques) : id + source seulement. */
+export function complementsDeBoite(prerempli, raw) {
+  if (!prerempli) return {};
+  const out = { id: prerempli.id, source: prerempli.source };
+  if (!raw) return out;
+  if (raw.tableau) {
+    const memes = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const t0 = prerempli.tableau || {};
+    if (prerempli.grille && memes(raw.tableau.colonnes, t0.colonnes) && memes(raw.tableau.lignes, t0.lignes)) out.grille = prerempli.grille;
+    if (prerempli.imageId && !raw.imageId) { out.imageId = prerempli.imageId; out.imagePlace = prerempli.imagePlace || 'recto'; }
+  } else if (prerempli.versoFormat === 'leger' && !raw.occlusion) out.versoFormat = 'leger';
+  return out;
+}
