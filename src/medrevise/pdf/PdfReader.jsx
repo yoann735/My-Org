@@ -147,6 +147,7 @@ import { ChoixFiche, ChoixSeanceFiche } from './ChoixFiche.jsx';
 import { EditeurCorrespondance, ListeNonReplacees } from './Correspondance.jsx';
 import { nettoyerCollage } from '../lib/collageListes.js';
 import { sansTaillesCollees } from '../lib/taillesTexte.js';
+import { copiable, copies, decalage, memoriser, presseObjets, oublier, htmlJeton, jetonDe, texteObjets } from '../lib/copieObjets.js';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
 const dansLeTableau = (el) => !!(el && el.closest && el.closest('.tb'));
 /* (14/11) texte d'une boîte : 1re frappe écrite aussitôt, puis au plus toutes les 200 ms (< 300 ms après chaque frappe) */
@@ -3500,6 +3501,135 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     window.addEventListener('keydown', clavier);
     return () => { window.removeEventListener('pointerdown', dehors, true); window.removeEventListener('keydown', clavier); };
   }, [sel]);
+
+  /* ---- COPIER / COLLER / DUPLIQUER LES OBJETS (20/11, lib/copieObjets.js) ----
+     ⌘C / Ctrl+C copie l'objet sélectionné (presse-papiers de l'onglet, tous documents) ; ⌘V / Ctrl+V colle au pointeur
+     s'il est sur une page, sinon décalé de 16 px ; ⌘D / Ctrl+D duplique sur place, décalé de 16 px, et sélectionne la
+     copie. En écriture (boîte, champ, tableau) et quand du texte est sélectionné : comportement normal du texte. Le
+     presse-papiers du système reçoit le texte des objets et un jeton : une copie faite ailleurs ensuite (texte, image)
+     reprend la main au collage. Une copie passe par l'historique (annulable) et l'écriture continue (cmdCreer → put). */
+  const copieCtx = useRef({});
+  copieCtx.current = { pageSizes, nsAnnot, modeDoc, pageCourante, hist, boiteFraiche };
+  const pointeurRef = useRef(null);
+  useEffect(() => {
+    if (!pret) return undefined;
+    const KIND_SEL = { libre: 'boite', texte: 'texte', forme: 'forme', image: 'image', trait: 'trait', question: 'question' };
+    const objetsSelectionnes = () => {
+      const s0 = selRef.current;
+      if (!s0 || s0.kind === 'fleche') return [];
+      const r = (editsRef.current || []).find((a) => a.id === s0.id);
+      return r && copiable(r) ? [copieCtx.current.boiteFraiche(r.id, r) || r] : [];
+    };
+    // le geste vaut-il pour les OBJETS ? (pas en écriture, pas dans un champ, pas sur du texte sélectionné)
+    const libre = (e) => {
+      if (activeEditIdRef.current) return false;
+      const t = e && e.target, a = document.activeElement;
+      if (cibleEditable(t) || cibleEditable(a) || dansLeTableau(t) || dansLeTableau(a)) return false;
+      if (t && t.closest && t.closest('.day-pop, [role="dialog"], .mf-menu')) return false;
+      const g = window.getSelection && window.getSelection();
+      return !(g && !g.isCollapsed && String(g).trim());
+    };
+    const pageSous = () => {
+      const p = pointeurRef.current;
+      if (!p) return null;
+      const el = document.elementFromPoint(p.x, p.y);
+      const pg = el && el.closest && el.closest('.pdfr-page');
+      const sz = pg && copieCtx.current.pageSizes.find((s) => String(s.cle) === pg.dataset.cle);
+      if (!sz) return null;
+      const r = pg.getBoundingClientRect();
+      return { cle: sz.cle, sz, x: (p.x - r.left) / r.width, y: (p.y - r.top) / r.height };
+    };
+    const coller = async (objets, { surPlace = false, n = 1 } = {}) => {
+      const { pageSizes: ps, nsAnnot: ns, modeDoc: doc, pageCourante: pc } = copieCtx.current;
+      if (!objets.length || !ps.length) return;
+      const ici = !surPlace && pageSous();
+      const memeDoc = objets[0].ficheId === ns;
+      const pageOrig = memeDoc ? ps.find((s) => s.cle === objets[0].page) : null;
+      const cible = ici ? ici.sz : surPlace ? pageOrig : pageOrig || ps[Math.max(0, pc - 1)];
+      if (!cible) return;
+      const { dx, dy } = decalage(cible.width, cible.height);
+      // image dans un DOCUMENT : jamais flottante (règle du 10/10) — un bloc du flux, comme tout ajout d'image
+      const images = doc ? objets.filter((o) => o.kind === 'image') : [];
+      const reste = objets.filter((o) => !images.includes(o));
+      for (const im of images) { const b = await getBlob(im.blobId); if (b) await ajouterImageRef.current(new File([b], im.nom || 'image.png', { type: b.type || 'image/png' }), null, im.blobId); }
+      if (!reste.length) return;
+      const zMax = Math.max(0, ...(editsRef.current || []).filter((a) => a.kind === 'image' && a.page === cible.cle && a.ficheId === ns).map((a) => a.z || 0));
+      const recs = copies(reste, { ficheId: ns, page: cible.cle, genId, zMax,
+        ...(ici ? { point: { x: Math.max(0, Math.min(1, ici.x)), y: Math.max(0, Math.min(1, ici.y)) } } : { dx: dx * n, dy: dy * n }) });
+      if (!recs.length) return;
+      const lib = surPlace ? (recs.length > 1 ? 'Objets dupliqués' : 'Objet dupliqué') : (recs.length > 1 ? 'Objets collés' : 'Objet collé');
+      await copieCtx.current.hist.appliquer(cmdGroupe(lib, recs.map((r) => cmdCreer('annotations', r, lib))));
+      setSel({ id: recs[recs.length - 1].id, kind: KIND_SEL[recs[recs.length - 1].kind] || 'boite' });
+    };
+    let aCopier = null, collageRecu = false, attente = null;
+    const clavier = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || e.altKey || e.shiftKey || e.defaultPrevented) return;
+      const k = e.code === 'KeyC' ? 'c' : e.code === 'KeyV' ? 'v' : e.code === 'KeyD' ? 'd' : String(e.key || '').toLowerCase();
+      if (!['c', 'v', 'd'].includes(k) || !libre(e)) return;
+      if (k === 'd') {
+        const o = objetsSelectionnes();
+        if (!o.length) return; // rien de sélectionné : le raccourci du navigateur reste le sien
+        e.preventDefault(); e.stopPropagation();
+        coller(o, { surPlace: true });
+        return;
+      }
+      if (k === 'c') {
+        const o = objetsSelectionnes();
+        if (!o.length) return;
+        // le presse-papiers du système est écrit à l'événement « copy » qui suit (texte + jeton)
+        aCopier = memoriser(o, texteObjets(o)); aCopier.ecrit = false; aCopier.n = 0;
+        return;
+      }
+      // ⌘V : l'événement « paste » décide (jeton) ; s'il ne vient pas (navigateur qui ne le lance pas hors d'un champ),
+      // la copie d'objets de l'onglet est collée
+      const p = presseObjets();
+      if (!p) return;
+      collageRecu = false;
+      clearTimeout(attente);
+      attente = setTimeout(() => { if (!collageRecu && presseObjets() === p) { p.n = (p.n || 0) + 1; coller(p.objets, { n: p.n }); } }, 150);
+    };
+    const copie = (e) => {
+      if (!aCopier) { oublier(); return; } // une copie faite ailleurs (texte…) : la copie d'objets n'est plus la dernière
+      if (!e.clipboardData) { aCopier = null; return; }
+      try {
+        e.clipboardData.setData('text/plain', aCopier.texte || '');
+        e.clipboardData.setData('text/html', htmlJeton(aCopier));
+        e.preventDefault(); aCopier.ecrit = true;
+      } catch (x) { /* presse-papiers refusé : la copie reste dans l'onglet */ }
+      aCopier = null;
+    };
+    const coupe = () => { oublier(); };
+    const collage = (e) => {
+      collageRecu = true; clearTimeout(attente);
+      const p = presseObjets();
+      if (!p || !libre(e)) return;
+      const d = e.clipboardData;
+      const jeton = d ? jetonDe(d.getData('text/html')) : null;
+      const fichiers = d && [...(d.files || [])].length > 0;
+      // le jeton de CETTE copie, ou (copie jamais écrite au système) un presse-papiers sans image
+      if (jeton ? jeton !== p.jeton : (p.ecrit || fichiers)) { if (jeton || p.ecrit) oublier(); return; }
+      e.preventDefault(); e.stopImmediatePropagation();
+      p.n = (p.n || 0) + 1;
+      coller(p.objets, { n: p.n });
+    };
+    const bouge = (e) => { pointeurRef.current = e.pointerType === 'touch' ? null : { x: e.clientX, y: e.clientY }; };
+    window.addEventListener('keydown', clavier, true);
+    document.addEventListener('copy', copie, true);
+    document.addEventListener('cut', coupe, true);
+    window.addEventListener('paste', collage, true);
+    window.addEventListener('pointermove', bouge, { passive: true, capture: true });
+    window.addEventListener('pointerdown', bouge, { passive: true, capture: true });
+    return () => {
+      clearTimeout(attente);
+      window.removeEventListener('keydown', clavier, true);
+      document.removeEventListener('copy', copie, true);
+      document.removeEventListener('cut', coupe, true);
+      window.removeEventListener('paste', collage, true);
+      window.removeEventListener('pointermove', bouge, { capture: true });
+      window.removeEventListener('pointerdown', bouge, { capture: true });
+    };
+  }, [pret]); // eslint-disable-line react-hooks/exhaustive-deps
   const supprimerBoite = async (b) => {
     if (!b) return;
     const actuel = boiteFraiche(b.id, b); // restaurer la boîte AVEC son texte le plus récent
