@@ -7,6 +7,7 @@
    Toute réponse à une flashcard est journalisée, interrupteur FSRS ON ou OFF.
    ============================================================ */
 import { get, set, values, keys, del, delMany, getMany, setMany, entries, createStore } from 'idb-keyval';
+import { sansAnnulees } from '../lib/retourSeance.js';
 
 const S_JOURNAL = createStore('medrevise-review_log', 'v1');
 const S_ENVOI = createStore('medrevise-review_log_outbox', 'v1');
@@ -50,7 +51,8 @@ export async function integrerEntrees(entrees) {
 }
 
 export const toutLeJournal = async () => (await values(S_JOURNAL)) || [];
-export async function journalDeCarte(cardId) { return (await toutLeJournal()).filter((e) => e.card_id === cardId); }
+/** (20/11) sans les entrées annulées (lib/retourSeance.js) : la reconstruction FSRS les ignore, comme le compteur de vues */
+export async function journalDeCarte(cardId) { return sansAnnulees((await toutLeJournal()).filter((e) => e.card_id === cardId)); }
 export async function compteJournal() { return ((await keys(S_JOURNAL)) || []).length; }
 export async function idsEnAttente() { return ((await keys(S_ENVOI)) || []).map(String); }
 export async function entreesEnAttente() {

@@ -10,18 +10,31 @@
    entrée nouvelle (notation locale ou entrée reçue du cloud, journal.js prévient ses abonnés avec ces entrées). Un id
    d'entrée n'est compté qu'une fois. LECTURE SEULE : ce module n'écrit rien, ni carte, ni journal, ni Supabase.
    SEUL calcul du compteur : tout affichage, tri ou filtre passe par vuesDe / useVues.
+   (20/11, docs/compte-rendu-seance-passer-precedente-et-formulaire-fc.md) une notation ANNULÉE (renotée depuis
+   « ← Précédente » : entrée d'annulation qui référence la ligne annulée, lib/retourSeance.js) ne compte pas — quel que
+   soit l'ordre d'arrivée des deux entrées : une carte renotée compte une seule fois.
    ============================================================ */
 import { useSyncExternalStore } from 'react';
 import { toutLeJournal, surChangementJournal } from '../journal/journal.js';
+import { estAnnulation } from './retourSeance.js';
 
 /** une entrée du journal est-elle une vue ? */
 export const estVue = (e) => !!e && typeof e.card_id === 'string' && Number.isInteger(e.rating) && e.rating >= 1 && e.rating <= 4;
 
 /** compte (pur) : Map(cardId → n) à partir d'une liste d'entrées */
-export function compterVues(entrees, comptes = new Map(), dejaVus = new Set()) {
+export function compterVues(entrees, comptes = new Map(), dejaVus = new Set(), annulees = new Set()) {
   for (const e of entrees || []) {
+    if (estAnnulation(e)) {
+      const a = e.details.annule;
+      if (annulees.has(a)) continue;
+      annulees.add(a);
+      // l'entrée annulée était déjà comptée : on la retire
+      if (dejaVus.has(a) && typeof e.card_id === 'string') comptes.set(e.card_id, Math.max(0, (comptes.get(e.card_id) || 0) - 1));
+      continue;
+    }
     if (!estVue(e) || dejaVus.has(e.id)) continue;
     dejaVus.add(e.id);
+    if (annulees.has(e.id)) continue;
     comptes.set(e.card_id, (comptes.get(e.card_id) || 0) + 1);
   }
   return comptes;
@@ -45,6 +58,7 @@ export const dansTranches = (comptes, id, tranches) => !tranches || !tranches.le
 /* ---- la mémoire partagée (un seul calcul pour toute l'app) ---- */
 let comptes = new Map();
 const dejaVus = new Set();
+const annulees = new Set();
 let pret = false;
 let instantane = { comptes, pret, version: 0 };
 let chargement = null;
@@ -58,9 +72,9 @@ function ecouter() {
   if (ecoute) return; ecoute = true;
   surChangementJournal((neuves) => {
     if (!Array.isArray(neuves) || !neuves.length) return;
-    const avant = dejaVus.size;
-    compterVues(neuves, comptes, dejaVus);
-    if (dejaVus.size !== avant) { comptes = new Map(comptes); publier(); }
+    const avant = dejaVus.size + annulees.size;
+    compterVues(neuves, comptes, dejaVus, annulees);
+    if (dejaVus.size + annulees.size !== avant) { comptes = new Map(comptes); publier(); }
   });
 }
 
@@ -69,7 +83,7 @@ export function chargerVues() {
   ecouter();
   if (!chargement) {
     chargement = toutLeJournal().then((tout) => {
-      compterVues(tout, comptes, dejaVus);
+      compterVues(tout, comptes, dejaVus, annulees);
       comptes = new Map(comptes); pret = true; publier();
       return comptes;
     }).catch(() => { pret = true; publier(); return comptes; });

@@ -16,6 +16,7 @@ import { reglagesFC, BORNES_FC } from '../lib/apprentissageFC.js';
 import { deliverFile } from '../lib/backupExport.js';
 import { toutLeJournal, surChangementJournal } from '../journal/journal.js';
 import { rapportOmbre } from '../scheduler/ombre.js';
+import { sansAnnulees } from '../lib/retourSeance.js';
 import { migrerVersFSRS, basculerVersFSRS, chargeParJour } from '../scheduler/migration.js';
 import { jourDeRevision } from '../scheduler/jours.js';
 import { VERSION_TS_FSRS } from '../scheduler/config.js';
@@ -40,7 +41,7 @@ export function ReglagesFSRS({ ctx }) {
   const ix = useMemo(() => index(ctx.db), [ctx.db]);
   const planifiee = (q) => isFicheScheduled(ctx.db, ix.fById[q.ficheId], ix);
   const cartes = useMemo(() => (ctx.db.questions || []).filter((q) => q.type === 'flashcard' && planifiee(q)), [ctx.db, ix]); // eslint-disable-line react-hooks/exhaustive-deps
-  const ombre = useMemo(() => rapportOmbre(cartes, journal, jour, nextDate), [cartes, journal, jour]);
+  const ombre = useMemo(() => rapportOmbre(cartes, sansAnnulees(journal), jour, nextDate), [cartes, journal, jour]); // (20/11) notations annulées ignorées
   const migree = !!r.fsrsMigration;
 
   const enregistrer = (patch) => ctx.saveReglagesFC({ ...(ctx.reglagesFC || {}), ...patch });

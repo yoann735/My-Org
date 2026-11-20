@@ -2131,6 +2131,20 @@ html[data-app-actif="medrevise"] .pdfr-textlayer ::selection, html[data-app-acti
 .sfc-btn:has(.sfc-btn-sous) { flex-direction: column; gap: 1px; line-height: 1.15; }
 .sfc-btn-sous { font-size: 11.5px; font-weight: 500; opacity: .88; }
 @media (max-width: 480px) { .sfc-notes.quatre { grid-template-columns: repeat(2, 1fr); } }
+/* (20/11, docs/compte-rendu-seance-passer-precedente-et-formulaire-fc.md) « ← Précédente » / « Passer → » : discrets, sous la carte */
+.sfc-nav { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -4px 0 -2px; }
+.sfc-nav-btn {
+  min-height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--text-2);
+  font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: color .12s ease, background .12s ease, border-color .12s ease;
+  touch-action: manipulation;
+}
+.sfc-nav-btn:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
+.sfc-nav-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sfc-nav-btn:disabled { opacity: .35; cursor: default; }
+.sfc-nav-info { font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
+.sfc-btn.choisi { box-shadow: 0 0 0 2px var(--bg, #000), 0 0 0 4px color-mix(in srgb, var(--accent) 70%, #fff); }
+.sfc-fin-actions { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+@media (hover: none) { .sfc-nav-btn { min-height: 40px; } }
 .sfc-centre { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; padding: 30px 22px calc(30px + env(safe-area-inset-bottom)); }
 .sfc-centre .sfc-btn { min-width: 240px; margin-top: 8px; }
 .sfc-titre { font-size: 22px; font-weight: 700; }

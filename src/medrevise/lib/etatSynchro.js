@@ -79,7 +79,7 @@ export function collecterEnAttente({ avecCloud = false } = {}) {
     const NOTES = { 1: 'À revoir', 2: 'Difficile', 3: 'Correct', 4: 'Facile' };
     for (const j of await fileEnvoiLecture()) {
       const carte = j.carte ? await getOne('questions', j.carte).catch(() => null) : null;
-      const quoi = j.evenement === 'passage_revision' ? 'passage en révision' : NOTES[j.note] || null;
+      const quoi = j.evenement === 'passage_revision' ? 'passage en révision' : j.evenement === 'annulation' ? 'annulation d’une note' : NOTES[j.note] || null;
       const titre = (carte ? '« ' + titreLisible(carte, j.carte) + ' »' : 'réponse à une carte') + (quoi ? ' · ' + quoi : '');
       elements.push({
         cle: 'j:' + j.id, type: 'revision', genre: j.evenement ? 'Événement du journal' : 'Révision', id: j.id, titre,

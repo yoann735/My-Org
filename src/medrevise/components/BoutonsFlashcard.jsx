@@ -19,7 +19,8 @@ const CLASSES = {
   seance: { conteneur: 'sfc-notes quatre', bouton: (b) => 'sfc-btn ' + ({ fail: 'rate', hard: 'difficile', good: 'correct', easy: 'facile' })[b.classe], sous: 'sfc-btn-sous' },
 };
 
-export function BoutonsFlashcard({ carte, reglages, onNoter, disabled = false, variante = 'bureau' }) {
+/* (20/11) `choisi` : la note donnée avant (carte précédente de la séance) — son bouton est signalé */
+export function BoutonsFlashcard({ carte, reglages, onNoter, disabled = false, variante = 'bureau', choisi = null }) {
   const c = CLASSES[variante] || CLASSES.bureau;
   const [astuceVue, setAstuceVue] = useState(lireAstuceVue);
   const prevus = useMemo(() => { try { return carte ? intervallesPrevus(carte, reglages) : {}; } catch (e) { return {}; } }, [carte, reglages]);
@@ -33,8 +34,8 @@ export function BoutonsFlashcard({ carte, reglages, onNoter, disabled = false, v
       {!astuceVue && <div className="bf-astuce" role="note" style={{ left: variante === 'mobile' || (variante === 'seance' && typeof window !== 'undefined' && window.innerWidth <= 480) ? '75%' : '37.5%' }}>{ASTUCE}</div>}
       <div className={c.conteneur}>
         {BOUTONS.map((b) => (
-          <button key={b.cle} type="button" className={c.bouton(b)} disabled={disabled} onClick={() => noter(b)}
-            title={b.cle === 'hard' ? ASTUCE : undefined} data-note={b.note}>
+          <button key={b.cle} type="button" className={c.bouton(b) + (choisi === b.note ? ' choisi' : '')} disabled={disabled} onClick={() => noter(b)}
+            title={choisi === b.note ? 'Ta note d’avant — choisis-en une autre pour la changer' : b.cle === 'hard' ? ASTUCE : undefined} data-note={b.note} data-choisi={choisi === b.note ? '' : undefined}>
             {b.libelle}
             <span className={c.sous}>{prevus[b.note] ? libelleIntervalle(prevus[b.note].jours) : ' '}</span>
           </button>

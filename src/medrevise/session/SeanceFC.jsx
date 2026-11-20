@@ -16,6 +16,13 @@
    cochés, maximums — et figée : la reprise retire ce qui n'est plus à faire, n'ajoute rien. Carte NOUVELLE
    (bloc Nouvelles) : recto → retourner → « Garder en nouvelle » (revient au prochain bloc, rien n'est écrit) ou
    « Passer en révision » (J0 = aujourd'hui, scheduler/noter.js passerEnRevision). Révisions et Retard : 4 boutons.
+   (20/11, docs/compte-rendu-seance-passer-precedente-et-formulaire-fc.md) PASSER ET REVENIR EN ARRIÈRE :
+   « Passer → » (touche →) : la carte sort de la séance sans RIEN écrire (aucune note, aucune entrée de journal, aucune
+   date) — elle reste due. « ← Précédente » (touche ←) : remonte jusqu'à la première carte ; « Suivante → » ramène là où
+   on était, sans effet. Sur une carte précédente, renoter annule l'ancienne notation (lib/retourSeance.js : champs remis
+   comme avant + entrée d'annulation au journal) puis applique la nouvelle à l'heure d'origine ; « À apprendre » et le
+   carnet s'y utilisent comme sur la carte courante. `etat.actes[id]` garde ce qui a été fait de chaque carte,
+   `etat.vue` l'index regardé (null = la carte courante).
    ============================================================ */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
@@ -33,7 +40,9 @@ import { estMolecule } from '../molecule/carte.js';
 import { FaceMoleculeParesseuse } from '../molecule/Paresseux.jsx';
 import { ImageFlashcard, imageAuRecto, imageAuVerso } from '../components/FlashcardImage.jsx';
 import { isCloze, parseCloze, highlightClozeWords } from '../lib/cloze.js';
-import { put, getMeta, setMeta } from '../lib/storage.js';
+import { put, getMeta, setMeta, putBackup } from '../lib/storage.js';
+import { ajouterAuJournal, appareil } from '../journal/journal.js';
+import { acteEcrit, acteSansEcriture, estAnnulable, restaurer, entreeAnnulation, remplacerContribution } from '../lib/retourSeance.js';
 import { garderTagEnBase } from '../lib/aApprendre.js';
 import { todayISO } from '../lib/sm2.js';
 import { index, isFicheScheduled, nextDate, dateBase } from '../lib/planning.js';
@@ -95,7 +104,8 @@ export function nouvelleSeance(db, today, choix, stats = null) {
   const { ids, categorie } = composerSeance(categoriser(cartes, today, nextDate, dep), c, (id) => (parId[id] || {}).ficheId, Math.random, rangs && ((f) => rangs.get(f)), dep);
   return {
     v: VERSION_SEANCE, date: today, phase: ids.length ? 'cartes' : 'fin', cartes: ids, categorie, choix: c, idx: 0, nTotal: ids.length, parCours: c.parCours,
-    faites: { revisions: 0, rates: 0, notees: 0, passees: 0, gardees: 0 }, ms: { revisions: 0 }, debut: new Date().toISOString(),
+    faites: { revisions: 0, rates: 0, notees: 0, passees: 0, gardees: 0, sautees: 0 }, ms: { revisions: 0 }, debut: new Date().toISOString(),
+    actes: {}, vue: null,
   };
 }
 
@@ -108,6 +118,23 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
   const [enCours, setEnCours] = useState(false); // une réponse est en train d'être enregistrée
   const [intercalairePasse, setIntercalairePasse] = useState(-1); // (26/10) index dont l'intercalaire « Cours suivant » a été passé
   const etatRef = useRef(null); etatRef.current = etat;
+  /* (20/11) raccourcis : ← Précédente, → Passer / Suivante (libres dans la séance ; ignorés dans un champ, avec une touche
+     de modification, ou quand une fenêtre est ouverte par-dessus — carte agrandie, carnet) */
+  const navRef = useRef({});
+  useEffect(() => {
+    const touche = (e) => {
+      if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const t = e.target;
+      if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      const f = e.key === 'ArrowLeft' ? navRef.current.precedente : navRef.current.passer;
+      if (!f) return;
+      e.preventDefault();
+      f();
+    };
+    window.addEventListener('keydown', touche);
+    return () => window.removeEventListener('keydown', touche);
+  }, []);
   const cartesRef = useRef(cartes); cartesRef.current = cartes;
 
   /* ---- chrono ACTIF (pause quand l'onglet est caché) ---- */
@@ -178,23 +205,57 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
 
   if (!etat) return <div className={'sfc' + (pleinEcran ? ' plein-ecran' : '')}><div className="sfc-centre"><span className="hint">Préparation de la séance…</span></div></div>;
 
-  const id = etat.phase === 'cartes' ? etat.cartes[etat.idx] : null;
+  /* (20/11) carte regardée : une carte PRÉCÉDENTE (`etat.vue` < idx) ou la carte courante */
+  const enVue = etat.vue != null && etat.vue >= 0 && etat.vue < etat.idx;
+  const pos = enVue ? etat.vue : etat.idx;
+  const id = enVue || etat.phase === 'cartes' ? etat.cartes[pos] : null;
   const carte = id ? cartes[id] || null : null;
   const total = etat.cartes.length;
+  const acte = enVue && id ? (etat.actes || {})[id] || null : null;
+  // la carte telle qu'avant sa notation (intervalles sous les boutons, Nouvelle ou non) — son contenu reste l'actuel
+  const carteAvant = carte && acte ? restaurer(carte, acte) : carte;
+
+  const sauverCarte = async (c) => { const r = await put('questions', await garderTagEnBase(c)); setCartes((x) => ({ ...x, [r.id]: r })); cartesRef.current = { ...cartesRef.current, [r.id]: r }; return r; };
+  /* (20/11) annule l'acte d'une carte précédente avant de la renoter : sauvegarde, champs remis, entrée d'annulation */
+  const annulerActe = async (c, a) => {
+    if (!estAnnulable(a)) return c;
+    await putBackup(`pre-renotation-${c.id}-${Date.now()}`, { carte: c, acte: a });
+    const remise = restaurer(c, a);
+    const r = await sauverCarte(remise);
+    try { await ajouterAuJournal(entreeAnnulation(c, remise, a, { reglages: ctx.reglagesFC, appareil: appareil() })); } catch (e) { console.warn('[MedRevise] journal : annulation non écrite', e); } // eslint-disable-line no-console
+    return r;
+  };
+  /* état suivant après l'acte `nouveau` sur la carte regardée : courante → idx + 1 ; précédente → la suivante */
+  const avancer = (e, idCarte, nouveau) => {
+    const ancien = (e.actes || {})[idCarte] || null;
+    const actes = { ...(e.actes || {}), [idCarte]: nouveau };
+    const faites = remplacerContribution(e.faites, ancien, nouveau);
+    if (enVue) {
+      const v = e.vue + 1;
+      return { ...e, actes, faites, vue: v < e.idx ? v : null };
+    }
+    return { ...e, actes, faites, idx: e.idx + 1, vue: null };
+  };
 
   const noter = async (note) => {
     if (!carte || enCours) return;
     setEnCours(true);
     try {
       let e = tick();
-      const s = await repondreFlashcard(carte, note, {
-        reglages: ctx.reglagesFC,
-        sauver: async (c) => { const r = await put('questions', await garderTagEnBase(c)); setCartes((x) => ({ ...x, [r.id]: r })); return r; },
+      const a0 = acte;
+      const base = a0 ? await annulerActe(carte, a0) : carte;
+      // renotation : à l'heure de la notation d'origine (une carte seulement passée → maintenant)
+      const maintenant = a0 && estAnnulable(a0) ? new Date(a0.le) : new Date();
+      let nouveau = null;
+      const s = await repondreFlashcard(base, note, {
+        reglages: ctx.reglagesFC, maintenant,
+        surEntree: (entree, maj) => { nouveau = acteEcrit('note', base, maj, { note, le: maintenant.toISOString(), entreeId: entree.id }); },
+        sauver: sauverCarte,
       });
-      e = { ...e, idx: e.idx + 1, faites: { ...e.faites, revisions: e.faites.revisions + 1, notees: (e.faites.notees || 0) + 1, rates: e.faites.rates + (note === 1 ? 1 : 0) } };
+      e = avancer(e, carte.id, nouveau);
       // la séance se remet d'accord à chaque réponse (v2 : cartes devenues dues entre-temps ajoutées)
-      e = remettreDAccord(e, { ...cartesRef.current, [s.id]: s });
-      setRetournee(false);
+      if (!enVue) e = remettreDAccord(e, { ...cartesRef.current, [s.id]: s });
+      setRetournee(!!(e.vue != null && (e.actes || {})[e.cartes[e.vue]] && e.actes[e.cartes[e.vue]].type !== 'skip'));
       await ecrire(e);
     } finally { setEnCours(false); }
   };
@@ -205,24 +266,64 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
     setEnCours(true);
     try {
       let e = tick();
+      const a0 = acte;
+      // (20/11) carte précédente : même choix qu'avant → rien à refaire, on avance
+      const meme = a0 && ((passer && a0.type === 'passage') || (!passer && a0.type === 'garder'));
       let s = carte;
-      if (passer) {
-        s = await passerFlashcardEnRevision(carte, {
-          reglages: ctx.reglagesFC,
-          sauver: async (c) => { const r = await put('questions', await garderTagEnBase(c)); setCartes((x) => ({ ...x, [r.id]: r })); return r; },
-        });
+      // l'heure d'origine suit la carte d'un choix à l'autre (renotation à l'heure de la première décision)
+      let nouveau = meme ? a0 : acteSansEcriture('garder', a0 && a0.type !== 'skip' ? a0.le : undefined);
+      if (!meme) {
+        const base = a0 ? await annulerActe(carte, a0) : carte;
+        s = base;
+        if (passer) {
+          const maintenant = a0 && (a0.type === 'garder' || estAnnulable(a0)) ? new Date(a0.le) : new Date();
+          s = await passerFlashcardEnRevision(base, {
+            reglages: ctx.reglagesFC, maintenant,
+            surEntree: (entree, maj) => { nouveau = acteEcrit('passage', base, maj, { le: maintenant.toISOString(), entreeId: entree.id }); },
+            sauver: sauverCarte,
+          });
+        }
       }
-      e = { ...e, idx: e.idx + 1, faites: { ...e.faites, revisions: e.faites.revisions + 1, [passer ? 'passees' : 'gardees']: ((e.faites[passer ? 'passees' : 'gardees']) || 0) + 1 } };
-      e = remettreDAccord(e, { ...cartesRef.current, [s.id]: s });
-      setRetournee(false);
+      e = avancer(e, carte.id, nouveau);
+      if (!enVue) e = remettreDAccord(e, { ...cartesRef.current, [s.id]: s });
+      setRetournee(!!(e.vue != null && (e.actes || {})[e.cartes[e.vue]] && e.actes[e.cartes[e.vue]].type !== 'skip'));
       await ecrire(e);
     } finally { setEnCours(false); }
   };
-
+  /* (20/11) PASSER → (carte courante) : rien n'est écrit, la carte reste due. SUIVANTE → (carte précédente) : sans effet. */
+  const allerA = async (e, v) => {
+    const vue = v != null && v >= 0 && v < e.idx ? v : null;
+    const a = vue != null ? (e.actes || {})[e.cartes[vue]] : null;
+    setRetournee(!!(a && a.type !== 'skip'));
+    await ecrire({ ...e, vue });
+  };
+  const passer = async () => {
+    if (enCours) return;
+    const e = tick() || etatRef.current;
+    if (enVue) { await allerA(e, e.vue + 1); return; }
+    if (!carte || etat.phase !== 'cartes') return;
+    setEnCours(true);
+    try {
+      let n = avancer(e, carte.id, (e.actes || {})[carte.id] && (e.actes || {})[carte.id].type !== 'skip' ? e.actes[carte.id] : acteSansEcriture('skip'));
+      n = remettreDAccord(n, cartesRef.current);
+      setRetournee(false);
+      await ecrire(n);
+    } finally { setEnCours(false); }
+  };
+  const precedente = async () => {
+    if (enCours) return;
+    const e = tick() || etatRef.current;
+    const depuisPos = e.vue != null && e.vue < e.idx ? e.vue : e.idx;
+    if (depuisPos <= 0) return;
+    setIntercalairePasse(-1);
+    await allerA(e, depuisPos - 1);
+  };
+  navRef.current = { passer, precedente };
   const pct = total ? (etat.idx / total) * 100 : 100;
   // (24/10) carte du bloc Nouvelles (séance v3) encore nouvelle : Garder / Passer au lieu des 4 boutons
+  // (20/11) carte précédente : d'après son état d'AVANT la notation (une Nouvelle passée en révision reste une Nouvelle ici)
   const categorie = (id && etat.categorie && etat.categorie[id]) || null;
-  const nouvelle = !!carte && categorie === 'nouvelles' && estNouvelle(carte);
+  const nouvelle = !!carteAvant && categorie === 'nouvelles' && estNouvelle(carteAvant);
   /* (26/10) REGROUPÉE PAR COURS : le cours de la carte en haut de la carte ; au changement de cours, un court
      intercalaire « Cours suivant : <nom> · N cartes », passé d'un tap */
   const coursDe = (k) => { const q = cartes[etat.cartes[k]]; return q ? q.ficheId : null; };
@@ -230,17 +331,27 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
   const coursActuel = etat.parCours && carte ? carte.ficheId : null;
   let nCours = 0;
   if (coursActuel) for (let k = etat.idx; k < etat.cartes.length && coursDe(k) === coursActuel; k++) nCours++;
-  const intercalaire = !!coursActuel && etat.idx > 0 && coursDe(etat.idx - 1) !== coursActuel && intercalairePasse !== etat.idx;
+  const intercalaire = !enVue && !!coursActuel && etat.idx > 0 && coursDe(etat.idx - 1) !== coursActuel && intercalairePasse !== etat.idx;
+  const choixAvant = acte ? (acte.type === 'note' ? acte.note : acte.type) : null; // le choix d'origine, signalé sur son bouton
+  const nav = etat.phase === 'cartes' || enVue ? (
+    <div className="sfc-nav" role="group" aria-label="Navigation dans la séance">
+      <button type="button" className="sfc-nav-btn" data-nav="precedente" disabled={enCours || pos <= 0} onClick={precedente}
+        title="Carte précédente (←) — la revoir, changer sa note">← Précédente</button>
+      {enVue && <span className="sfc-nav-info" data-nav-info="">{acte && acte.type === 'skip' ? 'Passée sans note' : 'Déjà faite'}</span>}
+      <button type="button" className="sfc-nav-btn" data-nav={enVue ? 'suivante' : 'passer'} disabled={enCours || (!enVue && !carte)} onClick={passer}
+        title={enVue ? 'Revenir là où tu en étais (→) — sans rien changer' : 'Passer cette carte (→) — rien n’est enregistré, elle reste à faire'}>{enVue ? 'Suivante →' : 'Passer →'}</button>
+    </div>
+  ) : null;
 
   return (
     <div className={'sfc' + (pleinEcran ? ' plein-ecran' : '')}>
       <div className="sfc-tete">
         <button type="button" className="sfc-quitter" onClick={terminer} aria-label="Quitter la séance" title="Quitter (la séance reprend où tu t'es arrêté)"><Icon name="x" size={18} /></button>
         <div className="sfc-barre"><span style={{ width: Math.max(0, Math.min(100, pct)) + '%' }} /></div>
-        <span className="sfc-prog tnum">{etat.phase === 'cartes' ? `${Math.min(etat.idx + 1, total)} / ${total}` : ''}</span>
+        <span className="sfc-prog tnum">{etat.phase === 'cartes' || enVue ? `${Math.min(pos + 1, total)} / ${total}` : ''}</span>
       </div>
 
-      {etat.phase === 'fin' && (
+      {etat.phase === 'fin' && !enVue && (
         <div className="sfc-centre sfc-synthese">
           <div className="sfc-titre">{etat.faites.revisions ? 'Séance terminée' : 'Rien à faire aujourd’hui'}</div>
           {etat.faites.revisions > 0 && (
@@ -249,14 +360,18 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
               {etat.faites.passees > 0 && <div><span className="tnum">{etat.faites.passees}</span> passée{etat.faites.passees > 1 ? 's' : ''} en révision</div>}
               {etat.faites.gardees > 0 && <div><span className="tnum">{etat.faites.gardees}</span> gardée{etat.faites.gardees > 1 ? 's' : ''} en nouvelle{etat.faites.gardees > 1 ? 's' : ''}</div>}
               {etat.faites.rates > 0 && <div><span className="tnum">{etat.faites.rates}</span> à revoir</div>}
+              {etat.faites.sautees > 0 && <div><span className="tnum">{etat.faites.sautees}</span> passée{etat.faites.sautees > 1 ? 's' : ''} sans note</div>}
               <div><span className="tnum">{Math.max(1, Math.round((etat.ms.revisions || 0) / 60000))}</span> min de travail réel</div>
             </div>
           )}
-          <button type="button" className="sfc-btn principal" onClick={terminer}>Terminer</button>
+          <div className="sfc-fin-actions">
+            {etat.idx > 0 && <button type="button" className="sfc-nav-btn" data-nav="precedente" onClick={precedente} title="Carte précédente (←) — la revoir, changer sa note">← Précédente</button>}
+            <button type="button" className="sfc-btn principal" onClick={terminer}>Terminer</button>
+          </div>
         </div>
       )}
 
-      {etat.phase === 'cartes' && carte && intercalaire && (
+      {(etat.phase === 'cartes' || enVue) && carte && intercalaire && (
         <button type="button" className="sfc-centre sfc-intercalaire" data-intercalaire={coursActuel} onClick={() => setIntercalairePasse(etat.idx)}
           title="Toucher pour continuer">
           <span className="sfc-intercalaire-sur">Cours suivant</span>
@@ -266,7 +381,7 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
         </button>
       )}
 
-      {etat.phase === 'cartes' && carte && !intercalaire && (
+      {(etat.phase === 'cartes' || enVue) && carte && !intercalaire && (
         <div className="sfc-corps">
           <div className="sfc-etiquette" data-categorie={categorie}>{nouvelle ? 'Nouvelle carte' : categorie === 'retard' ? 'En retard' : (carte.historique || []).some((h) => h && h.qualite != null) ? 'Révision' : 'Nouvelle carte'}
             {coursActuel && <span className="sfc-cours" data-cours={coursActuel} title={titreCours(coursActuel)}>{titreCours(coursActuel)}</span>}</div>
@@ -280,14 +395,17 @@ export function SeanceFC({ ctx, onQuit = null, pleinEcran = false }) {
           {/* (26/10) « À apprendre » toujours là (recto compris) ; le carnet, lui, après le retournement */}
           <ActionsCarte ctx={ctx} carte={carte} carnet={retournee} />
           </div>
+          {nav}
           <div className="sfc-bas">
             {!retournee && <button type="button" className="sfc-btn neutre" onClick={() => setRetournee(true)}>Voir la réponse</button>}
-            {retournee && !nouvelle && <BoutonsFlashcard carte={carte} reglages={ctx.reglagesFC} onNoter={noter} disabled={enCours} variante="seance" />}
+            {retournee && !nouvelle && <BoutonsFlashcard carte={carteAvant} reglages={ctx.reglagesFC} onNoter={noter} disabled={enCours} variante="seance" choisi={typeof choixAvant === 'number' ? choixAvant : null} />}
             {retournee && nouvelle && (
               <div className="sfc-notes deux" role="group" aria-label="Carte nouvelle">
-                <button type="button" className="sfc-btn neutre" data-nouvelle="garder" disabled={enCours} onClick={() => nouvelleSuivante(false)}>
+                <button type="button" className={'sfc-btn neutre' + (choixAvant === 'garder' ? ' choisi' : '')} data-nouvelle="garder" disabled={enCours} onClick={() => nouvelleSuivante(false)}
+                  title={choixAvant === 'garder' ? 'Ton choix d’avant' : undefined}>
                   Garder en nouvelle<span className="sfc-btn-sous">revient au prochain bloc</span></button>
-                <button type="button" className="sfc-btn principal" data-nouvelle="passer" disabled={enCours} onClick={() => nouvelleSuivante(true)}>
+                <button type="button" className={'sfc-btn principal' + (choixAvant === 'passage' ? ' choisi' : '')} data-nouvelle="passer" disabled={enCours} onClick={() => nouvelleSuivante(true)}
+                  title={choixAvant === 'passage' ? 'Ton choix d’avant' : undefined}>
                   Passer en révision<span className="sfc-btn-sous">J0 aujourd’hui · revient demain</span></button>
               </div>
             )}
