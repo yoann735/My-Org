@@ -1,0 +1,4 @@
+[tel] ✅ MealWeek : même texte avant / après (2473 car.)
+[tel] ✅ hub : capture identique pixel par pixel (0 pixel(s) différent(s), essai 1/1)
+[tel] ✅ MealWeek ouverte : capture identique pixel par pixel (0 pixel(s) différent(s), essai 1/1)
+[tel] ✅ aucune erreur console 

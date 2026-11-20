@@ -1,0 +1,35 @@
+[ordinateur (fenêtre étroite)] ✅ shell du téléphone : carte « Dessin » présente
+[ordinateur (fenêtre étroite)] ✅ écran Dessin ouvert
+[ordinateur (fenêtre étroite)] ✅ dessin de test chargé (2 traits, 1 forme, 1 zone de texte)
+[ordinateur (fenêtre étroite)] ✅ outil crayon : un nouveau trait tracé et gardé — 4 → 5
+[ordinateur (fenêtre étroite)] ✅ menu Exporter : option « Enregistrer en PNG »
+[ordinateur (fenêtre étroite)] ✅ bouton libellé et infobulle — Télécharger le dessin en image PNG
+[ordinateur (fenêtre étroite)] ✅ aucune fiche choisie : dessin-sans-cours-<date>.png
+[ordinateur (fenêtre étroite)] ✅ fond transparent : téléchargement (pas de feuille de partage sur ordinateur) — telechargement
+[ordinateur (fenêtre étroite)] ✅ fond transparent : haute résolution ×3.00 (1377×1959 px pour un dessin de 459×653)
+[ordinateur (fenêtre étroite)] ✅ fond transparent : cadré sur le contenu, petite marge sur les 4 côtés, rien de coupé — 17.0 / 17.0 / 29.0 / 17.3 px
+[ordinateur (fenêtre étroite)] ✅ fond transparent : traits et forme présents — teal 27987, rouge 17798
+[ordinateur (fenêtre étroite)] ✅ fond transparent : zone de texte peinte dans l’image (« Néphron distal ») — 15955 px orange, 2 mots
+[ordinateur (fenêtre étroite)] ✅ transparent : fond réellement transparent (alpha 0) — 96 % de pixels transparents
+[ordinateur (fenêtre étroite)] ✅ fond transparent : le trait « blanc » suit la règle de l’export vers un cours (foncé) — foncé 29089, clair 0
+[ordinateur (fenêtre étroite)] ✅ fond blanc : téléchargement (pas de feuille de partage sur ordinateur) — telechargement
+[ordinateur (fenêtre étroite)] ✅ fond blanc : haute résolution ×3.00 (1377×1959 px pour un dessin de 459×653)
+[ordinateur (fenêtre étroite)] ✅ fond blanc : cadré sur le contenu, petite marge sur les 4 côtés, rien de coupé — 17.0 / 17.0 / 29.0 / 17.3 px
+[ordinateur (fenêtre étroite)] ✅ fond blanc : traits et forme présents — teal 27987, rouge 17798
+[ordinateur (fenêtre étroite)] ✅ fond blanc : zone de texte peinte dans l’image (« Néphron distal ») — 15827 px orange, 2 mots
+[ordinateur (fenêtre étroite)] ✅ blanc : fond blanc opaque — 255,255,255,255
+[ordinateur (fenêtre étroite)] ✅ fond blanc : le trait « blanc » suit la règle de l’export vers un cours (foncé) — foncé 29089, clair 2
+[ordinateur (fenêtre étroite)] ✅ fond noir : téléchargement (pas de feuille de partage sur ordinateur) — telechargement
+[ordinateur (fenêtre étroite)] ✅ fond noir : haute résolution ×3.00 (1377×1959 px pour un dessin de 459×653)
+[ordinateur (fenêtre étroite)] ✅ fond noir : cadré sur le contenu, petite marge sur les 4 côtés, rien de coupé — 17.0 / 17.0 / 29.0 / 17.3 px
+[ordinateur (fenêtre étroite)] ✅ fond noir : traits et forme présents — teal 27987, rouge 17798
+[ordinateur (fenêtre étroite)] ✅ fond noir : zone de texte peinte dans l’image (« Néphron distal ») — 15820 px orange, 2 mots
+[ordinateur (fenêtre étroite)] ✅ noir : fond noir opaque (#111114) — 17,17,20,255
+[ordinateur (fenêtre étroite)] ✅ fond noir : le trait « blanc » suit la règle de l’export vers un cours (clair sur noir) — foncé 2, clair 29089
+[ordinateur (fenêtre étroite)] ✅ fichier téléchargé : dessin-nephrologie-le-rein-<date>.png — dessin-nephrologie-le-rein-2026-11-20.png
+[ordinateur (fenêtre étroite)] ✅ fichier sur disque : PNG valide, mêmes dimensions — 1377×1959
+[ordinateur (fenêtre étroite)] ✅ aucune donnée modifiée par l’enregistrement PNG (dessin, fiches, annotations, sessions, positions, localStorage)
+[ordinateur (fenêtre étroite)] ✅ envoi vers un cours : toujours fonctionnel — Enregistré sur ce téléphone
+[ordinateur (fenêtre étroite)] ✅ envoi vers un cours : même rendu qu’avant (×2), zone de texte transmise à part (éditable sur l’ordi) — [{"ficheId":"png-c1","largeur":918,"hauteur":1306,"textes":1}]
+[ordinateur (fenêtre étroite)] ✅ aucune erreur console
+[ordinateur (fenêtre étroite)] ✅ tout est vert

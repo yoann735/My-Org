@@ -1,0 +1,6 @@
+[téléphone] ✅ session en direct (moteur)
+[téléphone] ✅ barre « Transcription en cours » affichée
+[téléphone] ✅ shell du téléphone : pas de bouton « Revenir au cours » (aucun lecteur ici)
+[téléphone] ✅ Arrêter : la barre garde son rôle
+[téléphone] ✅ aucune erreur console
+[téléphone] ✅ tout est vert

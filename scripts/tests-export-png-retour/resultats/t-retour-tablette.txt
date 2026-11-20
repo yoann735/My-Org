@@ -1,0 +1,23 @@
+[iPad] ✅ cours ouvert dans la Bibliothèque
+[iPad] ✅ lecteur sur la page 7 — {"page":7,"fraction":0.352,"scrollTop":2707,"lue":null}
+[iPad] ✅ session en direct démarrée (faux Deepgram, micro simulé)
+[iPad] ✅ des segments arrivent, une connexion Deepgram ouverte — 3 segments
+[iPad] ✅ cours quitté (Accueil) : barre « Transcription en cours » affichée
+[iPad] ✅ la barre est un bouton « Revenir au cours », avec infobulle — Revenir au cours « Rein retour » (panneau Transcript)
+[iPad] ✅ après 2 autres écrans (Réviser, Carnet) : transcription toujours en direct
+[iPad] ✅ la transcription a continué pendant l’absence — 3 → 8 segments
+[iPad] ✅ toucher la barre : le lecteur se rouvre
+[iPad] ✅ retour dans la Bibliothèque, sur le bon cours (« Rein retour ») — Rein retour
+12 p.
+[iPad] ✅ même page et même endroit — avant p.7 0.352 → après p.7 0.352
+[iPad] ✅ panneau Transcript ouvert sur la session en direct — {"onglet":"Transcript","direct":true,"barre":false}
+[iPad] ✅ la barre flottante disparaît (le cours affiche sa propre session)
+[iPad] ✅ même session, toujours en direct, le texte continue — même id — 11 segments
+[iPad] ✅ jamais coupée ni redémarrée : une seule connexion Deepgram tout du long — 1 connexion(s), 27 → 27 ouvertures au journal
+[iPad] ✅ crédits Deepgram : carte toujours affichée
+[iPad] ✅ session arrêtée et enregistrée
+[iPad] ✅ une seule session enregistrée pour ce cours (pas de redémarrage) — tsmwpdwuk7nqp6
+[iPad] ✅ aucun segment « trou » (gap)
+[iPad] ✅ aucun trou dans le texte transcrit : mots consécutifs du cours dicté, du début à la fin — 29 mots, 0 rupture(s)
+[iPad] ✅ aucune erreur console
+[iPad] ✅ tout est vert

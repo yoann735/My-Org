@@ -1,0 +1,23 @@
+[ordinateur] ✅ cours ouvert dans la Bibliothèque
+[ordinateur] ✅ lecteur sur la page 7 — {"page":7,"fraction":0.351,"scrollTop":5681,"lue":7}
+[ordinateur] ✅ session en direct démarrée (faux Deepgram, micro simulé)
+[ordinateur] ✅ des segments arrivent, une connexion Deepgram ouverte — 3 segments
+[ordinateur] ✅ cours quitté (Accueil) : barre « Transcription en cours » affichée
+[ordinateur] ✅ la barre est un bouton « Revenir au cours », avec infobulle — Revenir au cours « Rein retour » (panneau Transcript)
+[ordinateur] ✅ après 2 autres écrans (Réviser, Carnet) : transcription toujours en direct
+[ordinateur] ✅ la transcription a continué pendant l’absence — 3 → 9 segments
+[ordinateur] ✅ toucher la barre : le lecteur se rouvre
+[ordinateur] ✅ retour dans la Bibliothèque, sur le bon cours (« Rein retour ») — Rein retour
+12 pages
+[ordinateur] ✅ même page et même endroit — avant p.7 0.351 → après p.7 0.351
+[ordinateur] ✅ panneau Transcript ouvert sur la session en direct — {"onglet":"Transcript\nTrans.","direct":true,"barre":false}
+[ordinateur] ✅ la barre flottante disparaît (le cours affiche sa propre session)
+[ordinateur] ✅ même session, toujours en direct, le texte continue — même id — 11 segments
+[ordinateur] ✅ jamais coupée ni redémarrée : une seule connexion Deepgram tout du long — 1 connexion(s), 27 → 27 ouvertures au journal
+[ordinateur] ✅ crédits Deepgram : carte toujours affichée
+[ordinateur] ✅ session arrêtée et enregistrée
+[ordinateur] ✅ une seule session enregistrée pour ce cours (pas de redémarrage) — tsmwpdvm9oo3ht
+[ordinateur] ✅ aucun segment « trou » (gap)
+[ordinateur] ✅ aucun trou dans le texte transcrit : mots consécutifs du cours dicté, du début à la fin — 33 mots, 0 rupture(s)
+[ordinateur] ✅ aucune erreur console
+[ordinateur] ✅ tout est vert

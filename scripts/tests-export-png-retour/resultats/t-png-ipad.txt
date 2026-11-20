@@ -1,0 +1,36 @@
+[iPad mini] ✅ shell du téléphone : carte « Dessin » présente
+[iPad mini] ✅ écran Dessin ouvert
+[iPad mini] ✅ dessin de test chargé (2 traits, 1 forme, 1 zone de texte)
+[iPad mini] ✅ outil crayon : un nouveau trait tracé et gardé — 4 → 5
+[iPad mini] ✅ menu Exporter : option « Enregistrer en PNG »
+[iPad mini] ✅ bouton libellé et infobulle — Enregistrer l’image (Photos) ou l’envoyer : feuille de partage
+[iPad mini] ✅ aucune fiche choisie : dessin-sans-cours-<date>.png
+[iPad mini] ✅ fond transparent : feuille de partage ouverte avec un fichier PNG — {"n":1,"nom":"dessin-nephrologie-le-rein-2026-11-20.png","type":"image/png"}
+[iPad mini] ✅ fond transparent : nom « dessin-<cours>-<date>.png » — dessin-nephrologie-le-rein-2026-11-20.png
+[iPad mini] ✅ fond transparent : haute résolution ×3.00 (1377×2589 px pour un dessin de 459×863)
+[iPad mini] ✅ fond transparent : cadré sur le contenu, petite marge sur les 4 côtés, rien de coupé — 17.0 / 17.0 / 29.0 / 17.7 px
+[iPad mini] ✅ fond transparent : traits et forme présents — teal 27987, rouge 17798
+[iPad mini] ✅ fond transparent : zone de texte peinte dans l’image (« Néphron distal ») — 15955 px orange, 2 mots
+[iPad mini] ✅ transparent : fond réellement transparent (alpha 0) — 97 % de pixels transparents
+[iPad mini] ✅ fond transparent : le trait « blanc » suit la règle de l’export vers un cours (foncé) — foncé 29092, clair 0
+[iPad mini] ✅ fond blanc : feuille de partage ouverte avec un fichier PNG — {"n":1,"nom":"dessin-nephrologie-le-rein-2026-11-20.png","type":"image/png"}
+[iPad mini] ✅ fond blanc : nom « dessin-<cours>-<date>.png » — dessin-nephrologie-le-rein-2026-11-20.png
+[iPad mini] ✅ fond blanc : haute résolution ×3.00 (1377×2589 px pour un dessin de 459×863)
+[iPad mini] ✅ fond blanc : cadré sur le contenu, petite marge sur les 4 côtés, rien de coupé — 17.0 / 17.0 / 29.0 / 17.7 px
+[iPad mini] ✅ fond blanc : traits et forme présents — teal 27987, rouge 17798
+[iPad mini] ✅ fond blanc : zone de texte peinte dans l’image (« Néphron distal ») — 15827 px orange, 2 mots
+[iPad mini] ✅ blanc : fond blanc opaque — 255,255,255,255
+[iPad mini] ✅ fond blanc : le trait « blanc » suit la règle de l’export vers un cours (foncé) — foncé 29092, clair 2
+[iPad mini] ✅ fond noir : feuille de partage ouverte avec un fichier PNG — {"n":1,"nom":"dessin-nephrologie-le-rein-2026-11-20.png","type":"image/png"}
+[iPad mini] ✅ fond noir : nom « dessin-<cours>-<date>.png » — dessin-nephrologie-le-rein-2026-11-20.png
+[iPad mini] ✅ fond noir : haute résolution ×3.00 (1377×2589 px pour un dessin de 459×863)
+[iPad mini] ✅ fond noir : cadré sur le contenu, petite marge sur les 4 côtés, rien de coupé — 17.0 / 17.0 / 29.0 / 17.7 px
+[iPad mini] ✅ fond noir : traits et forme présents — teal 27987, rouge 17798
+[iPad mini] ✅ fond noir : zone de texte peinte dans l’image (« Néphron distal ») — 15820 px orange, 2 mots
+[iPad mini] ✅ noir : fond noir opaque (#111114) — 17,17,20,255
+[iPad mini] ✅ fond noir : le trait « blanc » suit la règle de l’export vers un cours (clair sur noir) — foncé 2, clair 29092
+[iPad mini] ✅ aucune donnée modifiée par l’enregistrement PNG (dessin, fiches, annotations, sessions, positions, localStorage)
+[iPad mini] ✅ envoi vers un cours : toujours fonctionnel — Enregistré sur ce téléphone
+[iPad mini] ✅ envoi vers un cours : même rendu qu’avant (×2), zone de texte transmise à part (éditable sur l’ordi) — [{"ficheId":"png-c1","largeur":918,"hauteur":1726,"textes":1}]
+[iPad mini] ✅ aucune erreur console
+[iPad mini] ✅ tout est vert

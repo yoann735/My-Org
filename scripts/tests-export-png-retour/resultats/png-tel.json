@@ -1,0 +1,107 @@
+{
+ "transparent": {
+  "info": {
+   "nom": "dessin-nephrologie-le-rein-2026-11-20.png",
+   "largeur": 1377,
+   "hauteur": 1809,
+   "octets": 89681,
+   "voie": "partage",
+   "echelle": 3,
+   "w": 459,
+   "h": 603,
+   "mots": 2
+  },
+  "a": {
+   "W": 1377,
+   "H": 1809,
+   "coin": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "x0": 51,
+   "y0": 51,
+   "x1": 1289,
+   "y1": 1755,
+   "orange": 15955,
+   "teal": 27987,
+   "rouge": 17798,
+   "fonce": 29091,
+   "clair": 0,
+   "transp": 2390764,
+   "octets": 89681,
+   "type": "image/png"
+  }
+ },
+ "blanc": {
+  "info": {
+   "nom": "dessin-nephrologie-le-rein-2026-11-20.png",
+   "largeur": 1377,
+   "hauteur": 1809,
+   "octets": 92030,
+   "voie": "partage",
+   "echelle": 3,
+   "w": 459,
+   "h": 603,
+   "mots": 2
+  },
+  "a": {
+   "W": 1377,
+   "H": 1809,
+   "coin": [
+    255,
+    255,
+    255,
+    255
+   ],
+   "x0": 51,
+   "y0": 51,
+   "x1": 1289,
+   "y1": 1755,
+   "orange": 15827,
+   "teal": 27987,
+   "rouge": 17798,
+   "fonce": 29091,
+   "clair": 2,
+   "transp": 0,
+   "octets": 92030,
+   "type": "image/png"
+  }
+ },
+ "noir": {
+  "info": {
+   "nom": "dessin-nephrologie-le-rein-2026-11-20.png",
+   "largeur": 1377,
+   "hauteur": 1809,
+   "octets": 92171,
+   "voie": "partage",
+   "echelle": 3,
+   "w": 459,
+   "h": 603,
+   "mots": 2
+  },
+  "a": {
+   "W": 1377,
+   "H": 1809,
+   "coin": [
+    17,
+    17,
+    20,
+    255
+   ],
+   "x0": 51,
+   "y0": 51,
+   "x1": 1289,
+   "y1": 1755,
+   "orange": 15820,
+   "teal": 27987,
+   "rouge": 17798,
+   "fonce": 2,
+   "clair": 29091,
+   "transp": 0,
+   "octets": 92171,
+   "type": "image/png"
+  }
+ }
+}

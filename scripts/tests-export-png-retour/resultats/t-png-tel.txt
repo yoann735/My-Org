@@ -1,0 +1,38 @@
+[téléphone] ✅ shell du téléphone : carte « Dessin » présente
+[téléphone] ✅ écran Dessin ouvert
+[téléphone] ✅ dessin de test chargé (2 traits, 1 forme, 1 zone de texte)
+[téléphone] ✅ outil crayon : un nouveau trait tracé et gardé — 4 → 5
+[téléphone] ✅ menu Exporter : option « Enregistrer en PNG »
+[téléphone] ✅ bouton libellé et infobulle — Enregistrer l’image (Photos) ou l’envoyer : feuille de partage
+[téléphone] ✅ aucune fiche choisie : dessin-sans-cours-<date>.png
+[téléphone] ✅ fond transparent : feuille de partage ouverte avec un fichier PNG — {"n":1,"nom":"dessin-nephrologie-le-rein-2026-11-20.png","type":"image/png"}
+[téléphone] ✅ fond transparent : nom « dessin-<cours>-<date>.png » — dessin-nephrologie-le-rein-2026-11-20.png
+[téléphone] ✅ fond transparent : haute résolution ×3.00 (1377×1809 px pour un dessin de 459×603)
+[téléphone] ✅ fond transparent : cadré sur le contenu, petite marge sur les 4 côtés, rien de coupé — 17.0 / 17.0 / 29.0 / 17.7 px
+[téléphone] ✅ fond transparent : traits et forme présents — teal 27987, rouge 17798
+[téléphone] ✅ fond transparent : zone de texte peinte dans l’image (« Néphron distal ») — 15955 px orange, 2 mots
+[téléphone] ✅ transparent : fond réellement transparent (alpha 0) — 96 % de pixels transparents
+[téléphone] ✅ fond transparent : le trait « blanc » suit la règle de l’export vers un cours (foncé) — foncé 29091, clair 0
+[téléphone] ✅ fond blanc : feuille de partage ouverte avec un fichier PNG — {"n":1,"nom":"dessin-nephrologie-le-rein-2026-11-20.png","type":"image/png"}
+[téléphone] ✅ fond blanc : nom « dessin-<cours>-<date>.png » — dessin-nephrologie-le-rein-2026-11-20.png
+[téléphone] ✅ fond blanc : haute résolution ×3.00 (1377×1809 px pour un dessin de 459×603)
+[téléphone] ✅ fond blanc : cadré sur le contenu, petite marge sur les 4 côtés, rien de coupé — 17.0 / 17.0 / 29.0 / 17.7 px
+[téléphone] ✅ fond blanc : traits et forme présents — teal 27987, rouge 17798
+[téléphone] ✅ fond blanc : zone de texte peinte dans l’image (« Néphron distal ») — 15827 px orange, 2 mots
+[téléphone] ✅ blanc : fond blanc opaque — 255,255,255,255
+[téléphone] ✅ fond blanc : le trait « blanc » suit la règle de l’export vers un cours (foncé) — foncé 29091, clair 2
+[téléphone] ✅ fond noir : feuille de partage ouverte avec un fichier PNG — {"n":1,"nom":"dessin-nephrologie-le-rein-2026-11-20.png","type":"image/png"}
+[téléphone] ✅ fond noir : nom « dessin-<cours>-<date>.png » — dessin-nephrologie-le-rein-2026-11-20.png
+[téléphone] ✅ fond noir : haute résolution ×3.00 (1377×1809 px pour un dessin de 459×603)
+[téléphone] ✅ fond noir : cadré sur le contenu, petite marge sur les 4 côtés, rien de coupé — 17.0 / 17.0 / 29.0 / 17.7 px
+[téléphone] ✅ fond noir : traits et forme présents — teal 27987, rouge 17798
+[téléphone] ✅ fond noir : zone de texte peinte dans l’image (« Néphron distal ») — 15820 px orange, 2 mots
+[téléphone] ✅ noir : fond noir opaque (#111114) — 17,17,20,255
+[téléphone] ✅ fond noir : le trait « blanc » suit la règle de l’export vers un cours (clair sur noir) — foncé 2, clair 29091
+[téléphone] ✅ partage refusé faute de geste : bouton « Partager l’image » proposé
+[téléphone] ✅ un toucher sur « Partager l’image » : feuille de partage ouverte
+[téléphone] ✅ aucune donnée modifiée par l’enregistrement PNG (dessin, fiches, annotations, sessions, positions, localStorage)
+[téléphone] ✅ envoi vers un cours : toujours fonctionnel — Enregistré sur ce téléphone
+[téléphone] ✅ envoi vers un cours : même rendu qu’avant (×2), zone de texte transmise à part (éditable sur l’ordi) — [{"ficheId":"png-c1","largeur":918,"hauteur":1206,"textes":1}]
+[téléphone] ✅ aucune erreur console
+[téléphone] ✅ tout est vert
