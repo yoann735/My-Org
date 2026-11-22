@@ -23,12 +23,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Modal, ConfirmModal } from './ui.jsx';
-import { SchemaEditor, ZonesLayer, centroidOf } from '../pages/ImportAnatomieVisuel.jsx';
+import { SchemaEditor, ZonesLayer, centroidOf, nouvelleZone } from '../pages/ImportAnatomieVisuel.jsx';
 import { blobURL, putBlob } from '../lib/storage.js';
 import { cleanCoche, appendItemsToFiche, themeFlashcardsDeFiche } from '../lib/import.js';
 import { toInternalItem } from '../lib/adapter.js';
 import { imageDuPressePapier, texteDuPressePapier } from '../lib/collerImage.js';
 import { MasquerMots } from './MasquerMots.jsx';
+import { BoutonPromptMasques, CollerMasques } from './ImportMasquesIA.jsx';
+import { resumeImport } from '../lib/masquesIA.js';
 import { useAgrandir } from './Visionneuse.jsx';
 
 export const RECTO_DEFAUT = 'Que cachent les masques ?';
@@ -120,6 +122,12 @@ export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, on
   const [recto, setRecto] = useState((initial && initial.recto) || (rectoInitial && rectoInitial.trim()) || RECTO_DEFAUT);
   const [verso, setVerso] = useState(() => (initial && initial.verso && !initial.versoAuto ? initial.verso : (versoInitial || '')));
   const [masquerMots, setMasquerMots] = useState(false);
+  /* MASQUES D'UNE IA (22/11) : `collerIA` ouvre le panneau ; `importIA` = l'import en APERÇU
+     { ids, rects: Map id → rect d'origine des non recalés, resume, avertissements } — les masques sont déjà
+     dans l'éditeur (déplaçables / supprimables comme les autres), « Valider » les garde, « Annuler » les retire. */
+  const [collerIA, setCollerIA] = useState(false);
+  const [importIA, setImportIA] = useState(null);
+  const [aVerifierIA, setAVerifierIA] = useState(() => new Map()); // id → rect importé non recalé (contour orange)
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState(null);
   const urls = useRef(new Set());
@@ -194,7 +202,25 @@ export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, on
 
   const nbMasques = coches.filter((c) => c.kind === 'zone').length;
   const nbTextes = coches.filter((c) => c.kind !== 'zone').length;
-  const pret = !!image && nbMasques > 0 && !occupe;
+  const pret = !!image && nbMasques > 0 && !occupe && !importIA;
+
+  const recevoirImportIA = ({ liste, avertissements }) => {
+    const nouveaux = liste.map((m, i) => nouvelleZone({ shape: 'rect', rect: { x: m.x, y: m.y, w: m.w, h: m.h } }, { numero: coches.length + i + 1, texte: m.label }));
+    const verif = new Map();
+    nouveaux.forEach((c, i) => { if (!liste[i].recale) verif.set(c.id, JSON.stringify(c.zone.rect)); });
+    setCoches((c) => [...c, ...nouveaux]);
+    setAVerifierIA((v) => new Map([...v, ...verif]));
+    setImportIA({ ids: new Set(nouveaux.map((c) => c.id)), resume: resumeImport(liste), avertissements });
+    setCollerIA(false);
+  };
+  const annulerImportIA = () => {
+    if (!importIA) return;
+    setCoches((c) => c.filter((k) => !importIA.ids.has(k.id)));
+    setAVerifierIA((v) => new Map([...v].filter(([id]) => !importIA.ids.has(id))));
+    setImportIA(null);
+  };
+  // un masque « à vérifier » déplacé ou redimensionné a été vérifié : plus de contour orange
+  const idsAVerifier = new Set([...aVerifierIA].filter(([id, r]) => { const c = coches.find((k) => k.id === id); return c && c.zone && JSON.stringify(c.zone.rect) === r; }).map(([id]) => id));
 
   const enregistrer = async () => {
     if (!pret) return;
@@ -237,14 +263,28 @@ export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, on
         <span><span className="occ-puce texte" /> <b>Texte</b> = visible sur l’image</span>
         <button type="button" className="btn sm occ-mots-btn" disabled={!image} onClick={() => setMasquerMots(true)}
           title="L’OCR lit l’image : touche les mots à cacher"><Icon name="search" size={13} /> Masquer des mots</button>
+        <BoutonPromptMasques />
+        <button type="button" className="btn sm occ-ia-btn" disabled={!image || !!importIA} data-ouvrir-coller-masques onClick={() => setCollerIA((x) => !x)}
+          title="Colle la réponse d’une IA (JSON de masques) : chaque masque est recalé sur son étiquette lue par l’OCR"><Icon name="sparkle" size={13} /> Coller des masques</button>
       </div>
+      {collerIA && image && !importIA && <CollerMasques image={image} onImporter={recevoirImportIA} onFermer={() => setCollerIA(false)} />}
+      {importIA && (
+        <div className="occ-ia-bandeau" role="status" data-import-masques>
+          <Icon name="sparkle" size={14} />
+          <span className="occ-ia-resume"><b>{importIA.resume}</b>{idsAVerifier.size ? <span className="occ-ia-orange"> · contour orange = à vérifier</span> : null}</span>
+          {importIA.avertissements.length > 0 && <span className="occ-ia-avert">{importIA.avertissements.join(' ')}</span>}
+          <span style={{ flex: 1 }} />
+          <button type="button" className="btn ghost sm" title="Retirer les masques importés" onClick={annulerImportIA}>Annuler</button>
+          <button type="button" className="btn primary sm" title="Garder les masques importés dans la carte" onClick={() => setImportIA(null)}><Icon name="check" size={13} /> Valider</button>
+        </div>
+      )}
       {masquerMots && image && (
         <MasquerMots image={image} onFermer={() => setMasquerMots(false)}
           onAjouter={(nouveaux) => { setCoches((c) => [...c, ...nouveaux.map((k, i) => ({ ...k, numero: c.length + i + 1 }))]); setMasquerMots(false); }} />
       )}
 
       <SchemaEditor image={image} setImage={choisirImage} coches={coches} setCoches={setCoches} sansExport variante="flashcard"
-        imageMaxH="max(220px, calc(86vh - 350px))" />
+        aVerifier={idsAVerifier} imageMaxH="max(220px, calc(86vh - 350px))" />
 
       <div className="occ-champs">
         <div className="imp-field">
@@ -265,7 +305,7 @@ export function OcclusionEditorModal({ ctx, ficheId, initial = null, onClose, on
       {/* pied COLLANT : compteur + actions toujours visibles, même image très haute */}
       <div className="imp-actions occ-pied" style={{ alignItems: 'center' }}>
         <span className="hint" style={{ marginRight: 'auto' }}>
-          {!image ? 'Ajoute d’abord une image.' : nbMasques === 0 ? 'Dessine au moins un masque (une zone).' : `${nbMasques} masque${nbMasques > 1 ? 's' : ''}${nbTextes ? ` · ${nbTextes} texte${nbTextes > 1 ? 's' : ''}` : ''}`}
+          {!image ? 'Ajoute d’abord une image.' : importIA ? 'Valide ou annule les masques importés.' : nbMasques === 0 ? 'Dessine au moins un masque (une zone).' : `${nbMasques} masque${nbMasques > 1 ? 's' : ''}${nbTextes ? ` · ${nbTextes} texte${nbTextes > 1 ? 's' : ''}` : ''}`}
         </span>
         <button type="button" className="btn ghost" onClick={demanderFermeture}>Annuler</button>
         <button type="button" className="btn primary" onClick={enregistrer} disabled={!pret}>

@@ -117,6 +117,22 @@ export function centroidOf(c) {
   return (c && c.ancre) || { x: 0.5, y: 0.5 };
 }
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+/* UNE zone (coche « zone ») à partir de sa géométrie : utilisée par le dessin à la main (addZone) ET par
+   l'import de masques produits par une IA (components/OcclusionImage.jsx, lib/masquesIA.js) — même structure,
+   même code. `style` absent = le style par défaut des formes. */
+export function nouvelleZone(zone, { numero = 1, texte = '' } = {}) {
+  const z = zone.fill === undefined && zone.stroke === undefined
+    ? { closed: true, fill: DEFAULT_COLOR, fillOpacity: DEFAULT_ZONE_OPACITY, stroke: DEFAULT_COLOR, strokeOpacity: DEFAULT_STROKE_OPACITY, strokeWidth: DEFAULT_STROKE_WIDTH, ...zone }
+    : zone;
+  const ctr = centroidOf({ kind: 'zone', zone: z });
+  const couleur = z.stroke || z.fill || DEFAULT_COLOR;
+  return {
+    id: genId('c'), kind: 'zone', zone: z,
+    // le libellé se pose à côté du centroïde ; ancre = centroïde (cohérence).
+    boite: { x: clamp01(ctr.x), y: clamp01(ctr.y - 0.02) }, ancre: { x: ctr.x, y: ctr.y },
+    texte, couleur, numero,
+  };
+}
 
 /* C — lissage LÉGER du pinceau libre : moyenne mobile pondérée (fenêtre 5, poids
    1-2-4-2-1) sur les points intérieurs, extrémités (départ/fin du geste) préservées
@@ -279,7 +295,9 @@ export function ImportAnatomieVisuel({ ctx }) {
 // `variante='flashcard'` (facultatif) : panneau de coche simplifié (Masque / Texte,
 // sans théorie ni synonymes). Absent : anatomie inchangée.
 // `imageMaxH` (facultatif) : hauteur maximale de l'image affichée (défaut inchangé).
-export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = false, variante = null, imageMaxH = 'min(64vh, 600px)' }) {
+// `aVerifier` (facultatif, 22/11) : ids des masques importés d'une IA non recalés par l'OCR → contour orange
+// « à vérifier » (affichage seulement, rien n'est stocké).
+export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = false, variante = null, imageMaxH = 'min(64vh, 600px)', aVerifier = null }) {
   const compact = variante === 'flashcard';
   const frameRef = useRef(null);
   const outerRef = useRef(null); // B — cadre visible (overflow:hidden) : reçoit le listener wheel natif
@@ -470,15 +488,7 @@ export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = 
 
   // crée une ZONE (toute forme) : mêmes champs qu'une coche + géométrie + style.
   const addZone = (zone) => {
-    const numero = coches.length + 1;
-    const ctr = centroidOf({ kind: 'zone', zone });
-    const couleur = zone.stroke || zone.fill || DEFAULT_COLOR;
-    const c = {
-      id: genId('c'), kind: 'zone', zone,
-      // le libellé se pose à côté du centroïde ; ancre = centroïde (cohérence).
-      boite: { x: clamp01(ctr.x), y: clamp01(ctr.y - 0.02) }, ancre: { x: ctr.x, y: ctr.y },
-      texte: '', couleur, numero,
-    };
+    const c = nouvelleZone(zone, { numero: coches.length + 1 });
     setCoches((cs) => [...cs, c]);
     setSelectedId(c.id);
   };
@@ -805,6 +815,14 @@ export function SchemaEditor({ image, setImage, coches, setCoches, sansExport = 
 
           {/* ZONES — sous les flèches/libellés */}
           <ZonesLayer coches={coches} selectedId={selectedId} mode={mode} onZonePointerDown={startZoneDrag} />
+          {aVerifier && aVerifier.size > 0 && (
+            <svg className="occ-averifier" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              {coches.filter((c) => aVerifier.has(c.id) && c.kind === 'zone' && c.zone && c.zone.rect).map((c) => {
+                const r = c.zone.rect;
+                return <rect key={'v' + c.id} x={r.x * 100} y={r.y * 100} width={r.w * 100} height={r.h * 100} rx="1.2" />;
+              })}
+            </svg>
+          )}
 
           {/* brouillon de tracé en cours (rect/ellipse/trait/pinceau/polygone) */}
           {(draftBox || draftLine || (draftPoly && draftPoly.length) || (draftPath && draftPath.length)) && (
