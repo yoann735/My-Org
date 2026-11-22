@@ -21,6 +21,15 @@ function recouvre(a, b) {
 
 export function creerMoteurTesseract(langues) {
   let workerP = null;
+  /* (22/11, docs/compte-rendu-masques-ia.md) lectures EN COURS : le service des PDF libère le moteur une minute après sa
+     dernière page (service.js), sans savoir qu'une image (« Masquer des mots », masques d'une IA) est peut-être en train
+     d'être lue sur le même worker — terminé en pleine reconnaissance, il laissait cette lecture en attente pour toujours.
+     La libération attend désormais la fin des lectures en cours. */
+  let enCours = 0; let liberationDemandee = false;
+  const terminerWorker = async () => {
+    const p = workerP; workerP = null; liberationDemandee = false;
+    if (p) { try { (await p).terminate(); } catch (e) { /* déjà terminé */ } }
+  };
   const worker = () => {
     if (!workerP) {
       workerP = createWorker(langues, OEM.LSTM_ONLY, {
@@ -68,6 +77,10 @@ export function creerMoteurTesseract(langues) {
     version: VERSION_TESSERACT,
     langues,
     async recognizePage(bitmap) {
+      enCours++;
+      try { return await this.lirePage(bitmap); } finally { enCours--; if (!enCours && liberationDemandee) await terminerWorker(); }
+    },
+    async lirePage(bitmap) {
       // Tesseract lit une image ENCODÉE : ImageBitmap → OffscreenCanvas → PNG (hors fil principal)
       const oc = new OffscreenCanvas(bitmap.width, bitmap.height);
       oc.getContext('bitmaprenderer').transferFromImageBitmap(bitmap);
@@ -89,8 +102,8 @@ export function creerMoteurTesseract(langues) {
       return { confidence: Math.round(data.confidence || 0), mots };
     },
     async liberer() {
-      const p = workerP; workerP = null;
-      if (p) { try { (await p).terminate(); } catch (e) { /* déjà terminé */ } }
+      if (enCours) { liberationDemandee = true; return; } // terminé dès la fin de la lecture en cours
+      await terminerWorker();
     },
   };
 }
