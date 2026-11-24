@@ -148,7 +148,7 @@ const ecart = (x, f) => { if (!f) return x; const o = new Float32Array(x.length)
 
 /** ressemblance d'image (0 … 1) entre la capture `a` et la page `b`. `fond` : la page moyenne du PDF — la structure est
  *  comparée en ÉCART à cette page moyenne, pour que deux diapos au même titre ne se ressemblent que par leurs photos. */
-export function ressemblanceImage(a, b, masque = null, fond = null) {
+export function ressemblanceImage(a, b, masque = null, fond = null, { fine = true } = {}) {
   const libre = (c) => !masque || !masque[c];
   const rL = correlation(ecart(a.L, fond && fond.L), ecart(b.L, fond && fond.L), (i) => libre(caseDeL(i)));
   const rG = correlation(ecart(a.G, fond && fond.G), ecart(b.G, fond && fond.G), libre);
@@ -164,11 +164,20 @@ export function ressemblanceImage(a, b, masque = null, fond = null) {
   if (!n) return 0;
   const sC = Math.exp(-(dC / n) / 0.06);
   const grossier = P_IMG.L * Math.max(0, rL) + P_IMG.G * Math.max(0, rG) + P_IMG.T * Math.max(0, rT) + P_IMG.C * sC + P_IMG.H * (sH / n);
-  const fin = ressemblanceFine(a, b, masque, fond);
+  const fin = fine ? ressemblanceFine(a, b, masque, fond) : null;
   const brut = fin == null ? grossier : (1 - P_IMG.FIN) * grossier + P_IMG.FIN * fin;
   // GARDE-FOU DE COULEUR : une galerie de visages grise ne « ressemble » pas à une coupe rose, même si leurs formes se tiennent
   const couleur = 0.5 * sC + 0.5 * (sH / n);
   return brut * (1 - P_IMG.COULEUR + P_IMG.COULEUR * couleur);
+}
+
+/** scores de toutes les pages : grossier partout, fin (pixel à pixel, plus coûteux) sur les `k` meilleures seulement */
+export function scoresPages(cap, pages, masque = null, fond = null, k = 8) {
+  const grossiers = pages.map((p) => ressemblanceImage(cap, p, masque, fond, { fine: false }));
+  const ordre = grossiers.map((v, i) => [v, i]).sort((x, y) => y[0] - x[0]).slice(0, k).map((x) => x[1]);
+  const out = grossiers.map((v) => v * 0.8); // hors des k meilleures : jamais devant une page comparée finement
+  for (const i of ordre) out[i] = ressemblanceImage(cap, pages[i], masque, fond);
+  return out;
 }
 
 /* ---------------- texte ---------------- */

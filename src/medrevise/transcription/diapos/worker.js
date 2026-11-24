@@ -19,7 +19,7 @@
    ============================================================ */
 import {
   signatureDe, signatureDepuisJson, signatureVersJson, ressemblanceImage, indexTexte, scoresTexte, decider,
-  trouverZones, differencesParCase, fondCommun, CX, CY,
+  trouverZones, differencesParCase, fondCommun, scoresPages, CX, CY,
 } from './moteur.js';
 
 const PETIT_W = 160; // image de détection du changement
@@ -202,7 +202,7 @@ function evaluer(src, z) {
   const masque = masqueRecadrage(z);
   const p = dessiner(src, SIG_W, z);
   const s = signatureDe(p.ctx.getImageData(0, 0, p.w, p.h).data, p.w, p.h);
-  const img = pages.map((pg) => ressemblanceImage(s, pg, masque, fond));
+  const img = scoresPages(s, pages, masque, fond);
   return { z, masque, img, meilleur: img.length ? Math.max(...img) : 0 };
 }
 
@@ -226,6 +226,7 @@ async function analyserImage(src, petit, t) {
     const aire = (z) => z.w * z.h;
     const admis = zone ? cands.filter((c) => c === zone || aire(c) >= aire(zone) * 0.75) : cands;
     for (const c of admis) {
+      if (ev && ev.z === zone && ev.meilleur >= 0.6) break; // la zone connue reconnaît une page : inutile de chercher ailleurs
       const e = chrono(() => evaluer(src, c));
       if (!ev) { ev = e; continue; }
       const marge = ev.z === zone ? 0.12 : (aire(e.z) < aire(ev.z) * 0.75 ? 0.08 : 0.01); // plus petit : doit faire nettement mieux
@@ -337,7 +338,7 @@ self.onmessage = async (ev) => {
       const s = signatureDe(p.ctx.getImageData(0, 0, p.w, p.h).data, p.w, p.h);
       fermer(m.bitmap);
       const masque = m.masque ? Uint8Array.from(m.masque) : null;
-      const img = pages.map((pg) => ressemblanceImage(s, pg, masque, fond));
+      const img = scoresPages(s, pages, masque, fond);
       const dec = decider(img, m.texte ? scoresTexte(m.texte, index) : null, m.courant || null);
       postMessage({ type: 'scores', id: m.id, page: dec.page, nonReconnue: dec.nonReconnue, ambigu: dec.ambigu, score: r3(dec.score), marge: r3(dec.marge), classement: dec.classement.map(([q, v]) => [q, r3(v)]) });
       break;
