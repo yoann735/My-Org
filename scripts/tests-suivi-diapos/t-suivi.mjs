@@ -71,17 +71,29 @@ async function principal() {
       console.log('DIAG ouvrir', titre, JSON.stringify(await app.ev(`({modal:!!document.querySelector('.day-pop'),fiches:[...document.querySelectorAll('.lt-fiche')].map(e=>e.innerText.slice(0,30)),rangee:[...document.querySelectorAll('.lt-fiche .lt-rangee')].map(e=>{const r=e.getBoundingClientRect();return [Math.round(r.x),Math.round(r.y),Math.round(r.width),Math.round(r.height)]}),url:location.pathname})`)));
       return false;
     };
+    /* Transcript › Transcrire › source « Onglet » › Démarrer (vrai geste : getDisplayMedia) — réessayé, les clics du banc
+       sur une fenêtre hors écran sont parfois perdus. Rend le nombre de mots validés par le faux Deepgram avant le départ. */
+    const demarrerOnglet = async () => {
+      await app.send('Page.bringToFront');
+      await app.ev(`([...document.querySelectorAll('.pm-seg-btn')].find(x=>x.innerText.trim().startsWith('Transcript'))||{click(){}}).click(),1`); await dormir(900);
+      let avant = 0;
+      for (let essai = 0; essai < 4 && !(await app.ev(`window.__transcription && window.__transcription.lireEtat().phase==='live'`)); essai++) {
+        if (!(await app.ev(`!!document.querySelector('.trx-feuille select')`))) { await app.ev(`([...document.querySelectorAll('.trx-accueil button')].find(x=>/Transcrire le cours/.test(x.innerText))||{click(){}}).click(),1`); await dormir(1500); }
+        if (!(await app.attendre(`!!document.querySelector('.trx-feuille select')`, 6000))) continue;
+        await app.ev(`(()=>{const s=document.querySelector('.trx-feuille select');const o=[...s.options].find(o=>o.value==='onglet');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(s,o.value);s.dispatchEvent(new Event('change',{bubbles:true}));return 1})()`);
+        await dormir(500);
+        avant = (await (await fetch(DEEPGRAM + '/__mots')).json()).total;
+        await app.attendre(`(()=>{const x=[...document.querySelectorAll('.trx-feuille button')].filter(x=>/Démarrer/.test(x.innerText)).pop();return !!x&&!x.disabled})()`, 10000);
+        await app.send('Page.bringToFront');
+        await app.clic(`[...document.querySelectorAll('.trx-feuille button')].filter(x=>/Démarrer/.test(x.innerText)).pop()`, 500);
+        await app.attendre(`window.__transcription.lireEtat().phase==='live'`, 12000);
+      }
+      return avant;
+    };
     ok(await ouvrir('Histologie générale (banc)'), 'cours « Histologie générale (banc) » ouvert dans le lecteur');
     const pageLecteur = () => app.ev(`parseInt((document.querySelector('.ptb-pages .tnum')||{}).innerText)`);
     const lecteurAvant = await pageLecteur();
-    /* Transcript › Transcrire › source « Onglet » › Démarrer (vrai geste : getDisplayMedia) */
-    await app.clic(`[...document.querySelectorAll('.pm-seg-btn')].find(x=>x.innerText.trim().startsWith('Transcript'))`, 700);
-    await app.clic(`[...document.querySelectorAll('.trx-accueil button')].find(x=>/Transcrire le cours/.test(x.innerText))`, 1500);
-    await app.ev(`(()=>{const s=document.querySelector('.trx-feuille select');if(!s)return 0;const o=[...s.options].find(o=>o.value==='onglet');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(s,o.value);s.dispatchEvent(new Event('change',{bubbles:true}));return 1})()`);
-    await dormir(600);
-    const motsAvant = (await (await fetch(DEEPGRAM + '/__mots')).json()).total;
-    await app.attendre(`(()=>{const x=[...document.querySelectorAll('.trx-feuille button')].filter(x=>/Démarrer/.test(x.innerText)).pop();return !!x&&!x.disabled})()`, 10000);
-    await app.clic(`[...document.querySelectorAll('.trx-feuille button')].filter(x=>/Démarrer/.test(x.innerText)).pop()`, 500);
+    const motsAvant = await demarrerOnglet();
     ok(await app.attendre(`window.__transcription && window.__transcription.lireEtat().phase==='live'`, 20000), 'transcription en direct depuis l’onglet « Faux Teams » (vrai partage d’onglet)');
     ok((await app.ev('window.__partageDemandes')) === 1, 'une seule demande de partage');
     await teams.ev('window.demarrerSon()');
@@ -184,19 +196,7 @@ async function principal() {
     await app.send('Page.reload'); await app.attendre(`document.readyState === 'complete'`, 30000); await dormir(3500);
     await app.send('Page.bringToFront'); await dormir(500);
     await ouvrir('Histologie générale (banc)');
-    await app.ev(`([...document.querySelectorAll('.pm-seg-btn')].find(x=>x.innerText.trim().startsWith('Transcript'))||{click(){}}).click(),1`); await dormir(900);
-    let motsAvant2 = 0;
-    for (let essai = 0; essai < 4 && !(await app.ev(`window.__transcription && window.__transcription.lireEtat().phase==='live'`)); essai++) {
-      if (!(await app.ev(`!!document.querySelector('.trx-feuille select')`))) { await app.ev(`([...document.querySelectorAll('.trx-accueil button')].find(x=>/Transcrire le cours/.test(x.innerText))||{click(){}}).click(),1`); await dormir(1500); }
-      if (!(await app.attendre(`!!document.querySelector('.trx-feuille select')`, 6000))) continue;
-      await app.ev(`(()=>{const s=document.querySelector('.trx-feuille select');const o=[...s.options].find(o=>o.value==='onglet');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(s,o.value);s.dispatchEvent(new Event('change',{bubbles:true}));return 1})()`);
-      await dormir(500);
-      motsAvant2 = (await (await fetch(DEEPGRAM + '/__mots')).json()).total;
-      await app.attendre(`(()=>{const x=[...document.querySelectorAll('.trx-feuille button')].filter(x=>/Démarrer/.test(x.innerText)).pop();return !!x&&!x.disabled})()`, 10000);
-      await app.send('Page.bringToFront');
-      await app.clic(`[...document.querySelectorAll('.trx-feuille button')].filter(x=>/Démarrer/.test(x.innerText)).pop()`, 500);
-      await app.attendre(`window.__transcription.lireEtat().phase==='live'`, 12000);
-    }
+    const motsAvant2 = await demarrerOnglet();
     ok(await app.attendre(`window.__transcription.lireEtat().phase==='live'`, 5000), 'deuxième session (sans suivi) en direct');
     await app.attendre(`window.__transcription.lireSuivi().disponible`, 10000);
     if (!(await app.attendre(`!!document.querySelector('.trx-suivi .switch')`, 15000))) console.log('DIAG 2e session', JSON.stringify(await app.ev(`({phase:window.__transcription.lireEtat().phase,suivi:window.__transcription.lireSuivi(),txt:(document.querySelector('.trx-panneau, .trx-accueil')||document.body).innerText.slice(0,300)})`)));
