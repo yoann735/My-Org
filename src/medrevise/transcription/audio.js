@@ -146,7 +146,7 @@ async function ouvrirFlux({ source, deviceId }) {
     if (!navigator.mediaDevices.getDisplayMedia) throw new ErreurCapture('Ce navigateur ne sait pas capturer le son d’un onglet. Utilise Chrome sur ordinateur, ou la source « Micro ».', 'unsupported');
     let flux;
     try {
-      // video: true est OBLIGATOIRE pour getDisplayMedia ; on arrête la piste vidéo aussitôt.
+      // video: true est OBLIGATOIRE pour getDisplayMedia ; (24/11) la piste vidéo sert au suivi des diapos.
       flux = await navigator.mediaDevices.getDisplayMedia({
         video: true,
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
@@ -156,10 +156,15 @@ async function ouvrirFlux({ source, deviceId }) {
       if (e && e.name === 'NotAllowedError') throw new ErreurCapture('Partage annulé.', 'cancelled');
       throw new ErreurCapture('Impossible de capturer l’onglet : ' + ((e && e.message) || 'erreur inconnue'), 'display');
     }
-    flux.getVideoTracks().forEach((t) => { t.stop(); flux.removeTrack(t); });
+    /* (24/11, docs/compte-rendu-suivi-auto-diapos.md) la piste VIDÉO du même partage est gardée pour le suivi
+       automatique des diapos (transcription/diapos/) : retirée du flux audio (le son ne change pas), rendue à part. */
+    const video = flux.getVideoTracks()[0] || null;
+    flux.getVideoTracks().forEach((t) => flux.removeTrack(t));
     if (!flux.getAudioTracks().length) {
+      if (video) video.stop();
       throw new ErreurCapture('Aucun son reçu : dans la fenêtre de partage de Chrome, choisis un ONGLET et coche « Partager aussi le son de l’onglet ». Pour Teams/Zoom en application, utilise la source « Micro » (ou un périphérique virtuel comme BlackHole).', 'no_audio');
     }
+    flux.video = video;
     return flux;
   }
   try {
@@ -202,17 +207,20 @@ export async function demarrerCapture({ source = 'micro', deviceId = null, onBlo
   entree.connect(noeud); noeud.connect(muet); muet.connect(ctx.destination);
 
   const piste = flux.getAudioTracks()[0];
+  const video = flux.video || null; // piste vidéo de l'onglet partagé (source « onglet » seulement)
   const surFin = () => { if (!arrete && onFin) onFin(source === 'onglet' ? 'Le partage de l’onglet s’est arrêté.' : 'Le micro s’est arrêté (débranché ?).'); };
   piste.addEventListener('ended', surFin);
 
   return {
     libelle: piste.label || (source === 'onglet' ? 'Onglet Chrome' : 'Micro'),
+    video,
     arreter() {
       if (arrete) return;
       arrete = true;
       piste.removeEventListener('ended', surFin);
       try { noeud.port.onmessage = null; entree.disconnect(); noeud.disconnect(); muet.disconnect(); } catch (e) { /* déjà déconnecté */ }
       flux.getTracks().forEach((t) => t.stop());
+      if (video) video.stop();
       ctx.close().catch(() => {});
     },
   };

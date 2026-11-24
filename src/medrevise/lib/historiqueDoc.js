@@ -55,6 +55,7 @@ export function compter(contenu) {
     else if (a.kind === 'image') c.images++; else if (BOITES.has(a.kind)) c.boites++; else c.autres++;
   }
   c.total = ann.length + c.surlignages;
+  if (contenu && contenu.transcript) c.transcript = 1; // (24/11) version prise avant « Relier aux diapos automatiquement »
   return c;
 }
 /** ids des annotations d'un contenu (annotations + surlignages) */
@@ -230,6 +231,10 @@ export async function restaurerVersion(ns, version) {
      restaurer remet le document tel quel (sans le PDF) — la fiche d'aujourd'hui est gardée dans la version « Avant » */
   const ficheVersion = version.contenu.fiche && version.contenu.fiche.id === ns ? version.contenu.fiche : null;
   if (ficheVersion) actuel.fiche = (await getOne('fiches', ns)) || null;
+  /* (24/11, docs/compte-rendu-suivi-auto-diapos.md) une version prise avant « Relier aux diapos automatiquement » porte
+     aussi la SESSION de transcript d'avant : la restaurer la remet (la session d'aujourd'hui est gardée dans « Avant ») */
+  const trxVersion = version.contenu.transcript && version.contenu.transcript.id ? version.contenu.transcript : null;
+  if (trxVersion) actuel.transcript = (await getOne('transcript_session', trxVersion.id)) || null;
   await putBackup('pre-restauration-' + ns + '-' + Date.now(), actuel);
   await garderVersion(ns, 'Avant restauration', { force: true, contenu: actuel });
   const garder = idsDe(version.contenu);
@@ -243,6 +248,11 @@ export async function restaurerVersion(ns, version) {
   // la fiche EN DERNIER : un document qui redevient « créé dans l'app » trouve ses pages déjà là (sinon le lecteur,
   // voyant un document sans page, en créerait une)
   if (ficheVersion) await put('fiches', ficheVersion);
+  if (trxVersion) {
+    await put('transcript_session', { ...trxVersion, updatedAt: new Date().toISOString() });
+    const { pousser } = await import('../transcription/synchro.js');
+    pousser(trxVersion.id).catch(() => {});
+  }
   await garderVersion(ns, `Après restauration de la version du ${dateLisible(version.le)}`, { force: true });
 }
 

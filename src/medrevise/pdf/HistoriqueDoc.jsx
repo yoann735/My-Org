@@ -34,7 +34,7 @@ const chercherDansSauvegardes = (ns) => {
   return recherches.get(ns);
 };
 const resume = (c) => [c.boites && pl(c.boites, 'boîte'), c.surlignages && pl(c.surlignages, 'surlignage'), c.traits && pl(c.traits, 'trait'),
-  c.formes && pl(c.formes, 'forme'), c.images && pl(c.images, 'image'), c.pages && pl(c.pages, 'page ajoutée', 'pages ajoutées')].filter(Boolean).join(' · ') || 'vide';
+  c.formes && pl(c.formes, 'forme'), c.images && pl(c.images, 'image'), c.pages && pl(c.pages, 'page ajoutée', 'pages ajoutées'), c.transcript && 'transcript'].filter(Boolean).join(' · ') || 'vide';
 const texteDe = (a) => { try { return a.content ? texteDeContenu(a.content) : (a.texte || ''); } catch (e) { return ''; } };
 const cleTri = (p) => (typeof p === 'number' ? [0, p] : [1, String(p)]);
 

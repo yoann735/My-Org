@@ -38,9 +38,11 @@ import {
   avecIntervenants, nomIntervenant, intervenantsDe, passeFiltre, aDesReprises,
 } from './exporter.js';
 import { synchroTranscripts } from './synchro.js';
-import { surPage, sessionAvecPages, useSessionReference, compterLignes, docDe } from './pages.js';
+import { surPage, sessionAvecPages, useSessionReference, compterLignes, docDe, rafraichirSessionsPages } from './pages.js';
 import { actualiserCredits, tarifEffectif, fmtUsd, SURCOUT_DIARISATION_H } from './credits.js';
 import { CarteCredits } from './Credits.jsx';
+import { LigneSuiviDiapos, FenetreRelier } from './diapos/SuiviDiapos.jsx';
+import { aDesDiapos } from './diapos/repartition.js';
 import '../../styles/transcription.css';
 
 const CLE_CHOIX = 'medrevise.transcription.source.choix'; // 'auto' | 'onglet' | deviceId (05/10)
@@ -819,7 +821,7 @@ function Pastille({ e }) {
   );
 }
 
-function MenuCopie({ session, titre, filtre = null }) {
+function MenuCopie({ session, titre, filtre = null, onRelier = null }) {
   const [menu, setMenu] = useState(null);
   const [choixCopie, setChoixCopie] = useState(null); // filtre actif : « tous » ou « filtrés » ?
   const [copie, setCopie] = useState(false);
@@ -855,6 +857,8 @@ function MenuCopie({ session, titre, filtre = null }) {
           { label: 'Télécharger en .txt', icon: 'upload', onClick: () => telecharger(nomFichier(titre, session, 'txt'), texteSession(session), 'text/plain;charset=utf-8') },
           { label: 'Télécharger en .md', icon: 'upload', onClick: () => telecharger(nomFichier(titre, session, 'md'), markdownSession(session, titre), 'text/markdown;charset=utf-8') },
           filtre && { label: `Copier les filtrés sans horodatage`, icon: 'copy', onClick: () => copier(false, filtre) },
+          // (24/11) répartition après coup : la même reconnaissance de diapo, sur les images gardées, contre le PDF actuel
+          onRelier && { label: 'Relier aux diapos automatiquement', icon: 'filePdf', onClick: onRelier },
         ].filter(Boolean)} />
       )}
     </>
@@ -919,11 +923,11 @@ function ResumeCout({ session }) {
   );
 }
 
-function PiedSession({ session, titre, filtre = null }) {
+function PiedSession({ session, titre, filtre = null, onRelier = null }) {
   const n = session.segments.filter((s) => s.status !== 'gap').length;
   return (
     <div className="trx-pied">
-      <MenuCopie session={session} titre={titre} filtre={filtre} />
+      <MenuCopie session={session} titre={titre} filtre={filtre} onRelier={onRelier} />
       <span className="hint tnum" style={{ fontSize: 11.5 }}>{n} ligne{n > 1 ? 's' : ''}{session.notes.length ? ` · ${session.notes.length} note${session.notes.length > 1 ? 's' : ''}` : ''}</span>
     </div>
   );
@@ -985,6 +989,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
   const [interrompue, setInterrompue] = useState(null);
   const [lecture, setLecture] = useState(null); // session ouverte en lecture
   const [aSupprimer, setASupprimer] = useState(null);
+  const [relier, setRelier] = useState(null); // (24/11) « Relier aux diapos automatiquement »
   const [plein, setPlein] = useState(false);
   const [mcOuvert, setMcOuvert] = useState(false);
   const [menuSource, setMenuSource] = useState(null);
@@ -1149,6 +1154,7 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
           <ChoixTaille taille={taille} onTaille={choisirTaille} />
           <button type="button" className="icon-btn sm" onClick={() => setPlein((v) => !v)} title={plein ? 'Quitter le plein écran (Échap)' : 'Plein écran (lecture à distance)'}><Icon name={plein ? 'x' : 'maximize'} size={13} /></button>
         </div>
+        <LigneSuiviDiapos />
         {menuSource && <ContextMenu fermerAuDefilement={false} x={menuSource.x} y={menuSource.y} hautAncre={menuSource.haut} onClose={() => setMenuSource(null)} items={[
           ...menuSource.micros.map((m) => ({ label: (m.label === e.sourceLibelle ? '✓ ' : '') + m.label, icon: 'mic', onClick: async () => { const r = await changerSource({ source: 'micro', deviceId: m.deviceId }); if (!r.ok) setInfoSource(r.message); } })),
           { label: 'Onglet Chrome…', icon: 'ext', onClick: async () => { const r = await changerSource({ source: 'onglet' }); if (!r.ok) setInfoSource(r.message); } },
@@ -1198,9 +1204,10 @@ export function TranscriptPanel({ courseId, titre, onDemarrer, onReprendre, page
         <ListeTranscript lignes={lignesSession(lecture).filter((l) => passeFiltre(l, filtre) && passePage(l))} keyterms={lecture.keyterms || []} taille={taille} live={false} plein={plein}
           noms={avecIntervenants(lecture) ? (n) => nomIntervenant(lecture, n) : null} onRenommer={avecIntervenants(lecture) ? ouvrirRenommage : null}
           onPage={lienPage} vide={videPage} />
-        <PiedSession session={lecture} titre={titre} filtre={filtre} />
+        <PiedSession session={lecture} titre={titre} filtre={filtre} onRelier={lecture.endedAt && aDesDiapos(lecture) && !(sessionActive() && lireEtat().session && lireEtat().session.id === lecture.id) ? () => setRelier(lecture) : null} />
         {!plein && <CarteCredits />}
         {bulleRenommer}
+        {relier && <FenetreRelier session={relier} onFermer={() => setRelier(null)} onApplique={(s) => { setRelier(null); setLecture(s); recharger(); rafraichirSessionsPages(courseId); }} />}
       </div>
     );
     return plein ? createPortal(corps, document.body) : corps;

@@ -38,6 +38,8 @@ import {
 } from './sessions.js';
 import { marquerVivante, pousserMaintenant } from './synchro.js';
 import { tarifEffectif, noterDebutSession, finSessionCredits, facteurDiarisation } from './credits.js';
+import { demarrerSuivi, arreterSuivi, activerSuivi, lireSuivi, mesures as mesuresSuivi } from './diapos/suivi.js';
+import { pageAuTemps } from './diapos/moteur.js';
 
 const DUREE_BLOC = 0.1; // s
 const TAMPON_MAX_S = 120;
@@ -109,7 +111,17 @@ export function definirPageCourante(fn) {
   fournisseurPage = fn;
   return () => { if (fournisseurPage === fn) fournisseurPage = null; };
 }
-function champsPage() {
+/* SUIVI AUTOMATIQUE DES DIAPOS (24/11, docs/compte-rendu-suivi-auto-diapos.md) : quand la source est un onglet et que
+   l'interrupteur est actif, la page d'une ligne est celle que le PROF affiche (reconnue dans la vidéo du partage), à
+   l'instant de cours `t` où la ligne commence — et non celle du lecteur. Les changements reconnus sont rangés dans la
+   session (`diapos[]`, en ajout). Avant la première diapo reconnue, ou interrupteur coupé : la page du lecteur. */
+let debutAuto = null; // instant de cours depuis lequel le suivi automatique fait foi (null = coupé)
+const suiviActif = () => debutAuto != null && lireSuivi().disponible && lireSuivi().actif;
+function champsPage(t = null) {
+  if (t != null && suiviActif() && etat.session && t >= debutAuto - 0.5) {
+    const p = pageAuTemps(etat.session.diapos)(t);
+    if (p) return { page: p.page, pageCle: p.pageCle, doc: 'original' };
+  }
   try {
     const p = fournisseurPage && fournisseurPage();
     if (p && p.courseId === etat.courseId && Number.isFinite(p.page) && p.page >= 1) return { page: p.page, pageCle: p.cle ?? null, doc: p.doc || 'original' };
@@ -185,6 +197,7 @@ export async function demarrer({ courseId, source = 'micro', deviceId = null, ke
   dernierSon = Date.now();
   noterDebutSession(); // crédits : solde de départ (décompte local, aucun appel réseau)
   publier({ phase: 'live', sourceLibelle: capture.libelle });
+  lancerSuivi();
   if (reprendre && ((reprendre.segments || []).length || (reprendre.notes || []).length)) {
     // la marque de la reprise (session terminée reprise, onglet rechargé, plantage) : « — reprise à 14:32 — »
     majSession((s) => ({ ...s, segments: [...s.segments, marqueReprise(nouvelIdSegment(), base)] }));
@@ -193,7 +206,50 @@ export async function demarrer({ courseId, source = 'micro', deviceId = null, ke
   return true;
 }
 
+/* ---------------- suivi automatique des diapos ---------------- */
+function lancerSuivi() {
+  arreterSuivi();
+  debutAuto = null;
+  const track = capture && capture.video;
+  if (!track || !etat.session) return;
+  const s = etat.session;
+  const vus = s.diapos || [];
+  const dernier = [...vus].reverse().find((d) => d.pageCle);
+  debutAuto = maintenantCours();
+  demarrerSuivi({
+    track, courseId: s.courseId, sessionId: s.id,
+    premier: vus.length ? Math.max(...vus.map((d) => d.n || 0)) + 1 : 0,
+    courant: dernier ? dernier.pageCle : null,
+    // instant de cours d'une date (ms) : l'horloge du cours avance avec l'audio capturé
+    tempsCours: (ms) => Math.max(base, maintenantCours() - Math.max(0, Date.now() - ms) / 1000),
+    surChangement: recevoirDiapo,
+  }).catch(() => {});
+}
+/** un changement de diapo détecté (reconnu ou non) : rangé dans la session ; les lignes dites depuis cet instant
+ *  (validées avant la fin de la reconnaissance, ≤ 3 s) passent sur la page reconnue */
+function recevoirDiapo(ch) {
+  if (!etat.session || (etat.phase !== 'live' && etat.phase !== 'paused')) return;
+  majSession((s) => {
+    const diapos = [...(s.diapos || []), ch];
+    if (!ch.page || !suiviActif()) return { ...s, diapos };
+    const f = pageAuTemps(diapos);
+    const re = (x, t) => {
+      if (!Number.isFinite(t) || t < debutAuto - 0.5 || t + 1e-6 < ch.t) return x;
+      const p = f(t);
+      return p ? { ...x, page: p.page, pageCle: p.pageCle, doc: 'original' } : x;
+    };
+    return { ...s, diapos, segments: s.segments.map((g) => (g.status === 'gap' ? g : re(g, g.t0))), notes: s.notes.map((n) => re(n, n.t)) };
+  });
+}
+/** interrupteur « Suivre les diapos automatiquement » (panneau Transcript) */
+export function basculerSuiviDiapos(on) {
+  activerSuivi(on);
+  debutAuto = on && capture && capture.video ? maintenantCours() : null;
+  publier({});
+}
+
 function reinitialiser() {
+  arreterSuivi(); debutAuto = null;
   clearTimeout(minuteurReco); minuteurReco = null; reconnecterA = 0;
   capture = null; ws = null; tampon = []; echantillons = 0; base = 0; couvertJusqua = 0;
   tentative = 0; dernierEnvoi = 0; dernierMessage = 0; envoisDepuisMessage = 0;
@@ -371,7 +427,7 @@ function figerProvisoire() {
   if (!p || !p.text) return;
   couvertJusqua = Math.max(couvertJusqua, p.t1);
   publier({ interim: null });
-  majSession((s) => ({ ...s, segments: [...s.segments, { id: p.id, t0: p.t0, t1: p.t1, text: p.text, status: 'uncertain', ...champsPage() }] }));
+  majSession((s) => ({ ...s, segments: [...s.segments, { id: p.id, t0: p.t0, t1: p.t1, text: p.text, status: 'uncertain', ...champsPage(p.t0) }] }));
 }
 
 function recevoir(data) {
@@ -403,7 +459,7 @@ function recevoir(data) {
     publier({ interim: null });
     /* DIARISATION (08/10) : chaque mot porte `speaker` ; un résultat final peut mêler deux
        voix → un segment par suite de mots du même intervenant (champ `speaker`). */
-    const pageIci = champsPage(); // la page affichée au moment où le segment est validé
+    const pageIci = champsPage(debut); // la page affichée au moment où le segment est validé (suivi auto : au début de la ligne)
     if (texte && etat.session.diarize && mots.length && mots.some((w) => w.speaker != null)) {
       const retenus = mots.filter((w) => connOffset + (w.end || 0) > ancienCouvert + 0.02); // mêmes mots que `gardes`
       const groupes = [];
@@ -480,6 +536,7 @@ export async function arreter() {
   }
   ws = null;
   figerProvisoire();
+  arreterSuivi(); debutAuto = null;
   if (capture) capture.arreter();
   capture = null;
   tampon = [];
@@ -510,6 +567,7 @@ function echec(message, { garderSession = true } = {}) {
   if (ws) try { ws.close(1000); } catch (e) { /* idem */ }
   ws = null;
   figerProvisoire();
+  arreterSuivi(); debutAuto = null;
   if (capture) capture.arreter();
   capture = null;
   tampon = [];
@@ -548,7 +606,8 @@ export function renommerIntervenantDirect(n, nom) {
 
 export function ajouterNote() {
   if (!etat.session) return null;
-  const note = { id: nouvelIdNote(), t: Math.round(maintenantCours() * 10) / 10, text: '', ...champsPage() };
+  const tNote = Math.round(maintenantCours() * 10) / 10;
+  const note = { id: nouvelIdNote(), t: tNote, text: '', ...champsPage(tNote) };
   persistee = true;
   majSession((s) => ({ ...s, notes: [...s.notes, note] }));
   return note.id;
@@ -586,6 +645,7 @@ export async function changerSource({ source = 'micro', deviceId = null }) {
   noter('source → ' + nouvelle.libelle);
   publier({ sourceLibelle: nouvelle.libelle });
   majSession((s) => ({ ...s, source }));
+  lancerSuivi(); // nouvelle source : le suivi suit (onglet) ou s'arrête (micro)
   return { ok: true };
 }
 
@@ -601,10 +661,10 @@ if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
     if (!sessionActive() || !etat.session || !persistee) return;
     const p = etat.interim;
-    const s = p && p.text ? { ...etat.session, segments: [...etat.session.segments, { id: p.id, t0: p.t0, t1: p.t1, text: p.text, status: 'uncertain', ...champsPage() }] } : etat.session;
+    const s = p && p.text ? { ...etat.session, segments: [...etat.session.segments, { id: p.id, t0: p.t0, t1: p.t1, text: p.text, status: 'uncertain', ...champsPage(p.t0) }] } : etat.session;
     ecrireSession({ ...s, durationS: Math.round(maintenantCours() * 10) / 10 }).catch(() => {});
   });
 }
 
 /* accès de test (console, banc CDP) — sans effet sur l'app */
-if (typeof window !== 'undefined') window.__transcription = { lireEtat, lireNiveau, journal, changerSource };
+if (typeof window !== 'undefined') window.__transcription = { lireEtat, lireNiveau, journal, changerSource, lireSuivi, mesuresSuivi, basculerSuiviDiapos };
