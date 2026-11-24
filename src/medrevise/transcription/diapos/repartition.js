@@ -41,8 +41,8 @@ export async function analyser(session, { onProgres = null } = {}) {
   if (!changements.length) return { ok: false, message: 'Cette session n’a gardé aucun changement de diapo (elle n’a pas été enregistrée depuis un onglet).' };
   const W = workerAnalyse();
   try {
-    const signer = (rgba, w, h) => W.appel({ type: 'signerPage', rgba, w, h }).then((m) => m.sig);
-    const prep = await preparerPages(session.courseId, signer);
+    const rendre = (pdf) => W.appel({ type: 'preparer', pdf, largeur: 480 }, [pdf]);
+    const prep = await preparerPages(session.courseId, rendre);
     if (!prep.sigs.length) return { ok: false, message: 'Ce document n’a pas encore de PDF : remplace-le par le PDF du cours, puis relance.' };
     W.w.postMessage({ type: 'pages', sigs: prep.sigs, textes: prep.textes, aspects: prep.aspects });
     const numero = await numerotation(session.courseId);

@@ -28,6 +28,8 @@ import http from 'http';
 import crypto from 'crypto';
 
 const PORT = Number(process.env.PORT || 54400);
+// (24/11) seuil d'énergie de la « parole » : le banc du suivi des diapos envoie un son très faible (jamais audible)
+const SEUIL_PAROLE = Number(process.env.SEUIL_PAROLE || 0.01);
 const CLE = process.env.CLE || 'cle-de-test';
 const jetons = new Map(); // jeton → expiration
 const journal = [];
@@ -36,6 +38,7 @@ let refusJusqua = 0;
 let creditsZero = false;
 let secondesTotales = 0;
 let motGlobal = 0;
+const motsFinals = []; // (24/11) mots livrés en résultat final, dans l'ordre : le banc vérifie qu'aucun ne manque au transcript
 const compte = { heures: '0.2', depense: '0.08', solde: '199.92', soldes: '200', facturation: '200', panne: '0', latence: '0' }; // le « cours » continue d'une connexion à l'autre : un trou ou un doublon se voit à la lecture
 const log = (m) => { journal.push({ t: new Date().toISOString(), m }); if (journal.length > 500) journal.shift(); };
 
@@ -103,6 +106,7 @@ function session(socket, query) {
   const t = () => etat.echantillons / 16000;
   const resultat = (mots, isFinal, extra = {}) => {
     mots.forEach((m) => { m.livre = true; });
+    if (isFinal) { motsFinals.push(...mots.map((m) => m.word)); if (motsFinals.length > 20000) motsFinals.splice(0, motsFinals.length - 20000); }
     const start = mots.length ? mots[0].start : Math.max(0, t() - 1);
     const end = mots.length ? mots[mots.length - 1].end : t();
     envoyer({
@@ -131,7 +135,7 @@ function session(socket, query) {
     const rms = Math.sqrt(sq / Math.max(1, n));
     const debut = t();
     etat.echantillons += n; secondesTotales += n / 16000;
-    if (rms > 0.01) {
+    if (rms > SEUIL_PAROLE) {
       etat.silence = 0;
       etat.parole += n / 16000;
       while (etat.parole >= 0.4) {
@@ -180,7 +184,8 @@ const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers
 const serveur = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
   const out = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', ...cors }); res.end(JSON.stringify(obj)); };
-  if (u.pathname === '/__etat') return out(200, { connexions: connexions.size, secondesAudio: +secondesTotales.toFixed(1), keyterms: [...connexions].map((c) => c.keyterms), journal: journal.slice(-120) });
+  if (u.pathname === '/__mots') { const depuis = Number(u.searchParams.get('depuis') || 0); return out(200, { total: motsFinals.length, mots: motsFinals.slice(depuis) }); }
+  if (u.pathname === '/__etat') return out(200, { motsFinals: motsFinals.length, connexions: connexions.size, secondesAudio: +secondesTotales.toFixed(1), keyterms: [...connexions].map((c) => c.keyterms), journal: journal.slice(-120) });
   if (u.pathname === '/__couper') { refusJusqua = Date.now() + Number(u.searchParams.get('refus') || 0) * 1000; [...connexions].forEach((c) => c.couper()); return out(200, { ok: true }); }
   if (u.pathname === '/__geler') { refusJusqua = Date.now() + Number(u.searchParams.get('s') || 20) * 1000; [...connexions].forEach((c) => c.geler()); return out(200, { ok: true }); }
   if (u.pathname === '/__credits') { creditsZero = u.searchParams.get('zero') === '1'; return out(200, { creditsZero }); }

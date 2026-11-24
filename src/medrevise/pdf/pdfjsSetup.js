@@ -14,8 +14,9 @@ const ASSETS = import.meta.env.BASE_URL + 'pdfjs/';
 /** ouvre un PDF (ArrayBuffer/Uint8Array) avec polices standard, CMaps et
     décodeurs wasm locaux — sans eux, un PDF à police non intégrée ou à image
     JPX/JBIG2 s'afficherait faux, sans erreur visible. */
-export function openPdf(data) {
+export function openPdf(data, options = {}) {
   return pdfjsLib.getDocument({
+    ...options, // (24/11) options en plus — ex. rendu dans un Web Worker (transcription/diapos/worker.js)
     data,
     cMapUrl: ASSETS + 'cmaps/',
     cMapPacked: true,

@@ -119,6 +119,75 @@
         "VITE_SUPABASE_ANON_KEY": "cle-de-test"
       },
       "port": 5311
+    },
+    {
+      "name": "faux-deepgram-diapos",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/faux-deepgram.mjs"
+      ],
+      "env": {
+        "PORT": "54410",
+        "SEUIL_PAROLE": "0.0003"
+      },
+      "port": 54410
+    },
+    {
+      "name": "medrevise-banc-diapos",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "--port",
+        "5304",
+        "--strictPort"
+      ],
+      "env": {
+        "VITE_SUPABASE_URL": "",
+        "VITE_SUPABASE_ANON_KEY": "",
+        "DEEPGRAM_API_KEY": "cle-de-test",
+        "DEEPGRAM_API_URL": "http://localhost:54410",
+        "DEEPGRAM_LISTEN_URL": "ws://localhost:54410/v1/listen"
+      },
+      "port": 5304
+    },
+    {
+      "name": "faux-teams",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/tests-suivi-diapos/faux-teams.mjs"
+      ],
+      "port": 54411
+    },
+    {
+      "name": "mw-avant-diapos",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "/private/tmp/claude-501/-Users-yoannlmr-Documents-D-v---projets-Claude-Projets-My-Org-My-Org/1fac760a-892f-4649-a9df-dd7c300d0d2a/scratchpad/avant",
+        "--port",
+        "5321",
+        "--strictPort"
+      ],
+      "env": {
+        "VITE_SUPABASE_URL": "",
+        "VITE_SUPABASE_ANON_KEY": ""
+      },
+      "port": 5321
+    },
+    {
+      "name": "mw-apres-diapos",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "--port",
+        "5322",
+        "--strictPort"
+      ],
+      "env": {
+        "VITE_SUPABASE_URL": "",
+        "VITE_SUPABASE_ANON_KEY": ""
+      },
+      "port": 5322
     }
   ]
 }

@@ -174,6 +174,9 @@ function tesseractAssets() {
 // Zero-config Vercel deploy: build -> `dist`. No env, no backend.
 export default defineConfig({
   plugins: [react(), lienTheme(), pdfjsAssets(), tesseractAssets(), apiDeepgramDev()],
+  // (24/11, docs/compte-rendu-suivi-auto-diapos.md) Web Workers en modules ES : le worker du suivi des diapos charge
+  // pdf.js à la demande (import dynamique), ce que le format par défaut (iife) ne permet pas
+  worker: { format: 'es' },
   // Honor the PORT env var when provided (lets tooling assign a free port);
   // falls back to Vite's default for plain `npm run dev`.
   server: process.env.PORT ? { port: Number(process.env.PORT) } : undefined,

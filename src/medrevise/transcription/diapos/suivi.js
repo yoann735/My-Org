@@ -42,7 +42,7 @@ export function leWorker() {
     worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
     worker.onmessage = (ev) => {
       const m = ev.data || {};
-      if ((m.type === 'signature' || m.type === 'scores') && rpc.has(m.id)) { rpc.get(m.id)(m); rpc.delete(m.id); return; }
+      if ((m.type === 'signature' || m.type === 'scores' || m.type === 'prepare') && rpc.has(m.id)) { rpc.get(m.id)(m); rpc.delete(m.id); return; }
       if (surMessage) surMessage(m);
     };
   }
@@ -53,6 +53,8 @@ export function appelWorker(msg, transfert = []) {
   return new Promise((resolve) => { rpc.set(id, resolve); leWorker().postMessage({ ...msg, id }, transfert); });
 }
 export const signer = (rgba, w, h) => appelWorker({ type: 'signerPage', rgba, w, h }).then((m) => m.sig);
+/** rend les pages d'un PDF dans le worker (transfert des octets, aucun dessin sur le fil principal) */
+export const rendrePdf = (pdf) => appelWorker({ type: 'preparer', pdf, largeur: 480 }, [pdf]);
 
 /** texte d'une capture par l'OCR de l'app (même worker Tesseract que les PDF et les images) */
 export async function lireTexte(bitmap) {
@@ -99,7 +101,7 @@ export async function demarrerSuivi({ track, courseId, sessionId, tempsCours, su
     relecteur.video = v;
   }
   try {
-    const prep = await preparerPages(courseId, signer);
+    const prep = await preparerPages(courseId, rendrePdf);
     if (!session || session.sessionId !== sessionId) return true;
     session.numero = await numerotation(courseId);
     session.pdfId = prep.pdfId;

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Faux Teams — Histologie générale</title>
+<!-- OUTIL DE TEST (24/11/2026, docs/compte-rendu-suivi-auto-diapos.md) : imite une réunion Teams où le prof partage
+     son écran. Rien de Microsoft n'est repris : formes et couleurs génériques d'une application de visio sombre. -->
+<style>
+  * { box-sizing: border-box; } html, body { margin: 0; height: 100%; overflow: hidden; font: 13px -apple-system, Segoe UI, sans-serif; color: #ddd; background: #1f1f1f; }
+  #haut { position: absolute; left: 0; right: 0; top: 0; height: 48px; background: #2b2a29; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-bottom: 1px solid #3a3938; }
+  #haut .b { padding: 6px 12px; border-radius: 4px; background: #3b3a39; } #haut .q { background: #c4314b; color: #fff; margin-left: auto; }
+  #rail { position: absolute; left: 0; top: 48px; bottom: 0; width: 68px; background: #262524; border-right: 1px solid #333; }
+  #rail i { display: block; width: 28px; height: 28px; margin: 18px auto; border-radius: 6px; background: #3d3c3b; }
+  #droite { position: absolute; right: 0; top: 48px; bottom: 0; width: 300px; background: #252423; border-left: 1px solid #333; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .tuile { height: 120px; border-radius: 8px; background: #3a3a3a; display: flex; align-items: center; justify-content: center; font-size: 26px; color: #bbb; position: relative; }
+  .tuile span { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: #eee; }
+  #scene { position: absolute; left: 68px; right: 300px; top: 48px; bottom: 0; background: #121212; }
+  #partage { position: absolute; inset: 44px 24px 24px 24px; display: flex; align-items: center; justify-content: center; }
+  #diapo { position: relative; max-width: 100%; max-height: 100%; aspect-ratio: 16 / 9; width: 100%; }
+  #diapo img { width: 100%; height: 100%; display: block; filter: saturate(.9) contrast(.95) brightness(1.03) blur(.35px); }
+  #voile { position: absolute; left: 10%; right: 10%; top: 24%; bottom: 3%; background: #fff; opacity: 0; transition: opacity 1.2s linear; }
+  #pastille { position: absolute; left: 24px; top: 10px; padding: 4px 10px; border-radius: 4px; background: #333; font-size: 12px; }
+  #rec { position: absolute; right: 24px; top: 10px; display: flex; gap: 6px; align-items: center; padding: 4px 10px; border-radius: 999px; background: #2a2a2a; font-size: 12px; }
+  #rec i { width: 9px; height: 9px; border-radius: 50%; background: #e0393e; animation: p 1s infinite; } @keyframes p { 50% { opacity: .25; } }
+  #moi { position: absolute; width: 200px; height: 112px; right: 36px; bottom: 36px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px #000; transition: none; }
+  #galerie { position: absolute; inset: 44px 24px 24px 24px; display: none; grid-template-columns: 1fr 1fr; gap: 12px; }
+  #galerie .tuile { height: auto; font-size: 46px; }
+  #curseur { position: absolute; width: 14px; height: 20px; display: none; pointer-events: none; clip-path: polygon(0 0, 0 100%, 30% 72%, 52% 100%, 66% 92%, 45% 66%, 100% 66%); background: #fff; border: 1px solid #000; }
+</style></head>
+<body>
+  <div id="haut"><b>Histologie générale</b><span class="b">01:12:44</span><span class="b">Discussion</span><span class="b">Participants</span><span class="b">Partager</span><span class="b q">Quitter</span></div>
+  <div id="rail"><i></i><i></i><i></i><i></i></div>
+  <div id="droite">
+    <div class="tuile">AD<span>A. Dupont (prof)</span></div><div class="tuile">LM<span>L. Martin</span></div>
+    <div class="tuile">SB<span>S. Bernard</span></div><div class="tuile"><canvas id="cam2" width="276" height="120"></canvas><span>K. Petit</span></div>
+  </div>
+  <div id="scene">
+    <div id="pastille">A. Dupont présente</div>
+    <div id="rec"><i></i>Enregistrement</div>
+    <div id="partage"><div id="diapo"><img id="img" alt=""><div id="voile"></div></div></div>
+    <div id="galerie"><div class="tuile">AD</div><div class="tuile">LM</div><div class="tuile">SB</div><div class="tuile">KP</div></div>
+    <canvas id="moi" width="200" height="112"></canvas>
+    <div id="curseur"></div>
+  </div>
+<script type="module">
+  import * as pdfjs from '/pdf.mjs';
+  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.mjs';
+  const $ = (s) => document.querySelector(s);
+  window.journal = []; // { t, quoi, page } — la vérité du banc
+  const noter = (quoi, page = null) => window.journal.push({ t: Date.now(), quoi, page });
+  /* rendu des diapos : pdf.js à 1 200 px puis JPEG de qualité moyenne — ce que voit un élève dans la vidéo */
+  async function rendre(url) {
+    const doc = await pdfjs.getDocument({ url }).promise; const out = [];
+    for (let n = 1; n <= doc.numPages; n++) {
+      const p = await doc.getPage(n); const v = p.getViewport({ scale: 1200 / p.getViewport({ scale: 1 }).width });
+      const c = document.createElement('canvas'); c.width = v.width; c.height = v.height;
+      await p.render({ canvasContext: c.getContext('2d'), viewport: v, intent: 'print' }).promise; out.push(c.toDataURL('image/jpeg', 0.55));
+    }
+    return out;
+  }
+  const [diapos, autre] = await Promise.all([rendre('/cours.pdf'), rendre('/autre.pdf').catch(() => [])]);
+  window.nbDiapos = diapos.length;
+  /* API du banc */
+  window.montrer = (n, { animer = false } = {}) => {
+    $('#galerie').style.display = 'none'; $('#partage').style.display = 'flex'; $('#pastille').style.display = 'block';
+    $('#img').src = n === 'autre' ? autre[0] : diapos[n - 1];
+    const v = $('#voile');
+    if (animer) { v.style.transition = 'none'; v.style.opacity = '1'; setTimeout(() => { v.style.transition = 'opacity 1.2s linear'; v.style.opacity = '0'; }, 900); }
+    else { v.style.transition = 'none'; v.style.opacity = '0'; }
+    noter('montrer', n === 'autre' ? 'autre' : n);
+  };
+  window.couperPartage = () => { $('#partage').style.display = 'none'; $('#pastille').style.display = 'none'; $('#galerie').style.display = 'grid'; noter('coupe'); };
+  /* vignette caméra : une « personne » qui bouge sans cesse (15 images/s) ; elle peut se déplacer sur la diapo */
+  let tc = 0, deplacer = false;
+  function cam(c) { const g = c.getContext('2d'); const w = c.width, h = c.height; g.fillStyle = '#4a5360'; g.fillRect(0, 0, w, h);
+    const x = w / 2 + Math.sin(tc / 7) * w * 0.12, y = h * 0.62 + Math.cos(tc / 5) * 6;
+    g.fillStyle = '#d9a887'; g.beginPath(); g.arc(x, y - h * 0.22, h * 0.17, 0, 7); g.fill(); g.fillStyle = '#28509a'; g.fillRect(x - w * 0.17, y, w * 0.34, h * 0.5);
+    g.fillStyle = `rgba(255,255,255,${0.05 + 0.05 * Math.sin(tc)})`; g.fillRect(0, 0, w, h); }
+  setInterval(() => { tc++; cam($('#moi')); cam($('#cam2'));
+    if (deplacer) { const s = $('#scene').getBoundingClientRect(); const m = $('#moi'); const k = (tc % 300) / 300; m.style.right = 'auto'; m.style.bottom = 'auto';
+      m.style.left = (60 + k * (s.width - 320)) + 'px'; m.style.top = (120 + Math.sin(k * 6.28) * 120 + s.height * 0.3) + 'px'; } }, 66);
+  window.bougerCamera = (on) => { deplacer = on; if (!on) { const m = $('#moi'); m.style.left = m.style.top = 'auto'; m.style.right = '36px'; m.style.bottom = '36px'; } noter(on ? 'camera-bouge' : 'camera-fixe'); };
+  /* curseur du prof qui se promène sur la diapo */
+  let tCur = null;
+  window.curseur = (on) => { const c = $('#curseur'); c.style.display = on ? 'block' : 'none'; clearInterval(tCur);
+    if (on) tCur = setInterval(() => { const r = $('#diapo').getBoundingClientRect(), s = $('#scene').getBoundingClientRect(); c.style.left = (r.left - s.left + Math.random() * r.width) + 'px'; c.style.top = (r.top - s.top + Math.random() * r.height) + 'px'; }, 400); };
+  /* son : un bruit « de voix » très faible (≈ −50 dB), par phrases de 2,6 s séparées de 0,7 s. Lancé APRÈS le début de
+     la capture : la page de l'app demande le partage avec suppressLocalAudioPlayback → rien n'est joué dans les haut-parleurs */
+  let ac = null;
+  window.demarrerSon = async () => {
+    if (ac) return; ac = new AudioContext(); await ac.resume();
+    const buf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate); const d = buf.getChannelData(0); let b = 0;
+    for (let i = 0; i < d.length; i++) { b = 0.9 * b + 0.1 * (Math.random() * 2 - 1); d[i] = b * 3; }
+    const src = ac.createBufferSource(); src.buffer = buf; src.loop = true;
+    const g = ac.createGain(); g.gain.value = 0; src.connect(g); g.connect(ac.destination); src.start();
+    const N = 0.004; let t = ac.currentTime + 0.1;
+    const plan = () => { while (t < ac.currentTime + 10) { g.gain.setValueAtTime(N, t); t += 2.6; g.gain.setValueAtTime(0, t); t += 0.7; } };
+    plan(); setInterval(plan, 4000); noter('son');
+  };
+  window.arreterSon = () => { if (ac) { ac.close(); ac = null; } };
+  window.pret = true;
+  window.montrer(1);
+</script>
+</body></html>

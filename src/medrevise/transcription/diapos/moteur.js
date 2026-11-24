@@ -28,16 +28,17 @@
       sans cesse (vidéo de la caméra) sont apprises et ignorées.
    ============================================================ */
 
-export const VERSION_SIGNATURE = 1;
-export const GX = 32, GY = 24; // grille de luminance
+export const VERSION_SIGNATURE = 4; // 2 : pages rendues à 480 px · 3 : texture · 4 : image fine
+export const GX = 48, GY = 36; // grille de luminance
 export const CX = 16, CY = 12; // grille des contours, couleurs, histogrammes
+export const FW = 160, FH = 90; // image fine en niveaux de gris (comparaison pixel à pixel)
 const NB = 27; // histogramme 3 × 3 × 3 par case
 
 /* Seuils retenus (réglés sur le banc, voir le compte rendu § 3) */
 export const PARAMS = {
-  SEUIL: 0.58, // score minimal d'une page retenue
-  MARGE: 0.035, // avance minimale sur la deuxième page
-  SEUIL_NON_RECONNU: 0.45, // sous ce score, la diapo affichée n'est pas dans le PDF
+  SEUIL: 0.5, // score minimal d'une page retenue
+  MARGE: 0.03, // avance minimale sur la deuxième page
+  NON_RECONNU: 0.5, // sans page nette, un meilleur score sous cette valeur = la diapo affichée n'est pas dans le PDF
   POIDS_TEXTE: 0.3, // part du texte quand l'OCR a été lancé (l'image garde 0,7)
   BONUS_SUIVANTE: 0.02,
   BONUS_VOISINE: 0.01, // ± 2 pages
@@ -54,6 +55,8 @@ export function signatureDe(px, w, h) {
   const L = new Float32Array(GX * GY), nL = new Float32Array(GX * GY);
   const C = new Float32Array(CX * CY * 2), nC = new Float32Array(CX * CY);
   const H = new Float32Array(CX * CY * NB);
+  const T = new Float32Array(CX * CY), T2 = new Float32Array(CX * CY); // texture : écart-type de la luminance dans la case
+  const Fs = new Float32Array(FW * FH), Fn = new Float32Array(FW * FH); // image fine (moyenne par boîte)
   // au plus ~ 260 000 pixels lus (pas d'échantillonnage régulier au-delà)
   const pas = Math.max(1, Math.floor(Math.sqrt((w * h) / 260000)));
   for (let y = 0; y < h; y += pas) {
@@ -63,8 +66,11 @@ export function signatureDe(px, w, h) {
       const r = px[i], g = px[i + 1], b = px[i + 2];
       const gx = Math.min(GX - 1, Math.floor((x * GX) / w)), cx = Math.min(CX - 1, Math.floor((x * CX) / w));
       const k = gy * GX + gx;
-      L[k] += (0.299 * r + 0.587 * g + 0.114 * b) / 255; nL[k] += 1;
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      L[k] += lum; nL[k] += 1;
       const c = cy * CX + cx;
+      T[c] += lum; T2[c] += lum * lum;
+      const f = Math.min(FH - 1, Math.floor((y * FH) / h)) * FW + Math.min(FW - 1, Math.floor((x * FW) / w)); Fs[f] += lum; Fn[f] += 1;
       C[c * 2] += (r - g) / 255; C[c * 2 + 1] += ((r + g) / 2 - b) / 255; nC[c] += 1;
       H[c * NB + Math.min(2, (r * 3) >> 8) * 9 + Math.min(2, (g * 3) >> 8) * 3 + Math.min(2, (b * 3) >> 8)] += 1;
     }
@@ -73,6 +79,7 @@ export function signatureDe(px, w, h) {
   for (let c = 0; c < CX * CY; c++) {
     const n = nC[c] || 1;
     C[c * 2] /= n; C[c * 2 + 1] /= n;
+    const m = T[c] / n; T[c] = Math.sqrt(Math.max(0, T2[c] / n - m * m));
     for (let j = 0; j < NB; j++) H[c * NB + j] /= n;
   }
   // contours : gradient de la grille L, regroupé 2 × 2
@@ -84,15 +91,17 @@ export function signatureDe(px, w, h) {
     G[Math.floor((y * CY) / GY) * CX + Math.floor((x * CX) / GX)] += dx + dy;
   }
   let min = 1, max = 0; for (const v of L) { if (v < min) min = v; if (v > max) max = v; }
-  return { v: VERSION_SIGNATURE, L, G, C, H, unie: max - min < 0.04 };
+  const F = new Uint8Array(FW * FH); for (let i = 0; i < F.length; i++) F[i] = Fn[i] ? Math.round((Fs[i] / Fn[i]) * 255) : 0;
+  return { v: VERSION_SIGNATURE, L, G, C, H, T, F, unie: max - min < 0.04 };
 }
 
 /** une signature → objet transférable/sérialisable (IndexedDB, postMessage) */
-export const signatureVersJson = (s) => ({ v: s.v, unie: s.unie, L: Array.from(s.L, r4), G: Array.from(s.G, r4), C: Array.from(s.C, r4), H: Array.from(s.H, r4) });
-export const signatureDepuisJson = (j) => ({ v: j.v, unie: !!j.unie, L: Float32Array.from(j.L), G: Float32Array.from(j.G), C: Float32Array.from(j.C), H: Float32Array.from(j.H) });
+export const signatureVersJson = (s) => ({ v: s.v, unie: s.unie, L: Array.from(s.L, r4), G: Array.from(s.G, r4), C: Array.from(s.C, r4), H: Array.from(s.H, r4), T: Array.from(s.T, r4), F: s.F });
+export const signatureDepuisJson = (j) => ({ v: j.v, unie: !!j.unie, L: Float32Array.from(j.L), G: Float32Array.from(j.G), C: Float32Array.from(j.C), H: Float32Array.from(j.H), T: Float32Array.from(j.T || []), F: j.F ? (j.F instanceof Uint8Array ? j.F : Uint8Array.from(Array.isArray(j.F) ? j.F : Object.values(j.F))) : null });
 function r4(x) { return Math.round(x * 10000) / 10000; }
 
 /* ---------------- ressemblance d'image ---------------- */
+export const P_IMG = { L: 0.3, G: 0.15, T: 0.2, C: 0.15, H: 0.2, FIN: 0.4, COULEUR: 0.45 };
 /** masque : Uint8Array(CX*CY) — 1 = case ignorée (vignette caméra, curseur…) */
 function correlation(a, b, garder) {
   let n = 0, sa = 0, sb = 0;
@@ -106,11 +115,44 @@ function correlation(a, b, garder) {
 }
 const caseDeL = (i) => Math.floor(Math.floor(i / GX) * CY / GY) * CX + Math.floor((i % GX) * CX / GX);
 
-/** ressemblance d'image (0 … 1) entre la capture `a` et la page `b` */
-export function ressemblanceImage(a, b, masque = null) {
+/** « page moyenne » du PDF (L, G, T) : ce que toutes les pages ont en commun (bandeau de titre, fond, logo) */
+export function fondCommun(sigs) {
+  if (!sigs.length) return null;
+  const moy = (k) => { const o = new Float32Array(sigs[0][k].length); for (const s of sigs) for (let i = 0; i < o.length; i++) o[i] += s[k][i] / sigs.length; return o; };
+  return { L: moy('L'), G: moy('G'), T: sigs[0].T && sigs[0].T.length ? moy('T') : null, F: sigs[0].F ? moy('F') : null };
+}
+
+/** ressemblance FINE (0 … 1) : corrélation pixel à pixel des images 160 × 90 (en écart à la page moyenne), meilleur des
+ *  décalages de ± 1 pixel. Deux photos du même tissu ont la même « allure » mais pas leurs cellules aux mêmes endroits. */
+export function ressemblanceFine(a, b, masque = null, fond = null) {
+  if (!a.F || !b.F) return null;
+  const libre = new Uint8Array(FW * FH);
+  for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) libre[y * FW + x] = !masque || !masque[Math.floor((y * CY) / FH) * CX + Math.floor((x * CX) / FW)] ? 1 : 0;
+  const va = new Float32Array(FW * FH), vb = new Float32Array(FW * FH);
+  for (let i = 0; i < va.length; i++) { const f = fond && fond.F ? fond.F[i] : 0; va[i] = a.F[i] - f; vb[i] = b.F[i] - f; }
+  let best = -1;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    let n = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+    for (let y = 1; y < FH - 1; y++) for (let x = 1; x < FW - 1; x++) {
+      const i = y * FW + x; if (!libre[i]) continue;
+      const u = va[i], v = vb[(y + dy) * FW + x + dx];
+      n++; sa += u; sb += v; saa += u * u; sbb += v * v; sab += u * v;
+    }
+    if (n < 100) continue;
+    const cov = sab - (sa * sb) / n, da = saa - (sa * sa) / n, db = sbb - (sb * sb) / n;
+    if (da > 1e-6 && db > 1e-6) best = Math.max(best, cov / Math.sqrt(da * db));
+  }
+  return Math.max(0, best);
+}
+const ecart = (x, f) => { if (!f) return x; const o = new Float32Array(x.length); for (let i = 0; i < x.length; i++) o[i] = x[i] - f[i]; return o; };
+
+/** ressemblance d'image (0 … 1) entre la capture `a` et la page `b`. `fond` : la page moyenne du PDF — la structure est
+ *  comparée en ÉCART à cette page moyenne, pour que deux diapos au même titre ne se ressemblent que par leurs photos. */
+export function ressemblanceImage(a, b, masque = null, fond = null) {
   const libre = (c) => !masque || !masque[c];
-  const rL = correlation(a.L, b.L, (i) => libre(caseDeL(i)));
-  const rG = correlation(a.G, b.G, libre);
+  const rL = correlation(ecart(a.L, fond && fond.L), ecart(b.L, fond && fond.L), (i) => libre(caseDeL(i)));
+  const rG = correlation(ecart(a.G, fond && fond.G), ecart(b.G, fond && fond.G), libre);
+  const rT = a.T && b.T && a.T.length === b.T.length ? correlation(ecart(a.T, fond && fond.T), ecart(b.T, fond && fond.T), libre) : rG;
   let dC = 0, sH = 0, n = 0;
   for (let c = 0; c < CX * CY; c++) {
     if (!libre(c)) continue;
@@ -121,7 +163,12 @@ export function ressemblanceImage(a, b, masque = null) {
   }
   if (!n) return 0;
   const sC = Math.exp(-(dC / n) / 0.06);
-  return 0.35 * Math.max(0, rL) + 0.25 * Math.max(0, rG) + 0.2 * sC + 0.2 * (sH / n);
+  const grossier = P_IMG.L * Math.max(0, rL) + P_IMG.G * Math.max(0, rG) + P_IMG.T * Math.max(0, rT) + P_IMG.C * sC + P_IMG.H * (sH / n);
+  const fin = ressemblanceFine(a, b, masque, fond);
+  const brut = fin == null ? grossier : (1 - P_IMG.FIN) * grossier + P_IMG.FIN * fin;
+  // GARDE-FOU DE COULEUR : une galerie de visages grise ne « ressemble » pas à une coupe rose, même si leurs formes se tiennent
+  const couleur = 0.5 * sC + 0.5 * (sH / n);
+  return brut * (1 - P_IMG.COULEUR + P_IMG.COULEUR * couleur);
 }
 
 /* ---------------- texte ---------------- */
@@ -177,10 +224,10 @@ export function decider(img, txt, courant, P = PARAMS) {
   const [p1, s1] = classement[0] || [null, 0];
   const s2 = classement[1] ? classement[1][1] : 0;
   const marge = s1 - s2;
-  const brut = p1 ? img[p1 - 1] : 0;
-  if (!p1 || brut < P.SEUIL_NON_RECONNU) return { page: null, score: s1, deuxieme: s2, marge, nonReconnue: true, ambigu: false, classement: classement.slice(0, 5) };
-  const net = s1 >= P.SEUIL && marge >= P.MARGE;
-  return { page: net ? p1 : null, score: s1, deuxieme: s2, marge, nonReconnue: false, ambigu: !net, classement: classement.slice(0, 5) };
+  const net = !!p1 && s1 >= P.SEUIL && marge >= P.MARGE;
+  // sans page nette : deux pages fortes qui se tiennent = hésitation (on garde la diapo) ; rien de fort = hors du PDF
+  const nonReconnue = !net && s1 < P.NON_RECONNU;
+  return { page: net ? p1 : null, score: s1, deuxieme: s2, marge, nonReconnue, ambigu: !net, classement: classement.slice(0, 5) };
 }
 
 /* ---------------- zone de la diapo ---------------- */
@@ -189,7 +236,17 @@ export function decider(img, txt, courant, P = PARAMS) {
  * @param {Float32Array} gris luminance 0…1, w × h (≈ 240–320 px de large)
  * @returns {{ x, y, w, h, score } | null} en pixels de `gris`
  */
-export function trouverZone(gris, w, h, aspects = [16 / 9], { tailleMin = 0.28 } = {}) {
+export function trouverZone(gris, w, h, aspects = [16 / 9], o = {}) {
+  const l = trouverZones(gris, w, h, aspects, o);
+  return l[0] || null;
+}
+const recouvrement = (a, b) => {
+  const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)), iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  return (ix * iy) / Math.min(a.w * a.h, b.w * b.h);
+};
+/** les `k` meilleurs rectangles bien distincts (une photo dans une diapo sombre peut avoir des bords plus nets que la diapo :
+ *  le choix final se fait sur la reconnaissance, voir worker.js) */
+export function trouverZones(gris, w, h, aspects = [16 / 9], { tailleMin = 0.28, k = 5 } = {}) {
   // contours horizontaux (|dy|) cumulés le long des lignes, verticaux (|dx|) le long des colonnes
   const ligne = new Float32Array((w + 1) * h); // ligne[y*(w+1)+x] = Σ_{x'<x} |dy(x', y)|
   const col = new Float32Array((h + 1) * w); // col[x*(h+1)+y] = Σ_{y'<y} |dx(x, y')|
@@ -203,7 +260,13 @@ export function trouverZone(gris, w, h, aspects = [16 / 9], { tailleMin = 0.28 }
   }
   const bordH = (y, x0, x1) => (ligne[y * (w + 1) + x1] - ligne[y * (w + 1) + x0]) / (x1 - x0);
   const bordV = (x, y0, y1) => (col[x * (h + 1) + y1] - col[x * (h + 1) + y0]) / (y1 - y0);
-  let best = null;
+  const tops = []; // [{…, score}] triés, bien distincts
+  const garder = (r) => {
+    if (tops.length >= k && r.score <= tops[tops.length - 1].score) return;
+    const i = tops.findIndex((t) => recouvrement(t, r) > 0.8 && Math.abs(t.w - r.w) < w * 0.12);
+    if (i >= 0) { if (r.score > tops[i].score) { tops[i] = r; tops.sort((a, b) => b.score - a.score); } return; }
+    tops.push(r); tops.sort((a, b) => b.score - a.score); if (tops.length > k) tops.pop();
+  };
   const wMin = Math.max(24, Math.floor(w * tailleMin));
   for (const a of aspects) {
     for (const k of [0.985, 1, 1.015]) {
@@ -220,24 +283,28 @@ export function trouverZone(gris, w, h, aspects = [16 / 9], { tailleMin = 0.28 }
             const mn = Math.min(t, b, l, r);
             const s = ((t + b + l + r) / 4) * 0.5 + mn * 0.5;
             const sc = s * taille;
-            if (!best || sc > best.score) best = { x: x0, y: y0, w: rw, h: rh, score: sc, bords: mn };
+            if (tops.length < k || sc > tops[tops.length - 1].score) garder({ x: x0, y: y0, w: rw, h: rh, score: sc, bords: mn });
           }
         }
       }
     }
   }
-  return best;
+  return tops;
 }
 
 /* ---------------- changement ---------------- */
-/** différence par case de deux petites images grises (w × h), grille gx × gy → Float32Array (0…1 par case) */
-export function differencesParCase(a, b, w, h, gx, gy) {
+/** changement par case de deux petites images grises (w × h), grille gx × gy → Float32Array : la PART des pixels de la case
+ *  qui ont changé de plus de `seuilPx` (une photo remplacée par une autre de même teinte moyenne change quand même ses pixels) */
+export function differencesParCase(a, b, w, h, gx, gy, seuilPx = 0.06, canaux = 1) {
   const d = new Float32Array(gx * gy), n = new Float32Array(gx * gy);
   for (let y = 0; y < h; y++) {
     const cy = Math.min(gy - 1, Math.floor((y * gy) / h));
     for (let x = 0; x < w; x++) {
       const c = cy * gx + Math.min(gx - 1, Math.floor((x * gx) / w));
-      d[c] += Math.abs(a[y * w + x] - b[y * w + x]); n[c] += 1;
+      const i = (y * w + x) * canaux;
+      let m = 0; for (let k = 0; k < canaux; k++) { const v = Math.abs(a[i + k] - b[i + k]); if (v > m) m = v; }
+      if (m > seuilPx) d[c] += 1;
+      n[c] += 1;
     }
   }
   for (let c = 0; c < d.length; c++) d[c] = n[c] ? d[c] / n[c] : 0;
