@@ -270,7 +270,7 @@ class FabriqueCanvas { // pdf.js dans un worker : ses canvas de travail sont des
 }
 async function preparerPdf(octets, largeur = 480) {
   const { openPdf } = await import('../../pdf/pdfjsSetup.js');
-  const doc = await openPdf(octets, { disableFontFace: true, isOffscreenCanvasSupported: true, CanvasFactory: FabriqueCanvas });
+  const doc = await openPdf(octets, { disableFontFace: true, isOffscreenCanvasSupported: true, useWorkerFetch: true, CanvasFactory: FabriqueCanvas }); // useWorkerFetch : pas de document.baseURI dans un worker
   const sigs = [], textes = [], ratios = []; let maxMs = 0, totalMs = 0;
   try {
     for (let n = 1; n <= doc.numPages; n++) {
@@ -328,7 +328,7 @@ self.onmessage = async (ev) => {
     }
     case 'preparer': {
       // PAGES DU PDF, rendues ICI (pdf.js de l'app sur OffscreenCanvas) : le fil principal ne dessine rien
-      try { postMessage({ type: 'prepare', id: m.id, ...(await preparerPdf(m.pdf, m.largeur)) }); } catch (e) { postMessage({ type: 'prepare', id: m.id, erreur: String((e && e.message) || e) }); }
+      try { postMessage({ type: 'prepare', id: m.id, ...(await preparerPdf(m.pdf, m.largeur)) }); } catch (e) { postMessage({ type: 'prepare', id: m.id, erreur: String((e && e.stack) || e).slice(0, 900) }); }
       break;
     }
     case 'reconnaitre': {

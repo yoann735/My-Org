@@ -59,7 +59,7 @@ async function principal() {
       await app.ev(`(()=>{const b=[...document.querySelectorAll('.sb-item, .sidebar [role=button], .sidebar button, .sidebar a')].find(e=>/Biblioth/.test(e.innerText||e.title||''));b&&b.click();return 1})()`); await dormir(1200);
       await app.ev(`(()=>{const r=[...document.querySelectorAll('button')].find(b=>(b.title||'')==='Revenir à la liste'||b.getAttribute('aria-label')==='Retour');r&&r.click();return 1})()`); await dormir(800);
       for (let k = 0; k < 4; k++) {
-        await app.clic(`[...document.querySelectorAll('.lt-fiche')].find(e=>e.innerText.trim().startsWith(${JSON.stringify(titre)}))`, 2500);
+        await app.clic(`([...document.querySelectorAll('.lt-fiche')].find(e=>e.innerText.trim().startsWith(${JSON.stringify(titre)}))||{querySelector:()=>null}).querySelector('.lt-rangee')`, 2500);
         if (await app.attendre(`!!document.querySelector('.pdfr-scroll') && document.title !== '' && [...document.querySelectorAll('.lt-fiche')].length === 0`, 5000)) return true;
         if (await app.ev(`!!document.querySelector('.pdfr-scroll')`)) return true;
         await dormir(1000);
