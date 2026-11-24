@@ -28,6 +28,7 @@ async function principal() {
       await S.put('fiches',{id:'${COURS}',matiereId:'mat-diapos',dossierId:null,titre:'Cours vierge (banc)',type:'standard',docNotes:true,dateImport:'2026-11-24'});return 1`);
     await app.send('Page.reload'); await app.attendre(`document.readyState === 'complete'`, 30000); await dormir(3500);
     const ouvrir = async (titre) => {
+      await app.send('Page.bringToFront');
       await app.ev(`(()=>{const x=[...document.querySelectorAll('.hub-card')].find(e=>/MedRevise/.test(e.innerText||''));x&&x.click();return 1})()`); await dormir(1500);
       await app.ev(`(()=>{const b=[...document.querySelectorAll('.sb-item, .sidebar [role=button], .sidebar button, .sidebar a')].find(e=>/Biblioth/.test(e.innerText||e.title||''));b&&b.click();return 1})()`); await dormir(1200);
       await app.ev(`(()=>{const r=[...document.querySelectorAll('button')].find(b=>(b.title||'')==='Revenir à la liste'||b.getAttribute('aria-label')==='Retour');r&&r.click();return 1})()`); await dormir(800);
@@ -35,13 +36,17 @@ async function principal() {
         await app.clic(`([...document.querySelectorAll('.lt-fiche')].find(e=>e.innerText.trim().startsWith(${JSON.stringify(titre)}))||{querySelector:()=>null}).querySelector('.lt-rangee')`, 2500);
         if (await app.attendre(`!!document.querySelector('.pdfr-scroll') && document.title !== '' && [...document.querySelectorAll('.lt-fiche')].length === 0`, 5000)) return true;
         if (await app.ev(`!!document.querySelector('.pdfr-scroll')`)) return true;
+        // repli : clic du bouton de la ligne par le DOM (même gestionnaire React)
+        await app.ev(`(([...document.querySelectorAll('.lt-fiche')].find(e=>e.innerText.trim().startsWith(${JSON.stringify(titre)}))||{querySelector:()=>null}).querySelector('.lt-rangee')||{click(){}}).click(),1`);
+        if (await app.attendre(`!!document.querySelector('.pdfr-scroll')`, 4000)) return true;
         await dormir(1000);
       }
       return false;
     };
     ok(await ouvrir('Cours vierge (banc)'), 'document vierge ouvert (créé dans l’app, sans PDF)');
-    await app.clic(`[...document.querySelectorAll('.pm-seg-btn')].find(x=>x.innerText.trim().startsWith('Transcript'))`, 700);
-    await app.clic(`[...document.querySelectorAll('.trx-accueil button')].find(x=>/Transcrire le cours/.test(x.innerText))`, 1500);
+    await app.ev(`([...document.querySelectorAll('.pm-seg-btn')].find(x=>x.innerText.trim().startsWith('Transcript'))||{click(){}}).click(),1`); await dormir(900);
+    await app.ev(`([...document.querySelectorAll('.trx-accueil button')].find(x=>/Transcrire le cours/.test(x.innerText))||{click(){}}).click(),1`); await dormir(1500);
+    await app.attendre(`!!document.querySelector('.trx-feuille select')`, 8000);
     await app.ev(`(()=>{const s=document.querySelector('.trx-feuille select');const o=[...s.options].find(o=>o.value==='onglet');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(s,o.value);s.dispatchEvent(new Event('change',{bubbles:true}));return 1})()`);
     await dormir(600);
     await app.clic(`[...document.querySelectorAll('.trx-feuille button')].filter(x=>/Démarrer/.test(x.innerText)).pop()`, 500);
@@ -69,20 +74,20 @@ async function principal() {
     ok(r, 'document vierge remplacé par le PDF du prof');
     await app.send('Page.reload'); await app.attendre(`document.readyState === 'complete'`, 30000); await dormir(3500);
     await ouvrir('Cours vierge (banc)');
-    await app.clic(`[...document.querySelectorAll('.pm-seg-btn')].find(x=>x.innerText.trim().startsWith('Transcript'))`, 900);
-    await app.clic(`document.querySelector('.trx-session[data-session="${avant.id}"]')`, 900);
-    await app.clic(`document.querySelector('.trx-pied .trx-chevron')`, 500);
+    await app.ev(`([...document.querySelectorAll('.pm-seg-btn')].find(x=>x.innerText.trim().startsWith('Transcript'))||{click(){}}).click(),1`); await dormir(900);
+    await app.ev(`(document.querySelector('.trx-session[data-session="${avant.id}"]')||{click(){}}).click(),1`); await dormir(900);
+    await app.ev(`(document.querySelector('.trx-pied .trx-chevron')||{click(){}}).click(),1`); await dormir(600);
     const entree = await app.ev(`!![...document.querySelectorAll('.ctx-menu-item')].find(x=>/Relier aux diapos automatiquement/.test(x.innerText))`);
     ok(entree, 'menu de la session : « Relier aux diapos automatiquement »');
     const t0 = Date.now();
-    await app.clic(`[...document.querySelectorAll('.ctx-menu-item')].find(x=>/Relier aux diapos automatiquement/.test(x.innerText))`, 800);
+    await app.ev(`([...document.querySelectorAll('.ctx-menu-item')].find(x=>/Relier aux diapos automatiquement/.test(x.innerText))||{click(){}}).click(),1`); await dormir(800);
     ok(await app.attendre(`!!document.querySelector('[data-resume]')`, 180000), 'aperçu prêt', `${((Date.now() - t0) / 1000).toFixed(1)} s`);
     const resume = await app.ev(`document.querySelector('[data-resume]').innerText`);
     ok(/^\d+ passages? → \d+ diapos?, \d+ non reconnus?$/.test(resume), `aperçu : « ${resume} »`);
     if (CAPTURES) await app.capture(DOSSIER_IMG + '04-relier-apercu.png', await app.ev(`(()=>{const r=document.querySelector('.day-pop').getBoundingClientRect();return {x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)}})()`));
     const inchange = JSON.stringify((await lire()).segments) === JSON.stringify(avant.segments);
     ok(inchange, 'tant qu’on n’a pas cliqué « Appliquer », la session n’est pas modifiée');
-    await app.clic(`[...document.querySelectorAll('.day-pop button')].find(x=>/Appliquer/.test(x.innerText))`, 2500);
+    await app.ev(`([...document.querySelectorAll('.day-pop button')].find(x=>/Appliquer/.test(x.innerText))||{click(){}}).click(),1`); await dormir(2500);
     const apres = await lire();
     const backups = await app.S(`const l=await S.getAll('backups');return l.filter(b=>String(b.key).startsWith('pre-relier-diapos-${avant.id}')).length`);
     ok(backups === 1, 'putBackup de la session avant d’appliquer');

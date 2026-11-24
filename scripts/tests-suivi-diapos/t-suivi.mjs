@@ -19,7 +19,7 @@ fs.mkdirSync(DOSSIER_IMG, { recursive: true });
 /* ---------- le scénario ---------- */
 const S = [];
 const m = (page, sc, o = {}) => S.push({ quoi: 'montrer', page, sc, ...o });
-if (COURT) { m(1, 'normal'); m(2, 'normal'); m(3, 'meme-titre'); m(4, 'meme-titre'); m(9, 'sans-titre'); m(17, 'noir'); }
+if (COURT) { m(1, 'normal'); m(2, 'autre-cours', { ailleurs: true }); m(3, 'meme-titre'); }
 else {
   for (let p = 1; p <= 10; p++) m(p, p >= 3 && p <= 7 ? 'meme-titre' : p === 9 || p === 10 ? 'sans-titre' : 'normal');
   m(7, 'retour'); m(8, 'normal'); m(18, 'saut'); m(19, 'animation', { animer: true });
@@ -55,6 +55,7 @@ async function principal() {
       await S.put('fiches',{id:'${AUTRE_COURS}',matiereId:'mat-diapos',dossierId:null,titre:'Autre cours (banc)',type:'standard',pdfId:p2,pdfName:'autre.pdf',dateImport:'2026-11-24'});return 1`);
     await app.send('Page.reload'); await app.attendre(`document.readyState === 'complete'`, 30000); await dormir(3500);
     const ouvrir = async (titre) => {
+      await app.send('Page.bringToFront');
       await app.ev(`(()=>{const x=[...document.querySelectorAll('.hub-card')].find(e=>/MedRevise/.test(e.innerText||''));x&&x.click();return 1})()`); await dormir(1500);
       await app.ev(`(()=>{const b=[...document.querySelectorAll('.sb-item, .sidebar [role=button], .sidebar button, .sidebar a')].find(e=>/Biblioth/.test(e.innerText||e.title||''));b&&b.click();return 1})()`); await dormir(1200);
       await app.ev(`(()=>{const r=[...document.querySelectorAll('button')].find(b=>(b.title||'')==='Revenir à la liste'||b.getAttribute('aria-label')==='Retour');r&&r.click();return 1})()`); await dormir(800);
@@ -62,8 +63,12 @@ async function principal() {
         await app.clic(`([...document.querySelectorAll('.lt-fiche')].find(e=>e.innerText.trim().startsWith(${JSON.stringify(titre)}))||{querySelector:()=>null}).querySelector('.lt-rangee')`, 2500);
         if (await app.attendre(`!!document.querySelector('.pdfr-scroll') && document.title !== '' && [...document.querySelectorAll('.lt-fiche')].length === 0`, 5000)) return true;
         if (await app.ev(`!!document.querySelector('.pdfr-scroll')`)) return true;
+        // repli : clic du bouton de la ligne par le DOM (même gestionnaire React)
+        await app.ev(`(([...document.querySelectorAll('.lt-fiche')].find(e=>e.innerText.trim().startsWith(${JSON.stringify(titre)}))||{querySelector:()=>null}).querySelector('.lt-rangee')||{click(){}}).click(),1`);
+        if (await app.attendre(`!!document.querySelector('.pdfr-scroll')`, 4000)) return true;
         await dormir(1000);
       }
+      console.log('DIAG ouvrir', titre, JSON.stringify(await app.ev(`({modal:!!document.querySelector('.day-pop'),fiches:[...document.querySelectorAll('.lt-fiche')].map(e=>e.innerText.slice(0,30)),rangee:[...document.querySelectorAll('.lt-fiche .lt-rangee')].map(e=>{const r=e.getBoundingClientRect();return [Math.round(r.x),Math.round(r.y),Math.round(r.width),Math.round(r.height)]}),url:location.pathname})`)));
       return false;
     };
     ok(await ouvrir('Histologie générale (banc)'), 'cours « Histologie générale (banc) » ouvert dans le lecteur');
@@ -175,17 +180,20 @@ async function principal() {
 
     /* ---------- même durée SANS suivi : mots, CPU, images ---------- */
     const DUREE_COMP = Math.min(90000, tCpu1 - tCpu0);
-    await app.clic(`[...document.querySelectorAll('.trx-retour')][0]`, 600); // la session finie s'ouvre en lecture : retour aux sessions
-    await app.clic(`[...document.querySelectorAll('.trx-accueil button')].find(x=>/Transcrire le cours/.test(x.innerText))`, 1500);
-    await app.attendre(`!!document.querySelector('.trx-accueil button')`, 8000);
-    if (!(await app.ev(`!!document.querySelector('.trx-feuille select')`))) await app.clic(`[...document.querySelectorAll('.trx-accueil button')].find(x=>/Transcrire le cours/.test(x.innerText))`, 1500);
-    if (!(await app.attendre(`!!document.querySelector('.trx-feuille select')`, 8000))) console.log('DIAG panneau :', await app.ev(`(document.querySelector('.pis-extra-plein, .trx-panneau, .trx-accueil')||document.body).innerText.slice(0,400)`));
+    // deuxième session : l'app est rechargée (la première est enregistrée), même chemin que la première fois
+    await app.send('Page.reload'); await app.attendre(`document.readyState === 'complete'`, 30000); await dormir(3500);
+    await app.send('Page.bringToFront'); await dormir(500);
+    await ouvrir('Histologie générale (banc)');
+    await app.ev(`([...document.querySelectorAll('.pm-seg-btn')].find(x=>x.innerText.trim().startsWith('Transcript'))||{click(){}}).click(),1`); await dormir(900);
+    await app.ev(`([...document.querySelectorAll('.trx-accueil button')].find(x=>/Transcrire le cours/.test(x.innerText))||{click(){}}).click(),1`); await dormir(1500);
+    await app.attendre(`!!document.querySelector('.trx-feuille select')`, 8000);
     await app.ev(`(()=>{const s=document.querySelector('.trx-feuille select');const o=[...s.options].find(o=>o.value==='onglet');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(s,o.value);s.dispatchEvent(new Event('change',{bubbles:true}));return 1})()`);
     await dormir(500);
     const motsAvant2 = (await (await fetch(DEEPGRAM + '/__mots')).json()).total;
     await app.clic(`[...document.querySelectorAll('.trx-feuille button')].filter(x=>/Démarrer/.test(x.innerText)).pop()`, 500);
     await app.attendre(`window.__transcription.lireEtat().phase==='live'`, 20000);
     await app.attendre(`window.__transcription.lireSuivi().disponible`, 10000);
+    if (!(await app.attendre(`!!document.querySelector('.trx-suivi .switch')`, 15000))) console.log('DIAG 2e session', JSON.stringify(await app.ev(`({phase:window.__transcription.lireEtat().phase,suivi:window.__transcription.lireSuivi(),txt:(document.querySelector('.trx-panneau, .trx-accueil')||document.body).innerText.slice(0,300)})`)));
     await app.clic(`document.querySelector('.trx-suivi .switch')`, 500); // interrupteur coupé
     const coupe = await app.ev(`!window.__transcription.lireSuivi().actif && /Suivi coupé/.test(document.querySelector('.trx-suivi-ind').innerText)`);
     ok(coupe, 'interrupteur « Suivre les diapos automatiquement » : coupé d’un clic');
