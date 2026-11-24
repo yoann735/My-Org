@@ -185,13 +185,19 @@ async function principal() {
     await app.send('Page.bringToFront'); await dormir(500);
     await ouvrir('Histologie générale (banc)');
     await app.ev(`([...document.querySelectorAll('.pm-seg-btn')].find(x=>x.innerText.trim().startsWith('Transcript'))||{click(){}}).click(),1`); await dormir(900);
-    await app.ev(`([...document.querySelectorAll('.trx-accueil button')].find(x=>/Transcrire le cours/.test(x.innerText))||{click(){}}).click(),1`); await dormir(1500);
-    await app.attendre(`!!document.querySelector('.trx-feuille select')`, 8000);
-    await app.ev(`(()=>{const s=document.querySelector('.trx-feuille select');const o=[...s.options].find(o=>o.value==='onglet');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(s,o.value);s.dispatchEvent(new Event('change',{bubbles:true}));return 1})()`);
-    await dormir(500);
-    const motsAvant2 = (await (await fetch(DEEPGRAM + '/__mots')).json()).total;
-    await app.clic(`[...document.querySelectorAll('.trx-feuille button')].filter(x=>/Démarrer/.test(x.innerText)).pop()`, 500);
-    await app.attendre(`window.__transcription.lireEtat().phase==='live'`, 20000);
+    let motsAvant2 = 0;
+    for (let essai = 0; essai < 4 && !(await app.ev(`window.__transcription && window.__transcription.lireEtat().phase==='live'`)); essai++) {
+      if (!(await app.ev(`!!document.querySelector('.trx-feuille select')`))) { await app.ev(`([...document.querySelectorAll('.trx-accueil button')].find(x=>/Transcrire le cours/.test(x.innerText))||{click(){}}).click(),1`); await dormir(1500); }
+      if (!(await app.attendre(`!!document.querySelector('.trx-feuille select')`, 6000))) continue;
+      await app.ev(`(()=>{const s=document.querySelector('.trx-feuille select');const o=[...s.options].find(o=>o.value==='onglet');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(s,o.value);s.dispatchEvent(new Event('change',{bubbles:true}));return 1})()`);
+      await dormir(500);
+      motsAvant2 = (await (await fetch(DEEPGRAM + '/__mots')).json()).total;
+      await app.attendre(`(()=>{const x=[...document.querySelectorAll('.trx-feuille button')].filter(x=>/Démarrer/.test(x.innerText)).pop();return !!x&&!x.disabled})()`, 10000);
+      await app.send('Page.bringToFront');
+      await app.clic(`[...document.querySelectorAll('.trx-feuille button')].filter(x=>/Démarrer/.test(x.innerText)).pop()`, 500);
+      await app.attendre(`window.__transcription.lireEtat().phase==='live'`, 12000);
+    }
+    ok(await app.attendre(`window.__transcription.lireEtat().phase==='live'`, 5000), 'deuxième session (sans suivi) en direct');
     await app.attendre(`window.__transcription.lireSuivi().disponible`, 10000);
     if (!(await app.attendre(`!!document.querySelector('.trx-suivi .switch')`, 15000))) console.log('DIAG 2e session', JSON.stringify(await app.ev(`({phase:window.__transcription.lireEtat().phase,suivi:window.__transcription.lireSuivi(),txt:(document.querySelector('.trx-panneau, .trx-accueil')||document.body).innerText.slice(0,300)})`)));
     await app.clic(`document.querySelector('.trx-suivi .switch')`, 500); // interrupteur coupé
