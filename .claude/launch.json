@@ -157,37 +157,6 @@
         "scripts/tests-suivi-diapos/faux-teams.mjs"
       ],
       "port": 54411
-    },
-    {
-      "name": "mw-avant-diapos",
-      "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "node_modules/vite/bin/vite.js",
-        "/private/tmp/claude-501/-Users-yoannlmr-Documents-D-v---projets-Claude-Projets-My-Org-My-Org/1fac760a-892f-4649-a9df-dd7c300d0d2a/scratchpad/avant",
-        "--port",
-        "5321",
-        "--strictPort"
-      ],
-      "env": {
-        "VITE_SUPABASE_URL": "",
-        "VITE_SUPABASE_ANON_KEY": ""
-      },
-      "port": 5321
-    },
-    {
-      "name": "mw-apres-diapos",
-      "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "node_modules/vite/bin/vite.js",
-        "--port",
-        "5322",
-        "--strictPort"
-      ],
-      "env": {
-        "VITE_SUPABASE_URL": "",
-        "VITE_SUPABASE_ANON_KEY": ""
-      },
-      "port": 5322
     }
   ]
 }

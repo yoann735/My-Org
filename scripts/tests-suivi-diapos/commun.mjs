@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 export const TRAVAIL = process.env.TRAVAIL || path.join(os.tmpdir(), 'banc-suivi-diapos');
 export const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -19,7 +20,7 @@ export const BASE = process.env.BASE || 'http://localhost:5304';
 export const TEAMS = process.env.TEAMS || 'http://localhost:54411';
 export const DEEPGRAM = process.env.DEEPGRAM || 'http://localhost:54410';
 export const PORT_CHROME = Number(process.env.PORT_CHROME || 9402);
-export const DOSSIER_IMG = new URL('../../docs/img/suivi-auto-diapos/', import.meta.url).pathname;
+export const DOSSIER_IMG = fileURLToPath(new URL('../../docs/img/suivi-auto-diapos/', import.meta.url));
 export const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 fs.mkdirSync(TRAVAIL, { recursive: true });
 
@@ -62,13 +63,14 @@ export async function cdp(port, { url = null, cible = null } = {}) {
 }
 
 /** Chrome du banc : fenêtré HORS de l'écran (jamais devant toi), profil neuf, partage d'onglet automatique */
-export async function lancerChrome({ profil = 'chrome-banc' } = {}) {
+export async function lancerChrome({ profil = 'chrome-banc', autoriser = false, garder = false } = {}) {
   const dir = path.join(TRAVAIL, profil);
-  fs.rmSync(dir, { recursive: true, force: true });
+  if (!garder) fs.rmSync(dir, { recursive: true, force: true });
   const p = spawn(CHROME, [
     `--remote-debugging-port=${PORT_CHROME}`, `--user-data-dir=${dir}`, '--no-first-run', '--no-default-browser-check',
     '--window-position=-3000,0', '--window-size=1440,900', '--auto-select-tab-capture-source-by-title=Faux Teams',
     '--autoplay-policy=no-user-gesture-required', '--use-fake-device-for-media-stream', // micro FACTICE : jamais le vrai micro du Mac '--disable-features=CalculateNativeWinOcclusion', '--disable-background-timer-throttling',
+    ...(autoriser ? ['--use-fake-ui-for-media-stream'] : []), // accepte la demande de micro (factice) sans fenêtre
     'about:blank',
   ], { stdio: 'ignore' });
   for (let i = 0; i < 40; i++) { try { await fetch(`http://localhost:${PORT_CHROME}/json/version`); break; } catch (e) { await dormir(250); } }

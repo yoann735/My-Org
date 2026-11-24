@@ -1,44 +1,28 @@
 <!-- PASSATION:DEBUT -->
 # 🔁 Passation – My Org (MedRevise)
-_Clôturée le 2026-11-24_
+_Mise à jour le 2026-11-24 (soir)_
 
 ## 🎯 Objectif
 SPA Vite + React (hub + MealWeek + MedRevise), Vercel `my-org` au push sur `main`.
-Session 22-24/11 : /goal « masques d'une flashcard image produits par une IA » — livré, testé, poussé (2388754, 1c2351d, 0e5d9a1, dd34607).
+/goal du 24/11 : suivi automatique des diapos pendant une transcription d'onglet (Teams) + répartition après coup — LIVRÉ.
 
 ## ✅ Fait (vérifié)
-- Éditeur de flashcard image existant (`components/OcclusionImage.jsx`) : « Copier le prompt IA » + « Coller des masques » (collage / .json) → `components/ImportMasquesIA.jsx` ; lecture tolérante + recalage OCR (contour des mots + 4 px, sinon contour orange « à vérifier », partiel = rectangle IA agrandi) → `lib/masquesIA.js` ; aperçu Valider/Annuler, rien enregistré avant.
-- Masques créés par `pages/ImportAnatomieVisuel.jsx#nouvelleZone` (extraite de addZone) = même structure qu'un masque dessiné. Prop `aVerifier` de SchemaEditor (contour orange, jamais stocké). CSS fin de `src/styles/etudes.css`.
-- Bug existant corrigé : `ocr/moteurTesseract.js` — la libération du moteur attend les lectures en cours (avant : sablier infini de « Masquer des mots » / import si le service PDF libérait le worker). Prouvé par `t-ocr-pdf.mjs` (bloqué sur le code d'avant).
-- Test réel tibia/fibula (page 2 de ~/Downloads/TP_osteo_membre_inferieur_bassin.pdf, local seulement) : 40/40 masqués, 40 recalés, 0 à vérifier, 0 oubli, 0 réponse visible, 0 titre ; idem avec décalages ±3 % (15 tirages).
-- Tests : `tests/masques-ia` 19/19 ; npm test 361/364 (crayon, emploi-du-temps/api préexistants ; filet = durée, vert seul) ; build vert ; bancs `scripts/tests-masques-ia/` verts (t-masques ordi+tablette 34/34, REEL 21/21, t-seance 3 appareils, t-synchro, t-ocr-pdf) ; t-boite (éditeur manuel) vert ; MealWeek 0 pixel différent.
-- Docs : `docs/compte-rendu-masques-ia.md`, `docs/format-masques-ia.md`, `docs/prompt-masques-ia.md` (régénéré par `scripts/tests-masques-ia/doc-prompt.mjs`), captures `docs/img/masques-ia/` (fiche de DÉMO, jamais l'image du manuel).
+- `src/medrevise/transcription/diapos/` : moteur unique (moteur.js), Web Worker (images de l'onglet, zone, scores, rendu des pages pdf.js sur OffscreenCanvas), pilote (suivi.js), pages du PDF (pagesCours.js), « Relier aux diapos automatiquement » (repartition.js), UI (SuiviDiapos.jsx). Piste vidéo du même partage gardée (audio.js), page des lignes = diapo reconnue (engine.js), Historique porte la session (historiqueDoc.js).
+- Banc Chrome `scripts/tests-suivi-diapos/` (vrai partage d'onglet, Chrome fenêtré hors écran, MUET) : passages 100 %, lignes 98,4 %, 0 mauvais changement même titre, délai moyen 2,66 s, aucun mot perdu ; après coup 100 % ; non-régression verte ; MealWeek identique au pixel. Compte rendu : `docs/compte-rendu-suivi-auto-diapos.md`.
 
-## 🚧 En cours
-- Rien ; arbre propre, poussé. Serveurs et Chrome de banc arrêtés.
-
-## ➡️ Prochaines étapes (dans l'ordre)
-1. Côté utilisateur : essayer les masques IA en vrai (iPad/Mac : Copier le prompt → IA → Coller des masques) et l'essai PNG texte coloré sur vrai iPhone (correctif 38e87c8). Attendre son retour avant toute modification.
-2. Suite possible (seulement si demandé) : zoom molette absent dans l'éditeur quand l'image arrive après ouverture (`SchemaEditor` useEffect([]) sur outerRef) — bug existant noté dans le compte rendu.
-3. En attente (utilisateur) : vrai iPad/Mac police, ⌘C/⌘V/⌘D, Remplacer par un PDF, retour au cours ; Passer/Précédente, → Flashcard, « 0 en attente », file d'attente ; CLI Vercel + migration 20261024.
-4. Facultatif : bancs périmés `.bfc-fenetre`.
+## ➡️ Prochaines étapes
+1. Essai en vrai sur un cours Teams dans Chrome + relancer le banc avec le vrai PDF d'histologie (`PDF_HISTO=~/Downloads/… node scripts/tests-suivi-diapos/t-suivi.mjs`) — aucun PDF d'histologie n'était dans ~/Downloads.
+2. (Toujours en attente) essais masques IA iPad/Mac, PNG texte coloré iPhone ; zoom molette SchemaEditor ; CLI Vercel + migration 20261024.
 
 ## 🧭 Décisions prises (ne pas rediscuter)
-- Pas d'éditeur de masques sur téléphone (shell révision seule) : non ajouté (« rien d'autre que listé »).
-- Un seul code : éditeur, OCR (même worker), création de carte existants ; aucun nouveau format stocké, aucune migration.
-- Image du manuel jamais dans le dépôt ; captures publiées = fiche de démo dessinée par le banc.
-- Ne jamais toucher MealWeek ni `src/shared/` ; Supabase lecture seule.
-
-## 🛠️ Commandes utiles
-- `npm run build` · `npm test` · `npx vitest run tests/masques-ia`
-- Banc : Vite `medrevise-banc` (:5302, launch.json) ; Chrome headless 9345/9346/9347 profils neufs ; `TRAVAIL=<dossier hors dépôt>` ; `node rendu.mjs` → `mesure.mjs [--decaler=0.03 --graine=1]` ; `t-masques.mjs ordi|tablette`, `REEL=1 t-masques.mjs ordi`, `t-seance.mjs ordi|tablette|tel`, `t-ocr-pdf.mjs` (BASE=… pour un autre port).
+- Un seul moteur (direct et après coup), OCR de l'app seulement si hésitation, images des changements LOCALES (store meta), aucune migration.
+- Seuils : SEUIL 0,50 · MARGE 0,03 · NON_RECONNU 0,50 (moteur.js#PARAMS).
 
 ## ⚠️ Pièges et préférences
-- Le port 54399 (faux Supabase) peut être pris par une autre session : copie avec un autre port dans le scratchpad (sed sur `listen(54399`).
-- Le faux cloud garde les cartes entre deux passages : boîte « déjà convertie » → redémarrer le faux cloud à vide.
-- `t-mealweek.mjs` et `t-boite.mjs` réécrivent leurs captures commitées : `git checkout --` après.
-- Petits masques : la pastille et le panneau recouvrent masque et poignées (existant) → le banc agrandit le masque inventé.
-- Français, commits conventionnels, jamais de force push ; « sync auto » commite progression.md.
+- JAMAIS de son pendant un banc (Yoann en cours) : faux Teams à −50 dB + suppressLocalAudioPlayback ; `--mute-audio` coupe AUSSI la capture.
+- Ne pas modifier src/ pendant qu'un banc tourne (Vite recharge la page et coupe la session).
+- « sync auto » commite ET pousse tout seul.
+- Français, commits conventionnels, jamais de force push.
 <!-- PASSATION:FIN -->
 
 ## Historique des clôtures

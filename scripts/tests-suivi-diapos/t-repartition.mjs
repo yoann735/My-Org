@@ -99,10 +99,12 @@ async function principal() {
     let pJ = 0;
     for (let i = 0; i < etapes.length; i++) {
       const e = etapes[i], fin = i + 1 < etapes.length ? etapes[i + 1].t0 : Date.now();
-      const dans = apres.diapos.filter((d) => { const td = Date.parse(d.le); return td >= e.t0 - 1500 && td < fin; });
-      const rec = dans.filter((d) => d.page);
-      const p = rec.length ? rec[rec.length - 1].page : null;
-      if (e.page === 'autre' ? p === null : p === e.page) pJ++;
+      // la diapo reconnue en vigueur au milieu du passage (après le changement, avant le suivant)
+      const milieu = (e.t0 + fin) / 2;
+      const avantMilieu = apres.diapos.filter((d) => Date.parse(d.le) <= milieu).sort((a, b) => Date.parse(a.le) - Date.parse(b.le));
+      const dernier = avantMilieu[avantMilieu.length - 1];
+      const enVigueur = [...avantMilieu].reverse().find((d) => d.page);
+      if (e.page === 'autre' ? (dernier && !dernier.page && enVigueur && enVigueur.page === 30) : (enVigueur && enVigueur.page === e.page)) pJ++;
     }
     const lignes = apres.segments.filter((g) => g.status === 'final');
     const lJ = lignes.filter((g) => g.page === vraieA((off + g.t0) * 1000)).length;
