@@ -584,7 +584,8 @@ export default function MedReviseApp({ themeApi, goHub }) {
     // `opts.transcrire` (17/10, emploi du temps) : ouvre la feuille « Transcrire » pré-remplie
     // (source Onglet Chrome) dès que le cours est prêt — voir PdfReader.jsx.
     openPdfReader: (ficheId, returnScreen, srcTab, opts = {}) => {
-      setPdfView({ ficheId, returnScreen: returnScreen || screen, srcTab, transcrire: opts.transcrire || null });
+      // `opts.page` (26/11, séances liées à l'agenda) : { page, pageCle, doc } — le lecteur s'ouvre à cette page
+      setPdfView({ ficheId, returnScreen: returnScreen || screen, srcTab, transcrire: opts.transcrire || null, page: opts.page || null });
       setScreen('pdf');
     },
     closePdfReader: () => { const back = pdfView && pdfView.returnScreen; setScreen(back || 'library'); setPdfView(null); },

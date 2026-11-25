@@ -17,6 +17,23 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
 import { Modal, matiereMeta } from './ui.jsx';
 import { mural, lundiDe, plusJours, debutJour, hm, dateCourte, nomJour, estEnCours, lieuDe } from '../lib/emploiDuTemps.js';
+import { libellePages, MENTIONS } from '../lib/seancesAgenda.js';
+import '../../styles/seances-agenda.css';
+
+/* (26/11, docs/compte-rendu-seances-liees-agenda.md) SÉANCES LIÉES : sur un créneau lié, une ligne discrète par séance
+   (« p. 157–192 · <document> », « à partir de p. 157 » sans fin). Un lien dont le créneau a disparu reste affiché sur
+   sa COPIE (bloc en pointillés « cours retiré de l'agenda ») ; un créneau qui a bougé porte « horaire modifié ».
+   Sans séance liée, le bloc et sa fiche sont exactement ceux d'avant. */
+const AUCUNE = [];
+export function LignesSeances({ seances, compacte = false }) {
+  if (!seances || !seances.length) return null;
+  return seances.map((s) => (
+    <span key={s.debut.id} className={'edtg-seance' + (compacte ? ' compacte' : '')} data-seance={s.debut.id} title={`${libellePages(s)} · ${s.nom}`}>
+      <span className="tnum">{libellePages(s)}</span> · {s.nom}
+    </span>
+  ));
+}
+const mentionDe = (e, seances) => (e.copie === 'retire' ? MENTIONS.retire : (seances || []).some((s) => s.etat === 'modifie') ? MENTIONS.modifie : '');
 
 export const VUES = [{ id: 'jour', label: 'Jour' }, { id: '3jours', label: '3 jours' }, { id: 'semaine', label: 'Semaine' }];
 const CLE_VUE = 'medrevise.edt.vue';
@@ -89,34 +106,39 @@ export function disposer(events, debut) {
 }
 
 /* ---------- un bloc de cours ---------- */
-function Bloc({ x, hDebut, pxH, info, maintenant, change, onOuvrir }) {
+function Bloc({ x, hDebut, pxH, info, maintenant, change, onOuvrir, seances = AUCUNE }) {
   const { e } = x;
+  const mention = mentionDe(e, seances);
   const top = ((x.a - hDebut * 60) / 60) * pxH;
   const h = Math.max(18, ((x.b - x.a) / 60) * pxH - 2);
-  const enCours = estEnCours(e, maintenant);
+  const enCours = !e.copie && estEnCours(e, maintenant); // (26/11) la copie d'un cours retiré n'est jamais « en cours »
   const lieu = [lieuDe(e), e.modality === 'pratique' ? 'pratique' : ''].filter(Boolean).join(' · ');
   const densite = h < 34 ? 'xs' : h < 72 ? 's' : 'm'; // xs : titre · heure ; s : heure, titre, lieu ; m : + prof, titre sur plusieurs lignes
-  const lignesTitre = densite === 'm' ? Math.max(1, Math.floor((h - 8 - 14 - (e.teacher ? 15 : 0) - (lieu ? 15 : 0)) / 15)) : 1;
+  const lignesTitre = densite === 'm' ? Math.max(1, Math.floor((h - 8 - 14 - (e.teacher ? 15 : 0) - (lieu ? 15 : 0) - seances.length * 15) / 15)) : 1;
   return (
-    <button type="button" className={'edtg-bloc ' + densite + (e.cancelled ? ' annule' : '') + (enCours ? ' en-cours' : '') + (change ? ' change' : '')}
+    <button type="button" className={'edtg-bloc ' + densite + (e.cancelled ? ' annule' : '') + (enCours ? ' en-cours' : '') + (change ? ' change' : '') + (seances.length ? ' lie' : '') + (e.copie ? ' copie' : '')}
       style={{ '--edt-c': info.couleur, top, height: h, left: `calc(${(x.col / x.n) * 100}% + 2px)`, width: `calc(${100 / x.n}% - 4px)`, '--lignes': lignesTitre }}
-      data-uid={e.uid} data-titre={e.title} data-h={`${hm(e.start)}–${hm(e.end)}`} data-p={e.teacher || ''} data-l={lieu} aria-label={`${e.title}, ${hm(e.start)}–${hm(e.end)}${e.teacher ? ', ' + e.teacher : ''}${lieu ? ', ' + lieu : ''}${e.cancelled ? ', annulé' : ''}`}
+      data-uid={e.uid} data-titre={e.title} data-h={`${hm(e.start)}–${hm(e.end)}`} data-p={e.teacher || ''} data-l={lieu} aria-label={`${e.title}, ${hm(e.start)}–${hm(e.end)}${e.teacher ? ', ' + e.teacher : ''}${lieu ? ', ' + lieu : ''}${e.cancelled ? ', annulé' : ''}${mention ? ', ' + mention : ''}${seances.length ? ', ' + seances.map((s) => `${libellePages(s)} ${s.nom}`).join(', ') : ''}`}
+      title={seances.length ? [mention, ...seances.map((s) => `${libellePages(s)} · ${s.nom}`)].filter(Boolean).join('\n') : undefined}
       onClick={() => onOuvrir(e)}>
       {densite === 'xs'
         ? <span className="edtg-t">{e.title}<span className="edtg-heure"> · {hm(e.start)}</span></span>
         : <>
-          {densite !== 'xs' && h >= 50 && <span className="edtg-heure">{hm(e.start)}–{hm(e.end)}{e.cancelled ? ' · annulé' : change ? ' · modifié' : ''}</span>}
+          {densite !== 'xs' && h >= 50 && <span className="edtg-heure">{hm(e.start)}–{hm(e.end)}{e.cancelled ? ' · annulé' : mention ? ' · ' + mention : change ? ' · modifié' : ''}</span>}
           <span className="edtg-t">{e.title}</span>
           {densite === 'm' && e.teacher && <span className="edtg-p">{e.teacher}</span>}
           {lieu && <span className="edtg-l">{e.modality === 'teams' && <Icon name="ext" size={9} />}{lieu}</span>}
+          <LignesSeances seances={densite === 'm' ? seances : seances.slice(0, 1)} />
         </>}
     </button>
   );
 }
 
 /* ---------- fiche détaillée d'un cours ---------- */
-function FicheCours({ e, info, maintenant, change, actions, onFermer }) {
-  const enCours = estEnCours(e, maintenant);
+function FicheCours({ e, info, maintenant, change, actions, onFermer, seances = AUCUNE }) {
+  const mention = mentionDe(e, seances);
+  const modifiee = seances.find((s) => s.etat === 'modifie');
+  const enCours = !e.copie && estEnCours(e, maintenant);
   const lieu = lieuDe(e);
   const debut = Date.parse(e.start);
   const n = nomJour(debut, true);
@@ -125,7 +147,11 @@ function FicheCours({ e, info, maintenant, change, actions, onFermer }) {
       <div className="edtg-fiche" style={{ '--edt-c': info.couleur }} data-fiche-cours={e.uid}>
         <div className="edtg-fiche-bande" />
         <div className="edtg-fiche-ligne"><Icon name="clock" size={14} /><span>{n[0].toUpperCase() + n.slice(1)} {dateCourte(debut)} · <b>{e.allDay ? 'toute la journée' : `${hm(e.start)}–${hm(e.end)}`}</b>
-          {enCours && <span className="edt-badge direct">En cours</span>}{e.cancelled && <span className="edt-badge annule">Annulé</span>}{!e.cancelled && change && <span className="edt-badge">Modifié</span>}</span></div>
+          {enCours && <span className="edt-badge direct">En cours</span>}{e.cancelled && <span className="edt-badge annule">Annulé</span>}{!e.cancelled && change && !mention && <span className="edt-badge">Modifié</span>}{mention && <span className="edt-badge edtg-mention" data-mention={e.copie || 'modifie'}>{mention}</span>}</span></div>
+        {modifiee && <div className="edtg-fiche-ligne hint"><Icon name="info" size={14} /><span>Horaire au moment du lien : {dateCourte(Date.parse(modifiee.lien.debut))} · {hm(modifiee.lien.debut)}–{hm(modifiee.lien.fin)}</span></div>}
+        {seances.length > 0 && (
+          <div className="edtg-fiche-ligne edtg-fiche-seances"><Icon name="filePdf" size={14} /><span className="edtg-fiche-seances-l">{seances.map((s) => <span key={s.debut.id} className="edtg-seance-fiche" data-seance={s.debut.id}><b className="tnum">{libellePages(s)}</b> · {s.nom}</span>)}</span></div>
+        )}
         {e.teacher && <div className="edtg-fiche-ligne"><Icon name="grad" size={14} /><span>{e.teacher}</span></div>}
         {(lieu || e.modality === 'pratique') && <div className="edtg-fiche-ligne"><Icon name={e.modality === 'teams' ? 'ext' : 'home'} size={14} /><span>{lieu}{e.modality === 'pratique' ? `${lieu ? ' · ' : ''}pratique` : ''}</span></div>}
         <div className="edtg-fiche-ligne"><Icon name="book" size={14} /><span>{info.matiere ? <>Matière reliée : <b>{matiereMeta(info.matiere).label}</b></> : <span className="hint">Aucune matière reliée (Réglages › Emploi du temps)</span>}</span></div>
@@ -137,7 +163,8 @@ function FicheCours({ e, info, maintenant, change, actions, onFermer }) {
 }
 
 /* ---------- la grille ---------- */
-export function GrilleEcole({ events, resoudre, maintenant, parUid, actions, largeur, mobile = false, entete = null, bandeau = null, periode = null }) {
+export function GrilleEcole({ events, resoudre, maintenant, parUid, actions, largeur, mobile = false, entete = null, bandeau = null, periode = null, seancesParUid = null }) {
+  const seancesDe = (e) => (seancesParUid && seancesParUid.get(e.uid)) || AUCUNE;
   const [vueChoisie, setVueChoisie] = useState(() => (mobile ? null : lireVue()));
   const vue = vueChoisie || vueParDefaut(largeur, mobile);
   const choisirVue = (v) => { setVueChoisie(v); if (!mobile) ecrireVue(v); };
@@ -257,7 +284,7 @@ export function GrilleEcole({ events, resoudre, maintenant, parUid, actions, lar
               <div key={d} className={'edtg-col' + (auj ? ' today' : '')} role="group" aria-label={`${nomJour(d, true)} ${dateCourte(d)}`} data-jour={d}>
                 {heures.map((h) => <div key={h} className="edtg-trait" style={{ top: (h - hDebut) * pxH }} />)}
                 {heures.map((h) => <div key={h + .5} className="edtg-trait demi" style={{ top: (h - hDebut + 0.5) * pxH }} />)}
-                {disp.map((x) => <Bloc key={x.e.uid} x={x} hDebut={hDebut} pxH={pxH} info={resoudre(x.e.title)} maintenant={maintenant} change={parUid.get(x.e.uid)} onOuvrir={setFiche} />)}
+                {disp.map((x) => <Bloc key={x.e.uid} x={x} hDebut={hDebut} pxH={pxH} info={resoudre(x.e.title)} maintenant={maintenant} change={parUid.get(x.e.uid)} onOuvrir={setFiche} seances={seancesDe(x.e)} />)}
                 {auj && ligneVisible && <div className="edtg-maintenant" style={{ top: ((minNow - hDebut * 60) / 60) * pxH }} />}
               </div>
             );
@@ -266,7 +293,7 @@ export function GrilleEcole({ events, resoudre, maintenant, parUid, actions, lar
         </div>
       </div>
 
-      {fiche && (() => { const info = resoudre(fiche.title); return <FicheCours e={fiche} info={info} maintenant={maintenant} change={parUid.get(fiche.uid)} actions={actions(fiche, info, maintenant, true)} onFermer={() => setFiche(null)} />; })()}
+      {fiche && (() => { const info = resoudre(fiche.title); return <FicheCours e={fiche} info={info} maintenant={maintenant} change={parUid.get(fiche.uid)} actions={actions(fiche, info, maintenant, true)} onFermer={() => setFiche(null)} seances={seancesDe(fiche)} />; })()}
     </div>
   );
 }

@@ -1,0 +1,51 @@
+/* ============================================================
+   (26/11) Séances liées à l'agenda — docs/compte-rendu-seances-liees-agenda.md.
+   Préfixe `sea-` (fenêtre de liaison) + lignes « p. 157–192 · doc » des blocs de l'agenda + mention du tag Début lié.
+   Mêmes jetons que l'agenda (edt-grille.css) : DA inchangée, transitions 120 ms, pas de rebond.
+   ============================================================ */
+/* ---- agenda : lignes des séances liées ---- */
+.edtg-seance { display: block; flex: 0 0 auto; font-size: 10.5px; line-height: 15px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.edtg-seance .tnum { color: var(--accent); font-weight: 600; }
+.edtg.mobile .edtg-seance { font-size: 11.5px; line-height: 16px; }
+.edtg-bloc.copie { border-left-style: dashed; background: color-mix(in srgb, var(--edt-c) 7%, var(--card)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--edt-c) 40%, transparent) inset; }
+.edtg-bloc.copie .edtg-t { opacity: .8; }
+.edtg-mention { color: var(--text-2); border-color: var(--border); }
+.edtg-fiche-seances-l { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.edtg-seance-fiche { overflow-wrap: anywhere; }
+.edtg-seance-fiche b { color: var(--accent); }
+
+/* « Ouvrir le cours » + petit choix du document */
+.edt-ouvrir-seances { position: relative; display: inline-flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.edt-choix-seances { display: flex; flex-direction: column; gap: 2px; min-width: 200px; max-width: min(320px, 80vw); padding: 4px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--card); box-shadow: 0 8px 24px -8px rgba(0, 0, 0, .45); animation: sea-entree .12s ease-out; }
+.edt-choix-seance { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 7px 9px; border: 0; border-radius: 7px; background: none;
+  color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: background .12s; }
+.edt-choix-seance:hover, .edt-choix-seance:focus-visible { background: color-mix(in srgb, var(--accent) 12%, transparent); outline: none; }
+.edt-choix-nom { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (pointer: coarse) { .edt-choix-seance { min-height: 40px; align-items: center; } }
+
+/* ---- fenêtre « Lier à un cours de l'agenda » ---- */
+.sea-sous { margin-top: 3px; font-size: 12.5px; }
+.sea-corps { display: flex; flex-direction: column; gap: 8px; }
+.sea-nav { margin-bottom: 2px; flex-wrap: wrap; }
+.sea-zone { --gout: 44px; max-height: min(420px, 56vh); }
+.sea-bloc { transition: filter .12s, box-shadow .12s, background .12s; }
+/* sélecteurs renforcés : edt-grille.css (.edtg-bloc.en-cours) peut être chargé après ce fichier */
+.edtg-bloc.sea-bloc.propose { background: color-mix(in srgb, var(--accent) 20%, var(--card)); box-shadow: 0 0 0 2px var(--accent) inset; z-index: 2; }
+.edtg-bloc.sea-bloc.lie-ici { box-shadow: 0 0 0 2px var(--accent) inset; }
+.sea-etiquette { position: absolute; right: 5px; top: 4px; padding: 1px 6px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .02em;
+  color: #fff; background: var(--accent); }
+.sea-bloc.xs .sea-etiquette { top: 50%; transform: translateY(-50%); }
+.sea-etiquette.lie { background: color-mix(in srgb, var(--accent) 70%, #222); }
+.sea-aide { font-size: 12px; }
+@media (pointer: coarse) { .sea-nav .weeknav button { min-width: 40px; min-height: 40px; } }
+
+/* ---- tag Début lié (marge gauche du lecteur, écrit à la verticale comme l'étiquette) ---- */
+.tgp-lien-agenda { display: inline-flex; align-items: center; gap: 4px; padding: 6px 0; width: 22px; justify-content: center; border: 0; border-radius: 999px; cursor: pointer;
+  background: none; color: var(--text-3); font: inherit; font-size: 10.5px; line-height: 1; white-space: nowrap;
+  writing-mode: vertical-rl; transform: rotate(180deg); transition: color .12s, background .12s; }
+.tgp-lien-agenda:hover, .tgp-lien-agenda:focus-visible { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); outline: none; }
+.tgp-lien-agenda svg { transform: rotate(90deg); }
+
+@keyframes sea-entree { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .edt-choix-seances { animation: none; } }

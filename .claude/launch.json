@@ -223,6 +223,31 @@
         "--strictPort"
       ],
       "port": 5334
+    },
+    {
+      "name": "mealweek-avant-seances",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "preview",
+        "/private/tmp/claude-501/-Users-yoannlmr-Documents-D-v---projets-Claude-Projets-My-Org-My-Org/90055b50-af65-48d9-976c-230885cc019f/scratchpad/avant",
+        "--port",
+        "5335",
+        "--strictPort"
+      ],
+      "port": 5335
+    },
+    {
+      "name": "mealweek-apres-seances",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "preview",
+        "--port",
+        "5336",
+        "--strictPort"
+      ],
+      "port": 5336
     }
   ]
 }

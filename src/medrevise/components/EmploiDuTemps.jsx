@@ -23,6 +23,7 @@ import { completer, resoudreCours, titresDansLOrdre, cleCours, correspondanceAut
 import { dernierCoursDe } from '../lib/derniersCours.js';
 import { weekData } from '../lib/planning.js';
 import { GrilleEcole } from './GrilleEcole.jsx';
+import { useSeancesLiees, rangerSurAgenda, libellePages } from '../lib/seancesAgenda.js';
 import '../../styles/emploi-du-temps.css';
 import '../../styles/edt-grille.css';
 
@@ -121,9 +122,52 @@ function LigneChangements({ changements, resoudre }) {
   );
 }
 
+/* ---------- (26/11) « Ouvrir le cours » d'un créneau LIÉ : le document à la page du début de la séance ;
+   plusieurs séances liées → un petit choix du document (docs/compte-rendu-seances-liees-agenda.md) ---------- */
+function OuvrirSeances({ ctx, seances }) {
+  const [choix, setChoix] = useState(false);
+  const ouvrir = (s) => ctx.openPdfReader(s.courseId, 'dashboard', undefined, { page: { page: s.de, pageCle: s.debut.pageCle, doc: s.document } });
+  const un = seances.length === 1;
+  return (
+    <span className="edt-ouvrir-seances">
+      <button type="button" className="btn ghost sm" data-action="ouvrir-seance" aria-expanded={un ? undefined : choix}
+        title={un ? `Ouvrir « ${seances[0].nom} » page ${seances[0].de}` : `${seances.length} documents liés : choisir lequel ouvrir`}
+        onClick={(ev) => { ev.stopPropagation(); if (un) ouvrir(seances[0]); else setChoix((c) => !c); }}>
+        <Icon name="book" size={12} /> Ouvrir le cours{un ? '' : <Icon name="chevD" size={11} />}
+      </button>
+      {choix && !un && (
+        <span className="edt-choix-seances" role="menu" aria-label="Document à ouvrir">
+          {seances.map((s) => (
+            <button key={s.debut.id} type="button" role="menuitem" className="edt-choix-seance" data-seance={s.debut.id} title={`Ouvrir « ${s.nom} » page ${s.de}`}
+              onClick={(ev) => { ev.stopPropagation(); setChoix(false); ouvrir(s); }}>
+              <span className="edt-choix-nom">{s.nom}</span><span className="tnum hint">{libellePages(s)}</span>
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+
 /* ---------- boutons Ouvrir / Transcrire ---------- */
-function useActions(ctx, avecLecteur) {
+function useActions(ctx, avecLecteur, seancesParUid = null) {
   return useCallback((e, info, maintenant, grand = false) => {
+    const liees = seancesParUid && seancesParUid.get(e.uid);
+    if (avecLecteur && liees && liees.length) {
+      const fiche = !e.cancelled && info.matiere ? dernierCoursDe(ctx.db, info.matiere.id) : null;
+      const transcrire = fiche && e.modality === 'teams' && estEnCours(e, maintenant);
+      return (
+        <div className={'edt-actions' + (grand ? ' grand' : '')}>
+          <OuvrirSeances ctx={ctx} seances={liees} />
+          {transcrire && (
+            <button type="button" className="btn sm edt-transcrire" title={`Transcrire le cours Teams dans « ${fiche.titre} »`}
+              onClick={(ev) => { ev.stopPropagation(); ctx.openPdfReader(fiche.id, 'dashboard', undefined, { transcrire: 'onglet' }); }}>
+              <Icon name="mic" size={12} /> Transcrire
+            </button>
+          )}
+        </div>
+      );
+    }
     if (!avecLecteur || !info.matiere || e.cancelled) return null;
     const fiche = dernierCoursDe(ctx.db, info.matiere.id);
     if (!fiche) return null;
@@ -142,7 +186,7 @@ function useActions(ctx, avecLecteur) {
         )}
       </div>
     );
-  }, [ctx, avecLecteur]);
+  }, [ctx, avecLecteur, seancesParUid]);
 }
 
 /* ---------- glissement horizontal (vue jour) ---------- */
@@ -222,7 +266,11 @@ export function CalendrierEcole({ ctx, mobile = false }) {
   const maintenant = useMaintenant();
   const events = useMemo(() => (edt.donnees && edt.donnees.events) || [], [edt.donnees]);
   const resoudre = useCoursResolus(ctx, events);
-  const actions = useActions(ctx, !mobile && !!ctx.openPdfReader);
+  // (26/11) séances liées (tags Début portant `agenda`) rangées sur les cours chargés ; copies des créneaux disparus
+  const liees = useSeancesLiees(ctx.db ? ctx.db.fiches : null);
+  const rangees = useMemo(() => rangerSurAgenda(liees, events, edt.donnees), [liees, events, edt.donnees]);
+  const eventsAffiches = useMemo(() => (rangees.fantomes.length ? [...events, ...rangees.fantomes].sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0)) : events), [events, rangees]);
+  const actions = useActions(ctx, !mobile && !!ctx.openPdfReader, rangees.parUid);
   const [ref, largeur] = useLargeur();
   const changements = useMemo(() => changementsVisibles(maintenant), [edt.changements, maintenant]); // eslint-disable-line react-hooks/exhaustive-deps
   const parUid = useMemo(() => new Map(changements.map((c) => [c.uid, c])), [changements]);
@@ -263,8 +311,8 @@ export function CalendrierEcole({ ctx, mobile = false }) {
   return (
     <div ref={ref} className={'edt edt-horaire' + (mobile ? ' mobile' : '')}>
       {(largeur > 0 || mobile) && (
-        <GrilleEcole events={events} resoudre={resoudre} maintenant={maintenant} parUid={parUid} actions={actions} largeur={largeur} mobile={mobile}
-          entete={<Fraicheur edt={edt} maintenant={maintenant} />} bandeau={tete} periode={edt.donnees} />
+        <GrilleEcole events={eventsAffiches} resoudre={resoudre} maintenant={maintenant} parUid={parUid} actions={actions} largeur={largeur} mobile={mobile}
+          entete={<Fraicheur edt={edt} maintenant={maintenant} />} bandeau={tete} periode={edt.donnees} seancesParUid={rangees.parUid} />
       )}
     </div>
   );

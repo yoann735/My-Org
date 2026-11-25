@@ -123,6 +123,7 @@ export async function appareil(type) {
   });
   b.send = (method, params = {}, sessionId = null) => new Promise((res) => { const id = ++n; att.set(id, res); ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) })); });
   b.fermerWs = () => { try { ws.close(); } catch (e) { /* ignore */ } };
+  b.ecouter = (f) => { auditeurs.add(f); return () => auditeurs.delete(f); }; // (26/11) événements CDP (banc séances liées)
   await b.send('Page.enable'); await b.send('Runtime.enable'); await b.send('Network.enable'); await b.send('DOM.enable');
   await b.send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: tactile ? 2 : 1, mobile: tactile });
   if (tactile) await b.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });

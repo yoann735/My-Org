@@ -126,6 +126,9 @@ import { noterOrigineLecteur, prendreDemandePanneau } from '../transcription/ret
 import { sessionActive as transcriptionActive, lireEtat as etatTranscription, definirPageCourante, abonner as abonnerTranscription } from '../transcription/engine.js';
 import { marquerDebutCours, suiveurArret } from '../transcription/marquerCours.js';
 import { noterCoursOuvert } from '../lib/derniersCours.js';
+import { lireEtat as lireEtatEdt } from '../lib/emploiDuTemps.js';
+import { lierSeance, delierSeance, nomDocument } from '../lib/seancesAgenda.js';
+import { FenetreLienAgenda, MentionLien } from '../components/LienAgenda.jsx';
 import { actualiserCredits } from '../transcription/credits.js';
 import { useCoucheOcr, useEtatOcr } from '../ocr/useOcr.js';
 import { relancer as relancerOcr } from '../ocr/service.js';
@@ -833,6 +836,9 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
      session déjà en cours n'est jamais doublée : on montre simplement le panneau Transcript. */
   useEffect(() => { if (ficheReelle) noterCoursOuvert(ficheReelle); }, [ficheReelle && ficheReelle.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const transcrireDemande = useRef(!embedded && pdfView && pdfView.ficheId === ficheId ? pdfView.transcrire : null);
+  /* (26/11, séances liées à l'agenda) « Ouvrir le cours » d'un créneau lié : { page, pageCle, doc } — la page du début de
+     la séance remplace la position mémorisée (même document) ; l'autre document : bascule une fois la lecture posée. */
+  const pageDemandee = useRef(!embedded && pdfView && pdfView.ficheId === ficheId ? pdfView.page || null : null);
   useEffect(() => {
     if (!pret || !transcrireDemande.current || !ficheId) return;
     const source = transcrireDemande.current;
@@ -976,7 +982,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const e = etatTranscription();
     try {
       const t = await marquerDebutCours({ courseId: ficheId, page: pagePourTrx.current, sessionId: e && e.session ? e.session.id : null, tags: tagsCoursRef.current, poserTag, modifierTag, stockage: localStorage });
-      if (t) setAvisJumelle(`Début du cours marqué page ${t.page}`);
+      if (t) { setAvisJumelle(`Début du cours marqué page ${t.page}`); proposerLienAgenda(t); }
     } catch (x) { setAvisJumelle('Le début du cours n’a pas pu être marqué — pose-le à la main (clic droit sur la page)'); }
   };
   useEffect(() => {
@@ -987,6 +993,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   }, [ficheId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [menuPage, setMenuPage] = useState(null); // { idx, x, y }
   const [fenetreTag, setFenetreTag] = useState(null); // { kind, page, pageCle, tag? }
+  /* (26/11, docs/compte-rendu-seances-liees-agenda.md) SÉANCES LIÉES À L'AGENDA : quand un Début vient d'être posé
+     (menu de la page ou « Transcrire le cours »), la fenêtre « Lier à un cours de l'agenda » s'ouvre ; « Passer » = aucun
+     lien. Menu du tag Début : « Lier à l'agenda » / « Changer le cours lié » / « Délier ». Le lien = le seul champ `agenda`
+     ajouté au tag Début (lib/seancesAgenda.js, putBackup avant chaque écriture). */
+  const [fenetreLien, setFenetreLien] = useState(null); // { id (tag Début), page }
+  const agendaDispo = () => { const e = lireEtatEdt(); return !!(e.donnees || (e.statut !== 'non_configure' && e.statut !== 'init')); };
+  function proposerLienAgenda(t) { if (t && t.kind === 'debut' && !t.agenda && agendaDispo()) setFenetreLien({ id: t.id, page: t.page, tag: t }); }
+  const tagFenetreLien = fenetreLien ? (tagsCours.find((x) => x.id === fenetreLien.id) || fenetreLien.tag) : null;
+  const lierAgenda = async (e) => { const t = tagFenetreLien; setFenetreLien(null); if (!t) return; await lierSeance(t, e); setAvisJumelle(`Séance liée au cours ${e.title}`); };
+  const delierAgenda = async (t) => { setFenetreLien(null); if (!t) return; await delierSeance(t); setAvisJumelle('Lien avec l’agenda retiré'); };
   const [seancesOuvertes, setSeancesOuvertes] = useState(false);
   const ouvrirMenuPage = (idx, x, y) => setMenuPage({ idx, x, y });
   const itemsMenuPage = (idx) => {
@@ -994,8 +1010,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const sur = tagsParPage.get(num) || [];
     return ['debut', 'fin'].flatMap((kind) => {
       const t = sur.find((x) => x.kind === kind);
+      const agenda = t && kind === 'debut' ? (t.agenda
+        ? [{ label: 'Changer le cours lié', icon: 'calendar', onClick: () => setFenetreLien({ id: t.id, page: num, tag: t }) },
+          { label: 'Délier', icon: 'x', onClick: () => delierAgenda(t) }]
+        : [{ label: 'Lier à l’agenda', icon: 'calendar', onClick: () => setFenetreLien({ id: t.id, page: num, tag: t }) }]) : [];
       return t ? [
         { label: `${kind === 'debut' ? 'Début' : 'Fin'} de cours : date et transcript…`, icon: 'edit', onClick: () => setFenetreTag({ kind, page: num, pageCle: cle, tag: t }) },
+        ...agenda,
         { label: `Retirer le tag « ${kind === 'debut' ? 'Début' : 'Fin'} »`, icon: 'x', onClick: () => retirerTag(t) },
       ] : [{ label: SORTES[kind].menu, icon: kind === 'debut' ? 'play' : 'check', onClick: () => setFenetreTag({ kind, page: num, pageCle: cle }) }];
     });
@@ -1004,7 +1025,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const f = fenetreTag; setFenetreTag(null);
     if (!f || !ficheId) return;
     if (f.tag) await modifierTag(f.tag, { date, transcriptSessionId });
-    else await poserTag({ courseId: ficheId, document: docAffiche, page: f.page, pageCle: f.pageCle, kind: f.kind, date, transcriptSessionId }, tagsCours);
+    else { const t = await poserTag({ courseId: ficheId, document: docAffiche, page: f.page, pageCle: f.pageCle, kind: f.kind, date, transcriptSessionId }, tagsCours); proposerLienAgenda(t); }
   };
   const ouvrirPastille = (t) => {
     const p = pageDuTag(t, pageSizes);
@@ -1068,6 +1089,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   useEffect(() => {
     // (15/10 soir) + les annotations du calque chargées : ses pages ajoutées font partie de la mise en page
     if (restaure || !posLue || !pret || !pageSizes.length || aRestaurer.current || !editsCharges) return;
+    // (26/11) page demandée par l'agenda (même document) : prise comme une bascule — page entière, en haut
+    const dem = pageDemandee.current;
+    if (dem && (dem.doc || 'original') === docAffiche && !cibleBascule.current) {
+      pageDemandee.current = null;
+      const sz = dem.pageCle != null ? pageSizes.find((x) => String(x.cle) === String(dem.pageCle)) : null;
+      cibleBascule.current = { kind: modeDoc ? 'doc' : 'pdf', cle: sz ? sz.cle : undefined, numero: Math.max(1, Math.min(pageSizes.length, +dem.page || 1)), fraction: 0 };
+    }
     // (15/10) bascule Original ⇄ Fiche : la page CORRESPONDANTE, même position dans la page, même zoom
     const bascule = cibleBascule.current;
     cibleBascule.current = null;
@@ -1134,6 +1162,12 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   useEffect(() => {
     if (restaure && ficheId && srcTab !== 'html' && prendreDemandePanneau(ficheId)) ouvrirTranscript();
   }, [restaure, ficheId, srcTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { // (26/11) page demandée sur l'AUTRE document (fiche jumelle) : bascule vers sa page
+    const dem = pageDemandee.current;
+    if (!restaure || !dem) return;
+    pageDemandee.current = null;
+    allerAuSegment({ page: +dem.page || 1, pageCle: dem.pageCle, doc: dem.doc || 'original' });
+  }, [restaure]); // eslint-disable-line react-hooks/exhaustive-deps
   // enregistrement
   const etatPosition = useRef({});
   etatPosition.current = { layout, pageSizes, scale, disposition, pdfId: pdfIdActif, nb: modeDoc ? pageSizes.length : pdfDoc && pdfDoc.numPages, modeDoc, ns: nsAnnot };
@@ -4230,7 +4264,8 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                           data-tags-page={idx + 1} onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); ouvrirMenuPage(idx, r.right + 4, r.top); }}>
                           <Icon name="tag" size={13} />
                         </button>
-                        {(tagsParPage.get(idx + 1) || []).map((t) => <PastilleTag key={t.id} tag={t} onOuvrir={ouvrirPastille} />)}
+                        {(tagsParPage.get(idx + 1) || []).map((t) => [<PastilleTag key={t.id} tag={t} onOuvrir={ouvrirPastille} />,
+                          t.kind === 'debut' && t.agenda ? <MentionLien key={t.id + ':agenda'} lien={t.agenda} onOuvrir={() => setFenetreLien({ id: t.id, page: idx + 1, tag: t })} /> : null])}
                       </div>
                     )}
                     {/* (20/10) lignes du transcript dites sur cette page : badge discret, en haut à droite */}
@@ -4453,6 +4488,11 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
           onCancel={() => setPageASupprimer(null)} />
       )}
       {menuPage && <ContextMenu x={menuPage.x} y={menuPage.y} items={itemsMenuPage(menuPage.idx)} onClose={() => setMenuPage(null)} />}
+      {fenetreLien && ficheId && tagFenetreLien && (
+        <FenetreLienAgenda ctx={ctx} tag={tagFenetreLien} matiereId={ficheReelle ? ficheReelle.matiereId || null : null} page={fenetreLien.page}
+          nomDoc={nomDocument(ficheReelle, tagFenetreLien.document || 'original')}
+          onLier={lierAgenda} onPasser={() => setFenetreLien(null)} onFermer={() => setFenetreLien(null)} onDelier={() => delierAgenda(tagFenetreLien)} />
+      )}
       {fenetreTag && ficheId && <FenetreTag courseId={ficheId} cible={fenetreTag} onValider={validerTag} onFermer={() => setFenetreTag(null)}
         onRetirer={async () => { const t = fenetreTag.tag; setFenetreTag(null); if (t) await retirerTag(t); }} />}
       {seancesOuvertes && ficheId && <FenetreSeances courseId={ficheId} listes={listesSeances} onAllerPage={allerSeance} onOuvrirSession={ouvrirSessionSeance} onFermer={() => setSeancesOuvertes(false)} />}
