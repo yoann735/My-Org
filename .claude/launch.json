@@ -182,6 +182,47 @@
         "--strictPort"
       ],
       "port": 5322
+    },
+    {
+      "name": "dates-avant",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "/private/tmp/claude-501/-Users-yoannlmr-Documents-D-v---projets-Claude-Projets-My-Org-My-Org/29fe55b5-56ff-4c90-b578-160de212f410/scratchpad/avant",
+        "--port",
+        "5331",
+        "--strictPort"
+      ],
+      "env": {
+        "VITE_SUPABASE_URL": "",
+        "VITE_SUPABASE_ANON_KEY": ""
+      },
+      "port": 5331
+    },
+    {
+      "name": "mealweek-avant-dates",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "preview",
+        "/private/tmp/claude-501/-Users-yoannlmr-Documents-D-v---projets-Claude-Projets-My-Org-My-Org/29fe55b5-56ff-4c90-b578-160de212f410/scratchpad/avant",
+        "--port",
+        "5333",
+        "--strictPort"
+      ],
+      "port": 5333
+    },
+    {
+      "name": "mealweek-apres-dates",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "preview",
+        "--port",
+        "5334",
+        "--strictPort"
+      ],
+      "port": 5334
     }
   ]
 }

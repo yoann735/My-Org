@@ -68,6 +68,11 @@ export function creerSynchroIsolee(store, { envoyable = () => true, exclu = () =
           }
         }
         if (envoyes) flushOutbox();
+        // (25/11) signal « ce store a changé » (comme une écriture locale) : la Bibliothèque montre aussitôt les dates de
+        // transcript d'une session reçue d'un autre appareil (lib/datesTranscript.js). Simple événement, rien n'est écrit.
+        if ((recus || supprimes) && typeof window !== 'undefined') {
+          try { window.dispatchEvent(new CustomEvent('medrevise:ecriture', { detail: { store } })); } catch (e) { /* ignore */ }
+        }
         return { statut: 'ok', recus, envoyes, supprimes };
       } catch (e) {
         return { statut: 'erreur' };

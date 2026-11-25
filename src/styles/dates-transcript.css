@@ -1,0 +1,63 @@
+/* ============================================================
+   Dates de transcript dans l'arbre de la Bibliothèque (25/11/2026,
+   components/DatesTranscript.jsx). Rien ne s'affiche tant que le bouton
+   calendrier d'une matière est éteint : ces règles ne touchent aucune
+   classe existante.
+   Alignement : la ligne reprend la grille d'une ligne de cours (retrait,
+   flèche 16 px, icône 16 px, espacement 7 px) — la 1re pastille tombe
+   exactement sous la 1re lettre du titre.
+   ============================================================ */
+
+/* bouton calendrier de l'en-tête d'une matière */
+.ltd-cal { transition: color .12s ease, background-color .12s ease; }
+.lt-actions .ltd-cal.actif, .ltd-cal.actif { color: var(--accent) !important; }
+/* actif : visible en permanence, à sa place dans la ligne (pas seulement au survol) */
+.ltd-cal-fixe { flex: 0 0 auto; display: inline-grid; place-items: center; width: 27px; height: 27px; margin-right: -4px;
+  border: 1px solid transparent; border-radius: var(--r-2, 7px); background: transparent; cursor: pointer; }
+.ltd-cal-fixe:hover { background: var(--accent-soft); }
+.lt-rangee:hover > .ltd-cal-fixe { visibility: hidden; } /* au survol, celui des actions prend le relais (même place) */
+@media (hover: none) { .lt-rangee > .ltd-cal-fixe { display: none !important; } } /* tactile : les actions sont toujours visibles, le bouton y est déjà */
+
+/* une ligne de pastilles sous le titre */
+.ltd-ligne { display: flex; align-items: flex-start; gap: 7px; padding: 0 7px 5px 5px; margin-top: -3px; min-width: 0; }
+.ltd-ligne > .lt-pli { flex: 0 0 16px; width: 16px; height: 1px; }
+.ltd-cale { flex: 0 0 16px; width: 16px; }
+.ltd-pastilles { flex: 1 1 auto; min-width: 0; display: flex; gap: 4px; flex-wrap: nowrap; overflow: hidden; }
+.ltd-pastilles.mesure { visibility: hidden; }
+.ltd-ligne.deplie .ltd-pastilles { flex-wrap: wrap; overflow: visible; }
+
+.ltd-p {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0 7px;
+  border: 1px solid transparent; border-radius: 999px; cursor: pointer;
+  background: color-mix(in srgb, var(--text-3) 12%, transparent); color: var(--text-3);
+  font: inherit; font-size: 11px; font-weight: 500; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums;
+  transition: color .12s ease, background-color .12s ease, border-color .12s ease;
+}
+.ltd-p:hover { color: var(--text-2); background: color-mix(in srgb, var(--text-3) 20%, transparent); }
+.ltd-p:focus-visible { outline: none; border-color: var(--accent); }
+.ltd-p.actif { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.ltd-plus { color: var(--text-2); padding: 0 6px; }
+/* heure et durée, accolées à la date : plus discrètes que la date */
+.ltd-hd { font-weight: 400; opacity: .78; }
+.ltd-hd::before { content: '·'; margin: 0 4px 0 1px; opacity: .7; }
+
+/* rappel du filtre, en tête de la liste des cours de la matière */
+.ltd-rappel { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 7px 0 5px; }
+.ltd-rappel > .lt-pli { flex: 0 0 16px; width: 16px; }
+.ltd-rappel-p {
+  display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px 0 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 999px; cursor: pointer;
+  background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 12px; font-weight: 600;
+  transition: background-color .12s ease;
+}
+.ltd-rappel-p:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.ltd-rappel-p svg:last-child { opacity: .75; }
+.ltd-vide { padding: 2px 8px 8px 28px; font-size: 12px; color: var(--text-3); font-style: italic; }
+
+/* tactile : cibles un peu plus hautes, la ligne reste une seule ligne */
+@media (pointer: coarse) {
+  .ltd-p { height: 24px; padding: 0 9px; font-size: 12px; }
+  .ltd-pastilles { gap: 5px; }
+  .ltd-rappel { height: 34px; }
+  .ltd-rappel-p { height: 28px; padding: 0 10px 0 9px; }
+}

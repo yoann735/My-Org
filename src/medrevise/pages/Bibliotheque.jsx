@@ -23,6 +23,8 @@ import { PdfReader } from '../pdf/PdfReader.jsx';
 import { FichiersCours } from '../pdf/FichiersCours.jsx';
 import { useCoursAvecJumelle } from '../lib/ficheJumelle.js';
 import { useDatesModif, dateAjout, dateModif, ilYa, leJour } from '../lib/datesFiches.js';
+import { useDatesTranscript } from '../lib/datesTranscript.js';
+import { BoutonCalendrier, LigneDates, RappelFiltre } from '../components/DatesTranscript.jsx';
 import '../../styles/fiche-jumelle.css';
 import '../../styles/bibliotheque-tri.css';
 import { TitreRenommable } from '../components/TitreRenommable.jsx';
@@ -54,6 +56,10 @@ const IconeTri = ({ size = 15 }) => (
 const sansLe = (t) => String(t).replace(/^le /, '');
 const CLE_TRI = 'medrevise.biblio.tri';
 const lireTri = () => { try { const v = localStorage.getItem(CLE_TRI); return TRIS.some((t) => t.id === v) ? v : 'manuel'; } catch (e) { return 'manuel'; } };
+/* (25/11) DATES DE TRANSCRIPT : matières dont le bouton calendrier est allumé — préférence
+   d'affichage de cet appareil (localStorage), rien d'autre n'est écrit */
+const CLE_DATES_TRX = 'medrevise.biblio.datesTranscript';
+const lireDatesTrx = () => { try { const v = JSON.parse(localStorage.getItem(CLE_DATES_TRX) || '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; } catch (e) { return []; } };
 const sansAccents = (x) => String(x || '').toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const schemaViews = (f) => ficheImages(f).length;
 const schemaCoches = (f) => totalCoches(f);
@@ -93,6 +99,27 @@ export function Bibliotheque({ ctx }) {
     const rang = new Map(manuel.map((f, i) => [f.id, i]));
     return manuel.sort((a, b) => (dateTri(b) - dateTri(a)) || (rang.get(a.id) - rang.get(b.id)));
   };
+  /* (25/11) dates de transcript sous les cours d'une matière + filtre par jour
+     (docs/compte-rendu-filtre-dates-transcript.md). Bouton éteint partout → rien n'est lu. */
+  const [matDatesTrx, setMatDatesTrx] = useState(lireDatesTrx);
+  const [filtreJour, setFiltreJour] = useState({}); // matiereId → « AAAA-MM-JJ » (un seul jour par matière)
+  const datesTrx = useDatesTranscript(matDatesTrx.length > 0);
+  const datesTrxOn = (matId) => !!datesTrx && matDatesTrx.includes(matId);
+  const basculerDatesTrx = (matId) => {
+    const on = !matDatesTrx.includes(matId);
+    const l = on ? [...matDatesTrx, matId] : matDatesTrx.filter((x) => x !== matId);
+    setMatDatesTrx(l);
+    try { localStorage.setItem(CLE_DATES_TRX, JSON.stringify(l)); } catch (e) { /* mode privé : préférence non retenue */ }
+    if (!on) setFiltreJour((o) => { if (!(matId in o)) return o; const c = { ...o }; delete c[matId]; return c; });
+    if (on) setMatFermee((o) => (o[matId] ? { ...o, [matId]: false } : o));
+  };
+  const choisirJour = (matId, jour) => setFiltreJour((o) => {
+    const c = { ...o };
+    if (c[matId] === jour) delete c[matId]; else c[matId] = jour;
+    return c;
+  });
+  const jourDe = (matId) => (datesTrxOn(matId) ? filtreJour[matId] || null : null);
+  const joursDuCours = (f) => (datesTrxOn(f.matiereId) && datesTrx.get(f.id)) || null;
   const [renaming, setRenaming] = useState(null); // { type, id }
   // C — panneau de droite : quelle fiche-document est ouverte (jamais de
   // navigation d'écran — on reste sur 'library' tout du long).
@@ -404,6 +431,10 @@ export function Bibliotheque({ ctx }) {
               </span>
             </div>
           )}
+          {!isRen('fiche', f.id) && joursDuCours(f) && (
+            <LigneDates id={f.id} jours={joursDuCours(f)} jourActif={jourDe(f.matiereId)} maintenant={maintenant}
+              onChoisir={(j) => choisirJour(f.matiereId, j)} />
+          )}
           {fo && !kind && (
             <div className="lt-cartes">
               {qById(f.id).map((x) => (
@@ -453,8 +484,8 @@ export function Bibliotheque({ ctx }) {
   // LIGNE D'UN DOSSIER (Bibliothèque) : flèche · dossier · nom · nombre de fiches ·
   // au survol « + » (sous-dossier, niveau 1 seulement — 2 niveaux maximum) et ⋯.
   // Composant partagé avec Réviser : ui.jsx#LigneDossierArbre.
-  const ligneDossier = (d, nFiches, onAjout) => (
-    <LigneDossierArbre dossier={d} ouvert={!!(q || openDossier[d.id])} nFiches={nFiches}
+  const ligneDossier = (d, nFiches, onAjout, force = false) => (
+    <LigneDossierArbre dossier={d} ouvert={!!(q || force || openDossier[d.id])} nFiches={nFiches}
       renameInput={isRen('dossier', d.id) ? champRenommer() : null}
       onToggle={() => setOpenDossier((o) => ({ ...o, [d.id]: !o[d.id] }))}
       onRename={() => startRename('dossier', d.id, d.nom)}
@@ -776,10 +807,15 @@ export function Bibliotheque({ ctx }) {
                       <div className="lt-enfants lt-enfants-sec">
                         {mats.map((mat) => {
                           const mm = matiereMeta(mat);
-                          const allFiches = ordonner(db.fiches.filter((f) => f.matiereId === mat.id && !f.archive && ficheTrouvee(f)));
+                          const jourF = jourDe(mat.id);
+                          const allFiches = ordonner(db.fiches.filter((f) => f.matiereId === mat.id && !f.archive && ficheTrouvee(f)
+                            && (!jourF || (datesTrx.get(f.id) || []).includes(jourF))));
                           const rootFiches = allFiches.filter((f) => !f.dossierId);
-                          const unites = unitesOf(mat.id).filter((u) => !q || fichesCountRecursif(allFiches, u.id) > 0);
+                          // (25/11) filtre par jour : comme la recherche, seuls les dossiers qui mènent à un cours retenu, dépliés
+                          const filtre = !!q || !!jourF;
+                          const unites = unitesOf(mat.id).filter((u) => !filtre || fichesCountRecursif(allFiches, u.id) > 0);
                           const matOuverte = !!q || !matFermee[mat.id];
+                          const calOn = datesTrxOn(mat.id);
                           return (
                             <div key={mat.id} className={fd.dropClass('mat:' + mat.id).trim()}
                               {...fd.dropProps({ key: 'mat:' + mat.id, matiereId: mat.id })}>
@@ -795,8 +831,10 @@ export function Bibliotheque({ ctx }) {
                                   <Icon name={matOuverte ? 'chevD' : 'chevR'} size={13} className="lt-pli" />
                                   <span className="lt-point" style={{ background: mm.tint }} />
                                   {isRen('matiere', mat.id) ? champRenommer() : <span className="lt-nom">{mm.label}</span>}
+                                  {calOn && <BoutonCalendrier actif persistant onBascule={() => basculerDatesTrx(mat.id)} />}
                                   {allFiches.length > 0 && <span className="lt-compte" title={`${allFiches.length} fiche${allFiches.length > 1 ? 's' : ''}`}>{allFiches.length}</span>}
                                   <span className="lt-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                                    <BoutonCalendrier actif={calOn} onBascule={() => basculerDatesTrx(mat.id)} />
                                     <button type="button" className="cd-ic" title={`Nouveau dossier dans « ${mm.label} »`} onClick={() => { setMatFermee((o) => ({ ...o, [mat.id]: false })); createUnite(mat.id); }}><Icon name="plus" size={14} /></button>
                                     <button type="button" className="cd-ic" title="Actions sur la matière" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMatMenu({ x: Math.min(r.left, window.innerWidth - 250), y: r.bottom + 4, matiereId: mat.id }); }}>
                                       <Icon name="more" size={14} stroke={2.6} />
@@ -808,6 +846,8 @@ export function Bibliotheque({ ctx }) {
 
                               {matOuverte && (
                                 <div className="lt-enfants">
+                                  {jourF && <RappelFiltre jour={jourF} maintenant={maintenant} onRetirer={() => choisirJour(mat.id, jourF)} />}
+                                  {jourF && !allFiches.length && <div className="ltd-vide">Aucun cours ce jour-là</div>}
                                   {rootFiches.map(renderFiche)}
                                   <DropSlot matiereId={mat.id} dossierId={null} beforeId={null} variant={rootFiches.length ? 'line' : 'zone'} label={unites.length ? 'Déposer ici (racine)' : 'Déposer ici'} />
 
@@ -819,22 +859,22 @@ export function Bibliotheque({ ctx }) {
                                       <div key={u.id} className={fd.dropClass('dos:' + u.id).trim()}
                                         {...fd.dropProps({ key: 'dos:' + u.id, matiereId: mat.id, dossierId: u.id, spring: { type: 'dossier', id: u.id } })}>
                                         <DropCible matiereId={mat.id} dossierId={u.id} onSurvolProlonge={() => setOpenDossier((o) => (o[u.id] ? o : { ...o, [u.id]: true }))}>
-                                          {ligneDossier(u, fichesCountRecursif(allFiches, u.id), () => createChapitre(mat.id, u.id))}
+                                          {ligneDossier(u, fichesCountRecursif(allFiches, u.id), () => createChapitre(mat.id, u.id), filtre)}
                                         </DropCible>
-                                        {(q || openDossier[u.id]) && (
+                                        {(filtre || openDossier[u.id]) && (
                                           <div className="lt-enfants">
                                             {uniteFiches.map(renderFiche)}
                                             <DropSlot matiereId={mat.id} dossierId={u.id} beforeId={null} variant={uniteFiches.length ? 'line' : 'zone'} label={chapitres.length ? 'Déposer ici (dossier)' : 'Déposer ici'} />
                                             {chapitres.map((c) => {
                                               const chapFiches = allFiches.filter((f) => f.dossierId === c.id);
-                                              if (q && !chapFiches.length) return null;
+                                              if (filtre && !chapFiches.length) return null;
                                               return (
                                                 <div key={c.id} className={fd.dropClass('dos:' + c.id).trim()}
                                                   {...fd.dropProps({ key: 'dos:' + c.id, matiereId: mat.id, dossierId: c.id, spring: { type: 'dossier', id: c.id } })}>
                                                   <DropCible matiereId={mat.id} dossierId={c.id} onSurvolProlonge={() => setOpenDossier((o) => (o[c.id] ? o : { ...o, [c.id]: true }))}>
-                                                    {ligneDossier(c, chapFiches.length, null)}
+                                                    {ligneDossier(c, chapFiches.length, null, filtre)}
                                                   </DropCible>
-                                                  {(q || openDossier[c.id]) && (
+                                                  {(filtre || openDossier[c.id]) && (
                                                     <div className="lt-enfants">
                                                       {chapFiches.map(renderFiche)}
                                                       <DropSlot matiereId={mat.id} dossierId={c.id} beforeId={null} variant={chapFiches.length ? 'line' : 'zone'} />
@@ -850,7 +890,7 @@ export function Bibliotheque({ ctx }) {
                                       </div>
                                     );
                                   })}
-                                  {rootFiches.length === 0 && unites.length === 0 && <div className="lt-vide">Vide — glisse une fiche ou un fichier ici</div>}
+                                  {rootFiches.length === 0 && unites.length === 0 && !jourF && <div className="lt-vide">Vide — glisse une fiche ou un fichier ici</div>}
                                 </div>
                               )}
                             </div>

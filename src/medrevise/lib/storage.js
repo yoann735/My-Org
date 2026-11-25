@@ -197,8 +197,10 @@ export async function mergeBlobs(pairs) {
 /* SIGNAL D'ÉCRITURE LOCALE (15/10) : un simple événement après chaque écriture, sans
    effet sur ce qui est écrit — la Bibliothèque (tri « Dernière modification »,
    lib/datesFiches.js) s'y abonne pour remonter une fiche dès qu'on l'annote. */
-const signalerEcriture = (name) => {
-  try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('medrevise:ecriture', { detail: { store: name } })); } catch (e) { /* ignore */ }
+/* (25/11) `ids` : les enregistrements touchés, quand on les connaît — un abonné peut ne relire qu'eux
+   (lib/datesTranscript.js) ; les autres ne lisent que `store`. */
+const signalerEcriture = (name, ids) => {
+  try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('medrevise:ecriture', { detail: { store: name, ...(ids ? { ids } : {}) } })); } catch (e) { /* ignore */ }
 };
 /* (14/11) CROCHETS « DOCUMENT » posés par lib/historiqueDoc.js (inversion de dépendance : ce fichier ne connaît pas
    l'historique). `avantEcriture(name, precedent, nouveau)` : version écrasée par un autre onglet → historique ;
@@ -243,7 +245,7 @@ export async function put(name, rec) {
     await set(stamped.id, stamped, S[name]);
     if (SYNCABLE.includes(name)) queuePush(name, stamped.id, stamped, stamped.updatedAt);
   }
-  signalerEcriture(name);
+  signalerEcriture(name, [stamped.id]);
   return stamped;
 }
 export async function putMany(name, recs) {
@@ -254,7 +256,7 @@ export async function putMany(name, recs) {
     await setMany(stamped.map((r) => [r.id, r]), S[name]);
     if (syncable) stamped.forEach((r) => queuePush(name, r.id, r, r.updatedAt));
   }
-  signalerEcriture(name);
+  signalerEcriture(name, stamped.map((r) => r.id));
   return stamped;
 }
 /* TRANSCRIPTION (05/10) : écriture/suppression LOCALES sans horodatage ni file
@@ -319,7 +321,7 @@ export async function remove(name, id) {
     await del(id, S[name]);
     if (SYNCABLE.includes(name)) queuePush(name, id, {}, new Date().toISOString(), true); // tombstone (data vide, deleted=true)
   }
-  signalerEcriture(name);
+  signalerEcriture(name, [id]);
 }
 
 /* ---- historique des versions (store local `versions_doc`, logique dans lib/historiqueDoc.js) ---- */
