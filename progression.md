@@ -1,6 +1,6 @@
 <!-- PASSATION:DEBUT -->
 # 🔁 Passation – My Org (MedRevise)
-_Mise à jour le 2026-11-25 23:55_
+_Mise à jour le 2026-11-26 00:05_
 
 ## 🎯 Objectif
 SPA Vite + React (hub + MealWeek + MedRevise), Vercel `my-org` au push sur `main`.
@@ -12,10 +12,11 @@ SPA Vite + React (hub + MealWeek + MedRevise), Vercel `my-org` au push sur `main
 - (24/11) suivi automatique des diapos livré (docs/compte-rendu-suivi-auto-diapos.md).
 
 ## ➡️ Prochaines étapes
-1. Essayer en vrai (Mac, iPad) les dates de transcript de la Bibliothèque sur les vraies matières ; attendre le retour de Yoann avant toute modification.
-2. Essayer la section Exos en vrai (vrais fichiers d'exos HTML, glisser-déposer depuis le Finder) sur Mac, iPad, iPhone ; attendre le retour de Yoann.
-3. Essai réel Teams + banc diapos avec le vrai PDF d'histologie (`PDF_HISTO=~/Downloads/… node scripts/tests-suivi-diapos/t-suivi.mjs`) — attendre le PDF.
-4. (En attente) masques IA iPad/Mac, PNG texte coloré iPhone, zoom molette SchemaEditor, CLI Vercel + migration 20261024.
+1. /goal « séances liées à l'agenda » (lier début→fin de cours d'un document à un créneau de l'agenda, pages vues dans l'agenda, « Ouvrir le cours » → page de début) : texte complet du goal dans le message d'ouverture de la session suivante ; à faire en autonomie. Pistes : système début/fin existant = tags de pages `lib/tagsPages.js` (kind 'debut'/'fin', `transcription/marquerCours.js`, docs/compte-rendu-transcription-marque-cours.md) ; agenda = `api/timetable.js`, `lib/emploiDuTemps.js`, `components/EmploiDuTemps.jsx`/`GrilleEcole.jsx` (docs/compte-rendu-emploi-du-temps.md).
+2. Essayer en vrai (Mac, iPad) les dates de transcript de la Bibliothèque sur les vraies matières ; attendre le retour de Yoann avant toute modification.
+3. Essayer la section Exos en vrai (vrais fichiers d'exos HTML, glisser-déposer depuis le Finder) sur Mac, iPad, iPhone ; attendre le retour de Yoann.
+4. Essai réel Teams + banc diapos avec le vrai PDF d'histologie (`PDF_HISTO=~/Downloads/… node scripts/tests-suivi-diapos/t-suivi.mjs`) — attendre le PDF.
+5. (En attente) masques IA iPad/Mac, PNG texte coloré iPhone, zoom molette SchemaEditor, CLI Vercel + migration 20261024.
 
 ## 🧭 Décisions prises (ne pas rediscuter)
 - Dates de transcript : jour = Europe/Brussels ; heure = 1er mot du jour ; durée = somme par session du 1er au dernier mot du jour ; heure+durée seulement sur la pastille filtrée / ligne dépliée / infobulle (la ligne repliée reste des dates) ; filtre non retenu au rechargement ; téléphone sans Bibliothèque = rien à faire.
@@ -31,6 +32,7 @@ SPA Vite + React (hub + MealWeek + MedRevise), Vercel `my-org` au push sur `main
 <!-- PASSATION:FIN -->
 
 ## Historique des clôtures
+- 2026-11-26 00:05 – /cloture : dates de transcript livrées (6ce8107, 07ba376) ; suite = /goal séances liées à l'agenda.
 - 2026-11-25 23:55 – /goal dates de transcript + heure/durée + filtre par date dans la Bibliothèque : livré, banc vert 3 appareils + 2 appareils + perf, MealWeek identique, commité (6ce8107).
 - 2026-11-25 22:04 – section Exos livrée (00e35ac/71e9190) + glisser-déposer HTML/PDF dans la feuille (5c16650), bancs verts ; pas testé avec les vrais fichiers.
 - 2026-11-25 – /goal suivi auto des diapos livré (100 % passages, 2,66 s), banc Chrome muet, poussé
