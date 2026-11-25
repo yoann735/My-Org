@@ -1,6 +1,6 @@
 <!-- PASSATION:DEBUT -->
 # 🔁 Passation – My Org (MedRevise)
-_Mise à jour le 2026-11-25 (soir)_
+_Mise à jour le 2026-11-25 22:04_
 
 ## 🎯 Objectif
 SPA Vite + React (hub + MealWeek + MedRevise), Vercel `my-org` au push sur `main`.
@@ -8,11 +8,12 @@ SPA Vite + React (hub + MealWeek + MedRevise), Vercel `my-org` au push sur `main
 
 ## ✅ Fait (vérifié)
 - Section Exos : `src/medrevise/exos/` (notions.js, apercus.js, EcranExos.jsx, LecteurHtml.jsx), `src/styles/exos.css` ; entrée barre latérale + carte d'accueil téléphone ; store synchronisé `exo_notion` (ajout seul, aucune migration) ; PDF dans le PdfReader (option `coursCartes`), HTML dans une iframe sandbox « allow-scripts allow-forms ».
+- Glisser-déposer HTML/PDF dans la feuille de notion (zone Fiche : 1er PDF, HTML refusé ; zone Exercices ; ailleurs → exercices) — banc `t-glisser.mjs` vert (16/16), poussé `5c16650`.
 - Banc `scripts/tests-section-exos/tout.sh` : ordinateur, iPad, téléphone, 2 appareils, hors ligne, sécurité, non-régression, MealWeek identique → tout vert. Compte rendu `docs/compte-rendu-section-exos.md`.
 - (24/11) suivi automatique des diapos livré (docs/compte-rendu-suivi-auto-diapos.md).
 
 ## ➡️ Prochaines étapes
-1. Essayer la section Exos en vrai (vrais fichiers d'exos HTML) sur Mac, iPad, iPhone.
+1. Essayer la section Exos en vrai (vrais fichiers d'exos HTML, glisser-déposer depuis le Finder) sur Mac, iPad, iPhone — attendre le retour de Yoann avant toute modification.
 2. Essai réel Teams + banc diapos avec le vrai PDF d'histologie (`PDF_HISTO=~/Downloads/… node scripts/tests-suivi-diapos/t-suivi.mjs`) — attendre le PDF de Yoann.
 3. (En attente) masques IA iPad/Mac, PNG texte coloré iPhone, zoom molette SchemaEditor, CLI Vercel + migration 20261024.
 
@@ -22,12 +23,14 @@ SPA Vite + React (hub + MealWeek + MedRevise), Vercel `my-org` au push sur `main
 
 ## ⚠️ Pièges et préférences
 - JAMAIS de son pendant un banc (Chrome --mute-audio). Ne pas modifier src/ pendant qu'un banc tourne.
+- Serveurs « faux-supabase » (:54399) et « medrevise-faux-cloud » (:5300) lancés par preview_start pour le banc (peuvent être arrêtés).
 - « sync auto » commite ET pousse tout seul (il a emporté le code Exos dans 00e35ac).
 - Le lecteur HTML est volontairement isolé : ne jamais ajouter allow-same-origin.
 - Français, commits conventionnels, jamais de force push ; ne jamais toucher MealWeek ni src/shared.
 <!-- PASSATION:FIN -->
 
 ## Historique des clôtures
+- 2026-11-25 22:04 – section Exos livrée (00e35ac/71e9190) + glisser-déposer HTML/PDF dans la feuille (5c16650), bancs verts ; pas testé avec les vrais fichiers.
 - 2026-11-25 – /goal suivi auto des diapos livré (100 % passages, 2,66 s), banc Chrome muet, poussé
 - 2026-11-24 14:13 – /goal masques IA de flashcard image (prompt, collage/.json, recalage OCR, Valider/Annuler) + correctif libération moteur OCR ; tibia/fibula 40/40 ; bancs verts 3 appareils, MealWeek identique ; poussé (dd34607). Vrai iPhone/iPad non testé.
 - 2026-11-22 – /goal PNG d'un dessin (×3, 3 fonds, partage iPhone, texte peint) + barre transcription → retour au cours ; correctif texte coloré iPhone (copie sans caméra) ; bancs verts Chrome + Safari ; poussé (7fdb0b6). Vrai iPhone non testé.
