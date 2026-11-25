@@ -157,6 +157,31 @@
         "scripts/tests-suivi-diapos/faux-teams.mjs"
       ],
       "port": 54411
+    },
+    {
+      "name": "mealweek-avant-exos",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "preview",
+        "/var/folders/s7/6c5m4r014nnfjf78vmfyb30c0000gn/T/banc-section-exos/avant",
+        "--port",
+        "5321",
+        "--strictPort"
+      ],
+      "port": 5321
+    },
+    {
+      "name": "mealweek-apres-exos",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "preview",
+        "--port",
+        "5322",
+        "--strictPort"
+      ],
+      "port": 5322
     }
   ]
 }

@@ -109,6 +109,12 @@ const S = {
   // (hors SYNCABLE) : une photographie des annotations d'un document toutes les 5 min d'édition, à la fermeture,
   // avant toute restauration, et chaque version écartée par un conflit. Clé `<ns>|<horodatage>|<id>`. 60 jours.
   versions_doc: store('versions_doc'),
+  // SECTION « EXOS » (25/11, docs/compte-rendu-section-exos.md) — type ADDITIONNEL, synchronisé : UN enregistrement par
+  // notion { id:'en…', nom, coursId|null, fiche:{ id, fileId, nom, type:'pdf' }|null, exercices:[{ id, fileId, nom,
+  // type:'pdf'|'html' }], fichiersRetires:[…], creeLe } (exos/notions.js). Les fichiers voyagent par le canal des blobs
+  // (champ `fileId`, couvert d'office par l'audit des blobs). Les annotations d'un PDF vivent dans `highlights`/
+  // `annotations` avec `ficheId = 'exo:' + <id du fichier>` (clé d'espace de noms) : rien d'existant n'est réécrit.
+  exo_notion: store('exo_notion'),
 };
 
 // A — SYNCHRO CLOUD : stores dont les enregistrements suivent l'utilisateur d'un
@@ -118,7 +124,7 @@ const S = {
 // `sessionsLog` est syncable pour la même raison que `questions`/`stats` : la
 // tendance affichée en fin de série doit refléter l'activité desktop ET mobile,
 // pas seulement cet appareil.
-const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau', 'liaison', 'dessins', 'reading_position', 'notes_doc', 'learning_set', 'companion_pdf', 'board', 'page_tag'];
+const SYNCABLE = ['sources', 'matieres', 'dossiers', 'fiches', 'questions', 'structures', 'highlights', 'annotations', 'stats', 'exos', 'docs', 'anatstruct', 'sessionsLog', 'prompts', 'apprentissage', 'notes', 'tableau', 'liaison', 'dessins', 'reading_position', 'notes_doc', 'learning_set', 'companion_pdf', 'board', 'page_tag', 'exo_notion'];
 
 export function genId(prefix = 'x') {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);

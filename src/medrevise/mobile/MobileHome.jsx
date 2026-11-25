@@ -26,7 +26,7 @@ import { useModeCalendrier } from '../lib/emploiDuTemps.js';
 // traitement que CarnetDashboard.jsx desktop (voir là-bas pour le détail).
 const stripCloze = (s) => (s || '').replace(/\{\{([^{}]+)\}\}/g, '$1');
 
-export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman, onOpenDessin = null, onStartSeanceFC = null, onOuvrirApprentissage = null }) {
+export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynman, onOpenDessin = null, onStartSeanceFC = null, onOuvrirApprentissage = null, onOuvrirExos = null }) {
   const etatSynchro = useEtatSynchro(); // (07/11) même état que l'en-tête et Réglages
   const { db } = ctx;
   const enSynchro = useEnSynchro(); // (28/10) chiffres et « Commencer » attendent la fin de la synchro complète
@@ -170,6 +170,15 @@ export function MobileHome({ ctx, onStartSession, onStartExercice, onStartFeynma
           <button type="button" className="mrm-card alib-entree" onClick={onOuvrirApprentissage}>
             <span className="alib-entree-ic"><Icon name="refresh" size={18} /></span>
             <span className="alib-entree-txt"><strong>Apprentissage</strong><span className="hint"><Chiffre>{(() => { const n = (ctx.db.questions || []).filter((q) => q.type === 'flashcard').length; return n ? `${n} carte${n > 1 ? 's' : ''} à parcourir` : 'Aucune carte pour l’instant'; })()}</Chiffre></span></span>
+            <Icon name="chevR" size={16} />
+          </button>
+        )}
+
+        {/* (25/11) SECTION EXOS : notions (fiche PDF + exercices HTML / PDF) */}
+        {onOuvrirExos && (
+          <button type="button" className="mrm-card alib-entree" data-entree="exos" onClick={onOuvrirExos} title="Ouvrir la section Exos">
+            <span className="alib-entree-ic"><Icon name="flask" size={18} /></span>
+            <span className="alib-entree-txt"><strong>Exos</strong><span className="hint">Fiches et exercices par notion</span></span>
             <Icon name="chevR" size={16} />
           </button>
         )}

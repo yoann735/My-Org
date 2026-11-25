@@ -29,6 +29,7 @@ import { AnatQuiz } from './session/AnatQuiz.jsx';
 import { PdfReader } from './pdf/PdfReader.jsx';
 import { SeanceFC } from './session/SeanceFC.jsx';
 import { SchemaEditorScreen } from './documents/SchemaEditorScreen.jsx';
+import { EcranExos } from './exos/EcranExos.jsx';
 import {
   getAll, put, putMany, remove, getStats, setStats as saveStats, genId, syncNow, syncRapide,
   purgeSource, purgeMatiere, purgeFiche, putBackup, newErrorCard, noterSuppressionsVolontaires,
@@ -87,7 +88,7 @@ const ECRANS_RETIRES = {
   'apprentissage-exos': '« Apprentissage (exos) » a été retiré. Le mode Apprentissage (entraînement en rafale) est dans la barre latérale.',
   prompts: 'Les prompts sont maintenant dans Réglages → Prompts.',
 };
-const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard, apprlibre: EcranApprentissage, seancefc: SeanceFC, integrite: EcranIntegrite };
+const SCREENS = { dashboard: Dashboard, revise: Reviser, library: Bibliotheque, settings: Reglages, session: Session, feynman: Feynman, exercice: Exercice, anatquiz: AnatQuiz, pdf: PdfReader, schemaedit: SchemaEditorScreen, carnet: CarnetDashboard, exos: EcranExos, apprlibre: EcranApprentissage, seancefc: SeanceFC, integrite: EcranIntegrite };
 
 function MedBottomNav({ current, onNav }) {
   const items = [

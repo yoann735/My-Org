@@ -187,7 +187,7 @@ const FORMES_PRINCIPALES = ['rectangle', 'ellipse', 'triangle', 'ligne', 'fleche
    Les anciennes props (`ficheId`, `doc`, `initialSrcTab`) restent acceptées : le
    mode plein écran passe encore par ctx.pdfView, et les rétirer d'un coup aurait
    été le seul changement risqué de cette étape. */
-export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: srcTabProp, doc: docProp, onSetPdf, onSetHtml, embedded, onClose, ajusterLargeur = false, panneauNotionsOuvert = true, avecEntete = false, ouvrirFichiers = false }) {
+export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: srcTabProp, doc: docProp, onSetPdf, onSetHtml, embedded, onClose, ajusterLargeur = false, panneauNotionsOuvert = true, avecEntete = false, ouvrirFichiers = false, coursCartes = null }) {
   const { pdfView, db } = ctx;
   const ficheId = (source && source.id) ?? ficheIdProp ?? (pdfView && pdfView.ficheId);
   const initialSrcTab = srcTabProp ?? (pdfView && pdfView.srcTab);
@@ -196,6 +196,10 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   const idFiche = source ? source.ficheId : (docProp ? null : ficheId);
   const ficheReelle = idFiche ? db.fiches.find((f) => f.id === idFiche) : null;
   const fiche = ficheReelle || source || docProp;
+  /* (25/11, docs/compte-rendu-section-exos.md) `coursCartes` (facultatif, section Exos) : un document qui n'est PAS une
+     fiche (fichier d'une notion) mais rattaché à un cours — « Boîte → Flashcard » et le panneau Exercices y rangent les
+     cartes de CE cours. Absent : `ficheCartes` = `ficheReelle`, rien ne change. */
+  const ficheCartes = ficheReelle || (coursCartes ? db.fiches.find((f) => f.id === coursCartes && !f.archive) || null : null);
   /* DOCUMENT (08/10, docs/compte-rendu-nettoyage-document.md) : un cours sans PDF s'ouvre
      ICI, comme un PDF — des pages A4 blanches (pages ajoutées, kind 'page') sur lesquelles on
      écrit (pdf/PageTexte.jsx) et on annote avec tous les outils. */
@@ -446,7 +450,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     const boite = boiteFraicheRef.current ? boiteFraicheRef.current(b0.id, b0) || b0 : b0;
     const tableau = !!(boite.grille && Array.isArray(boite.grille.lignes));
     const d = decouperBoite(boite.content);
-    const carte = carteDeBoite(boite, { recto: tableau ? 'Compléter le tableau' : d.recto, verso: d.verso, theme: themeFlashcardsDeFiche(ficheReelle), ns: nsAnnot, id: genId('bfc') });
+    const carte = carteDeBoite(boite, { recto: tableau ? 'Compléter le tableau' : d.recto, verso: d.verso, theme: themeFlashcardsDeFiche(ficheCartes), ns: nsAnnot, id: genId('bfc') });
     setPanelOpen(true);
     setFlashcardNotes((f) => ({ carte, n: (f ? f.n : 0) + 1 }));
   };
@@ -4280,7 +4284,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
                       onApercuCouleur={apercuPour}
 
                       onReinitialiserBloc={resetEdit} onImageBoite={imageBoite}
-                      onVersFlashcard={ficheReelle ? boiteVersFlashcard : null} boitesEnCarte={boitesEnCarte}
+                      onVersFlashcard={ficheCartes ? boiteVersFlashcard : null} boitesEnCarte={boitesEnCarte}
                       selection={sel} onSelection={selectionner} onTransfererFleche={transfererFleche}
                       onModifierTrait={modifierTrait}
                       ancrageBoiteId={ancrageBoiteId} ancrageFleche={!!(ancrage && ancrage.fleche)} ancrageSurlignage={!!(ancrage && ancrage.surlignage)} ancrageAjout={!!(ancrage && ancrage.ajout)} onDemanderAncrage={setAncrageBoiteId}
@@ -4338,7 +4342,7 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
             QCM / Flashcard / Exercice / Feynman pour une vraie fiche, plus l'onglet
             « Notions » (les passages surlignés de CE PDF). Pour un document sans
             fiche (Prise de notes, anatomie), seul l'onglet Notions existe. */}
-        <CourseItemsSidebar ctx={ctx} ficheId={ficheReelle ? ficheReelle.id : null} onAllerABoite={allerABoiteStable}
+        <CourseItemsSidebar ctx={ctx} ficheId={ficheCartes ? ficheCartes.id : null} onAllerABoite={allerABoiteStable}
           ongletsEnPlus={[
             { id: 'notions', label: 'Notions', icon: 'edit', n: highlights.length + notionsAutreDoc.length, contenu: notionsPdf },
             ficheReelle && {

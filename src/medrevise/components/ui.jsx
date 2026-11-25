@@ -385,6 +385,7 @@ const ED_NAV = [
   { id: 'revise', label: 'Réviser', icon: 'cards' },
   { id: 'apprlibre', label: 'Apprentissage', Ic: IconeRafale }, // entraînement en rafale, hors J et FSRS (apprentissageLibre/)
   { id: 'library', label: 'Bibliothèque', icon: 'book' },
+  { id: 'exos', label: 'Exos', icon: 'flask' }, // (25/11) section Exos : notions = fiche PDF + exercices (exos/EcranExos.jsx)
   { id: 'carnet', label: "Carnet d'erreurs", icon: 'target' },
 ];
 

@@ -19,6 +19,7 @@ import { EcranDessin } from './EcranDessin.jsx';
 import { SeanceFC } from '../session/SeanceFC.jsx';
 import { EcranApprentissage } from '../apprentissageLibre/EcranApprentissage.jsx';
 import { BandeauFilet, EcranIntegrite } from '../components/FiletSecurite.jsx';
+import { EcranExos } from '../exos/EcranExos.jsx';
 
 export function MobileApp({ ctx }) {
   const [screen, setScreen] = useState('home'); // home | session | exercice | feynman | dessin | seancefc
@@ -45,13 +46,17 @@ export function MobileApp({ ctx }) {
     // filet de sécurité : liste des anomalies du contrôle du jour (même écran que sur ordinateur)
     return <div className="mrm-app"><EcranIntegrite ctx={ctx} onRetour={goHome} /></div>;
   }
+  if (screen === 'exos') {
+    // (25/11) section Exos : notions, fiche PDF et exercices (HTML / PDF) — même écran que sur ordinateur
+    return <EcranExos ctx={ctx} mobile onRetour={goHome} />;
+  }
   if (screen === 'dessin') {
     return <EcranDessin ctx={ctx} onQuit={goHome} />;
   }
   return (
     <>
     <BandeauFilet ctx={ctx} onOuvrirIntegrite={() => setScreen('integrite')} onOuvrirReglages={() => setScreen('integrite')} />
-    <MobileHome ctx={ctx} onOpenDessin={() => setScreen('dessin')} onStartSeanceFC={() => setScreen('seancefc')} onOuvrirApprentissage={() => setScreen('apprlibre')}
+    <MobileHome ctx={ctx} onOpenDessin={() => setScreen('dessin')} onStartSeanceFC={() => setScreen('seancefc')} onOuvrirApprentissage={() => setScreen('apprlibre')} onOuvrirExos={() => setScreen('exos')}
       onStartSession={(items, title, meta) => { ctx.startSession(items, title, meta); setScreen('session'); }}
       onStartExercice={(items, title) => { ctx.startExercice(items, title); setScreen('exercice'); }}
       onStartFeynman={(payload) => { ctx.startFeynman(payload); setScreen('feynman'); }}
