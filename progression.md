@@ -1,28 +1,30 @@
 <!-- PASSATION:DEBUT -->
 # 🔁 Passation – My Org (MedRevise)
-_Mise à jour le 2026-11-24 (soir)_
+_Mise à jour le 2026-11-25 (soir)_
 
 ## 🎯 Objectif
 SPA Vite + React (hub + MealWeek + MedRevise), Vercel `my-org` au push sur `main`.
-/goal du 24/11 : suivi automatique des diapos pendant une transcription d'onglet (Teams) + répartition après coup — LIVRÉ.
+/goal du 25/11 : section « Exos » (notions = fiche PDF + exercices HTML/PDF) — LIVRÉ, testé, poussé.
 
 ## ✅ Fait (vérifié)
-- `src/medrevise/transcription/diapos/` : moteur unique (moteur.js), Web Worker (images de l'onglet, zone, scores, rendu des pages pdf.js sur OffscreenCanvas), pilote (suivi.js), pages du PDF (pagesCours.js), « Relier aux diapos automatiquement » (repartition.js), UI (SuiviDiapos.jsx). Piste vidéo du même partage gardée (audio.js), page des lignes = diapo reconnue (engine.js), Historique porte la session (historiqueDoc.js).
-- Banc Chrome `scripts/tests-suivi-diapos/` (vrai partage d'onglet, Chrome fenêtré hors écran, MUET) : passages 100 %, lignes 98,4 %, 0 mauvais changement même titre, délai moyen 2,66 s, aucun mot perdu ; après coup 100 % ; non-régression verte ; MealWeek identique au pixel. Compte rendu : `docs/compte-rendu-suivi-auto-diapos.md`.
+- Section Exos : `src/medrevise/exos/` (notions.js, apercus.js, EcranExos.jsx, LecteurHtml.jsx), `src/styles/exos.css` ; entrée barre latérale + carte d'accueil téléphone ; store synchronisé `exo_notion` (ajout seul, aucune migration) ; PDF dans le PdfReader (option `coursCartes`), HTML dans une iframe sandbox « allow-scripts allow-forms ».
+- Banc `scripts/tests-section-exos/tout.sh` : ordinateur, iPad, téléphone, 2 appareils, hors ligne, sécurité, non-régression, MealWeek identique → tout vert. Compte rendu `docs/compte-rendu-section-exos.md`.
+- (24/11) suivi automatique des diapos livré (docs/compte-rendu-suivi-auto-diapos.md).
 
 ## ➡️ Prochaines étapes
-1. Essai en vrai sur un cours Teams dans Chrome + relancer le banc avec le vrai PDF d'histologie (`PDF_HISTO=~/Downloads/… node scripts/tests-suivi-diapos/t-suivi.mjs`) — aucun PDF d'histologie n'était dans ~/Downloads.
-2. (Toujours en attente) essais masques IA iPad/Mac, PNG texte coloré iPhone ; zoom molette SchemaEditor ; CLI Vercel + migration 20261024.
+1. Essayer la section Exos en vrai (vrais fichiers d'exos HTML) sur Mac, iPad, iPhone.
+2. Essai réel Teams + banc diapos avec le vrai PDF d'histologie (`PDF_HISTO=~/Downloads/… node scripts/tests-suivi-diapos/t-suivi.mjs`) — attendre le PDF de Yoann.
+3. (En attente) masques IA iPad/Mac, PNG texte coloré iPhone, zoom molette SchemaEditor, CLI Vercel + migration 20261024.
 
 ## 🧭 Décisions prises (ne pas rediscuter)
-- Un seul moteur (direct et après coup), OCR de l'app seulement si hésitation, images des changements LOCALES (store meta), aucune migration.
-- Seuils : SEUIL 0,50 · MARGE 0,03 · NON_RECONNU 0,50 (moteur.js#PARAMS).
+- Exos : annotations d'un fichier dans l'espace `exo:<id du fichier>` ; fichier retiré/remplacé = gardé dans `fichiersRetires` (bouton Remettre), jamais d'annotation effacée ; boîte → flashcard seulement si la notion a un cours.
+- Diapos : un seul moteur ; seuils SEUIL 0,50 · MARGE 0,03 · NON_RECONNU 0,50.
 
 ## ⚠️ Pièges et préférences
-- JAMAIS de son pendant un banc (Yoann en cours) : faux Teams à −50 dB + suppressLocalAudioPlayback ; `--mute-audio` coupe AUSSI la capture.
-- Ne pas modifier src/ pendant qu'un banc tourne (Vite recharge la page et coupe la session).
-- « sync auto » commite ET pousse tout seul.
-- Français, commits conventionnels, jamais de force push.
+- JAMAIS de son pendant un banc (Chrome --mute-audio). Ne pas modifier src/ pendant qu'un banc tourne.
+- « sync auto » commite ET pousse tout seul (il a emporté le code Exos dans 00e35ac).
+- Le lecteur HTML est volontairement isolé : ne jamais ajouter allow-same-origin.
+- Français, commits conventionnels, jamais de force push ; ne jamais toucher MealWeek ni src/shared.
 <!-- PASSATION:FIN -->
 
 ## Historique des clôtures

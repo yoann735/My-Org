@@ -96,7 +96,18 @@ C'est le mode **« Exercices »** du panneau latéral du lecteur d'un cours (lib
 Feynman — avec Ajouter / Importer / Exporter. Aucune ligne n'en a été modifiée ; `t-nonreg.mjs` vérifie qu'il s'affiche comme avant.
 
 ## 7. Tests (banc `scripts/tests-section-exos/`, Chrome headless muet, faux Supabase)
-RESULTATS_BANC
+`./tout.sh` rejoue tout (25/11, **tout vert, 0 erreur console**) :
+
+| Script | Appareils | Ce qui est vérifié | Résultat |
+|---|---|---|---|
+| `t-creation.mjs` | ordinateur, iPad | entrée « Exos » (icône + infobulle), en-tête (titre, filtre, grille/liste, tri, Nouvelle notion), nom obligatoire, 3 notions (cours / sans cours / sans fiche), stockage, noms lisibles, aperçus (fiche, sinon 1ᵉʳ PDF d'exos), cartes de même largeur, pastille, date, menu ⋮, tri, filtre, liste, vue notion, retour | ✅ |
+| `t-lecteurs.mjs` | ordinateur, iPad, téléphone | fiche PDF dans le PdfReader (mêmes outils), boîte écrite → enregistrée, Historique, panneau du cours rattaché, fermer / rouvrir → annotation là ; QCM HTML (boutons, champ, correction JS, localStorage/sessionStorage en mémoire, alert en bandeau), rien d'enregistré, mémoire perdue à la fermeture ; fichier piégé bloqué, app intacte | ✅ |
+| `t-modification.mjs` | ordinateur, iPad | renommer, changer de cours, ajouter 2 exos, réordonner, renommer un exo ; exo annoté (2 boîtes) retiré → confirmation « 2 annotations », putBackup, Fichiers retirés, annotations intactes, version Historique ; Remettre ; remplacer la fiche annotée → confirmation, ancienne récupérable | ✅ |
+| `t-telephone.mjs` | téléphone | carte d'accueil, grille 2 colonnes égales sans débordement, liste, filtre, créer / modifier / supprimer au doigt, QCM au doigt, retour accueil | ✅ |
+| `t-synchro.mjs` | ordinateurs A + B | notions, fichiers et aperçus sur B ; annotation A → B et B → A ; B hors ligne : fiche, exo PDF, exo HTML ; suppression (confirmation, putBackup) → disparaît sur A puis sur B | ✅ |
+| `t-nonreg.mjs` | ordinateur | barre latérale (6 entrées, chacune s'ouvre), lecteur d'un cours + onglet « Exos » (QCM / Flashcards / Exercices / Feynman), synchro « À jour », export local avec `exo_notion`, copie GitHub (lignes + fichiers dans l'index) | ✅ |
+| `t-mealweek.mjs` | ordinateur, téléphone | build de production avant (`ffcf06f`) / après : capture identique octet pour octet, aucune erreur | ✅ |
+
 
 Captures (`docs/img/section-exos/`) :
 
@@ -117,4 +128,7 @@ Captures (`docs/img/section-exos/`) :
 - Le PdfReader sur téléphone reste celui de l'app (barres d'outils denses) ; il est ajusté à la largeur de l'écran.
 
 ## 9. Commits
-COMMITS
+- `00e35ac` *sync auto* (commit et push automatiques du dépôt) — contient tout le code de la section (`src/medrevise/exos/`,
+  `src/styles/exos.css`, branchements dans `MedReviseApp.jsx`, `ui.jsx`, `storage.js`, `MobileApp.jsx`, `MobileHome.jsx`,
+  option `coursCartes` de `PdfReader.jsx`), le banc `scripts/tests-section-exos/` et les premières captures.
+- commit `docs(medrevise): section Exos…` (ce compte rendu complété, captures finales, passation).
