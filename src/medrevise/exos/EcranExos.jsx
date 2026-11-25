@@ -292,6 +292,27 @@ function FeuilleNotion({ ctx, cours, notion, onFermer, onFait }) {
     if (ok.length < (l || []).length) setErreur('Seuls les fichiers HTML et PDF sont acceptés.'); else setErreur(null);
     setExercices((e) => [...e, ...ok.map((file) => ({ id: idTemp(), _file: file, nom: nomLisible(file.name), nomFichier: file.name, type: estHtml(file) ? 'html' : 'pdf' }))]);
   };
+  // Glisser-déposer : zone « fiche » (1er PDF → fiche, le reste → exercices), zone « exos » ou n'importe où dans la feuille → exercices.
+  const [survol, setSurvol] = useState(null); // 'fiche' | 'exos' | null
+  const aDesFichiers = (e) => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files');
+  const deposer = (zone, e) => {
+    if (!aDesFichiers(e)) return;
+    e.preventDefault(); e.stopPropagation(); setSurvol(null);
+    const l = [...(e.dataTransfer.files || [])]; if (!l.length) return;
+    if (zone === 'fiche') {
+      const i = l.findIndex((f) => estPdf(f));
+      if (i < 0) { setErreur('La fiche doit être un PDF.'); return; }
+      choisirFiche([l[i]]);
+      const reste = l.filter((_, j) => j !== i); if (reste.length) ajouterExos(reste);
+    } else ajouterExos(l);
+  };
+  const zoneDepot = (zone) => ({
+    'data-depot': zone,
+    onDragEnter: (e) => { if (aDesFichiers(e)) { e.preventDefault(); e.stopPropagation(); setSurvol(zone); } },
+    onDragOver: (e) => { if (aDesFichiers(e)) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; if (survol !== zone) setSurvol(zone); } },
+    onDragLeave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) setSurvol((s) => (s === zone ? null : s)); },
+    onDrop: (e) => deposer(zone, e),
+  });
   const deplacer = (i, d) => setExercices((e) => { const c = [...e]; const j = i + d; if (j < 0 || j >= c.length) return e; [c[i], c[j]] = [c[j], c[i]]; return c; });
   const retirerExo = (f) => avecConfirmation(f, () => setExercices((e) => e.filter((x) => x.id !== f.id)), 'Retirer');
   const remettre = (r) => {
@@ -343,20 +364,24 @@ function FeuilleNotion({ ctx, cours, notion, onFermer, onFait }) {
   const optionsCours = [{ id: '', label: 'Aucun cours', tint: 'var(--border-2)' }, ...cours.liste];
   return (
     <Modal title={nouvelle ? 'Nouvelle notion' : 'Modifier la notion'} onClose={onFermer} width="min(560px, 96vw)">
-      <form className="exo-feuille" onSubmit={valider} data-feuille="notion">
+      <form className="exo-feuille" onSubmit={valider} data-feuille="notion"
+        onDragOver={(e) => { if (aDesFichiers(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }}
+        onDrop={(e) => deposer('exos', e)}>
         <label className="exo-champ"><span className="exo-etiquette">Nom <em>(obligatoire)</em></span>
           <input className="fc-champ" autoFocus={nouvelle} value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Ex. Équilibre acido-basique" aria-label="Nom de la notion" /></label>
         <div className="exo-champ"><span className="exo-etiquette">Cours <em>(facultatif)</em></span>
           <MenuDeroulant id="exo-cours" valeur={coursId} options={optionsCours} onChoisir={(id) => setCoursId(id || '')} vide="Aucun cours" /></div>
 
-        <div className="exo-champ"><span className="exo-etiquette">Fiche PDF <em>(facultative)</em></span>
+        <div className={'exo-champ exo-depot' + (survol === 'fiche' ? ' actif' : '')} {...zoneDepot('fiche')}><span className="exo-etiquette">Fiche PDF <em>(facultative)</em></span>
           {fiche ? ligneFichier(fiche) : <button type="button" className="btn sm exo-ajout" onClick={() => champFiche.current && champFiche.current.click()}><Icon name="upload" size={13} /> Ajouter une fiche PDF</button>}
+          {!fiche && <span className="exo-depot-aide">ou glisse un PDF ici</span>}
           <input ref={champFiche} type="file" accept=".pdf,application/pdf" hidden data-champ="fiche" onChange={(e) => { choisirFiche(e.target.files); e.target.value = ''; }} />
         </div>
 
-        <div className="exo-champ"><span className="exo-etiquette">Exercices <em>(HTML ou PDF, 0 à N)</em></span>
+        <div className={'exo-champ exo-depot' + (survol === 'exos' ? ' actif' : '')} {...zoneDepot('exos')}><span className="exo-etiquette">Exercices <em>(HTML ou PDF, 0 à N)</em></span>
           {exercices.map((f, i) => ligneFichier(f, { i, n: exercices.length }))}
           <button type="button" className="btn sm exo-ajout" onClick={() => champExos.current && champExos.current.click()}><Icon name="plus" size={13} /> Ajouter des exercices</button>
+          <span className="exo-depot-aide">ou glisse tes fichiers HTML / PDF ici</span>
           <input ref={champExos} type="file" multiple accept=".html,.htm,text/html,.pdf,application/pdf" hidden data-champ="exos" onChange={(e) => { ajouterExos(e.target.files); e.target.value = ''; }} />
         </div>
 

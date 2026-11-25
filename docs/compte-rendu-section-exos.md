@@ -39,6 +39,10 @@ existante, **ajout seul** : aucun autre store réécrit, `lib/storage.js` : déc
 - Feuille « Nouvelle notion » / « Modifier » : nom (obligatoire — « Créer » grisé sinon), cours (menu déroulant de la DA,
   « Aucun cours » possible), fiche PDF (ajouter, remplacer, retirer), exercices HTML/PDF (ajouter plusieurs, renommer,
   Monter / Descendre, retirer). Les fichiers ne sont importés qu'à l'enregistrement (Annuler n'écrit rien).
+- **Glisser-déposer** (ordinateur) : déposer des fichiers depuis le Finder sur la zone « Fiche PDF » (le 1ᵉʳ PDF
+  devient la fiche ; un HTML y est refusé ; les autres fichiers vont aux exercices) ou sur la zone « Exercices »
+  (HTML et PDF, plusieurs à la fois). Un fichier lâché ailleurs dans la feuille va aux exercices. La zone survolée
+  s'entoure en pointillés accent (120 ms) ; le navigateur n'ouvre jamais le fichier lâché.
 - **Retirer ou remplacer un fichier annoté** : confirmation « Ce fichier porte N annotations… ». À l'enregistrement :
   `putBackup` (notion + fichiers retirés + leurs annotations), une version « Fichier retiré de la notion… » dans
   l'Historique de son document, et le fichier passe dans **« Fichiers retirés »** (bouton **Remettre** : il revient avec
@@ -106,6 +110,7 @@ Feynman — avec Ajouter / Importer / Exporter. Aucune ligne n'en a été modifi
 | `t-telephone.mjs` | téléphone | carte d'accueil, grille 2 colonnes égales sans débordement, liste, filtre, créer / modifier / supprimer au doigt, QCM au doigt, retour accueil | ✅ |
 | `t-synchro.mjs` | ordinateurs A + B | notions, fichiers et aperçus sur B ; annotation A → B et B → A ; B hors ligne : fiche, exo PDF, exo HTML ; suppression (confirmation, putBackup) → disparaît sur A puis sur B | ✅ |
 | `t-nonreg.mjs` | ordinateur | barre latérale (6 entrées, chacune s'ouvre), lecteur d'un cours + onglet « Exos » (QCM / Flashcards / Exercices / Feynman), synchro « À jour », export local avec `exo_notion`, copie GitHub (lignes + fichiers dans l'index) | ✅ |
+| `t-glisser.mjs` | ordinateur | vrais glisser-déposer de fichiers (CDP `Input.dispatchDragEvent`) : HTML refusé sur la fiche, PDF → fiche, HTML + PDF → exercices dans l'ordre, lâché ailleurs → exercices, surbrillance au survol puis éteinte, pas de navigation, notion enregistrée (1 fiche + 3 exos) | ✅ |
 | `t-mealweek.mjs` | ordinateur, téléphone | build de production avant (`ffcf06f`) / après : capture identique octet pour octet, aucune erreur | ✅ |
 
 

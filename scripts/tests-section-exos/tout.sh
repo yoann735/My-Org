@@ -7,7 +7,7 @@ set -e
 # iPad tactile : sa propre série (chaque t-creation repart de zéro)
 node t-creation.mjs ipad; node t-lecteurs.mjs ipad; node t-modification.mjs ipad
 # ordinateur, téléphone, deux appareils, non-régression, MealWeek
-node t-creation.mjs ordi; node t-lecteurs.mjs ordi; node t-modification.mjs ordi
+node t-creation.mjs ordi; node t-lecteurs.mjs ordi; node t-modification.mjs ordi; node t-glisser.mjs
 node t-lecteurs.mjs tel; node t-telephone.mjs
 node t-synchro.mjs
 node t-nonreg.mjs
