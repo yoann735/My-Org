@@ -9,7 +9,8 @@ Deux demandes :
 LAISSÉ ACTIF) :**
 - **20 min onglet caché : 9/9 changements détectés.**
 - 20 min autre cours de l'app : 9/9 · 20 min fenêtre réduite : 10/10 · 20 min en alternance : 11/11.
-- Délai moyen 2,2 s, max 3,5 s. Plus grand trou du journal : 5,2 s (un « pouls » toutes les 5 s).
+- Délai moyen 2,1 s ; **38/39 changements en ≤ 2,5 s**, le dernier en 3,6 s (diapo départagée par la lecture du texte,
+  1,4 s ; avant le chantier, ce cas montait à 8,2 s). Plus grand trou du journal : 5,2 s (un « pouls » toutes les 5 s).
 - Panne injectée (l'OCR de l'app ne répond plus) : **avant 0/4 diapos reconnues ensuite, et une indication
   « Diapo 1 · auto » fausse ; après 4/4**, délai de 2,0 à 3,4 s.
 - Partage sans image pendant 25 s : orange « Vérification arrêtée : partage arrêté » en 0,5 s, puis reprise seule.
@@ -158,22 +159,32 @@ Un changement de diapo toutes les 1 à 3 min (tirage reproductible).
 
 | Scénario (20 min) | Avant (code figé, 12 min) | **Après (20 min)** | Délai moyen / max | Plus grand trou | CPU de tout Chrome |
 |---|---|---|---|---|---|
-| (a) autre cours de l'app | 5/5 | **9/9** | 2,19 s / 3,36 s | 5,2 s | 0,58 cœur |
-| (b) autre onglet du navigateur | 6/6 | **9/9** | 1,98 s / 2,26 s | 5,2 s | 0,44 cœur |
-| (c) fenêtre réduite | 6/6 | **10/10** | 2,27 s / 3,54 s | 5,2 s | 0,41 cœur |
-| (d) alternance a → b → c → cours à l'écran | — | **11/11** | 2,35 s / 3,51 s | 5,2 s | 0,46 cœur |
+| (a) autre cours de l'app | 5/5 | **9/9** | 2,17 s / 2,46 s | 5,2 s | 0,65 cœur |
+| (b) autre onglet du navigateur | 6/6 | **9/9** | 2,06 s / 2,29 s | 5,2 s | 0,50 cœur |
+| (c) fenêtre réduite | 6/6 | **10/10** | 2,05 s / 2,52 s | 5,2 s | 0,50 cœur |
+| (d) alternance a → b → c → cours à l'écran | — | **11/11** | 2,27 s / 3,63 s (OCR) | 5,2 s | 0,58 cœur |
 | Panne : l'OCR ne répond plus (`t-ocr-bloque.mjs`) | **0/4**, indication fausse | **4/4** | 2,5 s / 3,4 s | — | — |
 
 Dans les 4 scénarios : la page n'est jamais rechargée, aucun mot n'est perdu (mots du transcript = mots validés par le
 faux Deepgram) et la console reste sans erreur.
 
-**Délai : 35 changements sur 39 en ≤ 3 s, les 4 autres entre 3,1 et 3,5 s.** Le délai normal est de 1,8 à 2,3 s :
-le changement est vu en 0,25 s, puis la méthode attend que l'image reste stable 1,5 s avant d'analyser. Les 4 cas lents
-sont expliqués par un journal ajouté exprès (`stabilite-relancee`) et rejoué sur 2 bancs courts (29 changements). Environ
-1 s après le changement, un reste de mouvement (2 à 7 % des cases, seuil de 1,5 %) **relance l'attente de stabilité**
-(extrait : `19:26:14 stabilite-relancee apresMs 999 mvt 0.023`, puis `analyse page 2, délai 2852 ms`). Ce seuil fait
-partie de la méthode de reconnaissance, qui ne devait pas changer : il n'a donc pas été touché. Ces délais ne dépendent
-pas de l'endroit où se trouve l'élève : ils existent aussi l'app visible.
+Série de référence : nuit du 26 au 27/11, code final, fausse caméra corrigée (voir ci-dessous).
+
+**Délai : 38/39 changements en ≤ 2,5 s.** Le délai normal est de 1,8 à 2,3 s : le changement est vu en 0,25 s, puis la
+méthode attend que l'image reste stable 1,5 s avant d'analyser. **Le seul cas au-dessus de 3 s (3,6 s, diapo 15)** est une
+diapo que l'image seule ne départage pas : la méthode lit alors son texte (`ocr-demande` 00:29:12.007 → `ocr-reponse`
+00:29:13.450, soit 1,4 s ; 1,15 s mesuré à chaud sur une image de test). Cette lecture fait partie de la méthode « image +
+texte », qui ne devait pas changer. Avant le chantier, ce même cas montait à **8,2 s** (compte rendu du 24/11) ;
+`t-suivi.mjs` donne aujourd'hui 3,9 s au pire.
+
+**Fausse caméra du banc corrigée (27/11).** Une première série de 20 min avait 4 délais entre 3,1 et 3,5 s, sans OCR. Le
+journal ajouté pour l'occasion (`stabilite-relancee`) a montré un reste de mouvement, 1 s environ après le changement, qui
+relançait l'attente de stabilité (`19:26:14 stabilite-relancee apresMs 999 mvt 0.023` → délai 2852 ms). La cause est dans
+le **banc**, pas dans l'app. La vignette caméra du faux Teams était animée par un `setInterval` de page : Chrome le
+ralentit à 1/s puis 1/min quand l'onglet Teams est caché, si bien que la fausse caméra restait figée puis « sautait ». Une
+vraie vignette Teams est une vidéo WebRTC qui bouge sans cesse. L'horloge de la fausse caméra est désormais tenue par un
+Worker (`faux-teams.html`). Résultat : 22/22 en 10 min de fenêtre réduite (max 2,35 s), puis la série de 20 min
+ci-dessus ; les relances ne se voient plus qu'au démarrage, le temps que la méthode apprenne les cases vivantes.
 
 **Historique du réglage.** Une première série avec contrôle à 500 ms et apprentissage des cases vivantes à 500 ms donnait des
 maxima de 5,1 s, fenêtre réduite. Dans l'onglet Teams caché, la vignette caméra ne bouge plus qu'une fois par seconde :
@@ -216,12 +227,14 @@ d'avant.
 
 ### 4.4 CPU
 CPU de **tout Chrome** (onglet Teams compris), mesuré sur les 20 min de chaque scénario :
-- **onglet de l'app visible** (autre cours) : 0,58 cœur ;
-- **onglet caché** (autre onglet) : 0,44 cœur ;
-- **fenêtre réduite** : 0,41 cœur.
+- **onglet de l'app visible** (autre cours) : 0,65 cœur ;
+- **onglet caché** (autre onglet) : 0,50 cœur ;
+- **fenêtre réduite** : 0,50 cœur.
 
-Avant, même machine : 0,61 visible, 0,42 caché, 0,46 réduite. Le surcoût de la correction (contrôle à 500 ms, chien de
-garde, journal) est nul à la mesure près (0,58 contre 0,61 visible, 0,44 contre 0,42 caché, 0,41 contre 0,46 réduite : écarts de l'ordre du bruit de mesure). Le suivi lui-même coûte toujours ≈ 0,18 cœur (mesure du 24/11).
+Avant, même machine : 0,61 visible, 0,42 caché, 0,46 réduite. La comparaison juste est celle à fausse caméra égale (série du
+26/11, caméra encore ralentie) : 0,58 contre 0,61 visible, 0,44 contre 0,42 caché, 0,41 contre 0,46 réduite. **Le surcoût
+de la correction (contrôle à 500 ms, chien de garde, journal) est donc nul à la mesure près.** Les +0,06 à +0,09 de la
+série de nuit viennent de la fausse caméra, qui s'anime maintenant 15 fois par seconde même cachée, comme une vraie. Le suivi lui-même coûte toujours ≈ 0,18 cœur (mesure du 24/11).
 
 ### 4.5 Non-régression
 - **Précision de la reconnaissance** (`t-suivi.mjs`, mêmes 29 passages que le 24/11) : mesurée en cours de chantier, mais **pas rejouée sur le code final** (bancs arrêtés à la demande de Yoann). La méthode de reconnaissance (scores, seuils, ordre) est inchangée : seuls le rythme des contrôles au repos, le chien de garde et le journal ont bougé.
@@ -238,9 +251,6 @@ garde, journal) est nul à la mesure près (0,58 contre 0,61 visible, 0,44 contr
 ---
 
 ## 5. Limites
-- **Bancs finaux écourtés** : le partage arrêté puis repris (reprise en 32,8 s) et le défilement ordinateur ont été
-  rejoués en vert sur le code final. Défilement tablette (vert sauf la fin, coupée), téléphone, panne OCR, précision et
-  non-régression : verts en cours de chantier, pas rejoués après le dernier réglage (cadence d'apprentissage).
 - **Faux Deepgram** : il ne garde que les 20 000 derniers mots. Après environ 2 h de bancs enchaînés, le comptage « aucun
   mot perdu » devient faux : il faut relancer le serveur entre deux séries.
 - **Déclencheur réel non observé sur le Mac de Yoann.** La cause du blocage est démontrée par panne injectée ; les

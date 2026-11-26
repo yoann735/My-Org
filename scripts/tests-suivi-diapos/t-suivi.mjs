@@ -42,6 +42,9 @@ async function principal() {
     await app.send('Page.navigate', { url: BASE + '/medrevise' });
     await app.attendre(`document.readyState === 'complete'`, 30000);
     await app.ev(`(localStorage.setItem('app.current', '"medrevise"'), 1)`);
+    // (27/11) option « Faire défiler jusqu'à la diapo détectée » COUPÉE : ce banc vérifie le comportement d'avant
+    // (le lecteur ne bouge jamais tout seul) ; l'option allumée est vérifiée par t-defilement.mjs
+    await app.ev(`(localStorage.setItem('medrevise.transcription.defilerDiapos', '0'), 1)`);
     await app.send('Page.reload'); await app.attendre(`document.readyState === 'complete'`, 30000); await dormir(3000);
     /* cours : le PDF d'histologie (lu en local, jamais dans le dépôt) + un autre cours */
     const pdf = fs.readFileSync(process.env.PDF_HISTO || path.join(TRAVAIL, 'histo-banc.pdf')).toString('base64');
