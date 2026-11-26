@@ -95,6 +95,27 @@
     plan(); setInterval(plan, 4000); noter('son');
   };
   window.arreterSon = () => { if (ac) { ac.close(); ac = null; } };
+  /* (26/11) VARIANTE « VIDÉO » (?video=1) : comme dans Teams, la diapo partagée arrive par une VIDÉO WebRTC (connexion
+     locale en boucle, canvas → RTCPeerConnection → <video>) et non par une image du DOM. Sert à vérifier ce que devient
+     l'image capturée quand l'onglet Teams passe en arrière-plan. */
+  if (new URLSearchParams(location.search).get('video') === '1') {
+    const cv = document.createElement('canvas'); cv.width = 1280; cv.height = 720; const g = cv.getContext('2d');
+    const vid = document.createElement('video'); vid.muted = true; vid.autoplay = true; vid.playsInline = true;
+    vid.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#121212';
+    $('#diapo').appendChild(vid); $('#img').style.visibility = 'hidden';
+    const dessinerImg = () => { const im = $('#img'); if (im.complete && im.naturalWidth) g.drawImage(im, 0, 0, cv.width, cv.height); };
+    $('#img').addEventListener('load', dessinerImg);
+    // (pas de minuterie ici : une minuterie de l’onglet caché serait ralentie et fausserait la source)
+    const pc1 = new RTCPeerConnection(), pc2 = new RTCPeerConnection();
+    pc1.onicecandidate = (e) => e.candidate && pc2.addIceCandidate(e.candidate);
+    pc2.onicecandidate = (e) => e.candidate && pc1.addIceCandidate(e.candidate);
+    pc2.ontrack = (e) => { vid.srcObject = new MediaStream([e.track]); vid.play().catch(() => {}); };
+    cv.captureStream(5).getTracks().forEach((t) => pc1.addTrack(t));
+    const o = await pc1.createOffer(); await pc1.setLocalDescription(o); await pc2.setRemoteDescription(o);
+    const r = await pc2.createAnswer(); await pc2.setLocalDescription(r); await pc1.setRemoteDescription(r);
+    window.videoTeams = true;
+    window.imagesVideo = () => (vid.getVideoPlaybackQuality ? vid.getVideoPlaybackQuality().totalVideoFrames : -1);
+  }
   window.pret = true;
   window.montrer(1);
 </script>

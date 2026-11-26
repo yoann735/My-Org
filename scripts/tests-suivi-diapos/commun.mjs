@@ -126,7 +126,7 @@ export const ok = (() => { const r = []; const f = (c, m, d = '') => { const l =
  *  `emulation` : { width, height, mobile, touch } (tablette / téléphone) appliqué à l'onglet de l'app. */
 export async function ouvrirBanc({ emulation = null } = {}) {
   const COURS = 'f-diapos-histo', AUTRE_COURS = 'f-diapos-autre';
-  const teams = await cdp(PORT_CHROME, { url: TEAMS + '/' });
+  const teams = await cdp(PORT_CHROME, { url: TEAMS + '/' + (process.env.TEAMS_VIDEO ? '?video=1' : '') });
   ok(await teams.attendre('window.pret === true', 60000), 'faux Teams prêt');
   const nb = await teams.ev('window.nbDiapos');
   const app = await cdp(PORT_CHROME, { url: 'about:blank' });
