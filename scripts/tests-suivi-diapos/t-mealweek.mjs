@@ -6,7 +6,7 @@ import { DOSSIER_IMG } from './commun.mjs'; // banc du suivi des diapos
 
 const type = process.argv[2] || 'ordi';
 const out = {};
-for (const [nom, base] of [['avant', 'http://localhost:5321'], ['apres', 'http://localhost:5322']]) {
+for (const [nom, base] of [['avant', process.env.AVANT || 'http://localhost:5321'], ['apres', process.env.APRES || 'http://localhost:5322']]) {
   const b = await appareilFA(type, base);
   await b.vider();
   await b.ev(`(localStorage.setItem('__decalageMs', String(${Date.parse('2026-11-24T10:00:00+01:00')} - Date.now())), localStorage.setItem('app.current', '"mealweek"'), 1)`);

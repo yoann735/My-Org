@@ -33,6 +33,7 @@ async function principal() {
     const ailleurs = async (ou) => {
       if (ou === 'reduite') { await reduire(true); return; }
       await reduire(false);
+      if (ou === 'teams') { await teams.send('Page.bringToFront'); return; } // l'onglet Teams devant (référence)
       if (ou === 'onglet') { if (!autreOnglet) autreOnglet = await cdp(PORT_CHROME, { url: 'data:text/html,<title>Autre onglet</title><p>Autre onglet</p>' }); await autreOnglet.send('Page.bringToFront'); return; }
       await app.send('Page.bringToFront');
       if (ou === 'ailleurs') await ouvrir('Autre cours (banc)');
@@ -41,7 +42,7 @@ async function principal() {
 
     ok(await ouvrir('Histologie générale (banc)'), 'cours ouvert dans le lecteur');
     const motsAvant = await demarrerOnglet();
-    ok(await app.attendre(`window.__transcription && window.__transcription.lireEtat().phase==='live'`, 20000), 'transcription en direct depuis l’onglet « Faux Teams »');
+    if (!ok(await app.attendre(`window.__transcription && window.__transcription.lireEtat().phase==='live'`, 20000), 'transcription en direct depuis l’onglet « Faux Teams »')) throw new Error('démarrage impossible : banc interrompu (à relancer)');
     await teams.ev('window.demarrerSon()');
     ok(await app.attendre(`window.__transcription.lireSuivi().statut==='suivi'`, 60000), 'suivi prêt (pages du PDF préparées)');
     await teams.ev('window.montrer(1); 1');
