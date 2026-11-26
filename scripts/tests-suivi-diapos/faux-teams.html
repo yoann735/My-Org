@@ -73,9 +73,13 @@
     const x = w / 2 + Math.sin(tc / 7) * w * 0.12, y = h * 0.62 + Math.cos(tc / 5) * 6;
     g.fillStyle = '#d9a887'; g.beginPath(); g.arc(x, y - h * 0.22, h * 0.17, 0, 7); g.fill(); g.fillStyle = '#28509a'; g.fillRect(x - w * 0.17, y, w * 0.34, h * 0.5);
     g.fillStyle = `rgba(255,255,255,${0.05 + 0.05 * Math.sin(tc)})`; g.fillRect(0, 0, w, h); }
-  setInterval(() => { tc++; cam($('#moi')); cam($('#cam2'));
+  /* (26/11 nuit) horloge de la caméra tenue par un Worker : une vraie vignette Teams est une vidéo WebRTC qui bouge même
+     onglet caché, alors qu'un setInterval de page cachée tombe à 1/s puis 1/min (ralentissement de Chrome) — la fausse
+     caméra restait figée des dizaines de secondes puis « sautait », ce qu'aucune vraie caméra ne fait. */
+  const horloge = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 66)'], { type: 'text/javascript' })));
+  horloge.onmessage = () => { tc++; cam($('#moi')); cam($('#cam2'));
     if (deplacer) { const s = $('#scene').getBoundingClientRect(); const m = $('#moi'); const k = (tc % 300) / 300; m.style.right = 'auto'; m.style.bottom = 'auto';
-      m.style.left = (60 + k * (s.width - 320)) + 'px'; m.style.top = (120 + Math.sin(k * 6.28) * 120 + s.height * 0.3) + 'px'; } }, 66);
+      m.style.left = (60 + k * (s.width - 320)) + 'px'; m.style.top = (120 + Math.sin(k * 6.28) * 120 + s.height * 0.3) + 'px'; } };
   window.bougerCamera = (on) => { deplacer = on; if (!on) { const m = $('#moi'); m.style.left = m.style.top = 'auto'; m.style.right = '36px'; m.style.bottom = '36px'; } noter(on ? 'camera-bouge' : 'camera-fixe'); };
   /* curseur du prof qui se promène sur la diapo */
   let tCur = null;
