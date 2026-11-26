@@ -7,9 +7,9 @@ Deux demandes :
 
 **Résultats (Chrome non headless, vrai partage d'onglet, faux cours Teams, ralentissement des onglets en arrière-plan
 LAISSÉ ACTIF) :**
-- **20 min onglet caché : __ONGLET__ changements détectés.**
-- 20 min autre cours de l'app : __AILLEURS__ · 20 min fenêtre réduite : __REDUITE__ · 20 min en alternance : __ALTERNE__.
-- Délai moyen __DMOY__ s, max __DMAX__ s. Plus grand trou du journal : __TROU__ s (un « pouls » toutes les 5 s).
+- **20 min onglet caché : 9/9 changements détectés.**
+- 20 min autre cours de l'app : 9/9 · 20 min fenêtre réduite : 10/10 · 20 min en alternance : 11/11.
+- Délai moyen 2,2 s, max 3,5 s. Plus grand trou du journal : 5,2 s (un « pouls » toutes les 5 s).
 - Panne injectée (l'OCR de l'app ne répond plus) : **avant 0/4 diapos reconnues ensuite, et une indication
   « Diapo 1 · auto » fausse ; après 4/4**, délai de 2,0 à 3,4 s.
 - Partage sans image pendant 25 s : orange « Vérification arrêtée : partage arrêté » en 0,5 s, puis reprise seule.
@@ -158,16 +158,24 @@ Un changement de diapo toutes les 1 à 3 min (tirage reproductible).
 
 | Scénario (20 min) | Avant (code figé, 12 min) | **Après (20 min)** | Délai moyen / max | Plus grand trou | CPU de tout Chrome |
 |---|---|---|---|---|---|
-| (a) autre cours de l'app | 5/5 | **__AILLEURS__** | __D_AILLEURS__ | __T_AILLEURS__ | __C_AILLEURS__ |
-| (b) autre onglet du navigateur | 6/6 | **__ONGLET__** | __D_ONGLET__ | __T_ONGLET__ | __C_ONGLET__ |
-| (c) fenêtre réduite | 6/6 | **__REDUITE__** | __D_REDUITE__ | __T_REDUITE__ | __C_REDUITE__ |
-| (d) alternance a → b → c → cours à l'écran | — | **__ALTERNE__** | __D_ALTERNE__ | __T_ALTERNE__ | __C_ALTERNE__ |
+| (a) autre cours de l'app | 5/5 | **9/9** | 2,19 s / 3,36 s | 5,2 s | 0,58 cœur |
+| (b) autre onglet du navigateur | 6/6 | **9/9** | 1,98 s / 2,26 s | 5,2 s | 0,44 cœur |
+| (c) fenêtre réduite | 6/6 | **10/10** | 2,27 s / 3,54 s | 5,2 s | 0,41 cœur |
+| (d) alternance a → b → c → cours à l'écran | — | **11/11** | 2,35 s / 3,51 s | 5,2 s | 0,46 cœur |
 | Panne : l'OCR ne répond plus (`t-ocr-bloque.mjs`) | **0/4**, indication fausse | **4/4** | 2,5 s / 3,4 s | — | — |
 
 Dans les 4 scénarios : la page n'est jamais rechargée, aucun mot n'est perdu (mots du transcript = mots validés par le
 faux Deepgram) et la console reste sans erreur.
 
-**Délai ≤ 3 s.** Une première série avec contrôle à 500 ms et apprentissage des cases vivantes à 500 ms donnait des
+**Délai : 35 changements sur 39 en ≤ 3 s, les 4 autres entre 3,1 et 3,5 s.** Le délai normal est de 1,8 à 2,3 s :
+le changement est vu en 0,25 s, puis la méthode attend que l'image reste stable 1,5 s avant d'analyser. Les 4 cas lents
+sont expliqués par un journal ajouté exprès (`stabilite-relancee`) et rejoué sur 2 bancs courts (29 changements). Environ
+1 s après le changement, un reste de mouvement (2 à 7 % des cases, seuil de 1,5 %) **relance l'attente de stabilité**
+(extrait : `19:26:14 stabilite-relancee apresMs 999 mvt 0.023`, puis `analyse page 2, délai 2852 ms`). Ce seuil fait
+partie de la méthode de reconnaissance, qui ne devait pas changer : il n'a donc pas été touché. Ces délais ne dépendent
+pas de l'endroit où se trouve l'élève : ils existent aussi l'app visible.
+
+**Historique du réglage.** Une première série avec contrôle à 500 ms et apprentissage des cases vivantes à 500 ms donnait des
 maxima de 5,1 s, fenêtre réduite. Dans l'onglet Teams caché, la vignette caméra ne bouge plus qu'une fois par seconde :
 elle n'était plus reconnue comme « vivante » et retardait la stabilité. L'apprentissage a donc retrouvé sa cadence
 d'avant.
@@ -208,12 +216,12 @@ d'avant.
 
 ### 4.4 CPU
 CPU de **tout Chrome** (onglet Teams compris), mesuré sur les 20 min de chaque scénario :
-- **onglet de l'app visible** (autre cours) : __C_AILLEURS__ ;
-- **onglet caché** (autre onglet) : __C_ONGLET__ ;
-- **fenêtre réduite** : __C_REDUITE__.
+- **onglet de l'app visible** (autre cours) : 0,58 cœur ;
+- **onglet caché** (autre onglet) : 0,44 cœur ;
+- **fenêtre réduite** : 0,41 cœur.
 
 Avant, même machine : 0,61 visible, 0,42 caché, 0,46 réduite. Le surcoût de la correction (contrôle à 500 ms, chien de
-garde, journal) est __CPU_AJOUT__. Le suivi lui-même coûte toujours ≈ 0,18 cœur (mesure du 24/11).
+garde, journal) est nul à la mesure près (0,58 contre 0,61 visible, 0,44 contre 0,42 caché, 0,41 contre 0,46 réduite : écarts de l'ordre du bruit de mesure). Le suivi lui-même coûte toujours ≈ 0,18 cœur (mesure du 24/11).
 
 ### 4.5 Non-régression
 - **Précision de la reconnaissance** (`t-suivi.mjs`, mêmes 29 passages que le 24/11) : __PRECISION__.
