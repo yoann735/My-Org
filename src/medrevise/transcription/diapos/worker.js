@@ -36,6 +36,8 @@ const STABLE_MS = 1500;
 const ANIM_MAX_MS = 12000; // une diapo animée sans fin (vidéo) : reconnue quand même
 // (26/11) contrôle au repos toutes les 500 ms (au lieu de 1 s) : délai changement → liaison ≤ 3 s (détection seule, ≈ 1 ms)
 const PERIODE_REPOS = 500, PERIODE_TRANSITION = 250;
+const PERIODE_APPRENTISSAGE_REPOS = 1000; // cases vivantes : cadence d'apprentissage d'avant, au repos
+let tApprentissage = 0;
 /* (26/11, docs/compte-rendu-suivi-diapos-continu-et-defilement.md) FONCTIONNEMENT CONTINU */
 const GARDE_MS = 10000; // chien de garde : aucune image analysée depuis 10 s alors que le partage est actif → redémarrage
 const IMAGE_MAX_MS = 10000; // aucune nouvelle image du partage depuis 10 s → flux relu (nouveau lecteur)
@@ -179,25 +181,30 @@ function tic() {
   if (w !== petitW || h !== petitH) { prec = null; ref = null; petitW = w; petitH = h; activite.fill(0); }
   if (mode === 'depart') { mode = 'transition'; tChangement = t; tVu = t; tMouvement = t; prec = petit; return; }
   const cz = casesZone();
-  // cases vivantes : apprises en permanence (la caméra bouge, la diapo non)
+  // cases vivantes : apprises en permanence (la caméra bouge, la diapo non). (26/11) Au repos, l'apprentissage garde sa
+  // cadence d'avant (une fois par seconde) même si la diapo est contrôlée toutes les 500 ms : la détection reste identique.
   let fracMvt = 0;
-  if (prec) {
-    const d = chrono(() => differencesParCase(prec, petit, w, h, GRILLE_X, GRILLE_Y, SEUIL_PX, 3));
-    let n = 0, m = 0;
-    for (let c = 0; c < d.length; c++) {
-      const bouge = d[c] > SEUIL_CASE ? 1 : 0;
-      activite[c] = activite[c] * 0.88 + bouge * 0.12;
-      if (cz[c] && activite[c] < 0.3) { n++; m += bouge; }
+  const apprendre = () => {
+    if (prec) {
+      const d = chrono(() => differencesParCase(prec, petit, w, h, GRILLE_X, GRILLE_Y, SEUIL_PX, 3));
+      let n = 0, m = 0;
+      for (let c = 0; c < d.length; c++) {
+        const bouge = d[c] > SEUIL_CASE ? 1 : 0;
+        activite[c] = activite[c] * 0.88 + bouge * 0.12;
+        if (cz[c] && activite[c] < 0.3) { n++; m += bouge; }
+      }
+      fracMvt = n ? m / n : 0;
     }
-    fracMvt = n ? m / n : 0;
-  }
-  prec = petit;
+    prec = petit; tApprentissage = t;
+  };
+  if (mode !== 'repos' || t - tApprentissage >= PERIODE_APPRENTISSAGE_REPOS - 20) apprendre();
   if (mode === 'repos') {
     if (!ref) return;
     const d = chrono(() => differencesParCase(ref, petit, w, h, GRILLE_X, GRILLE_Y, SEUIL_PX, 3));
     let n = 0, m = 0;
     for (let c = 0; c < d.length; c++) if (cz[c] && activite[c] < 0.3) { n++; if (d[c] > SEUIL_CASE) m++; }
     if (n && m / n > DEBUT_CHANGEMENT) {
+      if (tApprentissage !== t) apprendre(); // comme avant : le contrôle qui voit le changement apprend aussi
       mode = 'transition';
       tChangement = tAvant ? Math.round((tAvant + t) / 2) : t; // le changement a eu lieu entre deux contrôles
       tVu = t; tMouvement = t;
