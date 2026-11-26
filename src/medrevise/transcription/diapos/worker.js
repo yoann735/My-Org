@@ -34,7 +34,12 @@ const DEBUT_CHANGEMENT = 0.04; // part des cases (hors cases vivantes) qui diff�
 const MOUVEMENT = 0.015; // part des cases qui bougent encore : pas stable
 const STABLE_MS = 1500;
 const ANIM_MAX_MS = 12000; // une diapo animée sans fin (vidéo) : reconnue quand même
-const PERIODE_REPOS = 1000, PERIODE_TRANSITION = 250;
+// (26/11) contrôle au repos toutes les 500 ms (au lieu de 1 s) : délai changement → liaison ≤ 3 s (détection seule, ≈ 1 ms)
+const PERIODE_REPOS = 500, PERIODE_TRANSITION = 250;
+/* (26/11, docs/compte-rendu-suivi-diapos-continu-et-defilement.md) FONCTIONNEMENT CONTINU */
+const GARDE_MS = 10000; // chien de garde : aucune image analysée depuis 10 s alors que le partage est actif → redémarrage
+const IMAGE_MAX_MS = 10000; // aucune nouvelle image du partage depuis 10 s → flux relu (nouveau lecteur)
+const OCR_MAX_MS = 8000; // OCR sans réponse : on décide à l'image seule (l'analyse ne reste jamais suspendue)
 
 let pages = []; // signatures
 let fond = null; // page moyenne du PDF (moteur.js#fondCommun)
@@ -46,6 +51,11 @@ let image = null; // dernière VideoFrame / ImageBitmap reçue
 let tImage = 0;
 let lecteur = null;
 let minuteur = null;
+let fluxId = 0; // identifiant du flux en cours : les messages d'un flux remplacé sont ignorés
+let fluxActif = false; // un flux d'images est branché
+let enSession = false; // une session de transcription d'onglet est en cours (entre « flux » et « arret »)
+let generation = 0; // analyse en cours : abandonnée si le chien de garde redémarre la boucle
+let tGarde = 0, tRelance = 0, tFlux = 0;
 
 /* état de la détection */
 let prec = null, ref = null, petitW = 0, petitH = 0;
@@ -58,6 +68,10 @@ let attenteOcr = null; // { id, resolve }
 let nId = 0;
 
 const now = () => Date.now();
+/* JOURNAL HORODATÉ des analyses (26/11, docs/compte-rendu-suivi-diapos-continu-et-defilement.md) : chaque événement part au
+   fil principal (suivi.js le garde, « Exporter un diagnostic » l'inclut). Aucune image. Pouls toutes les 5 s. */
+let nTics = 0, nImages = 0, tVerif = 0, dernierPouls = 0, tVerifEnvoyee = 0;
+const noterJ = (quoi, o = {}) => postMessage({ type: 'journal', e: { t: now(), quoi, ...o } });
 const fermer = (x) => { try { if (x && x.close) x.close(); } catch (e) { /* déjà fermée */ } };
 const temps = { max: 0, total: 0, n: 0 };
 const chrono = (f) => { const t0 = performance.now(); const r = f(); const d = performance.now() - t0; temps.max = Math.max(temps.max, d); temps.total += d; temps.n += 1; return r; };
@@ -94,33 +108,74 @@ function gris(ctx, w, h) {
 }
 
 /* ---------- flux ---------- */
-async function lire(readable) {
-  lecteur = readable.getReader();
+/* Les images sont lues DIRECTEMENT depuis la piste vidéo (MediaStreamTrackProcessor → ReadableStream<VideoFrame> transféré
+   ici) : aucun élément vidéo, aucun requestAnimationFrame, aucune minuterie de la page. Le RYTHME est piloté dans ce worker,
+   par l'arrivée des images ET par sa propre minuterie (une diapo immobile peut ne plus produire d'image). */
+async function lire(readable, id) {
+  const r = readable.getReader();
+  if (id === fluxId) lecteur = r;
+  let premier = true;
   try {
     for (;;) {
-      const { value, done } = await lecteur.read();
+      const { value, done } = await r.read();
       if (done) break;
-      fermer(image); image = value; tImage = now();
+      if (id !== fluxId) { fermer(value); break; } // flux remplacé
+      fermer(image); image = value; tImage = now(); nImages++;
+      if (premier) { premier = false; noterJ('premiere-image', { flux: id }); }
+      tic(); // une image arrivée = un battement (tic ne fait rien avant sa période)
     }
-  } catch (e) { /* flux coupé */ }
-  fermer(image); image = null;
-  postMessage({ type: 'etat', flux: 'fini' });
+  } catch (e) { if (id === fluxId) noterJ('flux-erreur', { flux: id, raison: String((e && e.message) || e).slice(0, 120) }); }
+  try { r.releaseLock(); } catch (e) { /* déjà libéré */ }
+  if (id !== fluxId) return; // un nouveau flux a pris la place : rien à signaler
+  fermer(image); image = null; fluxActif = false;
+  noterJ('flux-fini', { flux: id });
+  postMessage({ type: 'etat', flux: 'fini', fluxId: id });
 }
 
 function demarrerMinuteur() {
   if (minuteur) return;
-  minuteur = setInterval(tic, PERIODE_TRANSITION);
+  minuteur = setInterval(() => { tic(); garde(); }, PERIODE_TRANSITION);
+}
+
+/** repart de zéro pour la détection (la diapo affichée est relue tout de suite) ; une analyse en cours est abandonnée */
+function repartir() {
+  generation++;
+  if (attenteOcr) { const a = attenteOcr; attenteOcr = null; a.resolve(''); }
+  mode = 'depart'; ref = null; prec = null; activite.fill(0);
+}
+
+/** CHIEN DE GARDE : partage actif mais plus aucune image analysée depuis 10 s → la reconnaissance redémarre seule */
+function garde() {
+  const t = now();
+  if (!enSession || !actif || t - tGarde < 1000) return;
+  tGarde = t;
+  const depuis = t - Math.max(tVerif, tFlux);
+  // le partage ne produit plus d'image (ou le lecteur s'est arrêté) : on relit la piste (nouvelle copie côté fil principal)
+  if ((!fluxActif || t - Math.max(tImage, tFlux) > IMAGE_MAX_MS) && t - tRelance > IMAGE_MAX_MS) {
+    tRelance = t;
+    noterJ('chien-de-garde', { raison: !fluxActif ? 'lecteur du partage arrêté' : 'aucune image du partage depuis ' + Math.round((t - Math.max(tImage, tFlux)) / 1000) + ' s', mode, action: 'relire la piste' });
+    postMessage({ type: 'relancerFlux', fluxId });
+  }
+  if (fluxActif && depuis > GARDE_MS) {
+    noterJ('chien-de-garde', { raison: mode === 'analyse' ? 'analyse bloquée depuis ' + Math.round(depuis / 1000) + ' s' : !image ? 'aucune image disponible' : 'boucle arrêtée ' + Math.round(depuis / 1000) + ' s', mode, action: 'redémarrage' });
+    repartir();
+    tVerif = t; // une relance par période de garde au plus
+  }
 }
 
 /* ---------- boucle ---------- */
 function tic() {
+  nTics++;
+  if (now() - dernierPouls >= 5000) { dernierPouls = now(); noterJ('pouls', { mode, tVerif, tImage, tics: nTics, images: nImages, actif, image: !!image }); }
   if (!actif || !image || mode === 'analyse') return;
   const t = now();
+  if (t - tVerifEnvoyee >= 1000 && tVerif) { tVerifEnvoyee = t; postMessage({ type: 'verif', tVerif, tImage }); } // « vérifiée il y a 3 s »
   const periode = mode === 'transition' || mode === 'depart' ? PERIODE_TRANSITION : PERIODE_REPOS;
   if (t - dernierControle < periode - 20) return;
   const tAvant = dernierControle; dernierControle = t;
   // petite image (≈ 160 px) de la ZONE de la diapo quand elle est connue (sinon de tout l'onglet), en couleur
   const { petit, w, h } = chrono(() => petiteImage(image));
+  tVerif = t;
   if (w !== petitW || h !== petitH) { prec = null; ref = null; petitW = w; petitH = h; activite.fill(0); }
   if (mode === 'depart') { mode = 'transition'; tChangement = t; tVu = t; tMouvement = t; prec = petit; return; }
   const cz = casesZone();
@@ -146,13 +201,14 @@ function tic() {
       mode = 'transition';
       tChangement = tAvant ? Math.round((tAvant + t) / 2) : t; // le changement a eu lieu entre deux contrôles
       tVu = t; tMouvement = t;
+      noterJ('changement-vu', { tChangement });
       postMessage({ type: 'etat', transition: true });
     }
     return;
   }
   // transition : on attend que l'image reste stable 1,5 s
   if (fracMvt > MOUVEMENT) tMouvement = t;
-  if (t - tMouvement >= STABLE_MS || t - tVu >= ANIM_MAX_MS) analyser(petit, t).catch((e) => { mode = 'repos'; ref = petit; postMessage({ type: 'etat', erreur: String(e && e.message || e) }); });
+  if (t - tMouvement >= STABLE_MS || t - tVu >= ANIM_MAX_MS) analyser(petit, t).catch((e) => { mode = 'repos'; ref = petit; noterJ('erreur', { raison: String((e && e.message) || e).slice(0, 120) }); postMessage({ type: 'etat', erreur: String(e && e.message || e) }); });
 }
 
 /** cases de détection couvertes par la zone de la diapo (toutes tant qu'elle est inconnue) */
@@ -208,12 +264,14 @@ function evaluer(src, z) {
 
 async function analyser(petit, t) {
   mode = 'analyse';
+  const gen = generation;
   dernierChangement = tChangement;
   // copie de l'image : le flux peut fermer la VideoFrame courante pendant l'analyse (OCR, encodage)
   const src = await createImageBitmap(image);
-  try { await analyserImage(src, petit, t); } finally { fermer(src); }
+  try { await analyserImage(src, petit, t, gen); } finally { fermer(src); }
 }
-async function analyserImage(src, petit, t) {
+async function analyserImage(src, petit, t, gen) {
+  const abandonnee = () => gen !== generation; // le chien de garde a redémarré la boucle entre-temps
   const tStable = t;
   /* ZONE : parmi la zone connue et les meilleurs rectangles, celle qui ressemble le plus à une page du PDF (une photo nette
      dans une diapo noire a souvent des bords plus francs que la diapo elle-même). Sans PDF : le plus net. */
@@ -242,18 +300,29 @@ async function analyserImage(src, petit, t) {
   let texte = null;
   const memo = dessiner(src, MEMO_W, z);
   const jpeg = await memo.c.convertToBlob({ type: 'image/jpeg', quality: 0.72 });
+  if (abandonnee()) return;
   if (dec.ambigu && pages.length) {
     // ambigu à l'image : l'OCR (worker de Tesseract de l'app, via le fil principal) départage par le texte
     const o = dessiner(src, OCR_W, z);
     const bitmap = o.c.transferToImageBitmap();
     const id = ++nId;
-    texte = await new Promise((resolve) => { attenteOcr = { id, resolve }; postMessage({ type: 'ocr', id, bitmap }, [bitmap]); });
-    attenteOcr = null;
+    noterJ('ocr-demande', { id });
+    let delai = null;
+    texte = await new Promise((resolve) => {
+      attenteOcr = { id, resolve };
+      delai = setTimeout(() => { if (attenteOcr && attenteOcr.id === id) { noterJ('ocr-sans-reponse', { id, ms: OCR_MAX_MS }); attenteOcr = null; resolve(''); } }, OCR_MAX_MS);
+      postMessage({ type: 'ocr', id, bitmap }, [bitmap]);
+    });
+    clearTimeout(delai);
+    if (attenteOcr && attenteOcr.id === id) attenteOcr = null;
+    if (abandonnee()) return;
+    noterJ('ocr-reponse', { id, lettres: (texte || '').length });
     if (texte) dec = decider(img, scoresTexte(texte, index), courant);
   }
   if (dec.page) courant = dec.page;
   if (zone !== zonePetite) { const n = petiteImage(src); ref = n.petit; prec = n.petit; petitW = n.w; petitH = n.h; activite.fill(0); } else ref = petit;
   mode = 'repos';
+  noterJ('analyse', { page: dec.page || null, score: r3(dec.score), marge: r3(dec.marge), nonReconnue: !!dec.nonReconnue, ambigu: !!dec.ambigu, tChangement, delaiMs: now() - tChangement });
   postMessage({
     type: 'changement', tChangement, tVu, tStable, tDecide: now(), page: dec.page, nonReconnue: dec.nonReconnue, ambigu: dec.ambigu,
     score: r3(dec.score), deuxieme: r3(dec.deuxieme), marge: r3(dec.marge), classement: dec.classement.map(([p, v]) => [p, r3(v)]),
@@ -308,20 +377,35 @@ self.onmessage = async (ev) => {
       // pages prêtes après la première diapo : on relit la diapo affichée, à l'instant du dernier changement
       if (pages.length && mode === 'repos' && dernierChangement) { mode = 'transition'; tChangement = dernierChangement; tVu = now(); tMouvement = now() - STABLE_MS; }
       break;
-    case 'flux': lire(m.readable); demarrerMinuteur(); break;
-    case 'image': fermer(image); image = m.bitmap; tImage = now(); demarrerMinuteur(); break;
+    case 'flux': {
+      // nouveau flux (démarrage, relance du chien de garde) : l'ancien lecteur est abandonné
+      const ancien = lecteur; lecteur = null;
+      fluxId = m.fluxId || fluxId + 1; fluxActif = true; enSession = true; tFlux = now();
+      if (ancien) ancien.cancel().catch(() => {});
+      noterJ('flux', { flux: fluxId, mode, relance: !!m.relance });
+      if (!m.relance) repartir(); else if (mode === 'analyse') repartir();
+      lire(m.readable, fluxId); demarrerMinuteur();
+      break;
+    }
+    case 'image': fermer(image); image = m.bitmap; tImage = now(); fluxActif = true; demarrerMinuteur(); tic(); break;
     case 'actif':
       actif = !!m.actif;
-      if (actif) { mode = 'depart'; ref = null; prec = null; } // on relit la diapo affichée tout de suite
+      if (actif) repartir(); // on relit la diapo affichée tout de suite
+      noterJ(actif ? 'interrupteur-actif' : 'interrupteur-coupe');
       break;
     case 'courant': courant = m.page || null; break;
     case 'texte': if (attenteOcr && attenteOcr.id === m.id) attenteOcr.resolve(m.texte || ''); break;
-    case 'arret':
+    case 'arret': {
+      // fin de session : tout l'état de la détection repart de zéro (une session suivante ne reprend rien de bloqué)
       clearInterval(minuteur); minuteur = null;
-      try { if (lecteur) await lecteur.cancel(); } catch (e) { /* déjà fermé */ }
+      const l = lecteur; lecteur = null; fluxId++; fluxActif = false; enSession = false;
+      noterJ('arret', { mode });
+      repartir(); zone = null; zonePetite = null; courant = null; dernierChangement = 0; tVerif = 0; tImage = 0;
       fermer(image); image = null;
+      try { if (l) await l.cancel(); } catch (e) { /* déjà fermé */ }
       postMessage({ type: 'etat', arrete: true });
       break;
+    }
     case 'signerPage': {
       const s = signatureDe(m.rgba, m.w, m.h);
       postMessage({ type: 'signature', id: m.id, sig: signatureVersJson(s) });

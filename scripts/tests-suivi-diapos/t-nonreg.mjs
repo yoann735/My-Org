@@ -3,7 +3,7 @@
 // Prérequis : comme t-suivi.mjs (cours « Histologie générale (banc) » semé par ce script).  Usage : node t-nonreg.mjs
 import fs from 'node:fs';
 import path from 'node:path';
-import { cdp, lancerChrome, dormir, ok, BASE, TEAMS, PORT_CHROME, TRAVAIL } from './commun.mjs';
+import { cdp, lancerChrome, dormir, ok, BASE, TEAMS, PORT_CHROME, TRAVAIL, INJECTION_PARTAGE } from './commun.mjs';
 
 const COURS = 'f-diapos-histo';
 async function principal() {
@@ -12,8 +12,7 @@ async function principal() {
     let teams = await cdp(PORT_CHROME, { url: TEAMS + '/' });
     await teams.attendre('window.pret === true', 60000);
     let app = await cdp(PORT_CHROME, { url: 'about:blank' });
-    await app.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const gdm = navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia;
-      if (!gdm) return; navigator.mediaDevices.getDisplayMedia = function (c) { c = c || {}; if (c.audio) c.audio = Object.assign({}, typeof c.audio === 'object' ? c.audio : {}, { suppressLocalAudioPlayback: true }); return gdm.call(this, c); }; })();` });
+    await app.send('Page.addScriptToEvaluateOnNewDocument', { source: INJECTION_PARTAGE });
     await app.send('Page.navigate', { url: BASE + '/medrevise' });
     await app.attendre(`document.readyState === 'complete'`, 30000);
     await app.ev(`(localStorage.setItem('app.current', '"medrevise"'), 1)`);
@@ -67,8 +66,7 @@ async function principal() {
     chrome = await lancerChrome({ garder: true });
     teams = await cdp(PORT_CHROME, { url: TEAMS + '/' }); await teams.attendre('window.pret === true', 60000);
     app = await cdp(PORT_CHROME, { url: 'about:blank' });
-    await app.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const gdm = navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia;
-      if (!gdm) return; navigator.mediaDevices.getDisplayMedia = function (c) { c = c || {}; if (c.audio) c.audio = Object.assign({}, typeof c.audio === 'object' ? c.audio : {}, { suppressLocalAudioPlayback: true }); return gdm.call(this, c); }; })();` });
+    await app.send('Page.addScriptToEvaluateOnNewDocument', { source: INJECTION_PARTAGE });
     await app.send('Page.navigate', { url: BASE + '/medrevise' }); await app.attendre(`document.readyState === 'complete'`, 30000); await dormir(3500);
     await app.send('Page.bringToFront');
     await app.ev(`(()=>{const x=[...document.querySelectorAll('.hub-card')].find(e=>/MedRevise/.test(e.innerText||''));x&&x.click();return 1})()`); await dormir(1500);

@@ -25,6 +25,7 @@ import { collecterEnAttente } from './etatSynchro.js';
 import { classerContreServeur } from './confirmationServeur.js';
 import { supabase, SYNC_ENABLED } from '../data/supabaseClient.js';
 import { deliverFile, formatOctets } from './backupExport.js';
+import { journalSuivi, lireSuivi } from '../transcription/diapos/suivi.js';
 
 export const DIAGNOSTIC_SCHEMA = 'medrevise-diagnostic/1';
 
@@ -125,6 +126,18 @@ export async function construireDiagnostic() {
     cloud,
     compteurs: { cartes: cartes.length, flashcards: cartes.filter((c) => c.type === 'flashcard').length },
     cartes,
+    /* (26/11, docs/compte-rendu-suivi-diapos-continu-et-defilement.md) suivi automatique des diapos : état et journal
+       horodaté des analyses (heure, page retenue, score, raison d'un arrêt ou d'une relance) — aucune image */
+    suiviDiapos: (() => {
+      try {
+        const e = lireSuivi();
+        const h = (t) => (t ? new Date(t).toISOString() : null);
+        return {
+          etat: { disponible: e.disponible, actif: e.actif, statut: e.statut, raison: e.raison, page: e.page, nonReconnue: e.nonReconnue, changements: e.changements, verifieeA: h(e.verifieeA), imageA: h(e.imageA) },
+          journal: journalSuivi.map((x) => ({ ...x, t: h(x.t), ...(x.tVerif != null ? { tVerif: h(x.tVerif) } : {}), ...(x.tImage != null ? { tImage: h(x.tImage) } : {}), ...(x.tChangement != null ? { tChangement: h(x.tChangement) } : {}) })),
+        };
+      } catch (err) { return { erreur: String((err && err.message) || err) }; }
+    })(),
   };
 }
 

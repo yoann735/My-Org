@@ -154,6 +154,7 @@ import { EditeurCorrespondance, ListeNonReplacees } from './Correspondance.jsx';
 import { nettoyerCollage } from '../lib/collageListes.js';
 import { sansTaillesCollees } from '../lib/taillesTexte.js';
 import { copiable, copies, decalage, memoriser, presseObjets, oublier, htmlJeton, jetonDe, texteObjets } from '../lib/copieObjets.js';
+import { lireDefilement, abonnerDefilement, consommerCible } from '../transcription/diapos/defilement.js';
 // un événement clavier/collage venu du tableau : c'est au tableau d'y répondre
 const dansLeTableau = (el) => !!(el && el.closest && el.closest('.tb'));
 /* (14/11) texte d'une boîte : 1re frappe écrite aussitôt, puis au plus toutes les 200 ms (< 300 ms après chaque frappe) */
@@ -927,13 +928,24 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
   useEffect(() => { textMapCache.current = {}; }, [coucheOcr]); // nouvelle page reconnue : la recherche la voit
   // aller à une page : son bord haut juste sous la barre, sans la marge de 70 px
   // qu'utilisent recherche et notions (qui visent une LIGNE, pas une page).
+  // (26/11) `doux` : défilement doux (≈ 200 ms) — « Faire défiler jusqu'à la diapo détectée ». Seul le défilement VERTICAL
+  // change : zoom et position horizontale restent ceux de l'élève.
   const allerALaPageRef = useRef(null);
-  const allerALaPage = (n) => {
+  const animDefil = useRef(null);
+  const allerALaPage = (n, { doux = false } = {}) => {
     const idx = Math.max(0, Math.min(nbPagesAffichees - 1, n - 1));
     const el = scrollRef.current;
     if (!el || layout.offsets[idx] == null) return;
-    el.scrollTop = Math.max(0, layout.offsets[idx] - 8 * scale);
-    computeVisibleRange();
+    const cible = Math.max(0, layout.offsets[idx] - 8 * scale);
+    if (animDefil.current) { cancelAnimationFrame(animDefil.current); animDefil.current = null; }
+    if (!doux || Math.abs(el.scrollTop - cible) < 2) { el.scrollTop = cible; computeVisibleRange(); return; }
+    const depart = el.scrollTop, t0 = performance.now(), DUREE = 200;
+    const pas = (t) => {
+      const k = Math.min(1, (t - t0) / DUREE), e = 1 - (1 - k) ** 3;
+      el.scrollTop = depart + (cible - depart) * e;
+      if (k < 1) animDefil.current = requestAnimationFrame(pas); else { animDefil.current = null; computeVisibleRangeRef.current(); }
+    };
+    animDefil.current = requestAnimationFrame(pas);
   };
   allerALaPageRef.current = allerALaPage;
 
@@ -954,6 +966,16 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     }
     const idx = l.pageCle != null ? pageSizes.findIndex((sz) => String(sz.cle) === String(l.pageCle)) : -1;
     allerALaPage(idx >= 0 ? idx + 1 : l.page);
+  };
+  /* (26/11, transcription/diapos/defilement.js) « FAIRE DÉFILER JUSQU'À LA DIAPO DÉTECTÉE » : la cible (nouvelle diapo
+     reconnue) n'est appliquée que si CE cours est à l'écran sur son document original ; jamais pendant un dessin, une écriture
+     dans une boîte ou une sélection de texte (appliquée dès la fin du geste). Ailleurs, rien ne bouge : la cible attend. */
+  const cibleSuiviIci = () => {
+    const d = lireDefilement(); const c = d.cible;
+    if (!d.actif || !c || !ficheId || c.courseId !== ficheId || docAffiche !== 'original' || modeDoc || !pageSizes.length) return null;
+    let index = c.pageCle != null ? pageSizes.findIndex((sz) => String(sz.cle) === String(c.pageCle)) : -1;
+    if (index < 0) index = Math.max(0, Math.min(pageSizes.length - 1, (c.page || 1) - 1));
+    return { n: c.n, index, cle: pageSizes[index].cle };
   };
   const [demandePage, setDemandePage] = useState(null); // { page, doc, sessionId, n } : badge d'une page cliqué
   const ouvrirTranscriptPage = (page, sessionId) => {
@@ -1116,8 +1138,13 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     // document : la page mémorisée existe encore ; PDF : même fichier, même nombre de pages
     const valable = modeDoc ? !!(p && p.kind === 'doc' && pageSizes.some((sz) => String(sz.cle) === String(p.cle)))
       : !!(p && p.kind === 'pdf' && p.empreinte && p.empreinte === empreintePdf(pdfIdActif, pdfDoc.numPages));
+    // (26/11) « Faire défiler jusqu'à la diapo détectée » : des diapos ont été reconnues pendant que l'élève était ailleurs →
+    // le document du cours s'ouvre directement à la dernière (en haut de la page), au zoom mémorisé
+    const cs = cibleSuiviIci();
+    if (cs) consommerCible(cs.n);
+    if (!valable && cs) { aRestaurer.current = { kind: 'pdf', cle: cs.cle, index: cs.index, fraction: 0 }; setTourRestauration((n) => n + 1); return; }
     if (!valable) { setRestaure(true); return; } // rien, ou PDF changé : page 1, sans erreur
-    aRestaurer.current = p;
+    aRestaurer.current = cs ? { ...p, cle: cs.cle, index: cs.index, fraction: 0 } : p;
     setTourRestauration((n) => n + 1);
     if (p.disposition && ['pdf', 'deux', 'tableau'].includes(p.disposition) && p.disposition !== disposition) {
       setDispositionBrut(p.disposition);
@@ -1154,6 +1181,51 @@ export function PdfReader({ ctx, source, ficheId: ficheIdProp, initialSrcTab: sr
     raf = requestAnimationFrame(verifier);
     return () => { fini = true; if (raf) cancelAnimationFrame(raf); };
   }, [layout, restaure, tourRestauration]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* (26/11) défilement jusqu'à la diapo détectée : application en direct (voir cibleSuiviIci plus haut) */
+  const gesteEnCours = useRef(false);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return undefined;
+    const debut = () => { gesteEnCours.current = true; };
+    const fin = () => { gesteEnCours.current = false; };
+    el.addEventListener('pointerdown', debut, true);
+    window.addEventListener('pointerup', fin, true); window.addEventListener('pointercancel', fin, true);
+    return () => { el.removeEventListener('pointerdown', debut, true); window.removeEventListener('pointerup', fin, true); window.removeEventListener('pointercancel', fin, true); };
+  }, [pret]);
+  const occupePourDefiler = () => {
+    const el = scrollRef.current;
+    if (!el || gesteEnCours.current) return true; // dessin, glisser, trait en cours
+    const ae = document.activeElement;
+    if (ae && ae !== document.body && el.contains(ae) && (ae.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))) return true; // écriture dans une boîte
+    const sel = window.getSelection && window.getSelection();
+    if (sel && !sel.isCollapsed && sel.anchorNode && el.contains(sel.anchorNode)) return true; // sélection de texte
+    return false;
+  };
+  const appliquerCibleRef = useRef(null);
+  appliquerCibleRef.current = () => {
+    if (!restaureRef.current) return 'attente';
+    const cs = cibleSuiviIci();
+    if (!cs) return 'rien';
+    if (document.visibilityState !== 'visible') return 'cache'; // autre onglet, fenêtre réduite : au retour
+    const el = scrollRef.current;
+    if (!el || !el.getClientRects().length) return 'occupe'; // lecteur gardé mais pas affiché
+    if (occupePourDefiler()) return 'occupe';
+    allerALaPage(cs.index + 1, { doux: true });
+    consommerCible(cs.n);
+    return 'fait';
+  };
+  useEffect(() => {
+    let minut = null;
+    const essayer = () => {
+      clearTimeout(minut); minut = null;
+      const r = appliquerCibleRef.current && appliquerCibleRef.current();
+      if (r === 'occupe') minut = setTimeout(essayer, 300); // dès que le geste est fini
+    };
+    const off = abonnerDefilement(essayer);
+    document.addEventListener('visibilitychange', essayer);
+    essayer();
+    return () => { off(); document.removeEventListener('visibilitychange', essayer); clearTimeout(minut); };
+  }, [ficheId, docAffiche, restaure, pageSizes]);
   /* (20/11) RETOUR AU COURS (transcription/retourCours.js) : le lecteur note où il est affiché
      (Bibliothèque ou plein écran, Original/Fiche) ; revenu depuis la barre « Transcription en
      cours », il ouvre le panneau Transcript UNE FOIS la position de lecture restaurée (même page,

@@ -5,7 +5,7 @@
 // Prérequis : comme t-suivi.mjs.   Usage : node t-repartition.mjs
 import fs from 'node:fs';
 import path from 'node:path';
-import { cdp, lancerChrome, dormir, ok, BASE, TEAMS, PORT_CHROME, TRAVAIL, DOSSIER_IMG } from './commun.mjs';
+import { cdp, lancerChrome, dormir, ok, BASE, TEAMS, PORT_CHROME, TRAVAIL, DOSSIER_IMG, INJECTION_PARTAGE } from './commun.mjs';
 
 const DUREE = Number(process.env.DUREE || 14) * 1000;
 const CAPTURES = !process.env.PDF_HISTO;
@@ -18,8 +18,7 @@ async function principal() {
     const teams = await cdp(PORT_CHROME, { url: TEAMS + '/' });
     ok(await teams.attendre('window.pret === true', 60000), 'faux Teams prêt');
     const app = await cdp(PORT_CHROME, { url: 'about:blank' });
-    await app.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const gdm = navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia;
-      if (!gdm) return; navigator.mediaDevices.getDisplayMedia = function (c) { c = c || {}; if (c.audio) c.audio = Object.assign({}, typeof c.audio === 'object' ? c.audio : {}, { suppressLocalAudioPlayback: true }); return gdm.call(this, c); }; })();` });
+    await app.send('Page.addScriptToEvaluateOnNewDocument', { source: INJECTION_PARTAGE });
     await app.send('Page.navigate', { url: BASE + '/medrevise' });
     await app.attendre(`document.readyState === 'complete'`, 30000);
     await app.ev(`(localStorage.setItem('app.current', '"medrevise"'), 1)`);

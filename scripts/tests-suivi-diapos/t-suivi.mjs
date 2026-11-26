@@ -8,7 +8,7 @@
 // Usage : node t-suivi.mjs            (COURT=1 : 6 diapos seulement ; DUREE=14 : secondes par diapo)
 import fs from 'node:fs';
 import path from 'node:path';
-import { cdp, lancerChrome, cpuChrome, dormir, ok, BASE, TEAMS, DEEPGRAM, PORT_CHROME, TRAVAIL, DOSSIER_IMG } from './commun.mjs';
+import { cdp, lancerChrome, cpuChrome, dormir, ok, BASE, TEAMS, DEEPGRAM, PORT_CHROME, TRAVAIL, DOSSIER_IMG, INJECTION_PARTAGE } from './commun.mjs';
 
 const DUREE = Number(process.env.DUREE || 14) * 1000;
 const COURT = !!process.env.COURT;
@@ -38,9 +38,7 @@ async function principal() {
     ok(await teams.attendre('window.pret === true', 60000), 'faux Teams prêt', 'diapos rendues');
     const nb = await teams.ev('window.nbDiapos');
     const app = await cdp(PORT_CHROME, { url: 'about:blank' });
-    await app.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const gdm = navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia;
-      if (!gdm) return; navigator.mediaDevices.getDisplayMedia = function (c) { c = c || {}; if (c.audio) c.audio = Object.assign({}, typeof c.audio === 'object' ? c.audio : {}, { suppressLocalAudioPlayback: true });
-      window.__partageDemandes = (window.__partageDemandes || 0) + 1; return gdm.call(this, c); }; })();` });
+    await app.send('Page.addScriptToEvaluateOnNewDocument', { source: INJECTION_PARTAGE });
     await app.send('Page.navigate', { url: BASE + '/medrevise' });
     await app.attendre(`document.readyState === 'complete'`, 30000);
     await app.ev(`(localStorage.setItem('app.current', '"medrevise"'), 1)`);

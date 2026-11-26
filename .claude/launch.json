@@ -248,6 +248,37 @@
         "--strictPort"
       ],
       "port": 5336
+    },
+    {
+      "name": "medrevise-banc-diapos-avant",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "/private/tmp/claude-501/-Users-yoannlmr-Documents-D-v---projets-Claude-Projets-My-Org-My-Org/0fa91f2f-0cac-4e3c-af82-02db4809b849/scratchpad/avant",
+        "--port",
+        "5305",
+        "--strictPort"
+      ],
+      "env": {
+        "VITE_SUPABASE_URL": "",
+        "VITE_SUPABASE_ANON_KEY": "",
+        "DEEPGRAM_API_KEY": "cle-de-test",
+        "DEEPGRAM_API_URL": "http://localhost:54412",
+        "DEEPGRAM_LISTEN_URL": "ws://localhost:54412/v1/listen"
+      },
+      "port": 5305
+    },
+    {
+      "name": "faux-deepgram-diapos-avant",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/faux-deepgram.mjs"
+      ],
+      "env": {
+        "PORT": "54412",
+        "SEUIL_PAROLE": "0.0003"
+      },
+      "port": 54412
     }
   ]
 }

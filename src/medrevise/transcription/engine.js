@@ -38,7 +38,7 @@ import {
 } from './sessions.js';
 import { marquerVivante, pousserMaintenant } from './synchro.js';
 import { tarifEffectif, noterDebutSession, finSessionCredits, facteurDiarisation } from './credits.js';
-import { demarrerSuivi, arreterSuivi, activerSuivi, lireSuivi, mesures as mesuresSuivi } from './diapos/suivi.js';
+import { demarrerSuivi, arreterSuivi, activerSuivi, lireSuivi, mesures as mesuresSuivi, journalSuivi, couperImagesPourBanc } from './diapos/suivi.js';
 import { pageAuTemps } from './diapos/moteur.js';
 
 const DUREE_BLOC = 0.1; // s
@@ -667,4 +667,4 @@ if (typeof window !== 'undefined') {
 }
 
 /* accès de test (console, banc CDP) — sans effet sur l'app */
-if (typeof window !== 'undefined') window.__transcription = { lireEtat, lireNiveau, journal, changerSource, lireSuivi, mesuresSuivi, basculerSuiviDiapos };
+if (typeof window !== 'undefined') window.__transcription = { lireEtat, lireNiveau, journal, changerSource, lireSuivi, mesuresSuivi, journalSuivi, couperImagesPourBanc, basculerSuiviDiapos };
