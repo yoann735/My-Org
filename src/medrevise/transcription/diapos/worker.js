@@ -214,7 +214,7 @@ function tic() {
     return;
   }
   // transition : on attend que l'image reste stable 1,5 s
-  if (fracMvt > MOUVEMENT) tMouvement = t;
+  if (fracMvt > MOUVEMENT) { if (t - tVu > 300) noterJ('stabilite-relancee', { apresMs: t - tVu, mvt: Math.round(fracMvt * 1000) / 1000 }); tMouvement = t; }
   if (t - tMouvement >= STABLE_MS || t - tVu >= ANIM_MAX_MS) analyser(petit, t).catch((e) => { mode = 'repos'; ref = petit; noterJ('erreur', { raison: String((e && e.message) || e).slice(0, 120) }); postMessage({ type: 'etat', erreur: String(e && e.message || e) }); });
 }
 
