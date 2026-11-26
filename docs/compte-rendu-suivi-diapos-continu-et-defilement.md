@@ -224,9 +224,9 @@ Avant, même machine : 0,61 visible, 0,42 caché, 0,46 réduite. Le surcoût de 
 garde, journal) est nul à la mesure près (0,58 contre 0,61 visible, 0,44 contre 0,42 caché, 0,41 contre 0,46 réduite : écarts de l'ordre du bruit de mesure). Le suivi lui-même coûte toujours ≈ 0,18 cœur (mesure du 24/11).
 
 ### 4.5 Non-régression
-- **Précision de la reconnaissance** (`t-suivi.mjs`, mêmes 29 passages que le 24/11) : __PRECISION__.
-- **Transcript, lecteur PDF, source micro, reprise** (`t-nonreg.mjs`) : __NONREG__.
-- **Tests vitest** : `tests/suivi-diapos` 17/17 (5 nouveaux : `defilement.test.js`) ; `npm test` : __NPMTEST__.
+- **Précision de la reconnaissance** (`t-suivi.mjs`, mêmes 29 passages que le 24/11) : mesurée en cours de chantier, mais **pas rejouée sur le code final** (bancs arrêtés à la demande de Yoann). La méthode de reconnaissance (scores, seuils, ordre) est inchangée : seuls le rythme des contrôles au repos, le chien de garde et le journal ont bougé.
+- **Transcript, lecteur PDF, source micro, reprise** (`t-nonreg.mjs`) : pas rejoué sur le code final (même raison). Le transcript a été vérifié dans les 4 bancs de 20 min : aucun mot perdu.
+- **Tests vitest** : `tests/suivi-diapos` 17/17 (5 nouveaux : `defilement.test.js`) ; `npm test` : 387/390. Les 2 échecs viennent d'avant le chantier et n'ont pas de lien avec lui : `crayon.test.js` (épaisseurs) et `emploi-du-temps/api.test.js` (dépend de la date).
 - **Build vert.**
 - **MealWeek** : build du code d'avant le chantier (`13e8d9a`) et build d'après, sans cloud, même heure simulée. Même
   texte, **capture identique au pixel près** sur ordinateur et téléphone, 0 erreur console. Aucun fichier MealWeek ni
@@ -238,6 +238,11 @@ garde, journal) est nul à la mesure près (0,58 contre 0,61 visible, 0,44 contr
 ---
 
 ## 5. Limites
+- **Bancs finaux écourtés** : le partage arrêté puis repris (reprise en 32,8 s) et le défilement ordinateur ont été
+  rejoués en vert sur le code final. Défilement tablette (vert sauf la fin, coupée), téléphone, panne OCR, précision et
+  non-régression : verts en cours de chantier, pas rejoués après le dernier réglage (cadence d'apprentissage).
+- **Faux Deepgram** : il ne garde que les 20 000 derniers mots. Après environ 2 h de bancs enchaînés, le comptage « aucun
+  mot perdu » devient faux : il faut relancer le serveur entre deux séries.
 - **Déclencheur réel non observé sur le Mac de Yoann.** La cause du blocage est démontrée par panne injectée ; les
   autres hypothèses sont écartées par le banc. Si le suivi s'arrête encore en vrai, « Exporter un diagnostic » donnera la
   raison exacte (journal).
@@ -249,7 +254,7 @@ garde, journal) est nul à la mesure près (0,58 contre 0,61 visible, 0,44 contr
   (jamais de mauvais changement), comme avant quand l'OCR ne trouvait rien.
 
 ## 6. Commits
-__COMMITS__
+Sauvegardes automatiques « sync auto » : `b3ab559`, `ac6f20a`, `18c2c3f`, `3303477`, `a4774cf`, `70f3835`. Commit final de clôture : voir `git log` (`docs: compte rendu suivi des diapos continu + défilement`).
 
 **Reproduire :**
 1. Lancer `faux-deepgram-diapos`, `faux-teams` et `medrevise-banc-diapos` (`.claude/launch.json`).

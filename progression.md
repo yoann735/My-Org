@@ -1,18 +1,20 @@
 <!-- PASSATION:DEBUT -->
 # 🔁 Passation – My Org (MedRevise)
-_Mise à jour le 2026-11-26 15:43 (/cloture)_
+_Mise à jour le 2026-11-26 19:45_
 
 ## 🎯 Objectif
 SPA Vite + React (hub + MealWeek + MedRevise), Vercel `my-org` au push sur `main`.
 /goal du 26/11 : séances (début → fin de cours) liées à un créneau de l'agenda, pages vues dans l'agenda, « Ouvrir le cours » → page de début — LIVRÉ, testé, commité.
 
 ## ✅ Fait (vérifié)
+- (26/11 soir) SUIVI DES DIAPOS CONTINU + DÉFILEMENT : cause = attente OCR sans limite → boucle bloquée en « analyse », indication fausse (preuve par panne injectée : avant 0/4, après 4/4). Correction : images lues dans le Worker (MediaStreamTrackProcessor), OCR borné 8 s, chien de garde 10 s, indication « Diapo N · auto · vérifiée il y a X s » / orange + raison, journal dans « Exporter un diagnostic ». Option « Faire défiler jusqu'à la diapo détectée » (défaut on, `transcription/diapos/defilement.js`, PdfReader `allerALaPage(n,{doux})`). 20 min : onglet 9/9, ailleurs 9/9, réduite 10/10, alterne 11/11 ; 35/39 délais ≤ 3 s (4 à 3,1–3,5 s : attente de stabilité de la méthode, non touchée). Compte rendu `docs/compte-rendu-suivi-diapos-continu-et-defilement.md`.
 - (26/11) SÉANCES LIÉES À L'AGENDA : lien = champ `agenda` AJOUTÉ au tag Début existant (`page_tag`, synchro existante, aucune migration) ; clé UID iCal + début, copie titre/date/heures/salle ; fenêtre « Lier à un cours de l'agenda » après un Début (menu ou Transcrire), créneau proposé (en cours même matière → plus proche même matière même jour → en cours), « Passer » ; menu du tag : Lier / Changer / Délier ; mention « 17 nov. · Histologie » ; agenda : « p. 157–192 · doc », copie « cours retiré de l'agenda », « horaire modifié » ; « Ouvrir le cours » → page de début (choix si plusieurs). Code `lib/seancesAgenda.js`, `components/LienAgenda.jsx`, `styles/seances-agenda.css`. Banc `scripts/tests-seances-agenda/tout.sh` (relancer faux-supabase avant) + 9 tests Vitest ; série finale 160/161 (seul écart : capture MealWeek téléphone instable, identique en relance ×2). Commit 05645be. Compte rendu `docs/compte-rendu-seances-liees-agenda.md`.
 - (25/11 soir) Bibliothèque : bouton calendrier par matière (localStorage `medrevise.biblio.datesTranscript`), une ligne de pastilles « 17 nov. » par cours, « +N » déplier/replier, heure et durée (« 10h00 · 50 min ») sur la pastille filtrée et en mode déplié, filtre par jour (rappel « 17 nov. ✕ », combiné à la recherche). Calcul unique mémorisé `src/medrevise/lib/datesTranscript.js` (jour Europe/Brussels, reprises gérées), relecture par id (`storage.js` : ids dans l'événement d'écriture ; `synchroIsolee.js` : événement après réception). Bouton éteint = arbre identique à avant. Banc `scripts/tests-filtre-dates-transcript/tout.sh` vert (161 vérifications) + MealWeek identique. Compte rendu `docs/compte-rendu-filtre-dates-transcript.md` (règle, mesures, captures). Commit 6ce8107.
 - Section Exos livrée (00e35ac/71e9190) + glisser-déposer HTML/PDF dans la feuille (5c16650), bancs verts.
 - (24/11) suivi automatique des diapos livré (docs/compte-rendu-suivi-auto-diapos.md).
 
 ## ➡️ Prochaines étapes
+- Essayer en vrai le suivi continu (vrai Teams dans Chrome, changer d'onglet/de cours) ; bancs tablette/téléphone/précision/non-régression pas rejoués sur le code final (arrêtés : Chrome qui s'ouvrait gênait Yoann).
 0. Essayer en vrai les séances liées (Mac/iPad, vrai agenda HELHa) ; « Transcrire le cours » → fenêtre non testée en navigateur (audio du Chrome de test HS) — attendre le retour de Yoann.
 1. Aucun /goal en attente : demander à Yoann le prochain chantier.
 2. Essayer en vrai (Mac, iPad) les dates de transcript de la Bibliothèque sur les vraies matières ; attendre le retour de Yoann avant toute modification.
@@ -27,6 +29,7 @@ SPA Vite + React (hub + MealWeek + MedRevise), Vercel `my-org` au push sur `main
 - Diapos : un seul moteur ; seuils SEUIL 0,50 · MARGE 0,03 · NON_RECONNU 0,50.
 
 ## ⚠️ Pièges et préférences
+- Bancs Chrome : ils ouvrent des fenêtres qui gênent Yoann pendant qu'il révise → bancs longs seulement s'il est prévenu, et les grouper.
 - JAMAIS de son pendant un banc (Chrome --mute-audio). Ne pas modifier src/ pendant qu'un banc tourne.
 - Configs de test « dates-avant » / « mealweek-avant-dates » : pointent vers une copie temporaire (scratchpad) du code d'avant le chantier — à recréer (`git archive`) pour rejouer la comparaison avant/après.
 - Banc séances : RELANCER « faux-supabase » (preview_start) avant chaque `tout.sh` (horloge simulée 17 nov. 10 h 30 → sinon les écritures d'une série précédente gagnent la synchro) ; iPad/téléphone sur « medrevise-banc » :5302 ; MealWeek avant/après = configs « mealweek-avant-seances » (:5335, copie scratchpad de 07ba376, à recréer) / « mealweek-apres-seances » (:5336, dist).
