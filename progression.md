@@ -1,6 +1,6 @@
 <!-- PASSATION:DEBUT -->
 # 🔁 Passation – My Org (MedRevise)
-_Mise à jour le 2026-11-26 (séances liées à l'agenda)_
+_Mise à jour le 2026-11-26 15:43 (/cloture)_
 
 ## 🎯 Objectif
 SPA Vite + React (hub + MealWeek + MedRevise), Vercel `my-org` au push sur `main`.
@@ -14,7 +14,7 @@ SPA Vite + React (hub + MealWeek + MedRevise), Vercel `my-org` au push sur `main
 
 ## ➡️ Prochaines étapes
 0. Essayer en vrai les séances liées (Mac/iPad, vrai agenda HELHa) ; « Transcrire le cours » → fenêtre non testée en navigateur (audio du Chrome de test HS) — attendre le retour de Yoann.
-1. (FAIT 26/11) /goal « séances liées à l'agenda » (lier début→fin de cours d'un document à un créneau de l'agenda, pages vues dans l'agenda, « Ouvrir le cours » → page de début) : texte complet du goal dans le message d'ouverture de la session suivante ; à faire en autonomie. Pistes : système début/fin existant = tags de pages `lib/tagsPages.js` (kind 'debut'/'fin', `transcription/marquerCours.js`, docs/compte-rendu-transcription-marque-cours.md) ; agenda = `api/timetable.js`, `lib/emploiDuTemps.js`, `components/EmploiDuTemps.jsx`/`GrilleEcole.jsx` (docs/compte-rendu-emploi-du-temps.md).
+1. Aucun /goal en attente : demander à Yoann le prochain chantier.
 2. Essayer en vrai (Mac, iPad) les dates de transcript de la Bibliothèque sur les vraies matières ; attendre le retour de Yoann avant toute modification.
 3. Essayer la section Exos en vrai (vrais fichiers d'exos HTML, glisser-déposer depuis le Finder) sur Mac, iPad, iPhone ; attendre le retour de Yoann.
 4. Essai réel Teams + banc diapos avec le vrai PDF d'histologie (`PDF_HISTO=~/Downloads/… node scripts/tests-suivi-diapos/t-suivi.mjs`) — attendre le PDF.
@@ -23,17 +23,21 @@ SPA Vite + React (hub + MealWeek + MedRevise), Vercel `my-org` au push sur `main
 ## 🧭 Décisions prises (ne pas rediscuter)
 - Dates de transcript : jour = Europe/Brussels ; heure = 1er mot du jour ; durée = somme par session du 1er au dernier mot du jour ; heure+durée seulement sur la pastille filtrée / ligne dépliée / infobulle (la ligne repliée reste des dates) ; filtre non retenu au rechargement ; téléphone sans Bibliothèque = rien à faire.
 - Exos : annotations d'un fichier dans l'espace `exo:<id du fichier>` ; fichier retiré/remplacé gardé dans `fichiersRetires` ; boîte → flashcard seulement si la notion a un cours.
+- Séances liées : lien porté par le tag Début (une séance = un créneau, un créneau = plusieurs séances) ; Délier = `agenda: null` ; téléphone = affichage seul (pas de lecteur) ; fenêtre non ouverte si l'emploi du temps n'est pas configuré.
 - Diapos : un seul moteur ; seuils SEUIL 0,50 · MARGE 0,03 · NON_RECONNU 0,50.
 
 ## ⚠️ Pièges et préférences
 - JAMAIS de son pendant un banc (Chrome --mute-audio). Ne pas modifier src/ pendant qu'un banc tourne.
 - Configs de test « dates-avant » / « mealweek-avant-dates » : pointent vers une copie temporaire (scratchpad) du code d'avant le chantier — à recréer (`git archive`) pour rejouer la comparaison avant/après.
+- Banc séances : RELANCER « faux-supabase » (preview_start) avant chaque `tout.sh` (horloge simulée 17 nov. 10 h 30 → sinon les écritures d'une série précédente gagnent la synchro) ; iPad/téléphone sur « medrevise-banc » :5302 ; MealWeek avant/après = configs « mealweek-avant-seances » (:5335, copie scratchpad de 07ba376, à recréer) / « mealweek-apres-seances » (:5336, dist).
+- Vitest : 2 échecs préexistants (crayon ; api.test.js emploi du temps, dépend de la date).
 - « sync auto » commite ET pousse tout seul.
 - Le lecteur HTML des Exos est volontairement isolé : ne jamais ajouter allow-same-origin.
 - Français, commits conventionnels, jamais de force push ; ne jamais toucher MealWeek ni src/shared.
 <!-- PASSATION:FIN -->
 
 ## Historique des clôtures
+- 2026-11-26 15:43 – /cloture : séances liées à l'agenda livrées (05645be, 405c0eb, poussés) ; suite = essais réels / prochain chantier de Yoann.
 - 2026-11-26 – /goal séances liées à l'agenda : livré (05645be), bancs verts ordinateur / iPad / téléphone / 2 appareils, MealWeek identique ; « Transcrire le cours » → fenêtre non testé en navigateur (audio HS).
 - 2026-11-26 00:05 – /cloture : dates de transcript livrées (6ce8107, 07ba376) ; suite = /goal séances liées à l'agenda.
 - 2026-11-25 23:55 – /goal dates de transcript + heure/durée + filtre par date dans la Bibliothèque : livré, banc vert 3 appareils + 2 appareils + perf, MealWeek identique, commité (6ce8107).
@@ -43,9 +47,3 @@ SPA Vite + React (hub + MealWeek + MedRevise), Vercel `my-org` au push sur `main
 - 2026-11-22 – /goal PNG d'un dessin (×3, 3 fonds, partage iPhone, texte peint) + barre transcription → retour au cours ; correctif texte coloré iPhone (copie sans caméra) ; bancs verts Chrome + Safari ; poussé (7fdb0b6). Vrai iPhone non testé.
 - 2026-11-20 18:49 – /goal police + duplication + remplacement : causes du bug de police corrigées (taille en dur dans le texte, px de mise en page du document) ; ⌘C/⌘V/⌘D des objets ; « Remplacer par un PDF… » (Historique, restauration exacte) ; bancs verts ordi + iPad, MealWeek identique ; poussé (a9874e5). WebKit réel non testé.
 - 2026-11-20 14:25 – /goal séance Passer/Précédente (renotation annulable, journal en ajout seul) + boîte → formulaire complet unique ; bancs verts 3 appareils, MealWeek identique ; poussé (7e06f27).
-- 2026-11-20 12:52 – /goal 74 en attente : cause = événements « Passer en révision » refusés (rating null) et ignorés ; preuve serveur unique, canal de repli sans migration, empreinte + journal, garde-fou ; 18 tests au build, bancs verts 3 appareils ; poussé, déployé (3840ce0).
-- 2026-11-19 21:44 – Clôture : mode file d'attente livré et poussé (5d56577), banc téléphone tranché sans régression (d042293) ; attente des essais sur vrai Mac/iPad.
-- 2026-11-15 21:00 – /goal mode file d'attente : dateEffective unique (planning.js), jours en pause dans prompts/fileAttente (aucune carte écrite, pas de migration), Réglages › Planification, décalage + alerte + « Faire le paquet suivant » ; testé ordinateur, tablette, téléphone, deux appareils, avant/après (mode désactivé identique) ; compte rendu docs/compte-rendu-mode-file-attente.md.
-- 2026-11-15 19:18 – Clôture du /goal boîtes disparues + sauvegarde continue (livré, poussé a4fb223) ; à revoir : banc téléphone séance flashcards en échec au dernier passage.
-- 2026-11-14 18:40 – /goal boîtes disparues + sauvegarde continue : Épithélium glandulaire, aucune boîte disparue (36 copies, cloud, journal du Mac) ; enregistrement continu (< 300 ms, relu, erreur visible), historique des versions, garde-fou ; bancs verts 3 appareils ; poussé (d23bed3, 4e3a9ca, 22bd96a).
-- 2026-11-14 16:39 – /goal compteur de vues (œil, tris, filtre) + visionneuse d'image plein écran en révision : livrés, testés 3 appareils, poussés, déployés (7048c82).
