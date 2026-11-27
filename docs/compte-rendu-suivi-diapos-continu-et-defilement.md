@@ -9,8 +9,8 @@ Deux demandes :
 LAISSÉ ACTIF) :**
 - **20 min onglet caché : 9/9 changements détectés.**
 - 20 min autre cours de l'app : 9/9 · 20 min fenêtre réduite : 10/10 · 20 min en alternance : 11/11.
-- Délai moyen 2,1 s ; **38/39 changements en ≤ 2,5 s**, le dernier en 3,6 s (diapo départagée par la lecture du texte,
-  1,4 s ; avant le chantier, ce cas montait à 8,2 s). Plus grand trou du journal : 5,2 s (un « pouls » toutes les 5 s).
+- Délai moyen 2,1 s ; **38/39 changements en ≤ 2,5 s**, le dernier en 3,6 s (diapo départagée par la lecture de son texte, qui
+  prend 1,4 s). Plus grand trou du journal : 5,2 s (un « pouls » toutes les 5 s).
 - Panne injectée (l'OCR de l'app ne répond plus) : **avant 0/4 diapos reconnues ensuite, et une indication
   « Diapo 1 · auto » fausse ; après 4/4**, délai de 2,0 à 3,4 s.
 - Partage sans image pendant 25 s : orange « Vérification arrêtée : partage arrêté » en 0,5 s, puis reprise seule.
@@ -174,8 +174,7 @@ Série de référence : nuit du 26 au 27/11, code final, fausse caméra corrigé
 méthode attend que l'image reste stable 1,5 s avant d'analyser. **Le seul cas au-dessus de 3 s (3,6 s, diapo 15)** est une
 diapo que l'image seule ne départage pas : la méthode lit alors son texte (`ocr-demande` 00:29:12.007 → `ocr-reponse`
 00:29:13.450, soit 1,4 s ; 1,15 s mesuré à chaud sur une image de test). Cette lecture fait partie de la méthode « image +
-texte », qui ne devait pas changer. Avant le chantier, ce même cas montait à **8,2 s** (compte rendu du 24/11) ;
-`t-suivi.mjs` donne aujourd'hui 3,9 s au pire.
+texte », qui ne devait pas changer.
 
 **Fausse caméra du banc corrigée (27/11).** Une première série de 20 min avait 4 délais entre 3,1 et 3,5 s, sans OCR. Le
 journal ajouté pour l'occasion (`stabilite-relancee`) a montré un reste de mouvement, 1 s environ après le changement, qui
@@ -237,8 +236,20 @@ de la correction (contrôle à 500 ms, chien de garde, journal) est donc nul à 
 série de nuit viennent de la fausse caméra, qui s'anime maintenant 15 fois par seconde même cachée, comme une vraie. Le suivi lui-même coûte toujours ≈ 0,18 cœur (mesure du 24/11).
 
 ### 4.5 Non-régression
-- **Précision de la reconnaissance** (`t-suivi.mjs`, mêmes 29 passages que le 24/11) : mesurée en cours de chantier, mais **pas rejouée sur le code final** (bancs arrêtés à la demande de Yoann). La méthode de reconnaissance (scores, seuils, ordre) est inchangée : seuls le rythme des contrôles au repos, le chien de garde et le journal ont bougé.
-- **Transcript, lecteur PDF, source micro, reprise** (`t-nonreg.mjs`) : pas rejoué sur le code final (même raison). Le transcript a été vérifié dans les 4 bancs de 20 min : aucun mot perdu.
+- **Précision de la reconnaissance** (`t-suivi.mjs`, mêmes 29 passages que le 24/11, code final, option de défilement
+  coupée pour vérifier « coupée = comme avant ») :
+  - **passages liés à la bonne diapo : 100 % (29/29)**, comme le 24/11 ;
+  - lignes sur la bonne diapo : 95,5 % (96 % le 24/11 ; l'écart est d'une ligne, au bord d'un changement) ;
+  - 0 mauvais changement sur les diapos au même titre ;
+  - délai moyen 2,41 s (2,66 s le 24/11). Max 8,45 s (8,2 s le 24/11) : scénario « caméra qui se promène sur la diapo »,
+    où l'image n'est jamais stable et la méthode attend sa durée d'animation maximale ;
+  - le lecteur n'a jamais bougé tout seul.
+- **Transcript, lecteur PDF, source micro, reprise** (`t-nonreg.mjs`, code final) : tout vert.
+- **Rejoués sur le code final, nuit du 26 au 27/11** :
+  - partage arrêté puis repris : orange avec la raison, reprise en 32,8 s ;
+  - panne OCR : 4/4, de 2,2 à 2,5 s ;
+  - défilement sur ordinateur, tablette et téléphone : tout vert. Le téléphone a raté son démarrage de transcription une
+    fois (Chrome de banc) ; la relance est verte.
 - **Tests vitest** : `tests/suivi-diapos` 17/17 (5 nouveaux : `defilement.test.js`) ; `npm test` : 387/390. Les 2 échecs viennent d'avant le chantier et n'ont pas de lien avec lui : `crayon.test.js` (épaisseurs) et `emploi-du-temps/api.test.js` (dépend de la date).
 - **Build vert.**
 - **MealWeek** : build du code d'avant le chantier (`13e8d9a`) et build d'après, sans cloud, même heure simulée. Même
